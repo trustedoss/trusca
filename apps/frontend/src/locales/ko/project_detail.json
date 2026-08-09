@@ -715,7 +715,11 @@
       },
       "order_label": "순서",
       "order_asc": "오름차순",
-      "order_desc": "내림차순"
+      "order_desc": "내림차순",
+      "filter_conflict": "배포 라이선스 충돌",
+      "conflict": {
+        "all": "모든 판정"
+      }
     },
     "review": {
       "badge_label": "검토 필요",
@@ -738,7 +742,8 @@
       "name": "라이선스",
       "category": "카테고리",
       "kind": "분류",
-      "affected_count": "영향 컴포넌트 수"
+      "affected_count": "영향 컴포넌트 수",
+      "conflict": "배포 라이선스 충돌"
     },
     "row": {
       "no_spdx_id": "—"
@@ -820,7 +825,35 @@
           "EXECUTABLE": "실행 파일",
           "NETWORK": "네트워크"
         }
+      },
+      "conflict": {
+        "title": "배포 라이선스",
+        "strength": "{{strength}}으로 분류했습니다.",
+        "disclaimer": "라이선스 조항을 비교해 참고 자료로 제공합니다. 실제 조합이 허용되는지는 사람과 법무가 판단할 사안입니다."
       }
+    },
+    "conflict": {
+      "verdict": {
+        "incompatible": "양립 불가",
+        "conditional": "조건부",
+        "unknown": "판단 불가",
+        "compatible": "양립 가능"
+      },
+      "class": {
+        "permissive": "허용형",
+        "weak-copyleft": "약한 카피레프트",
+        "strong-copyleft": "강한 카피레프트",
+        "network-copyleft": "네트워크 카피레프트",
+        "uncategorized": "미분류"
+      },
+      "measured_against": "{{license}} 기준으로 판정했습니다",
+      "count": {
+        "incompatible": "양립 불가 {{count}}건",
+        "conditional": "조건부 {{count}}건"
+      },
+      "advisory": "참고용이며 법적 판단이 아닙니다.",
+      "undeclared": "배포 라이선스를 선언하지 않아 판정하지 않았습니다. 설정에서 지정하면 충돌을 확인할 수 있습니다.",
+      "not_assessed": "이 스캔의 라이선스 종류가 너무 많아 {{license}} 기준으로 판정하지 않았습니다."
     }
   },
   "obligations": {
@@ -975,14 +1008,18 @@
       "git_url": "Git URL",
       "git_url_placeholder": "https://github.com/org/repo",
       "default_branch": "기본 브랜치",
-      "default_branch_placeholder": "main"
+      "default_branch_placeholder": "main",
+      "declared_license": "배포 라이선스",
+      "declared_license_placeholder": "Apache-2.0",
+      "declared_license_help": "이 프로젝트를 배포할 때 적용하는 라이선스를 SPDX 식별자나 표현식으로 적습니다. 라이선스 탭이 모든 의존성을 이 값과 비교해 판정합니다. 비워 두면 판정하지 않습니다."
     },
     "errors": {
       "name_required": "프로젝트 이름은 필수입니다",
       "name_max": "이름은 100자 이하여야 합니다",
       "description_max": "설명은 500자 이하여야 합니다",
       "git_url_invalid": "유효한 URL이어야 합니다 (https:// 또는 http://)",
-      "default_branch_max": "기본 브랜치는 255자 이하여야 합니다"
+      "default_branch_max": "기본 브랜치는 255자 이하여야 합니다",
+      "declared_license_max": "배포 라이선스는 255자 이하여야 합니다"
     },
     "action": {
       "save": "변경사항 저장",

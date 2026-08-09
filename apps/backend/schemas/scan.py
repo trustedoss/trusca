@@ -38,6 +38,13 @@ from pydantic import (
 from core.pii_mask import mask_git_url
 from core.url_guard import GitUrlValidationError, validate_git_url
 
+# Schemas normally sit BELOW services, and this is the one import that runs the
+# other way. It is safe because ``services.license_expression`` is a leaf: it
+# depends on structlog and nothing else in the tree, so no cycle can form. The
+# alternative — a second SPDX syntax check living in the schema layer — would
+# be a copy of a hardened parser, which is worse than an unusual import.
+from services.license_expression import validate_expression_syntax
+
 # ---------------------------------------------------------------------------
 # Constraints
 # ---------------------------------------------------------------------------
@@ -100,6 +107,42 @@ def _validate_default_branch(value: str | None) -> str | None:
             " leading '/')",
         )
     return stripped
+
+
+# The outbound license a project declares (gap #27). Bounded to the column's
+# 255 chars; the expression evaluator's own ceiling is far above that, so a
+# value that fits the column always reaches the parser intact.
+DECLARED_LICENSE_MAX_LENGTH = 255
+
+
+def _validate_declared_license(value: str | None) -> str | None:
+    """Shared ``declared_license`` validator for ProjectCreate / ProjectUpdate.
+
+    Blank means "not declared" and normalises to ``None`` — the conflict
+    service produces no verdict at all for a project without an outbound
+    license, and an empty string must land in that same state rather than
+    becoming an unparseable declaration.
+
+    Otherwise the value must be a well-formed SPDX expression. Only the syntax
+    is checked: a license nobody has heard of is a legitimate declaration (a
+    ``LicenseRef-`` id, a company's own terms), and the conflict service says
+    so honestly by reporting ``unknown``. What is rejected is input that cannot
+    be parsed at all, because storing it would make every later verdict
+    ``unknown`` with nothing on screen to explain why.
+    """
+    if value is None:
+        return None
+    stripped = value.strip()
+    if not stripped:
+        return None
+    warning = validate_expression_syntax(stripped)
+    if warning is not None:
+        raise ValueError(
+            "declared_license must be a valid SPDX license expression"
+            f" (parse error: {warning}) — e.g. 'Apache-2.0' or 'MIT OR Apache-2.0'",
+        )
+    return stripped
+
 
 # ---------------------------------------------------------------------------
 # Scan metadata bounds (M-2 — security review finding from PR #7)
@@ -203,6 +246,22 @@ class ProjectCreate(BaseModel):
     # Phase 3+ org-wide projects. The validator below rejects 'organization'
     # at the schema layer so the rejection lives next to the contract.
     visibility: ProjectVisibility = "team"
+    declared_license: str | None = Field(
+        default=None,
+        max_length=DECLARED_LICENSE_MAX_LENGTH,
+        description=(
+            "SPDX id or expression the project itself is distributed under "
+            "('Apache-2.0', 'MIT OR Apache-2.0'). Drives the outbound-license "
+            "conflict verdicts on the Licenses tab. Omit or leave blank when "
+            "the project does not declare one — no verdicts are produced, "
+            "which is not the same as a clean result."
+        ),
+    )
+
+    @field_validator("declared_license")
+    @classmethod
+    def _validate_declared_license(cls, value: str | None) -> str | None:
+        return _validate_declared_license(value)
 
     @field_validator("slug")
     @classmethod
@@ -273,6 +332,19 @@ class ProjectUpdate(BaseModel):
     git_url: str | None = Field(default=None, max_length=2048)
     default_branch: str | None = Field(default=None, max_length=255)
     visibility: ProjectVisibility | None = None
+    # Gap #27 — outbound license. A blank string clears the declaration (the
+    # validator normalises it to None), which is how the settings form removes
+    # one: unlike the write-only credential below, this value is readable, so
+    # "set it to empty" is unambiguous and needs no separate clear flag.
+    declared_license: str | None = Field(
+        default=None,
+        max_length=DECLARED_LICENSE_MAX_LENGTH,
+        description=(
+            "SPDX id or expression the project is distributed under. Send an "
+            "empty string to remove an existing declaration; omit the field to "
+            "leave it unchanged."
+        ),
+    )
     # Feature #18 Part B — private-repo git credential (WRITE-ONLY).
     #
     # `git_credential` is a plaintext PAT / deploy token. When provided and
@@ -352,6 +424,11 @@ class ProjectUpdate(BaseModel):
     def _validate_default_branch(cls, value: str | None) -> str | None:
         return _validate_default_branch(value)
 
+    @field_validator("declared_license")
+    @classmethod
+    def _validate_declared_license(cls, value: str | None) -> str | None:
+        return _validate_declared_license(value)
+
     @field_validator("visibility")
     @classmethod
     def _enforce_team_visibility(cls, value: str | None) -> str | None:
@@ -421,6 +498,14 @@ class ProjectPublic(BaseModel):
     git_url: str | None
     default_branch: str | None
     visibility: ProjectVisibility
+    declared_license: str | None = Field(
+        default=None,
+        description=(
+            "The SPDX id or expression the project is distributed under, or "
+            "null when none is declared. Null means outbound-license conflicts "
+            "are not assessed at all."
+        ),
+    )
 
     @field_serializer("git_url")
     def _mask_git_url(self, value: str | None) -> str | None:

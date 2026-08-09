@@ -43,6 +43,15 @@ vi.mock("@/features/projects/api/complianceApi", async () => {
 vi.mock("@/features/projects/api/licensesApi", async () => {
   return {
     getLicenseFinding: vi.fn().mockRejectedValue(new Error("not under test")),
+    // Real value re-exported so the grid's conflict facet builds. The
+    // set-equality guard against the backend lives in
+    // tests/unit/contracts/catalogMirrors.test.ts.
+    CONFLICT_VERDICT_VALUES: [
+      "incompatible",
+      "conditional",
+      "unknown",
+      "compatible",
+    ] as const,
   };
 });
 
@@ -121,12 +130,14 @@ function row(
     obligations: overrides.obligations ?? [],
     notice_required: overrides.notice_required ?? false,
     category_override_source: overrides.category_override_source ?? null,
+    conflict: overrides.conflict ?? null,
   };
 }
 
 function response(
   items: ComplianceRow[],
   total = items.length,
+  overrides: Partial<ComplianceListResponse> = {},
 ): ComplianceListResponse {
   return {
     items,
@@ -135,6 +146,9 @@ function response(
     limit: 100,
     offset: 0,
     generated_at: "2026-05-27T00:00:00Z",
+    declared_license: null,
+    conflict_summary: null,
+    ...overrides,
   };
 }
 
@@ -415,5 +429,101 @@ describe("ComplianceTab unified grid", () => {
     expect(seenHasObligations).toBe(true);
     // The toggle visibly reflects the auto-applied filter.
     expect(screen.getByTestId("compliance-has-obligations")).toBeChecked();
+  });
+
+  // --- gap #27: outbound-license conflict --------------------------------
+
+  it("says nothing was assessed when no outbound license is declared", async () => {
+    mockedList.mockResolvedValue(response([row("MIT")]));
+    renderTab();
+
+    await screen.findByTestId("compliance-row");
+    // The distinction the whole feature rests on: an empty verdict column is
+    // not a clean result, so the tab says so instead of showing nothing.
+    expect(
+      screen.getByTestId("compliance-outbound-undeclared"),
+    ).toBeInTheDocument();
+    expect(screen.queryByTestId("license-conflict-badge")).toBeNull();
+    // The filter is hidden, not disabled — it could only ever return nothing.
+    expect(screen.queryByTestId("compliance-conflict-filter")).toBeNull();
+  });
+
+  it("renders a verdict badge per row once an outbound license is declared", async () => {
+    mockedList.mockResolvedValue(
+      response(
+        [
+          row("GPL-3.0-only", {
+            conflict: {
+              verdict: "incompatible",
+              why: "Distributing a combined work requires the whole work to be offered under the copyleft license.",
+              dependency_class: "strong-copyleft",
+            },
+          }),
+          row("MIT", {
+            conflict: {
+              verdict: "compatible",
+              why: "Both are permissive; keep the notices.",
+              dependency_class: "permissive",
+            },
+          }),
+        ],
+        2,
+        {
+          declared_license: "Apache-2.0",
+          conflict_summary: {
+            incompatible: 1,
+            conditional: 0,
+            unknown: 0,
+            compatible: 1,
+          },
+        },
+      ),
+    );
+    renderTab();
+
+    await screen.findAllByTestId("compliance-row");
+    const badges = screen.getAllByTestId("license-conflict-badge");
+    expect(badges.map((b) => b.getAttribute("data-verdict"))).toEqual([
+      "incompatible",
+      "compatible",
+    ]);
+    // The reason travels with the verdict rather than being re-derived here.
+    expect(badges[0].getAttribute("title")).toContain("copyleft license");
+    // The scan-wide count is visible before the user pages to the bad row.
+    expect(
+      screen.getByTestId("compliance-conflict-count-incompatible"),
+    ).toBeInTheDocument();
+    expect(screen.getByTestId("compliance-outbound")).toHaveTextContent(
+      "Apache-2.0",
+    );
+  });
+
+  it("passes the verdict filter through to the API", async () => {
+    mockedList.mockResolvedValue(
+      response([row("MIT")], 1, {
+        declared_license: "Apache-2.0",
+        conflict_summary: {
+          incompatible: 0,
+          conditional: 0,
+          unknown: 0,
+          compatible: 1,
+        },
+      }),
+    );
+    renderTab();
+
+    await screen.findByTestId("compliance-row");
+    const select = screen.getByTestId("compliance-conflict-filter");
+    await userEvent.selectOptions(select, "incompatible");
+
+    await waitFor(() => {
+      const sent = mockedList.mock.calls.some(
+        ([, params]) => params?.conflict === "incompatible",
+      );
+      expect(sent).toBe(true);
+    });
+    // URL mirroring is asserted end-to-end in the Playwright spec; MemoryRouter
+    // keeps its history off window.location, so there is nothing to read here.
+    expect(select).toHaveValue("incompatible");
   });
 });

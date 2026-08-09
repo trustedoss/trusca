@@ -295,6 +295,66 @@ def test_review_flag_router_pattern_matches_classifier_values() -> None:
 
 
 # ---------------------------------------------------------------------------
+# Outbound-conflict verdicts (gap #27) — §2 vocabulary guard
+# ---------------------------------------------------------------------------
+
+
+def test_conflict_verdict_values_match_schema_literal() -> None:
+    """The service tuple and the API wire Literal must be identical.
+
+    §2: the verdict vocabulary lives in the rule data, the service tuple, the
+    schema Literal, the router regex and a frontend mirror. Five places, so the
+    guard is mandatory rather than nice to have.
+    """
+    import typing
+
+    from schemas.license_detail import ConflictVerdict
+    from services.license_conflict import CONFLICT_VERDICT_VALUES
+
+    assert set(CONFLICT_VERDICT_VALUES) == set(typing.get_args(ConflictVerdict))
+
+
+def test_license_class_values_match_schema_literal() -> None:
+    import typing
+
+    from schemas.license_detail import LicenseClass
+    from services.license_class import LICENSE_CLASS_VALUES
+
+    assert set(LICENSE_CLASS_VALUES) == set(typing.get_args(LicenseClass))
+
+
+def test_conflict_router_pattern_matches_verdict_values() -> None:
+    """The licenses router's ``conflict`` Query regex holds the same vocabulary.
+
+    A verdict missing from the regex 422s a filter the UI legitimately offers;
+    an extra one advertises a value nothing can produce.
+    """
+    import pathlib
+    import re
+
+    from services.license_conflict import CONFLICT_VERDICT_VALUES
+
+    src = (
+        pathlib.Path(__file__).resolve().parents[2] / "api" / "v1" / "licenses.py"
+    ).read_text(encoding="utf-8")
+    patterns = re.findall(r'pattern=r"\^\(([a-z_|]+)\)\$"', src)
+    conflict_alternations = [p for p in patterns if "incompatible" in p]
+    assert len(conflict_alternations) == 1, (
+        f"expected exactly one conflict pattern in the router, found "
+        f"{len(conflict_alternations)}: {conflict_alternations}"
+    )
+    assert set(conflict_alternations[0].split("|")) == set(CONFLICT_VERDICT_VALUES)
+
+
+def test_conflict_summary_fields_cover_every_verdict() -> None:
+    """A verdict with no counter would be silently missing from the summary."""
+    from schemas.license_detail import ConflictSummary
+    from services.license_conflict import CONFLICT_VERDICT_VALUES
+
+    assert set(ConflictSummary.model_fields) == set(CONFLICT_VERDICT_VALUES)
+
+
+# ---------------------------------------------------------------------------
 # EOL state vocabulary — Phase M
 # ---------------------------------------------------------------------------
 
@@ -434,4 +494,40 @@ def test_translated_content_is_non_empty_and_actually_korean() -> None:
         assert _has_hangul(summary.ko), f"Korean summary has no Hangul for {spdx_id}"
         assert not _has_hangul(summary.en), (
             f"English summary contains Hangul for {spdx_id} — swapped fields?"
+        )
+
+
+# ---------------------------------------------------------------------------
+# The guide is an oracle (CLAUDE.md hardening rule 4)
+# ---------------------------------------------------------------------------
+
+
+def test_user_guide_documents_every_conflict_verdict() -> None:
+    """Both guides must name every verdict a row can carry.
+
+    A verdict the guide never mentions is one a reader meets for the first
+    time in a table with no explanation of what it obliges them to do. This
+    fails when a verdict is added and the docs are not, which is the order
+    these things usually happen in.
+    """
+    import pathlib
+
+    from services.license_conflict import CONFLICT_VERDICT_VALUES
+
+    repo_root = pathlib.Path(__file__).resolve().parents[4]
+    guides = (
+        repo_root / "docs-site/docs/user-guide/components-and-licenses.md",
+        repo_root
+        / "docs-site/i18n/ko/docusaurus-plugin-content-docs/current"
+        / "user-guide/components-and-licenses.md",
+    )
+    for guide in guides:
+        assert guide.is_file(), f"{guide} is missing"
+        body = guide.read_text(encoding="utf-8")
+        assert "outbound-license-conflicts" in body, (
+            f"{guide.name} no longer carries the outbound-conflict section"
+        )
+        missing = [v for v in CONFLICT_VERDICT_VALUES if f"`{v}`" not in body]
+        assert not missing, (
+            f"{guide.name} does not document these verdicts: {missing}"
         )

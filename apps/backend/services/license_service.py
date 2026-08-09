@@ -56,7 +56,7 @@ for the latest-scan working set.
 from __future__ import annotations
 
 import uuid
-from typing import Any
+from typing import Any, NamedTuple
 
 import structlog
 from sqlalchemy import String, cast, func, or_, select
@@ -74,6 +74,7 @@ from models import (
 from models import (
     License as LicenseModel,
 )
+from services.license_conflict import CONFLICT_VERDICT_VALUES, ConflictVerdict, assess
 from services.license_flags import REVIEW_FLAG_VALUES
 from services.license_translations import license_summary
 from services.project_detail_service import _license_rank_case
@@ -100,6 +101,23 @@ class LicenseFindingNotFound(LicenseError):
     title = "License Finding Not Found"
 
 
+class LicenseListPage(NamedTuple):
+    """What :func:`list_project_licenses` returns.
+
+    A NamedTuple rather than a plain tuple because the result grew past the
+    point where positional reads are honest — ``declared_license`` and
+    ``conflict_summary`` (gap #27) joined the original three. Callers can still
+    unpack it, and should end the unpacking with ``*_`` so a later field does
+    not break them.
+    """
+
+    items: list[dict[str, Any]]
+    distribution: dict[str, int]
+    total: int
+    declared_license: str | None
+    conflict_summary: dict[str, int] | None
+
+
 # ---------------------------------------------------------------------------
 # Constants
 # ---------------------------------------------------------------------------
@@ -116,6 +134,18 @@ _REVIEW_FLAG_VALUES: frozenset[str] = frozenset(REVIEW_FLAG_VALUES)
 # Distribution buckets — always emitted (zero if absent) so the bar chart
 # renders a stable axis. Order is the UI's "worst first" presentation.
 _DISTRIBUTION_KEYS = ("forbidden", "conditional", "allowed", "unknown")
+
+# Valid ``conflict`` filter values (gap #27), sourced from the verdict
+# vocabulary so the filter can never accept a token no row can carry.
+_CONFLICT_VERDICT_VALUES: frozenset[str] = frozenset(CONFLICT_VERDICT_VALUES)
+
+# Ceiling on how many distinct licenses a conflict filter will judge in one
+# request. Verdicts are computed in Python (the rules are regex + a matrix, not
+# SQL), so filtering by verdict means judging every license in the scan before
+# the page can be selected. A scan carrying more distinct licenses than this
+# has something wrong with it; we log and fall back to no verdict filter rather
+# than build an IN clause of unbounded width.
+_CONFLICT_JUDGE_CAP = 2000
 
 # Pagination + sort caps.
 _LIST_LIMIT_DEFAULT = 50
@@ -160,6 +190,68 @@ def _normalize_kind_filter(raw: list[str] | None) -> list[str] | None:
     return cleaned
 
 
+async def judge_scan_licenses(
+    session: AsyncSession,
+    scan_id: uuid.UUID,
+    outbound: str,
+) -> dict[uuid.UUID, ConflictVerdict] | None:
+    """Outbound-conflict verdict for every distinct license in ``scan_id``.
+
+    Returns ``None`` when the scan carries more distinct licenses than this
+    request will judge — "not assessed", which callers must keep distinct from
+    an empty mapping ("assessed, nothing to say"). An empty dict flowing into a
+    zeroed summary is exactly the misreport the summary's own contract forbids.
+
+    Shared with :mod:`services.compliance_service`, which renders the grid the
+    UI actually shows — the two surfaces must produce identical verdicts, and
+    the way to guarantee that is one function rather than two that agree today.
+
+    One extra query, run only for projects that declare an outbound license.
+    Judging happens in Python because the rules are a class matrix plus regex
+    classification, neither of which SQL can express — so the verdicts are
+    computed once per request and joined to the page in memory rather than
+    recomputed per row.
+
+    The license row's SPDX id is preferred over its name: the id is what the
+    classifier and the explicit pairs match on. A row with neither yields no
+    entry, and the caller treats a missing entry as "not judged".
+    """
+    stmt = (
+        select(
+            LicenseModel.id.label("license_id"),
+            LicenseModel.spdx_id.label("spdx_id"),
+            LicenseModel.name.label("name"),
+        )
+        .select_from(LicenseFinding)
+        .join(LicenseModel, LicenseModel.id == LicenseFinding.license_id)
+        .where(LicenseFinding.scan_id == scan_id)
+        .group_by(LicenseModel.id, LicenseModel.spdx_id, LicenseModel.name)
+        .limit(_CONFLICT_JUDGE_CAP + 1)
+    )
+    rows = list((await session.execute(stmt)).all())
+    if len(rows) > _CONFLICT_JUDGE_CAP:
+        # Not a silent truncation: judging a subset would put verdicts on some
+        # rows and not others with nothing on screen to say which. Report "not
+        # assessed" — a distinct state the caller surfaces as such, never as a
+        # clean sweep — and say so in the log.
+        log.warning(
+            "license.conflict_judge_cap_exceeded",
+            scan_id=str(scan_id),
+            cap=_CONFLICT_JUDGE_CAP,
+        )
+        return None
+
+    verdicts: dict[uuid.UUID, ConflictVerdict] = {}
+    for row in rows:
+        candidate = row.spdx_id or row.name
+        if not candidate:
+            continue
+        verdict = assess([candidate], outbound=outbound)
+        if verdict is not None:
+            verdicts[row.license_id] = verdict
+    return verdicts
+
+
 # ---------------------------------------------------------------------------
 # List endpoint
 # ---------------------------------------------------------------------------
@@ -178,8 +270,9 @@ async def list_project_licenses(
     sort: str = "category",
     order: str = "desc",
     review_flag: str | None = None,
+    conflict: str | None = None,
     snapshot_scan_id: uuid.UUID | None = None,
-) -> tuple[list[dict[str, Any]], dict[str, int], int]:
+) -> LicenseListPage:
     """
     Page of licenses for the project's latest scan + the global distribution.
 
@@ -188,7 +281,7 @@ async def list_project_licenses(
     :func:`services.scan_resolution.resolve_snapshot_scan_id` (cross-project /
     non-succeeded / nonexistent → :class:`SnapshotScanNotFound` → 404 at router).
 
-    Returns ``(items, distribution, total)``:
+    Returns ``(items, distribution, total, declared_license, conflict_summary)``:
 
     - ``items``: list of plain dicts shaped to
       :class:`schemas.license_detail.LicenseListItem`.
@@ -198,6 +291,18 @@ async def list_project_licenses(
       the items so the Overview tab's ``license_distribution`` and the
       Licenses tab share a single source of truth.
     - ``total``: total number of distinct licenses (post-filter) for paging.
+    - ``declared_license``: the project's outbound license, echoed so the tab
+      can say what the verdicts were measured against. ``None`` when undeclared.
+    - ``conflict_summary``: verdict counts across every license in the scan
+      (unfiltered, like ``distribution``). ``None`` when no outbound license is
+      declared — the absence says "not assessed", which a zeroed summary would
+      misreport as "nothing found".
+
+    ``conflict`` filters to one verdict. It is applied by judging every license
+    in the scan and constraining the query to the matching ids, so paging and
+    ``total`` stay consistent with the filter (an in-page filter would report a
+    total the user cannot page to). With no outbound license declared the
+    filter matches nothing, because nothing carries a verdict.
 
     Authorization
     -------------
@@ -205,8 +310,8 @@ async def list_project_licenses(
     - ``ProjectForbidden`` (403) if the actor is not a team member. We log
       ``authz.cross_team_attempt`` before raising.
 
-    If the project has no SUCCEEDED scan, returns
-    ``([], <all-zero distribution>, 0)`` with success — empty result, not 404.
+    If the project has no SUCCEEDED scan, returns an empty result with success,
+    not 404.
     """
     if sort not in _VALID_SORT_KEYS:
         raise LicenseError(f"unsupported sort key: {sort!r}")
@@ -240,9 +345,11 @@ async def list_project_licenses(
     # must reflect the same scan the build gate / overview use. See
     # ``services.scan_resolution``. An invalid pinned id raises
     # SnapshotScanNotFound → 404 at the router.
+    outbound = (project.declared_license or "").strip() or None
+
     scan_id = await resolve_snapshot_scan_id(session, project_id, snapshot_scan_id)
     if scan_id is None:
-        return [], empty_distribution, 0
+        return LicenseListPage([], empty_distribution, 0, outbound, None)
 
     category_filter = _normalize_category_filter(categories)
     if category_filter == []:
@@ -250,11 +357,23 @@ async def list_project_licenses(
         # Distribution still reflects the underlying scan so the chart isn't
         # zeroed out behind a stale filter.
         distribution = await _compute_distribution(session, scan_id)
-        return [], distribution, 0
+        return LicenseListPage([], distribution, 0, outbound, None)
     kind_filter = _normalize_kind_filter(kinds)
     if kind_filter == []:
         distribution = await _compute_distribution(session, scan_id)
-        return [], distribution, 0
+        return LicenseListPage([], distribution, 0, outbound, None)
+
+    # Gap #27 — one verdict per license in the scan, computed before the page
+    # is selected so the verdict filter can constrain the query itself.
+    verdicts: dict[uuid.UUID, ConflictVerdict] = {}
+    conflict_summary: dict[str, int] | None = None
+    if outbound is not None:
+        judged_scan = await judge_scan_licenses(session, scan_id, outbound)
+        if judged_scan is not None:
+            verdicts = judged_scan
+            conflict_summary = dict.fromkeys(_CONFLICT_VERDICT_VALUES, 0)
+            for judged in verdicts.values():
+                conflict_summary[judged.verdict] += 1
 
     # Aggregate per-license inside the latest scan. We pick a representative
     # finding per (license, kind) by MIN(license_findings.id) so every list
@@ -302,8 +421,27 @@ async def list_project_licenses(
         # (migration 0036) serves the non-NULL predicate.
         if review_flag not in _REVIEW_FLAG_VALUES:
             distribution = await _compute_distribution(session, scan_id)
-            return [], distribution, 0
+            return LicenseListPage([], distribution, 0, outbound, conflict_summary)
         base = base.where(LicenseModel.review_flag == review_flag)
+
+    if conflict is not None:
+        # Unknown verdict tokens collapse the result to empty without a 422 —
+        # the same tolerant posture as the category / kind / review_flag
+        # filters. So does a filter on a project with no outbound license:
+        # nothing was judged, so nothing can match.
+        matching_ids = (
+            [
+                license_id
+                for license_id, judged in verdicts.items()
+                if judged.verdict == conflict
+            ]
+            if conflict in _CONFLICT_VERDICT_VALUES
+            else []
+        )
+        if not matching_ids:
+            distribution = await _compute_distribution(session, scan_id)
+            return LicenseListPage([], distribution, 0, outbound, conflict_summary)
+        base = base.where(LicenseModel.id.in_(matching_ids))
 
     if category_filter:
         # Compare against text since `category` is a Postgres ENUM and bind
@@ -368,8 +506,18 @@ async def list_project_licenses(
         # resolved from the code catalog by SPDX id. Both are None for ids
         # outside the catalog (LicenseRef-*, compound expressions).
         summary = license_summary(r.spdx_id)
+        judged_row = verdicts.get(r.license_id)
         items.append(
             {
+                "conflict": (
+                    {
+                        "verdict": judged_row.verdict,
+                        "why": judged_row.why,
+                        "dependency_class": judged_row.dependency_class,
+                    }
+                    if judged_row is not None
+                    else None
+                ),
                 "id": r.sample_finding_id,
                 "license_id": r.license_id,
                 "spdx_id": r.spdx_id,
@@ -386,7 +534,7 @@ async def list_project_licenses(
             }
         )
 
-    return items, distribution, total
+    return LicenseListPage(items, distribution, total, outbound, conflict_summary)
 
 
 async def _compute_distribution(

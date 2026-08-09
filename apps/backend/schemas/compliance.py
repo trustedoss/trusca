@@ -32,7 +32,13 @@ from datetime import datetime
 
 from pydantic import BaseModel, ConfigDict, Field
 
-from schemas.license_detail import LicenseCategory, LicenseDistribution, LicenseFindingKind
+from schemas.license_detail import (
+    ConflictSummary,
+    LicenseCategory,
+    LicenseDistribution,
+    LicenseFindingKind,
+    OutboundConflict,
+)
 
 # ---------------------------------------------------------------------------
 # Affected-component preview (per-row)
@@ -193,6 +199,15 @@ class ComplianceRow(BaseModel):
             "value is non-null."
         ),
     )
+    conflict: OutboundConflict | None = Field(
+        default=None,
+        description=(
+            "How this license sits against the project's declared outbound "
+            "license (gap #27). Null when the project declares none — nothing "
+            "was assessed, which is NOT the same as no conflict. Advisory: a "
+            "documentation aid, never a legal determination."
+        ),
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -220,6 +235,21 @@ class ComplianceListResponse(BaseModel):
         description=(
             "Server clock when the response was assembled. Echoed so clients can "
             "tag a cached page."
+        ),
+    )
+    declared_license: str | None = Field(
+        default=None,
+        description=(
+            "The outbound license the project declares, echoed so the grid can "
+            "say what the verdicts were measured against. Null when none is "
+            "declared, in which case every row's `conflict` is null too."
+        ),
+    )
+    conflict_summary: ConflictSummary | None = Field(
+        default=None,
+        description=(
+            "Verdict counts across every license in the scan, unfiltered. Null "
+            "when the project declares no outbound license."
         ),
     )
 

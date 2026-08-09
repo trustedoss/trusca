@@ -284,7 +284,7 @@ async def test_list_returns_empty_when_project_has_no_latest_scan(
     project = await make_project(db_session, team=team)
     actor = principal_for(user, team_ids=[team.id], role="developer")
 
-    items, distribution, total = await list_project_licenses(
+    items, distribution, total, *_ = await list_project_licenses(
         db_session, project_id=project.id, actor=actor
     )
     assert items == []
@@ -320,7 +320,7 @@ async def test_list_happy_path_returns_items_distribution_and_total(
     await _attach_license_finding(db_session, scan_id=scan.id, cv_id=cv2.id, license_id=mit.id)
     await _attach_license_finding(db_session, scan_id=scan.id, cv_id=cv3.id, license_id=gpl.id)
 
-    items, distribution, total = await list_project_licenses(
+    items, distribution, total, *_ = await list_project_licenses(
         db_session, project_id=project.id, actor=actor
     )
     assert total == 2
@@ -358,13 +358,13 @@ async def test_list_paginates_and_returns_total(
         )
         await _attach_license_finding(db_session, scan_id=scan.id, cv_id=cv.id, license_id=lic.id)
 
-    p1, _, total1 = await list_project_licenses(
+    p1, _, total1, *_ = await list_project_licenses(
         db_session, project_id=project.id, actor=actor, limit=2, offset=0
     )
     assert len(p1) == 2
     assert total1 == 5
 
-    p2, _, total2 = await list_project_licenses(
+    p2, _, total2, *_ = await list_project_licenses(
         db_session, project_id=project.id, actor=actor, limit=2, offset=2
     )
     assert len(p2) == 2
@@ -397,7 +397,7 @@ async def test_list_filter_category_single_and_multi(
     await _attach_license_finding(db_session, scan_id=scan.id, cv_id=cv_b.id, license_id=cond.id)
     await _attach_license_finding(db_session, scan_id=scan.id, cv_id=cv_c.id, license_id=allow.id)
 
-    items, _, total = await list_project_licenses(
+    items, _, total, *_ = await list_project_licenses(
         db_session,
         project_id=project.id,
         actor=actor,
@@ -406,7 +406,7 @@ async def test_list_filter_category_single_and_multi(
     assert total == 1
     assert items[0]["category"] == "forbidden"
 
-    items, _, total = await list_project_licenses(
+    items, _, total, *_ = await list_project_licenses(
         db_session,
         project_id=project.id,
         actor=actor,
@@ -439,13 +439,13 @@ async def test_list_filter_kind_single_and_multi(
         db_session, scan_id=scan.id, cv_id=cv_b.id, license_id=concluded_lic.id, kind="concluded"
     )
 
-    items, _, total = await list_project_licenses(
+    items, _, total, *_ = await list_project_licenses(
         db_session, project_id=project.id, actor=actor, kinds=["declared"]
     )
     assert total == 1
     assert items[0]["kind"] == "declared"
 
-    items, _, total = await list_project_licenses(
+    items, _, total, *_ = await list_project_licenses(
         db_session, project_id=project.id, actor=actor, kinds=["concluded"]
     )
     assert total == 1
@@ -472,14 +472,14 @@ async def test_list_search_matches_spdx_id_and_name_substring(
     await _attach_license_finding(db_session, scan_id=scan.id, cv_id=cv2.id, license_id=decoy.id)
 
     # Hit by spdx_id substring.
-    items, _, total = await list_project_licenses(
+    items, _, total, *_ = await list_project_licenses(
         db_session, project_id=project.id, actor=actor, search="NDL"
     )
     assert total == 1
     assert items[0]["spdx_id"] == f"NDL-{suffix}"
 
     # Hit by name substring.
-    items, _, total = await list_project_licenses(
+    items, _, total, *_ = await list_project_licenses(
         db_session, project_id=project.id, actor=actor, search="Needle"
     )
     assert total == 1
@@ -520,7 +520,7 @@ async def test_list_search_escapes_like_wildcards(
         db_session, scan_id=scan.id, cv_id=cv_nopct.id, license_id=nopct.id
     )
 
-    items, _, total = await list_project_licenses(
+    items, _, total, *_ = await list_project_licenses(
         db_session, project_id=project.id, actor=actor, search="50%"
     )
     assert total == 1
@@ -555,7 +555,7 @@ async def test_list_sort_by_category_desc_puts_forbidden_first(
     await _attach_license_finding(db_session, scan_id=scan.id, cv_id=cv_b.id, license_id=forb.id)
     await _attach_license_finding(db_session, scan_id=scan.id, cv_id=cv_c.id, license_id=cond.id)
 
-    items, _, _ = await list_project_licenses(
+    items, _, _, *_ = await list_project_licenses(
         db_session, project_id=project.id, actor=actor, sort="category", order="desc"
     )
     cats = [r["category"] for r in items]
@@ -575,7 +575,7 @@ async def test_list_sort_by_name_asc(db_session: AsyncSession) -> None:
         )
         await _attach_license_finding(db_session, scan_id=scan.id, cv_id=cv.id, license_id=lic.id)
 
-    items, _, _ = await list_project_licenses(
+    items, _, _, *_ = await list_project_licenses(
         db_session, project_id=project.id, actor=actor, sort="name", order="asc"
     )
     names = [r["name"] for r in items]
@@ -595,7 +595,7 @@ async def test_list_sort_by_spdx_id_asc(db_session: AsyncSession) -> None:
         )
         await _attach_license_finding(db_session, scan_id=scan.id, cv_id=cv.id, license_id=lic.id)
 
-    items, _, _ = await list_project_licenses(
+    items, _, _, *_ = await list_project_licenses(
         db_session, project_id=project.id, actor=actor, sort="spdx_id", order="asc"
     )
     spdx_values = [r["spdx_id"] for r in items]
@@ -621,7 +621,7 @@ async def test_list_sort_by_affected_count_desc(db_session: AsyncSession) -> Non
     _, cv = await _make_component_version(db_session)
     await _attach_license_finding(db_session, scan_id=scan.id, cv_id=cv.id, license_id=small.id)
 
-    items, _, _ = await list_project_licenses(
+    items, _, _, *_ = await list_project_licenses(
         db_session,
         project_id=project.id,
         actor=actor,
@@ -650,7 +650,7 @@ async def test_list_distribution_always_includes_all_four_buckets_with_zero(
     _, cv = await _make_component_version(db_session)
     await _attach_license_finding(db_session, scan_id=scan.id, cv_id=cv.id, license_id=lic.id)
 
-    _, distribution, _ = await list_project_licenses(
+    _, distribution, _, *_ = await list_project_licenses(
         db_session, project_id=project.id, actor=actor
     )
     assert distribution == {
@@ -755,7 +755,7 @@ async def test_list_empty_category_filter_after_normalization_returns_empty_item
     _, cv = await _make_component_version(db_session)
     await _attach_license_finding(db_session, scan_id=scan.id, cv_id=cv.id, license_id=lic.id)
 
-    items, distribution, total = await list_project_licenses(
+    items, distribution, total, *_ = await list_project_licenses(
         db_session,
         project_id=project.id,
         actor=actor,
@@ -901,3 +901,59 @@ async def test_detail_other_team_user_gets_404_not_403(
         and evt.get("resource") == "license_finding"
         for evt in captured
     )
+
+
+# ---------------------------------------------------------------------------
+# Judge cap — "not assessed" must not read as "nothing found" (security review)
+# ---------------------------------------------------------------------------
+
+
+async def test_judge_scan_licenses_returns_none_past_the_cap(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Past the cap the answer is ``None`` (not assessed), never ``{}``.
+
+    An empty mapping flows into a zeroed summary, and a zeroed summary is what
+    the caller renders as "measured, no conflicts". The cap must not be able to
+    produce that sentence — so the boundary is pinned on both sides.
+    """
+    import services.license_service as module
+
+    class _FakeResult:
+        def __init__(self, rows: list[object]) -> None:
+            self._rows = rows
+
+        def all(self) -> list[object]:
+            return self._rows
+
+    class _Row:
+        def __init__(self, index: int) -> None:
+            self.license_id = uuid.uuid4()
+            self.spdx_id = f"LicenseRef-{index}"
+            self.name = f"License {index}"
+
+    def _session_with(row_count: int) -> object:
+        rows = [_Row(i) for i in range(row_count)]
+
+        class _Session:
+            async def execute(self, _stmt: object) -> _FakeResult:
+                return _FakeResult(rows)
+
+        return _Session()
+
+    cap = module._CONFLICT_JUDGE_CAP
+    scan_id = uuid.uuid4()
+
+    # At the cap: assessed. The query asks for cap+1 rows precisely so the
+    # service can tell "exactly at the limit" from "over it".
+    at_cap = await module.judge_scan_licenses(
+        _session_with(cap), scan_id, "Apache-2.0"  # type: ignore[arg-type]
+    )
+    assert at_cap is not None
+    assert len(at_cap) == cap
+
+    # One past it: not assessed.
+    over_cap = await module.judge_scan_licenses(
+        _session_with(cap + 1), scan_id, "Apache-2.0"  # type: ignore[arg-type]
+    )
+    assert over_cap is None

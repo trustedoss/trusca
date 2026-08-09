@@ -57,6 +57,7 @@ modified them. Per Apache-2.0 §4(b), the changes are stated here.
 | `apps/backend/services/g7_registry.json` | `docker/lib/g7-registry.json` (v2, sbom-tools#306) | Documentation `note` rewritten: it named upstream's jq evaluator and two of its shell scripts, and now describes TRUSCA's Python evaluator. Element definitions unchanged. |
 | `apps/backend/services/regulation_crosswalk.json` | `docker/lib/regulation-crosswalk.json` (v1.8.3 line, sktelecom/bomlens#462) | Product name changed to TRUSCA in the user-facing `disclaimer` / `disclaimer_ko` and in the documentation `note`, since TRUSCA is what serves these strings to its own users. `disclaimer_ko` was additionally reworded for Korean style (same meaning, one clause restructured). The `note` was repointed at TRUSCA paths. The US framework was rewritten for the 2026 minimum elements, taking upstream's `cisa-*` mappings and adding a scope caveat about SPDX submissions. Other framework definitions and their mappings are unchanged. |
 | `apps/backend/services/cisa_registry.json` | `docker/lib/cisa-registry.json` | Documentation `note` rewritten to describe TRUSCA's Python evaluator. Korean labels say 컴포넌트 rather than 구성요소, matching TRUSCA's own UI vocabulary. The `evidenceGrade` marker is matched by suffix rather than by upstream's exact `bomlens:` name, so both TRUSCA's and upstream's exports are read. Element definitions, sources and jq expressions are unchanged. |
+| `apps/backend/services/license_compat.json` | `docker/lib/license-compat.json` | The `_comment` was rewritten to point at TRUSCA's reader and its class definitions; upstream's names its jq and TypeScript consumers. An `uncategorized` outbound row was added: upstream falls through to a generic "no rule for this combination", and TRUSCA can say the more useful thing, that the declared outbound license itself was not recognised. The verdict vocabulary, the sixteen original matrix cells with their reasoning, and both explicit pairs are unchanged. |
 
 The `bomlens:*` property names these files match on are upstream's wire format,
 not TRUSCA branding: they identify properties written by upstream tooling, and
@@ -78,7 +79,9 @@ data shapes are BomLens's:
 | `apps/backend/scripts/refresh_malicious_snapshot.py` | `docker/build-malicious-index.py` |
 | `apps/backend/services/eol/__init__.py` | package docs for the two files above |
 | `apps/backend/services/license_normalize.py` | `docker/lib/spdx-normalize.jq` |
-| `apps/backend/services/license_flags.py` | `docker/lib/license-flags.jq` |
+| `apps/backend/services/license_flags.py` | `docker/lib/license-flags.jq` (`license_flag`) |
+| `apps/backend/services/license_class.py` | `docker/lib/license-flags.jq` (`license_class`, `class_rank`, `component_license_class`) |
+| `apps/backend/services/license_conflict.py` | `docker/lib/license-flags.jq` (`term_verdict`, `expr_verdict`, `component_license_conflict`) + `docker/lib/license-compat.json` |
 | `apps/backend/services/regulation_crosswalk.py` | evaluator for the crosswalk data above |
 | `apps/backend/services/obligation_service.py` | `docker/lib/generate-notice.sh` |
 | `apps/backend/services/license_texts/__init__.py` | `docker/lib/licenses/` (collection layout) |

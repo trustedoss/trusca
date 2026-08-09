@@ -18,12 +18,14 @@ import { Skeleton } from "@/components/ui/skeleton";
 import type {
   AffectedComponentByLicense,
   LicenseDetailResponse,
+  OutboundConflict,
   ReviewFlag,
 } from "@/features/projects/api/licensesApi";
 import { OsoriReferencePanel } from "@/features/projects/components/OsoriReferencePanel";
 import { useLicenseFinding } from "@/features/projects/api/useLicenseFinding";
 import { LicenseCategoryBadge } from "@/features/projects/components/LicenseCategoryBadge";
 import { LicenseKindBadge } from "@/features/projects/components/LicenseKindBadge";
+import { ConflictVerdictBadge } from "@/features/projects/components/ConflictVerdictBadge";
 import { ReviewFlagBadge } from "@/features/projects/components/ReviewFlagBadge";
 import { useAdvisoryTranslation } from "@/lib/advisoryTranslation";
 import { ProblemError } from "@/lib/problem";
@@ -74,6 +76,13 @@ export interface LicenseDrawerProps {
    * not flagged" — the review section is simply omitted then.
    */
   reviewFlag?: ReviewFlag | null;
+  /**
+   * Outbound-conflict verdict carried from the selected list row, for the same
+   * reason as `reviewFlag`: the detail endpoint is keyed by finding and knows
+   * nothing about the project's declared outbound license. `null` when the
+   * project declares none, or when the row is not on the current page.
+   */
+  conflict?: OutboundConflict | null;
   onOpenChange: (open: boolean) => void;
 }
 
@@ -81,6 +90,7 @@ export function LicenseDrawer({
   open,
   findingId,
   reviewFlag = null,
+  conflict = null,
   onOpenChange,
 }: LicenseDrawerProps) {
   const { t } = useTranslation("project_detail");
@@ -130,6 +140,7 @@ export function LicenseDrawer({
         {detail.data ? (
           <div className="flex flex-col gap-5">
             <DrawerMetaSection detail={detail.data} />
+            {conflict ? <DrawerConflictSection conflict={conflict} /> : null}
             {reviewFlag ? <DrawerReviewFlagSection flag={reviewFlag} /> : null}
             <DrawerOrtMatchSection ortMatch={detail.data.ort_match} />
             <DrawerAffectedSection
@@ -285,6 +296,43 @@ function DrawerReviewFlagSection({ flag }: ReviewFlagSectionProps) {
       </p>
       <p className="text-xs text-muted-foreground">
         {t("licenses.drawer.review.disclaimer")}
+      </p>
+    </section>
+  );
+}
+
+interface ConflictSectionProps {
+  conflict: OutboundConflict;
+}
+
+/**
+ * Outbound-conflict callout (gap #27). Shows the verdict together with the
+ * sentence that justifies it and the copyleft strength it was reached through,
+ * so the reader can follow the reasoning instead of trusting a label. Advisory
+ * — the disclaimer says so in the same box.
+ */
+function DrawerConflictSection({ conflict }: ConflictSectionProps) {
+  const { t } = useTranslation("project_detail");
+  return (
+    <section
+      className="flex flex-col gap-2 rounded-md border border-border bg-muted/30 p-3"
+      data-testid="license-drawer-conflict"
+      data-verdict={conflict.verdict}
+    >
+      <div className="flex items-center gap-2">
+        <h3 className="text-sm font-semibold">
+          {t("licenses.drawer.conflict.title")}
+        </h3>
+        <ConflictVerdictBadge verdict={conflict.verdict} why={conflict.why} />
+      </div>
+      <p className="text-sm text-muted-foreground">{conflict.why}</p>
+      <p className="text-xs text-muted-foreground">
+        {t("licenses.drawer.conflict.strength", {
+          strength: t(`licenses.conflict.class.${conflict.dependency_class}`),
+        })}
+      </p>
+      <p className="text-xs text-muted-foreground">
+        {t("licenses.drawer.conflict.disclaimer")}
       </p>
     </section>
   );

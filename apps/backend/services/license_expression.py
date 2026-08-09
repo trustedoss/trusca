@@ -65,8 +65,14 @@ from __future__ import annotations
 
 from collections.abc import Callable
 from dataclasses import dataclass
+from typing import Generic, TypeVar
 
 import structlog
+
+# The folded value's type. The parser only ever moves values between
+# ``resolve_id`` and ``combine``, so it does not care what they are: the policy
+# gate folds category strings, the conflict service folds verdict objects.
+FoldValue = TypeVar("FoldValue")
 
 log = structlog.get_logger("license_expression")
 
@@ -137,16 +143,26 @@ class ExpressionResult:
     warning: str | None = None
 
 
-class _ParseError(Exception):
-    """Internal — raised by the lexer/parser, never escapes the module.
+class ExpressionParseError(Exception):
+    """Raised by :func:`fold_expression` when an expression cannot be read.
 
-    Carries a short ``code`` so :func:`evaluate_expression` can attach a
-    structured warning to the conservative fallback.
+    Carries a short machine-readable ``code`` (``"too_long"``,
+    ``"unbalanced_parens"``, ``"control_char"``, …) so a caller can attach a
+    structured warning to whatever conservative answer its own vocabulary
+    calls for.
+
+    :func:`evaluate_expression` catches this and never propagates it — the
+    build gate's guarantee that a license expression cannot 500 a request is
+    unchanged.
     """
 
     def __init__(self, code: str) -> None:
         super().__init__(code)
         self.code = code
+
+
+# Historical alias: the lexer / parser raise this name throughout.
+_ParseError = ExpressionParseError
 
 
 # ---------------------------------------------------------------------------
@@ -222,7 +238,35 @@ def _tokenize(expression: str) -> list[str]:
 # ``A WITH e OR B`` parses as ``(A WITH e) OR B``.
 
 
-class _Parser:
+def _combine_categories(
+    left: str,
+    right: str,
+    operator: str,
+    strategy_map: dict[str, str],
+) -> str:
+    """Fold two operand categories under *operator*'s strategy.
+
+    ``least_restrictive`` never prefers ``unknown`` over a concrete sibling:
+    if one side is ``unknown`` and the other is concrete, the concrete side
+    wins regardless of strategy. ``most_restrictive`` keeps the higher rank
+    (so ``unknown`` only survives if BOTH sides are unknown).
+    """
+    strategy = strategy_map.get(operator, DEFAULT_STRATEGY.get(operator, MOST_RESTRICTIVE))
+    lrank = CATEGORY_RANK.get(left, 0)
+    rrank = CATEGORY_RANK.get(right, 0)
+    if strategy == LEAST_RESTRICTIVE:
+        # Prefer the lower rank, but never collapse a concrete operand to
+        # unknown: if exactly one side is unknown, take the other.
+        if left == "unknown" and right != "unknown":
+            return right
+        if right == "unknown" and left != "unknown":
+            return left
+        return left if lrank <= rrank else right
+    # most_restrictive (default / fallback): higher rank wins.
+    return left if lrank >= rrank else right
+
+
+class _Parser(Generic[FoldValue]):
     """Recursive-descent SPDX-expression parser with a hard depth guard.
 
     The depth guard increments on every ``primary`` that opens a parenthesis (or
@@ -230,26 +274,30 @@ class _Parser:
     :data:`MAX_NESTING_DEPTH`. Because the token list is already bounded by the
     lexer, and the depth guard caps recursion at the same bound the lexer would
     have hit, Python's interpreter recursion limit is never reached.
+
+    Vocabulary-neutral: the parser knows the SPDX *grammar* and nothing about
+    what an operand resolves to. ``resolve_id`` maps a token to a value and
+    ``combine`` folds two values under an operator, so the same hardened parser
+    serves the policy-category fold (:func:`evaluate_expression`) and the
+    outbound-conflict fold (:mod:`services.license_conflict`) without a second
+    copy of the length / token / depth guards to keep in step. Validating that
+    a resolver returned an in-vocabulary value is the caller's job — it is the
+    caller that owns the vocabulary.
     """
 
-    # Note: the parser returns a RAW category (incl. ``"unknown"`` when every
-    # operand is uncatalogued); the unknown-posture mapping is applied once, at
-    # the top level, in :func:`evaluate_expression`. The parser therefore does
-    # NOT carry an ``unknown_category`` — keeping the posture decision in one
-    # place avoids two divergent "what does unknown mean" code paths.
-    __slots__ = ("_pos", "_resolve", "_strategy", "_tokens")
+    __slots__ = ("_combine", "_pos", "_resolve", "_tokens")
 
     def __init__(
         self,
         tokens: list[str],
         *,
-        resolve_id: Callable[[str], str],
-        strategy: dict[str, str],
+        resolve_id: Callable[[str], FoldValue],
+        combine: Callable[[FoldValue, FoldValue, str], FoldValue],
     ) -> None:
         self._tokens = tokens
         self._pos = 0
         self._resolve = resolve_id
-        self._strategy = strategy
+        self._combine = combine
 
     # -- token cursor helpers ------------------------------------------------
 
@@ -263,33 +311,9 @@ class _Parser:
         self._pos += 1
         return tok
 
-    # -- combinator ----------------------------------------------------------
-
-    def _combine(self, left: str, right: str, operator: str) -> str:
-        """Fold two operand categories under *operator*'s strategy.
-
-        ``least_restrictive`` never prefers ``unknown`` over a concrete sibling:
-        if one side is ``unknown`` and the other is concrete, the concrete side
-        wins regardless of strategy. ``most_restrictive`` keeps the higher rank
-        (so ``unknown`` only survives if BOTH sides are unknown).
-        """
-        strategy = self._strategy.get(operator, DEFAULT_STRATEGY.get(operator, MOST_RESTRICTIVE))
-        lrank = CATEGORY_RANK.get(left, 0)
-        rrank = CATEGORY_RANK.get(right, 0)
-        if strategy == LEAST_RESTRICTIVE:
-            # Prefer the lower rank, but never collapse a concrete operand to
-            # unknown: if exactly one side is unknown, take the other.
-            if left == "unknown" and right != "unknown":
-                return right
-            if right == "unknown" and left != "unknown":
-                return left
-            return left if lrank <= rrank else right
-        # most_restrictive (default / fallback): higher rank wins.
-        return left if lrank >= rrank else right
-
     # -- grammar -------------------------------------------------------------
 
-    def parse(self) -> str:
+    def parse(self) -> FoldValue:
         result = self._or_expr(depth=0)
         if self._pos != len(self._tokens):
             # Trailing tokens the grammar did not consume (e.g. ``MIT MIT``,
@@ -297,7 +321,7 @@ class _Parser:
             raise _ParseError("unexpected_token")
         return result
 
-    def _or_expr(self, *, depth: int) -> str:
+    def _or_expr(self, *, depth: int) -> FoldValue:
         if depth >= MAX_NESTING_DEPTH:
             raise _ParseError("max_depth_exceeded")
         value = self._and_expr(depth=depth)
@@ -307,7 +331,7 @@ class _Parser:
             value = self._combine(value, right, "OR")
         return value
 
-    def _and_expr(self, *, depth: int) -> str:
+    def _and_expr(self, *, depth: int) -> FoldValue:
         value = self._with_expr(depth=depth)
         while self._peek() == "AND":
             self._advance()
@@ -315,7 +339,7 @@ class _Parser:
             value = self._combine(value, right, "AND")
         return value
 
-    def _with_expr(self, *, depth: int) -> str:
+    def _with_expr(self, *, depth: int) -> FoldValue:
         value = self._primary(depth=depth)
         while self._peek() == "WITH":
             self._advance()
@@ -323,7 +347,7 @@ class _Parser:
             value = self._combine(value, right, "WITH")
         return value
 
-    def _primary(self, *, depth: int) -> str:
+    def _primary(self, *, depth: int) -> FoldValue:
         tok = self._peek()
         if tok is None:
             # Missing operand (e.g. ``MIT AND`` with nothing after, ``()``).
@@ -344,21 +368,90 @@ class _Parser:
             # An operator where an operand was expected (``AND MIT``,
             # ``MIT OR OR Apache-2.0``) → malformed.
             raise _ParseError("unexpected_operator")
-        # An opaque license id. Resolve it; an unrecognised id resolves to
-        # ``unknown`` (the resolver maps catalog-misses to "unknown"), which the
-        # fold then treats per the unknown-posture rules above.
+        # An opaque license id. The resolver maps it into the caller's
+        # vocabulary; keeping that value in bounds is the caller's contract.
         self._advance()
-        category = self._resolve(tok)
-        if category not in CATEGORY_RANK:
-            # Defensive: a misbehaving resolver returned a non-category. Treat as
-            # unknown rather than trusting an out-of-vocabulary string.
-            return "unknown"
-        return category
+        return self._resolve(tok)
 
 
 # ---------------------------------------------------------------------------
 # Public API
 # ---------------------------------------------------------------------------
+
+
+def fold_expression(
+    spdx_expression: str | None,
+    *,
+    resolve_id: Callable[[str], FoldValue],
+    combine: Callable[[FoldValue, FoldValue, str], FoldValue],
+) -> FoldValue:
+    """Parse an SPDX expression and fold it into ONE value of any vocabulary.
+
+    ``resolve_id`` maps ONE license-id token to a value in the caller's
+    vocabulary — any type, folded opaquely; ``combine(left, right, operator)``
+    folds two such values, where ``operator`` is ``"AND"``, ``"OR"`` or
+    ``"WITH"``.
+
+    Raises :class:`ExpressionParseError` — carrying ``"empty"``,
+    ``"too_long"``, ``"control_char"``, ``"unbalanced_parens"``,
+    ``"max_depth_exceeded"`` or another lexer / parser code — for anything it
+    cannot read. Signalling failure by exception rather than by a sentinel
+    keeps the folded value's type honest: a vocabulary whose own values may be
+    ``None`` (or falsy) stays unambiguous, and each caller decides what an
+    unreadable expression means, because the conservative answer differs by
+    vocabulary (the policy gate falls back to its unknown posture; a conflict
+    verdict falls back to "unknown").
+
+    Never hangs. The length, token-count and nesting bounds are enforced here
+    so that a second vocabulary cannot ship with weaker guards than the first.
+    """
+    if spdx_expression is None or not spdx_expression.strip():
+        raise ExpressionParseError("empty")
+
+    # Bound length BEFORE any per-char work.
+    if len(spdx_expression) > MAX_EXPRESSION_LENGTH:
+        log.warning(
+            "license_expression.too_long",
+            length=len(spdx_expression),
+            limit=MAX_EXPRESSION_LENGTH,
+        )
+        raise ExpressionParseError("too_long")
+
+    try:
+        tokens = _tokenize(spdx_expression)
+        if not tokens:
+            # Should be unreachable (stripped was non-empty), but never trust it.
+            raise ExpressionParseError("empty")
+        parser = _Parser(tokens, resolve_id=resolve_id, combine=combine)
+        return parser.parse()
+    except ExpressionParseError as exc:
+        log.warning("license_expression.unparseable", code=exc.code)
+        raise
+    except RecursionError as exc:  # pragma: no cover - depth guard prevents this
+        # Belt-and-braces: the explicit depth guard makes this unreachable, but
+        # if a future grammar change regresses it, fail safe rather than 500.
+        log.error("license_expression.recursion_error")
+        raise ExpressionParseError("recursion") from exc
+
+
+def validate_expression_syntax(spdx_expression: str | None) -> str | None:
+    """Return a parse-error code for *spdx_expression*, or ``None`` if well-formed.
+
+    Syntax only — no vocabulary is consulted, so an expression naming licenses
+    nobody has heard of still validates. Used where a user-supplied expression
+    is stored rather than evaluated (``projects.declared_license``): accepting
+    an unparseable value there would turn every later verdict into "unknown"
+    with no indication of why.
+    """
+    try:
+        fold_expression(
+            spdx_expression,
+            resolve_id=lambda _token: "",
+            combine=lambda left, _right, _operator: left,
+        )
+    except ExpressionParseError as exc:
+        return exc.code
+    return None
 
 
 def evaluate_expression(
@@ -406,40 +499,25 @@ def evaluate_expression(
     """
     resolved_strategy = strategy if strategy is not None else DEFAULT_STRATEGY
 
-    if spdx_expression is None:
-        return ExpressionResult(category=unknown_category, warning="empty")
-    stripped = spdx_expression.strip()
-    if not stripped:
-        return ExpressionResult(category=unknown_category, warning="empty")
+    def _resolve(token: str) -> str:
+        category = resolve_id(token)
+        if category not in CATEGORY_RANK:
+            # Defensive: a misbehaving resolver returned a non-category. Treat as
+            # unknown rather than trusting an out-of-vocabulary string.
+            return "unknown"
+        return category
 
-    # Bound length BEFORE any per-char work.
-    if len(spdx_expression) > MAX_EXPRESSION_LENGTH:
-        log.warning(
-            "license_expression.too_long",
-            length=len(spdx_expression),
-            limit=MAX_EXPRESSION_LENGTH,
-        )
-        return ExpressionResult(category=unknown_category, warning="too_long")
+    def _combine(left: str, right: str, operator: str) -> str:
+        return _combine_categories(left, right, operator, resolved_strategy)
 
     try:
-        tokens = _tokenize(spdx_expression)
-        if not tokens:
-            # Should be unreachable (stripped was non-empty), but never trust it.
-            return ExpressionResult(category=unknown_category, warning="empty")
-        parser = _Parser(
-            tokens,
-            resolve_id=resolve_id,
-            strategy=resolved_strategy,
+        category = fold_expression(
+            spdx_expression,
+            resolve_id=_resolve,
+            combine=_combine,
         )
-        category = parser.parse()
-    except _ParseError as exc:
-        log.warning("license_expression.unparseable", code=exc.code)
+    except ExpressionParseError as exc:
         return ExpressionResult(category=unknown_category, warning=exc.code)
-    except RecursionError:  # pragma: no cover - depth guard prevents this
-        # Belt-and-braces: the explicit depth guard makes this unreachable, but
-        # if a future grammar change regresses it, fail safe rather than 500.
-        log.error("license_expression.recursion_error")
-        return ExpressionResult(category=unknown_category, warning="recursion")
 
     # A fully-``unknown`` expression (every operand uncatalogued) folds to
     # "unknown"; surface it as the policy's unknown posture so the caller never
@@ -455,6 +533,9 @@ __all__ = [
     "MAX_EXPRESSION_LENGTH",
     "MAX_NESTING_DEPTH",
     "MAX_TOKEN_COUNT",
+    "ExpressionParseError",
     "ExpressionResult",
     "evaluate_expression",
+    "fold_expression",
+    "validate_expression_syntax",
 ]

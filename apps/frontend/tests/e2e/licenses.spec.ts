@@ -249,3 +249,90 @@ test.describe("@licenses project licenses tab", () => {
     await expect(page.getByTestId("component-drawer")).toBeVisible();
   });
 });
+
+test.describe("@licenses outbound-license conflict (gap #27)", () => {
+  test.beforeEach(async ({ page }) => {
+    const auth = new AuthHarness(page);
+    await auth.clearAuthState();
+  });
+
+  test("S5) declaring an outbound license turns on verdicts; clearing it turns them off", async ({
+    page,
+  }, testInfo) => {
+    const seed = await bootstrap(testInfo, page);
+    if (seed === null) return;
+
+    const portal = new PortalPage(page);
+    await portal.gotoProjects();
+    await portal.openProjectDetail(PROJECT_NAME);
+    await portal.selectLicensesTab();
+
+    // Undeclared: no verdict column, and the grid says nothing was assessed
+    // rather than leaving an empty column to read as "clean".
+    expect(await portal.getDeclaredOutboundLicense()).toBeNull();
+    await expect(
+      page.getByTestId("compliance-outbound-undeclared"),
+    ).toBeVisible();
+    expect(page.getByTestId("compliance-conflict-filter")).toHaveCount(0);
+
+    // Declare one, come back, and every row now carries a verdict.
+    await portal.setOutboundLicense("Apache-2.0");
+    await portal.selectLicensesTab();
+    expect(await portal.getDeclaredOutboundLicense()).toBe("Apache-2.0");
+
+    const verdicts = await portal.getLicenseConflictVerdicts();
+    expect(verdicts.length).toBeGreaterThanOrEqual(1);
+    for (const verdict of verdicts) {
+      expect([
+        "incompatible",
+        "conditional",
+        "unknown",
+        "compatible",
+      ]).toContain(verdict);
+    }
+
+    // Clearing the declaration returns to "not assessed" — the state must be
+    // reachable in both directions, not a one-way door.
+    await portal.setOutboundLicense("");
+    await portal.selectLicensesTab();
+    expect(await portal.getDeclaredOutboundLicense()).toBeNull();
+    await expect(
+      page.getByTestId("compliance-outbound-undeclared"),
+    ).toBeVisible();
+  });
+
+  test("S6) the verdict filter narrows the grid and survives a reload", async ({
+    page,
+  }, testInfo) => {
+    const seed = await bootstrap(testInfo, page);
+    if (seed === null) return;
+
+    const portal = new PortalPage(page);
+    await portal.gotoProjects();
+    await portal.openProjectDetail(PROJECT_NAME);
+    await portal.setOutboundLicense("MIT");
+    await portal.selectLicensesTab();
+
+    const before = await portal.getLicenseConflictVerdicts();
+    expect(before.length).toBeGreaterThanOrEqual(1);
+
+    // The seed carries forbidden-tier licenses (GPL family), which cannot be
+    // shipped under MIT — so this facet has rows to find.
+    await portal.filterLicensesByConflict("incompatible");
+    const after = await portal.getLicenseConflictVerdicts();
+    for (const verdict of after) {
+      expect(verdict).toBe("incompatible");
+    }
+
+    await page.reload();
+    await portal.selectLicensesTab();
+    expect(
+      new URL(page.url()).searchParams.get("compliance_conflict"),
+    ).toBe("incompatible");
+
+    // Clearing the facet widens the grid again.
+    await portal.filterLicensesByConflict(null);
+    const cleared = await portal.getLicenseConflictVerdicts();
+    expect(cleared.length).toBeGreaterThanOrEqual(after.length);
+  });
+});

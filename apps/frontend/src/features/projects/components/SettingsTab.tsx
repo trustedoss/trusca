@@ -47,6 +47,7 @@ interface FormValues {
   description: string;
   git_url: string;
   default_branch: string;
+  declared_license: string;
 }
 
 export function SettingsTab({ projectId, project }: SettingsTabProps) {
@@ -70,6 +71,12 @@ export function SettingsTab({ projectId, project }: SettingsTabProps) {
     default_branch: z
       .string()
       .max(255, t("settings.errors.default_branch_max")),
+    // Length only. The value is an SPDX expression and the server parses it,
+    // rejecting what it cannot read; re-implementing that grammar here would
+    // put a second, weaker parser in front of the hardened one.
+    declared_license: z
+      .string()
+      .max(255, t("settings.errors.declared_license_max")),
   });
 
   const {
@@ -84,6 +91,7 @@ export function SettingsTab({ projectId, project }: SettingsTabProps) {
       description: project?.description ?? "",
       git_url: project?.git_url ?? "",
       default_branch: project?.default_branch ?? "",
+      declared_license: project?.declared_license ?? "",
     },
   });
 
@@ -98,6 +106,7 @@ export function SettingsTab({ projectId, project }: SettingsTabProps) {
       description: project.description ?? "",
       git_url: project.git_url ?? "",
       default_branch: project.default_branch ?? "",
+      declared_license: project.declared_license ?? "",
     });
   }, [project, reset, isDirty]);
 
@@ -108,6 +117,8 @@ export function SettingsTab({ projectId, project }: SettingsTabProps) {
         description: values.description || null,
         git_url: values.git_url || null,
         default_branch: values.default_branch || null,
+        // Empty clears the declaration; the server normalises "" to null.
+        declared_license: values.declared_license,
       }),
     // Error surfaced locally (toast/inline) — keep the global error toast quiet.
     meta: { errorToast: false },
@@ -121,6 +132,7 @@ export function SettingsTab({ projectId, project }: SettingsTabProps) {
         description: next.description ?? "",
         git_url: next.git_url ?? "",
         default_branch: next.default_branch ?? "",
+        declared_license: next.declared_license ?? "",
       });
       setActionToast(t("settings.toast.saved"));
     },
@@ -337,6 +349,35 @@ export function SettingsTab({ projectId, project }: SettingsTabProps) {
               aria-live="polite"
             >
               {errors.default_branch.message}
+            </p>
+          ) : null}
+        </div>
+
+        <div className="space-y-1.5">
+          <Label htmlFor="settings-declared-license">
+            {t("settings.field.declared_license")}
+          </Label>
+          <Input
+            id="settings-declared-license"
+            placeholder={t("settings.field.declared_license_placeholder")}
+            {...register("declared_license")}
+            data-testid="settings-declared-license-input"
+            aria-invalid={errors.declared_license ? "true" : "false"}
+            aria-describedby="settings-declared-license-help"
+          />
+          <p
+            id="settings-declared-license-help"
+            className="text-xs text-muted-foreground"
+          >
+            {t("settings.field.declared_license_help")}
+          </p>
+          {errors.declared_license ? (
+            <p
+              data-testid="settings-declared-license-error"
+              className="text-xs text-destructive"
+              aria-live="polite"
+            >
+              {errors.declared_license.message}
             </p>
           ) : null}
         </div>

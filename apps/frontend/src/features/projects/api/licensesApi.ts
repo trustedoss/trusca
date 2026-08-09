@@ -55,6 +55,40 @@ export const REVIEW_FLAG_VALUES = [
 
 export type ReviewFlag = (typeof REVIEW_FLAG_VALUES)[number];
 
+/**
+ * How a license sits against the project's declared outbound license (gap #27).
+ * Mirror of the backend `services.license_conflict.CONFLICT_VERDICT_VALUES`,
+ * reconciled by the set-equality contract test in
+ * `tests/unit/contracts/catalogMirrors.test.ts`.
+ *
+ * Only the vocabulary is mirrored, never the classifier: the verdict and its
+ * reason are computed on the server and arrive on each row, so there is no
+ * second implementation here to drift from the first.
+ */
+export const CONFLICT_VERDICT_VALUES = [
+  "incompatible",
+  "conditional",
+  "unknown",
+  "compatible",
+] as const;
+
+export type ConflictVerdictName = (typeof CONFLICT_VERDICT_VALUES)[number];
+
+/** Copyleft strength a license was classified as, carried alongside a verdict. */
+export type LicenseClassName =
+  | "permissive"
+  | "weak-copyleft"
+  | "strong-copyleft"
+  | "network-copyleft"
+  | "uncategorized";
+
+export interface OutboundConflict {
+  verdict: ConflictVerdictName;
+  /** The sentence justifying the verdict. Always shown with the verdict. */
+  why: string;
+  dependency_class: LicenseClassName;
+}
+
 export interface LicenseListItem {
   /** license_findings.id of a representative finding (drawer primary key). */
   id: string;
@@ -80,6 +114,12 @@ export interface LicenseListItem {
    * human/legal judgement.
    */
   review_flag: ReviewFlag | null;
+  /**
+   * Standing against the project's declared outbound license (gap #27). `null`
+   * when the project declares none — nothing was assessed, which the UI must
+   * not render as "no conflict". Advisory, never a legal determination.
+   */
+  conflict: OutboundConflict | null;
   /** Today echoes `id`; kept distinct so frontends stay forward-compatible. */
   sample_finding_id: string;
 }
@@ -91,10 +131,21 @@ export interface LicenseDistribution {
   unknown: number;
 }
 
+export interface ConflictSummary {
+  incompatible: number;
+  conditional: number;
+  unknown: number;
+  compatible: number;
+}
+
 export interface LicenseListResponse {
   items: LicenseListItem[];
   distribution: LicenseDistribution;
   total: number;
+  /** The outbound license the verdicts were measured against. Null if none. */
+  declared_license: string | null;
+  /** Verdict counts across the whole scan. Null when nothing was assessed. */
+  conflict_summary: ConflictSummary | null;
 }
 
 export interface AffectedComponentByLicense {
@@ -173,6 +224,11 @@ export interface ListLicensesParams {
    * the backend `review_flag` query parameter accepts one token. Omit → all.
    */
   reviewFlag?: ReviewFlag;
+  /**
+   * Narrow to licenses carrying one outbound-conflict verdict (gap #27).
+   * Matches nothing when the project declares no outbound license.
+   */
+  conflict?: ConflictVerdictName;
   sort?: LicenseSortKey;
   order?: SortOrder;
   /**
@@ -207,6 +263,7 @@ function listLicensesQuery(
     out.kind = params.kinds;
   }
   if (params.reviewFlag != null) out.review_flag = params.reviewFlag;
+  if (params.conflict != null) out.conflict = params.conflict;
   if (params.sort != null) out.sort = params.sort;
   if (params.order != null) out.order = params.order;
   if (params.scanId != null && params.scanId.length > 0) {

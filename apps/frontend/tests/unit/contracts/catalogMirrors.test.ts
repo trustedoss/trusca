@@ -40,7 +40,10 @@ import {
   EOL_STATES,
   MALICIOUS_STATES,
 } from "@/features/projects/api/projectDetailApi";
-import { REVIEW_FLAG_VALUES } from "@/features/projects/api/licensesApi";
+import {
+  CONFLICT_VERDICT_VALUES,
+  REVIEW_FLAG_VALUES,
+} from "@/features/projects/api/licensesApi";
 import { SLA_STATUS_VALUES } from "@/features/projects/api/vulnerabilitiesApi";
 import { ALL_VULNERABILITY_STATUSES } from "@/features/projects/lib/vulnerabilityTransitions";
 import { DEMO_LOGIN_EMAIL } from "@/pages/auth/DemoCredentialsHint";
@@ -364,6 +367,69 @@ describe("review flags — FE mirror of services/license_flags.REVIEW_FLAG_VALUE
       expect(
         description[flag],
         `licenses.review.description.${flag} missing`,
+      ).toBeTruthy();
+    }
+  });
+});
+
+describe("outbound conflict — FE mirror of the vendored rule data", () => {
+  // Gap #27: the verdict vocabulary lives in the rule data
+  // (`services/license_compat.json`'s `_verdicts`), in the backend service
+  // tuple, in the router's filter regex, and here in the FE mirror that drives
+  // the badge tones and the filter select. The rule data is the origin — a
+  // verdict nothing in the matrix produces would be a filter option that never
+  // matches — so this reads the JSON rather than the Python.
+  function compatRules(): {
+    _verdicts: Record<string, string>;
+    matrix: Record<string, Record<string, unknown>>;
+  } {
+    return JSON.parse(
+      readFileSync(
+        resolve(process.cwd(), "../backend/services/license_compat.json"),
+        "utf-8",
+      ),
+    );
+  }
+
+  it("CONFLICT_VERDICT_VALUES equals the rule data's verdicts (set equality)", () => {
+    expect(new Set(CONFLICT_VERDICT_VALUES)).toEqual(
+      new Set(Object.keys(compatRules()._verdicts)),
+    );
+  });
+
+  it("the matrix is square: every outbound row covers every dependency class", () => {
+    const { matrix } = compatRules();
+    const outboundRows = Object.keys(matrix);
+    for (const [outbound, row] of Object.entries(matrix)) {
+      expect(
+        new Set(Object.keys(row)),
+        `matrix.${outbound} does not cover every class`,
+      ).toEqual(new Set(outboundRows));
+    }
+  });
+
+  it.each([
+    ["en", enProjectDetail],
+    ["ko", koProjectDetail],
+  ])("every verdict owns a %s label", (_locale, ns) => {
+    const labels = labelMap(ns, "licenses", "conflict", "verdict");
+    for (const verdict of CONFLICT_VERDICT_VALUES) {
+      expect(
+        labels[verdict],
+        `licenses.conflict.verdict.${verdict} missing`,
+      ).toBeTruthy();
+    }
+  });
+
+  it.each([
+    ["en", enProjectDetail],
+    ["ko", koProjectDetail],
+  ])("every copyleft class owns a %s label", (_locale, ns) => {
+    const labels = labelMap(ns, "licenses", "conflict", "class");
+    for (const className of Object.keys(compatRules().matrix)) {
+      expect(
+        labels[className],
+        `licenses.conflict.class.${className} missing`,
       ).toBeTruthy();
     }
   });

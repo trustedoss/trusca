@@ -60,7 +60,7 @@ from __future__ import annotations
 
 import uuid
 from datetime import UTC, datetime
-from typing import Any
+from typing import Any, NamedTuple
 
 import structlog
 from sqlalchemy import String, and_, cast, func, or_, select
@@ -77,6 +77,8 @@ from models import (
     Project,
 )
 from models import License as LicenseModel
+from services.license_conflict import CONFLICT_VERDICT_VALUES, ConflictVerdict
+from services.license_service import judge_scan_licenses
 from services.license_translations import obligation_text_ko
 from services.obligation_service import sync_catalog_obligations
 from services.project_detail_service import _license_rank_case
@@ -98,6 +100,24 @@ class ComplianceError(ProjectError):
     title: str = "Compliance Error"
 
 
+class ComplianceListPage(NamedTuple):
+    """What :func:`list_project_compliance` returns.
+
+    A NamedTuple rather than a plain tuple because the result grew past the
+    point where positional reads are honest — ``declared_license`` and
+    ``conflict_summary`` (gap #27) joined the original four. Callers can still
+    unpack it, and should end the unpacking with ``*_`` so a later field does
+    not break them.
+    """
+
+    items: list[dict[str, Any]]
+    distribution: dict[str, int]
+    total: int
+    generated_at: datetime
+    declared_license: str | None
+    conflict_summary: dict[str, int] | None
+
+
 # ---------------------------------------------------------------------------
 # Constants
 # ---------------------------------------------------------------------------
@@ -110,6 +130,10 @@ _ALL_CATEGORY_VALUES: frozenset[str] = frozenset(
 # Distribution buckets — always emitted (zero if absent) so the chart axis
 # stays stable. Order is the UI's "worst first" presentation.
 _DISTRIBUTION_KEYS = ("forbidden", "conditional", "allowed", "unknown")
+
+# Valid ``conflict`` filter values (gap #27), sourced from the verdict
+# vocabulary so the filter can never accept a token no row can carry.
+_CONFLICT_VERDICT_VALUES: frozenset[str] = frozenset(CONFLICT_VERDICT_VALUES)
 
 # Pagination + sort caps.
 _LIST_LIMIT_DEFAULT = 50
@@ -202,12 +226,13 @@ async def list_project_compliance(
     has_obligations: bool | None = None,
     sort: str = "category",
     order: str = "desc",
+    conflict: str | None = None,
     snapshot_scan_id: uuid.UUID | None = None,
-) -> tuple[list[dict[str, Any]], dict[str, int], int, datetime]:
+) -> ComplianceListPage:
     """
     Page of unified compliance rows for the project's latest scan.
 
-    Returns ``(items, distribution, total, generated_at)``.
+    Returns a :class:`ComplianceListPage`.
 
     - ``items``: list of plain dicts shaped to
       :class:`schemas.compliance.ComplianceRow`.
@@ -216,6 +241,16 @@ async def list_project_compliance(
       stable.
     - ``total``: total rows matching the active filter, pre-pagination.
     - ``generated_at``: server clock the response was assembled at.
+    - ``declared_license``: the project's outbound license, echoed so the grid
+      can say what the verdicts were measured against. ``None`` when undeclared.
+    - ``conflict_summary``: verdict counts across every license in the scan
+      (unfiltered, like ``distribution``). ``None`` when nothing was assessed —
+      the absence says so, where a zeroed summary would claim "nothing found".
+
+    ``conflict`` filters to one verdict (gap #27). Applied by judging every
+    license in the scan and constraining the query to the matching ids, so
+    paging and ``total`` stay consistent with the filter. With no outbound
+    license declared it matches nothing, because nothing carries a verdict.
 
     Snapshot anchoring (feature #28): ``snapshot_scan_id`` pins the read to
     a specific succeeded scan; cross-project / non-succeeded / nonexistent
@@ -260,9 +295,11 @@ async def list_project_compliance(
     empty_distribution: dict[str, int] = dict.fromkeys(_DISTRIBUTION_KEYS, 0)
 
     # Anchor on the resolved snapshot scan (latest succeeded by default).
+    outbound = (project.declared_license or "").strip() or None
+
     scan_id = await resolve_snapshot_scan_id(session, project_id, snapshot_scan_id)
     if scan_id is None:
-        return [], empty_distribution, 0, generated_at
+        return ComplianceListPage([], empty_distribution, 0, generated_at, outbound, None)
 
     # v2.2 c4: materialise structured obligation catalog before the join so
     # licenses observed in this scan carry their concrete obligation rows.
@@ -275,12 +312,29 @@ async def list_project_compliance(
         # Distribution still reflects the underlying scan so the chart isn't
         # zeroed out behind a stale filter.
         distribution = await _compute_distribution(session, scan_id)
-        return [], distribution, 0, generated_at
+        return ComplianceListPage([], distribution, 0, generated_at, outbound, None)
 
     kind_filter = _normalize_kind_filter(kinds)
     if kind_filter == []:
         distribution = await _compute_distribution(session, scan_id)
-        return [], distribution, 0, generated_at
+        return ComplianceListPage([], distribution, 0, generated_at, outbound, None)
+
+    # Gap #27 — one verdict per license in the scan, computed before the page
+    # is selected so the verdict filter can constrain the query itself. Shared
+    # with services.license_service so both surfaces judge identically.
+    verdicts: dict[uuid.UUID, ConflictVerdict] = {}
+    conflict_summary: dict[str, int] | None = None
+    if outbound is not None:
+        judged_scan = await judge_scan_licenses(session, scan_id, outbound)
+        # ``None`` means the scan carries more licenses than one request will
+        # judge. Leaving the summary ``None`` puts that scan in the same
+        # "not assessed" state as an undeclared project, which is what the grid
+        # already knows how to say — a zeroed summary would claim a clean sweep.
+        if judged_scan is not None:
+            verdicts = judged_scan
+            conflict_summary = dict.fromkeys(CONFLICT_VERDICT_VALUES, 0)
+            for judged in verdicts.values():
+                conflict_summary[judged.verdict] += 1
 
     rank = _license_rank_case()
 
@@ -314,6 +368,27 @@ async def list_project_compliance(
 
     if category_filter:
         base = base.where(cast(LicenseModel.category, String).in_(category_filter))
+
+    if conflict is not None:
+        # Unknown verdict tokens collapse the result to empty without a 422 —
+        # the same tolerant posture as the other filters. So does filtering on
+        # a project with no outbound license: nothing was judged, so nothing
+        # can match.
+        matching_ids = (
+            [
+                license_id
+                for license_id, judged in verdicts.items()
+                if judged.verdict == conflict
+            ]
+            if conflict in _CONFLICT_VERDICT_VALUES
+            else []
+        )
+        if not matching_ids:
+            distribution = await _compute_distribution(session, scan_id)
+            return ComplianceListPage(
+                [], distribution, 0, generated_at, outbound, conflict_summary
+            )
+        base = base.where(LicenseModel.id.in_(matching_ids))
 
     if search:
         safe = escape_like(search.strip())
@@ -382,7 +457,9 @@ async def list_project_compliance(
     distribution = await _compute_distribution(session, scan_id)
 
     if not rows:
-        return [], distribution, total, generated_at
+        return ComplianceListPage(
+            [], distribution, total, generated_at, outbound, conflict_summary
+        )
 
     license_ids = [uuid.UUID(str(r.license_id)) for r in rows]
 
@@ -399,6 +476,7 @@ async def list_project_compliance(
     for r in rows:
         lic_id = uuid.UUID(str(r.license_id))
         obligations = obligations_by_license.get(lic_id, [])
+        judged_row = verdicts.get(lic_id)
         items.append(
             {
                 "license_finding_id": r.license_finding_id,
@@ -415,10 +493,21 @@ async def list_project_compliance(
                     o["kind"] in _NOTICE_REQUIRING_KINDS for o in obligations
                 ),
                 "category_override_source": None,
+                "conflict": (
+                    {
+                        "verdict": judged_row.verdict,
+                        "why": judged_row.why,
+                        "dependency_class": judged_row.dependency_class,
+                    }
+                    if judged_row is not None
+                    else None
+                ),
             }
         )
 
-    return items, distribution, total, generated_at
+    return ComplianceListPage(
+        items, distribution, total, generated_at, outbound, conflict_summary
+    )
 
 
 # ---------------------------------------------------------------------------

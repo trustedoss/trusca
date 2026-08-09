@@ -222,6 +222,7 @@
   ],
   "GET /v1/projects/{project_id}/compliance": [
     "category",
+    "conflict",
     "has_obligations",
     "kind",
     "limit",
@@ -271,6 +272,7 @@
   ],
   "GET /v1/projects/{project_id}/licenses": [
     "category",
+    "conflict",
     "kind",
     "limit",
     "offset",

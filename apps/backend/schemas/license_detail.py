@@ -42,6 +42,38 @@ LicenseFindingKind = Literal["declared", "concluded", "detected"]
 # in ≥2 places ⇒ contract test). ``None`` on the wire means "not in scope".
 ReviewFlag = Literal["behavioral_use", "non_commercial"]
 
+# How a license sits against the project's declared outbound license (gap #27).
+# Mirrors ``services.license_conflict.CONFLICT_VERDICT_VALUES``, reconciled in
+# ``tests/unit/test_catalog_contracts.py``. Absent from a row means the project
+# declares no outbound license, so nothing was assessed — never "clean".
+ConflictVerdict = Literal["compatible", "conditional", "incompatible", "unknown"]
+
+# Copyleft strength of one license, mirroring
+# ``services.license_class.LICENSE_CLASS_VALUES``. Carried alongside a verdict
+# so a reader can see which matrix row and column produced it.
+LicenseClass = Literal[
+    "permissive", "weak-copyleft", "strong-copyleft", "network-copyleft", "uncategorized"
+]
+
+
+class OutboundConflict(BaseModel):
+    """A license's standing against the project's declared outbound license.
+
+    Advisory. ``why`` is the sentence from the rule data that justifies the
+    verdict, and it is what the UI shows — a bare verdict without its reason
+    invites the reader to treat it as a determination, which it is not.
+    """
+
+    model_config = ConfigDict(from_attributes=True)
+
+    verdict: ConflictVerdict
+    why: str = Field(
+        description="The reason this verdict applies, in plain language.",
+    )
+    dependency_class: LicenseClass = Field(
+        description="Copyleft strength this license was classified as.",
+    )
+
 
 # ---------------------------------------------------------------------------
 # List endpoint
@@ -140,6 +172,15 @@ class LicenseListItem(BaseModel):
             "judgement."
         ),
     )
+    conflict: OutboundConflict | None = Field(
+        default=None,
+        description=(
+            "How this license sits against the project's declared outbound "
+            "license (gap #27). Null when the project declares none — nothing "
+            "was assessed, which is NOT the same as no conflict. Advisory: a "
+            "documentation aid, never a legal determination."
+        ),
+    )
     sample_finding_id: uuid.UUID = Field(
         description=(
             "Finding row to pass to GET /v1/license_findings/{id} when the "
@@ -164,12 +205,41 @@ class LicenseDistribution(BaseModel):
     unknown: int = Field(ge=0, default=0)
 
 
+class ConflictSummary(BaseModel):
+    """Counts of distinct licenses per outbound-conflict verdict (gap #27).
+
+    Computed over the whole scan, not the active page — the point of the
+    summary is to say "three of the licenses here cannot be shipped under what
+    you declared" before the user has paged to them.
+    """
+
+    incompatible: int = Field(ge=0, default=0)
+    conditional: int = Field(ge=0, default=0)
+    unknown: int = Field(ge=0, default=0)
+    compatible: int = Field(ge=0, default=0)
+
+
 class LicenseListResponse(BaseModel):
     """Page of licenses for the project's latest scan."""
 
     items: list[LicenseListItem]
     distribution: LicenseDistribution
     total: int = Field(ge=0)
+    declared_license: str | None = Field(
+        default=None,
+        description=(
+            "The outbound license the project declares, echoed so the tab can "
+            "say what the verdicts were measured against. Null when none is "
+            "declared, in which case every row's `conflict` is null too."
+        ),
+    )
+    conflict_summary: ConflictSummary | None = Field(
+        default=None,
+        description=(
+            "Verdict counts across every license in the scan, unfiltered. Null "
+            "when the project declares no outbound license."
+        ),
+    )
 
 
 # ---------------------------------------------------------------------------

@@ -40,6 +40,7 @@ from core.errors import problem_response
 from core.security import CurrentUser, require_role
 from schemas.license_detail import (
     AffectedComponentByLicense,
+    ConflictSummary,
     LicenseDetailResponse,
     LicenseDistribution,
     LicenseListItem,
@@ -121,12 +122,27 @@ async def list_project_licenses_endpoint(
             "non_commercial = CC-BY-NC…. Omit to list all licenses."
         ),
     ),
+    conflict: str | None = Query(
+        default=None,
+        pattern=r"^(compatible|conditional|incompatible|unknown)$",
+        description=(
+            "Filter to licenses carrying this outbound-conflict verdict (gap "
+            "#27). Matches nothing when the project declares no outbound "
+            "license, since nothing is assessed without one. Omit to list all."
+        ),
+    ),
     scan_id: uuid.UUID | None = Depends(snapshot_anchor),
     session: AsyncSession = Depends(get_db),
     actor: CurrentUser = Depends(require_role("developer")),
 ) -> Response:
     try:
-        items, distribution, total = await list_project_licenses(
+        (
+            items,
+            distribution,
+            total,
+            declared_license,
+            conflict_summary,
+        ) = await list_project_licenses(
             session,
             project_id=project_id,
             actor=actor,
@@ -138,6 +154,7 @@ async def list_project_licenses_endpoint(
             sort=sort,
             order=order,
             review_flag=review_flag,
+            conflict=conflict,
             snapshot_scan_id=scan_id,
         )
     except SnapshotScanNotFound:
@@ -149,6 +166,10 @@ async def list_project_licenses_endpoint(
         items=[LicenseListItem.model_validate(item) for item in items],
         distribution=LicenseDistribution(**distribution),
         total=total,
+        declared_license=declared_license,
+        conflict_summary=(
+            ConflictSummary(**conflict_summary) if conflict_summary is not None else None
+        ),
     )
     return Response(
         content=body.model_dump_json(),

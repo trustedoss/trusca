@@ -17,6 +17,7 @@ import {
   type ComplianceListResponse,
   type ComplianceSortKey,
   type LicenseCategoryName,
+  type ConflictVerdictName,
   type SortOrder,
 } from "@/features/projects/api/complianceApi";
 
@@ -25,6 +26,8 @@ export interface ComplianceQueryFilters {
   categories: LicenseCategoryName[];
   kinds: string[];
   hasObligations: boolean | null;
+  /** Outbound-license conflict verdict (gap #27). `undefined` → no filter. */
+  conflict?: ConflictVerdictName;
   sort: ComplianceSortKey;
   order: SortOrder;
   limit: number;
@@ -52,6 +55,7 @@ export function complianceKey(
       categories: [...filters.categories].sort(),
       kinds: [...filters.kinds].sort(),
       hasObligations: filters.hasObligations,
+      conflict: filters.conflict ?? null,
       sort: filters.sort,
       order: filters.order,
       limit: filters.limit,
@@ -77,6 +81,7 @@ export function useCompliance(
         kinds: filters.kinds.length ? filters.kinds : undefined,
         has_obligations:
           filters.hasObligations === null ? undefined : filters.hasObligations,
+        conflict: filters.conflict,
         sort: filters.sort,
         order: filters.order,
         scanId: filters.scanId,
