@@ -109,22 +109,65 @@ pipeline {
                                     + (if $ref == "" then {} else {ref: $ref} end)
                                 )}')
 
-                            response=$(curl --fail-with-body -sS -X POST \
-                                -H "Authorization: Bearer ${TRUSTEDOSS_API_KEY}" \
-                                -H "Content-Type: application/json" \
-                                -H "Accept: application/json" \
-                                -w "\\n%{http_code}" \
-                                "${api}/v1/projects/${TRUSTEDOSS_PROJECT_ID}/scans" \
-                                -d "$body")
+                            # Only the scan id goes to stdout — the caller reads
+                            # it as the step's return value, so every message
+                            # here goes to stderr.
+                            #
+                            # 409 means this ref already has an active scan
+                            # (typically this job's own previous build); attach
+                            # to it rather than failing. 429 is the trigger rate
+                            # limit; wait it out.
+                            HEADERS=$(mktemp)
+                            trap 'rm -f "$HEADERS"' EXIT
+                            SCAN_ID=""
+                            ATTEMPT=0
+                            while [ -z "$SCAN_ID" ]; do
+                                ATTEMPT=$((ATTEMPT + 1))
+                                response=$(curl --fail-with-body -sS -X POST \
+                                    -H "Authorization: Bearer ${TRUSTEDOSS_API_KEY}" \
+                                    -H "Content-Type: application/json" \
+                                    -H "Accept: application/json" \
+                                    -D "$HEADERS" \
+                                    -w "\\n%{http_code}" \
+                                    "${api}/v1/projects/${TRUSTEDOSS_PROJECT_ID}/scans" \
+                                    -d "$body") || true
 
-                            http_code=$(echo "$response" | tail -n1)
-                            json_body=$(echo "$response" | sed '$d')
-                            if [ "$http_code" != "202" ] && [ "$http_code" != "200" ]; then
-                                echo "FATAL: unexpected HTTP $http_code from scan trigger:" >&2
-                                echo "$json_body" >&2
-                                exit 1
-                            fi
-                            echo "$json_body" | jq -er '.id'
+                                http_code=$(echo "$response" | tail -n1)
+                                json_body=$(echo "$response" | sed '$d')
+                                case "$http_code" in
+                                    200|202)
+                                        SCAN_ID=$(echo "$json_body" | jq -er '.id')
+                                        ;;
+                                    409)
+                                        SCAN_ID=$(echo "$json_body" | jq -r '.active_scan_id // empty')
+                                        if [ -z "$SCAN_ID" ]; then
+                                            echo "FATAL: a scan is already active for this ref but the portal did not name it:" >&2
+                                            echo "$json_body" >&2
+                                            exit 1
+                                        fi
+                                        echo "Attaching to the scan already running for this ref: $SCAN_ID" >&2
+                                        ;;
+                                    429)
+                                        if [ "$ATTEMPT" -ge 4 ]; then
+                                            echo "FATAL: still rate-limited after $ATTEMPT attempts:" >&2
+                                            echo "$json_body" >&2
+                                            exit 1
+                                        fi
+                                        WAIT=$(grep -i '^retry-after:' "$HEADERS" | tail -n1 | tr -d '\\r' | awk '{print $2}')
+                                        case "$WAIT" in
+                                            ''|*[!0-9]*) WAIT=60 ;;
+                                        esac
+                                        echo "WARN: rate-limited by the portal; retrying in ${WAIT}s" >&2
+                                        sleep "$WAIT"
+                                        ;;
+                                    *)
+                                        echo "FATAL: unexpected HTTP $http_code from scan trigger:" >&2
+                                        echo "$json_body" >&2
+                                        exit 1
+                                        ;;
+                                esac
+                            done
+                            echo "$SCAN_ID"
                         '''
                     ).trim()
                     echo "TrustedOSS scan enqueued: ${env.TRUSTEDOSS_SCAN_ID}"
@@ -167,7 +210,9 @@ pipeline {
                             *) echo "WARN: unknown status '$scan_status', continuing" ;;
                         esac
                         if [ "$(date +%s)" -ge "$deadline" ]; then
-                            echo "FATAL: scan did not finish within ${TRUSTEDOSS_POLL_TIMEOUT}s"
+                            echo "FATAL: scan did not finish within ${TRUSTEDOSS_POLL_TIMEOUT}s."
+                            echo "The portal is still running it — this build stopped waiting, it did not cancel the scan."
+                            echo "Raise TRUSTEDOSS_POLL_TIMEOUT, or re-run later; a re-run started now would attach to it."
                             exit 1
                         fi
                         sleep "$TRUSTEDOSS_POLL_INTERVAL"

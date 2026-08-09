@@ -163,6 +163,39 @@ async def test_trigger_on_other_team_busy_project_is_permission_denial_not_409(
         )
 
 
+@pytest.mark.parametrize("active_status", ["queued", "running"])
+async def test_outsider_never_learns_the_active_scan_id(
+    db_session: AsyncSession, active_status: str
+) -> None:
+    """The 409's ``active_scan_id`` must not reach a non-member.
+
+    That extension exists so a CI client can attach to the scan already holding
+    its ref. It is a real scan id, so the permission gate has to fire first —
+    otherwise a 409 would hand an outsider both the project's existence and a
+    live id from it. This is the same intersection recheck §4-1 found unguarded
+    for cancel, re-pinned for the field this feature adds.
+    """
+    from schemas.scan import ScanCreate
+    from services.scan_service import ScanForbidden, ScanInProgressConflict, trigger_scan
+
+    actor, owning_team = await _outsider_and_resource_team(db_session)
+    project = await make_project(db_session, team=owning_team)
+    await make_scan(db_session, project=project, status=active_status)
+
+    with pytest.raises(ScanForbidden) as raised:
+        await trigger_scan(
+            db_session,
+            project_id=project.id,
+            payload=ScanCreate(kind="source"),
+            actor=actor,
+        )
+
+    # Belt and braces: the denial carries no extensions at all, so no future
+    # edit can leak the id by widening what ScanForbidden reports.
+    assert not isinstance(raised.value, ScanInProgressConflict)
+    assert getattr(raised.value, "extensions", {}) == {}
+
+
 # ---------------------------------------------------------------------------
 # sbom-ingest × scan already in progress / archived  (NEW 409 surfaces)
 #

@@ -164,7 +164,24 @@ def _problem_for_scan_error(request: Request, exc: ScanError) -> Response:
     # running for this project") and recommend the in-progress drawer rather
     # than parsing the human-readable detail. The 409 envelope was always
     # returned; the boolean flag is the only addition.
+    # ``active_scan_id`` (when resolvable) rides along so a CI client can attach
+    # to the scan already covering this ref instead of failing the build — see
+    # ScanInProgressConflict. It is the same project the caller was just
+    # authorized against, so it reveals nothing the caller could not already
+    # read from the project's scan list.
     if isinstance(exc, ScanInProgressConflict):
+        # Two call shapes rather than `**exc.extensions` so the field is simply
+        # absent when the racing scan already finished — an `active_scan_id`
+        # of null would read as "there is one, and it is nothing".
+        if exc.active_scan_id is not None:
+            return problem_response(
+                status_code=exc.status_code,
+                title=exc.title,
+                detail=str(exc) or exc.title,
+                instance=request.url.path,
+                scan_already_in_progress=True,
+                active_scan_id=str(exc.active_scan_id),
+            )
         return problem_response(
             status_code=exc.status_code,
             title=exc.title,

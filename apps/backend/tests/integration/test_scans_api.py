@@ -366,6 +366,43 @@ async def test_concurrent_trigger_returns_409_problem(client) -> None:
     # P1 #10 — machine-checkable extension so the SPA can render a targeted
     # notice and link to the in-progress drawer without parsing the detail.
     assert body.get("scan_already_in_progress") is True
+    # The blocked caller is told WHICH scan holds the slot, so a CI client can
+    # wait on it instead of failing the build. Without this the only options
+    # are to give up or to retry into the same wall.
+    assert body.get("active_scan_id") == first.json()["id"]
+
+
+async def test_conflict_names_the_scan_holding_that_ref(client) -> None:
+    """The id points at the scan for the SAME ref, not merely the newest one.
+
+    A project scanning several branches at once has several active scans; the
+    one named must be the one whose ref collided, or a CI client would attach
+    to an unrelated branch's scan and grade its build against it.
+    """
+    team, user, project = await _seed(client, role="developer")
+    headers = _bearer_for(user)
+
+    main_scan = await client.post(
+        f"/v1/projects/{project.id}/scans",
+        headers=headers,
+        json={"kind": "source", "metadata": {"ref": "refs/heads/main"}},
+    )
+    assert main_scan.status_code == 202, main_scan.text
+
+    pr_scan = await client.post(
+        f"/v1/projects/{project.id}/scans",
+        headers=headers,
+        json={"kind": "source", "metadata": {"ref": "refs/pull/9/merge"}},
+    )
+    assert pr_scan.status_code == 202, pr_scan.text
+
+    collision = await client.post(
+        f"/v1/projects/{project.id}/scans",
+        headers=headers,
+        json={"kind": "source", "metadata": {"ref": "pr-9"}},
+    )
+    assert collision.status_code == 409, collision.text
+    assert collision.json().get("active_scan_id") == pr_scan.json()["id"]
 
 
 async def test_two_branches_scan_concurrently(client) -> None:

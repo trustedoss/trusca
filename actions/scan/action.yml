@@ -141,30 +141,72 @@ runs:
         # response body so we can surface the RFC 7807 problem detail.
         # `-w "\n%{http_code}"` appends the status code on its own line, which
         # we split off below.
-        response=$(curl --fail-with-body -sS -X POST \
-          -H "Authorization: Bearer ${TOS_API_KEY}" \
-          -H "Content-Type: application/json" \
-          -H "Accept: application/json" \
-          -w "\n%{http_code}" \
-          "${api}/v1/projects/${TOS_PROJECT_ID}/scans" \
-          -d "$body") || {
-            echo "::error::POST /v1/projects/${TOS_PROJECT_ID}/scans failed:"
-            echo "${response}"
-            exit 1
-          }
+        # The portal allows one active scan per (project, ref), and rate-limits
+        # triggers per key. Neither is a reason to fail a build outright, so
+        # this loop handles both: 429 waits out Retry-After, and 409 attaches
+        # to the scan already covering this ref instead of starting a second.
+        headers="$(mktemp)"
+        trap 'rm -f "${headers}"' EXIT
+        scan_id=""
+        attempt=0
 
-        http_code=$(echo "$response" | tail -n1)
-        json_body=$(echo "$response" | sed '$d')
+        while [ -z "${scan_id}" ]; do
+          attempt=$((attempt + 1))
+          # `|| true` so a 4xx reaches the dispatch below instead of aborting
+          # the step — the status code is what decides, not curl's exit.
+          response=$(curl --fail-with-body -sS -X POST \
+            -H "Authorization: Bearer ${TOS_API_KEY}" \
+            -H "Content-Type: application/json" \
+            -H "Accept: application/json" \
+            -D "${headers}" \
+            -w "\n%{http_code}" \
+            "${api}/v1/projects/${TOS_PROJECT_ID}/scans" \
+            -d "$body") || true
 
-        if [ "$http_code" != "202" ] && [ "$http_code" != "200" ]; then
-          echo "::error::Unexpected HTTP ${http_code} from scan trigger:"
-          echo "${json_body}"
-          exit 1
-        fi
+          http_code=$(echo "$response" | tail -n1)
+          json_body=$(echo "$response" | sed '$d')
 
-        scan_id=$(echo "$json_body" | jq -er '.id')
+          case "${http_code}" in
+            200|202)
+              scan_id=$(echo "$json_body" | jq -er '.id')
+              echo "TrustedOSS scan enqueued: ${scan_id}"
+              ;;
+            409)
+              # Someone is already scanning this ref. The usual cause is this
+              # workflow's own previous run: cancel-in-progress kills the
+              # runner, but the scan it started keeps going server-side.
+              scan_id=$(echo "$json_body" | jq -r '.active_scan_id // empty')
+              if [ -z "${scan_id}" ]; then
+                echo "::error::A scan is already active for this ref but the portal did not name it:"
+                echo "${json_body}"
+                exit 1
+              fi
+              echo "::notice::Attaching to the scan already running for this ref: ${scan_id}"
+              ;;
+            429)
+              if [ "${attempt}" -ge 4 ]; then
+                echo "::error::Still rate-limited after ${attempt} attempts:"
+                echo "${json_body}"
+                exit 1
+              fi
+              # Retry-After is seconds by contract; fall back if it is absent
+              # or non-numeric so a malformed header cannot wedge the loop.
+              wait_for=$(grep -i '^retry-after:' "${headers}" | tail -n1 | tr -d '\r' | awk '{print $2}')
+              case "${wait_for}" in
+                ''|*[!0-9]*) wait_for=60 ;;
+              esac
+              echo "::warning::Rate-limited by the portal; retrying in ${wait_for}s"
+              sleep "${wait_for}"
+              ;;
+            *)
+              echo "::error::Unexpected HTTP ${http_code} from scan trigger:"
+              echo "${json_body}"
+              exit 1
+              ;;
+          esac
+        done
+
         echo "scan_id=${scan_id}" >> "$GITHUB_OUTPUT"
-        echo "TrustedOSS scan enqueued: ${scan_id}"
 
     # -------------------------------------------------------------------------
     # 2) Wait for terminal state — poll GET /v1/scans/{id} until status is
@@ -184,16 +226,29 @@ runs:
         api="${TOS_API_URL%/}"
         deadline=$(( $(date +%s) + POLL_TIMEOUT ))
 
+        # A scan runs for tens of minutes, so a single blip — a proxy restart, a
+        # brief 5xx — must not lose work that is nearly finished. Tolerate a few
+        # consecutive failures and only give up when the portal stays
+        # unreachable.
+        consecutive_failures=0
+        max_consecutive_failures=3
+
         while :; do
-          response=$(curl --fail-with-body -sS \
+          if ! response=$(curl --fail-with-body -sS \
             -H "Authorization: Bearer ${TOS_API_KEY}" \
             -H "Accept: application/json" \
             -w "\n%{http_code}" \
-            "${api}/v1/scans/${TOS_SCAN_ID}") || {
-              echo "::error::GET /v1/scans/${TOS_SCAN_ID} failed:"
+            "${api}/v1/scans/${TOS_SCAN_ID}"); then
+            consecutive_failures=$((consecutive_failures + 1))
+            if [ "${consecutive_failures}" -ge "${max_consecutive_failures}" ]; then
+              echo "::error::GET /v1/scans/${TOS_SCAN_ID} failed ${consecutive_failures}x in a row:"
               echo "${response}"
               exit 1
-            }
+            fi
+            echo "::warning::Status poll failed (${consecutive_failures}/${max_consecutive_failures}); retrying"
+            sleep "${POLL_INTERVAL}"
+            continue
+          fi
 
           http_code=$(echo "$response" | tail -n1)
           json_body=$(echo "$response" | sed '$d')
@@ -203,6 +258,7 @@ runs:
             echo "${json_body}"
             exit 1
           fi
+          consecutive_failures=0
 
           scan_status=$(echo "$json_body" | jq -r '.status')
           progress=$(echo "$json_body" | jq -r '.progress_percent // 0')
@@ -231,7 +287,9 @@ runs:
           esac
 
           if [ "$(date +%s)" -ge "$deadline" ]; then
-            echo "::error::Scan ${TOS_SCAN_ID} did not finish within ${POLL_TIMEOUT}s (last status=${scan_status})"
+            echo "::error::Scan ${TOS_SCAN_ID} did not finish within ${POLL_TIMEOUT}s (last status=${scan_status})."
+            echo "::error::The portal is still running it — this step stopped waiting, it did not cancel the scan."
+            echo "::error::Raise poll-timeout-seconds, or re-run once it finishes; a re-run started now would attach to it."
             exit 1
           fi
 
