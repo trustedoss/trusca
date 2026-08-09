@@ -47,6 +47,14 @@ jobs:
     timeout-minutes: 20
     env:
       ISSUE_LABEL: sca-self-scan
+      # Level 4 triage, folded into this scan rather than run on pull
+      # requests. Building an SBOM per pull request costs 15-30 minutes;
+      # this job already has the Trivy JSON, so the marginal cost of asking
+      # a model which of the Critical findings are actually reachable is one
+      # request a night. Dormant until an ANTHROPIC_API_KEY secret exists —
+      # see .github/workflows/ai-review.yml for the same guard on the pull
+      # request side.
+      HAS_ANTHROPIC_KEY: ${{ secrets.ANTHROPIC_API_KEY != '' }}
     steps:
       - uses: actions/checkout@v4
 
@@ -148,6 +156,22 @@ jobs:
 
           echo "::notice::Trivy CRITICAL count = $critical_count"
 
+      # Advisory reachability triage on the findings above. Never gates: the
+      # issue opens on the Critical count alone, exactly as before, and this
+      # step only adds a section to its body. A failed or skipped call leaves
+      # ai_triage.md absent and the issue reads as it always has.
+      - name: Triage findings (advisory, requires ANTHROPIC_API_KEY)
+        if: env.HAS_ANTHROPIC_KEY == 'true' && steps.parse.outputs.critical_count != '0'
+        continue-on-error: true
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+        run: |
+          python3 tools/ai-review/review.py \
+            --trivy trivy-report.json \
+            --bare \
+            --out ai_triage.md \
+            --state ai_state.txt
+
       - name: Open or update issue (CRITICAL > 0)
         if: steps.parse.outputs.critical_count != '0'
         env:
@@ -157,6 +181,13 @@ jobs:
         run: |
           set -euo pipefail
           title="🚨 SCA self-scan: ${CRITICAL_COUNT} Critical CVE(s) detected"
+
+          # Empty unless the triage step above both ran and produced verdicts.
+          triage=""
+          if [ -s ai_triage.md ]; then
+            triage=$(printf '## Reachability triage (advisory)\n\nA model was asked which of these are reachable from the running application. It is a starting point for step 2 below, not a substitute for it.\n\n%s\n' "$(cat ai_triage.md)")
+          fi
+
           body=$(cat <<EOF
           The nightly SCA self-scan (\`.github/workflows/sca-self.yml\`,
           run [\`${GITHUB_RUN_ID}\`](${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}))
@@ -166,6 +197,8 @@ jobs:
           ## Findings
 
           ${CRITICAL_BODY}
+
+          ${triage}
 
           ## How to triage
 

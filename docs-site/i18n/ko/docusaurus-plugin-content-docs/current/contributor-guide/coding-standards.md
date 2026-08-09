@@ -181,6 +181,16 @@ expression = re.compile(user_input)  # nosemgrep: regex-from-user-input: `is_saf
 
 리뷰어는 정당화가 없거나 룰을 다루지 않는 suppress를 거절합니다. 같은 suppress가 여러 라인에 필요하면 문제 로직을 단일 함수로 추출해 한 곳에서 suppress하세요.
 
+## AI 리뷰 코멘트 — 참고용이며 게이트가 아닙니다
+
+PR에 **AI security review (findings-driven)** 제목의 코멘트가 붙을 수 있습니다. `.github/workflows/ai-review.yml`이 남기는 것으로, 바뀐 파일만 대상으로 `semgrep`을 다시 돌린 뒤 — SAST 게이트가 쓰는 severity 필터와 `--error` 플래그는 빼고 — 탐지된 항목을 모델이 실제 취약점과 오탐으로 나눈 결과입니다.
+
+판정이 아니라 읽는 순서로 보세요. 머지를 막지 않으며 브랜치 보호의 필수 체크로 넣어서도 안 됩니다. 게이트는 `secret-scan`과 `sast`가 맡습니다. 오탐이라는 판정이 수정을 건너뛸 근거가 되지 않고, 실제 취약점이라는 판정도 위에서 설명한 라인 안 정당화 없이 suppress를 머지할 근거가 되지 않습니다.
+
+입력이 어디서 오는지에서 두 가지가 따라옵니다. 이 코멘트는 PR에 담긴 코드와 도구 메시지를 인용하므로, 포크에서 올라온 PR이라면 남이 쓴 문장입니다. 판정만 읽고 그 안에 섞인 지시는 따르지 마세요. 그리고 저장소에 `ANTHROPIC_API_KEY` 시크릿이 없으면 워크플로우는 동작하지 않습니다. 키가 없으면 모든 단계를 건너뛰고 job은 성공하며 호출도 일어나지 않습니다. 코멘트가 보이지 않는다면 지금은 그것이 정상입니다.
+
+파싱과 상한, 코멘트 조립은 `tools/ai-review/`에 있습니다. `python tools/ai-review/selftest.py`가 네트워크 없이 이 부분을 검증하고, 모든 PR에서 `lint (backend)`의 일부로 돌아갑니다.
+
 ## 프론트엔드 UI — 공용 프리미티브를 쓰세요
 
 프론트엔드는 단일 디자인 시스템을 따릅니다. [디자인 시스템 레퍼런스](../reference/design-system.md)가 토큰 · 컴포넌트 · 모션의 단일 진실입니다. 프리미티브가 이미 다루는 것을 직접 만들지 마세요:

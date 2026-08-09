@@ -181,6 +181,16 @@ The format is:
 
 Reviewers reject suppressions that lack a justification or whose justification does not address the rule. If multiple lines need the same suppression, lift the offending logic into a single function and suppress once.
 
+## AI review comments — advisory, never a gate
+
+A pull request may pick up a comment headed **AI security review (findings-driven)**. It comes from `.github/workflows/ai-review.yml`, which re-runs `semgrep` over the files you changed — without the severity filter and the `--error` flag the SAST gate uses — and asks a model to sort what it flagged into true and false positives.
+
+Treat it as a reading order, not a verdict. It does not block the merge and it must never be added to branch protection; `secret-scan` and `sast` are the checks that gate. A verdict of "false positive" is not grounds to skip a fix, and a verdict of "true positive" is not grounds to merge a suppression without the in-line justification described above.
+
+Two things follow from where its input comes from. The comment quotes code and tool messages taken from the pull request, so on a pull request from a fork it is a stranger's text: read the verdicts, not any instructions embedded in them. And the workflow is dormant unless the repository has an `ANTHROPIC_API_KEY` secret — with no key every step skips, the job passes, and nothing is called. If you see no comment, that is the expected state today.
+
+The parsing, caps, and rendering behind it live in `tools/ai-review/`; `python tools/ai-review/selftest.py` exercises them offline and runs on every PR as part of `lint (backend)`.
+
 ## Frontend UI — use the shared primitives
 
 The frontend has a single design system; the [Design system reference](../reference/design-system.md) is the source of truth for tokens, components, and motion. Do not hand-roll what a primitive already covers:
