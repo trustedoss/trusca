@@ -220,6 +220,24 @@ An uploaded SBOM carries only what the producing tool wrote into it, so TRUSCA c
 
 If you need detected licenses, signing, or source preservation, run a source scan against the repository instead — see [Scans](../user-guide/scans.md).
 
+## Operating-system packages
+
+A vulnerability scanner matches an operating-system package — an rpm, a deb, an apk — against that distribution's advisory database, and it chooses the database from an `operating-system` component in the document rather than from the package identifiers. An SBOM can therefore list every rpm on an image, each PURL well formed, and still report zero vulnerabilities because it never names the distribution.
+
+When an uploaded SBOM has distribution packages but no such component, TRUSCA infers one from the packages themselves and scans a copy that carries it. The scan log records what was added and how much of the document supported it:
+
+```
+[os-context] synthesized operating-system component centos 7 (412/415 distro packages) for CVE matching
+```
+
+Three things bound this:
+
+- The upload is never modified. The document you sent is what the conformance verdict scores, what the signature bundle serves, and what the SBOM download returns. The enriched copy exists only for the duration of the scan.
+- A distribution is inferred, never guessed. An rpm states its major release in an `.elN` suffix or a `distro=` qualifier; a deb or apk states it only in `distro=`. Packages that state nothing, or that name a distribution TRUSCA has no mapping for, contribute nothing and the document is scanned as it arrived. A wrong distribution would produce findings against packages that were never affected, which is worse than producing none.
+- A document that already carries an `operating-system` component is left alone.
+
+SPDX uploads work the same way, with one exception: Tag-Value documents are not rewritten, so an OS-less Tag-Value upload keeps the gap. Use SPDX-JSON or CycloneDX if your producer omits the operating system.
+
 ## Limits
 
 | Limit | Default | Environment variable | Exceeded |

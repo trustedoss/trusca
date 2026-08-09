@@ -1,0 +1,56 @@
+{
+  "bomFormat": "CycloneDX",
+  "specVersion": "1.5",
+  "version": 1,
+  "metadata": {
+    "component": {
+      "type": "application",
+      "name": "supplier-image",
+      "version": "1.0"
+    }
+  },
+  "components": [
+    {
+      "type": "library",
+      "name": "openssl",
+      "version": "1.0.2k-19.el7",
+      "purl": "pkg:rpm/centos/openssl@1.0.2k-19.el7?arch=x86_64",
+      "bom-ref": "pkg:rpm/centos/openssl@1.0.2k-19.el7?arch=x86_64",
+      "licenses": [
+        {
+          "license": {
+            "id": "OpenSSL"
+          }
+        }
+      ]
+    },
+    {
+      "type": "library",
+      "name": "glibc",
+      "version": "2.17-317.el7",
+      "purl": "pkg:rpm/centos/glibc@2.17-317.el7?arch=x86_64",
+      "bom-ref": "pkg:rpm/centos/glibc@2.17-317.el7?arch=x86_64",
+      "licenses": [
+        {
+          "license": {
+            "id": "MIT"
+          }
+        }
+      ]
+    },
+    {
+      "type": "library",
+      "name": "curl",
+      "version": "7.29.0-59.el7",
+      "purl": "pkg:rpm/centos/curl@7.29.0-59.el7?arch=x86_64",
+      "bom-ref": "pkg:rpm/centos/curl@7.29.0-59.el7?arch=x86_64",
+      "licenses": [
+        {
+          "license": {
+            "id": "MIT"
+          }
+        }
+      ]
+    }
+  ]
+}

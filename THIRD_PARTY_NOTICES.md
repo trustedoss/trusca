@@ -85,6 +85,7 @@ data shapes are BomLens's:
 | `apps/backend/services/regulation_crosswalk.py` | evaluator for the crosswalk data above |
 | `apps/backend/services/obligation_service.py` | `docker/lib/generate-notice.sh` |
 | `apps/backend/services/license_texts/__init__.py` | `docker/lib/licenses/` (collection layout) |
+| `apps/backend/services/os_context.py` | `docker/lib/enrich-os-context.py` |
 | `apps/backend/integrations/cocoapods_lockfile.py` | `docker/lib/parse-podfile-lock.py` |
 | `apps/backend/integrations/scanoss.py` | `docker/lib/identify-vendored.sh` |
 | `apps/backend/integrations/scan_executor/source_detect.py` | `docker/lib/source-detect.sh` |

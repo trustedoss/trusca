@@ -77,6 +77,7 @@ from tasks._scan_pipeline import (
     record_terminal_failure,
     set_stage,
 )
+from tasks._trivy_input import prepare_trivy_sbom
 from tasks.celery_app import celery_app
 from tasks.scan_source import (
     _mark_running,
@@ -318,9 +319,22 @@ def _run_pipeline(
     # blocks; the component graph above is already committed, so a matching
     # failure still leaves the user a populated component view (degraded, not
     # empty) — same philosophy as the source pipeline.
+    #
+    # What Trivy reads is an enriched COPY when the upload lists distro packages
+    # without naming the operating system they belong to — without that
+    # component Trivy picks no distro advisory database and reports zero
+    # findings on a document full of vulnerable rpms (tasks/_trivy_input.py).
+    # The upload itself is untouched: it backs the conformance verdict scored
+    # above and the ``sbom_cyclonedx`` artifact persisted below.
     _set_stage(scan_uuid, "trivy")
+    trivy_input = prepare_trivy_sbom(
+        sbom_path,
+        workspace=workspace,
+        scan_uuid=scan_uuid,
+        line_callback=make_line_callback(scan_uuid, stage="trivy"),
+    )
     trivy_result = run_trivy_sbom(
-        sbom_path=sbom_path,
+        sbom_path=trivy_input,
         output_dir=workspace / "trivy",
         line_callback=make_line_callback(scan_uuid, stage="trivy"),
         verbose=verbose,
