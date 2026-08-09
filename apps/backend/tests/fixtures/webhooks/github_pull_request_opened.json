@@ -1,0 +1,67 @@
+{
+  "action": "opened",
+  "number": 12,
+  "pull_request": {
+    "url": "https://api.github.com/repos/acme/widgets/pulls/12",
+    "id": 1829471023,
+    "node_id": "PR_kwDOJx1qLs5s8ZQv",
+    "html_url": "https://github.com/acme/widgets/pull/12",
+    "number": 12,
+    "state": "open",
+    "locked": false,
+    "title": "Bump transitive deps and add rate limiting",
+    "user": {
+      "login": "octocat",
+      "id": 583231,
+      "type": "User"
+    },
+    "created_at": "2026-08-09T04:11:22Z",
+    "updated_at": "2026-08-09T04:11:22Z",
+    "merge_commit_sha": null,
+    "draft": false,
+    "head": {
+      "label": "acme:feature/rate-limit",
+      "ref": "feature/rate-limit",
+      "sha": "4f2c9a1b7d3e5081ac6420f9e8b1d7c3a5920e64",
+      "repo": {
+        "id": 838271023,
+        "name": "widgets",
+        "full_name": "acme/widgets",
+        "clone_url": "https://github.com/acme/widgets.git",
+        "default_branch": "main"
+      }
+    },
+    "base": {
+      "label": "acme:main",
+      "ref": "main",
+      "sha": "0b7e13d4a9c85f2610e7b3d8c4a1592f7e08d3b6",
+      "repo": {
+        "id": 838271023,
+        "name": "widgets",
+        "full_name": "acme/widgets",
+        "clone_url": "https://github.com/acme/widgets.git",
+        "default_branch": "main"
+      }
+    },
+    "commits": 4,
+    "additions": 218,
+    "deletions": 37,
+    "changed_files": 9
+  },
+  "repository": {
+    "id": 838271023,
+    "name": "widgets",
+    "full_name": "acme/widgets",
+    "private": false,
+    "html_url": "https://github.com/acme/widgets",
+    "clone_url": "https://github.com/acme/widgets.git",
+    "git_url": "git://github.com/acme/widgets.git",
+    "ssh_url": "git@github.com:acme/widgets.git",
+    "default_branch": "main"
+  },
+  "sender": {
+    "login": "octocat",
+    "id": 583231,
+    "type": "User"
+  }
+}

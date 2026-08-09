@@ -34,6 +34,7 @@ import subprocess
 import uuid
 from collections.abc import AsyncIterator
 from pathlib import Path
+from typing import Any
 
 import pytest
 from httpx import ASGITransport, AsyncClient
@@ -48,6 +49,7 @@ from tests._helpers import (
 )
 
 BACKEND_ROOT = Path(__file__).resolve().parent.parent.parent
+FIXTURES = BACKEND_ROOT / "tests" / "fixtures" / "webhooks"
 PROBLEM_JSON = "application/problem+json"
 
 pytestmark = pytest.mark.integration
@@ -221,6 +223,156 @@ async def test_pull_request_event_also_enqueues(
     assert response.status_code == 200
     assert response.json()["status"] == "enqueued"
     assert len(captured_dispatches) == 1
+
+
+# ---------------------------------------------------------------------------
+# Real pull_request payloads — action filter and ref synthesis.
+#
+# These drive a payload shaped like the one GitHub actually sends rather than
+# the push fixture above: the fields under test (`action`, `pull_request.number`)
+# only exist there, and the push fixture would have passed either way.
+# ---------------------------------------------------------------------------
+
+
+def _pr_payload(repo_url: str | None, *, action: str) -> dict[str, Any]:
+    fixture = FIXTURES / "github_pull_request_opened.json"
+    payload: dict[str, Any] = json.loads(fixture.read_text(encoding="utf-8"))
+    payload["action"] = action
+    payload["repository"]["clone_url"] = repo_url
+    payload["repository"]["html_url"] = repo_url
+    return payload
+
+
+async def _post_pr(
+    client: AsyncClient,
+    project: Project,
+    secret: str,
+    *,
+    action: str,
+) -> dict[str, Any]:
+    body = json.dumps(_pr_payload(project.git_url, action=action)).encode()
+    response = await client.post(
+        "/v1/webhooks/github",
+        content=body,
+        headers={
+            "Content-Type": "application/json",
+            "X-Hub-Signature-256": _sign(body, secret),
+            "X-GitHub-Event": "pull_request",
+            "X-GitHub-Delivery": str(uuid.uuid4()),
+        },
+    )
+    assert response.status_code == 200, response.text
+    result: dict[str, Any] = response.json()
+    return result
+
+
+@pytest.mark.parametrize("action", ["opened", "synchronize", "reopened"])
+async def test_dependency_changing_pr_actions_scan(
+    client: AsyncClient, captured_dispatches: list[str], action: str
+) -> None:
+    project, secret = await _make_github_project(client)
+    result = await _post_pr(client, project, secret, action=action)
+    assert result["status"] == "enqueued"
+    assert len(captured_dispatches) == 1
+
+
+@pytest.mark.parametrize("action", ["closed", "labeled", "assigned", "edited"])
+async def test_non_dependency_pr_actions_do_not_scan(
+    client: AsyncClient, captured_dispatches: list[str], action: str
+) -> None:
+    """Labelling a PR cannot change its dependencies, so it must not scan.
+
+    Beyond the wasted worker time, one active scan is allowed per (project,
+    ref): a scan started by `labeled` holds that slot, so a real push arriving
+    behind it is skipped.
+    """
+    project, secret = await _make_github_project(client)
+    result = await _post_pr(client, project, secret, action=action)
+    assert result["status"] == "ignored"
+    assert captured_dispatches == []
+
+
+async def test_pr_scan_is_keyed_to_the_pull_request(
+    client: AsyncClient, captured_dispatches: list[str]
+) -> None:
+    """The scan's ref must be ``pr-<n>``, matching what the action sends.
+
+    ``payload["ref"]`` does not exist on pull_request events, so reading it
+    stored NULL and dropped every webhook-triggered PR scan into the project's
+    ad-hoc cohort — where it superseded nothing, grouped with nothing, and
+    competed with unrelated ref-less scans for the single active slot.
+    """
+    project, secret = await _make_github_project(client)
+    result = await _post_pr(client, project, secret, action="opened")
+    assert result["status"] == "enqueued"
+
+    factory = await _factory(client)
+    async with factory() as session:
+        from models import Scan
+
+        scan = (
+            await session.execute(select(Scan).where(Scan.id == uuid.UUID(str(result["scan_id"]))))
+        ).scalar_one()
+        assert scan.ref == "pr-12"
+        assert scan.scan_metadata["source"] == "webhook-github"
+
+
+async def test_push_behind_an_active_scan_says_it_was_skipped(
+    client: AsyncClient, captured_dispatches: list[str]
+) -> None:
+    """A skipped push must not be reported as a duplicate delivery.
+
+    Lifecycle sequence (hardening rule 5): scan running -> new delivery arrives
+    -> we decline to start a second one. Reporting that as ``duplicate`` told
+    the operator "we already handled this delivery", so a genuinely unscanned
+    commit looked handled in the SCM's delivery log.
+    """
+    project, secret = await _make_github_project(client)
+    body = json.dumps(_push_payload(project.git_url)).encode()
+
+    first = await client.post(
+        "/v1/webhooks/github",
+        content=body,
+        headers={
+            "Content-Type": "application/json",
+            "X-Hub-Signature-256": _sign(body, secret),
+            "X-GitHub-Event": "push",
+            "X-GitHub-Delivery": str(uuid.uuid4()),
+        },
+    )
+    assert first.json()["status"] == "enqueued"
+
+    # A DIFFERENT delivery id — this is a new event, not a replay.
+    second = await client.post(
+        "/v1/webhooks/github",
+        content=body,
+        headers={
+            "Content-Type": "application/json",
+            "X-Hub-Signature-256": _sign(body, secret),
+            "X-GitHub-Event": "push",
+            "X-GitHub-Delivery": str(uuid.uuid4()),
+        },
+    )
+    assert second.status_code == 200, second.text
+    assert second.json()["status"] == "skipped_active_scan"
+    assert second.json()["scan_id"] is None
+    assert len(captured_dispatches) == 1
+
+    # And a true replay of the first delivery still reads as duplicate, so the
+    # two remain distinguishable.
+    replay_id = str(uuid.uuid4())
+    for _ in range(2):
+        replay = await client.post(
+            "/v1/webhooks/github",
+            content=body,
+            headers={
+                "Content-Type": "application/json",
+                "X-Hub-Signature-256": _sign(body, secret),
+                "X-GitHub-Event": "push",
+                "X-GitHub-Delivery": replay_id,
+            },
+        )
+    assert replay.json()["status"] == "duplicate"
 
 
 # ---------------------------------------------------------------------------

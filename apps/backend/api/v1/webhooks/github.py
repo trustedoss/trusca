@@ -60,8 +60,13 @@ def _problem_for_webhook_error(request: Request, exc: WebhookError) -> Response:
         200: {
             "description": (
                 "Delivery accepted. Body shape: "
-                "``{\"status\": \"enqueued\"|\"duplicate\"|\"ignored\", "
-                "\"delivery_id\": str, \"scan_id\": uuid?}``"
+                "``{\"status\": \"enqueued\"|\"duplicate\"|\"ignored\""
+                "|\"skipped_active_scan\", "
+                "\"delivery_id\": str, \"scan_id\": uuid?}``. "
+                "``skipped_active_scan`` means the delivery was new and "
+                "scannable but the ref already had a queued or running scan, "
+                "so no second one was started — distinct from ``duplicate``, "
+                "which means this delivery had already been seen."
             )
         },
         400: {"description": "Required webhook headers are missing or malformed JSON body."},

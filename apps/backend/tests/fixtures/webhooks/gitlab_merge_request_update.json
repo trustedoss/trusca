@@ -1,0 +1,58 @@
+{
+  "object_kind": "merge_request",
+  "event_type": "merge_request",
+  "user": {
+    "id": 4471,
+    "name": "Dana Ortiz",
+    "username": "dortiz"
+  },
+  "project": {
+    "id": 55120334,
+    "name": "widgets",
+    "web_url": "https://gitlab.com/acme/widgets",
+    "namespace": "acme",
+    "path_with_namespace": "acme/widgets",
+    "git_ssh_url": "git@gitlab.com:acme/widgets.git",
+    "git_http_url": "https://gitlab.com/acme/widgets.git",
+    "default_branch": "main"
+  },
+  "object_attributes": {
+    "id": 903117,
+    "iid": 7,
+    "title": "Pin the OIDC client and drop the vendored fork",
+    "state": "opened",
+    "action": "update",
+    "oldrev": "9c1f7a20b4e6d38510af7c92e30b6d418a75f2c9",
+    "created_at": "2026-08-08 09:14:03 UTC",
+    "updated_at": "2026-08-09 04:22:51 UTC",
+    "source_branch": "chore/pin-oidc",
+    "target_branch": "main",
+    "source_project_id": 55120334,
+    "target_project_id": 55120334,
+    "merge_status": "can_be_merged",
+    "work_in_progress": false,
+    "url": "https://gitlab.com/acme/widgets/-/merge_requests/7",
+    "last_commit": {
+      "id": "e83f4b71c0a29d6e5148b3f7a920dc61e473805b",
+      "message": "Pin oidc-client to 4.2.1\n",
+      "timestamp": "2026-08-09T04:22:44+00:00",
+      "url": "https://gitlab.com/acme/widgets/-/commit/e83f4b71c0a29d6e5148b3f7a920dc61e473805b",
+      "author": {
+        "name": "Dana Ortiz",
+        "email": "dortiz@example.com"
+      }
+    }
+  },
+  "labels": [],
+  "changes": {
+    "updated_at": {
+      "previous": "2026-08-08 09:14:03 UTC",
+      "current": "2026-08-09 04:22:51 UTC"
+    }
+  },
+  "repository": {
+    "name": "widgets",
+    "url": "git@gitlab.com:acme/widgets.git",
+    "homepage": "https://gitlab.com/acme/widgets"
+  }
+}
