@@ -555,7 +555,10 @@ async def test_trigger_scan_super_admin_bypasses_team_check(client) -> None:
     response = await client.post(
         f"/v1/projects/{target_project.id}/scans",
         headers=headers,
-        json={"kind": "container"},
+        json={
+            "kind": "container",
+            "metadata": {"image_ref": "ghcr.io/acme/api:1.4.0"},
+        },
     )
     assert response.status_code == 202, response.text
     assert response.json()["kind"] == "container"

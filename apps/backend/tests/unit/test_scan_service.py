@@ -272,7 +272,9 @@ async def test_trigger_scan_succeeds_after_previous_scan_terminates(
     second = await trigger_scan(
         db_session,
         project_id=project.id,
-        payload=ScanCreate(kind="container"),
+        payload=ScanCreate(
+            kind="container", metadata={"image_ref": "ghcr.io/acme/api:1.4.0"}
+        ),
         actor=actor,
     )
     assert second.id != first.id

@@ -278,12 +278,50 @@ def test_scan_create_default_kind_is_source_with_empty_metadata() -> None:
     assert scan.metadata == {}
 
 
-@pytest.mark.parametrize("kind", ["source", "container"])
-def test_scan_create_accepts_known_kinds(kind: str) -> None:
+@pytest.mark.parametrize(
+    "kind,metadata",
+    [
+        ("source", {}),
+        # A container scan carries the image it scans; see the image_ref cases
+        # below for why that is required rather than optional.
+        ("container", {"image_ref": "ghcr.io/acme/api:1.4.0"}),
+    ],
+)
+def test_scan_create_accepts_known_kinds(kind: str, metadata: dict[str, Any]) -> None:
     from schemas.scan import ScanCreate
 
-    scan = ScanCreate(kind=kind)  # type: ignore[arg-type]
+    scan = ScanCreate(kind=kind, metadata=metadata)  # type: ignore[arg-type]
     assert scan.kind == kind
+
+
+def test_container_scan_without_an_image_is_rejected_at_trigger_time() -> None:
+    """The worker cannot scan an image nobody named, so do not queue the scan.
+
+    Before this, the request was accepted, waited for a worker slot, and only
+    then failed with ``scan.metadata.image_ref is required``. The CI clients
+    had no way to send the field at all, so every container scan they triggered
+    ended that way.
+    """
+    from schemas.scan import ScanCreate
+
+    with pytest.raises(ValidationError, match="image_ref"):
+        ScanCreate(kind="container")
+
+
+@pytest.mark.parametrize("image_ref", ["", "   ", None, 42, [], {"a": 1}])
+def test_container_scan_rejects_an_unusable_image_ref(image_ref: object) -> None:
+    """Present-but-empty is the same as absent — the worker has nothing to pull."""
+    from schemas.scan import ScanCreate
+
+    with pytest.raises(ValidationError, match="image_ref"):
+        ScanCreate(kind="container", metadata={"image_ref": image_ref})
+
+
+def test_source_scan_ignores_image_ref() -> None:
+    """The requirement is scoped to container scans and must not leak."""
+    from schemas.scan import ScanCreate
+
+    assert ScanCreate(kind="source").metadata == {}
 
 
 @pytest.mark.parametrize("kind", ["binary", "", "SOURCE", "image"])

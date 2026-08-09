@@ -731,6 +731,28 @@ class ScanCreate(BaseModel):
 
         return value
 
+    @model_validator(mode="after")
+    def _require_image_ref_for_container_scans(self) -> ScanCreate:
+        """A container scan without an image has nothing to scan — say so now.
+
+        The worker resolves ``metadata.image_ref`` and marks the scan failed
+        when it is missing, which meant the caller got a 202, waited for a
+        worker slot, and only then learned the request had never been viable.
+        The CI clients had no way to supply it at all, so every container scan
+        they triggered took that path.
+
+        Rejecting at trigger time cannot break a caller that used to succeed:
+        the same input has always ended as a failed scan.
+        """
+        if self.kind != "container":
+            return self
+        image_ref = self.metadata.get("image_ref")
+        if not isinstance(image_ref, str) or not image_ref.strip():
+            raise ValueError(
+                "metadata.image_ref (str) is required when kind == 'container'",
+            )
+        return self
+
 
 class ScanPublic(BaseModel):
     """Outbound shape for every scan-bearing response."""

@@ -21,6 +21,8 @@
 #
 # Optional:
 #   TRUSTEDOSS_SCAN_KIND          source | container          (default: source)
+#   TRUSTEDOSS_IMAGE_REF          image the portal pulls; required when
+#                                 TRUSTEDOSS_SCAN_KIND is "container"
 #   TRUSTEDOSS_FAIL_ON_GATE       true | false                (default: true)
 #   TRUSTEDOSS_POST_MR_COMMENT    true | false                (default: true)
 #   TRUSTEDOSS_POLL_TIMEOUT       seconds                     (default: 1800)
@@ -37,6 +39,7 @@
   image: curlimages/curl:8.4.0
   variables:
     TRUSTEDOSS_SCAN_KIND: "source"
+    TRUSTEDOSS_IMAGE_REF: ""
     TRUSTEDOSS_FAIL_ON_GATE: "true"
     TRUSTEDOSS_POST_MR_COMMENT: "true"
     TRUSTEDOSS_POLL_TIMEOUT: "1800"
@@ -82,13 +85,22 @@
       # so a branch's repeated scans group under one retention key. Empty values
       # are omitted. ``${VAR:-}`` keeps `set -u` happy when GitLab does not define
       # the MR variable (non-MR pipelines).
+      # Fail before the request rather than relaying a 422: the message can name
+      # the variable the caller has to set.
+      if [ "$TRUSTEDOSS_SCAN_KIND" = "container" ] && [ -z "${TRUSTEDOSS_IMAGE_REF:-}" ]; then
+        echo "FATAL: TRUSTEDOSS_SCAN_KIND is 'container' but TRUSTEDOSS_IMAGE_REF is empty."
+        echo "Set it to the image the portal should pull, e.g. registry.example.com/acme/api:1.4.0."
+        exit 1
+      fi
       body=$(jq -nc --arg kind "$TRUSTEDOSS_SCAN_KIND" \
         --arg ref "${CI_COMMIT_REF_NAME:-}" \
         --arg mr "${CI_MERGE_REQUEST_IID:-}" \
+        --arg image "${TRUSTEDOSS_IMAGE_REF:-}" \
         '{kind: $kind, metadata: (
             {source: "gitlab-ci"}
             + (if $ref == "" then {} else {ref: $ref} end)
             + (if $mr  == "" then {} else {merge_request_iid: ($mr | tonumber)} end)
+            + (if $image == "" then {} else {image_ref: $image} end)
         )}')
 
       # One active scan is allowed per (project, ref), and triggers are rate
