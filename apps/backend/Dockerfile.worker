@@ -66,6 +66,14 @@
 # compatible signing keys; revisit when bumping to Python 3.13.
 FROM python:3.12.13-slim-bookworm AS base
 
+# The release build passes the tag here so the running image can state its
+# own version — SLSA provenance, the About surface and every SBOM we emit
+# read it. Unset it stays "unknown", which is what the 2026 SBOM minimum
+# elements ask for when no version identifier is available; a plausible
+# looking default would be a false statement in three places.
+ARG TRUSTEDOSS_VERSION=unknown
+ENV TRUSTEDOSS_VERSION=${TRUSTEDOSS_VERSION}
+
 ENV PYTHONUNBUFFERED=1 \
     PYTHONDONTWRITEBYTECODE=1 \
     PIP_NO_CACHE_DIR=1 \

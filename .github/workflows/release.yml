@@ -139,6 +139,9 @@ jobs:
           file: ${{ matrix.image.dockerfile }}
           platforms: ${{ matrix.platform.platform }}
           labels: ${{ steps.meta.outputs.labels }}
+          # So the image can state its own version rather than a placeholder.
+          build-args: |
+            TRUSTEDOSS_VERSION=${{ steps.meta.outputs.version }}
           # Push the single-platform image keyed only by its content digest —
           # no tag yet. The merge job stitches the digests into a manifest
           # list and applies the version tags.

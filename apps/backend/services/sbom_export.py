@@ -92,7 +92,7 @@ import structlog
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from core.config import sbom_author, slsa_builder_version
+from core.config import sbom_author
 from models import (
     Component,
     ComponentVersion,
@@ -110,6 +110,14 @@ from services.policy_gate import (
     ComponentPolicyVerdict,
     compute_component_policy_categories,
 )
+from services.sbom_document_metadata import (
+    EVIDENCE_GRADE_PROPERTY,
+    UNDECLARED_FIELDS_PROPERTY,
+    UNDECLARED_FIELDS_VALUE,
+    lifecycle_phase,
+)
+from services.sbom_document_metadata import UNKNOWN_VERSION as _UNESTABLISHED_VERSION
+from services.sbom_document_metadata import tool_version as _tool_version
 from services.scan_resolution import resolve_snapshot_scan_id
 from services.vex_export import CYCLONEDX_STATE_MAP
 
@@ -399,58 +407,9 @@ def _spdx_license_expr(entries: list[LicenseEntry]) -> str:
     return " AND ".join(ids)
 
 
-# ---------------------------------------------------------------------------
-# Document metadata — the 2026 SBOM minimum elements ask an SBOM to say at
-# which lifecycle phase it was generated, who generated it, with which tool at
-# which version, and whether an empty field is unknown or withheld. None of the
-# four was recorded, and the tool version was a literal that had drifted from
-# every other statement of the product's version.
-# ---------------------------------------------------------------------------
-
-#: Document property naming the fields this document leaves empty and why. The
-#: 2026 guidance asks an author to tell an absent value the author could not
-#: establish apart from one the author is withholding. A scan only ever
-#: produces the first kind — it writes what it managed to read and has nothing
-#: held back — so the statement is made ONCE for the document rather than on
-#: every empty field: the claim is identical for all of them, and on a large
-#: SBOM the per-field form would add thousands of properties saying it again.
-UNDECLARED_FIELDS_PROPERTY = "trusca:undeclared-fields"
-
-#: Marks a component whose version the scan could not establish. Read by
-#: services/cisa_conformance.py, which matches the suffix so a document written
-#: by the sibling upstream tool (``bomlens:evidenceGrade``) is read the same
-#: way. The name-and-version coverage check treats a marked component as
-#: answered rather than as a silent gap.
-EVIDENCE_GRADE_PROPERTY = "trusca:evidenceGrade"
-
-#: What the vendored-code identifier path stores when a match carries no
-#: version (the column is NOT NULL, so it cannot store absence).
-_UNESTABLISHED_VERSION = "unknown"
-UNDECLARED_FIELDS_VALUE = (
-    "unknown to the SBOM author: any field left empty in this document is one "
-    "this scan could not establish. Nothing is withheld."
-)
-
-#: Lifecycle phase per scan kind, using the distinction the minimum elements
-#: draw themselves. A scan of source manifests describes software that is not
-#: built yet; a scan of a built image describes one that is. An ingested
-#: supplier document is deliberately absent from this map — re-exporting it
-#: converts someone else's document, and stamping our phase onto the conversion
-#: would claim we generated data we only reformatted.
-_LIFECYCLE_PHASE_BY_SCAN_KIND = {
-    "source": "pre-build",
-    "container": "post-build",
-}
-
-
-def _tool_version() -> str:
-    """The product version recorded as the SBOM tool version.
-
-    Single source: ``core.config.slsa_builder_version`` already fills this role
-    for SLSA provenance and the About surface. A second source here would mean
-    two answers to one question.
-    """
-    return slsa_builder_version() or "unknown"
+# Document metadata statements are shared with the scan pipeline, which
+# produces the SBOM we actually sign and publish — see
+# services/sbom_document_metadata for why they cannot live here alone.
 
 
 def _spdx_creators() -> list[str]:
@@ -463,17 +422,16 @@ def _spdx_creators() -> list[str]:
 
 
 def _document_metadata_extras(scan: Scan | None) -> dict[str, Any]:
-    """Generation context, author, and the undeclared-fields statement.
+    """Generation context and author, as a partial ``metadata`` dict.
 
-    Returned as a partial ``metadata`` dict so both serializers stamp the same
-    thing. The author cannot be discovered from anything here — it is the
-    entity operating the tool — so it is declared through ``SBOM_AUTHOR`` and
-    the field is omitted entirely when unset, rather than filled with a
-    placeholder that would answer the element without answering the question.
+    The author cannot be discovered from anything here — it is the entity
+    operating the tool — so it is declared through ``SBOM_AUTHOR`` and the
+    field is omitted entirely when unset, rather than filled with a placeholder
+    that would answer the element without answering the question.
     """
     extras: dict[str, Any] = {}
 
-    phase = _LIFECYCLE_PHASE_BY_SCAN_KIND.get(getattr(scan, "kind", "") or "")
+    phase = lifecycle_phase(getattr(scan, "kind", None))
     if phase:
         extras["lifecycles"] = [{"phase": phase}]
 
