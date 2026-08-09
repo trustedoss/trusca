@@ -1,0 +1,377 @@
+{
+  "checks": [
+    {
+      "detail": "",
+      "id": "timestamp",
+      "label": "Timestamp (metadata.timestamp)",
+      "missing": [],
+      "required": true,
+      "status": "fail"
+    },
+    {
+      "detail": "0 tool(s)",
+      "id": "tools",
+      "label": "Tool info (metadata.tools)",
+      "missing": [],
+      "required": true,
+      "status": "fail"
+    },
+    {
+      "detail": "supplier-image@1.0",
+      "id": "top-component",
+      "label": "Top-level component name+version",
+      "missing": [],
+      "required": true,
+      "status": "pass"
+    },
+    {
+      "detail": "3/3",
+      "id": "name-version",
+      "label": "Component name+version coverage (100%)",
+      "missing": [],
+      "required": true,
+      "status": "pass"
+    },
+    {
+      "detail": "100% (3/3)",
+      "id": "purl",
+      "label": "PURL coverage (>= 90%)",
+      "missing": [],
+      "required": true,
+      "status": "pass"
+    },
+    {
+      "detail": "0 offending",
+      "id": "no-generic",
+      "label": "No pkg:generic / custom PURL (0)",
+      "missing": [],
+      "required": true,
+      "status": "pass"
+    },
+    {
+      "detail": "0 edge(s)",
+      "id": "transitive",
+      "label": "Transitive dependencies (graph edges)",
+      "missing": [],
+      "required": true,
+      "status": "fail"
+    },
+    {
+      "detail": "100% (3/3)",
+      "id": "license",
+      "label": "License coverage (>= 80%, recommended)",
+      "missing": [],
+      "required": false,
+      "status": "pass"
+    },
+    {
+      "detail": "0% (0/3)",
+      "id": "hash",
+      "label": "Hash coverage (>= 50%, recommended)",
+      "missing": [],
+      "required": false,
+      "status": "warn"
+    },
+    {
+      "detail": "0% (0/3)",
+      "id": "hash-algorithm",
+      "label": "SHA-512 checksum coverage (>= 80%, recommended)",
+      "missing": [],
+      "required": false,
+      "status": "warn"
+    },
+    {
+      "detail": "0% (0/3)",
+      "id": "component-creator",
+      "label": "Component creator coverage (>= 80%, recommended)",
+      "missing": [],
+      "required": false,
+      "status": "warn"
+    },
+    {
+      "detail": "0% (0/3)",
+      "id": "component-filename",
+      "label": "Component filename coverage (>= 80%, recommended)",
+      "missing": [],
+      "required": false,
+      "status": "warn"
+    },
+    {
+      "detail": "0% (0/3)",
+      "id": "artifact-uri",
+      "label": "Source or distribution URI coverage (>= 80%, recommended)",
+      "missing": [],
+      "required": false,
+      "status": "warn"
+    },
+    {
+      "detail": "no file components",
+      "id": "file-hash",
+      "label": "File components carrying a hash (recommended)",
+      "missing": [],
+      "required": false,
+      "status": "pass"
+    },
+    {
+      "detail": "requires inspecting the delivered files (no automated source in this scan)",
+      "id": "file-properties",
+      "label": "Delivered-file properties (executable/archive/structured)",
+      "missing": [],
+      "required": false,
+      "source": "na",
+      "status": "warn"
+    },
+    {
+      "cluster": "cisa-metadata",
+      "detail": "not present in the SBOM",
+      "id": "cisa-sbom-author",
+      "label": "SBOM author",
+      "missing": [],
+      "required": false,
+      "source": "declared",
+      "status": "warn"
+    },
+    {
+      "cluster": "cisa-metadata",
+      "detail": "not present in the SBOM",
+      "id": "cisa-sbom-author-signature",
+      "label": "SBOM author signature",
+      "missing": [],
+      "required": false,
+      "source": "declared",
+      "status": "warn"
+    },
+    {
+      "cluster": "cisa-metadata",
+      "detail": "present",
+      "id": "cisa-sbom-format-name",
+      "label": "SBOM data format name",
+      "missing": [],
+      "required": false,
+      "source": "auto",
+      "status": "pass"
+    },
+    {
+      "cluster": "cisa-metadata",
+      "detail": "present",
+      "id": "cisa-sbom-format-version",
+      "label": "SBOM data format version",
+      "missing": [],
+      "required": false,
+      "source": "auto",
+      "status": "pass"
+    },
+    {
+      "cluster": "cisa-metadata",
+      "detail": "not present in the SBOM",
+      "id": "cisa-sbom-generation-context",
+      "label": "SBOM generation context",
+      "missing": [],
+      "required": false,
+      "source": "auto",
+      "status": "warn"
+    },
+    {
+      "cluster": "cisa-metadata",
+      "detail": "not present in the SBOM",
+      "id": "cisa-sbom-timestamp",
+      "label": "SBOM timestamp",
+      "missing": [],
+      "required": false,
+      "source": "auto",
+      "status": "warn"
+    },
+    {
+      "cluster": "cisa-metadata",
+      "detail": "not present in the SBOM",
+      "id": "cisa-sbom-tool-name",
+      "label": "SBOM tool name",
+      "missing": [],
+      "required": false,
+      "source": "auto",
+      "status": "warn"
+    },
+    {
+      "cluster": "cisa-metadata",
+      "detail": "not present in the SBOM",
+      "id": "cisa-sbom-tool-version",
+      "label": "SBOM tool version",
+      "missing": [],
+      "required": false,
+      "source": "auto",
+      "status": "warn"
+    },
+    {
+      "cluster": "cisa-metadata",
+      "detail": "present",
+      "id": "cisa-sbom-version",
+      "label": "SBOM version",
+      "missing": [],
+      "required": false,
+      "source": "auto",
+      "status": "pass"
+    },
+    {
+      "cluster": "cisa-component",
+      "detail": "4/4 component(s)",
+      "id": "cisa-component-name",
+      "label": "Component name",
+      "missing": [],
+      "required": false,
+      "source": "auto",
+      "status": "pass"
+    },
+    {
+      "cluster": "cisa-component",
+      "detail": "4/4 component(s)",
+      "id": "cisa-component-version",
+      "label": "Component version",
+      "missing": [],
+      "required": false,
+      "source": "auto",
+      "status": "pass"
+    },
+    {
+      "cluster": "cisa-component",
+      "detail": "0/4 component(s)",
+      "id": "cisa-component-producer",
+      "label": "Component producer",
+      "missing": [
+        "supplier-image",
+        "openssl",
+        "glibc",
+        "curl"
+      ],
+      "required": false,
+      "source": "auto",
+      "status": "warn"
+    },
+    {
+      "cluster": "cisa-component",
+      "detail": "3/4 component(s)",
+      "id": "cisa-component-identifiers",
+      "label": "Component identifiers",
+      "missing": [
+        "supplier-image"
+      ],
+      "required": false,
+      "source": "auto",
+      "status": "warn"
+    },
+    {
+      "cluster": "cisa-component",
+      "detail": "3/4 component(s)",
+      "id": "cisa-component-license",
+      "label": "Component license",
+      "missing": [
+        "supplier-image"
+      ],
+      "required": false,
+      "source": "auto",
+      "status": "warn"
+    },
+    {
+      "cluster": "cisa-component",
+      "detail": "0/4 component(s)",
+      "id": "cisa-component-hash-value",
+      "label": "Component hash value",
+      "missing": [
+        "supplier-image",
+        "openssl",
+        "glibc",
+        "curl"
+      ],
+      "required": false,
+      "source": "auto",
+      "status": "warn"
+    },
+    {
+      "cluster": "cisa-component",
+      "detail": "4/4 component(s)",
+      "id": "cisa-component-hash-algorithm",
+      "label": "Component hash algorithm",
+      "missing": [],
+      "required": false,
+      "source": "auto",
+      "status": "pass"
+    },
+    {
+      "cluster": "cisa-component",
+      "detail": "not present in the SBOM",
+      "id": "cisa-component-dependency-relationship",
+      "label": "Component dependency relationship",
+      "missing": [],
+      "required": false,
+      "source": "auto",
+      "status": "warn"
+    },
+    {
+      "cluster": "cisa-practices",
+      "detail": "present",
+      "id": "cisa-machine-processable-data",
+      "label": "Machine-processable data",
+      "missing": [],
+      "required": false,
+      "source": "auto",
+      "status": "pass"
+    },
+    {
+      "cluster": "cisa-practices",
+      "detail": "requires human review (no automated source)",
+      "id": "cisa-coverage",
+      "label": "Coverage",
+      "missing": [],
+      "required": false,
+      "source": "na",
+      "status": "warn"
+    },
+    {
+      "cluster": "cisa-practices",
+      "detail": "requires human review (no automated source)",
+      "id": "cisa-accommodation-of-updates",
+      "label": "Accommodation of updates to SBOM data",
+      "missing": [],
+      "required": false,
+      "source": "na",
+      "status": "warn"
+    },
+    {
+      "cluster": "cisa-practices",
+      "detail": "requires human review (no automated source)",
+      "id": "cisa-distribution-and-delivery",
+      "label": "Distribution and delivery",
+      "missing": [],
+      "required": false,
+      "source": "na",
+      "status": "warn"
+    },
+    {
+      "cluster": "cisa-practices",
+      "detail": "not present in the SBOM",
+      "id": "cisa-explicit-unknowns",
+      "label": "Explicitly identifying unknown information",
+      "missing": [],
+      "required": false,
+      "source": "auto",
+      "status": "warn"
+    },
+    {
+      "cluster": "cisa-practices",
+      "detail": "requires human review (no automated source)",
+      "id": "cisa-frequency",
+      "label": "Frequency",
+      "missing": [],
+      "required": false,
+      "source": "na",
+      "status": "warn"
+    }
+  ],
+  "component_count": 3,
+  "hash_coverage_pct": 0,
+  "license_coverage_pct": 100,
+  "n_fail": 3,
+  "n_warn": 1,
+  "purl_coverage_pct": 100,
+  "result": "fail",
+  "source_format": "cyclonedx"
+}

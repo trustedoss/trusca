@@ -152,6 +152,7 @@ from tasks._scan_pipeline import (
     record_terminal_failure,
     set_stage,
 )
+from tasks._trivy_input import prepare_trivy_sbom
 from tasks.celery_app import celery_app
 
 log = structlog.get_logger("tasks.scan_source")
@@ -613,10 +614,23 @@ def _run_pipeline(
     # disk, so the user still sees the component graph + license findings even
     # when matching fails — same degraded-but-not-empty behaviour the DT path
     # had during a breaker-OPEN run.
+    #
+    # As in the ingest path, Trivy reads an enriched copy when the SBOM lists
+    # distro packages without an ``operating-system`` component — cdxgen rarely
+    # emits rpm/deb/apk PURLs from a source tree, but when it does the same
+    # zero-findings failure applies, and the weekly rematch enriches the same
+    # way so a finding cannot appear on one run and vanish on the next
+    # (tasks/_trivy_input.py).
     _set_stage(scan_uuid, "trivy")
     trivy_started_at = time.monotonic()
+    trivy_input = prepare_trivy_sbom(
+        cdxgen_result.sbom_path,
+        workspace=workspace,
+        scan_uuid=scan_uuid,
+        line_callback=_make_line_callback(scan_uuid, stage="trivy"),
+    )
     trivy_result = run_trivy_sbom(
-        sbom_path=cdxgen_result.sbom_path,
+        sbom_path=trivy_input,
         output_dir=workspace / "trivy",
         # Stream Trivy's DB-update + matching progress onto the scan log
         # (feat/scan-log-verbosity) — previously Trivy ran with --quiet and

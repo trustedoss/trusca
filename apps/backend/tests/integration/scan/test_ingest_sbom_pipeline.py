@@ -60,6 +60,10 @@ from tests._helpers import (
 
 BACKEND_ROOT = Path(__file__).resolve().parent.parent.parent.parent
 FIXTURES = BACKEND_ROOT / "tests" / "fixtures" / "sbom_ingest"
+# Recorded scanner output lives apart from the SBOM fixtures: everything under
+# ``sbom_ingest/`` is scored by the conformance baseline suite, and a Trivy
+# report is not an SBOM.
+_TRIVY_FIXTURES = BACKEND_ROOT / "tests" / "fixtures" / "trivy"
 
 pytestmark = pytest.mark.integration
 
@@ -743,3 +747,139 @@ def test_ingest_hostile_control_chars_do_not_sink_conformance_persist(
         assert spdx_id is not None
         assert "\x00" not in spdx_id and "\x1b" not in spdx_id
     assert "Apache-2.0[31m" in spdx_ids
+
+
+# ---------------------------------------------------------------------------
+# OS context — a supplier SBOM of distro packages with no operating-system
+# component matches nothing until one is synthesized
+# ---------------------------------------------------------------------------
+
+
+def test_ingest_hands_trivy_an_enriched_copy_for_an_os_less_rpm_sbom(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, sync_session: Session
+) -> None:
+    """The upload is scanned through a copy, and the upload itself is untouched.
+
+    A supplier SBOM can list every rpm on an image, each PURL well-formed, and
+    omit the ``operating-system`` component. Trivy then picks no distro
+    advisory database and reports nothing — measured against Trivy 0.71.2 on
+    this fixture's packages: 0 findings without the component, 236 with it.
+    ``tasks/_trivy_input`` closes that by writing an enriched copy into the
+    per-scan workspace, which is what Trivy must be handed here.
+
+    The Trivy report fixture is a real recording of that run
+    (``tests/fixtures/trivy/centos7-rpm-sbom-report.json``, trimmed to the first four findings per
+    package — twelve findings over three packages, the per-package density
+    rpm scanning actually produces).
+    """
+    monkeypatch.setenv("WORKSPACE_HOST_PATH", str(tmp_path))
+
+    report = json.loads((_TRIVY_FIXTURES / "centos7-rpm-sbom-report.json").read_text())
+    handed: list[tuple[Path, str]] = []
+
+    def _fake_run(
+        sbom_path: Path,
+        output_dir: Path,
+        *,
+        timeout_seconds: int = 0,  # noqa: ARG001
+        backend: str | None = None,  # noqa: ARG001
+        **_kwargs: object,  # noqa: ARG001
+    ) -> TrivyResult:
+        # Read now: the enriched copy lives in the per-scan workspace, which
+        # the task removes in its ``finally``.
+        handed.append((sbom_path, sbom_path.read_text()))
+        output_dir.mkdir(parents=True, exist_ok=True)
+        report_path = output_dir / "trivy-sbom.json"
+        report_path.write_text(json.dumps(report), encoding="utf-8")
+        return TrivyResult(report_path=report_path, report=report)
+
+    monkeypatch.setattr("tasks.ingest_sbom.run_trivy_sbom", _fake_run)
+
+    upload = FIXTURES / "centos7-rpm-no-os.cdx.json"
+    scan_id, project_id = _seed_queued_sbom_scan(tmp_path, sbom_src=upload)
+
+    from tasks.ingest_sbom import ingest_sbom_task
+
+    result = ingest_sbom_task.apply(args=[str(scan_id)])
+    assert result.successful(), f"task failed: {result.traceback}"
+
+    # Trivy was handed the enriched copy, not the upload.
+    assert len(handed) == 1
+    scanned, scanned_text = handed[0]
+    assert scanned.parent.name == "os-context"
+    scanned_doc = json.loads(scanned_text)
+    os_components = [
+        c for c in scanned_doc["components"] if c.get("type") == "operating-system"
+    ]
+    assert len(os_components) == 1
+    assert (os_components[0]["name"], os_components[0]["version"]) == ("centos", "7")
+
+    # The upload the user sent is byte-identical — it backs the conformance
+    # verdict and the signature bundle, so an in-place edit would corrupt both.
+    durable = tmp_path / "sbom-ingest" / str(project_id) / f"{scan_id}.cdx.json"
+    assert durable.read_bytes() == upload.read_bytes()
+
+    # The recorded report's findings persisted against the rpm components, at
+    # the density rpm scanning produces (four CVEs per package).
+    sync_session.expire_all()
+    findings = _findings_for_scan(sync_session, scan_id)
+    assert len(findings) == 12
+
+    per_component = sync_session.execute(
+        select(Component.name, func.count(VulnerabilityFinding.id))
+        .join(ComponentVersion, ComponentVersion.component_id == Component.id)
+        .join(
+            VulnerabilityFinding,
+            VulnerabilityFinding.component_version_id == ComponentVersion.id,
+        )
+        .where(VulnerabilityFinding.scan_id == scan_id)
+        .group_by(Component.name)
+    ).all()
+    assert dict(per_component) == {"openssl": 4, "glibc": 4, "curl": 4}
+
+    scan = sync_session.execute(select(Scan).where(Scan.id == scan_id)).scalar_one()
+    assert scan.status == "succeeded"
+
+
+def test_ingest_leaves_an_sbom_that_already_names_its_os_alone(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """Nothing is copied or added when the document already answers the question."""
+    monkeypatch.setenv("WORKSPACE_HOST_PATH", str(tmp_path))
+
+    report = json.loads((_TRIVY_FIXTURES / "centos7-rpm-sbom-report.json").read_text())
+    handed: list[Path] = []
+
+    def _fake_run(
+        sbom_path: Path,
+        output_dir: Path,
+        *,
+        timeout_seconds: int = 0,  # noqa: ARG001
+        backend: str | None = None,  # noqa: ARG001
+        **_kwargs: object,  # noqa: ARG001
+    ) -> TrivyResult:
+        handed.append(sbom_path)
+        output_dir.mkdir(parents=True, exist_ok=True)
+        report_path = output_dir / "trivy-sbom.json"
+        report_path.write_text(json.dumps(report), encoding="utf-8")
+        return TrivyResult(report_path=report_path, report=report)
+
+    monkeypatch.setattr("tasks.ingest_sbom.run_trivy_sbom", _fake_run)
+
+    doc = json.loads((FIXTURES / "centos7-rpm-no-os.cdx.json").read_text())
+    doc["components"].append(
+        {"type": "operating-system", "name": "centos", "version": "7"}
+    )
+    with_os = tmp_path / "with-os.cdx.json"
+    with_os.write_text(json.dumps(doc))
+
+    scan_id, project_id = _seed_queued_sbom_scan(tmp_path, sbom_src=with_os)
+
+    from tasks.ingest_sbom import ingest_sbom_task
+
+    result = ingest_sbom_task.apply(args=[str(scan_id)])
+    assert result.successful(), f"task failed: {result.traceback}"
+
+    assert len(handed) == 1
+    durable = tmp_path / "sbom-ingest" / str(project_id) / f"{scan_id}.cdx.json"
+    assert handed[0] == durable, "Trivy reads the upload directly when it suffices"
