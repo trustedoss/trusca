@@ -317,6 +317,148 @@ async def test_pr_scan_is_keyed_to_the_pull_request(
         assert scan.scan_metadata["source"] == "webhook-github"
 
 
+async def test_team_at_capacity_skips_without_erroring(
+    client: AsyncClient,
+    captured_dispatches: list[str],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The webhook path must honour the team concurrency cap.
+
+    It builds scan rows directly rather than going through the API's
+    ``prepare_scan_target``, so it had been bypassing the cap entirely: a batch
+    push of many branches enqueued one scan per ref with nothing counting them.
+
+    The verdict is reported, not raised. A 4xx/5xx would make the Git host
+    retry a delivery that cannot succeed until capacity frees up, aiming a
+    retry storm at a system already at its limit.
+    """
+    monkeypatch.setenv("SCAN_CONCURRENCY_CAP_PER_TEAM", "1")
+
+    project, secret = await _make_github_project(client)
+    # Occupy the team's single slot with a scan on an unrelated ref, so the
+    # per-(project, ref) index cannot be what blocks the delivery below.
+    factory = await _factory(client)
+    async with factory() as session:
+        from tests._helpers import make_scan
+
+        stored = (
+            await session.execute(select(Project).where(Project.id == project.id))
+        ).scalar_one()
+        await make_scan(session, project=stored, status="running", ref="release/1.x")
+
+    body = json.dumps(_push_payload(project.git_url)).encode()
+    response = await client.post(
+        "/v1/webhooks/github",
+        content=body,
+        headers={
+            "Content-Type": "application/json",
+            "X-Hub-Signature-256": _sign(body, secret),
+            "X-GitHub-Event": "push",
+            "X-GitHub-Delivery": str(uuid.uuid4()),
+        },
+    )
+    assert response.status_code == 200, response.text
+    assert response.json()["status"] == "skipped_team_at_capacity"
+    assert captured_dispatches == []
+
+
+async def test_capacity_skip_leaves_the_delivery_id_reusable(
+    client: AsyncClient,
+    captured_dispatches: list[str],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A capacity skip must not burn the delivery id.
+
+    Recording the delivery before deciding would make a redelivery of the same
+    event a ``duplicate``, so the push would never be scanned even after the
+    operator freed capacity — permanently, on GitLab installs whose delivery id
+    is derived from the payload rather than a per-delivery UUID.
+    """
+    monkeypatch.setenv("SCAN_CONCURRENCY_CAP_PER_TEAM", "1")
+
+    project, secret = await _make_github_project(client)
+    factory = await _factory(client)
+    async with factory() as session:
+        from tests._helpers import make_scan
+
+        stored = (
+            await session.execute(select(Project).where(Project.id == project.id))
+        ).scalar_one()
+        blocker = await make_scan(
+            session, project=stored, status="running", ref="release/1.x"
+        )
+        blocker_id = blocker.id
+
+    body = json.dumps(_push_payload(project.git_url)).encode()
+    delivery_id = str(uuid.uuid4())
+    headers = {
+        "Content-Type": "application/json",
+        "X-Hub-Signature-256": _sign(body, secret),
+        "X-GitHub-Event": "push",
+        "X-GitHub-Delivery": delivery_id,
+    }
+
+    blocked = await client.post("/v1/webhooks/github", content=body, headers=headers)
+    assert blocked.json()["status"] == "skipped_team_at_capacity"
+
+    # No row claimed the id, so the Git host's redelivery is a fresh event.
+    async with factory() as session:
+        rows = (
+            await session.execute(
+                select(WebhookDelivery).where(WebhookDelivery.delivery_id == delivery_id)
+            )
+        ).scalars().all()
+    assert rows == [], "a capacity skip must not record the delivery"
+
+    # Free the capacity and redeliver the very same event.
+    async with factory() as session:
+        from models import Scan
+
+        scan = (
+            await session.execute(select(Scan).where(Scan.id == blocker_id))
+        ).scalar_one()
+        scan.status = "succeeded"
+        await session.commit()
+
+    retried = await client.post("/v1/webhooks/github", content=body, headers=headers)
+    assert retried.json()["status"] == "enqueued", "redelivery could not recover"
+    assert len(captured_dispatches) == 1
+
+
+async def test_unauthenticated_delivery_writes_nothing(
+    client: AsyncClient, captured_dispatches: list[str]
+) -> None:
+    """A rejected delivery must leave no trace in webhook_deliveries.
+
+    The rejection happens before the idempotency gate, so an unauthenticated
+    caller cannot fill the table or claim delivery ids that a legitimate
+    redelivery would later need.
+    """
+    delivery_id = str(uuid.uuid4())
+    body = json.dumps(_push_payload("https://github.com/never/heardof")).encode()
+    response = await client.post(
+        "/v1/webhooks/github",
+        content=body,
+        headers={
+            "Content-Type": "application/json",
+            "X-Hub-Signature-256": _sign(body, "any-secret"),
+            "X-GitHub-Event": "push",
+            "X-GitHub-Delivery": delivery_id,
+        },
+    )
+    assert response.status_code == 401
+
+    factory = await _factory(client)
+    async with factory() as session:
+        rows = (
+            await session.execute(
+                select(WebhookDelivery).where(WebhookDelivery.delivery_id == delivery_id)
+            )
+        ).scalars().all()
+    assert rows == []
+    assert captured_dispatches == []
+
+
 async def test_push_behind_an_active_scan_says_it_was_skipped(
     client: AsyncClient, captured_dispatches: list[str]
 ) -> None:
@@ -623,24 +765,51 @@ async def test_array_payload_returns_400(client: AsyncClient) -> None:
     assert response.headers["content-type"].startswith(PROBLEM_JSON)
 
 
-async def test_unknown_repo_returns_404(
+async def test_unknown_repo_is_indistinguishable_from_a_bad_signature(
     client: AsyncClient, captured_dispatches: list[str]
 ) -> None:
-    """A payload with no matching project must return 404."""
-    body = json.dumps(_push_payload("https://github.com/never/heardof")).encode()
+    """An unconfigured repository must answer exactly as a bad signature does.
 
-    response = await client.post(
+    The project lookup necessarily precedes signature verification, because the
+    secret is per-project. That made the status code an oracle: an
+    unauthenticated caller could POST a payload naming any repository URL and
+    read 404-vs-401 as "this portal does not watch that repo" versus "it does".
+    Walking a list of an organisation's repositories then maps which ones are
+    onboarded here.
+
+    Asserting the two responses match byte-for-byte, rather than just asserting
+    401, is what actually pins the property: a future edit that adds a
+    distinguishing detail string to either branch fails here.
+    """
+    unknown_body = json.dumps(_push_payload("https://github.com/never/heardof")).encode()
+    unknown = await client.post(
         "/v1/webhooks/github",
-        content=body,
+        content=unknown_body,
         headers={
             "Content-Type": "application/json",
-            "X-Hub-Signature-256": _sign(body, "any-secret"),
+            "X-Hub-Signature-256": _sign(unknown_body, "any-secret"),
             "X-GitHub-Event": "push",
             "X-GitHub-Delivery": str(uuid.uuid4()),
         },
     )
-    assert response.status_code == 404
-    assert response.headers["content-type"].startswith(PROBLEM_JSON)
+
+    project, _secret = await _make_github_project(client)
+    known_body = json.dumps(_push_payload(project.git_url)).encode()
+    wrong_signature = await client.post(
+        "/v1/webhooks/github",
+        content=known_body,
+        headers={
+            "Content-Type": "application/json",
+            "X-Hub-Signature-256": _sign(known_body, "not-the-projects-secret"),
+            "X-GitHub-Event": "push",
+            "X-GitHub-Delivery": str(uuid.uuid4()),
+        },
+    )
+
+    assert unknown.status_code == 401
+    assert unknown.headers["content-type"].startswith(PROBLEM_JSON)
+    assert wrong_signature.status_code == 401
+    assert unknown.json() == wrong_signature.json()
     assert captured_dispatches == []
 
 
@@ -692,7 +861,14 @@ async def test_payload_with_control_bytes_in_repo_name_does_not_500(
     label: str,
     repo: str,
 ) -> None:
-    """Control bytes in repo URL → unmatched project → 404, never 500."""
+    """Control bytes in repo URL → unmatched project → 401, never 500.
+
+    The point of these cases is that the normalizer fails closed rather than
+    letting a control byte reach Postgres (which cannot encode NUL and would
+    500). An unmatched project now answers 401 like any other unrecognised
+    repository, so that is what we assert; the property under test is the
+    absence of a 5xx.
+    """
     body = json.dumps(_push_payload(repo)).encode()
 
     response = await client.post(
@@ -705,8 +881,7 @@ async def test_payload_with_control_bytes_in_repo_name_does_not_500(
             "X-GitHub-Delivery": str(uuid.uuid4()),
         },
     )
-    # No project matches — service raises WebhookProjectNotFound (404).
-    assert response.status_code == 404, (
+    assert response.status_code == 401, (
         f"{label!r} got {response.status_code}: {response.text!r}"
     )
     assert response.headers["content-type"].startswith(PROBLEM_JSON)

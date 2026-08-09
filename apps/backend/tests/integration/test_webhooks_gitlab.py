@@ -230,6 +230,55 @@ async def test_non_dependency_mr_actions_do_not_scan(
     assert captured_dispatches == []
 
 
+async def test_team_at_capacity_skips_without_erroring(
+    client: AsyncClient,
+    captured_dispatches: list[str],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The GitLab path honours the same capacity guards as its GitHub twin."""
+    monkeypatch.setenv("SCAN_CONCURRENCY_CAP_PER_TEAM", "1")
+
+    project, secret = await _make_gitlab_project(client)
+    factory = await _factory(client)
+    async with factory() as session:
+        from tests._helpers import make_scan
+
+        stored = (
+            await session.execute(select(Project).where(Project.id == project.id))
+        ).scalar_one()
+        await make_scan(session, project=stored, status="running", ref="release/1.x")
+
+    result = await _post_mr(
+        client, project, secret, action="update", delivery_uuid=str(uuid.uuid4())
+    )
+    assert result["status"] == "skipped_team_at_capacity"
+    assert captured_dispatches == []
+
+
+async def test_full_disk_skips_without_erroring(
+    client: AsyncClient,
+    captured_dispatches: list[str],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A workspace over its hard limit stops scans without erroring.
+
+    Setting the threshold to 0 makes any usage count as over-limit, which is
+    the same code path a genuinely full volume takes. The workspace path has to
+    point somewhere that exists: ``_check_disk_guard`` is best-effort and lets
+    scans through when ``statvfs`` fails, so the default path (absent in a test
+    container) would silently pass and prove nothing.
+    """
+    monkeypatch.setenv("DISK_HARD_LIMIT_PCT", "0")
+    monkeypatch.setenv("WORKSPACE_HOST_PATH", "/")
+
+    project, secret = await _make_gitlab_project(client)
+    result = await _post_mr(
+        client, project, secret, action="update", delivery_uuid=str(uuid.uuid4())
+    )
+    assert result["status"] == "skipped_disk_full"
+    assert captured_dispatches == []
+
+
 async def test_mr_scan_is_keyed_to_the_merge_request(
     client: AsyncClient, captured_dispatches: list[str]
 ) -> None:
@@ -575,14 +624,14 @@ async def test_invalid_json_body_returns_400(client: AsyncClient) -> None:
     assert response.headers["content-type"].startswith(PROBLEM_JSON)
 
 
-async def test_unknown_repo_returns_404(
+async def test_unknown_repo_is_indistinguishable_from_a_bad_token(
     client: AsyncClient, captured_dispatches: list[str]
 ) -> None:
-    body = json.dumps(_push_payload("https://gitlab.com/never/seen")).encode()
-
-    response = await client.post(
+    """See the GitHub twin: the status code must not reveal what is onboarded."""
+    unknown_body = json.dumps(_push_payload("https://gitlab.com/never/seen")).encode()
+    unknown = await client.post(
         "/v1/webhooks/gitlab",
-        content=body,
+        content=unknown_body,
         headers={
             "Content-Type": "application/json",
             "X-Gitlab-Token": "any",
@@ -590,8 +639,24 @@ async def test_unknown_repo_returns_404(
             "X-Gitlab-Webhook-UUID": str(uuid.uuid4()),
         },
     )
-    assert response.status_code == 404
-    assert response.headers["content-type"].startswith(PROBLEM_JSON)
+
+    project, _secret = await _make_gitlab_project(client)
+    known_body = json.dumps(_push_payload(project.git_url)).encode()
+    wrong_token = await client.post(
+        "/v1/webhooks/gitlab",
+        content=known_body,
+        headers={
+            "Content-Type": "application/json",
+            "X-Gitlab-Token": "not-the-projects-token",
+            "X-Gitlab-Event": "Push Hook",
+            "X-Gitlab-Webhook-UUID": str(uuid.uuid4()),
+        },
+    )
+
+    assert unknown.status_code == 401
+    assert unknown.headers["content-type"].startswith(PROBLEM_JSON)
+    assert wrong_token.status_code == 401
+    assert unknown.json() == wrong_token.json()
     assert captured_dispatches == []
 
 

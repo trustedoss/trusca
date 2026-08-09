@@ -577,6 +577,40 @@ def normalize_ref(raw: str | None) -> str | None:
 # ---------------------------------------------------------------------------
 
 
+async def capacity_guard_reason(
+    session: AsyncSession,
+    *,
+    team_id: uuid.UUID,
+) -> str | None:
+    """Name the capacity guard that would reject a scan, or None if clear.
+
+    The same two stability guards :func:`prepare_scan_target` and
+    :func:`trigger_scan` enforce — the per-team concurrent-scan cap and the
+    workspace disk limit — expressed as a value rather than an exception, for
+    callers that must not raise.
+
+    The webhook receiver is that caller. It creates scan rows directly (it has
+    no actor to authorize, so it cannot go through ``prepare_scan_target``),
+    and it had therefore been bypassing both guards entirely: a batch push of
+    many branches enqueued one scan per ref with nothing counting them, and a
+    workspace over its hard limit kept accepting work. Raising there would be
+    wrong too — a 4xx tells the Git host to retry a delivery that is not going
+    to succeed any sooner — so it needs the verdict, not the exception.
+
+    Returns the ``skipped_*`` status the receiver reports, which is why the
+    strings live here next to the guards rather than in the caller.
+    """
+    try:
+        await _enforce_team_concurrency_cap(session, team_id)
+    except ConcurrentScanLimitExceeded:
+        return "skipped_team_at_capacity"
+    try:
+        _check_disk_guard()
+    except ScanDiskFull:
+        return "skipped_disk_full"
+    return None
+
+
 async def prepare_scan_target(
     session: AsyncSession,
     *,
@@ -1176,6 +1210,7 @@ __all__ = [
     "ScanForbidden",
     "ScanInProgressConflict",
     "ScanNotFound",
+    "capacity_guard_reason",
     "delete_scan",
     "get_scan",
     "list_scans_for_actor",

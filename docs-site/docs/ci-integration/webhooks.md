@@ -151,8 +151,20 @@ Scans run against the repository's default HEAD, not the pushed commit or the pu
 | `duplicate` | This delivery id was already recorded — a replay from the Git host's retry logic. Nothing was done, which is correct. |
 | `ignored` | The event is not one we scan on: an unlisted type, or a pull request action that cannot change dependencies. |
 | `skipped_active_scan` | The delivery was new and scannable, but that ref already had a queued or running scan, so no second one was started. |
+| `skipped_team_at_capacity` | The owning team is at its concurrent-scan cap (`SCAN_CONCURRENCY_CAP_PER_TEAM`). |
+| `skipped_disk_full` | The workspace volume is over `DISK_HARD_LIMIT_PCT`. Operator action needed. |
 
-The last two are the ones to watch. `skipped_active_scan` means a commit went unscanned: the portal allows one active scan per `(project, ref)`, and the scan already running was started from an earlier commit. The next delivery on that ref scans normally once the first finishes, so this is self-correcting for an active branch — but a push that lands at the tail of a long-running scan is not scanned by itself. Re-deliver it from the Git host if you need that specific commit covered.
+Every `skipped_*` value means a commit went unscanned, so they are the ones to watch.
+
+`skipped_active_scan` is the routine one: the portal allows one active scan per `(project, ref)`, and the scan already running was started from an earlier commit. The next delivery on that ref scans normally once the first finishes, so an active branch catches up on its own — but a push landing at the tail of a long-running scan is not scanned by itself. Re-deliver it from the Git host if you need that specific commit covered.
+
+The other two are capacity signals and need an operator before anything else helps. `skipped_team_at_capacity` means the team is already running as many scans as `SCAN_CONCURRENCY_CAP_PER_TEAM` allows; raise the cap or let the running scans finish. `skipped_disk_full` means the workspace volume is past `DISK_HARD_LIMIT_PCT` and nothing will scan until space is freed.
+
+Once the condition clears, redeliver the event from the Git host and it scans normally. These two skips deliberately do not record the delivery, so its id stays unused and the redelivery counts as a new event rather than a duplicate.
+
+The capacity check runs before the duplicate check, so a delivery that was *already* handled can also come back as a capacity skip if you redeliver it while the team is at its cap. That one was scanned when it first arrived; the status describes what happened this time, not whether the commit is covered.
+
+These are reported as `200` rather than an error on purpose. A 4xx or 5xx makes the Git host retry, and a retry storm aimed at a portal that is already at its limit helps nobody.
 
 ## Verify it worked
 
@@ -169,16 +181,19 @@ After configuring a webhook:
 
 ### "Could not deliver: 401 Unauthorized"
 
-The signature does not match. Causes:
+Either the signature does not match, or the repository is not configured on this portal. Both answer 401 with the same body, deliberately — otherwise an unauthenticated caller could tell which repositories a portal watches by reading the status code. Causes:
 
-- Webhook secret was rotated in the portal but not updated on the Git host.
+- The repository has no project here, or its project has no `webhook_secret` set (see [Bootstrapping a webhook secret](#bootstrapping-a-webhook-secret-operator-only-in-this-release)).
+- The secret was rotated in the portal but not updated on the Git host.
 - The proxy in front of the portal modifies the body (compression, JSON re-serialization). The signature is over the raw bytes — a single byte change invalidates it.
+
+The server log does distinguish these: `webhook.unknown_repository` carries the URL that failed to match, while `webhook.github.signature_invalid` names the project it did match. Check the backend log to tell a mistyped URL from a stale secret.
 
 Re-sync: rotate the secret in the portal, paste the new value into the Git host, and trigger a redelivery.
 
 ### "Could not deliver: 404 Not Found"
 
-The URL is wrong. Common typos: missing `/v1/`, hitting the frontend instead of the backend (`/webhooks/github` instead of `/v1/webhooks/github`).
+Usually the delivery URL itself is wrong — missing `/v1/`, or hitting the frontend instead of the backend (`/webhooks/github` instead of `/v1/webhooks/github`). The portal also answers 404 when the payload carries no recognisable repository URL at all, which points at a malformed or hand-crafted body. An unconfigured *repository* answers 401, not 404.
 
 ### Webhook fires but no scan appears
 
@@ -186,7 +201,8 @@ The delivery was accepted but did not trigger. Possible reasons:
 
 - A scan for the same ref was already queued or running, so the delivery is acknowledged without starting a second one. The response says `{"status": "skipped_active_scan"}`.
 - The event type is outside the scan whitelist (`push` and `pull_request` for GitHub, `Push Hook` and `Merge Request Hook` for GitLab). A `ping` is accepted and recorded but never scans.
-- The repository URL on the payload does not match any project's `git_url`, which answers 404 rather than 200.
+- The repository URL on the payload does not match any project's `git_url`, or that project has no webhook secret. Either answers 401, not 200 — see above.
+- The team is at its concurrency cap or the workspace is full: `skipped_team_at_capacity` / `skipped_disk_full`. Redelivering works once the operator clears the condition, because these skips do not consume the delivery id.
 
 ### A second push to the same merge request does not scan
 

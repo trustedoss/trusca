@@ -100,13 +100,21 @@ def _extract_delivery_id(
             "description": (
                 "Delivery accepted. Body shape: "
                 "``{\"status\": \"enqueued\"|\"duplicate\"|\"ignored\""
-                "|\"skipped_active_scan\", "
+                "|\"skipped_active_scan\"|\"skipped_team_at_capacity\""
+                "|\"skipped_disk_full\", "
                 "\"delivery_id\": str, \"scan_id\": uuid?}``"
             )
         },
         400: {"description": "Required webhook headers are missing or malformed JSON body."},
         401: {"description": "X-Gitlab-Token mismatch."},
-        404: {"description": "No project configured for the payload's repository URL."},
+        404: {
+            "description": (
+                "The payload carried no recognisable repository URL. A URL that "
+                "simply matches no project answers 401, identical to a bad token, "
+                "so the status code cannot be used to enumerate which repositories "
+                "this portal watches."
+            )
+        },
     },
 )
 async def gitlab_webhook_endpoint(

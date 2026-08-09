@@ -61,17 +61,26 @@ def _problem_for_webhook_error(request: Request, exc: WebhookError) -> Response:
             "description": (
                 "Delivery accepted. Body shape: "
                 "``{\"status\": \"enqueued\"|\"duplicate\"|\"ignored\""
-                "|\"skipped_active_scan\", "
+                "|\"skipped_active_scan\"|\"skipped_team_at_capacity\""
+                "|\"skipped_disk_full\", "
                 "\"delivery_id\": str, \"scan_id\": uuid?}``. "
-                "``skipped_active_scan`` means the delivery was new and "
-                "scannable but the ref already had a queued or running scan, "
-                "so no second one was started — distinct from ``duplicate``, "
-                "which means this delivery had already been seen."
+                "The ``skipped_*`` values all mean the delivery was accepted "
+                "and scannable but no scan started: the ref already had one, "
+                "the team is at its concurrency cap, or the workspace volume "
+                "is full. They are distinct from ``duplicate``, which means "
+                "this delivery had already been seen."
             )
         },
         400: {"description": "Required webhook headers are missing or malformed JSON body."},
         401: {"description": "HMAC verification failed."},
-        404: {"description": "No project configured for the payload's repository URL."},
+        404: {
+            "description": (
+                "The payload carried no recognisable repository URL. A URL that "
+                "simply matches no project answers 401, identical to a bad "
+                "signature, so the status code cannot be used to enumerate which "
+                "repositories this portal watches."
+            )
+        },
     },
 )
 async def github_webhook_endpoint(
