@@ -24,6 +24,7 @@ import subprocess
 import uuid
 from collections.abc import AsyncIterator
 from pathlib import Path
+from typing import Any
 
 import pytest
 from httpx import ASGITransport, AsyncClient
@@ -38,6 +39,7 @@ from tests._helpers import (
 )
 
 BACKEND_ROOT = Path(__file__).resolve().parent.parent.parent
+FIXTURES = BACKEND_ROOT / "tests" / "fixtures" / "webhooks"
 PROBLEM_JSON = "application/problem+json"
 
 pytestmark = pytest.mark.integration
@@ -150,6 +152,144 @@ def _push_payload(repo_url: str | None = "https://gitlab.com/acme/widgets") -> d
             "web_url": safe_url,
         },
     }
+
+
+def _mr_payload(
+    repo_url: str | None,
+    *,
+    action: str,
+    head_sha: str | None = None,
+) -> dict[str, Any]:
+    """A merge-request payload shaped like the one GitLab actually sends.
+
+    The fields under test — ``object_attributes.action``, ``.iid``,
+    ``.last_commit.id`` — exist only on this event, so the push fixture above
+    could not exercise any of them.
+
+    The head SHA defaults to a fresh value because the header-less delivery id
+    is derived from it, and ``webhook_deliveries`` is unique on
+    ``(source, delivery_id)`` across projects. Reusing the fixture's own SHA
+    would make the first call of the day pass and every later one report
+    ``duplicate`` against a delivery from a previous run.
+    """
+    safe_url = repo_url or "https://gitlab.com/unknown/unknown"
+    fixture = FIXTURES / "gitlab_merge_request_update.json"
+    payload: dict[str, Any] = json.loads(fixture.read_text(encoding="utf-8"))
+    payload["object_attributes"]["action"] = action
+    payload["object_attributes"]["last_commit"]["id"] = head_sha or secrets.token_hex(20)
+    payload["project"]["git_http_url"] = safe_url
+    payload["project"]["web_url"] = safe_url
+    return payload
+
+
+async def _post_mr(
+    client: AsyncClient,
+    project: Project,
+    secret: str,
+    *,
+    action: str,
+    delivery_uuid: str | None = None,
+    payload: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    """POST a merge-request hook. Omit *delivery_uuid* to emulate old GitLab."""
+    body = json.dumps(payload or _mr_payload(project.git_url, action=action)).encode()
+    headers = {
+        "Content-Type": "application/json",
+        "X-Gitlab-Token": secret,
+        "X-Gitlab-Event": "Merge Request Hook",
+    }
+    if delivery_uuid is not None:
+        headers["X-Gitlab-Webhook-UUID"] = delivery_uuid
+    response = await client.post("/v1/webhooks/gitlab", content=body, headers=headers)
+    assert response.status_code == 200, response.text
+    result: dict[str, Any] = response.json()
+    return result
+
+
+@pytest.mark.parametrize("action", ["open", "reopen", "update"])
+async def test_dependency_changing_mr_actions_scan(
+    client: AsyncClient, captured_dispatches: list[str], action: str
+) -> None:
+    project, secret = await _make_gitlab_project(client)
+    result = await _post_mr(
+        client, project, secret, action=action, delivery_uuid=str(uuid.uuid4())
+    )
+    assert result["status"] == "enqueued"
+    assert len(captured_dispatches) == 1
+
+
+@pytest.mark.parametrize("action", ["close", "merge", "approved"])
+async def test_non_dependency_mr_actions_do_not_scan(
+    client: AsyncClient, captured_dispatches: list[str], action: str
+) -> None:
+    project, secret = await _make_gitlab_project(client)
+    result = await _post_mr(
+        client, project, secret, action=action, delivery_uuid=str(uuid.uuid4())
+    )
+    assert result["status"] == "ignored"
+    assert captured_dispatches == []
+
+
+async def test_mr_scan_is_keyed_to_the_merge_request(
+    client: AsyncClient, captured_dispatches: list[str]
+) -> None:
+    """The scan's ref must be ``mr-<iid>``; MR hooks carry no top-level ref."""
+    project, secret = await _make_gitlab_project(client)
+    result = await _post_mr(
+        client, project, secret, action="update", delivery_uuid=str(uuid.uuid4())
+    )
+    assert result["status"] == "enqueued"
+
+    factory = await _factory(client)
+    async with factory() as session:
+        from models import Scan
+
+        scan = (
+            await session.execute(
+                select(Scan).where(Scan.id == uuid.UUID(str(result["scan_id"])))
+            )
+        ).scalar_one()
+        assert scan.ref == "mr-7"
+        assert scan.scan_metadata["source"] == "webhook-gitlab"
+
+
+async def test_old_gitlab_rescans_a_merge_request_after_a_new_push(
+    client: AsyncClient, captured_dispatches: list[str]
+) -> None:
+    """Without the delivery UUID header, successive pushes must still scan.
+
+    The fallback delivery id used to be the merge request's own id, so every
+    event on one MR shared it: the first was recorded and each later push was
+    dismissed as a duplicate and never scanned. Pairing the id with the head
+    SHA makes it move as the branch does.
+
+    The first scan is marked terminal in between, because otherwise the active-
+    scan guard would legitimately skip the second and hide what is under test.
+    """
+    project, secret = await _make_gitlab_project(client)
+
+    first = await _post_mr(client, project, secret, action="update")
+    assert first["status"] == "enqueued", first
+
+    factory = await _factory(client)
+    async with factory() as session:
+        from models import Scan
+
+        scan = (
+            await session.execute(
+                select(Scan).where(Scan.id == uuid.UUID(str(first["scan_id"])))
+            )
+        ).scalar_one()
+        scan.status = "succeeded"
+        await session.commit()
+
+    # Same MR, new commit — a different head SHA is the only payload change.
+    moved = _mr_payload(project.git_url, action="update")
+    moved["object_attributes"]["last_commit"]["id"] = secrets.token_hex(20)
+    second = await _post_mr(client, project, secret, action="update", payload=moved)
+
+    assert second["status"] == "enqueued", "a new push to the same MR was skipped"
+    assert len(captured_dispatches) == 2
 
 
 # ---------------------------------------------------------------------------

@@ -62,8 +62,16 @@ def _extract_delivery_id(
 
     Order of preference:
       1. X-Gitlab-Webhook-UUID header (newer GitLab installs).
-      2. ``object_attributes.id`` (merge request hooks).
+      2. ``object_attributes.id`` plus the head SHA (merge request hooks).
       3. ``checkout_sha`` (push hooks — at least unique per push).
+
+    The merge-request fallback must include the head SHA. ``object_attributes.id``
+    identifies the merge request itself, not the delivery, so on its own every
+    event for one merge request shares an id: the first was recorded and every
+    later push to that branch was dismissed as a duplicate and never scanned.
+    Pairing it with ``last_commit.sha`` makes the id change as the branch moves,
+    which is what the idempotency gate needs. A merge request re-notified for a
+    non-commit reason still dedupes, which is the desired behaviour.
 
     Returns None if none of these are usable.
     """
@@ -73,6 +81,10 @@ def _extract_delivery_id(
     if isinstance(obj, dict):
         oid = obj.get("id")
         if oid is not None:
+            head = obj.get("last_commit")
+            head_sha = head.get("id") if isinstance(head, dict) else None
+            if isinstance(head_sha, str) and head_sha:
+                return f"obj:{oid}:{head_sha}"
             return f"obj:{oid}"
     sha = payload.get("checkout_sha")
     if isinstance(sha, str) and sha:
@@ -87,7 +99,8 @@ def _extract_delivery_id(
         200: {
             "description": (
                 "Delivery accepted. Body shape: "
-                "``{\"status\": \"enqueued\"|\"duplicate\"|\"ignored\", "
+                "``{\"status\": \"enqueued\"|\"duplicate\"|\"ignored\""
+                "|\"skipped_active_scan\", "
                 "\"delivery_id\": str, \"scan_id\": uuid?}``"
             )
         },

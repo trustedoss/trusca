@@ -130,20 +130,29 @@ The portal stores `(source, delivery_id)` in `webhook_deliveries` with a unique 
 
 | Event | Action |
 |---|---|
-| GitHub `push` — any branch or tag | Triggers a `source` scan. |
-| GitHub `pull_request` — any action | Triggers a `source` scan. |
+| GitHub `push` — any branch or tag | Triggers a `source` scan, keyed to that ref. |
+| GitHub `pull_request` — `opened`, `synchronize`, `reopened` | Triggers a `source` scan keyed to `pr-<number>`. |
 | GitLab `Push Hook` — any branch or tag | Same as GitHub `push`. |
-| GitLab `Merge Request Hook` — any action | Same as GitHub `pull_request`. |
+| GitLab `Merge Request Hook` — `open`, `reopen`, `update` | Triggers a `source` scan keyed to `mr-<iid>`. |
 
-Other events are accepted (200) but do not trigger scans. Every accepted delivery is recorded in `webhook_deliveries`, which the audit listener logs as `action=create`, `target_table=webhook_deliveries`.
+Other events are accepted (200) but do not trigger scans, and so are pull request actions outside the list above — `closed`, `labeled`, `assigned` and the rest cannot change the dependency set. Every accepted delivery is recorded in `webhook_deliveries`, which the audit listener logs as `action=create`, `target_table=webhook_deliveries`.
 
-Two limits are worth knowing before you enable this on a busy repository.
+Two things are worth knowing before enabling this on a busy repository.
 
-There is no branch filter. A push to any branch or tag enqueues a scan, so a batch push of many branches enqueues one per ref.
+There is no branch filter. A push to any branch or tag enqueues a scan, so a batch push of many branches enqueues one per ref. Select the events you want on the Git host side if that is more traffic than you want.
 
-The `pull_request` action is not inspected either, so `closed`, `labeled`, and `assigned` enqueue a scan just as `opened` does. If that is too much traffic, select only the events you want on the Git host side rather than relying on the portal to filter them.
+Scans run against the repository's default HEAD, not the pushed commit or the pull request's head. The ref is recorded and groups scans for retention, but the working tree that gets scanned is whatever `git clone` returns. A pull request that adds a dependency is therefore not yet visible to a webhook-triggered scan.
 
-Scans run against the repository's default HEAD, not the pushed commit or the pull request's head. The ref is recorded and used to group scans for retention, but the working tree that gets scanned is whatever `git clone` returns. A pull request that adds a dependency is therefore not yet visible to a webhook-triggered scan.
+## What the response status means
+
+| `status` | Meaning |
+|---|---|
+| `enqueued` | A scan was created. `scan_id` names it. |
+| `duplicate` | This delivery id was already recorded — a replay from the Git host's retry logic. Nothing was done, which is correct. |
+| `ignored` | The event is not one we scan on: an unlisted type, or a pull request action that cannot change dependencies. |
+| `skipped_active_scan` | The delivery was new and scannable, but that ref already had a queued or running scan, so no second one was started. |
+
+The last two are the ones to watch. `skipped_active_scan` means a commit went unscanned: the portal allows one active scan per `(project, ref)`, and the scan already running was started from an earlier commit. The next delivery on that ref scans normally once the first finishes, so this is self-correcting for an active branch — but a push that lands at the tail of a long-running scan is not scanned by itself. Re-deliver it from the Git host if you need that specific commit covered.
 
 ## Verify it worked
 
@@ -175,13 +184,13 @@ The URL is wrong. Common typos: missing `/v1/`, hitting the frontend instead of 
 
 The delivery was accepted but did not trigger. Possible reasons:
 
-- A scan for the same ref was already queued or running. The portal allows one active scan per `(project, ref)`, so the delivery is acknowledged without starting a second one. The response says `{"status": "duplicate"}` in this case as well, which does not distinguish it from a repeated delivery — check the project's scan list to tell them apart.
+- A scan for the same ref was already queued or running, so the delivery is acknowledged without starting a second one. The response says `{"status": "skipped_active_scan"}`.
 - The event type is outside the scan whitelist (`push` and `pull_request` for GitHub, `Push Hook` and `Merge Request Hook` for GitLab). A `ping` is accepted and recorded but never scans.
 - The repository URL on the payload does not match any project's `git_url`, which answers 404 rather than 200.
 
 ### A second push to the same merge request does not scan
 
-On GitLab versions that do not send `X-Gitlab-Webhook-UUID`, the portal derives the delivery id from the merge request's own id. Every event on that merge request therefore carries the same id, and only the first one is treated as new — later pushes are dismissed as duplicates. Upgrading GitLab to a version that sends the header resolves it.
+On GitLab versions that do not send `X-Gitlab-Webhook-UUID`, the portal derives the delivery id from the merge request's id combined with its head commit SHA, so it changes as the branch moves. If two deliveries arrive for the same merge request at the same commit — a re-notification that is not a new push — the second is a `duplicate`, which is the intended behaviour.
 
 ### Old deliveries replay after a portal outage
 

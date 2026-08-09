@@ -113,9 +113,28 @@ _GITHUB_SIGNATURE_PREFIX = "sha256="
 # scan is enqueued.
 _GITHUB_SCAN_EVENTS = frozenset({"push", "pull_request"})
 
+# Which ``pull_request`` actions are worth a scan. GitHub sends this event for
+# roughly a dozen actions — labelled, assigned, review requested, closed — and
+# the dependency set only changes on the three below. Scanning the rest burnt
+# worker capacity and, because one active scan is allowed per (project, ref),
+# a stray `labeled` could hold the slot a real push then collided with.
+_GITHUB_PR_SCAN_ACTIONS = frozenset({"opened", "synchronize", "reopened"})
+
 # Whitelisted GitLab event headers. GitLab sends "Push Hook" / "Merge Request
 # Hook" rather than slugified names.
 _GITLAB_SCAN_EVENTS = frozenset({"Push Hook", "Merge Request Hook"})
+
+# The GitLab counterpart. ``update`` is the push-to-source-branch action; the
+# others mirror GitHub's opened / reopened.
+_GITLAB_MR_SCAN_ACTIONS = frozenset({"open", "reopen", "update"})
+
+# Every value ``WebhookProcessResult.status`` can take. The router's response
+# documentation mirrors this set, and ``test_webhook_status_vocabulary`` asserts
+# the two agree — the vocabulary lives in two places by necessity (one is the
+# OpenAPI contract, the other the implementation) and drifted once already.
+WEBHOOK_STATUSES = frozenset(
+    {"enqueued", "duplicate", "ignored", "skipped_active_scan"}
+)
 
 
 @dataclass
@@ -123,9 +142,20 @@ class WebhookProcessResult:
     """Return value from :func:`process_github_webhook` and friends.
 
     ``status`` is one of:
-      - 'enqueued'  — a new scan was triggered. ``scan_id`` is set.
-      - 'duplicate' — the delivery_id matched an existing row (idempotent).
-      - 'ignored'   — event type is not in the scan whitelist.
+      - 'enqueued'            — a new scan was triggered. ``scan_id`` is set.
+      - 'duplicate'           — the delivery_id matched an existing row
+                                (idempotent replay of a delivery we already saw).
+      - 'ignored'             — the event is not one we scan on: either the type
+                                is outside the whitelist, or it is a pull request
+                                action that cannot change the dependency set.
+      - 'skipped_active_scan' — the delivery was new and scannable, but a scan
+                                for the same ref was already queued or running,
+                                so we did not start a second one.
+
+    The last value used to be reported as 'duplicate' too, which was actively
+    misleading: 'duplicate' means "we have seen this delivery", so an operator
+    reading the SCM's delivery log had no way to tell that a push had gone
+    unscanned. They are different events and now say so.
     """
 
     status: str
@@ -331,6 +361,15 @@ async def _enqueue_source_scan(
     ctx["team_id"] = str(project.team_id)
     audit_context.set(ctx)
 
+    # Read the id BEFORE any statement that may roll back. A rollback expires
+    # every ORM object in the session, so a later ``project.id`` triggers a
+    # synchronous lazy reload outside the greenlet context and raises
+    # MissingGreenlet — a 500 instead of the skip this function is written to
+    # perform. The callers already guard this for their own use of the id; the
+    # logging inside the except blocks below did not, so every collision with an
+    # active scan returned 500 to the Git host, which then retried it.
+    project_id_str = str(project.id)
+
     scan = Scan(
         project_id=project.id,
         kind="source",
@@ -355,7 +394,7 @@ async def _enqueue_source_scan(
         await session.rollback()
         log.info(
             "webhook.scan_skip_in_progress",
-            project_id=str(project.id),
+            project_id=project_id_str,
         )
         return None
 
@@ -366,7 +405,7 @@ async def _enqueue_source_scan(
         await session.rollback()
         log.info(
             "webhook.scan_skip_in_progress_commit",
-            project_id=str(project.id),
+            project_id=project_id_str,
         )
         return None
 
@@ -483,13 +522,16 @@ async def process_github_webhook(
         )
         return WebhookProcessResult(status="duplicate", delivery=delivery)
 
-    # Step 5: event whitelist.
-    if event_type not in _GITHUB_SCAN_EVENTS:
+    # Step 5: event whitelist, then the per-action filter for pull requests.
+    if event_type not in _GITHUB_SCAN_EVENTS or (
+        event_type == "pull_request" and not _github_pr_action_is_scannable(payload)
+    ):
         log.info(
             "webhook.github.ignored",
             project_id=project_id_str,
             delivery_id=delivery_id,
             event_type=event_type,
+            action=payload.get("action"),
         )
         return WebhookProcessResult(status="ignored", delivery=delivery)
 
@@ -499,10 +541,13 @@ async def process_github_webhook(
         project,
         metadata={
             "trigger": "webhook",
+            # ``source`` names the same thing the CI clients put here; the two
+            # halves of the system used different keys for one concept.
+            "source": "webhook-github",
             "provider": "github",
             "event_type": event_type,
             "delivery_id": delivery_id,
-            "ref": payload.get("ref"),
+            "ref": _github_ref(payload, event_type),
         },
     )
     if scan_id is not None:
@@ -517,10 +562,68 @@ async def process_github_webhook(
         scan_id=str(scan_id) if scan_id else None,
     )
     return WebhookProcessResult(
-        status="enqueued" if scan_id else "duplicate",
+        status="enqueued" if scan_id else "skipped_active_scan",
         delivery=delivery,
         scan_id=scan_id,
     )
+
+
+def _github_ref(payload: dict[str, Any], event_type: str) -> str | None:
+    """Return the ref this GitHub event targets, in a form the normalizer knows.
+
+    ``payload["ref"]`` is a top-level field on ``push`` only. Reading it for
+    ``pull_request`` produced None, so every webhook-triggered PR scan landed in
+    the project's ad-hoc (ref-less) cohort: it never superseded the previous
+    scan of that PR, never grouped with the same PR's action-triggered scans,
+    and collided with unrelated ref-less scans over the one active-scan slot.
+
+    ``refs/pull/<n>/merge`` is the same long form the GitHub action sends, so
+    both paths normalize to ``pr-<n>`` and describe one target.
+    """
+    if event_type == "pull_request":
+        number = (payload.get("pull_request") or {}).get("number")
+        if isinstance(number, int):
+            return f"refs/pull/{number}/merge"
+        return None
+    ref = payload.get("ref")
+    return ref if isinstance(ref, str) else None
+
+
+def _gitlab_ref(payload: dict[str, Any], event_header: str) -> str | None:
+    """GitLab's counterpart to :func:`_github_ref`.
+
+    Merge request hooks carry no top-level ``ref`` either; the IID lives under
+    ``object_attributes``. ``refs/merge-requests/<iid>/head`` normalizes to
+    ``mr-<iid>``.
+    """
+    if event_header == "Merge Request Hook":
+        iid = (payload.get("object_attributes") or {}).get("iid")
+        if isinstance(iid, int):
+            return f"refs/merge-requests/{iid}/head"
+        return None
+    ref = payload.get("ref")
+    return ref if isinstance(ref, str) else None
+
+
+def _github_pr_action_is_scannable(payload: dict[str, Any]) -> bool:
+    """True when this ``pull_request`` action can have changed dependencies.
+
+    An absent or non-string action is treated as scannable: an unfamiliar
+    payload shape should scan rather than silently skip, since missing a real
+    change is worse than one redundant scan.
+    """
+    action = payload.get("action")
+    if not isinstance(action, str):
+        return True
+    return action in _GITHUB_PR_SCAN_ACTIONS
+
+
+def _gitlab_mr_action_is_scannable(payload: dict[str, Any]) -> bool:
+    """GitLab's counterpart. Same permissive default for unknown shapes."""
+    action = (payload.get("object_attributes") or {}).get("action")
+    if not isinstance(action, str):
+        return True
+    return action in _GITLAB_MR_SCAN_ACTIONS
 
 
 def _extract_github_repo_url(payload: dict[str, Any]) -> str | None:
@@ -613,12 +716,16 @@ async def process_gitlab_webhook(
         )
         return WebhookProcessResult(status="duplicate", delivery=delivery)
 
-    if event_header not in _GITLAB_SCAN_EVENTS:
+    if event_header not in _GITLAB_SCAN_EVENTS or (
+        event_header == "Merge Request Hook"
+        and not _gitlab_mr_action_is_scannable(payload)
+    ):
         log.info(
             "webhook.gitlab.ignored",
             project_id=project_id_str,
             delivery_id=delivery_id,
             event_type=event_header,
+            action=(payload.get("object_attributes") or {}).get("action"),
         )
         return WebhookProcessResult(status="ignored", delivery=delivery)
 
@@ -627,10 +734,11 @@ async def process_gitlab_webhook(
         project,
         metadata={
             "trigger": "webhook",
+            "source": "webhook-gitlab",
             "provider": "gitlab",
             "event_type": event_header,
             "delivery_id": delivery_id,
-            "ref": payload.get("ref"),
+            "ref": _gitlab_ref(payload, event_header),
         },
     )
     if scan_id is not None:
@@ -645,7 +753,7 @@ async def process_gitlab_webhook(
         scan_id=str(scan_id) if scan_id else None,
     )
     return WebhookProcessResult(
-        status="enqueued" if scan_id else "duplicate",
+        status="enqueued" if scan_id else "skipped_active_scan",
         delivery=delivery,
         scan_id=scan_id,
     )
