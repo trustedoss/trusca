@@ -3,14 +3,19 @@
 /**
  * Licenses wire surface — Phase 3 PR #12.
  *
- * Two read-only endpoints back the project Licenses tab + drawer:
+ * Two read-only endpoints:
  *
  *   - GET /v1/projects/{id}/licenses        → LicenseListResponse
  *   - GET /v1/license_findings/{finding_id} → LicenseDetailResponse
  *
  * The wire types mirror `apps/backend/schemas/license_detail.py` 1:1
- * (snake_case). Hooks in `./useLicenses.ts` and `./useLicenseFinding.ts`
- * wrap these in TanStack Query.
+ * (snake_case). `./useLicenseFinding.ts` wraps the single-finding read in
+ * TanStack Query, and the drawer consumes it.
+ *
+ * `listProjectLicenses` currently has no caller in the app: the Compliance tab
+ * replaced the Licenses tab and reads its own endpoint. It is kept because the
+ * list endpoint itself is kept — it is part of the REST surface a CI job can
+ * call — and this file is where that surface is typed and tested.
  *
  * Read-only domain: license findings carry no analyst workflow (no status
  * transitions, no audit log). ORT's ruleset is the authoritative classifier

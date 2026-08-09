@@ -41,7 +41,7 @@
  *   - ``?compliance_sort=category|license_name|spdx_id|affected_count``
  *   - ``?compliance_order=asc|desc``     order toggle
  *   - ``?compliance_page=N``             1-based page index
- *   - ``?license=<finding_id>``          drawer selection (shared with LicensesTab)
+ *   - ``?license=<finding_id>``          drawer selection
  *
  * Backward compatibility (W4-C)
  * -----------------------------
@@ -280,7 +280,7 @@ export function ComplianceTab({
     parsePage(searchParams.get("compliance_page")),
   );
 
-  // Drawer selection. ``?license=<finding_id>`` is shared with LicensesTab so
+  // Drawer selection. The ``?license=<finding_id>`` key predates this tab, so
   // a deep-link from a chart or a recent-finding card still works.
   const drawerId = searchParams.get("license");
   const drawerOpen = drawerId != null && drawerId.length > 0;

@@ -158,8 +158,8 @@ export function ReportsTab({
   const sbomSectionRef = useRef<HTMLElement>(null);
 
   // URL state — page + multi-select type filter persisted as comma-separated
-  // tokens so a deep-link survives reload. Mirrors the LicensesTab /
-  // ObligationsTab pattern (PR #12 / #13). Page resets to 1 whenever the type
+  // tokens so a deep-link survives reload. Mirrors the ObligationsTab pattern
+  // (PR #13). Page resets to 1 whenever the type
   // filter changes — the next-page boundary is meaningless across filters.
   const pageRaw = searchParams.get("rpt_page");
   const parsedPage = pageRaw ? Number.parseInt(pageRaw, 10) : 1;

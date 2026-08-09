@@ -3,7 +3,7 @@
  *
  * Validates loading skeleton, empty state, error state, distribution chips,
  * and that filter / sort changes hit the wire layer with the right params
- * at offset 0. Mirrors LicensesTab.test.tsx (PR #12).
+ * at offset 0.
  */
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { render, screen, waitFor } from "@testing-library/react";

@@ -7,7 +7,7 @@
  * row's scan id.
  *
  * We mock the wire layer so the component renders without a backend — mirrors
- * LicensesTab.test.tsx / OverviewTab.test.tsx mocking style.
+ * OverviewTab.test.tsx mocking style.
  */
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { render, screen, waitFor } from "@testing-library/react";

@@ -17,7 +17,7 @@
  *   - ``complianceApi.listProjectCompliance`` is mocked so the component
  *     renders without a backend.
  *   - ``react-virtuoso`` is stubbed with a plain renderer so all rows mount
- *     in jsdom — mirrors LicensesTab.test.tsx.
+ *     in jsdom.
  *   - ``licensesApi.getLicenseFinding`` is mocked because the LicenseDrawer
  *     is rendered in-tree (a row click should still open it cleanly).
  */
