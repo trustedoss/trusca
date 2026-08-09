@@ -3,8 +3,8 @@
 /**
  * useObligations — Phase 3 PR #13.
  *
- * Paginated query for the project's obligations. Mirrors `useLicenses` (PR
- * #12): `useQuery` (not `useInfiniteQuery`) because the read is read-only
+ * Paginated query for the project's obligations. `useQuery` (not
+ * `useInfiniteQuery`) because the read is read-only
  * and the distribution payload only makes sense per filter slice; flattening
  * pages would muddle the chart semantics.
  */

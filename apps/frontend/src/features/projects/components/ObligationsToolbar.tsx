@@ -21,8 +21,8 @@ export const NOTICE_DOWNLOAD_FORMATS: NoticeFormat[] = ["text", "html"];
 /**
  * ObligationsToolbar — Phase 3 PR #13.
  *
- * Inline filter row above the obligations list. Mirrors `LicensesToolbar`
- * (PR #12). The kind filter advertises the canonical KNOWN_OBLIGATION_KINDS
+ * Inline filter row above the obligations list. The kind filter advertises
+ * the canonical KNOWN_OBLIGATION_KINDS
  * list; the catalog is open so unknown kinds may exist server-side, but
  * exposing them in the dropdown without a discovery endpoint would be a
  * usability dead-end.

@@ -5,7 +5,7 @@
  * wire layer as the `scan_id` query param, and omit it when not pinned (the
  * latest-succeeded default is unchanged). We render the tab components with a
  * mocked wire layer and assert the params the wire fn received — same style as
- * LicensesTab.test.tsx.
+ * ComplianceTab.test.tsx.
  */
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { render, screen, waitFor } from "@testing-library/react";

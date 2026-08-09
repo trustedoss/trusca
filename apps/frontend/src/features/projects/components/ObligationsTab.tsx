@@ -34,8 +34,8 @@ import { cn } from "@/lib/utils";
  * ObligationsTab — Phase 3 PR #13.
  *
  * Virtualized obligations table + per-kind summary + NOTICE download +
- * drawer for the project detail page. Mirrors `LicensesTab` (PR #12) — read
- * only domain, URL search-param state, debounced search, drawer key
+ * drawer for the project detail page. Read-only domain, URL search-param
+ * state, debounced search, drawer key
  * (`?obligation=<id>`) chosen to not collide with `?drawer=<cv_id>`,
  * `?vuln=<id>`, `?license=<id>`.
  *
