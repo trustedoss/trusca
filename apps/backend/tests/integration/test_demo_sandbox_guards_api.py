@@ -86,6 +86,19 @@ def _bearer_for(user: User) -> dict[str, str]:
     return {"Authorization": f"Bearer {token}"}
 
 
+def _scan_body(kind: str) -> dict[str, object]:
+    """A trigger body that passes schema validation for *kind*.
+
+    These tests are about the demo-sandbox guards, which live in the service
+    layer. A container scan needs ``metadata.image_ref`` to get past the schema
+    at all, and a body rejected there would never reach the guard under test —
+    the 422 would look the same while proving nothing.
+    """
+    if kind == "container":
+        return {"kind": kind, "metadata": {"image_ref": "ghcr.io/acme/api:1.4.0"}}
+    return {"kind": kind}
+
+
 async def _factory(client: AsyncClient):
     app = client._transport.app  # type: ignore[attr-defined]
     factory = getattr(app.state, "session_factory", None)
@@ -139,11 +152,17 @@ async def test_sandbox_source_scan_allowed(client, _demo_on) -> None:
 
 
 async def test_sandbox_container_scan_blocked_h1(client, _demo_on) -> None:
-    """H-1: container kind is 422'd (SSRF-prone image_ref) even on the sandbox."""
+    """H-1: container kind is 422'd (SSRF-prone image_ref) even on the sandbox.
+
+    The body carries a valid ``image_ref`` so the request clears schema
+    validation — otherwise the 422 under test would be indistinguishable from
+    the schema's own "a container scan needs an image" rejection, and this
+    would stop covering the sandbox guard it is named for.
+    """
     user, sandbox, _other = await _seed_sandbox_and_other(client)
     resp = await client.post(
         f"/v1/projects/{sandbox.id}/scans",
-        json={"kind": "container"},
+        json=_scan_body("container"),
         headers=_bearer_for(user),
     )
     assert resp.status_code == 422, resp.text
@@ -157,7 +176,7 @@ async def test_non_sandbox_scan_blocked_h2(client, _demo_on, kind: str) -> None:
     user, _sandbox, other = await _seed_sandbox_and_other(client)
     resp = await client.post(
         f"/v1/projects/{other.id}/scans",
-        json={"kind": kind},
+        json=_scan_body(kind),
         headers=_bearer_for(user),
     )
     assert resp.status_code == 403, resp.text
@@ -197,7 +216,7 @@ async def test_non_sandbox_scan_allowed_when_carveout_off(
     user, _sandbox, other = await _seed_sandbox_and_other(client)
     resp = await client.post(
         f"/v1/projects/{other.id}/scans",
-        json={"kind": kind},
+        json=_scan_body(kind),
         headers=_bearer_for(user),
     )
     assert resp.status_code == 202, resp.text
