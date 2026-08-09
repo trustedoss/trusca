@@ -238,9 +238,13 @@ GATE_EPSS_THRESHOLD=0.5
 - uses: trustedoss/trusca/actions/scan@a1b2c3d4e5f6     # v0.10.0
 ```
 
-## ref가 보존 키가 되는 방식 {#how-the-ref-becomes-a-retention-key}
+## ref가 하는 일 {#how-the-ref-becomes-a-retention-key}
 
-액션은 워크플로의 ref를 스캔 metadata로 자동 전달합니다 — push에서는 `github.ref`(`refs/heads/<branch>`), `pull_request` 이벤트에서는 PR 번호(`refs/pull/<n>/merge`). 포털은 그 ref를 정규화하고(`refs/heads/main` → `main`, `refs/pull/12/merge` → `pr-12`) `(project, 정규화된 ref)`를 **보존 키**로 사용합니다 — 키별 최신 성공 스캔이 live로 남고 이전 것을 supersede합니다.
+액션은 워크플로의 ref를 스캔 metadata로 자동 전달합니다. push에서는 `github.ref`(`refs/heads/<branch>`), `pull_request` 이벤트에서는 PR 번호(`refs/pull/<n>/merge`)입니다. 이 값은 두 가지 일을 합니다.
+
+포털이 이 ref를 체크아웃합니다. 워커가 보낸 ref를 가져와 그 트리를 스캔하므로, 풀 리퀘스트의 스캔은 풀 리퀘스트의 의존성을 봅니다. 워커가 스캔을 집어들 시점에 그 ref가 사라졌다면(대기 중에 머지되거나 force-push된 경우) 기본 브랜치로 넘어가고 `metadata.ref_fallback`에 그 사실을 기록합니다.
+
+보존 키이기도 합니다. 포털은 ref를 정규화하고(`refs/heads/main` → `main`, `refs/pull/12/merge` → `pr-12`) `(project, 정규화된 ref)`로 스캔을 묶습니다. 키별로 가장 최근 성공 스캔이 살아 있고 이전 것을 대체합니다.
 
 이를 위해 설정할 것은 없습니다 — `push`·`pull_request`에서 액션을 실행하면 브랜치별·PR별 그룹화가 즉시 올바르게 동작합니다. 스캔을 영구 보존하려면(태그 릴리스용) `metadata.release` 라벨과 함께 트리거하십시오. 전체 모델과 release 면제는 [스캔 보존](../admin-guide/scan-retention.md) 페이지에서 다룹니다.
 

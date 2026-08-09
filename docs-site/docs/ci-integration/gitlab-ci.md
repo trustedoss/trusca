@@ -158,7 +158,9 @@ The full canonical version lives at [`templates/gitlab-ci.yml`](https://github.c
 
 The template forwards the pipeline's ref as scan metadata: `CI_COMMIT_REF_NAME`, which is the branch name on a branch pipeline and the *source branch* name on a `merge_request_event`. The portal normalizes that ref — `refs/heads/main` → `main`, `refs/merge-requests/7/head` → `mr-7`, a bare name passes through — and uses `(project, normalized ref)` as the **retention key**: the latest successful scan for a key stays live and supersedes the previous one.
 
-The template sends the MR IID too, as `metadata.merge_request_iid`, but that is recorded for reference only — it does not become the retention key. An MR's scans therefore group under its source branch name rather than `mr-<iid>`. If you would rather key on the MR, send `refs/merge-requests/$CI_MERGE_REQUEST_IID/head` as the ref in both the trigger and the gate query.
+That ref is also what the worker checks out, so the scan sees the code on that branch rather than the repository's default HEAD. If it has disappeared by the time a worker starts — the branch deleted after a merge, say — the scan falls back to the default branch and records `metadata.ref_fallback` with the ref it wanted.
+
+The template sends the MR IID too, as `metadata.merge_request_iid`, but that is recorded for reference only — it does not become the retention key. An MR's scans therefore group under its source branch name rather than `mr-<iid>`. If you would rather key on the MR, send `refs/merge-requests/$CI_MERGE_REQUEST_IID/head` as the ref in both the trigger and the gate query. That form also makes the worker check out the merge result rather than the source branch tip.
 
 The same ref goes to the gate query, and that is what keeps an MR's verdict its own. Without it the portal answers with the newest succeeded scan of the project's **main line**, so an MR pipeline that just waited out its own scan would be judged by `main`.
 

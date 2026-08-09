@@ -979,19 +979,18 @@ def _fetch_source(
     clone_url = build_authenticated_clone_url(normalized_url, credential)  # pragma: no cover
     credential_injected = clone_url != normalized_url  # pragma: no cover
 
-    if scheme in ("http", "https"):  # pragma: no cover
-        cmd = [
-            "git",
-            "-c",
-            f"http.curloptResolve={host}:{port}:{resolved_ip}",
-            "clone",
-            "--depth",
-            "1",
-            clone_url,
-            str(target),
-        ]
-    else:
-        cmd = ["git", "clone", "--depth", "1", clone_url, str(target)]
+    resolve_option = (  # pragma: no cover
+        f"http.curloptResolve={host}:{port}:{resolved_ip}"
+        if scheme in ("http", "https")
+        else None
+    )
+    ref = git_ref_to_fetch(metadata)  # pragma: no cover
+    commands = build_git_fetch_commands(  # pragma: no cover
+        clone_url=clone_url,
+        target=target,
+        ref=ref,
+        resolve_option=resolve_option,
+    )
 
     # subprocess is imported at module scope so the prep helper can use it
     # too; the dead-code branch below shares that import.
@@ -1007,19 +1006,23 @@ def _fetch_source(
         host=host,
         port=port,
         credential_injected=credential_injected,
+        ref=ref,
     )
-    completed = subprocess.run(  # noqa: S603  # pragma: no cover
-        # cmd is built from validate_git_url_with_ip output (allowlisted scheme,
-        # screened IP) — there is no shell execution and no user-controlled
-        # arguments past the URL itself. Bandit's "untrusted input" warning
-        # is a false positive for this controlled invocation.
-        cmd,
-        capture_output=True,
-        text=True,
-        timeout=600,
-        check=False,
-    )
-    if completed.returncode != 0:  # pragma: no cover
+    for cmd in commands:  # pragma: no cover
+        completed = subprocess.run(  # noqa: S603
+            # cmd is built from validate_git_url_with_ip output (allowlisted
+            # scheme, screened IP) plus a ref that git_ref_to_fetch has already
+            # constrained — there is no shell execution and no user-controlled
+            # arguments past those. Bandit's "untrusted input" warning is a
+            # false positive for this controlled invocation.
+            cmd,
+            capture_output=True,
+            text=True,
+            timeout=600,
+            check=False,
+        )
+        if completed.returncode == 0:
+            continue
         # git can echo the remote URL (with credential) into stderr on auth
         # failure ("fatal: could not read Username for 'https://...':"). The
         # single-quote/trailing-colon wrapping defeats a per-token urlsplit, so
@@ -1029,8 +1032,153 @@ def _fetch_source(
         # the only sink for the credential on this failure path; the message
         # lands in `scan.error_message` (surfaced in the UI / audit).
         safe_stderr = _scrub_clone_stderr(completed.stderr.strip(), credential)
-        raise _FetchAborted(f"git clone exited {completed.returncode}: {safe_stderr}")
+        if ref is None:
+            raise _FetchAborted(
+                f"git clone exited {completed.returncode}: {safe_stderr}"
+            )
+        # A named ref that will not fetch is usually gone rather than wrong: a
+        # pull request merged or force-pushed between the trigger and the
+        # worker picking it up, which on a busy queue is minutes. Failing the
+        # scan would report that as a problem with the project. Fall back to
+        # the default branch, and record on the scan that we did — a verdict
+        # from a fallback describes different code than the one requested, and
+        # nothing else would reveal the substitution.
+        log.warning(
+            "scan_source_ref_unavailable",
+            scan_id=str(scan_uuid),
+            ref=ref,
+            note="falling back to the remote default branch",
+        )
+        _record_ref_fallback(scan_uuid=scan_uuid, ref=ref, reason=safe_stderr)
+        shutil.rmtree(target, ignore_errors=True)
+        return _clone_default_branch(
+            clone_url=clone_url,
+            target=target,
+            resolve_option=resolve_option,
+            credential=credential,
+            source_dir=source_dir,
+        )
     return source_dir  # pragma: no cover
+
+
+def git_ref_to_fetch(scan_metadata: dict[str, Any] | None) -> str | None:
+    """Return the raw git ref this scan should materialise, if it named one.
+
+    The RAW value, not the normalized retention key. ``metadata["ref"]`` is what
+    the trigger sent — ``refs/heads/main``, ``refs/pull/12/merge``, or a bare
+    branch name — and all of those are fetchable. ``Scan.ref`` holds the
+    normalized form (``main``, ``pr-12``) which groups scans for retention and
+    is NOT a git ref: ``git fetch origin pr-12`` fails.
+
+    Rejects anything that is not a plausible ref so a malformed value cannot
+    reach the git command line: no leading dash (which git would read as an
+    option), no whitespace, no control characters, and a length bound. A
+    rejected or absent ref falls back to the remote's default branch, which is
+    what every scan did before refs were honoured at all.
+    """
+    if not isinstance(scan_metadata, dict):
+        return None
+    raw = scan_metadata.get("ref")
+    if not isinstance(raw, str):
+        return None
+    ref = raw.strip()
+    if not ref or len(ref) > 255:
+        return None
+    if ref.startswith("-") or ".." in ref:
+        return None
+    if any(ch.isspace() or ord(ch) < 0x20 or ord(ch) == 0x7F for ch in ref):
+        return None
+    return ref
+
+
+def build_git_fetch_commands(
+    *,
+    clone_url: str,
+    target: Path,
+    ref: str | None,
+    resolve_option: str | None,
+) -> list[list[str]]:
+    """The git invocations that put *ref* (or the default branch) in *target*.
+
+    Split out from the subprocess loop because the loop needs a live network and
+    is therefore untestable, while the choice of commands is exactly what
+    regressed: scans cloned the remote's default HEAD no matter which ref
+    triggered them, so a pull request's scan described the base branch and the
+    gate graded a diff nobody proposed.
+
+    Without a ref this is the previous single ``git clone --depth 1``, byte for
+    byte. With one it becomes init + fetch + detached checkout, because
+    ``clone --branch`` only accepts branches and tags — a pull request's
+    ``refs/pull/N/merge`` has to be fetched explicitly.
+
+    *resolve_option* is the ``http.curloptResolve`` pin from the SSRF guard, and
+    it must be repeated on every command that touches the network. Passing it
+    only to the first would leave the fetch — the one that actually transfers
+    the repository — free to follow a rotated DNS answer.
+    """
+    pin = ["-c", resolve_option] if resolve_option else []
+    if ref is None:
+        return [["git", *pin, "clone", "--depth", "1", clone_url, str(target)]]
+    return [
+        ["git", "init", "--quiet", str(target)],
+        ["git", "-C", str(target), "remote", "add", "origin", clone_url],
+        # `--` terminates option parsing: a ref is remote-controlled data on the
+        # webhook path, and git_ref_to_fetch's checks are the belt to this brace.
+        ["git", "-C", str(target), *pin, "fetch", "--depth", "1", "origin", "--", ref],
+        # Detached: FETCH_HEAD is a commit, and the scan only reads the tree.
+        ["git", "-C", str(target), "checkout", "--quiet", "--detach", "FETCH_HEAD"],
+    ]
+
+
+def _record_ref_fallback(*, scan_uuid: uuid.UUID, ref: str, reason: str) -> None:
+    """Note on the scan row that its requested ref could not be fetched.
+
+    A scan that silently swapped its target would report a verdict for code the
+    caller never asked about, with nothing to distinguish it from a verdict for
+    the code they did. The flag is what lets the UI and an operator tell the two
+    apart afterwards.
+
+    Best-effort: the scan is about to run either way, so a bookkeeping failure
+    must not abort it.
+    """
+    try:  # pragma: no cover - exercised through the live fetch path
+        with sync_session_scope() as session:
+            scan = session.get(Scan, scan_uuid)
+            if scan is None:
+                return
+            metadata = dict(scan.scan_metadata or {})
+            metadata["ref_fallback"] = {
+                "requested_ref": ref,
+                "reason": reason[:500],
+            }
+            scan.scan_metadata = metadata
+    except Exception:  # noqa: BLE001  # pragma: no cover
+        log.warning("scan_source_ref_fallback_not_recorded", scan_id=str(scan_uuid))
+
+
+def _clone_default_branch(
+    *,
+    clone_url: str,
+    target: Path,
+    resolve_option: str | None,
+    credential: str | None,
+    source_dir: Path,
+) -> Path:  # pragma: no cover - needs a live remote
+    """Clone the remote's default branch, the pre-ref behaviour."""
+    cmd = build_git_fetch_commands(
+        clone_url=clone_url, target=target, ref=None, resolve_option=resolve_option
+    )[0]
+    completed = subprocess.run(  # noqa: S603
+        cmd,
+        capture_output=True,
+        text=True,
+        timeout=600,
+        check=False,
+    )
+    if completed.returncode != 0:
+        safe_stderr = _scrub_clone_stderr(completed.stderr.strip(), credential)
+        raise _FetchAborted(f"git clone exited {completed.returncode}: {safe_stderr}")
+    return source_dir
 
 
 def _fetch_uploaded_archive(
