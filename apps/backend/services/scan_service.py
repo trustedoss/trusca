@@ -109,6 +109,53 @@ class ScanInProgressConflict(ScanError):
     status_code = 409
     title = "Scan Already In Progress"
 
+    def __init__(self, detail: str, *, active_scan_id: uuid.UUID | None = None) -> None:
+        """Carry the id of the scan that is holding the slot, when we know it.
+
+        A CI client that hits this has nothing useful to do with a bare 409: it
+        cannot start a scan, and re-running only hits the same wall. What it
+        actually wants is the scan already covering this ref, so it can wait on
+        that one instead of failing the build. The common trigger is a workflow
+        cancelling its own job mid-scan — the runner dies, the server-side scan
+        keeps going, and the replacement run collides with it.
+
+        ``None`` when the racing scan reached a terminal state between the
+        insert and this lookup, which is not worth a retry loop: the caller can
+        simply trigger again.
+        """
+        super().__init__(detail)
+        self.active_scan_id = active_scan_id
+        self.extensions = (
+            {"active_scan_id": str(active_scan_id)} if active_scan_id is not None else {}
+        )
+
+
+async def _active_scan_id_for_ref(
+    session: AsyncSession,
+    project_id: uuid.UUID,
+    ref: str | None,
+) -> uuid.UUID | None:
+    """Find the queued/running scan occupying ``(project_id, ref)``.
+
+    Called only after the partial unique index has already rejected an insert,
+    so a row is expected — but it may have finished in between, hence the
+    nullable return rather than an assertion.
+
+    ``IS NOT DISTINCT FROM`` mirrors the index's NULLS NOT DISTINCT semantics:
+    ref-less ad-hoc scans collide with each other, and ``Scan.ref == None``
+    would evaluate to NULL and match nothing.
+    """
+    stmt = (
+        select(Scan.id)
+        .where(Scan.project_id == project_id)
+        .where(Scan.ref.is_not_distinct_from(ref))
+        .where(Scan.status.in_(("queued", "running")))
+        .order_by(Scan.created_at.desc())
+        .limit(1)
+    )
+    result = await session.execute(stmt)
+    return result.scalar_one_or_none()
+
 
 def _in_progress_detail(project_id: object, ref: str | None) -> str:
     """Name the branch that is busy, not just the project.
@@ -733,6 +780,9 @@ async def trigger_scan(
         await session.rollback()
         raise ScanInProgressConflict(
             _in_progress_detail(project_id_value, scan.ref),
+            active_scan_id=await _active_scan_id_for_ref(
+                session, project_id_value, scan.ref
+            ),
         ) from exc
 
     # I-2: keep the project.latest_scan_id pointer in sync so list pages
@@ -752,6 +802,9 @@ async def trigger_scan(
         await session.rollback()
         raise ScanInProgressConflict(
             _in_progress_detail(project_id_value, scan.ref),
+            active_scan_id=await _active_scan_id_for_ref(
+                session, project_id_value, scan.ref
+            ),
         ) from exc
 
     await session.refresh(scan)

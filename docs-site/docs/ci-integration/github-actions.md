@@ -261,6 +261,20 @@ Now PRs cannot merge while the SCA check is pending or failing.
 
 Either the worker is overwhelmed (raise `poll-timeout-seconds`) or the scan genuinely hangs. Open the portal's scan in the UI for the live log.
 
+Timing out stops the *waiting*, not the scan — the portal keeps running it. Re-running the workflow right away therefore attaches to that same scan rather than starting a second one, and finishes as soon as it does.
+
+### "Attaching to the scan already running for this ref"
+
+Not an error. The portal permits one active scan per `(project, ref)`, so when a run finds its ref already busy it waits on the existing scan instead of failing.
+
+The usual cause is the workflow's own previous run. `cancel-in-progress: true` cancels the *runner*, but the scan it triggered keeps going server-side, so the replacement run collides with a scan nobody is watching. Attaching turns that into a normal wait.
+
+If the scan it attached to was triggered from a different commit on the same branch, its verdict describes that commit. Re-run once it finishes to grade the newer one.
+
+### Trigger is rate-limited (`429`)
+
+The action honours `Retry-After` and retries up to four times before failing. One API key shared across many repositories is the usual cause — the limit is per key, so give each repository its own.
+
 ### `403 Forbidden` from the action
 
 The API key's scope does not cover the project it is calling. Re-issue the key with scope `project` (preferred) bound to that project, or scope `team` if it must reach every project owned by a team. Verify the project belongs to the scope-bound team. See [API keys](../admin-guide/api-keys.md).

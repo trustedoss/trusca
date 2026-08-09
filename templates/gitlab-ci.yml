@@ -54,7 +54,16 @@
         if [ "$(id -u)" = "0" ] && command -v apk >/dev/null 2>&1; then
           apk add --no-cache jq
         else
+          # Downloading a binary and running it is a supply-chain step in its
+          # own right, inside the job whose whole purpose is supply-chain
+          # checking. Pin the checksum so a compromised or swapped release
+          # stops the pipeline instead of executing.
+          JQ_SHA256=5942c9b0934e510ee61eb3e30273f1b3fe2590df93933a93d7c58b81d19c8ff5
           curl -sSL -o /tmp/jq https://github.com/jqlang/jq/releases/download/jq-1.7.1/jq-linux64
+          echo "${JQ_SHA256}  /tmp/jq" | sha256sum -c - || {
+            echo "FATAL: jq download failed checksum verification"
+            exit 1
+          }
           chmod +x /tmp/jq
           mkdir -p "$HOME/.local/bin"
           mv /tmp/jq "$HOME/.local/bin/jq"
@@ -82,26 +91,60 @@
             + (if $mr  == "" then {} else {merge_request_iid: ($mr | tonumber)} end)
         )}')
 
-      response=$(curl --fail-with-body -sS -X POST \
-        -H "Authorization: Bearer ${TRUSTEDOSS_API_KEY}" \
-        -H "Content-Type: application/json" \
-        -H "Accept: application/json" \
-        -w "\n%{http_code}" \
-        "${api}/v1/projects/${TRUSTEDOSS_PROJECT_ID}/scans" \
-        -d "$body") || {
-          echo "FATAL: scan trigger failed:"
-          echo "$response"
-          exit 1
-        }
-      http_code=$(echo "$response" | tail -n1)
-      json_body=$(echo "$response" | sed '$d')
-      if [ "$http_code" != "202" ] && [ "$http_code" != "200" ]; then
-        echo "FATAL: unexpected HTTP $http_code from scan trigger:"
-        echo "$json_body"
-        exit 1
-      fi
-      SCAN_ID=$(echo "$json_body" | jq -er '.id')
-      echo "TrustedOSS scan enqueued: $SCAN_ID"
+      # One active scan is allowed per (project, ref), and triggers are rate
+      # limited per key. Neither should fail a pipeline: 429 waits out
+      # Retry-After, and 409 attaches to the scan already covering this ref.
+      HEADERS=$(mktemp)
+      trap 'rm -f "$HEADERS"' EXIT
+      SCAN_ID=""
+      ATTEMPT=0
+      while [ -z "$SCAN_ID" ]; do
+        ATTEMPT=$((ATTEMPT + 1))
+        # `|| true` so a 4xx reaches the dispatch below rather than aborting.
+        response=$(curl --fail-with-body -sS -X POST \
+          -H "Authorization: Bearer ${TRUSTEDOSS_API_KEY}" \
+          -H "Content-Type: application/json" \
+          -H "Accept: application/json" \
+          -D "$HEADERS" \
+          -w "\n%{http_code}" \
+          "${api}/v1/projects/${TRUSTEDOSS_PROJECT_ID}/scans" \
+          -d "$body") || true
+        http_code=$(echo "$response" | tail -n1)
+        json_body=$(echo "$response" | sed '$d')
+        case "$http_code" in
+          200|202)
+            SCAN_ID=$(echo "$json_body" | jq -er '.id')
+            echo "TrustedOSS scan enqueued: $SCAN_ID"
+            ;;
+          409)
+            SCAN_ID=$(echo "$json_body" | jq -r '.active_scan_id // empty')
+            if [ -z "$SCAN_ID" ]; then
+              echo "FATAL: a scan is already active for this ref but the portal did not name it:"
+              echo "$json_body"
+              exit 1
+            fi
+            echo "Attaching to the scan already running for this ref: $SCAN_ID"
+            ;;
+          429)
+            if [ "$ATTEMPT" -ge 4 ]; then
+              echo "FATAL: still rate-limited after $ATTEMPT attempts:"
+              echo "$json_body"
+              exit 1
+            fi
+            WAIT=$(grep -i '^retry-after:' "$HEADERS" | tail -n1 | tr -d '\r' | awk '{print $2}')
+            case "$WAIT" in
+              ''|*[!0-9]*) WAIT=60 ;;
+            esac
+            echo "WARN: rate-limited by the portal; retrying in ${WAIT}s"
+            sleep "$WAIT"
+            ;;
+          *)
+            echo "FATAL: unexpected HTTP $http_code from scan trigger:"
+            echo "$json_body"
+            exit 1
+            ;;
+        esac
+      done
       # Persist scan_id between script lines via the dotenv artifact below.
       echo "TRUSTEDOSS_SCAN_ID=$SCAN_ID" >> trustedoss.env
 
@@ -114,16 +157,25 @@
       # shellcheck disable=SC1091
       . ./trustedoss.env
       deadline=$(( $(date +%s) + TRUSTEDOSS_POLL_TIMEOUT ))
+      # A scan runs for tens of minutes; one network blip must not discard work
+      # that is nearly done. Give up only when the portal stays unreachable.
+      FAILURES=0
       while :; do
-        response=$(curl --fail-with-body -sS \
+        if ! response=$(curl --fail-with-body -sS \
           -H "Authorization: Bearer ${TRUSTEDOSS_API_KEY}" \
           -H "Accept: application/json" \
           -w "\n%{http_code}" \
-          "${api}/v1/scans/${TRUSTEDOSS_SCAN_ID}") || {
-            echo "FATAL: scan status fetch failed:"
+          "${api}/v1/scans/${TRUSTEDOSS_SCAN_ID}"); then
+          FAILURES=$((FAILURES + 1))
+          if [ "$FAILURES" -ge 3 ]; then
+            echo "FATAL: scan status fetch failed ${FAILURES}x in a row:"
             echo "$response"
             exit 1
-          }
+          fi
+          echo "WARN: status poll failed (${FAILURES}/3); retrying"
+          sleep "$TRUSTEDOSS_POLL_INTERVAL"
+          continue
+        fi
         http_code=$(echo "$response" | tail -n1)
         json_body=$(echo "$response" | sed '$d')
         if [ "$http_code" != "200" ]; then
@@ -131,6 +183,7 @@
           echo "$json_body"
           exit 1
         fi
+        FAILURES=0
         scan_status=$(echo "$json_body" | jq -r '.status')
         progress=$(echo "$json_body" | jq -r '.progress_percent // 0')
         step=$(echo "$json_body" | jq -r '.current_step // "?"')
@@ -146,7 +199,9 @@
           *) echo "WARN: unknown status '$scan_status', continuing" ;;
         esac
         if [ "$(date +%s)" -ge "$deadline" ]; then
-          echo "FATAL: scan did not finish within ${TRUSTEDOSS_POLL_TIMEOUT}s"
+          echo "FATAL: scan did not finish within ${TRUSTEDOSS_POLL_TIMEOUT}s."
+          echo "The portal is still running it — this job stopped waiting, it did not cancel the scan."
+          echo "Raise TRUSTEDOSS_POLL_TIMEOUT, or re-run later; a re-run started now would attach to it."
           exit 1
         fi
         sleep "$TRUSTEDOSS_POLL_INTERVAL"
