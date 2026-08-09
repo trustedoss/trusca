@@ -28,8 +28,17 @@ vi.mock("@/features/projects/api/licensesApi", async () => {
   return {
     listProjectLicenses: vi.fn(),
     getLicenseFinding: vi.fn(),
-    // Real value re-exported so the toolbar's REVIEW_FLAG_OPTIONS still builds.
+    // Real values re-exported so the toolbar's REVIEW_FLAG_OPTIONS and
+    // CONFLICT_OPTIONS still build. The set-equality guard against the backend
+    // lives in tests/unit/contracts/catalogMirrors.test.ts, so these copies
+    // cannot drift unnoticed.
     REVIEW_FLAG_VALUES: ["behavioral_use", "non_commercial"] as const,
+    CONFLICT_VERDICT_VALUES: [
+      "incompatible",
+      "conditional",
+      "unknown",
+      "compatible",
+    ] as const,
   };
 });
 
@@ -77,6 +86,7 @@ function lic(
     is_osi_approved: false,
     is_fsf_libre: false,
     review_flag: null,
+    conflict: null,
     sample_finding_id: id,
     ...overrides,
   };
@@ -98,8 +108,16 @@ function listResponse(
   items: LicenseListItem[],
   total = items.length,
   dist: LicenseDistribution = distribution(),
+  overrides: Partial<LicenseListResponse> = {},
 ): LicenseListResponse {
-  return { items, total, distribution: dist };
+  return {
+    items,
+    total,
+    distribution: dist,
+    declared_license: null,
+    conflict_summary: null,
+    ...overrides,
+  };
 }
 
 function renderTab(initialEntries: string[] = ["/projects/proj-1"]) {

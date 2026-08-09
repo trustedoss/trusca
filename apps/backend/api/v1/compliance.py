@@ -34,7 +34,7 @@ from core.db import get_db
 from core.errors import problem_response
 from core.security import CurrentUser, require_role
 from schemas.compliance import ComplianceListResponse, ComplianceRow
-from schemas.license_detail import LicenseDistribution
+from schemas.license_detail import ConflictSummary, LicenseDistribution
 from services.compliance_service import ComplianceError, list_project_compliance
 from services.project_service import ProjectError
 from services.scan_resolution import SnapshotScanNotFound
@@ -115,12 +115,28 @@ async def list_project_compliance_endpoint(
         pattern=r"^(category|license_name|spdx_id|affected_count)$",
     ),
     order: str = Query(default="desc", pattern=r"^(asc|desc)$"),
+    conflict: str | None = Query(
+        default=None,
+        pattern=r"^(compatible|conditional|incompatible|unknown)$",
+        description=(
+            "Filter to licenses carrying this outbound-conflict verdict (gap "
+            "#27). Matches nothing when the project declares no outbound "
+            "license, since nothing is assessed without one. Omit to list all."
+        ),
+    ),
     scan_id: uuid.UUID | None = Depends(snapshot_anchor),
     session: AsyncSession = Depends(get_db),
     actor: CurrentUser = Depends(require_role("developer")),
 ) -> Response:
     try:
-        items, distribution, total, generated_at = await list_project_compliance(
+        (
+            items,
+            distribution,
+            total,
+            generated_at,
+            declared_license,
+            conflict_summary,
+        ) = await list_project_compliance(
             session,
             project_id=project_id,
             actor=actor,
@@ -132,6 +148,7 @@ async def list_project_compliance_endpoint(
             has_obligations=has_obligations,
             sort=sort,
             order=order,
+            conflict=conflict,
             snapshot_scan_id=scan_id,
         )
     except SnapshotScanNotFound:
@@ -146,6 +163,10 @@ async def list_project_compliance_endpoint(
         limit=limit,
         offset=offset,
         generated_at=generated_at,
+        declared_license=declared_license,
+        conflict_summary=(
+            ConflictSummary(**conflict_summary) if conflict_summary is not None else None
+        ),
     )
     return Response(
         content=body.model_dump_json(),

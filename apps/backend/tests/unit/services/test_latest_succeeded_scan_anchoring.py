@@ -418,7 +418,7 @@ async def test_all_detail_reads_reflect_succeeded_scan_not_failed_attempt(
     assert sum(1 for v in vulns if v["severity"] == "critical") == gate.critical_cve_count
 
     # --- Licenses tab: list + distribution ---
-    lic_items, lic_distribution, lic_total = await list_project_licenses(
+    lic_items, lic_distribution, lic_total, *_ = await list_project_licenses(
         db_session, project_id=project.id, actor=actor
     )
     assert lic_total == 2
@@ -482,7 +482,7 @@ async def test_reads_stay_empty_when_no_succeeded_scan_exists(
     )
     assert (vulns, total_vulns) == ([], 0)
 
-    lic_items, _lic_dist, lic_total = await list_project_licenses(
+    lic_items, _lic_dist, lic_total, *_ = await list_project_licenses(
         db_session, project_id=project.id, actor=actor
     )
     assert (lic_items, lic_total) == ([], 0)

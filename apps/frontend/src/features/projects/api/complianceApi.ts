@@ -26,6 +26,21 @@ import type { LicenseCategoryName } from "@/features/projects/api/projectDetailA
 
 export type { LicenseCategoryName } from "@/features/projects/api/projectDetailApi";
 
+// The outbound-conflict wire shapes are declared once, on the licenses
+// surface, and reused here: both endpoints serve the same verdict computed by
+// the same backend service, so a second declaration could only ever drift.
+import type {
+  ConflictSummary,
+  ConflictVerdictName,
+  OutboundConflict,
+} from "@/features/projects/api/licensesApi";
+
+export type {
+  ConflictSummary,
+  ConflictVerdictName,
+  OutboundConflict,
+} from "@/features/projects/api/licensesApi";
+
 export type ComplianceSortKey =
   | "category"
   | "license_name"
@@ -73,6 +88,12 @@ export interface ComplianceRow {
   obligations: ComplianceObligation[];
   notice_required: boolean;
   category_override_source: string | null;
+  /**
+   * Standing against the project's declared outbound license (gap #27). `null`
+   * when the project declares none — nothing was assessed, which the UI must
+   * not render as "no conflict". Advisory, never a legal determination.
+   */
+  conflict: OutboundConflict | null;
 }
 
 export interface ComplianceDistribution {
@@ -89,6 +110,10 @@ export interface ComplianceListResponse {
   limit: number;
   offset: number;
   generated_at: string;
+  /** The outbound license the verdicts were measured against. Null if none. */
+  declared_license: string | null;
+  /** Verdict counts across the whole scan. Null when nothing was assessed. */
+  conflict_summary: ConflictSummary | null;
 }
 
 // ---------------------------------------------------------------------------
@@ -106,6 +131,11 @@ export interface ListComplianceParams {
   has_obligations?: boolean;
   sort?: ComplianceSortKey;
   order?: SortOrder;
+  /**
+   * Narrow to licenses carrying one outbound-conflict verdict (gap #27).
+   * Matches nothing when the project declares no outbound license.
+   */
+  conflict?: ConflictVerdictName;
   /**
    * Pin the read to a specific succeeded scan (feature #28 snapshot anchoring).
    * Omit → the project's latest succeeded scan (default).
@@ -133,6 +163,7 @@ function listComplianceQuery(
   }
   if (params.sort != null) out.sort = params.sort;
   if (params.order != null) out.order = params.order;
+  if (params.conflict != null) out.conflict = params.conflict;
   if (params.scanId != null && params.scanId.length > 0) {
     out.scan_id = params.scanId;
   }

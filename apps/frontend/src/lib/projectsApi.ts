@@ -59,6 +59,12 @@ export interface ProjectPublic {
   description: string | null;
   git_url: string | null;
   default_branch: string | null;
+  /**
+   * SPDX id or expression the project is distributed under (gap #27). `null`
+   * when undeclared, in which case outbound-license conflicts are not assessed
+   * at all — which the Licenses tab must not present as "no conflicts".
+   */
+  declared_license: string | null;
   visibility: ProjectVisibility;
   archived_at: string | null;
   created_by_user_id: string | null;
@@ -198,6 +204,7 @@ export interface ProjectCreatePayload {
   description?: string | null;
   git_url?: string | null;
   default_branch?: string | null;
+  declared_license?: string | null;
   visibility?: ProjectVisibility;
 }
 
@@ -206,6 +213,8 @@ export interface ProjectUpdatePayload {
   description?: string | null;
   git_url?: string | null;
   default_branch?: string | null;
+  /** SPDX outbound license; send "" to clear an existing declaration. */
+  declared_license?: string | null;
   visibility?: ProjectVisibility;
   /**
    * Write-only git credential (feature #18). Set a non-empty token to store it

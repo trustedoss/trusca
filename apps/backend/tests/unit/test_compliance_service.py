@@ -308,7 +308,7 @@ async def test_empty_when_project_has_no_succeeded_scan(
     project = await make_project(db_session, team=team)
     actor = principal_for(user, team_ids=[team.id], role="developer")
 
-    items, distribution, total, generated_at = await list_project_compliance(
+    items, distribution, total, generated_at, *_ = await list_project_compliance(
         db_session, project_id=project.id, actor=actor
     )
     assert items == []
@@ -362,7 +362,7 @@ async def test_happy_path_returns_grid_with_join(db_session: AsyncSession) -> No
         text="Provide attribution in NOTICE.",
     )
 
-    items, distribution, total, _ = await list_project_compliance(
+    items, distribution, total, _, *_ = await list_project_compliance(
         db_session, project_id=project.id, actor=actor
     )
     # Exactly one row for the one license.
@@ -405,7 +405,7 @@ async def test_affected_components_preview_capped_at_five(
             db_session, scan_id=scan.id, cv_id=cv.id, license_id=lic.id
         )
 
-    items, _, _, _ = await list_project_compliance(
+    items, _, _, _, *_ = await list_project_compliance(
         db_session, project_id=project.id, actor=actor
     )
     matching = [r for r in items if r["license_id"] == lic.id]
@@ -431,7 +431,7 @@ async def test_distribution_unfiltered_under_category_filter(
     await _attach_license_finding(db_session, scan_id=scan.id, cv_id=cv1.id, license_id=mit.id)
     await _attach_license_finding(db_session, scan_id=scan.id, cv_id=cv2.id, license_id=gpl.id)
 
-    items, distribution, total, _ = await list_project_compliance(
+    items, distribution, total, _, *_ = await list_project_compliance(
         db_session,
         project_id=project.id,
         actor=actor,
@@ -465,7 +465,7 @@ async def test_has_obligations_filter_isolates_licenses_with_obligations(
         db_session, license_id=apache.id, kind="attribution", text="See NOTICE."
     )
 
-    with_obs, _, _, _ = await list_project_compliance(
+    with_obs, _, _, _, *_ = await list_project_compliance(
         db_session,
         project_id=project.id,
         actor=actor,
@@ -474,7 +474,7 @@ async def test_has_obligations_filter_isolates_licenses_with_obligations(
     assert apache.id in {r["license_id"] for r in with_obs}
     assert isc.id not in {r["license_id"] for r in with_obs}
 
-    without_obs, _, _, _ = await list_project_compliance(
+    without_obs, _, _, _, *_ = await list_project_compliance(
         db_session,
         project_id=project.id,
         actor=actor,
@@ -504,7 +504,7 @@ async def test_kind_filter_returns_only_licenses_with_matching_obligations(
         db_session, license_id=mpl.id, kind="attribution", text="Attribute MPL."
     )
 
-    items, _, _, _ = await list_project_compliance(
+    items, _, _, _, *_ = await list_project_compliance(
         db_session,
         project_id=project.id,
         actor=actor,
@@ -534,7 +534,7 @@ async def test_search_matches_spdx_id_or_name(db_session: AsyncSession) -> None:
     await _attach_license_finding(db_session, scan_id=scan.id, cv_id=cv1.id, license_id=apache.id)
     await _attach_license_finding(db_session, scan_id=scan.id, cv_id=cv2.id, license_id=mit.id)
 
-    items, _, _, _ = await list_project_compliance(
+    items, _, _, _, *_ = await list_project_compliance(
         db_session,
         project_id=project.id,
         actor=actor,
@@ -559,10 +559,10 @@ async def test_pagination_returns_consistent_total(db_session: AsyncSession) -> 
         )
         licenses_made.append(lic.id)
 
-    items_p1, _, total_p1, _ = await list_project_compliance(
+    items_p1, _, total_p1, _, *_ = await list_project_compliance(
         db_session, project_id=project.id, actor=actor, limit=2, offset=0,
     )
-    items_p2, _, total_p2, _ = await list_project_compliance(
+    items_p2, _, total_p2, _, *_ = await list_project_compliance(
         db_session, project_id=project.id, actor=actor, limit=2, offset=2,
     )
     # Total is stable across pages.
@@ -600,7 +600,7 @@ async def test_snapshot_scan_id_pins_to_specific_scan(db_session: AsyncSession) 
     )
 
     # Default → latest scan, sees ``lic_new``, not ``lic_old``.
-    items_latest, _, _, _ = await list_project_compliance(
+    items_latest, _, _, _, *_ = await list_project_compliance(
         db_session, project_id=project.id, actor=actor,
     )
     latest_lic_ids = {r["license_id"] for r in items_latest}
@@ -608,9 +608,209 @@ async def test_snapshot_scan_id_pins_to_specific_scan(db_session: AsyncSession) 
     assert lic_old.id not in latest_lic_ids
 
     # Pinned to scan_old → sees ``lic_old``, not ``lic_new``.
-    items_old, _, _, _ = await list_project_compliance(
+    items_old, _, _, _, *_ = await list_project_compliance(
         db_session, project_id=project.id, actor=actor, snapshot_scan_id=scan_old.id,
     )
     old_lic_ids = {r["license_id"] for r in items_old}
     assert lic_old.id in old_lic_ids
     assert lic_new.id not in old_lic_ids
+
+
+# ---------------------------------------------------------------------------
+# Outbound-license conflict (gap #27)
+# ---------------------------------------------------------------------------
+
+
+async def _shared_license(session: AsyncSession, *, spdx_id: str, category: str):
+    """A catalog row with a REAL SPDX id, reused across tests.
+
+    ``licenses.spdx_id`` is unique, and the conflict verdict depends on the id
+    being the real one — ``_make_license``'s unique-suffix trick would turn
+    ``MIT`` into an unrecognised identifier and every verdict into "unknown".
+    So these tests share one row per id instead of minting their own.
+    """
+    from sqlalchemy import select as sa_select
+
+    from models import License as LicenseModel
+
+    found = await session.execute(
+        sa_select(LicenseModel).where(LicenseModel.spdx_id == spdx_id)
+    )
+    existing = found.scalar_one_or_none()
+    if existing is not None:
+        return existing
+    return await _make_license(session, spdx_id=spdx_id, category=category)
+
+
+@pytestmark_db
+async def test_no_declared_license_means_no_verdict_anywhere(
+    db_session: AsyncSession,
+) -> None:
+    """Absent is not clean.
+
+    A project that declares nothing must produce ``None`` on every row and a
+    ``None`` summary — not ``compatible``, and not a zeroed summary that would
+    read as "we looked and found nothing".
+    """
+    team, user, project, scan = await _make_project_with_scan(db_session)
+    actor = principal_for(user, team_ids=[team.id], role="developer")
+    assert project.declared_license is None
+
+    _, cv = await _make_component_version(db_session)
+    gpl = await _shared_license(db_session, spdx_id="GPL-3.0-only", category="forbidden")
+    await _attach_license_finding(
+        db_session, scan_id=scan.id, cv_id=cv.id, license_id=gpl.id
+    )
+
+    items, _, _, _, declared, summary = await list_project_compliance(
+        db_session, project_id=project.id, actor=actor
+    )
+    assert declared is None
+    assert summary is None
+    assert [r["conflict"] for r in items] == [None] * len(items)
+
+
+@pytestmark_db
+async def test_declared_license_produces_verdicts_and_a_summary(
+    db_session: AsyncSession,
+) -> None:
+    team, user, project, scan = await _make_project_with_scan(db_session)
+    actor = principal_for(user, team_ids=[team.id], role="developer")
+    project.declared_license = "Apache-2.0"
+    await db_session.commit()
+
+    _, cv_gpl = await _make_component_version(db_session)
+    _, cv_mit = await _make_component_version(db_session)
+    gpl = await _shared_license(db_session, spdx_id="GPL-3.0-only", category="forbidden")
+    mit = await _shared_license(db_session, spdx_id="MIT", category="allowed")
+    await _attach_license_finding(
+        db_session, scan_id=scan.id, cv_id=cv_gpl.id, license_id=gpl.id
+    )
+    await _attach_license_finding(
+        db_session, scan_id=scan.id, cv_id=cv_mit.id, license_id=mit.id
+    )
+
+    items, _, _, _, declared, summary = await list_project_compliance(
+        db_session, project_id=project.id, actor=actor
+    )
+    assert declared == "Apache-2.0"
+    by_license = {r["license_id"]: r["conflict"] for r in items}
+    assert by_license[gpl.id]["verdict"] == "incompatible"
+    assert by_license[mit.id]["verdict"] == "compatible"
+    # The reason travels with the verdict — a bare verdict invites the reader
+    # to treat it as a determination.
+    assert by_license[gpl.id]["why"].strip()
+    assert by_license[gpl.id]["dependency_class"] == "strong-copyleft"
+    assert summary is not None
+    assert summary["incompatible"] >= 1
+    assert summary["compatible"] >= 1
+
+
+@pytestmark_db
+async def test_conflict_filter_constrains_total_and_page_together(
+    db_session: AsyncSession,
+) -> None:
+    """The filter is applied in the query, so ``total`` matches what is pageable.
+
+    An in-page filter would report a total the user cannot reach — the failure
+    mode this test exists to pin.
+    """
+    team, user, project, scan = await _make_project_with_scan(db_session)
+    actor = principal_for(user, team_ids=[team.id], role="developer")
+    project.declared_license = "Apache-2.0"
+    await db_session.commit()
+
+    _, cv_gpl = await _make_component_version(db_session)
+    _, cv_mit = await _make_component_version(db_session)
+    gpl = await _shared_license(db_session, spdx_id="GPL-3.0-only", category="forbidden")
+    mit = await _shared_license(db_session, spdx_id="MIT", category="allowed")
+    await _attach_license_finding(
+        db_session, scan_id=scan.id, cv_id=cv_gpl.id, license_id=gpl.id
+    )
+    await _attach_license_finding(
+        db_session, scan_id=scan.id, cv_id=cv_mit.id, license_id=mit.id
+    )
+
+    items, _, total, _, _, _ = await list_project_compliance(
+        db_session, project_id=project.id, actor=actor, conflict="incompatible"
+    )
+    assert total == len(items)
+    assert {r["license_id"] for r in items} == {gpl.id}
+
+
+@pytestmark_db
+async def test_conflict_filter_without_a_declaration_matches_nothing(
+    db_session: AsyncSession,
+) -> None:
+    """Nothing was judged, so nothing can match — and it is not a 422 either."""
+    team, user, project, scan = await _make_project_with_scan(db_session)
+    actor = principal_for(user, team_ids=[team.id], role="developer")
+
+    _, cv = await _make_component_version(db_session)
+    mit = await _shared_license(db_session, spdx_id="MIT", category="allowed")
+    await _attach_license_finding(
+        db_session, scan_id=scan.id, cv_id=cv.id, license_id=mit.id
+    )
+
+    items, _, total, _, declared, summary = await list_project_compliance(
+        db_session, project_id=project.id, actor=actor, conflict="compatible"
+    )
+    assert items == []
+    assert total == 0
+    assert declared is None
+    assert summary is None
+
+
+@pytestmark_db
+async def test_unknown_conflict_token_collapses_without_422(
+    db_session: AsyncSession,
+) -> None:
+    team, user, project, scan = await _make_project_with_scan(db_session)
+    actor = principal_for(user, team_ids=[team.id], role="developer")
+    project.declared_license = "Apache-2.0"
+    await db_session.commit()
+
+    _, cv = await _make_component_version(db_session)
+    mit = await _shared_license(db_session, spdx_id="MIT", category="allowed")
+    await _attach_license_finding(
+        db_session, scan_id=scan.id, cv_id=cv.id, license_id=mit.id
+    )
+
+    items, _, total, _, _, summary = await list_project_compliance(
+        db_session, project_id=project.id, actor=actor, conflict="not-a-verdict"
+    )
+    assert items == []
+    assert total == 0
+    # The summary still reflects the underlying scan, like the other filters.
+    assert summary is not None
+
+
+@pytestmark_db
+async def test_cross_team_denial_precedes_conflict_evaluation(
+    db_session: AsyncSession,
+) -> None:
+    """Permission denial comes first, before any verdict work (hardening rule 1).
+
+    A declared outbound license must not change who may read the grid, and the
+    403 must not depend on whether the scan happened to carry a conflict.
+    """
+    team_a, _, project, scan = await _make_project_with_scan(db_session)
+    project.declared_license = "Apache-2.0"
+    await db_session.commit()
+
+    _, cv = await _make_component_version(db_session)
+    gpl = await _shared_license(db_session, spdx_id="GPL-3.0-only", category="forbidden")
+    await _attach_license_finding(
+        db_session, scan_id=scan.id, cv_id=cv.id, license_id=gpl.id
+    )
+
+    other_org = await make_organization(db_session)
+    other_team = await make_team(db_session, organization=other_org)
+    outsider = await make_user(db_session)
+    await make_membership(db_session, user=outsider, team=other_team, role="developer")
+    intruder = principal_for(outsider, team_ids=[other_team.id], role="developer")
+
+    with pytest.raises(ProjectForbidden):
+        await list_project_compliance(
+            db_session, project_id=project.id, actor=intruder, conflict="incompatible"
+        )

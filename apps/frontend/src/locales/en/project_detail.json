@@ -715,7 +715,11 @@
       },
       "order_label": "Order",
       "order_asc": "Ascending",
-      "order_desc": "Descending"
+      "order_desc": "Descending",
+      "filter_conflict": "Outbound conflict",
+      "conflict": {
+        "all": "All verdicts"
+      }
     },
     "review": {
       "badge_label": "Review needed",
@@ -738,7 +742,8 @@
       "name": "License",
       "category": "Category",
       "kind": "Kind",
-      "affected_count": "Affected components"
+      "affected_count": "Affected components",
+      "conflict": "Outbound conflict"
     },
     "row": {
       "no_spdx_id": "—"
@@ -820,7 +825,35 @@
           "EXECUTABLE": "Executable",
           "NETWORK": "Network"
         }
+      },
+      "conflict": {
+        "title": "Outbound license",
+        "strength": "Classified as {{strength}}.",
+        "disclaimer": "This compares license terms as a documentation aid. Whether a combination is permissible in your case is a human and legal judgement."
       }
+    },
+    "conflict": {
+      "verdict": {
+        "incompatible": "Incompatible",
+        "conditional": "Conditional",
+        "unknown": "Unknown",
+        "compatible": "Compatible"
+      },
+      "class": {
+        "permissive": "permissive",
+        "weak-copyleft": "weak copyleft",
+        "strong-copyleft": "strong copyleft",
+        "network-copyleft": "network copyleft",
+        "uncategorized": "unclassified"
+      },
+      "measured_against": "Measured against {{license}}",
+      "count": {
+        "incompatible": "{{count}} incompatible",
+        "conditional": "{{count}} conditional"
+      },
+      "advisory": "Advisory — not a legal determination.",
+      "undeclared": "No outbound license declared, so nothing was assessed. Set one in Settings to see conflicts.",
+      "not_assessed": "Too many distinct licenses in this scan to assess against {{license}}. Nothing was measured."
     }
   },
   "obligations": {
@@ -975,14 +1008,18 @@
       "git_url": "Git URL",
       "git_url_placeholder": "https://github.com/org/repo",
       "default_branch": "Default branch",
-      "default_branch_placeholder": "main"
+      "default_branch_placeholder": "main",
+      "declared_license": "Outbound license",
+      "declared_license_placeholder": "Apache-2.0",
+      "declared_license_help": "The license this project is distributed under, as an SPDX id or expression. The Licenses tab judges every dependency against it. Leave empty to skip the assessment."
     },
     "errors": {
       "name_required": "Project name is required",
       "name_max": "Name must be 100 characters or less",
       "description_max": "Description must be 500 characters or less",
       "git_url_invalid": "Must be a valid URL (https:// or http://)",
-      "default_branch_max": "Default branch must be 255 characters or less"
+      "default_branch_max": "Default branch must be 255 characters or less",
+      "declared_license_max": "Outbound license must be 255 characters or fewer"
     },
     "action": {
       "save": "Save changes",

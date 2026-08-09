@@ -178,6 +178,11 @@ class Project(Base):
         nullable=False,
         server_default=text("'team'"),
     )
+    # Gap #27 — the license the project itself is distributed under, as an SPDX
+    # id or expression. Read by ``services/license_conflict.py`` to judge every
+    # dependency license against it. NULL means "not declared": no verdict is
+    # produced at all, which is deliberately distinct from a clean verdict.
+    declared_license: Mapped[str | None] = mapped_column(String(255), nullable=True)
     archived_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     created_by_user_id: Mapped[uuid.UUID | None] = mapped_column(
         UUID_PK,

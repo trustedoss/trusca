@@ -1324,6 +1324,70 @@ export class PortalPage {
   }
 
   /**
+   * Narrow the Compliance grid to one outbound-conflict verdict (gap #27),
+   * or clear the facet with `null`. Asserts the URL mirror so a reload keeps
+   * the filter, then waits for the next page.
+   *
+   * The facet only exists when the project declares an outbound license — a
+   * filter that could only return nothing is hidden rather than disabled — so
+   * this verb fails fast with a readable message when it is absent.
+   */
+  async filterLicensesByConflict(
+    verdict: "incompatible" | "conditional" | "unknown" | "compatible" | null,
+  ): Promise<void> {
+    const select = this.page.getByTestId("compliance-conflict-filter");
+    await select.waitFor({ state: "visible", timeout: 5_000 });
+    await select.selectOption(verdict ?? "");
+    await expect
+      .poll(
+        () => new URL(this.page.url()).searchParams.get("compliance_conflict"),
+        { timeout: 5_000 },
+      )
+      .toBe(verdict);
+    await this.expectLicensesTabReady();
+  }
+
+  /**
+   * The outbound-conflict verdicts rendered on the current page, in row order.
+   * Reads `data-conflict` (empty string when the row carries none), which is
+   * locale-agnostic — the badge text is translated.
+   */
+  async getLicenseConflictVerdicts(): Promise<string[]> {
+    return this.page
+      .locator('[data-testid="compliance-row"]')
+      .evaluateAll((rows) =>
+        rows.map((r) => r.getAttribute("data-conflict") ?? ""),
+      );
+  }
+
+  /**
+   * The outbound license the grid says it measured against, or `null` when
+   * the project declares none (the grid then renders the "not assessed"
+   * notice instead — assert on `compliance-outbound-undeclared`).
+   */
+  async getDeclaredOutboundLicense(): Promise<string | null> {
+    const value = await this.page
+      .getByTestId("compliance-summary")
+      .getAttribute("data-declared-license");
+    return value ? value : null;
+  }
+
+  /**
+   * Set the project's outbound license from the Settings tab and save.
+   * Pass `""` to clear it. Leaves the browser on the Settings tab.
+   */
+  async setOutboundLicense(spdxExpression: string): Promise<void> {
+    await this.page.getByTestId("project-detail-tab-settings").click();
+    const input = this.page.getByTestId("settings-declared-license-input");
+    await input.waitFor({ state: "visible", timeout: 10_000 });
+    await input.fill(spdxExpression);
+    await this.page.getByTestId("settings-save-button").click();
+    await this.page
+      .getByTestId("settings-toast")
+      .waitFor({ state: "visible", timeout: 10_000 });
+  }
+
+  /**
    * Drive a checkbox-popover {@link MultiSelect} to the exact target set.
    * Opens the trigger, toggles only the options whose current checked state
    * differs from the target, then closes the popover with Escape so the

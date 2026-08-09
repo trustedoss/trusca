@@ -328,6 +328,60 @@ Behavioral-use and non-commercial restrictions travel with AI models and dataset
 - The flag is advisory: it never blocks a build and never changes the legal tier. A component can be tier `permissive` and still carry a **Review needed** flag.
 - Flagged licenses also appear in a dedicated "License review needed" section of the generated NOTICE document — see [SBOM → NOTICE file](./sbom.md#notice-file).
 
+## Outbound license conflicts {#outbound-license-conflicts}
+
+The tier model answers "may we use this license here". A different question
+decides most real compliance work: *we distribute this project under Apache-2.0
+— can it carry this dependency?* The same LGPL-2.1 dependency is unremarkable
+in an internal service and a problem in a permissively-licensed library, and no
+tier can express that difference, because a conflict exists only relative to
+what you ship.
+
+Declare what you ship in **Project → Settings → Outbound license**, as an SPDX
+identifier or expression (`Apache-2.0`, `MIT OR Apache-2.0`). The Compliance
+tab then judges every license in the scan against it and shows a verdict column
+plus a **Outbound conflict** filter.
+
+| Verdict (code value) | UI label | What it means |
+|---|---|---|
+| `incompatible` | **Incompatible** | The dependency's terms cannot be met while distributing under the license you declared. |
+| `conditional` | **Conditional** | Permitted, but the combination carries obligations that depend on how you distribute or link. A person has to check. |
+| `unknown` | **Unknown** | Not enough information — the dependency's license was not recognised, or the one you declared was not. |
+| `compatible` | **Compatible** | No conflict between this dependency and the declared outbound license. |
+
+Every verdict arrives with the sentence that justifies it, shown in the row's
+tooltip and in full in the license drawer, together with the copyleft strength
+the license was classified as (permissive, weak / strong / network copyleft, or
+unclassified). The reasoning is meant to be argued with, not taken on trust.
+
+:::note Advisory, and never a legal determination
+This compares license terms as a documentation aid. `conditional` is used
+generously and `incompatible` is reserved for combinations that are
+uncontroversial; whether any combination is permissible in your case is a human
+and legal judgment. The verdict never blocks a build and never changes a
+license's tier.
+:::
+
+:::warning No declaration means nothing was assessed
+A project with no outbound license declared shows no verdict column at all, and
+the tab says so. An empty column is not a clean result — it means the question
+was never asked. Clear the field to go back to that state.
+:::
+
+Compound expressions follow their operators. A dependency licensed
+`MIT OR GPL-3.0-only` is clean against a permissive outbound license, because a
+consumer may take the MIT side; `MIT AND GPL-3.0-only` is not, because both
+apply at once. A `WITH` exception clause caps a verdict at `conditional` rather
+than `incompatible` — such a clause exists precisely to permit the combination
+the base license would forbid, so what remains is confirming that it covers
+your use.
+
+The outbound side reads the other way round. Declaring `MIT OR Apache-2.0`
+means a consumer may end up relying on either branch, so the declaration is
+honoured only if *every* license it names can carry the dependency — the
+strictest branch decides. That is why an AGPL dependency is `incompatible`
+against `MIT OR GPL-3.0-only` even though the GPL branch alone would allow it.
+
 ## Declared vs. detected {#declared-vs-detected}
 
 Each license finding has a **kind** that tells you where the license came from. The kind shows as a provenance badge in the components table, the Licenses tab, and the component drawer, and you can filter the Licenses tab by it.

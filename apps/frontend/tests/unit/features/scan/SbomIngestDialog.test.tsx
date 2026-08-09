@@ -34,6 +34,7 @@ function makeProject(): ProjectPublic {
     description: null,
     git_url: null,
     default_branch: "main",
+    declared_license: null,
     visibility: "team",
     archived_at: null,
     created_by_user_id: null,

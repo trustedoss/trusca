@@ -162,6 +162,7 @@ async def create_project(
         git_url=payload.git_url,
         default_branch=payload.default_branch,
         visibility=payload.visibility,
+        declared_license=payload.declared_license,
         created_by_user_id=actor.id,
     )
     session.add(project)

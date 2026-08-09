@@ -37,6 +37,7 @@
  *   - ``?compliance_search=…``           free-text (SPDX or name)
  *   - ``?compliance_category=a,b,c``     comma-separated category filter
  *   - ``?compliance_has_obligations=true|false`` boolean filter
+ *   - ``?compliance_conflict=<verdict>``  outbound-license conflict (gap #27)
  *   - ``?compliance_sort=category|license_name|spdx_id|affected_count``
  *   - ``?compliance_order=asc|desc``     order toggle
  *   - ``?compliance_page=N``             1-based page index
@@ -80,8 +81,10 @@ import type {
   ComplianceObligation,
   ComplianceRow as ComplianceRowItem,
   ComplianceSortKey,
+  ConflictVerdictName,
   SortOrder,
 } from "@/features/projects/api/complianceApi";
+import { CONFLICT_VERDICT_VALUES } from "@/features/projects/api/licensesApi";
 import type { NoticeFormat } from "@/features/projects/api/obligationsApi";
 import { useCompliance } from "@/features/projects/api/useCompliance";
 import {
@@ -90,6 +93,7 @@ import {
   type LicenseException,
 } from "@/features/projects/api/useLicenseWaive";
 import { useNotice } from "@/features/projects/api/useNotice";
+import { ConflictVerdictBadge } from "@/features/projects/components/ConflictVerdictBadge";
 import { LicenseCategoryBadge } from "@/features/projects/components/LicenseCategoryBadge";
 import { LicenseDrawer } from "@/features/projects/components/LicenseDrawer";
 import { LicenseWaiveAction } from "@/features/projects/components/LicenseWaiveAction";
@@ -154,6 +158,14 @@ function parsePage(raw: string | null): number {
   const n = raw ? Number.parseInt(raw, 10) : 1;
   if (!Number.isFinite(n) || n < 1) return 1;
   return n;
+}
+
+const VALID_CONFLICT = new Set<ConflictVerdictName>(CONFLICT_VERDICT_VALUES);
+
+function parseConflict(raw: string | null): ConflictVerdictName | undefined {
+  return raw && VALID_CONFLICT.has(raw as ConflictVerdictName)
+    ? (raw as ConflictVerdictName)
+    : undefined;
 }
 
 function parseHasObligations(raw: string | null): boolean | null {
@@ -255,6 +267,9 @@ export function ComplianceTab({
     if (searchParams.get("cview") === "obligations") return true;
     return null;
   });
+  const [conflict, setConflict] = useState<ConflictVerdictName | undefined>(() =>
+    parseConflict(searchParams.get("compliance_conflict")),
+  );
   const [sort, setSort] = useState<ComplianceSortKey>(() =>
     parseSort(searchParams.get("compliance_sort")),
   );
@@ -318,6 +333,8 @@ export function ComplianceTab({
         } else {
           next.delete("compliance_has_obligations");
         }
+        if (conflict) next.set("compliance_conflict", conflict);
+        else next.delete("compliance_conflict");
         if (sort !== "category") next.set("compliance_sort", sort);
         else next.delete("compliance_sort");
         if (order !== "desc") next.set("compliance_order", order);
@@ -332,6 +349,7 @@ export function ComplianceTab({
     debouncedSearch,
     categories,
     hasObligations,
+    conflict,
     sort,
     order,
     page,
@@ -344,13 +362,23 @@ export function ComplianceTab({
       categories,
       kinds: [],
       hasObligations,
+      conflict,
       sort,
       order,
       limit: PAGE_SIZE,
       offset: (page - 1) * PAGE_SIZE,
       scanId,
     }),
-    [debouncedSearch, categories, hasObligations, sort, order, page, scanId],
+    [
+      debouncedSearch,
+      categories,
+      hasObligations,
+      conflict,
+      sort,
+      order,
+      page,
+      scanId,
+    ],
   );
 
   const compliance = useCompliance(projectId, filters);
@@ -363,6 +391,13 @@ export function ComplianceTab({
 
   const items: ComplianceRowItem[] = compliance.data?.items ?? [];
   const total = compliance.data?.total ?? 0;
+  const declaredLicense = compliance.data?.declared_license ?? null;
+  const conflictSummary = compliance.data?.conflict_summary ?? null;
+  // Three states, not two. A declared license with no summary means the scan
+  // carries more licenses than one request will judge — nothing was assessed,
+  // so the verdict column stays off rather than rendering blank cells that
+  // would read as "no conflict".
+  const conflictAssessed = declaredLicense != null && conflictSummary != null;
 
   return (
     <div data-testid="compliance-tab" className="flex flex-1 flex-col">
@@ -387,6 +422,12 @@ export function ComplianceTab({
           setSort(next);
           setPage(1);
         }}
+        conflict={conflict}
+        onConflictChange={(next) => {
+          setConflict(next);
+          setPage(1);
+        }}
+        conflictEnabled={conflictAssessed}
         order={order}
         onOrderChange={(next) => {
           setOrder(next);
@@ -395,10 +436,11 @@ export function ComplianceTab({
       />
 
       <div
-        className="flex items-center justify-between border-b px-4 py-2 text-xs text-muted-foreground"
+        className="flex flex-wrap items-center justify-between gap-2 border-b px-4 py-2 text-xs text-muted-foreground"
         data-testid="compliance-summary"
         data-total={total}
         data-loaded={items.length}
+        data-declared-license={declaredLicense ?? ""}
       >
         <span>
           {t("compliance.summary", {
@@ -406,6 +448,50 @@ export function ComplianceTab({
             total,
           })}
         </span>
+        {conflictAssessed ? (
+          <span
+            className="flex flex-wrap items-center gap-2"
+            data-testid="compliance-outbound"
+          >
+            <span>
+              {t("licenses.conflict.measured_against", {
+                license: declaredLicense,
+              })}
+            </span>
+            {conflictSummary && conflictSummary.incompatible > 0 ? (
+              <span
+                className="font-medium text-risk-critical-foreground"
+                data-testid="compliance-conflict-count-incompatible"
+              >
+                {t("licenses.conflict.count.incompatible", {
+                  count: conflictSummary.incompatible,
+                })}
+              </span>
+            ) : null}
+            {conflictSummary && conflictSummary.conditional > 0 ? (
+              <span
+                className="font-medium text-risk-medium-foreground"
+                data-testid="compliance-conflict-count-conditional"
+              >
+                {t("licenses.conflict.count.conditional", {
+                  count: conflictSummary.conditional,
+                })}
+              </span>
+            ) : null}
+            <span className="opacity-80">{t("licenses.conflict.advisory")}</span>
+          </span>
+        ) : declaredLicense ? (
+          <span data-testid="compliance-outbound-not-assessed">
+            {t("licenses.conflict.not_assessed", { license: declaredLicense })}
+          </span>
+        ) : (
+          // Absent is not clean: a project with no declared outbound license
+          // has not been assessed, and an empty column would otherwise read as
+          // "no conflicts found".
+          <span data-testid="compliance-outbound-undeclared">
+            {t("licenses.conflict.undeclared")}
+          </span>
+        )}
       </div>
 
       {compliance.isError ? (
@@ -443,7 +529,7 @@ export function ComplianceTab({
 
       {!compliance.isLoading && !compliance.isError && items.length > 0 ? (
         <>
-          <ComplianceTableHeader />
+          <ComplianceTableHeader showConflict={conflictAssessed} />
           <div
             className="flex-1"
             data-testid="compliance-virtual"
@@ -459,6 +545,7 @@ export function ComplianceTab({
                 <ComplianceGridRow
                   row={item}
                   rowIndex={index}
+                  showConflict={conflictAssessed}
                   onSelect={() => setDrawerLicense(item.license_finding_id)}
                   projectId={projectId}
                   teamId={teamId}
@@ -475,6 +562,12 @@ export function ComplianceTab({
       <LicenseDrawer
         open={drawerOpen}
         findingId={drawerId}
+        // Carried from the selected row: the drawer's own endpoint is keyed by
+        // finding and knows nothing about the project's outbound license.
+        conflict={
+          items.find((it) => it.license_finding_id === drawerId)?.conflict ??
+          null
+        }
         onOpenChange={(open) => {
           if (!open) setDrawerLicense(null);
         }}
@@ -500,6 +593,14 @@ interface ComplianceToolbarProps {
   onCategoriesChange: (value: LicenseCategoryName[]) => void;
   hasObligations: boolean | null;
   onHasObligationsChange: (value: boolean | null) => void;
+  conflict: ConflictVerdictName | undefined;
+  onConflictChange: (value: ConflictVerdictName | undefined) => void;
+  /**
+   * False when the project declares no outbound license. The facet is hidden
+   * rather than disabled: a filter that can only ever return nothing is not a
+   * control the user should have to try before learning that.
+   */
+  conflictEnabled: boolean;
   sort: ComplianceSortKey;
   onSortChange: (value: ComplianceSortKey) => void;
   order: SortOrder;
@@ -516,6 +617,9 @@ function ComplianceToolbar({
   onCategoriesChange,
   hasObligations,
   onHasObligationsChange,
+  conflict,
+  onConflictChange,
+  conflictEnabled,
   sort,
   onSortChange,
   order,
@@ -583,6 +687,37 @@ function ComplianceToolbar({
           />
         </div>
       </div>
+
+      {conflictEnabled ? (
+        <div className="flex flex-col">
+          <label
+            htmlFor="compliance-conflict"
+            className="text-xs font-medium text-muted-foreground"
+          >
+            {t("licenses.toolbar.filter_conflict")}
+          </label>
+          <select
+            id="compliance-conflict"
+            value={conflict ?? ""}
+            onChange={(event) =>
+              onConflictChange(
+                event.target.value
+                  ? (event.target.value as ConflictVerdictName)
+                  : undefined,
+              )
+            }
+            className="mt-1 h-9 w-40 rounded-md border border-input bg-background px-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+            data-testid="compliance-conflict-filter"
+          >
+            <option value="">{t("licenses.toolbar.conflict.all")}</option>
+            {CONFLICT_VERDICT_VALUES.map((verdict) => (
+              <option key={verdict} value={verdict}>
+                {t(`licenses.conflict.verdict.${verdict}`)}
+              </option>
+            ))}
+          </select>
+        </div>
+      ) : null}
 
       <div className="flex flex-col">
         <label
@@ -716,7 +851,7 @@ function ComplianceNoticeDownload({
 // Header + row
 // ---------------------------------------------------------------------------
 
-function ComplianceTableHeader() {
+function ComplianceTableHeader({ showConflict }: { showConflict: boolean }) {
   const { t } = useTranslation("project_detail");
   return (
     <div
@@ -726,6 +861,9 @@ function ComplianceTableHeader() {
     >
       <span className="w-44">{t("compliance.column.license")}</span>
       <span className="w-32">{t("compliance.column.category")}</span>
+      {showConflict ? (
+        <span className="w-32">{t("licenses.column.conflict")}</span>
+      ) : null}
       <span className="flex-1">{t("compliance.column.affected")}</span>
       <span className="w-64">{t("compliance.column.obligations")}</span>
       <span className="w-28 text-center">
@@ -739,6 +877,8 @@ function ComplianceTableHeader() {
 interface ComplianceGridRowProps {
   row: ComplianceRowItem;
   rowIndex: number;
+  /** Only rendered when the project declares an outbound license. */
+  showConflict: boolean;
   onSelect: () => void;
   projectId: string;
   teamId: string | null;
@@ -753,6 +893,7 @@ const OBLIGATIONS_PREVIEW_CAP = 3;
 function ComplianceGridRow({
   row,
   rowIndex,
+  showConflict,
   onSelect,
   projectId,
   teamId,
@@ -793,6 +934,7 @@ function ComplianceGridRow({
   return (
     <div
       data-testid="compliance-row"
+      data-conflict={row.conflict?.verdict ?? ""}
       data-finding-id={row.license_finding_id}
       data-spdx-id={row.spdx_id ?? ""}
       data-category={row.category}
@@ -828,6 +970,16 @@ function ComplianceGridRow({
         <span className="w-32">
           <LicenseCategoryBadge category={row.category} />
         </span>
+        {showConflict ? (
+          <span className="w-32">
+            {row.conflict ? (
+              <ConflictVerdictBadge
+                verdict={row.conflict.verdict}
+                why={row.conflict.why}
+              />
+            ) : null}
+          </span>
+        ) : null}
         <span
           className="flex flex-1 items-center gap-1 overflow-hidden"
           data-testid="compliance-row-affected"

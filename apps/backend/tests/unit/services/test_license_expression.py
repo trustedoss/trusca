@@ -322,3 +322,46 @@ def test_no_recursion_error_on_max_legal_depth() -> None:
     result = evaluate_expression(expr, resolve_id=_resolve)
     assert result.category == "forbidden"
     assert result.warning is None
+
+
+# ---------------------------------------------------------------------------
+# Layering guard (gap #27 security review, Low)
+# ---------------------------------------------------------------------------
+
+
+def test_module_stays_a_leaf_so_the_schema_import_cannot_cycle() -> None:
+    """``schemas/scan.py`` imports this module, which runs against the layering.
+
+    That import is safe only while this module depends on nothing inside the
+    tree: schemas normally sit BELOW services, so a single new
+    ``from core...`` or ``from services...`` line here would close a cycle —
+    and the symptom would be an app that fails to boot, not a unit test that
+    fails. The comment at the import site says as much; this holds it to it.
+
+    Moving the parser into ``core/`` would remove the constraint entirely and
+    is the better long-term shape; until then, this is the gate.
+    """
+    import ast
+    import pathlib
+
+    source = pathlib.Path(__file__).resolve().parents[3] / "services/license_expression.py"
+    tree = ast.parse(source.read_text(encoding="utf-8"))
+
+    first_party = {"api", "core", "integrations", "models", "notifications", "schemas",
+                   "services", "tasks"}
+    offenders: list[str] = []
+    for node in ast.walk(tree):
+        if isinstance(node, ast.ImportFrom) and node.module:
+            root = node.module.split(".")[0]
+            if root in first_party:
+                offenders.append(f"from {node.module} import ...")
+        elif isinstance(node, ast.Import):
+            for alias in node.names:
+                if alias.name.split(".")[0] in first_party:
+                    offenders.append(f"import {alias.name}")
+
+    assert not offenders, (
+        "services/license_expression.py must stay dependency-free within the "
+        f"tree — schemas/scan.py imports it. Found: {offenders}. Either drop "
+        "the import or move the parser to core/ and repoint both callers."
+    )
