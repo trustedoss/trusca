@@ -1,0 +1,207 @@
+name: AI Security Review
+
+# Governance level 4 — findings-driven AI triage. ADVISORY, never a gate.
+#
+# The level 3 workflows (secret-scan, sast, codeql, sca-self, the image-scan
+# job in ci.yml) match known patterns and block the build when they match.
+# This one blocks nothing. It re-runs semgrep in advisory mode over the files
+# a pull request actually changed, hands what it flagged to a model, and
+# posts the verdicts as a comment so a reviewer knows which findings to look
+# at first. `secret-scan` and `sast` remain the checks that gate merges, and
+# nothing here should ever be added to branch protection: a model's verdict
+# carries a false-positive rate that no merge decision should rest on.
+#
+# Why it re-runs semgrep instead of reusing sast.yml's SARIF: that job runs
+# `--severity=ERROR --error`, so its report holds ERROR findings only and the
+# job is already red whenever the report is non-empty. There is nothing left
+# for a triage pass to weigh. The run below drops both flags, which is what
+# produces the WARNING-level candidates this workflow exists to sort.
+#
+# Cost is bounded by findings volume, not repository size: only changed
+# source files are scanned, the caps in tools/ai-review/review.py send at
+# most 8 findings with five lines of context each, and a pull request with
+# no findings makes no request at all.
+#
+# THE API KEY IS OPTIONAL. With no ANTHROPIC_API_KEY secret present, every
+# step below is skipped and the job succeeds at no cost. Registering the
+# secret turns it on with no change to this file. The file is committed live
+# rather than commented out so that workflow linting keeps checking it — a
+# commented-out workflow only reveals its syntax errors on the day someone
+# tries to enable it.
+#
+# On forks: the secrets context is empty for pull requests from forks, so
+# HAS_ANTHROPIC_KEY is false and everything skips. That is deliberate and it
+# also sidesteps the read-only GITHUB_TOKEN a fork gets, which could not post
+# the comment anyway. Do NOT "fix" this with pull_request_target — that runs
+# with our secrets against a branch the contributor controls.
+
+on:
+  pull_request:
+    branches: [main]
+    # Mirror ci.yml / sast.yml. A docs-only pull request has no code to
+    # triage. Keep this list in lockstep with theirs.
+    paths-ignore:
+      - "docs/**"
+      - "*.md"
+      - ".env.example"
+      - "CLAUDE.md"
+      - "ROADMAP.md"
+      - "SECURITY.md"
+      - "LICENSE"
+      - ".gitignore"
+
+# `pull-requests: write` is the first comment-writing permission in this
+# repository — every other workflow reads. It is scoped to this job and buys
+# exactly one thing: posting and editing the review comment.
+permissions:
+  contents: read
+  pull-requests: write
+
+concurrency:
+  group: ai-review-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  ai-review:
+    name: findings-driven AI triage (advisory)
+    runs-on: ubuntu-22.04
+    # Drafts are still being written; triaging them spends tokens on findings
+    # the author has not finished creating.
+    if: github.event.pull_request.draft == false
+    timeout-minutes: 15
+    env:
+      # The secrets context is unavailable in both job-level and step-level
+      # `if:`, so the presence check has to be reduced to a plain string here
+      # and tested through the env context in each step below.
+      HAS_ANTHROPIC_KEY: ${{ secrets.ANTHROPIC_API_KEY != '' }}
+    steps:
+      - name: Report why this run is a no-op
+        if: env.HAS_ANTHROPIC_KEY != 'true'
+        run: |
+          echo "::notice::ANTHROPIC_API_KEY is not set — level 4 triage is dormant."
+          echo "Add the secret to enable it; no other change is needed."
+
+      - uses: actions/checkout@v4
+        if: env.HAS_ANTHROPIC_KEY == 'true'
+
+      - uses: actions/setup-python@v5
+        if: env.HAS_ANTHROPIC_KEY == 'true'
+        with:
+          python-version: "3.12"
+
+      # The changed-file list comes from the API rather than `git diff` so the
+      # checkout can stay shallow and there is no merge-base to get wrong. A
+      # shallow clone with a diff against an unfetched base is how a gate ends
+      # up examining nothing while reporting success — see the notes on
+      # `--all` in ci.yml's ko-style and license-header steps.
+      - name: List changed source files
+        id: changed
+        if: env.HAS_ANTHROPIC_KEY == 'true'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+        run: |
+          set -euo pipefail
+          gh api "repos/${GITHUB_REPOSITORY}/pulls/${PR_NUMBER}/files" \
+            --paginate \
+            --jq '.[] | select(.status != "removed") | .filename' \
+            | grep -E '\.(py|ts|tsx|js|jsx|mjs)$' > changed.txt || true
+          count=$(wc -l < changed.txt | tr -d ' ')
+          echo "count=$count" >> "$GITHUB_OUTPUT"
+          echo "::notice::${count} changed source file(s) to scan"
+
+      - name: Install semgrep (pinned — same version as the sast gate)
+        if: env.HAS_ANTHROPIC_KEY == 'true' && steps.changed.outputs.count != '0'
+        # `setuptools<78` for the same reason sast.yml pins it: semgrep pulls
+        # in opentelemetry-instrumentation, which imports pkg_resources.
+        run: python -m pip install 'setuptools<78' semgrep==1.96.0
+
+      - name: Run semgrep (advisory — no severity filter, no --error)
+        id: semgrep
+        if: env.HAS_ANTHROPIC_KEY == 'true' && steps.changed.outputs.count != '0'
+        # Unlike the sast gate this must not fail on a finding — findings are
+        # the input, not the verdict. `|| true` covers semgrep's own non-zero
+        # exits; the file check that follows covers the case where it dies
+        # without writing a report, which must NOT be read as "nothing found".
+        run: |
+          set -uo pipefail
+          xargs -a changed.txt -d '\n' -r semgrep scan \
+            --config=auto \
+            --sarif --output=semgrep.sarif \
+            --metrics=off || true
+          if [ -s semgrep.sarif ]; then
+            echo "ok=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "ok=false" >> "$GITHUB_OUTPUT"
+            echo "::warning::semgrep produced no report — skipping triage."
+          fi
+
+      - name: Triage findings
+        id: triage
+        if: env.HAS_ANTHROPIC_KEY == 'true' && steps.semgrep.outputs.ok == 'true'
+        # Advisory end to end: an outage, a rate limit or a timeout leaves the
+        # state file saying `error`, the comment step does nothing, and the
+        # pull request is unaffected. continue-on-error is the backstop for
+        # anything review.py itself fails to catch.
+        continue-on-error: true
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+        run: |
+          python tools/ai-review/review.py \
+            --semgrep semgrep.sarif \
+            --root . \
+            --out review_result.md \
+            --state review_state.txt
+
+      - name: Post or update the review comment
+        if: env.HAS_ANTHROPIC_KEY == 'true' && steps.semgrep.outputs.ok == 'true'
+        continue-on-error: true
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+        # Three outcomes, three behaviours:
+        #   findings — create the comment, or edit the one already there
+        #   clean    — edit an existing comment so nobody reads verdicts about
+        #              code that has since been fixed, but never open a new
+        #              one: a comment on every clean pull request is noise
+        #   error    — leave whatever is there alone; we learned nothing
+        # The edit-in-place lookup keys on the marker in review.py, which is
+        # why a push does not stack up a new comment each time.
+        run: |
+          set -euo pipefail
+          state=$(cat review_state.txt 2>/dev/null || echo error)
+          echo "triage state: ${state}"
+          if [ "$state" = "error" ]; then
+            echo "nothing conclusive to report"
+            exit 0
+          fi
+
+          existing=$(gh api "repos/${GITHUB_REPOSITORY}/issues/${PR_NUMBER}/comments" \
+            --paginate \
+            --jq '.[] | select(.body | contains("<!-- trusca:ai-review -->")) | .id' \
+            | head -1)
+
+          if [ -n "$existing" ]; then
+            gh api -X PATCH \
+              "repos/${GITHUB_REPOSITORY}/issues/comments/${existing}" \
+              -F body=@review_result.md > /dev/null
+            echo "updated comment ${existing}"
+          elif [ "$state" = "findings" ]; then
+            gh api -X POST \
+              "repos/${GITHUB_REPOSITORY}/issues/${PR_NUMBER}/comments" \
+              -F body=@review_result.md > /dev/null
+            echo "posted a new comment"
+          else
+            echo "clean, and no earlier comment to retract"
+          fi
+
+      - name: Upload semgrep report
+        if: always() && env.HAS_ANTHROPIC_KEY == 'true' && steps.semgrep.outputs.ok == 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: ai-review-${{ github.run_id }}
+          path: |
+            semgrep.sarif
+            review_result.md
+          if-no-files-found: warn
+          retention-days: 14

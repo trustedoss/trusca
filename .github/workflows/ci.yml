@@ -91,6 +91,21 @@ jobs:
         working-directory: apps/backend
         run: ruff check .
 
+      # Level 4 triage tooling (tools/ai-review). Its workflow cannot run
+      # end-to-end until an ANTHROPIC_API_KEY secret exists, so everything on
+      # either side of the network call is checked here instead: report
+      # parsing, the caps, the untrusted-data fencing in the prompt, comment
+      # rendering, and the failure paths that must stay quiet rather than
+      # fail a pull request. Standard library only — no install step, and it
+      # runs in about a second.
+      #
+      # It lives in the existing lint job rather than a job of its own for
+      # the reason the license-header steps give below: a new job is a new
+      # check, and docs-only pull requests already stall on checks that skip.
+      - name: Run ai-review selftest
+        if: matrix.target == 'backend'
+        run: python tools/ai-review/selftest.py
+
       - name: Setup Node
         if: matrix.target == 'frontend'
         uses: actions/setup-node@v4
