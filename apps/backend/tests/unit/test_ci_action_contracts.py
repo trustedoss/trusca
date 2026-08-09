@@ -28,7 +28,7 @@ import re
 from pathlib import Path
 
 import pytest
-import yaml
+import yaml  # type: ignore[import-untyped]  # PyYAML ships no stubs
 
 _ACTION_REL = Path("actions") / "scan" / "action.yml"
 _DOC_REL = Path("docs-site") / "docs" / "ci-integration" / "github-actions.md"
@@ -52,7 +52,9 @@ def _load_action() -> dict:
     root = _repo_root()
     if root is None:
         pytest.skip("repository root not reachable — backend-only checkout")
-    return yaml.safe_load((root / _ACTION_REL).read_text(encoding="utf-8"))
+    parsed = yaml.safe_load((root / _ACTION_REL).read_text(encoding="utf-8"))
+    assert isinstance(parsed, dict), "action.yml did not parse to a mapping"
+    return parsed
 
 
 def _doc_text() -> str:
