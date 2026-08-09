@@ -26,35 +26,23 @@ Webhook은 Git 호스트가 포털로 이벤트를 푸시하게 합니다 — �
 ### Webhook 시크릿 부트스트래핑 (v0.10.0 에서는 운영자 전용)
 
 Project Settings 탭은 아직 Webhook 컨트롤을 노출하지 않습니다.
-운영자가 백엔드에서 직접 시크릿을 설정합니다. 두 가지 경로:
-
-**Option A — backend 컨테이너 내부 Python REPL:**
-
-<!-- docs-uat: id=webhooks-secret-python kind=shell ctx=host tier=manual waiver=operator-command-placeholder-project-uuid -->
-```bash
-docker-compose exec backend python -c "
-import asyncio, secrets
-from apps.backend.services.webhook_service import (
-    upsert_webhook_secret,
-)
-asyncio.run(upsert_webhook_secret(
-    project_id='<project-uuid>',
-    secret=secrets.token_urlsafe(32),
-))
-"
-```
-
-**Option B — 직접 SQL (psql 세션):**
+운영자가 데이터베이스에서 직접 시크릿을 설정합니다.
 
 <!-- docs-uat: id=webhooks-secret-sql kind=sql ctx=postgres tier=manual waiver=operator-sql-placeholder-project-uuid -->
 ```sql
 UPDATE projects
    SET webhook_secret = encode(gen_random_bytes(32), 'base64')
- WHERE id = '<project-uuid>';
+ WHERE id = '<project-uuid>'
+RETURNING webhook_secret;
 ```
 
-두 명령 모두 실행 후, 결과로 나온 시크릿을 레포 소유자에게 공유해
-GitHub/GitLab → Settings → Webhooks → "Secret"에 붙여 넣게 하세요.
+`RETURNING`이 생성된 시크릿을 출력하므로 따로 조회할 필요가 없습니다. 이 값을
+레포 소유자에게 전달해 GitHub/GitLab → Settings → Webhooks → "Secret"에 붙여
+넣게 하세요.
+
+이 컬럼은 시크릿을 그대로 저장합니다. 포털이 전송을 검증할 때 쓰는 HMAC 키라
+해시할 수 없기 때문입니다. 데이터베이스 덤프를 다룰 때 이 점을 감안하시고,
+교체할 때는 위 문장을 다시 실행하면 됩니다.
 
 셀프 서비스 활성화 UI는 로드맵 항목입니다.
 
@@ -99,7 +87,7 @@ GitHub은 즉시 `ping` 이벤트를 전송합니다. green ("Last delivery was 
 5. **SSL verification** — enabled.
 6. **Add webhook**.
 
-**Test → Push event** 버튼으로 연결을 검증. 포털이 전송을 로깅하고 204를 ack합니다.
+**Test → Push event** 버튼으로 연결을 검증합니다. 포털은 전송을 기록하고 결과를 담은 JSON 본문과 함께 200으로 응답합니다.
 
 ### 3. 검증
 
@@ -134,7 +122,7 @@ GitLab은 기본으로 HMAC을 지원하지 않습니다. 보안 정책상 HMAC�
 두 Git 호스트 모두 실패 시 전송을 재시도합니다. 포털은 `delivery_id` 디듀플리케이션으로 반복을 처리합니다.
 
 - GitHub은 `X-GitHub-Delivery`(전송별 UUID)를 제공.
-- GitLab은 `X-Gitlab-Webhook-UUID`(14.x 이후 전송별 UUID)를 제공(`apps/backend/services/webhook_service.py:555,561` 참고).
+- GitLab은 `X-Gitlab-Webhook-UUID`(전송별 UUID)를 제공합니다. 이 헤더를 보내지 않는 구버전에서는 포털이 페이로드에서 대체 식별자를 만들어 쓰는데, 이쪽이 더 성깁니다. [트러블슈팅](#같은-머지-리퀘스트에-두-번째-푸시가-스캔되지-않음)을 보세요.
 
 포털은 unique 인덱스가 걸린 `webhook_deliveries`에 `(source, delivery_id)`를 저장합니다. 중복 전송은 두 번째 스캔을 트리거하는 대신 200과 `{"status": "duplicate"}`로 응답합니다. 호스트 측 재시도 폭풍에서도 시스템이 멱등합니다.
 
@@ -142,12 +130,20 @@ GitLab은 기본으로 HMAC을 지원하지 않습니다. 보안 정책상 HMAC�
 
 | 이벤트 | 동작 |
 |---|---|
-| GitHub `push` to default branch | 새 커밋에 대해 `source` 스캔 트리거. |
-| GitHub `pull_request` (opened, synchronize, reopened) | PR head SHA에 대해 `source` 스캔 트리거, SCA 코멘트 게시. |
-| GitLab `Push Hook` to default branch | GitHub `push`와 동일. |
-| GitLab `Merge Request Hook` (open, update, reopen) | GitHub `pull_request`와 동일. |
+| GitHub `push` — 모든 브랜치·태그 | `source` 스캔을 트리거합니다. |
+| GitHub `pull_request` — 모든 action | `source` 스캔을 트리거합니다. |
+| GitLab `Push Hook` — 모든 브랜치·태그 | GitHub `push`와 같습니다. |
+| GitLab `Merge Request Hook` — 모든 action | GitHub `pull_request`와 같습니다. |
 
-다른 이벤트는 수락되지만(200) 스캔을 트리거하지 않습니다. 포털은 수락된 모든 전송을 감사 로그에 기록합니다.
+다른 이벤트는 수락되지만(200) 스캔을 트리거하지 않습니다. 수락된 전송은 모두 `webhook_deliveries`에 기록되고, 감사 리스너가 이를 `action=create`, `target_table=webhook_deliveries`로 남깁니다.
+
+바쁜 저장소에 적용하기 전에 알아 둘 제약이 둘 있습니다.
+
+브랜치 필터가 없습니다. 어느 브랜치나 태그로 푸시해도 스캔이 큐에 들어가므로, 여러 브랜치를 한꺼번에 푸시하면 ref마다 하나씩 쌓입니다.
+
+`pull_request`의 action도 검사하지 않습니다. `closed`, `labeled`, `assigned`도 `opened`와 똑같이 스캔을 만듭니다. 이 양이 부담되면 포털의 필터에 기대지 말고 Git 호스트 쪽에서 원하는 이벤트만 선택하세요.
+
+스캔은 푸시된 커밋이나 풀 리퀘스트의 head가 아니라 저장소의 기본 HEAD를 대상으로 돕니다. ref는 기록되어 스캔을 묶는 보존 키로 쓰이지만, 실제로 스캔하는 작업 트리는 `git clone`이 가져오는 그대로입니다. 그래서 의존성을 추가한 풀 리퀘스트는 웹훅이 만든 스캔에 아직 보이지 않습니다.
 
 ## 정상 동작 확인
 
@@ -158,7 +154,7 @@ Webhook 구성 후:
 <!-- docs-uat: id=webhooks-push-creates-scan kind=manual tier=manual -->
 2. 커밋 푸시 시 포털에 30초 내 새 스캔이 생성됨.
 <!-- docs-uat: id=webhooks-audit-deliver kind=manual tier=manual -->
-3. 감사 로그가 `delivery_id`와 `event` 필드 포함 `webhook.deliver`를 기록.
+3. 감사 로그에 `webhook_deliveries`에 대한 `create`가 전송 id와 이벤트 종류를 담고 남습니다.
 
 ## 트러블슈팅
 
@@ -177,10 +173,15 @@ URL이 틀렸습니다. 흔한 오타: `/api/` 누락, `/v1/` 누락, 백엔드 
 
 ### Webhook은 발사되지만 스캔이 나타나지 않음
 
-전송은 수락되었지만 트리거되지 않은 경우. 가능한 이유:
+전송은 수락되었지만 트리거되지 않은 경우입니다. 가능한 이유는 이렇습니다.
 
-- 푸시가 프로젝트의 default branch가 아닌 곳으로 감. 포털은 default branch만 스캔합니다(프로젝트별 구성 — [Projects](../user-guide/projects.md) 참고).
-- PR head SHA가 이전 스캔의 커밋과 동일(예: 같은 SHA를 재사용한 force-push). 포털은 SHA로 디듀플리케이션합니다.
+- 같은 ref의 스캔이 이미 대기 중이거나 실행 중입니다. 포털은 `(project, ref)` 하나당 진행 중인 스캔을 하나만 허용하므로, 전송은 받아들이되 두 번째 스캔을 만들지 않습니다. 이때도 응답은 `{"status": "duplicate"}`라 전송 중복과 구분되지 않으니 프로젝트의 스캔 목록에서 확인하세요.
+- 이벤트 종류가 스캔 화이트리스트 밖입니다(GitHub은 `push`와 `pull_request`, GitLab은 `Push Hook`과 `Merge Request Hook`). `ping`은 수락되고 기록되지만 스캔하지 않습니다.
+- 페이로드의 저장소 URL이 어느 프로젝트의 `git_url`과도 맞지 않습니다. 이 경우 200이 아니라 404로 답합니다.
+
+### 같은 머지 리퀘스트에 두 번째 푸시가 스캔되지 않음
+
+`X-Gitlab-Webhook-UUID`를 보내지 않는 GitLab 버전에서는 포털이 머지 리퀘스트 자체의 id로 전송 식별자를 만듭니다. 그래서 그 머지 리퀘스트의 모든 이벤트가 같은 식별자를 갖게 되고 첫 번째만 새 전송으로 처리됩니다. 이후 푸시는 중복으로 걸러집니다. 해당 헤더를 보내는 버전으로 GitLab을 올리면 해소됩니다.
 
 ### 포털 장애 후 옛 전송이 replay됨
 

@@ -49,8 +49,7 @@ jobs:
   sca:
     runs-on: ubuntu-latest
     permissions:
-      contents: read
-      pull-requests: write    # PR 코멘트에 필요
+      contents: read          # action이 체크아웃 외에 필요로 하는 권한은 없습니다
     steps:
       - uses: actions/checkout@v4
       - name: TRUSCA SCA scan
@@ -91,7 +90,7 @@ jobs:
 같은 화면에서 **Variables**로 전환 후 추가.
 
 - Name — `TRUSTEDOSS_PROJECT_ID`
-- Value — **Project Settings → CI/CD**의 UUID.
+- Value — 프로젝트의 UUID. 포털 주소 `/projects/<uuid>`의 마지막 경로 조각입니다.
 
 (시크릿이 아니라) 변수에 두면 워크플로 로그에서 프로젝트 ID가 그대로 보입니다 — 민감 정보가 아니므로 무방합니다.
 
@@ -122,6 +121,7 @@ jobs:
 | `critical-cve-count` | 평가된 스캔의 미해결 critical 발견 수. |
 | `forbidden-license-count` | 금지 분류 라이선스를 가진 고유 컴포넌트 수. |
 | `epss-gate-count` | EPSS score가 구성된 EPSS 임계 이상인 미해결 결과 수. EPSS 게이트가 비활성(기본)이면 `0`. [EPSS로 빌드 게이팅](#epss로-빌드-게이팅-선택) 참고. |
+| `malicious-component-count` | 악성 패키지 스냅샷이 지목한 컴포넌트 수. 심각도와 무관하게 빌드를 막습니다. 패키지를 제거하고 이 빌드가 닿을 수 있던 자격 증명을 교체하세요. |
 
 후속 스텝에서 사용:
 
@@ -241,7 +241,7 @@ GATE_EPSS_THRESHOLD=0.5
 
 PR 코멘트는 워크플로가 아니라 **포털이 서버 측에서** 게시합니다. 액션이 SCA 결과를 업로드한 뒤, 포털이 빌드 게이트를 평가하고 코멘트 게시가 활성화되어 있다면 포털 환경에 저장된 GitHub PAT(`GITHUB_TOKEN` 또는 `TRUSTEDOSS_GITHUB_TOKEN`)를 사용해 `https://api.github.com`을 직접 호출합니다. 워크플로는 절대로 `secrets.GITHUB_TOKEN`을 포털로 전달하지 않습니다. 포털에 저장된 installation 토큰을 가진 정식 GitHub App은 로드맵에 있습니다.
 
-코멘트는 **idempotent**합니다 — 같은 PR에서 워크플로를 재실행하면 기존 코멘트가 제자리에 갱신됩니다. 마커 `<!-- trustedoss-sca -->`로 식별합니다.
+코멘트는 멱등합니다. 같은 PR에서 워크플로를 다시 실행하면 기존 코멘트가 그 자리에서 갱신됩니다. 포털은 코멘트 본문의 마커 `<!-- trustedoss-sca-bot -->`로 이를 찾습니다. 찾는 범위가 PR의 최근 코멘트 500개까지라, 그보다 긴 스레드에서는 갱신 대신 새 코멘트를 답니다.
 
 ## 브랜치 보호
 
@@ -270,8 +270,8 @@ worker가 과부하이거나(`poll-timeout-seconds`를 늘려보세요) 스캔�
 세 가지 가능성:
 
 - 워크플로가 `pull_request`가 아닌 `push`로 트리거됨 — PR 이벤트만 코멘트를 받음.
-- 포털의 `GITHUB_TOKEN` / `TRUSTEDOSS_GITHUB_TOKEN` env가 미설정·만료이거나 대상 저장소에 대한 `pull-requests: write` 권한이 없음. 운영자가 포털 `.env`의 PAT를 회전·연장한 뒤 백엔드를 재기동.
-- 포털이 head SHA에서 PR 번호를 해석하지 못함. action 로그의 `pull_request_number=` 출력을 확인 — 비어 있으면 lookup 실패.
+- 포털의 `GITHUB_TOKEN` / `TRUSTEDOSS_GITHUB_TOKEN` 환경변수가 없거나 만료됐거나, 대상 저장소의 풀 리퀘스트에 쓰기 권한이 없습니다. 코멘트는 워크플로의 `GITHUB_TOKEN`이 아니라 포털이 자기 자격 증명으로 게시하므로, 잡에 권한을 더 줘도 달라지지 않습니다. 운영자가 포털 `.env`의 토큰을 교체하거나 기간을 늘린 뒤 백엔드를 재기동하세요.
+- 포털에 전달된 PR 번호가 잘못됐거나 비어 있습니다. action은 이 값을 `github.event.pull_request.number`에서 읽는데, `pull_request` 이벤트가 아니면 비어 있습니다.
 
 ### chore PR에서 건너뛰고 싶음
 

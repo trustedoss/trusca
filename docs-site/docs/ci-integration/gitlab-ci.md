@@ -43,7 +43,7 @@ sca:
 
 ### 1. Generate an API key
 
-In the portal: **Project Settings → CI/CD → API keys → New API key**. Allowed actions: `scan:trigger`, `scan:read`, `report:download`. See [API keys](../admin-guide/api-keys.md).
+In the portal: **/integrations → API keys → New API key**. Pick scope `project` and bind it to the project this pipeline scans (or `team` to cover every project a team owns). API keys inherit the issuing user's role in this release — there is no per-key allowed-actions list. See [API keys](../admin-guide/api-keys.md).
 
 ### 2. Store the key as a masked CI/CD variable
 
@@ -189,7 +189,9 @@ This is expected in this release — the GitLab Notes API client has not shipped
 
 ### "Forbidden" on `POST /scans`
 
-The API key's allowed actions do not include `scan:trigger`. Re-issue the key with the correct scope.
+Keys carry no per-action permissions, so this is never about a missing `scan:trigger`. It means one of two things: the issuing user is not a member of the project's team, or the key is scoped to a *different* project than `TRUSTEDOSS_PROJECT_ID`. Check the key's scope binding on **/integrations → API keys**.
+
+Note that `GET /gate-result` answers a cross-project probe with 404 rather than 403 — it hides whether the project exists at all. The two endpoints differ on purpose.
 
 ## See also
 

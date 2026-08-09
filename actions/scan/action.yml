@@ -22,7 +22,7 @@ inputs:
     description: 'TrustedOSS API key (use a GitHub secret). Format: tos_<8-char prefix>_<32-char secret>.'
     required: true
   project-id:
-    description: 'TrustedOSS project UUID (Settings tab → CI/CD).'
+    description: 'TrustedOSS project UUID — the last path segment of the project URL.'
     required: true
   scan-kind:
     description: 'Scan pipeline to enqueue. "source" runs cdxgen + Trivy. "container" runs Trivy.'
@@ -70,6 +70,13 @@ outputs:
       regardless of severity — remove the package and rotate the credentials
       this build could reach; upgrading does not help.
     value: ${{ steps.gate.outputs.malicious_component_count }}
+  epss-gate-count:
+    description: >-
+      Open findings whose EPSS score met or exceeded the portal's configured
+      threshold. Always 0 when the EPSS gate is switched off, which is the
+      default — a zero here does not mean the axis was assessed and came back
+      clean.
+    value: ${{ steps.gate.outputs.epss_gate_count }}
 
 # -----------------------------------------------------------------------------
 # Steps
@@ -291,6 +298,7 @@ runs:
         forbidden=$(echo "$json_body" | jq -r '.forbidden_license_count // 0')
         malicious=$(echo "$json_body" | jq -r '.malicious_component_count // 0')
         malicious_assessed=$(echo "$json_body" | jq -r '.malicious_scan_assessed // false')
+        epss=$(echo "$json_body" | jq -r '.epss_gate_count // 0')
 
         # GITHUB_OUTPUT supports multi-line via heredoc, but reason is single
         # line by contract — we still defensively strip newlines.
@@ -302,6 +310,7 @@ runs:
           echo "critical_cve_count=${critical}"
           echo "forbidden_license_count=${forbidden}"
           echo "malicious_component_count=${malicious}"
+          echo "epss_gate_count=${epss}"
         } >> "$GITHUB_OUTPUT"
 
         # Job summary block — visible on the workflow run page.

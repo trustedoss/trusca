@@ -35,10 +35,10 @@ jobs:
     # this and `poll-timeout-seconds` together if your projects are larger.
     timeout-minutes: 35
     permissions:
-      # Only needed if you want the action's "Apply gate verdict" failure to
-      # surface as a check-run on the PR — defaults are fine for most repos.
+      # checkout is all the action needs. The SCA comment is written by the
+      # portal from its own credentials, not by this runner, so GITHUB_TOKEN
+      # needs no write scope here.
       contents: read
-      pull-requests: write
     steps:
       - uses: actions/checkout@v4
 

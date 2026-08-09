@@ -53,21 +53,36 @@ pipeline {
               | jq -r .id)
             echo "scan_id=${SCAN_ID}"
 
-            # Poll until terminal (timeout 30 min, every 30 s).
+            # Poll until terminal (timeout 30 min, every 30 s). A scan that
+            # fails or never finishes must fail the build here: the gate reads
+            # the last SUCCEEDED scan, so falling through would grade this
+            # build against an older one and report a pass nobody earned.
+            FINISHED=""
             for _ in $(seq 1 60); do
               STATUS=$(curl -fsS -H "Authorization: Bearer ${TRUSTEDOSS_API_KEY}" \
                 "${TRUSTEDOSS_API_URL}/v1/scans/${SCAN_ID}" | jq -r .status)
               echo "status=${STATUS}"
               case "${STATUS}" in
-                succeeded|failed|cancelled) break ;;
+                succeeded) FINISHED=yes; break ;;
+                failed|cancelled)
+                  echo "scan ended ${STATUS}; refusing to grade a stale scan" >&2
+                  exit 1 ;;
               esac
               sleep 30
             done
+            if [ -z "${FINISHED}" ]; then
+              echo "scan did not finish within 30 min (it keeps running in the portal)" >&2
+              exit 1
+            fi
 
-            # Evaluate the gate.
-            GATE=$(curl -fsS -H "Authorization: Bearer ${TRUSTEDOSS_API_KEY}" \
-              "${TRUSTEDOSS_API_URL}/v1/projects/${TRUSTEDOSS_PROJECT_ID}/gate-result" \
-              | jq -r .gate)
+            # Evaluate the gate for the ref we just scanned. Without ref= the
+            # portal answers with its main line's newest succeeded scan.
+            set -- -fsS -H "Authorization: Bearer ${TRUSTEDOSS_API_KEY}" \
+              --get "${TRUSTEDOSS_API_URL}/v1/projects/${TRUSTEDOSS_PROJECT_ID}/gate-result"
+            if [ -n "${SCAN_REF}" ]; then
+              set -- "$@" --data-urlencode "ref=${SCAN_REF}"
+            fi
+            GATE=$(curl "$@" | jq -r .gate)
             echo "gate=${GATE}"
             test "${GATE}" = "pass"
           '''
@@ -84,7 +99,7 @@ Save as `Jenkinsfile` at the repo root. Make sure the agent has `bash`, `curl`, 
 
 ### 1. Generate an API key
 
-In the portal: **Project Settings → CI/CD → API keys → New API key** with `scan:trigger`, `scan:read`, `report:download`. See [API keys](../admin-guide/api-keys.md).
+In the portal: **/integrations → API keys → New API key**. Pick scope `project` and bind it to the project this job scans (or `team` to cover every project a team owns). API keys inherit the issuing user's role in this release — there is no per-key allowed-actions list. See [API keys](../admin-guide/api-keys.md).
 
 ### 2. Add the key as a Jenkins credential
 
@@ -160,18 +175,28 @@ echo "::warning::TRUSCA gate=${GATE}"
 
 The build stays green; the gate verdict is recorded in the console log only.
 
-### Post the SCA report as a build artifact
+### Post the SBOM as a build artifact
+
+The SBOM export endpoint does **not** accept API keys in this release — it
+requires a user access token (`require_role("developer")`), so an API key gets
+401. A CI job can only archive the SBOM if you give it a JWT, which means
+handling a user credential in the pipeline. Weigh that before adopting this
+recipe; downloading the SBOM from the portal UI avoids the problem entirely.
+
+If you do have a token available as `TRUSTEDOSS_JWT`:
 
 ```groovy
 sh '''
   curl -fsS -L -OJ \
-    -H "Authorization: Bearer ${TRUSTEDOSS_API_KEY}" \
+    -H "Authorization: Bearer ${TRUSTEDOSS_JWT}" \
     "${TRUSTEDOSS_API_URL}/v1/projects/${TRUSTEDOSS_PROJECT_ID}/sbom?format=cyclonedx-json"
 '''
-archiveArtifacts artifacts: '*.cyclonedx.json', fingerprint: true
+archiveArtifacts artifacts: 'sbom-*.cdx.json', fingerprint: true
 ```
 
-The SBOM is attached to the build and downloadable from the Jenkins UI.
+`-OJ` takes the filename from the response, which the portal sends as
+`sbom-<project-slug>.cdx.json` — match that pattern when archiving, not
+`*.cyclonedx.json`.
 
 ## Branch protection (without GitHub / GitLab)
 
