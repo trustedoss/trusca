@@ -18,9 +18,11 @@ import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { ScanProgress } from "@/features/scan/ScanProgress";
 import { OsEolPanel } from "@/features/scan/OsEolPanel";
+import { ScanProvenancePanel } from "@/features/scan/ScanProvenancePanel";
 import { SbomConformancePanel } from "@/features/scan/SbomConformancePanel";
 import { ToolLogLine } from "@/features/scan/ToolLogLine";
 import { useSbomConformance } from "@/features/scan/useSbomConformance";
+import { useScanProvenance } from "@/features/scan/useScanProvenance";
 import {
   useScanWebSocket,
   type ScanLogMessage,
@@ -120,6 +122,11 @@ export function ScanDetailPage() {
   // panel — same quiet-degrade posture as the rest of this page.
   const conformanceQuery = useSbomConformance(scan?.project_id, scanId, {
     enabled: scan?.kind === "sbom",
+  });
+  // Provenance is written as the scan runs and never changes after it ends, so
+  // it is only asked for once the scan has finished (gap #31).
+  const provenanceQuery = useScanProvenance(scanId, {
+    enabled: scan?.status === "succeeded",
   });
 
   // ---- Live log stream. We pass through the existing hook so reconnection,
@@ -294,6 +301,10 @@ export function ScanDetailPage() {
             {scan.kind === "container" ? (
               <OsEolPanel metadata={scan.metadata} />
             ) : null}
+
+            {/* Renders nothing when neither half was recorded — an older scan
+                has no story here and an empty card would be noise. */}
+            <ScanProvenancePanel provenance={provenanceQuery.data} />
 
             <section
               className="flex min-h-0 flex-1 flex-col gap-2"

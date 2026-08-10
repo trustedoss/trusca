@@ -425,6 +425,9 @@
   "GET /v1/scans/{scan_id}/log": [
     "scan_id"
   ],
+  "GET /v1/scans/{scan_id}/provenance": [
+    "scan_id"
+  ],
   "GET /v1/search": [
     "kinds",
     "q"

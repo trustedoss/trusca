@@ -880,3 +880,178 @@ async def test_list_scans_for_project_other_team_returns_403(client) -> None:
     response = await client.get(f"/v1/projects/{target_project.id}/scans", headers=headers)
     assert response.status_code == 403
     assert response.headers["content-type"].startswith(PROBLEM_JSON)
+
+
+# ---------------------------------------------------------------------------
+# GET /v1/scans/{scan_id}/provenance — where a scan's results came from (#31)
+# ---------------------------------------------------------------------------
+
+
+async def _set_provenance(
+    client: AsyncClient,
+    *,
+    scan_id: uuid.UUID,
+    manifests: dict | None = None,
+    document: dict | None = None,
+) -> None:
+    factory = await _factory(client)
+    async with factory() as session:
+        from sqlalchemy import select
+
+        from models import Scan
+
+        scan = (
+            await session.execute(select(Scan).where(Scan.id == scan_id))
+        ).scalar_one()
+        scan.input_manifests = manifests
+        scan.input_document = document
+        await session.commit()
+
+
+async def test_provenance_serves_the_manifests_a_source_scan_read(client) -> None:
+    _team, user, project = await _seed(client, role="developer")
+    scan_id = await _seed_scan(client, project_id=project.id)
+    await _set_provenance(
+        client,
+        scan_id=scan_id,
+        manifests={
+            "files": [
+                {"path": "package.json", "size": 120, "sha256": "a" * 64},
+                {"path": "services/api/go.mod", "size": 44, "sha256": None},
+            ],
+            "count": 2,
+            "truncated": False,
+        },
+    )
+
+    resp = await client.get(
+        f"/v1/scans/{scan_id}/provenance", headers=_bearer_for(user)
+    )
+
+    assert resp.status_code == 200, resp.text
+    body = resp.json()
+    assert body["scan_id"] == str(scan_id)
+    assert body["document"] is None
+    assert body["manifests"]["count"] == 2
+    assert body["manifests"]["truncated"] is False
+    assert [f["path"] for f in body["manifests"]["files"]] == [
+        "package.json",
+        "services/api/go.mod",
+    ]
+    # A file too large to hash is still listed; its presence is the answer.
+    assert body["manifests"]["files"][1]["sha256"] is None
+
+
+async def test_provenance_serves_what_an_upload_claimed(client) -> None:
+    _team, user, project = await _seed(client, role="developer")
+    scan_id = await _seed_scan(client, project_id=project.id)
+    await _set_provenance(
+        client,
+        scan_id=scan_id,
+        document={
+            "format": "cyclonedx",
+            "spec_version": "1.6",
+            "serial_number": "urn:uuid:1111",
+            "subject": "supplier-app",
+            "subject_version": "4.2.0",
+            "created": "2026-08-01T10:00:00Z",
+            "tools": [{"name": "cdxgen", "version": "12.3.3"}],
+            "authors": ["Release Engineering"],
+            "supplier": "Example Corp",
+            "component_count": 412,
+            "byte_size": 90210,
+            "original_filename": "supplier.cdx.json",
+        },
+    )
+
+    resp = await client.get(
+        f"/v1/scans/{scan_id}/provenance", headers=_bearer_for(user)
+    )
+
+    assert resp.status_code == 200, resp.text
+    body = resp.json()
+    assert body["manifests"] is None
+    assert body["document"]["spec_version"] == "1.6"
+    assert body["document"]["tools"] == [{"name": "cdxgen", "version": "12.3.3"}]
+    assert body["document"]["component_count"] == 412
+
+
+async def test_a_scan_with_nothing_recorded_is_200_with_two_nulls(client) -> None:
+    """Not a 404. The scan exists, and "nothing was recorded" is the honest
+    answer; a 404 would report it as "no such scan"."""
+    _team, user, project = await _seed(client, role="developer")
+    scan_id = await _seed_scan(client, project_id=project.id)
+
+    resp = await client.get(
+        f"/v1/scans/{scan_id}/provenance", headers=_bearer_for(user)
+    )
+
+    assert resp.status_code == 200, resp.text
+    body = resp.json()
+    assert body["manifests"] is None
+    assert body["document"] is None
+
+
+async def test_provenance_refuses_exactly_what_the_scan_read_refuses(client) -> None:
+    """This route must not answer a question ``GET /v1/scans/{id}`` refuses.
+
+    It resolves through the same ``get_scan``, so the two are compared directly
+    rather than against a hardcoded status: whatever the access policy is, a
+    second read of the same object has to follow it, or the new route becomes
+    the oracle the older one denies.
+    """
+    _team_a, _user_a, project_a = await _seed(client, role="developer")
+    scan_id = await _seed_scan(client, project_id=project_a.id)
+    await _set_provenance(
+        client, scan_id=scan_id, manifests={"files": [], "count": 0, "truncated": False}
+    )
+
+    _team_b, outsider, _project_b = await _seed(client, role="developer")
+    headers = _bearer_for(outsider)
+    unknown_id = uuid.uuid4()
+
+    detail_cross = await client.get(f"/v1/scans/{scan_id}", headers=headers)
+    prov_cross = await client.get(
+        f"/v1/scans/{scan_id}/provenance", headers=headers
+    )
+    detail_unknown = await client.get(f"/v1/scans/{unknown_id}", headers=headers)
+    prov_unknown = await client.get(
+        f"/v1/scans/{unknown_id}/provenance", headers=headers
+    )
+
+    assert prov_cross.status_code == detail_cross.status_code
+    assert prov_unknown.status_code == detail_unknown.status_code
+    # Both are refusals, whichever code the policy uses.
+    assert prov_cross.status_code in (403, 404)
+    assert prov_unknown.status_code in (403, 404)
+
+
+async def test_provenance_requires_authentication(client) -> None:
+    _team, _user, project = await _seed(client, role="developer")
+    scan_id = await _seed_scan(client, project_id=project.id)
+
+    resp = await client.get(f"/v1/scans/{scan_id}/provenance")
+
+    assert resp.status_code == 401
+
+
+async def test_provenance_reports_an_unreadable_row_as_not_recorded(client) -> None:
+    """A row a newer schema no longer validates must not 500 the read.
+
+    The scan and its findings are still there to look at; reporting the
+    provenance as absent degrades one section rather than the page.
+    """
+    _team, user, project = await _seed(client, role="developer")
+    scan_id = await _seed_scan(client, project_id=project.id)
+    await _set_provenance(
+        client,
+        scan_id=scan_id,
+        manifests={"files": "not a list", "count": "many"},
+    )
+
+    resp = await client.get(
+        f"/v1/scans/{scan_id}/provenance", headers=_bearer_for(user)
+    )
+
+    assert resp.status_code == 200, resp.text
+    assert resp.json()["manifests"] is None

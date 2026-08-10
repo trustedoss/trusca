@@ -869,6 +869,83 @@ class ScanListResponse(BaseModel):
     size: int
 
 
+# ---------------------------------------------------------------------------
+# Scan provenance (gap #31) — what a scan read, and what it was handed
+# ---------------------------------------------------------------------------
+#
+# Served by its own endpoint rather than riding on ``ScanPublic``: an inventory
+# can list hundreds of manifests, and ``ScanPublic`` is the shape every scan
+# LIST response repeats per row. A reader wants this for one scan at a time.
+
+
+class InputManifestEntry(BaseModel):
+    """One dependency manifest or lockfile the scanned tree carried."""
+
+    path: str
+    size: int
+    #: None when the file was too large to hash or could not be read. Its
+    #: presence in the list is the answer; the hash is a convenience.
+    sha256: str | None = None
+
+
+class InputManifests(BaseModel):
+    """What a source scan could read. NULL on scans that have no tree."""
+
+    files: list[InputManifestEntry]
+    count: int
+    #: True when the walk hit its entry ceiling. A list that stopped without
+    #: saying so would read as a complete answer.
+    truncated: bool
+
+
+class InputDocumentTool(BaseModel):
+    """A generator the uploaded document names as having produced it."""
+
+    name: str
+    version: str | None = None
+
+
+class InputDocument(BaseModel):
+    """What an uploaded document says about itself.
+
+    Every field is the document's own claim. A generator can write a timestamp
+    that is wrong and name a supplier that is nobody; the claim is still what a
+    reader compares the scan's results against.
+    """
+
+    format: str
+    spec_version: str | None = None
+    serial_number: str | None = None
+    subject: str | None = None
+    subject_version: str | None = None
+    #: The timestamp the document carries, not when we ingested it.
+    created: str | None = None
+    tools: list[InputDocumentTool] = Field(default_factory=list)
+    authors: list[str] = Field(default_factory=list)
+    supplier: str | None = None
+    component_count: int
+    byte_size: int | None = None
+    original_filename: str | None = None
+
+
+class ScanProvenance(BaseModel):
+    """Where a scan's results came from.
+
+    Both halves are nullable and the two nulls mean the same thing — not
+    recorded — for different reasons. A source scan has no document; an ingest
+    has no tree; every scan from before the feature has neither. An empty
+    inventory would instead mean the scan looked and found nothing, which is a
+    different answer and is represented as ``count: 0``.
+    """
+
+    model_config = ConfigDict(from_attributes=True)
+
+    scan_id: uuid.UUID
+    kind: ScanKind
+    manifests: InputManifests | None = None
+    document: InputDocument | None = None
+
+
 __all__ = [
     "ProjectCreate",
     "ProjectListResponse",
@@ -878,6 +955,7 @@ __all__ = [
     "ScanCreate",
     "ScanKind",
     "ScanListResponse",
+    "ScanProvenance",
     "ScanPublic",
     "ScanStatus",
     "SeveritySummary",
