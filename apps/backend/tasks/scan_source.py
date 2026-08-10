@@ -124,7 +124,7 @@ from models import (
     ScanComponent,
     VulnerabilityFinding,
 )
-from services import sbom_component_walk, sbom_document_metadata
+from services import sbom_component_walk, sbom_document_metadata, scan_inputs
 from services.component_approval_service import auto_create_pending_approvals
 from services.eol import eol_catalog
 from services.license_expression import evaluate_expression
@@ -377,6 +377,10 @@ def _run_pipeline(
     # environment-specific cdxgen sidecar. Best-effort — a detection error must
     # never fail the scan, so we fall back to "unknown" and continue.
     detected_env = _detect_and_record_env(scan_uuid, project_root)
+
+    # Scan provenance (gap #31): what the fetched tree declared, recorded before
+    # prep writes any lockfile of its own.
+    _record_input_manifests(scan_uuid, project_root)
 
     # Stage 2.5 + 3 — build-prep + cdxgen, behind the ScanExecutor abstraction.
     # cdxgen needs a populated lockfile to enumerate transitive deps for Ruby /
@@ -1353,6 +1357,43 @@ def _detect_and_record_env(scan_uuid: uuid.UUID, source_dir: Path) -> str:
         log.warning("source_detect_persist_failed", scan_id=str(scan_uuid), exc_info=True)
 
     return detected_env
+
+
+def _record_input_manifests(scan_uuid: uuid.UUID, project_root: Path) -> None:
+    """Record the dependency manifests the fetched tree carried (gap #31).
+
+    Runs BEFORE build-prep, deliberately. Prep generates lockfiles for the
+    ecosystems whose transitive graph cdxgen cannot resolve without one, so an
+    inventory taken afterwards would list a ``Gemfile.lock`` that the repository
+    does not have and answer the wrong question — the one worth answering is
+    what the source declared, not what we produced from it.
+
+    Best-effort like every other observation on this path: a failure logs a
+    warning and leaves the column NULL, which reads as "not recorded" rather
+    than "nothing found" (migration 0051).
+    """
+    inventory = scan_inputs.collect_manifest_inventory(project_root)
+    if inventory is None:
+        return
+
+    log.info(
+        "scan_input_manifests",
+        scan_id=str(scan_uuid),
+        count=inventory["count"],
+        truncated=inventory["truncated"],
+    )
+    try:
+        with sync_session_scope() as session:
+            scan = session.get(Scan, scan_uuid)
+            if scan is not None:
+                scan.input_manifests = inventory
+                session.commit()
+    except Exception:  # noqa: BLE001 — persistence is best-effort, never fatal
+        log.warning(
+            "scan_input_manifests_persist_failed",
+            scan_id=str(scan_uuid),
+            exc_info=True,
+        )
 
 
 def _merge_cocoapods_components(
