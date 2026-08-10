@@ -174,9 +174,11 @@ describe("provenance locale parity", () => {
   }
 
   it("serves the same keys in both locales", () => {
-    // i18next resolves a plural by suffix, and Korean has no plural form, so
-    // the count-bearing key differs by design: `_one`/`_other` in English,
-    // `_other` alone in Korean. Everything else must match exactly.
+    // The count-bearing heading interpolates rather than using i18next's
+    // plural suffixes: Korean has no plural form, so the suffixed keys would
+    // differ between the two locales by design — and the repo's i18n drift
+    // check resolves `t()` calls statically, where a suffixed key reads as a
+    // missing one.
     const en = new Set(
       leafKeys((enScans as Record<string, unknown>).provenance),
     );
@@ -184,7 +186,6 @@ describe("provenance locale parity", () => {
       leafKeys((koScans as Record<string, unknown>).provenance),
     );
 
-    en.delete("manifests.heading_one");
     expect([...ko].sort()).toEqual([...en].sort());
   });
 });
