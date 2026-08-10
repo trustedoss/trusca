@@ -7,7 +7,111 @@ and the project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.
 
 ## [Unreleased]
 
+## [0.21.0] — 2026-08-10
+
+### Added
+- **Every CycloneDX SBOM is measured against the 2026 minimum elements.** The
+  2026 Minimum Elements for a Software Bill of Materials (v2.1, 2026-07-29,
+  CISA/NSA/FBI with fifteen international partners) replace the NTIA elements of
+  2021 and apply to all software, so the baseline carries no condition — 17 data
+  fields and 6 practices, 23 checks. Every one is advisory: the guidance accepts
+  an explicit statement that a value is unknown in place of the value, so
+  promoting a check would fail an SBOM for a value it may legitimately not have.
+  Four practices describe how an organisation operates and carry a review note
+  rather than a score. The regulatory crosswalk's US framework moves onto these
+  elements, and its rollup now states `failed` instead of leaving it as the
+  remainder — the four counters partition the total.
+- **A project can declare the licence it ships under, and every dependency is
+  judged against it.** A conflict exists only relative to an outbound licence, so
+  the policy axis could not express one. Declaring it turns on a verdict column,
+  filter and summary on the Compliance grid, with the reasoning shown in the
+  drawer. No declaration means no verdicts — an empty column is not a clean
+  result. Migration 0050.
+- **Exports state their generation context, author and tool.** The lifecycle
+  phase follows from the scan kind (source manifests pre-build, a built image
+  post-build); an ingested supplier document is re-exported with no phase, since
+  converting someone else's document does not make us its author. `SBOM_AUTHOR`
+  declares the author and the field is omitted when unset rather than filled with
+  a placeholder. The document also states once whether an empty field is unknown
+  or withheld.
+- **The conformance panel shows the CycloneDX fragment that would satisfy a
+  missing element**, for both baselines, in a fold-away block. Guidance is no
+  longer attached to rows that already pass.
+
 ### Fixed
+- **A pull request's scan described the base branch.** Every source scan ran
+  `git clone --depth 1`, which takes the remote's default branch; the ref
+  travelled alongside as a retention key only. A PR that added a vulnerable
+  dependency passed, and a critical CVE on `main` blocked PRs that had nothing to
+  do with it. The worker now fetches and checks out the ref. A ref that has since
+  vanished falls back to the default branch and records `metadata.ref_fallback`,
+  because a verdict from a substituted target must be distinguishable.
+- **A supplier SBOM of distro packages reported zero vulnerabilities.** Trivy
+  picks a distro advisory database from an `operating-system` component, not from
+  package PURLs, so an SBOM listing every rpm on an image — each PURL well formed
+  — matched nothing. Measured on Trivy 0.71.2: 0 findings without the component,
+  306 with it; SPDX behaves the same way. The distro is now inferred from the
+  packages and an enriched copy is scanned; the upload itself is never edited,
+  since it backs the conformance verdict and the signature bundle. An
+  unrecognised distro contributes nothing and the document is scanned as it
+  arrived.
+- **Distro findings were dropped between the scanner and the database.** Trivy
+  labels an OS-package result with the distro (`centos`, `alpine`), which no PURL
+  reconstruction maps, so findings it had matched were discarded as "no purl".
+  The PURL Trivy attaches to each finding is now used as a fallback;
+  reconstruction stays first, so every ecosystem that already matched is
+  unaffected.
+- **Container scans recorded every package as an Alpine package.** Persistence
+  hardcoded `pkg:apk/{name}@{version}` and package type `apk` for every image, so
+  a Rocky image's rpms, a Debian image's debs and `pip` inside a Python image were
+  all inventoried under the wrong ecosystem. No finding was lost, so the counts
+  were right and only the identity was wrong. The ecosystem the scanner reports
+  is now recorded. **Existing rows are not rewritten**: re-scan an rpm or deb
+  image to correct its inventory, and see the upgrade guide — a re-scan resets
+  that project's vulnerability triage, because verdicts are keyed on the
+  component and the corrected package is a different component. Deployments that
+  only scanned Alpine images are unaffected.
+- **A CI container scan could never succeed.** Neither CI client could send
+  `image_ref`, which the worker requires, so every container scan they triggered
+  queued, waited for a worker and died there. The action and the GitLab template
+  now take the image, and the request is rejected at trigger time instead.
+- **A second CI run against the same ref failed the build.** The portal allows
+  one active scan per (project, ref) and answered a second trigger with 409,
+  which all three CI clients treated as fatal — so GitHub's own recommended
+  `cancel-in-progress` workflow broke itself. The 409 now names the scan holding
+  the ref and the clients wait on it. Polling survives a blip rather than
+  discarding a nearly-finished scan, and 429 honours `Retry-After`.
+- **A push could go unscanned while the delivery log said otherwise.** A delivery
+  skipped because the ref already had a running scan was reported as
+  `duplicate` — this API's word for a replayed delivery — so an operator saw a
+  commit as handled when nothing had scanned it. It now says
+  `skipped_active_scan`. That path also answered 500, which the Git host retried.
+  Pull-request events carry no top-level ref, so webhook-triggered PR scans were
+  stored ref-less; they are now keyed `pr-N` / `mr-N` like the CI clients' scans.
+- **The webhook receiver ignored the capacity guards.** It built scan rows
+  directly, counting against neither the team concurrency cap nor the disk limit.
+  It now asks before recording the delivery, so a redelivery recovers once
+  capacity frees up.
+- **Nested components were invisible.** CycloneDX lets a component declare its
+  own `components` array — a bundled dependency, an image layer's packages — and
+  only the top level was read. Persistence dropped the nested entries,
+  conformance scored a denominator without them, and a Trivy finding against one
+  was resolved by PURL to a row that was never written, so the finding vanished
+  with nothing logged.
+- **File entries were counted against the package fields.** A file carries no
+  package version and no PURL type, so counting file entries against those fields
+  reported a document as short on what its entries cannot hold. Files are now
+  asked for the identifier they can carry, and the coverage detail names how many
+  components were measured against how many were left out.
+- **The signed document said less than the exported one.** The 2026
+  minimum-element statements landed on the export route first, leaving the SBOM a
+  consumer actually receives as the silent one. Both routes now apply them, and
+  on the scan route the stamp runs before the artifact is persisted, so the bytes
+  that are signed are the bytes that carry the statements.
+- **Every SBOM asserted a release that does not exist.** The builder version
+  defaulted to `2.3.0-dev` and no deployment set `TRUSTEDOSS_VERSION`, so SLSA
+  provenance, the About screen and every SBOM stated a placeholder. Release images
+  inject the tag at build time and the default is now `unknown`.
 - **The regulatory crosswalk's disclaimer named the wrong product.** The
   conformance panel's legal notice began "BomLens does not certify or determine
   compliance…" — the name of the sibling project the crosswalk data was
@@ -19,6 +123,18 @@ and the project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.
   vendored data file so a re-copy cannot quietly bring the name back, and the
   disclaimer the API serves is now pinned to the copy quoted in the SBOM upload
   guide — the two had drifted while the guide promised they matched.
+- **The CI guides promised things that were not there.** The webhook secret
+  recipe imported a function that does not exist, the Jenkins quickstart graded a
+  failed scan against an older one, and three guides pointed at a portal page and
+  API key scopes that do not exist. The action now emits the `epss-gate-count`
+  output its guide documented, with a contract test so the two cannot drift
+  again.
+
+### Changed
+- **The conformance panel leads with what blocks the SBOM** — mandatory
+  failures, advisory shortfalls, rows needing a person — and gives each baseline
+  its own section, so 23 advisory rows cannot push the mandatory checks down the
+  page.
 
 ## [0.20.1] — 2026-08-05
 
