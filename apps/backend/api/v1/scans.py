@@ -26,6 +26,7 @@ from pathlib import Path
 import structlog
 from fastapi import APIRouter, Depends, Query, Request, Response, status
 from fastapi.responses import JSONResponse, StreamingResponse
+from pydantic import ValidationError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from core.api_key_auth import require_role_or_api_key
@@ -34,7 +35,7 @@ from core.db import get_db
 from core.errors import problem_response
 from core.ratelimit import _authenticated_user_key, limiter
 from core.security import CurrentUser, require_role
-from schemas.scan import ScanListResponse, ScanPublic
+from schemas.scan import ScanListResponse, ScanProvenance, ScanPublic
 from services.admin_scan_service import (
     AdminScanError,
     cancel_scan_for_actor,
@@ -173,6 +174,73 @@ async def get_scan_endpoint(
     body = ScanPublic.model_validate(scan)
     return Response(
         content=body.model_dump_json(by_alias=True),
+        status_code=status.HTTP_200_OK,
+        media_type="application/json",
+    )
+
+
+# ---------------------------------------------------------------------------
+# GET /v1/scans/{scan_id}/provenance
+# ---------------------------------------------------------------------------
+
+
+@router.get(
+    "/scans/{scan_id}/provenance",
+    response_model=ScanProvenance,
+    summary="Where a scan's results came from (IDOR-safe via project team membership)",
+)
+# Same shared bucket as the scan read above: this is a second read on the same
+# object, and giving it its own scope would let one actor double the cap by
+# alternating between the two routes.
+@limiter.shared_limit(
+    api_read_rate_limit,
+    scope="api_read",
+    key_func=_authenticated_user_key,
+)
+async def get_scan_provenance_endpoint(
+    request: Request,
+    scan_id: uuid.UUID,
+    session: AsyncSession = Depends(get_db),
+    actor: CurrentUser = Depends(require_role_or_api_key("developer")),
+) -> Response:
+    """Serve the scan's recorded inputs.
+
+    Existence-hide comes from ``get_scan`` — the same resolver the scan read
+    uses — so an id in another team is indistinguishable here from one that
+    never existed. Nothing about this route may answer a question the scan read
+    would refuse.
+
+    A scan with neither half recorded is a 200 with two nulls, not a 404: the
+    scan exists and the honest answer is that nothing was recorded, which a
+    404 would misreport as "no such scan".
+    """
+    try:
+        scan = await get_scan(session, scan_id=scan_id, actor=actor)
+    except ScanError as exc:
+        return _problem_for_scan_error(request, exc)
+
+    # model_validate rather than the constructor: the two halves are stored as
+    # JSONB and arrive as plain dicts, and this is where they are checked
+    # against the shape the API promises. A row written by an older version
+    # that no longer validates is reported as not-recorded rather than turning
+    # a read of an existing scan into a 500 — the scan and its findings are
+    # still there to look at.
+    try:
+        body = ScanProvenance.model_validate(
+            {
+                "scan_id": scan.id,
+                "kind": scan.kind,
+                "manifests": scan.input_manifests,
+                "document": scan.input_document,
+            }
+        )
+    except ValidationError:
+        log.warning("scan_provenance_unreadable", scan_id=str(scan.id))
+        body = ScanProvenance.model_validate(
+            {"scan_id": scan.id, "kind": scan.kind}
+        )
+    return Response(
+        content=body.model_dump_json(),
         status_code=status.HTTP_200_OK,
         media_type="application/json",
     )

@@ -540,6 +540,67 @@ export async function getSbomConformance(
   return data;
 }
 
+/**
+ * Scan provenance (gap #31) — where a scan's results came from.
+ *
+ * Two halves, each null on the scan kinds where its question does not apply: a
+ * source scan has no uploaded document, an ingest has no tree to inventory, and
+ * a scan from before the feature has neither. Null means "not recorded", which
+ * is a different statement from an inventory whose `count` is 0 — that one
+ * means the scan looked and found nothing.
+ */
+export interface ScanInputManifestEntry {
+  path: string;
+  size: number;
+  /** Null when the file was too large to hash; its presence is still the answer. */
+  sha256: string | null;
+}
+
+export interface ScanInputManifests {
+  files: ScanInputManifestEntry[];
+  count: number;
+  /** True when the walk hit its ceiling — the list is not the whole answer. */
+  truncated: boolean;
+}
+
+export interface ScanInputDocumentTool {
+  name: string;
+  version: string | null;
+}
+
+/** What an uploaded document said about itself. Every field is its own claim. */
+export interface ScanInputDocument {
+  format: string;
+  spec_version: string | null;
+  serial_number: string | null;
+  subject: string | null;
+  subject_version: string | null;
+  /** The timestamp the document carries, not when we ingested it. */
+  created: string | null;
+  tools: ScanInputDocumentTool[];
+  authors: string[];
+  supplier: string | null;
+  component_count: number;
+  byte_size: number | null;
+  original_filename: string | null;
+}
+
+export interface ScanProvenanceRead {
+  scan_id: string;
+  kind: string;
+  manifests: ScanInputManifests | null;
+  document: ScanInputDocument | null;
+}
+
+export async function getScanProvenance(
+  scanId: string,
+): Promise<ScanProvenanceRead> {
+  const { data } = await api.get<ScanProvenanceRead>(
+    `/v1/scans/${scanId}/provenance`,
+  );
+  return data;
+}
+
 export interface IngestSbomOptions {
   /** Optional git ref the SBOM was produced from. */
   ref?: string;

@@ -294,6 +294,34 @@ If you build a custom client, the message shape is:
 
 `percent` is an integer 0–100. `step` is one of the pipeline slugs (`bootstrap`, `fetch`, `prep`, `cdxgen`, `sign`, `scancode`, `approvals`, `scanoss`, `trivy`, `finalize`) plus the two terminal states (`succeeded`, `failed`). The `scancode` slug replaced the former `ort` slug, and `trivy` replaced the former `dt_upload`/`dt_findings` pair after the Dependency-Track removal (ADR-0001). The frame does not echo `scan_id` — the subscriber already knows it from the URL.
 
+## Where a scan's results came from {#provenance}
+
+A scan that reports fewer components than expected raises a question the results themselves cannot answer: did the scanner not find the package, or did it never see the file that declares it?
+
+Every finished scan records what it had in front of it, and the scan detail page shows it under **Where these results came from**.
+
+**Source scans** list the dependency manifests and lockfiles the fetched tree carried — `package.json`, `go.mod`, `pom.xml`, their lockfiles, and the equivalents for the other ecosystems — with each file's size. A component that no manifest declares is a component the scan had no way to find, and that is usually the whole answer.
+
+The list is what the repository carried, not what the scan produced from it. TRUSCA generates a lockfile for ecosystems that cannot resolve transitive dependencies without one, and that generated file is deliberately absent here: the useful fact is that your repository did not have it.
+
+Installed dependencies are not listed. `node_modules`, `vendor`, `Pods` and their equivalents hold a manifest per installed package, which states what a dependency declares about itself rather than what your project declares.
+
+**Uploaded SBOMs** have no tree, so the panel shows what the document said about itself instead: its format and specification version, the tool that generated it, the supplier and authors it names, the timestamp it carries, and how many components it declared. These are the document's claims — a generator can write a timestamp that is wrong or name a supplier that is nobody, and comparing those claims against the results is the point.
+
+An SPDX Tag-Value upload is scanned normally but is not summarised here, because the summary is built by parsing the document and that format is not parsed for this purpose.
+
+The panel does not appear when nothing was recorded — scans that ran before this was added, and container scans, which have neither a tree nor an uploaded document.
+
+### Reading it through the API
+
+<!-- docs-uat: id=scans-api-provenance kind=shell ctx=host tier=manual waiver=example-curl-placeholder-host-and-token -->
+```bash
+curl -sS -H "Authorization: Bearer $TOKEN" \
+  "$PORTAL/v1/scans/$SCAN_ID/provenance"
+```
+
+Both halves are nullable, and null means "not recorded". That is different from an inventory whose `count` is `0`, which means the scan looked and found no manifest — the second is a measurement, and often the answer you were looking for.
+
 ## Verify it worked
 
 After a scan completes:
