@@ -80,6 +80,22 @@ else
   printf 'IMAGE_TAG=%s\n' "$IMG" >> .env
 fi
 
+echo "==> reclaiming unreferenced images before the pull"
+# Every release leaves the previous one's images on the host, and this box's disk
+# holds only a handful of them. Once it fills, the pull dies partway through a
+# layer and takes the half-recreated stack with it — that is how the v0.21.0
+# deploy first failed, and recovery needed a separate workflow. Reclaiming first
+# makes the deploy responsible for its own space instead of a button somebody has
+# to remember to press.
+#
+# `-a` removes images that no CONTAINER references, so the release currently
+# serving traffic survives and what goes is the superseded ones. Nothing here is
+# irreplaceable: ghcr still publishes every tag, so a rollback re-pulls. Volumes
+# are never touched. Best-effort — a host that cannot prune should still get the
+# deploy attempt, and the disk line below says what state it went in with.
+docker image prune -a -f || echo "==> prune failed — continuing with the deploy" >&2
+df -h / | tail -1
+
 echo "==> running scripts/upgrade.sh (non-interactive)"
 # NO_PROMPT=1        — answer every upgrade.sh prompt with its safe default.
 # UPGRADE_SKIP_DRAIN=1 — the public demo runs no long scans; skip the queue-drain
