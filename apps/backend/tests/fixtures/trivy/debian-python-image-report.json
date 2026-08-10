@@ -1,0 +1,2629 @@
+{
+  "SchemaVersion": 2,
+  "Trivy": {
+    "Version": "0.71.2"
+  },
+  "ReportID": "019fe8c4-9708-7586-b5ec-7dae1810858d",
+  "CreatedAt": "2026-08-10T08:03:45.672363+09:00",
+  "ArtifactID": "sha256:dd22dc9de7d1749b020fd24b6e632952f4b70e6af44ac606d13475aa1dc19f5c",
+  "ArtifactName": "python:3.12-slim",
+  "ArtifactType": "container_image",
+  "Metadata": {
+    "Size": 123289600,
+    "OS": {
+      "Family": "debian",
+      "Name": "13.6"
+    },
+    "ImageID": "sha256:54a0b2beae90fe14c2131f1e880e1388c9df77390bc260d7317e589765e064e8",
+    "DiffIDs": [
+      "sha256:6f94328331290cbd81edab450664d42da7b64c191416c9346cd5d28c84f76035",
+      "sha256:eeece50a9eae41fbec657a77c3360a561685b2fc638dbb59c4f59be2e9deb502",
+      "sha256:4bdf3c4a59c868d57940d8a761f38ce2a7269959ff6d1fd5a0157a86f6dac082",
+      "sha256:02bea5b709fab77889748c8fe2fed5a41e60e418e70d6a91b5a4f9c85475b043"
+    ],
+    "RepoTags": [
+      "python:3.12-slim"
+    ],
+    "RepoDigests": [
+      "python@sha256:229a2c5bfa27522db7815ea81f9bed70af17ccb9de9fc7ad142b1877b5830d36"
+    ],
+    "Reference": "python:3.12-slim",
+    "ImageConfig": {
+      "architecture": "amd64",
+      "created": "2026-08-05T01:12:35.187867635Z",
+      "history": [
+        {
+          "created": "2026-08-03T00:00:00Z",
+          "created_by": "# debian.sh --arch 'amd64' out/ 'trixie' '@1785715200'",
+          "comment": "debuerreotype 0.17"
+        },
+        {
+          "created": "2026-08-05T01:04:15.2076786Z",
+          "created_by": "ENV PATH=/usr/local/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin",
+          "comment": "buildkit.dockerfile.v0",
+          "empty_layer": true
+        },
+        {
+          "created": "2026-08-05T01:04:15.2076786Z",
+          "created_by": "ENV LANG=C.UTF-8",
+          "comment": "buildkit.dockerfile.v0",
+          "empty_layer": true
+        },
+        {
+          "created": "2026-08-05T01:04:15.2076786Z",
+          "created_by": "RUN /bin/sh -c set -eux; \tapt-get update; \tapt-get install -y --no-install-recommends \t\tca-certificates \t\tnetbase \t\ttzdata \t; \tapt-get dist-clean # buildkit",
+          "comment": "buildkit.dockerfile.v0"
+        },
+        {
+          "created": "2026-08-05T01:04:15.2076786Z",
+          "created_by": "ENV GPG_KEY=7169605F62C751356D054A26A821E680E5FA6305",
+          "comment": "buildkit.dockerfile.v0",
+          "empty_layer": true
+        },
+        {
+          "created": "2026-08-05T01:04:15.2076786Z",
+          "created_by": "ENV PYTHON_VERSION=3.12.13",
+          "comment": "buildkit.dockerfile.v0",
+          "empty_layer": true
+        },
+        {
+          "created": "2026-08-05T01:04:15.2076786Z",
+          "created_by": "ENV PYTHON_SHA256=c08bc65a81971c1dd5783182826503369466c7e67374d1646519adf05207b684",
+          "comment": "buildkit.dockerfile.v0",
+          "empty_layer": true
+        },
+        {
+          "created": "2026-08-05T01:12:35.078563755Z",
+          "created_by": "RUN /bin/sh -c set -eux; \t\tsavedAptMark=\"$(apt-mark showmanual)\"; \tapt-get update; \tapt-get install -y --no-install-recommends \t\tdpkg-dev \t\tgcc \t\tgnupg \t\tlibbluetooth-dev \t\tlibbz2-dev \t\tlibc6-dev \t\tlibdb-dev \t\tlibffi-dev \t\tlibgdbm-dev \t\tliblzma-dev \t\tlibncursesw5-dev \t\tlibreadline-dev \t\tlibsqlite3-dev \t\tlibssl-dev \t\tmake \t\ttk-dev \t\tuuid-dev \t\twget \t\txz-utils \t\tzlib1g-dev \t; \t\twget -O python.tar.xz \"https://www.python.org/ftp/python/${PYTHON_VERSION%%[a-z]*}/Python-$PYTHON_VERSION.tar.xz\"; \techo \"$PYTHON_SHA256 *python.tar.xz\" | sha256sum -c -; \twget -O python.tar.xz.asc \"https://www.python.org/ftp/python/${PYTHON_VERSION%%[a-z]*}/Python-$PYTHON_VERSION.tar.xz.asc\"; \tGNUPGHOME=\"$(mktemp -d)\"; export GNUPGHOME; \tgpg --batch --keyserver hkps://keys.openpgp.org --recv-keys \"$GPG_KEY\"; \tgpg --batch --verify python.tar.xz.asc python.tar.xz; \tgpgconf --kill all; \trm -rf \"$GNUPGHOME\" python.tar.xz.asc; \tmkdir -p /usr/src/python; \ttar --extract --directory /usr/src/python --strip-components=1 --file python.tar.xz; \trm python.tar.xz; \t\tcd /usr/src/python; \tgnuArch=\"$(dpkg-architecture --query DEB_BUILD_GNU_TYPE)\"; \t./configure \t\t--build=\"$gnuArch\" \t\t--enable-loadable-sqlite-extensions \t\t--enable-optimizations \t\t--enable-option-checking=fatal \t\t--enable-shared \t\t$(test \"${gnuArch%%-*}\" != 'riscv64' && echo '--with-lto') \t\t--with-ensurepip \t; \tnproc=\"$(nproc)\"; \tEXTRA_CFLAGS=\"$(dpkg-buildflags --get CFLAGS)\"; \tLDFLAGS=\"$(dpkg-buildflags --get LDFLAGS)\"; \tLDFLAGS=\"${LDFLAGS:-} -Wl,--strip-all\"; \tarch=\"$(dpkg --print-architecture)\"; arch=\"${arch##*-}\"; \tcase \"$arch\" in \t\tamd64|arm64) \t\t\tEXTRA_CFLAGS=\"${EXTRA_CFLAGS:-} -fno-omit-frame-pointer -mno-omit-leaf-frame-pointer\"; \t\t\t;; \t\ti386) \t\t\t;; \t\t*) \t\t\tEXTRA_CFLAGS=\"${EXTRA_CFLAGS:-} -fno-omit-frame-pointer\"; \t\t\t;; \tesac; \tmake -j \"$nproc\" \t\t\"EXTRA_CFLAGS=${EXTRA_CFLAGS:-}\" \t\t\"LDFLAGS=${LDFLAGS:-}\" \t; \trm python; \tmake -j \"$nproc\" \t\t\"EXTRA_CFLAGS=${EXTRA_CFLAGS:-}\" \t\t\"LDFLAGS=${LDFLAGS:-} -Wl,-rpath='\\$\\$ORIGIN/../lib'\" \t\tpython \t; \tmake install; \t\tcd /; \trm -rf /usr/src/python; \t\tfind /usr/local -depth \t\t\\( \t\t\t\\( -type d -a \\( -name test -o -name tests -o -name idle_test \\) \\) \t\t\t-o \\( -type f -a \\( -name '*.pyc' -o -name '*.pyo' -o -name 'libpython*.a' \\) \\) \t\t\\) -exec rm -rf '{}' + \t; \t\tldconfig; \t\tapt-mark auto '.*' > /dev/null; \tapt-mark manual $savedAptMark; \tfind /usr/local -type f -executable -not \\( -name '*tkinter*' \\) -exec ldd '{}' ';' \t\t| awk '/=>/ { so = $(NF-1); if (index(so, \"/usr/local/\") == 1) { next }; gsub(\"^/(usr/)?\", \"\", so); printf \"*%s\\n\", so }' \t\t| sort -u \t\t| xargs -rt dpkg-query --search \t\t| awk 'sub(\":$\", \"\", $1) { print $1 }' \t\t| sort -u \t\t| xargs -r apt-mark manual \t; \tapt-get purge -y --auto-remove -o APT::AutoRemove::RecommendsImportant=false; \tapt-get dist-clean; \t\texport PYTHONDONTWRITEBYTECODE=1; \tpython3 --version; \tpip3 --version # buildkit",
+          "comment": "buildkit.dockerfile.v0"
+        },
+        {
+          "created": "2026-08-05T01:12:35.187867635Z",
+          "created_by": "RUN /bin/sh -c set -eux; \tfor src in idle3 pip3 pydoc3 python3 python3-config; do \t\tdst=\"$(echo \"$src\" | tr -d 3)\"; \t\t[ -s \"/usr/local/bin/$src\" ]; \t\t[ ! -e \"/usr/local/bin/$dst\" ]; \t\tln -svT \"$src\" \"/usr/local/bin/$dst\"; \tdone # buildkit",
+          "comment": "buildkit.dockerfile.v0"
+        },
+        {
+          "created": "2026-08-05T01:12:35.187867635Z",
+          "created_by": "CMD [\"python3\"]",
+          "comment": "buildkit.dockerfile.v0",
+          "empty_layer": true
+        }
+      ],
+      "os": "linux",
+      "rootfs": {
+        "type": "layers",
+        "diff_ids": [
+          "sha256:6f94328331290cbd81edab450664d42da7b64c191416c9346cd5d28c84f76035",
+          "sha256:eeece50a9eae41fbec657a77c3360a561685b2fc638dbb59c4f59be2e9deb502",
+          "sha256:4bdf3c4a59c868d57940d8a761f38ce2a7269959ff6d1fd5a0157a86f6dac082",
+          "sha256:02bea5b709fab77889748c8fe2fed5a41e60e418e70d6a91b5a4f9c85475b043"
+        ]
+      },
+      "config": {
+        "Cmd": [
+          "python3"
+        ],
+        "Env": [
+          "PATH=/usr/local/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin",
+          "LANG=C.UTF-8",
+          "GPG_KEY=7169605F62C751356D054A26A821E680E5FA6305",
+          "PYTHON_VERSION=3.12.13",
+          "PYTHON_SHA256=c08bc65a81971c1dd5783182826503369466c7e67374d1646519adf05207b684"
+        ]
+      }
+    },
+    "Layers": [
+      {
+        "Size": 81049600,
+        "Digest": "sha256:26c307b5e35a59ce911f5fde5b9458120ec8734e831ea2da5649a9ad14abfd3d",
+        "DiffID": "sha256:6f94328331290cbd81edab450664d42da7b64c191416c9346cd5d28c84f76035"
+      },
+      {
+        "Size": 4127232,
+        "Digest": "sha256:5a31db4cd47898e862a567028aa41f7a11d814cf69be6904173402a8b8eac5cb",
+        "DiffID": "sha256:eeece50a9eae41fbec657a77c3360a561685b2fc638dbb59c4f59be2e9deb502"
+      },
+      {
+        "Size": 38107648,
+        "Digest": "sha256:c85ad0bcaca895afa08053538ec1ea7642c7e9e05f5684d18e3627a2316ca8ae",
+        "DiffID": "sha256:4bdf3c4a59c868d57940d8a761f38ce2a7269959ff6d1fd5a0157a86f6dac082"
+      },
+      {
+        "Size": 5120,
+        "Digest": "sha256:b3c7a9bdb4f2a30d0a1358438d1539c06b86da99135cfd9d92756863cc87ae18",
+        "DiffID": "sha256:02bea5b709fab77889748c8fe2fed5a41e60e418e70d6a91b5a4f9c85475b043"
+      }
+    ]
+  },
+  "Results": [
+    {
+      "Target": "python:3.12-slim (debian 13.6)",
+      "Class": "os-pkgs",
+      "Type": "debian",
+      "Packages": [
+        {
+          "ID": "bsdutils@1:2.41-5",
+          "Name": "bsdutils",
+          "Identifier": {
+            "PURL": "pkg:deb/debian/bsdutils@2.41-5?arch=amd64&distro=debian-13.6&epoch=1",
+            "UID": "5843733a461e6ce1"
+          },
+          "Version": "2.41",
+          "Release": "5",
+          "Epoch": 1,
+          "Arch": "amd64",
+          "SrcName": "util-linux",
+          "SrcVersion": "2.41",
+          "SrcRelease": "5",
+          "Licenses": [
+            "GPL-2.0-or-later",
+            "GPL-2.0-only",
+            "GPL-3.0-or-later",
+            "LGPL-2.1-or-later",
+            "public-domain",
+            "BSD-4-Clause",
+            "MIT",
+            "ISC",
+            "BSD-3-Clause",
+            "BSLA",
+            "LGPL-2.0-or-later",
+            "BSD-2-Clause",
+            "LGPL-3.0-or-later",
+            "GPL-3.0-only",
+            "LGPL-2.0-only",
+            "LGPL-2.1-only",
+            "LGPL-3.0-only"
+          ],
+          "Maintainer": "Chris Hofstaedtler <zeha@debian.org>",
+          "Repository": {
+            "Class": "official"
+          },
+          "Layer": {
+            "Digest": "sha256:26c307b5e35a59ce911f5fde5b9458120ec8734e831ea2da5649a9ad14abfd3d",
+            "DiffID": "sha256:6f94328331290cbd81edab450664d42da7b64c191416c9346cd5d28c84f76035"
+          },
+          "InstalledFiles": [
+            "/usr/bin/logger",
+            "/usr/bin/renice",
+            "/usr/bin/script",
+            "/usr/bin/scriptlive",
+            "/usr/bin/scriptreplay",
+            "/usr/bin/wall",
+            "/usr/share/bash-completion/completions/logger",
+            "/usr/share/bash-completion/completions/renice",
+            "/usr/share/bash-completion/completions/script",
+            "/usr/share/bash-completion/completions/scriptlive",
+            "/usr/share/bash-completion/completions/scriptreplay",
+            "/usr/share/bash-completion/completions/wall",
+            "/usr/share/doc/bsdutils/NEWS.Debian.gz",
+            "/usr/share/doc/bsdutils/changelog.Debian.gz",
+            "/usr/share/doc/bsdutils/changelog.gz",
+            "/usr/share/doc/bsdutils/copyright",
+            "/usr/share/lintian/overrides/bsdutils",
+            "/usr/share/man/man1/logger.1.gz",
+            "/usr/share/man/man1/renice.1.gz",
+            "/usr/share/man/man1/script.1.gz",
+            "/usr/share/man/man1/scriptlive.1.gz",
+            "/usr/share/man/man1/scriptreplay.1.gz",
+            "/usr/share/man/man1/wall.1.gz"
+          ],
+          "AnalyzedBy": "dpkg"
+        },
+        {
+          "ID": "libblkid1@2.41-5",
+          "Name": "libblkid1",
+          "Identifier": {
+            "PURL": "pkg:deb/debian/libblkid1@2.41-5?arch=amd64&distro=debian-13.6",
+            "UID": "51bf0af8d40f4a01"
+          },
+          "Version": "2.41",
+          "Release": "5",
+          "Arch": "amd64",
+          "SrcName": "util-linux",
+          "SrcVersion": "2.41",
+          "SrcRelease": "5",
+          "Licenses": [
+            "GPL-2.0-or-later",
+            "GPL-2.0-only",
+            "GPL-3.0-or-later",
+            "LGPL-2.1-or-later",
+            "public-domain",
+            "BSD-4-Clause",
+            "MIT",
+            "ISC",
+            "BSD-3-Clause",
+            "BSLA",
+            "LGPL-2.0-or-later",
+            "BSD-2-Clause",
+            "LGPL-3.0-or-later",
+            "GPL-3.0-only",
+            "LGPL-2.0-only",
+            "LGPL-2.1-only",
+            "LGPL-3.0-only"
+          ],
+          "Maintainer": "Chris Hofstaedtler <zeha@debian.org>",
+          "Repository": {
+            "Class": "official"
+          },
+          "DependsOn": [
+            "libc6@2.41-12+deb13u3"
+          ],
+          "Layer": {
+            "Digest": "sha256:26c307b5e35a59ce911f5fde5b9458120ec8734e831ea2da5649a9ad14abfd3d",
+            "DiffID": "sha256:6f94328331290cbd81edab450664d42da7b64c191416c9346cd5d28c84f76035"
+          },
+          "InstalledFiles": [
+            "/usr/lib/x86_64-linux-gnu/libblkid.so.1.1.0",
+            "/usr/share/doc/libblkid1/NEWS.Debian.gz",
+            "/usr/share/doc/libblkid1/changelog.Debian.gz",
+            "/usr/share/doc/libblkid1/changelog.gz",
+            "/usr/share/doc/libblkid1/copyright",
+            "/usr/share/lintian/overrides/libblkid1"
+          ],
+          "AnalyzedBy": "dpkg"
+        },
+        {
+          "ID": "libc-bin@2.41-12+deb13u3",
+          "Name": "libc-bin",
+          "Identifier": {
+            "PURL": "pkg:deb/debian/libc-bin@2.41-12%2Bdeb13u3?arch=amd64&distro=debian-13.6",
+            "UID": "c45af597301c8c0b"
+          },
+          "Version": "2.41",
+          "Release": "12+deb13u3",
+          "Arch": "amd64",
+          "SrcName": "glibc",
+          "SrcVersion": "2.41",
+          "SrcRelease": "12+deb13u3",
+          "Licenses": [
+            "LGPL-2.1-or-later",
+            "LGPL-2.0-or-later",
+            "LGPL-2.1+-with-link-exception",
+            "LGPL-3.0-or-later",
+            "GPL-2.0-or-later",
+            "GPL-2+-with-link-exception",
+            "GPL-2.0-only",
+            "GPL-3.0-or-later",
+            "FSFAP",
+            "Carnegie",
+            "Inner-Net",
+            "MIT-like-Lord",
+            "BSD-like-Spencer",
+            "PCRE",
+            "BSD-3-clause-Carnegie",
+            "Unicode-DFS-2016",
+            "BSL-1.0",
+            "SunPro",
+            "CORE-MATH",
+            "BSD-3-clause-Berkeley",
+            "BSD-3-clause-WIDE",
+            "BSD-2-Clause",
+            "BSD-3-clause-Oracle",
+            "DEC",
+            "IBM",
+            "ISC",
+            "Univ-Coimbra",
+            "public-domain",
+            "GPL-3.0-only",
+            "LGPL-2.0-only",
+            "LGPL-2.1-only",
+            "LGPL-3.0-only"
+          ],
+          "Maintainer": "GNU Libc Maintainers <debian-glibc@lists.debian.org>",
+          "Repository": {
+            "Class": "official"
+          },
+          "DependsOn": [
+            "libc6@2.41-12+deb13u3"
+          ],
+          "Layer": {
+            "Digest": "sha256:26c307b5e35a59ce911f5fde5b9458120ec8734e831ea2da5649a9ad14abfd3d",
+            "DiffID": "sha256:6f94328331290cbd81edab450664d42da7b64c191416c9346cd5d28c84f76035"
+          },
+          "InstalledFiles": [
+            "/usr/bin/getconf",
+            "/usr/bin/getent",
+            "/usr/bin/iconv",
+            "/usr/bin/ldd",
+            "/usr/bin/locale",
+            "/usr/bin/localedef",
+            "/usr/bin/pldd",
+            "/usr/bin/tzselect",
+            "/usr/bin/zdump",
+            "/usr/lib/locale/C.utf8/LC_ADDRESS",
+            "/usr/lib/locale/C.utf8/LC_COLLATE",
+            "/usr/lib/locale/C.utf8/LC_CTYPE",
+            "/usr/lib/locale/C.utf8/LC_IDENTIFICATION",
+            "/usr/lib/locale/C.utf8/LC_MEASUREMENT",
+            "/usr/lib/locale/C.utf8/LC_MESSAGES/SYS_LC_MESSAGES",
+            "/usr/lib/locale/C.utf8/LC_MONETARY",
+            "/usr/lib/locale/C.utf8/LC_NAME",
+            "/usr/lib/locale/C.utf8/LC_NUMERIC",
+            "/usr/lib/locale/C.utf8/LC_PAPER",
+            "/usr/lib/locale/C.utf8/LC_TELEPHONE",
+            "/usr/lib/locale/C.utf8/LC_TIME",
+            "/usr/sbin/iconvconfig",
+            "/usr/sbin/ldconfig",
+            "/usr/sbin/zic",
+            "/usr/share/doc/libc-bin/changelog.Debian.gz",
+            "/usr/share/doc/libc-bin/changelog.gz",
+            "/usr/share/doc/libc-bin/copyright",
+            "/usr/share/libc-bin/nsswitch.conf",
+            "/usr/share/lintian/overrides/libc-bin",
+            "/usr/share/man/man1/getconf.1.gz",
+            "/usr/share/man/man1/tzselect.1.gz"
+          ],
+          "AnalyzedBy": "dpkg"
+        },
+        {
+          "ID": "libc6@2.41-12+deb13u3",
+          "Name": "libc6",
+          "Identifier": {
+            "PURL": "pkg:deb/debian/libc6@2.41-12%2Bdeb13u3?arch=amd64&distro=debian-13.6",
+            "UID": "2a1acf211abcdd46"
+          },
+          "Version": "2.41",
+          "Release": "12+deb13u3",
+          "Arch": "amd64",
+          "SrcName": "glibc",
+          "SrcVersion": "2.41",
+          "SrcRelease": "12+deb13u3",
+          "Licenses": [
+            "LGPL-2.1-or-later",
+            "LGPL-2.0-or-later",
+            "LGPL-2.1+-with-link-exception",
+            "LGPL-3.0-or-later",
+            "GPL-2.0-or-later",
+            "GPL-2+-with-link-exception",
+            "GPL-2.0-only",
+            "GPL-3.0-or-later",
+            "FSFAP",
+            "Carnegie",
+            "Inner-Net",
+            "MIT-like-Lord",
+            "BSD-like-Spencer",
+            "PCRE",
+            "BSD-3-clause-Carnegie",
+            "Unicode-DFS-2016",
+            "BSL-1.0",
+            "SunPro",
+            "CORE-MATH",
+            "BSD-3-clause-Berkeley",
+            "BSD-3-clause-WIDE",
+            "BSD-2-Clause",
+            "BSD-3-clause-Oracle",
+            "DEC",
+            "IBM",
+            "ISC",
+            "Univ-Coimbra",
+            "public-domain",
+            "GPL-3.0-only",
+            "LGPL-2.0-only",
+            "LGPL-2.1-only",
+            "LGPL-3.0-only"
+          ],
+          "Maintainer": "GNU Libc Maintainers <debian-glibc@lists.debian.org>",
+          "Repository": {
+            "Class": "official"
+          },
+          "DependsOn": [
+            "libgcc-s1@14.2.0-19"
+          ],
+          "Layer": {
+            "Digest": "sha256:26c307b5e35a59ce911f5fde5b9458120ec8734e831ea2da5649a9ad14abfd3d",
+            "DiffID": "sha256:6f94328331290cbd81edab450664d42da7b64c191416c9346cd5d28c84f76035"
+          },
+          "InstalledFiles": [
+            "/usr/lib/x86_64-linux-gnu/gconv/ANSI_X3.110.so",
+            "/usr/lib/x86_64-linux-gnu/gconv/ARMSCII-8.so",
+            "/usr/lib/x86_64-linux-gnu/gconv/ASMO_449.so",
+            "/usr/lib/x86_64-linux-gnu/gconv/BIG5.so",
+            "/usr/lib/x86_64-linux-gnu/gconv/BIG5HKSCS.so",
+            "/usr/lib/x86_64-linux-gnu/gconv/BRF.so",
+            "/usr/lib/x86_64-linux-gnu/gconv/CP10007.so",
+            "/usr/lib/x86_64-linux-gnu/gconv/CP1125.so",
+            "/usr/lib/x86_64-linux-gnu/gconv/CP1250.so",
+            "/usr/lib/x86_64-linux-gnu/gconv/CP1251.so",
+            "/usr/lib/x86_64-linux-gnu/gconv/CP1252.so",
+            "/usr/lib/x86_64-linux-gnu/gconv/CP1253.so",
+            "/usr/lib/x86_64-linux-gnu/gconv/CP1254.so",
+            "/usr/lib/x86_64-linux-gnu/gconv/CP1255.so",
+            "/usr/lib/x86_64-linux-gnu/gconv/CP1256.so",
+            "/usr/lib/x86_64-linux-gnu/gconv/CP1257.so",
+            "/usr/lib/x86_64-linux-gnu/gconv/CP1258.so",
+            "/usr/lib/x86_64-linux-gnu/gconv/CP737.so",
+            "/usr/lib/x86_64-linux-gnu/gconv/CP770.so",
+            "/usr/lib/x86_64-linux-gnu/gconv/CP771.so",
+            "/usr/lib/x86_64-linux-gnu/gconv/CP772.so",
+            "/usr/lib/x86_64-linux-gnu/gconv/CP773.so",
+            "/usr/lib/x86_64-linux-gnu/gconv/CP774.so",
+            "/usr/lib/x86_64-linux-gnu/gconv/CP775.so",
+            "/usr/lib/x86_64-linux-gnu/gconv/CP932.so",
+            "/usr/lib/x86_64-linux-gnu/gconv/CSN_369103.so",
+            "/usr/lib/x86_64-linux-gnu/gconv/CWI.so",
+            "/usr/lib/x86_64-linux-gnu/gconv/DEC-MCS.so",
+            "/usr/lib/x86_64-linux-gnu/gconv/EBCDIC-AT-DE-A.so",
+            "/usr/lib/x86_64-linux-gnu/gconv/EBCDIC-AT-DE.so",
+            "/usr/lib/x86_64-linux-gnu/gconv/EBCDIC-CA-FR.so",
+            "/usr/lib/x86_64-linux-gnu/gconv/EBCDIC-DK-NO-A.so",
+            "/usr/lib/x86_64-linux-gnu/gconv/EBCDIC-DK-NO.so",
+            "/usr/lib/x86_64-linux-gnu/gconv/EBCDIC-ES-A.so",
+            "/usr/lib/x86_64-linux-gnu/gconv/EBCDIC-ES-S.so",
+            "/usr/lib/x86_64-linux-gnu/gconv/EBCDIC-ES.so",
+            "/usr/lib/x86_64-linux-gnu/gconv/EBCDIC-FI-SE-A.so",
+            "/usr/lib/x86_64-linux-gnu/gconv/EBCDIC-FI-SE.so",
+            "/usr/lib/x86_64-linux-gnu/gconv/EBCDIC-FR.so",
+            "/usr/lib/x86_64-linux-gnu/gconv/EBCDIC-IS-FRISS.so",
+            "/usr/lib/x86_64-linux-gnu/gconv/EBCDIC-IT.so",
+            "/usr/lib/x86_64-linux-gnu/gconv/EBCDIC-PT.so",
+            "/usr/lib/x86_64-linux-gnu/gconv/EBCDIC-UK.so",
+            "/usr/lib/x86_64-linux-gnu/gconv/EBCDIC-US.so",
+            "/usr/lib/x86_64-linux-gnu/gconv/ECMA-CYRILLIC.so",
+            "/usr/lib/x86_64-linux-gnu/gconv/EUC-CN.so",
+            "/usr/lib/x86_64-linux-gnu/gconv/EUC-JISX0213.so",
+            "/usr/lib/x86_64-linux-gnu/gconv/EUC-JP-MS.so",
+            "/usr/lib/x86_64-linux-gnu/gconv/EUC-JP.so",
+            "/usr/lib/x86_64-linux-gnu/gconv/EUC-KR.so",
+            "/usr/lib/x86_64-linux-gnu/gconv/EUC-TW.so",
+            "/usr/lib/x86_64-linux-gnu/gconv/GB18030.so",
+            "/usr/lib/x86_64-linux-gnu/gconv/GBBIG5.so",
+            "/usr/lib/x86_64-linux-gnu/gconv/GBGBK.so",
+            "/usr/lib/x86_64-linux-gnu/gconv/GBK.so",
+            "/usr/lib/x86_64-linux-gnu/gconv/GEORGIAN-ACADEMY.so",
+            "/usr/lib/x86_64-linux-gnu/gconv/GEORGIAN-PS.so",
+            "/usr/lib/x86_64-linux-gnu/gconv/GOST_19768-74.so",
+            "/usr/lib/x86_64-linux-gnu/gconv/GREEK-CCITT.so",
+            "/usr/lib/x86_64-linux-gnu/gconv/GREEK7-OLD.so",
+            "/usr/lib/x86_64-linux-gnu/gconv/GREEK7.so",
+            "/usr/lib/x86_64-linux-gnu/gconv/HP-GREEK8.so",
+            "/usr/lib/x86_64-linux-gnu/gconv/HP-ROMAN8.so",
+            "/usr/lib/x86_64-linux-gnu/gconv/HP-ROMAN9.so",
+            "/usr/lib/x86_64-linux-gnu/gconv/HP-THAI8.so",
+            "/usr/lib/x86_64-linux-gnu/gconv/HP-TURKISH8.so",
+            "/usr/lib/x86_64-linux-gnu/gconv/IBM037.so",
+            "/usr/lib/x86_64-linux-gnu/gconv/IBM038.so",
+            "/usr/lib/x86_64-linux-gnu/gconv/IBM1004.so",
+            "/usr/lib/x86_64-linux-gnu/gconv/IBM1008.so",
+            "/usr/lib/x86_64-linux-gnu/gconv/IBM1008_420.so",
+            "/usr/lib/x86_64-linux-gnu/gconv/IBM1025.so",
+            "/usr/lib/x86_64-linux-gnu/gconv/IBM1026.so",
+            "/usr/lib/x86_64-linux-gnu/gconv/IBM1046.so",
+            "/usr/lib/x86_64-linux-gnu/gconv/IBM1047.so",
+            "/usr/lib/x86_64-linux-gnu/gconv/IBM1097.so",
+            "/usr/lib/x86_64-linux-gnu/gconv/IBM1112.so",
+            "/usr/lib/x86_64-linux-gnu/gconv/IBM1122.so",
+            "/usr/lib/x86_64-linux-gnu/gconv/IBM1123.so",
+            "/usr/lib/x86_64-linux-gnu/gconv/IBM1124.so",
+            "/usr/lib/x86_64-linux-gnu/gconv/IBM1129.so",
+            "/usr/lib/x86_64-linux-gnu/gconv/IBM1130.so",
+            "/usr/lib/x86_64-linux-gnu/gconv/IBM1132.so",
+            "/usr/lib/x86_64-linux-gnu/gconv/IBM1133.so",
+            "/usr/lib/x86_64-linux-gnu/gconv/IBM1137.so",
+            "/usr/lib/x86_64-linux-gnu/gconv/IBM1140.so",
+            "/usr/lib/x86_64-linux-gnu/gconv/IBM1141.so",
+            "/usr/lib/x86_64-linux-gnu/gconv/IBM1142.so",
+            "/usr/lib/x86_64-linux-gnu/gconv/IBM1143.so",
+            "/usr/lib/x86_64-linux-gnu/gconv/IBM1144.so",
+            "/usr/lib/x86_64-linux-gnu/gconv/IBM1145.so",
+            "/usr/lib/x86_64-linux-gnu/gconv/IBM1146.so",
+            "/usr/lib/x86_64-linux-gnu/gconv/IBM1147.so",
+            "/usr/lib/x86_64-linux-gnu/gconv/IBM1148.so",
+            "/usr/lib/x86_64-linux-gnu/gconv/IBM1149.so",
+            "/usr/lib/x86_64-linux-gnu/gconv/IBM1153.so",
+            "/usr/lib/x86_64-linux-gnu/gconv/IBM1154.so",
+            "/usr/lib/x86_64-linux-gnu/gconv/IBM1155.so",
+            "/usr/lib/x86_64-linux-gnu/gconv/IBM1156.so",
+            "/usr/lib/x86_64-linux-gnu/gconv/IBM1157.so",
+            "/usr/lib/x86_64-linux-gnu/gconv/IBM1158.so",
+            "/usr/lib/x86_64-linux-gnu/gconv/IBM1160.so",
+            "/usr/lib/x86_64-linux-gnu/gconv/IBM1161.so",
+            "/usr/lib/x86_64-linux-gnu/gconv/IBM1162.so",
+            "/usr/lib/x86_64-linux-gnu/gconv/IBM1163.so",
+            "/usr/lib/x86_64-linux-gnu/gconv/IBM1164.so",
+            "/usr/lib/x86_64-linux-gnu/gconv/IBM1166.so",
+            "/usr/lib/x86_64-linux-gnu/gconv/IBM1167.so",
+            "/usr/lib/x86_64-linux-gnu/gconv/IBM12712.so",
+            "/usr/lib/x86_64-linux-gnu/gconv/IBM1364.so",
+            "/usr/lib/x86_64-linux-gnu/gconv/IBM1371.so",
+            "/usr/lib/x86_64-linux-gnu/gconv/IBM1388.so",
+            "/usr/lib/x86_64-linux-gnu/gconv/IBM1390.so",
+            "/usr/lib/x86_64-linux-gnu/gconv/IBM1399.so",
+            "/usr/lib/x86_64-linux-gnu/gconv/IBM16804.so",
+            "/usr/lib/x86_64-linux-gnu/gconv/IBM256.so",
+            "/usr/lib/x86_64-linux-gnu/gconv/IBM273.so",
+            "/usr/lib/x86_64-linux-gnu/gconv/IBM274.so",
+            "/usr/lib/x86_64-linux-gnu/gconv/IBM275.so",
+            "/usr/lib/x86_64-linux-gnu/gconv/IBM277.so",
+            "/usr/lib/x86_64-linux-gnu/gconv/IBM278.so",
+            "/usr/lib/x86_64-linux-gnu/gconv/IBM280.so",
+            "/usr/lib/x86_64-linux-gnu/gconv/IBM281.so",
+            "/usr/lib/x86_64-linux-gnu/gconv/IBM284.so",
+            "/usr/lib/x86_64-linux-gnu/gconv/IBM285.so",
+            "/usr/lib/x86_64-linux-gnu/gconv/IBM290.so",
+            "/usr/lib/x86_64-linux-gnu/gconv/IBM297.so",
+            "/usr/lib/x86_64-linux-gnu/gconv/IBM420.so",
+            "/usr/lib/x86_64-linux-gnu/gconv/IBM423.so",
+            "/usr/lib/x86_64-linux-gnu/gconv/IBM424.so",
+            "/usr/lib/x86_64-linux-gnu/gconv/IBM437.so",
+            "/usr/lib/x86_64-linux-gnu/gconv/IBM4517.so",
+            "/usr/lib/x86_64-linux-gnu/gconv/IBM4899.so",
+            "/usr/lib/x86_64-linux-gnu/gconv/IBM4909.so",
+            "/usr/lib/x86_64-linux-gnu/gconv/IBM4971.so",
+            "/usr/lib/x86_64-linux-gnu/gconv/IBM500.so",
+            "/usr/lib/x86_64-linux-gnu/gconv/IBM5347.so",
+            "/usr/lib/x86_64-linux-gnu/gconv/IBM803.so",
+            "/usr/lib/x86_64-linux-gnu/gconv/IBM850.so",
+            "/usr/lib/x86_64-linux-gnu/gconv/IBM851.so",
+            "/usr/lib/x86_64-linux-gnu/gconv/IBM852.so",
+            "/usr/lib/x86_64-linux-gnu/gconv/IBM855.so",
+            "/usr/lib/x86_64-linux-gnu/gconv/IBM856.so",
+            "/usr/lib/x86_64-linux-gnu/gconv/IBM857.so",
+            "/usr/lib/x86_64-linux-gnu/gconv/IBM858.so",
+            "/usr/lib/x86_64-linux-gnu/gconv/IBM860.so",
+            "/usr/lib/x86_64-linux-gnu/gconv/IBM861.so",
+            "/usr/lib/x86_64-linux-gnu/gconv/IBM862.so",
+            "/usr/lib/x86_64-linux-gnu/gconv/IBM863.so",
+            "/usr/lib/x86_64-linux-gnu/gconv/IBM864.so",
+            "/usr/lib/x86_64-linux-gnu/gconv/IBM865.so",
+            "/usr/lib/x86_64-linux-gnu/gconv/IBM866.so",
+            "/usr/lib/x86_64-linux-gnu/gconv/IBM866NAV.so",
+            "/usr/lib/x86_64-linux-gnu/gconv/IBM868.so",
+            "/usr/lib/x86_64-linux-gnu/gconv/IBM869.so",
+            "/usr/lib/x86_64-linux-gnu/gconv/IBM870.so",
+            "/usr/lib/x86_64-linux-gnu/gconv/IBM871.so",
+            "/usr/lib/x86_64-linux-gnu/gconv/IBM874.so",
+            "/usr/lib/x86_64-linux-gnu/gconv/IBM875.so",
+            "/usr/lib/x86_64-linux-gnu/gconv/IBM880.so",
+            "/usr/lib/x86_64-linux-gnu/gconv/IBM891.so",
+            "/usr/lib/x86_64-linux-gnu/gconv/IBM901.so",
+            "/usr/lib/x86_64-linux-gnu/gconv/IBM902.so",
+            "/usr/lib/x86_64-linux-gnu/gconv/IBM903.so",
+            "/usr/lib/x86_64-linux-gnu/gconv/IBM9030.so",
+            "/usr/lib/x86_64-linux-gnu/gconv/IBM904.so",
+            "/usr/lib/x86_64-linux-gnu/gconv/IBM905.so",
+            "/usr/lib/x86_64-linux-gnu/gconv/IBM9066.so",
+            "/usr/lib/x86_64-linux-gnu/gconv/IBM918.so",
+            "/usr/lib/x86_64-linux-gnu/gconv/IBM921.so",
+            "/usr/lib/x86_64-linux-gnu/gconv/IBM922.so",
+            "/usr/lib/x86_64-linux-gnu/gconv/IBM930.so",
+            "/usr/lib/x86_64-linux-gnu/gconv/IBM932.so",
+            "/usr/lib/x86_64-linux-gnu/gconv/IBM933.so",
+            "/usr/lib/x86_64-linux-gnu/gconv/IBM935.so",
+            "/usr/lib/x86_64-linux-gnu/gconv/IBM937.so",
+            "/usr/lib/x86_64-linux-gnu/gconv/IBM939.so",
+            "/usr/lib/x86_64-linux-gnu/gconv/IBM943.so",
+            "/usr/lib/x86_64-linux-gnu/gconv/IBM9448.so",
+            "/usr/lib/x86_64-linux-gnu/gconv/IEC_P27-1.so",
+            "/usr/lib/x86_64-linux-gnu/gconv/INIS-8.so",
+            "/usr/lib/x86_64-linux-gnu/gconv/INIS-CYRILLIC.so",
+            "/usr/lib/x86_64-linux-gnu/gconv/INIS.so",
+            "/usr/lib/x86_64-linux-gnu/gconv/ISIRI-3342.so",
+            "/usr/lib/x86_64-linux-gnu/gconv/ISO-2022-CN-EXT.so",
+            "/usr/lib/x86_64-linux-gnu/gconv/ISO-2022-CN.so",
+            "/usr/lib/x86_64-linux-gnu/gconv/ISO-2022-JP-3.so",
+            "/usr/lib/x86_64-linux-gnu/gconv/ISO-2022-JP.so",
+            "/usr/lib/x86_64-linux-gnu/gconv/ISO-2022-KR.so",
+            "/usr/lib/x86_64-linux-gnu/gconv/ISO-IR-197.so",
+            "/usr/lib/x86_64-linux-gnu/gconv/ISO-IR-209.so",
+            "/usr/lib/x86_64-linux-gnu/gconv/ISO646.so",
+            "/usr/lib/x86_64-linux-gnu/gconv/ISO8859-1.so",
+            "/usr/lib/x86_64-linux-gnu/gconv/ISO8859-10.so",
+            "/usr/lib/x86_64-linux-gnu/gconv/ISO8859-11.so",
+            "/usr/lib/x86_64-linux-gnu/gconv/ISO8859-13.so",
+            "/usr/lib/x86_64-linux-gnu/gconv/ISO8859-14.so",
+            "/usr/lib/x86_64-linux-gnu/gconv/ISO8859-15.so",
+            "/usr/lib/x86_64-linux-gnu/gconv/ISO8859-16.so",
+            "/usr/lib/x86_64-linux-gnu/gconv/ISO8859-2.so",
+            "/usr/lib/x86_64-linux-gnu/gconv/ISO8859-3.so",
+            "/usr/lib/x86_64-linux-gnu/gconv/ISO8859-4.so",
+            "/usr/lib/x86_64-linux-gnu/gconv/ISO8859-5.so",
+            "/usr/lib/x86_64-linux-gnu/gconv/ISO8859-6.so",
+            "/usr/lib/x86_64-linux-gnu/gconv/ISO8859-7.so",
+            "/usr/lib/x86_64-linux-gnu/gconv/ISO8859-8.so",
+            "/usr/lib/x86_64-linux-gnu/gconv/ISO8859-9.so",
+            "/usr/lib/x86_64-linux-gnu/gconv/ISO8859-9E.so",
+            "/usr/lib/x86_64-linux-gnu/gconv/ISO_10367-BOX.so",
+            "/usr/lib/x86_64-linux-gnu/gconv/ISO_11548-1.so",
+            "/usr/lib/x86_64-linux-gnu/gconv/ISO_2033.so",
+            "/usr/lib/x86_64-linux-gnu/gconv/ISO_5427-EXT.so",
+            "/usr/lib/x86_64-linux-gnu/gconv/ISO_5427.so",
+            "/usr/lib/x86_64-linux-gnu/gconv/ISO_5428.so",
+            "/usr/lib/x86_64-linux-gnu/gconv/ISO_6937-2.so",
+            "/usr/lib/x86_64-linux-gnu/gconv/ISO_6937.so",
+            "/usr/lib/x86_64-linux-gnu/gconv/JOHAB.so",
+            "/usr/lib/x86_64-linux-gnu/gconv/KOI-8.so",
+            "/usr/lib/x86_64-linux-gnu/gconv/KOI8-R.so",
+            "/usr/lib/x86_64-linux-gnu/gconv/KOI8-RU.so",
+            "/usr/lib/x86_64-linux-gnu/gconv/KOI8-T.so",
+            "/usr/lib/x86_64-linux-gnu/gconv/KOI8-U.so",
+            "/usr/lib/x86_64-linux-gnu/gconv/LATIN-GREEK-1.so",
+            "/usr/lib/x86_64-linux-gnu/gconv/LATIN-GREEK.so",
+            "/usr/lib/x86_64-linux-gnu/gconv/MAC-CENTRALEUROPE.so",
+            "/usr/lib/x86_64-linux-gnu/gconv/MAC-IS.so",
+            "/usr/lib/x86_64-linux-gnu/gconv/MAC-SAMI.so",
+            "/usr/lib/x86_64-linux-gnu/gconv/MAC-UK.so",
+            "/usr/lib/x86_64-linux-gnu/gconv/MACINTOSH.so",
+            "/usr/lib/x86_64-linux-gnu/gconv/MIK.so",
+            "/usr/lib/x86_64-linux-gnu/gconv/NATS-DANO.so",
+            "/usr/lib/x86_64-linux-gnu/gconv/NATS-SEFI.so",
+            "/usr/lib/x86_64-linux-gnu/gconv/PT154.so",
+            "/usr/lib/x86_64-linux-gnu/gconv/RK1048.so",
+            "/usr/lib/x86_64-linux-gnu/gconv/SAMI-WS2.so",
+            "/usr/lib/x86_64-linux-gnu/gconv/SHIFT_JISX0213.so",
+            "/usr/lib/x86_64-linux-gnu/gconv/SJIS.so",
+            "/usr/lib/x86_64-linux-gnu/gconv/T.61.so",
+            "/usr/lib/x86_64-linux-gnu/gconv/TCVN5712-1.so",
+            "/usr/lib/x86_64-linux-gnu/gconv/TIS-620.so",
+            "/usr/lib/x86_64-linux-gnu/gconv/TSCII.so",
+            "/usr/lib/x86_64-linux-gnu/gconv/UHC.so",
+            "/usr/lib/x86_64-linux-gnu/gconv/UNICODE.so",
+            "/usr/lib/x86_64-linux-gnu/gconv/UTF-16.so",
+            "/usr/lib/x86_64-linux-gnu/gconv/UTF-32.so",
+            "/usr/lib/x86_64-linux-gnu/gconv/UTF-7.so",
+            "/usr/lib/x86_64-linux-gnu/gconv/VISCII.so",
+            "/usr/lib/x86_64-linux-gnu/gconv/gconv-modules",
+            "/usr/lib/x86_64-linux-gnu/gconv/gconv-modules.cache",
+            "/usr/lib/x86_64-linux-gnu/gconv/gconv-modules.d/gconv-modules-extra.conf",
+            "/usr/lib/x86_64-linux-gnu/gconv/libCNS.so",
+            "/usr/lib/x86_64-linux-gnu/gconv/libGB.so",
+            "/usr/lib/x86_64-linux-gnu/gconv/libISOIR165.so",
+            "/usr/lib/x86_64-linux-gnu/gconv/libJIS.so",
+            "/usr/lib/x86_64-linux-gnu/gconv/libJISX0213.so",
+            "/usr/lib/x86_64-linux-gnu/gconv/libKSC.so",
+            "/usr/lib/x86_64-linux-gnu/ld-linux-x86-64.so.2",
+            "/usr/lib/x86_64-linux-gnu/libBrokenLocale.so.1",
+            "/usr/lib/x86_64-linux-gnu/libanl.so.1",
+            "/usr/lib/x86_64-linux-gnu/libc.so.6",
+            "/usr/lib/x86_64-linux-gnu/libc_malloc_debug.so.0",
+            "/usr/lib/x86_64-linux-gnu/libdl.so.2",
+            "/usr/lib/x86_64-linux-gnu/libm.so.6",
+            "/usr/lib/x86_64-linux-gnu/libmemusage.so",
+            "/usr/lib/x86_64-linux-gnu/libmvec.so.1",
+            "/usr/lib/x86_64-linux-gnu/libnsl.so.1",
+            "/usr/lib/x86_64-linux-gnu/libnss_compat.so.2",
+            "/usr/lib/x86_64-linux-gnu/libnss_dns.so.2",
+            "/usr/lib/x86_64-linux-gnu/libnss_files.so.2",
+            "/usr/lib/x86_64-linux-gnu/libnss_hesiod.so.2",
+            "/usr/lib/x86_64-linux-gnu/libpcprofile.so",
+            "/usr/lib/x86_64-linux-gnu/libpthread.so.0",
+            "/usr/lib/x86_64-linux-gnu/libresolv.so.2",
+            "/usr/lib/x86_64-linux-gnu/librt.so.1",
+            "/usr/lib/x86_64-linux-gnu/libthread_db.so.1",
+            "/usr/lib/x86_64-linux-gnu/libutil.so.1",
+            "/usr/share/doc/libc6/NEWS.Debian.gz",
+            "/usr/share/doc/libc6/NEWS.gz",
+            "/usr/share/doc/libc6/README.Debian.gz",
+            "/usr/share/doc/libc6/README.hesiod.gz",
+            "/usr/share/doc/libc6/changelog.Debian.gz",
+            "/usr/share/doc/libc6/changelog.gz",
+            "/usr/share/doc/libc6/copyright",
+            "/usr/share/lintian/overrides/libc6"
+          ],
+          "AnalyzedBy": "dpkg"
+        },
+        {
+          "ID": "liblastlog2-2@2.41-5",
+          "Name": "liblastlog2-2",
+          "Identifier": {
+            "PURL": "pkg:deb/debian/liblastlog2-2@2.41-5?arch=amd64&distro=debian-13.6",
+            "UID": "eb4f5430aea34a10"
+          },
+          "Version": "2.41",
+          "Release": "5",
+          "Arch": "amd64",
+          "SrcName": "util-linux",
+          "SrcVersion": "2.41",
+          "SrcRelease": "5",
+          "Licenses": [
+            "GPL-2.0-or-later",
+            "GPL-2.0-only",
+            "GPL-3.0-or-later",
+            "LGPL-2.1-or-later",
+            "public-domain",
+            "BSD-4-Clause",
+            "MIT",
+            "ISC",
+            "BSD-3-Clause",
+            "BSLA",
+            "LGPL-2.0-or-later",
+            "BSD-2-Clause",
+            "LGPL-3.0-or-later",
+            "GPL-3.0-only",
+            "LGPL-2.0-only",
+            "LGPL-2.1-only",
+            "LGPL-3.0-only"
+          ],
+          "Maintainer": "Chris Hofstaedtler <zeha@debian.org>",
+          "Repository": {
+            "Class": "official"
+          },
+          "DependsOn": [
+            "libc6@2.41-12+deb13u3",
+            "libsqlite3-0@3.46.1-7+deb13u1"
+          ],
+          "Layer": {
+            "Digest": "sha256:26c307b5e35a59ce911f5fde5b9458120ec8734e831ea2da5649a9ad14abfd3d",
+            "DiffID": "sha256:6f94328331290cbd81edab450664d42da7b64c191416c9346cd5d28c84f76035"
+          },
+          "InstalledFiles": [
+            "/usr/lib/x86_64-linux-gnu/liblastlog2.so.2.0.0",
+            "/usr/share/doc/liblastlog2-2/NEWS.Debian.gz",
+            "/usr/share/doc/liblastlog2-2/changelog.Debian.gz",
+            "/usr/share/doc/liblastlog2-2/changelog.gz",
+            "/usr/share/doc/liblastlog2-2/copyright"
+          ],
+          "AnalyzedBy": "dpkg"
+        },
+        {
+          "ID": "perl-base@5.40.1-6",
+          "Name": "perl-base",
+          "Identifier": {
+            "PURL": "pkg:deb/debian/perl-base@5.40.1-6?arch=amd64&distro=debian-13.6",
+            "UID": "546ba1bdcd66d61"
+          },
+          "Version": "5.40.1",
+          "Release": "6",
+          "Arch": "amd64",
+          "SrcName": "perl",
+          "SrcVersion": "5.40.1",
+          "SrcRelease": "6",
+          "Licenses": [
+            "GPL-1.0-or-later",
+            "Artistic-2.0",
+            "MIT",
+            "REGCOMP",
+            "GPL-2.0-with-bison-exception+",
+            "Unicode",
+            "BZIP",
+            "Zlib",
+            "GPL-2.0-or-later",
+            "FSFAP",
+            "BSD-3-clause-with-weird-numbering",
+            "CC0-1.0",
+            "TEXT-TABS",
+            "BSD-4-clause-POWERDOG",
+            "BSD-3-clause-GENERIC",
+            "BSD-3-Clause",
+            "SDBM-PUBLIC-DOMAIN",
+            "DONT-CHANGE-THE-GPL",
+            "Artistic-dist",
+            "LGPL-2.1-only",
+            "GPL-1.0-only",
+            "GPL-2.0-only",
+            "Artistic-2"
+          ],
+          "Maintainer": "Niko Tyni <ntyni@debian.org>",
+          "Repository": {
+            "Class": "official"
+          },
+          "Layer": {
+            "Digest": "sha256:26c307b5e35a59ce911f5fde5b9458120ec8734e831ea2da5649a9ad14abfd3d",
+            "DiffID": "sha256:6f94328331290cbd81edab450664d42da7b64c191416c9346cd5d28c84f76035"
+          },
+          "InstalledFiles": [
+            "/usr/bin/perl",
+            "/usr/bin/perl5.40.1",
+            "/usr/lib/x86_64-linux-gnu/perl-base/AutoLoader.pm",
+            "/usr/lib/x86_64-linux-gnu/perl-base/Carp.pm",
+            "/usr/lib/x86_64-linux-gnu/perl-base/Carp/Heavy.pm",
+            "/usr/lib/x86_64-linux-gnu/perl-base/Config.pm",
+            "/usr/lib/x86_64-linux-gnu/perl-base/Config_git.pl",
+            "/usr/lib/x86_64-linux-gnu/perl-base/Config_heavy.pl",
+            "/usr/lib/x86_64-linux-gnu/perl-base/Cwd.pm",
+            "/usr/lib/x86_64-linux-gnu/perl-base/DynaLoader.pm",
+            "/usr/lib/x86_64-linux-gnu/perl-base/Errno.pm",
+            "/usr/lib/x86_64-linux-gnu/perl-base/Exporter.pm",
+            "/usr/lib/x86_64-linux-gnu/perl-base/Exporter/Heavy.pm",
+            "/usr/lib/x86_64-linux-gnu/perl-base/Fcntl.pm",
+            "/usr/lib/x86_64-linux-gnu/perl-base/File/Basename.pm",
+            "/usr/lib/x86_64-linux-gnu/perl-base/File/Glob.pm",
+            "/usr/lib/x86_64-linux-gnu/perl-base/File/Path.pm",
+            "/usr/lib/x86_64-linux-gnu/perl-base/File/Spec.pm",
+            "/usr/lib/x86_64-linux-gnu/perl-base/File/Spec/Unix.pm",
+            "/usr/lib/x86_64-linux-gnu/perl-base/File/Temp.pm",
+            "/usr/lib/x86_64-linux-gnu/perl-base/FileHandle.pm",
+            "/usr/lib/x86_64-linux-gnu/perl-base/Getopt/Long.pm",
+            "/usr/lib/x86_64-linux-gnu/perl-base/Getopt/Long/Parser.pm",
+            "/usr/lib/x86_64-linux-gnu/perl-base/Hash/Util.pm",
+            "/usr/lib/x86_64-linux-gnu/perl-base/IO.pm",
+            "/usr/lib/x86_64-linux-gnu/perl-base/IO/File.pm",
+            "/usr/lib/x86_64-linux-gnu/perl-base/IO/Handle.pm",
+            "/usr/lib/x86_64-linux-gnu/perl-base/IO/Pipe.pm",
+            "/usr/lib/x86_64-linux-gnu/perl-base/IO/Seekable.pm",
+            "/usr/lib/x86_64-linux-gnu/perl-base/IO/Select.pm",
+            "/usr/lib/x86_64-linux-gnu/perl-base/IO/Socket.pm",
+            "/usr/lib/x86_64-linux-gnu/perl-base/IO/Socket/INET.pm",
+            "/usr/lib/x86_64-linux-gnu/perl-base/IO/Socket/IP.pm",
+            "/usr/lib/x86_64-linux-gnu/perl-base/IO/Socket/UNIX.pm",
+            "/usr/lib/x86_64-linux-gnu/perl-base/IPC/Open2.pm",
+            "/usr/lib/x86_64-linux-gnu/perl-base/IPC/Open3.pm",
+            "/usr/lib/x86_64-linux-gnu/perl-base/List/Util.pm",
+            "/usr/lib/x86_64-linux-gnu/perl-base/POSIX.pm",
+            "/usr/lib/x86_64-linux-gnu/perl-base/Scalar/Util.pm",
+            "/usr/lib/x86_64-linux-gnu/perl-base/SelectSaver.pm",
+            "/usr/lib/x86_64-linux-gnu/perl-base/Socket.pm",
+            "/usr/lib/x86_64-linux-gnu/perl-base/Symbol.pm",
+            "/usr/lib/x86_64-linux-gnu/perl-base/Text/ParseWords.pm",
+            "/usr/lib/x86_64-linux-gnu/perl-base/Text/Tabs.pm",
+            "/usr/lib/x86_64-linux-gnu/perl-base/Text/Wrap.pm",
+            "/usr/lib/x86_64-linux-gnu/perl-base/Tie/Hash.pm",
+            "/usr/lib/x86_64-linux-gnu/perl-base/XSLoader.pm",
+            "/usr/lib/x86_64-linux-gnu/perl-base/attributes.pm",
+            "/usr/lib/x86_64-linux-gnu/perl-base/auto/Cwd/Cwd.so",
+            "/usr/lib/x86_64-linux-gnu/perl-base/auto/Fcntl/Fcntl.so",
+            "/usr/lib/x86_64-linux-gnu/perl-base/auto/File/Glob/Glob.so",
+            "/usr/lib/x86_64-linux-gnu/perl-base/auto/Hash/Util/Util.so",
+            "/usr/lib/x86_64-linux-gnu/perl-base/auto/IO/IO.so",
+            "/usr/lib/x86_64-linux-gnu/perl-base/auto/List/Util/Util.so",
+            "/usr/lib/x86_64-linux-gnu/perl-base/auto/POSIX/POSIX.so",
+            "/usr/lib/x86_64-linux-gnu/perl-base/auto/Socket/Socket.so",
+            "/usr/lib/x86_64-linux-gnu/perl-base/auto/attributes/attributes.so",
+            "/usr/lib/x86_64-linux-gnu/perl-base/auto/re/re.so",
+            "/usr/lib/x86_64-linux-gnu/perl-base/base.pm",
+            "/usr/lib/x86_64-linux-gnu/perl-base/builtin.pm",
+            "/usr/lib/x86_64-linux-gnu/perl-base/bytes.pm",
+            "/usr/lib/x86_64-linux-gnu/perl-base/constant.pm",
+            "/usr/lib/x86_64-linux-gnu/perl-base/feature.pm",
+            "/usr/lib/x86_64-linux-gnu/perl-base/fields.pm",
+            "/usr/lib/x86_64-linux-gnu/perl-base/integer.pm",
+            "/usr/lib/x86_64-linux-gnu/perl-base/lib.pm",
+            "/usr/lib/x86_64-linux-gnu/perl-base/locale.pm",
+            "/usr/lib/x86_64-linux-gnu/perl-base/overload.pm",
+            "/usr/lib/x86_64-linux-gnu/perl-base/overloading.pm",
+            "/usr/lib/x86_64-linux-gnu/perl-base/parent.pm",
+            "/usr/lib/x86_64-linux-gnu/perl-base/re.pm",
+            "/usr/lib/x86_64-linux-gnu/perl-base/strict.pm",
+            "/usr/lib/x86_64-linux-gnu/perl-base/unicore/To/Age.pl",
+            "/usr/lib/x86_64-linux-gnu/perl-base/unicore/To/Bc.pl",
+            "/usr/lib/x86_64-linux-gnu/perl-base/unicore/To/Bmg.pl",
+            "/usr/lib/x86_64-linux-gnu/perl-base/unicore/To/Bpb.pl",
+            "/usr/lib/x86_64-linux-gnu/perl-base/unicore/To/Bpt.pl",
+            "/usr/lib/x86_64-linux-gnu/perl-base/unicore/To/Cf.pl",
+            "/usr/lib/x86_64-linux-gnu/perl-base/unicore/To/Ea.pl",
+            "/usr/lib/x86_64-linux-gnu/perl-base/unicore/To/EqUIdeo.pl",
+            "/usr/lib/x86_64-linux-gnu/perl-base/unicore/To/GCB.pl",
+            "/usr/lib/x86_64-linux-gnu/perl-base/unicore/To/Gc.pl",
+            "/usr/lib/x86_64-linux-gnu/perl-base/unicore/To/Hst.pl",
+            "/usr/lib/x86_64-linux-gnu/perl-base/unicore/To/Identif2.pl",
+            "/usr/lib/x86_64-linux-gnu/perl-base/unicore/To/Identifi.pl",
+            "/usr/lib/x86_64-linux-gnu/perl-base/unicore/To/InPC.pl",
+            "/usr/lib/x86_64-linux-gnu/perl-base/unicore/To/InSC.pl",
+            "/usr/lib/x86_64-linux-gnu/perl-base/unicore/To/Isc.pl",
+            "/usr/lib/x86_64-linux-gnu/perl-base/unicore/To/Jg.pl",
+            "/usr/lib/x86_64-linux-gnu/perl-base/unicore/To/Jt.pl",
+            "/usr/lib/x86_64-linux-gnu/perl-base/unicore/To/Lb.pl",
+            "/usr/lib/x86_64-linux-gnu/perl-base/unicore/To/Lc.pl",
+            "/usr/lib/x86_64-linux-gnu/perl-base/unicore/To/NFCQC.pl",
+            "/usr/lib/x86_64-linux-gnu/perl-base/unicore/To/NFDQC.pl",
+            "/usr/lib/x86_64-linux-gnu/perl-base/unicore/To/NFKCCF.pl",
+            "/usr/lib/x86_64-linux-gnu/perl-base/unicore/To/NFKCQC.pl",
+            "/usr/lib/x86_64-linux-gnu/perl-base/unicore/To/NFKDQC.pl",
+            "/usr/lib/x86_64-linux-gnu/perl-base/unicore/To/Na1.pl",
+            "/usr/lib/x86_64-linux-gnu/perl-base/unicore/To/NameAlia.pl",
+            "/usr/lib/x86_64-linux-gnu/perl-base/unicore/To/Nt.pl",
+            "/usr/lib/x86_64-linux-gnu/perl-base/unicore/To/Nv.pl",
+            "/usr/lib/x86_64-linux-gnu/perl-base/unicore/To/PerlDeci.pl",
+            "/usr/lib/x86_64-linux-gnu/perl-base/unicore/To/SB.pl",
+            "/usr/lib/x86_64-linux-gnu/perl-base/unicore/To/Sc.pl",
+            "/usr/lib/x86_64-linux-gnu/perl-base/unicore/To/Scx.pl",
+            "/usr/lib/x86_64-linux-gnu/perl-base/unicore/To/Tc.pl",
+            "/usr/lib/x86_64-linux-gnu/perl-base/unicore/To/Uc.pl",
+            "/usr/lib/x86_64-linux-gnu/perl-base/unicore/To/Vo.pl",
+            "/usr/lib/x86_64-linux-gnu/perl-base/unicore/To/WB.pl",
+            "/usr/lib/x86_64-linux-gnu/perl-base/unicore/To/_PerlLB.pl",
+            "/usr/lib/x86_64-linux-gnu/perl-base/unicore/To/_PerlSCX.pl",
+            "/usr/lib/x86_64-linux-gnu/perl-base/unicore/lib/Age/NA.pl",
+            "/usr/lib/x86_64-linux-gnu/perl-base/unicore/lib/Age/V100.pl",
+            "/usr/lib/x86_64-linux-gnu/perl-base/unicore/lib/Age/V11.pl",
+            "/usr/lib/x86_64-linux-gnu/perl-base/unicore/lib/Age/V110.pl",
+            "/usr/lib/x86_64-linux-gnu/perl-base/unicore/lib/Age/V120.pl",
+            "/usr/lib/x86_64-linux-gnu/perl-base/unicore/lib/Age/V130.pl",
+            "/usr/lib/x86_64-linux-gnu/perl-base/unicore/lib/Age/V140.pl",
+            "/usr/lib/x86_64-linux-gnu/perl-base/unicore/lib/Age/V150.pl",
+            "/usr/lib/x86_64-linux-gnu/perl-base/unicore/lib/Age/V20.pl",
+            "/usr/lib/x86_64-linux-gnu/perl-base/unicore/lib/Age/V30.pl",
+            "/usr/lib/x86_64-linux-gnu/perl-base/unicore/lib/Age/V31.pl",
+            "/usr/lib/x86_64-linux-gnu/perl-base/unicore/lib/Age/V32.pl",
+            "/usr/lib/x86_64-linux-gnu/perl-base/unicore/lib/Age/V40.pl",
+            "/usr/lib/x86_64-linux-gnu/perl-base/unicore/lib/Age/V41.pl",
+            "/usr/lib/x86_64-linux-gnu/perl-base/unicore/lib/Age/V50.pl",
+            "/usr/lib/x86_64-linux-gnu/perl-base/unicore/lib/Age/V51.pl",
+            "/usr/lib/x86_64-linux-gnu/perl-base/unicore/lib/Age/V52.pl",
+            "/usr/lib/x86_64-linux-gnu/perl-base/unicore/lib/Age/V60.pl",
+            "/usr/lib/x86_64-linux-gnu/perl-base/unicore/lib/Age/V61.pl",
+            "/usr/lib/x86_64-linux-gnu/perl-base/unicore/lib/Age/V70.pl",
+            "/usr/lib/x86_64-linux-gnu/perl-base/unicore/lib/Age/V80.pl",
+            "/usr/lib/x86_64-linux-gnu/perl-base/unicore/lib/Age/V90.pl",
+            "/usr/lib/x86_64-linux-gnu/perl-base/unicore/lib/Alpha/Y.pl",
+            "/usr/lib/x86_64-linux-gnu/perl-base/unicore/lib/Bc/AL.pl",
+            "/usr/lib/x86_64-linux-gnu/perl-base/unicore/lib/Bc/AN.pl",
+            "/usr/lib/x86_64-linux-gnu/perl-base/unicore/lib/Bc/B.pl",
+            "/usr/lib/x86_64-linux-gnu/perl-base/unicore/lib/Bc/BN.pl",
+            "/usr/lib/x86_64-linux-gnu/perl-base/unicore/lib/Bc/CS.pl",
+            "/usr/lib/x86_64-linux-gnu/perl-base/unicore/lib/Bc/EN.pl",
+            "/usr/lib/x86_64-linux-gnu/perl-base/unicore/lib/Bc/ES.pl",
+            "/usr/lib/x86_64-linux-gnu/perl-base/unicore/lib/Bc/ET.pl",
+            "/usr/lib/x86_64-linux-gnu/perl-base/unicore/lib/Bc/L.pl",
+            "/usr/lib/x86_64-linux-gnu/perl-base/unicore/lib/Bc/NSM.pl",
+            "/usr/lib/x86_64-linux-gnu/perl-base/unicore/lib/Bc/ON.pl",
+            "/usr/lib/x86_64-linux-gnu/perl-base/unicore/lib/Bc/R.pl",
+            "/usr/lib/x86_64-linux-gnu/perl-base/unicore/lib/Bc/WS.pl",
+            "/usr/lib/x86_64-linux-gnu/perl-base/unicore/lib/BidiC/Y.pl",
+            "/usr/lib/x86_64-linux-gnu/perl-base/unicore/lib/BidiM/Y.pl",
+            "/usr/lib/x86_64-linux-gnu/perl-base/unicore/lib/Blk/NB.pl",
+            "/usr/lib/x86_64-linux-gnu/perl-base/unicore/lib/Bpt/C.pl",
+            "/usr/lib/x86_64-linux-gnu/perl-base/unicore/lib/Bpt/N.pl",
+            "/usr/lib/x86_64-linux-gnu/perl-base/unicore/lib/Bpt/O.pl",
+            "/usr/lib/x86_64-linux-gnu/perl-base/unicore/lib/CE/Y.pl",
+            "/usr/lib/x86_64-linux-gnu/perl-base/unicore/lib/CI/Y.pl",
+            "/usr/lib/x86_64-linux-gnu/perl-base/unicore/lib/CWCF/Y.pl",
+            "/usr/lib/x86_64-linux-gnu/perl-base/unicore/lib/CWCM/Y.pl",
+            "/usr/lib/x86_64-linux-gnu/perl-base/unicore/lib/CWKCF/Y.pl",
+            "/usr/lib/x86_64-linux-gnu/perl-base/unicore/lib/CWL/Y.pl",
+            "/usr/lib/x86_64-linux-gnu/perl-base/unicore/lib/CWT/Y.pl",
+            "/usr/lib/x86_64-linux-gnu/perl-base/unicore/lib/CWU/Y.pl",
+            "/usr/lib/x86_64-linux-gnu/perl-base/unicore/lib/Cased/Y.pl",
+            "/usr/lib/x86_64-linux-gnu/perl-base/unicore/lib/Ccc/A.pl",
+            "/usr/lib/x86_64-linux-gnu/perl-base/unicore/lib/Ccc/AL.pl",
+            "/usr/lib/x86_64-linux-gnu/perl-base/unicore/lib/Ccc/AR.pl",
+            "/usr/lib/x86_64-linux-gnu/perl-base/unicore/lib/Ccc/ATAR.pl",
+            "/usr/lib/x86_64-linux-gnu/perl-base/unicore/lib/Ccc/B.pl",
+            "/usr/lib/x86_64-linux-gnu/perl-base/unicore/lib/Ccc/BR.pl",
+            "/usr/lib/x86_64-linux-gnu/perl-base/unicore/lib/Ccc/DB.pl",
+            "/usr/lib/x86_64-linux-gnu/perl-base/unicore/lib/Ccc/NK.pl",
+            "/usr/lib/x86_64-linux-gnu/perl-base/unicore/lib/Ccc/NR.pl",
+            "/usr/lib/x86_64-linux-gnu/perl-base/unicore/lib/Ccc/OV.pl",
+            "/usr/lib/x86_64-linux-gnu/perl-base/unicore/lib/Ccc/VR.pl",
+            "/usr/lib/x86_64-linux-gnu/perl-base/unicore/lib/CompEx/Y.pl",
+            "/usr/lib/x86_64-linux-gnu/perl-base/unicore/lib/DI/Y.pl",
+            "/usr/lib/x86_64-linux-gnu/perl-base/unicore/lib/Dash/Y.pl",
+            "/usr/lib/x86_64-linux-gnu/perl-base/unicore/lib/Dep/Y.pl",
+            "/usr/lib/x86_64-linux-gnu/perl-base/unicore/lib/Dia/Y.pl",
+            "/usr/lib/x86_64-linux-gnu/perl-base/unicore/lib/Dt/Com.pl",
+            "/usr/lib/x86_64-linux-gnu/perl-base/unicore/lib/Dt/Enc.pl",
+            "/usr/lib/x86_64-linux-gnu/perl-base/unicore/lib/Dt/Fin.pl",
+            "/usr/lib/x86_64-linux-gnu/perl-base/unicore/lib/Dt/Font.pl",
+            "/usr/lib/x86_64-linux-gnu/perl-base/unicore/lib/Dt/Init.pl",
+            "/usr/lib/x86_64-linux-gnu/perl-base/unicore/lib/Dt/Iso.pl",
+            "/usr/lib/x86_64-linux-gnu/perl-base/unicore/lib/Dt/Med.pl",
+            "/usr/lib/x86_64-linux-gnu/perl-base/unicore/lib/Dt/Nar.pl",
+            "/usr/lib/x86_64-linux-gnu/perl-base/unicore/lib/Dt/Nb.pl",
+            "/usr/lib/x86_64-linux-gnu/perl-base/unicore/lib/Dt/NonCanon.pl",
+            "/usr/lib/x86_64-linux-gnu/perl-base/unicore/lib/Dt/Sqr.pl",
+            "/usr/lib/x86_64-linux-gnu/perl-base/unicore/lib/Dt/Sub.pl",
+            "/usr/lib/x86_64-linux-gnu/perl-base/unicore/lib/Dt/Sup.pl",
+            "/usr/lib/x86_64-linux-gnu/perl-base/unicore/lib/Dt/Vert.pl",
+            "/usr/lib/x86_64-linux-gnu/perl-base/unicore/lib/EBase/Y.pl",
+            "/usr/lib/x86_64-linux-gnu/perl-base/unicore/lib/EComp/Y.pl",
+            "/usr/lib/x86_64-linux-gnu/perl-base/unicore/lib/EPres/Y.pl",
+            "/usr/lib/x86_64-linux-gnu/perl-base/unicore/lib/Ea/A.pl",
+            "/usr/lib/x86_64-linux-gnu/perl-base/unicore/lib/Ea/H.pl",
+            "/usr/lib/x86_64-linux-gnu/perl-base/unicore/lib/Ea/N.pl",
+            "/usr/lib/x86_64-linux-gnu/perl-base/unicore/lib/Ea/Na.pl",
+            "/usr/lib/x86_64-linux-gnu/perl-base/unicore/lib/Ea/W.pl",
+            "/usr/lib/x86_64-linux-gnu/perl-base/unicore/lib/Emoji/Y.pl",
+            "/usr/lib/x86_64-linux-gnu/perl-base/unicore/lib/Ext/Y.pl",
+            "/usr/lib/x86_64-linux-gnu/perl-base/unicore/lib/ExtPict/Y.pl",
+            "/usr/lib/x86_64-linux-gnu/perl-base/unicore/lib/GCB/CN.pl",
+            "/usr/lib/x86_64-linux-gnu/perl-base/unicore/lib/GCB/EX.pl",
+            "/usr/lib/x86_64-linux-gnu/perl-base/unicore/lib/GCB/LV.pl",
+            "/usr/lib/x86_64-linux-gnu/perl-base/unicore/lib/GCB/LVT.pl",
+            "/usr/lib/x86_64-linux-gnu/perl-base/unicore/lib/GCB/PP.pl",
+            "/usr/lib/x86_64-linux-gnu/perl-base/unicore/lib/GCB/SM.pl",
+            "/usr/lib/x86_64-linux-gnu/perl-base/unicore/lib/GCB/XX.pl",
+            "/usr/lib/x86_64-linux-gnu/perl-base/unicore/lib/Gc/C.pl",
+            "/usr/lib/x86_64-linux-gnu/perl-base/unicore/lib/Gc/Cf.pl",
+            "/usr/lib/x86_64-linux-gnu/perl-base/unicore/lib/Gc/Cn.pl",
+            "/usr/lib/x86_64-linux-gnu/perl-base/unicore/lib/Gc/L.pl",
+            "/usr/lib/x86_64-linux-gnu/perl-base/unicore/lib/Gc/LC.pl",
+            "/usr/lib/x86_64-linux-gnu/perl-base/unicore/lib/Gc/Ll.pl",
+            "/usr/lib/x86_64-linux-gnu/perl-base/unicore/lib/Gc/Lm.pl",
+            "/usr/lib/x86_64-linux-gnu/perl-base/unicore/lib/Gc/Lo.pl",
+            "/usr/lib/x86_64-linux-gnu/perl-base/unicore/lib/Gc/Lu.pl",
+            "/usr/lib/x86_64-linux-gnu/perl-base/unicore/lib/Gc/M.pl",
+            "/usr/lib/x86_64-linux-gnu/perl-base/unicore/lib/Gc/Mc.pl",
+            "/usr/lib/x86_64-linux-gnu/perl-base/unicore/lib/Gc/Me.pl",
+            "/usr/lib/x86_64-linux-gnu/perl-base/unicore/lib/Gc/Mn.pl",
+            "/usr/lib/x86_64-linux-gnu/perl-base/unicore/lib/Gc/N.pl",
+            "/usr/lib/x86_64-linux-gnu/perl-base/unicore/lib/Gc/Nd.pl",
+            "/usr/lib/x86_64-linux-gnu/perl-base/unicore/lib/Gc/Nl.pl",
+            "/usr/lib/x86_64-linux-gnu/perl-base/unicore/lib/Gc/No.pl",
+            "/usr/lib/x86_64-linux-gnu/perl-base/unicore/lib/Gc/P.pl",
+            "/usr/lib/x86_64-linux-gnu/perl-base/unicore/lib/Gc/Pc.pl",
+            "/usr/lib/x86_64-linux-gnu/perl-base/unicore/lib/Gc/Pd.pl",
+            "/usr/lib/x86_64-linux-gnu/perl-base/unicore/lib/Gc/Pe.pl",
+            "/usr/lib/x86_64-linux-gnu/perl-base/unicore/lib/Gc/Pf.pl",
+            "/usr/lib/x86_64-linux-gnu/perl-base/unicore/lib/Gc/Pi.pl",
+            "/usr/lib/x86_64-linux-gnu/perl-base/unicore/lib/Gc/Po.pl",
+            "/usr/lib/x86_64-linux-gnu/perl-base/unicore/lib/Gc/Ps.pl",
+            "/usr/lib/x86_64-linux-gnu/perl-base/unicore/lib/Gc/S.pl",
+            "/usr/lib/x86_64-linux-gnu/perl-base/unicore/lib/Gc/Sc.pl",
+            "/usr/lib/x86_64-linux-gnu/perl-base/unicore/lib/Gc/Sk.pl",
+            "/usr/lib/x86_64-linux-gnu/perl-base/unicore/lib/Gc/Sm.pl",
+            "/usr/lib/x86_64-linux-gnu/perl-base/unicore/lib/Gc/So.pl",
+            "/usr/lib/x86_64-linux-gnu/perl-base/unicore/lib/Gc/Z.pl",
+            "/usr/lib/x86_64-linux-gnu/perl-base/unicore/lib/Gc/Zs.pl",
+            "/usr/lib/x86_64-linux-gnu/perl-base/unicore/lib/GrBase/Y.pl",
+            "/usr/lib/x86_64-linux-gnu/perl-base/unicore/lib/GrExt/Y.pl",
+            "/usr/lib/x86_64-linux-gnu/perl-base/unicore/lib/Hex/Y.pl",
+            "/usr/lib/x86_64-linux-gnu/perl-base/unicore/lib/Hst/NA.pl",
+            "/usr/lib/x86_64-linux-gnu/perl-base/unicore/lib/Hyphen/T.pl",
+            "/usr/lib/x86_64-linux-gnu/perl-base/unicore/lib/IDC/Y.pl",
+            "/usr/lib/x86_64-linux-gnu/perl-base/unicore/lib/IDS/Y.pl",
+            "/usr/lib/x86_64-linux-gnu/perl-base/unicore/lib/IdStatus/Allowed.pl",
+            "/usr/lib/x86_64-linux-gnu/perl-base/unicore/lib/IdStatus/Restrict.pl",
+            "/usr/lib/x86_64-linux-gnu/perl-base/unicore/lib/IdType/DefaultI.pl",
+            "/usr/lib/x86_64-linux-gnu/perl-base/unicore/lib/IdType/Exclusio.pl",
+            "/usr/lib/x86_64-linux-gnu/perl-base/unicore/lib/IdType/Inclusio.pl",
+            "/usr/lib/x86_64-linux-gnu/perl-base/unicore/lib/IdType/LimitedU.pl",
+            "/usr/lib/x86_64-linux-gnu/perl-base/unicore/lib/IdType/NotChara.pl",
+            "/usr/lib/x86_64-linux-gnu/perl-base/unicore/lib/IdType/NotNFKC.pl",
+            "/usr/lib/x86_64-linux-gnu/perl-base/unicore/lib/IdType/NotXID.pl",
+            "/usr/lib/x86_64-linux-gnu/perl-base/unicore/lib/IdType/Obsolete.pl",
+            "/usr/lib/x86_64-linux-gnu/perl-base/unicore/lib/IdType/Recommen.pl",
+            "/usr/lib/x86_64-linux-gnu/perl-base/unicore/lib/IdType/Technica.pl",
+            "/usr/lib/x86_64-linux-gnu/perl-base/unicore/lib/IdType/Uncommon.pl",
+            "/usr/lib/x86_64-linux-gnu/perl-base/unicore/lib/Ideo/Y.pl",
+            "/usr/lib/x86_64-linux-gnu/perl-base/unicore/lib/In/10_0.pl",
+            "/usr/lib/x86_64-linux-gnu/perl-base/unicore/lib/In/11_0.pl",
+            "/usr/lib/x86_64-linux-gnu/perl-base/unicore/lib/In/12_0.pl",
+            "/usr/lib/x86_64-linux-gnu/perl-base/unicore/lib/In/12_1.pl",
+            "/usr/lib/x86_64-linux-gnu/perl-base/unicore/lib/In/13_0.pl",
+            "/usr/lib/x86_64-linux-gnu/perl-base/unicore/lib/In/14_0.pl",
+            "/usr/lib/x86_64-linux-gnu/perl-base/unicore/lib/In/15_0.pl",
+            "/usr/lib/x86_64-linux-gnu/perl-base/unicore/lib/In/2_0.pl",
+            "/usr/lib/x86_64-linux-gnu/perl-base/unicore/lib/In/2_1.pl",
+            "/usr/lib/x86_64-linux-gnu/perl-base/unicore/lib/In/3_0.pl",
+            "/usr/lib/x86_64-linux-gnu/perl-base/unicore/lib/In/3_1.pl",
+            "/usr/lib/x86_64-linux-gnu/perl-base/unicore/lib/In/3_2.pl",
+            "/usr/lib/x86_64-linux-gnu/perl-base/unicore/lib/In/4_0.pl",
+            "/usr/lib/x86_64-linux-gnu/perl-base/unicore/lib/In/4_1.pl",
+            "/usr/lib/x86_64-linux-gnu/perl-base/unicore/lib/In/5_0.pl",
+            "/usr/lib/x86_64-linux-gnu/perl-base/unicore/lib/In/5_1.pl",
+            "/usr/lib/x86_64-linux-gnu/perl-base/unicore/lib/In/5_2.pl",
+            "/usr/lib/x86_64-linux-gnu/perl-base/unicore/lib/In/6_0.pl",
+            "/usr/lib/x86_64-linux-gnu/perl-base/unicore/lib/In/6_1.pl",
+            "/usr/lib/x86_64-linux-gnu/perl-base/unicore/lib/In/6_2.pl",
+            "/usr/lib/x86_64-linux-gnu/perl-base/unicore/lib/In/6_3.pl",
+            "/usr/lib/x86_64-linux-gnu/perl-base/unicore/lib/In/7_0.pl",
+            "/usr/lib/x86_64-linux-gnu/perl-base/unicore/lib/In/8_0.pl",
+            "/usr/lib/x86_64-linux-gnu/perl-base/unicore/lib/In/9_0.pl",
+            "/usr/lib/x86_64-linux-gnu/perl-base/unicore/lib/InPC/Bottom.pl",
+            "/usr/lib/x86_64-linux-gnu/perl-base/unicore/lib/InPC/BottomAn.pl",
+            "/usr/lib/x86_64-linux-gnu/perl-base/unicore/lib/InPC/Left.pl",
+            "/usr/lib/x86_64-linux-gnu/perl-base/unicore/lib/InPC/LeftAndR.pl",
+            "/usr/lib/x86_64-linux-gnu/perl-base/unicore/lib/InPC/NA.pl",
+            "/usr/lib/x86_64-linux-gnu/perl-base/unicore/lib/InPC/Overstru.pl",
+            "/usr/lib/x86_64-linux-gnu/perl-base/unicore/lib/InPC/Right.pl",
+            "/usr/lib/x86_64-linux-gnu/perl-base/unicore/lib/InPC/Top.pl",
+            "/usr/lib/x86_64-linux-gnu/perl-base/unicore/lib/InPC/TopAndBo.pl",
+            "/usr/lib/x86_64-linux-gnu/perl-base/unicore/lib/InPC/TopAndL2.pl",
+            "/usr/lib/x86_64-linux-gnu/perl-base/unicore/lib/InPC/TopAndLe.pl",
+            "/usr/lib/x86_64-linux-gnu/perl-base/unicore/lib/InPC/TopAndRi.pl",
+            "/usr/lib/x86_64-linux-gnu/perl-base/unicore/lib/InPC/VisualOr.pl",
+            "/usr/lib/x86_64-linux-gnu/perl-base/unicore/lib/InSC/Avagraha.pl",
+            "/usr/lib/x86_64-linux-gnu/perl-base/unicore/lib/InSC/Bindu.pl",
+            "/usr/lib/x86_64-linux-gnu/perl-base/unicore/lib/InSC/Cantilla.pl",
+            "/usr/lib/x86_64-linux-gnu/perl-base/unicore/lib/InSC/Consona2.pl",
+            "/usr/lib/x86_64-linux-gnu/perl-base/unicore/lib/InSC/Consona3.pl",
+            "/usr/lib/x86_64-linux-gnu/perl-base/unicore/lib/InSC/Consona4.pl",
+            "/usr/lib/x86_64-linux-gnu/perl-base/unicore/lib/InSC/Consona5.pl",
+            "/usr/lib/x86_64-linux-gnu/perl-base/unicore/lib/InSC/Consona6.pl",
+            "/usr/lib/x86_64-linux-gnu/perl-base/unicore/lib/InSC/Consona7.pl",
+            "/usr/lib/x86_64-linux-gnu/perl-base/unicore/lib/InSC/Consona8.pl",
+            "/usr/lib/x86_64-linux-gnu/perl-base/unicore/lib/InSC/Consona9.pl",
+            "/usr/lib/x86_64-linux-gnu/perl-base/unicore/lib/InSC/Consonan.pl",
+            "/usr/lib/x86_64-linux-gnu/perl-base/unicore/lib/InSC/Geminati.pl",
+            "/usr/lib/x86_64-linux-gnu/perl-base/unicore/lib/InSC/Invisibl.pl",
+            "/usr/lib/x86_64-linux-gnu/perl-base/unicore/lib/InSC/Nukta.pl",
+            "/usr/lib/x86_64-linux-gnu/perl-base/unicore/lib/InSC/Number.pl",
+            "/usr/lib/x86_64-linux-gnu/perl-base/unicore/lib/InSC/Other.pl",
+            "/usr/lib/x86_64-linux-gnu/perl-base/unicore/lib/InSC/PureKill.pl",
+            "/usr/lib/x86_64-linux-gnu/perl-base/unicore/lib/InSC/Syllable.pl",
+            "/usr/lib/x86_64-linux-gnu/perl-base/unicore/lib/InSC/ToneMark.pl",
+            "/usr/lib/x86_64-linux-gnu/perl-base/unicore/lib/InSC/Virama.pl",
+            "/usr/lib/x86_64-linux-gnu/perl-base/unicore/lib/InSC/Visarga.pl",
+            "/usr/lib/x86_64-linux-gnu/perl-base/unicore/lib/InSC/Vowel.pl",
+            "/usr/lib/x86_64-linux-gnu/perl-base/unicore/lib/InSC/VowelDep.pl",
+            "/usr/lib/x86_64-linux-gnu/perl-base/unicore/lib/InSC/VowelInd.pl",
+            "/usr/lib/x86_64-linux-gnu/perl-base/unicore/lib/Jg/Ain.pl",
+            "/usr/lib/x86_64-linux-gnu/perl-base/unicore/lib/Jg/Alef.pl",
+            "/usr/lib/x86_64-linux-gnu/perl-base/unicore/lib/Jg/Beh.pl",
+            "/usr/lib/x86_64-linux-gnu/perl-base/unicore/lib/Jg/Dal.pl",
+            "/usr/lib/x86_64-linux-gnu/perl-base/unicore/lib/Jg/FarsiYeh.pl",
+            "/usr/lib/x86_64-linux-gnu/perl-base/unicore/lib/Jg/Feh.pl",
+            "/usr/lib/x86_64-linux-gnu/perl-base/unicore/lib/Jg/Gaf.pl",
+            "/usr/lib/x86_64-linux-gnu/perl-base/unicore/lib/Jg/Hah.pl",
+            "/usr/lib/x86_64-linux-gnu/perl-base/unicore/lib/Jg/HanifiRo.pl",
+            "/usr/lib/x86_64-linux-gnu/perl-base/unicore/lib/Jg/Kaf.pl",
+            "/usr/lib/x86_64-linux-gnu/perl-base/unicore/lib/Jg/Lam.pl",
+            "/usr/lib/x86_64-linux-gnu/perl-base/unicore/lib/Jg/NoJoinin.pl",
+            "/usr/lib/x86_64-linux-gnu/perl-base/unicore/lib/Jg/Noon.pl",
+            "/usr/lib/x86_64-linux-gnu/perl-base/unicore/lib/Jg/Qaf.pl",
+            "/usr/lib/x86_64-linux-gnu/perl-base/unicore/lib/Jg/Reh.pl",
+            "/usr/lib/x86_64-linux-gnu/perl-base/unicore/lib/Jg/Sad.pl",
+            "/usr/lib/x86_64-linux-gnu/perl-base/unicore/lib/Jg/Seen.pl",
+            "/usr/lib/x86_64-linux-gnu/perl-base/unicore/lib/Jg/Tah.pl",
+            "/usr/lib/x86_64-linux-gnu/perl-base/unicore/lib/Jg/Waw.pl",
+            "/usr/lib/x86_64-linux-gnu/perl-base/unicore/lib/Jg/Yeh.pl",
+            "/usr/lib/x86_64-linux-gnu/perl-base/unicore/lib/Jt/C.pl",
+            "/usr/lib/x86_64-linux-gnu/perl-base/unicore/lib/Jt/D.pl",
+            "/usr/lib/x86_64-linux-gnu/perl-base/unicore/lib/Jt/L.pl",
+            "/usr/lib/x86_64-linux-gnu/perl-base/unicore/lib/Jt/R.pl",
+            "/usr/lib/x86_64-linux-gnu/perl-base/unicore/lib/Jt/T.pl",
+            "/usr/lib/x86_64-linux-gnu/perl-base/unicore/lib/Jt/U.pl",
+            "/usr/lib/x86_64-linux-gnu/perl-base/unicore/lib/Lb/AI.pl",
+            "/usr/lib/x86_64-linux-gnu/perl-base/unicore/lib/Lb/AL.pl",
+            "/usr/lib/x86_64-linux-gnu/perl-base/unicore/lib/Lb/BA.pl",
+            "/usr/lib/x86_64-linux-gnu/perl-base/unicore/lib/Lb/BB.pl",
+            "/usr/lib/x86_64-linux-gnu/perl-base/unicore/lib/Lb/CJ.pl",
+            "/usr/lib/x86_64-linux-gnu/perl-base/unicore/lib/Lb/CL.pl",
+            "/usr/lib/x86_64-linux-gnu/perl-base/unicore/lib/Lb/CM.pl",
+            "/usr/lib/x86_64-linux-gnu/perl-base/unicore/lib/Lb/EX.pl",
+            "/usr/lib/x86_64-linux-gnu/perl-base/unicore/lib/Lb/GL.pl",
+            "/usr/lib/x86_64-linux-gnu/perl-base/unicore/lib/Lb/ID.pl",
+            "/usr/lib/x86_64-linux-gnu/perl-base/unicore/lib/Lb/IN.pl",
+            "/usr/lib/x86_64-linux-gnu/perl-base/unicore/lib/Lb/IS.pl",
+            "/usr/lib/x86_64-linux-gnu/perl-base/unicore/lib/Lb/NS.pl",
+            "/usr/lib/x86_64-linux-gnu/perl-base/unicore/lib/Lb/NU.pl",
+            "/usr/lib/x86_64-linux-gnu/perl-base/unicore/lib/Lb/OP.pl",
+            "/usr/lib/x86_64-linux-gnu/perl-base/unicore/lib/Lb/PO.pl",
+            "/usr/lib/x86_64-linux-gnu/perl-base/unicore/lib/Lb/PR.pl",
+            "/usr/lib/x86_64-linux-gnu/perl-base/unicore/lib/Lb/QU.pl",
+            "/usr/lib/x86_64-linux-gnu/perl-base/unicore/lib/Lb/SA.pl",
+            "/usr/lib/x86_64-linux-gnu/perl-base/unicore/lib/Lb/XX.pl",
+            "/usr/lib/x86_64-linux-gnu/perl-base/unicore/lib/Lower/Y.pl",
+            "/usr/lib/x86_64-linux-gnu/perl-base/unicore/lib/Math/Y.pl",
+            "/usr/lib/x86_64-linux-gnu/perl-base/unicore/lib/NFCQC/M.pl",
+            "/usr/lib/x86_64-linux-gnu/perl-base/unicore/lib/NFCQC/Y.pl",
+            "/usr/lib/x86_64-linux-gnu/perl-base/unicore/lib/NFDQC/N.pl",
+            "/usr/lib/x86_64-linux-gnu/perl-base/unicore/lib/NFDQC/Y.pl",
+            "/usr/lib/x86_64-linux-gnu/perl-base/unicore/lib/NFKCQC/N.pl",
+            "/usr/lib/x86_64-linux-gnu/perl-base/unicore/lib/NFKCQC/Y.pl",
+            "/usr/lib/x86_64-linux-gnu/perl-base/unicore/lib/NFKDQC/N.pl",
+            "/usr/lib/x86_64-linux-gnu/perl-base/unicore/lib/NFKDQC/Y.pl",
+            "/usr/lib/x86_64-linux-gnu/perl-base/unicore/lib/Nt/Di.pl",
+            "/usr/lib/x86_64-linux-gnu/perl-base/unicore/lib/Nt/None.pl",
+            "/usr/lib/x86_64-linux-gnu/perl-base/unicore/lib/Nt/Nu.pl",
+            "/usr/lib/x86_64-linux-gnu/perl-base/unicore/lib/Nv/0.pl",
+            "/usr/lib/x86_64-linux-gnu/perl-base/unicore/lib/Nv/1.pl",
+            "/usr/lib/x86_64-linux-gnu/perl-base/unicore/lib/Nv/10.pl",
+            "/usr/lib/x86_64-linux-gnu/perl-base/unicore/lib/Nv/100.pl",
+            "/usr/lib/x86_64-linux-gnu/perl-base/unicore/lib/Nv/1000.pl",
+            "/usr/lib/x86_64-linux-gnu/perl-base/unicore/lib/Nv/10000.pl",
+            "/usr/lib/x86_64-linux-gnu/perl-base/unicore/lib/Nv/100000.pl",
+            "/usr/lib/x86_64-linux-gnu/perl-base/unicore/lib/Nv/11.pl",
+            "/usr/lib/x86_64-linux-gnu/perl-base/unicore/lib/Nv/12.pl",
+            "/usr/lib/x86_64-linux-gnu/perl-base/unicore/lib/Nv/13.pl",
+            "/usr/lib/x86_64-linux-gnu/perl-base/unicore/lib/Nv/14.pl",
+            "/usr/lib/x86_64-linux-gnu/perl-base/unicore/lib/Nv/15.pl",
+            "/usr/lib/x86_64-linux-gnu/perl-base/unicore/lib/Nv/16.pl",
+            "/usr/lib/x86_64-linux-gnu/perl-base/unicore/lib/Nv/17.pl",
+            "/usr/lib/x86_64-linux-gnu/perl-base/unicore/lib/Nv/18.pl",
+            "/usr/lib/x86_64-linux-gnu/perl-base/unicore/lib/Nv/19.pl",
+            "/usr/lib/x86_64-linux-gnu/perl-base/unicore/lib/Nv/1_16.pl",
+            "/usr/lib/x86_64-linux-gnu/perl-base/unicore/lib/Nv/1_2.pl",
+            "/usr/lib/x86_64-linux-gnu/perl-base/unicore/lib/Nv/1_3.pl",
+            "/usr/lib/x86_64-linux-gnu/perl-base/unicore/lib/Nv/1_4.pl",
+            "/usr/lib/x86_64-linux-gnu/perl-base/unicore/lib/Nv/1_6.pl",
+            "/usr/lib/x86_64-linux-gnu/perl-base/unicore/lib/Nv/1_8.pl",
+            "/usr/lib/x86_64-linux-gnu/perl-base/unicore/lib/Nv/2.pl",
+            "/usr/lib/x86_64-linux-gnu/perl-base/unicore/lib/Nv/20.pl",
+            "/usr/lib/x86_64-linux-gnu/perl-base/unicore/lib/Nv/200.pl",
+            "/usr/lib/x86_64-linux-gnu/perl-base/unicore/lib/Nv/2000.pl",
+            "/usr/lib/x86_64-linux-gnu/perl-base/unicore/lib/Nv/20000.pl",
+            "/usr/lib/x86_64-linux-gnu/perl-base/unicore/lib/Nv/2_3.pl",
+            "/usr/lib/x86_64-linux-gnu/perl-base/unicore/lib/Nv/3.pl",
+            "/usr/lib/x86_64-linux-gnu/perl-base/unicore/lib/Nv/30.pl",
+            "/usr/lib/x86_64-linux-gnu/perl-base/unicore/lib/Nv/300.pl",
+            "/usr/lib/x86_64-linux-gnu/perl-base/unicore/lib/Nv/3000.pl",
+            "/usr/lib/x86_64-linux-gnu/perl-base/unicore/lib/Nv/30000.pl",
+            "/usr/lib/x86_64-linux-gnu/perl-base/unicore/lib/Nv/3_16.pl",
+            "/usr/lib/x86_64-linux-gnu/perl-base/unicore/lib/Nv/3_4.pl",
+            "/usr/lib/x86_64-linux-gnu/perl-base/unicore/lib/Nv/4.pl",
+            "/usr/lib/x86_64-linux-gnu/perl-base/unicore/lib/Nv/40.pl",
+            "/usr/lib/x86_64-linux-gnu/perl-base/unicore/lib/Nv/400.pl",
+            "/usr/lib/x86_64-linux-gnu/perl-base/unicore/lib/Nv/4000.pl",
+            "/usr/lib/x86_64-linux-gnu/perl-base/unicore/lib/Nv/40000.pl",
+            "/usr/lib/x86_64-linux-gnu/perl-base/unicore/lib/Nv/5.pl",
+            "/usr/lib/x86_64-linux-gnu/perl-base/unicore/lib/Nv/50.pl",
+            "/usr/lib/x86_64-linux-gnu/perl-base/unicore/lib/Nv/500.pl",
+            "/usr/lib/x86_64-linux-gnu/perl-base/unicore/lib/Nv/5000.pl",
+            "/usr/lib/x86_64-linux-gnu/perl-base/unicore/lib/Nv/50000.pl",
+            "/usr/lib/x86_64-linux-gnu/perl-base/unicore/lib/Nv/6.pl",
+            "/usr/lib/x86_64-linux-gnu/perl-base/unicore/lib/Nv/60.pl",
+            "/usr/lib/x86_64-linux-gnu/perl-base/unicore/lib/Nv/600.pl",
+            "/usr/lib/x86_64-linux-gnu/perl-base/unicore/lib/Nv/6000.pl",
+            "/usr/lib/x86_64-linux-gnu/perl-base/unicore/lib/Nv/60000.pl",
+            "/usr/lib/x86_64-linux-gnu/perl-base/unicore/lib/Nv/7.pl",
+            "/usr/lib/x86_64-linux-gnu/perl-base/unicore/lib/Nv/70.pl",
+            "/usr/lib/x86_64-linux-gnu/perl-base/unicore/lib/Nv/700.pl",
+            "/usr/lib/x86_64-linux-gnu/perl-base/unicore/lib/Nv/7000.pl",
+            "/usr/lib/x86_64-linux-gnu/perl-base/unicore/lib/Nv/70000.pl",
+            "/usr/lib/x86_64-linux-gnu/perl-base/unicore/lib/Nv/8.pl",
+            "/usr/lib/x86_64-linux-gnu/perl-base/unicore/lib/Nv/80.pl",
+            "/usr/lib/x86_64-linux-gnu/perl-base/unicore/lib/Nv/800.pl",
+            "/usr/lib/x86_64-linux-gnu/perl-base/unicore/lib/Nv/8000.pl",
+            "/usr/lib/x86_64-linux-gnu/perl-base/unicore/lib/Nv/80000.pl",
+            "/usr/lib/x86_64-linux-gnu/perl-base/unicore/lib/Nv/9.pl",
+            "/usr/lib/x86_64-linux-gnu/perl-base/unicore/lib/Nv/90.pl",
+            "/usr/lib/x86_64-linux-gnu/perl-base/unicore/lib/Nv/900.pl",
+            "/usr/lib/x86_64-linux-gnu/perl-base/unicore/lib/Nv/9000.pl",
+            "/usr/lib/x86_64-linux-gnu/perl-base/unicore/lib/Nv/90000.pl",
+            "/usr/lib/x86_64-linux-gnu/perl-base/unicore/lib/PCM/Y.pl",
+            "/usr/lib/x86_64-linux-gnu/perl-base/unicore/lib/PatSyn/Y.pl",
+            "/usr/lib/x86_64-linux-gnu/perl-base/unicore/lib/Perl/Alnum.pl",
+            "/usr/lib/x86_64-linux-gnu/perl-base/unicore/lib/Perl/Assigned.pl",
+            "/usr/lib/x86_64-linux-gnu/perl-base/unicore/lib/Perl/Blank.pl",
+            "/usr/lib/x86_64-linux-gnu/perl-base/unicore/lib/Perl/Graph.pl",
+            "/usr/lib/x86_64-linux-gnu/perl-base/unicore/lib/Perl/PerlWord.pl",
+            "/usr/lib/x86_64-linux-gnu/perl-base/unicore/lib/Perl/PosixPun.pl",
+            "/usr/lib/x86_64-linux-gnu/perl-base/unicore/lib/Perl/Print.pl",
+            "/usr/lib/x86_64-linux-gnu/perl-base/unicore/lib/Perl/SpacePer.pl",
+            "/usr/lib/x86_64-linux-gnu/perl-base/unicore/lib/Perl/Title.pl",
+            "/usr/lib/x86_64-linux-gnu/perl-base/unicore/lib/Perl/Word.pl",
+            "/usr/lib/x86_64-linux-gnu/perl-base/unicore/lib/Perl/XPosixPu.pl",
+            "/usr/lib/x86_64-linux-gnu/perl-base/unicore/lib/Perl/_PerlAny.pl",
+            "/usr/lib/x86_64-linux-gnu/perl-base/unicore/lib/Perl/_PerlCh2.pl",
+            "/usr/lib/x86_64-linux-gnu/perl-base/unicore/lib/Perl/_PerlCha.pl",
+            "/usr/lib/x86_64-linux-gnu/perl-base/unicore/lib/Perl/_PerlFol.pl",
+            "/usr/lib/x86_64-linux-gnu/perl-base/unicore/lib/Perl/_PerlIDC.pl",
+            "/usr/lib/x86_64-linux-gnu/perl-base/unicore/lib/Perl/_PerlIDS.pl",
+            "/usr/lib/x86_64-linux-gnu/perl-base/unicore/lib/Perl/_PerlIsI.pl",
+            "/usr/lib/x86_64-linux-gnu/perl-base/unicore/lib/Perl/_PerlNch.pl",
+            "/usr/lib/x86_64-linux-gnu/perl-base/unicore/lib/Perl/_PerlPat.pl",
+            "/usr/lib/x86_64-linux-gnu/perl-base/unicore/lib/Perl/_PerlPr2.pl",
+            "/usr/lib/x86_64-linux-gnu/perl-base/unicore/lib/Perl/_PerlPro.pl",
+            "/usr/lib/x86_64-linux-gnu/perl-base/unicore/lib/Perl/_PerlQuo.pl",
+            "/usr/lib/x86_64-linux-gnu/perl-base/unicore/lib/QMark/Y.pl",
+            "/usr/lib/x86_64-linux-gnu/perl-base/unicore/lib/SB/AT.pl",
+            "/usr/lib/x86_64-linux-gnu/perl-base/unicore/lib/SB/CL.pl",
+            "/usr/lib/x86_64-linux-gnu/perl-base/unicore/lib/SB/EX.pl",
+            "/usr/lib/x86_64-linux-gnu/perl-base/unicore/lib/SB/FO.pl",
+            "/usr/lib/x86_64-linux-gnu/perl-base/unicore/lib/SB/LE.pl",
+            "/usr/lib/x86_64-linux-gnu/perl-base/unicore/lib/SB/LO.pl",
+            "/usr/lib/x86_64-linux-gnu/perl-base/unicore/lib/SB/NU.pl",
+            "/usr/lib/x86_64-linux-gnu/perl-base/unicore/lib/SB/SC.pl",
+            "/usr/lib/x86_64-linux-gnu/perl-base/unicore/lib/SB/ST.pl",
+            "/usr/lib/x86_64-linux-gnu/perl-base/unicore/lib/SB/Sp.pl",
+            "/usr/lib/x86_64-linux-gnu/perl-base/unicore/lib/SB/UP.pl",
+            "/usr/lib/x86_64-linux-gnu/perl-base/unicore/lib/SB/XX.pl",
+            "/usr/lib/x86_64-linux-gnu/perl-base/unicore/lib/SD/Y.pl",
+            "/usr/lib/x86_64-linux-gnu/perl-base/unicore/lib/STerm/Y.pl",
+            "/usr/lib/x86_64-linux-gnu/perl-base/unicore/lib/Sc/Arab.pl",
+            "/usr/lib/x86_64-linux-gnu/perl-base/unicore/lib/Sc/Beng.pl",
+            "/usr/lib/x86_64-linux-gnu/perl-base/unicore/lib/Sc/Cprt.pl",
+            "/usr/lib/x86_64-linux-gnu/perl-base/unicore/lib/Sc/Cyrl.pl",
+            "/usr/lib/x86_64-linux-gnu/perl-base/unicore/lib/Sc/Deva.pl",
+            "/usr/lib/x86_64-linux-gnu/perl-base/unicore/lib/Sc/Dupl.pl",
+            "/usr/lib/x86_64-linux-gnu/perl-base/unicore/lib/Sc/Geor.pl",
+            "/usr/lib/x86_64-linux-gnu/perl-base/unicore/lib/Sc/Glag.pl",
+            "/usr/lib/x86_64-linux-gnu/perl-base/unicore/lib/Sc/Gong.pl",
+            "/usr/lib/x86_64-linux-gnu/perl-base/unicore/lib/Sc/Gonm.pl",
+            "/usr/lib/x86_64-linux-gnu/perl-base/unicore/lib/Sc/Gran.pl",
+            "/usr/lib/x86_64-linux-gnu/perl-base/unicore/lib/Sc/Grek.pl",
+            "/usr/lib/x86_64-linux-gnu/perl-base/unicore/lib/Sc/Gujr.pl",
+            "/usr/lib/x86_64-linux-gnu/perl-base/unicore/lib/Sc/Guru.pl",
+            "/usr/lib/x86_64-linux-gnu/perl-base/unicore/lib/Sc/Han.pl",
+            "/usr/lib/x86_64-linux-gnu/perl-base/unicore/lib/Sc/Hang.pl",
+            "/usr/lib/x86_64-linux-gnu/perl-base/unicore/lib/Sc/Hira.pl",
+            "/usr/lib/x86_64-linux-gnu/perl-base/unicore/lib/Sc/Kana.pl",
+            "/usr/lib/x86_64-linux-gnu/perl-base/unicore/lib/Sc/Knda.pl",
+            "/usr/lib/x86_64-linux-gnu/perl-base/unicore/lib/Sc/Latn.pl",
+            "/usr/lib/x86_64-linux-gnu/perl-base/unicore/lib/Sc/Limb.pl",
+            "/usr/lib/x86_64-linux-gnu/perl-base/unicore/lib/Sc/Linb.pl",
+            "/usr/lib/x86_64-linux-gnu/perl-base/unicore/lib/Sc/Mlym.pl",
+            "/usr/lib/x86_64-linux-gnu/perl-base/unicore/lib/Sc/Mong.pl",
+            "/usr/lib/x86_64-linux-gnu/perl-base/unicore/lib/Sc/Mult.pl",
+            "/usr/lib/x86_64-linux-gnu/perl-base/unicore/lib/Sc/Orya.pl",
+            "/usr/lib/x86_64-linux-gnu/perl-base/unicore/lib/Sc/Sinh.pl",
+            "/usr/lib/x86_64-linux-gnu/perl-base/unicore/lib/Sc/Syrc.pl",
+            "/usr/lib/x86_64-linux-gnu/perl-base/unicore/lib/Sc/Taml.pl",
+            "/usr/lib/x86_64-linux-gnu/perl-base/unicore/lib/Sc/Telu.pl",
+            "/usr/lib/x86_64-linux-gnu/perl-base/unicore/lib/Sc/Zinh.pl",
+            "/usr/lib/x86_64-linux-gnu/perl-base/unicore/lib/Sc/Zyyy.pl",
+            "/usr/lib/x86_64-linux-gnu/perl-base/unicore/lib/Scx/Adlm.pl",
+            "/usr/lib/x86_64-linux-gnu/perl-base/unicore/lib/Scx/Arab.pl",
+            "/usr/lib/x86_64-linux-gnu/perl-base/unicore/lib/Scx/Armn.pl",
+            "/usr/lib/x86_64-linux-gnu/perl-base/unicore/lib/Scx/Beng.pl",
+            "/usr/lib/x86_64-linux-gnu/perl-base/unicore/lib/Scx/Bhks.pl",
+            "/usr/lib/x86_64-linux-gnu/perl-base/unicore/lib/Scx/Bopo.pl",
+            "/usr/lib/x86_64-linux-gnu/perl-base/unicore/lib/Scx/Cakm.pl",
+            "/usr/lib/x86_64-linux-gnu/perl-base/unicore/lib/Scx/Cham.pl",
+            "/usr/lib/x86_64-linux-gnu/perl-base/unicore/lib/Scx/Copt.pl",
+            "/usr/lib/x86_64-linux-gnu/perl-base/unicore/lib/Scx/Cprt.pl",
+            "/usr/lib/x86_64-linux-gnu/perl-base/unicore/lib/Scx/Cyrl.pl",
+            "/usr/lib/x86_64-linux-gnu/perl-base/unicore/lib/Scx/Deva.pl",
+            "/usr/lib/x86_64-linux-gnu/perl-base/unicore/lib/Scx/Diak.pl",
+            "/usr/lib/x86_64-linux-gnu/perl-base/unicore/lib/Scx/Dupl.pl",
+            "/usr/lib/x86_64-linux-gnu/perl-base/unicore/lib/Scx/Ethi.pl",
+            "/usr/lib/x86_64-linux-gnu/perl-base/unicore/lib/Scx/Geor.pl",
+            "/usr/lib/x86_64-linux-gnu/perl-base/unicore/lib/Scx/Glag.pl",
+            "/usr/lib/x86_64-linux-gnu/perl-base/unicore/lib/Scx/Gong.pl",
+            "/usr/lib/x86_64-linux-gnu/perl-base/unicore/lib/Scx/Gonm.pl",
+            "/usr/lib/x86_64-linux-gnu/perl-base/unicore/lib/Scx/Gran.pl",
+            "/usr/lib/x86_64-linux-gnu/perl-base/unicore/lib/Scx/Grek.pl",
+            "/usr/lib/x86_64-linux-gnu/perl-base/unicore/lib/Scx/Gujr.pl",
+            "/usr/lib/x86_64-linux-gnu/perl-base/unicore/lib/Scx/Guru.pl",
+            "/usr/lib/x86_64-linux-gnu/perl-base/unicore/lib/Scx/Han.pl",
+            "/usr/lib/x86_64-linux-gnu/perl-base/unicore/lib/Scx/Hang.pl",
+            "/usr/lib/x86_64-linux-gnu/perl-base/unicore/lib/Scx/Hebr.pl",
+            "/usr/lib/x86_64-linux-gnu/perl-base/unicore/lib/Scx/Hira.pl",
+            "/usr/lib/x86_64-linux-gnu/perl-base/unicore/lib/Scx/Hmng.pl",
+            "/usr/lib/x86_64-linux-gnu/perl-base/unicore/lib/Scx/Hmnp.pl",
+            "/usr/lib/x86_64-linux-gnu/perl-base/unicore/lib/Scx/Kana.pl",
+            "/usr/lib/x86_64-linux-gnu/perl-base/unicore/lib/Scx/Khar.pl",
+            "/usr/lib/x86_64-linux-gnu/perl-base/unicore/lib/Scx/Khmr.pl",
+            "/usr/lib/x86_64-linux-gnu/perl-base/unicore/lib/Scx/Khoj.pl",
+            "/usr/lib/x86_64-linux-gnu/perl-base/unicore/lib/Scx/Knda.pl",
+            "/usr/lib/x86_64-linux-gnu/perl-base/unicore/lib/Scx/Kthi.pl",
+            "/usr/lib/x86_64-linux-gnu/perl-base/unicore/lib/Scx/Lana.pl",
+            "/usr/lib/x86_64-linux-gnu/perl-base/unicore/lib/Scx/Lao.pl",
+            "/usr/lib/x86_64-linux-gnu/perl-base/unicore/lib/Scx/Latn.pl",
+            "/usr/lib/x86_64-linux-gnu/perl-base/unicore/lib/Scx/Limb.pl",
+            "/usr/lib/x86_64-linux-gnu/perl-base/unicore/lib/Scx/Lina.pl",
+            "/usr/lib/x86_64-linux-gnu/perl-base/unicore/lib/Scx/Linb.pl",
+            "/usr/lib/x86_64-linux-gnu/perl-base/unicore/lib/Scx/Mlym.pl",
+            "/usr/lib/x86_64-linux-gnu/perl-base/unicore/lib/Scx/Mong.pl",
+            "/usr/lib/x86_64-linux-gnu/perl-base/unicore/lib/Scx/Mult.pl",
+            "/usr/lib/x86_64-linux-gnu/perl-base/unicore/lib/Scx/Mymr.pl",
+            "/usr/lib/x86_64-linux-gnu/perl-base/unicore/lib/Scx/Nand.pl",
+            "/usr/lib/x86_64-linux-gnu/perl-base/unicore/lib/Scx/Nko.pl",
+            "/usr/lib/x86_64-linux-gnu/perl-base/unicore/lib/Scx/Orya.pl",
+            "/usr/lib/x86_64-linux-gnu/perl-base/unicore/lib/Scx/Phlp.pl",
+            "/usr/lib/x86_64-linux-gnu/perl-base/unicore/lib/Scx/Rohg.pl",
+            "/usr/lib/x86_64-linux-gnu/perl-base/unicore/lib/Scx/Shrd.pl",
+            "/usr/lib/x86_64-linux-gnu/perl-base/unicore/lib/Scx/Sind.pl",
+            "/usr/lib/x86_64-linux-gnu/perl-base/unicore/lib/Scx/Sinh.pl",
+            "/usr/lib/x86_64-linux-gnu/perl-base/unicore/lib/Scx/Syrc.pl",
+            "/usr/lib/x86_64-linux-gnu/perl-base/unicore/lib/Scx/Tagb.pl",
+            "/usr/lib/x86_64-linux-gnu/perl-base/unicore/lib/Scx/Takr.pl",
+            "/usr/lib/x86_64-linux-gnu/perl-base/unicore/lib/Scx/Talu.pl",
+            "/usr/lib/x86_64-linux-gnu/perl-base/unicore/lib/Scx/Taml.pl",
+            "/usr/lib/x86_64-linux-gnu/perl-base/unicore/lib/Scx/Tang.pl",
+            "/usr/lib/x86_64-linux-gnu/perl-base/unicore/lib/Scx/Telu.pl",
+            "/usr/lib/x86_64-linux-gnu/perl-base/unicore/lib/Scx/Thaa.pl",
+            "/usr/lib/x86_64-linux-gnu/perl-base/unicore/lib/Scx/Tibt.pl",
+            "/usr/lib/x86_64-linux-gnu/perl-base/unicore/lib/Scx/Tirh.pl",
+            "/usr/lib/x86_64-linux-gnu/perl-base/unicore/lib/Scx/Vith.pl",
+            "/usr/lib/x86_64-linux-gnu/perl-base/unicore/lib/Scx/Xsux.pl",
+            "/usr/lib/x86_64-linux-gnu/perl-base/unicore/lib/Scx/Yezi.pl",
+            "/usr/lib/x86_64-linux-gnu/perl-base/unicore/lib/Scx/Yi.pl",
+            "/usr/lib/x86_64-linux-gnu/perl-base/unicore/lib/Scx/Zinh.pl",
+            "/usr/lib/x86_64-linux-gnu/perl-base/unicore/lib/Scx/Zyyy.pl",
+            "/usr/lib/x86_64-linux-gnu/perl-base/unicore/lib/Scx/Zzzz.pl",
+            "/usr/lib/x86_64-linux-gnu/perl-base/unicore/lib/Term/Y.pl",
+            "/usr/lib/x86_64-linux-gnu/perl-base/unicore/lib/UIdeo/Y.pl",
+            "/usr/lib/x86_64-linux-gnu/perl-base/unicore/lib/Upper/Y.pl",
+            "/usr/lib/x86_64-linux-gnu/perl-base/unicore/lib/VS/Y.pl",
+            "/usr/lib/x86_64-linux-gnu/perl-base/unicore/lib/Vo/R.pl",
+            "/usr/lib/x86_64-linux-gnu/perl-base/unicore/lib/Vo/Tr.pl",
+            "/usr/lib/x86_64-linux-gnu/perl-base/unicore/lib/Vo/Tu.pl",
+            "/usr/lib/x86_64-linux-gnu/perl-base/unicore/lib/Vo/U.pl",
+            "/usr/lib/x86_64-linux-gnu/perl-base/unicore/lib/WB/EX.pl",
+            "/usr/lib/x86_64-linux-gnu/perl-base/unicore/lib/WB/Extend.pl",
+            "/usr/lib/x86_64-linux-gnu/perl-base/unicore/lib/WB/FO.pl",
+            "/usr/lib/x86_64-linux-gnu/perl-base/unicore/lib/WB/HL.pl",
+            "/usr/lib/x86_64-linux-gnu/perl-base/unicore/lib/WB/KA.pl",
+            "/usr/lib/x86_64-linux-gnu/perl-base/unicore/lib/WB/LE.pl",
+            "/usr/lib/x86_64-linux-gnu/perl-base/unicore/lib/WB/MB.pl",
+            "/usr/lib/x86_64-linux-gnu/perl-base/unicore/lib/WB/ML.pl",
+            "/usr/lib/x86_64-linux-gnu/perl-base/unicore/lib/WB/MN.pl",
+            "/usr/lib/x86_64-linux-gnu/perl-base/unicore/lib/WB/NU.pl",
+            "/usr/lib/x86_64-linux-gnu/perl-base/unicore/lib/WB/WSegSpac.pl",
+            "/usr/lib/x86_64-linux-gnu/perl-base/unicore/lib/WB/XX.pl",
+            "/usr/lib/x86_64-linux-gnu/perl-base/unicore/lib/XIDC/Y.pl",
+            "/usr/lib/x86_64-linux-gnu/perl-base/unicore/lib/XIDS/Y.pl",
+            "/usr/lib/x86_64-linux-gnu/perl-base/utf8.pm",
+            "/usr/lib/x86_64-linux-gnu/perl-base/vars.pm",
+            "/usr/lib/x86_64-linux-gnu/perl-base/warnings.pm",
+            "/usr/lib/x86_64-linux-gnu/perl-base/warnings/register.pm",
+            "/usr/share/doc/perl-base/changelog.Debian.gz",
+            "/usr/share/doc/perl-base/changelog.gz",
+            "/usr/share/doc/perl-base/copyright",
+            "/usr/share/doc/perl/AUTHORS.gz",
+            "/usr/share/doc/perl/Documentation",
+            "/usr/share/lintian/overrides/perl-base",
+            "/usr/share/man/man1/perl.1.gz"
+          ],
+          "AnalyzedBy": "dpkg"
+        }
+      ],
+      "Vulnerabilities": [
+        {
+          "VulnerabilityID": "CVE-2026-13221",
+          "PkgID": "perl-base@5.40.1-6",
+          "PkgName": "perl-base",
+          "PkgIdentifier": {
+            "PURL": "pkg:deb/debian/perl-base@5.40.1-6?arch=amd64&distro=debian-13.6",
+            "UID": "546ba1bdcd66d61"
+          },
+          "InstalledVersion": "5.40.1-6",
+          "Status": "affected",
+          "Layer": {
+            "Digest": "sha256:26c307b5e35a59ce911f5fde5b9458120ec8734e831ea2da5649a9ad14abfd3d",
+            "DiffID": "sha256:6f94328331290cbd81edab450664d42da7b64c191416c9346cd5d28c84f76035"
+          },
+          "SeveritySource": "nvd",
+          "PrimaryURL": "https://avd.aquasec.com/nvd/cve-2026-13221",
+          "DataSource": {
+            "ID": "debian",
+            "Name": "Debian Security Tracker",
+            "URL": "https://salsa.debian.org/security-tracker-team/security-tracker"
+          },
+          "Fingerprint": "sha256:3013a3e016cc557d7cd3bbbfc000a9e76d28200a3bddf3b5fb2ff8b996a2022f",
+          "Title": "Perl versions through 5.43.9 produce silently incorrect regular expres ...",
+          "Description": "Perl versions through 5.43.9 produce silently incorrect regular expression matches when an alternation of more than 65535 fixed string branches is compiled into a trie in Perl_study_chunk.\n\nWhen such branches are combined into a trie, the delta between the first branch and the shared tail is stored in a 16-bit field. A branch count above 65535 overflows the field, and the trie's match decision table is truncated with no warning or error.\n\nA pattern of this shape produces false positive matches (matching strings it should not) and false negative matches (failing to match strings it should). When such a pattern gates an access or filtering decision, the result is wrong.",
+          "Severity": "CRITICAL",
+          "CweIDs": [
+            "CWE-190"
+          ],
+          "VendorSeverity": {
+            "azure": 2,
+            "nvd": 4,
+            "photon": 4
+          },
+          "CVSS": {
+            "nvd": {
+              "V3Vector": "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:N/I:H/A:H",
+              "V3Score": 9.1
+            }
+          },
+          "References": [
+            "http://www.openwall.com/lists/oss-security/2026/07/13/5",
+            "https://github.com/Perl/perl5/commit/03f74bbbd3a68350d926ee93d56ee4808c28c4c7.patch",
+            "https://github.com/Perl/perl5/issues/23388",
+            "https://nvd.nist.gov/vuln/detail/CVE-2026-13221"
+          ],
+          "PublishedDate": "2026-07-13T17:16:48.923Z",
+          "LastModifiedDate": "2026-07-14T18:15:18.85Z"
+        },
+        {
+          "VulnerabilityID": "CVE-2026-42496",
+          "PkgID": "perl-base@5.40.1-6",
+          "PkgName": "perl-base",
+          "PkgIdentifier": {
+            "PURL": "pkg:deb/debian/perl-base@5.40.1-6?arch=amd64&distro=debian-13.6",
+            "UID": "546ba1bdcd66d61"
+          },
+          "InstalledVersion": "5.40.1-6",
+          "Status": "fix_deferred",
+          "Layer": {
+            "Digest": "sha256:26c307b5e35a59ce911f5fde5b9458120ec8734e831ea2da5649a9ad14abfd3d",
+            "DiffID": "sha256:6f94328331290cbd81edab450664d42da7b64c191416c9346cd5d28c84f76035"
+          },
+          "SeveritySource": "nvd",
+          "PrimaryURL": "https://avd.aquasec.com/nvd/cve-2026-42496",
+          "DataSource": {
+            "ID": "debian",
+            "Name": "Debian Security Tracker",
+            "URL": "https://salsa.debian.org/security-tracker-team/security-tracker"
+          },
+          "Fingerprint": "sha256:b6290603117c2c0556a66fea10754d435b23dbe2d60011af8a85106ebcf90859",
+          "Title": "perl-archive-tar: perl-archive-tar: Path traversal via crafted symlinks allows arbitrary file access",
+          "Description": "Archive::Tar versions before 3.08 for Perl extract symlinks with attacker controlled targets outside the extraction directory.\n\n_make_special_file() passes the tar header's linkname to symlink() without validating it against absolute paths or .. segments. The secure-extract mode check that guards regular file extraction does not cover the symlink target.\n\nA subsequent open through the extracted name reads or writes the attacker chosen path.",
+          "Severity": "CRITICAL",
+          "CweIDs": [
+            "CWE-59",
+            "CWE-22"
+          ],
+          "VendorSeverity": {
+            "alma": 3,
+            "amazon": 3,
+            "azure": 3,
+            "nvd": 4,
+            "oracle-oval": 3,
+            "redhat": 3,
+            "rocky": 3,
+            "ubuntu": 2
+          },
+          "CVSS": {
+            "nvd": {
+              "V3Vector": "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:H/I:H/A:N",
+              "V3Score": 9.1
+            },
+            "redhat": {
+              "V3Vector": "CVSS:3.1/AV:L/AC:L/PR:L/UI:R/S:C/C:H/I:H/A:H",
+              "V3Score": 8.2
+            }
+          },
+          "References": [
+            "https://access.redhat.com/errata/RHSA-2026:30851",
+            "https://access.redhat.com/errata/RHSA-2026:30852",
+            "https://access.redhat.com/errata/RHSA-2026:30856",
+            "https://access.redhat.com/errata/RHSA-2026:30857",
+            "https://access.redhat.com/security/cve/CVE-2026-42496",
+            "https://bugzilla.redhat.com/2481314",
+            "https://bugzilla.redhat.com/show_bug.cgi?id=2481314",
+            "https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2026-42496",
+            "https://errata.almalinux.org/9/ALSA-2026-30856.html",
+            "https://errata.rockylinux.org/RLSA-2026:30856",
+            "https://github.com/jib/archive-tar-new/commit/17c873492a05eddc0de18c1485e0b2cccd5a9158.patch",
+            "https://linux.oracle.com/cve/CVE-2026-42496.html",
+            "https://linux.oracle.com/errata/ELSA-2026-30857.html",
+            "https://lists.security.metacpan.org/cve-announce/msg/40396459/",
+            "https://metacpan.org/release/BINGOS/Archive-Tar-3.08/changes",
+            "https://nvd.nist.gov/vuln/detail/CVE-2026-42496",
+            "https://security.access.redhat.com/data/csaf/v2/vex/2026/cve-2026-42496.json",
+            "https://ubuntu.com/security/notices/USN-8467-1",
+            "https://www.cve.org/CVERecord?id=CVE-2026-42496",
+            "https://www.cve.org/CVERecord?id=CVE-2026-42497"
+          ],
+          "PublishedDate": "2026-05-26T02:16:40.13Z",
+          "LastModifiedDate": "2026-07-24T10:10:00.197Z"
+        },
+        {
+          "VulnerabilityID": "CVE-2026-57433",
+          "PkgID": "perl-base@5.40.1-6",
+          "PkgName": "perl-base",
+          "PkgIdentifier": {
+            "PURL": "pkg:deb/debian/perl-base@5.40.1-6?arch=amd64&distro=debian-13.6",
+            "UID": "546ba1bdcd66d61"
+          },
+          "InstalledVersion": "5.40.1-6",
+          "Status": "affected",
+          "Layer": {
+            "Digest": "sha256:26c307b5e35a59ce911f5fde5b9458120ec8734e831ea2da5649a9ad14abfd3d",
+            "DiffID": "sha256:6f94328331290cbd81edab450664d42da7b64c191416c9346cd5d28c84f76035"
+          },
+          "PrimaryURL": "https://avd.aquasec.com/nvd/cve-2026-57433",
+          "DataSource": {
+            "ID": "debian",
+            "Name": "Debian Security Tracker",
+            "URL": "https://salsa.debian.org/security-tracker-team/security-tracker"
+          },
+          "Fingerprint": "sha256:b35a46810f7079ad1e188568ec3bf8e64dbc30739baf0f4619ff1210aad183e5",
+          "Title": "Storable versions before 3.41 for Perl have a signed integer overflow  ...",
+          "Description": "Storable versions before 3.41 for Perl have a signed integer overflow when deserializing a crafted SX_HOOK record.\n\nretrieve_hook_common reads a signed 32-bit item count from an SX_HOOK record and calls av_extend with that count plus one. A count of I32_MAX wraps the addition to a negative value.\n\nA crafted blob passed to thaw or retrieve triggers the overflow; av_extend receives the negative count and dies with a panic, terminating the deserialization.",
+          "Severity": "CRITICAL",
+          "CweIDs": [
+            "CWE-190"
+          ],
+          "VendorSeverity": {
+            "azure": 4
+          },
+          "References": [
+            "http://www.openwall.com/lists/oss-security/2026/07/13/7",
+            "https://github.com/Perl/perl5/commit/e4f681784bcdeaa91ff02a2fa4cdcae5c46779d7.patch",
+            "https://nvd.nist.gov/vuln/detail/CVE-2026-57433"
+          ],
+          "PublishedDate": "2026-07-13T17:17:55.783Z",
+          "LastModifiedDate": "2026-07-14T17:47:20.473Z"
+        },
+        {
+          "VulnerabilityID": "CVE-2026-5435",
+          "PkgID": "libc-bin@2.41-12+deb13u3",
+          "PkgName": "libc-bin",
+          "PkgIdentifier": {
+            "PURL": "pkg:deb/debian/libc-bin@2.41-12%2Bdeb13u3?arch=amd64&distro=debian-13.6",
+            "UID": "c45af597301c8c0b"
+          },
+          "InstalledVersion": "2.41-12+deb13u3",
+          "Status": "affected",
+          "Layer": {
+            "Digest": "sha256:26c307b5e35a59ce911f5fde5b9458120ec8734e831ea2da5649a9ad14abfd3d",
+            "DiffID": "sha256:6f94328331290cbd81edab450664d42da7b64c191416c9346cd5d28c84f76035"
+          },
+          "PrimaryURL": "https://avd.aquasec.com/nvd/cve-2026-5435",
+          "DataSource": {
+            "ID": "debian",
+            "Name": "Debian Security Tracker",
+            "URL": "https://salsa.debian.org/security-tracker-team/security-tracker"
+          },
+          "Fingerprint": "sha256:159be49469369d0e8d4ab85514736d41111a1da3274d05ce25c00c1313504840",
+          "Title": "glibc: glibc: Out-of-bounds write via TSIG record processing",
+          "Description": "The deprecated functions ns_printrrf, ns_printrr and fp_nquery in the GNU C Library version 2.2 and newer fail to enforce the caller-supplied buffer length, and can result in an out-of-bounds write when printing TSIG records.",
+          "Severity": "MEDIUM",
+          "CweIDs": [
+            "CWE-787"
+          ],
+          "VendorSeverity": {
+            "alma": 2,
+            "oracle-oval": 2,
+            "redhat": 2,
+            "rocky": 2,
+            "ubuntu": 2
+          },
+          "CVSS": {
+            "redhat": {
+              "V3Vector": "CVSS:3.1/AV:N/AC:H/PR:N/UI:R/S:U/C:L/I:N/A:H",
+              "V3Score": 5.9
+            }
+          },
+          "References": [
+            "https://access.redhat.com/errata/RHSA-2026:42952",
+            "https://access.redhat.com/security/cve/CVE-2026-5435",
+            "https://bugzilla.redhat.com/2459854",
+            "https://bugzilla.redhat.com/2463465",
+            "https://bugzilla.redhat.com/2463539",
+            "https://bugzilla.redhat.com/show_bug.cgi?id=2459854",
+            "https://bugzilla.redhat.com/show_bug.cgi?id=2463465",
+            "https://bugzilla.redhat.com/show_bug.cgi?id=2463539",
+            "https://cert-portal.siemens.com/productcert/html/ssa-082556.html",
+            "https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2026-5435",
+            "https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2026-5928",
+            "https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2026-6238",
+            "https://errata.almalinux.org/9/ALSA-2026-42952.html",
+            "https://errata.rockylinux.org/RLSA-2026:42952",
+            "https://inbox.sourceware.org/libc-alpha/cover.1777546194.git.fweimer@redhat.com/",
+            "https://inbox.sourceware.org/libc-announce/7a655d55-276f-41fe-b550-feb3ebb2ce91@redhat.com/T/#u",
+            "https://linux.oracle.com/cve/CVE-2026-5435.html",
+            "https://linux.oracle.com/errata/ELSA-2026-500140.html",
+            "https://nvd.nist.gov/vuln/detail/CVE-2026-5435",
+            "https://sourceware.org/bugzilla/show_bug.cgi?id=34033",
+            "https://sourceware.org/git/?p=glibc.git;a=blob_plain;f=advisories/GLIBC-SA-2026-0011",
+            "https://ubuntu.com/security/notices/USN-8611-1",
+            "https://www.cve.org/CVERecord?id=CVE-2026-5435"
+          ],
+          "PublishedDate": "2026-04-28T13:19:22.29Z",
+          "LastModifiedDate": "2026-07-14T13:19:01.36Z"
+        },
+        {
+          "VulnerabilityID": "CVE-2026-5450",
+          "PkgID": "libc-bin@2.41-12+deb13u3",
+          "PkgName": "libc-bin",
+          "PkgIdentifier": {
+            "PURL": "pkg:deb/debian/libc-bin@2.41-12%2Bdeb13u3?arch=amd64&distro=debian-13.6",
+            "UID": "c45af597301c8c0b"
+          },
+          "InstalledVersion": "2.41-12+deb13u3",
+          "Status": "affected",
+          "Layer": {
+            "Digest": "sha256:26c307b5e35a59ce911f5fde5b9458120ec8734e831ea2da5649a9ad14abfd3d",
+            "DiffID": "sha256:6f94328331290cbd81edab450664d42da7b64c191416c9346cd5d28c84f76035"
+          },
+          "PrimaryURL": "https://avd.aquasec.com/nvd/cve-2026-5450",
+          "DataSource": {
+            "ID": "debian",
+            "Name": "Debian Security Tracker",
+            "URL": "https://salsa.debian.org/security-tracker-team/security-tracker"
+          },
+          "Fingerprint": "sha256:9a08933094aede0f112dd48fca597717d60e4f4ea8efb1a7421851ef8e8eef3e",
+          "Title": "glibc: glibc: Heap Buffer Overflow in `scanf` with `%mc` format specifier and large width",
+          "Description": "Calling the scanf family of functions with a %mc (malloc'd character match) in the GNU C Library version 2.7 to version 2.43 with a format width specifier with an explicit width greater than 1024 could result in a one byte heap buffer overflow.",
+          "Severity": "MEDIUM",
+          "CweIDs": [
+            "CWE-122",
+            "CWE-787"
+          ],
+          "VendorSeverity": {
+            "alma": 2,
+            "oracle-oval": 2,
+            "photon": 4,
+            "redhat": 2,
+            "rocky": 2,
+            "ubuntu": 2
+          },
+          "CVSS": {
+            "redhat": {
+              "V3Vector": "CVSS:3.1/AV:L/AC:H/PR:L/UI:R/S:U/C:N/I:L/A:H",
+              "V3Score": 5
+            }
+          },
+          "References": [
+            "https://access.redhat.com/errata/RHSA-2026:33226",
+            "https://access.redhat.com/security/cve/CVE-2026-5450",
+            "https://bugzilla.redhat.com/2459853",
+            "https://bugzilla.redhat.com/show_bug.cgi?id=2459853",
+            "https://cert-portal.siemens.com/productcert/html/ssa-082556.html",
+            "https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2026-5450",
+            "https://errata.almalinux.org/9/ALSA-2026-33226.html",
+            "https://errata.rockylinux.org/RLSA-2026:33226",
+            "https://inbox.sourceware.org/libc-announce/b11f0003-6ec1-4bd6-b9de-9e38a4efeca3@redhat.com/T/#u",
+            "https://linux.oracle.com/cve/CVE-2026-5450.html",
+            "https://linux.oracle.com/errata/ELSA-2026-50370.html",
+            "https://nvd.nist.gov/vuln/detail/CVE-2026-5450",
+            "https://nvd.nist.gov/vuln/detail/CVE-2026-5450#range-21286997",
+            "https://sourceware.org/bugzilla/show_bug.cgi?id=CVE-2026-5450",
+            "https://sourceware.org/git/?p=glibc.git;a=blob_plain;f=advisories/GLIBC-SA-2026-0009",
+            "https://ubuntu.com/security/notices/USN-8611-1",
+            "https://www.cve.org/CVERecord?id=CVE-2026-5450"
+          ],
+          "PublishedDate": "2026-04-20T21:16:36.85Z",
+          "LastModifiedDate": "2026-07-14T13:19:01.52Z"
+        },
+        {
+          "VulnerabilityID": "CVE-2026-5928",
+          "PkgID": "libc-bin@2.41-12+deb13u3",
+          "PkgName": "libc-bin",
+          "PkgIdentifier": {
+            "PURL": "pkg:deb/debian/libc-bin@2.41-12%2Bdeb13u3?arch=amd64&distro=debian-13.6",
+            "UID": "c45af597301c8c0b"
+          },
+          "InstalledVersion": "2.41-12+deb13u3",
+          "Status": "affected",
+          "Layer": {
+            "Digest": "sha256:26c307b5e35a59ce911f5fde5b9458120ec8734e831ea2da5649a9ad14abfd3d",
+            "DiffID": "sha256:6f94328331290cbd81edab450664d42da7b64c191416c9346cd5d28c84f76035"
+          },
+          "PrimaryURL": "https://avd.aquasec.com/nvd/cve-2026-5928",
+          "DataSource": {
+            "ID": "debian",
+            "Name": "Debian Security Tracker",
+            "URL": "https://salsa.debian.org/security-tracker-team/security-tracker"
+          },
+          "Fingerprint": "sha256:bae80a835095952dfa13087d7dc513ac8ca3a35a8ffe7ededd534591b9f57ff9",
+          "Title": "glibc: glibc: Information disclosure or denial of service via ungetwc function with specific wide character encodings",
+          "Description": "Calling the ungetwc function on a FILE stream with wide characters encoded in a character set that has overlaps between its single byte and multi-byte character encodings, in the GNU C Library version 2.43 or earlier, may result in an attempt to read bytes before an allocated buffer, potentially resulting in unintentional disclosure of neighboring data in the heap, or a program crash.\n\nA bug in the wide character pushback implementation (_IO_wdefault_pbackfail in libio/wgenops.c) causes ungetwc() to operate on the regular character buffer (fp->_IO_read_ptr) instead of the actual wide-stream read pointer (fp->_wide_data->_IO_read_ptr). The program crash may happen in cases where fp->_IO_read_ptr is not initialized and hence points to NULL. The buffer under-read requires a special situation where the input character encoding is such that there are overlaps between single byte representations and multibyte representations in that encoding, resulting in spurious matches. The spurious match case is not possible in the standard Unicode character sets.",
+          "Severity": "MEDIUM",
+          "CweIDs": [
+            "CWE-127"
+          ],
+          "VendorSeverity": {
+            "alma": 2,
+            "oracle-oval": 2,
+            "photon": 3,
+            "redhat": 2,
+            "rocky": 2,
+            "ubuntu": 2
+          },
+          "CVSS": {
+            "redhat": {
+              "V3Vector": "CVSS:3.1/AV:L/AC:H/PR:L/UI:R/S:U/C:L/I:N/A:H",
+              "V3Score": 5
+            }
+          },
+          "References": [
+            "https://access.redhat.com/errata/RHSA-2026:42952",
+            "https://access.redhat.com/security/cve/CVE-2026-5928",
+            "https://bugzilla.redhat.com/2459854",
+            "https://bugzilla.redhat.com/2463465",
+            "https://bugzilla.redhat.com/2463539",
+            "https://bugzilla.redhat.com/show_bug.cgi?id=2459854",
+            "https://bugzilla.redhat.com/show_bug.cgi?id=2463465",
+            "https://bugzilla.redhat.com/show_bug.cgi?id=2463539",
+            "https://cert-portal.siemens.com/productcert/html/ssa-082556.html",
+            "https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2026-5435",
+            "https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2026-5928",
+            "https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2026-6238",
+            "https://errata.almalinux.org/9/ALSA-2026-42952.html",
+            "https://errata.rockylinux.org/RLSA-2026:42952",
+            "https://linux.oracle.com/cve/CVE-2026-5928.html",
+            "https://linux.oracle.com/errata/ELSA-2026-500140.html",
+            "https://nvd.nist.gov/vuln/detail/CVE-2026-5928",
+            "https://sourceware.org/bugzilla/show_bug.cgi?id=33998",
+            "https://sourceware.org/git/?p=glibc.git;a=blob_plain;f=advisories/GLIBC-SA-2026-0010",
+            "https://ubuntu.com/security/notices/USN-8611-1",
+            "https://www.cve.org/CVERecord?id=CVE-2026-5928"
+          ],
+          "PublishedDate": "2026-04-20T21:16:36.963Z",
+          "LastModifiedDate": "2026-07-14T13:19:01.69Z"
+        },
+        {
+          "VulnerabilityID": "CVE-2026-5435",
+          "PkgID": "libc6@2.41-12+deb13u3",
+          "PkgName": "libc6",
+          "PkgIdentifier": {
+            "PURL": "pkg:deb/debian/libc6@2.41-12%2Bdeb13u3?arch=amd64&distro=debian-13.6",
+            "UID": "2a1acf211abcdd46"
+          },
+          "InstalledVersion": "2.41-12+deb13u3",
+          "Status": "affected",
+          "Layer": {
+            "Digest": "sha256:26c307b5e35a59ce911f5fde5b9458120ec8734e831ea2da5649a9ad14abfd3d",
+            "DiffID": "sha256:6f94328331290cbd81edab450664d42da7b64c191416c9346cd5d28c84f76035"
+          },
+          "PrimaryURL": "https://avd.aquasec.com/nvd/cve-2026-5435",
+          "DataSource": {
+            "ID": "debian",
+            "Name": "Debian Security Tracker",
+            "URL": "https://salsa.debian.org/security-tracker-team/security-tracker"
+          },
+          "Fingerprint": "sha256:1ca7816f25ccc2013bcad711655623fbd03893165939781babef227cbfe9707a",
+          "Title": "glibc: glibc: Out-of-bounds write via TSIG record processing",
+          "Description": "The deprecated functions ns_printrrf, ns_printrr and fp_nquery in the GNU C Library version 2.2 and newer fail to enforce the caller-supplied buffer length, and can result in an out-of-bounds write when printing TSIG records.",
+          "Severity": "MEDIUM",
+          "CweIDs": [
+            "CWE-787"
+          ],
+          "VendorSeverity": {
+            "alma": 2,
+            "oracle-oval": 2,
+            "redhat": 2,
+            "rocky": 2,
+            "ubuntu": 2
+          },
+          "CVSS": {
+            "redhat": {
+              "V3Vector": "CVSS:3.1/AV:N/AC:H/PR:N/UI:R/S:U/C:L/I:N/A:H",
+              "V3Score": 5.9
+            }
+          },
+          "References": [
+            "https://access.redhat.com/errata/RHSA-2026:42952",
+            "https://access.redhat.com/security/cve/CVE-2026-5435",
+            "https://bugzilla.redhat.com/2459854",
+            "https://bugzilla.redhat.com/2463465",
+            "https://bugzilla.redhat.com/2463539",
+            "https://bugzilla.redhat.com/show_bug.cgi?id=2459854",
+            "https://bugzilla.redhat.com/show_bug.cgi?id=2463465",
+            "https://bugzilla.redhat.com/show_bug.cgi?id=2463539",
+            "https://cert-portal.siemens.com/productcert/html/ssa-082556.html",
+            "https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2026-5435",
+            "https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2026-5928",
+            "https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2026-6238",
+            "https://errata.almalinux.org/9/ALSA-2026-42952.html",
+            "https://errata.rockylinux.org/RLSA-2026:42952",
+            "https://inbox.sourceware.org/libc-alpha/cover.1777546194.git.fweimer@redhat.com/",
+            "https://inbox.sourceware.org/libc-announce/7a655d55-276f-41fe-b550-feb3ebb2ce91@redhat.com/T/#u",
+            "https://linux.oracle.com/cve/CVE-2026-5435.html",
+            "https://linux.oracle.com/errata/ELSA-2026-500140.html",
+            "https://nvd.nist.gov/vuln/detail/CVE-2026-5435",
+            "https://sourceware.org/bugzilla/show_bug.cgi?id=34033",
+            "https://sourceware.org/git/?p=glibc.git;a=blob_plain;f=advisories/GLIBC-SA-2026-0011",
+            "https://ubuntu.com/security/notices/USN-8611-1",
+            "https://www.cve.org/CVERecord?id=CVE-2026-5435"
+          ],
+          "PublishedDate": "2026-04-28T13:19:22.29Z",
+          "LastModifiedDate": "2026-07-14T13:19:01.36Z"
+        },
+        {
+          "VulnerabilityID": "CVE-2026-5450",
+          "PkgID": "libc6@2.41-12+deb13u3",
+          "PkgName": "libc6",
+          "PkgIdentifier": {
+            "PURL": "pkg:deb/debian/libc6@2.41-12%2Bdeb13u3?arch=amd64&distro=debian-13.6",
+            "UID": "2a1acf211abcdd46"
+          },
+          "InstalledVersion": "2.41-12+deb13u3",
+          "Status": "affected",
+          "Layer": {
+            "Digest": "sha256:26c307b5e35a59ce911f5fde5b9458120ec8734e831ea2da5649a9ad14abfd3d",
+            "DiffID": "sha256:6f94328331290cbd81edab450664d42da7b64c191416c9346cd5d28c84f76035"
+          },
+          "PrimaryURL": "https://avd.aquasec.com/nvd/cve-2026-5450",
+          "DataSource": {
+            "ID": "debian",
+            "Name": "Debian Security Tracker",
+            "URL": "https://salsa.debian.org/security-tracker-team/security-tracker"
+          },
+          "Fingerprint": "sha256:ce00ed245aa48debbb8f7e24e6ede8595c26e4d3f211db17459409ecd98df9e8",
+          "Title": "glibc: glibc: Heap Buffer Overflow in `scanf` with `%mc` format specifier and large width",
+          "Description": "Calling the scanf family of functions with a %mc (malloc'd character match) in the GNU C Library version 2.7 to version 2.43 with a format width specifier with an explicit width greater than 1024 could result in a one byte heap buffer overflow.",
+          "Severity": "MEDIUM",
+          "CweIDs": [
+            "CWE-122",
+            "CWE-787"
+          ],
+          "VendorSeverity": {
+            "alma": 2,
+            "oracle-oval": 2,
+            "photon": 4,
+            "redhat": 2,
+            "rocky": 2,
+            "ubuntu": 2
+          },
+          "CVSS": {
+            "redhat": {
+              "V3Vector": "CVSS:3.1/AV:L/AC:H/PR:L/UI:R/S:U/C:N/I:L/A:H",
+              "V3Score": 5
+            }
+          },
+          "References": [
+            "https://access.redhat.com/errata/RHSA-2026:33226",
+            "https://access.redhat.com/security/cve/CVE-2026-5450",
+            "https://bugzilla.redhat.com/2459853",
+            "https://bugzilla.redhat.com/show_bug.cgi?id=2459853",
+            "https://cert-portal.siemens.com/productcert/html/ssa-082556.html",
+            "https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2026-5450",
+            "https://errata.almalinux.org/9/ALSA-2026-33226.html",
+            "https://errata.rockylinux.org/RLSA-2026:33226",
+            "https://inbox.sourceware.org/libc-announce/b11f0003-6ec1-4bd6-b9de-9e38a4efeca3@redhat.com/T/#u",
+            "https://linux.oracle.com/cve/CVE-2026-5450.html",
+            "https://linux.oracle.com/errata/ELSA-2026-50370.html",
+            "https://nvd.nist.gov/vuln/detail/CVE-2026-5450",
+            "https://nvd.nist.gov/vuln/detail/CVE-2026-5450#range-21286997",
+            "https://sourceware.org/bugzilla/show_bug.cgi?id=CVE-2026-5450",
+            "https://sourceware.org/git/?p=glibc.git;a=blob_plain;f=advisories/GLIBC-SA-2026-0009",
+            "https://ubuntu.com/security/notices/USN-8611-1",
+            "https://www.cve.org/CVERecord?id=CVE-2026-5450"
+          ],
+          "PublishedDate": "2026-04-20T21:16:36.85Z",
+          "LastModifiedDate": "2026-07-14T13:19:01.52Z"
+        },
+        {
+          "VulnerabilityID": "CVE-2026-5928",
+          "PkgID": "libc6@2.41-12+deb13u3",
+          "PkgName": "libc6",
+          "PkgIdentifier": {
+            "PURL": "pkg:deb/debian/libc6@2.41-12%2Bdeb13u3?arch=amd64&distro=debian-13.6",
+            "UID": "2a1acf211abcdd46"
+          },
+          "InstalledVersion": "2.41-12+deb13u3",
+          "Status": "affected",
+          "Layer": {
+            "Digest": "sha256:26c307b5e35a59ce911f5fde5b9458120ec8734e831ea2da5649a9ad14abfd3d",
+            "DiffID": "sha256:6f94328331290cbd81edab450664d42da7b64c191416c9346cd5d28c84f76035"
+          },
+          "PrimaryURL": "https://avd.aquasec.com/nvd/cve-2026-5928",
+          "DataSource": {
+            "ID": "debian",
+            "Name": "Debian Security Tracker",
+            "URL": "https://salsa.debian.org/security-tracker-team/security-tracker"
+          },
+          "Fingerprint": "sha256:c69d3863bb306ecaf4014eccab50ab94347a6f48a3bb3310ff8fbf1f0c2956e6",
+          "Title": "glibc: glibc: Information disclosure or denial of service via ungetwc function with specific wide character encodings",
+          "Description": "Calling the ungetwc function on a FILE stream with wide characters encoded in a character set that has overlaps between its single byte and multi-byte character encodings, in the GNU C Library version 2.43 or earlier, may result in an attempt to read bytes before an allocated buffer, potentially resulting in unintentional disclosure of neighboring data in the heap, or a program crash.\n\nA bug in the wide character pushback implementation (_IO_wdefault_pbackfail in libio/wgenops.c) causes ungetwc() to operate on the regular character buffer (fp->_IO_read_ptr) instead of the actual wide-stream read pointer (fp->_wide_data->_IO_read_ptr). The program crash may happen in cases where fp->_IO_read_ptr is not initialized and hence points to NULL. The buffer under-read requires a special situation where the input character encoding is such that there are overlaps between single byte representations and multibyte representations in that encoding, resulting in spurious matches. The spurious match case is not possible in the standard Unicode character sets.",
+          "Severity": "MEDIUM",
+          "CweIDs": [
+            "CWE-127"
+          ],
+          "VendorSeverity": {
+            "alma": 2,
+            "oracle-oval": 2,
+            "photon": 3,
+            "redhat": 2,
+            "rocky": 2,
+            "ubuntu": 2
+          },
+          "CVSS": {
+            "redhat": {
+              "V3Vector": "CVSS:3.1/AV:L/AC:H/PR:L/UI:R/S:U/C:L/I:N/A:H",
+              "V3Score": 5
+            }
+          },
+          "References": [
+            "https://access.redhat.com/errata/RHSA-2026:42952",
+            "https://access.redhat.com/security/cve/CVE-2026-5928",
+            "https://bugzilla.redhat.com/2459854",
+            "https://bugzilla.redhat.com/2463465",
+            "https://bugzilla.redhat.com/2463539",
+            "https://bugzilla.redhat.com/show_bug.cgi?id=2459854",
+            "https://bugzilla.redhat.com/show_bug.cgi?id=2463465",
+            "https://bugzilla.redhat.com/show_bug.cgi?id=2463539",
+            "https://cert-portal.siemens.com/productcert/html/ssa-082556.html",
+            "https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2026-5435",
+            "https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2026-5928",
+            "https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2026-6238",
+            "https://errata.almalinux.org/9/ALSA-2026-42952.html",
+            "https://errata.rockylinux.org/RLSA-2026:42952",
+            "https://linux.oracle.com/cve/CVE-2026-5928.html",
+            "https://linux.oracle.com/errata/ELSA-2026-500140.html",
+            "https://nvd.nist.gov/vuln/detail/CVE-2026-5928",
+            "https://sourceware.org/bugzilla/show_bug.cgi?id=33998",
+            "https://sourceware.org/git/?p=glibc.git;a=blob_plain;f=advisories/GLIBC-SA-2026-0010",
+            "https://ubuntu.com/security/notices/USN-8611-1",
+            "https://www.cve.org/CVERecord?id=CVE-2026-5928"
+          ],
+          "PublishedDate": "2026-04-20T21:16:36.963Z",
+          "LastModifiedDate": "2026-07-14T13:19:01.69Z"
+        },
+        {
+          "VulnerabilityID": "CVE-2026-53615",
+          "PkgID": "bsdutils@1:2.41-5",
+          "PkgName": "bsdutils",
+          "PkgIdentifier": {
+            "PURL": "pkg:deb/debian/bsdutils@2.41-5?arch=amd64&distro=debian-13.6&epoch=1",
+            "UID": "5843733a461e6ce1"
+          },
+          "InstalledVersion": "1:2.41-5",
+          "Status": "affected",
+          "Layer": {
+            "Digest": "sha256:26c307b5e35a59ce911f5fde5b9458120ec8734e831ea2da5649a9ad14abfd3d",
+            "DiffID": "sha256:6f94328331290cbd81edab450664d42da7b64c191416c9346cd5d28c84f76035"
+          },
+          "PrimaryURL": "https://avd.aquasec.com/nvd/cve-2026-53615",
+          "DataSource": {
+            "ID": "debian",
+            "Name": "Debian Security Tracker",
+            "URL": "https://salsa.debian.org/security-tracker-team/security-tracker"
+          },
+          "Fingerprint": "sha256:7028cc6af9bd63e2102e1765366cdaa319a452f37f9a0c9bcfcb3f8259cfb1be",
+          "Title": "[Integer Overflow or Wraparound in libblkid/src/partitions/dos.c]",
+          "Description": "Package updates are available for Amazon Linux 2023 that fix the following vulnerabilities:\nCVE-2026-53615:\n\tInteger Overflow or Wraparound in libblkid/src/partitions/dos.c\n",
+          "Severity": "HIGH",
+          "VendorSeverity": {
+            "amazon": 3
+          }
+        },
+        {
+          "VulnerabilityID": "CVE-2026-13595",
+          "PkgID": "bsdutils@1:2.41-5",
+          "PkgName": "bsdutils",
+          "PkgIdentifier": {
+            "PURL": "pkg:deb/debian/bsdutils@2.41-5?arch=amd64&distro=debian-13.6&epoch=1",
+            "UID": "5843733a461e6ce1"
+          },
+          "InstalledVersion": "1:2.41-5",
+          "Status": "affected",
+          "Layer": {
+            "Digest": "sha256:26c307b5e35a59ce911f5fde5b9458120ec8734e831ea2da5649a9ad14abfd3d",
+            "DiffID": "sha256:6f94328331290cbd81edab450664d42da7b64c191416c9346cd5d28c84f76035"
+          },
+          "SeveritySource": "nvd",
+          "PrimaryURL": "https://avd.aquasec.com/nvd/cve-2026-13595",
+          "DataSource": {
+            "ID": "debian",
+            "Name": "Debian Security Tracker",
+            "URL": "https://salsa.debian.org/security-tracker-team/security-tracker"
+          },
+          "Fingerprint": "sha256:ca3b9f0ea3e1f75fa665d624fee037da52999077b80e3e95848e2f4650a2b8a6",
+          "Title": "util-linux: util-linux: heap use-after-free in libblkid nested partition probing",
+          "Description": "A flaw was found in the libblkid library of util-linux. During nested partition probing, the BSD, Minix, Solaris x86, and UnixWare partition probers cache a raw pointer to a parent partition entry in a dynamically allocated array. When subsequent partition additions cause the array to be reallocated, this pointer becomes stale, leading to a heap use-after-free read. An attacker who can present a crafted block device image (for example, via USB insertion or a loop-mounted disk image) can trigger this flaw without user interaction, as libblkid is invoked automatically by udev/udisks as root on block-device hot-plug events. This could lead to limited information disclosure or denial of service.",
+          "Severity": "MEDIUM",
+          "CweIDs": [
+            "CWE-416"
+          ],
+          "VendorSeverity": {
+            "azure": 2,
+            "nvd": 2,
+            "redhat": 2
+          },
+          "CVSS": {
+            "nvd": {
+              "V3Vector": "CVSS:3.1/AV:L/AC:H/PR:L/UI:N/S:U/C:L/I:N/A:H",
+              "V3Score": 5.3
+            },
+            "redhat": {
+              "V3Vector": "CVSS:3.1/AV:L/AC:L/PR:N/UI:N/S:U/C:L/I:N/A:H",
+              "V3Score": 6.8
+            }
+          },
+          "References": [
+            "https://access.redhat.com/errata/RHSA-2026:26573",
+            "https://access.redhat.com/security/cve/CVE-2026-13595",
+            "https://bugzilla.redhat.com/show_bug.cgi?id=2494101",
+            "https://github.com/util-linux/util-linux/commit/c0186f14fbdb02f64c8e0ba701ce727ea764ff4c",
+            "https://nvd.nist.gov/vuln/detail/CVE-2026-13595",
+            "https://www.cve.org/CVERecord?id=CVE-2026-13595"
+          ],
+          "PublishedDate": "2026-06-29T09:16:28.303Z",
+          "LastModifiedDate": "2026-07-08T03:37:21.637Z"
+        },
+        {
+          "VulnerabilityID": "CVE-2026-27456",
+          "PkgID": "bsdutils@1:2.41-5",
+          "PkgName": "bsdutils",
+          "PkgIdentifier": {
+            "PURL": "pkg:deb/debian/bsdutils@2.41-5?arch=amd64&distro=debian-13.6&epoch=1",
+            "UID": "5843733a461e6ce1"
+          },
+          "InstalledVersion": "1:2.41-5",
+          "Status": "affected",
+          "Layer": {
+            "Digest": "sha256:26c307b5e35a59ce911f5fde5b9458120ec8734e831ea2da5649a9ad14abfd3d",
+            "DiffID": "sha256:6f94328331290cbd81edab450664d42da7b64c191416c9346cd5d28c84f76035"
+          },
+          "PrimaryURL": "https://avd.aquasec.com/nvd/cve-2026-27456",
+          "DataSource": {
+            "ID": "debian",
+            "Name": "Debian Security Tracker",
+            "URL": "https://salsa.debian.org/security-tracker-team/security-tracker"
+          },
+          "Fingerprint": "sha256:5edf3986cce146cb6b8d31c65016966fa588d0886cda5054a96be4d5e9188cd1",
+          "Title": "util-linux: TOCTOU in the mount program when setting up loop devices",
+          "Description": "util-linux is a random collection of Linux utilities. Prior to version 2.41.4, a TOCTOU (Time-of-Check-Time-of-Use) vulnerability has been identified in the SUID binary /usr/bin/mount from util-linux. The mount binary, when setting up loop devices, validates the source file path with user privileges via fork() + setuid() + realpath(), but subsequently re-canonicalizes and opens it with root privileges (euid=0) without verifying that the path has not been replaced between both operations. Neither O_NOFOLLOW, nor inode comparison, nor post-open fstat() are employed. This allows a local unprivileged user to replace the source file with a symlink pointing to any root-owned file or device during the race window, causing the SUID binary to open and mount it as root. Exploitation requires an /etc/fstab entry with user,loop options whose path points to a directory where the attacker has write permission, and that /usr/bin/mount has the SUID bit set (the default configuration on virtually all Linux distributions). The impact is unauthorized read access to root-protected files and block devices, including backup images, disk volumes, and any file containing a valid filesystem. This issue has been patched in version 2.41.4.",
+          "Severity": "MEDIUM",
+          "CweIDs": [
+            "CWE-59",
+            "CWE-269",
+            "CWE-367"
+          ],
+          "VendorSeverity": {
+            "azure": 2,
+            "bottlerocket": 2,
+            "julia": 2,
+            "redhat": 2,
+            "ubuntu": 2
+          },
+          "CVSS": {
+            "julia": {
+              "V3Vector": "CVSS:3.1/AV:L/AC:H/PR:L/UI:N/S:U/C:H/I:N/A:N",
+              "V3Score": 4.7
+            },
+            "redhat": {
+              "V3Vector": "CVSS:3.1/AV:L/AC:H/PR:L/UI:N/S:U/C:H/I:N/A:N",
+              "V3Score": 4.7
+            }
+          },
+          "References": [
+            "http://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2026-27456",
+            "https://access.redhat.com/security/cve/CVE-2026-27456",
+            "https://github.com/bottlerocket-os/bottlerocket-core-kit/blob/develop/advisories/14.5.0/BRSA-jgcxwcxt3sxd.toml",
+            "https://github.com/util-linux/util-linux/commit/5e390467b26a3cf3fecc04e1a0d482dff3162fc4",
+            "https://github.com/util-linux/util-linux/releases/tag/v2.41.4",
+            "https://github.com/util-linux/util-linux/security/advisories/GHSA-qq4x-vfq4-9h9g",
+            "https://nvd.nist.gov/vuln/detail/CVE-2026-27456",
+            "https://www.cve.org/CVERecord?id=CVE-2026-27456"
+          ],
+          "PublishedDate": "2026-04-03T22:16:25.4Z",
+          "LastModifiedDate": "2026-07-24T22:10:00.14Z"
+        },
+        {
+          "VulnerabilityID": "CVE-2026-53615",
+          "PkgID": "libblkid1@2.41-5",
+          "PkgName": "libblkid1",
+          "PkgIdentifier": {
+            "PURL": "pkg:deb/debian/libblkid1@2.41-5?arch=amd64&distro=debian-13.6",
+            "UID": "51bf0af8d40f4a01"
+          },
+          "InstalledVersion": "2.41-5",
+          "Status": "affected",
+          "Layer": {
+            "Digest": "sha256:26c307b5e35a59ce911f5fde5b9458120ec8734e831ea2da5649a9ad14abfd3d",
+            "DiffID": "sha256:6f94328331290cbd81edab450664d42da7b64c191416c9346cd5d28c84f76035"
+          },
+          "PrimaryURL": "https://avd.aquasec.com/nvd/cve-2026-53615",
+          "DataSource": {
+            "ID": "debian",
+            "Name": "Debian Security Tracker",
+            "URL": "https://salsa.debian.org/security-tracker-team/security-tracker"
+          },
+          "Fingerprint": "sha256:047983f1ba211feee0b2137e405deeda5c55fa73248831ca531a45bc9710c9f9",
+          "Title": "[Integer Overflow or Wraparound in libblkid/src/partitions/dos.c]",
+          "Description": "Package updates are available for Amazon Linux 2023 that fix the following vulnerabilities:\nCVE-2026-53615:\n\tInteger Overflow or Wraparound in libblkid/src/partitions/dos.c\n",
+          "Severity": "HIGH",
+          "VendorSeverity": {
+            "amazon": 3
+          }
+        },
+        {
+          "VulnerabilityID": "CVE-2026-13595",
+          "PkgID": "libblkid1@2.41-5",
+          "PkgName": "libblkid1",
+          "PkgIdentifier": {
+            "PURL": "pkg:deb/debian/libblkid1@2.41-5?arch=amd64&distro=debian-13.6",
+            "UID": "51bf0af8d40f4a01"
+          },
+          "InstalledVersion": "2.41-5",
+          "Status": "affected",
+          "Layer": {
+            "Digest": "sha256:26c307b5e35a59ce911f5fde5b9458120ec8734e831ea2da5649a9ad14abfd3d",
+            "DiffID": "sha256:6f94328331290cbd81edab450664d42da7b64c191416c9346cd5d28c84f76035"
+          },
+          "SeveritySource": "nvd",
+          "PrimaryURL": "https://avd.aquasec.com/nvd/cve-2026-13595",
+          "DataSource": {
+            "ID": "debian",
+            "Name": "Debian Security Tracker",
+            "URL": "https://salsa.debian.org/security-tracker-team/security-tracker"
+          },
+          "Fingerprint": "sha256:040abbcc9605edde0c262fd8d066c36312344703c4a41fe4380770183ea25247",
+          "Title": "util-linux: util-linux: heap use-after-free in libblkid nested partition probing",
+          "Description": "A flaw was found in the libblkid library of util-linux. During nested partition probing, the BSD, Minix, Solaris x86, and UnixWare partition probers cache a raw pointer to a parent partition entry in a dynamically allocated array. When subsequent partition additions cause the array to be reallocated, this pointer becomes stale, leading to a heap use-after-free read. An attacker who can present a crafted block device image (for example, via USB insertion or a loop-mounted disk image) can trigger this flaw without user interaction, as libblkid is invoked automatically by udev/udisks as root on block-device hot-plug events. This could lead to limited information disclosure or denial of service.",
+          "Severity": "MEDIUM",
+          "CweIDs": [
+            "CWE-416"
+          ],
+          "VendorSeverity": {
+            "azure": 2,
+            "nvd": 2,
+            "redhat": 2
+          },
+          "CVSS": {
+            "nvd": {
+              "V3Vector": "CVSS:3.1/AV:L/AC:H/PR:L/UI:N/S:U/C:L/I:N/A:H",
+              "V3Score": 5.3
+            },
+            "redhat": {
+              "V3Vector": "CVSS:3.1/AV:L/AC:L/PR:N/UI:N/S:U/C:L/I:N/A:H",
+              "V3Score": 6.8
+            }
+          },
+          "References": [
+            "https://access.redhat.com/errata/RHSA-2026:26573",
+            "https://access.redhat.com/security/cve/CVE-2026-13595",
+            "https://bugzilla.redhat.com/show_bug.cgi?id=2494101",
+            "https://github.com/util-linux/util-linux/commit/c0186f14fbdb02f64c8e0ba701ce727ea764ff4c",
+            "https://nvd.nist.gov/vuln/detail/CVE-2026-13595",
+            "https://www.cve.org/CVERecord?id=CVE-2026-13595"
+          ],
+          "PublishedDate": "2026-06-29T09:16:28.303Z",
+          "LastModifiedDate": "2026-07-08T03:37:21.637Z"
+        },
+        {
+          "VulnerabilityID": "CVE-2026-27456",
+          "PkgID": "libblkid1@2.41-5",
+          "PkgName": "libblkid1",
+          "PkgIdentifier": {
+            "PURL": "pkg:deb/debian/libblkid1@2.41-5?arch=amd64&distro=debian-13.6",
+            "UID": "51bf0af8d40f4a01"
+          },
+          "InstalledVersion": "2.41-5",
+          "Status": "affected",
+          "Layer": {
+            "Digest": "sha256:26c307b5e35a59ce911f5fde5b9458120ec8734e831ea2da5649a9ad14abfd3d",
+            "DiffID": "sha256:6f94328331290cbd81edab450664d42da7b64c191416c9346cd5d28c84f76035"
+          },
+          "PrimaryURL": "https://avd.aquasec.com/nvd/cve-2026-27456",
+          "DataSource": {
+            "ID": "debian",
+            "Name": "Debian Security Tracker",
+            "URL": "https://salsa.debian.org/security-tracker-team/security-tracker"
+          },
+          "Fingerprint": "sha256:00b79d63be8612d6aee5868ee92d532a6805a326d7c69db9a7e7c2153fbc9a5c",
+          "Title": "util-linux: TOCTOU in the mount program when setting up loop devices",
+          "Description": "util-linux is a random collection of Linux utilities. Prior to version 2.41.4, a TOCTOU (Time-of-Check-Time-of-Use) vulnerability has been identified in the SUID binary /usr/bin/mount from util-linux. The mount binary, when setting up loop devices, validates the source file path with user privileges via fork() + setuid() + realpath(), but subsequently re-canonicalizes and opens it with root privileges (euid=0) without verifying that the path has not been replaced between both operations. Neither O_NOFOLLOW, nor inode comparison, nor post-open fstat() are employed. This allows a local unprivileged user to replace the source file with a symlink pointing to any root-owned file or device during the race window, causing the SUID binary to open and mount it as root. Exploitation requires an /etc/fstab entry with user,loop options whose path points to a directory where the attacker has write permission, and that /usr/bin/mount has the SUID bit set (the default configuration on virtually all Linux distributions). The impact is unauthorized read access to root-protected files and block devices, including backup images, disk volumes, and any file containing a valid filesystem. This issue has been patched in version 2.41.4.",
+          "Severity": "MEDIUM",
+          "CweIDs": [
+            "CWE-59",
+            "CWE-269",
+            "CWE-367"
+          ],
+          "VendorSeverity": {
+            "azure": 2,
+            "bottlerocket": 2,
+            "julia": 2,
+            "redhat": 2,
+            "ubuntu": 2
+          },
+          "CVSS": {
+            "julia": {
+              "V3Vector": "CVSS:3.1/AV:L/AC:H/PR:L/UI:N/S:U/C:H/I:N/A:N",
+              "V3Score": 4.7
+            },
+            "redhat": {
+              "V3Vector": "CVSS:3.1/AV:L/AC:H/PR:L/UI:N/S:U/C:H/I:N/A:N",
+              "V3Score": 4.7
+            }
+          },
+          "References": [
+            "http://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2026-27456",
+            "https://access.redhat.com/security/cve/CVE-2026-27456",
+            "https://github.com/bottlerocket-os/bottlerocket-core-kit/blob/develop/advisories/14.5.0/BRSA-jgcxwcxt3sxd.toml",
+            "https://github.com/util-linux/util-linux/commit/5e390467b26a3cf3fecc04e1a0d482dff3162fc4",
+            "https://github.com/util-linux/util-linux/releases/tag/v2.41.4",
+            "https://github.com/util-linux/util-linux/security/advisories/GHSA-qq4x-vfq4-9h9g",
+            "https://nvd.nist.gov/vuln/detail/CVE-2026-27456",
+            "https://www.cve.org/CVERecord?id=CVE-2026-27456"
+          ],
+          "PublishedDate": "2026-04-03T22:16:25.4Z",
+          "LastModifiedDate": "2026-07-24T22:10:00.14Z"
+        },
+        {
+          "VulnerabilityID": "CVE-2026-53615",
+          "PkgID": "liblastlog2-2@2.41-5",
+          "PkgName": "liblastlog2-2",
+          "PkgIdentifier": {
+            "PURL": "pkg:deb/debian/liblastlog2-2@2.41-5?arch=amd64&distro=debian-13.6",
+            "UID": "eb4f5430aea34a10"
+          },
+          "InstalledVersion": "2.41-5",
+          "Status": "affected",
+          "Layer": {
+            "Digest": "sha256:26c307b5e35a59ce911f5fde5b9458120ec8734e831ea2da5649a9ad14abfd3d",
+            "DiffID": "sha256:6f94328331290cbd81edab450664d42da7b64c191416c9346cd5d28c84f76035"
+          },
+          "PrimaryURL": "https://avd.aquasec.com/nvd/cve-2026-53615",
+          "DataSource": {
+            "ID": "debian",
+            "Name": "Debian Security Tracker",
+            "URL": "https://salsa.debian.org/security-tracker-team/security-tracker"
+          },
+          "Fingerprint": "sha256:7b2096f1f02f7871e0cc4def305f293d0d6238e13d92b720d539bdbd1cd010c3",
+          "Title": "[Integer Overflow or Wraparound in libblkid/src/partitions/dos.c]",
+          "Description": "Package updates are available for Amazon Linux 2023 that fix the following vulnerabilities:\nCVE-2026-53615:\n\tInteger Overflow or Wraparound in libblkid/src/partitions/dos.c\n",
+          "Severity": "HIGH",
+          "VendorSeverity": {
+            "amazon": 3
+          }
+        },
+        {
+          "VulnerabilityID": "CVE-2026-13595",
+          "PkgID": "liblastlog2-2@2.41-5",
+          "PkgName": "liblastlog2-2",
+          "PkgIdentifier": {
+            "PURL": "pkg:deb/debian/liblastlog2-2@2.41-5?arch=amd64&distro=debian-13.6",
+            "UID": "eb4f5430aea34a10"
+          },
+          "InstalledVersion": "2.41-5",
+          "Status": "affected",
+          "Layer": {
+            "Digest": "sha256:26c307b5e35a59ce911f5fde5b9458120ec8734e831ea2da5649a9ad14abfd3d",
+            "DiffID": "sha256:6f94328331290cbd81edab450664d42da7b64c191416c9346cd5d28c84f76035"
+          },
+          "SeveritySource": "nvd",
+          "PrimaryURL": "https://avd.aquasec.com/nvd/cve-2026-13595",
+          "DataSource": {
+            "ID": "debian",
+            "Name": "Debian Security Tracker",
+            "URL": "https://salsa.debian.org/security-tracker-team/security-tracker"
+          },
+          "Fingerprint": "sha256:1213b0337cbfe90fdc06cb303de1e8e6ff5a91d621303b0b2783b4ac75c75727",
+          "Title": "util-linux: util-linux: heap use-after-free in libblkid nested partition probing",
+          "Description": "A flaw was found in the libblkid library of util-linux. During nested partition probing, the BSD, Minix, Solaris x86, and UnixWare partition probers cache a raw pointer to a parent partition entry in a dynamically allocated array. When subsequent partition additions cause the array to be reallocated, this pointer becomes stale, leading to a heap use-after-free read. An attacker who can present a crafted block device image (for example, via USB insertion or a loop-mounted disk image) can trigger this flaw without user interaction, as libblkid is invoked automatically by udev/udisks as root on block-device hot-plug events. This could lead to limited information disclosure or denial of service.",
+          "Severity": "MEDIUM",
+          "CweIDs": [
+            "CWE-416"
+          ],
+          "VendorSeverity": {
+            "azure": 2,
+            "nvd": 2,
+            "redhat": 2
+          },
+          "CVSS": {
+            "nvd": {
+              "V3Vector": "CVSS:3.1/AV:L/AC:H/PR:L/UI:N/S:U/C:L/I:N/A:H",
+              "V3Score": 5.3
+            },
+            "redhat": {
+              "V3Vector": "CVSS:3.1/AV:L/AC:L/PR:N/UI:N/S:U/C:L/I:N/A:H",
+              "V3Score": 6.8
+            }
+          },
+          "References": [
+            "https://access.redhat.com/errata/RHSA-2026:26573",
+            "https://access.redhat.com/security/cve/CVE-2026-13595",
+            "https://bugzilla.redhat.com/show_bug.cgi?id=2494101",
+            "https://github.com/util-linux/util-linux/commit/c0186f14fbdb02f64c8e0ba701ce727ea764ff4c",
+            "https://nvd.nist.gov/vuln/detail/CVE-2026-13595",
+            "https://www.cve.org/CVERecord?id=CVE-2026-13595"
+          ],
+          "PublishedDate": "2026-06-29T09:16:28.303Z",
+          "LastModifiedDate": "2026-07-08T03:37:21.637Z"
+        },
+        {
+          "VulnerabilityID": "CVE-2026-27456",
+          "PkgID": "liblastlog2-2@2.41-5",
+          "PkgName": "liblastlog2-2",
+          "PkgIdentifier": {
+            "PURL": "pkg:deb/debian/liblastlog2-2@2.41-5?arch=amd64&distro=debian-13.6",
+            "UID": "eb4f5430aea34a10"
+          },
+          "InstalledVersion": "2.41-5",
+          "Status": "affected",
+          "Layer": {
+            "Digest": "sha256:26c307b5e35a59ce911f5fde5b9458120ec8734e831ea2da5649a9ad14abfd3d",
+            "DiffID": "sha256:6f94328331290cbd81edab450664d42da7b64c191416c9346cd5d28c84f76035"
+          },
+          "PrimaryURL": "https://avd.aquasec.com/nvd/cve-2026-27456",
+          "DataSource": {
+            "ID": "debian",
+            "Name": "Debian Security Tracker",
+            "URL": "https://salsa.debian.org/security-tracker-team/security-tracker"
+          },
+          "Fingerprint": "sha256:79c938bf0c7bcd839753defd165f27e38f22d396d82d8185e05b3883b2bd0f18",
+          "Title": "util-linux: TOCTOU in the mount program when setting up loop devices",
+          "Description": "util-linux is a random collection of Linux utilities. Prior to version 2.41.4, a TOCTOU (Time-of-Check-Time-of-Use) vulnerability has been identified in the SUID binary /usr/bin/mount from util-linux. The mount binary, when setting up loop devices, validates the source file path with user privileges via fork() + setuid() + realpath(), but subsequently re-canonicalizes and opens it with root privileges (euid=0) without verifying that the path has not been replaced between both operations. Neither O_NOFOLLOW, nor inode comparison, nor post-open fstat() are employed. This allows a local unprivileged user to replace the source file with a symlink pointing to any root-owned file or device during the race window, causing the SUID binary to open and mount it as root. Exploitation requires an /etc/fstab entry with user,loop options whose path points to a directory where the attacker has write permission, and that /usr/bin/mount has the SUID bit set (the default configuration on virtually all Linux distributions). The impact is unauthorized read access to root-protected files and block devices, including backup images, disk volumes, and any file containing a valid filesystem. This issue has been patched in version 2.41.4.",
+          "Severity": "MEDIUM",
+          "CweIDs": [
+            "CWE-59",
+            "CWE-269",
+            "CWE-367"
+          ],
+          "VendorSeverity": {
+            "azure": 2,
+            "bottlerocket": 2,
+            "julia": 2,
+            "redhat": 2,
+            "ubuntu": 2
+          },
+          "CVSS": {
+            "julia": {
+              "V3Vector": "CVSS:3.1/AV:L/AC:H/PR:L/UI:N/S:U/C:H/I:N/A:N",
+              "V3Score": 4.7
+            },
+            "redhat": {
+              "V3Vector": "CVSS:3.1/AV:L/AC:H/PR:L/UI:N/S:U/C:H/I:N/A:N",
+              "V3Score": 4.7
+            }
+          },
+          "References": [
+            "http://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2026-27456",
+            "https://access.redhat.com/security/cve/CVE-2026-27456",
+            "https://github.com/bottlerocket-os/bottlerocket-core-kit/blob/develop/advisories/14.5.0/BRSA-jgcxwcxt3sxd.toml",
+            "https://github.com/util-linux/util-linux/commit/5e390467b26a3cf3fecc04e1a0d482dff3162fc4",
+            "https://github.com/util-linux/util-linux/releases/tag/v2.41.4",
+            "https://github.com/util-linux/util-linux/security/advisories/GHSA-qq4x-vfq4-9h9g",
+            "https://nvd.nist.gov/vuln/detail/CVE-2026-27456",
+            "https://www.cve.org/CVERecord?id=CVE-2026-27456"
+          ],
+          "PublishedDate": "2026-04-03T22:16:25.4Z",
+          "LastModifiedDate": "2026-07-24T22:10:00.14Z"
+        }
+      ]
+    },
+    {
+      "Target": "Python",
+      "Class": "lang-pkgs",
+      "Type": "python-pkg",
+      "Packages": [
+        {
+          "Name": "pip",
+          "Identifier": {
+            "PURL": "pkg:pypi/pip@25.0.1",
+            "UID": "7d864d9a4bf3bfe8"
+          },
+          "Version": "25.0.1",
+          "Licenses": [
+            "MIT"
+          ],
+          "Layer": {
+            "Digest": "sha256:c85ad0bcaca895afa08053538ec1ea7642c7e9e05f5684d18e3627a2316ca8ae",
+            "DiffID": "sha256:4bdf3c4a59c868d57940d8a761f38ce2a7269959ff6d1fd5a0157a86f6dac082"
+          },
+          "FilePath": "usr/local/lib/python3.12/site-packages/pip-25.0.1.dist-info/METADATA",
+          "AnalyzedBy": "python-pkg"
+        }
+      ],
+      "Vulnerabilities": [
+        {
+          "VulnerabilityID": "CVE-2025-8869",
+          "VendorIDs": [
+            "GHSA-4xh5-x5gv-qwph"
+          ],
+          "PkgName": "pip",
+          "PkgPath": "usr/local/lib/python3.12/site-packages/pip-25.0.1.dist-info/METADATA",
+          "PkgIdentifier": {
+            "PURL": "pkg:pypi/pip@25.0.1",
+            "UID": "7d864d9a4bf3bfe8"
+          },
+          "InstalledVersion": "25.0.1",
+          "FixedVersion": "25.3",
+          "Status": "fixed",
+          "Layer": {
+            "Digest": "sha256:c85ad0bcaca895afa08053538ec1ea7642c7e9e05f5684d18e3627a2316ca8ae",
+            "DiffID": "sha256:4bdf3c4a59c868d57940d8a761f38ce2a7269959ff6d1fd5a0157a86f6dac082"
+          },
+          "SeveritySource": "ghsa",
+          "PrimaryURL": "https://avd.aquasec.com/nvd/cve-2025-8869",
+          "DataSource": {
+            "ID": "ghsa",
+            "Name": "GitHub Security Advisory pip",
+            "URL": "https://github.com/advisories?query=type%3Areviewed+ecosystem%3Apip"
+          },
+          "Fingerprint": "sha256:2fe5c9e013cc340943eae54bb3646f789288fd9dd6fab0611b8a4d5c8177e7e8",
+          "Title": "pip: pip missing checks on symbolic link extraction",
+          "Description": "When extracting a tar archive pip may not check symbolic links point into the extraction directory if the tarfile module doesn't implement PEP 706.\nNote that upgrading pip to a \"fixed\" version for this vulnerability doesn't fix all known vulnerabilities that are remediated by using a Python version that implements PEP 706.\n\nNote that this is a vulnerability in pip's fallback implementation of tar extraction for Python versions that don't implement PEP 706\nand therefore are not secure to all vulnerabilities in the Python 'tarfile' module. If you're using a Python version that implements PEP 706\nthen pip doesn't use the \"vulnerable\" fallback code.\n\nMitigations include upgrading to a version of pip that includes the fix, upgrading to a Python version that implements PEP 706 (Python >=3.9.17, >=3.10.12, >=3.11.4, or >=3.12),\napplying the linked patch, or inspecting source distributions (sdists) before installation as is already a best-practice.",
+          "Severity": "MEDIUM",
+          "VendorSeverity": {
+            "amazon": 2,
+            "azure": 2,
+            "ghsa": 2,
+            "redhat": 2,
+            "ubuntu": 2
+          },
+          "CVSS": {
+            "ghsa": {
+              "V40Vector": "CVSS:4.0/AV:N/AC:L/AT:P/PR:N/UI:A/VC:N/VI:H/VA:N/SC:N/SI:N/SA:N",
+              "V40Score": 5.9
+            },
+            "redhat": {
+              "V3Vector": "CVSS:3.1/AV:N/AC:H/PR:N/UI:R/S:U/C:N/I:H/A:N",
+              "V3Score": 5.3
+            }
+          },
+          "References": [
+            "https://access.redhat.com/security/cve/CVE-2025-8869",
+            "https://github.com/pypa/pip",
+            "https://github.com/pypa/pip/commit/f2b92314da012b9fffa36b3f3e67748a37ef464a",
+            "https://github.com/pypa/pip/pull/13550",
+            "https://lists.debian.org/debian-lts-announce/2025/10/msg00028.html",
+            "https://mail.python.org/archives/list/security-announce@python.org/thread/IF5A3GCJY3VH7BVHJKOWOJFKTW7VFQEN",
+            "https://mail.python.org/archives/list/security-announce@python.org/thread/IF5A3GCJY3VH7BVHJKOWOJFKTW7VFQEN/",
+            "https://nvd.nist.gov/vuln/detail/CVE-2025-8869",
+            "https://pip.pypa.io/en/stable/news/#v25-2",
+            "https://www.cve.org/CVERecord?id=CVE-2025-8869"
+          ],
+          "PublishedDate": "2025-09-24T15:15:41.293Z",
+          "LastModifiedDate": "2026-06-17T10:07:49.133Z"
+        },
+        {
+          "VulnerabilityID": "CVE-2026-3219",
+          "VendorIDs": [
+            "GHSA-58qw-9mgm-455v"
+          ],
+          "PkgName": "pip",
+          "PkgPath": "usr/local/lib/python3.12/site-packages/pip-25.0.1.dist-info/METADATA",
+          "PkgIdentifier": {
+            "PURL": "pkg:pypi/pip@25.0.1",
+            "UID": "7d864d9a4bf3bfe8"
+          },
+          "InstalledVersion": "25.0.1",
+          "FixedVersion": "26.1",
+          "Status": "fixed",
+          "Layer": {
+            "Digest": "sha256:c85ad0bcaca895afa08053538ec1ea7642c7e9e05f5684d18e3627a2316ca8ae",
+            "DiffID": "sha256:4bdf3c4a59c868d57940d8a761f38ce2a7269959ff6d1fd5a0157a86f6dac082"
+          },
+          "SeveritySource": "ghsa",
+          "PrimaryURL": "https://avd.aquasec.com/nvd/cve-2026-3219",
+          "DataSource": {
+            "ID": "ghsa",
+            "Name": "GitHub Security Advisory pip",
+            "URL": "https://github.com/advisories?query=type%3Areviewed+ecosystem%3Apip"
+          },
+          "Fingerprint": "sha256:63048406aa73a5281839eb4d29807cb056798c9fcec44c485633870ce9ade6fd",
+          "Title": "pip: pip: Incorrect file installation due to improper archive handling",
+          "Description": "pip handles concatenated tar and ZIP files as ZIP files regardless of filename or whether a file is both a tar and ZIP file. This behavior could result in confusing installation behavior, such as installing \"incorrect\" files according to the filename of the archive. New behavior only proceeds with installation if the file identifies uniquely as a ZIP or tar archive, not as both.",
+          "Severity": "MEDIUM",
+          "CweIDs": [
+            "CWE-434"
+          ],
+          "VendorSeverity": {
+            "amazon": 1,
+            "azure": 2,
+            "ghsa": 2,
+            "photon": 1,
+            "redhat": 2
+          },
+          "CVSS": {
+            "ghsa": {
+              "V40Vector": "CVSS:4.0/AV:L/AC:L/AT:N/PR:N/UI:A/VC:N/VI:L/VA:N/SC:N/SI:N/SA:N",
+              "V40Score": 4.6
+            },
+            "redhat": {
+              "V3Vector": "CVSS:3.1/AV:L/AC:L/PR:L/UI:R/S:U/C:N/I:H/A:N",
+              "V3Score": 5
+            }
+          },
+          "References": [
+            "http://www.openwall.com/lists/oss-security/2026/04/20/8",
+            "https://access.redhat.com/security/cve/CVE-2026-3219",
+            "https://github.com/pypa/pip",
+            "https://github.com/pypa/pip/issues/13867",
+            "https://github.com/pypa/pip/pull/13870",
+            "https://mail.python.org/archives/list/security-announce@python.org/thread/QAJ5JIVWWCAJ4EZL2FP5MOOW35JS7LRJ",
+            "https://mail.python.org/archives/list/security-announce@python.org/thread/QAJ5JIVWWCAJ4EZL2FP5MOOW35JS7LRJ/",
+            "https://nvd.nist.gov/vuln/detail/CVE-2026-3219",
+            "https://www.cve.org/CVERecord?id=CVE-2026-3219"
+          ],
+          "PublishedDate": "2026-04-20T16:16:45.43Z",
+          "LastModifiedDate": "2026-06-17T10:43:14.243Z"
+        },
+        {
+          "VulnerabilityID": "CVE-2026-6357",
+          "VendorIDs": [
+            "GHSA-jp4c-xjxw-mgf9"
+          ],
+          "PkgName": "pip",
+          "PkgPath": "usr/local/lib/python3.12/site-packages/pip-25.0.1.dist-info/METADATA",
+          "PkgIdentifier": {
+            "PURL": "pkg:pypi/pip@25.0.1",
+            "UID": "7d864d9a4bf3bfe8"
+          },
+          "InstalledVersion": "25.0.1",
+          "FixedVersion": "26.1",
+          "Status": "fixed",
+          "Layer": {
+            "Digest": "sha256:c85ad0bcaca895afa08053538ec1ea7642c7e9e05f5684d18e3627a2316ca8ae",
+            "DiffID": "sha256:4bdf3c4a59c868d57940d8a761f38ce2a7269959ff6d1fd5a0157a86f6dac082"
+          },
+          "SeveritySource": "ghsa",
+          "PrimaryURL": "https://avd.aquasec.com/nvd/cve-2026-6357",
+          "DataSource": {
+            "ID": "ghsa",
+            "Name": "GitHub Security Advisory pip",
+            "URL": "https://github.com/advisories?query=type%3Areviewed+ecosystem%3Apip"
+          },
+          "Fingerprint": "sha256:cc770d3d0a0a057428304b78ede32d4607b2180a375dc6a54c76441ceee8eb7a",
+          "Title": "pip: pip: Arbitrary code execution or information disclosure via malicious wheel package installation",
+          "Description": "pip prior to version 26.1 would run self-update check functionality after installing wheel files which required importing well-known Python modules names. These module imports were intentionally deferred to increase startup time of the pip CLI. The patch changes self-update functionality to run before wheels are installed to prevent newly-installed modules from being imported shortly after the installation of a wheel package. Users should still review package contents prior to installation.",
+          "Severity": "MEDIUM",
+          "CweIDs": [
+            "CWE-829"
+          ],
+          "VendorSeverity": {
+            "amazon": 3,
+            "azure": 2,
+            "ghsa": 2,
+            "photon": 2,
+            "redhat": 2
+          },
+          "CVSS": {
+            "ghsa": {
+              "V40Vector": "CVSS:4.0/AV:L/AC:L/AT:P/PR:H/UI:A/VC:H/VI:H/VA:N/SC:N/SI:N/SA:N",
+              "V40Score": 5.3
+            },
+            "redhat": {
+              "V3Vector": "CVSS:3.1/AV:L/AC:L/PR:H/UI:R/S:U/C:H/I:H/A:N",
+              "V3Score": 5.8
+            }
+          },
+          "References": [
+            "http://www.openwall.com/lists/oss-security/2026/04/27/7",
+            "https://access.redhat.com/security/cve/CVE-2026-6357",
+            "https://github.com/pypa/pip",
+            "https://github.com/pypa/pip/commit/b369bfc96cc524e00c267e1693290e6599c36bad",
+            "https://github.com/pypa/pip/pull/13923",
+            "https://ichard26.github.io/blog/2026/04/whats-new-in-pip-26.1/#security-fixes",
+            "https://nvd.nist.gov/vuln/detail/CVE-2026-6357",
+            "https://www.cve.org/CVERecord?id=CVE-2026-6357"
+          ],
+          "PublishedDate": "2026-04-27T15:16:20.857Z",
+          "LastModifiedDate": "2026-06-17T11:00:42.947Z"
+        }
+      ]
+    }
+  ]
+}

@@ -150,20 +150,27 @@ def _pair_map(
 
 
 def _resolve_pair(
-    session: Session, *, pkg_name: str, installed: str, cve_id: str
+    session: Session, *, vuln: dict[str, Any]
 ) -> tuple[uuid.UUID, uuid.UUID]:
-    """Resolve the recorded (PkgName, InstalledVersion, CVE) to catalog ids.
+    """Resolve one recorded vulnerability entry to its catalog ids.
 
-    Mirrors the persist path's key derivation: the container path builds
-    ``pkg:apk/{name}@{version}`` and matches vulnerabilities by external_id.
+    Mirrors the persist path's key derivation: the component version is named
+    by the PURL Trivy attached to the finding, with qualifiers dropped, and the
+    vulnerability is matched by external_id. Deriving the PURL from the report
+    rather than rebuilding it here keeps this test honest — a hardcoded
+    ``pkg:apk/{name}@{version}`` was how the persist path's own wrong PURL went
+    unnoticed.
     """
+    purl = str(vuln["PkgIdentifier"]["PURL"]).split("?", 1)[0]
     cv_id = session.execute(
         select(ComponentVersion.id).where(
-            ComponentVersion.purl_with_version == f"pkg:apk/{pkg_name}@{installed}"
+            ComponentVersion.purl_with_version == purl
         )
     ).scalar_one()
     vuln_id = session.execute(
-        select(Vulnerability.id).where(Vulnerability.external_id == cve_id)
+        select(Vulnerability.id).where(
+            Vulnerability.external_id == vuln["VulnerabilityID"]
+        )
     ).scalar_one()
     return cv_id, vuln_id
 
@@ -236,12 +243,7 @@ def test_container_rescan_stamps_now_for_new_pairs_only(
     scan2_map = _pair_map(_findings(sync_session, scan2))
     assert len(scan2_map) == 10
 
-    new_pair = _resolve_pair(
-        sync_session,
-        pkg_name=dropped["PkgName"],
-        installed=dropped["InstalledVersion"],
-        cve_id=dropped["VulnerabilityID"],
-    )
+    new_pair = _resolve_pair(sync_session, vuln=dropped)
     for key, finding in scan2_map.items():
         assert finding.first_detected_at is not None, key
         if key == new_pair:

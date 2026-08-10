@@ -46,6 +46,8 @@ from models import (
     VulnerabilityFinding,
 )
 from services.vulnerability_matching import (
+    _build_purl,
+    _purl_from_identifier,
     _resolve_first_detected_map,
     _resolve_triage_map,
     emit_finding_create_audits,
@@ -310,12 +312,26 @@ def _persist_trivy_report(
             cve_id = vuln.get("VulnerabilityID")
             if not pkg_name or not installed or not cve_id:
                 continue
-            purl = f"pkg:apk/{pkg_name}@{installed}"
+            identity = _component_identity(
+                vuln,
+                ecosystem=result.get("Type"),
+                pkg_name=pkg_name,
+                installed=installed,
+            )
+            if identity is None:
+                log.info(
+                    "container_finding_skipped_no_purl",
+                    scan_id=str(scan_uuid),
+                    ecosystem=result.get("Type"),
+                    pkg=pkg_name,
+                )
+                continue
+            purl, component_purl, package_type = identity
             component = _get_or_create_component(
                 session,
-                purl=f"pkg:apk/{pkg_name}",
+                purl=component_purl,
                 name=pkg_name,
-                package_type="apk",
+                package_type=package_type,
             )
             cv = _get_or_create_component_version(
                 session,
@@ -470,6 +486,55 @@ def _persist_os_metadata(
             session.commit()
     except Exception:  # noqa: BLE001 — OS telemetry is best-effort, never fatal
         log.warning("container_os_metadata_persist_failed", scan_id=str(scan_uuid), exc_info=True)
+
+
+def _component_identity(
+    vuln: dict[str, Any],
+    *,
+    ecosystem: Any,
+    pkg_name: str,
+    installed: str,
+) -> tuple[str, str, str] | None:
+    """Return ``(purl_with_version, component_purl, package_type)`` for a finding.
+
+    This used to be three hardcoded strings: ``pkg:apk/{name}@{version}``,
+    ``pkg:apk/{name}`` and ``"apk"`` — for every package in every image. A
+    Rocky image's rpms were persisted as apk packages, a Debian image's debs
+    likewise, and pip inside a python image became ``pkg:apk/pip``. No finding
+    was lost, so the screens looked right and only the values were wrong: the
+    component inventory, the SBOM export and any policy that reads a package
+    type all saw an ecosystem the image does not have.
+
+    Trivy states the identity itself. Every Result it emits — os-pkgs and
+    lang-pkgs alike — carries ``PkgIdentifier.PURL``
+    (``pkg:rpm/rocky/bzip2-libs@1.0.8-8.el9?arch=x86_64&distro=rocky-9.3``), so
+    that is read first, exactly as the SBOM matcher does.
+
+    Qualifiers are dropped from what we store. ``distro=rocky-9.3`` would make
+    the same package version a NEW component on every point release of the base
+    image, and the first-detected clock and carried triage are keyed on the
+    component version — so the whole image's findings would read as new after a
+    9.3 → 9.4 rebuild.
+
+    Returns None when no identity can be established, and the caller skips the
+    finding. Calling it apk would not make it apk.
+    """
+    purl = _purl_from_identifier(vuln) or _build_purl(ecosystem, pkg_name, installed)
+    if purl is None:
+        return None
+
+    component_purl, separator, _version = purl.rpartition("@")
+    if not separator or not component_purl:
+        # A version-less PURL cannot name a component version; Trivy always
+        # writes one, so this is a malformed report rather than a real case.
+        return None
+
+    scheme, _, remainder = purl.partition(":")
+    package_type = remainder.split("/", 1)[0]
+    if scheme != "pkg" or not package_type:
+        return None
+
+    return purl, component_purl, package_type
 
 
 def _get_or_create_component(

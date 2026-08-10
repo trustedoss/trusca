@@ -96,6 +96,17 @@ A single `upgrade.sh` run can hop multiple versions provided each intermediate h
 
 For major-version hops, follow the release-notes "Migration steps" section before invoking the wrapper.
 
+## After upgrading past a container-scan identity fix
+
+Container scans used to record every package in every image as an Alpine package — `pkg:apk/{name}@{version}`, package type `apk` — regardless of what the image actually contained. A Rocky image's rpms, a Debian image's debs and a pip package inside a Python image were all inventoried under the wrong ecosystem. Findings were never lost, so the counts were right and only the identity was wrong.
+
+Scans now record the ecosystem the scanner reports. Two consequences, both limited to deployments that scanned rpm or deb based images:
+
+- **Existing rows are not rewritten.** A past scan keeps the identity it was stored with; that is what the scan saw at the time. Re-scan the image to get a corrected inventory.
+- **A re-scan resets that project's vulnerability triage.** The first-detected clock and any analyst verdict (accepted, false positive, …) are keyed on the component, and the corrected package is a different component. Findings on a re-scanned rpm or deb image come back as new, and verdicts have to be entered again.
+
+Deployments that only ever scanned Alpine images are unaffected — those values were already correct.
+
 ## Common issues
 
 ### `alembic upgrade head` fails with a constraint violation
