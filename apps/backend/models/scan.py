@@ -342,6 +342,15 @@ class Scan(Base):
     input_manifests: Mapped[dict[str, Any] | None] = mapped_column(
         JSONB, nullable=True
     )
+    # The other half of scan provenance (migration 0052): what an UPLOADED
+    # document said about itself — format, spec version, the tools and authors
+    # it names, its own timestamp, the subject it describes. An ingest scan has
+    # no tree to inventory, so this is its equivalent of ``input_manifests``;
+    # each is NULL on the paths where its question does not apply. Written by
+    # ``services.scan_inputs.summarize_input_document``.
+    input_document: Mapped[dict[str, Any] | None] = mapped_column(
+        JSONB, nullable=True
+    )
     # DT-style ref-keyed retention (scan-retention). Normalized git ref this
     # scan targets — ``refs/heads/main`` → ``main``, ``refs/pull/12/merge`` →
     # ``pr-12`` (see ``services.scan_service.normalize_ref``). NULL when the

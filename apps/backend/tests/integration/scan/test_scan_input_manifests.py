@@ -134,6 +134,18 @@ def _stub_trivy(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr("tasks.scan_source.run_trivy_sbom", _fake_run)
 
 
+def _ingest_trivy_stub(
+    sbom_path: Path,  # noqa: ARG001
+    output_dir: Path,
+    **_kwargs: object,
+) -> TrivyResult:
+    output_dir.mkdir(parents=True, exist_ok=True)
+    report_path = output_dir / "trivy-sbom.json"
+    report: dict[str, object] = {"SchemaVersion": 2, "Results": []}
+    report_path.write_text(json.dumps(report), encoding="utf-8")
+    return TrivyResult(report_path=report_path, report=report)
+
+
 def _fetch_writing(tree: dict[str, str]) -> object:
     """Replace the fetch stage with one that materialises ``tree``."""
 
@@ -259,3 +271,161 @@ def test_a_rerun_records_the_same_inventory(
 
     assert first == second
     assert first is not None
+
+
+# ---------------------------------------------------------------------------
+# The other half: what an ingest scan was handed (gap #31, step 2)
+# ---------------------------------------------------------------------------
+
+
+def _seed_queued_ingest(workspace: Path, sbom_bytes: bytes, filename: str) -> uuid.UUID:
+    import asyncio
+
+    from sqlalchemy.ext.asyncio import (
+        AsyncSession,
+        async_sessionmaker,
+        create_async_engine,
+    )
+
+    from core.config import database_url
+
+    async def _build() -> uuid.UUID:
+        engine = create_async_engine(database_url(), pool_pre_ping=True, future=True)
+        factory = async_sessionmaker(engine, expire_on_commit=False, class_=AsyncSession)
+        async with factory() as s:
+            org = await make_organization(s)
+            team = await make_team(s, organization=org)
+            user = await make_user(s)
+            await make_membership(s, user=user, team=team, role="developer")
+            project = await make_project(s, team=team, git_url=None)
+            scan = Scan(
+                project_id=project.id,
+                kind="sbom",
+                status="queued",
+                progress_percent=0,
+                requested_by_user_id=user.id,
+                scan_metadata={"source_type": "sbom"},
+            )
+            s.add(scan)
+            await s.commit()
+            await s.refresh(scan)
+            scan_id, project_id = scan.id, project.id
+            ingest_dir = workspace / "sbom-ingest" / str(project_id)
+            ingest_dir.mkdir(parents=True, exist_ok=True)
+            dest = ingest_dir / f"{scan_id}.cdx.json"
+            dest.write_bytes(sbom_bytes)
+            scan.scan_metadata = {
+                "source_type": "sbom",
+                "sbom_path": str(dest),
+                "original_filename": filename,
+            }
+            await s.commit()
+        await engine.dispose()
+        return scan_id
+
+    return asyncio.run(_build())
+
+
+def test_an_ingest_records_what_the_document_claimed(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, sync_session: Session
+) -> None:
+    """The counterpart to the source scan's manifest inventory.
+
+    An upload has no tree to inventory, so what is recorded is the document's
+    own account of itself — read from the ORIGINAL bytes, the same ones the
+    conformance verdict is scored on, so the summary describes the supplier's
+    document rather than our conversion of it.
+    """
+    monkeypatch.setenv("WORKSPACE_HOST_PATH", str(tmp_path))
+    monkeypatch.setattr("tasks.ingest_sbom.run_trivy_sbom", _ingest_trivy_stub)
+
+    sbom = json.dumps(
+        {
+            "bomFormat": "CycloneDX",
+            "specVersion": "1.6",
+            "serialNumber": "urn:uuid:11111111-2222-3333-4444-555555555555",
+            "version": 1,
+            "metadata": {
+                "timestamp": "2026-08-01T10:00:00Z",
+                "tools": {
+                    "components": [
+                        {"type": "application", "name": "cdxgen", "version": "12.3.3"}
+                    ]
+                },
+                "supplier": {"name": "Example Corp"},
+                "component": {
+                    "type": "application",
+                    "name": "supplier-app",
+                    "version": "4.2.0",
+                },
+            },
+            "components": [
+                {
+                    "type": "library",
+                    "name": "lodash",
+                    "version": "4.17.21",
+                    "purl": "pkg:npm/lodash@4.17.21",
+                }
+            ],
+        }
+    ).encode()
+
+    scan_id = _seed_queued_ingest(tmp_path, sbom, "supplier.cdx.json")
+
+    from tasks.ingest_sbom import ingest_sbom_task
+
+    result = ingest_sbom_task.apply(args=[str(scan_id)])
+    assert result.successful(), f"task failed: {result.traceback}"
+
+    sync_session.expire_all()
+    scan = sync_session.execute(select(Scan).where(Scan.id == scan_id)).scalar_one()
+    assert scan.status == "succeeded"
+
+    document = scan.input_document
+    assert document is not None
+    assert document["format"] == "cyclonedx"
+    assert document["spec_version"] == "1.6"
+    assert document["created"] == "2026-08-01T10:00:00Z"
+    assert document["tools"] == [{"name": "cdxgen", "version": "12.3.3"}]
+    assert document["supplier"] == "Example Corp"
+    assert document["subject"] == "supplier-app"
+    assert document["component_count"] == 1
+    assert document["original_filename"] == "supplier.cdx.json"
+    assert document["byte_size"] == len(sbom)
+
+    # An ingest has no tree, so the source-scan half stays NULL. The two
+    # questions are asked of different scan kinds and must not be conflated.
+    assert scan.input_manifests is None
+
+
+def test_an_unsummarisable_upload_leaves_the_column_null(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, sync_session: Session
+) -> None:
+    """SPDX Tag-Value ingests fine but is not summarised.
+
+    Recording a spec version nobody parsed would give a reader a value to
+    compare against that was never read.
+    """
+    monkeypatch.setenv("WORKSPACE_HOST_PATH", str(tmp_path))
+    monkeypatch.setattr("tasks.ingest_sbom.run_trivy_sbom", _ingest_trivy_stub)
+
+    tag_value = (
+        b"SPDXVersion: SPDX-2.3\n"
+        b"DataLicense: CC0-1.0\n"
+        b"SPDXID: SPDXRef-DOCUMENT\n"
+        b"DocumentName: portal\n"
+        b"PackageName: lodash\n"
+        b"SPDXID: SPDXRef-Package-1\n"
+        b"PackageVersion: 4.17.21\n"
+    )
+    scan_id = _seed_queued_ingest(tmp_path, tag_value, "portal.spdx")
+
+    from tasks.ingest_sbom import ingest_sbom_task
+
+    result = ingest_sbom_task.apply(args=[str(scan_id)])
+    assert result.successful(), f"task failed: {result.traceback}"
+
+    sync_session.expire_all()
+    scan = sync_session.execute(select(Scan).where(Scan.id == scan_id)).scalar_one()
+    assert scan.status == "succeeded"
+    assert scan.input_document is None
