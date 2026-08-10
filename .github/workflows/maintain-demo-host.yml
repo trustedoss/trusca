@@ -1,0 +1,110 @@
+# Demo-host maintenance over the deploy SSH channel.
+#
+# The deploy workflow (deploy-hetzner.yml) already holds a working SSH channel to
+# the demo host and the secrets for it. When a deploy fails on a full disk — the
+# pull dies mid-layer and the restart that follows dies the same way — recovery
+# needed a human with a terminal. This gives that recovery the same shape as the
+# deploy: committed commands, reviewable before they run, logged after.
+#
+# It does three things and nothing else. `report` changes no state. `prune`
+# reclaims images and build cache that no container references, and deliberately
+# does NOT touch volumes: a removed image is re-pulled, a removed volume is the
+# database. `restart` brings stopped services back up.
+#
+# Secrets are the deploy set on the `demo` Environment — see deploy-hetzner.yml
+# for what each one is.
+name: Maintain demo host
+
+on:
+  workflow_dispatch:
+    inputs:
+      action:
+        description: "report = read-only status · prune = reclaim unused images and build cache · restart = bring stopped services up"
+        required: true
+        default: report
+        type: choice
+        options:
+          - report
+          - prune
+          - restart
+
+# Share the deploy lock: a prune must not run while a deploy is pulling images.
+concurrency:
+  group: deploy-hetzner
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  maintain:
+    runs-on: ubuntu-latest
+    environment: demo
+    steps:
+      - name: Checkout (for deploy/hetzner/remote-maintain.sh)
+        uses: actions/checkout@v4
+
+      - name: Run over SSH
+        env:
+          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+          DEPLOY_USER: ${{ secrets.DEPLOY_USER }}
+          DEPLOY_SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+          DEPLOY_KNOWN_HOSTS: ${{ secrets.DEPLOY_KNOWN_HOSTS }}
+          DEPLOY_SSH_PORT: ${{ secrets.DEPLOY_SSH_PORT }}
+          DEPLOY_PATH: ${{ secrets.DEPLOY_PATH }}
+          # Through `env:` rather than inline interpolation — an expression
+          # written into the script body becomes part of it before the shell
+          # parses it, which is a code-injection surface whatever the input's
+          # declared type. Here the value stays data.
+          ACTION_INPUT: ${{ inputs.action }}
+        run: |
+          set -euo pipefail
+
+          for var in DEPLOY_HOST DEPLOY_USER DEPLOY_SSH_KEY; do
+            if [ -z "${!var:-}" ]; then
+              echo "::error::required secret $var is not set on the 'demo' environment"
+              exit 1
+            fi
+          done
+
+          # The choice input can only be one of the three, but this is the value
+          # that reaches a remote shell — so it is re-checked against the literal
+          # set rather than trusted for having a type.
+          case "$ACTION_INPUT" in
+            report | prune | restart) action="$ACTION_INPUT" ;;
+            *) echo "::error::unexpected action '$ACTION_INPUT'"; exit 1 ;;
+          esac
+
+          port="${DEPLOY_SSH_PORT:-22}"
+          remote_path="${DEPLOY_PATH:-/opt/trustedoss/portal}"
+
+          # Same validation the deploy applies: DEPLOY_PATH is operator-owned but
+          # is interpolated into the remote command string.
+          case "$remote_path" in
+            /*) : ;;
+            *) echo "::error::DEPLOY_PATH must be an absolute path (got '$remote_path')"; exit 1 ;;
+          esac
+          if printf '%s' "$remote_path" | grep -qE '[^A-Za-z0-9._/-]'; then
+            echo "::error::DEPLOY_PATH may only contain [A-Za-z0-9._/-]"
+            exit 1
+          fi
+
+          tmp="$(mktemp -d)"
+          trap 'rm -rf "$tmp"' EXIT
+          umask 077
+          printf '%s\n' "$DEPLOY_SSH_KEY" > "$tmp/key"
+          chmod 600 "$tmp/key"
+
+          ssh_opts=(-o BatchMode=yes -o ConnectTimeout=15)
+          if [ -n "${DEPLOY_KNOWN_HOSTS:-}" ]; then
+            printf '%s\n' "$DEPLOY_KNOWN_HOSTS" > "$tmp/known_hosts"
+            ssh_opts+=(-o StrictHostKeyChecking=yes -o "UserKnownHostsFile=$tmp/known_hosts")
+          else
+            echo "::warning::DEPLOY_KNOWN_HOSTS not set — trusting the host key on first use (TOFU)."
+            ssh_opts+=(-o StrictHostKeyChecking=accept-new -o "UserKnownHostsFile=$tmp/known_hosts")
+          fi
+
+          ssh -i "$tmp/key" -p "$port" "${ssh_opts[@]}" \
+            "$DEPLOY_USER@$DEPLOY_HOST" \
+            "ACTION='$action' REMOTE_PATH='$remote_path' bash -s" \
+            < deploy/hetzner/remote-maintain.sh

@@ -220,7 +220,7 @@ jobs:
         run: shellcheck --version
 
       - name: Run shellcheck (severity=warning)
-        run: shellcheck --severity=warning scripts/*.sh
+        run: shellcheck --severity=warning scripts/*.sh deploy/hetzner/*.sh
 
   # -------------------------------------------------------------------------
   # 1c) Postgres init L1 role contract — the ONLY gate that actually boots a
