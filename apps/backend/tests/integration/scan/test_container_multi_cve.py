@@ -116,7 +116,12 @@ def _seed_queued_container_scan() -> uuid.UUID:
 
 
 def _vuln(cve_id: str) -> dict[str, object]:
-    """A Trivy vulnerability entry for the openssl apk package."""
+    """A Trivy vulnerability entry for the openssl apk package.
+
+    ``PkgIdentifier`` carries the shape a real ``trivy image`` writes — it is
+    what persistence reads to name the package's ecosystem, and a fixture
+    without it exercises a report Trivy does not produce.
+    """
     return {
         "PkgName": "openssl",
         "InstalledVersion": "3.1.4-r5",
@@ -125,6 +130,10 @@ def _vuln(cve_id: str) -> dict[str, object]:
         "Title": f"{cve_id} in openssl",
         "Description": "fabricated for the H-1 regression test",
         "References": ["https://example.test/" + cve_id],
+        "PkgIdentifier": {
+            "PURL": "pkg:apk/alpine/openssl@3.1.4-r5?arch=x86_64&distro=3.19.9",
+            "UID": "e1f2a3b4c5d60718",
+        },
     }
 
 
@@ -138,6 +147,8 @@ def test_multi_cve_package_persists_one_component_and_all_findings(
         "Results": [
             {
                 "Target": "alpine:3.19 (alpine 3.19.9)",
+                "Class": "os-pkgs",
+                "Type": "alpine",
                 "Vulnerabilities": [
                     _vuln("CVE-2026-0001"),
                     _vuln("CVE-2026-0002"),
@@ -274,6 +285,8 @@ def test_distinct_packages_get_distinct_components(sync_session: Session) -> Non
         "Results": [
             {
                 "Target": "alpine:3.19 (alpine 3.19.9)",
+                "Class": "os-pkgs",
+                "Type": "alpine",
                 "Vulnerabilities": [
                     _vuln("CVE-2026-0010"),
                     {
@@ -284,6 +297,13 @@ def test_distinct_packages_get_distinct_components(sync_session: Session) -> Non
                         "Title": "CVE-2026-0011 in musl",
                         "Description": "fabricated",
                         "References": [],
+                        "PkgIdentifier": {
+                            "PURL": (
+                                "pkg:apk/alpine/musl@1.2.4-r2"
+                                "?arch=x86_64&distro=3.19.9"
+                            ),
+                            "UID": "0a1b2c3d4e5f6071",
+                        },
                     },
                 ],
             }
@@ -302,3 +322,150 @@ def test_distinct_packages_get_distinct_components(sync_session: Session) -> Non
     ).scalar_one()
 
     assert component_count == 2
+
+
+# ---------------------------------------------------------------------------
+# Ecosystem identity — the package type a component is persisted under
+# ---------------------------------------------------------------------------
+
+
+def _persisted_identity(
+    session: Session, scan_id: uuid.UUID
+) -> set[tuple[str, str, str]]:
+    """(component purl, purl_with_version, package_type) for one scan."""
+    from models import Component, ComponentVersion
+
+    rows = session.execute(
+        select(
+            Component.purl,
+            ComponentVersion.purl_with_version,
+            Component.package_type,
+        )
+        .join(ComponentVersion, ComponentVersion.component_id == Component.id)
+        .join(
+            ScanComponent,
+            ScanComponent.component_version_id == ComponentVersion.id,
+        )
+        .where(ScanComponent.scan_id == scan_id)
+    ).all()
+    return {(r[0], r[1], r[2]) for r in rows}
+
+
+def test_rpm_image_persists_rpm_components(sync_session: Session) -> None:
+    """A Rocky image's packages are rpms, and must be stored as rpms.
+
+    Persistence hardcoded ``pkg:apk/{name}@{version}`` and ``package_type
+    "apk"`` for every package in every image, so an rpm image's inventory
+    claimed an ecosystem the image does not have. Nothing failed — the counts
+    were right and only the identity was wrong, which is why it survived.
+
+    Fixture: recorded from ``trivy image rockylinux:9-minimal`` (2026-08),
+    trimmed to the six most-affected packages and three CVEs each; each entry
+    is otherwise the tool's own output. ``Packages`` is narrowed to the same
+    six so the file stays reviewable — persistence reads ``Vulnerabilities``.
+    """
+    import json
+
+    fixture = (
+        BACKEND_ROOT / "tests" / "fixtures" / "trivy" / "rocky-9-image-report.json"
+    )
+    report = json.loads(fixture.read_text())
+    scan_id = _seed_queued_container_scan()
+
+    from tasks.scan_container import _persist_trivy_report
+
+    _persist_trivy_report(sync_session, scan_uuid=scan_id, report=report)
+    sync_session.commit()
+
+    identities = _persisted_identity(sync_session, scan_id)
+    assert identities, "the recorded report must persist components"
+    for component_purl, purl_with_version, package_type in identities:
+        assert package_type == "rpm", (component_purl, package_type)
+        # The distro namespace Trivy states is kept: it is what distinguishes
+        # a Rocky rpm from a RHEL one of the same name and version.
+        assert component_purl.startswith("pkg:rpm/rocky/"), component_purl
+        assert purl_with_version.startswith(component_purl + "@")
+        # Qualifiers are dropped — ``distro=rocky-9.3`` would make every point
+        # release of the base image a new component version and reset the
+        # first-detected clock for the whole image.
+        assert "?" not in purl_with_version, purl_with_version
+
+
+def test_mixed_image_keeps_each_ecosystem_apart(sync_session: Session) -> None:
+    """One image, two ecosystems: debian packages and a pip package.
+
+    The old hardcoding collapsed both into apk, so ``pip`` inside a python
+    image was inventoried as an alpine package.
+
+    Fixture: recorded from ``trivy image python:3.12-slim`` (2026-08), trimmed
+    the same way as the Rocky one.
+    """
+    import json
+
+    fixture = (
+        BACKEND_ROOT
+        / "tests"
+        / "fixtures"
+        / "trivy"
+        / "debian-python-image-report.json"
+    )
+    report = json.loads(fixture.read_text())
+    scan_id = _seed_queued_container_scan()
+
+    from tasks.scan_container import _persist_trivy_report
+
+    _persist_trivy_report(sync_session, scan_uuid=scan_id, report=report)
+    sync_session.commit()
+
+    identities = _persisted_identity(sync_session, scan_id)
+    types = {package_type for _, _, package_type in identities}
+    assert types == {"deb", "pypi"}, types
+
+    by_type = {
+        package_type: component_purl for component_purl, _, package_type in identities
+    }
+    assert by_type["deb"].startswith("pkg:deb/debian/")
+    assert by_type["pypi"].startswith("pkg:pypi/")
+
+
+def test_a_finding_without_a_usable_identity_is_skipped(
+    sync_session: Session,
+) -> None:
+    """No PURL and no mappable Type means the package cannot be named.
+
+    Calling it apk is what this change exists to stop, so the finding is
+    skipped and logged instead. Trivy always writes one of the two, making
+    this a malformed-report guard rather than a live path.
+    """
+    scan_id = _seed_queued_container_scan()
+
+    report = {
+        "Results": [
+            {
+                "Target": "mystery:latest",
+                "Class": "os-pkgs",
+                "Type": "an-ecosystem-nobody-maps",
+                "Vulnerabilities": [
+                    {
+                        "PkgName": "mystery-pkg",
+                        "InstalledVersion": "1.0",
+                        "VulnerabilityID": "CVE-2026-9999",
+                        "Severity": "HIGH",
+                    }
+                ],
+            }
+        ]
+    }
+
+    from tasks.scan_container import _persist_trivy_report
+
+    _persist_trivy_report(sync_session, scan_uuid=scan_id, report=report)
+    sync_session.commit()
+
+    assert _persisted_identity(sync_session, scan_id) == set()
+    finding_count = sync_session.execute(
+        select(func.count())
+        .select_from(VulnerabilityFinding)
+        .where(VulnerabilityFinding.scan_id == scan_id)
+    ).scalar_one()
+    assert finding_count == 0
