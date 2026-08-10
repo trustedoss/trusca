@@ -83,8 +83,9 @@ CLAUDE.md
 # 않는다. 원본은 ~/projects/trusca-internal/docs/ 에 있다. 개별 파일이
 # 아니라 디렉터리를 통째로 무시하므로 새 내부 문서가 생겨도 규칙을 고칠
 # 일이 없고, 무엇을 공개할지 파일마다 판단할 일도 없다. 공개 문서는
-# docs-site/ 가 담당한다.
-docs/
+# docs-site/docs/ 가 담당하며, 선행 슬래시가 그 둘을 가른다 — 슬래시가
+# 없으면 이름이 docs 인 모든 디렉터리에 걸려 공개 문서까지 무시된다.
+/docs/
 
 # QA 인수인계 문서 — 내부 자료. 저장소 밖(~/projects/trusca-internal/)에 둔다.
 qa-handover/
