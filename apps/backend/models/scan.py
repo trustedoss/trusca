@@ -332,6 +332,16 @@ class Scan(Base):
         nullable=False,
         server_default=EMPTY_JSONB_OBJ,
     )
+    # Scan provenance (gap #31, migration 0051): the dependency manifests and
+    # lockfiles the scanned tree carried, so "did the scan see the file that
+    # declares this?" has an answer after the preserved tarball is reclaimed.
+    # NULL means not recorded — every scan before 0051, and every container /
+    # SBOM-ingest scan, since neither has a source tree. That is a different
+    # statement from an empty inventory, which would mean the scan looked and
+    # found none. Written by ``services.scan_inputs.collect_manifest_inventory``.
+    input_manifests: Mapped[dict[str, Any] | None] = mapped_column(
+        JSONB, nullable=True
+    )
     # DT-style ref-keyed retention (scan-retention). Normalized git ref this
     # scan targets — ``refs/heads/main`` → ``main``, ``refs/pull/12/merge`` →
     # ``pr-12`` (see ``services.scan_service.normalize_ref``). NULL when the
