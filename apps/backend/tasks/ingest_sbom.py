@@ -63,7 +63,7 @@ from integrations.trivy import (
     run_trivy_sbom,
 )
 from models import Project, SbomConformance, Scan
-from services import sbom_conformance
+from services import sbom_conformance, scan_inputs
 from services.sbom_convert import UnsupportedSbomFormat, to_cyclonedx
 from services.vulnerability_matching import persist_trivy_findings
 from tasks._progress import (
@@ -272,14 +272,26 @@ def _run_pipeline(
     # the persist is delete-then-insert so an acks_late re-entry replaces the
     # prior row (uq_sbom_conformance_scan_id).
     _set_stage(scan_uuid, "conformance")
+    raw_upload = sbom_path.read_bytes()
     with sync_session_scope() as session:
         _persist_conformance(
             session,
             scan_uuid=scan_uuid,
             project_id=project_id,
-            raw=sbom_path.read_bytes(),
+            raw=raw_upload,
         )
         session.commit()
+
+    # Scan provenance (gap #31, step 2): what this scan was handed. Recorded
+    # from the SAME original bytes the verdict above was scored on — a summary
+    # taken after normalisation would describe our conversion rather than the
+    # supplier's document. An ingest has no source tree, so this is its
+    # counterpart to the source scan's manifest inventory.
+    _record_input_document(
+        scan_uuid,
+        raw=raw_upload,
+        original_filename=scan_metadata.get("original_filename"),
+    )
 
     # Stage 2 — persist components + declared licenses. MUST run before Trivy:
     # ``persist_trivy_findings`` matches each finding to a ``ComponentVersion``
@@ -406,6 +418,46 @@ def _persist_conformance(
         n_warn=result.n_warn,
         component_count=result.component_count,
     )
+
+
+def _record_input_document(
+    scan_uuid: uuid.UUID, *, raw: bytes, original_filename: Any
+) -> None:
+    """Record what the uploaded document says about itself (gap #31).
+
+    Best-effort: a failure leaves the column NULL, which reads as "not
+    recorded". So does an upload this cannot parse — SPDX Tag-Value is accepted
+    for ingest but not summarised, because a summary assembled from a document
+    nobody read would state a spec version and a generator that were guessed.
+    """
+    summary = scan_inputs.summarize_input_document(
+        raw,
+        original_filename=(
+            original_filename if isinstance(original_filename, str) else None
+        ),
+    )
+    if summary is None:
+        return
+
+    log.info(
+        "ingest_sbom_input_document",
+        scan_id=str(scan_uuid),
+        source_format=summary.get("format"),
+        spec_version=summary.get("spec_version"),
+        component_count=summary.get("component_count"),
+    )
+    try:
+        with sync_session_scope() as session:
+            scan = session.get(Scan, scan_uuid)
+            if scan is not None:
+                scan.input_document = summary
+                session.commit()
+    except Exception:  # noqa: BLE001 — provenance is best-effort, never fatal
+        log.warning(
+            "ingest_sbom_input_document_persist_failed",
+            scan_id=str(scan_uuid),
+            exc_info=True,
+        )
 
 
 def _load_uploaded_sbom(scan_metadata: dict[str, Any]) -> tuple[Path, dict[str, Any]]:

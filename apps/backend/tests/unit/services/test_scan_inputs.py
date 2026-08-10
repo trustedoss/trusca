@@ -233,3 +233,179 @@ def test_the_same_tree_yields_the_same_inventory(tmp_path: Path) -> None:
 
     assert first == second
     assert _paths(first) == sorted(_paths(first))  # type: ignore[arg-type]
+
+
+# ---------------------------------------------------------------------------
+# summarize_input_document — what an ingest scan was handed
+# ---------------------------------------------------------------------------
+
+
+def _cdx_document(**overrides: object) -> bytes:
+    import json
+
+    doc: dict[str, object] = {
+        "bomFormat": "CycloneDX",
+        "specVersion": "1.6",
+        "serialNumber": "urn:uuid:3e671687-395b-41f5-a30f-a58921a69b79",
+        "version": 1,
+        "metadata": {
+            "timestamp": "2026-08-01T10:00:00Z",
+            "tools": {
+                "components": [
+                    {"type": "application", "name": "cdxgen", "version": "12.3.3"}
+                ]
+            },
+            "authors": [{"name": "Release Engineering"}],
+            "supplier": {"name": "Example Corp"},
+            "component": {"type": "application", "name": "portal", "version": "4.2.0"},
+        },
+        "components": [
+            {"type": "library", "name": "lodash", "purl": "pkg:npm/lodash@4.17.21"},
+            {
+                "type": "library",
+                "name": "outer",
+                "purl": "pkg:npm/outer@1.0.0",
+                "components": [
+                    {"type": "library", "name": "inner", "purl": "pkg:npm/inner@2.0.0"}
+                ],
+            },
+        ],
+    }
+    doc.update(overrides)
+    return json.dumps(doc).encode()
+
+
+def test_summary_records_what_a_cyclonedx_document_claims() -> None:
+    summary = scan_inputs.summarize_input_document(
+        _cdx_document(), original_filename="supplier.cdx.json"
+    )
+
+    assert summary is not None
+    assert summary["format"] == "cyclonedx"
+    assert summary["spec_version"] == "1.6"
+    assert summary["created"] == "2026-08-01T10:00:00Z"
+    assert summary["tools"] == [{"name": "cdxgen", "version": "12.3.3"}]
+    assert summary["authors"] == ["Release Engineering"]
+    assert summary["supplier"] == "Example Corp"
+    assert summary["subject"] == "portal"
+    assert summary["subject_version"] == "4.2.0"
+    assert summary["original_filename"] == "supplier.cdx.json"
+    # Nested components are components: the count must match what the rest of
+    # the pipeline persists, or the summary contradicts the inventory beside it.
+    assert summary["component_count"] == 3
+
+
+def test_summary_reads_the_pre_1_5_tools_shape() -> None:
+    """``metadata.tools`` is a list before 1.5 and an object after.
+
+    Both are in circulation, and a reader does not care which the generator
+    chose.
+    """
+    import json
+
+    doc = json.loads(_cdx_document())
+    doc["metadata"]["tools"] = [{"name": "syft", "version": "1.0.0"}]
+
+    summary = scan_inputs.summarize_input_document(json.dumps(doc).encode())
+
+    assert summary is not None
+    assert summary["tools"] == [{"name": "syft", "version": "1.0.0"}]
+
+
+def test_summary_splits_spdx_creators_by_their_prefix() -> None:
+    """SPDX states creators as "Tool:" / "Person:" / "Organization:".
+
+    The prefix decides which field a value lands in. It is stripped from a tool
+    name, where it carries nothing once the value is in ``tools``, and kept on
+    the others, where it is the only thing distinguishing a person from an
+    organisation.
+    """
+    import json
+
+    raw = json.dumps(
+        {
+            "spdxVersion": "SPDX-2.3",
+            "SPDXID": "SPDXRef-DOCUMENT",
+            "name": "portal-4.2.0",
+            "documentNamespace": "https://example.test/spdx/portal",
+            "creationInfo": {
+                "created": "2026-08-02T09:30:00Z",
+                "creators": [
+                    "Tool: syft-1.0.0",
+                    "Person: Release Engineering",
+                    "Organization: Example Corp",
+                ],
+            },
+            "packages": [{"SPDXID": "SPDXRef-Package-1", "name": "lodash"}],
+        }
+    ).encode()
+
+    summary = scan_inputs.summarize_input_document(raw)
+
+    assert summary is not None
+    assert summary["format"] == "spdx-json"
+    assert summary["spec_version"] == "SPDX-2.3"
+    assert summary["subject"] == "portal-4.2.0"
+    assert summary["created"] == "2026-08-02T09:30:00Z"
+    assert summary["tools"] == [{"name": "syft-1.0.0", "version": None}]
+    assert summary["authors"] == [
+        "Person: Release Engineering",
+        "Organization: Example Corp",
+    ]
+    assert summary["component_count"] == 1
+
+
+@pytest.mark.parametrize(
+    "raw",
+    [
+        b"",
+        b"not json",
+        b"[]",
+        # Accepted for ingest, but not summarised: a summary assembled from a
+        # document nobody parsed would state a spec version that was guessed.
+        b"SPDXVersion: SPDX-2.3\nPackageName: openssl\n",
+    ],
+)
+def test_a_document_that_cannot_be_read_is_not_summarised(raw: bytes) -> None:
+    assert scan_inputs.summarize_input_document(raw) is None
+
+
+def test_summary_survives_a_document_shaped_to_break_it() -> None:
+    """Uploads are attacker-shaped; a wrong type is skipped, not fatal."""
+    import json
+
+    raw = json.dumps(
+        {
+            "bomFormat": "CycloneDX",
+            "specVersion": 16,  # number where a string belongs
+            "metadata": {
+                "tools": ["a string where an object belongs", {"version": "no name"}],
+                "authors": "not a list",
+                "supplier": 42,
+                "component": None,
+            },
+            "components": "not a list",
+        }
+    ).encode()
+
+    summary = scan_inputs.summarize_input_document(raw)
+
+    assert summary is not None
+    assert summary["spec_version"] == "16"
+    assert summary["tools"] == []  # neither entry carried a usable name
+    assert summary["authors"] == []
+    assert summary["supplier"] is None
+    assert summary["component_count"] == 0
+
+
+def test_oversized_strings_are_clipped() -> None:
+    """These reach a JSONB column and a rendered page; a name is short."""
+    import json
+
+    doc = json.loads(_cdx_document())
+    doc["metadata"]["supplier"]["name"] = "x" * 5000
+
+    summary = scan_inputs.summarize_input_document(json.dumps(doc).encode())
+
+    assert summary is not None
+    assert len(summary["supplier"]) == 512
