@@ -281,8 +281,8 @@ the **UI label** column is what appears in tables and badges.
 | Tier (code value) | UI label | Build-gate effect | Examples |
 |---|---|---|---|
 | `permissive` | **Allowed** | No build-gate effect. | MIT, Apache-2.0, BSD-2-Clause, BSD-3-Clause, ISC, CC0-1.0, Unlicense |
-| `conditional` | **Conditional** | Triggers the [approval workflow](./approvals.md). Build proceeds — including after a **Rejected** verdict; see the [approvals caveat](./approvals.md#rejected-verdict). | LGPL-2.x, LGPL-3.x, MPL-2.0, EPL-1.x, EPL-2.0, CDDL-1.0 |
-| `forbidden` | **Forbidden** | Build gate exits 1 in CI. | AGPL-3.0, GPL-2.0, GPL-3.0, SSPL-1.0, BUSL-1.1 |
+| `conditional` | **Conditional** | Triggers the [approval workflow](./approvals.md). Build proceeds — including after a **Rejected** verdict; see the [approvals caveat](./approvals.md#rejected-verdict). | LGPL-2.x, LGPL-3.x, MPL-2.0, EPL-1.x, EPL-2.0, CDDL-1.0, CC-BY-SA-4.0, CC-BY-ND-4.0 |
+| `forbidden` | **Forbidden** | Build gate exits 1 in CI. | AGPL-3.0, GPL-2.0, GPL-3.0, SSPL-1.0, BUSL-1.1, CC-BY-NC-4.0 and its ShareAlike / NoDerivatives variants |
 | `unknown` | **Unknown** | Surfaced for review; no automatic block. Always needs human review. | License could not be parsed; SPDX ID not matched by the classifier — see [below](#why-so-many-unknown). |
 
 :::warning Classification source

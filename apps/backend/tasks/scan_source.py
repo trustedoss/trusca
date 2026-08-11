@@ -3002,6 +3002,10 @@ _LICENSE_CATEGORY_DEFAULTS: dict[str, str] = {
     "CDDL-1.0": "conditional",
     "CDDL-1.1": "conditional",
     "Apache-1.1": "conditional",
+    # NoDerivatives restricts modification, not commercial use, so a dependency
+    # shipped verbatim (a font, a document, a dataset) can satisfy it. That is a
+    # judgement about how the artefact is used, which is what conditional means.
+    "CC-BY-ND-4.0": "conditional",
     # Forbidden
     "GPL-2.0-only": "forbidden",
     "GPL-2.0-or-later": "forbidden",
@@ -3011,6 +3015,13 @@ _LICENSE_CATEGORY_DEFAULTS: dict[str, str] = {
     "AGPL-3.0-or-later": "forbidden",
     "SSPL-1.0": "forbidden",
     "BUSL-1.1": "forbidden",
+    # NonCommercial forbids commercial use outright, so including one of these
+    # in a product that is sold breaches the licence itself — not an obligation
+    # to satisfy but a use the licence does not grant. Deployments that are not
+    # commercial can relax this through the licence policy settings.
+    "CC-BY-NC-4.0": "forbidden",
+    "CC-BY-NC-SA-4.0": "forbidden",
+    "CC-BY-NC-ND-4.0": "forbidden",
 }
 
 
