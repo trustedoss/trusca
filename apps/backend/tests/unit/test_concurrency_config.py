@@ -41,6 +41,7 @@ def _clean_env() -> Iterator[None]:
         "DB_SYNC_POOL_RECYCLE",
         "SCAN_TRIGGER_RATE_LIMIT",
         "SCAN_CONCURRENCY_CAP_PER_TEAM",
+        "DISK_HARD_LIMIT_PCT",
     ]
     saved = {k: os.environ.get(k) for k in keys}
     for k in keys:
@@ -222,6 +223,63 @@ def test_int_env_logs_warning_when_clamping_to_max() -> None:
     _, kwargs = fake_logger.warning.call_args
     assert kwargs["env_var"] == "DB_POOL_SIZE"
     assert kwargs["clamped_to"] == 200
+
+
+# ---------------------------------------------------------------------------
+# _float_env: the float counterpart, used by the workspace disk guard (#36)
+# ---------------------------------------------------------------------------
+
+
+def test_disk_hard_limit_default_and_override() -> None:
+    from core.config import disk_hard_limit_pct
+
+    assert disk_hard_limit_pct() == 95.0
+    os.environ["DISK_HARD_LIMIT_PCT"] = "80"
+    assert disk_hard_limit_pct() == 80.0
+
+
+@pytest.mark.parametrize(
+    ("raw", "expected", "event"),
+    [
+        ("not-a-percent", 95.0, "config.float_env_invalid"),
+        ("nan", 95.0, "config.float_env_invalid"),
+        ("0", 50.0, "config.float_env_clamped_to_min"),
+        ("400", 100.0, "config.float_env_clamped_to_max"),
+    ],
+)
+def test_float_env_warns_on_every_correction(
+    raw: str, expected: float, event: str
+) -> None:
+    """Junk and out-of-range values are corrected, and the operator is told.
+
+    Silence is how a typo survives to the next incident: the deployment runs
+    a value nobody wrote, and the log holds no record of the substitution.
+    """
+    from unittest.mock import MagicMock, patch
+
+    from core.config import disk_hard_limit_pct
+
+    os.environ["DISK_HARD_LIMIT_PCT"] = raw
+    fake_logger = MagicMock()
+    with patch("structlog.get_logger", return_value=fake_logger):
+        assert disk_hard_limit_pct() == expected
+    fake_logger.warning.assert_called_once()
+    args, kwargs = fake_logger.warning.call_args
+    assert args[0] == event
+    assert kwargs["env_var"] == "DISK_HARD_LIMIT_PCT"
+
+
+def test_float_env_stays_quiet_on_a_valid_value() -> None:
+    """No warning when the operator's value is used as written."""
+    from unittest.mock import MagicMock, patch
+
+    from core.config import disk_hard_limit_pct
+
+    os.environ["DISK_HARD_LIMIT_PCT"] = "92.5"
+    fake_logger = MagicMock()
+    with patch("structlog.get_logger", return_value=fake_logger):
+        assert disk_hard_limit_pct() == 92.5
+    fake_logger.warning.assert_not_called()
 
 
 # ---------------------------------------------------------------------------

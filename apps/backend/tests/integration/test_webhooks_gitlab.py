@@ -24,6 +24,7 @@ import subprocess
 import uuid
 from collections.abc import AsyncIterator
 from pathlib import Path
+from types import SimpleNamespace
 from typing import Any
 
 import pytest
@@ -262,14 +263,17 @@ async def test_full_disk_skips_without_erroring(
 ) -> None:
     """A workspace over its hard limit stops scans without erroring.
 
-    Setting the threshold to 0 makes any usage count as over-limit, which is
-    the same code path a genuinely full volume takes. The workspace path has to
-    point somewhere that exists: ``_check_disk_guard`` is best-effort and lets
-    scans through when ``statvfs`` fails, so the default path (absent in a test
-    container) would silently pass and prove nothing.
+    The reading is faked rather than the threshold lowered. This used to set
+    ``DISK_HARD_LIMIT_PCT=0`` so that any usage counted as over-limit, but that
+    value now clamps to 50 (#36), which made the test pass or fail on how full
+    the runner's disk happened to be. Faking ``statvfs`` at 99% used against the
+    shipped default is both stable and closer to the real condition.
     """
-    monkeypatch.setenv("DISK_HARD_LIMIT_PCT", "0")
-    monkeypatch.setenv("WORKSPACE_HOST_PATH", "/")
+    monkeypatch.setattr(
+        os,
+        "statvfs",
+        lambda _path: SimpleNamespace(f_blocks=100, f_bavail=1, f_frsize=4096),
+    )
 
     project, secret = await _make_gitlab_project(client)
     result = await _post_mr(
@@ -680,3 +684,68 @@ async def test_oversized_payload_does_not_500(
     )
     assert response.status_code == 200, response.text
     assert response.json()["status"] == "enqueued"
+
+
+# ---------------------------------------------------------------------------
+# #38: bounds on the pre-authentication surface
+# ---------------------------------------------------------------------------
+
+
+async def test_body_over_the_cap_is_refused_with_413(
+    client: AsyncClient,
+    captured_dispatches: list[str],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Over the cap the receiver answers 413 before comparing the token.
+
+    GitLab authenticates with a header rather than a body signature, but the
+    repository still has to be resolved from the parsed payload, so the same
+    unauthenticated parse work sits in front of the decision.
+    """
+    monkeypatch.setenv("WEBHOOK_MAX_BODY_BYTES", str(64 * 1024))
+    project, secret = await _make_gitlab_project(client)
+    payload = _push_payload(project.git_url)
+    payload["pad"] = "B" * (80 * 1024)
+    body = json.dumps(payload).encode()
+
+    response = await client.post(
+        "/v1/webhooks/gitlab",
+        content=body,
+        headers={
+            "Content-Type": "application/json",
+            "X-Gitlab-Token": secret,
+            "X-Gitlab-Event": "Push Hook",
+            "X-Gitlab-Webhook-UUID": str(uuid.uuid4()),
+        },
+    )
+    assert response.status_code == 413, response.text
+    assert response.headers["content-type"].startswith(PROBLEM_JSON)
+    assert captured_dispatches == []
+
+
+async def test_source_ip_over_the_rate_limit_gets_429(
+    client: AsyncClient,
+    captured_dispatches: list[str],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Same IP-keyed budget as the GitHub receiver, they share the limit string."""
+    monkeypatch.setenv("WEBHOOK_RATE_LIMIT", "2/minute")
+    body = json.dumps(_push_payload("https://gitlab.com/acme/nothing-here")).encode()
+    headers = {
+        "Content-Type": "application/json",
+        "X-Gitlab-Token": "wrong-token",
+        "X-Gitlab-Event": "Push Hook",
+    }
+
+    seen: list[int] = []
+    for _ in range(3):
+        response = await client.post(
+            "/v1/webhooks/gitlab",
+            content=body,
+            headers={**headers, "X-Gitlab-Webhook-UUID": str(uuid.uuid4())},
+        )
+        seen.append(response.status_code)
+
+    assert seen[:2] == [401, 401], seen
+    assert seen[2] == 429, seen
+    assert captured_dispatches == []

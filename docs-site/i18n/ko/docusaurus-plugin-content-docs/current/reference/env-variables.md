@@ -160,6 +160,15 @@ superseded·노후 스캔 스냅샷을 회수하는 자동 보존 sweep을 조�
 | `SCAN_RETENTION_KEEP_LAST` | `30` | `config.py` | 나이와 무관하게 **프로젝트당** 보존되는 ref-less·실패 스캔의 최소 개수입니다. sweep은 이 하한 아래로 트림하지 않습니다 — ref 타겟이 없는 ad-hoc·진단 스캔을 보호합니다. |
 | `SCAN_RETENTION_MAX_AGE_DAYS` | `180` | `config.py` | hard age 상한. release가 아닌 스캔이 이보다 오래되면 해당 타겟의 live 스냅샷이라도 sweep이 회수합니다. `metadata.release` 라벨이 붙은 스캔은 예외이며 영구 보존됩니다. |
 
+## 웹훅 수신
+
+두 수신 엔드포인트는 공개입니다. 서명이 본문을 덮기 때문에 본문을 읽고 저장소를 찾은 뒤에야 자격을 확인할 수 있습니다. 아래 두 키가 인증 전 호출자가 소비할 수 있는 작업량을 제한합니다. [웹훅](../ci-integration/webhooks.md#요청-한도)을 보세요.
+
+| 키 | 기본값 | 읽는 위치 | 설명 |
+|---|---|---|---|
+| `WEBHOOK_MAX_BODY_BYTES` | `2097152`(2 MiB) | `config.py` | 이 크기를 넘는 본문은 버퍼에 담기 전에 `413`으로 거부합니다. `65536`~`26214400` 범위로 조정되며, 상한은 GitHub이 그 위로는 전송하지 않는 크기입니다. |
+| `WEBHOOK_RATE_LIMIT` | `120/minute` | `config.py` | slowapi 한도 문자열이며 출발 IP를 기준으로 셉니다(서명 확인 전에 알 수 있는 신원은 IP뿐입니다). `429`는 전송 하나를 잃는 것이고 어느 Git 호스트도 4xx를 스스로 재시도하지 않으므로, 이벤트를 잃기보다 값을 올리세요. |
+
 ## WebSocket 게이트웨이
 
 | 키 | 기본값 | 읽는 위치 | 설명 |
@@ -216,7 +225,7 @@ superseded·노후 스캔 스냅샷을 회수하는 자동 보존 sweep을 조�
 
 | 키 | 기본값 | 읽는 위치 | 설명 |
 |---|---|---|---|
-| `DISK_HARD_LIMIT_PCT` | `95.0` | `apps/backend/services/scan_service.py` | 빨간 게이지 + 새 스캔 차단 + admin 알림. |
+| `DISK_HARD_LIMIT_PCT` | `95.0` | `apps/backend/core/config.py` | 빨간 게이지 + 새 스캔 차단 + admin 알림. 허용 범위는 `50`~`100`이고, 범위를 벗어난 값은 가까운 경계로 조정하며 숫자가 아닌 값은 `95.0`으로 되돌립니다. 두 경우 모두 WARNING 로그를 남깁니다. |
 
 ## Traefik / TLS
 

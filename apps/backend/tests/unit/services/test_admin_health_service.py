@@ -354,3 +354,57 @@ async def test_get_system_health_returns_seven_components_in_order(
         "active_scans",
         "last_24h_errors",
     ]
+
+
+async def test_get_system_health_runs_blocking_probes_off_the_loop(
+    db_session: AsyncSession,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The Redis and Celery probes are synchronous clients (#41).
+
+    Celery's control ping waits up to two seconds for a reply. On the loop
+    thread that is two seconds in which nothing else in the process is served
+    and the dashboard polling this endpoint is what an operator opens when
+    the workers are already unwell.
+    """
+    import threading
+
+    loop_thread = threading.get_ident()
+    probe_threads: dict[str, int] = {}
+
+    class _RecordingRedis:
+        def ping(self) -> bool:
+            probe_threads["redis"] = threading.get_ident()
+            return True
+
+        def info(self, _section: str) -> dict[str, int]:
+            probe_threads["redis"] = threading.get_ident()
+            return {"used_memory": 0, "maxmemory": 0}
+
+        def close(self) -> None:
+            pass
+
+    class _RecordingCeleryControl:
+        def ping(self, timeout: float = 1.0) -> list[dict[str, dict[str, str]]]:
+            probe_threads["celery"] = threading.get_ident()
+            return [{"worker1": {"ok": "pong"}}]
+
+    class _RecordingCelery:
+        control = _RecordingCeleryControl()
+
+    monkeypatch.setattr(
+        "services.admin_health_service._redis.Redis.from_url",
+        lambda _url, **_kw: _RecordingRedis(),
+    )
+    monkeypatch.setattr(
+        "services.admin_disk_service._redis.Redis.from_url",
+        lambda _url, **_kw: _RecordingRedis(),
+    )
+
+    from unittest.mock import patch
+
+    with patch("tasks.celery_app.celery_app", new=_RecordingCelery()):
+        await get_system_health(db_session)
+
+    assert set(probe_threads) == {"redis", "celery"}
+    assert loop_thread not in probe_threads.values()

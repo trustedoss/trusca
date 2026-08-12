@@ -103,6 +103,8 @@ Separately, the **scan disk-guard** uses a single `DISK_HARD_LIMIT_PCT` (default
 DISK_HARD_LIMIT_PCT=95
 ```
 
+The accepted range is `50` to `100`. Below 50 the guard would refuse every scan on a volume that is mostly empty, which reads as "nothing is scanning" rather than as a threshold; 100 leaves it effectively off. A value outside the range is clamped to the nearest bound, and a value that is not a number falls back to `95.0`. Both cases log a WARNING naming the variable, so `docker-compose logs backend | grep DISK_HARD_LIMIT_PCT` tells you whether the deployment is running the number you wrote.
+
 ### What "scans blocked" means
 
 When `DISK_HARD_LIMIT_PCT` trips, `POST /v1/projects/{id}/scans` returns:

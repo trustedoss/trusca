@@ -161,6 +161,15 @@ These keys tune the automatic retention sweep that reclaims superseded and stale
 | `SCAN_RETENTION_KEEP_LAST` | `30` | `config.py` | Minimum number of ref-less and failed scans kept **per project**, regardless of age. The sweep never trims below this floor — it protects ad-hoc and diagnostic scans that carry no ref target. |
 | `SCAN_RETENTION_MAX_AGE_DAYS` | `180` | `config.py` | Hard age ceiling. Any non-release scan older than this is reclaimed by the sweep even if it is still the live snapshot for its target. Scans labelled `metadata.release` are exempt and kept forever. |
 
+## Webhook receivers
+
+Both receivers are public: the signature covers the body, so the body is read and the repository resolved before any credential is checked. These two keys bound what an unauthenticated caller can make that cost. See [Webhooks](../ci-integration/webhooks.md#request-limits).
+
+| Key | Default | Read by | Description |
+|---|---|---|---|
+| `WEBHOOK_MAX_BODY_BYTES` | `2097152` (2 MiB) | `config.py` | Bodies over this are refused with `413` before being buffered. Clamped to `65536`–`26214400`; the ceiling is what GitHub itself refuses to deliver above. |
+| `WEBHOOK_RATE_LIMIT` | `120/minute` | `config.py` | slowapi limit string, keyed on source IP (the only identity available before the signature is checked). A `429` costs a delivery (no Git host retries a 4xx on its own), so raise this rather than lose events. |
+
 ## WebSocket gateway
 
 | Key | Default | Read by | Description |
@@ -217,7 +226,7 @@ These apply to the demo SaaS deployment. Self-hosted installs leave them empty (
 
 | Key | Default | Read by | Description |
 |---|---|---|---|
-| `DISK_HARD_LIMIT_PCT` | `95.0` | `apps/backend/services/scan_service.py` | Red gauge + new scans blocked + admin notification. |
+| `DISK_HARD_LIMIT_PCT` | `95.0` | `apps/backend/core/config.py` | Red gauge + new scans blocked + admin notification. Accepted range `50`–`100`; a value outside it is clamped and a value that is not a number falls back to `95.0`, both logged at WARNING. |
 
 ## Traefik / TLS
 
