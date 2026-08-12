@@ -704,6 +704,24 @@ jobs:
           restore-keys: |
             trivy-db-${{ runner.os }}-
 
+      # The apt layers pin whatever package versions they were first built
+      # against, and a layer that is CACHED does not run — so the
+      # `apt-get upgrade -y` inside them upgrades nothing on a cache hit. That
+      # is how this job came to fail on a php-cli CVE whose fix Debian had
+      # already shipped: the release build (a different cache scope, populated
+      # per release) had the patched package, while this gate was still reading
+      # a layer built weeks earlier. A gate measuring something other than what
+      # ships is worse than no gate.
+      #
+      # Rotating the scope weekly bounds that drift to one week — Debian's
+      # security updates land on roughly that cadence — at the cost of one cold
+      # build per week. Pinning it to the run id instead would make every PR a
+      # cold build of a JDK + Node + cdxgen + ORT image; scoping it per commit
+      # would never hit at all.
+      - name: Cache scope (rotates weekly)
+        id: cache-scope
+        run: echo "week=$(date -u +%G-W%V)" >> "$GITHUB_OUTPUT"
+
       - name: Build worker image
         uses: docker/build-push-action@v6
         with:
@@ -711,8 +729,8 @@ jobs:
           file: apps/backend/Dockerfile.worker
           tags: trustedoss/backend-worker:dev
           load: true
-          cache-from: type=gha,scope=worker
-          cache-to: type=gha,scope=worker,mode=max
+          cache-from: type=gha,scope=worker-${{ steps.cache-scope.outputs.week }}
+          cache-to: type=gha,scope=worker-${{ steps.cache-scope.outputs.week }},mode=max
 
       - name: Trivy scan (HARD FAIL on CRITICAL,HIGH)
         # Chore P (Phase 8 worker-image refresh): single combined gate.

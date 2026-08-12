@@ -485,11 +485,17 @@ RUN apt-get update \
 # stages (lines 84, 155): composer pulls php-symfony-{console,filesystem,
 # finder,process,string} transitively, and those must land on the
 # bookworm-security patch level rather than whatever this layer was first
-# built against. Without it, a cached GHA layer (cache-from/to scope=worker
-# in ci.yml image-scan) pins the symfony deps to a stale revision — which is
-# how 5.4.23+dfsg-1+deb12u5 lingered and tripped image-scan on
-# CVE-2026-45063 / CVE-2026-45067 / CVE-2026-45077 (all fixed in
-# 5.4.53+dfsg-0+deb12u1). Adding the upgrade also busts that stale layer.
+# built against — as 5.4.23+dfsg-1+deb12u5 did, tripping image-scan on
+# CVE-2026-45063 / CVE-2026-45067 / CVE-2026-45077 (fixed in
+# 5.4.53+dfsg-0+deb12u1).
+#
+# The upgrade only helps when this layer actually RUNS. A CACHED layer runs
+# nothing, so on a cache hit the upgrade is not skipped so much as absent, and
+# the layer keeps serving its original package set indefinitely. Editing the
+# RUN line busts the cache once and then the drift resumes — which is exactly
+# what happened next: php8.2-cli sat at 8.2.32 through CVE-2026-17543 while
+# Debian had shipped 8.2.33. What bounds the drift is the weekly cache-scope
+# rotation in ci.yml / release.yml, not anything writable here.
 RUN apt-get update \
     && apt-get install -y --no-install-recommends \
         php-cli \
