@@ -31,8 +31,12 @@ name: Release (publish container images)
 #
 # Tag strategy (CLAUDE.md core rule #9 — NEVER `:latest`):
 #   git tag v2.0.1  →  image tags `2.0.1` (immutable) and `2.0` (movable minor).
-#   No `latest` tag is produced. docker/metadata-action's semver patterns drive
-#   this — see the `tags:` block in the metadata step of the merge job.
+#   No `latest` tag is produced. This takes an explicit `flavor: latest=false`
+#   on every metadata step: docker/metadata-action defaults to `latest=auto`,
+#   which adds `latest` whenever a semver pattern resolves, with no `type=raw`
+#   line anywhere. Rule #9 was quietly broken from the first release until
+#   2026-08-13 for exactly that reason, and the comment here asserted the
+#   opposite because it reasoned about the `tags:` block alone.
 #
 # ── Operator one-time setup (required, see docs-site installation guide) ──
 #   1. ghcr packages inherit the repo's GITHUB_TOKEN write scope below — no
@@ -135,6 +139,12 @@ jobs:
           # stating a version that did not match its own tag.
           tags: |
             type=semver,pattern={{version}},value=${{ github.event.inputs.tag }}
+          # Rule #9. This job pushes by digest so its tag list is inert, but the
+          # default (`latest=auto`) would still put `latest` in the metadata
+          # output, and a future edit that starts pushing tags from here would
+          # inherit it silently.
+          flavor: |
+            latest=false
           labels: |
             org.opencontainers.image.title=${{ matrix.image.image }}
             org.opencontainers.image.description=${{ matrix.image.description }}
@@ -240,11 +250,16 @@ jobs:
         with:
           images: ${{ env.REGISTRY_NAMESPACE }}/${{ matrix.image.image }}
           # On a tag push the ref drives the semver; on workflow_dispatch we
-          # feed the operator-supplied tag through the same patterns. Neither
-          # produces `latest` — there is no `type=raw,value=latest` line.
+          # feed the operator-supplied tag through the same patterns.
           tags: |
             type=semver,pattern={{version}},value=${{ github.event.inputs.tag }}
             type=semver,pattern={{major}}.{{minor}},value=${{ github.event.inputs.tag }}
+          # Rule #9, and this is the job that actually applies tags. The absence
+          # of a `type=raw,value=latest` line above does NOT mean no `latest`:
+          # the action's default flavor is `latest=auto`, which appends it to
+          # any resolved semver. v0.20.0, v0.20.1 and v0.21.0 all shipped one.
+          flavor: |
+            latest=false
           labels: |
             org.opencontainers.image.title=${{ matrix.image.image }}
             org.opencontainers.image.description=${{ matrix.image.description }}
