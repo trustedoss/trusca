@@ -119,16 +119,24 @@ MAX_RESULT_BYTES = 128 * 1024 * 1024
 
 @dataclass(frozen=True)
 class VendoredComponent:
-    """One full-file vendored-OSS match promoted to a component.
+    """One vendored-OSS component, assembled from every file that matched it.
 
     ``purl`` / ``name`` / ``version`` identify the originating component;
     ``licenses`` is the list of SPDX-ish license names SCANOSS reported for it.
+
+    ``matched_files`` is how many files in the tree pointed at this purl, and
+    ``version_candidates`` lists every version they claimed when they did not
+    agree (empty when they did). Both exist because a single file matching a
+    library is weak evidence and several files matching it is strong, and the
+    inventory should say which it is holding rather than quietly deciding.
     """
 
     purl: str
     name: str
     version: str
     licenses: list[str]
+    matched_files: int = 1
+    version_candidates: tuple[str, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -320,8 +328,13 @@ def _parse_vendored(result_path: Path) -> list[VendoredComponent]:
     if not isinstance(data, dict):
         return []
 
-    seen: set[tuple[str, str]] = set()
-    out: list[VendoredComponent] = []
+    # Grouped by purl, not by (purl, version) as before. Files belonging to one
+    # vendored library routinely disagree about its version — a recorded OSSKB
+    # response has inih's ini.c answering r58 and ini.h answering r54 from the
+    # same purl — and keying on the pair listed that library twice, as if the
+    # tree contained two copies. The version is now decided once per purl, and
+    # the disagreement is reported rather than materialised as a second row.
+    grouped: dict[str, list[VendoredComponent]] = {}
     snippet_skipped = 0
     capped = False
 
@@ -340,16 +353,14 @@ def _parse_vendored(result_path: Path) -> list[VendoredComponent]:
             component = _parse_match(match)
             if component is None:
                 continue
-            key = (component.purl, component.version)
-            if key in seen:
-                continue
-            seen.add(key)
-            out.append(component)
-            if len(out) >= MAX_VENDORED_COMPONENTS:
+            if component.purl not in grouped and len(grouped) >= MAX_VENDORED_COMPONENTS:
                 capped = True
                 break
+            grouped.setdefault(component.purl, []).append(component)
         if capped:
             break
+
+    out = [_consense(members) for members in grouped.values()]
 
     if snippet_skipped:
         log.info("scanoss_snippets_skipped", count=snippet_skipped)
@@ -360,6 +371,46 @@ def _parse_vendored(result_path: Path) -> list[VendoredComponent]:
             note="excess vendored matches dropped; scan still succeeds",
         )
     return out
+
+
+def _consense(members: list[VendoredComponent]) -> VendoredComponent:
+    """Collapse every file that matched one purl into a single component.
+
+    The version is the one most files claimed. Ties break on the sorted order so
+    the same response always yields the same inventory — an arbitrary-but-stable
+    pick, and the losing candidates travel with it in ``version_candidates`` so
+    the choice is visible instead of silently made.
+
+    No member is ever dropped for being alone. Upstream promotes a component
+    only once two files agree on it, which does cut mis-attribution noise — but
+    measured against a recorded response it also removed ``stb_image.h`` and
+    ``linenoise.c``, single-file libraries that are the most ordinary shape
+    vendored code takes. Two thirds of what it discarded there was real. An
+    inventory that omits a component reads exactly like a tree that does not
+    contain one, so the count is reported and the filtering is left to whoever
+    can see the rest of the picture.
+    """
+    versions = [m.version for m in members if m.version]
+    counts: dict[str, int] = {}
+    for v in versions:
+        counts[v] = counts.get(v, 0) + 1
+    version = max(sorted(counts), key=lambda v: counts[v]) if counts else ""
+    distinct = tuple(sorted(counts))
+
+    licenses: list[str] = []
+    for m in members:
+        for name in m.licenses:
+            if name not in licenses:
+                licenses.append(name)
+
+    return VendoredComponent(
+        purl=members[0].purl,
+        name=members[0].name,
+        version=version,
+        licenses=licenses,
+        matched_files=len(members),
+        version_candidates=distinct if len(distinct) > 1 else (),
+    )
 
 
 def _parse_match(match: dict[str, Any]) -> VendoredComponent | None:

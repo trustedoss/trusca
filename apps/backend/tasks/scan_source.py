@@ -3558,7 +3558,21 @@ def _persist_vendored_components(
                     scan_id=scan_uuid,
                     component_version_id=component_version.id,
                     direct=False,
-                    raw_data={"source": _SCANOSS_SOURCE},
+                    # How many files pointed here, and which versions they
+                    # claimed when they disagreed. A one-file match and a
+                    # twelve-file match are different claims about the tree, and
+                    # the row is where that has to be readable — the identity
+                    # columns cannot express it. Omitted when the files agreed,
+                    # so its presence means something.
+                    raw_data={
+                        "source": _SCANOSS_SOURCE,
+                        "matched_files": vc.matched_files,
+                        **(
+                            {"version_candidates": list(vc.version_candidates)}
+                            if vc.version_candidates
+                            else {}
+                        ),
+                    },
                 )
             )
             session.flush()

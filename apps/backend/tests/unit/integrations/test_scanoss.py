@@ -535,3 +535,76 @@ def test_api_key_redacted_from_streamed_lines(
     for line in seen:
         assert "sk-secret-123" not in line
         assert "***" in line
+
+
+# ---------------------------------------------------------------------------
+# Coverage / consensus, against a RECORDED OSSKB response.
+#
+# The synthetic fixture above cannot settle these: it was written to match what
+# the parser expects, so it agrees with the parser by construction. The recorded
+# one is what the service actually said about a tree vendoring seven files —
+# provenance and re-recording procedure in
+# tests/fixtures/scanoss/PROVENANCE.md.
+# ---------------------------------------------------------------------------
+_RECORDED = (
+    Path(__file__).resolve().parents[2]
+    / "fixtures"
+    / "scanoss"
+    / "vendored-tree-osskb.json"
+)
+
+
+def _recorded_by_purl() -> dict[str, Any]:
+    from integrations.scanoss import _parse_vendored
+
+    return {vc.purl: vc for vc in _parse_vendored(_RECORDED)}
+
+
+def test_files_matching_one_purl_collapse_to_one_component() -> None:
+    """Two cJSON files, one component — and the count says two files backed it."""
+    cjson = _recorded_by_purl()["pkg:github/davegamble/cjson"]
+    assert cjson.version == "v1.7.18"
+    assert cjson.matched_files == 2
+    # They agreed, so nothing to report.
+    assert cjson.version_candidates == ()
+
+
+def test_disagreeing_versions_yield_one_component_that_says_so() -> None:
+    """inih answers r58 for ini.c and r54 for ini.h, from the same purl.
+
+    Keying on (purl, version) — what this adapter did before — listed inih
+    twice, reading as two vendored copies of one library. One row now, with the
+    losing candidate visible rather than discarded.
+    """
+    inih = _recorded_by_purl()["pkg:github/benhoyt/inih"]
+    assert inih.matched_files == 2
+    assert inih.version_candidates == ("r54", "r58")
+    assert inih.version in inih.version_candidates
+
+
+def test_single_file_libraries_survive() -> None:
+    """stb and linenoise match on one file each and are still reported.
+
+    This is the deliberate divergence from upstream's coverage filter, which
+    promotes a component only once two files agree. Measured on this response
+    that filter removed three components, and two of them — these — are
+    single-file libraries, the most ordinary shape vendored code takes.
+    """
+    by_purl = _recorded_by_purl()
+    for purl in ("pkg:github/nothings/stb", "pkg:github/antirez/linenoise"):
+        assert by_purl[purl].matched_files == 1
+
+
+def test_consensus_is_stable_across_runs() -> None:
+    """The same response must always produce the same inventory.
+
+    inih's two versions each appear once, so the winner is a tie broken on
+    sorted order. A tie broken by dict iteration would make the recorded
+    version drift between runs for no reason a reader could see.
+    """
+    from integrations.scanoss import _parse_vendored
+
+    runs = [
+        {vc.purl: vc.version for vc in _parse_vendored(_RECORDED)} for _ in range(5)
+    ]
+    assert all(r == runs[0] for r in runs)

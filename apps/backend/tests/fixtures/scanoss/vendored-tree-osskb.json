@@ -1,0 +1,314 @@
+{
+  "third_party/cjson/cJSON.c": [
+    {
+      "component": "cJSON",
+      "file": "cJSON.c",
+      "file_hash": "630deb131a520d63b8913492d982b589",
+      "file_url": " ",
+      "id": "file",
+      "latest": "v1.7.18",
+      "licenses": [
+        {
+          "checklist_url": "https://www.osadl.org/fileadmin/checklists/unreflicenses/MIT.txt",
+          "copyleft": "no",
+          "name": "MIT",
+          "osadl_updated": "2026-02-12T16:31:00+0000",
+          "patent_hints": "no",
+          "source": "component_declared",
+          "url": "https://spdx.org/licenses/MIT.html"
+        }
+      ],
+      "lines": "all",
+      "matched": "100%",
+      "oss_lines": "all",
+      "purl": [
+        "pkg:github/davegamble/cjson",
+        "pkg:apk/cjson",
+        "pkg:conan/cjson",
+        "pkg:golang/github.com/davegamble/cjson",
+        "pkg:rpm/opensuse/cJSON"
+      ],
+      "release_date": "2024-05-13",
+      "server": {
+        "kb_version": {
+          "daily": "26.08.12",
+          "monthly": "26.07"
+        },
+        "version": "5.4.25"
+      },
+      "source_hash": "630deb131a520d63b8913492d982b589",
+      "status": "pending",
+      "url": "https://github.com/davegamble/cjson",
+      "url_hash": "0a66fe90c90bd8ea2cf21c451b59a71f",
+      "vendor": "DaveGamble",
+      "version": "v1.7.18"
+    }
+  ],
+  "third_party/cjson/cJSON.h": [
+    {
+      "component": "cJSON",
+      "file": "cJSON.h",
+      "file_hash": "a9c6c607caeee91e5fe70dfd349b4ddc",
+      "file_url": " ",
+      "id": "file",
+      "latest": "v1.7.18",
+      "licenses": [
+        {
+          "checklist_url": "https://www.osadl.org/fileadmin/checklists/unreflicenses/MIT.txt",
+          "copyleft": "no",
+          "name": "MIT",
+          "osadl_updated": "2026-02-12T16:31:00+0000",
+          "patent_hints": "no",
+          "source": "component_declared",
+          "url": "https://spdx.org/licenses/MIT.html"
+        }
+      ],
+      "lines": "all",
+      "matched": "100%",
+      "oss_lines": "all",
+      "purl": [
+        "pkg:github/davegamble/cjson",
+        "pkg:apk/cjson",
+        "pkg:conan/cjson",
+        "pkg:golang/github.com/davegamble/cjson",
+        "pkg:rpm/opensuse/cJSON"
+      ],
+      "release_date": "2024-05-13",
+      "server": {
+        "kb_version": {
+          "daily": "26.08.12",
+          "monthly": "26.07"
+        },
+        "version": "5.4.25"
+      },
+      "source_hash": "a9c6c607caeee91e5fe70dfd349b4ddc",
+      "status": "pending",
+      "url": "https://github.com/davegamble/cjson",
+      "url_hash": "0a66fe90c90bd8ea2cf21c451b59a71f",
+      "vendor": "DaveGamble",
+      "version": "v1.7.18"
+    }
+  ],
+  "third_party/cjson/cJSON_Utils.c": [
+    {
+      "component": "github.com/DaveGamble/cJSON",
+      "file": "cJSON_Utils.c",
+      "file_hash": "6a778a0b405ecf5ca708b2eb88200399",
+      "file_url": " ",
+      "id": "file",
+      "latest": "v1.7.19-0.20240923110858-12c4bf1986c2",
+      "licenses": [
+        {
+          "checklist_url": "https://www.osadl.org/fileadmin/checklists/unreflicenses/MIT.txt",
+          "copyleft": "no",
+          "name": "MIT",
+          "osadl_updated": "2026-02-12T16:31:00+0000",
+          "patent_hints": "no",
+          "source": "component_declared",
+          "url": "https://spdx.org/licenses/MIT.html"
+        }
+      ],
+      "lines": "all",
+      "matched": "100%",
+      "oss_lines": "all",
+      "purl": [
+        "pkg:golang/github.com/davegamble/cjson",
+        "pkg:github/davegamble/cjson",
+        "pkg:apk/cjson",
+        "pkg:conan/cjson",
+        "pkg:rpm/opensuse/cJSON"
+      ],
+      "release_date": "2021-10-19",
+      "server": {
+        "kb_version": {
+          "daily": "26.08.12",
+          "monthly": "26.07"
+        },
+        "version": "5.4.25"
+      },
+      "source_hash": "6a778a0b405ecf5ca708b2eb88200399",
+      "status": "pending",
+      "url": "https://proxy.golang.org/github.com/davegamble/cjson/@v/v1.7.16-0.20210826061342-f50dafc7d0bf.zip",
+      "url_hash": "6c399419ae55ba2c0420ee1afcf8bfcf",
+      "vendor": "",
+      "version": "v1.7.16-0.20210826061342-f50dafc7d0bf"
+    }
+  ],
+  "third_party/inih/ini.c": [
+    {
+      "component": "inih",
+      "file": "ini.c",
+      "file_hash": "5387a0dbc3d622b86393d68fa8ff4534",
+      "file_url": " ",
+      "id": "file",
+      "latest": "ed45251",
+      "licenses": [
+        {
+          "checklist_url": "https://www.osadl.org/fileadmin/checklists/unreflicenses/BSD-3-Clause.txt",
+          "copyleft": "no",
+          "name": "BSD-3-Clause",
+          "osadl_updated": "2026-02-12T16:31:00+0000",
+          "patent_hints": "no",
+          "source": "license_file",
+          "url": "https://spdx.org/licenses/BSD-3-Clause.html"
+        }
+      ],
+      "lines": "all",
+      "matched": "100%",
+      "oss_lines": "all",
+      "purl": [
+        "pkg:github/benhoyt/inih",
+        "pkg:apk/inih",
+        "pkg:conan/inih",
+        "pkg:rpm/opensuse/inih"
+      ],
+      "release_date": "2024-01-24",
+      "server": {
+        "kb_version": {
+          "daily": "26.08.12",
+          "monthly": "26.07"
+        },
+        "version": "5.4.25"
+      },
+      "source_hash": "5387a0dbc3d622b86393d68fa8ff4534",
+      "status": "pending",
+      "url": "https://github.com/benhoyt/inih",
+      "url_hash": "3332b652fcfd23adce279ebcf9ba856e",
+      "vendor": "benhoyt",
+      "version": "r58"
+    }
+  ],
+  "third_party/inih/ini.h": [
+    {
+      "component": "inih",
+      "file": "ini.h",
+      "file_hash": "8889b393b09d29570cc7992c3fce9417",
+      "file_url": " ",
+      "id": "file",
+      "latest": "93f392b",
+      "licenses": [
+        {
+          "checklist_url": "https://www.osadl.org/fileadmin/checklists/unreflicenses/BSD-3-Clause.txt",
+          "copyleft": "no",
+          "name": "BSD-3-Clause",
+          "osadl_updated": "2026-02-12T16:31:00+0000",
+          "patent_hints": "no",
+          "source": "license_file",
+          "url": "https://spdx.org/licenses/BSD-3-Clause.html"
+        }
+      ],
+      "lines": "all",
+      "matched": "100%",
+      "oss_lines": "all",
+      "purl": [
+        "pkg:github/benhoyt/inih",
+        "pkg:apk/inih",
+        "pkg:conan/inih",
+        "pkg:rpm/opensuse/inih"
+      ],
+      "release_date": "2022-03-23",
+      "server": {
+        "kb_version": {
+          "daily": "26.08.12",
+          "monthly": "26.07"
+        },
+        "version": "5.4.25"
+      },
+      "source_hash": "8889b393b09d29570cc7992c3fce9417",
+      "status": "pending",
+      "url": "https://github.com/benhoyt/inih",
+      "url_hash": "3fd5fcfe34e5c4a4b99dd1c3c15b38a8",
+      "vendor": "benhoyt",
+      "version": "r54"
+    }
+  ],
+  "third_party/linenoise/linenoise.c": [
+    {
+      "component": "linenoise",
+      "file": "linenoise.c",
+      "file_hash": "4e5389db34967af09ff518b8bce8c29e",
+      "file_url": " ",
+      "id": "file",
+      "latest": "a473823",
+      "licenses": [
+        {
+          "checklist_url": "https://www.osadl.org/fileadmin/checklists/unreflicenses/BSD-2-Clause.txt",
+          "copyleft": "no",
+          "name": "BSD-2-Clause",
+          "osadl_updated": "2026-02-12T16:31:00+0000",
+          "patent_hints": "no",
+          "source": "component_declared",
+          "url": "https://spdx.org/licenses/BSD-2-Clause.html"
+        }
+      ],
+      "lines": "all",
+      "matched": "100%",
+      "oss_lines": "all",
+      "purl": [
+        "pkg:github/antirez/linenoise",
+        "pkg:apk/linenoise",
+        "pkg:golang/github.com/antirez/linenoise"
+      ],
+      "release_date": "2026-05-02",
+      "server": {
+        "kb_version": {
+          "daily": "26.08.12",
+          "monthly": "26.07"
+        },
+        "version": "5.4.25"
+      },
+      "source_hash": "4e5389db34967af09ff518b8bce8c29e",
+      "status": "pending",
+      "url": "https://github.com/antirez/linenoise",
+      "url_hash": "fdbdbfc711f5c5bbe2b71a5b62f00914",
+      "vendor": "antirez",
+      "version": "a473823"
+    }
+  ],
+  "third_party/stb/stb_image.h": [
+    {
+      "component": "stb",
+      "file": "stb_image.h",
+      "file_hash": "27932e6fb3a2f26aee2fc33f2cb4e696",
+      "file_url": " ",
+      "id": "file",
+      "latest": "31c1ad3",
+      "licenses": [
+        {
+          "checklist_url": "https://www.osadl.org/fileadmin/checklists/unreflicenses/MIT.txt",
+          "copyleft": "no",
+          "name": "MIT",
+          "osadl_updated": "2026-02-12T16:31:00+0000",
+          "patent_hints": "no",
+          "source": "license_file",
+          "url": "https://spdx.org/licenses/MIT.html"
+        }
+      ],
+      "lines": "all",
+      "matched": "100%",
+      "oss_lines": "all",
+      "purl": [
+        "pkg:github/nothings/stb",
+        "pkg:apk/stb",
+        "pkg:conan/stb",
+        "pkg:deb/stb",
+        "pkg:golang/github.com/nothings/stb",
+        "pkg:rpm/opensuse/stb"
+      ],
+      "release_date": "2024-05-31",
+      "server": {
+        "kb_version": {
+          "daily": "26.08.12",
+          "monthly": "26.07"
+        },
+        "version": "5.4.25"
+      },
+      "source_hash": "27932e6fb3a2f26aee2fc33f2cb4e696",
+      "status": "pending",
+      "url": "https://github.com/nothings/stb",
+      "url_hash": "40d82bc64d4eef403c1e038248ac6e01",
+      "vendor": "nothings",
+      "version": "013ac3b"
+    }
+  ]
+}
