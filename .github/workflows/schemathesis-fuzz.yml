@@ -1,0 +1,223 @@
+name: Schema Fuzz
+
+# Property-based fuzzing of the REST API, driven by the OpenAPI schema the
+# backend already publishes at /openapi.json. FastAPI generates it from the
+# route signatures, so it carries the types, required-ness and constraints of
+# every parameter, and schemathesis turns those into boundary cases: empty
+# strings where a length is declared, values past a maximum, wrong types,
+# missing required fields, unexpected enum members.
+#
+# WHAT THIS DOES NOT DO. Schema-based generation knows types and constraints,
+# nothing about meaning. It will not notice that a parameter named `path` looks
+# like it might accept a traversal string, or that two endpoints have to be
+# called in a particular order for the state to make sense. Business-logic
+# flaws stay out of reach. This closes part of the gap, not all of it.
+#
+# NO MODEL, NO API KEY. The schema is the input, so this needs neither an LLM
+# nor a GPU nor a paid service.
+#
+# EPHEMERAL TARGET ONLY. schemathesis sends DELETE, PUT and POST as the schema
+# describes them. That is fine against a stack this workflow stands up and
+# throws away, and it is not fine against the demo host or anything else that
+# is shared. The target is always localhost inside this runner.
+#
+# NOT A GATE. Findings are reported as artifacts; the run does not fail on
+# them. Turning this into a gate later needs the same care iac-security.yml
+# needed: raise the threshold AND confirm it still blocks by making it block
+# once on purpose.
+
+on:
+  schedule:
+    - cron: "43 3 * * 3" # Wednesdays 03:43 UTC
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+
+concurrency:
+  group: schema-fuzz-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  fuzz:
+    name: schemathesis (schema-based)
+    runs-on: ubuntu-22.04
+    timeout-minutes: 45
+    env:
+      # Same values dogfood-scan.yml uses to stand the stack up. The key is
+      # throwaway and only ever reaches this runner.
+      SECRET_KEY: schema-fuzz-secret-key-0123456789abcdef
+      # Register + login would otherwise trip the 5/min login limiter.
+      RATELIMIT_DISABLED: "1"
+      # The toolchain is not exercised here, so skip the real scan backend.
+      TRUSTEDOSS_SCAN_BACKEND: mock
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build backend image
+        run: docker compose -f docker-compose.dev.yml build backend
+
+      - name: Start postgres + redis
+        run: |
+          set -euo pipefail
+          docker compose -f docker-compose.dev.yml up -d postgres redis
+          deadline=$(( $(date +%s) + 120 ))
+          while :; do
+            cid=$(docker compose -f docker-compose.dev.yml ps -q postgres)
+            status=$(docker inspect --format '{{.State.Health.Status}}' "$cid" 2>/dev/null || echo none)
+            [ "$status" = healthy ] && break
+            [ "$(date +%s)" -ge "$deadline" ] && { echo "::error::postgres never became healthy"; exit 1; }
+            sleep 3
+          done
+
+      - name: Run migrations
+        # The dev image CMD is bare uvicorn, so AUTO_MIGRATE never fires.
+        # Migrate explicitly or /health/ready stays 503 forever.
+        run: |
+          docker compose -f docker-compose.dev.yml run --rm --no-deps backend \
+            alembic upgrade head
+
+      - name: Start backend
+        run: |
+          set -euo pipefail
+          docker compose -f docker-compose.dev.yml up -d backend
+          deadline=$(( $(date +%s) + 240 ))
+          while :; do
+            cid=$(docker compose -f docker-compose.dev.yml ps -q backend)
+            status=$(docker inspect --format '{{.State.Health.Status}}' "$cid" 2>/dev/null || echo none)
+            [ "$status" = healthy ] && break
+            if [ "$(date +%s)" -ge "$deadline" ]; then
+              echo "::error::backend never became healthy"
+              docker compose -f docker-compose.dev.yml logs --tail=50 backend
+              exit 1
+            fi
+            sleep 5
+          done
+
+      - name: Mint a scoped token
+        id: auth
+        # Deliberately a plain user, not a superuser. register creates a
+        # personal org and team and makes this account their team_admin with
+        # is_superuser false, so it exercises tenant-scoped CRUD and gets 403
+        # from the cross-tenant and admin routes. Those 403s are the boundary
+        # working, not failures. Fuzzing behind a superuser would reach
+        # destructive cross-tenant paths, which is not a scope this opens.
+        run: |
+          set -euo pipefail
+          api=http://localhost:8000
+          email="fuzz-$(date +%s)@example.com"
+          password="SchemaFuzz-$(openssl rand -hex 12)"
+          curl -fsS -X POST "$api/auth/register" -H 'Content-Type: application/json' \
+            -d "$(jq -nc --arg e "$email" --arg p "$password" \
+                  '{email: $e, password: $p, full_name: "Schema Fuzz"}')" >/dev/null
+          jwt=$(curl -fsS -X POST "$api/auth/login" -H 'Content-Type: application/json' \
+            -d "$(jq -nc --arg e "$email" --arg p "$password" '{email: $e, password: $p}')" \
+            | jq -r '.access_token')
+          [ -n "$jwt" ] && [ "$jwt" != "null" ] || { echo "::error::login returned no token"; exit 1; }
+          # Confirm the account is what we intended before handing it to a fuzzer.
+          if [ "$(curl -fsS "$api/auth/me" -H "Authorization: Bearer $jwt" | jq -r '.is_superuser')" = "true" ]; then
+            echo "::error::the fuzzing account is a superuser; refusing to run"
+            exit 1
+          fi
+          echo "::add-mask::$jwt"
+          echo "jwt=$jwt" >> "$GITHUB_OUTPUT"
+
+      - name: Run schemathesis
+        env:
+          JWT: ${{ steps.auth.outputs.jwt }}
+          # CLAUDE.md #9 - pinned, never :latest. 4.x rather than 3.x because
+          # FastAPI emits OpenAPI 3.1 and 3.x only reads it behind an
+          # --experimental flag, refusing the schema outright without one.
+          ST_IMAGE: schemathesis/schemathesis:4.24.3
+        run: |
+          set -euo pipefail
+          mkdir -p out
+          # No --report. The console output is what a person reads, and it is
+          # captured below; the report formats are for feeding other tools,
+          # which nothing here does. Keeping the container from writing to the
+          # host also removes a class of permission failure that shows up as a
+          # scan which "ran" and left nothing behind.
+          #
+          # Worth knowing if you reach for 3.x instead: there, --report with no
+          # argument uploads the run to schemathesis.io and telemetry defaults
+          # to true. 4.x dropped both, so there is nothing to switch off here.
+          #
+          # --checks all turns on response-schema and status-code conformance
+          # alongside the 5xx check, which is where schema-driven fuzzing
+          # actually earns its keep: responses that do not match what the
+          # schema promised.
+          docker run --rm --network host \
+            "${ST_IMAGE}" run \
+              http://localhost:8000/openapi.json \
+              --checks all \
+              --header "Authorization: Bearer ${JWT}" \
+              --max-examples 25 \
+              --max-response-time 10 \
+              --no-color \
+            > out/schemathesis-stdout.txt 2>&1 || true
+          # Non-blocking: the exit status is deliberately swallowed. The
+          # summary below reports what was found.
+          tail -40 out/schemathesis-stdout.txt
+
+      - name: Summarise
+        if: always()
+        run: |
+          set -euo pipefail
+          f=out/schemathesis-stdout.txt
+          {
+            echo "### Schema-based fuzzing"
+            echo ""
+            if [ ! -s "$f" ]; then
+              echo "No output was produced. The run did not start - check the job log."
+              exit 0
+            fi
+            # Coverage numbers first, before any findings. A run that never
+            # reached the API prints a clean-looking summary: this job swallows
+            # the exit status, so a bad CLI flag, an unreadable schema or a
+            # permission error all end as "no failures". Three separate
+            # instances of exactly that showed up while this workflow was being
+            # written. These two counts are what tell them apart.
+            ops=$(grep -oE "Operations:[[:space:]]+[0-9]+ selected" "$f" | grep -oE "[0-9]+" | head -1 || true)
+            cases=$(grep -oE "[0-9]+ generated" "$f" | grep -oE "[0-9]+" | head -1 || true)
+            echo "| | Count |"
+            echo "| --- | --- |"
+            echo "| API operations selected | ${ops:-0} |"
+            echo "| Test cases generated | ${cases:-0} |"
+            echo ""
+            if [ "${ops:-0}" -eq 0 ] || [ "${cases:-0}" -eq 0 ]; then
+              echo "**Zero here means the run never reached the API. That is a failed run, not a clean one.**"
+              echo ""
+              echo '''```'''
+              tail -25 "$f"
+              echo '''```'''
+              exit 0
+            fi
+            if grep -q "^Failures:" "$f"; then
+              echo '''```'''
+              sed -n "/^Failures:/,/^\s*$/p" "$f"
+              sed -n "/^Warnings:/,/^\s*$/p" "$f"
+              echo '''```'''
+            else
+              echo "No failures reported."
+            fi
+            echo ""
+            echo "Findings are advisory; this run does not fail on them."
+            echo ""
+            echo "Schema-based generation knows types and constraints, not meaning, so"
+            echo "business-logic flaws stay out of reach. 401 and 403 from admin and"
+            echo "cross-tenant routes are the authorisation boundary holding rather than"
+            echo "findings - the account used here is a plain team_admin on purpose."
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: schemathesis-report
+          path: out/
+          if-no-files-found: warn
+          retention-days: 30
+
+      - name: Tear down
+        if: always()
+        run: docker compose -f docker-compose.dev.yml down -v --remove-orphans
