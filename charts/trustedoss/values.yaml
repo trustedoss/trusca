@@ -345,9 +345,11 @@ backend:
   # the image does rather than changing it. fsGroup makes the workspace
   # volume group-writable for that user.
   #
-  # Override both maps if you build the image with a different uid. Setting
-  # either to {} drops the securityContext entirely, which puts the pod back
-  # on the cluster defaults — Trivy KSV-0118 flags exactly that.
+  # Override both maps if you build the image with a different uid. To drop a
+  # block entirely, set it to `null`, not `{}` — Helm deep-merges maps, so an
+  # empty map leaves every default in place and the block renders unchanged.
+  # A dropped block puts the pod back on cluster defaults, which is what Trivy
+  # KSV-0118 flags.
   podSecurityContext:
     runAsNonRoot: true
     runAsUser: 1000
