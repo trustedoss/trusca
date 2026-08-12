@@ -174,9 +174,9 @@ Apache-2.0 §4(d)와 유사한 attribution 의무 이행을 위해 포털은 프
 ### 라이선스 전문
 
 문서는 프로젝트에 등장한 각 라이선스의 정식 전문을 담은 **License Texts** 섹션으로
-끝납니다. 포털은 잘 알려진 32종 라이선스의 SPDX(Software Package Data Exchange)
-전문을 번들로 포함합니다 — MIT, Apache-2.0, 그리고 BSD·GPL·LGPL·AGPL·MPL·EPL·CDDL
-계열 등. 전문이 번들에 없는 라이선스는 조용히 누락되지 않고 정식 전문으로 연결되는
+끝납니다. 포털은 잘 알려진 56종 라이선스의 SPDX(Software Package Data Exchange)
+전문을 번들로 포함합니다. MIT, Apache-2.0, BSD, GPL, LGPL, AGPL, MPL, EPL, CDDL
+계열과 데이터셋·문서가 흔히 쓰는 Creative Commons 라이선스가 여기에 들어갑니다. 전문이 번들에 없는 라이선스는 조용히 누락되지 않고 정식 전문으로 연결되는
 reference URL 링크로 대체됩니다. 이 섹션 덕분에 NOTICE 산출물 자체가 카탈로그의
 `license_text_inclusion_required` 의무를 충족합니다 —
 [의무사항 카탈로그](../reference/obligation-catalog.md#구조화-의무사항-필드) 참고.

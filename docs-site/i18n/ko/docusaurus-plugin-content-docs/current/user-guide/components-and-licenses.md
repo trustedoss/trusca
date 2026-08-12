@@ -274,8 +274,8 @@ Components 탭에는 **표 / 그래프** 토글이 있습니다(좌측 상단). 
 | 단계 (코드 값) | UI 라벨 | 빌드 게이트 효과 | 예시 |
 |---|---|---|---|
 | `permissive` | **Allowed** | 빌드 게이트 영향 없음. | MIT, Apache-2.0, BSD-2-Clause, BSD-3-Clause, ISC, CC0-1.0, Unlicense |
-| `conditional` | **Conditional** | [승인 워크플로우](./approvals.md) 트리거. 빌드 진행 — **반려(Rejected)** 결정 이후에도 동일. [승인 페이지의 caveat](./approvals.md#rejected-verdict) 참고. | LGPL-2.x, LGPL-3.x, MPL-2.0, EPL-1.x, EPL-2.0, CDDL-1.0 |
-| `forbidden` | **Forbidden** | CI에서 빌드 게이트가 종료 코드 1 반환. | AGPL-3.0, GPL-2.0, GPL-3.0, SSPL-1.0, BUSL-1.1 |
+| `conditional` | **Conditional** | [승인 워크플로우](./approvals.md) 트리거. 빌드 진행 — **반려(Rejected)** 결정 이후에도 동일. [승인 페이지의 caveat](./approvals.md#rejected-verdict) 참고. | LGPL-2.x, LGPL-3.x, MPL-2.0, EPL-1.x, EPL-2.0, CDDL-1.0, CC-BY-SA-4.0, CC-BY-ND-4.0 |
+| `forbidden` | **Forbidden** | CI에서 빌드 게이트가 종료 코드 1 반환. | AGPL-3.0, GPL-2.0, GPL-3.0, SSPL-1.0, BUSL-1.1, CC-BY-NC-4.0과 그 ShareAlike / NoDerivatives 변형 |
 | `unknown` | **Unknown** | 검토 대상으로 노출; 자동 차단 없음. 항상 사람의 검토 필요. | 라이선스 파싱 실패 또는 분류기 매핑에 없는 SPDX ID — [아래](#why-so-many-unknown) 참고. |
 
 :::warning 분류 출처

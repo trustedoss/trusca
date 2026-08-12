@@ -214,6 +214,21 @@ _OBLIGATION_TEXT_KO: dict[str, str] = {
         "자료를 변형하거나 이를 기반으로 새 저작물을 만드는 경우, 그 2차적 저작물을 "
         "CC-BY-SA-4.0 또는 BY-SA 호환 라이선스로 배포해야 합니다."
     ),
+    "If you remix or build upon the material, distribute your adaptations under "
+    "CC-BY-NC-SA-4.0.": (
+        "자료를 변형하거나 이를 기반으로 새 저작물을 만드는 경우, 그 2차적 저작물을 "
+        "CC-BY-NC-SA-4.0으로 배포해야 합니다."
+    ),
+    "You may not use the material for commercial purposes — any use primarily "
+    "intended for commercial advantage or monetary compensation.": (
+        "자료를 상업적 목적으로 사용할 수 없습니다. 상업적 이익이나 금전적 보상을 "
+        "주된 목적으로 하는 사용이 여기에 해당합니다."
+    ),
+    "You may not distribute the material in modified form. Patches, forks and "
+    "repackaged builds are outside what this license grants.": (
+        "자료를 수정한 형태로는 배포할 수 없습니다. 패치, 포크, 다시 묶은 빌드는 "
+        "이 라이선스가 허용하는 범위 밖입니다."
+    ),
     # ----- Patent grants -------------------------------------------------------
     "The license includes an express patent grant from contributors; asserting a "
     "covered patent against the work can terminate your patent rights.": (
@@ -826,6 +841,54 @@ _LICENSE_SUMMARY: dict[str, LicenseSummary] = {
             "표시하고, 2차적 저작물도 같은 조건으로 배포해야 합니다. 콘텐츠용 "
             "라이선스이며, 동일조건 조항의 적용 범위 때문에 제품에서는 검토 "
             "대상입니다."
+        ),
+    ),
+    "CC-BY-ND-4.0": LicenseSummary(
+        en=(
+            "Creative Commons Attribution-NoDerivatives: credit the author, and "
+            "distribute the material only as you received it. Commercial use is "
+            "allowed; shipping a patched or repackaged copy is not."
+        ),
+        ko=(
+            "Creative Commons 저작자 표시-변경 금지 라이선스입니다. 저작자를 표시하고, "
+            "받은 그대로만 배포해야 합니다. 상업적 사용은 허용되지만 수정하거나 다시 "
+            "묶은 사본을 배포하는 것은 허용되지 않습니다."
+        ),
+    ),
+    # ----- Non-commercial / forbidden ---------------------------------------------
+    "CC-BY-NC-4.0": LicenseSummary(
+        en=(
+            "Creative Commons Attribution-NonCommercial: credit the author, and "
+            "do not use the material commercially. A product that is sold has no "
+            "grant to include it at all."
+        ),
+        ko=(
+            "Creative Commons 저작자 표시-비영리 라이선스입니다. 저작자를 표시해야 하고, "
+            "자료를 상업적으로 사용할 수 없습니다. 판매하는 제품에는 포함할 권리 자체가 "
+            "주어지지 않습니다."
+        ),
+    ),
+    "CC-BY-NC-SA-4.0": LicenseSummary(
+        en=(
+            "Creative Commons Attribution-NonCommercial-ShareAlike: the "
+            "NonCommercial restriction plus an obligation to license adaptations "
+            "under the same terms."
+        ),
+        ko=(
+            "Creative Commons 저작자 표시-비영리-동일조건변경허락 라이선스입니다. 비영리 "
+            "제한에 더해, 2차적 저작물도 같은 조건으로 배포해야 합니다."
+        ),
+    ),
+    "CC-BY-NC-ND-4.0": LicenseSummary(
+        en=(
+            "Creative Commons Attribution-NonCommercial-NoDerivatives: the most "
+            "restricted of the CC licenses — no commercial use, and no "
+            "distribution of a modified copy."
+        ),
+        ko=(
+            "Creative Commons 저작자 표시-비영리-변경 금지 라이선스입니다. CC 라이선스 "
+            "가운데 제약이 가장 큽니다. 상업적 사용과 수정본 배포가 모두 허용되지 "
+            "않습니다."
         ),
     ),
     # ----- Strong copyleft / forbidden --------------------------------------------

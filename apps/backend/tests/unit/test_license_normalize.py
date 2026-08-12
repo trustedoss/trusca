@@ -63,9 +63,25 @@ _RECOGNIZED: list[tuple[str, str]] = [
     ("NTP License", "NTP"),
     ("Ruby License", "Ruby"),
     ("SIL Open Font License 1.1", "OFL-1.1"),
-    # Creative Commons (ShareAlike wins over plain Attribution; pinned to 4.0).
+    # Creative Commons (most restricted wins; pinned to 4.0). The restriction
+    # clause sits between "attribution" and the version, which is exactly where
+    # a `.*` used to swallow it — see the regression test below.
     ("Creative Commons Attribution 4.0 International", "CC-BY-4.0"),
     ("Creative Commons Attribution-ShareAlike 4.0 International", "CC-BY-SA-4.0"),
+    ("Creative Commons Attribution-NonCommercial 4.0 International", "CC-BY-NC-4.0"),
+    (
+        "Creative Commons Attribution-NonCommercial-ShareAlike 4.0 International",
+        "CC-BY-NC-SA-4.0",
+    ),
+    (
+        "Creative Commons Attribution-NonCommercial-NoDerivatives 4.0 International",
+        "CC-BY-NC-ND-4.0",
+    ),
+    ("Creative Commons Attribution-NoDerivatives 4.0 International", "CC-BY-ND-4.0"),
+    ("CC BY-NC 4.0", "CC-BY-NC-4.0"),
+    ("CC-BY-NC-SA-4.0", "CC-BY-NC-SA-4.0"),
+    ("CC-BY-NC-ND-4.0", "CC-BY-NC-ND-4.0"),
+    ("CC BY-ND 4.0", "CC-BY-ND-4.0"),
     # S5-B — the OSORI alias list resolves names the hand-written rules were
     # never given. CC-BY-3.0 used to come back as None; the point of that entry
     # was that 3.0 must not be silently remapped to 4.0, and it still is not.
@@ -97,6 +113,53 @@ def test_recognized_aliases_resolve(raw: str, expected: str) -> None:
 @pytest.mark.parametrize("raw", _UNRECOGNIZED)
 def test_unrecognized_or_compound_returns_none(raw: str | None) -> None:
     assert normalize_license_name(raw) is None
+
+
+# A restriction clause we did not anticipate. The ordering of ``_RULES`` only
+# protects the spellings someone thought to write down; these check the
+# lookahead, which is what makes an unknown variant fail closed.
+_UNANTICIPATED_RESTRICTED: list[str] = [
+    "Creative Commons Attribution-NonCommercial-NoDerivs 4.0",
+    "Creative Commons Attribution NonCommercial 4.0",
+    "Creative Commons Attribution, NoDerivatives, 4.0",
+]
+
+
+@pytest.mark.parametrize("raw", _UNANTICIPATED_RESTRICTED)
+def test_restricted_cc_never_falls_through_to_plain_attribution(raw: str) -> None:
+    """A restricted CC name resolves to a restricted id, or to nothing at all.
+
+    What it must never do is resolve to ``CC-BY-4.0``. Landing there is not a
+    near-miss: the catalogue calls that licence allowed, so a NonCommercial
+    dependency would pass a build gate that exists to stop it, and the review
+    flag would stay silent because the flag reads the id this function returned.
+    ``None`` is the safe answer — the caller skips the entry and the component
+    is reported with no licence rather than the wrong one.
+    """
+    result = normalize_license_name(raw)
+    assert result != "CC-BY-4.0"
+    assert result is None or result.startswith("CC-BY-N")
+
+
+def test_non_commercial_reaches_the_gate_and_the_review_flag() -> None:
+    """End-to-end over the three modules a licence name passes through.
+
+    Each was correct on its own while the defect was live: the normalizer knew
+    only unrestricted CC names, the catalogue knew only the ids it was given,
+    and the flag classifier was never handed the original name — persistence
+    stores ``name=spdx_id``, so the id the normalizer returns is the only text
+    the classifier ever sees. Testing them separately is what let a
+    NonCommercial licence be stored as allowed and unflagged.
+    """
+    from services.license_flags import classify_review_flag
+    from tasks.scan_source import _classify_license_category
+
+    spdx_id = normalize_license_name(
+        "Creative Commons Attribution-NonCommercial 4.0 International"
+    )
+    assert spdx_id == "CC-BY-NC-4.0"
+    assert _classify_license_category(spdx_id) == "forbidden"
+    assert classify_review_flag(spdx_id, spdx_id) == "non_commercial"
 
 
 def test_separator_class_is_normalized() -> None:

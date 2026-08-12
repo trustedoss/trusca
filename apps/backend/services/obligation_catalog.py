@@ -795,6 +795,114 @@ _CATALOG: dict[str, LicenseObligations] = {
             ),
         ),
     ),
+    # CC-BY-ND-4.0 — https://spdx.org/licenses/CC-BY-ND-4.0.html
+    # NoDerivatives restricts distribution of adaptations, not commercial use.
+    "CC-BY-ND-4.0": LicenseObligations(
+        spdx_id="CC-BY-ND-4.0",
+        attribution_required=True,
+        license_text_inclusion_required=True,
+        copyright_notice_required=True,
+        rows=(
+            (
+                KIND_ATTRIBUTION,
+                "Give appropriate credit (author, copyright notice, license "
+                "notice, disclaimer) and a link to the license.",
+            ),
+            (
+                KIND_MODIFICATIONS,
+                "You may not distribute the material in modified form. Patches, "
+                "forks and repackaged builds are outside what this license grants.",
+            ),
+        ),
+    ),
+    # ----- Non-commercial / forbidden ------------------------------------
+    # The NonCommercial clause is not an obligation to satisfy — it withholds
+    # the grant for commercial use altogether. The rows below still describe the
+    # attribution duties, because a deployment that is genuinely non-commercial
+    # may relax the policy and then has to meet them.
+    # CC-BY-NC-4.0 — https://spdx.org/licenses/CC-BY-NC-4.0.html
+    "CC-BY-NC-4.0": LicenseObligations(
+        spdx_id="CC-BY-NC-4.0",
+        attribution_required=True,
+        license_text_inclusion_required=True,
+        copyright_notice_required=True,
+        state_changes_required=True,
+        rows=(
+            (
+                KIND_NOTICE,
+                "You may not use the material for commercial purposes — any use "
+                "primarily intended for commercial advantage or monetary "
+                "compensation.",
+            ),
+            (
+                KIND_ATTRIBUTION,
+                "Give appropriate credit (author, copyright notice, license "
+                "notice, disclaimer) and a link to the license.",
+            ),
+            (
+                KIND_MODIFICATIONS,
+                "Indicate whether you modified the material and retain an "
+                "indication of any previous modifications.",
+            ),
+        ),
+    ),
+    # CC-BY-NC-SA-4.0 — https://spdx.org/licenses/CC-BY-NC-SA-4.0.html
+    "CC-BY-NC-SA-4.0": LicenseObligations(
+        spdx_id="CC-BY-NC-SA-4.0",
+        attribution_required=True,
+        license_text_inclusion_required=True,
+        copyright_notice_required=True,
+        state_changes_required=True,
+        same_license_required=True,  # ShareAlike — adaptations under same terms
+        rows=(
+            (
+                KIND_NOTICE,
+                "You may not use the material for commercial purposes — any use "
+                "primarily intended for commercial advantage or monetary "
+                "compensation.",
+            ),
+            (
+                KIND_ATTRIBUTION,
+                "Give appropriate credit (author, copyright notice, license "
+                "notice, disclaimer) and a link to the license.",
+            ),
+            (
+                KIND_COPYLEFT,
+                "If you remix or build upon the material, distribute your "
+                "adaptations under CC-BY-NC-SA-4.0.",
+            ),
+            (
+                KIND_MODIFICATIONS,
+                "Indicate whether you modified the material and retain an "
+                "indication of any previous modifications.",
+            ),
+        ),
+    ),
+    # CC-BY-NC-ND-4.0 — https://spdx.org/licenses/CC-BY-NC-ND-4.0.html
+    "CC-BY-NC-ND-4.0": LicenseObligations(
+        spdx_id="CC-BY-NC-ND-4.0",
+        attribution_required=True,
+        license_text_inclusion_required=True,
+        copyright_notice_required=True,
+        rows=(
+            (
+                KIND_NOTICE,
+                "You may not use the material for commercial purposes — any use "
+                "primarily intended for commercial advantage or monetary "
+                "compensation.",
+            ),
+            (
+                KIND_ATTRIBUTION,
+                "Give appropriate credit (author, copyright notice, license "
+                "notice, disclaimer) and a link to the license.",
+            ),
+            (
+                KIND_MODIFICATIONS,
+                "You may not distribute the material in modified form. Patches, "
+                "forks and repackaged builds are outside what this license grants.",
+            ),
+        ),
+    ),
     # ----- Strong copyleft / forbidden -----------------------------------
     # GPL family — https://spdx.org/licenses/GPL-3.0-only.html (+ variants)
     "GPL-2.0-only": _gpl("GPL-2.0-only"),

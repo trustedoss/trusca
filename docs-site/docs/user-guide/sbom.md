@@ -186,9 +186,10 @@ per-component override in the component drawer is on the [roadmap](#roadmap).
 
 The document closes with a **License Texts** section reproducing the full
 canonical text of each license that appears in the project. The portal bundles
-the SPDX (Software Package Data Exchange) text for 32 well-known licenses —
-MIT, Apache-2.0, and the BSD, GPL / LGPL / AGPL, MPL, EPL, and CDDL families,
-among others. A license whose text is not bundled is not silently dropped: its
+the SPDX (Software Package Data Exchange) text for 56 well-known licenses —
+MIT, Apache-2.0, the BSD, GPL / LGPL / AGPL, MPL, EPL, and CDDL families, and
+the Creative Commons licenses that datasets and documentation carry, among
+others. A license whose text is not bundled is not silently dropped: its
 entry falls back to the license's reference-URL link to the canonical text.
 With this section the NOTICE artifact itself satisfies the catalog's
 `license_text_inclusion_required` obligation — see the

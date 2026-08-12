@@ -99,9 +99,34 @@ _RULES: tuple[tuple[re.Pattern[str], object], ...] = tuple(
         (r"\bntp\b", "NTP"),
         (r"ruby license|^ruby$", "Ruby"),
         (r"\bx11\b", "X11"),
-        # --- Creative Commons (ShareAlike before plain Attribution; pin 4.0) ---
+        # --- Creative Commons (most restricted first; pin 4.0) ---
+        # The clause between "attribution" and the version is the whole licence:
+        # NonCommercial forbids commercial use, NoDerivatives forbids
+        # modification. A `.*` there swallows it, which is how "Attribution-
+        # NonCommercial 4.0 International" used to resolve to CC-BY-4.0 — a
+        # non-commercial licence stored as an allowed one, with the review flag
+        # silent because the flag keys on "nc" and the name it reads is the id
+        # this function returned.
+        (
+            r"creative commons attribution noncommercial noderiv.*4|\bcc by nc nd 4\b",
+            "CC-BY-NC-ND-4.0",
+        ),
+        (
+            r"creative commons attribution noncommercial share.*4|\bcc by nc sa 4\b",
+            "CC-BY-NC-SA-4.0",
+        ),
+        (r"creative commons attribution noncommercial.*4|\bcc by nc 4\b", "CC-BY-NC-4.0"),
+        (r"creative commons attribution noderiv.*4|\bcc by nd 4\b", "CC-BY-ND-4.0"),
         (r"creative commons attribution share.*4|\bcc by sa 4\b", "CC-BY-SA-4.0"),
-        (r"creative commons attribution.*4|\bcc by 4\b", "CC-BY-4.0"),
+        # The lookahead is not redundant with the ordering above. Ordering only
+        # protects the spellings we thought of; the lookahead makes an
+        # unanticipated restricted variant return None — which the caller skips —
+        # rather than fall through to the permissive id.
+        (
+            r"creative commons attribution(?!.*(?:noncommercial|noderiv|\bnc\b|\bnd\b)).*4"
+            r"|\bcc by 4\b",
+            "CC-BY-4.0",
+        ),
         # --- Eclipse ---
         (r"eclipse distribution|^edl ", "BSD-3-Clause"),
         (r"eclipse public.*2", "EPL-2.0"),
