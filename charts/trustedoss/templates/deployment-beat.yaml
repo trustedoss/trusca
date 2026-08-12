@@ -37,10 +37,18 @@ spec:
       imagePullSecrets:
         {{- toYaml . | nindent 8 }}
       {{- end }}
+      {{- with .Values.beat.podSecurityContext }}
+      securityContext:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
       containers:
         - name: beat
           image: "{{ .Values.image.workerRepository }}:{{ .Values.image.tag }}"
           imagePullPolicy: {{ .Values.image.pullPolicy }}
+          {{- with .Values.beat.containerSecurityContext }}
+          securityContext:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
           command:
             - celery
             - -A
@@ -53,8 +61,26 @@ spec:
                 name: {{ include "trustedoss.fullname" . }}-env
           env:
             {{- include "trustedoss.runtimeSecretEnv" . | nindent 12 }}
+          {{- if (.Values.beat.containerSecurityContext).readOnlyRootFilesystem }}
+          # beat writes its schedule database to /tmp (see the --schedule flag
+          # above), so a sealed root filesystem needs this mount or the process
+          # cannot start. The home mount is for the same toolchain caches the
+          # worker needs; beat shares the image and inherits the cache paths.
+          volumeMounts:
+            - name: home
+              mountPath: /home/trustedoss
+            - name: tmp
+              mountPath: /tmp
+          {{- end }}
           resources:
             {{- toYaml .Values.beat.resources | nindent 12 }}
+      {{- if (.Values.beat.containerSecurityContext).readOnlyRootFilesystem }}
+      volumes:
+        - name: home
+          emptyDir: {}
+        - name: tmp
+          emptyDir: {}
+      {{- end }}
       {{- with .Values.nodeSelector }}
       nodeSelector:
         {{- toYaml . | nindent 8 }}

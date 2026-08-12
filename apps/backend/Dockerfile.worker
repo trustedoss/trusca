@@ -890,11 +890,58 @@ RUN apt-get purge -y linux-libc-dev libc6-dev build-essential \
 # the offer reachable from the artifact that triggers it.
 COPY LICENSE NOTICE THIRD_PARTY_NOTICES.md /licenses/
 
+# ---- Unprivileged runtime user (Trivy DS-0002). ----------------------------
+# uid/gid 1000 named trustedoss, matching Dockerfile.prod:64 so the Helm chart
+# can point every workload at the same uid.
+#
+# The reason this image was the last one still running as root is the bundled
+# toolchain: cdxgen shells out to gradle, mvn, npm, dotnet and go, and each of
+# those caches under the HOME of whoever runs it. As root that was /root, which
+# an unprivileged process cannot write. So every cache location is pinned
+# explicitly below rather than left to default under HOME — that way the chart
+# can mount ONE volume at /home/trustedoss and know it has covered all of them.
+#
+# GOPATH is set twice on purpose. The build-time value at the govulncheck layer
+# stays as it was so that layer's cache is not invalidated; this one wins at
+# runtime because it comes later.
+ENV HOME=/home/trustedoss \
+    GOPATH=/home/trustedoss/go \
+    GOCACHE=/home/trustedoss/.cache/go-build \
+    GRADLE_USER_HOME=/home/trustedoss/.gradle \
+    XDG_CACHE_HOME=/home/trustedoss/.cache \
+    npm_config_cache=/home/trustedoss/.npm \
+    DOTNET_CLI_HOME=/home/trustedoss \
+    NUGET_PACKAGES=/home/trustedoss/.nuget/packages \
+    MAVEN_OPTS=-Dmaven.repo.local=/home/trustedoss/.m2/repository
+
+# The volume mount points have to exist here, owned by the runtime user. A
+# named volume or a fresh PVC inherits the ownership of the image directory it
+# covers, so without this they come up root owned and the worker cannot write
+# to them. That failure is not obvious when it happens: workspace_prep chmods
+# the workspace root and only WARNS when that fails, so the worker starts
+# healthy and the scan dies later on mkdir.
+#
+# Two workspace paths on purpose. WORKSPACE_HOST_PATH is /workspace under the
+# Helm chart and defaults to /tmp/trustedoss (core/config.py:1157), which is
+# what docker-compose.dev.yml mounts. Creating only one of them leaves the
+# other broken for whoever uses that path.
+RUN set -eux; \
+    addgroup --system --gid 1000 trustedoss; \
+    adduser  --system --uid 1000 --gid 1000 --home /home/trustedoss trustedoss; \
+    mkdir -p /home/trustedoss/.cache /home/trustedoss/.gradle \
+             /home/trustedoss/.npm /home/trustedoss/.m2 \
+             /home/trustedoss/.nuget/packages /home/trustedoss/go \
+             /workspace /tmp/trustedoss /var/lib/trivy /app; \
+    chown -R 1000:1000 /home/trustedoss /workspace /tmp/trustedoss \
+                       /var/lib/trivy /app
+
 # Application source. The dev compose bind-mounts ./apps/backend:/app on top
 # of this so the COPY here only matters for one-off `docker run` and prod.
-COPY . /app
+COPY --chown=1000:1000 . /app
 
 EXPOSE 8000
+
+USER trustedoss
 
 # Default to celery worker. docker-compose.dev.yml overrides `command:` so the
 # concurrency / loglevel can change without rebuilding.

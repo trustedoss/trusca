@@ -394,6 +394,29 @@ worker:
     minReplicas: 2
     maxReplicas: 8
     targetCPUUtilizationPercentage: 75
+  # uid/gid 1000 is the `trustedoss` user the worker image creates and runs as
+  # (apps/backend/Dockerfile.worker). fsGroup makes the workspace and Trivy
+  # cache volumes group-writable for it. See backend.podSecurityContext for
+  # what overriding these maps means.
+  podSecurityContext:
+    runAsNonRoot: true
+    runAsUser: 1000
+    runAsGroup: 1000
+    fsGroup: 1000
+    seccompProfile:
+      type: RuntimeDefault
+  # readOnlyRootFilesystem needs two emptyDir mounts, added by the Deployment:
+  # /home/trustedoss for the toolchain caches (gradle, mvn, npm, dotnet, go —
+  # the image pins every one of them under that directory so a single mount
+  # covers them) and /tmp for scratch. Both are per-pod, so caches are rebuilt
+  # after a restart; switch the home volume to a PVC if repeated Java or .NET
+  # scans make the re-download cost matter.
+  containerSecurityContext:
+    allowPrivilegeEscalation: false
+    readOnlyRootFilesystem: true
+    capabilities:
+      drop:
+        - ALL
 
 # ===========================================================================
 # Celery beat (singleton scheduler). Exactly one replica.
@@ -406,6 +429,23 @@ beat:
     limits:
       cpu: 500m
       memory: 256Mi
+  # Same image as the worker, so the same uid. See worker.podSecurityContext.
+  podSecurityContext:
+    runAsNonRoot: true
+    runAsUser: 1000
+    runAsGroup: 1000
+    fsGroup: 1000
+    seccompProfile:
+      type: RuntimeDefault
+  # beat writes its schedule database to /tmp (the --schedule flag in the
+  # Deployment), so sealing the root filesystem without that mount stops it
+  # from starting at all.
+  containerSecurityContext:
+    allowPrivilegeEscalation: false
+    readOnlyRootFilesystem: true
+    capabilities:
+      drop:
+        - ALL
 
 # ===========================================================================
 # Frontend (React SPA on nginx, :8080).

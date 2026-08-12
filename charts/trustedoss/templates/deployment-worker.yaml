@@ -35,10 +35,18 @@ spec:
       imagePullSecrets:
         {{- toYaml . | nindent 8 }}
       {{- end }}
+      {{- with .Values.worker.podSecurityContext }}
+      securityContext:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
       containers:
         - name: worker
           image: "{{ .Values.image.workerRepository }}:{{ .Values.image.tag }}"
           imagePullPolicy: {{ .Values.image.pullPolicy }}
+          {{- with .Values.worker.containerSecurityContext }}
+          securityContext:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
           # Prefork concurrency = task slots per pod. Scale pods (replicaCount /
           # HPA) in preference to this; each slot can fork a full pipeline.
           command:
@@ -54,6 +62,18 @@ spec:
           env:
             {{- include "trustedoss.runtimeSecretEnv" . | nindent 12 }}
           volumeMounts:
+            {{- if (.Values.worker.containerSecurityContext).readOnlyRootFilesystem }}
+            # The bundled toolchain caches under HOME: gradle, mvn, npm, dotnet
+            # and go all write there when cdxgen shells out to them. The image
+            # pins every one of those paths under /home/trustedoss, so mounting
+            # that single directory covers all of them. emptyDir means the
+            # caches live as long as the pod; swap in a PVC if repeated Java or
+            # .NET scans make the re-download cost worth persisting.
+            - name: home
+              mountPath: /home/trustedoss
+            - name: tmp
+              mountPath: /tmp
+            {{- end }}
             - name: workspace
               mountPath: {{ .Values.workspace.mountPath }}
             # H-6/L-2 — Trivy DB cache (boot download + weekly refresh write
@@ -72,6 +92,12 @@ spec:
           resources:
             {{- toYaml .Values.worker.resources | nindent 12 }}
       volumes:
+        {{- if (.Values.worker.containerSecurityContext).readOnlyRootFilesystem }}
+        - name: home
+          emptyDir: {}
+        - name: tmp
+          emptyDir: {}
+        {{- end }}
         - name: workspace
           {{- if .Values.workspace.persistence.enabled }}
           persistentVolumeClaim:
