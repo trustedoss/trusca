@@ -164,7 +164,10 @@ The file contains:
 
 - A header with the project name and generation timestamp.
 - One section per detected license, listing the components (`name @ version`)
-  under that license, each with a copyright line.
+  under that license, each with a copyright line. A component the SBOM recorded
+  as data rather than code is marked `[dataset]` after its version — an AI SBOM
+  credits training data and libraries in the same list, and a dataset's licence
+  governs the data, which is a different obligation to reason about.
 - Each license section's attribution obligations (e.g. *attribution*,
   *no-endorsement*) with a short description and a policy reference link.
 - A closing **License Texts** section with the full text of every license

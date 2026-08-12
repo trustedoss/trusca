@@ -5,15 +5,23 @@ G7 AI SBOM minimum-elements conformance — advisory checks for ML-BOM ingests.
 
 Registry and semantics vendored from BomLens (sktelecom/bomlens, Apache-2.0,
 Copyright 2026 SK Telecom Co., Ltd. — see THIRD_PARTY_NOTICES.md) from
-``docker/lib/g7-registry.json`` **v2**
-(sbom-tools#306) + ``validate-sbom.sh``'s ``g7_ai_checks()`` — faithful
+``docker/lib/g7-registry.json`` **v3**
+(sbom-tools#306, #456) + ``validate-sbom.sh``'s ``g7_ai_checks()`` — faithful
 Python port.
+
+v3 changes the datasets cluster only: content, hash and dependency stop being
+"no automated source" and read the component, and provenance is corrected. The
+correction matters more than the promotions — v2 looked for governance under
+``.componentData``, which is CycloneDX's *type* name, while the JSON field is
+``data`` and holds an array (schema 1.6 and 1.7 agree). A document that
+declared its dataset governance exactly as the schema asks scored as lacking
+it, and no test caught that because the fixture had no data components at all.
 
 The vendored ``g7_registry.json`` (same directory) is the SINGLE SOURCE OF
 TRUTH for element *metadata*: id, label, cluster, source, role. Its jq
 expressions are NOT executed — each is hand-ported to Python (the original jq
 is kept verbatim in every port's docstring so a registry refresh can be
-diffed against the port). v2 defines two element shapes:
+diffed against the port). The registry defines two element shapes:
 
 - ``cdxPath`` — a boolean presence expression over the whole SBOM, ported to
   ``_PREDICATES``.
@@ -379,14 +387,74 @@ def _p_ds_identifier(doc: dict[str, Any]) -> bool:
     )
 
 
+def _component_data_entries(component: dict[str, Any]) -> list[dict[str, Any]]:
+    """The ``componentData`` entries of a ``type: "data"`` component.
+
+    CycloneDX names the *schema type* ``componentData`` but the JSON *field*
+    ``data``, and it is an array. v2 read ``.componentData`` — the type name —
+    which no schema-conforming document carries, so every predicate built on it
+    was dead: a dataset that declared its governance scored as if it had not.
+    """
+    return [e for e in _list(component.get("data")) if isinstance(e, dict)]
+
+
+def _p_ds_content(doc: dict[str, Any]) -> bool:
+    """jq: [ .components[]? | select(.type=="data") | (.data // [])[]? |
+    select((((.contents.properties // []) | length) > 0) or
+    ((.description // "") != "")) ] | length > 0
+
+    Registry v3 (BomLens #456) promotes this from ``na``: the contents block
+    the schema gives a dataset is the automated source v2 said did not exist.
+    """
+    for c in _data_components(doc):
+        for entry in _component_data_entries(c):
+            if len(_list(_dict(entry.get("contents")).get("properties"))) > 0:
+                return True
+            if _str(entry.get("description")) != "":
+                return True
+    return False
+
+
+def _p_ds_hash(doc: dict[str, Any]) -> bool:
+    """jq: [ .components[]? | select(.type=="data") |
+    select(((.hashes // []) | length) > 0) ] | length > 0
+
+    Registry v3: ``auto`` — a dataset component carries ``hashes`` in the same
+    place every other component does.
+    """
+    return any(len(_list(c.get("hashes"))) > 0 for c in _data_components(doc))
+
+
+def _p_ds_dependency(doc: dict[str, Any]) -> bool:
+    """jq: ([ .components[]? | select(.type=="data") | .["bom-ref"] // empty ])
+    as $ds | ($ds | length) > 0 and ([ .dependencies[]? | (.dependsOn // [])[] |
+    select(. as $r | $ds | index($r) != null) ] | length) > 0
+
+    Registry v3: ``auto``. The element asks whether a dataset is wired into the
+    graph, which the dependency edges answer — so a document with datasets that
+    nothing depends on is genuinely short of it, not merely unmeasurable.
+    """
+    refs = {r for c in _data_components(doc) if (r := _str(c.get("bom-ref")))}
+    if not refs:
+        return False
+    for dep in _list(doc.get("dependencies")):
+        if not isinstance(dep, dict):
+            continue
+        for target in _list(dep.get("dependsOn")):
+            if isinstance(target, str) and target in refs:
+                return True
+    return False
+
+
 def _p_ds_provenance(doc: dict[str, Any]) -> bool:
     """jq: [ .components[]? | select(.type=="data") |
-    select(((.componentData.governance // null) != null) or
-    ((.properties // []) | map(.name // "") |
+    select((([ (.data // [])[]? | select((.governance // null) != null) ]
+    | length) > 0) or ((.properties // []) | map(.name // "") |
     any(test("provenance|source";"i")))) ] | length > 0"""
     for c in _data_components(doc):
-        if _dict(c.get("componentData")).get("governance") is not None:
-            return True
+        for entry in _component_data_entries(c):
+            if entry.get("governance") is not None:
+                return True
         for p in _list(c.get("properties")):
             if isinstance(p, dict) and re.search(
                 r"provenance|source", _str(p.get("name")), re.IGNORECASE
@@ -466,8 +534,11 @@ _PREDICATES: dict[str, Callable[[dict[str, Any]], bool | None]] = {
     "g7-model-openness": _p_model_openness,
     "g7-ds-name": _p_ds_name,
     "g7-ds-description": _p_ds_description,
+    "g7-ds-content": _p_ds_content,
     "g7-ds-identifier": _p_ds_identifier,
+    "g7-ds-hash": _p_ds_hash,
     "g7-ds-provenance": _p_ds_provenance,
+    "g7-ds-dependency": _p_ds_dependency,
     "g7-ds-license": _p_ds_license,
     "g7-infra-software": _p_infra_software,
     "g7-infra-hardware": _p_infra_hardware,

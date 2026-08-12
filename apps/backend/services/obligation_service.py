@@ -833,7 +833,9 @@ def _collect_review_entries(
                 "flag": flag,
                 "label": _review_flag_label(flag),
                 "license": display,
-                "components": [c["label"] for c in entry.get("components", [])],
+                "components": [
+                    _component_label(c) for c in entry.get("components", [])
+                ],
             }
         )
     # Stable worst-first ordering: behavioral-use ahead of non-commercial, then
@@ -1114,6 +1116,24 @@ def _md_fence_for(content: str) -> str:
     return "`" * max(3, longest + 1)
 
 
+_DATASET_TAG = " [dataset]"
+
+
+def _component_label(comp: dict[str, Any]) -> str:
+    """The credited component's label, tagged when it is a dataset.
+
+    The tag is appended here rather than built into the SQL label so the three
+    renderers cannot drift apart, and so the escaping each of them applies still
+    covers the whole string. ``cdx_type`` is untrusted (verbatim scanner output),
+    which is why this compares against the one value it acts on instead of
+    interpolating whatever it finds.
+    """
+    label = str(comp.get("label") or "")
+    if comp.get("cdx_type") == "data":
+        return f"{label}{_DATASET_TAG}"
+    return label
+
+
 def _text_copyright_line(comp: dict[str, Any]) -> str:
     """The plain-text ``Copyright:`` sub-line for one credited component."""
     copyright_ = comp.get("copyright")
@@ -1148,7 +1168,7 @@ def _html_component_li(comp: dict[str, Any]) -> str:
     ``_safe_href`` before becoming a link (``_purl_source_url`` only builds
     https URLs, but the purl it derives from is untrusted — defence in depth).
     """
-    label = html_escape(comp["label"])
+    label = html_escape(_component_label(comp))
     copyright_ = comp.get("copyright")
     if copyright_:
         return f'<li>{label}<span class="attr">Copyright: {html_escape(copyright_)}</span></li>'
@@ -1409,11 +1429,19 @@ async def _load_notice_data(
     # exceed components × cap. ``_clean_copyright`` still runs on the clamped
     # value (the control-char scrub is a rendering concern, not an aggregation
     # one).
+    # ``cdx_type`` distinguishes a dataset from code. An AI SBOM credits both in
+    # one list, and their obligations are not the same duty — a dataset's licence
+    # governs the data, and reviewers reading a NOTICE have no other way to tell
+    # which rows are which. Read straight off the verbatim cdxgen output, so no
+    # migration and no backfill: rows written before this still answer, because
+    # ``raw_data`` always held the whole component dict.
     component_obj = func.jsonb_build_object(
         "label",
         Component.name.op("||")(" @ ").op("||")(ComponentVersion.version),
         "purl",
         ComponentVersion.purl_with_version,
+        "cdx_type",
+        ScanComponent.raw_data.op("->>")("type"),
         "copyright",
         func.left(
             ScanComponent.raw_data.op("->>")("copyright"),
@@ -1465,12 +1493,20 @@ async def _load_notice_data(
         # dependency never erases a captured attribution). Deterministic sort
         # keeps the rendered order stable across runs.
         by_label: dict[str, dict[str, Any]] = {}
+        # Tracked outside ``by_label`` because the collapse above replaces the
+        # winning record whenever a later sibling carries a copyright, and the
+        # dataset marking must survive that. One entry saying "data" is enough:
+        # a component credited as a dataset anywhere is a dataset, and losing the
+        # tag is the failure that matters here.
+        dataset_labels: set[str] = set()
         for raw in r.component_entries or []:
             if not isinstance(raw, dict):
                 continue
             label = raw.get("label")
             if not label or not isinstance(label, str):
                 continue
+            if raw.get("cdx_type") == "data":
+                dataset_labels.add(label)
             copyright_ = _clean_copyright(raw.get("copyright"))
             purl = raw.get("purl") if isinstance(raw.get("purl"), str) else None
             existing = by_label.get(label)
@@ -1480,6 +1516,8 @@ async def _load_notice_data(
                     "copyright": copyright_,
                     "source_url": _purl_source_url(purl),
                 }
+        for label in dataset_labels & by_label.keys():
+            by_label[label]["cdx_type"] = "data"
         all_components = [by_label[label] for label in sorted(by_label)]
         # G2: cap the credited-component list with an honest omitted-count so a
         # license attached to a pathological number of components cannot inflate
@@ -1617,7 +1655,9 @@ def _render_notice(
             # ``` fence delimiter cannot break out and so each label is inert.
             # The copyright attribution rides on the same bullet line (Phase B).
             for comp in entry["components"]:
-                parts.append(f"- {_md_escape(comp['label'])}{_md_copyright_suffix(comp)}")
+                parts.append(
+                    f"- {_md_escape(_component_label(comp))}{_md_copyright_suffix(comp)}"
+                )
             omitted = entry.get("components_omitted", 0)
             if omitted:
                 parts.append(f"- _… and {omitted} more component(s) omitted_")
@@ -1704,7 +1744,7 @@ def _render_notice(
         parts.append("")
         parts.append("Components:")
         for comp in entry["components"]:
-            parts.append(f"  - {comp['label']}")
+            parts.append(f"  - {_component_label(comp)}")
             parts.append(_text_copyright_line(comp))
         omitted = entry.get("components_omitted", 0)
         if omitted:

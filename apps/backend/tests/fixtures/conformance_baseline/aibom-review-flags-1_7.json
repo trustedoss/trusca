@@ -787,13 +787,13 @@
     },
     {
       "cluster": "dp",
-      "detail": "requires human review (no automated source)",
+      "detail": "not present in the SBOM",
       "id": "g7-ds-content",
       "label": "Dataset content",
       "missing": [],
       "required": false,
       "role": "dataset-creator",
-      "source": "na",
+      "source": "inferred",
       "status": "warn"
     },
     {
@@ -809,13 +809,13 @@
     },
     {
       "cluster": "dp",
-      "detail": "requires human review (no automated source)",
+      "detail": "not present in the SBOM",
       "id": "g7-ds-hash",
       "label": "Dataset hash",
       "missing": [],
       "required": false,
       "role": "dataset-creator",
-      "source": "na",
+      "source": "auto",
       "status": "warn"
     },
     {
@@ -853,13 +853,13 @@
     },
     {
       "cluster": "dp",
-      "detail": "requires human review (no automated source)",
+      "detail": "not present in the SBOM",
       "id": "g7-ds-dependency",
       "label": "Dataset dependency relationship",
       "missing": [],
       "required": false,
       "role": "dataset-creator",
-      "source": "na",
+      "source": "auto",
       "status": "warn"
     },
     {

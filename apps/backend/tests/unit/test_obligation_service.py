@@ -46,6 +46,7 @@ from services.obligation_service import (
     _clamp_obligation_text,
     _clean_copyright,
     _collect_review_entries,
+    _component_label,
     _format_header,
     _html_reference_line,
     _license_text_sections,
@@ -2566,3 +2567,62 @@ def test_full_notice_omits_review_section_when_unflagged() -> None:
             fmt=fmt,
         )
         assert "License review needed" not in body, fmt
+
+
+# ---------------------------------------------------------------------------
+# Dataset tagging — an AI SBOM credits data and code in the same list.
+# ---------------------------------------------------------------------------
+def _mixed_components() -> list[dict]:
+    """One dataset and one library, in the shape ``_load_notice_data`` builds."""
+    return [
+        {
+            "label": "sst2 @ 1.0.0",
+            "copyright": None,
+            "source_url": None,
+            "cdx_type": "data",
+        },
+        {"label": "lodash @ 4.17.21", "copyright": None, "source_url": None},
+    ]
+
+
+def test_notice_tags_datasets_in_every_format() -> None:
+    when = datetime(2026, 8, 11, 12, 0, 0, tzinfo=UTC)
+    lic_id = uuid.uuid4()
+    entry = {
+        "license_id": lic_id,
+        "spdx_id": "CC-BY-SA-4.0",
+        "name": "CC-BY-SA-4.0",
+        "reference_url": None,
+        "components": _mixed_components(),
+    }
+    # Markdown escapes the brackets — `[` opens a link there, so the escape is
+    # correct and the reader still sees "[dataset]" once rendered.
+    expected = {
+        "text": "sst2 @ 1.0.0 [dataset]",
+        "markdown": r"sst2 @ 1.0.0 \[dataset\]",
+        "html": "sst2 @ 1.0.0 [dataset]",
+    }
+    for fmt, tagged in expected.items():
+        body = _render_notice(
+            project_name="P",
+            generated_at=when,
+            licenses_with_components=[entry],
+            obligations_by_license={lic_id: []},
+            fmt=fmt,
+        )
+        assert tagged in body, fmt
+        # The library must NOT pick up the tag — the point is telling them apart.
+        assert "lodash @ 4.17.21 [dataset]" not in body, fmt
+        assert r"lodash @ 4.17.21 \[dataset\]" not in body, fmt
+        assert "lodash @ 4.17.21" in body, fmt
+
+
+def test_component_without_cdx_type_is_not_tagged() -> None:
+    """Rows written before the type was collected must render unchanged.
+
+    ``cdx_type`` comes from ``scan_components.raw_data`` with no migration, so
+    an entry whose scan predates this — or an ingest path that left no
+    scan_components row — arrives with the key absent, not with a value.
+    """
+    assert _component_label({"label": "old @ 1.0"}) == "old @ 1.0"
+    assert _component_label({"label": "old @ 1.0", "cdx_type": None}) == "old @ 1.0"
