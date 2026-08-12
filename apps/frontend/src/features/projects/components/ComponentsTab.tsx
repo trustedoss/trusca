@@ -673,14 +673,21 @@ export function ComponentsTab({ projectId, scanId }: ComponentsTabProps) {
         // columns visible at once).
         //
         // G0-5 — the floor was 820 px, which was the eight-column table's
-        // width; four columns have been added since (Usage, EOL, Currency,
-        // and the CVE count) and it never moved. The sum of the declared
-        // widths is 48 (px-6) + 180 (Name's floor) + 784 (the nine fixed
-        // cells) + 108 (nine gap-3 gutters) = 1120.
+        // width; columns kept being added and it kept not moving. When the
+        // floor is short of the declared widths flex shrinks every cell to
+        // fit, and header and row shrink by fractionally different amounts
+        // (the row carries an extra open-drawer control), so the columns stop
+        // lining up: the Type heading measured 85 px over an 86 px cell.
+        //
+        // The sum of the declared widths is 48 (px-6) + 180 (Name's floor)
+        // + 864 (the ten fixed cells: 96 type + 96 version + 112 license
+        // + 96 policy + 96 usage + 80 malicious + 64 eol + 80 currency
+        // + 96 severity + 48 vulns) + 120 (ten gap-3 gutters) = 1212.
+        // Add the width AND the gutter here whenever a column is added.
         // `tests/e2e/tableColumnAlignment.spec.ts` holds this to the columns.
         <div className="flex flex-1 flex-col overflow-x-auto">
           <div
-            className="min-w-[1120px] flex flex-1 flex-col"
+            className="min-w-[1212px] flex flex-1 flex-col"
             // G0-5 backlog — see VulnerabilitiesTab for why the body's
             // `rowgroup` lands on Virtuoso's scroller rather than on a wrapper.
             role="table"

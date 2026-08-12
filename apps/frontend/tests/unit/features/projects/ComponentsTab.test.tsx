@@ -601,4 +601,42 @@ describe("ComponentsTab", () => {
     // has its identity cells visible.
     expect(screen.getByTestId("component-row")).toBeInTheDocument();
   });
+
+  // #26 — the Flagged-only toggle. These two cases exist because the toggle
+  // shipped connected to the URL but not to the query: `useComponents` had no
+  // `malicious` field, so the filter reached neither the cache key nor the
+  // request, and clicking it changed the address bar while the list stayed
+  // whole. The nightly e2e caught it; nothing at this level did.
+  it("clicking the Flagged-only toggle refetches with malicious=true", async () => {
+    mockedList.mockResolvedValue(listResponse([comp("Alpha")]));
+    renderTab();
+    await waitFor(() => {
+      expect(screen.getAllByTestId("component-row")).toHaveLength(1);
+    });
+    mockedList.mockClear();
+
+    await userEvent.click(screen.getByTestId("components-malicious-filter"));
+
+    await waitFor(() => {
+      expect(mockedList).toHaveBeenCalledWith(
+        "proj-1",
+        expect.objectContaining({ malicious: true, offset: 0 }),
+      );
+    });
+  });
+
+  it("hydrates ?malicious=true into the Flagged-only toggle on first render", async () => {
+    mockedList.mockResolvedValueOnce(listResponse([comp("Alpha")]));
+    renderTab(["/projects/proj-1?malicious=true"]);
+    await waitFor(() => {
+      expect(mockedList).toHaveBeenCalledWith(
+        "proj-1",
+        expect.objectContaining({ malicious: true }),
+      );
+    });
+    expect(screen.getByTestId("components-malicious-filter")).toHaveAttribute(
+      "data-active",
+      "true",
+    );
+  });
 });

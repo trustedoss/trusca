@@ -58,6 +58,12 @@ export interface ComponentsQueryFilters {
    */
   outdated?: boolean | null;
   /**
+   * Known-malicious facet (#26). ``true`` → only components the vendored OSV
+   * snapshot flags; ``null``/``undefined`` → include both. Part of the cache
+   * key so the toggle refetches from offset 0.
+   */
+  malicious?: boolean | null;
+  /**
    * Pin the list to a specific succeeded scan (feature #28 snapshot anchoring).
    * `undefined` → latest succeeded scan. Part of the cache key so flipping the
    * pinned snapshot refetches from offset 0.
@@ -87,6 +93,7 @@ export function componentsKey(
       dependency_scope: [...(filters.dependency_scope ?? [])].sort(),
       eol: filters.eol ?? null,
       outdated: filters.outdated ?? null,
+      malicious: filters.malicious ?? null,
       scanId: filters.scanId ?? null,
     },
   ] as const;
@@ -118,6 +125,7 @@ export function useComponents(
             : undefined,
         eol: filters.eol ?? undefined,
         outdated: filters.outdated ?? undefined,
+        malicious: filters.malicious ?? undefined,
         sort: filters.sort,
         order: filters.order,
         scanId: filters.scanId,
