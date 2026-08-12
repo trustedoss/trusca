@@ -74,6 +74,14 @@ COPY LICENSE NOTICE THIRD_PARTY_NOTICES.md /licenses/
 
 COPY . /app
 
+# BACKUPS_ROOT in the dev compose stack, backed by the `backups-data` named
+# volume. A named volume takes its ownership from the image directory it
+# covers, and whichever service starts first is the one that sets it — so this
+# image has to agree with the worker (uid 1000) even though it runs as root
+# itself. Without it, a backend-first boot leaves the volume root-owned and the
+# worker cannot write the backups it is the one that creates.
+RUN mkdir -p /opt/trustedoss/backups && chown 1000:1000 /opt/trustedoss/backups
+
 EXPOSE 8000
 
 # nosemgrep: dockerfile.security.missing-user.missing-user — dev image only.
