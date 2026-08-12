@@ -24,6 +24,7 @@ import subprocess
 import uuid
 from collections.abc import AsyncIterator
 from pathlib import Path
+from types import SimpleNamespace
 from typing import Any
 
 import pytest
@@ -262,14 +263,17 @@ async def test_full_disk_skips_without_erroring(
 ) -> None:
     """A workspace over its hard limit stops scans without erroring.
 
-    Setting the threshold to 0 makes any usage count as over-limit, which is
-    the same code path a genuinely full volume takes. The workspace path has to
-    point somewhere that exists: ``_check_disk_guard`` is best-effort and lets
-    scans through when ``statvfs`` fails, so the default path (absent in a test
-    container) would silently pass and prove nothing.
+    The reading is faked rather than the threshold lowered. This used to set
+    ``DISK_HARD_LIMIT_PCT=0`` so that any usage counted as over-limit, but that
+    value now clamps to 50 (#36), which made the test pass or fail on how full
+    the runner's disk happened to be. Faking ``statvfs`` at 99% used against the
+    shipped default is both stable and closer to the real condition.
     """
-    monkeypatch.setenv("DISK_HARD_LIMIT_PCT", "0")
-    monkeypatch.setenv("WORKSPACE_HOST_PATH", "/")
+    monkeypatch.setattr(
+        os,
+        "statvfs",
+        lambda _path: SimpleNamespace(f_blocks=100, f_bavail=1, f_frsize=4096),
+    )
 
     project, secret = await _make_gitlab_project(client)
     result = await _post_mr(
