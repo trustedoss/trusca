@@ -20,6 +20,10 @@ permissions:
   contents: read
 
 jobs:
+  # NOTE: a red nightly here is now tracked as an issue (see nightly-alert
+  # below). It failed nine nights in a row from 2026-08-03 on the same
+  # assertion and nobody saw it, which made an internal regression net that
+  # exists on paper only.
   verify-specs:
     # Schedule + manual only — mirrors the docs-uat nightly gate pattern.
     if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
@@ -119,3 +123,31 @@ jobs:
       - name: Tear down
         if: always()
         run: docker-compose -f docker-compose.dev.yml down -v || true
+
+  nightly-alert:
+    name: nightly-alert
+    if: ${{ always() && github.event_name == 'schedule' }}
+    needs: verify-specs
+    runs-on: ubuntu-22.04
+    timeout-minutes: 5
+    permissions:
+      contents: read
+      issues: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          sparse-checkout: .github/actions/nightly-failure-issue
+      - uses: ./.github/actions/nightly-failure-issue
+        with:
+          label: nightly-verify-specs
+          title: "Nightly verify-specs is failing"
+          failed: ${{ needs.verify-specs.result == 'failure' && 'true' || 'false' }}
+          details: |
+            The vendored verification specs (tests/verify-specs/) failed. The
+            run log names the failing module and test case id.
+
+            Per PROVENANCE.md the specs are the oracle and are never edited
+            here: either the product drifted from the spec, or the exclusion
+            belongs in excluded.json with a reason shared with the verification
+            team.
+          token: ${{ secrets.GITHUB_TOKEN }}
