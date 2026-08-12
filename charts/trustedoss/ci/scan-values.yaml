@@ -1,0 +1,18 @@
+# Values used only to render the chart for static analysis (trivy config).
+#
+# The chart refuses to render without these — `fail` calls in
+# templates/secret.yaml and templates/ingress.yaml. Trivy reports a
+# render failure as "Detected config files num=0" and exits 0, so a scan
+# without this file passes while inspecting nothing. The iac-security
+# workflow fails the job if the render produces no files, and this file
+# is what keeps it from tripping.
+#
+# Nothing here is a credential. Do not reuse any of these values.
+env:
+  secret:
+    secretKey: scan-only-placeholder-not-a-real-secret-key
+ingress:
+  host: scan.invalid
+postgres:
+  auth:
+    password: scan-only-placeholder

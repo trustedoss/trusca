@@ -1,0 +1,155 @@
+name: IaC Security
+
+# Static analysis of the deployment surface: the Helm chart under
+# charts/trustedoss and the Dockerfiles under apps/. Complements the two
+# scans that already exist — image-scan in ci.yml looks at the built
+# worker image's package tree, sca-self.yml at the application
+# dependency tree. Neither reads the manifests that decide how those
+# images are run.
+#
+# Behaviour:
+#   * render failure  → HARD FAIL. See the guard step for why.
+#   * 1+ CRITICAL     → HARD FAIL.
+#   * HIGH and below  → advisory. Counted in the job summary, full
+#                       reports uploaded as artifacts.
+#
+# Advisory for HIGH is deliberate, not permanent. The baseline when this
+# workflow landed was 19 HIGH (15 chart, 4 Dockerfile), most of them
+# pod-security defaults: KSV-0118 missing security context, KSV-0014
+# writable root filesystem, DS-0002 container runs as root. Gating on
+# them before they are fixed would block every unrelated PR. Same
+# observe-then-block progression dogfood-scan.yml uses.
+#
+# To escalate later: change ADVISORY_SEVERITY / BLOCKING_SEVERITY below.
+
+on:
+  pull_request:
+    paths:
+      - "charts/**"
+      - "apps/**/Dockerfile*"
+      - ".github/workflows/iac-security.yml"
+  push:
+    branches: [main]
+    paths:
+      - "charts/**"
+      - "apps/**/Dockerfile*"
+      - ".github/workflows/iac-security.yml"
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+
+concurrency:
+  group: iac-security-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  trivy-config:
+    name: trivy config (helm chart + Dockerfiles)
+    runs-on: ubuntu-22.04
+    env:
+      BLOCKING_SEVERITY: CRITICAL
+      ADVISORY_SEVERITY: CRITICAL,HIGH,MEDIUM,LOW
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Trivy (pinned deb, checksum-verified — matches sca-self.yml)
+        env:
+          TRIVY_VERSION: "0.72.0"
+          TRIVY_SHA256_AMD64: 9bf8aba92f524b74f8e83d53b298a7dfc6b4d60aca779217e7817e5433c73eeb
+        run: |
+          set -euo pipefail
+          url="https://github.com/aquasecurity/trivy/releases/download/v${TRIVY_VERSION}/trivy_${TRIVY_VERSION}_Linux-64bit.deb"
+          curl -fsSL -o /tmp/trivy.deb "$url"
+          echo "${TRIVY_SHA256_AMD64}  /tmp/trivy.deb" | sha256sum -c -
+          sudo dpkg -i /tmp/trivy.deb
+          rm -f /tmp/trivy.deb
+          trivy --version
+
+      - name: Scan Helm chart
+        # --helm-values is not optional. templates/secret.yaml and
+        # templates/ingress.yaml call `fail` when required values are
+        # unset, Trivy reports the resulting render error as a WARN and
+        # still exits 0 with zero results. charts/trustedoss/ci/scan-values.yaml
+        # supplies placeholders so the templates render.
+        run: |
+          set -euo pipefail
+          trivy config \
+            --skip-version-check \
+            --severity "${ADVISORY_SEVERITY}" \
+            --helm-values charts/trustedoss/ci/scan-values.yaml \
+            --format json \
+            --output trivy-chart.json \
+            charts/trustedoss
+
+      - name: Guard — the chart actually rendered
+        # Without this, a template change that breaks rendering turns the
+        # job green while inspecting nothing. A scan of zero files is a
+        # failure, not a pass.
+        run: |
+          set -euo pipefail
+          count=$(jq '[.Results[]?] | length' trivy-chart.json)
+          echo "config files inspected: ${count}"
+          if [ "${count}" -eq 0 ]; then
+            echo "::error::Trivy inspected 0 files under charts/trustedoss. The chart failed to render — check charts/trustedoss/ci/scan-values.yaml against the required values in templates/."
+            exit 1
+          fi
+
+      - name: Scan Dockerfiles
+        run: |
+          set -euo pipefail
+          trivy config \
+            --skip-version-check \
+            --severity "${ADVISORY_SEVERITY}" \
+            --format json \
+            --output trivy-dockerfile.json \
+            apps
+
+      - name: Summarise
+        run: |
+          set -euo pipefail
+          {
+            echo "### IaC misconfiguration findings"
+            echo ""
+            echo "| Target | CRITICAL | HIGH | MEDIUM | LOW |"
+            echo "| --- | --- | --- | --- | --- |"
+          } >> "$GITHUB_STEP_SUMMARY"
+          for pair in "Helm chart:trivy-chart.json" "Dockerfiles:trivy-dockerfile.json"; do
+            label="${pair%%:*}"
+            file="${pair##*:}"
+            row="| ${label} |"
+            for sev in CRITICAL HIGH MEDIUM LOW; do
+              n=$(jq --arg s "$sev" '[.Results[]?.Misconfigurations[]? | select(.Severity == $s)] | length' "$file")
+              row="${row} ${n} |"
+            done
+            echo "${row}" >> "$GITHUB_STEP_SUMMARY"
+          done
+          {
+            echo ""
+            echo "Only ${BLOCKING_SEVERITY} blocks. Full reports are in the run artifacts."
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Gate on ${{ env.BLOCKING_SEVERITY }}
+        run: |
+          set -euo pipefail
+          total=0
+          for file in trivy-chart.json trivy-dockerfile.json; do
+            n=$(jq --arg s "${BLOCKING_SEVERITY}" '[.Results[]?.Misconfigurations[]? | select(.Severity == $s)] | length' "$file")
+            echo "${file}: ${n} ${BLOCKING_SEVERITY}"
+            total=$((total + n))
+          done
+          if [ "${total}" -gt 0 ]; then
+            echo "::error::${total} ${BLOCKING_SEVERITY} misconfiguration(s). See the run artifacts for the full report."
+            exit 1
+          fi
+
+      - name: Upload reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: trivy-config-reports
+          path: |
+            trivy-chart.json
+            trivy-dockerfile.json
+          if-no-files-found: warn
+          retention-days: 14
