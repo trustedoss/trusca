@@ -60,7 +60,16 @@ export interface DemoModeState {
    * sandbox affordances never flash before the backend confirms them.
    */
   demoSandboxScans: boolean;
-  /** True until the first `/health` response resolves (uses the build hint). */
+  /**
+   * True until the first `/health` response resolves, while `demoReadOnly`
+   * still carries the build hint rather than the backend's answer.
+   *
+   * A surface that only ADDS chrome when the demo is confirmed (the banner, the
+   * credentials hint) can ignore this: showing nothing for one frame is
+   * invisible. A surface that REMOVES something instead (the register form,
+   * which the demo replaces with a notice) must gate on it, or the visitor sees
+   * the form paint and then vanish.
+   */
   isResolving: boolean;
 }
 
@@ -72,7 +81,7 @@ export interface DemoModeState {
  */
 export function useDemoMode(): DemoModeState {
   const hint = buildTimeDemoHint();
-  const { data, isPending } = useQuery({
+  const { data, isPending, isPlaceholderData } = useQuery({
     queryKey: ["health", "demo-mode"],
     queryFn: fetchHealth,
     // The deploy-level flag is stable for the life of the page; no need to poll.
@@ -89,5 +98,13 @@ export function useDemoMode(): DemoModeState {
   // alongside read-only, but we never want to re-enable a write when the UI
   // thinks writes are open (a non-demo deploy).
   const demoSandboxScans = demoReadOnly && (data?.demo_sandbox_scans ?? false);
-  return { demoReadOnly, demoSandboxScans, isResolving: isPending };
+  // `placeholderData` makes the query report success on the first render, so
+  // `isPending` alone is false from the very first frame and would claim the
+  // flag is settled while it is still the build hint. `isPlaceholderData` is
+  // what actually distinguishes "seeded guess" from "backend answered".
+  return {
+    demoReadOnly,
+    demoSandboxScans,
+    isResolving: isPending || isPlaceholderData,
+  };
 }

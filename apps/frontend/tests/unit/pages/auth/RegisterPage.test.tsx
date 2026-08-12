@@ -9,14 +9,19 @@ import { ProblemError } from "@/lib/problem";
 import { useAuthStore, type AuthUser } from "@/stores/authStore";
 
 vi.mock("@/lib/api", () => ({
+  // `api.get` backs useDemoMode's /health probe. The page renders a skeleton
+  // until that settles, so these tests must resolve it as a normal (non-demo)
+  // deploy or they would never see the form.
+  api: { get: vi.fn() },
   postLogin: vi.fn(),
   postRegister: vi.fn(),
   fetchMe: vi.fn(),
   postLogout: vi.fn(),
 }));
 
-import { fetchMe, postLogin, postRegister } from "@/lib/api";
+import { api, fetchMe, postLogin, postRegister } from "@/lib/api";
 
+const mockedGet = vi.mocked(api.get);
 const mockedPostLogin = vi.mocked(postLogin);
 const mockedPostRegister = vi.mocked(postRegister);
 const mockedFetchMe = vi.mocked(fetchMe);
@@ -40,8 +45,8 @@ function LocationProbe() {
   );
 }
 
-function renderRegister() {
-  return render(
+async function renderRegister() {
+  const result = render(
     <AppProviders router="none">
       <MemoryRouter initialEntries={["/register"]}>
         <Routes>
@@ -59,6 +64,9 @@ function renderRegister() {
       </MemoryRouter>
     </AppProviders>,
   );
+  // Wait past the skeleton the page holds while /health settles.
+  await screen.findByTestId("register-form");
+  return result;
 }
 
 describe("RegisterPage", () => {
@@ -69,6 +77,10 @@ describe("RegisterPage", () => {
       status: "anonymous",
       isAuthenticated: false,
     });
+    mockedGet.mockReset();
+    mockedGet.mockResolvedValue({
+      data: { status: "ok", demo_read_only: false },
+    });
     mockedPostLogin.mockReset();
     mockedPostRegister.mockReset();
     mockedFetchMe.mockReset();
@@ -76,7 +88,7 @@ describe("RegisterPage", () => {
 
   it("blocks submit when display name is empty", async () => {
     const user = userEvent.setup();
-    renderRegister();
+    await renderRegister();
     await user.type(screen.getByTestId("register-email"), "alice@example.com");
     await user.type(
       screen.getByTestId("register-password"),
@@ -90,7 +102,7 @@ describe("RegisterPage", () => {
 
   it("blocks submit when password is shorter than 8 chars (client-side)", async () => {
     const user = userEvent.setup();
-    renderRegister();
+    await renderRegister();
     await user.type(screen.getByTestId("register-display-name"), "Alice");
     await user.type(screen.getByTestId("register-email"), "alice@example.com");
     // 7 chars — short of the 8-char floor.
@@ -120,7 +132,7 @@ describe("RegisterPage", () => {
     mockedFetchMe.mockResolvedValueOnce(sampleUser);
 
     const user = userEvent.setup();
-    renderRegister();
+    await renderRegister();
     await user.type(screen.getByTestId("register-display-name"), "Alice");
     await user.type(screen.getByTestId("register-email"), "alice@example.com");
     await user.type(
@@ -158,7 +170,7 @@ describe("RegisterPage", () => {
     );
 
     const user = userEvent.setup();
-    renderRegister();
+    await renderRegister();
     await user.type(screen.getByTestId("register-display-name"), "Alice");
     await user.type(screen.getByTestId("register-email"), "alice@example.com");
     // 12 chars — passes the client gate; backend still rejects (e.g. policy
@@ -171,8 +183,8 @@ describe("RegisterPage", () => {
     expect(mockedPostLogin).not.toHaveBeenCalled();
   });
 
-  it("links back to /login", () => {
-    renderRegister();
+  it("links back to /login", async () => {
+    await renderRegister();
     expect(screen.getByTestId("register-signin-link")).toHaveAttribute(
       "href",
       "/login",
@@ -207,7 +219,7 @@ describe("RegisterPage", () => {
     );
 
     const user = userEvent.setup();
-    renderRegister();
+    await renderRegister();
     await user.type(screen.getByTestId("register-display-name"), "Bob");
     await user.type(screen.getByTestId("register-email"), "bob@example.com");
     await user.type(
@@ -253,7 +265,7 @@ describe("RegisterPage", () => {
     );
 
     const user = userEvent.setup();
-    renderRegister();
+    await renderRegister();
     await user.type(screen.getByTestId("register-display-name"), "Carol");
     await user.type(screen.getByTestId("register-email"), "carol@example.com");
     await user.type(

@@ -157,17 +157,23 @@ export function LoginPage() {
       testId="login-page"
       title={t("login.title")}
       subtitle={t("login.subtitle")}
+      // The demo has no self-service sign-up (the read-only middleware has no
+      // allow-list entry for POST /auth/register), so pointing at it here would
+      // send visitors somewhere that can only turn them away. /register itself
+      // still explains the situation for anyone who arrives by URL.
       footer={
-        <>
-          {t("login.no_account")}{" "}
-          <Link
-            to="/register"
-            className="font-medium text-primary hover:underline"
-            data-testid="login-signup-link"
-          >
-            {t("login.signup_link")}
-          </Link>
-        </>
+        demoReadOnly ? undefined : (
+          <>
+            {t("login.no_account")}{" "}
+            <Link
+              to="/register"
+              className="font-medium text-primary hover:underline"
+              data-testid="login-signup-link"
+            >
+              {t("login.signup_link")}
+            </Link>
+          </>
+        )
       }
     >
       {oauthErrorKey ? (

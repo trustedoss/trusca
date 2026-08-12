@@ -95,6 +95,25 @@ describe("LoginPage demo credentials hint", () => {
     expect(screen.queryByTestId("login-demo-hint")).not.toBeInTheDocument();
   });
 
+  it("drops the sign-up link on the demo, keeps it on a normal deploy", async () => {
+    // Self-service sign-up is not on the demo middleware's write allow-list, so
+    // the link would only lead somewhere that has to turn the visitor away.
+    stubHealth(true);
+    const { unmount } = renderLogin();
+
+    await screen.findByTestId("login-demo-hint");
+    expect(screen.queryByTestId("login-signup-link")).not.toBeInTheDocument();
+    unmount();
+
+    stubHealth(false);
+    renderLogin();
+
+    expect(await screen.findByTestId("login-signup-link")).toHaveAttribute(
+      "href",
+      "/register",
+    );
+  });
+
   it("the fill button populates the email + password fields", async () => {
     stubHealth(true);
     const user = userEvent.setup();
