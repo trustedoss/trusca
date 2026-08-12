@@ -147,12 +147,15 @@ def _release_workflow() -> dict:
     root = _repo_root()
     if root is None or not (root / _RELEASE_REL).is_file():
         pytest.skip("release.yml not present in this checkout")
-    return yaml.safe_load((root / _RELEASE_REL).read_text(encoding="utf-8"))
+    parsed = yaml.safe_load((root / _RELEASE_REL).read_text(encoding="utf-8"))
+    assert isinstance(parsed, dict), "release.yml did not parse to a mapping"
+    return parsed
 
 
 def _meta_step(job: dict) -> dict:
     for step in job["steps"]:
         if step.get("id") == "meta":
+            assert isinstance(step, dict)
             return step
     raise AssertionError("no step with id 'meta' in this job")
 
