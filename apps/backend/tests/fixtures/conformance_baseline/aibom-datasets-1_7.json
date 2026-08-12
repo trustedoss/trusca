@@ -1,7 +1,7 @@
 {
   "checks": [
     {
-      "detail": "2026-06-23T13:18:25+00:00",
+      "detail": "2026-08-11T09:00:00Z",
       "id": "timestamp",
       "label": "Timestamp (metadata.timestamp)",
       "missing": [],
@@ -17,7 +17,7 @@
       "status": "pass"
     },
     {
-      "detail": "job-2026-06-23-22:18:25@1782220705",
+      "detail": "sentiment-service@2.1.0",
       "id": "top-component",
       "label": "Top-level component name+version",
       "missing": [],
@@ -25,7 +25,7 @@
       "status": "pass"
     },
     {
-      "detail": "1/1",
+      "detail": "1/1 [1 package component(s) measured, 2 file/data excluded]",
       "id": "name-version",
       "label": "Component name+version coverage (100%)",
       "missing": [],
@@ -33,7 +33,7 @@
       "status": "pass"
     },
     {
-      "detail": "100% (1/1)",
+      "detail": "100% (1/1) [1 package component(s) measured, 2 file/data excluded]",
       "id": "purl",
       "label": "PURL coverage (>= 90%)",
       "missing": [],
@@ -49,7 +49,7 @@
       "status": "pass"
     },
     {
-      "detail": "1 edge(s)",
+      "detail": "2 edge(s)",
       "id": "transitive",
       "label": "Transitive dependencies (graph edges)",
       "missing": [],
@@ -57,15 +57,15 @@
       "status": "pass"
     },
     {
-      "detail": "100% (1/1)",
+      "detail": "66% (2/3)",
       "id": "license",
       "label": "License coverage (>= 80%, recommended)",
       "missing": [],
       "required": false,
-      "status": "pass"
+      "status": "warn"
     },
     {
-      "detail": "0% (0/1)",
+      "detail": "33% (1/3)",
       "id": "hash",
       "label": "Hash coverage (>= 50%, recommended)",
       "missing": [],
@@ -73,7 +73,7 @@
       "status": "warn"
     },
     {
-      "detail": "0% (0/1)",
+      "detail": "0% (0/3)",
       "id": "hash-algorithm",
       "label": "SHA-512 checksum coverage (>= 80%, recommended)",
       "missing": [],
@@ -81,12 +81,12 @@
       "status": "warn"
     },
     {
-      "detail": "100% (1/1)",
+      "detail": "0% (0/1)",
       "id": "component-creator",
       "label": "Component creator coverage (>= 80%, recommended)",
       "missing": [],
       "required": false,
-      "status": "pass"
+      "status": "warn"
     },
     {
       "detail": "0% (0/1)",
@@ -97,12 +97,12 @@
       "status": "warn"
     },
     {
-      "detail": "100% (1/1)",
+      "detail": "0% (0/1)",
       "id": "artifact-uri",
       "label": "Source or distribution URI coverage (>= 80%, recommended)",
       "missing": [],
       "required": false,
-      "status": "pass"
+      "status": "warn"
     },
     {
       "detail": "no file components",
@@ -213,7 +213,7 @@
     },
     {
       "cluster": "cisa-component",
-      "detail": "2/2 component(s)",
+      "detail": "4/4 component(s)",
       "id": "cisa-component-name",
       "label": "Component name",
       "missing": [],
@@ -223,7 +223,7 @@
     },
     {
       "cluster": "cisa-component",
-      "detail": "2/2 component(s)",
+      "detail": "4/4 component(s)",
       "id": "cisa-component-version",
       "label": "Component version",
       "missing": [],
@@ -233,31 +233,40 @@
     },
     {
       "cluster": "cisa-component",
-      "detail": "2/2 component(s)",
+      "detail": "0/4 component(s)",
       "id": "cisa-component-producer",
       "label": "Component producer",
-      "missing": [],
+      "missing": [
+        "sentiment-service",
+        "distilbert-base-uncased-finetuned-sst-2-english",
+        "stanfordnlp/sst2",
+        "internal/eval-holdout"
+      ],
       "required": false,
       "source": "auto",
-      "status": "pass"
+      "status": "warn"
     },
     {
       "cluster": "cisa-component",
-      "detail": "2/2 component(s)",
+      "detail": "2/4 component(s)",
       "id": "cisa-component-identifiers",
       "label": "Component identifiers",
-      "missing": [],
+      "missing": [
+        "sentiment-service",
+        "internal/eval-holdout"
+      ],
       "required": false,
       "source": "auto",
-      "status": "pass"
+      "status": "warn"
     },
     {
       "cluster": "cisa-component",
-      "detail": "1/2 component(s)",
+      "detail": "2/4 component(s)",
       "id": "cisa-component-license",
       "label": "Component license",
       "missing": [
-        "job-2026-06-23-22:18:25"
+        "sentiment-service",
+        "internal/eval-holdout"
       ],
       "required": false,
       "source": "auto",
@@ -265,12 +274,13 @@
     },
     {
       "cluster": "cisa-component",
-      "detail": "0/2 component(s)",
+      "detail": "1/4 component(s)",
       "id": "cisa-component-hash-value",
       "label": "Component hash value",
       "missing": [
-        "job-2026-06-23-22:18:25",
-        "bert-base-uncased"
+        "sentiment-service",
+        "distilbert-base-uncased-finetuned-sst-2-english",
+        "internal/eval-holdout"
       ],
       "required": false,
       "source": "auto",
@@ -278,7 +288,7 @@
     },
     {
       "cluster": "cisa-component",
-      "detail": "2/2 component(s)",
+      "detail": "4/4 component(s)",
       "id": "cisa-component-hash-algorithm",
       "label": "Component hash algorithm",
       "missing": [],
@@ -479,14 +489,14 @@
     },
     {
       "cluster": "slp",
-      "detail": "not present in the SBOM",
+      "detail": "present",
       "id": "g7-slp-components",
       "label": "System components",
       "missing": [],
       "required": false,
       "role": "system-producer",
       "source": "inferred",
-      "status": "warn"
+      "status": "pass"
     },
     {
       "cluster": "slp",
@@ -580,7 +590,7 @@
       "cluster": "models",
       "detail": "1/1 model component(s)",
       "evidence": [
-        "pkg:huggingface/google-bert/bert-base-uncased@86b5e093"
+        "pkg:huggingface/distilbert/distilbert-base-uncased-finetuned-sst-2-english@1.0"
       ],
       "id": "g7-model-id",
       "label": "Model identifier",
@@ -607,7 +617,7 @@
       "id": "g7-model-timestamp",
       "label": "Model timestamp",
       "missing": [
-        "bert-base-uncased"
+        "distilbert-base-uncased-finetuned-sst-2-english"
       ],
       "required": false,
       "role": "model-producer",
@@ -616,25 +626,29 @@
     },
     {
       "cluster": "models",
-      "detail": "1/1 model component(s)",
+      "detail": "0/1 model component(s)",
       "id": "g7-model-producer",
       "label": "Model producer",
-      "missing": [],
+      "missing": [
+        "distilbert-base-uncased-finetuned-sst-2-english"
+      ],
       "required": false,
       "role": "model-producer",
       "source": "inferred",
-      "status": "pass"
+      "status": "warn"
     },
     {
       "cluster": "models",
-      "detail": "1/1 model component(s)",
+      "detail": "0/1 model component(s)",
       "id": "g7-model-description",
       "label": "Model description",
-      "missing": [],
+      "missing": [
+        "distilbert-base-uncased-finetuned-sst-2-english"
+      ],
       "required": false,
       "role": "model-producer",
       "source": "auto",
-      "status": "pass"
+      "status": "warn"
     },
     {
       "cluster": "models",
@@ -642,7 +656,7 @@
       "id": "g7-model-hash-value",
       "label": "Model hash value",
       "missing": [
-        "bert-base-uncased"
+        "distilbert-base-uncased-finetuned-sst-2-english"
       ],
       "required": false,
       "role": "sbom-author",
@@ -655,7 +669,7 @@
       "id": "g7-model-hash-alg",
       "label": "Model hash algorithm",
       "missing": [
-        "bert-base-uncased"
+        "distilbert-base-uncased-finetuned-sst-2-english"
       ],
       "required": false,
       "role": "sbom-author",
@@ -664,17 +678,16 @@
     },
     {
       "cluster": "models",
-      "detail": "1/1 model component(s)",
-      "evidence": [
-        "bert"
-      ],
+      "detail": "0/1 model component(s)",
       "id": "g7-model-card",
       "label": "Model properties (model card)",
-      "missing": [],
+      "missing": [
+        "distilbert-base-uncased-finetuned-sst-2-english"
+      ],
       "required": false,
       "role": "model-producer",
       "source": "auto",
-      "status": "pass"
+      "status": "warn"
     },
     {
       "cluster": "models",
@@ -682,7 +695,7 @@
       "id": "g7-model-io",
       "label": "Model input-output properties",
       "missing": [
-        "bert-base-uncased"
+        "distilbert-base-uncased-finetuned-sst-2-english"
       ],
       "required": false,
       "role": "model-producer",
@@ -691,14 +704,16 @@
     },
     {
       "cluster": "models",
-      "detail": "1/1 model component(s)",
+      "detail": "0/1 model component(s)",
       "id": "g7-model-training",
       "label": "Model training properties",
-      "missing": [],
+      "missing": [
+        "distilbert-base-uncased-finetuned-sst-2-english"
+      ],
       "required": false,
       "role": "model-producer",
       "source": "inferred",
-      "status": "pass"
+      "status": "warn"
     },
     {
       "cluster": "models",
@@ -727,21 +742,23 @@
     },
     {
       "cluster": "models",
-      "detail": "1/1 model component(s)",
+      "detail": "0/1 model component(s)",
       "id": "g7-model-extref",
       "label": "Model external references",
-      "missing": [],
+      "missing": [
+        "distilbert-base-uncased-finetuned-sst-2-english"
+      ],
       "required": false,
       "role": "model-producer",
       "source": "auto",
-      "status": "pass"
+      "status": "warn"
     },
     {
       "cluster": "dp",
       "detail": "present",
       "evidence": [
-        "bookcorpus",
-        "wikipedia"
+        "internal/eval-holdout",
+        "stanfordnlp/sst2"
       ],
       "id": "g7-ds-name",
       "label": "Dataset name",
@@ -753,58 +770,58 @@
     },
     {
       "cluster": "dp",
-      "detail": "not present in the SBOM",
+      "detail": "present",
       "id": "g7-ds-description",
       "label": "Dataset description",
       "missing": [],
       "required": false,
       "role": "dataset-creator",
       "source": "inferred",
-      "status": "warn"
+      "status": "pass"
     },
     {
       "cluster": "dp",
-      "detail": "not present in the SBOM",
+      "detail": "present",
       "id": "g7-ds-content",
       "label": "Dataset content",
       "missing": [],
       "required": false,
       "role": "dataset-creator",
       "source": "inferred",
-      "status": "warn"
+      "status": "pass"
     },
     {
       "cluster": "dp",
-      "detail": "not present in the SBOM",
+      "detail": "present",
       "id": "g7-ds-identifier",
       "label": "Dataset identifier",
       "missing": [],
       "required": false,
       "role": "dataset-creator",
       "source": "inferred",
-      "status": "warn"
+      "status": "pass"
     },
     {
       "cluster": "dp",
-      "detail": "not present in the SBOM",
+      "detail": "present",
       "id": "g7-ds-hash",
       "label": "Dataset hash",
       "missing": [],
       "required": false,
       "role": "dataset-creator",
       "source": "auto",
-      "status": "warn"
+      "status": "pass"
     },
     {
       "cluster": "dp",
-      "detail": "not present in the SBOM",
+      "detail": "present",
       "id": "g7-ds-provenance",
       "label": "Dataset provenance",
       "missing": [],
       "required": false,
       "role": "dataset-creator",
       "source": "inferred",
-      "status": "warn"
+      "status": "pass"
     },
     {
       "cluster": "dp",
@@ -830,25 +847,25 @@
     },
     {
       "cluster": "dp",
-      "detail": "not present in the SBOM",
+      "detail": "present",
       "id": "g7-ds-dependency",
       "label": "Dataset dependency relationship",
       "missing": [],
       "required": false,
       "role": "dataset-creator",
       "source": "auto",
-      "status": "warn"
+      "status": "pass"
     },
     {
       "cluster": "dp",
-      "detail": "not present in the SBOM",
+      "detail": "present",
       "id": "g7-ds-license",
       "label": "Dataset license",
       "missing": [],
       "required": false,
       "role": "dataset-creator",
       "source": "inferred",
-      "status": "warn"
+      "status": "pass"
     },
     {
       "cluster": "infrastructure",
@@ -939,11 +956,11 @@
       "status": "warn"
     }
   ],
-  "component_count": 1,
-  "hash_coverage_pct": 0,
-  "license_coverage_pct": 100,
+  "component_count": 3,
+  "hash_coverage_pct": 33,
+  "license_coverage_pct": 66,
   "n_fail": 0,
-  "n_warn": 1,
+  "n_warn": 2,
   "purl_coverage_pct": 100,
   "result": "warn",
   "source_format": "cyclonedx"

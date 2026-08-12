@@ -7,8 +7,8 @@ REAL OWASP AIBOM Generator 1.7 ML-BOM recorded under
 hand-built minimal SBOMs for the boundary cases); crafted inputs cover the
 adversarial-shape and clamp edges only.
 
-Contract tests (§2 rule 2): the vendored registry (v2, sbom-tools#306) is the
-single source of truth for element metadata, and the hand-ported predicate /
+Contract tests (§2 rule 2): the vendored registry (v3, sbom-tools#306 + #456)
+is the single source of truth for element metadata, and the hand-ported predicate /
 missingPath / evidence maps must cover EXACTLY their registry subsets — a
 registry refresh with a missed port fails here immediately.
 """
@@ -70,6 +70,12 @@ EXPECTED_ABSENT = frozenset(
         "g7-ds-identifier",
         "g7-ds-provenance",
         "g7-ds-license",
+        # Registry v3 promoted these three off "requires human review"; with no
+        # data components the fixture is now short of them rather than unable
+        # to answer. The dataset fixture below covers the satisfied side.
+        "g7-ds-content",
+        "g7-ds-hash",
+        "g7-ds-dependency",
         "g7-infra-software",  # only the ML component — no library/app/framework
         "g7-infra-hardware",
         "g7-sec-vulns",
@@ -105,11 +111,8 @@ EXPECTED_REVIEW = frozenset(
         "g7-slp-data-usage",
         "g7-slp-io",
         "g7-slp-app-area",
-        "g7-ds-content",
-        "g7-ds-hash",
         "g7-ds-statistics",
         "g7-ds-sensitivity",
-        "g7-ds-dependency",
         "g7-sec-controls",
         "g7-sec-compliance",
         "g7-sec-policy",
@@ -211,7 +214,7 @@ def test_fixture_element_verdict(
 # ---------------------------------------------------------------------------
 def test_predicates_cover_exactly_the_cdxpath_elements() -> None:
     assert g7.automated_element_ids() == frozenset(g7._PREDICATES)
-    assert len(g7._PREDICATES) == 25  # registry v2 (#306)
+    assert len(g7._PREDICATES) == 28  # registry v3 — dp content/hash/dependency
 
 
 def test_missing_ports_cover_exactly_the_missingpath_elements() -> None:
@@ -263,6 +266,75 @@ def test_na_elements_have_no_port() -> None:
     assert na_ids == EXPECTED_REVIEW
     assert not na_ids & set(g7._PREDICATES)
     assert not na_ids & set(g7._MISSING)
+
+
+# ---------------------------------------------------------------------------
+# Datasets cluster against a document that actually carries datasets.
+# ---------------------------------------------------------------------------
+DATASET_FIXTURE = (
+    Path(__file__).resolve().parents[2]
+    / "fixtures"
+    / "sbom_ingest"
+    / "aibom-datasets-1_7.json"
+)
+
+# Every dp element the dataset fixture satisfies. Three of them — content, hash
+# and dependency — were "requires human review" under registry v2 and are the
+# point of the v3 promotion; provenance was WORSE than unmeasured, because v2
+# read `.componentData.governance` and CycloneDX puts governance inside the
+# `data` ARRAY (schema 1.6/1.7: `component.data` is an array of `componentData`,
+# and `componentData` is the type name, not a field). A document could declare
+# its dataset governance perfectly and still score as lacking it.
+DATASET_EXPECTED_PASS = frozenset(
+    {
+        "g7-ds-name",
+        "g7-ds-description",
+        "g7-ds-content",
+        "g7-ds-identifier",
+        "g7-ds-hash",
+        "g7-ds-provenance",
+        "g7-ds-dependency",
+        "g7-ds-license",
+    }
+)
+
+
+def test_dataset_cluster_reads_the_data_array() -> None:
+    doc = json.loads(DATASET_FIXTURE.read_text(encoding="utf-8"))
+    checks = {c.id: c for c in g7.evaluate_g7(doc) if c.id.startswith("g7-ds-")}
+
+    for element_id in sorted(DATASET_EXPECTED_PASS):
+        assert checks[element_id].status == "pass", element_id
+
+    # statistics and sensitivity stay unmeasured — v3 promoted three elements,
+    # not the whole cluster, and asserting that keeps a future refresh honest.
+    for element_id in ("g7-ds-statistics", "g7-ds-sensitivity"):
+        assert checks[element_id].status == "warn", element_id
+        assert "human review" in checks[element_id].detail
+
+
+def test_governance_under_the_wrong_key_does_not_count() -> None:
+    """The exact shape v2 accepted must now fail.
+
+    Pinning this stops a well-meaning "accept both spellings" edit from
+    reinstating the bug: `componentData` as a component field is not a thing
+    CycloneDX defines, so a document using it is not a document we should score
+    as compliant.
+    """
+    doc = {
+        "bomFormat": "CycloneDX",
+        "specVersion": "1.7",
+        "components": [
+            {
+                "bom-ref": "dataset:x",
+                "type": "data",
+                "name": "x",
+                "componentData": {"governance": {"owners": [{"organization": {}}]}},
+            }
+        ],
+    }
+    checks = {c.id: c for c in g7.evaluate_g7(doc)}
+    assert checks["g7-ds-provenance"].status == "warn"
 
 
 # ---------------------------------------------------------------------------

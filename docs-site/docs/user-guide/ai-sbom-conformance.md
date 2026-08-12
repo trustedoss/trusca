@@ -50,7 +50,7 @@ There is no separate upload path or setting. Send the document through the regul
 
 ## Read the checklist
 
-The checklist appears on the **scan detail page** as its own **G7 AI SBOM minimum elements** section below the core check table. A tally headline summarizes coverage — elements present out of the 38 machine-checkable ones, an advisory count, and a human-review count — followed by one card per cluster in the canonical order. Each row pairs the status badge with a **source** badge; where the element is known, the row also offers a correct CycloneDX fragment and a **Learn more** link to the authoritative specification (for example the [CycloneDX ML-BOM capability page](https://cyclonedx.org/capabilities/mlbom/)).
+The checklist appears on the **scan detail page** as its own **G7 AI SBOM minimum elements** section below the core check table. A tally headline summarizes coverage — elements present out of the 41 machine-checkable ones, an advisory count, and a human-review count — followed by one card per cluster in the canonical order. Each row pairs the status badge with a **source** badge; where the element is known, the row also offers a correct CycloneDX fragment and a **Learn more** link to the authoritative specification (for example the [CycloneDX ML-BOM capability page](https://cyclonedx.org/capabilities/mlbom/)).
 
 The API returns the same data: the G7 entries in the `checks[]` array of `GET /v1/projects/{project_id}/scans/{scan_id}/conformance` carry extra `cluster`, `source`, `role`, and (when values were extracted) `evidence` fields; the non-G7 checks omit them (among those, only `file-properties` carries a `source` tag).
 
@@ -61,7 +61,7 @@ The API returns the same data: the G7 entries in the `checks[]` array of `GET /v
 | Metadata | 10 | The SBOM document itself — author, format name and version, generating tool, timestamp, signature, dependency relationships. |
 | System level properties | 9 | The AI system as a whole — name, version, producer, component inventory, data flow, intended application area. |
 | Models | 14 | Each `machine-learning-model` component — identifier, version, hash, model card, inputs and outputs, training properties, license and its openness facets. |
-| Datasets properties | 10 | `data` components — name, identifier, provenance, sensitivity (PII / copyright), license. |
+| Datasets properties | 10 | `data` components — name, identifier, contents, hash, provenance, dependency edges, sensitivity (PII / copyright), license. Everything except statistics and sensitivity is read from the component, most of it from the CycloneDX `data` array. |
 | Infrastructure | 2 | The software dependencies and (via an HBOM link) the hardware the system runs on. |
 | Security properties | 4 | Security controls, compliance, cybersecurity policy information, vulnerability referencing. |
 | Key performance indicators | 2 | Security metrics and operational performance figures. |
@@ -72,7 +72,7 @@ Each element resolves to one of three outcomes:
 
 - **Pass** (`present`) — the element was found in the document.
 - **Advisory warn** (`not present in the SBOM`) — the element is machine-checkable but missing. Unlike a core-check warn, it does not count toward the overall verdict.
-- **Human review** (`requires human review (no automated source)`) — the G7 text asks for this element, but no CycloneDX field can prove it. 13 of the 51 elements are in this group (for example *dataset sensitivity* and *security controls*); they always render this way regardless of document quality, and the tally counts them separately as "need human review".
+- **Human review** (`requires human review (no automated source)`) — the G7 text asks for this element, but no CycloneDX field can prove it. 10 of the 51 elements are in this group (for example *dataset sensitivity* and *security controls*); they always render this way regardless of document quality, and the tally counts them separately as "need human review".
 
 ### Source tags
 
@@ -109,7 +109,7 @@ The working principle — shared with the OpenChain AI SBOM guidance — is **ge
 
 - **Non-standard license interpretation.** Many model licenses (OpenRAIL variants, bespoke research licenses) have no SPDX identifier and terms that require legal reading. The *Model license* check confirms a license entry exists — whether its terms permit your use is a policy and legal call.
 - **Dataset provenance truth.** The *Dataset provenance* check confirms a provenance or governance field is filled in. Whether the stated origin is accurate — and whether the data was lawfully collected — is not machine-verifiable from the SBOM.
-- **Human-review elements.** The 13 `na` elements (data flow, dataset sensitivity, security controls, and others) need a person to read the system's actual documentation.
+- **Human-review elements.** The 10 `na` elements (data flow, dataset sensitivity, security controls, and others) need a person to read the system's actual documentation.
 
 Two operational boundaries also apply:
 
@@ -134,7 +134,7 @@ TRUSCA releases earlier than this feature reject `specVersion: 1.7` at ingest. U
 
 ### Many rows say "requires human review"
 
-Expected. 13 of the 51 elements have no automated source (`source: na`) and always ask for human review — this reflects the G7 text, not a defect in your SBOM.
+Expected. 10 of the 51 elements have no automated source (`source: na`) and always ask for human review — this reflects the G7 text, not a defect in your SBOM.
 
 ### The model is missing from the Components tab
 

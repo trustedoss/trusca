@@ -317,8 +317,8 @@
           "id": "g7-ds-content",
           "label": "Dataset content",
           "role": "dataset-creator",
-          "source": "na",
-          "cdxPath": null,
+          "source": "inferred",
+          "cdxPath": "[ .components[]? | select(.type==\"data\") | (.data // [])[]? | select((((.contents.properties // []) | length) > 0) or ((.description // \"\") != \"\")) ] | length > 0",
           "label_ko": "데이터셋 내용"
         },
         {
@@ -333,8 +333,8 @@
           "id": "g7-ds-hash",
           "label": "Dataset hash",
           "role": "dataset-creator",
-          "source": "na",
-          "cdxPath": null,
+          "source": "auto",
+          "cdxPath": "[ .components[]? | select(.type==\"data\") | select(((.hashes // []) | length) > 0) ] | length > 0",
           "label_ko": "데이터셋 해시"
         },
         {
@@ -342,7 +342,7 @@
           "label": "Dataset provenance",
           "role": "dataset-creator",
           "source": "inferred",
-          "cdxPath": "[ .components[]? | select(.type==\"data\") | select(((.componentData.governance // null) != null) or ((.properties // []) | map(.name // \"\") | any(test(\"provenance|source\";\"i\")))) ] | length > 0",
+          "cdxPath": "[ .components[]? | select(.type==\"data\") | select((([ (.data // [])[]? | select((.governance // null) != null) ] | length) > 0) or ((.properties // []) | map(.name // \"\") | any(test(\"provenance|source\";\"i\")))) ] | length > 0",
           "label_ko": "데이터셋 출처"
         },
         {
@@ -365,8 +365,8 @@
           "id": "g7-ds-dependency",
           "label": "Dataset dependency relationship",
           "role": "dataset-creator",
-          "source": "na",
-          "cdxPath": null,
+          "source": "auto",
+          "cdxPath": "([ .components[]? | select(.type==\"data\") | .[\"bom-ref\"] // empty ]) as $ds | ($ds | length) > 0 and ([ .dependencies[]? | (.dependsOn // [])[] | select(. as $r | $ds | index($r) != null) ] | length) > 0",
           "label_ko": "데이터셋 의존성 관계"
         },
         {
