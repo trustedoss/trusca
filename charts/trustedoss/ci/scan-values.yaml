@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: Apache-2.0
+# Copyright 2026 TRUSCA contributors
 # Values used only to render the chart for static analysis (trivy config).
 #
 # The chart refuses to render without these — `fail` calls in
