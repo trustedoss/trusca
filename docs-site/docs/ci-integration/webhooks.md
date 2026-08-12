@@ -117,6 +117,19 @@ The portal compares against the project's stored token using a constant-time che
 
 GitLab does not support HMAC by default. If your security policy requires HMAC, put a reverse proxy in front that adds it, and verify the proxy in the portal layer.
 
+## Request limits
+
+Both receivers are public: the signature covers the body, so the body has to be read and the repository resolved before the portal can tell whether the caller is anyone at all. Two limits bound what that costs.
+
+| Setting | Default | Refused with |
+|---|---|---|
+| `WEBHOOK_MAX_BODY_BYTES` | 2 MiB | `413` |
+| `WEBHOOK_RATE_LIMIT` | `120/minute` per source IP | `429` |
+
+A real delivery is far below both. GitHub caps the commit list on a push payload and refuses to deliver anything over 25 MB, and 120 deliveries a minute from one address is more than a busy organisation sends.
+
+Unlike the `skipped_*` statuses, these two are errors: the delivery is not recorded and nothing is scanned. Neither Git host retries a 4xx on its own, so a delivery refused here needs a manual redelivery from the host after you raise the limit. Raise `WEBHOOK_RATE_LIMIT` rather than lose events if a large install trips it. The rate limit is keyed on IP because that is the only identity available before the signature is checked, and a Git host delivers every repository's events from one address range.
+
 ## Idempotency
 
 Both Git hosts retry deliveries on failure. The portal handles repeats with `delivery_id` deduplication:

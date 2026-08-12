@@ -25,6 +25,7 @@ cache the redis URL / celery app reference at module level.
 
 from __future__ import annotations
 
+import asyncio
 import os
 from datetime import UTC, datetime, timedelta
 from typing import Any
@@ -286,11 +287,17 @@ async def get_system_health(session: AsyncSession) -> SystemHealthOut:
     single resource and the real bottleneck is the Redis / Celery network
     hop — fanning out via gather adds complexity without measurable
     speedup at the per-poll cadence the dashboard uses.
+
+    Those two hops are synchronous clients, so they run in worker threads.
+    The Celery probe waits up to its 2-second ping budget on every poll and
+    would hold the event loop for all of it, one dashboard poll delaying
+    every other request in the process, worst exactly when the workers are
+    already unwell.
     """
     components = [
         await _probe_postgres(session),
-        _probe_redis(),
-        _probe_celery(),
+        await asyncio.to_thread(_probe_redis),
+        await asyncio.to_thread(_probe_celery),
         await _probe_disk(session),
         await _probe_active_scans(session),
         await _probe_last_24h_errors(session),

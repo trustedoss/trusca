@@ -33,12 +33,16 @@ import structlog
 from fastapi import APIRouter, Depends, Header, Request, Response, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from core.config import webhook_rate_limit
 from core.db import get_db
 from core.errors import problem_response
+from core.ratelimit import limiter
 from services.webhook_service import (
     WebhookError,
     process_github_webhook,
 )
+
+from ._body import read_capped_body
 
 router = APIRouter(prefix="/v1/webhooks", tags=["webhooks"])
 log = structlog.get_logger("webhooks.github")
@@ -81,8 +85,21 @@ def _problem_for_webhook_error(request: Request, exc: WebhookError) -> Response:
                 "repositories this portal watches."
             )
         },
+        413: {
+            "description": (
+                "Body over ``WEBHOOK_MAX_BODY_BYTES`` (default 2 MiB). Refused "
+                "before it is buffered and before any signature work."
+            )
+        },
+        429: {
+            "description": (
+                "Source IP over ``WEBHOOK_RATE_LIMIT`` (default 120/minute). "
+                "The delivery is not recorded; redeliver it from the Git host."
+            )
+        },
     },
 )
+@limiter.limit(webhook_rate_limit)
 async def github_webhook_endpoint(
     request: Request,
     x_hub_signature_256: str | None = Header(default=None, alias="X-Hub-Signature-256"),
@@ -90,7 +107,18 @@ async def github_webhook_endpoint(
     x_github_delivery: str | None = Header(default=None, alias="X-GitHub-Delivery"),
     session: AsyncSession = Depends(get_db),
 ) -> Response:
-    body = await request.body()
+    body = await read_capped_body(request)
+    if body is None:
+        log.warning("webhook.body_too_large", provider="github")
+        return problem_response(
+            status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
+            title="Payload Too Large",
+            detail=(
+                "GitHub webhook body exceeds the configured maximum "
+                "(WEBHOOK_MAX_BODY_BYTES)."
+            ),
+            instance=request.url.path,
+        )
     if not body:
         return problem_response(
             status_code=status.HTTP_400_BAD_REQUEST,
@@ -142,6 +170,18 @@ async def github_webhook_endpoint(
         status_code=status.HTTP_200_OK,
         media_type="application/json",
     )
+
+
+# slowapi's `@limiter.limit` wraps the endpoint with functools.wraps, whose
+# `__globals__` points at slowapi's module. Under `from __future__ import
+# annotations` FastAPI resolves the string annotations through
+# get_type_hints(func, globalns=func.__globals__) and cannot see names defined
+# here: misclassifying every parameter and 422-ing every request. Seed the
+# names the wrapper needs. Mirrors api/v1/search_results.py + dashboard.py.
+for _name in ("AsyncSession", "Request", "Response", "Depends", "Header"):
+    if _name in globals():
+        github_webhook_endpoint.__globals__.setdefault(_name, globals()[_name])
+del _name
 
 
 __all__ = ["router"]

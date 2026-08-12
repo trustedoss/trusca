@@ -12,6 +12,7 @@ docker-compose --env-file changes between sessions).
 from __future__ import annotations
 
 import ipaddress
+import math
 import os
 from urllib.parse import quote_plus, urlparse
 
@@ -249,6 +250,51 @@ def _int_env(name: str, default: int, *, minimum: int = 0, maximum: int | None =
     return value
 
 
+def _float_env(name: str, default: float, *, minimum: float, maximum: float) -> float:
+    """Parse a float env var, clamping to ``[minimum, maximum]`` and ignoring junk.
+
+    The float counterpart of :func:`_int_env`, with two differences that the
+    type forces:
+
+    - ``NaN`` and the infinities parse fine as floats but break every
+      comparison they take part in (``x >= nan`` is always False), so a guard
+      threshold set to one silently stops guarding. They are treated as junk.
+    - Both bounds are required. An unbounded float knob has no safe reading of
+      "0 or negative means disabled" the way an int cap does; a threshold that
+      lands outside its meaningful range is a typo, not an opt-out.
+
+    Junk and out-of-range values both emit a WARNING naming the variable. An
+    operator who typed the value needs to learn that the deployment is not
+    running what they wrote: silently falling back is how a misconfiguration
+    survives to the next incident.
+    """
+    raw = os.getenv(name)
+    if raw is None or raw.strip() == "":
+        return default
+
+    def _warn(event: str, **fields: object) -> None:
+        # Local import keeps config import-time free of the logging stack.
+        import structlog
+
+        structlog.get_logger("config").warning(event, env_var=name, **fields)
+
+    try:
+        value = float(raw)
+    except ValueError:
+        _warn("config.float_env_invalid", fell_back_to=default)
+        return default
+    if not math.isfinite(value):
+        _warn("config.float_env_invalid", fell_back_to=default)
+        return default
+    if value < minimum:
+        _warn("config.float_env_clamped_to_min", requested=value, clamped_to=minimum)
+        return minimum
+    if value > maximum:
+        _warn("config.float_env_clamped_to_max", requested=value, clamped_to=maximum)
+        return maximum
+    return value
+
+
 def db_pool_size() -> int:
     """Persistent connections kept open by the async (FastAPI) engine pool."""
     return _int_env("DB_POOL_SIZE", 20, minimum=1, maximum=_MAX_POOL_SIZE)
@@ -388,6 +434,82 @@ def scan_concurrency_cap_per_team() -> int:
     apply.
     """
     return _int_env("SCAN_CONCURRENCY_CAP_PER_TEAM", 10, minimum=0)
+
+
+# Percent-used range within which the workspace disk guard is a guard at all.
+# Below the floor it blocks every scan on a volume that is mostly empty, which
+# reads as "nothing is scanning" rather than as a threshold; above 100 it can
+# never trip. The admin dashboard warns at 80 and calls 90 critical, and the
+# on-call runbook has operators raise this to 98 to drain a full volume, so the
+# usable band sits well inside these bounds.
+_MIN_DISK_HARD_LIMIT_PCT = 50.0
+_MAX_DISK_HARD_LIMIT_PCT = 100.0
+
+
+def disk_hard_limit_pct() -> float:
+    """Workspace percent-used at or above which new scans are refused.
+
+    Default 95: below the point where any single scan can exhaust the volume,
+    above the dashboard's 90 critical mark so the operator sees the warning
+    before the guard starts refusing work. Set it to 100 to leave the guard
+    effectively off.
+
+    Junk falls back to the default and an out-of-range value is clamped, both
+    with a WARNING. Before this went through :func:`_float_env` a non-numeric
+    value raised out of the guard, a 500 on the webhook receiver, which the
+    Git host answers by retrying, and ``0`` made every delivery report
+    ``skipped_disk_full`` without a word in the log.
+    """
+    return _float_env(
+        "DISK_HARD_LIMIT_PCT",
+        95.0,
+        minimum=_MIN_DISK_HARD_LIMIT_PCT,
+        maximum=_MAX_DISK_HARD_LIMIT_PCT,
+    )
+
+
+# The webhook receivers are the one unauthenticated surface that does real
+# work before it knows who is calling: the HMAC (GitHub) or shared token
+# (GitLab) can only be checked once the body has been read and the repository
+# resolved, because the signature covers the body. Both knobs below bound what
+# a single anonymous caller can make the process spend getting that far.
+#
+# The floor is generous enough for any real delivery; the ceiling is what
+# GitHub itself refuses to deliver above, so nothing under it can be rejected
+# here that the Git host would have sent.
+_MIN_WEBHOOK_BODY_BYTES = 64 * 1024
+_MAX_WEBHOOK_BODY_BYTES = 25 * 1024 * 1024
+
+
+def webhook_max_body_bytes() -> int:
+    """Largest webhook body the receivers will read. Past it they answer 413.
+
+    Default 2 MiB. GitHub caps a push payload's commit list and refuses to
+    deliver above 25 MB, so a real delivery is orders of magnitude smaller;
+    the headroom is for a pull request with a very long body.
+    """
+    return _int_env(
+        "WEBHOOK_MAX_BODY_BYTES",
+        2 * 1024 * 1024,
+        minimum=_MIN_WEBHOOK_BODY_BYTES,
+        maximum=_MAX_WEBHOOK_BODY_BYTES,
+    )
+
+
+def webhook_rate_limit() -> str:
+    """slowapi limit string for the webhook receivers, keyed on source IP.
+
+    IP is the only identity available before the signature is checked, and a
+    Git host delivers every repository's events from a shared address range,
+    so the budget has to cover an organisation's whole push traffic. 120/minute
+    is far above what a busy install sends and far below what makes the parse
+    work worth attempting as a flood.
+
+    A 429 here costs a delivery: GitHub does not retry on its own, it only
+    offers manual redelivery. Raise this rather than lose events if a large
+    install trips it.
+    """
+    return os.getenv("WEBHOOK_RATE_LIMIT", "120/minute")
 
 
 def secret_key() -> str:

@@ -36,6 +36,7 @@ module-level caching.
 
 from __future__ import annotations
 
+import asyncio
 import os
 import re
 import shutil
@@ -290,13 +291,22 @@ async def get_disk_telemetry(session: AsyncSession) -> AdminDiskOut:
     render a stable card layout without mapping by name. Each probe is
     independent — a failure in one is reported via the per-item ``error``
     field, never raised.
+
+    The filesystem and Redis probes are blocking calls (``shutil.disk_usage``
+    is a statvfs; redis-py's sync client does network I/O), so they run in
+    worker threads. An unresponsive NFS mount or a Redis that accepts the
+    connection and then stalls would otherwise hold the event loop for the
+    whole request, and this dashboard is exactly where an operator looks when
+    storage is misbehaving.
     """
     items = [
-        _probe_filesystem(name="workspace", path=_workspace_path()),
+        await asyncio.to_thread(_probe_filesystem, name="workspace", path=_workspace_path()),
         # M-32 — the Trivy DB cache volume (shared with the worker, H-6).
-        _probe_filesystem(name="trivy_db", path=str(trivy_cache_dir())),
+        await asyncio.to_thread(
+            _probe_filesystem, name="trivy_db", path=str(trivy_cache_dir())
+        ),
         await _probe_postgres(session),
-        _probe_redis(),
+        await asyncio.to_thread(_probe_redis),
     ]
     return AdminDiskOut(items=items, collected_at=_now())
 

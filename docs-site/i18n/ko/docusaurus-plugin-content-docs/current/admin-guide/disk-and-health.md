@@ -101,6 +101,8 @@ DISK_THRESHOLD_CRITICAL_PCT=90
 DISK_HARD_LIMIT_PCT=95
 ```
 
+허용 범위는 `50`부터 `100`까지입니다. 50 미만이면 대부분 비어 있는 볼륨에서도 모든 스캔을 거부하게 되어 임계값이라기보다 "아무것도 스캔되지 않는" 상태로 보이고, 100은 가드를 사실상 끄는 값입니다. 범위를 벗어난 값은 가까운 경계로 조정하고, 숫자가 아닌 값은 `95.0`으로 되돌립니다. 두 경우 모두 변수 이름을 담은 WARNING 로그를 남기므로 `docker-compose logs backend | grep DISK_HARD_LIMIT_PCT`로 적어 둔 값이 그대로 적용됐는지 확인할 수 있습니다.
+
 ### "스캔 차단"의 의미
 
 `DISK_HARD_LIMIT_PCT`가 트립되면 `POST /v1/projects/{id}/scans`가 다음을 반환합니다.

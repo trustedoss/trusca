@@ -19,6 +19,7 @@ so callers get a stable RFC 7807 envelope instead of a Python traceback.
 
 from __future__ import annotations
 
+import asyncio
 import os
 import re
 import uuid
@@ -453,15 +454,20 @@ async def _enforce_team_concurrency_cap(
 def _disk_hard_limit_pct() -> float:
     """Hard cutoff for workspace disk usage. Above this, new scans 503.
 
-    Default 95% — matches the admin disk warning thresholds (80 warn / 90
-    critical) but stays below 100 so the operator has room to clean up
-    before any one scan exceeds total capacity.
+    Read at call time (CLAUDE.md core rule #11). Parsing, range clamping, and
+    the operator WARNING live in ``core.config.disk_hard_limit_pct`` next to
+    the other env accessors, so a typo can no longer raise out of the guard.
     """
-    return float(os.getenv("DISK_HARD_LIMIT_PCT", "95.0"))
+    from core.config import disk_hard_limit_pct
+
+    return disk_hard_limit_pct()
 
 
 def _check_disk_guard() -> None:
     """Raise :class:`ScanDiskFull` if workspace volume is past the hard limit.
+
+    Blocking: ``os.statvfs`` is a syscall. This is the body that runs in a
+    worker thread; everything on the event loop calls :func:`check_disk_guard`.
 
     Best-effort: if statvfs fails (eg. workspace dir missing), we let the
     scan through — the alternative (blanket 503) is worse than a scan that
@@ -494,6 +500,23 @@ def _check_disk_guard() -> None:
         raise ScanDiskFull(
             f"workspace disk usage {used_pct:.1f}% >= hard limit {limit:.1f}%"
         )
+
+
+async def check_disk_guard() -> None:
+    """Run the disk guard off the event loop. Raises :class:`ScanDiskFull`.
+
+    ``os.statvfs`` returns in microseconds on a local filesystem, but the
+    workspace is an operator-chosen path and may be an NFS or other network
+    mount. A syscall against an unresponsive mount does not time out on any
+    schedule we control, and on the event loop it takes every other request in
+    the process down with it: including the health endpoint that would show
+    what is wrong. The webhook receiver made this worth moving: the guard used
+    to run only on API-triggered scans and now runs on every delivery that
+    would enqueue one.
+
+    A hung thread still leaks a thread, but the loop keeps serving.
+    """
+    await asyncio.to_thread(_check_disk_guard)
 
 
 # ---------------------------------------------------------------------------
@@ -605,7 +628,7 @@ async def capacity_guard_reason(
     except ConcurrentScanLimitExceeded:
         return "skipped_team_at_capacity"
     try:
-        _check_disk_guard()
+        await check_disk_guard()
     except ScanDiskFull:
         return "skipped_disk_full"
     return None
@@ -768,7 +791,7 @@ async def trigger_scan(
     # Phase 6 PR #19 — disk guard. Reject the scan up front when the
     # workspace volume is past DISK_HARD_LIMIT_PCT so the operator does
     # not get an in-flight Celery failure.
-    _check_disk_guard()
+    await check_disk_guard()
 
     _bind_audit_team(project.team_id)
 
@@ -1211,6 +1234,7 @@ __all__ = [
     "ScanInProgressConflict",
     "ScanNotFound",
     "capacity_guard_reason",
+    "check_disk_guard",
     "delete_scan",
     "get_scan",
     "list_scans_for_actor",

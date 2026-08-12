@@ -28,6 +28,12 @@ QUALIFIED = {
     ("subprocess", "run"),
     ("subprocess", "Popen"),
     ("tarfile", "open"),
+    # Filesystem capacity syscalls (#41). Fast against a local disk, but the
+    # workspace is an operator-chosen mount and against an unresponsive NFS
+    # export the call has no deadline we control, it holds the loop for as
+    # long as the mount takes to answer, which may be never.
+    ("os", "statvfs"),
+    ("shutil", "disk_usage"),
     ("requests", "get"),
     ("requests", "post"),
     ("requests", "put"),

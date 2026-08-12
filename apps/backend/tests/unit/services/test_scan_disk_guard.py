@@ -1,16 +1,25 @@
 """
 Unit tests for the disk guard introduced in Phase 6 PR #19 — scans must 503
 when the workspace volume is past the hard limit.
+
+Also covers how ``DISK_HARD_LIMIT_PCT`` is parsed (#36) and that the guard
+runs off the event loop (#41).
 """
 
 from __future__ import annotations
 
 import os
+import threading
 from types import SimpleNamespace
 
 import pytest
 
-from services.scan_service import ScanDiskFull, _check_disk_guard, _disk_hard_limit_pct
+from services.scan_service import (
+    ScanDiskFull,
+    _check_disk_guard,
+    _disk_hard_limit_pct,
+    check_disk_guard,
+)
 
 
 def _fake_statvfs(*, blocks: int, bavail: int, frsize: int = 4096) -> SimpleNamespace:
@@ -67,3 +76,94 @@ def test_check_disk_guard_passes_when_total_zero(monkeypatch: pytest.MonkeyPatch
 def test_scan_disk_full_status_code_is_503() -> None:
     """ScanDiskFull maps to 503 so CI integrations know to retry later."""
     assert ScanDiskFull.status_code == 503
+
+
+# ---------------------------------------------------------------------------
+# #36: a misconfigured DISK_HARD_LIMIT_PCT must not reach the guard
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize("raw", ["ninety-five", "95%", "", "  ", "nan", "inf", "-inf"])
+def test_disk_hard_limit_junk_falls_back_to_default(
+    raw: str, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Junk yields the default instead of raising out of the guard.
+
+    The webhook receiver calls this through ``capacity_guard_reason``, which
+    catches only the two typed guard exceptions, a ``ValueError`` from here
+    escaped as a 500 and the Git host answered by retrying the delivery.
+
+    ``nan`` and the infinities parse as floats but break the ``>=`` comparison
+    they feed, so they count as junk too.
+    """
+    monkeypatch.setenv("DISK_HARD_LIMIT_PCT", raw)
+    assert _disk_hard_limit_pct() == 95.0
+
+
+def test_disk_hard_limit_zero_is_clamped_up(monkeypatch: pytest.MonkeyPatch) -> None:
+    """``0`` used to make every delivery report skipped_disk_full, silently."""
+    monkeypatch.setenv("DISK_HARD_LIMIT_PCT", "0")
+    assert _disk_hard_limit_pct() == 50.0
+
+
+def test_disk_hard_limit_above_hundred_is_clamped_down(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("DISK_HARD_LIMIT_PCT", "150")
+    assert _disk_hard_limit_pct() == 100.0
+
+
+@pytest.mark.parametrize("raw", ["50", "100", "98.5"])
+def test_disk_hard_limit_in_range_is_untouched(
+    raw: str, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Both bounds and the runbook's drain-a-full-volume value pass through."""
+    monkeypatch.setenv("DISK_HARD_LIMIT_PCT", raw)
+    assert _disk_hard_limit_pct() == float(raw)
+
+
+def test_guard_still_runs_with_a_junk_limit(monkeypatch: pytest.MonkeyPatch) -> None:
+    """End to end: junk config leaves a working guard, not a broken one."""
+    monkeypatch.setenv("DISK_HARD_LIMIT_PCT", "ninety-five")
+    monkeypatch.setattr(os, "statvfs", lambda _p: _fake_statvfs(blocks=100, bavail=50))
+    _check_disk_guard()  # 50% used, default limit 95, passes.
+
+    monkeypatch.setattr(os, "statvfs", lambda _p: _fake_statvfs(blocks=100, bavail=1))
+    with pytest.raises(ScanDiskFull):
+        _check_disk_guard()  # 99% used, still blocks.
+
+
+# ---------------------------------------------------------------------------
+# #41: the statvfs call belongs off the event loop
+# ---------------------------------------------------------------------------
+
+
+async def test_check_disk_guard_runs_statvfs_in_a_worker_thread(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The syscall must not run on the loop thread.
+
+    An unresponsive network mount would otherwise stall every request in the
+    process, including the health endpoint that would show why.
+    """
+    loop_thread = threading.get_ident()
+    seen: list[int] = []
+
+    def _statvfs(_p: str) -> SimpleNamespace:
+        seen.append(threading.get_ident())
+        return _fake_statvfs(blocks=100, bavail=50)
+
+    monkeypatch.setattr(os, "statvfs", _statvfs)
+    await check_disk_guard()
+
+    assert seen and loop_thread not in seen
+
+
+async def test_check_disk_guard_propagates_scan_disk_full(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Moving to a thread must not swallow the guard's verdict."""
+    monkeypatch.setenv("DISK_HARD_LIMIT_PCT", "95.0")
+    monkeypatch.setattr(os, "statvfs", lambda _p: _fake_statvfs(blocks=100, bavail=2))
+    with pytest.raises(ScanDiskFull):
+        await check_disk_guard()

@@ -819,8 +819,8 @@ async def test_oversized_payload_does_not_500(
     """A 1MB payload with no matching repo must return 4xx, never 500."""
     project, secret = await _make_github_project(client)
     payload = _push_payload(project.git_url)
-    # Add ~1MB of pad text. This stays below FastAPI's default request limit
-    # but is large enough to exercise the body-read + HMAC path under load.
+    # Add ~1MB of pad text. This stays below the 2 MiB WEBHOOK_MAX_BODY_BYTES
+    # default (#38) and is large enough to exercise the body-read + HMAC path.
     payload["pad"] = "A" * (1024 * 1024)
     body = json.dumps(payload).encode()
     response = await client.post(
@@ -885,4 +885,104 @@ async def test_payload_with_control_bytes_in_repo_name_does_not_500(
         f"{label!r} got {response.status_code}: {response.text!r}"
     )
     assert response.headers["content-type"].startswith(PROBLEM_JSON)
+    assert captured_dispatches == []
+
+
+# ---------------------------------------------------------------------------
+# #38: bounds on the pre-authentication surface
+# ---------------------------------------------------------------------------
+
+
+async def test_body_over_the_cap_is_refused_with_413(
+    client: AsyncClient,
+    captured_dispatches: list[str],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Over the cap the receiver answers 413 and does no signature work.
+
+    The signature covers the body, so it cannot be checked until the body is
+    read. Without a cap the caller decides how much the process reads, and
+    resolving the repository afterwards is linear in the URL length, so the
+    work in front of the first credential check scales with an attacker-chosen
+    number.
+    """
+    monkeypatch.setenv("WEBHOOK_MAX_BODY_BYTES", str(64 * 1024))
+    project, secret = await _make_github_project(client)
+    payload = _push_payload(project.git_url)
+    payload["pad"] = "A" * (80 * 1024)
+    body = json.dumps(payload).encode()
+
+    response = await client.post(
+        "/v1/webhooks/github",
+        content=body,
+        headers={
+            "Content-Type": "application/json",
+            # A signature that would otherwise verify, the cap decides first.
+            "X-Hub-Signature-256": _sign(body, secret),
+            "X-GitHub-Event": "push",
+            "X-GitHub-Delivery": str(uuid.uuid4()),
+        },
+    )
+    assert response.status_code == 413, response.text
+    assert response.headers["content-type"].startswith(PROBLEM_JSON)
+    assert captured_dispatches == []
+
+
+async def test_body_at_the_cap_still_scans(
+    client: AsyncClient,
+    captured_dispatches: list[str],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The cap refuses what is over it, not what is near it."""
+    monkeypatch.setenv("WEBHOOK_MAX_BODY_BYTES", str(64 * 1024))
+    project, secret = await _make_github_project(client)
+    payload = _push_payload(project.git_url)
+    payload["pad"] = "A" * (32 * 1024)
+    body = json.dumps(payload).encode()
+    assert len(body) < 64 * 1024
+
+    response = await client.post(
+        "/v1/webhooks/github",
+        content=body,
+        headers={
+            "Content-Type": "application/json",
+            "X-Hub-Signature-256": _sign(body, secret),
+            "X-GitHub-Event": "push",
+            "X-GitHub-Delivery": str(uuid.uuid4()),
+        },
+    )
+    assert response.status_code == 200, response.text
+    assert response.json()["status"] == "enqueued"
+
+
+async def test_source_ip_over_the_rate_limit_gets_429(
+    client: AsyncClient,
+    captured_dispatches: list[str],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The receiver is public, so the only pre-auth identity is the source IP.
+
+    A 429 costs a delivery: the Git host does not retry on its own, which is
+    why the shipped budget is far above real traffic. The limit itself is what
+    stops an anonymous flood from spending the parse path indefinitely.
+    """
+    monkeypatch.setenv("WEBHOOK_RATE_LIMIT", "2/minute")
+    body = json.dumps(_push_payload("https://github.com/acme/nothing-here")).encode()
+    headers = {
+        "Content-Type": "application/json",
+        "X-Hub-Signature-256": _sign(body, "wrong-secret"),
+        "X-GitHub-Event": "push",
+    }
+
+    seen: list[int] = []
+    for _ in range(3):
+        response = await client.post(
+            "/v1/webhooks/github",
+            content=body,
+            headers={**headers, "X-GitHub-Delivery": str(uuid.uuid4())},
+        )
+        seen.append(response.status_code)
+
+    assert seen[:2] == [401, 401], seen
+    assert seen[2] == 429, seen
     assert captured_dispatches == []

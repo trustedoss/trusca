@@ -345,3 +345,59 @@ def test_trivy_db_probe_reads_trivy_cache_dir(
     assert item.path == str(cache)
     assert item.error is None
     assert item.total_bytes is not None and item.total_bytes > 0
+
+
+# ---------------------------------------------------------------------------
+# #41: the blocking probes run off the event loop
+# ---------------------------------------------------------------------------
+
+
+class _UnavailableSession:
+    """Stands in for the DB session: the postgres probe is not under test here.
+
+    Its failure is reported as a per-item ``error``, which is the documented
+    behaviour, and leaves the two probes this test does watch untouched.
+    """
+
+    async def execute(self, _stmt: Any) -> Any:
+        raise RuntimeError("postgres probe not under test")
+
+
+async def test_get_disk_telemetry_runs_statvfs_off_the_loop(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """``shutil.disk_usage`` is a statvfs, and the workspace path is whatever
+    the operator mounted there. Against an unresponsive NFS mount the syscall
+    has no deadline we control, so it must not run on the loop thread."""
+    import threading
+
+    from services.admin_disk_service import get_disk_telemetry
+
+    loop_thread = threading.get_ident()
+    seen: list[int] = []
+
+    def _recording_disk_usage(_path: str) -> Any:
+        seen.append(threading.get_ident())
+        return _fake_disk_usage_factory(1000, 500, 500)(_path)
+
+    class _OkRedis:
+        def info(self, _section: str) -> dict[str, int]:
+            seen.append(threading.get_ident())
+            return {"used_memory": 0, "maxmemory": 0}
+
+        def close(self) -> None:
+            pass
+
+    monkeypatch.setattr(
+        "services.admin_disk_service.shutil.disk_usage", _recording_disk_usage
+    )
+    monkeypatch.setattr(
+        "services.admin_disk_service._redis.Redis.from_url",
+        lambda _url, **_kw: _OkRedis(),
+    )
+
+    await get_disk_telemetry(_UnavailableSession())  # type: ignore[arg-type]
+
+    # workspace + trivy_db + redis
+    assert len(seen) == 3
+    assert loop_thread not in seen

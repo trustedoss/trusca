@@ -680,3 +680,68 @@ async def test_oversized_payload_does_not_500(
     )
     assert response.status_code == 200, response.text
     assert response.json()["status"] == "enqueued"
+
+
+# ---------------------------------------------------------------------------
+# #38: bounds on the pre-authentication surface
+# ---------------------------------------------------------------------------
+
+
+async def test_body_over_the_cap_is_refused_with_413(
+    client: AsyncClient,
+    captured_dispatches: list[str],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Over the cap the receiver answers 413 before comparing the token.
+
+    GitLab authenticates with a header rather than a body signature, but the
+    repository still has to be resolved from the parsed payload, so the same
+    unauthenticated parse work sits in front of the decision.
+    """
+    monkeypatch.setenv("WEBHOOK_MAX_BODY_BYTES", str(64 * 1024))
+    project, secret = await _make_gitlab_project(client)
+    payload = _push_payload(project.git_url)
+    payload["pad"] = "B" * (80 * 1024)
+    body = json.dumps(payload).encode()
+
+    response = await client.post(
+        "/v1/webhooks/gitlab",
+        content=body,
+        headers={
+            "Content-Type": "application/json",
+            "X-Gitlab-Token": secret,
+            "X-Gitlab-Event": "Push Hook",
+            "X-Gitlab-Webhook-UUID": str(uuid.uuid4()),
+        },
+    )
+    assert response.status_code == 413, response.text
+    assert response.headers["content-type"].startswith(PROBLEM_JSON)
+    assert captured_dispatches == []
+
+
+async def test_source_ip_over_the_rate_limit_gets_429(
+    client: AsyncClient,
+    captured_dispatches: list[str],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Same IP-keyed budget as the GitHub receiver, they share the limit string."""
+    monkeypatch.setenv("WEBHOOK_RATE_LIMIT", "2/minute")
+    body = json.dumps(_push_payload("https://gitlab.com/acme/nothing-here")).encode()
+    headers = {
+        "Content-Type": "application/json",
+        "X-Gitlab-Token": "wrong-token",
+        "X-Gitlab-Event": "Push Hook",
+    }
+
+    seen: list[int] = []
+    for _ in range(3):
+        response = await client.post(
+            "/v1/webhooks/gitlab",
+            content=body,
+            headers={**headers, "X-Gitlab-Webhook-UUID": str(uuid.uuid4())},
+        )
+        seen.append(response.status_code)
+
+    assert seen[:2] == [401, 401], seen
+    assert seen[2] == 429, seen
+    assert captured_dispatches == []

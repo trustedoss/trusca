@@ -34,12 +34,16 @@ import structlog
 from fastapi import APIRouter, Depends, Header, Request, Response, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from core.config import webhook_rate_limit
 from core.db import get_db
 from core.errors import problem_response
+from core.ratelimit import limiter
 from services.webhook_service import (
     WebhookError,
     process_gitlab_webhook,
 )
+
+from ._body import read_capped_body
 
 router = APIRouter(prefix="/v1/webhooks", tags=["webhooks"])
 log = structlog.get_logger("webhooks.gitlab")
@@ -115,8 +119,21 @@ def _extract_delivery_id(
                 "this portal watches."
             )
         },
+        413: {
+            "description": (
+                "Body over ``WEBHOOK_MAX_BODY_BYTES`` (default 2 MiB). Refused "
+                "before it is buffered and before any token comparison."
+            )
+        },
+        429: {
+            "description": (
+                "Source IP over ``WEBHOOK_RATE_LIMIT`` (default 120/minute). "
+                "The delivery is not recorded; redeliver it from the Git host."
+            )
+        },
     },
 )
+@limiter.limit(webhook_rate_limit)
 async def gitlab_webhook_endpoint(
     request: Request,
     x_gitlab_token: str | None = Header(default=None, alias="X-Gitlab-Token"),
@@ -124,7 +141,18 @@ async def gitlab_webhook_endpoint(
     x_gitlab_webhook_uuid: str | None = Header(default=None, alias="X-Gitlab-Webhook-UUID"),
     session: AsyncSession = Depends(get_db),
 ) -> Response:
-    body = await request.body()
+    body = await read_capped_body(request)
+    if body is None:
+        log.warning("webhook.body_too_large", provider="gitlab")
+        return problem_response(
+            status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
+            title="Payload Too Large",
+            detail=(
+                "GitLab webhook body exceeds the configured maximum "
+                "(WEBHOOK_MAX_BODY_BYTES)."
+            ),
+            instance=request.url.path,
+        )
     if not body:
         return problem_response(
             status_code=status.HTTP_400_BAD_REQUEST,
@@ -174,6 +202,15 @@ async def gitlab_webhook_endpoint(
         status_code=status.HTTP_200_OK,
         media_type="application/json",
     )
+
+
+# See the note in webhooks/github.py, slowapi's functools.wraps hides this
+# module's names from FastAPI's annotation resolution, which would 422 every
+# request. Seed the names the wrapper needs.
+for _name in ("AsyncSession", "Request", "Response", "Depends", "Header"):
+    if _name in globals():
+        gitlab_webhook_endpoint.__globals__.setdefault(_name, globals()[_name])
+del _name
 
 
 __all__ = ["router"]
