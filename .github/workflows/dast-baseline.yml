@@ -1,0 +1,145 @@
+name: DAST Baseline
+
+# Passive dynamic scan of a running deployment. Complements the static scans
+# that already exist: SAST reads the source, sca-self.yml the dependency tree,
+# image-scan the built image's packages, iac-security.yml the deployment
+# manifests. None of them see what the application actually answers over HTTP
+# once it is running: missing security headers, cookie flags, exposed debug
+# surface, information leaks in responses.
+#
+# BASELINE, NOT FULL. ZAP baseline spiders the target and reports what the
+# passive rules observe in the traffic. It does not send attack payloads. That
+# distinction is the whole reason this can point at a shared demo host at all.
+# A full active scan sends real payloads to every parameter it discovers, which
+# on a live host risks resource exhaustion, account lockout from repeated auth
+# attempts, and writes through any ingest path that happens to be open. Full
+# belongs on a scan-only instance, not here.
+#
+# INERT BY DEFAULT, the same way demo-health-canary.yml is. With the
+# DAST_TARGET_URL repo variable unset the job logs a notice and succeeds, so
+# merging this workflow scans nothing until someone points it at a host
+# (repo -> Settings -> Variables -> Actions -> DAST_TARGET_URL). Point it at
+# the demo host, never at anything holding real customer data.
+#
+# SOFT FAIL. Findings are reported as artifacts and in the job summary; they do
+# not fail the run. This is the observe half of the observe-then-block
+# progression the other scan workflows follow. Raising it to blocking is a
+# deliberate later step, and it needs the same treatment iac-security.yml got:
+# change the threshold AND verify the gate still blocks by making it block once
+# on purpose. A scan job that passes because it stopped finding things looks
+# exactly like one that passes because the target is clean.
+
+on:
+  schedule:
+    # Weekly. The canary probes /health every 30 min for liveness; this is a
+    # different question asked far less often, and a spider run is heavier.
+    - cron: "17 4 * * 1" # Mondays 04:17 UTC
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+
+concurrency:
+  group: dast-baseline-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  baseline:
+    name: ZAP baseline (passive)
+    runs-on: ubuntu-22.04
+    steps:
+      - name: Resolve target
+        id: target
+        env:
+          DAST_TARGET_URL: ${{ vars.DAST_TARGET_URL }}
+        run: |
+          set -euo pipefail
+          if [ -z "${DAST_TARGET_URL:-}" ]; then
+            echo "::notice::DAST_TARGET_URL repo variable is unset - baseline scan disabled (no-op). Nothing was scanned."
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          # Refuse anything that is not http(s), so a typo cannot turn into a
+          # file:// or ftp:// read on the runner.
+          case "${DAST_TARGET_URL}" in
+            http://*|https://*) ;;
+            *) echo "::error::DAST_TARGET_URL must be an http(s) URL, got: ${DAST_TARGET_URL}"; exit 1 ;;
+          esac
+          echo "url=${DAST_TARGET_URL%/}" >> "$GITHUB_OUTPUT"
+          echo "skip=false" >> "$GITHUB_OUTPUT"
+
+      - name: Run ZAP baseline
+        if: steps.target.outputs.skip == 'false'
+        env:
+          TARGET: ${{ steps.target.outputs.url }}
+          # CLAUDE.md #9 - pinned, never :latest. `stable` moves like latest
+          # does, so the version tag is what goes here.
+          ZAP_IMAGE: ghcr.io/zaproxy/zaproxy:2.16.1
+        run: |
+          set -euo pipefail
+          mkdir -p out
+          chmod 777 out   # the zap user in the image writes here
+          # -m 5   spider for at most 5 minutes
+          # -T 10  give up entirely after 10 minutes
+          # -I     do not return failure on warnings (soft fail)
+          #
+          # The time caps are not just for CI duration. The demo runs with
+          # DEMO_READ_ONLY on, which rejects anything but GET/HEAD/OPTIONS, but
+          # demo_allow_sandbox_scans() can open a scan-ingest path. An
+          # unbounded spider hammering that path is a resource-exhaustion
+          # problem even without a single attack payload being sent.
+          docker run --rm \
+            -v "${PWD}/out:/zap/wrk:rw" \
+            "${ZAP_IMAGE}" \
+            zap-baseline.py \
+              -t "${TARGET}" \
+              -m 5 -T 10 -I \
+              -r baseline-report.html \
+              -J baseline-report.json \
+            || echo "::notice::zap-baseline exited non-zero; soft fail, see the artifact."
+
+      - name: Summarise findings
+        if: steps.target.outputs.skip == 'false'
+        run: |
+          set -euo pipefail
+          report=out/baseline-report.json
+          if [ ! -f "$report" ]; then
+            echo "::warning::No JSON report was produced. The scan did not complete."
+            {
+              echo "### DAST baseline"
+              echo ""
+              echo "No report produced - the scan did not complete. Check the job log."
+            } >> "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+          # Count alerts by risk so the summary says what was actually seen
+          # rather than only that the job finished.
+          {
+            echo "### DAST baseline (passive)"
+            echo ""
+            echo "Target: \`${{ steps.target.outputs.url }}\`"
+            echo ""
+            echo "| Risk | Alerts |"
+            echo "| --- | --- |"
+            for risk in High Medium Low Informational; do
+              n=$(jq --arg r "$risk" \
+                '[.site[]?.alerts[]? | select(.riskdesc | startswith($r))] | length' "$report")
+              echo "| ${risk} | ${n} |"
+            done
+            echo ""
+            urls=$(jq '[.site[]?.alerts[]?.instances[]?.uri] | unique | length' "$report")
+            echo "Distinct URLs reported on: ${urls}. A count of 0 here means the"
+            echo "spider reached nothing, which is a failed scan and not a clean one."
+            echo ""
+            echo "Passive scan only - no attack payloads were sent. Findings are"
+            echo "advisory and do not fail this run."
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload report
+        if: always() && steps.target.outputs.skip == 'false'
+        uses: actions/upload-artifact@v4
+        with:
+          name: zap-baseline-report
+          path: out/
+          if-no-files-found: warn
+          retention-days: 30
