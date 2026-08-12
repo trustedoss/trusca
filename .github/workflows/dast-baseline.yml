@@ -79,21 +79,31 @@ jobs:
           set -euo pipefail
           mkdir -p out
           chmod 777 out   # the zap user in the image writes here
-          # -m 5   spider for at most 5 minutes
-          # -T 10  give up entirely after 10 minutes
+          # -m 2   spider for at most 2 minutes
+          # -T 6   give up entirely after 6 minutes
           # -I     do not return failure on warnings (soft fail)
           #
-          # The time caps are not just for CI duration. The demo runs with
-          # DEMO_READ_ONLY on, which rejects anything but GET/HEAD/OPTIONS, but
-          # demo_allow_sandbox_scans() can open a scan-ingest path. An
-          # unbounded spider hammering that path is a resource-exhaustion
-          # problem even without a single attack payload being sent.
+          # The time caps are not about CI duration. The demo runs with
+          # DEMO_READ_ONLY on, which rejects anything but GET/HEAD/OPTIONS, and
+          # demo_allow_sandbox_scans() defaults to false, so the scan-ingest
+          # path is closed unless someone opens it. What is left is plain load,
+          # and that is the binding constraint here: docker-compose.demo.yml
+          # calls this a low-cost public demo and puts mem_limit on backend and
+          # worker to keep it that way. Two minutes of spidering is sized for
+          # that host, not for how long CI can afford to wait. Raise it after
+          # watching a run, not before.
+          #
+          # Related, for whoever turns the canary on: demo-health-canary.yml
+          # probes /health every 30 minutes and opens an issue on sustained
+          # failure. If a spider slows the demo enough, that canary will read
+          # it as an outage. The two workflows watch the same host and should
+          # be looked at together.
           docker run --rm \
             -v "${PWD}/out:/zap/wrk:rw" \
             "${ZAP_IMAGE}" \
             zap-baseline.py \
               -t "${TARGET}" \
-              -m 5 -T 10 -I \
+              -m 2 -T 6 -I \
               -r baseline-report.html \
               -J baseline-report.json \
             || echo "::notice::zap-baseline exited non-zero; soft fail, see the artifact."
