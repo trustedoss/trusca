@@ -342,6 +342,18 @@ async def test_admin_health_super_admin_returns_components(client: AsyncClient) 
         "last_24h_errors",
     }
 
+    # The two counter rows must serialise a numeric reading, not just a
+    # human-readable detail string. The vendored spec TC-HEALTH-01-005 asserted
+    # this over the response body until ``detail_params`` (an object) landed
+    # between the name and the value and broke its regex; the check is excluded
+    # there pending a re-key, so the assertion lives here in the meantime.
+    # See tests/verify-specs/excluded.json.
+    by_name = {c["name"]: c for c in body["components"]}
+    for counter in ("active_scans", "last_24h_errors"):
+        value = by_name[counter]["value"]
+        assert isinstance(value, int), f"{counter} value must be a count, got {value!r}"
+        assert value >= 0
+
 
 # ---------------------------------------------------------------------------
 # Trivy DB health panel
