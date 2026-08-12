@@ -42,3 +42,18 @@ misconfigurations:
       deployed stack) builds neither of these two files; only
       docker-compose.dev.yml does.
     expiredAt: 2027-02-12
+
+  - id: KSV-0109
+    paths:
+      - "**/configmap-env.yaml"
+    statement: >-
+      False positive on key names, not on values. The two keys Trivy reports
+      are ACCESS_TOKEN_EXPIRE_MINUTES and REFRESH_TOKEN_EXPIRE_DAYS, whose
+      values are lifetimes in minutes and days — the rule matches the substring
+      "TOKEN" in the key. The real secrets are not in this ConfigMap: the
+      header comment at charts/trustedoss/templates/configmap-env.yaml:10 says
+      so, and DATABASE_URL and SECRET_KEY are injected from a Secret through
+      the trustedoss.runtimeSecretEnv helper. Re-check this entry if a key
+      holding an actual credential is ever added to the ConfigMap — the
+      suppression is scoped to the file, so it would hide that too.
+    expiredAt: 2027-02-12

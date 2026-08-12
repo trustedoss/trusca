@@ -26,7 +26,18 @@ name: IaC Security
 #     suppressed with a reason in .trivyignore.iac.yaml.
 #     apps/backend/Dockerfile.worker is the one left and needs its own
 #     change: the bundled SCA toolchain caches under the root home.
-#   * KSV-0118 / KSV-0014 — 15, untouched so far.
+#   * KSV-0118 / KSV-0014 — 15 → 6. backend, frontend and redis now carry a
+#     real pod and container security context (non-root uid matching what the
+#     image already runs as, dropped capabilities, sealed root filesystem).
+#     worker and beat are the remainder and share the worker image, which
+#     still runs as root — the same change unblocks both.
+#   * KSV-0109 — 1 → 0. False positive on the key NAMES
+#     ACCESS_TOKEN_EXPIRE_MINUTES / REFRESH_TOKEN_EXPIRE_DAYS, whose values are
+#     lifetimes. Suppressed with the reasoning in .trivyignore.iac.yaml.
+#
+# So the whole remaining baseline — 6 chart findings and 1 Dockerfile finding —
+# is one change away: making the worker image run unprivileged. That is the
+# gate on raising BLOCKING_SEVERITY, not a count of unrelated fixes.
 #
 # To escalate: raise BLOCKING_SEVERITY below AND widen the jq comparison in
 # the gate step. It matches Severity for equality against a single value, so
@@ -91,6 +102,7 @@ jobs:
             --skip-version-check \
             --severity "${ADVISORY_SEVERITY}" \
             --helm-values charts/trustedoss/ci/scan-values.yaml \
+            --ignorefile .trivyignore.iac.yaml \
             --format json \
             --output trivy-chart.json \
             charts/trustedoss
