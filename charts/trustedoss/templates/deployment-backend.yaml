@@ -32,10 +32,18 @@ spec:
       imagePullSecrets:
         {{- toYaml . | nindent 8 }}
       {{- end }}
+      {{- with .Values.backend.podSecurityContext }}
+      securityContext:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
       containers:
         - name: backend
           image: "{{ .Values.image.backendRepository }}:{{ .Values.image.tag }}"
           imagePullPolicy: {{ .Values.image.pullPolicy }}
+          {{- with .Values.backend.containerSecurityContext }}
+          securityContext:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
           ports:
             - name: http
               containerPort: {{ .Values.backend.port }}
@@ -44,7 +52,19 @@ spec:
                 name: {{ include "trustedoss.fullname" . }}-env
           env:
             {{- include "trustedoss.runtimeSecretEnv" . | nindent 12 }}
+            {{- if (.Values.backend.containerSecurityContext).readOnlyRootFilesystem }}
+            # HOME is /app, which is read-only once the root filesystem is
+            # sealed. Without this fontconfig has nowhere to cache and every
+            # WeasyPrint font lookup logs "No writable cache directories" —
+            # the PDF still renders, but the cache is rebuilt each time.
+            - name: XDG_CACHE_HOME
+              value: /tmp/cache
+            {{- end }}
           volumeMounts:
+            {{- if (.Values.backend.containerSecurityContext).readOnlyRootFilesystem }}
+            - name: tmp
+              mountPath: /tmp
+            {{- end }}
             - name: workspace
               mountPath: {{ .Values.workspace.mountPath }}
             # H-6 — read-only view of the worker-maintained Trivy DB cache so
@@ -74,6 +94,10 @@ spec:
           resources:
             {{- toYaml .Values.backend.resources | nindent 12 }}
       volumes:
+        {{- if (.Values.backend.containerSecurityContext).readOnlyRootFilesystem }}
+        - name: tmp
+          emptyDir: {}
+        {{- end }}
         - name: workspace
           {{- if .Values.workspace.persistence.enabled }}
           persistentVolumeClaim:

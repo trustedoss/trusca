@@ -30,14 +30,29 @@ spec:
       imagePullSecrets:
         {{- toYaml . | nindent 8 }}
       {{- end }}
+      {{- with .Values.frontend.podSecurityContext }}
+      securityContext:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
       containers:
         - name: frontend
           # React SPA on nginx. Static bundle — no app env, no DB/Redis access.
           image: "{{ .Values.image.frontendRepository }}:{{ .Values.image.tag }}"
           imagePullPolicy: {{ .Values.image.pullPolicy }}
+          {{- with .Values.frontend.containerSecurityContext }}
+          securityContext:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
           ports:
             - name: http
               containerPort: {{ .Values.frontend.port }}
+          {{- if (.Values.frontend.containerSecurityContext).readOnlyRootFilesystem }}
+          # nginx.conf puts the pid file and every *_temp_path under /tmp, so
+          # this is the only writable path the sealed root filesystem needs.
+          volumeMounts:
+            - name: tmp
+              mountPath: /tmp
+          {{- end }}
           # nginx serves /healthz with a literal 200 — same path for both probes
           # since the SPA bundle is static (ready == alive).
           livenessProbe:
@@ -54,6 +69,11 @@ spec:
             periodSeconds: 10
           resources:
             {{- toYaml .Values.frontend.resources | nindent 12 }}
+      {{- if (.Values.frontend.containerSecurityContext).readOnlyRootFilesystem }}
+      volumes:
+        - name: tmp
+          emptyDir: {}
+      {{- end }}
       {{- with .Values.nodeSelector }}
       nodeSelector:
         {{- toYaml . | nindent 8 }}

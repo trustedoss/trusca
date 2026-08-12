@@ -277,6 +277,25 @@ redis:
     limits:
       cpu: "1"
       memory: 512Mi
+  # uid/gid 999 is the `redis` user the official image runs as. fsGroup was
+  # already set here for the data volume; the rest states what the container
+  # is doing anyway. See backend.podSecurityContext for the override note.
+  podSecurityContext:
+    runAsNonRoot: true
+    runAsUser: 999
+    runAsGroup: 999
+    fsGroup: 999
+    seccompProfile:
+      type: RuntimeDefault
+  # redis writes the append-only file to /data, a volume, and nothing to the
+  # root filesystem. Verified against redis:7.4-alpine with --read-only:
+  # PING, SET and BGSAVE all succeed.
+  containerSecurityContext:
+    allowPrivilegeEscalation: false
+    readOnlyRootFilesystem: true
+    capabilities:
+      drop:
+        - ALL
 
 # ===========================================================================
 # Database migration Job (Helm pre-install + pre-upgrade hook).
@@ -321,6 +340,35 @@ backend:
   # Readiness — /health/ready returns 200 only when the schema == Alembic HEAD
   # (B1). Pods join the Service only after the migration Job has landed.
   readyPath: /health/ready
+  # Pod security. uid/gid 1000 is the `trustedoss` user the image creates
+  # (apps/backend/Dockerfile.prod:65) and already runs as, so this pins what
+  # the image does rather than changing it. fsGroup makes the workspace
+  # volume group-writable for that user.
+  #
+  # Override both maps if you build the image with a different uid. Setting
+  # either to {} drops the securityContext entirely, which puts the pod back
+  # on the cluster defaults — Trivy KSV-0118 flags exactly that.
+  podSecurityContext:
+    runAsNonRoot: true
+    runAsUser: 1000
+    runAsGroup: 1000
+    fsGroup: 1000
+    seccompProfile:
+      type: RuntimeDefault
+  # readOnlyRootFilesystem needs a writable /tmp, mounted as an emptyDir by
+  # the Deployment, and XDG_CACHE_HOME pointed into it — the Deployment sets
+  # that too. HOME is /app in this image, so with the root filesystem sealed
+  # fontconfig has nowhere to cache: WeasyPrint still produces a correct PDF
+  # but prints "No writable cache directories" on every font lookup and
+  # rebuilds the cache each time. Verified against the built image with
+  # --read-only: startup, /health, /health/ready and a WeasyPrint render all
+  # succeed, and the fontconfig errors disappear once XDG_CACHE_HOME is set.
+  containerSecurityContext:
+    allowPrivilegeEscalation: false
+    readOnlyRootFilesystem: true
+    capabilities:
+      drop:
+        - ALL
 
 # ===========================================================================
 # Celery worker workload.
@@ -374,6 +422,26 @@ frontend:
     limits:
       cpu: 500m
       memory: 256Mi
+  # uid/gid 101 is the `nginx` user the base image provisions and the image
+  # runs as (apps/frontend/Dockerfile.prod). Port 8080 is above 1024 so the
+  # unprivileged process can bind it. See backend.podSecurityContext for what
+  # overriding these maps means.
+  podSecurityContext:
+    runAsNonRoot: true
+    runAsUser: 101
+    runAsGroup: 101
+    seccompProfile:
+      type: RuntimeDefault
+  # nginx.conf already puts the pid file and every *_temp_path under /tmp,
+  # which the Deployment mounts as an emptyDir. Logs go to /dev/stdout and
+  # /dev/stderr, and no proxy cache is configured, so nothing else on the
+  # root filesystem is written.
+  containerSecurityContext:
+    allowPrivilegeEscalation: false
+    readOnlyRootFilesystem: true
+    capabilities:
+      drop:
+        - ALL
 
 # ===========================================================================
 # Ingress (cert-manager TLS).
