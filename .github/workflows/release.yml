@@ -125,6 +125,16 @@ jobs:
         uses: docker/metadata-action@v5
         with:
           images: ${{ env.REGISTRY_NAMESPACE }}/${{ matrix.image.image }}
+          # The merge job's semver pattern, repeated here for `outputs.version`
+          # alone — this job pushes by digest and never applies a tag. Without a
+          # pattern the output is the ref name (`v0.21.0`) rather than the
+          # SemVer (`0.21.0`), and that value is what TRUSTEDOSS_VERSION carries
+          # into the image below: the tool version of every SBOM we emit, the
+          # SLSA provenance, and the About screen. Those are read as SemVer,
+          # where a `v` prefix is not part of the grammar — so the image was
+          # stating a version that did not match its own tag.
+          tags: |
+            type=semver,pattern={{version}},value=${{ github.event.inputs.tag }}
           labels: |
             org.opencontainers.image.title=${{ matrix.image.image }}
             org.opencontainers.image.description=${{ matrix.image.description }}

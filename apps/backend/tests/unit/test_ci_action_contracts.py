@@ -135,3 +135,71 @@ def test_every_output_is_actually_written_by_its_step() -> None:
         "these outputs are declared but their step never writes the key, so they "
         f"resolve to an empty string: {unwritten}"
     )
+
+
+# ---------------------------------------------------------------------------
+# Release workflow — the version the image states about itself.
+# ---------------------------------------------------------------------------
+_RELEASE_REL = Path(".github") / "workflows" / "release.yml"
+
+
+def _release_workflow() -> dict:
+    root = _repo_root()
+    if root is None or not (root / _RELEASE_REL).is_file():
+        pytest.skip("release.yml not present in this checkout")
+    parsed = yaml.safe_load((root / _RELEASE_REL).read_text(encoding="utf-8"))
+    assert isinstance(parsed, dict), "release.yml did not parse to a mapping"
+    return parsed
+
+
+def _meta_step(job: dict) -> dict:
+    for step in job["steps"]:
+        if step.get("id") == "meta":
+            assert isinstance(step, dict)
+            return step
+    raise AssertionError("no step with id 'meta' in this job")
+
+
+def test_injected_version_is_bare_semver() -> None:
+    """The build job must resolve `outputs.version` through a semver pattern.
+
+    ``docker/metadata-action`` falls back to the ref name when no ``tags``
+    pattern is given, and the ref here is a ``vX.Y.Z`` git tag — so the build
+    job injected ``TRUSTEDOSS_VERSION=v0.21.0`` while the image it was building
+    got tagged ``0.21.0``. That value is not decoration: it is the tool version
+    of every SBOM the deployment emits, the SLSA provenance, and the About
+    screen, all of which are read as SemVer, where a leading ``v`` is not part
+    of the grammar.
+
+    Deleting the pattern restores the old behaviour silently — the workflow
+    still runs, the images still publish, and only the strings inside them are
+    wrong. Hence a guard rather than a comment.
+    """
+    workflow = _release_workflow()
+    build_meta = _meta_step(workflow["jobs"]["build"])
+    tags = build_meta.get("with", {}).get("tags", "")
+    assert "pattern={{version}}" in tags, (
+        "the build job's metadata-action has no {{version}} semver pattern, so "
+        "steps.meta.outputs.version falls back to the ref name and "
+        "TRUSTEDOSS_VERSION regains its 'v' prefix"
+    )
+
+
+def test_build_and_merge_agree_on_the_version_pattern() -> None:
+    """Both jobs must derive the version the same way.
+
+    The merge job's ``{{version}}`` is what becomes the published image tag; the
+    build job's is what the image says it is. They are two computations of one
+    number, and the defect this guards against was exactly them disagreeing.
+    """
+    workflow = _release_workflow()
+    build_tags = _meta_step(workflow["jobs"]["build"])["with"]["tags"]
+    merge_tags = _meta_step(workflow["jobs"]["merge"])["with"]["tags"]
+
+    def version_lines(tags: str) -> list[str]:
+        return [ln.strip() for ln in tags.splitlines() if "pattern={{version}}" in ln]
+
+    assert version_lines(build_tags) == version_lines(merge_tags), (
+        "build and merge derive {{version}} differently; the image would state "
+        "a version other than the tag it is published under"
+    )
