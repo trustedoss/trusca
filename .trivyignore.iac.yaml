@@ -1,0 +1,44 @@
+# .trivyignore.iac.yaml — misconfiguration suppressions for the IaC scan
+#
+# Separate from .trivyignore, which lists CVE suppressions for the worker
+# IMAGE and is consumed by ci.yml's image-scan job. This file covers the
+# Dockerfile and Helm chart findings that .github/workflows/iac-security.yml
+# reports, and that workflow passes it explicitly via --ignorefile. Trivy
+# does not auto-detect the YAML form, so the flag is what makes it apply.
+#
+# Policy — every entry MUST carry:
+#   * the exact paths it applies to, never a bare rule ID. A rule suppressed
+#     repository-wide would also silence the production images, which is the
+#     opposite of what any of these entries mean.
+#   * a statement explaining why the finding does not apply, pointing at the
+#     code that makes it true.
+#   * an expiry date. An entry that outlives its reason is a hole, not a
+#     decision. Re-evaluate on that date rather than extending by habit.
+#
+# A finding that is real but inconvenient does NOT belong here. It blocks
+# the merge until it is fixed.
+#
+# Paths match Trivy's Target, which is relative to whatever root the scan
+# was pointed at — `backend/Dockerfile` when the workflow scans `apps`, but
+# `apps/backend/Dockerfile` when someone scans the repository root. The
+# `**/` prefix makes both resolve. It stays anchored on the rest of the
+# path, so Dockerfile.prod and Dockerfile.worker are untouched.
+
+misconfigurations:
+  - id: DS-0002
+    paths:
+      - "**/backend/Dockerfile"
+      - "**/frontend/Dockerfile"
+    statement: >-
+      Development-only images, never deployed. Both bind-mount the host source
+      tree at runtime so the file watcher can see edits (uvicorn --reload for
+      the backend, Vite HMR for the frontend), which requires the container uid
+      to match the host user's. Pinning a fixed non-root uid breaks that on any
+      machine whose developer is not uid 1000. The same reasoning is already
+      recorded inline as semgrep suppressions at apps/backend/Dockerfile:79 and
+      apps/frontend/Dockerfile:38. The production images that ship this code do
+      run unprivileged: apps/backend/Dockerfile.prod pins USER trustedoss and
+      apps/frontend/Dockerfile.prod pins USER nginx. docker-compose.yml (the
+      deployed stack) builds neither of these two files; only
+      docker-compose.dev.yml does.
+    expiredAt: 2027-02-12
