@@ -66,7 +66,19 @@ COPY LICENSE NOTICE THIRD_PARTY_NOTICES.md /licenses/
 
 # Run as the unprivileged `nginx` user that the base image already
 # provisions. We listen on :8080 (>1024) so the non-root user can bind.
+#
+# The comment above described the intent from the start but the USER
+# directive was missing, so the container kept running as root (Trivy
+# DS-0002). Everything the switch needs was already in place: nginx.conf
+# puts the pid file and every *_temp_path under /tmp, the access and error
+# logs are symlinks to /dev/stdout and /dev/stderr in the base image, and
+# no proxy cache is configured, so /var/cache/nginx is never written.
+#
+# `user nginx;` is gone from nginx.conf for the same reason — it only has
+# an effect when the master process starts as root, and nginx warns about
+# it on every boot otherwise.
 EXPOSE 8080
+USER nginx
 
 # Healthcheck endpoint — nginx serves /healthz with a literal 200 body.
 HEALTHCHECK --interval=10s --timeout=5s --retries=6 --start-period=20s \

@@ -20,19 +20,32 @@ name: IaC Security
 # them before they are fixed would block every unrelated PR. Same
 # observe-then-block progression dogfood-scan.yml uses.
 #
-# To escalate later: change ADVISORY_SEVERITY / BLOCKING_SEVERITY below.
+# Working the baseline down:
+#   * DS-0002 — 4 → 1. apps/frontend/Dockerfile.prod now pins USER nginx
+#     (it always intended to). The two development-only images are
+#     suppressed with a reason in .trivyignore.iac.yaml.
+#     apps/backend/Dockerfile.worker is the one left and needs its own
+#     change: the bundled SCA toolchain caches under the root home.
+#   * KSV-0118 / KSV-0014 — 15, untouched so far.
+#
+# To escalate: raise BLOCKING_SEVERITY below AND widen the jq comparison in
+# the gate step. It matches Severity for equality against a single value, so
+# setting BLOCKING_SEVERITY to a comma-separated list on its own would match
+# nothing and silently stop blocking anything at all.
 
 on:
   pull_request:
     paths:
       - "charts/**"
       - "apps/**/Dockerfile*"
+      - ".trivyignore.iac.yaml"
       - ".github/workflows/iac-security.yml"
   push:
     branches: [main]
     paths:
       - "charts/**"
       - "apps/**/Dockerfile*"
+      - ".trivyignore.iac.yaml"
       - ".github/workflows/iac-security.yml"
   workflow_dispatch: {}
 
@@ -96,11 +109,16 @@ jobs:
           fi
 
       - name: Scan Dockerfiles
+        # --ignorefile is not optional either. Trivy auto-detects the plain
+        # .trivyignore but not the YAML form, and only the YAML form can scope
+        # a suppression to specific paths. Without the flag the file is read as
+        # nothing at all and the suppressions silently do not apply.
         run: |
           set -euo pipefail
           trivy config \
             --skip-version-check \
             --severity "${ADVISORY_SEVERITY}" \
+            --ignorefile .trivyignore.iac.yaml \
             --format json \
             --output trivy-dockerfile.json \
             apps
