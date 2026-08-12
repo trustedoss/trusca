@@ -414,6 +414,14 @@ Some projects — C / C++ and embedded trees especially — carry open source **
 
 TRUSCA treats only **full-file matches** as components — a snippet match (a few lines copied from elsewhere) is noisy and is skipped, so the components that feed the build gate and NOTICE stay clean. Matched components appear on the Components tab tagged as coming from SCANOSS, and their licenses are **Detected** findings, exactly like scancode's.
 
+### How many files backed a match {#vendored-match-coverage}
+
+All the files that matched one component are collapsed into a single entry, and the entry records how many there were in `raw_data.matched_files`. The number is the strength of the claim: a dozen files agreeing on `openssl` is a vendored copy of OpenSSL, while one file agreeing on it may be a widely-copied helper that several projects carry.
+
+A single-file match is still reported. Single-file libraries — `stb_image.h`, `linenoise.c`, and the rest of the header-only family — are among the most commonly vendored code there is, and dropping matches below a file-count threshold removes them along with the noise. An inventory that omits a component looks exactly like a tree that does not contain one, so TRUSCA reports the count and leaves the judgement to you.
+
+When the matching files disagree about the version — which happens, since a library's files are not all touched in every release — the entry carries the version most of them claimed, and `raw_data.version_candidates` lists the alternatives. Previously each version became its own entry, so one vendored library was inventoried as several.
+
 :::warning Off by default — sends fingerprints to an external service
 SCANOSS is **disabled unless an operator sets `SCANOSS_ENABLED=true`**. When enabled, it sends file **fingerprints** (hashes, never your source code) to `SCANOSS_API_URL` — the free `api.osskb.org` by default. Because a self-hosted portal shouldn't quietly egress data about your code, this is opt-in: turn it on only if that external match is acceptable, or point `SCANOSS_API_URL` at a **self-hosted SCANOSS** instance to keep everything inside your network. See [Environment variables → Scan pipeline](../reference/env-variables.md#scan-pipeline).
 :::
