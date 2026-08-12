@@ -131,6 +131,17 @@ jobs:
             org.opencontainers.image.source=https://github.com/trustedoss/trusca
             org.opencontainers.image.licenses=Apache-2.0
 
+      # Rotated weekly for the reason spelled out in ci.yml's image-scan job: a
+      # CACHED apt layer does not run, so its `apt-get upgrade -y` upgrades
+      # nothing and the layer keeps shipping whatever package versions it was
+      # first built against. Here that would put known-vulnerable packages into
+      # a released image, which is worse than the stale gate that surfaced it.
+      # Releases are infrequent enough that this usually rebuilds anyway; the
+      # key makes it a guarantee rather than a side effect of cache expiry.
+      - name: Cache scope (rotates weekly)
+        id: cache-scope
+        run: echo "week=$(date -u +%G-W%V)" >> "$GITHUB_OUTPUT"
+
       - name: Build & push by digest (${{ matrix.platform.platform }})
         id: build
         uses: docker/build-push-action@v6
@@ -158,8 +169,8 @@ jobs:
           # "manifest not found" failures were a digest-artifact name collision
           # (`trusca-backend` is a prefix of `trusca-backend-worker`), fixed in the
           # merge job's suffix-anchored download pattern, NOT a cache no-op.
-          cache-from: type=gha,scope=release-${{ matrix.image.image }}-${{ matrix.platform.arch }}
-          cache-to: type=gha,scope=release-${{ matrix.image.image }}-${{ matrix.platform.arch }},mode=max
+          cache-from: type=gha,scope=release-${{ matrix.image.image }}-${{ matrix.platform.arch }}-${{ steps.cache-scope.outputs.week }}
+          cache-to: type=gha,scope=release-${{ matrix.image.image }}-${{ matrix.platform.arch }}-${{ steps.cache-scope.outputs.week }},mode=max
 
       - name: Export digest
         run: |
