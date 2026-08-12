@@ -21,7 +21,8 @@ A hosted instance is live at **[trusca-demo.duckdns.org](https://trusca-demo.duc
   read-only look around, `dev@demo.trustedoss.dev` to run a live scan, or any of
   the per-team `*-admin@demo.trustedoss.dev` accounts. The password is
   `DemoTest2026!` for all of them, and the login page has a one-click **Fill
-  demo credentials** button.
+  demo credentials** button. There is no self-service sign-up: creating an
+  account is a write, so the demo offers the shared accounts instead.
 - **Browse** real projects, components, CVEs, licenses, SBOMs, and reports.
   Every create / update / delete returns a friendly `403` — the demo is
   read-only.

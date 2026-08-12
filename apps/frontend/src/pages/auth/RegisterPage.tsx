@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2026 TRUSCA contributors
 import { zodResolver } from "@hookform/resolvers/zod";
-import { AlertCircle } from "lucide-react";
+import { AlertCircle, Info } from "lucide-react";
 import { useEffect, useState } from "react";
 import { useForm } from "react-hook-form";
 import { useTranslation } from "react-i18next";
@@ -9,6 +9,10 @@ import { Link, useNavigate } from "react-router-dom";
 import { z } from "zod";
 
 import { AuthLayout } from "@/pages/auth/AuthLayout";
+import {
+  DEMO_LOGIN_EMAIL,
+  DEMO_LOGIN_PASSWORD,
+} from "@/pages/auth/DemoCredentialsHint";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import {
@@ -21,7 +25,10 @@ import {
   FormMessage,
 } from "@/components/ui/form";
 import { Input } from "@/components/ui/input";
+import { Skeleton } from "@/components/ui/skeleton";
+import { useDemoMode } from "@/hooks/useDemoMode";
 import { fetchMe, postLogin, postRegister } from "@/lib/api";
+import { isDemoReadOnlyError } from "@/lib/demoReadOnly";
 import { ProblemError } from "@/lib/problem";
 import { useAuthStore } from "@/stores/authStore";
 
@@ -40,6 +47,53 @@ function buildSchema(t: (key: string) => string) {
 
 type RegisterValues = z.infer<ReturnType<typeof buildSchema>>;
 
+/**
+ * What `/register` shows on the public read-only demo, in place of the form.
+ *
+ * The demo middleware has no allow-list entry for `POST /auth/register`, so the
+ * form could only ever end in a 403. Rendering it anyway made the page a dead
+ * end: the visitor filled in three fields, submitted, and got an English
+ * problem `detail` back. This says the same thing before the typing, and hands
+ * over the seeded account so there is somewhere to go.
+ *
+ * The account values come from `DemoCredentialsHint` rather than being repeated
+ * here, because that module is the one place kept in sync with `seed_demo.py`.
+ */
+function DemoSignupNotice() {
+  const { t } = useTranslation("auth");
+
+  return (
+    <div className="space-y-4" data-testid="register-demo-notice">
+      <Alert
+        variant="default"
+        className="border-status-info-border bg-status-info-subtle text-status-info-foreground"
+      >
+        <Info
+          className="h-4 w-4 text-status-info-foreground"
+          aria-hidden
+        />
+        <AlertDescription className="space-y-2">
+          <p>{t("register.demo.detail")}</p>
+          <dl className="grid grid-cols-[auto_1fr] gap-x-3 gap-y-0.5 font-mono text-xs">
+            <dt className="opacity-80">{t("register.demo.email_label")}</dt>
+            <dd data-testid="register-demo-email">{DEMO_LOGIN_EMAIL}</dd>
+            <dt className="opacity-80">
+              {t("register.demo.password_label")}
+            </dt>
+            <dd data-testid="register-demo-password">{DEMO_LOGIN_PASSWORD}</dd>
+          </dl>
+          <p className="text-xs opacity-80">
+            {t("register.demo.password_note")}
+          </p>
+        </AlertDescription>
+      </Alert>
+      <Button asChild className="w-full" data-testid="register-demo-signin">
+        <Link to="/login">{t("register.demo.signin_button")}</Link>
+      </Button>
+    </div>
+  );
+}
+
 export function RegisterPage() {
   const { t } = useTranslation("auth");
   const navigate = useNavigate();
@@ -49,6 +103,11 @@ export function RegisterPage() {
   const status = useAuthStore((s) => s.status);
   const [apiError, setApiError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
+  // The public demo does not create accounts. We gate on `isResolving` as well
+  // as the flag: the hook seeds `demoReadOnly` from the build hint, which the
+  // demo image does not set, so without the gate the form would paint for one
+  // frame and then be replaced by the notice.
+  const { demoReadOnly, isResolving } = useDemoMode();
 
   useEffect(() => {
     if (status === "authenticated") {
@@ -76,7 +135,12 @@ export function RegisterPage() {
         full_name: values.display_name,
       });
     } catch (err) {
-      if (err instanceof ProblemError) {
+      if (isDemoReadOnlyError(err)) {
+        // Reachable only in the sliver before /health resolves (or if the flag
+        // flips under a loaded page). The backend `detail` is English-only, so
+        // use the translated string every other write surface shows.
+        setApiError(t("common:demo.write_disabled"));
+      } else if (err instanceof ProblemError) {
         setApiError(err.detail || err.title || t("errors.unknown"));
       } else {
         setApiError(t("errors.network"));
@@ -103,6 +167,30 @@ export function RegisterPage() {
     } finally {
       setSubmitting(false);
     }
+  }
+
+  // Read-only demo: no form at all. While the flag is still the build hint we
+  // show neither, and a skeleton holds the space, so the visitor never sees a
+  // form appear and then be taken away.
+  if (isResolving || demoReadOnly) {
+    return (
+      <AuthLayout
+        testId="register-page"
+        title={demoReadOnly ? t("register.demo.title") : t("register.title")}
+        subtitle={demoReadOnly ? undefined : t("register.subtitle")}
+      >
+        {demoReadOnly ? (
+          <DemoSignupNotice />
+        ) : (
+          <div className="space-y-4" data-testid="register-resolving">
+            <Skeleton className="h-16 w-full" />
+            <Skeleton className="h-16 w-full" />
+            <Skeleton className="h-16 w-full" />
+            <Skeleton className="h-10 w-full" />
+          </div>
+        )}
+      </AuthLayout>
+    );
   }
 
   return (

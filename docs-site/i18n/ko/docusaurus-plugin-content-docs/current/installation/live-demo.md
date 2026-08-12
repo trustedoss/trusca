@@ -21,7 +21,8 @@ sidebar_position: 4
   `explore@demo.trustedoss.dev`, 라이브 스캔을 돌리려면 `dev@demo.trustedoss.dev`,
   팀별 관리자 시야가 필요하면 `*-admin@demo.trustedoss.dev` 계정을 씁니다.
   비밀번호는 모두 `DemoTest2026!`이고, 로그인 화면에는 자격 증명을 한 번에 채우는
-  버튼이 있습니다.
+  버튼이 있습니다. 회원가입은 제공하지 않습니다. 계정을 만드는 것도 쓰기 작업이라,
+  데모에서는 공용 계정을 대신 안내합니다.
 - **둘러보기**: 실제 프로젝트·컴포넌트·CVE·라이선스·SBOM·보고서를 볼 수 있습니다.
   생성·수정·삭제는 모두 `403`으로 막힙니다. 읽기 전용이기 때문입니다.
 - **SBOM 업로드**: CycloneDX 파일(예: [BomLens](https://github.com/sktelecom/bomlens)로
