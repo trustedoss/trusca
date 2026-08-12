@@ -8,41 +8,36 @@ name: IaC Security
 # images are run.
 #
 # Behaviour:
-#   * render failure  → HARD FAIL. See the guard step for why.
-#   * 1+ CRITICAL     → HARD FAIL.
-#   * HIGH and below  → advisory. Counted in the job summary, full
-#                       reports uploaded as artifacts.
+#   * render failure    -> HARD FAIL. See the guard step for why.
+#   * 1+ CRITICAL/HIGH  -> HARD FAIL.
+#   * MEDIUM and below  -> advisory. Counted in the job summary, full
+#                          reports uploaded as artifacts.
 #
-# Advisory for HIGH is deliberate, not permanent. The baseline when this
-# workflow landed was 19 HIGH (15 chart, 4 Dockerfile), most of them
+# HIGH was advisory when this workflow landed and is not any more. The
+# baseline then was 19 HIGH (15 chart, 4 Dockerfile), most of them
 # pod-security defaults: KSV-0118 missing security context, KSV-0014
-# writable root filesystem, DS-0002 container runs as root. Gating on
-# them before they are fixed would block every unrelated PR. Same
-# observe-then-block progression dogfood-scan.yml uses.
+# writable root filesystem, DS-0002 container runs as root. Gating on them
+# before they were fixed would have blocked every unrelated PR, so the
+# workflow observed first and blocks now - the same progression
+# dogfood-scan.yml uses. Observing forever is the failure mode that
+# progression exists to avoid.
 #
-# Working the baseline down:
-#   * DS-0002 — 4 → 1. apps/frontend/Dockerfile.prod now pins USER nginx
-#     (it always intended to). The two development-only images are
-#     suppressed with a reason in .trivyignore.iac.yaml.
-#     apps/backend/Dockerfile.worker is the one left and needs its own
-#     change: the bundled SCA toolchain caches under the root home.
-#   * KSV-0118 / KSV-0014 — 15 → 6. backend, frontend and redis now carry a
-#     real pod and container security context (non-root uid matching what the
-#     image already runs as, dropped capabilities, sealed root filesystem).
-#     worker and beat are the remainder and share the worker image, which
-#     still runs as root — the same change unblocks both.
-#   * KSV-0109 — 1 → 0. False positive on the key NAMES
-#     ACCESS_TOKEN_EXPIRE_MINUTES / REFRESH_TOKEN_EXPIRE_DAYS, whose values are
-#     lifetimes. Suppressed with the reasoning in .trivyignore.iac.yaml.
+# How the baseline came down:
+#   * DS-0002 - 4 -> 0. #62 pinned USER nginx on the production frontend,
+#     which the file already intended to do. #65 made the worker image run
+#     as trustedoss, which needed every bundled toolchain cache path pinned
+#     under a writable home. The two development-only images are suppressed
+#     with a reason in .trivyignore.iac.yaml: they bind-mount host source
+#     and need a uid matching the developer running them.
+#   * KSV-0118 / KSV-0014 - 15 -> 0. #63 for backend, frontend and redis;
+#     #65 for worker and beat, which had to wait on the image above since
+#     runAsNonRoot cannot be set for a container whose image runs as root.
+#   * KSV-0109 - 1 -> 0. False positive on the key NAMES
+#     ACCESS_TOKEN_EXPIRE_MINUTES / REFRESH_TOKEN_EXPIRE_DAYS, whose values
+#     are lifetimes. Suppressed with the reasoning in .trivyignore.iac.yaml.
 #
-# So the whole remaining baseline — 6 chart findings and 1 Dockerfile finding —
-# is one change away: making the worker image run unprivileged. That is the
-# gate on raising BLOCKING_SEVERITY, not a count of unrelated fixes.
-#
-# To escalate: raise BLOCKING_SEVERITY below AND widen the jq comparison in
-# the gate step. It matches Severity for equality against a single value, so
-# setting BLOCKING_SEVERITY to a comma-separated list on its own would match
-# nothing and silently stop blocking anything at all.
+# Raising the bar again means changing BOTH the value below and the jq
+# comparison in the gate step. See the comment there for why.
 
 on:
   pull_request:
@@ -72,7 +67,7 @@ jobs:
     name: trivy config (helm chart + Dockerfiles)
     runs-on: ubuntu-22.04
     env:
-      BLOCKING_SEVERITY: CRITICAL
+      BLOCKING_SEVERITY: CRITICAL,HIGH
       ADVISORY_SEVERITY: CRITICAL,HIGH,MEDIUM,LOW
     steps:
       - uses: actions/checkout@v4
@@ -160,11 +155,18 @@ jobs:
           } >> "$GITHUB_STEP_SUMMARY"
 
       - name: Gate on ${{ env.BLOCKING_SEVERITY }}
+        # BLOCKING_SEVERITY is a comma-separated list, so it is split into a
+        # JSON array and matched with `index`. It used to be compared with
+        # `.Severity == $s`, which only ever worked while the value was a
+        # single severity: no finding has a Severity of "CRITICAL,HIGH", so
+        # widening the value alone would have counted zero and quietly stopped
+        # blocking anything. The value and the comparison have to move together.
         run: |
           set -euo pipefail
+          sevs=$(printf '%s' "${BLOCKING_SEVERITY}" | jq -Rc 'split(",")')
           total=0
           for file in trivy-chart.json trivy-dockerfile.json; do
-            n=$(jq --arg s "${BLOCKING_SEVERITY}" '[.Results[]?.Misconfigurations[]? | select(.Severity == $s)] | length' "$file")
+            n=$(jq --argjson sevs "$sevs" '[.Results[]?.Misconfigurations[]? | select(.Severity as $s | $sevs | index($s))] | length' "$file")
             echo "${file}: ${n} ${BLOCKING_SEVERITY}"
             total=$((total + n))
           done
