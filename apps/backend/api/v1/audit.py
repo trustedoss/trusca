@@ -34,6 +34,7 @@ from fastapi import APIRouter, Depends, Query, Request, Response, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from core.db import get_db
+from core.pagination import PAGE_MAX
 from core.security import CurrentUser, require_role
 from schemas.admin_ops import (
     AuditLogListPage,
@@ -75,7 +76,7 @@ async def search_team_audit_endpoint(
     from_: datetime | None = Query(default=None, alias="from"),
     to: datetime | None = Query(default=None),
     q: str | None = Query(default=None, max_length=255),
-    page: int = Query(default=1, ge=1),
+    page: int = Query(default=1, ge=1, le=PAGE_MAX),
     page_size: int = Query(default=50, ge=1, le=200),
     session: AsyncSession = Depends(get_db),
     actor: CurrentUser = Depends(require_role("team_admin")),

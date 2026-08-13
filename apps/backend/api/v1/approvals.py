@@ -36,6 +36,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from core.db import get_db
 from core.errors import problem_response
+from core.pagination import PAGE_MAX
 from core.security import CurrentUser, require_role
 from schemas.approvals import (
     ApprovalCreateIn,
@@ -119,7 +120,7 @@ async def list_approvals_endpoint(
     requested_by_user_id: uuid.UUID | None = Query(default=None),
     from_dt: datetime | None = Query(default=None),
     to_dt: datetime | None = Query(default=None),
-    page: int = Query(default=1, ge=1),
+    page: int = Query(default=1, ge=1, le=PAGE_MAX),
     page_size: int = Query(default=50, ge=1, le=200),
     session: AsyncSession = Depends(get_db),
     actor: CurrentUser = Depends(require_role("developer")),

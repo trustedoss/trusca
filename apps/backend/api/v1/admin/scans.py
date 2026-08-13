@@ -25,6 +25,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from core.db import get_db
 from core.errors import problem_response
+from core.pagination import PAGE_MAX
 from core.security import CurrentUser, require_super_admin_or_404
 from schemas.admin_ops import (
     AdminScanListPage,
@@ -66,7 +67,7 @@ def _problem_for_admin_scan_error(request: Request, exc: AdminScanError) -> Resp
 )
 async def list_scans_endpoint(
     request: Request,  # noqa: ARG001
-    page: int = Query(default=1, ge=1),
+    page: int = Query(default=1, ge=1, le=PAGE_MAX),
     page_size: int = Query(default=50, ge=1, le=200),
     # FastAPI parses the literal type into an enum-like Query param so a
     # value outside the closed set returns 422 + RFC 7807 automatically.

@@ -44,6 +44,7 @@ from core.audit import bind_audit_team, get_audit_context, mask_sensitive_column
 from core.config import scan_trigger_rate_limit
 from core.db import get_db
 from core.errors import problem_response
+from core.pagination import PAGE_MAX
 from core.ratelimit import _authenticated_user_key, limiter
 from core.security import CurrentUser, require_role
 from models import AuditLog
@@ -270,7 +271,7 @@ async def list_projects_endpoint(
     team_id: uuid.UUID | None = Query(default=None),
     include_archived: bool = Query(default=False),
     q: str | None = Query(default=None, max_length=255),
-    page: int = Query(default=1, ge=1),
+    page: int = Query(default=1, ge=1, le=PAGE_MAX),
     size: int = Query(default=20, ge=1, le=100),
     session: AsyncSession = Depends(get_db),
     actor: CurrentUser = Depends(require_role("developer")),
@@ -670,7 +671,7 @@ async def list_project_components_endpoint(
 async def list_project_releases_endpoint(
     request: Request,
     project_id: uuid.UUID,
-    page: int = Query(default=1, ge=1),
+    page: int = Query(default=1, ge=1, le=PAGE_MAX),
     size: int = Query(default=20, ge=1, le=100),
     release: str | None = Query(
         default=None,

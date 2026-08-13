@@ -47,6 +47,7 @@ from api.v1._snapshot_anchor import snapshot_anchor
 from core.authz import assert_team_access
 from core.db import get_db
 from core.errors import problem_response
+from core.pagination import PAGE_MAX
 from core.ratelimit import limiter
 from core.security import CurrentUser, require_role
 from schemas.report_download import ReportHistoryResponse, ReportType
@@ -465,7 +466,7 @@ async def list_project_report_history_endpoint(
         ),
     ),
     scan_id: uuid.UUID | None = Depends(snapshot_anchor),
-    page: int = Query(default=1, ge=1, description="1-based page number."),
+    page: int = Query(default=1, ge=1, le=PAGE_MAX, description="1-based page number."),
     page_size: int = Query(
         default=PAGE_SIZE_DEFAULT,
         ge=PAGE_SIZE_MIN,

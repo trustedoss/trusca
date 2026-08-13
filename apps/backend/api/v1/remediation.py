@@ -41,6 +41,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from core.db import get_db
 from core.errors import problem_response
+from core.pagination import PAGE_MAX
 from core.security import CurrentUser, require_role
 from models import RemediationPullRequest
 from schemas.remediation import (
@@ -252,7 +253,7 @@ async def post_npm_pull_request(
 async def get_remediation_pull_requests(
     request: Request,
     project_id: uuid.UUID,
-    page: int = Query(default=1, ge=1),
+    page: int = Query(default=1, ge=1, le=PAGE_MAX),
     page_size: int = Query(default=50, ge=1, le=200),
     session: AsyncSession = Depends(get_db),
     actor: CurrentUser = Depends(require_role("developer")),

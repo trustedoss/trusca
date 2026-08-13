@@ -29,6 +29,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from core.db import get_db
 from core.errors import problem_response
+from core.pagination import PAGE_MAX
 from core.security import CurrentUser, require_super_admin_or_404
 from schemas.admin import (
     AdminUserDetail,
@@ -96,7 +97,7 @@ def _problem_for_admin_user_error(request: Request, exc: AdminUserError) -> Resp
 )
 async def list_users_endpoint(
     request: Request,  # noqa: ARG001
-    page: int = Query(default=1, ge=1),
+    page: int = Query(default=1, ge=1, le=PAGE_MAX),
     page_size: int = Query(default=50, ge=1, le=200),
     # Strict enum validation (security review finding — fail-closed): a free-form
     # ``str`` query was previously accepted, with the service silently

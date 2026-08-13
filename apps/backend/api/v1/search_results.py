@@ -21,6 +21,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from core.config import search_rate_limit
 from core.db import get_db
 from core.errors import problem_response
+from core.pagination import PAGE_MAX
 from core.ratelimit import _authenticated_user_key, limiter
 from core.security import CurrentUser, require_role
 from schemas.search_results import SearchResultsPage
@@ -59,7 +60,7 @@ async def search_results_endpoint(
         description="Which result set to page through.",
     ),
     q: str = Query(..., max_length=255),
-    page: int = Query(default=1, ge=1),
+    page: int = Query(default=1, ge=1, le=PAGE_MAX),
     size: int = Query(default=SIZE_DEFAULT, ge=1, le=SIZE_MAX),
     severity: list[str] | None = Query(default=None),
     finding_status: list[str] | None = Query(default=None, alias="status"),

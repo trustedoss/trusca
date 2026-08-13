@@ -144,3 +144,36 @@ def test_openapi_carries_no_internal_references() -> None:
         "internal references reached the published OpenAPI schema:\n"
         + "\n".join(f"  {where}\n    {snippet}" for where, _pattern, snippet in hits)
     )
+
+
+def test_offset_page_parameters_declare_an_upper_bound() -> None:
+    """Every ``page`` query parameter must cap how far the offset can go.
+
+    Python integers are unbounded, so ``page`` with only ``ge=1`` accepts a
+    number of any size, multiplies it into an OFFSET, and hands asyncpg a value
+    outside int64 — a 500 rather than a 422:
+
+        asyncpg.exceptions.DataError: invalid input for query argument $2:
+        423599349510580893366758764207878963180 (value out of int64 range)
+
+    Schema-based fuzzing surfaced this on two endpoints; all 19 listing
+    endpoints were missing the bound. Asserting it against the generated spec
+    rather than the source keeps a newly added endpoint from reintroducing it.
+    Use ``le=PAGE_MAX`` from ``core.pagination``.
+    """
+    spec = app.openapi()
+    missing = []
+    for path, methods in spec.get("paths", {}).items():
+        for method, op in methods.items():
+            if method.lower() not in _METHODS:
+                continue
+            for param in op.get("parameters", []):
+                if not isinstance(param, dict) or param.get("name") != "page":
+                    continue
+                if param.get("schema", {}).get("maximum") is None:
+                    missing.append(f"{method.upper()} {path}")
+
+    assert not missing, (
+        "page parameters without an upper bound (add le=PAGE_MAX):\n  "
+        + "\n  ".join(sorted(missing))
+    )

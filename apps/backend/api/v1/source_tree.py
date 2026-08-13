@@ -35,6 +35,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from api.v1._snapshot_anchor import snapshot_anchor
 from core.db import get_db
 from core.errors import problem_response
+from core.pagination import PAGE_MAX
 from core.security import CurrentUser, require_role
 from schemas.source_tree import (
     LicenseMatch,
@@ -115,7 +116,7 @@ async def get_source_tree(
         default="",
         description="Directory whose immediate children to list. Empty = root.",
     ),
-    page: int = Query(default=1, ge=1, description="1-based page index."),
+    page: int = Query(default=1, ge=1, le=PAGE_MAX, description="1-based page index."),
     size: int = Query(default=100, ge=1, le=500, description="Page size (max 500)."),
     scan_id: uuid.UUID | None = Depends(snapshot_anchor),
     session: AsyncSession = Depends(get_db),
