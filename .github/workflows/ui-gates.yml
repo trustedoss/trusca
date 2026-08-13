@@ -93,6 +93,16 @@ permissions:
   contents: read
   pull-requests: read
 
+# A superseded run has nothing to say — the branch it measured no longer
+# exists as tested. Without this, a rebase burst left 10-to-40-minute runs
+# grinding on commits nobody would look at again, holding runner slots
+# against the newest push. `github.event_name` is in the key so a push
+# cannot cancel the nightly baseline run, which is the only thing keeping
+# main's baselines honest between pull requests.
+concurrency:
+  group: ui-gates-${{ github.event_name }}-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   ui-gates:
     runs-on: ubuntu-22.04
@@ -144,7 +154,20 @@ jobs:
           base="$(git merge-base "origin/$BASE_REF" HEAD)"
           changed="$(git diff --name-only "$base" HEAD)"
 
-          if printf '%s\n' "$changed" | grep -qE '^(apps/frontend/(src/|tests/(visual|a11y|_harness|screenshots)/|tailwind\.config\.ts|package-lock\.json|playwright\.(visual|a11y)\.config\.ts)|apps/backend/(api|schemas)/|\.github/workflows/ui-gates\.yml)'; then
+          # This pattern has to cover every input the gates below consume, or
+          # the job skips and reports green over a change it was built to
+          # examine. It did: `tests/responsive/` and
+          # `playwright.responsive.config.ts` drive the narrow-viewport gate
+          # (see the job's own steps) and neither was listed, so a pull
+          # request editing narrow.spec.ts or its baseline passed unchecked.
+          # `playwright.screenshots.config.ts` was missing for the same
+          # reason. On the backend side, api/ and schemas/ were listed but
+          # services/ and models/ were not, though they decide what the
+          # rendered rows contain.
+          #
+          # When adding a step to this job, add its inputs here in the same
+          # commit.
+          if printf '%s\n' "$changed" | grep -qE '^(apps/frontend/(src/|index\.html|tests/(visual|a11y|_harness|screenshots|responsive)/|tailwind\.config\.ts|package(-lock)?\.json|playwright\.(visual|a11y|responsive|screenshots)\.config\.ts)|apps/backend/(api|schemas|services|models)/|\.github/workflows/ui-gates\.yml)'; then
             echo "Rendered surface touched — running the gates."
             echo "run=true" >> "$GITHUB_OUTPUT"
           else
@@ -276,6 +299,18 @@ jobs:
             fi
             sleep 5
           done
+
+          # Falling out of the loop on the deadline used to continue to the
+          # Playwright steps, which then failed on whatever the missing
+          # service broke — a real failure, reported in the wrong place and
+          # read as a flaky test. The equivalent loop in ci.yml's e2e job
+          # already exits here; this one did not.
+          if [ "$healthy" -ne "${#services[@]}" ]; then
+            echo "::error::stack did not become healthy within 240s ($healthy/${#services[@]})"
+            docker compose -f docker-compose.dev.yml ps || true
+            docker compose -f docker-compose.dev.yml logs --tail=200 || true
+            exit 1
+          fi
 
       - name: Run visual regression spec
         if: steps.scope.outputs.run == 'true'
