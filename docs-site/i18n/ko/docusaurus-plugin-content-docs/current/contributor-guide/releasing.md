@@ -34,13 +34,27 @@ TRUSCA 릴리스는 `vX.Y.Z` 형식의 git 태그를 push하면 시작됩니다.
    backend와 frontend 포트를 노출해 Traefik/DNS/TLS 없이도 스모크를 돌릴 수
    있게 합니다. 그다음 문서화된 Quickstart first-scan 스모크를 실행합니다.
    헬스 폴링 → `create_super_admin` → 로그인 → projects API 순서입니다. 성공하면
-   `gh release edit <tag> --draft=false --latest`로 Release를 공개합니다.
+   `gh release edit <tag> --draft=false --latest`로 Release를 공개하고, 이어서
+   [`deploy-hetzner.yml`](https://github.com/trustedoss/trusca/blob/main/.github/workflows/deploy-hetzner.yml)에
+   그 태그로 공개 데모를 올려 달라고 요청합니다. 이 배포는 `demo` 환경의 승인자를
+   기다리므로, 릴리스가 아무도 모르는 사이에 데모 호스트까지 나가지는 않습니다.
 
 ```
 build ──▶ merge ──▶ release (draft) ──▶ release-gate ──▶ 공개 (draft=false)
 다이제스트   버전       GitHub Release       발행 이미지 pull    스모크 통과 시에만
 push       태그        아직 숨김            + first-scan 스모크  공개 + latest
 ```
+
+:::note 레지스트리에 남아 있는 `latest` 태그
+0.21.0까지의 릴리스는 `latest` 이미지 태그도 함께 올렸습니다.
+`docker/metadata-action`이 별도로 끄지 않으면 태그를 하나 더
+붙이는데(`flavor: latest=auto`) 워크플로가 그것을 끄지 않았습니다. 지금은
+꺼져 있어 새로 생기지는 않습니다. 이미 GHCR에 올라간 태그는 그냥 지울 수
+없습니다. GHCR은 태그가 아니라 패키지 버전 단위로 삭제하는데, `latest`가
+`0.21.0`, `0.21`과 같은 버전에 붙어 있기 때문입니다. 다음 릴리스 전에
+`latest`로 버릴 매니페스트를 하나 올린 뒤 그 버전만 삭제해서 태그를 떼십시오.
+그냥 두면 `latest`는 최신인 척하면서 계속 0.21.0을 가리킵니다.
+:::
 
 ## 이미지를 먼저 발행하고 Release는 나중에 공개하는 이유
 
@@ -94,6 +108,11 @@ pull해서 실행해봐야만 설치 가능 여부를 증명할 수 있기 때�
 4. 태그를 push합니다. `git tag vX.Y.Z && git push origin vX.Y.Z`.
 5. `release-gate` 잡을 지켜봅니다. 초록색이 되면 Release가 자동으로 공개되고
    `latest`로 표시됩니다. 별도 수동 작업은 필요 없습니다.
+6. 데모 배포를 승인합니다. Release가 공개되면 `demo` 환경에 대한
+   `deploy-hetzner.yml` 실행이 하나 걸리고 승인자를 기다립니다. 데모를 이전
+   릴리스에 그대로 두려면 승인하지 않으면 됩니다. 이렇게 걸린 실행은 시드를
+   다시 만들지 않으므로, 릴리스가 `scripts/seed_demo.py`를 바꿨다면 워크플로를
+   직접 `reseed: true`로 실행하십시오.
 
 ## 함께 보기
 

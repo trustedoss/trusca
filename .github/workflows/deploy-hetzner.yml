@@ -22,8 +22,9 @@ name: Deploy demo (Hetzner)
 #                       connection is trusted (accept-new) and a warning is logged.
 #   DEPLOY_SSH_PORT     (optional) SSH port, default 22
 #   DEPLOY_PATH         (optional) repo path on the server, default /opt/trustedoss/portal
-# Add a required reviewer on the `demo` Environment if you want a manual approval
-# gate before every deploy (recommended for a public site).
+# Add a required reviewer on the `demo` Environment. release.yml requests a
+# deploy on every published release, so without a reviewer a release reaches the
+# public demo with nobody in the loop.
 
 on:
   workflow_dispatch:
@@ -37,8 +38,11 @@ on:
         required: false
         default: false
         type: boolean
-  release:
-    types: [published]
+
+# NOT `release: types: [published]`. That trigger sat here unfired for every
+# release: the Release is created by release.yml with GITHUB_TOKEN, and events
+# raised by that token deliberately do not start workflows (GitHub's recursion
+# guard). release.yml now calls this workflow by name on its success path.
 
 # Never let two deploys touch the host at once; queue them instead of cancelling
 # (cancelling mid-upgrade could leave the stack half-recreated).
@@ -64,12 +68,9 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           INPUT_TAG: ${{ inputs.tag }}
-          RELEASE_TAG: ${{ github.event.release.tag_name }}
         run: |
           set -euo pipefail
-          if [ -n "${RELEASE_TAG:-}" ]; then
-            TAG="$RELEASE_TAG"
-          elif [ -n "${INPUT_TAG:-}" ]; then
+          if [ -n "${INPUT_TAG:-}" ]; then
             TAG="$INPUT_TAG"
           else
             TAG="$(gh release view --repo "$GITHUB_REPOSITORY" --json tagName -q .tagName)"
@@ -93,7 +94,8 @@ jobs:
           DEPLOY_SSH_PORT: ${{ secrets.DEPLOY_SSH_PORT }}
           DEPLOY_PATH: ${{ secrets.DEPLOY_PATH }}
           TAG: ${{ steps.tag.outputs.tag }}
-          # Empty on the `release` trigger, which carries no inputs.
+          # Empty when release.yml requests the deploy — it passes only the
+          # tag, so a release never reseeds on its own.
           RESEED_INPUT: ${{ inputs.reseed }}
         run: |
           set -euo pipefail
@@ -144,8 +146,8 @@ jobs:
           #
           # RESEED is only ever the literal 1 or 0 — the boolean input is
           # normalised here rather than interpolated, so nothing from the
-          # dispatch payload reaches the remote shell verbatim. A `release`
-          # trigger has no inputs and therefore never reseeds.
+          # dispatch payload reaches the remote shell verbatim. A deploy
+          # requested by release.yml passes no reseed and therefore never does.
           #
           # The input arrives through the step's `env:` block rather than an
           # expression written inline here. Expression interpolation is textual

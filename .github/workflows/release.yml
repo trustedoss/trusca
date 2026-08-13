@@ -431,10 +431,14 @@ jobs:
     runs-on: ubuntu-22.04
     needs: release
     timeout-minutes: 40
-    # contents:write to reveal the Release; packages:read to pull the images.
+    # contents:write to reveal the Release; packages:read to pull the images;
+    # actions:write to hand the published tag to the demo deploy (see the last
+    # step — a Release created by GITHUB_TOKEN raises no `release` event, so the
+    # deploy has to be asked for explicitly).
     permissions:
       contents: write
       packages: read
+      actions: write
     env:
       # All docker-compose interpolation vars live at job scope so every step
       # (pull / up / ps / logs / down) resolves the SAME published image set.
@@ -617,6 +621,20 @@ jobs:
           set -euo pipefail
           echo "first-scan smoke passed against ${IMAGE_REGISTRY}/trusca-*:${IMAGE_TAG} — publishing $TAG"
           gh release edit "$TAG" --draft=false --latest
+
+      # deploy-hetzner.yml used to listen for `release: published` and never
+      # fired once: a Release created with GITHUB_TOKEN raises no event that can
+      # start a workflow. Ask for the deploy by name instead. The `demo`
+      # Environment holds the deploy secrets and is where a required reviewer
+      # gates it, so this queues the deploy for approval rather than shipping
+      # straight to the public demo.
+      - name: Ask the demo host to deploy this release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          gh workflow run deploy-hetzner.yml --ref main --field tag="$TAG"
+          echo "requested demo deploy of $TAG"
 
       - name: Dump compose logs on failure
         if: failure()
