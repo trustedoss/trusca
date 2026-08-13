@@ -47,6 +47,7 @@ jobs:
   baseline:
     name: ZAP baseline (passive)
     runs-on: ubuntu-22.04
+    timeout-minutes: 30
     steps:
       - name: Resolve target
         id: target

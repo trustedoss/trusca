@@ -69,6 +69,7 @@ jobs:
   lint:
     name: lint (${{ matrix.target }})
     runs-on: ubuntu-22.04
+    timeout-minutes: 15
     strategy:
       fail-fast: false
       matrix:
@@ -217,6 +218,7 @@ jobs:
   shellcheck:
     name: shellcheck (scripts)
     runs-on: ubuntu-22.04
+    timeout-minutes: 10
     steps:
       - uses: actions/checkout@v4
 
@@ -253,6 +255,7 @@ jobs:
   postgres-init-l1:
     name: postgres-init L1 role contract
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     steps:
       - uses: actions/checkout@v4
 
@@ -453,6 +456,7 @@ jobs:
   typecheck:
     name: typecheck (${{ matrix.target }})
     runs-on: ubuntu-22.04
+    timeout-minutes: 15
     strategy:
       fail-fast: false
       matrix:
@@ -507,6 +511,7 @@ jobs:
   test:
     name: test (${{ matrix.target }})
     runs-on: ubuntu-22.04
+    timeout-minutes: 40
     strategy:
       fail-fast: false
       matrix:
@@ -615,6 +620,10 @@ jobs:
           name: backend-coverage
           path: apps/backend/coverage.xml
           if-no-files-found: ignore
+          # Nothing downloads these; they exist to be opened by hand when a
+          # coverage question comes up, and that happens within days of the
+          # run or not at all. The default is 90.
+          retention-days: 7
 
       - name: Setup Node
         if: matrix.target == 'frontend'
@@ -641,6 +650,8 @@ jobs:
           name: frontend-coverage
           path: apps/frontend/coverage/
           if-no-files-found: ignore
+          # See backend-coverage above.
+          retention-days: 7
 
   # -------------------------------------------------------------------------
   # 4) Image scan — build the Celery worker image (cdxgen / ORT / Trivy +
@@ -653,6 +664,7 @@ jobs:
   image-scan:
     name: image-scan (worker)
     runs-on: ubuntu-22.04
+    timeout-minutes: 30
     # Chore P (Phase 8 worker-image refresh): HIGH is now HARD FAIL alongside
     # CRITICAL. Implemented as a single Trivy step with `severity:
     # CRITICAL,HIGH`. The previous two-step split (CRITICAL hard /
@@ -802,6 +814,7 @@ jobs:
   frontend-bundle-audit:
     name: frontend-bundle-audit
     runs-on: ubuntu-22.04
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
 
@@ -994,11 +1007,21 @@ jobs:
           python -m pip install --upgrade pip
           pip install -r requirements-dev.txt
 
+      # The key has to move when the pinned Playwright version moves, or the
+      # cache is worse than none: a literal key kept "hitting" on browsers
+      # installed for 1.48.2 long after the pin reached 1.60.0, so every run
+      # restored a useless cache, downloaded ~150 MB of browsers anyway, and
+      # could not save them because the key already existed. Deriving it from
+      # the lockfile ties it to the version without anyone remembering to.
+      # restore-keys lets a lockfile bump reuse the previous browsers for the
+      # engines that did not change.
       - name: Cache Playwright browsers
         uses: actions/cache@v4
         with:
           path: ~/.cache/ms-playwright
-          key: playwright-${{ runner.os }}-1.48.2
+          key: playwright-${{ runner.os }}-${{ hashFiles('apps/frontend/package-lock.json') }}
+          restore-keys: |
+            playwright-${{ runner.os }}-
 
       - name: Install frontend deps
         working-directory: apps/frontend

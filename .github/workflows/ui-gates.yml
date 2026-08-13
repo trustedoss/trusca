@@ -209,12 +209,16 @@ jobs:
         working-directory: apps/frontend
         run: npm ci
 
+      # Keyed off the lockfile, not a literal version — see ci.yml's copy of
+      # this step for what a stale literal key does.
       - name: Cache Playwright browsers
         if: steps.scope.outputs.run == 'true'
         uses: actions/cache@v4
         with:
           path: ~/.cache/ms-playwright
-          key: playwright-${{ runner.os }}-1.48.2
+          key: playwright-${{ runner.os }}-${{ hashFiles('apps/frontend/package-lock.json') }}
+          restore-keys: |
+            playwright-${{ runner.os }}-
 
       - name: Install Playwright (chromium only)
         if: steps.scope.outputs.run == 'true'

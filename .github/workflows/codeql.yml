@@ -22,6 +22,7 @@ jobs:
   analyze:
     name: Analyze (${{ matrix.language }})
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     # Code scanning needs GitHub Advanced Security, which a private repository
     # on a free plan does not have. The analysis itself completes; the upload
     # step is what fails, so the job burns several minutes to end red without

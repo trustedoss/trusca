@@ -52,6 +52,7 @@ permissions:
 jobs:
   deploy:
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     # Secrets live on this Environment; it can also carry a required-reviewer gate.
     environment: demo
     steps:
