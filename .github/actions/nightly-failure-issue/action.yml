@@ -1,0 +1,129 @@
+# Composite action — turn a scheduled run's result into a tracked issue.
+#
+# WHY THIS EXISTS: a nightly gate that fails silently is worse than no gate.
+# Between 2026-08-03 and 2026-08-12 the verify-specs nightly failed nine
+# consecutive times, the CI nightly e2e failed or was cancelled four days
+# running, and the weekly install-uat died on an image tag that no longer
+# exists. All three were red the whole time and nothing surfaced it, so the
+# regressions they were built to catch sat unreported.
+#
+# The alert follows the pattern sca-self.yml already uses for Critical CVEs:
+# one issue per label, opened on the first failure, updated (not duplicated)
+# on subsequent ones, closed automatically when a scheduled run goes green.
+# The label is created on demand so a fresh clone of the repo needs no manual
+# setup.
+#
+# The caller decides what counts as failure — pass the aggregated result of
+# the jobs it cares about. Cancelled runs are the caller's business too; they
+# should normally NOT be reported as failures (a cancel is usually a superseded
+# run, not a regression).
+name: Nightly failure issue
+description: Open, update or close a labelled issue that tracks whether a scheduled workflow is green.
+
+inputs:
+  label:
+    description: Label identifying this workflow's alert issue. Created if it does not exist.
+    required: true
+  title:
+    description: Issue title. Keep it stable across runs so the same issue is reused.
+    required: true
+  failed:
+    description: "'true' when the watched jobs failed, 'false' when they all succeeded."
+    required: true
+  details:
+    description: Markdown appended to the issue body, e.g. which job failed and what to look at.
+    required: false
+    default: ""
+  token:
+    description: "Token with `issues: write` permission."
+    required: true
+
+runs:
+  using: composite
+  steps:
+    # GH_REPO is set explicitly on every step so the action works in jobs that
+    # never checked out the repo — `gh` otherwise infers the repo from the git
+    # remote and fails outright.
+    - name: Ensure the alert label exists
+      if: ${{ inputs.failed == 'true' }}
+      shell: bash
+      env:
+        GH_TOKEN: ${{ inputs.token }}
+        GH_REPO: ${{ github.repository }}
+        LABEL: ${{ inputs.label }}
+      run: |
+        set -euo pipefail
+        # --force makes this idempotent: creates the label when missing,
+        # updates colour/description when present.
+        gh label create "$LABEL" \
+          --color B60205 \
+          --description "Auto-managed alert for a scheduled workflow that is failing" \
+          --force
+
+    - name: Open or update the alert issue
+      if: ${{ inputs.failed == 'true' }}
+      shell: bash
+      env:
+        GH_TOKEN: ${{ inputs.token }}
+        GH_REPO: ${{ github.repository }}
+        LABEL: ${{ inputs.label }}
+        TITLE: ${{ inputs.title }}
+        DETAILS: ${{ inputs.details }}
+      run: |
+        set -euo pipefail
+        run_url="${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}"
+        body=$(cat <<EOF
+        The scheduled run of \`${GITHUB_WORKFLOW}\` failed.
+
+        - Run: [\`${GITHUB_RUN_ID}\`](${run_url})
+        - Event: \`${GITHUB_EVENT_NAME}\`
+        - Commit: \`${GITHUB_SHA}\`
+
+        ${DETAILS}
+
+        A scheduled gate that stays red stops being a gate. Either fix the
+        regression it found or fix the gate, then let the next scheduled run
+        close this issue.
+
+        *Auto-managed by \`.github/actions/nightly-failure-issue\` via the
+        \`${LABEL}\` label. It is updated in place while the run keeps failing
+        and closed on the first green scheduled run. Do not edit the title.*
+        EOF
+        )
+
+        existing=$(gh issue list \
+          --label "$LABEL" \
+          --state open \
+          --json number \
+          --jq '.[0].number // empty')
+
+        if [ -n "$existing" ]; then
+          echo "Updating existing alert issue #$existing"
+          gh issue edit "$existing" --title "$TITLE" --body "$body"
+        else
+          echo "Opening alert issue"
+          gh issue create --title "$TITLE" --body "$body" --label "$LABEL"
+        fi
+
+    - name: Close the alert issue after a green run
+      if: ${{ inputs.failed != 'true' }}
+      shell: bash
+      env:
+        GH_TOKEN: ${{ inputs.token }}
+        GH_REPO: ${{ github.repository }}
+        LABEL: ${{ inputs.label }}
+      run: |
+        set -euo pipefail
+        existing=$(gh issue list \
+          --label "$LABEL" \
+          --state open \
+          --json number \
+          --jq '.[0].number // empty')
+        if [ -n "$existing" ]; then
+          run_url="${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}"
+          echo "Closing alert issue #$existing"
+          gh issue close "$existing" \
+            --comment "Auto-closed: the scheduled run of \`${GITHUB_WORKFLOW}\` is green again. Run [\`${GITHUB_RUN_ID}\`](${run_url})."
+        else
+          echo "No open ${LABEL} issue - nothing to close."
+        fi

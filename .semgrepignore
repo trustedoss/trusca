@@ -10,8 +10,10 @@
 # every snippet to satisfy production hardening rules.
 .claude/
 
-# Documentation site source — Markdown / MDX with code samples.
-docs/
+# Documentation site source — Markdown / MDX with code samples. The path is
+# docs-site/, not docs/: the latter has held no tracked file since the repo was
+# recreated and .gitignore keeps it that way.
+docs-site/
 
 # Generated bundles / build outputs.
 dist/

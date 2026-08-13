@@ -53,8 +53,17 @@ permissions:
   contents: read
 
 # Cancel in-progress runs of the same ref so the latest push wins.
+#
+# `github.event_name` is part of the key on purpose. Without it the nightly
+# schedule run and the push-to-main runs share a group (both resolve to
+# refs/heads/main) and any merge cancels the nightly mid-flight. That is
+# exactly what happened on 2026-08-12: the 04:00 run was killed four minutes
+# in by a push, and since the e2e matrix is nightly-only (see the `e2e` job
+# below) the day's only Playwright coverage never ran. Scheduled runs now get
+# their own group and are left alone; push and pull_request keep the
+# latest-wins behaviour that makes them cheap.
 concurrency:
-  group: ci-${{ github.workflow }}-${{ github.ref }}
+  group: ci-${{ github.workflow }}-${{ github.event_name }}-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
@@ -156,8 +165,10 @@ jobs:
       # changed-mode needs is not in the clone and the linter would fall
       # back to an empty file list — a gate that reports success because it
       # examined nothing, which this repository has shipped once already.
-      # The whole corpus is 82 files and takes under a second. Existing debt
-      # is held by tools/ko-style/baseline.json; S3 findings are advisory
+      # The whole corpus is 82 files and takes under a second. The linter can
+      # hold existing debt in tools/ko-style/baseline.json, but that file does
+      # not exist and should not be recreated: the corpus is at zero findings,
+      # so every S1/S2 hit is new debt. S3 findings are advisory
       # (reported, not blocking) because "reads like a translation" is a
       # judgement a regex can point at but not settle.
       - name: Run Korean style lint
@@ -1103,3 +1114,60 @@ jobs:
       - name: Tear down stack
         if: always()
         run: docker compose -f docker-compose.dev.yml down -v
+
+  # -------------------------------------------------------------------------
+  # 7) Nightly alert — make a red schedule run visible.
+  #
+  #    The e2e matrix only runs on the schedule, so when the nightly failed on
+  #    2026-08-10 and 08-11 (a real regression in the malicious-component
+  #    filter and the conformance panel) nothing said so: no PR was blocked,
+  #    no notification fired, and the failures were found days later by an
+  #    audit. This job turns that into a tracked issue and closes it on the
+  #    next green nightly.
+  #
+  #    Schedule only. On a PR the checks themselves are the signal, and on a
+  #    push to main the same run reports on the commit.
+  # -------------------------------------------------------------------------
+  nightly-alert:
+    name: nightly-alert
+    if: ${{ always() && github.event_name == 'schedule' }}
+    needs:
+      - lint
+      - shellcheck
+      - postgres-init-l1
+      - typecheck
+      - test
+      - image-scan
+      - frontend-bundle-audit
+      - e2e
+    runs-on: ubuntu-22.04
+    timeout-minutes: 5
+    permissions:
+      contents: read
+      issues: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          sparse-checkout: .github/actions/nightly-failure-issue
+      - uses: ./.github/actions/nightly-failure-issue
+        with:
+          label: nightly-ci
+          title: "Nightly CI is failing"
+          # `contains(needs.*.result, 'failure')` covers a failure anywhere in
+          # the matrix. Cancelled is deliberately NOT a failure: a cancel means
+          # something superseded the run, not that a gate found a defect.
+          failed: ${{ contains(needs.*.result, 'failure') && 'true' || 'false' }}
+          details: |
+            Job results: lint=${{ needs.lint.result }},
+            shellcheck=${{ needs.shellcheck.result }},
+            postgres-init-l1=${{ needs.postgres-init-l1.result }},
+            typecheck=${{ needs.typecheck.result }},
+            test=${{ needs.test.result }},
+            image-scan=${{ needs.image-scan.result }},
+            frontend-bundle-audit=${{ needs.frontend-bundle-audit.result }},
+            e2e=${{ needs.e2e.result }}.
+
+            The e2e matrix runs on this schedule only, so a failure here is the
+            product's sole Playwright signal for the day. Playwright reports and
+            traces are attached to the run as artifacts.
+          token: ${{ secrets.GITHUB_TOKEN }}

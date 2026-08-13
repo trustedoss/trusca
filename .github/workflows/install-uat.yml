@@ -24,17 +24,24 @@ name: Install UAT (fresh Ubuntu)
 # The separate `published-image-pull` job (post-GA roadmap §2 P0 ⑤) verifies
 # the REAL distribution path: that the production `docker-compose.yml` resolves
 # `ghcr.io/trustedoss/...:${IMAGE_TAG}` and pulls multi-arch images. Because a
-# given commit may predate a published tag, that job pulls a known-published
-# IMAGE_TAG (default 2.0.0, overridable on dispatch) rather than the repo ref,
-# and is non-blocking until the first tag is cut (see `continue-on-error`).
+# given commit may predate a published tag, that job pulls a published
+# IMAGE_TAG rather than the repo ref. The tag is resolved at run time from the
+# latest GitHub release (see the `resolve-image-tag` job) and overridable on
+# dispatch.
+#
+# It used to be a hardcoded default instead, and that default outlived the tag
+# it named: the repository was recreated on 2026-08-04, ghcr kept only 0.20.x
+# and later, and every weekly run since then died with `manifest unknown`
+# before reaching a single assertion. A default that names a specific version
+# is a dated fact pretending to be configuration.
 
 on:
   workflow_dispatch:
     inputs:
       pull_image_tag:
-        description: "Published IMAGE_TAG to verify the ghcr pull path against (e.g. 0.13.0)."
+        description: "Published IMAGE_TAG to verify the ghcr pull path against (e.g. 0.21.0). Defaults to the latest release."
         required: false
-        default: "0.13.1"
+        default: ""
         type: string
   schedule:
     # Weekly Sunday 03:00 UTC — catches drift from base image / dep updates.
@@ -53,6 +60,47 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
+  # ===========================================================================
+  # resolve-image-tag — decide which published tag the ghcr-facing jobs verify.
+  #
+  # Dispatch input wins when supplied; otherwise the latest non-draft,
+  # non-prerelease GitHub release. `gh release view` with no argument returns
+  # exactly that. Release tags carry a leading `v`, ghcr tags do not, so the
+  # prefix is stripped here rather than in each consumer.
+  # ===========================================================================
+  resolve-image-tag:
+    name: resolve published IMAGE_TAG
+    runs-on: ubuntu-22.04
+    timeout-minutes: 5
+    permissions:
+      contents: read
+    outputs:
+      tag: ${{ steps.pick.outputs.tag }}
+    steps:
+      - name: Resolve tag
+        id: pick
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_REPO: ${{ github.repository }}
+          REQUESTED: ${{ github.event.inputs.pull_image_tag }}
+        run: |
+          set -euo pipefail
+          if [ -n "${REQUESTED}" ]; then
+            tag="${REQUESTED#v}"
+            echo "Using dispatch-supplied tag ${tag}"
+          else
+            tag=$(gh release view --json tagName --jq '.tagName')
+            tag="${tag#v}"
+            echo "Resolved latest published release to ${tag}"
+          fi
+          # Fail loudly rather than pulling `:` and getting a confusing
+          # manifest error three jobs later.
+          if [ -z "${tag}" ]; then
+            echo "::error::could not resolve a published IMAGE_TAG"
+            exit 1
+          fi
+          echo "tag=${tag}" >> "$GITHUB_OUTPUT"
+
   install-uat:
     name: install-uat (ubuntu-22.04, docker-compose V1)
     runs-on: ubuntu-22.04
@@ -208,15 +256,15 @@ jobs:
     name: published-image-pull (ghcr multi-arch)
     runs-on: ubuntu-22.04
     timeout-minutes: 20
+    needs: resolve-image-tag
     # Anonymous pull suffices once the packages are public; read-only token
     # otherwise. No push here, so least privilege = packages: read.
     permissions:
       contents: read
       packages: read
-    # Until the first vX.Y.Z tag is published the referenced images may not yet
-    # exist; keep this advisory rather than blocking install-uat scheduling.
-    # Remove `continue-on-error` once a release tag has been cut.
-    continue-on-error: true
+    # This job was advisory (`continue-on-error: true`) until the first release
+    # tag existed. Three releases have shipped, so the condition expired and the
+    # neutraliser is gone: a broken distribution path now fails the run.
     steps:
       - uses: actions/checkout@v4
 
@@ -229,9 +277,9 @@ jobs:
 
       - name: Verify production compose resolves & pulls ghcr images
         env:
-          # A known-published tag, NOT the repo ref — the commit under test may
+          # A published tag, NOT the repo ref — the commit under test may
           # predate any release. Override on dispatch via `pull_image_tag`.
-          IMAGE_TAG: ${{ github.event.inputs.pull_image_tag || '0.13.1' }}
+          IMAGE_TAG: ${{ needs.resolve-image-tag.outputs.tag }}
           # The published-image services need these to be set for `config` to
           # interpolate without warnings; values are irrelevant to a pull.
           DOMAIN: example.invalid
@@ -291,6 +339,7 @@ jobs:
     name: install-uat-l1 (ubuntu-22.04, docker-compose V1, role-separated)
     runs-on: ubuntu-22.04
     timeout-minutes: 30
+    needs: resolve-image-tag
     # Anonymous ghcr pull suffices for public packages; a read-only token avoids
     # rate limits. No push here, so least privilege = packages: read.
     permissions:
@@ -299,7 +348,7 @@ jobs:
     env:
       # Published image set, resolved through the production docker-compose.yml
       # exactly as an operator would. Override IMAGE_TAG on dispatch if needed.
-      IMAGE_TAG: ${{ github.event.inputs.pull_image_tag || '0.13.1' }}
+      IMAGE_TAG: ${{ needs.resolve-image-tag.outputs.tag }}
       IMAGE_REGISTRY: ghcr.io/trustedoss
       # APP_ENV=dev matches install.sh's default .env (it copies .env.example, which
       # pins APP_ENV=dev, and never sets prod). It also lets the smoke reach the API
@@ -557,3 +606,42 @@ jobs:
         if: always()
         run: |
           docker-compose -f docker-compose.yml down -v || true
+
+  # ===========================================================================
+  # weekly-alert — the operator bundle is exercised once a week, so a failure
+  # here has to reach someone. The 2026-08-09 run failed on both ghcr-facing
+  # jobs and nothing surfaced it.
+  # ===========================================================================
+  weekly-alert:
+    name: weekly-alert
+    if: ${{ always() && github.event_name == 'schedule' }}
+    needs:
+      - resolve-image-tag
+      - install-uat
+      - published-image-pull
+      - install-uat-l1
+    runs-on: ubuntu-22.04
+    timeout-minutes: 5
+    permissions:
+      contents: read
+      issues: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          sparse-checkout: .github/actions/nightly-failure-issue
+      - uses: ./.github/actions/nightly-failure-issue
+        with:
+          label: weekly-install-uat
+          title: "Weekly install UAT is failing"
+          failed: ${{ contains(needs.*.result, 'failure') && 'true' || 'false' }}
+          details: |
+            Job results: resolve-image-tag=${{ needs.resolve-image-tag.result }},
+            install-uat=${{ needs.install-uat.result }},
+            published-image-pull=${{ needs.published-image-pull.result }},
+            install-uat-l1=${{ needs.install-uat-l1.result }}.
+
+            These jobs cover the operator install path end to end: the
+            install.sh wrapper on dev images, the ghcr distribution path on
+            published images, and the L1 role-separated deployment. Nothing
+            else in CI exercises a published image set.
+          token: ${{ secrets.GITHUB_TOKEN }}
