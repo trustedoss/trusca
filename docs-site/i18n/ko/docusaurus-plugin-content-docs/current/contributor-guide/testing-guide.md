@@ -51,7 +51,7 @@ pytest -s tests/integration/test_api_key_endpoints.py::test_revoke_immediate
 pytest --cov=. --cov-report=term-missing --cov-report=xml
 ```
 
-**변경된 라인** 기준 line coverage ≥ 80 %를 목표로. CI의 `coverage diff` 잡이 파일별 델타를 보고합니다 — 79 %에서 멈추면 머지가 막힙니다.
+**변경된 라인** 기준 line coverage ≥ 80 %를 목표로 합니다. CI는 두 스위트를 별도 잡(`test (backend-unit)`, `test (backend-integration)`)으로 돌리고, `coverage-gate (backend)`가 두 잡의 커버리지 데이터를 합쳐 두 가지를 판정합니다. 전체 트리는 `fail_under = 80`으로, 브랜치가 바꾼 라인은 `diff-cover`로 같은 80 % 기준을 적용합니다. 둘 중 하나라도 미달이면 잡이 실패합니다.
 
 ### 레이아웃 가이드
 
@@ -215,12 +215,12 @@ skip 라벨은 의도적으로 두지 않습니다. 라벨이 필요할 만큼 �
 
 머지 게이트는 `.github/workflows/ci.yml`에서 강제됩니다.
 
-- **Unit + integration 합산:** **변경된 라인** 기준 line coverage ≥ 80 %.
+- **Unit + integration 합산:** 전체 line coverage ≥ 80 %, 그리고 **PR이 바꾼 라인** 기준 ≥ 80 %. 두 스위트는 별도 잡으로 돌고 `coverage-gate (backend)`가 합친 뒤에 판정합니다. 한쪽 잡만 놓고 보는 숫자는 뜻이 없기 때문입니다.
 - **E2E (Playwright):** `apps/frontend/tests/e2e/_core/`의 핵심 시나리오 전부 통과. 새 핵심 시나리오는 해당 기능과 함께 추가합니다.
 - **디자인 토큰:** 위의 `token:lint` 래칫.
 - **시각·접근성:** 위의 `ui-gates.yml`.
 
-CI는 PR 코멘트로 coverage 보고서를 게시합니다 — 79.x %에서 머지가 막히니 테스트를 추가하세요.
+합쳐진 `coverage.xml`은 실행에 `backend-coverage` 아티팩트로 첨부되고, 빠진 라인은 `coverage-gate` 로그에 나옵니다. diff coverage 실패는 `apps/backend`에서 `diff-cover coverage.xml --compare-branch=origin/main`으로 로컬에서 재현할 수 있습니다.
 
 ## 함께 보기
 
