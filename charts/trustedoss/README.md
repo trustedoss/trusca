@@ -27,9 +27,14 @@ upstream OCI registry with `env.trivy.dbRepository`. See
 
 ## Quick start (bundled datastores, evaluation)
 
+The chart is not published to a registry yet, so install it from a checkout.
+Its `appVersion` also trails the current portal release — set `image.tag`
+explicitly for anything but a look around. Both are tracked in
+[issue #81](https://github.com/trustedoss/trusca/issues/81).
+
 ```bash
-helm install trustedoss oci://ghcr.io/trustedoss/charts/trustedoss \
-  --version <chart-version> \
+git clone https://github.com/trustedoss/trusca.git && cd trusca
+helm install trustedoss ./charts/trustedoss \
   --namespace trustedoss --create-namespace \
   --set env.secret.secretKey="$(openssl rand -hex 32)" \
   --set postgres.auth.password="$(openssl rand -hex 24)" \
