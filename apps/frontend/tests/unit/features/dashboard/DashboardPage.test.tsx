@@ -87,6 +87,7 @@ function makeProject(
     git_url: `https://github.com/example/${name.toLowerCase()}`,
     default_branch: "main",
     declared_license: null,
+    ai_usage_context: null,
     visibility: "team",
     archived_at: null,
     created_by_user_id: null,

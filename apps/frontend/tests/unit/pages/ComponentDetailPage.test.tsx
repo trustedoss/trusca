@@ -58,6 +58,7 @@ function makeProject(overrides: Partial<ProjectPublic> = {}): ProjectPublic {
     git_url: null,
     default_branch: "main",
     declared_license: null,
+    ai_usage_context: null,
     visibility: "team",
     archived_at: null,
     created_by_user_id: null,
