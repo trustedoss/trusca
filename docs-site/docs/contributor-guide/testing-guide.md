@@ -51,7 +51,7 @@ pytest -s tests/integration/test_api_key_endpoints.py::test_revoke_immediate
 pytest --cov=. --cov-report=term-missing --cov-report=xml
 ```
 
-Aim for ≥ 80 % line coverage on **changed lines**. The CI `coverage diff` job reports the per-file delta; hovering coverage at 79 % blocks merge.
+Aim for ≥ 80 % line coverage on **changed lines**. CI runs the two suites as separate jobs (`test (backend-unit)`, `test (backend-integration)`), and `coverage-gate (backend)` combines their data and judges both numbers: the whole tree against `fail_under = 80`, and the lines your branch changed against the same 80 % via `diff-cover`. Either one under threshold fails the job.
 
 ### Layout rule of thumb
 
@@ -274,12 +274,12 @@ they cannot disagree about what is covered.
 
 The merge gate is enforced in `.github/workflows/ci.yml`:
 
-- **Unit + integration combined:** ≥ 80 % line coverage on **changed lines**.
+- **Unit + integration combined:** ≥ 80 % line coverage overall, and ≥ 80 % on the **lines the pull request changed**. The two suites run as separate jobs; `coverage-gate (backend)` combines them before judging, because neither leg's number means anything alone.
 - **E2E (Playwright):** core scenarios in `apps/frontend/tests/e2e/_core/` must all pass. New core scenarios are added with the relevant feature.
 - **Design tokens:** `token:lint` ratchet, above.
 - **Visual + accessibility:** `ui-gates.yml`, above.
 
-CI publishes the coverage report as a PR comment; hovering at 79.x % blocks merge until you add tests.
+The combined `coverage.xml` is attached to the run as the `backend-coverage` artifact, and the `coverage-gate` log lists the missing lines. Reproduce a diff-coverage failure locally with `diff-cover coverage.xml --compare-branch=origin/main` from `apps/backend`.
 
 ## See also
 

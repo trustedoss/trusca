@@ -239,8 +239,8 @@ jobs:
   #     install.sh L1 (role-separation) deploy uses.
   #
   #     WHY THIS EXISTS (regression guard for #466): the L1 first-boot path is
-  #     invisible to every other job. `test (backend)` uses postgres only as a
-  #     service container (init scripts never run); release-gate runs
+  #     invisible to every other job. The backend test legs use postgres only
+  #     as a service container (init scripts never run); release-gate runs
   #     single-role dev mode (POSTGRES_APP_PASSWORD unset → the script skips).
   #     #466 shipped a psql `:'app_user'` interpolation *inside* a `DO $$ … $$`
   #     block, which psql does not substitute → `syntax error` → the
@@ -503,19 +503,27 @@ jobs:
         run: npm run typecheck
 
   # -------------------------------------------------------------------------
-  # 3) Test — pytest (unit + integration with services) + vitest (with coverage)
-  #    Backend matrix value spins up Postgres 17 + Redis 7 sidecars and runs
-  #    both unit and integration suites. CLAUDE.md §2 (품질·보안·운영 표준):
-  #    PR 머지 게이트 = 신규/변경 코드 line coverage ≥ 80%.
+  # 3) Test — pytest (unit, integration) + vitest (with coverage)
+  #    Each backend leg spins up its own Postgres 17 + Redis 7 sidecars.
+  #    CLAUDE.md §2 (품질·보안·운영 표준): PR 머지 게이트 = 신규/변경 코드
+  #    line coverage ≥ 80%. Neither leg judges coverage on its own — they
+  #    upload raw coverage data and `coverage-gate` combines it, because a
+  #    single leg's number is meaningless (unit alone never reaches 80%).
+  #
+  #    The suites used to run in one 18-minute serial job. They are split by
+  #    directory rather than sharded because the suite carries real state
+  #    between tests: rows a test leaves behind are read by a later one. Two
+  #    legs on two fresh databases is safe (and removes the unit → integration
+  #    pollution the single job had); finer shards inside a directory are not.
   # -------------------------------------------------------------------------
   test:
     name: test (${{ matrix.target }})
     runs-on: ubuntu-22.04
-    timeout-minutes: 40
+    timeout-minutes: 30
     strategy:
       fail-fast: false
       matrix:
-        target: [backend, frontend]
+        target: [backend-unit, backend-integration, frontend]
     services:
       postgres:
         image: postgres:17.2-alpine
@@ -547,7 +555,7 @@ jobs:
       - uses: actions/checkout@v4
 
       - name: Setup Python
-        if: matrix.target == 'backend'
+        if: startsWith(matrix.target, 'backend')
         uses: actions/setup-python@v5
         with:
           python-version: "3.12"
@@ -555,7 +563,7 @@ jobs:
           cache-dependency-path: apps/backend/requirements-dev.txt
 
       - name: Install backend dev deps
-        if: matrix.target == 'backend'
+        if: startsWith(matrix.target, 'backend')
         working-directory: apps/backend
         run: |
           python -m pip install --upgrade pip
@@ -571,7 +579,7 @@ jobs:
       # the server major version. Without this the round-trip test fails
       # in CI even though it passes locally inside the dev container.
       - name: Install postgresql-client-17 (matches Postgres service container)
-        if: matrix.target == 'backend'
+        if: startsWith(matrix.target, 'backend')
         run: |
           curl -fsSL https://www.postgresql.org/media/keys/ACCC4CF8.asc -o /tmp/pgdg.asc
           gpg --show-keys --with-fingerprint --with-colons /tmp/pgdg.asc \
@@ -585,15 +593,20 @@ jobs:
           sudo apt-get install -y --no-install-recommends postgresql-client-17
           pg_dump --version
 
-      - name: Run pytest (unit + integration)
-        if: matrix.target == 'backend'
+      # No per-leg coverage verdict: `--cov-fail-under=0` disables the
+      # pyproject `fail_under` here so a leg cannot fail on a number that only
+      # means something once both legs are combined. `coverage-gate` does the
+      # judging. The data file is renamed to `.coverage.<leg>` so
+      # `coverage combine` picks both up without them colliding.
+      - name: Run pytest (${{ matrix.target }})
+        if: startsWith(matrix.target, 'backend')
         working-directory: apps/backend
+        env:
+          SUITE: ${{ matrix.target == 'backend-unit' && 'tests/unit' || 'tests/integration' }}
         run: |
-          pytest \
-            --cov=. \
-            --cov-report=term-missing \
-            --cov-report=xml \
-            tests/unit tests/integration
+          set -euo pipefail
+          pytest --cov=. --cov-report= --cov-fail-under=0 "$SUITE"
+          mv .coverage ".coverage.${{ matrix.target }}"
 
       # v2.1 Track B (B4) — NOTE: there is deliberately NO byte-exact OpenAPI
       # freshness gate here. A previous version ran
@@ -613,16 +626,18 @@ jobs:
       # check in apps/backend/tests/unit/test_openapi_contract.py
       # (openapi_endpoints.json), which runs as part of the pytest step above.
 
-      - name: Upload backend coverage
-        if: matrix.target == 'backend'
+      # `include-hidden-files` is not optional here: `.coverage.<leg>` starts
+      # with a dot, and upload-artifact v4 drops hidden files by default. Without
+      # it the gate job downloads nothing and combines nothing.
+      - name: Upload backend coverage data
+        if: startsWith(matrix.target, 'backend')
         uses: actions/upload-artifact@v4
         with:
-          name: backend-coverage
-          path: apps/backend/coverage.xml
-          if-no-files-found: ignore
-          # Nothing downloads these; they exist to be opened by hand when a
-          # coverage question comes up, and that happens within days of the
-          # run or not at all. The default is 90.
+          name: backend-coverage-${{ matrix.target }}
+          path: apps/backend/.coverage.${{ matrix.target }}
+          include-hidden-files: true
+          if-no-files-found: error
+          # Consumed by coverage-gate minutes later; nothing reads them after.
           retention-days: 7
 
       - name: Setup Node
@@ -651,6 +666,84 @@ jobs:
           path: apps/frontend/coverage/
           if-no-files-found: ignore
           # See backend-coverage above.
+          retention-days: 7
+
+  # -------------------------------------------------------------------------
+  # 3b) Coverage gate — combine the backend legs and judge two thresholds.
+  #
+  #     Global: `coverage report` applies pyproject's `fail_under = 80`, the
+  #     same number the single pytest job enforced before the split. Nothing
+  #     about the threshold changes; only where it is evaluated does.
+  #
+  #     Changed lines: CLAUDE.md §2 asks for ≥ 80% on NEW or CHANGED code, and
+  #     until now nothing measured that — the global line rate was the whole
+  #     gate, so a large well-covered codebase absorbed an untested new module
+  #     without moving the number. diff-cover reads the same coverage.xml and
+  #     scores only the lines this pull request touches.
+  #
+  #     `coverage` is pinned in requirements-dev.txt and repeated here: the
+  #     legs write the data files with that version and this job reads them,
+  #     so the two pins move together or `combine` fails on a format it does
+  #     not recognise.
+  # -------------------------------------------------------------------------
+  coverage-gate:
+    name: coverage-gate (backend)
+    needs: test
+    runs-on: ubuntu-22.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # diff-cover diffs against the base branch, which a depth-1 checkout
+          # does not have.
+          fetch-depth: 0
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install coverage tooling
+        run: pip install "coverage[toml]==7.15.0" "diff-cover==10.4.1"
+
+      - name: Download coverage data from both legs
+        uses: actions/download-artifact@v4
+        with:
+          pattern: backend-coverage-*
+          path: /tmp/coverage-data
+          merge-multiple: true
+
+      # `coverage xml` writes the report BEFORE the threshold is judged
+      # (`--fail-under=0` suppresses its own verdict) so the artifact survives a
+      # failing gate — the file is how you find out which lines are missing.
+      - name: Combine and enforce the global threshold
+        working-directory: apps/backend
+        run: |
+          set -euo pipefail
+          cp /tmp/coverage-data/.coverage.* .
+          coverage combine .coverage.backend-unit .coverage.backend-integration
+          coverage xml --fail-under=0
+          coverage report --show-missing --skip-covered
+
+      - name: Enforce 80% on the lines this pull request changed
+        if: github.event_name == 'pull_request'
+        working-directory: apps/backend
+        run: |
+          set -euo pipefail
+          git fetch --no-tags --depth=200 origin "$BASE_REF"
+          diff-cover coverage.xml \
+            --compare-branch="origin/$BASE_REF" \
+            --fail-under=80
+        env:
+          BASE_REF: ${{ github.base_ref }}
+
+      - name: Upload combined coverage
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: backend-coverage
+          path: apps/backend/coverage.xml
+          if-no-files-found: ignore
           retention-days: 7
 
   # -------------------------------------------------------------------------
@@ -1194,6 +1287,7 @@ jobs:
       - postgres-init-l1
       - typecheck
       - test
+      - coverage-gate
       - image-scan
       - frontend-bundle-audit
       - docs-build
@@ -1221,6 +1315,7 @@ jobs:
             postgres-init-l1=${{ needs.postgres-init-l1.result }},
             typecheck=${{ needs.typecheck.result }},
             test=${{ needs.test.result }},
+            coverage-gate=${{ needs.coverage-gate.result }},
             image-scan=${{ needs.image-scan.result }},
             frontend-bundle-audit=${{ needs.frontend-bundle-audit.result }},
             docs-build=${{ needs.docs-build.result }},

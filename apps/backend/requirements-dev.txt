@@ -2,6 +2,12 @@
 pytest==9.1.1
 pytest-asyncio==1.4.0
 pytest-cov==7.1.0
+# Pinned because ci.yml's coverage-gate installs the same version to read the
+# data files these legs write — `coverage combine` needs both sides to agree.
+coverage[toml]==7.15.0
+# Scores the lines a pull request changed against coverage.xml (CLAUDE.md §2's
+# "new code >= 80%"). CI-only; nothing in the runtime image imports it.
+diff-cover==10.4.1
 ruff==0.8.4
 mypy==1.13.0
 # Phase 2 PR #8: in-memory Redis double for CircuitBreaker unit tests.
