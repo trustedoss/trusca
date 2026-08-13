@@ -33,6 +33,7 @@ from core.api_key_auth import require_role_or_api_key
 from core.config import api_read_rate_limit, workspace_root
 from core.db import get_db
 from core.errors import problem_response
+from core.pagination import PAGE_MAX
 from core.ratelimit import _authenticated_user_key, limiter
 from core.security import CurrentUser, require_role
 from schemas.scan import ScanListResponse, ScanProvenance, ScanPublic
@@ -110,7 +111,7 @@ async def list_my_scans_endpoint(
         pattern=r"^(queued|running|succeeded|failed|cancelled)$",
         description="Filter by scan status.",
     ),
-    page: int = Query(default=1, ge=1),
+    page: int = Query(default=1, ge=1, le=PAGE_MAX),
     size: int = Query(default=20, ge=1, le=100),
     session: AsyncSession = Depends(get_db),
     actor: CurrentUser = Depends(require_role("developer")),
@@ -516,7 +517,7 @@ async def delete_scan_endpoint(
 async def list_scans_endpoint(
     request: Request,
     project_id: uuid.UUID,
-    page: int = Query(default=1, ge=1),
+    page: int = Query(default=1, ge=1, le=PAGE_MAX),
     size: int = Query(default=20, ge=1, le=100),
     ref: str | None = Query(
         default=None,

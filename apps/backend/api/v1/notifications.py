@@ -26,6 +26,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from core.db import get_db
 from core.errors import problem_response
+from core.pagination import PAGE_MAX
 from core.security import CurrentUser, get_current_user
 from schemas.notification import (
     NotificationListResponse,
@@ -67,7 +68,7 @@ def _problem_for(request: Request, exc: NotificationError) -> Response:
 async def list_notifications_endpoint(
     request: Request,
     unread_only: bool = Query(default=False),
-    page: int = Query(default=1, ge=1),
+    page: int = Query(default=1, ge=1, le=PAGE_MAX),
     page_size: int = Query(default=20, ge=1, le=200),
     session: AsyncSession = Depends(get_db),
     actor: CurrentUser = Depends(get_current_user),

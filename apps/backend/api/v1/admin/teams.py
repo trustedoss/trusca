@@ -28,6 +28,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from core.db import get_db
 from core.errors import problem_response
+from core.pagination import PAGE_MAX
 from core.security import CurrentUser, require_super_admin_or_404
 from schemas.admin import (
     AdminTeamCreate,
@@ -82,7 +83,7 @@ def _problem_for_admin_team_error(request: Request, exc: AdminTeamError) -> Resp
 )
 async def list_teams_endpoint(
     request: Request,  # noqa: ARG001
-    page: int = Query(default=1, ge=1),
+    page: int = Query(default=1, ge=1, le=PAGE_MAX),
     page_size: int = Query(default=50, ge=1, le=200),
     search: str | None = Query(default=None, max_length=255),
     session: AsyncSession = Depends(get_db),
