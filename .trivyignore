@@ -26,24 +26,6 @@
 #   `trivyignores: ./.trivyignore` for explicit-ness (zero side effects).
 #
 # ----------------------------------------------------------------------------
-# ORT 85.1.1 reach surface (single source of truth — keep in sync with
-# apps/backend/integrations/ort.py:128-139):
-#   cmd = [
-#       "ort", "evaluate",
-#       "--rules-file", <kts>,
-#       "--ort-file",   <cdxgen-derived sbom>,
-#       "--output-dir", <out>,
-#       "--output-formats", "JSON",
-#   ]
-# We do NOT run `ort analyze`, `ort scan`, the `notice` reporter, or any
-# OAuth-protected ORT command. We never set `--cache-dir` or
-# `--analyzer-cache`. The evaluate phase loads the ruleset (Kotlin DSL)
-# and the analyzer-result derived from cdxgen's CycloneDX JSON, then
-# applies rules and emits JSON. Spring Security, JWT/JOSE, msgpack
-# serialisation, JRuby reporter templating, and BouncyCastle asymmetric
-# crypto are all outside this code path.
-#
-# ----------------------------------------------------------------------------
 # cdxgen 12.3.3 reach surface (single source of truth — keep in sync with
 # apps/backend/integrations/cdxgen.py:107-115):
 #   cmd = [
@@ -74,46 +56,31 @@
 #
 # ============================================================================
 
-# CVE-2024-57699 — net.minidev:json-smart 2.5.0 → 2.5.2
-# Target: opt/ort/lib/json-smart-2.5.0.jar (ORT 85.1.1 transitive — same
-#   bundled version as 85.0.0; ORT 85.1.x patch line did not refresh
-#   json-smart, awaiting an 86.x cut on main).
-# CVSS: HIGH (DoS via stack exhaustion, incomplete fix for CVE-2023-1370).
-# Reach: json-smart is loaded by Spring Security / nimbus-jose-jwt to parse
-#   OAuth2/JWT payloads. Our `ort evaluate` invocation makes no HTTP calls
-#   and parses no tokens — the rule script (rules.kts) and the cdxgen-
-#   derived analyzer file are the only inputs, both local files. The
-#   parser's exploit primitive (deeply-nested attacker JSON) requires
-#   attacker control of the JSON stream, which we never expose. UNREACHED.
-# Re-evaluate: 2026-11-09 or on next ORT 86.x release.
-CVE-2024-57699
-
-# CVE-2026-5598 — org.bouncycastle:bcprov-jdk18on 1.79 → 1.84
-# Target: opt/ort/lib/jruby-stdlib-9.4.14.0.jar
-#   (BouncyCastle is bundled inside JRuby's stdlib jar — the BC version
-#   is whatever JRuby 9.4.14.0 vendored, not a top-level ORT dep.)
-# CVSS: HIGH (private-key leakage via non-constant-time comparison).
-# Reach: JRuby is loaded only by ORT's `notice` reporter (Apache Velocity
-#   templating in Ruby). Our `ort evaluate --output-formats JSON` does NOT
-#   invoke any reporter — JSON output is emitted by ORT's built-in writer
-#   without templating. We never call `ort report -f Notice...`. Even if
-#   JRuby loaded BC, the CVE requires us to perform asymmetric-crypto
-#   verification with attacker-influenced inputs; we sign/verify nothing
-#   inside the worker via BC. UNREACHED.
-# Re-evaluate: 2026-11-09 or when JRuby ships a stdlib bump.
-CVE-2026-5598
+# Two entries stood here for jars under opt/ort/lib/ — json-smart
+# (CVE-2024-57699) and BouncyCastle inside JRuby's stdlib (CVE-2026-5598).
+# ORT was removed from the worker image in PR-A2, so those jars are gone and
+# the suppressions matched nothing; their reach analysis cited
+# apps/backend/integrations/ort.py, which no longer exists either. Removed
+# rather than left as reassurance about a scan surface the image lacks.
 
 # CVE-2026-21452 — org.msgpack:msgpack-core 0.9.10 → 0.9.11
-# Target: opt/ort/lib/org.msgpack.msgpack-core-0.9.10.jar
+# Target: usr/lib/node_modules/@cyclonedx/cdxgen/node_modules/@appthreat/
+#   atom/plugins/lib-*/org.msgpack.msgpack-core-0.9.10.jar
+#
+#   This entry used to name `opt/ort/lib/...` and explain itself in terms of
+#   ORT's analyzer cache. That was wrong, and the error was only visible when
+#   the entry was removed along with the genuine ORT ones and the gate failed:
+#   the jar is vendored by cdxgen's atom plugin bundle and had nothing to do
+#   with ORT. A suppression that names the wrong file cannot be re-verified by
+#   anyone, which is most of what a suppression is for.
+#
 # CVSS: HIGH (DoS via crafted MessagePack input).
-# Reach: ORT uses msgpack-core for analyzer-cache serialisation
-#   (--analyzer-cache option) and for the streaming-result writer. Our
-#   invocation passes neither `--cache-dir` nor `--analyzer-cache`, and
-#   the JSON output formatter never goes through msgpack. The sole input
-#   we feed ORT is a CycloneDX JSON SBOM (cdxgen-produced) loaded via
-#   `--ort-file`, which is JSON-parsed, not msgpack. UNREACHED.
-# Re-evaluate: 2026-11-09 or on next ORT 86.x release (ORT main has
-#   bumped msgpack-core; the 85.1.x patch line did not include it).
+# Reach: same as the rest of the cdxgen plugin bundle documented above — we
+#   invoke cdxgen only as a CycloneDX emitter, with no `--evidence`/`--evinse`
+#   and no plugin binary execution, so the atom plugin's jars are never
+#   loaded. Reaching this parser requires feeding it MessagePack, and nothing
+#   in the scan path produces or consumes that format. UNREACHED.
+# Re-evaluate: 2026-11-09 or when cdxgen refreshes the atom plugin bundle.
 CVE-2026-21452
 
 # ============================================================================

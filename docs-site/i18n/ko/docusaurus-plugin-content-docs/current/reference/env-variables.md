@@ -147,7 +147,7 @@ CI 빌드 게이트는 기본적으로 Critical CVE와 금지 라이선스에서
 | `EOL_FEED_URL_TEMPLATE` | `https://endoflife.date/api/{product}.json` | `config.py` | 실시간 수집용 제품별 API 템플릿(`{product}` 치환). 내부 미러를 지정하면 전송이 사내에 머뭅니다. |
 | `EOL_REFRESH_TIMEOUT_SECONDS` | `15` | `config.py` | 실시간 수집 시 제품 요청당 HTTP 타임아웃. `[1, 120]` 범위이며, 전체 수집은 별도로 60초 wall-clock으로 제한됩니다. |
 | `WORKSPACE_HOST_PATH` | `/tmp/trustedoss` | `config.py`, `docker-compose.yml` | worker에 `/workspace`로 마운트되는 호스트 디렉터리. 레포 클론 + 스캔 아티팩트(cdxgen SBOM, scancode 출력) 보관. compose 스택은 컨테이너 내에서 `/workspace`로 오버라이드합니다. |
-| `ORT_RULES_PATH` | `/opt/trustedoss/ort/rules.kts` | `docker-compose.yml` | worker 내부 레거시 경로로, ORT 단계 제거 후 잔재입니다. 파일은 placeholder 이며 v0.10.0 에서는 효과가 없습니다 — 라이선스 단계 분류는 `apps/backend/tasks/scan_source.py`의 `_LICENSE_CATEGORY_DEFAULTS`에서 옵니다. |
+| `ORT_RULES_PATH` | `/opt/trustedoss/ort/rules.kts` | `docker-compose.yml` | worker 내부 레거시 경로로, ORT 단계 제거 후 잔재입니다. 읽는 곳이 없고 가리키는 파일도 이제 없습니다. 라이선스 단계 분류는 `apps/backend/tasks/scan_source.py`의 `_LICENSE_CATEGORY_DEFAULTS`에서 옵니다. |
 | `JSONB_ROW_SIZE_LIMIT_BYTES` | `262144` (256 KB) | `config.py` | writer가 truncate + warn하기 전 행당 JSON 바이트 상한. I-1 무한 페이로드 클래스 가드. |
 
 ## 스캔 보존(retention) {#scan-retention}

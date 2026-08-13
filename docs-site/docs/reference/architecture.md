@@ -110,12 +110,12 @@ Stage transitions emit WebSocket events (`scan.<id>.progress`) so the UI updates
 ## License-tier classification {#ort-rules}
 
 :::warning Classification source in this release
-In this release, license-tier classification is **not** ORT-rule-driven. The
+In this release, license-tier classification is **not** rule-file-driven. The
 tier (`forbidden` / `conditional` / `permissive` / `unknown`) comes
 from the hard-coded `_LICENSE_CATEGORY_DEFAULTS` dictionary in
-`apps/backend/tasks/scan_source.py`. The repo's `ort/rules.kts` is a
-placeholder reserved for a future customization path. Editing
-`ort/rules.kts` has no effect in this release.
+`apps/backend/tasks/scan_source.py`. There is no rule file to edit: the
+`ort/rules.kts` placeholder left over from the removed ORT stage has been
+deleted, since keeping it invited edits that would have done nothing.
 :::
 
 The classifier maps SPDX IDs to tiers as follows (representative
@@ -153,10 +153,9 @@ Operator override path in this release:
 2. Rebuild and restart the worker (`docker-compose restart worker beat`).
 3. Re-scan affected projects to apply the new classification.
 
-Per-organization rule customization is planned; the legacy
-`ORT_RULES_PATH` env var and the `ort/rules.kts` mount in the worker
-image are vestigial placeholders from the removed ORT stage and have no
-effect in this release.
+Per-organization rule customization is planned. The legacy `ORT_RULES_PATH`
+env var is a vestige of the removed ORT stage and has no effect; the
+`ort/rules.kts` file it pointed at has been deleted.
 
 The portal does not auto-re-classify historical scans — the historical record is preserved with the classification that was in effect at scan time.
 

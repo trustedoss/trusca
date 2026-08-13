@@ -96,8 +96,8 @@ x-backend-env: &backend-env
   # PR-A2: ORT_RULES_PATH removed — the backend no longer shells to ORT.
   # First-party license detection is done by scancode (bundled in the worker
   # image); third-party dependency licenses come declared from cdxgen. The
-  # ort/rules.kts file is retained in-repo for reference but is no longer
-  # read at runtime.
+  # ort/rules.kts placeholder that was kept alongside this note is gone too —
+  # a file nothing reads is not a reference, it is a thing to mistake for one.
   # W6-#43a (ADR-0001): DT_URL / DT_API_KEY removed — vulnerability matching
   # runs entirely from the worker via `trivy sbom` against the locally-cached
   # Trivy DB. Air-gapped sites override the upstream OCI registry with
