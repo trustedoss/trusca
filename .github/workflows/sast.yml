@@ -36,16 +36,11 @@ on:
       - "SECURITY.md"
       - "LICENSE"
       - ".gitignore"
+  # No paths-ignore on pull_request — bandit and semgrep are required checks,
+  # and a filtered-out workflow reports nothing at all, leaving the pull
+  # request pending until someone merges with --admin. Same reasoning as
+  # ci.yml; the push trigger above keeps its filter.
   pull_request:
-    paths-ignore:
-      - "docs/**"
-      - "*.md"
-      - ".env.example"
-      - "CLAUDE.md"
-      - "ROADMAP.md"
-      - "SECURITY.md"
-      - "LICENSE"
-      - ".gitignore"
   workflow_dispatch: {}
 
 # Least-privilege default — bandit and semgrep only need to read the

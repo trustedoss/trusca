@@ -22,20 +22,16 @@ on:
       - "SECURITY.md"
       - "LICENSE"
       - ".gitignore"
+  # No paths-ignore on pull_request, deliberately. Twelve of the thirteen
+  # required checks live in this workflow, and a workflow that never starts
+  # never reports: a pull request touching only root markdown sat with twelve
+  # checks pending forever and the only way past it was `gh pr merge --admin`.
+  # That habit does not distinguish "the filter skipped these" from "these
+  # failed", and it waives the checks that DID run (gitleaks, CodeQL) along
+  # with the ones that did not. The saving was a handful of runs a month on
+  # chore pull requests; the cost was a standing bypass of every gate.
+  # The push trigger below keeps its filter — nothing is waiting on it there.
   pull_request:
-    # Do NOT add `docs-site/**` or `**/*.md` here. A backend test pins the
-    # crosswalk disclaimer the API serves to the copy quoted in the SBOM upload
-    # guide; skipping CI on doc-only changes would let the guide be reworded
-    # out of sync with the payload without anything failing.
-    paths-ignore:
-      - "docs/**"
-      - "*.md"
-      - ".env.example"
-      - "CLAUDE.md"
-      - "ROADMAP.md"
-      - "SECURITY.md"
-      - "LICENSE"
-      - ".gitignore"
   # Nightly run — the slow gate (e2e Playwright matrix) sits behind a
   # `github.event_name == 'schedule' || workflow_dispatch` guard so PRs
   # stay fast. The same schedule walks the lint/test/SAST path again so
@@ -856,7 +852,44 @@ jobs:
           fi
 
   # -------------------------------------------------------------------------
-  # 6) E2E — Playwright against a real docker-compose dev stack with the
+  # 6) Docs build — compile the Docusaurus site (EN + KO).
+  #
+  #    Nothing checked the documentation site on a pull request. docs.yml only
+  #    runs on a push to main, so an MDX syntax error or a broken link merged
+  #    green and first appeared in a deploy nobody was watching. The site is
+  #    now built with `onBrokenLinks: throw`, which makes this the check that
+  #    catches it, on the pull request that caused it.
+  #
+  #    No paths filter, for the reason the pull_request trigger has none: this
+  #    is a required-check candidate and it has to report on every pull
+  #    request. It costs about two minutes with the npm cache warm, and the
+  #    backend is not installed here — the build reads the committed
+  #    static/openapi.json (docs.yml regenerates it for the real deploy).
+  # -------------------------------------------------------------------------
+  docs-build:
+    name: docs-build
+    runs-on: ubuntu-22.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+          cache-dependency-path: docs-site/package-lock.json
+
+      - name: Install docs deps
+        working-directory: docs-site
+        run: npm ci --no-audit --no-fund
+
+      - name: Build site (EN + KO)
+        working-directory: docs-site
+        run: npm run build
+
+  # -------------------------------------------------------------------------
+  # 7) E2E — Playwright against a real docker-compose dev stack with the
   #    Celery worker in mock-scan mode. Runs in parallel with the other jobs
   #    so PR latency is gated by the slowest job, not the sum.
   #
@@ -1139,6 +1172,7 @@ jobs:
       - test
       - image-scan
       - frontend-bundle-audit
+      - docs-build
       - e2e
     runs-on: ubuntu-22.04
     timeout-minutes: 5
@@ -1165,6 +1199,7 @@ jobs:
             test=${{ needs.test.result }},
             image-scan=${{ needs.image-scan.result }},
             frontend-bundle-audit=${{ needs.frontend-bundle-audit.result }},
+            docs-build=${{ needs.docs-build.result }},
             e2e=${{ needs.e2e.result }}.
 
             The e2e matrix runs on this schedule only, so a failure here is the

@@ -21,11 +21,21 @@ const config: Config = {
   deploymentBranch: "gh-pages",
   trailingSlash: false,
 
-  onBrokenLinks: "warn",
-  onBrokenMarkdownLinks: "warn",
+  // `throw`, not `warn`. Nothing read the warnings: the site is only built on
+  // a push to main, after review, where a broken link becomes a log line in a
+  // deploy that already succeeded. The corpus is at zero broken links today,
+  // so the strict setting costs nothing and the docs-build job in ci.yml turns
+  // the next one into a failing check on the pull request that introduced it.
+  onBrokenLinks: "throw",
 
   markdown: {
     mermaid: true,
+    hooks: {
+      // Same reasoning. Lives under `markdown.hooks` because the top-level
+      // `onBrokenMarkdownLinks` is deprecated and goes away in Docusaurus v4 —
+      // the build warned about it on every run.
+      onBrokenMarkdownLinks: "throw",
+    },
   },
 
   i18n: {
