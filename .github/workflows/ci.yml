@@ -654,7 +654,7 @@ jobs:
           retention-days: 7
 
   # -------------------------------------------------------------------------
-  # 4) Image scan — build the Celery worker image (cdxgen / ORT / Trivy +
+  # 4) Image scan — build the Celery worker image (cdxgen / scancode / Trivy +
   #    JRE + Node) and scan it with Trivy. Fails on HIGH or CRITICAL OS or
   #    library vulnerabilities. Runs in parallel with lint/typecheck/test so
   #    overall PR latency is unchanged.
@@ -735,7 +735,7 @@ jobs:
       # Rotating the scope weekly bounds that drift to one week — Debian's
       # security updates land on roughly that cadence — at the cost of one cold
       # build per week. Pinning it to the run id instead would make every PR a
-      # cold build of a JDK + Node + cdxgen + ORT image; scoping it per commit
+      # cold build of a JDK + Node + cdxgen + scancode image; scoping it per commit
       # would never hit at all.
       - name: Cache scope (rotates weekly)
         id: cache-scope
@@ -775,8 +775,9 @@ jobs:
           # `scanners: vuln` explicitly disables Trivy's secret + license
           # scanners on this gate. We gate on CVEs here; secrets are
           # caught by the separate gitleaks job (cleaner separation of
-          # concerns), and licenses are owned by ORT in the runtime
-          # pipeline. Without this Go SDK 1.25 ships a test-fixture
+          # concerns), and license detection belongs to scancode and cdxgen
+          # in the runtime pipeline (ORT was removed in PR-A2). Without this,
+          # Go SDK 1.25 ships a test-fixture
           # private key at `/opt/go/src/crypto/x509/platform_root_key.pem`
           # (NOT an operational secret — it's a Go stdlib test artifact
           # bundled with the source-only `src/` tree) which Trivy's
@@ -906,7 +907,7 @@ jobs:
   #    Celery worker in mock-scan mode. Runs in parallel with the other jobs
   #    so PR latency is gated by the slowest job, not the sum.
   #
-  #    The worker uses TRUSTEDOSS_SCAN_BACKEND=mock so cdxgen / ORT / Trivy
+  #    The worker uses TRUSTEDOSS_SCAN_BACKEND=mock so cdxgen / scancode / Trivy
   #    short-circuit to fixture frames — the real toolchain takes 5-60min
   #    per scan and would blow the 15min timeout.
   #
@@ -954,7 +955,7 @@ jobs:
     # is fail a suite for finishing at its normal speed on a bad day.
     timeout-minutes: 30
     env:
-      # The worker's mock backend short-circuits cdxgen/ORT/Trivy. Compose
+      # The worker's mock backend short-circuits cdxgen/scancode/Trivy. Compose
       # picks this up via the `<<: *backend-env` anchor in
       # docker-compose.dev.yml.
       TRUSTEDOSS_SCAN_BACKEND: mock

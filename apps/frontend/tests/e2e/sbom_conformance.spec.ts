@@ -24,8 +24,9 @@
  *   clusters ["slp", "models"] (canonical registry order). All G7 assertions
  *   go through data attributes so the same verbs pass on EN and KO.
  *
- * E2E is nightly-gated (see .github/workflows/e2e-nightly.yml) — run pre-merge
- * with `gh workflow run e2e-nightly.yml --ref <branch>`.
+ * E2E is nightly-gated (the `e2e` job in .github/workflows/ci.yml, which runs
+ * on the schedule and on dispatch) — run pre-merge with
+ * `gh workflow run ci.yml --ref <branch>`.
  */
 import { expect, test, type Page, type TestInfo } from "@playwright/test";
 

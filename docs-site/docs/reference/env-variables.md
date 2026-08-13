@@ -148,7 +148,7 @@ See [build gate](./glossary.md#build-gates) for the gate model and [Gate the bui
 | `EOL_FEED_URL_TEMPLATE` | `https://endoflife.date/api/{product}.json` | `config.py` | Per-product API template for the live fetch (`{product}` is substituted). Point at an internal mirror to keep the egress inside your network. |
 | `EOL_REFRESH_TIMEOUT_SECONDS` | `15` | `config.py` | HTTP timeout per product request during the live fetch. Bounded `[1, 120]`; the whole sweep is additionally capped at 60 s wall-clock. |
 | `WORKSPACE_HOST_PATH` | `/tmp/trustedoss` | `config.py`, `docker-compose.yml` | Host directory mounted into the worker as `/workspace`. Holds repo clones + scan artefacts (cdxgen SBOM, scancode output). The compose stack overrides this to `/workspace` inside the container. |
-| `ORT_RULES_PATH` | `/opt/trustedoss/ort/rules.kts` | `docker-compose.yml` | Legacy path inside the worker, vestigial after the ORT stage was removed. The file is a placeholder and has no effect in this release — license-tier classification comes from `_LICENSE_CATEGORY_DEFAULTS` in `apps/backend/tasks/scan_source.py`. |
+| `ORT_RULES_PATH` | `/opt/trustedoss/ort/rules.kts` | `docker-compose.yml` | Legacy path inside the worker, vestigial after the ORT stage was removed. Nothing reads it and the file it names no longer exists — license-tier classification comes from `_LICENSE_CATEGORY_DEFAULTS` in `apps/backend/tasks/scan_source.py`. |
 | `JSONB_ROW_SIZE_LIMIT_BYTES` | `262144` (256 KB) | `config.py` | Per-row JSON byte ceiling before the writer truncates and emits a warning. Guards the I-1 unbounded-payload class. |
 
 ## Scan retention

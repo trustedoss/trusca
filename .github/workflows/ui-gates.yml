@@ -120,8 +120,8 @@ jobs:
       DATABASE_URL_OWNER: postgresql+asyncpg://trustedoss:trustedoss@postgres:5432/trustedoss
       REDIS_URL: redis://redis:6379/0
       SECRET_KEY: ci-visual-secret-key-min-32-chars-padding-aabbcc
-      DT_URL: http://dtrack-api:8080
-      DT_API_KEY: ci-visual-dt-stub-key
+      # DT_URL / DT_API_KEY were here, pointing a stub at a Dependency-Track
+      # that ADR-0001 removed. Nothing read them.
       WORKSPACE_HOST_PATH: ${{ github.workspace }}/workspace
       DISABLE_LOGIN_RATE_LIMIT: "1"
       # /health/ready returns 200 only after Alembic schema is at HEAD.

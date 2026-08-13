@@ -110,12 +110,12 @@ PostgreSQL이 단일 진실 저장소입니다. 주요 테이블:
 ## 라이선스 단계 분류 {#ort-rules}
 
 :::warning v0.10.0의 분류 출처
-v0.10.0에서 라이선스 단계 분류는 ORT 룰 기반이 **아닙니다**. 단계
+v0.10.0에서 라이선스 단계 분류는 룰 파일 기반이 **아닙니다**. 단계
 (`forbidden` / `conditional` / `permissive` / `unknown`)는
 `apps/backend/tasks/scan_source.py`의 하드코딩된
-`_LICENSE_CATEGORY_DEFAULTS` 사전에서 옵니다. 레포의 `ort/rules.kts`
-는  커스터마이징 경로를 위해 예약된 placeholder 입니다. v0.10.0
-에서는 `ort/rules.kts`를 수정해도 효과가 없습니다.
+`_LICENSE_CATEGORY_DEFAULTS` 사전에서 옵니다. 수정할 룰 파일은 없습니다.
+제거된 ORT 단계에서 남아 있던 `ort/rules.kts` placeholder는 삭제했습니다.
+고쳐도 아무 일이 일어나지 않는 파일을 남겨 두면 고치도록 부추기기 때문입니다.
 :::
 
 분류기는 SPDX ID를 단계로 다음과 같이 매핑합니다(대표적 부분 집합
@@ -153,9 +153,9 @@ _LICENSE_CATEGORY_DEFAULTS: dict[str, str] = {
 2. worker 재빌드 및 재시작(`docker-compose restart worker beat`).
 3. 영향받는 프로젝트를 재스캔해 새 분류 적용.
 
-조직별 룰 커스터마이징은 예정입니다; 레거시 `ORT_RULES_PATH`
-환경 변수와 worker 이미지의 `ort/rules.kts` 마운트는 제거된 ORT
-단계에서 남은 잔재 placeholder 이며 v0.10.0 에서는 효과가 없습니다.
+조직별 룰 커스터마이징은 예정입니다. 레거시 `ORT_RULES_PATH` 환경 변수는
+제거된 ORT 단계에서 남은 잔재이며 효과가 없습니다. 이 변수가 가리키던
+`ort/rules.kts` 파일은 삭제했습니다.
 
 포털은 과거 스캔을 자동 재분류하지 않습니다 — 과거 기록은 스캔 시점에 유효했던 분류와 함께 보존됩니다.
 
