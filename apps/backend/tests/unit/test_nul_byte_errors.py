@@ -14,6 +14,8 @@ that is easy to get wrong: matching too broadly would hide real faults.
 
 from __future__ import annotations
 
+from typing import cast
+
 from core.errors import _is_untranslatable_character
 
 
@@ -24,7 +26,7 @@ def _named(name: str, sqlstate: str | None = None) -> Exception:
     asyncpg's exception classes, so a stand-in built here exercises the same
     path the driver would.
     """
-    exc = type(name, (Exception,), {})(name)
+    exc = cast(Exception, type(name, (Exception,), {})(name))
     if sqlstate is not None:
         exc.sqlstate = sqlstate  # type: ignore[attr-defined]
     return exc
