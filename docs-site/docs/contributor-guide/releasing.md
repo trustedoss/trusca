@@ -33,7 +33,11 @@ The workflow runs four stages in order, each depending on the previous one:
    overlay that publishes the backend + frontend ports so the smoke can run
    without Traefik/DNS/TLS), and runs the documented Quickstart first-scan smoke:
    health poll → `create_super_admin` → login → projects API. On success it runs
-   `gh release edit <tag> --draft=false --latest` to reveal the Release.
+   `gh release edit <tag> --draft=false --latest` to reveal the Release, then
+   asks [`deploy-hetzner.yml`](https://github.com/trustedoss/trusca/blob/main/.github/workflows/deploy-hetzner.yml)
+   to roll the public demo forward to that tag. That deploy waits on the `demo`
+   Environment's required reviewer, so a release never reaches the demo host
+   unattended.
 
 ```
 build ──▶ merge ──▶ release (draft) ──▶ release-gate ──▶ reveal (draft=false)
@@ -41,6 +45,16 @@ build ──▶ merge ──▶ release (draft) ──▶ release-gate ──▶
  by         version    stays hidden        published images   only if smoke
  digest     tags                           + first-scan smoke passed
 ```
+
+:::note The `latest` tag left in the registry
+Releases up to 0.21.0 pushed a `latest` image tag as well: `docker/metadata-action`
+adds one unless you opt out (`flavor: latest=auto`), and the workflow did not.
+It does now, so no new one appears. The tags already in GHCR cannot simply be
+removed — GHCR deletes package *versions*, not tags, and `latest` shares its
+version with `0.21.0` and `0.21`. Untag it before the next release: push a
+throwaway manifest to `latest`, then delete that version. Left alone, `latest`
+keeps pointing at 0.21.0 forever while claiming to be current.
+:::
 
 ## Why images publish before the Release is revealed
 
@@ -97,6 +111,11 @@ unrelated (e.g. infrastructure) reason, a maintainer can reveal it by hand with
 4. Tag and push: `git tag vX.Y.Z && git push origin vX.Y.Z`.
 5. Watch the `release-gate` job. When it goes green the Release is public and
    marked `latest` automatically — no manual step is needed.
+6. Approve the demo deploy. Revealing the Release queues a `deploy-hetzner.yml`
+   run against the `demo` Environment; it waits for a reviewer. Leave it
+   unapproved if the demo should stay on the previous release. The queued run
+   never reseeds — when the release changes `scripts/seed_demo.py`, dispatch the
+   workflow by hand with `reseed: true` instead.
 
 ## See also
 
