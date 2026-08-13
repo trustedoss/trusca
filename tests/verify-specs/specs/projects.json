@@ -46,14 +46,14 @@
     },
     {
       "tc": "TC-PROJ-03-005", "channel": "api", "as": "super_admin",
-      "_expect": "보관된 프로젝트는 기본 목록에서 숨겨진다 (해당 팀은 보관 1건뿐이라 기본 목록이 빈 배열)",
-      "request": { "method": "GET", "path": "/v1/projects?team_id=${ARCHIVED_TEAM}" },
+      "_expect": "보관된 프로젝트는 기본 목록에서 숨겨진다. 팀이 아니라 그 프로젝트를 이름으로 좁혀 조회하므로, 같은 팀이 살아 있는 프로젝트를 함께 가지고 있어도 성립한다 (vars 블록이 이미 같은 q로 대상을 해석한다)",
+      "request": { "method": "GET", "path": "/v1/projects?q=2946a3cb02" },
       "expect": { "status": 200, "jsonMissing": ["items[0]"] }
     },
     {
       "tc": "TC-PROJ-03-005-setup", "channel": "api", "as": "super_admin",
-      "_expect": "같은 팀을 include_archived=true로 조회하면 보관 프로젝트가 노출 (03-005의 대조군)",
-      "request": { "method": "GET", "path": "/v1/projects?team_id=${ARCHIVED_TEAM}&include_archived=true" },
+      "_expect": "같은 조회를 include_archived=true로 하면 보관 프로젝트가 노출된다 (03-005의 대조군)",
+      "request": { "method": "GET", "path": "/v1/projects?q=2946a3cb02&include_archived=true" },
       "expect": { "status": 200, "jsonEquals": { "items[0].id": "${ARCHIVED_PID}" } }
     },
     {
@@ -99,10 +99,10 @@
       "expect": { "status": 403 }
     },
     {
-      "tc": "TC-PROJ-10-006", "channel": "api", "as": "team_admin_backend", "knownBug": "M-11",
-      "_expect": "원 캠페인 시점 가이드: team_admin 또는 super_admin이 GET /v1/admin/teams로 team_id를 읽는다(200). 구현은 super_admin 전용 404 — M-11은 doc-fix(#356, 코드 무변경)라 옛 가이드 기대를 유지해 fail=orig fail(concordant)",
+      "tc": "TC-PROJ-10-006", "channel": "api", "as": "team_admin_backend",
+      "_expect": "team_admin의 /v1/admin/teams 조회는 404. 관리자 전용 자원은 권한이 없는 주체에게 존재 자체를 숨긴다. team_id는 /auth/me 의 멤버십으로 읽는 것이 문서화된 경로이고, M-11은 그 방향으로 종결됐다",
       "request": { "method": "GET", "path": "/v1/admin/teams" },
-      "expect": { "status": 200 }
+      "expect": { "status": 404 }
     },
     {
       "tc": "TC-PROJ-10-007", "channel": "api", "as": "team_admin_frontend",
@@ -153,9 +153,9 @@
       "expect": { "rowMatches": "^[1-9][0-9]*$" }
     },
     {
-      "tc": "TC-PROJ-13-003", "channel": "shell", "knownBug": "M-9",
-      "_expect": "원 캠페인 시점 가이드: name은 팀 내 유일('Project name already in use') → name 유일 제약(unique index)이 존재해야 한다. 구현은 uq_projects_team_slug(slug)만 강제 — M-9는 doc-fix(#352, 코드 무변경)라 옛 가이드 기대를 유지해 fail=orig fail(concordant). 중복 생성 호출 재현은 행이 실제 생성되는 영구 변경이라 제약 존재 검증으로 대체",
-      "sql": "SELECT count(*) FROM pg_indexes WHERE tablename='projects' AND indexdef ILIKE '%UNIQUE%' AND indexdef ~* '\\(team_id, name\\)|\\(name[,)]';",
+      "tc": "TC-PROJ-13-003", "channel": "shell",
+      "_expect": "팀 내 유일 키는 slug다(uq_projects_team_slug). name에는 유일 제약이 없고, M-9는 slug를 문서화된 유일 키로 정리하는 쪽으로 종결됐다. 중복 생성 호출 재현은 행이 실제 생성되는 영구 변경이라 제약 존재 검증으로 대체",
+      "sql": "SELECT count(*) FROM pg_indexes WHERE tablename='projects' AND indexdef ILIKE '%UNIQUE%' AND indexdef ~* '\\(team_id, slug\\)';",
       "expect": { "rowMatches": "^[1-9][0-9]*$" }
     }
   ]

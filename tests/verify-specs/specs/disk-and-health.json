@@ -31,7 +31,7 @@
       "expect": {
         "status": 200,
         "jsonEquals": { "components[4].name": "active_scans", "components[5].name": "last_24h_errors" },
-        "bodyMatches": "\"name\":\"active_scans\"[^}]*\"value\":\\d+.*\"name\":\"last_24h_errors\"[^}]*\"value\":\\d+"
+        "bodyMatches": "\"name\":\"active_scans\"[\\s\\S]*?\"value\":\\d+[\\s\\S]*?\"name\":\"last_24h_errors\"[\\s\\S]*?\"value\":\\d+"
       }
     },
     {
@@ -62,15 +62,15 @@
     },
     {
       "tc": "TC-HEALTH-06-002", "channel": "api", "as": "developer",
-      "_expect": "가이드 기대: developer의 admin 헬스 조회는 403 거부. 구현은 require_super_admin_or_404로 404(존재 은닉) — 결함 ID 없음, fail-concordant(orig=fail) 정상",
+      "_expect": "developer의 admin 헬스 조회는 404. 권한이 없는 주체에게 자원의 존재 자체를 숨기는 것이 문서화된 규약이다(require_super_admin_or_404). 원 캠페인 가이드는 403을 기대했고 그 지적은 문서 방향으로 종결됐다",
       "request": { "method": "GET", "path": "/v1/admin/health" },
-      "expect": { "status": 403 }
+      "expect": { "status": 404 }
     },
     {
       "tc": "TC-HEALTH-06-003", "channel": "api", "as": "team_admin_frontend",
-      "_expect": "가이드 기대: team_admin의 admin 헬스 조회는 403 거부. 구현은 404(존재 은닉) — 결함 ID 없음, fail-concordant(orig=fail) 정상",
+      "_expect": "team_admin의 admin 헬스 조회는 404. 존재 은닉 규약은 TC-HEALTH-06-002와 같다",
       "request": { "method": "GET", "path": "/v1/admin/health" },
-      "expect": { "status": 403 }
+      "expect": { "status": 404 }
     },
     {
       "tc": "TC-HEALTH-06-004", "channel": "api",

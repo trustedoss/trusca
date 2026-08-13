@@ -91,16 +91,16 @@
       "expect": { "status": 200 }
     },
     {
-      "tc": "TC-SBOM-07-002", "channel": "api", "as": "team_admin_backend", "knownBug": "M-12",
-      "_expect": "비멤버(backend-admin은 Frontend 팀 비소속)의 SBOM 접근은 가이드상 403 거부. 실제 404(existence-hide) = M-12 pending이라 det=fail이 정상",
+      "tc": "TC-SBOM-07-002", "channel": "api", "as": "team_admin_backend",
+      "_expect": "비멤버(backend-admin은 Frontend 팀 비소속)의 SBOM 접근은 404. 소속되지 않은 팀의 프로젝트는 존재 자체를 숨기는 것이 문서화된 규약이고, M-12는 그 방향으로 종결됐다",
       "request": { "method": "GET", "path": "/v1/projects/${PW_PID}/sbom?format=cyclonedx-json" },
-      "expect": { "status": 403 }
+      "expect": { "status": 404 }
     },
     {
-      "tc": "TC-SBOM-07-003", "channel": "api", "as": "team_admin_backend", "knownBug": "M-12",
-      "_expect": "비멤버의 NOTICE 접근도 가이드상 403 거부. 실제 404 = M-12 pending이라 det=fail이 정상",
+      "tc": "TC-SBOM-07-003", "channel": "api", "as": "team_admin_backend",
+      "_expect": "비멤버의 NOTICE 접근도 404. 존재 은닉 규약은 TC-SBOM-07-002와 같다",
       "request": { "method": "GET", "path": "/v1/projects/${PW_PID}/notice?format=text" },
-      "expect": { "status": 403 }
+      "expect": { "status": 404 }
     },
     {
       "tc": "TC-SBOM-07-004", "channel": "api",

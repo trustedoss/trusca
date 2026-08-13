@@ -11,8 +11,8 @@
     },
     {
       "tc": "TC-GCPDEPLOY-06-002", "channel": "shell",
-      "_expect": "가이드 6단계 'The dashboard shows 5 demo projects' — demo-org 소속 프로젝트가 정확히 5개",
-      "sql": "SELECT count(*) FROM projects p JOIN teams t ON p.team_id=t.id JOIN organizations o ON t.organization_id=o.id WHERE o.slug='demo-org';",
+      "_expect": "가이드 6단계 'The dashboard shows 5 demo projects' — 문서화된 다섯 프로젝트가 demo-org 안에 모두 있어야 한다. 총 개수가 아니라 이름으로 센다: 합의된 시드 기준선이 검증용 픽스처(fx-appr)를 같은 조직에 추가하므로 총계는 5를 넘는다",
+      "sql": "SELECT count(*) FROM projects p JOIN teams t ON p.team_id=t.id JOIN organizations o ON t.organization_id=o.id WHERE o.slug='demo-org' AND p.name IN ('portal-web','portal-mobile','portal-api','scan-pipeline','vuln-feed');",
       "expect": { "rowEquals": "5" }
     },
     {
