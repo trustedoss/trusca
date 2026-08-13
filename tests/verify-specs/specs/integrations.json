@@ -120,16 +120,16 @@
       "expect": { "status": 403 }
     },
     {
-      "tc": "TC-INTG-02-001", "channel": "api", "useKey": "${TEAM_KEY}", "knownBug": "L-19",
-      "_expect": "가이드: Bearer 키로 GET /v1/projects가 인증되어 목록 응답(200). 구현은 JWT 전용이라 401 — L-19(pending). det=fail이 정상",
+      "tc": "TC-INTG-02-001", "channel": "api", "useKey": "${TEAM_KEY}",
+      "_expect": "API 키 인증은 등록된 엔드포인트(스캔 트리거·폴링)에만 적용된다. 키로 GET /v1/projects를 부르면 401이다. L-19는 가이드가 키 인증 범위를 등록된 엔드포인트로 한정하는 쪽으로 종결됐다",
       "request": { "method": "GET", "path": "/v1/projects" },
-      "expect": { "status": 200 }
+      "expect": { "status": 401 }
     },
     {
-      "tc": "TC-INTG-02-002", "channel": "api", "useKey": "${TEAM_KEY}", "knownBug": "L-19",
-      "_expect": "가이드: 발급한 키로 200과 팀 프로젝트 목록(items). 구현은 401 — L-19(pending). det=fail이 정상",
+      "tc": "TC-INTG-02-002", "channel": "api", "useKey": "${TEAM_KEY}",
+      "_expect": "발급한 키로도 /v1/projects는 401이다. 키가 유효한지와 그 엔드포인트가 키 인증을 받는지는 별개다(TC-INTG-02-001과 같은 종결)",
       "request": { "method": "GET", "path": "/v1/projects" },
-      "expect": { "status": 200, "jsonHas": ["items"] }
+      "expect": { "status": 401 }
     },
     {
       "tc": "TC-INTG-07-002", "channel": "api", "useKey": "${TEAM_KEY}",
@@ -157,8 +157,8 @@
     },
     {
       "tc": "TC-INTG-05-000-secret-setup", "channel": "shell",
-      "_expect": "전제 확인(읽기 전용): 원 캠페인이 부트스트랩한 webhook_secret/provider가 github(fx-appr)·gitlab(slot) 두 프로젝트에 남아 있어야 웹훅 체크가 유효",
-      "sql": "SELECT count(*) FROM projects WHERE (id='f9bd3ed4-16a6-44d0-a943-e132c7c4dd8b' AND webhook_provider='github' AND webhook_secret IS NOT NULL) OR (id='f27bb557-9ba3-4854-bf67-c5ed81bc615b' AND webhook_provider='gitlab' AND webhook_secret='whsec_gitlab_intg_test_001');",
+      "_expect": "전제 확인(읽기 전용): webhook_secret/provider가 github(fx-appr)·gitlab(scan-pipeline) 두 프로젝트에 있어야 웹훅 체크가 유효. 프로젝트 id는 스택마다 새로 생기므로 이름으로 해석한다",
+      "sql": "SELECT count(*) FROM projects WHERE (name='fx-appr' AND webhook_provider='github' AND webhook_secret IS NOT NULL) OR (name='scan-pipeline' AND webhook_provider='gitlab' AND webhook_secret='whsec_gitlab_intg_test_001');",
       "expect": { "rowEquals": "2" }
     },
     {

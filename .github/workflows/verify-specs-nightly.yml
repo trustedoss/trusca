@@ -117,6 +117,31 @@ jobs:
           done
           echo "backups visible: $n"
 
+      # TC-BACKUP-06-005 asserts an `auto-<stamp>` backup exists, because the
+      # guide promises the midnight Beat job makes one daily. A stack that is
+      # built and torn down inside one job has never crossed midnight, so the
+      # assertion was excluded as environment-bound. Calling the same task the
+      # Beat schedule calls satisfies it without weakening the spec: the check
+      # still proves the auto path produces the documented artifact.
+      - name: Run the scheduled backup once (spec fixture)
+        run: |
+          set -euo pipefail
+          docker-compose -f docker-compose.dev.yml exec -T celery-worker \
+            celery -A tasks.celery_app call trustedoss.backup.run \
+            --kwargs '{"kind":"auto","actor_user_id":null}'
+          root="${BACKUPS_ROOT:-/opt/trustedoss/backups}"
+          for i in $(seq 1 36); do
+            if docker-compose -f docker-compose.dev.yml exec -T celery-worker \
+                 sh -c "ls -1 '$root' 2>/dev/null" | grep -q '^auto-'; then
+              echo "auto backup present"
+              exit 0
+            fi
+            sleep 5
+          done
+          echo "::error::the scheduled backup never produced an auto- artifact"
+          docker-compose -f docker-compose.dev.yml logs --tail=100 celery-worker || true
+          exit 1
+
       - name: Run vendored verify specs (26 modules)
         env:
           VERIFY_API_URL: http://localhost:8000

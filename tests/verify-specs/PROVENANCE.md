@@ -3,11 +3,11 @@
 ## Source
 
 - **Repository**: `github.com/haksungjang/bug-hunter` (the external verification team's repo)
-- **Snapshot commit**: **`1aa1605`** — "feat(verify): 개발팀 70건 종결 보고 독립 재검증 + 스펙 보강" (round2 reinforcement: the M-3 `GET /v1/audit` path, cancel cross-team 404, github-app revoke→re-register cycle + hard cleanup, drift-hardened vars). Do NOT re-vendor from an earlier commit — round2 changes are required.
+- **Snapshot commit**: **`42ef9da`** — "fix(verify): 데모 시드에 추가된 explorer 계정을 명세에 반영". Two changes since the previous snapshot (`1aa1605`, round2 reinforcement), both made at the source rather than here: the expectations the guides settled the other way (the twenty entries `excluded.json` used to carry), and the `explorer` demo account. Do NOT re-vendor from an earlier commit.
 - **Vendored files**:
   - `specs/*.json` (26 modules, ~320 checks) — **byte-faithful, never edited here**
   - `verify-runner.mjs` — 1-line edit: helpers import `../testrun-helpers.mjs` → `./testrun-helpers.mjs` (directory flattening)
-  - `testrun-helpers.mjs` — 2 edits: `API` and `COMPOSE` now read `VERIFY_API_URL` / `VERIFY_COMPOSE_FILE` env vars (CI portability; defaults preserve the original local-dev values)
+  - `testrun-helpers.mjs` — 2 edits: `API` and `COMPOSE` now read `VERIFY_API_URL` / `VERIFY_COMPOSE_FILE` env vars (CI portability; defaults preserve the original local-dev values). A third edit lived here undocumented until 2026-08-13 — the `explorer` account this copy added when the product gained it. That belonged in the source, and now is there. `diff -r` against the source should show exactly the two edits above and nothing else; anything more means rule 1 was broken again.
 - **Ours, not vendored**: `run-modules.mjs` (nightly entrypoint), `excluded.json`, this file.
 - **Copyright**: assigned to the TRUSCA project. The verification team transferred
   copyright in these specs, so they carry no third-party attribution obligation and

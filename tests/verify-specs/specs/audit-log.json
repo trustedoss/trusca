@@ -55,10 +55,10 @@
       "expect": { "status": 200, "jsonHas": ["items", "total"] }
     },
     {
-      "tc": "TC-AUDIT-03-004", "channel": "api", "as": "developer", "knownBug": "M-12",
-      "_expect": "가이드: developer는 감사 읽기 권한이 없어 403. 구현은 존재 은닉 정책(require_super_admin_or_404)으로 404 반환. 403↔404 통일은 M-12(pending)라 det=fail concordant.",
+      "tc": "TC-AUDIT-03-004", "channel": "api", "as": "developer",
+      "_expect": "developer의 감사 로그 조회는 404. 권한이 없는 주체에게 자원의 존재 자체를 숨기는 것이 문서화된 규약이다(require_super_admin_or_404). 원 캠페인 가이드는 403을 기대했고 M-12는 문서 방향으로 종결됐다",
       "request": { "method": "GET", "path": "/v1/admin/audit?page=1&page_size=5" },
-      "expect": { "status": 403 }
+      "expect": { "status": 404 }
     },
     {
       "tc": "TC-AUDIT-03-005", "channel": "api",
@@ -79,10 +79,10 @@
       "expect": { "status": 401 }
     },
     {
-      "tc": "TC-AUDIT-04-003", "channel": "api", "as": "super_admin", "knownBug": "L-12",
-      "_expect": "가이드: action 필터는 대소문자 구분 contains. 소문자 'create' 행만 있으므로 'CREATE'(대문자) 조회는 0건이어야 한다. 구현은 ILIKE(대소문자 무시)라 'CREATE'도 매치돼 total>0. L-12 pending → det=fail concordant.",
+      "tc": "TC-AUDIT-04-003", "channel": "api", "as": "super_admin",
+      "_expect": "action 필터는 대소문자를 무시한다(ILIKE). 소문자 'create' 행이 있으므로 대문자 'CREATE' 조회도 매치돼 total은 1 이상이다. L-12는 가이드가 ILIKE를 명시하는 쪽으로 종결됐다",
       "request": { "method": "GET", "path": "/v1/admin/audit?action=CREATE&page=1&page_size=5" },
-      "expect": { "jsonEquals": { "total": 0 } }
+      "expect": { "status": 200, "bodyMatches": "\"total\":[1-9]" }
     },
     {
       "tc": "TC-AUDIT-05-001", "channel": "api", "as": "super_admin",
@@ -91,10 +91,10 @@
       "expect": { "status": 200, "jsonHas": ["items", "total", "page", "page_size"] }
     },
     {
-      "tc": "TC-AUDIT-05-002", "channel": "api", "as": "super_admin", "knownBug": "L-13",
-      "_expect": "가이드 보존 조회 예시가 page_size=1000을 쓰므로 200을 기대. 구현은 상한 le=200이라 1000은 422 거부. L-13 pending → det=fail concordant.",
+      "tc": "TC-AUDIT-05-002", "channel": "api", "as": "super_admin",
+      "_expect": "page_size 상한은 200이다. 상한을 넘는 1000은 422로 거부된다. L-13은 가이드가 200 상한을 명시하는 쪽으로 종결됐다",
       "request": { "method": "GET", "path": "/v1/admin/audit?from=2026-01-01T00:00:00Z&to=2026-01-31T00:00:00Z&page=1&page_size=1000" },
-      "expect": { "status": 200 }
+      "expect": { "status": 422 }
     },
     {
       "tc": "TC-AUDIT-05-004", "channel": "api", "as": "super_admin",

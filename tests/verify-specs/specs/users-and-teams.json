@@ -20,15 +20,15 @@
     },
     {
       "tc": "TC-USER-01-003", "channel": "api", "as": "developer",
-      "_expect": "가이드 기준 developer의 /v1/admin/users 접근은 403 거부. 구현은 require_super_admin_or_404의 존재 은닉으로 404를 반환(원 결과표 fail과 동일 = concordant, 정답지에 항목 없음 — '버그 아님: 명세 404 정정 권고'로 분류된 케이스 오류)",
+      "_expect": "developer의 /v1/admin/users 조회는 404. 권한이 없는 주체에게 자원의 존재 자체를 숨기는 것이 문서화된 규약이다(require_super_admin_or_404). 원 명세의 403 기대는 정정 권고로 분류돼 있었다",
       "request": { "method": "GET", "path": "/v1/admin/users" },
-      "expect": { "status": 403 }
+      "expect": { "status": 404 }
     },
     {
       "tc": "TC-USER-01-004", "channel": "api", "as": "team_admin_frontend",
-      "_expect": "가이드 기준 team_admin의 조직 단위 /v1/admin/users 접근은 403 거부. 구현은 존재 은닉 404(원 fail과 concordant, 위와 동일 분류)",
+      "_expect": "team_admin의 조직 단위 /v1/admin/users 조회도 404. 존재 은닉 규약은 TC-USER-01-003과 같다",
       "request": { "method": "GET", "path": "/v1/admin/users" },
-      "expect": { "status": 403 }
+      "expect": { "status": 404 }
     },
     {
       "tc": "TC-USER-01-006", "channel": "api", "as": "super_admin",
@@ -74,9 +74,9 @@
     },
     {
       "tc": "TC-USER-04-005", "channel": "api", "as": "team_admin_frontend",
-      "_expect": "가이드 기준 팀 생성은 super_admin 전용 — team_admin 시도는 403 거부. 구현은 존재 은닉 404(원 fail과 concordant, 01-003과 동일 분류). 404라 팀 미생성",
+      "_expect": "팀 생성은 super_admin 전용이고, team_admin 시도는 404다. 존재 은닉 규약은 TC-USER-01-003과 같다. 404이므로 팀은 생성되지 않는다",
       "request": { "method": "POST", "path": "/v1/admin/teams", "body": { "name": "verify-deny-team", "slug": "verify-deny-team" } },
-      "expect": { "status": 403 }
+      "expect": { "status": 404 }
     }
   ]
 }
