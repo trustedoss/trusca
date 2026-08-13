@@ -15,11 +15,22 @@ administration (Ingress, StorageClasses, cert-manager) proficiency. If you run a
 single host, the [Docker Compose install](./docker-compose.md) is simpler.
 :::
 
-The Helm chart (`charts/trustedoss`, chart version **0.10.0**) deploys the full
+The Helm chart (`charts/trustedoss`, chart version **0.12.0**) deploys the full
 portal: the FastAPI backend, the Celery worker and beat scheduler, the React
 frontend, an Ingress with TLS, and a database migration Job. PostgreSQL and
 Redis can either be bundled in-cluster (for evaluation) or pointed at external
 managed datastores (recommended for production).
+
+:::caution Installed from a checkout, not a registry
+The chart is not published to a registry yet, so there is no `oci://` install.
+Clone the repository and install the chart from the working tree, as the
+commands below do.
+
+The chart also trails the portal: its `appVersion` is 0.12.0 while the current
+release is 0.21.0. Set `image.tag` to the release you actually want. Publishing
+the chart and bringing it level with the portal is tracked in
+[issue #81](https://github.com/trustedoss/trusca/issues/81).
+:::
 
 :::info Vulnerability matching ships in-chart
 The worker pod ships with the Trivy DB and downloads / refreshes it from `ghcr.io/aquasecurity/trivy-db` (or a mirror via `env.trivy.dbRepository`). No external vulnerability engine is required. See [Vulnerability data (Trivy DB)](../admin-guide/vulnerability-data.md).
@@ -79,10 +90,10 @@ install below uses your own secrets.
 This runs PostgreSQL and Redis in-cluster — fast to stand up, but **not**
 recommended for production data.
 
-<!-- docs-uat: id=helm-install-bundled kind=shell ctx=host tier=manual waiver=needs-live-cluster-and-published-oci-chart -->
+<!-- docs-uat: id=helm-install-bundled kind=shell ctx=host tier=manual waiver=needs-live-cluster -->
 ```bash
-helm install trustedoss oci://ghcr.io/trustedoss/charts/trustedoss \
-  --version 0.10.0 \
+git clone https://github.com/trustedoss/trusca.git && cd trusca
+helm install trustedoss ./charts/trustedoss \
   --namespace trustedoss --create-namespace \
   --set env.secret.secretKey="$(openssl rand -hex 32)" \
   --set postgres.auth.password="$(openssl rand -hex 24)" \
@@ -126,10 +137,9 @@ ingress:
 
 Then install:
 
-<!-- docs-uat: id=helm-install-prod kind=shell ctx=host tier=manual waiver=needs-live-cluster-and-published-oci-chart -->
+<!-- docs-uat: id=helm-install-prod kind=shell ctx=host tier=manual waiver=needs-live-cluster -->
 ```bash
-helm install trustedoss oci://ghcr.io/trustedoss/charts/trustedoss \
-  --version 0.10.0 \
+helm install trustedoss ./charts/trustedoss \
   --namespace trustedoss --create-namespace \
   -f values.prod.yaml
 ```
@@ -164,10 +174,10 @@ container waits for Postgres to accept connections before alembic runs.
 
 ## Upgrade
 
-<!-- docs-uat: id=helm-upgrade kind=shell ctx=host tier=manual waiver=needs-live-cluster-and-published-oci-chart -->
+<!-- docs-uat: id=helm-upgrade kind=shell ctx=host tier=manual waiver=needs-live-cluster -->
 ```bash
-helm upgrade trustedoss oci://ghcr.io/trustedoss/charts/trustedoss \
-  --version <new-chart-version> \
+git -C trusca pull && git -C trusca checkout <new-tag>
+helm upgrade trustedoss ./trusca/charts/trustedoss \
   --namespace trustedoss \
   -f values.prod.yaml
 ```
@@ -183,7 +193,7 @@ The values you most often set:
 
 | Key | Default | Purpose |
 |---|---|---|
-| `image.tag` | `0.10.0` | Image tag for backend / worker / frontend (never `:latest`). |
+| `image.tag` | `0.12.0` | Image tag for backend / worker / frontend (never `:latest`). |
 | `ingress.host` | `""` | **Required.** Public hostname. |
 | `env.corsAllowedOrigins` | `""` | **Required in prod.** Allowed browser origins (no wildcard). |
 | `env.secret.secretKey` | `""` | `SECRET_KEY` (≥32 chars). Required unless `existingSecret`. |

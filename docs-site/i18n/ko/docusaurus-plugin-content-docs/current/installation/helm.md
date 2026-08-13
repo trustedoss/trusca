@@ -15,11 +15,22 @@ sidebar_position: 3
 [Docker Compose 설치](./docker-compose.md)가 더 간단합니다.
 :::
 
-Helm 차트(`charts/trustedoss`, 차트 버전 **0.10.0**)는 포털 전체를 배포합니다.
+Helm 차트(`charts/trustedoss`, 차트 버전 **0.12.0**)는 포털 전체를 배포합니다.
 FastAPI 백엔드, Celery 워커와 beat 스케줄러, React 프론트엔드, TLS가 적용된
 Ingress, 데이터베이스 마이그레이션 Job을 포함합니다. PostgreSQL과 Redis는
 클러스터 내부에 번들(평가용)하거나 외부 관리형 데이터스토어를 가리킬 수
 있습니다(프로덕션 권장).
+
+:::caution 레지스트리가 아니라 체크아웃에서 설치합니다
+차트는 아직 레지스트리에 발행하지 않았습니다. 그래서 `oci://` 설치 경로가
+없습니다. 저장소를 클론한 뒤 작업 트리에서 차트를 설치하십시오. 아래 명령이
+그렇게 되어 있습니다.
+
+차트는 포털보다 뒤처져 있기도 합니다. 차트의 `appVersion`은 0.12.0이고 현재
+릴리스는 0.21.0이므로, `image.tag`에 실제로 쓸 릴리스를 지정하십시오. 차트를
+발행하고 포털과 같은 수준으로 올리는 일은
+[이슈 #81](https://github.com/trustedoss/trusca/issues/81)에서 추적합니다.
+:::
 
 :::info 취약점 매칭은 차트 내장
 워커 파드는 Trivy DB를 포함하며 `ghcr.io/aquasecurity/trivy-db`에서(또는 `env.trivy.dbRepository` 미러에서) 다운로드·갱신합니다. 외부 취약점 엔진은 필요하지 않습니다. [취약점 데이터 (Trivy DB)](../admin-guide/vulnerability-data.md) 참조.
@@ -79,10 +90,10 @@ helm template trustedoss charts/trustedoss --namespace trustedoss \
 PostgreSQL과 Redis를 클러스터 내부에서 실행합니다 — 빠르게 띄울 수 있지만
 프로덕션 데이터에는 **권장하지 않습니다**.
 
-<!-- docs-uat: id=helm-install-bundled kind=shell ctx=host tier=manual waiver=needs-live-cluster-and-published-oci-chart -->
+<!-- docs-uat: id=helm-install-bundled kind=shell ctx=host tier=manual waiver=needs-live-cluster -->
 ```bash
-helm install trustedoss oci://ghcr.io/trustedoss/charts/trustedoss \
-  --version 0.10.0 \
+git clone https://github.com/trustedoss/trusca.git && cd trusca
+helm install trustedoss ./charts/trustedoss \
   --namespace trustedoss --create-namespace \
   --set env.secret.secretKey="$(openssl rand -hex 32)" \
   --set postgres.auth.password="$(openssl rand -hex 24)" \
@@ -126,10 +137,9 @@ ingress:
 
 설치합니다.
 
-<!-- docs-uat: id=helm-install-prod kind=shell ctx=host tier=manual waiver=needs-live-cluster-and-published-oci-chart -->
+<!-- docs-uat: id=helm-install-prod kind=shell ctx=host tier=manual waiver=needs-live-cluster -->
 ```bash
-helm install trustedoss oci://ghcr.io/trustedoss/charts/trustedoss \
-  --version 0.10.0 \
+helm install trustedoss ./charts/trustedoss \
   --namespace trustedoss --create-namespace \
   -f values.prod.yaml
 ```
@@ -164,10 +174,10 @@ Secrets → Postgres Service / StatefulSet → 마이그레이션 Job이며, Job
 
 ## 업그레이드
 
-<!-- docs-uat: id=helm-upgrade kind=shell ctx=host tier=manual waiver=needs-live-cluster-and-published-oci-chart -->
+<!-- docs-uat: id=helm-upgrade kind=shell ctx=host tier=manual waiver=needs-live-cluster -->
 ```bash
-helm upgrade trustedoss oci://ghcr.io/trustedoss/charts/trustedoss \
-  --version <새-차트-버전> \
+git -C trusca pull && git -C trusca checkout <새-태그>
+helm upgrade trustedoss ./trusca/charts/trustedoss \
   --namespace trustedoss \
   -f values.prod.yaml
 ```
@@ -183,7 +193,7 @@ pre-upgrade 마이그레이션 Job이 새 파드 롤아웃 전에 새 스키마�
 
 | 키 | 기본값 | 용도 |
 |---|---|---|
-| `image.tag` | `0.10.0` | backend / worker / frontend 이미지 태그(절대 `:latest` 금지). |
+| `image.tag` | `0.12.0` | backend / worker / frontend 이미지 태그(절대 `:latest` 금지). |
 | `ingress.host` | `""` | **필수.** 공개 호스트명. |
 | `env.corsAllowedOrigins` | `""` | **프로덕션 필수.** 허용 브라우저 오리진(와일드카드 금지). |
 | `env.secret.secretKey` | `""` | `SECRET_KEY`(≥32자). `existingSecret`이 없으면 필수. |
