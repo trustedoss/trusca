@@ -92,6 +92,9 @@ on:
 permissions:
   contents: read
   pull-requests: read
+  # The dev images are pulled from ghcr rather than rebuilt — see
+  # .github/actions/dev-images.
+  packages: read
 
 # A superseded run has nothing to say — the branch it measured no longer
 # exists as tested. Without this, a rebase burst left 10-to-40-minute runs
@@ -232,12 +235,10 @@ jobs:
       # split as ci.yml e2e.
       - name: Pre-build dev images
         if: steps.scope.outputs.run == 'true'
-        env:
-          COMPOSE_DOCKER_CLI_BUILD: "1"
-          DOCKER_BUILDKIT: "1"
-        run: |
-          docker compose -f docker-compose.dev.yml build \
-            backend celery-worker frontend
+        uses: ./.github/actions/dev-images
+        with:
+          services: backend celery-worker frontend
+          token: ${{ secrets.GITHUB_TOKEN }}
 
       # The dev Dockerfile has no ENTRYPOINT so docker-entrypoint.sh
       # (which honours AUTO_MIGRATE) never runs. Migrate explicitly in a

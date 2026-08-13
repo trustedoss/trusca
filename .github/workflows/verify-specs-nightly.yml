@@ -18,6 +18,9 @@ on:
 
 permissions:
   contents: read
+  # The dev images are pulled from ghcr rather than rebuilt — see
+  # .github/actions/dev-images.
+  packages: read
 
 jobs:
   # NOTE: a red nightly here is now tracked as an issue (see nightly-alert
@@ -54,12 +57,18 @@ jobs:
       # AUTO_MIGRATE entrypoint and the backend healthcheck needs the schema,
       # so migrate BEFORE bringing the backend up — same sequence as the
       # quickstart-gate (docs-uat run.mjs).
+      - name: Pre-build dev images
+        uses: ./.github/actions/dev-images
+        with:
+          services: backend celery-worker
+          token: ${{ secrets.GITHUB_TOKEN }}
+
       - name: Start db + migrate
         env:
           COMPOSE_DOCKER_CLI_BUILD: "1"
           DOCKER_BUILDKIT: "1"
         run: |
-          docker-compose -f docker-compose.dev.yml up -d --build postgres redis
+          docker-compose -f docker-compose.dev.yml up -d postgres redis
           docker-compose -f docker-compose.dev.yml run --rm --no-deps backend alembic upgrade head
 
       - name: Bring up backend + worker

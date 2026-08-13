@@ -34,6 +34,9 @@ on:
 
 permissions:
   contents: read
+  # The dev images are pulled from ghcr rather than rebuilt — see
+  # .github/actions/dev-images.
+  packages: read
 
 jobs:
   dogfood-scan:
@@ -66,8 +69,10 @@ jobs:
       # Pre-build so a cold image cache surfaces as its own step rather than a
       # confusing "unhealthy" later. Only the scan path is needed: no frontend.
       - name: Pre-build dev images (backend + worker)
-        run: |
-          docker compose -f docker-compose.dev.yml build backend celery-worker
+        uses: ./.github/actions/dev-images
+        with:
+          services: backend celery-worker
+          token: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Start postgres + redis
         run: |

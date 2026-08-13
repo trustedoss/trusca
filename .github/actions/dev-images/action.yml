@@ -1,0 +1,43 @@
+# Composite action — put the dev compose images in the runner's image store.
+#
+# Pulls the published image whose tag matches the content key for each service
+# and tags it the way docker-compose.dev.yml expects. Anything not published
+# for that key is built locally, so the caller ends up with the same three
+# images either way and never has to care which path it took.
+#
+# The reasoning behind the key, and why these images live in ghcr rather than
+# the Actions cache, is in scripts/ci/dev-images.sh.
+#
+# The calling job needs `packages: read`. A pull request from a fork cannot
+# read the packages; there the pull fails and the build path runs, which is
+# exactly what happened on every run before this existed.
+name: Dev images
+description: Pull the content-addressed dev compose images, building whatever is not published.
+
+inputs:
+  services:
+    description: Space-separated compose service names (backend, celery-worker, frontend).
+    required: true
+  token:
+    description: "Token with `packages: read` for ghcr."
+    required: true
+
+runs:
+  using: composite
+  steps:
+    # `continue-on-error` because a login failure must not fail the job: on a
+    # fork the token cannot read the packages, and the right answer there is to
+    # build locally, not to stop.
+    - name: Log in to ghcr
+      continue-on-error: true
+      uses: docker/login-action@v3
+      with:
+        registry: ghcr.io
+        username: ${{ github.actor }}
+        password: ${{ inputs.token }}
+
+    - name: Pull or build the dev images
+      shell: bash
+      env:
+        SERVICES: ${{ inputs.services }}
+      run: ./scripts/ci/dev-images.sh ensure $SERVICES
