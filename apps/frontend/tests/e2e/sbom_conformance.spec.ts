@@ -75,10 +75,12 @@ test.describe("@sbom-conformance received-SBOM conformance panel (model 3)", () 
     const result = await portal.expectConformancePanel();
     expect(result).toBe("warn");
 
-    // All fourteen catalogue checks render (9 core format checks + the 5
-    // verdict-neutral regulatory field checks, CycloneDX only —
-    // feat/sbom-conformance-crosswalk).
-    expect(await portal.conformanceCheckCount()).toBe(14);
+    // Every catalogue check renders: 9 core format checks, the 5
+    // verdict-neutral regulatory field checks, and `file-hash` for the file
+    // components the package denominators exclude (#23). CycloneDX only.
+    // The number tracks services/sbom_conformance.py CHECK_IDS — grow it when
+    // the catalogue grows.
+    expect(await portal.conformanceCheckCount()).toBe(15);
 
     // Mandatory checks pass; the recommended hash check warns.
     await portal.expectConformanceCheck("purl", "pass");
@@ -150,11 +152,12 @@ test.describe("@sbom-conformance G7 AI minimum-elements section (feat/g7-conform
     if (portal === null) return;
 
     // The core verdict is untouched by the advisory G7 checks (aggregation
-    // contract): still warn, still exactly 14 base rows in the base table
-    // (9 core + 5 regulatory field checks for a CycloneDX ingest).
+    // contract): still warn, still exactly the base catalogue in the base
+    // table (9 core + 5 regulatory field checks + file-hash for a CycloneDX
+    // ingest).
     const result = await portal.expectConformancePanel();
     expect(result).toBe("warn");
-    expect(await portal.conformanceCheckCount()).toBe(14);
+    expect(await portal.conformanceCheckCount()).toBe(15);
 
     // G7 headline — 2 of 3 automated elements present; 1 advisory absence;
     // 1 element needs human review. All read from data attributes (EN=KO).

@@ -154,6 +154,15 @@ test.describe("@manual-aligned admin backup", () => {
   test("4) manual backup trigger creates a row", async ({
     page,
   }, testInfo) => {
+    // The wait below asks for 30s, which is also the suite-wide per-test
+    // budget (playwright.config.ts), so the poll could never actually spend
+    // it: login, navigation and the trigger consume the front of the budget
+    // and the test dies at ~29s with the poll still counting. It passed for
+    // as long as the worker happened to finish inside the leftover, and on a
+    // slower runner on 2026-08-12 it did not. Give the test room so the 30s
+    // the wait declares is the 30s it gets — the wait, not this number, is
+    // what decides whether the backup arrived in time.
+    test.setTimeout(90_000);
     // Marathon bundle 3 (D2) refactored ``tasks.backup`` to call
     // ``pg_dump`` / ``psql`` directly via DATABASE_URL — the old shell-
     // delegation path that required ``docker-compose`` inside the worker

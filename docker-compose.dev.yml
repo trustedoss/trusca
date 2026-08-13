@@ -177,8 +177,17 @@ services:
       # Marathon bundle 3 (D2) — backups land under
       # /opt/trustedoss/backups (BACKUPS_ROOT). The ./scripts mount stays
       # for the host operator path only; tasks.backup no longer reads it.
+      #
+      # A named volume, not ./backups. The worker runs as uid 1000 (#65) and a
+      # host bind mount carries the host's ownership: docker creates ./backups
+      # root-owned when it is missing, and a pre-created one belongs to whoever
+      # ran mkdir. Neither is uid 1000, so every API-triggered backup died with
+      # EACCES on the timestamped subdirectory. The volume inherits the image's
+      # ownership instead, which both images pin to 1000.
+      # `scripts/backup.sh` is the operator's HOST path and still writes to
+      # ./backups on the host — the two are separate stores by design.
       - ./scripts:/opt/trustedoss/scripts:ro
-      - ./backups:/opt/trustedoss/backups
+      - backups-data:/opt/trustedoss/backups
       # Shared scan workspace so backend-saved uploaded archives
       # (zip-upload source input) are visible to the worker that extracts
       # and scans them. WORKSPACE_HOST_PATH defaults to /tmp/trustedoss.
@@ -223,8 +232,9 @@ services:
     volumes:
       - ./apps/backend:/app
       # Marathon bundle 3 (D2) — tasks.backup writes via pg_dump directly.
+      # Named volume — see the backend service for why it is not ./backups.
       - ./scripts:/opt/trustedoss/scripts:ro
-      - ./backups:/opt/trustedoss/backups
+      - backups-data:/opt/trustedoss/backups
       # Shared scan workspace (see backend) — the worker reads uploaded
       # archives + extracts/clones source here.
       - scan-workspace:/tmp/trustedoss
@@ -282,8 +292,9 @@ services:
       - ./apps/backend:/app
       # Marathon bundle 3 (D2) — beat imports tasks.backup at startup;
       # the task drives pg_dump / psql directly, no script delegation.
+      # Named volume — see the backend service for why it is not ./backups.
       - ./scripts:/opt/trustedoss/scripts:ro
-      - ./backups:/opt/trustedoss/backups
+      - backups-data:/opt/trustedoss/backups
     depends_on:
       postgres:
         condition: service_healthy
@@ -356,6 +367,11 @@ volumes:
   # H-6 — Trivy vulnerability DB cache, written by the worker (bootstrap +
   # weekly refresh) and read by the backend (admin health / disk panels).
   trivy-cache:
+  # API-triggered backups (manual from the admin UI, automatic from the beat
+  # job). Shared by backend (list / download / restore), worker (writes) and
+  # beat. Owned by uid 1000, which is what the worker runs as — see the
+  # backend service's mount for the bind-mount ownership problem this avoids.
+  backups-data:
 
 networks:
   # Isolated egress network for dynamic-scan sidecars (SCAN_EXECUTOR=local_docker).

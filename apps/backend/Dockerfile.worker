@@ -925,15 +925,22 @@ ENV HOME=/home/trustedoss \
 # Helm chart and defaults to /tmp/trustedoss (core/config.py:1157), which is
 # what docker-compose.dev.yml mounts. Creating only one of them leaves the
 # other broken for whoever uses that path.
+#
+# /opt/trustedoss/backups is BACKUPS_ROOT in the dev compose stack. It is on
+# this list because it was missing from it: the non-root switch landed without
+# it and every API-triggered backup failed with EACCES on the timestamped
+# subdirectory it tries to create. Production leaves BACKUPS_ROOT unset, so it
+# resolves to /app/backups and was never affected.
 RUN set -eux; \
     addgroup --system --gid 1000 trustedoss; \
     adduser  --system --uid 1000 --gid 1000 --home /home/trustedoss trustedoss; \
     mkdir -p /home/trustedoss/.cache /home/trustedoss/.gradle \
              /home/trustedoss/.npm /home/trustedoss/.m2 \
              /home/trustedoss/.nuget/packages /home/trustedoss/go \
-             /workspace /tmp/trustedoss /var/lib/trivy /app; \
+             /workspace /tmp/trustedoss /var/lib/trivy /app \
+             /opt/trustedoss/backups; \
     chown -R 1000:1000 /home/trustedoss /workspace /tmp/trustedoss \
-                       /var/lib/trivy /app
+                       /var/lib/trivy /app /opt/trustedoss/backups
 
 # Application source. The dev compose bind-mounts ./apps/backend:/app on top
 # of this so the COPY here only matters for one-off `docker run` and prod.
