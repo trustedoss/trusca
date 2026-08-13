@@ -177,3 +177,62 @@ def test_offset_page_parameters_declare_an_upper_bound() -> None:
         "page parameters without an upper bound (add le=PAGE_MAX):\n  "
         + "\n  ".join(sorted(missing))
     )
+
+
+def test_error_responses_are_declared_as_problem_json() -> None:
+    """Documented 4xx/5xx responses must use the media type we actually send.
+
+    Every error leaves this API through ``core.errors.problem_response`` as
+    ``application/problem+json``. FastAPI's generated 422 said
+    ``application/json``, so the document promised one shape and the server
+    sent another on every endpoint that takes input. ``core.openapi`` corrects
+    this centrally; this asserts it stayed corrected.
+    """
+    from core.errors import PROBLEM_CONTENT_TYPE
+
+    spec = app.openapi()
+    wrong = []
+    for path, methods in spec.get("paths", {}).items():
+        for method, op in methods.items():
+            if method.lower() not in _METHODS:
+                continue
+            for code, resp in op.get("responses", {}).items():
+                if not code.isdigit() or int(code) < 400:
+                    continue
+                content = resp.get("content")
+                if not content:
+                    continue
+                for media_type in content:
+                    if media_type != PROBLEM_CONTENT_TYPE:
+                        wrong.append(f"{method.upper()} {path} {code} -> {media_type}")
+
+    assert not wrong, (
+        "error responses not declared as problem+json:\n  " + "\n  ".join(sorted(wrong))
+    )
+
+
+def test_authenticated_operations_declare_401() -> None:
+    """Anything behind the auth dependency must document that it can 401.
+
+    Undocumented status codes were the largest category the schema fuzzer
+    reported. Declaring them is what lets a generated client handle the
+    response instead of treating it as a surprise.
+    """
+    from core.openapi import PUBLIC_PATHS, _is_public
+
+    spec = app.openapi()
+    missing = []
+    for path, methods in spec.get("paths", {}).items():
+        if _is_public(path):
+            continue
+        for method, op in methods.items():
+            if method.lower() not in _METHODS:
+                continue
+            if "401" not in op.get("responses", {}):
+                missing.append(f"{method.upper()} {path}")
+
+    assert not missing, (
+        "operations behind auth without a documented 401 (add the path to "
+        f"PUBLIC_PATHS if it is genuinely public; currently {len(PUBLIC_PATHS)} "
+        "are):\n  " + "\n  ".join(sorted(missing))
+    )

@@ -78,6 +78,7 @@ from core.middleware import (
     RequestIDMiddleware,
     SecurityHeadersMiddleware,
 )
+from core.openapi import install_openapi
 from core.ratelimit import limiter, rate_limit_exceeded_handler
 
 
@@ -207,6 +208,8 @@ app.add_middleware(
 app.add_middleware(SecurityHeadersMiddleware)
 
 install_exception_handlers(app)
+# The spec has to describe what those handlers return; see core/openapi.py.
+install_openapi(app)
 app.add_exception_handler(RateLimitExceeded, rate_limit_exceeded_handler)  # type: ignore[arg-type]
 
 app.include_router(auth_router)
