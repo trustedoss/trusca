@@ -5,14 +5,22 @@
 # up the portal stack inside the runner, registers a project pointing at this
 # repo, and drives the *real* `./actions/scan` end-to-end against it.
 #
-# Manual only (`workflow_dispatch`) — a real cdxgen + Trivy scan takes 15-30 min
-# and the demo SaaS is not yet deployed, so there is no always-on portal to hit.
-# This is the self-contained alternative: ephemeral portal in the job, torn down
-# at the end. Not on the PR/merge path (would balloon wall-clock for no gate
-# value yet — fail_on_gate defaults to false / advisory).
+# Weekly (Sunday 07:00 UTC) plus manual `workflow_dispatch`. A real cdxgen +
+# Trivy scan takes 15-30 min, so this is not on the PR/merge path — it would
+# balloon wall-clock for no gate value (fail_on_gate is advisory here). It ran
+# manual-only until 2026-08-13, which meant it never ran at all: the shipped
+# action's end-to-end path went unexercised for weeks. A weekly schedule is the
+# smallest cadence that actually observes it.
+#
+# The portal is ephemeral — brought up inside the job and torn down at the end —
+# so no always-on deployment is needed.
 name: dogfood-scan
 
 on:
+  schedule:
+    # Sunday 07:00 UTC. Deliberately clear of install-uat's Sunday 03:00 so the
+    # two long weekly jobs do not compete for runner capacity.
+    - cron: "0 7 * * 0"
   workflow_dispatch:
     inputs:
       scan_kind:
@@ -44,8 +52,11 @@ jobs:
       # auth calls (register + login) that would trip the 5/min login limiter.
       RATELIMIT_DISABLED: "1"
       # Sanitised workflow_dispatch inputs (avoid expression injection in run:).
-      INPUT_SCAN_KIND: ${{ github.event.inputs.scan_kind }}
-      INPUT_FAIL_ON_GATE: ${{ github.event.inputs.fail_on_gate }}
+      # A schedule event carries no inputs, and an empty `with:` value does NOT
+      # fall back to the action's own default — it overrides it with "". Spell
+      # the defaults out here so the weekly run matches the dispatch defaults.
+      INPUT_SCAN_KIND: ${{ github.event.inputs.scan_kind || 'source' }}
+      INPUT_FAIL_ON_GATE: ${{ github.event.inputs.fail_on_gate || 'false' }}
     steps:
       - uses: actions/checkout@v4
 
@@ -236,3 +247,35 @@ jobs:
       - name: Tear down stack
         if: always()
         run: docker compose -f docker-compose.dev.yml down -v
+
+  # ── The weekly run has no pull request to report on. A failure here is an
+  #    infrastructure or action break, not a policy verdict: the gate is
+  #    advisory (fail_on_gate defaults to false), so the job only goes red when
+  #    the shipped action itself stops working end to end.
+  weekly-alert:
+    name: weekly-alert
+    if: ${{ always() && github.event_name == 'schedule' }}
+    needs: dogfood-scan
+    runs-on: ubuntu-22.04
+    timeout-minutes: 5
+    permissions:
+      contents: read
+      issues: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          sparse-checkout: .github/actions/nightly-failure-issue
+      - uses: ./.github/actions/nightly-failure-issue
+        with:
+          label: weekly-dogfood-scan
+          title: "Weekly dogfood-scan is failing"
+          failed: ${{ needs.dogfood-scan.result == 'failure' && 'true' || 'false' }}
+          details: |
+            `actions/scan` is what other repositories call to gate their build
+            on a TrustedOSS scan, and this weekly run is the only place the
+            whole path is exercised against a real cdxgen + Trivy pipeline.
+
+            The gate verdict is advisory here, so a red run means the action,
+            the portal bootstrap or the scan pipeline broke — not that this
+            repository has a failing policy.
+          token: ${{ secrets.GITHUB_TOKEN }}
