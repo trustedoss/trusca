@@ -1027,6 +1027,11 @@ jobs:
     # legs parallelises wall-time (~6 min cap) and attributes failures
     # cleanly without duplicating the 130-line setup block.
     name: e2e (${{ matrix.shard }})
+    # The dev images are pulled from ghcr rather than rebuilt — see
+    # .github/actions/dev-images.
+    permissions:
+      contents: read
+      packages: read
     strategy:
       fail-fast: false
       matrix:
@@ -1145,9 +1150,10 @@ jobs:
       # step rather than as a confusing "container unhealthy" 3 minutes
       # later.
       - name: Pre-build dev images
-        run: |
-          docker compose -f docker-compose.dev.yml build \
-            backend celery-worker frontend
+        uses: ./.github/actions/dev-images
+        with:
+          services: backend celery-worker frontend
+          token: ${{ secrets.GITHUB_TOKEN }}
 
       # The dev backend image's CMD is bare uvicorn — only the prod
       # Dockerfile wires up docker-entrypoint.sh, so AUTO_MIGRATE never

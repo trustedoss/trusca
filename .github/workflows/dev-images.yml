@@ -1,0 +1,73 @@
+name: dev-images
+
+# Publish the dev compose images so the workflows that bring the stack up do
+# not each build them from scratch. See scripts/ci/dev-images.sh for what the
+# tag is and why it can be reused across commits.
+#
+# Runs on main when a file that decides an image's contents changes — a
+# Dockerfile, a requirements file, a lockfile. Application code does not
+# trigger it, because the dev containers bind-mount the source and the code
+# baked into the image is never what runs.
+#
+# A pull request that changes one of these files gets a key nothing has
+# published yet, so it builds locally, exactly as every run did before. This
+# workflow then publishes for the new key once it merges. That ordering is
+# deliberate: a pull request must never be tested against an image built from
+# somebody else's dependencies.
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "apps/backend/Dockerfile"
+      - "apps/backend/Dockerfile.worker"
+      - "apps/backend/requirements.txt"
+      - "apps/backend/requirements-dev.txt"
+      - "apps/frontend/Dockerfile"
+      - "apps/frontend/package.json"
+      - "apps/frontend/package-lock.json"
+      - "scripts/ci/dev-images.sh"
+      - ".github/workflows/dev-images.yml"
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+
+concurrency:
+  group: dev-images-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  publish:
+    name: publish (dev compose images)
+    runs-on: ubuntu-22.04
+    timeout-minutes: 45
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Log in to ghcr
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build and publish
+        env:
+          COMPOSE_DOCKER_CLI_BUILD: "1"
+          DOCKER_BUILDKIT: "1"
+        run: ./scripts/ci/dev-images.sh publish backend celery-worker frontend
+
+      - name: Record the published keys
+        run: |
+          set -euo pipefail
+          {
+            echo "| service | key |"
+            echo "|---|---|"
+            for s in backend celery-worker frontend; do
+              echo "| $s | \`$(./scripts/ci/dev-images.sh key "$s")\` |"
+            done
+          } >> "$GITHUB_STEP_SUMMARY"

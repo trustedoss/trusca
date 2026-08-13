@@ -35,6 +35,11 @@ on:
 
 permissions:
   contents: read
+  # The nightly jobs pull the dev images rather than rebuilding them — see
+  # .github/actions/dev-images. quickstart-gate deliberately does not: it
+  # verifies that the commands the Quickstart prints work on a clean machine,
+  # and a reader following that page has no images waiting for them.
+  packages: read
 
 concurrency:
   group: docs-uat-${{ github.ref }}
@@ -161,6 +166,12 @@ jobs:
       # health-gated worker doesn't block `up` under compose V1), but inline
       # here because the nightly assertions live in a different doc than the
       # bootstrap commands.
+      - name: Pre-build dev images
+        uses: ./.github/actions/dev-images
+        with:
+          services: backend celery-worker frontend
+          token: ${{ secrets.GITHUB_TOKEN }}
+
       - name: Bootstrap dev stack + seed
         env:
           COMPOSE_DOCKER_CLI_BUILD: "1"
@@ -271,6 +282,12 @@ jobs:
       - name: Install Playwright (chromium only)
         working-directory: apps/frontend
         run: npx playwright install --with-deps chromium
+
+      - name: Pre-build dev images
+        uses: ./.github/actions/dev-images
+        with:
+          services: backend celery-worker frontend
+          token: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Bootstrap dev stack + seed
         env:
