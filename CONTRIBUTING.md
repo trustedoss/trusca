@@ -54,7 +54,9 @@ After ~30 seconds, all five containers (`postgres`, `redis`, `backend`, `celery-
 ### Running tests locally
 
 ```bash
-# Backend
+# Backend — CI runs these as two jobs against separate databases. Locally,
+# run them in one go or one at a time; a re-run against a database the other
+# suite already wrote to can fail on leftover rows.
 cd apps/backend
 pytest tests/unit tests/integration --cov
 
@@ -115,6 +117,7 @@ We treat the codebase as a global commercial product, not a personal project. Be
 
 - **Image tags:** never `:latest`. Pin to a minor + patch version (e.g. `node:20.18.1-alpine`, `postgres:17.2-alpine`).
 - **Compose:** use `docker-compose` (V1, hyphenated). `docker compose` (V2) is not supported.
+- **Third-party GitHub Actions:** pin by commit SHA with the release in a trailing comment (`uses: owner/action@<sha>  # v1.2.3`). A tag is mutable — `@v1` runs whatever the owner moved it to, inside a job that can hold our registry credentials. Actions under `actions/`, `github/` and `docker/` stay on major tags.
 - **Secrets:** never commit. Use `.env.example` for the schema; real values go in `.env` (git-ignored) or GitHub Actions secrets.
 
 ---
@@ -125,7 +128,8 @@ We block PRs that lower test coverage. The thresholds are enforced in CI:
 
 | Scope | Tool | Threshold |
 |---|---|---|
-| Backend lines | `pytest --cov` | **≥ 80%** (`fail_under=80` in `pyproject.toml`) |
+| Backend lines, whole tree | `coverage-gate (backend)` | **≥ 80%** (`fail_under=80` in `pyproject.toml`) |
+| Backend lines, changed by the PR | `diff-cover` in the same job | **≥ 80%** |
 | Frontend lines | `vitest --coverage` | **≥ 80%** lines / 70% branches (`vite.config.ts`) |
 | E2E core scenarios | Playwright (harness pattern) | always green |
 

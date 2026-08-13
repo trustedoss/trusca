@@ -392,8 +392,11 @@ jobs:
       # tree and attach it to the (draft) Release. Runs on re-runs too — the
       # create step above leaves an existing Release untouched, and --clobber
       # makes the asset upload idempotent.
+      # Pinned by commit SHA. This was `@v0` — a floating major-zero tag that
+      # moves with every 0.x release, so the SBOM attached to a release was
+      # produced by whatever the owner had published that day.
       - name: Generate source SBOM (CycloneDX)
-        uses: anchore/sbom-action@v0
+        uses: anchore/sbom-action@e22c389904149dbc22b58101806040fa8d37a610  # v0.24.0
         with:
           path: .
           format: cyclonedx-json
