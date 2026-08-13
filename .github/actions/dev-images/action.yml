@@ -19,7 +19,7 @@ inputs:
     description: Space-separated compose service names (backend, celery-worker, frontend).
     required: true
   token:
-    description: Token with `packages: read` for ghcr.
+    description: "Token with `packages: read` for ghcr."
     required: true
 
 runs:
