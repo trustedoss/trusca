@@ -66,6 +66,7 @@ jobs:
   trivy-config:
     name: trivy config (helm chart + Dockerfiles)
     runs-on: ubuntu-22.04
+    timeout-minutes: 15
     env:
       BLOCKING_SEVERITY: CRITICAL,HIGH
       ADVISORY_SEVERITY: CRITICAL,HIGH,MEDIUM,LOW

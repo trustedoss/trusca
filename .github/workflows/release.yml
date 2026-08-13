@@ -79,6 +79,7 @@ jobs:
   build:
     name: build ${{ matrix.image.image }} (${{ matrix.platform.arch }})
     runs-on: ${{ matrix.platform.runner }}
+    timeout-minutes: 60
     strategy:
       # One leg failing should not abort the others — surfacing all six
       # results in one run is more useful than fail-fast here.
@@ -212,6 +213,7 @@ jobs:
   merge:
     name: merge ${{ matrix.image.image }} manifest
     runs-on: ubuntu-22.04
+    timeout-minutes: 15
     needs: build
     strategy:
       fail-fast: false
@@ -307,6 +309,7 @@ jobs:
   release:
     name: create draft GitHub Release
     runs-on: ubuntu-22.04
+    timeout-minutes: 10
     needs: merge
     # Least privilege: only this job (and release-gate) needs to write the
     # Release. build / merge keep the top-level contents:read, packages:write.

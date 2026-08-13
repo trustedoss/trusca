@@ -39,6 +39,7 @@ permissions:
 jobs:
   maintain:
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     environment: demo
     steps:
       - name: Checkout (for deploy/hetzner/remote-maintain.sh)

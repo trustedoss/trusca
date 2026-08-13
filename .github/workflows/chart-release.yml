@@ -49,6 +49,7 @@ jobs:
   publish:
     name: package & push chart
     runs-on: ubuntu-22.04
+    timeout-minutes: 20
     steps:
       - name: Checkout
         uses: actions/checkout@v4

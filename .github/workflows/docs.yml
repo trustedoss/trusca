@@ -37,6 +37,7 @@ concurrency:
 jobs:
   build:
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     # Dummy runtime env so `import main` succeeds in dump_openapi.py without
     # real Postgres/Redis. These satisfy import-time reads in core.config only;
     # app.openapi() is pure schema generation and never connects to services
@@ -114,6 +115,7 @@ jobs:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     steps:
       - id: deployment
         uses: actions/deploy-pages@v4
