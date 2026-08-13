@@ -163,6 +163,7 @@ async def create_project(
         default_branch=payload.default_branch,
         visibility=payload.visibility,
         declared_license=payload.declared_license,
+        ai_usage_context=payload.ai_usage_context,
         created_by_user_id=actor.id,
     )
     session.add(project)

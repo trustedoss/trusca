@@ -144,6 +144,34 @@ def _validate_declared_license(value: str | None) -> str | None:
     return stripped
 
 
+# The four scenarios, spelled out for the OpenAPI contract. The service holds
+# the same tuple; ``test_catalog_contracts`` asserts the two agree, because a
+# value accepted here and unknown there would be stored and then ignored.
+AiUsageContext = Literal["internal", "product", "redistribute", "outputs-only"]
+AI_USAGE_SCENARIOS: tuple[str, ...] = ("internal", "product", "redistribute", "outputs-only")
+
+
+def _validate_ai_usage_context(value: str | None) -> str | None:
+    """Shared ``ai_usage_context`` validator for ProjectCreate / ProjectUpdate.
+
+    Blank normalises to ``None``, which means "judge against the full terms" -
+    the conservative reading, not an absence. Anything outside the four
+    scenarios is rejected rather than dropped: a typo that silently became
+    "no scenario" would quietly widen every verdict, and the operator would
+    have no way to tell from the screen that their setting never took.
+    """
+    if value is None:
+        return None
+    stripped = value.strip()
+    if not stripped:
+        return None
+    if stripped not in AI_USAGE_SCENARIOS:
+        raise ValueError(
+            "ai_usage_context must be one of: " + ", ".join(AI_USAGE_SCENARIOS)
+        )
+    return stripped
+
+
 # ---------------------------------------------------------------------------
 # Scan metadata bounds (M-2 — security review finding from PR #7)
 # ---------------------------------------------------------------------------
@@ -258,10 +286,25 @@ class ProjectCreate(BaseModel):
         ),
     )
 
+    ai_usage_context: AiUsageContext | None = Field(
+        default=None,
+        description=(
+            "How this project intends to use the AI models it carries. Narrows "
+            "a model or dataset license to the conditions that bind that use "
+            "('internal', 'product', 'redistribute', 'outputs-only'). Omit to "
+            "judge against the full terms, which is the conservative reading."
+        ),
+    )
+
     @field_validator("declared_license")
     @classmethod
     def _validate_declared_license(cls, value: str | None) -> str | None:
         return _validate_declared_license(value)
+
+    @field_validator("ai_usage_context", mode="before")
+    @classmethod
+    def _validate_ai_usage_context(cls, value: str | None) -> str | None:
+        return _validate_ai_usage_context(value)
 
     @field_validator("slug")
     @classmethod
@@ -342,6 +385,17 @@ class ProjectUpdate(BaseModel):
         description=(
             "SPDX id or expression the project is distributed under. Send an "
             "empty string to remove an existing declaration; omit the field to "
+            "leave it unchanged."
+        ),
+    )
+    # Gap #28: intended use of the models this project carries. Same
+    # empty-string-clears contract as declared_license above.
+    ai_usage_context: AiUsageContext | None = Field(
+        default=None,
+        description=(
+            "How this project intends to use its AI models ('internal', "
+            "'product', 'redistribute', 'outputs-only'). Send an empty string "
+            "to clear it and judge against the full terms; omit the field to "
             "leave it unchanged."
         ),
     )
@@ -429,6 +483,11 @@ class ProjectUpdate(BaseModel):
     def _validate_declared_license(cls, value: str | None) -> str | None:
         return _validate_declared_license(value)
 
+    @field_validator("ai_usage_context", mode="before")
+    @classmethod
+    def _validate_ai_usage_context(cls, value: str | None) -> str | None:
+        return _validate_ai_usage_context(value)
+
     @field_validator("visibility")
     @classmethod
     def _enforce_team_visibility(cls, value: str | None) -> str | None:
@@ -504,6 +563,14 @@ class ProjectPublic(BaseModel):
             "The SPDX id or expression the project is distributed under, or "
             "null when none is declared. Null means outbound-license conflicts "
             "are not assessed at all."
+        ),
+    )
+    ai_usage_context: AiUsageContext | None = Field(
+        default=None,
+        description=(
+            "The intended use of this project's AI models, or null. Unlike "
+            "declared_license, null does not disable the axis, it judges "
+            "against the full license terms."
         ),
     )
 

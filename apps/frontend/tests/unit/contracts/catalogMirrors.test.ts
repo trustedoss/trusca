@@ -49,6 +49,8 @@ import { ALL_VULNERABILITY_STATUSES } from "@/features/projects/lib/vulnerabilit
 import { DEMO_LOGIN_EMAIL } from "@/pages/auth/DemoCredentialsHint";
 import { visualFor } from "@/features/projects/components/ProjectStatusBadge";
 import {
+  AI_USAGE_SCENARIOS,
+  AI_VERDICTS,
   SBOM_CHECK_IDS,
   SBOM_REGULATORY_CHECK_IDS,
   SCAN_KIND_VALUES,
@@ -650,5 +652,103 @@ describe("2026 baseline clusters — FE mirror of services/cisa_registry.json", 
       cisaRegistry.clusters as Array<{ elements: unknown[] }>
     ).reduce((n, c) => n + c.elements.length, 0);
     expect(total).toBe(23);
+  });
+});
+
+describe("AI usage verdicts: FE mirror of the vendored registry (gap #28)", () => {
+  // The verdict vocabulary lives in four places: the vendored registry data,
+  // the backend service tuple, the wire Literal, and this FE mirror that drives
+  // the badge tones. The registry is the origin: a verdict no entry can state
+  // would be a tone nothing ever renders, so this reads the JSON.
+  function knowledge(): {
+    licenseTerms: Array<{
+      verdict: string;
+      scenarioVerdicts?: Record<string, string>;
+      conditions?: Array<{ appliesTo?: string[] }>;
+    }>;
+    conditionLabels: Record<string, { en: string; ko: string }>;
+  } {
+    return JSON.parse(
+      readFileSync(
+        resolve(process.cwd(), "../backend/services/ai_risk_knowledge.json"),
+        "utf-8",
+      ),
+    );
+  }
+
+  it("AI_VERDICTS covers every verdict the registry can state", () => {
+    const stated = new Set<string>();
+    for (const term of knowledge().licenseTerms) {
+      stated.add(term.verdict);
+      for (const v of Object.values(term.scenarioVerdicts ?? {})) stated.add(v);
+    }
+    for (const verdict of stated) {
+      expect(AI_VERDICTS as readonly string[]).toContain(verdict);
+    }
+  });
+
+  it("AI_VERDICTS is ordered worst-first", () => {
+    // The order is not cosmetic: `review` above `conditional` is the rule that
+    // keeps an unclassified license from folding away behind a classified one.
+    expect([...AI_VERDICTS]).toEqual([
+      "caution",
+      "review",
+      "conditional",
+      "ok",
+    ]);
+  });
+
+  it("AI_USAGE_SCENARIOS covers every scenario the registry references", () => {
+    const used = new Set<string>();
+    for (const term of knowledge().licenseTerms) {
+      for (const key of Object.keys(term.scenarioVerdicts ?? {})) used.add(key);
+      for (const condition of term.conditions ?? []) {
+        for (const scenario of condition.appliesTo ?? []) used.add(scenario);
+      }
+    }
+    for (const scenario of used) {
+      expect(AI_USAGE_SCENARIOS as readonly string[]).toContain(scenario);
+    }
+  });
+
+  it.each([
+    ["en", enScans],
+    ["ko", koScans],
+  ])("every verdict owns a %s label", (_locale, ns) => {
+    const labels = labelMap(ns, "conformance", "ai", "verdict");
+    for (const verdict of AI_VERDICTS) {
+      expect(
+        labels[verdict],
+        `conformance.ai.verdict.${verdict} missing`,
+      ).toBeTruthy();
+    }
+  });
+
+  it.each([
+    ["en", enScans],
+    ["ko", koScans],
+  ])("every scenario owns a %s label on the panel", (_locale, ns) => {
+    const labels = labelMap(ns, "conformance", "ai", "scenario");
+    for (const scenario of AI_USAGE_SCENARIOS) {
+      expect(
+        labels[scenario],
+        `conformance.ai.scenario.${scenario} missing`,
+      ).toBeTruthy();
+    }
+    // Unset is a rendered state too, not the absence of one.
+    expect(labels.unset).toBeTruthy();
+  });
+
+  it.each([
+    ["en", enProjectDetail],
+    ["ko", koProjectDetail],
+  ])("every scenario owns a %s label in the settings select", (_locale, ns) => {
+    const labels = labelMap(ns, "settings", "field", "ai_usage_context_option");
+    for (const scenario of AI_USAGE_SCENARIOS) {
+      expect(
+        labels[scenario],
+        `settings.field.ai_usage_context_option.${scenario} missing`,
+      ).toBeTruthy();
+    }
   });
 });

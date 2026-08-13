@@ -20,7 +20,8 @@ file download with ``Content-Disposition: attachment``.
 from __future__ import annotations
 
 import uuid
-from typing import Literal
+from dataclasses import asdict
+from typing import Any, Literal
 
 import structlog
 from fastapi import (
@@ -51,6 +52,7 @@ from core.ratelimit import _authenticated_user_key, limiter
 from core.security import CurrentUser, require_role
 from models import Project, SbomConformance
 from schemas.sbom import (
+    AiRiskAssessmentOut,
     RegulatoryCrosswalk,
     SbomConformanceCheck,
     SbomConformanceRead,
@@ -423,6 +425,36 @@ def _not_found_problem(request: Request, *, detail: str) -> Response:
         title="Signature Artifact Not Found",
         detail=detail,
         instance=request.url.path,
+    )
+
+
+def _ai_assessment_for(row: Any, project: Any) -> AiRiskAssessmentOut | None:
+    """Judge the row's stored document facts against the project's scenario (#28).
+
+    None when the document carried no model component, an absent assessment,
+    which is not the same as one that came back clean. The registry's disclaimer
+    and the condition labels ride along so a screen cannot render the verdicts
+    without the caveat that they are guidance rather than a determination.
+    """
+    from services import ai_risk_assessment
+
+    assessment = ai_risk_assessment.assess(
+        getattr(row, "ai_subjects", None),
+        scenario=getattr(project, "ai_usage_context", None),
+    )
+    if assessment is None:
+        return None
+    disclaimer_en, disclaimer_ko = ai_risk_assessment.disclaimer()
+    return AiRiskAssessmentOut.model_validate(
+        {
+            "scenario": assessment.scenario,
+            "verdict": assessment.verdict,
+            "models": [asdict(m) for m in assessment.models],
+            "datasets": [asdict(d) for d in assessment.datasets],
+            "condition_labels": ai_risk_assessment.condition_labels(),
+            "disclaimer": disclaimer_en,
+            "disclaimer_ko": disclaimer_ko,
+        }
     )
 
 
@@ -936,6 +968,11 @@ async def get_sbom_conformance_endpoint(
                 if summary["frameworks"]
                 else None
             ),
+            # Gap #28: same read-time contract as the crosswalk above, for a
+            # different reason: the verdict depends on the project's usage
+            # scenario, which an operator changes after ingest. Persisting it
+            # would leave the row answering with the intent it had at upload.
+            "ai_assessment": _ai_assessment_for(row, project),
         }
     )
     return Response(

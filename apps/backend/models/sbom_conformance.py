@@ -124,6 +124,13 @@ class SbomConformance(Base):
         JSONB, nullable=False, server_default=EMPTY_JSONB_ARR
     )
 
+    # Gap #28: what the document said about its models and datasets: names,
+    # the license strings declared on them, and which datasets each model
+    # depends on. Facts only; the verdict is computed on read against the
+    # project's ``ai_usage_context``, which changes whenever an operator
+    # changes it. NULL means the document carried no model component.
+    ai_subjects: Mapped[dict[str, Any] | None] = mapped_column(JSONB, nullable=True)
+
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, server_default=NOW
     )

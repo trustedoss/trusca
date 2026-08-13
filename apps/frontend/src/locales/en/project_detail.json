@@ -1011,7 +1011,16 @@
       "default_branch_placeholder": "main",
       "declared_license": "Outbound license",
       "declared_license_placeholder": "Apache-2.0",
-      "declared_license_help": "The license this project is distributed under, as an SPDX id or expression. The Licenses tab judges every dependency against it. Leave empty to skip the assessment."
+      "declared_license_help": "The license this project is distributed under, as an SPDX id or expression. The Licenses tab judges every dependency against it. Leave empty to skip the assessment.",
+      "ai_usage_context": "AI usage scenario",
+      "ai_usage_context_unset": "Not set, apply the full license terms",
+      "ai_usage_context_help": "How this project uses the AI models it carries. Narrows a model or dataset license to the conditions that bind that use. Leaving it unset applies every condition, which is the conservative reading.",
+      "ai_usage_context_option": {
+        "internal": "Internal use only",
+        "product": "Shipped inside a product",
+        "redistribute": "Redistributed",
+        "outputs-only": "Outputs only (the model is not distributed)"
+      }
     },
     "errors": {
       "name_required": "Project name is required",

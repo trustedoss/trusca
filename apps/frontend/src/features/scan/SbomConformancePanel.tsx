@@ -50,7 +50,10 @@ import { ChevronDown, ChevronRight } from "lucide-react";
 import { useTranslation } from "react-i18next";
 
 import { Badge } from "@/components/ui/badge";
+import { AiVerdictBadge } from "@/features/scan/AiVerdictBadge";
 import type {
+  AiRiskAssessment,
+  AiSubjectVerdict,
   CrosswalkFramework,
   RegulatoryCrosswalk,
   SbomCheckStatus,
@@ -192,6 +195,10 @@ export function SbomConformancePanel({
 
       {cisa.length > 0 ? <CisaSection cisa={cisa} /> : null}
       {g7.length > 0 ? <G7Section g7={g7} /> : null}
+
+      {conformance.ai_assessment ? (
+        <AiAssessmentSection assessment={conformance.ai_assessment} />
+      ) : null}
 
       {conformance.regulatory_crosswalk &&
       conformance.regulatory_crosswalk.frameworks.length > 0 ? (
@@ -663,6 +670,144 @@ function G7CheckRow({ check }: { check: SbomConformanceCheck }) {
 function useIsKoLocale(): boolean {
   const { i18n } = useTranslation("scans");
   return (i18n.resolvedLanguage ?? i18n.language ?? "en").startsWith("ko");
+}
+
+// ---------------------------------------------------------------------------
+// AI usage-scenario verdicts (gap #28)
+// ---------------------------------------------------------------------------
+
+/**
+ * How the document's models and datasets read for the project's intended use.
+ *
+ * Rendered only when the document carried a model, so a plain dependency SBOM
+ * shows nothing rather than an empty section. The scenario line is part of the
+ * verdict: the same model reads differently for internal use and for
+ * redistribution, and a verdict shown without the use it was computed against
+ * invites the reader to apply it to a different one.
+ */
+function AiAssessmentSection({ assessment }: { assessment: AiRiskAssessment }) {
+  const { t } = useTranslation("scans");
+  const isKo = useIsKoLocale();
+  const disclaimer = isKo ? assessment.disclaimer_ko : assessment.disclaimer;
+  const scenarioLabel = assessment.scenario
+    ? t(`conformance.ai.scenario.${assessment.scenario}`)
+    : t("conformance.ai.scenario.unset");
+
+  return (
+    <section className="mt-4" data-testid="conformance-ai-section">
+      <header className="flex flex-wrap items-center gap-3">
+        <h3 className="text-sm font-semibold tracking-tight">
+          {t("conformance.ai.title")}
+        </h3>
+        <AiVerdictBadge verdict={assessment.verdict} />
+      </header>
+      <p className="mt-1 text-xs text-muted-foreground">
+        {t("conformance.ai.intro", { scenario: scenarioLabel })}
+      </p>
+
+      <div className="mt-3 grid grid-cols-1 gap-2">
+        {assessment.models.map((subject) => (
+          <AiSubjectCard
+            key={`model-${subject.bom_ref || subject.name}`}
+            subject={subject}
+            kind="model"
+            conditionLabels={assessment.condition_labels}
+          />
+        ))}
+        {assessment.datasets.map((subject) => (
+          <AiSubjectCard
+            key={`dataset-${subject.bom_ref || subject.name}`}
+            subject={subject}
+            kind="dataset"
+            conditionLabels={assessment.condition_labels}
+          />
+        ))}
+      </div>
+
+      {disclaimer ? (
+        <p
+          className="mt-2 text-xs text-muted-foreground"
+          data-testid="conformance-ai-disclaimer"
+        >
+          {disclaimer}
+        </p>
+      ) : null}
+    </section>
+  );
+}
+
+function AiSubjectCard({
+  subject,
+  kind,
+  conditionLabels,
+}: {
+  subject: AiSubjectVerdict;
+  kind: "model" | "dataset";
+  conditionLabels: AiRiskAssessment["condition_labels"];
+}) {
+  const { t } = useTranslation("scans");
+  const isKo = useIsKoLocale();
+
+  return (
+    <div
+      className="rounded-md border p-3"
+      data-testid={`ai-subject-${kind}`}
+      data-verdict={subject.verdict}
+    >
+      <div className="flex flex-wrap items-center gap-2">
+        <span className="text-xs uppercase tracking-wide text-muted-foreground">
+          {t(`conformance.ai.kind.${kind}`)}
+        </span>
+        <span className="font-mono text-sm">{subject.name}</span>
+        <AiVerdictBadge verdict={subject.verdict} />
+      </div>
+
+      <ul className="mt-2 space-y-2">
+        {subject.reasons.map((reason, index) => (
+          <li
+            key={`${reason.license}-${index}`}
+            className="text-xs"
+            data-testid="ai-subject-reason"
+          >
+            <div className="flex flex-wrap items-center gap-2">
+              <span className="font-mono">
+                {reason.license || t("conformance.ai.no_license")}
+              </span>
+              <AiVerdictBadge
+                verdict={reason.verdict}
+                summary={isKo ? reason.summary_ko : reason.summary}
+              />
+            </div>
+            <p className="mt-1 text-muted-foreground">
+              {isKo ? reason.summary_ko : reason.summary}
+            </p>
+            {reason.conditions.length > 0 ? (
+              <ul className="mt-1 list-disc pl-4 text-muted-foreground">
+                {reason.conditions.map((condition) => (
+                  <li key={condition}>
+                    {isKo
+                      ? (conditionLabels[condition]?.ko ?? condition)
+                      : (conditionLabels[condition]?.en ?? condition)}
+                  </li>
+                ))}
+              </ul>
+            ) : null}
+          </li>
+        ))}
+      </ul>
+
+      {/* A model is no cleaner than the data behind it, so the dataset fold is
+          stated rather than left for the reader to reconstruct from the list. */}
+      {subject.dataset_verdict ? (
+        <p className="mt-2 text-xs text-muted-foreground">
+          {t("conformance.ai.dataset_fold", {
+            count: subject.dataset_refs.length,
+            verdict: t(`conformance.ai.verdict.${subject.dataset_verdict}`),
+          })}
+        </p>
+      ) : null}
+    </div>
+  );
 }
 
 function CrosswalkSection({ crosswalk }: { crosswalk: RegulatoryCrosswalk }) {

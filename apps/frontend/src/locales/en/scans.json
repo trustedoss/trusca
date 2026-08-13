@@ -291,6 +291,30 @@
         "cisa-component": "Component data",
         "cisa-practices": "Practices and processes"
       }
+    },
+    "ai": {
+      "title": "AI usage verdicts",
+      "intro": "How these models and datasets read for this project's intended use: {{scenario}}. Guidance for review, not a legal determination, and not tied to any build gate.",
+      "scenario": {
+        "internal": "internal use",
+        "product": "shipped inside a product",
+        "redistribute": "redistributed",
+        "outputs-only": "outputs only",
+        "unset": "not set, so the full license terms apply"
+      },
+      "kind": {
+        "model": "Model",
+        "dataset": "Dataset"
+      },
+      "verdict": {
+        "caution": "Caution",
+        "review": "Review",
+        "conditional": "Conditional",
+        "ok": "OK"
+      },
+      "no_license": "No license declared",
+      "dataset_fold": "Includes {{count}} declared dataset: {{verdict}}",
+      "dataset_fold_other": "Includes {{count}} declared datasets: {{verdict}}"
     }
   },
   "provenance": {

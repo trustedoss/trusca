@@ -531,3 +531,125 @@ def test_user_guide_documents_every_conflict_verdict() -> None:
         assert not missing, (
             f"{guide.name} does not document these verdicts: {missing}"
         )
+
+
+# ---------------------------------------------------------------------------
+# AI usage-scenario verdicts (gap #28): the vocabulary lives in four places
+# ---------------------------------------------------------------------------
+
+
+def test_ai_verdict_values_match_the_schema_literal() -> None:
+    """Service vocabulary and wire Literal must be the same four values.
+
+    §2: a verdict the service can produce and the schema does not name would
+    fail validation on the way out, after the work of computing it.
+    """
+    import typing
+
+    from schemas.sbom import AiVerdict
+    from services.ai_risk_assessment import AI_VERDICT_VALUES
+
+    assert set(AI_VERDICT_VALUES) == set(typing.get_args(AiVerdict))
+
+
+def test_ai_verdict_rank_covers_every_verdict() -> None:
+    """The worst-of fold has to have an opinion about every value it may see."""
+    from services.ai_risk_assessment import AI_VERDICT_RANK, AI_VERDICT_VALUES
+
+    assert set(AI_VERDICT_RANK) == set(AI_VERDICT_VALUES)
+
+
+def test_usage_scenarios_match_the_schema_literal_and_tuple() -> None:
+    """The four scenarios are spelled in the service, the schema tuple, and the
+    wire Literal. A value accepted by one and unknown to another would be stored
+    and then silently ignored at assessment time.
+    """
+    import typing
+
+    from schemas.scan import AI_USAGE_SCENARIOS, AiUsageContext
+    from services.ai_risk_assessment import USAGE_SCENARIOS
+
+    assert set(USAGE_SCENARIOS) == set(AI_USAGE_SCENARIOS)
+    assert set(USAGE_SCENARIOS) == set(typing.get_args(AiUsageContext))
+
+
+def test_registry_verdicts_are_all_known() -> None:
+    """Every verdict the vendored registry states must be one the fold ranks.
+
+    The registry is upstream data. A verdict spelled differently there would
+    rank as the fallback and quietly change the fold.
+    """
+    from services.ai_risk_assessment import AI_VERDICT_VALUES, _knowledge
+
+    terms = _knowledge()["licenseTerms"]
+    stated = {t["verdict"] for t in terms}
+    for term in terms:
+        stated.update((term.get("scenarioVerdicts") or {}).values())
+    assert stated <= set(AI_VERDICT_VALUES), f"unknown verdicts: {stated - set(AI_VERDICT_VALUES)}"
+
+
+def test_registry_scenarios_are_all_known() -> None:
+    """Scenario keys in the registry must be scenarios the project can be set to."""
+    from services.ai_risk_assessment import USAGE_SCENARIOS, _knowledge
+
+    used: set[str] = set()
+    for term in _knowledge()["licenseTerms"]:
+        used.update((term.get("scenarioVerdicts") or {}).keys())
+        for condition in term.get("conditions") or []:
+            used.update(condition.get("appliesTo") or [])
+    assert used <= set(USAGE_SCENARIOS), f"unknown scenarios: {used - set(USAGE_SCENARIOS)}"
+
+
+def test_registry_conditions_all_have_labels() -> None:
+    """Every condition a term cites must resolve to a label the UI can show.
+
+    The API sends condition ids and the label map separately; an id with no
+    label renders as a bare slug next to a verdict, which is worse than saying
+    nothing.
+    """
+    from services.ai_risk_assessment import _knowledge, condition_labels
+
+    labels = condition_labels()
+    cited: set[str] = set()
+    for term in _knowledge()["licenseTerms"]:
+        for condition in term.get("conditions") or []:
+            cid = condition.get("id")
+            if isinstance(cid, str):
+                cited.add(cid)
+    missing = cited - set(labels)
+    assert not missing, f"conditions with no label: {sorted(missing)}"
+
+
+def test_ai_verdicts_and_scenarios_are_documented_in_both_guides() -> None:
+    """Both language guides must explain every verdict and every scenario.
+
+    Rule §4: the guide is an oracle. A value the UI can render and the guide
+    never names leaves the reader with a word next to their model and nothing
+    that says what it obliges them to do. This fails when a verdict or scenario
+    is added and the docs are not, which is the order these things happen in.
+    """
+    import pathlib
+
+    from services.ai_risk_assessment import AI_VERDICT_VALUES, USAGE_SCENARIOS
+
+    repo_root = pathlib.Path(__file__).resolve().parents[4]
+    guides = (
+        repo_root / "docs-site/docs/user-guide/ai-sbom-conformance.md",
+        repo_root
+        / "docs-site/i18n/ko/docusaurus-plugin-content-docs/current"
+        / "user-guide/ai-sbom-conformance.md",
+    )
+    for guide in guides:
+        assert guide.is_file(), f"{guide} is missing"
+        body = guide.read_text(encoding="utf-8")
+        assert "ai-usage-verdicts" in body, (
+            f"{guide.name} no longer carries the usage-verdict section"
+        )
+        missing_verdicts = [v for v in AI_VERDICT_VALUES if f"`{v}`" not in body]
+        assert not missing_verdicts, (
+            f"{guide.name} does not document these verdicts: {missing_verdicts}"
+        )
+        missing_scenarios = [s for s in USAGE_SCENARIOS if f"`{s}`" not in body]
+        assert not missing_scenarios, (
+            f"{guide.name} does not document these scenarios: {missing_scenarios}"
+        )

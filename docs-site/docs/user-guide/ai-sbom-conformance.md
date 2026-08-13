@@ -103,6 +103,34 @@ The response's `regulatory_crosswalk.frameworks[]` block rolls the mapped elemen
 The crosswalk is a documentation-preparation aid. TRUSCA does not certify or determine compliance with the EU AI Act, the Korean AI Framework Act, or any other regulation — it covers only what an SBOM can carry. The AI Act's fairness and non-discrimination duties (bias examination, the fundamental-rights impact assessment) have no SBOM-expressible element and are not covered; an AI Framework Act 제32조 link points at the duty's subject, not a determination that the duty applies to your system. This is a summary; the response carries the crosswalk's own disclaimer in full, quoted under [SBOM upload](../ci-integration/sbom-upload.md).
 :::
 
+## Usage-scenario license verdicts {#ai-usage-verdicts}
+
+A model license often binds nothing for internal experimentation, binds obligations once the model ships inside a product, and binds more again on redistribution. One license, three answers. The conformance panel therefore carries an **AI usage verdicts** section for any document that contains a model, judging each model and dataset against the use you told it about.
+
+Set that use per project, under **Settings → AI usage scenario**:
+
+| Scenario | Meaning |
+|---|---|
+| `internal` | The model is used inside the company and does not leave it. |
+| `product` | The model ships inside something you distribute. |
+| `redistribute` | The model itself is passed on. |
+| `outputs-only` | Only the model's outputs are used; the model is not distributed. |
+
+Leaving it unset is a valid answer, not a blank to fill: every condition then applies, which is the conservative reading.
+
+Each subject gets one of four verdicts. They rank worst-first as `caution`, `review`, `conditional`, `ok`, and a model folds in the verdicts of the datasets it declares a dependency on. A model is no cleaner than the data behind it.
+
+| Verdict | Meaning |
+|---|---|
+| `caution` | A term that blocks this use, or that somebody must resolve before it. |
+| `review` | The license is not in the registry, or none was declared. Not assumed permissive. |
+| `conditional` | Permitted, with obligations that bind this use. |
+| `ok` | Nothing in the terms binds this use. |
+
+`review` outranking `conditional` is deliberate. A license nobody has classified must not fold away behind one somebody has already read.
+
+Two things follow from where the verdict is computed. It is calculated when you open the page, not stored at upload, so changing the scenario changes the verdicts on scans that were ingested long before, no re-upload. And it is advisory in the same sense the crosswalk is: nothing here reaches the build gate or the approval workflow, and the response carries the registry's own disclaimer next to every verdict.
+
 ## What the tool does not check
 
 The working principle — shared with the OpenChain AI SBOM guidance — is **generate with tools, interpret with humans**. TRUSCA verifies that a field is present and extracts its value; it does not vouch for what the value means:

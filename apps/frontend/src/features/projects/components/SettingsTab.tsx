@@ -31,6 +31,7 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { ProblemError } from "@/lib/problem";
 import {
+  AI_USAGE_SCENARIOS,
   archiveProject,
   type ProjectPublic,
   unarchiveProject,
@@ -48,6 +49,7 @@ interface FormValues {
   git_url: string;
   default_branch: string;
   declared_license: string;
+  ai_usage_context: string;
 }
 
 export function SettingsTab({ projectId, project }: SettingsTabProps) {
@@ -77,6 +79,10 @@ export function SettingsTab({ projectId, project }: SettingsTabProps) {
     declared_license: z
       .string()
       .max(255, t("settings.errors.declared_license_max")),
+    // A closed set, so the select cannot produce anything else. Empty means
+    // "not set", which the server reads as "judge against the full terms" -
+    // deliberately not the same as an unselected-but-required field.
+    ai_usage_context: z.enum(["", ...AI_USAGE_SCENARIOS]),
   });
 
   const {
@@ -92,6 +98,7 @@ export function SettingsTab({ projectId, project }: SettingsTabProps) {
       git_url: project?.git_url ?? "",
       default_branch: project?.default_branch ?? "",
       declared_license: project?.declared_license ?? "",
+      ai_usage_context: project?.ai_usage_context ?? "",
     },
   });
 
@@ -107,6 +114,7 @@ export function SettingsTab({ projectId, project }: SettingsTabProps) {
       git_url: project.git_url ?? "",
       default_branch: project.default_branch ?? "",
       declared_license: project.declared_license ?? "",
+      ai_usage_context: project.ai_usage_context ?? "",
     });
   }, [project, reset, isDirty]);
 
@@ -119,6 +127,7 @@ export function SettingsTab({ projectId, project }: SettingsTabProps) {
         default_branch: values.default_branch || null,
         // Empty clears the declaration; the server normalises "" to null.
         declared_license: values.declared_license,
+        ai_usage_context: values.ai_usage_context,
       }),
     // Error surfaced locally (toast/inline) — keep the global error toast quiet.
     meta: { errorToast: false },
@@ -133,6 +142,7 @@ export function SettingsTab({ projectId, project }: SettingsTabProps) {
         git_url: next.git_url ?? "",
         default_branch: next.default_branch ?? "",
         declared_license: next.declared_license ?? "",
+        ai_usage_context: next.ai_usage_context ?? "",
       });
       setActionToast(t("settings.toast.saved"));
     },
@@ -380,6 +390,39 @@ export function SettingsTab({ projectId, project }: SettingsTabProps) {
               {errors.declared_license.message}
             </p>
           ) : null}
+        </div>
+
+        {/* Gap #28: the intended use of this project's AI models. It sits next
+            to the outbound license because both answer "what do we do with this
+            code", and both narrow a license question that has no single answer
+            without them. Leaving it unset is a valid choice, not a blank to
+            fill: the assessment then applies every condition. */}
+        <div className="space-y-1.5">
+          <Label htmlFor="settings-ai-usage-context">
+            {t("settings.field.ai_usage_context")}
+          </Label>
+          <select
+            id="settings-ai-usage-context"
+            className="h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            {...register("ai_usage_context")}
+            data-testid="settings-ai-usage-context-select"
+            aria-describedby="settings-ai-usage-context-help"
+          >
+            <option value="">
+              {t("settings.field.ai_usage_context_unset")}
+            </option>
+            {AI_USAGE_SCENARIOS.map((scenario) => (
+              <option key={scenario} value={scenario}>
+                {t(`settings.field.ai_usage_context_option.${scenario}`)}
+              </option>
+            ))}
+          </select>
+          <p
+            id="settings-ai-usage-context-help"
+            className="text-xs text-muted-foreground"
+          >
+            {t("settings.field.ai_usage_context_help")}
+          </p>
         </div>
 
         {submitError ? (

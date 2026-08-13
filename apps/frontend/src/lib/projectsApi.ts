@@ -65,6 +65,12 @@ export interface ProjectPublic {
    * at all — which the Licenses tab must not present as "no conflicts".
    */
   declared_license: string | null;
+  /**
+   * How this project intends to use the AI models it carries (gap #28). Unlike
+   * `declared_license`, `null` does not disable the axis; it judges against
+   * the full license terms, which is the conservative reading.
+   */
+  ai_usage_context: AiUsageContext | null;
   visibility: ProjectVisibility;
   archived_at: string | null;
   created_by_user_id: string | null;
@@ -205,6 +211,7 @@ export interface ProjectCreatePayload {
   git_url?: string | null;
   default_branch?: string | null;
   declared_license?: string | null;
+  ai_usage_context?: AiUsageContext | null;
   visibility?: ProjectVisibility;
 }
 
@@ -215,6 +222,8 @@ export interface ProjectUpdatePayload {
   default_branch?: string | null;
   /** SPDX outbound license; send "" to clear an existing declaration. */
   declared_license?: string | null;
+  /** Intended use of the project's models; send "" to clear it (gap #28). */
+  ai_usage_context?: AiUsageContext | string | null;
   visibility?: ProjectVisibility;
   /**
    * Write-only git credential (feature #18). Set a non-empty token to store it
@@ -479,6 +488,77 @@ export interface SbomConformanceRead {
    * check maps to any framework (e.g. unknown-format rows).
    */
   regulatory_crosswalk?: RegulatoryCrosswalk | null;
+  /**
+   * Read-time usage-scenario verdicts for the document's models and datasets
+   * (backend `services/ai_risk_assessment.py::assess`, gap #28), null when the
+   * document carried no machine-learning-model component. Null is an absent
+   * assessment, not a clean one.
+   */
+  ai_assessment?: AiRiskAssessment | null;
+}
+
+/**
+ * Verdicts an AI subject can carry, worst-first.
+ *
+ * Runtime mirror of the backend's `services/ai_risk_assessment.AI_VERDICT_VALUES`,
+ * held to it by the catalog-mirror contract test. Order is the worst-of rank:
+ * `review` above `conditional` is load-bearing: a license nobody classified
+ * must not fold away behind one somebody has already read.
+ */
+export const AI_VERDICTS = ["caution", "review", "conditional", "ok"] as const;
+
+export type AiVerdict = (typeof AI_VERDICTS)[number];
+
+/** How a project intends to use its models. Mirrors the backend tuple. */
+export const AI_USAGE_SCENARIOS = [
+  "internal",
+  "product",
+  "redistribute",
+  "outputs-only",
+] as const;
+
+export type AiUsageContext = (typeof AI_USAGE_SCENARIOS)[number];
+
+/** One declared license and what the vendored registry says about it. */
+export interface AiLicenseReason {
+  /** The license string as the document spells it. */
+  license: string;
+  /** Registry entry that matched, or null when none did (verdict: review). */
+  term_key?: string | null;
+  term_name?: string | null;
+  verdict: AiVerdict;
+  summary: string;
+  summary_ko: string;
+  /** Condition ids binding the selected scenario; resolve via condition_labels. */
+  conditions: string[];
+  source_url?: string | null;
+}
+
+/** A model or dataset, its verdict, and the reasons behind it. */
+export interface AiSubjectVerdict {
+  bom_ref: string;
+  name: string;
+  verdict: AiVerdict;
+  reasons: AiLicenseReason[];
+  /** Datasets this model declares a dependency on (models only). */
+  dataset_refs: string[];
+  /**
+   * Worst verdict across those datasets, or null when the model declares no
+   * dataset edges: the links were absent, not clean.
+   */
+  dataset_verdict?: AiVerdict | null;
+}
+
+/** Usage-scenario verdicts for one document. Advisory, never a gate. */
+export interface AiRiskAssessment {
+  /** The scenario the verdicts were computed against; null = full terms. */
+  scenario?: AiUsageContext | null;
+  verdict: AiVerdict;
+  models: AiSubjectVerdict[];
+  datasets: AiSubjectVerdict[];
+  condition_labels: Record<string, { en: string; ko: string }>;
+  disclaimer: string;
+  disclaimer_ko: string;
 }
 
 /**

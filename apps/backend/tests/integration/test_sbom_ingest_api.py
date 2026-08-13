@@ -919,3 +919,143 @@ async def test_ingest_spdx_tag_value_returns_202(client, _workspace: Path) -> No
     )
     assert resp.status_code == 202, resp.text
     assert resp.json()["kind"] == "sbom"
+
+
+# ---------------------------------------------------------------------------
+# Gap #28: usage-scenario verdicts on the conformance read
+#
+# The verdict is computed on read, not stored, because it depends on a project
+# setting. These tests pin that: the same persisted facts answer differently
+# after the setting changes, with no re-ingest.
+# ---------------------------------------------------------------------------
+
+
+async def _set_usage_context(
+    client: AsyncClient, *, project_id: uuid.UUID, value: str | None
+) -> None:
+    factory = await _factory(client)
+    async with factory() as session:
+        from sqlalchemy import select
+
+        from models import Project
+
+        project = (
+            await session.execute(select(Project).where(Project.id == project_id))
+        ).scalar_one()
+        project.ai_usage_context = value
+        await session.commit()
+
+
+async def _seed_scan_with_ai_subjects(
+    client: AsyncClient, *, project_id: uuid.UUID
+) -> uuid.UUID:
+    """A verdict row whose ai_subjects carry one model on a NonCommercial dataset."""
+    factory = await _factory(client)
+    async with factory() as session:
+        from sqlalchemy import select
+
+        from models import Project, SbomConformance
+
+        project = (
+            await session.execute(select(Project).where(Project.id == project_id))
+        ).scalar_one()
+        scan = await make_scan(session, project=project, kind="sbom", status="succeeded")
+        session.add(
+            SbomConformance(
+                scan_id=scan.id,
+                project_id=project_id,
+                source_format="cyclonedx",
+                result="warn",
+                n_fail=0,
+                n_warn=1,
+                component_count=2,
+                checks=[],
+                ai_subjects={
+                    "models": [
+                        {
+                            "bom_ref": "model-1",
+                            "name": "some-model",
+                            "licenses": ["Apache-2.0"],
+                            "depends_on": ["dataset-1"],
+                        }
+                    ],
+                    "datasets": [
+                        {
+                            "bom_ref": "dataset-1",
+                            "name": "nc-dataset",
+                            "licenses": ["CC-BY-NC-4.0"],
+                        }
+                    ],
+                },
+            )
+        )
+        await session.commit()
+        return scan.id
+
+
+async def test_conformance_carries_the_ai_assessment(client) -> None:
+    _team, user, project = await _seed(client, role="developer")
+    scan_id = await _seed_scan_with_ai_subjects(client, project_id=project.id)
+
+    resp = await client.get(
+        f"/v1/projects/{project.id}/scans/{scan_id}/conformance",
+        headers=_bearer_for(user),
+    )
+    assert resp.status_code == 200, resp.text
+    assessment = resp.json()["ai_assessment"]
+    assert assessment is not None
+    assert assessment["scenario"] is None
+    # The dataset is NonCommercial; with no scenario the full terms apply.
+    assert assessment["verdict"] == "caution"
+    assert [m["name"] for m in assessment["models"]] == ["some-model"]
+    # The disclaimer travels with the verdicts, so a screen cannot show one alone.
+    assert assessment["disclaimer"]
+    assert assessment["disclaimer_ko"]
+
+
+async def test_ai_assessment_follows_the_project_setting(client) -> None:
+    """Same stored facts, different answer after the setting changes.
+
+    Nothing is re-ingested between the two reads. If the verdict were persisted
+    at ingest, the second read would still be answering with the first intent.
+    """
+    _team, user, project = await _seed(client, role="developer")
+    scan_id = await _seed_scan_with_ai_subjects(client, project_id=project.id)
+    url = f"/v1/projects/{project.id}/scans/{scan_id}/conformance"
+
+    await _set_usage_context(client, project_id=project.id, value="internal")
+    internal = (await client.get(url, headers=_bearer_for(user))).json()["ai_assessment"]
+    assert internal["scenario"] == "internal"
+    assert internal["verdict"] == "conditional"
+
+    await _set_usage_context(client, project_id=project.id, value="redistribute")
+    redistribute = (await client.get(url, headers=_bearer_for(user))).json()["ai_assessment"]
+    assert redistribute["scenario"] == "redistribute"
+    assert redistribute["verdict"] == "caution"
+
+
+async def test_conformance_without_models_has_no_assessment(client) -> None:
+    """A plain SBOM's verdict row carries no assessment, absent, not clean."""
+    _team, user, project = await _seed(client, role="developer")
+    scan_id = await _seed_sbom_scan_with_verdict(client, project_id=project.id)
+
+    resp = await client.get(
+        f"/v1/projects/{project.id}/scans/{scan_id}/conformance",
+        headers=_bearer_for(user),
+    )
+    assert resp.status_code == 200, resp.text
+    assert resp.json()["ai_assessment"] is None
+
+
+async def test_ai_assessment_is_hidden_from_a_non_member(client) -> None:
+    """Permission before state (CLAUDE.md §2 rule 1): an outsider gets the same
+    404 whether or not the scan has an assessment to show."""
+    _team, _user, project = await _seed(client, role="developer")
+    scan_id = await _seed_scan_with_ai_subjects(client, project_id=project.id)
+    _other_team, outsider, _other_project = await _seed(client, role="developer")
+
+    resp = await client.get(
+        f"/v1/projects/{project.id}/scans/{scan_id}/conformance",
+        headers=_bearer_for(outsider),
+    )
+    assert resp.status_code == 404, resp.text

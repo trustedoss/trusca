@@ -183,6 +183,12 @@ class Project(Base):
     # dependency license against it. NULL means "not declared": no verdict is
     # produced at all, which is deliberately distinct from a clean verdict.
     declared_license: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    # Gap #28: how this project intends to use the models it carries:
+    # internal | product | redistribute | outputs-only. Read by
+    # ``services/ai_risk_assessment.assess`` to narrow a model or dataset
+    # license to the conditions that actually bind that use. NULL judges against
+    # the full terms, which is the conservative reading rather than an absence.
+    ai_usage_context: Mapped[str | None] = mapped_column(String(16), nullable=True)
     archived_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     created_by_user_id: Mapped[uuid.UUID | None] = mapped_column(
         UUID_PK,

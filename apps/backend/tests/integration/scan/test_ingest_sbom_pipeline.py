@@ -883,3 +883,72 @@ def test_ingest_leaves_an_sbom_that_already_names_its_os_alone(
     assert len(handed) == 1
     durable = tmp_path / "sbom-ingest" / str(project_id) / f"{scan_id}.cdx.json"
     assert handed[0] == durable, "Trivy reads the upload directly when it suffices"
+
+
+# ---------------------------------------------------------------------------
+# Gap #28: the ingest stores document facts, not verdicts
+# ---------------------------------------------------------------------------
+
+
+def test_ingest_records_ai_subjects_from_an_mlbom(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, sync_session: Session
+) -> None:
+    """An ML-BOM's models and datasets land in ``ai_subjects`` alongside the
+    conformance verdict, carrying only what the document said: names, the
+    license strings on them, and the dataset edges each model declares.
+
+    No verdict is written. The verdict depends on the project's usage scenario,
+    which an operator changes long after ingest, and a stored one would keep
+    answering with the intent the project had at upload time."""
+    monkeypatch.setenv("WORKSPACE_HOST_PATH", str(tmp_path))
+    _stub_trivy_from_fixture(monkeypatch)
+
+    scan_id, _project_id = _seed_queued_sbom_scan(
+        tmp_path, sbom_src=FIXTURES / "aibom-datasets-1_7.json"
+    )
+
+    from tasks.ingest_sbom import ingest_sbom_task
+
+    result = ingest_sbom_task.apply(args=[str(scan_id)])
+    assert result.successful(), f"task failed: {result.traceback}"
+
+    sync_session.expire_all()
+    verdict = sync_session.execute(
+        select(SbomConformance).where(SbomConformance.scan_id == scan_id)
+    ).scalar_one()
+
+    subjects = verdict.ai_subjects
+    assert subjects is not None
+    assert [m["name"] for m in subjects["models"]] == [
+        "distilbert-base-uncased-finetuned-sst-2-english"
+    ]
+    assert {d["name"] for d in subjects["datasets"]} == {
+        "stanfordnlp/sst2",
+        "internal/eval-holdout",
+    }
+    assert subjects["models"][0]["depends_on"], "dataset edges were not recorded"
+    assert "verdict" not in json.dumps(subjects)
+
+
+def test_ingest_leaves_ai_subjects_null_for_a_plain_sbom(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, sync_session: Session
+) -> None:
+    """A dependency SBOM carries no model, so the column stays NULL, an axis
+    with no opinion, distinct from one that came back clean."""
+    monkeypatch.setenv("WORKSPACE_HOST_PATH", str(tmp_path))
+    _stub_trivy_from_fixture(monkeypatch)
+
+    scan_id, _project_id = _seed_queued_sbom_scan(
+        tmp_path, sbom_src=FIXTURES / "realistic.cdx.json"
+    )
+
+    from tasks.ingest_sbom import ingest_sbom_task
+
+    result = ingest_sbom_task.apply(args=[str(scan_id)])
+    assert result.successful(), f"task failed: {result.traceback}"
+
+    sync_session.expire_all()
+    verdict = sync_session.execute(
+        select(SbomConformance).where(SbomConformance.scan_id == scan_id)
+    ).scalar_one()
+    assert verdict.ai_subjects is None

@@ -157,6 +157,76 @@ class SbomConformanceCheck(BaseModel):
     )
 
 
+AiVerdict = Literal["ok", "conditional", "review", "caution"]
+
+
+class AiLicenseReason(BaseModel):
+    """One declared license and what the registry says about it (gap #28)."""
+
+    license: str = Field(description="The license string as the document spells it.")
+    term_key: str | None = Field(
+        default=None, description="Registry entry that matched, or null if none did."
+    )
+    term_name: str | None = None
+    verdict: AiVerdict
+    summary: str
+    summary_ko: str
+    conditions: list[str] = Field(
+        default_factory=list,
+        description=(
+            "Condition ids that bind the selected scenario. Resolve against "
+            "``condition_labels`` on the assessment."
+        ),
+    )
+    source_url: str | None = None
+
+
+class AiSubjectVerdict(BaseModel):
+    """A model or dataset, its verdict, and the reasons behind it."""
+
+    bom_ref: str
+    name: str
+    verdict: AiVerdict
+    reasons: list[AiLicenseReason] = Field(default_factory=list)
+    dataset_refs: list[str] = Field(
+        default_factory=list,
+        description="Datasets this model declares a dependency on (models only).",
+    )
+    dataset_verdict: AiVerdict | None = Field(
+        default=None,
+        description=(
+            "Worst verdict across those datasets, or null when the model "
+            "declares no dataset edges. Null is not a clean result: the links "
+            "were absent, so they were not guessed at."
+        ),
+    )
+
+
+class AiRiskAssessmentOut(BaseModel):
+    """Usage-scenario verdicts for the models and datasets in one document.
+
+    Advisory. Nothing here reaches a build gate or an approval workflow, and the
+    disclaimer travels with the verdicts so a screen cannot show one without the
+    other.
+    """
+
+    scenario: Literal["internal", "product", "redistribute", "outputs-only"] | None = Field(
+        default=None,
+        description=(
+            "The project's ai_usage_context the verdicts were computed against. "
+            "Null means the full license terms were applied."
+        ),
+    )
+    verdict: AiVerdict = Field(description="Worst verdict across every subject.")
+    models: list[AiSubjectVerdict] = Field(default_factory=list)
+    datasets: list[AiSubjectVerdict] = Field(default_factory=list)
+    condition_labels: dict[str, dict[str, str]] = Field(
+        default_factory=dict, description="``{condition_id: {en, ko}}``."
+    )
+    disclaimer: str
+    disclaimer_ko: str
+
+
 class SbomConformanceRead(BaseModel):
     """The conformance verdict for an ingested SBOM scan."""
 
@@ -177,10 +247,16 @@ class SbomConformanceRead(BaseModel):
     # Read-time computed (services.regulation_crosswalk) — None when nothing
     # maps (unknown-format rows) so old consumers see no shape change.
     regulatory_crosswalk: RegulatoryCrosswalk | None = None
+    # Read-time computed (services.ai_risk_assessment) against the project's
+    # ai_usage_context: None when the document carried no model component.
+    ai_assessment: AiRiskAssessmentOut | None = None
     created_at: datetime
 
 
 __all__ = [
+    "AiLicenseReason",
+    "AiRiskAssessmentOut",
+    "AiSubjectVerdict",
     "CrosswalkElement",
     "CrosswalkFramework",
     "RegulationRef",
