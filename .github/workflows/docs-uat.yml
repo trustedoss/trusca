@@ -10,10 +10,14 @@ name: docs-uat
 # against the same dev stack. Phases C-D enroll user-guide / install / CI docs.
 # Design rationale is kept with the internal docs.
 #
-# NON-BLOCKING: both jobs are `continue-on-error: true` until the manifest
-# fidelity stabilizes for the first public release, then they flip to blocking.
-# This is a brand-new, isolated lane — it does not touch the deferred SAST/e2e
-# hardening.
+# BLOCKING since 2026-08-13. Every job ran `continue-on-error: true` while the
+# manifest fidelity settled; the condition that was waiting for is met (fifteen
+# consecutive runs, two of them scheduled, with no failing step), so the lane
+# now fails the run that breaks it. A job that cannot fail measures nothing.
+#
+# The scheduled tier has no pull request to show a red X on, so `nightly-alert`
+# turns a failed scheduled run into a tracked issue — same pattern as ci.yml
+# and verify-specs-nightly.yml.
 
 on:
   pull_request:
@@ -43,8 +47,6 @@ jobs:
     name: extract-and-lint (static)
     runs-on: ubuntu-22.04
     timeout-minutes: 5
-    # Non-blocking until manifest fidelity stabilizes (see header note).
-    continue-on-error: true
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -58,8 +60,6 @@ jobs:
     name: quickstart-gate (dev compose)
     runs-on: ubuntu-22.04
     timeout-minutes: 20
-    # Non-blocking until manifest fidelity stabilizes (see header note).
-    continue-on-error: true
     steps:
       - uses: actions/checkout@v4
 
@@ -143,8 +143,6 @@ jobs:
     if: github.event_name != 'pull_request'
     runs-on: ubuntu-22.04
     timeout-minutes: 25
-    # Non-blocking until manifest fidelity stabilizes (see header note).
-    continue-on-error: true
     steps:
       - uses: actions/checkout@v4
 
@@ -240,8 +238,6 @@ jobs:
     if: github.event_name != 'pull_request'
     runs-on: ubuntu-22.04
     timeout-minutes: 25
-    # Non-blocking until manifest fidelity stabilizes (see header note).
-    continue-on-error: true
     steps:
       - uses: actions/checkout@v4
 
@@ -372,8 +368,6 @@ jobs:
     if: github.event_name != 'pull_request'
     runs-on: ubuntu-22.04
     timeout-minutes: 10
-    # Non-blocking until manifest fidelity stabilizes (see header note).
-    continue-on-error: true
     steps:
       - uses: actions/checkout@v4
 
@@ -388,3 +382,40 @@ jobs:
 
       - name: Run nightly chart-validate assertion — installation/helm.md
         run: node tools/docs-uat/run.mjs --tier=nightly --doc=installation/helm.md
+
+  # ── A scheduled run has no pull request to show a red X on. Turn a failure
+  #    into a tracked issue instead, and close it when the lane goes green.
+  #    Every job is watched, not just the nightly tier: extract-and-lint and
+  #    quickstart-gate carry no `if`, so the schedule runs them too.
+  nightly-alert:
+    name: nightly-alert
+    if: ${{ always() && github.event_name == 'schedule' }}
+    needs:
+      - extract-and-lint
+      - quickstart-gate
+      - docs-uat-nightly
+      - docs-uat-nightly-ui
+      - docs-uat-nightly-helm
+    runs-on: ubuntu-22.04
+    timeout-minutes: 5
+    permissions:
+      contents: read
+      issues: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          sparse-checkout: .github/actions/nightly-failure-issue
+      - uses: ./.github/actions/nightly-failure-issue
+        with:
+          label: nightly-docs-uat
+          title: "Nightly docs-uat is failing"
+          failed: ${{ contains(needs.*.result, 'failure') && 'true' || 'false' }}
+          details: |
+            A documented step no longer does what the document says it does.
+            The run log names the doc and the assertion; `tools/docs-uat/`
+            maps both back to the annotation in the guide.
+
+            The document is the oracle here. Either the product drifted from
+            what the guide promises, or the guide promises something the
+            product never did — decide which before changing either side.
+          token: ${{ secrets.GITHUB_TOKEN }}
