@@ -188,6 +188,33 @@ describe("ComponentDrawer", () => {
     expect(screen.getByText("RCE in alpha")).toBeInTheDocument();
   });
 
+  it("labels each CVE's severity rather than echoing the wire value", async () => {
+    // This list assembled its own badge and printed `severity` verbatim, so a
+    // Korean session read "critical" here while every other surface said 치명.
+    mockedGet.mockResolvedValueOnce(
+      detail({
+        vulnerabilities: [
+          {
+            cve_id: "CVE-2024-1234",
+            severity: "CRITICAL",
+            cvss: 9.8,
+            epss_score: 0.973,
+            epss_percentile: 0.91,
+            title: "RCE in alpha",
+            description: "details",
+            fixed_version: "1.0.1",
+          },
+        ],
+      }),
+    );
+    renderDrawer("alpha-id");
+
+    const badge = await screen.findByTestId("severity-badge-critical");
+    // Mixed-case from the wire still resolves to the shared scale's label.
+    expect(badge).toHaveTextContent("Critical");
+    expect(badge).not.toHaveTextContent("CRITICAL");
+  });
+
   it("renders the RFC 7807 detail in an alert on error", async () => {
     mockedGet.mockRejectedValueOnce(
       new ProblemError("not found", {

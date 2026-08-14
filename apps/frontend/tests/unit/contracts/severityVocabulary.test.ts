@@ -99,9 +99,21 @@ describe("severity vocabulary", () => {
     }
   });
 
-  it.each(LOCALES)("%s sweeps more than the canonical scale alone", (locale) => {
+  it.each(LOCALES)("%s sweeps every scale the catalogue ships", (locale) => {
     // Guards against a refactor that empties the sweep and leaves it passing.
-    expect(scalesFor(locale).length).toBeGreaterThanOrEqual(6);
+    // Pinned to the exact count, not a floor: `findScales` only recognizes an
+    // object that names all four tiers, so deleting one key would drop a whole
+    // scale out of the sweep, and a floor with slack would not notice.
+    expect(scalesFor(locale).map((scale) => scale.id).sort()).toEqual([
+      "common.risk",
+      "dashboard.portfolio.bucket",
+      "inventory.severity",
+      "project_detail.releases.severity_abbr",
+      "project_detail.risk",
+      "project_detail.severity",
+      "project_detail.vulnerabilities.severity",
+      "projects.severity.abbrev",
+    ]);
   });
 
   it("labels the severity axis itself consistently", () => {

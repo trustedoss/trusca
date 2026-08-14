@@ -350,10 +350,7 @@ function VulnerabilityRow({
       className="flex flex-col gap-1 rounded-md border p-3"
     >
       <div className="flex flex-wrap items-center gap-2">
-        <SeverityBadge
-          severity={toSeverityVariant(vuln.severity)}
-          testId="component-drawer-vuln-severity"
-        />
+        <SeverityBadge severity={toSeverityVariant(vuln.severity)} />
         {/* M-20 — deep-link into the Vulnerabilities tab pre-filtered on
             this CVE id (backend search matches CVE ids). Navigating swaps
             `?tab=` and drops `?drawer=`, so the drawer closes naturally and

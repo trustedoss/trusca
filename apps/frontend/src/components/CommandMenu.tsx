@@ -511,7 +511,12 @@ export function CommandMenu({ open, onOpenChange }: CommandMenuProps) {
             {vulnHits.map((hit) => (
               <CommandItem
                 key={`${hit.project_id}-${hit.cve_id}`}
-                value={`${hit.cve_id} ${hit.severity} ${debounced}`}
+                // Both spellings are searchable: cmdk filters on this string,
+                // and a Korean session types 치명, not "critical".
+                value={`${hit.cve_id} ${hit.severity} ${severityLabel(
+                  hit.severity,
+                  t,
+                )} ${debounced}`}
                 onSelect={() => handleSelectVulnerability(hit)}
                 data-testid={`command-menu-cve-${hit.project_id}-${hit.cve_id}`}
               >
