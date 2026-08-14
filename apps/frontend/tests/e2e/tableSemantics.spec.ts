@@ -187,6 +187,75 @@ test.describe.serial("@tables the project-detail tables expose table semantics",
     ).toEqual(["table"]);
   });
 
+  test("S5) the Compliance grid announces rows and columns", async () => {
+    // G0-5 gave the components and vulnerabilities grids their semantics and
+    // left this one out, so it announced an unlabelled stack of divs.
+    const portal = new PortalPage(sharedPage);
+    await portal.selectTab("compliance");
+    await sharedPage
+      .getByTestId("compliance-virtual")
+      .or(sharedPage.getByTestId("compliance-empty"))
+      .waitFor({ timeout: 15_000 });
+    test.skip(
+      (await sharedPage.getByTestId("compliance-virtual").count()) === 0,
+      "seed produced no licence findings",
+    );
+
+    const table = sharedPage.getByRole("table");
+    await expect(table).toHaveCount(1);
+
+    const rowcount = Number(await table.getAttribute("aria-rowcount"));
+    const total = Number(
+      await sharedPage
+        .getByTestId("compliance-virtual")
+        .getAttribute("data-total"),
+    );
+    expect(rowcount, "aria-rowcount counts the header plus every licence").toBe(
+      total + 1,
+    );
+    expect(
+      await table.getByRole("columnheader").count(),
+    ).toBeGreaterThanOrEqual(5);
+
+    const firstRow = sharedPage.getByTestId("compliance-row").first();
+    await expect(firstRow).toHaveAttribute("role", "row");
+    await expect(firstRow).toHaveAttribute("aria-rowindex", "2");
+    // Cells, not just a row: a row without them announces as empty and a
+    // screen reader cannot move across it. This grid shipped that way once.
+    expect(await firstRow.getByRole("cell").count()).toBeGreaterThanOrEqual(5);
+
+    const chain = await ownershipChain(sharedPage, "compliance-row");
+    expect(
+      chain.filter((r) => r !== "(generic)" && r !== "rowgroup"),
+      `the chain from the row up to the table was ${chain.join(" -> ")}`,
+    ).toEqual(["table"]);
+  });
+
+  test("S6) Back closes the licence drawer instead of leaving the tab", async () => {
+    const portal = new PortalPage(sharedPage);
+    await portal.selectTab("compliance");
+    await sharedPage
+      .getByTestId("compliance-virtual")
+      .or(sharedPage.getByTestId("compliance-empty"))
+      .waitFor({ timeout: 15_000 });
+    test.skip(
+      (await sharedPage.getByTestId("compliance-virtual").count()) === 0,
+      "seed produced no licence findings",
+    );
+
+    await sharedPage.getByTestId("compliance-row").first().click();
+    await expect(sharedPage.getByTestId("license-drawer")).toBeVisible({
+      timeout: 10_000,
+    });
+    expect(sharedPage.url()).toContain("license=");
+
+    await sharedPage.goBack();
+
+    await expect(sharedPage.getByTestId("license-drawer")).toBeHidden();
+    expect(sharedPage.url()).not.toContain("license=");
+    await expect(sharedPage.getByTestId("compliance-virtual")).toBeVisible();
+  });
+
   test("S4) the drawer is still reachable by keyboard alone", async () => {
     // The click target moved out of a nine-cell button and into one control in
     // the identifier cell. That is only an improvement if the control is still

@@ -1,16 +1,22 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2026 TRUSCA contributors
 /**
- * useCompliance — W9-#58.
+ * useCompliance — W9-#58, infinite from A3.
  *
- * Paginated query for the project's unified compliance grid. Powers the
- * single table in the redesigned ComplianceTab.
+ * Infinite-offset query for the project's unified compliance grid. Powers the
+ * single table in the redesigned ComplianceTab: each page is `limit` rows from
+ * `offset`, and the caller flattens `data.pages` for the virtual list.
  *
- * The query key includes the entire filter tuple — a filter / sort change
- * naturally invalidates the cache and refetches. `keepPreviousData` keeps
- * the grid stable while a new page loads.
+ * It was a single page, with a `?compliance_page=` parameter nothing ever
+ * incremented, so the 101st licence finding could not be reached.
+ *
+ * The query key includes the entire filter tuple, so a filter or sort change
+ * naturally invalidates the cached pages and refetches from offset 0.
  */
-import { keepPreviousData, useQuery, type UseQueryResult } from "@tanstack/react-query";
+import {
+  useInfiniteQuery,
+  type UseInfiniteQueryResult,
+} from "@tanstack/react-query";
 
 import {
   listProjectCompliance,
@@ -31,7 +37,6 @@ export interface ComplianceQueryFilters {
   sort: ComplianceSortKey;
   order: SortOrder;
   limit: number;
-  offset: number;
   /**
    * Pin the list to a specific succeeded scan (feature #28 snapshot anchoring).
    * `undefined` → latest succeeded scan.
@@ -59,7 +64,6 @@ export function complianceKey(
       sort: filters.sort,
       order: filters.order,
       limit: filters.limit,
-      offset: filters.offset,
       scanId: filters.scanId ?? null,
     },
   ] as const;
@@ -68,14 +72,15 @@ export function complianceKey(
 export function useCompliance(
   projectId: string | undefined,
   filters: ComplianceQueryFilters,
-): UseQueryResult<ComplianceListResponse, Error> {
-  return useQuery({
+): UseInfiniteQueryResult<{ pages: ComplianceListResponse[] }, Error> {
+  return useInfiniteQuery({
     queryKey: complianceKey(projectId ?? "", filters),
     enabled: typeof projectId === "string" && projectId.length > 0,
-    queryFn: () =>
+    initialPageParam: 0,
+    queryFn: ({ pageParam }) =>
       listProjectCompliance(projectId as string, {
         limit: filters.limit,
-        offset: filters.offset,
+        offset: pageParam as number,
         search: filters.search.trim() || undefined,
         categories: filters.categories.length ? filters.categories : undefined,
         kinds: filters.kinds.length ? filters.kinds : undefined,
@@ -86,7 +91,10 @@ export function useCompliance(
         order: filters.order,
         scanId: filters.scanId,
       }),
+    getNextPageParam: (lastPage) => {
+      const consumed = lastPage.offset + lastPage.items.length;
+      return consumed < lastPage.total ? consumed : undefined;
+    },
     staleTime: 30_000,
-    placeholderData: keepPreviousData,
   });
 }

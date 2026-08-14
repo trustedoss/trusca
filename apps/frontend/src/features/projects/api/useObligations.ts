@@ -1,14 +1,19 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2026 TRUSCA contributors
 /**
- * useObligations — Phase 3 PR #13.
+ * useObligations — Phase 3 PR #13, infinite from A3.
  *
- * Paginated query for the project's obligations. `useQuery` (not
- * `useInfiniteQuery`) because the read is read-only
- * and the distribution payload only makes sense per filter slice; flattening
- * pages would muddle the chart semantics.
+ * Infinite-offset query for the project's obligations. It was a single page,
+ * on the reasoning that the read is read-only and the distribution payload
+ * only makes sense per filter slice, so flattening pages would muddle the
+ * chart. The chart is fine — every page repeats the same whole-project
+ * distribution, and the caller reads it from the first one. What the single
+ * page actually cost was the 101st obligation, which no control could reach.
  */
-import { keepPreviousData, useQuery, type UseQueryResult } from "@tanstack/react-query";
+import {
+  useInfiniteQuery,
+  type UseInfiniteQueryResult,
+} from "@tanstack/react-query";
 
 import {
   listProjectObligations,
@@ -25,7 +30,6 @@ export interface ObligationsQueryFilters {
   sort: ObligationSortKey;
   order: SortOrder;
   limit: number;
-  offset: number;
   /**
    * Pin the list to a specific succeeded scan (feature #28 snapshot anchoring).
    * `undefined` → latest succeeded scan.
@@ -48,7 +52,6 @@ export function obligationsKey(
       sort: filters.sort,
       order: filters.order,
       limit: filters.limit,
-      offset: filters.offset,
       scanId: filters.scanId ?? null,
     },
   ] as const;
@@ -57,14 +60,15 @@ export function obligationsKey(
 export function useObligations(
   projectId: string | undefined,
   filters: ObligationsQueryFilters,
-): UseQueryResult<ObligationListResponse, Error> {
-  return useQuery({
+): UseInfiniteQueryResult<{ pages: ObligationListResponse[] }, Error> {
+  return useInfiniteQuery({
     queryKey: obligationsKey(projectId ?? "", filters),
     enabled: typeof projectId === "string" && projectId.length > 0,
-    queryFn: () =>
+    initialPageParam: 0,
+    queryFn: ({ pageParam }) =>
       listProjectObligations(projectId as string, {
         limit: filters.limit,
-        offset: filters.offset,
+        offset: pageParam as number,
         search: filters.search.trim() || undefined,
         kinds: filters.kinds.length ? filters.kinds : undefined,
         categories: filters.categories.length ? filters.categories : undefined,
@@ -72,7 +76,12 @@ export function useObligations(
         order: filters.order,
         scanId: filters.scanId,
       }),
+    // Counted from the request rather than the response: this endpoint does
+    // not echo `offset` back, unlike the components and vulnerabilities lists.
+    getNextPageParam: (lastPage, _allPages, lastPageParam) => {
+      const consumed = (lastPageParam as number) + lastPage.items.length;
+      return consumed < lastPage.total ? consumed : undefined;
+    },
     staleTime: 30_000,
-    placeholderData: keepPreviousData,
   });
 }

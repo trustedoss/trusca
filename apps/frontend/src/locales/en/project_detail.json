@@ -90,8 +90,13 @@
     },
     "empty": {
       "title": "No compliance findings yet",
-      "description": "Run a scan to populate license inventory and obligations for this project."
+      "description": "Run a scan to populate license inventory and obligations for this project.",
+      "filtered_title": "No licences match these filters",
+      "filtered_description": "Every licence finding was excluded by the current filters.",
+      "clear_filters": "Clear all filters",
+      "run_scan": "Run a scan"
     },
+    "table_aria": "Licences and obligations",
     "errors": {
       "load_list": "Could not load compliance data."
     }
@@ -870,6 +875,7 @@
   },
   "obligations": {
     "summary": "{{loaded}} of {{total}} shown",
+    "table_aria": "Obligations",
     "distribution": {
       "label": "By kind"
     },
@@ -914,7 +920,10 @@
     },
     "empty": {
       "title": "No obligations recorded",
-      "description": "The project's latest scan does not surface any catalog obligations. Run a scan or seed a license catalog to populate this view."
+      "description": "The project's latest scan does not surface any catalog obligations. Run a scan or seed a license catalog to populate this view.",
+      "filtered_title": "No obligations match these filters",
+      "filtered_description": "Every obligation was excluded by the current filters.",
+      "clear_filters": "Clear all filters"
     },
     "errors": {
       "load_list": "Could not load the obligation list.",

@@ -1,13 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2026 TRUSCA contributors
-import {
-  type ComponentPropsWithoutRef,
-  forwardRef,
-  useEffect,
-  useMemo,
-  useRef,
-  useState,
-} from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { Link, useSearchParams } from "react-router-dom";
 import { Virtuoso } from "react-virtuoso";
@@ -22,6 +15,7 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
+import { VIRTUOSO_TABLE_BODY } from "@/components/ui/virtuoso-table-body";
 import {
   ariaSortFor,
   type SortState,
@@ -85,20 +79,6 @@ import { cn } from "@/lib/utils";
  */
 
 const PAGE_SIZE = 100;
-
-/**
- * The table body. Same shape and same reasoning as VulnerabilitiesTab: every
- * element Virtuoso puts between the table and its rows is a plain `div` and
- * flattens away, except the scroller, which carries `tabindex` and therefore
- * has to hold a role the table allows.
- */
-const VIRTUOSO_TABLE_BODY = {
-  Scroller: forwardRef<HTMLDivElement, ComponentPropsWithoutRef<"div">>(
-    function VirtuosoScroller(props, ref) {
-      return <div ref={ref} {...props} role="rowgroup" />;
-    },
-  ),
-};
 
 /**
  * W9 #52 — column-picker catalog for the Components table. `name` and

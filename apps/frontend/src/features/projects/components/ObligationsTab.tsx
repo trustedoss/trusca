@@ -9,7 +9,9 @@ import { Virtuoso } from "react-virtuoso";
 import { EmptyState } from "@/components/EmptyState";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
+import { VIRTUOSO_TABLE_BODY } from "@/components/ui/virtuoso-table-body";
 import type { LicenseCategoryName } from "@/features/projects/api/projectDetailApi";
 import {
   KNOWN_OBLIGATION_KINDS,
@@ -89,12 +91,6 @@ function parseOrder(raw: string | null): SortOrder {
   return raw === "asc" ? "asc" : "desc";
 }
 
-function parsePage(raw: string | null): number {
-  const n = raw ? Number.parseInt(raw, 10) : 1;
-  if (!Number.isFinite(n) || n < 1) return 1;
-  return n;
-}
-
 export interface ObligationsTabProps {
   projectId: string;
   projectName?: string | null;
@@ -132,13 +128,13 @@ export function ObligationsTab({
   const [order, setOrder] = useState<SortOrder>(() =>
     parseOrder(searchParams.get("order")),
   );
-  const [page, setPage] = useState<number>(() =>
-    parsePage(searchParams.get("page")),
-  );
-
   const drawerId = searchParams.get("obligation");
   const drawerOpen = drawerId != null && drawerId.length > 0;
 
+  /**
+   * Pushed, not replaced, so Back closes the drawer rather than leaving the
+   * tab and discarding the filters the user set to find this row.
+   */
   function setDrawerObligation(obligationId: string | null) {
     setSearchParams(
       (prev) => {
@@ -150,7 +146,7 @@ export function ObligationsTab({
         }
         return next;
       },
-      { replace: true },
+      { replace: false },
     );
   }
 
@@ -160,7 +156,6 @@ export function ObligationsTab({
     if (debounceRef.current) clearTimeout(debounceRef.current);
     debounceRef.current = setTimeout(() => {
       setDebouncedSearch(search);
-      setPage(1);
     }, 300);
     return () => {
       if (debounceRef.current) clearTimeout(debounceRef.current);
@@ -182,21 +177,14 @@ export function ObligationsTab({
         else next.delete("sort");
         if (order !== "desc") next.set("order", order);
         else next.delete("order");
-        if (page !== 1) next.set("page", String(page));
-        else next.delete("page");
+        // Infinite now: the parameter it used to write pointed at a page the
+        // UI offered no way to turn to.
+        next.delete("page");
         return next;
       },
       { replace: true },
     );
-  }, [
-    debouncedSearch,
-    kinds,
-    categories,
-    sort,
-    order,
-    page,
-    setSearchParams,
-  ]);
+  }, [debouncedSearch, kinds, categories, sort, order, setSearchParams]);
 
   const filters = useMemo(
     () => ({
@@ -206,18 +194,36 @@ export function ObligationsTab({
       sort,
       order,
       limit: PAGE_SIZE,
-      offset: (page - 1) * PAGE_SIZE,
       scanId,
     }),
-    [debouncedSearch, kinds, categories, sort, order, page, scanId],
+    [debouncedSearch, kinds, categories, sort, order, scanId],
   );
 
   const obligations = useObligations(projectId, filters);
   const notice = useNotice(projectId, projectName ?? undefined, { scanId });
 
-  const items: ObligationListItem[] = obligations.data?.items ?? [];
-  const total = obligations.data?.total ?? 0;
-  const distribution = obligations.data?.distribution ?? {};
+  /** Whether anything is narrowing the list, which decides the empty state. */
+  const hasNarrowingFilters =
+    debouncedSearch.trim().length > 0 ||
+    kinds.length > 0 ||
+    categories.length > 0;
+
+  function clearAllFilters() {
+    setSearch("");
+    setDebouncedSearch("");
+    setKinds([]);
+    setCategories([]);
+  }
+
+  const pages = obligations.data?.pages;
+  const items: ObligationListItem[] = useMemo(
+    () => (pages ?? []).flatMap((p) => p.items),
+    [pages],
+  );
+  // Both are whole-result facts the server repeats on every page, so the
+  // first page answers for all of them.
+  const total = pages?.[0]?.total ?? 0;
+  const distribution = pages?.[0]?.distribution ?? {};
 
   return (
     <div data-testid="obligations-tab" className="flex flex-1 flex-col">
@@ -229,22 +235,18 @@ export function ObligationsTab({
         kinds={kinds}
         onKindsChange={(next) => {
           setKinds(next);
-          setPage(1);
         }}
         categories={categories}
         onCategoriesChange={(next) => {
           setCategories(next);
-          setPage(1);
         }}
         sort={sort}
         onSortChange={(next) => {
           setSort(next);
-          setPage(1);
         }}
         order={order}
         onOrderChange={(next) => {
           setOrder(next);
-          setPage(1);
         }}
         onDownloadNotice={(format) => {
           // The promise rejection is caught by useNotice's internal error
@@ -297,13 +299,43 @@ export function ObligationsTab({
           data-testid="obligations-empty"
           className="m-6"
           icon={<CheckCircle2 />}
-          title={t("obligations.empty.title")}
-          description={t("obligations.empty.description")}
+          title={
+            hasNarrowingFilters
+              ? t("obligations.empty.filtered_title")
+              : t("obligations.empty.title")
+          }
+          description={
+            hasNarrowingFilters
+              ? t("obligations.empty.filtered_description")
+              : t("obligations.empty.description")
+          }
+          // Same split the other two grids needed: a filter that excluded
+          // everything wants the filter cleared, not a scan.
+          action={
+            hasNarrowingFilters ? (
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={clearAllFilters}
+                data-testid="obligations-empty-clear-filters"
+              >
+                {t("obligations.empty.clear_filters")}
+              </Button>
+            ) : undefined
+          }
         />
       ) : null}
 
       {!obligations.isLoading && !obligations.isError && items.length > 0 ? (
-        <>
+        // Table semantics for the same reason as the compliance grid: G0-5
+        // gave them to the other two grids and left this one announcing an
+        // unlabelled stack of divs.
+        <div
+          className="flex flex-1 flex-col"
+          role="table"
+          aria-label={t("obligations.table_aria")}
+          aria-rowcount={total + 1}
+        >
           <ObligationsTableHeader />
           <div
             className="flex-1"
@@ -312,7 +344,16 @@ export function ObligationsTab({
             data-loaded={items.length}
           >
             <Virtuoso
+              components={VIRTUOSO_TABLE_BODY}
               data={items}
+              endReached={() => {
+                if (
+                  obligations.hasNextPage &&
+                  !obligations.isFetchingNextPage
+                ) {
+                  void obligations.fetchNextPage();
+                }
+              }}
               style={{
                 height: "calc(100vh - var(--layout-header) - 320px)",
               }}
@@ -325,7 +366,7 @@ export function ObligationsTab({
               )}
             />
           </div>
-        </>
+        </div>
       ) : null}
 
       <ObligationDrawer
@@ -381,12 +422,22 @@ function ObligationsTableHeader() {
       className="flex items-center gap-3 border-b bg-muted/30 px-4 text-xs font-medium uppercase tracking-wide text-muted-foreground"
       style={{ height: "32px" }}
       data-testid="obligations-header"
+      role="row"
+      aria-rowindex={1}
     >
-      <span className="w-44">{t("obligations.column.spdx_id")}</span>
-      <span className="flex-1">{t("obligations.column.license_name")}</span>
-      <span className="w-32">{t("obligations.column.category")}</span>
-      <span className="w-32">{t("obligations.column.kind")}</span>
-      <span className="w-20 text-right">
+      <span className="w-44" role="columnheader">
+        {t("obligations.column.spdx_id")}
+      </span>
+      <span className="flex-1" role="columnheader">
+        {t("obligations.column.license_name")}
+      </span>
+      <span className="w-32" role="columnheader">
+        {t("obligations.column.category")}
+      </span>
+      <span className="w-32" role="columnheader">
+        {t("obligations.column.kind")}
+      </span>
+      <span className="w-20 text-right" role="columnheader">
         {t("obligations.column.affected_count")}
       </span>
     </div>
@@ -399,6 +450,9 @@ interface ObligationRowProps {
   onSelect: () => void;
 }
 
+/** Exported for the row-semantics gate — see ComplianceTab for the reason. */
+export { ObligationRow as ObligationRowForTest };
+
 function ObligationRow({
   obligation,
   rowIndex,
@@ -406,8 +460,12 @@ function ObligationRow({
 }: ObligationRowProps) {
   const { t } = useTranslation("project_detail");
   return (
-    <button
-      type="button"
+    // A div, not a button. A `row` owns cells, and `row` is not a role a
+    // `<button>` may carry — axe rejects both, and a screen reader in table
+    // mode cannot move across a row that has no cells. The keyboard path
+    // lives in the first cell instead, the same shape the vulnerabilities
+    // row uses.
+    <div
       onClick={onSelect}
       data-testid="obligation-row"
       data-obligation-id={obligation.id}
@@ -415,35 +473,53 @@ function ObligationRow({
       data-category={obligation.license_category}
       data-kind={obligation.kind}
       data-row-index={rowIndex}
+      role="row"
+      // +2: the header is row 1, and aria-rowindex counts from 1.
+      aria-rowindex={rowIndex + 2}
       className={cn(
         "flex w-full items-center gap-3 border-b px-4 text-left text-sm transition-colors duration-fast ease-out-soft hover:bg-muted/50",
-        "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-inset",
       )}
       style={{ height: "var(--table-row)" }}
     >
-      <span
-        className="w-44 truncate font-mono text-xs"
-        title={obligation.license_spdx_id ?? obligation.license_name}
-      >
-        {obligation.license_spdx_id ?? t("licenses.row.no_spdx_id")}
+      <span className="w-44 truncate" role="cell">
+        <button
+          type="button"
+          data-testid="obligation-row-open"
+          onClick={(e) => {
+            e.stopPropagation();
+            onSelect();
+          }}
+          title={obligation.license_spdx_id ?? obligation.license_name}
+          className="truncate rounded-sm font-mono text-xs hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1"
+        >
+          {obligation.license_spdx_id ?? t("licenses.row.no_spdx_id")}
+        </button>
       </span>
-      <span className="flex-1 truncate" title={obligation.license_name}>
+      <span
+        className="flex-1 truncate"
+        role="cell"
+        title={obligation.license_name}
+      >
         {obligation.license_name}
       </span>
-      <span className="w-32">
+      <span className="w-32" role="cell">
         <LicenseCategoryBadge category={obligation.license_category} />
       </span>
-      <span className="w-32 truncate text-xs text-muted-foreground">
+      <span
+        className="w-32 truncate text-xs text-muted-foreground"
+        role="cell"
+      >
         {t(`obligations.kind.${obligation.kind}`, {
           defaultValue: obligation.kind,
         })}
       </span>
       <span
         className="w-20 text-right font-mono text-xs tabular-nums"
+        role="cell"
         data-testid="obligation-row-affected-count"
       >
         {obligation.affected_count}
       </span>
-    </button>
+    </div>
   );
 }
