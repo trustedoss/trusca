@@ -175,9 +175,9 @@ Every `skipped_*` value means a commit went unscanned, so they are the ones to w
 
 The other two are capacity signals and need an operator before anything else helps. `skipped_team_at_capacity` means the team is already running as many scans as `SCAN_CONCURRENCY_CAP_PER_TEAM` allows; raise the cap or let the running scans finish. `skipped_disk_full` means the workspace volume is past `DISK_HARD_LIMIT_PCT` and nothing will scan until space is freed.
 
-Once the condition clears, redeliver the event from the Git host and it scans normally. These two skips deliberately do not record the delivery, so its id stays unused and the redelivery counts as a new event rather than a duplicate.
+Once the condition clears, redeliver the event from the Git host and it scans normally. The delivery is recorded with its reason, and the redelivery supersedes that row rather than reading as a duplicate: the id names the delivery's current state, not a counter that gets spent.
 
-The capacity check runs before the duplicate check, so a delivery that was *already* handled can also come back as a capacity skip if you redeliver it while the team is at its cap. That one was scanned when it first arrived; the status describes what happened this time, not whether the commit is covered.
+The duplicate check now runs first, so redelivering something that was already scanned answers `duplicate` whatever the capacity situation is, and its recorded outcome keeps saying `enqueued`. Only a delivery that never started a scan is re-run, which is the one where re-running is the point.
 
 These are reported as `200` rather than an error on purpose. A 4xx or 5xx makes the Git host retry, and a retry storm aimed at a portal that is already at its limit helps nobody.
 
@@ -217,7 +217,7 @@ The delivery was accepted but did not trigger. Possible reasons:
 - A scan for the same ref was already queued or running, so the delivery is acknowledged without starting a second one. The response says `{"status": "skipped_active_scan"}`.
 - The event type is outside the scan whitelist (`push` and `pull_request` for GitHub, `Push Hook` and `Merge Request Hook` for GitLab). A `ping` is accepted and recorded but never scans.
 - The repository URL on the payload does not match any project's `git_url`, or that project has no webhook secret. Either answers 401, not 200 — see above.
-- The team is at its concurrency cap or the workspace is full: `skipped_team_at_capacity` / `skipped_disk_full`. Redelivering works once the operator clears the condition, because these skips do not consume the delivery id.
+- The team is at its concurrency cap or the workspace is full: `skipped_team_at_capacity` / `skipped_disk_full`. Redelivering works once the operator clears the condition, because a delivery that never started a scan can be delivered again.
 
 ### A second push to the same merge request does not scan
 

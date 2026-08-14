@@ -369,10 +369,14 @@ async def test_capacity_skip_leaves_the_delivery_id_reusable(
 ) -> None:
     """A capacity skip must not burn the delivery id.
 
-    Recording the delivery before deciding would make a redelivery of the same
-    event a ``duplicate``, so the push would never be scanned even after the
-    operator freed capacity — permanently, on GitLab installs whose delivery id
-    is derived from the payload rather than a per-delivery UUID.
+    The push has to be scannable after the operator frees capacity and the Git
+    host redelivers. Otherwise it is lost permanently on GitLab installs whose
+    delivery id is derived from the payload rather than a per-delivery UUID.
+
+    This used to be achieved by not recording the delivery at all, which left
+    the skip with no database trace (gap #39). The row is written now, carrying
+    the reason, and the redelivery supersedes it: the id names the delivery's
+    current state rather than a counter that gets spent.
     """
     monkeypatch.setenv("SCAN_CONCURRENCY_CAP_PER_TEAM", "1")
 
@@ -401,14 +405,16 @@ async def test_capacity_skip_leaves_the_delivery_id_reusable(
     blocked = await client.post("/v1/webhooks/github", content=body, headers=headers)
     assert blocked.json()["status"] == "skipped_team_at_capacity"
 
-    # No row claimed the id, so the Git host's redelivery is a fresh event.
+    # The delivery is recorded, and says why it went unscanned.
     async with factory() as session:
         rows = (
             await session.execute(
                 select(WebhookDelivery).where(WebhookDelivery.delivery_id == delivery_id)
             )
         ).scalars().all()
-    assert rows == [], "a capacity skip must not record the delivery"
+    assert len(rows) == 1
+    assert rows[0].outcome == "skipped_team_at_capacity"
+    assert rows[0].enqueued_scan_id is None
 
     # Free the capacity and redeliver the very same event.
     async with factory() as session:
@@ -423,6 +429,17 @@ async def test_capacity_skip_leaves_the_delivery_id_reusable(
     retried = await client.post("/v1/webhooks/github", content=body, headers=headers)
     assert retried.json()["status"] == "enqueued", "redelivery could not recover"
     assert len(captured_dispatches) == 1
+
+    # Superseded in place: one row for one delivery, now saying it scanned.
+    async with factory() as session:
+        rows = (
+            await session.execute(
+                select(WebhookDelivery).where(WebhookDelivery.delivery_id == delivery_id)
+            )
+        ).scalars().all()
+    assert len(rows) == 1
+    assert rows[0].outcome == "enqueued"
+    assert rows[0].enqueued_scan_id is not None
 
 
 async def test_unauthenticated_delivery_writes_nothing(
@@ -986,3 +1003,137 @@ async def test_source_ip_over_the_rate_limit_gets_429(
     assert seen[:2] == [401, 401], seen
     assert seen[2] == 429, seen
     assert captured_dispatches == []
+
+
+# ---------------------------------------------------------------------------
+# #39: every ending is answerable by a query, not only by reading the logs
+# ---------------------------------------------------------------------------
+
+
+async def test_every_ending_is_recorded_on_the_delivery(
+    client: AsyncClient, captured_dispatches: list[str]
+) -> None:
+    """`enqueued_scan_id IS NULL` used to collapse four different endings.
+
+    An operator asking "which pushes went unscanned in the last day, and why"
+    had to aggregate logs. This drives three of the endings through the real
+    endpoint and reads them back with one SELECT; the capacity skips have their
+    own test above because they need a blocker scan to provoke.
+    """
+    project, secret = await _make_github_project(client)
+    factory = await _factory(client)
+
+    async def _deliver(event: str, delivery_id: str, payload: dict[str, object]) -> str:
+        body = json.dumps(payload).encode()
+        response = await client.post(
+            "/v1/webhooks/github",
+            content=body,
+            headers={
+                "Content-Type": "application/json",
+                "X-Hub-Signature-256": _sign(body, secret),
+                "X-GitHub-Event": event,
+                "X-GitHub-Delivery": delivery_id,
+            },
+        )
+        assert response.status_code == 200, response.text
+        return str(response.json()["status"])
+
+    enqueued_id = str(uuid.uuid4())
+    ignored_id = str(uuid.uuid4())
+
+    assert await _deliver("push", enqueued_id, _push_payload(project.git_url)) == "enqueued"
+    assert await _deliver("issues", ignored_id, _push_payload(project.git_url)) == "ignored"
+    # The same delivery id again: a genuine replay from the Git host.
+    assert await _deliver("push", enqueued_id, _push_payload(project.git_url)) == "duplicate"
+
+    async with factory() as session:
+        rows = (
+            await session.execute(
+                select(WebhookDelivery).where(
+                    WebhookDelivery.delivery_id.in_([enqueued_id, ignored_id])
+                )
+            )
+        ).scalars().all()
+
+    by_id = {r.delivery_id: r for r in rows}
+    assert by_id[enqueued_id].outcome == "enqueued"
+    assert by_id[enqueued_id].enqueued_scan_id is not None
+    assert by_id[ignored_id].outcome == "ignored"
+    assert by_id[ignored_id].enqueued_scan_id is None
+    # A replay does not overwrite what the original delivery achieved.
+    assert by_id[enqueued_id].outcome != "duplicate"
+
+
+async def test_unscanned_deliveries_are_one_query(
+    client: AsyncClient, captured_dispatches: list[str]
+) -> None:
+    """The question the column exists for, asked the way an operator would."""
+    project, secret = await _make_github_project(client)
+    factory = await _factory(client)
+
+    body = json.dumps(_push_payload(project.git_url)).encode()
+    ignored_id = str(uuid.uuid4())
+    response = await client.post(
+        "/v1/webhooks/github",
+        content=body,
+        headers={
+            "Content-Type": "application/json",
+            "X-Hub-Signature-256": _sign(body, secret),
+            "X-GitHub-Event": "issues",
+            "X-GitHub-Delivery": ignored_id,
+        },
+    )
+    assert response.json()["status"] == "ignored"
+
+    async with factory() as session:
+        unscanned = (
+            await session.execute(
+                select(WebhookDelivery.outcome).where(
+                    WebhookDelivery.project_id == project.id,
+                    WebhookDelivery.enqueued_scan_id.is_(None),
+                )
+            )
+        ).scalars().all()
+
+    assert unscanned == ["ignored"], "the reason must come back with the row"
+
+
+async def test_replay_of_a_scanned_delivery_is_duplicate_even_at_capacity(
+    client: AsyncClient,
+    captured_dispatches: list[str],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The duplicate check runs before the capacity guard now.
+
+    It used to be the other way round, and the guide had to explain that
+    redelivering an already-scanned event during a capacity crunch answered
+    "skipped_team_at_capacity", a status about this request that read like a
+    statement about the commit. Asking "have we seen this?" first removes the
+    ambiguity, and the delivery keeps the outcome it earned.
+    """
+    project, secret = await _make_github_project(client)
+    body = json.dumps(_push_payload(project.git_url)).encode()
+    delivery_id = str(uuid.uuid4())
+    headers = {
+        "Content-Type": "application/json",
+        "X-Hub-Signature-256": _sign(body, secret),
+        "X-GitHub-Event": "push",
+        "X-GitHub-Delivery": delivery_id,
+    }
+
+    first = await client.post("/v1/webhooks/github", content=body, headers=headers)
+    assert first.json()["status"] == "enqueued"
+
+    # Now fill the team's capacity and replay the same delivery.
+    monkeypatch.setenv("SCAN_CONCURRENCY_CAP_PER_TEAM", "1")
+    replay = await client.post("/v1/webhooks/github", content=body, headers=headers)
+    assert replay.json()["status"] == "duplicate"
+
+    factory = await _factory(client)
+    async with factory() as session:
+        row = (
+            await session.execute(
+                select(WebhookDelivery).where(WebhookDelivery.delivery_id == delivery_id)
+            )
+        ).scalar_one()
+    assert row.outcome == "enqueued", "a replay must not rewrite the original ending"

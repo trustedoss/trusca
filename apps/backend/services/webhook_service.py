@@ -145,6 +145,24 @@ WEBHOOK_STATUSES = frozenset(
     }
 )
 
+# What ``webhook_deliveries.outcome`` can hold: every status except
+# ``duplicate``, which describes a request rather than a delivery. A replayed
+# delivery keeps the outcome it earned the first time.
+WEBHOOK_OUTCOMES = WEBHOOK_STATUSES - {"duplicate"}
+
+# Outcomes a redelivery is allowed to supersede: the ones where no scan ever
+# started AND the condition is transient. The operator frees capacity and
+# redelivers; turning that away as a duplicate would leave the push unscanned
+# forever. ``ignored`` and ``skipped_active_scan`` are NOT here: an ignored
+# event will be ignored again, and an active scan on the ref means the commit
+# is already being covered.
+_SUPERSEDABLE_OUTCOMES = frozenset(
+    {
+        "skipped_team_at_capacity",
+        "skipped_disk_full",
+    }
+)
+
 
 @dataclass
 class WebhookProcessResult:
@@ -174,13 +192,18 @@ class WebhookProcessResult:
     the operator frees capacity, and the retry storm would land on the system
     that is already under pressure.
 
-    ``delivery`` is None for the capacity skips alone. Those are decided BEFORE
-    the delivery is recorded, deliberately: recording it first would burn the
-    delivery id, and a later redelivery of the same event would then be turned
-    away as a duplicate — so the push would never be scanned even once capacity
-    freed up. On GitLab installs that do not send a delivery UUID the id is
-    derived from the payload and is therefore stable, which makes that loss
-    permanent. Leaving the id unclaimed keeps redelivery a working recovery.
+    Every ending is recorded on the delivery row's ``outcome`` (gap #39). The
+    capacity skips used to be decided before the row was written, so they left
+    no database trace at all: the reason was that claiming the delivery id
+    would turn a later redelivery into a duplicate and the push would never be
+    scanned, even once capacity freed up. That is still the requirement, but it
+    is now met by letting a redelivery SUPERSEDE a row whose outcome says no
+    scan ever started, rather than by not writing the row. The id names the
+    delivery's current state, not a counter that gets spent.
+
+    On GitLab installs that do not send a delivery UUID the id is derived from
+    the payload and is therefore stable, which is what made the old loss
+    permanent and this recovery reliable.
     """
 
     status: str
@@ -387,8 +410,16 @@ async def _record_delivery(
     Insert a webhook_deliveries row, returning ``(row, is_new)``.
 
     Idempotency: the unique index on (provider, delivery_id) is the canonical
-    "have we processed this before?" gate. On unique-violation we re-fetch
-    the existing row and return ``is_new=False``.
+    "have we processed this before?" gate. On unique-violation we re-fetch the
+    existing row.
+
+    ``is_new`` is True for a row this call created, and ALSO for one it
+    superseded: a delivery whose recorded outcome says no scan ever started and
+    the reason was transient (see ``_SUPERSEDABLE_OUTCOMES``). The gate exists
+    to stop one delivery being scanned twice, and a delivery that was turned
+    away at the capacity guard has not been scanned once. Redelivering it is
+    the documented recovery, so it has to run the pipeline again rather than
+    read as a duplicate.
     """
     row = WebhookDelivery(
         provider=provider,
@@ -402,7 +433,8 @@ async def _record_delivery(
         await session.commit()
     except IntegrityError:
         await session.rollback()
-        # Duplicate delivery — fetch the original.
+        # Already seen: fetch the original and decide whether it is a
+        # duplicate or a retry of something that never ran.
         stmt = select(WebhookDelivery).where(
             WebhookDelivery.provider == provider,
             WebhookDelivery.delivery_id == delivery_id,
@@ -414,10 +446,54 @@ async def _record_delivery(
             # the caller already committed. Return a synthetic placeholder
             # marked is_new=False so the gateway answers 200.
             return row, False
+        if existing.outcome in _SUPERSEDABLE_OUTCOMES:
+            # Same delivery, new attempt. Refresh what the payload can change
+            # (a redelivery carries the same body, but the project may have
+            # been re-pointed) and hand it back as if newly recorded.
+            existing.event_type = event_type
+            existing.payload_hash = payload_hash
+            existing.project_id = project_id
+            existing.outcome = None
+            existing.received_at = _now()
+            # Flush rather than commit: the caller carries on in this same
+            # transaction, and a commit here would expire every ORM instance
+            # it still needs.
+            await session.flush()
+            return existing, True
         return existing, False
 
     await session.refresh(row)
     return row, True
+
+
+async def _finish_delivery(
+    session: AsyncSession,
+    delivery: WebhookDelivery | None,
+    outcome: str,
+    *,
+    scan_id: uuid.UUID | None = None,
+) -> None:
+    """Stamp how the delivery ended, so a SELECT can answer it later (gap #39).
+
+    Best-effort by design: the caller has already decided what to report, and
+    failing to record the label must not change that answer or turn a 200 into
+    a 500 the Git host would retry.
+    """
+    if delivery is None:
+        return
+    delivery.outcome = outcome
+    if scan_id is not None:
+        delivery.enqueued_scan_id = scan_id
+    try:
+        await session.commit()
+    except Exception as exc:  # noqa: BLE001 - observability must not break delivery
+        await session.rollback()
+        log.warning(
+            "webhook.outcome_not_recorded",
+            delivery_id=delivery.delivery_id,
+            outcome=outcome,
+            error=str(exc)[:200],
+        )
 
 
 # ---------------------------------------------------------------------------
@@ -602,23 +678,13 @@ async def process_github_webhook(
     # as ``MissingGreenlet`` (regression seen in Chore L2 duplicate-delivery
     # tests). The id is a stable UUID, so caching is safe.
     project_id_str = str(project.id)
+    # Same reason, and now load-bearing for the capacity guard too: the guard
+    # runs AFTER _record_delivery, whose commit expires every ORM attribute on
+    # this Project. Reading team_id off the instance at that point triggers a
+    # synchronous lazy reload outside the greenlet and raises MissingGreenlet.
+    project_team_id = project.team_id
 
-    # Step 4: capacity guards, BEFORE the delivery is recorded so a redelivery
-    # can still recover (see WebhookProcessResult). Only asked for events that
-    # would actually scan — a `ping` has no capacity cost and reporting it as
-    # "skipped because the disk is full" would be nonsense.
-    if _github_event_is_scannable(payload, event_type):
-        capacity_block = await capacity_guard_reason(session, team_id=project.team_id)
-        if capacity_block is not None:
-            log.warning(
-                "webhook.github.capacity_skip",
-                project_id=project_id_str,
-                delivery_id=delivery_id,
-                reason=capacity_block,
-            )
-            return WebhookProcessResult(status=capacity_block, delivery=None)
-
-    # Step 5: idempotency gate.
+    # Step 4: idempotency gate.
     delivery, is_new = await _record_delivery(
         session,
         provider="github",
@@ -627,6 +693,11 @@ async def process_github_webhook(
         payload_hash=payload_hash,
         project_id=project.id,
     )
+    # A delivery we had seen before reaches _record_delivery's rollback
+    # path, which expires every ORM instance in the session, and the rest
+    # of this function reads `project`. Reload it before going on.
+    await session.refresh(project)
+
     if not is_new:
         log.info(
             "webhook.github.duplicate",
@@ -634,9 +705,12 @@ async def process_github_webhook(
             delivery_id=delivery_id,
             event_type=event_type,
         )
+        # Deliberately NOT stamped: "duplicate" is this request's answer, not
+        # the delivery's ending. The row already records what it achieved the
+        # first time, and overwriting that would lose it.
         return WebhookProcessResult(status="duplicate", delivery=delivery)
 
-    # Step 6: event whitelist, then the per-action filter for pull requests.
+    # Step 5: event whitelist, then the per-action filter for pull requests.
     # Recorded first so an ignored delivery still leaves an audit trail.
     if not _github_event_is_scannable(payload, event_type):
         log.info(
@@ -646,7 +720,23 @@ async def process_github_webhook(
             event_type=event_type,
             action=payload.get("action"),
         )
+        await _finish_delivery(session, delivery, "ignored")
         return WebhookProcessResult(status="ignored", delivery=delivery)
+
+    # Step 6: capacity guards. Asked only for events that would actually scan,
+    # so a `ping` is never reported as "skipped because the disk is full". The
+    # delivery row is already written, and a redelivery supersedes it once the
+    # operator frees capacity (see _record_delivery).
+    capacity_block = await capacity_guard_reason(session, team_id=project_team_id)
+    if capacity_block is not None:
+        log.warning(
+            "webhook.github.capacity_skip",
+            project_id=project_id_str,
+            delivery_id=delivery_id,
+            reason=capacity_block,
+        )
+        await _finish_delivery(session, delivery, capacity_block)
+        return WebhookProcessResult(status=capacity_block, delivery=delivery)
 
     # Step 7: enqueue source scan.
     scan_id = await _enqueue_source_scan(
@@ -663,9 +753,8 @@ async def process_github_webhook(
             "ref": _github_ref(payload, event_type),
         },
     )
-    if scan_id is not None:
-        delivery.enqueued_scan_id = scan_id
-        await session.commit()
+    status = "enqueued" if scan_id else "skipped_active_scan"
+    await _finish_delivery(session, delivery, status, scan_id=scan_id)
 
     log.info(
         "webhook.github.processed",
@@ -675,7 +764,7 @@ async def process_github_webhook(
         scan_id=str(scan_id) if scan_id else None,
     )
     return WebhookProcessResult(
-        status="enqueued" if scan_id else "skipped_active_scan",
+        status=status,
         delivery=delivery,
         scan_id=scan_id,
     )
@@ -842,18 +931,9 @@ async def process_gitlab_webhook(
     # See process_github_webhook — capture the project id before _record_delivery
     # may rollback and expire ORM state.
     project_id_str = str(project.id)
-
-    # Capacity guards before the delivery is recorded — see the GitHub twin.
-    if _gitlab_event_is_scannable(payload, event_header):
-        capacity_block = await capacity_guard_reason(session, team_id=project.team_id)
-        if capacity_block is not None:
-            log.warning(
-                "webhook.gitlab.capacity_skip",
-                project_id=project_id_str,
-                delivery_id=delivery_id,
-                reason=capacity_block,
-            )
-            return WebhookProcessResult(status=capacity_block, delivery=None)
+    # See the GitHub twin: the capacity guard reads this after _record_delivery
+    # has expired the instance's attributes.
+    project_team_id = project.team_id
 
     delivery, is_new = await _record_delivery(
         session,
@@ -863,6 +943,11 @@ async def process_gitlab_webhook(
         payload_hash=payload_hash,
         project_id=project.id,
     )
+    # A delivery we had seen before reaches _record_delivery's rollback
+    # path, which expires every ORM instance in the session, and the rest
+    # of this function reads `project`. Reload it before going on.
+    await session.refresh(project)
+
     if not is_new:
         log.info(
             "webhook.gitlab.duplicate",
@@ -870,6 +955,7 @@ async def process_gitlab_webhook(
             delivery_id=delivery_id,
             event_type=event_header,
         )
+        # See the GitHub twin: a replay does not overwrite the original ending.
         return WebhookProcessResult(status="duplicate", delivery=delivery)
 
     if not _gitlab_event_is_scannable(payload, event_header):
@@ -880,7 +966,21 @@ async def process_gitlab_webhook(
             event_type=event_header,
             action=(payload.get("object_attributes") or {}).get("action"),
         )
+        await _finish_delivery(session, delivery, "ignored")
         return WebhookProcessResult(status="ignored", delivery=delivery)
+
+    # Capacity guards. See the GitHub twin: the row is written first and a
+    # redelivery supersedes it once capacity frees up.
+    capacity_block = await capacity_guard_reason(session, team_id=project_team_id)
+    if capacity_block is not None:
+        log.warning(
+            "webhook.gitlab.capacity_skip",
+            project_id=project_id_str,
+            delivery_id=delivery_id,
+            reason=capacity_block,
+        )
+        await _finish_delivery(session, delivery, capacity_block)
+        return WebhookProcessResult(status=capacity_block, delivery=delivery)
 
     scan_id = await _enqueue_source_scan(
         session,
@@ -894,9 +994,8 @@ async def process_gitlab_webhook(
             "ref": _gitlab_ref(payload, event_header),
         },
     )
-    if scan_id is not None:
-        delivery.enqueued_scan_id = scan_id
-        await session.commit()
+    status = "enqueued" if scan_id else "skipped_active_scan"
+    await _finish_delivery(session, delivery, status, scan_id=scan_id)
 
     log.info(
         "webhook.gitlab.processed",
@@ -906,7 +1005,7 @@ async def process_gitlab_webhook(
         scan_id=str(scan_id) if scan_id else None,
     )
     return WebhookProcessResult(
-        status="enqueued" if scan_id else "skipped_active_scan",
+        status=status,
         delivery=delivery,
         scan_id=scan_id,
     )
