@@ -121,18 +121,28 @@ async function hideDevChrome(page: Page): Promise<void> {
  * them, at 1.8 % of the viewport. The ceiling at the time was 2 %, so a
  * screenshot in the wrong typeface passed the gate.
  *
- * Asking whether Inter can be rendered is the question the capture depends
- * on, so this asks that, and pairs it with `status` so a face that loads
- * later (JetBrains Mono is only requested on screens that show code) is not
- * still arriving when the shutter opens. If the stylesheet never lands the
- * wait times out and the test fails, which is the honest outcome: the
- * alternative is a baseline that records the wrong font.
+ * So the wait is in two parts. At least one Inter face has to have reached
+ * `loaded`, which cannot happen before the stylesheet registers the faces,
+ * and nothing may still be in flight. Naming a weight instead would be
+ * wrong: a browser fetches only the faces a page uses, so asking for
+ * `600 16px Inter` on a screen with no semibold text waits forever, which is
+ * how the first version of this failed on admin-users.
+ *
+ * If the stylesheet never lands the wait times out and the test fails, which
+ * is the honest outcome: the alternative is a baseline recording the wrong
+ * font.
  */
 async function waitForWebFonts(page: Page): Promise<void> {
   await page.waitForFunction(
-    () =>
-      document.fonts.check("600 16px Inter") &&
-      document.fonts.status === "loaded",
+    () => {
+      const faces = Array.from(document.fonts);
+      const inter = faces.filter((f) => f.family === "Inter");
+      return (
+        inter.length > 0 &&
+        inter.some((f) => f.status === "loaded") &&
+        document.fonts.status === "loaded"
+      );
+    },
     undefined,
     { timeout: 20_000 },
   );
