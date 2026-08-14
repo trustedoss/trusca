@@ -448,6 +448,15 @@ def _parse_args() -> argparse.Namespace:
         help="Override the seeded email. Default: e2e-<uuid>@example.com.",
     )
     parser.add_argument(
+        "--org-suffix",
+        default=None,
+        help=(
+            "Fixed suffix for the seeded org/team name and slug. Default: a "
+            "random hex. Pass a value when the run captures screenshots, so "
+            "the team name in the top bar is the same in every capture."
+        ),
+    )
+    parser.add_argument(
         "--with-scan",
         action="store_true",
         default=False,
@@ -853,6 +862,7 @@ async def _seed(  # noqa: PLR0915 — a single linear seed routine reads better 
     project_names: list[str],
     email: str | None,
     password: str | None,
+    org_suffix: str | None = None,
     with_scan: bool,
     scan_count: int = 1,
     with_sbom: bool = False,
@@ -983,7 +993,12 @@ async def _seed(  # noqa: PLR0915 — a single linear seed routine reads better 
     factory = async_sessionmaker(engine, expire_on_commit=False, class_=AsyncSession)
     try:
         async with factory() as session:
-            suffix = uuid.uuid4().hex[:10]
+            # Random by default so repeat seeds against one database do not
+            # collide on the org/team slug. Callers that capture pixels pass a
+            # fixed suffix instead: the team name is rendered in the top bar,
+            # so a random one differs in every screenshot and becomes noise the
+            # visual gate has to tolerate.
+            suffix = org_suffix or uuid.uuid4().hex[:10]
             org = Organization(name=f"E2E Org {suffix}", slug=f"e2e-org-{suffix}")
             session.add(org)
             await session.commit()
@@ -2038,6 +2053,7 @@ def main() -> int:
                 project_names=project_names,
                 email=args.email,
                 password=args.password,
+                org_suffix=args.org_suffix,
                 with_scan=args.with_scan,
                 scan_count=args.scan_count,
                 with_sbom=args.with_sbom,

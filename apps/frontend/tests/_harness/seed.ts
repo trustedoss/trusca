@@ -129,6 +129,12 @@ export interface SeedOptions {
   password?: string;
   email?: string;
   /**
+   * Fixed suffix for the seeded org/team name and slug. Defaults to a random
+   * hex on the script side. Capture runs pass a value so the team name shown
+   * in the top bar is identical from one capture to the next.
+   */
+  orgSuffix?: string;
+  /**
    * Seed a `succeeded` scan per project and wire it as
    * `project.latest_scan_id`. Required for the project-detail flows.
    */
@@ -323,6 +329,9 @@ export function seedE2eUser(opts: SeedOptions): SeedSummary {
   }
   if (opts.email) {
     scriptArgs.push("--email", opts.email);
+  }
+  if (opts.orgSuffix) {
+    scriptArgs.push("--org-suffix", opts.orgSuffix);
   }
   if (opts.withScan || (opts.componentCount ?? 0) > 0 || opts.withSource) {
     // --component-count > 0 and --with-source both imply --with-scan in the
