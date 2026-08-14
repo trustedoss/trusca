@@ -41,18 +41,26 @@ export default defineConfig({
     // to redesign a whole region could pass. It was never justified against
     // data, only described as "generous".
     //
-    // Measured 2026-07-28 by capturing the eight baselines twice from the
-    // same commit and diffing: the run-to-run floor is 0.0041 (worst screen,
-    // project-detail-vulnerabilities), and it comes almost entirely from the
-    // seeded project and team names, which carry a timestamp. login.png,
-    // which renders no seeded data, was byte-identical.
+    // Measured 2026-07-28 by capturing the baselines twice from the same
+    // commit and diffing: the run-to-run floor was 0.0041, almost all of it
+    // the seeded project and team names, which carried a timestamp. That
+    // bought a ceiling of 0.02, and 0.02 turned out to be wide enough to
+    // pass a screen rendered in the fallback typeface (1.8 %).
     //
-    // 0.02 leaves ~5x headroom over that floor while catching anything
-    // larger than about a 160x160 block. Re-measure before moving it again;
-    // a threshold nobody measured is how the last one ended up 37x looser
+    // Re-measured 2026-08-14 the same way, after the seed stopped generating
+    // names that differ per run and the capture started waiting for the web
+    // font: the floor is 0.000548 (worst screen, approvals-dark), and ten of
+    // the sixteen baselines came out byte-identical. What is left is
+    // antialiasing around the native form controls in dark mode, plus a
+    // couple of rows at the bottom edge of the virtualized vulnerability
+    // table.
+    //
+    // 0.0025 leaves ~4.5x headroom over that floor and catches anything
+    // larger than about a 57x57 block. Re-measure before moving it again; a
+    // threshold nobody measured is how the first one ended up 37x looser
     // than the noise it was meant to absorb.
     toHaveScreenshot: {
-      maxDiffPixelRatio: 0.02,
+      maxDiffPixelRatio: 0.0025,
       threshold: 0.2,
       animations: "disabled",
       caret: "hide",
