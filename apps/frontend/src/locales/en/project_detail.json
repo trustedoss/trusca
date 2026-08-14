@@ -225,7 +225,7 @@
         "epss": "{{count}} finding(s) with EPSS ≥ {{threshold}}",
         "fallback": "The build gate failed. See the metrics below for details.",
         "malicious": "{{count}} known-malicious package — remove it and rotate the credentials this build could reach",
-        "malicious_plural": "{{count}} known-malicious packages — remove them and rotate the credentials this build could reach"
+        "malicious_other": "{{count}} known-malicious packages — remove them and rotate the credentials this build could reach"
       },
       "errors": {
         "not_found": "This project no longer exists or you no longer have access to it.",
@@ -246,7 +246,7 @@
     },
     "malicious_chip": {
       "title": "{{count}} known-malicious package",
-      "title_plural": "{{count}} known-malicious packages",
+      "title_other": "{{count}} known-malicious packages",
       "body": "Remove and rotate the credentials this build could reach.",
       "link": "View them"
     }
@@ -1345,6 +1345,6 @@
     "gate_reason_licenses": "{{count}} forbidden licences",
     "gate_reason_epss": "{{count}} above the EPSS threshold",
     "gate_reason_malicious": "{{count}} known-malicious package",
-    "gate_reason_malicious_plural": "{{count}} known-malicious packages"
+    "gate_reason_malicious_other": "{{count}} known-malicious packages"
   }
 }
