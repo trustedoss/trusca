@@ -177,6 +177,7 @@ describe("PoliciesPage + editor", () => {
           git_url: null,
           default_branch: null,
           declared_license: null,
+          ai_usage_context: null,
           visibility: "team",
           archived_at: null,
           created_by_user_id: null,

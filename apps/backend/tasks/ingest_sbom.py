@@ -43,6 +43,7 @@ Workspace:
 
 from __future__ import annotations
 
+import json
 import shutil
 import uuid
 from pathlib import Path
@@ -376,6 +377,33 @@ def _run_pipeline(
     mark_succeeded(scan_uuid)
 
 
+def _ai_subjects(raw: bytes) -> dict[str, Any] | None:
+    """What the document says about its models and datasets (gap #28).
+
+    Best-effort, and deliberately quiet: an unparseable upload, an SPDX document
+    (this axis is CycloneDX-shaped), or a plain dependency SBOM all yield None,
+    which reads as "this axis has no opinion". None of those should keep the
+    conformance verdict from being written; that verdict is the row's reason to
+    exist and it scores unparseable input as a legitimate ``fail``.
+
+    Facts only. The verdict is computed on read, because it depends on the
+    project's usage scenario and that changes after ingest.
+    """
+    from services.ai_risk_assessment import extract_subjects
+
+    try:
+        document = json.loads(raw)
+    except (ValueError, TypeError):
+        return None
+    if not isinstance(document, dict):
+        return None
+    try:
+        return extract_subjects(document)
+    except Exception as exc:  # noqa: BLE001 - never block the conformance row
+        log.warning("ingest_sbom_ai_subjects_failed", error=str(exc))
+        return None
+
+
 def _persist_conformance(
     session: Session,
     *,
@@ -407,6 +435,7 @@ def _persist_conformance(
             license_coverage_pct=result.license_coverage_pct,
             hash_coverage_pct=result.hash_coverage_pct,
             checks=[c.as_dict() for c in result.checks],
+            ai_subjects=_ai_subjects(raw),
         )
     )
     log.info(

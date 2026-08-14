@@ -1011,7 +1011,16 @@
       "default_branch_placeholder": "main",
       "declared_license": "배포 라이선스",
       "declared_license_placeholder": "Apache-2.0",
-      "declared_license_help": "이 프로젝트를 배포할 때 적용하는 라이선스를 SPDX 식별자나 표현식으로 적습니다. 라이선스 탭이 모든 의존성을 이 값과 비교해 판정합니다. 비워 두면 판정하지 않습니다."
+      "declared_license_help": "이 프로젝트를 배포할 때 적용하는 라이선스를 SPDX 식별자나 표현식으로 적습니다. 라이선스 탭이 모든 의존성을 이 값과 비교해 판정합니다. 비워 두면 판정하지 않습니다.",
+      "ai_usage_context": "AI 사용 시나리오",
+      "ai_usage_context_unset": "지정 안 함 - 전체 라이선스 조건 적용",
+      "ai_usage_context_help": "이 프로젝트가 포함한 AI 모델을 어떻게 쓰는지 지정합니다. 모델이나 데이터셋 라이선스를 그 용도에 실제로 걸리는 조건으로 좁혀 판정합니다. 지정하지 않으면 모든 조건을 적용하며, 이쪽이 더 보수적인 해석입니다.",
+      "ai_usage_context_option": {
+        "internal": "내부 사용만",
+        "product": "제품에 포함해 배포",
+        "redistribute": "재배포",
+        "outputs-only": "출력물만 사용(모델은 배포하지 않음)"
+      }
     },
     "errors": {
       "name_required": "프로젝트 이름은 필수입니다",

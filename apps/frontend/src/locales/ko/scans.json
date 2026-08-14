@@ -291,6 +291,30 @@
         "cisa-component": "컴포넌트 데이터",
         "cisa-practices": "실무와 절차"
       }
+    },
+    "ai": {
+      "title": "AI 사용 판정",
+      "intro": "이 프로젝트가 의도한 용도({{scenario}})에서 아래 모델과 데이터셋이 어떻게 읽히는지 보여줍니다. 검토를 돕는 안내이며 법적 판단이 아니고, 빌드 게이트와도 연결되지 않습니다.",
+      "scenario": {
+        "internal": "내부 사용",
+        "product": "제품에 포함해 배포",
+        "redistribute": "재배포",
+        "outputs-only": "출력물만 사용",
+        "unset": "지정하지 않아 전체 라이선스 조건 적용"
+      },
+      "kind": {
+        "model": "모델",
+        "dataset": "데이터셋"
+      },
+      "verdict": {
+        "caution": "주의",
+        "review": "검토 필요",
+        "conditional": "조건부",
+        "ok": "이상 없음"
+      },
+      "no_license": "선언된 라이선스 없음",
+      "dataset_fold": "선언된 데이터셋 {{count}}개 포함: {{verdict}}",
+      "dataset_fold_other": "선언된 데이터셋 {{count}}개 포함: {{verdict}}"
     }
   },
   "provenance": {

@@ -18,6 +18,7 @@ import { describe, expect, it } from "vitest";
 
 import { SbomConformancePanel } from "@/features/scan/SbomConformancePanel";
 import type {
+  AiRiskAssessment,
   RegulatoryCrosswalk,
   SbomConformanceCheck,
   SbomConformanceRead,
@@ -618,5 +619,131 @@ describe("SbomConformancePanel", () => {
     expect(
       screen.queryByTestId("crosswalk-framework-bsi-tr-03183-2-elements"),
     ).not.toBeInTheDocument();
+  });
+});
+
+describe("SbomConformancePanel, AI usage verdicts (gap #28)", () => {
+  function assessment(
+    overrides: Partial<AiRiskAssessment> = {},
+  ): AiRiskAssessment {
+    return {
+      scenario: "redistribute",
+      verdict: "caution",
+      models: [
+        {
+          bom_ref: "model-1",
+          name: "some-model",
+          verdict: "caution",
+          reasons: [
+            {
+              license: "Apache-2.0",
+              term_key: "permissive",
+              term_name: "Permissive",
+              verdict: "ok",
+              summary: "Keep the notices.",
+              summary_ko: "고지를 유지하세요.",
+              conditions: ["attribution"],
+              source_url: null,
+            },
+          ],
+          dataset_refs: ["dataset-1"],
+          dataset_verdict: "caution",
+        },
+      ],
+      datasets: [
+        {
+          bom_ref: "dataset-1",
+          name: "nc-dataset",
+          verdict: "caution",
+          reasons: [
+            {
+              license: "CC-BY-NC-4.0",
+              term_key: "cc-non-commercial",
+              term_name: "Creative Commons NonCommercial",
+              verdict: "caution",
+              summary: "Commercial use is not permitted.",
+              summary_ko: "상업적 이용이 금지됩니다.",
+              conditions: ["non-commercial-only"],
+              source_url: null,
+            },
+          ],
+          dataset_refs: [],
+          dataset_verdict: null,
+        },
+      ],
+      condition_labels: {
+        attribution: { en: "Credit the source", ko: "출처 표시" },
+        "non-commercial-only": {
+          en: "No commercial use",
+          ko: "상업적 이용 불가",
+        },
+      },
+      disclaimer: "Guidance, not legal advice.",
+      disclaimer_ko: "법적 자문이 아닌 안내입니다.",
+      ...overrides,
+    };
+  }
+
+  it("renders nothing when the document carried no model", () => {
+    render(<SbomConformancePanel conformance={conformance()} />);
+    expect(screen.queryByTestId("conformance-ai-section")).toBeNull();
+  });
+
+  it("names the scenario the verdicts were computed against", () => {
+    // A verdict shown without its intended use invites the reader to apply it
+    // to a different one, which is the whole failure this axis exists to avoid.
+    render(
+      <SbomConformancePanel
+        conformance={conformance({ ai_assessment: assessment() })}
+      />,
+    );
+    const section = screen.getByTestId("conformance-ai-section");
+    expect(within(section).getByText(/redistributed/i)).toBeInTheDocument();
+  });
+
+  it("shows the disclaimer alongside the verdicts", () => {
+    render(
+      <SbomConformancePanel
+        conformance={conformance({ ai_assessment: assessment() })}
+      />,
+    );
+    expect(screen.getByTestId("conformance-ai-disclaimer")).toHaveTextContent(
+      "Guidance, not legal advice.",
+    );
+  });
+
+  it("pairs every verdict badge with a visible word, not colour alone", () => {
+    render(
+      <SbomConformancePanel
+        conformance={conformance({ ai_assessment: assessment() })}
+      />,
+    );
+    for (const badge of screen.getAllByTestId("ai-verdict-badge")) {
+      expect(badge.getAttribute("data-verdict")).toBeTruthy();
+      expect(badge.textContent?.trim()).not.toBe("");
+    }
+  });
+
+  it("states the dataset fold rather than leaving it to be reconstructed", () => {
+    // The model's own license is permissive; it reads caution only through the
+    // dataset it depends on, and the panel has to say so.
+    render(
+      <SbomConformancePanel
+        conformance={conformance({ ai_assessment: assessment() })}
+      />,
+    );
+    const model = screen.getAllByTestId("ai-subject-model")[0];
+    expect(model).toHaveAttribute("data-verdict", "caution");
+    expect(within(model).getByText(/1 declared dataset/i)).toBeInTheDocument();
+  });
+
+  it("resolves condition ids to their labels", () => {
+    render(
+      <SbomConformancePanel
+        conformance={conformance({ ai_assessment: assessment() })}
+      />,
+    );
+    expect(screen.getByText("No commercial use")).toBeInTheDocument();
+    expect(screen.queryByText("non-commercial-only")).toBeNull();
   });
 });
