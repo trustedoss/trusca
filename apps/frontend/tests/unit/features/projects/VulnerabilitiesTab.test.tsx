@@ -175,6 +175,31 @@ describe("VulnerabilitiesTab", () => {
     expect(summary).toHaveAttribute("data-total", "2");
   });
 
+  it("counts only the rows on screen when the VEX filter narrows client-side", async () => {
+    // The band read the server's total while the rows were filtered here, so
+    // it could say 1,240 above four visible rows.
+    mockedList.mockResolvedValue(
+      listResponse(
+        [
+          vuln("CVE-2024-1111", { id: "a", analysis_source: "vex_import" }),
+          vuln("CVE-2024-2222", { id: "b", analysis_source: null }),
+          vuln("CVE-2024-3333", { id: "c", analysis_source: null }),
+        ],
+        1240,
+      ),
+    );
+
+    renderTab(["/projects/proj-1?vex_suppressed=1"]);
+
+    await waitFor(() => {
+      expect(screen.getAllByTestId("vulnerability-row")).toHaveLength(1);
+    });
+    const summary = screen.getByTestId("vulnerabilities-summary");
+    expect(summary).toHaveAttribute("data-loaded", "1");
+    expect(summary).toHaveAttribute("data-total", "1");
+    expect(summary.textContent).not.toContain("1240");
+  });
+
   it("renders the RFC 7807 detail in an alert on error", async () => {
     mockedList.mockRejectedValueOnce(
       new ProblemError("not allowed", {
@@ -1126,7 +1151,9 @@ describe("VulnerabilitiesTab", () => {
   });
 
   it("apply posts the selected ids + target status and shows succeeded/failed counts", async () => {
-    mockedList.mockResolvedValueOnce(
+    // Not `Once`: the bulk mutation invalidates the list, and an infinite
+    // query refetches every loaded page rather than the one that was showing.
+    mockedList.mockResolvedValue(
       listResponse([
         vuln("CVE-2024-1111", { id: "row-aaaa" }),
         vuln("CVE-2024-2222", { id: "row-bbbb" }),

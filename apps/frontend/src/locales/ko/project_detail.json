@@ -401,6 +401,7 @@
   },
   "vulnerabilities": {
     "summary": "전체 {{total}}개 중 {{loaded}}개 로드됨.",
+    "summary_vex_suppressed": "로드된 {{scanned}}개 중 VEX로 억제된 항목 {{shown}}개. 더 보려면 스크롤하십시오.",
     "group_by": {
       "label": "그룹화",
       "flat": "플랫",
@@ -605,8 +606,12 @@
       "download_xlsx_generating": "생성 중…"
     },
     "empty": {
-      "title": "조건에 맞는 취약점이 없습니다",
-      "subtitle": "필터를 조정하거나 다음 스캔을 기다려 주세요."
+      "title": "취약점이 없습니다",
+      "subtitle": "이 프로젝트를 아직 스캔하지 않았거나, 마지막 스캔에서 발견된 취약점이 없습니다.",
+      "filtered_title": "이 필터에 맞는 취약점이 없습니다",
+      "filtered_subtitle": "현재 필터가 모든 항목을 제외했습니다.",
+      "clear_filters": "필터 모두 지우기",
+      "run_scan": "스캔 실행"
     },
     "errors": {
       "load_failed": "취약점을 불러오지 못했습니다."

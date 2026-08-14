@@ -660,6 +660,11 @@ export function ProjectDetailPage() {
             projectName={projectQuery.data?.name ?? null}
             scanId={pinnedScanId}
             readOnly={isHistorical}
+            onScan={
+              project != null && !writesDisabled && !isHistorical
+                ? () => setSourceDialogOpen(true)
+                : undefined
+            }
           />
         </TabsContent>
         <TabsContent value="source">

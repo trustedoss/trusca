@@ -401,6 +401,7 @@
   },
   "vulnerabilities": {
     "summary": "{{loaded}} of {{total}} findings loaded.",
+    "summary_vex_suppressed": "{{shown}} VEX-suppressed of {{scanned}} findings loaded. Scroll to load more.",
     "group_by": {
       "label": "Group by",
       "flat": "Flat",
@@ -605,8 +606,12 @@
       "download_xlsx_generating": "Generating…"
     },
     "empty": {
-      "title": "No vulnerabilities match",
-      "subtitle": "Adjust the filters or wait for the next scan."
+      "title": "No vulnerabilities found",
+      "subtitle": "Nothing has been scanned for this project yet, or the last scan found nothing.",
+      "filtered_title": "No vulnerabilities match these filters",
+      "filtered_subtitle": "Every finding was excluded by the current filters.",
+      "clear_filters": "Clear all filters",
+      "run_scan": "Run a scan"
     },
     "errors": {
       "load_failed": "Could not load vulnerabilities."

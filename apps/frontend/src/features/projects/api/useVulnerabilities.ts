@@ -1,19 +1,28 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2026 TRUSCA contributors
 /**
- * useVulnerabilities — Phase 3 PR #11.
+ * useVulnerabilities — Phase 3 PR #11, infinite from A2.
  *
- * Paginated query for the project's vulnerability findings list. Powers the
- * virtualized table in `VulnerabilitiesTab`. Uses `useQuery` with a single
- * page (offset/limit) instead of `useInfiniteQuery` so the optimistic
- * status-update mutation can write a single response back into the cache
- * without flattening pages — pagination is via offset, not cursor.
+ * Infinite-offset query for the project's vulnerability findings list. Powers
+ * the virtualized table in `VulnerabilitiesTab`: each page is `limit` rows
+ * starting at `offset`, stitched together by `useInfiniteQuery`, and the
+ * caller flattens `data.pages` for `<Virtuoso />`.
+ *
+ * It began as a single-page `useQuery`, so the optimistic status-update
+ * mutation could write one response back into the cache without flattening
+ * pages. That kept the mutation simple and left the table with no way to
+ * reach row 101: the `?page=` parameter existed but nothing incremented it.
+ * The mutation now understands both cache shapes (see
+ * `useUpdateVulnerabilityStatus`), which is the cost of the row being
+ * reachable at all.
  *
  * Query key includes the entire filter tuple so a filter / sort change
- * naturally invalidates the cached page. `keepPreviousData` keeps the table
- * stable while a new page is in flight.
+ * naturally invalidates the cached pages and starts fresh from offset 0.
  */
-import { keepPreviousData, useQuery, type UseQueryResult } from "@tanstack/react-query";
+import {
+  useInfiniteQuery,
+  type UseInfiniteQueryResult,
+} from "@tanstack/react-query";
 
 import type { LicenseCategoryName } from "@/features/projects/api/projectDetailApi";
 import {
@@ -57,7 +66,6 @@ export interface VulnerabilitiesQueryFilters {
    */
   license_category: LicenseCategoryName[];
   limit: number;
-  offset: number;
   /**
    * Pin the list to a specific succeeded scan (feature #28 snapshot anchoring).
    * `undefined` → latest succeeded scan. Part of the cache key so flipping the
@@ -88,7 +96,6 @@ export function vulnerabilitiesKey(
       sla: filters.sla,
       license_category: [...filters.license_category].sort(),
       limit: filters.limit,
-      offset: filters.offset,
       scanId: filters.scanId ?? null,
     },
   ] as const;
@@ -107,15 +114,16 @@ export function useVulnerabilities(
   projectId: string | undefined,
   filters: VulnerabilitiesQueryFilters,
   { enabled = true }: UseVulnerabilitiesOptions = {},
-): UseQueryResult<VulnerabilityListResponse, Error> {
-  return useQuery({
+): UseInfiniteQueryResult<{ pages: VulnerabilityListResponse[] }, Error> {
+  return useInfiniteQuery({
     queryKey: vulnerabilitiesKey(projectId ?? "", filters),
     enabled:
       enabled && typeof projectId === "string" && projectId.length > 0,
-    queryFn: () =>
+    initialPageParam: 0,
+    queryFn: ({ pageParam }) =>
       listProjectVulnerabilities(projectId as string, {
         limit: filters.limit,
-        offset: filters.offset,
+        offset: pageParam as number,
         search: filters.search.trim() || undefined,
         severity: filters.severity.length ? filters.severity : undefined,
         status: filters.status.length ? filters.status : undefined,
@@ -129,6 +137,9 @@ export function useVulnerabilities(
           : undefined,
         scanId: filters.scanId,
       }),
-    placeholderData: keepPreviousData,
+    getNextPageParam: (lastPage) => {
+      const consumed = lastPage.offset + lastPage.items.length;
+      return consumed < lastPage.total ? consumed : undefined;
+    },
   });
 }
