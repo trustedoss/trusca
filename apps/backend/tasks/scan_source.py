@@ -1026,7 +1026,48 @@ def _fetch_source(
         credential_injected=credential_injected,
         ref=ref,
     )
-    for cmd in commands:  # pragma: no cover
+    return run_git_fetch_commands(  # pragma: no cover
+        commands,
+        scan_uuid=scan_uuid,
+        clone_url=clone_url,
+        target=target,
+        ref=ref,
+        resolve_option=resolve_option,
+        credential=credential,
+        source_dir=source_dir,
+    )
+
+
+def run_git_fetch_commands(
+    commands: list[list[str]],
+    *,
+    scan_uuid: uuid.UUID,
+    clone_url: str,
+    target: Path,
+    ref: str | None,
+    resolve_option: str | None,
+    credential: str | None,
+    source_dir: Path,
+) -> Path:
+    """Run the fetch commands and decide what a failure means.
+
+    Split out from ``_fetch_source`` for the same reason
+    :func:`build_git_fetch_commands` was: that one chooses the commands and is
+    a pure function, this one runs them and is where the two behaviours nobody
+    could verify live. Given a bare repository on disk as ``clone_url`` (git
+    takes a path as a remote), a test can run real git through this and assert
+    the checked-out tree is the one the ref names, and that a ref which has
+    disappeared falls back to the default branch.
+
+    What a local remote cannot exercise is authentication: the credential
+    injection and the stderr scrubbing on an auth failure need a remote that
+    can reject you. Those stay covered by the unit tests on
+    ``build_authenticated_clone_url`` and ``_scrub_clone_stderr``.
+
+    Returns ``source_dir``. Raises :class:`_FetchAborted` when a fetch that
+    named no ref fails, which is terminal.
+    """
+    for cmd in commands:
         completed = subprocess.run(  # noqa: S603
             # cmd is built from validate_git_url_with_ip output (allowlisted
             # scheme, screened IP) plus a ref that git_ref_to_fetch has already
@@ -1076,7 +1117,7 @@ def _fetch_source(
             credential=credential,
             source_dir=source_dir,
         )
-    return source_dir  # pragma: no cover
+    return source_dir
 
 
 def git_ref_to_fetch(scan_metadata: dict[str, Any] | None) -> str | None:
