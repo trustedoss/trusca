@@ -46,6 +46,7 @@ _CLASSIFIER_TO_SPDX: dict[str, str] = {
     "License :: OSI Approved :: MIT License": "MIT",
     "License :: OSI Approved :: BSD License": "BSD-3-Clause",
     "License :: OSI Approved :: ISC License (ISCL)": "ISC",
+    "License :: OSI Approved :: Mozilla Public License 1.1 (MPL 1.1)": "MPL-1.1",
     "License :: OSI Approved :: Mozilla Public License 2.0 (MPL 2.0)": "MPL-2.0",
     "License :: OSI Approved :: Eclipse Public License 2.0 (EPL-2.0)": "EPL-2.0",
     "License :: OSI Approved :: Eclipse Public License 1.0 (EPL-1.0)": "EPL-1.0",
@@ -99,14 +100,31 @@ def _parse_purl(purl: str) -> tuple[str, str] | None:
 
 
 def _spdx_from_classifiers(classifiers: list[str]) -> str | None:
-    """Return the first matching SPDX id from a list of Trove classifiers."""
+    """Join every matching Trove classifier into one SPDX expression.
+
+    A package that declares three licence classifiers is offering a choice:
+    the recipient takes it under whichever they can meet, so the classifiers
+    fold with ``OR``, which the downstream evaluator reads as least
+    restrictive. Returning only the first one made that choice for the reader,
+    and made it worst-first: pyphen ships GPL / LGPL / MPL and read as
+    forbidden on the strength of the classifier that happened to come first.
+
+    Order is the project's own, and duplicates are dropped while keeping it:
+    the expression is stored and shown, so it should read the way the package
+    lists it.
+    """
+    seen: list[str] = []
     for entry in classifiers:
         if not isinstance(entry, str):
             continue
         spdx = _CLASSIFIER_TO_SPDX.get(entry.strip())
-        if spdx is not None:
-            return spdx
-    return None
+        if spdx is not None and spdx not in seen:
+            seen.append(spdx)
+    if not seen:
+        return None
+    if len(seen) == 1:
+        return seen[0]
+    return " OR ".join(seen)
 
 
 class PyPILicenseFetcher:

@@ -30,7 +30,7 @@ from sqlalchemy.orm import Session, sessionmaker
 
 import integrations.license_fetcher as dispatcher_mod
 from integrations.license_fetcher.base import LicenseFetchResult
-from models import LicenseFetchCache
+from models import License, LicenseFetchCache, LicenseFinding
 
 BACKEND_ROOT = Path(__file__).resolve().parent.parent.parent.parent
 
@@ -460,3 +460,144 @@ def test_license_fetch_gate_controls_registry_egress(
             )
         ).scalars().all()
         assert findings == []
+
+
+# ---------------------------------------------------------------------------
+# #86: a single forbidden licence from the document is worth a second look
+# ---------------------------------------------------------------------------
+
+
+def test_forbidden_single_licence_is_rechecked_and_superseded(
+    sync_session: Session, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The document named one forbidden licence; the registry offers a choice.
+
+    This is pyphen: the wheel carries GPL, LGPL and MPL classifiers, cdxgen
+    recorded GPL-2.0-or-later alone, and the build gate failed on it. The
+    registry answer replaces the document's row rather than joining it,
+    because the gate counts a component once ANY of its licences is forbidden.
+    """
+    from tasks.scan_source import _persist_component_licenses
+
+    purl = _unique_purl()
+    stub = _StubFetcher(
+        LicenseFetchResult(
+            spdx_id="GPL-2.0-or-later OR LGPL-2.0-or-later OR MPL-1.1",
+            reference_url=None,
+            source="pypi",
+        )
+    )
+    monkeypatch.setitem(dispatcher_mod.PURL_PREFIX_TO_FETCHER, "pkg:maven/", lambda: stub)
+
+    scan_id, component_version_id = _seed_component_rows(purl)
+
+    _persist_component_licenses(
+        sync_session,
+        scan_uuid=scan_id,
+        component_version_id=component_version_id,
+        cdxgen_component={
+            "purl": purl,
+            "name": "foo",
+            "version": "1.0.0",
+            "licenses": [{"license": {"id": "GPL-2.0-or-later"}}],
+        },
+        purl=purl,
+    )
+    sync_session.commit()
+
+    assert stub.calls == 1, "a forbidden single licence must be rechecked"
+
+    findings = sync_session.execute(
+        select(LicenseFinding).where(
+            LicenseFinding.component_version_id == component_version_id,
+            LicenseFinding.scan_id == scan_id,
+        )
+    ).scalars().all()
+    assert len(findings) == 1, "the document's row is replaced, not joined"
+    finding = findings[0]
+    assert finding.raw_data.get("superseded_sbom_license") == "GPL-2.0-or-later"
+
+    licence = sync_session.execute(
+        select(License).where(License.id == finding.license_id)
+    ).scalar_one()
+    assert licence.spdx_id == "GPL-2.0-or-later OR LGPL-2.0-or-later OR MPL-1.1"
+    # The point of the whole exercise: the component stops blocking builds.
+    assert licence.category == "conditional"
+
+
+def test_recheck_keeps_the_document_row_when_the_registry_agrees(
+    sync_session: Session, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A package that really is solely GPL reads the same after the recheck.
+
+    The registry confirming the document must not churn the row or leave a
+    misleading `superseded_sbom_license` behind.
+    """
+    from tasks.scan_source import _persist_component_licenses
+
+    purl = _unique_purl()
+    stub = _StubFetcher(
+        LicenseFetchResult(spdx_id="GPL-2.0-or-later", reference_url=None, source="pypi")
+    )
+    monkeypatch.setitem(dispatcher_mod.PURL_PREFIX_TO_FETCHER, "pkg:maven/", lambda: stub)
+
+    scan_id, component_version_id = _seed_component_rows(purl)
+
+    _persist_component_licenses(
+        sync_session,
+        scan_uuid=scan_id,
+        component_version_id=component_version_id,
+        cdxgen_component={
+            "purl": purl,
+            "name": "foo",
+            "version": "1.0.0",
+            "licenses": [{"license": {"id": "GPL-2.0-or-later"}}],
+        },
+        purl=purl,
+    )
+    sync_session.commit()
+
+    assert stub.calls == 1
+    findings = sync_session.execute(
+        select(LicenseFinding).where(
+            LicenseFinding.component_version_id == component_version_id,
+            LicenseFinding.scan_id == scan_id,
+        )
+    ).scalars().all()
+    assert len(findings) == 1
+    assert findings[0].raw_data.get("source") == "cdxgen"
+    assert "superseded_sbom_license" not in findings[0].raw_data
+
+
+def test_allowed_single_licence_is_not_rechecked(
+    sync_session: Session, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Only a build-blocking verdict earns the network round-trip.
+
+    Rechecking every component would be 1,900 registry calls on a scan of this
+    repository; rechecking the ones that fail the gate was one.
+    """
+    from tasks.scan_source import _persist_component_licenses
+
+    purl = _unique_purl()
+    stub = _StubFetcher(
+        LicenseFetchResult(spdx_id="MIT OR Apache-2.0", reference_url=None, source="pypi")
+    )
+    monkeypatch.setitem(dispatcher_mod.PURL_PREFIX_TO_FETCHER, "pkg:maven/", lambda: stub)
+
+    scan_id, component_version_id = _seed_component_rows(purl)
+
+    _persist_component_licenses(
+        sync_session,
+        scan_uuid=scan_id,
+        component_version_id=component_version_id,
+        cdxgen_component={
+            "purl": purl,
+            "name": "foo",
+            "version": "1.0.0",
+            "licenses": [{"license": {"id": "MIT"}}],
+        },
+        purl=purl,
+    )
+    sync_session.commit()
+    assert stub.calls == 0

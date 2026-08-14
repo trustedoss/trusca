@@ -175,3 +175,91 @@ def test_default_client_disables_redirect_following() -> None:
         assert client.follow_redirects is False
     finally:
         fetcher.close()
+
+
+# ---------------------------------------------------------------------------
+# Multi-licensed packages (#86)
+# ---------------------------------------------------------------------------
+
+
+def test_fetch_joins_every_matching_classifier(no_throttle: None) -> None:
+    """Three licence classifiers are an offer, not a list to pick from.
+
+    These are pyphen 0.17.2's actual classifiers, read from its wheel. The
+    self-scan recorded it as GPL-2.0-or-later alone and the build gate failed
+    on it; the package is takeable under LGPL or MPL, which the OR expression
+    lets the evaluator see.
+    """
+    payload = _info(
+        classifiers=[
+            "Development Status :: 5 - Production/Stable",
+            "License :: OSI Approved :: GNU General Public License v2 or later (GPLv2+)",
+            "License :: OSI Approved :: GNU Lesser General Public License v2 or later (LGPLv2+)",
+            "License :: OSI Approved :: Mozilla Public License 1.1 (MPL 1.1)",
+        ],
+    )
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(200, text=payload)
+
+    fetcher = PyPILicenseFetcher(http=_client(handler))
+    result = fetcher.fetch("pkg:pypi/pyphen@0.17.2")
+    assert result is not None
+    assert " OR " in result.spdx_id
+    # LGPLv2+ maps to LGPL-2.0-or-later: the Trove classifier says "v2 or
+    # later", and 2.1 has its own classifier.
+    assert result.spdx_id.split(" OR ") == [
+        "GPL-2.0-or-later",
+        "LGPL-2.0-or-later",
+        "MPL-1.1",
+    ]
+
+
+def test_multi_classifier_result_classifies_as_conditional() -> None:
+    """The point of the join: the expression stops reading as forbidden.
+
+    Asserted through the evaluator the scan pipeline actually uses, so this
+    fails if either the join or the OR semantics regress.
+    """
+    from tasks.scan_source import _classify_license_category
+
+    assert _classify_license_category("GPL-2.0-or-later") == "forbidden"
+    assert (
+        _classify_license_category("GPL-2.0-or-later OR LGPL-2.0-or-later OR MPL-1.1")
+        == "conditional"
+    )
+
+
+def test_fetch_keeps_a_single_classifier_unjoined(no_throttle: None) -> None:
+    """One classifier still yields a bare id, not a one-term expression."""
+    payload = _info(
+        classifiers=["License :: OSI Approved :: MIT License"],
+    )
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(200, text=payload)
+
+    fetcher = PyPILicenseFetcher(http=_client(handler))
+    result = fetcher.fetch("pkg:pypi/foo@1.0.0")
+    assert result is not None
+    assert result.spdx_id == "MIT"
+
+
+def test_fetch_drops_duplicate_classifier_mappings(no_throttle: None) -> None:
+    """Two classifiers that map to the same id are one licence, not a choice."""
+    payload = _info(
+        classifiers=[
+            "License :: OSI Approved :: MIT License",
+            "License :: OSI Approved :: MIT No Attribution License (MIT-0)",
+            "License :: OSI Approved :: MIT License",
+        ],
+    )
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(200, text=payload)
+
+    fetcher = PyPILicenseFetcher(http=_client(handler))
+    result = fetcher.fetch("pkg:pypi/foo@1.0.0")
+    assert result is not None
+    assert result.spdx_id.count("MIT ") <= 1 or result.spdx_id == "MIT"
+    assert result.spdx_id.split(" OR ") == list(dict.fromkeys(result.spdx_id.split(" OR ")))
