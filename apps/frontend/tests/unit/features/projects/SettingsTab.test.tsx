@@ -185,8 +185,9 @@ describe("SettingsTab", () => {
     await user.type(name, "Other");
     await user.click(screen.getByTestId("settings-save-button"));
     await waitFor(() => {
+      // The surface names its own 409 instead of the generic conflict line.
       expect(screen.getByTestId("settings-save-error")).toHaveTextContent(
-        "A project with this name already exists.",
+        "Another project in this team already uses that name.",
       );
     });
   });
@@ -315,7 +316,11 @@ describe("SettingsTab", () => {
     await waitFor(() => {
       expect(
         screen.getByTestId("project-git-credential-error"),
-      ).toHaveTextContent("Credential encryption is not configured");
+      ).toHaveTextContent(
+        // A 503 here is a server-configuration problem, so the wording points
+        // at an administrator rather than telling the user to retry.
+        "ask an administrator to check the server configuration",
+      );
     });
   });
 });

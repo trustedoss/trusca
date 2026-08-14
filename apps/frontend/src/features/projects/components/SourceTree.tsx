@@ -11,6 +11,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import type { SourceTreeEntry } from "@/features/projects/api/sourceTreeApi";
 import { useSourceTree } from "@/features/projects/api/useSourceTree";
 import { ProblemError } from "@/lib/problem";
+import { problemMessage } from "@/lib/problemMessage";
 import { cn } from "@/lib/utils";
 
 /**
@@ -132,9 +133,9 @@ function SourceTreeLevel({
       <div className="px-2 py-1">
         <Alert variant="destructive" data-testid="source-tree-error">
           <AlertDescription className="text-xs">
-            {query.error instanceof ProblemError
-              ? query.error.detail
-              : t("source.tree.errors.load")}
+            {problemMessage(query.error, t, {
+              action: "source.tree.errors.load",
+            })}
           </AlertDescription>
         </Alert>
       </div>

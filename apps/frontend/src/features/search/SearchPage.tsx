@@ -24,7 +24,7 @@ import {
 import { SearchFacetBar } from "@/features/search/components/SearchFacetBar";
 import { SearchResultsTable } from "@/features/search/components/SearchResultsTable";
 import { SaveSearchButton } from "@/features/search/components/SaveSearchButton";
-import { ProblemError } from "@/lib/problem";
+import { problemMessage } from "@/lib/problemMessage";
 
 /**
  * SearchPage — the full search surface behind the ⌘K palette (S3).
@@ -274,9 +274,9 @@ export function SearchPage() {
           <div className="px-6 py-6">
             <Alert variant="destructive" data-testid="search-error">
               <AlertDescription>
-                {results.error instanceof ProblemError
-                  ? results.error.detail
-                  : t("errors.load_failed")}
+                {problemMessage(results.error, t, {
+                  action: "errors.load_failed",
+                })}
               </AlertDescription>
             </Alert>
           </div>

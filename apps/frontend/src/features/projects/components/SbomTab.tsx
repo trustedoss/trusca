@@ -26,7 +26,7 @@ import {
 } from "@/components/ui/card";
 import { SbomSignatureSection } from "@/features/projects/components/SbomSignatureSection";
 import { triggerBlobDownload } from "@/lib/download";
-import { ProblemError } from "@/lib/problem";
+import { problemMessage } from "@/lib/problemMessage";
 import {
   downloadSbom,
   type SbomFormat,
@@ -95,13 +95,15 @@ export function SbomTab({ projectId, lastScanAt, scanId }: SbomTabProps) {
         });
         triggerBlobDownload(result.blob, result.filename);
       } catch (err) {
-        const message =
-          err instanceof ProblemError
-            ? err.detail
-            : err instanceof Error
-              ? err.message
-              : t("sbom.errors.download_failed");
-        setError({ format, message });
+        setError({
+          format,
+          message: problemMessage(err, t, {
+            // The 409 here means "no completed scan yet", which the generic
+            // conflict wording would not say.
+            prefix: "sbom.errors",
+            action: "sbom.errors.download_failed",
+          }),
+        });
       } finally {
         setBusyFormat(null);
       }

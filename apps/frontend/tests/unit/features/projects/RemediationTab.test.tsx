@@ -222,8 +222,10 @@ describe("RemediationTab", () => {
     renderTab();
     await userEvent.click(screen.getByTestId("remediation-preview-button"));
     await waitFor(() => {
+      // A 422 keeps the backend's detail: it names what was rejected, which
+      // nothing on this side knows.
       expect(screen.getByTestId("remediation-preview-error")).toHaveTextContent(
-        "package.json could not be edited",
+        "Could not compute the preview. package.json could not be edited",
       );
     });
   });

@@ -26,7 +26,7 @@ import { Input } from "@/components/ui/input";
 import { useOAuthProviders } from "@/hooks/useOAuthProviders";
 import { fetchMe, postLogin } from "@/lib/api";
 import { getApiBase } from "@/lib/apiBase";
-import { ProblemError } from "@/lib/problem";
+import { problemMessage } from "@/lib/problemMessage";
 import { cn } from "@/lib/utils";
 import { useAuthStore } from "@/stores/authStore";
 
@@ -132,11 +132,9 @@ export function LoginPage() {
       setStatus("authenticated");
       navigate("/", { replace: true });
     } catch (err) {
-      if (err instanceof ProblemError) {
-        setApiError(err.detail || err.title || t("errors.unknown"));
-      } else {
-        setApiError(t("errors.network"));
-      }
+      // `prefix` rather than `action`: the auth namespace already words these
+      // classes for the sign-in context ("errors.network", "errors.unknown").
+      setApiError(problemMessage(err, t, { prefix: "errors" }));
     } finally {
       setSubmitting(false);
     }

@@ -61,7 +61,7 @@ import {
   useNotifications,
   useUpdateNotificationPrefs,
 } from "@/features/notifications/useNotifications";
-import { ProblemError } from "@/lib/problem";
+import { problemMessage } from "@/lib/problemMessage";
 import RelativeTime from "@/components/RelativeTime";
 import { cn } from "@/lib/utils";
 
@@ -326,11 +326,11 @@ export function NotificationsPage() {
     if (item.read_at === null) {
       markRead.mutate(item.id, {
         onError: (err) => {
-          const text =
-            err instanceof ProblemError
-              ? err.detail || t("errors.mark_read_failed")
-              : t("errors.mark_read_failed");
-          notify(text, "error", "mark_read_failed");
+          notify(
+            problemMessage(err, t, { action: "errors.mark_read_failed" }),
+            "error",
+            "mark_read_failed",
+          );
         },
       });
     }
@@ -345,11 +345,11 @@ export function NotificationsPage() {
         notify(t("toast.mark_all_done"), "success", "mark_all_done");
       },
       onError: (err) => {
-        const text =
-          err instanceof ProblemError
-            ? err.detail || t("errors.mark_all_failed")
-            : t("errors.mark_all_failed");
-        notify(text, "error", "mark_all_failed");
+        notify(
+          problemMessage(err, t, { action: "errors.mark_all_failed" }),
+          "error",
+          "mark_all_failed",
+        );
       },
     });
   }
@@ -360,11 +360,11 @@ export function NotificationsPage() {
         notify(t("toast.prefs_saved"), "success", "prefs_saved");
       },
       onError: (err) => {
-        const text =
-          err instanceof ProblemError
-            ? err.detail || t("errors.prefs_save_failed")
-            : t("errors.prefs_save_failed");
-        notify(text, "error", "prefs_save_failed");
+        notify(
+          problemMessage(err, t, { action: "errors.prefs_save_failed" }),
+          "error",
+          "prefs_save_failed",
+        );
       },
     });
   }

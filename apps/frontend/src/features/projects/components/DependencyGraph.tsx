@@ -23,7 +23,7 @@ import {
   nodeLabel,
   renderableEdgeCount,
 } from "@/features/projects/lib/sbomGraph";
-import { ProblemError } from "@/lib/problem";
+import { problemMessage } from "@/lib/problemMessage";
 
 /**
  * DependencyGraph — BomLens parity Phase H-1.
@@ -130,9 +130,9 @@ export function DependencyGraph({ projectId, scanId }: DependencyGraphProps) {
       <div className="px-6 py-6">
         <Alert variant="destructive" data-testid="dependency-graph-error">
           <AlertDescription>
-            {query.error instanceof ProblemError
-              ? query.error.detail
-              : t("dependency_graph.errors.load_failed")}
+            {problemMessage(query.error, t, {
+              action: "dependency_graph.errors.load_failed",
+            })}
           </AlertDescription>
         </Alert>
       </div>

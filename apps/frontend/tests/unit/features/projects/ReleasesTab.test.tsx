@@ -230,9 +230,10 @@ describe("ReleasesTab", () => {
     await waitFor(() => {
       expect(screen.getByTestId("releases-error")).toBeInTheDocument();
     });
-    expect(screen.getByTestId("releases-error").textContent).toContain(
-      "Release access denied — surfaced verbatim.",
-    );
+    const text = screen.getByTestId("releases-error").textContent ?? "";
+    expect(text).toContain("Could not load releases.");
+    expect(text).toContain("You do not have permission to do this.");
+    expect(text).not.toContain("surfaced verbatim");
   });
 
   it("shows the branch a snapshot was scanned from", async () => {

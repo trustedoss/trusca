@@ -80,7 +80,7 @@ import {
   readTabSearchParam,
   writeTabSearchParam,
 } from "@/features/projects/components/tabSearchParam";
-import { ProblemError } from "@/lib/problem";
+import { problemMessage } from "@/lib/problemMessage";
 import RelativeTime from "@/components/RelativeTime";
 import { toggleSingleValue } from "@/lib/searchParamsToggle";
 import { cn } from "@/lib/utils";
@@ -816,9 +816,9 @@ export function VulnerabilitiesTab({
         <div className="px-6 py-6">
           <Alert variant="destructive" data-testid="vulnerabilities-error">
             <AlertDescription>
-              {vulnerabilities.error instanceof ProblemError
-                ? vulnerabilities.error.detail
-                : t("vulnerabilities.errors.load_failed")}
+              {problemMessage(vulnerabilities.error, t, {
+                action: "vulnerabilities.errors.load_failed",
+              })}
             </AlertDescription>
           </Alert>
         </div>
@@ -1019,9 +1019,9 @@ function UpgradeClustersSection({
       <div className="px-6 py-6">
         <Alert variant="destructive" data-testid="vulnerabilities-upgrade-error">
           <AlertDescription>
-            {query.error instanceof ProblemError
-              ? query.error.detail
-              : t("vulnerabilities.errors.load_failed")}
+            {problemMessage(query.error, t, {
+              action: "vulnerabilities.errors.load_failed",
+            })}
           </AlertDescription>
         </Alert>
       </div>

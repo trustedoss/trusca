@@ -25,7 +25,7 @@ import { GateResultCard } from "@/features/projects/components/GateResultCard";
 import { LicenseDistributionChart } from "@/features/projects/components/LicenseDistributionChart";
 import { RecentScansTable } from "@/features/projects/components/RecentScansTable";
 import { SeverityDistributionChart } from "@/features/projects/components/SeverityDistributionChart";
-import { ProblemError } from "@/lib/problem";
+import { problemMessage } from "@/lib/problemMessage";
 import type { ProjectPublic } from "@/lib/projectsApi";
 import { toggleSearchParam } from "@/lib/searchParamsToggle";
 
@@ -154,12 +154,12 @@ export function OverviewTab({
 
   if (overview.isError) {
     const err = overview.error;
-    const title =
-      err instanceof ProblemError ? err.title : t("overview.errors.title");
-    const detail =
-      err instanceof ProblemError && err.detail
-        ? err.detail
-        : t("overview.errors.detail");
+    // The Problem's `title` used to be rendered verbatim here, which is how
+    // "Project Not Found" reached Korean screens.
+    const title = t("overview.errors.title");
+    const detail = problemMessage(err, t, {
+      action: "overview.errors.detail",
+    });
     return (
       <div className="p-6">
         <Alert variant="destructive" data-testid="overview-error">

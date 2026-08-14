@@ -29,7 +29,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
-import { ProblemError } from "@/lib/problem";
+import { problemMessage } from "@/lib/problemMessage";
 import {
   AI_USAGE_SCENARIOS,
   archiveProject,
@@ -181,12 +181,12 @@ export function SettingsTab({ projectId, project }: SettingsTabProps) {
     },
   });
 
-  const credentialError = (() => {
-    const err = credentialMutation.error;
-    if (!err) return null;
-    if (err instanceof ProblemError) return err.detail;
-    return err instanceof Error ? err.message : String(err);
-  })();
+  const credentialError = credentialMutation.error
+    ? problemMessage(credentialMutation.error, t, {
+        prefix: "settings.errors",
+        action: "settings.errors.credential_failed",
+      })
+    : null;
 
   const trimmedCredential = credentialInput.trim();
 
@@ -226,19 +226,21 @@ export function SettingsTab({ projectId, project }: SettingsTabProps) {
 
   const isArchived = project?.archived_at != null;
 
-  const submitError = (() => {
-    const err = saveMutation.error;
-    if (!err) return null;
-    if (err instanceof ProblemError) return err.detail;
-    return err instanceof Error ? err.message : String(err);
-  })();
+  const submitError = saveMutation.error
+    ? problemMessage(saveMutation.error, t, {
+        // This surface knows its 409 (a duplicate project name) and its 503
+        // (server configuration), both of which the shared wording misses.
+        prefix: "settings.errors",
+        action: "settings.errors.save_failed",
+      })
+    : null;
 
-  const archiveError = (() => {
-    const err = archiveMutation.error ?? unarchiveMutation.error;
-    if (!err) return null;
-    if (err instanceof ProblemError) return err.detail;
-    return err instanceof Error ? err.message : String(err);
-  })();
+  const archiveErrorSource = archiveMutation.error ?? unarchiveMutation.error;
+  const archiveError = archiveErrorSource
+    ? problemMessage(archiveErrorSource, t, {
+        action: "settings.errors.archive_failed",
+      })
+    : null;
 
   function onSubmit(values: FormValues) {
     setActionToast(null);

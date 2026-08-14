@@ -427,12 +427,13 @@ describe("OverviewTab", () => {
     await waitFor(() => {
       expect(screen.getByTestId("overview-error")).toBeInTheDocument();
     });
-    expect(screen.getByTestId("overview-error").textContent).toContain(
-      "Forbidden",
-    );
-    expect(screen.getByTestId("overview-error").textContent).toContain(
-      "You cannot view this project.",
-    );
+    // Neither the Problem's English title nor its English detail reaches the
+    // screen: the heading is the surface's own, and the body names the class.
+    const text = screen.getByTestId("overview-error").textContent ?? "";
+    expect(text).toContain("Could not load overview.");
+    expect(text).toContain("You do not have permission to do this.");
+    expect(text).not.toContain("Forbidden");
+    expect(text).not.toContain("You cannot view this project.");
   });
 
   it("renders the outdated KPI chip only when outdated_count > 0", async () => {

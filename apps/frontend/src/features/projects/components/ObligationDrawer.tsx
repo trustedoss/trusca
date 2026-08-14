@@ -21,7 +21,7 @@ import { useObligation } from "@/features/projects/api/useObligation";
 import { LicenseCategoryBadge } from "@/features/projects/components/LicenseCategoryBadge";
 import { useAdvisoryTranslation } from "@/lib/advisoryTranslation";
 import { cn } from "@/lib/utils";
-import { ProblemError } from "@/lib/problem";
+import { problemMessage } from "@/lib/problemMessage";
 
 /**
  * ObligationDrawer — Phase 3 PR #13.
@@ -112,9 +112,9 @@ export function ObligationDrawer({
         {detail.isError ? (
           <Alert variant="destructive" data-testid="obligation-drawer-error">
             <AlertDescription>
-              {detail.error instanceof ProblemError
-                ? detail.error.detail
-                : t("obligations.errors.load_detail")}
+              {problemMessage(detail.error, t, {
+                action: "obligations.errors.load_detail",
+              })}
             </AlertDescription>
           </Alert>
         ) : null}

@@ -159,8 +159,10 @@ describe("ProjectCreatePage", () => {
     await waitFor(() => {
       expect(screen.getByTestId("project-create-error")).toBeInTheDocument();
     });
+    // The surface names its own 409 rather than taking the generic conflict
+    // wording, and the backend's English detail stays off the screen.
     expect(screen.getByTestId("project-create-error")).toHaveTextContent(
-      "A project with this name already exists.",
+      "A project with this name already exists in the team.",
     );
   });
 });

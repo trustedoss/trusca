@@ -198,9 +198,10 @@ describe("SourceFileViewer", () => {
         problem: null,
       }),
     });
-    expect(screen.getByTestId("source-file-error").textContent).toContain(
-      "internal failure — surfaced verbatim",
-    );
+    const text = screen.getByTestId("source-file-error").textContent ?? "";
+    expect(text).toContain("Could not load this file.");
+    expect(text).toContain("The server could not complete this.");
+    expect(text).not.toContain("surfaced verbatim");
   });
 
   it("renders skeletons while loading", () => {

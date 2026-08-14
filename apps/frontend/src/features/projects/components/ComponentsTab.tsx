@@ -64,7 +64,7 @@ import {
   readTabSearchParam,
   writeTabSearchParam,
 } from "@/features/projects/components/tabSearchParam";
-import { ProblemError } from "@/lib/problem";
+import { problemMessage } from "@/lib/problemMessage";
 import { toggleSingleValue } from "@/lib/searchParamsToggle";
 import { cn } from "@/lib/utils";
 
@@ -631,9 +631,9 @@ export function ComponentsTab({ projectId, scanId }: ComponentsTabProps) {
         <div className="px-6 py-6">
           <Alert variant="destructive" data-testid="components-error">
             <AlertDescription>
-              {components.error instanceof ProblemError
-                ? components.error.detail
-                : t("components.errors.load_failed")}
+              {problemMessage(components.error, t, {
+                action: "components.errors.load_failed",
+              })}
             </AlertDescription>
           </Alert>
         </div>

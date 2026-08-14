@@ -266,7 +266,7 @@ function importErrorMessage(
         return t("vulnerabilities.vex.import_error_malformed");
       default:
         // `detail` is server-supplied text — rendered as escaped text by React.
-        return error.detail || t("vulnerabilities.vex.import_error_generic");
+        return error.detail || t("vulnerabilities.vex.import_error_generic"); // problem-detail-lint-allow: import failures name the offending statement
     }
   }
   return t("vulnerabilities.vex.import_error_generic");
@@ -341,7 +341,9 @@ function VexImportSummaryPanel({ summary }: SummaryPanelProps) {
                 </div>
                 {/* `detail`, `product`, `vulnerability` are document-supplied;
                     rendered as escaped text by React (no innerHTML). */}
-                <p className="mt-1 text-muted-foreground">{err.detail}</p>
+                <p className="mt-1 text-muted-foreground">
+                  {err.detail /* problem-detail-lint-allow: per-statement text from the uploaded VEX document, not a Problem */}
+                </p>
               </li>
             ))}
           </ul>

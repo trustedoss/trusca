@@ -351,9 +351,9 @@ function mutationErrorMessage(
         // The server's governance message (e.g. "the waiver expiry … exceeds the
         // maximum of 90 days") is precise — surface it when present, else the
         // generic malformed-input copy.
-        return error.detail || t("waive.error_malformed");
+        return error.detail || t("waive.error_malformed"); // problem-detail-lint-allow: the 422 names the governance limit that was exceeded
       default:
-        return error.detail || t("waive.error_generic");
+        return error.detail || t("waive.error_generic"); // problem-detail-lint-allow: policy rejections carry the rule they failed
     }
   }
   return t("waive.error_generic");

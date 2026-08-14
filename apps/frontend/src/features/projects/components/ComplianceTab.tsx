@@ -99,7 +99,7 @@ import { LicenseDrawer } from "@/features/projects/components/LicenseDrawer";
 import { LicenseWaiveAction } from "@/features/projects/components/LicenseWaiveAction";
 import { useAdvisoryTranslation } from "@/lib/advisoryTranslation";
 import type { LicensePolicyOut } from "@/lib/licensePoliciesApi";
-import { ProblemError } from "@/lib/problem";
+import { problemMessage } from "@/lib/problemMessage";
 import { cn } from "@/lib/utils";
 
 const PAGE_SIZE = 100;
@@ -498,9 +498,9 @@ export function ComplianceTab({
         <div className="px-6 py-6">
           <Alert variant="destructive" data-testid="compliance-error">
             <AlertDescription>
-              {compliance.error instanceof ProblemError
-                ? compliance.error.detail
-                : t("compliance.errors.load_list")}
+              {problemMessage(compliance.error, t, {
+                action: "compliance.errors.load_list",
+              })}
             </AlertDescription>
           </Alert>
         </div>

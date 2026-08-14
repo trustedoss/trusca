@@ -16,7 +16,7 @@ import {
 import { Skeleton } from "@/components/ui/skeleton";
 import { useComponent } from "@/features/projects/api/useComponent";
 import { ComponentDetailBody } from "@/features/projects/components/ComponentDetailBody";
-import { ProblemError } from "@/lib/problem";
+import { problemMessage } from "@/lib/problemMessage";
 
 /**
  * ComponentDrawer — Phase 3 PR #10, refactored W10-E.
@@ -150,9 +150,7 @@ export function ComponentDrawer({
         {detail.isError ? (
           <Alert variant="destructive" data-testid="component-drawer-error">
             <AlertDescription>
-              {detail.error instanceof ProblemError
-                ? detail.error.detail
-                : t("drawer.error")}
+              {problemMessage(detail.error, t, { action: "drawer.error" })}
             </AlertDescription>
           </Alert>
         ) : null}

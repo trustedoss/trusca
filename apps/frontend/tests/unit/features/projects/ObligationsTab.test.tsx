@@ -188,9 +188,10 @@ describe("ObligationsTab", () => {
     await waitFor(() => {
       expect(screen.getByTestId("obligations-error")).toBeInTheDocument();
     });
-    expect(screen.getByTestId("obligations-error").textContent).toContain(
-      "Obligation access denied — surfaced verbatim.",
-    );
+    const text = screen.getByTestId("obligations-error").textContent ?? "";
+    expect(text).toContain("Could not load the obligation list.");
+    expect(text).toContain("You do not have permission to do this.");
+    expect(text).not.toContain("surfaced verbatim");
   });
 
   it("changing the kind filter triggers a query at offset 0", async () => {

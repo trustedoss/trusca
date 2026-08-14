@@ -74,7 +74,11 @@
     "error_name_max": "Name must be 100 characters or less",
     "error_description_max": "Description must be 500 characters or less",
     "error_git_url_invalid": "Enter a valid repository URL (https://, ssh://, git@host:…, or git+ssh://)",
-    "error_default_branch_invalid": "Branch names may use letters, numbers, and . _ / - only"
+    "error_default_branch_invalid": "Branch names may use letters, numbers, and . _ / - only",
+    "error_failed": "Could not register the project.",
+    "errors": {
+      "conflict": "A project with this name already exists in the team."
+    }
   },
   "summary": {
     "severity_card": {

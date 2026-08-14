@@ -31,7 +31,7 @@ import type {
   ComponentSeverity,
   LicenseCategoryName,
 } from "@/features/projects/api/projectDetailApi";
-import { ProblemError } from "@/lib/problem";
+import { problemMessage } from "@/lib/problemMessage";
 
 /**
  * InventoryPage — organization-wide component inventory (S2).
@@ -283,9 +283,9 @@ export function InventoryPage() {
           <div className="px-6 py-6">
             <Alert variant="destructive" data-testid="inventory-error">
               <AlertDescription>
-                {query.error instanceof ProblemError
-                  ? query.error.detail
-                  : t("errors.load_failed")}
+                {problemMessage(query.error, t, {
+                  action: "errors.load_failed",
+                })}
               </AlertDescription>
             </Alert>
           </div>

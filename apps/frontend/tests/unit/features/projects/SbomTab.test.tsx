@@ -171,8 +171,10 @@ describe("SbomTab", () => {
     render(<SbomTab projectId="proj-1" />);
     await user.click(screen.getByTestId("sbom-download-spdx-json"));
     await waitFor(() => {
+      // This surface names its own 409 rather than taking the generic
+      // conflict wording, and the backend's English detail stays off screen.
       expect(screen.getByTestId("sbom-error")).toHaveTextContent(
-        "No completed scan yet.",
+        "There is no completed scan to build an SBOM from yet.",
       );
     });
   });

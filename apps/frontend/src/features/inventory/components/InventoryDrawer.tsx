@@ -15,7 +15,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { useComponentUsage } from "@/features/inventory/api/useInventory";
 import { COMPONENTS_SEARCH_PARAM } from "@/features/projects/components/tabSearchParam";
-import { ProblemError } from "@/lib/problem";
+import { problemMessage } from "@/lib/problemMessage";
 
 export interface InventoryDrawerProps {
   /** `null` closes the drawer. Comes from `?inv_component=` so reload restores it. */
@@ -64,9 +64,9 @@ export function InventoryDrawer({ componentId, onClose }: InventoryDrawerProps) 
             data-testid="inventory-drawer-error"
           >
             <AlertDescription>
-              {usage.error instanceof ProblemError
-                ? usage.error.detail
-                : t("errors.load_failed")}
+              {problemMessage(usage.error, t, {
+                action: "errors.load_failed",
+              })}
             </AlertDescription>
           </Alert>
         ) : null}

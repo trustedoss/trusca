@@ -194,7 +194,7 @@ describe("SbomSignatureSection", () => {
     await user.click(screen.getByTestId("sbom-signature-download-bundle"));
     await waitFor(() => {
       expect(screen.getByTestId("sbom-signature-error")).toHaveTextContent(
-        "Something went wrong assembling the bundle.",
+        "Could not load the signature. The server could not complete this.",
       );
     });
     // A 500 is not the unsigned branch.
