@@ -15,6 +15,7 @@ import { Virtuoso } from "react-virtuoso";
 
 import { EmptyState } from "@/components/EmptyState";
 import { Alert, AlertDescription } from "@/components/ui/alert";
+import { Button } from "@/components/ui/button";
 import {
   Card,
   CardContent,
@@ -91,9 +92,9 @@ import { cn } from "@/lib/utils";
  * Virtualized vulnerability findings table + drawer for the project detail
  * page. Mirrors the structure of `ComponentsTab`:
  *
- *   - `useVulnerabilities` is a paginated `useQuery` keyed on the entire
+ *   - `useVulnerabilities` is an infinite offset query keyed on the entire
  *     filter tuple. Filter or sort changes naturally invalidate the cached
- *     page and refetch from offset 0.
+ *     pages and refetch from offset 0.
  *   - Search input is debounced 300ms before it hits the query.
  *   - Filters, sort, and the selected drawer finding id are mirrored into
  *     URL search params (deep-link + reload survival). The drawer key is
@@ -101,9 +102,12 @@ import { cn } from "@/lib/utils";
  *     `?drawer=<component_id>` (PR #10).
  *   - Virtuoso renders fixed 40px rows (CLAUDE.md compact density).
  *
- * Pagination is offset/limit (not cursor) because PATCH writes a full detail
- * payload back into a single page cache; cursor pages would need
- * reconciliation across multiple cached chunks.
+ * Pagination is offset/limit rather than cursor, and infinite rather than
+ * paged. It was a single page for a while, because PATCH writes a full detail
+ * payload back into the cache and one page needed no reconciliation. The
+ * result was a table whose 101st row could not be reached by any means the UI
+ * offered: `?page=` was written but never incremented, and no control existed
+ * to change it.
  */
 
 const PAGE_SIZE = 100;
@@ -244,12 +248,6 @@ function parseOrder(raw: string | null): SortOrder {
   return raw === "asc" ? "asc" : "desc";
 }
 
-function parsePage(raw: string | null): number {
-  const n = raw ? Number.parseInt(raw, 10) : 1;
-  if (!Number.isFinite(n) || n < 1) return 1;
-  return n;
-}
-
 /**
  * Parse the `min_epss` URL param into a [0, 1] threshold, or `null` for "no
  * threshold". Out-of-range / non-numeric values fall back to null so a hand
@@ -305,6 +303,12 @@ export interface VulnerabilitiesTabProps {
    * old snapshot's findings would be wrong. Read paths are unaffected.
    */
   readOnly?: boolean;
+  /**
+   * Starts a scan from the empty state. Omitted when the caller cannot scan
+   * (no permission, read-only demo, historical snapshot), and the empty state
+   * then explains without offering a button that would fail.
+   */
+  onScan?: () => void;
 }
 
 export function VulnerabilitiesTab({
@@ -312,6 +316,7 @@ export function VulnerabilitiesTab({
   projectName,
   scanId,
   readOnly = false,
+  onScan,
 }: VulnerabilitiesTabProps) {
   const { t } = useTranslation("project_detail");
   const [searchParams, setSearchParams] = useSearchParams();
@@ -367,9 +372,6 @@ export function VulnerabilitiesTab({
   // wants to eyeball what a just-uploaded VEX document changed on this page).
   const [vexSuppressedOnly, setVexSuppressedOnly] = useState<boolean>(
     () => searchParams.get("vex_suppressed") === "1",
-  );
-  const [page, setPage] = useState<number>(() =>
-    parsePage(searchParams.get("page")),
   );
 
   // W9 #52 — "+ Add filter" mount-on-demand facets. We seed the set from the
@@ -437,10 +439,43 @@ export function VulnerabilitiesTab({
     setSelectedIds((prev) => (prev.size === 0 ? prev : new Set()));
   }
 
+  /**
+   * Whether anything is narrowing the list. Drives which empty state the user
+   * gets: filtered-to-nothing, or nothing to show at all.
+   */
+  const hasNarrowingFilters =
+    debouncedSearch.trim().length > 0 ||
+    severity.length > 0 ||
+    status.length > 0 ||
+    minEpss != null ||
+    reachable != null ||
+    sla != null ||
+    licenseCategory.length > 0 ||
+    vexSuppressedOnly;
+
+  function clearAllFilters() {
+    setSearch("");
+    setDebouncedSearch("");
+    setSeverity([]);
+    setStatus([]);
+    setMinEpss(null);
+    setReachable(null);
+    setSla(null);
+    setLicenseCategory([]);
+    setVexSuppressedOnly(false);
+  }
+
   // Drawer state — `?vuln=<finding_id>` so reload restores the selection.
   const drawerId = searchParams.get("vuln");
   const drawerOpen = drawerId != null && drawerId.length > 0;
 
+  /**
+   * Opening the drawer pushes a history entry, so Back closes it instead of
+   * leaving the tab. It used to replace, which meant Back threw away the
+   * user's filters and scroll position to get out of a panel they opened by
+   * clicking one row. Closing pushes too, matching PoliciesPage: Back then
+   * reopens what was just closed, which is what a browser is expected to do.
+   */
   function setDrawerVuln(findingId: string | null) {
     setSearchParams(
       (prev) => {
@@ -452,7 +487,7 @@ export function VulnerabilitiesTab({
         }
         return next;
       },
-      { replace: true },
+      { replace: false },
     );
   }
 
@@ -462,9 +497,6 @@ export function VulnerabilitiesTab({
     if (debounceRef.current) clearTimeout(debounceRef.current);
     debounceRef.current = setTimeout(() => {
       setDebouncedSearch(search);
-      // A new search resets pagination to page 1 — otherwise the user could
-      // be stuck on page 5 of a now-tiny result set.
-      setPage(1);
     }, 300);
     return () => {
       if (debounceRef.current) clearTimeout(debounceRef.current);
@@ -499,8 +531,10 @@ export function VulnerabilitiesTab({
         else next.delete("license_category");
         if (vexSuppressedOnly) next.set("vex_suppressed", "1");
         else next.delete("vex_suppressed");
-        if (page !== 1) next.set("page", String(page));
-        else next.delete("page");
+        // No `page`: the table is infinite now, and the parameter it used to
+        // write was never incremented by anything, so it only ever described
+        // a position the user could not reach.
+        next.delete("page");
         return next;
       },
       { replace: true },
@@ -516,7 +550,6 @@ export function VulnerabilitiesTab({
     sla,
     licenseCategory,
     vexSuppressedOnly,
-    page,
     setSearchParams,
   ]);
 
@@ -532,7 +565,6 @@ export function VulnerabilitiesTab({
       sla,
       license_category: licenseCategory,
       limit: PAGE_SIZE,
-      offset: (page - 1) * PAGE_SIZE,
       scanId,
     }),
     [
@@ -545,7 +577,6 @@ export function VulnerabilitiesTab({
       reachable,
       sla,
       licenseCategory,
-      page,
       scanId,
     ],
   );
@@ -580,7 +611,6 @@ export function VulnerabilitiesTab({
     reachable,
     sla,
     licenseKey,
-    page,
     scanId,
   ]);
 
@@ -593,17 +623,42 @@ export function VulnerabilitiesTab({
   const projectRole: TriageRole =
     overview.data?.current_user_role ?? "developer";
 
-  const total = vulnerabilities.data?.total ?? 0;
-  const fetchedItems = vulnerabilities.data?.items;
+  const pages = vulnerabilities.data?.pages;
+  const total = pages?.[0]?.total ?? 0;
+
+  const fetchedItems: VulnerabilityListItem[] = useMemo(
+    () => (pages ?? []).flatMap((p) => p.items),
+    [pages],
+  );
 
   // Client-side narrowing for the "suppressed via VEX" filter. A finding counts
   // as VEX-suppressed when its last status mutation came from a VEX import.
-  const items: VulnerabilityListItem[] = useMemo(() => {
-    const source = fetchedItems ?? [];
-    return vexSuppressedOnly
-      ? source.filter((it) => it.analysis_source === "vex_import")
-      : source;
-  }, [fetchedItems, vexSuppressedOnly]);
+  const items: VulnerabilityListItem[] = useMemo(
+    () =>
+      vexSuppressedOnly
+        ? fetchedItems.filter((it) => it.analysis_source === "vex_import")
+        : fetchedItems,
+    [fetchedItems, vexSuppressedOnly],
+  );
+
+  // What the summary band counts. Without the VEX filter the server's total is
+  // the honest number: rows beyond those loaded exist and are reachable by
+  // scrolling. With it, the narrowing happens here, over loaded rows only, so
+  // the server total would describe a different set than the one on screen —
+  // it used to say "1,240" above four visible rows.
+  const shownTotal = vexSuppressedOnly ? items.length : total;
+
+  /**
+   * The VEX filter narrows rows here rather than on the server, so an empty
+   * list does not mean an empty result: the suppressed findings may sit in a
+   * page nobody has asked for yet. Scrolling is the only thing that requests
+   * the next page, and there is nothing to scroll when no row rendered, so
+   * the empty state has to offer the load itself.
+   */
+  const moreToSearch =
+    items.length === 0 &&
+    fetchedItems.length > 0 &&
+    Boolean(vulnerabilities.hasNextPage);
 
   // M-28 — current statuses of the selected rows. Selection is single-page
   // (D-bulk) and cleared on any row-set shift, so every selected id is
@@ -630,12 +685,10 @@ export function VulnerabilitiesTab({
     if (!next) {
       setSort(DEFAULT_SORT);
       setOrder("desc");
-      setPage(1);
       return;
     }
     setSort(next.key as VulnerabilitySortKey);
     setOrder(next.order);
-    setPage(1);
   }
 
   // KEV feature — the toolbar's sort select shares the same `sort` state as
@@ -647,7 +700,6 @@ export function VulnerabilitiesTab({
   function handleSortKeyChange(next: VulnerabilitySortKey) {
     setSort(next);
     setOrder(next === "sla_due" ? "asc" : "desc");
-    setPage(1);
   }
 
   // Finding-level severity distribution from the vulnerabilities list endpoint
@@ -659,7 +711,9 @@ export function VulnerabilitiesTab({
   // stable as the page rows narrow. The `unknown` bucket lands in the chart's
   // `none` slot with a relabeled legend ("Unknown") so we don't fork the
   // chart component for one extra bucket.
-  const rawDistribution = vulnerabilities.data?.severity_distribution ?? {};
+  // Every page repeats the same whole-project distribution, so the first one
+  // is as good as any and does not shift as more pages load.
+  const rawDistribution = pages?.[0]?.severity_distribution ?? {};
   const severityDistribution = {
     critical: rawDistribution.critical ?? 0,
     high: rawDistribution.high ?? 0,
@@ -708,7 +762,6 @@ export function VulnerabilitiesTab({
                   const vulnKey: VulnSeverity =
                     key === "none" ? "unknown" : (key as VulnSeverity);
                   setSeverity((prev) => toggleSingleValue(prev, vulnKey));
-                  setPage(1);
                 }}
               />
             </CardContent>
@@ -726,27 +779,22 @@ export function VulnerabilitiesTab({
         status={status}
         onStatusChange={(next) => {
           setStatus(next);
-          setPage(1);
         }}
         minEpss={minEpss}
         onMinEpssChange={(next) => {
           setMinEpss(next);
-          setPage(1);
         }}
         reachable={reachable}
         onReachableChange={(next) => {
           setReachable(next);
-          setPage(1);
         }}
         sla={sla}
         onSlaChange={(next) => {
           setSla(next);
-          setPage(1);
         }}
         vexSuppressedOnly={vexSuppressedOnly}
         onVexSuppressedOnlyChange={(next) => {
           setVexSuppressedOnly(next);
-          setPage(1);
         }}
         projectId={projectId}
         projectName={projectName}
@@ -755,12 +803,10 @@ export function VulnerabilitiesTab({
         severity={severity}
         onSeverityChange={(next) => {
           setSeverity(next);
-          setPage(1);
         }}
         licenseCategory={licenseCategory}
         onLicenseCategoryChange={(next) => {
           setLicenseCategory(next);
-          setPage(1);
         }}
         mountedExtraFilters={mountedExtraFilters}
         onMountExtraFilter={mountExtraFilter}
@@ -777,12 +823,10 @@ export function VulnerabilitiesTab({
         severity={severity}
         onSeverityChange={(next) => {
           setSeverity(next);
-          setPage(1);
         }}
         licenseCategory={licenseCategory}
         onLicenseCategoryChange={(next) => {
           setLicenseCategory(next);
-          setPage(1);
         }}
       />
 
@@ -792,14 +836,24 @@ export function VulnerabilitiesTab({
         // band reads as part of the table stack rather than a heavy seam.
         className="flex items-center justify-between border-b border-border/60 px-6 py-2 text-xs text-muted-foreground"
         data-testid="vulnerabilities-summary"
-        data-total={total}
+        data-total={shownTotal}
         data-loaded={items.length}
       >
         <span>
-          {t("vulnerabilities.summary", {
-            loaded: items.length,
-            total,
-          })}
+          {vexSuppressedOnly
+            ? t(
+                vulnerabilities.hasNextPage
+                  ? "vulnerabilities.summary_vex_suppressed_more"
+                  : "vulnerabilities.summary_vex_suppressed",
+                {
+                  shown: items.length,
+                  scanned: fetchedItems.length,
+                },
+              )
+            : t("vulnerabilities.summary", {
+                loaded: items.length,
+                total,
+              })}
         </span>
       </div>
 
@@ -842,8 +896,57 @@ export function VulnerabilitiesTab({
           data-testid="vulnerabilities-empty"
           className="m-6"
           icon={<ShieldCheck />}
-          title={t("vulnerabilities.empty.title")}
-          description={t("vulnerabilities.empty.subtitle")}
+          title={
+            moreToSearch
+              ? t("vulnerabilities.empty.partial_title")
+              : hasNarrowingFilters
+                ? t("vulnerabilities.empty.filtered_title")
+                : t("vulnerabilities.empty.title")
+          }
+          description={
+            moreToSearch
+              ? t("vulnerabilities.empty.partial_subtitle", {
+                  scanned: fetchedItems.length,
+                })
+              : hasNarrowingFilters
+                ? t("vulnerabilities.empty.filtered_subtitle")
+                : t("vulnerabilities.empty.subtitle")
+          }
+          // Two different empty states wearing one label until now. Zero rows
+          // because a filter excluded them wants the filter cleared; zero rows
+          // because nothing has been scanned wants a scan. Offering "run a
+          // scan" to someone with a severity filter on sends them to do work
+          // that will not change what they see.
+          action={
+            moreToSearch ? (
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => void vulnerabilities.fetchNextPage()}
+                disabled={vulnerabilities.isFetchingNextPage}
+                data-testid="vulnerabilities-empty-load-more"
+              >
+                {t("vulnerabilities.empty.load_more")}
+              </Button>
+            ) : hasNarrowingFilters ? (
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={clearAllFilters}
+                data-testid="vulnerabilities-empty-clear-filters"
+              >
+                {t("vulnerabilities.empty.clear_filters")}
+              </Button>
+            ) : onScan ? (
+              <Button
+                size="sm"
+                onClick={onScan}
+                data-testid="vulnerabilities-empty-scan"
+              >
+                {t("vulnerabilities.empty.run_scan")}
+              </Button>
+            ) : undefined
+          }
         />
       ) : null}
 
@@ -919,12 +1022,20 @@ export function VulnerabilitiesTab({
             <div
               className="flex-1"
               data-testid="vulnerabilities-virtual"
-              data-total={total}
+              data-total={shownTotal}
               data-loaded={items.length}
             >
               <Virtuoso
                 components={VIRTUOSO_TABLE_BODY}
                 data={items}
+                endReached={() => {
+                  if (
+                    vulnerabilities.hasNextPage &&
+                    !vulnerabilities.isFetchingNextPage
+                  ) {
+                    void vulnerabilities.fetchNextPage();
+                  }
+                }}
                 style={{
                   height: "calc(100vh - var(--layout-header) - 240px)",
                 }}

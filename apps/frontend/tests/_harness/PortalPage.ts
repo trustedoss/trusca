@@ -795,6 +795,39 @@ export class PortalPage {
     return raw == null ? 0 : Number(raw);
   }
 
+  /**
+   * How many rows are currently loaded into the virtual list, as opposed to
+   * how many the server says exist. The two differ while an infinite list is
+   * still fetching pages, which is the whole point of the distinction.
+   */
+  async getVulnerabilityLoadedCount(): Promise<number> {
+    const summary = this.page.getByTestId("vulnerabilities-summary");
+    if ((await summary.count()) === 0) return 0;
+    const raw = await summary.first().getAttribute("data-loaded");
+    return raw == null ? 0 : Number(raw);
+  }
+
+  /**
+   * Scroll the vulnerabilities list to its end and wait for the loaded count
+   * to grow, which is how the next page is requested. Returns the new count.
+   *
+   * Virtuoso fires `endReached` from a real scroll on a measured viewport, so
+   * this drives the scroller itself rather than calling the handler.
+   */
+  async scrollVulnerabilitiesToEnd(previousLoaded: number): Promise<number> {
+    const scroller = this.page
+      .getByTestId("vulnerabilities-virtual")
+      .locator('[role="rowgroup"]')
+      .first();
+    await scroller.evaluate((el) => {
+      el.scrollTop = el.scrollHeight;
+    });
+    await expect
+      .poll(() => this.getVulnerabilityLoadedCount(), { timeout: 15_000 })
+      .toBeGreaterThan(previousLoaded);
+    return this.getVulnerabilityLoadedCount();
+  }
+
   // ───── W9-#53 — Vulnerabilities "Group by upgrade" ─────────────────────
   /**
    * Flip the vulnerabilities list grouping via the segmented control:
