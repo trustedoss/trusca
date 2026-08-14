@@ -213,6 +213,35 @@ def sanitize_jsonb_text(value: str) -> str:
     ).strip()
 
 
+def document_components(doc: dict[str, Any]) -> list[dict[str, Any]]:
+    """Every component the document describes: its subject, then its list.
+
+    jq: ``[.metadata.component // empty] + [.components[]?]``
+
+    ``metadata.component`` is what the document is *about*, and CycloneDX says
+    it is a component like any other. Reading only ``components[]`` is how an
+    ML-BOM whose subject is the model comes to report that it contains no
+    models: the thing being described is not in the list of things it depends
+    on, and nothing else claims to be a model.
+
+    Order matters to callers that report the first match, and the subject comes
+    first because it is the document's own claim about itself.
+
+    Shared by the G7 evaluator's subject binding and the AI usage-verdict
+    axis, which had the same question and must not answer it two ways.
+    """
+    out: list[dict[str, Any]] = []
+    metadata = doc.get("metadata")
+    if isinstance(metadata, dict):
+        subject = metadata.get("component")
+        if isinstance(subject, dict):
+            out.append(subject)
+    components = doc.get("components")
+    if isinstance(components, list):
+        out.extend(c for c in components if isinstance(c, dict))
+    return out
+
+
 @dataclass
 class Check:
     id: str

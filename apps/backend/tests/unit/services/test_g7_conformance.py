@@ -671,3 +671,124 @@ def test_as_dict_omits_evidence_when_absent(fixture_checks: dict[str, Check]) ->
     d = fixture_checks["g7-meta-author"].as_dict()  # warn — no evidence element
     assert "evidence" not in d
     assert d["cluster"] == "metadata"
+
+
+# ---------------------------------------------------------------------------
+# Issue #53 — the document's subject is a component too
+# ---------------------------------------------------------------------------
+
+SUBJECT_FIXTURE = (
+    Path(__file__).resolve().parents[2]
+    / "fixtures"
+    / "sbom_ingest"
+    / "aibom-model-subject-1_7.json"
+)
+
+
+def _subject_doc() -> dict[str, Any]:
+    document: dict[str, Any] = json.loads(SUBJECT_FIXTURE.read_text(encoding="utf-8"))
+    return document
+
+
+def test_model_binding_reads_the_document_subject() -> None:
+    """An ML-BOM whose subject IS the model carries a model.
+
+    Reading only ``components[]`` made a document *about* a model report that
+    it contained none. Both shapes are legitimate CycloneDX: a generator that
+    describes its own job puts the model in the list, a supplier publishing the
+    model makes it the subject.
+    """
+    doc = _subject_doc()
+    assert doc["components"] == [], "fixture should carry the model as its subject"
+    models = g7._ml_components(doc)
+    assert [m.get("name") for m in models] == [FIXTURE_MODEL]
+
+
+def test_dataset_binding_does_not_read_the_subject() -> None:
+    """Datasets stay ``components[]``-only, as upstream's expressions are.
+
+    A document's subject is the model or the software product, never the
+    training data, so widening this binding too would invent datasets.
+    """
+    doc = _subject_doc()
+    doc["metadata"]["component"] = {"type": "data", "name": "not-a-dataset-entry"}
+    assert g7._data_components(doc) == []
+
+
+def test_subject_model_scores_the_per_model_elements() -> None:
+    """The nine per-model elements the fixture satisfies pass on both shapes.
+
+    Before this binding they all read "no machine-learning-model components" —
+    a document that answered the element was told it had nothing to answer
+    with.
+    """
+    checks = {c.id: c for c in g7.evaluate_g7(_subject_doc())}
+    for element_id in sorted(g7.missing_element_ids()):
+        check = checks[element_id]
+        assert check.detail != "no machine-learning-model components", element_id
+    assert checks["g7-model-name"].status == "pass"
+    assert checks["g7-model-license"].status == "pass"
+    assert checks["g7-model-id"].evidence
+
+
+def test_subject_model_makes_the_baseline_apply() -> None:
+    """``appliesWhen`` shares the binding, so the whole baseline was skipped.
+
+    This is the larger half of the defect: not nine elements reading warn, but
+    all 51 disappearing from the verdict, because the gate that decides whether
+    G7 applies asked the same narrow question.
+    """
+    from services import sbom_conformance
+
+    raw = json.dumps(_subject_doc()).encode()
+    result = sbom_conformance.evaluate(raw)
+    g7_checks = [c for c in result.checks if c.id.startswith("g7-")]
+    assert len(g7_checks) == 51
+
+
+def test_software_product_name_reads_absent_for_a_model_subject() -> None:
+    """A model subject is not a software product, and the element says so.
+
+    ``g7-slp-name`` asks for a subject that is NOT a model, so moving the model
+    into the subject slot legitimately turns it from pass to warn. Pinned so a
+    future reading of "widen every binding" does not quietly break it.
+    """
+    checks = {c.id: c for c in g7.evaluate_g7(_subject_doc())}
+    assert checks["g7-slp-name"].status == "warn"
+
+
+def test_subject_and_list_shapes_agree_on_the_model_elements() -> None:
+    """Where the model is recorded must not change what is known about it."""
+    listed = {c.id: c.status for c in g7.evaluate_g7(json.loads(FIXTURE.read_text()))}
+    subject = {c.id: c.status for c in g7.evaluate_g7(_subject_doc())}
+    model_ids = sorted(g7.missing_element_ids())
+    assert [listed[i] for i in model_ids] == [subject[i] for i in model_ids]
+
+
+def test_spec_wording_matches_the_registry_declaration() -> None:
+    """The registry declares what it measures; the spec object must agree.
+
+    ``subjectLabel`` and ``emptySubjectDetail`` are read by a person in a
+    detail line, and they live in two places now: the vendored registry (where
+    upstream states them) and ``G7_SPEC`` (where our evaluator reads them). The
+    jq bindings above them cannot be checked automatically because this port
+    does not execute jq, which is exactly why the two strings that CAN be
+    checked are.
+    """
+    registry = g7.load_registry()
+    assert registry["subjectLabel"] == g7.G7_SPEC.subject_label
+    assert registry["emptySubjectDetail"] == g7.G7_SPEC.empty_subject_detail
+
+
+def test_registry_declares_the_subject_inclusive_binding() -> None:
+    """Both jq bindings must name ``metadata.component``.
+
+    A registry refresh that reverted them to a ``components[]``-only reading
+    would silently disagree with this port, and the disagreement is the defect
+    issue #53 describes. This does not execute the jq — it pins that the
+    declaration and the port are talking about the same document shape.
+    """
+    registry = g7.load_registry()
+    for key in ("subject", "appliesWhen"):
+        assert "metadata.component" in registry[key], key
+        assert "machine-learning-model" in registry[key], key
