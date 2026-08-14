@@ -250,6 +250,12 @@ class WebhookDelivery(Base):
         nullable=True,
     )
 
+    # Gap #39: how the delivery ended. ``enqueued_scan_id IS NULL`` collapsed
+    # four different endings into one, so "which pushes went unscanned, and
+    # why" needed log aggregation rather than a SELECT. NULL means a row
+    # written before this column existed.
+    outcome: Mapped[str | None] = mapped_column(String(32), nullable=True)
+
     __table_args__ = (
         CheckConstraint(
             "provider IN ('github', 'gitlab')",
@@ -265,6 +271,9 @@ class WebhookDelivery(Base):
             unique=True,
         ),
         Index("ix_webhook_deliveries_received_at", "received_at"),
+        # "which deliveries went unscanned in the last day, and why" is the
+        # query this column exists for, and it is time-ordered.
+        Index("ix_webhook_deliveries_outcome_received", "outcome", "received_at"),
         Index("ix_webhook_deliveries_api_key_id", "api_key_id"),
         Index("ix_webhook_deliveries_project_id", "project_id"),
         Index("ix_webhook_deliveries_enqueued_scan_id", "enqueued_scan_id"),

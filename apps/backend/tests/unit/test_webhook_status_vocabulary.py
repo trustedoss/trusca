@@ -49,3 +49,45 @@ def test_gitlab_router_documents_every_status() -> None:
 def test_the_two_routers_agree_with_each_other() -> None:
     """Both endpoints are one contract; a status added to one must reach both."""
     assert _documented_statuses(github_router) == _documented_statuses(gitlab_router)
+
+
+def test_outcome_vocabulary_is_the_status_set_minus_duplicate() -> None:
+    """What a delivery row can record, versus what a request can answer.
+
+    ``duplicate`` describes this request ("we have seen this delivery"), not
+    how the delivery ended. Recording it would overwrite the ending the row
+    earned on its first pass, which is the one an operator asking "did this
+    push get scanned" needs.
+    """
+    from services.webhook_service import WEBHOOK_OUTCOMES, WEBHOOK_STATUSES
+
+    assert WEBHOOK_OUTCOMES == WEBHOOK_STATUSES - {"duplicate"}
+    assert "duplicate" not in WEBHOOK_OUTCOMES
+
+
+def test_superseparable_outcomes_are_outcomes() -> None:
+    """A redelivery can only supersede a value the column can actually hold."""
+    from services.webhook_service import _SUPERSEDABLE_OUTCOMES, WEBHOOK_OUTCOMES
+
+    assert _SUPERSEDABLE_OUTCOMES <= WEBHOOK_OUTCOMES
+    # Both capacity skips, and nothing else: an ignored event will be ignored
+    # again, and an active scan on the ref already covers the commit.
+    assert _SUPERSEDABLE_OUTCOMES == {
+        "skipped_team_at_capacity",
+        "skipped_disk_full",
+    }
+
+
+def test_outcome_values_fit_the_column() -> None:
+    """``webhook_deliveries.outcome`` is String(32)."""
+    from sqlalchemy import String
+
+    from models.api_key import WebhookDelivery
+    from services.webhook_service import WEBHOOK_OUTCOMES
+
+    column_type = WebhookDelivery.__table__.c.outcome.type
+    assert isinstance(column_type, String)
+    width = column_type.length
+    assert width is not None
+    for value in WEBHOOK_OUTCOMES:
+        assert len(value) <= width, f"{value} is wider than outcome({width})"
