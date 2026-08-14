@@ -105,9 +105,9 @@
     "boundary_title": "Something went wrong",
     "boundary_reload": "Reload page",
     "unauthorized": "Your session has ended. Sign in again to continue.",
-    "forbidden": "You do not have permission to do this.",
+    "forbidden": "You do not have permission to do this. Ask a team admin if you need access.",
     "not_found": "That is no longer there. It may have been deleted or moved.",
-    "conflict": "Someone else changed this first. Reload and try again.",
+    "conflict": "This does not match the current state. Refresh to see where things stand.",
     "rate_limited": "Too many requests. Wait a moment and try again.",
     "server_error": "The server could not complete this. Try again shortly.",
     "network": "Could not reach the server. Check your connection and try again."

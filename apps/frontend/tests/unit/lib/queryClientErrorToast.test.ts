@@ -22,6 +22,7 @@
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
+import i18n from "@/lib/i18n";
 import { createQueryClient } from "@/lib/queryClient";
 import { ProblemError } from "@/lib/problem";
 import { registerToastDispatcher, type ToastDispatcher } from "@/lib/toastBus";
@@ -80,7 +81,7 @@ describe("global mutation error toast", () => {
     await runFailingMutation(client, { error: problem(409, "Scan already queued.") });
     expect(dispatched).toHaveLength(1);
     expect(dispatched[0].text).toBe(
-      "Someone else changed this first. Reload and try again.",
+      "This does not match the current state. Refresh to see where things stand.",
     );
     expect(dispatched[0].options).toMatchObject({
       tone: "error",
@@ -133,6 +134,24 @@ describe("global mutation error toast", () => {
     expect(dispatched[0].text).toBe(
       "The server could not complete this. Try again shortly.",
     );
+  });
+
+  it("answers in Korean when the session is Korean", async () => {
+    // The regression this whole change exists to prevent. The helper's own
+    // tests pin the wording per locale, but the toast reads `i18n.t` bound to
+    // the active language, and that wiring is what shipped English.
+    //
+    // The language flip goes here rather than in a beforeAll: tests/setup.ts
+    // resets to EN after every test, so a one-time switch would silently stop
+    // applying from the second case onward.
+    await i18n.changeLanguage("ko");
+    await runFailingMutation(client, {
+      error: problem(403, "Not permitted for this team."),
+    });
+
+    expect(dispatched).toHaveLength(1);
+    expect(dispatched[0].text).toMatch(/[가-힣]/);
+    expect(dispatched[0].text).not.toContain("Not permitted");
   });
 
   it("stays quiet for 422 validation problems (inline per design system)", async () => {

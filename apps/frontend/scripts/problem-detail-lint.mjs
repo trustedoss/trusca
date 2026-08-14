@@ -15,12 +15,12 @@
  * nothing measures is a debt that grows. New bypasses fail; paid-down debt
  * must be re-recorded so the budget cannot be quietly re-spent.
  *
- * What counts as a bypass: reading `.detail` off a caught error or a query's
- * error, in source (not comments). What does not: `lib/problemMessage.ts` and
- * the domain mappers, which are the sanctioned path; a `detail` field that
- * belongs to a domain payload rather than a Problem (the health panel's
- * component detail, a bulk operation's per-item reason), which is listed
- * explicitly below.
+ * What counts as a bypass: reading `.detail` or `.title` off a caught error or
+ * a query's error, in source (not comments). Both fields are always English.
+ * What does not count: `lib/problemMessage.ts` and the domain mappers, which
+ * are the sanctioned path; a `detail` field belonging to a domain payload
+ * rather than a Problem (the health panel's component detail, a bulk
+ * operation's per-item reason), which the receiver list below excludes.
  *
  * Usage:
  *   node scripts/problem-detail-lint.mjs             # check (CI)
@@ -50,21 +50,39 @@ const EXEMPT = new Set([
 ]);
 
 /**
- * `<expr>.detail` where the receiver names an error. Deliberately narrow: it
- * matches the receivers this codebase actually uses, so a domain payload with
- * a `detail` field does not read as a bypass. Widening this list is fine;
- * widening it to bare `.detail` is not, and would flag unrelated payloads.
+ * Both `detail` and `title` are always-English fields on the Problem, and both
+ * get rendered. Watching only `detail` would leave `title` as an open door,
+ * and there are already four call sites drawing it.
  */
-const ERROR_DETAIL =
-  /\b(?:err|error|e|ex|problem|mutationError|createErr|deleteErr|updateErr|[a-zA-Z]*[Ee]rror)\s*\.\s*detail\b/g;
+const ENGLISH_FIELD = "(?:detail|title)";
 
 /**
- * `.detail` read through a cast, e.g. `(err as ProblemError).detail`. The
- * receiver-name rule above cannot see these — the token right before the dot
- * is the cast's closing paren — and a cast is exactly what someone reaches for
+ * `<error>.detail` where the receiver names an error. Deliberately narrow: it
+ * matches the receivers this codebase actually uses, so a domain payload with
+ * a `detail` field does not read as a bypass. Widening the receiver list is
+ * fine; widening it to a bare field name is not, and would flag unrelated
+ * payloads. `?.` and `!.` are included because they are one character away
+ * from the plain form and would otherwise slip through unintentionally.
+ */
+const ERROR_FIELD = new RegExp(
+  String.raw`\b(?:err|error|e|ex|problem|caught|reason|cause|mutationError|createErr|deleteErr|updateErr|[a-zA-Z]*[Ee]rror)\s*[?!]?\s*\.\s*` +
+    ENGLISH_FIELD +
+    String.raw`\b`,
+  "g",
+);
+
+/**
+ * The same fields read through a cast, e.g. `(err as ProblemError).detail`.
+ * The receiver-name rule above cannot see these — the token before the dot is
+ * the cast's closing paren — and a cast is exactly what someone reaches for
  * when the plain form is flagged.
  */
-const CAST_DETAIL = /\bas\s+(?:any|unknown|ProblemError)\b[^\n)]*\)\s*\.\s*detail\b/g;
+const CAST_FIELD = new RegExp(
+  String.raw`\bas\s+(?:any|unknown|ProblemError|ProblemDetails)\b[^\n)]*\)\s*[?!]?\s*\.\s*` +
+    ENGLISH_FIELD +
+    String.raw`\b`,
+  "g",
+);
 
 /** Blank comments in place so line numbers stay put. */
 export function stripComments(source) {
@@ -99,8 +117,8 @@ export function scan(root = SRC_ROOT, frontendRoot = FRONTEND_ROOT) {
     const lines = stripComments(fs.readFileSync(absolute, "utf8")).split("\n");
     lines.forEach((code, index) => {
       const hits = [
-        ...(code.match(ERROR_DETAIL) ?? []),
-        ...(code.match(CAST_DETAIL) ?? []),
+        ...(code.match(ERROR_FIELD) ?? []),
+        ...(code.match(CAST_FIELD) ?? []),
       ];
       for (const text of hits) {
         counts[rel] = (counts[rel] ?? 0) + 1;

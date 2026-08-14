@@ -154,11 +154,11 @@ jobs:
         run: npm run token:lint
 
       # Error-copy ratchet, same shape as the token one. The backend answers
-      # RFC 7807 with an always-English `detail`, and reading it straight into
-      # the UI is one short expression, so it spread to 42 call sites while
-      # the translation keys beside them went unused. A Korean session met
-      # English on every failed request. The per-file baseline in
-      # scripts/problem-detail-baseline.json can only go down.
+      # RFC 7807 with an always-English `detail` and `title`, and reading one
+      # straight into the UI is a single short expression, so it spread to 47
+      # call sites while the translation keys beside them went unused. A
+      # Korean session met English on every failed request. The per-file
+      # baseline in scripts/problem-detail-baseline.json can only go down.
       - name: Run error-copy lint
         if: matrix.target == 'frontend'
         working-directory: apps/frontend

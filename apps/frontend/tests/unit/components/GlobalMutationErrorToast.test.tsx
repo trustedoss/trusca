@@ -52,7 +52,7 @@ describe("global mutation error toast (provider wiring)", () => {
       // Worded by `problemMessage`: the 409 class translated, not the
       // backend's English detail.
       expect(toast).toHaveTextContent(
-        "Someone else changed this first. Reload and try again.",
+        "This does not match the current state. Refresh to see where things stand.",
       );
     });
   });

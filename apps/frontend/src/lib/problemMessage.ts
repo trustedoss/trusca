@@ -25,7 +25,10 @@
  */
 import type { TFunction } from "i18next";
 
-import { isDemoReadOnlyError } from "@/lib/demoReadOnly";
+import {
+  DEMO_READ_ONLY_MESSAGE_KEY,
+  isDemoReadOnlyError,
+} from "@/lib/demoReadOnly";
 import { ProblemError } from "@/lib/problem";
 
 /**
@@ -43,12 +46,9 @@ export type ProblemToken =
   | "server_error"
   | "unknown";
 
-/** Fully-qualified key for the read-only demo, shared across surfaces. */
-export const DEMO_READ_ONLY_KEY = "common:demo.write_disabled";
-
 /** The `common:errors.*` key each token resolves to. */
 const COMMON_KEY_BY_TOKEN: Record<ProblemToken, string> = {
-  demo_read_only: DEMO_READ_ONLY_KEY,
+  demo_read_only: DEMO_READ_ONLY_MESSAGE_KEY,
   network: "common:errors.network",
   unauthorized: "common:errors.unauthorized",
   forbidden: "common:errors.forbidden",
@@ -74,6 +74,13 @@ export function problemToken(err: unknown): ProblemToken {
   if (err.status === 401) return "unauthorized";
   if (err.status === 403) return "forbidden";
   if (err.status === 404) return "not_found";
+  // 409 covers far more than a concurrent edit here: a duplicate email, a
+  // scan already queued, a policy name taken, a delete blocked by an active
+  // scan. The shared wording says the request disagrees with current state
+  // and stops there, because "someone else changed this first, reload and
+  // retry" would be wrong about the cause and wrong about the remedy for
+  // most of them. Surfaces that know which 409 they can get should name it
+  // through `prefix`.
   if (err.status === 409 || err.status === 412) return "conflict";
   if (err.status === 429) return "rate_limited";
   if (err.status >= 500) return "server_error";

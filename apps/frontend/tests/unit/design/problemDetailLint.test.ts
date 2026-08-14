@@ -99,6 +99,25 @@ describe("scan", () => {
     expect(run().counts["src/features/x/Many.tsx"]).toBe(5);
   });
 
+  it("flags title too, not just detail", () => {
+    // `title` is equally English, and watching only `detail` would leave the
+    // door open next to the one being closed.
+    write("features/x/Title.tsx", "const a = err.title;");
+
+    expect(run().counts["src/features/x/Title.tsx"]).toBe(1);
+  });
+
+  it("flags optional and non-null access", () => {
+    // One character away from the plain form, so these slip through without
+    // anyone meaning to evade the gate.
+    write(
+      "features/x/Optional.tsx",
+      ["const a = err?.detail;", "const b = error!.title;"].join("\n"),
+    );
+
+    expect(run().counts["src/features/x/Optional.tsx"]).toBe(2);
+  });
+
   it("flags a detail read through a cast", () => {
     // A cast is what someone reaches for when the plain form is flagged, and
     // the receiver-name rule cannot see past the closing paren.

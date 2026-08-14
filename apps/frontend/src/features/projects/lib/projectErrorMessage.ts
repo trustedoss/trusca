@@ -21,17 +21,19 @@
  *   const key = projectErrorMessageKey(err, "page.errors");
  *   return <span>{t(key)}</span>;
  */
-import { isDemoReadOnlyError } from "@/lib/demoReadOnly";
+import {
+  DEMO_READ_ONLY_MESSAGE_KEY,
+  isDemoReadOnlyError,
+} from "@/lib/demoReadOnly";
 import { ProblemError } from "@/lib/problem";
 
 /**
- * Fully-qualified i18n key (namespace-prefixed) for the read-only-demo case.
- * It lives in the shared `common` namespace rather than under each caller's
- * `prefix` so a write blocked by the demo guard surfaces one consistent
- * message without every prefix having to define its own `demo_read_only`
- * sub-key.
+ * Re-exported for the callers that already import it from here. The key itself
+ * lives beside the demo classifier in `lib/demoReadOnly.ts`, so this mapper and
+ * `lib/problemMessage.ts` cannot drift into two different sentences for the
+ * same blocked write.
  */
-export const DEMO_READ_ONLY_MESSAGE_KEY = "common:demo.write_disabled";
+export { DEMO_READ_ONLY_MESSAGE_KEY };
 
 /** The token (sans prefix) for the matched error class. */
 export type ProjectErrorToken =
