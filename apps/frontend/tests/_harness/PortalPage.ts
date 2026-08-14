@@ -446,7 +446,12 @@ export class PortalPage {
    * `?tab=…` URL mirroring is asserted in scenarios that care.
    */
   async selectTab(
-    tabName: "overview" | "components" | "vulnerabilities" | "licenses",
+    tabName:
+      | "overview"
+      | "components"
+      | "vulnerabilities"
+      | "licenses"
+      | "compliance",
   ): Promise<void> {
     await this.page
       .getByTestId(`project-detail-tab-${tabName}`)

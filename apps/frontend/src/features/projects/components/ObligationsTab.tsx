@@ -10,6 +10,7 @@ import { EmptyState } from "@/components/EmptyState";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
+import { VIRTUOSO_TABLE_BODY } from "@/components/ui/virtuoso-table-body";
 import type { LicenseCategoryName } from "@/features/projects/api/projectDetailApi";
 import {
   KNOWN_OBLIGATION_KINDS,
@@ -89,12 +90,6 @@ function parseOrder(raw: string | null): SortOrder {
   return raw === "asc" ? "asc" : "desc";
 }
 
-function parsePage(raw: string | null): number {
-  const n = raw ? Number.parseInt(raw, 10) : 1;
-  if (!Number.isFinite(n) || n < 1) return 1;
-  return n;
-}
-
 export interface ObligationsTabProps {
   projectId: string;
   projectName?: string | null;
@@ -132,13 +127,13 @@ export function ObligationsTab({
   const [order, setOrder] = useState<SortOrder>(() =>
     parseOrder(searchParams.get("order")),
   );
-  const [page, setPage] = useState<number>(() =>
-    parsePage(searchParams.get("page")),
-  );
-
   const drawerId = searchParams.get("obligation");
   const drawerOpen = drawerId != null && drawerId.length > 0;
 
+  /**
+   * Pushed, not replaced, so Back closes the drawer rather than leaving the
+   * tab and discarding the filters the user set to find this row.
+   */
   function setDrawerObligation(obligationId: string | null) {
     setSearchParams(
       (prev) => {
@@ -150,7 +145,7 @@ export function ObligationsTab({
         }
         return next;
       },
-      { replace: true },
+      { replace: false },
     );
   }
 
@@ -160,7 +155,6 @@ export function ObligationsTab({
     if (debounceRef.current) clearTimeout(debounceRef.current);
     debounceRef.current = setTimeout(() => {
       setDebouncedSearch(search);
-      setPage(1);
     }, 300);
     return () => {
       if (debounceRef.current) clearTimeout(debounceRef.current);
@@ -182,21 +176,14 @@ export function ObligationsTab({
         else next.delete("sort");
         if (order !== "desc") next.set("order", order);
         else next.delete("order");
-        if (page !== 1) next.set("page", String(page));
-        else next.delete("page");
+        // Infinite now: the parameter it used to write pointed at a page the
+        // UI offered no way to turn to.
+        next.delete("page");
         return next;
       },
       { replace: true },
     );
-  }, [
-    debouncedSearch,
-    kinds,
-    categories,
-    sort,
-    order,
-    page,
-    setSearchParams,
-  ]);
+  }, [debouncedSearch, kinds, categories, sort, order, setSearchParams]);
 
   const filters = useMemo(
     () => ({
@@ -206,18 +193,23 @@ export function ObligationsTab({
       sort,
       order,
       limit: PAGE_SIZE,
-      offset: (page - 1) * PAGE_SIZE,
       scanId,
     }),
-    [debouncedSearch, kinds, categories, sort, order, page, scanId],
+    [debouncedSearch, kinds, categories, sort, order, scanId],
   );
 
   const obligations = useObligations(projectId, filters);
   const notice = useNotice(projectId, projectName ?? undefined, { scanId });
 
-  const items: ObligationListItem[] = obligations.data?.items ?? [];
-  const total = obligations.data?.total ?? 0;
-  const distribution = obligations.data?.distribution ?? {};
+  const pages = obligations.data?.pages;
+  const items: ObligationListItem[] = useMemo(
+    () => (pages ?? []).flatMap((p) => p.items),
+    [pages],
+  );
+  // Both are whole-result facts the server repeats on every page, so the
+  // first page answers for all of them.
+  const total = pages?.[0]?.total ?? 0;
+  const distribution = pages?.[0]?.distribution ?? {};
 
   return (
     <div data-testid="obligations-tab" className="flex flex-1 flex-col">
@@ -229,22 +221,18 @@ export function ObligationsTab({
         kinds={kinds}
         onKindsChange={(next) => {
           setKinds(next);
-          setPage(1);
         }}
         categories={categories}
         onCategoriesChange={(next) => {
           setCategories(next);
-          setPage(1);
         }}
         sort={sort}
         onSortChange={(next) => {
           setSort(next);
-          setPage(1);
         }}
         order={order}
         onOrderChange={(next) => {
           setOrder(next);
-          setPage(1);
         }}
         onDownloadNotice={(format) => {
           // The promise rejection is caught by useNotice's internal error
@@ -303,7 +291,15 @@ export function ObligationsTab({
       ) : null}
 
       {!obligations.isLoading && !obligations.isError && items.length > 0 ? (
-        <>
+        // Table semantics for the same reason as the compliance grid: G0-5
+        // gave them to the other two grids and left this one announcing an
+        // unlabelled stack of divs.
+        <div
+          className="flex flex-1 flex-col"
+          role="table"
+          aria-label={t("obligations.table_aria")}
+          aria-rowcount={total + 1}
+        >
           <ObligationsTableHeader />
           <div
             className="flex-1"
@@ -312,7 +308,16 @@ export function ObligationsTab({
             data-loaded={items.length}
           >
             <Virtuoso
+              components={VIRTUOSO_TABLE_BODY}
               data={items}
+              endReached={() => {
+                if (
+                  obligations.hasNextPage &&
+                  !obligations.isFetchingNextPage
+                ) {
+                  void obligations.fetchNextPage();
+                }
+              }}
               style={{
                 height: "calc(100vh - var(--layout-header) - 320px)",
               }}
@@ -325,7 +330,7 @@ export function ObligationsTab({
               )}
             />
           </div>
-        </>
+        </div>
       ) : null}
 
       <ObligationDrawer
@@ -381,12 +386,22 @@ function ObligationsTableHeader() {
       className="flex items-center gap-3 border-b bg-muted/30 px-4 text-xs font-medium uppercase tracking-wide text-muted-foreground"
       style={{ height: "32px" }}
       data-testid="obligations-header"
+      role="row"
+      aria-rowindex={1}
     >
-      <span className="w-44">{t("obligations.column.spdx_id")}</span>
-      <span className="flex-1">{t("obligations.column.license_name")}</span>
-      <span className="w-32">{t("obligations.column.category")}</span>
-      <span className="w-32">{t("obligations.column.kind")}</span>
-      <span className="w-20 text-right">
+      <span className="w-44" role="columnheader">
+        {t("obligations.column.spdx_id")}
+      </span>
+      <span className="flex-1" role="columnheader">
+        {t("obligations.column.license_name")}
+      </span>
+      <span className="w-32" role="columnheader">
+        {t("obligations.column.category")}
+      </span>
+      <span className="w-32" role="columnheader">
+        {t("obligations.column.kind")}
+      </span>
+      <span className="w-20 text-right" role="columnheader">
         {t("obligations.column.affected_count")}
       </span>
     </div>
@@ -415,6 +430,9 @@ function ObligationRow({
       data-category={obligation.license_category}
       data-kind={obligation.kind}
       data-row-index={rowIndex}
+      role="row"
+      // +2: the header is row 1, and aria-rowindex counts from 1.
+      aria-rowindex={rowIndex + 2}
       className={cn(
         "flex w-full items-center gap-3 border-b px-4 text-left text-sm transition-colors duration-fast ease-out-soft hover:bg-muted/50",
         "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-inset",

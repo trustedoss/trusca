@@ -90,8 +90,13 @@
     },
     "empty": {
       "title": "아직 컴플라이언스 결과가 없습니다",
-      "description": "스캔을 실행하면 이 프로젝트의 라이선스 인벤토리와 의무사항이 표시됩니다."
+      "description": "스캔을 실행하면 이 프로젝트의 라이선스 인벤토리와 의무사항이 표시됩니다.",
+      "filtered_title": "이 필터에 맞는 라이선스가 없습니다",
+      "filtered_description": "현재 필터가 모든 라이선스 항목을 제외했습니다.",
+      "clear_filters": "필터 모두 지우기",
+      "run_scan": "스캔 실행"
     },
+    "table_aria": "라이선스와 의무사항",
     "errors": {
       "load_list": "컴플라이언스 데이터를 불러올 수 없습니다."
     }
@@ -870,6 +875,7 @@
   },
   "obligations": {
     "summary": "{{total}}개 중 {{loaded}}개 표시",
+    "table_aria": "의무사항",
     "distribution": {
       "label": "종류별"
     },

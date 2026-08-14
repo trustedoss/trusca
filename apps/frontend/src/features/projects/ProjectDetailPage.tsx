@@ -682,6 +682,11 @@ export function ProjectDetailPage() {
             teamId={project?.team_id ?? null}
             projectRole={overview.data?.current_user_role ?? "developer"}
             readOnly={isHistorical}
+            onScan={
+              project != null && !writesDisabled && !isHistorical
+                ? () => setSourceDialogOpen(true)
+                : undefined
+            }
           />
         </TabsContent>
         <TabsContent value="reports">

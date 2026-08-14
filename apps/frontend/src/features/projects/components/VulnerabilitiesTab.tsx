@@ -1,14 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2026 TRUSCA contributors
 import { PackageCheck, ShieldCheck } from "lucide-react";
-import {
-  type ComponentPropsWithoutRef,
-  forwardRef,
-  useEffect,
-  useMemo,
-  useRef,
-  useState,
-} from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { useSearchParams } from "react-router-dom";
 import { Virtuoso } from "react-virtuoso";
@@ -24,6 +17,7 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
+import { VIRTUOSO_TABLE_BODY } from "@/components/ui/virtuoso-table-body";
 import {
   ariaSortFor,
   type SortState,
@@ -111,35 +105,6 @@ import { cn } from "@/lib/utils";
  */
 
 const PAGE_SIZE = 100;
-
-/**
- * The table body, placed on the one element between the table and its rows
- * that the accessibility tree will not flatten.
- *
- * Everything Virtuoso renders between the two is a plain `div` — wrapper,
- * scroller, viewport, list, per-item box — and a plain `div` disappears from
- * the accessibility tree, so the rows read as owned by the table. All except
- * the scroller: it carries `tabindex` so the list can be scrolled from the
- * keyboard, and a focusable element is never flattened. It has to hold a role
- * the table allows, so it holds `rowgroup`.
- *
- * Two things were tried first and are worth not re-trying. `role="presentation"`
- * on the wrappers: axe rejects it, correctly — a presentational element is
- * still an owned child, and `table` owns rows and rowgroups, not presentation.
- * `rowgroup` on the wrapper div outside Virtuoso: the focusable scroller then
- * sits INSIDE the rowgroup and is reported there instead.
- *
- * Module scope, not inline: a `components` object rebuilt each render makes
- * Virtuoso remount its scroller, losing scroll position and re-measuring.
- * `role` goes after the spread so Virtuoso's own props cannot overwrite it.
- */
-const VIRTUOSO_TABLE_BODY = {
-  Scroller: forwardRef<HTMLDivElement, ComponentPropsWithoutRef<"div">>(
-    function VirtuosoScroller(props, ref) {
-      return <div ref={ref} {...props} role="rowgroup" />;
-    },
-  ),
-};
 
 
 /**

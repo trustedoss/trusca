@@ -72,6 +72,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { MultiSelect } from "@/components/ui/multi-select";
 import { Skeleton } from "@/components/ui/skeleton";
+import { VIRTUOSO_TABLE_BODY } from "@/components/ui/virtuoso-table-body";
 import { Switch } from "@/components/ui/switch";
 import type {
   LicenseCategoryName,
@@ -154,12 +155,6 @@ function parseOrder(raw: string | null): SortOrder {
   return raw === "asc" ? "asc" : "desc";
 }
 
-function parsePage(raw: string | null): number {
-  const n = raw ? Number.parseInt(raw, 10) : 1;
-  if (!Number.isFinite(n) || n < 1) return 1;
-  return n;
-}
-
 const VALID_CONFLICT = new Set<ConflictVerdictName>(CONFLICT_VERDICT_VALUES);
 
 function parseConflict(raw: string | null): ConflictVerdictName | undefined {
@@ -205,6 +200,12 @@ export interface ComplianceTabProps {
    * the user is viewing an older scan.
    */
   readOnly?: boolean;
+  /**
+   * Starts a scan from the empty state. Omitted when the caller cannot scan,
+   * and the empty state then explains without offering a button that would
+   * fail.
+   */
+  onScan?: () => void;
 }
 
 export function ComplianceTab({
@@ -214,6 +215,7 @@ export function ComplianceTab({
   teamId = null,
   projectRole = "developer",
   readOnly = false,
+  onScan,
 }: ComplianceTabProps) {
   const { t } = useTranslation("project_detail");
   const [searchParams, setSearchParams] = useSearchParams();
@@ -276,15 +278,16 @@ export function ComplianceTab({
   const [order, setOrder] = useState<SortOrder>(() =>
     parseOrder(searchParams.get("compliance_order")),
   );
-  const [page, setPage] = useState<number>(() =>
-    parsePage(searchParams.get("compliance_page")),
-  );
 
   // Drawer selection. The ``?license=<finding_id>`` key predates this tab, so
   // a deep-link from a chart or a recent-finding card still works.
   const drawerId = searchParams.get("license");
   const drawerOpen = drawerId != null && drawerId.length > 0;
 
+  /**
+   * Pushed, not replaced, so Back closes the drawer rather than leaving the
+   * tab and discarding the filters the user set to find this licence.
+   */
   function setDrawerLicense(findingId: string | null) {
     setSearchParams(
       (prev) => {
@@ -296,7 +299,7 @@ export function ComplianceTab({
         }
         return next;
       },
-      { replace: true },
+      { replace: false },
     );
   }
 
@@ -306,14 +309,26 @@ export function ComplianceTab({
     if (debounceRef.current) clearTimeout(debounceRef.current);
     debounceRef.current = setTimeout(() => {
       setDebouncedSearch(search);
-      // A new search resets pagination — otherwise the user could be stuck
-      // on page 5 of a now-tiny result set.
-      setPage(1);
     }, 300);
     return () => {
       if (debounceRef.current) clearTimeout(debounceRef.current);
     };
   }, [search]);
+
+  /** Whether anything is narrowing the grid, which decides the empty state. */
+  const hasNarrowingFilters =
+    debouncedSearch.trim().length > 0 ||
+    categories.length > 0 ||
+    hasObligations !== null ||
+    conflict !== undefined;
+
+  function clearAllFilters() {
+    setSearch("");
+    setDebouncedSearch("");
+    setCategories([]);
+    setHasObligations(null);
+    setConflict(undefined);
+  }
 
   // Mirror filter state into URL params. We omit defaults so canonical URLs
   // stay short and the W4-C migration above produces a clean reload.
@@ -339,8 +354,10 @@ export function ComplianceTab({
         else next.delete("compliance_sort");
         if (order !== "desc") next.set("compliance_order", order);
         else next.delete("compliance_order");
-        if (page !== 1) next.set("compliance_page", String(page));
-        else next.delete("compliance_page");
+        // The grid is infinite now. The parameter it used to write described
+        // a position nothing could move to, so it is dropped rather than kept
+        // in sync with a page index that no longer exists.
+        next.delete("compliance_page");
         return next;
       },
       { replace: true },
@@ -352,7 +369,6 @@ export function ComplianceTab({
     conflict,
     sort,
     order,
-    page,
     setSearchParams,
   ]);
 
@@ -366,7 +382,6 @@ export function ComplianceTab({
       sort,
       order,
       limit: PAGE_SIZE,
-      offset: (page - 1) * PAGE_SIZE,
       scanId,
     }),
     [
@@ -376,7 +391,6 @@ export function ComplianceTab({
       conflict,
       sort,
       order,
-      page,
       scanId,
     ],
   );
@@ -389,10 +403,16 @@ export function ComplianceTab({
   const teamPolicy = useTeamLicensePolicy(teamId);
   const policy = teamPolicy.data ?? null;
 
-  const items: ComplianceRowItem[] = compliance.data?.items ?? [];
-  const total = compliance.data?.total ?? 0;
-  const declaredLicense = compliance.data?.declared_license ?? null;
-  const conflictSummary = compliance.data?.conflict_summary ?? null;
+  const pages = compliance.data?.pages;
+  const items: ComplianceRowItem[] = useMemo(
+    () => (pages ?? []).flatMap((p) => p.items),
+    [pages],
+  );
+  // Whole-grid facts repeat on every page, so the first one answers for all
+  // of them and does not shift as more pages arrive.
+  const total = pages?.[0]?.total ?? 0;
+  const declaredLicense = pages?.[0]?.declared_license ?? null;
+  const conflictSummary = pages?.[0]?.conflict_summary ?? null;
   // Three states, not two. A declared license with no summary means the scan
   // carries more licenses than one request will judge — nothing was assessed,
   // so the verdict column stays off rather than rendering blank cells that
@@ -410,28 +430,23 @@ export function ComplianceTab({
         categories={categories}
         onCategoriesChange={(next) => {
           setCategories(next);
-          setPage(1);
         }}
         hasObligations={hasObligations}
         onHasObligationsChange={(next) => {
           setHasObligations(next);
-          setPage(1);
         }}
         sort={sort}
         onSortChange={(next) => {
           setSort(next);
-          setPage(1);
         }}
         conflict={conflict}
         onConflictChange={(next) => {
           setConflict(next);
-          setPage(1);
         }}
         conflictEnabled={conflictAssessed}
         order={order}
         onOrderChange={(next) => {
           setOrder(next);
-          setPage(1);
         }}
       />
 
@@ -522,13 +537,56 @@ export function ComplianceTab({
           data-testid="compliance-empty"
           className="m-6"
           icon={<FileCheck />}
-          title={t("compliance.empty.title")}
-          description={t("compliance.empty.description")}
+          title={
+            hasNarrowingFilters
+              ? t("compliance.empty.filtered_title")
+              : t("compliance.empty.title")
+          }
+          description={
+            hasNarrowingFilters
+              ? t("compliance.empty.filtered_description")
+              : t("compliance.empty.description")
+          }
+          // The copy has told people to run a scan since this tab existed,
+          // with no button next to it. Either give them the button or stop
+          // telling them — and never tell someone with a filter on, because
+          // scanning will not change what the filter excludes.
+          action={
+            hasNarrowingFilters ? (
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={clearAllFilters}
+                data-testid="compliance-empty-clear-filters"
+              >
+                {t("compliance.empty.clear_filters")}
+              </Button>
+            ) : onScan ? (
+              <Button
+                size="sm"
+                onClick={onScan}
+                data-testid="compliance-empty-scan"
+              >
+                {t("compliance.empty.run_scan")}
+              </Button>
+            ) : undefined
+          }
         />
       ) : null}
 
       {!compliance.isLoading && !compliance.isError && items.length > 0 ? (
-        <>
+        // G0-5 gave the components and vulnerabilities grids their table
+        // semantics and left these two out, so a screen reader met an
+        // unlabelled stack of divs where the other tabs announce a table with
+        // a row count. The `rowgroup` lands on Virtuoso's scroller for the
+        // reason recorded in VulnerabilitiesTab: the scroller is focusable, so
+        // it is the one wrapper the accessibility tree will not flatten.
+        <div
+          className="flex flex-1 flex-col"
+          role="table"
+          aria-label={t("compliance.table_aria")}
+          aria-rowcount={total + 1}
+        >
           <ComplianceTableHeader showConflict={conflictAssessed} />
           <div
             className="flex-1"
@@ -537,7 +595,13 @@ export function ComplianceTab({
             data-loaded={items.length}
           >
             <Virtuoso
+              components={VIRTUOSO_TABLE_BODY}
               data={items}
+              endReached={() => {
+                if (compliance.hasNextPage && !compliance.isFetchingNextPage) {
+                  void compliance.fetchNextPage();
+                }
+              }}
               style={{
                 height: "calc(100vh - var(--layout-header) - 240px)",
               }}
@@ -556,7 +620,7 @@ export function ComplianceTab({
               )}
             />
           </div>
-        </>
+        </div>
       ) : null}
 
       <LicenseDrawer
@@ -858,18 +922,32 @@ function ComplianceTableHeader({ showConflict }: { showConflict: boolean }) {
       className="flex items-center gap-3 border-b bg-muted/30 px-4 text-xs font-medium uppercase tracking-wide text-muted-foreground"
       style={{ height: "32px" }}
       data-testid="compliance-header"
+      role="row"
+      aria-rowindex={1}
     >
-      <span className="w-44">{t("compliance.column.license")}</span>
-      <span className="w-32">{t("compliance.column.category")}</span>
+      <span className="w-44" role="columnheader">
+        {t("compliance.column.license")}
+      </span>
+      <span className="w-32" role="columnheader">
+        {t("compliance.column.category")}
+      </span>
       {showConflict ? (
-        <span className="w-32">{t("licenses.column.conflict")}</span>
+        <span className="w-32" role="columnheader">
+          {t("licenses.column.conflict")}
+        </span>
       ) : null}
-      <span className="flex-1">{t("compliance.column.affected")}</span>
-      <span className="w-64">{t("compliance.column.obligations")}</span>
-      <span className="w-28 text-center">
+      <span className="flex-1" role="columnheader">
+        {t("compliance.column.affected")}
+      </span>
+      <span className="w-64" role="columnheader">
+        {t("compliance.column.obligations")}
+      </span>
+      <span className="w-28 text-center" role="columnheader">
         {t("compliance.column.notice_required")}
       </span>
-      <span className="w-32">{t("compliance.column.override_source")}</span>
+      <span className="w-32" role="columnheader">
+        {t("compliance.column.override_source")}
+      </span>
     </div>
   );
 }
@@ -942,6 +1020,9 @@ function ComplianceGridRow({
       data-notice-required={row.notice_required}
       data-row-index={rowIndex}
       data-waivable={isWaivable ? "true" : undefined}
+      role="row"
+      // +2: the header occupies row 1, and aria-rowindex is 1-based.
+      aria-rowindex={rowIndex + 2}
       className={cn(
         "flex w-full flex-col border-b transition-colors duration-fast ease-out-soft hover:bg-muted/50",
       )}
