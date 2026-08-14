@@ -62,7 +62,7 @@ export interface PageHeaderProps {
   /**
    * What the browser tab should say, when `title` alone will not do: a title
    * that is markup rather than a string, or one that should carry a record's
-   * name ("django 4.2 · Components"). A string `title` names the tab on its
+   * name ("payments-api · Vulnerabilities"). A string `title` names the tab on its
    * own, so most callers pass nothing here.
    *
    * Pass `null` for a screen that must not touch the tab title.

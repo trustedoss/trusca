@@ -78,16 +78,37 @@ function readScreen(relative: string): string {
   throw new Error(`could not find a source file for @/${relative}`);
 }
 
+/** Blank comments in place so a mention in prose does not read as usage. */
+function stripComments(source: string): string {
+  return source
+    .replace(/\/\*[\s\S]*?\*\//g, (block) => block.replace(/[^\n]/g, " "))
+    .replace(/(^|[^:])\/\/[^\n]*/g, (match, lead: string) =>
+      lead + " ".repeat(match.length - lead.length),
+    );
+}
+
 /**
  * A screen names the tab if it renders one of the two layout components that
  * already receive a page name (`PageHeader` after auth, `AuthLayout` before
  * it), or if it calls the hook itself.
+ *
+ * Rendering is not enough on its own: three detail screens define a local
+ * component *called* `PageHeader` at the bottom of their own file, and a
+ * name match alone would accept one of those while it set no title. So the
+ * shared component has to be imported as well as rendered. (Verified by
+ * building exactly that shape and watching this test pass before the import
+ * check was added.)
  */
 function namesTheTab(source: string): boolean {
+  const code = stripComments(source);
+  const usesShared = (tag: string, module: string) =>
+    new RegExp(`<${tag}\\b`).test(code) &&
+    new RegExp(`from\\s+"@/${module}"`).test(code);
+
   return (
-    /<PageHeader\b/.test(source) ||
-    /<AuthLayout\b/.test(source) ||
-    /\buseDocumentTitle\s*\(/.test(source)
+    usesShared("PageHeader", "components/PageHeader") ||
+    usesShared("AuthLayout", "pages/auth/AuthLayout") ||
+    /\buseDocumentTitle\s*\(/.test(code)
   );
 }
 

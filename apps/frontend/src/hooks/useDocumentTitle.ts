@@ -11,7 +11,8 @@
  * Most screens get this through `PageHeader`, which already receives the
  * translated page title. The hook is for the surfaces that render their own
  * heading outside the header component, and for titles that carry a record's
- * name ("django 4.2 · Components · TRUSCA").
+ * name: a component detail reads "django 4.2 · payments-api · TRUSCA", most
+ * specific first, so a row of tabs is scannable by its first few characters.
  */
 import { useEffect } from "react";
 
@@ -25,10 +26,15 @@ const SEPARATOR = " · ";
  * Compose a document title from its segments, most specific first, ending in
  * the brand. Empty and nullish segments are dropped so a caller can pass a
  * record name that has not loaded yet without producing "· · TRUSCA".
+ *
+ * A segment that already names the product does not get the brand appended
+ * again: the login screen's heading is "Sign in to TRUSCA", and "Sign in to
+ * TRUSCA · TRUSCA" reads like a bug because it is one.
  */
 export function documentTitle(...segments: (string | null | undefined)[]): string {
   const parts = segments.filter((s): s is string => Boolean(s && s.trim()));
-  return [...parts, TITLE_BRAND].join(SEPARATOR);
+  const alreadyBranded = parts.some((part) => part.includes(TITLE_BRAND));
+  return alreadyBranded ? parts.join(SEPARATOR) : [...parts, TITLE_BRAND].join(SEPARATOR);
 }
 
 /**

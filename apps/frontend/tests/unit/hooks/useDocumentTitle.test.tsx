@@ -33,6 +33,15 @@ describe("documentTitle", () => {
   it("treats a whitespace-only segment as absent", () => {
     expect(documentTitle("   ", "Projects")).toBe("Projects · TRUSCA");
   });
+
+  it("does not say the brand twice", () => {
+    // The login heading is "Sign in to TRUSCA"; appending the brand to that
+    // reads like a bug.
+    expect(documentTitle("Sign in to TRUSCA")).toBe("Sign in to TRUSCA");
+    expect(documentTitle("Overview", "TRUSCA demo")).toBe(
+      "Overview · TRUSCA demo",
+    );
+  });
 });
 
 describe("useDocumentTitle", () => {

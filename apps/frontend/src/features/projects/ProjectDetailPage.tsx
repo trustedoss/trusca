@@ -174,6 +174,11 @@ export function ProjectDetailPage() {
     enabled: typeof projectId === "string" && projectId.length > 0,
   });
 
+  // The tab is part of the address, so it belongs in the tab title too: one
+  // project open on Overview and Vulnerabilities is two tabs the user needs to
+  // tell apart, and the project name alone would make them identical.
+  useDocumentTitle(projectQuery.data?.name, t(`tabs.${activeTab}`));
+
   // Overview is fetched here too so the header risk badge can render
   // alongside the breadcrumb without waiting for the tab to mount. The pinned
   // scan threads in so the header gauge matches the snapshot being viewed.
@@ -814,7 +819,6 @@ function ProjectDetailHeader({
   onSelectLatest,
 }: ProjectDetailHeaderProps) {
   const { t } = useTranslation("project_detail");
-  useDocumentTitle(projectName);
   return (
     <header
       className={cn(
