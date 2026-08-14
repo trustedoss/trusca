@@ -11,7 +11,7 @@
     "projects": "프로젝트",
     "versions": "사용 중 버전",
     "severity": "심각도",
-    "cves": "취약점",
+    "cves": "CVE",
     "license": "라이선스"
   },
   "row": {
@@ -42,9 +42,9 @@
     }
   },
   "severity": {
-    "critical": "심각",
+    "critical": "치명",
     "high": "높음",
-    "medium": "보통",
+    "medium": "중간",
     "low": "낮음",
     "info": "정보",
     "none": "없음"

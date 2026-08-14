@@ -68,7 +68,7 @@ import { VulnerabilityDrawer } from "@/features/projects/components/Vulnerabilit
 import { VulnerabilityStatusBadge } from "@/features/projects/components/VulnerabilityStatusBadge";
 import {
   EPSS_EMPTY,
-  formatEpssPercentile,
+  epssPercentileLabel,
   formatEpssScore,
 } from "@/features/projects/lib/epss";
 import {
@@ -1580,7 +1580,10 @@ interface EpssCellProps {
 function EpssCell({ score, percentile }: EpssCellProps) {
   const { t } = useTranslation("project_detail");
   const formattedScore = formatEpssScore(score);
-  const formattedPercentile = formatEpssPercentile(percentile);
+  const percentileLabel = epssPercentileLabel(percentile);
+  const formattedPercentile = percentileLabel
+    ? t(percentileLabel.key, percentileLabel.params)
+    : null;
 
   if (formattedScore == null) {
     return (

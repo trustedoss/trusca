@@ -41,15 +41,25 @@ const VISUAL_BY_SEVERITY: Record<SeverityVariant, Visual> = {
 export interface SeverityBadgeProps {
   severity: SeverityVariant;
   className?: string;
+  /**
+   * Overrides the default `severity-badge-<bucket>` test id. Surfaces that
+   * already had their own anchor before adopting this component keep it, so
+   * existing specs and e2e selectors stay valid.
+   */
+  testId?: string;
 }
 
-export function SeverityBadge({ severity, className }: SeverityBadgeProps) {
+export function SeverityBadge({
+  severity,
+  className,
+  testId,
+}: SeverityBadgeProps) {
   const { t } = useTranslation("project_detail");
   const visual = VISUAL_BY_SEVERITY[severity];
   return (
     <Badge
       tone={visual.tone}
-      data-testid={`severity-badge-${severity}`}
+      data-testid={testId ?? `severity-badge-${severity}`}
       data-severity={severity}
       className={cn("gap-1.5", className)}
     >

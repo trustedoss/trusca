@@ -460,7 +460,9 @@
     "epss": {
       "tooltip": "EPSS — 이 CVE가 향후 30일 내 실제로 악용될 확률. CVSS(심각도)를 보완합니다.",
       "empty": "이 CVE의 EPSS 데이터 없음",
-      "cell_tooltip": "{{score}} · 악용 가능성 {{percentile}}"
+      "cell_tooltip": "{{score}} · 악용 가능성 {{percentile}}",
+      "top_percentile": "상위 {{value}}%",
+      "top_percentile_sub1": "상위 1% 미만"
     },
     "kev": {
       "label": "KEV",

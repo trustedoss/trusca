@@ -58,6 +58,7 @@ import {
   useState,
   type ButtonHTMLAttributes,
 } from "react";
+import type { TFunction } from "i18next";
 import { useTranslation } from "react-i18next";
 import { useNavigate } from "react-router-dom";
 
@@ -111,6 +112,18 @@ const SEVERITY_DOT_CLASS: Record<string, string> = {
 
 function severityDotClass(severity: string): string {
   return SEVERITY_DOT_CLASS[severity.toLowerCase()] ?? "bg-risk-info";
+}
+
+/**
+ * The localized label for a wire severity. Falls back to the raw value when
+ * the backend sends a bucket the `common:risk` scale does not name (`unknown`,
+ * or anything added later), which reads better than a missing-key path.
+ */
+function severityLabel(severity: string, t: TFunction): string {
+  const bucket = severity.toLowerCase();
+  return bucket in SEVERITY_DOT_CLASS && bucket !== "unknown"
+    ? t(`risk.${bucket}`)
+    : severity;
 }
 
 // ---------------------------------------------------------------------------
@@ -518,7 +531,7 @@ export function CommandMenu({ open, onOpenChange }: CommandMenuProps) {
                     aria-hidden
                   />
                   <span className="text-xs capitalize text-muted-foreground">
-                    {hit.severity}
+                    {severityLabel(hit.severity, t)}
                   </span>
                 </span>
                 <span className="ml-auto truncate pl-2 text-xs text-muted-foreground">

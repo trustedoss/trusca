@@ -549,8 +549,9 @@ describe("CommandMenu", () => {
       "command-menu-cve-proj-abc-CVE-2021-23337",
     );
     // Severity label text is present alongside the color dot (a11y: color is
-    // not the sole signal).
-    expect(row).toHaveTextContent("high");
+    // not the sole signal), and it is the translated label rather than the
+    // wire value, so a Korean session does not read English here.
+    expect(row).toHaveTextContent("High");
 
     await user.click(row);
 

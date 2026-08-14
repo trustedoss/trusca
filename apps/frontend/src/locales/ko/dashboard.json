@@ -91,12 +91,12 @@
     "never_scanned": "스캔한 적 없음",
     "clean": "이상 없음",
     "bucket": {
-      "critical": "Critical",
-      "high": "High",
-      "medium": "Medium",
-      "low": "Low"
+      "critical": "치명",
+      "high": "높음",
+      "medium": "중간",
+      "low": "낮음"
     },
-    "breakdown": "Critical {{critical}} · High {{high}} · Medium {{medium}} · Low {{low}} — 마지막 스캔 {{scanned}}",
+    "breakdown": "치명 {{critical}} · 높음 {{high}} · 중간 {{medium}} · 낮음 {{low}} · 마지막 스캔 {{scanned}}",
     "team_truncated": "{{total}}개 중 위험이 큰 {{shown}}개를 표시합니다.",
     "truncated": "팀 {{teams}}개 중 {{shownTeams}}개, 프로젝트 {{total}}개 중 {{shown}}개를 위험이 큰 순서로 표시합니다. 나머지는 프로젝트 목록에서 확인하세요.",
     "never_scanned_hint": "이 프로젝트는 성공한 스캔이 없어 아직 측정된 값이 없습니다."
