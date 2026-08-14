@@ -20,6 +20,7 @@ import os
 import subprocess
 import uuid
 from collections.abc import AsyncIterator
+from datetime import UTC, datetime
 from pathlib import Path
 
 import pytest
@@ -294,12 +295,19 @@ async def test_admin_audit_target_table_unknown_returns_422(
 
 
 async def test_admin_audit_export_csv_streams(client: AsyncClient) -> None:
+    # Bound the export to this test's own window. Unfiltered, it exports every
+    # audit row in the database, and the endpoint refuses past 100,000 with a
+    # 413 — which a developer's database reaches after enough local runs while
+    # CI, starting empty, never does. The contract under test is the streaming
+    # envelope (BOM, content-type, header line), not the row count.
+    window_start = datetime.now(tz=UTC)
     factory = await _factory(client)
     async with factory() as session:
         admin = await make_user(session, is_superuser=True)
 
     response = await client.get(
         "/v1/admin/audit/export.csv",
+        params={"from": window_start.isoformat()},
         headers=_bearer_for(admin),
     )
     assert response.status_code == 200, response.text

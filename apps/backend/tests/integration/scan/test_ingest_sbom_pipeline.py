@@ -262,10 +262,22 @@ def test_ingest_pipeline_persists_components_and_dense_findings(
 
     # Multiple CVEs against ONE component version — the density rule 3 case that
     # a synthetic 1-CVE fixture would miss.
+    # Scoped to THIS scan's findings. `Component.purl` is unique but its
+    # versions are not scoped to a scan, so an earlier run that persisted a
+    # different lodash version leaves two rows and the lookup raises
+    # MultipleResultsFound. CI starts empty and never sees it.
     lodash = sync_session.execute(
         select(ComponentVersion)
         .join(Component, Component.id == ComponentVersion.component_id)
-        .where(Component.purl == "pkg:npm/lodash")
+        .join(
+            VulnerabilityFinding,
+            VulnerabilityFinding.component_version_id == ComponentVersion.id,
+        )
+        .where(
+            Component.purl == "pkg:npm/lodash",
+            VulnerabilityFinding.scan_id == scan_id,
+        )
+        .distinct()
     ).scalar_one_or_none()
     assert lodash is not None, "lodash component version must be persisted"
     lodash_findings = sync_session.execute(
