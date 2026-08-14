@@ -78,7 +78,7 @@ from services.registry_conformance import (
 from services.registry_conformance import (
     load_registry as _load_registry_file,
 )
-from services.sbom_conformance import Check
+from services.sbom_conformance import Check, document_components
 
 log = structlog.get_logger("services.g7_conformance")
 
@@ -165,10 +165,30 @@ def _components(doc: dict[str, Any]) -> list[dict[str, Any]]:
 
 
 def _ml_components(doc: dict[str, Any]) -> list[dict[str, Any]]:
-    return [c for c in _components(doc) if c.get("type") == "machine-learning-model"]
+    """jq: ``([.metadata.component // empty] + [.components[]?])
+    | map(select(.type=="machine-learning-model"))``
+
+    The registry's ``subject`` binding, and also its ``appliesWhen`` — an
+    ML-BOM whose subject IS the model used to satisfy neither. Reading only
+    ``components[]`` meant a document *about* a model reported that it carried
+    none, which skipped the whole baseline: 51 advisory checks disappeared and
+    the nine per-model elements that had passed read "no machine-learning-model
+    components" instead.
+    """
+    return [
+        c
+        for c in document_components(doc)
+        if c.get("type") == "machine-learning-model"
+    ]
 
 
 def _data_components(doc: dict[str, Any]) -> list[dict[str, Any]]:
+    """jq: ``[.components[]? | select(.type=="data")]``
+
+    Deliberately NOT the subject-inclusive binding above. Upstream's dataset
+    expressions read ``.components[]`` only, because a document's subject is
+    the model or the software product, never the training data it was fed.
+    """
     return [c for c in _components(doc) if c.get("type") == "data"]
 
 

@@ -45,7 +45,7 @@ The API returns these as `cisa-*` entries in the same `checks[]` array. A row th
 There is no separate upload path or setting. Send the document through the regular received-SBOM ingest — see [Upload an SBOM](../ci-integration/sbom-upload.md) — and TRUSCA detects the AI content automatically:
 
 - **CycloneDX `specVersion` 1.7 is accepted.** 1.7 is the version that carries the ML-BOM fields (`modelCard`, model parameters, dataset governance). Earlier versions (`1.2`–`1.6`) remain accepted as before.
-- **Detection is automatic.** If the document contains at least one component of type `machine-learning-model`, the 51 G7 checks are appended to the scan's conformance verdict. Documents without one get the core checks and the [regulatory field checks](../ci-integration/sbom-upload.md#regulatory-field-checks-advisory) only.
+- **Detection is automatic.** If the document contains at least one component of type `machine-learning-model`, the 51 G7 checks are appended to the scan's conformance verdict. The document's own subject counts: a BOM published *about* a model carries it in `metadata.component` rather than in the component list, and that is read the same way. Documents without one get the core checks and the [regulatory field checks](../ci-integration/sbom-upload.md#regulatory-field-checks-advisory) only.
 - **Any generator works.** Tools such as BomLens or the OWASP AIBOM Generator emit CycloneDX 1.7 ML-BOMs that TRUSCA evaluates out of the box; a hand-assembled document is fine too, as long as it is valid CycloneDX JSON.
 
 ## Read the checklist
@@ -154,7 +154,7 @@ Two operational boundaries also apply:
 
 ### The checklist does not appear
 
-The document has no component with `"type": "machine-learning-model"` — many AI-adjacent SBOMs list only libraries. Check `components[].type` in the uploaded file. Also confirm the scan is an `sbom`-kind scan: source and container scans never get a conformance verdict.
+The document has no component with `"type": "machine-learning-model"` — many AI-adjacent SBOMs list only libraries. Check `components[].type` and `metadata.component.type` in the uploaded file; either position counts. Also confirm the scan is an `sbom`-kind scan: source and container scans never get a conformance verdict.
 
 ### The upload is rejected with `422`
 

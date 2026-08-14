@@ -328,22 +328,13 @@ def _subject_key(component: dict[str, Any]) -> str:
 def _candidates(doc: dict[str, Any]) -> list[dict[str, Any]]:
     """``metadata.component`` followed by ``components[]``.
 
-    The document's *subject* is a component too, and an ML-BOM whose subject is
-    the model is exactly the shape that reads as "zero models" when only
-    ``components[]`` is walked. ``g7_conformance`` still has that narrower
-    reading; correcting its 13 per-model elements is issue #53 and moves their
-    scores, so it is a separate change from this one.
+    Shared with the G7 evaluator's subject binding
+    (``sbom_conformance.document_components``): both axes ask which components
+    a document describes, and two answers to that question drift.
     """
-    out: list[dict[str, Any]] = []
-    metadata = doc.get("metadata")
-    if isinstance(metadata, dict):
-        subject = metadata.get("component")
-        if isinstance(subject, dict):
-            out.append(subject)
-    components = doc.get("components")
-    if isinstance(components, list):
-        out.extend(c for c in components if isinstance(c, dict))
-    return out
+    from services.sbom_conformance import document_components
+
+    return document_components(doc)
 
 
 def _dependency_edges(doc: dict[str, Any]) -> dict[str, list[str]]:

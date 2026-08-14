@@ -45,7 +45,7 @@ API에서는 같은 `checks[]` 배열에 `cisa-`로 시작하는 항목으로 �
 별도의 업로드 경로나 설정은 없습니다. 기존 받은-SBOM 인제스트로 문서를 보내면([SBOM 업로드](../ci-integration/sbom-upload.md) 참고) TRUSCA가 AI 내용을 자동 감지합니다.
 
 - **CycloneDX `specVersion` 1.7을 받습니다.** 1.7이 ML-BOM 필드(`modelCard`, 모델 파라미터, 데이터셋 거버넌스)를 담는 버전입니다. 이전 버전(`1.2`~`1.6`)도 종전대로 받습니다.
-- **감지는 자동입니다.** 문서에 `machine-learning-model` 타입 컴포넌트가 하나라도 있으면 스캔의 적합성 결과에 G7 검사 51개가 추가됩니다. 없으면 핵심 검사와 [규제 필드 검사](../ci-integration/sbom-upload.md#규제-필드-검사권고)만 수행합니다.
+- **감지는 자동입니다.** 문서에 `machine-learning-model` 타입 컴포넌트가 하나라도 있으면 스캔의 적합성 결과에 G7 검사 51개가 추가됩니다. 문서 자신이 기술하는 대상도 셉니다. 모델을 공개하며 만든 BOM은 모델을 컴포넌트 목록이 아니라 `metadata.component`에 두는데, 이쪽도 똑같이 읽습니다. 없으면 핵심 검사와 [규제 필드 검사](../ci-integration/sbom-upload.md#규제-필드-검사권고)만 수행합니다.
 - **생성 도구는 제한이 없습니다.** BomLens나 OWASP AIBOM Generator 같은 도구가 만든 CycloneDX 1.7 ML-BOM을 그대로 평가하며, 유효한 CycloneDX JSON이라면 손으로 작성한 문서도 됩니다.
 
 ## 체크리스트 읽는 법
@@ -154,7 +154,7 @@ OpenChain AI SBOM 가이드와 같은 원칙을 따릅니다 — **생성은 도
 
 ### 체크리스트가 나오지 않음
 
-문서에 `"type": "machine-learning-model"` 컴포넌트가 없는 경우입니다 — AI 관련 SBOM이라도 라이브러리만 나열한 문서가 많습니다. 업로드한 파일의 `components[].type`을 확인하세요. 그리고 스캔 종류가 `sbom`인지도 확인하세요. 소스·컨테이너 스캔에는 적합성 결과가 생성되지 않습니다.
+문서에 `"type": "machine-learning-model"` 컴포넌트가 없는 경우입니다 — AI 관련 SBOM이라도 라이브러리만 나열한 문서가 많습니다. 업로드한 파일의 `components[].type`과 `metadata.component.type`을 확인하세요. 두 자리 모두 인정합니다. 그리고 스캔 종류가 `sbom`인지도 확인하세요. 소스·컨테이너 스캔에는 적합성 결과가 생성되지 않습니다.
 
 ### 업로드가 `422`로 거부됨
 
