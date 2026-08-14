@@ -448,12 +448,14 @@ def _parse_args() -> argparse.Namespace:
         help="Override the seeded email. Default: e2e-<uuid>@example.com.",
     )
     parser.add_argument(
-        "--org-suffix",
+        "--stable-suffix",
         default=None,
         help=(
-            "Fixed suffix for the seeded org/team name and slug. Default: a "
-            "random hex. Pass a value when the run captures screenshots, so "
-            "the team name in the top bar is the same in every capture."
+            "Make every generated name deterministic from this suffix: the "
+            "org and team name and slug, the seeded emails, and the project "
+            "slug that the seeded git URL is built from. Default: a random "
+            "hex. Pass a value when the run captures screenshots, so the "
+            "strings on screen are the same in every capture."
         ),
     )
     parser.add_argument(
@@ -862,7 +864,7 @@ async def _seed(  # noqa: PLR0915 — a single linear seed routine reads better 
     project_names: list[str],
     email: str | None,
     password: str | None,
-    org_suffix: str | None = None,
+    stable_suffix: str | None = None,
     with_scan: bool,
     scan_count: int = 1,
     with_sbom: bool = False,
@@ -976,7 +978,13 @@ async def _seed(  # noqa: PLR0915 — a single linear seed routine reads better 
         chosen_password = ""
     else:
         chosen_password = password or f"Sup3rSecret!{uuid.uuid4().hex[:12]}"
-    chosen_email = email or f"e2e-{uuid.uuid4().hex[:12]}@example.com"
+    # One suffix drives every generated name below. Random by default, so
+    # repeat seeds against one database do not collide; fixed when the caller
+    # is about to photograph the result, because a seeded email, team name or
+    # repository URL that differs from run to run is noise the visual gate has
+    # to tolerate, and a gate can only be as tight as the noise it tolerates.
+    suffix = stable_suffix or uuid.uuid4().hex[:10]
+    chosen_email = email or f"e2e-{suffix}@example.com"
 
     # --component-count implies --with-scan; we cannot attach components
     # without a scan to anchor on.
@@ -993,12 +1001,6 @@ async def _seed(  # noqa: PLR0915 — a single linear seed routine reads better 
     factory = async_sessionmaker(engine, expire_on_commit=False, class_=AsyncSession)
     try:
         async with factory() as session:
-            # Random by default so repeat seeds against one database do not
-            # collide on the org/team slug. Callers that capture pixels pass a
-            # fixed suffix instead: the team name is rendered in the top bar,
-            # so a random one differs in every screenshot and becomes noise the
-            # visual gate has to tolerate.
-            suffix = org_suffix or uuid.uuid4().hex[:10]
             org = Organization(name=f"E2E Org {suffix}", slug=f"e2e-org-{suffix}")
             session.add(org)
             await session.commit()
@@ -1167,7 +1169,15 @@ async def _seed(  # noqa: PLR0915 — a single linear seed routine reads better 
             scan_ids: list[str] = []
             project_rows: list[Project] = []
             for name in project_names:
-                slug = f"{name.lower()}-{uuid.uuid4().hex[:6]}"
+                # The slug reaches the screen through `git_url` below, so
+                # a fixed suffix takes the random tail out of it too. Project
+                # names are already distinct per run in that mode, which is
+                # what the tail was there to guarantee.
+                slug = (
+                    name.lower()
+                    if stable_suffix
+                    else f"{name.lower()}-{uuid.uuid4().hex[:6]}"
+                )
                 project = Project(
                     team_id=team.id,
                     name=name,
@@ -2053,7 +2063,7 @@ def main() -> int:
                 project_names=project_names,
                 email=args.email,
                 password=args.password,
-                org_suffix=args.org_suffix,
+                stable_suffix=args.stable_suffix,
                 with_scan=args.with_scan,
                 scan_count=args.scan_count,
                 with_sbom=args.with_sbom,

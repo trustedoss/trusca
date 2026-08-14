@@ -89,9 +89,11 @@ export default async function globalSetup(config: FullConfig): Promise<void> {
     withScan: true,
     componentCount: 50,
     componentPrefix: `screenshot-bulk-${tag}`,
-    // Slugs are unique per organization, so this shares the tag for the same
-    // reason the project names do.
-    orgSuffix: tag,
+    // Everything else the seed generates at random hangs off this: the team
+    // name in the top bar, the seeded emails in the admin table, the git URL
+    // on the project page, and the synthetic CVE ids. All of them are on
+    // screen.
+    stableSuffix: tag,
     vulnerabilityCount: 30,
     withObligations: true,
     withOAuthIdentity: "github",

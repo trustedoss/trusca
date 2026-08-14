@@ -70,12 +70,19 @@ const __dirname = path.dirname(__filename);
  * fails on it teaches reviewers to ignore this gate. Masking uniformly
  * (rather than per screen) means a screen that starts rendering a timestamp
  * later does not silently become flaky.
+ *
+ * Database identifiers belong here for the same reason and no other. The
+ * seed's generated names are pinned in CI instead of masked, because they
+ * are text the product lays out and the gate should see; a primary key is
+ * assigned by Postgres and cannot be pinned without seeding rows by hand.
  */
 function volatileRegions(page: Page) {
   return [
     page.locator("time"),
     // The dashboard's "last updated" stamp is plain text, not a <time>.
     page.getByTestId("dashboard-last-updated"),
+    // The project's uuid, rendered under the heading on every project tab.
+    page.getByTestId("project-detail-id"),
   ];
 }
 
@@ -98,6 +105,37 @@ async function hideDevChrome(page: Page): Promise<void> {
       [data-testid="tanstack-query-devtools"] { display: none !important; }
     `,
   });
+}
+
+/**
+ * Block until the web fonts the product actually renders with are loaded.
+ *
+ * `document.fonts.ready` is not enough on its own. It resolves when no font
+ * load is in flight, and on a cold page nothing is in flight yet: the
+ * `@font-face` rules arrive with a stylesheet fetched from a font CDN, and
+ * until that stylesheet lands the browser has no font to load and reports
+ * itself ready. A capture taken then renders in the fallback face.
+ *
+ * Two back-to-back baseline captures from one commit caught exactly that on
+ * 2026-08-14: `projects-list.png` came out in the fallback face in one of
+ * them, at 1.8 % of the viewport. The ceiling at the time was 2 %, so a
+ * screenshot in the wrong typeface passed the gate.
+ *
+ * Asking whether Inter can be rendered is the question the capture depends
+ * on, so this asks that, and pairs it with `status` so a face that loads
+ * later (JetBrains Mono is only requested on screens that show code) is not
+ * still arriving when the shutter opens. If the stylesheet never lands the
+ * wait times out and the test fails, which is the honest outcome: the
+ * alternative is a baseline that records the wrong font.
+ */
+async function waitForWebFonts(page: Page): Promise<void> {
+  await page.waitForFunction(
+    () =>
+      document.fonts.check("600 16px Inter") &&
+      document.fonts.status === "loaded",
+    undefined,
+    { timeout: 20_000 },
+  );
 }
 
 function readPrimaryProjectId(): string {
@@ -134,11 +172,8 @@ test.describe.serial("@visual", () => {
         await pinTheme(page, theme);
         await auth.gotoLogin();
         await expectThemeApplied(page, theme);
-        // Wait for any in-flight font swap before the snapshot — otherwise
-        // the first capture on a cold runner uses Times New Roman fallback
-        // and the diff trips at 100 %.
         await hideDevChrome(page);
-        await page.evaluate(() => document.fonts.ready);
+        await waitForWebFonts(page);
         await expect(page).toHaveScreenshot(`login${suffix}.png`);
       });
 
@@ -155,7 +190,7 @@ test.describe.serial("@visual", () => {
             await screen.visit(page, { projectId: readPrimaryProjectId() });
             await expectThemeApplied(page, theme);
             await hideDevChrome(page);
-            await page.evaluate(() => document.fonts.ready);
+            await waitForWebFonts(page);
             await expect(page).toHaveScreenshot(`${screen.id}${suffix}.png`, {
               mask: volatileRegions(page),
             });
