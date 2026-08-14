@@ -42,6 +42,7 @@ export type ProblemToken =
   | "forbidden"
   | "not_found"
   | "conflict"
+  | "validation"
   | "rate_limited"
   | "server_error"
   | "unknown";
@@ -50,6 +51,9 @@ export type ProblemToken =
 const COMMON_KEY_BY_TOKEN: Record<ProblemToken, string> = {
   demo_read_only: DEMO_READ_ONLY_MESSAGE_KEY,
   network: "common:errors.network",
+  // No shared sentence: a validation failure is answered by the backend's
+  // `detail`, which names the field or rule that was rejected. See below.
+  validation: "",
   unauthorized: "common:errors.unauthorized",
   forbidden: "common:errors.forbidden",
   not_found: "common:errors.not_found",
@@ -81,6 +85,10 @@ export function problemToken(err: unknown): ProblemToken {
   // retry" would be wrong about the cause and wrong about the remedy for
   // most of them. Surfaces that know which 409 they can get should name it
   // through `prefix`.
+  // 400 and 422 both mean "the request itself was wrong", and both answer with
+  // a detail naming what was wrong — an unsupported format, a field that
+  // failed a rule. Only the server knows which.
+  if (err.status === 400 || err.status === 422) return "validation";
   if (err.status === 409 || err.status === 412) return "conflict";
   if (err.status === 429) return "rate_limited";
   if (err.status >= 500) return "server_error";
@@ -96,6 +104,17 @@ export interface ProblemMessageOptions {
    */
   prefix?: string;
   /**
+   * Key for a sentence naming what failed, e.g. "Could not create the API
+   * key." Most call sites have one already, as the fallback they passed to
+   * `t()`. It is prepended to the class sentence, so the user gets both what
+   * broke and why: "Could not create the API key. You do not have permission
+   * to do this."
+   *
+   * It also stands alone for a class we cannot name, where it beats the
+   * backend's English `detail`.
+   */
+  action?: string;
+  /**
    * Set false to keep the backend's English `detail` out of the result
    * entirely, for surfaces that would rather show generic localized copy than
    * untranslated text.
@@ -106,28 +125,50 @@ export interface ProblemMessageOptions {
 /**
  * Resolve an error to display text.
  *
- * Resolution order: a prefixed key for the token, the shared `common:errors`
- * wording for the token, the backend `detail`, then the generic sentence. An
- * `unknown` token skips straight to `detail`, because "the request failed" is
- * the message we have precisely when we know nothing.
+ * For a class we can name: the surface's own wording if it has some, else the
+ * shared sentence, with the `action` sentence in front when given.
+ *
+ * For a class we cannot name: the `action` sentence alone, else the backend's
+ * `detail`, else the generic line. `detail` ranks below `action` because it is
+ * always English, and a translated "could not save the policy" serves a Korean
+ * reader better than an English sentence that is merely more specific.
  */
 export function problemMessage(
   err: unknown,
   t: TFunction,
   options: ProblemMessageOptions = {},
 ): string {
-  const { prefix, allowDetailFallback = true } = options;
+  const { prefix, action, allowDetailFallback = true } = options;
   const token = problemToken(err);
+  const actionText = action ? t(action, { defaultValue: "" }) : "";
 
-  if (prefix) {
-    const scoped = t(`${prefix}.${token}`, { defaultValue: "" });
-    if (scoped) return scoped;
+  const scoped = prefix
+    ? t(`${prefix}.${token}`, { defaultValue: "" })
+    : "";
+
+  // A 422 is the one class where the backend knows something we cannot: which
+  // field failed, which limit was exceeded, which statement in the uploaded
+  // document was rejected. Its `detail` is English, and half an English
+  // sentence is a real cost — but the alternative is telling the user only
+  // that something was invalid, which leaves them with no way forward.
+  if (!scoped && token === "validation" && err instanceof ProblemError && err.detail) {
+    return actionText ? `${actionText} ${err.detail}` : err.detail;
+  }
+  const shared =
+    token === "unknown" ? "" : t(COMMON_KEY_BY_TOKEN[token], { defaultValue: "" });
+  const classText = scoped || shared;
+
+  if (classText) {
+    // The demo message already explains itself; prefixing it with "could not
+    // save" would say the same thing twice.
+    if (token === "demo_read_only") return classText;
+    // Nor is there any point saying the same sentence twice, which happens
+    // when a caller passes both a prefix and an action that resolve alike.
+    if (!actionText || actionText === classText) return classText;
+    return `${actionText} ${classText}`;
   }
 
-  if (token !== "unknown") {
-    const shared = t(COMMON_KEY_BY_TOKEN[token], { defaultValue: "" });
-    if (shared) return shared;
-  }
+  if (actionText) return actionText;
 
   if (
     allowDetailFallback &&

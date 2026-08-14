@@ -231,9 +231,11 @@ describe("ObligationDrawer", () => {
     await waitFor(() => {
       expect(screen.getByTestId("obligation-drawer-error")).toBeInTheDocument();
     });
-    expect(
-      screen.getByTestId("obligation-drawer-error").textContent,
-    ).toContain("Obligation does not exist or is not visible to you.");
+    const text =
+      screen.getByTestId("obligation-drawer-error").textContent ?? "";
+    expect(text).toContain("Could not load this obligation.");
+    expect(text).toContain("That is no longer there.");
+    expect(text).not.toContain("not visible to you");
   });
 
   // C1a — advisory Korean rendering with the English original disclosable.

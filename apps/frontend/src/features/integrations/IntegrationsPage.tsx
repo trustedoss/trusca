@@ -32,7 +32,7 @@ import { useApiKeys } from "@/features/integrations/useApiKeys";
 import { usePermissions } from "@/hooks/usePermissions";
 import { createApiKey, revokeApiKey } from "@/lib/apiKeysApi";
 import { getApiBase } from "@/lib/apiBase";
-import { ProblemError } from "@/lib/problem";
+import { problemMessage } from "@/lib/problemMessage";
 import RelativeTime from "@/components/RelativeTime";
 import { cn } from "@/lib/utils";
 import { useAuthStore } from "@/stores/authStore";
@@ -167,11 +167,11 @@ export function IntegrationsPage() {
       showToast(t("api_keys.toast.created"), "success", "created");
     },
     onError: (err) => {
-      const text =
-        err instanceof ProblemError
-          ? err.detail || t("api_keys.errors.create_failed")
-          : t("api_keys.errors.create_failed");
-      showToast(text, "error", "create_failed");
+      showToast(
+        problemMessage(err, t, { action: "api_keys.errors.create_failed" }),
+        "error",
+        "create_failed",
+      );
     },
   });
 
@@ -183,11 +183,11 @@ export function IntegrationsPage() {
       showToast(t("api_keys.toast.revoked"), "success", "revoked");
     },
     onError: (err) => {
-      const text =
-        err instanceof ProblemError
-          ? err.detail || t("api_keys.errors.revoke_failed")
-          : t("api_keys.errors.revoke_failed");
-      showToast(text, "error", "revoke_failed");
+      showToast(
+        problemMessage(err, t, { action: "api_keys.errors.revoke_failed" }),
+        "error",
+        "revoke_failed",
+      );
     },
   });
 

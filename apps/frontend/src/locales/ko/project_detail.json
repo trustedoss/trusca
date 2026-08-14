@@ -516,7 +516,7 @@
       "import_error_not_found": "프로젝트를 찾을 수 없거나 접근할 수 없습니다.",
       "import_error_too_large": "VEX 문서가 너무 커서 가져올 수 없습니다.",
       "import_error_malformed": "문서를 OpenVEX 또는 CycloneDX VEX로 해석할 수 없습니다.",
-      "import_error_generic": "VEX 가져오기에 실패했습니다. 다시 시도해 주세요.",
+      "import_error_generic": "VEX 가져오기에 실패했습니다.",
       "format_openvex": "OpenVEX",
       "format_cyclonedx": "CycloneDX VEX",
       "summary_matched": "일치",
@@ -571,6 +571,7 @@
       "result_title": "{{succeeded}}건 성공 · {{failed}}건 실패 (총 {{total}}건)",
       "result_dismiss": "닫기",
       "more_failures": "외 {{count}}건",
+      "envelope_failed": "일괄 변경을 적용하지 못했습니다.",
       "error_code": {
         "not_found": "이 프로젝트에서 찾을 수 없음",
         "forbidden": "권한이 없습니다",
@@ -945,7 +946,8 @@
       "spdx_tv": "SPDX Tag-Value 다운로드"
     },
     "errors": {
-      "download_failed": "SBOM을 다운로드하지 못했습니다."
+      "download_failed": "SBOM을 다운로드하지 못했습니다.",
+      "conflict": "SBOM을 만들 수 있는 완료된 스캔이 아직 없습니다. 스캔을 먼저 실행해 주세요."
     },
     "signature": {
       "title": "서명 및 검증",
@@ -963,7 +965,10 @@
       "not_applicable": "{{artifact}}은(는) keyless(sigstore) 서명에서만 제공됩니다. 키 기반 서명은 공개 키로 검증하세요.",
       "unsigned": "최근 스캔에 서명이 없습니다. SBOM 서명이 비활성화되었거나 이 스캔이 서명되지 않았습니다.",
       "verify_hint": "번들에는 cosign verify-blob 단계별 안내가 담긴 VERIFY.md가 포함됩니다.",
-      "verify_docs_link": "검증 가이드"
+      "verify_docs_link": "검증 가이드",
+      "errors": {
+        "download_failed": "서명 번들을 다운로드하지 못했습니다."
+      }
     },
     "profile": {
       "label": "내보내기 프로파일",
@@ -1030,7 +1035,12 @@
       "description_max": "설명은 500자 이하여야 합니다",
       "git_url_invalid": "유효한 URL이어야 합니다 (https:// 또는 http://)",
       "default_branch_max": "기본 브랜치는 255자 이하여야 합니다",
-      "declared_license_max": "배포 라이선스는 255자 이하여야 합니다"
+      "declared_license_max": "배포 라이선스는 255자 이하여야 합니다",
+      "save_failed": "프로젝트 설정을 저장하지 못했습니다.",
+      "credential_failed": "Git 자격 증명을 저장하지 못했습니다.",
+      "archive_failed": "프로젝트 보관 상태를 변경하지 못했습니다.",
+      "conflict": "같은 이름을 쓰는 프로젝트가 이 팀에 이미 있습니다.",
+      "server_error": "서버가 요청을 처리하지 못했습니다. 계속되면 관리자에게 서버 설정 확인을 요청하십시오."
     },
     "action": {
       "save": "변경사항 저장",

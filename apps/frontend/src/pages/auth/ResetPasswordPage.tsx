@@ -75,6 +75,7 @@ const TOKEN_INVALID_ERROR_KEYS: ReadonlySet<string> = new Set([
  * malformed) and `expired_reset_token`.
  */
 function problemKey(err: ProblemError): string {
+  // problem-detail-lint-allow: read to classify, never rendered; every branch below returns a key
   const t = (err.problem?.title ?? err.title ?? "").toLowerCase();
   if (t.includes("expired")) return "reset.errors.expired";
   if (t.includes("invalid") || t.includes("reset_token")) {

@@ -516,7 +516,7 @@
       "import_error_not_found": "Project not found or not accessible.",
       "import_error_too_large": "The VEX document is too large to import.",
       "import_error_malformed": "The document could not be parsed as OpenVEX or CycloneDX VEX.",
-      "import_error_generic": "The VEX import failed. Please try again.",
+      "import_error_generic": "The VEX import failed.",
       "format_openvex": "OpenVEX",
       "format_cyclonedx": "CycloneDX VEX",
       "summary_matched": "Matched",
@@ -571,6 +571,7 @@
       "result_title": "{{succeeded}} succeeded · {{failed}} failed (of {{total}})",
       "result_dismiss": "Dismiss",
       "more_failures": "+{{count}} more",
+      "envelope_failed": "Could not apply the bulk change.",
       "error_code": {
         "not_found": "Not found in this project",
         "forbidden": "Permission denied",
@@ -945,7 +946,8 @@
       "spdx_tv": "Download SPDX Tag-Value"
     },
     "errors": {
-      "download_failed": "Could not download the SBOM."
+      "download_failed": "Could not download the SBOM.",
+      "conflict": "There is no completed scan to build an SBOM from yet. Run a scan first."
     },
     "signature": {
       "title": "Signature & verification",
@@ -963,7 +965,10 @@
       "not_applicable": "{{artifact}} is only available for keyless (sigstore) signing. For key-based signing, verify with the public key instead.",
       "unsigned": "The latest scan has no signature. SBOM signing may be disabled, or this scan was not signed.",
       "verify_hint": "The bundle includes a VERIFY.md with step-by-step cosign verify-blob instructions.",
-      "verify_docs_link": "Verification guide"
+      "verify_docs_link": "Verification guide",
+      "errors": {
+        "download_failed": "Could not download the signature bundle."
+      }
     },
     "profile": {
       "label": "Export profile",
@@ -1030,7 +1035,12 @@
       "description_max": "Description must be 500 characters or less",
       "git_url_invalid": "Must be a valid URL (https:// or http://)",
       "default_branch_max": "Default branch must be 255 characters or less",
-      "declared_license_max": "Outbound license must be 255 characters or fewer"
+      "declared_license_max": "Outbound license must be 255 characters or fewer",
+      "save_failed": "Could not save the project settings.",
+      "credential_failed": "Could not save the Git credential.",
+      "archive_failed": "Could not change the project's archive state.",
+      "conflict": "Another project in this team already uses that name.",
+      "server_error": "The server could not complete this. If it keeps happening, ask an administrator to check the server configuration."
     },
     "action": {
       "save": "Save changes",

@@ -1,4 +1,9 @@
 {
+  "errors": {
+    "preview_failed": "Could not compute the preview.",
+    "create_pr_failed": "Could not open the pull request.",
+    "list_failed": "Could not load the pull requests."
+  },
   "preview": {
     "title": "Dependency remediation preview",
     "subtitle": "Compute the proposed package.json edit for this project's vulnerable npm dependencies. This is a dry-run — it never opens a pull request.",

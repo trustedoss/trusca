@@ -100,6 +100,37 @@ describe("problemMessage", () => {
     expect(problemMessage(err, ko)).toBe("I am a teapot");
   });
 
+  it("says what failed and why when the caller names the action", () => {
+    const text = problemMessage(problem(403), ko, {
+      action: "integrations:api_keys.errors.create_failed",
+    });
+
+    expect(text).toContain(ko("integrations:api_keys.errors.create_failed"));
+    expect(text).toContain(ko("common:errors.forbidden"));
+  });
+
+  it("prefers the action sentence over an English detail", () => {
+    // For a class we cannot name, a translated "could not create the key"
+    // serves a Korean reader better than a more specific English one.
+    const text = problemMessage(problem(418, "Brew refused."), ko, {
+      action: "integrations:api_keys.errors.create_failed",
+    });
+
+    expect(text).toBe(ko("integrations:api_keys.errors.create_failed"));
+    expect(text).not.toContain("Brew");
+  });
+
+  it("does not prepend the action to the demo message", () => {
+    // "Could not create the key. Writes are disabled in the read-only demo"
+    // says the same thing twice.
+    const err = problem(403, "read-only", { demo_read_only: true });
+    const text = problemMessage(err, ko, {
+      action: "integrations:api_keys.errors.create_failed",
+    });
+
+    expect(text).toBe(ko("common:demo.write_disabled"));
+  });
+
   it("suppresses the detail fallback when asked", () => {
     const err = problem(418, "I am a teapot");
     expect(problemMessage(err, ko, { allowDetailFallback: false })).toBe(

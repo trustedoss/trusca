@@ -1,4 +1,9 @@
 {
+  "errors": {
+    "preview_failed": "미리보기를 계산하지 못했습니다.",
+    "create_pr_failed": "풀 리퀘스트를 생성하지 못했습니다.",
+    "list_failed": "풀 리퀘스트 목록을 불러오지 못했습니다."
+  },
   "preview": {
     "title": "의존성 보안 조치 미리보기",
     "subtitle": "이 프로젝트의 취약한 npm 의존성에 대해 제안되는 package.json 수정안을 계산합니다. 이 작업은 드라이런이며 풀 리퀘스트를 생성하지 않습니다.",

@@ -27,7 +27,7 @@ import {
   readTabSearchParam,
   writeTabSearchParam,
 } from "@/features/projects/components/tabSearchParam";
-import { ProblemError } from "@/lib/problem";
+import { problemMessage } from "@/lib/problemMessage";
 import { cn } from "@/lib/utils";
 
 /**
@@ -273,9 +273,9 @@ export function ObligationsTab({
         <div className="px-6 py-6">
           <Alert variant="destructive" data-testid="obligations-error">
             <AlertDescription>
-              {obligations.error instanceof ProblemError
-                ? obligations.error.detail
-                : t("obligations.errors.load_list")}
+              {problemMessage(obligations.error, t, {
+                action: "obligations.errors.load_list",
+              })}
             </AlertDescription>
           </Alert>
         </div>

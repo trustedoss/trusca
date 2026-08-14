@@ -373,8 +373,9 @@ describe("LicenseDrawer", () => {
         screen.getByTestId("license-drawer-error"),
       ).toBeInTheDocument();
     });
-    expect(
-      screen.getByTestId("license-drawer-error").textContent,
-    ).toContain("License finding 4242 not found.");
+    const text = screen.getByTestId("license-drawer-error").textContent ?? "";
+    expect(text).toContain("Could not load license details.");
+    expect(text).toContain("That is no longer there.");
+    expect(text).not.toContain("License finding 4242 not found.");
   });
 });

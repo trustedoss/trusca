@@ -114,8 +114,23 @@ export function scan(root = SRC_ROOT, frontendRoot = FRONTEND_ROOT) {
     const rel = path.relative(frontendRoot, absolute).split(path.sep).join("/");
     if (EXEMPT.has(rel)) continue;
 
-    const lines = stripComments(fs.readFileSync(absolute, "utf8")).split("\n");
+    const raw = fs.readFileSync(absolute, "utf8").split("\n");
+    const lines = stripComments(raw.join("\n")).split("\n");
     lines.forEach((code, index) => {
+      // A line-level opt-out, for the places where the server's text really is
+      // better than anything we can translate: a 422 governance message naming
+      // the limit that was exceeded, or a `detail` that belongs to an uploaded
+      // document rather than to a Problem. The reason is required so the next
+      // reader can judge it; a bare marker does not count.
+      //
+      // Accepted on the line itself or the one above, so a long expression
+      // does not have to grow a trailing comment to be exempted.
+      // At least a few words of reason, not one character: a marker that
+      // accepts "x" is a marker that will be used with "x".
+      const marker = /problem-detail-lint-allow:\s*\S+(?:\s+\S+){3,}/;
+      if (marker.test(raw[index] ?? "") || marker.test(raw[index - 1] ?? "")) {
+        return;
+      }
       const hits = [
         ...(code.match(ERROR_FIELD) ?? []),
         ...(code.match(CAST_FIELD) ?? []),

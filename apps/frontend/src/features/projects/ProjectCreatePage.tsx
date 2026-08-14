@@ -15,7 +15,7 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { PageTitle, Subtitle } from "@/components/ui/typography";
 import { createProject } from "@/lib/projectsApi";
-import { ProblemError } from "@/lib/problem";
+import { problemMessage } from "@/lib/problemMessage";
 import { useActiveTeam } from "@/hooks/useActiveTeam";
 import { useDocumentTitle } from "@/hooks/useDocumentTitle";
 import { useAuthStore } from "@/stores/authStore";
@@ -124,9 +124,12 @@ export function ProjectCreatePage() {
   }
 
   const submitError = mutation.isError
-    ? mutation.error instanceof ProblemError
-      ? mutation.error.detail
-      : mutation.error.message
+    ? problemMessage(mutation.error, t, {
+        // This surface knows what its 409 means (a name already taken), so it
+        // says that instead of the generic "does not match current state".
+        prefix: "create.errors",
+        action: "create.error_failed",
+      })
     : null;
 
   return (

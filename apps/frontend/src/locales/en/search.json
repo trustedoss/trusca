@@ -68,6 +68,6 @@
     }
   },
   "errors": {
-    "load_failed": "Couldn't run the search. Please try again."
+    "load_failed": "Could not run the search."
   }
 }

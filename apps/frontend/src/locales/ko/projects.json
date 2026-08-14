@@ -74,7 +74,11 @@
     "error_name_max": "이름은 100자 이하여야 합니다",
     "error_description_max": "설명은 500자 이하여야 합니다",
     "error_git_url_invalid": "유효한 저장소 URL을 입력하세요 (https://, ssh://, git@host:…, git+ssh://)",
-    "error_default_branch_invalid": "브랜치 이름은 영문·숫자와 . _ / - 만 사용할 수 있습니다"
+    "error_default_branch_invalid": "브랜치 이름은 영문·숫자와 . _ / - 만 사용할 수 있습니다",
+    "error_failed": "프로젝트를 등록하지 못했습니다.",
+    "errors": {
+      "conflict": "같은 이름의 프로젝트가 팀에 이미 있습니다."
+    }
   },
   "summary": {
     "severity_card": {

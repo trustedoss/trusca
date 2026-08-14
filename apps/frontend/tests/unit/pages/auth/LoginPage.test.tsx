@@ -197,7 +197,10 @@ describe("LoginPage", () => {
     await user.click(screen.getByTestId("login-submit"));
 
     const alert = await screen.findByTestId("login-error");
-    expect(alert).toHaveTextContent(/Failed to fetch/i);
+    // axios's own "Failed to fetch" used to reach the screen. The transport
+    // failure is now named in the user's language.
+    expect(alert).toHaveTextContent("Network error");
+    expect(alert).not.toHaveTextContent(/Failed to fetch/i);
   });
 
   it("links to /register and /forgot-password", () => {

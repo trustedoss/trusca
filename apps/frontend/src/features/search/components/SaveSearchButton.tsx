@@ -20,7 +20,7 @@ import {
   useCreateSavedSearch,
   useSavedSearches,
 } from "@/features/search/api/useSearchResults";
-import { ProblemError } from "@/lib/problem";
+import { problemMessage } from "@/lib/problemMessage";
 
 /**
  * Park the current search under a name.
@@ -97,9 +97,7 @@ export function SaveSearchButton({
           {create.isError ? (
             <Alert variant="destructive" data-testid="search-save-error">
               <AlertDescription>
-                {create.error instanceof ProblemError
-                  ? create.error.detail
-                  : t("save.failed")}
+                {problemMessage(create.error, t, { action: "save.failed" })}
               </AlertDescription>
             </Alert>
           ) : null}

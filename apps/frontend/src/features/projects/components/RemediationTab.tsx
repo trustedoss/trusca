@@ -47,6 +47,7 @@ import {
 } from "@/features/projects/api/useRemediation";
 import { RemediationPrStatusBadge } from "@/features/projects/components/RemediationPrStatusBadge";
 import { ProblemError } from "@/lib/problem";
+import { problemMessage } from "@/lib/problemMessage";
 import type {
   ManifestSource,
   NpmDryRunResponse,
@@ -57,12 +58,6 @@ interface RemediationTabProps {
   projectId: string;
 }
 
-/** Pull an RFC 7807 detail (or generic message) off any thrown error. */
-function errorDetail(err: unknown): string | null {
-  if (!err) return null;
-  if (err instanceof ProblemError) return err.detail;
-  return err instanceof Error ? err.message : String(err);
-}
 
 export function RemediationTab({ projectId }: RemediationTabProps) {
   const { t } = useTranslation("remediation");
@@ -87,12 +82,14 @@ export function RemediationTab({ projectId }: RemediationTabProps) {
     createPr.error instanceof ProblemError ? createPr.error : null;
   const notOptedIn = createErr?.status === 409;
   const forbidden = createErr?.status === 403;
+  // Those two have their own inline guidance below; anything else becomes one
+  // translated sentence.
   const otherCreateError =
-    createErr && !notOptedIn && !forbidden
-      ? createErr.detail
-      : !createErr && createPr.error
-        ? errorDetail(createPr.error)
-        : null;
+    createPr.error && !notOptedIn && !forbidden
+      ? problemMessage(createPr.error, t, {
+          action: "errors.create_pr_failed",
+        })
+      : null;
 
   const createdPr: RemediationPullRequest | null | undefined = createPr.data;
 
@@ -137,7 +134,11 @@ export function RemediationTab({ projectId }: RemediationTabProps) {
 
           {dryRun.isError ? (
             <Alert variant="destructive" data-testid="remediation-preview-error">
-              <AlertDescription>{errorDetail(dryRun.error)}</AlertDescription>
+              <AlertDescription>
+                {problemMessage(dryRun.error, t, {
+                  action: "errors.preview_failed",
+                })}
+              </AlertDescription>
             </Alert>
           ) : null}
 
@@ -363,7 +364,9 @@ function PullRequestList({
         </div>
       ) : isError ? (
         <Alert variant="destructive" data-testid="remediation-pr-list-error">
-          <AlertDescription>{errorDetail(error)}</AlertDescription>
+          <AlertDescription>
+            {problemMessage(error, t, { action: "errors.list_failed" })}
+          </AlertDescription>
         </Alert>
       ) : items.length === 0 ? (
         <p

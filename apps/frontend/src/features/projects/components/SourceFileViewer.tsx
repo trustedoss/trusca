@@ -18,6 +18,7 @@ import {
 } from "@/features/projects/lib/sourceHighlight";
 import { safeFilenameToken, triggerBlobDownload } from "@/lib/download";
 import { ProblemError } from "@/lib/problem";
+import { problemMessage } from "@/lib/problemMessage";
 import { cn } from "@/lib/utils";
 
 /**
@@ -128,9 +129,7 @@ export function SourceFileViewer({
       <div className="p-6">
         <Alert variant="destructive" data-testid="source-file-error">
           <AlertDescription>
-            {error instanceof ProblemError
-              ? error.detail
-              : t("source.viewer.errors.load")}
+            {problemMessage(error, t, { action: "source.viewer.errors.load" })}
           </AlertDescription>
         </Alert>
       </div>

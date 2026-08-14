@@ -159,11 +159,14 @@ describe("VexImportDialog", () => {
     expect(err.textContent).toMatch(/parsed|openvex|cyclonedx/i);
   });
 
-  it("renders a <script> in an unknown-status error detail as inert escaped text (XSS)", async () => {
+  it("keeps a server-supplied payload out of an unknown-status error entirely (XSS)", async () => {
     const user = userEvent.setup();
     const payload = '<script>window.__vex_xss__ = 1;</script>';
-    // A non-4xx-specific status falls through to rendering the server `detail`
-    // verbatim — the worst case for output encoding.
+    // This status used to fall through to rendering the server `detail`
+    // verbatim, the worst case for output encoding. It now resolves to
+    // translated copy, so the payload never reaches the DOM at all — one
+    // fewer surface to encode correctly. The per-statement path below still
+    // renders document text, and still proves the encoding.
     mockedImport.mockRejectedValueOnce(
       new ProblemError("server", {
         status: 500,
@@ -176,9 +179,7 @@ describe("VexImportDialog", () => {
     await attachAndSubmit(user);
 
     const err = await screen.findByTestId("vex-import-error");
-    // The raw payload appears as TEXT…
-    expect(err.textContent).toContain(payload);
-    // …and NOT as an executable element.
+    expect(err.textContent).not.toContain("script");
     expect(err.querySelector("script")).toBeNull();
     expect(
       (window as unknown as { __vex_xss__?: number }).__vex_xss__,

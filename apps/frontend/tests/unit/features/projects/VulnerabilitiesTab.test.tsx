@@ -188,9 +188,10 @@ describe("VulnerabilitiesTab", () => {
     await waitFor(() => {
       expect(screen.getByTestId("vulnerabilities-error")).toBeInTheDocument();
     });
-    expect(screen.getByTestId("vulnerabilities-error").textContent).toContain(
-      "Custom 7807 detail surfaces here.",
-    );
+    const text = screen.getByTestId("vulnerabilities-error").textContent ?? "";
+    expect(text).toContain("Could not load vulnerabilities.");
+    expect(text).toContain("You do not have permission to do this.");
+    expect(text).not.toContain("Custom 7807 detail");
   });
 
   it("debounces the search input then refetches with the new query", async () => {

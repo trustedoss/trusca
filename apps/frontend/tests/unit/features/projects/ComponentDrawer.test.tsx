@@ -228,9 +228,12 @@ describe("ComponentDrawer", () => {
     await waitFor(() => {
       expect(screen.getByTestId("component-drawer-error")).toBeInTheDocument();
     });
-    expect(
-      screen.getByTestId("component-drawer-error").textContent,
-    ).toContain("Component not in latest scan.");
+    // The backend's English detail no longer reaches the screen; the class is
+    // translated and the action names what failed.
+    const text = screen.getByTestId("component-drawer-error").textContent ?? "";
+    expect(text).toContain("Could not load component.");
+    expect(text).toContain("That is no longer there.");
+    expect(text).not.toContain("Component not in latest scan.");
   });
 
   // W2 #31 — Type/Usage meta rows.

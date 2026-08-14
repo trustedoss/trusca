@@ -46,6 +46,7 @@ import {
   useUnlinkIdentity,
 } from "@/features/profile/useOAuthIdentities";
 import { ProblemError } from "@/lib/problem";
+import { problemMessage } from "@/lib/problemMessage";
 import { formatRelativeToNow } from "@/lib/relativeTime";
 import { cn } from "@/lib/utils";
 import { useAuthStore } from "@/stores/authStore";
@@ -252,11 +253,13 @@ export function UserProfilePage() {
         setBlocksLoginId(id);
         setConfirmingId(null);
       } else {
-        const text =
-          err instanceof ProblemError && err.detail
-            ? err.detail
-            : t("connected_accounts.toast.unlink_failed");
-        showToast(text, "error", "unlink_failed");
+        showToast(
+          problemMessage(err, t, {
+            action: "connected_accounts.toast.unlink_failed",
+          }),
+          "error",
+          "unlink_failed",
+        );
         setConfirmingId(null);
       }
     }

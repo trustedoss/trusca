@@ -36,6 +36,7 @@ import { Button } from "@/components/ui/button";
 import { useSbomSignature } from "@/features/projects/api/useSbomSignature";
 import type { SbomSignatureArtifact } from "@/lib/projectsApi";
 import { ProblemError } from "@/lib/problem";
+import { problemMessage } from "@/lib/problemMessage";
 
 export interface SbomSignatureSectionProps {
   projectId: string;
@@ -200,9 +201,9 @@ export function SbomSignatureSection({ projectId }: SbomSignatureSectionProps) {
       {signature.error ? (
         <Alert variant="destructive" data-testid="sbom-signature-error">
           <AlertDescription>
-            {signature.error instanceof ProblemError
-              ? signature.error.detail
-              : signature.error.message}
+            {problemMessage(signature.error, t, {
+              action: "sbom.signature.errors.download_failed",
+            })}
           </AlertDescription>
         </Alert>
       ) : null}

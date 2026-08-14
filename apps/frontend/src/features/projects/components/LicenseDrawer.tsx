@@ -28,7 +28,7 @@ import { LicenseKindBadge } from "@/features/projects/components/LicenseKindBadg
 import { ConflictVerdictBadge } from "@/features/projects/components/ConflictVerdictBadge";
 import { ReviewFlagBadge } from "@/features/projects/components/ReviewFlagBadge";
 import { useAdvisoryTranslation } from "@/lib/advisoryTranslation";
-import { ProblemError } from "@/lib/problem";
+import { problemMessage } from "@/lib/problemMessage";
 import { cn } from "@/lib/utils";
 
 /**
@@ -130,9 +130,9 @@ export function LicenseDrawer({
         {detail.isError ? (
           <Alert variant="destructive" data-testid="license-drawer-error">
             <AlertDescription>
-              {detail.error instanceof ProblemError
-                ? detail.error.detail
-                : t("licenses.errors.load_finding")}
+              {problemMessage(detail.error, t, {
+                action: "licenses.errors.load_finding",
+              })}
             </AlertDescription>
           </Alert>
         ) : null}

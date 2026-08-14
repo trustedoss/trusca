@@ -29,7 +29,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { useDemoMode } from "@/hooks/useDemoMode";
 import { fetchMe, postLogin, postRegister } from "@/lib/api";
 import { isDemoReadOnlyError } from "@/lib/demoReadOnly";
-import { ProblemError } from "@/lib/problem";
+import { problemMessage } from "@/lib/problemMessage";
 import { useAuthStore } from "@/stores/authStore";
 
 function buildSchema(t: (key: string) => string) {
@@ -140,10 +140,8 @@ export function RegisterPage() {
         // flips under a loaded page). The backend `detail` is English-only, so
         // use the translated string every other write surface shows.
         setApiError(t("common:demo.write_disabled"));
-      } else if (err instanceof ProblemError) {
-        setApiError(err.detail || err.title || t("errors.unknown"));
       } else {
-        setApiError(t("errors.network"));
+        setApiError(problemMessage(err, t, { prefix: "errors" }));
       }
       setSubmitting(false);
       return;

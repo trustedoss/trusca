@@ -16,7 +16,7 @@ import type {
   ReleaseSnapshot,
 } from "@/features/projects/api/releasesApi";
 import { releaseLabel } from "@/features/projects/lib/releaseLabel";
-import { ProblemError } from "@/lib/problem";
+import { problemMessage } from "@/lib/problemMessage";
 import RelativeTime from "@/components/RelativeTime";
 import { cn } from "@/lib/utils";
 
@@ -132,9 +132,9 @@ export function ReleasesTab({ projectId, onViewSnapshot }: ReleasesTabProps) {
           {releases.isError ? (
             <Alert variant="destructive" data-testid="releases-error">
               <AlertDescription>
-                {releases.error instanceof ProblemError
-                  ? releases.error.detail
-                  : t("releases.errors.load_failed")}
+                {problemMessage(releases.error, t, {
+                  action: "releases.errors.load_failed",
+                })}
               </AlertDescription>
             </Alert>
           ) : null}
