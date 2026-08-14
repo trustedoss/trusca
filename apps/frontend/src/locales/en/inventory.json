@@ -70,7 +70,7 @@
     }
   },
   "errors": {
-    "load_failed": "Couldn't load the inventory. Please try again."
+    "load_failed": "Could not load the inventory."
   },
   "affected": {
     "title": "Also affected",

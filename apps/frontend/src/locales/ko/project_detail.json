@@ -516,7 +516,7 @@
       "import_error_not_found": "프로젝트를 찾을 수 없거나 접근할 수 없습니다.",
       "import_error_too_large": "VEX 문서가 너무 커서 가져올 수 없습니다.",
       "import_error_malformed": "문서를 OpenVEX 또는 CycloneDX VEX로 해석할 수 없습니다.",
-      "import_error_generic": "VEX 가져오기에 실패했습니다. 다시 시도해 주세요.",
+      "import_error_generic": "VEX 가져오기에 실패했습니다.",
       "format_openvex": "OpenVEX",
       "format_cyclonedx": "CycloneDX VEX",
       "summary_matched": "일치",
@@ -571,6 +571,7 @@
       "result_title": "{{succeeded}}건 성공 · {{failed}}건 실패 (총 {{total}}건)",
       "result_dismiss": "닫기",
       "more_failures": "외 {{count}}건",
+      "envelope_failed": "일괄 변경을 적용하지 못했습니다.",
       "error_code": {
         "not_found": "이 프로젝트에서 찾을 수 없음",
         "forbidden": "권한이 없습니다",
@@ -946,7 +947,7 @@
     },
     "errors": {
       "download_failed": "SBOM을 다운로드하지 못했습니다.",
-      "conflict": "SBOM을 만들 수 있는 완료된 스캔이 아직 없습니다."
+      "conflict": "SBOM을 만들 수 있는 완료된 스캔이 아직 없습니다. 스캔을 먼저 실행해 주세요."
     },
     "signature": {
       "title": "서명 및 검증",
@@ -966,7 +967,7 @@
       "verify_hint": "번들에는 cosign verify-blob 단계별 안내가 담긴 VERIFY.md가 포함됩니다.",
       "verify_docs_link": "검증 가이드",
       "errors": {
-        "load_failed": "서명을 불러오지 못했습니다."
+        "download_failed": "서명 번들을 다운로드하지 못했습니다."
       }
     },
     "profile": {

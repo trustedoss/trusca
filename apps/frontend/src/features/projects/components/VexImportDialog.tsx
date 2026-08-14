@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2026 TRUSCA contributors
+import type { TFunction } from "i18next";
 import { useId, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 
@@ -20,6 +21,7 @@ import type {
 } from "@/features/projects/api/vexApi";
 import type { TeamScopedRole } from "@/features/projects/api/projectDetailApi";
 import { ProblemError } from "@/lib/problem";
+import { problemMessage } from "@/lib/problemMessage";
 import { cn } from "@/lib/utils";
 
 /**
@@ -248,12 +250,9 @@ export function VexImportDialog({
 /**
  * Map a thrown import error to a localized message. We branch on the RFC 7807
  * status so the analyst gets an actionable hint (too large / malformed / not
- * permitted), falling back to the server `detail` for anything else.
+ * permitted); everything else goes through the shared helper.
  */
-function importErrorMessage(
-  error: Error | null,
-  t: (key: string, opts?: Record<string, unknown>) => string,
-): string {
+function importErrorMessage(error: Error | null, t: TFunction): string {
   if (error instanceof ProblemError) {
     switch (error.status) {
       case 403:
@@ -264,12 +263,14 @@ function importErrorMessage(
         return t("vulnerabilities.vex.import_error_too_large");
       case 422:
         return t("vulnerabilities.vex.import_error_malformed");
-      default:
-        // `detail` is server-supplied text — rendered as escaped text by React.
-        return error.detail || t("vulnerabilities.vex.import_error_generic"); // problem-detail-lint-allow: import failures name the offending statement
     }
   }
-  return t("vulnerabilities.vex.import_error_generic");
+  // Everything the switch does not name goes through the shared helper. It
+  // used to fall to the server's `detail`, which on a transport failure is
+  // axios's "Network Error" — English, and no use to anyone.
+  return problemMessage(error, t, {
+    action: "vulnerabilities.vex.import_error_generic",
+  });
 }
 
 interface SummaryPanelProps {

@@ -125,7 +125,9 @@ export function scan(root = SRC_ROOT, frontendRoot = FRONTEND_ROOT) {
       //
       // Accepted on the line itself or the one above, so a long expression
       // does not have to grow a trailing comment to be exempted.
-      const marker = /problem-detail-lint-allow:\s*\S/;
+      // At least a few words of reason, not one character: a marker that
+      // accepts "x" is a marker that will be used with "x".
+      const marker = /problem-detail-lint-allow:\s*\S+(?:\s+\S+){3,}/;
       if (marker.test(raw[index] ?? "") || marker.test(raw[index - 1] ?? "")) {
         return;
       }

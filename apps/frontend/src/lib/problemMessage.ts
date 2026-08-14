@@ -85,7 +85,10 @@ export function problemToken(err: unknown): ProblemToken {
   // retry" would be wrong about the cause and wrong about the remedy for
   // most of them. Surfaces that know which 409 they can get should name it
   // through `prefix`.
-  if (err.status === 422) return "validation";
+  // 400 and 422 both mean "the request itself was wrong", and both answer with
+  // a detail naming what was wrong — an unsupported format, a field that
+  // failed a rule. Only the server knows which.
+  if (err.status === 400 || err.status === 422) return "validation";
   if (err.status === 409 || err.status === 412) return "conflict";
   if (err.status === 429) return "rate_limited";
   if (err.status >= 500) return "server_error";

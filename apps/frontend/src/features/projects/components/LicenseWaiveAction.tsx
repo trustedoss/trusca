@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2026 TRUSCA contributors
+import type { TFunction } from "i18next";
 import { useId, useState } from "react";
 import { useTranslation } from "react-i18next";
 
@@ -23,6 +24,7 @@ import {
   type LicenseException,
 } from "@/features/projects/api/useLicenseWaive";
 import { ProblemError } from "@/lib/problem";
+import { problemMessage } from "@/lib/problemMessage";
 import { cn } from "@/lib/utils";
 
 /**
@@ -339,22 +341,15 @@ export function LicenseWaiveAction({
  * Map a thrown waive/un-waive error to localized copy, branching on the RFC
  * 7807 status (403 permission / 422 malformed), else the server ``detail``.
  */
-function mutationErrorMessage(
-  error: Error | null,
-  t: (key: string, opts?: Record<string, unknown>) => string,
-): string {
-  if (error instanceof ProblemError) {
-    switch (error.status) {
-      case 403:
-        return t("waive.error_forbidden");
-      case 422:
-        // The server's governance message (e.g. "the waiver expiry … exceeds the
-        // maximum of 90 days") is precise — surface it when present, else the
-        // generic malformed-input copy.
-        return error.detail || t("waive.error_malformed"); // problem-detail-lint-allow: the 422 names the governance limit that was exceeded
-      default:
-        return error.detail || t("waive.error_generic"); // problem-detail-lint-allow: policy rejections carry the rule they failed
-    }
+function mutationErrorMessage(error: Error | null, t: TFunction): string {
+  // 403 has its own wording here (waivers are a governance action, so "you
+  // are not allowed to waive" beats the generic permission line). Everything
+  // else, including the 422 whose detail names the governance limit, goes
+  // through the shared helper: it keeps that detail and it stops a transport
+  // failure from putting axios's "Network Error" on the screen, which the
+  // previous catch-all `default` did.
+  if (error instanceof ProblemError && error.status === 403) {
+    return t("waive.error_forbidden");
   }
-  return t("waive.error_generic");
+  return problemMessage(error, t, { action: "waive.error_generic" });
 }

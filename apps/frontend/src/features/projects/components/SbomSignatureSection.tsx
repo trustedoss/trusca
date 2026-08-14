@@ -202,7 +202,7 @@ export function SbomSignatureSection({ projectId }: SbomSignatureSectionProps) {
         <Alert variant="destructive" data-testid="sbom-signature-error">
           <AlertDescription>
             {problemMessage(signature.error, t, {
-              action: "sbom.signature.errors.load_failed",
+              action: "sbom.signature.errors.download_failed",
             })}
           </AlertDescription>
         </Alert>

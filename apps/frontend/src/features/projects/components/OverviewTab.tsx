@@ -157,9 +157,10 @@ export function OverviewTab({
     // The Problem's `title` used to be rendered verbatim here, which is how
     // "Project Not Found" reached Korean screens.
     const title = t("overview.errors.title");
-    const detail = problemMessage(err, t, {
-      action: "overview.errors.detail",
-    });
+    // No `action` here: the heading above already says what failed, and
+    // `overview.errors.detail` is a prescription ("try refreshing"), which in
+    // front of the class sentence tells a user without permission to refresh.
+    const detail = problemMessage(err, t);
     return (
       <div className="p-6">
         <Alert variant="destructive" data-testid="overview-error">

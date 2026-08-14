@@ -516,7 +516,7 @@
       "import_error_not_found": "Project not found or not accessible.",
       "import_error_too_large": "The VEX document is too large to import.",
       "import_error_malformed": "The document could not be parsed as OpenVEX or CycloneDX VEX.",
-      "import_error_generic": "The VEX import failed. Please try again.",
+      "import_error_generic": "The VEX import failed.",
       "format_openvex": "OpenVEX",
       "format_cyclonedx": "CycloneDX VEX",
       "summary_matched": "Matched",
@@ -571,6 +571,7 @@
       "result_title": "{{succeeded}} succeeded · {{failed}} failed (of {{total}})",
       "result_dismiss": "Dismiss",
       "more_failures": "+{{count}} more",
+      "envelope_failed": "Could not apply the bulk change.",
       "error_code": {
         "not_found": "Not found in this project",
         "forbidden": "Permission denied",
@@ -946,7 +947,7 @@
     },
     "errors": {
       "download_failed": "Could not download the SBOM.",
-      "conflict": "There is no completed scan to build an SBOM from yet."
+      "conflict": "There is no completed scan to build an SBOM from yet. Run a scan first."
     },
     "signature": {
       "title": "Signature & verification",
@@ -966,7 +967,7 @@
       "verify_hint": "The bundle includes a VERIFY.md with step-by-step cosign verify-blob instructions.",
       "verify_docs_link": "Verification guide",
       "errors": {
-        "load_failed": "Could not load the signature."
+        "download_failed": "Could not download the signature bundle."
       }
     },
     "profile": {
