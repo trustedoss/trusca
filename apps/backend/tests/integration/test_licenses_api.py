@@ -32,6 +32,7 @@ from tests._helpers import (
     make_scan,
     make_team,
     make_user,
+    unique_suffix,
 )
 
 BACKEND_ROOT = Path(__file__).resolve().parent.parent.parent
@@ -226,8 +227,14 @@ async def test_list_happy_path_empty(client) -> None:
 async def test_list_returns_seeded_finding(client) -> None:
     _, team, user = await _seed_team_with_user(client)
     project_id, scan_id = await _seed_scanned_project(client, team_id=team.id)
+    # A fresh id per run. `licenses.spdx_id` is unique, and these rows outlive
+    # the test: a fixed id passes once against an empty database and raises
+    # UniqueViolation on every later run, which CI never sees because it always
+    # starts empty. The id is not what the test is about, so it does not need
+    # to be stable.
+    spdx_id = f"API-MIT-{unique_suffix()}"
     finding_id = await _seed_license_finding(
-        client, scan_id=scan_id, spdx_id="API-MIT", category="allowed"
+        client, scan_id=scan_id, spdx_id=spdx_id, category="allowed"
     )
     headers = _bearer_for(user)
 
@@ -239,7 +246,7 @@ async def test_list_returns_seeded_finding(client) -> None:
     body = response.json()
     assert body["total"] == 1
     assert body["items"][0]["id"] == str(finding_id)
-    assert body["items"][0]["spdx_id"] == "API-MIT"
+    assert body["items"][0]["spdx_id"] == spdx_id
     assert body["distribution"]["allowed"] == 1
 
 
@@ -307,8 +314,9 @@ async def test_list_cross_team_returns_403(client) -> None:
 async def test_detail_happy_path(client) -> None:
     _, team, user = await _seed_team_with_user(client)
     _, scan_id = await _seed_scanned_project(client, team_id=team.id)
+    spdx_id = f"API-Apache-2.0-{unique_suffix()}"
     finding_id = await _seed_license_finding(
-        client, scan_id=scan_id, spdx_id="API-Apache-2.0", category="allowed"
+        client, scan_id=scan_id, spdx_id=spdx_id, category="allowed"
     )
     headers = _bearer_for(user)
 
@@ -319,7 +327,7 @@ async def test_detail_happy_path(client) -> None:
     assert response.status_code == 200, response.text
     body = response.json()
     assert body["id"] == str(finding_id)
-    assert body["spdx_id"] == "API-Apache-2.0"
+    assert body["spdx_id"] == spdx_id
     assert body["category"] == "allowed"
     # affected_components carries at least the seeded cv.
     assert len(body["affected_components"]) >= 1
