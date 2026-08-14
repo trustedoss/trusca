@@ -10,6 +10,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { useComponent } from "@/features/projects/api/useComponent";
 import { ComponentDetailBody } from "@/features/projects/components/ComponentDetailBody";
 import { projectErrorMessageKey } from "@/features/projects/lib/projectErrorMessage";
+import { useDocumentTitle } from "@/hooks/useDocumentTitle";
 import { getProject } from "@/lib/projectsApi";
 import { ProblemError } from "@/lib/problem";
 
@@ -201,6 +202,10 @@ function PageHeader({
 }: PageHeaderProps) {
   const { t } = useTranslation("project_detail");
   const projectHref = `/projects/${projectId}`;
+
+  // "django 4.2 · payments-api · TRUSCA" — enough to tell two open component
+  // tabs apart, which is the whole point of naming the tab.
+  useDocumentTitle(detailLabel, projectName);
 
   const projectCrumb =
     projectName ??

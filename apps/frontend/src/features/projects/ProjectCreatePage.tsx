@@ -17,6 +17,7 @@ import { PageTitle, Subtitle } from "@/components/ui/typography";
 import { createProject } from "@/lib/projectsApi";
 import { ProblemError } from "@/lib/problem";
 import { useActiveTeam } from "@/hooks/useActiveTeam";
+import { useDocumentTitle } from "@/hooks/useDocumentTitle";
 import { useAuthStore } from "@/stores/authStore";
 
 type FormValues = {
@@ -35,6 +36,7 @@ function slugify(name: string): string {
 
 export function ProjectCreatePage() {
   const { t } = useTranslation("projects");
+  useDocumentTitle(t("create.title"));
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const user = useAuthStore((s) => s.user);

@@ -7,6 +7,7 @@ import { useTranslation } from "react-i18next";
 import { BrandLockup } from "@/components/BrandLockup";
 import { DemoBanner } from "@/components/DemoBanner";
 import { LanguageToggle } from "@/components/LanguageToggle";
+import { useDocumentTitle } from "@/hooks/useDocumentTitle";
 import {
   Card,
   CardContent,
@@ -50,6 +51,10 @@ export function AuthLayout({
   testId,
 }: AuthLayoutProps) {
   const { t } = useTranslation("auth");
+
+  // The pre-auth counterpart to PageHeader: every auth screen already passes
+  // its name here, so the tab can take it from one place.
+  useDocumentTitle(title);
 
   return (
     <div className="min-h-screen bg-background text-foreground">

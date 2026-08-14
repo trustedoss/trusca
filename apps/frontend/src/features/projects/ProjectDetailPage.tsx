@@ -51,6 +51,7 @@ import { SbomIngestDialog } from "@/features/scan/SbomIngestDialog";
 import { ScanProgress } from "@/features/scan/ScanProgress";
 import { SourceSelectDialog } from "@/features/scan/SourceSelectDialog";
 import { useDemoMode } from "@/hooks/useDemoMode";
+import { useDocumentTitle } from "@/hooks/useDocumentTitle";
 import { isDemoSandboxProjectName } from "@/lib/demoSandbox";
 import {
   getProject,
@@ -172,6 +173,11 @@ export function ProjectDetailPage() {
     queryFn: () => getProject(projectId as string),
     enabled: typeof projectId === "string" && projectId.length > 0,
   });
+
+  // The tab is part of the address, so it belongs in the tab title too: one
+  // project open on Overview and Vulnerabilities is two tabs the user needs to
+  // tell apart, and the project name alone would make them identical.
+  useDocumentTitle(projectQuery.data?.name, t(`tabs.${activeTab}`));
 
   // Overview is fetched here too so the header risk badge can render
   // alongside the breadcrumb without waiting for the tab to mount. The pinned

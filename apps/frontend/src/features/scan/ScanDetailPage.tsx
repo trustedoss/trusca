@@ -27,6 +27,7 @@ import {
   useScanWebSocket,
   type ScanLogMessage,
 } from "@/hooks/useScanWebSocket";
+import { useDocumentTitle } from "@/hooks/useDocumentTitle";
 import { cn } from "@/lib/utils";
 import { getScan, type ScanStatus } from "@/lib/projectsApi";
 
@@ -429,6 +430,8 @@ function PageHeader({
   downloading,
 }: PageHeaderProps) {
   const { t } = useTranslation("scans");
+
+  useDocumentTitle(t("detail.title", { shortId }), projectName);
 
   return (
     <header
