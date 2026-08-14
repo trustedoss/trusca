@@ -37,37 +37,67 @@ export const STATE_PATH = path.join(__dirname, ".storage-state.json");
 export const SEED_PATH = path.join(__dirname, ".seed.json");
 
 /**
- * Project names for this capture run. Timestamped so back-to-back runs
- * do not collide with each other's projects in the shared dev DB —
- * the SPA's project list otherwise shows multiple rows with the same
- * name and `openProjectDetail("alpha")` fails Playwright strict mode.
+ * Seed tag: the string that makes this run's project, component and team
+ * names distinct from another run's.
  *
- * Spec files do not import these names directly; they read the
- * persisted `.seed.json` via `_helpers.readSeedProjectNames()` so the
- * timestamp picked here matches.
+ * Locally it is a timestamp, because repeat runs share one dev database and
+ * would otherwise collide: the SPA's project list would show several rows
+ * with one name and `openProjectDetail("alpha")` would fail Playwright's
+ * strict mode, and duplicate component purls would violate
+ * `uq_components_purl` outright.
+ *
+ * In CI it is derived from the config file name instead. A CI job starts from
+ * an empty database, so runs cannot collide with each other; the only
+ * collision left is between the configs that share this globalSetup (visual,
+ * a11y, responsive, screenshots, walkthroughs), which run in sequence against
+ * that one database. Naming per config keeps them apart while keeping each
+ * config's names identical from one CI run to the next.
+ *
+ * Identical names are what the visual gate needs. The seeded strings are
+ * rendered in the project heading, the breadcrumb, the project list, the
+ * scans table, the components table and the top bar's team switcher, so a
+ * timestamp in them meant every capture differed from every other by however
+ * many pixels those strings occupy. That was the gate's dominant source of
+ * run-to-run noise, and the diff ceiling had to clear it.
+ *
+ * Spec files do not import these names; they read the persisted `.seed.json`
+ * through `_helpers.readSeedProjectNames()`, so either choice reaches them
+ * the same way.
  */
-function buildProjectNames(stamp: number): string[] {
-  return [
-    `screenshots-bulk-alpha-${stamp}`,
-    `screenshots-bulk-beta-${stamp}`,
-  ];
+function seedTag(config: FullConfig): string {
+  if (!process.env.CI) return String(Date.now());
+  const configFile = config.configFile ?? "";
+  const derived = path
+    .basename(configFile)
+    .replace(/^playwright\./, "")
+    .replace(/\.config\.[cm]?[jt]s$/, "");
+  // An empty `configFile` means Playwright ran without one, which none of our
+  // pipelines do. Fall back rather than seeding every config as "" and
+  // colliding.
+  return derived || String(Date.now());
 }
 
-/* eslint-disable @typescript-eslint/no-unused-vars */
-export default async function globalSetup(_config: FullConfig): Promise<void> {
-  const stamp = Date.now();
+function buildProjectNames(tag: string): string[] {
+  return [`screenshots-bulk-alpha-${tag}`, `screenshots-bulk-beta-${tag}`];
+}
+
+export default async function globalSetup(config: FullConfig): Promise<void> {
+  const tag = seedTag(config);
   const seed = seedE2eUser({
-    projectNames: buildProjectNames(stamp),
+    projectNames: buildProjectNames(tag),
     superAdmin: true,
     withScan: true,
     componentCount: 50,
-    // Timestamped prefix avoids `uq_components_purl` collisions across
-    // back-to-back capture runs (e.g. local iteration).
-    componentPrefix: `screenshot-bulk-${stamp}`,
+    componentPrefix: `screenshot-bulk-${tag}`,
+    // Everything else the seed generates at random hangs off this: the team
+    // name in the top bar, the seeded emails in the admin table, the git URL
+    // on the project page, and the synthetic CVE ids. All of them are on
+    // screen.
+    stableSuffix: tag,
     vulnerabilityCount: 30,
     withObligations: true,
     withOAuthIdentity: "github",
-    // Marathon bundle 5 (4a) — header bell unread badge fixture.
+    // Marathon bundle 5 (4a): header bell unread badge fixture.
     // Three unread notifications spread across 3 distinct kinds so the
     // bell badge renders "3" and the inbox preview shows mixed icons.
     notificationCount: 3,
@@ -99,4 +129,3 @@ export default async function globalSetup(_config: FullConfig): Promise<void> {
     JSON.stringify({ ...seed, accessToken }, null, 2),
   );
 }
-/* eslint-enable @typescript-eslint/no-unused-vars */

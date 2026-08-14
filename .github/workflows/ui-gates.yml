@@ -41,9 +41,10 @@ name: ui-gates
 #      matrix's pass/fail criteria. A threshold loosened here must
 #      not also let the e2e suite slip.
 #
-# Threshold + tolerance live in playwright.visual.config.ts:
-#   maxDiffPixelRatio: 0.15
-#   threshold: 0.2 (per-pixel color delta)
+# Threshold + tolerance live in playwright.visual.config.ts, next to the
+# measurement they were derived from. Copying the numbers here was a
+# mistake: this comment still said 0.15 two changes after the config left
+# it behind.
 #
 # Refreshing baselines after an intentional UI change
 # ---------------------------------------------------

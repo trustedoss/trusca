@@ -129,6 +129,14 @@ export interface SeedOptions {
   password?: string;
   email?: string;
   /**
+   * Make every generated name deterministic from this suffix: the org and
+   * team, the seeded emails, the project slug behind the seeded git URL, and
+   * the synthetic CVE and package identifiers. Defaults to a random hex on
+   * the script side. Capture runs pass a value so the strings on screen are
+   * identical from one capture to the next.
+   */
+  stableSuffix?: string;
+  /**
    * Seed a `succeeded` scan per project and wire it as
    * `project.latest_scan_id`. Required for the project-detail flows.
    */
@@ -323,6 +331,9 @@ export function seedE2eUser(opts: SeedOptions): SeedSummary {
   }
   if (opts.email) {
     scriptArgs.push("--email", opts.email);
+  }
+  if (opts.stableSuffix) {
+    scriptArgs.push("--stable-suffix", opts.stableSuffix);
   }
   if (opts.withScan || (opts.componentCount ?? 0) > 0 || opts.withSource) {
     // --component-count > 0 and --with-source both imply --with-scan in the
