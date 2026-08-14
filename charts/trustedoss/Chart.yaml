@@ -14,12 +14,12 @@ type: application
 
 # Chart version is the packaging version (SemVer); bump on every chart change.
 # Kept aligned with the application version while the two release in lock-step.
-version: 0.12.0
+version: 0.21.0
 
 # appVersion tracks the released container image tag (image.tag default).
 # Keep in lock-step with .env.example IMAGE_TAG / docker-compose IMAGE_TAG and
 # the .github/workflows/release.yml image tags.
-appVersion: "0.12.0"
+appVersion: "0.21.0"
 
 keywords:
   - sca
@@ -49,5 +49,7 @@ annotations:
   artifacthub.io/prerelease: "false"
   artifacthub.io/containsSecurityUpdates: "false"
   artifacthub.io/changes: |
+    - kind: added
+      description: "env.extraEnv / env.extraEnvFrom set any runtime variable the chart does not name, including the OAuth, notification, vendored-code and Jira settings a Helm install previously could not reach"
     - kind: changed
-      description: "TRUSCA rebrand W4 — image repositories renamed to ghcr.io/trustedoss/trusca-{backend,backend-worker,frontend} (chart name unchanged; rename planned for v0.12.0)"
+      description: "Chart and appVersion realigned with the portal at 0.21.0; they had drifted nine minor versions, so a default install ran an old portal unless image.tag was overridden"

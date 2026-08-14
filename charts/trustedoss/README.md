@@ -120,6 +120,8 @@ connections before alembic runs.
 | `env.dbPool.*` | see `values.yaml` | Async + sync connection-pool sizing (B1). |
 | `env.scan.*` | see `values.yaml` | Scan rate limit / concurrency cap / time limits (B1+A1). |
 | `env.scancode.*` | see `values.yaml` | scancode license-detection guards (A2). |
+| `env.extraEnv` | `{}` | Map of any other runtime variable, injected into backend / worker / beat. Non-secret values only. |
+| `env.extraEnvFrom` | `[]` | Raw `envFrom` list, for Secrets you created yourself: OAuth, SMTP / Slack / Teams, the vendored-code service, Jira. |
 
 ### Workspace (shared scan volume)
 

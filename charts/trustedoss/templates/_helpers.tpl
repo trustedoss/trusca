@@ -119,6 +119,36 @@ Sources, in precedence order:
   2. postgres.bundled / env.* values — we render a chart Secret (secret.yaml)
      and reference it here.
 */}}
+{{/*
+Extra environment for the three application workloads (backend / worker /
+beat), from `env.extraEnv` and `env.extraEnvFrom`.
+
+Why the chart has these at all: every other key here is spelled out 1:1, which
+is honest about what the chart supports but leaves it a release behind the
+portal. The portal grew OAuth, SMTP / Slack / Teams notifications, the vendored
+code identification service and the Jira link since chart 0.12.0, none of which
+could be set at all on a Helm install. Enumerating them would have the same
+problem again at the next release.
+
+Secrets go through `extraEnvFrom` referencing a Secret the operator created,
+not through `extraEnv`: a value in `extraEnv` lives in values.yaml, and an SMTP
+password or an OAuth client secret does not belong in a file people commit.
+*/}}
+{{- define "trustedoss.extraEnv" -}}
+{{- with .Values.env.extraEnv }}
+{{- range $key, $value := . }}
+- name: {{ $key }}
+  value: {{ $value | quote }}
+{{- end }}
+{{- end }}
+{{- end -}}
+
+{{- define "trustedoss.extraEnvFrom" -}}
+{{- with .Values.env.extraEnvFrom }}
+{{- toYaml . }}
+{{- end }}
+{{- end -}}
+
 {{- define "trustedoss.runtimeSecretEnv" -}}
 {{- $secretName := include "trustedoss.secretName" . -}}
 - name: DATABASE_URL_APP

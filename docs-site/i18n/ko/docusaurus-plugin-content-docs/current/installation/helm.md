@@ -15,7 +15,7 @@ sidebar_position: 3
 [Docker Compose 설치](./docker-compose.md)가 더 간단합니다.
 :::
 
-Helm 차트(`charts/trustedoss`, 차트 버전 **0.12.0**)는 포털 전체를 배포합니다.
+Helm 차트(`charts/trustedoss`, 차트 버전 **0.21.0**)는 포털 전체를 배포합니다.
 FastAPI 백엔드, Celery 워커와 beat 스케줄러, React 프론트엔드, TLS가 적용된
 Ingress, 데이터베이스 마이그레이션 Job을 포함합니다. PostgreSQL과 Redis는
 클러스터 내부에 번들(평가용)하거나 외부 관리형 데이터스토어를 가리킬 수
@@ -26,10 +26,10 @@ Ingress, 데이터베이스 마이그레이션 Job을 포함합니다. PostgreSQ
 없습니다. 저장소를 클론한 뒤 작업 트리에서 차트를 설치하십시오. 아래 명령이
 그렇게 되어 있습니다.
 
-차트는 포털보다 뒤처져 있기도 합니다. 차트의 `appVersion`은 0.12.0이고 현재
-릴리스는 0.21.0이므로, `image.tag`에 실제로 쓸 릴리스를 지정하십시오. 차트를
-발행하고 포털과 같은 수준으로 올리는 일은
-[이슈 #81](https://github.com/trustedoss/trusca/issues/81)에서 추적합니다.
+차트의 `appVersion`은 이제 포털 릴리스를 따라갑니다. 따라서 기본 설치에서도
+`image.tag`를 따로 지정하지 않아도 현재 이미지를 받습니다. 레지스트리 발행에는
+`chart-vX.Y.Z` 태그와 패키지 공개 설정이 한 번 필요하고, 그것이
+[이슈 #81](https://github.com/trustedoss/trusca/issues/81)의 남은 절반입니다.
 :::
 
 :::info 취약점 매칭은 차트 내장
@@ -193,7 +193,7 @@ pre-upgrade 마이그레이션 Job이 새 파드 롤아웃 전에 새 스키마�
 
 | 키 | 기본값 | 용도 |
 |---|---|---|
-| `image.tag` | `0.12.0` | backend / worker / frontend 이미지 태그(절대 `:latest` 금지). |
+| `image.tag` | `0.21.0` | backend / worker / frontend 이미지 태그(절대 `:latest` 금지). |
 | `ingress.host` | `""` | **필수.** 공개 호스트명. |
 | `env.corsAllowedOrigins` | `""` | **프로덕션 필수.** 허용 브라우저 오리진(와일드카드 금지). |
 | `env.secret.secretKey` | `""` | `SECRET_KEY`(≥32자). `existingSecret`이 없으면 필수. |
@@ -205,6 +205,49 @@ pre-upgrade 마이그레이션 Job이 새 파드 롤아웃 전에 새 스키마�
 | `worker.trivyDbPersistence.enabled` | `true` | `/var/lib/trivy`에 PVC 마운트해 워커 재시작마다 재다운로드 방지. |
 | `workspace.persistence.storageClassName` | `""` | 다중 노드 클러스터의 공유 스캔 볼륨용 RWX 클래스. |
 | `worker.replicaCount` | `2` | 파드별 `concurrency`보다 워커 파드 스케일링을 권장. |
+| `env.extraEnv` | `{}` | 차트가 이름으로 다루지 않는 런타임 변수. 아래 참고. |
+| `env.extraEnvFrom` | `[]` | 직접 만든 Secret을 붙이는 `envFrom` 항목. 아래 참고. |
+
+### 차트가 이름으로 다루지 않는 설정 {#extra-env}
+
+위의 키들은 대부분 하나씩 명시되어 있습니다. 차트가 무엇을 지원하는지 분명해지는
+대신, 릴리스마다 포털보다 뒤처집니다. `env.extraEnv`와 `env.extraEnvFrom`이 그
+나머지를 담당하며, 백엔드·워커·beat 파드에 모두 전달됩니다. 어떤 변수가 있는지는
+[환경변수](../reference/env-variables.md)에 정리되어 있습니다.
+
+비밀이 아닌 설정은 `env.extraEnv`에 넣습니다.
+
+```yaml
+env:
+  extraEnv:
+    SCANOSS_ENABLED: "true"
+    KEV_REFRESH_ENABLED: "false"      # air-gapped: CISA 피드에 접근할 수 없음
+    DISK_HARD_LIMIT_PCT: "98"
+    WEBHOOK_RATE_LIMIT: "240/minute"
+```
+
+자격증명은 직접 만든 Secret에 넣고 `env.extraEnvFrom`으로 참조합니다.
+`extraEnv`에 적은 값은 values 파일에 남고, SMTP 비밀번호나 OAuth 클라이언트
+시크릿은 커밋하는 파일에 둘 것이 아닙니다.
+
+```bash
+kubectl create secret generic trustedoss-notifications \
+  --from-literal=SMTP_HOST=smtp.example.com \
+  --from-literal=SMTP_USER=portal@example.com \
+  --from-literal=SMTP_PASSWORD='...' \
+  --from-literal=SLACK_WEBHOOK_URL='https://hooks.slack.com/services/...'
+```
+
+```yaml
+env:
+  extraEnvFrom:
+    - secretRef:
+        name: trustedoss-notifications
+```
+
+Helm 설치에서 OAuth 로그인, SMTP·Slack·Teams 알림, 저장소에 포함된 코드 식별
+서비스, Jira 연동에 닿는 방법이 이것입니다. 이전에는 Helm 설치에서 이 설정들을
+아예 지정할 수 없었고, 그 격차를 메우는 것이 이번 변경입니다.
 
 ## 작동 확인
 

@@ -7,6 +7,21 @@ and the project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.
 
 ## [Unreleased]
 
+### Added
+
+- Helm chart: `env.extraEnv` and `env.extraEnvFrom` set any runtime variable the
+  chart does not name, injected into backend, worker and beat. This is how a
+  Helm install reaches OAuth sign-in, SMTP / Slack / Teams notifications, the
+  vendored-code identification service and the Jira link, none of which were
+  configurable there before (#81).
+
+### Changed
+
+- Helm chart version and `appVersion` realigned with the portal at 0.21.0. They
+  had drifted nine minor versions, so a default `helm install` ran an old portal
+  unless the operator overrode `image.tag`. Bumping the chart is now a step in
+  the release procedure (#81).
+
 ## [0.21.0] — 2026-08-10
 
 ### Added

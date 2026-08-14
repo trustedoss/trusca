@@ -32,7 +32,7 @@ image:
   # Frontend image (React SPA on nginx, listens on :8080).
   frontendRepository: ghcr.io/trustedoss/trusca-frontend
   # Tag applied to ALL three images. Kept in lock-step with Chart.yaml appVersion.
-  tag: "0.12.0"
+  tag: "0.21.0"
   pullPolicy: IfNotPresent
 # -- Image pull secrets for private registries (list of {name: ...}).
 imagePullSecrets: []
@@ -65,6 +65,40 @@ env:
   # JWT lifetimes (security defaults — CLAUDE.md §3).
   accessTokenExpireMinutes: 30
   refreshTokenExpireDays: 7
+
+  # ---- Anything the chart does not spell out ------------------------------
+  #
+  # Every other key in this file is named explicitly, which says clearly what
+  # the chart supports and leaves it behind the portal at each release. The
+  # portal gained OAuth sign-in, SMTP / Slack / Teams notifications, the
+  # vendored-code identification service and the Jira link since chart 0.12.0,
+  # and a Helm install could not set any of them. These two keys close that
+  # gap for the ones already shipped and the ones not written yet.
+  #
+  # `extraEnv` is a plain map, injected into backend, worker and beat. It is
+  # for non-secret settings; the reference for what exists is
+  # `docs-site/docs/reference/env-variables.md`:
+  #
+  #   extraEnv:
+  #     SCANOSS_ENABLED: "true"
+  #     KEV_REFRESH_ENABLED: "false"     # air-gapped
+  #     DISK_HARD_LIMIT_PCT: "98"
+  #     WEBHOOK_RATE_LIMIT: "240/minute"
+  #
+  extraEnv: {}
+
+  # `extraEnvFrom` is a raw envFrom list, so it takes Secrets you created
+  # yourself. Credentials belong here rather than in `extraEnv`: a value in
+  # `extraEnv` lives in this file, and an SMTP password or an OAuth client
+  # secret should not be committed:
+  #
+  #   extraEnvFrom:
+  #     - secretRef:
+  #         name: trustedoss-notifications   # SMTP_*, SLACK_WEBHOOK_URL, ...
+  #     - secretRef:
+  #         name: trustedoss-oauth           # GITHUB_CLIENT_ID / _SECRET, ...
+  #
+  extraEnvFrom: []
 
   # -------------------------------------------------------------------------
   # External datastore DSNs. Used ONLY when postgres.bundled / redis.bundled
