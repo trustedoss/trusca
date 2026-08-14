@@ -47,7 +47,11 @@ const VISITS: Record<AuthenticatedScreenId, VisitScreen> = {
   },
   "project-detail-overview": async (page, { projectId }) => {
     await page.goto(`/projects/${projectId}`);
-    await new PortalPage(page).expectProjectDetailMounted();
+    const portal = new PortalPage(page);
+    await portal.expectProjectDetailMounted();
+    // The tab body loads on its own query. Without this the caller measures a
+    // skeleton, or the frame mid-transition out of one (#89).
+    await portal.expectOverviewTabReady();
   },
   "project-detail-vulnerabilities": async (page, { projectId }) => {
     await page.goto(`/projects/${projectId}?tab=vulnerabilities`);

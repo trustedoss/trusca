@@ -410,6 +410,22 @@ export class PortalPage {
     await this.expectProjectDetailMounted();
   }
 
+  /**
+   * Assert the Overview tab has rendered its own content, not its skeleton.
+   *
+   * `expectProjectDetailMounted` waits for the page frame and the risk gauge,
+   * which belong to the header. The tab body is a separate query, so a caller
+   * that stops at the frame is looking at `overview-loading` and its four
+   * placeholder blocks. The narrow-viewport gate measured exactly that gap and
+   * disagreed with itself on the same commit (#89): the header was mid-layout
+   * while the skeleton gave way to real cards.
+   */
+  async expectOverviewTabReady(): Promise<void> {
+    await this.page
+      .getByTestId("overview-tab")
+      .waitFor({ state: "visible", timeout: 15_000 });
+  }
+
   /** Assert the project detail page is mounted (any tab). */
   async expectProjectDetailMounted(): Promise<void> {
     await this.page
