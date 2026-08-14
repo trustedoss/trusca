@@ -33,6 +33,31 @@ function leafKeys(obj: unknown, prefix = ""): string[] {
   );
 }
 
+/** Read a dot-separated key path out of a resource bundle. */
+function lookup(bundle: Bundle, key: string): unknown {
+  return key
+    .split(".")
+    .reduce<unknown>(
+      (acc, seg) =>
+        acc && typeof acc === "object"
+          ? (acc as Bundle)[seg]
+          : undefined,
+      bundle,
+    );
+}
+
+/**
+ * Reduce copy to its shape so a resolved string can be compared against the
+ * raw catalogue entry: the count becomes `#`, and any other placeholder is
+ * dropped because these assertions pass no value for it.
+ */
+function shape(text: string): string {
+  return text
+    .replace(/\{\{\s*count\s*\}\}/g, "#")
+    .replace(/\{\{[^}]*\}\}/g, "")
+    .replace(/\d+/g, "#");
+}
+
 /** Base keys that ship a plural variant, per namespace. */
 function pluralBases(bundle: Bundle): string[] {
   const keys = leafKeys(bundle);
@@ -75,14 +100,17 @@ describe("plural resolution", () => {
 
     // The whole point of a plural variant is that the wording differs beyond
     // the number. Compare with the count stripped out.
-    expect(many.replace(/\d+/g, "#")).not.toBe(one.replace(/\d+/g, "#"));
+    expect(shape(many)).not.toBe(shape(one));
 
+    // And the many-form is the catalogue's `_other`, not some other fallback
+    // that happens to differ.
     const bundle = i18n.getResourceBundle("en", ns) as Bundle;
-    const expected = leafKeys(bundle).find((k) => k === `${key}_other`);
-    expect(expected).toBeDefined();
+    const other = lookup(bundle, `${key}_other`);
+    expect(typeof other).toBe("string");
+    expect(shape(many)).toBe(shape(other as string));
   });
 
-  it.each(cases)("KO resolves $ns:$key for every count", ({ ns, key }) => {
+  it.each(cases)("KO resolves $ns:$key through _other", ({ ns, key }) => {
     const t = i18n.getFixedT("ko", ns);
     const one = t(key, { count: 1 });
     const many = t(key, { count: 5 });
@@ -90,9 +118,15 @@ describe("plural resolution", () => {
     expect(one).not.toBe(key);
     expect(many).not.toBe(key);
 
-    // Korean has one plural category: both counts take the same wording, and
-    // the number carries the plurality.
-    expect(many.replace(/\d+/g, "#")).toBe(one.replace(/\d+/g, "#"));
+    // Korean has a single CLDR category, so every count resolves `_other` and
+    // the number carries the plurality. Asserting the variant exists matters:
+    // KO's bare string is usually identical, so a deleted `_other` would fall
+    // back silently and a wording-only assertion would not notice.
+    const bundle = i18n.getResourceBundle("ko", ns) as Bundle;
+    const other = lookup(bundle, `${key}_other`);
+    expect(typeof other).toBe("string");
+    expect(shape(many)).toBe(shape(other as string));
+    expect(shape(one)).toBe(shape(many));
     expect(many).toContain("5");
   });
 });

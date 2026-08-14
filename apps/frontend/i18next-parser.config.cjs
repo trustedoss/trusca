@@ -44,9 +44,10 @@ module.exports = {
   failOnUpdate: false,
   customValueTemplate: null,
   resetDefaultValueLocale: null,
-  // The codebase uses simple `{{count}}` interpolation, not i18next's
-  // plural form (no `_one` / `_other` keys). Disable the plural suffix
-  // emission so the parser stops asking for keys we don't ship.
+  // Most counted copy here is plain `{{count}}` interpolation, and the few
+  // keys that do carry a `_other` variant are written by hand beside their
+  // bare key (see the plural rules in scripts/i18n-check.cjs). Either way the
+  // parser should extract the bare key only, so disable suffix emission.
   i18nextOptions: { compatibilityJSON: "v1" },
   pluralSeparator: false,
   yamlOptions: null,

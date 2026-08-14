@@ -75,19 +75,22 @@ function setDiff(a, b) {
 
 // i18next 23.x resolves plurals with the Intl.PluralRules categories. `_plural`
 // is the v3 spelling and is never looked up, so such a key is dead weight that
-// silently degrades to the singular copy — which is how the build-gate reason
-// for known-malicious packages shipped in the singular for years.
+// silently degrades to the singular copy. That is how the build-gate reason for
+// known-malicious packages shipped in the singular.
 const PLURAL_CATEGORIES = ["zero", "one", "two", "few", "many", "other"];
 
 /**
  * Plural-suffix hygiene. Two rules, both learned from live defects:
  *
  *   1. No `_plural` suffix. It is v3 syntax; v4 wants a CLDR category.
- *   2. Every `key_<category>` needs its bare `key` alongside it. The parser
- *      runs with `pluralSeparator: false`, so it only ever extracts the bare
- *      key — without it, check #1 above reports the call site as missing.
- *      The bare key is also what KO falls back to, since Korean has a single
- *      plural category and never resolves `_one`.
+ *   2. Every `key_<category>` needs its bare `key` alongside it. Two reasons,
+ *      and only the first applies to both locales: the parser runs with
+ *      `pluralSeparator: false` so it only ever extracts the bare key, and
+ *      without it check #1 above reports the call site as missing. Second,
+ *      English resolves the bare key at count 1, because no `_one` variant
+ *      is shipped. Korean never reaches the bare key at all: its single CLDR
+ *      category is `other`, so KO resolves `_other` at every count and its
+ *      bare string is kept for parity, not for reading.
  *
  * Returns a list of human-readable problems (empty when clean).
  */
@@ -107,8 +110,8 @@ function checkPluralSuffixes(locale, ns, keys) {
     const base = key.slice(0, key.length - `_${category}`.length);
     if (!keys.has(base)) {
       problems.push(
-        `  - ${locale}/${ns}.json: "${key}" has no bare "${base}" to fall back to. ` +
-          `Add it — the parser only extracts the bare key, and KO resolves it.`,
+        `  - ${locale}/${ns}.json: "${key}" has no bare "${base}" beside it. ` +
+          `Add it: the parser only extracts the bare key, and EN resolves it at count 1.`,
       );
     }
   }
