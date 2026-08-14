@@ -45,6 +45,7 @@ import { projectErrorMessageKey } from "@/features/projects/lib/projectErrorMess
 import { releaseLabel } from "@/features/projects/lib/releaseLabel";
 import { SeverityBadge } from "@/features/projects/components/SeverityBadge";
 import type { SeverityVariant } from "@/features/projects/components/SeverityBadge";
+import { useDocumentTitle } from "@/hooks/useDocumentTitle";
 import { cn } from "@/lib/utils";
 
 /**
@@ -84,6 +85,7 @@ export function ComparePage() {
   const { t, i18n } = useTranslation("project_detail");
   const locale = i18n.language;
   const { id: projectId } = useParams<{ id: string }>();
+  useDocumentTitle(t("compare.title"));
   const [searchParams, setSearchParams] = useSearchParams();
 
   const baseParam = searchParams.get("base");

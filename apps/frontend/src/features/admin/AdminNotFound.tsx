@@ -14,9 +14,11 @@ import { useTranslation } from "react-i18next";
 import { Link } from "react-router-dom";
 
 import { Button } from "@/components/ui/button";
+import { useDocumentTitle } from "@/hooks/useDocumentTitle";
 
 export function AdminNotFound() {
   const { t } = useTranslation("admin");
+  useDocumentTitle(t("admin.not_found.title"));
   return (
     <div
       className="flex min-h-screen items-center justify-center bg-background px-6"

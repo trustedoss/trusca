@@ -3,6 +3,7 @@
 import type { HTMLAttributes, ReactNode } from "react";
 
 import { PageTitle, Subtitle } from "@/components/ui/typography";
+import { useDocumentTitle } from "@/hooks/useDocumentTitle";
 import { cn } from "@/lib/utils";
 
 /** Allow `data-*` attributes (e.g. `data-testid`) on forwarded prop bags. */
@@ -58,6 +59,15 @@ export interface PageHeaderProps {
   titleProps?: HTMLAttributes<HTMLHeadingElement> & DataAttributes;
   /** Extra props forwarded to the subtitle element. */
   descriptionProps?: HTMLAttributes<HTMLParagraphElement> & DataAttributes;
+  /**
+   * What the browser tab should say, when `title` alone will not do: a title
+   * that is markup rather than a string, or one that should carry a record's
+   * name ("django 4.2 · Components"). A string `title` names the tab on its
+   * own, so most callers pass nothing here.
+   *
+   * Pass `null` for a screen that must not touch the tab title.
+   */
+  documentTitle?: string | null;
 }
 
 export function PageHeader({
@@ -70,7 +80,19 @@ export function PageHeader({
   "data-testid": testId,
   titleProps,
   descriptionProps,
+  documentTitle,
 }: PageHeaderProps) {
+  // Every page header knows its own name, so the tab can be named from here
+  // rather than by asking each screen to remember. `undefined` means "use the
+  // title if it is a plain string"; `null` opts out entirely.
+  const resolvedTitle =
+    documentTitle === undefined
+      ? typeof title === "string"
+        ? title
+        : null
+      : documentTitle;
+  useDocumentTitle(resolvedTitle);
+
   if (variant === "bar") {
     return (
       <header

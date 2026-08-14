@@ -51,6 +51,7 @@ import { SbomIngestDialog } from "@/features/scan/SbomIngestDialog";
 import { ScanProgress } from "@/features/scan/ScanProgress";
 import { SourceSelectDialog } from "@/features/scan/SourceSelectDialog";
 import { useDemoMode } from "@/hooks/useDemoMode";
+import { useDocumentTitle } from "@/hooks/useDocumentTitle";
 import { isDemoSandboxProjectName } from "@/lib/demoSandbox";
 import {
   getProject,
@@ -813,6 +814,7 @@ function ProjectDetailHeader({
   onSelectLatest,
 }: ProjectDetailHeaderProps) {
   const { t } = useTranslation("project_detail");
+  useDocumentTitle(projectName);
   return (
     <header
       className={cn(
