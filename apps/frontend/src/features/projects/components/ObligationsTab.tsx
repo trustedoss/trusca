@@ -9,6 +9,7 @@ import { Virtuoso } from "react-virtuoso";
 import { EmptyState } from "@/components/EmptyState";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { VIRTUOSO_TABLE_BODY } from "@/components/ui/virtuoso-table-body";
 import type { LicenseCategoryName } from "@/features/projects/api/projectDetailApi";
@@ -201,6 +202,19 @@ export function ObligationsTab({
   const obligations = useObligations(projectId, filters);
   const notice = useNotice(projectId, projectName ?? undefined, { scanId });
 
+  /** Whether anything is narrowing the list, which decides the empty state. */
+  const hasNarrowingFilters =
+    debouncedSearch.trim().length > 0 ||
+    kinds.length > 0 ||
+    categories.length > 0;
+
+  function clearAllFilters() {
+    setSearch("");
+    setDebouncedSearch("");
+    setKinds([]);
+    setCategories([]);
+  }
+
   const pages = obligations.data?.pages;
   const items: ObligationListItem[] = useMemo(
     () => (pages ?? []).flatMap((p) => p.items),
@@ -285,8 +299,30 @@ export function ObligationsTab({
           data-testid="obligations-empty"
           className="m-6"
           icon={<CheckCircle2 />}
-          title={t("obligations.empty.title")}
-          description={t("obligations.empty.description")}
+          title={
+            hasNarrowingFilters
+              ? t("obligations.empty.filtered_title")
+              : t("obligations.empty.title")
+          }
+          description={
+            hasNarrowingFilters
+              ? t("obligations.empty.filtered_description")
+              : t("obligations.empty.description")
+          }
+          // Same split the other two grids needed: a filter that excluded
+          // everything wants the filter cleared, not a scan.
+          action={
+            hasNarrowingFilters ? (
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={clearAllFilters}
+                data-testid="obligations-empty-clear-filters"
+              >
+                {t("obligations.empty.clear_filters")}
+              </Button>
+            ) : undefined
+          }
         />
       ) : null}
 
@@ -414,6 +450,9 @@ interface ObligationRowProps {
   onSelect: () => void;
 }
 
+/** Exported for the row-semantics gate — see ComplianceTab for the reason. */
+export { ObligationRow as ObligationRowForTest };
+
 function ObligationRow({
   obligation,
   rowIndex,
@@ -421,8 +460,12 @@ function ObligationRow({
 }: ObligationRowProps) {
   const { t } = useTranslation("project_detail");
   return (
-    <button
-      type="button"
+    // A div, not a button. A `row` owns cells, and `row` is not a role a
+    // `<button>` may carry — axe rejects both, and a screen reader in table
+    // mode cannot move across a row that has no cells. The keyboard path
+    // lives in the first cell instead, the same shape the vulnerabilities
+    // row uses.
+    <div
       onClick={onSelect}
       data-testid="obligation-row"
       data-obligation-id={obligation.id}
@@ -435,33 +478,48 @@ function ObligationRow({
       aria-rowindex={rowIndex + 2}
       className={cn(
         "flex w-full items-center gap-3 border-b px-4 text-left text-sm transition-colors duration-fast ease-out-soft hover:bg-muted/50",
-        "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-inset",
       )}
       style={{ height: "var(--table-row)" }}
     >
-      <span
-        className="w-44 truncate font-mono text-xs"
-        title={obligation.license_spdx_id ?? obligation.license_name}
-      >
-        {obligation.license_spdx_id ?? t("licenses.row.no_spdx_id")}
+      <span className="w-44 truncate" role="cell">
+        <button
+          type="button"
+          data-testid="obligation-row-open"
+          onClick={(e) => {
+            e.stopPropagation();
+            onSelect();
+          }}
+          title={obligation.license_spdx_id ?? obligation.license_name}
+          className="truncate rounded-sm font-mono text-xs hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1"
+        >
+          {obligation.license_spdx_id ?? t("licenses.row.no_spdx_id")}
+        </button>
       </span>
-      <span className="flex-1 truncate" title={obligation.license_name}>
+      <span
+        className="flex-1 truncate"
+        role="cell"
+        title={obligation.license_name}
+      >
         {obligation.license_name}
       </span>
-      <span className="w-32">
+      <span className="w-32" role="cell">
         <LicenseCategoryBadge category={obligation.license_category} />
       </span>
-      <span className="w-32 truncate text-xs text-muted-foreground">
+      <span
+        className="w-32 truncate text-xs text-muted-foreground"
+        role="cell"
+      >
         {t(`obligations.kind.${obligation.kind}`, {
           defaultValue: obligation.kind,
         })}
       </span>
       <span
         className="w-20 text-right font-mono text-xs tabular-nums"
+        role="cell"
         data-testid="obligation-row-affected-count"
       >
         {obligation.affected_count}
       </span>
-    </button>
+    </div>
   );
 }

@@ -220,6 +220,9 @@ test.describe.serial("@tables the project-detail tables expose table semantics",
     const firstRow = sharedPage.getByTestId("compliance-row").first();
     await expect(firstRow).toHaveAttribute("role", "row");
     await expect(firstRow).toHaveAttribute("aria-rowindex", "2");
+    // Cells, not just a row: a row without them announces as empty and a
+    // screen reader cannot move across it. This grid shipped that way once.
+    expect(await firstRow.getByRole("cell").count()).toBeGreaterThanOrEqual(5);
 
     const chain = await ownershipChain(sharedPage, "compliance-row");
     expect(

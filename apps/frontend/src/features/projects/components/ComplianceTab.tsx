@@ -40,8 +40,9 @@
  *   - ``?compliance_conflict=<verdict>``  outbound-license conflict (gap #27)
  *   - ``?compliance_sort=category|license_name|spdx_id|affected_count``
  *   - ``?compliance_order=asc|desc``     order toggle
- *   - ``?compliance_page=N``             1-based page index
  *   - ``?license=<finding_id>``          drawer selection
+ *
+ * There is no page parameter. There was one, and nothing incremented it.
  *
  * Backward compatibility (W4-C)
  * -----------------------------
@@ -968,6 +969,14 @@ interface ComplianceGridRowProps {
 const AFFECTED_PREVIEW_CAP = 3;
 const OBLIGATIONS_PREVIEW_CAP = 3;
 
+/**
+ * Exported under a test-only name so `tests/unit/design/gridRowSemantics`
+ * can run axe over the real row without mounting the whole tab. The row's
+ * table semantics are a contract with the grid around it, and a contract
+ * nothing checks is one this file already broke once.
+ */
+export { ComplianceGridRow as ComplianceGridRowForTest };
+
 function ComplianceGridRow({
   row,
   rowIndex,
@@ -1007,8 +1016,14 @@ function ComplianceGridRow({
 
   // The row is a non-button container so the per-component waive controls
   // (which are themselves buttons) can live inside without nesting <button>s.
-  // The drawer-open affordance is a single inner button covering the read-only
-  // columns; the waive strip below sits outside it.
+  //
+  // The drawer-open affordance used to be one button wrapping every read-only
+  // column. It could not stay once the row became a real `row`: a row owns
+  // cells, and a button spanning six of them is not one — axe reports it as a
+  // critical `aria-required-children` violation and a screen reader in table
+  // mode cannot move across the row. The button now sits inside the first
+  // cell, the same shape the vulnerabilities row uses, and the row keeps its
+  // own click handler for the pointer path.
   return (
     <div
       data-testid="compliance-row"
@@ -1027,32 +1042,36 @@ function ComplianceGridRow({
         "flex w-full flex-col border-b transition-colors duration-fast ease-out-soft hover:bg-muted/50",
       )}
     >
-      <button
-        type="button"
+      <div
         onClick={onSelect}
-        data-testid="compliance-row-open"
-        className={cn(
-          "flex w-full items-center gap-3 px-4 text-left text-sm",
-          "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-inset",
-        )}
+        className={cn("flex w-full items-center gap-3 px-4 text-left text-sm")}
         style={{ height: "var(--table-row)" }}
       >
         <span
           className="flex w-44 flex-col truncate"
+          role="cell"
           title={row.spdx_id ?? row.license_name}
         >
-          <span className="truncate font-mono text-xs">
+          <button
+            type="button"
+            data-testid="compliance-row-open"
+            onClick={(e) => {
+              e.stopPropagation();
+              onSelect();
+            }}
+            className="truncate rounded-sm text-left font-mono text-xs hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1"
+          >
             {row.spdx_id ?? t("compliance.row.no_spdx_id")}
-          </span>
+          </button>
           <span className="truncate text-xs text-muted-foreground">
             {row.license_name}
           </span>
         </span>
-        <span className="w-32">
+        <span className="w-32" role="cell">
           <LicenseCategoryBadge category={row.category} />
         </span>
         {showConflict ? (
-          <span className="w-32">
+          <span className="w-32" role="cell">
             {row.conflict ? (
               <ConflictVerdictBadge
                 verdict={row.conflict.verdict}
@@ -1063,6 +1082,7 @@ function ComplianceGridRow({
         ) : null}
         <span
           className="flex flex-1 items-center gap-1 overflow-hidden"
+          role="cell"
           data-testid="compliance-row-affected"
         >
           <span className="font-mono text-xs tabular-nums text-muted-foreground">
@@ -1096,6 +1116,7 @@ function ComplianceGridRow({
         </span>
         <span
           className="flex w-64 items-center gap-1 overflow-hidden"
+          role="cell"
           data-testid="compliance-row-obligations"
         >
           {obligationsPreview.length === 0 ? (
@@ -1123,6 +1144,7 @@ function ComplianceGridRow({
         </span>
         <span
           className="w-28 text-center text-xs"
+          role="cell"
           data-testid="compliance-row-notice"
         >
           {row.notice_required ? (
@@ -1135,15 +1157,20 @@ function ComplianceGridRow({
         </span>
         <span
           className="w-32 text-xs text-muted-foreground"
+          role="cell"
           data-testid="compliance-row-override"
         >
           {row.category_override_source ?? t("compliance.override.none")}
         </span>
-      </button>
+      </div>
 
       {waivableComponents.length > 0 ? (
+        // A second visual line, but structurally still part of this row, so it
+        // is a cell. Without the role it would be an unowned child of a `row`,
+        // which is the same violation the wrapping button caused.
         <div
           className="flex flex-wrap items-center gap-x-3 gap-y-2 px-4 pb-2 pl-[12.25rem] text-xs"
+          role="cell"
           data-testid="compliance-row-waive-strip"
         >
           <span className="text-muted-foreground">
