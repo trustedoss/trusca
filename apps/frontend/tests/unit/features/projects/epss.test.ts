@@ -1,17 +1,19 @@
 /**
  * EPSS formatting helpers — unit tests (v2.1).
  *
- * Locks the display contract reported back to the team: score → one-decimal
- * percentage, percentile → "Top N%", and null/out-of-range → null (so callers
- * render the em-dash placeholder rather than "0%").
+ * Locks the display contract reported back to the team: score becomes a
+ * one-decimal percentage, percentile becomes a translation key naming its top
+ * band, and null / out-of-range becomes null so callers render the dash
+ * placeholder rather than "0%".
  */
 import { describe, expect, it } from "vitest";
 
 import {
   EPSS_EMPTY,
-  formatEpssPercentile,
+  epssPercentileLabel,
   formatEpssScore,
 } from "@/features/projects/lib/epss";
+import i18n from "@/lib/i18n";
 
 describe("formatEpssScore", () => {
   it("formats a probability as a one-decimal percentage", () => {
@@ -38,27 +40,40 @@ describe("formatEpssScore", () => {
   });
 });
 
-describe("formatEpssPercentile", () => {
-  it("renders a rank as Top N%", () => {
-    expect(formatEpssPercentile(0.91)).toBe("Top 9%");
-    expect(formatEpssPercentile(0.5)).toBe("Top 50%");
-    expect(formatEpssPercentile(0)).toBe("Top 100%");
+const TOP = "vulnerabilities.epss.top_percentile";
+const TOP_SUB1 = "vulnerabilities.epss.top_percentile_sub1";
+
+describe("epssPercentileLabel", () => {
+  it("describes a rank as the Top N% key and its value", () => {
+    expect(epssPercentileLabel(0.91)).toEqual({ key: TOP, params: { value: 9 } });
+    expect(epssPercentileLabel(0.5)).toEqual({ key: TOP, params: { value: 50 } });
+    expect(epssPercentileLabel(0)).toEqual({ key: TOP, params: { value: 100 } });
   });
 
-  it("clamps a near-top rank to Top <1% instead of Top 0%", () => {
-    expect(formatEpssPercentile(0.999)).toBe("Top <1%");
+  it("gives a sub-percent rank its own key instead of rounding to zero", () => {
+    expect(epssPercentileLabel(0.999)).toEqual({ key: TOP_SUB1, params: {} });
   });
 
-  it("renders exactly Top 0% only at percentile 1 (the very top)", () => {
-    expect(formatEpssPercentile(1)).toBe("Top 0%");
+  it("still says top 0% at percentile 1, where it is literally true", () => {
+    expect(epssPercentileLabel(1)).toEqual({ key: TOP, params: { value: 0 } });
   });
 
   it("returns null for missing / out-of-range values", () => {
-    expect(formatEpssPercentile(null)).toBeNull();
-    expect(formatEpssPercentile(undefined)).toBeNull();
-    expect(formatEpssPercentile(-0.2)).toBeNull();
-    expect(formatEpssPercentile(2)).toBeNull();
-    expect(formatEpssPercentile(Number.NaN)).toBeNull();
+    expect(epssPercentileLabel(null)).toBeNull();
+    expect(epssPercentileLabel(undefined)).toBeNull();
+    expect(epssPercentileLabel(-0.2)).toBeNull();
+    expect(epssPercentileLabel(2)).toBeNull();
+    expect(epssPercentileLabel(Number.NaN)).toBeNull();
+  });
+
+  it("names keys that both locales actually ship", () => {
+    // The keys are built at runtime, so the i18n drift gate cannot see them.
+    for (const locale of ["en", "ko"]) {
+      for (const key of [TOP, TOP_SUB1]) {
+        const text = i18n.getFixedT(locale, "project_detail")(key);
+        expect(text, `${locale}:project_detail:${key} is missing`).not.toBe(key);
+      }
+    }
   });
 });
 

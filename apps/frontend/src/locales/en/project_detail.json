@@ -460,7 +460,9 @@
     "epss": {
       "tooltip": "EPSS — probability this CVE is exploited in the wild within 30 days. Complements CVSS (severity).",
       "empty": "No EPSS data for this CVE",
-      "cell_tooltip": "{{score}} · {{percentile}} most likely to be exploited"
+      "cell_tooltip": "{{score}} · {{percentile}} most likely to be exploited",
+      "top_percentile": "Top {{value}}%",
+      "top_percentile_sub1": "Top <1%"
     },
     "kev": {
       "label": "KEV",

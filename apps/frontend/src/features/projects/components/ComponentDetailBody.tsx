@@ -17,9 +17,12 @@ import { EolBadge } from "@/features/projects/components/EolBadge";
 import { MaliciousBadge } from "@/features/projects/components/MaliciousBadge";
 import { CurrencyBadge } from "@/features/projects/components/CurrencyBadge";
 import { LicenseCategoryBadge } from "@/features/projects/components/LicenseCategoryBadge";
-import { SeverityBadge } from "@/features/projects/components/SeverityBadge";
 import {
-  formatEpssPercentile,
+  SeverityBadge,
+  type SeverityVariant,
+} from "@/features/projects/components/SeverityBadge";
+import {
+  epssPercentileLabel,
   formatEpssScore,
 } from "@/features/projects/lib/epss";
 import { cn } from "@/lib/utils";
@@ -44,19 +47,27 @@ import { cn } from "@/lib/utils";
  * it would be a parallel test-suite migration — out of scope for this phase.
  */
 
-const SEVERITY_TONE: Record<
-  string,
-  "critical" | "high" | "medium" | "low" | "info"
-> = {
-  critical: "critical",
-  high: "high",
-  medium: "medium",
-  low: "low",
-  info: "info",
-};
+const SEVERITY_VARIANTS = new Set<string>([
+  "critical",
+  "high",
+  "medium",
+  "low",
+  "info",
+  "none",
+  "unknown",
+]);
 
-function vulnerabilityTone(severity: string) {
-  return SEVERITY_TONE[severity.toLowerCase()] ?? "info";
+/**
+ * The CVE list arrives with `severity` typed as a bare string, so narrow it
+ * before handing it to SeverityBadge. An unrecognized bucket becomes
+ * `unknown`, which the badge renders as a labelled neutral chip rather than
+ * echoing a raw backend token at the user.
+ */
+function toSeverityVariant(severity: string): SeverityVariant {
+  const bucket = severity.toLowerCase();
+  return SEVERITY_VARIANTS.has(bucket)
+    ? (bucket as SeverityVariant)
+    : "unknown";
 }
 
 /**
@@ -328,7 +339,10 @@ function VulnerabilityRow({
 }) {
   const { t } = useTranslation("project_detail");
   const epssScore = formatEpssScore(vuln.epss_score);
-  const epssPercentile = formatEpssPercentile(vuln.epss_percentile);
+  const epssPercentileLabelParts = epssPercentileLabel(vuln.epss_percentile);
+  const epssPercentile = epssPercentileLabelParts
+    ? t(epssPercentileLabelParts.key, epssPercentileLabelParts.params)
+    : null;
   return (
     <li
       data-testid="component-drawer-vuln"
@@ -336,12 +350,7 @@ function VulnerabilityRow({
       className="flex flex-col gap-1 rounded-md border p-3"
     >
       <div className="flex flex-wrap items-center gap-2">
-        <Badge
-          tone={vulnerabilityTone(vuln.severity)}
-          data-testid="component-drawer-vuln-severity"
-        >
-          {vuln.severity}
-        </Badge>
+        <SeverityBadge severity={toSeverityVariant(vuln.severity)} />
         {/* M-20 — deep-link into the Vulnerabilities tab pre-filtered on
             this CVE id (backend search matches CVE ids). Navigating swaps
             `?tab=` and drops `?drawer=`, so the drawer closes naturally and

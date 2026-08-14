@@ -10,8 +10,8 @@
  *   - `epss_percentile` rank of that score among all scored CVEs. Read as
  *                       "in the top N% most likely to be exploited".
  *
- * The wire layer can hand us `null` (no EPSS entry for the CVE). We render an
- * em dash for that case rather than "0%", because absence and "0% likely" are
+ * The wire layer can hand us `null` (no EPSS entry for the CVE). We render a
+ * dash for that case rather than "0%", because absence and "0% likely" are
  * semantically different and conflating them would mislead a triager.
  *
  * Display decision (reported back to the team): the **score** is shown as a
@@ -36,21 +36,38 @@ export function formatEpssScore(score: number | null | undefined): string | null
   return `${(score * 100).toFixed(1)}%`;
 }
 
+/** A translation key plus its interpolation values. */
+export interface EpssPercentileLabel {
+  key: string;
+  params: Record<string, number>;
+}
+
 /**
- * Format an EPSS percentile (0–1 rank) as a "Top N%" string, e.g.
- * `0.91 → "Top 9%"` (the score outranks 91% of CVEs → it sits in the top 9%).
- * Returns `null` for missing / out-of-range input.
+ * Describe an EPSS percentile (0–1 rank) as the translation key that renders
+ * it, e.g. `0.91` → `vulnerabilities.epss.top_percentile` with `{ value: 9 }`
+ * (the score outranks 91% of CVEs, so it sits in the top 9%). Returns `null`
+ * for missing / out-of-range input.
  *
- * We round to a whole percent — sub-percent precision on a rank is noise for a
- * triage decision. A percentile of exactly 1 (top 0%) is clamped to "Top <1%"
- * so we never claim "Top 0%".
+ * This returns a key rather than a finished string because the wording is
+ * user-facing and has to follow the UI language. It used to build "Top N%" in
+ * code, which reached Korean screens in English.
+ *
+ * We round to a whole percent, since sub-percent precision on a rank is noise
+ * for a triage decision. A rank between 0 and 1 percent takes its own key, so
+ * rounding never prints "top 0%" for a CVE that is not at the very top; a rank
+ * of exactly 1 does print it, and there it is literally true.
  */
-export function formatEpssPercentile(
+export function epssPercentileLabel(
   percentile: number | null | undefined,
-): string | null {
+): EpssPercentileLabel | null {
   if (percentile == null || !Number.isFinite(percentile)) return null;
   if (percentile < 0 || percentile > 1) return null;
   const topPct = (1 - percentile) * 100;
-  if (topPct < 1 && topPct > 0) return "Top <1%";
-  return `Top ${Math.round(topPct)}%`;
+  if (topPct < 1 && topPct > 0) {
+    return { key: "vulnerabilities.epss.top_percentile_sub1", params: {} };
+  }
+  return {
+    key: "vulnerabilities.epss.top_percentile",
+    params: { value: Math.round(topPct) },
+  };
 }
