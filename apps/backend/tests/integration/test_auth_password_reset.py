@@ -505,3 +505,69 @@ async def test_forgot_password_invalidates_prior_pending_token(
         json={"token": first_plain, "new_password": _strong_password()},
     )
     assert bad.status_code == 422
+
+
+async def test_cooldown_of_zero_disables_the_window(
+    client: AsyncClient,
+    _disable_celery_dispatch,
+    monkeypatch,
+) -> None:
+    """Zero means off. It used to mean permanently on.
+
+    The cutoff was computed from the application's clock and compared against
+    a timestamp Postgres wrote. With a window of zero the cutoff IS the app's
+    idea of now, and an app running a few tens of milliseconds behind its
+    database reads a token stamped moments ago as being in the future, so the
+    window never expired. Whether it fired came down to clock skew, which is
+    also why CI passed and a developer's machine did not.
+    """
+    monkeypatch.setenv("PASSWORD_RESET_EMAIL_COOLDOWN_SECONDS", "0")
+
+    email = _unique_email("zero-cooldown")
+    await _register_user(client, email, _strong_password())
+
+    seen: list[str] = []
+    for _ in range(3):
+        response = await client.post("/auth/forgot-password", json={"email": email})
+        assert response.status_code == 204
+        assert response.headers.get("retry-after") is None
+        seen.append(_disable_celery_dispatch.last["plaintext_token"])
+
+    assert len(set(seen)) == 3, "each request must issue its own token"
+
+
+async def test_cooldown_holds_when_the_application_clock_runs_ahead(
+    client: AsyncClient,
+    _disable_celery_dispatch,
+    monkeypatch,
+) -> None:
+    """A skewed app clock must not expire the window early.
+
+    Both sides of the comparison come from the database now, so an application
+    clock ten minutes fast changes nothing. Computed in Python it would push
+    the cutoff past every existing token and hand out a second one inside a
+    five-minute window, which is the rate limit this exists to be.
+    """
+    from datetime import UTC, datetime, timedelta
+
+    from services import password_reset_service
+
+    monkeypatch.setenv("PASSWORD_RESET_EMAIL_COOLDOWN_SECONDS", "300")
+    monkeypatch.setattr(
+        password_reset_service,
+        "_now",
+        lambda: datetime.now(tz=UTC) + timedelta(minutes=10),
+    )
+
+    email = _unique_email("skewed-clock")
+    await _register_user(client, email, _strong_password())
+
+    r1 = await client.post("/auth/forgot-password", json={"email": email})
+    assert r1.status_code == 204
+    first = _disable_celery_dispatch.last["plaintext_token"]
+
+    r2 = await client.post("/auth/forgot-password", json={"email": email})
+    assert r2.status_code == 204
+    # Still inside the window: no second token, and Retry-After still says so.
+    assert _disable_celery_dispatch.last["plaintext_token"] == first
+    assert r2.headers.get("retry-after") == "300"

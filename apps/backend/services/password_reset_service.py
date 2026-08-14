@@ -75,7 +75,7 @@ from datetime import UTC, datetime, timedelta
 from typing import Any
 
 import structlog
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from core.config import (
@@ -222,11 +222,20 @@ async def _has_recent_token(
     user_id: uuid.UUID,
     cooldown: timedelta,
 ) -> bool:
-    """True when the user already has a non-expired token issued within the cooldown."""
-    cutoff = _now() - cooldown
+    """True when the user already has a non-expired token issued within the cooldown.
+
+    The cutoff is computed by Postgres rather than here, because the value it
+    is compared against is one Postgres wrote: ``created_at`` defaults to
+    ``now()``. Subtracting the window from a Python clock instead put the two
+    sides on different clocks, and the app container is routinely a few tens of
+    milliseconds behind the database. That made a token stamped moments ago
+    read as being in the future, so a cooldown of 0 never expired: "off" became
+    "permanently on" for as long as the skew lasted, and a drifting deployment
+    had a cooldown longer than the one it configured.
+    """
     stmt = select(PasswordResetToken.id).where(
         PasswordResetToken.user_id == user_id,
-        PasswordResetToken.created_at >= cutoff,
+        PasswordResetToken.created_at >= func.now() - cooldown,
         PasswordResetToken.invalidated_at.is_(None),
         PasswordResetToken.used_at.is_(None),
     )
