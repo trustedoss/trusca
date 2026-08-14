@@ -153,6 +153,17 @@ jobs:
         working-directory: apps/frontend
         run: npm run token:lint
 
+      # Error-copy ratchet, same shape as the token one. The backend answers
+      # RFC 7807 with an always-English `detail` and `title`, and reading one
+      # straight into the UI is a single short expression, so it spread to 47
+      # call sites while the translation keys beside them went unused. A
+      # Korean session met English on every failed request. The per-file
+      # baseline in scripts/problem-detail-baseline.json can only go down.
+      - name: Run error-copy lint
+        if: matrix.target == 'frontend'
+        working-directory: apps/frontend
+        run: npm run problem:lint
+
       # Korean translation-ese, on the KO guides AND the app's own Korean
       # strings. The linter existed and a PostToolUse hook ran it on edit,
       # but nothing checked it at merge time — and its scope was the guides

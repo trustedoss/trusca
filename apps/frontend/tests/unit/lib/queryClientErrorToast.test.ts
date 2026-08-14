@@ -5,8 +5,9 @@
  * write from staying silent (the W-audit found mutations with no onError, no
  * catch, and no inline rendering). These tests pin the dispatch contract:
  *
- *   - a mutation WITHOUT its own onError → one error toast (ProblemError
- *     detail preferred, generic i18n fallback otherwise);
+ *   - a mutation WITHOUT its own onError → one error toast, worded by
+ *     `problemMessage` (the error class translated, the backend's English
+ *     `detail` only for a class the table does not name);
  *   - a mutation WITH its own onError → global toast stays quiet;
  *   - `meta.errorToast: false` → quiet even without a local handler
  *     (inline-rendered errors);
@@ -21,6 +22,7 @@
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
+import i18n from "@/lib/i18n";
 import { createQueryClient } from "@/lib/queryClient";
 import { ProblemError } from "@/lib/problem";
 import { registerToastDispatcher, type ToastDispatcher } from "@/lib/toastBus";
@@ -73,14 +75,26 @@ describe("global mutation error toast", () => {
     vi.restoreAllMocks();
   });
 
-  it("toasts the ProblemError detail for a mutation without a local onError", async () => {
+  it("toasts the translated error class for a mutation without a local onError", async () => {
+    // The backend's `detail` is always English. Preferring it here was why a
+    // Korean session met English on every failed write.
     await runFailingMutation(client, { error: problem(409, "Scan already queued.") });
     expect(dispatched).toHaveLength(1);
-    expect(dispatched[0].text).toBe("Scan already queued.");
+    expect(dispatched[0].text).toBe(
+      "This does not match the current state. Refresh to see where things stand.",
+    );
     expect(dispatched[0].options).toMatchObject({
       tone: "error",
       key: "mutation-error",
     });
+  });
+
+  it("still surfaces the backend detail for a class it cannot name", async () => {
+    // The fallback earns its place: a specific English sentence beats a
+    // generic one when we have nothing better to say.
+    await runFailingMutation(client, { error: problem(418, "Brew refused.") });
+    expect(dispatched).toHaveLength(1);
+    expect(dispatched[0].text).toBe("Brew refused.");
   });
 
   it("falls back to the generic i18n message for non-Problem errors", async () => {
@@ -117,7 +131,27 @@ describe("global mutation error toast", () => {
     });
     expect(local).toHaveBeenCalledTimes(1);
     expect(dispatched).toHaveLength(1);
-    expect(dispatched[0].text).toBe("Status update failed.");
+    expect(dispatched[0].text).toBe(
+      "The server could not complete this. Try again shortly.",
+    );
+  });
+
+  it("answers in Korean when the session is Korean", async () => {
+    // The regression this whole change exists to prevent. The helper's own
+    // tests pin the wording per locale, but the toast reads `i18n.t` bound to
+    // the active language, and that wiring is what shipped English.
+    //
+    // The language flip goes here rather than in a beforeAll: tests/setup.ts
+    // resets to EN after every test, so a one-time switch would silently stop
+    // applying from the second case onward.
+    await i18n.changeLanguage("ko");
+    await runFailingMutation(client, {
+      error: problem(403, "Not permitted for this team."),
+    });
+
+    expect(dispatched).toHaveLength(1);
+    expect(dispatched[0].text).toMatch(/[가-힣]/);
+    expect(dispatched[0].text).not.toContain("Not permitted");
   });
 
   it("stays quiet for 422 validation problems (inline per design system)", async () => {

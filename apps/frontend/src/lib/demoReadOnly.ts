@@ -34,6 +34,15 @@ export const DEMO_READ_ONLY_PROBLEM_TYPE =
   "urn:trustedoss:problem:demo-read-only";
 
 /**
+ * Fully-qualified i18n key for the message a blocked demo write shows. It
+ * lives here, beside the classifier, so every surface that branches on the
+ * demo 403 spells the key once: `problemMessage`, the project mapper, and the
+ * admin mapper all resolve to the same sentence, and changing it changes it
+ * everywhere.
+ */
+export const DEMO_READ_ONLY_MESSAGE_KEY = "common:demo.write_disabled";
+
+/**
  * True when `err` is the read-only-demo 403 from the backend demo middleware.
  * Distinguishes it from an ordinary permission-denied 403.
  */

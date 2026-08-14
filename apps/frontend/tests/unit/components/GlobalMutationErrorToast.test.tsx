@@ -49,7 +49,11 @@ describe("global mutation error toast (provider wiring)", () => {
       const toast = screen.getByTestId("admin-toast");
       expect(toast).toHaveAttribute("data-tone", "error");
       expect(toast).toHaveAttribute("data-toast-key", "mutation-error");
-      expect(toast).toHaveTextContent("Scan already queued.");
+      // Worded by `problemMessage`: the 409 class translated, not the
+      // backend's English detail.
+      expect(toast).toHaveTextContent(
+        "This does not match the current state. Refresh to see where things stand.",
+      );
     });
   });
 });

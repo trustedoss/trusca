@@ -21,6 +21,8 @@
     "i18n:check": "node scripts/i18n-check.cjs",
     "token:lint": "node scripts/token-lint.mjs",
     "token:lint:update": "node scripts/token-lint.mjs --update",
+    "problem:lint": "node scripts/problem-detail-lint.mjs",
+    "problem:lint:update": "node scripts/problem-detail-lint.mjs --update",
     "test:a11y": "playwright test --config=playwright.a11y.config.ts",
     "test:a11y:update": "A11Y_UPDATE_BASELINE=1 playwright test --config=playwright.a11y.config.ts",
     "test:narrow": "playwright test --config=playwright.responsive.config.ts"
