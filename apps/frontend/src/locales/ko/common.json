@@ -45,13 +45,6 @@
     "profile": "프로필",
     "active_team": "활성 팀: {{team}}"
   },
-  "home": {
-    "title": "TRUSCA에 오신 것을 환영합니다",
-    "subtitle": "부트스트랩이 가동되었습니다. 인증·프로젝트·스캔은 다음 Phase에서 추가됩니다.",
-    "stack": "React 18 · Vite · shadcn/ui · TanStack Query · react-i18next",
-    "api_label": "API 베이스",
-    "primary_cta": "컴포넌트 보기"
-  },
   "risk": {
     "critical": "치명",
     "high": "높음",
@@ -84,13 +77,6 @@
     },
     "switchTeam": "팀 전환",
     "components": "컴포넌트"
-  },
-  "approvals": {
-    "coming_soon": "Step 3에서 추가됩니다."
-  },
-  "scans": {
-    "title": "스캔",
-    "coming_soon": "Step 4에서 추가됩니다."
   },
   "demo": {
     "banner_title": "읽기 전용 데모",

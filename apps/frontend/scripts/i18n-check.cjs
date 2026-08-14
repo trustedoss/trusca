@@ -13,7 +13,8 @@
  *   3. Enforce EN ↔ KO key parity: every key present in EN must also be
  *      present in KO, and vice versa. Untranslated keys leak through the
  *      UI as raw IDs; this is a release blocker per CLAUDE.md.
- *   4. Exit 0 on green, 1 on any drift with an actionable message.
+ *   4. Enforce plural-suffix hygiene (see checkPluralSuffixes below).
+ *   5. Exit 0 on green, 1 on any drift with an actionable message.
  *
  * Run via:  npm run i18n:check
  * Fix via:  npm run i18n:extract  (then add the new keys to KO by hand)
@@ -70,6 +71,48 @@ function listJsonRelative(rootDir, locale) {
 function setDiff(a, b) {
   // Returns elements in `a` but not in `b`, sorted for deterministic output.
   return [...a].filter((x) => !b.has(x)).sort();
+}
+
+// i18next 23.x resolves plurals with the Intl.PluralRules categories. `_plural`
+// is the v3 spelling and is never looked up, so such a key is dead weight that
+// silently degrades to the singular copy — which is how the build-gate reason
+// for known-malicious packages shipped in the singular for years.
+const PLURAL_CATEGORIES = ["zero", "one", "two", "few", "many", "other"];
+
+/**
+ * Plural-suffix hygiene. Two rules, both learned from live defects:
+ *
+ *   1. No `_plural` suffix. It is v3 syntax; v4 wants a CLDR category.
+ *   2. Every `key_<category>` needs its bare `key` alongside it. The parser
+ *      runs with `pluralSeparator: false`, so it only ever extracts the bare
+ *      key — without it, check #1 above reports the call site as missing.
+ *      The bare key is also what KO falls back to, since Korean has a single
+ *      plural category and never resolves `_one`.
+ *
+ * Returns a list of human-readable problems (empty when clean).
+ */
+function checkPluralSuffixes(locale, ns, keys) {
+  const problems = [];
+  for (const key of [...keys].sort()) {
+    const leaf = key.slice(key.lastIndexOf(".") + 1);
+    if (leaf.endsWith("_plural")) {
+      problems.push(
+        `  - ${locale}/${ns}.json: "${key}" uses the i18next v3 "_plural" suffix, ` +
+          `which v4 never resolves. Rename it to "_other".`,
+      );
+      continue;
+    }
+    const category = PLURAL_CATEGORIES.find((c) => leaf.endsWith(`_${c}`));
+    if (!category) continue;
+    const base = key.slice(0, key.length - `_${category}`.length);
+    if (!keys.has(base)) {
+      problems.push(
+        `  - ${locale}/${ns}.json: "${key}" has no bare "${base}" to fall back to. ` +
+          `Add it — the parser only extracts the bare key, and KO resolves it.`,
+      );
+    }
+  }
+  return problems;
 }
 
 function main() {
@@ -147,9 +190,13 @@ function main() {
         );
       }
       if (stale.length) {
+        // Listed, not just counted: a count alone is unactionable, and dead
+        // keys (shipped roadmap copy, keys whose call site was deleted) hide
+        // in this list next to the legitimately dynamic ones.
         warnings.push(
           `  - ${locale}/${ns}.json has ${stale.length} key(s) the static analyzer didn't see ` +
-            `(probably constructed dynamically — verify each is still reachable).`,
+            `(constructed dynamically, or dead — verify each is still reachable):\n` +
+            stale.map((k) => `      • ${k}`).join("\n"),
         );
       }
     }
@@ -187,6 +234,10 @@ function main() {
           missingInEn.map((k) => `      • ${k}`).join("\n"),
       );
     }
+
+    // --- 3. Plural-suffix hygiene, per locale.
+    drifts.push(...checkPluralSuffixes("en", ns, enKeys));
+    drifts.push(...checkPluralSuffixes("ko", ns, koKeys));
   }
 
   // Cleanup. Best-effort — the OS tmpdir is cleared on reboot anyway.
