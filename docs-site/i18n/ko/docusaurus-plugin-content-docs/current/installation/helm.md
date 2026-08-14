@@ -230,6 +230,8 @@ env:
 `extraEnv`에 적은 값은 values 파일에 남고, SMTP 비밀번호나 OAuth 클라이언트
 시크릿은 커밋하는 파일에 둘 것이 아닙니다.
 
+<!-- docs-uat: id=helm-extra-env-secret kind=shell ctx=host tier=manual waiver=needs-live-cluster -->
+
 ```bash
 kubectl create secret generic trustedoss-notifications \
   --from-literal=SMTP_HOST=smtp.example.com \
