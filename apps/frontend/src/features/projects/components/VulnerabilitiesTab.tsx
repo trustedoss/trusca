@@ -648,6 +648,18 @@ export function VulnerabilitiesTab({
   // it used to say "1,240" above four visible rows.
   const shownTotal = vexSuppressedOnly ? items.length : total;
 
+  /**
+   * The VEX filter narrows rows here rather than on the server, so an empty
+   * list does not mean an empty result: the suppressed findings may sit in a
+   * page nobody has asked for yet. Scrolling is the only thing that requests
+   * the next page, and there is nothing to scroll when no row rendered, so
+   * the empty state has to offer the load itself.
+   */
+  const moreToSearch =
+    items.length === 0 &&
+    fetchedItems.length > 0 &&
+    Boolean(vulnerabilities.hasNextPage);
+
   // M-28 — current statuses of the selected rows. Selection is single-page
   // (D-bulk) and cleared on any row-set shift, so every selected id is
   // guaranteed to be present in `items`. The bulk action bar intersects the
@@ -829,10 +841,15 @@ export function VulnerabilitiesTab({
       >
         <span>
           {vexSuppressedOnly
-            ? t("vulnerabilities.summary_vex_suppressed", {
-                shown: items.length,
-                scanned: fetchedItems.length,
-              })
+            ? t(
+                vulnerabilities.hasNextPage
+                  ? "vulnerabilities.summary_vex_suppressed_more"
+                  : "vulnerabilities.summary_vex_suppressed",
+                {
+                  shown: items.length,
+                  scanned: fetchedItems.length,
+                },
+              )
             : t("vulnerabilities.summary", {
                 loaded: items.length,
                 total,
@@ -880,14 +897,20 @@ export function VulnerabilitiesTab({
           className="m-6"
           icon={<ShieldCheck />}
           title={
-            hasNarrowingFilters
-              ? t("vulnerabilities.empty.filtered_title")
-              : t("vulnerabilities.empty.title")
+            moreToSearch
+              ? t("vulnerabilities.empty.partial_title")
+              : hasNarrowingFilters
+                ? t("vulnerabilities.empty.filtered_title")
+                : t("vulnerabilities.empty.title")
           }
           description={
-            hasNarrowingFilters
-              ? t("vulnerabilities.empty.filtered_subtitle")
-              : t("vulnerabilities.empty.subtitle")
+            moreToSearch
+              ? t("vulnerabilities.empty.partial_subtitle", {
+                  scanned: fetchedItems.length,
+                })
+              : hasNarrowingFilters
+                ? t("vulnerabilities.empty.filtered_subtitle")
+                : t("vulnerabilities.empty.subtitle")
           }
           // Two different empty states wearing one label until now. Zero rows
           // because a filter excluded them wants the filter cleared; zero rows
@@ -895,7 +918,17 @@ export function VulnerabilitiesTab({
           // scan" to someone with a severity filter on sends them to do work
           // that will not change what they see.
           action={
-            hasNarrowingFilters ? (
+            moreToSearch ? (
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => void vulnerabilities.fetchNextPage()}
+                disabled={vulnerabilities.isFetchingNextPage}
+                data-testid="vulnerabilities-empty-load-more"
+              >
+                {t("vulnerabilities.empty.load_more")}
+              </Button>
+            ) : hasNarrowingFilters ? (
               <Button
                 variant="outline"
                 size="sm"

@@ -357,10 +357,10 @@ export function ProjectDetailPage() {
           // leaving so another tab doesn't carry it.
           merged.delete("vuln_section");
         }
-        if (
-          target !== "vulnerabilities" &&
-          target !== "compliance"
-        ) {
+        // Only Compliance still pages. The Vulnerabilities tab went infinite
+        // and clears `page` itself, so preserving it on the way in would only
+        // hand over a parameter about to be dropped.
+        if (target !== "compliance") {
           merged.delete("page");
         }
         if (target !== "compliance") {
