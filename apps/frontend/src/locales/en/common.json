@@ -103,6 +103,13 @@
   "errors": {
     "request_failed": "The request failed. Please try again.",
     "boundary_title": "Something went wrong",
-    "boundary_reload": "Reload page"
+    "boundary_reload": "Reload page",
+    "unauthorized": "Your session has ended. Sign in again to continue.",
+    "forbidden": "You do not have permission to do this.",
+    "not_found": "That is no longer there. It may have been deleted or moved.",
+    "conflict": "Someone else changed this first. Reload and try again.",
+    "rate_limited": "Too many requests. Wait a moment and try again.",
+    "server_error": "The server could not complete this. Try again shortly.",
+    "network": "Could not reach the server. Check your connection and try again."
   }
 }

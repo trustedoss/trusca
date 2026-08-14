@@ -4,6 +4,7 @@ import { MutationCache, QueryClient } from "@tanstack/react-query";
 
 import i18n from "@/lib/i18n";
 import { ProblemError } from "@/lib/problem";
+import { problemMessage } from "@/lib/problemMessage";
 import { dispatchToast } from "@/lib/toastBus";
 
 /**
@@ -34,11 +35,14 @@ declare module "@tanstack/react-query" {
  * is the safety net; call sites that already render errors keep doing so and
  * opt out via the meta contract above.
  *
- * Two deliberate exclusions:
- *   - 422 validation problems stay inline next to the field (design-system
- *     feedback rule — never a toast the user might miss while typing).
- *   - `ProblemError.detail` is preferred over a generic message because the
- *     backend's RFC 7807 `detail` is always populated and user-readable.
+ * One deliberate exclusion: 422 validation problems stay inline next to the
+ * field (design-system feedback rule, never a toast the user might miss while
+ * typing).
+ *
+ * The wording comes from `problemMessage`, which translates the error class
+ * and only falls back to the backend's English `detail` when it has nothing
+ * better. This handler used to prefer `detail` outright, which meant every
+ * failed write in a Korean session answered in English.
  */
 export function onMutationError(
   error: unknown,
@@ -52,11 +56,10 @@ export function onMutationError(
   if (mutation.options.onError && !forced) return;
   if (error instanceof ProblemError && error.status === 422 && !forced) return;
 
-  const text =
-    error instanceof ProblemError && error.detail
-      ? error.detail
-      : i18n.t("common:errors.request_failed");
-  dispatchToast(text, { tone: "error", key: "mutation-error" });
+  dispatchToast(problemMessage(error, i18n.t.bind(i18n)), {
+    tone: "error",
+    key: "mutation-error",
+  });
 }
 
 export function createQueryClient() {

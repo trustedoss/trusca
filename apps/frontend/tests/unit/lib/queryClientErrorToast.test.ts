@@ -5,8 +5,9 @@
  * write from staying silent (the W-audit found mutations with no onError, no
  * catch, and no inline rendering). These tests pin the dispatch contract:
  *
- *   - a mutation WITHOUT its own onError → one error toast (ProblemError
- *     detail preferred, generic i18n fallback otherwise);
+ *   - a mutation WITHOUT its own onError → one error toast, worded by
+ *     `problemMessage` (the error class translated, the backend's English
+ *     `detail` only for a class the table does not name);
  *   - a mutation WITH its own onError → global toast stays quiet;
  *   - `meta.errorToast: false` → quiet even without a local handler
  *     (inline-rendered errors);
@@ -73,14 +74,26 @@ describe("global mutation error toast", () => {
     vi.restoreAllMocks();
   });
 
-  it("toasts the ProblemError detail for a mutation without a local onError", async () => {
+  it("toasts the translated error class for a mutation without a local onError", async () => {
+    // The backend's `detail` is always English. Preferring it here was why a
+    // Korean session met English on every failed write.
     await runFailingMutation(client, { error: problem(409, "Scan already queued.") });
     expect(dispatched).toHaveLength(1);
-    expect(dispatched[0].text).toBe("Scan already queued.");
+    expect(dispatched[0].text).toBe(
+      "Someone else changed this first. Reload and try again.",
+    );
     expect(dispatched[0].options).toMatchObject({
       tone: "error",
       key: "mutation-error",
     });
+  });
+
+  it("still surfaces the backend detail for a class it cannot name", async () => {
+    // The fallback earns its place: a specific English sentence beats a
+    // generic one when we have nothing better to say.
+    await runFailingMutation(client, { error: problem(418, "Brew refused.") });
+    expect(dispatched).toHaveLength(1);
+    expect(dispatched[0].text).toBe("Brew refused.");
   });
 
   it("falls back to the generic i18n message for non-Problem errors", async () => {
@@ -117,7 +130,9 @@ describe("global mutation error toast", () => {
     });
     expect(local).toHaveBeenCalledTimes(1);
     expect(dispatched).toHaveLength(1);
-    expect(dispatched[0].text).toBe("Status update failed.");
+    expect(dispatched[0].text).toBe(
+      "The server could not complete this. Try again shortly.",
+    );
   });
 
   it("stays quiet for 422 validation problems (inline per design system)", async () => {
