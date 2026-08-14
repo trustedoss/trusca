@@ -59,8 +59,10 @@ spec:
           envFrom:
             - configMapRef:
                 name: {{ include "trustedoss.fullname" . }}-env
+            {{- include "trustedoss.extraEnvFrom" . | nindent 12 }}
           env:
             {{- include "trustedoss.runtimeSecretEnv" . | nindent 12 }}
+            {{- include "trustedoss.extraEnv" . | nindent 12 }}
           volumeMounts:
             {{- if (.Values.worker.containerSecurityContext).readOnlyRootFilesystem }}
             # The bundled toolchain caches under HOME: gradle, mvn, npm, dotnet

@@ -50,8 +50,10 @@ spec:
           envFrom:
             - configMapRef:
                 name: {{ include "trustedoss.fullname" . }}-env
+            {{- include "trustedoss.extraEnvFrom" . | nindent 12 }}
           env:
             {{- include "trustedoss.runtimeSecretEnv" . | nindent 12 }}
+            {{- include "trustedoss.extraEnv" . | nindent 12 }}
             {{- if (.Values.backend.containerSecurityContext).readOnlyRootFilesystem }}
             # HOME is /app, which is read-only once the root filesystem is
             # sealed. Without this fontconfig has nowhere to cache and every

@@ -108,10 +108,16 @@ unrelated (e.g. infrastructure) reason, a maintainer can reveal it by hand with
    - If a new UI surface shipped, capture its screenshot via
      `make screenshots-capture` and reference it from the guide section.
 3. Bump `IMAGE_TAG` in `.env.example` to `X.Y.Z`.
-4. Tag and push: `git tag vX.Y.Z && git push origin vX.Y.Z`.
-5. Watch the `release-gate` job. When it goes green the Release is public and
+4. Bump the chart with it: `version` and `appVersion` in
+   `charts/trustedoss/Chart.yaml`, and `image.tag` in
+   `charts/trustedoss/values.yaml`. All three, in the same commit. The chart
+   claims to release in lock-step with the portal and drifted nine minor
+   versions once, which left a default `helm install` running an old portal
+   unless the operator overrode `image.tag`.
+5. Tag and push: `git tag vX.Y.Z && git push origin vX.Y.Z`.
+6. Watch the `release-gate` job. When it goes green the Release is public and
    marked `latest` automatically — no manual step is needed.
-6. Approve the demo deploy. Revealing the Release queues a `deploy-hetzner.yml`
+7. Approve the demo deploy. Revealing the Release queues a `deploy-hetzner.yml`
    run against the `demo` Environment; it waits for a reviewer. Leave it
    unapproved if the demo should stay on the previous release. The queued run
    never reseeds — when the release changes `scripts/seed_demo.py`, dispatch the

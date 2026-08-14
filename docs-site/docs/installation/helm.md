@@ -15,7 +15,7 @@ administration (Ingress, StorageClasses, cert-manager) proficiency. If you run a
 single host, the [Docker Compose install](./docker-compose.md) is simpler.
 :::
 
-The Helm chart (`charts/trustedoss`, chart version **0.12.0**) deploys the full
+The Helm chart (`charts/trustedoss`, chart version **0.21.0**) deploys the full
 portal: the FastAPI backend, the Celery worker and beat scheduler, the React
 frontend, an Ingress with TLS, and a database migration Job. PostgreSQL and
 Redis can either be bundled in-cluster (for evaluation) or pointed at external
@@ -26,9 +26,10 @@ The chart is not published to a registry yet, so there is no `oci://` install.
 Clone the repository and install the chart from the working tree, as the
 commands below do.
 
-The chart also trails the portal: its `appVersion` is 0.12.0 while the current
-release is 0.21.0. Set `image.tag` to the release you actually want. Publishing
-the chart and bringing it level with the portal is tracked in
+The chart's `appVersion` now tracks the portal release, so a default install
+gets the current images without overriding `image.tag`. Publishing to the
+registry needs a `chart-vX.Y.Z` tag and a one-time package-visibility change,
+which is the remaining half of
 [issue #81](https://github.com/trustedoss/trusca/issues/81).
 :::
 
@@ -193,7 +194,7 @@ The values you most often set:
 
 | Key | Default | Purpose |
 |---|---|---|
-| `image.tag` | `0.12.0` | Image tag for backend / worker / frontend (never `:latest`). |
+| `image.tag` | `0.21.0` | Image tag for backend / worker / frontend (never `:latest`). |
 | `ingress.host` | `""` | **Required.** Public hostname. |
 | `env.corsAllowedOrigins` | `""` | **Required in prod.** Allowed browser origins (no wildcard). |
 | `env.secret.secretKey` | `""` | `SECRET_KEY` (≥32 chars). Required unless `existingSecret`. |
@@ -205,6 +206,53 @@ The values you most often set:
 | `worker.trivyDbPersistence.enabled` | `true` | Mount a PVC at `/var/lib/trivy` so the worker doesn't re-download on every restart. |
 | `workspace.persistence.storageClassName` | `""` | RWX class for the shared scan volume on multi-node clusters. |
 | `worker.replicaCount` | `2` | Prefer scaling worker pods over per-pod `concurrency`. |
+| `env.extraEnv` | `{}` | Any runtime variable the chart does not name. See below. |
+| `env.extraEnvFrom` | `[]` | `envFrom` entries, for Secrets you created yourself. See below. |
+
+### Settings the chart does not name {#extra-env}
+
+Most keys above are spelled out one by one, which is clear about what the chart
+supports and leaves it behind the portal at each release. `env.extraEnv` and
+`env.extraEnvFrom` cover everything else, and they reach the backend, worker and
+beat pods alike. The catalogue of what exists is
+[Environment variables](../reference/env-variables.md).
+
+Non-secret settings go in `env.extraEnv`:
+
+```yaml
+env:
+  extraEnv:
+    SCANOSS_ENABLED: "true"
+    KEV_REFRESH_ENABLED: "false"      # air-gapped: no CISA feed to reach
+    DISK_HARD_LIMIT_PCT: "98"
+    WEBHOOK_RATE_LIMIT: "240/minute"
+```
+
+Credentials go in a Secret you create, referenced from `env.extraEnvFrom`. A
+value in `extraEnv` lives in your values file, and an SMTP password or an OAuth
+client secret does not belong in a file people commit:
+
+<!-- docs-uat: id=helm-extra-env-secret kind=shell ctx=host tier=manual waiver=needs-live-cluster -->
+
+```bash
+kubectl create secret generic trustedoss-notifications \
+  --from-literal=SMTP_HOST=smtp.example.com \
+  --from-literal=SMTP_USER=portal@example.com \
+  --from-literal=SMTP_PASSWORD='...' \
+  --from-literal=SLACK_WEBHOOK_URL='https://hooks.slack.com/services/...'
+```
+
+```yaml
+env:
+  extraEnvFrom:
+    - secretRef:
+        name: trustedoss-notifications
+```
+
+This is how a Helm install reaches OAuth sign-in, SMTP / Slack / Teams
+notifications, the vendored-code identification service and the Jira link. None
+of them could be configured on a Helm install before, which is the gap this
+closes.
 
 ## Verify it worked
 

@@ -105,10 +105,15 @@ pull해서 실행해봐야만 설치 가능 여부를 증명할 수 있기 때�
    - 새 UI 화면이 나갔다면 `make screenshots-capture`로 스크린샷을 캡처해
      가이드 섹션에서 참조합니다.
 3. `.env.example`의 `IMAGE_TAG`를 `X.Y.Z`로 올립니다.
-4. 태그를 push합니다. `git tag vX.Y.Z && git push origin vX.Y.Z`.
-5. `release-gate` 잡을 지켜봅니다. 초록색이 되면 Release가 자동으로 공개되고
+4. 차트도 함께 올립니다. `charts/trustedoss/Chart.yaml`의 `version`과 `appVersion`,
+   `charts/trustedoss/values.yaml`의 `image.tag` 세 곳을 같은 커밋에서 바꿉니다.
+   차트는 포털과 같은 주기로 릴리스한다고 적어 두었는데 한 번 아홉 마이너 버전이나
+   벌어졌고, 그 동안 기본 `helm install`은 운영자가 `image.tag`를 직접 지정하지 않으면
+   오래된 포털을 설치했습니다.
+5. 태그를 push합니다. `git tag vX.Y.Z && git push origin vX.Y.Z`.
+6. `release-gate` 잡을 지켜봅니다. 초록색이 되면 Release가 자동으로 공개되고
    `latest`로 표시됩니다. 별도 수동 작업은 필요 없습니다.
-6. 데모 배포를 승인합니다. Release가 공개되면 `demo` 환경에 대한
+7. 데모 배포를 승인합니다. Release가 공개되면 `demo` 환경에 대한
    `deploy-hetzner.yml` 실행이 하나 걸리고 승인자를 기다립니다. 데모를 이전
    릴리스에 그대로 두려면 승인하지 않으면 됩니다. 이렇게 걸린 실행은 시드를
    다시 만들지 않으므로, 릴리스가 `scripts/seed_demo.py`를 바꿨다면 워크플로를
