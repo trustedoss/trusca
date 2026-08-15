@@ -65,7 +65,11 @@ test.describe("@session-return signing in returns you to the deep link", () => {
     const target = `/projects/${seed.project_ids[0]}?tab=components`;
 
     // Signed out, follow the link. The guard sends us to sign in.
-    await portal.goto(target);
+    //
+    // `page.goto` rather than the portal harness, whose verb waits for the
+    // app shell. The whole point here is that we are not signed in, so
+    // there is no shell to wait for.
+    await page.goto(`${portal.baseUrl}${target}`);
     await expect(page).toHaveURL(/\/login$/);
 
     await auth.login(
@@ -94,7 +98,7 @@ test.describe("@session-return signing in returns you to the deep link", () => {
     // The shape an attacker sends: a path the router will route, carrying a
     // second origin in a place that looks internal. The browser reads a
     // leading double slash as an authority.
-    await portal.goto("//evil.example/steal");
+    await page.goto(`${portal.baseUrl}//evil.example/steal`);
     await expect(page).toHaveURL(/\/login$/);
 
     await auth.login(seed.email, seed.password);
