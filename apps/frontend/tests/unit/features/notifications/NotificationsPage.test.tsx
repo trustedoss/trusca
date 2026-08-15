@@ -93,7 +93,7 @@ function defaultPrefs(): NotificationPrefs {
   };
 }
 
-function renderPage() {
+function renderPage(initialEntry = "/notifications") {
   const client = new QueryClient({
     defaultOptions: {
       queries: { retry: false },
@@ -102,7 +102,7 @@ function renderPage() {
   });
   return render(
     <QueryClientProvider client={client}>
-      <MemoryRouter initialEntries={["/notifications"]}>
+      <MemoryRouter initialEntries={[initialEntry]}>
         <Routes>
           <Route path="/notifications" element={<NotificationsPage />} />
           <Route
@@ -179,6 +179,38 @@ describe("NotificationsPage", () => {
     await waitFor(() => {
       expect(mockedList).toHaveBeenLastCalledWith(
         expect.objectContaining({ unread_only: true, page: 1 }),
+      );
+    });
+  });
+
+  it("opens on the filter and page the URL asked for (B1)", async () => {
+    // Both were component state, so a reload put the reader on page 1 of
+    // everything, whichever page of unread they had been reading.
+    // A total that spans more than one page, or the clamp would rightly
+    // snap page 2 back to 1 and mask what this test is about.
+    mockedList.mockResolvedValue(makeList([], { total: 120 }));
+
+    renderPage("/notifications?unread=1&page=2");
+
+    await waitFor(() => {
+      expect(mockedList).toHaveBeenCalled();
+    });
+    expect(mockedList).toHaveBeenLastCalledWith(
+      expect.objectContaining({ unread_only: true, page: 2 }),
+    );
+    expect(screen.getByTestId("notifications-unread-only")).toBeChecked();
+  });
+
+  it("snaps a page the inbox does not have back into range (B1)", async () => {
+    // A bookmark can name page 2 of an inbox that has since been read down
+    // to one page. Without this the footer reads "Page 2 of 1".
+    mockedList.mockResolvedValue(makeList([]));
+
+    renderPage("/notifications?page=2");
+
+    await waitFor(() => {
+      expect(mockedList).toHaveBeenLastCalledWith(
+        expect.objectContaining({ page: 1 }),
       );
     });
   });

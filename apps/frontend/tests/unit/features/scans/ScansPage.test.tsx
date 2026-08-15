@@ -13,7 +13,7 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { MemoryRouter } from "react-router-dom";
+import { MemoryRouter, useNavigate } from "react-router-dom";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { ScansPage } from "@/features/scans/ScansPage";
@@ -57,6 +57,13 @@ function pageResponse(items: ScanPublic[], total = items.length): ScanListRespon
   return { items, total, page: 1, size: 20 };
 }
 
+// MemoryRouter keeps its own history stack, so window.history.back() does
+// nothing here. This is how a test presses Back.
+function BackButton() {
+  const navigate = useNavigate();
+  return <button data-testid="go-back" onClick={() => navigate(-1)} />;
+}
+
 function renderPage(initialEntry = "/scans") {
   const client = new QueryClient({
     defaultOptions: { queries: { retry: false } },
@@ -68,6 +75,7 @@ function renderPage(initialEntry = "/scans") {
     <QueryClientProvider client={client}>
       <MemoryRouter initialEntries={[initialEntry]}>
         <ScansPage />
+        <BackButton />
       </MemoryRouter>
     </QueryClientProvider>,
   );
@@ -194,6 +202,62 @@ describe("ScansPage", () => {
     await waitFor(() => {
       const last = mockedListMyScans.mock.calls.at(-1)?.[0];
       expect(last?.page).toBe(2);
+    });
+  });
+
+  it("opens on the page the URL asked for (B1)", async () => {
+    // The page used to be component state, so a reload of page 3 showed
+    // page 1 while the tab in the address bar said otherwise.
+    // A total that spans more than three pages, or the clamp would rightly
+    // snap page 3 back to 1 and mask what this test is about.
+    mockedListMyScans.mockResolvedValue(pageResponse([scanFixture()], 400));
+    renderPage("/scans?status=failed&page=3");
+
+    await waitFor(() => {
+      expect(mockedListMyScans).toHaveBeenCalled();
+    });
+    expect(mockedListMyScans.mock.calls[0]?.[0]).toMatchObject({
+      status: "failed",
+      page: 3,
+    });
+    // And it stays there: nothing snaps a page the list actually has.
+    expect(mockedListMyScans.mock.calls.at(-1)?.[0]).toMatchObject({ page: 3 });
+  });
+
+  it("snaps a page the list does not have back into range (B1)", async () => {
+    // A bookmark can name page 3 of a list that now has one. Without this
+    // the footer reads "Page 3 of 1" beside an empty table.
+    mockedListMyScans.mockResolvedValue(pageResponse([scanFixture()], 1));
+    renderPage("/scans?page=3");
+
+    await waitFor(() => {
+      expect(mockedListMyScans.mock.calls.at(-1)?.[0]).toMatchObject({
+        page: 1,
+      });
+    });
+  });
+
+  it("follows the URL back rather than keeping its own copy (B1)", async () => {
+    // The tab was seeded from the URL once and written back on change, so
+    // Back moved the address bar and left the tab where it was.
+    mockedListMyScans.mockResolvedValue(pageResponse([], 0));
+    renderPage("/scans");
+
+    await userEvent.click(screen.getByTestId("scans-tab-failed"));
+    await waitFor(() => {
+      expect(screen.getByTestId("scans-tab-failed")).toHaveAttribute(
+        "data-active",
+        "true",
+      );
+    });
+
+    await userEvent.click(screen.getByTestId("go-back"));
+
+    await waitFor(() => {
+      expect(screen.getByTestId("scans-tab-all")).toHaveAttribute(
+        "data-active",
+        "true",
+      );
     });
   });
 });

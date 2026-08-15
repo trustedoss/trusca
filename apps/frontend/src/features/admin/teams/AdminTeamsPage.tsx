@@ -30,6 +30,12 @@ import {
   adminErrorExtension,
   adminErrorMessageKey,
 } from "@/features/admin/lib/adminErrorMessage";
+import {
+  useClampPage,
+  usePageParam,
+  useUrlParam,
+  useUrlText,
+} from "@/hooks/useUrlState";
 import { cn } from "@/lib/utils";
 
 const PAGE_SIZE_OPTIONS = [25, 50, 100] as const;
@@ -37,11 +43,27 @@ const PAGE_SIZE_OPTIONS = [25, 50, 100] as const;
 export function AdminTeamsPage() {
   const { t } = useTranslation("admin");
 
-  const [searchInput, setSearchInput] = useState("");
-  const [searchDebounced, setSearchDebounced] = useState("");
-  const [page, setPage] = useState(1);
-  const [pageSize, setPageSize] =
-    useState<(typeof PAGE_SIZE_OPTIONS)[number]>(50);
+  // B1: the filters live in the address bar, so a reload or a Back returns
+  // the reader to the list they were reading rather than to page 1 of
+  // everything, and a link to a search is a link to that search.
+  //
+  // The text field keeps its own state alongside. The URL is written on the
+  // debounce, not on every keystroke, or Back would step through the search
+  // term one character at a time.
+  const [searchDebounced, setSearchDebounced] = useUrlText("search");
+  const [searchInput, setSearchInput] = useState(searchDebounced);
+  const [page, setPage] = usePageParam();
+  const [pageSize, setPageSize] = useUrlParam<
+    (typeof PAGE_SIZE_OPTIONS)[number]
+  >("size", {
+    parse: (raw) => {
+      const n = Number.parseInt(raw ?? "", 10);
+      return (PAGE_SIZE_OPTIONS as readonly number[]).includes(n)
+        ? (n as (typeof PAGE_SIZE_OPTIONS)[number])
+        : 50;
+    },
+    serialize: (value) => (value === 50 ? null : String(value)),
+  });
   const [openTeamId, setOpenTeamId] = useState<string | null>(null);
   const [showCreateForm, setShowCreateForm] = useState(false);
   const [createName, setCreateName] = useState("");
@@ -49,17 +71,34 @@ export function AdminTeamsPage() {
   const [createDescription, setCreateDescription] = useState("");
   const { toast } = useToast();
 
+  // Back moves the URL; the field has to follow it, or it shows a term the
+  // list is no longer filtered by.
+  //
+  // Only when the field is not already showing that term. The URL holds the
+  // trimmed form, so following it unconditionally would swallow a trailing
+  // space 300ms after the reader typed it, and their next word would join
+  // the previous one.
+  useEffect(() => {
+    setSearchInput((current) =>
+      current.trim() === searchDebounced ? current : searchDebounced,
+    );
+  }, [searchDebounced]);
+
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   useEffect(() => {
+    // Only when the typed term has actually moved away from the URL. Writing
+    // unconditionally would fire on mount as well, and clearing the page is
+    // part of writing a filter, so `?search=x&page=4` would land on page 1.
+    if (searchInput.trim() === searchDebounced) return;
     if (debounceRef.current) clearTimeout(debounceRef.current);
     debounceRef.current = setTimeout(() => {
+      // The hook clears the page itself when a filter moves.
       setSearchDebounced(searchInput);
-      setPage(1);
     }, 300);
     return () => {
       if (debounceRef.current) clearTimeout(debounceRef.current);
     };
-  }, [searchInput]);
+  }, [searchInput, searchDebounced, setSearchDebounced]);
 
   const queryParams = useMemo(
     () => ({
@@ -74,6 +113,9 @@ export function AdminTeamsPage() {
   const items = teamsQuery.data?.items ?? [];
   const total = teamsQuery.data?.total ?? 0;
   const totalPages = Math.max(1, Math.ceil(total / pageSize));
+  // The page is now something a link or a bookmark can carry, and it can
+  // name a page this list no longer has.
+  useClampPage(page, totalPages, setPage, teamsQuery.isSuccess);
   const create = useCreateTeam();
 
   function notify(text: string, tone: "success" | "error", key?: string) {
@@ -125,6 +167,9 @@ export function AdminTeamsPage() {
             value={searchInput}
             onChange={(e) => setSearchInput(e.target.value)}
             placeholder={t("admin.teams.filter.search_placeholder")}
+            // Matches the bound the URL applies, so a paste is refused at
+            // the field rather than silently truncated on the way out.
+            maxLength={200}
             className="h-9"
           />
         </div>
@@ -310,7 +355,6 @@ export function AdminTeamsPage() {
               setPageSize(
                 Number(e.target.value) as (typeof PAGE_SIZE_OPTIONS)[number],
               );
-              setPage(1);
             }}
           >
             {PAGE_SIZE_OPTIONS.map((opt) => (
