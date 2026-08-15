@@ -143,6 +143,16 @@ export const VISUAL_COVERAGE: Record<string, VisualCoverage> = {
   },
   AdminBackupPage: { exempt: "Backup inventory is environment-dependent." },
   AdminNotFound: { exempt: "Existence-hide 404 stub, no layout of its own." },
+  NotFoundPage: {
+    exempt:
+      "One centred block inside shell chrome the represented screens already " +
+      "capture, with no data behind it and nothing that varies between runs. " +
+      "What is worth guarding here is behaviour rather than pixels: that the " +
+      "route table sends unknown paths at it and that it names the address " +
+      "and offers a way out. NotFoundPage.test.tsx asserts both on every PR, " +
+      "and tests/e2e/not_found.spec.ts walks the real navigation nightly " +
+      "(the e2e job does not run on PRs).",
+  },
 
   // --- Dev only ---------------------------------------------------------
   DesignSystemPreview: {

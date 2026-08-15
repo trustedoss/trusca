@@ -314,4 +314,56 @@ describe("ComponentDetailPage (W10-E)", () => {
       `/projects/${PROJECT_ID}?tab=components`,
     );
   });
+
+  // ─── A4: the failure surface says what failed, and offers a way back ──
+
+  it("does not call a server error a missing component", async () => {
+    // As on the vulnerability page: the classification was already right, and
+    // what A4 adds is the way back plus keeping the not-found explanation
+    // with the not-found class.
+    mockedGetComponent.mockRejectedValueOnce(
+      new ProblemError("server_error", {
+        status: 500,
+        title: "Internal Server Error",
+        detail: "boom",
+        problem: null,
+      }),
+    );
+    renderPage();
+
+    const surface = await screen.findByTestId("component-detail-page-error");
+    expect(surface.textContent).not.toContain("not found");
+    expect(surface.textContent).toContain("Could not load this component");
+    expect(surface.textContent).not.toContain("id in the address");
+    expect(
+      screen.getByTestId("component-detail-page-error-back"),
+    ).toBeInTheDocument();
+  });
+
+  it("offers the way back to the list from the failure surface", async () => {
+    mockedGetComponent.mockRejectedValueOnce(
+      new ProblemError("not_found", {
+        status: 404,
+        title: "Component Not Found",
+        detail: "component gone",
+        problem: null,
+      }),
+    );
+    renderPage({ fromState: `/projects/${PROJECT_ID}?tab=components&page=3` });
+
+    const surface = await screen.findByTestId("component-detail-page-error");
+    expect(surface.textContent).toContain(
+      "The id in the address does not match a component you can open",
+    );
+
+    const back = await screen.findByTestId("component-detail-page-error-back");
+    expect(back.getAttribute("href")).toBe(
+      `/projects/${PROJECT_ID}?tab=components&page=3`,
+    );
+
+    // And the heading is not left blank.
+    expect(
+      screen.getByTestId("component-detail-page-title").textContent,
+    ).toBe("Unavailable");
+  });
 });

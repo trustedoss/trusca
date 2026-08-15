@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2026 TRUSCA contributors
 import { useQuery } from "@tanstack/react-query";
-import { ChevronLeft, Download } from "lucide-react";
+import { ChevronLeft, Download, SearchX } from "lucide-react";
 import {
   useCallback,
   useEffect,
@@ -12,6 +12,7 @@ import {
 import { useTranslation } from "react-i18next";
 import { Link, useParams } from "react-router-dom";
 
+import { EmptyState } from "@/components/EmptyState";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -28,6 +29,7 @@ import {
   type ScanLogMessage,
 } from "@/hooks/useScanWebSocket";
 import { useDocumentTitle } from "@/hooks/useDocumentTitle";
+import { problemMessage } from "@/lib/problemMessage";
 import { cn } from "@/lib/utils";
 import { getScan, type ScanStatus } from "@/lib/projectsApi";
 
@@ -270,15 +272,38 @@ export function ScanDetailPage() {
           </div>
         ) : null}
 
+        {/* A4: every failure here used to render one not-found sentence, so
+            a 500 or a dropped connection accused an address that was fine,
+            and the user's next move (retry) was the one the message argued
+            against. The class decides the sentence now.
+
+            `detail.errors` names the three classes this route can answer
+            with: 404, 403, and the 422 FastAPI raises when the id in the path
+            is not a UUID. Everything else resolves to the shared `common:`
+            wording, and `allowDetailFallback: false` keeps the backend's
+            English `detail` off a surface that is the whole page: a generic
+            Korean sentence beats a specific English one here.
+
+            (This was the last consumer of `scans:close_codes.*`, which named
+            WebSocket close reasons but was being used for a REST error. Those
+            four keys now have no consumer; unit C4 is where the scan stream
+            starts reporting its own close reasons and takes them up.) */}
         {scanQuery.isError ? (
-          <Alert
-            variant="destructive"
+          <EmptyState
             data-testid="scan-detail-page-error"
-          >
-            <AlertDescription>
-              {t("close_codes.not_found")}
-            </AlertDescription>
-          </Alert>
+            icon={<SearchX />}
+            title={problemMessage(scanQuery.error, t, {
+              prefix: "detail.errors",
+              allowDetailFallback: false,
+            })}
+            action={
+              <Button asChild variant="outline" size="sm">
+                <Link to="/scans" data-testid="scan-detail-page-error-back">
+                  {t("detail.back_to_scans")}
+                </Link>
+              </Button>
+            }
+          />
         ) : null}
 
         {scan ? (
