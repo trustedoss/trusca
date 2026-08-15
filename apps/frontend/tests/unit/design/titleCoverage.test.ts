@@ -6,7 +6,7 @@
  * projects open side by side were indistinguishable.
  *
  * Most screens now get a title from `PageHeader`, which already knows the page
- * name; the rest call `useDocumentTitle` directly. Either is fine — what this
+ * name; the rest call `useDocumentTitle` directly. Either is fine. What this
  * guards is that a screen added later cannot quietly have neither. Same shape
  * as `visualCoverage.test.ts`, and the same hardening rule behind it: the
  * screen vocabulary lives in `router.tsx` and the title mechanism lives in the

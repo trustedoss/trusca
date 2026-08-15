@@ -12,15 +12,15 @@
  * The rule here inverts that: classify the problem, translate the class, and
  * fall back to `detail` only for a class we have no wording for. The fallback
  * stays because a specific English sentence beats a generic Korean one when
- * the alternative is "the request failed" — but it is the exception now, and
+ * the alternative is "the request failed", but it is the exception now, and
  * `scripts/problem-detail-lint.mjs` keeps count of the call sites that still
  * reach for `detail` directly.
  *
  * Domain surfaces that map their own extension fields (see
  * `features/admin/lib/adminErrorMessage.ts` and
  * `features/projects/lib/projectErrorMessage.ts`) stay as they are. They
- * classify further than this can — `last_super_admin_protected` is not an
- * HTTP status — and both already resolve to keys rather than `detail`. This
+ * classify further than this can (`last_super_admin_protected` is not an
+ * HTTP status), and both already resolve to keys rather than `detail`. This
  * helper is the floor for everything else, not a replacement for them.
  */
 import type { TFunction } from "i18next";
@@ -86,7 +86,7 @@ export function problemToken(err: unknown): ProblemToken {
   // most of them. Surfaces that know which 409 they can get should name it
   // through `prefix`.
   // 400 and 422 both mean "the request itself was wrong", and both answer with
-  // a detail naming what was wrong — an unsupported format, a field that
+  // a detail naming what was wrong, an unsupported format, a field that
   // failed a rule. Only the server knows which.
   if (err.status === 400 || err.status === 422) return "validation";
   if (err.status === 409 || err.status === 412) return "conflict";
@@ -149,7 +149,7 @@ export function problemMessage(
   // A 422 is the one class where the backend knows something we cannot: which
   // field failed, which limit was exceeded, which statement in the uploaded
   // document was rejected. Its `detail` is English, and half an English
-  // sentence is a real cost — but the alternative is telling the user only
+  // sentence is a real cost, but the alternative is telling the user only
   // that something was invalid, which leaves them with no way forward.
   if (!scoped && token === "validation" && err instanceof ProblemError && err.detail) {
     return actionText ? `${actionText} ${err.detail}` : err.detail;

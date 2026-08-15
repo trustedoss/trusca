@@ -267,7 +267,7 @@ function importErrorMessage(error: Error | null, t: TFunction): string {
   }
   // Everything the switch does not name goes through the shared helper. It
   // used to fall to the server's `detail`, which on a transport failure is
-  // axios's "Network Error" — English, and no use to anyone.
+  // axios's "Network Error", English, and no use to anyone.
   return problemMessage(error, t, {
     action: "vulnerabilities.vex.import_error_generic",
   });

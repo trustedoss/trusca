@@ -1,15 +1,15 @@
 /**
- * Vulnerabilities paging + drawer history — A2.
+ * Vulnerabilities paging + drawer history, A2.
  *
  * Two defects this pins, both of which made the table read as broken rather
  * than as limited:
  *
- *   P1 — The 101st row was unreachable. The page size is 100, the tab wrote a
+ *   P1: The 101st row was unreachable. The page size is 100, the tab wrote a
  *        `?page=` parameter, and nothing ever incremented it. A project with
  *        more than 100 findings simply hid the rest, with no control to page
  *        and no notice that the list was cut.
- *   P2 — Opening a finding replaced the history entry, so Back left the tab
- *        entirely — discarding filters and scroll position — instead of
+ *   P2: Opening a finding replaced the history entry, so Back left the tab
+ *        entirely: discarding filters and scroll position, instead of
  *        closing the panel the user had just opened by clicking a row.
  *
  * Seeded separately from `vulnerabilities.spec.ts` because it needs more than

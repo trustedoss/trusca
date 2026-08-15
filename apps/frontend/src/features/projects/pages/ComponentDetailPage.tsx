@@ -233,7 +233,7 @@ function PageHeader({
   const label =
     detailLabel ?? (isDetailError ? t("page.breadcrumb_unavailable") : null);
 
-  // "django 4.2 · payments-api · TRUSCA" — enough to tell two open component
+  // "django 4.2 · payments-api · TRUSCA", enough to tell two open component
   // tabs apart, which is the whole point of naming the tab.
   useDocumentTitle(label, projectName);
 

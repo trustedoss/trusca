@@ -1,5 +1,5 @@
 /**
- * useVulnerabilities — pagination contract.
+ * useVulnerabilities: pagination contract.
  *
  * The findings list was a single-page query for a long time, which meant the
  * 101st row of a filtered result could not be reached: `?page=` was written

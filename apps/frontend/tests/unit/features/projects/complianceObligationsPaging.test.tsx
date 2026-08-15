@@ -1,5 +1,5 @@
 /**
- * useCompliance / useObligations — pagination contract.
+ * useCompliance / useObligations, pagination contract.
  *
  * Both grids paged at 100 and wrote a page parameter nothing incremented, so
  * the 101st licence and the 101st obligation could not be reached. Pinned on

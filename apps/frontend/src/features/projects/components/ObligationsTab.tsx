@@ -450,7 +450,7 @@ interface ObligationRowProps {
   onSelect: () => void;
 }
 
-/** Exported for the row-semantics gate — see ComplianceTab for the reason. */
+/** Exported for the row-semantics gate, see ComplianceTab for the reason. */
 export { ObligationRow as ObligationRowForTest };
 
 function ObligationRow({
@@ -461,7 +461,7 @@ function ObligationRow({
   const { t } = useTranslation("project_detail");
   return (
     // A div, not a button. A `row` owns cells, and `row` is not a role a
-    // `<button>` may carry — axe rejects both, and a screen reader in table
+    // `<button>` may carry, axe rejects both, and a screen reader in table
     // mode cannot move across a row that has no cells. The keyboard path
     // lives in the first cell instead, the same shape the vulnerabilities
     // row uses.

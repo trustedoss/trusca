@@ -13,7 +13,7 @@
  * that spells the scale out is caught on the day it lands.
  *
  * Deliberate exceptions are listed below with the reason, and each one is
- * asserted to still exist — an allowlist that silently stops matching is an
+ * asserted to still exist, an allowlist that silently stops matching is an
  * allowlist that hides the next defect.
  */
 import { describe, expect, it } from "vitest";

@@ -4,7 +4,7 @@
  * A ratchet nobody tested is a ratchet nobody can trust: if `scan()` stopped
  * matching, the baseline would keep passing and the debt would grow under a
  * green check. So this drives the linter over fixture trees and asserts both
- * directions — it catches the bypass, and it stays quiet on the things that
+ * directions: it catches the bypass, and it stays quiet on the things that
  * merely look like one (a domain payload's `detail`, a mention in a comment,
  * the helper that is the sanctioned path).
  */

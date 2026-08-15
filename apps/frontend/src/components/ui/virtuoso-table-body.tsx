@@ -6,15 +6,15 @@ import { type ComponentPropsWithoutRef, forwardRef } from "react";
  * The table body for a Virtuoso-backed grid, placed on the one element between
  * the table and its rows that the accessibility tree will not flatten.
  *
- * Everything Virtuoso renders between the two is a plain `div` — wrapper,
- * scroller, viewport, list, per-item box — and a plain `div` disappears from
+ * Everything Virtuoso renders between the two is a plain `div`, wrapper,
+ * scroller, viewport, list, per-item box, and a plain `div` disappears from
  * the accessibility tree, so the rows read as owned by the table. All except
  * the scroller: it carries `tabindex` so the list can be scrolled from the
  * keyboard, and a focusable element is never flattened. It has to hold a role
  * the table allows, so it holds `rowgroup`.
  *
  * Two things were tried first and are worth not re-trying.
- * `role="presentation"` on the wrappers: axe rejects it, correctly — a
+ * `role="presentation"` on the wrappers: axe rejects it, and correctly. A
  * presentational element is still an owned child, and `table` owns rows and
  * rowgroups, not presentation. `rowgroup` on the wrapper div outside Virtuoso:
  * the focusable scroller then sits INSIDE the rowgroup and is reported there

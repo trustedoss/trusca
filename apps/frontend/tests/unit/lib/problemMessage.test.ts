@@ -1,5 +1,5 @@
 /**
- * problemMessage — unit tests.
+ * problemMessage: unit tests.
  *
  * The behaviour worth pinning is the resolution order, because the defect it
  * replaces was an order problem: the backend's English `detail` outranked the

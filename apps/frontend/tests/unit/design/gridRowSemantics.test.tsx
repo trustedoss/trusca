@@ -6,7 +6,7 @@
  * `<button>` may carry, and a button spanning six columns is not a cell.
  *
  * A3 added the table roles to the compliance and obligations grids and got
- * exactly that wrong — `role="row"` with no cells under it, and one row that
+ * exactly that wrong, `role="row"` with no cells under it, and one row that
  * was a `<button>`. Nothing caught it: the CI axe gate walks a fixed list of
  * representative screens and neither tab is on it, and the E2E table-semantics
  * spec asserted headers and row indices but not cells.

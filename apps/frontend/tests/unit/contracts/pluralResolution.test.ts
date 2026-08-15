@@ -7,8 +7,8 @@
  * keys at runtime, in both locales.
  *
  * The defect this guards against shipped for months. The build gate's reason
- * for known-malicious packages was written as `malicious_plural` — i18next v3
- * syntax that v4 never looks up — so a build blocked on five malicious
+ * for known-malicious packages was written as `malicious_plural`, i18next v3
+ * syntax that v4 never looks up, so a build blocked on five malicious
  * packages told the user about one. A key can be present, translated, mirrored
  * across locales, and still dead.
  *

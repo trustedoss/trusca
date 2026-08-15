@@ -550,7 +550,7 @@ export function ComplianceTab({
           }
           // The copy has told people to run a scan since this tab existed,
           // with no button next to it. Either give them the button or stop
-          // telling them — and never tell someone with a filter on, because
+          // telling them, and never tell someone with a filter on, because
           // scanning will not change what the filter excludes.
           action={
             hasNarrowingFilters ? (
@@ -1019,7 +1019,7 @@ function ComplianceGridRow({
   //
   // The drawer-open affordance used to be one button wrapping every read-only
   // column. It could not stay once the row became a real `row`: a row owns
-  // cells, and a button spanning six of them is not one — axe reports it as a
+  // cells, and a button spanning six of them is not one, axe reports it as a
   // critical `aria-required-children` violation and a screen reader in table
   // mode cannot move across the row. The button now sits inside the first
   // cell, the same shape the vulnerabilities row uses, and the row keeps its

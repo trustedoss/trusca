@@ -1,12 +1,12 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2026 TRUSCA contributors
 /**
- * useObligations — Phase 3 PR #13, infinite from A3.
+ * useObligations: Phase 3 PR #13, infinite from A3.
  *
  * Infinite-offset query for the project's obligations. It was a single page,
  * on the reasoning that the read is read-only and the distribution payload
  * only makes sense per filter slice, so flattening pages would muddle the
- * chart. The chart is fine — every page repeats the same whole-project
+ * chart. The chart is fine, every page repeats the same whole-project
  * distribution, and the caller reads it from the first one. What the single
  * page actually cost was the 101st obligation, which no control could reach.
  */
