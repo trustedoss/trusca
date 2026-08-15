@@ -403,7 +403,8 @@
     },
     "malicious_label": "악성",
     "malicious_action": "설치하는 쪽을 공격하려고 배포된 패키지입니다. 제거한 뒤 빌드가 접근할 수 있던 자격증명을 모두 교체하십시오. 상위 버전으로 올리는 것으로는 해결되지 않습니다.",
-    "malicious_source": "{{source}} 목록에 있습니다"
+    "malicious_source": "{{source}} 목록에 있습니다",
+    "copy_purl": "패키지 URL"
   },
   "vulnerabilities": {
     "summary": "전체 {{total}}개 중 {{loaded}}개 로드됨.",
@@ -703,7 +704,13 @@
         "update_failed": "상태를 변경하지 못했습니다.",
         "conflict": "다른 사용자가 이 취약점을 먼저 변경했습니다. 다시 불러와 최신 상태를 확인해 주세요.",
         "conflict_reload": "다시 불러오기"
-      }
+      },
+      "copy_cve": "CVE 식별자",
+      "copy_vector": "CVSS 벡터",
+      "advisories_label": "외부에서 찾기",
+      "advisory_nvd": "NVD",
+      "advisory_osv": "OSV",
+      "advisory_aria": "{{name}}, 새 탭에서 열림"
     },
     "table_aria": "취약점 목록"
   },

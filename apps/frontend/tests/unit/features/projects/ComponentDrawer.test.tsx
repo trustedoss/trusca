@@ -151,6 +151,20 @@ describe("ComponentDrawer", () => {
     ).toContain("pkg:npm/alpha");
   });
 
+  it("offers the purl for copying, named so the button is not just Copy", async () => {
+    // A6 added this button and nothing guarded it: it could be deleted with
+    // every test in this file and the component page's still passing, and no
+    // visual, axe or e2e gate walks this drawer either.
+    mockedGet.mockResolvedValueOnce(detail());
+    renderDrawer("alpha-id");
+
+    await waitFor(() => {
+      expect(screen.getByTestId("component-drawer-meta")).toBeInTheDocument();
+    });
+    const copy = screen.getByTestId("component-drawer-copy-purl");
+    expect(copy.getAttribute("aria-label")).toContain("package URL");
+  });
+
   it("renders one item per vulnerability", async () => {
     mockedGet.mockResolvedValueOnce(
       detail({

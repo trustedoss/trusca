@@ -403,7 +403,8 @@
     },
     "malicious_label": "Malicious",
     "malicious_action": "This package was published to attack whoever installs it. Remove it, then rotate every credential the build could reach. Upgrading to a later version does not help.",
-    "malicious_source": "Listed in {{source}}"
+    "malicious_source": "Listed in {{source}}",
+    "copy_purl": "package URL"
   },
   "vulnerabilities": {
     "summary": "{{loaded}} of {{total}} findings loaded.",
@@ -703,7 +704,13 @@
         "update_failed": "Could not update status.",
         "conflict": "This finding was updated by someone else. Reload to see the latest state.",
         "conflict_reload": "Reload"
-      }
+      },
+      "copy_cve": "CVE id",
+      "copy_vector": "CVSS vector",
+      "advisories_label": "Look it up",
+      "advisory_nvd": "NVD",
+      "advisory_osv": "OSV",
+      "advisory_aria": "{{name}}, opens in a new tab"
     },
     "table_aria": "Vulnerability findings"
   },

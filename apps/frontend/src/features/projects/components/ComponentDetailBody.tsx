@@ -6,6 +6,7 @@ import { Link } from "react-router-dom";
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { CopyButton } from "@/components/ui/copy-button";
 import type {
   ComponentDetailResponse,
   ObligationRef,
@@ -114,11 +115,26 @@ export function ComponentDetailBody({ detail }: ComponentDetailBodyProps) {
           ) : null}
         </div>
         {detail.purl ? (
-          <div className="font-mono text-xs text-muted-foreground">
-            <span className="mr-2 uppercase tracking-wide">
+          // A6: the purl is the string that goes into a procurement note or
+          // a policy exception, it is the longest line in this panel, and it
+          // was select-and-drag only. `break-all` because a purl has no
+          // spaces to wrap at, so without it the row either overflows the
+          // drawer or gets clipped with no sign that it was clipped.
+          <div className="flex flex-wrap items-center gap-x-2 gap-y-1 font-mono text-xs text-muted-foreground">
+            <span className="uppercase tracking-wide">
               {t("drawer.purl_label")}
             </span>
-            <span data-testid="component-drawer-purl">{detail.purl}</span>
+            <span
+              className="min-w-0 break-all"
+              data-testid="component-drawer-purl"
+            >
+              {detail.purl}
+            </span>
+            <CopyButton
+              value={detail.purl}
+              label={t("drawer.copy_purl")}
+              data-testid="component-drawer-copy-purl"
+            />
           </div>
         ) : null}
         {/*

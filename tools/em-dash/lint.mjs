@@ -37,7 +37,25 @@ import * as path from "node:path";
 import { fileURLToPath } from "node:url";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
-export const REPO_ROOT = path.resolve(__dirname, "..", "..");
+/**
+ * The repository being checked, taken from the working directory rather than
+ * from where this file happens to live.
+ *
+ * Both give the same answer in every real run, since the tool is invoked from
+ * the repository it belongs to. The difference is that the script-relative
+ * form cannot be pointed at anything else, which meant the collection logic
+ * had no end-to-end test at all, and that is precisely where the untracked
+ * file hole was. Falling back keeps it working if git is unavailable.
+ */
+export const REPO_ROOT = (() => {
+  try {
+    return execFileSync("git", ["rev-parse", "--show-toplevel"], {
+      encoding: "utf8",
+    }).trim();
+  } catch {
+    return path.resolve(__dirname, "..", "..");
+  }
+})();
 
 export const EM_DASH = "—";
 
@@ -116,6 +134,23 @@ function git(args) {
  * ko-style step in ci.yml); the workflow fetches the base before calling this,
  * and if that ever stops working the run must fail rather than congratulate us.
  */
+/** A file as it stands in the index, which is what a commit would record. */
+function stagedLines(file) {
+  try {
+    return git(["show", `:${file}`]).split("\n");
+  } catch {
+    // Staged as a deletion, or a path git cannot resolve. No context to give.
+    return [];
+  }
+}
+
+/** Files present in the tree that git is not tracking yet. */
+function untrackedFiles() {
+  return git(["ls-files", "--others", "--exclude-standard", "-z"])
+    .split("\0")
+    .filter(Boolean);
+}
+
 function resolveMergeBase(base) {
   try {
     git(["rev-parse", "--verify", `${base}^{commit}`]);
@@ -255,10 +290,27 @@ function main() {
     candidates = addedLines(
       git(["diff", mergeBase, "--unified=0", "--no-color"]),
     );
+    // Plus the files git does not know about yet. `git diff` reports nothing
+    // for an untracked file, so a brand-new one passed this check right up
+    // until it was committed, which is the moment the author is least likely
+    // to run it again. The first new file written after this gate shipped
+    // went through exactly that hole and was caught only in review.
+    for (const file of untrackedFiles()) {
+      if (!isWatched(file)) continue;
+      readLines(file).forEach((text, i) => {
+        candidates.push({ file, line: i + 1, text });
+      });
+    }
   }
 
   const hits = findings(candidates, (c) => {
-    const lines = readLines(c.file);
+    // The allow marker has to be read from the same snapshot the candidate
+    // lines came from. In staged mode those come from the index, and reading
+    // the working tree instead lets an unrelated marker on a line that only
+    // exists on disk suppress a violation that is about to be committed, and
+    // the reverse. Both were reproduced.
+    const lines =
+      opts.mode === "staged" ? stagedLines(c.file) : readLines(c.file);
     return lines[c.line - 2] ?? null;
   });
 
