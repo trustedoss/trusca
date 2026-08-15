@@ -793,3 +793,87 @@ GHSA-6v7p-g79w-8964
 #   invocation of it anywhere in the image.
 #   Category-2 UNRELEASED-UPSTREAM, same reasoning as the msgpack entry.
 CVE-2025-47273
+
+
+# ============================================================================
+# Go stdlib 1.26.4 in the two prebuilt binaries we do not build ourselves
+# ============================================================================
+# Go 1.25.13 / 1.26.6 shipped 2026-08-13. Our own toolchain took the patch the
+# same day (GO_VERSION in apps/backend/Dockerfile.worker), so the nine
+# `opt/go/**` binaries and `usr/local/go-bin/govulncheck` are FIXED rather
+# than ignored. Two binaries are left, both installed as upstream release
+# artifacts carrying a Go 1.26.4 stdlib:
+#
+#   usr/local/bin/cosign  (COSIGN_VERSION 3.1.2; latest 3.1.3 is 2026-08-06)
+#   usr/local/bin/docker  (DOCKER_CLI_VERSION 29.6.1; latest 29.7.2 is
+#                          2026-08-05)
+#
+# Every release either project has cut predates the Go patch, so there is no
+# version to bump to. Category (2).
+#
+# MEASURED RESIDUAL SET, from the failing gate run of 2026-08-15 (run
+# 31855578355, the last scan before this entry existed). These two IDs were
+# reported on exactly twelve targets and no others:
+#   CVE-2026-39821: the nine opt/go binaries, govulncheck, cosign, docker
+#   CVE-2026-46600: cosign and docker (both carry a 1.26.4 stdlib; the
+#                   1.25.x toolchain was never in this CVE's range)
+# After the GO_VERSION bump the ten 1.25.12 targets drop out, leaving the two
+# named above. Re-measure with `trivy rootfs` on a rebuilt image before
+# trusting this list again. The entries below are ID-scoped, not path-scoped,
+# so this list is the only thing that says what they actually cover.
+#
+# BLAST RADIUS, stated plainly because this file's format cannot enforce it.
+# These IDs are suppressed image-wide. The binary that would matter most if
+# it ever picked them up is `usr/bin/trivy`, because it is the one Go binary
+# in the image handed a hostname a user chose: a container scan passes
+# `metadata.image_ref` through to `trivy image <ref>` with no registry
+# allow-list (schemas/scan.py:814-821, integrations/trivy.py:216).
+#
+# Read its absence from the measured set carefully: `usr/bin/trivy` was not
+# reported as a gobinary target AT ALL in that run, for any ID. That is not
+# the same as being clean, and it is worth knowing that Trivy 0.72.0 carries
+# x/net 0.55.0, which is the module-side fix for CVE-2026-39821 but NOT for
+# CVE-2026-46600 (that one wants 0.56.0). Settle it at review time with
+# `go version -m /usr/bin/trivy`: a go1.26.4 answer means the binary is
+# affected and merely unscanned, and the response is to bump TRIVY_VERSION
+# (0.74.0 of 2026-08-14 postdates the Go patch), never to widen this entry.
+#
+# REACH for the two binaries covered here: both CVEs need a hostname or a DNS
+# response that an attacker supplies, and neither binary is handed one.
+#   - cosign runs `sign-blob` / `attest-blob` over a LOCAL file. All four
+#     argv lists in integrations/cosign.py are fixed; the only variable parts
+#     are workspace paths and a module-constant predicate type. Keyless mode
+#     talks to Sigstore endpoints that come from the operator allowlist in
+#     integrations/_subprocess_env.py:360-374. Nothing from a scanned project
+#     reaches a hostname. The signing stage is best-effort besides: a cosign
+#     failure is logged and skipped, never fatal (tasks/scan_source.py:1649-
+#     1660).
+#   - the docker CLI is reached only through the `local_docker` scan executor
+#     (SCAN_EXECUTOR=local_docker, off by default), and talks to the daemon on
+#     the inherited DOCKER_HOST, which is operator configuration
+#     (scan_executor/local_docker.py:293). The sidecar image name and the
+#     volume arguments are operator env as well, and an unpinned image falls
+#     back to the in-process path instead of running docker at all
+#     (local_docker.py:216-225).
+#
+# Re-evaluate: on the first cosign or docker CLI release built with Go
+# >= 1.25.13 / 1.26.6, or 2026-11-13, whichever is sooner. Check with
+# `go version -m /usr/local/bin/cosign` inside the image, and re-measure the
+# residual set at the same time.
+
+# CVE-2026-39821: Go stdlib golang.org/x/net/idna, privilege escalation via
+#   incorrect Punycode label processing. Fixed in stdlib 1.25.13 / 1.26.6 /
+#   1.27.0-rc.3, and in the golang.org/x/net module at 0.55.0, so this ID
+#   also matches binaries that vendor x/net below that version, independently
+#   of the toolchain they were built with.
+# Target: usr/local/bin/cosign and usr/local/bin/docker (gobinary) ONLY.
+CVE-2026-39821
+
+# CVE-2026-46600: Go stdlib golang.org/x/net/dns/dnsmessage, denial of
+#   service via invalid DNS record parsing. Fixed in 1.26.6 / 1.27.0-rc.3.
+#   The 1.25.x line was never affected; its stdlib range starts at 1.26.0.
+#   The golang.org/x/net module fix for this one is 0.56.0, one minor above
+#   the 0.55.0 that fixes CVE-2026-39821. A binary can be clear of the first
+#   and still carry the second.
+# Target: usr/local/bin/cosign and usr/local/bin/docker (gobinary) ONLY.
+CVE-2026-46600
