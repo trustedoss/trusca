@@ -37,6 +37,9 @@ export function approvalsQueryKey(params: ListApprovalsParams) {
     {
       status: params.status ?? "all",
       team_id: params.team_id ?? null,
+      // B2 - part of the key, or the cache would serve one project's queue
+      // for another's. Every filter the request carries has to be here.
+      project_id: params.project_id ?? null,
       from_dt: params.from_dt ?? null,
       to_dt: params.to_dt ?? null,
       page: params.page ?? 1,

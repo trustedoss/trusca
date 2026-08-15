@@ -117,6 +117,14 @@ async def list_approvals_endpoint(
         ),
     ),
     team_id: uuid.UUID | None = Query(default=None),
+    project_id: uuid.UUID | None = Query(
+        default=None,
+        description=(
+            "Narrow the queue to one project. Applied after the team gate, so "
+            "a project outside the caller's teams returns an empty page rather "
+            "than an error, exactly as an unknown id does."
+        ),
+    ),
     requested_by_user_id: uuid.UUID | None = Query(default=None),
     from_dt: datetime | None = Query(default=None),
     to_dt: datetime | None = Query(default=None),
@@ -131,6 +139,7 @@ async def list_approvals_endpoint(
             actor,
             status_filter=status_filter,
             team_id=team_id,
+            project_id=project_id,
             requested_by_user_id=requested_by_user_id,
             from_dt=from_dt,
             to_dt=to_dt,

@@ -13,10 +13,12 @@
  *     hex literals — to satisfy CLAUDE.md "never hardcode color hex values".
  *   - Color is paired with a text label (CLAUDE.md accessibility rule).
  */
-import { useCallback, useMemo, useState } from "react";
+import { ClipboardCheck, FilterX } from "lucide-react";
+import { useCallback, useMemo } from "react";
 import { useTranslation } from "react-i18next";
 import { useSearchParams } from "react-router-dom";
 
+import { EmptyState } from "@/components/EmptyState";
 import { PageHeader } from "@/components/PageHeader";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
@@ -66,6 +68,24 @@ function parseStatusFilter(v: string | null): StatusFilter {
 const ISO_DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
 function parseIsoDateParam(v: string | null): string {
   return v && ISO_DATE_RE.test(v) ? v : "";
+}
+// B2 - `?project=` goes into the list request, so a malformed value would
+// take the whole page down with a 422 from the query-parameter validator.
+// Checking the shape here turns that into a filter the page simply ignores.
+const UUID_RE =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+function parseUuidParam(v: string | null): string | null {
+  return v && UUID_RE.test(v) ? v : null;
+}
+
+// `?approval=` is different: it addresses one drawer, and the drawer's own
+// fetch already answers a bad id with a not-found. Rejecting the shape here
+// would swallow the address silently instead, leaving a user who followed a
+// stale link staring at the queue with no idea their link was dead. Length is
+// bounded so a pathological URL cannot be forwarded as a request path.
+function parseDrawerParam(v: string | null): string | null {
+  const trimmed = v?.trim() ?? "";
+  return trimmed && trimmed.length <= 100 ? trimmed : null;
 }
 function parsePageParam(v: string | null): number {
   if (!v) return 1;
@@ -119,6 +139,11 @@ export function ApprovalsPage() {
   const fromDt = parseIsoDateParam(searchParams.get("from"));
   const toDt = parseIsoDateParam(searchParams.get("to"));
   const page = parsePageParam(searchParams.get("page"));
+  // B2 - the project filter the governance band and the dashboard tile link
+  // to. Rejected unless it looks like a UUID, on the same principle as the
+  // other parsers here: a hand-edited value should fall back to the whole
+  // queue rather than be forwarded to the backend.
+  const projectId = parseUuidParam(searchParams.get("project"));
 
   const updateFilterParam = useCallback(
     (key: string, next: string | null) => {
@@ -165,8 +190,27 @@ export function ApprovalsPage() {
     [setSearchParams],
   );
 
-  // --- drawer state ---
-  const [openId, setOpenId] = useState<string | null>(null);
+  // B2 - the drawer lives in the URL, not in component state. Opening a row
+  // used to leave the address bar untouched, so the view could not be shared
+  // or reloaded and Back left the page entirely instead of closing the panel.
+  // `replace: false` is the point: the open drawer is its own history entry,
+  // which is what makes Back close it. Same treatment the vulnerability,
+  // compliance and obligation drawers got in A2 and A3.
+  const openId = parseDrawerParam(searchParams.get("approval"));
+  const setOpenId = useCallback(
+    (next: string | null) => {
+      setSearchParams(
+        (prev) => {
+          const out = new URLSearchParams(prev);
+          if (next === null) out.delete("approval");
+          else out.set("approval", next);
+          return out;
+        },
+        { replace: false },
+      );
+    },
+    [setSearchParams],
+  );
 
   // --- toast ---
   const { toast } = useToast();
@@ -183,18 +227,36 @@ export function ApprovalsPage() {
           : statusFilter === "open"
             ? OPEN_STATUSES
             : statusFilter,
+      project_id: projectId,
       from_dt: fromDt || null,
       to_dt: toDt || null,
       page,
       page_size: PAGE_SIZE,
     }),
-    [statusFilter, fromDt, toDt, page],
+    [statusFilter, projectId, fromDt, toDt, page],
   );
 
   const approvalsQuery = useApprovals(queryParams);
   const items = approvalsQuery.data?.items ?? [];
   const total = approvalsQuery.data?.total ?? 0;
   const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE));
+
+  // B2 - "open" is the default view rather than a filter the user chose, so
+  // it does not count here. Everything else narrows the queue and is worth
+  // offering to undo when the result is empty.
+  const hasFilters =
+    statusFilter !== "open" || projectId !== null || fromDt !== "" || toDt !== "";
+  const clearFilters = useCallback(() => {
+    setSearchParams(new URLSearchParams(), { replace: false });
+  }, [setSearchParams]);
+
+  // The name of the project the queue is scoped to, taken from the rows the
+  // filter returned. There is no separate lookup: if the filter matched
+  // nothing there is no name to show, and the chip says the id instead.
+  const projectFilterLabel = projectId
+    ? (items.find((i) => i.project_id === projectId)?.project_name ??
+      projectId.slice(0, 8))
+    : null;
 
   return (
     <div
@@ -292,6 +354,51 @@ export function ApprovalsPage() {
               setToDt(e.target.value);
             }}
           />
+        </div>
+
+        {/* B2 - when the queue arrives scoped to one project, say so and
+            offer the way out. Without this the user sees a short queue and
+            no reason for it, and the governance band that sent them here is
+            off-screen. The chip is not a control for choosing a project:
+            picking one belongs on the project page, and a select listing
+            every project the actor can see would be a second inventory. */}
+        {projectId ? (
+          <div className="flex flex-col gap-1">
+            <span className="text-xs text-muted-foreground">
+              {t("approvals.column.project")}
+            </span>
+            <div className="flex h-8 items-center gap-2 rounded-md border border-input bg-background px-2">
+              <span
+                className="max-w-[16rem] truncate text-sm"
+                data-testid="approvals-project-filter"
+                title={projectId}
+              >
+                {projectFilterLabel}
+              </span>
+              <Button
+                size="sm"
+                variant="ghost"
+                className="h-6 px-1 text-xs"
+                onClick={() => updateFilterParam("project", null)}
+                data-testid="approvals-project-filter-clear"
+                aria-label={t("approvals.filter.clear_project")}
+              >
+                {t("approvals.filter.clear_project")}
+              </Button>
+            </div>
+          </div>
+        ) : null}
+
+        {/* The size of what is being looked at. The pagination footer said
+            "1 / 4" and nothing said how many rows that was. */}
+        <div className="ml-auto flex flex-col gap-1">
+          <span className="text-xs text-muted-foreground">&nbsp;</span>
+          <span
+            className="flex h-8 items-center text-sm text-muted-foreground"
+            data-testid="approvals-total"
+          >
+            {t("approvals.total", { count: total })}
+          </span>
         </div>
 
         {/* Refresh */}
@@ -423,13 +530,30 @@ export function ApprovalsPage() {
                       <StatusBadge status={item.status} t={t} />
                     </td>
 
-                    {/* Requested by */}
+                    {/* B2 - the requester by name. This column used to print
+                        the first eight characters of a UUID, which names
+                        nobody and cannot be chased up. The backend resolves
+                        the name the same way the project list resolves its
+                        creator column; the id remains the fallback for a
+                        deleted user, and an approval raised without a user
+                        says so rather than showing a bare dash. */}
                     <td className="px-3">
-                      <span className="font-mono text-xs text-muted-foreground">
-                        {item.requested_by_user_id
-                          ? item.requested_by_user_id.slice(0, 8)
-                          : "—"}
-                      </span>
+                      {item.requested_by_name ? (
+                        <span className="text-sm text-foreground">
+                          {item.requested_by_name}
+                        </span>
+                      ) : item.requested_by_user_id ? (
+                        <span
+                          className="font-mono text-xs text-muted-foreground"
+                          title={item.requested_by_user_id}
+                        >
+                          {item.requested_by_user_id.slice(0, 8)}
+                        </span>
+                      ) : (
+                        <span className="text-xs text-muted-foreground">
+                          {t("approvals.requested_by_unknown")}
+                        </span>
+                      )}
                     </td>
 
                     {/* Requested at */}
@@ -458,14 +582,39 @@ export function ApprovalsPage() {
                   </tr>
                 ))}
 
+            {/* B2 - two states, not one sentence. "No approvals match the
+                current filters" is a lie on an empty queue with no filters
+                set, and it hides the good news. The shared EmptyState is what
+                every other zero-state in the product uses. */}
             {!approvalsQuery.isLoading && items.length === 0 ? (
               <tr>
-                <td
-                  colSpan={6}
-                  className="px-6 py-12 text-center text-sm text-muted-foreground"
-                  data-testid="approvals-empty"
-                >
-                  {t("approvals.empty")}
+                <td colSpan={6} className="px-6 py-6">
+                  <EmptyState
+                    data-testid="approvals-empty"
+                    icon={hasFilters ? <FilterX /> : <ClipboardCheck />}
+                    title={
+                      hasFilters
+                        ? t("approvals.empty_filtered")
+                        : t("approvals.empty_none")
+                    }
+                    description={
+                      hasFilters
+                        ? t("approvals.empty_filtered_help")
+                        : t("approvals.empty_none_help")
+                    }
+                    action={
+                      hasFilters ? (
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          onClick={clearFilters}
+                          data-testid="approvals-clear-filters"
+                        >
+                          {t("approvals.filter.clear")}
+                        </Button>
+                      ) : undefined
+                    }
+                  />
                 </td>
               </tr>
             ) : null}
@@ -478,9 +627,8 @@ export function ApprovalsPage() {
         className="flex shrink-0 items-center justify-between border-t bg-card px-6 py-2 text-xs"
         data-testid="approvals-pagination"
       >
-        <span className="text-muted-foreground">
-          {/* e.g., "Page 1 of 4" — use ICU via count-aware key */}
-          {`${page} / ${totalPages}`}
+        <span className="text-muted-foreground" data-testid="approvals-page-label">
+          {t("approvals.pagination.summary", { page, total: totalPages })}
         </span>
         <div className="flex items-center gap-2">
           <Button

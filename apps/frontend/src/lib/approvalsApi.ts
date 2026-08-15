@@ -58,6 +58,13 @@ export interface ApprovalOut {
   component_purl?: string | null;
   project_name?: string | null;
   project_slug?: string | null;
+  /**
+   * B2 - the requester's display name, resolved by the same rule the project
+   * list uses for its creator column (full_name, else email). Optional for
+   * the same reason as the four above, and null when the approval carries no
+   * requester id at all.
+   */
+  requested_by_name?: string | null;
 }
 
 export interface ApprovalListPage {
@@ -76,6 +83,8 @@ export interface ListApprovalsParams {
    */
   status?: string | null;
   team_id?: string | null;
+  /** B2 - narrows the queue to one project, as the governance band links. */
+  project_id?: string | null;
   from_dt?: string | null;
   to_dt?: string | null;
   page?: number;
@@ -97,6 +106,7 @@ export async function listApprovals(
       status:
         params.status && params.status !== "all" ? params.status : undefined,
       team_id: params.team_id ?? undefined,
+      project_id: params.project_id ?? undefined,
       from_dt: params.from_dt ?? undefined,
       to_dt: params.to_dt ?? undefined,
       page: params.page,

@@ -62,6 +62,11 @@ class ApprovalOut(BaseModel):
     component_purl: str | None = None
     project_name: str | None = None
     project_slug: str | None = None
+    # B2: the requester, by the same rule the project list uses for its
+    # creator column (full_name or email). Nullable for the same two reasons
+    # as the fields above, plus a third: an approval can carry no requester id
+    # at all when it was raised by automation.
+    requested_by_name: str | None = None
 
     model_config = ConfigDict(from_attributes=True)
 
@@ -78,6 +83,7 @@ class ApprovalOut(BaseModel):
         pub.component_purl = row.component_purl
         pub.project_name = row.project_name
         pub.project_slug = row.project_slug
+        pub.requested_by_name = row.requested_by_name
         return pub
 
 

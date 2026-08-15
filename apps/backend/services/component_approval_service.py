@@ -54,7 +54,7 @@ from sqlalchemy.orm import Session
 
 from core.authz import assert_team_access, can_access_team
 from core.security import CurrentUser
-from models import ComponentApproval, Project
+from models import ComponentApproval, Project, User
 from models.component_approval import APPROVAL_STATUS_VALUES, ApprovalStatus
 from models.scan import Component  # explicit import avoids implicit lazy load
 
@@ -82,6 +82,12 @@ class ApprovalListRow:
     component_purl: str | None
     project_name: str | None
     project_slug: str | None
+    # B2: the requester, resolved the same batched way and by the same rule as
+    # `created_by_user_name` on the project list (full_name or email). The
+    # queue showed the first eight characters of a UUID, which names nobody
+    # and cannot be chased up. None when the requester row is gone, or when
+    # the approval was raised by automation and carries no user id at all.
+    requested_by_name: str | None
 
 
 # ---------------------------------------------------------------------------
@@ -219,6 +225,7 @@ async def list_approvals(
     *,
     status_filter: str | None = None,
     team_id: uuid.UUID | None = None,
+    project_id: uuid.UUID | None = None,
     requested_by_user_id: uuid.UUID | None = None,
     from_dt: datetime | None = None,
     to_dt: datetime | None = None,
@@ -250,6 +257,16 @@ async def list_approvals(
     if team_id is not None:
         base = base.where(ComponentApproval.team_id == team_id)
         count_base = count_base.where(ComponentApproval.team_id == team_id)
+
+    if project_id is not None:
+        # B2: narrows the queue to one project, which is what the governance
+        # band and the dashboard action tile link to. It cannot widen anything:
+        # the tenant gate above has already restricted the query to the actor's
+        # teams, so a project in someone else's team returns an empty page and
+        # not a permission error, which is the same answer an id that does not
+        # exist gets. Nothing here tells the caller which of the two it was.
+        base = base.where(ComponentApproval.project_id == project_id)
+        count_base = count_base.where(ComponentApproval.project_id == project_id)
 
     if status_filter is not None:
         # M-13 — accept a single status OR a comma-separated list
@@ -317,6 +334,24 @@ async def list_approvals(
         ).all()
         proj_meta = {pid: (pname, pslug) for pid, pname, pslug in proj_rows}
 
+    # B2: third lookup, same shape and the same naming rule as
+    # `_created_by_user_name_map` in project_list_enrichment.py: full_name if
+    # it has one, else the email. No new exposure class; the project list has
+    # rendered a creator's name this way since it existed, and an approval is
+    # already visible only inside the requester's own team.
+    user_ids = {r.requested_by_user_id for r in rows if r.requested_by_user_id}
+    user_meta: dict[uuid.UUID, str] = {}
+    if user_ids:
+        user_rows = (
+            await session.execute(
+                select(User.id, User.full_name, User.email).where(User.id.in_(user_ids))
+            )
+        ).all()
+        user_meta = {
+            uid: ((full_name or "").strip() or email)
+            for uid, full_name, email in user_rows
+        }
+
     def _comp(cid: uuid.UUID) -> tuple[str | None, str | None]:
         m = comp_meta.get(cid)
         return (m[0], m[1]) if m else (None, None)
@@ -336,6 +371,11 @@ async def list_approvals(
                 component_purl=cp,
                 project_name=pn,
                 project_slug=ps,
+                requested_by_name=(
+                    user_meta.get(r.requested_by_user_id)
+                    if r.requested_by_user_id
+                    else None
+                ),
             )
         )
 

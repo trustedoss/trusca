@@ -57,6 +57,11 @@ function approval(overrides: Partial<ApprovalOut> = {}): ApprovalOut {
     decided_at: overrides.decided_at ?? null,
     decision_note: overrides.decision_note ?? null,
     version: overrides.version ?? 1,
+    // Field-by-field above, so anything the list endpoint adds later is
+    // dropped unless it is named. The spread carries the optional display
+    // fields (component_name, project_name, requested_by_name) through
+    // without each one needing its own line.
+    ...overrides,
   };
 }
 
@@ -302,6 +307,141 @@ describe("ApprovalsPage", () => {
     await waitFor(() => {
       const lastCall = mockedList.mock.calls.at(-1)?.[0];
       expect(lastCall).toMatchObject({ page: 2 });
+    });
+  });
+});
+
+// ---------------------------------------------------------------------------
+// B2 - the queue in the URL, the requester by name, an honest empty state
+// ---------------------------------------------------------------------------
+
+describe("ApprovalsPage (B2)", () => {
+  beforeEach(() => {
+    mockedList.mockReset();
+    mockedGet.mockReset();
+  });
+
+  it("opens the drawer straight from the address", async () => {
+    // Half a deep link is no deep link: arriving with ?approval= set has to
+    // mount the drawer without a click, or a shared URL lands on the queue.
+    const a = approval({ id: "aaaaaaaa-0000-0000-0000-0000000000aa" });
+    mockedList.mockResolvedValue(page([a]));
+    mockedGet.mockResolvedValue({ approval: a, etag: "1" });
+
+    renderPage({ initialUrl: `/approvals?approval=${a.id}` });
+
+    await waitFor(() => {
+      expect(screen.getByTestId("approvals-drawer")).toBeInTheDocument();
+    });
+  });
+
+  it("sends ?project= to the backend as a filter", async () => {
+    const projectId = "bbbbbbbb-0000-0000-0000-000000000001";
+    mockedList.mockResolvedValue(page([]));
+
+    renderPage({ initialUrl: `/approvals?project=${projectId}` });
+
+    await waitFor(() => {
+      expect(mockedList.mock.calls.at(-1)?.[0]).toMatchObject({
+        project_id: projectId,
+      });
+    });
+  });
+
+  it("ignores a project id that is not a uuid rather than sending it", async () => {
+    // The backend answers a malformed uuid query parameter with a 422, which
+    // would take the whole queue down over one mistyped address.
+    mockedList.mockResolvedValue(page([]));
+
+    renderPage({ initialUrl: "/approvals?project=not-a-uuid" });
+
+    await waitFor(() => {
+      expect(mockedList.mock.calls.at(-1)?.[0]).toMatchObject({
+        project_id: null,
+      });
+    });
+  });
+
+  it("names the requester instead of printing part of a uuid", async () => {
+    mockedList.mockResolvedValue(
+      page([
+        approval({
+          id: "aaaaaaaa-0000-0000-0000-000000000011",
+          requested_by_user_id: "cccccccc-0000-0000-0000-000000000001",
+          requested_by_name: "Jin Park",
+        }),
+      ]),
+    );
+
+    renderPage();
+
+    await waitFor(() => {
+      expect(screen.getByTestId("approvals-row").textContent).toContain(
+        "Jin Park",
+      );
+    });
+    expect(screen.getByTestId("approvals-row").textContent).not.toContain(
+      "cccccccc",
+    );
+  });
+
+  it("keeps the id as the fallback when the requester row is gone", async () => {
+    mockedList.mockResolvedValue(
+      page([
+        approval({
+          id: "aaaaaaaa-0000-0000-0000-000000000012",
+          requested_by_user_id: "dddddddd-0000-0000-0000-000000000001",
+          requested_by_name: null,
+        }),
+      ]),
+    );
+
+    renderPage();
+
+    await waitFor(() => {
+      expect(screen.getByTestId("approvals-row").textContent).toContain(
+        "dddddddd",
+      );
+    });
+  });
+
+  it("does not blame filters for an empty queue when none are set", async () => {
+    mockedList.mockResolvedValue(page([]));
+
+    renderPage();
+
+    const empty = await screen.findByTestId("approvals-empty");
+    expect(empty.textContent).toContain("No approvals have been raised");
+    // Nothing to clear, so nothing offers to.
+    expect(screen.queryByTestId("approvals-clear-filters")).toBeNull();
+  });
+
+  it("says filters are the reason when they are, and offers to drop them", async () => {
+    mockedList.mockResolvedValue(page([]));
+
+    renderPage({ initialUrl: "/approvals?status=approved" });
+
+    const empty = await screen.findByTestId("approvals-empty");
+    expect(empty.textContent).toContain("No approvals match these filters");
+
+    await userEvent.click(screen.getByTestId("approvals-clear-filters"));
+
+    await waitFor(() => {
+      expect(mockedList.mock.calls.at(-1)?.[0]).toMatchObject({
+        status: "pending,under_review",
+      });
+    });
+  });
+
+  it("says how many requests there are, not just how many pages", async () => {
+    mockedList.mockResolvedValue(
+      page([approval({ id: "aaaaaaaa-0000-0000-0000-000000000013" })], 42),
+    );
+
+    renderPage();
+
+    await waitFor(() => {
+      expect(screen.getByTestId("approvals-total").textContent).toContain("42");
     });
   });
 });

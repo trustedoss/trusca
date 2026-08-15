@@ -6,7 +6,9 @@
       "status_open": "Open (Pending + Under Review)",
       "status_all": "All statuses",
       "from_label": "From",
-      "to_label": "To"
+      "to_label": "To",
+      "clear": "Clear filters",
+      "clear_project": "Clear"
     },
     "column": {
       "component": "Component",
@@ -55,6 +57,16 @@
       "transitioned": "Approval updated.",
       "deleted": "Approval deleted."
     },
-    "empty": "No approvals match the current filters."
+    "empty": "No approvals match the current filters.",
+    "pagination": {
+      "summary": "Page {{page}} of {{total}}"
+    },
+    "total_other": "{{count}} requests",
+    "requested_by_unknown": "Raised automatically",
+    "empty_none": "No approvals have been raised.",
+    "empty_none_help": "A request appears here when a scan finds a component whose licence needs a decision.",
+    "empty_filtered": "No approvals match these filters.",
+    "empty_filtered_help": "The queue is not empty. Widen the status, the dates, or the project to see the rest.",
+    "total": "{{count}} request"
   }
 }
