@@ -11,7 +11,7 @@
  * it. Every one of them looked reasonable alone. Nothing counted them.
  *
  * So this counts them, per file, against a recorded baseline that may only go
- * down — the same shape as `token-lint.mjs`, for the same reason: a debt that
+ * down: the same shape as `token-lint.mjs`, for the same reason: a debt that
  * nothing measures is a debt that grows. New bypasses fail; paid-down debt
  * must be re-recorded so the budget cannot be quietly re-spent.
  *
@@ -73,8 +73,8 @@ const ERROR_FIELD = new RegExp(
 
 /**
  * The same fields read through a cast, e.g. `(err as ProblemError).detail`.
- * The receiver-name rule above cannot see these — the token before the dot is
- * the cast's closing paren — and a cast is exactly what someone reaches for
+ * The receiver-name rule above cannot see these, the token before the dot is
+ * the cast's closing paren, and a cast is exactly what someone reaches for
  * when the plain form is flagged.
  */
 const CAST_FIELD = new RegExp(

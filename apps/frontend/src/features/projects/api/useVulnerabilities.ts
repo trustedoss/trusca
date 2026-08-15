@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2026 TRUSCA contributors
 /**
- * useVulnerabilities — Phase 3 PR #11, infinite from A2.
+ * useVulnerabilities: Phase 3 PR #11, infinite from A2.
  *
  * Infinite-offset query for the project's vulnerability findings list. Powers
  * the virtualized table in `VulnerabilitiesTab`: each page is `limit` rows

@@ -609,7 +609,7 @@ export function VulnerabilitiesTab({
   // What the summary band counts. Without the VEX filter the server's total is
   // the honest number: rows beyond those loaded exist and are reachable by
   // scrolling. With it, the narrowing happens here, over loaded rows only, so
-  // the server total would describe a different set than the one on screen —
+  // the server total would describe a different set than the one on screen -
   // it used to say "1,240" above four visible rows.
   const shownTotal = vexSuppressedOnly ? items.length : total;
 

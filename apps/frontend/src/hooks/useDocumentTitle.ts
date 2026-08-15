@@ -40,8 +40,8 @@ export function documentTitle(...segments: (string | null | undefined)[]): strin
 /**
  * Set `document.title` for as long as the component is mounted.
  *
- * Segments are joined most-specific-first. With nothing to say — every segment
- * still loading, or a caller opting out — the tab is left as it is rather than
+ * Segments are joined most-specific-first. With nothing to say, every segment
+ * still loading, or a caller opting out, the tab is left as it is rather than
  * set to the bare brand: a screen whose name arrives a tick late would
  * otherwise flash "TRUSCA" first, which is the state this hook exists to end.
  *

@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2026 TRUSCA contributors
 /**
- * useCompliance — W9-#58, infinite from A3.
+ * useCompliance: W9-#58, infinite from A3.
  *
  * Infinite-offset query for the project's unified compliance grid. Powers the
  * single table in the redesigned ComplianceTab: each page is `limit` rows from

@@ -164,7 +164,7 @@ describe("VexImportDialog", () => {
     const payload = '<script>window.__vex_xss__ = 1;</script>';
     // This status used to fall through to rendering the server `detail`
     // verbatim, the worst case for output encoding. It now resolves to
-    // translated copy, so the payload never reaches the DOM at all — one
+    // translated copy, so the payload never reaches the DOM at all, one
     // fewer surface to encode correctly. The per-statement path below still
     // renders document text, and still proves the encoding.
     mockedImport.mockRejectedValueOnce(

@@ -1,5 +1,5 @@
 /**
- * useDocumentTitle — unit tests.
+ * useDocumentTitle: unit tests.
  *
  * The coverage contract proves every screen has a title mechanism; this proves
  * the mechanism produces the right string. Both are needed: a screen could
@@ -60,7 +60,7 @@ describe("useDocumentTitle", () => {
 
   it("leaves the tab alone while it has nothing to say", () => {
     // A detail screen mounts before its record loads. Writing the bare brand
-    // here would flash "TRUSCA" — the exact state this hook exists to end.
+    // here would flash "TRUSCA", the exact state this hook exists to end.
     document.title = "previous · TRUSCA";
     render(<Screen segments={[null, undefined]} />);
     expect(document.title).toBe("previous · TRUSCA");

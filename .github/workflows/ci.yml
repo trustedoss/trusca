@@ -183,6 +183,31 @@ jobs:
         if: matrix.target == 'frontend'
         run: node tools/ko-style/lint.mjs --all --fail-on S2
 
+      # House style forbids the em dash in anything we author, comments
+      # included. Self-review missed it for eight consecutive units of work
+      # and 46 lines shipped, so the check moved to a machine: it reads one
+      # character better than an author re-reading their own paragraph.
+      #
+      # Diff-based, not a ratchet. The rule is about what gets ADDED, and a
+      # baseline would have to list 1,318 files and 11,271 existing lines
+      # while still saying nothing about the line in front of you. That makes
+      # the base ref load-bearing: this checkout is shallow, so it is fetched
+      # first, and the linter exits non-zero rather than reporting success on
+      # a diff it could not compute. On a push there is no PR base, so the
+      # step compares against the default branch instead.
+      - name: Fetch the base branch for the em-dash diff
+        if: matrix.target == 'frontend'
+        run: |
+          base="${{ github.event.pull_request.base.ref || github.event.repository.default_branch }}"
+          git fetch --no-tags --depth=50 origin "$base"
+
+      - name: Run em-dash lint
+        if: matrix.target == 'frontend'
+        run: |
+          base="${{ github.event.pull_request.base.ref || github.event.repository.default_branch }}"
+          node tools/em-dash/selftest.mjs
+          node tools/em-dash/lint.mjs --base "origin/$base"
+
       # SPDX headers on first-party source. Apache-2.0 only RECOMMENDS per-file
       # headers, but this product detects licenses per file — scanning our own
       # repo with our own scanner and getting NOASSERTION on every source file is
