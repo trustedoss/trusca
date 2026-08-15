@@ -45,8 +45,13 @@ const AUTH_PATHS = [
 
 // Built from escapes rather than written as literals: these characters are
 // invisible in an editor, and an edit can drop one without anyone seeing.
-// eslint-disable-next-line no-control-regex -- finding them is the point
-const CONTROL_CHARS = new RegExp("[\\u0000-\\u001f\\u007f]");
+// U+0085, U+2028 and U+2029 are here for the same reason as the C0 range:
+// something downstream may treat them as a line break even though a URL
+// parser does not.
+const CONTROL_CHARS = new RegExp(
+  // eslint-disable-next-line no-control-regex -- finding them is the point
+  "[\\u0000-\\u001f\\u007f-\\u009f\\u2028\\u2029]",
+);
 
 export const DEFAULT_RETURN_PATH = "/";
 
@@ -67,8 +72,13 @@ export function safeReturnPath(candidate: unknown): string {
     return DEFAULT_RETURN_PATH;
   }
 
-  const pathname = path.split(/[?#]/)[0];
-  if (AUTH_PATHS.includes(pathname)) return DEFAULT_RETURN_PATH;
+  // Normalised before the comparison, because the router is not literal
+  // about either: `matchPath` treats `/login/`, `/LOGIN` and `/login//` as
+  // the login screen, so an exact-match exclusion let all three back in.
+  // The one that mattered was `/reset-password/?token=<jwt>`, which would
+  // then have been recorded and forwarded.
+  const pathname = path.split(/[?#]/)[0].toLowerCase().replace(/\/+$/, "");
+  if (AUTH_PATHS.includes(pathname || "/")) return DEFAULT_RETURN_PATH;
 
   return path;
 }

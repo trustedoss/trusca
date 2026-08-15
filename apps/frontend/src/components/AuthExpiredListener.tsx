@@ -31,8 +31,14 @@ export function AuthExpiredListener() {
       //
       // Router state, not a query parameter: a link is something an
       // attacker can hand someone, and "your session expired" is a sentence
-      // worth being unable to forge. It is lost on reload, which costs
-      // nothing, because after a reload the user is only looking at /login.
+      // worth being unable to forge. Router state is held in
+      // `history.state`, which only this document can write, so a link
+      // cannot carry either of these.
+      //
+      // It does survive a reload, and Back returns to the entry that has
+      // it. The banner clears itself once shown (see LoginPage) so a stale
+      // history entry cannot claim a session expired minutes after the
+      // fact.
       navigate("/login", {
         replace: true,
         state: {

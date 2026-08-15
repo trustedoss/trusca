@@ -72,6 +72,49 @@ describe("safeReturnPath", () => {
     );
   });
 
+  it("refuses the auth screens however the router would spell them", () => {
+    // `matchPath` allows a trailing slash and is case-insensitive by
+    // default, so an exact-match exclusion let all of these back in. The
+    // one that mattered was the reset screen, whose query carries a token.
+    for (const path of [
+      "/login/",
+      "/LOGIN",
+      "/logIn/",
+      "/login//",
+      "/Login?next=/x",
+      "/register/",
+      "/reset-password/?token=eyJhbGciOi",
+      "/FORGOT-PASSWORD/",
+    ]) {
+      expect(safeReturnPath(path)).toBe(DEFAULT_RETURN_PATH);
+    }
+  });
+
+  it("keeps percent-encoded slashes as the path they are", () => {
+    // Safe because a URL parser does not decode before deciding where the
+    // authority ends, which is not obvious. Pinned so that adding a
+    // `decodeURIComponent` anywhere upstream breaks a test rather than a
+    // user.
+    expect(safeReturnPath("/%2Fevil.example")).toBe("/%2Fevil.example");
+    expect(safeReturnPath("/%5Cevil.example")).toBe("/%5Cevil.example");
+    expect(safeReturnPath("/%2f%2fevil.example")).toBe("/%2f%2fevil.example");
+  });
+
+  it("refuses the line separators a URL parser does not mind", () => {
+    // U+2028 and U+2029 pass a URL parser and still break a line in plenty
+    // of things downstream, which is the reason the C0 range is excluded.
+    expect(safeReturnPath("/projects\u0085/x")).toBe(DEFAULT_RETURN_PATH);
+    expect(safeReturnPath("/projects\u2028/x")).toBe(DEFAULT_RETURN_PATH);
+    expect(safeReturnPath("/projects\u2029/x")).toBe(DEFAULT_RETURN_PATH);
+  });
+
+  it("accepts a path right at the length limit and refuses one past it", () => {
+    const atLimit = `/${"a".repeat(1999)}`;
+    expect(atLimit).toHaveLength(2000);
+    expect(safeReturnPath(atLimit)).toBe(atLimit);
+    expect(safeReturnPath(`/${"a".repeat(2000)}`)).toBe(DEFAULT_RETURN_PATH);
+  });
+
   it("refuses an absurdly long path", () => {
     expect(safeReturnPath(`/${"a".repeat(5000)}`)).toBe(DEFAULT_RETURN_PATH);
   });

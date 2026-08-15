@@ -48,6 +48,7 @@ import secrets
 import uuid
 from datetime import UTC, datetime, timedelta
 from typing import Any
+from urllib.parse import urlparse
 
 import structlog
 from jose import JWTError, jwt
@@ -61,6 +62,7 @@ from core.config import (
     github_oauth_client_secret,
     google_oauth_client_id,
     google_oauth_client_secret,
+    oauth_login_redirect_default,
     oauth_state_ttl_seconds,
     secret_key,
 )
@@ -150,6 +152,58 @@ def _email_localpart(email: str) -> str:
     """Best-effort localpart extraction for personal-team naming."""
     at = email.find("@")
     return email[:at] if at > 0 else email
+
+
+def safe_redirect_after(candidate: str | None) -> str | None:
+    """Reduce a caller-supplied ``redirect_after`` to something safe to obey.
+
+    ``GET /auth/oauth/{provider}/authorize`` is public and takes this
+    straight off the query string. Whatever it carries is signed into the
+    state JWT and then handed to ``RedirectResponse`` by the callback, in
+    the same response that sets the refresh cookie. Nothing validated it:
+    the router deferred to this module and this module deferred to the SPA,
+    each in a comment pointing at the other. So
+    ``?redirect_after=https://evil.example`` completed a real sign-in and
+    delivered the user elsewhere, which is the open-redirect shape at its
+    most convincing, because it happens after the password worked.
+
+    Two things are accepted:
+
+    * a path inside the SPA, which is what the SPA itself sends
+    * an absolute URL whose scheme, host and port match
+      ``OAUTH_LOGIN_REDIRECT_DEFAULT``, since that is the deployment's own
+      front end and older callers pass it in full
+
+    Anything else returns None, and the caller falls back to the configured
+    default. Silently: a redirect target the user did not choose is not
+    something to explain to them, and naming the rule would only tell an
+    attacker which shape to try next.
+    """
+    if candidate is None:
+        return None
+    value = candidate.strip()
+    if not value or len(value) > 2000:
+        return None
+    # Control characters can split a log line or a header downstream.
+    if any(ord(ch) < 0x20 or ord(ch) == 0x7F for ch in value):
+        return None
+
+    if value.startswith("/"):
+        # A leading double slash (or backslash, which browsers normalise to
+        # one) is an authority, not a path.
+        if value.startswith("//") or value.startswith("/\\"):
+            return None
+        return value
+
+    parsed = urlparse(value)
+    default = urlparse(oauth_login_redirect_default())
+    if (
+        parsed.scheme
+        and parsed.scheme == default.scheme
+        and parsed.netloc == default.netloc
+    ):
+        return value
+    return None
 
 
 def _signed_state(*, provider: str, redirect_after: str | None) -> str:
@@ -290,7 +344,14 @@ def initiate_oauth(
     except ValueError as exc:
         raise OAuthProviderUnknown(f"unknown OAuth provider: {provider!r}") from exc
 
-    state = _signed_state(provider=provider, redirect_after=redirect_after)
+    # Sanitise before signing, so a state token can never carry a target the
+    # callback would be wrong to obey. Doing it here rather than at the
+    # callback means the check cannot be skipped by any future caller that
+    # mints a state of its own.
+    state = _signed_state(
+        provider=provider,
+        redirect_after=safe_redirect_after(redirect_after),
+    )
     try:
         url = prov.authorize_url(state=state, redirect_uri=redirect_uri)
     except OAuthProviderDisabled as exc:
@@ -341,9 +402,16 @@ async def complete_oauth(
         raise OAuthProviderUnknown(f"unknown OAuth provider: {provider!r}") from exc
 
     state_claims = _decode_state(state, expected_provider=provider)
+    # Checked on the way in as well (see initiate_oauth). Repeated here
+    # because this is the step that actually hands the value to a redirect,
+    # and a state minted before the rule existed, or by some other caller,
+    # must not be obeyed just because the signature verifies. The signature
+    # says we issued it, not that it is safe.
     redirect_after_raw = state_claims.get("redirect_after")
     redirect_after: str | None = (
-        redirect_after_raw if isinstance(redirect_after_raw, str) and redirect_after_raw else None
+        safe_redirect_after(redirect_after_raw)
+        if isinstance(redirect_after_raw, str)
+        else None
     )
 
     if not code:

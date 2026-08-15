@@ -100,7 +100,22 @@ export function LoginPage() {
     | { from?: unknown; expired?: unknown }
     | null;
   const returnTo = safeReturnPath(navState?.from);
-  const sessionExpired = navState?.expired === true;
+  // Captured once, so the banner survives the history rewrite below that
+  // stops it reappearing later.
+  const [sessionExpired] = useState(() => navState?.expired === true);
+
+  // Show it once, then take the flag out of the history entry. `expired`
+  // survives a reload and comes back with the Back button, so without this
+  // an entry from earlier in the session announces an expiry that happened
+  // minutes ago as though it had just happened. The return path stays: it
+  // is still where the user was going.
+  useEffect(() => {
+    if (navState?.expired !== true) return;
+    window.history.replaceState(
+      { ...window.history.state, usr: { from: navState.from } },
+      "",
+    );
+  }, [navState]);
 
   // chore B — OAuth error codes are forwarded via ?error=oauth_*. We keep
   // the raw value local so a malicious URL like ?error=<script> stays
@@ -124,11 +139,24 @@ export function LoginPage() {
   //   for which redirect_after values are safe.
   // A5 extended this: when the user arrived from a guarded page, that page
   // is the natural destination for the provider round-trip too. Otherwise
-  // signing in with a password returned them to where they meant to go and
-  // signing in with GitHub did not. The value handed over is already through
-  // `safeReturnPath`, so it is narrower than what the backend accepts, not
-  // wider; the backend remains the source of truth.
-  const redirectAfter = searchParams.get("redirect_after") ?? returnTo;
+  // signing in with a password returned the user to where they meant to go
+  // and signing in with GitHub did not.
+  //
+  // The query parameter goes through the same guard as the state-carried
+  // path. It is the half that an attacker can actually set, since a link
+  // can carry a query string and cannot carry router state, and it was
+  // unchecked on both sides: this file said the backend vetted it, the
+  // backend said the SPA did. The backend now does too
+  // (`safe_redirect_after`), which is what covers callers that never load
+  // this page.
+  //
+  // Only the path survives the hand-off. The query and fragment stay here
+  // and are restored by the state-carried return, because everything in
+  // this value is written into the state JWT and shows up in the
+  // provider's logs, and this application puts audit filters and search
+  // terms in query strings.
+  const rawRedirectAfter = searchParams.get("redirect_after") ?? returnTo;
+  const redirectAfter = safeReturnPath(rawRedirectAfter).split(/[?#]/)[0];
 
   // If a refresh cookie is alive (e.g., user reloaded /login after auth) the
   // store will resolve to "authenticated" via bootstrap → bounce onward.

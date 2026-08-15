@@ -471,6 +471,73 @@ describe("LoginPage", () => {
     await screen.findByTestId("home-stub");
   });
 
+  it("puts a crafted ?redirect_after through the same guard", async () => {
+    // This is the half an attacker can set: a link carries a query string,
+    // and cannot carry router state. It reached the provider round-trip
+    // unchecked, and the backend obeyed whatever came back, so a real OAuth
+    // sign-in delivered the user off-site. The backend validates now too;
+    // this holds the page's end of it.
+    const user = userEvent.setup();
+    const assigned: string[] = [];
+    const original = Object.getOwnPropertyDescriptor(window, "location");
+    Object.defineProperty(window, "location", {
+      configurable: true,
+      value: {
+        ...window.location,
+        set href(url: string) {
+          assigned.push(url);
+        },
+        get href() {
+          return "http://localhost/login";
+        },
+      },
+    });
+
+    try {
+      renderLogin("/login?redirect_after=https://evil.example/steal");
+      await user.click(await screen.findByTestId("login-oauth-github"));
+
+      expect(assigned).toHaveLength(1);
+      const sent = new URL(assigned[0]).searchParams.get("redirect_after");
+      expect(sent).not.toContain("evil.example");
+      expect(sent).toBe("/");
+    } finally {
+      if (original) Object.defineProperty(window, "location", original);
+    }
+  });
+
+  it("sends only the path to the provider, not the query behind it", async () => {
+    // Everything in this value is written into the state JWT and shows up
+    // in the provider's logs. This application puts audit filters and
+    // search terms in query strings.
+    const user = userEvent.setup();
+    const assigned: string[] = [];
+    const original = Object.getOwnPropertyDescriptor(window, "location");
+    Object.defineProperty(window, "location", {
+      configurable: true,
+      value: {
+        ...window.location,
+        set href(url: string) {
+          assigned.push(url);
+        },
+        get href() {
+          return "http://localhost/login";
+        },
+      },
+    });
+
+    try {
+      renderLogin("/login", { from: "/admin/audit?actor=someone@example.com" });
+      await user.click(await screen.findByTestId("login-oauth-github"));
+
+      const sent = new URL(assigned[0]).searchParams.get("redirect_after");
+      expect(sent).toBe("/admin/audit");
+      expect(sent).not.toContain("someone@example.com");
+    } finally {
+      if (original) Object.defineProperty(window, "location", original);
+    }
+  });
+
   it("returns to the deep link when a live session is already there", async () => {
     // The other way in: a refresh cookie resolves the store to authenticated
     // while /login is mounting, and that path bounced to the dashboard too.

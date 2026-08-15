@@ -255,3 +255,92 @@ def test_signed_state_exp_matches_ttl_env(monkeypatch: pytest.MonkeyPatch) -> No
 
     # exp should be ~120s after iat with a small skew window.
     assert before + 120 - 5 <= claims["exp"] <= before + 120 + 5
+
+
+# ---------------------------------------------------------------------------
+# safe_redirect_after - A5 open-redirect guard
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize(
+    "candidate",
+    [
+        "https://evil.example",
+        "https://evil.example/login",
+        "http://evil.example",
+        "//evil.example/steal",
+        "/\\evil.example",
+        "javascript:alert(1)",
+        "data:text/html,<script>alert(1)</script>",
+        "evil.example/steal",
+        "",
+        "   ",
+    ],
+)
+def test_safe_redirect_after_refuses_anything_off_site(candidate: str) -> None:
+    """The value arrives on a public GET and ends up in a 302 with a cookie.
+
+    `?redirect_after=https://evil.example` used to travel from the query
+    string into the signed state and out of the callback verbatim, so a real
+    sign-in delivered the user somewhere else. Nothing checked it: the router
+    deferred to the service and the service deferred to the SPA.
+    """
+    from services.oauth_service import safe_redirect_after
+
+    assert safe_redirect_after(candidate) is None
+
+
+def test_safe_redirect_after_keeps_an_in_app_path() -> None:
+    from services.oauth_service import safe_redirect_after
+
+    assert safe_redirect_after("/projects/42") == "/projects/42"
+    assert safe_redirect_after(None) is None
+
+
+def test_safe_redirect_after_allows_the_deployment_front_end(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """An absolute URL is fine when it is our own front end, and only then."""
+    from services import oauth_service
+
+    monkeypatch.setenv("OAUTH_LOGIN_REDIRECT_DEFAULT", "https://portal.example")
+
+    assert (
+        oauth_service.safe_redirect_after("https://portal.example/projects")
+        == "https://portal.example/projects"
+    )
+    # A different port, host or scheme is a different origin.
+    assert oauth_service.safe_redirect_after("https://portal.example:8443/x") is None
+    assert oauth_service.safe_redirect_after("http://portal.example/x") is None
+    assert oauth_service.safe_redirect_after("https://portal.example.evil.com") is None
+
+
+def test_safe_redirect_after_refuses_control_characters() -> None:
+    from services.oauth_service import safe_redirect_after
+
+    assert safe_redirect_after("/projects\r\nSet-Cookie: a=b") is None
+    assert safe_redirect_after("/projects\n/x") is None
+
+
+def test_initiate_oauth_does_not_sign_an_unsafe_target(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The check runs before the state is minted, not only when it is read.
+
+    A signature says we issued the token, not that its contents are safe, so
+    the value must never get in. This is the assertion that would fail if
+    someone moved the guard to the callback alone.
+    """
+    from services.oauth_service import _decode_state, initiate_oauth
+
+    monkeypatch.setenv("GITHUB_CLIENT_ID", "cid")
+    monkeypatch.setenv("GITHUB_CLIENT_SECRET", "csecret")
+
+    _url, state = initiate_oauth(
+        provider="github",
+        redirect_uri="https://portal.example/api/v1/auth/oauth/github/callback",
+        redirect_after="https://evil.example",
+    )
+
+    claims = _decode_state(state, expected_provider="github")
+    assert "redirect_after" not in claims

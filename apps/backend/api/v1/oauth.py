@@ -324,10 +324,17 @@ async def callback(
         log.error("oauth_callback_no_organization", provider=provider)
         return _failure_redirect("oauth_no_organization")
 
-    # Build the success redirect — fall back to the configured default if
-    # the state did not carry an explicit ``redirect_after``. We do NOT
-    # echo unsafe redirect_after values verbatim: the SPA is expected to
-    # vet the value at sign-in time before placing it in the state JWT.
+    # Build the success redirect, falling back to the configured default
+    # when the state carried nothing usable.
+    #
+    # This comment used to say the SPA vetted the value before it reached
+    # the state JWT, while the SPA's own comment said the backend was the
+    # source of truth. Neither did: `?redirect_after=https://evil.example`
+    # travelled from a public GET into a signed state and out of here as a
+    # 302, in the response that sets the refresh cookie. The check now lives
+    # in `safe_redirect_after`, applied when the state is minted and again
+    # when it is read, so this line receives either an in-app path or the
+    # deployment's own front end.
     target = redirect_after or oauth_login_redirect_default()
     response = RedirectResponse(target, status_code=status.HTTP_302_FOUND)
     _set_refresh_cookie(response, refresh_token=refresh_token)
