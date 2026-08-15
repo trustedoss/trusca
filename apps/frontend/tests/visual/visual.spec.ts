@@ -123,29 +123,69 @@ async function hideDevChrome(page: Page): Promise<void> {
  *
  * So the wait is in two parts. At least one Inter face has to have reached
  * `loaded`, which cannot happen before the stylesheet registers the faces,
- * and nothing may still be in flight. Naming a weight instead would be
+ * and no Inter face may still be in flight. Naming a weight instead would be
  * wrong: a browser fetches only the faces a page uses, so asking for
  * `600 16px Inter` on a screen with no semibold text waits forever, which is
  * how the first version of this failed on admin-users.
  *
+ * The second clause used to read `document.fonts.status`, which is a
+ * document-wide snapshot: it returns to "loading" for ANY family, so a
+ * single unrelated face that never settles held up a capture whose own font
+ * had been ready for seconds. That timed out four times on 2026-08-15,
+ * across two screens, with nothing wrong in the screenshots. Scoping the
+ * clause to Inter keeps both guarantees and drops the dependency on
+ * everything else the page happens to fetch.
+ *
  * If the stylesheet never lands the wait times out and the test fails, which
  * is the honest outcome: the alternative is a baseline recording the wrong
- * font.
+ * font. On that timeout it now reports which faces were in what state,
+ * because four investigations of a bare "Timeout 20000ms exceeded" produced
+ * four guesses and no cause.
  */
 async function waitForWebFonts(page: Page): Promise<void> {
-  await page.waitForFunction(
-    () => {
-      const faces = Array.from(document.fonts);
-      const inter = faces.filter((f) => f.family === "Inter");
-      return (
-        inter.length > 0 &&
-        inter.some((f) => f.status === "loaded") &&
-        document.fonts.status === "loaded"
-      );
-    },
-    undefined,
-    { timeout: 20_000 },
-  );
+  try {
+    await page.waitForFunction(
+      () => {
+        const faces = Array.from(document.fonts);
+        const inter = faces.filter((f) => f.family === "Inter");
+        return (
+          inter.length > 0 &&
+          inter.some((f) => f.status === "loaded") &&
+          // Scoped to Inter, not `document.fonts.status`. That property is
+          // a snapshot of the whole document and returns to "loading" for
+          // any family, so one unrelated face that never settles blocked
+          // a capture whose own font had been ready for seconds. This
+          // timed out four times on 2026-08-15, on two different screens,
+          // while the screenshots themselves were fine.
+          //
+          // The guarantee that matters is unchanged: at least one Inter
+          // face loaded, and no Inter face still in flight.
+          inter.every((f) => f.status !== "loading")
+        );
+      },
+      undefined,
+      { timeout: 20_000 },
+    );
+  } catch (err) {
+    // Say which face was stuck. The previous version failed with a bare
+    // "Timeout 20000ms exceeded" pointing at the line, which told four
+    // separate investigations nothing and left the cause a guess.
+    const state = await page.evaluate(() =>
+      Array.from(document.fonts).map((f) => ({
+        family: f.family,
+        weight: f.weight,
+        style: f.style,
+        status: f.status,
+      })),
+    );
+    throw new Error(
+      `waitForWebFonts timed out. document.fonts.status=` +
+        `${await page.evaluate(() => document.fonts.status)}, faces=` +
+        `${JSON.stringify(state)}\n\nOriginal: ${
+          err instanceof Error ? err.message : String(err)
+        }`,
+    );
+  }
 }
 
 function readPrimaryProjectId(): string {
