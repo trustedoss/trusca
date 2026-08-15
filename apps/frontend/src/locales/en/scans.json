@@ -68,7 +68,13 @@
     "empty": "Waiting for scan output…",
     "filter_all": "All",
     "filter_errors": "Errors only",
-    "back_to_project": "Back to project"
+    "back_to_project": "Back to project",
+    "back_to_scans": "Back to scans",
+    "errors": {
+      "not_found": "This scan could not be found.",
+      "forbidden": "You do not have access to this scan.",
+      "validation": "The address does not point at a scan."
+    }
   },
   "cancel": {
     "action": "Cancel scan",

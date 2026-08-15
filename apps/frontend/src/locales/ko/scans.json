@@ -68,7 +68,13 @@
     "empty": "스캔 출력 대기 중…",
     "filter_all": "전체",
     "filter_errors": "오류만",
-    "back_to_project": "프로젝트로 돌아가기"
+    "back_to_project": "프로젝트로 돌아가기",
+    "back_to_scans": "스캔 목록으로",
+    "errors": {
+      "not_found": "이 스캔을 찾을 수 없습니다.",
+      "forbidden": "이 스캔에 접근할 권한이 없습니다.",
+      "validation": "이 주소는 스캔을 가리키지 않습니다."
+    }
   },
   "cancel": {
     "action": "스캔 취소",

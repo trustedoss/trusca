@@ -28,6 +28,7 @@ import type {
   ScanWebSocketState,
 } from "@/hooks/useScanWebSocket";
 import type { ScanPublic, ScanStatus } from "@/lib/projectsApi";
+import { ProblemError } from "@/lib/problem";
 
 // ---------------------------------------------------------------------------
 // Module mocks
@@ -403,6 +404,98 @@ describe("ScanDetailPage", () => {
     });
     await waitFor(() => {
       expect(log).toHaveAttribute("data-pinned-bottom", "true");
+    });
+  });
+
+  // ─── A4: the failure surface classifies before it accuses the address ──
+
+  describe("when the scan cannot be loaded", () => {
+    it("says the scan could not be found on a 404", async () => {
+      mockedGetScan.mockRejectedValue(
+        new ProblemError("not_found", {
+          status: 404,
+          title: "Scan Not Found",
+          detail: "scan gone",
+          problem: null,
+        }),
+      );
+      renderPage();
+
+      const surface = await screen.findByTestId("scan-detail-page-error");
+      expect(surface.textContent).toContain("could not be found");
+    });
+
+    it("does not say the scan is missing on a server error", async () => {
+      // This surface used to render the not-found sentence for every failure,
+      // so a 500 told the user their scan had been deleted. The id was fine.
+      mockedGetScan.mockRejectedValue(
+        new ProblemError("server_error", {
+          status: 500,
+          title: "Internal Server Error",
+          detail: "boom",
+          problem: null,
+        }),
+      );
+      renderPage();
+
+      const surface = await screen.findByTestId("scan-detail-page-error");
+      expect(surface.textContent).not.toContain("could not be found");
+      expect(surface.textContent).toContain("server could not complete");
+    });
+
+    it("does not say the scan is missing when the request never reached the server", async () => {
+      // `lib/api.ts` normalizes a transport failure to status 0.
+      mockedGetScan.mockRejectedValue(
+        new ProblemError("network", {
+          status: 0,
+          title: "Network Error",
+          detail: "Network Error",
+          problem: null,
+        }),
+      );
+      renderPage();
+
+      const surface = await screen.findByTestId("scan-detail-page-error");
+      expect(surface.textContent).not.toContain("could not be found");
+      expect(surface.textContent).toContain("Could not reach the server");
+      // And the axios message stays out of the UI.
+      expect(surface.textContent).not.toContain("Network Error");
+    });
+
+    it("keeps the backend's English detail off the page when the id is malformed", async () => {
+      // `/scans/not-a-uuid` never reaches the handler: FastAPI rejects the
+      // path parameter and `core/errors.py` answers 422 with an English
+      // sentence. Routing that class through the shared helper without a
+      // scoped key would have printed that sentence as the page title, which
+      // is the exact failure the helper exists to prevent.
+      mockedGetScan.mockRejectedValue(
+        new ProblemError("validation", {
+          status: 422,
+          title: "Validation Error",
+          detail: "One or more request parameters were invalid.",
+          problem: null,
+        }),
+      );
+      renderPage();
+
+      const surface = await screen.findByTestId("scan-detail-page-error");
+      expect(surface.textContent).not.toContain("request parameters");
+      expect(surface.textContent).toContain("does not point at a scan");
+    });
+
+    it("offers the way back to the scan list", async () => {
+      mockedGetScan.mockRejectedValue(
+        new ProblemError("not_found", {
+          status: 404,
+          title: "Scan Not Found",
+          detail: "scan gone",
+          problem: null,
+        }),
+      );
+      renderPage();
+
+      const back = await screen.findByTestId("scan-detail-page-error-back");
+      expect(back.getAttribute("href")).toBe("/scans");
     });
   });
 });

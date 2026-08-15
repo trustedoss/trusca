@@ -355,6 +355,7 @@
       "back_link": "Back to Components",
       "title_loading": "Loading component…",
       "not_found": "Component not found.",
+      "not_found_help": "The id in the address does not match a component you can open. It may no longer be in this project, or it may belong to a project you are not on.",
       "errors": {
         "not_found": "Component not found.",
         "forbidden": "You do not have permission to view this component.",
@@ -634,6 +635,7 @@
       "back_link": "Back to Vulnerabilities",
       "title_loading": "Loading vulnerability…",
       "not_found": "Vulnerability not found.",
+      "not_found_help": "The id in the address does not match a finding you can open. It may no longer exist, or it may belong to a project you are not on.",
       "errors": {
         "not_found": "Vulnerability not found.",
         "forbidden": "You do not have permission to view this vulnerability.",

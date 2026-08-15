@@ -111,5 +111,12 @@
     "rate_limited": "Too many requests. Wait a moment and try again.",
     "server_error": "The server could not complete this. Try again shortly.",
     "network": "Could not reach the server. Check your connection and try again."
+  },
+  "not_found": {
+    "tab_title": "Page not found",
+    "title": "This page does not exist.",
+    "description": "No screen matches the address in the bar. It may have been mistyped, or it may point at something that has since moved.",
+    "address_label": "Address: {{path}}",
+    "back_home": "Go to the dashboard"
   }
 }

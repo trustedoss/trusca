@@ -30,6 +30,7 @@ import { ComponentDetailPage } from "@/features/projects/pages/ComponentDetailPa
 import { VulnerabilityDetailPage } from "@/features/projects/pages/VulnerabilityDetailPage";
 import { ScanDetailPage } from "@/features/scan/ScanDetailPage";
 import { ScansPage } from "@/features/scans/ScansPage";
+import { NotFoundPage } from "@/pages/NotFoundPage";
 import { ForgotPasswordPage } from "@/pages/auth/ForgotPasswordPage";
 import { LoginPage } from "@/pages/auth/LoginPage";
 import { RegisterPage } from "@/pages/auth/RegisterPage";
@@ -53,7 +54,10 @@ import { DesignSystemPreview } from "@/pages/dev/DesignSystemPreview";
  * - <AdminLayout /> wraps /admin/* with the super-admin existence-hide guard
  *   (404 for non-super-admins, matching backend behavior). It no longer
  *   renders its own chrome — the AppShell sidebar/header carries through.
- * - Unknown top-level routes fall back to /login.
+ * - Unknown routes land on <NotFoundPage />, nested inside the shell so the
+ *   navigation survives the mistake. It sits under <RequireAuth />, so an
+ *   anonymous visitor is still sent to /login and learns nothing about which
+ *   paths exist.
  */
 export function AppRoutes() {
   return (
@@ -63,8 +67,8 @@ export function AppRoutes() {
       <Route path="/forgot-password" element={<ForgotPasswordPage />} />
       <Route path="/reset-password" element={<ResetPasswordPage />} />
 
-      {/* W11-A — design system preview, dev only. Production builds fall
-       * through to the `*` redirect at the bottom (→ /login). */}
+      {/* W11-A: design system preview, dev only. In production the path
+       * matches nothing and falls through to the catch-all below. */}
       {import.meta.env.DEV ? (
         <Route path="/dev/design-preview" element={<DesignSystemPreview />} />
       ) : null}
@@ -137,9 +141,9 @@ export function AppRoutes() {
           <Route path="backup" element={<AdminBackupPage />} />
           <Route path="*" element={<AdminNotFound />} />
         </Route>
-      </Route>
 
-      <Route path="*" element={<Navigate to="/login" replace />} />
+        <Route path="*" element={<NotFoundPage />} />
+      </Route>
     </Routes>
   );
 }

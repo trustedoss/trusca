@@ -1,11 +1,13 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2026 TRUSCA contributors
 import { useQuery } from "@tanstack/react-query";
-import { ChevronLeft } from "lucide-react";
+import { ChevronLeft, PackageX } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { Link, useLocation, useParams } from "react-router-dom";
 
+import { EmptyState } from "@/components/EmptyState";
 import { Alert, AlertDescription } from "@/components/ui/alert";
+import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useComponent } from "@/features/projects/api/useComponent";
 import { ComponentDetailBody } from "@/features/projects/components/ComponentDetailBody";
@@ -111,6 +113,12 @@ export function ComponentDetailPage() {
     ? `${detail.data.name}@${detail.data.version}`
     : null;
 
+  // Same existence-hide pairing as the vulnerability page: 404 and 403 mean
+  // "not there for you", and the backend answers both the same way.
+  const detailIsHidden =
+    detail.error instanceof ProblemError &&
+    (detail.error.status === 404 || detail.error.status === 403);
+
   return (
     <div
       className="flex min-h-screen flex-col bg-background text-foreground"
@@ -124,6 +132,7 @@ export function ComponentDetailPage() {
         isProjectError={projectQuery.isError}
         detailLabel={detailLabel}
         isDetailLoading={detail.isLoading}
+        isDetailError={detail.isError}
         backToListHref={backToListHref}
       />
 
@@ -148,26 +157,39 @@ export function ComponentDetailPage() {
             </div>
           ) : null}
 
+          {/* A4: see the matching block in VulnerabilityDetailPage. One
+              surface with the reason and the way back, and a class that is
+              not "not found" does not get told as one. */}
           {detail.isError ? (
-            <Alert
-              variant="destructive"
+            <EmptyState
               data-testid="component-detail-page-error"
-            >
-              <AlertDescription>
-                {detail.error instanceof ProblemError &&
-                (detail.error.status === 404 || detail.error.status === 403)
+              icon={<PackageX />}
+              title={
+                detailIsHidden
                   ? t("components.detail_page.not_found")
                   : t(
                       projectErrorMessageKey(
                         detail.error,
                         "components.detail_page.errors",
                       ),
-                      {
-                        defaultValue: t("components.detail_page.not_found"),
-                      },
-                    )}
-              </AlertDescription>
-            </Alert>
+                    )
+              }
+              description={
+                detailIsHidden
+                  ? t("components.detail_page.not_found_help")
+                  : undefined
+              }
+              action={
+                <Button asChild variant="outline" size="sm">
+                  <Link
+                    to={backToListHref}
+                    data-testid="component-detail-page-error-back"
+                  >
+                    {t("components.detail_page.back_link")}
+                  </Link>
+                </Button>
+              }
+            />
           ) : null}
 
           {detail.data ? <ComponentDetailBody detail={detail.data} /> : null}
@@ -183,6 +205,7 @@ interface PageHeaderProps {
   isProjectError: boolean;
   detailLabel: string | null;
   isDetailLoading: boolean;
+  isDetailError: boolean;
   backToListHref: string;
 }
 
@@ -198,14 +221,21 @@ function PageHeader({
   isProjectError,
   detailLabel,
   isDetailLoading,
+  isDetailError,
   backToListHref,
 }: PageHeaderProps) {
   const { t } = useTranslation("project_detail");
   const projectHref = `/projects/${projectId}`;
 
+  // A4, and see the matching block on the vulnerability page. A component that
+  // failed to load has no name, and both the crumb and the heading used to
+  // fall back to an empty string.
+  const label =
+    detailLabel ?? (isDetailError ? t("page.breadcrumb_unavailable") : null);
+
   // "django 4.2 · payments-api · TRUSCA" — enough to tell two open component
   // tabs apart, which is the whole point of naming the tab.
-  useDocumentTitle(detailLabel, projectName);
+  useDocumentTitle(label, projectName);
 
   const projectCrumb =
     projectName ??
@@ -213,7 +243,7 @@ function PageHeader({
       ? t("page.breadcrumb_unavailable")
       : t("page.loading_name"));
   const detailCrumb =
-    detailLabel ?? (isDetailLoading ? t("page.loading_name") : "");
+    label ?? (isDetailLoading ? t("page.loading_name") : "");
 
   return (
     <header
@@ -273,7 +303,7 @@ function PageHeader({
       >
         {isDetailLoading
           ? t("components.detail_page.title_loading")
-          : (detailLabel ?? "")}
+          : (label ?? "")}
       </h1>
     </header>
   );
