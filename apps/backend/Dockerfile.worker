@@ -559,7 +559,7 @@ RUN set -eux; \
     ln -s "${GRADLE_HOME}/bin/gradle" /usr/local/bin/gradle; \
     gradle --version
 
-# ---- Go 1.25.12 (BSD-3-Clause). --------------------------------------------
+# ---- Go 1.25.13 (BSD-3-Clause). --------------------------------------------
 # Debian bookworm Go is 1.19 — go.mod files since Go 1.21 declare
 # `toolchain go1.22.x` and refuse to build on older runtimes. Install the
 # upstream tarball with arch detection (linux-amd64 / linux-arm64). Hashes
@@ -588,10 +588,24 @@ RUN set -eux; \
 # stdlib CVE-2026-39822 (os.Root symlink following allows directory
 # traversal, HIGH) is fixed in 1.25.12 / 1.26.5 and was flagged on the
 # same 12 opt/go binaries + govulncheck. Same 1.25.x-line rationale.
-# Hashes from https://go.dev/dl/?mode=json (the `files` array of go1.25.12).
-ENV GO_VERSION=1.25.12 \
-    GO_SHA256_AMD64=234828b7a89e0e303d2556310ee549fbcf253d28de937bac3da13d6294262ac1 \
-    GO_SHA256_ARM64=8b5884aef89600aef5b0b051fb971f11f49bb996521e911f30f02a66884f7bd2 \
+# CVE triage 2026-08-15 (image-scan gate): bumped 1.25.12 → 1.25.13. The Go
+# team published 1.25.13 and 1.26.6 on 2026-08-13, and the gate started
+# hard-failing when the Trivy database picked them up. What it flagged on
+# this toolchain is ONE of the two: CVE-2026-39821 (golang.org/x/net/idna,
+# privilege escalation via incorrect Punycode label processing, HIGH), on
+# the nine opt/go binaries plus govulncheck. Fixed in 1.25.13 / 1.26.6.
+#
+# The other one, CVE-2026-46600 (dnsmessage, denial of service on invalid
+# DNS record parsing, HIGH), never affected this line: its stdlib range
+# starts at 1.26.0 and there is no 1.25.x fix version. It was flagged on the
+# two prebuilt binaries that carry a 1.26.4 stdlib, cosign and the docker
+# CLI, and nowhere else. See .trivyignore for how those two are handled.
+#
+# Same 1.25.x-line rationale.
+# Hashes from https://go.dev/dl/?mode=json (the `files` array of go1.25.13).
+ENV GO_VERSION=1.25.13 \
+    GO_SHA256_AMD64=39042a078ea9ceebe3ecda4a7188f0f5b96e14a071d27923ba7f40b456e85ae3 \
+    GO_SHA256_ARM64=adad240fcb6bd180cf973b4b7c747baf4ec81d08b7d40ca35940ee4531971490 \
     GOROOT=/opt/go
 RUN set -eux; \
     arch="$(dpkg --print-architecture)"; \
