@@ -45,6 +45,11 @@ check(
   isWatched("docs-site/i18n/ko/x.md"),
   false,
 );
+check(
+  "ignores its own directory, whose subject is the character",
+  isWatched("tools/em-dash/lint.mjs"),
+  false,
+);
 
 // --- the placeholder exemption ----------------------------------------------
 

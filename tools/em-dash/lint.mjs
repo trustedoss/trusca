@@ -59,6 +59,13 @@ const SKIP_PREFIXES = [
   "apps/frontend/tests/visual/visual.spec.ts-snapshots/",
   "docs-site/i18n/",
   "THIRD_PARTY_NOTICES",
+  // This tool. Its subject IS the character: the regexes match it, the
+  // fixtures quote it, and the documentation shows what a placeholder looks
+  // like. Sixteen allow-markers would say the same thing less clearly. The
+  // trade is that prose inside this directory is unchecked, which is the
+  // narrowest blind spot available and the one every self-referential linter
+  // in this repository accepts.
+  "tools/em-dash/",
 ];
 
 export function isWatched(file) {
@@ -109,17 +116,30 @@ function git(args) {
  * ko-style step in ci.yml); the workflow fetches the base before calling this,
  * and if that ever stops working the run must fail rather than congratulate us.
  */
-function requireBase(base) {
+function resolveMergeBase(base) {
   try {
     git(["rev-parse", "--verify", `${base}^{commit}`]);
-    return true;
   } catch {
     console.error(
-      `em-dash: cannot resolve base ref '${base}'. A shallow clone needs\n` +
-        `  git fetch --no-tags --depth=1 origin <base-branch>\n` +
-        `before this runs. Refusing to report success on a diff of nothing.`,
+      `em-dash: cannot resolve base ref '${base}'.\n` +
+        `Refusing to report success on a diff of nothing.`,
     );
-    return false;
+    return null;
+  }
+  try {
+    return git(["merge-base", base, "HEAD"]).trim();
+  } catch {
+    // The ref resolving is not enough. A shallow clone can hold the base
+    // branch and the branch under test with no commit in common, and then
+    // merge-base fails even though both refs exist. Checking only the ref is
+    // what this gate shipped with, and CI failed on exactly this.
+    console.error(
+      `em-dash: '${base}' and HEAD share no history in this clone.\n` +
+        `A shallow checkout needs its history deepened first:\n` +
+        `  git fetch --no-tags --unshallow origin || git fetch --no-tags --depth=200 origin\n` +
+        `Refusing to report success on a diff that could not be computed.`,
+    );
+    return null;
   }
 }
 
@@ -225,13 +245,13 @@ function main() {
       git(["diff", "--cached", "--unified=0", "--no-color"]),
     );
   } else {
-    if (!requireBase(opts.base)) return 1;
     // Merge base, then a two-dot diff against it, so the working tree counts.
     // `base...HEAD` reads committed history only, which means running this
     // before committing reports success on the very line you just typed. That
     // is the moment the check is most useful. (Verified by adding an em dash
     // to a comment and watching the three-dot form pass.)
-    const mergeBase = git(["merge-base", opts.base, "HEAD"]).trim();
+    const mergeBase = resolveMergeBase(opts.base);
+    if (mergeBase === null) return 1;
     candidates = addedLines(
       git(["diff", mergeBase, "--unified=0", "--no-color"]),
     );

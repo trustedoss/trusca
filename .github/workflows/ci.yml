@@ -199,7 +199,14 @@ jobs:
         if: matrix.target == 'frontend'
         run: |
           base="${{ github.event.pull_request.base.ref || github.event.repository.default_branch }}"
-          git fetch --no-tags --depth=50 origin "$base"
+          # Deepen rather than fetch a fixed depth. A depth-50 fetch of the
+          # base leaves the base and the branch under test with no commit in
+          # common, so `git merge-base` fails even though both refs exist,
+          # which is how this step failed the first time it ran. The history
+          # here is short (the repository was recreated), so unshallowing is
+          # cheap; the fallback covers a clone that is already complete.
+          git fetch --no-tags --unshallow origin "$base" \
+            || git fetch --no-tags --depth=500 origin "$base"
 
       - name: Run em-dash lint
         if: matrix.target == 'frontend'
