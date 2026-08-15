@@ -99,11 +99,23 @@ export class AuthHarness {
     await this.expectLoggedIn();
   }
 
-  async login(email: string, password: string): Promise<void> {
+  /**
+   * Sign in and wait for the app.
+   *
+   * `expectUrl` exists because A5 gave sign-in a second destination: a user
+   * who arrived from a deep link is returned to it, so the dashboard is no
+   * longer the only correct landing place and the default matcher would time
+   * out waiting for one.
+   */
+  async login(
+    email: string,
+    password: string,
+    expectUrl: RegExp = POST_AUTH_URL_RE,
+  ): Promise<void> {
     await this.page.getByTestId("login-email").fill(email);
     await this.page.getByTestId("login-password").fill(password);
     await Promise.all([
-      this.page.waitForURL(POST_AUTH_URL_RE, { timeout: DEFAULT_TIMEOUT_MS }),
+      this.page.waitForURL(expectUrl, { timeout: DEFAULT_TIMEOUT_MS }),
       this.page.getByTestId("login-submit").click(),
     ]);
     await this.expectLoggedIn();

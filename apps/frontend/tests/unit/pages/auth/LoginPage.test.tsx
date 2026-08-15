@@ -44,13 +44,26 @@ const sampleUser: AuthUser = {
   teamId: null,
 };
 
-function renderLogin(initialPath: string = "/login") {
+function renderLogin(
+  initialPath: string = "/login",
+  // A5: the guard and the expiry banner both read router state, which is
+  // what `RequireAuth` and `AuthExpiredListener` put there.
+  state?: { from?: unknown; expired?: unknown },
+) {
   return render(
     <AppProviders router="none">
-      <MemoryRouter initialEntries={[initialPath]}>
+      <MemoryRouter
+        initialEntries={[
+          state ? { pathname: initialPath, state } : initialPath,
+        ]}
+      >
         <Routes>
           <Route path="/login" element={<LoginPage />} />
           <Route path="/" element={<div data-testid="home-stub" />} />
+          <Route
+            path="/projects/:id"
+            element={<div data-testid="project-stub" />}
+          />
           <Route path="/register" element={<div data-testid="register-stub" />} />
           <Route
             path="/forgot-password"
@@ -395,5 +408,75 @@ describe("LoginPage", () => {
     expect(
       screen.queryByTestId("login-registered-success"),
     ).not.toBeInTheDocument();
+  });
+
+  // ─── A5: say why, and go back where the user was ───────────────────────
+
+  it("says a session ended when that is why the user is here", async () => {
+    renderLogin("/login", { expired: true, from: "/projects/42" });
+
+    const banner = await screen.findByTestId("login-session-expired");
+    expect(banner.textContent).toContain("Your session ended");
+  });
+
+  it("says nothing about sessions when the user came here on purpose", () => {
+    renderLogin();
+
+    expect(screen.queryByTestId("login-session-expired")).toBeNull();
+  });
+
+  it("returns the user to the page they were sent away from", async () => {
+    const user = userEvent.setup();
+    mockedPostLogin.mockResolvedValue({
+      access_token: "t",
+      token_type: "bearer",
+      expires_in: 1800,
+    });
+    mockedFetchMe.mockResolvedValue(sampleUser);
+
+    renderLogin("/login", { from: "/projects/42?tab=components" });
+
+    await user.type(screen.getByTestId("login-email"), "alice@example.com");
+    await user.type(screen.getByTestId("login-password"), "correct-horse-1");
+    await user.click(screen.getByTestId("login-submit"));
+
+    // Landing on the dashboard instead would mean the deep link the user
+    // followed was thrown away by the sign-in it triggered.
+    await screen.findByTestId("project-stub");
+  });
+
+  it("refuses to hand the user to another origin after signing in", async () => {
+    // The attack is a link that carries the return target: the victim signs
+    // in to the real product, and the product then delivers them to a
+    // lookalike one keystroke later.
+    //
+    // Unlike the three above, this one passes against the code before A5
+    // too, because that code ignored `from` entirely and always went to the
+    // dashboard. It is here to pin the property, not to prove the change:
+    // it is what fails the day someone reaches for `state.from` directly.
+    const user = userEvent.setup();
+    mockedPostLogin.mockResolvedValue({
+      access_token: "t",
+      token_type: "bearer",
+      expires_in: 1800,
+    });
+    mockedFetchMe.mockResolvedValue(sampleUser);
+
+    renderLogin("/login", { from: "//evil.example/steal" });
+
+    await user.type(screen.getByTestId("login-email"), "alice@example.com");
+    await user.type(screen.getByTestId("login-password"), "correct-horse-1");
+    await user.click(screen.getByTestId("login-submit"));
+
+    await screen.findByTestId("home-stub");
+  });
+
+  it("returns to the deep link when a live session is already there", async () => {
+    // The other way in: a refresh cookie resolves the store to authenticated
+    // while /login is mounting, and that path bounced to the dashboard too.
+    renderLogin("/login", { from: "/projects/42" });
+    useAuthStore.setState({ status: "authenticated" });
+
+    await screen.findByTestId("project-stub");
   });
 });
