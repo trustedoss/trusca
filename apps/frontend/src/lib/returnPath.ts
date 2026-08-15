@@ -78,6 +78,16 @@ export function safeReturnPath(candidate: unknown): string {
   // The one that mattered was `/reset-password/?token=<jwt>`, which would
   // then have been recorded and forwarded.
   const pathname = path.split(/[?#]/)[0].toLowerCase().replace(/\/+$/, "");
+
+  // A dot segment lets a path spell an auth screen without matching one:
+  // `/projects/../login` reaches the router as written, which renders the
+  // not-found screen, while the browser normalises the address bar to
+  // `/login`. Not an escape from the origin, but it breaks the rule this
+  // function states, and the address the user reads is the wrong one.
+  if (pathname.split("/").some((seg) => seg === "." || seg === "..")) {
+    return DEFAULT_RETURN_PATH;
+  }
+
   if (AUTH_PATHS.includes(pathname || "/")) return DEFAULT_RETURN_PATH;
 
   return path;

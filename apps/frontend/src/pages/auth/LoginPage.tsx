@@ -111,11 +111,12 @@ export function LoginPage() {
   // is still where the user was going.
   useEffect(() => {
     if (navState?.expired !== true) return;
-    window.history.replaceState(
-      { ...window.history.state, usr: { from: navState.from } },
-      "",
-    );
-  }, [navState]);
+    // Through the router rather than `history.replaceState` directly: the
+    // shape of what the router keeps in `history.state` is its own business
+    // (it nests the caller's state under a key), and reaching in would go
+    // quietly inert the day that changes, bringing the stale banner back.
+    navigate(".", { replace: true, state: { from: navState.from } });
+  }, [navState, navigate]);
 
   // chore B — OAuth error codes are forwarded via ?error=oauth_*. We keep
   // the raw value local so a malicious URL like ?error=<script> stays
@@ -150,11 +151,15 @@ export function LoginPage() {
   // (`safe_redirect_after`), which is what covers callers that never load
   // this page.
   //
-  // Only the path survives the hand-off. The query and fragment stay here
-  // and are restored by the state-carried return, because everything in
-  // this value is written into the state JWT and shows up in the
-  // provider's logs, and this application puts audit filters and search
-  // terms in query strings.
+  // Only the path survives the hand-off, because everything in this value
+  // is written into the state JWT and shows up in the provider's logs, and
+  // this application puts audit filters and search terms in query strings.
+  //
+  // The query is therefore lost on the OAuth route, and not, as an earlier
+  // version of this comment claimed, restored afterwards: starting the
+  // provider flow leaves the page, and the SPA that boots on the callback
+  // has no router state. Password sign-in keeps the whole path. Losing a
+  // filter is the cheaper of the two costs.
   const rawRedirectAfter = searchParams.get("redirect_after") ?? returnTo;
   const redirectAfter = safeReturnPath(rawRedirectAfter).split(/[?#]/)[0];
 

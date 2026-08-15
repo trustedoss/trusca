@@ -344,10 +344,11 @@ def initiate_oauth(
     except ValueError as exc:
         raise OAuthProviderUnknown(f"unknown OAuth provider: {provider!r}") from exc
 
-    # Sanitise before signing, so a state token can never carry a target the
-    # callback would be wrong to obey. Doing it here rather than at the
-    # callback means the check cannot be skipped by any future caller that
-    # mints a state of its own.
+    # Sanitise before signing, so a state token issued through this path can
+    # never carry a target the callback would be wrong to obey. The reading
+    # side checks too (see complete_oauth), and that is the half that covers
+    # a token minted some other way or by an older build still inside its
+    # TTL during a rolling deploy.
     state = _signed_state(
         provider=provider,
         redirect_after=safe_redirect_after(redirect_after),
@@ -709,4 +710,5 @@ __all__ = [
     "complete_oauth",
     "initiate_oauth",
     "oauth_provider_configured",
+    "safe_redirect_after",
 ]
