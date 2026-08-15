@@ -707,7 +707,6 @@
       },
       "copy_cve": "CVE 식별자",
       "copy_vector": "CVSS 벡터",
-      "copy_purl": "패키지 URL",
       "advisories_label": "외부에서 찾기",
       "advisory_nvd": "NVD",
       "advisory_osv": "OSV",

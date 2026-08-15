@@ -1,5 +1,5 @@
 /**
- * CopyButton — unit tests (A6).
+ * CopyButton: unit tests (A6).
  *
  * The two things worth holding down are the ones that are invisible when
  * they break: that the value reaching the clipboard is the whole string, and
@@ -24,15 +24,23 @@ function renderButton(value: string, label = "CVE id") {
 
 describe("CopyButton", () => {
   let originalClipboard: typeof navigator.clipboard | undefined;
+  let originalExecCommand: typeof document.execCommand | undefined;
 
   beforeEach(() => {
     originalClipboard = navigator.clipboard;
+    originalExecCommand = document.execCommand;
   });
 
   afterEach(() => {
     Object.defineProperty(navigator, "clipboard", {
       configurable: true,
       value: originalClipboard,
+    });
+    // Restored too: a stub left behind here reaches the next test in the
+    // file, and one of them depends on the copy failing.
+    Object.defineProperty(document, "execCommand", {
+      configurable: true,
+      value: originalExecCommand,
     });
     vi.restoreAllMocks();
   });
@@ -134,6 +142,52 @@ describe("CopyButton", () => {
     // A failure the user can act on: the value is on screen, so selecting it
     // is a real instruction rather than an apology.
     expect(toast.textContent).toContain("copy manually");
+  });
+
+  it("leaves nothing behind when the copy command throws", async () => {
+    // The path that actually leaked. `document.execCommand` is deprecated,
+    // so a browser that drops it makes this call throw, and the removal used
+    // to sit on the line after it: every attempt left another focusable
+    // textarea in the document.
+    Object.defineProperty(navigator, "clipboard", {
+      configurable: true,
+      value: undefined,
+    });
+    Object.defineProperty(document, "execCommand", {
+      configurable: true,
+      value: vi.fn(() => {
+        throw new TypeError("execCommand is not a function");
+      }),
+    });
+
+    expect(await writeToClipboard("x")).toBe(false);
+    expect(document.querySelectorAll("textarea")).toHaveLength(0);
+  });
+
+  it("keeps the scratch element out of the tab order while it exists", async () => {
+    // Off-screen is not out of reach: without these it sat in the tab order
+    // and in the accessibility tree for as long as it was mounted.
+    let seen: { tabIndex: string | null; ariaHidden: string | null } | null =
+      null;
+    Object.defineProperty(navigator, "clipboard", {
+      configurable: true,
+      value: undefined,
+    });
+    Object.defineProperty(document, "execCommand", {
+      configurable: true,
+      value: vi.fn(() => {
+        const el = document.querySelector("textarea");
+        seen = {
+          tabIndex: el?.getAttribute("tabindex") ?? null,
+          ariaHidden: el?.getAttribute("aria-hidden") ?? null,
+        };
+        return true;
+      }),
+    });
+
+    await writeToClipboard("x");
+
+    expect(seen).toEqual({ tabIndex: "-1", ariaHidden: "true" });
   });
 
   it("leaves nothing behind in the document", async () => {

@@ -707,7 +707,6 @@
       },
       "copy_cve": "CVE id",
       "copy_vector": "CVSS vector",
-      "copy_purl": "package URL",
       "advisories_label": "Look it up",
       "advisory_nvd": "NVD",
       "advisory_osv": "OSV",

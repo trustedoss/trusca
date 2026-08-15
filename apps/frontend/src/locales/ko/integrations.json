@@ -100,7 +100,6 @@
       "header": "헤더: X-Gitlab-Token (평문 베어러 시크릿)"
     },
     "copy": "URL 복사",
-    "copied": "복사됨",
-    "copy_webhook": "웹훅 URL"
+    "copied": "복사됨"
   }
 }

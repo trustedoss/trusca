@@ -27,20 +27,30 @@ export async function writeToClipboard(value: string): Promise<boolean> {
     }
   }
 
+  const scratch = document.createElement("textarea");
   try {
-    const scratch = document.createElement("textarea");
     scratch.value = value;
     // Off-screen rather than hidden: an element with `display: none` cannot
     // be selected, and the copy then silently does nothing.
+    //
+    // Off-screen still means reachable, so it is taken out of the tab order
+    // and hidden from the accessibility tree for the moment it exists.
     scratch.setAttribute("readonly", "");
+    scratch.setAttribute("tabindex", "-1");
+    scratch.setAttribute("aria-hidden", "true");
     scratch.style.position = "fixed";
     scratch.style.top = "-9999px";
     document.body.appendChild(scratch);
     scratch.select();
-    const ok = document.execCommand("copy");
-    document.body.removeChild(scratch);
-    return ok;
+    return document.execCommand("copy");
   } catch {
     return false;
+  } finally {
+    // In `finally`, because the removal used to sit on the line after the
+    // copy: `document.execCommand` is deprecated, so the day a browser drops
+    // it the call throws, and every attempt left another focusable textarea
+    // in the document. The browsers likeliest to drop it are the ones this
+    // fallback exists for.
+    scratch.remove();
   }
 }

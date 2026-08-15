@@ -116,6 +116,13 @@ function git(args) {
  * ko-style step in ci.yml); the workflow fetches the base before calling this,
  * and if that ever stops working the run must fail rather than congratulate us.
  */
+/** Files present in the tree that git is not tracking yet. */
+function untrackedFiles() {
+  return git(["ls-files", "--others", "--exclude-standard", "-z"])
+    .split("\0")
+    .filter(Boolean);
+}
+
 function resolveMergeBase(base) {
   try {
     git(["rev-parse", "--verify", `${base}^{commit}`]);
@@ -255,6 +262,17 @@ function main() {
     candidates = addedLines(
       git(["diff", mergeBase, "--unified=0", "--no-color"]),
     );
+    // Plus the files git does not know about yet. `git diff` reports nothing
+    // for an untracked file, so a brand-new one passed this check right up
+    // until it was committed, which is the moment the author is least likely
+    // to run it again. The first new file written after this gate shipped
+    // went through exactly that hole and was caught only in review.
+    for (const file of untrackedFiles()) {
+      if (!isWatched(file)) continue;
+      readLines(file).forEach((text, i) => {
+        candidates.push({ file, line: i + 1, text });
+      });
+    }
   }
 
   const hits = findings(candidates, (c) => {

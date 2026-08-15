@@ -100,7 +100,6 @@
       "header": "Header: X-Gitlab-Token (bearer secret, sent as plaintext)"
     },
     "copy": "Copy URL",
-    "copied": "Copied",
-    "copy_webhook": "webhook URL"
+    "copied": "Copied"
   }
 }
