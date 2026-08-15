@@ -94,6 +94,11 @@ test.describe("@approvals-surface the queue is addressable", () => {
       withScan: true,
       componentCount: 3,
       componentPrefix: prefix,
+      // Without this the seed anchors every component on the first
+      // project's scan, so the second project has nothing to raise an
+      // approval against and the test cannot tell a working filter from one
+      // that does nothing. (Found by the first nightly run of this spec.)
+      shareComponents: true,
       withRefreshToken: true,
       extraMembers: 1,
       extraTeamAdmin: true,
