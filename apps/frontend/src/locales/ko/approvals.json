@@ -6,7 +6,10 @@
       "status_open": "미결 (대기중 + 검토중)",
       "status_all": "전체 상태",
       "from_label": "시작일",
-      "to_label": "종료일"
+      "to_label": "종료일",
+      "clear": "필터 해제",
+      "clear_project": "해제",
+      "project_unnamed": "선택한 프로젝트"
     },
     "column": {
       "component": "컴포넌트",
@@ -55,6 +58,15 @@
       "transitioned": "승인 상태가 업데이트되었습니다.",
       "deleted": "승인이 삭제되었습니다."
     },
-    "empty": "현재 필터와 일치하는 승인 항목이 없습니다."
+    "pagination": {
+      "summary": "{{total}} 페이지 중 {{page}}"
+    },
+    "total_other": "요청 {{count}}건",
+    "requested_by_unknown": "요청자 정보 없음",
+    "empty_none": "판단을 기다리는 승인 요청이 없습니다.",
+    "empty_none_help": "컴포넌트의 라이선스에 판단이 필요해지면 여기에 요청이 나타납니다. 스캔이 올릴 수도 있고 사람이 직접 올릴 수도 있습니다.",
+    "empty_filtered": "조건에 맞는 승인 요청이 없습니다.",
+    "empty_filtered_help": "상태나 기간, 프로젝트 조건을 넓혀 보세요.",
+    "total": "요청 {{count}}건"
   }
 }

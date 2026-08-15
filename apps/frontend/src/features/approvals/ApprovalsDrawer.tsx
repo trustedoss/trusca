@@ -288,9 +288,16 @@ export function ApprovalsDrawer({
                 label={t("approvals.drawer.team_label")}
                 value={approval.team_id}
               />
+              {/* B2: the same name the row behind this panel shows. It read
+                  the raw id, so opening a drawer from a named row replaced
+                  the name with a uuid. */}
               <Meta
                 label={t("approvals.drawer.requested_by_label")}
-                value={approval.requested_by_user_id ?? "—"}
+                value={
+                  approval.requested_by_name ??
+                  approval.requested_by_user_id ??
+                  t("approvals.requested_by_unknown")
+                }
               />
               <Meta
                 label={t("approvals.drawer.requested_at_label")}

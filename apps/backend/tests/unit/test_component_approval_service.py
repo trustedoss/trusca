@@ -49,6 +49,7 @@ from services.component_approval_service import (
     delete_approval,
     get_approval,
     list_approvals,
+    resolve_requester_name,
     transition_approval,
 )
 from tests._helpers import (
@@ -864,3 +865,180 @@ async def test_list_returns_component_and_project_display_fields(
     assert row.component_purl == component.purl
     assert row.project_name == project_a.name
     assert row.project_slug == project_a.slug
+
+
+# ---------------------------------------------------------------------------
+# B2: project filter and the requester's display name
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_list_project_filter_narrows_to_one_project(
+    session: AsyncSession,
+    team_a,
+    project_a,
+    component,
+    developer_actor,
+):
+    """B2 - the queue can be scoped to a single project."""
+    other_project = await make_project(session, team=team_a)
+    from models.scan import Component
+
+    other_component = Component(
+        purl=f"pkg:pypi/other-{unique_suffix()}",
+        name=f"other-{unique_suffix()}",
+        package_type="pypi",
+    )
+    session.add(other_component)
+    await session.commit()
+    await session.refresh(other_component)
+
+    await create_approval(
+        session,
+        developer_actor,
+        component_id=component.id,
+        project_id=project_a.id,
+    )
+    await create_approval(
+        session,
+        developer_actor,
+        component_id=other_component.id,
+        project_id=other_project.id,
+    )
+
+    unfiltered, unfiltered_total = await list_approvals(session, developer_actor)
+    assert unfiltered_total >= 2
+
+    rows, total = await list_approvals(
+        session, developer_actor, project_id=project_a.id
+    )
+    assert total == 1
+    assert [r.approval.project_id for r in rows] == [project_a.id]
+    assert total < unfiltered_total
+
+
+@pytest.mark.asyncio
+async def test_list_project_filter_cannot_reach_another_team(
+    session: AsyncSession,
+    project_a,
+    component,
+    developer_actor,
+    outsider_actor,
+):
+    """B2 - the filter cannot reach outside the actor's teams.
+
+    The answer for a project in someone else's team has to be the same as the
+    answer for a project id that does not exist. If they differed, the filter
+    would be an oracle for which project ids are real.
+
+    What this holds down is that the tenant gate is applied at all, on both
+    the row query and the count. It is NOT a test of clause ordering: moving
+    the project filter above the gate leaves this passing, because `.where()`
+    is conjunctive and the SQL comes out the same. (Checked by moving it.)
+    """
+    await create_approval(
+        session,
+        developer_actor,
+        component_id=component.id,
+        project_id=project_a.id,
+    )
+
+    real_but_invisible, total_real = await list_approvals(
+        session, outsider_actor, project_id=project_a.id
+    )
+    absent, total_absent = await list_approvals(
+        session, outsider_actor, project_id=uuid.uuid4()
+    )
+
+    assert real_but_invisible == [] and absent == []
+    assert total_real == total_absent == 0
+
+
+@pytest.mark.asyncio
+async def test_list_resolves_the_requester_display_name(
+    session: AsyncSession,
+    team_a,
+    project_a,
+    component,
+):
+    """B2 - the queue names the requester instead of eight UUID characters."""
+    named = await make_user(session, full_name="Jin Park")
+    await make_membership(session, user=named, team=team_a, role="developer")
+    actor = principal_for(named, team_ids=[team_a.id], role="developer")
+
+    await create_approval(
+        session,
+        actor,
+        component_id=component.id,
+        project_id=project_a.id,
+    )
+
+    rows, _ = await list_approvals(session, actor, project_id=project_a.id)
+    assert [r.requested_by_name for r in rows] == ["Jin Park"]
+
+
+@pytest.mark.asyncio
+async def test_list_falls_back_to_the_email_when_there_is_no_full_name(
+    session: AsyncSession,
+    team_a,
+    project_a,
+    component,
+):
+    """B2 - same rule as the project list's creator column.
+
+    Whitespace rather than None, because `make_user` substitutes a generated
+    name for a None and would not exercise the branch. Blank-after-strip is
+    also the shape a real profile reaches when someone clears the field.
+    """
+    anonymous = await make_user(session, full_name="   ")
+    await make_membership(session, user=anonymous, team=team_a, role="developer")
+    actor = principal_for(anonymous, team_ids=[team_a.id], role="developer")
+
+    await create_approval(
+        session,
+        actor,
+        component_id=component.id,
+        project_id=project_a.id,
+    )
+
+    rows, _ = await list_approvals(session, actor, project_id=project_a.id)
+    assert [r.requested_by_name for r in rows] == [anonymous.email]
+
+
+@pytest.mark.asyncio
+async def test_single_approval_resolves_the_same_name_as_the_list(
+    session: AsyncSession,
+    team_a,
+    project_a,
+    component,
+):
+    """B2 - the drawer reads the single-row endpoint, not the list.
+
+    Two code paths naming the same person is how the queue ended up showing
+    "Jin Park" in the row and a raw uuid in the panel that opened from it.
+    """
+    named = await make_user(session, full_name="Jin Park")
+    await make_membership(session, user=named, team=team_a, role="developer")
+    actor = principal_for(named, team_ids=[team_a.id], role="developer")
+
+    created = await create_approval(
+        session,
+        actor,
+        component_id=component.id,
+        project_id=project_a.id,
+    )
+
+    rows, _ = await list_approvals(session, actor, project_id=project_a.id)
+    from_list = rows[0].requested_by_name
+    from_single = await resolve_requester_name(session, created.requested_by_user_id)
+
+    assert from_single == from_list == "Jin Park"
+
+
+@pytest.mark.asyncio
+async def test_single_approval_name_is_none_without_a_requester(
+    session: AsyncSession,
+) -> None:
+    """An approval the pipeline raised has no user id, and no name to find."""
+    assert await resolve_requester_name(session, None) is None
+    assert await resolve_requester_name(session, uuid.uuid4()) is None

@@ -88,6 +88,38 @@ export class ApprovalsHarness {
     });
   }
 
+  /** B2: the drawer is a history entry, so Back closes it and stays put. */
+  async expectDrawerInUrl(): Promise<void> {
+    await expect(this.page).toHaveURL(/[?&]approval=/, {
+      timeout: DEFAULT_TIMEOUT_MS,
+    });
+  }
+
+  async closeDrawerWithBrowserBack(): Promise<void> {
+    await this.page.goBack();
+    await expect(this.page.getByTestId("approvals-drawer")).toHaveCount(0);
+    await expect(this.page.getByTestId("approvals-page")).toBeVisible({
+      timeout: DEFAULT_TIMEOUT_MS,
+    });
+  }
+
+  /** B2: arrive at the queue scoped to one project, as the band links. */
+  async gotoApprovalsForProject(projectId: string): Promise<void> {
+    await this.page.goto(`${this.baseUrl}/approvals?project=${projectId}`);
+    await this.expectMounted();
+  }
+
+  async expectProjectFilterVisible(): Promise<void> {
+    await expect(this.page.getByTestId("approvals-project-filter")).toBeVisible({
+      timeout: DEFAULT_TIMEOUT_MS,
+    });
+  }
+
+  async clearProjectFilter(): Promise<void> {
+    await this.page.getByTestId("approvals-project-filter-clear").click();
+    await expect(this.page).not.toHaveURL(/[?&]project=/);
+  }
+
   // ───── dispose (mutations) ──────────────────────────────────────────────
   /**
    * Click a drawer action button, then confirm via the inline confirm strip

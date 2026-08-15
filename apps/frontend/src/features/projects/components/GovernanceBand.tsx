@@ -254,11 +254,19 @@ export function GovernanceBand({ projectId }: { projectId: string | null }) {
         {kevTotal}
       </Tile>
 
+      {/* B2 - the tile counts this project's open approvals, so the link has
+          to arrive at this project's queue. It used to land on the whole
+          portfolio's, where the number the user just clicked was nowhere on
+          the page. */}
       <Tile
         label={t("governance.approvals")}
         testId="governance-approvals"
         tone={band.pending_approvals > 0 ? "warning" : "neutral"}
-        to={band.pending_approvals > 0 ? "/approvals" : undefined}
+        to={
+          band.pending_approvals > 0
+            ? `/approvals?project=${band.project_id}`
+            : undefined
+        }
       >
         {band.pending_approvals}
       </Tile>
