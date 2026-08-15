@@ -118,7 +118,7 @@ export class AuthHarness {
       this.page.waitForURL(expectUrl, { timeout: DEFAULT_TIMEOUT_MS }),
       this.page.getByTestId("login-submit").click(),
     ]);
-    await this.expectLoggedIn();
+    await this.expectLoggedIn(expectUrl);
   }
 
   /**
@@ -160,12 +160,17 @@ export class AuthHarness {
   }
 
   // ───── assertions ──────────────────────────────────────────────────────
-  async expectLoggedIn(): Promise<void> {
+  async expectLoggedIn(expectUrl: RegExp = POST_AUTH_URL_RE): Promise<void> {
     // After login/register the app navigates to `/`, which PR #227 turned
     // into an index-redirect to `/projects` (Dashboard surface was dropped).
     // Either landing URL is "logged in"; match both so the harness keeps
     // working through router refactors.
-    await expect(this.page).toHaveURL(POST_AUTH_URL_RE, {
+    //
+    // A5 gave sign-in a third landing place: a user who followed a deep
+    // link is returned to it. Callers that expect one pass it in, and
+    // `login()` forwards whatever it was told to wait for, so this default
+    // stays right for everyone else.
+    await expect(this.page).toHaveURL(expectUrl, {
       timeout: DEFAULT_TIMEOUT_MS,
     });
     // "Authenticated shell loaded" sentinel. The desktop `app-sidebar`
