@@ -1,0 +1,85 @@
+/*
+ * Web fonts, served from this origin.
+ *
+ * `index.html` used to link a stylesheet from a font CDN. Three problems
+ * came with it, and self-hosting answers all three:
+ *
+ *   - The About page says this product supports air-gapped installs. In one,
+ *     the fetch fails and every screen renders in a fallback face.
+ *   - Every user's browser announced itself to a third party on every page
+ *     load, which is a question customers ask of an on-premise security tool.
+ *   - The visual gate depends on the fetch succeeding. It failed four times
+ *     on 2026-08-15 because Inter did not arrive; the diagnostic added that
+ *     day reported every Inter face as `unloaded` or `error`.
+ *
+ * The files are the upstream releases, not the CDN's subsets: Inter 4.1 and
+ * JetBrains Mono 2.304. That matters for licensing. OFL 1.1 requires the
+ * copyright notice and licence to accompany every copy, and the upstream
+ * binaries carry both in their `name` table (IDs 0 and 13), so each file a
+ * browser downloads satisfies the licence on its own. Whether the CDN's
+ * re-subsetted files still carry those records could not be established.
+ * The licence texts sit beside the fonts and are served from the same origin
+ * for the same reason.
+ *
+ * Weights are the four Inter and three JetBrains Mono faces the previous
+ * stylesheet requested, no more: each is a file the browser may fetch.
+ *
+ * `font-display: swap` matches what the CDN link asked for, so first paint
+ * behaves as it did.
+ */
+
+@font-face {
+  font-family: "Inter";
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url("/fonts/Inter-Regular.woff2") format("woff2");
+}
+
+@font-face {
+  font-family: "Inter";
+  font-style: normal;
+  font-weight: 500;
+  font-display: swap;
+  src: url("/fonts/Inter-Medium.woff2") format("woff2");
+}
+
+@font-face {
+  font-family: "Inter";
+  font-style: normal;
+  font-weight: 600;
+  font-display: swap;
+  src: url("/fonts/Inter-SemiBold.woff2") format("woff2");
+}
+
+@font-face {
+  font-family: "Inter";
+  font-style: normal;
+  font-weight: 700;
+  font-display: swap;
+  src: url("/fonts/Inter-Bold.woff2") format("woff2");
+}
+
+@font-face {
+  font-family: "JetBrains Mono";
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url("/fonts/JetBrainsMono-Regular.woff2") format("woff2");
+}
+
+@font-face {
+  font-family: "JetBrains Mono";
+  font-style: normal;
+  font-weight: 500;
+  font-display: swap;
+  src: url("/fonts/JetBrainsMono-Medium.woff2") format("woff2");
+}
+
+@font-face {
+  font-family: "JetBrains Mono";
+  font-style: normal;
+  font-weight: 600;
+  font-display: swap;
+  src: url("/fonts/JetBrainsMono-SemiBold.woff2") format("woff2");
+}

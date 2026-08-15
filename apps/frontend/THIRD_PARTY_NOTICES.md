@@ -176,6 +176,49 @@ a reader of one of those files is entitled to know where its copyright lines
 came from. Per-component provenance is stamped in
 `scan_components.raw_data["copyright_source"]`.
 
+### Inter — the interface typeface
+
+- **Source**: https://github.com/rsms/inter/releases/tag/v4.1 (`web/` directory)
+- **Copyright**: Copyright (c) 2016 The Inter Project Authors (https://github.com/rsms/inter)
+- **License**: SIL Open Font License 1.1 (OFL-1.1)
+- **Covers**: `apps/frontend/public/fonts/Inter-{Regular,Medium,SemiBold,Bold}.woff2`
+
+The four weights the interface renders with. Taken from the upstream release
+rather than a font CDN: OFL-1.1 §2 requires the copyright notice and the
+licence to accompany every copy, and the upstream binaries carry both in their
+`name` table (IDs 0 and 13), so each file a browser downloads satisfies the
+licence by itself. Whether a CDN's re-subsetted files still carry those
+records could not be established.
+
+The licence text is served beside the fonts at `/fonts/Inter-LICENSE.txt`, a
+byte-for-byte copy of the release's `LICENSE.txt`. The copy under
+`apps/backend/services/license_texts/` is deliberately not reused for this:
+it is the text the product shows users about *their* dependencies and carries
+no copyright line, which §2 requires.
+
+Inter declares no Reserved Font Name, so nothing here constrains the family
+name. "Inter" is a trademark of rsms; naming it is the attribution OFL-1.1 §4
+permits, and `font-family: "Inter"` must match the name table to work at all.
+Neither is the kind of product-name mention the editorial policy is about.
+
+### JetBrains Mono — the monospace typeface
+
+- **Source**: https://github.com/JetBrains/JetBrainsMono/releases/tag/v2.304 (`fonts/webfonts/`)
+- **Copyright**: Copyright 2020 The JetBrains Mono Project Authors (https://github.com/JetBrains/JetBrainsMono)
+- **License**: SIL Open Font License 1.1 (OFL-1.1)
+- **Covers**: `apps/frontend/public/fonts/JetBrainsMono-{Regular,Medium,SemiBold}.woff2`
+
+The three weights used for identifiers, purls, log output and version
+strings. Same provenance reasoning as Inter above, and the licence text is at
+`/fonts/JetBrainsMono-OFL.txt`.
+
+JetBrains Mono declares no Reserved Font Name. "JetBrains Mono" is a trademark
+of JetBrains s.r.o.; it is named here because OFL-1.1 §2 requires the
+attribution and because the family name is functional.
+
+OFL-1.1 §5 keeps modified fonts under OFL. It reaches the font files and
+nothing else: TRUSCA remains Apache-2.0.
+
 ---
 
 ## 2. Tools bundled in the TRUSCA worker image
