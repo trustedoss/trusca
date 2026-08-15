@@ -385,12 +385,17 @@ describe("ApprovalsPage (B2)", () => {
     );
   });
 
-  it("keeps the id as the fallback when the requester row is gone", async () => {
+  it("does not claim a cause for an approval with no requester", async () => {
+    // The row is real: the scan pipeline raises approvals with no user id.
+    // The first wording said "Raised automatically", which is also what a
+    // request would say if its requester's user row had been deleted, since
+    // the 0008 migration sets the column NULL in that case. Naming a cause
+    // the column cannot distinguish is the mistake G3 made with 409s.
     mockedList.mockResolvedValue(
       page([
         approval({
           id: "aaaaaaaa-0000-0000-0000-000000000012",
-          requested_by_user_id: "dddddddd-0000-0000-0000-000000000001",
+          requested_by_user_id: null,
           requested_by_name: null,
         }),
       ]),
@@ -400,8 +405,69 @@ describe("ApprovalsPage (B2)", () => {
 
     await waitFor(() => {
       expect(screen.getByTestId("approvals-row").textContent).toContain(
-        "dddddddd",
+        "No requester recorded",
       );
+    });
+  });
+
+  it("does not call a failed request an empty queue", async () => {
+    // A query that did not answer is not a queue with nothing in it. The
+    // page used to render the zero-state and a total of zero beside the
+    // error banner, both stating a fact nobody had established.
+    mockedList.mockRejectedValue(new Error("boom"));
+
+    renderPage();
+
+    await waitFor(() => {
+      expect(screen.getByTestId("approvals-error")).toBeInTheDocument();
+    });
+    expect(screen.queryByTestId("approvals-empty")).toBeNull();
+    expect(screen.queryByTestId("approvals-total")).toBeNull();
+  });
+
+  it("counts a page number as a filter, because it can empty the view", async () => {
+    // Landing on page 3 of a queue that has since shrunk shows no rows, and
+    // that is not the same thing as having none.
+    mockedList.mockResolvedValue(page([]));
+
+    renderPage({ initialUrl: "/approvals?page=3" });
+
+    const empty = await screen.findByTestId("approvals-empty");
+    expect(empty.textContent).toContain("No approvals match these filters");
+    expect(screen.getByTestId("approvals-clear-filters")).toBeInTheDocument();
+  });
+
+  it("labels the project chip without falling back to a raw id", async () => {
+    // The queue can be scoped to a project whose rows are all filtered out
+    // by the status, and then no row carries the name.
+    const projectId = "bbbbbbbb-0000-0000-0000-000000000002";
+    mockedList.mockResolvedValue(page([]));
+
+    renderPage({ initialUrl: `/approvals?project=${projectId}&status=approved` });
+
+    const chip = await screen.findByTestId("approvals-project-filter");
+    expect(chip.textContent).toContain("Selected project");
+    expect(chip.textContent).not.toContain("bbbbbbbb");
+  });
+
+  it("matches the project id case-insensitively, as the database does", async () => {
+    const lower = "bbbbbbbb-0000-0000-0000-000000000003";
+    mockedList.mockResolvedValue(
+      page([
+        approval({
+          id: "aaaaaaaa-0000-0000-0000-000000000014",
+          project_id: lower,
+          project_name: "payments-api",
+        }),
+      ]),
+    );
+
+    renderPage({ initialUrl: `/approvals?project=${lower.toUpperCase()}` });
+
+    await waitFor(() => {
+      expect(
+        screen.getByTestId("approvals-project-filter").textContent,
+      ).toContain("payments-api");
     });
   });
 
@@ -411,7 +477,10 @@ describe("ApprovalsPage (B2)", () => {
     renderPage();
 
     const empty = await screen.findByTestId("approvals-empty");
-    expect(empty.textContent).toContain("No approvals have been raised");
+    // The default view is the open queue, so the sentence has to be about
+    // what is waiting, not about what was ever raised: a team that has
+    // decided everything still has a history.
+    expect(empty.textContent).toContain("Nothing is waiting for a decision");
     // Nothing to clear, so nothing offers to.
     expect(screen.queryByTestId("approvals-clear-filters")).toBeNull();
   });

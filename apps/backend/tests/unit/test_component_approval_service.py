@@ -49,6 +49,7 @@ from services.component_approval_service import (
     delete_approval,
     get_approval,
     list_approvals,
+    resolve_requester_name,
     transition_approval,
 )
 from tests._helpers import (
@@ -924,11 +925,16 @@ async def test_list_project_filter_cannot_reach_another_team(
     developer_actor,
     outsider_actor,
 ):
-    """B2 - the filter runs after the team gate, so it cannot widen anything.
+    """B2 - the filter cannot reach outside the actor's teams.
 
     The answer for a project in someone else's team has to be the same as the
     answer for a project id that does not exist. If they differed, the filter
     would be an oracle for which project ids are real.
+
+    What this holds down is that the tenant gate is applied at all, on both
+    the row query and the count. It is NOT a test of clause ordering: moving
+    the project filter above the gate leaves this passing, because `.where()`
+    is conjunctive and the SQL comes out the same. (Checked by moving it.)
     """
     await create_approval(
         session,
@@ -997,3 +1003,42 @@ async def test_list_falls_back_to_the_email_when_there_is_no_full_name(
 
     rows, _ = await list_approvals(session, actor, project_id=project_a.id)
     assert [r.requested_by_name for r in rows] == [anonymous.email]
+
+
+@pytest.mark.asyncio
+async def test_single_approval_resolves_the_same_name_as_the_list(
+    session: AsyncSession,
+    team_a,
+    project_a,
+    component,
+):
+    """B2 - the drawer reads the single-row endpoint, not the list.
+
+    Two code paths naming the same person is how the queue ended up showing
+    "Jin Park" in the row and a raw uuid in the panel that opened from it.
+    """
+    named = await make_user(session, full_name="Jin Park")
+    await make_membership(session, user=named, team=team_a, role="developer")
+    actor = principal_for(named, team_ids=[team_a.id], role="developer")
+
+    created = await create_approval(
+        session,
+        actor,
+        component_id=component.id,
+        project_id=project_a.id,
+    )
+
+    rows, _ = await list_approvals(session, actor, project_id=project_a.id)
+    from_list = rows[0].requested_by_name
+    from_single = await resolve_requester_name(session, created.requested_by_user_id)
+
+    assert from_single == from_list == "Jin Park"
+
+
+@pytest.mark.asyncio
+async def test_single_approval_name_is_none_without_a_requester(
+    session: AsyncSession,
+) -> None:
+    """An approval the pipeline raised has no user id, and no name to find."""
+    assert await resolve_requester_name(session, None) is None
+    assert await resolve_requester_name(session, uuid.uuid4()) is None

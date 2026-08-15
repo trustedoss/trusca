@@ -55,6 +55,7 @@ from services.component_approval_service import (
     delete_approval,
     get_approval,
     list_approvals,
+    resolve_requester_name,
     transition_approval,
 )
 
@@ -190,7 +191,13 @@ async def get_approval_endpoint(
     except ApprovalError as exc:
         return _problem_for_approval_error(request, exc)
 
+    # B2: the drawer reads this endpoint, so it needs the same name the row
+    # in the list behind it shows. Without it the queue said "Jin Park" and
+    # the panel that opened from that row said "cccccccc".
     body = ApprovalOut.model_validate(row)
+    body.requested_by_name = await resolve_requester_name(
+        session, row.requested_by_user_id
+    )
     headers = {"ETag": f'"{row.version}"'}
     return Response(
         content=body.model_dump_json(),
@@ -323,7 +330,13 @@ async def transition_approval_endpoint(
     except ApprovalError as exc:
         return _problem_for_approval_error(request, exc)
 
+    # B2: the drawer reads this endpoint, so it needs the same name the row
+    # in the list behind it shows. Without it the queue said "Jin Park" and
+    # the panel that opened from that row said "cccccccc".
     body = ApprovalOut.model_validate(row)
+    body.requested_by_name = await resolve_requester_name(
+        session, row.requested_by_user_id
+    )
     headers = {"ETag": f'"{row.version}"'}
     return Response(
         content=body.model_dump_json(),

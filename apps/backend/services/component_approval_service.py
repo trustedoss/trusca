@@ -260,11 +260,15 @@ async def list_approvals(
 
     if project_id is not None:
         # B2: narrows the queue to one project, which is what the governance
-        # band and the dashboard action tile link to. It cannot widen anything:
-        # the tenant gate above has already restricted the query to the actor's
-        # teams, so a project in someone else's team returns an empty page and
-        # not a permission error, which is the same answer an id that does not
-        # exist gets. Nothing here tells the caller which of the two it was.
+        # band on a project page links to. (The dashboard tile counts the
+        # whole portfolio and deliberately still links to the whole queue.)
+        # It cannot widen anything. What makes that true is that the tenant
+        # gate is applied to BOTH the row query and the count query, not the
+        # order these clauses appear in: `.where()` is conjunctive, so moving
+        # this above the gate would produce identical SQL. A project in
+        # someone else's team therefore returns an empty page rather than a
+        # permission error, which is the same answer an id that does not
+        # exist gets, and nothing tells the caller which of the two it was.
         base = base.where(ComponentApproval.project_id == project_id)
         count_base = count_base.where(ComponentApproval.project_id == project_id)
 
@@ -392,6 +396,29 @@ async def list_approvals(
 # ---------------------------------------------------------------------------
 # get_approval
 # ---------------------------------------------------------------------------
+
+
+async def resolve_requester_name(
+    session: AsyncSession,
+    user_id: uuid.UUID | None,
+) -> str | None:
+    """The display name for one requester, by the list's rule.
+
+    B2: the list resolves these in a batch; a single approval needs one. Kept
+    here rather than inlined at the two call sites so the two surfaces cannot
+    drift into naming the same person differently, which is what happened
+    when the row said a name and the drawer opened on a raw id.
+    """
+    if user_id is None:
+        return None
+    row = (
+        await session.execute(
+            select(User.full_name, User.email).where(User.id == user_id)
+        )
+    ).one_or_none()
+    if row is None:
+        return None
+    return (row.full_name or "").strip() or str(row.email)
 
 
 async def get_approval(

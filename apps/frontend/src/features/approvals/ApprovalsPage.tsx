@@ -241,21 +241,33 @@ export function ApprovalsPage() {
   const total = approvalsQuery.data?.total ?? 0;
   const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE));
 
-  // B2 - "open" is the default view rather than a filter the user chose, so
-  // it does not count here. Everything else narrows the queue and is worth
-  // offering to undo when the result is empty.
+  // B2 - anything that can make a non-empty queue look empty counts, `page`
+  // included: landing on page 3 of a queue that has shrunk shows no rows and
+  // is not the same thing as having none. "open" is the default view rather
+  // than a choice the user made, so it does not count.
   const hasFilters =
-    statusFilter !== "open" || projectId !== null || fromDt !== "" || toDt !== "";
+    statusFilter !== "open" ||
+    projectId !== null ||
+    fromDt !== "" ||
+    toDt !== "" ||
+    page > 1;
   const clearFilters = useCallback(() => {
     setSearchParams(new URLSearchParams(), { replace: false });
   }, [setSearchParams]);
 
   // The name of the project the queue is scoped to, taken from the rows the
-  // filter returned. There is no separate lookup: if the filter matched
-  // nothing there is no name to show, and the chip says the id instead.
+  // filter returned. There is no separate lookup for it: one more request to
+  // label a chip is not worth it, and the rows already carry the name.
+  //
+  // Two things the first version got wrong. The comparison was
+  // case-sensitive while Postgres compares uuids case-insensitively, so an
+  // uppercase `?project=` filtered correctly and then failed to find its own
+  // rows. And when no row supplied a name it printed eight characters of the
+  // id, which is the thing this unit set out to stop showing people.
   const projectFilterLabel = projectId
-    ? (items.find((i) => i.project_id === projectId)?.project_name ??
-      projectId.slice(0, 8))
+    ? (items.find(
+        (i) => i.project_id.toLowerCase() === projectId.toLowerCase(),
+      )?.project_name ?? t("approvals.filter.project_unnamed"))
     : null;
 
   return (
@@ -390,16 +402,20 @@ export function ApprovalsPage() {
         ) : null}
 
         {/* The size of what is being looked at. The pagination footer said
-            "1 / 4" and nothing said how many rows that was. */}
-        <div className="ml-auto flex flex-col gap-1">
-          <span className="text-xs text-muted-foreground">&nbsp;</span>
-          <span
-            className="flex h-8 items-center text-sm text-muted-foreground"
-            data-testid="approvals-total"
-          >
-            {t("approvals.total", { count: total })}
-          </span>
-        </div>
+            "1 / 4" and nothing said how many rows that was. Absent while the
+            request is in flight or after it failed: "0 requests" would be a
+            count nobody counted. */}
+        {approvalsQuery.isSuccess ? (
+          <div className="ml-auto flex flex-col gap-1">
+            <span className="text-xs text-muted-foreground">&nbsp;</span>
+            <span
+              className="flex h-8 items-center text-sm text-muted-foreground"
+              data-testid="approvals-total"
+            >
+              {t("approvals.total", { count: total })}
+            </span>
+          </div>
+        ) : null}
 
         {/* Refresh */}
         <Button
@@ -531,12 +547,17 @@ export function ApprovalsPage() {
                     </td>
 
                     {/* B2 - the requester by name. This column used to print
-                        the first eight characters of a UUID, which names
+                        the first eight characters of a uuid, which names
                         nobody and cannot be chased up. The backend resolves
-                        the name the same way the project list resolves its
-                        creator column; the id remains the fallback for a
-                        deleted user, and an approval raised without a user
-                        says so rather than showing a bare dash. */}
+                        it the same way the project list resolves its creator
+                        column.
+
+                        The id branch is defensive rather than reachable from
+                        the list: the approvals table sets the requester to
+                        NULL when the user row goes (see the 0008 migration),
+                        so a missing name comes with a missing id. It stays
+                        because the single-row endpoints are separate code
+                        paths, and it costs one line. */}
                     <td className="px-3">
                       {item.requested_by_name ? (
                         <span className="text-sm text-foreground">
@@ -585,8 +606,15 @@ export function ApprovalsPage() {
             {/* B2 - two states, not one sentence. "No approvals match the
                 current filters" is a lie on an empty queue with no filters
                 set, and it hides the good news. The shared EmptyState is what
-                every other zero-state in the product uses. */}
-            {!approvalsQuery.isLoading && items.length === 0 ? (
+                every other zero-state in the product uses.
+
+                Neither sentence is shown when the request failed. A query
+                that did not answer is not a queue with nothing in it, and
+                saying so beside a red error banner (and beside a total of
+                zero) states a fact nobody established. */}
+            {!approvalsQuery.isLoading &&
+            !approvalsQuery.isError &&
+            items.length === 0 ? (
               <tr>
                 <td colSpan={6} className="px-6 py-6">
                   <EmptyState
