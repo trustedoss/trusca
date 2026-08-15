@@ -62,6 +62,13 @@ COPY --from=build /app/dist /usr/share/nginx/html
 # stage must carry the files itself, and only /app/dist crosses over from build.
 # `/licenses/` is deliberately outside /usr/share/nginx/html — the notices
 # travel with the image without becoming routable static assets.
+#
+# The vendored fonts' licence texts are NOT repeated here. They ship inside
+# /usr/share/nginx/html/fonts/ beside the fonts themselves, because OFL-1.1
+# wants the licence to travel with every copy and the copies that leave this
+# image are the ones a browser downloads. THIRD_PARTY_NOTICES.md below names
+# both families and points at that directory, so an image recipient reading
+# /licenses/ is not left guessing.
 COPY LICENSE NOTICE THIRD_PARTY_NOTICES.md /licenses/
 
 # Run as the unprivileged `nginx` user that the base image already

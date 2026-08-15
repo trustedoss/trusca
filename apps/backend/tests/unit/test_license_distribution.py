@@ -292,3 +292,102 @@ def test_license_appendix_names_trusca() -> None:
     license_text = _read(REPO_ROOT / "LICENSE")
     assert "Copyright 2026 TRUSCA contributors" in license_text
     assert "TrustedOSS Portal contributors" not in license_text
+
+
+# ---------------------------------------------------------------------------
+# Vendored web fonts
+# ---------------------------------------------------------------------------
+
+#: Font binaries served from the frontend's own origin, mapped to the upstream
+#: name that must appear in THIRD_PARTY_NOTICES.md.
+#:
+#: These need their own registry because neither existing one reaches them.
+#: `_derivative_sources` walks four source directories, none of which is
+#: `apps/frontend/public`, and only six text suffixes, none of which is
+#: `.woff2`. `VENDORED_DATA_GLOBS` is entirely under `apps/backend`. So a font
+#: added tomorrow would be attributed only if someone remembered, which is the
+#: failure mode this file exists to remove.
+#:
+#: The self-scan does not help either: cdxgen builds the SBOM from manifests,
+#: and a loose binary under `public/` appears in none, so it is reported as
+#: nothing at all rather than as an unknown.
+VENDORED_FONTS = {
+    Path("apps/frontend/public/fonts/Inter-Regular.woff2"): "Inter",
+    Path("apps/frontend/public/fonts/Inter-Medium.woff2"): "Inter",
+    Path("apps/frontend/public/fonts/Inter-SemiBold.woff2"): "Inter",
+    Path("apps/frontend/public/fonts/Inter-Bold.woff2"): "Inter",
+    Path("apps/frontend/public/fonts/JetBrainsMono-Regular.woff2"): "JetBrains Mono",
+    Path("apps/frontend/public/fonts/JetBrainsMono-Medium.woff2"): "JetBrains Mono",
+    Path("apps/frontend/public/fonts/JetBrainsMono-SemiBold.woff2"): "JetBrains Mono",
+}
+
+#: The licence text each family's files must be served alongside. OFL-1.1 §2
+#: wants the notice and the licence with every copy; the binaries carry both
+#: in their name table, and these are the human-readable half.
+FONT_LICENCE_FILES = {
+    "Inter": Path("apps/frontend/public/fonts/Inter-LICENSE.txt"),
+    "JetBrains Mono": Path("apps/frontend/public/fonts/JetBrainsMono-OFL.txt"),
+}
+
+
+def test_every_vendored_font_is_registered() -> None:
+    """A font cannot be added without deciding what it owes upstream."""
+    fonts_dir = REPO_ROOT / "apps" / "frontend" / "public" / "fonts"
+    discovered = {
+        path.relative_to(REPO_ROOT)
+        for path in fonts_dir.glob("**/*.woff2")
+        if path.is_file()
+    }
+    assert discovered, (
+        "the font scan found nothing, so either the directory moved or the "
+        "glob stopped matching, and a gate that examines no files reports "
+        "success"
+    )
+
+    unregistered = sorted(p.as_posix() for p in discovered - set(VENDORED_FONTS))
+    assert not unregistered, (
+        f"these font files are not in VENDORED_FONTS: {unregistered}. Register "
+        "each with the upstream family name, add a THIRD_PARTY_NOTICES.md "
+        "entry, and ship the upstream licence text beside it."
+    )
+
+
+def test_vendored_fonts_are_attributed(notices_text: str) -> None:
+    """Each font file, its family and its licence appear where they must."""
+    problems: list[str] = []
+    for rel, family in VENDORED_FONTS.items():
+        if not (REPO_ROOT / rel).is_file():
+            problems.append(f"{rel.as_posix()} is registered but does not exist")
+            continue
+        if family not in notices_text:
+            problems.append(f"{family} is not named in THIRD_PARTY_NOTICES.md")
+        if rel.name not in notices_text and rel.parent.as_posix() not in notices_text:
+            problems.append(
+                f"{rel.as_posix()} is covered by no notice entry: name either "
+                "the file or its directory so a reader can tell what the "
+                "attribution applies to"
+            )
+    assert not problems, problems
+
+
+def test_each_font_family_ships_its_licence_text() -> None:
+    """OFL-1.1 section 2: the licence travels with every copy, served ones too.
+
+    The files live beside the fonts under `public/`, so Vite copies them into
+    `dist/` and the image serves them from the same origin as the fonts. A
+    reader who fetched a font can fetch its licence from the same place.
+    """
+    for family, rel in FONT_LICENCE_FILES.items():
+        path = REPO_ROOT / rel
+        assert path.is_file(), f"{family}: missing licence text at {rel.as_posix()}"
+        text = path.read_text(encoding="utf-8")
+        assert "SIL OPEN FONT LICENSE" in text.upper(), (
+            f"{family}: {rel.as_posix()} does not look like the OFL"
+        )
+        # The copyright line is the half section 2 asks for beyond the licence
+        # body, and the copy under services/license_texts/ carries none, which
+        # is why it must not be reused here.
+        assert "Copyright" in text, (
+            f"{family}: {rel.as_posix()} carries no copyright line, so it does "
+            "not satisfy OFL-1.1 section 2 on its own"
+        )

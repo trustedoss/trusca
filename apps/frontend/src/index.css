@@ -1,3 +1,7 @@
+/* Ahead of Tailwind's base layer so the faces are declared before anything
+   asks for them. See fonts.css for why they are served from this origin. */
+@import "./fonts.css";
+
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
