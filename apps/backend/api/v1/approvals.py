@@ -244,7 +244,12 @@ async def create_approval_endpoint(
     except ApprovalError as exc:
         return _problem_for_approval_error(request, exc)
 
+    # The other two single-row endpoints fill this in, and a create response
+    # that leaves it null would be one payload shape for the same model.
     body = ApprovalOut.model_validate(row)
+    body.requested_by_name = await resolve_requester_name(
+        session, row.requested_by_user_id
+    )
     return Response(
         content=body.model_dump_json(),
         status_code=status.HTTP_201_CREATED,

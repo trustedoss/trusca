@@ -250,4 +250,45 @@ describe("ApprovalsDrawer", () => {
     });
     expect(mockedTransition).not.toHaveBeenCalled();
   });
+
+  // ─── B2: the panel names the same person the row behind it does ─────────
+
+  it("shows the requester by name, not by id", async () => {
+    // The drawer read `requested_by_user_id` straight out, so opening it
+    // from a row that said "Jin Park" replaced the name with a uuid.
+    mockedGet.mockResolvedValue({
+      approval: approval({
+        requested_by_user_id: "cccccccc-0000-0000-0000-000000000001",
+        requested_by_name: "Jin Park",
+      }),
+      etag: "1",
+    });
+    renderDrawer();
+
+    await waitFor(() => {
+      expect(screen.getByTestId("approvals-drawer").textContent).toContain(
+        "Jin Park",
+      );
+    });
+    expect(screen.getByTestId("approvals-drawer").textContent).not.toContain(
+      "cccccccc",
+    );
+  });
+
+  it("says nothing about a cause when there is no requester", async () => {
+    mockedGet.mockResolvedValue({
+      approval: approval({
+        requested_by_user_id: null,
+        requested_by_name: null,
+      }),
+      etag: "1",
+    });
+    renderDrawer();
+
+    await waitFor(() => {
+      expect(screen.getByTestId("approvals-drawer").textContent).toContain(
+        "No requester recorded",
+      );
+    });
+  });
 });
