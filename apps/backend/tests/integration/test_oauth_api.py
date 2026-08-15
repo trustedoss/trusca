@@ -157,6 +157,69 @@ async def test_authorize_redirects_to_github(client: AsyncClient) -> None:
     assert qs["redirect_uri"][0].endswith("/auth/oauth/github/callback")
 
 
+async def test_authorize_refuses_to_carry_an_off_site_redirect(
+    client: AsyncClient,
+) -> None:
+    """A5 - the query parameter is public and used to be unchecked.
+
+    `?redirect_after=https://evil.example` travelled into the signed state
+    and out of the callback as a 302, in the response that sets the refresh
+    cookie: a genuine sign-in delivering the user elsewhere. The service
+    tests cover the rule; this covers the endpoint that receives it, and the
+    state it hands to the provider.
+    """
+    from jose import jwt
+
+    from core.config import secret_key
+    from core.security import JWT_ALGORITHM
+
+    response = await client.get(
+        "/auth/oauth/github/authorize",
+        params={"redirect_after": "https://evil.example/steal"},
+    )
+    assert response.status_code == 302
+
+    qs = parse_qs(urlsplit(response.headers["location"]).query)
+    claims = jwt.decode(qs["state"][0], secret_key(), algorithms=[JWT_ALGORITHM])
+    # Not merely absent from the redirect: never written into the token.
+    assert "redirect_after" not in claims
+
+
+async def test_callback_location_stays_on_our_own_front_end(
+    client: AsyncClient,
+    monkeypatch: pytest.MonkeyPatch,
+    patch_async_client: Callable[[Callable[[httpx.Request], httpx.Response]], None],
+    seed_organization: None,
+) -> None:
+    """The header a browser actually follows, not just the claim behind it.
+
+    The state here is correctly signed by this deployment and carries a
+    target it would never mint today: the shape a rolling deploy leaves
+    behind, or any caller that reaches `_signed_state` directly. It runs the
+    full success path, so the assertion is on the `Location` a browser would
+    obey, and a change to how the response is built is caught here rather
+    than in production.
+    """
+    monkeypatch.setenv("OAUTH_LOGIN_REDIRECT_DEFAULT", "https://portal.example")
+
+    email = f"redirect-guard-{uuid.uuid4().hex[:8]}@example.com"
+    patch_async_client(
+        _github_handler(user_id=910_001, email=email, name="Redirect Guard")
+    )
+    state = await _mint_state("github", "https://evil.example/steal")
+
+    response = await client.get(
+        "/auth/oauth/github/callback",
+        params={"code": "abc", "state": state},
+        follow_redirects=False,
+    )
+
+    assert response.status_code == 302
+    location = response.headers["location"]
+    assert "evil.example" not in location
+    assert location.startswith("https://portal.example")
+
+
 async def test_authorize_unknown_provider_returns_422(client: AsyncClient) -> None:
     """Literal['github', 'google'] gate triggers Pydantic 422 problem+json."""
     response = await client.get("/auth/oauth/facebook/authorize")
@@ -312,9 +375,12 @@ async def test_callback_creates_new_user_and_personal_team(
         params={"code": "abc", "state": state},
     )
     assert response.status_code == 302, response.text
-    # Success → success-default URL because we passed redirect_after="/dashboard"
-    # which is treated verbatim.
-    assert response.headers["location"] == "/dashboard"
+    # A5: the path is resolved against the front end's ORIGIN, not returned
+    # verbatim. A relative Location resolves against whoever sent it, and
+    # that is this API, which in the dev profile is a different port from
+    # the SPA. The configured default carries its own path here
+    # (".../dashboard"), which is deliberately not part of the answer.
+    assert response.headers["location"] == "http://localhost:5173/dashboard"
     # refresh cookie set, HttpOnly + SameSite=Lax (Secure off in dev).
     raw_cookie = response.headers.get("set-cookie", "")
     assert "refresh_token=" in raw_cookie

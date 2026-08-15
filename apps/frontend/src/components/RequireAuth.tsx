@@ -47,7 +47,9 @@ export function RequireAuth({ children }: RequireAuthProps) {
       <Navigate
         to="/login"
         replace
-        state={{ from: location.pathname + location.search }}
+        // A5 added the hash: a deep link into a screen that uses one was
+        // losing it on the round trip through sign-in.
+        state={{ from: location.pathname + location.search + location.hash }}
       />
     );
   }

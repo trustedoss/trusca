@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2026 TRUSCA contributors
 import { useEffect } from "react";
-import { useNavigate } from "react-router-dom";
+import { useLocation, useNavigate } from "react-router-dom";
 
 import { useAuthStore } from "@/stores/authStore";
 
@@ -16,16 +16,40 @@ import { useAuthStore } from "@/stores/authStore";
  */
 export function AuthExpiredListener() {
   const navigate = useNavigate();
+  const location = useLocation();
 
   useEffect(() => {
     function onExpired() {
       // Reset is idempotent; safe even when the interceptor already called it.
       useAuthStore.getState().reset();
-      navigate("/login", { replace: true });
+      // A5: carry two things to the sign-in screen. Where the user was, so
+      // signing in again puts them back rather than on the dashboard; and
+      // the fact that this was an expiry, so the screen can say why it is
+      // asking. Without either, a session timing out looked identical to
+      // arriving at /login on purpose, and the page the user had open was
+      // simply gone.
+      //
+      // Router state, not a query parameter: a link is something an
+      // attacker can hand someone, and "your session expired" is a sentence
+      // worth being unable to forge. Router state is held in
+      // `history.state`, which only this document can write, so a link
+      // cannot carry either of these.
+      //
+      // It does survive a reload, and Back returns to the entry that has
+      // it. The banner clears itself once shown (see LoginPage) so a stale
+      // history entry cannot claim a session expired minutes after the
+      // fact.
+      navigate("/login", {
+        replace: true,
+        state: {
+          from: location.pathname + location.search + location.hash,
+          expired: true,
+        },
+      });
     }
     window.addEventListener("auth:expired", onExpired);
     return () => window.removeEventListener("auth:expired", onExpired);
-  }, [navigate]);
+  }, [navigate, location]);
 
   return null;
 }

@@ -1,11 +1,16 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2026 TRUSCA contributors
 import { zodResolver } from "@hookform/resolvers/zod";
-import { AlertCircle, CheckCircle2 } from "lucide-react";
+import { AlertCircle, CheckCircle2, Clock } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { useForm } from "react-hook-form";
 import { useTranslation } from "react-i18next";
-import { Link, useNavigate, useSearchParams } from "react-router-dom";
+import {
+  Link,
+  useLocation,
+  useNavigate,
+  useSearchParams,
+} from "react-router-dom";
 import { z } from "zod";
 
 import { AuthLayout } from "@/pages/auth/AuthLayout";
@@ -27,6 +32,7 @@ import { useOAuthProviders } from "@/hooks/useOAuthProviders";
 import { fetchMe, postLogin } from "@/lib/api";
 import { getApiBase } from "@/lib/apiBase";
 import { problemMessage } from "@/lib/problemMessage";
+import { safeReturnPath } from "@/lib/returnPath";
 import { cn } from "@/lib/utils";
 import { useAuthStore } from "@/stores/authStore";
 
@@ -60,6 +66,7 @@ const OAUTH_ERROR_KEYS: Record<string, string> = {
 export function LoginPage() {
   const { t } = useTranslation("auth");
   const navigate = useNavigate();
+  const location = useLocation();
   const [searchParams] = useSearchParams();
   const setAccessToken = useAuthStore((s) => s.setAccessToken);
   const setUser = useAuthStore((s) => s.setUser);
@@ -84,6 +91,33 @@ export function LoginPage() {
   // normal deploy never exposes demo account hints.
   const { demoReadOnly } = useDemoMode();
 
+  // A5: where the user was when they were sent here, and whether a session
+  // expiring is what sent them. `RequireAuth` and `AuthExpiredListener` both
+  // stash this in router state. The path is never used raw: `safeReturnPath`
+  // is what stands between a crafted link and a hand-off to another origin
+  // one keystroke after a password.
+  const navState = location.state as
+    | { from?: unknown; expired?: unknown }
+    | null;
+  const returnTo = safeReturnPath(navState?.from);
+  // Captured once, so the banner survives the history rewrite below that
+  // stops it reappearing later.
+  const [sessionExpired] = useState(() => navState?.expired === true);
+
+  // Show it once, then take the flag out of the history entry. `expired`
+  // survives a reload and comes back with the Back button, so without this
+  // an entry from earlier in the session announces an expiry that happened
+  // minutes ago as though it had just happened. The return path stays: it
+  // is still where the user was going.
+  useEffect(() => {
+    if (navState?.expired !== true) return;
+    // Through the router rather than `history.replaceState` directly: the
+    // shape of what the router keeps in `history.state` is its own business
+    // (it nests the caller's state under a key), and reaching in would go
+    // quietly inert the day that changes, bringing the stale banner back.
+    navigate(".", { replace: true, state: { from: navState.from } });
+  }, [navState, navigate]);
+
   // chore B — OAuth error codes are forwarded via ?error=oauth_*. We keep
   // the raw value local so a malicious URL like ?error=<script> stays
   // confined to a controlled mapping; only the matching i18n key is rendered.
@@ -104,15 +138,38 @@ export function LoginPage() {
   //   the user to that URL. Note we URI-encode but DO NOT validate the value
   //   here — the backend (services/oauth_service.py) is the source of truth
   //   for which redirect_after values are safe.
-  const redirectAfter = searchParams.get("redirect_after") ?? "/";
+  // A5 extended this: when the user arrived from a guarded page, that page
+  // is the natural destination for the provider round-trip too. Otherwise
+  // signing in with a password returned the user to where they meant to go
+  // and signing in with GitHub did not.
+  //
+  // The query parameter goes through the same guard as the state-carried
+  // path. It is the half that an attacker can actually set, since a link
+  // can carry a query string and cannot carry router state, and it was
+  // unchecked on both sides: this file said the backend vetted it, the
+  // backend said the SPA did. The backend now does too
+  // (`safe_redirect_after`), which is what covers callers that never load
+  // this page.
+  //
+  // Only the path survives the hand-off, because everything in this value
+  // is written into the state JWT and shows up in the provider's logs, and
+  // this application puts audit filters and search terms in query strings.
+  //
+  // The query is therefore lost on the OAuth route, and not, as an earlier
+  // version of this comment claimed, restored afterwards: starting the
+  // provider flow leaves the page, and the SPA that boots on the callback
+  // has no router state. Password sign-in keeps the whole path. Losing a
+  // filter is the cheaper of the two costs.
+  const rawRedirectAfter = searchParams.get("redirect_after") ?? returnTo;
+  const redirectAfter = safeReturnPath(rawRedirectAfter).split(/[?#]/)[0];
 
   // If a refresh cookie is alive (e.g., user reloaded /login after auth) the
-  // store will resolve to "authenticated" via bootstrap → bounce to /.
+  // store will resolve to "authenticated" via bootstrap → bounce onward.
   useEffect(() => {
     if (status === "authenticated") {
-      navigate("/", { replace: true });
+      navigate(returnTo, { replace: true });
     }
-  }, [status, navigate]);
+  }, [status, navigate, returnTo]);
 
   const form = useForm<LoginValues>({
     resolver: zodResolver(buildSchema(t)),
@@ -130,7 +187,7 @@ export function LoginPage() {
       const me = await fetchMe();
       setUser(me);
       setStatus("authenticated");
-      navigate("/", { replace: true });
+      navigate(returnTo, { replace: true });
     } catch (err) {
       // `prefix` rather than `action`: the auth namespace already words these
       // classes for the sign-in context ("errors.network", "errors.unknown").
@@ -178,6 +235,16 @@ export function LoginPage() {
         <Alert variant="destructive" data-testid="login-oauth-error">
           <AlertCircle className="h-4 w-4" aria-hidden />
           <AlertDescription>{t(oauthErrorKey)}</AlertDescription>
+        </Alert>
+      ) : null}
+
+      {/* A5: a session ending is not the user's mistake, so it is stated
+          rather than warned about. It gives way to a submit error, which is
+          about the attempt in front of them. */}
+      {sessionExpired && !apiError ? (
+        <Alert variant="default" data-testid="login-session-expired">
+          <Clock className="h-4 w-4" aria-hidden />
+          <AlertDescription>{t("login.session_expired")}</AlertDescription>
         </Alert>
       ) : null}
 

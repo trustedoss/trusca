@@ -33,7 +33,7 @@ The 302 paths cannot use Problem Details by definition; the failure URL +
 from __future__ import annotations
 
 from typing import Any, Literal
-from urllib.parse import urlencode
+from urllib.parse import urlencode, urlsplit
 
 import structlog
 from fastapi import APIRouter, Depends, Request, Response, status
@@ -112,6 +112,32 @@ def _set_refresh_cookie(response: Response, *, refresh_token: str) -> None:
         secure=is_prod,
         samesite="lax",
     )
+
+
+def _absolute_redirect(target: str | None) -> str:
+    """Resolve a validated ``redirect_after`` against the SPA's own origin.
+
+    ``safe_redirect_after`` returns either a path or an absolute URL on the
+    configured front end, so the only work here is giving a path an origin.
+    That origin has to be the SPA's, not this API's: a relative Location
+    resolves against whoever sent it, and the dev profile runs the SPA on
+    :5173 and the API on :8000.
+    """
+    default = oauth_login_redirect_default()
+    if not target:
+        return default
+    if not target.startswith("/"):
+        return target
+    # Against the ORIGIN of the default, not the whole of it. The setting is
+    # allowed to carry a path (the test profile points at
+    # ``http://localhost:5173/dashboard``), and appending to that produced
+    # ``/dashboard/dashboard``. A path target means "this path on the front
+    # end", which is an origin plus a path, so the default's own path is not
+    # part of the answer.
+    parsed = urlsplit(default)
+    if not parsed.scheme or not parsed.netloc:
+        return default
+    return f"{parsed.scheme}://{parsed.netloc}{target}"
 
 
 def _failure_redirect(reason: str) -> RedirectResponse:
@@ -324,11 +350,24 @@ async def callback(
         log.error("oauth_callback_no_organization", provider=provider)
         return _failure_redirect("oauth_no_organization")
 
-    # Build the success redirect — fall back to the configured default if
-    # the state did not carry an explicit ``redirect_after``. We do NOT
-    # echo unsafe redirect_after values verbatim: the SPA is expected to
-    # vet the value at sign-in time before placing it in the state JWT.
-    target = redirect_after or oauth_login_redirect_default()
+    # Build the success redirect, falling back to the configured default
+    # when the state carried nothing usable.
+    #
+    # This comment used to say the SPA vetted the value before it reached
+    # the state JWT, while the SPA's own comment said the backend was the
+    # source of truth. Neither did: `?redirect_after=https://evil.example`
+    # travelled from a public GET into a signed state and out of here as a
+    # 302, in the response that sets the refresh cookie. The check now lives
+    # in `safe_redirect_after`, applied when the state is minted and again
+    # when it is read, so this line receives either an in-app path or the
+    # deployment's own front end.
+    #
+    # Absolute, always. A relative Location resolves against THIS origin, and
+    # the dev profile serves the SPA on :5173 while the API answers on :8000,
+    # so a path-only target landed OAuth sign-in on the API port. The SPA now
+    # sends paths exclusively (it stopped forwarding query strings to the
+    # provider), which turned that from a rare case into the normal one.
+    target = _absolute_redirect(redirect_after)
     response = RedirectResponse(target, status_code=status.HTTP_302_FOUND)
     _set_refresh_cookie(response, refresh_token=refresh_token)
     log.info("oauth_callback_success", provider=provider, user_id=str(user.id))
