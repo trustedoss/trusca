@@ -118,5 +118,10 @@
     "description": "No screen matches the address in the bar. It may have been mistyped, or it may point at something that has since moved.",
     "address_label": "Address: {{path}}",
     "back_home": "Go to the dashboard"
+  },
+  "copy": {
+    "label": "Copy {{what}}",
+    "copied": "{{what}} copied.",
+    "failed": "Could not copy the {{what}}. Select it and copy manually."
   }
 }

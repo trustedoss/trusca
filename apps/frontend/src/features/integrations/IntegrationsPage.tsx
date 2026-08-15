@@ -32,6 +32,7 @@ import { useApiKeys } from "@/features/integrations/useApiKeys";
 import { usePermissions } from "@/hooks/usePermissions";
 import { createApiKey, revokeApiKey } from "@/lib/apiKeysApi";
 import { getApiBase } from "@/lib/apiBase";
+import { writeToClipboard } from "@/lib/clipboard";
 import { problemMessage } from "@/lib/problemMessage";
 import RelativeTime from "@/components/RelativeTime";
 import { cn } from "@/lib/utils";
@@ -192,12 +193,18 @@ export function IntegrationsPage() {
   });
 
   async function copyToClipboard(text: string) {
-    try {
-      await navigator.clipboard.writeText(text);
+    // A6: through the shared helper, which falls back to the legacy
+    // selection trick. `navigator.clipboard` is absent on any origin the
+    // browser calls insecure, and this product is installed on internal
+    // networks where plain http is ordinary; without the fallback every
+    // copy on such a deployment reported failure. The button and its
+    // wording stay as they are: this card's labelled button reads better
+    // beside a URL than the icon-only one used in the drawers.
+    if (await writeToClipboard(text)) {
       // Lightweight feedback via the same toast surface so users hear the
       // confirmation without waiting for a dialog state change.
       showToast(t("api_keys.create_result.copied"), "success", "copied");
-    } catch {
+    } else {
       showToast(t("api_keys.errors.copy_failed"), "error", "copy_failed");
     }
   }
