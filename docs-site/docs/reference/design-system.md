@@ -547,7 +547,8 @@ Every place severity is shown, colour is paired with one of: a textual label ("C
 All interactive elements are reachable by `Tab` and operable by `Enter` / `Space`. The portal does not trap focus except inside an open `Dialog` (where the focus-trap is intentional).
 
 - Sidebar links: `Tab` cycles through the visible items.
-- Global bar, in DOM order: menu (below `lg`), brand, team switcher, search trigger, notifications, locale toggle, profile, sign-out — all `Tab`-reachable. The team switcher is a `menuitemradio` group, so the current team is announced rather than left to a decorative check mark.
+- Skip link: the first tabstop on every authenticated screen. `sr-only` until focused, then visible; `Enter` moves focus to `<main id="main-content" tabindex="-1">` so the next `Tab` continues inside the content rather than restarting at the top.
+- Global bar, in DOM order: menu (below `lg`), brand, team switcher, search trigger, notifications, account menu. All of them are `Tab`-reachable. The account menu holds the profile link, the documentation link, the shortcut sheet, the theme and locale toggles, and sign-out; `Esc` closes it. The team switcher is a `menuitemradio` group, so the current team is announced rather than left to a decorative check mark.
 - Table rows: each row that opens a drawer is rendered as a `<button>` or `<a>`; row activation is `Enter`.
 - Drawer: `Esc` closes; first tabstop is the close `X`; `Tab` cycles inside the drawer panel while it's open.
 - Dialog: same pattern as drawer plus a focus-trap. `Esc` cancels.
