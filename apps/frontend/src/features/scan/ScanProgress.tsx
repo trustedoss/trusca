@@ -148,16 +148,20 @@ const UNRETRYABLE_CLOSE_CODES = new Set([4400, 4403, 4404]);
  *
  * It is the sentence a reader most wants when a stream dies, and for a
  * dropped connection or an evicted socket it is exactly right: the scan runs
- * in a worker that never knew this socket existed. It is nonsense for the
- * other two. "There is no scan with this id. The scan itself is unaffected
- * and is still running" was on screen for 4404, and 4403 promised a reader
- * their colleague's scan was fine when the whole point was that it is not
- * theirs to know.
+ * in a worker that never knew this socket existed.
+ *
+ * Three reasons do not get it. For 4403 and 4404 it is nonsense - "there is
+ * no scan with this id, the scan itself is unaffected and is still running"
+ * was on screen until this was made conditional. For 1011 it is a guess: the
+ * gateway subscribes to the same Redis instance Celery uses as its broker, so
+ * one of the two things that produce 1011 is a Redis failure, and a Redis
+ * failure stops the scan as surely as it stops the stream. The reader sees
+ * this panel only after five minutes of that, by which time "still running"
+ * is more likely false than true.
  */
 const SCAN_UNAFFECTED_REASONS = new Set<StreamStoppedReason>([
   "network",
   "evicted",
-  "server",
   "rejected",
 ]);
 

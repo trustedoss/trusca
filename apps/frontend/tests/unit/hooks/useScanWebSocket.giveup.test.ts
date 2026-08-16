@@ -180,6 +180,37 @@ describe("useScanWebSocket give-up", () => {
     expect(result.current.gaveUp).toBe(false);
   });
 
+  it("leaves the tab-resume working after a manual reconnect", async () => {
+    // The give-up flag lives in a ref as well as in state, because the
+    // visibility handler runs outside React and needs the freshest value.
+    // Clearing only the state on reconnect left the ref true for the rest of
+    // the page's life, and the visibility handler reads the ref: one press of
+    // Reconnect and coming back to the tab never resumed anything again.
+    const { result } = renderHook(() =>
+      useScanWebSocket("scan-1", { socketFactory: factory }),
+    );
+    act(() => FakeSocket.instances[0].__open());
+    await failUntilGiveUp();
+    expect(result.current.gaveUp).toBe(true);
+
+    act(() => result.current.reconnect());
+    const socketsAfterManual = FakeSocket.instances.length;
+    act(() => FakeSocket.instances[socketsAfterManual - 1].__open());
+
+    // A later drop, mid-backoff, with the reader away.
+    act(() =>
+      FakeSocket.instances[socketsAfterManual - 1].__closeFromServer(1006),
+    );
+    expect(FakeSocket.instances).toHaveLength(socketsAfterManual);
+
+    // Coming back must reconnect at once rather than waiting out the slot.
+    act(() => {
+      document.dispatchEvent(new Event("visibilitychange"));
+    });
+
+    expect(FakeSocket.instances).toHaveLength(socketsAfterManual + 1);
+  });
+
   it("gives up immediately on a close it will not retry", async () => {
     // An eviction by a newer connection. An open scan page holds two of the
     // three connections this account may have on one worker, so a second tab

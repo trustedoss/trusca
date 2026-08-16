@@ -659,15 +659,19 @@ describe("ScanProgress", () => {
   );
 
   it.each([
-    [1011, "The server ended the stream."],
+    // 1011 gets no reassurance. The gateway subscribes to the same Redis the
+    // Celery broker uses, so a Redis failure produces this code AND stops the
+    // scan; by the time five minutes of it have passed, "still running" is
+    // more likely false than true.
+    [1011, "The server ended the stream.", false],
     // 1006 is the browser's own code for "no close frame arrived", which is
     // what nearly every real disconnection looks like. Nothing maps it, so
     // this is the fallback path, and it has to describe a failed connection
-    // rather than a decision the server made.
-    [1006, "The connection dropped and could not be re-established."],
+    // rather than a decision the server made. The scan is genuinely fine.
+    [1006, "The connection dropped and could not be re-established.", true],
   ])(
     "says something true of close code %i, which is reached only by running out of budget",
-    async (code, expected) => {
+    async (code, expected, reassures) => {
       // These two are retried, so the panel appears only after the whole
       // five-minute budget is spent. Walking the backoff ladder is the only
       // way there: the budget is checked when a reconnect is scheduled, so
@@ -691,7 +695,7 @@ describe("ScanProgress", () => {
       const stopped = screen.getByTestId("scan-progress-stopped");
       expect(stopped.dataset.closeCode).toBe(String(code));
       expect(stopped.textContent).toContain(expected);
-      expect(stopped.textContent).toContain("is still running");
+      expect(stopped.textContent?.includes("is still running")).toBe(reassures);
     },
   );
 
