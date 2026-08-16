@@ -47,6 +47,7 @@ import {
 } from "@/features/profile/useOAuthIdentities";
 import { ProblemError } from "@/lib/problem";
 import { problemMessage } from "@/lib/problemMessage";
+import { formatAbsoluteTime } from "@/lib/absoluteTime";
 import { formatRelativeToNow } from "@/lib/relativeTime";
 import { cn } from "@/lib/utils";
 import { useAuthStore } from "@/stores/authStore";
@@ -137,7 +138,9 @@ function IdentityRow({
         <span
           className="hidden text-xs text-muted-foreground sm:inline"
           data-testid="profile-identity-linked"
-          title={identity.created_at}
+          // B3: was the raw ISO instant. Every absolute-time tooltip in the
+          // product now reads the same way and names its zone.
+          title={formatAbsoluteTime(identity.created_at, locale)}
         >
           {t("connected_accounts.linked_since", { relative: linkedRel })}
         </span>

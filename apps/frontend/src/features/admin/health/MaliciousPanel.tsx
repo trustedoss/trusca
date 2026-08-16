@@ -37,6 +37,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { type MaliciousStatus } from "@/features/admin/health/api/adminMaliciousHealthApi";
 import { useAdminMaliciousHealth } from "@/features/admin/health/api/useAdminMaliciousHealth";
 import { adminErrorMessageKey } from "@/features/admin/lib/adminErrorMessage";
+import { formatAbsoluteDate, formatAbsoluteTime } from "@/lib/absoluteTime";
 import { cn } from "@/lib/utils";
 
 type PanelStatus = "ok" | "stale" | "skipped" | "disabled";
@@ -57,16 +58,6 @@ function statusVisuals(status: PanelStatus) {
         badge: "border-status-success text-status-success-foreground",
       };
   }
-}
-
-function formatDateTime(value: string | null, locale: string | undefined) {
-  if (!value) return "—";
-  const parsed = new Date(value);
-  if (Number.isNaN(parsed.getTime())) return "—";
-  return parsed.toLocaleString(locale, {
-    dateStyle: "medium",
-    timeStyle: "short",
-  });
 }
 
 interface KpiProps {
@@ -235,7 +226,8 @@ export function MaliciousPanel() {
         />
         <Kpi
           label={t("admin.malicious.kpi.snapshot")}
-          value={data.snapshot_date ?? "—"}
+          // B3: was the raw `2026-08-14` the backend sends.
+          value={formatAbsoluteDate(data.snapshot_date, locale)}
           rawValue={data.snapshot_date}
           testid="malicious-kpi-snapshot"
           hint={t("admin.malicious.kpi.snapshot_hint", {
@@ -244,7 +236,7 @@ export function MaliciousPanel() {
         />
         <Kpi
           label={t("admin.malicious.kpi.next_tick")}
-          value={formatDateTime(data.next_refresh_at, locale)}
+          value={formatAbsoluteTime(data.next_refresh_at, locale)}
           rawValue={data.next_refresh_at}
           testid="malicious-kpi-next-tick"
           hint={
@@ -262,7 +254,7 @@ export function MaliciousPanel() {
         {t("admin.malicious.footer", {
           ecosystems: data.ecosystems.length,
           stamped: data.stamped ?? 0,
-          last: formatDateTime(data.last_attempt_at, locale),
+          last: formatAbsoluteTime(data.last_attempt_at, locale),
         })}
       </p>
     </section>

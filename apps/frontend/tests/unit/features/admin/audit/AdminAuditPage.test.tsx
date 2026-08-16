@@ -271,6 +271,33 @@ describe("AdminAuditPage", () => {
     ).toHaveTextContent("users");
   });
 
+  it("shows the row and its drawer the same instant, formatted the same way (B3)", async () => {
+    // Both surfaces printed the raw UTC ISO the backend sends, beside
+    // relative times elsewhere in the product that render in the reader's
+    // own zone. Whatever they show now, they must agree.
+    mockedSearch.mockResolvedValue(pageResponse([entryFixture("e1")]));
+    renderPage();
+    await waitFor(() => {
+      expect(screen.getByTestId("admin-audit-row")).toBeInTheDocument();
+    });
+
+    const cell = screen.getByTestId("admin-audit-created-at");
+    // Not the wire value, and it says which zone it is in.
+    expect(cell.textContent).not.toBe("2026-05-08T00:00:00Z");
+    expect(cell.textContent).toMatch(/UTC[+-]/);
+    // The machine-readable instant is still there for anyone parsing it.
+    expect(cell.getAttribute("dateTime")).toBe("2026-05-08T00:00:00Z");
+
+    await userEvent.click(screen.getByTestId("admin-audit-row"));
+    await waitFor(() => {
+      expect(screen.getByTestId("admin-audit-drawer")).toBeInTheDocument();
+    });
+
+    expect(
+      screen.getByTestId("admin-audit-drawer-created-at").textContent,
+    ).toBe(cell.textContent);
+  });
+
   it("renders sha256 fingerprint values as a truncated pill in the diff", async () => {
     const sha = "a".repeat(64);
     mockedSearch.mockResolvedValue(

@@ -25,6 +25,7 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import { SbomSignatureSection } from "@/features/projects/components/SbomSignatureSection";
+import { formatAbsoluteTime } from "@/lib/absoluteTime";
 import { triggerBlobDownload } from "@/lib/download";
 import { problemMessage } from "@/lib/problemMessage";
 import {
@@ -111,8 +112,10 @@ export function SbomTab({ projectId, lastScanAt, scanId }: SbomTabProps) {
     [projectId, scanId, profile, t],
   );
 
+  // B3: through the shared formatter, so this instant carries its timezone
+  // and matches the one the audit log and the tooltips render.
   const lastScanLabel = lastScanAt
-    ? new Date(lastScanAt).toLocaleString(i18n.resolvedLanguage ?? "en")
+    ? formatAbsoluteTime(lastScanAt, i18n.resolvedLanguage ?? "en")
     : null;
 
   return (

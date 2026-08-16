@@ -1595,7 +1595,10 @@ function DiscoveredCell({ discoveredAt }: DiscoveredCellProps) {
       data-testid="vulnerability-row-discovered"
       data-discovered-at={discoveredAt}
     >
-      <RelativeTime value={discoveredAt} locale={i18n.language} />
+      {/* B3: `resolvedLanguage`, as every other call site. `language` keeps
+          the raw tag, so `ko-KR` falling back to `ko` formats differently
+          here than in the row beside it. */}
+      <RelativeTime value={discoveredAt} locale={i18n.resolvedLanguage} />
     </span>
   );
 }

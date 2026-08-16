@@ -38,6 +38,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Skeleton } from "@/components/ui/skeleton";
+import RelativeTime from "@/components/RelativeTime";
 import { AdminAuditDrawer } from "@/features/admin/audit/AdminAuditDrawer";
 import {
   AUDIT_TARGET_TABLES,
@@ -468,8 +469,26 @@ export function AdminAuditPage() {
                       }
                     }}
                   >
-                    <td className="px-6 font-mono text-[11px] text-muted-foreground">
-                      {entry.created_at}
+                    {/*
+                      `whitespace-nowrap` because the row is a fixed 40px and
+                      the formatted instant is longer than the ISO it
+                      replaced. Folding to a second line would break the row
+                      height, and no visual gate walks this screen.
+                    */}
+                    <td className="whitespace-nowrap px-6 font-mono text-[11px] text-muted-foreground">
+                      {/*
+                        B3: was the raw ISO instant, in UTC, beside relative
+                        times elsewhere in the product that render in the
+                        reader's own zone. Absolute rather than relative
+                        because this is the one table where the instant is
+                        the content: a column of "3 hours ago" cannot be read
+                        against an incident timeline.
+                      */}
+                      <RelativeTime
+                        value={entry.created_at}
+                        display="absolute"
+                        data-testid="admin-audit-created-at"
+                      />
                     </td>
                     <td className="truncate px-3 font-mono text-xs">
                       {entry.actor_email ?? entry.actor_user_id ?? "—"}

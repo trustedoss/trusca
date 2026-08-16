@@ -45,6 +45,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { type KevFeedStatus } from "@/features/admin/health/api/adminKevHealthApi";
 import { useAdminKevHealth } from "@/features/admin/health/api/useAdminKevHealth";
 import { adminErrorMessageKey } from "@/features/admin/lib/adminErrorMessage";
+import { formatAbsoluteTime } from "@/lib/absoluteTime";
 import { formatRelativeToNow } from "@/lib/relativeTime";
 import { cn } from "@/lib/utils";
 
@@ -286,7 +287,13 @@ export function KevFeedPanel({ now }: KevFeedPanelProps = {}) {
               ? formatRelativeToNow(data.last_synced_at, locale, now)
               : DASH
           }
-          tooltip={data.last_synced_at ?? undefined}
+          // B3: was the raw ISO instant. Every absolute-time tooltip in the
+          // product now reads the same way and names its zone.
+          tooltip={
+            data.last_synced_at
+              ? formatAbsoluteTime(data.last_synced_at, locale)
+              : undefined
+          }
           testId="kev-feed-kpi-last-synced"
           dataValue={data.last_synced_at}
         />
@@ -313,7 +320,11 @@ export function KevFeedPanel({ now }: KevFeedPanelProps = {}) {
               ? formatRelativeToNow(data.next_refresh_at, locale, now)
               : DASH
           }
-          tooltip={data.next_refresh_at ?? undefined}
+          tooltip={
+            data.next_refresh_at
+              ? formatAbsoluteTime(data.next_refresh_at, locale)
+              : undefined
+          }
           testId="kev-feed-kpi-next-refresh"
           dataValue={data.next_refresh_at}
         />

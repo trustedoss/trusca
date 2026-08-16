@@ -21,6 +21,8 @@ import { render, screen } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
 
 import RelativeTime from "@/components/RelativeTime";
+import { formatAbsoluteTime } from "@/lib/absoluteTime";
+import { formatRelativeToNow } from "@/lib/relativeTime";
 
 // A fixed instant well in the past so the relative bucket is stable ("years
 // ago") regardless of when the suite runs.
@@ -37,10 +39,12 @@ describe("RelativeTime", () => {
     expect(el.getAttribute("dateTime")).toBe(PAST_ISO);
 
     // title is the locale-formatted absolute instant — must be present and
-    // must NOT be empty.
+    // must NOT be empty. B3: it now comes from the shared formatter, so it
+    // names the zone it rendered in.
     const title = el.getAttribute("title");
     expect(title).toBeTruthy();
-    expect(title).toBe(new Date(PAST_ISO).toLocaleString("en"));
+    expect(title).toBe(formatAbsoluteTime(PAST_ISO, "en"));
+    expect(title).toMatch(/UTC[+-]/);
 
     // The visible body is the relative string, never the raw ISO.
     expect(el.textContent).not.toContain("2000-01-02T");
@@ -81,9 +85,38 @@ describe("RelativeTime", () => {
 
     const el = screen.getByTestId("rt-de");
     // German locale title differs from the English-formatted one.
-    expect(el.getAttribute("title")).toBe(
-      new Date(PAST_ISO).toLocaleString("de"),
+    expect(el.getAttribute("title")).toBe(formatAbsoluteTime(PAST_ISO, "de"));
+    expect(el.getAttribute("title")).not.toBe(
+      formatAbsoluteTime(PAST_ISO, "en"),
     );
+  });
+
+  it("puts the absolute instant in front when asked, and the relative behind", () => {
+    // B3: for the tables where the instant is the content rather than the
+    // age. A column of "3 hours ago" cannot be read against a timeline.
+    render(
+      <RelativeTime
+        value={PAST_ISO}
+        locale="en"
+        display="absolute"
+        data-testid="rt-abs"
+      />,
+    );
+
+    const el = screen.getByTestId("rt-abs");
+    expect(el.textContent).toBe(formatAbsoluteTime(PAST_ISO, "en"));
+    expect(el.textContent).toMatch(/UTC[+-]/);
+    // The relative form is still one hover away, and the machine-readable
+    // instant is still on the element.
+    expect(el.getAttribute("title")).toBe(formatRelativeToNow(PAST_ISO, "en"));
+    expect(el.getAttribute("dateTime")).toBe(PAST_ISO);
+  });
+
+  it("shows the relative form in front unless told otherwise", () => {
+    render(<RelativeTime value={PAST_ISO} locale="en" data-testid="rt-def" />);
+
+    const el = screen.getByTestId("rt-def");
+    expect(el.textContent).toBe(formatRelativeToNow(PAST_ISO, "en"));
   });
 
   it("forwards className onto the time element", () => {

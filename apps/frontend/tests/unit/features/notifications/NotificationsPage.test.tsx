@@ -17,6 +17,7 @@ import { MemoryRouter, Routes, Route } from "react-router-dom";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { NotificationsPage } from "@/features/notifications/NotificationsPage";
+import { formatAbsoluteTime } from "@/lib/absoluteTime";
 import type {
   NotificationItem,
   NotificationKind,
@@ -153,10 +154,15 @@ describe("NotificationsPage", () => {
     await waitFor(() => {
       expect(screen.getByTestId("notifications-row-time")).toBeInTheDocument();
     });
+    // B3: the tooltip now comes from the shared absolute formatter and names
+    // the zone it rendered in, so this and the audit log agree.
     expect(screen.getByTestId("notifications-row-time")).toHaveAttribute(
       "title",
-      new Date("2026-05-08T00:00:00Z").toLocaleString("en"),
+      formatAbsoluteTime("2026-05-08T00:00:00Z", "en"),
     );
+    expect(
+      screen.getByTestId("notifications-row-time").getAttribute("title"),
+    ).toMatch(/UTC[+-]/);
   });
 
   it("toggling 'unread only' re-issues the list with unread_only=true", async () => {
