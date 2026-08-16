@@ -877,3 +877,79 @@ CVE-2026-39821
 #   and still carry the second.
 # Target: usr/local/bin/cosign and usr/local/bin/docker (gobinary) ONLY.
 CVE-2026-46600
+
+# ============================================================================
+# Go stdlib 1.26.4, second wave
+# ============================================================================
+# Six more stdlib IDs became visible to the gate between 00:33 and 04:09 on
+# 2026-08-16: main's CI was green at the first time and red at the second, on
+# an unrelated frontend branch. Their publication dates are not recorded here
+# because they were not checked; what was checked is when this gate started
+# reporting them. All six are fixed in 1.25.13 / 1.26.6 /
+# 1.27.0-rc.3, so our own toolchain (GO_VERSION 1.25.13, set by the entry
+# above) already carries the fix. The same two prebuilt binaries are left.
+#
+# MEASURED RESIDUAL SET, from the failing gate run of 2026-08-16 (run
+# 31925842207, job 95113182596). The scan reported exactly two targets and no
+# others, six findings each:
+#   usr/local/bin/cosign  (gobinary, stdlib v1.26.4)
+#   usr/local/bin/docker  (gobinary, stdlib v1.26.4)
+# Re-measure with `trivy rootfs` on a rebuilt image before trusting this list.
+# These entries are ID-scoped, not path-scoped, so this list is the only thing
+# that records what they actually cover.
+#
+# NO VERSION TO BUMP TO. Checked on 2026-08-16:
+#   cosign  pinned 3.1.2; latest 3.1.3 published 2026-08-06
+#   docker  pinned 29.6.1; latest 29.7.2 published 2026-08-06
+# Go 1.26.6 shipped 2026-08-13, so even the newest upstream artifact of either
+# project was built before the patch existed. Category (2).
+#
+# BLAST RADIUS: suppressed image-wide, as with the entries above. The binary
+# that would matter is `usr/bin/trivy`, the one Go binary handed a hostname a
+# user chose (schemas/scan.py container image_ref into integrations/trivy.py, no
+# registry allow-list). It was not reported as a gobinary target at all in the
+# measured run, which is not the same as being clean. Settle it at review time
+# with `go version -m /usr/bin/trivy`; a go1.26.4 answer means bump
+# TRIVY_VERSION (currently 0.72.0; 0.74.0 of 2026-08-14 postdates the patch),
+# never widen these entries.
+#
+# REACH. Five of the six are denial of service and one is cross-site
+# scripting. Neither binary serves HTTP or renders a template, and neither is
+# handed input from a scanned artifact:
+#   - cosign signs and verifies portal-GENERATED local blobs at
+#     portal-constructed paths (integrations/cosign.py). The subprocess is
+#     bounded by `cosign_timeout_seconds()` and a timeout maps to the
+#     graceful-skip path, so a DoS in the child degrades to a skipped
+#     signature rather than a stuck worker. The opt-in keyless flow is the
+#     only one that parses a certificate chain or opens a TLS session it did
+#     not construct, and its peers are the deployment-configured Fulcio and
+#     Rekor endpoints.
+#   - the docker CLI runs only under SCAN_EXECUTOR=local_docker, which is off
+#     by default (core/config.py returns "inprocess"). When it is on, the
+#     daemon address, the sidecar image and the mount arguments are all
+#     operator configuration, not archive-derived.
+#
+# What that argument does NOT establish, stated so the next reader does not
+# assume more than was checked: nobody has traced whether either binary can be
+# driven into cleartext HTTP/2 (CVE-2026-56853) or made to decode XML
+# (CVE-2026-56859) through some path not listed above. The claim here is the
+# narrower one: the portal never hands either binary attacker-controlled
+# input, and every one of these six needs exactly that.
+#
+# CVE-2026-33818, encoding/asn1: DoS via excessive recursion in Unmarshal
+# CVE-2026-56853, net/http: DoS on unencrypted HTTP/2 connections
+# CVE-2026-56858, html/template: XSS via pathological input
+# CVE-2026-56859, encoding/xml: DoS via decoding recursion depth
+# CVE-2026-56860, net/url: DoS from quadratic complexity in path handling
+# CVE-2026-56862, crypto/tls: DoS via indefinite KeyUpdate messages
+#
+# Re-evaluate: on the first cosign or docker CLI release built with Go
+# >= 1.25.13 / 1.26.6, or 2026-11-16, whichever is sooner. Check with
+# `go version -m /usr/local/bin/cosign` inside the image, and re-measure the
+# residual set at the same time.
+CVE-2026-33818
+CVE-2026-56853
+CVE-2026-56858
+CVE-2026-56859
+CVE-2026-56860
+CVE-2026-56862
