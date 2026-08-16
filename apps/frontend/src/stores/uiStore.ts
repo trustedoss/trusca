@@ -44,6 +44,17 @@ interface UIState {
    */
   activeTeamId: string | null;
   setActiveTeamId: (teamId: string | null) => void;
+  /**
+   * The reader has dismissed the dashboard's getting-started checklist (C2).
+   *
+   * Persisted and one-way on purpose. The checklist hides itself once every
+   * step is done, so this flag exists for the other case: an organisation
+   * that has been running for a year, upgrades, and is shown a list of
+   * beginner's steps. They should be able to say "not for me" once and never
+   * see it again, rather than once per browser session.
+   */
+  onboardingDismissed: boolean;
+  dismissOnboarding: () => void;
 }
 
 export const useUIStore = create<UIState>()(
@@ -55,6 +66,8 @@ export const useUIStore = create<UIState>()(
       setSidebarCollapsed: (sidebarCollapsed) => set({ sidebarCollapsed }),
       activeTeamId: null,
       setActiveTeamId: (activeTeamId) => set({ activeTeamId }),
+      onboardingDismissed: false,
+      dismissOnboarding: () => set({ onboardingDismissed: true }),
     }),
     {
       name: "trustedoss-ui",
@@ -75,6 +88,7 @@ export const useUIStore = create<UIState>()(
       partialize: (s) => ({
         sidebarCollapsed: s.sidebarCollapsed,
         activeTeamId: s.activeTeamId,
+        onboardingDismissed: s.onboardingDismissed,
       }),
     },
   ),

@@ -18,6 +18,7 @@ import { MemoryRouter } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { DashboardPage } from "@/features/dashboard/DashboardPage";
+import { useUIStore } from "@/stores/uiStore";
 import type {
   ApprovalListPage,
 } from "@/lib/approvalsApi";
@@ -58,6 +59,21 @@ vi.mock("@/lib/approvalsApi", async () => {
 // useDemoMode hits /v1/health on mount; stub it so tests don't fan out.
 vi.mock("@/hooks/useDemoMode", () => ({
   useDemoMode: () => ({ demoReadOnly: false }),
+}));
+
+// C2: the two count reads behind the getting-started checklist. Stubbed at
+// the hooks rather than left to fail: an unmocked query errors, the checklist
+// hides itself on an unknown count, and every assertion about the empty state
+// below would then pass because the card was broken rather than because it
+// was not wanted.
+const policyCount = vi.fn(() => 0);
+const apiKeyCount = vi.fn(() => 0);
+
+vi.mock("@/features/policies/useLicensePolicies", () => ({
+  useLicensePolicies: () => ({ data: { items: [], total: policyCount() } }),
+}));
+vi.mock("@/features/integrations/useApiKeys", () => ({
+  useApiKeys: () => ({ data: { items: [], total: apiKeyCount() } }),
 }));
 
 import { listApprovals } from "@/lib/approvalsApi";
@@ -167,6 +183,9 @@ function renderPage(initialEntries: string[] = ["/"]) {
 
 describe("DashboardPage", () => {
   beforeEach(() => {
+    useUIStore.setState({ onboardingDismissed: false });
+    policyCount.mockReturnValue(0);
+    apiKeyCount.mockReturnValue(0);
     mockedListProjects.mockReset();
     mockedListMyScans.mockReset();
     mockedListApprovals.mockReset();
@@ -253,7 +272,22 @@ describe("DashboardPage", () => {
     ).toHaveLength(2);
   });
 
-  it("renders the empty state with a 'Register project' CTA when no projects exist", async () => {
+  it("leads an empty organisation with the checklist, not a wall of zeros", async () => {
+    // C2. The three ways this can go wrong are all visible here: the old
+    // empty state saying the same thing twice, the KPI body falling through
+    // with every tile at 0, and the checklist not appearing at all.
+    mockedListProjects.mockResolvedValue(projectsResponse([]));
+    renderPage();
+
+    await screen.findByTestId("onboarding-checklist");
+    expect(screen.queryByTestId("dashboard-empty")).not.toBeInTheDocument();
+    expect(screen.queryByTestId("dashboard-kpi-grid")).not.toBeInTheDocument();
+  });
+
+  it("hands the empty state back when the checklist is dismissed", async () => {
+    // Dismissing must not leave the dashboard blank: the reader still needs
+    // to be told there is nothing here and offered the one action.
+    useUIStore.setState({ onboardingDismissed: true });
     mockedListProjects.mockResolvedValue(projectsResponse([]));
     renderPage();
     await waitFor(() => {
@@ -343,6 +377,7 @@ describe("DashboardPage", () => {
 
   it("renders the same dashboard skeleton under Korean i18n (key parity)", async () => {
     await i18n.changeLanguage("ko");
+    useUIStore.setState({ onboardingDismissed: true });
     mockedListProjects.mockResolvedValue(projectsResponse([]));
     renderPage();
     await waitFor(() => {
@@ -371,7 +406,9 @@ describe("DashboardPage", () => {
   it("Retry refetches only the failed queries and restores the dashboard", async () => {
     // First projects call fails; scans + approvals succeed. The beforeEach
     // default (empty list) serves the retry, so recovery lands on the
-    // empty-state branch.
+    // empty-state branch - with the checklist dismissed, which is what makes
+    // that branch the one recovery lands on.
+    useUIStore.setState({ onboardingDismissed: true });
     mockedListProjects.mockRejectedValueOnce(new Error("boom"));
     renderPage();
     const retry = await screen.findByTestId("dashboard-error-retry");

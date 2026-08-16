@@ -32,10 +32,14 @@ export function apiKeysQueryKey(params: ListAPIKeysParams) {
 
 export function useApiKeys(
   params: ListAPIKeysParams,
+  options: { enabled?: boolean } = {},
 ): UseQueryResult<APIKeyListPage, Error> {
   return useQuery({
     queryKey: apiKeysQueryKey(params),
     queryFn: () => listApiKeys(params),
+    // See the note on `useLicensePolicies`: lets a caller stop asking without
+    // calling the hook conditionally.
+    enabled: options.enabled ?? true,
     // Same staleness window as the rest of the portal (CLAUDE.md "Server
     // state — Stale time defaults to 30 s").
     staleTime: 30_000,

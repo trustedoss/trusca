@@ -74,10 +74,15 @@ function retryNon4xx(failureCount: number, error: Error): boolean {
 
 export function useLicensePolicies(
   params: ListLicensePoliciesParams,
+  options: { enabled?: boolean } = {},
 ): UseQueryResult<LicensePolicyListPage, Error> {
   return useQuery({
     queryKey: licensePoliciesQueryKey(params),
     queryFn: () => listLicensePolicies(params),
+    // Callers that only want the total while a surface is on screen can turn
+    // this off. Same escape hatch as `useUnreadCount`, and for the same
+    // reason: a hook cannot be called conditionally.
+    enabled: options.enabled ?? true,
     staleTime: 30_000,
     retry: retryNon4xx,
   });
