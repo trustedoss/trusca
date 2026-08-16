@@ -204,6 +204,19 @@ describe("KevFeedPanel", () => {
     ).toHaveAttribute("data-status", "disabled");
   });
 
+  it("gives a sync that listed and delisted nothing no signs (B4)", async () => {
+    // The null guard only catches a sync that never wrote deltas. One that
+    // wrote zeroes fell through and read "+0 / −0", which says two movements
+    // cancelled rather than that nothing moved.
+    mockedGet.mockResolvedValue(statusFixture({ listed: 0, delisted: 0 }));
+    renderPanel();
+
+    const tile = await screen.findByTestId("kev-feed-kpi-listed-delisted");
+    expect(tile.textContent).not.toContain("+0");
+    expect(tile.textContent).not.toContain("−0");
+    expect(tile.textContent).toContain("0 / 0");
+  });
+
   it("renders skeletons while the query is loading", () => {
     mockedGet.mockReturnValue(new Promise(() => {}));
     renderPanel();

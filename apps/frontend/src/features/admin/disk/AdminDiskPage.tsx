@@ -31,8 +31,12 @@ import { useAdminDisk } from "@/features/admin/disk/api/useAdminDisk";
 import {
   adminErrorMessageKey,
 } from "@/features/admin/lib/adminErrorMessage";
+import { formatPercent, resolveLocale } from "@/lib/format";
 import { formatRelativeToNow } from "@/lib/relativeTime";
 import { cn } from "@/lib/utils";
+
+/** One decimal, on every percentage this card shows. */
+const PCT_DIGITS = 1;
 
 function formatBytes(bytes: number | null): string {
   if (bytes == null || Number.isNaN(bytes)) return "—";
@@ -73,7 +77,8 @@ function statusColors(status: DiskHealthStatus): {
 }
 
 function DiskCard({ item }: { item: AdminDiskItem }) {
-  const { t } = useTranslation("admin");
+  const { t, i18n } = useTranslation("admin");
+  const locale = resolveLocale(i18n);
   const { badge, bar, icon: Icon } = statusColors(item.status);
 
   const usedPct = item.used_pct == null ? null : Math.min(100, item.used_pct);
@@ -146,8 +151,18 @@ function DiskCard({ item }: { item: AdminDiskItem }) {
           <div className="mt-2 grid grid-cols-3 gap-2 text-xs">
             <Meta
               label={t("admin.disk.label.used")}
+              // B4: was one decimal here and none on the thresholds three
+              // lines below, so one card read "78.4%" beside "80%" for the
+              // same quantity. Matched by giving the thresholds the decimal
+              // rather than taking it away here: they are floats too
+              // (DISK_THRESHOLD_WARNING_PCT is read with `float()`), and
+              // rounding 79.6 up to "80%" would put the used figure level
+              // with the warning line while the badge still says the disk
+              // is fine.
               value={`${formatBytes(item.used_bytes)}${
-                usedPct != null ? ` (${usedPct.toFixed(1)}%)` : ""
+                usedPct != null
+                  ? ` (${formatPercent(usedPct, locale, PCT_DIGITS)})`
+                  : ""
               }`}
             />
             <Meta
@@ -162,11 +177,11 @@ function DiskCard({ item }: { item: AdminDiskItem }) {
           <div className="mt-2 flex flex-wrap gap-3 text-[11px] text-muted-foreground">
             <span>
               {t("admin.disk.label.warning_threshold")}{": "}
-              {item.threshold_warning.toFixed(0)}%
+              {formatPercent(item.threshold_warning, locale, PCT_DIGITS)}
             </span>
             <span>
               {t("admin.disk.label.critical_threshold")}{": "}
-              {item.threshold_critical.toFixed(0)}%
+              {formatPercent(item.threshold_critical, locale, PCT_DIGITS)}
             </span>
           </div>
         </>

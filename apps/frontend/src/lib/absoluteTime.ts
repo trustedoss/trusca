@@ -26,9 +26,11 @@
  * assert a precision the value does not have.
  */
 
-/** What every caller gets for a value that is absent or unparseable. */
-// em-dash-allow: this is the product's own placeholder glyph, not prose
-export const ABSENT = "—";
+// What every caller gets for a value that is absent or unparseable. Defined
+// in `format` and re-exported here: two exports of the same name with the
+// same value is a coin toss for whoever reaches for one.
+export { ABSENT } from "@/lib/format";
+import { ABSENT } from "@/lib/format";
 
 function parse(value: string | null | undefined): Date | null {
   if (value == null || value === "") return null;

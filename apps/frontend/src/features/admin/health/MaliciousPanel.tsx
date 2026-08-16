@@ -37,7 +37,12 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { type MaliciousStatus } from "@/features/admin/health/api/adminMaliciousHealthApi";
 import { useAdminMaliciousHealth } from "@/features/admin/health/api/useAdminMaliciousHealth";
 import { adminErrorMessageKey } from "@/features/admin/lib/adminErrorMessage";
-import { formatAbsoluteDate, formatAbsoluteTime } from "@/lib/absoluteTime";
+import {
+  ABSENT,
+  formatAbsoluteDate,
+  formatAbsoluteTime,
+} from "@/lib/absoluteTime";
+import { formatNumber, resolveLocale } from "@/lib/format";
 import { cn } from "@/lib/utils";
 
 type PanelStatus = "ok" | "stale" | "skipped" | "disabled";
@@ -93,7 +98,7 @@ function Kpi({ label, value, rawValue, testid, emphasize, hint }: KpiProps) {
 export function MaliciousPanel() {
   const { t, i18n } = useTranslation("admin");
   const query = useAdminMaliciousHealth();
-  const locale = i18n.resolvedLanguage;
+  const locale = resolveLocale(i18n);
 
   const renderHeading = (badge?: ReactNode) => (
     <div className="mb-3 flex items-center justify-between gap-2">
@@ -212,14 +217,22 @@ export function MaliciousPanel() {
       <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
         <Kpi
           label={t("admin.malicious.kpi.newly_flagged")}
-          value={data.newly_flagged?.toLocaleString(locale) ?? "—"}
+          value={
+            data.newly_flagged == null
+              ? ABSENT
+              : formatNumber(data.newly_flagged, locale)
+          }
           rawValue={data.newly_flagged}
           testid="malicious-kpi-newly-flagged"
           emphasize={Boolean(data.newly_flagged)}
         />
         <Kpi
           label={t("admin.malicious.kpi.flagged_total")}
-          value={data.flagged_total?.toLocaleString(locale) ?? "—"}
+          value={
+            data.flagged_total == null
+              ? ABSENT
+              : formatNumber(data.flagged_total, locale)
+          }
           rawValue={data.flagged_total}
           testid="malicious-kpi-flagged-total"
           emphasize={Boolean(data.flagged_total)}

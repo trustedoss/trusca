@@ -49,6 +49,7 @@ import {
 import { useAdminTrivyHealth } from "@/features/admin/health/api/useAdminTrivyHealth";
 import { adminErrorMessageKey } from "@/features/admin/lib/adminErrorMessage";
 import { formatAbsoluteTime } from "@/lib/absoluteTime";
+import { formatNumber, resolveLocale } from "@/lib/format";
 import { formatRelativeToNow } from "@/lib/relativeTime";
 import { cn } from "@/lib/utils";
 import { formatBytes } from "@/lib/zipFolder";
@@ -80,10 +81,10 @@ function freshnessVisuals(freshness: TrivyDbFreshness): {
 
 function formatVulnCount(count: number | null, locale?: string): string {
   if (count == null) return DASH;
-  // Locale-aware thousands separator. `Intl.NumberFormat` is widely supported
-  // and avoids us hard-coding a comma for KO users (whose locale also uses
-  // commas, but the choice is the platform's, not ours).
-  return new Intl.NumberFormat(locale).format(count);
+  // Locale-aware thousands separator; the choice is the platform's, not ours.
+  // B4: through the shared helper, which is where the two identical copies
+  // of this in the sibling panels went as well.
+  return formatNumber(count, locale);
 }
 
 interface KpiTileProps {
@@ -115,7 +116,7 @@ interface TrivyDBPanelProps {
 export function TrivyDBPanel({ now }: TrivyDBPanelProps = {}) {
   const { t, i18n } = useTranslation("admin");
   const query = useAdminTrivyHealth();
-  const locale = i18n.resolvedLanguage;
+  const locale = resolveLocale(i18n);
 
   const renderHeading = () => (
     <div className="mb-3 flex items-center justify-between gap-2">

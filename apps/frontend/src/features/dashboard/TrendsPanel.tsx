@@ -12,6 +12,11 @@ import {
   type TrendPoint,
   type TrendWindow,
 } from "@/features/dashboard/api/trends";
+import {
+  formatNumber,
+  formatSignedDelta,
+  resolveLocale,
+} from "@/lib/format";
 import { cn } from "@/lib/utils";
 
 /**
@@ -42,10 +47,6 @@ const SPARK_HEIGHT = 36;
 const SPARK_PAD = 2;
 
 type LevelKey = "critical_open" | "kev_open";
-
-function formatCount(value: number): string {
-  return value.toLocaleString();
-}
 
 /** `(x, y)` in viewBox units for each point of a level series. */
 function levelPoints(points: TrendPoint[], key: LevelKey): Array<[number, number]> {
@@ -124,6 +125,8 @@ interface LevelTileProps {
   deltaLabel: (delta: number) => string;
   ariaLabel: string;
   testId: string;
+  /** BCP-47 tag for the grouping separator; the app's language, not the browser's. */
+  locale?: string;
 }
 
 function LevelTile({
@@ -135,6 +138,7 @@ function LevelTile({
   deltaLabel,
   ariaLabel,
   testId,
+  locale,
 }: LevelTileProps) {
   const current = points.length > 0 ? points[points.length - 1][seriesKey] : 0;
   const first = points.length > 0 ? points[0][seriesKey] : 0;
@@ -152,7 +156,7 @@ function LevelTile({
       </span>
       <span className="flex items-baseline gap-2">
         <span className="text-2xl font-semibold tabular-nums">
-          {formatCount(current)}
+          {formatNumber(current, locale)}
         </span>
         {/* The arrow is the second signal: the sign is in the text too, so
          *  the direction survives without colour and without the glyph. */}
@@ -186,6 +190,8 @@ interface FlowTileProps {
   totals: DashboardTrends["totals"];
   ariaLabel: string;
   dayLabel: (point: TrendPoint) => string;
+  /** BCP-47 tag for the grouping separator; the app's language, not the browser's. */
+  locale?: string;
 }
 
 /**
@@ -205,6 +211,7 @@ function FlowTile({
   totals,
   ariaLabel,
   dayLabel,
+  locale,
 }: FlowTileProps) {
   const max = Math.max(
     1,
@@ -227,12 +234,34 @@ function FlowTile({
       <span className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
         {label}
       </span>
-      <span className="flex items-baseline gap-3 text-sm font-medium tabular-nums">
+      {/* `flex-wrap` because the row now carries two words as well as two
+          numbers, and the three-column layout is narrowest just above the
+          `sm` breakpoint, which neither the 390px narrow gate nor the
+          desktop visual gate looks at. Without it the break happens inside
+          a child instead of between them, splitting a label from the number
+          it labels, which is the thing the labels were added to prevent. A
+          line break between the pairs is the better of the two. */}
+      <span className="flex flex-wrap items-baseline gap-3 text-sm font-medium tabular-nums">
+        {/* B4: the signs used to be static text nodes, so a window where
+            nothing was found and nothing was resolved read "+0 −0", which
+            says two movements cancelled out rather than that nothing
+            happened. `signed` already knew this; this tile did not use it.
+
+            The words carry what the signs used to. Without them a quiet
+            window reads "0 0" and only the colour says which is which,
+            which is the failure this tile's own legend was written to
+            avoid. */}
         <span className="text-status-danger-foreground">
-          +{formatCount(totals.new_findings)}
+          <span className="mr-1 font-normal text-muted-foreground">
+            {newLabel}
+          </span>
+          {formatSignedDelta(totals.new_findings, locale)}
         </span>
         <span className="text-status-success-foreground">
-          −{formatCount(totals.resolved_findings)}
+          <span className="mr-1 font-normal text-muted-foreground">
+            {resolvedLabel}
+          </span>
+          {formatSignedDelta(-totals.resolved_findings, locale)}
         </span>
       </span>
       <svg
@@ -404,7 +433,10 @@ function WindowPicker({
 }
 
 export function TrendsPanel() {
-  const { t } = useTranslation("dashboard");
+  const { t, i18n } = useTranslation("dashboard");
+  // B4: these tiles used a bare toLocaleString, which follows the browser
+  // rather than the language the app is running in.
+  const locale = resolveLocale(i18n);
   const [days, setDays] = useState<TrendWindow>(30);
   const query = useDashboardTrends(days);
 
@@ -478,7 +510,10 @@ export function TrendsPanel() {
             seriesKey="critical_open"
             stroke="var(--risk-critical)"
             fill="var(--risk-critical)"
-            deltaLabel={(delta) => t("trends.delta", { delta: signed(delta) })}
+            deltaLabel={(delta) =>
+              t("trends.delta", { delta: formatSignedDelta(delta, locale) })
+            }
+            locale={locale}
             ariaLabel={t("trends.critical_aria", { days: trends.period_days })}
             testId="trend-critical-tile"
           />
@@ -488,7 +523,10 @@ export function TrendsPanel() {
             seriesKey="kev_open"
             stroke="var(--risk-medium-foreground)"
             fill="var(--risk-medium)"
-            deltaLabel={(delta) => t("trends.delta", { delta: signed(delta) })}
+            deltaLabel={(delta) =>
+              t("trends.delta", { delta: formatSignedDelta(delta, locale) })
+            }
+            locale={locale}
             ariaLabel={t("trends.kev_aria", { days: trends.period_days })}
             testId="trend-kev-tile"
           />
@@ -498,6 +536,7 @@ export function TrendsPanel() {
             newLabel={t("trends.flow_new")}
             resolvedLabel={t("trends.flow_resolved")}
             totals={trends.totals}
+            locale={locale}
             ariaLabel={t("trends.flow_aria", {
               days: trends.period_days,
               added: trends.totals.new_findings,
@@ -541,9 +580,3 @@ export function TrendsPanel() {
   );
 }
 
-/** `+3` / `−2` / `0` — the sign is part of the text, not only the colour. */
-function signed(delta: number): string {
-  if (delta > 0) return `+${delta.toLocaleString()}`;
-  if (delta < 0) return `−${Math.abs(delta).toLocaleString()}`;
-  return "0";
-}

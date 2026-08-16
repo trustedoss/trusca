@@ -21,6 +21,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 
 import type { DashboardTrends, TrendPoint } from "@/features/dashboard/api/trends";
 import { TrendsPanel } from "@/features/dashboard/TrendsPanel";
+import i18n from "@/lib/i18n";
 
 // Mocked at the HTTP client, not at the query function: the hook closes over
 // its own module's export, so stubbing that export would leave the hook
@@ -229,6 +230,84 @@ describe("TrendsPanel", () => {
     expect(tile).toHaveAttribute("data-new", "5");
     expect(tile).toHaveAttribute("data-resolved", "2");
     expect(screen.getByTestId("trend-flow-bars").querySelectorAll("g")).toHaveLength(3);
+    // The signs are in the text, so the direction survives without colour.
+    expect(tile.textContent).toContain("+5");
+    expect(tile.textContent).toContain("−2");
+  });
+
+  it("gives a quiet window no signs at all (B4)", async () => {
+    // Nothing found and nothing resolved used to render "+0 −0", which reads
+    // as two movements that cancelled rather than as nothing having happened.
+    // The signs were static text nodes, unconditional on the value.
+    apiGet.mockResolvedValue({
+      data: trends({
+        points: [point({ date: "2026-07-01", scan_count: 1 })],
+        totals: { new_findings: 0, resolved_findings: 0 },
+      }),
+    });
+
+    renderPanel();
+
+    const tile = await screen.findByTestId("trend-flow-tile");
+    expect(tile.textContent).not.toContain("+0");
+    expect(tile.textContent).not.toContain("−0");
+    // And the words are what now carry the direction the signs used to.
+    // Matched without a gap so this catches the labels being removed: they
+    // also appear in the legend below the chart, where they sit alone.
+    expect(tile.textContent).toContain("New0");
+    expect(tile.textContent).toContain("Resolved0");
+  });
+
+  it("groups a large count (B4)", async () => {
+    // Was a bare toLocaleString, so a browser locale that does not group
+    // rendered 12480 with no separator at all.
+    apiGet.mockResolvedValue({
+      data: trends({
+        points: [
+          point({ date: "2026-07-01", critical_open: 12480, scan_count: 1 }),
+        ],
+        totals: { new_findings: 0, resolved_findings: 0 },
+      }),
+    });
+
+    renderPanel();
+
+    const tile = await screen.findByTestId("trend-critical-tile");
+    expect(tile.textContent).toContain("12,480");
+  });
+
+  it("asks for the app's language, not the browser's (B4)", async () => {
+    // Asserted on the locale handed to Intl rather than on the output: en
+    // and ko group the same way, so a wiring regression that dropped the
+    // locale entirely would render identically and pass unnoticed.
+    const real = Intl.NumberFormat;
+    const seen: Array<string | string[] | undefined> = [];
+    function Capturing(
+      locale?: string | string[],
+      options?: Intl.NumberFormatOptions,
+    ): Intl.NumberFormat {
+      seen.push(locale);
+      return new real(locale, options);
+    }
+    const spy = vi
+      .spyOn(Intl, "NumberFormat")
+      .mockImplementation(Capturing as unknown as typeof Intl.NumberFormat);
+
+    try {
+      apiGet.mockResolvedValue({
+        data: trends({
+          points: [point({ date: "2026-07-01", critical_open: 5, scan_count: 1 })],
+          totals: { new_findings: 0, resolved_findings: 0 },
+        }),
+      });
+      renderPanel();
+      await screen.findByTestId("trend-critical-tile");
+    } finally {
+      spy.mockRestore();
+    }
+
+    expect(seen.length).toBeGreaterThan(0);
+    expect(seen.every((locale) => locale === i18n.resolvedLanguage)).toBe(true);
   });
 
   it("publishes the same numbers as a table", async () => {

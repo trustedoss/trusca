@@ -70,6 +70,7 @@ import {
   type ProjectPublic,
   type ScanPublic,
 } from "@/lib/projectsApi";
+import { formatNumber, resolveLocale } from "@/lib/format";
 import { formatRelativeToNow } from "@/lib/relativeTime";
 import RelativeTime from "@/components/RelativeTime";
 import { SavedSearchesPanel } from "@/features/dashboard/components/SavedSearchesPanel";
@@ -291,7 +292,7 @@ function durationSeconds(scan: ScanPublic): number | null {
 export function DashboardPage() {
   const { t, i18n } = useTranslation("dashboard");
   const { demoReadOnly } = useDemoMode();
-  const locale = i18n.resolvedLanguage;
+  const locale = resolveLocale(i18n);
 
   // Projects slice — drives the active-projects KPI, the open-vuln total,
   // the last-scan KPI, and both distribution charts. Same query shape /
@@ -473,7 +474,7 @@ export function DashboardPage() {
               testId="dashboard-kpi-projects"
               icon={FolderOpen}
               label={t("kpi.active_projects")}
-              value={String(activeProjectCount)}
+              value={formatNumber(activeProjectCount, locale)}
               link={{ to: "/projects", label: t("kpi.view_all") }}
               loading={projectsQuery.isLoading}
             />
@@ -481,7 +482,10 @@ export function DashboardPage() {
               testId="dashboard-kpi-vulns"
               icon={ShieldAlert}
               label={t("kpi.open_vulnerabilities")}
-              value={String(openVulns)}
+              // B4: a portfolio-wide count, so this is the tile most likely to
+              // pass 999. It renders in a `tabular-nums` slot built for
+              // exactly that and had no separator.
+              value={formatNumber(openVulns, locale)}
               link={{ to: "/projects", label: t("kpi.view_all") }}
               loading={projectsQuery.isLoading}
               decoration={
@@ -494,7 +498,7 @@ export function DashboardPage() {
               testId="dashboard-kpi-approvals"
               icon={ClipboardCheck}
               label={t("kpi.pending_approvals")}
-              value={String(pendingApprovalsCount)}
+              value={formatNumber(pendingApprovalsCount, locale)}
               link={{ to: "/approvals", label: t("kpi.view_all") }}
               loading={approvalsQuery.isLoading}
             />

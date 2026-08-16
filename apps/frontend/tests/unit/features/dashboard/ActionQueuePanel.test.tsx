@@ -120,6 +120,23 @@ describe("ActionQueuePanel", () => {
     expect(screen.queryByTestId("action-queue-clear")).toBeNull();
   });
 
+  it("groups a large count, as the KPI cards beside it do (B4)", async () => {
+    // These tiles share the KPI cards' type scale, and the approvals one is
+    // the same number behind the same icon and the same link, so formatting
+    // one and not the other put "1,200" above "1200" on one screen.
+    //
+    // Asserted on the rendered text: every other case here reads
+    // `data-count`, which is the raw value and would not notice either way.
+    resolveQueue({ ...EMPTY, pending_approvals: 1200 });
+
+    renderPanel();
+
+    const tile = await screen.findByTestId("action-queue-approvals");
+    expect(tile.textContent).toContain("1,200");
+    // The raw value stays on the attribute for anything reading the DOM.
+    expect(tile).toHaveAttribute("data-count", "1200");
+  });
+
   it("labels a project that has never been scanned rather than showing a blank", async () => {
     resolveQueue({
       ...EMPTY,
