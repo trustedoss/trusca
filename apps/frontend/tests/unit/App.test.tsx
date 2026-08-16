@@ -91,10 +91,20 @@ function adminRoutesFromRouter(): string[] {
     .map((match) => match[1])
     .filter((route) => !route.startsWith("*") && !route.includes(":"))
     .map((route) => `/admin/${route}`);
-  // A parser that matched nothing would turn this into a test that asserts an
-  // empty loop. The floor is the count at the time of writing, minus room to
-  // delete one.
-  expect(paths.length).toBeGreaterThanOrEqual(6);
+  // Every `<Route` in the block has to be accounted for, so a shape this
+  // parser does not recognise fails loudly instead of dropping out of the
+  // list. `path={SOME_CONSTANT}` is the one that would otherwise slip
+  // through: a routine refactor, and the route stops being checked.
+  const routeTags = block.match(/<Route[\s>]/g)?.length ?? 0;
+  const indexRoutes = block.match(/<Route\s+index\b/g)?.length ?? 0;
+  const patternRoutes = [...block.matchAll(/<Route\s+path="([^"]+)"/g)].filter(
+    ([, route]) => route.startsWith("*") || route.includes(":"),
+  ).length;
+  expect(
+    paths.length + indexRoutes + patternRoutes,
+    "an admin <Route> was not recognised by this parser, so it is not being " +
+      "checked for a sidebar entry",
+  ).toBe(routeTags);
   return paths;
 }
 

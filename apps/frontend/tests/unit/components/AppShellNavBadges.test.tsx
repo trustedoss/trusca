@@ -162,6 +162,10 @@ describe("sidebar count badges", () => {
   });
   afterEach(() => {
     useAuthStore.getState().reset();
+    // focusManager is module-global. Restoring it here rather than at the end
+    // of the one test that touches it means a timeout there cannot leave the
+    // rest of the file running against a forced focus state.
+    focusManager.setFocused(undefined);
   });
 
   it("sums running and queued scans into one badge", async () => {
@@ -299,7 +303,6 @@ describe("sidebar count badges", () => {
     await waitFor(() => {
       expect(scanCalls.length).toBeGreaterThan(readsBeforeFocus);
     });
-    focusManager.setFocused(undefined);
   });
 
   it("survives the collapsed rail, where the label is gone", async () => {
