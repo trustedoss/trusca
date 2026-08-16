@@ -648,6 +648,8 @@ describe("ScanProgress", () => {
 
       const stopped = await screen.findByTestId("scan-progress-stopped");
       expect(stopped.dataset.closeCode).toBe(String(code));
+      // The panel replaces an aria-live region, so it has to announce itself.
+      expect(stopped).toHaveAttribute("role", "status");
       expect(stopped.textContent).toContain(expected);
       // The two codes that mean "not your scan" must not carry the
       // reassurance, and the reassurance must not appear twice.
@@ -663,7 +665,11 @@ describe("ScanProgress", () => {
     // Celery broker uses, so a Redis failure produces this code AND stops the
     // scan; by the time five minutes of it have passed, "still running" is
     // more likely false than true.
-    [1011, "The server ended the stream.", false],
+    [
+      1011,
+      "The server ended the stream. The status shown here may be out of date.",
+      false,
+    ],
     // 1006 is the browser's own code for "no close frame arrived", which is
     // what nearly every real disconnection looks like. Nothing maps it, so
     // this is the fallback path, and it has to describe a failed connection
@@ -711,16 +717,34 @@ describe("ScanProgress", () => {
     expect(panel.textContent).not.toContain("continues in the background");
   });
 
-  it("offers no Reconnect where reconnecting would repeat the refusal", async () => {
+  // All three, not just one: the button is suppressed by a set, and a code
+  // dropping out of that set is a one-word edit that nothing else notices.
+  //   4400 - the server would reject the same first frame again.
+  //   4403 - the reader is not in the team that owns this scan.
+  //   4404 - there is no such scan to connect to.
+  it.each([4400, 4403, 4404])(
+    "offers no Reconnect on %i, where trying again repeats the refusal",
+    async (code) => {
+      renderProgress(<ScanProgress scanId="scan-1" socketFactory={factory} />);
+      act(() => FakeSocket.instances[0].__open());
+
+      act(() => FakeSocket.instances[0].__closeFromServer(code));
+
+      await screen.findByTestId("scan-progress-stopped");
+      expect(screen.queryByTestId("scan-progress-reconnect")).toBeNull();
+    },
+  );
+
+  it("offers Reconnect where trying again could work", async () => {
+    // The counterpart, so the suppression above cannot be satisfied by never
+    // rendering the button at all.
     renderProgress(<ScanProgress scanId="scan-1" socketFactory={factory} />);
     act(() => FakeSocket.instances[0].__open());
 
-    // 4403: the reader is not in the team that owns this scan. Trying again
-    // asks the same question and gets the same answer.
-    act(() => FakeSocket.instances[0].__closeFromServer(4403, "forbidden"));
+    act(() => FakeSocket.instances[0].__closeFromServer(1001));
 
     await screen.findByTestId("scan-progress-stopped");
-    expect(screen.queryByTestId("scan-progress-reconnect")).toBeNull();
+    expect(screen.getByTestId("scan-progress-reconnect")).toBeInTheDocument();
   });
 
   it("opens a new socket when the reader presses Reconnect", async () => {

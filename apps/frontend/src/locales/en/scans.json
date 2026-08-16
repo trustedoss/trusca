@@ -350,6 +350,7 @@
       "forbidden": "You do not have access to this scan.",
       "missing": "There is no scan with this id."
     },
-    "unaffected": "The scan itself is unaffected and is still running."
+    "unaffected": "The scan itself is unaffected and is still running.",
+    "stale": "The status shown here may be out of date."
   }
 }

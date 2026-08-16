@@ -165,6 +165,19 @@ const SCAN_UNAFFECTED_REASONS = new Set<StreamStoppedReason>([
   "rejected",
 ]);
 
+/**
+ * Reasons where the honest thing left to say is about this screen, not the
+ * scan.
+ *
+ * Taking the reassurance off 1011 was right, but it left the panel saying
+ * nothing at all about the thing the reader is asking, and a screen that goes
+ * quiet is the failure this whole unit exists to remove. What is true either
+ * way: the percent and the step froze at the last frame that arrived. It
+ * claims nothing about whether the scan lived, and it explains what the
+ * Reconnect button is for.
+ */
+const STALE_STATUS_REASONS = new Set<StreamStoppedReason>(["server"]);
+
 export function ScanProgress({
   scanId,
   release = null,
@@ -601,6 +614,9 @@ function StreamStopped({
             {t(`stream_stopped.reason.${reasonKey}`)}
             {SCAN_UNAFFECTED_REASONS.has(reasonKey)
               ? ` ${t("stream_stopped.unaffected")}`
+              : null}
+            {STALE_STATUS_REASONS.has(reasonKey)
+              ? ` ${t("stream_stopped.stale")}`
               : null}
           </p>
         </div>
