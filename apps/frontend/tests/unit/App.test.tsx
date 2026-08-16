@@ -115,7 +115,10 @@ describe("App smoke (authenticated)", () => {
       expect(screen.getByTestId("app-shell")).toBeInTheDocument();
     });
 
-    const toggle = screen.getByTestId("language-toggle");
+    // C1: theme and language moved into the profile menu, which is what
+    // made them reachable below 640px at all.
+    await user.click(screen.getByTestId("header-profile-menu"));
+    const toggle = await screen.findByTestId("language-toggle");
     expect(toggle).toHaveAttribute("data-current-language", "en");
 
     await user.click(toggle);
@@ -125,11 +128,18 @@ describe("App smoke (authenticated)", () => {
     expect(toggle).toHaveAttribute("data-current-language", "en");
   });
 
-  it("renders the logout button in the app header", async () => {
+  it("offers sign-out from the profile menu", async () => {
+    // C1: it used to sit exposed beside the avatar, one careless click from
+    // the app's only sign-out. Behind the menu it needs an intent.
+    const user = userEvent.setup();
     renderAppAt("/projects");
     await waitFor(() => {
-      expect(screen.getByTestId("logout-button")).toBeInTheDocument();
+      expect(screen.getByTestId("app-shell")).toBeInTheDocument();
     });
+
+    expect(screen.queryByTestId("logout-button")).toBeNull();
+    await user.click(screen.getByTestId("header-profile-menu"));
+    expect(await screen.findByTestId("logout-button")).toBeInTheDocument();
   });
 
   // M-17 — header initials avatar + active team label.
@@ -140,11 +150,14 @@ describe("App smoke (authenticated)", () => {
       status: "authenticated",
       isAuthenticated: true,
     });
+    const user = userEvent.setup();
     renderAppAt("/projects");
     const avatar = await screen.findByTestId("header-avatar");
     expect(avatar.textContent).toBe("AS");
-    // The profile link itself stays reachable for ProfileHarness / docs-uat.
-    expect(screen.getByTestId("header-profile-link")).toHaveAttribute(
+    // The profile link moved into the menu the avatar now opens; it stays
+    // reachable for ProfileHarness / docs-uat once the menu is open.
+    await user.click(screen.getByTestId("header-profile-menu"));
+    expect(await screen.findByTestId("header-profile-link")).toHaveAttribute(
       "href",
       "/profile",
     );
@@ -262,9 +275,10 @@ describe("App smoke (authenticated)", () => {
     mockedPostLogout.mockResolvedValue(undefined);
     renderAppAt("/projects");
     await waitFor(() => {
-      expect(screen.getByTestId("logout-button")).toBeInTheDocument();
+      expect(screen.getByTestId("app-shell")).toBeInTheDocument();
     });
-    await user.click(screen.getByTestId("logout-button"));
+    await user.click(screen.getByTestId("header-profile-menu"));
+    await user.click(await screen.findByTestId("logout-button"));
     await waitFor(() => {
       expect(screen.getByTestId("login-page")).toBeInTheDocument();
     });

@@ -76,7 +76,9 @@
       "operations": "Operations"
     },
     "switchTeam": "Switch team",
-    "components": "Components"
+    "components": "Components",
+    "skipToContent": "Skip to main content",
+    "documentation": "Documentation"
   },
   "demo": {
     "banner_title": "Read-only demo",
@@ -128,5 +130,12 @@
     "csv": "Export CSV",
     "started": "The export is ready and downloading.",
     "failed": "The export could not be built."
+  },
+  "shortcuts": {
+    "title": "Keyboard shortcuts",
+    "description": "Available from any screen.",
+    "command_menu": "Search and jump to a screen",
+    "help": "Show this list",
+    "dismiss": "Close a dialog or menu"
   }
 }

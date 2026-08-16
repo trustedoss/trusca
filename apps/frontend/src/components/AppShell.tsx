@@ -21,6 +21,10 @@ import {
   ListChecks,
   Users as UsersIcon,
   Boxes,
+  BookOpen,
+  DatabaseBackup,
+  ExternalLink,
+  Keyboard,
 } from "lucide-react";
 import { useState, type ComponentType, type SVGProps } from "react";
 import { useTranslation } from "react-i18next";
@@ -40,6 +44,7 @@ import { Button } from "@/components/ui/button";
 import {
   DropdownMenu,
   DropdownMenuContent,
+  DropdownMenuItem,
   DropdownMenuLabel,
   DropdownMenuRadioGroup,
   DropdownMenuRadioItem,
@@ -47,6 +52,11 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { Sheet, SheetContent, SheetTitle } from "@/components/ui/sheet";
+import {
+  ShortcutHelpDialog,
+  useShortcutHelpShortcut,
+} from "@/components/ShortcutHelpDialog";
+import { docsUrl } from "@/lib/docsUrl";
 import { deriveInitials } from "@/lib/initials";
 import { cn } from "@/lib/utils";
 import { useAuthStore } from "@/stores/authStore";
@@ -164,6 +174,16 @@ const ADMIN_NAV: NavItem[] = [
     labelKey: "nav.admin.audit",
     icon: ClipboardList,
     testId: "nav-admin-audit",
+  },
+  {
+    // C1: the route, the page and both translations already existed; only
+    // the nav entry was missing, so restoring a backup meant knowing the
+    // URL. There is an e2e spec for it, which is how a live feature went
+    // unreachable without anything failing.
+    to: "/admin/backup",
+    labelKey: "nav.admin.backup",
+    icon: DatabaseBackup,
+    testId: "nav-admin-backup",
   },
   {
     to: "/admin/health",
@@ -456,10 +476,12 @@ function TeamSwitcher() {
 function GlobalBar({
   onOpenMobileNav,
   onOpenCommandMenu,
+  onOpenShortcutHelp,
   onLogout,
 }: {
   onOpenMobileNav: () => void;
   onOpenCommandMenu: () => void;
+  onOpenShortcutHelp: () => void;
   onLogout: () => void;
 }) {
   const { t } = useTranslation();
@@ -496,12 +518,11 @@ function GlobalBar({
 
       <TeamSwitcher />
 
-      {/* `min-w-0` + `ml-auto` on the group, and the two widest controls
-          hidden below `sm`. Without this the bar could not fit a phone: the
-          search trigger and the language button alone are ~190 px of
-          non-shrinkable content, and the overflow pushed the sign-out button
-          — the app's only one — off the right edge. The keyboard shortcut
-          still opens search when its button is hidden. */}
+      {/* `min-w-0` + `ml-auto` on the group. The search trigger stays hidden
+          below `sm` because it is the widest control and the shortcut still
+          reaches it; theme and language used to be hidden the same way, with
+          no way to reach them at all on a phone. They live in the profile
+          menu now, which is one button wide at every width. */}
       <div className="ml-auto flex min-w-0 items-center gap-1">
         <CommandMenuTrigger
           onOpen={onOpenCommandMenu}
@@ -509,42 +530,126 @@ function GlobalBar({
           className="hidden sm:inline-flex"
         />
         <HeaderBell onInk />
-        <ThemeToggle onInk className="hidden sm:inline-flex" />
-        <LanguageToggle onInk className="hidden sm:inline-flex" />
-        <Button
-          variant="ghost"
-          size="sm"
-          asChild
-          className="text-topbar-foreground hover:bg-topbar-accent hover:text-topbar-foreground"
-          data-testid="header-profile-link"
-        >
-          <NavLink to="/profile" aria-label={t("auth.profile")}>
-            {initials ? (
-              <span
-                aria-hidden
-                data-testid="header-avatar"
-                className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-topbar-accent text-xs font-medium text-topbar-foreground"
-              >
-                {initials}
-              </span>
-            ) : (
-              <UserCircle2 className="h-4 w-4" aria-hidden />
-            )}
-            <span className="sr-only">{t("auth.profile")}</span>
-          </NavLink>
-        </Button>
-        <Button
-          variant="ghost"
-          size="sm"
-          onClick={onLogout}
-          className="text-topbar-muted-foreground hover:bg-topbar-accent hover:text-topbar-foreground"
-          data-testid="logout-button"
-        >
-          <LogOut className="h-4 w-4" aria-hidden />
-          <span className="sr-only sm:not-sr-only">{t("auth.logout")}</span>
-        </Button>
+        <ProfileMenu
+          initials={initials}
+          onLogout={onLogout}
+          onOpenShortcutHelp={onOpenShortcutHelp}
+        />
       </div>
     </header>
+  );
+}
+
+/**
+ * The account menu (C1).
+ *
+ * Before this the bar carried five separate controls on the right, and the
+ * two it could not fit on a phone were simply dropped: below 640px there was
+ * no way to change theme or language at all. Folding them into one menu is
+ * what makes the bar fit and the settings reachable at the same time.
+ *
+ * Sign-out stays here rather than beside it. It was the app's only sign-out
+ * and it sat one careless click from the avatar; behind a menu it needs an
+ * intent.
+ */
+function ProfileMenu({
+  initials,
+  onLogout,
+  onOpenShortcutHelp,
+}: {
+  initials: string;
+  onLogout: () => void;
+  onOpenShortcutHelp: () => void;
+}) {
+  const { t } = useTranslation();
+  const user = useAuthStore((s) => s.user);
+
+  return (
+    <DropdownMenu>
+      <DropdownMenuTrigger asChild>
+        <Button
+          variant="ghost"
+          size="sm"
+          className="text-topbar-foreground hover:bg-topbar-accent hover:text-topbar-foreground"
+          data-testid="header-profile-menu"
+          aria-label={t("auth.profile")}
+        >
+          {initials ? (
+            <span
+              aria-hidden
+              data-testid="header-avatar"
+              className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-topbar-accent text-xs font-medium text-topbar-foreground"
+            >
+              {initials}
+            </span>
+          ) : (
+            <UserCircle2 className="h-4 w-4" aria-hidden />
+          )}
+        </Button>
+      </DropdownMenuTrigger>
+      <DropdownMenuContent align="end" className="w-60">
+        {/* Who you are signed in as. The bar shows initials at best, and on a
+            deployment where several people share a workstation that is not
+            enough to answer the question. */}
+        <DropdownMenuLabel className="font-normal">
+          <span className="block truncate text-sm font-medium">
+            {user?.displayName || user?.email}
+          </span>
+          {user?.displayName ? (
+            <span className="block truncate text-xs text-muted-foreground">
+              {user.email}
+            </span>
+          ) : null}
+        </DropdownMenuLabel>
+        <DropdownMenuSeparator />
+
+        <DropdownMenuItem asChild data-testid="header-profile-link">
+          <NavLink to="/profile">
+            <UserCircle2 className="h-4 w-4" aria-hidden />
+            {t("auth.profile")}
+          </NavLink>
+        </DropdownMenuItem>
+
+        <DropdownMenuItem asChild data-testid="header-docs-link">
+          {/* `noreferrer` alongside `noopener`: the docs site is ours, but a
+              deploy can repoint this at a mirror we do not control. */}
+          <a href={docsUrl()} target="_blank" rel="noopener noreferrer">
+            <BookOpen className="h-4 w-4" aria-hidden />
+            {t("nav.documentation")}
+            <ExternalLink className="ml-auto h-3 w-3 opacity-60" aria-hidden />
+          </a>
+        </DropdownMenuItem>
+
+        <DropdownMenuItem
+          onSelect={onOpenShortcutHelp}
+          data-testid="header-shortcuts-link"
+        >
+          <Keyboard className="h-4 w-4" aria-hidden />
+          {t("shortcuts.title")}
+          <kbd className="ml-auto rounded border px-1 font-mono text-[10px]">
+            ?
+          </kbd>
+        </DropdownMenuItem>
+
+        <DropdownMenuSeparator />
+        {/* The two controls that had no home below `sm`. They keep their own
+            components so the cycling logic and the labels stay in one place. */}
+        <div className="flex items-center justify-between gap-2 px-2 py-1.5">
+          <span className="text-sm">{t("theme.label")}</span>
+          <ThemeToggle />
+        </div>
+        <div className="flex items-center justify-between gap-2 px-2 py-1.5">
+          <span className="text-sm">{t("language.label")}</span>
+          <LanguageToggle />
+        </div>
+
+        <DropdownMenuSeparator />
+        <DropdownMenuItem onSelect={onLogout} data-testid="logout-button">
+          <LogOut className="h-4 w-4" aria-hidden />
+          {t("auth.logout")}
+        </DropdownMenuItem>
+      </DropdownMenuContent>
+    </DropdownMenu>
   );
 }
 
@@ -572,6 +677,11 @@ export function AppShell() {
   // header trigger affordance is off-screen on a narrow viewport.
   const { open: commandOpen, setOpen: setCommandOpen } = useCommandMenuShortcut();
 
+  // C1: the same shape, for the sheet that lists both of these. Mounted
+  // here so `?` works from any authenticated route.
+  const { open: shortcutHelpOpen, setOpen: setShortcutHelpOpen } =
+    useShortcutHelpShortcut();
+
   async function handleLogout() {
     await logout();
     navigate("/login", { replace: true });
@@ -582,12 +692,30 @@ export function AppShell() {
       className="flex h-screen flex-col bg-background text-foreground"
       data-testid="app-shell"
     >
+      {/* C1: the first thing Tab reaches, on every screen.
+          Without it a keyboard reader crosses the whole bar and every nav
+          item before reaching the page they asked for, on every navigation.
+          Visually hidden until focused, which is the only way it can be both
+          out of the way and reachable. */}
+      <a
+        href="#main-content"
+        className={cn(
+          "sr-only rounded-md bg-background px-4 py-2 text-sm font-medium",
+          "focus:not-sr-only focus:absolute focus:left-4 focus:top-4 focus:z-50",
+          "focus:ring-2 focus:ring-ring focus:ring-offset-2",
+        )}
+        data-testid="skip-to-content"
+      >
+        {t("nav.skipToContent")}
+      </a>
+
       {/* The bar spans the full width, above the sidebar rather than beside
           it. That single move is what separates a console silhouette from a
           single-scan viewer's. */}
       <GlobalBar
         onOpenMobileNav={() => setMobileNavOpen(true)}
         onOpenCommandMenu={() => setCommandOpen(true)}
+        onOpenShortcutHelp={() => setShortcutHelpOpen(true)}
         onLogout={handleLogout}
       />
 
@@ -622,7 +750,12 @@ export function AppShell() {
 
           <main
             key={location.pathname}
-            className="flex-1 overflow-y-auto animate-in fade-in-0 duration-slow ease-out-soft"
+            id="main-content"
+            // Focusable only as a skip target: without this the browser moves
+            // the scroll but leaves focus in the bar, so the next Tab goes
+            // back to where the reader just skipped from.
+            tabIndex={-1}
+            className="flex-1 overflow-y-auto animate-in fade-in-0 duration-slow ease-out-soft focus:outline-none"
             data-testid="app-main"
           >
             <Outlet />
@@ -653,6 +786,10 @@ export function AppShell() {
           route. The dialog itself is portal-rendered to document.body, so
           this position in the DOM is purely organizational. */}
       <CommandMenu open={commandOpen} onOpenChange={setCommandOpen} />
+      <ShortcutHelpDialog
+        open={shortcutHelpOpen}
+        onOpenChange={setShortcutHelpOpen}
+      />
     </div>
   );
 }

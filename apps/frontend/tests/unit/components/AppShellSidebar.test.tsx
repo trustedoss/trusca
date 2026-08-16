@@ -141,3 +141,101 @@ describe("AppShell — collapsible sidebar", () => {
     expect(main.className).toContain("duration-slow");
   });
 });
+
+describe("AppShell - skip link and profile menu (C1)", () => {
+  beforeEach(() => {
+    window.localStorage.clear();
+    useUIStore.setState({ sidebarCollapsed: false });
+    useAuthStore.setState({
+      user: fakeUser,
+      accessToken: "tok-app",
+      status: "authenticated",
+      isAuthenticated: true,
+    });
+  });
+  afterEach(() => {
+    useAuthStore.getState().reset();
+    window.history.replaceState(null, "", "/");
+  });
+
+  it("puts the skip link first in the tab order and points it at <main>", async () => {
+    renderAppAt("/projects");
+    const skip = await screen.findByTestId("skip-to-content");
+    // Every screen puts ~20 nav links between the page top and the content;
+    // a keyboard reader had to walk all of them on every navigation.
+    const shell = screen.getByTestId("app-shell");
+    const focusable = shell.querySelectorAll("a[href], button");
+    expect(focusable[0]).toBe(skip);
+    expect(skip).toHaveAttribute("href", "#main-content");
+
+    const main = screen.getByTestId("app-main");
+    expect(main.id).toBe("main-content");
+    // Without tabindex the fragment jump moves the scroll but not focus, so
+    // the next Tab would start from the top of the document again.
+    expect(main).toHaveAttribute("tabindex", "-1");
+  });
+
+  it("keeps the skip link out of sight until it is focused", async () => {
+    const user = userEvent.setup();
+    renderAppAt("/projects");
+    const skip = await screen.findByTestId("skip-to-content");
+    expect(skip.className).toContain("sr-only");
+    // focus-visible would hide it from a reader who tabs in with a mouse
+    // already in play; plain focus is what a skip link needs.
+    expect(skip.className).toContain("focus:not-sr-only");
+
+    await user.tab();
+    expect(skip).toHaveFocus();
+  });
+
+  it("gathers profile, sign-out, theme and language behind one menu", async () => {
+    const user = userEvent.setup();
+    renderAppAt("/projects");
+    await screen.findByTestId("app-shell");
+
+    for (const id of [
+      "header-profile-link",
+      "logout-button",
+      "theme-toggle",
+      "language-toggle",
+    ]) {
+      expect(screen.queryByTestId(id)).toBeNull();
+    }
+
+    await user.click(screen.getByTestId("header-profile-menu"));
+    for (const id of [
+      "header-profile-link",
+      "logout-button",
+      "theme-toggle",
+      "language-toggle",
+      "header-docs-link",
+      "header-shortcuts-link",
+    ]) {
+      expect(await screen.findByTestId(id)).toBeInTheDocument();
+    }
+  });
+
+  it("opens the shortcut sheet from the profile menu", async () => {
+    const user = userEvent.setup();
+    renderAppAt("/projects");
+    await screen.findByTestId("app-shell");
+
+    await user.click(screen.getByTestId("header-profile-menu"));
+    await user.click(await screen.findByTestId("header-shortcuts-link"));
+
+    // The `?` binding is undiscoverable on its own, so the menu entry is how
+    // a reader who never guesses it finds out the shortcuts exist.
+    expect(await screen.findByTestId("shortcut-help-dialog")).toBeInTheDocument();
+  });
+
+  it("sends the docs link off-site with the usual new-tab hardening", async () => {
+    const user = userEvent.setup();
+    renderAppAt("/projects");
+    await screen.findByTestId("app-shell");
+
+    await user.click(screen.getByTestId("header-profile-menu"));
+    const docs = await screen.findByTestId("header-docs-link");
+    expect(docs).toHaveAttribute("target", "_blank");
+    expect(docs).toHaveAttribute("rel", expect.stringContaining("noopener"));
+  });
+});
