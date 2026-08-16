@@ -68,6 +68,17 @@ export class ScansQueueHarness {
     await this.expectMounted();
   }
 
+  /**
+   * Which tab the page is showing, read off the buttons rather than the
+   * URL: what the reader sees is the thing under test (B1).
+   */
+  async activeTab(): Promise<ScansTab | null> {
+    const active = this.page.locator('[data-testid^="scans-tab-"][data-active="true"]');
+    if ((await active.count()) === 0) return null;
+    const id = await active.first().getAttribute("data-testid");
+    return (id?.replace("scans-tab-", "") as ScansTab) ?? null;
+  }
+
   // ───── list state ─────────────────────────────────────────────────────
   async getRowCount(): Promise<number> {
     return this.page.getByTestId("scans-row").count();

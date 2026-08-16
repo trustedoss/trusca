@@ -30,6 +30,7 @@ import { RevealApiKeyDialog } from "@/features/integrations/RevealApiKeyDialog";
 import { RevokeApiKeyDialog } from "@/features/integrations/RevokeApiKeyDialog";
 import { useApiKeys } from "@/features/integrations/useApiKeys";
 import { usePermissions } from "@/hooks/usePermissions";
+import { useClampPage, usePageParam } from "@/hooks/useUrlState";
 import { createApiKey, revokeApiKey } from "@/lib/apiKeysApi";
 import { getApiBase } from "@/lib/apiBase";
 import { writeToClipboard } from "@/lib/clipboard";
@@ -143,7 +144,8 @@ export function IntegrationsPage() {
   const { isTeamAdminOrAbove } = usePermissions();
   const currentUserId = useAuthStore((s) => s.user?.id ?? null);
 
-  const [page, setPage] = useState(1);
+  // B1: in the URL, so a reload keeps the page of keys the reader was on.
+  const [page, setPage] = usePageParam();
   const [createOpen, setCreateOpen] = useState(false);
   const [revealKey, setRevealKey] = useState<APIKeyCreateOut | null>(null);
   const [revokeTarget, setRevokeTarget] = useState<APIKeyListItem | null>(null);
@@ -154,6 +156,9 @@ export function IntegrationsPage() {
   const items = keysQuery.data?.items ?? [];
   const total = keysQuery.data?.total ?? 0;
   const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE));
+  // The page is now something a link or a bookmark can carry, and it can
+  // name a page this list no longer has.
+  useClampPage(page, totalPages, setPage, keysQuery.isSuccess);
 
   function showToast(text: string, tone: "success" | "error", key: string) {
     toast(text, { tone, key });

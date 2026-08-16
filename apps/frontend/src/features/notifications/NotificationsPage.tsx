@@ -49,6 +49,7 @@ import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Switch } from "@/components/ui/switch";
 import { useToast } from "@/components/ui/toast";
+import { useClampPage, usePageParam, useUrlFlag } from "@/hooks/useUrlState";
 import type {
   NotificationItem,
   NotificationKind,
@@ -296,8 +297,10 @@ function ToggleRow({
 export function NotificationsPage() {
   const { t } = useTranslation("notifications");
   const navigate = useNavigate();
-  const [unreadOnly, setUnreadOnly] = useState(false);
-  const [page, setPage] = useState(1);
+  // B1: both were component state, so a reload or a Back put the reader on
+  // page 1 of everything, whichever page of unread they had been reading.
+  const [unreadOnly, setUnreadOnly] = useUrlFlag("unread");
+  const [page, setPage] = usePageParam();
   const { toast } = useToast();
 
   const params = useMemo(
@@ -310,6 +313,9 @@ export function NotificationsPage() {
   const total = listQuery.data?.total ?? 0;
   const unreadCount = listQuery.data?.unread_count ?? 0;
   const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE));
+  // The page is now something a link or a bookmark can carry, and it can
+  // name a page this list no longer has.
+  useClampPage(page, totalPages, setPage, listQuery.isSuccess);
 
   const prefsQuery = useNotificationPrefs();
   const markRead = useMarkRead();
@@ -404,10 +410,8 @@ export function NotificationsPage() {
               >
                 <Switch
                   checked={unreadOnly}
-                  onCheckedChange={(v) => {
-                    setUnreadOnly(v);
-                    setPage(1);
-                  }}
+                  // The hook clears the page itself when a filter moves.
+                  onCheckedChange={setUnreadOnly}
                   aria-label={t("inbox.unread_only")}
                   data-testid="notifications-unread-only"
                 />

@@ -32,6 +32,13 @@ import {
 } from "@/features/admin/scans/api/adminScansApi";
 import { useAdminScans } from "@/features/admin/scans/api/useAdminScans";
 import RelativeTime from "@/components/RelativeTime";
+import {
+  useClampPage,
+  usePageParam,
+  useUrlEnum,
+  useUrlParam,
+  useUrlText,
+} from "@/hooks/useUrlState";
 import { cn } from "@/lib/utils";
 import { SCAN_KIND_VALUES, type ScanKind } from "@/lib/projectsApi";
 
@@ -53,27 +60,65 @@ const TABS: ScansTab[] = ["running", "queued", "failed", "all"];
 export function AdminScansPage() {
   const { t, i18n } = useTranslation("admin");
 
-  const [tab, setTab] = useState<ScansTab>("running");
-  const [kindFilter, setKindFilter] = useState<ScanKind | "all">("all");
-  const [projectInput, setProjectInput] = useState("");
-  const [projectDebounced, setProjectDebounced] = useState("");
-  const [page, setPage] = useState(1);
-  const [pageSize, setPageSize] =
-    useState<(typeof PAGE_SIZE_OPTIONS)[number]>(50);
-  const [openScan, setOpenScan] = useState<AdminScanListItem | null>(null);
+  // B1: every filter lives in the address bar, so a reload or a Back returns
+  // the operator to the list they were reading, and a URL sent to a colleague
+  // shows them the same scans.
+  const [tab, setTab] = useUrlEnum<ScansTab>("status", TABS, "running");
+  const [kindFilter, setKindFilter] = useUrlEnum<ScanKind | "all">(
+    "kind",
+    ["all", ...KIND_OPTIONS],
+    "all",
+  );
+  const [projectDebounced, setProjectDebounced] = useUrlText("project");
+  const [projectInput, setProjectInput] = useState(projectDebounced);
+  const [page, setPage] = usePageParam();
+  const [pageSize, setPageSize] = useUrlParam<
+    (typeof PAGE_SIZE_OPTIONS)[number]
+  >("size", {
+    parse: (raw) => {
+      const n = Number.parseInt(raw ?? "", 10);
+      return (PAGE_SIZE_OPTIONS as readonly number[]).includes(n)
+        ? (n as (typeof PAGE_SIZE_OPTIONS)[number])
+        : 50;
+    },
+    serialize: (value) => (value === 50 ? null : String(value)),
+  });
+  // The drawer carries the scan id, not the row: the row is whatever the
+  // list holds. Because the filters are in the URL too, the same URL rebuilds
+  // the same list, so the id resolves again on reload. On a fresh mount a
+  // scan that has since left that list cannot be resolved at all, so the
+  // drawer stays shut. A drawer already open when its scan leaves is a
+  // different case and is handled below: it stays open.
+  const [openScanId, setOpenScanId] = useUrlParam<string | null>("scan", {
+    parse: (raw) => raw || null,
+    serialize: (value) => value,
+    resetsPage: false,
+  });
+
+  // Back moves the URL; the field has to follow it, or it shows a term the
+  // list is no longer filtered by.
+  //
+  // Only when the field is not already showing that term. The URL holds the
+  // trimmed form, so following it unconditionally would swallow a trailing
+  // space 300ms after the operator typed it, and their next word would join
+  // the previous one.
+  useEffect(() => {
+    setProjectInput((current) =>
+      current.trim() === projectDebounced ? current : projectDebounced,
+    );
+  }, [projectDebounced]);
 
   // 300ms debounce on the project-name search — same pattern as the audit
   // page's text filters. The debounced commit also rewinds to page 1. The
   // equality guard keeps the mount render (and the settled state) from
   // scheduling a spurious page-1 reset.
   useEffect(() => {
-    if (projectInput === projectDebounced) return undefined;
+    if (projectInput.trim() === projectDebounced) return undefined;
     const id = setTimeout(() => {
       setProjectDebounced(projectInput);
-      setPage(1);
     }, 300);
     return () => clearTimeout(id);
-  }, [projectInput, projectDebounced]);
+  }, [projectInput, projectDebounced, setProjectDebounced]);
 
   const queryParams = useMemo(
     () => ({
@@ -87,14 +132,35 @@ export function AdminScansPage() {
   );
 
   const scansQuery = useAdminScans(queryParams);
-  const items = scansQuery.data?.items ?? [];
+  // Memoised because the drawer effect below depends on it, and a bare
+  // `?? []` is a new array on every render while the query is in flight.
+  const items = useMemo(() => scansQuery.data?.items ?? [], [scansQuery.data]);
   const total = scansQuery.data?.total ?? 0;
   const totalPages = Math.max(1, Math.ceil(total / pageSize));
+  // The page is now something a link or a bookmark can carry, and it can
+  // name a page this list no longer has.
+  useClampPage(page, totalPages, setPage, scansQuery.isSuccess);
 
-  function changeTab(next: ScansTab) {
-    setTab(next);
-    setPage(1);
-  }
+  // The drawer keeps the row it was opened with rather than re-reading it
+  // from the list on every render. This list polls every 30 seconds and the
+  // cancel action invalidates it, and the default tab is `running`: a scan
+  // being read finishes, leaves the list, and the drawer would vanish from
+  // under the operator with `?scan=` still in the address bar. Radix does
+  // not call `onOpenChange` when a prop closes it, so nothing would clear
+  // the parameter either.
+  const [openScan, setOpenScan] = useState<AdminScanListItem | null>(null);
+  useEffect(() => {
+    if (!openScanId) {
+      setOpenScan(null);
+      return;
+    }
+    // Present means fresh. Absent means keep what is on screen, but only if
+    // it is the scan the URL still names. Following a link to a different
+    // scan that is not in this list must not leave the previous one open.
+    const found = items.find((scan) => scan.id === openScanId);
+    if (found) setOpenScan(found);
+    else setOpenScan((current) => (current?.id === openScanId ? current : null));
+  }, [openScanId, items]);
 
   return (
     <div className="flex h-full flex-col" data-testid="admin-scans-page">
@@ -113,7 +179,7 @@ export function AdminScansPage() {
             key={value}
             size="sm"
             variant={tab === value ? "default" : "outline"}
-            onClick={() => changeTab(value)}
+            onClick={() => setTab(value)}
             role="tab"
             aria-selected={tab === value}
             data-testid={`admin-scans-tab-${value}`}
@@ -130,10 +196,8 @@ export function AdminScansPage() {
             "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2",
           )}
           value={kindFilter}
-          onChange={(e) => {
-            setKindFilter(e.target.value as ScanKind | "all");
-            setPage(1);
-          }}
+          // The hook clears the page itself when a filter moves.
+          onChange={(e) => setKindFilter(e.target.value as ScanKind | "all")}
         >
           <option value="all">{t("admin.scans.filter.kind_all")}</option>
           {KIND_OPTIONS.map((value) => (
@@ -149,7 +213,9 @@ export function AdminScansPage() {
           value={projectInput}
           placeholder={t("admin.scans.filter.project_placeholder")}
           onChange={(e) => setProjectInput(e.target.value)}
-          maxLength={255}
+          // Matches the bound the URL applies, so a paste is refused at the
+          // field rather than silently truncated 300ms later.
+          maxLength={200}
         />
         <div className="ml-auto">
           <Button
@@ -216,11 +282,11 @@ export function AdminScansPage() {
                     className="cursor-pointer border-b transition-colors duration-fast ease-out-soft hover:bg-accent/40 focus-within:bg-accent/40"
                     style={{ height: "var(--table-row)" }}
                     tabIndex={0}
-                    onClick={() => setOpenScan(scan)}
+                    onClick={() => setOpenScanId(scan.id)}
                     onKeyDown={(e) => {
                       if (e.key === "Enter" || e.key === " ") {
                         e.preventDefault();
-                        setOpenScan(scan);
+                        setOpenScanId(scan.id);
                       }
                     }}
                   >
@@ -294,7 +360,6 @@ export function AdminScansPage() {
               setPageSize(
                 Number(e.target.value) as (typeof PAGE_SIZE_OPTIONS)[number],
               );
-              setPage(1);
             }}
           >
             {PAGE_SIZE_OPTIONS.map((opt) => (
@@ -337,7 +402,7 @@ export function AdminScansPage() {
         open={openScan !== null}
         scan={openScan}
         onOpenChange={(open) => {
-          if (!open) setOpenScan(null);
+          if (!open) setOpenScanId(null);
         }}
       />
     </div>

@@ -15,6 +15,7 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { ToastProvider } from "@/components/ui/toast";
 import { act, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
+import { MemoryRouter, useNavigate } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { AdminScansPage } from "@/features/admin/scans/AdminScansPage";
@@ -66,17 +67,36 @@ function pageResponse(
   return { items, total, page: 1, page_size: 50 };
 }
 
-function renderPage() {
+// MemoryRouter keeps its own history stack, so window.history is inert in
+// these tests. This is how a test moves the URL without the page doing it.
+function UrlProbe() {
+  const navigate = useNavigate();
+  return (
+    <button
+      data-testid="navigate-elsewhere"
+      onClick={() => navigate("/admin/scans?project=beta")}
+    />
+  );
+}
+
+// B1: the filters live in the URL now, so the page needs a router.
+function renderPage(url = "/admin/scans") {
   const client = new QueryClient({
     defaultOptions: { queries: { retry: false } },
   });
-  return render(
-    <QueryClientProvider client={client}>
-      <ToastProvider>
-        <AdminScansPage />
-      </ToastProvider>
-    </QueryClientProvider>,
-  );
+  return {
+    client,
+    ...render(
+      <MemoryRouter initialEntries={[url]}>
+        <QueryClientProvider client={client}>
+          <ToastProvider>
+            <AdminScansPage />
+            <UrlProbe />
+          </ToastProvider>
+        </QueryClientProvider>
+      </MemoryRouter>,
+    ),
+  };
 }
 
 describe("AdminScansPage", () => {
@@ -122,6 +142,160 @@ describe("AdminScansPage", () => {
       const last = mockedList.mock.calls.at(-1)?.[0];
       expect(last).toMatchObject({ status: null });
     });
+  });
+
+  it("opens on the tab, kind and page the URL asked for (B1)", async () => {
+    // A link to a filtered list has to arrive at that list, not at the
+    // default tab with the parameters silently dropped.
+    mockedList.mockResolvedValue(pageResponse([]));
+    renderPage("/admin/scans?status=failed&kind=container&project=alpha&page=3");
+
+    await waitFor(() => {
+      expect(mockedList).toHaveBeenCalled();
+    });
+    expect(mockedList.mock.calls[0]?.[0]).toMatchObject({
+      status: "failed",
+      kind: "container",
+      project: "alpha",
+      page: 3,
+    });
+  });
+
+  it("ignores filter values it does not recognise (B1)", async () => {
+    // A stale or hand-edited URL falls back to the default rather than being
+    // forwarded to the backend, which would answer 422.
+    mockedList.mockResolvedValue(pageResponse([]));
+    renderPage("/admin/scans?status=deleted&kind=nonsense&page=0");
+
+    await waitFor(() => {
+      expect(mockedList).toHaveBeenCalled();
+    });
+    expect(mockedList.mock.calls[0]?.[0]).toMatchObject({
+      status: "running",
+      kind: null,
+      page: 1,
+    });
+  });
+
+  it("keeps a deep-linked page when the search term has not moved (B1)", async () => {
+    // The debounce writes the term on a timer. If it fired on mount it would
+    // clear the page as a filter change, and `?project=alpha&page=3` would
+    // land on page 1.
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    // A total that spans more than three pages, or the clamp would rightly
+    // snap page 3 back to 1 and mask what this test is about.
+    mockedList.mockResolvedValue(pageResponse([scanFixture()], 400));
+    renderPage("/admin/scans?project=alpha&page=3");
+
+    await waitFor(() => {
+      expect(mockedList).toHaveBeenCalled();
+    });
+    await act(async () => {
+      vi.advanceTimersByTime(600);
+    });
+
+    expect(mockedList.mock.calls.at(-1)?.[0]).toMatchObject({
+      project: "alpha",
+      page: 3,
+    });
+  });
+
+  it("restores the drawer from the URL and clears it on close (B1)", async () => {
+    // The id is what the URL carries; the row is whatever the list holds.
+    mockedList.mockResolvedValue(pageResponse([scanFixture()]));
+    renderPage(
+      "/admin/scans?scan=11111111-1111-1111-1111-111111111111",
+    );
+
+    await waitFor(() => {
+      expect(screen.getByTestId("admin-scan-drawer")).toBeInTheDocument();
+    });
+    expect(screen.getByTestId("admin-scan-project")).toHaveTextContent("alpha");
+  });
+
+  it("keeps the drawer open when the scan leaves the list (B1)", async () => {
+    // This list polls every 30s and the cancel action invalidates it, and
+    // the default tab is `running`. A scan being read finishes, drops out of
+    // the list, and the drawer would vanish from under the operator with
+    // `?scan=` still in the address bar. Radix does not call onOpenChange
+    // when a prop closes it, so nothing would clear the parameter either.
+    mockedList.mockResolvedValue(pageResponse([scanFixture()]));
+    const { client } = renderPage();
+
+    await waitFor(() => {
+      expect(screen.getByTestId("admin-scans-row")).toBeInTheDocument();
+    });
+    await userEvent.click(screen.getByTestId("admin-scans-row"));
+    await waitFor(() => {
+      expect(screen.getByTestId("admin-scan-drawer")).toBeInTheDocument();
+    });
+
+    // The next poll no longer carries it. Driven through the query client
+    // because that is what the page's own 30s interval and the cancel
+    // action's invalidation both do.
+    mockedList.mockResolvedValue(pageResponse([]));
+    await act(async () => {
+      await client.invalidateQueries({ queryKey: ["admin", "scans"] });
+    });
+    await waitFor(() => {
+      expect(screen.queryByTestId("admin-scans-row")).not.toBeInTheDocument();
+    });
+
+    expect(screen.getByTestId("admin-scan-drawer")).toBeInTheDocument();
+    expect(screen.getByTestId("admin-scan-project")).toHaveTextContent("alpha");
+  });
+
+  it("snaps a page the list does not have back into range (B1)", async () => {
+    // This is the one screen where the range shrinks under the operator:
+    // it polls every 30s on a `running` tab that empties as scans finish.
+    mockedList.mockResolvedValue(pageResponse([scanFixture()], 1));
+    renderPage("/admin/scans?page=5");
+
+    await waitFor(() => {
+      expect(mockedList.mock.calls.at(-1)?.[0]).toMatchObject({ page: 1 });
+    });
+  });
+
+  it("follows the URL when the term changes from outside the field (B1)", async () => {
+    // Back moves the URL. Without this the field keeps showing a term the
+    // list is no longer filtered by.
+    mockedList.mockResolvedValue(pageResponse([]));
+    renderPage("/admin/scans?project=alpha");
+    expect(screen.getByTestId("admin-scans-project")).toHaveValue("alpha");
+
+    await userEvent.click(screen.getByTestId("navigate-elsewhere"));
+
+    await waitFor(() => {
+      expect(screen.getByTestId("admin-scans-project")).toHaveValue("beta");
+    });
+  });
+
+  it("keeps a trailing space the operator typed (B1)", async () => {
+    // The URL holds the trimmed term. A field that follows the URL back
+    // unconditionally swallows the space 300ms after it is typed, and the
+    // next word joins the previous one.
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    mockedList.mockResolvedValue(pageResponse([]));
+    const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime });
+    renderPage();
+
+    const field = screen.getByTestId("admin-scans-project");
+    await user.type(field, "alpha ");
+    await act(async () => {
+      vi.advanceTimersByTime(600);
+    });
+
+    expect(field).toHaveValue("alpha ");
+  });
+
+  it("leaves the drawer shut for a scan no longer in the list (B1)", async () => {
+    mockedList.mockResolvedValue(pageResponse([scanFixture()]));
+    renderPage("/admin/scans?scan=99999999-9999-9999-9999-999999999999");
+
+    await waitFor(() => {
+      expect(screen.getByTestId("admin-scans-row")).toBeInTheDocument();
+    });
+    expect(screen.queryByTestId("admin-scan-drawer")).not.toBeInTheDocument();
   });
 
   it("opens the drawer when a row is clicked", async () => {

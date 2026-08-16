@@ -15,9 +15,9 @@
  * AdminScansPage uses for the scan id column.
  */
 import { Activity } from "lucide-react";
-import { useMemo, useState } from "react";
+import { useMemo } from "react";
 import { useTranslation } from "react-i18next";
-import { Link, useSearchParams } from "react-router-dom";
+import { Link } from "react-router-dom";
 
 import { EmptyState } from "@/components/EmptyState";
 import { PageHeader } from "@/components/PageHeader";
@@ -27,6 +27,7 @@ import { Button } from "@/components/ui/button";
 import { TableRowsSkeleton } from "@/components/ui/skeletons";
 import { ScanCancelButton } from "@/features/scans/ScanCancelButton";
 import { useScans } from "@/features/scans/useScans";
+import { useClampPage, usePageParam, useUrlEnum } from "@/hooks/useUrlState";
 import RelativeTime from "@/components/RelativeTime";
 import { cn } from "@/lib/utils";
 import { type ScanPublic, type ScanStatus } from "@/lib/projectsApi";
@@ -96,16 +97,12 @@ export function ScansPage() {
   // Dashboard StatCards can deep-link straight into the matching tab.
   // Default tab stays "all" so the page itself opens unchanged when there
   // are no params.
-  const [searchParams, setSearchParams] = useSearchParams();
-  const statusParam = searchParams.get("status");
-  const initialTab: ScansTab = (TABS as readonly string[]).includes(
-    statusParam ?? "",
-  )
-    ? (statusParam as ScansTab)
-    : "all";
-
-  const [tab, setTab] = useState<ScansTab>(initialTab);
-  const [page, setPage] = useState(1);
+  //
+  // B1: the tab used to be seeded from the URL once and written back on
+  // change, so pressing Back moved the address bar and left the tab where it
+  // was. It now reads the URL every render, and the page joins it.
+  const [tab, setTab] = useUrlEnum<ScansTab>("status", TABS, "all");
+  const [page, setPage] = usePageParam();
 
   const queryParams = useMemo(
     () => ({
@@ -120,25 +117,9 @@ export function ScansPage() {
   const items = scansQuery.data?.items ?? [];
   const total = scansQuery.data?.total ?? 0;
   const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE));
-
-  function changeTab(next: ScansTab) {
-    setTab(next);
-    setPage(1);
-    // Mirror into the URL so refresh / share preserves the active tab. The
-    // "all" tab clears the param (default state should not carry noise).
-    setSearchParams(
-      (prev) => {
-        const merged = new URLSearchParams(prev);
-        if (next === "all") {
-          merged.delete("status");
-        } else {
-          merged.set("status", next);
-        }
-        return merged;
-      },
-      { replace: false },
-    );
-  }
+  // The page is now something a link or a bookmark can carry, and it can
+  // name a page this list no longer has.
+  useClampPage(page, totalPages, setPage, scansQuery.isSuccess);
 
   return (
     <div className="flex h-full flex-col" data-testid="scans-page">
@@ -157,7 +138,7 @@ export function ScansPage() {
             key={value}
             size="sm"
             variant={tab === value ? "default" : "outline"}
-            onClick={() => changeTab(value)}
+            onClick={() => setTab(value)}
             role="tab"
             aria-selected={tab === value}
             data-testid={`scans-tab-${value}`}

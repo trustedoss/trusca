@@ -90,7 +90,7 @@ function page(items: APIKeyListItem[]): APIKeyListPage {
   return { items, total: items.length, page: 1, page_size: 20 };
 }
 
-function renderPage() {
+function renderPage(initialEntry = "/integrations") {
   // Fresh QueryClient per test so cached invalidations don't bleed.
   const client = new QueryClient({
     defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
@@ -98,7 +98,7 @@ function renderPage() {
   return render(
     <QueryClientProvider client={client}>
       <ToastProvider>
-        <MemoryRouter>
+        <MemoryRouter initialEntries={[initialEntry]}>
           <IntegrationsPage />
         </MemoryRouter>
       </ToastProvider>
@@ -505,6 +505,31 @@ describe("IntegrationsPage", () => {
     await waitFor(() => {
       const lastCall = mockedList.mock.calls.at(-1)?.[0];
       expect(lastCall?.page).toBe(2);
+    });
+  });
+
+  it("opens on the page the URL asked for (B1)", async () => {
+    mockedList.mockResolvedValue({ items: [], total: 25, page: 2, page_size: 20 });
+
+    renderPage("/integrations?page=2");
+
+    await waitFor(() => {
+      expect(mockedList).toHaveBeenCalled();
+    });
+    expect(mockedList.mock.calls[0]?.[0]?.page).toBe(2);
+    // And it stays there: nothing snaps a page the list actually has.
+    expect(mockedList.mock.calls.at(-1)?.[0]?.page).toBe(2);
+  });
+
+  it("snaps a page the list does not have back into range (B1)", async () => {
+    // A bookmark can name page 2 of a list whose keys have since been
+    // revoked down to one page. Without this the footer lies about the range.
+    mockedList.mockResolvedValue({ items: [], total: 3, page: 1, page_size: 20 });
+
+    renderPage("/integrations?page=2");
+
+    await waitFor(() => {
+      expect(mockedList.mock.calls.at(-1)?.[0]?.page).toBe(1);
     });
   });
 
