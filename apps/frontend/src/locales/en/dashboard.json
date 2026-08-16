@@ -100,5 +100,38 @@
     "team_truncated": "Showing the worst {{shown}} of {{total}}.",
     "truncated": "Showing {{shown}} of {{total}} projects across {{shownTeams}} of {{teams}} teams — worst first. Open the project list for the rest.",
     "never_scanned_hint": "No scan has ever succeeded for this project, so there is nothing measured to show."
+  },
+  "onboarding": {
+    "title": "Getting started",
+    "description": "Four steps to a portfolio that answers questions.",
+    "progress": "{{done}} of {{total}}",
+    "dismiss": "Hide the getting started checklist",
+    "step": {
+      "project": {
+        "label": "Register a project",
+        "hint": "Point TRUSCA at a repository. A name and a Git URL are enough.",
+        "done": "Registered.",
+        "cta": "New project"
+      },
+      "scan": {
+        "label": "Run the first scan",
+        "hint": "A registered project shows nothing until it has been scanned once.",
+        "done": "A scan has finished.",
+        "cta": "Open projects"
+      },
+      "policy": {
+        "label": "Set a licence policy",
+        "hint": "Decide which licences block a build. Until you do, the built-in categories apply.",
+        "done": "A policy of your own applies.",
+        "cta": "Open policies"
+      },
+      "apiKey": {
+        "label": "Issue a CI key",
+        "hint": "A build cannot scan without one. Scope it to the project CI will check.",
+        "done": "A key is active.",
+        "cta": "Open integrations"
+      }
+    },
+    "no_team": "You do not belong to a team yet, and all four of these belong to one. Ask an administrator to add you."
   }
 }

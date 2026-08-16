@@ -76,6 +76,10 @@ import RelativeTime from "@/components/RelativeTime";
 import { SavedSearchesPanel } from "@/features/dashboard/components/SavedSearchesPanel";
 import { ActionQueuePanel } from "@/features/dashboard/ActionQueuePanel";
 import { PortfolioGrid } from "@/features/dashboard/PortfolioGrid";
+import {
+  OnboardingChecklist,
+  useOnboardingChecklist,
+} from "@/features/dashboard/OnboardingChecklist";
 import { TrendsPanel } from "@/features/dashboard/TrendsPanel";
 
 // Project list page-size ceiling matches ProjectListPage (size=100, the
@@ -364,6 +368,14 @@ export function DashboardPage() {
   const projectsLoaded = !projectsQuery.isLoading && !projectsQuery.isError;
   const hasNoProjects = projectsLoaded && projects.length === 0;
 
+  // C2: the checklist and the no-projects empty state open with the same
+  // sentence, so only one of them appears. This hook is the single source for
+  // that decision; the card below runs it again and reaches the same answer.
+  const { visible: showOnboarding } = useOnboardingChecklist({
+    projects,
+    projectsLoaded,
+  });
+
   // Last-updated stamp anchored to the moment the heaviest query (projects)
   // last resolved. Falls back to "—" before the first resolution so we don't
   // flash a stale absolute clock.
@@ -394,6 +406,17 @@ export function DashboardPage() {
         }
       />
 
+      {/* C2: above the branch below, not inside it. The checklist has to
+          outlive the first project: steps two through four are the ones a new
+          organisation gets stuck on, and the no-projects branch swaps the
+          whole body away the moment step one is done. */}
+      {showOnboarding ? (
+        <OnboardingChecklist
+          projects={projects}
+          projectsLoaded={projectsLoaded}
+        />
+      ) : null}
+
       {/* M-18 — a load failure REPLACES the KPI/chart/recent body instead of
           stacking an alert above zero-value tiles (zeros read as a healthy
           portfolio). `isAnyError` is already a composite of the three fan-out
@@ -419,6 +442,12 @@ export function DashboardPage() {
           />
         </div>
       ) : hasNoProjects ? (
+        // The checklist above already says "register a project", and says it
+        // better, so this branch renders nothing while it is showing. What it
+        // must NOT do is fall through to the body below: with no projects
+        // every tile reads 0, and a wall of zeros looks like a clean
+        // portfolio rather than an empty one.
+        showOnboarding ? null : (
         <div className="px-6 py-8" data-testid="dashboard-empty-wrapper">
           <EmptyState
             data-testid="dashboard-empty"
@@ -438,6 +467,7 @@ export function DashboardPage() {
             }
           />
         </div>
+        )
       ) : (
         <>
           {/* The queue leads. A distribution is context; a queue is work, and
