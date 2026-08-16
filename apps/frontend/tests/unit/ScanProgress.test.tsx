@@ -614,17 +614,97 @@ describe("ScanProgress", () => {
     expect(stopped.textContent).toContain("Another tab");
   });
 
-  it("falls back to the network reason for a code the server never sends", async () => {
+  // Every close code the panel can render, with the whole sentence it puts on
+  // screen. The unit this belongs to is judged on whether that copy is true
+  // of the code, so the copy is what is asserted - not a testid, and not a
+  // substring that would survive the two halves being recombined wrongly.
+  //
+  // `unaffected` is the half that has to be conditional. It reads as
+  // reassurance and it is right for a stream that failed, but "there is no
+  // scan with this id, the scan itself is unaffected and is still running"
+  // was on screen for 4404 until it was made per-reason.
+  const STOPPED_COPY: [number, string][] = [
+    [
+      1001,
+      "Another tab took over the live connection for this account. " +
+        "The scan itself is unaffected and is still running.",
+    ],
+    [
+      4400,
+      "The server did not accept this connection. " +
+        "The scan itself is unaffected and is still running.",
+    ],
+    [4403, "You do not have access to this scan."],
+    [4404, "There is no scan with this id."],
+  ];
+
+  it.each(STOPPED_COPY)(
+    "says something true of close code %i",
+    async (code, expected) => {
+      renderProgress(<ScanProgress scanId="scan-1" socketFactory={factory} />);
+      act(() => FakeSocket.instances[0].__open());
+
+      act(() => FakeSocket.instances[0].__closeFromServer(code));
+
+      const stopped = await screen.findByTestId("scan-progress-stopped");
+      expect(stopped.dataset.closeCode).toBe(String(code));
+      expect(stopped.textContent).toContain(expected);
+      // The two codes that mean "not your scan" must not carry the
+      // reassurance, and the reassurance must not appear twice.
+      const reassurances = (
+        stopped.textContent?.match(/is still running/g) ?? []
+      ).length;
+      expect(reassurances).toBe(expected.includes("still running") ? 1 : 0);
+    },
+  );
+
+  it.each([
+    [1011, "The server ended the stream."],
+    // 1006 is the browser's own code for "no close frame arrived", which is
+    // what nearly every real disconnection looks like. Nothing maps it, so
+    // this is the fallback path, and it has to describe a failed connection
+    // rather than a decision the server made.
+    [1006, "The connection dropped and could not be re-established."],
+  ])(
+    "says something true of close code %i, which is reached only by running out of budget",
+    async (code, expected) => {
+      // These two are retried, so the panel appears only after the whole
+      // five-minute budget is spent. Walking the backoff ladder is the only
+      // way there: the budget is checked when a reconnect is scheduled, so
+      // jumping the clock in one go skips every check.
+      vi.useFakeTimers();
+      renderProgress(<ScanProgress scanId="scan-1" socketFactory={factory} />);
+      act(() => FakeSocket.instances[0].__open());
+
+      const ladder = [1_000, 2_000, 4_000, 8_000, 30_000];
+      for (let round = 0; round < 30; round += 1) {
+        const socket = FakeSocket.instances[FakeSocket.instances.length - 1];
+        act(() => socket.__closeFromServer(code));
+        await act(async () => {
+          await vi.advanceTimersByTimeAsync(
+            ladder[Math.min(round, ladder.length - 1)] + 1,
+          );
+        });
+        if (FakeSocket.instances.length === round + 1) break;
+      }
+
+      const stopped = screen.getByTestId("scan-progress-stopped");
+      expect(stopped.dataset.closeCode).toBe(String(code));
+      expect(stopped.textContent).toContain(expected);
+      expect(stopped.textContent).toContain("is still running");
+    },
+  );
+
+  it("does not repeat the background notice under the stopped panel", async () => {
+    // The panel says the scan keeps running; the generic notice below said it
+    // again, and for 4403/4404 it contradicted the panel outright.
     renderProgress(<ScanProgress scanId="scan-1" socketFactory={factory} />);
     act(() => FakeSocket.instances[0].__open());
 
-    // 1006 is the browser's own code when no close frame arrived. It is what
-    // almost every real disconnection looks like, and it is not a decision.
-    // Reaching the give-up here takes the whole budget, so this drives the
-    // unretryable path instead and asserts the fallback on an unmapped code.
-    act(() => FakeSocket.instances[0].__closeFromServer(4400, "bad_message"));
-    const stopped = await screen.findByTestId("scan-progress-stopped");
-    expect(stopped.textContent).toContain("did not accept");
+    act(() => FakeSocket.instances[0].__closeFromServer(4404));
+
+    const panel = await screen.findByTestId("scan-progress");
+    expect(panel.textContent).not.toContain("continues in the background");
   });
 
   it("offers no Reconnect where reconnecting would repeat the refusal", async () => {

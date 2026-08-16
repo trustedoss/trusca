@@ -229,7 +229,7 @@ WSS  /api/ws/scans/{scan_id}
 게이트웨이는 첫 프레임이 `WEBSOCKET_AUTH_TIMEOUT_SECONDS`(기본 1.0초) 안에 도착하지 않으면 코드 `1008` / 사유 `auth_timeout`으로 연결을 닫습니다. 이후 서버 프레임은 진행 이벤트를 담습니다:
 
 ```json
-{ "type": "progress", "percent": 70, "step": "sca", "ts": "2026-05-10T12:34:56Z" }
+{ "type": "progress", "percent": 70, "step": "scancode", "ts": "2026-05-10T12:34:56Z" }
 ```
 
 재연결은 지수 백오프로 합니다. 재연결마다 현재 스캔 행에서 만든 초기 동기화 프레임을 한 번 받고 그다음 실시간 이벤트가 흐릅니다.
@@ -240,7 +240,7 @@ WSS  /api/ws/scans/{scan_id}
 
 | 코드 | 사유 | 원인 |
 |---|---|---|
-| 1001 | `newer_connection` | 사용자별 연결 수 상한(`WEBSOCKET_MAX_CONNECTIONS_PER_USER`, 기본 3)을 넘어 가장 오래된 소켓이 밀려났습니다. 스캔 화면 하나가 두 개를 쓰므로 탭 하나만 더 열어도 앞 탭이 밀려납니다. |
+| 1001 | `newer_connection` | 사용자별 연결 수 상한(`WEBSOCKET_MAX_CONNECTIONS_PER_USER`, 기본 3)을 넘어 가장 오래된 소켓이 밀려났습니다. 이 수는 워커 프로세스마다 따로 셉니다. 워커가 N개면 밀려나기 전까지 3N개가 들어가고, 소켓이 어느 워커에 붙느냐가 서로 셈에 들어가는지를 가릅니다. 스캔 화면 하나가 연결 두 개를 쓰므로, 두 탭이 같은 워커에 붙으면 탭 하나만 더 열어도 앞 탭이 밀려날 수 있습니다. |
 | 1008 | `auth_timeout` | `WEBSOCKET_AUTH_TIMEOUT_SECONDS` 안에 첫 프레임이 오지 않았습니다. |
 | 1008 | `auth_invalid` | 토큰을 해독하지 못했거나, access 토큰이 아니거나, subject가 사용자 아이디가 아닙니다. |
 | 1008 | `auth_inactive` | 계정이 비활성이거나 없습니다. |

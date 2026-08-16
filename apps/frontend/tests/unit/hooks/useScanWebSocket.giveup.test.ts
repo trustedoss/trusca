@@ -181,10 +181,10 @@ describe("useScanWebSocket give-up", () => {
   });
 
   it("gives up immediately on a close it will not retry", async () => {
-    // An eviction by a newer connection is the reachable one: an open scan
-    // page holds two of the three connections this account may have, so a
-    // second tab takes the first tab's stream away. That tab used to sit
-    // there claiming to reconnect while nothing did.
+    // An eviction by a newer connection. An open scan page holds two of the
+    // three connections this account may have on one worker, so a second tab
+    // can take the first tab's stream away. That tab used to sit there
+    // claiming to reconnect while nothing did.
     const { result } = renderHook(() =>
       useScanWebSocket("scan-1", { socketFactory: factory }),
     );
@@ -213,6 +213,49 @@ describe("useScanWebSocket give-up", () => {
 
     expect(onAuthExpired).toHaveBeenCalledOnce();
     expect(result.current.gaveUp).toBe(false);
+  });
+
+  it("does not call a close we sent ourselves a give-up", async () => {
+    // The hook closes with 1000 in three places of its own, and 1000 is in
+    // the no-reconnect set, so without the guard the panel would tell a
+    // reader the stream stopped when the hook was the one that stopped it.
+    //
+    // Driven through the token-loss path rather than unmount: cleanup sets
+    // the cancelled flag before closing, so an unmount never reaches the
+    // guard at all and a test using it asserts nothing.
+    const { result } = renderHook(() =>
+      useScanWebSocket("scan-1", { socketFactory: factory }),
+    );
+
+    // The token goes while the handshake is in flight, so the hook closes
+    // its own socket with 1000 on open. That is the only path the guard is
+    // on: unmount sets the cancelled flag before closing, so a test driven
+    // through unmount never reaches it and asserts nothing.
+    act(() => {
+      useAuthStore.setState({ accessToken: null });
+    });
+    act(() => FakeSocket.instances[0].__open());
+
+    expect(FakeSocket.instances[0].sent).toHaveLength(0);
+    expect(result.current.closeCode).toBe(1000);
+    expect(result.current.gaveUp).toBe(false);
+  });
+
+  it("is a no-op while a socket is already alive", async () => {
+    // The documented contract, and a leak if it is not honoured: a second
+    // socket would be opened without closing the first, the ref would be
+    // overwritten, and the account would hold one more connection than it
+    // thinks - which is what evicts a reader's other tab.
+    const { result } = renderHook(() =>
+      useScanWebSocket("scan-1", { socketFactory: factory }),
+    );
+    act(() => FakeSocket.instances[0].__open());
+    expect(FakeSocket.instances).toHaveLength(1);
+
+    act(() => result.current.reconnect());
+    act(() => result.current.reconnect());
+
+    expect(FakeSocket.instances).toHaveLength(1);
   });
 
   it("does not call our own unmount close a give-up", async () => {

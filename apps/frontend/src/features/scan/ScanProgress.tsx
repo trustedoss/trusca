@@ -106,8 +106,10 @@ function indexOfStep(step: ScanStep | null | undefined): number {
  * Traced to `apps/backend/api/v1/ws.py`, the only file in the backend that
  * closes this socket:
  *   1001 `newer_connection` (:511) - the per-user connection cap evicted the
- *        oldest socket. Reachable in ordinary use: an open scan page holds
- *        two of the three allowed, so a second tab is enough.
+ *        oldest socket. An open scan page holds two of the three allowed, so
+ *        a second tab can take the first tab's stream. The count is per
+ *        worker process, so on a multi-worker deployment this depends on
+ *        which worker each socket landed on.
  *   1011 `internal` (:559) - an exception in the forward loop. uvicorn's own
  *        keepalive timeout also closes with 1011, so the copy says only that
  *        the server ended it, which covers both.
@@ -122,7 +124,15 @@ function indexOfStep(step: ScanStep | null | undefined): number {
  * arrived at all". The server never sends it. 1008 is absent on purpose, that
  * path signs the reader out, so this panel never renders for it.
  */
-const REASON_BY_CLOSE_CODE: Record<number, string> = {
+type StreamStoppedReason =
+  | "network"
+  | "evicted"
+  | "server"
+  | "rejected"
+  | "forbidden"
+  | "missing";
+
+const REASON_BY_CLOSE_CODE: Record<number, StreamStoppedReason> = {
   1001: "evicted",
   1011: "server",
   4400: "rejected",
@@ -132,6 +142,24 @@ const REASON_BY_CLOSE_CODE: Record<number, string> = {
 
 /** Codes where pressing Reconnect would only repeat the same refusal. */
 const UNRETRYABLE_CLOSE_CODES = new Set([4400, 4403, 4404]);
+
+/**
+ * Reasons after which "the scan itself is unaffected" is still true.
+ *
+ * It is the sentence a reader most wants when a stream dies, and for a
+ * dropped connection or an evicted socket it is exactly right: the scan runs
+ * in a worker that never knew this socket existed. It is nonsense for the
+ * other two. "There is no scan with this id. The scan itself is unaffected
+ * and is still running" was on screen for 4404, and 4403 promised a reader
+ * their colleague's scan was fine when the whole point was that it is not
+ * theirs to know.
+ */
+const SCAN_UNAFFECTED_REASONS = new Set<StreamStoppedReason>([
+  "network",
+  "evicted",
+  "server",
+  "rejected",
+]);
 
 export function ScanProgress({
   scanId,
@@ -395,7 +423,7 @@ export function ScanProgress({
         </p>
       ) : null}
 
-      {!terminal ? (
+      {!terminal && !gaveUp ? (
         <p className="text-xs text-muted-foreground">
           {t("progress.background_notice")}
         </p>
@@ -566,8 +594,10 @@ function StreamStopped({
         <div className="min-w-0">
           <p className="text-sm font-medium">{t("stream_stopped.title")}</p>
           <p className="text-xs text-muted-foreground">
-            {t(`stream_stopped.reason.${reasonKey}`)}{" "}
-            {t("stream_stopped.unaffected")}
+            {t(`stream_stopped.reason.${reasonKey}`)}
+            {SCAN_UNAFFECTED_REASONS.has(reasonKey)
+              ? ` ${t("stream_stopped.unaffected")}`
+              : null}
           </p>
         </div>
       </div>

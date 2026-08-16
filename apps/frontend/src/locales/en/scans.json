@@ -348,8 +348,7 @@
       "server": "The server ended the stream.",
       "rejected": "The server did not accept this connection.",
       "forbidden": "You do not have access to this scan.",
-      "missing": "There is no scan with this id.",
-      "unknown": "The connection closed for an unknown reason."
+      "missing": "There is no scan with this id."
     },
     "unaffected": "The scan itself is unaffected and is still running."
   }

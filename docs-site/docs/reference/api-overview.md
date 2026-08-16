@@ -229,7 +229,7 @@ Authentication is handled by the **first message** the client sends, not by quer
 The gateway closes the connection with code `1008` / reason `auth_timeout` if the first frame does not arrive within `WEBSOCKET_AUTH_TIMEOUT_SECONDS` (default 1.0 s). Subsequent server frames carry progress events:
 
 ```json
-{ "type": "progress", "percent": 70, "step": "sca", "ts": "2026-05-10T12:34:56Z" }
+{ "type": "progress", "percent": 70, "step": "scancode", "ts": "2026-05-10T12:34:56Z" }
 ```
 
 Reconnect with exponential backoff. Each reconnect receives one initial-sync frame from the current scan row before live events flow.
@@ -240,7 +240,7 @@ Every close the server sends, and what it means. The source is `apps/backend/api
 
 | Code | Reason | Cause |
 |---|---|---|
-| 1001 | `newer_connection` | Per-user connection cap (`WEBSOCKET_MAX_CONNECTIONS_PER_USER`, default 3) exceeded; the oldest socket is evicted. Note that one open scan page holds two of them, so a second tab is enough to evict the first. |
+| 1001 | `newer_connection` | Per-user connection cap (`WEBSOCKET_MAX_CONNECTIONS_PER_USER`, default 3) exceeded; the oldest socket is evicted. The count is kept **per worker process**, so a deployment running N workers admits up to 3N before anything is evicted, and which worker a socket lands on decides whether it counts against another. One open scan page holds two connections, so a second tab can evict the first when both land on the same worker. |
 | 1008 | `auth_timeout` | No first frame within `WEBSOCKET_AUTH_TIMEOUT_SECONDS`. |
 | 1008 | `auth_invalid` | The token did not decode, was not an access token, or its subject is not a user id. |
 | 1008 | `auth_inactive` | The account is deactivated or gone. |
