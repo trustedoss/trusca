@@ -63,6 +63,13 @@ export const KNOWN_PROBLEM_EXTENSION_KEYS = [
   "scan_already_cancelled",
   "scan_not_found",
   "audit_export_too_large",
+  // B5: the same refusal for the three tables that gained CSV export. One
+  // key per table rather than one shared one: the message has to name the
+  // filter the reader should narrow, and "the export is too large" without
+  // saying which export is not much of an answer.
+  "vulnerabilities_export_too_large",
+  "components_export_too_large",
+  "inventory_export_too_large",
   // v2.1 Track B (B5) — public read-only demo. The demo middleware
   // (apps/backend/core/middleware.py) blocks every write with a 403 +
   // `application/problem+json` carrying this boolean flag. Whitelisting it
@@ -98,6 +105,9 @@ const KNOWN_EXTENSION_SCHEMAS: Record<KnownProblemExtensionKey, z.ZodTypeAny> = 
   scan_already_cancelled: z.boolean(),
   scan_not_found: z.boolean(),
   audit_export_too_large: z.boolean(),
+  vulnerabilities_export_too_large: z.boolean(),
+  components_export_too_large: z.boolean(),
+  inventory_export_too_large: z.boolean(),
   demo_read_only: z.boolean(),
 };
 

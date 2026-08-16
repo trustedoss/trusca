@@ -123,5 +123,10 @@
     "label": "Copy {{what}}",
     "copied": "{{what}} copied.",
     "failed": "Could not copy the {{what}}. Select it and copy manually."
+  },
+  "export": {
+    "csv": "Export CSV",
+    "started": "The export is ready and downloading.",
+    "failed": "The export could not be built."
   }
 }

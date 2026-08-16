@@ -2,6 +2,7 @@
 // Copyright 2026 TRUSCA contributors
 import { useTranslation } from "react-i18next";
 
+import { ExportCsvButton } from "@/components/ExportCsvButton";
 import { MoreFiltersMenu } from "@/components/filters/MoreFiltersMenu";
 import { Input } from "@/components/ui/input";
 import { MultiSelect } from "@/components/ui/multi-select";
@@ -72,6 +73,11 @@ export interface InventoryToolbarProps {
   onSortChange: (next: InventorySortKey) => void;
   order: SortOrder;
   onOrderChange: (next: SortOrder) => void;
+  /**
+   * B5: download the currently filtered inventory as CSV. The page owns
+   * this because the page owns the filter state the export has to match.
+   */
+  onExportCsv: () => Promise<void>;
 }
 
 export function InventoryToolbar({
@@ -91,6 +97,7 @@ export function InventoryToolbar({
   onSortChange,
   order,
   onOrderChange,
+  onExportCsv,
 }: InventoryToolbarProps) {
   const { t } = useTranslation("inventory");
 
@@ -239,6 +246,15 @@ export function InventoryToolbar({
           <option value="asc">{t("toolbar.order.asc")}</option>
         </select>
       </div>
+
+      {/* B5: the rows as they are filtered right now. */}
+      <ExportCsvButton
+        onExport={() => onExportCsv()}
+        namespace="inventory"
+        tooLargeExtension="inventory_export_too_large"
+        tooLargeMessageKey="export.too_large.inventory"
+        data-testid="inventory-export-csv"
+      />
     </div>
   );
 }

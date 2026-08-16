@@ -619,3 +619,101 @@ async def test_pagination_reports_total_beyond_the_page(client: AsyncClient) -> 
     assert len(page_two.json()["items"]) == 1
     # Pages must not overlap — the ordering carries a stable tie-break.
     assert not (_names(body) & _names(page_two.json()))
+
+
+# ---------------------------------------------------------------------------
+# GET /v1/inventory/components/export.csv  (B5)
+# ---------------------------------------------------------------------------
+
+_INVENTORY_EXPORT_HEADER = (
+    "name,package_type,purl,versions,version_count,project_count,"
+    "license_category_max,severity_max,vulnerability_count,eol,outdated,"
+    "component_id"
+)
+
+
+async def test_inventory_export_requires_authentication(client: AsyncClient) -> None:
+    response = await client.get("/v1/inventory/components/export.csv")
+    assert response.status_code == 401
+    assert response.headers["content-type"].startswith(PROBLEM_JSON)
+
+
+async def test_inventory_export_is_team_scoped_with_no_cross_leak(
+    client: AsyncClient,
+) -> None:
+    """
+    The file carries exactly what the screen carries: the caller's own teams.
+
+    There is no project id in this URL to check, so the scope predicate
+    inside the list service is the only thing between one team and another's
+    package list. The export calls that service rather than rebuilding its
+    query, which is what makes this test a check on the design rather than on
+    a second copy of it.
+    """
+    token = _token()
+    _, team_a, user_a = await _seed_team_with_user(client)
+    _, team_b, user_b = await _seed_team_with_user(client)
+    _, _, admin = await _seed_team_with_user(client, is_superuser=True)
+
+    _, scan_a = await _seed_project(client, team_id=team_a.id)
+    _, scan_b = await _seed_project(client, team_id=team_b.id)
+    await _seed_component(client, scan_id=scan_a, name=f"{token}-alpha")
+    await _seed_component(client, scan_id=scan_b, name=f"{token}-bravo")
+
+    async def export_for(user) -> str:
+        response = await client.get(
+            "/v1/inventory/components/export.csv",
+            params={"q": token},
+            headers=_bearer_for(user),
+        )
+        assert response.status_code == 200, response.text
+        return response.content.decode("utf-8-sig")
+
+    body_a = await export_for(user_a)
+    body_b = await export_for(user_b)
+    body_admin = await export_for(admin)
+
+    assert f"{token}-alpha" in body_a
+    assert f"{token}-bravo" not in body_a
+
+    assert f"{token}-bravo" in body_b
+    assert f"{token}-alpha" not in body_b
+
+    assert f"{token}-alpha" in body_admin
+    assert f"{token}-bravo" in body_admin
+
+
+async def test_inventory_export_streams_a_downloadable_file(
+    client: AsyncClient,
+) -> None:
+    _, _, user = await _seed_team_with_user(client)
+
+    response = await client.get(
+        "/v1/inventory/components/export.csv",
+        params={"q": _token()},
+        headers=_bearer_for(user),
+    )
+    assert response.status_code == 200, response.text
+    assert response.headers["content-type"].startswith("text/csv")
+    assert "attachment" in response.headers["content-disposition"]
+
+    raw = response.content
+    # Excel on a CJK locale reads a BOM-less UTF-8 file as CP949.
+    assert raw[:3] == b"\xef\xbb\xbf"
+    assert raw.decode("utf-8-sig").strip() == (
+        f"{_INVENTORY_EXPORT_HEADER}\n# rows: 0"
+    )
+
+
+async def test_inventory_export_rejects_a_filter_the_list_would_reject(
+    client: AsyncClient,
+) -> None:
+    _, _, user = await _seed_team_with_user(client)
+
+    response = await client.get(
+        "/v1/inventory/components/export.csv",
+        params={"sort": "BOGUS"},
+        headers=_bearer_for(user),
+    )
+    assert response.status_code == 422
+    assert response.headers["content-type"].startswith(PROBLEM_JSON)

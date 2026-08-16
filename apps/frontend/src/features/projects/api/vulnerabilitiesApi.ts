@@ -19,6 +19,7 @@
  * disable buttons proactively without a second round trip.
  */
 import { api } from "@/lib/api";
+import { downloadCsvExport } from "@/lib/csvExport";
 import { ProblemError } from "@/lib/problem";
 
 import type { LicenseCategoryName } from "@/features/projects/api/projectDetailApi";
@@ -495,6 +496,26 @@ export async function listProjectVulnerabilities(
     },
   );
   return data;
+}
+
+/**
+ * Download the filtered findings as CSV (B5).
+ *
+ * Takes the same params object the list takes and runs it through the same
+ * serialiser, so the file cannot carry rows the screen was filtering out.
+ * `limit` / `offset` are dropped: the export is the whole filtered set, and
+ * the endpoint ignores them anyway.
+ */
+export async function exportProjectVulnerabilitiesCsv(
+  projectId: string,
+  params: ListVulnerabilitiesParams = {},
+): Promise<void> {
+  const { limit: _limit, offset: _offset, ...filters } = params;
+  await downloadCsvExport(
+    `/v1/projects/${projectId}/vulnerabilities/export.csv`,
+    listVulnerabilitiesQuery(filters),
+    `vulnerabilities_${projectId}.csv`,
+  );
 }
 
 export async function getVulnerabilityFinding(

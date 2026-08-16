@@ -43,6 +43,7 @@ import type {
   VulnerabilitySortKey,
 } from "@/features/projects/api/vulnerabilitiesApi";
 import { SLA_STATUS_VALUES } from "@/features/projects/api/vulnerabilitiesApi";
+import { exportProjectVulnerabilitiesCsv } from "@/features/projects/api/vulnerabilitiesApi";
 import { BULK_TRANSITION_MAX } from "@/features/projects/api/vulnerabilitiesApi";
 import { ActiveFilterChips } from "@/features/projects/components/ActiveFilterChips";
 import { AxisPill } from "@/features/projects/components/AxisPill";
@@ -735,6 +736,19 @@ export function VulnerabilitiesTab({
       ) : null}
 
       <VulnerabilitiesToolbar
+        // B5: the same object the list query is keyed on, so the file and
+        // the screen cannot be filtered differently.
+        onExportCsv={() =>
+          exportProjectVulnerabilitiesCsv(projectId, {
+            ...filters,
+            // The hook's filter object spells "no threshold" as null; the
+            // client's params spell it as absent. Same meaning, and the
+            // query builder drops it either way.
+            min_epss: filters.min_epss ?? undefined,
+            reachable: filters.reachable ?? undefined,
+            sla: filters.sla ?? undefined,
+          })
+        }
         groupBy={groupBy}
         onGroupByChange={setGroupBy}
         search={search}

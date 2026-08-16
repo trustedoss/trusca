@@ -11,6 +11,7 @@ import {
   MoreFiltersMenu,
   type MoreFiltersMenuOption,
 } from "@/components/filters/MoreFiltersMenu";
+import { ExportCsvButton } from "@/components/ExportCsvButton";
 import { Input } from "@/components/ui/input";
 import { MultiSelect } from "@/components/ui/multi-select";
 import type {
@@ -146,6 +147,11 @@ export interface ComponentsToolbarProps {
   visibleColumns: Set<string>;
   onVisibleColumnsChange: (next: Set<string>) => void;
   columnsStorageKey: string;
+  /**
+   * B5: download the currently filtered components as CSV. The parent owns
+   * this because the parent owns the filter state the export has to match.
+   */
+  onExportCsv: () => Promise<void>;
   className?: string;
 }
 
@@ -173,6 +179,7 @@ export function ComponentsToolbar({
   visibleColumns,
   onVisibleColumnsChange,
   columnsStorageKey,
+  onExportCsv,
   className,
 }: ComponentsToolbarProps) {
   const { t } = useTranslation("project_detail");
@@ -501,6 +508,21 @@ export function ComponentsToolbar({
           onChange={onVisibleColumnsChange}
           storageKey={columnsStorageKey}
           testId="components-columns-picker-trigger"
+        />
+      </div>
+
+      {/* B5: the rows as they are filtered right now, beside the column
+          picker because both are about what leaves this screen. */}
+      <div className="flex flex-col">
+        <span className="invisible text-xs font-medium" aria-hidden>
+          &nbsp;
+        </span>
+        <ExportCsvButton
+          onExport={() => onExportCsv()}
+          namespace="project_detail"
+          tooLargeExtension="components_export_too_large"
+          tooLargeMessageKey="export.too_large.components"
+          data-testid="components-export-csv"
         />
       </div>
     </div>

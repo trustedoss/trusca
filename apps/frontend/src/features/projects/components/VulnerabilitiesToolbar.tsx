@@ -11,6 +11,7 @@ import {
   MoreFiltersMenu,
   type MoreFiltersMenuOption,
 } from "@/components/filters/MoreFiltersMenu";
+import { ExportCsvButton } from "@/components/ExportCsvButton";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { MultiSelect } from "@/components/ui/multi-select";
@@ -213,6 +214,11 @@ export interface VulnerabilitiesToolbarProps {
   visibleColumns: Set<string>;
   onVisibleColumnsChange: (next: Set<string>) => void;
   columnsStorageKey: string;
+  /**
+   * B5: download the currently filtered findings as CSV. The parent owns
+   * this because the parent owns the filter state the export has to match.
+   */
+  onExportCsv: () => Promise<void>;
   className?: string;
 }
 
@@ -273,6 +279,7 @@ export function VulnerabilitiesToolbar({
   visibleColumns,
   onVisibleColumnsChange,
   columnsStorageKey,
+  onExportCsv,
   className,
 }: VulnerabilitiesToolbarProps) {
   const { t } = useTranslation("project_detail");
@@ -718,6 +725,24 @@ export function VulnerabilitiesToolbar({
           testId="vulnerabilities-columns-picker-trigger"
         />
       </div>
+
+      {/* B5: the rows as they are filtered right now. Beside the VEX menu
+          because both answer "get this out of the browser", and a reader
+          looking for one will look here for the other. */}
+      <ExportCsvButton
+        onExport={() => onExportCsv()}
+        namespace="project_detail"
+        tooLargeExtension="vulnerabilities_export_too_large"
+        tooLargeMessageKey="export.too_large.vulnerabilities"
+        // The VEX filter narrows rows in the browser, not on the server, so
+        // the file would carry findings the screen is hiding. The whole
+        // promise here is that the file is the screen; where it cannot be,
+        // the honest answer is to refuse rather than to ship a file that
+        // misdescribes itself once it leaves for a ticket or a customer.
+        disabled={vexSuppressedOnly}
+        disabledReason={t("export.unavailable_vex_filter")}
+        data-testid="vulnerabilities-export-csv"
+      />
 
       <VexExportMenu
         projectId={projectId}

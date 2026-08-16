@@ -76,5 +76,10 @@
     "title": "Also affected",
     "also_in": "{{count}} other project(s)",
     "this_project": "This project"
+  },
+  "export": {
+    "too_large": {
+      "inventory": "The filtered inventory exceeds 100,000 rows. Narrow the filter and try again."
+    }
   }
 }

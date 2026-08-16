@@ -303,3 +303,79 @@ async def test_component_detail_unknown_id_returns_404_problem(client) -> None:
     response = await client.get(f"/v1/components/{uuid.uuid4()}", headers=headers)
     assert response.status_code == 404
     assert response.headers["content-type"].startswith(PROBLEM_JSON)
+
+
+# ---------------------------------------------------------------------------
+# GET /v1/projects/{project_id}/components/export.csv  (B5)
+# ---------------------------------------------------------------------------
+
+_COMPONENTS_EXPORT_HEADER = (
+    "name,version,purl,direct,depth,dependency_scope,license,license_category,"
+    "severity_max,vulnerability_count,eol_state,eol_date,currency_state,"
+    "currency_latest,malicious_state,component_id"
+)
+
+
+async def test_components_export_csv_without_auth_returns_401(client) -> None:
+    response = await client.get(
+        "/v1/projects/00000000-0000-0000-0000-000000000000/components/export.csv"
+    )
+    assert response.status_code == 401
+    assert response.headers["content-type"].startswith(PROBLEM_JSON)
+
+
+async def test_components_export_csv_other_team_returns_403_problem(client) -> None:
+    """
+    The export refuses a cross-team caller exactly as the list does.
+
+    It pages the list service rather than rebuilding its query, so there is
+    no second place for the team check to live.
+    """
+    _, _my_team, my_user = await _seed_team_with_user(client)
+    _, other_team, _ = await _seed_team_with_user(client)
+    other_project_id, _ = await _seed_scanned_project(client, team_id=other_team.id)
+    headers = _bearer_for(my_user)
+
+    response = await client.get(
+        f"/v1/projects/{other_project_id}/components/export.csv",
+        headers=headers,
+    )
+    assert response.status_code == 403
+    assert response.headers["content-type"].startswith(PROBLEM_JSON)
+
+
+async def test_components_export_csv_streams_a_downloadable_file(client) -> None:
+    _, team, user = await _seed_team_with_user(client)
+    project_id, _ = await _seed_scanned_project(client, team_id=team.id)
+    headers = _bearer_for(user)
+
+    response = await client.get(
+        f"/v1/projects/{project_id}/components/export.csv",
+        headers=headers,
+    )
+    assert response.status_code == 200, response.text
+    assert response.headers["content-type"].startswith("text/csv")
+    assert "attachment" in response.headers["content-disposition"]
+
+    raw = response.content
+    # Excel on a CJK locale reads a BOM-less UTF-8 file as CP949.
+    assert raw[:3] == b"\xef\xbb\xbf"
+    assert raw.decode("utf-8-sig").strip() == (
+        f"{_COMPONENTS_EXPORT_HEADER}\n# rows: 0"
+    )
+
+
+async def test_components_export_csv_rejects_a_filter_the_list_would_reject(
+    client,
+) -> None:
+    _, team, user = await _seed_team_with_user(client)
+    project_id, _ = await _seed_scanned_project(client, team_id=team.id)
+    headers = _bearer_for(user)
+
+    response = await client.get(
+        f"/v1/projects/{project_id}/components/export.csv",
+        headers=headers,
+        params={"sort": "BOGUS"},
+    )
+    assert response.status_code == 422
+    assert response.headers["content-type"].startswith(PROBLEM_JSON)
