@@ -252,7 +252,9 @@ describe("AppShell - skip link and profile menu (C1)", () => {
     await screen.findByTestId("logout-button");
 
     const reached = new Set<string>();
-    for (let press = 0; press < 8; press += 1) {
+    // Generous rather than exact: a fixed count sized to today's six rows
+    // turns into a false failure the day someone adds a seventh above them.
+    for (let press = 0; press < 20; press += 1) {
       await user.keyboard("{ArrowDown}");
       const testId = document.activeElement?.getAttribute("data-testid");
       if (testId) reached.add(testId);
@@ -265,6 +267,12 @@ describe("AppShell - skip link and profile menu (C1)", () => {
   it("keeps the menu open while cycling theme and language", async () => {
     // Both are cycles rather than destinations, so a menu that closed on the
     // first press would make the second press a fresh journey.
+    //
+    // Two things have to be true at once, and each can hide the other: the
+    // row's own handler has to run (the value cycles) AND the handler Radix
+    // passed down has to run (which fires onSelect, which the menu keeps open
+    // by preventing). A spread that lets one declaration win drops the other,
+    // so the second press is asserted here rather than only the first.
     const user = userEvent.setup();
     renderAppAt("/projects");
     await screen.findByTestId("app-shell");
@@ -273,13 +281,42 @@ describe("AppShell - skip link and profile menu (C1)", () => {
     const language = await screen.findByTestId("language-toggle");
     expect(language).toHaveAttribute("data-current-language", "en");
 
-    await user.click(language);
+    await user.click(screen.getByTestId("language-toggle"));
     expect(screen.getByTestId("language-toggle")).toHaveAttribute(
       "data-current-language",
       "ko",
     );
-    // Still open, and the row next to it is still there to be pressed.
-    expect(screen.getByTestId("theme-toggle")).toBeInTheDocument();
+
+    await user.click(screen.getByTestId("language-toggle"));
+    expect(screen.getByTestId("language-toggle")).toHaveAttribute(
+      "data-current-language",
+      "en",
+    );
+
+    // The theme row is still there to be pressed, and still cycles.
+    const themeBefore = screen
+      .getByTestId("theme-toggle")
+      .getAttribute("data-theme-preference");
+    await user.click(screen.getByTestId("theme-toggle"));
+    expect(
+      screen.getByTestId("theme-toggle").getAttribute("data-theme-preference"),
+    ).not.toBe(themeBefore);
+  });
+
+  it("closes the menu on a row that goes somewhere", async () => {
+    // The counterpart to the test above: `onSelect` reaching Radix at all is
+    // what makes theme and language special, and a menu that never closed
+    // would make that distinction meaningless.
+    const user = userEvent.setup();
+    renderAppAt("/projects");
+    await screen.findByTestId("app-shell");
+
+    await user.click(screen.getByTestId("header-profile-menu"));
+    await user.click(await screen.findByTestId("header-profile-link"));
+
+    await waitFor(() => {
+      expect(screen.queryByTestId("logout-button")).toBeNull();
+    });
   });
 
   it("opens the shortcut sheet from the profile menu", async () => {

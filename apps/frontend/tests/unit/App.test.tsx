@@ -81,12 +81,20 @@ function adminRoutesFromRouter(): string[] {
   expect(block, "the admin route block moved; this parser needs a look").not.toBe(
     "",
   );
-  const paths = [...block.matchAll(/<Route path="([a-z-]+)"/g)].map(
-    (match) => `/admin/${match[1]}`,
-  );
-  // A parser that silently matches nothing would turn this into a test that
-  // asserts an empty loop.
-  expect(paths.length).toBeGreaterThan(5);
+  // `[^"]+` rather than a friendly character class: a narrow one skips the
+  // route it does not recognise instead of failing on it, so `oauth2` or a
+  // camelCase segment would drop out of the check silently, which is the
+  // exact shape of the bug the check exists to catch. Wildcards and path
+  // parameters are excluded on purpose - they match by pattern, not by a URL
+  // a sidebar entry could point at.
+  const paths = [...block.matchAll(/<Route\s+path="([^"]+)"/g)]
+    .map((match) => match[1])
+    .filter((route) => !route.startsWith("*") && !route.includes(":"))
+    .map((route) => `/admin/${route}`);
+  // A parser that matched nothing would turn this into a test that asserts an
+  // empty loop. The floor is the count at the time of writing, minus room to
+  // delete one.
+  expect(paths.length).toBeGreaterThanOrEqual(6);
   return paths;
 }
 

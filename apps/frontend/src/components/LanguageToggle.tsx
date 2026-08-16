@@ -1,7 +1,11 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2026 TRUSCA contributors
 import { Languages } from "lucide-react";
-import { forwardRef, type ComponentPropsWithoutRef } from "react";
+import {
+  forwardRef,
+  type ComponentPropsWithoutRef,
+  type MouseEvent,
+} from "react";
 import { useTranslation } from "react-i18next";
 
 import { Button } from "@/components/ui/button";
@@ -24,15 +28,19 @@ export const LanguageToggle = forwardRef<
   HTMLButtonElement,
   LanguageToggleProps
 >(function LanguageToggle(
-  { onInk = false, inMenu = false, className, ...rest },
+  { onInk = false, inMenu = false, className, onClick, ...rest },
   ref,
 ) {
   const { i18n, t } = useTranslation();
   const current = (i18n.resolvedLanguage ?? "en") as SupportedLanguage;
   const next: SupportedLanguage = current === "en" ? "ko" : "en";
 
-  function handleToggle() {
+  // The parent's handler is pulled out of `rest` and called alongside ours:
+  // inside the account menu it is how Radix fires `onSelect`, and a spread
+  // that let one declaration win would silently drop the other.
+  function handleToggle(event: MouseEvent<HTMLButtonElement>) {
     void i18n.changeLanguage(next);
+    onClick?.(event);
   }
 
   // Show the CURRENT language (with the globe icon signalling it's a switcher).

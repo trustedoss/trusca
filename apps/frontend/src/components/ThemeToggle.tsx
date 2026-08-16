@@ -45,7 +45,7 @@ interface ThemeToggleProps extends ComponentPropsWithoutRef<typeof Button> {
 /** forwardRef for the same reason as `LanguageToggle` - see the note there. */
 export const ThemeToggle = forwardRef<HTMLButtonElement, ThemeToggleProps>(
   function ThemeToggle(
-    { onInk = false, inMenu = false, className, ...rest },
+    { onInk = false, inMenu = false, className, onClick, ...rest },
     ref,
   ) {
   const { t } = useTranslation();
@@ -66,7 +66,14 @@ export const ThemeToggle = forwardRef<HTMLButtonElement, ThemeToggleProps>(
         inMenu && "h-8 w-full justify-start font-normal",
         className,
       )}
-      onClick={() => setPreference(NEXT[preference])}
+      // Pulled out of `rest` and called after our own work rather than left
+      // to the spread: the parent's handler here is the one Radix uses to
+      // fire `onSelect`, and letting either declaration win outright loses
+      // the other. The menu row needs both.
+      onClick={(event) => {
+        setPreference(NEXT[preference]);
+        onClick?.(event);
+      }}
       data-testid="theme-toggle"
       data-theme-preference={preference}
       data-theme-resolved={theme}

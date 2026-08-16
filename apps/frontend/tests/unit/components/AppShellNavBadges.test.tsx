@@ -5,12 +5,17 @@
  * cache, a failed request, one of the two scan states still in flight. The
  * sidebar has to say nothing in all of them rather than say "0".
  */
-import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import {
+  focusManager,
+  QueryClient,
+  QueryClientProvider,
+} from "@tanstack/react-query";
 import { render, screen, waitFor } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { AppShell } from "@/components/AppShell";
+import { createQueryClient } from "@/lib/queryClient";
 import { useAuthStore, type AuthUser } from "@/stores/authStore";
 import { useUIStore } from "@/stores/uiStore";
 
@@ -252,6 +257,49 @@ describe("sidebar count badges", () => {
     // WCAG 2.5.3: the accessible name still starts with the visible label,
     // so "click Approvals" reaches this row.
     expect(link.getAttribute("aria-label")).toBe("Approvals, 250 waiting");
+  });
+
+  it("refetches when the reader comes back to the tab", async () => {
+    // The one thing that keeps these numbers from being a lie told once at
+    // mount. The app turns `refetchOnWindowFocus` off globally, so both
+    // hooks opt back in, and deleting that line is a one-word edit that
+    // leaves every other assertion in this file green.
+    //
+    // Built on the app's own client rather than a bare one: React Query's
+    // default for this option is `true`, so a test client would pass while
+    // the real app stayed frozen.
+    apiGet.mockImplementation(
+      respond({ approvals: 4, scans: { running: 1, queued: 2 } }),
+    );
+    const client = createQueryClient();
+    render(
+      <QueryClientProvider client={client}>
+        <MemoryRouter initialEntries={["/projects"]}>
+          <AppShell />
+        </MemoryRouter>
+      </QueryClientProvider>,
+    );
+
+    await waitFor(() => {
+      expect(badgeQueries(client)).toHaveLength(BADGE_QUERY_COUNT);
+      expect(
+        badgeQueries(client).every((query) => query.state.status === "success"),
+      ).toBe(true);
+    });
+    const readsBeforeFocus = scanCalls.length;
+
+    // Past the stale time, which is the only state in which a focus refetch
+    // is meant to cost anything.
+    for (const query of badgeQueries(client)) {
+      query.state.dataUpdatedAt = 0;
+    }
+    focusManager.setFocused(false);
+    focusManager.setFocused(true);
+
+    await waitFor(() => {
+      expect(scanCalls.length).toBeGreaterThan(readsBeforeFocus);
+    });
+    focusManager.setFocused(undefined);
   });
 
   it("survives the collapsed rail, where the label is gone", async () => {
