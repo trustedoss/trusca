@@ -2,7 +2,6 @@
  * HeaderBell — unit tests for chore A2.
  *
  * Coverage:
- *   - formatBadge() collapses 0 / 3 / 99 / 100 / 250 to the right strings.
  *   - Rendered badge mirrors the count (hidden at 0, "99+" once > 99).
  *   - Click navigates to /notifications.
  *   - Polling: refetchInterval is set to 60s and refetchIntervalInBackground
@@ -15,7 +14,7 @@ import userEvent from "@testing-library/user-event";
 import { MemoryRouter, Routes, Route } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { formatBadge, HeaderBell } from "@/components/HeaderBell";
+import { HeaderBell } from "@/components/HeaderBell";
 
 vi.mock("@/features/notifications/api/notificationsApi", () => ({
   listNotifications: vi.fn(),
@@ -57,29 +56,6 @@ function renderBell(initialEntry = "/projects") {
     </QueryClientProvider>,
   );
 }
-
-describe("formatBadge", () => {
-  it("returns empty string for 0", () => {
-    expect(formatBadge(0)).toBe("");
-  });
-
-  it("returns empty string for negative counts (defensive)", () => {
-    expect(formatBadge(-5)).toBe("");
-  });
-
-  it("formats a single-digit count as itself", () => {
-    expect(formatBadge(3)).toBe("3");
-  });
-
-  it("formats 99 as '99'", () => {
-    expect(formatBadge(99)).toBe("99");
-  });
-
-  it("caps anything over 99 at '99+'", () => {
-    expect(formatBadge(100)).toBe("99+");
-    expect(formatBadge(250)).toBe("99+");
-  });
-});
 
 describe("HeaderBell", () => {
   beforeEach(() => {

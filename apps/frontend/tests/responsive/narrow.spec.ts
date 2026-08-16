@@ -365,8 +365,10 @@ test.describe("@narrow", () => {
 
         // The bar is shared by every authenticated screen, so checking its
         // essential controls once per screen costs nothing and catches a
-        // regression wherever it is introduced.
-        await expectWithinViewport(page, "logout-button");
+        // regression wherever it is introduced. C1 moved sign-out behind the
+        // profile menu, so the menu trigger is the control that has to fit;
+        // what it opens is a floating layer that sizes itself.
+        await expectWithinViewport(page, "header-profile-menu");
         await expectWithinViewport(page, "sidebar-mobile-trigger");
 
         // Second pass — the verdict that does not depend on the seed.
@@ -379,7 +381,7 @@ test.describe("@narrow", () => {
             `that silently checks an empty page is worse than no gate.`,
         ).toBeGreaterThan(0);
         await expectNoHorizontalOverflow(page, `${screen.id} (widened)`);
-        await expectWithinViewport(page, "logout-button");
+        await expectWithinViewport(page, "header-profile-menu");
       });
     }
   });

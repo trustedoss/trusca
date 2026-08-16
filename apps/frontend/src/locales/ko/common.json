@@ -78,7 +78,11 @@
     "switchTeam": "팀 전환",
     "components": "컴포넌트",
     "skipToContent": "본문으로 건너뛰기",
-    "documentation": "문서"
+    "documentation": "문서",
+    "badge": {
+      "scans": "진행 또는 대기 {{count}}건",
+      "approvals": "대기 {{count}}건"
+    }
   },
   "demo": {
     "banner_title": "읽기 전용 데모",

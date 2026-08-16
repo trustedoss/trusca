@@ -56,11 +56,13 @@ import {
   ShortcutHelpDialog,
   useShortcutHelpShortcut,
 } from "@/components/ShortcutHelpDialog";
+import { formatBadge } from "@/lib/badgeCount";
 import { docsUrl } from "@/lib/docsUrl";
 import { deriveInitials } from "@/lib/initials";
 import { cn } from "@/lib/utils";
 import { useAuthStore } from "@/stores/authStore";
 import { useActiveTeam } from "@/hooks/useActiveTeam";
+import { useNavBadges, type NavBadgeKey } from "@/hooks/useNavBadges";
 import { useUIStore } from "@/stores/uiStore";
 
 interface NavItem {
@@ -70,6 +72,12 @@ interface NavItem {
   testId: string;
   /** Use exact matching so a prefix route ("/") isn't always-active. */
   end?: boolean;
+  /**
+   * C1: which live count this row carries, if any. Only the rows that mean
+   * work waiting on a person get one - a number beside every destination
+   * would be noise, and the eye stops reading badges that are always there.
+   */
+  badge?: NavBadgeKey;
 }
 
 /**
@@ -121,12 +129,14 @@ const MAIN_NAV: NavGroup[] = [
         labelKey: "nav.scans",
         icon: ScanLine,
         testId: "nav-scans",
+        badge: "scans",
       },
       {
         to: "/approvals",
         labelKey: "nav.approvals",
         icon: ClipboardCheck,
         testId: "nav-approvals",
+        badge: "approvals",
       },
       {
         to: "/policies",
@@ -207,6 +217,7 @@ function NavItemLink({
   ns,
   collapsed,
   onNavigate,
+  badgeCount,
 }: {
   item: NavItem;
   ns: string;
@@ -214,10 +225,25 @@ function NavItemLink({
   collapsed?: boolean;
   /** Fired after a nav click — used by the mobile drawer to close itself. */
   onNavigate?: () => void;
+  /** C1: live count for this row. Undefined means "not known yet". */
+  badgeCount?: number;
 }) {
   const { t } = useTranslation(ns);
   const Icon = item.icon;
   const label = t(item.labelKey);
+  // Hidden at zero as well as when unknown: a row that always carries a "0"
+  // trains the eye to skip it, and then the 1 goes unread too.
+  const badge = typeof badgeCount === "number" ? formatBadge(badgeCount) : "";
+  const showBadge = badge !== "";
+  // The pill alone reads as a bare number next to a word. Folding it into the
+  // accessible name is also what makes it survive the collapsed rail, where
+  // the visible label is gone. Keeps the visible label as a prefix, so the
+  // accessible name still contains it (WCAG 2.5.3).
+  const badgeLabel =
+    showBadge && item.badge
+      ? `${label}, ${t(`nav.badge.${item.badge}`, { count: badgeCount })}`
+      : undefined;
+  const accessibleName = badgeLabel ?? (collapsed ? label : undefined);
   return (
     <li>
       <NavLink
@@ -228,8 +254,8 @@ function NavItemLink({
         // In the collapsed rail the visible label is gone, so the accessible
         // name has to come from aria-label; `title` gives sighted mouse users
         // a native hover tooltip without pulling in a tooltip dependency.
-        aria-label={collapsed ? label : undefined}
-        title={collapsed ? label : undefined}
+        aria-label={accessibleName}
+        title={collapsed ? (badgeLabel ?? label) : undefined}
         className={({ isActive }) =>
           cn(
             // W11-F polish — sidebar nav hover/active transitions land on the
@@ -259,6 +285,27 @@ function NavItemLink({
               aria-hidden
             />
             {collapsed ? null : <span>{label}</span>}
+            {showBadge ? (
+              <span
+                data-testid={`${item.testId}-badge`}
+                // aria-hidden: the count is already in the link's accessible
+                // name, and a screen reader reading "Approvals 4 4" is worse
+                // than one reading it once.
+                aria-hidden
+                className={cn(
+                  "inline-flex h-4 min-w-4 items-center justify-center rounded-full px-1 text-[10px] font-semibold leading-none",
+                  // Neutral, not the Critical red the bell uses: work in a
+                  // queue is normal, and a sidebar with two permanent red
+                  // dots would spend the alarm colour on the resting state.
+                  "bg-muted text-muted-foreground",
+                  collapsed
+                    ? "absolute right-1 top-1"
+                    : "ml-auto",
+                )}
+              >
+                {badge}
+              </span>
+            ) : null}
           </>
         )}
       </NavLink>
@@ -285,6 +332,7 @@ function SidebarNav({
   onCollapseToggle?: () => void;
 }) {
   const { t } = useTranslation();
+  const badges = useNavBadges();
   return (
     <>
       <nav className="flex-1 overflow-y-auto px-2 py-3" aria-label={t("app.name")}>
@@ -309,6 +357,7 @@ function SidebarNav({
                   ns="common"
                   collapsed={collapsed}
                   onNavigate={onNavigate}
+                  badgeCount={item.badge ? badges[item.badge] : undefined}
                 />
               ))}
             </ul>

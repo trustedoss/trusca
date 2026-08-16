@@ -78,7 +78,11 @@
     "switchTeam": "Switch team",
     "components": "Components",
     "skipToContent": "Skip to main content",
-    "documentation": "Documentation"
+    "documentation": "Documentation",
+    "badge": {
+      "scans": "{{count}} running or queued",
+      "approvals": "{{count}} waiting"
+    }
   },
   "demo": {
     "banner_title": "Read-only demo",

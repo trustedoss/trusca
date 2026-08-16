@@ -230,6 +230,9 @@ test.describe("@smoke regression guards (manual-walkthrough 2026-05-25)", () => 
   }) => {
     await freshUser(page);
 
+    // C1 moved the toggle into the account menu. It is a plain button rather
+    // than a menu item, so the menu survives the clicks below.
+    await page.getByTestId("header-profile-menu").click();
     const toggle = page.getByTestId("language-toggle");
     await expect(toggle).toBeVisible();
 

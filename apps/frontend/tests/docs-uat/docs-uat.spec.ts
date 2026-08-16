@@ -159,9 +159,10 @@ const VERBS: Record<string, (ctx: Ctx, args: string[]) => Promise<void>> = {
     await portal.expectVulnerabilitiesTabReady();
   },
   // auth-and-profile.md — after the spec's auto-login, the header surfaces the
-  // signed-in identity via the profile link. OAuth + unlink stay manual.
+  // signed-in identity via the account menu. OAuth + unlink stay manual.
   async headerProfileVisible({ portal }) {
     await portal.goto("/");
+    await portal.openProfileMenu();
     await expect(portal.page.getByTestId("header-profile-link")).toBeVisible();
   },
   // WS-A — mutation verbs that drive an existing domain harness (the action +

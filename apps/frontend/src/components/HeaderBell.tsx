@@ -24,6 +24,7 @@ import { useNavigate } from "react-router-dom";
 
 import { Button } from "@/components/ui/button";
 import { useUnreadCount } from "@/features/notifications/useNotifications";
+import { formatBadge } from "@/lib/badgeCount";
 import { cn } from "@/lib/utils";
 
 export interface HeaderBellProps {
@@ -31,12 +32,6 @@ export interface HeaderBellProps {
   onInk?: boolean;
   /** Disable the underlying query (tests use this to keep timers quiet). */
   enabled?: boolean;
-}
-
-export function formatBadge(count: number): string {
-  if (count <= 0) return "";
-  if (count > 99) return "99+";
-  return String(count);
 }
 
 export function HeaderBell({ enabled = true, onInk = false }: HeaderBellProps) {
