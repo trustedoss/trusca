@@ -34,6 +34,13 @@ vi.mock("@/lib/api", async (importOriginal) => {
   };
 });
 
+// useDemoMode reads /v1/health on mount. Stubbed so these tests do not fan
+// out, and so the read-only branch is reachable at all.
+const demoReadOnly = vi.fn(() => false);
+vi.mock("@/hooks/useDemoMode", () => ({
+  useDemoMode: () => ({ demoReadOnly: demoReadOnly() }),
+}));
+
 const POLICIES_URL = "/v1/license-policies";
 const API_KEYS_URL = "/v1/api-keys";
 
@@ -62,6 +69,17 @@ function respond({
     }
     return Promise.reject(new Error(`unexpected GET ${url}`));
   };
+}
+
+/**
+ * Axios drops undefined parameters before they reach the wire, so the
+ * clients' explicit `undefined` placeholders are not part of the request.
+ * Removing them here lets the assertion be exact about what IS sent.
+ */
+function dropUndefined(params: Record<string, unknown>) {
+  return Object.fromEntries(
+    Object.entries(params).filter(([, value]) => value !== undefined),
+  );
 }
 
 function project(overrides: Partial<ProjectPublic> = {}): ProjectPublic {
@@ -144,6 +162,7 @@ describe("OnboardingChecklist", () => {
       isAuthenticated: true,
     });
     apiGet.mockReset();
+    demoReadOnly.mockReturnValue(false);
   });
   afterEach(() => {
     useAuthStore.getState().reset();
@@ -256,7 +275,14 @@ describe("OnboardingChecklist", () => {
     for (const url of [POLICIES_URL, API_KEYS_URL]) {
       const call = apiGet.mock.calls.find(([called]) => called === url);
       expect(call, `no request was made to ${url}`).toBeDefined();
-      expect(call?.[1]).toMatchObject({ page: 1, page_size: 1 });
+      // `toEqual`, not `toMatchObject`: a partial match lets an extra
+      // parameter through, and the one that matters is `include_revoked`.
+      // Adding it would quietly change the step from "a key exists" to "a key
+      // once existed" while every other assertion in this file stayed green.
+      expect(dropUndefined(call?.[1] as Record<string, unknown>)).toEqual({
+        page: 1,
+        page_size: 1,
+      });
     }
   });
 
@@ -320,6 +346,46 @@ describe("OnboardingChecklist", () => {
     expect(window.localStorage.getItem("trustedoss-ui")).toContain(
       '"onboardingDismissed":true',
     );
+  });
+
+  it("offers no action on a deployment that refuses writes", async () => {
+    // A demo deployment answers 403 to every write, so a button here would be
+    // an invitation to a refusal. The steps still show their state.
+    demoReadOnly.mockReturnValue(true);
+    apiGet.mockImplementation(respond());
+
+    renderChecklist();
+
+    await screen.findByTestId("onboarding-checklist");
+    expect(screen.queryAllByTestId(/^onboarding-cta-/)).toHaveLength(0);
+  });
+
+  it("marks a done step by more than its colour", async () => {
+    apiGet.mockImplementation(respond({ policies: 1 }));
+
+    renderChecklist();
+
+    await screen.findByTestId("onboarding-checklist");
+    const done = screen.getByTestId("onboarding-step-policy");
+    const pending = screen.getByTestId("onboarding-step-apiKey");
+    // Colour is never the only carrier of state: the label of a finished step
+    // is struck through as well as ticked.
+    expect(done.innerHTML).toContain("line-through");
+    expect(pending.innerHTML).not.toContain("line-through");
+  });
+
+  it("stops asking once the card is dismissed for good", async () => {
+    // Two requests per dashboard load, for ever, on behalf of a card that
+    // will never be drawn again.
+    useUIStore.setState({ onboardingDismissed: true });
+    apiGet.mockImplementation(respond());
+
+    renderChecklist();
+
+    await waitFor(() => {
+      expect(screen.queryByTestId("onboarding-checklist")).toBeNull();
+    });
+    expect(apiGet).not.toHaveBeenCalled();
   });
 
   it("offers no action a user with no team could take", async () => {

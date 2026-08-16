@@ -371,6 +371,8 @@ export function DashboardPage() {
   // C2: the checklist and the no-projects empty state open with the same
   // sentence, so only one of them appears. This hook is the single source for
   // that decision; the card below runs it again and reaches the same answer.
+  // Note this hands the checklist one page of projects, not all of them. See
+  // the scan step in OnboardingChecklist for what that costs.
   const { visible: showOnboarding } = useOnboardingChecklist({
     projects,
     projectsLoaded,

@@ -122,13 +122,13 @@
       "policy": {
         "label": "Set a licence policy",
         "hint": "Decide which licences block a build. Until you do, the built-in categories apply.",
-        "done": "A policy of your own applies.",
+        "done": "A licence policy applies to you.",
         "cta": "Open policies"
       },
       "apiKey": {
         "label": "Issue a CI key",
         "hint": "A build cannot scan without one. Scope it to the project CI will check.",
-        "done": "A key is active.",
+        "done": "A key has been issued.",
         "cta": "Open integrations"
       }
     },

@@ -83,8 +83,11 @@ export function useOnboardingChecklist({
   doneCount: number;
 } {
   const dismissed = useUIStore((s) => s.onboardingDismissed);
-  const policiesQuery = useLicensePolicies(COUNT_ONLY);
-  const apiKeysQuery = useApiKeys(COUNT_ONLY);
+  // Dismissed means gone for good, so stop asking. Without this the two
+  // reads went out on every dashboard load, for ever, on behalf of a card
+  // that will never be drawn again.
+  const policiesQuery = useLicensePolicies(COUNT_ONLY, { enabled: !dismissed });
+  const apiKeysQuery = useApiKeys(COUNT_ONLY, { enabled: !dismissed });
 
   const steps: ChecklistStep[] = [
     {
@@ -94,29 +97,41 @@ export function useOnboardingChecklist({
       done: projects.length > 0,
     },
     {
-      // `release_count` counts scans that SUCCEEDED, which is the only state
-      // that has produced anything to look at. A queued or failed scan means
-      // the reader pressed the button; it does not mean they have a component
-      // list, and this step is about reaching that.
+      // `release_count` counts scans that succeeded AND are still live: scan
+      // retention marks an older snapshot superseded, and the server leaves
+      // those out. Both halves are wanted here. A queued or failed scan means
+      // the reader pressed the button, not that they have a component list;
+      // a superseded one has been replaced by a newer success, which would
+      // itself be counted.
+      //
+      // Read across one page of 100 projects, which is what the dashboard
+      // fetches. An organisation with more than that, whose first hundred by
+      // name have never been scanned, would be told to run its first scan.
+      // The card is dismissible, and this is the page size to widen if that
+      // ever stops being an acceptable trade.
       key: "scan",
       icon: ScanLine,
       to: "/projects",
       done: projects.some((project) => project.release_count > 0),
     },
     {
-      // A policy row exists per team, or once per organisation as a default.
-      // Neither carries a "reviewed" flag, so this step can only mean "a
-      // policy applies to you", never "you have read it". The copy says that,
-      // and says what happens meanwhile: the built-in categories apply, so an
-      // unticked box is a decision not yet made rather than a hole.
+      // A policy row exists per team, or once per organisation as a default,
+      // and an org default is visible to every member of every team in it.
+      // Nothing anywhere records that a person read one. So this step can
+      // only mean "a policy applies to you" - not "you wrote it", and not
+      // "you reviewed it" - and the done copy says exactly that much. What
+      // happens meanwhile is in the hint: the built-in categories apply, so
+      // an unticked box is a decision not yet made rather than a hole.
       key: "policy",
       icon: Scale,
       to: "/policies",
       done: (policiesQuery.data?.total ?? 0) > 0,
     },
     {
-      // Revoked keys are excluded by the endpoint's default, so this reads
-      // "a usable key exists" rather than "a key was once issued".
+      // The endpoint's default excludes revoked keys but NOT expired ones:
+      // `list_api_keys` filters on `revoked_at` alone, while the auth path
+      // checks expiry too. So this counts keys that were issued and not
+      // taken back, which is what the done copy claims and no more.
       key: "apiKey",
       icon: KeyRound,
       to: "/integrations",
