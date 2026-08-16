@@ -127,7 +127,9 @@ test.describe("@csv-export the filtered table leaves as a file", () => {
     await auth.login(seed.email, seed.password);
 
     const portal = new PortalPage(page);
-    await portal.goto("/inventory");
+    // `/components` is the route; "inventory" is what the feature directory
+    // and the API call it, and the sidebar item says Components.
+    await portal.goto("/components");
     await expect(page.getByTestId("inventory-toolbar")).toBeVisible();
 
     // Narrow to this run's own components, then check the file honoured it.
