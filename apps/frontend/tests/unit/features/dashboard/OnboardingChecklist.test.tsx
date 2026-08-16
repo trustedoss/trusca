@@ -270,6 +270,22 @@ describe("OnboardingChecklist", () => {
     expect(screen.getByTestId("onboarding-progress")).toHaveTextContent(
       "2 of 4",
     );
+    // The done copy itself, not just the tick. Each of these sentences is
+    // narrower than the step's label on purpose - an organisation-wide
+    // default satisfies the policy step on your behalf, and an expired key
+    // satisfies the key step - and nothing else in the suite would notice if
+    // they drifted back to claiming more than the endpoint can support.
+    expect(screen.getByTestId("onboarding-step-policy")).toHaveTextContent(
+      "A licence policy applies to you.",
+    );
+    expect(screen.getByTestId("onboarding-step-apiKey")).toHaveTextContent(
+      "A key has been issued.",
+    );
+    // And an unfinished step still shows what to do, rather than its own
+    // past tense.
+    expect(screen.getByTestId("onboarding-step-project")).toHaveTextContent(
+      "A name and a Git URL are enough.",
+    );
     // One row each, because only the totals are wanted. Asking for a default
     // page would pull every policy and every key into a dashboard render.
     for (const url of [POLICIES_URL, API_KEYS_URL]) {
