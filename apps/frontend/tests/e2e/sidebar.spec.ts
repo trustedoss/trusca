@@ -103,4 +103,117 @@ test.describe("@sidebar collapse rail + responsive drawer", () => {
     await expect(portal.mobileNavDrawer()).toBeHidden();
     await expect(page).toHaveURL(/\/projects$/);
   });
+
+  test("the skip link takes the first Tab and moves focus to the content", async ({
+    page,
+  }, testInfo) => {
+    // jsdom will happily report that an anchor with href="#main-content" was
+    // focused; whether the browser then moves focus to the target depends on
+    // the target being focusable, which is exactly the part that regresses.
+    const seed = tryAcquireSeed(testInfo, { projectNames: [PROJECT_NAME] });
+    if (seed === null) return;
+
+    await page.setViewportSize({ width: 1280, height: 800 });
+
+    const auth = new AuthHarness(page);
+    await auth.gotoLogin();
+    await auth.login(seed.email, seed.password);
+
+    const portal = new PortalPage(page);
+    await portal.expectMounted();
+
+    // A reload rather than a click on the body. Chromium keeps a sequential
+    // focus navigation starting point, and both the login form and any click
+    // used to reset it move that point into the middle of the document, so
+    // the next Tab continues from there instead of from the top. A fresh
+    // document is the only state that matches what a reader actually does:
+    // arrive on a page and press Tab.
+    await page.reload();
+    await portal.expectMounted();
+    await page.keyboard.press("Tab");
+
+    const skip = page.getByTestId("skip-to-content");
+    const focused = await page.evaluate(() => {
+      const el = document.activeElement;
+      return el?.getAttribute("data-testid") ?? el?.tagName ?? "nothing";
+    });
+    expect(
+      focused,
+      "the first Tab must land on the skip link, or a keyboard reader walks " +
+        "the whole bar and every nav item before reaching the content",
+    ).toBe("skip-to-content");
+    await expect(skip).toBeFocused();
+    // sr-only until focused, then it has to actually be on screen: a skip
+    // link nobody can see is one nobody knows they hit.
+    await expect(skip).toBeVisible();
+
+    await page.keyboard.press("Enter");
+    await expect(page.getByTestId("app-main")).toBeFocused();
+  });
+
+  test("the account menu holds sign-out, theme, language and the docs link", async ({
+    page,
+  }, testInfo) => {
+    const seed = tryAcquireSeed(testInfo, { projectNames: [PROJECT_NAME] });
+    if (seed === null) return;
+
+    // 390 px: the width at which theme and language used to disappear with no
+    // replacement, which is the reason they moved into this menu.
+    await page.setViewportSize({ width: 390, height: 844 });
+
+    const auth = new AuthHarness(page);
+    await auth.gotoLogin();
+    await auth.login(seed.email, seed.password);
+
+    const portal = new PortalPage(page);
+    await portal.expectMounted();
+    await portal.openProfileMenu();
+
+    for (const testId of [
+      "header-profile-link",
+      "header-docs-link",
+      "header-shortcuts-link",
+      "theme-toggle",
+      "language-toggle",
+      "logout-button",
+    ]) {
+      await expect(page.getByTestId(testId)).toBeVisible();
+    }
+
+    // The docs link is the one that leaves the app; a target of _blank with
+    // no `noopener` would hand the opener window to whatever it points at.
+    const docs = page.getByTestId("header-docs-link");
+    await expect(docs).toHaveAttribute("target", "_blank");
+    await expect(docs).toHaveAttribute("rel", /noopener/);
+  });
+
+  test("? opens the shortcut sheet, but not while the user is typing", async ({
+    page,
+  }, testInfo) => {
+    const seed = tryAcquireSeed(testInfo, { projectNames: [PROJECT_NAME] });
+    if (seed === null) return;
+
+    await page.setViewportSize({ width: 1280, height: 800 });
+
+    const auth = new AuthHarness(page);
+    await auth.gotoLogin();
+    await auth.login(seed.email, seed.password);
+
+    const portal = new PortalPage(page);
+    await portal.expectMounted();
+
+    await page.keyboard.press("?");
+    await expect(page.getByTestId("shortcut-help-dialog")).toBeVisible();
+    await page.keyboard.press("Escape");
+    await expect(page.getByTestId("shortcut-help-dialog")).toBeHidden();
+
+    // Inside a text field the character has to reach the field instead. The
+    // command menu's own input is the one every user meets first.
+    await page.getByTestId("command-menu-trigger").click();
+    const input = page.getByTestId("command-menu-input");
+    await input.fill("");
+    await page.keyboard.type("who?");
+    await expect(input).toHaveValue("who?");
+    await expect(page.getByTestId("shortcut-help-dialog")).toBeHidden();
+  });
 });

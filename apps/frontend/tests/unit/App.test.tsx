@@ -1,3 +1,6 @@
+import { readFileSync } from "node:fs";
+import path from "node:path";
+
 import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -54,6 +57,56 @@ const fakeUser: AuthUser = {
   teamId: null,
   teams: [],
 };
+
+/**
+ * Reads the admin child routes straight out of `router.tsx`.
+ *
+ * A hand-kept list here would drift the same way the sidebar did: someone
+ * adds a route, forgets the nav entry, and forgets the list that was supposed
+ * to notice. Parsing the source means a new route joins this check by
+ * existing.
+ */
+function adminRoutesFromRouter(): string[] {
+  const source = readFileSync(
+    path.resolve(__dirname, "../../src/router.tsx"),
+    "utf8",
+  );
+  const opening = '<Route path="admin"';
+  const block = source.slice(
+    // After the opening tag, so the admin parent itself is not read as one of
+    // its own children.
+    source.indexOf(opening) + opening.length,
+    source.indexOf('<Route path="*" element={<AdminNotFound />} />'),
+  );
+  expect(block, "the admin route block moved; this parser needs a look").not.toBe(
+    "",
+  );
+  // `[^"]+` rather than a friendly character class: a narrow one skips the
+  // route it does not recognise instead of failing on it, so `oauth2` or a
+  // camelCase segment would drop out of the check silently, which is the
+  // exact shape of the bug the check exists to catch. Wildcards and path
+  // parameters are excluded on purpose - they match by pattern, not by a URL
+  // a sidebar entry could point at.
+  const paths = [...block.matchAll(/<Route\s+path="([^"]+)"/g)]
+    .map((match) => match[1])
+    .filter((route) => !route.startsWith("*") && !route.includes(":"))
+    .map((route) => `/admin/${route}`);
+  // Every `<Route` in the block has to be accounted for, so a shape this
+  // parser does not recognise fails loudly instead of dropping out of the
+  // list. `path={SOME_CONSTANT}` is the one that would otherwise slip
+  // through: a routine refactor, and the route stops being checked.
+  const routeTags = block.match(/<Route[\s>]/g)?.length ?? 0;
+  const indexRoutes = block.match(/<Route\s+index\b/g)?.length ?? 0;
+  const patternRoutes = [...block.matchAll(/<Route\s+path="([^"]+)"/g)].filter(
+    ([, route]) => route.startsWith("*") || route.includes(":"),
+  ).length;
+  expect(
+    paths.length + indexRoutes + patternRoutes,
+    "an admin <Route> was not recognised by this parser, so it is not being " +
+      "checked for a sidebar entry",
+  ).toBe(routeTags);
+  return paths;
+}
 
 function renderAppAt(path: string) {
   window.history.replaceState(null, "", path);
@@ -115,7 +168,10 @@ describe("App smoke (authenticated)", () => {
       expect(screen.getByTestId("app-shell")).toBeInTheDocument();
     });
 
-    const toggle = screen.getByTestId("language-toggle");
+    // C1: theme and language moved into the profile menu, which is what
+    // made them reachable below 640px at all.
+    await user.click(screen.getByTestId("header-profile-menu"));
+    const toggle = await screen.findByTestId("language-toggle");
     expect(toggle).toHaveAttribute("data-current-language", "en");
 
     await user.click(toggle);
@@ -125,11 +181,18 @@ describe("App smoke (authenticated)", () => {
     expect(toggle).toHaveAttribute("data-current-language", "en");
   });
 
-  it("renders the logout button in the app header", async () => {
+  it("offers sign-out from the profile menu", async () => {
+    // C1: it used to sit exposed beside the avatar, one careless click from
+    // the app's only sign-out. Behind the menu it needs an intent.
+    const user = userEvent.setup();
     renderAppAt("/projects");
     await waitFor(() => {
-      expect(screen.getByTestId("logout-button")).toBeInTheDocument();
+      expect(screen.getByTestId("app-shell")).toBeInTheDocument();
     });
+
+    expect(screen.queryByTestId("logout-button")).toBeNull();
+    await user.click(screen.getByTestId("header-profile-menu"));
+    expect(await screen.findByTestId("logout-button")).toBeInTheDocument();
   });
 
   // M-17 — header initials avatar + active team label.
@@ -140,11 +203,14 @@ describe("App smoke (authenticated)", () => {
       status: "authenticated",
       isAuthenticated: true,
     });
+    const user = userEvent.setup();
     renderAppAt("/projects");
     const avatar = await screen.findByTestId("header-avatar");
     expect(avatar.textContent).toBe("AS");
-    // The profile link itself stays reachable for ProfileHarness / docs-uat.
-    expect(screen.getByTestId("header-profile-link")).toHaveAttribute(
+    // The profile link moved into the menu the avatar now opens; it stays
+    // reachable for ProfileHarness / docs-uat once the menu is open.
+    await user.click(screen.getByTestId("header-profile-menu"));
+    expect(await screen.findByTestId("header-profile-link")).toHaveAttribute(
       "href",
       "/profile",
     );
@@ -242,6 +308,37 @@ describe("App smoke (authenticated)", () => {
     expect(screen.getByTestId("nav-admin-disk")).toBeInTheDocument();
     expect(screen.getByTestId("nav-admin-audit")).toBeInTheDocument();
     expect(screen.getByTestId("nav-admin-health")).toBeInTheDocument();
+    // C1: this one existed as a route, a page, both translations and an e2e
+    // spec, and had no link. Nothing failed while it was unreachable, so the
+    // href is asserted here rather than just the presence of the row.
+    expect(screen.getByTestId("nav-admin-backup")).toHaveAttribute(
+      "href",
+      "/admin/backup",
+    );
+  });
+
+  it("every admin nav entry points at a route that exists", async () => {
+    // The gap this closes is not a broken link but a missing one, and the
+    // check that would have caught it is the reverse direction: every admin
+    // route the app defines should be reachable from the sidebar.
+    useAuthStore.setState({
+      user: { ...fakeUser, isSuperuser: true, role: "super_admin" },
+      accessToken: "tok-admin",
+      status: "authenticated",
+      isAuthenticated: true,
+    });
+    renderAppAt("/projects");
+    await screen.findByTestId("nav-admin-users");
+
+    for (const route of adminRoutesFromRouter()) {
+      const link = screen
+        .getAllByRole("link")
+        .find((el) => el.getAttribute("href") === route);
+      expect(
+        link,
+        `no sidebar entry links to ${route}; the page is live but unreachable`,
+      ).toBeDefined();
+    }
   });
 
   it("super admin visiting the removed /admin/dt route falls through to AdminNotFound", async () => {
@@ -262,9 +359,10 @@ describe("App smoke (authenticated)", () => {
     mockedPostLogout.mockResolvedValue(undefined);
     renderAppAt("/projects");
     await waitFor(() => {
-      expect(screen.getByTestId("logout-button")).toBeInTheDocument();
+      expect(screen.getByTestId("app-shell")).toBeInTheDocument();
     });
-    await user.click(screen.getByTestId("logout-button"));
+    await user.click(screen.getByTestId("header-profile-menu"));
+    await user.click(await screen.findByTestId("logout-button"));
     await waitFor(() => {
       expect(screen.getByTestId("login-page")).toBeInTheDocument();
     });

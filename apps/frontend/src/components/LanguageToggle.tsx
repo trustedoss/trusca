@@ -1,22 +1,46 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2026 TRUSCA contributors
 import { Languages } from "lucide-react";
+import {
+  forwardRef,
+  type ComponentPropsWithoutRef,
+  type MouseEvent,
+} from "react";
 import { useTranslation } from "react-i18next";
 
 import { Button } from "@/components/ui/button";
 import type { SupportedLanguage } from "@/lib/i18n";
 import { cn } from "@/lib/utils";
 
-export function LanguageToggle({
-  onInk = false,
-  className,
-}: { onInk?: boolean; className?: string } = {}) {
+interface LanguageToggleProps extends ComponentPropsWithoutRef<typeof Button> {
+  /** Rendered on the dark global bar - use the topbar foreground scale. */
+  onInk?: boolean;
+  /** Rendered as a row inside the account menu (C1). */
+  inMenu?: boolean;
+}
+
+/**
+ * forwardRef because the account menu renders this through `asChild`: Radix
+ * registers the item in its roving-focus group by ref, and a component it
+ * cannot get a ref to is reachable by mouse and by nothing else.
+ */
+export const LanguageToggle = forwardRef<
+  HTMLButtonElement,
+  LanguageToggleProps
+>(function LanguageToggle(
+  { onInk = false, inMenu = false, className, onClick, ...rest },
+  ref,
+) {
   const { i18n, t } = useTranslation();
   const current = (i18n.resolvedLanguage ?? "en") as SupportedLanguage;
   const next: SupportedLanguage = current === "en" ? "ko" : "en";
 
-  function handleToggle() {
+  // The parent's handler is pulled out of `rest` and called alongside ours:
+  // inside the account menu it is how Radix fires `onSelect`, and a spread
+  // that let one declaration win would silently drop the other.
+  function handleToggle(event: MouseEvent<HTMLButtonElement>) {
     void i18n.changeLanguage(next);
+    onClick?.(event);
   }
 
   // Show the CURRENT language (with the globe icon signalling it's a switcher).
@@ -26,11 +50,15 @@ export function LanguageToggle({
 
   return (
     <Button
-      variant={onInk ? "ghost" : "outline"}
+      {...rest}
+      ref={ref}
+      variant={onInk || inMenu ? "ghost" : "outline"}
       size="sm"
       className={cn(
         onInk &&
           "text-topbar-muted-foreground hover:bg-topbar-accent hover:text-topbar-foreground",
+        // C1: as a row in the account menu, matching the rows above it.
+        inMenu && "h-8 w-full justify-start font-normal",
         className,
       )}
       onClick={handleToggle}
@@ -39,7 +67,14 @@ export function LanguageToggle({
       aria-label={t("language.label")}
     >
       <Languages className="h-4 w-4" aria-hidden />
-      <span>{label}</span>
+      {inMenu ? (
+        <>
+          <span>{t("language.label")}</span>
+          <span className="ml-auto text-xs text-muted-foreground">{label}</span>
+        </>
+      ) : (
+        <span>{label}</span>
+      )}
     </Button>
   );
-}
+});

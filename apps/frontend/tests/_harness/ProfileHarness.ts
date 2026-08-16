@@ -50,7 +50,15 @@ export class ProfileHarness {
    * missing (the spec can compose either path).
    */
   async openProfileViaHeader(): Promise<void> {
+    // C1 moved the link into the account menu; the avatar is now the trigger
+    // rather than the link itself. Idempotent, because clicking the trigger
+    // of an already-open menu closes it.
     const link = this.page.getByTestId("header-profile-link");
+    if (!(await link.isVisible())) {
+      const trigger = this.page.getByTestId("header-profile-menu");
+      await expect(trigger).toBeVisible({ timeout: DEFAULT_TIMEOUT_MS });
+      await trigger.click();
+    }
     await expect(link).toBeVisible({ timeout: DEFAULT_TIMEOUT_MS });
     await Promise.all([
       this.page.waitForURL(`${this.baseUrl}/profile`, {

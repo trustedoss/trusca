@@ -56,5 +56,10 @@ export function useActionQueue() {
     // open finding in scope, so this deliberately does not poll. A minute of
     // staleness on a work queue is not worth holding the connection pool.
     staleTime: 60_000,
+    // The paragraph above said this was worth refetching on focus and the
+    // query never asked for it, so the global `refetchOnWindowFocus: false`
+    // applied and the count sat still. It matters more since C1 put this
+    // number in the sidebar of every screen, where it is read all day.
+    refetchOnWindowFocus: true,
   });
 }

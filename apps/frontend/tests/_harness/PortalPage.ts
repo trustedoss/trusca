@@ -66,12 +66,34 @@ export class PortalPage {
       .waitFor({ state: "visible", timeout: 10_000 });
   }
 
+  // ───── account menu (C1) ───────────────────────────────────────────────
+  /**
+   * Profile, sign-out, theme and language all moved behind this trigger in
+   * C1. It is the only one of them that is on screen at rest.
+   */
+  profileMenuTrigger(): Locator {
+    return this.page.getByTestId("header-profile-menu");
+  }
+
+  /**
+   * Idempotent: the theme and language controls are plain buttons rather
+   * than menu items, so the menu stays open across a click on them and a
+   * second open would close it again.
+   */
+  async openProfileMenu(): Promise<void> {
+    if (await this.page.getByTestId("logout-button").isVisible()) return;
+    await this.profileMenuTrigger().click();
+    await expect(this.page.getByTestId("logout-button")).toBeVisible();
+  }
+
   // ───── i18n ────────────────────────────────────────────────────────────
+  /** Only in the DOM while the account menu is open; see openProfileMenu. */
   languageToggle(): Locator {
     return this.page.getByTestId("language-toggle");
   }
 
   async currentLanguage(): Promise<SupportedLanguage> {
+    await this.openProfileMenu();
     const value = await this.languageToggle().getAttribute(
       "data-current-language",
     );
@@ -79,6 +101,7 @@ export class PortalPage {
   }
 
   async toggleLanguage(): Promise<SupportedLanguage> {
+    await this.openProfileMenu();
     await this.languageToggle().click();
     return this.currentLanguage();
   }
