@@ -122,10 +122,26 @@ test.describe("@sidebar collapse rail + responsive drawer", () => {
     const portal = new PortalPage(page);
     await portal.expectMounted();
 
-    await page.locator("body").click({ position: { x: 2, y: 2 } });
+    // A reload rather than a click on the body. Chromium keeps a sequential
+    // focus navigation starting point, and both the login form and any click
+    // used to reset it move that point into the middle of the document, so
+    // the next Tab continues from there instead of from the top. A fresh
+    // document is the only state that matches what a reader actually does:
+    // arrive on a page and press Tab.
+    await page.reload();
+    await portal.expectMounted();
     await page.keyboard.press("Tab");
 
     const skip = page.getByTestId("skip-to-content");
+    const focused = await page.evaluate(() => {
+      const el = document.activeElement;
+      return el?.getAttribute("data-testid") ?? el?.tagName ?? "nothing";
+    });
+    expect(
+      focused,
+      "the first Tab must land on the skip link, or a keyboard reader walks " +
+        "the whole bar and every nav item before reaching the content",
+    ).toBe("skip-to-content");
     await expect(skip).toBeFocused();
     // sr-only until focused, then it has to actually be on screen: a skip
     // link nobody can see is one nobody knows they hit.
