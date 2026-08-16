@@ -82,7 +82,8 @@
     "badge": {
       "scans": "진행 또는 대기 {{count}}건",
       "approvals": "대기 {{count}}건"
-    }
+    },
+    "accountMenu": "계정 메뉴"
   },
   "demo": {
     "banner_title": "읽기 전용 데모",

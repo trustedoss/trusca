@@ -601,6 +601,15 @@ function GlobalBar({
  * and it sat one careless click from the avatar; behind a menu it needs an
  * intent.
  */
+/**
+ * Theme and language are cycles, not destinations: closing the menu on the
+ * first press would make the second press a fresh journey through the
+ * trigger. Every other row here goes somewhere, so those do close.
+ */
+function keepMenuOpen(event: Event): void {
+  event.preventDefault();
+}
+
 function ProfileMenu({
   initials,
   onLogout,
@@ -621,7 +630,10 @@ function ProfileMenu({
           size="sm"
           className="text-topbar-foreground hover:bg-topbar-accent hover:text-topbar-foreground"
           data-testid="header-profile-menu"
-          aria-label={t("auth.profile")}
+          // Not "Profile": the menu also holds sign-out, the docs link, the
+          // shortcut sheet and two settings, and a name that promises one of
+          // six is a name that hides the other five.
+          aria-label={t("nav.accountMenu")}
         >
           {initials ? (
             <span
@@ -682,15 +694,16 @@ function ProfileMenu({
 
         <DropdownMenuSeparator />
         {/* The two controls that had no home below `sm`. They keep their own
-            components so the cycling logic and the labels stay in one place. */}
-        <div className="flex items-center justify-between gap-2 px-2 py-1.5">
-          <span className="text-sm">{t("theme.label")}</span>
-          <ThemeToggle />
-        </div>
-        <div className="flex items-center justify-between gap-2 px-2 py-1.5">
-          <span className="text-sm">{t("language.label")}</span>
-          <LanguageToggle />
-        </div>
+            components so the cycling logic and the labels stay in one place,
+            and each is the menu item rather than a button parked inside one:
+            a Radix menu swallows Tab and moves focus only between registered
+            items, so anything else in here is reachable by mouse alone. */}
+        <DropdownMenuItem asChild onSelect={keepMenuOpen}>
+          <ThemeToggle inMenu />
+        </DropdownMenuItem>
+        <DropdownMenuItem asChild onSelect={keepMenuOpen}>
+          <LanguageToggle inMenu />
+        </DropdownMenuItem>
 
         <DropdownMenuSeparator />
         <DropdownMenuItem onSelect={onLogout} data-testid="logout-button">
@@ -804,7 +817,11 @@ export function AppShell() {
             // the scroll but leaves focus in the bar, so the next Tab goes
             // back to where the reader just skipped from.
             tabIndex={-1}
-            className="flex-1 overflow-y-auto animate-in fade-in-0 duration-slow ease-out-soft focus:outline-none"
+            // `focus-visible` rather than `focus`: clicking anywhere in the
+            // content focuses this too, and a ring on every click would be
+            // noise. Following the skip link is a keyboard action, so the
+            // reader who used it still sees where they landed.
+            className="flex-1 overflow-y-auto animate-in fade-in-0 duration-slow ease-out-soft focus:outline-none focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
             data-testid="app-main"
           >
             <Outlet />

@@ -9,9 +9,18 @@
  * there was anything to approve.
  *
  * Deliberately not polled. §8.5-5 of the plan rules out new polling, and both
- * of these read aggregates over every project in scope. React Query's own
- * defaults are the refresh mechanism: a navigation or a window focus past the
- * stale time refetches, which is the moment the number is actually looked at.
+ * of these read aggregates over every project in scope.
+ *
+ * Refreshing instead happens at the two moments a stale number would be seen
+ * and believed. Returning to the tab refetches past the stale time, which is
+ * an explicit opt-in here because the app turns `refetchOnWindowFocus` off
+ * globally. And the mutations that change these numbers invalidate the keys
+ * directly: approvals in `useApprovals.ts`, scans in `useCancelScan.ts`.
+ *
+ * The sidebar itself never unmounts on navigation, so nothing refetches from
+ * a route change alone. That is deliberate rather than overlooked: three
+ * requests on every screen change is the polling this rules out, wearing a
+ * different name.
  */
 import { useQueries } from "@tanstack/react-query";
 
@@ -53,6 +62,7 @@ export function useNavBadges(): NavBadgeCounts {
       queryKey: scansQueryKey({ status, ...COUNT_ONLY }),
       queryFn: () => listMyScans({ status, ...COUNT_ONLY }),
       staleTime: BADGE_STALE_TIME_MS,
+      refetchOnWindowFocus: true,
     })),
   });
 

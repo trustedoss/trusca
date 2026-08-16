@@ -82,7 +82,8 @@
     "badge": {
       "scans": "{{count}} running or queued",
       "approvals": "{{count}} waiting"
-    }
+    },
+    "accountMenu": "Account menu"
   },
   "demo": {
     "banner_title": "Read-only demo",

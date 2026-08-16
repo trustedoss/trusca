@@ -16,6 +16,7 @@ import {
   type UseQueryResult,
 } from "@tanstack/react-query";
 
+import { ACTION_QUEUE_QUERY_KEY } from "@/features/dashboard/api/actionQueue";
 import {
   deleteApproval,
   getApproval,
@@ -102,6 +103,10 @@ export function useTransitionApproval() {
     onSuccess: (updated) => {
       // Invalidate the list (all filter variants) and the individual detail.
       void queryClient.invalidateQueries({ queryKey: ["approvals"] });
+      // C1 put the pending count in the sidebar of every screen. Deciding an
+      // approval is exactly when that number changes, and it is the one
+      // moment the user is looking straight at it.
+      void queryClient.invalidateQueries({ queryKey: ACTION_QUEUE_QUERY_KEY });
       // Optimistically update the detail cache with the new data.
       queryClient.setQueryData(approvalDetailQueryKey(updated.id), {
         approval: updated,
@@ -121,6 +126,7 @@ export function useDeleteApproval() {
     mutationFn: (id) => deleteApproval(id),
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: ["approvals"] });
+      void queryClient.invalidateQueries({ queryKey: ACTION_QUEUE_QUERY_KEY });
     },
   });
 }

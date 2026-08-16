@@ -1,3 +1,6 @@
+import { readFileSync } from "node:fs";
+import path from "node:path";
+
 import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -54,6 +57,38 @@ const fakeUser: AuthUser = {
   teamId: null,
   teams: [],
 };
+
+/**
+ * Reads the admin child routes straight out of `router.tsx`.
+ *
+ * A hand-kept list here would drift the same way the sidebar did: someone
+ * adds a route, forgets the nav entry, and forgets the list that was supposed
+ * to notice. Parsing the source means a new route joins this check by
+ * existing.
+ */
+function adminRoutesFromRouter(): string[] {
+  const source = readFileSync(
+    path.resolve(__dirname, "../../src/router.tsx"),
+    "utf8",
+  );
+  const opening = '<Route path="admin"';
+  const block = source.slice(
+    // After the opening tag, so the admin parent itself is not read as one of
+    // its own children.
+    source.indexOf(opening) + opening.length,
+    source.indexOf('<Route path="*" element={<AdminNotFound />} />'),
+  );
+  expect(block, "the admin route block moved; this parser needs a look").not.toBe(
+    "",
+  );
+  const paths = [...block.matchAll(/<Route path="([a-z-]+)"/g)].map(
+    (match) => `/admin/${match[1]}`,
+  );
+  // A parser that silently matches nothing would turn this into a test that
+  // asserts an empty loop.
+  expect(paths.length).toBeGreaterThan(5);
+  return paths;
+}
 
 function renderAppAt(path: string) {
   window.history.replaceState(null, "", path);
@@ -255,6 +290,37 @@ describe("App smoke (authenticated)", () => {
     expect(screen.getByTestId("nav-admin-disk")).toBeInTheDocument();
     expect(screen.getByTestId("nav-admin-audit")).toBeInTheDocument();
     expect(screen.getByTestId("nav-admin-health")).toBeInTheDocument();
+    // C1: this one existed as a route, a page, both translations and an e2e
+    // spec, and had no link. Nothing failed while it was unreachable, so the
+    // href is asserted here rather than just the presence of the row.
+    expect(screen.getByTestId("nav-admin-backup")).toHaveAttribute(
+      "href",
+      "/admin/backup",
+    );
+  });
+
+  it("every admin nav entry points at a route that exists", async () => {
+    // The gap this closes is not a broken link but a missing one, and the
+    // check that would have caught it is the reverse direction: every admin
+    // route the app defines should be reachable from the sidebar.
+    useAuthStore.setState({
+      user: { ...fakeUser, isSuperuser: true, role: "super_admin" },
+      accessToken: "tok-admin",
+      status: "authenticated",
+      isAuthenticated: true,
+    });
+    renderAppAt("/projects");
+    await screen.findByTestId("nav-admin-users");
+
+    for (const route of adminRoutesFromRouter()) {
+      const link = screen
+        .getAllByRole("link")
+        .find((el) => el.getAttribute("href") === route);
+      expect(
+        link,
+        `no sidebar entry links to ${route}; the page is live but unreachable`,
+      ).toBeDefined();
+    }
   });
 
   it("super admin visiting the removed /admin/dt route falls through to AdminNotFound", async () => {

@@ -215,6 +215,73 @@ describe("AppShell - skip link and profile menu (C1)", () => {
     }
   });
 
+  it("gives every control in the menu a menuitem role", async () => {
+    // A Radix menu swallows Tab and moves focus only between the children it
+    // registered as items. Anything rendered in there as a plain button is
+    // reachable by mouse and by nothing else, which is how theme and language
+    // came out of this change less reachable than they went in.
+    const user = userEvent.setup();
+    renderAppAt("/projects");
+    await screen.findByTestId("app-shell");
+
+    await user.click(screen.getByTestId("header-profile-menu"));
+    for (const id of [
+      "header-profile-link",
+      "header-docs-link",
+      "header-shortcuts-link",
+      "theme-toggle",
+      "language-toggle",
+      "logout-button",
+    ]) {
+      expect(await screen.findByTestId(id)).toHaveAttribute(
+        "role",
+        "menuitem",
+      );
+    }
+  });
+
+  it("walks the arrow keys onto the theme and language rows", async () => {
+    // The role alone is not the whole contract: Radix registers an item in
+    // its roving-focus group by ref, so a component it cannot get a ref to
+    // carries the role and still never receives focus.
+    const user = userEvent.setup();
+    renderAppAt("/projects");
+    await screen.findByTestId("app-shell");
+
+    await user.click(screen.getByTestId("header-profile-menu"));
+    await screen.findByTestId("logout-button");
+
+    const reached = new Set<string>();
+    for (let press = 0; press < 8; press += 1) {
+      await user.keyboard("{ArrowDown}");
+      const testId = document.activeElement?.getAttribute("data-testid");
+      if (testId) reached.add(testId);
+    }
+
+    expect(reached).toContain("theme-toggle");
+    expect(reached).toContain("language-toggle");
+  });
+
+  it("keeps the menu open while cycling theme and language", async () => {
+    // Both are cycles rather than destinations, so a menu that closed on the
+    // first press would make the second press a fresh journey.
+    const user = userEvent.setup();
+    renderAppAt("/projects");
+    await screen.findByTestId("app-shell");
+
+    await user.click(screen.getByTestId("header-profile-menu"));
+    const language = await screen.findByTestId("language-toggle");
+    expect(language).toHaveAttribute("data-current-language", "en");
+
+    await user.click(language);
+    expect(screen.getByTestId("language-toggle")).toHaveAttribute(
+      "data-current-language",
+      "ko",
+    );
+    // Still open, and the row next to it is still there to be pressed.
+    expect(screen.getByTestId("theme-toggle")).toBeInTheDocument();
+  });
+
   it("opens the shortcut sheet from the profile menu", async () => {
     const user = userEvent.setup();
     renderAppAt("/projects");

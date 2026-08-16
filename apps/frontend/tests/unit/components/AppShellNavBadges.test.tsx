@@ -97,14 +97,50 @@ function renderShell() {
   const client = new QueryClient({
     defaultOptions: { queries: { retry: false } },
   });
-  return render(
+  render(
     <QueryClientProvider client={client}>
       <MemoryRouter initialEntries={["/projects"]}>
         <AppShell />
       </MemoryRouter>
     </QueryClientProvider>,
   );
+  return client;
 }
+
+/**
+ * Waits until all three badge reads have settled, success or failure.
+ *
+ * Asserting an absence needs a moment at which the absence is a verdict
+ * rather than a race. Waiting on "the request was sent" is not that moment:
+ * it is satisfied synchronously inside the mock, before any promise has
+ * resolved, so every "no badge" assertion passed against code that drew one.
+ */
+async function badgeReadsSettled(client: QueryClient) {
+  await waitFor(() => {
+    const queries = badgeQueries(client);
+    expect(queries).toHaveLength(BADGE_QUERY_COUNT);
+    expect(queries.every((query) => query.state.status !== "pending")).toBe(
+      true,
+    );
+  });
+}
+
+/**
+ * The shell mounts other queries too, so this picks out the three the badges
+ * read rather than counting everything in the cache.
+ */
+function badgeQueries(client: QueryClient) {
+  return client
+    .getQueryCache()
+    .getAll()
+    .filter((query) => {
+      const [root] = query.queryKey as [string];
+      return root === "dashboard" || root === "scans";
+    });
+}
+
+/** One action-queue read plus one per active scan status. */
+const BADGE_QUERY_COUNT = 3;
 
 describe("sidebar count badges", () => {
   beforeEach(() => {
@@ -153,11 +189,9 @@ describe("sidebar count badges", () => {
       respond({ approvals: 0, scans: { running: 0, queued: 0 } }),
     );
 
-    renderShell();
+    const client = renderShell();
+    await badgeReadsSettled(client);
 
-    await waitFor(() => {
-      expect(scanCalls).toHaveLength(2);
-    });
     expect(screen.queryByTestId("nav-scans-badge")).toBeNull();
     expect(screen.queryByTestId("nav-approvals-badge")).toBeNull();
   });
@@ -192,11 +226,12 @@ describe("sidebar count badges", () => {
   it("keeps quiet when the count request fails", async () => {
     apiGet.mockRejectedValue(new Error("boom"));
 
-    renderShell();
+    const client = renderShell();
+    await badgeReadsSettled(client);
 
-    await waitFor(() => {
-      expect(apiGet).toHaveBeenCalled();
-    });
+    expect(
+      badgeQueries(client).every((query) => query.state.status === "error"),
+    ).toBe(true);
     expect(screen.queryByTestId("nav-scans-badge")).toBeNull();
     expect(screen.queryByTestId("nav-approvals-badge")).toBeNull();
   });

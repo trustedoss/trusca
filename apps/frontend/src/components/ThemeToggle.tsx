@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2026 TRUSCA contributors
 import { Monitor, Moon, Sun } from "lucide-react";
+import { forwardRef, type ComponentPropsWithoutRef } from "react";
 import { useTranslation } from "react-i18next";
 
 import { Button } from "@/components/ui/button";
@@ -34,21 +35,35 @@ const ICON: Record<ThemePreference, typeof Sun> = {
   system: Monitor,
 };
 
-export function ThemeToggle({
-  onInk = false,
-  className,
-}: { onInk?: boolean; className?: string } = {}) {
+interface ThemeToggleProps extends ComponentPropsWithoutRef<typeof Button> {
+  /** Rendered on the dark global bar - use the topbar foreground scale. */
+  onInk?: boolean;
+  /** Rendered as a row inside the account menu (C1). */
+  inMenu?: boolean;
+}
+
+/** forwardRef for the same reason as `LanguageToggle` - see the note there. */
+export const ThemeToggle = forwardRef<HTMLButtonElement, ThemeToggleProps>(
+  function ThemeToggle(
+    { onInk = false, inMenu = false, className, ...rest },
+    ref,
+  ) {
   const { t } = useTranslation();
   const { preference, theme, setPreference } = useTheme();
   const Icon = ICON[preference];
 
   return (
     <Button
-      variant={onInk ? "ghost" : "outline"}
+      {...rest}
+      ref={ref}
+      variant={onInk || inMenu ? "ghost" : "outline"}
       size="sm"
       className={cn(
         onInk &&
           "text-topbar-muted-foreground hover:bg-topbar-accent hover:text-topbar-foreground",
+        // C1: as a row in the account menu it has to look like the rows
+        // above it, not like a button someone dropped into a menu.
+        inMenu && "h-8 w-full justify-start font-normal",
         className,
       )}
       onClick={() => setPreference(NEXT[preference])}
@@ -61,7 +76,18 @@ export function ThemeToggle({
       title={t(`theme.next.${NEXT[preference]}`)}
     >
       <Icon className="h-4 w-4" aria-hidden />
-      <span className="sr-only sm:not-sr-only">{t(`theme.${preference}`)}</span>
+      {inMenu ? (
+        <>
+          <span>{t("theme.label")}</span>
+          <span className="ml-auto text-xs text-muted-foreground">
+            {t(`theme.${preference}`)}
+          </span>
+        </>
+      ) : (
+        <span className="sr-only sm:not-sr-only">
+          {t(`theme.${preference}`)}
+        </span>
+      )}
     </Button>
   );
-}
+});
