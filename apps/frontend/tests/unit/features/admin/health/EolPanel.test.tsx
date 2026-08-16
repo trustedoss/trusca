@@ -174,6 +174,31 @@ describe("EolPanel", () => {
     );
   });
 
+  it("gives a run that stamped and cleared nothing no signs (B4)", async () => {
+    // The guard above only catches a run that never wrote deltas at all. A
+    // run that wrote zeroes fell through and read "+0 / −0", which says two
+    // movements cancelled rather than that nothing moved.
+    //
+    // Asserted on the rendered text: the existing cases read `data-value`,
+    // which is the raw pair and would not have noticed either way.
+    mockedGet.mockResolvedValue(statusFixture({ stamped: 0, cleared: 0 }));
+    renderPanel();
+
+    const tile = await screen.findByTestId("eol-kpi-stamped-cleared");
+    expect(tile.textContent).not.toContain("+0");
+    expect(tile.textContent).not.toContain("−0");
+    expect(tile.textContent).toContain("0 / 0");
+  });
+
+  it("keeps the signs when something actually moved (B4)", async () => {
+    mockedGet.mockResolvedValue(statusFixture({ stamped: 7, cleared: 1 }));
+    renderPanel();
+
+    const tile = await screen.findByTestId("eol-kpi-stamped-cleared");
+    expect(tile.textContent).toContain("+7");
+    expect(tile.textContent).toContain("−1");
+  });
+
   it("shows loading skeletons before the query resolves", () => {
     mockedGet.mockReturnValue(new Promise(() => {}) as Promise<EolStatus>);
     renderPanel();

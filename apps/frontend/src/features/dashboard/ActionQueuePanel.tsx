@@ -14,6 +14,7 @@ import RelativeTime from "@/components/RelativeTime";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useActionQueue } from "@/features/dashboard/api/actionQueue";
+import { formatNumber, resolveLocale } from "@/lib/format";
 import { cn } from "@/lib/utils";
 
 /**
@@ -51,6 +52,8 @@ function QueueTile({
   tone = "neutral",
   testId,
 }: QueueTileProps) {
+  const { i18n } = useTranslation("dashboard");
+  const locale = resolveLocale(i18n);
   const active = value > 0;
   return (
     <Link
@@ -78,7 +81,11 @@ function QueueTile({
           active && tone === "warning" && "text-status-warning-foreground",
         )}
       >
-        {value}
+        {/* B4: these tiles sit on the same screen as the KPI cards, share
+            their type scale, and the approvals one is literally the same
+            number behind the same icon and the same link. Formatting one
+            and not the other would put "1,200" above "1200". */}
+        {formatNumber(value, locale)}
       </span>
       {hint ? (
         <span className="text-xs text-muted-foreground">{hint}</span>

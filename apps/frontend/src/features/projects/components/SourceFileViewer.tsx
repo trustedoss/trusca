@@ -17,6 +17,7 @@ import {
   type SourceLine,
 } from "@/features/projects/lib/sourceHighlight";
 import { safeFilenameToken, triggerBlobDownload } from "@/lib/download";
+import { formatNumber, resolveLocale } from "@/lib/format";
 import { ProblemError } from "@/lib/problem";
 import { problemMessage } from "@/lib/problemMessage";
 import { cn } from "@/lib/utils";
@@ -220,7 +221,7 @@ interface SourceFileHeaderProps {
 }
 
 function SourceFileHeader({ path, byteSize }: SourceFileHeaderProps) {
-  const { t } = useTranslation("project_detail");
+  const { t, i18n } = useTranslation("project_detail");
   return (
     <div
       className="flex items-center justify-between gap-3 border-b px-4 py-2"
@@ -234,7 +235,11 @@ function SourceFileHeader({ path, byteSize }: SourceFileHeaderProps) {
         {path}
       </span>
       <span className="shrink-0 font-mono text-[10px] tabular-nums text-muted-foreground">
-        {t("source.viewer.byte_size", { bytes: byteSize.toLocaleString() })}
+        {/* B4: was a bare toLocaleString, so a browser in a locale that does
+            not group rendered 2097152 with no separator at all. */}
+        {t("source.viewer.byte_size", {
+          bytes: formatNumber(byteSize, resolveLocale(i18n)),
+        })}
       </span>
     </div>
   );

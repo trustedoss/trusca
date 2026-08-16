@@ -40,6 +40,11 @@ import { type EolStatus } from "@/features/admin/health/api/adminEolHealthApi";
 import { useAdminEolHealth } from "@/features/admin/health/api/useAdminEolHealth";
 import { adminErrorMessageKey } from "@/features/admin/lib/adminErrorMessage";
 import { formatAbsoluteDate, formatAbsoluteTime } from "@/lib/absoluteTime";
+import {
+  formatNumber,
+  formatSignedDelta,
+  resolveLocale,
+} from "@/lib/format";
 import { formatRelativeToNow } from "@/lib/relativeTime";
 import { cn } from "@/lib/utils";
 
@@ -81,7 +86,7 @@ function snapshotAgeDays(snapshotDate: string | null, now: number): number | nul
 
 function formatCount(count: number | null, locale?: string): string {
   if (count == null) return DASH;
-  return new Intl.NumberFormat(locale).format(count);
+  return formatNumber(count, locale);
 }
 
 function formatStampedCleared(
@@ -90,7 +95,13 @@ function formatStampedCleared(
   locale?: string,
 ): string {
   if (stamped == null && cleared == null) return DASH;
-  return `+${formatCount(stamped ?? 0, locale)} / −${formatCount(cleared ?? 0, locale)}`;
+  // B4: the signs used to be static text, so a run that stamped nothing and
+  // cleared nothing read "+0 / −0". The guard above only catches a run that
+  // never wrote deltas at all, not one that wrote zeroes.
+  return `${formatSignedDelta(stamped ?? 0, locale)} / ${formatSignedDelta(
+    -(cleared ?? 0),
+    locale,
+  )}`;
 }
 
 interface KpiTileProps {
@@ -131,7 +142,7 @@ interface EolPanelProps {
 export function EolPanel({ now }: EolPanelProps = {}) {
   const { t, i18n } = useTranslation("admin");
   const query = useAdminEolHealth();
-  const locale = i18n.resolvedLanguage;
+  const locale = resolveLocale(i18n);
   const clock = now ?? Date.now();
 
   const renderHeading = (badge?: ReactNode) => (

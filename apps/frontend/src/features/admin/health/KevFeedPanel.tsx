@@ -46,6 +46,11 @@ import { type KevFeedStatus } from "@/features/admin/health/api/adminKevHealthAp
 import { useAdminKevHealth } from "@/features/admin/health/api/useAdminKevHealth";
 import { adminErrorMessageKey } from "@/features/admin/lib/adminErrorMessage";
 import { formatAbsoluteTime } from "@/lib/absoluteTime";
+import {
+  formatNumber,
+  formatSignedDelta,
+  resolveLocale,
+} from "@/lib/format";
 import { formatRelativeToNow } from "@/lib/relativeTime";
 import { cn } from "@/lib/utils";
 
@@ -78,7 +83,7 @@ function statusVisuals(status: PanelStatus): {
 
 function formatCount(count: number | null, locale?: string): string {
   if (count == null) return DASH;
-  return new Intl.NumberFormat(locale).format(count);
+  return formatNumber(count, locale);
 }
 
 /** "+{listed} / −{delisted}" for the delta KPI; dash when the run never wrote deltas. */
@@ -88,7 +93,13 @@ function formatListedDelisted(
   locale?: string,
 ): string {
   if (listed == null && delisted == null) return DASH;
-  return `+${formatCount(listed ?? 0, locale)} / −${formatCount(delisted ?? 0, locale)}`;
+  // B4: the signs used to be static text, so a sync that listed nothing and
+  // delisted nothing read "+0 / −0". The guard above only catches a run that
+  // never wrote deltas at all, not one that wrote zeroes.
+  return `${formatSignedDelta(listed ?? 0, locale)} / ${formatSignedDelta(
+    -(delisted ?? 0),
+    locale,
+  )}`;
 }
 
 interface KpiTileProps {
@@ -126,7 +137,7 @@ interface KevFeedPanelProps {
 export function KevFeedPanel({ now }: KevFeedPanelProps = {}) {
   const { t, i18n } = useTranslation("admin");
   const query = useAdminKevHealth();
-  const locale = i18n.resolvedLanguage;
+  const locale = resolveLocale(i18n);
 
   const renderHeading = (badge?: ReactNode) => (
     <div className="mb-3 flex items-center justify-between gap-2">
