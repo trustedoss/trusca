@@ -6,6 +6,8 @@ import { describe, expect, it, vi } from "vitest";
 
 import type { ScanSummary } from "@/features/projects/api/projectDetailApi";
 import { RecentScansTable } from "@/features/projects/components/RecentScansTable";
+import { formatAbsoluteTime } from "@/lib/absoluteTime";
+import { formatRelativeToNow } from "@/lib/relativeTime";
 
 function scan(overrides: Partial<ScanSummary> = {}): ScanSummary {
   return {
@@ -41,6 +43,25 @@ describe("RecentScansTable", () => {
     // Both rows have the same 90-second duration; assert the formatted output
     // appears at least once for either row.
     expect(screen.getAllByText("1m 30s").length).toBeGreaterThanOrEqual(1);
+  });
+
+  it("renders the started instant as an absolute <time> in the given locale (B3)", () => {
+    // Was a bare `toLocaleString()` on a plain string: it followed the
+    // browser rather than the app's language, and left nothing on the DOM
+    // for anything parsing the instant. Nothing in this file asserted on
+    // the cell at all, so either half could regress unnoticed.
+    render(<RecentScansTable scans={[scan({ id: "s1" })]} />);
+
+    const cell = screen.getByTestId("recent-scan-started");
+    expect(cell.tagName).toBe("TIME");
+    expect(cell.getAttribute("dateTime")).toBe("2026-05-01T12:00:00Z");
+    // The absolute form is in front, not the relative one, and it names its
+    // zone. The relative form stays one hover away.
+    expect(cell.textContent).toBe(formatAbsoluteTime("2026-05-01T12:00:00Z", "en"));
+    expect(cell.textContent).toMatch(/UTC[+-]/);
+    expect(cell.getAttribute("title")).toBe(
+      formatRelativeToNow("2026-05-01T12:00:00Z", "en"),
+    );
   });
 
   it("falls back to em-dash when started_at or completed_at is missing", () => {

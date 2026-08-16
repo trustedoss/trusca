@@ -15,15 +15,17 @@
  * for assistive tech and machine readers. The relative text itself still
  * comes from the shared `formatRelativeToNow` helper — no logic is duplicated.
  *
- * Absolute tooltip format mirrors the notification inbox: the locale-aware
- * `Date.prototype.toLocaleString`, matching the format auditors already see
- * elsewhere in the product.
+ * B3: the absolute form comes from `lib/absoluteTime`, shared with the
+ * screens that render an absolute instant directly, and it names the timezone
+ * it is in. Before that this tooltip used a bare `toLocaleString`, which
+ * renders in the browser's zone and says nothing about which one, while the
+ * audit log printed its raw UTC instant beside it, so the same moment showed
+ * as two different wall-clock times with nothing to explain the gap.
  */
 import { useTranslation } from "react-i18next";
 
+import { ABSENT, formatAbsoluteTime } from "@/lib/absoluteTime";
 import { formatRelativeToNow } from "@/lib/relativeTime";
-
-const FALLBACK = "—";
 
 interface Props {
   /** ISO-8601 instant. `null` / `undefined` / empty → em-dash, no tooltip. */
@@ -33,57 +35,54 @@ interface Props {
    * used, so the relative text and the absolute tooltip share one locale.
    */
   locale?: string;
+  /**
+   * Which form to put in front of the reader; the other becomes the tooltip.
+   *
+   * `relative` (the default) is right where the age is the point: "last
+   * scanned 3 hours ago". `absolute` is for the tables where the exact
+   * instant IS the content and a column of "3 hours ago" cannot be read
+   * against a timeline: the audit log, and the per-project scan history.
+   */
+  display?: "relative" | "absolute";
   className?: string;
   /** Forwarded onto the rendered element (e.g. for harness/test hooks). */
   "data-testid"?: string;
 }
 
-/**
- * Resolve the absolute-instant tooltip. Returns `undefined` for unparseable
- * input so the DOM omits the attribute entirely rather than showing "Invalid
- * Date".
- */
-function absoluteTitle(
-  value: string | null | undefined,
-  locale: string | undefined,
-): string | undefined {
-  if (value == null || value === "") return undefined;
-  const ts = Date.parse(value);
-  if (Number.isNaN(ts)) return undefined;
-  return new Date(ts).toLocaleString(locale);
-}
-
 export default function RelativeTime({
   value,
   locale,
+  display = "relative",
   className,
   "data-testid": dataTestId,
 }: Props) {
   const { i18n } = useTranslation();
   const resolvedLocale = locale ?? i18n.resolvedLanguage ?? i18n.language;
 
-  const title = absoluteTitle(value, resolvedLocale);
-  const body = formatRelativeToNow(value, resolvedLocale);
+  const absolute = formatAbsoluteTime(value, resolvedLocale);
 
   // No parseable instant → render the bare em-dash placeholder. We still emit
   // a <time> wrapper for layout/testid stability, but with neither dateTime
   // nor title so the markup stays honest about the missing value.
-  if (title === undefined) {
+  if (absolute === ABSENT) {
     return (
       <time className={className} data-testid={dataTestId}>
-        {FALLBACK}
+        {ABSENT}
       </time>
     );
   }
+
+  const relative = formatRelativeToNow(value, resolvedLocale);
+  const showsAbsolute = display === "absolute";
 
   return (
     <time
       className={className}
       dateTime={value ?? undefined}
-      title={title}
+      title={showsAbsolute ? relative : absolute}
       data-testid={dataTestId}
     >
-      {body}
+      {showsAbsolute ? absolute : relative}
     </time>
   );
 }

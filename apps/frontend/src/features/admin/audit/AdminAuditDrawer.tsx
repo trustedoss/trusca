@@ -12,6 +12,7 @@
 import type { ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 
+import RelativeTime from "@/components/RelativeTime";
 import { Badge } from "@/components/ui/badge";
 import {
   Sheet,
@@ -123,11 +124,21 @@ export function AdminAuditDrawer({
                 value={entry.request_id ?? "—"}
                 testId="admin-audit-drawer-request-id"
               />
-              <Meta
-                label={t("admin.audit.column.created_at")}
-                value={entry.created_at}
-                testId="admin-audit-drawer-created-at"
-              />
+              {/*
+                B3: the same absolute form the table now uses, so a row and
+                the drawer it opens do not disagree about what time it is.
+              */}
+              <div>
+                <div className="text-[11px] uppercase tracking-wide text-muted-foreground">
+                  {t("admin.audit.column.created_at")}
+                </div>
+                <RelativeTime
+                  value={entry.created_at}
+                  display="absolute"
+                  className="block break-all font-mono text-xs"
+                  data-testid="admin-audit-drawer-created-at"
+                />
+              </div>
             </section>
 
             <section data-testid="admin-audit-drawer-diff">

@@ -39,6 +39,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { type EolStatus } from "@/features/admin/health/api/adminEolHealthApi";
 import { useAdminEolHealth } from "@/features/admin/health/api/useAdminEolHealth";
 import { adminErrorMessageKey } from "@/features/admin/lib/adminErrorMessage";
+import { formatAbsoluteDate, formatAbsoluteTime } from "@/lib/absoluteTime";
 import { formatRelativeToNow } from "@/lib/relativeTime";
 import { cn } from "@/lib/utils";
 
@@ -252,7 +253,8 @@ export function EolPanel({ now }: EolPanelProps = {}) {
       <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
         <KpiTile
           label={t("admin.eol.kpi.snapshot_date")}
-          value={data.snapshot_date ?? DASH}
+          // B3: was the raw `2026-08-14` the backend sends.
+          value={formatAbsoluteDate(data.snapshot_date, locale)}
           tooltip={
             ageDays != null
               ? t("admin.eol.kpi.snapshot_age", { days: ageDays })
@@ -285,7 +287,13 @@ export function EolPanel({ now }: EolPanelProps = {}) {
               ? formatRelativeToNow(data.next_refresh_at, locale, now)
               : DASH
           }
-          tooltip={data.next_refresh_at ?? undefined}
+          // B3: was the raw ISO instant. Every absolute-time tooltip in the
+          // product now reads the same way and names its zone.
+          tooltip={
+            data.next_refresh_at
+              ? formatAbsoluteTime(data.next_refresh_at, locale)
+              : undefined
+          }
           testId="eol-kpi-next-refresh"
           dataValue={data.next_refresh_at}
         />

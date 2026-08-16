@@ -48,6 +48,7 @@ import {
 } from "@/features/admin/health/api/adminTrivyHealthApi";
 import { useAdminTrivyHealth } from "@/features/admin/health/api/useAdminTrivyHealth";
 import { adminErrorMessageKey } from "@/features/admin/lib/adminErrorMessage";
+import { formatAbsoluteTime } from "@/lib/absoluteTime";
 import { formatRelativeToNow } from "@/lib/relativeTime";
 import { cn } from "@/lib/utils";
 import { formatBytes } from "@/lib/zipFolder";
@@ -224,7 +225,11 @@ export function TrivyDBPanel({ now }: TrivyDBPanelProps = {}) {
   // Happy path — render the freshness badge + KPI grid + metadata footer.
   const visuals = freshnessVisuals(data.freshness);
   const Icon = visuals.icon;
-  const lastUpdateAbs = data.last_update ?? "";
+  // B3: was the raw ISO instant. Every absolute-time tooltip in the product
+  // now reads the same way and names its zone.
+  const lastUpdateAbs = data.last_update
+    ? formatAbsoluteTime(data.last_update, locale)
+    : "";
 
   return (
     <section
@@ -288,7 +293,11 @@ export function TrivyDBPanel({ now }: TrivyDBPanelProps = {}) {
               ? formatRelativeToNow(data.next_refresh_at, locale, now)
               : DASH
           }
-          tooltip={data.next_refresh_at ?? undefined}
+          tooltip={
+            data.next_refresh_at
+              ? formatAbsoluteTime(data.next_refresh_at, locale)
+              : undefined
+          }
           testId="admin-trivy-db-kpi-next-refresh"
         />
       </div>

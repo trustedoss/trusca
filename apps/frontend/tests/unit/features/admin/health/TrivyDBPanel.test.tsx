@@ -18,6 +18,7 @@ import { render, screen, waitFor, within } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { TrivyDBPanel } from "@/features/admin/health/TrivyDBPanel";
+import { formatAbsoluteTime } from "@/lib/absoluteTime";
 
 vi.mock("@/features/admin/health/api/adminTrivyHealthApi", async () => {
   return {
@@ -102,13 +103,13 @@ describe("TrivyDBPanel", () => {
     expect(vulnTile.textContent).toMatch(/432[,.\s]187/);
   });
 
-  it("carries the absolute ISO in the last-update tile title attribute", async () => {
+  it("carries the absolute instant in the last-update tile title attribute", async () => {
     mockedGet.mockResolvedValue(statusFixture());
     renderPanel();
     const tile = await screen.findByTestId(
       "admin-trivy-db-kpi-last-update",
     );
-    // Tooltip ISO surfaced via title attribute on the value <p>. The relative
+    // Tooltip surfaced via title attribute on the value <p>. The relative
     // wording varies by locale (`yesterday` / `1 day ago` / `어제` / ...),
     // so we go directly to the paragraph that carries the title attribute
     // rather than matching on the displayed text.
@@ -116,8 +117,18 @@ describe("TrivyDBPanel", () => {
       .getAllByText((_content, el) => el?.tagName === "P")
       .find((p) => p.getAttribute("title") != null);
     expect(tooltipBearer).toBeDefined();
+    // B3: was the raw wire value. It is now the shared absolute format, which
+    // names the zone it rendered in, so this and the audit log agree.
+    //
+    // Pinned to the exact expected string, not to a loose pattern: a looser
+    // check passed while the tooltip read a different field entirely, and
+    // while it ignored the locale, which is the defect this unit set out to
+    // fix. The test runtime resolves to `en`.
     expect(tooltipBearer?.getAttribute("title")).toBe(
-      "2026-05-27T03:14:00Z",
+      formatAbsoluteTime("2026-05-27T03:14:00Z", "en"),
+    );
+    expect(tooltipBearer?.getAttribute("title")).not.toBe(
+      formatAbsoluteTime("2026-06-03T03:14:00Z", "en"),
     );
   });
 

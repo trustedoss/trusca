@@ -14,6 +14,7 @@
  * happy and the helper can be imported without pulling in the tab's JSX.
  */
 import type { ReleaseSnapshot } from "@/features/projects/api/releasesApi";
+import { formatAbsoluteDate } from "@/lib/absoluteTime";
 
 export function releaseLabel(
   release: ReleaseSnapshot,
@@ -22,20 +23,8 @@ export function releaseLabel(
   if (release.release && release.release.trim().length > 0) {
     return release.release;
   }
-  const formatted = formatAbsoluteDate(release.created_at, locale);
-  return formatted ?? "—";
-}
-
-function formatAbsoluteDate(value: string, locale: string): string | null {
-  const ts = Date.parse(value);
-  if (Number.isNaN(ts)) return null;
-  try {
-    return new Date(ts).toLocaleDateString(locale, {
-      year: "numeric",
-      month: "short",
-      day: "numeric",
-    });
-  } catch {
-    return new Date(ts).toISOString().slice(0, 10);
-  }
+  // B3: this file used to carry its own `formatAbsoluteDate`, same name as
+  // the shared one and different rules, which is a trap for whoever reads
+  // one and assumes the other.
+  return formatAbsoluteDate(release.created_at, locale);
 }

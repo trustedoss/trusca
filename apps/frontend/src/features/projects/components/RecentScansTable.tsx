@@ -3,6 +3,7 @@
 import type { KeyboardEvent } from "react";
 import { useTranslation } from "react-i18next";
 
+import RelativeTime from "@/components/RelativeTime";
 import type { ScanSummary } from "@/features/projects/api/projectDetailApi";
 import { cn } from "@/lib/utils";
 
@@ -23,15 +24,6 @@ export interface RecentScansTableProps {
    * the table read-only.
    */
   onSelectScan?: (scan: ScanSummary) => void;
-}
-
-function formatDateTime(value: string | null): string {
-  if (!value) return "—";
-  try {
-    return new Date(value).toLocaleString();
-  } catch {
-    return value;
-  }
 }
 
 function formatDuration(
@@ -61,7 +53,8 @@ export function RecentScansTable({
   className,
   onSelectScan,
 }: RecentScansTableProps) {
-  const { t } = useTranslation("project_detail");
+  const { t, i18n } = useTranslation("project_detail");
+  const resolvedLocale = i18n.resolvedLanguage ?? i18n.language;
 
   if (scans.length === 0) {
     return (
@@ -130,7 +123,17 @@ export function RecentScansTable({
                 : {})}
             >
               <td className="px-3 py-2 font-mono text-xs text-muted-foreground">
-                {formatDateTime(scan.started_at ?? scan.created_at)}
+                {/* B3: was a bare toLocaleString on a plain string, which
+                    followed the browser rather than the app's language and
+                    left the instant unreadable to anything parsing the DOM.
+                    Through the component it is a <time dateTime> like every
+                    other timestamp in the product. */}
+                <RelativeTime
+                  value={scan.started_at ?? scan.created_at}
+                  display="absolute"
+                  locale={resolvedLocale}
+                  data-testid="recent-scan-started"
+                />
               </td>
               <td
                 className="px-3 py-2 font-mono text-xs"

@@ -46,6 +46,7 @@ import {
   useRemediationPullRequests,
 } from "@/features/projects/api/useRemediation";
 import { RemediationPrStatusBadge } from "@/features/projects/components/RemediationPrStatusBadge";
+import { formatAbsoluteTime } from "@/lib/absoluteTime";
 import { ProblemError } from "@/lib/problem";
 import { problemMessage } from "@/lib/problemMessage";
 import type {
@@ -351,7 +352,8 @@ function PullRequestList({
   error: unknown;
   items: RemediationPullRequest[];
 }) {
-  const { t } = useTranslation("remediation");
+  const { t, i18n } = useTranslation("remediation");
+  const resolvedLocale = i18n.resolvedLanguage ?? i18n.language;
 
   return (
     <section className="space-y-2" data-testid="remediation-pr-list">
@@ -387,7 +389,10 @@ function PullRequestList({
               <div className="flex min-w-0 flex-col gap-0.5">
                 <PrLink pr={pr} testId="remediation-pr-link" />
                 <span className="font-mono text-[10px] text-muted-foreground">
-                  {pr.repository_full_name} · {formatTime(pr.created_at)}
+                  {/* B3: was a bare toLocaleString, which follows the browser
+                      rather than the language the app is running in. */}
+                  {pr.repository_full_name} ·{" "}
+                  {formatAbsoluteTime(pr.created_at, resolvedLocale)}
                 </span>
               </div>
               <RemediationPrStatusBadge status={pr.status} />
@@ -438,9 +443,3 @@ function PrLink({
   );
 }
 
-function formatTime(iso: string): string {
-  // Stable, locale-aware short form; falls back to the raw ISO if unparseable.
-  const d = new Date(iso);
-  if (Number.isNaN(d.getTime())) return iso;
-  return d.toLocaleString();
-}

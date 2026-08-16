@@ -9,6 +9,7 @@ import {
   useDashboardPortfolio,
   type PortfolioProject,
 } from "@/features/dashboard/api/portfolio";
+import { formatAbsoluteDate } from "@/lib/absoluteTime";
 import { cn } from "@/lib/utils";
 
 /**
@@ -132,7 +133,8 @@ function ProjectCell({
 }
 
 export function PortfolioGrid() {
-  const { t } = useTranslation("dashboard");
+  const { t, i18n } = useTranslation("dashboard");
+  const resolvedLocale = i18n.resolvedLanguage ?? i18n.language;
   const query = useDashboardPortfolio();
 
   if (query.isPending) {
@@ -204,9 +206,12 @@ export function PortfolioGrid() {
                     high: project.high,
                     medium: project.medium,
                     low: project.low,
-                    scanned: project.last_scan_at
-                      ? new Date(project.last_scan_at).toLocaleDateString()
-                      : "—",
+                    // B3: was a bare toLocaleDateString, so this date sat
+                    // inside a Korean sentence in the browser's locale.
+                    scanned: formatAbsoluteDate(
+                      project.last_scan_at,
+                      resolvedLocale,
+                    ),
                   })}
                   unscannedTooltip={t("portfolio.never_scanned_hint")}
                 />
