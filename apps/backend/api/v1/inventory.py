@@ -21,9 +21,11 @@ import uuid
 
 import structlog
 from fastapi import APIRouter, Depends, Path, Query, Request, Response, status
+from fastapi.responses import StreamingResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from core.config import search_rate_limit
+from api.v1._csv_export_response import csv_stream_response
+from core.config import csv_export_rate_limit, search_rate_limit
 from core.db import get_db
 from core.errors import problem_response
 from core.ratelimit import _authenticated_user_key, limiter
@@ -41,6 +43,7 @@ from services.inventory_service import (
     list_inventory_components,
     list_vulnerability_impact,
 )
+from services.table_export_service import stream_inventory_csv
 
 router = APIRouter(prefix="/v1/inventory", tags=["inventory"])
 log = structlog.get_logger("inventory.api")
@@ -119,6 +122,66 @@ async def list_inventory_components_endpoint(
         content=body.model_dump_json(),
         status_code=status.HTTP_200_OK,
         media_type="application/json",
+    )
+
+
+# ---------------------------------------------------------------------------
+# GET /v1/inventory/components/export.csv  (B5)
+# ---------------------------------------------------------------------------
+
+
+@router.get(
+    "/components/export.csv",
+    response_class=StreamingResponse,
+    summary="The filtered inventory as CSV",
+)
+# The export gets its own budget rather than the list's. One export walks the
+# list service up to five hundred times (the chunk size is clamped to this
+# service's own page cap of 200) and each page re-resolves the org-wide
+# current-scan set, so pricing it as a search would be wrong by two orders of
+# magnitude. The row cap bounds a single request; this bounds the sequence.
+@limiter.limit(csv_export_rate_limit, key_func=_authenticated_user_key)
+async def export_inventory_components_csv_endpoint(
+    request: Request,
+    q: str | None = Query(default=None, max_length=255),
+    package_type: list[str] | None = Query(default=None),
+    severity: list[str] | None = Query(default=None),
+    license_category: list[str] | None = Query(default=None),
+    eol: bool | None = Query(default=None),
+    outdated: bool | None = Query(default=None),
+    sort: str = Query(
+        default="project_count",
+        pattern="^(name|project_count|severity|license)$",
+    ),
+    order: str = Query(default="desc", pattern="^(asc|desc)$"),
+    session: AsyncSession = Depends(get_db),
+    actor: CurrentUser = Depends(require_role("developer")),
+) -> Response:
+    """
+    The same rows the list endpoint would return, without the paging.
+
+    The scope is the caller's own: the list service resolves which teams the
+    actor can read and the export calls that same service, so a member of one
+    team never receives another team's packages.
+    """
+    stream = stream_inventory_csv(
+        session,
+        actor=actor,
+        filters={
+            "q": q,
+            "package_type": package_type,
+            "severity": severity,
+            "license_category": license_category,
+            "eol": eol,
+            "outdated": outdated,
+            "sort": sort,
+            "order": order,
+        },
+    )
+    return await csv_stream_response(
+        request,
+        stream=stream,
+        filename="inventory.csv",
     )
 
 

@@ -423,6 +423,25 @@ def search_rate_limit() -> str:
     return os.getenv("SEARCH_RATE_LIMIT", "20/minute")
 
 
+def csv_export_rate_limit() -> str:
+    """slowapi limit string for the table CSV exports (per actor).
+
+    An export walks its list service a page at a time up to the 100k row cap,
+    so one request is on the order of a couple of hundred list queries, each a
+    large join, and it holds a pooled connection for the whole stream. Sharing
+    the search or read bucket would misprice it by two orders of magnitude:
+    twenty exports a minute is not twenty searches a minute, it is four
+    thousand list queries and twenty held connections.
+
+    The budget is per actor rather than per team, because the cost is paid by
+    the database the whole deployment shares and a team is not a unit of
+    restraint. Default 5/minute leaves interactive use untouched (a person
+    clicks Export, waits for the file, maybe re-narrows and clicks again) while
+    making a scripted walk pointless.
+    """
+    return os.getenv("CSV_EXPORT_RATE_LIMIT", "5/minute")
+
+
 def scan_concurrency_cap_per_team() -> int:
     """Max concurrent (queued+running) scans allowed per team.
 

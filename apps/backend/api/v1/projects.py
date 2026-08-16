@@ -36,12 +36,14 @@ from typing import cast
 
 import structlog
 from fastapi import APIRouter, Depends, File, Query, Request, Response, UploadFile, status
+from fastapi.responses import StreamingResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from api.v1._csv_export_response import csv_stream_response
 from api.v1._snapshot_anchor import snapshot_anchor
 from core.api_key_auth import require_role_or_api_key
 from core.audit import bind_audit_team, get_audit_context, mask_sensitive_columns
-from core.config import scan_trigger_rate_limit
+from core.config import csv_export_rate_limit, scan_trigger_rate_limit
 from core.db import get_db
 from core.errors import problem_response
 from core.pagination import PAGE_MAX
@@ -103,6 +105,7 @@ from services.source_archive_service import (
 from services.source_archive_service import (
     _max_upload_bytes as _source_archive_max_upload_bytes,
 )
+from services.table_export_service import stream_components_csv
 
 router = APIRouter(prefix="/v1/projects", tags=["projects"])
 log = structlog.get_logger("projects.api")
@@ -643,6 +646,73 @@ async def list_project_components_endpoint(
         status_code=status.HTTP_200_OK,
         media_type="application/json",
     )
+
+
+# ---------------------------------------------------------------------------
+# GET /v1/projects/{project_id}/components/export.csv  (B5)
+# ---------------------------------------------------------------------------
+
+
+@router.get(
+    "/{project_id}/components/export.csv",
+    response_class=StreamingResponse,
+    summary="The filtered component list as CSV",
+)
+# See the vulnerabilities export for why this needs its own budget: the
+# limiter is opt-in, and one export is a couple of hundred list queries.
+@limiter.limit(csv_export_rate_limit, key_func=_authenticated_user_key)
+async def export_project_components_csv_endpoint(
+    request: Request,
+    project_id: uuid.UUID,
+    search: str | None = Query(default=None, max_length=255),
+    severity: list[str] | None = Query(default=None),
+    license_category: list[str] | None = Query(default=None),
+    direct: bool | None = Query(default=None),
+    dependency_scope: list[str] | None = Query(default=None),
+    eol: bool | None = Query(default=None),
+    outdated: bool | None = Query(default=None),
+    malicious: bool | None = Query(default=None),
+    sort: str = Query(default="name", pattern=r"^(name|severity|license)$"),
+    order: str = Query(default="asc", pattern=r"^(asc|desc)$"),
+    scan_id: uuid.UUID | None = Depends(snapshot_anchor),
+    session: AsyncSession = Depends(get_db),
+    actor: CurrentUser = Depends(require_role("developer")),
+) -> Response:
+    """
+    The same rows the list endpoint would return, without the paging.
+
+    Filters are applied by the list service itself rather than by a second
+    query, so the file and the screen cannot disagree, and the cross-team
+    check the list performs is the one this performs.
+    """
+    stream = stream_components_csv(
+        session,
+        project_id=project_id,
+        actor=actor,
+        filters={
+            "search": search,
+            "severity": severity,
+            "license_category": license_category,
+            "direct": direct,
+            "dependency_scope": dependency_scope,
+            "eol": eol,
+            "outdated": outdated,
+            "malicious": malicious,
+            "sort": sort,
+            "order": order,
+            "scan_id": scan_id,
+        },
+    )
+    try:
+        return await csv_stream_response(
+            request,
+            stream=stream,
+            filename=f"components_{project_id}.csv",
+        )
+    except SnapshotScanNotFound:
+        return _problem_for_snapshot_not_found(request)
+    except ProjectError as exc:
+        return _problem_for_project_error(request, exc)
 
 
 # ---------------------------------------------------------------------------

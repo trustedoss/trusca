@@ -33,6 +33,7 @@ import type {
   LicenseCategoryName,
   SortOrder,
 } from "@/features/projects/api/projectDetailApi";
+import { exportProjectComponentsCsv } from "@/features/projects/api/projectDetailApi";
 import { useComponents } from "@/features/projects/api/useComponents";
 import { useScanScopeFilter } from "@/features/projects/api/useScanScopeFilter";
 import { ActiveFilterChips } from "@/features/projects/components/ActiveFilterChips";
@@ -549,6 +550,9 @@ export function ComponentsTab({ projectId, scanId }: ComponentsTabProps) {
       ) : null}
 
       <ComponentsToolbar
+        // B5: the same object the list query is keyed on, so the file and
+        // the screen cannot be filtered differently.
+        onExportCsv={() => exportProjectComponentsCsv(projectId, filters)}
         search={search}
         onSearchChange={setSearch}
         direct={direct}

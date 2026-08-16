@@ -42,11 +42,8 @@ Adversarial input note:
 
 from __future__ import annotations
 
-import csv
-import io
 import uuid
 from collections.abc import AsyncIterator
-from datetime import datetime
 from typing import Any
 
 import structlog
@@ -61,6 +58,7 @@ from schemas.admin_ops import (
     AuditLogListPage,
     AuditSearchQuery,
 )
+from services.csv_export import CSV_BOM, csv_cell, csv_line
 
 log = structlog.get_logger("admin.audit.service")
 
@@ -288,7 +286,7 @@ async def stream_audit_csv(
     # 3-byte (\xef\xbb\xbf) prefix on the first chunk, so the wire size cost
     # is one-time and tools that already auto-detect UTF-8 (LibreOffice, awk,
     # python's csv module) silently strip it.
-    yield "\ufeff" + _csv_line(_CSV_COLUMNS)
+    yield CSV_BOM + _csv_line(_CSV_COLUMNS)
 
     base = _apply_filters(
         select(AuditLog, User.email).outerjoin(User, User.id == AuditLog.actor_user_id),
@@ -310,41 +308,11 @@ async def stream_audit_csv(
         offset += len(rows)
 
 
-def _csv_line(values: tuple[Any, ...] | list[Any]) -> str:
-    """Render a single CSV row including the trailing newline."""
-    buffer = io.StringIO()
-    writer = csv.writer(buffer, quoting=csv.QUOTE_MINIMAL, lineterminator="\n")
-    writer.writerow([_csv_cell(v) for v in values])
-    return buffer.getvalue()
-
-
-_DANGEROUS_CSV_PREFIX = ("=", "+", "-", "@", "\t", "\r")
-
-
-def _csv_cell(value: Any) -> str:
-    """Convert a column value to a CSV-safe string.
-
-    - ``None`` → empty cell.
-    - ``datetime`` → ISO-8601 with timezone.
-    - ``UUID`` → canonical hyphenated form.
-    - leading ``= + - @ \\t \\r`` → prepended with ``'`` per OWASP CSV-injection
-      cheat-sheet. Without this, an audit row whose ``action`` / ``target_id``
-      / ``request_id`` (any operator-controlled column) starts with ``=`` is
-      executed as a formula when the export is opened in Excel / LibreOffice /
-      Sheets, giving the attacker DDE / shell-escape against the super-admin's
-      workstation (CWE-1236).
-    - everything else → ``str(value)``.
-    """
-    if value is None:
-        return ""
-    if isinstance(value, datetime):
-        return value.isoformat()
-    if isinstance(value, uuid.UUID):
-        return str(value)
-    rendered = str(value)
-    if rendered and rendered[0] in _DANGEROUS_CSV_PREFIX:
-        return "'" + rendered
-    return rendered
+# B5: these lived here until three more tables needed them. They are in
+# `services.csv_export` now, re-bound under the old private names so the
+# existing tests keep addressing them where they have always been.
+_csv_line = csv_line
+_csv_cell = csv_cell
 
 
 def _format_row(row: AuditLog, actor_email: str | None) -> tuple[Any, ...]:

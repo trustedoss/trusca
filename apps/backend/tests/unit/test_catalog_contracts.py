@@ -244,11 +244,13 @@ def test_vulnerability_sort_keys_router_pattern_matches_service_set() -> None:
     ).read_text(encoding="utf-8")
     patterns = re.findall(r'pattern=r"\^\(([a-z_|]+)\)\$"', src)
     sort_alternations = [p for p in patterns if "severity" in p]
-    assert len(sort_alternations) == 1, (
-        f"expected exactly one sort-key pattern in the router, found "
-        f"{len(sort_alternations)}: {sort_alternations}"
-    )
-    assert set(sort_alternations[0].split("|")) == set(_VALID_SORT_KEYS)
+    # B5 added a CSV export beside the list, and it accepts the same sort
+    # keys. More than one occurrence is therefore expected; what must not
+    # happen is one of them drifting, so every occurrence is checked rather
+    # than the count being pinned to one.
+    assert sort_alternations, "no sort-key pattern found in the router"
+    for alternation in sort_alternations:
+        assert set(alternation.split("|")) == set(_VALID_SORT_KEYS)
 
 
 # ---------------------------------------------------------------------------
@@ -653,3 +655,45 @@ def test_ai_verdicts_and_scenarios_are_documented_in_both_guides() -> None:
         assert not missing_scenarios, (
             f"{guide.name} does not document these scenarios: {missing_scenarios}"
         )
+
+
+def test_developer_reachable_csv_exports_are_rate_limited() -> None:
+    """Every CSV export a developer can reach carries a rate limit.
+
+    The limiter is opt-in in this app: ``core/ratelimit.py`` sets
+    ``default_limits=[]``, so a route without the decorator has no limit at
+    all. One export walks its list service a couple of hundred times and holds
+    a pooled connection for the whole stream, which makes an unthrottled one
+    the cheapest denial-of-service primitive the lowest role has. This is a
+    contract rather than a behavioural test because exercising the limiter for
+    real needs wall-clock time and a live backend; what regresses in practice
+    is someone adding a fourth export and forgetting the decorator.
+
+    ``/v1/admin/audit/export.csv`` is deliberately absent: it is super-admin
+    only, so the blast radius of an unthrottled call is one trusted operator.
+    """
+    from main import app
+
+    matched: list[str] = []
+    unlimited: list[str] = []
+    for route in app.routes:
+        path = getattr(route, "path", "")
+        endpoint = getattr(route, "endpoint", None)
+        if endpoint is None or not path.endswith("export.csv"):
+            continue
+        if "/admin/" in path:
+            continue
+        matched.append(path)
+        # slowapi wraps the endpoint, so a decorated route has __wrapped__.
+        if getattr(endpoint, "__wrapped__", None) is None:
+            unlimited.append(path)
+
+    # Without this the assertion below is vacuous: a rename of the path suffix
+    # would leave nothing matched and the test would pass having checked
+    # nothing at all.
+    assert len(matched) == 3, (
+        f"expected the three developer-reachable CSV exports, matched: {matched}"
+    )
+    assert not unlimited, (
+        f"CSV export routes reachable by a developer with no rate limit: {unlimited}"
+    )

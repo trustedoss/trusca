@@ -1385,5 +1385,12 @@
     "gate_reason_epss": "{{count}} above the EPSS threshold",
     "gate_reason_malicious": "{{count}} known-malicious package",
     "gate_reason_malicious_other": "{{count}} known-malicious packages"
+  },
+  "export": {
+    "too_large": {
+      "vulnerabilities": "The filtered findings exceed 100,000 rows. Narrow the filter and try again.",
+      "components": "The filtered components exceed 100,000 rows. Narrow the filter and try again."
+    },
+    "unavailable_vex_filter": "Clear the “suppressed via VEX” filter to export. That filter narrows the rows here in the browser, so the file would not match what you see."
   }
 }

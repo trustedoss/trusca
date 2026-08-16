@@ -22,6 +22,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { InventoryDrawer } from "@/features/inventory/components/InventoryDrawer";
 import { InventoryRow } from "@/features/inventory/components/InventoryRow";
 import { InventoryToolbar } from "@/features/inventory/components/InventoryToolbar";
+import { exportInventoryComponentsCsv } from "@/features/inventory/api/inventoryApi";
 import { useInventoryComponents } from "@/features/inventory/api/useInventory";
 import type {
   InventorySortKey,
@@ -248,6 +249,9 @@ export function InventoryPage() {
       <PageHeader variant="bar" title={t("page.title")} />
 
       <InventoryToolbar
+        // B5: the same object the list query is keyed on, so the file and
+        // the screen cannot be filtered differently.
+        onExportCsv={() => exportInventoryComponentsCsv(filters)}
         search={search}
         onSearchChange={setSearch}
         packageType={packageType}

@@ -1504,3 +1504,133 @@ async def test_bulk_transition_extra_field_rejected(client) -> None:
     )
     assert response.status_code == 422
     assert response.headers["content-type"].startswith(PROBLEM_JSON)
+
+
+# ---------------------------------------------------------------------------
+# GET /v1/projects/{project_id}/vulnerabilities/export.csv  (B5)
+# ---------------------------------------------------------------------------
+
+_EXPORT_HEADER = (
+    "cve_id,severity,cvss_score,epss_score,kev,kev_due_date,status,reachable,"
+    "component_name,component_version,component_license,first_detected_at,"
+    "sla_due_date,sla_status,finding_id"
+)
+
+
+async def test_export_csv_without_auth_returns_401(client) -> None:
+    response = await client.get(
+        "/v1/projects/00000000-0000-0000-0000-000000000000/vulnerabilities/export.csv"
+    )
+    assert response.status_code == 401
+    assert response.headers["content-type"].startswith(PROBLEM_JSON)
+
+
+async def test_export_csv_other_team_returns_403_problem(client) -> None:
+    """
+    The export answers a cross-team caller exactly as the list does.
+
+    This is the property the whole design rests on: the export pages the list
+    service, so there is no second place for the team check to live and no
+    way for one of the two to fall behind.
+    """
+    _, _my_team, my_user = await _seed_team_with_user(client)
+    _, other_team, _ = await _seed_team_with_user(client)
+    other_project_id, _ = await _seed_scanned_project(client, team_id=other_team.id)
+    headers = _bearer_for(my_user)
+
+    response = await client.get(
+        f"/v1/projects/{other_project_id}/vulnerabilities/export.csv",
+        headers=headers,
+    )
+    assert response.status_code == 403
+    assert response.headers["content-type"].startswith(PROBLEM_JSON)
+    # And nothing leaked into the body on the way to refusing.
+    assert "CVE-" not in response.text
+
+
+async def test_export_csv_streams_the_header_and_a_seeded_row(client) -> None:
+    _, team, user = await _seed_team_with_user(client)
+    project_id, scan_id = await _seed_scanned_project(client, team_id=team.id)
+    await _seed_finding(client, scan_id=scan_id, severity="critical")
+    headers = _bearer_for(user)
+
+    response = await client.get(
+        f"/v1/projects/{project_id}/vulnerabilities/export.csv",
+        headers=headers,
+    )
+    assert response.status_code == 200, response.text
+    assert response.headers["content-type"].startswith("text/csv")
+    assert "attachment" in response.headers["content-disposition"]
+    assert str(project_id) in response.headers["content-disposition"]
+
+    raw = response.content
+    # Excel on a CJK locale reads a BOM-less UTF-8 file as CP949.
+    assert raw[:3] == b"\xef\xbb\xbf"
+    body = raw.decode("utf-8-sig")
+    assert body.startswith(_EXPORT_HEADER)
+    assert "critical" in body
+
+
+async def test_export_csv_applies_the_same_filters_as_the_list(client) -> None:
+    """A filter that empties the screen empties the file."""
+    _, team, user = await _seed_team_with_user(client)
+    project_id, scan_id = await _seed_scanned_project(client, team_id=team.id)
+    await _seed_finding(client, scan_id=scan_id, severity="critical")
+    headers = _bearer_for(user)
+
+    matching = await client.get(
+        f"/v1/projects/{project_id}/vulnerabilities/export.csv",
+        headers=headers,
+        params={"severity": "critical"},
+    )
+    assert matching.status_code == 200
+    assert "critical" in matching.content.decode("utf-8-sig")
+
+    excluded = await client.get(
+        f"/v1/projects/{project_id}/vulnerabilities/export.csv",
+        headers=headers,
+        params={"severity": "low"},
+    )
+    assert excluded.status_code == 200
+    # Header and the row-count trailer: the filter matched nothing, and an
+    # empty export is a file that says so rather than a 404.
+    assert excluded.content.decode("utf-8-sig").strip() == (
+        f"{_EXPORT_HEADER}\n# rows: 0"
+    )
+
+
+async def test_export_csv_rejects_a_filter_the_list_would_reject(client) -> None:
+    _, team, user = await _seed_team_with_user(client)
+    project_id, _ = await _seed_scanned_project(client, team_id=team.id)
+    headers = _bearer_for(user)
+
+    response = await client.get(
+        f"/v1/projects/{project_id}/vulnerabilities/export.csv",
+        headers=headers,
+        params={"sort": "nonsense"},
+    )
+    assert response.status_code == 422
+    assert response.headers["content-type"].startswith(PROBLEM_JSON)
+
+
+async def test_export_csv_ignores_paging_parameters(client) -> None:
+    """
+    ``limit`` / ``offset`` are not parameters here.
+
+    FastAPI drops unknown query parameters, so the check is that they have no
+    effect rather than that they are refused: exporting "page 3 of what I am
+    looking at" is not a thing anyone wants, and honouring them would invite
+    a caller to walk the table with a script.
+    """
+    _, team, user = await _seed_team_with_user(client)
+    project_id, scan_id = await _seed_scanned_project(client, team_id=team.id)
+    await _seed_finding(client, scan_id=scan_id, severity="critical")
+    headers = _bearer_for(user)
+
+    paged = await client.get(
+        f"/v1/projects/{project_id}/vulnerabilities/export.csv",
+        headers=headers,
+        params={"limit": 0, "offset": 999},
+    )
+    assert paged.status_code == 200
+    assert "critical" in paged.content.decode("utf-8-sig")

@@ -1385,5 +1385,12 @@
     "gate_reason_epss": "EPSS 임계 초과 {{count}}건",
     "gate_reason_malicious": "알려진 악성 패키지 {{count}}개",
     "gate_reason_malicious_other": "알려진 악성 패키지 {{count}}개"
+  },
+  "export": {
+    "too_large": {
+      "vulnerabilities": "필터를 적용한 취약점이 10만 행을 넘습니다. 필터를 좁힌 뒤 다시 시도해 주세요.",
+      "components": "필터를 적용한 컴포넌트가 10만 행을 넘습니다. 필터를 좁힌 뒤 다시 시도해 주세요."
+    },
+    "unavailable_vex_filter": "“VEX로 억제됨” 필터를 해제해야 내보낼 수 있습니다. 이 필터는 브라우저에서만 행을 좁히기 때문에 파일이 화면과 달라집니다."
   }
 }

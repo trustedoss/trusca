@@ -25,11 +25,15 @@ from typing import Any, cast
 
 import structlog
 from fastapi import APIRouter, Depends, Query, Request, Response, status
+from fastapi.responses import StreamingResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from api.v1._csv_export_response import csv_stream_response
 from api.v1._snapshot_anchor import snapshot_anchor
+from core.config import csv_export_rate_limit
 from core.db import get_db
 from core.errors import problem_response
+from core.ratelimit import _authenticated_user_key, limiter
 from core.security import CurrentUser, require_role
 from schemas.vulnerability_detail import (
     AffectedComponent,
@@ -48,6 +52,7 @@ from schemas.vulnerability_detail import (
 )
 from services.project_service import ProjectError
 from services.scan_resolution import SnapshotScanNotFound
+from services.table_export_service import stream_vulnerabilities_csv
 from services.upgrade_cluster_service import list_upgrade_clusters
 from services.vulnerability_service import (
     VulnerabilityBulkInputError,
@@ -221,6 +226,81 @@ async def list_project_vulnerabilities_endpoint(
         status_code=status.HTTP_200_OK,
         media_type="application/json",
     )
+
+
+# ---------------------------------------------------------------------------
+# GET /v1/projects/{project_id}/vulnerabilities/export.csv  (B5)
+# ---------------------------------------------------------------------------
+
+
+@router.get(
+    "/projects/{project_id}/vulnerabilities/export.csv",
+    response_class=StreamingResponse,
+    summary="The filtered CVE findings as CSV",
+)
+# The limiter is opt-in in this app (no default limits), so an undecorated
+# route has none. One export walks the list service up to two hundred times
+# and holds a pooled connection for the whole stream, which makes it the
+# cheapest denial-of-service primitive the lowest role has if left open.
+@limiter.limit(csv_export_rate_limit, key_func=_authenticated_user_key)
+async def export_project_vulnerabilities_csv_endpoint(
+    request: Request,
+    project_id: uuid.UUID,
+    search: str | None = Query(default=None, max_length=255),
+    severity: list[str] | None = Query(default=None),
+    finding_status: list[str] | None = Query(default=None, alias="status"),
+    license_category: list[str] | None = Query(default=None),
+    min_epss: float | None = Query(default=None, ge=0, le=1),
+    reachable: str | None = Query(default=None, pattern=r"^(true|false|unknown)$"),
+    sla: str | None = Query(default=None, pattern=r"^(overdue|imminent|ok)$"),
+    sort: str = Query(
+        default="severity",
+        pattern=r"^(severity|cvss|status|discovered_at|epss|reachable|component|priority|sla_due)$",
+    ),
+    order: str = Query(default="desc", pattern=r"^(asc|desc)$"),
+    scan_id: uuid.UUID | None = Depends(snapshot_anchor),
+    session: AsyncSession = Depends(get_db),
+    actor: CurrentUser = Depends(require_role("developer")),
+) -> Response:
+    """
+    The same rows the list endpoint would return, without the paging.
+
+    Every filter the list accepts is accepted here and applied by the same
+    code: the export pages the list service rather than rebuilding its query,
+    so a filter that narrows the screen narrows the file identically, and the
+    cross-team check the list performs is the one this performs.
+
+    ``limit`` and ``offset`` are deliberately absent. Exporting "page 3 of
+    what I am looking at" is not a thing anyone wants, and accepting them
+    would invite a caller to walk the table with a script.
+    """
+    stream = stream_vulnerabilities_csv(
+        session,
+        project_id=project_id,
+        actor=actor,
+        filters={
+            "search": search,
+            "severity": severity,
+            "status": finding_status,
+            "license_category": license_category,
+            "min_epss": min_epss,
+            "reachable": reachable,
+            "sla": sla,
+            "sort": sort,
+            "order": order,
+            "snapshot_scan_id": scan_id,
+        },
+    )
+    try:
+        return await csv_stream_response(
+            request,
+            stream=stream,
+            filename=f"vulnerabilities_{project_id}.csv",
+        )
+    except SnapshotScanNotFound:
+        return _problem_for_snapshot_not_found(request)
+    except (VulnerabilityError, ProjectError) as exc:
+        return _problem_for_vulnerability_error(request, exc)
 
 
 # ---------------------------------------------------------------------------

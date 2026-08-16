@@ -19,6 +19,7 @@
  *   - No router import here. No state — pure REST.
  */
 import { api } from "@/lib/api";
+import { downloadCsvExport } from "@/lib/csvExport";
 
 // ---------------------------------------------------------------------------
 // Wire types — mirror apps/backend/schemas/project_detail.py
@@ -456,6 +457,24 @@ export async function listProjectComponents(
     },
   );
   return data;
+}
+
+/**
+ * Download the filtered component list as CSV (B5).
+ *
+ * Same params, same serialiser as the list, so the file cannot carry rows
+ * the screen was filtering out.
+ */
+export async function exportProjectComponentsCsv(
+  projectId: string,
+  params: ListComponentsParams = {},
+): Promise<void> {
+  const { limit: _limit, offset: _offset, ...filters } = params;
+  await downloadCsvExport(
+    `/v1/projects/${projectId}/components/export.csv`,
+    listComponentsQuery(filters),
+    `components_${projectId}.csv`,
+  );
 }
 
 export async function getComponent(

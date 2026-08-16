@@ -447,6 +447,33 @@ describe("VulnerabilitiesTab", () => {
     ).toBe("CVE-2024-1111");
   });
 
+  it("blocks the CSV export while the VEX filter is narrowing rows here (B5)", async () => {
+    // That filter runs in the browser over already-fetched rows, so the file
+    // would carry findings the screen is hiding. The promise of the export is
+    // that the file is the screen; where it cannot be, refusing beats
+    // shipping a file that misdescribes itself once it reaches a ticket.
+    const user = userEvent.setup();
+    mockedList.mockResolvedValue(
+      listResponse([
+        vuln("CVE-2024-1111", { analysis_source: "vex_import" }),
+        vuln("CVE-2024-2222", { analysis_source: "manual" }),
+      ]),
+    );
+    renderTab();
+    const exportButton = await screen.findByTestId("vulnerabilities-export-csv");
+    expect(exportButton).not.toHaveAttribute("aria-disabled");
+
+    await user.click(
+      screen.getByTestId("vulnerabilities-vex-suppressed-filter"),
+    );
+
+    await waitFor(() =>
+      expect(
+        screen.getByTestId("vulnerabilities-export-csv"),
+      ).toHaveAttribute("aria-disabled", "true"),
+    );
+  });
+
   it("hydrates the VEX-suppressed filter from ?vex_suppressed=1", async () => {
     mockedList.mockResolvedValue(
       listResponse([

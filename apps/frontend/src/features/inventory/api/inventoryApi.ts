@@ -18,6 +18,7 @@ import type {
   LicenseCategoryName,
 } from "@/features/projects/api/projectDetailApi";
 import { api } from "@/lib/api";
+import { downloadCsvExport } from "@/lib/csvExport";
 
 export interface InventoryComponentRow {
   component_id: string;
@@ -138,6 +139,23 @@ export async function listInventoryComponents(
     },
   );
   return data;
+}
+
+/**
+ * Download the filtered inventory as CSV (B5).
+ *
+ * Same params, same serialiser as the list, so the file cannot carry rows
+ * the screen was filtering out.
+ */
+export async function exportInventoryComponentsCsv(
+  params: ListInventoryParams = {},
+): Promise<void> {
+  const { limit: _limit, offset: _offset, ...filters } = params;
+  await downloadCsvExport(
+    "/v1/inventory/components/export.csv",
+    buildQuery(filters),
+    "inventory.csv",
+  );
 }
 
 export async function listComponentUsage(
