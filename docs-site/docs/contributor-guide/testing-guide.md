@@ -204,6 +204,14 @@ code-derived tests by construction, because the code is self-consistently
 wrong. Every documented promise (a status code, a CLI command, a config key)
 gets a docs-uat assertion or a guard test as part of the feature's DoD.
 
+Config keys have that guard already:
+`apps/backend/tests/unit/test_config_key_contract.py` holds the keys the code
+reads, `.env.example`, and the reference page to one list. A new key needs an
+entry in the template or the page, and a key that stops being read has to lose
+its entry, so an operator is never offered a setting that does nothing. Two
+shapes are invisible to the check and are declared in that file instead: a key
+assembled at runtime, and a key forwarded to a child process rather than read.
+
 ### 5. Lifecycle sequences are a test category
 
 Single-operation tests passed while revoke → re-register was a permanent 409
