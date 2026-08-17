@@ -19,6 +19,8 @@
  */
 import type { Page } from "@playwright/test";
 
+import { AdminUsersHarness } from "./AdminUsersHarness";
+import { ApprovalsHarness } from "./ApprovalsHarness";
 import { PortalPage } from "./PortalPage";
 import {
   AUTHENTICATED_SCREEN_IDS,
@@ -84,13 +86,21 @@ const VISITS: Record<AuthenticatedScreenId, VisitScreen> = {
       .first()
       .waitFor({ state: "visible" });
   },
+  // These two waited for `PortalPage.expectMounted()`, which is the
+  // authenticated SHELL and says nothing about the queue or the user table
+  // inside it. Both screens already own a verb that waits for their own first
+  // fetch to settle (`aria-busy` leaving the table), and neither gate was
+  // calling it: the narrow gate captured approvals before a single figure had
+  // rendered and failed with "no numeric text node was found, so the widened
+  // pass asserted nothing" on a pull request whose diff was one backend
+  // module (#151). Same shape as #114 one screen over.
   approvals: async (page) => {
     await page.goto("/approvals");
-    await new PortalPage(page).expectMounted();
+    await new ApprovalsHarness(page).expectMounted();
   },
   "admin-users": async (page) => {
     await page.goto("/admin/users");
-    await new PortalPage(page).expectMounted();
+    await new AdminUsersHarness(page).expectMounted();
   },
 };
 
