@@ -24,22 +24,33 @@ Precedence: ``scan_id`` wins when both are given. It names one immutable
 snapshot, whereas a label names whichever snapshot currently holds it — so the
 more specific of the two should not be overridden by the looser one.
 
-Authorization: none here, matching ``services.scan_resolution``. The lookup is
-scoped to ``project_id`` and both "no such label" and "no such project you can
-see" surface as the same 404, so resolving before the endpoint's team check
-tells an outside caller nothing it could not already infer.
+Authorization: the label lookup carries the caller's tenancy predicate, because
+this dependency runs BEFORE the endpoint's team check. It used to run without
+one, on the premise that "no such label" and "no such project you can see" both
+surface as 404. They do not: an out-of-team project answers 403
+(``ProjectForbidden``) on most of these endpoints, so an unscoped lookup let a
+caller who knows a project id read release-label existence off the status code,
+one guess at a time (403 = the label resolved, 404 = it did not). Release labels
+name unannounced versions and internal codenames, so that is worth closing.
+
+``?scan_id=`` never had the problem and still does not: it is returned
+unvalidated and every failure collapses to one 404 inside
+``resolve_snapshot_scan_id``, behind the team gate.
 """
 
 from __future__ import annotations
 
 import uuid
 
-from fastapi import Depends, Query
+from fastapi import Depends, Query, Request
 from sqlalchemy import String, cast, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from core.api_key_auth import get_api_key_principal
+from core.authz import team_scope_filter
 from core.db import get_db
-from models import Scan
+from core.security import CurrentUser, get_optional_current_user
+from models import Project, Scan
 from services.scan_resolution import SnapshotScanNotFound
 
 _SCAN_ID_DESCRIPTION = (
@@ -52,17 +63,41 @@ _RELEASE_DESCRIPTION = (
     "Optional version anchor — read this surface as of the release carrying "
     "this label (e.g. '4.0'). Equivalent to looking the label up on "
     "``/releases?release=`` and pinning the ``scan_id`` it returns, but as one "
-    "permanent URL. Matched exactly, whitespace trimmed. Unknown label → 404. "
-    "Ignored when ``scan_id`` is also given."
+    "permanent URL. Matched exactly, whitespace trimmed. Unknown label → 404, "
+    "and so does a label in a project you cannot read. Ignored when ``scan_id`` "
+    "is also given."
 )
+
+
+async def _principal_for_anchor(
+    request: Request, session: AsyncSession
+) -> CurrentUser | None:
+    """The caller, resolved the same way the endpoints behind this one resolve it.
+
+    Called directly rather than declared as a ``Depends``, so a request without
+    ``?release=`` pays nothing for it: the tenancy predicate is only needed on
+    the label path. API key first then JWT, mirroring
+    ``api.v1.policy_gate._principal_from_jwt_or_api_key``. That endpoint takes
+    both credential kinds and also accepts this anchor, so a key-authenticated
+    CI caller must not lose the label it is allowed to read.
+
+    Returns ``None`` for an unauthenticated caller instead of raising. The
+    endpoint's own auth dependency owns the 401; this one only needs to know
+    that such a caller may read nothing.
+    """
+    principal = await get_api_key_principal(request, session)
+    if principal is not None:
+        return principal
+    return await get_optional_current_user(request, session)
 
 
 async def resolve_release_label(
     session: AsyncSession,
     project_id: uuid.UUID,
     label: str,
+    actor: CurrentUser | None,
 ) -> uuid.UUID | None:
-    """Return the live snapshot carrying *label*, or ``None``.
+    """Return the live snapshot carrying *label* that *actor* may read, or ``None``.
 
     Mirrors the releases-list filter exactly — succeeded, not superseded,
     trimmed comparison — so a label that appears there resolves here and one
@@ -70,13 +105,31 @@ async def resolve_release_label(
     moves the label: ``4.0`` must mean the snapshot that currently holds it,
     not every scan that ever claimed it.
 
+    The tenancy predicate comes from :func:`core.authz.team_scope_filter`, the
+    mandated chokepoint for query-level isolation, which needs ``Project`` in
+    the FROM, hence the join. It is very slightly STRICTER than the team check
+    the endpoints run afterwards: it grants the cross-tenant bypass on
+    ``is_superuser`` alone, where ``can_access_team`` also honours a derived
+    ``role == "super_admin"``. No write path produces that role without the
+    flag, and where the two could disagree this one fails closed.
+
+    A project-scoped API key is narrowed further. Its ``team_ids`` covers the
+    whole owning team, so the team predicate alone would let it resolve labels
+    on sibling projects it cannot read.
+
     Served by ``ix_scans_project_release_label``.
     """
     stripped = label.strip()
     if not stripped:
         return None
+    if actor is None:
+        return None
+    if actor.api_key_project_id is not None and actor.api_key_project_id != project_id:
+        return None
     stmt = (
         select(Scan.id)
+        .join(Project, Project.id == Scan.project_id)
+        .where(team_scope_filter(actor))
         .where(Scan.project_id == project_id)
         .where(cast(Scan.status, String) == "succeeded")
         .where(Scan.superseded_at.is_(None))
@@ -90,6 +143,7 @@ async def resolve_release_label(
 
 
 async def snapshot_anchor(
+    request: Request,
     project_id: uuid.UUID,
     scan_id: uuid.UUID | None = Query(default=None, description=_SCAN_ID_DESCRIPTION),
     release: str | None = Query(
@@ -110,10 +164,14 @@ async def snapshot_anchor(
     through ``resolve_snapshot_scan_id``, which owns the ownership + succeeded
     checks. Validating twice here would cost a round-trip on every request to
     move a check that is already in the right place.
+
+    A label the caller may not read is indistinguishable from one that does not
+    exist: both take the same branch below. See the module docstring.
     """
     if scan_id is not None or release is None:
         return scan_id
-    resolved = await resolve_release_label(session, project_id, release)
+    actor = await _principal_for_anchor(request, session)
+    resolved = await resolve_release_label(session, project_id, release, actor)
     if resolved is None:
         raise SnapshotScanNotFound(
             f"no release labelled {release!r} in project {project_id}"

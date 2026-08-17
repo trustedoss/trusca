@@ -960,6 +960,71 @@ async def test_release_anchor_does_not_leak_another_projects_version(client) -> 
     assert response.status_code == 404, response.text
 
 
+@pytest.mark.parametrize("label", ["v1.0", "no-such-version"])
+async def test_release_anchor_is_not_an_existence_oracle_for_outsiders(
+    client, label: str
+) -> None:
+    """An out-of-team caller must not learn whether a label exists (#132).
+
+    The anchor resolves as a FastAPI dependency, so it runs before the
+    endpoint's team check. Without a tenancy predicate on the lookup, an
+    existing label resolved and the body answered 403 while an unknown one
+    raised 404. One status-code guess per release name, on a project id the
+    caller only had to have seen once (a ticket, a CI log, a pasted URL).
+
+    Parametrized rather than asserted as a pair because the property is "both
+    take the same branch", and a pair assertion would still pass if the branch
+    itself changed to something that leaks.
+    """
+    _owner, project_id, _tagged, _newer = await _seed_labelled_project(client)
+    _, outsider = await _seed_team_with_user(client)
+
+    response = await client.get(
+        f"/v1/projects/{project_id}/overview",
+        headers=_bearer_for(outsider),
+        params={"release": label},
+    )
+    assert response.status_code == 404, response.text
+    assert response.headers["content-type"].startswith(PROBLEM_JSON)
+
+
+async def test_release_anchor_holds_the_project_scoped_key_boundary(client) -> None:
+    """A project-scoped API key must not resolve a sibling project's label.
+
+    Its ``team_ids`` covers the whole owning team, so the team predicate alone
+    would let it read label existence on projects the same key is barred from
+    (the M-2 boundary ``_load_project_for_gate`` enforces after the anchor).
+    """
+    import dataclasses
+
+    from api.v1._snapshot_anchor import resolve_release_label
+    from tests._helpers import principal_for
+
+    team, user = await _seed_team_with_user(client)
+    project_id = await _seed_empty_project(client, team_id=team.id)
+    sibling = await _seed_empty_project(client, team_id=team.id)
+    tagged = await _seed_succeeded_scan(
+        client,
+        project_id=project_id,
+        created_at=datetime(2026, 5, 20, tzinfo=UTC),
+        release="v1.0",
+    )
+
+    jwt_actor = principal_for(user, team_ids=[team.id], role="developer")
+    key_actor = dataclasses.replace(jwt_actor, api_key_project_id=project_id)
+    sibling_key_actor = dataclasses.replace(jwt_actor, api_key_project_id=sibling)
+
+    factory = await _factory(client)
+    async with factory() as session:
+        assert await resolve_release_label(session, project_id, "v1.0", key_actor) == tagged
+        assert await resolve_release_label(session, project_id, "v1.0", jwt_actor) == tagged
+        assert (
+            await resolve_release_label(session, project_id, "v1.0", sibling_key_actor)
+            is None
+        )
+        assert await resolve_release_label(session, project_id, "v1.0", None) is None
+
+
 async def test_scan_id_wins_when_both_anchors_are_given(client) -> None:
     # scan_id names one immutable snapshot; a label names whichever snapshot
     # currently holds it. The more specific one must not be overridden.
