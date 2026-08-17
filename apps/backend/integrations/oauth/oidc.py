@@ -41,6 +41,7 @@ from core.config import (
     oauth_http_timeout_seconds,
     oidc_client_id,
     oidc_client_secret,
+    oidc_groups_claim,
     oidc_issuer,
     oidc_scopes,
 )
@@ -325,6 +326,13 @@ class OidcProvider:
         if not isinstance(avatar_url, str) or not avatar_url:
             avatar_url = None
 
+        raw_groups = payload.get(oidc_groups_claim())
+        groups = (
+            tuple(g.strip() for g in raw_groups if isinstance(g, str) and g.strip())
+            if isinstance(raw_groups, list)
+            else ()
+        )
+
         return OAuthUserInfo(
             provider=OAUTH_PROVIDER_OIDC,
             provider_user_id=subject,
@@ -332,6 +340,7 @@ class OidcProvider:
             full_name=full_name,
             avatar_url=avatar_url,
             email_can_link_existing_account=True,
+            groups=groups,
         )
 
 

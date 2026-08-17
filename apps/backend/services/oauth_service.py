@@ -66,10 +66,12 @@ from core.config import (
     oauth_state_ttl_seconds,
     oidc_client_id,
     oidc_client_secret,
+    oidc_group_role_map,
     oidc_issuer,
     secret_key,
 )
 from core.security import (
+    _ROLE_PRIORITY,
     JWT_ALGORITHM,
     create_access_token,
     create_refresh_token,
@@ -477,6 +479,30 @@ async def complete_oauth(
 # ---------------------------------------------------------------------------
 
 
+def _grade_for(info: OAuthUserInfo) -> str:
+    """The grade the personal-team membership gets, from the provider's groups.
+
+    Three rules, in order. A deployment that maps nothing gets the historical
+    grade, so nothing changes for the demo-SaaS flow this path was written
+    for. A deployment that maps something gets the highest grade its mapping
+    names among the groups the person actually carries. Anyone whose groups
+    say nothing gets the floor rather than the historical grade, because on a
+    deployment that has bothered to map groups, membership of none of them is
+    an answer rather than an absence.
+
+    ``super_admin`` never appears: the map refuses to record it, so the worst
+    a group can do is administer the personal team it was created alongside.
+    """
+    mapping = oidc_group_role_map()
+    if not mapping:
+        return "team_admin"
+    grades = [mapping[group] for group in info.groups if group in mapping]
+    if not grades:
+        log.info("oauth_group_mapping_no_match", provider=info.provider)
+        return "viewer"
+    return max(grades, key=lambda grade: _ROLE_PRIORITY.get(grade, 0))
+
+
 def _refuse_unvouched_link(info: OAuthUserInfo) -> None:
     """Raise when an address may not be used to reach an account already under it.
 
@@ -681,7 +707,7 @@ async def _create_user_with_personal_team(
         session.add(team)
         await session.flush()
 
-    membership = Membership(user_id=user.id, team_id=team.id, role="team_admin")
+    membership = Membership(user_id=user.id, team_id=team.id, role=_grade_for(info))
     session.add(membership)
 
     identity = OAuthIdentity(
