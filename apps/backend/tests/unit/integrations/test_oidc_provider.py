@@ -51,9 +51,7 @@ def _configured(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("OIDC_CLIENT_ID", "client-id")
     monkeypatch.setenv("OIDC_CLIENT_SECRET", "client-secret")
     monkeypatch.delenv("OIDC_SCOPES", raising=False)
-    monkeypatch.delenv("OIDC_EMAIL_CLAIM", raising=False)
     monkeypatch.delenv("OIDC_NAME_CLAIM", raising=False)
-    monkeypatch.delenv("OIDC_REQUIRE_VERIFIED_EMAIL", raising=False)
     reset_discovery_cache()
 
 
@@ -258,24 +256,13 @@ async def test_a_missing_verification_claim_counts_as_unverified(route) -> None:
         await OidcProvider().fetch_user_info(access_token="at")
 
 
-async def test_the_verification_requirement_can_be_turned_off_deliberately(
-    route, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    monkeypatch.setenv("OIDC_REQUIRE_VERIFIED_EMAIL", "false")
-    route(
-        {
-            DISCOVERY_URL: _discovery_document(),
-            USERINFO_URL: {"sub": "s", "email": "p@example.test"},
-        }
-    )
-
-    info = await OidcProvider().fetch_user_info(access_token="at")
-
-    assert info.email == "p@example.test"
-
-
 async def test_a_standard_verified_address_may_open_an_existing_account(route) -> None:
-    """The only combination that earns the right to match an existing user."""
+    """The combination that earns the right to match an existing user.
+
+    It is now the only combination the provider produces, but the flag stays
+    on the record: other providers set it too, and the service layer refuses
+    the link when it is false.
+    """
     route(
         {
             DISCOVERY_URL: _discovery_document(),
@@ -288,70 +275,30 @@ async def test_a_standard_verified_address_may_open_an_existing_account(route) -
     assert info.email_can_link_existing_account is True
 
 
-async def test_a_waived_verification_does_not_earn_account_linking(
-    route, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    """Signing in is allowed; taking over an existing account is not.
+async def test_an_address_outside_the_standard_claim_is_not_used(route) -> None:
+    """The address comes from `email` or the sign-in does not happen.
 
-    With verification waived the address is an assertion, and an account
-    already under it belongs to someone who has not agreed to this.
+    Reading it from another claim was configurable for one commit. It could
+    not be made safe: `email_verified` vouches for `email` alone, so the flag
+    beside another claim describes something else, and on several providers
+    that other claim is editable by its holder. A deployment whose provider
+    puts the address elsewhere maps it in the provider, which is where claim
+    mapping belongs.
     """
-    monkeypatch.setenv("OIDC_REQUIRE_VERIFIED_EMAIL", "false")
-    route(
-        {
-            DISCOVERY_URL: _discovery_document(),
-            USERINFO_URL: {"sub": "s", "email": "p@example.test"},
-        }
-    )
-
-    info = await OidcProvider().fetch_user_info(access_token="at")
-
-    assert info.email_can_link_existing_account is False
-
-
-async def test_a_non_standard_claim_does_not_earn_account_linking(
-    route, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    """`email_verified` vouches for `email`, not for whatever else is read.
-
-    On several providers the claim deployments reach for here is editable by
-    the user, so a verified flag beside it says nothing about the address the
-    sign-in is using.
-    """
-    monkeypatch.setenv("OIDC_EMAIL_CLAIM", "preferred_username")
     route(
         {
             DISCOVERY_URL: _discovery_document(),
             USERINFO_URL: {
                 "sub": "s",
                 "preferred_username": "admin@example.test",
-                "email": "attacker@example.test",
                 "email_verified": True,
             },
         }
     )
 
-    info = await OidcProvider().fetch_user_info(access_token="at")
+    with pytest.raises(OAuthExchangeError, match="email"):
+        await OidcProvider().fetch_user_info(access_token="at")
 
-    assert info.email == "admin@example.test"
-    assert info.email_can_link_existing_account is False
-
-
-async def test_the_address_can_come_from_a_provider_specific_claim(
-    route, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    monkeypatch.setenv("OIDC_EMAIL_CLAIM", "preferred_username")
-    monkeypatch.setenv("OIDC_REQUIRE_VERIFIED_EMAIL", "false")
-    route(
-        {
-            DISCOVERY_URL: _discovery_document(),
-            USERINFO_URL: {"sub": "s", "preferred_username": "p@example.test"},
-        }
-    )
-
-    info = await OidcProvider().fetch_user_info(access_token="at")
-
-    assert info.email == "p@example.test"
 
 
 async def test_a_response_without_a_subject_is_refused(route) -> None:

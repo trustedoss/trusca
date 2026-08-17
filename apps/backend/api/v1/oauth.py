@@ -49,7 +49,7 @@ from core.config import (
 )
 from core.db import get_db
 from core.errors import problem_response
-from core.ratelimit import LOGIN_RATE_LIMIT, limiter
+from core.ratelimit import OAUTH_AUTHORIZE_RATE_LIMIT, limiter
 from schemas.oauth import OAuthProvidersResponse, OAuthProviderStatusOut
 from services.oauth_service import (
     NoOrganizationConfigured,
@@ -240,7 +240,7 @@ async def list_providers() -> OAuthProvidersResponse:
     summary="Begin OAuth sign-in (public, rate limited)",
     name="oauth_authorize",
 )
-@limiter.limit(LOGIN_RATE_LIMIT)
+@limiter.limit(OAUTH_AUTHORIZE_RATE_LIMIT)
 async def authorize(
     request: Request,
     provider: Literal["github", "google", "oidc"],
@@ -258,11 +258,11 @@ async def authorize(
       - 403 ``demo_read_only`` Problem Details when the deployment runs in
         read-only live-demo mode (OAuth sign-in is a write; see
         :func:`_demo_read_only_blocked`).
-      - 429 when an IP exceeds the login limit. This is the same public,
-        unauthenticated surface as /auth/login and it now does work an
-        anonymous caller can make expensive: the generic provider resolves
-        its endpoints from the issuer, so a cold cache costs an outbound
-        request. Sharing the login limit keeps that bounded.
+      - 429 when an IP exceeds ``OAUTH_AUTHORIZE_RATE_LIMIT``. Looser than
+        the login limit on purpose: there is no credential to guess here, and
+        an office behind one NAT address signs in together. The limit is a
+        backstop; what actually bounds the cost of a cold discovery cache is
+        the provider's own failure cache.
     """
     if demo_read_only():
         return _demo_read_only_blocked(request, provider=provider)

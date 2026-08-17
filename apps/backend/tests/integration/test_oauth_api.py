@@ -766,14 +766,19 @@ async def test_oidc_callback_creates_the_user_and_stores_the_identity(
         assert identity.provider == "oidc"
 
 
-async def test_oidc_refuses_to_open_an_existing_account_on_an_unverified_address(
+async def test_oidc_refuses_a_sign_in_the_provider_did_not_verify(
     client: AsyncClient,
     db_factory: async_sessionmaker[Any],
     seed_organization: None,
     patch_async_client: Callable[[Callable[[httpx.Request], httpx.Response]], None],
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """An address the provider has not vouched for cannot claim someone's account."""
+    """An unverified address does not sign anyone in, and touches nothing.
+
+    The account already under that address is the reason: without the refusal
+    the holder of an unverified claim reaches it. The provider now refuses
+    before the service layer is asked, so nothing is created either.
+    """
     from core.security import hash_password
     from integrations.oauth.oidc import reset_discovery_cache
     from models import OAuthIdentity, User
@@ -796,7 +801,6 @@ async def test_oidc_refuses_to_open_an_existing_account_on_an_unverified_address
     monkeypatch.setenv("OIDC_ISSUER", issuer)
     monkeypatch.setenv("OIDC_CLIENT_ID", "client-id")
     monkeypatch.setenv("OIDC_CLIENT_SECRET", "client-secret")
-    monkeypatch.setenv("OIDC_REQUIRE_VERIFIED_EMAIL", "false")
     reset_discovery_cache()
 
     handler = _oidc_handler(
@@ -816,9 +820,7 @@ async def test_oidc_refuses_to_open_an_existing_account_on_an_unverified_address
     assert response.status_code == 302
     assert "error=oauth_failed" in response.headers["location"]
     async with db_factory() as session:
-        identities = list(
-            (await session.execute(select(OAuthIdentity))).scalars().all()
-        )
+        identities = list((await session.execute(select(OAuthIdentity))).scalars().all())
         assert all(identity.email != email for identity in identities)
 
 

@@ -41,10 +41,7 @@ from core.config import (
     oauth_http_timeout_seconds,
     oidc_client_id,
     oidc_client_secret,
-    oidc_email_claim,
     oidc_issuer,
-    oidc_name_claim,
-    oidc_require_verified_email,
     oidc_scopes,
 )
 
@@ -62,6 +59,12 @@ DISCOVERY_PATH = "/.well-known/openid-configuration"
 #: How long a discovery document is reused. Issuers change endpoints rarely,
 #: and an hour bounds how long a stale document can be served after one does.
 DISCOVERY_TTL_SECONDS = 3600
+
+#: Timeout for the discovery request alone, shorter than the exchange timeout.
+#: This request happens inline on a public endpoint and blocks the event loop
+#: for its duration, so the ceiling on one stall is this number, not the ten
+#: seconds an exchange with a slow provider is allowed to take.
+DISCOVERY_TIMEOUT_SECONDS = 3
 
 #: How long a failure is remembered. Without this, an issuer that is down turns
 #: every sign-in attempt into another blocking round-trip against it, and the
@@ -160,7 +163,7 @@ def _fetch(issuer: str) -> _Endpoints:
     now = time.monotonic()
     url = f"{issuer}{DISCOVERY_PATH}"
     try:
-        with httpx.Client(timeout=oauth_http_timeout_seconds()) as client:
+        with httpx.Client(timeout=DISCOVERY_TIMEOUT_SECONDS) as client:
             response = client.get(url, headers={"Accept": "application/json"})
     except (httpx.HTTPError, httpx.InvalidURL) as exc:
         # Broader than timeout and network: a misspelled issuer raises
@@ -189,11 +192,18 @@ def _fetch(issuer: str) -> _Endpoints:
         log.warning("oauth_oidc_discovery_issuer_mismatch", configured=issuer)
         raise remember_failure("oidc discovery issuer does not match the configured issuer")
 
-    endpoints = _Endpoints(
-        authorize=_endpoint(document, "authorization_endpoint", issuer),
-        token=_endpoint(document, "token_endpoint", issuer),
-        userinfo=_endpoint(document, "userinfo_endpoint", issuer),
-    )
+    try:
+        endpoints = _Endpoints(
+            authorize=_endpoint(document, "authorization_endpoint", issuer),
+            token=_endpoint(document, "token_endpoint", issuer),
+            userinfo=_endpoint(document, "userinfo_endpoint", issuer),
+        )
+    except OAuthExchangeError as exc:
+        # A document that answers quickly but does not validate is still a
+        # failure worth remembering. Without this the fetch repeats on every
+        # sign-in attempt, which is the amplification the failure cache exists
+        # to stop, just reached through the validation path instead.
+        raise remember_failure(str(exc)) from None
     _cache[issuer] = (now, endpoints)
     _failures.pop(issuer, None)
     return endpoints
@@ -291,27 +301,23 @@ class OidcProvider:
         if not isinstance(subject, str) or not subject:
             raise OAuthExchangeError("oidc userinfo missing 'sub' claim")
 
-        email_claim = oidc_email_claim()
-        email = payload.get(email_claim)
+        # The standard claim, and only it. ``email_verified`` vouches for
+        # ``email`` and nothing else (OIDC Core 5.1), so an address read from
+        # elsewhere carries a verification flag that does not describe it, and
+        # on several providers that other claim is user-editable. A deployment
+        # whose provider puts the address elsewhere maps it to ``email`` in the
+        # provider, which is where claim mapping belongs.
+        email = payload.get("email")
         if not isinstance(email, str) or not email.strip():
-            raise OAuthExchangeError(f"oidc userinfo missing '{email_claim}' claim")
+            raise OAuthExchangeError("oidc userinfo missing 'email' claim")
 
-        # ``email_verified`` vouches for the ``email`` claim and nothing else
-        # (OIDC Core 5.1). A deployment reading the address out of another
-        # claim is reading something the provider has not vouched for, and on
-        # several providers that claim is user-editable. The address still
-        # signs the holder in, but it must not be enough on its own to open an
-        # account that already exists under it.
-        standard_claim = email_claim == "email"
-        verified = payload.get("email_verified") is True
-        if oidc_require_verified_email() and not verified:
-            # Absent counts as unverified. A provider that does not say has not
-            # verified anything as far as this deployment can tell, and the
-            # operator who knows better turns the requirement off explicitly.
+        if payload.get("email_verified") is not True:
+            # Absent counts as unverified: a provider that does not say has not
+            # verified anything as far as this deployment can tell.
             log.warning("oauth_oidc_email_unverified", sub=subject)
             raise OAuthExchangeError("oidc userinfo does not report a verified email")
 
-        full_name = payload.get(oidc_name_claim())
+        full_name = payload.get("name")
         if not isinstance(full_name, str) or not full_name.strip():
             full_name = None
 
@@ -325,7 +331,7 @@ class OidcProvider:
             email=email.strip().lower(),
             full_name=full_name,
             avatar_url=avatar_url,
-            email_can_link_existing_account=standard_claim and verified,
+            email_can_link_existing_account=True,
         )
 
 
