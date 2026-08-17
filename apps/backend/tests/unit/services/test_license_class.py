@@ -55,6 +55,13 @@ def test_every_allowlisted_id_is_permissive(spdx_id: str) -> None:
         ("EUPL-1.2", WEAK_COPYLEFT),
         ("CECILL-2.1", WEAK_COPYLEFT),
         ("Sleepycat", WEAK_COPYLEFT),
+        # OFL, whose share-alike is scoped to modified fonts (#123). The rest of the
+        # product already knew this licence: an obligation-catalogue entry, the
+        # full text, and a Korean summary. Only the strength classifier did
+        # not, so a component under it read as "uncategorized" in the UI.
+        ("OFL-1.1", WEAK_COPYLEFT),
+        ("OFL-1.1-RFN", WEAK_COPYLEFT),
+        ("SIL Open Font License 1.1", WEAK_COPYLEFT),
     ],
 )
 def test_pattern_classification(value: str, expected: str) -> None:
@@ -69,6 +76,10 @@ def test_pattern_classification(value: str, expected: str) -> None:
         "   ",
         "LicenseRef-Acme-Proprietary",
         "Frobnicate-1.0",
+        # Neighbours of the OFL token, which is three letters and would match
+        # inside other identifiers unanchored. UFL is a different font licence.
+        "UFL-1.0",
+        "TOFLE-1.0",
         "SEE LICENSE IN COPYING",
         "NOASSERTION",
     ],
