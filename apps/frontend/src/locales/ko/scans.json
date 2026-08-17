@@ -35,7 +35,10 @@
       "summary": "{{page}} / {{total}} 페이지",
       "previous": "이전",
       "next": "다음"
-    }
+    },
+    "empty_all": "아직 스캔이 없습니다",
+    "empty_all_hint": "스캔은 프로젝트에서 시작합니다. 프로젝트를 열고 스캔을 누르세요.",
+    "empty_all_cta": "프로젝트 열기"
   },
   "progress": {
     "title": "스캔 진행 중",

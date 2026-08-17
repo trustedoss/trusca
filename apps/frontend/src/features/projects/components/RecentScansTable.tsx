@@ -1,9 +1,12 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2026 TRUSCA contributors
+import { ScanLine } from "lucide-react";
 import type { KeyboardEvent } from "react";
 import { useTranslation } from "react-i18next";
 
+import { EmptyState } from "@/components/EmptyState";
 import RelativeTime from "@/components/RelativeTime";
+import { Button } from "@/components/ui/button";
 import type { ScanSummary } from "@/features/projects/api/projectDetailApi";
 import { cn } from "@/lib/utils";
 
@@ -24,6 +27,15 @@ export interface RecentScansTableProps {
    * the table read-only.
    */
   onSelectScan?: (scan: ScanSummary) => void;
+  /**
+   * C3 - starts the first scan from the empty state.
+   *
+   * Omitted rather than disabled when the reader cannot scan: a demo
+   * deployment, a historical release, or a project that has not loaded. The
+   * empty state then says what it sees and offers nothing, which is better
+   * than a button that refuses.
+   */
+  onScan?: () => void;
 }
 
 function formatDuration(
@@ -52,18 +64,32 @@ export function RecentScansTable({
   scans,
   className,
   onSelectScan,
+  onScan,
 }: RecentScansTableProps) {
   const { t, i18n } = useTranslation("project_detail");
   const resolvedLocale = i18n.resolvedLanguage ?? i18n.language;
 
   if (scans.length === 0) {
+    // C3 - the shared primitive rather than a line of muted text, because
+    // this is the end of the first-scan path: a project has been registered
+    // and nothing has looked at it yet. The description says what that means,
+    // since "no scans" on its own reads as a fact about the project rather
+    // than as the one step still missing.
     return (
-      <div
+      <EmptyState
         data-testid="recent-scans-empty"
-        className={cn("text-sm text-muted-foreground", className)}
-      >
-        {t("overview.recent_scans.empty")}
-      </div>
+        className={className}
+        icon={<ScanLine />}
+        title={t("overview.recent_scans.empty")}
+        description={t("overview.recent_scans.empty_hint")}
+        action={
+          onScan ? (
+            <Button size="sm" onClick={onScan} data-testid="recent-scans-scan">
+              {t("overview.recent_scans.run_scan")}
+            </Button>
+          ) : undefined
+        }
+      />
     );
   }
 

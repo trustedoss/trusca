@@ -48,7 +48,21 @@ vi.mock("@/hooks/useDemoMode", () => ({
 // --- heavy children stubbed to keep the test on the header ---------------
 
 vi.mock("@/features/projects/components/OverviewTab", () => ({
-  OverviewTab: () => <div data-testid="overview-tab-mock" />,
+  OverviewTab: ({ onScan }: { onScan?: () => void }) => (
+    <div data-testid="overview-tab-mock" data-has-scan={onScan != null}>
+      {onScan ? (
+        <button type="button" data-testid="overview-scan-proxy" onClick={onScan}>
+          scan
+        </button>
+      ) : null}
+    </div>
+  ),
+}));
+
+vi.mock("@/features/projects/components/ComponentsTab", () => ({
+  ComponentsTab: ({ onScan }: { onScan?: () => void }) => (
+    <div data-testid="components-tab-mock" data-has-scan={onScan != null} />
+  ),
 }));
 
 vi.mock("@/features/projects/components/ReleaseSwitcher", () => ({
@@ -56,7 +70,8 @@ vi.mock("@/features/projects/components/ReleaseSwitcher", () => ({
 }));
 
 vi.mock("@/features/scan/SourceSelectDialog", () => ({
-  SourceSelectDialog: () => null,
+  SourceSelectDialog: ({ open }: { open: boolean }) =>
+    open ? <div data-testid="source-dialog-mock" /> : null,
 }));
 
 vi.mock("@/features/scan/ScanProgress", () => ({
@@ -65,11 +80,15 @@ vi.mock("@/features/scan/ScanProgress", () => ({
   ),
 }));
 
+import { useLatestRelease } from "@/features/projects/api/useLatestRelease";
 import { useProjectOverview } from "@/features/projects/api/useProjectOverview";
+import { useDemoMode } from "@/hooks/useDemoMode";
 import { getProject } from "@/lib/projectsApi";
 
 const mockedGetProject = vi.mocked(getProject);
 const mockedUseOverview = vi.mocked(useProjectOverview);
+const mockedUseDemoMode = vi.mocked(useDemoMode);
+const mockedUseLatestRelease = vi.mocked(useLatestRelease);
 
 const PROJECT_ID = "11111111-1111-1111-1111-111111111111";
 
@@ -136,13 +155,13 @@ function overviewWith(recent: ScanSummary[]) {
   } as any;
 }
 
-function renderPage() {
+function renderPage(search = "") {
   const client = new QueryClient({
     defaultOptions: { queries: { retry: false } },
   });
   return render(
     <QueryClientProvider client={client}>
-      <MemoryRouter initialEntries={[`/projects/${PROJECT_ID}`]}>
+      <MemoryRouter initialEntries={[`/projects/${PROJECT_ID}${search}`]}>
         <Routes>
           <Route path="/projects/:id" element={<ProjectDetailPage />} />
         </Routes>
@@ -156,6 +175,8 @@ describe("ProjectDetailPage active-scan chip (#29)", () => {
     mockedGetProject.mockReset();
     mockedGetProject.mockResolvedValue(makeProject());
     mockedUseOverview.mockReset();
+    mockedUseDemoMode.mockReturnValue({ demoReadOnly: false } as never);
+    mockedUseLatestRelease.mockReturnValue({ data: null } as never);
   });
 
   it("shows a clickable 'scan running' chip and re-opens the drawer for the in-flight scan", async () => {
@@ -220,5 +241,99 @@ describe("ProjectDetailPage active-scan chip (#29)", () => {
     expect(button).not.toHaveAttribute("data-scan-blocked");
     // The chip still reports the branch scan — it is informational, not a lock.
     expect(screen.getByTestId("project-detail-active-scan")).toBeInTheDocument();
+  });
+
+  // -------------------------------------------------------------------
+  // C3 - the wiring that puts a scan button in the tabs' empty states.
+  //
+  // The tabs' own tests inject `onScan` directly, which proves the component
+  // and says nothing about this page. Deleting the prop here, or dropping its
+  // guard, passed the entire suite before these three.
+  // -------------------------------------------------------------------
+
+  it("hands the overview tab a scan action", async () => {
+    mockedGetProject.mockResolvedValue(makeProject());
+    mockedUseOverview.mockReturnValue({
+      data: overviewWith([]),
+      isLoading: false,
+      isError: false,
+    } as never);
+
+    renderPage();
+
+    const tab = await screen.findByTestId("overview-tab-mock");
+    expect(tab.dataset.hasScan).toBe("true");
+
+    // And it is the one that opens the dialog this page mounts.
+    await userEvent.click(screen.getByTestId("overview-scan-proxy"));
+    expect(await screen.findByTestId("source-dialog-mock")).toBeInTheDocument();
+  });
+
+  it("hands it nothing on a deployment that refuses writes", async () => {
+    mockedUseDemoMode.mockReturnValue({ demoReadOnly: true } as never);
+    mockedGetProject.mockResolvedValue(makeProject());
+    mockedUseOverview.mockReturnValue({
+      data: overviewWith([]),
+      isLoading: false,
+      isError: false,
+    } as never);
+
+    renderPage();
+
+    const tab = await screen.findByTestId("overview-tab-mock");
+    expect(tab.dataset.hasScan).toBe("false");
+  });
+
+  it("hands it nothing while a historical release is pinned", async () => {
+    // Scanning would produce a new snapshot rather than fill the one being
+    // read, so the button would answer a question nobody asked.
+    mockedGetProject.mockResolvedValue(makeProject());
+    mockedUseOverview.mockReturnValue({
+      data: overviewWith([]),
+      isLoading: false,
+      isError: false,
+    } as never);
+
+    // "Historical" means a pinned scan that is not the latest one, so the
+    // page needs a latest to compare against.
+    mockedUseLatestRelease.mockReturnValue({
+      data: { scan_id: "33333333-3333-3333-3333-333333333333" },
+    } as never);
+
+    renderPage("?scan=22222222-2222-2222-2222-222222222222");
+
+    const tab = await screen.findByTestId("overview-tab-mock");
+    expect(tab.dataset.hasScan).toBe("false");
+  });
+
+  it("hands the components tab the same scan action", async () => {
+    // Radix mounts only the active tab, so the overview tests above say
+    // nothing about this one. Deleting its wiring passed the whole suite.
+    mockedGetProject.mockResolvedValue(makeProject());
+    mockedUseOverview.mockReturnValue({
+      data: overviewWith([]),
+      isLoading: false,
+      isError: false,
+    } as never);
+
+    renderPage("?tab=components");
+
+    const tab = await screen.findByTestId("components-tab-mock");
+    expect(tab.dataset.hasScan).toBe("true");
+  });
+
+  it("hands the components tab nothing on a read-only deployment", async () => {
+    mockedUseDemoMode.mockReturnValue({ demoReadOnly: true } as never);
+    mockedGetProject.mockResolvedValue(makeProject());
+    mockedUseOverview.mockReturnValue({
+      data: overviewWith([]),
+      isLoading: false,
+      isError: false,
+    } as never);
+
+    renderPage("?tab=components");
+
+    const tab = await screen.findByTestId("components-tab-mock");
+    expect(tab.dataset.hasScan).toBe("false");
   });
 });

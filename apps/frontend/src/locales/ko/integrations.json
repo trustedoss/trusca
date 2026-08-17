@@ -7,7 +7,7 @@
     "section_title": "API 키",
     "section_description": "GitHub Action / GitLab 템플릿 / Jenkins 파이프라인에서 이 토큰을 사용하세요. 키가 노출되면 즉시 폐기하세요.",
     "create_button": "API 키 생성",
-    "empty": "아직 API 키가 없습니다. 새로 생성해 시작하세요.",
+    "empty": "아직 API 키가 없습니다",
     "loading": "API 키 불러오는 중…",
     "error": "API 키를 불러오지 못했습니다.",
     "table": {
@@ -86,7 +86,9 @@
       "previous": "이전",
       "next": "다음",
       "summary": "페이지 {{page}} / {{total}}"
-    }
+    },
+    "empty_hint_can_create": "키가 없으면 빌드에서 스캔할 수 없습니다.",
+    "empty_hint_cannot_create": "키가 없으면 빌드에서 스캔할 수 없습니다. 팀 관리자에게 키 발급을 요청하세요."
   },
   "webhooks": {
     "section_title": "웹훅 URL",

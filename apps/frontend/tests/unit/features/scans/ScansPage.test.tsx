@@ -128,12 +128,48 @@ describe("ScansPage", () => {
     });
   });
 
-  it("renders the empty state when no rows match", async () => {
+  it("does not blame a filter nobody set", async () => {
+    // C3. The default tab is "all", which sends no status filter, so on a
+    // fresh deployment "No scans match the current filter" sent the reader
+    // looking for a control to clear. And a scan does not start here, so the
+    // way forward is the project list.
     mockedListMyScans.mockResolvedValue(pageResponse([]));
     renderPage();
-    await waitFor(() => {
-      expect(screen.getByTestId("scans-empty")).toBeInTheDocument();
-    });
+
+    const empty = await screen.findByTestId("scans-empty");
+    expect(empty.textContent).not.toContain("filter");
+    // The sentence, not just the link: where a scan starts is the thing this
+    // state exists to tell someone who has never run one.
+    expect(empty.textContent).toContain("A scan starts from a project.");
+    expect(screen.getByTestId("scans-empty-projects")).toHaveAttribute(
+      "href",
+      "/projects",
+    );
+  });
+
+  it("claims nothing about scans when the request failed", async () => {
+    // The empty state used to render beside the error alert, so a failed
+    // request produced "no scans yet, and here is how to make one" at the one
+    // moment neither was known.
+    mockedListMyScans.mockRejectedValue(new Error("boom"));
+    renderPage();
+
+    // Wait for the failure to be on screen before asserting the absence.
+    // "The request was made" is satisfied before it rejects, and an empty
+    // state that is merely not rendered yet would pass.
+    await screen.findByTestId("scans-error");
+    expect(screen.queryByTestId("scans-empty")).toBeNull();
+  });
+
+  it("does blame the filter when one is set", async () => {
+    // The counterpart: on a filtered tab the filter really is the reason,
+    // and pointing at the project list would be the wrong advice.
+    mockedListMyScans.mockResolvedValue(pageResponse([]));
+    renderPage("/scans?status=failed");
+
+    const empty = await screen.findByTestId("scans-empty");
+    expect(empty.textContent).toContain("filter");
+    expect(screen.queryByTestId("scans-empty-projects")).toBeNull();
   });
 
   it("renders one row per scan with project prefix and status badge", async () => {

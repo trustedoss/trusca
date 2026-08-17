@@ -151,6 +151,77 @@ describe("IntegrationsPage", () => {
     expect(screen.queryByTestId("integrations-key-row")).not.toBeInTheDocument();
   });
 
+  // C3 - what the card says when there is nothing in it.
+
+  it("claims nothing about keys when the request failed", async () => {
+    // Same shape as the scan list: an error and an empty state are different
+    // answers, and only one of them was being given.
+    mockedList.mockRejectedValue(new Error("boom"));
+
+    renderPage();
+
+    // Same as the scan list: wait for the error to render, or the absence
+    // is asserted while the query is still in flight.
+    await screen.findByTestId("integrations-keys-error");
+    expect(screen.queryByTestId("integrations-keys-empty")).toBeNull();
+  });
+
+  it("holds back advice about tokens until there are tokens", async () => {
+    // The section description explains how to use these keys with a CI
+    // pipeline and warns about revoking an exposed one. Above an empty table
+    // it is instructions for something that does not exist, and it was the
+    // first thing on the page.
+    mockedList.mockResolvedValueOnce(page([]));
+
+    renderPage();
+
+    await screen.findByTestId("integrations-keys-empty");
+    expect(screen.queryByTestId("integrations-keys-description")).toBeNull();
+  });
+
+  it("shows that advice once a key exists", async () => {
+    mockedList.mockResolvedValueOnce(page([key("ci")]));
+
+    renderPage();
+
+    await screen.findByTestId("integrations-key-row");
+    expect(
+      screen.getByTestId("integrations-keys-description"),
+    ).toBeInTheDocument();
+  });
+
+  it("offers the key from the empty state, for a reader who can create one", async () => {
+    mockedList.mockResolvedValueOnce(page([]));
+
+    renderPage();
+
+    const empty = await screen.findByTestId("integrations-keys-empty");
+    expect(empty.textContent).toContain("A build cannot scan without one.");
+    // Both hints open with that sentence, so the admin case is only pinned
+    // by the half that differs.
+    expect(empty.textContent).not.toContain("Ask a team administrator");
+
+    // Pressed, not just present: a button wired to nothing would have passed.
+    await userEvent.click(screen.getByTestId("integrations-keys-empty-create"));
+    expect(
+      await screen.findByTestId("integrations-create-dialog"),
+    ).toBeInTheDocument();
+  });
+
+  it("tells a developer who to ask instead of what to press", async () => {
+    // This page renders no create button for a developer (#136), so the old
+    // copy - "No API keys yet. Create one to get started." - pointed at
+    // something that is not there.
+    loginAs(authUser({ id: "user-dev", role: "developer" }));
+    mockedList.mockResolvedValueOnce(page([]));
+
+    renderPage();
+
+    const empty = await screen.findByTestId("integrations-keys-empty");
+    expect(empty.textContent).toContain("Ask a team administrator");
+    expect(screen.queryByTestId("integrations-keys-empty-create")).toBeNull();
+  });
+
   it("opens the create dialog and reveals the raw key on success", async () => {
     mockedList.mockResolvedValue(page([]));
     const created: APIKeyCreateOut = {

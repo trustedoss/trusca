@@ -19,6 +19,7 @@ import { Copy, KeyRound, Plus, Trash2 } from "lucide-react";
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
 
+import { EmptyState } from "@/components/EmptyState";
 import { PageHeader } from "@/components/PageHeader";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
@@ -242,9 +243,19 @@ export function IntegrationsPage() {
               <h2 className="text-base font-semibold">
                 {t("api_keys.section_title")}
               </h2>
-              <p className="text-xs text-muted-foreground">
-                {t("api_keys.section_description")}
-              </p>
+              {/* C3 - held back until there is a key. It explains how to use
+                  tokens and warns about revoking an exposed one, which above
+                  an empty table is advice about something that does not
+                  exist. The empty state below carries what a reader with no
+                  keys actually needs. */}
+              {items.length > 0 ? (
+                <p
+                  className="text-xs text-muted-foreground"
+                  data-testid="integrations-keys-description"
+                >
+                  {t("api_keys.section_description")}
+                </p>
+              ) : null}
             </div>
             {/* Key creation is team_admin+ on the backend — hide the entry
                 point for developers instead of letting them hit a 403. */}
@@ -386,14 +397,38 @@ export function IntegrationsPage() {
                         </tr>
                       );
                     })}
-                {!keysQuery.isLoading && items.length === 0 ? (
+                {!keysQuery.isLoading &&
+                !keysQuery.isError &&
+                items.length === 0 ? (
                   <tr>
-                    <td
-                      colSpan={COLUMN_COUNT}
-                      className="px-3 py-8 text-center text-sm text-muted-foreground"
-                      data-testid="integrations-keys-empty"
-                    >
-                      {t("api_keys.empty")}
+                    <td colSpan={COLUMN_COUNT} className="p-0">
+                      {/* C3 - the shared primitive, and copy that matches who
+                          is reading. It used to say "Create one to get
+                          started" to everyone, including the developers this
+                          page renders no create button for. */}
+                      <EmptyState
+                        data-testid="integrations-keys-empty"
+                        icon={<KeyRound />}
+                        title={t("api_keys.empty")}
+                        description={
+                          isTeamAdminOrAbove
+                            ? t("api_keys.empty_hint_can_create")
+                            : t("api_keys.empty_hint_cannot_create")
+                        }
+                        action={
+                          isTeamAdminOrAbove ? (
+                            <Button
+                              type="button"
+                              size="sm"
+                              onClick={() => setCreateOpen(true)}
+                              data-testid="integrations-keys-empty-create"
+                            >
+                              <Plus className="h-3 w-3" aria-hidden />
+                              <span>{t("api_keys.create_button")}</span>
+                            </Button>
+                          ) : undefined
+                        }
+                      />
                     </td>
                   </tr>
                 ) : null}

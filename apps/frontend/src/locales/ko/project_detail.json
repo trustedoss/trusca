@@ -190,7 +190,7 @@
     "recent_scans": {
       "title": "최근 스캔",
       "subtitle": "이 프로젝트의 최근 스캔 5건입니다.",
-      "empty": "아직 스캔 이력이 없습니다.",
+      "empty": "아직 스캔이 없습니다",
       "reopen_aria": "이 스캔의 진행 상태 보기",
       "col_started": "시작 시각",
       "col_version": "버전",
@@ -208,7 +208,9 @@
         "source": "소스",
         "container": "컨테이너",
         "sbom": "SBOM 업로드"
-      }
+      },
+      "empty_hint": "이 프로젝트는 아직 스캔한 적이 없습니다.",
+      "run_scan": "스캔 실행"
     },
     "gate_card": {
       "title": "빌드 차단 게이트",
@@ -340,8 +342,11 @@
       "malicious_only": "악성만"
     },
     "empty": {
-      "title": "조건에 맞는 컴포넌트가 없습니다",
-      "subtitle": "필터를 조정하거나 새 스캔을 실행하세요."
+      "title": "이 필터에 맞는 컴포넌트가 없습니다",
+      "subtitle": "현재 필터가 모든 컴포넌트를 걸러 냈습니다.",
+      "unfiltered_title": "아직 컴포넌트가 없습니다",
+      "unfiltered_subtitle": "이 표는 스캔이 채웁니다.",
+      "run_scan": "스캔 실행"
     },
     "errors": {
       "load_failed": "컴포넌트를 불러오지 못했습니다."
@@ -1012,8 +1017,8 @@
   },
   "source": {
     "empty": {
-      "title": "이 스캔에 보존된 소스가 없습니다",
-      "description": "이 스캔은 분석한 소스 파일 사본을 보존하지 않았습니다. 소스 파일 뷰어를 사용하려면 프로젝트를 다시 스캔하세요."
+      "title": "볼 수 있는 소스 파일이 없습니다",
+      "description": "이 뷰어에는 분석한 파일의 사본을 남긴 스캔이 필요한데, 여기에서 쓸 수 있는 것이 없습니다."
     },
     "tree": {
       "empty_dir": "빈 디렉터리",

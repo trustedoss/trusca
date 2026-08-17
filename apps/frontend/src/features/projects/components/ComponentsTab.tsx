@@ -1,10 +1,12 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2026 TRUSCA contributors
+import { Boxes } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { Link, useSearchParams } from "react-router-dom";
 import { Virtuoso } from "react-virtuoso";
 
+import { EmptyState } from "@/components/EmptyState";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import {
@@ -171,9 +173,20 @@ export interface ComponentsTabProps {
    * historical scan instead of the latest succeeded one. Omit → latest.
    */
   scanId?: string;
+  /**
+   * C3 - starts a scan from the unfiltered empty state, the same prop the
+   * Vulnerabilities and Compliance tabs take. Omitted when the reader cannot
+   * scan, so the empty state offers nothing rather than a button that
+   * refuses.
+   */
+  onScan?: () => void;
 }
 
-export function ComponentsTab({ projectId, scanId }: ComponentsTabProps) {
+export function ComponentsTab({
+  projectId,
+  scanId,
+  onScan,
+}: ComponentsTabProps) {
   const { t } = useTranslation("project_detail");
   const [searchParams, setSearchParams] = useSearchParams();
 
@@ -365,6 +378,19 @@ export function ComponentsTab({ projectId, scanId }: ComponentsTabProps) {
     order,
     setSearchParams,
   ]);
+
+  // C3 - which of the two empty states applies. Every control the toolbar
+  // offers is listed, so a filter added later that is left out of this shows
+  // up as the wrong empty state rather than as nothing at all.
+  const hasNarrowingFilters =
+    debouncedSearch.trim().length > 0 ||
+    severity.length > 0 ||
+    licenseCategory.length > 0 ||
+    direct !== null ||
+    dependencyScope.length > 0 ||
+    eolOnly ||
+    outdatedOnly ||
+    maliciousOnly;
 
   const filters = useMemo(
     () => ({
@@ -635,16 +661,37 @@ export function ComponentsTab({ projectId, scanId }: ComponentsTabProps) {
       ) : null}
 
       {!components.isLoading && !components.isError && items.length === 0 ? (
-        <Card className="m-6" data-testid="components-empty">
-          <CardHeader>
-            <CardTitle className="text-base">
-              {t("components.empty.title")}
-            </CardTitle>
-          </CardHeader>
-          <CardContent className="text-sm text-muted-foreground">
-            {t("components.empty.subtitle")}
-          </CardContent>
-        </Card>
+        // C3 - the two cases want different things and used to share one
+        // sentence. A filter that excluded everything wants the filter
+        // widened; a project nobody has scanned has no filter set at all, and
+        // telling that reader to "adjust the filters" sent them looking for a
+        // control they had never touched.
+        <EmptyState
+          className="m-6"
+          data-testid="components-empty"
+          icon={<Boxes />}
+          title={
+            hasNarrowingFilters
+              ? t("components.empty.title")
+              : t("components.empty.unfiltered_title")
+          }
+          description={
+            hasNarrowingFilters
+              ? t("components.empty.subtitle")
+              : t("components.empty.unfiltered_subtitle")
+          }
+          action={
+            !hasNarrowingFilters && onScan ? (
+              <Button
+                size="sm"
+                onClick={onScan}
+                data-testid="components-empty-scan"
+              >
+                {t("components.empty.run_scan")}
+              </Button>
+            ) : undefined
+          }
+        />
       ) : null}
 
       {!components.isLoading && !components.isError && items.length > 0 ? (

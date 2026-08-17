@@ -83,7 +83,7 @@ interface TeamOption {
 
 export function PoliciesPage() {
   const { t } = useTranslation("policies");
-  const { isSuperAdmin } = usePermissions();
+  const { isSuperAdmin, isTeamAdminOrAbove } = usePermissions();
 
   const [searchParams, setSearchParams] = useSearchParams();
   const drawerTarget = parseDrawerParam(searchParams.get(DRAWER_PARAM));
@@ -340,10 +340,21 @@ export function PoliciesPage() {
             {!policiesQuery.isLoading && policies.length === 0 ? (
               <tr>
                 <td colSpan={6} className="p-0">
+                  {/* C3 - the absence and the instruction used to be one
+                      sentence, and the instruction was wrong for a developer:
+                      they can pick a team and open the drawer, but the editor
+                      is read-only unless they administer that team. The
+                      description also says what applies meanwhile, so an
+                      empty list does not read as "nothing is checked". */}
                   <EmptyState
                     data-testid="policies-empty"
                     icon={<FileText />}
                     title={t("policies.empty")}
+                    description={
+                      isTeamAdminOrAbove
+                        ? t("policies.empty_hint_can_author")
+                        : t("policies.empty_hint_cannot_author")
+                    }
                   />
                 </td>
               </tr>
