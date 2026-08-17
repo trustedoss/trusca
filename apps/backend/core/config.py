@@ -2052,6 +2052,44 @@ def oidc_scopes() -> str:
     return " ".join(scopes)
 
 
+def oidc_groups_claim() -> str:
+    """Userinfo claim listing the groups the person belongs to.
+
+    Providers disagree on the name (``groups`` is common, some send ``roles``),
+    and unlike the address there is no standard claim to insist on: nothing
+    vouches for a group list, so reading a different name changes only which
+    unvouched list is read. Empty disables mapping entirely.
+    """
+    raw = os.getenv("OIDC_GROUPS_CLAIM", "").strip()
+    return raw or "groups"
+
+
+def oidc_group_role_map() -> dict[str, str]:
+    """Group to grade, as ``group:grade`` pairs separated by commas.
+
+    Unset means every arriving person gets the floor, which is the safe
+    reading: a deployment that has not said what a group means has not said
+    that it means privilege.
+
+    ``super_admin`` is refused here even if written. That grade administers the
+    whole deployment, and honouring it would mean anyone who can create a group
+    in the identity provider can mint a portal administrator. It stays a
+    decision an existing administrator makes in the portal.
+    """
+    raw = os.getenv("OIDC_GROUP_ROLE_MAP", "").strip()
+    if not raw:
+        return {}
+    mapping: dict[str, str] = {}
+    for pair in raw.split(","):
+        group, _, grade = pair.partition(":")
+        group = group.strip()
+        grade = grade.strip()
+        if not group or grade not in {"viewer", "developer", "team_admin"}:
+            continue
+        mapping[group] = grade
+    return mapping
+
+
 def oauth_state_ttl_seconds() -> int:
     """Lifetime of the signed OAuth ``state`` JWT (CSRF guard).
 

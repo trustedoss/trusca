@@ -225,6 +225,8 @@ The deployment's own identity provider. One provider, not a list: an organisatio
 | `OIDC_CLIENT_ID` | (empty) | `config.py` | Client id registered with the provider. |
 | `OIDC_CLIENT_SECRET` | (empty) | `config.py` | Client secret. The exchange is a confidential-client authorization code flow. |
 | `OIDC_SCOPES` | `openid email profile` | `config.py` | Scopes requested at sign-in. `openid` is added back if omitted. |
+| `OIDC_GROUPS_CLAIM` | `groups` | `config.py` | Userinfo claim listing group membership. Unlike the address there is no standard claim to insist on, since nothing vouches for a group list either way. |
+| `OIDC_GROUP_ROLE_MAP` | (empty) | `config.py` | `group:grade` pairs, comma separated, deciding the grade a person gets on the team created at first sign-in. Empty means everyone keeps the historical grade. Once set, someone matching no group gets the lowest grade, because a deployment that has mapped its groups has said what matching none of them means. `super_admin` is refused here even if written: whoever can create a group in the provider would otherwise be able to mint a portal administrator. |
 
 The address comes from the standard `email` claim and the provider must report it verified. There is no setting to read it from another claim: `email_verified` vouches for `email` alone, so an address taken from elsewhere carries a flag that describes something different, and on several providers that other claim is editable by its holder. Providers let an administrator map their claim onto `email`, which is where that belongs.
 

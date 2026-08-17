@@ -85,6 +85,10 @@ class OAuthUserInfo:
             waived verification: in both cases the address is a claim the
             user can influence, and matching it against an existing account
             would hand that account to whoever asserts it.
+        groups: Group names the provider reported, empty when it reports none
+            or the deployment maps no groups. Never trusted on its own: a
+            group only means something when the deployment has said what it
+            means, and it can never mean super_admin.
     """
 
     provider: ProviderName
@@ -93,6 +97,7 @@ class OAuthUserInfo:
     full_name: str | None
     avatar_url: str | None
     email_can_link_existing_account: bool = True
+    groups: tuple[str, ...] = ()
 
 
 # ---------------------------------------------------------------------------
