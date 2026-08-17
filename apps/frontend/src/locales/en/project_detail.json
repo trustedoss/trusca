@@ -209,7 +209,7 @@
         "container": "Container",
         "sbom": "SBOM upload"
       },
-      "empty_hint": "A registered project shows nothing until a scan has looked at it.",
+      "empty_hint": "This project has not been scanned yet.",
       "run_scan": "Run a scan"
     },
     "gate_card": {
@@ -342,8 +342,11 @@
       "malicious_only": "Flagged only"
     },
     "empty": {
-      "title": "No components match",
-      "subtitle": "Adjust the filters or trigger a new scan."
+      "title": "No components match these filters",
+      "subtitle": "Every component was excluded by the current filters.",
+      "unfiltered_title": "No components yet",
+      "unfiltered_subtitle": "A scan is what fills this table.",
+      "run_scan": "Run a scan"
     },
     "errors": {
       "load_failed": "Could not load components."
@@ -1014,8 +1017,8 @@
   },
   "source": {
     "empty": {
-      "title": "No preserved source for this scan",
-      "description": "This scan did not keep a copy of the analysed source files. Re-scan the project to enable the source file viewer."
+      "title": "No source files to browse",
+      "description": "This viewer needs a scan that kept a copy of the analysed files. Either none has run for this project, or the one that did was not asked to preserve them."
     },
     "tree": {
       "empty_dir": "Empty directory",

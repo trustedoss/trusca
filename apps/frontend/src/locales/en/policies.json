@@ -2,7 +2,7 @@
   "policies": {
     "title": "License policies",
     "subtitle": "Override how SPDX licenses map to allowed, conditional, and forbidden for your team or organization.",
-    "empty": "No license policies yet. Pick a team above to author one.",
+    "empty": "No licence policies yet",
     "no_name": "Unnamed policy",
     "toolbar": {
       "team_label": "Team",
@@ -100,6 +100,8 @@
       "conflict": "A policy already exists for this scope. Reload and try again.",
       "validation": "The policy could not be saved. Check the identifiers, sizes, and reasons, then try again.",
       "unknown": "Something went wrong. Please try again."
-    }
+    },
+    "empty_hint_can_author": "Until one exists the built-in licence categories apply. Pick a team above to write one.",
+    "empty_hint_cannot_author": "Until one exists the built-in licence categories apply. Writing one is a team administrator's job."
   }
 }

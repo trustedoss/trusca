@@ -397,7 +397,9 @@ export function IntegrationsPage() {
                         </tr>
                       );
                     })}
-                {!keysQuery.isLoading && items.length === 0 ? (
+                {!keysQuery.isLoading &&
+                !keysQuery.isError &&
+                items.length === 0 ? (
                   <tr>
                     <td colSpan={COLUMN_COUNT} className="p-0">
                       {/* C3 - the shared primitive, and copy that matches who

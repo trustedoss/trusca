@@ -33,7 +33,7 @@ describe("RecentScansTable empty state", () => {
     const empty = screen.getByTestId("recent-scans-empty");
     // The description is the part that was missing: "no scans" alone reads as
     // a fact about the project rather than as the one step still to take.
-    expect(empty.textContent).toContain("until a scan has looked at it");
+    expect(empty.textContent).toContain("has not been scanned yet");
 
     await user.click(screen.getByTestId("recent-scans-scan"));
     expect(onScan).toHaveBeenCalledOnce();

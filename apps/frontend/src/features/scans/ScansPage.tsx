@@ -265,7 +265,9 @@ export function ScansPage() {
                     </tr>
                   );
                 })}
-            {!scansQuery.isLoading && items.length === 0 ? (
+            {!scansQuery.isLoading &&
+            !scansQuery.isError &&
+            items.length === 0 ? (
               <tr>
                 <td colSpan={6} className="p-0">
                   {/* C3 - the "all" tab sends no status filter, so on a fresh

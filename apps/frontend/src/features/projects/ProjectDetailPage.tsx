@@ -660,7 +660,15 @@ export function ProjectDetailPage() {
           />
         </TabsContent>
         <TabsContent value="components">
-          <ComponentsTab projectId={projectId} scanId={pinnedScanId} />
+          <ComponentsTab
+            projectId={projectId}
+            scanId={pinnedScanId}
+            onScan={
+              project != null && !writesDisabled && !isHistorical
+                ? () => setSourceDialogOpen(true)
+                : undefined
+            }
+          />
         </TabsContent>
         <TabsContent value="vulnerabilities">
           <VulnerabilitiesTab

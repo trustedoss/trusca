@@ -138,6 +138,9 @@ describe("ScansPage", () => {
 
     const empty = await screen.findByTestId("scans-empty");
     expect(empty.textContent).not.toContain("filter");
+    // The sentence, not just the link: where a scan starts is the thing this
+    // state exists to tell someone who has never run one.
+    expect(empty.textContent).toContain("A scan starts from a project.");
     expect(screen.getByTestId("scans-empty-projects")).toHaveAttribute(
       "href",
       "/projects",

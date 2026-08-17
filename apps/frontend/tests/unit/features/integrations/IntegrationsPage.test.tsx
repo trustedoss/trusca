@@ -184,8 +184,14 @@ describe("IntegrationsPage", () => {
 
     const empty = await screen.findByTestId("integrations-keys-empty");
     expect(empty.textContent).toContain("A build cannot scan without one.");
+    // Both hints open with that sentence, so the admin case is only pinned
+    // by the half that differs.
+    expect(empty.textContent).not.toContain("Ask a team administrator");
+
+    // Pressed, not just present: a button wired to nothing would have passed.
+    await userEvent.click(screen.getByTestId("integrations-keys-empty-create"));
     expect(
-      screen.getByTestId("integrations-keys-empty-create"),
+      await screen.findByTestId("integrations-create-dialog"),
     ).toBeInTheDocument();
   });
 
