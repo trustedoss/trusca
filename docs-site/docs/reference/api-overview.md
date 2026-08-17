@@ -226,13 +226,33 @@ Authentication is handled by the **first message** the client sends, not by quer
 { "type": "auth", "token": "<JWT access token>" }
 ```
 
-The gateway closes the connection with code `1008` / reason `auth_timeout` if the first frame does not arrive within `WEBSOCKET_AUTH_TIMEOUT_SECONDS` (default 1.0 s). Subsequent server frames carry progress events:
+The gateway closes the connection with code `1008` / reason `auth_timeout` if the first frame does not arrive within `WEBSOCKET_AUTH_TIMEOUT_SECONDS` (default 1.0 s).
+
+Reconnect with exponential backoff. Each reconnect receives one initial-sync frame from the current scan row before live events flow.
+
+### Server frames
+
+Two kinds of frame travel down this one socket, told apart by `type`.
+
+**Progress** says where the pipeline is:
 
 ```json
 { "type": "progress", "percent": 70, "step": "scancode", "ts": "2026-05-10T12:34:56Z" }
 ```
 
-Reconnect with exponential backoff. Each reconnect receives one initial-sync frame from the current scan row before live events flow.
+A frame with no `type` at all is a progress frame. The discriminator was added after the envelope shipped, so clients written against `{percent, step, ts}` keep working.
+
+**Log** carries one line of a scan tool's output:
+
+```json
+{ "type": "log", "stage": "scancode", "stream": "stderr", "line": "ERROR: no license detected in LICENSE.txt", "ts": "2026-05-10T12:34:56Z" }
+```
+
+`stage` names the pipeline step that produced the line, drawn from the same vocabulary as a progress frame's `step` (`cdxgen`, `scancode`, `scanoss`, `trivy`, …). `stream` is `stdout` or `stderr`, and nothing else: the publisher normalises any other value to `stdout`. It is what lets a client tint or filter a tool's error output without parsing the text.
+
+Two limits shape what arrives. A line longer than `SCAN_LOG_LINE_MAX_LEN` (default 2000) is truncated, and once a scan has published `SCAN_LOG_MAX_LINES_PER_SCAN` lines (default 20000, shared across all its stages) no further log frames are sent. A client should not read the end of the log stream as the end of the scan; progress frames keep coming either way.
+
+Treat an unrecognised `type` as a frame to skip rather than a protocol error. The portal's own client drops any frame it cannot read as one of these two shapes and leaves the socket open, which is what lets a new frame type ship without breaking older clients.
 
 ### Close codes
 
