@@ -58,7 +58,7 @@ LicenseCategoryName = Literal["forbidden", "conditional", "allowed", "unknown"]
 # or developer): a user who is `team_admin` of this project's team must see
 # `team_admin` here so the frontend can enable team-scoped actions such as
 # vulnerability suppression (BUG-005). See `current_user_role` below.
-TeamScopedRole = Literal["super_admin", "team_admin", "developer"]
+TeamScopedRole = Literal["super_admin", "team_admin", "developer", "viewer"]
 
 
 # ---------------------------------------------------------------------------

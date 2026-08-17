@@ -409,3 +409,31 @@ async def test_create_team_rejects_invalid_payload_with_422_problem(
     )
     assert response.status_code == 422
     assert response.headers["content-type"].startswith(PROBLEM_JSON)
+
+
+async def test_add_member_as_viewer_is_accepted_and_stored(
+    client: AsyncClient,
+) -> None:
+    """The assignment surface has its own closed vocabulary.
+
+    The enum, the gates and this validator are three separate lists. A grade
+    can exist in the database and clear the gates while the only API that
+    grants it still answers 422, which is how the grade stayed unusable
+    between the two changes that introduced it.
+    """
+    factory = await _factory(client)
+    async with factory() as session:
+        org = await make_organization(session)
+        team = await make_team(session, organization=org)
+        target = await make_user(session)
+        admin = await make_user(session, is_superuser=True)
+
+    response = await client.post(
+        f"/v1/admin/teams/{team.id}/members",
+        headers=_bearer_for(admin),
+        json={"user_id": str(target.id), "role": "viewer"},
+    )
+
+    assert response.status_code == 200, response.text
+    body = response.json()
+    assert any(m["user_id"] == str(target.id) and m["role"] == "viewer" for m in body["members"])

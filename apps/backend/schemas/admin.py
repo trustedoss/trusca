@@ -31,8 +31,8 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator
 # ---------------------------------------------------------------------------
 
 # Closed role set — must match the user_role ENUM created in 0002_auth_schema.
-_ROLE_VALUES = ("super_admin", "team_admin", "developer")
-_TEAM_ROLE_VALUES = ("team_admin", "developer")
+_ROLE_VALUES = ("super_admin", "team_admin", "developer", "viewer")
+_TEAM_ROLE_VALUES = ("team_admin", "developer", "viewer")
 _SLUG_PATTERN = re.compile(r"^[a-z0-9][a-z0-9-]{0,63}$")
 
 
@@ -74,7 +74,7 @@ class AdminUserListItem(BaseModel):
     full_name: str | None = None
     is_active: bool
     is_superuser: bool
-    role: Literal["super_admin", "team_admin", "developer"] = "developer"
+    role: Literal["super_admin", "team_admin", "developer", "viewer"] = "developer"
     team_count: int = 0
     last_login_at: datetime | None = None
     created_at: datetime
@@ -245,7 +245,7 @@ class AdminTeamMemberAdd(BaseModel):
     """Body for ``POST /v1/admin/teams/{id}/members``."""
 
     user_id: uuid.UUID
-    role: str = Field(description="Either team_admin or developer.")
+    role: str = Field(description="One of team_admin, developer or viewer.")
 
     @field_validator("role")
     @classmethod

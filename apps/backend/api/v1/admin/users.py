@@ -104,7 +104,7 @@ async def list_users_endpoint(
     # ignoring values it didn't recognize ("admin", "SUPER_ADMIN", trailing
     # whitespace, ...). FastAPI now rejects anything outside the canonical
     # 3-role set with a 422 BEFORE the service runs.
-    role: Literal["super_admin", "team_admin", "developer"] | None = Query(default=None),
+    role: Literal["super_admin", "team_admin", "developer", "viewer"] | None = Query(default=None),
     active: bool | None = Query(default=None),
     search: str | None = Query(default=None, max_length=255),
     session: AsyncSession = Depends(get_db),

@@ -298,7 +298,7 @@ async def list_users(
     if role == "super_admin":
         base = base.where(User.is_superuser.is_(True))
         count_base = count_base.where(User.is_superuser.is_(True))
-    elif role in ("team_admin", "developer"):
+    elif role in ("team_admin", "developer", "viewer"):
         sub = select(Membership.user_id).where(Membership.role == role).scalar_subquery()
         base = base.where(User.id.in_(sub))
         count_base = count_base.where(User.id.in_(sub))
