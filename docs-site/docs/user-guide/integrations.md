@@ -14,7 +14,7 @@ sidebar_position: 9
 - **Webhooks** — inbound URLs the portal exposes for GitHub and GitLab to push repository events (push, pull request).
 
 :::note Audience
-`developer` to view, `team_admin` to issue or revoke team-scoped API keys, `super_admin` to issue org-scoped keys. The page hides actions you cannot perform.
+`developer` to view and to issue project-scoped API keys for their own team's projects, `team_admin` to add team-scoped keys, `super_admin` to add org-scoped keys. The page hides actions you cannot perform.
 :::
 
 ## API keys
@@ -25,13 +25,13 @@ Open `/integrations` and scroll to the **API keys** section. The list shows ever
 
 ### Create a key
 
-1. Click **New API key**. The dialog asks for a name and scope; submit to mint the key.
+1. Click **Create API key**. The dialog asks for a name and scope; submit to mint the key.
 
    ![Integrations — Create API key dialog with name + scope inputs](/img/screenshots/user-integrations-key-create.png)
 
 2. Fill in the form:
-   - **Name** — free-text reminder of what the key is for (e.g. `github-action-checkout-service`).
-   - **Scope** — `org`, `team`, or `project`. Lower scopes are stricter; pick the smallest that covers the calls you need to make. The form has plain UUID inputs for `team_id` (required when scope=`team`) and `project_id` (required when scope=`project`); copy the IDs from the corresponding admin pages.
+   - **Name**: free-text reminder of what the key is for (e.g. `github-action-checkout-service`).
+   - **Scope**: the dropdown offers only the scopes you may issue, out of `project`, `team`, and `org`. Lower scopes are stricter; pick the smallest that covers the calls you need to make. The form has plain UUID inputs for `team_id` (required when scope=`team`) and `project_id` (required when scope=`project`); copy the IDs from the corresponding admin pages.
 
    Who can issue each scope:
 

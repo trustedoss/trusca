@@ -14,7 +14,7 @@ sidebar_position: 9
 - **Webhook** — GitHub와 GitLab이 저장소 이벤트(push, pull request)를 푸시하기 위해 포털이 노출하는 인바운드 URL.
 
 :::note 대상 독자
-조회는 `developer`, 팀 범위 API Key 발급·폐기는 `team_admin`, 조직 범위 Key 발급은 `super_admin`. 페이지는 본인이 수행할 수 없는 동작을 숨깁니다.
+조회와 소속 팀 프로젝트의 프로젝트 범위 API Key 발급은 `developer`, 팀 범위 Key 발급은 `team_admin`, 조직 범위 Key 발급은 `super_admin`. 페이지는 본인이 수행할 수 없는 동작을 숨깁니다.
 :::
 
 ## API Key
@@ -25,13 +25,13 @@ sidebar_position: 9
 
 ### Key 생성
 
-1. **New API key**를 클릭합니다. 다이얼로그에서 이름과 scope를 입력하고 제출하면 Key가 발급됩니다.
+1. **Create API key**를 클릭합니다. 다이얼로그에서 이름과 scope를 입력하고 제출하면 Key가 발급됩니다.
 
    ![통합 — name과 scope 입력이 있는 API key 생성 다이얼로그](/img/screenshots/user-integrations-key-create.png)
 
 2. 폼을 채웁니다.
    - **Name** — Key 용도를 떠올리게 하는 자유 텍스트(예: `github-action-checkout-service`).
-   - **Scope** — `org`, `team`, `project`. 낮은 scope가 더 엄격합니다. 필요한 호출을 커버하는 가장 작은 scope를 선택하세요. 폼에는 `team_id`(scope=`team`일 때 필수)와 `project_id`(scope=`project`일 때 필수)를 위한 평문 UUID 입력란이 있습니다. 해당 admin 페이지에서 ID를 복사해 넣으세요.
+   - **Scope** — 드롭다운에는 `org`, `team`, `project` 가운데 본인이 발급할 수 있는 scope만 나열됩니다. 낮은 scope가 더 엄격합니다. 필요한 호출을 커버하는 가장 작은 scope를 선택하세요. 폼에는 `team_id`(scope=`team`일 때 필수)와 `project_id`(scope=`project`일 때 필수)를 위한 평문 UUID 입력란이 있습니다. 해당 admin 페이지에서 ID를 복사해 넣으세요.
 
    각 scope 발급 권한:
 

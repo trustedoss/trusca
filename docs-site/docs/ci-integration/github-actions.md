@@ -76,7 +76,7 @@ A ref with no succeeded scan yields the no-signal `pass` rather than another bra
 
 ### 1. Generate an API key
 
-In the portal: **/integrations → API keys → New API key**. Pick scope `project` and bind it to the project CI will scan (or `team` if you intend one key to cover every project owned by a team). API keys inherit the issuing user's role in this release — there is no per-key allowed-actions list. See [API keys](../admin-guide/api-keys.md) for the scope model.
+In the portal: **/integrations → API keys → Create API key**. Pick scope `project` and bind it to the project CI will scan (or `team` if you intend one key to cover every project owned by a team). API keys inherit the issuing user's role in this release, and there is no per-key allowed-actions list. See [API keys](../admin-guide/api-keys.md) for the scope model.
 
 ### 2. Store the key in GitHub
 

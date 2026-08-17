@@ -11,7 +11,7 @@ sidebar_position: 6
 API Key는 **비대화형** 클라이언트(CI 러너·Webhook·스크립트·GitHub Action)를 위한 자격증명입니다. 사용자의 JWT 세션을 소비하지 않고 머신 간 트래픽을 인증합니다.
 
 :::note 대상 독자
-팀 범위 Key를 발급하는 `team_admin`, 조직 범위 Key를 발급하는 `super_admin`.
+소속 팀의 프로젝트에 대해 프로젝트 범위 Key를 발급하는 `developer`, 여기에 팀 범위 Key가 더해지는 `team_admin`, 조직 범위 Key까지 발급하는 `super_admin`.
 :::
 
 ## /integrations UI로 관리하기
@@ -24,7 +24,7 @@ API Key는 **비대화형** 클라이언트(CI 러너·Webhook·스크립트·Gi
 
 ![/integrations — admin이 Key를 발급·폐기하는 API keys 섹션](/img/screenshots/user-integrations-keys.png)
 
-생성 다이얼로그는 `team_admin`과 `super_admin`이 동일한 화면을 사용합니다. super-admin의 경우 scope 드롭다운에 `org`가 추가됩니다.
+생성 다이얼로그는 모든 역할이 동일한 화면을 사용합니다. scope 드롭다운에는 로그인한 사용자가 발급할 수 있는 scope만 나열되므로 developer에게는 `project` 하나만, super-admin에게는 셋 모두 보입니다.
 
 ![/integrations — Label과 scope 입력이 있는 API key 생성 다이얼로그](/img/screenshots/user-integrations-key-create.png)
 
@@ -73,15 +73,15 @@ curl -sS -X POST "https://trustedoss.example.com/v1/api-keys" \
 
 ## Key 발급
 
-### Team admin으로
+### 통합 페이지에서
 
-1. **/integrations**(`team_admin` 이상 사용 가능한 최상위 사이드바 항목)을 엽니다.
-2. **API keys** 탭으로 전환.
-3. **New API key** 클릭.
+1. **/integrations**(로그인한 모든 사용자가 쓸 수 있는 최상위 사이드바 항목)을 엽니다.
+2. **API keys** 섹션으로 스크롤합니다.
+3. **Create API key** 클릭. 이 버튼이 없는 경우는 어느 팀에도 속하지 않아 발급 가능한 scope가 하나도 없을 때뿐입니다.
 4. 채우기:
-   - **Label**(예: `github-action-checkout-service`)
-   - **Scope** — `team`(기본) 또는 `project`
-   - **Project** — scope가 `project`일 때 필수
+   - **Name**(예: `github-action-checkout-service`)
+   - **Scope** — `project`(기본). 팀 관리자라면 `team`도 함께 표시됩니다
+   - **Project ID** — scope가 `project`일 때 필수. scope가 `team`이면 **Team ID**
 5. **Create**.
 
 전체 Key는 모달에서 **단 한 번** 표시됩니다. 복사해 CI 시크릿 저장소(GitHub secrets, GitLab CI variables, Jenkins credentials)에 보관하세요. 모달을 닫으면 UI에서는 prefix만 보이고 전체 Key는 복구 불가입니다.

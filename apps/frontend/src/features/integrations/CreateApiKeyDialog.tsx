@@ -26,7 +26,7 @@ import {
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { usePermissions } from "@/hooks/usePermissions";
+import { useApiKeyScopes } from "@/features/integrations/useApiKeyScopes";
 import type { APIKeyCreatePayload, APIKeyScope } from "@/types/apiKey";
 
 interface CreateApiKeyDialogProps {
@@ -43,13 +43,15 @@ export function CreateApiKeyDialog({
   submitting,
 }: CreateApiKeyDialogProps) {
   const { t } = useTranslation("integrations");
-  // L-16: org-scoped keys are super_admin only on the backend (team_admin
-  // gets a 403). Mirror that rule by not rendering the option at all. The
-  // default selection is "project", which every eligible role can see, so a
-  // hidden option can never be the selected value.
-  const { isSuperAdmin } = usePermissions();
+  // L-16 / #136: the backend gates each scope separately, so mirror it scope
+  // by scope rather than rendering an option the caller is certain to be
+  // refused. `allowedScopes` is never empty here (the page hides the entry
+  // point when it is), and its first entry is the default selection, so the
+  // selected value is always an option that is actually rendered.
+  const { allowedScopes } = useApiKeyScopes();
+  const defaultScope = allowedScopes[0] ?? "project";
   const [name, setName] = useState("");
-  const [scope, setScope] = useState<APIKeyScope>("project");
+  const [scope, setScope] = useState<APIKeyScope>(defaultScope);
   const [teamId, setTeamId] = useState("");
   const [projectId, setProjectId] = useState("");
   // "" → never expires; otherwise the TTL in days. Kept as the raw <select>
@@ -59,7 +61,7 @@ export function CreateApiKeyDialog({
 
   function reset() {
     setName("");
-    setScope("project");
+    setScope(defaultScope);
     setTeamId("");
     setProjectId("");
     setExpiresInDays("");
@@ -141,11 +143,11 @@ export function CreateApiKeyDialog({
               disabled={submitting}
               className="flex h-9 w-full rounded-md border border-input bg-background px-3 py-1 text-sm shadow-sm transition-colors duration-fast ease-out-soft focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
             >
-              <option value="project">{t("api_keys.scope.project")}</option>
-              <option value="team">{t("api_keys.scope.team")}</option>
-              {isSuperAdmin ? (
-                <option value="org">{t("api_keys.scope.org")}</option>
-              ) : null}
+              {allowedScopes.map((value) => (
+                <option key={value} value={value}>
+                  {t(`api_keys.scope.${value}`)}
+                </option>
+              ))}
             </select>
             <p className="text-xs text-muted-foreground">
               {scope === "org"

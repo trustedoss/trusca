@@ -88,7 +88,7 @@
       "summary": "페이지 {{page}} / {{total}}"
     },
     "empty_hint_can_create": "키가 없으면 빌드에서 스캔할 수 없습니다.",
-    "empty_hint_cannot_create": "키가 없으면 빌드에서 스캔할 수 없습니다. 팀 관리자에게 키 발급을 요청하세요."
+    "empty_hint_cannot_create": "키가 없으면 빌드에서 스캔할 수 없습니다. 키는 팀의 프로젝트를 대상으로 발급되는데, 아직 소속된 팀이 없습니다. 관리자에게 팀 배정을 요청하세요."
   },
   "webhooks": {
     "section_title": "웹훅 URL",
