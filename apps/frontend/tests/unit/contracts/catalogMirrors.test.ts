@@ -47,6 +47,9 @@ import {
 import { SLA_STATUS_VALUES } from "@/features/projects/api/vulnerabilitiesApi";
 import { ALL_VULNERABILITY_STATUSES } from "@/features/projects/lib/vulnerabilityTransitions";
 import { DEMO_LOGIN_EMAIL } from "@/pages/auth/DemoCredentialsHint";
+import type { UserRole } from "@/features/admin/api/adminUsersApi";
+import type { TeamScopedRole } from "@/features/projects/api/projectDetailApi";
+import type { TriageRole } from "@/features/projects/lib/vulnerabilityTransitions";
 import { ROLE_RANK, effectiveRole } from "@/lib/roles";
 import { visualFor } from "@/features/projects/components/ProjectStatusBadge";
 import {
@@ -772,5 +775,44 @@ describe("role vocabulary mirror", () => {
     // an unknown grade silently resolves to this one instead of failing.
     expect(effectiveRole(false, ["not_a_real_role"])).toBe("developer");
     expect(effectiveRole(false, [])).toBe("developer");
+  });
+});
+
+describe("role vocabularies inside the frontend", () => {
+  // Three modules carry their own copy of the grade list, and each one was
+  // written before there was a grade below developer. A copy that lags does
+  // not fail loudly: it narrows a union, so the missing grade turns into a
+  // type error at one call site or, worse, flows through as an unhandled
+  // branch that renders the wrong affordance.
+  const fixtureRoles = new Set(userRolesFixture.roles);
+
+  it("the admin user role union matches the shared fixture", () => {
+    const adminRoles: Record<UserRole, true> = {
+      super_admin: true,
+      team_admin: true,
+      developer: true,
+      viewer: true,
+    };
+    expect(new Set(Object.keys(adminRoles))).toEqual(fixtureRoles);
+  });
+
+  it("the team-scoped role union matches the shared fixture", () => {
+    const teamRoles: Record<TeamScopedRole, true> = {
+      super_admin: true,
+      team_admin: true,
+      developer: true,
+      viewer: true,
+    };
+    expect(new Set(Object.keys(teamRoles))).toEqual(fixtureRoles);
+  });
+
+  it("the triage role union matches the shared fixture", () => {
+    const triageRoles: Record<TriageRole, true> = {
+      super_admin: true,
+      team_admin: true,
+      developer: true,
+      viewer: true,
+    };
+    expect(new Set(Object.keys(triageRoles))).toEqual(fixtureRoles);
   });
 });

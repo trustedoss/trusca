@@ -7,7 +7,7 @@
  * The admin domain has no severity — palette is neutral / blue / slate
  * instead of the risk colors.
  */
-import { ShieldCheck, Users as UsersIcon, User } from "lucide-react";
+import { Eye, ShieldCheck, Users as UsersIcon, User } from "lucide-react";
 import { useTranslation } from "react-i18next";
 
 import { Badge } from "@/components/ui/badge";
@@ -21,7 +21,17 @@ interface RoleBadgeProps {
 
 export function RoleBadge({ role, className }: RoleBadgeProps) {
   const { t } = useTranslation("admin");
-  const Icon = role === "super_admin" ? ShieldCheck : role === "team_admin" ? UsersIcon : User;
+  // Each grade gets its own mark: the badge pairs label with icon so colour
+  // is never the sole signal, and two grades sharing an icon would undo that
+  // for anyone reading the icon first.
+  const Icon =
+    role === "super_admin"
+      ? ShieldCheck
+      : role === "team_admin"
+        ? UsersIcon
+        : role === "viewer"
+          ? Eye
+          : User;
   const variantClass =
     role === "super_admin"
       ? "bg-primary/10 text-primary border-transparent"

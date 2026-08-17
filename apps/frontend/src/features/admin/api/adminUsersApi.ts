@@ -12,7 +12,7 @@ import type { AxiosRequestConfig } from "axios";
 
 import { api } from "@/lib/api";
 
-export type UserRole = "super_admin" | "team_admin" | "developer";
+export type UserRole = "super_admin" | "team_admin" | "developer" | "viewer";
 export type TeamMembershipRole = "team_admin" | "developer";
 
 export interface TeamMembershipPublic {

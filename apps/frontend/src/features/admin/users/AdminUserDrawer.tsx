@@ -351,6 +351,9 @@ export function AdminUserDrawer({
                       <option value="developer">
                         {t("admin.users.role.developer")}
                       </option>
+                      <option value="viewer">
+                        {t("admin.users.role.viewer")}
+                      </option>
                     </select>
                   </div>
                   {roleSelection !== "super_admin" ? (
