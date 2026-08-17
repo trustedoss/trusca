@@ -42,6 +42,9 @@ from .component_approval import (  # noqa: E402,F401  (imported for metadata sid
 from .eol_sync_state import (  # noqa: E402,F401  (imported for metadata side effects)
     EolSyncState,
 )
+from .gate_policy import (  # noqa: E402,F401  (imported for metadata side effects)
+    GatePolicy,
+)
 from .github_app import (  # noqa: E402,F401  (imported for metadata side effects)
     GitHubAppCredential,
     GitHubAppInstallation,
@@ -113,6 +116,7 @@ __all__ = [
     "License",
     "LicenseFetchCache",
     "LicenseFinding",
+    "GatePolicy",
     "LicensePolicy",
     "Membership",
     "NOTIFICATION_KIND_VALUES",
