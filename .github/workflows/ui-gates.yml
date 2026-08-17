@@ -477,6 +477,10 @@ jobs:
       # #118: none of the six failed runs still in retention carries a
       # `visual-regression-diffs` artifact, so every gate flake so far had to
       # be argued about from the log line alone.
+      #
+      # #151: the narrow spec's output was missing from the list entirely, so
+      # the `error-context.md` its failure message points at was never
+      # collected either. Three specs run in this job; all three now report.
       - name: Upload diff artifacts on failure
         if: ${{ failure() && steps.scope.outputs.run == 'true' }}
         uses: actions/upload-artifact@v4
@@ -486,6 +490,7 @@ jobs:
             apps/frontend/tests/visual/.output/
             apps/frontend/tests/visual/.report/
             apps/frontend/tests/a11y/.output/
+            apps/frontend/tests/responsive/.output/
           include-hidden-files: true
           if-no-files-found: warn
           retention-days: 7
