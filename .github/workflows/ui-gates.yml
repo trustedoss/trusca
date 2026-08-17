@@ -434,6 +434,12 @@ jobs:
           path: |
             apps/frontend/tests/a11y/.output/a11y-observed.json
             apps/frontend/tests/a11y/.output/observed/
+          # Both paths sit under `.output`, so it is the common ancestor and
+          # nothing hidden survives in the relative paths, so this upload works
+          # today by that accident. Stated explicitly so adding a third path
+          # from a different directory cannot silently empty it (see the
+          # diff-artifact step below).
+          include-hidden-files: true
           if-no-files-found: warn
           retention-days: 7
 
@@ -449,6 +455,28 @@ jobs:
           if-no-files-found: error
           retention-days: 7
 
+      # This step has uploaded nothing since it was written, and nobody
+      # noticed because `ignore` prints no warning: run 31860597229 failed on
+      # projects-list with 10 797 differing pixels and the log reads
+      #
+      #   The least common ancestor is .../apps/frontend/tests
+      #   No files were found with the provided path: .../tests/visual/.output/
+      #
+      # `.output` and `.report` start with a dot, and upload-artifact drops
+      # hidden entries unless told otherwise. The a11y upload two steps above
+      # survives the same default only by accident: its two paths make
+      # `.output` itself the common ancestor, so nothing hidden remains in the
+      # relative paths. Once a second directory joins the list the ancestor
+      # rises and the whole upload goes silent, which is what happened here.
+      # ci.yml already carries this note for `.coverage.<leg>`.
+      #
+      # `warn` rather than `ignore` so a future empty upload says so in the
+      # log. Not `error`: this step runs on ANY job failure, including ones
+      # that never reach the visual spec and legitimately produce no diff.
+      #
+      # #118: none of the six failed runs still in retention carries a
+      # `visual-regression-diffs` artifact, so every gate flake so far had to
+      # be argued about from the log line alone.
       - name: Upload diff artifacts on failure
         if: ${{ failure() && steps.scope.outputs.run == 'true' }}
         uses: actions/upload-artifact@v4
@@ -458,7 +486,8 @@ jobs:
             apps/frontend/tests/visual/.output/
             apps/frontend/tests/visual/.report/
             apps/frontend/tests/a11y/.output/
-          if-no-files-found: ignore
+          include-hidden-files: true
+          if-no-files-found: warn
           retention-days: 7
 
       - name: Dump container logs on failure
