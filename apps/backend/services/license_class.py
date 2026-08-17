@@ -113,8 +113,19 @@ _LGPL_RE: Final[re.Pattern[str]] = re.compile(r"\bLGPL", re.IGNORECASE)
 # File- or library-scoped reciprocal licenses that are not part of the GPL
 # family. Both boundaries anchored — these are whole tokens, and an unanchored
 # ``CPL`` would match inside unrelated identifiers.
+#
+# OFL is here rather than in ``PERMISSIVE_IDS`` because its share-alike is
+# real, just narrow: a MODIFIED font ships under the OFL, while software that
+# merely embeds or bundles an unmodified font carries no such obligation. That
+# is the same shape as MPL's per-file reciprocity, and the same reason both are
+# ``weak-copyleft`` rather than ``permissive``. The strength label answers
+# "what happens if you change it", which is a different question from the one
+# ``obligation_catalog`` answers for a component that only uses it. The
+# obligation entry (``same_license_required=True``, scoped to fonts) already
+# answers the second one and stays as it is.
 _WEAK_FAMILY_RE: Final[re.Pattern[str]] = re.compile(
-    r"\b(MPL|EPL|CDDL|CPL|OSL|EUPL|CeCILL|Sleepycat)\b", re.IGNORECASE
+    r"\b(MPL|EPL|CDDL|CPL|OSL|EUPL|CeCILL|Sleepycat|OFL|Open Font License)\b",
+    re.IGNORECASE,
 )
 _GPL_RE: Final[re.Pattern[str]] = re.compile(r"\bGPL", re.IGNORECASE)
 
