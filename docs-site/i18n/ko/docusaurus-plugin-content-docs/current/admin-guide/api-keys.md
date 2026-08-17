@@ -82,6 +82,7 @@ curl -sS -X POST "https://trustedoss.example.com/v1/api-keys" \
    - **Name**(예: `github-action-checkout-service`)
    - **Scope** — `project`(기본). 팀 관리자라면 `team`도 함께 표시됩니다
    - **Project ID** — scope가 `project`일 때 필수. scope가 `team`이면 **Team ID**
+   - **Expiration** — **Never expires**(기본값) 또는 30 / 90 / 180 / 365일 프리셋. `expires_in_days`로 전송됩니다
 5. **Create**.
 
 전체 Key는 모달에서 **단 한 번** 표시됩니다. 복사해 CI 시크릿 저장소(GitHub secrets, GitLab CI variables, Jenkins credentials)에 보관하세요. 모달을 닫으면 UI에서는 prefix만 보이고 전체 Key는 복구 불가입니다.
@@ -206,7 +207,7 @@ docker-compose -f docker-compose.yml logs --tail=2000 backend \
 다음 기능들은 초기 문서에서 언급되지만 현재 릴리스에서는 **출시되지 않았습니다**.
 
 - 키별 역할 오버라이드(`effective_role`)와 세분화된 `allowed_actions` taxonomy(`scan:trigger`, `scan:read`, `report:download`, `webhook:receive`, `*`). 현재 Key는 발급자 역할과 전체 RBAC 표면을 상속.
-- New API key 폼의 30 / 90 / 180 / 365일 만료 프리셋 (API의 `expires_in_days`/`expires_at`는 이미 구현됨 — UI 프리셋만 로드맵).
+- **Create API key** 폼의 자유 입력 만료 값. 폼은 Never와 30 / 90 / 180 / 365일 프리셋을 제공하므로, API가 허용하는 1~1825일 가운데 그 밖의 값은 `expires_in_days`로 직접 발급해야 합니다.
 - `actor_kind = api_key`인 요청별 `api_key.use` 감사 이벤트. 현재 Key 라이프사이클(ORM 리스너의 insert와 명시적 `api_key.revoked` 액션)은 감사되지만 요청별 사용은 구조화된 로그에만 캡처됨.
 - 목록의 `last_used_ip` 컬럼.
 - brute-force secret-mismatch 알림(단일 Key가 60초 내 5회 미스 시 Slack 알림).
