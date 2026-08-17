@@ -681,3 +681,156 @@ async def test_oauth_identity_unique_constraint_present(
     assert "ix_oauth_identities_user_id" in names
     # Unique constraint name from migration 0010.
     assert any("provider_pid" in n for n in names) or "uq_oauth_identities_provider_pid" in names
+
+
+# ---------------------------------------------------------------------------
+# Generic OIDC provider (N6)
+# ---------------------------------------------------------------------------
+
+
+def _oidc_handler(
+    *,
+    issuer: str,
+    subject: str,
+    userinfo: dict[str, Any],
+) -> Callable[[httpx.Request], httpx.Response]:
+    def handler(request: httpx.Request) -> httpx.Response:
+        path = request.url.path
+        if path == "/.well-known/openid-configuration":
+            return httpx.Response(
+                200,
+                json={
+                    "issuer": issuer,
+                    "authorization_endpoint": f"{issuer}/authorize",
+                    "token_endpoint": f"{issuer}/token",
+                    "userinfo_endpoint": f"{issuer}/userinfo",
+                },
+            )
+        if path == "/token":
+            return httpx.Response(200, json={"access_token": "oidc-tok"})
+        if path == "/userinfo":
+            return httpx.Response(200, json={"sub": subject, **userinfo})
+        raise AssertionError(f"unexpected url {request.url}")
+
+    return handler
+
+
+async def test_oidc_callback_creates_the_user_and_stores_the_identity(
+    client: AsyncClient,
+    db_factory: async_sessionmaker[Any],
+    seed_organization: None,
+    patch_async_client: Callable[[Callable[[httpx.Request], httpx.Response]], None],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The whole path, through the database.
+
+    Worth its own case because the identity row is typed with a Postgres enum
+    that the provider list does not touch: the button can report itself
+    configured, the sign-in can complete at the provider, and the insert can
+    still be rejected. Only a test that reaches the write sees that.
+    """
+    from integrations.oauth.oidc import reset_discovery_cache
+    from models import OAuthIdentity, User
+
+    issuer = "https://idp.example.test"
+    email = f"oidcuser-{uuid.uuid4().hex[:8]}@example.com"
+    monkeypatch.setenv("OIDC_ISSUER", issuer)
+    monkeypatch.setenv("OIDC_CLIENT_ID", "client-id")
+    monkeypatch.setenv("OIDC_CLIENT_SECRET", "client-secret")
+    reset_discovery_cache()
+
+    handler = _oidc_handler(
+        issuer=issuer,
+        subject=f"sub-{uuid.uuid4().hex[:8]}",
+        userinfo={"email": email, "email_verified": True, "name": "OIDC Person"},
+    )
+    patch_async_client(handler)
+    _patch_sync_client(monkeypatch, handler)
+
+    state = await _mint_state("oidc", None)
+    response = await client.get(
+        "/auth/oauth/oidc/callback",
+        params={"code": "abc", "state": state},
+    )
+
+    assert response.status_code == 302, response.text
+    async with db_factory() as session:
+        user = (
+            await session.execute(select(User).where(User.email == email))
+        ).scalar_one()
+        identity = (
+            await session.execute(
+                select(OAuthIdentity).where(OAuthIdentity.user_id == user.id)
+            )
+        ).scalar_one()
+        assert identity.provider == "oidc"
+
+
+async def test_oidc_refuses_to_open_an_existing_account_on_an_unverified_address(
+    client: AsyncClient,
+    db_factory: async_sessionmaker[Any],
+    seed_organization: None,
+    patch_async_client: Callable[[Callable[[httpx.Request], httpx.Response]], None],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """An address the provider has not vouched for cannot claim someone's account."""
+    from core.security import hash_password
+    from integrations.oauth.oidc import reset_discovery_cache
+    from models import OAuthIdentity, User
+
+    issuer = "https://idp.example.test"
+    email = f"victim-{uuid.uuid4().hex[:8]}@example.com"
+    async with db_factory() as session:
+        session.add(
+            User(
+                email=email,
+                hashed_password=hash_password("Sup3rSecret!password"),
+                full_name="Account Owner",
+                is_active=True,
+                is_superuser=False,
+                is_verified=True,
+            )
+        )
+        await session.commit()
+
+    monkeypatch.setenv("OIDC_ISSUER", issuer)
+    monkeypatch.setenv("OIDC_CLIENT_ID", "client-id")
+    monkeypatch.setenv("OIDC_CLIENT_SECRET", "client-secret")
+    monkeypatch.setenv("OIDC_REQUIRE_VERIFIED_EMAIL", "false")
+    reset_discovery_cache()
+
+    handler = _oidc_handler(
+        issuer=issuer,
+        subject=f"sub-{uuid.uuid4().hex[:8]}",
+        userinfo={"email": email},
+    )
+    patch_async_client(handler)
+    _patch_sync_client(monkeypatch, handler)
+
+    state = await _mint_state("oidc", None)
+    response = await client.get(
+        "/auth/oauth/oidc/callback",
+        params={"code": "abc", "state": state},
+    )
+
+    assert response.status_code == 302
+    assert "error=oauth_failed" in response.headers["location"]
+    async with db_factory() as session:
+        identities = list(
+            (await session.execute(select(OAuthIdentity))).scalars().all()
+        )
+        assert all(identity.email != email for identity in identities)
+
+
+def _patch_sync_client(
+    monkeypatch: pytest.MonkeyPatch,
+    handler: Callable[[httpx.Request], httpx.Response],
+) -> None:
+    """Discovery runs on the synchronous client, which the async fixture misses."""
+    real_init = httpx.Client.__init__
+
+    def _patched(self, *args, **kwargs):  # type: ignore[no-untyped-def]
+        kwargs["transport"] = httpx.MockTransport(handler)
+        real_init(self, *args, **kwargs)
+
+    monkeypatch.setattr(httpx.Client, "__init__", _patched)

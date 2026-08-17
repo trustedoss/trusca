@@ -137,6 +137,33 @@ def test_a_document_claiming_a_different_issuer_is_refused(route) -> None:
         discover()
 
 
+def test_an_endpoint_on_another_host_is_refused(route) -> None:
+    """The document names the endpoints, so it must not be able to move them.
+
+    An endpoint elsewhere receives the client secret and a live authorisation
+    code, and its userinfo can claim any subject: the whole sign-in follows
+    the document rather than the issuer the operator configured.
+    """
+    route(
+        {
+            DISCOVERY_URL: _discovery_document(
+                token_endpoint="https://attacker.example.test/token"
+            )
+        }
+    )
+
+    with pytest.raises(OAuthExchangeError, match="different host"):
+        discover()
+
+
+def test_a_plaintext_issuer_is_refused(monkeypatch: pytest.MonkeyPatch) -> None:
+    """The one request that decides every endpoint cannot be the tamperable one."""
+    monkeypatch.setenv("OIDC_ISSUER", "http://idp.internal.test")
+
+    with pytest.raises(OAuthProviderDisabled, match="https"):
+        discover()
+
+
 def test_a_plaintext_endpoint_is_refused(route) -> None:
     """It would carry the code and the token in the clear."""
     route({DISCOVERY_URL: _discovery_document(token_endpoint="http://idp.example.test/token")})
@@ -245,6 +272,69 @@ async def test_the_verification_requirement_can_be_turned_off_deliberately(
     info = await OidcProvider().fetch_user_info(access_token="at")
 
     assert info.email == "p@example.test"
+
+
+async def test_a_standard_verified_address_may_open_an_existing_account(route) -> None:
+    """The only combination that earns the right to match an existing user."""
+    route(
+        {
+            DISCOVERY_URL: _discovery_document(),
+            USERINFO_URL: {"sub": "s", "email": "p@example.test", "email_verified": True},
+        }
+    )
+
+    info = await OidcProvider().fetch_user_info(access_token="at")
+
+    assert info.email_can_link_existing_account is True
+
+
+async def test_a_waived_verification_does_not_earn_account_linking(
+    route, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Signing in is allowed; taking over an existing account is not.
+
+    With verification waived the address is an assertion, and an account
+    already under it belongs to someone who has not agreed to this.
+    """
+    monkeypatch.setenv("OIDC_REQUIRE_VERIFIED_EMAIL", "false")
+    route(
+        {
+            DISCOVERY_URL: _discovery_document(),
+            USERINFO_URL: {"sub": "s", "email": "p@example.test"},
+        }
+    )
+
+    info = await OidcProvider().fetch_user_info(access_token="at")
+
+    assert info.email_can_link_existing_account is False
+
+
+async def test_a_non_standard_claim_does_not_earn_account_linking(
+    route, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """`email_verified` vouches for `email`, not for whatever else is read.
+
+    On several providers the claim deployments reach for here is editable by
+    the user, so a verified flag beside it says nothing about the address the
+    sign-in is using.
+    """
+    monkeypatch.setenv("OIDC_EMAIL_CLAIM", "preferred_username")
+    route(
+        {
+            DISCOVERY_URL: _discovery_document(),
+            USERINFO_URL: {
+                "sub": "s",
+                "preferred_username": "admin@example.test",
+                "email": "attacker@example.test",
+                "email_verified": True,
+            },
+        }
+    )
+
+    info = await OidcProvider().fetch_user_info(access_token="at")
+
+    assert info.email == "admin@example.test"
+    assert info.email_can_link_existing_account is False
 
 
 async def test_the_address_can_come_from_a_provider_specific_claim(

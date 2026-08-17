@@ -524,6 +524,22 @@ async def _resolve_or_create_user(
     ).scalar_one_or_none()
 
     if user is not None:
+        if not info.email_can_link_existing_account:
+            # The address arrived as an assertion the provider has not
+            # vouched for, and an account already exists under it. Linking
+            # here would hand that account to whoever can assert the address,
+            # which on a provider with self-service registration is anyone.
+            # Refusing is the only safe answer; the owner can link the
+            # identity deliberately from their profile while signed in.
+            log.warning(
+                "oauth_email_link_refused_unverified",
+                provider=info.provider,
+            )
+            raise OAuthCallbackFailed(
+                "an account already exists for this address and the provider "
+                "did not verify it"
+            )
+
         # Link a new identity to the existing User. Two flows could race
         # here (same external account being linked to two different
         # email-matched Users), but the unique
@@ -593,7 +609,11 @@ async def _create_user_with_personal_team(
         full_name=info.full_name,
         is_active=True,
         is_superuser=False,
-        is_verified=True,  # OAuth providers verify email themselves.
+        # True only when the provider actually vouched for the address. A
+        # deployment that waived verification, or reads the address out of a
+        # claim the provider does not vouch for, must not have that recorded
+        # as verified: later flows read this flag and would trust it.
+        is_verified=info.email_can_link_existing_account,
     )
     session.add(user)
     try:

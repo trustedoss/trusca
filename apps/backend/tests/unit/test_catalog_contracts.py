@@ -771,23 +771,36 @@ def test_every_role_can_be_assigned_somewhere() -> None:
 
 
 def test_the_oauth_provider_name_appears_in_every_list_that_gates_it() -> None:
-    """Four separate closures decide which providers exist.
+    """Seven separate closures decide which providers exist.
 
-    The path parameter, the wire schema, the adapter lookup and the list the
-    login page reads each carry their own copy. A provider present in some but
-    not all does not fail on startup: it either 422s at the edge while the
-    adapter exists, or renders a button that resolves to nothing.
+    The first version of this test named four and checked four, and the three
+    it left out included the database enum. The generic provider shipped with
+    no ``ALTER TYPE`` behind it, this test stayed green, and the failure
+    surfaced only on a real sign-in: the button rendered, the user consented,
+    and the callback raised on the first query against the identities table.
+    A vocabulary test that stops short of the vocabulary that actually stores
+    the value is worse than none, because it reads as coverage.
+
+    The frontend mirrors and the label catalogue are asserted on their own
+    side (``tests/unit/contracts/catalogMirrors.test.ts``); this covers the
+    four Python-side lists plus the enum the column is typed with.
     """
     import typing
 
     from api.v1.oauth import _PROVIDER_ORDER
     from integrations.oauth.base import ProviderName, get_provider
+    from models.oauth_identity import OAUTH_PROVIDER_VALUES
     from schemas.oauth_identity import OAuthProvider
 
     declared = set(typing.get_args(ProviderName))
 
     assert set(typing.get_args(OAuthProvider)) == declared
     assert set(_PROVIDER_ORDER) == declared
+    assert set(OAUTH_PROVIDER_VALUES) == declared, (
+        "models.oauth_identity.OAUTH_PROVIDER_VALUES types the column the "
+        "identity row is written to; a provider missing here reaches Postgres "
+        "as an invalid enum value at sign-in time"
+    )
     for name in declared:
         # Raises ValueError if the adapter lookup does not know the name.
         assert get_provider(name) is not None

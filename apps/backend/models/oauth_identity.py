@@ -65,7 +65,7 @@ NOW = text("now()")
 # Closed provider set — encoded as a Postgres native ENUM. The migration
 # (0010) owns ``CREATE TYPE``; here we bind with ``create_type=False`` so
 # SQLAlchemy never emits its own.
-OAUTH_PROVIDER_VALUES = ("github", "google")
+OAUTH_PROVIDER_VALUES = ("github", "google", "oidc")
 
 
 def _oauth_provider_enum() -> PG_ENUM:

@@ -19,7 +19,7 @@
  */
 import { api } from "@/lib/api";
 
-export type OAuthProvider = "github" | "google";
+export type OAuthProvider = "github" | "google" | "oidc";
 
 export interface OAuthIdentity {
   id: string;

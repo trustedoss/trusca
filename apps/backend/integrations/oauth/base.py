@@ -78,6 +78,13 @@ class OAuthUserInfo:
         full_name: Display name (``None`` if the provider does not surface
             one — Google guarantees, GitHub does not).
         avatar_url: Optional profile image URL.
+        email_can_link_existing_account: whether this address is trustworthy
+            enough to sign the holder into an account that already exists
+            under it. True for providers that verify the address themselves.
+            False when the deployment configured a non-standard claim or
+            waived verification: in both cases the address is a claim the
+            user can influence, and matching it against an existing account
+            would hand that account to whoever asserts it.
     """
 
     provider: ProviderName
@@ -85,6 +92,7 @@ class OAuthUserInfo:
     email: str
     full_name: str | None
     avatar_url: str | None
+    email_can_link_existing_account: bool = True
 
 
 # ---------------------------------------------------------------------------

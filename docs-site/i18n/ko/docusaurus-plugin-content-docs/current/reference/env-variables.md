@@ -214,6 +214,24 @@ superseded·노후 스캔 스냅샷을 회수하는 자동 보존 sweep을 조�
 | `OAUTH_LOGIN_REDIRECT_DEFAULT` | `http://localhost:5173/` | `config.py` | OAuth 콜백 성공 후 SPA가 도착하는 곳. |
 | `OAUTH_LOGIN_REDIRECT_FAILURE` | `http://localhost:5173/login` | `config.py` | 콜백 실패 시 SPA가 도착하는 곳. `?error=oauth_failed` 수신. |
 
+## 통합 인증 (일반 OpenID Connect)
+
+배포처 자체의 인증 제공자입니다. 목록이 아니라 하나입니다. 조직에는 인증 제공자가 하나 있고, 모든 엔드포인트를 발급자의 탐색 문서에서 읽으므로 발급자를 적는 것이 설정의 대부분입니다. `OIDC_ISSUER`를 비워 두면 SSO 버튼이 나타나지 않습니다.
+
+| 키 | 기본값 | 읽는 곳 | 설명 |
+|---|---|---|---|
+| `OIDC_ISSUER` | (비어있음) | `config.py` | 발급자 URL입니다. 예: `https://login.example.com`. 반드시 `https`여야 합니다. 이 요청 하나가 나머지 모든 엔드포인트를 결정하므로 손댈 수 없어야 합니다. 문서가 지정한 엔드포인트가 발급자와 같은 호스트인지도 로그인 시점에 확인합니다. |
+| `OIDC_CLIENT_ID` | (비어있음) | `config.py` | 제공자에 등록한 클라이언트 아이디입니다. |
+| `OIDC_CLIENT_SECRET` | (비어있음) | `config.py` | 클라이언트 비밀입니다. 교환은 기밀 클라이언트 인가 코드 흐름입니다. |
+| `OIDC_SCOPES` | `openid email profile` | `config.py` | 로그인 시 요청할 스코프입니다. `openid`는 빠뜨려도 다시 채웁니다. |
+| `OIDC_EMAIL_CLAIM` | `email` | `config.py` | 주소를 담은 userinfo 클레임입니다. 바꾸면 따라오는 결과가 있습니다. `email_verified`는 `email` 클레임만 보증하므로, 다른 클레임에서 읽은 주소로는 이미 존재하는 계정에 들어갈 수 없습니다. 로그인은 되고 자기 계정이 만들어집니다. |
+| `OIDC_NAME_CLAIM` | `name` | `config.py` | 표시 이름을 담은 클레임입니다. |
+| `OIDC_REQUIRE_VERIFIED_EMAIL` | `true` | `config.py` | 제공자가 검증하지 않은 주소를 거부할지 여부입니다. 클레임이 없으면 검증되지 않은 것으로 봅니다. 끄면 로그인은 되지만 위와 같이 기존 계정 연결은 되지 않습니다. |
+
+발급자와 클라이언트 아이디, 비밀 셋이 모두 있어야 제공자가 구성됨으로 보고합니다. 절반만 채운 배포는 눌렀을 때 실패하는 버튼 대신 아무 버튼도 보이지 않습니다.
+
+포털은 ID 토큰 서명을 검증하지 않습니다. 의도한 선택입니다. 인가 코드를 발급자의 토큰 엔드포인트와 TLS로 직접 교환하고 주체를 같은 경로의 userinfo에서 읽는데, 토큰 엔드포인트에서 곧바로 받은 토큰이라면 OpenID Connect Core §3.1.3.7이 이를 허용합니다. 대신 확인하는 것은 탐색 문서가 설정한 발급자의 것인지, 그리고 문서가 지정한 엔드포인트가 발급자 자신의 호스트인지입니다.
+
 ## 백업
 
 | 키 | 기본값 | 읽는 위치 | 설명 |

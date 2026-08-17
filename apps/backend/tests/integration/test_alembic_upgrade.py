@@ -282,3 +282,66 @@ async def test_chore_pr7_data_migration_clears_reference_url():
     by_purl = {row[0]: row[1] for row in rows}
     assert by_purl.get(purl_with_url) is None, "phishing reference_url not cleared"
     assert by_purl.get(purl_without_url) is None, "already-NULL row mutated unexpectedly"
+
+
+@pytest.mark.integration
+async def test_native_enums_hold_every_value_the_models_declare():
+    """The Python tuples and the Postgres types must list the same values.
+
+    Both sides are edited by hand and neither reads the other, so a value
+    added to a model without an ``ALTER TYPE`` behind it passes every test
+    that compares Python to Python. The generic sign-in provider shipped that
+    way: the constant said ``oidc``, the type did not, and the first insert
+    at sign-in time raised. This walks the enum-backed columns we own and
+    asserts the type actually accepts what the model advertises.
+    """
+    if not os.getenv("DATABASE_URL"):
+        pytest.skip("DATABASE_URL not set: skip alembic integration test")
+
+    from sqlalchemy import text
+    from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
+
+    from core.config import database_url
+    from models.auth import ROLE_VALUES
+    from models.notification import NOTIFICATION_KIND_VALUES
+    from models.oauth_identity import OAUTH_PROVIDER_VALUES
+
+    upgrade = subprocess.run(
+        ["alembic", "upgrade", "head"],
+        cwd=BACKEND_ROOT,
+        capture_output=True,
+        text=True,
+        timeout=120,
+    )
+    assert upgrade.returncode == 0, upgrade.stderr
+
+    declared = {
+        "user_role": set(ROLE_VALUES),
+        "oauth_provider": set(OAUTH_PROVIDER_VALUES),
+        "notification_kind": set(NOTIFICATION_KIND_VALUES),
+    }
+
+    engine = create_async_engine(database_url(), pool_pre_ping=True, future=True)
+    factory = async_sessionmaker(engine)
+    try:
+        async with factory() as session:
+            rows = await session.execute(
+                text(
+                    "SELECT t.typname, e.enumlabel FROM pg_type t "
+                    "JOIN pg_enum e ON e.enumtypid = t.oid "
+                    "WHERE t.typname = ANY(:names)"
+                ),
+                {"names": list(declared)},
+            )
+            actual: dict[str, set[str]] = {}
+            for typname, label in rows.all():
+                actual.setdefault(typname, set()).add(label)
+    finally:
+        await engine.dispose()
+
+    for typname, values in declared.items():
+        missing = sorted(values - actual.get(typname, set()))
+        assert missing == [], (
+            f"the {typname} type is missing {missing}; the model declares them "
+            "but no migration added them, so writing one raises at runtime"
+        )

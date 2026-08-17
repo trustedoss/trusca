@@ -28,10 +28,11 @@ sign-in would pay two round-trips before the browser is even redirected.
 
 from __future__ import annotations
 
+import threading
 import time
 from dataclasses import dataclass
 from typing import Any
-from urllib.parse import urlencode
+from urllib.parse import urlencode, urlsplit
 
 import httpx
 import structlog
@@ -62,6 +63,12 @@ DISCOVERY_PATH = "/.well-known/openid-configuration"
 #: and an hour bounds how long a stale document can be served after one does.
 DISCOVERY_TTL_SECONDS = 3600
 
+#: How long a failure is remembered. Without this, an issuer that is down turns
+#: every sign-in attempt into another blocking round-trip against it, and the
+#: endpoint is public and unauthenticated, so the cost is one an anonymous
+#: caller chooses. Short enough that recovery is not delayed noticeably.
+DISCOVERY_FAILURE_TTL_SECONDS = 30
+
 
 @dataclass(frozen=True)
 class _Endpoints:
@@ -71,6 +78,11 @@ class _Endpoints:
 
 
 _cache: dict[str, tuple[float, _Endpoints]] = {}
+_failures: dict[str, tuple[float, str]] = {}
+
+#: One fetch at a time per process. Concurrent sign-ins on a cold cache would
+#: otherwise each open their own request and each block for the full timeout.
+_lock = threading.Lock()
 
 
 def _require_credentials() -> tuple[str, str, str]:
@@ -79,6 +91,12 @@ def _require_credentials() -> tuple[str, str, str]:
     client_secret = oidc_client_secret()
     if not issuer or not client_id or not client_secret:
         raise OAuthProviderDisabled("OIDC is not configured on this deployment")
+    if urlsplit(issuer).scheme != "https":
+        # The discovery request decides every other endpoint, so it is the one
+        # request that must not be tamperable. Refusing plaintext at the
+        # endpoints while fetching the document that names them over plaintext
+        # would guard the door and leave the hinges.
+        raise OAuthProviderDisabled("OIDC_ISSUER must be an https URL")
     return issuer, client_id, client_secret
 
 
@@ -86,11 +104,25 @@ def _endpoint(document: dict[str, Any], key: str, issuer: str) -> str:
     value = document.get(key)
     if not isinstance(value, str) or not value:
         raise OAuthExchangeError(f"discovery document for {issuer} has no usable {key}")
-    if not value.startswith("https://"):
+
+    parsed = urlsplit(value)
+    if parsed.scheme != "https":
         # An http endpoint would carry the code and the access token in the
         # clear. Refusing is the only safe reading, and a provider serving one
         # is misconfigured rather than unusual.
         raise OAuthExchangeError(f"discovery document for {issuer} advertises a non-HTTPS {key}")
+
+    # And it has to be the issuer's own host. Without this the document can
+    # send the exchange anywhere: a token endpoint on another host receives
+    # the client secret and a live authorisation code, and a userinfo endpoint
+    # there can claim any subject and address it likes, which the sign-in then
+    # binds to an existing account. Checking the scheme alone leaves the trust
+    # in the document rather than in the issuer the operator named.
+    if parsed.netloc != urlsplit(issuer).netloc:
+        log.warning("oauth_oidc_endpoint_off_issuer", key=key, host=parsed.netloc)
+        raise OAuthExchangeError(
+            f"discovery document for {issuer} points {key} at a different host"
+        )
     return value
 
 
@@ -107,24 +139,47 @@ def discover(*, force: bool = False) -> _Endpoints:
     if cached and not force and now - cached[0] < DISCOVERY_TTL_SECONDS:
         return cached[1]
 
+    with _lock:
+        # Another caller may have finished while this one waited.
+        cached = _cache.get(issuer)
+        if cached and not force and time.monotonic() - cached[0] < DISCOVERY_TTL_SECONDS:
+            return cached[1]
+        failed = _failures.get(issuer)
+        if failed and time.monotonic() - failed[0] < DISCOVERY_FAILURE_TTL_SECONDS:
+            raise OAuthExchangeError(failed[1])
+        return _fetch(issuer)
+
+
+def _fetch(issuer: str) -> _Endpoints:
+    """Fetch and validate the document. Callers hold ``_lock``."""
+
+    def remember_failure(message: str) -> OAuthExchangeError:
+        _failures[issuer] = (time.monotonic(), message)
+        return OAuthExchangeError(message)
+
+    now = time.monotonic()
     url = f"{issuer}{DISCOVERY_PATH}"
     try:
         with httpx.Client(timeout=oauth_http_timeout_seconds()) as client:
             response = client.get(url, headers={"Accept": "application/json"})
-    except (httpx.TimeoutException, httpx.NetworkError) as exc:
+    except (httpx.HTTPError, httpx.InvalidURL) as exc:
+        # Broader than timeout and network: a misspelled issuer raises
+        # UnsupportedProtocol, a proxy failure raises ProxyError, and each of
+        # those would otherwise leave this endpoint answering 500 with a
+        # traceback instead of the documented failure.
         log.warning("oauth_oidc_discovery_network_failure", error_type=type(exc).__name__)
-        raise OAuthExchangeError("oidc discovery network failure") from exc
+        raise remember_failure("oidc discovery network failure") from exc
 
     if response.status_code != 200:
         log.warning("oauth_oidc_discovery_http_error", status=response.status_code)
-        raise OAuthExchangeError(f"oidc discovery returned HTTP {response.status_code}")
+        raise remember_failure(f"oidc discovery returned HTTP {response.status_code}")
 
     try:
         document = response.json()
     except ValueError as exc:
-        raise OAuthExchangeError("oidc discovery returned non-JSON body") from exc
+        raise remember_failure("oidc discovery returned non-JSON body") from exc
     if not isinstance(document, dict):
-        raise OAuthExchangeError("oidc discovery returned a non-object body")
+        raise remember_failure("oidc discovery returned a non-object body")
 
     advertised = document.get("issuer")
     if advertised != issuer:
@@ -132,7 +187,7 @@ def discover(*, force: bool = False) -> _Endpoints:
         # URL is not the issuer it claims to be, which is exactly the case a
         # sign-in must not proceed through.
         log.warning("oauth_oidc_discovery_issuer_mismatch", configured=issuer)
-        raise OAuthExchangeError("oidc discovery issuer does not match the configured issuer")
+        raise remember_failure("oidc discovery issuer does not match the configured issuer")
 
     endpoints = _Endpoints(
         authorize=_endpoint(document, "authorization_endpoint", issuer),
@@ -140,12 +195,14 @@ def discover(*, force: bool = False) -> _Endpoints:
         userinfo=_endpoint(document, "userinfo_endpoint", issuer),
     )
     _cache[issuer] = (now, endpoints)
+    _failures.pop(issuer, None)
     return endpoints
 
 
 def reset_discovery_cache() -> None:
-    """Drop the cached documents. Used by tests and after a config change."""
+    """Drop the cached documents and failures. Used by tests and after a config change."""
     _cache.clear()
+    _failures.clear()
 
 
 class OidcProvider:
@@ -181,7 +238,7 @@ class OidcProvider:
                         "redirect_uri": redirect_uri,
                     },
                 )
-        except (httpx.TimeoutException, httpx.NetworkError) as exc:
+        except (httpx.HTTPError, httpx.InvalidURL) as exc:
             log.warning("oauth_oidc_exchange_network_failure", error_type=type(exc).__name__)
             raise OAuthExchangeError("oidc token exchange network failure") from exc
 
@@ -215,7 +272,7 @@ class OidcProvider:
                 timeout=oauth_http_timeout_seconds(), headers=headers
             ) as client:
                 response = await client.get(endpoints.userinfo)
-        except (httpx.TimeoutException, httpx.NetworkError) as exc:
+        except (httpx.HTTPError, httpx.InvalidURL) as exc:
             log.warning("oauth_oidc_userinfo_network_failure", error_type=type(exc).__name__)
             raise OAuthExchangeError("oidc userinfo network failure") from exc
 
@@ -239,7 +296,15 @@ class OidcProvider:
         if not isinstance(email, str) or not email.strip():
             raise OAuthExchangeError(f"oidc userinfo missing '{email_claim}' claim")
 
-        if oidc_require_verified_email() and payload.get("email_verified") is not True:
+        # ``email_verified`` vouches for the ``email`` claim and nothing else
+        # (OIDC Core 5.1). A deployment reading the address out of another
+        # claim is reading something the provider has not vouched for, and on
+        # several providers that claim is user-editable. The address still
+        # signs the holder in, but it must not be enough on its own to open an
+        # account that already exists under it.
+        standard_claim = email_claim == "email"
+        verified = payload.get("email_verified") is True
+        if oidc_require_verified_email() and not verified:
             # Absent counts as unverified. A provider that does not say has not
             # verified anything as far as this deployment can tell, and the
             # operator who knows better turns the requirement off explicitly.
@@ -260,6 +325,7 @@ class OidcProvider:
             email=email.strip().lower(),
             full_name=full_name,
             avatar_url=avatar_url,
+            email_can_link_existing_account=standard_claim and verified,
         )
 
 

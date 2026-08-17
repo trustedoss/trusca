@@ -215,6 +215,24 @@ These apply to the demo SaaS deployment. Self-hosted installs leave them empty (
 | `OAUTH_LOGIN_REDIRECT_DEFAULT` | `http://localhost:5173/` | `config.py` | Where the SPA lands after a successful OAuth callback. |
 | `OAUTH_LOGIN_REDIRECT_FAILURE` | `http://localhost:5173/login` | `config.py` | Where the SPA lands when the callback fails. Receives `?error=oauth_failed`. |
 
+## Single sign-on (generic OpenID Connect)
+
+The deployment's own identity provider. One provider, not a list: an organisation has one, and every endpoint is read from its discovery document, so naming the issuer is most of the wiring. Leave `OIDC_ISSUER` empty and no SSO button appears.
+
+| Key | Default | Read by | Description |
+|---|---|---|---|
+| `OIDC_ISSUER` | (empty) | `config.py` | Issuer URL, for example `https://login.example.com`. Must be `https`: this one request decides every other endpoint, so it is the one that must not be tamperable. Endpoints in the document must sit on the same host as the issuer, which is checked at sign-in. |
+| `OIDC_CLIENT_ID` | (empty) | `config.py` | Client id registered with the provider. |
+| `OIDC_CLIENT_SECRET` | (empty) | `config.py` | Client secret. The exchange is a confidential-client authorization code flow. |
+| `OIDC_SCOPES` | `openid email profile` | `config.py` | Scopes requested at sign-in. `openid` is added back if omitted. |
+| `OIDC_EMAIL_CLAIM` | `email` | `config.py` | Which userinfo claim carries the address. Changing it has a consequence: `email_verified` vouches for `email` alone, so an address read from another claim cannot open an account that already exists under it. The holder signs in and gets their own account. |
+| `OIDC_NAME_CLAIM` | `name` | `config.py` | Which claim carries the display name. |
+| `OIDC_REQUIRE_VERIFIED_EMAIL` | `true` | `config.py` | Whether an address the provider has not marked verified is refused. A missing claim counts as unverified. Turning it off allows sign-in but, as above, not linking to an existing account. |
+
+All three of issuer, client id and secret must be set before the provider reports itself configured, so a half-filled deployment shows no button rather than one that fails on click.
+
+The portal does not validate ID token signatures, by design. The authorization code is exchanged directly with the issuer's token endpoint over TLS and the subject is read from userinfo over the same channel, which is what OpenID Connect Core §3.1.3.7 permits for a token obtained straight from the token endpoint. What the portal does check is that the discovery document belongs to the configured issuer and that every endpoint it names is on the issuer's own host.
+
 ## Backups
 
 | Key | Default | Read by | Description |
