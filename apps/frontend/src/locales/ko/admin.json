@@ -34,7 +34,8 @@
       "role": {
         "super_admin": "슈퍼 관리자",
         "team_admin": "팀 관리자",
-        "developer": "개발자"
+        "developer": "개발자",
+        "viewer": "열람자"
       },
       "status": {
         "active": "활성",

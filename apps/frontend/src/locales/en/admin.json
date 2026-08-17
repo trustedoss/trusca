@@ -34,7 +34,8 @@
       "role": {
         "super_admin": "Super Admin",
         "team_admin": "Team Admin",
-        "developer": "Developer"
+        "developer": "Developer",
+        "viewer": "Viewer"
       },
       "status": {
         "active": "Active",

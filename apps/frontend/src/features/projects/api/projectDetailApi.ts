@@ -46,7 +46,7 @@ export type LicenseCategoryName =
  * here so the frontend can gate team-scoped actions like vulnerability
  * suppression (BUG-005). Mirrors `schemas/project_detail.py::TeamScopedRole`.
  */
-export type TeamScopedRole = "super_admin" | "team_admin" | "developer";
+export type TeamScopedRole = "super_admin" | "team_admin" | "developer" | "viewer";
 
 export interface ScanSummary {
   id: string;

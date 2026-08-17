@@ -185,6 +185,17 @@ describe("LicenseWaiveAction", () => {
     expect(trigger).toHaveAttribute("data-role-gated", "true");
   });
 
+  it("disables the trigger for a viewer, the grade below developer", () => {
+    // The check reads "is this grade team_admin or above", so a grade added
+    // below developer is refused without touching it. Pinned because the
+    // opposite phrasing ("is this developer") is what broke elsewhere: it
+    // treats every other grade as more privileged.
+    renderAction({ projectRole: "viewer" });
+    const trigger = screen.getByTestId("license-waive-open");
+    expect(trigger).toBeDisabled();
+    expect(trigger).toHaveAttribute("data-role-gated", "true");
+  });
+
   it("disables the trigger on a read-only historical snapshot", () => {
     renderAction({ readOnly: true });
     const trigger = screen.getByTestId("license-waive-open");
