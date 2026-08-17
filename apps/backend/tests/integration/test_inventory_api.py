@@ -34,6 +34,7 @@ from httpx import ASGITransport, AsyncClient
 
 from core.security import create_access_token
 from models import User
+from services import inventory_service
 from tests._helpers import (
     make_membership,
     make_organization,
@@ -506,6 +507,57 @@ async def test_one_package_across_two_projects_is_one_row_counting_both(
     assert row["project_count"] == 2
     assert row["version_count"] == 2
     assert set(row["versions"]) == {"1.0.0", "2.0.0"}
+
+
+async def test_the_wide_scope_predicate_returns_the_same_rows(
+    client: AsyncClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Past ``SCAN_ID_INLINE_LIMIT`` the scan-id predicate changes shape (#131).
+
+    Below the limit the ids go in one bind parameter each; above it they go in
+    as a single array, because asyncpg refuses a statement past 32 767
+    arguments and this list is bound at three references. A super-admin whose
+    scope covered that many projects got a 500 instead of a page.
+
+    Seeding 5 000 projects to cross the real limit would cost minutes, so the
+    limit is lowered to force the wide branch on two. What is under test is
+    that the two shapes AGREE: a predicate that returned different rows would
+    be a worse defect than the ceiling it was written to remove.
+    """
+    token = _token()
+    _, team, user = await _seed_team_with_user(client)
+    _, scan_one = await _seed_project(client, team_id=team.id)
+    _, scan_two = await _seed_project(client, team_id=team.id)
+    component_id = await _seed_component(
+        client, scan_id=scan_one, name=f"{token}-shared", version="1.0.0"
+    )
+    await _seed_component(
+        client,
+        scan_id=scan_two,
+        name=f"{token}-shared",
+        version="2.0.0",
+        component_id=component_id,
+    )
+
+    narrow = await client.get(
+        "/v1/inventory/components", params={"q": token}, headers=_bearer_for(user)
+    )
+    assert narrow.status_code == 200, narrow.text
+
+    monkeypatch.setattr(inventory_service, "SCAN_ID_INLINE_LIMIT", 1)
+    wide = await client.get(
+        "/v1/inventory/components", params={"q": token}, headers=_bearer_for(user)
+    )
+    assert wide.status_code == 200, wide.text
+    assert wide.json() == narrow.json()
+
+    # The usage and impact reads resolve the same id list through the same
+    # predicate, so they have to survive the wide branch too.
+    usage = await client.get(
+        f"/v1/inventory/components/{component_id}/projects", headers=_bearer_for(user)
+    )
+    assert usage.status_code == 200, usage.text
+    assert usage.json()["total"] == 2
 
 
 async def test_one_cve_on_two_versions_counts_once(client: AsyncClient) -> None:

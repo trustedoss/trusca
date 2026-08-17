@@ -57,7 +57,10 @@ from typing import TYPE_CHECKING, Any
 from typing import cast as type_cast
 
 import structlog
-from sqlalchemy import String, cast, func, or_, select
+from sqlalchemy import String, cast, func, literal, or_, select
+from sqlalchemy.dialects.postgresql import ARRAY
+from sqlalchemy.dialects.postgresql import UUID as PG_UUID
+from sqlalchemy.orm import InstrumentedAttribute
 from sqlalchemy.sql.elements import ColumnElement
 
 from core.authz import team_scope_filter
@@ -193,6 +196,54 @@ async def _current_scan_ids(
     return [row.scan_id for row in (await session.execute(stmt)).all()]
 
 
+#: Above this many resolved scan ids the predicate switches to an array
+#: parameter. asyncpg refuses a statement carrying more than 32 767 arguments,
+#: and ``list_inventory_components`` binds the id list at THREE references (the
+#: outer aggregate and both rollups), so the real ceiling is a third of that,
+#: around 10 900. This sits well under it and above every size the plan
+#: recorded in :func:`_current_scan_ids` was measured at.
+SCAN_ID_INLINE_LIMIT = 5_000
+
+
+def _among_scans(
+    column: InstrumentedAttribute[uuid.UUID], scan_ids: list[uuid.UUID]
+) -> ColumnElement[bool]:
+    """"This column is one of the current-state scans", at any scope size.
+
+    Two shapes, because neither is right everywhere.
+
+    Under :data:`SCAN_ID_INLINE_LIMIT` the id list goes in as it always has,
+    one bind parameter per element. That is what the measurement in
+    :func:`_current_scan_ids` describes and it stays the fast path: Postgres
+    sees how many elements the ``IN`` carries and estimates the scan-id
+    predicate from that.
+
+    Over it, the list goes in as ONE array parameter. It has to: asyncpg
+    refuses a statement past 32 767 arguments, so a super-admin whose scope
+    covered enough projects got a 500 rather than a page.
+
+        asyncpg.exceptions._base.InterfaceError:
+        the number of query arguments cannot exceed 32767
+
+    The array form is not free. On the fixture the measurement above describes,
+    3 000 in-scope projects and 99 000 scan-component rows, 30 samples each:
+    p50 206 ms / p95 221 ms for the id list against p50 287 ms / p95 354 ms for
+    the array. The array hides the element count behind a placeholder, so the
+    planner falls back to a default estimate and picks a worse join. Paying
+    that on every deployment to fix a ceiling almost none of them will reach is
+    the wrong trade; paying it only past the ceiling turns a hard failure into
+    a slower answer. At 35 000 in-scope projects and 195 000 scan-component
+    rows the id list raises the error above and the array form answers at p50
+    1.1 s / p95 2.0 s.
+
+    A join against ``unnest()`` was measured too, at p50 552 ms, and is not
+    used.
+    """
+    if len(scan_ids) <= SCAN_ID_INLINE_LIMIT:
+        return column.in_(scan_ids)
+    return column == func.any(literal(scan_ids, ARRAY(PG_UUID(as_uuid=True))))
+
+
 def _vuln_rollup(scan_ids: list[uuid.UUID]) -> Any:
     """Worst CVE severity per (scan, component version) — one row each.
 
@@ -209,7 +260,7 @@ def _vuln_rollup(scan_ids: list[uuid.UUID]) -> Any:
         )
         .select_from(VulnerabilityFinding)
         .join(Vulnerability, Vulnerability.id == VulnerabilityFinding.vulnerability_id)
-        .where(VulnerabilityFinding.scan_id.in_(scan_ids))
+        .where(_among_scans(VulnerabilityFinding.scan_id, scan_ids))
         .group_by(
             VulnerabilityFinding.scan_id, VulnerabilityFinding.component_version_id
         )
@@ -227,7 +278,7 @@ def _license_rollup(scan_ids: list[uuid.UUID]) -> Any:
         )
         .select_from(LicenseFinding)
         .join(License, License.id == LicenseFinding.license_id)
-        .where(LicenseFinding.scan_id.in_(scan_ids))
+        .where(_among_scans(LicenseFinding.scan_id, scan_ids))
         .group_by(LicenseFinding.scan_id, LicenseFinding.component_version_id)
         .subquery()
     )
@@ -258,7 +309,7 @@ async def _distinct_cve_counts(
             ComponentVersion,
             ComponentVersion.id == VulnerabilityFinding.component_version_id,
         )
-        .where(VulnerabilityFinding.scan_id.in_(scan_ids))
+        .where(_among_scans(VulnerabilityFinding.scan_id, scan_ids))
         .where(ComponentVersion.component_id.in_(component_ids))
         .group_by(ComponentVersion.component_id)
     )
@@ -290,7 +341,7 @@ async def _version_samples(
             ComponentVersion,
             ComponentVersion.id == ScanComponent.component_version_id,
         )
-        .where(ScanComponent.scan_id.in_(scan_ids))
+        .where(_among_scans(ScanComponent.scan_id, scan_ids))
         .where(ComponentVersion.component_id.in_(component_ids))
         .distinct()
         .order_by(ComponentVersion.component_id, ComponentVersion.version)
@@ -393,7 +444,7 @@ async def list_inventory_components(
             (license_rollup.c.scan_id == ScanComponent.scan_id)
             & (license_rollup.c.cv_id == ScanComponent.component_version_id),
         )
-        .where(ScanComponent.scan_id.in_(scan_ids))
+        .where(_among_scans(ScanComponent.scan_id, scan_ids))
         .group_by(Component.id)
     )
 
@@ -523,7 +574,7 @@ async def list_component_usage(
             ComponentVersion,
             ComponentVersion.id == ScanComponent.component_version_id,
         )
-        .where(ScanComponent.scan_id.in_(scan_ids))
+        .where(_among_scans(ScanComponent.scan_id, scan_ids))
         .where(ComponentVersion.component_id == component_id)
         # One project can carry the same version at several dependency paths;
         # collapse those and let `direct` be true when any path is direct.
@@ -607,7 +658,7 @@ async def list_vulnerability_impact(
             ComponentVersion.id == VulnerabilityFinding.component_version_id,
         )
         .join(Component, Component.id == ComponentVersion.component_id)
-        .where(VulnerabilityFinding.scan_id.in_(scan_ids))
+        .where(_among_scans(VulnerabilityFinding.scan_id, scan_ids))
         .where(Vulnerability.external_id == external_id)
     )
 
