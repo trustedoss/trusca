@@ -1,0 +1,272 @@
+# SPDX-License-Identifier: Apache-2.0
+# Copyright 2026 TRUSCA contributors
+"""
+Generic OpenID Connect provider: the deployment's own identity provider.
+
+The two providers beside this one are named services with pinned endpoints.
+This one is named by configuration: an operator sets the issuer and the client
+credentials, and every endpoint comes from the issuer's discovery document.
+That is what makes it generic, and it is also why it is a single provider
+rather than a configurable list. An organisation has one identity provider,
+and supporting several at once would widen the provider name from a closed set
+into user input for no case anyone has.
+
+Deliberately no token signature verification here. The provider returns the
+authorisation code over the browser redirect, and this module exchanges it for
+an access token over TLS directly with the issuer's token endpoint, then reads
+the subject and claims from the userinfo endpoint over the same channel. That
+is the same shape as the other two providers. Validating an ID token instead
+would mean fetching a key set, matching a key id, checking a signature,
+issuer, audience and expiry by hand, and getting any of those subtly wrong is
+the classic way an authentication path fails open. There is nothing to gain
+here: the code never leaves the exchange, so there is no second-hand token to
+authenticate.
+
+Discovery is cached per issuer with a short lifetime. Without a cache every
+sign-in would pay two round-trips before the browser is even redirected.
+"""
+
+from __future__ import annotations
+
+import time
+from dataclasses import dataclass
+from typing import Any
+from urllib.parse import urlencode
+
+import httpx
+import structlog
+
+from core.config import (
+    oauth_http_timeout_seconds,
+    oidc_client_id,
+    oidc_client_secret,
+    oidc_email_claim,
+    oidc_issuer,
+    oidc_name_claim,
+    oidc_require_verified_email,
+    oidc_scopes,
+)
+
+from .base import (
+    OAUTH_PROVIDER_OIDC,
+    OAuthExchangeError,
+    OAuthProviderDisabled,
+    OAuthUserInfo,
+)
+
+log = structlog.get_logger("integrations.oauth.oidc")
+
+DISCOVERY_PATH = "/.well-known/openid-configuration"
+
+#: How long a discovery document is reused. Issuers change endpoints rarely,
+#: and an hour bounds how long a stale document can be served after one does.
+DISCOVERY_TTL_SECONDS = 3600
+
+
+@dataclass(frozen=True)
+class _Endpoints:
+    authorize: str
+    token: str
+    userinfo: str
+
+
+_cache: dict[str, tuple[float, _Endpoints]] = {}
+
+
+def _require_credentials() -> tuple[str, str, str]:
+    issuer = oidc_issuer()
+    client_id = oidc_client_id()
+    client_secret = oidc_client_secret()
+    if not issuer or not client_id or not client_secret:
+        raise OAuthProviderDisabled("OIDC is not configured on this deployment")
+    return issuer, client_id, client_secret
+
+
+def _endpoint(document: dict[str, Any], key: str, issuer: str) -> str:
+    value = document.get(key)
+    if not isinstance(value, str) or not value:
+        raise OAuthExchangeError(f"discovery document for {issuer} has no usable {key}")
+    if not value.startswith("https://"):
+        # An http endpoint would carry the code and the access token in the
+        # clear. Refusing is the only safe reading, and a provider serving one
+        # is misconfigured rather than unusual.
+        raise OAuthExchangeError(f"discovery document for {issuer} advertises a non-HTTPS {key}")
+    return value
+
+
+def discover(*, force: bool = False) -> _Endpoints:
+    """Return the issuer's endpoints, fetching the discovery document if needed.
+
+    Synchronous on purpose: ``authorize_url`` is a synchronous method on the
+    provider protocol, and one code path for the document is worth more than
+    saving a blocking call that happens once per cache lifetime.
+    """
+    issuer, _, _ = _require_credentials()
+    now = time.monotonic()
+    cached = _cache.get(issuer)
+    if cached and not force and now - cached[0] < DISCOVERY_TTL_SECONDS:
+        return cached[1]
+
+    url = f"{issuer}{DISCOVERY_PATH}"
+    try:
+        with httpx.Client(timeout=oauth_http_timeout_seconds()) as client:
+            response = client.get(url, headers={"Accept": "application/json"})
+    except (httpx.TimeoutException, httpx.NetworkError) as exc:
+        log.warning("oauth_oidc_discovery_network_failure", error_type=type(exc).__name__)
+        raise OAuthExchangeError("oidc discovery network failure") from exc
+
+    if response.status_code != 200:
+        log.warning("oauth_oidc_discovery_http_error", status=response.status_code)
+        raise OAuthExchangeError(f"oidc discovery returned HTTP {response.status_code}")
+
+    try:
+        document = response.json()
+    except ValueError as exc:
+        raise OAuthExchangeError("oidc discovery returned non-JSON body") from exc
+    if not isinstance(document, dict):
+        raise OAuthExchangeError("oidc discovery returned a non-object body")
+
+    advertised = document.get("issuer")
+    if advertised != issuer:
+        # The document says who it belongs to. A mismatch means the configured
+        # URL is not the issuer it claims to be, which is exactly the case a
+        # sign-in must not proceed through.
+        log.warning("oauth_oidc_discovery_issuer_mismatch", configured=issuer)
+        raise OAuthExchangeError("oidc discovery issuer does not match the configured issuer")
+
+    endpoints = _Endpoints(
+        authorize=_endpoint(document, "authorization_endpoint", issuer),
+        token=_endpoint(document, "token_endpoint", issuer),
+        userinfo=_endpoint(document, "userinfo_endpoint", issuer),
+    )
+    _cache[issuer] = (now, endpoints)
+    return endpoints
+
+
+def reset_discovery_cache() -> None:
+    """Drop the cached documents. Used by tests and after a config change."""
+    _cache.clear()
+
+
+class OidcProvider:
+    """Implements :class:`integrations.oauth.base.OAuthProvider` generically."""
+
+    name = OAUTH_PROVIDER_OIDC
+
+    def authorize_url(self, *, state: str, redirect_uri: str) -> str:
+        _, client_id, _ = _require_credentials()
+        endpoints = discover()
+        params = {
+            "client_id": client_id,
+            "redirect_uri": redirect_uri,
+            "response_type": "code",
+            "scope": oidc_scopes(),
+            "state": state,
+        }
+        return f"{endpoints.authorize}?{urlencode(params)}"
+
+    async def exchange_code_for_token(self, *, code: str, redirect_uri: str) -> str:
+        _, client_id, client_secret = _require_credentials()
+        endpoints = discover()
+        try:
+            async with httpx.AsyncClient(timeout=oauth_http_timeout_seconds()) as client:
+                response = await client.post(
+                    endpoints.token,
+                    headers={"Accept": "application/json"},
+                    data={
+                        "client_id": client_id,
+                        "client_secret": client_secret,
+                        "code": code,
+                        "grant_type": "authorization_code",
+                        "redirect_uri": redirect_uri,
+                    },
+                )
+        except (httpx.TimeoutException, httpx.NetworkError) as exc:
+            log.warning("oauth_oidc_exchange_network_failure", error_type=type(exc).__name__)
+            raise OAuthExchangeError("oidc token exchange network failure") from exc
+
+        if response.status_code != 200:
+            log.warning("oauth_oidc_exchange_http_error", status=response.status_code)
+            raise OAuthExchangeError(f"oidc token exchange returned HTTP {response.status_code}")
+
+        try:
+            payload = response.json()
+        except ValueError as exc:
+            raise OAuthExchangeError("oidc token exchange returned non-JSON body") from exc
+        if not isinstance(payload, dict):
+            raise OAuthExchangeError("oidc token exchange returned a non-object body")
+        if "error" in payload:
+            log.warning("oauth_oidc_exchange_provider_error", error_code=payload.get("error"))
+            raise OAuthExchangeError(f"oidc exchange error: {payload.get('error')!s}")
+
+        access_token = payload.get("access_token")
+        if not isinstance(access_token, str) or not access_token:
+            raise OAuthExchangeError("oidc exchange returned no access_token")
+        return access_token
+
+    async def fetch_user_info(self, *, access_token: str) -> OAuthUserInfo:
+        endpoints = discover()
+        headers = {
+            "Authorization": f"Bearer {access_token}",
+            "Accept": "application/json",
+        }
+        try:
+            async with httpx.AsyncClient(
+                timeout=oauth_http_timeout_seconds(), headers=headers
+            ) as client:
+                response = await client.get(endpoints.userinfo)
+        except (httpx.TimeoutException, httpx.NetworkError) as exc:
+            log.warning("oauth_oidc_userinfo_network_failure", error_type=type(exc).__name__)
+            raise OAuthExchangeError("oidc userinfo network failure") from exc
+
+        if response.status_code != 200:
+            log.warning("oauth_oidc_userinfo_http_error", status=response.status_code)
+            raise OAuthExchangeError(f"oidc userinfo returned HTTP {response.status_code}")
+
+        try:
+            payload = response.json()
+        except ValueError as exc:
+            raise OAuthExchangeError("oidc userinfo returned non-JSON body") from exc
+        if not isinstance(payload, dict):
+            raise OAuthExchangeError("oidc userinfo returned a non-object body")
+
+        subject = payload.get("sub")
+        if not isinstance(subject, str) or not subject:
+            raise OAuthExchangeError("oidc userinfo missing 'sub' claim")
+
+        email_claim = oidc_email_claim()
+        email = payload.get(email_claim)
+        if not isinstance(email, str) or not email.strip():
+            raise OAuthExchangeError(f"oidc userinfo missing '{email_claim}' claim")
+
+        if oidc_require_verified_email() and payload.get("email_verified") is not True:
+            # Absent counts as unverified. A provider that does not say has not
+            # verified anything as far as this deployment can tell, and the
+            # operator who knows better turns the requirement off explicitly.
+            log.warning("oauth_oidc_email_unverified", sub=subject)
+            raise OAuthExchangeError("oidc userinfo does not report a verified email")
+
+        full_name = payload.get(oidc_name_claim())
+        if not isinstance(full_name, str) or not full_name.strip():
+            full_name = None
+
+        avatar_url = payload.get("picture")
+        if not isinstance(avatar_url, str) or not avatar_url:
+            avatar_url = None
+
+        return OAuthUserInfo(
+            provider=OAUTH_PROVIDER_OIDC,
+            provider_user_id=subject,
+            email=email.strip().lower(),
+            full_name=full_name,
+            avatar_url=avatar_url,
+        )
+
+
+__all__ = [
+    "DISCOVERY_PATH",
+    "DISCOVERY_TTL_SECONDS",
+    "OidcProvider",
+    "discover",
+    "reset_discovery_cache",
+]

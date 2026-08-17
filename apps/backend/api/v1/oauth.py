@@ -192,7 +192,7 @@ def _demo_read_only_blocked(request: Request, *, provider: str) -> Response:
 
 # Closed provider set in stable wire order. Mirrors the ``Literal`` gate on
 # the authorize/callback path parameters below — widen both together.
-_PROVIDER_ORDER: tuple[Literal["github", "google"], ...] = ("github", "google")
+_PROVIDER_ORDER: tuple[Literal["github", "google", "oidc"], ...] = ("github", "google", "oidc")
 
 
 @router.get(
@@ -241,7 +241,7 @@ async def list_providers() -> OAuthProvidersResponse:
 )
 async def authorize(
     request: Request,
-    provider: Literal["github", "google"],
+    provider: Literal["github", "google", "oidc"],
     redirect_after: str | None = None,
 ) -> Response:
     """
@@ -288,7 +288,7 @@ async def authorize(
 )
 async def callback(
     request: Request,
-    provider: Literal["github", "google"],
+    provider: Literal["github", "google", "oidc"],
     code: str | None = None,
     state: str | None = None,
     error: str | None = None,

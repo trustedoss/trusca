@@ -64,6 +64,9 @@ from core.config import (
     google_oauth_client_secret,
     oauth_login_redirect_default,
     oauth_state_ttl_seconds,
+    oidc_client_id,
+    oidc_client_secret,
+    oidc_issuer,
     secret_key,
 )
 from core.security import (
@@ -304,7 +307,7 @@ def oauth_provider_configured(provider: str) -> bool:
     core rule #11). Never returns or logs the credential values.
 
     Raises:
-        OAuthProviderUnknown: provider name is not 'github' or 'google' —
+        OAuthProviderUnknown: provider name is not one of the supported set,
             mirrors :func:`integrations.oauth.get_provider` so accidental
             call-sites fail loudly.
     """
@@ -312,6 +315,11 @@ def oauth_provider_configured(provider: str) -> bool:
         return bool(github_oauth_client_id() and github_oauth_client_secret())
     if provider == "google":
         return bool(google_oauth_client_id() and google_oauth_client_secret())
+    if provider == "oidc":
+        # Three values, not two: without an issuer there is nowhere to send
+        # the browser, so a deployment holding only credentials is as
+        # unusable as one holding none.
+        return bool(oidc_issuer() and oidc_client_id() and oidc_client_secret())
     raise OAuthProviderUnknown(f"unknown OAuth provider: {provider!r}")
 
 

@@ -768,3 +768,26 @@ def test_every_role_can_be_assigned_somewhere() -> None:
         "a team membership can carry every grade except super_admin, which is "
         "a user flag; adding a grade means adding it here too"
     )
+
+
+def test_the_oauth_provider_name_appears_in_every_list_that_gates_it() -> None:
+    """Four separate closures decide which providers exist.
+
+    The path parameter, the wire schema, the adapter lookup and the list the
+    login page reads each carry their own copy. A provider present in some but
+    not all does not fail on startup: it either 422s at the edge while the
+    adapter exists, or renders a button that resolves to nothing.
+    """
+    import typing
+
+    from api.v1.oauth import _PROVIDER_ORDER
+    from integrations.oauth.base import ProviderName, get_provider
+    from schemas.oauth_identity import OAuthProvider
+
+    declared = set(typing.get_args(ProviderName))
+
+    assert set(typing.get_args(OAuthProvider)) == declared
+    assert set(_PROVIDER_ORDER) == declared
+    for name in declared:
+        # Raises ValueError if the adapter lookup does not know the name.
+        assert get_provider(name) is not None

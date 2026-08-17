@@ -3,8 +3,12 @@
 /**
  * ProviderIcon — chore G ("Connected Accounts" UI).
  *
- * Single source of truth for the GitHub / Google brand marks used by both the
- * login page (sign-in buttons) and the profile page (Connected Accounts list).
+ * Single source of truth for the provider marks used by both the login page
+ * (sign-in buttons) and the profile page (Connected Accounts list).
+ *
+ * The generic OIDC entry has no brand: it stands for whichever identity
+ * provider the deployment configured, so it takes a neutral key glyph that
+ * inherits `currentColor` rather than borrowing a vendor's mark.
  *
  * The GitHub Octocat is rendered single-color and inherits the surrounding
  * `currentColor` so it adapts to the button / row tone. The Google "G" keeps
@@ -15,7 +19,7 @@
  */
 import type { SVGProps } from "react";
 
-export type Provider = "github" | "google";
+export type Provider = "github" | "google" | "oidc";
 
 interface ProviderIconProps extends SVGProps<SVGSVGElement> {
   provider: Provider;
@@ -59,7 +63,28 @@ function GoogleIcon(props: SVGProps<SVGSVGElement>) {
   );
 }
 
+function SsoIcon(props: SVGProps<SVGSVGElement>) {
+  return (
+    <svg
+      viewBox="0 0 24 24"
+      width="16"
+      height="16"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+      {...props}
+    >
+      <path d="M15.5 8.5a4.5 4.5 0 1 0-4.24 4.49L9 15.25V17H6.5v2.5H4v-3l5.26-5.26" />
+      <circle cx="16.5" cy="7.5" r="1" fill="currentColor" stroke="none" />
+    </svg>
+  );
+}
+
 export function ProviderIcon({ provider, ...rest }: ProviderIconProps) {
   if (provider === "github") return <GitHubIcon {...rest} />;
+  if (provider === "oidc") return <SsoIcon {...rest} />;
   return <GoogleIcon {...rest} />;
 }

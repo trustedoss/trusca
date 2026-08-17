@@ -2014,6 +2014,70 @@ def google_oauth_client_secret() -> str | None:
     return raw or None
 
 
+def oidc_issuer() -> str | None:
+    """Issuer URL of the deployment's own identity provider.
+
+    One generic provider, not a list. An organisation runs one identity
+    provider, and every endpoint is discovered from this URL, so naming the
+    issuer is the whole of the wiring. Read at call time (rule #11).
+    """
+    raw = os.getenv("OIDC_ISSUER", "").strip()
+    return raw.rstrip("/") or None
+
+
+def oidc_client_id() -> str | None:
+    raw = os.getenv("OIDC_CLIENT_ID", "").strip()
+    return raw or None
+
+
+def oidc_client_secret() -> str | None:
+    raw = os.getenv("OIDC_CLIENT_SECRET", "")
+    return raw or None
+
+
+def oidc_scopes() -> str:
+    """Scopes requested at the authorisation endpoint.
+
+    ``openid`` is mandatory and is added back if an operator drops it, since
+    without it the provider is not doing OpenID Connect and the userinfo
+    endpoint has no subject to return.
+    """
+    raw = os.getenv("OIDC_SCOPES", "").strip()
+    scopes = raw.split() if raw else ["openid", "email", "profile"]
+    if "openid" not in scopes:
+        scopes.insert(0, "openid")
+    return " ".join(scopes)
+
+
+def oidc_email_claim() -> str:
+    """Claim carrying the address to sign the user in as.
+
+    Providers disagree: some send ``email``, others put the address in
+    ``preferred_username`` or a vendor claim. The default is the standard one.
+    """
+    raw = os.getenv("OIDC_EMAIL_CLAIM", "").strip()
+    return raw or "email"
+
+
+def oidc_name_claim() -> str:
+    raw = os.getenv("OIDC_NAME_CLAIM", "").strip()
+    return raw or "name"
+
+
+def oidc_require_verified_email() -> bool:
+    """Whether an unverified address is refused.
+
+    Defaults to true, matching the rule the other providers already enforce.
+    An operator whose provider omits ``email_verified`` entirely can turn it
+    off, which is a deliberate decision rather than a silent fallback: with it
+    on, a missing claim is treated as unverified and the sign-in is refused.
+    """
+    raw = os.getenv("OIDC_REQUIRE_VERIFIED_EMAIL", "").strip().lower()
+    if not raw:
+        return True
+    return raw in {"1", "true", "yes", "on"}
+
+
 def oauth_state_ttl_seconds() -> int:
     """Lifetime of the signed OAuth ``state`` JWT (CSRF guard).
 
