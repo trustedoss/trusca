@@ -133,7 +133,7 @@ async def list_project_licenses_endpoint(
     ),
     scan_id: uuid.UUID | None = Depends(snapshot_anchor),
     session: AsyncSession = Depends(get_db),
-    actor: CurrentUser = Depends(require_role("developer")),
+    actor: CurrentUser = Depends(require_role("viewer")),
 ) -> Response:
     try:
         (
@@ -200,7 +200,7 @@ async def get_license_finding_endpoint(
     request: Request,
     finding_id: uuid.UUID,
     session: AsyncSession = Depends(get_db),
-    actor: CurrentUser = Depends(require_role("developer")),
+    actor: CurrentUser = Depends(require_role("viewer")),
 ) -> Response:
     try:
         payload = await get_license_finding_detail(

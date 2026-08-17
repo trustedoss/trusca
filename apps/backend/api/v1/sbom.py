@@ -263,7 +263,7 @@ async def export_project_sbom_endpoint(
         ),
     ),
     session: AsyncSession = Depends(get_db),
-    actor: CurrentUser = Depends(require_role("developer")),
+    actor: CurrentUser = Depends(require_role("viewer")),
 ) -> Response:
     # IDOR guard — re-use ``get_project`` so the "is the actor allowed to see
     # this project?" decision lives in exactly one place. Existence-hide: any
@@ -493,7 +493,7 @@ async def download_sbom_signature_endpoint(
     request: Request,
     project_id: uuid.UUID,
     session: AsyncSession = Depends(get_db),
-    actor: CurrentUser = Depends(require_role("developer")),
+    actor: CurrentUser = Depends(require_role("viewer")),
 ) -> Response:
     project = await _resolve_project_or_problem(
         request, project_id=project_id, session=session, actor=actor, resource="sbom_signature"
@@ -533,7 +533,7 @@ async def download_sbom_certificate_endpoint(
     request: Request,
     project_id: uuid.UUID,
     session: AsyncSession = Depends(get_db),
-    actor: CurrentUser = Depends(require_role("developer")),
+    actor: CurrentUser = Depends(require_role("viewer")),
 ) -> Response:
     project = await _resolve_project_or_problem(
         request, project_id=project_id, session=session, actor=actor, resource="sbom_certificate"
@@ -574,7 +574,7 @@ async def download_sbom_attestation_endpoint(
     request: Request,
     project_id: uuid.UUID,
     session: AsyncSession = Depends(get_db),
-    actor: CurrentUser = Depends(require_role("developer")),
+    actor: CurrentUser = Depends(require_role("viewer")),
 ) -> Response:
     project = await _resolve_project_or_problem(
         request, project_id=project_id, session=session, actor=actor, resource="sbom_attestation"
@@ -614,7 +614,7 @@ async def download_sbom_attestation_certificate_endpoint(
     request: Request,
     project_id: uuid.UUID,
     session: AsyncSession = Depends(get_db),
-    actor: CurrentUser = Depends(require_role("developer")),
+    actor: CurrentUser = Depends(require_role("viewer")),
 ) -> Response:
     # Keyless attestation emits its own Fulcio certificate (distinct from the
     # signature certificate). Exposing it individually — and in the bundle — lets
@@ -663,7 +663,7 @@ async def download_sbom_public_key_endpoint(
     request: Request,
     project_id: uuid.UUID,
     session: AsyncSession = Depends(get_db),
-    actor: CurrentUser = Depends(require_role("developer")),
+    actor: CurrentUser = Depends(require_role("viewer")),
 ) -> Response:
     # The public key is deployment-global, but we still scope by project so the
     # auth/IDOR shape matches the rest of the signature surface (a caller must be
@@ -705,7 +705,7 @@ async def download_sbom_signature_bundle_endpoint(
     request: Request,
     project_id: uuid.UUID,
     session: AsyncSession = Depends(get_db),
-    actor: CurrentUser = Depends(require_role("developer")),
+    actor: CurrentUser = Depends(require_role("viewer")),
 ) -> Response:
     project = await _resolve_project_or_problem(
         request,
@@ -915,7 +915,7 @@ async def get_sbom_conformance_endpoint(
     project_id: uuid.UUID,
     scan_id: uuid.UUID,
     session: AsyncSession = Depends(get_db),
-    actor: CurrentUser = Depends(require_role_or_api_key("developer")),
+    actor: CurrentUser = Depends(require_role_or_api_key("viewer")),
 ) -> Response:
     # Same auth + IDOR guard as the rest of the SBOM surface: an outsider sees
     # 404 (existence-hide), and the cross-team audit entry fires.

@@ -67,7 +67,7 @@ async def search_results_endpoint(
     package_type: list[str] | None = Query(default=None),
     license_category: list[str] | None = Query(default=None),
     session: AsyncSession = Depends(get_db),
-    actor: CurrentUser = Depends(require_role("developer")),
+    actor: CurrentUser = Depends(require_role("viewer")),
 ) -> Response:
     try:
         body = await search_results(

@@ -277,7 +277,7 @@ async def list_projects_endpoint(
     page: int = Query(default=1, ge=1, le=PAGE_MAX),
     size: int = Query(default=20, ge=1, le=100),
     session: AsyncSession = Depends(get_db),
-    actor: CurrentUser = Depends(require_role("developer")),
+    actor: CurrentUser = Depends(require_role("viewer")),
 ) -> Response:
     try:
         rows, total = await list_projects(
@@ -356,7 +356,7 @@ async def get_project_endpoint(
     request: Request,
     project_id: uuid.UUID,
     session: AsyncSession = Depends(get_db),
-    actor: CurrentUser = Depends(require_role("developer")),
+    actor: CurrentUser = Depends(require_role("viewer")),
 ) -> Response:
     try:
         project = await get_project(session, project_id=project_id, actor=actor)
@@ -453,7 +453,7 @@ async def get_project_overview_endpoint(
     project_id: uuid.UUID,
     scan_id: uuid.UUID | None = Depends(snapshot_anchor),
     session: AsyncSession = Depends(get_db),
-    actor: CurrentUser = Depends(require_role("developer")),
+    actor: CurrentUser = Depends(require_role("viewer")),
 ) -> Response:
     try:
         payload = await get_project_overview(
@@ -510,7 +510,7 @@ async def get_project_governance_endpoint(
     request: Request,
     project_id: uuid.UUID,
     session: AsyncSession = Depends(get_db),
-    actor: CurrentUser = Depends(require_role("developer")),
+    actor: CurrentUser = Depends(require_role("viewer")),
 ) -> Response:
     """The governance band's payload — five signals the page already owns.
 
@@ -609,7 +609,7 @@ async def list_project_components_endpoint(
     order: str = Query(default="asc", pattern=r"^(asc|desc)$"),
     scan_id: uuid.UUID | None = Depends(snapshot_anchor),
     session: AsyncSession = Depends(get_db),
-    actor: CurrentUser = Depends(require_role("developer")),
+    actor: CurrentUser = Depends(require_role("viewer")),
 ) -> Response:
     try:
         items, total = await list_components_for_project(
@@ -676,7 +676,7 @@ async def export_project_components_csv_endpoint(
     order: str = Query(default="asc", pattern=r"^(asc|desc)$"),
     scan_id: uuid.UUID | None = Depends(snapshot_anchor),
     session: AsyncSession = Depends(get_db),
-    actor: CurrentUser = Depends(require_role("developer")),
+    actor: CurrentUser = Depends(require_role("viewer")),
 ) -> Response:
     """
     The same rows the list endpoint would return, without the paging.
@@ -766,7 +766,7 @@ async def list_project_releases_endpoint(
         ),
     ),
     session: AsyncSession = Depends(get_db),
-    actor: CurrentUser = Depends(require_role("developer")),
+    actor: CurrentUser = Depends(require_role("viewer")),
 ) -> Response:
     # Each row is one succeeded scan = an immutable release snapshot. RBAC mirrors
     # the overview endpoint: ProjectNotFound (404) / ProjectForbidden (403). A
@@ -842,7 +842,7 @@ async def diff_project_releases_endpoint(
         ),
     ),
     session: AsyncSession = Depends(get_db),
-    actor: CurrentUser = Depends(require_role("developer")),
+    actor: CurrentUser = Depends(require_role("viewer")),
 ) -> Response:
     # Validate BOTH anchors are succeeded snapshots of THIS project before running
     # any aggregation. resolve_snapshot_scan_id is the single source of truth for
@@ -908,7 +908,7 @@ async def get_dependency_graph_endpoint(
     project_id: uuid.UUID,
     scan_id: uuid.UUID | None = Depends(snapshot_anchor),
     session: AsyncSession = Depends(get_db),
-    actor: CurrentUser = Depends(require_role("developer")),
+    actor: CurrentUser = Depends(require_role("viewer")),
 ) -> Response:
     # Team membership + snapshot resolution are enforced INSIDE the service
     # (non-member and missing-project both existence-hide to 404; an invalid /

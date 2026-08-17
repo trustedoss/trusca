@@ -52,7 +52,7 @@ async def get_component_detail_endpoint(
     request: Request,
     component_id: uuid.UUID,
     session: AsyncSession = Depends(get_db),
-    actor: CurrentUser = Depends(require_role("developer")),
+    actor: CurrentUser = Depends(require_role("viewer")),
 ) -> Response:
     try:
         payload = await get_component_detail(

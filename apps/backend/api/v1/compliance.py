@@ -126,7 +126,7 @@ async def list_project_compliance_endpoint(
     ),
     scan_id: uuid.UUID | None = Depends(snapshot_anchor),
     session: AsyncSession = Depends(get_db),
-    actor: CurrentUser = Depends(require_role("developer")),
+    actor: CurrentUser = Depends(require_role("viewer")),
 ) -> Response:
     try:
         (

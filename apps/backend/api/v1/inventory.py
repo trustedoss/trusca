@@ -102,7 +102,7 @@ async def list_inventory_components_endpoint(
     ),
     order: str = Query(default="desc", pattern="^(asc|desc)$"),
     session: AsyncSession = Depends(get_db),
-    actor: CurrentUser = Depends(require_role("developer")),
+    actor: CurrentUser = Depends(require_role("viewer")),
 ) -> Response:
     body = await list_inventory_components(
         session,
@@ -155,7 +155,7 @@ async def export_inventory_components_csv_endpoint(
     ),
     order: str = Query(default="desc", pattern="^(asc|desc)$"),
     session: AsyncSession = Depends(get_db),
-    actor: CurrentUser = Depends(require_role("developer")),
+    actor: CurrentUser = Depends(require_role("viewer")),
 ) -> Response:
     """
     The same rows the list endpoint would return, without the paging.
@@ -205,7 +205,7 @@ async def list_component_usage_endpoint(
     limit: int = Query(default=LIMIT_DEFAULT, ge=1, le=LIMIT_MAX),
     offset: int = Query(default=0, ge=0),
     session: AsyncSession = Depends(get_db),
-    actor: CurrentUser = Depends(require_role("developer")),
+    actor: CurrentUser = Depends(require_role("viewer")),
 ) -> Response:
     try:
         body = await list_component_usage(
@@ -244,7 +244,7 @@ async def list_vulnerability_impact_endpoint(
     limit: int = Query(default=LIMIT_DEFAULT, ge=1, le=LIMIT_MAX),
     offset: int = Query(default=0, ge=0),
     session: AsyncSession = Depends(get_db),
-    actor: CurrentUser = Depends(require_role("developer")),
+    actor: CurrentUser = Depends(require_role("viewer")),
 ) -> Response:
     try:
         body = await list_vulnerability_impact(

@@ -78,7 +78,7 @@ async def global_search_endpoint(
         ),
     ),
     session: AsyncSession = Depends(get_db),
-    actor: CurrentUser = Depends(require_role("developer")),
+    actor: CurrentUser = Depends(require_role("viewer")),
 ) -> Response:
     results = await global_search(session, actor=actor, q=q, kinds=kinds)
     return Response(
