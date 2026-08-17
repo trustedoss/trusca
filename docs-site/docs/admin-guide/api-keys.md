@@ -82,6 +82,7 @@ curl -sS -X POST "https://trustedoss.example.com/v1/api-keys" \
    - **Name** (e.g. `github-action-checkout-service`)
    - **Scope**: `project` (default); `team` also appears if you administer a team
    - **Project ID**: required when scope is `project`; **Team ID** when scope is `team`
+   - **Expiration**: **Never expires** (the default), or a 30 / 90 / 180 / 365-day preset, submitted as `expires_in_days`
 5. **Create**.
 
 The full key is shown **once** in a modal. Copy it and store it in your CI's secret store (GitHub secrets, GitLab CI variables, Jenkins credentials). After you close the modal, only the prefix is visible from the UI; the full key is unrecoverable.
@@ -206,7 +207,7 @@ Confirm:
 The following capabilities are referenced in early docs but are **not** shipped in this release:
 
 - Per-key role override (`effective_role`) and a granular `allowed_actions` taxonomy (`scan:trigger`, `scan:read`, `report:download`, `webhook:receive`, `*`). Today the key inherits the issuing user's role and the full RBAC surface.
-- The 30 / 90 / 180 / 365-day expiry presets in the New API key form (the API's `expires_in_days` / `expires_at` already ship — only the UI presets are on the roadmap).
+- A free-form expiry value in the **Create API key** form. The form offers Never plus the 30 / 90 / 180 / 365-day presets; any other TTL inside the API's 1 to 1825 day range has to be issued through `expires_in_days` directly.
 - Per-request `api_key.use` audit event with `actor_kind = api_key`. Today key lifecycle (the ORM-listener insert and the explicit `api_key.revoked` action) is audited but per-request use is captured only in structured logs.
 - `last_used_ip` column in the listing.
 - Brute-force secret-mismatch alerting (Slack notification when a single key crosses 5 misses / 60 s).

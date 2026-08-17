@@ -32,6 +32,7 @@ Open `/integrations` and scroll to the **API keys** section. The list shows ever
 2. Fill in the form:
    - **Name**: free-text reminder of what the key is for (e.g. `github-action-checkout-service`).
    - **Scope**: the dropdown offers only the scopes you may issue, out of `project`, `team`, and `org`. Lower scopes are stricter; pick the smallest that covers the calls you need to make. The form has plain UUID inputs for `team_id` (required when scope=`team`) and `project_id` (required when scope=`project`); copy the IDs from the corresponding admin pages.
+   - **Expiration**: **Never expires**, or one of the 30 / 90 / 180 / 365-day presets. After the chosen period the key stops authenticating and CI calls using it fail. A key that leaks into a pipeline log then lapses on its own instead of living until someone revokes it, so CI keys should carry a TTL and be rotated.
 
    Who can issue each scope:
 
@@ -43,8 +44,8 @@ Open `/integrations` and scroll to the **API keys** section. The list shows ever
 
 3. Click **Create**.
 
-:::caution Keys do not expire in this release
-The key-creation form does not yet collect an expiry. Every key issued in this release is valid until you explicitly **Revoke** it. Treat the key like any other long-lived secret — store it in your CI's secret manager, never in source control.
+:::caution A key with no expiry lives until you revoke it
+**Never expires** is the default in the form, and a key issued that way stays valid until someone clicks **Revoke**. Treat it like any other long-lived secret: store it in your CI's secret manager, never in source control. Choosing a preset instead puts a deadline on the damage a leaked key can do.
 :::
 
 The portal opens a **one-time reveal modal** with the full key:
@@ -140,7 +141,7 @@ URL to register at GitLab: `https://<your-host>/v1/webhooks/gitlab`.
 
 Items the manual previously promised that are not in this release; tracked for later releases.
 
-- API-key expiry presets (30 / 90 / 180 / 365 days, custom) — planned; today every issued key is non-expiring until revoked.
+- A custom expiry value on the key-creation form. Planned; today the form offers Never plus the 30 / 90 / 180 / 365-day presets, and any other TTL between 1 and 1825 days has to be issued through the API's `expires_in_days`.
 - A team / project picker on the key-creation form — planned; today the form takes plain UUID inputs.
 - **Project Settings → CI/CD** subtab with **Rotate webhook secret** action — planned; today the per-project `webhook_secret` is bootstrapped server-side.
 - Team-scoped audit log at `/audit` for `team_admin` users — planned; today the audit log is super-admin only at `/admin/audit`.

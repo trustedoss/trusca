@@ -32,6 +32,7 @@ sidebar_position: 9
 2. 폼을 채웁니다.
    - **Name** — Key 용도를 떠올리게 하는 자유 텍스트(예: `github-action-checkout-service`).
    - **Scope** — 드롭다운에는 `org`, `team`, `project` 가운데 본인이 발급할 수 있는 scope만 나열됩니다. 낮은 scope가 더 엄격합니다. 필요한 호출을 커버하는 가장 작은 scope를 선택하세요. 폼에는 `team_id`(scope=`team`일 때 필수)와 `project_id`(scope=`project`일 때 필수)를 위한 평문 UUID 입력란이 있습니다. 해당 admin 페이지에서 ID를 복사해 넣으세요.
+   - **Expiration** — **Never expires** 또는 30 / 90 / 180 / 365일 프리셋 가운데 하나입니다. 선택한 기간이 지나면 Key는 인증되지 않고, 그 Key를 쓰는 CI 호출은 실패합니다. 파이프라인 로그로 유출된 Key도 누군가 폐기할 때까지 살아 있지 않고 스스로 만료되므로, CI용 Key에는 TTL을 지정하고 주기적으로 교체하세요.
 
    각 scope 발급 권한:
 
@@ -43,8 +44,8 @@ sidebar_position: 9
 
 3. **Create**를 클릭합니다.
 
-:::caution 현재 릴리스에서는 Key가 만료되지 않음
-Key 생성 폼이 아직 만료를 받지 않습니다. 현재 릴리스에서 발급된 모든 Key는 명시적으로 **Revoke** 할 때까지 유효합니다. 다른 장기 시크릿과 동일하게 취급하세요 — CI 시크릿 매니저에 보관하고 절대 소스 컨트롤에 두지 마세요.
+:::caution 만료를 두지 않은 Key는 폐기할 때까지 살아 있습니다
+폼의 기본값은 **Never expires**이고, 그렇게 발급한 Key는 누군가 **Revoke**를 누를 때까지 유효합니다. 다른 장기 시크릿과 동일하게 취급하세요. CI 시크릿 매니저에 보관하고 소스 컨트롤에는 절대 두지 마세요. 프리셋을 고르면 Key가 유출됐을 때 피해가 이어지는 기간에 상한이 생깁니다.
 :::
 
 포털은 전체 Key가 담긴 **1회 노출 모달**을 엽니다.
@@ -140,7 +141,7 @@ GitLab에 등록할 URL — `https://<your-host>/v1/webhooks/gitlab`.
 
 매뉴얼이 이전에 약속했으나 v0.10.0에 포함되지 않은 항목.
 
-- API Key 만료 프리셋(30 / 90 / 180 / 365일, 커스텀) — 예정. 현재 발급된 모든 Key는 폐기 전까지 만료되지 않습니다.
+- Key 생성 폼의 임의 만료 값 입력. 예정입니다. 현재 폼은 Never와 30 / 90 / 180 / 365일 프리셋을 제공하고, 그 밖의 TTL은 API의 `expires_in_days`(1~1825일)로 직접 발급해야 합니다.
 - Key 생성 폼의 팀/프로젝트 선택기 — 예정. 현재 폼은 평문 UUID 입력을 받습니다.
 - **Project Settings → CI/CD** 서브탭과 **Rotate webhook secret** 동작 — 예정. 현재 프로젝트별 `webhook_secret`은 서버 측에서 부트스트랩됩니다.
 - `team_admin`을 위한 팀 범위 감사 로그(`/audit`) — 예정. 현재 감사 로그는 super-admin 전용 (`/admin/audit`).
