@@ -67,6 +67,13 @@ export interface OverviewTabProps {
    * latest succeeded one. Omit → latest (unchanged default).
    */
   scanId?: string;
+  /**
+   * C3 - opens the scan dialog from the recent-scans empty state, the same
+   * prop the Vulnerabilities and Compliance tabs already take. Omitted when
+   * the reader cannot scan, so the empty state offers nothing rather than a
+   * button that refuses.
+   */
+  onScan?: () => void;
 }
 
 export function OverviewTab({
@@ -75,6 +82,7 @@ export function OverviewTab({
   onSelectScan,
   onJumpToComponents,
   scanId,
+  onScan,
 }: OverviewTabProps) {
   const { t } = useTranslation("project_detail");
   const overview = useProjectOverview(projectId, scanId);
@@ -516,6 +524,7 @@ export function OverviewTab({
           {/* W4-B #16 — row click is status-aware (see handleScanRowClick). */}
           <RecentScansTable
             scans={data.recent_scans}
+            onScan={onScan}
             onSelectScan={
               onSelectScan || onJumpToComponents
                 ? handleScanRowClick

@@ -35,7 +35,10 @@
       "summary": "Page {{page}} of {{total}}",
       "previous": "Previous",
       "next": "Next"
-    }
+    },
+    "empty_all": "No scans yet",
+    "empty_all_hint": "A scan starts from a project. Open one and press Scan.",
+    "empty_all_cta": "Open projects"
   },
   "progress": {
     "title": "Scan in progress",

@@ -643,6 +643,14 @@ export function ProjectDetailPage() {
             scanId={pinnedScanId}
             onSelectScan={handleReopenScan}
             onJumpToComponents={(scan) => handleViewSnapshotComponents(scan.id)}
+            // Same guard as the Vulnerabilities and Compliance tabs below:
+            // no button on a demo deployment, a historical snapshot, or
+            // before the project has resolved.
+            onScan={
+              project != null && !writesDisabled && !isHistorical
+                ? () => setSourceDialogOpen(true)
+                : undefined
+            }
           />
         </TabsContent>
         <TabsContent value="releases">

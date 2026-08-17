@@ -268,10 +268,31 @@ export function ScansPage() {
             {!scansQuery.isLoading && items.length === 0 ? (
               <tr>
                 <td colSpan={6} className="p-0">
+                  {/* C3 - the "all" tab sends no status filter, so on a fresh
+                      deployment the filter copy blamed a control nobody had
+                      touched and sent the reader looking for it. The two
+                      states also want different things: one wants the filter
+                      widened, the other wants a scan to exist at all, and a
+                      scan starts from a project rather than here. */}
                   <EmptyState
                     data-testid="scans-empty"
                     icon={<Activity />}
-                    title={t("page.empty")}
+                    title={tab === "all" ? t("page.empty_all") : t("page.empty")}
+                    description={
+                      tab === "all" ? t("page.empty_all_hint") : undefined
+                    }
+                    action={
+                      tab === "all" ? (
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          asChild
+                          data-testid="scans-empty-projects"
+                        >
+                          <Link to="/projects">{t("page.empty_all_cta")}</Link>
+                        </Button>
+                      ) : undefined
+                    }
                   />
                 </td>
               </tr>

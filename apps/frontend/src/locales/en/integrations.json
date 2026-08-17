@@ -7,7 +7,7 @@
     "section_title": "API keys",
     "section_description": "Use these tokens with the GitHub Action / GitLab template / Jenkins pipeline. Revoke immediately if a key is exposed.",
     "create_button": "Create API key",
-    "empty": "No API keys yet. Create one to get started.",
+    "empty": "No API keys yet",
     "loading": "Loading API keys…",
     "error": "Failed to load API keys.",
     "table": {
@@ -86,7 +86,9 @@
       "previous": "Previous",
       "next": "Next",
       "summary": "Page {{page}} of {{total}}"
-    }
+    },
+    "empty_hint_can_create": "A build cannot scan without one.",
+    "empty_hint_cannot_create": "A build cannot scan without one. Ask a team administrator to issue a key."
   },
   "webhooks": {
     "section_title": "Webhook URLs",

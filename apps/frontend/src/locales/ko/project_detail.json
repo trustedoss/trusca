@@ -190,7 +190,7 @@
     "recent_scans": {
       "title": "최근 스캔",
       "subtitle": "이 프로젝트의 최근 스캔 5건입니다.",
-      "empty": "아직 스캔 이력이 없습니다.",
+      "empty": "아직 스캔이 없습니다",
       "reopen_aria": "이 스캔의 진행 상태 보기",
       "col_started": "시작 시각",
       "col_version": "버전",
@@ -208,7 +208,9 @@
         "source": "소스",
         "container": "컨테이너",
         "sbom": "SBOM 업로드"
-      }
+      },
+      "empty_hint": "등록만 한 프로젝트는 스캔이 한 번 훑기 전까지 아무것도 보여 주지 않습니다.",
+      "run_scan": "스캔 실행"
     },
     "gate_card": {
       "title": "빌드 차단 게이트",

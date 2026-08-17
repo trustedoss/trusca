@@ -128,12 +128,31 @@ describe("ScansPage", () => {
     });
   });
 
-  it("renders the empty state when no rows match", async () => {
+  it("does not blame a filter nobody set", async () => {
+    // C3. The default tab is "all", which sends no status filter, so on a
+    // fresh deployment "No scans match the current filter" sent the reader
+    // looking for a control to clear. And a scan does not start here, so the
+    // way forward is the project list.
     mockedListMyScans.mockResolvedValue(pageResponse([]));
     renderPage();
-    await waitFor(() => {
-      expect(screen.getByTestId("scans-empty")).toBeInTheDocument();
-    });
+
+    const empty = await screen.findByTestId("scans-empty");
+    expect(empty.textContent).not.toContain("filter");
+    expect(screen.getByTestId("scans-empty-projects")).toHaveAttribute(
+      "href",
+      "/projects",
+    );
+  });
+
+  it("does blame the filter when one is set", async () => {
+    // The counterpart: on a filtered tab the filter really is the reason,
+    // and pointing at the project list would be the wrong advice.
+    mockedListMyScans.mockResolvedValue(pageResponse([]));
+    renderPage("/scans?status=failed");
+
+    const empty = await screen.findByTestId("scans-empty");
+    expect(empty.textContent).toContain("filter");
+    expect(screen.queryByTestId("scans-empty-projects")).toBeNull();
   });
 
   it("renders one row per scan with project prefix and status badge", async () => {

@@ -85,11 +85,14 @@ function LocationProbe() {
 interface DeepLinkRenderProps {
   onSelectScan?: (scan: unknown) => void;
   onJumpToComponents?: (scan: unknown) => void;
+  /** C3 - the scan action the recent-scans empty state offers. */
+  onScan?: () => void;
 }
 
 function renderTabWithProbe({
   onSelectScan,
   onJumpToComponents,
+  onScan,
 }: DeepLinkRenderProps = {}) {
   const client = new QueryClient({
     defaultOptions: { queries: { retry: false } },
@@ -106,6 +109,7 @@ function renderTabWithProbe({
                   projectId="11111111-1111-1111-1111-111111111111"
                   onSelectScan={onSelectScan as never}
                   onJumpToComponents={onJumpToComponents as never}
+                  onScan={onScan}
                 />
                 <LocationProbe />
               </>
@@ -480,5 +484,39 @@ describe("OverviewTab", () => {
       expect(search).toContain("tab=components");
       expect(search).toContain("outdated=true");
     });
+  });
+
+  // -------------------------------------------------------------------
+  // C3 - the recent-scans card's copy, and its way forward.
+  // -------------------------------------------------------------------
+
+  it("does not promise five scans over an empty table", async () => {
+    // "Last five scans for this project" above nothing is a subtitle
+    // describing data that is not there. The suppression landed with an
+    // earlier wave (G0-5) and was unpinned until now.
+    mockedGet.mockResolvedValueOnce(overview());
+    renderTabWithProbe();
+
+    await screen.findByTestId("recent-scans-empty");
+    const card = screen.getByTestId("overview-recent-scans-card");
+    expect(card.textContent).not.toContain("Last five scans");
+  });
+
+  it("passes the scan action through to the empty state", async () => {
+    const onScan = vi.fn();
+    mockedGet.mockResolvedValueOnce(overview());
+    renderTabWithProbe({ onScan });
+
+    await screen.findByTestId("recent-scans-empty");
+    await userEvent.click(screen.getByTestId("recent-scans-scan"));
+    expect(onScan).toHaveBeenCalledOnce();
+  });
+
+  it("offers no scan when the reader cannot start one", async () => {
+    mockedGet.mockResolvedValueOnce(overview());
+    renderTabWithProbe();
+
+    await screen.findByTestId("recent-scans-empty");
+    expect(screen.queryByTestId("recent-scans-scan")).toBeNull();
   });
 });

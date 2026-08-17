@@ -190,7 +190,7 @@
     "recent_scans": {
       "title": "Recent scans",
       "subtitle": "Last five scans for this project.",
-      "empty": "No scans have been recorded yet.",
+      "empty": "No scans yet",
       "reopen_aria": "View progress for this scan",
       "col_started": "Started",
       "col_version": "Version",
@@ -208,7 +208,9 @@
         "source": "Source",
         "container": "Container",
         "sbom": "SBOM upload"
-      }
+      },
+      "empty_hint": "A registered project shows nothing until a scan has looked at it.",
+      "run_scan": "Run a scan"
     },
     "gate_card": {
       "title": "Build gate",
