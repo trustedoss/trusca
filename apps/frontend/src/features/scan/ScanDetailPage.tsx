@@ -134,6 +134,11 @@ export function ScanDetailPage() {
 
   // ---- Live log stream. We pass through the existing hook so reconnection,
   // ring buffer, and the auth handshake are all reused.
+  //
+  // This deliberately does not read the hook's `gaveUp`, so when THIS socket
+  // is the one evicted the log panel stops without saying so. Giving it the
+  // affordance ScanProgress got in C4 means a second stopped surface on this
+  // page, which is issue #137 rather than a line here.
   const { logMessages } = useScanWebSocket(scanId ?? "", {
     enabled: typeof scanId === "string" && scanId.length > 0,
   });
@@ -286,8 +291,9 @@ export function ScanDetailPage() {
 
             (This was the last consumer of `scans:close_codes.*`, which named
             WebSocket close reasons but was being used for a REST error. Those
-            four keys now have no consumer; unit C4 is where the scan stream
-            starts reporting its own close reasons and takes them up.) */}
+            four keys are gone: unit C4 found three of them untrue and replaced
+            them with `scans:stream_stopped.*`, which the scan stream reports
+            its own close reasons through.) */}
         {scanQuery.isError ? (
           <EmptyState
             data-testid="scan-detail-page-error"

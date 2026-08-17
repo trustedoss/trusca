@@ -229,12 +229,33 @@ Authentication is handled by the **first message** the client sends, not by quer
 The gateway closes the connection with code `1008` / reason `auth_timeout` if the first frame does not arrive within `WEBSOCKET_AUTH_TIMEOUT_SECONDS` (default 1.0 s). Subsequent server frames carry progress events:
 
 ```json
-{ "percent": 70, "step": "dt_upload", "ts": "2026-05-10T12:34:56Z" }
+{ "type": "progress", "percent": 70, "step": "scancode", "ts": "2026-05-10T12:34:56Z" }
 ```
 
 Reconnect with exponential backoff. Each reconnect receives one initial-sync frame from the current scan row before live events flow.
 
-Per-user concurrent connections are capped by `WEBSOCKET_MAX_CONNECTIONS_PER_USER` (default 3); the 4th connection evicts the oldest with code 1001 (`reason="newer_connection"`).
+### Close codes
+
+Every close the server sends, and what it means. The source is `apps/backend/api/v1/ws.py`, the only place the endpoint closes.
+
+| Code | Reason | Cause |
+|---|---|---|
+| 1001 | `newer_connection` | Per-user connection cap (`WEBSOCKET_MAX_CONNECTIONS_PER_USER`, default 3) exceeded; the oldest socket is evicted. The count is kept **per worker process**, so a deployment running N workers admits up to 3N before anything is evicted, and which worker a socket lands on decides whether it counts against another. One open scan page holds two connections, so a second tab can evict the first when both land on the same worker. |
+| 1008 | `auth_timeout` | No first frame within `WEBSOCKET_AUTH_TIMEOUT_SECONDS`. |
+| 1008 | `auth_invalid` | The token did not decode, was not an access token, or its subject is not a user id. |
+| 1008 | `auth_inactive` | The account is deactivated or gone. |
+| 1008 | `origin_rejected` | The `Origin` header is not in `CORS_ALLOWED_ORIGINS`. See the caveat below: a client never observes this code. |
+| 1011 | `internal` | An error inside the event forward loop. The ASGI server also closes with 1011 and reason `keepalive ping timeout` when a client stops answering pings, so this code has two producers. |
+| 4400 | `bad_message` | The first frame was not a valid `auth` message. |
+| 4403 | `forbidden` | The caller is not in the team that owns the scan. |
+| 4404 | `scan_not_found` | The id in the URL is not a UUID, **or** no such scan exists. Both close the same way. |
+
+Two things a client cannot learn from that table alone:
+
+- **`origin_rejected` never reaches the client as 1008.** It is sent before the handshake is accepted, which the ASGI server turns into an HTTP 403 on the upgrade. The browser reports a close code of `1006` with an empty reason, indistinguishable from a network failure.
+- **`1006` is not in the table because the server never sends it.** Browsers synthesise it whenever no close frame arrived: a dropped connection, a sleeping machine, a proxy idle timeout, or the origin rejection above. Client copy for 1006 should describe a connection that failed, not a decision the server made.
+
+The endpoint sends no `1000`. A client that observes one closed the socket itself.
 
 ## OpenAPI download
 

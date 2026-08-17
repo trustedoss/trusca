@@ -29,7 +29,7 @@
  * StrictMode + HMR safety: every effect cleans up its socket and timers, so
  * the double-mount pattern never leaks. Tests stub `globalThis.WebSocket`.
  */
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 
 import { buildScanProgressUrl } from "@/lib/wsBase";
 import { useAuthStore } from "@/stores/authStore";
@@ -118,6 +118,28 @@ export interface UseScanWebSocketResult {
   closeCode: number | null;
   closeReason: string | null;
   reconnectAttempt: number;
+  /**
+   * C4: the hook has stopped trying and will not start again on its own.
+   *
+   * Distinct from `state === "error"`, which this hook also sets for a
+   * transient socket error it is about to retry, and for a `WebSocket`
+   * constructor that threw. Only this flag means "nothing more will happen
+   * unless someone asks", which is the only condition under which it is
+   * honest to show a reader a Reconnect button.
+   *
+   * Two ways to get here: the five-minute reconnect budget ran out, or the
+   * server closed with a code this hook does not retry (an eviction by a
+   * newer connection, a rejected request, a scan that is not there). An
+   * expired session is deliberately NOT one of them: that path dispatches
+   * `auth:expired` and the app signs the reader out, so a Reconnect button
+   * would be offering to retry something that is about to navigate away.
+   */
+  gaveUp: boolean;
+  /**
+   * Open a new socket now, clearing the reconnect budget and the attempt
+   * counter. Safe to call at any time; a no-op while a socket is alive.
+   */
+  reconnect: () => void;
   /**
    * True once the latest frame's step is a terminal value
    * (succeeded / failed / cancelled).
@@ -218,6 +240,7 @@ export function useScanWebSocket(
   const [closeCode, setCloseCode] = useState<number | null>(null);
   const [closeReason, setCloseReason] = useState<string | null>(null);
   const [reconnectAttempt, setReconnectAttempt] = useState(0);
+  const [gaveUp, setGaveUp] = useState(false);
 
   // Refs survive across renders and StrictMode double-invocation. We use
   // refs (not state) for anything the cleanup path needs to read without
@@ -233,6 +256,13 @@ export function useScanWebSocket(
   // must read the freshest value synchronously without re-running the
   // effect.
   const lastAttemptRef = useRef(0);
+  // Set by the effect on every run so `reconnect()` can reach the current
+  // `open`. The effect closes over `scanId`, so the callback cannot be
+  // defined outside it, and the hook's consumers need a stable identity.
+  const reopenRef = useRef<(() => void) | null>(null);
+  // Mirrors the `gaveUp` state for the handlers, which run outside React's
+  // render and must read the freshest value synchronously.
+  const gaveUpRef = useRef(false);
 
   // Keep the latest `onNonTerminalClose` in a ref so the close handler (which
   // is created once per effect run, keyed on scanId/enabled) always calls the
@@ -240,10 +270,18 @@ export function useScanWebSocket(
   const onNonTerminalCloseRef = useRef(onNonTerminalClose);
   onNonTerminalCloseRef.current = onNonTerminalClose;
 
+  // Stable identity across renders so a consumer can hand this straight to
+  // an onClick without re-rendering the button on every frame.
+  const reconnect = useCallback(() => {
+    reopenRef.current?.();
+  }, []);
+
   useEffect(() => {
     cancelledRef.current = false;
     terminalReachedRef.current = false;
     lastAttemptRef.current = 0;
+    gaveUpRef.current = false;
+    setGaveUp(false);
     // P2 #8 — reset the log buffer on every connect; a fresh scanId must
     // not carry frames from a previous scan into the new panel.
     setMessages([]);
@@ -278,6 +316,13 @@ export function useScanWebSocket(
     function notifyNonTerminalClose(code: number) {
       const cb = onNonTerminalCloseRef.current;
       if (cb) cb(code);
+    }
+
+    /** Stop, and say so. Nothing reopens the socket until someone asks. */
+    function giveUp() {
+      gaveUpRef.current = true;
+      setGaveUp(true);
+      setState("error");
     }
 
     function open(attempt: number) {
@@ -473,6 +518,14 @@ export function useScanWebSocket(
 
         if (NO_RECONNECT_CODES.has(event.code)) {
           setState("closed");
+          // C4: these end the stream as surely as the budget running out,
+          // and until now the panel went on saying "reconnecting" while
+          // nothing reconnected. 1000 is the exception: this hook sends it
+          // itself on unmount and on a terminal frame, so it is us leaving
+          // rather than the stream stopping.
+          if (event.code !== 1000) {
+            giveUp();
+          }
           if (event.code === 4400) {
             console.error(
               "useScanWebSocket: server rejected first frame (4400)",
@@ -505,10 +558,14 @@ export function useScanWebSocket(
       }
       const elapsed = Date.now() - reconnectStartedAtRef.current;
       if (elapsed > RECONNECT_BUDGET_MS) {
-        // Give up — the user has been offline long enough that something
-        // bigger has gone wrong. Surfacing this as state="error" lets the
-        // UI show the "Reconnect" button.
-        setState("error");
+        // Give up. Five minutes of failed attempts is long enough that
+        // something bigger has gone wrong than a lost packet, and a progress
+        // bar that says "reconnecting" for an hour is a lie told slowly.
+        //
+        // `gaveUp` rather than `state` alone: this hook sets `state="error"`
+        // for a transient socket error too, and the reader can only be
+        // offered a Reconnect button when nothing else is coming.
+        giveUp();
         return;
       }
       const nextAttempt = prevAttempt + 1;
@@ -546,6 +603,12 @@ export function useScanWebSocket(
       if (cancelledRef.current) return;
       if (typeof document === "undefined") return;
       if (document.visibilityState !== "visible") return;
+      // C4: once the hook has given up, coming back to the tab does not
+      // quietly start it again. It used to, without clearing the budget, so
+      // the panel flickered out of its "stopped" state and back into it on
+      // the next failure. Having said "stopped", the only thing that starts
+      // it is the reader pressing the button.
+      if (gaveUpRef.current) return;
       const sock = socketRef.current;
       const isWaiting = reconnectTimerRef.current !== null;
       // readyState: 0=CONNECTING, 1=OPEN, 2=CLOSING, 3=CLOSED.
@@ -561,6 +624,29 @@ export function useScanWebSocket(
       open(lastAttemptRef.current);
     }
 
+    /**
+     * The Reconnect button's handler.
+     *
+     * Clears the budget as well as the attempt counter: the reader asking
+     * for another go is new information, and starting them mid-backoff at
+     * a 30-second slot with four minutes of budget already spent would make
+     * the button look broken.
+     */
+    reopenRef.current = () => {
+      if (cancelledRef.current) return;
+      const sock = socketRef.current;
+      if (sock != null && (sock.readyState === 0 || sock.readyState === 1)) {
+        return;
+      }
+      clearReconnectTimer();
+      reconnectStartedAtRef.current = null;
+      lastAttemptRef.current = 0;
+      setReconnectAttempt(0);
+      gaveUpRef.current = false;
+      setGaveUp(false);
+      open(0);
+    };
+
     if (typeof document !== "undefined") {
       document.addEventListener("visibilitychange", handleVisibilityChange);
     }
@@ -569,6 +655,7 @@ export function useScanWebSocket(
 
     return () => {
       cancelledRef.current = true;
+      reopenRef.current = null;
       clearReconnectTimer();
       if (typeof document !== "undefined") {
         document.removeEventListener("visibilitychange", handleVisibilityChange);
@@ -598,6 +685,8 @@ export function useScanWebSocket(
     closeCode,
     closeReason,
     reconnectAttempt,
+    gaveUp,
+    reconnect,
     isTerminal: isTerminalStep(lastMessage?.step ?? null),
   };
 }
