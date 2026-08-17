@@ -153,6 +153,19 @@ describe("IntegrationsPage", () => {
 
   // C3 - what the card says when there is nothing in it.
 
+  it("claims nothing about keys when the request failed", async () => {
+    // Same shape as the scan list: an error and an empty state are different
+    // answers, and only one of them was being given.
+    mockedList.mockRejectedValue(new Error("boom"));
+
+    renderPage();
+
+    // Same as the scan list: wait for the error to render, or the absence
+    // is asserted while the query is still in flight.
+    await screen.findByTestId("integrations-keys-error");
+    expect(screen.queryByTestId("integrations-keys-empty")).toBeNull();
+  });
+
   it("holds back advice about tokens until there are tokens", async () => {
     // The section description explains how to use these keys with a CI
     // pipeline and warns about revoking an exposed one. Above an empty table

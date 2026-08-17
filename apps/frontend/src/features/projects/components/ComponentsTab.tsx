@@ -387,7 +387,7 @@ export function ComponentsTab({
     severity.length > 0 ||
     licenseCategory.length > 0 ||
     direct !== null ||
-    dependencyScope !== null ||
+    dependencyScope.length > 0 ||
     eolOnly ||
     outdatedOnly ||
     maliciousOnly;

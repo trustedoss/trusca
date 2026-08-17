@@ -147,6 +147,20 @@ describe("ScansPage", () => {
     );
   });
 
+  it("claims nothing about scans when the request failed", async () => {
+    // The empty state used to render beside the error alert, so a failed
+    // request produced "no scans yet, and here is how to make one" at the one
+    // moment neither was known.
+    mockedListMyScans.mockRejectedValue(new Error("boom"));
+    renderPage();
+
+    // Wait for the failure to be on screen before asserting the absence.
+    // "The request was made" is satisfied before it rejects, and an empty
+    // state that is merely not rendered yet would pass.
+    await screen.findByTestId("scans-error");
+    expect(screen.queryByTestId("scans-empty")).toBeNull();
+  });
+
   it("does blame the filter when one is set", async () => {
     // The counterpart: on a filtered tab the filter really is the reason,
     // and pointing at the project list would be the wrong advice.

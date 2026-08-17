@@ -31,16 +31,21 @@ describe("first-scan empty-state copy", () => {
     // told the reader to "re-scan" something they had never scanned.
     const source = projectDetailEn.source.empty;
     expect(source.title).not.toContain("this scan");
-    expect(source.description).toContain("none has run");
+    // It names no causes at all. The service returns the same 404 whether
+    // the scan preserved nothing, never ran, or had its tarball reclaimed by
+    // the retention sweeper, and the third is the common one for anyone
+    // reading a pinned older release.
+    expect(source.description).not.toContain("Either");
     expect(source.description).not.toContain("Re-scan");
+    expect(source.description).toContain("none is available");
   });
 
   it("says the same in Korean, no more and no less", () => {
     // Two units of this track shipped Korean that claimed more than the
     // English beside it.
     const ko = projectDetailKo.source.empty;
-    expect(ko.description).toContain("한 번도 돌지 않았거나");
-    expect(ko.description).toContain("보존하도록 설정되지");
+    expect(ko.description).toContain("쓸 수 있는 것이 없습니다");
+    expect(ko.description).not.toContain("않았거나");
   });
 
   it("separates a missing policy from an instruction to write one", () => {
@@ -57,7 +62,7 @@ describe("first-scan empty-state copy", () => {
       en.policies.empty_hint_can_author,
       en.policies.empty_hint_cannot_author,
     ]) {
-      expect(hint).toContain("built-in licence categories");
+      expect(hint).toContain("built-in license categories");
     }
   });
 

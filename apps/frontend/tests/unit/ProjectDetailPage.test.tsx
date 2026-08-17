@@ -59,6 +59,12 @@ vi.mock("@/features/projects/components/OverviewTab", () => ({
   ),
 }));
 
+vi.mock("@/features/projects/components/ComponentsTab", () => ({
+  ComponentsTab: ({ onScan }: { onScan?: () => void }) => (
+    <div data-testid="components-tab-mock" data-has-scan={onScan != null} />
+  ),
+}));
+
 vi.mock("@/features/projects/components/ReleaseSwitcher", () => ({
   ReleaseSwitcher: () => <div data-testid="release-switcher-mock" />,
 }));
@@ -297,6 +303,37 @@ describe("ProjectDetailPage active-scan chip (#29)", () => {
     renderPage("?scan=22222222-2222-2222-2222-222222222222");
 
     const tab = await screen.findByTestId("overview-tab-mock");
+    expect(tab.dataset.hasScan).toBe("false");
+  });
+
+  it("hands the components tab the same scan action", async () => {
+    // Radix mounts only the active tab, so the overview tests above say
+    // nothing about this one. Deleting its wiring passed the whole suite.
+    mockedGetProject.mockResolvedValue(makeProject());
+    mockedUseOverview.mockReturnValue({
+      data: overviewWith([]),
+      isLoading: false,
+      isError: false,
+    } as never);
+
+    renderPage("?tab=components");
+
+    const tab = await screen.findByTestId("components-tab-mock");
+    expect(tab.dataset.hasScan).toBe("true");
+  });
+
+  it("hands the components tab nothing on a read-only deployment", async () => {
+    mockedUseDemoMode.mockReturnValue({ demoReadOnly: true } as never);
+    mockedGetProject.mockResolvedValue(makeProject());
+    mockedUseOverview.mockReturnValue({
+      data: overviewWith([]),
+      isLoading: false,
+      isError: false,
+    } as never);
+
+    renderPage("?tab=components");
+
+    const tab = await screen.findByTestId("components-tab-mock");
     expect(tab.dataset.hasScan).toBe("false");
   });
 });

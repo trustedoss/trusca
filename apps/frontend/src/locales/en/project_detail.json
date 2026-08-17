@@ -1018,7 +1018,7 @@
   "source": {
     "empty": {
       "title": "No source files to browse",
-      "description": "This viewer needs a scan that kept a copy of the analysed files. Either none has run for this project, or the one that did was not asked to preserve them."
+      "description": "This viewer needs a scan that kept a copy of the analysed files, and none is available for this view."
     },
     "tree": {
       "empty_dir": "Empty directory",
