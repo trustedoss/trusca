@@ -159,6 +159,8 @@ def test_normalize_spdx_id(raw: str, expected: list[str]) -> None:
 
 "타팀 → 404" 테스트도 있었고 "종결 → 409" 테스트도 있었지만 그 **교차점**은 없었고, 실제 누출이 정확히 거기 있었습니다(비소속 계정이 타 팀의 *종결된* 스캔을 찔러 409를 받아 존재가 확인됨). 권한 거부(404 존재 은닉 / 403)는 상태에서 파생된 409보다 항상 먼저여야 합니다. 새 409 표면은 `apps/backend/tests/integration/test_existence_hide_state_matrix.py`에 케이스를 추가합니다.
 
+이 규칙에는 라우트 수준의 나머지 절반이 있습니다. `tests/contracts/permission-matrix.json`이 라우트마다 어떤 게이트를 다는지 선언하고, `apps/backend/tests/unit/test_permission_baseline.py`가 이를 양방향으로 단언합니다. 행이 없는 라우트는 실패하고(아무도 분류하지 않은 표면이 나갔다는 뜻), 라우트가 없는 행도 실패합니다(매트릭스가 낡아 오라클 구실을 못 한다는 뜻). 라우트를 추가하면 행도 추가합니다. 게이트를 바꾸면 픽스처를 바꿔야 하고, 그래야 변경이 API 모듈 여기저기에 흩어지지 않고 검토자 앞에 놓입니다. 역할마다 허용과 거부를 모두 단언합니다. 거부만 단언하면 게이트가 넓어져도 green이고, 모르는 역할은 어디서나 거부되므로 역할이 빠진 상태가 안전한 것처럼 읽힙니다.
+
 ### 2. 같은 어휘가 두 곳에 있으면 정합 테스트가 의무
 
 닫힌 어휘가 두 곳에 존재하면 — DB enum과 디스패처 카탈로그, emitter와 공표 목록, 백엔드 enum과 프런트엔드 미러 상수 — 모듈별 테스트는 green인 채로 둘이 어긋납니다(알림 kind 드리프트는 승인 트리거가 연결되기 전까지 잠복했습니다). 양쪽을 import해 집합 동등성을 단언합니다: `apps/backend/tests/unit/test_catalog_contracts.py`가 그 패턴입니다.

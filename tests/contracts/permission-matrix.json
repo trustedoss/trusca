@@ -1,0 +1,744 @@
+{
+  "$comment": "Permission baseline: every HTTP surface the app exposes, with the authorization gate it carries. Single source both directions of apps/backend/tests/unit/test_permission_baseline.py assert against: a route missing from this file fails (a new surface shipped without a declared gate), and a row with no matching route fails (the matrix went stale). Gate vocabulary: `public` (no principal, `why` is mandatory), `authed` (a principal is resolved, no role floor), `role>=X` / `role_or_key>=X` (role floor, the latter also accepts an API key), `super_admin_404` (super-admin only, existence-hidden). Regenerating this file by hand defeats its purpose: when a gate here disagrees with the code, decide which one is wrong before editing.",
+  "routes": [
+    {
+      "method": "POST",
+      "path": "/auth/forgot-password",
+      "gate": "public",
+      "why": "Pre-authentication: anonymous recovery flow."
+    },
+    {
+      "method": "POST",
+      "path": "/auth/login",
+      "gate": "public",
+      "why": "Pre-authentication: this is where a session is obtained."
+    },
+    {
+      "method": "POST",
+      "path": "/auth/logout",
+      "gate": "public",
+      "why": "Pre-authentication: revoking a refresh token must work without a live access token."
+    },
+    {
+      "method": "GET",
+      "path": "/auth/me",
+      "gate": "authed"
+    },
+    {
+      "method": "GET",
+      "path": "/auth/oauth/providers",
+      "gate": "public",
+      "why": "Pre-authentication: the login screen asks which providers exist."
+    },
+    {
+      "method": "GET",
+      "path": "/auth/oauth/{provider}/authorize",
+      "gate": "public",
+      "why": "Pre-authentication: start of the OAuth handshake."
+    },
+    {
+      "method": "GET",
+      "path": "/auth/oauth/{provider}/callback",
+      "gate": "public",
+      "why": "Pre-authentication: end of the OAuth handshake."
+    },
+    {
+      "method": "POST",
+      "path": "/auth/refresh",
+      "gate": "public",
+      "why": "Pre-authentication: the refresh cookie is the credential."
+    },
+    {
+      "method": "POST",
+      "path": "/auth/register",
+      "gate": "public",
+      "why": "Pre-authentication: self-signup (gated by settings, not by a principal)."
+    },
+    {
+      "method": "POST",
+      "path": "/auth/reset-password",
+      "gate": "public",
+      "why": "Pre-authentication: the emailed token is the credential."
+    },
+    {
+      "method": "GET",
+      "path": "/health",
+      "gate": "public",
+      "why": "Liveness probe: no principal by design."
+    },
+    {
+      "method": "GET",
+      "path": "/health/ready",
+      "gate": "public",
+      "why": "Readiness probe: no principal by design."
+    },
+    {
+      "method": "GET",
+      "path": "/v1/about",
+      "gate": "authed"
+    },
+    {
+      "method": "GET",
+      "path": "/v1/about/notices/{document_id}",
+      "gate": "authed"
+    },
+    {
+      "method": "GET",
+      "path": "/v1/admin/audit",
+      "gate": "super_admin_404"
+    },
+    {
+      "method": "GET",
+      "path": "/v1/admin/audit/export.csv",
+      "gate": "super_admin_404"
+    },
+    {
+      "method": "GET",
+      "path": "/v1/admin/backup",
+      "gate": "super_admin_404"
+    },
+    {
+      "method": "POST",
+      "path": "/v1/admin/backup",
+      "gate": "super_admin_404"
+    },
+    {
+      "method": "POST",
+      "path": "/v1/admin/backup/restore",
+      "gate": "super_admin_404"
+    },
+    {
+      "method": "DELETE",
+      "path": "/v1/admin/backup/{name}",
+      "gate": "super_admin_404"
+    },
+    {
+      "method": "GET",
+      "path": "/v1/admin/backup/{name}/download",
+      "gate": "super_admin_404"
+    },
+    {
+      "method": "GET",
+      "path": "/v1/admin/disk",
+      "gate": "super_admin_404"
+    },
+    {
+      "method": "GET",
+      "path": "/v1/admin/eol/health",
+      "gate": "super_admin_404"
+    },
+    {
+      "method": "GET",
+      "path": "/v1/admin/health",
+      "gate": "super_admin_404"
+    },
+    {
+      "method": "GET",
+      "path": "/v1/admin/kev/health",
+      "gate": "super_admin_404"
+    },
+    {
+      "method": "GET",
+      "path": "/v1/admin/malicious/health",
+      "gate": "super_admin_404"
+    },
+    {
+      "method": "GET",
+      "path": "/v1/admin/scans",
+      "gate": "super_admin_404"
+    },
+    {
+      "method": "POST",
+      "path": "/v1/admin/scans/{scan_id}/cancel",
+      "gate": "super_admin_404"
+    },
+    {
+      "method": "GET",
+      "path": "/v1/admin/teams",
+      "gate": "super_admin_404"
+    },
+    {
+      "method": "POST",
+      "path": "/v1/admin/teams",
+      "gate": "super_admin_404"
+    },
+    {
+      "method": "DELETE",
+      "path": "/v1/admin/teams/{team_id}",
+      "gate": "super_admin_404"
+    },
+    {
+      "method": "GET",
+      "path": "/v1/admin/teams/{team_id}",
+      "gate": "super_admin_404"
+    },
+    {
+      "method": "PATCH",
+      "path": "/v1/admin/teams/{team_id}",
+      "gate": "super_admin_404"
+    },
+    {
+      "method": "POST",
+      "path": "/v1/admin/teams/{team_id}/members",
+      "gate": "super_admin_404"
+    },
+    {
+      "method": "DELETE",
+      "path": "/v1/admin/teams/{team_id}/members/{user_id}",
+      "gate": "super_admin_404"
+    },
+    {
+      "method": "GET",
+      "path": "/v1/admin/trivy/health",
+      "gate": "super_admin_404"
+    },
+    {
+      "method": "GET",
+      "path": "/v1/admin/users",
+      "gate": "super_admin_404"
+    },
+    {
+      "method": "GET",
+      "path": "/v1/admin/users/{user_id}",
+      "gate": "super_admin_404"
+    },
+    {
+      "method": "PATCH",
+      "path": "/v1/admin/users/{user_id}/activate",
+      "gate": "super_admin_404"
+    },
+    {
+      "method": "PATCH",
+      "path": "/v1/admin/users/{user_id}/deactivate",
+      "gate": "super_admin_404"
+    },
+    {
+      "method": "POST",
+      "path": "/v1/admin/users/{user_id}/password-reset",
+      "gate": "super_admin_404"
+    },
+    {
+      "method": "PATCH",
+      "path": "/v1/admin/users/{user_id}/role",
+      "gate": "super_admin_404"
+    },
+    {
+      "method": "GET",
+      "path": "/v1/api-keys",
+      "gate": "role>=developer"
+    },
+    {
+      "method": "POST",
+      "path": "/v1/api-keys",
+      "gate": "role>=developer"
+    },
+    {
+      "method": "DELETE",
+      "path": "/v1/api-keys/{api_key_id}",
+      "gate": "role>=developer"
+    },
+    {
+      "method": "GET",
+      "path": "/v1/approvals",
+      "gate": "role>=developer"
+    },
+    {
+      "method": "POST",
+      "path": "/v1/approvals",
+      "gate": "role>=developer"
+    },
+    {
+      "method": "DELETE",
+      "path": "/v1/approvals/{approval_id}",
+      "gate": "role>=developer"
+    },
+    {
+      "method": "GET",
+      "path": "/v1/approvals/{approval_id}",
+      "gate": "role>=developer"
+    },
+    {
+      "method": "PATCH",
+      "path": "/v1/approvals/{approval_id}/transition",
+      "gate": "role>=developer"
+    },
+    {
+      "method": "GET",
+      "path": "/v1/audit",
+      "gate": "role>=team_admin"
+    },
+    {
+      "method": "GET",
+      "path": "/v1/components/{component_id}",
+      "gate": "role>=developer"
+    },
+    {
+      "method": "GET",
+      "path": "/v1/dashboard/action-queue",
+      "gate": "authed"
+    },
+    {
+      "method": "GET",
+      "path": "/v1/dashboard/portfolio",
+      "gate": "authed"
+    },
+    {
+      "method": "GET",
+      "path": "/v1/dashboard/summary",
+      "gate": "authed"
+    },
+    {
+      "method": "GET",
+      "path": "/v1/dashboard/trends",
+      "gate": "authed"
+    },
+    {
+      "method": "GET",
+      "path": "/v1/github-app-credentials",
+      "gate": "role>=developer"
+    },
+    {
+      "method": "POST",
+      "path": "/v1/github-app-credentials",
+      "gate": "role>=developer"
+    },
+    {
+      "method": "DELETE",
+      "path": "/v1/github-app-credentials/{credential_id}",
+      "gate": "role>=developer"
+    },
+    {
+      "method": "GET",
+      "path": "/v1/github-app-credentials/{credential_id}",
+      "gate": "role>=developer"
+    },
+    {
+      "method": "GET",
+      "path": "/v1/github-app-credentials/{credential_id}/installations",
+      "gate": "role>=developer"
+    },
+    {
+      "method": "POST",
+      "path": "/v1/github-app-credentials/{credential_id}/installations",
+      "gate": "role>=developer"
+    },
+    {
+      "method": "DELETE",
+      "path": "/v1/github-app-credentials/{credential_id}/installations/{installation_row_id}",
+      "gate": "role>=developer"
+    },
+    {
+      "method": "GET",
+      "path": "/v1/inventory/components",
+      "gate": "role>=developer"
+    },
+    {
+      "method": "GET",
+      "path": "/v1/inventory/components/export.csv",
+      "gate": "role>=developer"
+    },
+    {
+      "method": "GET",
+      "path": "/v1/inventory/components/{component_id}/projects",
+      "gate": "role>=developer"
+    },
+    {
+      "method": "GET",
+      "path": "/v1/inventory/vulnerabilities/{external_id}/projects",
+      "gate": "role>=developer"
+    },
+    {
+      "method": "GET",
+      "path": "/v1/license-policies",
+      "gate": "role>=developer"
+    },
+    {
+      "method": "GET",
+      "path": "/v1/license-policies/org/{organization_id}",
+      "gate": "super_admin_404"
+    },
+    {
+      "method": "PUT",
+      "path": "/v1/license-policies/org/{organization_id}",
+      "gate": "super_admin_404"
+    },
+    {
+      "method": "DELETE",
+      "path": "/v1/license-policies/teams/{team_id}",
+      "gate": "role>=developer"
+    },
+    {
+      "method": "GET",
+      "path": "/v1/license-policies/teams/{team_id}",
+      "gate": "role>=developer"
+    },
+    {
+      "method": "PUT",
+      "path": "/v1/license-policies/teams/{team_id}",
+      "gate": "role>=developer"
+    },
+    {
+      "method": "DELETE",
+      "path": "/v1/license-policies/teams/{team_id}/exceptions",
+      "gate": "role>=developer"
+    },
+    {
+      "method": "POST",
+      "path": "/v1/license-policies/teams/{team_id}/exceptions",
+      "gate": "role>=developer"
+    },
+    {
+      "method": "GET",
+      "path": "/v1/license_findings/{finding_id}",
+      "gate": "role>=developer"
+    },
+    {
+      "method": "GET",
+      "path": "/v1/notifications",
+      "gate": "authed"
+    },
+    {
+      "method": "PATCH",
+      "path": "/v1/notifications/read-all",
+      "gate": "authed"
+    },
+    {
+      "method": "GET",
+      "path": "/v1/notifications/unread-count",
+      "gate": "authed"
+    },
+    {
+      "method": "PATCH",
+      "path": "/v1/notifications/{notification_id}/read",
+      "gate": "authed"
+    },
+    {
+      "method": "GET",
+      "path": "/v1/projects",
+      "gate": "role>=developer"
+    },
+    {
+      "method": "POST",
+      "path": "/v1/projects",
+      "gate": "role>=developer"
+    },
+    {
+      "method": "DELETE",
+      "path": "/v1/projects/{project_id}",
+      "gate": "role>=developer"
+    },
+    {
+      "method": "GET",
+      "path": "/v1/projects/{project_id}",
+      "gate": "role>=developer"
+    },
+    {
+      "method": "PATCH",
+      "path": "/v1/projects/{project_id}",
+      "gate": "role>=team_admin"
+    },
+    {
+      "method": "GET",
+      "path": "/v1/projects/{project_id}/compliance",
+      "gate": "role>=developer"
+    },
+    {
+      "method": "GET",
+      "path": "/v1/projects/{project_id}/components",
+      "gate": "role>=developer"
+    },
+    {
+      "method": "GET",
+      "path": "/v1/projects/{project_id}/components/export.csv",
+      "gate": "role>=developer"
+    },
+    {
+      "method": "GET",
+      "path": "/v1/projects/{project_id}/dependency-graph",
+      "gate": "role>=developer"
+    },
+    {
+      "method": "GET",
+      "path": "/v1/projects/{project_id}/diff",
+      "gate": "role>=developer"
+    },
+    {
+      "method": "GET",
+      "path": "/v1/projects/{project_id}/gate-result",
+      "gate": "authed"
+    },
+    {
+      "method": "GET",
+      "path": "/v1/projects/{project_id}/governance",
+      "gate": "role>=developer"
+    },
+    {
+      "method": "GET",
+      "path": "/v1/projects/{project_id}/licenses",
+      "gate": "role>=developer"
+    },
+    {
+      "method": "GET",
+      "path": "/v1/projects/{project_id}/notice",
+      "gate": "role>=developer"
+    },
+    {
+      "method": "GET",
+      "path": "/v1/projects/{project_id}/obligations",
+      "gate": "role>=developer"
+    },
+    {
+      "method": "GET",
+      "path": "/v1/projects/{project_id}/obligations/{obligation_id}",
+      "gate": "role>=developer"
+    },
+    {
+      "method": "GET",
+      "path": "/v1/projects/{project_id}/overview",
+      "gate": "role>=developer"
+    },
+    {
+      "method": "GET",
+      "path": "/v1/projects/{project_id}/releases",
+      "gate": "role>=developer"
+    },
+    {
+      "method": "POST",
+      "path": "/v1/projects/{project_id}/remediation/npm/dry-run",
+      "gate": "role>=developer"
+    },
+    {
+      "method": "POST",
+      "path": "/v1/projects/{project_id}/remediation/npm/pull-request",
+      "gate": "role>=developer"
+    },
+    {
+      "method": "GET",
+      "path": "/v1/projects/{project_id}/remediation/pull-requests",
+      "gate": "role>=developer"
+    },
+    {
+      "method": "GET",
+      "path": "/v1/projects/{project_id}/reports/history",
+      "gate": "role>=developer"
+    },
+    {
+      "method": "GET",
+      "path": "/v1/projects/{project_id}/sbom",
+      "gate": "role>=developer"
+    },
+    {
+      "method": "POST",
+      "path": "/v1/projects/{project_id}/sbom-ingest",
+      "gate": "role_or_key>=developer"
+    },
+    {
+      "method": "GET",
+      "path": "/v1/projects/{project_id}/sbom/attestation",
+      "gate": "role>=developer"
+    },
+    {
+      "method": "GET",
+      "path": "/v1/projects/{project_id}/sbom/attestation-certificate",
+      "gate": "role>=developer"
+    },
+    {
+      "method": "GET",
+      "path": "/v1/projects/{project_id}/sbom/certificate",
+      "gate": "role>=developer"
+    },
+    {
+      "method": "GET",
+      "path": "/v1/projects/{project_id}/sbom/public-key",
+      "gate": "role>=developer"
+    },
+    {
+      "method": "GET",
+      "path": "/v1/projects/{project_id}/sbom/signature",
+      "gate": "role>=developer"
+    },
+    {
+      "method": "GET",
+      "path": "/v1/projects/{project_id}/sbom/signature-bundle",
+      "gate": "role>=developer"
+    },
+    {
+      "method": "GET",
+      "path": "/v1/projects/{project_id}/scans",
+      "gate": "role>=developer"
+    },
+    {
+      "method": "POST",
+      "path": "/v1/projects/{project_id}/scans",
+      "gate": "role_or_key>=developer"
+    },
+    {
+      "method": "GET",
+      "path": "/v1/projects/{project_id}/scans/{scan_id}/conformance",
+      "gate": "role_or_key>=developer"
+    },
+    {
+      "method": "POST",
+      "path": "/v1/projects/{project_id}/source-archive",
+      "gate": "role>=developer"
+    },
+    {
+      "method": "GET",
+      "path": "/v1/projects/{project_id}/source-file",
+      "gate": "role>=developer"
+    },
+    {
+      "method": "GET",
+      "path": "/v1/projects/{project_id}/source-tree",
+      "gate": "role>=developer"
+    },
+    {
+      "method": "GET",
+      "path": "/v1/projects/{project_id}/vex",
+      "gate": "role>=developer"
+    },
+    {
+      "method": "POST",
+      "path": "/v1/projects/{project_id}/vex/import",
+      "gate": "role>=developer"
+    },
+    {
+      "method": "GET",
+      "path": "/v1/projects/{project_id}/vulnerabilities",
+      "gate": "role>=developer"
+    },
+    {
+      "method": "GET",
+      "path": "/v1/projects/{project_id}/vulnerabilities/export.csv",
+      "gate": "role>=developer"
+    },
+    {
+      "method": "GET",
+      "path": "/v1/projects/{project_id}/vulnerabilities/upgrade-clusters",
+      "gate": "role>=developer"
+    },
+    {
+      "method": "POST",
+      "path": "/v1/projects/{project_id}/vulnerabilities:bulk-transition",
+      "gate": "role>=developer"
+    },
+    {
+      "method": "GET",
+      "path": "/v1/projects/{project_id}/vulnerability-report.pdf",
+      "gate": "role>=developer"
+    },
+    {
+      "method": "GET",
+      "path": "/v1/projects/{project_id}/vulnerability-report.xlsx",
+      "gate": "role>=developer"
+    },
+    {
+      "method": "GET",
+      "path": "/v1/saved-searches",
+      "gate": "authed"
+    },
+    {
+      "method": "POST",
+      "path": "/v1/saved-searches",
+      "gate": "authed"
+    },
+    {
+      "method": "DELETE",
+      "path": "/v1/saved-searches/{saved_search_id}",
+      "gate": "authed"
+    },
+    {
+      "method": "GET",
+      "path": "/v1/scans",
+      "gate": "role>=developer"
+    },
+    {
+      "method": "DELETE",
+      "path": "/v1/scans/{scan_id}",
+      "gate": "role>=developer"
+    },
+    {
+      "method": "GET",
+      "path": "/v1/scans/{scan_id}",
+      "gate": "role_or_key>=developer"
+    },
+    {
+      "method": "POST",
+      "path": "/v1/scans/{scan_id}/cancel",
+      "gate": "role>=developer"
+    },
+    {
+      "method": "GET",
+      "path": "/v1/scans/{scan_id}/log",
+      "gate": "role>=developer"
+    },
+    {
+      "method": "POST",
+      "path": "/v1/scans/{scan_id}/post-pr-comment",
+      "gate": "authed"
+    },
+    {
+      "method": "GET",
+      "path": "/v1/scans/{scan_id}/provenance",
+      "gate": "role_or_key>=developer"
+    },
+    {
+      "method": "GET",
+      "path": "/v1/search",
+      "gate": "role>=developer"
+    },
+    {
+      "method": "GET",
+      "path": "/v1/search/results",
+      "gate": "role>=developer"
+    },
+    {
+      "method": "GET",
+      "path": "/v1/users/me/notification-prefs",
+      "gate": "authed"
+    },
+    {
+      "method": "PUT",
+      "path": "/v1/users/me/notification-prefs",
+      "gate": "authed"
+    },
+    {
+      "method": "GET",
+      "path": "/v1/users/me/oauth-identities",
+      "gate": "authed"
+    },
+    {
+      "method": "DELETE",
+      "path": "/v1/users/me/oauth-identities/{identity_id}",
+      "gate": "authed"
+    },
+    {
+      "method": "GET",
+      "path": "/v1/vulnerability_findings/{finding_id}",
+      "gate": "role>=developer"
+    },
+    {
+      "method": "PATCH",
+      "path": "/v1/vulnerability_findings/{finding_id}/status",
+      "gate": "role>=developer"
+    },
+    {
+      "method": "POST",
+      "path": "/v1/webhooks/github",
+      "gate": "public",
+      "why": "Authenticated by HMAC signature inside the handler, not by a principal dependency."
+    },
+    {
+      "method": "POST",
+      "path": "/v1/webhooks/gitlab",
+      "gate": "public",
+      "why": "Authenticated by a shared token compared inside the handler, not by a principal dependency."
+    },
+    {
+      "method": "WEBSOCKET",
+      "path": "/ws/scans/{scan_id}",
+      "gate": "authed",
+      "note": "Not an APIRoute: authentication is an in-band auth frame carrying the same access token, followed by a team-membership check on the scan's project. Declared here so the WebSocket surface is not a blind spot in the inventory."
+    }
+  ]
+}
