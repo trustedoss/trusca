@@ -57,7 +57,11 @@ const VISITS: Record<AuthenticatedScreenId, VisitScreen> = {
     await page.goto(`/projects/${projectId}?tab=vulnerabilities`);
     const portal = new PortalPage(page);
     await portal.expectProjectDetailMounted();
-    await portal.expectVulnerabilitiesTabReady();
+    // Not just "the list is on screen". The rendered window has to have
+    // stopped moving. The container appears before Virtuoso has measured its
+    // rows, and a capture taken during that pass differs from one taken after
+    // it by a few pixels at the bottom edge (#114).
+    await portal.expectVulnerabilityWindowSettled();
   },
   dashboard: async (page) => {
     await page.goto("/");
