@@ -344,6 +344,7 @@
   },
   "stream_stopped": {
     "title": "Live updates stopped",
+    "title_log": "Log updates stopped",
     "retry": "Reconnect",
     "reason": {
       "network": "The connection dropped and could not be re-established.",
@@ -354,6 +355,7 @@
       "missing": "There is no scan with this id."
     },
     "unaffected": "The scan itself is unaffected and is still running.",
-    "stale": "The status shown here may be out of date."
+    "stale": "The status shown here may be out of date.",
+    "stale_log": "The lines below end where the stream did."
   }
 }
