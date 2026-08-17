@@ -95,6 +95,7 @@ from models import (
 from models import (
     Vulnerability as VulnerabilityModel,
 )
+from services.gate_policy_service import resolve_for_project
 from services.license_expression import evaluate_expression
 from services.license_policy_service import effective_category, get_effective_policy
 from services.malicious import malicious_catalog
@@ -880,11 +881,27 @@ async def evaluate_gate(
     # Read the EPSS threshold once per evaluation (None when the gate is
     # disabled). We surface it in the result meta even on the no-scan path so
     # callers can render "EPSS gate: 0.5 (no signal)" consistently.
-    epss_threshold = _resolve_epss_threshold()
+    # An organization or team may have written a policy row. Fields it left
+    # NULL fall through to the resolvers below, so a deployment with no rows
+    # evaluates exactly as it did before the table existed. This is the one
+    # place the two sources meet.
+    policy = await resolve_for_project(session, project_id)
+
+    epss_threshold = (
+        policy.epss_threshold if policy.epss_threshold is not None else _resolve_epss_threshold()
+    )
     # Opt-in reachable-only critical mode (default OFF → legacy behaviour).
-    reachable_critical_only = _resolve_reachable_critical_only()
+    reachable_critical_only = (
+        policy.reachable_critical_only
+        if policy.reachable_critical_only is not None
+        else _resolve_reachable_critical_only()
+    )
     # #26 — on by default; see the resolver for why this one differs.
-    malicious_gate_enabled = _resolve_gate_malicious_enabled()
+    malicious_gate_enabled = (
+        policy.malicious_blocks
+        if policy.malicious_blocks is not None
+        else _resolve_gate_malicious_enabled()
+    )
 
     if scan_id is None:
         # No signal: we explicitly pass. See module docstring.
