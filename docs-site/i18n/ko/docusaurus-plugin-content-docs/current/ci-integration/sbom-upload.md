@@ -22,7 +22,7 @@ TRUSCA는 Dependency-Track API 호환이 **아닙니다**. Dependency-Track 방�
 
 ## 사전 조건
 
-- `tos_<prefix>_<secret>` 형식의 TRUSCA API Key. **/integrations → API keys → New API key**에서 생성하며, 스코프 모델은 [API keys](../admin-guide/api-keys.md) 참고.
+- `tos_<prefix>_<secret>` 형식의 TRUSCA API Key. **/integrations → API keys → Create API key**에서 생성하며, 스코프 모델은 [API keys](../admin-guide/api-keys.md) 참고.
 - 대상 **프로젝트가 이미 존재**. UUID는 **Project Settings → CI/CD**에서 복사합니다. SBOM 업로드는 프로젝트를 생성하지 않습니다.
 - API Key의 스코프가 그 프로젝트를 커버 — 프로젝트에 바인딩된 `project` 스코프 키이거나, 팀이 소유한 프로젝트라면 `team` 스코프 키.
 - **CycloneDX-JSON** 문서(지원하는 `specVersion`은 `1.2`부터 `1.7`. 1.7이 ML-BOM 필드를 담는 버전입니다 — [AI SBOM 적합성](../user-guide/ai-sbom-conformance.md) 참고) **또는** JSON·Tag-Value 형식의 **SPDX** 문서. CVE 매칭에서는 Trivy가 포맷을 자동 감지하고, 컴포넌트 적재를 위해 SPDX는 CycloneDX로 변환됩니다. SPDX RDF/XML은 받지 않습니다.

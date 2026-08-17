@@ -11,7 +11,7 @@ sidebar_position: 6
 API keys are credentials for **non-interactive** clients — CI runners, webhooks, scripts, and the GitHub Action. They authenticate machine-to-machine traffic without consuming a user's JWT session.
 
 :::note Audience
-`team_admin` (issues team-scoped keys) and `super_admin` (issues org-scoped keys).
+`developer` (issues project-scoped keys for their own team's projects), `team_admin` (adds team-scoped keys) and `super_admin` (adds org-scoped keys).
 :::
 
 ## Manage with the /integrations UI
@@ -24,7 +24,7 @@ Most users issue and revoke their own keys from the [Integrations page](../user-
 
 ![/integrations — API keys section that admins use to mint and revoke keys](/img/screenshots/user-integrations-keys.png)
 
-The Create dialog is the same surface for `team_admin` and `super_admin`; the scope dropdown adds `org` for super-admins:
+The Create dialog is one surface for every role. Its scope dropdown lists only the scopes the signed-in user may issue, so a developer sees `project` on its own and a super-admin sees all three:
 
 ![/integrations — Create API key dialog with label and scope inputs](/img/screenshots/user-integrations-key-create.png)
 
@@ -73,15 +73,15 @@ curl -sS -X POST "https://trustedoss.example.com/v1/api-keys" \
 
 ## Issuing a key
 
-### As a team admin
+### From the Integrations page
 
-1. Open **/integrations** (top-level sidebar entry, available to `team_admin` and above).
-2. Switch to the **API keys** tab.
-3. Click **New API key**.
+1. Open **/integrations** (top-level sidebar entry, available to every signed-in user).
+2. Scroll to the **API keys** section.
+3. Click **Create API key**. The button is absent only for a user who belongs to no team, since no scope is open to them.
 4. Fill in:
-   - **Label** (e.g. `github-action-checkout-service`)
-   - **Scope** — `team` (default) or `project`
-   - **Project** — required when scope is `project`
+   - **Name** (e.g. `github-action-checkout-service`)
+   - **Scope**: `project` (default); `team` also appears if you administer a team
+   - **Project ID**: required when scope is `project`; **Team ID** when scope is `team`
 5. **Create**.
 
 The full key is shown **once** in a modal. Copy it and store it in your CI's secret store (GitHub secrets, GitLab CI variables, Jenkins credentials). After you close the modal, only the prefix is visible from the UI; the full key is unrecoverable.

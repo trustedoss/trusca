@@ -22,7 +22,7 @@ TRUSCA is **not** Dependency-Track API compatible. The Dependency-Track flow —
 
 ## Prerequisites
 
-- A TRUSCA API key in the `tos_<prefix>_<secret>` format. Create one at **/integrations → API keys → New API key**; see [API keys](../admin-guide/api-keys.md) for the scope model.
+- A TRUSCA API key in the `tos_<prefix>_<secret>` format. Create one at **/integrations → API keys → Create API key**; see [API keys](../admin-guide/api-keys.md) for the scope model.
 - The target **project already exists**. Copy its UUID from **Project Settings → CI/CD**. Uploading an SBOM does not create a project.
 - The API key's scope covers that project — a `project`-scoped key bound to it, or a `team`-scoped key for a project the team owns.
 - A **CycloneDX-JSON** document (supported `specVersion` values are `1.2` through `1.7`; 1.7 adds the ML-BOM fields — see [AI SBOM conformance](../user-guide/ai-sbom-conformance.md)) **or** an **SPDX** document in JSON or Tag-Value form. Trivy auto-detects the format for CVE matching; SPDX is mapped to CycloneDX for component persistence. SPDX RDF/XML is not accepted.

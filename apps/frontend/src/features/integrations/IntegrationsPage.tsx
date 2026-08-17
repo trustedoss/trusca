@@ -30,6 +30,7 @@ import { CreateApiKeyDialog } from "@/features/integrations/CreateApiKeyDialog";
 import { RevealApiKeyDialog } from "@/features/integrations/RevealApiKeyDialog";
 import { RevokeApiKeyDialog } from "@/features/integrations/RevokeApiKeyDialog";
 import { useApiKeys } from "@/features/integrations/useApiKeys";
+import { useApiKeyScopes } from "@/features/integrations/useApiKeyScopes";
 import { usePermissions } from "@/hooks/usePermissions";
 import { useClampPage, usePageParam } from "@/hooks/useUrlState";
 import { createApiKey, revokeApiKey } from "@/lib/apiKeysApi";
@@ -143,6 +144,10 @@ export function IntegrationsPage() {
   // `developer` (least privilege), so the gated actions stay hidden while
   // auth is still loading.
   const { isTeamAdminOrAbove } = usePermissions();
+  // #136: creation is gated per scope, not by one global floor. Any team
+  // member may issue a project-scoped key, which is what the dialog defaults
+  // to, so `isTeamAdminOrAbove` is the wrong question to ask here.
+  const { canIssueAnyKey } = useApiKeyScopes();
   const currentUserId = useAuthStore((s) => s.user?.id ?? null);
 
   // B1: in the URL, so a reload keeps the page of keys the reader was on.
@@ -257,9 +262,9 @@ export function IntegrationsPage() {
                 </p>
               ) : null}
             </div>
-            {/* Key creation is team_admin+ on the backend — hide the entry
-                point for developers instead of letting them hit a 403. */}
-            {isTeamAdminOrAbove ? (
+            {/* Hidden only for a reader the backend would refuse at every
+                scope, which is someone who belongs to no team at all. */}
+            {canIssueAnyKey ? (
               <Button
                 type="button"
                 size="sm"
@@ -404,19 +409,19 @@ export function IntegrationsPage() {
                     <td colSpan={COLUMN_COUNT} className="p-0">
                       {/* C3 - the shared primitive, and copy that matches who
                           is reading. It used to say "Create one to get
-                          started" to everyone, including the developers this
-                          page renders no create button for. */}
+                          started" to everyone, including readers this page
+                          renders no create button for. */}
                       <EmptyState
                         data-testid="integrations-keys-empty"
                         icon={<KeyRound />}
                         title={t("api_keys.empty")}
                         description={
-                          isTeamAdminOrAbove
+                          canIssueAnyKey
                             ? t("api_keys.empty_hint_can_create")
                             : t("api_keys.empty_hint_cannot_create")
                         }
                         action={
-                          isTeamAdminOrAbove ? (
+                          canIssueAnyKey ? (
                             <Button
                               type="button"
                               size="sm"

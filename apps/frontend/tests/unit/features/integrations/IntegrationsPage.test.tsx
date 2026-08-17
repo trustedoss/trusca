@@ -64,16 +64,34 @@ function key(name: string, overrides: Partial<APIKeyListItem> = {}): APIKeyListI
 }
 
 function authUser(overrides: Partial<AuthUser> = {}): AuthUser {
+  const role = overrides.role ?? "team_admin";
+  // /auth/me always carries memberships and `toAuthUser` promotes the global
+  // role out of them, so the fixture keeps the two consistent. A super_admin
+  // draws its authority from the flag, not from a membership, which is why it
+  // sits on the team as a plain developer here.
+  const membershipRole = role === "team_admin" ? "team_admin" : "developer";
   return {
     id: "user-1",
     email: "owner@example.com",
     displayName: "Owner",
-    role: "team_admin",
+    role,
     isActive: true,
     isSuperuser: false,
     teamId: "team-1",
+    teams: [{ id: "team-1", name: "Platform", role: membershipRole }],
     ...overrides,
   };
+}
+
+/** A reader the backend refuses at every scope: no memberships at all. */
+function teamlessUser(overrides: Partial<AuthUser> = {}): AuthUser {
+  return authUser({
+    id: "user-nobody",
+    role: "developer",
+    teamId: null,
+    teams: [],
+    ...overrides,
+  });
 }
 
 /** Put a logged-in user into the store so the role gates (L-16/L-18) open. */
@@ -208,18 +226,33 @@ describe("IntegrationsPage", () => {
     ).toBeInTheDocument();
   });
 
-  it("tells a developer who to ask instead of what to press", async () => {
-    // This page renders no create button for a developer (#136), so the old
-    // copy - "No API keys yet. Create one to get started." - pointed at
-    // something that is not there.
+  it("tells a reader with no team who to ask instead of what to press", async () => {
+    // The old copy - "No API keys yet. Create one to get started." - pointed
+    // at a button that is not rendered. It is only absent for a reader with
+    // no memberships now (#136); a developer on a team gets the button.
+    loginAs(teamlessUser());
+    mockedList.mockResolvedValueOnce(page([]));
+
+    renderPage();
+
+    const empty = await screen.findByTestId("integrations-keys-empty");
+    expect(empty.textContent).toContain("you belong to no team yet");
+    expect(screen.queryByTestId("integrations-keys-empty-create")).toBeNull();
+  });
+
+  it("offers the key from the empty state to a developer on a team (#136)", async () => {
     loginAs(authUser({ id: "user-dev", role: "developer" }));
     mockedList.mockResolvedValueOnce(page([]));
 
     renderPage();
 
     const empty = await screen.findByTestId("integrations-keys-empty");
-    expect(empty.textContent).toContain("Ask a team administrator");
-    expect(screen.queryByTestId("integrations-keys-empty-create")).toBeNull();
+    expect(empty.textContent).not.toContain("you belong to no team yet");
+
+    await userEvent.click(screen.getByTestId("integrations-keys-empty-create"));
+    expect(
+      await screen.findByTestId("integrations-create-dialog"),
+    ).toBeInTheDocument();
   });
 
   it("opens the create dialog and reveals the raw key on success", async () => {
@@ -663,6 +696,74 @@ describe("IntegrationsPage", () => {
     expect(values).toEqual(["project", "team", "org"]);
   });
 
+  it("offers a developer the project scope only (#136)", async () => {
+    // Backend rule (`_can_issue_at_scope`): any team member may issue a
+    // project-scoped key, team scope needs team_admin OF that team, org
+    // scope needs super_admin. Offering team here would be a certain 403.
+    loginAs(authUser({ id: "user-dev", role: "developer" }));
+    mockedList.mockResolvedValue(page([]));
+
+    const user = userEvent.setup();
+    renderPage();
+    await waitFor(() => {
+      expect(screen.getByTestId("integrations-keys-empty")).toBeInTheDocument();
+    });
+
+    await user.click(screen.getByTestId("integrations-create-key"));
+    const select = await screen.findByTestId("integrations-create-scope");
+    const values = within(select)
+      .getAllByRole("option")
+      .map((o) => (o as HTMLOptionElement).value);
+    expect(values).toEqual(["project"]);
+    expect((select as HTMLSelectElement).value).toBe("project");
+  });
+
+  it("lets a developer issue the project-scoped key the backend grants (#136)", async () => {
+    loginAs(authUser({ id: "user-dev", role: "developer" }));
+    mockedList.mockResolvedValue(page([]));
+    const created: APIKeyCreateOut = {
+      id: "k-dev",
+      key_prefix: "tos_devdevde",
+      name: "dev-runner",
+      scope: "project",
+      team_id: "team-1",
+      project_id: "p-7",
+      created_by_user_id: "user-dev",
+      created_at: "2026-08-17T09:00:00Z",
+      expires_at: null,
+      raw_key: "tos_devdevde_secret-payload",
+    };
+    mockedCreate.mockResolvedValueOnce(created);
+
+    const user = userEvent.setup();
+    renderPage();
+    await waitFor(() => {
+      expect(screen.getByTestId("integrations-keys-empty")).toBeInTheDocument();
+    });
+
+    await user.click(screen.getByTestId("integrations-create-key"));
+    await screen.findByTestId("integrations-create-dialog");
+    await user.type(
+      screen.getByTestId("integrations-create-name"),
+      "dev-runner",
+    );
+    await user.type(
+      screen.getByTestId("integrations-create-project-id"),
+      "p-7",
+    );
+    await user.click(screen.getByTestId("integrations-create-submit"));
+
+    await waitFor(() => {
+      expect(mockedCreate).toHaveBeenCalledWith({
+        name: "dev-runner",
+        scope: "project",
+        team_id: null,
+        project_id: "p-7",
+        expires_in_days: null,
+      });
+    });
+  });
+
   // -------------------------------------------------------------------------
   // L-17 — creator / last-used / status columns
   // -------------------------------------------------------------------------
@@ -718,8 +819,8 @@ describe("IntegrationsPage", () => {
   // L-18 — developer action gating
   // -------------------------------------------------------------------------
 
-  it("hides the create button from developers (L-18)", async () => {
-    loginAs(authUser({ id: "user-dev", role: "developer" }));
+  it("hides the create button from a reader who belongs to no team (#136)", async () => {
+    loginAs(teamlessUser());
     mockedList.mockResolvedValue(page([]));
 
     renderPage();
@@ -729,6 +830,17 @@ describe("IntegrationsPage", () => {
     expect(
       screen.queryByTestId("integrations-create-key"),
     ).not.toBeInTheDocument();
+  });
+
+  it("shows the create button to a developer on a team (#136)", async () => {
+    loginAs(authUser({ id: "user-dev", role: "developer" }));
+    mockedList.mockResolvedValue(page([]));
+
+    renderPage();
+    await waitFor(() => {
+      expect(screen.getByTestId("integrations-keys-empty")).toBeInTheDocument();
+    });
+    expect(screen.getByTestId("integrations-create-key")).toBeInTheDocument();
   });
 
   it("shows revoke to developers only on keys they issued (L-18)", async () => {

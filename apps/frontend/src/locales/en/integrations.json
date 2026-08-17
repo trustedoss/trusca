@@ -88,7 +88,7 @@
       "summary": "Page {{page}} of {{total}}"
     },
     "empty_hint_can_create": "A build cannot scan without one.",
-    "empty_hint_cannot_create": "A build cannot scan without one. Ask a team administrator to issue a key."
+    "empty_hint_cannot_create": "A build cannot scan without one. Keys are issued against a team's projects, and you belong to no team yet. Ask an administrator to add you to one."
   },
   "webhooks": {
     "section_title": "Webhook URLs",
