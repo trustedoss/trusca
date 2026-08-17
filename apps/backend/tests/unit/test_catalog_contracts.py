@@ -750,3 +750,21 @@ def test_role_priority_orders_the_same_way_as_the_shared_fixture() -> None:
         "denied everywhere, which passes every security assertion while the "
         "grade is unusable"
     )
+
+
+def test_every_role_can_be_assigned_somewhere() -> None:
+    """The enum and the two assignment vocabularies must not drift apart.
+
+    A grade that exists in the database but in neither assignment surface is
+    unreachable: nothing rejects it, nothing can grant it, and it looks
+    supported from the model layer down. super_admin is the deliberate
+    exception, held by a user flag rather than a team membership.
+    """
+    from models.auth import ROLE_VALUES
+    from schemas.admin import _ROLE_VALUES, _TEAM_ROLE_VALUES
+
+    assert set(_ROLE_VALUES) == set(ROLE_VALUES)
+    assert set(_TEAM_ROLE_VALUES) == set(ROLE_VALUES) - {"super_admin"}, (
+        "a team membership can carry every grade except super_admin, which is "
+        "a user flag; adding a grade means adding it here too"
+    )

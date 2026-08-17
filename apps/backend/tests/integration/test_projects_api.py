@@ -792,3 +792,36 @@ async def test_split_membership_user_cannot_patch_developer_team_project(
     )
     assert allowed.status_code == 200, allowed.text
     assert allowed.json()["name"] == "renamed-legit"
+
+
+# ---------------------------------------------------------------------------
+# viewer grade (N1): the grade is only real once it is granted and used
+# ---------------------------------------------------------------------------
+
+
+async def test_a_granted_viewer_can_read_the_project_list(client) -> None:
+    """End to end: the grade is assignable, stores, and clears the read gate.
+
+    The vocabulary and the gates landed in separate changes, so each looked
+    correct on its own while the grade was still unusable. This is the first
+    assertion that a real membership carrying it reaches a real route.
+    """
+    _, _, user = await _seed_team_with_user(client, role="viewer")
+
+    response = await client.get("/v1/projects", headers=_bearer_for(user))
+
+    assert response.status_code == 200, response.text
+
+
+async def test_a_granted_viewer_cannot_create_a_project(client) -> None:
+    """And the other direction, on the same principal."""
+    _, team, user = await _seed_team_with_user(client, role="viewer")
+
+    response = await client.post(
+        "/v1/projects",
+        headers=_bearer_for(user),
+        json={"team_id": str(team.id), "name": "Nope", "slug": f"nope-{unique_suffix()}"},
+    )
+
+    assert response.status_code == 403, response.text
+    assert response.headers["content-type"].startswith(PROBLEM_JSON)

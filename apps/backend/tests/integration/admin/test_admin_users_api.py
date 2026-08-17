@@ -159,12 +159,17 @@ async def test_list_users_team_admin_returns_404_existence_hide(
 
 @pytest.mark.parametrize(
     "role",
-    ["super_admin", "team_admin", "developer"],
+    ["super_admin", "team_admin", "developer", "viewer"],
 )
 async def test_list_users_role_query_accepts_valid_enum(
     client: AsyncClient, role: str
 ) -> None:
-    """All three canonical role values must remain accepted (200)."""
+    """Every canonical role value must remain accepted (200).
+
+    The filter is a closed Literal, so a grade added to the enum without being
+    added here answers 422 for a role that exists: the users holding it become
+    unfindable rather than the request failing loudly somewhere visible.
+    """
     factory = await _factory(client)
     async with factory() as session:
         admin = await make_user(session, is_superuser=True)
