@@ -65,11 +65,18 @@ JWT_ALGORITHM = "HS256"
 TOKEN_TYPE_ACCESS = "access"
 TOKEN_TYPE_REFRESH = "refresh"
 
-# Role priority — higher value means more privileged.
+# Role priority. Higher value means more privileged.
+#
+# The numbers start at 1, not 0, because ``_has_at_least`` reads this map with
+# ``.get(role, 0)``: an unknown role compares as 0 and is denied everywhere,
+# which is the safe direction for a typo. A real grade sitting at 0 would be
+# indistinguishable from that, so ``viewer`` takes 1 and the grades above it
+# each moved up by one. Comparisons are relative, so nothing else changes.
 _ROLE_PRIORITY: dict[str, int] = {
-    "developer": 1,
-    "team_admin": 2,
-    "super_admin": 3,
+    "viewer": 1,
+    "developer": 2,
+    "team_admin": 3,
+    "super_admin": 4,
 }
 
 # Bcrypt cost is fixed at 12 (CLAUDE.md §3 security default).

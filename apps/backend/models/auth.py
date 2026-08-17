@@ -51,7 +51,10 @@ EMPTY_JSONB = text("'{}'::jsonb")
 # rejected at the DB layer. The migration creates the type 'user_role'; here
 # we bind to it via name= (do not let SQLAlchemy auto-create it on metadata
 # emit, otherwise alembic would also try to create it).
-ROLE_VALUES = ("super_admin", "team_admin", "developer")
+# Order mirrors the Postgres type, which lists values in the order they were
+# added: `viewer` came last (migration 0055) even though it is the lowest
+# grade. Privilege order lives in ``core.security._ROLE_PRIORITY``, not here.
+ROLE_VALUES = ("super_admin", "team_admin", "developer", "viewer")
 
 
 def _role_enum() -> PG_ENUM:
