@@ -1,0 +1,15 @@
+{
+  "$comment": "Shared role vocabulary. Single source the two sides assert against: the backend enum apps/backend/models/auth.py::ROLE_VALUES (Postgres type user_role) and the frontend mirror apps/frontend/src/lib/roles.ts::ROLE_RANK, checked from apps/backend/tests/unit/test_catalog_contracts.py and apps/frontend/tests/unit/contracts/catalogMirrors.test.ts. A role that exists on one side only is the defect this file is here to catch: the frontend resolves an unrecognised role by falling back, so a backend-only role renders as a different grade rather than failing. `roles` is in Postgres order (the order values were added). `privilege` is the ranking both sides sort by, lowest first; the numbers themselves differ per side (the backend map starts at 1 so an unknown role can compare as 0) but the order must not.",
+  "roles": [
+    "super_admin",
+    "team_admin",
+    "developer",
+    "viewer"
+  ],
+  "privilege": [
+    "viewer",
+    "developer",
+    "team_admin",
+    "super_admin"
+  ]
+}

@@ -280,10 +280,21 @@ def test_anonymous_and_deactivated_callers_are_rejected_before_any_role_check(
 
 
 def test_role_priority_is_pinned() -> None:
-    """The map every gate comparison reads. Reordering it silently re-grades every route."""
+    """The map every gate comparison reads. Reordering it silently re-grades every route.
+
+    The numbers moved up by one when ``viewer`` was added (migration 0055):
+    the lowest grade cannot take 0, because ``_has_at_least`` reads this map
+    with a default of 0 and a real grade sitting there would be
+    indistinguishable from a role that does not exist.
+    """
     from core.security import _ROLE_PRIORITY
 
-    assert _ROLE_PRIORITY == {"developer": 1, "team_admin": 2, "super_admin": 3}
+    assert _ROLE_PRIORITY == {
+        "viewer": 1,
+        "developer": 2,
+        "team_admin": 3,
+        "super_admin": 4,
+    }
 
 
 def test_a_role_outside_the_priority_map_is_denied_everywhere() -> None:

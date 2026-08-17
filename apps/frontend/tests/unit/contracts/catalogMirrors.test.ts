@@ -47,6 +47,7 @@ import {
 import { SLA_STATUS_VALUES } from "@/features/projects/api/vulnerabilitiesApi";
 import { ALL_VULNERABILITY_STATUSES } from "@/features/projects/lib/vulnerabilityTransitions";
 import { DEMO_LOGIN_EMAIL } from "@/pages/auth/DemoCredentialsHint";
+import { ROLE_RANK, effectiveRole } from "@/lib/roles";
 import { visualFor } from "@/features/projects/components/ProjectStatusBadge";
 import {
   AI_USAGE_SCENARIOS,
@@ -72,6 +73,7 @@ import koScans from "@/locales/ko/scans.json";
 // must both equal this list; asserting the BE side against the same file is
 // the tracked follow-up (see the fixture's $comment).
 import notificationKindsFixture from "../../../../../tests/contracts/notification-kinds.json";
+import userRolesFixture from "../../../../../tests/contracts/user-roles.json";
 // Backend G7 registry — the FE cluster ORDER mirror must follow its cluster
 // id order (same latent-drift class: the panel groups G7 checks by this list).
 import cisaRegistry from "../../../../backend/services/cisa_registry.json";
@@ -750,5 +752,25 @@ describe("AI usage verdicts: FE mirror of the vendored registry (gap #28)", () =
         `settings.field.ai_usage_context_option.${scenario} missing`,
       ).toBeTruthy();
     }
+  });
+});
+
+describe("role vocabulary mirror", () => {
+  it("knows exactly the roles the backend enum declares", () => {
+    expect(new Set(Object.keys(ROLE_RANK))).toEqual(new Set(userRolesFixture.roles));
+  });
+
+  it("ranks them in the same order the backend does", () => {
+    const ordered = Object.keys(ROLE_RANK).sort(
+      (a, b) => ROLE_RANK[a as keyof typeof ROLE_RANK] - ROLE_RANK[b as keyof typeof ROLE_RANK],
+    );
+    expect(ordered).toEqual(userRolesFixture.privilege);
+  });
+
+  it("falls back to a role it recognises rather than throwing", () => {
+    // The fallback is why a backend-only role is dangerous rather than noisy:
+    // an unknown grade silently resolves to this one instead of failing.
+    expect(effectiveRole(false, ["not_a_real_role"])).toBe("developer");
+    expect(effectiveRole(false, [])).toBe("developer");
   });
 });

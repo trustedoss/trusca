@@ -1,0 +1,141 @@
+"""
+Target permission matrix for the viewer grade, held inactive until the gates
+move.
+
+This file is the oracle for the rewiring, and it is deliberately committed one
+change ahead of the work it scores. If the target and the gates changed in the
+same commit, the rewiring would be marking its own paper: eighty-odd routes get
+edited by hand, and whoever edits them can make any expectation agree by
+editing it too. Landing the target first, reviewed on its own, means the
+rewiring can only pass by moving the gates.
+
+The decisions behind the split (2026-08-17):
+
+  - The approval queue and licence policy are readable. Auditing what was
+    approved and which policy applied is the reason the grade exists; without
+    it the role cannot do its job and people are handed developer instead,
+    which is the situation this whole line of work exists to end.
+  - Scan tool logs are not. They carry repository URLs, file paths and build
+    commands, so opening them while closing the source tree would leak the
+    same material through a different door.
+  - Credential surfaces (API keys, app credentials) are not. Metadata alone is
+    still a credential surface and has no business at the lowest grade.
+  - The audit log stays where it is, at developer. Lowering it was not part of
+    this change, and moving an existing grade is a separate decision from
+    adding a new one.
+
+Skipped, not deleted, so the split above is reviewable now and the follow-up
+turns it on by deleting one line.
+"""
+
+from __future__ import annotations
+
+import json
+from pathlib import Path
+from typing import Any
+
+import pytest
+
+REPO_ROOT = Path(__file__).resolve().parents[4]
+TARGET_MATRIX = REPO_ROOT / "tests" / "contracts" / "viewer-target-matrix.json"
+
+pytestmark = pytest.mark.skip(
+    reason="oracle for the gate rewiring (A3); enabled by that change, not this one"
+)
+
+
+def _target() -> dict[str, Any]:
+    payload: dict[str, Any] = json.loads(TARGET_MATRIX.read_text())
+    return payload
+
+
+def _principal(role: str) -> Any:
+    import uuid
+
+    from core.security import CurrentUser
+
+    return CurrentUser(
+        id=uuid.uuid4(),
+        email=f"{role}@example.test",
+        role=role,
+        is_active=True,
+        is_superuser=(role == "super_admin"),
+    )
+
+
+def _gate_callables(method: str, path: str) -> list[Any]:
+    from fastapi.routing import APIRoute
+
+    from main import app
+
+    invocable = ("require_role.", "require_super_admin_or_404.")
+
+    def walk(dependant: Any) -> list[Any]:
+        found: list[Any] = []
+        for sub in dependant.dependencies:
+            if getattr(sub.call, "__qualname__", "").startswith(invocable):
+                found.append(sub.call)
+            found.extend(walk(sub))
+        return found
+
+    for route in app.routes:
+        if isinstance(route, APIRoute) and route.path == path and method in route.methods:
+            return walk(route.dependant)
+    raise AssertionError(f"no route for {method} {path}")
+
+
+def test_viewer_reaches_every_route_the_target_allows() -> None:
+    """The allow direction. Without it, a gate left too high reads as secure."""
+    from fastapi import HTTPException
+
+    viewer = _principal("viewer")
+    refused: list[str] = []
+    for method, path in _target()["allow"]:
+        for gate in _gate_callables(method, path):
+            try:
+                gate(current_user=viewer)
+            except HTTPException:
+                refused.append(f"{method} {path}")
+                break
+    assert refused == [], f"viewer is refused routes the target opens: {refused}"
+
+
+def test_viewer_is_refused_every_route_the_target_denies() -> None:
+    """The deny direction, which is the one a rewiring mistake widens."""
+    viewer = _principal("viewer")
+    reached: list[str] = []
+    for method, path in _target()["deny"]:
+        gates = _gate_callables(method, path)
+        assert gates, f"{method} {path} carries no gate to refuse with"
+        if all(_passes(gate, viewer) for gate in gates):
+            reached.append(f"{method} {path}")
+    assert reached == [], f"viewer reaches routes the target closes: {reached}"
+
+
+def _passes(gate: Any, principal: Any) -> bool:
+    from fastapi import HTTPException
+
+    try:
+        gate(current_user=principal)
+    except HTTPException:
+        return False
+    return True
+
+
+@pytest.mark.parametrize("role", ["team_admin", "super_admin"])
+def test_the_grades_above_keep_everything_they_had(role: str) -> None:
+    """Adding a grade below must not narrow the grades above.
+
+    developer is left out on purpose: two routes in this matrix already sit at
+    a team_admin floor, so developer not reaching them is the existing
+    contract rather than a regression this change could cause.
+    """
+    target = _target()
+    principal = _principal(role)
+    lost = [
+        f"{method} {path}"
+        for method, path in target["allow"] + target["deny"]
+        for gate in _gate_callables(method, path)
+        if not _passes(gate, principal)
+    ]
+    assert lost == [], f"{role} lost access to: {lost}"

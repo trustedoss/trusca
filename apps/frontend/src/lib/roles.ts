@@ -15,10 +15,17 @@
  */
 import type { AuthRole } from "@/stores/authStore";
 
-const ROLE_RANK: Record<AuthRole, number> = {
-  developer: 0,
-  team_admin: 1,
-  super_admin: 2,
+/**
+ * Privilege order, lowest first. Exported so the contract test can hold it to
+ * the shared fixture: the backend enum and this mirror must list the same
+ * roles in the same order, and a role present on one side only resolves
+ * through the fallback below rather than failing.
+ */
+export const ROLE_RANK: Record<AuthRole, number> = {
+  viewer: 0,
+  developer: 1,
+  team_admin: 2,
+  super_admin: 3,
 };
 
 function isAuthRole(value: string): value is AuthRole {

@@ -697,3 +697,56 @@ def test_developer_reachable_csv_exports_are_rate_limited() -> None:
     assert not unlimited, (
         f"CSV export routes reachable by a developer with no rate limit: {unlimited}"
     )
+
+
+# ---------------------------------------------------------------------------
+# Role vocabulary (N1 guard)
+# ---------------------------------------------------------------------------
+
+
+def test_role_enum_matches_the_shared_fixture() -> None:
+    """Backend enum vs the fixture the frontend mirror is pinned against.
+
+    The frontend resolves a role it does not recognise by falling back to a
+    grade it does, so a role that exists only on the backend does not raise
+    anywhere: it renders as a different, higher grade. That is the failure
+    mode this pair exists to catch, and it is why ``viewer`` had to land on
+    both sides in one change rather than backend-first.
+    """
+    import json
+    from pathlib import Path
+
+    from models.auth import ROLE_VALUES
+
+    fixture = json.loads(
+        (Path(__file__).resolve().parents[4] / "tests/contracts/user-roles.json").read_text()
+    )
+    assert set(ROLE_VALUES) == set(fixture["roles"]), (
+        "models/auth.py::ROLE_VALUES and tests/contracts/user-roles.json "
+        "disagree; update both plus the frontend mirror in lib/roles.ts"
+    )
+
+
+def test_role_priority_orders_the_same_way_as_the_shared_fixture() -> None:
+    """Names are not enough: the two sides must also rank them alike.
+
+    The backend map starts at 1 so that an unknown role compares as 0 and is
+    denied everywhere; the frontend starts at 0 because it has no such
+    sentinel. The numbers therefore differ by design and only the order is
+    the contract.
+    """
+    import json
+    from pathlib import Path
+
+    from core.security import _ROLE_PRIORITY
+
+    fixture = json.loads(
+        (Path(__file__).resolve().parents[4] / "tests/contracts/user-roles.json").read_text()
+    )
+    ordered = sorted(_ROLE_PRIORITY, key=lambda role: _ROLE_PRIORITY[role])
+    assert ordered == fixture["privilege"]
+    assert set(_ROLE_PRIORITY) == set(fixture["roles"]), (
+        "a role missing from the priority map compares as privilege 0 and is "
+        "denied everywhere, which passes every security assertion while the "
+        "grade is unusable"
+    )
