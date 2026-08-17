@@ -197,7 +197,7 @@ export function LoginPage() {
     }
   }
 
-  function startOAuth(provider: "github" | "google") {
+  function startOAuth(provider: "github" | "google" | "oidc") {
     const apiBase = getApiBase();
     const url =
       `${apiBase}/auth/oauth/${provider}/authorize` +

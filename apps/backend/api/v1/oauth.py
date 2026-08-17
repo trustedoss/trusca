@@ -49,6 +49,7 @@ from core.config import (
 )
 from core.db import get_db
 from core.errors import problem_response
+from core.ratelimit import OAUTH_AUTHORIZE_RATE_LIMIT, limiter
 from schemas.oauth import OAuthProvidersResponse, OAuthProviderStatusOut
 from services.oauth_service import (
     NoOrganizationConfigured,
@@ -192,7 +193,7 @@ def _demo_read_only_blocked(request: Request, *, provider: str) -> Response:
 
 # Closed provider set in stable wire order. Mirrors the ``Literal`` gate on
 # the authorize/callback path parameters below — widen both together.
-_PROVIDER_ORDER: tuple[Literal["github", "google"], ...] = ("github", "google")
+_PROVIDER_ORDER: tuple[Literal["github", "google", "oidc"], ...] = ("github", "google", "oidc")
 
 
 @router.get(
@@ -236,12 +237,13 @@ async def list_providers() -> OAuthProvidersResponse:
 
 @router.get(
     "/{provider}/authorize",
-    summary="Begin OAuth sign-in (public)",
+    summary="Begin OAuth sign-in (public, rate limited)",
     name="oauth_authorize",
 )
+@limiter.limit(OAUTH_AUTHORIZE_RATE_LIMIT)
 async def authorize(
     request: Request,
-    provider: Literal["github", "google"],
+    provider: Literal["github", "google", "oidc"],
     redirect_after: str | None = None,
 ) -> Response:
     """
@@ -256,6 +258,11 @@ async def authorize(
       - 403 ``demo_read_only`` Problem Details when the deployment runs in
         read-only live-demo mode (OAuth sign-in is a write; see
         :func:`_demo_read_only_blocked`).
+      - 429 when an IP exceeds ``OAUTH_AUTHORIZE_RATE_LIMIT``. Looser than
+        the login limit on purpose: there is no credential to guess here, and
+        an office behind one NAT address signs in together. The limit is a
+        backstop; what actually bounds the cost of a cold discovery cache is
+        the provider's own failure cache.
     """
     if demo_read_only():
         return _demo_read_only_blocked(request, provider=provider)
@@ -288,7 +295,7 @@ async def authorize(
 )
 async def callback(
     request: Request,
-    provider: Literal["github", "google"],
+    provider: Literal["github", "google", "oidc"],
     code: str | None = None,
     state: str | None = None,
     error: str | None = None,

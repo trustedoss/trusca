@@ -2014,6 +2014,44 @@ def google_oauth_client_secret() -> str | None:
     return raw or None
 
 
+def oidc_issuer() -> str | None:
+    """Issuer URL of the deployment's own identity provider.
+
+    One generic provider, not a list. An organisation runs one identity
+    provider, and every endpoint is discovered from this URL, so naming the
+    issuer is the whole of the wiring. Read at call time (rule #11).
+    """
+    raw = os.getenv("OIDC_ISSUER", "").strip()
+    return raw.rstrip("/") or None
+
+
+def oidc_client_id() -> str | None:
+    raw = os.getenv("OIDC_CLIENT_ID", "").strip()
+    return raw or None
+
+
+def oidc_client_secret() -> str | None:
+    # Stripped, unlike the other two provider secrets: this one is typically
+    # mounted from a file, and a trailing newline reaches the provider as part
+    # of the credential and comes back as an opaque invalid_client.
+    raw = os.getenv("OIDC_CLIENT_SECRET", "").strip()
+    return raw or None
+
+
+def oidc_scopes() -> str:
+    """Scopes requested at the authorisation endpoint.
+
+    ``openid`` is mandatory and is added back if an operator drops it, since
+    without it the provider is not doing OpenID Connect and the userinfo
+    endpoint has no subject to return.
+    """
+    raw = os.getenv("OIDC_SCOPES", "").strip()
+    scopes = raw.split() if raw else ["openid", "email", "profile"]
+    if "openid" not in scopes:
+        scopes.insert(0, "openid")
+    return " ".join(scopes)
+
+
 def oauth_state_ttl_seconds() -> int:
     """Lifetime of the signed OAuth ``state`` JWT (CSRF guard).
 

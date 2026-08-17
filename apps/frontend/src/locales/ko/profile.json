@@ -23,7 +23,8 @@
     },
     "provider": {
       "github": "GitHub",
-      "google": "Google"
+      "google": "Google",
+      "oidc": "SSO"
     },
     "unlink": {
       "button": "연결 해제",

@@ -50,6 +50,8 @@ import { DEMO_LOGIN_EMAIL } from "@/pages/auth/DemoCredentialsHint";
 import type { UserRole } from "@/features/admin/api/adminUsersApi";
 import type { TeamScopedRole } from "@/features/projects/api/projectDetailApi";
 import type { TriageRole } from "@/features/projects/lib/vulnerabilityTransitions";
+import type { OAuthProvider as ProfileOAuthProvider } from "@/features/profile/api/oauthIdentitiesApi";
+import type { OAuthProviderName } from "@/lib/api";
 import { ROLE_RANK, effectiveRole } from "@/lib/roles";
 import { visualFor } from "@/features/projects/components/ProjectStatusBadge";
 import {
@@ -67,6 +69,8 @@ import enNotifications from "@/locales/en/notifications.json";
 import koNotifications from "@/locales/ko/notifications.json";
 import enProjectDetail from "@/locales/en/project_detail.json";
 import koProjectDetail from "@/locales/ko/project_detail.json";
+import enProfile from "@/locales/en/profile.json";
+import koProfile from "@/locales/ko/profile.json";
 import enProjects from "@/locales/en/projects.json";
 import koProjects from "@/locales/ko/projects.json";
 import enScans from "@/locales/en/scans.json";
@@ -814,5 +818,37 @@ describe("role vocabularies inside the frontend", () => {
       viewer: true,
     };
     expect(new Set(Object.keys(triageRoles))).toEqual(fixtureRoles);
+  });
+});
+
+describe("oauth provider mirrors", () => {
+  // Two more copies of the same closed set, plus the label catalogue the
+  // profile page indexes by provider name. A provider missing from the labels
+  // does not throw: the connected-accounts row renders the raw i18n key.
+  const providers = ["github", "google", "oidc"] as const;
+
+  it("the api-level union covers every provider", () => {
+    const seen: Record<OAuthProviderName, true> = {
+      github: true,
+      google: true,
+      oidc: true,
+    };
+    expect(new Set(Object.keys(seen))).toEqual(new Set(providers));
+  });
+
+  it("the profile union covers every provider", () => {
+    const seen: Record<ProfileOAuthProvider, true> = {
+      github: true,
+      google: true,
+      oidc: true,
+    };
+    expect(new Set(Object.keys(seen))).toEqual(new Set(providers));
+  });
+
+  it.each(["en", "ko"] as const)("%s labels every provider", (locale) => {
+    const labels = locale === "en" ? enProfile : koProfile;
+    for (const provider of providers) {
+      expect(labels.connected_accounts.provider).toHaveProperty(provider);
+    }
   });
 });

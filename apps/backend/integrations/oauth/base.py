@@ -24,7 +24,7 @@ from typing import Literal, Protocol
 # Closed provider set
 # ---------------------------------------------------------------------------
 
-ProviderName = Literal["github", "google"]
+ProviderName = Literal["github", "google", "oidc"]
 
 # Module-level Literal constants — annotated with the same Literal type so
 # mypy treats them as the narrowed value, not a plain ``str``. Required for
@@ -32,6 +32,9 @@ ProviderName = Literal["github", "google"]
 # also Literal-typed.
 OAUTH_PROVIDER_GITHUB: ProviderName = "github"
 OAUTH_PROVIDER_GOOGLE: ProviderName = "google"
+#: The deployment's own identity provider, configured by issuer rather
+#: than named here. One entry, not a list: see integrations/oauth/oidc.py.
+OAUTH_PROVIDER_OIDC: ProviderName = "oidc"
 
 
 # ---------------------------------------------------------------------------
@@ -75,6 +78,13 @@ class OAuthUserInfo:
         full_name: Display name (``None`` if the provider does not surface
             one — Google guarantees, GitHub does not).
         avatar_url: Optional profile image URL.
+        email_can_link_existing_account: whether this address is trustworthy
+            enough to sign the holder into an account that already exists
+            under it. True for providers that verify the address themselves.
+            False when the deployment configured a non-standard claim or
+            waived verification: in both cases the address is a claim the
+            user can influence, and matching it against an existing account
+            would hand that account to whoever asserts it.
     """
 
     provider: ProviderName
@@ -82,6 +92,7 @@ class OAuthUserInfo:
     email: str
     full_name: str | None
     avatar_url: str | None
+    email_can_link_existing_account: bool = True
 
 
 # ---------------------------------------------------------------------------
@@ -146,17 +157,21 @@ def get_provider(name: str) -> OAuthProvider:
     # before this module finishes initialising.
     from .github import GitHubOAuthProvider
     from .google import GoogleOAuthProvider
+    from .oidc import OidcProvider
 
     if name == OAUTH_PROVIDER_GITHUB:
         return GitHubOAuthProvider()
     if name == OAUTH_PROVIDER_GOOGLE:
         return GoogleOAuthProvider()
+    if name == OAUTH_PROVIDER_OIDC:
+        return OidcProvider()
     raise ValueError(f"unknown OAuth provider: {name!r}")
 
 
 __all__ = [
     "OAUTH_PROVIDER_GITHUB",
     "OAUTH_PROVIDER_GOOGLE",
+    "OAUTH_PROVIDER_OIDC",
     "OAuthExchangeError",
     "OAuthProvider",
     "OAuthProviderDisabled",

@@ -37,7 +37,7 @@ from pydantic import BaseModel, ConfigDict, Field
 # Closed provider set — mirrors ``models.oauth_identity.OAUTH_PROVIDER_VALUES``.
 # Hard-coded as a Literal so the OpenAPI schema renders an enum without
 # leaking the Postgres ENUM machinery.
-OAuthProvider = Literal["github", "google"]
+OAuthProvider = Literal["github", "google", "oidc"]
 
 
 class OAuthIdentityOut(BaseModel):

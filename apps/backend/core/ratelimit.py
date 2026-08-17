@@ -37,6 +37,15 @@ from core.errors import PROBLEM_CONTENT_TYPE
 # Module-level constant — this is policy, not configuration. Keep it in code.
 LOGIN_RATE_LIMIT = "5/minute"
 
+# Starting an OAuth sign-in is not a credential guess, so it does not take the
+# login budget. It gets its own, looser one: the endpoint is shared by everyone
+# behind an office NAT, and single sign-on means the whole office arrives
+# within the same few minutes. The reason to limit it at all is that the
+# generic provider resolves its endpoints from the issuer, so a cold cache
+# costs an outbound request; the size of that cost is bounded by the discovery
+# failure cache rather than by this number.
+OAUTH_AUTHORIZE_RATE_LIMIT = "60/minute"
+
 
 def _limiter_enabled() -> bool:
     """

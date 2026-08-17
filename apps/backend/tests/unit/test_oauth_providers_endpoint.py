@@ -58,28 +58,36 @@ async def test_unauthenticated_call_returns_200(client: AsyncClient) -> None:
     assert response.headers["content-type"].startswith("application/json")
 
 
-async def test_nothing_configured_lists_both_providers_false(
+async def test_nothing_configured_lists_every_provider_false(
     client: AsyncClient,
 ) -> None:
-    """(a) Both providers unset → both listed, both ``configured=false``."""
+    """(a) Nothing set → every provider listed, all ``configured=false``.
+
+    The list is the full supported set rather than the configured subset, so
+    the shape of the response does not change with deployment configuration.
+    """
     response = await client.get("/auth/oauth/providers")
     assert response.status_code == 200, response.text
     body = response.json()
     # Stable order: the SPA renders buttons in response order.
-    assert [row["provider"] for row in body["providers"]] == ["github", "google"]
-    assert _by_provider(body) == {"github": False, "google": False}
+    assert [row["provider"] for row in body["providers"]] == ["github", "google", "oidc"]
+    assert _by_provider(body) == {"github": False, "google": False, "oidc": False}
 
 
 async def test_github_id_and_secret_set_marks_github_configured(
     client: AsyncClient,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """(b) GitHub id+secret set → github true, google stays false."""
+    """(b) GitHub id+secret set → github true, the others stay false."""
     monkeypatch.setenv("GITHUB_CLIENT_ID", "gh-test-client-id")
     monkeypatch.setenv("GITHUB_CLIENT_SECRET", "gh-test-client-secret")
     response = await client.get("/auth/oauth/providers")
     assert response.status_code == 200, response.text
-    assert _by_provider(response.json()) == {"github": True, "google": False}
+    assert _by_provider(response.json()) == {
+        "github": True,
+        "google": False,
+        "oidc": False,
+    }
 
 
 async def test_id_without_secret_is_not_configured(
@@ -130,3 +138,26 @@ def test_service_helper_rejects_unknown_provider() -> None:
 
     with pytest.raises(OAuthProviderUnknown):
         oauth_provider_configured("gitlab")
+
+
+async def test_oidc_needs_an_issuer_as_well_as_credentials(
+    client: AsyncClient,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Credentials alone leave nowhere to send the browser.
+
+    The other two providers are configured by a pair; this one takes three
+    values, and reporting it as ready on two would render a button that 503s
+    on click, which is the failure the `configured` flag exists to prevent.
+    """
+    monkeypatch.setenv("OIDC_CLIENT_ID", "client-id")
+    monkeypatch.setenv("OIDC_CLIENT_SECRET", "client-secret")
+
+    response = await client.get("/auth/oauth/providers")
+
+    assert _by_provider(response.json())["oidc"] is False
+
+    monkeypatch.setenv("OIDC_ISSUER", "https://idp.example.test")
+    response = await client.get("/auth/oauth/providers")
+
+    assert _by_provider(response.json())["oidc"] is True

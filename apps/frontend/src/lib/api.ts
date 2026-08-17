@@ -312,7 +312,7 @@ export async function postResetPassword(
 
 // ---------- OAuth provider availability (M-15) -----------------------------
 
-export type OAuthProviderName = "github" | "google";
+export type OAuthProviderName = "github" | "google" | "oidc";
 
 export interface OAuthProviderStatusWire {
   provider: OAuthProviderName;

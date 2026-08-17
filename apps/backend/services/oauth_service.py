@@ -48,7 +48,7 @@ import secrets
 import uuid
 from datetime import UTC, datetime, timedelta
 from typing import Any
-from urllib.parse import urlparse
+from urllib.parse import urlparse, urlsplit
 
 import structlog
 from jose import JWTError, jwt
@@ -64,6 +64,9 @@ from core.config import (
     google_oauth_client_secret,
     oauth_login_redirect_default,
     oauth_state_ttl_seconds,
+    oidc_client_id,
+    oidc_client_secret,
+    oidc_issuer,
     secret_key,
 )
 from core.security import (
@@ -304,7 +307,7 @@ def oauth_provider_configured(provider: str) -> bool:
     core rule #11). Never returns or logs the credential values.
 
     Raises:
-        OAuthProviderUnknown: provider name is not 'github' or 'google' —
+        OAuthProviderUnknown: provider name is not one of the supported set,
             mirrors :func:`integrations.oauth.get_provider` so accidental
             call-sites fail loudly.
     """
@@ -312,6 +315,16 @@ def oauth_provider_configured(provider: str) -> bool:
         return bool(github_oauth_client_id() and github_oauth_client_secret())
     if provider == "google":
         return bool(google_oauth_client_id() and google_oauth_client_secret())
+    if provider == "oidc":
+        # Three values, not two: without an issuer there is nowhere to send
+        # the browser, so a deployment holding only credentials is as
+        # unusable as one holding none. The scheme belongs here too, because
+        # this function's contract is "the button will work", and an http
+        # issuer is refused at authorize time.
+        issuer = oidc_issuer()
+        if not issuer or urlsplit(issuer).scheme != "https":
+            return False
+        return bool(oidc_client_id() and oidc_client_secret())
     raise OAuthProviderUnknown(f"unknown OAuth provider: {provider!r}")
 
 
@@ -464,6 +477,26 @@ async def complete_oauth(
 # ---------------------------------------------------------------------------
 
 
+def _refuse_unvouched_link(info: OAuthUserInfo) -> None:
+    """Raise when an address may not be used to reach an account already under it.
+
+    Called from both places that link an identity to a User the caller found
+    by email. Keeping the rule in one function is the point: the first version
+    guarded the ordinary path and left the collision path open, and the two
+    are far enough apart in the file that the omission read as complete.
+
+    The address itself is fine to sign in with. What it may not do is decide
+    that the holder is the person who already owns an account under it, since
+    for an unvouched address that is a claim the holder chose.
+    """
+    if info.email_can_link_existing_account:
+        return
+    log.warning("oauth_email_link_refused_unverified", provider=info.provider)
+    raise OAuthCallbackFailed(
+        "an account already exists for this address and the provider did not verify it"
+    )
+
+
 async def _resolve_or_create_user(
     session: AsyncSession,
     *,
@@ -516,6 +549,8 @@ async def _resolve_or_create_user(
     ).scalar_one_or_none()
 
     if user is not None:
+        _refuse_unvouched_link(info)
+
         # Link a new identity to the existing User. Two flows could race
         # here (same external account being linked to two different
         # email-matched Users), but the unique
@@ -585,7 +620,11 @@ async def _create_user_with_personal_team(
         full_name=info.full_name,
         is_active=True,
         is_superuser=False,
-        is_verified=True,  # OAuth providers verify email themselves.
+        # True only when the provider actually vouched for the address. A
+        # deployment that waived verification, or reads the address out of a
+        # claim the provider does not vouch for, must not have that recorded
+        # as verified: later flows read this flag and would trust it.
+        is_verified=info.email_can_link_existing_account,
     )
     session.add(user)
     try:
@@ -601,6 +640,10 @@ async def _create_user_with_personal_team(
         ).scalar_one_or_none()
         if existing is None:
             raise OAuthCallbackFailed("user creation collided unexpectedly") from exc
+        # Same rule as the ordinary path: the row that appeared during the
+        # race belongs to someone, and an unvouched address does not get to
+        # claim it just because the collision routed us here.
+        _refuse_unvouched_link(info)
         identity = OAuthIdentity(
             user_id=existing.id,
             provider=info.provider,
