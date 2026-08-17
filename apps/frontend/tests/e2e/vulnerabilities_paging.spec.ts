@@ -90,6 +90,35 @@ test.describe("@vulnerabilities paging and drawer history", () => {
     expect(afterScroll).toBeGreaterThan(100);
   });
 
+  test("P3) the rendered window is the same on two loads of one dataset", async ({
+    page,
+  }, testInfo) => {
+    // #114: two captures of one commit differed in a 12 px strip at the
+    // bottom of this table, showing different package identifiers. Either the
+    // virtual window depended on when the shutter opened, or the query's
+    // ordering was not total and pagination could repeat or skip a row. This
+    // tells the two apart in one assertion: same fixture, same filters, two
+    // independent loads. Different ids mean the order moved; the same ids in
+    // a different window mean the extent moved. Identical means neither.
+    const seed = await bootstrap(testInfo, page);
+    if (seed === null) return;
+
+    const portal = new PortalPage(page);
+    await portal.gotoProjects();
+    await portal.openProjectDetail(PROJECT_NAME);
+    await portal.selectVulnerabilitiesTab();
+    await portal.expectVulnerabilityWindowSettled();
+    const first = await portal.getRenderedVulnerabilityWindow();
+    expect(first.length).toBeGreaterThan(0);
+    expect(first).not.toContain("");
+
+    await page.reload();
+    await portal.expectVulnerabilityWindowSettled();
+    const second = await portal.getRenderedVulnerabilityWindow();
+
+    expect(second).toEqual(first);
+  });
+
   test("P2) Back closes the drawer instead of leaving the tab", async ({
     page,
   }, testInfo) => {

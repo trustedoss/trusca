@@ -813,6 +813,56 @@ export class PortalPage {
   }
 
   /**
+   * The `data-finding-id` of every row currently in the DOM, in DOM order.
+   *
+   * Under virtualization that is the rendered WINDOW, not the result set,
+   * which is the point: two reads of a settled list must return the same
+   * window, and a caller comparing them is asking whether the list is
+   * deciding anything on the clock.
+   */
+  async getRenderedVulnerabilityWindow(): Promise<string[]> {
+    const ids = await this.page
+      .getByTestId("vulnerability-row")
+      .evaluateAll((rows) =>
+        rows.map((r) => r.getAttribute("data-finding-id") ?? ""),
+      );
+    return ids;
+  }
+
+  /**
+   * Wait until the rendered window stops changing.
+   *
+   * `expectVulnerabilitiesTabReady` waits for the container, which appears
+   * before the rows inside it have been measured. Virtuoso renders on an
+   * estimated item height first and adjusts after measuring, so a shutter
+   * that opens during that adjustment catches a window offset by a few
+   * pixels from the one the next run catches, which is how two captures of
+   * one commit came to differ by ~115 pixels in a 12 px strip at the bottom
+   * of the table, showing different package identifiers (#114).
+   *
+   * "Settled" is two consecutive identical readings, not a fixed sleep: the
+   * measurement pass is fast on a warm machine and slow on a loaded CI
+   * runner, and a sleep tuned for one is wrong on the other.
+   */
+  async expectVulnerabilityWindowSettled(): Promise<void> {
+    await this.expectVulnerabilitiesTabReady();
+    let previous: string | null = null;
+    await expect
+      .poll(
+        async () => {
+          const current = (await this.getRenderedVulnerabilityWindow()).join(
+            ",",
+          );
+          const stable = previous !== null && current === previous;
+          previous = current;
+          return stable;
+        },
+        { timeout: 15_000, intervals: [150, 150, 250, 250, 500] },
+      )
+      .toBe(true);
+  }
+
+  /**
    * Read the `data-total` attribute on the summary row (server-reported
    * count). Returns 0 when the empty card is shown.
    */
