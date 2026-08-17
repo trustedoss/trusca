@@ -21,6 +21,7 @@ import { ScanProgress } from "@/features/scan/ScanProgress";
 import { OsEolPanel } from "@/features/scan/OsEolPanel";
 import { ScanProvenancePanel } from "@/features/scan/ScanProvenancePanel";
 import { SbomConformancePanel } from "@/features/scan/SbomConformancePanel";
+import { StreamStopped } from "@/features/scan/StreamStopped";
 import { ToolLogLine } from "@/features/scan/ToolLogLine";
 import { useSbomConformance } from "@/features/scan/useSbomConformance";
 import { useScanProvenance } from "@/features/scan/useScanProvenance";
@@ -135,13 +136,30 @@ export function ScanDetailPage() {
   // ---- Live log stream. We pass through the existing hook so reconnection,
   // ring buffer, and the auth handshake are all reused.
   //
-  // This deliberately does not read the hook's `gaveUp`, so when THIS socket
-  // is the one evicted the log panel stops without saying so. Giving it the
-  // affordance ScanProgress got in C4 means a second stopped surface on this
-  // page, which is issue #137 rather than a line here.
-  const { logMessages } = useScanWebSocket(scanId ?? "", {
+  // #137: this is the page's SECOND socket. The `ScanProgress` above holds the
+  // other one, and the per-user cap is three per worker process, so a second
+  // tab can evict either of them with 1001. When it takes this one the log
+  // panel simply stops receiving lines, which is why it reports its own
+  // give-up rather than borrowing the progress panel's.
+  const {
+    logMessages,
+    gaveUp: logStreamGaveUp,
+    closeCode: logStreamCloseCode,
+    reconnect: reconnectLogStream,
+    isTerminal: logStreamSawTerminal,
+  } = useScanWebSocket(scanId ?? "", {
     enabled: typeof scanId === "string" && scanId.length > 0,
   });
+
+  // A finished scan sends no more lines, so a closed socket is the expected
+  // end of the stream and not something to report. Union of the two things
+  // that can tell us: a terminal frame on this socket, or the persisted status
+  // (which is what a reader who opens an old scan lands on).
+  const scanFinished =
+    logStreamSawTerminal ||
+    liveStatus === "succeeded" ||
+    liveStatus === "failed" ||
+    liveStatus === "cancelled";
 
   // ---- Log filter (single-select chip row above the list).
   const [filter, setFilter] = useState<LogFilter>("all");
@@ -379,6 +397,17 @@ export function ScanDetailPage() {
                     : ` / ${logMessages.length}`}
                 </span>
               </div>
+
+              {/* #137 - above the box, not inside it, so it survives the
+                  filter chips emptying the list and stays put while the
+                  reader scrolls the lines that did arrive. */}
+              {!scanFinished && logStreamGaveUp ? (
+                <StreamStopped
+                  surface="log"
+                  closeCode={logStreamCloseCode}
+                  onReconnect={reconnectLogStream}
+                />
+              ) : null}
 
               <div
                 ref={scrollRef}

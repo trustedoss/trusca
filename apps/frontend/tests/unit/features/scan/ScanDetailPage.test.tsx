@@ -40,10 +40,19 @@ import { ProblemError } from "@/lib/problem";
 const wsState: {
   logMessages: ScanLogMessage[];
   state: ScanWebSocketState;
+  gaveUp: boolean;
+  closeCode: number | null;
+  isTerminal: boolean;
 } = {
   logMessages: [],
   state: "open",
+  gaveUp: false,
+  closeCode: null,
+  isTerminal: false,
 };
+
+/** Calls to the hook's `reconnect`, so a rendered button can be proved wired. */
+const reconnectSpy = vi.fn();
 
 vi.mock("@/hooks/useScanWebSocket", async () => {
   const actual =
@@ -57,10 +66,12 @@ vi.mock("@/hooks/useScanWebSocket", async () => {
       lastMessage: null,
       messages: [],
       logMessages: wsState.logMessages,
-      closeCode: null,
+      closeCode: wsState.closeCode,
       closeReason: null,
       reconnectAttempt: 0,
-      isTerminal: false,
+      gaveUp: wsState.gaveUp,
+      reconnect: reconnectSpy,
+      isTerminal: wsState.isTerminal,
     }),
   };
 });
@@ -141,6 +152,10 @@ describe("ScanDetailPage", () => {
   beforeEach(() => {
     wsState.logMessages = [];
     wsState.state = "open";
+    wsState.gaveUp = false;
+    wsState.closeCode = null;
+    wsState.isTerminal = false;
+    reconnectSpy.mockReset();
     mockedGetScan.mockReset();
     mockedGetScan.mockResolvedValue(scanFixture());
 
@@ -496,6 +511,128 @@ describe("ScanDetailPage", () => {
 
       const back = await screen.findByTestId("scan-detail-page-error-back");
       expect(back.getAttribute("href")).toBe("/scans");
+    });
+  });
+
+  // ---- The log stream's own give-up (#137) --------------------------------
+  //
+  // This page holds two sockets and C4 gave the affordance to the other one.
+  // The stub drives both, so a give-up here surfaces both panels; the tests
+  // below check the log one by its own testid and by the heading that names
+  // the surface it speaks for.
+  describe("log stream give-up (#137)", () => {
+    it("says the log stream stopped, and offers a way back", async () => {
+      wsState.gaveUp = true;
+      wsState.closeCode = 1001;
+      wsState.logMessages = [
+        logFixture("cdxgen", "stdout", "resolving packages", "2026-05-28T01:01:00.000Z"),
+      ];
+      renderPage();
+
+      const stopped = await screen.findByTestId("scan-detail-page-log-stopped");
+      expect(stopped).toHaveAttribute("data-close-code", "1001");
+      expect(stopped.textContent).toContain("Log updates stopped");
+      // 1001 is the eviction the per-user cap causes, and the scan survives it.
+      expect(stopped.textContent).toContain("Another tab took over");
+      expect(stopped.textContent).toContain("The scan itself is unaffected");
+
+      // The lines that did arrive stay on screen underneath.
+      expect(screen.getByTestId("scan-detail-page-log-body")).toHaveTextContent(
+        "resolving packages",
+      );
+
+      await userEvent.click(
+        screen.getByTestId("scan-detail-page-log-reconnect"),
+      );
+      expect(reconnectSpy).toHaveBeenCalled();
+    });
+
+    it("stays quiet while the stream is alive", async () => {
+      wsState.logMessages = [
+        logFixture("cdxgen", "stdout", "resolving packages", "2026-05-28T01:01:00.000Z"),
+      ];
+      renderPage();
+
+      await screen.findByTestId("scan-detail-page-log-body");
+      expect(
+        screen.queryByTestId("scan-detail-page-log-stopped"),
+      ).not.toBeInTheDocument();
+    });
+
+    it("stays quiet once the scan has finished, because no more lines are due", async () => {
+      // A closed socket on a finished scan is the end of the stream, not a
+      // fault. Both signals are checked: the persisted status here...
+      wsState.gaveUp = true;
+      wsState.closeCode = 1011;
+      mockedGetScan.mockResolvedValue(scanFixture({ status: "succeeded" }));
+      renderPage();
+
+      await screen.findByTestId("scan-detail-page-status");
+      expect(
+        screen.queryByTestId("scan-detail-page-log-stopped"),
+      ).not.toBeInTheDocument();
+    });
+
+    it("stays quiet when the socket itself saw the scan end", async () => {
+      // ...and a terminal frame on the socket here, which arrives before the
+      // cached summary catches up.
+      wsState.gaveUp = true;
+      wsState.closeCode = 1011;
+      wsState.isTerminal = true;
+      mockedGetScan.mockResolvedValue(scanFixture({ status: "running" }));
+      renderPage();
+
+      await screen.findByTestId("scan-detail-page-status");
+      expect(
+        screen.queryByTestId("scan-detail-page-log-stopped"),
+      ).not.toBeInTheDocument();
+    });
+
+    it("withholds Reconnect when reconnecting would repeat the refusal", async () => {
+      // 4403: the reader is not in the scan's team. A second attempt gets the
+      // same close code, so the button would be an offer to fail again.
+      wsState.gaveUp = true;
+      wsState.closeCode = 4403;
+      renderPage();
+
+      const stopped = await screen.findByTestId("scan-detail-page-log-stopped");
+      expect(stopped.textContent).toContain("do not have access");
+      // And no reassurance: the scan may be fine, but this reader cannot know.
+      expect(stopped.textContent).not.toContain("The scan itself is unaffected");
+      expect(
+        screen.queryByTestId("scan-detail-page-log-reconnect"),
+      ).not.toBeInTheDocument();
+    });
+
+    it("speaks for the log, not the status, when the server ended the stream", async () => {
+      // 1011 gets no reassurance (a Redis failure takes the scan with it), so
+      // what is left to say is about this surface. The progress panel says the
+      // status may be stale; the log panel must say where the lines end.
+      wsState.gaveUp = true;
+      wsState.closeCode = 1011;
+      renderPage();
+
+      const stopped = await screen.findByTestId("scan-detail-page-log-stopped");
+      expect(stopped.textContent).toContain("The lines below end where the stream did.");
+      expect(stopped.textContent).not.toContain("The status shown here");
+      expect(stopped.textContent).not.toContain("The scan itself is unaffected");
+    });
+
+    it("does not borrow the progress panel's heading", async () => {
+      // Both sockets are the same stub, so both panels render here. They must
+      // not read as the same message twice: each names the surface it froze.
+      wsState.gaveUp = true;
+      wsState.closeCode = 1001;
+      renderPage();
+
+      const logStopped = await screen.findByTestId(
+        "scan-detail-page-log-stopped",
+      );
+      const progressStopped = screen.getByTestId("scan-progress-stopped");
+      expect(logStopped.textContent).toContain("Log updates stopped");
+      expect(logStopped.textContent).not.toContain("Live updates stopped");
+      expect(progressStopped.textContent).toContain("Live updates stopped");
+      expect(progressStopped.textContent).not.toContain("Log updates stopped");
     });
   });
 });
