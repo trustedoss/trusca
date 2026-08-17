@@ -17,6 +17,8 @@ import type { Page } from "@playwright/test";
 
 import { LANGUAGE_STORAGE_KEY } from "@/lib/languageStorage";
 
+import { waitForWebFonts } from "../_harness/fonts";
+
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
@@ -147,6 +149,23 @@ export async function hideDevOnlyChrome(page: Page): Promise<void> {
 }
 
 /**
+ * Everything that must be true the instant before the shutter opens.
+ *
+ * The three capture helpers below share one function rather than each
+ * repeating the steps, because that is how the font wait went missing here
+ * in the first place (#113): the visual gate grew one after a capture came
+ * out in the fallback typeface, and this pipeline, whose images ship into the
+ * user and admin guides, kept calling `page.screenshot()` with nothing
+ * between the navigation and the shutter. A fourth capture helper added
+ * later gets both steps by using this, or neither by not using it, which is
+ * a visible choice rather than an oversight.
+ */
+async function prepareForShutter(page: Page): Promise<void> {
+  await hideDevOnlyChrome(page);
+  await waitForWebFonts(page);
+}
+
+/**
  * Write a viewport screenshot under `docs-site/static/img/screenshots/`.
  *
  * `fullPage: false` keeps the asset bounded to the 1440×900 viewport that
@@ -164,7 +183,7 @@ export async function captureScreenshot(
       `captureScreenshot: slug "${slug}" must be kebab-case ([a-z0-9-]+)`,
     );
   }
-  await hideDevOnlyChrome(page);
+  await prepareForShutter(page);
   const out = path.join(SCREENSHOT_DIR, `${slug}.png`);
   await page.screenshot({ path: out, fullPage: false });
 }
@@ -232,7 +251,7 @@ export async function captureLocaleScreenshot(
       `captureLocaleScreenshot: slug "${slug}" must be kebab-case ([a-z0-9-]+)`,
     );
   }
-  await hideDevOnlyChrome(page);
+  await prepareForShutter(page);
   const suffix = locale === "ko" ? "-ko" : "";
   const out = path.join(SCREENSHOT_DIR, `${slug}${suffix}.png`);
   await page.screenshot({ path: out, fullPage: false });
@@ -356,7 +375,7 @@ export async function captureSection(
       `captureSection: slug "${slug}" must be kebab-case ([a-z0-9-]+)`,
     );
   }
-  await hideDevOnlyChrome(page);
+  await prepareForShutter(page);
   const rect = await page.evaluate(
     ({ id, pad }) => {
       const el = document.querySelector(`[data-testid="${id}"]`);
