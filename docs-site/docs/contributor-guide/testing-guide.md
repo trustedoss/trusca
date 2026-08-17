@@ -168,6 +168,18 @@ existed). The permission denial (404 existence-hide / 403) must always fire
 before any state-derived 409. New 409 surfaces add a case to
 `apps/backend/tests/integration/test_existence_hide_state_matrix.py`.
 
+The rule has a second half at the route level. `tests/contracts/permission-matrix.json`
+declares the gate every route carries, and
+`apps/backend/tests/unit/test_permission_baseline.py` asserts it in both
+directions: a route with no row fails (a surface shipped without anyone
+classifying it), and a row with no route fails (the matrix went stale and
+stopped being an oracle). Adding a route means adding its row. Changing a gate
+means changing the fixture, which is what puts the change in front of a
+reviewer instead of leaving it spread across the API modules. Assert both
+allow and deny for each role: a denial-only test stays green when a gate is
+widened, and an unknown role is denied everywhere, so a missing role reads as
+"secure" while the product is broken.
+
 ### 2. Duplicated vocabularies require a contract test
 
 When the same closed vocabulary lives in two places — a DB enum and a
