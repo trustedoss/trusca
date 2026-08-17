@@ -133,7 +133,7 @@ async def list_project_obligations_endpoint(
     order: str = Query(default="desc", pattern=r"^(asc|desc)$"),
     scan_id: uuid.UUID | None = Depends(snapshot_anchor),
     session: AsyncSession = Depends(get_db),
-    actor: CurrentUser = Depends(require_role("developer")),
+    actor: CurrentUser = Depends(require_role("viewer")),
 ) -> Response:
     try:
         items, distribution, total = await list_project_obligations(
@@ -190,7 +190,7 @@ async def get_obligation_endpoint(
     project_id: uuid.UUID,
     obligation_id: uuid.UUID,
     session: AsyncSession = Depends(get_db),
-    actor: CurrentUser = Depends(require_role("developer")),
+    actor: CurrentUser = Depends(require_role("viewer")),
 ) -> Response:
     try:
         payload = await get_obligation_detail(
@@ -323,7 +323,7 @@ async def get_project_notice_endpoint(
         ),
     ),
     session: AsyncSession = Depends(get_db),
-    actor: CurrentUser = Depends(require_role("developer")),
+    actor: CurrentUser = Depends(require_role("viewer")),
 ) -> Response:
     try:
         payload = await generate_notice(

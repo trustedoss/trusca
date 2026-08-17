@@ -240,7 +240,7 @@
     {
       "method": "GET",
       "path": "/v1/approvals",
-      "gate": "role>=developer"
+      "gate": "role>=viewer"
     },
     {
       "method": "POST",
@@ -255,7 +255,7 @@
     {
       "method": "GET",
       "path": "/v1/approvals/{approval_id}",
-      "gate": "role>=developer"
+      "gate": "role>=viewer"
     },
     {
       "method": "PATCH",
@@ -270,7 +270,7 @@
     {
       "method": "GET",
       "path": "/v1/components/{component_id}",
-      "gate": "role>=developer"
+      "gate": "role>=viewer"
     },
     {
       "method": "GET",
@@ -330,27 +330,27 @@
     {
       "method": "GET",
       "path": "/v1/inventory/components",
-      "gate": "role>=developer"
+      "gate": "role>=viewer"
     },
     {
       "method": "GET",
       "path": "/v1/inventory/components/export.csv",
-      "gate": "role>=developer"
+      "gate": "role>=viewer"
     },
     {
       "method": "GET",
       "path": "/v1/inventory/components/{component_id}/projects",
-      "gate": "role>=developer"
+      "gate": "role>=viewer"
     },
     {
       "method": "GET",
       "path": "/v1/inventory/vulnerabilities/{external_id}/projects",
-      "gate": "role>=developer"
+      "gate": "role>=viewer"
     },
     {
       "method": "GET",
       "path": "/v1/license-policies",
-      "gate": "role>=developer"
+      "gate": "role>=viewer"
     },
     {
       "method": "GET",
@@ -370,7 +370,7 @@
     {
       "method": "GET",
       "path": "/v1/license-policies/teams/{team_id}",
-      "gate": "role>=developer"
+      "gate": "role>=viewer"
     },
     {
       "method": "PUT",
@@ -390,7 +390,7 @@
     {
       "method": "GET",
       "path": "/v1/license_findings/{finding_id}",
-      "gate": "role>=developer"
+      "gate": "role>=viewer"
     },
     {
       "method": "GET",
@@ -415,7 +415,7 @@
     {
       "method": "GET",
       "path": "/v1/projects",
-      "gate": "role>=developer"
+      "gate": "role>=viewer"
     },
     {
       "method": "POST",
@@ -430,7 +430,7 @@
     {
       "method": "GET",
       "path": "/v1/projects/{project_id}",
-      "gate": "role>=developer"
+      "gate": "role>=viewer"
     },
     {
       "method": "PATCH",
@@ -440,27 +440,27 @@
     {
       "method": "GET",
       "path": "/v1/projects/{project_id}/compliance",
-      "gate": "role>=developer"
+      "gate": "role>=viewer"
     },
     {
       "method": "GET",
       "path": "/v1/projects/{project_id}/components",
-      "gate": "role>=developer"
+      "gate": "role>=viewer"
     },
     {
       "method": "GET",
       "path": "/v1/projects/{project_id}/components/export.csv",
-      "gate": "role>=developer"
+      "gate": "role>=viewer"
     },
     {
       "method": "GET",
       "path": "/v1/projects/{project_id}/dependency-graph",
-      "gate": "role>=developer"
+      "gate": "role>=viewer"
     },
     {
       "method": "GET",
       "path": "/v1/projects/{project_id}/diff",
-      "gate": "role>=developer"
+      "gate": "role>=viewer"
     },
     {
       "method": "GET",
@@ -470,37 +470,37 @@
     {
       "method": "GET",
       "path": "/v1/projects/{project_id}/governance",
-      "gate": "role>=developer"
+      "gate": "role>=viewer"
     },
     {
       "method": "GET",
       "path": "/v1/projects/{project_id}/licenses",
-      "gate": "role>=developer"
+      "gate": "role>=viewer"
     },
     {
       "method": "GET",
       "path": "/v1/projects/{project_id}/notice",
-      "gate": "role>=developer"
+      "gate": "role>=viewer"
     },
     {
       "method": "GET",
       "path": "/v1/projects/{project_id}/obligations",
-      "gate": "role>=developer"
+      "gate": "role>=viewer"
     },
     {
       "method": "GET",
       "path": "/v1/projects/{project_id}/obligations/{obligation_id}",
-      "gate": "role>=developer"
+      "gate": "role>=viewer"
     },
     {
       "method": "GET",
       "path": "/v1/projects/{project_id}/overview",
-      "gate": "role>=developer"
+      "gate": "role>=viewer"
     },
     {
       "method": "GET",
       "path": "/v1/projects/{project_id}/releases",
-      "gate": "role>=developer"
+      "gate": "role>=viewer"
     },
     {
       "method": "POST",
@@ -515,17 +515,17 @@
     {
       "method": "GET",
       "path": "/v1/projects/{project_id}/remediation/pull-requests",
-      "gate": "role>=developer"
+      "gate": "role>=viewer"
     },
     {
       "method": "GET",
       "path": "/v1/projects/{project_id}/reports/history",
-      "gate": "role>=developer"
+      "gate": "role>=viewer"
     },
     {
       "method": "GET",
       "path": "/v1/projects/{project_id}/sbom",
-      "gate": "role>=developer"
+      "gate": "role>=viewer"
     },
     {
       "method": "POST",
@@ -535,37 +535,37 @@
     {
       "method": "GET",
       "path": "/v1/projects/{project_id}/sbom/attestation",
-      "gate": "role>=developer"
+      "gate": "role>=viewer"
     },
     {
       "method": "GET",
       "path": "/v1/projects/{project_id}/sbom/attestation-certificate",
-      "gate": "role>=developer"
+      "gate": "role>=viewer"
     },
     {
       "method": "GET",
       "path": "/v1/projects/{project_id}/sbom/certificate",
-      "gate": "role>=developer"
+      "gate": "role>=viewer"
     },
     {
       "method": "GET",
       "path": "/v1/projects/{project_id}/sbom/public-key",
-      "gate": "role>=developer"
+      "gate": "role>=viewer"
     },
     {
       "method": "GET",
       "path": "/v1/projects/{project_id}/sbom/signature",
-      "gate": "role>=developer"
+      "gate": "role>=viewer"
     },
     {
       "method": "GET",
       "path": "/v1/projects/{project_id}/sbom/signature-bundle",
-      "gate": "role>=developer"
+      "gate": "role>=viewer"
     },
     {
       "method": "GET",
       "path": "/v1/projects/{project_id}/scans",
-      "gate": "role>=developer"
+      "gate": "role>=viewer"
     },
     {
       "method": "POST",
@@ -575,7 +575,7 @@
     {
       "method": "GET",
       "path": "/v1/projects/{project_id}/scans/{scan_id}/conformance",
-      "gate": "role_or_key>=developer"
+      "gate": "role_or_key>=viewer"
     },
     {
       "method": "POST",
@@ -595,7 +595,7 @@
     {
       "method": "GET",
       "path": "/v1/projects/{project_id}/vex",
-      "gate": "role>=developer"
+      "gate": "role>=viewer"
     },
     {
       "method": "POST",
@@ -605,17 +605,17 @@
     {
       "method": "GET",
       "path": "/v1/projects/{project_id}/vulnerabilities",
-      "gate": "role>=developer"
+      "gate": "role>=viewer"
     },
     {
       "method": "GET",
       "path": "/v1/projects/{project_id}/vulnerabilities/export.csv",
-      "gate": "role>=developer"
+      "gate": "role>=viewer"
     },
     {
       "method": "GET",
       "path": "/v1/projects/{project_id}/vulnerabilities/upgrade-clusters",
-      "gate": "role>=developer"
+      "gate": "role>=viewer"
     },
     {
       "method": "POST",
@@ -625,12 +625,12 @@
     {
       "method": "GET",
       "path": "/v1/projects/{project_id}/vulnerability-report.pdf",
-      "gate": "role>=developer"
+      "gate": "role>=viewer"
     },
     {
       "method": "GET",
       "path": "/v1/projects/{project_id}/vulnerability-report.xlsx",
-      "gate": "role>=developer"
+      "gate": "role>=viewer"
     },
     {
       "method": "GET",
@@ -650,7 +650,7 @@
     {
       "method": "GET",
       "path": "/v1/scans",
-      "gate": "role>=developer"
+      "gate": "role>=viewer"
     },
     {
       "method": "DELETE",
@@ -660,7 +660,7 @@
     {
       "method": "GET",
       "path": "/v1/scans/{scan_id}",
-      "gate": "role_or_key>=developer"
+      "gate": "role_or_key>=viewer"
     },
     {
       "method": "POST",
@@ -680,17 +680,17 @@
     {
       "method": "GET",
       "path": "/v1/scans/{scan_id}/provenance",
-      "gate": "role_or_key>=developer"
+      "gate": "role_or_key>=viewer"
     },
     {
       "method": "GET",
       "path": "/v1/search",
-      "gate": "role>=developer"
+      "gate": "role>=viewer"
     },
     {
       "method": "GET",
       "path": "/v1/search/results",
-      "gate": "role>=developer"
+      "gate": "role>=viewer"
     },
     {
       "method": "GET",
@@ -715,7 +715,7 @@
     {
       "method": "GET",
       "path": "/v1/vulnerability_findings/{finding_id}",
-      "gate": "role>=developer"
+      "gate": "role>=viewer"
     },
     {
       "method": "PATCH",

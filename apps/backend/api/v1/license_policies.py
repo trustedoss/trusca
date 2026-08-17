@@ -201,7 +201,7 @@ async def get_team_policy_endpoint(
     request: Request,
     team_id: uuid.UUID,
     session: AsyncSession = Depends(get_db),
-    actor: CurrentUser = Depends(require_role("developer")),
+    actor: CurrentUser = Depends(require_role("viewer")),
 ) -> Response:
     try:
         row = await get_policy(session, actor, team_id=team_id)
@@ -255,7 +255,7 @@ async def list_policies_endpoint(
     page: int = Query(default=1, ge=1, le=PAGE_MAX),
     page_size: int = Query(default=50, ge=1, le=200),
     session: AsyncSession = Depends(get_db),
-    actor: CurrentUser = Depends(require_role("developer")),
+    actor: CurrentUser = Depends(require_role("viewer")),
 ) -> Response:
     try:
         rows, total = await list_policies(

@@ -114,7 +114,7 @@ async def list_my_scans_endpoint(
     page: int = Query(default=1, ge=1, le=PAGE_MAX),
     size: int = Query(default=20, ge=1, le=100),
     session: AsyncSession = Depends(get_db),
-    actor: CurrentUser = Depends(require_role("developer")),
+    actor: CurrentUser = Depends(require_role("viewer")),
 ) -> Response:
     rows, total = await list_scans_for_actor(
         session,
@@ -165,7 +165,7 @@ async def get_scan_endpoint(
     session: AsyncSession = Depends(get_db),
     # CI scan-action polls this endpoint with a tos_ API key while waiting for
     # the scan to reach a terminal state — accept either the key or a JWT.
-    actor: CurrentUser = Depends(require_role_or_api_key("developer")),
+    actor: CurrentUser = Depends(require_role_or_api_key("viewer")),
 ) -> Response:
     try:
         scan = await get_scan(session, scan_id=scan_id, actor=actor)
@@ -202,7 +202,7 @@ async def get_scan_provenance_endpoint(
     request: Request,
     scan_id: uuid.UUID,
     session: AsyncSession = Depends(get_db),
-    actor: CurrentUser = Depends(require_role_or_api_key("developer")),
+    actor: CurrentUser = Depends(require_role_or_api_key("viewer")),
 ) -> Response:
     """Serve the scan's recorded inputs.
 
@@ -531,7 +531,7 @@ async def list_scans_endpoint(
         ),
     ),
     session: AsyncSession = Depends(get_db),
-    actor: CurrentUser = Depends(require_role("developer")),
+    actor: CurrentUser = Depends(require_role("viewer")),
 ) -> Response:
     try:
         rows, total = await list_scans_for_project(

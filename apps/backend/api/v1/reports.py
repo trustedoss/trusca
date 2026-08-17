@@ -167,7 +167,7 @@ async def get_vulnerability_report_pdf_endpoint(
     request: Request,
     project_id: uuid.UUID,
     session: AsyncSession = Depends(get_db),
-    actor: CurrentUser = Depends(require_role("developer")),
+    actor: CurrentUser = Depends(require_role("viewer")),
 ) -> Response:
     # IDOR guard — reuse ``get_project`` so the "may the actor see this
     # project?" decision lives in one place. ProjectForbidden surfaces as 404
@@ -314,7 +314,7 @@ async def get_vulnerability_report_xlsx_endpoint(
     request: Request,
     project_id: uuid.UUID,
     session: AsyncSession = Depends(get_db),
-    actor: CurrentUser = Depends(require_role("developer")),
+    actor: CurrentUser = Depends(require_role("viewer")),
 ) -> Response:
     # Same IDOR / existence-hide posture as the PDF endpoint above.
     try:
@@ -474,7 +474,7 @@ async def list_project_report_history_endpoint(
         description=f"Rows per page (1..{PAGE_SIZE_MAX}, default {PAGE_SIZE_DEFAULT}).",
     ),
     session: AsyncSession = Depends(get_db),
-    actor: CurrentUser = Depends(require_role("developer")),
+    actor: CurrentUser = Depends(require_role("viewer")),
 ) -> Response:
     try:
         result = await list_report_history(

@@ -186,7 +186,7 @@ async def export_project_vex_endpoint(
         description="VEX output format.",
     ),
     session: AsyncSession = Depends(get_db),
-    actor: CurrentUser = Depends(require_role("developer")),
+    actor: CurrentUser = Depends(require_role("viewer")),
 ) -> Response:
     # IDOR guard — re-use ``get_project`` so the "is the actor allowed to see
     # this project?" decision lives in exactly one place. Existence-hide: any

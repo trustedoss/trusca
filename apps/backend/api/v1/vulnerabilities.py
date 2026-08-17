@@ -189,7 +189,7 @@ async def list_project_vulnerabilities_endpoint(
     order: str = Query(default="desc", pattern=r"^(asc|desc)$"),
     scan_id: uuid.UUID | None = Depends(snapshot_anchor),
     session: AsyncSession = Depends(get_db),
-    actor: CurrentUser = Depends(require_role("developer")),
+    actor: CurrentUser = Depends(require_role("viewer")),
 ) -> Response:
     try:
         items, total, severity_distribution = await list_project_vulnerabilities(
@@ -260,7 +260,7 @@ async def export_project_vulnerabilities_csv_endpoint(
     order: str = Query(default="desc", pattern=r"^(asc|desc)$"),
     scan_id: uuid.UUID | None = Depends(snapshot_anchor),
     session: AsyncSession = Depends(get_db),
-    actor: CurrentUser = Depends(require_role("developer")),
+    actor: CurrentUser = Depends(require_role("viewer")),
 ) -> Response:
     """
     The same rows the list endpoint would return, without the paging.
@@ -318,7 +318,7 @@ async def list_upgrade_clusters_endpoint(
     project_id: uuid.UUID,
     scan_id: uuid.UUID | None = Depends(snapshot_anchor),
     session: AsyncSession = Depends(get_db),
-    actor: CurrentUser = Depends(require_role("developer")),
+    actor: CurrentUser = Depends(require_role("viewer")),
 ) -> Response:
     """The "Group by upgrade" view: the resolved scan's OPEN findings grouped by
     the minimum safe upgrade that clears them, most-actionable first.
@@ -437,7 +437,7 @@ async def get_vulnerability_finding_endpoint(
     request: Request,
     finding_id: uuid.UUID,
     session: AsyncSession = Depends(get_db),
-    actor: CurrentUser = Depends(require_role("developer")),
+    actor: CurrentUser = Depends(require_role("viewer")),
 ) -> Response:
     try:
         payload = await get_vulnerability_detail(

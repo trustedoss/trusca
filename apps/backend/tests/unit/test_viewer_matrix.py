@@ -1,13 +1,12 @@
 """
-Target permission matrix for the viewer grade, held inactive until the gates
-move.
+Permission matrix for the viewer grade.
 
-This file is the oracle for the rewiring, and it is deliberately committed one
-change ahead of the work it scores. If the target and the gates changed in the
-same commit, the rewiring would be marking its own paper: eighty-odd routes get
-edited by hand, and whoever edits them can make any expectation agree by
-editing it too. Landing the target first, reviewed on its own, means the
-rewiring can only pass by moving the gates.
+This file is the oracle for the gate rewiring, and it landed one change ahead
+of it. Had the target and the gates moved together, the rewiring would have
+been marking its own paper: forty-seven gates get edited at once, and whoever
+edits them can make any expectation agree by editing it too. The split below
+was reviewed on its own first, so the rewiring could only pass by moving the
+gates to meet it.
 
 The decisions behind the split (2026-08-17):
 
@@ -24,8 +23,9 @@ The decisions behind the split (2026-08-17):
     this change, and moving an existing grade is a separate decision from
     adding a new one.
 
-Skipped, not deleted, so the split above is reviewable now and the follow-up
-turns it on by deleting one line.
+Not every gate can be run here, and the ones that cannot are read rather than
+skipped: see ``_gates``. A route scored by nothing would sit in the matrix
+looking checked.
 """
 
 from __future__ import annotations
@@ -38,11 +38,6 @@ import pytest
 
 REPO_ROOT = Path(__file__).resolve().parents[4]
 TARGET_MATRIX = REPO_ROOT / "tests" / "contracts" / "viewer-target-matrix.json"
-
-pytestmark = pytest.mark.skip(
-    reason="oracle for the gate rewiring (A3); enabled by that change, not this one"
-)
-
 
 def _target() -> dict[str, Any]:
     payload: dict[str, Any] = json.loads(TARGET_MATRIX.read_text())
@@ -63,20 +58,40 @@ def _principal(role: str) -> Any:
     )
 
 
-def _gate_callables(method: str, path: str) -> list[Any]:
+def _gates(method: str, path: str) -> tuple[list[Any], list[str]]:
+    """Every gate on a route, as (callables we can run, floors we can only read).
+
+    Not all gates can be exercised here. ``require_role_or_api_key`` resolves
+    its principal from a request and a session, so its floor is read off the
+    closure instead and compared by priority. Skipping those routes rather
+    than reading them would leave the five CI-facing endpoints, one of which
+    is a write, scored by nothing at all.
+    """
     from fastapi.routing import APIRoute
 
     from main import app
 
-    invocable = ("require_role.", "require_super_admin_or_404.")
-
-    def walk(dependant: Any) -> list[Any]:
-        found: list[Any] = []
+    def walk(dependant: Any) -> tuple[list[Any], list[str]]:
+        callables: list[Any] = []
+        floors: list[str] = []
         for sub in dependant.dependencies:
-            if getattr(sub.call, "__qualname__", "").startswith(invocable):
-                found.append(sub.call)
-            found.extend(walk(sub))
-        return found
+            qualname = getattr(sub.call, "__qualname__", "")
+            if qualname.startswith(("require_role.", "require_super_admin_or_404.")):
+                callables.append(sub.call)
+                if qualname.startswith("require_super_admin_or_404."):
+                    floors.append("super_admin")
+            if qualname.startswith(("require_role.", "require_role_or_api_key.")):
+                code = getattr(sub.call, "__code__", None)
+                closure = getattr(sub.call, "__closure__", None) or ()
+                names = getattr(code, "co_freevars", ())
+                cells = dict(zip(names, [c.cell_contents for c in closure]))
+                role = cells.get("role")
+                if isinstance(role, str):
+                    floors.append(role)
+            sub_callables, sub_floors = walk(sub)
+            callables.extend(sub_callables)
+            floors.extend(sub_floors)
+        return callables, floors
 
     for route in app.routes:
         if isinstance(route, APIRoute) and route.path == path and method in route.methods:
@@ -84,19 +99,24 @@ def _gate_callables(method: str, path: str) -> list[Any]:
     raise AssertionError(f"no route for {method} {path}")
 
 
+def _viewer_clears(floor: str) -> bool:
+    from core.security import _ROLE_PRIORITY
+
+    return _ROLE_PRIORITY["viewer"] >= _ROLE_PRIORITY.get(floor, 0)
+
+
 def test_viewer_reaches_every_route_the_target_allows() -> None:
     """The allow direction. Without it, a gate left too high reads as secure."""
-    from fastapi import HTTPException
-
     viewer = _principal("viewer")
     refused: list[str] = []
     for method, path in _target()["allow"]:
-        for gate in _gate_callables(method, path):
-            try:
-                gate(current_user=viewer)
-            except HTTPException:
-                refused.append(f"{method} {path}")
-                break
+        callables, floors = _gates(method, path)
+        assert floors, f"{method} {path} declares no floor to check"
+        if not all(_viewer_clears(floor) for floor in floors):
+            refused.append(f"{method} {path} (floors {floors})")
+            continue
+        if not all(_passes(gate, viewer) for gate in callables):
+            refused.append(f"{method} {path} (gate refused viewer)")
     assert refused == [], f"viewer is refused routes the target opens: {refused}"
 
 
@@ -105,10 +125,12 @@ def test_viewer_is_refused_every_route_the_target_denies() -> None:
     viewer = _principal("viewer")
     reached: list[str] = []
     for method, path in _target()["deny"]:
-        gates = _gate_callables(method, path)
-        assert gates, f"{method} {path} carries no gate to refuse with"
-        if all(_passes(gate, viewer) for gate in gates):
-            reached.append(f"{method} {path}")
+        callables, floors = _gates(method, path)
+        assert floors, f"{method} {path} carries no floor to refuse with"
+        stopped_by_floor = any(not _viewer_clears(floor) for floor in floors)
+        stopped_by_gate = any(not _passes(gate, viewer) for gate in callables)
+        if not (stopped_by_floor or stopped_by_gate):
+            reached.append(f"{method} {path} (floors {floors})")
     assert reached == [], f"viewer reaches routes the target closes: {reached}"
 
 
@@ -135,7 +157,7 @@ def test_the_grades_above_keep_everything_they_had(role: str) -> None:
     lost = [
         f"{method} {path}"
         for method, path in target["allow"] + target["deny"]
-        for gate in _gate_callables(method, path)
+        for gate in _gates(method, path)[0]
         if not _passes(gate, principal)
     ]
     assert lost == [], f"{role} lost access to: {lost}"
