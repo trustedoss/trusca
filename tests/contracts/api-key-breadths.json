@@ -1,0 +1,15 @@
+{
+  "_comment": [
+    "What an API key may do, as distinct from scope, which says what it reaches.",
+    "",
+    "Four places carry this vocabulary: the request schema that validates it,",
+    "the CHECK constraint that bounds the column, the frontend array that fills",
+    "the issuing dropdown, and this file. The dropdown's value goes straight",
+    "into an authorization decision, so drift means either an option that 422s",
+    "on save or a breadth nobody can choose.",
+    "",
+    "Order is asserted: the dropdown renders in this order, safest first, so",
+    "the first thing somebody sees is the one they should usually pick."
+  ],
+  "breadths": ["read_only", "read_write"]
+}

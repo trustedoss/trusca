@@ -149,7 +149,15 @@ async def _issue_project_api_key(
 ) -> str:
     resp = await client.post(
         "/v1/api-keys",
-        json={"name": "ci-dogfood", "scope": "project", "project_id": str(project_id)},
+        json={
+            "name": "ci-dogfood",
+            "scope": "project",
+            "project_id": str(project_id),
+            # These scenarios drive the write surfaces, and new keys are
+            # read-only by default. Asked for explicitly so a scope-boundary
+            # assertion below cannot pass on a breadth refusal instead.
+            "permission_breadth": "read_write",
+        },
         headers=_bearer_for(user),
     )
     assert resp.status_code == 201, resp.text

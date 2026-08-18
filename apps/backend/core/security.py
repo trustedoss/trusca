@@ -219,6 +219,14 @@ class CurrentUser:
     # against the target project id. ``None`` for JWT principals and for
     # team / org-scoped keys (no project boundary applies).
     api_key_project_id: uuid.UUID | None = None
+    # N7: set ONLY when the principal was synthesized from a read-only API key.
+    # Enforced by HTTP method in ``core.api_key_auth._assert_breadth_allows``,
+    # which runs as the principal is built rather than at any one route gate.
+    # Two surfaces resolve a key through their own dependency instead of the
+    # shared gate, so enforcing there left a POST reachable; every dispatcher
+    # inherits it here. False for every JWT principal: a person's session is
+    # not narrowed by this.
+    api_key_read_only: bool = False
 
 
 def _highest_role(roles: list[str], *, is_superuser: bool) -> str:

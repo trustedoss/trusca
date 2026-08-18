@@ -27,7 +27,12 @@ import {
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { useApiKeyScopes } from "@/features/integrations/useApiKeyScopes";
-import type { APIKeyCreatePayload, APIKeyScope } from "@/types/apiKey";
+import {
+  API_KEY_PERMISSION_BREADTHS,
+  type APIKeyCreatePayload,
+  type APIKeyPermissionBreadth,
+  type APIKeyScope,
+} from "@/types/apiKey";
 
 interface CreateApiKeyDialogProps {
   open: boolean;
@@ -57,6 +62,11 @@ export function CreateApiKeyDialog({
   // "" → never expires; otherwise the TTL in days. Kept as the raw <select>
   // string and parsed to a number only at submit.
   const [expiresInDays, setExpiresInDays] = useState("");
+  // Read-only unless the person issuing says otherwise. Most keys are handed
+  // to something that reads results, and the ones that need to start a scan
+  // are worth choosing deliberately.
+  const [breadth, setBreadth] =
+    useState<APIKeyPermissionBreadth>("read_only");
   const [error, setError] = useState<string | null>(null);
 
   function reset() {
@@ -65,6 +75,11 @@ export function CreateApiKeyDialog({
     setTeamId("");
     setProjectId("");
     setExpiresInDays("");
+    // Back to read-only with the rest. Leaving this one behind would mean a
+    // form that looks blank while the field deciding whether the key can
+    // change things still says read-write, which is the field to be wrong
+    // about last.
+    setBreadth("read_only");
     setError(null);
   }
 
@@ -95,6 +110,7 @@ export function CreateApiKeyDialog({
       scope,
       team_id: scope === "team" ? teamId.trim() : null,
       project_id: scope === "project" ? projectId.trim() : null,
+      permission_breadth: breadth,
       expires_in_days: expiresInDays ? Number(expiresInDays) : null,
     });
   }
@@ -155,6 +171,31 @@ export function CreateApiKeyDialog({
                 : scope === "team"
                   ? t("api_keys.create_dialog.scope_help_team")
                   : t("api_keys.create_dialog.scope_help_project")}
+            </p>
+          </div>
+
+          <div className="space-y-1.5">
+            <Label htmlFor="apikey-breadth">
+              {t("api_keys.create_dialog.breadth_label")}
+            </Label>
+            <select
+              id="apikey-breadth"
+              value={breadth}
+              onChange={(e) =>
+                setBreadth(e.target.value as APIKeyPermissionBreadth)
+              }
+              data-testid="integrations-create-breadth"
+              disabled={submitting}
+              className="flex h-9 w-full rounded-md border border-input bg-background px-3 py-1 text-sm shadow-sm transition-colors duration-fast ease-out-soft focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              {API_KEY_PERMISSION_BREADTHS.map((value) => (
+                <option key={value} value={value}>
+                  {t(`api_keys.create_dialog.breadth_option.${value}`)}
+                </option>
+              ))}
+            </select>
+            <p className="text-xs text-muted-foreground">
+              {t("api_keys.create_dialog.breadth_help")}
             </p>
           </div>
 

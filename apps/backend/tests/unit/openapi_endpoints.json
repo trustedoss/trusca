@@ -521,6 +521,9 @@
   "PATCH /v1/admin/users/{user_id}/role": [
     "user_id"
   ],
+  "PATCH /v1/api-keys/{api_key_id}": [
+    "api_key_id"
+  ],
   "PATCH /v1/approvals/{approval_id}/transition": [
     "approval_id",
     "if-match"

@@ -34,6 +34,11 @@ from pydantic import BaseModel, ConfigDict, Field
 # round-trip — the API accepts only these three values.
 APIKeyScope = Literal["org", "team", "project"]
 
+# What a key may DO, as distinct from the scope above, which says what it may
+# reach. Read-only keys are refused every unsafe HTTP method at the auth path.
+APIKeyPermissionBreadth = Literal["read_write", "read_only"]
+API_KEY_PERMISSION_BREADTHS: tuple[str, ...] = ("read_write", "read_only")
+
 
 class APIKeyCreateIn(BaseModel):
     """Request body for creating a new API key.
@@ -46,6 +51,15 @@ class APIKeyCreateIn(BaseModel):
 
     name: str = Field(..., min_length=1, max_length=100)
     scope: APIKeyScope
+    permission_breadth: APIKeyPermissionBreadth = Field(
+        default="read_only",
+        description=(
+            "What the key may do: 'read_only' (the default) or 'read_write'. "
+            "A read-only key is refused every request that changes something, "
+            "so a pipeline that just reads results cannot start a scan. Keys "
+            "issued before this existed are read-write and stay that way."
+        ),
+    )
     team_id: UUID | None = None
     project_id: UUID | None = None
     expires_in_days: int | None = Field(
@@ -57,6 +71,25 @@ class APIKeyCreateIn(BaseModel):
             "days. Omit for a non-expiring key (CI keys should set one and "
             "rotate). Max 1825 (5 years)."
         ),
+    )
+
+
+class APIKeyNarrowIn(BaseModel):
+    """Request body for PATCH /v1/api-keys/{id}.
+
+    Only one value is accepted. Widening is not a validation failure to be
+    argued with but a different operation: issue a new key. Spelling it as a
+    literal keeps that in the OpenAPI contract rather than in a comment.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    permission_breadth: Literal["read_only"] = Field(
+        description=(
+            "The only accepted value. Breadth narrows and never widens: a key "
+            "that has been sitting in a CI log should not be handed more "
+            "privilege than it was issued with."
+        )
     )
 
 
@@ -72,6 +105,9 @@ class APIKeyCreateOut(BaseModel):
     key_prefix: str
     name: str
     scope: APIKeyScope
+    permission_breadth: APIKeyPermissionBreadth = Field(
+        description="What the key that was just issued may do."
+    )
     team_id: UUID | None
     project_id: UUID | None
     created_by_user_id: UUID | None
@@ -94,6 +130,13 @@ class APIKeyListItem(BaseModel):
     key_prefix: str
     name: str
     scope: APIKeyScope
+    permission_breadth: APIKeyPermissionBreadth = Field(
+        default="read_write",
+        description=(
+            "What this key may do. Rows issued before this existed read as "
+            "'read_write', which is the breadth they have always had."
+        ),
+    )
     team_id: UUID | None
     project_id: UUID | None
     created_by_user_id: UUID | None

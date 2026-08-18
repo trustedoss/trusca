@@ -19,7 +19,8 @@
       "last_used": "Last used",
       "expires": "Expires",
       "status": "Status",
-      "actions": "Actions"
+      "actions": "Actions",
+      "breadth": "May do"
     },
     "scope": {
       "org": "Organization",
@@ -61,7 +62,13 @@
       "project_id_placeholder": "uuid",
       "submit": "Create key",
       "submitting": "Creating…",
-      "cancel": "Cancel"
+      "cancel": "Cancel",
+      "breadth_label": "What this key may do",
+      "breadth_help": "Read-only keys are refused anything that changes something, so a pipeline that reads results cannot start a scan. Narrowing a key later is possible; widening one is not, so pick read-write only when you need it.",
+      "breadth_option": {
+        "read_only": "Read only (recommended)",
+        "read_write": "Read and write"
+      }
     },
     "create_result": {
       "title": "API key created",
@@ -76,11 +83,13 @@
       "project_id_required": "Project ID is required for project-scoped keys.",
       "create_failed": "Failed to create the API key.",
       "revoke_failed": "Failed to revoke the API key.",
-      "copy_failed": "Could not copy to clipboard. Select the text and copy manually."
+      "copy_failed": "Could not copy to clipboard. Select the text and copy manually.",
+      "narrow_failed": "The key could not be changed."
     },
     "toast": {
       "created": "API key created.",
-      "revoked": "API key revoked."
+      "revoked": "API key revoked.",
+      "narrowed": "This key is read-only now."
     },
     "pagination": {
       "previous": "Previous",
@@ -88,7 +97,13 @@
       "summary": "Page {{page}} of {{total}}"
     },
     "empty_hint_can_create": "A build cannot scan without one.",
-    "empty_hint_cannot_create": "A build cannot scan without one. Keys are issued against a team's projects, and you belong to no team yet. Ask an administrator to add you to one."
+    "empty_hint_cannot_create": "A build cannot scan without one. Keys are issued against a team's projects, and you belong to no team yet. Ask an administrator to add you to one.",
+    "breadth": {
+      "read_only": "Read only",
+      "read_write": "Read and write"
+    },
+    "narrow": "Make read-only",
+    "narrow_help": "Takes away this key's ability to change anything. One-way: widening means issuing a new key."
   },
   "webhooks": {
     "section_title": "Webhook URLs",

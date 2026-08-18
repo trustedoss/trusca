@@ -29,17 +29,20 @@ vi.mock("@/lib/apiKeysApi", () => ({
   listApiKeys: vi.fn(),
   createApiKey: vi.fn(),
   revokeApiKey: vi.fn(),
+  narrowApiKey: vi.fn(),
 }));
 
 import {
   createApiKey,
   listApiKeys,
+  narrowApiKey,
   revokeApiKey,
 } from "@/lib/apiKeysApi";
 
 const mockedList = vi.mocked(listApiKeys);
 const mockedCreate = vi.mocked(createApiKey);
 const mockedRevoke = vi.mocked(revokeApiKey);
+const mockedNarrow = vi.mocked(narrowApiKey);
 
 function key(name: string, overrides: Partial<APIKeyListItem> = {}): APIKeyListItem {
   return {
@@ -47,6 +50,7 @@ function key(name: string, overrides: Partial<APIKeyListItem> = {}): APIKeyListI
     key_prefix: overrides.key_prefix ?? "tos_a1b2c3d4",
     name,
     scope: overrides.scope ?? "project",
+    permission_breadth: overrides.permission_breadth ?? "read_only",
     team_id: overrides.team_id ?? null,
     project_id: overrides.project_id ?? "project-1",
     created_by_user_id: overrides.created_by_user_id ?? "user-1",
@@ -261,7 +265,8 @@ describe("IntegrationsPage", () => {
       id: "k-99",
       key_prefix: "tos_99887766",
       name: "release-bot",
-      scope: "project",
+      scope: "project",      permission_breadth: "read_only",
+
       team_id: null,
       project_id: "p-1",
       created_by_user_id: "u-1",
@@ -306,7 +311,8 @@ describe("IntegrationsPage", () => {
     ).toBeInTheDocument();
     expect(mockedCreate).toHaveBeenCalledWith({
       name: "release-bot",
-      scope: "project",
+      scope: "project",      permission_breadth: "read_only",
+
       team_id: null,
       project_id: "p-1",
       // No expiry preset chosen → the key never expires.
@@ -320,7 +326,8 @@ describe("IntegrationsPage", () => {
       id: "k-exp",
       key_prefix: "tos_exp",
       name: "ttl-bot",
-      scope: "project",
+      scope: "project",      permission_breadth: "read_only",
+
       team_id: null,
       project_id: "p-1",
       created_by_user_id: "u-1",
@@ -352,7 +359,8 @@ describe("IntegrationsPage", () => {
     await waitFor(() => expect(mockedCreate).toHaveBeenCalledTimes(1));
     expect(mockedCreate).toHaveBeenCalledWith({
       name: "ttl-bot",
-      scope: "project",
+      scope: "project",      permission_breadth: "read_only",
+
       team_id: null,
       project_id: "p-1",
       expires_in_days: 90,
@@ -428,7 +436,8 @@ describe("IntegrationsPage", () => {
       id: "k-team",
       key_prefix: "tos_teamteam",
       name: "team-runner",
-      scope: "team",
+      scope: "team",      permission_breadth: "read_only",
+
       team_id: "t-1",
       project_id: null,
       created_by_user_id: "u-1",
@@ -464,7 +473,8 @@ describe("IntegrationsPage", () => {
     await waitFor(() => {
       expect(mockedCreate).toHaveBeenCalledWith({
         name: "team-runner",
-        scope: "team",
+        scope: "team",        permission_breadth: "read_only",
+
         team_id: "t-1",
         project_id: null,
         expires_in_days: null,
@@ -725,7 +735,8 @@ describe("IntegrationsPage", () => {
       id: "k-dev",
       key_prefix: "tos_devdevde",
       name: "dev-runner",
-      scope: "project",
+      scope: "project",      permission_breadth: "read_only",
+
       team_id: "team-1",
       project_id: "p-7",
       created_by_user_id: "user-dev",
@@ -756,7 +767,8 @@ describe("IntegrationsPage", () => {
     await waitFor(() => {
       expect(mockedCreate).toHaveBeenCalledWith({
         name: "dev-runner",
-        scope: "project",
+        scope: "project",        permission_breadth: "read_only",
+
         team_id: null,
         project_id: "p-7",
         expires_in_days: null,
@@ -875,4 +887,109 @@ describe("IntegrationsPage", () => {
     });
     expect(screen.getByTestId("integrations-key-revoke")).toBeInTheDocument();
   });
+
+  it("issues a read-only key unless the form says otherwise", async () => {
+    // The default that makes the setting worth having. Most keys go to
+    // something that reads results, and the ones that start scans should be
+    // a deliberate choice rather than what you get by not looking.
+    mockedList.mockResolvedValue(page([]));
+    mockedCreate.mockResolvedValue({
+      id: "k1",
+      // Short and non-random on purpose: the secret scanner reads a
+      // high-entropy string after a key-shaped name as a credential, and the
+      // other fixtures in this file keep the same shape for that reason.
+      key_prefix: "tos_ci",
+      name: "ci",
+      scope: "project",
+      permission_breadth: "read_only",
+      team_id: null,
+      project_id: "p-1",
+      created_by_user_id: "u1",
+      created_at: "2026-08-18T00:00:00Z",
+      expires_at: null,
+      raw_key: "tos_ci_secret",
+    });
+    const user = userEvent.setup();
+    renderPage();
+
+    await user.click(await screen.findByTestId("integrations-create-key"));
+    await user.type(screen.getByTestId("integrations-create-name"), "ci");
+    await user.type(screen.getByTestId("integrations-create-project-id"), "p-1");
+    await user.click(screen.getByTestId("integrations-create-submit"));
+
+    await waitFor(() => expect(mockedCreate).toHaveBeenCalled());
+    expect(mockedCreate.mock.calls[0][0].permission_breadth).toBe("read_only");
+  });
+
+  it("says which keys can change something", async () => {
+    // The column somebody scans when they are deciding what to revoke. Read
+    // and write is the notable state, so it is the one that carries a tone.
+    mockedList.mockResolvedValue(
+      page([
+        key("reader", { permission_breadth: "read_only" }),
+        key("writer", { permission_breadth: "read_write" }),
+      ]),
+    );
+    renderPage();
+
+    const badges = await screen.findAllByTestId("integrations-breadth-badge");
+    expect(badges.map((b) => b.getAttribute("data-breadth"))).toEqual([
+      "read_only",
+      "read_write",
+    ]);
+  });
+
+
+  it("offers to narrow a read-write key, and not a read-only one", async () => {
+    // The guide tells operators to use the breadth column to find keys worth
+    // narrowing, so the control has to be where they are told to look. It
+    // shipped without one once.
+    mockedList.mockResolvedValue(
+      page([
+        key("writer", { permission_breadth: "read_write" }),
+        key("reader", { permission_breadth: "read_only" }),
+      ]),
+    );
+    renderPage();
+
+    const buttons = await screen.findAllByTestId("integrations-key-narrow");
+    expect(buttons).toHaveLength(1);
+    expect(buttons[0].getAttribute("data-key-id")).toBe("key-writer");
+  });
+
+  it("narrows the key it was asked to narrow", async () => {
+    const user = userEvent.setup();
+    mockedList.mockResolvedValue(
+      page([key("writer", { permission_breadth: "read_write" })]),
+    );
+    mockedNarrow.mockResolvedValue(
+      key("writer", { permission_breadth: "read_only" }),
+    );
+    renderPage();
+
+    await user.click(await screen.findByTestId("integrations-key-narrow"));
+
+    await waitFor(() => expect(mockedNarrow).toHaveBeenCalledWith("key-writer"));
+  });
+
+  it("puts the breadth back to read-only when the dialog is reopened", async () => {
+    // Every other field resets, so a form that looks blank teaches people not
+    // to re-read it. The one field worth re-reading is this one.
+    const user = userEvent.setup();
+    mockedList.mockResolvedValue(page([]));
+    renderPage();
+
+    await user.click(await screen.findByTestId("integrations-create-key"));
+    await user.selectOptions(
+      screen.getByTestId("integrations-create-breadth"),
+      "read_write",
+    );
+    await user.click(screen.getByTestId("integrations-create-cancel"));
+    await user.click(await screen.findByTestId("integrations-create-key"));
+
+    expect(screen.getByTestId("integrations-create-breadth")).toHaveValue(
+      "read_only",
+    );
+  });
+
 });

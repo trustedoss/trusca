@@ -32,6 +32,7 @@ Open `/integrations` and scroll to the **API keys** section. The list shows ever
 2. Fill in the form:
    - **Name**: free-text reminder of what the key is for (e.g. `github-action-checkout-service`).
    - **Scope**: the dropdown offers only the scopes you may issue, out of `project`, `team`, and `org`. Lower scopes are stricter; pick the smallest that covers the calls you need to make. The form has plain UUID inputs for `team_id` (required when scope=`team`) and `project_id` (required when scope=`project`); copy the IDs from the corresponding admin pages.
+   - **What this key may do**: **Read only** (the default) or **Read and write**. See [Read-only keys](#read-only-keys) below.
    - **Expiration**: **Never expires**, or one of the 30 / 90 / 180 / 365-day presets. After the chosen period the key stops authenticating and CI calls using it fail. A key that leaks into a pipeline log then lapses on its own instead of living until someone revokes it, so CI keys should carry a TTL and be rotated.
 
    Who can issue each scope:
@@ -47,6 +48,18 @@ Open `/integrations` and scroll to the **API keys** section. The list shows ever
 :::caution A key with no expiry lives until you revoke it
 **Never expires** is the default in the form, and a key issued that way stays valid until someone clicks **Revoke**. Treat it like any other long-lived secret: store it in your CI's secret manager, never in source control. Choosing a preset instead puts a deadline on the damage a leaked key can do.
 :::
+
+### Read-only keys {#read-only-keys}
+
+Scope says which projects a key can reach. Breadth says what it can do to them, and the two are separate questions: a pipeline that reads scan results does not need to be able to start one.
+
+A **read-only** key is refused every request that changes something, at the point the request is authenticated rather than per endpoint. In practice that means it can poll a scan, read its provenance and read a conformance report, and it cannot trigger a scan or push an SBOM. The refusal is a `403` that says the key is read-only, so whoever owns the pipeline can tell this apart from a permissions problem.
+
+New keys default to read-only. Choose **Read and write** when the pipeline genuinely writes, which is the case for the scan-trigger action and for SBOM upload.
+
+**Keys issued before this existed are read and write, and stay that way.** They were issued when that was the only kind there was, and narrowing them on upgrade would have stopped whatever is using them with nothing in the portal to explain it. The keys table shows the breadth of every key, so you can find the ones worth narrowing.
+
+**Narrowing is one-way.** You can make a read-write key read-only from the keys table; you cannot widen one back. A key that has been sitting in a CI log for months should not be handed more privilege than it was issued with, so widening means issuing a new key with a new secret.
 
 The portal opens a **one-time reveal modal** with the full key:
 

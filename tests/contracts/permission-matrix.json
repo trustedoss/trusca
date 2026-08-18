@@ -238,6 +238,11 @@
       "gate": "role>=developer"
     },
     {
+      "method": "PATCH",
+      "path": "/v1/api-keys/{api_key_id}",
+      "gate": "role>=developer"
+    },
+    {
       "method": "GET",
       "path": "/v1/approvals",
       "gate": "role>=viewer"
