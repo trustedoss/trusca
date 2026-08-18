@@ -33,6 +33,7 @@ from api.v1 import (
     compliance_router,
     components_router,
     dashboard_router,
+    gate_policies_router,
     github_app_router,
     health_router,
     inventory_router,
@@ -245,6 +246,10 @@ app.include_router(licenses_router)
 # wiring that consults these rows (and SPDX compound/adversarial hardening) is c2;
 # this PR ships the data model + CRUD surface only.
 app.include_router(license_policies_router)
+# B1/B2: the same org/team shape for what blocks a build. Separate table and
+# router from the licence policy because the two answer different questions
+# even though both feed one verdict.
+app.include_router(gate_policies_router)
 app.include_router(obligations_router)
 # W9-#58: Compliance unified grid (licenses × obligations in one view). The
 # legacy /licenses and /obligations endpoints remain for the existing drawers;

@@ -14,6 +14,7 @@ from .auth import router as auth_router
 from .compliance import router as compliance_router
 from .components import router as components_router
 from .dashboard import router as dashboard_router
+from .gate_policies import router as gate_policies_router
 from .github_app import router as github_app_router
 from .health import router as health_router
 from .inventory import router as inventory_router
@@ -51,6 +52,7 @@ __all__ = [
     "dashboard_router",
     "github_app_router",
     "health_router",
+    "gate_policies_router",
     "license_policies_router",
     "licenses_router",
     "notifications_router",

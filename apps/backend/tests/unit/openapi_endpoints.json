@@ -15,6 +15,9 @@
   "DELETE /v1/approvals/{approval_id}": [
     "approval_id"
   ],
+  "DELETE /v1/gate-policies/teams/{team_id}": [
+    "team_id"
+  ],
   "DELETE /v1/github-app-credentials/{credential_id}": [
     "credential_id"
   ],
@@ -153,6 +156,12 @@
   "GET /v1/dashboard/summary": [],
   "GET /v1/dashboard/trends": [
     "days"
+  ],
+  "GET /v1/gate-policies/effective/{project_id}": [
+    "project_id"
+  ],
+  "GET /v1/gate-policies/teams/{team_id}": [
+    "team_id"
   ],
   "GET /v1/github-app-credentials": [
     "include_revoked",
@@ -587,6 +596,12 @@
     "X-Gitlab-Event",
     "X-Gitlab-Token",
     "X-Gitlab-Webhook-UUID"
+  ],
+  "PUT /v1/gate-policies/org/{organization_id}": [
+    "organization_id"
+  ],
+  "PUT /v1/gate-policies/teams/{team_id}": [
+    "team_id"
   ],
   "PUT /v1/license-policies/org/{organization_id}": [
     "organization_id"
