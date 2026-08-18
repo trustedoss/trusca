@@ -30,6 +30,15 @@ export interface ApiKeyScopePermissions {
   allowedScopes: APIKeyScope[];
   /** False when no scope is available, which makes the entry point pointless. */
   canIssueAnyKey: boolean;
+  /**
+   * Whether the caller administers any team.
+   *
+   * Distinct from `canIssueAnyKey`, which is true for any team member because
+   * any member may issue a project-scoped key. Creating a service account is a
+   * team administrator's act, so offering the form on the weaker signal shows
+   * a developer buttons whose requests the server refuses.
+   */
+  canManageServiceAccounts: boolean;
 }
 
 export function useApiKeyScopes(): ApiKeyScopePermissions {
@@ -43,5 +52,12 @@ export function useApiKeyScopes(): ApiKeyScopePermissions {
   }
   if (isSuperAdmin) allowedScopes.push("org");
 
-  return { allowedScopes, canIssueAnyKey: allowedScopes.length > 0 };
+  const canManageServiceAccounts =
+    isSuperAdmin || teams.some((team) => team.role === "team_admin");
+
+  return {
+    allowedScopes,
+    canIssueAnyKey: allowedScopes.length > 0,
+    canManageServiceAccounts,
+  };
 }

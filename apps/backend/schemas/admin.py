@@ -149,6 +149,15 @@ class AdminTeamMember(BaseModel):
     email: str
     full_name: str | None = None
     role: str
+    is_service_account: bool = Field(
+        default=False,
+        description=(
+            "True for an automation identity. Shown rather than hidden, "
+            "because its role is real reach into this team and an admin "
+            "reviewing who can touch the team needs to see it. Labelled so "
+            "nobody mistakes it for somebody they can write to."
+        ),
+    )
 
 
 class AdminTeamDetail(BaseModel):

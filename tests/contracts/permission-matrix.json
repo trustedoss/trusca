@@ -744,6 +744,26 @@
     },
     {
       "method": "GET",
+      "path": "/v1/service-accounts",
+      "gate": "role>=developer"
+    },
+    {
+      "method": "POST",
+      "path": "/v1/service-accounts",
+      "gate": "role>=developer"
+    },
+    {
+      "method": "DELETE",
+      "path": "/v1/service-accounts/{service_account_id}",
+      "gate": "role>=developer"
+    },
+    {
+      "method": "PUT",
+      "path": "/v1/service-accounts/{service_account_id}/steward",
+      "gate": "role>=developer"
+    },
+    {
+      "method": "GET",
       "path": "/v1/transition-approvals",
       "gate": "role>=viewer"
     },

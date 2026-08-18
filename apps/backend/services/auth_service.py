@@ -195,6 +195,14 @@ async def authenticate(
     hashed = user.hashed_password if user is not None else _DUMMY_BCRYPT_HASH
     password_ok = verify_password(password, hashed)
 
+    # A service account is an identity for automation and has no way to be a
+    # person at a login form. It is refused here rather than relying on its
+    # unusable password hash: the hash is a second line, and the first should
+    # say plainly that this kind of account does not log in. Refused after the
+    # bcrypt call so the timing does not separate it from a wrong password.
+    if user is not None and user.is_service_account:
+        return None
+
     if user is None or not user.is_active or not password_ok:
         return None
     return user

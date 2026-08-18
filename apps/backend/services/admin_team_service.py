@@ -360,6 +360,7 @@ async def get_team_detail(
             email=u.email,
             full_name=u.full_name,
             role=m.role,
+            is_service_account=bool(u.is_service_account),
         )
         for m, u in rows
     ]
@@ -528,6 +529,12 @@ async def add_team_member(
     ).scalar_one_or_none()
     if user is None:
         raise AdminTeamUserNotFound(f"user {payload.user_id} not found")
+    if user.is_service_account:
+        # An automation identity belongs to the team that created it, and its
+        # reach is set there. Adding one from the team-members surface would
+        # widen what a credential can touch from a screen built for staffing,
+        # where nothing on it says that is what happened.
+        raise AdminTeamUserNotFound(f"user {payload.user_id} not found")
 
     existing = (
         await session.execute(
@@ -594,6 +601,19 @@ async def remove_team_member(
     ).scalar_one_or_none()
     if membership is None:
         raise AdminTeamMembershipNotFound(f"user {user_id} is not a member of team {team_id}")
+
+    member = (
+        await session.execute(select(User).where(User.id == user_id))
+    ).scalar_one_or_none()
+    if member is not None and member.is_service_account:
+        # Removing the membership is how an automation identity becomes
+        # unreachable: the service-accounts surface finds it through its team,
+        # so an account with no team answers 404 to everybody while its keys go
+        # on authenticating. Stopping it is done on that surface, where the
+        # button says what it does.
+        raise AdminTeamMembershipNotFound(
+            f"user {user_id} is not a member of team {team_id}"
+        )
 
     if membership.role == "team_admin":
         # Lock the team_admin membership row set inside this transaction

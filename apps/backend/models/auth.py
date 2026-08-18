@@ -155,6 +155,27 @@ class User(Base):
         Boolean, nullable=False, server_default=text("false")
     )
     is_verified: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default=text("false"))
+    # N13: this row is an automation identity rather than a person.
+    #
+    # It shares the table because the permission model stands on
+    # ``Membership(user_id, team_id, role)`` and twenty-six foreign keys point
+    # here; a parallel identity would need a parallel everything. The payoff is
+    # that the key-lifetime rule needs no branch: the auth path still asks only
+    # whether the issuer is active, and for one of these the issuer is itself,
+    # so a person leaving does not stop a pipeline.
+    #
+    # The price is that these must be kept off every surface built for people,
+    # which is asserted rather than assumed.
+    is_service_account: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, server_default=text("false")
+    )
+    # The person answerable for a service account. Recorded so an unattended
+    # credential still has a name against it, and transferable when they leave.
+    # Never consulted when authenticating: coupling the key's life to a person
+    # is the thing this exists to undo.
+    managed_by_user_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID_PK, ForeignKey("users.id", ondelete="SET NULL"), nullable=True
+    )
     last_login_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, server_default=NOW
@@ -168,6 +189,34 @@ class User(Base):
     )
     refresh_tokens: Mapped[list[RefreshToken]] = relationship(
         back_populates="user", cascade="all, delete-orphan", passive_deletes=True
+    )
+
+    __table_args__ = (
+        # A person has no steward, and a service account cannot be one. The
+        # second half is what stops a chain of service accounts vouching for
+        # each other with no person at the end of it.
+        CheckConstraint(
+            "managed_by_user_id IS NULL OR is_service_account",
+            name="ck_users_steward_only_for_service_accounts",
+        ),
+        # An automation identity is never a deployment administrator. The
+        # create path already refuses it, but that is not the only writer of
+        # this column, and the escalation it would allow produces a key that
+        # outlives every session involved in making it.
+        CheckConstraint(
+            "NOT (is_service_account AND is_superuser)",
+            name="ck_users_service_account_not_superuser",
+        ),
+        Index(
+            "ix_users_service_accounts",
+            "is_service_account",
+            postgresql_where=text("is_service_account"),
+        ),
+        Index(
+            "ix_users_managed_by_user_id",
+            "managed_by_user_id",
+            postgresql_where=text("managed_by_user_id IS NOT NULL"),
+        ),
     )
 
 

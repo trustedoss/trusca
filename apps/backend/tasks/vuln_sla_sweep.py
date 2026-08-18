@@ -86,6 +86,7 @@ from models import (
     Membership,
     Project,
     Scan,
+    User,
     Vulnerability,
     VulnerabilityFinding,
 )
@@ -238,7 +239,12 @@ def _team_member_user_ids(session: Session, team_id: uuid.UUID) -> list[uuid.UUI
     (an SLA breach is team-wide work, not an admin-only signal). Per-user
     muting happens downstream in ``_apply_prefs_filter``."""
     rows = session.execute(
-        select(Membership.user_id).where(Membership.team_id == team_id)
+        # People only. A service account has no inbox and no session that
+        # could open one, so a row per alert per automation identity is
+        # storage nobody will ever read.
+        select(Membership.user_id)
+        .join(User, User.id == Membership.user_id)
+        .where(Membership.team_id == team_id, User.is_service_account.is_(False))
     ).all()
     return [r[0] for r in rows]
 

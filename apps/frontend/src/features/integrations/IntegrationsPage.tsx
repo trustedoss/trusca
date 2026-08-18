@@ -34,6 +34,8 @@ import { useApiKeyScopes } from "@/features/integrations/useApiKeyScopes";
 import { usePermissions } from "@/hooks/usePermissions";
 import { useClampPage, usePageParam } from "@/hooks/useUrlState";
 import { createApiKey, narrowApiKey, revokeApiKey } from "@/lib/apiKeysApi";
+import { ServiceAccountsPanel } from "@/features/integrations/ServiceAccountsPanel";
+import { useUIStore } from "@/stores/uiStore";
 import { getApiBase } from "@/lib/apiBase";
 import { writeToClipboard } from "@/lib/clipboard";
 import { problemMessage } from "@/lib/problemMessage";
@@ -175,7 +177,10 @@ export function IntegrationsPage() {
   // #136: creation is gated per scope, not by one global floor. Any team
   // member may issue a project-scoped key, which is what the dialog defaults
   // to, so `isTeamAdminOrAbove` is the wrong question to ask here.
-  const { canIssueAnyKey } = useApiKeyScopes();
+  const { canIssueAnyKey, canManageServiceAccounts } = useApiKeyScopes();
+  // The team whose automation identities this page manages. A service account
+  // belongs to exactly one team, the same way a team-scoped key does.
+  const activeTeamId = useUIStore((s) => s.activeTeamId);
   const currentUserId = useAuthStore((s) => s.user?.id ?? null);
 
   // B1: in the URL, so a reload keeps the page of keys the reader was on.
@@ -285,6 +290,17 @@ export function IntegrationsPage() {
       />
 
       <div className="flex-1 space-y-8 overflow-y-auto px-6 py-6">
+        {/* Automation identities sit above the keys because a key is issued
+            to one, and because deactivating an identity here plainly means
+            "stop these credentials" in a way it would not on a user list. */}
+        {canManageServiceAccounts ? (
+          <ServiceAccountsPanel
+            teamId={activeTeamId}
+            canManage
+            onNotify={showToast}
+          />
+        ) : null}
+
         {/* ---------- API keys section ----------------------------------- */}
         <section
           className="space-y-3"

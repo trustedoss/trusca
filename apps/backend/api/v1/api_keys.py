@@ -49,6 +49,7 @@ from services.api_key_service import (
     narrow_api_key_breadth,
     revoke_api_key,
 )
+from services.service_account_service import ServiceAccountError
 
 router = APIRouter(prefix="/v1/api-keys", tags=["api-keys"])
 log = structlog.get_logger("api_keys.api")
@@ -118,7 +119,19 @@ async def create_api_key_endpoint(
             team_id=payload.team_id,
             project_id=payload.project_id,
             permission_breadth=payload.permission_breadth,
+            service_account_id=payload.service_account_id,
             expires_in_days=payload.expires_in_days,
+        )
+    except ServiceAccountError as exc:
+        # Issuing to an automation identity can fail for reasons that belong to
+        # that identity rather than to the key: it is unowned, or not the
+        # caller's to use. Rendered with its own status so the caller is told
+        # which thing to fix.
+        return problem_response(
+            status_code=exc.status_code,
+            title=exc.title,
+            detail=str(exc) or exc.title,
+            instance=request.url.path,
         )
     except APIKeyError as exc:
         return _problem_for_api_key_error(request, exc)
