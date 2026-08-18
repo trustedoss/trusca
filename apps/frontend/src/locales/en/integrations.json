@@ -118,5 +118,29 @@
     },
     "copy": "Copy URL",
     "copied": "Copied"
+  },
+  "service_accounts": {
+    "title": "Service accounts",
+    "description": "Identities for automation. A key issued to one keeps working when the person who created it leaves, which a personal key does not.",
+    "empty": "No service accounts yet. Keys issued without one stop working when you are deactivated.",
+    "slug_label": "Name",
+    "name_label": "What it is",
+    "create": "Create",
+    "deactivate": "Stop its keys",
+    "deactivate_help": "Deactivates the identity, and with it every key it holds. The record stays so the audit trail keeps its actor.",
+    "stopped": "Stopped",
+    "unowned": "No steward",
+    "toast": {
+      "created": "Service account created. You are answerable for it.",
+      "deactivated": "Stopped. Every key it held has stopped with it.",
+      "taken_over": "You are answerable for this account now."
+    },
+    "errors": {
+      "create_failed": "The service account could not be created.",
+      "deactivate_failed": "The service account could not be stopped.",
+      "take_over_failed": "The account could not be taken over."
+    },
+    "take_over": "Take it over",
+    "take_over_help": "Makes you the person answerable for this account, so it can issue keys again. Its existing keys are untouched."
   }
 }

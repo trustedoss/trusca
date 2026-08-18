@@ -275,7 +275,10 @@ async def request_password_reset(
     cooldown_seconds = password_reset_email_cooldown_seconds()
     cooldown = timedelta(seconds=cooldown_seconds)
 
-    if user is None or not user.is_active:
+    # A service account has no person to send a reset to, and its password is
+    # unusable by construction. Treated exactly like an unknown address so the
+    # response cannot be used to find out which addresses are automation.
+    if user is None or not user.is_active or user.is_service_account:
         # Timing-equivalent: pay one bcrypt + a tiny DB read so the
         # response time does not depend on email existence.
         verify_password("dummy-not-a-real-password", _DUMMY_BCRYPT_HASH)
@@ -422,7 +425,10 @@ async def consume_reset_token(
         select(User).where(User.id == matched.user_id)
     )
     user = user_result.scalar_one_or_none()
-    if user is None or not user.is_active:
+    # A service account has no person to send a reset to, and its password is
+    # unusable by construction. Treated exactly like an unknown address so the
+    # response cannot be used to find out which addresses are automation.
+    if user is None or not user.is_active or user.is_service_account:
         raise InvalidResetToken("token is invalid or expired")
 
     # Rotate the password.

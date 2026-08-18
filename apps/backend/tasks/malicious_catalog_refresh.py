@@ -49,6 +49,7 @@ from models import (
     Project,
     Scan,
     ScanComponent,
+    User,
 )
 from services.malicious import malicious_catalog
 from tasks.celery_app import celery_app
@@ -284,7 +285,12 @@ def _team_member_user_ids(session: Any, team_id: uuid.UUID) -> list[uuid.UUID]:
     developers do. Per-user muting happens downstream in the notify task.
     """
     rows = session.execute(
-        select(Membership.user_id).where(Membership.team_id == team_id)
+        # People only. A service account has no inbox and no session that
+        # could open one, so a row per alert per automation identity is
+        # storage nobody will ever read.
+        select(Membership.user_id)
+        .join(User, User.id == Membership.user_id)
+        .where(Membership.team_id == team_id, User.is_service_account.is_(False))
     ).all()
     return [r[0] for r in rows]
 

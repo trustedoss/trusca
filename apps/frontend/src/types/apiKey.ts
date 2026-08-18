@@ -81,6 +81,12 @@ export interface APIKeyCreatePayload {
   scope: APIKeyScope;
   /** Omitted means read-only, which is what the backend defaults new keys to. */
   permission_breadth?: APIKeyPermissionBreadth;
+  /**
+   * Issue the key to an automation identity rather than to the caller. The
+   * key then lives as long as that identity does instead of stopping when the
+   * person who issued it is deactivated. Omitted means a personal key.
+   */
+  service_account_id?: string | null;
   team_id?: string | null;
   project_id?: string | null;
   /**

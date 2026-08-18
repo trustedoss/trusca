@@ -23,6 +23,8 @@ reach a state-derived 409:
   - transition decide  × decided        → ApprovalNotFound (not ApprovalAlreadyDecided)
   - org verdict list   × outsider       → VerdictNotFound (not a readable list)
   - effective verdict  × outsider       → VerdictNotFound (not the project's answer)
+  - key issuance × unowned service account → ServiceAccountNotFound (not
+                                          ServiceAccountUnowned)
   - approval      × terminal state     → ApprovalNotFound (not ApprovalTerminalState /
                                           ApprovalInvalidTransition)
 
@@ -620,3 +622,44 @@ async def test_reading_another_projects_effective_verdict_is_404(
             component_id=component.id,
             actor=actor,
         )
+
+
+# ---------------------------------------------------------------------------
+# service account × unowned, for somebody who cannot see it
+# ---------------------------------------------------------------------------
+
+
+async def test_an_outsider_asking_about_an_unowned_account_gets_404(
+    db_session: AsyncSession,
+) -> None:
+    """The 409 says an account exists and is unattended.
+
+    That is a useful sentence for the team that owns it and a disclosure to
+    anybody else: it confirms the id is real and that nobody is watching it.
+    The permission answer has to come first.
+    """
+    from services.service_account_service import (
+        ServiceAccountNotFound,
+        assert_may_issue_for,
+        create_service_account,
+    )
+
+    actor, owning_team = await _outsider_and_resource_team(db_session)
+    owner = await make_user(db_session)
+    await make_membership(
+        db_session, user=owner, team=owning_team, role="team_admin"
+    )
+    owner_principal = await principal_loaded_from_db(db_session, user=owner)
+    account = await create_service_account(
+        db_session,
+        owner_principal,
+        team_id=owning_team.id,
+        slug=f"ci-{uuid.uuid4().hex[:8]}",
+        display_name="Nightly build",
+    )
+    # Unowned, which is the state that produces the 409 for an insider.
+    account.managed_by_user_id = None
+    await db_session.commit()
+
+    with pytest.raises(ServiceAccountNotFound):
+        await assert_may_issue_for(db_session, actor, account.id)

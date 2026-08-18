@@ -48,6 +48,7 @@ export async function createApiKey(
     // Sent explicitly rather than relying on the server default, so the value
     // shown on the form is the value that gets stored.
     permission_breadth: payload.permission_breadth ?? "read_only",
+    service_account_id: payload.service_account_id ?? null,
     team_id: payload.team_id ?? null,
     project_id: payload.project_id ?? null,
     expires_in_days: payload.expires_in_days ?? null,

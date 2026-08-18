@@ -61,6 +61,32 @@ New keys default to read-only. Choose **Read and write** when the pipeline genui
 
 **Narrowing is one-way.** You can make a read-write key read-only from the keys table; you cannot widen one back. A key that has been sitting in a CI log for months should not be handed more privilege than it was issued with, so widening means issuing a new key with a new secret.
 
+### Service accounts {#service-accounts}
+
+A key stops working when the person who issued it is deactivated. That is the right rule for a personal key and the wrong one for a pipeline's: a nightly build that has run for a year stops the day its author leaves, and the first anyone hears of it is a red pipeline.
+
+A **service account** is an identity for automation. A key issued to one lives as long as the account does, so people coming and going does not touch it.
+
+Create one in the **Service accounts** panel on this page, above the keys. Whoever creates it becomes its **steward**: the person answerable for it. The steward is never part of authenticating; they exist so an unattended credential still has a name against it.
+
+**The steward must be a member of the account's team.** Somebody outside it is a name that makes the check pass rather than a person who could be asked about the credential, so it is refused. The check runs again at issuance, so a steward who later moves off the team stops counting.
+
+**When the steward leaves**, existing keys keep working, which is the whole point. What stops is issuing *new* keys for that account: the request is refused until somebody takes it over. The panel marks the account as having no steward and offers **Take it over**, so the fix is where the problem is shown rather than discovered on the next failed issuance.
+
+**Stopping a service account** stops every key it holds, in one action. That is the counterpart to keys no longer dying with a person: there has to be a deliberate way to end them, and it should not be a hunt through the key list. The account record stays afterwards so the audit trail keeps its actor.
+
+A few things a service account deliberately cannot do:
+
+- **Log in.** It has no usable password and is refused at the login form regardless.
+- **Receive a password reset.** There is nobody to send one to, and the endpoint answers as it does for any unknown address.
+- **Link an external identity.** OAuth account matching skips them, so a person cannot acquire an interactive way into one.
+- **Appear in the admin user list.** The actions a user list offers are wrong for it, and deactivating one from a leavers screen would be a pipeline outage that reads as tidying up.
+- **Be a steward, or create another service account.** Only an active person on the team can be answerable for an account, so a chain of service accounts cannot vouch for each other with nobody at the end of it.
+- **Be made a deployment administrator.** Refused by the database, not only by the code that creates them: the key such an account could then issue would outlive every session involved in making it.
+- **Be added to or removed from a team on the team-members screen.** Its reach is set where it was created. Removing its membership there would leave it holding live keys with no way left to stop them.
+
+The address a service account carries (`<name>@svc.trusca.internal`) is synthetic and undeliverable. It exists because the audit log prints an address, and a recognisable one is better than a blank.
+
 The portal opens a **one-time reveal modal** with the full key:
 
 ```text

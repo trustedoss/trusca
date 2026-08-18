@@ -453,6 +453,20 @@ async def complete_oauth(
     ctx["user_id"] = str(user.id)
     audit_context.set(ctx)
 
+    if user.is_service_account:
+        # The chokepoint, deliberately here rather than only on the branch that
+        # looks up by address. There are three ways to arrive at a user in
+        # ``_resolve_or_create_user`` and filtering one of them left the
+        # collision-recovery path re-finding exactly the row the filter had
+        # skipped, which is how a person would end up holding an interactive
+        # session as an automation identity. This runs whichever way they came.
+        log.warning(
+            "oauth_service_account_login_refused",
+            provider=provider,
+            user_id=str(user.id),
+        )
+        raise OAuthCallbackFailed("this account cannot sign in")
+
     if not user.is_active:
         raise OAuthUserInactive(f"user {user.id} is inactive")
 
@@ -570,8 +584,18 @@ async def _resolve_or_create_user(
             return user, identity
 
     # (b) Existing User by email?
+    #
+    # A service account is excluded from the match: linking an external
+    # identity to one would hand a person an interactive way into an account
+    # built to have none, and it would do so through the branch that exists to
+    # be helpful about matching addresses.
     user = (
-        await session.execute(select(User).where(User.email == info.email))
+        await session.execute(
+            select(User).where(
+                User.email == info.email,
+                User.is_service_account.is_(False),
+            )
+        )
     ).scalar_one_or_none()
 
     if user is not None:
@@ -662,7 +686,17 @@ async def _create_user_with_personal_team(
         # link via branch (b). If still nothing, fail loudly.
         await session.rollback()
         existing = (
-            await session.execute(select(User).where(User.email == info.email))
+            await session.execute(
+                select(User).where(
+                    User.email == info.email,
+                    # The same exclusion the ordinary lookup carries. The
+                    # chokepoint above would refuse the login either way, but
+                    # linking first would leave an ``oauth_identities`` row
+                    # pointing at an automation identity, and a row that exists
+                    # is a row some future path will trust.
+                    User.is_service_account.is_(False),
+                )
+            )
         ).scalar_one_or_none()
         if existing is None:
             raise OAuthCallbackFailed("user creation collided unexpectedly") from exc

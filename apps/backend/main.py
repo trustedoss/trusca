@@ -52,6 +52,7 @@ from api.v1 import (
     scans_router,
     search_results_router,
     search_router,
+    service_accounts_router,
     source_tree_router,
     transition_approvals_router,
     users_me_router,
@@ -253,6 +254,7 @@ app.include_router(license_policies_router)
 # even though both feed one verdict.
 app.include_router(gate_policies_router)
 app.include_router(organization_verdicts_router)
+app.include_router(service_accounts_router)
 app.include_router(transition_approvals_router)
 app.include_router(obligations_router)
 # W9-#58: Compliance unified grid (licenses × obligations in one view). The

@@ -223,9 +223,25 @@ async def _lock_and_count_active_super_admins(session: AsyncSession) -> int:
     return len(locked)
 
 
-async def _load_user_with_memberships(session: AsyncSession, user_id: uuid.UUID) -> User:
+async def _load_user_with_memberships(
+    session: AsyncSession,
+    user_id: uuid.UUID,
+    *,
+    allow_service_account: bool = False,
+) -> User:
     """
     Fetch the user with its memberships eagerly loaded.
+
+    Service accounts are excluded by default, and the exclusion lives here
+    rather than in each operation on purpose. Only the list was filtered at
+    first, and the five operations that share this loader were not: the role
+    endpoint could make an automation identity a super admin and grant it
+    memberships in other teams, and the list filter then hid the result from
+    the one screen anybody sweeps afterwards. A default on the shared loader
+    is the version that cannot be forgotten one call site at a time.
+
+    404 rather than 403, matching the list: to this surface a service account
+    simply is not a user.
 
     If the User is already in the session's identity map (likely after a
     prior mutation in this same call chain), we refresh the memberships
@@ -235,6 +251,8 @@ async def _load_user_with_memberships(session: AsyncSession, user_id: uuid.UUID)
     from the identity map with a stale empty memberships collection.
     """
     stmt = select(User).where(User.id == user_id).options(selectinload(User.memberships))
+    if not allow_service_account:
+        stmt = stmt.where(User.is_service_account.is_(False))
     user = (await session.execute(stmt)).scalar_one_or_none()
     if user is None:
         raise AdminUserNotFound(f"user {user_id} not found")
@@ -288,8 +306,17 @@ async def list_users(
     page = max(page, 1)
     page_size = max(min(page_size, 200), 1)
 
-    base = select(User)
-    count_base = select(func.count()).select_from(User)
+    # People only. A service account in the user list would invite the actions
+    # this list offers, and those actions are wrong for it: there is nobody to
+    # email a reset to, and deactivating it from here is a pipeline outage that
+    # reads on screen as tidying up a leaver. Service accounts are managed on
+    # the integrations page, next to the keys they hold.
+    base = select(User).where(User.is_service_account.is_(False))
+    count_base = (
+        select(func.count())
+        .select_from(User)
+        .where(User.is_service_account.is_(False))
+    )
 
     if active is not None:
         base = base.where(User.is_active.is_(active))

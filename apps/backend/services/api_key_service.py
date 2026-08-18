@@ -265,6 +265,7 @@ async def issue_api_key(
     team_id: uuid.UUID | None,
     project_id: uuid.UUID | None,
     permission_breadth: str = "read_only",
+    service_account_id: uuid.UUID | None = None,
     expires_in_days: int | None = None,
 ) -> tuple[APIKey, str]:
     """
@@ -336,6 +337,16 @@ async def issue_api_key(
 
     # ----- Generate + persist with collision retry -----
     last_error: Exception | None = None
+    # Resolved before the retry loop: whose key this is does not change between
+    # attempts, and asking again on a prefix collision would re-run the steward
+    # check for no reason.
+    issuer_id = actor.id
+    if service_account_id is not None:
+        from services.service_account_service import assert_may_issue_for
+
+        account = await assert_may_issue_for(session, actor, service_account_id)
+        issuer_id = account.id
+
     for attempt in range(_PREFIX_RETRIES):
         prefix = _generate_prefix()
         secret = _generate_secret()
@@ -354,7 +365,11 @@ async def issue_api_key(
             permission_breadth=permission_breadth,
             team_id=effective_team_id,
             project_id=project_id,
-            created_by_user_id=actor.id,
+            # The issuer, which is what the auth path checks for liveness. A
+            # service account here is the whole of the feature: the rule is
+            # unchanged, and the answer to "is the issuer still active" simply
+            # stops depending on whether a particular person still works here.
+            created_by_user_id=issuer_id,
             expires_at=expires_at,
         )
         session.add(row)

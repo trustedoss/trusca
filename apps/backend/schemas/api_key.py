@@ -62,6 +62,15 @@ class APIKeyCreateIn(BaseModel):
     )
     team_id: UUID | None = None
     project_id: UUID | None = None
+    service_account_id: UUID | None = Field(
+        default=None,
+        description=(
+            "Issue the key to an automation identity instead of to yourself. "
+            "The key then lives as long as that identity does, rather than "
+            "stopping when you are deactivated. Omit for a personal key, "
+            "which keeps today's behaviour exactly."
+        ),
+    )
     expires_in_days: int | None = Field(
         default=None,
         ge=1,

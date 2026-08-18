@@ -33,6 +33,7 @@ from .sbom import router as sbom_router
 from .scans import router as scans_router
 from .search import router as search_router
 from .search_results import router as search_results_router
+from .service_accounts import router as service_accounts_router
 from .source_tree import router as source_tree_router
 from .transition_approvals import router as transition_approvals_router
 from .users_me import router as users_me_router
@@ -56,6 +57,7 @@ __all__ = [
     "health_router",
     "gate_policies_router",
     "organization_verdicts_router",
+    "service_accounts_router",
     "transition_approvals_router",
     "license_policies_router",
     "licenses_router",
