@@ -103,5 +103,26 @@
     },
     "empty_hint_can_author": "Until one exists the built-in license categories apply. Pick a team above to write one.",
     "empty_hint_cannot_author": "Until one exists the built-in license categories apply. Writing one is a team administrator's job."
+  },
+  "gate": {
+    "title": "Build gate",
+    "description": "What stops a build for this team. A field left off follows the organization.",
+    "inherited": "Following the organization.",
+    "epss": {
+      "label": "Exploit-prediction threshold",
+      "help": "Block when an open finding's score reaches this. Between 0 and 1.",
+      "range": "Enter a number between 0 and 1."
+    },
+    "reachable": {
+      "label": "Count only reachable criticals",
+      "help": "Applies to scans an analyser examined. It can only shrink what blocks, never widen it."
+    },
+    "malicious": {
+      "label": "A flagged package blocks the build",
+      "help": "On unless this team turns it off. Turning it off lets a build ship a package the snapshot flags."
+    },
+    "save": "Save",
+    "reset": "Follow the organization",
+    "read_only": "You can see this policy but not change it."
   }
 }

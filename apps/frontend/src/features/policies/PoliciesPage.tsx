@@ -40,6 +40,7 @@ import {
 } from "@/components/ui/sheet";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useToast } from "@/components/ui/toast";
+import { GatePolicyPanel } from "@/features/policies/GatePolicyPanel";
 import {
   PolicyEditorPanel,
   type PolicyScope,
@@ -83,7 +84,7 @@ interface TeamOption {
 
 export function PoliciesPage() {
   const { t } = useTranslation("policies");
-  const { isSuperAdmin, isTeamAdminOrAbove } = usePermissions();
+  const { isSuperAdmin, isTeamAdminOrAbove, roleForTeam } = usePermissions();
 
   const [searchParams, setSearchParams] = useSearchParams();
   const drawerTarget = parseDrawerParam(searchParams.get(DRAWER_PARAM));
@@ -382,13 +383,25 @@ export function PoliciesPage() {
           </SheetHeader>
           <div className="mt-4 flex-1 overflow-hidden">
             {drawerTarget ? (
-              <PolicyEditorPanel
-                key={`${drawerTarget.scope}:${drawerTarget.id}`}
-                scope={drawerTarget.scope}
-                targetId={drawerTarget.id}
-                canManage={isSuperAdmin || drawerTarget.scope === "team"}
-                notify={notify}
-              />
+              <div className="flex h-full flex-col gap-6 overflow-y-auto pr-1">
+                <PolicyEditorPanel
+                  key={`${drawerTarget.scope}:${drawerTarget.id}`}
+                  scope={drawerTarget.scope}
+                  targetId={drawerTarget.id}
+                  canManage={isSuperAdmin || drawerTarget.scope === "team"}
+                  notify={notify}
+                />
+                {drawerTarget.scope === "team" ? (
+                  <GatePolicyPanel
+                    key={`gate:${drawerTarget.id}`}
+                    teamId={drawerTarget.id}
+                    canEdit={
+                      isSuperAdmin ||
+                      roleForTeam(drawerTarget.id) === "team_admin"
+                    }
+                  />
+                ) : null}
+              </div>
             ) : null}
           </div>
         </SheetContent>
