@@ -409,7 +409,17 @@
     "malicious_label": "악성",
     "malicious_action": "설치하는 쪽을 공격하려고 배포된 패키지입니다. 제거한 뒤 빌드가 접근할 수 있던 자격증명을 모두 교체하십시오. 상위 버전으로 올리는 것으로는 해결되지 않습니다.",
     "malicious_source": "{{source}} 목록에 있습니다",
-    "copy_purl": "패키지 URL"
+    "copy_purl": "패키지 URL",
+    "verdict": {
+      "inherited_badge": "조직 차원의 판정",
+      "inherited_explanation": "이 팀은 이 컴포넌트를 판정하지 않아 조직의 판정이 적용됩니다. 여기서 직접 판정하면 이 프로젝트에서만 조직 판정 대신 적용됩니다.",
+      "status": {
+        "pending": "검토 대기",
+        "under_review": "검토 중",
+        "approved": "승인",
+        "rejected": "거부"
+      }
+    }
   },
   "vulnerabilities": {
     "summary": "전체 {{total}}개 중 {{loaded}}개 로드됨.",

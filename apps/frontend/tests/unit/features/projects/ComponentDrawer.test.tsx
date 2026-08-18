@@ -35,6 +35,7 @@ function detail(
 ): ComponentDetailResponse {
   return {
     id: "00000000-0000-0000-0000-alpha0000000",
+    component_id: "pkg-0000-0000-0000-000000000000",
     project_id: "proj-1",
     name: "Alpha",
     version: "1.0.0",

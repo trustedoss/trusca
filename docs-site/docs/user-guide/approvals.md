@@ -88,12 +88,38 @@ remove the dependency in code review.
 
 ## Cross-project approvals
 
-When the same component appears in multiple projects, each project gets its own Pending request. The portal does not auto-propagate verdicts across projects because:
+When the same component appears in multiple projects, each project gets its own Pending request. A verdict never propagates on its own, because:
 
 - Projects can have different distribution models (closed-source SaaS vs. shipped binary).
 - The same license has different obligations depending on the linkage model (LGPL static vs. dynamic).
 
-If you want a verdict to apply globally, mark each project's request explicitly and reference the originating decision in the justification.
+For components where the answer really is the same everywhere, an organization can rule once instead of asking every team the same question.
+
+### Organization-wide rulings {#organization-verdicts}
+
+A **ruling** is one answer about a component, recorded for the whole organization. It applies to every project that has not decided for itself, and it never overrides one that has.
+
+Only a super admin opens and decides a ruling, because the answer reaches every team. Any member of the organization can read the rulings and their reasons: a component showing as Approved in your project may be inherited, and you should be able to see why.
+
+What members read is the **reason**, not the deliberation. The note an administrator writes while deciding, and the names of the people who requested and decided, are returned only to callers who could have written them. Assume the reason itself is read by everyone in the organization, because it is.
+
+A ruling moves through the same four states as a per-project request, carries a reason (required, unlike the per-project note), and uses the same `If-Match` version so two administrators cannot silently overwrite each other.
+
+**What applies to a project, in order:**
+
+1. The project's own decided approval, if it has one. Approved or Rejected both count.
+2. Otherwise the organization's decided ruling, if there is one.
+3. Otherwise nothing has been decided.
+
+Only *decided* answers fall through. A ruling still Pending or Under Review is a question, not an answer, and does not reach any project.
+
+The direction is deliberate: a team that reviewed a component in the context of its own use knows something the organization does not, so a local decision wins. Where a team has not decided, the organization is answering a question nobody local answered, which is what a default is for.
+
+**What a ruling does not do.** It does not touch open per-project requests. A team reviewing a component keeps that review, and their answer will win when they reach it. It does not write anything onto projects either: the fallback happens when somebody reads, so a ruling is cheap to make and cheap to change.
+
+**Changing the organization's mind.** A decided ruling is a record and is not edited. Open a new ruling on the same component and decide it; the new answer applies from then on and the old one stays as evidence of what was decided before.
+
+**Where you see it.** A component drawer whose answer came from the organization shows a note saying so, with the reason. A component your team decided shows nothing extra, because the status already tells you.
 
 ## Integration with external review systems
 

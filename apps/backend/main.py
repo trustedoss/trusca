@@ -42,6 +42,7 @@ from api.v1 import (
     notifications_router,
     oauth_router,
     obligations_router,
+    organization_verdicts_router,
     policy_gate_router,
     projects_router,
     remediation_router,
@@ -251,6 +252,7 @@ app.include_router(license_policies_router)
 # router from the licence policy because the two answer different questions
 # even though both feed one verdict.
 app.include_router(gate_policies_router)
+app.include_router(organization_verdicts_router)
 app.include_router(transition_approvals_router)
 app.include_router(obligations_router)
 # W9-#58: Compliance unified grid (licenses × obligations in one view). The

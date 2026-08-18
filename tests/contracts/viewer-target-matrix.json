@@ -200,6 +200,14 @@
     [
       "GET",
       "/v1/transition-approvals"
+    ],
+    [
+      "GET",
+      "/v1/organization-verdicts/effective/{project_id}/{component_id}"
+    ],
+    [
+      "GET",
+      "/v1/organization-verdicts/org/{organization_id}"
     ]
   ],
   "deny": [

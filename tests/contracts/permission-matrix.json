@@ -439,6 +439,26 @@
     },
     {
       "method": "GET",
+      "path": "/v1/organization-verdicts/effective/{project_id}/{component_id}",
+      "gate": "role>=viewer"
+    },
+    {
+      "method": "GET",
+      "path": "/v1/organization-verdicts/org/{organization_id}",
+      "gate": "role>=viewer"
+    },
+    {
+      "method": "POST",
+      "path": "/v1/organization-verdicts/org/{organization_id}",
+      "gate": "super_admin_404"
+    },
+    {
+      "method": "PATCH",
+      "path": "/v1/organization-verdicts/{verdict_id}",
+      "gate": "super_admin_404"
+    },
+    {
+      "method": "GET",
       "path": "/v1/projects",
       "gate": "role>=viewer"
     },

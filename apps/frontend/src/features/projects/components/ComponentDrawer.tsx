@@ -16,6 +16,7 @@ import {
 import { Skeleton } from "@/components/ui/skeleton";
 import { useComponent } from "@/features/projects/api/useComponent";
 import { ComponentDetailBody } from "@/features/projects/components/ComponentDetailBody";
+import { InheritedVerdictNote } from "@/features/projects/components/InheritedVerdictNote";
 import { problemMessage } from "@/lib/problemMessage";
 
 /**
@@ -155,6 +156,14 @@ export function ComponentDrawer({
           </Alert>
         ) : null}
 
+        {/* Outside the body on purpose: the body renders without a query
+            client, and this note asks the server what the project inherits. */}
+        {detail.data ? (
+          <InheritedVerdictNote
+            projectId={detail.data.project_id}
+            componentId={detail.data.component_id}
+          />
+        ) : null}
         {detail.data ? <ComponentDetailBody detail={detail.data} /> : null}
       </SheetContent>
     </Sheet>

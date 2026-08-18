@@ -482,6 +482,9 @@ class ComponentDetailResponse(BaseModel):
     """Drawer payload for a single component in a project's latest scan."""
 
     id: uuid.UUID
+    #: The package this is a version of. Organization rulings are about the
+    #: package, so a screen showing one version needs both ids.
+    component_id: uuid.UUID
     project_id: uuid.UUID
     name: str
     version: str

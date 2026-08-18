@@ -235,6 +235,12 @@ export interface ObligationRef {
 
 export interface ComponentDetailResponse {
   id: string;
+  /**
+   * The package, as distinct from this version of it. Organization rulings
+   * are about the package, so a drawer showing one version still has to be
+   * able to ask what was decided about the thing itself.
+   */
+  component_id: string;
   project_id: string;
   name: string;
   version: string;

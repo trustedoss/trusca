@@ -230,6 +230,16 @@
     "unread_only"
   ],
   "GET /v1/notifications/unread-count": [],
+  "GET /v1/organization-verdicts/effective/{project_id}/{component_id}": [
+    "component_id",
+    "project_id"
+  ],
+  "GET /v1/organization-verdicts/org/{organization_id}": [
+    "organization_id",
+    "page",
+    "page_size",
+    "status"
+  ],
   "GET /v1/projects": [
     "include_archived",
     "page",
@@ -517,6 +527,9 @@
   "PATCH /v1/notifications/{notification_id}/read": [
     "notification_id"
   ],
+  "PATCH /v1/organization-verdicts/{verdict_id}": [
+    "verdict_id"
+  ],
   "PATCH /v1/projects/{project_id}": [
     "project_id"
   ],
@@ -558,6 +571,9 @@
   ],
   "POST /v1/license-policies/teams/{team_id}/exceptions": [
     "team_id"
+  ],
+  "POST /v1/organization-verdicts/org/{organization_id}": [
+    "organization_id"
   ],
   "POST /v1/projects": [],
   "POST /v1/projects/{project_id}/remediation/npm/dry-run": [

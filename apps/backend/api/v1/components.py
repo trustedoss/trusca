@@ -65,6 +65,7 @@ async def get_component_detail_endpoint(
 
     body = ComponentDetailResponse(
         id=payload["id"],
+        component_id=payload["component_id"],
         project_id=payload["project_id"],
         name=payload["name"],
         version=payload["version"],
