@@ -20,8 +20,9 @@ import type {
   ScanPublic,
 } from "@/lib/projectsApi";
 
-vi.mock("@/lib/projectsApi", async () => {
+vi.mock("@/lib/projectsApi", async (importOriginal) => {
   return {
+    ...(await importOriginal<typeof import("@/lib/projectsApi")>()),
     listProjects: vi.fn(),
   };
 });
@@ -119,6 +120,9 @@ function project(name: string, overrides: Partial<ProjectPublic> = {}): ProjectP
     default_branch: "main",
     declared_license: null,
     ai_usage_context: null,
+    business_unit: null,
+    owner_contact: null,
+    distribution_model: null,
     visibility: "team",
     archived_at: null,
     created_by_user_id: null,

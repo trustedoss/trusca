@@ -40,6 +40,12 @@ from schemas.scan import ProjectCreate, ProjectUpdate
 
 log = structlog.get_logger("project.service")
 
+#: The filter value that means "has not said how it ships". A sentinel rather
+#: than an empty parameter, because an empty parameter already means "do not
+#: filter", and the two questions are opposites: one asks for everything, the
+#: other asks for the projects still to be filled in.
+UNSET_DISTRIBUTION_MODEL = "unset"
+
 
 # ---------------------------------------------------------------------------
 # Domain exceptions
@@ -164,6 +170,9 @@ async def create_project(
         visibility=payload.visibility,
         declared_license=payload.declared_license,
         ai_usage_context=payload.ai_usage_context,
+        business_unit=payload.business_unit,
+        owner_contact=payload.owner_contact,
+        distribution_model=payload.distribution_model,
         created_by_user_id=actor.id,
     )
     session.add(project)
@@ -200,6 +209,8 @@ async def list_projects(
     team_id: uuid.UUID | None = None,
     include_archived: bool = False,
     q: str | None = None,
+    business_unit: str | None = None,
+    distribution_model: str | None = None,
     page: int = 1,
     size: int = 20,
 ) -> tuple[list[Project], int]:
@@ -241,6 +252,29 @@ async def list_projects(
     if not include_archived:
         base = base.where(Project.archived_at.is_(None))
         count_base = count_base.where(Project.archived_at.is_(None))
+
+    # N16 portfolio filters. Applied only when asked for: a filter that
+    # narrowed by default would drop every project that has not set the
+    # attribute, which is most of them on the day this ships, and the list
+    # would look like projects had gone missing rather than like a filter was
+    # on. An empty string is treated as "not asked for" for the same reason.
+    if business_unit and business_unit.strip():
+        predicate = Project.business_unit == business_unit.strip()
+        base = base.where(predicate)
+        count_base = count_base.where(predicate)
+
+    if distribution_model and distribution_model.strip():
+        wanted = distribution_model.strip()
+        if wanted == UNSET_DISTRIBUTION_MODEL:
+            # The one filter that has to name NULL explicitly. "Which projects
+            # have not said how they ship" is the question an operator asks
+            # when they are trying to finish the exercise, and equality never
+            # matches NULL.
+            predicate = Project.distribution_model.is_(None)
+        else:
+            predicate = Project.distribution_model == wanted
+        base = base.where(predicate)
+        count_base = count_base.where(predicate)
 
     if q and q.strip():
         # Substring match across the three identifiers a user actually types

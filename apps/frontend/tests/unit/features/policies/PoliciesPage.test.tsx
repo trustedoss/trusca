@@ -60,7 +60,8 @@ vi.mock("@/features/admin/api/adminTeamsApi", () => ({
   listAdminTeams: vi.fn(),
 }));
 
-vi.mock("@/lib/projectsApi", () => ({
+vi.mock("@/lib/projectsApi", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@/lib/projectsApi")>()),
   listProjects: vi.fn(),
 }));
 
@@ -178,6 +179,9 @@ describe("PoliciesPage + editor", () => {
           default_branch: null,
           declared_license: null,
           ai_usage_context: null,
+          business_unit: null,
+          owner_contact: null,
+          distribution_model: null,
           visibility: "team",
           archived_at: null,
           created_by_user_id: null,

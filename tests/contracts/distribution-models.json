@@ -1,0 +1,24 @@
+{
+  "_comment": [
+    "How a project's software reaches the people who use it.",
+    "",
+    "A closed set, unlike the free-text attributes beside it, because this is",
+    "not an organizational label: it is what decides which licence obligations",
+    "bind. Offering a network service and shipping a binary are the difference",
+    "between AGPL section 13 applying and not.",
+    "",
+    "Three places read this vocabulary: the backend validator that rejects an",
+    "unknown value, the frontend list that draws the form and the filter, and",
+    "this file. A value the form offers and the API rejects fails on save,",
+    "after somebody has chosen it; one the API accepts and the form omits is a",
+    "setting nobody can reach from the screen.",
+    "",
+    "Order is asserted: the form and the filter render in this order, from the",
+    "narrowest reach to the widest.",
+    "",
+    "Absence is not in this list. A project that has said nothing is judged as",
+    "though it ships every way, and the filter names that with the separate",
+    "sentinel 'unset' rather than a sixth value here."
+  ],
+  "models": ["internal", "saas", "binary", "source", "embedded"]
+}

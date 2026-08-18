@@ -25,7 +25,8 @@ import type { ProjectPublic } from "@/lib/projectsApi";
 
 // --- wire + hooks --------------------------------------------------------
 
-vi.mock("@/lib/projectsApi", () => ({
+vi.mock("@/lib/projectsApi", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@/lib/projectsApi")>()),
   getProject: vi.fn(),
 }));
 
@@ -103,6 +104,9 @@ function makeProject(): ProjectPublic {
     default_branch: "main",
     declared_license: null,
     ai_usage_context: null,
+    business_unit: null,
+    owner_contact: null,
+    distribution_model: null,
     visibility: "team",
     archived_at: null,
     created_by_user_id: null,

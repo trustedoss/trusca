@@ -16,7 +16,8 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { ProjectPublic } from "@/lib/projectsApi";
 
-vi.mock("@/lib/projectsApi", () => ({
+vi.mock("@/lib/projectsApi", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@/lib/projectsApi")>()),
   getProject: vi.fn(),
   ingestSbom: vi.fn(),
 }));
@@ -80,6 +81,9 @@ function makeProject(name: string): ProjectPublic {
     default_branch: "main",
     declared_license: null,
     ai_usage_context: null,
+    business_unit: null,
+    owner_contact: null,
+    distribution_model: null,
     visibility: "team",
     archived_at: null,
     created_by_user_id: null,

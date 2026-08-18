@@ -25,6 +25,33 @@ Engineers and team leads who scan their own services. Requires sign-in. The role
 | **Default branch** | The branch the scan pipeline checks out (defaults to `main`). Editable from **Project Settings** after creation. |
 | **Visibility** | `team` (the only value accepted in this release — visible to members of the owning team). Set automatically on creation; mutable only via PATCH. |
 | **Owning team** | The team the project belongs to. Defaults to the team selected in the global bar; if you belong to several, the creation form lets you override it. |
+| **Owning part of the organization** | Optional free text: a division, a cost centre, a squad: whatever your organization calls it. Filters the project list. |
+| **Who to ask** | Optional free text: a name, a team alias or an address. |
+| **Distribution** | Optional. How the software reaches its users. See [Distribution](#distribution-model). |
+
+## Organizational attributes {#organizational-attributes}
+
+Two of these fields are deliberately free text. A division, a cost centre and a squad are the same slot to different organizations, and a fixed vocabulary would be wrong for most of them. Whatever you type is stored trimmed, so `Platform` and `Platform ` end up as one bucket in the filter rather than two that look identical on screen.
+
+Leave them empty and nothing changes: a project with no attributes appears in every unfiltered list, exactly as before. Set them and the project list can be narrowed to one owning unit.
+
+### Distribution {#distribution-model}
+
+Unlike the two above, this is a fixed list, because it is not an organizational label. It is what decides which licence obligations bind: offering a network service and shipping a binary are the difference between AGPL section 13 applying and not.
+
+| Value | Meaning |
+|---|---|
+| **Internal only** | Used inside the organization; not conveyed to anyone outside it. |
+| **Network service** | Offered to users over a network. |
+| **Binary** | Shipped as a compiled artefact. |
+| **Source** | Shipped as source. |
+| **Embedded** | Shipped inside a device. |
+
+A misspelt value is rejected rather than stored, so a typo cannot quietly become a sixth category that nothing matches.
+
+**Not decided is a valid answer, not a blank to fill.** A project that has not said how it ships is judged as though it ships every way, which is the conservative reading and is what the portal already assumes. Nothing about verdicts changes when you set this field in this release; it records the fact and drives the filter.
+
+The project list has a **Distribution** filter with one option that is not a stored value: **Not decided**, which finds the projects still to be filled in. Equality never matches an empty column, so this needs its own option, and it is the one you want while working through a portfolio.
 
 ## Adding a project — UI
 

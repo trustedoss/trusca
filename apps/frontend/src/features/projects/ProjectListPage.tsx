@@ -39,6 +39,8 @@ import { ScanProgress } from "@/features/scan/ScanProgress";
 import { SourceSelectDialog } from "@/features/scan/SourceSelectDialog";
 import { useDemoMode } from "@/hooks/useDemoMode";
 import {
+  DISTRIBUTION_MODELS,
+  UNSET_DISTRIBUTION_MODEL,
   listProjects,
   type ProjectPublic,
   type ProjectSeveritySummary,
@@ -155,6 +157,19 @@ function parseSortParam(v: string | null): ProjectSortKey {
     ? (v as ProjectSortKey)
     : "name";
 }
+/**
+ * The distribution filter from the URL, or null for "no filter".
+ *
+ * A value outside the known set becomes null rather than being passed on. A
+ * hand-edited or stale URL would otherwise narrow the list to nothing and read
+ * as an empty portfolio instead of a bad parameter.
+ */
+function parseDistributionParam(v: string | null): string | null {
+  if (!v) return null;
+  if (v === UNSET_DISTRIBUTION_MODEL) return v;
+  return (DISTRIBUTION_MODELS as readonly string[]).includes(v) ? v : null;
+}
+
 function parseSeverityParam(v: string | null): SeverityFilterKey | null {
   return v && (VALID_SEVERITY_FILTER as readonly string[]).includes(v)
     ? (v as SeverityFilterKey)
@@ -195,6 +210,9 @@ export function ProjectListPage() {
   // Search keeps a local typing buffer; the debounced value is what flows
   // into both the filter AND the URL (so per-keystroke typing doesn't spam
   // history entries). Mirrors the ComponentsTab / VulnerabilitiesTab pattern.
+  const distributionFilter = parseDistributionParam(
+    searchParams.get("distribution"),
+  );
   const [query, setQuery] = useState(() => searchParams.get("search") ?? "");
   const [debouncedQuery, setDebouncedQuery] = useState(query);
 
@@ -222,6 +240,23 @@ export function ProjectListPage() {
           const out = new URLSearchParams(prev);
           if (next === "name") out.delete("sort");
           else out.set("sort", next);
+          return out;
+        },
+        { replace: false },
+      );
+    },
+    [setSearchParams],
+  );
+  const setDistributionFilter = useCallback(
+    (next: string | null) => {
+      setSearchParams(
+        (prev) => {
+          const out = new URLSearchParams(prev);
+          // Removed rather than set to empty, so "no filter" has one spelling
+          // in the URL and a shared link cannot carry a parameter that means
+          // nothing.
+          if (next === null) out.delete("distribution");
+          else out.set("distribution", next);
           return out;
         },
         { replace: false },
@@ -326,12 +361,24 @@ export function ProjectListPage() {
   // the query key, so TanStack Query caches per term and refetches on change.
   const trimmedQuery = debouncedQuery.trim();
   const projectsQuery = useQuery({
-    queryKey: ["projects", { page: 1, size: PROJECT_PAGE_SIZE, q: trimmedQuery }],
+    queryKey: [
+      "projects",
+      {
+        page: 1,
+        size: PROJECT_PAGE_SIZE,
+        q: trimmedQuery,
+        distribution: distributionFilter,
+      },
+    ],
     queryFn: () =>
       listProjects({
         page: 1,
         size: PROJECT_PAGE_SIZE,
         q: trimmedQuery || undefined,
+        // Undefined, not an empty string: the server treats blank as "no
+        // filter" too, but sending nothing keeps the request honest about
+        // what was asked for.
+        distribution_model: distributionFilter ?? undefined,
       }),
     placeholderData: (previous) => previous,
   });
@@ -599,6 +646,8 @@ export function ProjectListPage() {
           onStatusChange={setStatusFilter}
           sort={sort}
           onSortChange={setSort}
+          distribution={distributionFilter}
+          onDistributionChange={setDistributionFilter}
         />
       </div>
 

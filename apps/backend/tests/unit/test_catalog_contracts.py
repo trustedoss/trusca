@@ -887,3 +887,45 @@ def test_every_approval_failure_has_its_own_token() -> None:
     from api.v1.transition_approvals import _REASON_FOR
 
     assert len(set(_REASON_FOR.values())) == len(_REASON_FOR)
+
+
+# ---------------------------------------------------------------------------
+# Distribution models: the API's set vs the form that offers them
+# ---------------------------------------------------------------------------
+
+
+def test_distribution_models_match_the_shared_fixture() -> None:
+    """A value the form offers and the API rejects fails only on save.
+
+    And one the API accepts but the form omits is a setting nobody can reach
+    from the screen, which is worse: nothing fails, it is simply missing.
+    """
+    import json
+    from pathlib import Path
+
+    from schemas.scan import DISTRIBUTION_MODELS
+
+    fixture = (
+        Path(__file__).resolve().parents[4] / "tests/contracts/distribution-models.json"
+    )
+    assert fixture.is_file(), f"shared distribution-model fixture missing: {fixture}"
+    models = json.loads(fixture.read_text(encoding="utf-8"))["models"]
+
+    assert list(DISTRIBUTION_MODELS) == models, (
+        "distribution models drifted from the shared fixture. Update "
+        "tests/contracts/distribution-models.json, the frontend mirror "
+        "(DISTRIBUTION_MODELS in projectsApi.ts) and the locale copy together."
+    )
+
+
+def test_the_unset_filter_sentinel_is_not_a_distribution_model() -> None:
+    """They answer opposite questions and must not collide.
+
+    ``unset`` asks for the projects still to be filled in. If it were also a
+    stored value, filtering for it would return both those and the ones that
+    had deliberately chosen it, and the two are not the same set.
+    """
+    from schemas.scan import DISTRIBUTION_MODELS
+    from services.project_service import UNSET_DISTRIBUTION_MODEL
+
+    assert UNSET_DISTRIBUTION_MODEL not in DISTRIBUTION_MODELS

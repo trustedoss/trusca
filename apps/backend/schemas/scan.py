@@ -151,6 +151,55 @@ AiUsageContext = Literal["internal", "product", "redistribute", "outputs-only"]
 AI_USAGE_SCENARIOS: tuple[str, ...] = ("internal", "product", "redistribute", "outputs-only")
 
 
+# How the software reaches the people who use it. A closed set, unlike the two
+# free-text attributes beside it, because this is not an organizational label:
+# it decides which licence obligations bind, and the difference between
+# offering a network service and shipping a binary is the difference between
+# AGPL section 13 applying and not. The service holds the same tuple and
+# ``test_catalog_contracts`` asserts the two agree.
+DistributionModel = Literal["internal", "saas", "binary", "source", "embedded"]
+DISTRIBUTION_MODELS: tuple[str, ...] = (
+    "internal",
+    "saas",
+    "binary",
+    "source",
+    "embedded",
+)
+
+
+def _validate_distribution_model(value: str | None) -> str | None:
+    """Shared ``distribution_model`` validator for ProjectCreate / ProjectUpdate.
+
+    Blank normalises to ``None``, which means "judged as though it ships every
+    way" - the conservative reading, not an absence. Anything outside the set
+    is rejected rather than dropped, for the reason the AI usage context is:
+    a typo that silently became "unspecified" would leave the operator looking
+    at a screen that says they narrowed nothing.
+    """
+    if value is None:
+        return None
+    stripped = value.strip()
+    if not stripped:
+        return None
+    if stripped not in DISTRIBUTION_MODELS:
+        raise ValueError(
+            "distribution_model must be one of: " + ", ".join(DISTRIBUTION_MODELS)
+        )
+    return stripped
+
+
+def _validate_org_attribute(value: str | None) -> str | None:
+    """Trim a free-text organizational attribute, blank to ``None``.
+
+    Stored trimmed so that "Platform" and "Platform " are one bucket in the
+    filter rather than two that look identical on screen.
+    """
+    if value is None:
+        return None
+    stripped = value.strip()
+    return stripped or None
+
+
 def _validate_ai_usage_context(value: str | None) -> str | None:
     """Shared ``ai_usage_context`` validator for ProjectCreate / ProjectUpdate.
 
@@ -296,6 +345,30 @@ class ProjectCreate(BaseModel):
         ),
     )
 
+
+    business_unit: str | None = Field(
+        default=None,
+        max_length=120,
+        description=(
+            "Which part of the organization owns this project. Free text: a "
+            "division, a cost centre and a squad are the same slot to "
+            "different organizations. Used to narrow the portfolio list."
+        ),
+    )
+    owner_contact: str | None = Field(
+        default=None,
+        max_length=255,
+        description="Who to ask about this project. A name, a team alias or an address.",
+    )
+    distribution_model: DistributionModel | None = Field(
+        default=None,
+        description=(
+            "How this software reaches the people who use it: 'internal', "
+            "'saas', 'binary', 'source' or 'embedded'. Omit when it has not "
+            "been decided, which is judged as though it ships every way."
+        ),
+    )
+
     @field_validator("declared_license")
     @classmethod
     def _validate_declared_license(cls, value: str | None) -> str | None:
@@ -305,6 +378,16 @@ class ProjectCreate(BaseModel):
     @classmethod
     def _validate_ai_usage_context(cls, value: str | None) -> str | None:
         return _validate_ai_usage_context(value)
+
+    @field_validator("business_unit", "owner_contact", mode="before")
+    @classmethod
+    def _validate_org_attribute(cls, value: str | None) -> str | None:
+        return _validate_org_attribute(value)
+
+    @field_validator("distribution_model", mode="before")
+    @classmethod
+    def _validate_distribution_model(cls, value: str | None) -> str | None:
+        return _validate_distribution_model(value)
 
     @field_validator("slug")
     @classmethod
@@ -399,6 +482,35 @@ class ProjectUpdate(BaseModel):
             "leave it unchanged."
         ),
     )
+    # N16 organizational attributes. Same empty-string-clears contract as
+    # declared_license above: these are readable values, so "set it to empty"
+    # is unambiguous and needs no separate clear flag.
+    business_unit: str | None = Field(
+        default=None,
+        max_length=120,
+        description=(
+            "Which part of the organization owns this project. Send an empty "
+            "string to clear it; omit the field to leave it unchanged."
+        ),
+    )
+    owner_contact: str | None = Field(
+        default=None,
+        max_length=255,
+        description=(
+            "Who to ask about this project. Send an empty string to clear it; "
+            "omit the field to leave it unchanged."
+        ),
+    )
+    distribution_model: DistributionModel | None = Field(
+        default=None,
+        description=(
+            "How this software reaches its users ('internal', 'saas', "
+            "'binary', 'source', 'embedded'). Send an empty string to clear "
+            "it and judge as though it ships every way; omit to leave it "
+            "unchanged."
+        ),
+    )
+
     # Feature #18 Part B — private-repo git credential (WRITE-ONLY).
     #
     # `git_credential` is a plaintext PAT / deploy token. When provided and
@@ -488,6 +600,16 @@ class ProjectUpdate(BaseModel):
     def _validate_ai_usage_context(cls, value: str | None) -> str | None:
         return _validate_ai_usage_context(value)
 
+    @field_validator("business_unit", "owner_contact", mode="before")
+    @classmethod
+    def _validate_org_attribute(cls, value: str | None) -> str | None:
+        return _validate_org_attribute(value)
+
+    @field_validator("distribution_model", mode="before")
+    @classmethod
+    def _validate_distribution_model(cls, value: str | None) -> str | None:
+        return _validate_distribution_model(value)
+
     @field_validator("visibility")
     @classmethod
     def _enforce_team_visibility(cls, value: str | None) -> str | None:
@@ -571,6 +693,21 @@ class ProjectPublic(BaseModel):
             "The intended use of this project's AI models, or null. Unlike "
             "declared_license, null does not disable the axis, it judges "
             "against the full license terms."
+        ),
+    )
+    business_unit: str | None = Field(
+        default=None,
+        description="Which part of the organization owns this project, or null.",
+    )
+    owner_contact: str | None = Field(
+        default=None, description="Who to ask about this project, or null."
+    )
+    distribution_model: DistributionModel | None = Field(
+        default=None,
+        description=(
+            "How this software reaches its users, or null. Like "
+            "ai_usage_context, null does not disable an axis: it is judged as "
+            "though the software ships every way."
         ),
     )
 

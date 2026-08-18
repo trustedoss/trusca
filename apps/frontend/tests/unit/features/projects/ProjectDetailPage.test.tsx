@@ -31,8 +31,9 @@ import { ProjectDetailPage } from "@/features/projects/ProjectDetailPage";
 import { ProblemError } from "@/lib/problem";
 import type { ProjectPublic } from "@/lib/projectsApi";
 
-vi.mock("@/lib/projectsApi", async () => {
+vi.mock("@/lib/projectsApi", async (importOriginal) => {
   return {
+    ...(await importOriginal<typeof import("@/lib/projectsApi")>()),
     getProject: vi.fn(),
     listProjects: vi.fn(),
     triggerScan: vi.fn(),
@@ -113,6 +114,9 @@ function project(overrides: Partial<ProjectPublic> = {}): ProjectPublic {
     default_branch: "main",
     declared_license: null,
     ai_usage_context: null,
+    business_unit: null,
+    owner_contact: null,
+    distribution_model: null,
     visibility: "team",
     archived_at: null,
     created_by_user_id: null,

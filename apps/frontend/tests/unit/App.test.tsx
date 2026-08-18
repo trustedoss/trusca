@@ -25,7 +25,8 @@ vi.mock("@/lib/api", () => ({
 // error. DashboardPage additionally hits listApprovals + listMyScans, so we
 // provide those too. All return empty lists so the dashboard renders its
 // empty-state CTA path on the / index.
-vi.mock("@/lib/projectsApi", () => ({
+vi.mock("@/lib/projectsApi", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@/lib/projectsApi")>()),
   // Module-level constant consumed by AdminScansPage's KIND_OPTIONS; the
   // wholesale mock must re-export it or the route tree fails to import.
   SCAN_KIND_VALUES: ["source", "container", "sbom"] as const,

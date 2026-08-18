@@ -51,6 +51,37 @@ export const SCAN_STATUS_VALUES = [
 
 export type ScanStatus = (typeof SCAN_STATUS_VALUES)[number];
 
+/**
+ * How a project's software reaches the people who use it.
+ *
+ * A closed set, unlike the two free-text attributes beside it, because this
+ * is not an organizational label: it decides which licence obligations bind,
+ * and offering a network service is not the same as shipping a binary. The
+ * backend holds the same tuple and a contract test asserts the two agree.
+ *
+ * Ordered from the narrowest reach to the widest; the form and the filter
+ * render in this order.
+ */
+export const DISTRIBUTION_MODELS = [
+  "internal",
+  "saas",
+  "binary",
+  "source",
+  "embedded",
+] as const;
+
+export type DistributionModel = (typeof DISTRIBUTION_MODELS)[number];
+
+/**
+ * The filter value meaning "has not said how it ships".
+ *
+ * A sentinel rather than an empty parameter, because empty already means "do
+ * not filter" and the two questions are opposites: one asks for everything,
+ * the other asks for the projects still to be filled in. Deliberately not a
+ * member of DISTRIBUTION_MODELS, so it can never be stored.
+ */
+export const UNSET_DISTRIBUTION_MODEL = "unset";
+
 export interface ProjectPublic {
   id: string;
   team_id: string;
@@ -71,6 +102,15 @@ export interface ProjectPublic {
    * the full license terms, which is the conservative reading.
    */
   ai_usage_context: AiUsageContext | null;
+  /** Which part of the organization owns this project. Free text, or null. */
+  business_unit: string | null;
+  /** Who to ask about this project. Free text, or null. */
+  owner_contact: string | null;
+  /**
+   * How this software reaches its users. Like `ai_usage_context`, `null` does
+   * not disable an axis: it is judged as though the software ships every way.
+   */
+  distribution_model: DistributionModel | null;
   visibility: ProjectVisibility;
   archived_at: string | null;
   created_by_user_id: string | null;
@@ -212,6 +252,9 @@ export interface ProjectCreatePayload {
   default_branch?: string | null;
   declared_license?: string | null;
   ai_usage_context?: AiUsageContext | null;
+  business_unit?: string | null;
+  owner_contact?: string | null;
+  distribution_model?: DistributionModel | null;
   visibility?: ProjectVisibility;
 }
 
@@ -224,6 +267,10 @@ export interface ProjectUpdatePayload {
   declared_license?: string | null;
   /** Intended use of the project's models; send "" to clear it (gap #28). */
   ai_usage_context?: AiUsageContext | string | null;
+  /** An empty string clears the stored value; omit to leave it unchanged. */
+  business_unit?: string | null;
+  owner_contact?: string | null;
+  distribution_model?: DistributionModel | string | null;
   visibility?: ProjectVisibility;
   /**
    * Write-only git credential (feature #18). Set a non-empty token to store it
@@ -245,6 +292,10 @@ export interface ListProjectsParams {
   team_id?: string;
   include_archived?: boolean;
   q?: string;
+  /** Omit or leave blank to keep every project, including the ones with none. */
+  business_unit?: string;
+  /** One model, or `unset` for the projects that have not said. */
+  distribution_model?: string;
   page?: number;
   size?: number;
 }
@@ -263,6 +314,8 @@ export async function listProjects(
       team_id: params.team_id,
       include_archived: params.include_archived,
       q: params.q,
+      business_unit: params.business_unit,
+      distribution_model: params.distribution_model,
       page: params.page,
       size: params.size,
     },

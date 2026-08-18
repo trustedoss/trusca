@@ -241,6 +241,8 @@
     "status"
   ],
   "GET /v1/projects": [
+    "business_unit",
+    "distribution_model",
     "include_archived",
     "page",
     "q",

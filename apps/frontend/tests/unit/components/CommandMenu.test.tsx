@@ -20,8 +20,9 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { CommandMenu, CommandMenuTrigger } from "@/components/CommandMenu";
 import { useAuthStore } from "@/stores/authStore";
 
-vi.mock("@/lib/projectsApi", async () => {
+vi.mock("@/lib/projectsApi", async (importOriginal) => {
   return {
+    ...(await importOriginal<typeof import("@/lib/projectsApi")>()),
     listProjects: vi.fn(),
   };
 });
@@ -273,6 +274,9 @@ describe("CommandMenu", () => {
           default_branch: null,
           declared_license: null,
           ai_usage_context: null,
+          business_unit: null,
+          owner_contact: null,
+          distribution_model: null,
           visibility: "team",
           archived_at: null,
           created_by_user_id: null,
@@ -335,6 +339,9 @@ describe("CommandMenu", () => {
           default_branch: null,
           declared_license: null,
           ai_usage_context: null,
+          business_unit: null,
+          owner_contact: null,
+          distribution_model: null,
           visibility: "team",
           archived_at: null,
           created_by_user_id: null,

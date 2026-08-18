@@ -189,6 +189,22 @@ class Project(Base):
     # license to the conditions that actually bind that use. NULL judges against
     # the full terms, which is the conservative reading rather than an absence.
     ai_usage_context: Mapped[str | None] = mapped_column(String(16), nullable=True)
+    # N16: who owns this project inside the organization, and how it ships.
+    #
+    # The first two are free text on purpose: a division, a cost centre and a
+    # squad are the same slot to different organizations, and a fixed
+    # vocabulary would be wrong for most of them. ``distribution_model`` is a
+    # closed set instead, because it is not a label but the thing that decides
+    # which licence obligations bind, and a typo there has to be refused
+    # rather than quietly become a new category.
+    #
+    # All three NULL by default, and NULL keeps today's behaviour. For the
+    # distribution model that is the conservative reading rather than an
+    # absence, the same way ``ai_usage_context`` above judges against the full
+    # terms when nobody has narrowed it.
+    business_unit: Mapped[str | None] = mapped_column(String(120), nullable=True)
+    owner_contact: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    distribution_model: Mapped[str | None] = mapped_column(String(32), nullable=True)
     archived_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     created_by_user_id: Mapped[uuid.UUID | None] = mapped_column(
         UUID_PK,
@@ -268,6 +284,19 @@ class Project(Base):
         # Webhook lookup: "find project by clone URL".
         Index("ix_projects_git_url", "git_url"),
         Index("ix_projects_created_by_user_id", "created_by_user_id"),
+        # N16 portfolio filters. Partial, because the rows worth narrowing to
+        # are the ones that said something: an index over mostly-NULL columns
+        # would be largely the projects nobody filtered for.
+        Index(
+            "ix_projects_business_unit",
+            "business_unit",
+            postgresql_where=text("business_unit IS NOT NULL"),
+        ),
+        Index(
+            "ix_projects_distribution_model",
+            "distribution_model",
+            postgresql_where=text("distribution_model IS NOT NULL"),
+        ),
         Index("ix_projects_latest_scan_id", "latest_scan_id"),
         # S1-1 — the project list and the global palette both match the name
         # with a leading wildcard; ix_projects_team_archived narrows by team

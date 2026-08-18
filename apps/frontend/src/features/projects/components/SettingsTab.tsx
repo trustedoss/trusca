@@ -32,6 +32,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { problemMessage } from "@/lib/problemMessage";
 import {
   AI_USAGE_SCENARIOS,
+  DISTRIBUTION_MODELS,
   archiveProject,
   type ProjectPublic,
   unarchiveProject,
@@ -50,6 +51,9 @@ interface FormValues {
   default_branch: string;
   declared_license: string;
   ai_usage_context: string;
+  business_unit: string;
+  owner_contact: string;
+  distribution_model: string;
 }
 
 export function SettingsTab({ projectId, project }: SettingsTabProps) {
@@ -83,6 +87,11 @@ export function SettingsTab({ projectId, project }: SettingsTabProps) {
     // "not set", which the server reads as "judge against the full terms" -
     // deliberately not the same as an unselected-but-required field.
     ai_usage_context: z.enum(["", ...AI_USAGE_SCENARIOS]),
+    business_unit: z.string().max(120, t("settings.errors.business_unit_max")),
+    owner_contact: z.string().max(255, t("settings.errors.owner_contact_max")),
+    // Empty is a member on purpose: it is how the form clears the setting, and
+    // the server reads it as "judged as though it ships every way".
+    distribution_model: z.enum(["", ...DISTRIBUTION_MODELS]),
   });
 
   const {
@@ -99,6 +108,9 @@ export function SettingsTab({ projectId, project }: SettingsTabProps) {
       default_branch: project?.default_branch ?? "",
       declared_license: project?.declared_license ?? "",
       ai_usage_context: project?.ai_usage_context ?? "",
+      business_unit: project?.business_unit ?? "",
+      owner_contact: project?.owner_contact ?? "",
+      distribution_model: project?.distribution_model ?? "",
     },
   });
 
@@ -115,6 +127,9 @@ export function SettingsTab({ projectId, project }: SettingsTabProps) {
       default_branch: project.default_branch ?? "",
       declared_license: project.declared_license ?? "",
       ai_usage_context: project.ai_usage_context ?? "",
+      business_unit: project.business_unit ?? "",
+      owner_contact: project.owner_contact ?? "",
+      distribution_model: project.distribution_model ?? "",
     });
   }, [project, reset, isDirty]);
 
@@ -128,6 +143,10 @@ export function SettingsTab({ projectId, project }: SettingsTabProps) {
         // Empty clears the declaration; the server normalises "" to null.
         declared_license: values.declared_license,
         ai_usage_context: values.ai_usage_context,
+        // Same contract: an empty string clears the stored value.
+        business_unit: values.business_unit,
+        owner_contact: values.owner_contact,
+        distribution_model: values.distribution_model,
       }),
     // Error surfaced locally (toast/inline) — keep the global error toast quiet.
     meta: { errorToast: false },
@@ -143,6 +162,9 @@ export function SettingsTab({ projectId, project }: SettingsTabProps) {
         default_branch: next.default_branch ?? "",
         declared_license: next.declared_license ?? "",
         ai_usage_context: next.ai_usage_context ?? "",
+        business_unit: next.business_unit ?? "",
+        owner_contact: next.owner_contact ?? "",
+        distribution_model: next.distribution_model ?? "",
       });
       setActionToast(t("settings.toast.saved"));
     },
@@ -424,6 +446,79 @@ export function SettingsTab({ projectId, project }: SettingsTabProps) {
             className="text-xs text-muted-foreground"
           >
             {t("settings.field.ai_usage_context_help")}
+          </p>
+        </div>
+
+        {/* N16: who owns this project, and how it ships. The first two are
+            free text because a division, a cost centre and a squad are the
+            same slot to different organizations. The third is a fixed list
+            because it is not a label: it is what decides which obligations
+            bind. Leaving it unset is a valid answer, judged as though the
+            software ships every way. */}
+        <div className="space-y-1.5">
+          <Label htmlFor="settings-business-unit">
+            {t("settings.field.business_unit")}
+          </Label>
+          <Input
+            id="settings-business-unit"
+            {...register("business_unit")}
+            data-testid="settings-business-unit"
+            aria-describedby="settings-business-unit-help"
+          />
+          <p
+            id="settings-business-unit-help"
+            className="text-xs text-muted-foreground"
+          >
+            {t("settings.field.business_unit_help")}
+          </p>
+          {errors.business_unit ? (
+            <p className="text-xs text-destructive" role="alert">
+              {errors.business_unit.message}
+            </p>
+          ) : null}
+        </div>
+
+        <div className="space-y-1.5">
+          <Label htmlFor="settings-owner-contact">
+            {t("settings.field.owner_contact")}
+          </Label>
+          <Input
+            id="settings-owner-contact"
+            {...register("owner_contact")}
+            data-testid="settings-owner-contact"
+          />
+          {errors.owner_contact ? (
+            <p className="text-xs text-destructive" role="alert">
+              {errors.owner_contact.message}
+            </p>
+          ) : null}
+        </div>
+
+        <div className="space-y-1.5">
+          <Label htmlFor="settings-distribution-model">
+            {t("settings.field.distribution_model")}
+          </Label>
+          <select
+            id="settings-distribution-model"
+            className="h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            {...register("distribution_model")}
+            data-testid="settings-distribution-model-select"
+            aria-describedby="settings-distribution-model-help"
+          >
+            <option value="">
+              {t("settings.field.distribution_model_unset")}
+            </option>
+            {DISTRIBUTION_MODELS.map((model) => (
+              <option key={model} value={model}>
+                {t(`settings.field.distribution_model_option.${model}`)}
+              </option>
+            ))}
+          </select>
+          <p
+            id="settings-distribution-model-help"
+            className="text-xs text-muted-foreground"
+          >
+            {t("settings.field.distribution_model_help")}
           </p>
         </div>
 

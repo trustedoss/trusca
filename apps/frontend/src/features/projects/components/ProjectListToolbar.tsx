@@ -3,6 +3,10 @@
 import { useTranslation } from "react-i18next";
 
 import { Input } from "@/components/ui/input";
+import {
+  DISTRIBUTION_MODELS,
+  UNSET_DISTRIBUTION_MODEL,
+} from "@/lib/projectsApi";
 import { cn } from "@/lib/utils";
 
 /**
@@ -42,6 +46,9 @@ export interface ProjectListToolbarProps {
   onStatusChange: (value: ProjectStatusFilter) => void;
   sort: ProjectSortKey;
   onSortChange: (value: ProjectSortKey) => void;
+  /** Null means no filter, which keeps every project including the unset ones. */
+  distribution: string | null;
+  onDistributionChange: (value: string | null) => void;
   className?: string;
 }
 
@@ -52,6 +59,8 @@ export function ProjectListToolbar({
   onStatusChange,
   sort,
   onSortChange,
+  distribution,
+  onDistributionChange,
   className,
 }: ProjectListToolbarProps) {
   const { t } = useTranslation("projects");
@@ -105,6 +114,38 @@ export function ProjectListToolbar({
                 : t(`status.${opt}`)}
             </option>
           ))}
+        </select>
+      </div>
+
+      <div className="flex items-center gap-2">
+        <label
+          htmlFor="project-distribution-filter"
+          className="text-xs font-medium text-muted-foreground"
+        >
+          {t("toolbar.filter_distribution_label")}
+        </label>
+        <select
+          id="project-distribution-filter"
+          value={distribution ?? ""}
+          onChange={(event) =>
+            // Empty back to null rather than an empty string: the two mean the
+            // same thing to the server, but null is what the URL and the query
+            // key read as "no filter", and mixing them would make two cache
+            // entries for one view.
+            onDistributionChange(event.target.value || null)
+          }
+          className="h-9 rounded-md border border-input bg-background px-2 text-sm shadow-sm transition-colors duration-fast ease-out-soft hover:bg-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+          data-testid="project-distribution-filter"
+        >
+          <option value="">{t("toolbar.filter_distribution_all")}</option>
+          {DISTRIBUTION_MODELS.map((model) => (
+            <option key={model} value={model}>
+              {t(`toolbar.filter_distribution_option.${model}`)}
+            </option>
+          ))}
+          <option value={UNSET_DISTRIBUTION_MODEL}>
+            {t("toolbar.filter_distribution_unset")}
+          </option>
         </select>
       </div>
 
