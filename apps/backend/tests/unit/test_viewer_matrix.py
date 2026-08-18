@@ -161,3 +161,38 @@ def test_the_grades_above_keep_everything_they_had(role: str) -> None:
         if not _passes(gate, principal)
     ]
     assert lost == [], f"{role} lost access to: {lost}"
+
+
+def test_every_role_gated_route_is_classified_here() -> None:
+    """The oracle has to grow with the surface it scores.
+
+    Adding a route puts a row in the permission matrix, because the baseline
+    refuses otherwise. Nothing forced the same route into this file, so a new
+    endpoint could be gated, declared, and still unscored by either direction
+    below: present in the inventory, absent from the decision. That reads as
+    covered and is not.
+    """
+    import json
+
+    inventory = json.loads(
+        (REPO_ROOT / "tests" / "contracts" / "permission-matrix.json").read_text()
+    )
+    role_gated = {
+        (row["method"], row["path"])
+        for row in inventory["routes"]
+        if row["gate"].startswith("role")
+    }
+    target = _target()
+    classified = {tuple(entry) for entry in target["allow"] + target["deny"]}
+
+    unclassified = sorted(role_gated - classified)
+    assert unclassified == [], (
+        "these role-gated routes are in neither the allow nor the deny list of "
+        f"{TARGET_MATRIX.name}; decide what the lowest grade may do with them: "
+        f"{unclassified}"
+    )
+
+    stale = sorted(classified - role_gated)
+    assert stale == [], (
+        f"these {TARGET_MATRIX.name} entries match no role-gated route: {stale}"
+    )
