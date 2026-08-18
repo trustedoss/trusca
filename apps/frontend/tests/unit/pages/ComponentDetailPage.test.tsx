@@ -82,6 +82,7 @@ function makeComponent(
 ): ComponentDetailResponse {
   return {
     id: COMPONENT_ID,
+    component_id: "pkg-0000-0000-0000-000000000000",
     project_id: PROJECT_ID,
     name: "alpha",
     version: "1.0.0",

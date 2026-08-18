@@ -21,6 +21,8 @@ reach a state-derived 409:
                                           VulnerabilityApprovalRequired)
   - transition request × already open   → ApprovalNotFound (not ApprovalAlreadyOpen)
   - transition decide  × decided        → ApprovalNotFound (not ApprovalAlreadyDecided)
+  - org verdict list   × outsider       → VerdictNotFound (not a readable list)
+  - effective verdict  × outsider       → VerdictNotFound (not the project's answer)
   - approval      × terminal state     → ApprovalNotFound (not ApprovalTerminalState /
                                           ApprovalInvalidTransition)
 
@@ -556,4 +558,65 @@ async def test_decide_other_team_decided_request_is_404_not_409(
             approval_id=row.id,
             approve=True,
             note=None,
+        )
+
+
+# ---------------------------------------------------------------------------
+# organization verdicts × an outsider reaching across an organization
+# ---------------------------------------------------------------------------
+
+
+async def test_listing_another_organizations_verdicts_is_404(
+    db_session: AsyncSession,
+) -> None:
+    """Both endpoints take an id from the URL, which is the shape that leaks.
+
+    404 rather than 403 for the same reason as everywhere else here: whether
+    an organization exists is not something an outsider gets to probe for by
+    reading status codes.
+
+    A separate organization on purpose. ``_outsider_and_resource_team`` puts
+    its two teams in one organization, and that caller is a legitimate reader
+    here: rulings are organization-wide, so anybody inside may see them. The
+    boundary this pins is the organization, not the team.
+    """
+    from services.organization_verdict_service import VerdictNotFound, list_verdicts
+
+    their_org = await make_organization(db_session)
+    my_org = await make_organization(db_session)
+    my_team = await make_team(db_session, organization=my_org)
+    outsider = await make_user(db_session)
+    await make_membership(db_session, user=outsider, team=my_team, role="developer")
+    actor = await principal_loaded_from_db(db_session, user=outsider)
+
+    with pytest.raises(VerdictNotFound):
+        await list_verdicts(db_session, actor, organization_id=their_org.id)
+
+
+async def test_reading_another_projects_effective_verdict_is_404(
+    db_session: AsyncSession,
+) -> None:
+    """An inherited answer is still the other team's business."""
+    from models import Component
+    from services.organization_verdict_service import (
+        VerdictNotFound,
+        resolve_for_project,
+    )
+
+    actor, owning_team = await _outsider_and_resource_team(db_session)
+    project = await make_project(db_session, team=owning_team)
+    suffix = uuid.uuid4().hex[:10]
+    component = Component(
+        purl=f"pkg:npm/hide-{suffix}", name=f"hide-{suffix}", package_type="npm"
+    )
+    db_session.add(component)
+    await db_session.commit()
+    await db_session.refresh(component)
+
+    with pytest.raises(VerdictNotFound):
+        await resolve_for_project(
+            db_session,
+            project_id=project.id,
+            component_id=component.id,
+            actor=actor,
         )

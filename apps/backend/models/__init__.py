@@ -70,6 +70,9 @@ from .oauth_identity import (  # noqa: E402,F401  (imported for metadata side ef
     OAUTH_PROVIDER_VALUES,
     OAuthIdentity,
 )
+from .organization_component_verdict import (  # noqa: E402,F401  (imported for metadata side effects)
+    OrganizationComponentVerdict,
+)
 from .remediation_pr import (  # noqa: E402,F401  (imported for metadata side effects)
     REMEDIATION_PR_STATUS_VALUES,
     RemediationPullRequest,
@@ -122,6 +125,7 @@ __all__ = [
     "LicenseFinding",
     "GatePolicy",
     "TRANSITION_APPROVAL_STATES",
+    "OrganizationComponentVerdict",
     "TransitionApproval",
     "LicensePolicy",
     "Membership",

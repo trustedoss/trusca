@@ -1228,6 +1228,10 @@ async def get_component_detail(
 
     return {
         "id": row.id,
+        # The package, as distinct from this version of it. An organization
+        # rules on the package, so a screen showing one version still has to
+        # be able to ask what was decided about the thing itself.
+        "component_id": row.component_id,
         "project_id": row.project_id,
         "name": row.component_name,
         "version": row.version,

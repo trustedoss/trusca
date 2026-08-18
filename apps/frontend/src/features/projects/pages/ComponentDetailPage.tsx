@@ -11,6 +11,7 @@ import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useComponent } from "@/features/projects/api/useComponent";
 import { ComponentDetailBody } from "@/features/projects/components/ComponentDetailBody";
+import { InheritedVerdictNote } from "@/features/projects/components/InheritedVerdictNote";
 import { projectErrorMessageKey } from "@/features/projects/lib/projectErrorMessage";
 import { useDocumentTitle } from "@/hooks/useDocumentTitle";
 import { getProject } from "@/lib/projectsApi";
@@ -192,6 +193,15 @@ export function ComponentDetailPage() {
             />
           ) : null}
 
+          {/* Rendered here rather than inside the body: the body is
+              deliberately provider-free so it can render bare, and this note
+              reads the effective verdict through a query. */}
+          {detail.data ? (
+            <InheritedVerdictNote
+              projectId={detail.data.project_id}
+              componentId={detail.data.component_id}
+            />
+          ) : null}
           {detail.data ? <ComponentDetailBody detail={detail.data} /> : null}
         </div>
       </main>

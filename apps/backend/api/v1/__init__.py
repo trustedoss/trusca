@@ -23,6 +23,7 @@ from .licenses import router as licenses_router
 from .notifications import router as notifications_router
 from .oauth import router as oauth_router
 from .obligations import router as obligations_router
+from .organization_verdicts import router as organization_verdicts_router
 from .policy_gate import router as policy_gate_router
 from .projects import router as projects_router
 from .remediation import router as remediation_router
@@ -54,6 +55,7 @@ __all__ = [
     "github_app_router",
     "health_router",
     "gate_policies_router",
+    "organization_verdicts_router",
     "transition_approvals_router",
     "license_policies_router",
     "licenses_router",

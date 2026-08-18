@@ -409,7 +409,17 @@
     "malicious_label": "Malicious",
     "malicious_action": "This package was published to attack whoever installs it. Remove it, then rotate every credential the build could reach. Upgrading to a later version does not help.",
     "malicious_source": "Listed in {{source}}",
-    "copy_purl": "package URL"
+    "copy_purl": "package URL",
+    "verdict": {
+      "inherited_badge": "Decided for the organization",
+      "inherited_explanation": "Your team has not ruled on this component, so the organization's answer applies. Deciding it here replaces the inherited answer for this project only.",
+      "status": {
+        "pending": "Awaiting review",
+        "under_review": "Under review",
+        "approved": "Approved",
+        "rejected": "Rejected"
+      }
+    }
   },
   "vulnerabilities": {
     "summary": "{{loaded}} of {{total}} findings loaded.",
