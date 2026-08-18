@@ -1079,6 +1079,19 @@
         "product": "Shipped inside a product",
         "redistribute": "Redistributed",
         "outputs-only": "Outputs only (the model is not distributed)"
+      },
+      "business_unit": "Owning part of the organization",
+      "business_unit_help": "A division, a cost centre, a squad: whatever your organization calls it. Used to narrow the project list.",
+      "owner_contact": "Who to ask about this project",
+      "distribution_model": "How this software reaches its users",
+      "distribution_model_unset": "Not decided",
+      "distribution_model_help": "Leave it undecided and the project is judged as though it ships every way, which is the conservative reading.",
+      "distribution_model_option": {
+        "internal": "Used inside the organization only",
+        "saas": "Offered as a network service",
+        "binary": "Shipped as a binary",
+        "source": "Shipped as source",
+        "embedded": "Shipped inside a device"
       }
     },
     "errors": {
@@ -1092,7 +1105,9 @@
       "credential_failed": "Could not save the Git credential.",
       "archive_failed": "Could not change the project's archive state.",
       "conflict": "Another project in this team already uses that name.",
-      "server_error": "The server could not complete this. If it keeps happening, ask an administrator to check the server configuration."
+      "server_error": "The server could not complete this. If it keeps happening, ask an administrator to check the server configuration.",
+      "business_unit_max": "Keep this to 120 characters or fewer.",
+      "owner_contact_max": "Keep this to 255 characters or fewer."
     },
     "action": {
       "save": "Save changes",

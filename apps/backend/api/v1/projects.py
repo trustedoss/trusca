@@ -274,6 +274,22 @@ async def list_projects_endpoint(
     team_id: uuid.UUID | None = Query(default=None),
     include_archived: bool = Query(default=False),
     q: str | None = Query(default=None, max_length=255),
+    business_unit: str | None = Query(
+        default=None,
+        max_length=120,
+        description=(
+            "Narrow to one owning part of the organization. Omitted or blank "
+            "leaves every project in, including the ones that have not set it."
+        ),
+    ),
+    distribution_model: str | None = Query(
+        default=None,
+        max_length=32,
+        description=(
+            "Narrow to one distribution model, or 'unset' for the projects "
+            "that have not said how they ship. Omitted leaves every project in."
+        ),
+    ),
     page: int = Query(default=1, ge=1, le=PAGE_MAX),
     size: int = Query(default=20, ge=1, le=100),
     session: AsyncSession = Depends(get_db),
@@ -286,6 +302,8 @@ async def list_projects_endpoint(
             team_id=team_id,
             include_archived=include_archived,
             q=q,
+            business_unit=business_unit,
+            distribution_model=distribution_model,
             page=page,
             size=size,
         )

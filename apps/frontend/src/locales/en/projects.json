@@ -11,7 +11,17 @@
     "sort_label": "Sort by",
     "sort_by_name": "Name",
     "sort_by_latest_scan": "Latest scan",
-    "sort_by_risk": "Risk score"
+    "sort_by_risk": "Risk score",
+    "filter_distribution_label": "Distribution",
+    "filter_distribution_all": "Any",
+    "filter_distribution_unset": "Not decided",
+    "filter_distribution_option": {
+      "internal": "Internal only",
+      "saas": "Network service",
+      "binary": "Binary",
+      "source": "Source",
+      "embedded": "Embedded"
+    }
   },
   "list": {
     "truncated": "Showing {{shown}} of {{total}} matching projects. Narrow your search to see the rest."

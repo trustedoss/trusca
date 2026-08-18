@@ -33,6 +33,10 @@ import { NOTIFICATION_KINDS } from "@/features/notifications/api/notificationsAp
 import { APPROVABLE_STATUSES } from "@/lib/gatePoliciesApi";
 import { APPROVAL_FAILURE_REASONS } from "@/lib/transitionApprovalsApi";
 import {
+  DISTRIBUTION_MODELS,
+  UNSET_DISTRIBUTION_MODEL,
+} from "@/lib/projectConstants";
+import {
   CISA_CLUSTER_ORDER,
   G7_CLUSTER_ORDER,
 } from "@/features/scan/lib/g7Conformance";
@@ -89,6 +93,7 @@ import notificationKindsFixture from "../../../../../tests/contracts/notificatio
 import userRolesFixture from "../../../../../tests/contracts/user-roles.json";
 import approvableStatusesFixture from "../../../../../tests/contracts/approvable-statuses.json";
 import approvalReasonsFixture from "../../../../../tests/contracts/approval-failure-reasons.json";
+import distributionModelsFixture from "../../../../../tests/contracts/distribution-models.json";
 // Backend G7 registry — the FE cluster ORDER mirror must follow its cluster
 // id order (same latent-drift class: the panel groups G7 checks by this list).
 import cisaRegistry from "../../../../backend/services/cisa_registry.json";
@@ -905,6 +910,47 @@ describe("approval failure reasons: the token vs the copy that explains it", () 
     for (const [name, map, prefix] of surfaces) {
       for (const reason of APPROVAL_FAILURE_REASONS) {
         expect(map[`${prefix}${reason}`], `${name} copy for ${reason}`).toBeTruthy();
+      }
+    }
+  });
+});
+
+describe("distribution models: the form's options vs what the API stores", () => {
+  // A value the form offers and the API rejects fails on save, after somebody
+  // has chosen it. One the API accepts and the form omits is a setting nobody
+  // can reach from the screen, which fails nothing and is simply missing.
+  it("DISTRIBUTION_MODELS equals the shared fixture, in fixture order", () => {
+    expect([...DISTRIBUTION_MODELS]).toEqual(distributionModelsFixture.models);
+  });
+
+  it("the unset filter sentinel is not one of the stored values", () => {
+    // They answer opposite questions: one asks for the projects still to be
+    // filled in, the other for the ones that chose that value.
+    expect([...DISTRIBUTION_MODELS]).not.toContain(UNSET_DISTRIBUTION_MODEL);
+  });
+
+  it("every model owns an EN and a KO label on both surfaces that show it", () => {
+    const surfaces: Array<[string, Record<string, string>]> = [
+      [
+        "settings EN",
+        labelMap(enProjectDetail, "settings", "field", "distribution_model_option"),
+      ],
+      [
+        "settings KO",
+        labelMap(koProjectDetail, "settings", "field", "distribution_model_option"),
+      ],
+      [
+        "toolbar EN",
+        labelMap(enProjects, "toolbar", "filter_distribution_option"),
+      ],
+      [
+        "toolbar KO",
+        labelMap(koProjects, "toolbar", "filter_distribution_option"),
+      ],
+    ];
+    for (const [name, map] of surfaces) {
+      for (const model of DISTRIBUTION_MODELS) {
+        expect(map[model], `${name} label for ${model}`).toBeTruthy();
       }
     }
   });

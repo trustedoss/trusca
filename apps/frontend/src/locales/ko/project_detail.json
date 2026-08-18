@@ -1079,6 +1079,19 @@
         "product": "제품에 포함해 배포",
         "redistribute": "재배포",
         "outputs-only": "출력물만 사용(모델은 배포하지 않음)"
+      },
+      "business_unit": "소유 조직",
+      "business_unit_help": "본부, 부서, 팀 등 조직에서 부르는 단위를 적습니다. 프로젝트 목록을 좁히는 데 씁니다.",
+      "owner_contact": "담당",
+      "distribution_model": "사용자에게 전달되는 방식",
+      "distribution_model_unset": "정하지 않음",
+      "distribution_model_help": "정하지 않고 두면 모든 방식으로 배포된다고 보고 판단합니다. 가장 보수적인 해석입니다.",
+      "distribution_model_option": {
+        "internal": "조직 내부에서만 사용",
+        "saas": "네트워크 서비스로 제공",
+        "binary": "바이너리로 배포",
+        "source": "소스로 배포",
+        "embedded": "기기에 내장해 배포"
       }
     },
     "errors": {
@@ -1092,7 +1105,9 @@
       "credential_failed": "Git 자격 증명을 저장하지 못했습니다.",
       "archive_failed": "프로젝트 보관 상태를 변경하지 못했습니다.",
       "conflict": "같은 이름을 쓰는 프로젝트가 이 팀에 이미 있습니다.",
-      "server_error": "서버가 요청을 처리하지 못했습니다. 계속되면 관리자에게 서버 설정 확인을 요청하십시오."
+      "server_error": "서버가 요청을 처리하지 못했습니다. 계속되면 관리자에게 서버 설정 확인을 요청하십시오.",
+      "business_unit_max": "120자 이내로 적어 주세요.",
+      "owner_contact_max": "255자 이내로 적어 주세요."
     },
     "action": {
       "save": "변경사항 저장",

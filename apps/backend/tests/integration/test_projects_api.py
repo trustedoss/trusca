@@ -825,3 +825,236 @@ async def test_a_granted_viewer_cannot_create_a_project(client) -> None:
 
     assert response.status_code == 403, response.text
     assert response.headers["content-type"].startswith(PROBLEM_JSON)
+
+
+# ---------------------------------------------------------------------------
+# N16: who owns a project, and how it ships
+# ---------------------------------------------------------------------------
+
+
+async def test_the_attributes_round_trip_through_create_and_read(client) -> None:
+    _, team, user = await _seed_team_with_user(client, role="team_admin")
+
+    created = await client.post(
+        "/v1/projects",
+        headers=_bearer_for(user),
+        json={
+            "team_id": str(team.id),
+            "name": "Payments",
+            "slug": f"payments-{unique_suffix()}",
+            "business_unit": "Platform",
+            "owner_contact": "platform-oncall@example.com",
+            "distribution_model": "saas",
+        },
+    )
+
+    assert created.status_code == 201, created.text
+    body = created.json()
+    assert body["business_unit"] == "Platform"
+    assert body["owner_contact"] == "platform-oncall@example.com"
+    assert body["distribution_model"] == "saas"
+
+
+async def test_a_project_that_says_nothing_reads_as_null(client) -> None:
+    """The default, and the contract: saying nothing changes nothing."""
+    _, team, user = await _seed_team_with_user(client, role="team_admin")
+
+    created = await client.post(
+        "/v1/projects",
+        headers=_bearer_for(user),
+        json={
+            "team_id": str(team.id),
+            "name": "Quiet",
+            "slug": f"quiet-{unique_suffix()}",
+        },
+    )
+
+    assert created.status_code == 201, created.text
+    assert created.json()["business_unit"] is None
+    assert created.json()["distribution_model"] is None
+
+
+async def test_a_misspelt_distribution_model_is_refused(client) -> None:
+    """Not dropped.
+
+    A typo that silently became "unspecified" would leave the operator looking
+    at a screen saying they had narrowed nothing, with no way to tell that
+    their setting never took. Same reasoning as the AI usage context beside it.
+    """
+    _, team, user = await _seed_team_with_user(client, role="team_admin")
+
+    response = await client.post(
+        "/v1/projects",
+        headers=_bearer_for(user),
+        json={
+            "team_id": str(team.id),
+            "name": "Typo",
+            "slug": f"typo-{unique_suffix()}",
+            "distribution_model": "sass",
+        },
+    )
+
+    assert response.status_code == 422, response.text
+
+
+async def test_whitespace_is_trimmed_so_one_bucket_stays_one(client) -> None:
+    """"Platform" and "Platform " would otherwise be two filters that look alike."""
+    _, team, user = await _seed_team_with_user(client, role="team_admin")
+
+    created = await client.post(
+        "/v1/projects",
+        headers=_bearer_for(user),
+        json={
+            "team_id": str(team.id),
+            "name": "Spaced",
+            "slug": f"spaced-{unique_suffix()}",
+            "business_unit": "  Platform  ",
+        },
+    )
+
+    assert created.status_code == 201, created.text
+    assert created.json()["business_unit"] == "Platform"
+
+
+async def test_an_empty_string_clears_an_attribute(client) -> None:
+    _, team, user = await _seed_team_with_user(client, role="team_admin")
+    created = await client.post(
+        "/v1/projects",
+        headers=_bearer_for(user),
+        json={
+            "team_id": str(team.id),
+            "name": "Clearable",
+            "slug": f"clearable-{unique_suffix()}",
+            "business_unit": "Platform",
+            "distribution_model": "binary",
+        },
+    )
+
+    patched = await client.patch(
+        f"/v1/projects/{created.json()['id']}",
+        headers=_bearer_for(user),
+        json={"business_unit": "", "distribution_model": ""},
+    )
+
+    assert patched.status_code == 200, patched.text
+    assert patched.json()["business_unit"] is None
+    assert patched.json()["distribution_model"] is None
+
+
+# ---------------------------------------------------------------------------
+# The filters, and the thing they must not do
+# ---------------------------------------------------------------------------
+
+
+async def _seed_attributed_projects(client: AsyncClient, team_id: uuid.UUID, user):
+    """Three projects: one shipped, one internal, one that says nothing."""
+    headers = _bearer_for(user)
+    suffix = unique_suffix()
+    for name, body in (
+        ("shipped", {"business_unit": "Platform", "distribution_model": "binary"}),
+        ("service", {"business_unit": "Platform", "distribution_model": "saas"}),
+        ("quiet", {}),
+    ):
+        response = await client.post(
+            "/v1/projects",
+            headers=headers,
+            json={
+                "team_id": str(team_id),
+                "name": name,
+                "slug": f"{name}-{suffix}",
+                **body,
+            },
+        )
+        assert response.status_code == 201, response.text
+
+
+async def test_no_filter_leaves_every_project_in(client) -> None:
+    """The silent break this unit had to avoid.
+
+    Most projects will have no attributes on the day this ships. A filter that
+    applied by default would drop them from the portfolio, and the list would
+    read as projects having gone missing rather than as a filter being on.
+    """
+    _, team, user = await _seed_team_with_user(client, role="team_admin")
+    await _seed_attributed_projects(client, team.id, user)
+
+    response = await client.get(
+        f"/v1/projects?team_id={team.id}", headers=_bearer_for(user)
+    )
+
+    assert response.status_code == 200, response.text
+    names = {item["name"] for item in response.json()["items"]}
+    assert {"shipped", "service", "quiet"} <= names
+
+
+async def test_a_blank_filter_is_the_same_as_no_filter(client) -> None:
+    """A form that submits an empty select must not narrow anything."""
+    _, team, user = await _seed_team_with_user(client, role="team_admin")
+    await _seed_attributed_projects(client, team.id, user)
+
+    response = await client.get(
+        f"/v1/projects?team_id={team.id}&business_unit=&distribution_model=",
+        headers=_bearer_for(user),
+    )
+
+    names = {item["name"] for item in response.json()["items"]}
+    assert {"shipped", "service", "quiet"} <= names
+
+
+async def test_filtering_by_distribution_model_narrows_to_it(client) -> None:
+    _, team, user = await _seed_team_with_user(client, role="team_admin")
+    await _seed_attributed_projects(client, team.id, user)
+
+    response = await client.get(
+        f"/v1/projects?team_id={team.id}&distribution_model=saas",
+        headers=_bearer_for(user),
+    )
+
+    names = {item["name"] for item in response.json()["items"]}
+    assert names == {"service"}
+
+
+async def test_filtering_for_unset_finds_the_ones_still_to_be_filled_in(
+    client,
+) -> None:
+    """Equality never matches NULL, so this needs its own sentinel.
+
+    It is also the question an operator asks while they are trying to finish
+    the exercise, which makes it the filter most worth having.
+    """
+    _, team, user = await _seed_team_with_user(client, role="team_admin")
+    await _seed_attributed_projects(client, team.id, user)
+
+    response = await client.get(
+        f"/v1/projects?team_id={team.id}&distribution_model=unset",
+        headers=_bearer_for(user),
+    )
+
+    names = {item["name"] for item in response.json()["items"]}
+    assert names == {"quiet"}
+
+
+async def test_filtering_by_business_unit_narrows_to_it(client) -> None:
+    _, team, user = await _seed_team_with_user(client, role="team_admin")
+    await _seed_attributed_projects(client, team.id, user)
+
+    response = await client.get(
+        f"/v1/projects?team_id={team.id}&business_unit=Platform",
+        headers=_bearer_for(user),
+    )
+
+    names = {item["name"] for item in response.json()["items"]}
+    assert names == {"shipped", "service"}
+
+
+async def test_the_total_matches_the_filtered_rows(client) -> None:
+    """A count taken before the filter would page over rows nobody can reach."""
+    _, team, user = await _seed_team_with_user(client, role="team_admin")
+    await _seed_attributed_projects(client, team.id, user)
+
+    response = await client.get(
+        f"/v1/projects?team_id={team.id}&distribution_model=saas",
+        headers=_bearer_for(user),
+    )
+
+    assert response.json()["total"] == 1
