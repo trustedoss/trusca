@@ -68,5 +68,33 @@
     "empty_filtered": "No approvals match these filters.",
     "empty_filtered_help": "Widen the status, the dates, or the project to see more.",
     "total": "{{count}} request"
+  },
+  "transitions": {
+    "title": "Status changes waiting on you",
+    "description": "Your organization asked for a second person on these. The person who requested one cannot be the person who agrees to it.",
+    "approve": "Agree",
+    "reject": "Refuse",
+    "waiting_on_someone_else": "You asked for this. Waiting on someone else.",
+    "toast": {
+      "approved": "Agreed. The finding has moved.",
+      "rejected": "Refused. The finding stays where it was.",
+      "failed": "The decision could not be recorded.",
+      "failed_self_decision": "You asked for this change, so somebody else has to agree to it.",
+      "failed_not_team_admin": "Agreeing to this needs a team administrator.",
+      "failed_already_decided": "Somebody already decided this request.",
+      "failed_not_found": "This request is no longer available.",
+      "failed_already_open": "A request for this finding is already waiting.",
+      "failed_approval_not_required": "This status no longer needs a second person."
+    },
+    "request": {
+      "title": "This change needs a second person",
+      "description": "Your organization asked that somebody else agree to this status. Write why, and it goes to the queue.",
+      "justification_label": "Why this change",
+      "justification_hint": "At least 10 characters. This is all the approver has to judge.",
+      "submit": "Send for agreement",
+      "cancel": "Cancel",
+      "sent": "Sent. The finding moves once somebody agrees.",
+      "failed": "The request could not be sent."
+    }
   }
 }

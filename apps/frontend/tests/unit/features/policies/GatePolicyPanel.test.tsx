@@ -18,7 +18,11 @@ const getTeamGatePolicy = vi.fn();
 const upsertTeamGatePolicy = vi.fn();
 const deleteTeamGatePolicy = vi.fn();
 
-vi.mock("@/lib/gatePoliciesApi", () => ({
+// Spread the real module rather than listing its exports: a stub that names
+// them one by one goes stale the moment the module grows a constant, and it
+// fails as an unrelated crash rather than as a missing mock.
+vi.mock("@/lib/gatePoliciesApi", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@/lib/gatePoliciesApi")>()),
   getTeamGatePolicy: (...args: unknown[]) => getTeamGatePolicy(...args),
   upsertTeamGatePolicy: (...args: unknown[]) => upsertTeamGatePolicy(...args),
   deleteTeamGatePolicy: (...args: unknown[]) => deleteTeamGatePolicy(...args),
@@ -59,6 +63,7 @@ describe("GatePolicyPanel", () => {
 
     await waitFor(() => expect(upsertTeamGatePolicy).toHaveBeenCalled());
     expect(upsertTeamGatePolicy.mock.calls[0][1]).toEqual({
+      approval_required_statuses: null,
       epss_threshold: null,
       reachable_critical_only: null,
       malicious_blocks: null,
@@ -143,5 +148,63 @@ describe("GatePolicyPanel", () => {
 
     await waitFor(() => expect(screen.getByTestId("gate-policy-save")).toBeEnabled());
     expect(screen.queryByTestId("gate-policy-reset")).not.toBeInTheDocument();
+  });
+
+  it("keeps the approval statuses a save would otherwise clear", async () => {
+    // The panel replaces the whole row, so a field it does not send is a field
+    // it deletes. This started as a real defect: the editor gained no control
+    // for the new setting and saving any other field silently turned it off.
+    getTeamGatePolicy.mockResolvedValue({
+      id: "p1",
+      organization_id: "o1",
+      team_id: "team-1",
+      name: null,
+      epss_threshold: null,
+      reachable_critical_only: null,
+      malicious_blocks: null,
+      approval_required_statuses: ["suppressed"],
+      created_at: "2026-08-18T00:00:00Z",
+      updated_at: "2026-08-18T00:00:00Z",
+    });
+    upsertTeamGatePolicy.mockResolvedValue({});
+    renderPanel();
+
+    await waitFor(() =>
+      expect(screen.getByTestId("gate-approval-suppressed")).toBeChecked(),
+    );
+    await userEvent.click(screen.getByTestId("gate-policy-save"));
+
+    await waitFor(() => expect(upsertTeamGatePolicy).toHaveBeenCalled());
+    expect(
+      upsertTeamGatePolicy.mock.calls[0][1].approval_required_statuses,
+    ).toEqual(["suppressed"]);
+  });
+
+  it("hands the setting back to the organization when the override goes off", async () => {
+    getTeamGatePolicy.mockResolvedValue({
+      id: "p1",
+      organization_id: "o1",
+      team_id: "team-1",
+      name: null,
+      epss_threshold: null,
+      reachable_critical_only: null,
+      malicious_blocks: null,
+      approval_required_statuses: ["suppressed"],
+      created_at: "2026-08-18T00:00:00Z",
+      updated_at: "2026-08-18T00:00:00Z",
+    });
+    upsertTeamGatePolicy.mockResolvedValue({});
+    renderPanel();
+
+    await waitFor(() =>
+      expect(screen.getByTestId("gate-approval-suppressed")).toBeChecked(),
+    );
+    await userEvent.click(screen.getByTestId("gate-approval-override"));
+    await userEvent.click(screen.getByTestId("gate-policy-save"));
+
+    await waitFor(() => expect(upsertTeamGatePolicy).toHaveBeenCalled());
+    expect(
+      upsertTeamGatePolicy.mock.calls[0][1].approval_required_statuses,
+    ).toBeNull();
   });
 });

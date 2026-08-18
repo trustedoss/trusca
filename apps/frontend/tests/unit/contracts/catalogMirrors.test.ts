@@ -30,6 +30,8 @@ import { resolve } from "node:path";
 import { describe, expect, it } from "vitest";
 
 import { NOTIFICATION_KINDS } from "@/features/notifications/api/notificationsApi";
+import { APPROVABLE_STATUSES } from "@/lib/gatePoliciesApi";
+import { APPROVAL_FAILURE_REASONS } from "@/lib/transitionApprovalsApi";
 import {
   CISA_CLUSTER_ORDER,
   G7_CLUSTER_ORDER,
@@ -67,12 +69,16 @@ import enAdmin from "@/locales/en/admin.json";
 import koAdmin from "@/locales/ko/admin.json";
 import enNotifications from "@/locales/en/notifications.json";
 import koNotifications from "@/locales/ko/notifications.json";
+import enApprovals from "@/locales/en/approvals.json";
+import koApprovals from "@/locales/ko/approvals.json";
 import enProjectDetail from "@/locales/en/project_detail.json";
 import koProjectDetail from "@/locales/ko/project_detail.json";
 import enProfile from "@/locales/en/profile.json";
 import koProfile from "@/locales/ko/profile.json";
 import enProjects from "@/locales/en/projects.json";
 import koProjects from "@/locales/ko/projects.json";
+import enPolicies from "@/locales/en/policies.json";
+import koPolicies from "@/locales/ko/policies.json";
 import enScans from "@/locales/en/scans.json";
 import koScans from "@/locales/ko/scans.json";
 
@@ -81,6 +87,8 @@ import koScans from "@/locales/ko/scans.json";
 // the tracked follow-up (see the fixture's $comment).
 import notificationKindsFixture from "../../../../../tests/contracts/notification-kinds.json";
 import userRolesFixture from "../../../../../tests/contracts/user-roles.json";
+import approvableStatusesFixture from "../../../../../tests/contracts/approvable-statuses.json";
+import approvalReasonsFixture from "../../../../../tests/contracts/approval-failure-reasons.json";
 // Backend G7 registry — the FE cluster ORDER mirror must follow its cluster
 // id order (same latent-drift class: the panel groups G7 checks by this list).
 import cisaRegistry from "../../../../backend/services/cisa_registry.json";
@@ -849,6 +857,55 @@ describe("oauth provider mirrors", () => {
     const labels = locale === "en" ? enProfile : koProfile;
     for (const provider of providers) {
       expect(labels.connected_accounts.provider).toHaveProperty(provider);
+    }
+  });
+});
+
+describe("approvable statuses: the policy editor vs what the API accepts", () => {
+  // A status the checkboxes offer and the validator rejects fails on save,
+  // after the user has chosen it; one the validator accepts and the editor
+  // omits is a control nobody can reach.
+  it("APPROVABLE_STATUSES equals the shared fixture, in fixture order", () => {
+    expect([...APPROVABLE_STATUSES]).toEqual(approvableStatusesFixture.statuses);
+  });
+
+  it("every approvable status owns an EN and a KO label", () => {
+    const en = labelMap(enPolicies, "gate", "approval", "status");
+    const ko = labelMap(koPolicies, "gate", "approval", "status");
+    for (const status of APPROVABLE_STATUSES) {
+      expect(en[status], `EN label for ${status}`).toBeTruthy();
+      expect(ko[status], `KO label for ${status}`).toBeTruthy();
+    }
+  });
+});
+
+describe("approval failure reasons: the token vs the copy that explains it", () => {
+  // The reason a call was refused is the one thing the reader needs, and the
+  // server sends it in English. A token with no translation falls back to
+  // "something went wrong", which is the outcome the tokens replaced.
+  it("APPROVAL_FAILURE_REASONS equals the shared fixture", () => {
+    expect([...APPROVAL_FAILURE_REASONS]).toEqual(approvalReasonsFixture.reasons);
+  });
+
+  it("every reason owns EN and KO copy on both surfaces that show it", () => {
+    const surfaces: Array<[string, Record<string, string>, string]> = [
+      ["approvals EN", labelMap(enApprovals, "transitions", "toast"), "failed_"],
+      ["approvals KO", labelMap(koApprovals, "transitions", "toast"), "failed_"],
+      [
+        "detail EN",
+        labelMap(enProjectDetail, "vulnerabilities", "drawer", "errors"),
+        "approval_failed_",
+      ],
+      [
+        "detail KO",
+        labelMap(koProjectDetail, "vulnerabilities", "drawer", "errors"),
+        "approval_failed_",
+      ],
+    ];
+    for (const [name, map, prefix] of surfaces) {
+      for (const reason of APPROVAL_FAILURE_REASONS) {
+        expect(map[`${prefix}${reason}`], `${name} copy for ${reason}`).toBeTruthy();
+      }
     }
   });
 });

@@ -52,6 +52,7 @@ from api.v1 import (
     search_results_router,
     search_router,
     source_tree_router,
+    transition_approvals_router,
     users_me_router,
     vex_router,
     vulnerabilities_router,
@@ -250,6 +251,7 @@ app.include_router(license_policies_router)
 # router from the licence policy because the two answer different questions
 # even though both feed one verdict.
 app.include_router(gate_policies_router)
+app.include_router(transition_approvals_router)
 app.include_router(obligations_router)
 # W9-#58: Compliance unified grid (licenses × obligations in one view). The
 # legacy /licenses and /obligations endpoints remain for the existing drawers;

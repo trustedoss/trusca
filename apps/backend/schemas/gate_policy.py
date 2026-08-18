@@ -16,7 +16,15 @@ from __future__ import annotations
 import uuid
 from datetime import datetime
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, field_validator
+
+#: Statuses an organization may put behind a second person. Restricted to the
+#: ones that end the obligation, because those are what "accepting risk" means;
+#: gating the working states (new, analyzing) would stop triage rather than
+#: stopping a decision, and nobody asked for that.
+APPROVABLE_STATUSES: frozenset[str] = frozenset(
+    {"not_affected", "false_positive", "fixed", "suppressed"}
+)
 
 
 class GatePolicyUpsertIn(BaseModel):
@@ -54,6 +62,34 @@ class GatePolicyUpsertIn(BaseModel):
             "ever turns it off deliberately."
         ),
     )
+    approval_required_statuses: list[str] | None = Field(
+        default=None,
+        description=(
+            "Finding statuses one person may not reach alone. Reaching one of "
+            "these opens a request that somebody else decides. Null or empty "
+            "means every transition stays a single action."
+        ),
+    )
+
+    @field_validator("approval_required_statuses")
+    @classmethod
+    def _known_statuses_only(cls, value: list[str] | None) -> list[str] | None:
+        """Reject names that would look configured and do nothing.
+
+        A misspelt status stored as-is is the worst outcome available here: the
+        policy page shows a control in place, and every transition it was meant
+        to catch goes through unremarked.
+        """
+        if value is None:
+            return None
+        unknown = sorted(set(value) - APPROVABLE_STATUSES)
+        if unknown:
+            raise ValueError(
+                f"not statuses that can require approval: {', '.join(unknown)}; "
+                f"choose from {', '.join(sorted(APPROVABLE_STATUSES))}"
+            )
+        # Order carries no meaning and duplicates are not a second requirement.
+        return sorted(set(value))
 
 
 class GatePolicyOut(BaseModel):
@@ -70,6 +106,7 @@ class GatePolicyOut(BaseModel):
     epss_threshold: float | None = None
     reachable_critical_only: bool | None = None
     malicious_blocks: bool | None = None
+    approval_required_statuses: list[str] | None = None
     created_at: datetime
     updated_at: datetime
 
@@ -88,10 +125,20 @@ class EffectiveGatePolicyOut(BaseModel):
     epss_threshold: float | None = None
     reachable_critical_only: bool | None = None
     malicious_blocks: bool | None = None
+    approval_required_statuses: list[str] = Field(
+        default_factory=list,
+        description=(
+            "Statuses this project may not reach without a second person. "
+            "The organization's list plus anything the team added: a team may "
+            "be stricter than its organization, never looser."
+        ),
+    )
     sources: dict[str, str] = Field(
         default_factory=dict,
         description=(
             "Field name to the scope that supplied it: 'team', 'organization', "
-            "or 'deployment' when no policy decided it."
+            "or 'deployment' when no policy decided it. "
+            "``approval_required_statuses`` may also read 'team+organization', "
+            "because that field is a union rather than a fall-through."
         ),
     )

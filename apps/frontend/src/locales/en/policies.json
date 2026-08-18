@@ -121,6 +121,17 @@
       "label": "A flagged package blocks the build",
       "help": "On unless this team turns it off. Turning it off lets a build ship a package the snapshot flags."
     },
+    "approval": {
+      "label": "Statuses that need a second person",
+      "help": "Reaching a checked status opens a request somebody else has to agree to. The person who asks cannot be the person who agrees. Anything your organization already requires stays required: this list adds to it.",
+      "two_people_needed": "Your team needs at least two administrators for this to work.",
+      "status": {
+        "not_affected": "Not affected",
+        "false_positive": "False positive",
+        "fixed": "Fixed",
+        "suppressed": "Suppressed"
+      }
+    },
     "save": "Save",
     "reset": "Follow the organization",
     "read_only": "You can see this policy but not change it."

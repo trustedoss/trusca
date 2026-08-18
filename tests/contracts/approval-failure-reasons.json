@@ -1,0 +1,24 @@
+{
+  "_comment": [
+    "Why an approval call was refused, as a stable token.",
+    "",
+    "The Problem Details `detail` is written in English and always will be, so a",
+    "UI that renders it answers a Korean reader in the wrong language on the one",
+    "screen where the reason decides what they do next. Two of these also share",
+    "a status code: refusing to decide your own request and lacking the grade are",
+    "both 403, and they ask the reader to do entirely different things.",
+    "",
+    "Three places read this vocabulary: the backend map that stamps the token,",
+    "the frontend list that turns it into a translation key, and this file. A",
+    "token the backend sends and the frontend does not know renders the generic",
+    "fallback, which is the specific failure this file exists to prevent."
+  ],
+  "reasons": [
+    "self_decision",
+    "not_team_admin",
+    "approval_not_required",
+    "already_open",
+    "already_decided",
+    "not_found"
+  ]
+}

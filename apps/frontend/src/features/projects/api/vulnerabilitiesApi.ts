@@ -674,12 +674,31 @@ export function extractAllowedTo(error: unknown): VulnFindingStatus[] | null {
 }
 
 /**
+ * `true` when the transition needs a second person before it can happen.
+ *
+ * Read from an extension member rather than the title, which is display text.
+ */
+export function isApprovalRequiredError(error: unknown): boolean {
+  if (!(error instanceof ProblemError) || error.status !== 409) return false;
+  const problem = error.problem as Record<string, unknown> | null;
+  return problem?.approval_required === true;
+}
+
+/**
  * `true` when the error is a 409 conflict (caller passed an `if_match` value
  * that no longer matches the current `updated_at`). The drawer surfaces a
  * "Reload" action when this happens.
+ *
+ * Approval-required is also a 409 and is deliberately excluded: reloading
+ * changes nothing about it, and offering "Reload" to somebody who needs a
+ * colleague's agreement sends them round a loop that cannot end.
  */
 export function isConflictError(error: unknown): boolean {
-  return error instanceof ProblemError && error.status === 409;
+  return (
+    error instanceof ProblemError &&
+    error.status === 409 &&
+    !isApprovalRequiredError(error)
+  );
 }
 
 // ---------------------------------------------------------------------------

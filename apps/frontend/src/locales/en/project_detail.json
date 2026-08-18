@@ -708,7 +708,17 @@
         "load_failed": "Could not load vulnerability.",
         "update_failed": "Could not update status.",
         "conflict": "This finding was updated by someone else. Reload to see the latest state.",
-        "conflict_reload": "Reload"
+        "conflict_reload": "Reload",
+        "approval_required": "Your organization asked that somebody else agree before a finding moves to {{status}}. Write why below, then send it for agreement.",
+        "approval_request": "Send for agreement",
+        "approval_sent": "Sent. The finding moves once somebody agrees.",
+        "approval_failed": "The request could not be sent.",
+        "approval_failed_already_open": "A request for this finding is already waiting on somebody.",
+        "approval_failed_approval_not_required": "This status does not need a second person. Set it directly.",
+        "approval_failed_not_found": "This finding is no longer available.",
+        "approval_failed_self_decision": "You asked for this change, so somebody else has to agree to it.",
+        "approval_failed_not_team_admin": "You may not ask for this change.",
+        "approval_failed_already_decided": "This request has already been decided."
       },
       "copy_cve": "CVE id",
       "copy_vector": "CVSS vector",

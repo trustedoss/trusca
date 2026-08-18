@@ -804,3 +804,86 @@ def test_the_oauth_provider_name_appears_in_every_list_that_gates_it() -> None:
     for name in declared:
         # Raises ValueError if the adapter lookup does not know the name.
         assert get_provider(name) is not None
+
+
+# ---------------------------------------------------------------------------
+# Approvable statuses: backend validator vs the editor that offers them
+# ---------------------------------------------------------------------------
+
+
+def test_approvable_statuses_match_the_shared_fixture() -> None:
+    """The list the API accepts vs the list the policy editor draws.
+
+    These are the statuses an organization may put behind a second person.
+    Drift is invisible until somebody configures the policy: a status the
+    editor offers and the validator rejects fails on save, after the work; one
+    the validator accepts and the editor omits is a control nobody can reach.
+    """
+    import json
+    from pathlib import Path
+
+    from schemas.gate_policy import APPROVABLE_STATUSES
+
+    fixture = (
+        Path(__file__).resolve().parents[4] / "tests/contracts/approvable-statuses.json"
+    )
+    assert fixture.is_file(), f"shared approvable-status fixture missing: {fixture}"
+    statuses = json.loads(fixture.read_text(encoding="utf-8"))["statuses"]
+
+    assert APPROVABLE_STATUSES == frozenset(statuses), (
+        "approvable statuses drifted from the shared fixture. Update "
+        "tests/contracts/approvable-statuses.json AND the frontend mirror "
+        "(APPROVABLE_STATUSES in gatePoliciesApi.ts, plus the policies locale "
+        "labels) together."
+    )
+
+
+def test_every_approvable_status_is_a_real_finding_status() -> None:
+    """A status that cannot be reached cannot be gated.
+
+    The validator would accept a name that no transition ever produces, and
+    the policy would look configured while catching nothing.
+    """
+    from schemas.gate_policy import APPROVABLE_STATUSES
+    from services.vulnerability_service import ALL_STATUSES
+
+    assert APPROVABLE_STATUSES <= set(ALL_STATUSES)
+
+
+def test_approval_failure_reasons_match_the_shared_fixture() -> None:
+    """The tokens the API stamps vs the list the UI can translate.
+
+    A token the backend sends and the frontend does not know falls back to a
+    generic message, which is exactly the outcome the tokens were introduced to
+    avoid: the reader is told the call failed and not what to do about it.
+    """
+    import json
+    from pathlib import Path
+
+    from api.v1.transition_approvals import _REASON_FOR
+
+    fixture = (
+        Path(__file__).resolve().parents[4]
+        / "tests/contracts/approval-failure-reasons.json"
+    )
+    assert fixture.is_file(), f"shared approval-reason fixture missing: {fixture}"
+    reasons = json.loads(fixture.read_text(encoding="utf-8"))["reasons"]
+
+    assert set(_REASON_FOR.values()) == set(reasons), (
+        "approval failure reasons drifted from the shared fixture. Update "
+        "tests/contracts/approval-failure-reasons.json, the frontend mirror "
+        "(APPROVAL_FAILURE_REASONS in transitionApprovalsApi.ts) and the "
+        "locale copy together."
+    )
+
+
+def test_every_approval_failure_has_its_own_token() -> None:
+    """One token per exception, so no two failures collapse into one message.
+
+    ``ApprovalSelfDecision`` subclasses ``ApprovalForbidden`` and the router
+    looks the token up by exact type for that reason. If they ever shared a
+    token the distinction would be gone and nobody would notice.
+    """
+    from api.v1.transition_approvals import _REASON_FOR
+
+    assert len(set(_REASON_FOR.values())) == len(_REASON_FOR)

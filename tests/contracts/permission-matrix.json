@@ -719,6 +719,21 @@
     },
     {
       "method": "GET",
+      "path": "/v1/transition-approvals",
+      "gate": "role>=viewer"
+    },
+    {
+      "method": "POST",
+      "path": "/v1/transition-approvals",
+      "gate": "role>=developer"
+    },
+    {
+      "method": "POST",
+      "path": "/v1/transition-approvals/{approval_id}/decision",
+      "gate": "role>=developer"
+    },
+    {
+      "method": "GET",
       "path": "/v1/users/me/notification-prefs",
       "gate": "authed"
     },

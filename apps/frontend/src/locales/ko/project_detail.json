@@ -708,7 +708,17 @@
         "load_failed": "취약점을 불러오지 못했습니다.",
         "update_failed": "상태를 변경하지 못했습니다.",
         "conflict": "다른 사용자가 이 취약점을 먼저 변경했습니다. 다시 불러와 최신 상태를 확인해 주세요.",
-        "conflict_reload": "다시 불러오기"
+        "conflict_reload": "다시 불러오기",
+        "approval_required": "조직이 {{status}} 상태로 옮기기 전에 다른 사람의 동의를 받도록 정했습니다. 아래에 이유를 적고 동의를 요청하세요.",
+        "approval_request": "동의 요청 보내기",
+        "approval_sent": "요청을 보냈습니다. 누군가 동의하면 항목이 옮겨집니다.",
+        "approval_failed": "요청을 보내지 못했습니다.",
+        "approval_failed_already_open": "이 항목에는 이미 누군가의 동의를 기다리는 요청이 있습니다.",
+        "approval_failed_approval_not_required": "이 상태에는 다른 사람의 동의가 필요하지 않습니다. 바로 바꾸세요.",
+        "approval_failed_not_found": "더 이상 볼 수 없는 항목입니다.",
+        "approval_failed_self_decision": "직접 요청한 건이라 다른 사람이 동의해야 합니다.",
+        "approval_failed_not_team_admin": "이 변경을 요청할 권한이 없습니다.",
+        "approval_failed_already_decided": "이미 결정이 끝난 요청입니다."
       },
       "copy_cve": "CVE 식별자",
       "copy_vector": "CVSS 벡터",

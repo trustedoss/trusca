@@ -120,6 +120,7 @@ from models import (
     Vulnerability,
     VulnerabilityFinding,
 )
+from services.gate_policy_service import statuses_requiring_approval
 from services.vulnerability_service import (
     STATUS_TRANSITIONS,
     VulnerabilityForbidden,
@@ -652,6 +653,7 @@ async def _apply_to_finding(
     origin: dict[str, Any],
     result: _Result,
     now: datetime,
+    approval_required: frozenset[str],
 ) -> None:
     """Step a single finding to ``statement.target`` via the legal path.
 
@@ -697,6 +699,24 @@ async def _apply_to_finding(
             product=_first_product(statement),
             reason="illegal_transition",
             detail=f"no legal path from {current!r} to {target!r}",
+        )
+        return
+
+    # A status the organization put behind a second person is not reachable by
+    # importing a document either. Checked here rather than only on the two
+    # transition endpoints because an unguarded importer would be the easiest
+    # way around the control, and a bulk one: a single upload could close every
+    # finding in a project.
+    gated = sorted(set(path) & approval_required)
+    if gated:
+        result.skip(
+            vuln=statement.vuln,
+            product=_first_product(statement),
+            reason="approval_required",
+            detail=(
+                f"{', '.join(gated)} needs a second person to agree; "
+                f"open a request instead of importing it"
+            ),
         )
         return
 
@@ -804,6 +824,12 @@ async def import_vex(
     project_id = project.id
     team_id = project.team_id
 
+    # Resolved once for the whole document rather than per statement: it is one
+    # project, so the answer cannot differ between statements, and a policy
+    # lookup per statement would put a query in the middle of a loop that
+    # already runs the length of an uploaded file.
+    approval_required = await statuses_requiring_approval(session, project_id)
+
     doc = _decode_json(raw)
     fmt, statements, origin = _detect_and_parse(doc)
 
@@ -907,6 +933,7 @@ async def import_vex(
                 origin=origin,
                 result=result,
                 now=now,
+                approval_required=approval_required,
             )
             if result.applied > before:
                 any_mutation = True

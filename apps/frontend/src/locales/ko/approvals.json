@@ -68,5 +68,33 @@
     "empty_filtered": "조건에 맞는 승인 요청이 없습니다.",
     "empty_filtered_help": "상태나 기간, 프로젝트 조건을 넓혀 보세요.",
     "total": "요청 {{count}}건"
+  },
+  "transitions": {
+    "title": "동의를 기다리는 상태 변경",
+    "description": "조직이 이 변경에는 다른 사람의 동의를 받도록 정했습니다. 요청한 사람은 스스로 동의할 수 없습니다.",
+    "approve": "동의",
+    "reject": "거절",
+    "waiting_on_someone_else": "직접 요청한 건입니다. 다른 사람의 동의를 기다립니다.",
+    "toast": {
+      "approved": "동의했습니다. 항목이 옮겨졌습니다.",
+      "rejected": "거절했습니다. 항목은 그대로 둡니다.",
+      "failed": "결정을 기록하지 못했습니다.",
+      "failed_self_decision": "직접 요청한 건이라 다른 사람이 동의해야 합니다.",
+      "failed_not_team_admin": "동의하려면 팀 관리자 권한이 필요합니다.",
+      "failed_already_decided": "이미 다른 사람이 결정한 요청입니다.",
+      "failed_not_found": "더 이상 볼 수 없는 요청입니다.",
+      "failed_already_open": "이 항목에는 이미 대기 중인 요청이 있습니다.",
+      "failed_approval_not_required": "이 상태에는 더 이상 다른 사람의 동의가 필요하지 않습니다."
+    },
+    "request": {
+      "title": "이 변경에는 다른 사람의 동의가 필요합니다",
+      "description": "조직이 이 상태로 옮길 때 다른 사람의 동의를 받도록 정했습니다. 이유를 적으면 대기 목록으로 갑니다.",
+      "justification_label": "변경하려는 이유",
+      "justification_hint": "10자 이상 적어 주세요. 동의하는 사람이 판단할 근거는 이 글뿐입니다.",
+      "submit": "동의 요청 보내기",
+      "cancel": "취소",
+      "sent": "요청을 보냈습니다. 누군가 동의하면 항목이 옮겨집니다.",
+      "failed": "요청을 보내지 못했습니다."
+    }
   }
 }

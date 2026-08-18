@@ -491,6 +491,7 @@
     "size",
     "status"
   ],
+  "GET /v1/transition-approvals": [],
   "GET /v1/users/me/notification-prefs": [],
   "GET /v1/users/me/oauth-identities": [],
   "GET /v1/vulnerability_findings/{finding_id}": [
@@ -586,6 +587,10 @@
   ],
   "POST /v1/scans/{scan_id}/post-pr-comment": [
     "scan_id"
+  ],
+  "POST /v1/transition-approvals": [],
+  "POST /v1/transition-approvals/{approval_id}/decision": [
+    "approval_id"
   ],
   "POST /v1/webhooks/github": [
     "X-GitHub-Delivery",

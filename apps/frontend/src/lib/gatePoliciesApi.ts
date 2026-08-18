@@ -13,6 +13,21 @@ import type { AxiosRequestConfig } from "axios";
 
 import { api } from "@/lib/api";
 
+/**
+ * Statuses an organization may put behind a second person. Mirrors the backend
+ * list, and the two are asserted equal in a contract test: a field the editor
+ * offers but the API rejects would fail only on save, after the user has done
+ * the work.
+ */
+export const APPROVABLE_STATUSES = [
+  "not_affected",
+  "false_positive",
+  "fixed",
+  "suppressed",
+] as const;
+
+export type ApprovableStatus = (typeof APPROVABLE_STATUSES)[number];
+
 export interface GatePolicyOut {
   id: string;
   organization_id: string;
@@ -22,6 +37,8 @@ export interface GatePolicyOut {
   epss_threshold: number | null;
   reachable_critical_only: boolean | null;
   malicious_blocks: boolean | null;
+  /** Null means no transition needs a second person. */
+  approval_required_statuses: string[] | null;
   created_at: string;
   updated_at: string;
 }
@@ -31,16 +48,29 @@ export interface GatePolicyUpsertIn {
   epss_threshold?: number | null;
   reachable_critical_only?: boolean | null;
   malicious_blocks?: boolean | null;
+  approval_required_statuses?: string[] | null;
 }
 
-/** Where a resolved value came from. `deployment` means no policy decided it. */
-export type GatePolicySource = "team" | "organization" | "deployment";
+/**
+ * Where a resolved value came from. `deployment` means no policy decided it.
+ *
+ * `team+organization` appears only for `approval_required_statuses`, which is
+ * a union rather than a fall-through: a team may require a second person on
+ * more statuses than its organization asked for, never on fewer.
+ */
+export type GatePolicySource =
+  | "team"
+  | "organization"
+  | "team+organization"
+  | "deployment";
 
 export interface EffectiveGatePolicyOut {
   project_id: string;
   epss_threshold: number | null;
   reachable_critical_only: boolean | null;
   malicious_blocks: boolean | null;
+  /** What this project actually requires a second person for. */
+  approval_required_statuses: string[];
   sources: Record<string, GatePolicySource>;
 }
 
