@@ -67,6 +67,23 @@ _TITLE_FOR: dict[int, str] = {
     status.HTTP_409_CONFLICT: "Conflict",
 }
 
+#: A stable token per failure, carried as a Problem extension.
+#:
+#: ``detail`` is written in English and always will be, so a UI that renders it
+#: puts English in front of a Korean reader on the one screen where the reason
+#: matters most. Two of these also share a status code: refusing to decide your
+#: own request and lacking the grade are both 403, and they ask the reader to do
+#: entirely different things. The token lets the client say the right sentence
+#: in the right language.
+_REASON_FOR: dict[type[Exception], str] = {
+    ApprovalSelfDecision: "self_decision",
+    ApprovalForbidden: "not_team_admin",
+    ApprovalNotRequired: "approval_not_required",
+    ApprovalAlreadyOpen: "already_open",
+    ApprovalAlreadyDecided: "already_decided",
+    ApprovalNotFound: "not_found",
+}
+
 
 def _problem_for(request: Request, exc: Exception) -> Response:
     """Render a domain failure as Problem Details.
@@ -77,16 +94,23 @@ def _problem_for(request: Request, exc: Exception) -> Response:
     learn two vocabularies for the same refusal.
     """
     if isinstance(exc, VulnerabilityError | ProjectError):
-        code = exc.status_code
-        title = exc.title
-    else:
-        code = _STATUS_FOR.get(type(exc), status.HTTP_409_CONFLICT)
-        title = _TITLE_FOR.get(code, "Conflict")
+        return problem_response(
+            status_code=exc.status_code,
+            title=exc.title,
+            detail=str(exc) or exc.title,
+            instance=request.url.path,
+        )
+    code = _STATUS_FOR.get(type(exc), status.HTTP_409_CONFLICT)
+    title = _TITLE_FOR.get(code, "Conflict")
     return problem_response(
         status_code=code,
         title=title,
         detail=str(exc) or title,
         instance=request.url.path,
+        # Exact type, not isinstance: ApprovalSelfDecision subclasses
+        # ApprovalForbidden, and walking the hierarchy would label it with the
+        # parent's token and lose the distinction this exists for.
+        reason=_REASON_FOR.get(type(exc), "conflict"),
     )
 
 

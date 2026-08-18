@@ -72,3 +72,35 @@ export async function listPendingTransitions(
   );
   return data;
 }
+
+/**
+ * The failure tokens the approval endpoints carry as a Problem extension.
+ *
+ * Read instead of `detail`, which the backend writes in English and always
+ * will: rendering it puts English in front of a Korean reader on the screen
+ * where the reason matters most. Two of these also share a status code, so the
+ * token is the only way to tell "you asked for this" from "you lack the grade".
+ */
+export const APPROVAL_FAILURE_REASONS = [
+  "self_decision",
+  "not_team_admin",
+  "approval_not_required",
+  "already_open",
+  "already_decided",
+  "not_found",
+] as const;
+
+export type ApprovalFailureReason = (typeof APPROVAL_FAILURE_REASONS)[number];
+
+/** The token behind a failed approval call, or null when it carried none. */
+export function approvalFailureReason(
+  error: unknown,
+): ApprovalFailureReason | null {
+  const problem = (error as { problem?: Record<string, unknown> } | null)
+    ?.problem;
+  const reason = problem?.reason;
+  return typeof reason === "string" &&
+    (APPROVAL_FAILURE_REASONS as readonly string[]).includes(reason)
+    ? (reason as ApprovalFailureReason)
+    : null;
+}

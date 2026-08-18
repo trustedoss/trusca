@@ -848,3 +848,42 @@ def test_every_approvable_status_is_a_real_finding_status() -> None:
     from services.vulnerability_service import ALL_STATUSES
 
     assert APPROVABLE_STATUSES <= set(ALL_STATUSES)
+
+
+def test_approval_failure_reasons_match_the_shared_fixture() -> None:
+    """The tokens the API stamps vs the list the UI can translate.
+
+    A token the backend sends and the frontend does not know falls back to a
+    generic message, which is exactly the outcome the tokens were introduced to
+    avoid: the reader is told the call failed and not what to do about it.
+    """
+    import json
+    from pathlib import Path
+
+    from api.v1.transition_approvals import _REASON_FOR
+
+    fixture = (
+        Path(__file__).resolve().parents[4]
+        / "tests/contracts/approval-failure-reasons.json"
+    )
+    assert fixture.is_file(), f"shared approval-reason fixture missing: {fixture}"
+    reasons = json.loads(fixture.read_text(encoding="utf-8"))["reasons"]
+
+    assert set(_REASON_FOR.values()) == set(reasons), (
+        "approval failure reasons drifted from the shared fixture. Update "
+        "tests/contracts/approval-failure-reasons.json, the frontend mirror "
+        "(APPROVAL_FAILURE_REASONS in transitionApprovalsApi.ts) and the "
+        "locale copy together."
+    )
+
+
+def test_every_approval_failure_has_its_own_token() -> None:
+    """One token per exception, so no two failures collapse into one message.
+
+    ``ApprovalSelfDecision`` subclasses ``ApprovalForbidden`` and the router
+    looks the token up by exact type for that reason. If they ever shared a
+    token the distinction would be gone and nobody would notice.
+    """
+    from api.v1.transition_approvals import _REASON_FOR
+
+    assert len(set(_REASON_FOR.values())) == len(_REASON_FOR)

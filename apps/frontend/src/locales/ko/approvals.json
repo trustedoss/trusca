@@ -78,7 +78,13 @@
     "toast": {
       "approved": "동의했습니다. 항목이 옮겨졌습니다.",
       "rejected": "거절했습니다. 항목은 그대로 둡니다.",
-      "failed": "결정을 기록하지 못했습니다."
+      "failed": "결정을 기록하지 못했습니다.",
+      "failed_self_decision": "직접 요청한 건이라 다른 사람이 동의해야 합니다.",
+      "failed_not_team_admin": "동의하려면 팀 관리자 권한이 필요합니다.",
+      "failed_already_decided": "이미 다른 사람이 결정한 요청입니다.",
+      "failed_not_found": "더 이상 볼 수 없는 요청입니다.",
+      "failed_already_open": "이 항목에는 이미 대기 중인 요청이 있습니다.",
+      "failed_approval_not_required": "이 상태에는 더 이상 다른 사람의 동의가 필요하지 않습니다."
     },
     "request": {
       "title": "이 변경에는 다른 사람의 동의가 필요합니다",

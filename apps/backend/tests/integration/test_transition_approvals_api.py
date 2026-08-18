@@ -308,6 +308,9 @@ async def test_the_requester_is_refused_at_the_endpoint_too(client) -> None:
     )
 
     assert decided.status_code == 403, decided.text
+    # The token, not the sentence: the same 403 covers lacking the grade, and
+    # the two ask the reader to do completely different things.
+    assert decided.json()["reason"] == "self_decision"
     assert await _approval_state(client, opened.json()["id"]) == "pending"
     assert await _status_of(client, seed["finding_id"]) == "analyzing"
 
@@ -542,6 +545,7 @@ async def test_a_developer_cannot_decide_even_where_they_could_transition(
     )
 
     assert decided.status_code == 403, decided.text
+    assert decided.json()["reason"] == "not_team_admin"
     assert await _approval_state(client, opened.json()["id"]) == "pending"
     assert await _status_of(client, seed["finding_id"]) == "analyzing"
 
@@ -659,5 +663,6 @@ async def test_a_developer_cannot_decide(client) -> None:
     )
 
     assert decided.status_code == 403, decided.text
+    assert decided.json()["reason"] == "not_team_admin"
     assert await _approval_state(client, opened.json()["id"]) == "pending"
     assert await _status_of(client, seed["finding_id"]) == "analyzing"

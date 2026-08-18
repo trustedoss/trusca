@@ -78,7 +78,13 @@
     "toast": {
       "approved": "Agreed. The finding has moved.",
       "rejected": "Refused. The finding stays where it was.",
-      "failed": "The decision could not be recorded."
+      "failed": "The decision could not be recorded.",
+      "failed_self_decision": "You asked for this change, so somebody else has to agree to it.",
+      "failed_not_team_admin": "Agreeing to this needs a team administrator.",
+      "failed_already_decided": "Somebody already decided this request.",
+      "failed_not_found": "This request is no longer available.",
+      "failed_already_open": "A request for this finding is already waiting.",
+      "failed_approval_not_required": "This status no longer needs a second person."
     },
     "request": {
       "title": "This change needs a second person",

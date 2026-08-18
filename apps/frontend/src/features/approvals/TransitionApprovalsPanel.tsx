@@ -24,7 +24,7 @@ import {
   useDecideTransition,
   usePendingTransitions,
 } from "@/features/approvals/useTransitionApprovals";
-import { ProblemError } from "@/lib/problem";
+import { approvalFailureReason } from "@/lib/transitionApprovalsApi";
 
 interface TransitionApprovalsPanelProps {
   /** The signed-in user, so their own requests render as waiting rather than actionable. */
@@ -58,15 +58,21 @@ export function TransitionApprovalsPanel({
             ),
             { key: `transition-${row.state}` },
           ),
-        onError: (error) =>
-          // The server's own sentence, when it sent one: "the person who asked
-          // cannot be the one who agrees" says more than a generic failure.
+        onError: (error) => {
+          // The token, translated here. The server's own sentence says more,
+          // but it is written in English and always will be, so reading it
+          // straight out would answer a Korean reader in the wrong language on
+          // the one screen where the reason decides what they do next.
+          const reason = approvalFailureReason(error);
           toast(
-            error instanceof ProblemError && error.detail
-              ? error.detail
-              : t("transitions.toast.failed"),
-            { tone: "error", key: "transition-decision-failed" },
-          ),
+            t(
+              reason
+                ? `transitions.toast.failed_${reason}`
+                : "transitions.toast.failed",
+            ),
+            { tone: "error", key: `transition-decision-${reason ?? "failed"}` },
+          );
+        },
       },
     );
   };
