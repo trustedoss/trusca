@@ -33,7 +33,7 @@ import { useApiKeys } from "@/features/integrations/useApiKeys";
 import { useApiKeyScopes } from "@/features/integrations/useApiKeyScopes";
 import { usePermissions } from "@/hooks/usePermissions";
 import { useClampPage, usePageParam } from "@/hooks/useUrlState";
-import { createApiKey, revokeApiKey } from "@/lib/apiKeysApi";
+import { createApiKey, narrowApiKey, revokeApiKey } from "@/lib/apiKeysApi";
 import { getApiBase } from "@/lib/apiBase";
 import { writeToClipboard } from "@/lib/clipboard";
 import { problemMessage } from "@/lib/problemMessage";
@@ -44,6 +44,7 @@ import type {
   APIKeyCreateOut,
   APIKeyCreatePayload,
   APIKeyListItem,
+  APIKeyPermissionBreadth,
   APIKeyScope,
 } from "@/types/apiKey";
 
@@ -70,6 +71,33 @@ function StatusBadge({ revoked }: { revoked: boolean }) {
       data-status={revoked ? "revoked" : "active"}
     >
       {revoked ? t("api_keys.status.revoked") : t("api_keys.status.active")}
+    </Badge>
+  );
+}
+
+/**
+ * Which keys in this list can change something.
+ *
+ * Read-write is the one worth spotting, so it carries the warning tone and
+ * read-only stays quiet. The label is spelled out rather than shown as a lock
+ * icon: colour and iconography alone are not a signal (WCAG), and this is the
+ * column somebody scans when they are looking for the key to revoke.
+ */
+function BreadthBadge({ breadth }: { breadth: APIKeyPermissionBreadth }) {
+  const { t } = useTranslation("integrations");
+  const toneClass: Record<APIKeyPermissionBreadth, string> = {
+    read_write:
+      "border-status-warning-border bg-status-warning-subtle text-status-warning-foreground",
+    read_only: "border-border bg-muted text-muted-foreground",
+  };
+  return (
+    <Badge
+      variant="outline"
+      className={cn(toneClass[breadth])}
+      data-testid="integrations-breadth-badge"
+      data-breadth={breadth}
+    >
+      {t(`api_keys.breadth.${breadth}`)}
     </Badge>
   );
 }
@@ -187,6 +215,25 @@ export function IntegrationsPage() {
     },
   });
 
+  // Narrowing sits beside revoke because it is the gentler version of the
+  // same decision: this key can do more than it should. Only offered on a
+  // read-write key, and only to whoever could revoke it, since taking
+  // privilege away is the lesser act of the two.
+  const narrowMutation = useMutation({
+    mutationFn: (id: string) => narrowApiKey(id),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: ["api-keys"] });
+      showToast(t("api_keys.toast.narrowed"), "success", "narrowed");
+    },
+    onError: (err) => {
+      showToast(
+        problemMessage(err, t, { action: "api_keys.errors.narrow_failed" }),
+        "error",
+        "narrow-failed",
+      );
+    },
+  });
+
   const revokeMutation = useMutation({
     mutationFn: (id: string) => revokeApiKey(id),
     onSuccess: () => {
@@ -293,6 +340,7 @@ export function IntegrationsPage() {
                 <tr className="border-b text-left text-xs uppercase tracking-wide text-muted-foreground">
                   <th className="px-3 py-2">{t("api_keys.table.name")}</th>
                   <th className="px-3 py-2">{t("api_keys.table.scope")}</th>
+                  <th className="px-3 py-2">{t("api_keys.table.breadth")}</th>
                   <th className="px-3 py-2">{t("api_keys.table.prefix")}</th>
                   <th className="px-3 py-2">{t("api_keys.table.creator")}</th>
                   <th className="px-3 py-2">{t("api_keys.table.created")}</th>
@@ -342,6 +390,9 @@ export function IntegrationsPage() {
                           <td className="px-3">
                             <ScopeBadge scope={row.scope} />
                           </td>
+                          <td className="px-3">
+                            <BreadthBadge breadth={row.permission_breadth} />
+                          </td>
                           <td className="px-3 font-mono text-xs">
                             {row.key_prefix}…
                           </td>
@@ -385,6 +436,23 @@ export function IntegrationsPage() {
                             <StatusBadge revoked={isRevoked} />
                           </td>
                           <td className="px-3 text-right">
+                            {!isRevoked &&
+                            canRevoke &&
+                            row.permission_breadth === "read_write" ? (
+                              <Button
+                                type="button"
+                                size="sm"
+                                variant="outline"
+                                className="mr-2"
+                                disabled={narrowMutation.isPending}
+                                onClick={() => narrowMutation.mutate(row.id)}
+                                data-testid="integrations-key-narrow"
+                                data-key-id={row.id}
+                                title={t("api_keys.narrow_help")}
+                              >
+                                <span>{t("api_keys.narrow")}</span>
+                              </Button>
+                            ) : null}
                             {!isRevoked && canRevoke ? (
                               <Button
                                 type="button"

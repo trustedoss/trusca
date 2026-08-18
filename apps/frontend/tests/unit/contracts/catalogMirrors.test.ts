@@ -36,6 +36,7 @@ import {
   DISTRIBUTION_MODELS,
   UNSET_DISTRIBUTION_MODEL,
 } from "@/lib/projectConstants";
+import { API_KEY_PERMISSION_BREADTHS } from "@/types/apiKey";
 import {
   CISA_CLUSTER_ORDER,
   G7_CLUSTER_ORDER,
@@ -74,6 +75,8 @@ import koAdmin from "@/locales/ko/admin.json";
 import enNotifications from "@/locales/en/notifications.json";
 import koNotifications from "@/locales/ko/notifications.json";
 import enApprovals from "@/locales/en/approvals.json";
+import enIntegrations from "@/locales/en/integrations.json";
+import koIntegrations from "@/locales/ko/integrations.json";
 import koApprovals from "@/locales/ko/approvals.json";
 import enProjectDetail from "@/locales/en/project_detail.json";
 import koProjectDetail from "@/locales/ko/project_detail.json";
@@ -94,6 +97,7 @@ import userRolesFixture from "../../../../../tests/contracts/user-roles.json";
 import approvableStatusesFixture from "../../../../../tests/contracts/approvable-statuses.json";
 import approvalReasonsFixture from "../../../../../tests/contracts/approval-failure-reasons.json";
 import distributionModelsFixture from "../../../../../tests/contracts/distribution-models.json";
+import apiKeyBreadthsFixture from "../../../../../tests/contracts/api-key-breadths.json";
 // Backend G7 registry — the FE cluster ORDER mirror must follow its cluster
 // id order (same latent-drift class: the panel groups G7 checks by this list).
 import cisaRegistry from "../../../../backend/services/cisa_registry.json";
@@ -951,6 +955,37 @@ describe("distribution models: the form's options vs what the API stores", () =>
     for (const [name, map] of surfaces) {
       for (const model of DISTRIBUTION_MODELS) {
         expect(map[model], `${name} label for ${model}`).toBeTruthy();
+      }
+    }
+  });
+});
+
+describe("API key breadths: the dropdown vs what the API accepts", () => {
+  // This one decides whether a key can change things, so an option that does
+  // not exist on the server is worse than cosmetic: somebody picks it,
+  // believes they issued a narrow key, and finds out on save.
+  it("API_KEY_PERMISSION_BREADTHS equals the shared fixture, in order", () => {
+    expect([...API_KEY_PERMISSION_BREADTHS]).toEqual(
+      apiKeyBreadthsFixture.breadths,
+    );
+  });
+
+  it("every breadth owns EN and KO copy in the dialog and the table", () => {
+    const surfaces: Array<[string, Record<string, string>]> = [
+      [
+        "dialog EN",
+        labelMap(enIntegrations, "api_keys", "create_dialog", "breadth_option"),
+      ],
+      [
+        "dialog KO",
+        labelMap(koIntegrations, "api_keys", "create_dialog", "breadth_option"),
+      ],
+      ["badge EN", labelMap(enIntegrations, "api_keys", "breadth")],
+      ["badge KO", labelMap(koIntegrations, "api_keys", "breadth")],
+    ];
+    for (const [name, map] of surfaces) {
+      for (const breadth of API_KEY_PERMISSION_BREADTHS) {
+        expect(map[breadth], `${name} copy for ${breadth}`).toBeTruthy();
       }
     }
   });

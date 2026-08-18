@@ -118,6 +118,19 @@ class APIKey(Base):
 
     # Closed set encoded as VARCHAR + CHECK to mirror existing kind columns.
     scope: Mapped[str] = mapped_column(String(16), nullable=False)
+    # What the key may DO, as distinct from ``scope`` above, which says what it
+    # may reach. A pipeline that only reads scan results should not be holding
+    # something that can start one.
+    #
+    # Rows issued before this existed were backfilled as 'read_write', the
+    # breadth they already had: narrowing them on upgrade would have stopped
+    # somebody's pipeline the next time it ran, with nothing in the portal to
+    # explain it. New keys default to read-only, and that default lives in the
+    # issuance schema and the service signature.
+    # No server default: the migration used one to backfill existing rows and
+    # dropped it immediately. An INSERT that omits this should fail rather than
+    # quietly produce a key that can change things.
+    permission_breadth: Mapped[str] = mapped_column(String(16), nullable=False)
 
     team_id: Mapped[uuid.UUID | None] = mapped_column(
         UUID_PK,
@@ -164,6 +177,10 @@ class APIKey(Base):
         CheckConstraint(
             "scope IN ('org', 'team', 'project')",
             name="ck_api_keys_scope_values",
+        ),
+        CheckConstraint(
+            "permission_breadth IN ('read_write', 'read_only')",
+            name="ck_api_keys_permission_breadth",
         ),
         # Scope ↔ id consistency.
         # org     : team_id IS NULL AND project_id IS NULL

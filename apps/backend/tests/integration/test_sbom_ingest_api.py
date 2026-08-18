@@ -208,7 +208,13 @@ async def _issue_project_api_key(
 ) -> str:
     resp = await client.post(
         "/v1/api-keys",
-        json={"name": "ci-ingest", "scope": "project", "project_id": str(project_id)},
+        json={
+            "name": "ci-ingest",
+            "scope": "project",
+            "project_id": str(project_id),
+            # Ingest is a write, and new keys are read-only by default.
+            "permission_breadth": "read_write",
+        },
         headers=_bearer_for(user),
     )
     assert resp.status_code == 201, resp.text

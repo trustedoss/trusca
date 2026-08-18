@@ -264,6 +264,7 @@ async def issue_api_key(
     scope: str,
     team_id: uuid.UUID | None,
     project_id: uuid.UUID | None,
+    permission_breadth: str = "read_only",
     expires_in_days: int | None = None,
 ) -> tuple[APIKey, str]:
     """
@@ -346,6 +347,11 @@ async def issue_api_key(
             key_hash=key_hash,
             name=name,
             scope=scope,
+            # Read-only unless the caller asked otherwise. The default lives
+            # here and in the request schema rather than on the column, because
+            # the column default has to keep every key issued before this
+            # feature at the breadth it already had.
+            permission_breadth=permission_breadth,
             team_id=effective_team_id,
             project_id=project_id,
             created_by_user_id=actor.id,
@@ -480,6 +486,61 @@ async def list_api_keys(
 # ---------------------------------------------------------------------------
 # revoke_api_key
 # ---------------------------------------------------------------------------
+
+
+async def narrow_api_key_breadth(
+    session: AsyncSession,
+    actor: CurrentUser,
+    api_key_id: uuid.UUID,
+) -> APIKey:
+    """Make a read-write key read-only. There is no way back.
+
+    Narrowing only, and the asymmetry is deliberate. Taking privilege away
+    from a key that is already in somebody's pipeline is safe: the worst case
+    is that the pipeline fails loudly and its owner asks for a new key.
+    Handing privilege back to a key that has been in a CI log for months is
+    not, so widening means issuing a fresh key with a fresh secret.
+
+    Idempotent on a key that is already read-only, for the same reason revoke
+    is: a caller retrying after a timeout should not get an error for a state
+    that is already what they asked for.
+    """
+    row = (
+        await session.execute(select(APIKey).where(APIKey.id == api_key_id))
+    ).scalar_one_or_none()
+    if row is None:
+        raise APIKeyNotFound(f"api key {api_key_id} not found")
+
+    if not _can_view_key(actor, row):
+        # Existence-hide, matching revoke: a non-viewer must not be able to
+        # probe key ids by status code.
+        log.warning(
+            "api_key.narrow.not_visible",
+            actor_id=str(actor.id),
+            api_key_id=str(api_key_id),
+        )
+        raise APIKeyNotFound(f"api key {api_key_id} not found")
+
+    if not _can_revoke_key(actor, row):
+        # The same people who may revoke a key may narrow it. Narrowing is
+        # strictly the lesser act, so anybody allowed to destroy the key is
+        # allowed to weaken it.
+        raise APIKeyForbidden(
+            f"actor lacks permission to change api key {api_key_id}",
+        )
+
+    if row.permission_breadth == "read_only":
+        return row
+
+    row.permission_breadth = "read_only"
+    await session.commit()
+    await session.refresh(row)
+    log.info(
+        "api_key.narrowed_to_read_only",
+        actor_id=str(actor.id),
+        api_key_id=str(api_key_id),
+    )
+    return row
 
 
 async def revoke_api_key(

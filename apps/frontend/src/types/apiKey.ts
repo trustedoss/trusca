@@ -11,12 +11,28 @@
 
 export type APIKeyScope = "org" | "team" | "project";
 
+/**
+ * What a key may do, as distinct from the scope above, which says what it may
+ * reach. A read-only key is refused every request that changes something, so
+ * a pipeline that just reads results cannot start a scan.
+ *
+ * Keys issued before this existed are read-write and stay that way: narrowing
+ * them on upgrade would have stopped whatever was already using them.
+ */
+export type APIKeyPermissionBreadth = "read_write" | "read_only";
+
+export const API_KEY_PERMISSION_BREADTHS = [
+  "read_only",
+  "read_write",
+] as const;
+
 /** Response from POST /v1/api-keys — `raw_key` is shown ONCE. */
 export interface APIKeyCreateOut {
   id: string;
   key_prefix: string;
   name: string;
   scope: APIKeyScope;
+  permission_breadth: APIKeyPermissionBreadth;
   team_id: string | null;
   project_id: string | null;
   created_by_user_id: string | null;
@@ -37,6 +53,7 @@ export interface APIKeyListItem {
   key_prefix: string;
   name: string;
   scope: APIKeyScope;
+  permission_breadth: APIKeyPermissionBreadth;
   team_id: string | null;
   project_id: string | null;
   created_by_user_id: string | null;
@@ -62,6 +79,8 @@ export interface APIKeyListPage {
 export interface APIKeyCreatePayload {
   name: string;
   scope: APIKeyScope;
+  /** Omitted means read-only, which is what the backend defaults new keys to. */
+  permission_breadth?: APIKeyPermissionBreadth;
   team_id?: string | null;
   project_id?: string | null;
   /**

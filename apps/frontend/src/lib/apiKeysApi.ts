@@ -18,6 +18,7 @@ import { api } from "@/lib/api";
 import type {
   APIKeyCreateOut,
   APIKeyCreatePayload,
+  APIKeyListItem,
   APIKeyListPage,
   ListAPIKeysParams,
 } from "@/types/apiKey";
@@ -44,6 +45,9 @@ export async function createApiKey(
   const { data } = await api.post<APIKeyCreateOut>("/v1/api-keys", {
     name: payload.name,
     scope: payload.scope,
+    // Sent explicitly rather than relying on the server default, so the value
+    // shown on the form is the value that gets stored.
+    permission_breadth: payload.permission_breadth ?? "read_only",
     team_id: payload.team_id ?? null,
     project_id: payload.project_id ?? null,
     expires_in_days: payload.expires_in_days ?? null,
@@ -53,4 +57,17 @@ export async function createApiKey(
 
 export async function revokeApiKey(apiKeyId: string): Promise<void> {
   await api.delete(`/v1/api-keys/${apiKeyId}`);
+}
+
+/**
+ * Make a read-write key read-only. One-way: widening means issuing a new key,
+ * because a key that has been sitting in a CI log should not be handed more
+ * privilege than it was born with.
+ */
+export async function narrowApiKey(apiKeyId: string): Promise<APIKeyListItem> {
+  const { data } = await api.patch<APIKeyListItem>(
+    `/v1/api-keys/${apiKeyId}`,
+    { permission_breadth: "read_only" },
+  );
+  return data;
 }

@@ -71,6 +71,48 @@ def _looks_like_api_key(token: str) -> bool:
     return parse_bearer(token) is not None
 
 
+#: Methods that do not change anything, per RFC 9110. A read-only key may use
+#: these and nothing else.
+#:
+#: Enforced on the method rather than declared per route on purpose. A flag on
+#: each route is a flag somebody forgets on the next one, and the forgetting is
+#: silent: the route works, and it works for keys that were issued precisely so
+#: they could not reach it. There is a route-enumeration test holding the other
+#: half of this, so a future POST that is genuinely a read has to say so out
+#: loud rather than by omission.
+SAFE_METHODS: frozenset[str] = frozenset({"GET", "HEAD", "OPTIONS"})
+
+
+def _assert_breadth_allows(request: Request, principal: CurrentUser) -> None:
+    """Refuse a read-only key anything that changes something.
+
+    Enforced here, where the principal is built, rather than in the role gate
+    above it. Two surfaces resolve a key without going through that gate (the
+    build-gate result and the pull-request comment endpoints resolve it
+    themselves), and one of them is a POST. Putting the check at the role gate
+    left that POST reachable by a key issued precisely so it could not do
+    anything. Every caller has to pass through here to get a principal at all,
+    so there is nowhere left to forget it.
+    """
+    if not principal.api_key_read_only:
+        return
+    if request.method.upper() in SAFE_METHODS:
+        return
+    # Not existence-hidden: the caller holds a valid key for a route that
+    # exists, and telling them the key is read-only is the one thing that lets
+    # them fix it. Hiding it would send a pipeline owner hunting a permissions
+    # problem that is not there.
+    log.warning(
+        "api_key.read_only_write_attempt",
+        method=request.method,
+        path=request.url.path,
+    )
+    raise HTTPException(
+        status_code=status.HTTP_403_FORBIDDEN,
+        detail="this API key is read-only; issue a read-write key to change anything",
+    )
+
+
 async def _team_id_for_project(session: AsyncSession, project_id: uuid.UUID) -> uuid.UUID | None:
     """Resolve a project's owning team_id (for scoping a project-scoped key)."""
     return (
@@ -229,7 +271,15 @@ async def get_api_key_principal(
         api_key_project_id=(
             api_key.project_id if api_key.scope == "project" else None
         ),
+        # Named the permissive way round on purpose. Deriving read-only by
+        # equality means any value that is not exactly "read_only" grants full
+        # write, so a third and narrower breadth added later would be handed
+        # everything, silently. This way the permissive value is the one that
+        # has to be spelled out, and anything unrecognised fails closed, which
+        # is how the method check beside it already behaves.
+        api_key_read_only=(api_key.permission_breadth != "read_write"),
     )
+    _assert_breadth_allows(request, principal)
     # Defensive copy via dataclasses.replace — keeps the dataclass immutable
     # contract intact even if a future field is mutable.
     principal = replace(principal)

@@ -366,6 +366,10 @@
     [
       "POST",
       "/v1/transition-approvals/{approval_id}/decision"
+    ],
+    [
+      "PATCH",
+      "/v1/api-keys/{api_key_id}"
     ]
   ]
 }

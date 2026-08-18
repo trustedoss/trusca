@@ -39,12 +39,14 @@ from schemas.api_key import (
     APIKeyCreateOut,
     APIKeyListItem,
     APIKeyListPage,
+    APIKeyNarrowIn,
     APIKeyScope,
 )
 from services.api_key_service import (
     APIKeyError,
     issue_api_key,
     list_api_keys,
+    narrow_api_key_breadth,
     revoke_api_key,
 )
 
@@ -115,6 +117,7 @@ async def create_api_key_endpoint(
             scope=payload.scope,
             team_id=payload.team_id,
             project_id=payload.project_id,
+            permission_breadth=payload.permission_breadth,
             expires_in_days=payload.expires_in_days,
         )
     except APIKeyError as exc:
@@ -125,6 +128,7 @@ async def create_api_key_endpoint(
         key_prefix=row.key_prefix,
         name=row.name,
         scope=row.scope,  # type: ignore[arg-type]  # Literal narrowed at the schema layer
+        permission_breadth=row.permission_breadth,  # type: ignore[arg-type]
         team_id=row.team_id,
         project_id=row.project_id,
         created_by_user_id=row.created_by_user_id,
@@ -194,6 +198,45 @@ async def list_api_keys_endpoint(
 # ---------------------------------------------------------------------------
 # DELETE /v1/api-keys/{api_key_id}
 # ---------------------------------------------------------------------------
+
+
+@router.patch(
+    "/{api_key_id}",
+    response_model=APIKeyListItem,
+    summary="Narrow a key to read-only (one-way)",
+    responses={
+        200: {
+            "description": (
+                "Key is read-only. Idempotent: a key that was already "
+                "read-only returns unchanged."
+            )
+        },
+        403: {"description": "Caller can see the key but may not change it."},
+        404: {"description": "Key not found, or not visible to the caller."},
+        422: {
+            "description": (
+                "Asked for read_write. Breadth only narrows: widening means "
+                "issuing a new key, because a key that has sat in a CI log "
+                "should not be handed more privilege than it was born with."
+            )
+        },
+    },
+)
+async def narrow_api_key_endpoint(
+    request: Request,
+    api_key_id: uuid.UUID,
+    payload: APIKeyNarrowIn,
+    session: AsyncSession = Depends(get_db),
+    actor: CurrentUser = Depends(require_role("developer")),
+) -> Response:
+    try:
+        row = await narrow_api_key_breadth(session, actor, api_key_id)
+    except APIKeyError as exc:
+        return _problem_for_api_key_error(request, exc)
+    return Response(
+        content=APIKeyListItem.model_validate(row).model_dump_json(),
+        media_type="application/json",
+    )
 
 
 @router.delete(

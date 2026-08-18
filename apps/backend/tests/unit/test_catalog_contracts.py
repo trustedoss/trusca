@@ -929,3 +929,58 @@ def test_the_unset_filter_sentinel_is_not_a_distribution_model() -> None:
     from services.project_service import UNSET_DISTRIBUTION_MODEL
 
     assert UNSET_DISTRIBUTION_MODEL not in DISTRIBUTION_MODELS
+
+
+# ---------------------------------------------------------------------------
+# API key breadths: the validator, the CHECK constraint and the dropdown
+# ---------------------------------------------------------------------------
+
+
+def test_api_key_breadths_match_the_shared_fixture() -> None:
+    """The value the dropdown offers goes straight into an authorization call.
+
+    An option the form shows and the API rejects fails on save; a breadth the
+    API accepts and the form omits is one nobody can choose. Neither fails any
+    per-module test, which is the drift class this rule exists for.
+    """
+    import json
+    from pathlib import Path
+
+    from schemas.api_key import API_KEY_PERMISSION_BREADTHS
+
+    fixture = (
+        Path(__file__).resolve().parents[4] / "tests/contracts/api-key-breadths.json"
+    )
+    assert fixture.is_file(), f"shared api-key-breadth fixture missing: {fixture}"
+    breadths = json.loads(fixture.read_text(encoding="utf-8"))["breadths"]
+
+    assert set(API_KEY_PERMISSION_BREADTHS) == set(breadths), (
+        "API key breadths drifted from the shared fixture. Update "
+        "tests/contracts/api-key-breadths.json, the frontend mirror "
+        "(API_KEY_PERMISSION_BREADTHS in types/apiKey.ts) and the CHECK "
+        "constraint together."
+    )
+
+
+def test_the_check_constraint_bounds_the_same_set() -> None:
+    """The database is the last line, so it has to agree with the first.
+
+    A value the schema accepts and the constraint rejects is a 500 at issuance
+    time; one the constraint allows and the schema does not is a breadth that
+    can only be reached by writing SQL, which is how a key ends up with a
+    breadth the auth path has never seen.
+    """
+    import re
+
+    from models.api_key import APIKey
+    from schemas.api_key import API_KEY_PERMISSION_BREADTHS
+
+    table = APIKey.__table__
+    constraint = next(
+        c
+        for c in table.constraints  # type: ignore[attr-defined]
+        if getattr(c, "name", None) == "ck_api_keys_permission_breadth"
+    )
+    named = set(re.findall(r"'([a-z_]+)'", str(constraint.sqltext)))
+
+    assert named == set(API_KEY_PERMISSION_BREADTHS)

@@ -19,7 +19,8 @@
       "last_used": "최근 사용",
       "expires": "만료",
       "status": "상태",
-      "actions": "동작"
+      "actions": "동작",
+      "breadth": "권한"
     },
     "scope": {
       "org": "조직",
@@ -61,7 +62,13 @@
       "project_id_placeholder": "uuid",
       "submit": "키 생성",
       "submitting": "생성 중…",
-      "cancel": "취소"
+      "cancel": "취소",
+      "breadth_label": "이 키가 할 수 있는 일",
+      "breadth_help": "읽기 전용 키는 무언가를 바꾸는 요청을 모두 거절합니다. 결과만 읽는 파이프라인이 스캔을 시작할 수는 없습니다. 발급 뒤에 좁힐 수는 있지만 넓힐 수는 없으니, 쓰기가 필요할 때만 고르세요.",
+      "breadth_option": {
+        "read_only": "읽기 전용 (권장)",
+        "read_write": "읽기·쓰기"
+      }
     },
     "create_result": {
       "title": "API 키가 생성되었습니다",
@@ -76,11 +83,13 @@
       "project_id_required": "프로젝트 범위 키에는 프로젝트 ID가 필요합니다.",
       "create_failed": "API 키 생성에 실패했습니다.",
       "revoke_failed": "API 키 폐기에 실패했습니다.",
-      "copy_failed": "클립보드에 복사하지 못했습니다. 텍스트를 선택해 직접 복사하세요."
+      "copy_failed": "클립보드에 복사하지 못했습니다. 텍스트를 선택해 직접 복사하세요.",
+      "narrow_failed": "키를 바꾸지 못했습니다."
     },
     "toast": {
       "created": "API 키가 생성되었습니다.",
-      "revoked": "API 키가 폐기되었습니다."
+      "revoked": "API 키가 폐기되었습니다.",
+      "narrowed": "이 키를 읽기 전용으로 바꿨습니다."
     },
     "pagination": {
       "previous": "이전",
@@ -88,7 +97,13 @@
       "summary": "페이지 {{page}} / {{total}}"
     },
     "empty_hint_can_create": "키가 없으면 빌드에서 스캔할 수 없습니다.",
-    "empty_hint_cannot_create": "키가 없으면 빌드에서 스캔할 수 없습니다. 키는 팀의 프로젝트를 대상으로 발급되는데, 아직 소속된 팀이 없습니다. 관리자에게 팀 배정을 요청하세요."
+    "empty_hint_cannot_create": "키가 없으면 빌드에서 스캔할 수 없습니다. 키는 팀의 프로젝트를 대상으로 발급되는데, 아직 소속된 팀이 없습니다. 관리자에게 팀 배정을 요청하세요.",
+    "breadth": {
+      "read_only": "읽기 전용",
+      "read_write": "읽기·쓰기"
+    },
+    "narrow": "읽기 전용으로",
+    "narrow_help": "이 키가 무언가를 바꿀 수 있는 권한을 없앱니다. 되돌릴 수 없고, 넓히려면 키를 새로 발급해야 합니다."
   },
   "webhooks": {
     "section_title": "웹훅 URL",
