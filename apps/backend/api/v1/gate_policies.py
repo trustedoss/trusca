@@ -204,7 +204,12 @@ async def effective_policy_endpoint(
 
     sources = {
         name: resolved.sources.get(name, "deployment")
-        for name in ("epss_threshold", "reachable_critical_only", "malicious_blocks")
+        for name in (
+            "epss_threshold",
+            "reachable_critical_only",
+            "malicious_blocks",
+            "approval_required_statuses",
+        )
     }
     epss = (
         resolved.epss_threshold
@@ -227,5 +232,6 @@ async def effective_policy_endpoint(
         epss_threshold=epss,
         reachable_critical_only=reachable,
         malicious_blocks=malicious,
+        approval_required_statuses=resolved.approval_required_statuses or [],
         sources=sources,
     )

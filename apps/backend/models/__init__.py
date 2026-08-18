@@ -98,6 +98,10 @@ from .scan import (  # noqa: E402,F401  (imported for metadata side effects)
     Vulnerability,
     VulnerabilityFinding,
 )
+from .transition_approval import (  # noqa: E402,F401  (imported for metadata side effects)
+    TRANSITION_APPROVAL_STATES,
+    TransitionApproval,
+)
 
 __all__ = [
     "APIKey",
@@ -117,6 +121,8 @@ __all__ = [
     "LicenseFetchCache",
     "LicenseFinding",
     "GatePolicy",
+    "TRANSITION_APPROVAL_STATES",
+    "TransitionApproval",
     "LicensePolicy",
     "Membership",
     "NOTIFICATION_KIND_VALUES",

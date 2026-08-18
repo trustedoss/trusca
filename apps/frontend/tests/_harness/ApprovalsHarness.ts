@@ -299,6 +299,165 @@ export class ApprovalsHarness {
     return (await res.json()) as ApprovalApiRow;
   }
 
+  // ───── transition approvals (a status change that needs two people) ────
+  //
+  // These live here rather than in their own harness because they surface on
+  // this page: the queue of status changes waiting on somebody sits above the
+  // component queue, and a spec asserting one usually asserts the other.
+
+  /** The panel is absent, not empty, when no request is waiting. */
+  async expectNoTransitionApprovals(): Promise<void> {
+    await expect(
+      this.page.getByTestId("transition-approvals-panel"),
+    ).toHaveCount(0);
+  }
+
+  async expectTransitionApproval(approvalId: string): Promise<void> {
+    await expect(
+      this.page.getByTestId(`transition-approval-${approvalId}`),
+    ).toBeVisible({ timeout: DEFAULT_TIMEOUT_MS });
+  }
+
+  /** The requester sees their own request without buttons: it is not theirs to decide. */
+  async expectOwnRequestNotDecidable(approvalId: string): Promise<void> {
+    await expect(
+      this.page.getByTestId(`transition-approval-own-${approvalId}`),
+    ).toBeVisible({ timeout: DEFAULT_TIMEOUT_MS });
+    await expect(
+      this.page.getByTestId(`transition-approve-${approvalId}`),
+    ).toHaveCount(0);
+  }
+
+  async approveTransition(approvalId: string): Promise<void> {
+    await this.page.getByTestId(`transition-approve-${approvalId}`).click();
+    await expect(
+      this.page.getByTestId(`transition-approval-${approvalId}`),
+    ).toHaveCount(0, { timeout: DEFAULT_TIMEOUT_MS });
+  }
+
+  /** POST /v1/transition-approvals: ask for a change one person may not make. */
+  async apiRequestTransition(
+    token: string,
+    findingId: string,
+    targetStatus: string,
+    justification: string,
+  ): Promise<{ id: string; state: string }> {
+    const res = await this.page.request.post(
+      `${this.backendBaseUrl()}/v1/transition-approvals`,
+      {
+        headers: { Authorization: `Bearer ${token}` },
+        data: {
+          finding_id: findingId,
+          target_status: targetStatus,
+          justification,
+        },
+      },
+    );
+    if (res.status() !== 201) {
+      throw new Error(
+        `apiRequestTransition failed: ${res.status()} ${await res.text()}`,
+      );
+    }
+    return (await res.json()) as { id: string; state: string };
+  }
+
+  /**
+   * PUT the team's policy so a status starts needing a second person.
+   *
+   * The team scope rather than the organization's: the PUT replaces the row,
+   * so a spec writing here cannot disturb settings another spec left on a
+   * shared organization default.
+   */
+  async apiSetApprovalRequiredStatuses(
+    token: string,
+    teamId: string,
+    statuses: string[],
+  ): Promise<void> {
+    const res = await this.page.request.put(
+      `${this.backendBaseUrl()}/v1/gate-policies/teams/${teamId}`,
+      {
+        headers: { Authorization: `Bearer ${token}` },
+        data: { approval_required_statuses: statuses },
+      },
+    );
+    if (!res.ok()) {
+      throw new Error(
+        `apiSetApprovalRequiredStatuses failed: ${res.status()} ${await res.text()}`,
+      );
+    }
+  }
+
+  /** The first finding on a project, as the target of a request. */
+  async apiFirstFindingId(token: string, projectId: string): Promise<string> {
+    const res = await this.page.request.get(
+      `${this.backendBaseUrl()}/v1/projects/${projectId}/vulnerabilities`,
+      { headers: { Authorization: `Bearer ${token}` } },
+    );
+    if (!res.ok()) {
+      throw new Error(
+        `apiFirstFindingId failed: ${res.status()} ${await res.text()}`,
+      );
+    }
+    const body = (await res.json()) as { items: Array<{ id: string }> };
+    if (body.items.length === 0) {
+      throw new Error("apiFirstFindingId: the seeded project has no findings");
+    }
+    return body.items[0].id;
+  }
+
+  /** PATCH the status, returning code and body so a refusal can be asserted. */
+  async apiTransitionFindingRaw(
+    token: string,
+    findingId: string,
+    targetStatus: string,
+    justification: string,
+  ): Promise<{ status: number; body: Record<string, unknown> }> {
+    const res = await this.page.request.patch(
+      `${this.backendBaseUrl()}/v1/vulnerability_findings/${findingId}/status`,
+      {
+        headers: { Authorization: `Bearer ${token}` },
+        data: { status: targetStatus, justification },
+      },
+    );
+    return {
+      status: res.status(),
+      body: (await res.json()) as Record<string, unknown>,
+    };
+  }
+
+  async apiTransitionFinding(
+    token: string,
+    findingId: string,
+    targetStatus: string,
+    justification: string,
+  ): Promise<void> {
+    const result = await this.apiTransitionFindingRaw(
+      token,
+      findingId,
+      targetStatus,
+      justification,
+    );
+    if (result.status !== 200) {
+      throw new Error(
+        `apiTransitionFinding(${targetStatus}) failed: ${result.status} ` +
+          `${JSON.stringify(result.body)}`,
+      );
+    }
+  }
+
+  async apiFindingStatus(token: string, findingId: string): Promise<string> {
+    const res = await this.page.request.get(
+      `${this.backendBaseUrl()}/v1/vulnerability_findings/${findingId}`,
+      { headers: { Authorization: `Bearer ${token}` } },
+    );
+    if (!res.ok()) {
+      throw new Error(
+        `apiFindingStatus failed: ${res.status()} ${await res.text()}`,
+      );
+    }
+    return ((await res.json()) as { status: string }).status;
+  }
+
   /**
    * Same resolution order as NotificationsHarness.backendBaseUrl — default
    * is same-origin through the Vite proxy (`/v1`, `/auth`), override via

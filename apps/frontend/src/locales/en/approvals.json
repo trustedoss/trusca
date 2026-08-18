@@ -68,5 +68,27 @@
     "empty_filtered": "No approvals match these filters.",
     "empty_filtered_help": "Widen the status, the dates, or the project to see more.",
     "total": "{{count}} request"
+  },
+  "transitions": {
+    "title": "Status changes waiting on you",
+    "description": "Your organization asked for a second person on these. The person who requested one cannot be the person who agrees to it.",
+    "approve": "Agree",
+    "reject": "Refuse",
+    "waiting_on_someone_else": "You asked for this. Waiting on someone else.",
+    "toast": {
+      "approved": "Agreed. The finding has moved.",
+      "rejected": "Refused. The finding stays where it was.",
+      "failed": "The decision could not be recorded."
+    },
+    "request": {
+      "title": "This change needs a second person",
+      "description": "Your organization asked that somebody else agree to this status. Write why, and it goes to the queue.",
+      "justification_label": "Why this change",
+      "justification_hint": "At least 10 characters. This is all the approver has to judge.",
+      "submit": "Send for agreement",
+      "cancel": "Cancel",
+      "sent": "Sent. The finding moves once somebody agrees.",
+      "failed": "The request could not be sent."
+    }
   }
 }

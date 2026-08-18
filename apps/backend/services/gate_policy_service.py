@@ -88,6 +88,10 @@ class ResolvedGatePolicy:
     epss_threshold: float | None = None
     reachable_critical_only: bool | None = None
     malicious_blocks: bool | None = None
+    #: Statuses one person may not reach alone. Empty and None both mean the
+    #: same thing to the caller, but the field stays optional so the fall
+    #: through works the way the others do.
+    approval_required_statuses: list[str] | None = None
     #: Field name to the scope that supplied it, "team" or "organization".
     #: Fields no policy decided are absent, and the caller reports those as
     #: coming from the deployment. Without this an operator reading an
@@ -100,6 +104,7 @@ class ResolvedGatePolicy:
             self.epss_threshold is None
             and self.reachable_critical_only is None
             and self.malicious_blocks is None
+            and self.approval_required_statuses is None
         )
 
 
@@ -162,8 +167,40 @@ async def resolve_for_project(
         epss_threshold=pick("epss_threshold"),  # type: ignore[arg-type]
         reachable_critical_only=pick("reachable_critical_only"),  # type: ignore[arg-type]
         malicious_blocks=pick("malicious_blocks"),  # type: ignore[arg-type]
+        approval_required_statuses=_union_approval_statuses(team_row, org_row, sources),
         sources=sources,
     )
+
+
+def _union_approval_statuses(
+    team_row: GatePolicy | None,
+    org_row: GatePolicy | None,
+    sources: dict[str, str],
+) -> list[str] | None:
+    """The organization's list plus whatever the team added, never less.
+
+    This one field does not fall through the way the thresholds do, and the
+    difference is the point. The thresholds are settings a team tunes for its
+    own work; this is a control, and a control a team can switch off protects
+    nobody. Fall-through made it switchable: a team row storing an empty list
+    is not None, so it won the pick and erased the organization's list, and the
+    only grade that can reach a gated status is the same grade that can write
+    that row. Whoever the control was aimed at owned it.
+
+    A union lets a team be stricter than its organization and never looser,
+    which is the direction that is safe to delegate.
+    """
+    team_named = set(team_row.approval_required_statuses or []) if team_row else set()
+    org_named = set(org_row.approval_required_statuses or []) if org_row else set()
+    if not team_named and not org_named:
+        return None
+    if team_named and org_named:
+        sources["approval_required_statuses"] = "team+organization"
+    elif team_named:
+        sources["approval_required_statuses"] = "team"
+    else:
+        sources["approval_required_statuses"] = "organization"
+    return sorted(team_named | org_named)
 
 
 # ---------------------------------------------------------------------------
@@ -213,8 +250,14 @@ async def upsert_org_policy(
 ) -> GatePolicy:
     """Create or replace the organization default.
 
-    Super-admin only. An organization default is the floor every team inherits,
-    so the grade that may set it is the one that answers for the deployment.
+    Super-admin only, because the grade that sets a deployment-wide default is
+    the one that answers for the deployment.
+
+    "Default" means different things per field, and the difference matters.
+    The thresholds are a starting point a team may override in either
+    direction. ``approval_required_statuses`` is a floor: a team's list is
+    added to this one and cannot shrink it, because a control the people it
+    applies to can switch off is not a control.
     """
     exists = (
         await session.execute(
@@ -255,6 +298,7 @@ async def _upsert(
     existing.epss_threshold = payload.epss_threshold
     existing.reachable_critical_only = payload.reachable_critical_only
     existing.malicious_blocks = payload.malicious_blocks
+    existing.approval_required_statuses = payload.approval_required_statuses
     await session.commit()
     await session.refresh(existing)
     return existing
@@ -310,3 +354,18 @@ async def get_team_policy(
             )
         )
     ).scalar_one_or_none()
+
+
+async def statuses_requiring_approval(
+    session: AsyncSession, project_id: uuid.UUID
+) -> frozenset[str]:
+    """Which finding statuses this project may not reach by one person alone.
+
+    Empty when no policy names any, which is the default: every transition
+    stays a single action until an organization decides otherwise.
+    """
+    policy = await resolve_for_project(session, project_id)
+    named = policy.approval_required_statuses
+    if not named:
+        return frozenset()
+    return frozenset(status for status in named if isinstance(status, str))

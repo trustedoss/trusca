@@ -804,3 +804,47 @@ def test_the_oauth_provider_name_appears_in_every_list_that_gates_it() -> None:
     for name in declared:
         # Raises ValueError if the adapter lookup does not know the name.
         assert get_provider(name) is not None
+
+
+# ---------------------------------------------------------------------------
+# Approvable statuses: backend validator vs the editor that offers them
+# ---------------------------------------------------------------------------
+
+
+def test_approvable_statuses_match_the_shared_fixture() -> None:
+    """The list the API accepts vs the list the policy editor draws.
+
+    These are the statuses an organization may put behind a second person.
+    Drift is invisible until somebody configures the policy: a status the
+    editor offers and the validator rejects fails on save, after the work; one
+    the validator accepts and the editor omits is a control nobody can reach.
+    """
+    import json
+    from pathlib import Path
+
+    from schemas.gate_policy import APPROVABLE_STATUSES
+
+    fixture = (
+        Path(__file__).resolve().parents[4] / "tests/contracts/approvable-statuses.json"
+    )
+    assert fixture.is_file(), f"shared approvable-status fixture missing: {fixture}"
+    statuses = json.loads(fixture.read_text(encoding="utf-8"))["statuses"]
+
+    assert APPROVABLE_STATUSES == frozenset(statuses), (
+        "approvable statuses drifted from the shared fixture. Update "
+        "tests/contracts/approvable-statuses.json AND the frontend mirror "
+        "(APPROVABLE_STATUSES in gatePoliciesApi.ts, plus the policies locale "
+        "labels) together."
+    )
+
+
+def test_every_approvable_status_is_a_real_finding_status() -> None:
+    """A status that cannot be reached cannot be gated.
+
+    The validator would accept a name that no transition ever produces, and
+    the policy would look configured while catching nothing.
+    """
+    from schemas.gate_policy import APPROVABLE_STATUSES
+    from services.vulnerability_service import ALL_STATUSES
+
+    assert APPROVABLE_STATUSES <= set(ALL_STATUSES)

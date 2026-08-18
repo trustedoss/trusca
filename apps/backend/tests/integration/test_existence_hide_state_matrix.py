@@ -17,6 +17,10 @@ reach a state-derived 409:
   - sbom-ingest   × scan-in-progress   → ScanForbidden (not ScanInProgressConflict)
   - sbom-ingest   × archived project   → ScanForbidden (not ScanArchivedConflict)
   - vuln status   × stale if_match     → VulnerabilityNotFound (not VulnerabilityConflict)
+  - vuln status   × approval required   → VulnerabilityNotFound (not
+                                          VulnerabilityApprovalRequired)
+  - transition request × already open   → ApprovalNotFound (not ApprovalAlreadyOpen)
+  - transition decide  × decided        → ApprovalNotFound (not ApprovalAlreadyDecided)
   - approval      × terminal state     → ApprovalNotFound (not ApprovalTerminalState /
                                           ApprovalInvalidTransition)
 
@@ -51,6 +55,8 @@ from pathlib import Path
 import pytest
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
+from core.security import CurrentUser
+from models import Team, VulnerabilityFinding
 from tests._helpers import (
     make_membership,
     make_organization,
@@ -385,4 +391,169 @@ async def test_approval_transition_other_team_terminal_is_404_not_409(
             action="approve",
             decision_note=None,
             if_match=approval.version,
+        )
+
+
+# ---------------------------------------------------------------------------
+# transition approvals × the four 409s the two-person control introduces
+# ---------------------------------------------------------------------------
+
+
+async def _gated_finding(
+    db_session: AsyncSession, *, statuses: list[str]
+) -> tuple[CurrentUser, Team, VulnerabilityFinding]:
+    """An outsider, plus a finding in a team whose policy gates ``statuses``."""
+    from models import Component, ComponentVersion, GatePolicy, Vulnerability
+
+    actor, owning_team = await _outsider_and_resource_team(db_session)
+    project = await make_project(db_session, team=owning_team)
+    scan = await make_scan(db_session, project=project, status="succeeded")
+    db_session.add(
+        GatePolicy(
+            organization_id=owning_team.organization_id,
+            team_id=None,
+            approval_required_statuses=statuses,
+        )
+    )
+
+    suffix = uuid.uuid4().hex[:10]
+    component = Component(
+        purl=f"pkg:npm/gate-{suffix}", name=f"gate-{suffix}", package_type="npm"
+    )
+    db_session.add(component)
+    await db_session.flush()
+    cv = ComponentVersion(
+        component_id=component.id,
+        version="1.0.0",
+        purl_with_version=f"pkg:npm/gate-{suffix}@1.0.0",
+    )
+    db_session.add(cv)
+    await db_session.flush()
+    vuln = Vulnerability(
+        external_id=f"CVE-2026-{suffix.upper()}", source="trivy", severity="high"
+    )
+    db_session.add(vuln)
+    await db_session.flush()
+    finding = VulnerabilityFinding(
+        scan_id=scan.id,
+        component_version_id=cv.id,
+        vulnerability_id=vuln.id,
+        status="analyzing",
+    )
+    db_session.add(finding)
+    await db_session.commit()
+    await db_session.refresh(finding)
+    return actor, owning_team, finding
+
+
+async def test_vuln_status_other_team_gated_status_is_404_not_409(
+    db_session: AsyncSession,
+) -> None:
+    """A member would get the approval-required 409. An outsider must not.
+
+    The 409 says the organization gates this status, which is a fact about a
+    team the caller does not belong to.
+    """
+    from services.vulnerability_service import (
+        VulnerabilityNotFound,
+        update_vulnerability_status,
+    )
+
+    actor, _team, finding = await _gated_finding(db_session, statuses=["suppressed"])
+
+    with pytest.raises(VulnerabilityNotFound):
+        await update_vulnerability_status(
+            db_session,
+            finding_id=finding.id,
+            actor=actor,
+            target_status="suppressed",
+            justification="accepted for this release",
+        )
+
+
+async def test_request_transition_other_team_ungated_status_is_404_not_409(
+    db_session: AsyncSession,
+) -> None:
+    """The not-required 409 would tell an outsider what the policy does not gate."""
+    from services.transition_approval_service import (
+        ApprovalNotFound,
+        request_transition,
+    )
+
+    actor, _team, finding = await _gated_finding(db_session, statuses=["not_affected"])
+
+    with pytest.raises(ApprovalNotFound):
+        await request_transition(
+            db_session,
+            actor,
+            finding_id=finding.id,
+            target_status="suppressed",
+            justification="accepted for this release",
+        )
+
+
+async def test_request_transition_other_team_already_open_is_404_not_409(
+    db_session: AsyncSession,
+) -> None:
+    """The already-open 409 would confirm somebody else is working on it."""
+    from services.transition_approval_service import (
+        ApprovalNotFound,
+        open_request,
+        request_transition,
+    )
+    from tests._helpers import principal_for
+
+    actor, team, finding = await _gated_finding(db_session, statuses=["suppressed"])
+    insider = await make_user(db_session)
+    await open_request(
+        db_session,
+        principal_for(insider, team_ids=[team.id], role="team_admin"),
+        finding_id=finding.id,
+        team_id=team.id,
+        target_status="suppressed",
+        justification="accepted for this release",
+    )
+
+    with pytest.raises(ApprovalNotFound):
+        await request_transition(
+            db_session,
+            actor,
+            finding_id=finding.id,
+            target_status="suppressed",
+            justification="accepted for this release",
+        )
+
+
+@pytest.mark.parametrize("decided_state", ["approved", "rejected"])
+async def test_decide_other_team_decided_request_is_404_not_409(
+    db_session: AsyncSession, decided_state: str
+) -> None:
+    """The already-decided 409 would confirm the request exists at all."""
+    from services.transition_approval_service import (
+        ApprovalNotFound,
+        decide_and_apply,
+        open_request,
+    )
+    from tests._helpers import principal_for
+
+    actor, team, finding = await _gated_finding(db_session, statuses=["suppressed"])
+    insider = await make_user(db_session)
+    row = await open_request(
+        db_session,
+        principal_for(insider, team_ids=[team.id], role="team_admin"),
+        finding_id=finding.id,
+        team_id=team.id,
+        target_status="suppressed",
+        justification="accepted for this release",
+    )
+    row.state = decided_state
+    await db_session.commit()
+
+    with pytest.raises(ApprovalNotFound):
+        await decide_and_apply(
+            db_session,
+            actor,
+            approval_id=row.id,
+            approve=True,
+            note=None,
         )

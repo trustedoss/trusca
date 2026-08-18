@@ -27,9 +27,11 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Skeleton } from "@/components/ui/skeleton";
 import { ApprovalsDrawer } from "@/features/approvals/ApprovalsDrawer";
+import { TransitionApprovalsPanel } from "@/features/approvals/TransitionApprovalsPanel";
 import { useToast } from "@/components/ui/toast";
 import { useApprovals } from "@/features/approvals/useApprovals";
 import RelativeTime from "@/components/RelativeTime";
+import { useAuthStore } from "@/stores/authStore";
 import { cn } from "@/lib/utils";
 import type { ApprovalStatus } from "@/lib/approvalsApi";
 
@@ -251,6 +253,9 @@ export function ApprovalsPage() {
     fromDt !== "" ||
     toDt !== "" ||
     page > 1;
+  // The signed-in user, so their own requests read as waiting rather than as
+  // something they can wave through themselves.
+  const currentUserId = useAuthStore((s) => s.user?.id ?? null);
   const clearFilters = useCallback(() => {
     setSearchParams(new URLSearchParams(), { replace: false });
   }, [setSearchParams]);
@@ -280,6 +285,13 @@ export function ApprovalsPage() {
         title={t("approvals.title")}
         description={t("approvals.subtitle")}
       />
+
+      {/* Status changes waiting on a second person. Renders nothing when the
+          queue is empty, which is every deployment that has not turned the
+          policy on. */}
+      <div className="px-6 pt-4 empty:hidden">
+        <TransitionApprovalsPanel currentUserId={currentUserId} />
+      </div>
 
       {/* Inline filters toolbar */}
       <div className="flex flex-wrap items-end gap-3 border-b bg-card px-6 py-3">

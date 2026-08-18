@@ -708,7 +708,11 @@
         "load_failed": "Could not load vulnerability.",
         "update_failed": "Could not update status.",
         "conflict": "This finding was updated by someone else. Reload to see the latest state.",
-        "conflict_reload": "Reload"
+        "conflict_reload": "Reload",
+        "approval_required": "Your organization asked that somebody else agree before a finding moves to {{status}}. Write why below, then send it for agreement.",
+        "approval_request": "Send for agreement",
+        "approval_sent": "Sent. The finding moves once somebody agrees.",
+        "approval_failed": "The request could not be sent."
       },
       "copy_cve": "CVE id",
       "copy_vector": "CVSS vector",

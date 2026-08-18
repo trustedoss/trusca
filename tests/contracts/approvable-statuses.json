@@ -1,0 +1,20 @@
+{
+  "_comment": [
+    "Finding statuses an organization may put behind a second person.",
+    "",
+    "Restricted to the statuses that end the obligation, because those are what",
+    "accepting a risk means. Gating the working states (new, analyzing) would",
+    "stop triage rather than stop a decision.",
+    "",
+    "Three places read this vocabulary: the backend validator that rejects an",
+    "unknown name, the frontend list that draws the checkboxes, and this file.",
+    "A name offered by the editor but rejected by the API fails only on save,",
+    "after the user has done the work; a name accepted by the API but missing",
+    "from the editor is a control nobody can find. Both sides assert against",
+    "this file so neither drifts alone.",
+    "",
+    "Order is asserted: the frontend renders the checkboxes in this order, from",
+    "the least severe outcome to the most."
+  ],
+  "statuses": ["not_affected", "false_positive", "fixed", "suppressed"]
+}

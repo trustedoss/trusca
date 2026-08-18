@@ -55,6 +55,7 @@ from services.scan_resolution import SnapshotScanNotFound
 from services.table_export_service import stream_vulnerabilities_csv
 from services.upgrade_cluster_service import list_upgrade_clusters
 from services.vulnerability_service import (
+    VulnerabilityApprovalRequired,
     VulnerabilityBulkInputError,
     VulnerabilityConflict,
     VulnerabilityError,
@@ -81,6 +82,18 @@ def _problem_for_vulnerability_error(request: Request, exc: ProjectError) -> Res
     and VulnerabilityConflict carry extension data; everything else uses the
     base envelope from `problem_response`.
     """
+    if isinstance(exc, VulnerabilityApprovalRequired):
+        # A machine-readable marker rather than leaving clients to match on the
+        # title. Two different 409s reach this endpoint (a stale if_match and
+        # this one), and they need opposite responses from the UI: one is
+        # "reload and try again", the other is "ask somebody".
+        return problem_response(
+            status_code=exc.status_code,
+            title=exc.title,
+            detail=str(exc) or exc.title,
+            instance=request.url.path,
+            approval_required=True,
+        )
     if isinstance(exc, VulnerabilityInvalidTransition):
         # RFC 7807 §3.2 explicitly allows extension members. We surface the
         # legal target set so the UI can disable buttons for invalid moves.

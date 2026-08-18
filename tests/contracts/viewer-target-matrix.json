@@ -196,6 +196,10 @@
     [
       "GET",
       "/v1/vulnerability_findings/{finding_id}"
+    ],
+    [
+      "GET",
+      "/v1/transition-approvals"
     ]
   ],
   "deny": [
@@ -346,6 +350,14 @@
     [
       "PATCH",
       "/v1/vulnerability_findings/{finding_id}/status"
+    ],
+    [
+      "POST",
+      "/v1/transition-approvals"
+    ],
+    [
+      "POST",
+      "/v1/transition-approvals/{approval_id}/decision"
     ]
   ]
 }

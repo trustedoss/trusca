@@ -30,6 +30,7 @@ import { resolve } from "node:path";
 import { describe, expect, it } from "vitest";
 
 import { NOTIFICATION_KINDS } from "@/features/notifications/api/notificationsApi";
+import { APPROVABLE_STATUSES } from "@/lib/gatePoliciesApi";
 import {
   CISA_CLUSTER_ORDER,
   G7_CLUSTER_ORDER,
@@ -73,6 +74,8 @@ import enProfile from "@/locales/en/profile.json";
 import koProfile from "@/locales/ko/profile.json";
 import enProjects from "@/locales/en/projects.json";
 import koProjects from "@/locales/ko/projects.json";
+import enPolicies from "@/locales/en/policies.json";
+import koPolicies from "@/locales/ko/policies.json";
 import enScans from "@/locales/en/scans.json";
 import koScans from "@/locales/ko/scans.json";
 
@@ -81,6 +84,7 @@ import koScans from "@/locales/ko/scans.json";
 // the tracked follow-up (see the fixture's $comment).
 import notificationKindsFixture from "../../../../../tests/contracts/notification-kinds.json";
 import userRolesFixture from "../../../../../tests/contracts/user-roles.json";
+import approvableStatusesFixture from "../../../../../tests/contracts/approvable-statuses.json";
 // Backend G7 registry — the FE cluster ORDER mirror must follow its cluster
 // id order (same latent-drift class: the panel groups G7 checks by this list).
 import cisaRegistry from "../../../../backend/services/cisa_registry.json";
@@ -849,6 +853,24 @@ describe("oauth provider mirrors", () => {
     const labels = locale === "en" ? enProfile : koProfile;
     for (const provider of providers) {
       expect(labels.connected_accounts.provider).toHaveProperty(provider);
+    }
+  });
+});
+
+describe("approvable statuses: the policy editor vs what the API accepts", () => {
+  // A status the checkboxes offer and the validator rejects fails on save,
+  // after the user has chosen it; one the validator accepts and the editor
+  // omits is a control nobody can reach.
+  it("APPROVABLE_STATUSES equals the shared fixture, in fixture order", () => {
+    expect([...APPROVABLE_STATUSES]).toEqual(approvableStatusesFixture.statuses);
+  });
+
+  it("every approvable status owns an EN and a KO label", () => {
+    const en = labelMap(enPolicies, "gate", "approval", "status");
+    const ko = labelMap(koPolicies, "gate", "approval", "status");
+    for (const status of APPROVABLE_STATUSES) {
+      expect(en[status], `EN label for ${status}`).toBeTruthy();
+      expect(ko[status], `KO label for ${status}`).toBeTruthy();
     }
   });
 });

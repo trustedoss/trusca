@@ -612,6 +612,19 @@ class _FakeSession:
         return None
 
 
+def _team_admin(team_id: uuid.UUID) -> CurrentUser:
+    """Holds the grade for every status, so a refusal can only be the new gate."""
+    return CurrentUser(
+        id=uuid.uuid4(),
+        email="admin@example.com",
+        role="team_admin",
+        team_ids=[team_id],
+        team_roles={team_id: "team_admin"},
+        is_active=True,
+        is_superuser=False,
+    )
+
+
 def _developer(team_id: uuid.UUID) -> CurrentUser:
     return CurrentUser(
         id=uuid.uuid4(),
@@ -634,6 +647,59 @@ def _statement(target: str | None, *, vex_status: str = "x") -> _Statement:
     )
 
 
+async def test_a_gated_status_cannot_be_reached_by_importing_a_document() -> None:
+    """The importer is the cheapest way around a two-person rule, so it is gated.
+
+    Nothing else about the statement is wrong: the actor holds the grade and
+    the transition is legal. What stops it is that the organization asked for a
+    second person on this status, and one upload could otherwise close every
+    finding in a project at once.
+    """
+    from datetime import UTC, datetime
+
+    team_id = uuid.uuid4()
+    finding = _FakeFinding("analyzing")
+    result = _Result()
+    await _apply_to_finding(
+        _FakeSession(),  # type: ignore[arg-type]
+        finding,  # type: ignore[arg-type]
+        statement=_statement("not_affected"),
+        actor=_team_admin(team_id),
+        team_id=team_id,
+        origin={"format": "openvex"},
+        result=result,
+        now=datetime.now(tz=UTC),
+        approval_required=frozenset({"not_affected"}),
+    )
+
+    assert result.applied == 0
+    assert result.errors[0]["reason"] == "approval_required"
+    assert finding.status == "analyzing"
+
+
+async def test_an_ungated_status_still_imports() -> None:
+    """The default. A deployment that named nothing sees no change."""
+    from datetime import UTC, datetime
+
+    team_id = uuid.uuid4()
+    finding = _FakeFinding("analyzing")
+    result = _Result()
+    await _apply_to_finding(
+        _FakeSession(),  # type: ignore[arg-type]
+        finding,  # type: ignore[arg-type]
+        statement=_statement("not_affected"),
+        actor=_team_admin(team_id),
+        team_id=team_id,
+        origin={"format": "openvex"},
+        result=result,
+        now=datetime.now(tz=UTC),
+        approval_required=frozenset(),
+    )
+
+    assert result.applied == 1
+    assert finding.status == "not_affected"
+
+
 async def test_apply_already_at_target_is_skip() -> None:
     from datetime import UTC, datetime
 
@@ -649,6 +715,7 @@ async def test_apply_already_at_target_is_skip() -> None:
         origin={"format": "openvex"},
         result=result,
         now=datetime.now(tz=UTC),
+        approval_required=frozenset(),
     )
     assert result.matched == 1
     assert result.applied == 0
@@ -673,6 +740,7 @@ async def test_apply_into_new_is_illegal_transition() -> None:
         origin={"format": "openvex"},
         result=result,
         now=datetime.now(tz=UTC),
+        approval_required=frozenset(),
     )
     assert result.applied == 0
     assert result.skipped == 1
@@ -697,6 +765,7 @@ async def test_apply_suppressed_by_developer_is_forbidden() -> None:
         origin={"format": "openvex"},
         result=result,
         now=datetime.now(tz=UTC),
+        approval_required=frozenset(),
     )
     assert result.applied == 0
     assert result.skipped == 1
@@ -721,6 +790,7 @@ async def test_apply_none_target_fails_closed_as_skip() -> None:
         origin={"format": "openvex"},
         result=result,
         now=datetime.now(tz=UTC),
+        approval_required=frozenset(),
     )
     assert result.matched == 1
     assert result.applied == 0
@@ -747,6 +817,7 @@ async def test_apply_sanitizes_vex_status_into_origin() -> None:
         origin={"format": "openvex", "id": "doc-1"},
         result=result,
         now=datetime.now(tz=UTC),
+        approval_required=frozenset(),
     )
     assert result.applied == 1
     assert finding.vex_origin is not None

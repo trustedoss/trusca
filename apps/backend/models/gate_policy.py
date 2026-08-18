@@ -43,7 +43,7 @@ from sqlalchemy import (
     UniqueConstraint,
     text,
 )
-from sqlalchemy.dialects.postgresql import UUID
+from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.orm import Mapped, mapped_column
 
 from . import Base
@@ -88,6 +88,17 @@ class GatePolicy(Base):
     # the two above this defaults ON in the environment, and a policy row may
     # only turn it off deliberately.
     malicious_blocks: Mapped[bool | None] = mapped_column(nullable=True)
+
+    # Finding statuses one person may not reach alone, as a JSON array. NULL
+    # means none, which is how the product behaved before this existed.
+    #
+    # The list is not fixed here on purpose. Closing a finding as suppressed
+    # ends the obligation without a fix, and so does not-affected, but whether
+    # either counts as accepting risk is a judgement an organization makes
+    # about its own work rather than one the product can make for it.
+    approval_required_statuses: Mapped[list[str] | None] = mapped_column(
+        JSONB, nullable=True
+    )
 
     created_by_user_id: Mapped[uuid.UUID | None] = mapped_column(
         UUID_PK,

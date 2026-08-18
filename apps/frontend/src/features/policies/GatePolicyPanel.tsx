@@ -17,7 +17,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
-import type { GatePolicyUpsertIn } from "@/lib/gatePoliciesApi";
+import { APPROVABLE_STATUSES, type GatePolicyUpsertIn } from "@/lib/gatePoliciesApi";
 
 import {
   useDeleteTeamGatePolicy,
@@ -38,6 +38,8 @@ interface Draft {
   reachable: boolean;
   maliciousOverridden: boolean;
   malicious: boolean;
+  approvalOverridden: boolean;
+  approval: string[];
 }
 
 const EMPTY_DRAFT: Draft = {
@@ -47,9 +49,18 @@ const EMPTY_DRAFT: Draft = {
   reachable: false,
   maliciousOverridden: false,
   malicious: true,
+  approvalOverridden: false,
+  approval: [],
 };
 
-function draftFrom(policy: { epss_threshold: number | null; reachable_critical_only: boolean | null; malicious_blocks: boolean | null } | null): Draft {
+function draftFrom(
+  policy: {
+    epss_threshold: number | null;
+    reachable_critical_only: boolean | null;
+    malicious_blocks: boolean | null;
+    approval_required_statuses: string[] | null;
+  } | null,
+): Draft {
   if (policy === null) return EMPTY_DRAFT;
   return {
     epssOverridden: policy.epss_threshold !== null,
@@ -58,6 +69,8 @@ function draftFrom(policy: { epss_threshold: number | null; reachable_critical_o
     reachable: policy.reachable_critical_only ?? false,
     maliciousOverridden: policy.malicious_blocks !== null,
     malicious: policy.malicious_blocks ?? true,
+    approvalOverridden: policy.approval_required_statuses !== null,
+    approval: policy.approval_required_statuses ?? [],
   };
 }
 
@@ -68,6 +81,7 @@ function payloadFrom(draft: Draft): GatePolicyUpsertIn {
     epss_threshold: draft.epssOverridden && draft.epss !== "" ? Number(draft.epss) : null,
     reachable_critical_only: draft.reachableOverridden ? draft.reachable : null,
     malicious_blocks: draft.maliciousOverridden ? draft.malicious : null,
+    approval_required_statuses: draft.approvalOverridden ? draft.approval : null,
   };
 }
 
@@ -179,6 +193,51 @@ export function GatePolicyPanel({ teamId, canEdit }: GatePolicyPanelProps) {
             </p>
           </div>
         </div>
+      </div>
+
+      <div className="flex items-start gap-3 border-t pt-4">
+        <Switch
+          id="gate-approval-override"
+          checked={draft.approvalOverridden}
+          disabled={!canEdit}
+          onCheckedChange={(checked) =>
+            setDraft((d) => ({ ...d, approvalOverridden: checked }))
+          }
+          data-testid="gate-approval-override"
+        />
+        <fieldset className="flex-1 space-y-1" disabled={!canEdit || !draft.approvalOverridden}>
+          <legend className="text-xs font-medium">{t("gate.approval.label")}</legend>
+          <p className="text-xs text-muted-foreground">
+            {draft.approvalOverridden ? t("gate.approval.help") : t("gate.inherited")}
+          </p>
+          <div className="space-y-1 pt-1">
+            {APPROVABLE_STATUSES.map((status) => (
+              <label key={status} className="flex items-center gap-2 text-xs">
+                <input
+                  type="checkbox"
+                  className="size-3.5 accent-[var(--brand)]"
+                  checked={draft.approval.includes(status)}
+                  disabled={!canEdit || !draft.approvalOverridden}
+                  onChange={(e) =>
+                    setDraft((d) => ({
+                      ...d,
+                      approval: e.target.checked
+                        ? [...d.approval, status]
+                        : d.approval.filter((s) => s !== status),
+                    }))
+                  }
+                  data-testid={`gate-approval-${status}`}
+                />
+                {t(`gate.approval.status.${status}`)}
+              </label>
+            ))}
+          </div>
+          {draft.approvalOverridden && draft.approval.length > 0 ? (
+            <p className="text-xs text-muted-foreground pt-1">
+              {t("gate.approval.two_people_needed")}
+            </p>
+          ) : null}
+        </fieldset>
       </div>
 
       {canEdit ? (

@@ -75,6 +75,53 @@ Transitions are logged in the audit log with actor, previous status, new status,
 
 Every transition out of `New` / `Analyzing` requires a free-text justification (≥ 10 chars). The portal stores the justification verbatim — keep it factual ("upgraded lodash to 4.17.21", "vulnerable code path is in `dev_only` module"). The text appears in CycloneDX VEX exports.
 
+### When a status needs a second person {#transition-approvals}
+
+By default any analyst with the right role closes a finding on their own. An
+organization can decide that some outcomes are not one person's to reach:
+closing a finding as **Suppressed** or **Not affected** ends the obligation
+without the vulnerability being fixed, and some teams want that agreed by
+somebody else before it takes effect.
+
+An administrator turns this on per status in **Policies → Build gate →
+"Statuses that need a second person"**. Nothing is selected by default, and
+with nothing selected every transition stays a single action.
+
+Unlike the thresholds on the same screen, this setting is a union rather than
+an override: a team's list is added to whatever its organization requires. A
+team can ask for a second person on more statuses than the organization did,
+never on fewer. That is deliberate. The role that can reach a gated status is
+the same role that edits the team policy, so a team-level override would put
+the control in the hands of the people it applies to.
+
+Once a status is listed:
+
+1. The ordinary transition is refused with `409` and the reason. The finding
+   does not move. The same applies to the bulk transition and to VEX import, so
+   neither a batch nor an uploaded document is a way around it. An import
+   reports those statements as skipped with reason `approval_required` and
+   applies the rest of the document normally.
+2. Write the justification and choose **Send for agreement**. This records a
+   request and leaves the finding where it is.
+3. The request appears on the **Approvals** page for everyone in the team who
+   administers it. The person who asked sees their own request listed as
+   waiting, without buttons.
+4. Another team administrator agrees or refuses. On agreement the finding moves
+   and the change is audited exactly like a direct transition; on a refusal the
+   finding stays where it was and the refusal is kept as part of the record.
+
+Two constraints are worth knowing before turning this on:
+
+- **The requester cannot be the approver.** This is enforced on the person, not
+  the role, so a team with a single administrator cannot complete any request.
+  Give the team a second administrator first.
+- **One open request per finding.** A second request while one is waiting is
+  refused, so an approver is never deciding one of two conflicting proposals.
+
+If the finding moves while a request is waiting (someone reopens it, say),
+agreeing to the stale request fails with `422` and the request stays open
+rather than recording an agreement to something that never happened.
+
 ## The findings table
 
 Columns:
