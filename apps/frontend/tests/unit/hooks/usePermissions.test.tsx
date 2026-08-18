@@ -61,10 +61,13 @@ describe("usePermissions", () => {
   it("anonymous user resolves to least privilege", () => {
     setUser(null);
     const { result } = renderHook(() => usePermissions());
-    expect(result.current.role).toBe("developer");
+    // Least privilege is `viewer` since a grade was added below developer.
+    // While this asserted "developer" the name of the test and its value had
+    // drifted apart, and the value was the one people trusted.
+    expect(result.current.role).toBe("viewer");
     expect(result.current.isSuperAdmin).toBe(false);
     expect(result.current.isTeamAdminOrAbove).toBe(false);
-    expect(result.current.roleForTeam("team-1")).toBe("developer");
+    expect(result.current.roleForTeam("team-1")).toBe("viewer");
   });
 
   it("promotes a team_admin membership even when user.role is stale (H-2)", () => {
@@ -88,8 +91,10 @@ describe("usePermissions", () => {
     const { result } = renderHook(() => usePermissions());
     expect(result.current.roleForTeam("team-1")).toBe("team_admin");
     expect(result.current.roleForTeam("team-2")).toBe("developer");
-    expect(result.current.roleForTeam("team-unknown")).toBe("developer");
-    expect(result.current.roleForTeam(null)).toBe("developer");
+    // A team the user is not in is not theirs to act on, so the grade for it
+    // is the floor rather than the one their other memberships happen to give.
+    expect(result.current.roleForTeam("team-unknown")).toBe("viewer");
+    expect(result.current.roleForTeam(null)).toBe("viewer");
 
     setUser(makeUser("super_admin"));
     const { result: admin } = renderHook(() => usePermissions());
