@@ -15,6 +15,7 @@
 import type { AxiosRequestConfig } from "axios";
 
 import { api } from "@/lib/api";
+import type { DistributionModel } from "@/lib/projectConstants";
 
 // ---------------------------------------------------------------------------
 // Types — mirror the backend schemas/scan.py wire shapes (snake_case).
@@ -50,37 +51,6 @@ export const SCAN_STATUS_VALUES = [
 ] as const;
 
 export type ScanStatus = (typeof SCAN_STATUS_VALUES)[number];
-
-/**
- * How a project's software reaches the people who use it.
- *
- * A closed set, unlike the two free-text attributes beside it, because this
- * is not an organizational label: it decides which licence obligations bind,
- * and offering a network service is not the same as shipping a binary. The
- * backend holds the same tuple and a contract test asserts the two agree.
- *
- * Ordered from the narrowest reach to the widest; the form and the filter
- * render in this order.
- */
-export const DISTRIBUTION_MODELS = [
-  "internal",
-  "saas",
-  "binary",
-  "source",
-  "embedded",
-] as const;
-
-export type DistributionModel = (typeof DISTRIBUTION_MODELS)[number];
-
-/**
- * The filter value meaning "has not said how it ships".
- *
- * A sentinel rather than an empty parameter, because empty already means "do
- * not filter" and the two questions are opposites: one asks for everything,
- * the other asks for the projects still to be filled in. Deliberately not a
- * member of DISTRIBUTION_MODELS, so it can never be stored.
- */
-export const UNSET_DISTRIBUTION_MODEL = "unset";
 
 export interface ProjectPublic {
   id: string;

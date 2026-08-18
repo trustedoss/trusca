@@ -16,8 +16,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { ProjectPublic } from "@/lib/projectsApi";
 
-vi.mock("@/lib/projectsApi", async (importOriginal) => ({
-  ...(await importOriginal<typeof import("@/lib/projectsApi")>()),
+vi.mock("@/lib/projectsApi", () => ({
   getProject: vi.fn(),
   ingestSbom: vi.fn(),
 }));

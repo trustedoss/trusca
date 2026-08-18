@@ -17,8 +17,7 @@ vi.mock("@/lib/api", () => ({
   postLogout: vi.fn(),
 }));
 
-vi.mock("@/lib/projectsApi", async (importOriginal) => ({
-  ...(await importOriginal<typeof import("@/lib/projectsApi")>()),
+vi.mock("@/lib/projectsApi", () => ({
   // Module-level constant consumed by AdminScansPage's KIND_OPTIONS; the
   // wholesale mock must re-export it or the route tree fails to import.
   SCAN_KIND_VALUES: ["source", "container", "sbom"] as const,

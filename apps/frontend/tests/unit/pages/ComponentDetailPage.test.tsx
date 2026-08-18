@@ -23,8 +23,7 @@ import { ProblemError } from "@/lib/problem";
 
 // --- wire layer mocks ------------------------------------------------------
 
-vi.mock("@/lib/projectsApi", async (importOriginal) => ({
-  ...(await importOriginal<typeof import("@/lib/projectsApi")>()),
+vi.mock("@/lib/projectsApi", () => ({
   getProject: vi.fn(),
 }));
 

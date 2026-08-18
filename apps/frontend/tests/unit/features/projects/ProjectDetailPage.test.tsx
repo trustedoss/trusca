@@ -31,9 +31,8 @@ import { ProjectDetailPage } from "@/features/projects/ProjectDetailPage";
 import { ProblemError } from "@/lib/problem";
 import type { ProjectPublic } from "@/lib/projectsApi";
 
-vi.mock("@/lib/projectsApi", async (importOriginal) => {
+vi.mock("@/lib/projectsApi", async () => {
   return {
-    ...(await importOriginal<typeof import("@/lib/projectsApi")>()),
     getProject: vi.fn(),
     listProjects: vi.fn(),
     triggerScan: vi.fn(),

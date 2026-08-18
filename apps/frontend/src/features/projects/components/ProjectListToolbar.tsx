@@ -6,7 +6,7 @@ import { Input } from "@/components/ui/input";
 import {
   DISTRIBUTION_MODELS,
   UNSET_DISTRIBUTION_MODEL,
-} from "@/lib/projectsApi";
+} from "@/lib/projectConstants";
 import { cn } from "@/lib/utils";
 
 /**

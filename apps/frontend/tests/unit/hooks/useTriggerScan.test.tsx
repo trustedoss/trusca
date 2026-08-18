@@ -17,8 +17,7 @@ import {
 } from "@/hooks/useTriggerScan";
 import type { ScanPublic } from "@/lib/projectsApi";
 
-vi.mock("@/lib/projectsApi", async (importOriginal) => ({
-  ...(await importOriginal<typeof import("@/lib/projectsApi")>()),
+vi.mock("@/lib/projectsApi", () => ({
   triggerScan: vi.fn(),
 }));
 vi.mock("@/lib/sourceArchiveApi", () => ({

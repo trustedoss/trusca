@@ -20,9 +20,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { CommandMenu, CommandMenuTrigger } from "@/components/CommandMenu";
 import { useAuthStore } from "@/stores/authStore";
 
-vi.mock("@/lib/projectsApi", async (importOriginal) => {
+vi.mock("@/lib/projectsApi", async () => {
   return {
-    ...(await importOriginal<typeof import("@/lib/projectsApi")>()),
     listProjects: vi.fn(),
   };
 });

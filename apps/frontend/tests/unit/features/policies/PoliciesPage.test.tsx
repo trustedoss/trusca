@@ -60,8 +60,7 @@ vi.mock("@/features/admin/api/adminTeamsApi", () => ({
   listAdminTeams: vi.fn(),
 }));
 
-vi.mock("@/lib/projectsApi", async (importOriginal) => ({
-  ...(await importOriginal<typeof import("@/lib/projectsApi")>()),
+vi.mock("@/lib/projectsApi", () => ({
   listProjects: vi.fn(),
 }));
 

@@ -25,8 +25,7 @@ import type { ProjectPublic } from "@/lib/projectsApi";
 
 // --- wire + hooks --------------------------------------------------------
 
-vi.mock("@/lib/projectsApi", async (importOriginal) => ({
-  ...(await importOriginal<typeof import("@/lib/projectsApi")>()),
+vi.mock("@/lib/projectsApi", () => ({
   getProject: vi.fn(),
 }));
 

@@ -14,8 +14,7 @@ import { ProjectCreatePage } from "@/features/projects/ProjectCreatePage";
 import { ProblemError } from "@/lib/problem";
 import { useAuthStore } from "@/stores/authStore";
 
-vi.mock("@/lib/projectsApi", async (importOriginal) => ({
-  ...(await importOriginal<typeof import("@/lib/projectsApi")>()),
+vi.mock("@/lib/projectsApi", () => ({
   createProject: vi.fn(),
   listProjects: vi.fn(),
 }));

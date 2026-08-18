@@ -20,9 +20,8 @@ import type {
   ScanPublic,
 } from "@/lib/projectsApi";
 
-vi.mock("@/lib/projectsApi", async (importOriginal) => {
+vi.mock("@/lib/projectsApi", async () => {
   return {
-    ...(await importOriginal<typeof import("@/lib/projectsApi")>()),
     listProjects: vi.fn(),
   };
 });

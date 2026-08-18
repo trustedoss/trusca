@@ -41,6 +41,8 @@ import { useDemoMode } from "@/hooks/useDemoMode";
 import {
   DISTRIBUTION_MODELS,
   UNSET_DISTRIBUTION_MODEL,
+} from "@/lib/projectConstants";
+import {
   listProjects,
   type ProjectPublic,
   type ProjectSeveritySummary,

@@ -30,9 +30,9 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { problemMessage } from "@/lib/problemMessage";
+import { DISTRIBUTION_MODELS } from "@/lib/projectConstants";
 import {
   AI_USAGE_SCENARIOS,
-  DISTRIBUTION_MODELS,
   archiveProject,
   type ProjectPublic,
   unarchiveProject,

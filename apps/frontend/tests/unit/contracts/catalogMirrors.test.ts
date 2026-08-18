@@ -35,7 +35,7 @@ import { APPROVAL_FAILURE_REASONS } from "@/lib/transitionApprovalsApi";
 import {
   DISTRIBUTION_MODELS,
   UNSET_DISTRIBUTION_MODEL,
-} from "@/lib/projectsApi";
+} from "@/lib/projectConstants";
 import {
   CISA_CLUSTER_ORDER,
   G7_CLUSTER_ORDER,
