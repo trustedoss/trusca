@@ -9,6 +9,7 @@ import { LANGUAGE_STORAGE_KEY } from "@/lib/languageStorage";
 import enAbout from "@/locales/en/about.json";
 import enAdmin from "@/locales/en/admin.json";
 import enApprovals from "@/locales/en/approvals.json";
+import enIntake from "@/locales/en/intake.json";
 import enAuth from "@/locales/en/auth.json";
 import enCommon from "@/locales/en/common.json";
 import enDashboard from "@/locales/en/dashboard.json";
@@ -25,6 +26,7 @@ import enSearch from "@/locales/en/search.json";
 import koAbout from "@/locales/ko/about.json";
 import koAdmin from "@/locales/ko/admin.json";
 import koApprovals from "@/locales/ko/approvals.json";
+import koIntake from "@/locales/ko/intake.json";
 import koAuth from "@/locales/ko/auth.json";
 import koCommon from "@/locales/ko/common.json";
 import koDashboard from "@/locales/ko/dashboard.json";
@@ -57,6 +59,7 @@ void i18n
         admin: enAdmin,
         about: enAbout,
         approvals: enApprovals,
+        intake: enIntake,
         dashboard: enDashboard,
         integrations: enIntegrations,
       inventory: enInventory,
@@ -75,6 +78,7 @@ void i18n
         admin: koAdmin,
         about: koAbout,
         approvals: koApprovals,
+        intake: koIntake,
         dashboard: koDashboard,
         integrations: koIntegrations,
       inventory: koInventory,
@@ -96,6 +100,7 @@ void i18n
     "search",
       "admin",
       "approvals",
+      "intake",
       "dashboard",
       "integrations",
     "inventory",

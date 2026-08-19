@@ -110,6 +110,14 @@ export const VISUAL_COVERAGE: Record<string, VisualCoverage> = {
       "Workflow queue template — the governance surface BomLens has no " +
       "equivalent of, and the one the differentiation work leans on.",
   },
+  IntakeRequestsPage: {
+    exempt:
+      "Off in every deployment that has not opted in, so a baseline would " +
+      "capture the disabled notice rather than the queue, and capturing the " +
+      "queue would mean seeding a deployment setting the other screens do " +
+      "not need. The queue reuses the workflow-queue template ApprovalsPage " +
+      "already guards.",
+  },
   PoliciesPage: { exempt: "Settings form template." },
   IntegrationsPage: { exempt: "Settings form template." },
   NotificationsPage: { exempt: "Feed list; content volatile." },

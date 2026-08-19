@@ -83,7 +83,8 @@
       "scans": "{{count}} running or queued",
       "approvals": "{{count}} waiting"
     },
-    "accountMenu": "Account menu"
+    "accountMenu": "Account menu",
+    "intake": "Intake"
   },
   "demo": {
     "banner_title": "Read-only demo",

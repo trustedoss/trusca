@@ -25,6 +25,7 @@ import structlog
 from fastapi import APIRouter, Depends, Request, status
 from fastapi.responses import PlainTextResponse
 
+from core.config import intake_requests_enabled
 from core.errors import problem_response
 from core.security import CurrentUser, get_current_user
 from schemas.about import AboutResponse, NoticeDocumentOut
@@ -61,7 +62,14 @@ async def get_about(
         )
         for doc, size in available_documents()
     ]
-    return AboutResponse(**identity, documents=documents)
+    return AboutResponse(
+        **identity,
+        documents=documents,
+        # What this deployment has turned on. Read at request time rather than
+        # captured at import, so flipping the setting takes effect on the next
+        # page load instead of the next restart.
+        features={"intake_requests": intake_requests_enabled()},
+    )
 
 
 @router.get(

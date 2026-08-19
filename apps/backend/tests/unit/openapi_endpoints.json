@@ -180,6 +180,10 @@
     "page",
     "page_size"
   ],
+  "GET /v1/intake-requests": [
+    "project_id",
+    "status"
+  ],
   "GET /v1/inventory/components": [
     "eol",
     "license_category",
@@ -534,6 +538,9 @@
     "approval_id",
     "if-match"
   ],
+  "PATCH /v1/intake-requests/{request_id}": [
+    "request_id"
+  ],
   "PATCH /v1/notifications/read-all": [],
   "PATCH /v1/notifications/{notification_id}/read": [
     "notification_id"
@@ -580,6 +587,7 @@
   "POST /v1/github-app-credentials/{credential_id}/installations": [
     "credential_id"
   ],
+  "POST /v1/intake-requests": [],
   "POST /v1/license-policies/teams/{team_id}/exceptions": [
     "team_id"
   ],

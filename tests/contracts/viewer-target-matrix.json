@@ -208,6 +208,18 @@
     [
       "GET",
       "/v1/organization-verdicts/org/{organization_id}"
+    ],
+    [
+      "GET",
+      "/v1/intake-requests"
+    ],
+    [
+      "POST",
+      "/v1/intake-requests"
+    ],
+    [
+      "PATCH",
+      "/v1/intake-requests/{request_id}"
     ]
   ],
   "deny": [

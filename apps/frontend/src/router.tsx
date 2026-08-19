@@ -15,6 +15,7 @@ import { AdminScansPage } from "@/features/admin/scans/AdminScansPage";
 import { AdminTeamsPage } from "@/features/admin/teams/AdminTeamsPage";
 import { AdminUsersPage } from "@/features/admin/users/AdminUsersPage";
 import { ApprovalsPage } from "@/features/approvals/ApprovalsPage";
+import { IntakeRequestsPage } from "@/features/intake/IntakeRequestsPage";
 import { IntegrationsPage } from "@/features/integrations/IntegrationsPage";
 import { InventoryPage } from "@/features/inventory/InventoryPage";
 import { SearchPage } from "@/features/search/SearchPage";
@@ -120,6 +121,11 @@ export function AppRoutes() {
          */}
         <Route path="scans/:scanId" element={<ScanDetailPage />} />
         <Route path="approvals" element={<ApprovalsPage />} />
+        {/* Always routed, even where the deployment has not turned the queue
+            on: a bookmark should land somewhere that explains itself rather
+            than on the not-found page. The page says so; the shell draws no
+            entry point. */}
+        <Route path="intake" element={<IntakeRequestsPage />} />
         <Route path="policies" element={<PoliciesPage />} />
         <Route path="integrations" element={<IntegrationsPage />} />
         <Route path="notifications" element={<NotificationsPage />} />

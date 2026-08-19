@@ -39,6 +39,9 @@ from .component_approval import (  # noqa: E402,F401  (imported for metadata sid
     ApprovalStatus,
     ComponentApproval,
 )
+from .component_intake import (  # noqa: E402,F401  (imported for metadata side effects)
+    ComponentIntakeRequest,
+)
 from .eol_sync_state import (  # noqa: E402,F401  (imported for metadata side effects)
     EolSyncState,
 )
@@ -125,6 +128,7 @@ __all__ = [
     "LicenseFinding",
     "GatePolicy",
     "TRANSITION_APPROVAL_STATES",
+    "ComponentIntakeRequest",
     "OrganizationComponentVerdict",
     "TransitionApproval",
     "LicensePolicy",

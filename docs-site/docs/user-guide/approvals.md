@@ -121,6 +121,21 @@ The direction is deliberate: a team that reviewed a component in the context of 
 
 **Where you see it.** A component drawer whose answer came from the organization shows a note saying so, with the reason. A component your team decided shows nothing extra, because the status already tells you.
 
+## Asking before using {#intake-requests}
+
+Everything above happens after a scan finds a component. Some organizations decide the other way round: somebody asks whether a package may be used, and the answer arrives before it is in the build.
+
+That surface is **off unless a deployment turns it on** (`INTAKE_REQUESTS_ENABLED=true`), and off means it is not there rather than there and refusing: no menu entry, and its routes answer `404`. Whether your organization reviews packages ahead of use is a question about how you work, not one the portal should decide, and if you review what a scan finds then the approvals queue above already is that.
+
+Where it is on, **Intake** appears in the sidebar:
+
+1. Anybody on the project's team files a request, including at the lowest grade. The person who wants to add a dependency is usually not the person who decides, and a queue only an administrator can file into is one people route around.
+2. The request carries a **purl** (`pkg:npm/lodash`), not a package name. The purl is what a later scan matches the answer against; a name would be answered and then never found again.
+3. A team administrator moves it through the same four states an approval uses, for the same reason: it is the same judgement about the same package, asked earlier.
+4. **When a scan later finds that package, the answer is carried onto the approval it opens.** Somebody who asked first is not asked again. Both answers carry: a package the team refused does not come back as a fresh question.
+
+Only decided requests carry. One still under review is a question, not an answer, and treating it as one would mark a component approved because somebody had opened a review.
+
 ## Integration with external review systems
 
 The portal can post approval requests to an external system (e.g., Jira) via webhooks. See [admin notifications](../admin-guide/vulnerability-data.md#notifications) — the **approval requested** trigger wires the same event to email, Slack, Teams, and an outbound HTTP POST.

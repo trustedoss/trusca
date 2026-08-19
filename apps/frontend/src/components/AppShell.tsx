@@ -62,6 +62,7 @@ import { deriveInitials } from "@/lib/initials";
 import { cn } from "@/lib/utils";
 import { useAuthStore } from "@/stores/authStore";
 import { useActiveTeam } from "@/hooks/useActiveTeam";
+import { useDeploymentFeatures } from "@/features/about/api/useDeploymentFeatures";
 import { useNavBadges, type NavBadgeKey } from "@/hooks/useNavBadges";
 import { useUIStore } from "@/stores/uiStore";
 
@@ -78,6 +79,15 @@ interface NavItem {
    * would be noise, and the eye stops reading badges that are always there.
    */
   badge?: NavBadgeKey;
+  /**
+   * An optional surface, named by its key in the deployment's feature set.
+   *
+   * A row like this is drawn only when the deployment turned that surface on.
+   * Not hidden behind permission: it is not that this person may not use it,
+   * it is that their organization does not work that way, and a menu entry
+   * whose destination 404s teaches people the product is broken.
+   */
+  feature?: string;
 }
 
 /**
@@ -137,6 +147,13 @@ const MAIN_NAV: NavGroup[] = [
         icon: ClipboardCheck,
         testId: "nav-approvals",
         badge: "approvals",
+      },
+      {
+        to: "/intake",
+        labelKey: "nav.intake",
+        icon: ClipboardCheck,
+        testId: "nav-intake",
+        feature: "intake_requests",
       },
       {
         to: "/policies",
@@ -333,6 +350,7 @@ function SidebarNav({
 }) {
   const { t } = useTranslation();
   const badges = useNavBadges();
+  const features = useDeploymentFeatures();
   return (
     <>
       <nav className="flex-1 overflow-y-auto px-2 py-3" aria-label={t("app.name")}>
@@ -350,7 +368,13 @@ function SidebarNav({
               </div>
             )}
             <ul className="space-y-1">
-              {group.items.map((item) => (
+              {group.items
+                .filter(
+                  // A row for a surface this deployment did not turn on is a
+                  // link to a 404. Drawn only when the surface exists.
+                  (item) => item.feature === undefined || features[item.feature],
+                )
+                .map((item) => (
                 <NavItemLink
                   key={item.to}
                   item={item}

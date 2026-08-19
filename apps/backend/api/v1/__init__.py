@@ -12,6 +12,7 @@ from .approvals import router as approvals_router
 from .audit import router as audit_router
 from .auth import router as auth_router
 from .compliance import router as compliance_router
+from .component_intake import router as component_intake_router
 from .components import router as components_router
 from .dashboard import router as dashboard_router
 from .gate_policies import router as gate_policies_router
@@ -51,6 +52,7 @@ __all__ = [
     "audit_router",
     "auth_router",
     "compliance_router",
+    "component_intake_router",
     "components_router",
     "dashboard_router",
     "github_app_router",
