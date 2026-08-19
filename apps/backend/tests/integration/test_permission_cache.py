@@ -617,3 +617,107 @@ async def test_a_stored_principal_cannot_be_altered_through_the_copy_handed_out(
     assert again is not None
     assert again.team_ids == [team_id]
     assert again.team_roles == {team_id: "viewer"}
+
+
+# ---------------------------------------------------------------------------
+# The pair the plan names: caching x the permission family
+#
+# A lifetime bounds how long a demotion goes unfelt, and that is asserted
+# above. The other half is the API key: narrowing one has to take effect too,
+# and the answer here is that key principals are never stored, so it is
+# immediate. That is worth an end-to-end case rather than only the unit one,
+# because "never stored" is a property of one function and "takes effect" is a
+# property of the request path.
+# ---------------------------------------------------------------------------
+
+
+async def test_narrowing_a_key_takes_effect_even_with_a_lifetime_set(
+    client, monkeypatch
+) -> None:
+    monkeypatch.setenv("PERMISSION_CACHE_TTL_SECONDS", "300")
+    from tests._helpers import make_project
+
+    factory = await _factory(client)
+    async with factory() as session:
+        org = await make_organization(session)
+        team = await make_team(session, organization=org)
+        user = await make_user(session)
+        await make_membership(session, user=user, team=team, role="developer")
+        project = await make_project(session, team=team)
+
+    issued = await client.post(
+        "/v1/api-keys",
+        headers=_bearer_for(user),
+        json={
+            "name": "ci",
+            "scope": "project",
+            "project_id": str(project.id),
+            "permission_breadth": "read_write",
+        },
+    )
+    assert issued.status_code == 201, issued.text
+    key_headers = {"Authorization": f"Bearer {issued.json()['raw_key']}"}
+
+    before = await client.post(
+        f"/v1/projects/{project.id}/scans", json={"kind": "source"}, headers=key_headers
+    )
+    narrowed = await client.patch(
+        f"/v1/api-keys/{issued.json()['id']}",
+        headers=_bearer_for(user),
+        json={"permission_breadth": "read_only"},
+    )
+    after = await client.post(
+        f"/v1/projects/{project.id}/scans", json={"kind": "source"}, headers=key_headers
+    )
+
+    assert before.status_code == 202, before.text
+    assert narrowed.status_code == 200, narrowed.text
+    assert after.status_code == 403, after.text
+
+
+async def test_a_key_request_leaves_nothing_behind_for_the_issuer(
+    client, monkeypatch
+) -> None:
+    """The issuer's own session must not inherit the key's narrowing.
+
+    Same user id on both, which is why the store refuses key principals; this
+    asserts the consequence through the request path rather than the rule.
+    """
+    monkeypatch.setenv("PERMISSION_CACHE_TTL_SECONDS", "300")
+    from core import security
+    from tests._helpers import make_project
+
+    factory = await _factory(client)
+    async with factory() as session:
+        org = await make_organization(session)
+        team = await make_team(session, organization=org)
+        user = await make_user(session)
+        await make_membership(session, user=user, team=team, role="developer")
+        project = await make_project(session, team=team)
+
+    issued = await client.post(
+        "/v1/api-keys",
+        headers=_bearer_for(user),
+        json={
+            "name": "ci",
+            "scope": "project",
+            "project_id": str(project.id),
+            "permission_breadth": "read_only",
+        },
+    )
+    reset_principal_cache()
+
+    await client.get(
+        f"/v1/projects/{project.id}",
+        headers={"Authorization": f"Bearer {issued.json()['raw_key']}"},
+    )
+    assert security._principal_cache == {}
+
+    # And the person's own session still writes.
+    started = await client.post(
+        f"/v1/projects/{project.id}/scans",
+        json={"kind": "source"},
+        headers=_bearer_for(user),
+    )
+
+    assert started.status_code == 202, started.text
