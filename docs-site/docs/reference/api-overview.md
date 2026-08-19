@@ -146,6 +146,9 @@ GET    /v1/projects/{id}/vulnerabilities
 GET    /v1/projects/{id}/licenses
 GET    /v1/projects/{id}/obligations
 GET    /v1/projects/{id}/obligations/{obligation_id}
+PUT    /v1/projects/{id}/obligations/{obligation_id}/fulfilment   # If-Match optional
+DELETE /v1/projects/{id}/obligations/{obligation_id}/fulfilment
+GET    /v1/projects/{id}/obligation-fulfilments
 GET    /v1/projects/{id}/gate-result
 
 GET    /v1/scans                             list

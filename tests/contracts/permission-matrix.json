@@ -549,6 +549,11 @@
     },
     {
       "method": "GET",
+      "path": "/v1/projects/{project_id}/obligation-fulfilments",
+      "gate": "role>=viewer"
+    },
+    {
+      "method": "GET",
       "path": "/v1/projects/{project_id}/obligations",
       "gate": "role>=viewer"
     },
@@ -556,6 +561,16 @@
       "method": "GET",
       "path": "/v1/projects/{project_id}/obligations/{obligation_id}",
       "gate": "role>=viewer"
+    },
+    {
+      "method": "DELETE",
+      "path": "/v1/projects/{project_id}/obligations/{obligation_id}/fulfilment",
+      "gate": "role>=developer"
+    },
+    {
+      "method": "PUT",
+      "path": "/v1/projects/{project_id}/obligations/{obligation_id}/fulfilment",
+      "gate": "role>=developer"
     },
     {
       "method": "GET",

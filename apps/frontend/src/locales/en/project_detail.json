@@ -928,7 +928,8 @@
       "license_name": "License",
       "category": "Category",
       "kind": "Kind",
-      "affected_count": "Components"
+      "affected_count": "Components",
+      "fulfilment": "Fulfilment"
     },
     "toolbar": {
       "search_label": "Search",
@@ -983,6 +984,38 @@
       "affected_truncated": "Showing {{shown}} of {{total}} components. Open the Components tab to see the full list.",
       "text_truncated": "Obligation text was truncated by the server. See the source catalog for the complete text.",
       "translation_advisory": "Show the original English (authoritative)"
+    },
+    "fulfilment": {
+      "section": "Fulfilment",
+      "help": "Whether this project has met the obligation. Recorded here, not in the generated notice: the notice states what the licence asks, and nothing on this panel changes it.",
+      "status": {
+        "unrecorded": "Not recorded",
+        "not_started": "Not started",
+        "in_progress": "In progress",
+        "done": "Done",
+        "not_applicable": "Does not apply"
+      },
+      "field": {
+        "status": "Status",
+        "due_on": "Needed by",
+        "evidence_note": "What was done",
+        "evidence_note_placeholder": "Attribution added to the release page, NOTICE shipped in the archive, and so on.",
+        "evidence_url": "Where to look",
+        "evidence_url_help": "A link to the release page, the file in the repository, or the ticket. Link rather than upload, so this does not become a second place the evidence can be out of date.",
+        "assign_to_me": "Assign this to me",
+        "assigned_elsewhere": "Assigned to somebody else on the team"
+      },
+      "action": {
+        "save": "Save",
+        "saving": "Saving...",
+        "clear": "Remove the record"
+      },
+      "saved": "Saved",
+      "completed_at": "Marked done on {{when}}",
+      "errors": {
+        "save": "Could not save this record.",
+        "clear": "Could not remove this record."
+      }
     }
   },
   "sbom": {

@@ -1018,3 +1018,48 @@ def test_intake_and_approval_share_one_transition_matrix() -> None:
     from services.component_intake_service import _TRANSITIONS
 
     assert _TRANSITIONS == _TRANSITION_MAP
+
+
+# ---------------------------------------------------------------------------
+# Obligation fulfilment statuses
+# ---------------------------------------------------------------------------
+
+
+def test_fulfilment_statuses_match_the_database_and_the_shared_fixture() -> None:
+    """Three copies of one vocabulary: the enum, the tuple, and the fixture.
+
+    The tuple is what the service validates against and what the wire
+    description advertises; the CHECK constraint is what the database will
+    actually accept. A name in the tuple but not the constraint is a status
+    the API promises and the INSERT refuses, which fails at the last possible
+    moment, on save.
+    """
+    import json
+    import re
+    from pathlib import Path
+
+    from models.obligation_fulfilment import (
+        OBLIGATION_FULFILMENT_STATUSES,
+        ObligationFulfilment,
+    )
+
+    table = ObligationFulfilment.__table__  # type: ignore[attr-defined]
+    constraint = next(
+        c
+        for c in table.constraints  # type: ignore[attr-defined]
+        if getattr(c, "name", None) == "ck_obligation_fulfilments_status"
+    )
+    allowed_by_the_database = set(re.findall(r"'([a-z_]+)'", str(constraint.sqltext)))
+    fixture = (
+        Path(__file__).resolve().parents[4]
+        / "tests/contracts/obligation-fulfilment-statuses.json"
+    )
+    assert fixture.is_file(), f"shared fulfilment-status fixture missing: {fixture}"
+    statuses = json.loads(fixture.read_text(encoding="utf-8"))["statuses"]
+
+    assert allowed_by_the_database == set(OBLIGATION_FULFILMENT_STATUSES)
+    assert list(OBLIGATION_FULFILMENT_STATUSES) == statuses, (
+        "fulfilment statuses drifted from the shared fixture. Update "
+        "tests/contracts/obligation-fulfilment-statuses.json AND the frontend "
+        "mirror (obligationsApi.ts, the status control, locales) together."
+    )

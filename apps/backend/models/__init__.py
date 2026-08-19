@@ -73,6 +73,10 @@ from .oauth_identity import (  # noqa: E402,F401  (imported for metadata side ef
     OAUTH_PROVIDER_VALUES,
     OAuthIdentity,
 )
+from .obligation_fulfilment import (  # noqa: E402,F401  (imported for metadata side effects)
+    OBLIGATION_FULFILMENT_STATUSES,
+    ObligationFulfilment,
+)
 from .organization_component_verdict import (  # noqa: E402,F401  (imported for metadata side effects)
     OrganizationComponentVerdict,
 )
@@ -129,6 +133,8 @@ __all__ = [
     "GatePolicy",
     "TRANSITION_APPROVAL_STATES",
     "ComponentIntakeRequest",
+    "OBLIGATION_FULFILMENT_STATUSES",
+    "ObligationFulfilment",
     "OrganizationComponentVerdict",
     "TransitionApproval",
     "LicensePolicy",

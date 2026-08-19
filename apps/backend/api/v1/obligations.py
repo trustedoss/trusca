@@ -57,6 +57,17 @@ from schemas.obligation_detail import (
     ObligationListItem,
     ObligationListResponse,
 )
+from schemas.obligation_fulfilment import (
+    ObligationFulfilmentIn,
+    ObligationFulfilmentListOut,
+    ObligationFulfilmentOut,
+)
+from services.obligation_fulfilment_service import (
+    FulfilmentError,
+    clear_fulfilment,
+    list_fulfilments,
+    record_fulfilment,
+)
 from services.obligation_service import (
     ObligationError,
     generate_notice,
@@ -214,6 +225,7 @@ async def get_obligation_endpoint(
         text_ko=payload["text_ko"],
         text_truncated=payload["text_truncated"],
         link=payload["link"],
+        fulfilment=payload["fulfilment"],
         affected_components=[
             AffectedComponentByObligation.model_validate(c)
             for c in payload["affected_components"]
@@ -421,3 +433,143 @@ del _name
 
 
 __all__ = ["router"]
+
+
+# ---------------------------------------------------------------------------
+# PUT / GET / DELETE the fulfilment record (N15)
+#
+# Separate paths from the obligation reads above, and deliberately so: those
+# answer "what does this licence ask of us", which is the same for everybody
+# and derived from the catalog. These answer "did we do it", which is one
+# project's own record. Folding the write onto the obligation path would put a
+# shared catalog row and a project's progress behind one URL.
+# ---------------------------------------------------------------------------
+
+
+@router.put(
+    "/projects/{project_id}/obligations/{obligation_id}/fulfilment",
+    response_model=ObligationFulfilmentOut,
+    summary="Record what has been done about an obligation",
+    responses={
+        200: {"description": "Recorded. The notice this obligation feeds is unchanged."},
+        403: {"description": "Caller is not a member of the project's team."},
+        404: {"description": "No such project or obligation, or not the caller's to see."},
+        412: {"description": "The If-Match version is stale; reload and retry."},
+        422: {"description": "Unknown status, or an assignee who is not on the team."},
+    },
+)
+async def put_fulfilment_endpoint(
+    request: Request,
+    project_id: uuid.UUID,
+    obligation_id: uuid.UUID,
+    payload: ObligationFulfilmentIn,
+    session: AsyncSession = Depends(get_db),
+    actor: CurrentUser = Depends(require_role("developer")),
+) -> Response:
+    """Create or replace the record. One call either way.
+
+    The caller is saying what the state is now; making them find out first
+    whether a row exists would be a round trip that answers a question about
+    our schema rather than about their work.
+    """
+    try:
+        row = await record_fulfilment(
+            session,
+            actor,
+            project_id=project_id,
+            obligation_id=obligation_id,
+            status=payload.status,
+            assignee_user_id=payload.assignee_user_id,
+            due_on=payload.due_on,
+            evidence_note=payload.evidence_note,
+            evidence_url=payload.evidence_url,
+            if_match_version=_fulfilment_if_match(request),
+        )
+    except FulfilmentError as exc:
+        return _problem_for_fulfilment_error(request, exc)
+    response = Response(
+        content=ObligationFulfilmentOut.model_validate(row).model_dump_json(),
+        media_type="application/json",
+    )
+    response.headers["ETag"] = f'"{row.version}"'
+    return response
+
+
+@router.get(
+    "/projects/{project_id}/obligation-fulfilments",
+    response_model=ObligationFulfilmentListOut,
+    summary="Everything this project has recorded about its obligations",
+)
+async def list_fulfilments_endpoint(
+    request: Request,
+    project_id: uuid.UUID,
+    session: AsyncSession = Depends(get_db),
+    actor: CurrentUser = Depends(require_role("viewer")),
+) -> Response:
+    try:
+        rows = await list_fulfilments(session, actor, project_id=project_id)
+    except FulfilmentError as exc:
+        return _problem_for_fulfilment_error(request, exc)
+    items = [ObligationFulfilmentOut.model_validate(row) for row in rows]
+    return Response(
+        content=ObligationFulfilmentListOut(
+            items=items, total=len(items)
+        ).model_dump_json(),
+        media_type="application/json",
+    )
+
+
+@router.delete(
+    "/projects/{project_id}/obligations/{obligation_id}/fulfilment",
+    status_code=status.HTTP_204_NO_CONTENT,
+    summary="Remove the record, putting the obligation back to nothing recorded",
+    responses={
+        204: {
+            "description": (
+                "Removed, or there was nothing to remove. Distinct from "
+                "marking it not-applicable: that is a judgement worth keeping, "
+                "this is for a row created by mistake."
+            )
+        },
+        403: {"description": "Caller is not a member of the project's team."},
+        404: {"description": "No such project, or not the caller's to see."},
+    },
+)
+async def delete_fulfilment_endpoint(
+    request: Request,
+    project_id: uuid.UUID,
+    obligation_id: uuid.UUID,
+    session: AsyncSession = Depends(get_db),
+    actor: CurrentUser = Depends(require_role("developer")),
+) -> Response:
+    try:
+        await clear_fulfilment(
+            session, actor, project_id=project_id, obligation_id=obligation_id
+        )
+    except FulfilmentError as exc:
+        return _problem_for_fulfilment_error(request, exc)
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
+
+
+def _fulfilment_if_match(request: Request) -> int | None:
+    raw = request.headers.get("If-Match")
+    if raw is None:
+        return None
+    candidate = raw.strip()
+    if candidate == "*":
+        return None
+    for token in candidate.split(","):
+        try:
+            return int(token.strip().removeprefix("W/").strip('"'))
+        except ValueError:
+            continue
+    return -1
+
+
+def _problem_for_fulfilment_error(request: Request, exc: FulfilmentError) -> Response:
+    return problem_response(
+        status_code=exc.status_code,
+        title=exc.title,
+        detail=str(exc) or exc.title,
+        instance=request.url.path,
+    )

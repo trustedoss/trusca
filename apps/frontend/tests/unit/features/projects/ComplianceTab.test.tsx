@@ -25,7 +25,7 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import type React from "react";
-import { MemoryRouter } from "react-router-dom";
+import { MemoryRouter, useSearchParams } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import type {
@@ -64,6 +64,13 @@ vi.mock("@/lib/licensePoliciesApi", async () => {
     deleteTeamLicenseException: vi.fn(),
   };
 });
+
+// The obligation drawer opened by a chip fetches its own detail. Stubbing the
+// hook keeps these tests about the route into it; the drawer's own contents
+// are covered by ObligationDrawer.test.tsx.
+vi.mock("@/features/projects/api/useObligation", () => ({
+  useObligation: () => ({ data: undefined, isLoading: true, isError: false }),
+}));
 
 vi.mock("react-virtuoso", () => ({
   Virtuoso: <T,>({
@@ -152,6 +159,12 @@ function response(
   };
 }
 
+/** MemoryRouter keeps the URL out of `window.location`, so read it here. */
+function SearchProbe() {
+  const [params] = useSearchParams();
+  return <span data-testid="search-probe">{params.toString()}</span>;
+}
+
 function renderTab(initialEntries: string[] = ["/projects/proj-1"]) {
   const client = new QueryClient({
     defaultOptions: { queries: { retry: false } },
@@ -160,6 +173,7 @@ function renderTab(initialEntries: string[] = ["/projects/proj-1"]) {
     <QueryClientProvider client={client}>
       <MemoryRouter initialEntries={initialEntries}>
         <ComplianceTab projectId="proj-1" projectName="Demo" />
+        <SearchProbe />
       </MemoryRouter>
     </QueryClientProvider>,
   );
@@ -526,4 +540,63 @@ describe("ComplianceTab unified grid", () => {
     // keeps its history off window.location, so there is nothing to read here.
     expect(select).toHaveValue("incompatible");
   });
+
+  // ─── N15: the obligation chips are the way into the fulfilment record ───
+  //
+  // This is the reachability half of the feature. The record has an endpoint,
+  // a drawer and a full set of tests, and none of that matters if no click in
+  // the running app arrives at it. The chips were plain badges until now, and
+  // the drawer they open was unrouted.
+
+  it("a chip opens the obligation drawer rather than the licence one", async () => {
+    mockedList.mockResolvedValue(
+      response([
+        row("MIT", {
+          obligations: [
+            {
+              obligation_id: "obg-1",
+              kind: "attribution",
+              summary: "Preserve the copyright notice.",
+              summary_ko: null,
+            },
+          ],
+        }),
+      ]),
+    );
+    renderTab();
+
+    await userEvent.click(
+      await screen.findByTestId("compliance-obligation-chip-open"),
+    );
+
+    // The drawer reads its own endpoint, which is mocked away here; the URL is
+    // what proves the click landed on the obligation and not on the row
+    // underneath it.
+    await waitFor(() => {
+      expect(screen.getByTestId("search-probe")).toHaveTextContent(
+        "obligation=obg-1",
+      );
+    });
+    expect(screen.getByTestId("search-probe")).not.toHaveTextContent("license=");
+  });
+
+  it("opens the drawer for a deep link into one obligation", async () => {
+    // The tab used to delete this key on mount as a leftover from a retired
+    // sub-view. That mount rewrite does not run under MemoryRouter, so this
+    // test covers the deep link reaching the drawer and the E2E scenario in
+    // `obligations.spec.ts` covers the key surviving the rewrite.
+    mockedList.mockResolvedValue(response([row("MIT")]));
+    renderTab(["/projects/proj-1?cview=licenses&obligation=obg-1"]);
+
+    // The open drawer is the assertion, not the URL: the mount effect that
+    // tidies legacy keys runs after the first paint, so a URL read taken too
+    // early would pass against a rewrite that had not happened yet. The drawer
+    // is downstream of whatever the URL settles on.
+    await screen.findByTestId("compliance-row");
+    expect(await screen.findByTestId("obligation-drawer")).toBeInTheDocument();
+    expect(screen.getByTestId("search-probe")).toHaveTextContent(
+      "obligation=obg-1",
+    );
+  });
+
 });

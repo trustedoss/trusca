@@ -19,6 +19,7 @@
  *   S3 — Obligation chips carry a valid kind (`data-kind`)
  *   S4 — NOTICE download (text) from the Reports tab card
  *   S5 — NOTICE download (html) from the Reports tab card
+ *   S6 - Recording that an obligation was met, from the chip in the grid
  *
  * Selectors live in `apps/frontend/tests/_harness/PortalPage.ts`. The
  * scenarios are EN-locale-agnostic — every assertion uses `data-testid`
@@ -214,4 +215,31 @@ test.describe("@obligations project obligations (Compliance grid)", () => {
     // Sanity: the SPDX ids still surface in the HTML body.
     expect(body).toMatch(/E2E-[A-Z]+-/);
   });
+
+  test("S6) an obligation chip opens the drawer and the record survives a reload", async ({
+    page,
+  }, testInfo) => {
+    const seed = await bootstrap(testInfo, page);
+    if (seed === null) return;
+
+    const portal = new PortalPage(page);
+    await portal.gotoProjects();
+    await portal.openProjectDetail(PROJECT_NAME);
+    await portal.selectObligationsTab();
+
+    await portal.openFirstObligationFromChip();
+    expect(await portal.obligationFulfilmentStatus()).toBe("none");
+
+    await portal.recordObligationFulfilment(
+      "done",
+      "NOTICE shipped in the release archive",
+    );
+
+    // Reload rather than re-reading the open drawer: the deep link carries
+    // `?obligation=<id>`, so this asserts both that the record persisted and
+    // that the URL survives the tab's mount-time tidying of legacy keys.
+    await page.reload();
+    expect(await portal.obligationFulfilmentStatus()).toBe("done");
+  });
+
 });

@@ -42,6 +42,7 @@ from typing import Literal
 from pydantic import BaseModel, ConfigDict, Field
 
 from schemas.license_detail import LicenseCategory
+from schemas.obligation_fulfilment import ObligationFulfilmentSummary
 
 # Ranked allow-list of obligation kinds we know about today. The list is
 # advisory: the database column is open, so unknown kinds round-trip
@@ -116,6 +117,16 @@ class ObligationListItem(BaseModel):
         description=(
             "Optional URL with further explanation of the obligation. "
             "Frontends MUST scheme-filter this before rendering as a link."
+        ),
+    )
+    fulfilment: ObligationFulfilmentSummary | None = Field(
+        default=None,
+        description=(
+            "What this project has recorded against the obligation, or null "
+            "when nothing has been recorded. Additive: every other field on "
+            "this response is unchanged, and the list is never narrowed by "
+            "this value. Null is not the same as 'not applicable' - one means "
+            "nobody has looked, the other is a judgement somebody made."
         ),
     )
     affected_count: int = Field(
@@ -218,6 +229,15 @@ class ObligationDetailResponse(BaseModel):
             "All component_versions in the project's latest scan that carry "
             "the parent license. Capped at 500 rows — see "
             "``affected_components_truncated``."
+        ),
+    )
+    fulfilment: ObligationFulfilmentSummary | None = Field(
+        default=None,
+        description=(
+            "What this project has recorded against the obligation, or null "
+            "when nothing has been. Additive: every other field here is "
+            "unchanged, and nothing about this value reaches the generated "
+            "notice."
         ),
     )
     affected_components_truncated: bool = Field(

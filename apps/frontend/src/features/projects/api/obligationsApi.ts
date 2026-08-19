@@ -3,7 +3,7 @@
 /**
  * Obligations wire surface — Phase 3 PR #13.
  *
- * Three read-only endpoints back the project Obligations tab + drawer:
+ * Three read endpoints back the project Obligations tab + drawer:
  *
  *   - GET /v1/projects/{id}/obligations                   → ObligationListResponse
  *   - GET /v1/projects/{id}/obligations/{obligation_id}   → ObligationDetailResponse
@@ -11,8 +11,15 @@
  *
  * Wire types mirror `apps/backend/schemas/obligation_detail.py` 1:1 (snake_case).
  *
- * Read-only domain: obligations are a per-license catalog, no analyst workflow,
- * no PATCH counterpart.
+ * The catalog itself stays read-only: an obligation is what a licence asks of
+ * everybody who uses it, and nothing here edits that. What a project may write
+ * is its own record of having done it (N15):
+ *
+ *   - PUT    /v1/projects/{id}/obligations/{obligation_id}/fulfilment
+ *   - DELETE /v1/projects/{id}/obligations/{obligation_id}/fulfilment
+ *
+ * Those live beside the obligation rather than inside it, and neither reaches
+ * the generated notice.
  *
  * Hard rules (CLAUDE.md):
  *   - All 4xx/5xx responses are `application/problem+json` and surface as
@@ -21,6 +28,7 @@
  *     so axios doesn't try to JSON-parse it.
  */
 import { api } from "@/lib/api";
+import type { ObligationFulfilmentStatus } from "@/lib/obligationConstants";
 
 import type { LicenseCategoryName } from "@/features/projects/api/projectDetailApi";
 
@@ -29,6 +37,45 @@ import type { LicenseCategoryName } from "@/features/projects/api/projectDetailA
 // ---------------------------------------------------------------------------
 
 export type { LicenseCategoryName } from "@/features/projects/api/projectDetailApi";
+// The status list itself lives in `@/lib/obligationConstants`, because a value
+// export here would be missing from every test that mocks this module. Only the
+// type travels, and types are erased.
+export type { ObligationFulfilmentStatus } from "@/lib/obligationConstants";
+
+/** The record as it hangs off an obligation in the list and detail reads. */
+export interface ObligationFulfilmentSummary {
+  id: string;
+  status: ObligationFulfilmentStatus;
+  assignee_user_id: string | null;
+  due_on: string | null;
+  evidence_note: string | null;
+  evidence_url: string | null;
+  completed_at: string | null;
+  completed_by_user_id: string | null;
+  version: number;
+  updated_at: string;
+}
+
+/** The record in full, as the write endpoint returns it. */
+export interface ObligationFulfilment extends ObligationFulfilmentSummary {
+  project_id: string;
+  obligation_id: string;
+  created_at: string;
+}
+
+export interface RecordFulfilmentInput {
+  status: ObligationFulfilmentStatus;
+  assignee_user_id?: string | null;
+  due_on?: string | null;
+  evidence_note?: string | null;
+  evidence_url?: string | null;
+  /**
+   * The version the editor was opened on. Sent as If-Match so a save made
+   * against a stale read is refused rather than silently overwriting whatever
+   * somebody else recorded in between.
+   */
+  ifMatchVersion?: number | null;
+}
 
 export type ObligationSortKey =
   | "category"
@@ -78,6 +125,12 @@ export interface ObligationListItem {
   link: string | null;
   affected_count: number;
   updated_at: string;
+  /**
+   * Null when nobody has recorded anything, which is not the same as
+   * "not started": one means nobody looked, the other means somebody did and
+   * has not begun.
+   */
+  fulfilment: ObligationFulfilmentSummary | null;
 }
 
 export interface ObligationListResponse {
@@ -117,6 +170,8 @@ export interface ObligationDetailResponse {
   affected_components_total: number;
   created_at: string;
   updated_at: string;
+  /** See {@link ObligationListItem.fulfilment}. */
+  fulfilment: ObligationFulfilmentSummary | null;
 }
 
 export interface NoticeMetadata {
@@ -248,4 +303,39 @@ export async function fetchProjectNotice(
         obligationCountRaw == null ? null : Number.parseInt(obligationCountRaw, 10),
     },
   };
+}
+
+// ---------------------------------------------------------------------------
+// Fulfilment writes (N15)
+// ---------------------------------------------------------------------------
+
+export async function recordObligationFulfilment(
+  projectId: string,
+  obligationId: string,
+  input: RecordFulfilmentInput,
+): Promise<ObligationFulfilment> {
+  const { ifMatchVersion, ...body } = input;
+  const { data } = await api.put<ObligationFulfilment>(
+    `/v1/projects/${projectId}/obligations/${obligationId}/fulfilment`,
+    body,
+    ifMatchVersion == null
+      ? undefined
+      : { headers: { "If-Match": `"${ifMatchVersion}"` } },
+  );
+  return data;
+}
+
+/**
+ * Remove the record entirely, putting the obligation back to nothing recorded.
+ *
+ * Distinct from marking it not-applicable: that is a judgement worth keeping,
+ * this is for a row created by mistake.
+ */
+export async function clearObligationFulfilment(
+  projectId: string,
+  obligationId: string,
+): Promise<void> {
+  await api.delete(
+    `/v1/projects/${projectId}/obligations/${obligationId}/fulfilment`,
+  );
 }

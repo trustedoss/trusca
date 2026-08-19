@@ -91,6 +91,10 @@
     ],
     [
       "GET",
+      "/v1/projects/{project_id}/obligation-fulfilments"
+    ],
+    [
+      "GET",
       "/v1/projects/{project_id}/obligations"
     ],
     [
@@ -318,6 +322,14 @@
     [
       "PATCH",
       "/v1/projects/{project_id}"
+    ],
+    [
+      "DELETE",
+      "/v1/projects/{project_id}/obligations/{obligation_id}/fulfilment"
+    ],
+    [
+      "PUT",
+      "/v1/projects/{project_id}/obligations/{obligation_id}/fulfilment"
     ],
     [
       "POST",

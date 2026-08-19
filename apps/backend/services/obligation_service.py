@@ -533,6 +533,16 @@ async def list_project_obligations(
 
     distribution = await _compute_kind_distribution(session, scan_id)
 
+    # Fetched separately and attached, rather than joined into the query above.
+    # A join is where this feature would have quietly broken: an inner join
+    # drops every obligation nobody has started, which is most of them on the
+    # day it ships, and the list would read as the work having shrunk. Even a
+    # left join changes the row count if an obligation somehow has two rows,
+    # and a second query cannot.
+    fulfilments = await _fulfilments_by_obligation(
+        session, project_id=project_id, obligation_ids=[r.id for r in rows]
+    )
+
     items: list[dict[str, Any]] = []
     for r in rows:
         items.append(
@@ -552,10 +562,55 @@ async def list_project_obligations(
                 "link": r.link,
                 "affected_count": int(r.affected_count),
                 "updated_at": r.updated_at,
+                # Additive. Null means nobody has recorded anything for this
+                # obligation on this project, which is different from having
+                # decided it does not apply.
+                "fulfilment": fulfilments.get(r.id),
             }
         )
 
     return items, distribution, total
+
+
+async def _fulfilments_by_obligation(
+    session: AsyncSession,
+    *,
+    project_id: uuid.UUID,
+    obligation_ids: list[uuid.UUID],
+) -> dict[uuid.UUID, dict[str, Any]]:
+    """This project's fulfilment rows, keyed by obligation.
+
+    Only the obligations on the page: the catalog is shared across every
+    project and the page is bounded, so this stays one small query however
+    many obligations exist.
+    """
+    if not obligation_ids:
+        return {}
+    from models import ObligationFulfilment
+
+    rows = (
+        await session.execute(
+            select(ObligationFulfilment).where(
+                ObligationFulfilment.project_id == project_id,
+                ObligationFulfilment.obligation_id.in_(obligation_ids),
+            )
+        )
+    ).scalars()
+    return {
+        row.obligation_id: {
+            "id": row.id,
+            "status": row.status,
+            "assignee_user_id": row.assignee_user_id,
+            "due_on": row.due_on,
+            "evidence_note": row.evidence_note,
+            "evidence_url": row.evidence_url,
+            "completed_at": row.completed_at,
+            "completed_by_user_id": row.completed_by_user_id,
+            "version": row.version,
+            "updated_at": row.updated_at,
+        }
+        for row in rows
+    }
 
 
 async def _compute_kind_distribution(
@@ -695,6 +750,13 @@ async def get_obligation_detail(
         "text_ko": obligation_text_ko(obligation.text),
         "link": obligation.link,
         "affected_components": affected_components,
+        # Attached, never joined into the query that found the obligation: a
+        # join is where this would have narrowed a read that must not narrow.
+        "fulfilment": (
+            await _fulfilments_by_obligation(
+                session, project_id=project_id, obligation_ids=[obligation.id]
+            )
+        ).get(obligation.id),
         "affected_components_truncated": ac_truncated,
         "affected_components_total": ac_total,
         "created_at": obligation.created_at,

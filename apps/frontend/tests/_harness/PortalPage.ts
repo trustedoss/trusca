@@ -1754,6 +1754,55 @@ export class PortalPage {
     return kinds;
   }
 
+  /**
+   * Open the obligation drawer from the first obligation chip in the grid
+   * (N15). The chip is the only route into the fulfilment record, and the
+   * click has to reach the chip rather than the row underneath it, which
+   * opens the licence drawer instead.
+   */
+  async openFirstObligationFromChip(): Promise<void> {
+    const row = this.page
+      .locator('[data-testid="compliance-row"][data-has-obligations="true"]')
+      .first();
+    await row.waitFor({ state: "visible", timeout: 10_000 });
+    await row.getByTestId("compliance-obligation-chip-open").first().click();
+    await this.page
+      .getByTestId("obligation-drawer")
+      .waitFor({ state: "visible", timeout: 10_000 });
+  }
+
+  /**
+   * Record a fulfilment from the open obligation drawer and wait for the
+   * save to land. Returns nothing: the caller asserts on
+   * {@link obligationFulfilmentStatus}, which reads the saved state back out
+   * of the drawer rather than trusting the click.
+   */
+  async recordObligationFulfilment(
+    status: "not_started" | "in_progress" | "done" | "not_applicable",
+    note?: string,
+  ): Promise<void> {
+    await this.page
+      .getByTestId("obligation-fulfilment-status-select")
+      .selectOption(status);
+    if (note != null) {
+      await this.page.getByTestId("obligation-fulfilment-note-input").fill(note);
+    }
+    await this.page.getByTestId("obligation-fulfilment-save").click();
+    await this.page
+      .getByTestId("obligation-fulfilment-saved")
+      .waitFor({ state: "visible", timeout: 10_000 });
+  }
+
+  /** The status chip in the open obligation drawer, as its `data-status`. */
+  async obligationFulfilmentStatus(): Promise<string | null> {
+    const badge = this.page
+      .getByTestId("obligation-drawer")
+      .getByTestId("obligation-fulfilment-badge")
+      .first();
+    await badge.waitFor({ state: "visible", timeout: 10_000 });
+    return badge.getAttribute("data-status");
+  }
+
   async getObligationRowCount(): Promise<number> {
     // The standalone Obligations table was absorbed into the unified
     // Compliance grid; both `select*Tab` verbs land on the same

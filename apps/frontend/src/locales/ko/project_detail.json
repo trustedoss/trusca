@@ -928,7 +928,8 @@
       "license_name": "라이선스",
       "category": "분류",
       "kind": "종류",
-      "affected_count": "컴포넌트"
+      "affected_count": "컴포넌트",
+      "fulfilment": "이행"
     },
     "toolbar": {
       "search_label": "검색",
@@ -983,6 +984,38 @@
       "affected_truncated": "전체 {{total}}개 중 {{shown}}개를 표시합니다. 컴포넌트 탭에서 전체 목록을 확인하세요.",
       "text_truncated": "서버에서 의무사항 본문이 잘렸습니다. 전체 본문은 카탈로그 원본을 확인하세요.",
       "translation_advisory": "영어 원문 보기 (정본)"
+    },
+    "fulfilment": {
+      "section": "이행 상태",
+      "help": "이 프로젝트가 의무를 이행했는지 기록합니다. 고지문에는 반영되지 않습니다. 고지문은 라이선스가 요구하는 내용을 그대로 담고, 이 항목은 그 내용을 바꾸지 않습니다.",
+      "status": {
+        "unrecorded": "기록 없음",
+        "not_started": "시작 전",
+        "in_progress": "진행 중",
+        "done": "완료",
+        "not_applicable": "해당 없음"
+      },
+      "field": {
+        "status": "상태",
+        "due_on": "기한",
+        "evidence_note": "수행한 내용",
+        "evidence_note_placeholder": "예: 릴리스 페이지에 저작권 표시 추가, 배포 아카이브에 NOTICE 파일 포함",
+        "evidence_url": "확인할 위치",
+        "evidence_url_help": "릴리스 페이지, 저장소의 파일, 티켓 주소를 적습니다. 파일을 올리지 않고 링크만 두는 이유는, 근거가 어긋날 수 있는 장소를 하나 더 만들지 않기 위해서입니다.",
+        "assign_to_me": "내가 담당하기",
+        "assigned_elsewhere": "팀의 다른 사람이 담당하고 있습니다"
+      },
+      "action": {
+        "save": "저장",
+        "saving": "저장 중...",
+        "clear": "기록 삭제"
+      },
+      "saved": "저장했습니다",
+      "completed_at": "{{when}}에 완료로 표시",
+      "errors": {
+        "save": "기록을 저장하지 못했습니다.",
+        "clear": "기록을 삭제하지 못했습니다."
+      }
     }
   },
   "sbom": {
