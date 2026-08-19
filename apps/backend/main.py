@@ -40,6 +40,7 @@ from api.v1 import (
     inventory_router,
     license_policies_router,
     licenses_router,
+    metrics_router,
     notification_routing_router,
     notifications_router,
     oauth_router,
@@ -256,6 +257,10 @@ app.include_router(license_policies_router)
 # even though both feed one verdict.
 app.include_router(gate_policies_router)
 app.include_router(notification_routing_router)
+# N10: reserved in PUBLIC_PATHS long before anything served it. Off by
+# default, and off answers 404 so a deployment that publishes nothing looks
+# like one without the feature.
+app.include_router(metrics_router)
 app.include_router(organization_verdicts_router)
 app.include_router(service_accounts_router)
 app.include_router(transition_approvals_router)

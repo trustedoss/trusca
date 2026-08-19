@@ -62,6 +62,12 @@
     },
     {
       "method": "GET",
+      "path": "/metrics",
+      "gate": "public",
+      "why": "A scrape target, not a screen. Off by default and 404 when off; the optional METRICS_TOKEN is the whole gate, because a monitoring system holding a portal session is a worse credential to leave in a config file."
+    },
+    {
+      "method": "GET",
       "path": "/health",
       "gate": "public",
       "why": "Liveness probe: no principal by design."

@@ -2120,6 +2120,42 @@ def default_member_role() -> str | None:
     return "viewer"
 
 
+def metrics_enabled() -> bool:
+    """Whether the deployment publishes an operational metrics endpoint.
+
+    Off by default, and off means the route does not exist rather than
+    answering 403. A monitoring endpoint that announces itself to everybody
+    who asks tells an outsider what this host is and who runs it, and a
+    deployment that has not asked for a scrape target should not have one.
+
+    What it publishes is a fixed list of aggregate counts, held to a shared
+    fixture so a metric cannot be added without somebody deciding it is safe
+    to publish. There is no free-form label carrying a project or a person's
+    name in it, which is the way this kind of endpoint usually leaks.
+    """
+    return os.getenv("METRICS_ENABLED", "false").strip().lower() in (
+        "1",
+        "true",
+        "yes",
+        "on",
+    )
+
+
+def metrics_token() -> str | None:
+    """A bearer token a scraper must present, or None for an open endpoint.
+
+    Optional because the usual deployment keeps the endpoint off the public
+    ingress and lets the monitoring system reach it on the internal network,
+    where a shared token adds a secret to rotate and nothing else. Set it when
+    the endpoint is reachable from somewhere you do not control.
+
+    Compared in constant time, so a wrong token cannot be found one character
+    at a time by timing the refusals.
+    """
+    raw = os.getenv("METRICS_TOKEN", "").strip()
+    return raw or None
+
+
 def permission_cache_ttl_seconds() -> int:
     """How long a resolved principal may be reused before it is read again.
 

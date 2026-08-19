@@ -70,6 +70,7 @@
   ],
   "GET /health": [],
   "GET /health/ready": [],
+  "GET /metrics": [],
   "GET /v1/about": [],
   "GET /v1/about/notices/{document_id}": [
     "document_id"

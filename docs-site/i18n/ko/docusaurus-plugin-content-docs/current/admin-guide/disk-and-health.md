@@ -174,6 +174,44 @@ docker-compose -f docker-compose.yml exec backend \
 
 백엔드: `apps/backend/api/v1/admin/scans.py`. UI: `apps/frontend/src/features/admin/scans/AdminScansPage.tsx`.
 
+## 지표 수집 {#metrics}
+
+기본값은 꺼짐입니다. `METRICS_ENABLED=true`로 두면 `/metrics`에서 Prometheus
+텍스트 형식을 제공합니다.
+
+꺼짐은 403이 아니라 404입니다. "권한 없음"이라고 답하는 모니터링 엔드포인트는
+물어본 사람에게 이 호스트가 무엇이고 누가 운영하는지를 알려 줍니다. 수집
+대상을 두지 않기로 한 배포는 그 기능이 없는 배포처럼 보여야 합니다. 토큰이
+틀렸을 때도 같은 이유로 404입니다.
+
+<!-- docs-uat: id=metrics-off-by-default kind=api url=/metrics expect=status:404 tier=nightly -->
+공개하는 항목은 고정된 집계 목록입니다.
+
+| 계열 | 레이블 | 세는 것 |
+|---|---|---|
+| `trusca_projects_total` | | 보관된 것을 포함한 프로젝트 수 |
+| `trusca_scans_total` | `status` | 상태별 스캔 수. 대기·실행 중이 지켜볼 값입니다 |
+| `trusca_vulnerability_findings_open` | `severity` | 열린 발견 수. CVE가 아니라 프로젝트별로 셉니다 |
+| `trusca_component_approvals_pending` | | 처리를 기다리는 승인 수 |
+| `trusca_users_active` | | 로그인할 수 있는 계정 수 |
+| `trusca_service_accounts_active` | | 아직 인증되는 자동화 주체 수 |
+| `trusca_workspace_disk_used_ratio` | | 작업 공간 볼륨 사용률, 0에서 1 |
+
+프로젝트·패키지·저장소·사람 이름은 출력 어디에도 나오지 않습니다. 목록은
+저장소의 픽스처로 고정돼 있어, 누군가 공개해도 되는지 판단하지 않으면 계열을
+추가할 수 없습니다.
+
+`METRICS_TOKEN`은 수집기가 제시해야 하는 토큰입니다. `/metrics`가 외부에
+노출되지 않고 모니터링 시스템이 내부 망에서 접근하는 일반적인 구성이라면
+비워 두십시오. 수집기 설정 파일에 들어가는 공유 비밀은 관리 대상이 하나 더
+느는 일입니다. 통제하지 않는 곳에서 접근할 수 있다면 지정하십시오.
+`Authorization: Bearer <토큰>`과 토큰만 넣는 형식 둘 다 받습니다. 수집기마다
+방식이 다르기 때문입니다.
+
+이 엔드포인트는 포털 세션을 요구하지 않습니다. 세션을 요구하면 모니터링
+시스템이 계정을 하나 갖게 되고, 그것은 설정 파일에 남기기에 토큰보다 나쁜
+자격 증명입니다.
+
 ## 정상 동작 확인
 
 변경 후:
