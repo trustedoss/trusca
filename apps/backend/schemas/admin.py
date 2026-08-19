@@ -24,7 +24,9 @@ import uuid
 from datetime import datetime
 from typing import Literal
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator
+from pydantic import BaseModel, ConfigDict, EmailStr, Field, field_validator
+
+from schemas.auth import _reject_weak_password
 
 # ---------------------------------------------------------------------------
 # Common
@@ -78,6 +80,128 @@ class AdminUserListItem(BaseModel):
     team_count: int = 0
     last_login_at: datetime | None = None
     created_at: datetime
+
+
+def _reject_weak_password_if_given(value: str | None) -> str | None:
+    """The signup rule, applied to the optional field.
+
+    Reuses the validator the public registration schema uses rather than
+    restating it. An import path with its own idea of what a weak password is
+    would be a second policy, and the one that admits more wins.
+    """
+    if value is None:
+        return None
+    return _reject_weak_password(value)
+
+
+class AdminUserCreateIn(BaseModel):
+    """One person an administrator is adding.
+
+    The same shape whether it arrives alone or as one row of a bulk import, so
+    a rule written once applies to both. That matters more here than the
+    duplication it saves: a bulk path with its own validation is how an import
+    ends up creating accounts the single path would have refused.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    email: EmailStr
+    full_name: str | None = Field(default=None, max_length=255)
+    password: str | None = Field(
+        default=None,
+        min_length=8,
+        max_length=256,
+        description=(
+            "Omit on a deployment where people sign in through an identity "
+            "provider: the account is created with no password set, so it "
+            "cannot be signed into until somebody sets one through the reset "
+            "flow. A password given here is held to the same policy as one "
+            "chosen at signup."
+        ),
+    )
+    team_id: uuid.UUID | None = Field(
+        default=None,
+        description=(
+            "The team to put them on. Omitted leaves them on no team, which is "
+            "a real state: they can sign in and see nothing until somebody "
+            "adds them."
+        ),
+    )
+    role: Literal["team_admin", "developer", "viewer"] | None = Field(
+        default=None,
+        description=(
+            "Their grade on that team. Omitted follows the deployment's "
+            "DEFAULT_MEMBER_ROLE. super_admin is not assignable here."
+        ),
+    )
+
+    _check_password_strength = field_validator("password")(_reject_weak_password_if_given)
+
+    @field_validator("full_name")
+    @classmethod
+    def _reject_control_characters(cls, value: str | None) -> str | None:
+        """A name is text, and a NUL is not.
+
+        Postgres refuses NUL in a text column with an error the row-by-row
+        import cannot attribute to a row, so this stops it one layer earlier,
+        where the answer names the row. Directory exports carry embedded NULs
+        more often than anybody expects.
+        """
+        if value is None:
+            return None
+        if any(c in value for c in ("\x00", "\r", "\n")):
+            raise ValueError("full_name must not contain control characters")
+        return value
+
+
+class BulkUserCreateIn(BaseModel):
+    """A batch of rows, capped so one request cannot become a long transaction."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    users: list[AdminUserCreateIn] = Field(min_length=1, max_length=500)
+
+
+class BulkDeactivateIn(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    user_ids: list[uuid.UUID] = Field(min_length=1, max_length=500)
+
+
+class BulkRowResult(BaseModel):
+    """What happened to one row.
+
+    Every row gets one of these, in the order they were sent, including the
+    ones that worked. A response that lists only failures makes the caller
+    infer success by subtraction, and an import of 400 people is exactly where
+    that inference goes wrong.
+    """
+
+    index: int = Field(description="Position in the submitted list, from zero.")
+    identifier: str = Field(
+        description="The email or user id this row named, echoed for matching up."
+    )
+    status: Literal["created", "deactivated", "skipped", "failed"]
+    user_id: uuid.UUID | None = None
+    #: Stable token, not prose. The message the API writes is English, and this
+    #: is the row a Korean administrator reads to decide what to fix.
+    reason: str | None = None
+    detail: str | None = None
+
+
+class BulkResultOut(BaseModel):
+    """The whole batch.
+
+    HTTP 200 even when rows failed. A batch is not an all-or-nothing request:
+    refusing the lot because one address was already taken would make an
+    administrator bisect their own file, and a 4xx would say the request was
+    malformed when it was understood exactly.
+    """
+
+    total: int
+    succeeded: int
+    failed: int
+    results: list[BulkRowResult]
 
 
 class AdminUserDetail(BaseModel):

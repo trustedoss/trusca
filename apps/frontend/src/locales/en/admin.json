@@ -78,7 +78,49 @@
         "previous": "Previous",
         "next": "Next"
       },
-      "empty": "No users match the current filters."
+      "empty": "No users match the current filters.",
+      "import": {
+        "action": "Import",
+        "title": "Add people from a file",
+        "description": "Paste or upload the CSV the export writes. The first line names the columns: email is required, and full_name, team_id and role are optional. A row that names no role follows the deployment's default.",
+        "choose_file": "Choose a file",
+        "insert_header": "Insert the header line",
+        "placeholder": "email,full_name,team_id,role",
+        "textarea_label": "Rows to import, as CSV",
+        "submit": "Add them",
+        "submitting": "Adding...",
+        "close": "Close",
+        "summary": "{{succeeded}} added, {{failed}} not added.",
+        "parse_error": {
+          "missing_email": "Line {{line}}: no email column, or the address is empty.",
+          "unknown_role": "Line {{line}}: that role is not one of team_admin, developer or viewer.",
+          "too_few_columns": "Line {{line}}: fewer columns than the header names."
+        },
+        "errors": {
+          "submit": "Could not run the import."
+        }
+      },
+      "bulk": {
+        "status": {
+          "created": "Added",
+          "deactivated": "Deactivated",
+          "skipped": "No change",
+          "failed": "Not done"
+        },
+        "reason": {
+          "email_taken": "That address already has an account.",
+          "team_not_found": "That team does not exist.",
+          "not_found": "No such user.",
+          "cannot_modify_self": "You cannot do this to your own account.",
+          "last_super_admin": "This is the last active administrator.",
+          "invalid_role": "That role cannot be assigned here.",
+          "failed": "Refused."
+        }
+      },
+      "export": {
+        "action": "Export",
+        "failed": "Could not export the roster."
+      }
     },
     "teams": {
       "title": "Teams",

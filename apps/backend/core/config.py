@@ -2080,6 +2080,94 @@ def oidc_groups_claim() -> str:
     return raw or "groups"
 
 
+def default_member_role() -> str | None:
+    """The grade a deployment has chosen for people nobody graded, or None.
+
+    Bulk registration rows that name no role, and auto-registration through
+    the deployment's own identity provider, both consult this. One setting
+    rather than one per surface, because a deployment that has decided what a
+    new person may do has decided it once.
+
+    ``None`` means no choice was made, and each caller keeps the grade it
+    granted before this setting existed: ``developer`` for an account an
+    administrator adds, and the personal-team ``team_admin`` for a first
+    sign-in through a hosted provider. Collapsing those two into one fallback
+    here would move somebody's grade on a deployment that never asked, which
+    is the change this setting exists to let them make deliberately.
+
+    ``super_admin`` is refused even if written. That grade administers the
+    deployment, and a setting that hands it out on arrival would make the
+    first person through the door an administrator of everybody else.
+    """
+    raw = os.getenv("DEFAULT_MEMBER_ROLE", "").strip().lower()
+    if not raw:
+        return None
+    if raw in {"viewer", "developer", "team_admin"}:
+        return raw
+    # Set to something this does not recognise. Answering None here would send
+    # both callers to their historical fallback, which is a higher grade than
+    # whatever the operator was reaching for by writing the setting at all, and
+    # nothing would say so. The floor is the safe reading of an unreadable
+    # instruction.
+    import structlog
+
+    structlog.get_logger("config").warning(
+        "config.default_member_role_unrecognised",
+        env_var="DEFAULT_MEMBER_ROLE",
+        value=raw,
+        fell_back_to="viewer",
+    )
+    return "viewer"
+
+
+def self_registration_enabled() -> bool:
+    """Whether anybody may create their own account at the sign-up form.
+
+    On by default, because that form is how the hosted signup works and
+    turning it off would break it.
+
+    It exists next to ``auto_register_enabled`` because the two are one
+    question asked at two doors, and closing one alone closes nothing: with
+    auto-registration off but this on, somebody signs up under their work
+    address, then signs in through the company provider, and the callback
+    links the identity to the account they just made for themselves. They end
+    up holding exactly the account the other setting was withholding. An
+    enterprise deployment turns both off.
+    """
+    return os.getenv("AUTH_SELF_REGISTRATION", "true").strip().lower() in (
+        "1",
+        "true",
+        "yes",
+        "on",
+    )
+
+
+def auto_register_enabled() -> bool:
+    """Whether an unknown person who authenticates becomes a user.
+
+    Off by default, and scoped to the deployment's own identity provider. The
+    hosted providers keep creating accounts on first sign-in because that is
+    what a demo signup is; an enterprise that points the portal at its own
+    directory is in the opposite position, where everybody in the company can
+    authenticate and only some of them are meant to have a portal account.
+
+    Off means an unknown person is refused rather than silently created, and
+    an administrator adds them (one at a time or in bulk). It is not a
+    security boundary on its own: whoever can authenticate could be added by
+    an administrator anyway. It is the difference between a roster somebody
+    maintains and one that grows by itself.
+
+    Closing the roster takes this and ``AUTH_SELF_REGISTRATION`` together. See
+    that setting for why one alone closes nothing.
+    """
+    return os.getenv("AUTH_AUTO_REGISTER", "false").strip().lower() in (
+        "1",
+        "true",
+        "yes",
+        "on",
+    )
+
+
 def oidc_group_role_map() -> dict[str, str]:
     """Group to grade, as ``group:grade`` pairs separated by commas.
 

@@ -10,6 +10,10 @@ Endpoints under ``/v1/admin/users``:
   - PATCH  /v1/admin/users/{user_id}/deactivate            — deactivate + revoke refresh
   - PATCH  /v1/admin/users/{user_id}/activate              — re-activate
   - POST   /v1/admin/users/{user_id}/password-reset        — issue reset token (204)
+  - POST   /v1/admin/users                                 add one person
+  - POST   /v1/admin/users/bulk                            add many, row by row
+  - POST   /v1/admin/users/bulk-deactivate                 deactivate many
+  - GET    /v1/admin/users/export                          the roster as CSV
 
 Auth: every route is gated by the parent ``admin_router`` super-admin
 dependency. Anonymous calls get 401; non-super-admin authenticated calls
@@ -32,19 +36,28 @@ from core.errors import problem_response
 from core.pagination import PAGE_MAX
 from core.security import CurrentUser, require_super_admin_or_404
 from schemas.admin import (
+    AdminUserCreateIn,
     AdminUserDetail,
     AdminUserListPage,
     AdminUserRoleUpdate,
+    BulkDeactivateIn,
+    BulkResultOut,
+    BulkUserCreateIn,
 )
 from services.admin_user_service import (
     AdminUserError,
     activate_user,
+    bulk_create_users,
+    bulk_deactivate_users,
+    create_user,
     deactivate_user,
+    export_users_csv,
     get_user_detail,
     initiate_password_reset,
     list_users,
     update_user_role,
 )
+from services.csv_export import CSV_MEDIA_TYPE
 
 router = APIRouter(prefix="/users", tags=["admin"])
 log = structlog.get_logger("admin.users.api")
@@ -123,6 +136,37 @@ async def list_users_endpoint(
         content=page_obj.model_dump_json(),
         status_code=status.HTTP_200_OK,
         media_type="application/json",
+    )
+
+
+# Declared before ``/{user_id}``: FastAPI matches in declaration order, and
+# the other way round "export" is read as a user id and answered 422.
+@router.get(
+    "/export",
+    summary="The roster as CSV, in the shape the bulk import accepts back",
+    response_class=Response,
+    responses={
+        200: {"content": {"text/csv": {}}},
+        413: {"description": "More people than one export will build; page the API instead."},
+    },
+)
+async def export_users_endpoint(
+    request: Request,
+    session: AsyncSession = Depends(get_db),
+    actor: CurrentUser = Depends(require_super_admin_or_404()),
+) -> Response:
+    try:
+        body = await export_users_csv(session, actor=actor)
+    except AdminUserError as exc:
+        # 413 for a roster larger than this will build. Answered before the
+        # first row rather than after most of them, because nothing inside a
+        # truncated CSV says it is truncated.
+        return _problem_for_admin_user_error(request, exc)
+    return Response(
+        content=body,
+        status_code=status.HTTP_200_OK,
+        media_type=CSV_MEDIA_TYPE,
+        headers={"Content-Disposition": 'attachment; filename="users.csv"'},
     )
 
 
@@ -294,3 +338,89 @@ async def password_reset_endpoint(
 
 
 __all__ = ["router"]
+
+
+# ---------------------------------------------------------------------------
+# Adding people (N4)
+#
+# The three write routes below all end in ``create_user`` /
+# ``deactivate_user``. Nothing here reaches the database on its own, which is
+# the property worth stating: a bulk endpoint that writes rows itself would
+# skip the password policy, the team check and the audit rows the single path
+# produces, and an import is where that goes unnoticed longest.
+# ---------------------------------------------------------------------------
+
+
+@router.post(
+    "",
+    response_model=AdminUserDetail,
+    status_code=status.HTTP_201_CREATED,
+    summary="Add one person",
+    responses={
+        409: {"description": "That address already has an account."},
+        422: {"description": "Weak password, or a team that does not exist."},
+    },
+)
+async def create_user_endpoint(
+    request: Request,
+    payload: AdminUserCreateIn,
+    session: AsyncSession = Depends(get_db),
+    actor: CurrentUser = Depends(require_super_admin_or_404()),
+) -> Response:
+    try:
+        detail = await create_user(session, actor=actor, payload=payload)
+    except AdminUserError as exc:
+        return _problem_for_admin_user_error(request, exc)
+    return Response(
+        content=detail.model_dump_json(),
+        status_code=status.HTTP_201_CREATED,
+        media_type="application/json",
+    )
+
+
+@router.post(
+    "/bulk",
+    response_model=BulkResultOut,
+    summary="Add many people, reporting each row",
+    responses={
+        200: {
+            "description": (
+                "Every row is reported, including the ones that worked. 200 "
+                "even when rows failed: a batch is not all-or-nothing, and a "
+                "4xx would say the request was malformed when it was "
+                "understood exactly."
+            )
+        },
+    },
+)
+async def bulk_create_users_endpoint(
+    request: Request,  # noqa: ARG001
+    payload: BulkUserCreateIn,
+    session: AsyncSession = Depends(get_db),
+    actor: CurrentUser = Depends(require_super_admin_or_404()),
+) -> Response:
+    result = await bulk_create_users(session, actor=actor, rows=payload.users)
+    return Response(
+        content=result.model_dump_json(),
+        status_code=status.HTTP_200_OK,
+        media_type="application/json",
+    )
+
+
+@router.post(
+    "/bulk-deactivate",
+    response_model=BulkResultOut,
+    summary="Deactivate many people, reporting each row",
+)
+async def bulk_deactivate_users_endpoint(
+    request: Request,  # noqa: ARG001
+    payload: BulkDeactivateIn,
+    session: AsyncSession = Depends(get_db),
+    actor: CurrentUser = Depends(require_super_admin_or_404()),
+) -> Response:
+    result = await bulk_deactivate_users(session, actor=actor, user_ids=payload.user_ids)
+    return Response(
+        content=result.model_dump_json(),
+        status_code=status.HTTP_200_OK,
+        media_type="application/json",
+    )

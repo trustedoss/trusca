@@ -23,6 +23,7 @@ from __future__ import annotations
 from .base import (
     OAUTH_PROVIDER_GITHUB,
     OAUTH_PROVIDER_GOOGLE,
+    OAUTH_PROVIDER_OIDC,
     OAuthExchangeError,
     OAuthProvider,
     OAuthProviderDisabled,
@@ -37,6 +38,7 @@ __all__ = [
     "GoogleOAuthProvider",
     "OAUTH_PROVIDER_GITHUB",
     "OAUTH_PROVIDER_GOOGLE",
+    "OAUTH_PROVIDER_OIDC",
     "OAuthExchangeError",
     "OAuthProvider",
     "OAuthProviderDisabled",

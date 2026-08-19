@@ -54,6 +54,49 @@ The companion `/admin/teams` page enumerates teams and the projects + members ea
 
 ![Admin Teams page — per-team rows with member and project counts](/img/screenshots/admin-teams-list.png)
 
+## Adding people in bulk {#bulk-onboarding}
+
+**/admin/users → Import** takes a CSV and adds everyone in it, reporting what
+happened to each row. The first line names the columns:
+
+```csv
+email,full_name,team_id,role
+ada@example.com,Ada Lovelace,3f1c...,developer
+grace@example.com,Grace Hopper,3f1c...,viewer
+```
+
+Only `email` is required. `role` must be `team_admin`, `developer` or
+`viewer`; a row that leaves it empty follows the deployment's
+`DEFAULT_MEMBER_ROLE`, which is `developer` unless you set it. `super_admin`
+cannot be granted here.
+
+<!-- docs-uat: id=users-export-api kind=api auth=admin url=/v1/admin/users/export expect=status:200 tier=nightly -->
+**Export** writes the same columns, so the file you download can be edited and
+fed straight back in. It carries no passwords in either direction.
+
+A password column is accepted but rarely wanted. On a deployment where people
+sign in through your identity provider, leave it out: the account is created
+with no password set, so it cannot be signed into until somebody sets one
+through the reset flow. A password that is present is held to the same policy
+as one chosen at signup.
+
+Rows are independent. One address that already has an account does not stop
+the rows around it, and the result table lists every row, including the ones
+that worked, so you never have to count what is missing.
+
+**Deactivating in bulk** works the same way and keeps the same protections:
+you cannot deactivate your own account or the last active administrator, and
+either arriving in a list comes back as one failed row rather than refusing
+the batch. Somebody already inactive is reported as unchanged. Deactivating
+revokes their live sessions, and it stops any API key they issued unless that
+key belongs to a [service account](./api-keys.md).
+
+:::note Automation stops with the person
+API key authentication checks that the issuer is still active. Deactivating
+somebody therefore stops the pipelines using keys they issued. Move those keys
+to a service account before the person leaves.
+:::
+
 ## Onboarding a new user
 
 In this release the portal does not send invitation emails. New users join by **self-registering** at `/register` with their corporate email; the password policy is enforced at registration (≥ 12 chars, bcrypt cost 12, no NIST-banned passwords).
@@ -82,6 +125,41 @@ Result: the teammate now sees the team's projects on next login.
 Mass onboarding can be scripted via
 `POST /v1/admin/teams/{team_id}/members {user_id, role}` once each
 teammate has registered.
+
+## First sign-in through your identity provider {#auto-registration}
+
+When the portal is pointed at your own identity provider, somebody who has
+never signed in before is refused by default rather than given an account.
+Everybody in the company can authenticate against the directory, and only some
+of them are meant to have a portal account, so the roster is one you maintain.
+
+Set `AUTH_AUTO_REGISTER=true` to admit them instead. What they get on arrival:
+
+- An account, and a personal team of their own.
+- The grade `OIDC_GROUP_ROLE_MAP` names for their groups, if you mapped any.
+- If you mapped groups and theirs match none, the lowest grade, because a
+  deployment that has mapped its groups has said what matching none means.
+- With no group map at all, `DEFAULT_MEMBER_ROLE`, the same setting a bulk
+  import follows.
+
+:::caution Closing the roster takes two settings
+`AUTH_AUTO_REGISTER=false` closes the provider door only. The sign-up form at
+`/register` is a second one, and it is open by default: somebody signs up
+under their work address, signs in through your provider, and the callback
+links the provider identity to the account they just made for themselves.
+They end up holding exactly the account the first setting was withholding.
+
+Set `AUTH_SELF_REGISTRATION=false` as well. Both off means the roster is the
+one your administrators maintain.
+:::
+
+The refusal is deliberately indistinguishable from any other failed sign-in.
+Anyone in the directory can reach the login page, so a message saying "you
+authenticated but have no account" would let them check which addresses are
+registered.
+
+The hosted providers (GitHub, Google) are unaffected and keep creating an
+account on first sign-in, which is what a signup is.
 
 ## Adding an existing user to a team
 

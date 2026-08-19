@@ -198,6 +198,26 @@
       "gate": "super_admin_404"
     },
     {
+      "method": "POST",
+      "path": "/v1/admin/users",
+      "gate": "super_admin_404"
+    },
+    {
+      "method": "POST",
+      "path": "/v1/admin/users/bulk",
+      "gate": "super_admin_404"
+    },
+    {
+      "method": "POST",
+      "path": "/v1/admin/users/bulk-deactivate",
+      "gate": "super_admin_404"
+    },
+    {
+      "method": "GET",
+      "path": "/v1/admin/users/export",
+      "gate": "super_admin_404"
+    },
+    {
       "method": "GET",
       "path": "/v1/admin/users/{user_id}",
       "gate": "super_admin_404"

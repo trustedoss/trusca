@@ -133,3 +133,80 @@ export async function activateUser(userId: string): Promise<AdminUserDetail> {
 export async function requestPasswordReset(userId: string): Promise<void> {
   await api.post(`/v1/admin/users/${userId}/password-reset`);
 }
+
+// ---------------------------------------------------------------------------
+// Adding and removing people in batches (N4)
+// ---------------------------------------------------------------------------
+
+export interface AdminUserCreateInput {
+  email: string;
+  full_name?: string | null;
+  /**
+   * Omitted on a deployment where people sign in through an identity
+   * provider: the account is created with no usable password, so the provider
+   * is the only way in.
+   */
+  password?: string | null;
+  team_id?: string | null;
+  role?: Exclude<UserRole, "super_admin"> | null;
+}
+
+/** What happened to one row, in the order the rows were sent. */
+export interface BulkRowResult {
+  index: number;
+  identifier: string;
+  status: "created" | "deactivated" | "skipped" | "failed";
+  user_id: string | null;
+  /**
+   * Stable token, not prose. The Problem Details `detail` the API writes is
+   * English, and this is the row an administrator reads to decide what to fix,
+   * so the label is translated from this instead.
+   */
+  reason: string | null;
+  detail: string | null;
+}
+
+export interface BulkResult {
+  total: number;
+  succeeded: number;
+  failed: number;
+  results: BulkRowResult[];
+}
+
+export async function createAdminUser(
+  payload: AdminUserCreateInput,
+): Promise<AdminUserDetail> {
+  const { data } = await api.post<AdminUserDetail>("/v1/admin/users", payload);
+  return data;
+}
+
+export async function bulkCreateAdminUsers(
+  users: AdminUserCreateInput[],
+): Promise<BulkResult> {
+  const { data } = await api.post<BulkResult>("/v1/admin/users/bulk", { users });
+  return data;
+}
+
+export async function bulkDeactivateAdminUsers(
+  userIds: string[],
+): Promise<BulkResult> {
+  const { data } = await api.post<BulkResult>("/v1/admin/users/bulk-deactivate", {
+    user_ids: userIds,
+  });
+  return data;
+}
+
+/**
+ * The roster as CSV text.
+ *
+ * Returned as a string rather than triggering a download here: the caller
+ * decides what to do with it, and a function that reaches for the DOM cannot
+ * be tested without one.
+ */
+export async function exportAdminUsers(): Promise<string> {
+  const { data } = await api.get<string>("/v1/admin/users/export", {
+    responseType: "text",
+    transformResponse: [(raw: string) => raw],
+  });
+  return typeof data === "string" ? data : String(data ?? "");
+}

@@ -53,6 +53,7 @@ from services.auth_service import (
     InvalidCredentials,
     InvalidRefreshToken,
     RefreshReuseDetected,
+    RegistrationClosed,
     authenticate,
     issue_token_pair,
     register_user,
@@ -124,10 +125,12 @@ async def register(
     session: AsyncSession = Depends(get_db),
 ) -> Response:
     """
-    Public — no authentication required.
+    Public, no authentication required.
 
-    Returns the new user (without password). 422 for validation errors,
-    409 if the email is already registered.
+    Returns the new user (without password). 422 for validation errors, 409 if
+    the email is already registered, and 404 when the deployment maintains its
+    roster itself (``AUTH_SELF_REGISTRATION=false``), which is the same answer
+    an outsider gets for any route that is not there.
     """
     try:
         user = await register_user(
@@ -136,7 +139,7 @@ async def register(
             password=payload.password,
             full_name=payload.full_name,
         )
-    except EmailAlreadyExists as exc:
+    except (EmailAlreadyExists, RegistrationClosed) as exc:
         return _problem_for_auth_error(request, exc)
 
     public = UserPublic.model_validate(user)

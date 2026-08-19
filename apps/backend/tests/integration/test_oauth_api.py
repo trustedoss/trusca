@@ -728,12 +728,19 @@ async def test_oidc_callback_creates_the_user_and_stores_the_identity(
     that the provider list does not touch: the button can report itself
     configured, the sign-in can complete at the provider, and the insert can
     still be rejected. Only a test that reaches the write sees that.
+
+    ``AUTH_AUTO_REGISTER`` is set here because creating the account on first
+    sign-in became a deployment's decision (N4) rather than the behaviour of
+    this path. The assertions are unchanged: this is still what happens when a
+    deployment admits unknown people, and the refusal when it does not has its
+    own case in ``test_auto_registration.py``.
     """
     from integrations.oauth.oidc import reset_discovery_cache
     from models import OAuthIdentity, User
 
     issuer = "https://idp.example.test"
     email = f"oidcuser-{uuid.uuid4().hex[:8]}@example.com"
+    monkeypatch.setenv("AUTH_AUTO_REGISTER", "true")
     monkeypatch.setenv("OIDC_ISSUER", issuer)
     monkeypatch.setenv("OIDC_CLIENT_ID", "client-id")
     monkeypatch.setenv("OIDC_CLIENT_SECRET", "client-secret")

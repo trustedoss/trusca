@@ -24,7 +24,9 @@ import { useAdminUsers } from "@/features/admin/api/useAdminUsers";
 import type { UserRole } from "@/features/admin/api/adminUsersApi";
 import { useToast } from "@/components/ui/toast";
 import { RoleBadge } from "@/features/admin/components/RoleBadge";
+import { exportAdminUsers } from "@/features/admin/api/adminUsersApi";
 import { AdminUserDrawer } from "@/features/admin/users/AdminUserDrawer";
+import { AdminUserImportDialog } from "@/features/admin/users/AdminUserImportDialog";
 import {
   AdminUsersToolbar,
   type UsersActiveFilter,
@@ -195,6 +197,7 @@ export function AdminUsersPage() {
     [page, pageSize, roleFilter, activeFilter, searchDebounced],
   );
 
+  const [importOpen, setImportOpen] = useState(false);
   const usersQuery = useAdminUsers(queryParams);
   const items = usersQuery.data?.items ?? [];
   const total = usersQuery.data?.total ?? 0;
@@ -204,12 +207,53 @@ export function AdminUsersPage() {
     toast(text, { tone, key });
   }
 
+  async function handleExport() {
+    try {
+      const csv = await exportAdminUsers();
+      // Built and revoked here rather than kept: the roster is the one thing
+      // on this screen worth not leaving in memory longer than the click.
+      const url = URL.createObjectURL(
+        new Blob([csv], { type: "text/csv;charset=utf-8" }),
+      );
+      const anchor = document.createElement("a");
+      anchor.href = url;
+      anchor.download = "users.csv";
+      anchor.click();
+      URL.revokeObjectURL(url);
+    } catch {
+      notify(t("admin.users.export.failed"), "error", "admin-users-export");
+    }
+  }
+
   return (
     <div className="flex h-full flex-col" data-testid="admin-users-page">
       <PageHeader
         title={t("admin.users.title")}
         description={t("admin.users.subtitle")}
+        actions={
+          <div className="flex items-center gap-2">
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              onClick={handleExport}
+              data-testid="admin-users-export"
+            >
+              {t("admin.users.export.action")}
+            </Button>
+            <Button
+              type="button"
+              size="sm"
+              onClick={() => setImportOpen(true)}
+              data-testid="admin-users-import-open"
+            >
+              {t("admin.users.import.action")}
+            </Button>
+          </div>
+        }
       />
+
+      <AdminUserImportDialog open={importOpen} onOpenChange={setImportOpen} />
 
       <AdminUsersToolbar
         search={searchInput}
