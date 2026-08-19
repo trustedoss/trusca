@@ -1090,3 +1090,58 @@ def test_all_three_verdict_surfaces_share_one_status_vocabulary() -> None:
     assert column_values(ComponentApproval) == declared
     assert column_values(OrganizationComponentVerdict) == declared
     assert column_values(ComponentIntakeRequest) == declared
+
+
+def test_the_grades_a_deployment_setting_accepts_are_the_assignable_ones(
+    monkeypatch,
+) -> None:
+    """Two settings decide a grade, and both spell the set out by hand.
+
+    ``DEFAULT_MEMBER_ROLE`` and ``OIDC_GROUP_ROLE_MAP`` each carry a literal
+    set of grades they will accept, and each drops anything else on purpose:
+    the first to keep a typo from granting more than the operator meant, the
+    second to keep a group from minting an administrator. Both refusals are
+    right and both sets are copies of the enum.
+
+    A grade added to the enum without being added here is one an operator can
+    write into their environment and never receive, with a warning in a log
+    nobody is reading. Pinned against the assignable set rather than the whole
+    enum, because ``super_admin`` is excluded from both by the same deliberate
+    decision that excludes it from a team membership.
+
+    Asserted by calling the functions rather than by reading their source: the
+    first version of this test scraped the quoted grades out of the source and
+    passed happily when a grade was removed from the accepted set, because the
+    same word appears in the fallback one line below.
+
+    One case is deliberately not covered, because it cannot be: dropping
+    ``viewer`` from what ``DEFAULT_MEMBER_ROLE`` accepts changes nothing
+    observable, since the floor an unreadable value falls to is ``viewer``
+    too. Every other grade is distinguishable, which is the half that matters:
+    those are the ones whose loss would silently downgrade somebody.
+    """
+    from core.config import default_member_role, oidc_group_role_map
+    from models.auth import ROLE_VALUES
+
+    assignable = set(ROLE_VALUES) - {"super_admin"}
+
+    for grade in assignable:
+        monkeypatch.setenv("DEFAULT_MEMBER_ROLE", grade)
+        assert default_member_role() == grade, (
+            f"DEFAULT_MEMBER_ROLE refuses {grade!r}, which a team membership "
+            "can carry; an operator writing it gets something else"
+        )
+    monkeypatch.setenv("DEFAULT_MEMBER_ROLE", "super_admin")
+    assert default_member_role() != "super_admin"
+
+    monkeypatch.setenv(
+        "OIDC_GROUP_ROLE_MAP",
+        ",".join(f"group-{grade}:{grade}" for grade in sorted(assignable)),
+    )
+    mapped = oidc_group_role_map()
+    assert set(mapped.values()) == assignable, (
+        "OIDC_GROUP_ROLE_MAP dropped a grade a team membership can carry"
+    )
+
+    monkeypatch.setenv("OIDC_GROUP_ROLE_MAP", "everyone:super_admin")
+    assert oidc_group_role_map() == {}
