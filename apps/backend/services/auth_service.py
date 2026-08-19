@@ -30,6 +30,7 @@ from sqlalchemy import select, update
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from core.config import self_registration_enabled
 from core.security import (
     TOKEN_TYPE_REFRESH,
     create_access_token,
@@ -68,6 +69,18 @@ class AuthError(Exception):
 
     status_code: int = 400
     title: str = "Auth Error"
+
+
+class RegistrationClosed(AuthError):
+    """The deployment maintains its roster itself.
+
+    404 rather than 403: a form that answers "registration is disabled" is
+    still a form telling an outsider the portal is here and who runs it. The
+    deployments that close this want the door to look like a wall.
+    """
+
+    status_code = 404
+    title = "Not Found"
 
 
 class EmailAlreadyExists(AuthError):
@@ -125,7 +138,15 @@ async def register_user(
     When ``AUTH_REGISTER_CREATES_TEAM`` is enabled (default) the user also gets
     a personal Organization + Team and a ``team_admin`` Membership so they can
     create projects immediately after signing up.
+
+    Refused entirely when the deployment has closed self-registration. The
+    check is here rather than only at the route because this is the function
+    that creates the account, and a deployment that has decided its roster is
+    maintained by administrators has decided it for every caller.
     """
+    if not self_registration_enabled():
+        raise RegistrationClosed("this deployment does not accept sign-ups")
+
     normalized_email = email.strip().lower()
 
     user = User(

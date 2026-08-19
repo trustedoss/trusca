@@ -78,7 +78,49 @@
         "previous": "이전",
         "next": "다음"
       },
-      "empty": "현재 필터에 해당하는 사용자가 없습니다."
+      "empty": "현재 필터에 해당하는 사용자가 없습니다.",
+      "import": {
+        "action": "가져오기",
+        "title": "파일로 사용자 추가",
+        "description": "내보내기가 만드는 CSV를 붙여 넣거나 업로드합니다. 첫 줄이 열 이름이고, email은 필수, full_name·team_id·role은 선택입니다. role이 비어 있으면 배포 기본 역할을 따릅니다.",
+        "choose_file": "파일 선택",
+        "insert_header": "머리글 줄 넣기",
+        "placeholder": "email,full_name,team_id,role",
+        "textarea_label": "가져올 행 (CSV)",
+        "submit": "추가",
+        "submitting": "추가하는 중...",
+        "close": "닫기",
+        "summary": "{{succeeded}}명 추가, {{failed}}명 실패.",
+        "parse_error": {
+          "missing_email": "{{line}}번째 줄: email 열이 없거나 주소가 비어 있습니다.",
+          "unknown_role": "{{line}}번째 줄: role이 team_admin·developer·viewer 중 하나가 아닙니다.",
+          "too_few_columns": "{{line}}번째 줄: 머리글이 지정한 열보다 값이 적습니다."
+        },
+        "errors": {
+          "submit": "가져오기를 실행하지 못했습니다."
+        }
+      },
+      "bulk": {
+        "status": {
+          "created": "추가함",
+          "deactivated": "비활성화함",
+          "skipped": "변경 없음",
+          "failed": "처리 못 함"
+        },
+        "reason": {
+          "email_taken": "이미 계정이 있는 주소입니다.",
+          "team_not_found": "존재하지 않는 팀입니다.",
+          "not_found": "해당 사용자가 없습니다.",
+          "cannot_modify_self": "자기 계정에는 할 수 없습니다.",
+          "last_super_admin": "마지막으로 남은 활성 관리자입니다.",
+          "invalid_role": "여기서 지정할 수 없는 역할입니다.",
+          "failed": "거부되었습니다."
+        }
+      },
+      "export": {
+        "action": "내보내기",
+        "failed": "명단을 내보내지 못했습니다."
+      }
     },
     "teams": {
       "title": "팀",

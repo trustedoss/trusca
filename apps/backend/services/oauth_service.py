@@ -58,6 +58,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from core.audit import audit_context
 from core.config import (
+    auto_register_enabled,
+    default_member_role,
     github_oauth_client_id,
     github_oauth_client_secret,
     google_oauth_client_id,
@@ -79,6 +81,7 @@ from core.security import (
     hash_refresh_token,
 )
 from integrations.oauth import (
+    OAUTH_PROVIDER_OIDC,
     OAuthExchangeError,
     OAuthProviderDisabled,
     OAuthUserInfo,
@@ -496,25 +499,39 @@ async def complete_oauth(
 def _grade_for(info: OAuthUserInfo) -> str:
     """The grade the personal-team membership gets, from the provider's groups.
 
-    Three rules, in order. A deployment that maps nothing gets the historical
-    grade, so nothing changes for the demo-SaaS flow this path was written
-    for. A deployment that maps something gets the highest grade its mapping
-    names among the groups the person actually carries. Anyone whose groups
-    say nothing gets the floor rather than the historical grade, because on a
-    deployment that has bothered to map groups, membership of none of them is
-    an answer rather than an absence.
+    Four rules, in order. The mapping wins where it names something: the
+    highest grade it names among the groups the person actually carries.
+    Where a mapping exists and names none of their groups they get the floor,
+    because on a deployment that has bothered to map groups, membership of
+    none of them is an answer rather than an absence.
+
+    With no mapping at all, a deployment that wrote DEFAULT_MEMBER_ROLE and
+    uses its own provider gets what it wrote. Everyone else keeps the
+    historical grade, so nothing changes for the demo-SaaS signup this path
+    was written for, where the personal team is the point and administering
+    a team containing only yourself grants nothing over anybody.
 
     ``super_admin`` never appears: the map refuses to record it, so the worst
     a group can do is administer the personal team it was created alongside.
     """
     mapping = oidc_group_role_map()
-    if not mapping:
-        return "team_admin"
     grades = [mapping[group] for group in info.groups if group in mapping]
-    if not grades:
+    if grades:
+        return max(grades, key=lambda grade: _ROLE_PRIORITY.get(grade, 0))
+    if mapping:
         log.info("oauth_group_mapping_no_match", provider=info.provider)
         return "viewer"
-    return max(grades, key=lambda grade: _ROLE_PRIORITY.get(grade, 0))
+    chosen = default_member_role()
+    if info.provider == OAUTH_PROVIDER_OIDC and chosen is not None:
+        # The deployment's own provider follows the deployment's setting where
+        # one was written. A person arriving through the company directory
+        # with nothing said about their groups is a new employee, not a
+        # founder.
+        return chosen
+    # Nothing said anywhere: the personal team this grade belongs to is
+    # created for them and contains nothing else, so administering it is the
+    # historical answer and stays the answer.
+    return "team_admin"
 
 
 def _refuse_unvouched_link(info: OAuthUserInfo) -> None:
@@ -642,11 +659,38 @@ async def _resolve_or_create_user(
             return re_user, existing
         return user, identity
 
-    # (c) Brand new — create User + personal Team + identity in one
-    # transaction. Single rollback boundary so a partial create never
-    # persists.
+    # (c) Brand new. Whether that means "create an account" depends on the
+    # provider: see _refuse_unless_auto_register.
+    _refuse_unless_auto_register(info)
     user, identity = await _create_user_with_personal_team(session, info=info)
     return user, identity
+
+
+def _refuse_unless_auto_register(info: OAuthUserInfo) -> None:
+    """Refuse an unknown person unless the deployment asked to admit them.
+
+    Only the deployment's own identity provider is gated. The hosted providers
+    keep creating an account on first sign-in because that is what a demo
+    signup is, and gating them would turn the signup page into a dead end.
+
+    An organisation that points the portal at its own directory is in the
+    opposite position: everybody in the company can authenticate, and only
+    some of them are meant to have a portal account. Off by default, so a
+    deployment that wires SSO does not silently acquire a user per employee
+    who clicks the link.
+
+    The refusal is deliberately the same message a person gets for any other
+    failed sign-in. Saying "you authenticated but have no account here" would
+    confirm to anyone in the directory which addresses are already registered,
+    and the person who needs to know is being told by their administrator
+    anyway.
+    """
+    if info.provider != OAUTH_PROVIDER_OIDC:
+        return
+    if auto_register_enabled():
+        return
+    log.info("oauth_auto_register_refused", provider=info.provider)
+    raise OAuthCallbackFailed("this account cannot sign in")
 
 
 async def _create_user_with_personal_team(

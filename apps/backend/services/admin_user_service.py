@@ -38,17 +38,23 @@ from sqlalchemy import func, or_, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
+from starlette.concurrency import run_in_threadpool
 
+from core.config import default_member_role
 from core.security import CurrentUser, hash_password
 from core.sql_safety import escape_like
 from models import Membership, PasswordResetToken, RefreshToken, Scan, Team, User
 from schemas.admin import (
+    AdminUserCreateIn,
     AdminUserDetail,
     AdminUserListItem,
     AdminUserListPage,
     AdminUserRoleUpdate,
+    BulkResultOut,
+    BulkRowResult,
     TeamMembershipPublic,
 )
+from services.csv_export import CSV_BOM, csv_line
 
 log = structlog.get_logger("admin.user.service")
 
@@ -761,3 +767,377 @@ __all__ = [
     "list_users",
     "update_user_role",
 ]
+
+
+# ---------------------------------------------------------------------------
+# Creating people, one at a time and in batches (N4)
+# ---------------------------------------------------------------------------
+#
+# The batch calls the single one. That is the whole design, and it is the
+# answer to the way this feature usually breaks: a bulk path that writes rows
+# itself, skipping the validation the single path performs and the audit rows
+# its mutations produce, so an import quietly admits accounts the API would
+# have refused one at a time.
+
+
+class EmailAlreadyTaken(AdminUserError):
+    status_code = 409
+    title = "Email Already Registered"
+
+
+#: What goes in ``hashed_password`` for an account that signs in elsewhere.
+#:
+#: The crypt(3) convention for "this account has no password". Not a bcrypt
+#: hash of a random secret, which is what this was first: that costs a
+#: cost-12 hash per row at import time for a value nobody will ever verify
+#: against, and 500 of them run one after another. ``verify_password``
+#: returns False for a hash it cannot parse, so a sentinel bcrypt refuses to
+#: read is refused earlier and more cheaply than one it reads and rejects.
+_NO_PASSWORD = "!"  # noqa: S105 (a refusal marker, not a credential)
+
+
+def _is_duplicate_email(exc: IntegrityError) -> bool:
+    """Whether this violation is the unique index on the address.
+
+    Named rather than assumed. The first version treated every integrity
+    failure that was not the team foreign key as a duplicate address, so a
+    constraint added later would have been reported to the operator as an
+    email collision on a row whose address was fine.
+    """
+    constraint = getattr(getattr(exc.orig, "diag", None), "constraint_name", None)
+    if isinstance(constraint, str):
+        return "email" in constraint
+    return "users_email" in str(exc.orig)
+
+
+async def create_user(
+    session: AsyncSession,
+    *,
+    actor: CurrentUser,
+    payload: AdminUserCreateIn,
+) -> AdminUserDetail:
+    """Add one person.
+
+    Distinct from public registration in two ways that matter. The team is
+    named rather than invented, because an administrator adding somebody to an
+    organization knows where they belong and does not want a personal team per
+    head. And a password is optional: on a deployment where people arrive
+    through an identity provider, an account with no usable password is the
+    correct account, not a half-made one.
+    """
+    email = str(payload.email).strip().lower()
+    # Explicit fallback rather than one inside the setting: an account an
+    # administrator adds has always carried ``developer``, and the other
+    # caller of this setting has always carried something else.
+    role = payload.role or default_member_role() or "developer"
+
+    if payload.team_id is not None:
+        team = (
+            await session.execute(select(Team.id).where(Team.id == payload.team_id))
+        ).scalar_one_or_none()
+        if team is None:
+            raise TeamNotFound(f"team {payload.team_id} not found", team_id=payload.team_id)
+
+    existing = (
+        await session.execute(select(User.id).where(User.email == email))
+    ).scalar_one_or_none()
+    if existing is not None:
+        raise EmailAlreadyTaken(f"email already registered: {email}")
+
+    user = User(
+        email=email,
+        hashed_password=(
+            # Off the event loop: bcrypt at cost 12 is a quarter of a second,
+            # and the batch path runs this once per row while the worker
+            # serves nothing else.
+            await run_in_threadpool(hash_password, payload.password)
+            if payload.password is not None
+            else _NO_PASSWORD
+        ),
+        full_name=payload.full_name,
+        is_active=True,
+        is_superuser=False,
+        is_verified=False,
+    )
+    session.add(user)
+    try:
+        await session.flush()
+    except IntegrityError as exc:
+        # The check above lost a race. Same answer either way.
+        await session.rollback()
+        raise EmailAlreadyTaken(f"email already registered: {email}") from exc
+
+    if payload.team_id is not None:
+        session.add(Membership(user_id=user.id, team_id=payload.team_id, role=role))
+
+    try:
+        await session.commit()
+    except IntegrityError as exc:
+        await session.rollback()
+        if _is_team_fk_violation(exc):
+            raise TeamNotFound(
+                f"team {payload.team_id} not found", team_id=payload.team_id
+            ) from exc
+        if _is_duplicate_email(exc):
+            raise EmailAlreadyTaken(f"email already registered: {email}") from exc
+        # Anything else is a constraint nobody here knows about. Reporting it
+        # as a taken address would tell the operator something false about
+        # their own file; letting it out makes it a logged failure with a
+        # trace, which is what an unrecognised constraint deserves.
+        raise
+
+    log.info(
+        "admin.user.created",
+        actor_id=str(actor.id),
+        target_user_id=str(user.id),
+        team_id=str(payload.team_id) if payload.team_id else None,
+        role=role if payload.team_id else None,
+        has_password=payload.password is not None,
+    )
+    return await get_user_detail(session, actor=actor, user_id=user.id)
+
+
+async def bulk_create_users(
+    session: AsyncSession,
+    *,
+    actor: CurrentUser,
+    rows: list[AdminUserCreateIn],
+) -> BulkResultOut:
+    """Run every row through :func:`create_user` and report each one.
+
+    Rows are independent. One bad address does not roll back the people
+    before it, because an administrator importing a directory export wants the
+    397 that were fine and a list of the three that were not, rather than an
+    error and a file to bisect.
+    """
+    results: list[BulkRowResult] = []
+    for index, row in enumerate(rows):
+        identifier = str(row.email).strip().lower()
+        try:
+            detail = await create_user(session, actor=actor, payload=row)
+        except AdminUserError as exc:
+            results.append(
+                BulkRowResult(
+                    index=index,
+                    identifier=identifier,
+                    status="failed",
+                    reason=_reason_for(exc),
+                    detail=str(exc),
+                )
+            )
+            continue
+        except Exception:
+            # One row that fails in a way nobody anticipated must not take the
+            # report with it. create_user commits per row, so an exception
+            # escaping here would leave the rows before it created and answer
+            # the administrator with no list of what happened.
+            #
+            # No ``str(exc)``: this is the branch where a driver message could
+            # reach the response, and the trace belongs in the log instead.
+            await session.rollback()
+            log.exception("admin.user.bulk_row_failed", index=index)
+            results.append(
+                BulkRowResult(
+                    index=index,
+                    identifier=identifier,
+                    status="failed",
+                    reason="failed",
+                )
+            )
+            continue
+        results.append(
+            BulkRowResult(
+                index=index,
+                identifier=identifier,
+                status="created",
+                user_id=detail.id,
+            )
+        )
+
+    succeeded = sum(1 for row in results if row.status != "failed")
+    return BulkResultOut(
+        total=len(results),
+        succeeded=succeeded,
+        failed=len(results) - succeeded,
+        results=results,
+    )
+
+
+async def bulk_deactivate_users(
+    session: AsyncSession,
+    *,
+    actor: CurrentUser,
+    user_ids: list[uuid.UUID],
+) -> BulkResultOut:
+    """Deactivate each id through :func:`deactivate_user`.
+
+    The protections stay where they are: an administrator cannot deactivate
+    themselves or the last super admin, and putting either id in a list does
+    not change that. Both come back as one failed row rather than refusing the
+    batch, which is the same reading as above.
+
+    Somebody already inactive is reported as skipped rather than deactivated,
+    because a run that says it deactivated 40 people when 12 were already gone
+    is a number an administrator will act on.
+    """
+    results: list[BulkRowResult] = []
+    for index, user_id in enumerate(user_ids):
+        was_active = (
+            await session.execute(select(User.is_active).where(User.id == user_id))
+        ).scalar_one_or_none()
+        try:
+            await deactivate_user(session, actor=actor, user_id=user_id)
+        except AdminUserError as exc:
+            results.append(
+                BulkRowResult(
+                    index=index,
+                    identifier=str(user_id),
+                    status="failed",
+                    reason=_reason_for(exc),
+                    detail=str(exc),
+                )
+            )
+            continue
+        except Exception:
+            await session.rollback()
+            log.exception("admin.user.bulk_deactivate_row_failed", index=index)
+            results.append(
+                BulkRowResult(
+                    index=index,
+                    identifier=str(user_id),
+                    status="failed",
+                    reason="failed",
+                )
+            )
+            continue
+        results.append(
+            BulkRowResult(
+                index=index,
+                identifier=str(user_id),
+                status="deactivated" if was_active else "skipped",
+                user_id=user_id,
+            )
+        )
+
+    succeeded = sum(1 for row in results if row.status != "failed")
+    return BulkResultOut(
+        total=len(results),
+        succeeded=succeeded,
+        failed=len(results) - succeeded,
+        results=results,
+    )
+
+
+#: Exception class to the token the frontend translates. The Problem Details
+#: ``detail`` is English and always will be, and this is a table an
+#: administrator reads a row at a time to decide what to fix.
+_BULK_REASONS: dict[type[AdminUserError], str] = {
+    EmailAlreadyTaken: "email_taken",
+    TeamNotFound: "team_not_found",
+    AdminUserNotFound: "not_found",
+    CannotModifySelf: "cannot_modify_self",
+    LastSuperAdminProtected: "last_super_admin",
+    InvalidRoleAssignment: "invalid_role",
+}
+
+
+def _reason_for(exc: AdminUserError) -> str:
+    return _BULK_REASONS.get(type(exc), "failed")
+
+
+#: Rows an export will build before refusing. The roster is the one table
+#: whose size is the deployment's headcount rather than its activity, so a
+#: directory-scale install is the ordinary case rather than the extreme one.
+_ROSTER_EXPORT_LIMIT = 50_000
+
+
+class RosterExportTooLarge(AdminUserError):
+    """More people than an export is willing to hold in memory at once.
+
+    Raised before the first row is built, so the operator gets an error rather
+    than a file that is silently short. Nothing inside a truncated CSV says it
+    is truncated, which is what makes it worse than a refusal.
+    """
+
+    status_code = 413
+    title = "Export Too Large"
+    extensions = {"roster_export_too_large": True}
+
+
+async def export_users_csv(
+    session: AsyncSession,
+    *,
+    actor: CurrentUser,
+) -> str:
+    """Every person as CSV, in the shape the bulk import accepts back.
+
+    Round-tripping is the point: an export that cannot be edited and fed back
+    in is a report, and what an administrator wants here is the roster they
+    already have plus the ten people who joined.
+
+    No password column, in either direction of the round trip. An export
+    carrying credentials would put every account in the deployment into a
+    spreadsheet in somebody's downloads folder.
+
+    Cells go through the shared ``csv_cell``: a name beginning ``=`` is a live
+    formula the moment a spreadsheet opens the file, and a name is something
+    an unauthenticated person can choose at registration. The same helper
+    supplies the byte-order mark, without which Excel on a Korean locale reads
+    every row as mojibake.
+    """
+    total = int(
+        (
+            await session.execute(
+                select(func.count())
+                .select_from(User)
+                .where(User.is_service_account.is_(False))
+            )
+        ).scalar_one()
+    )
+    if total > _ROSTER_EXPORT_LIMIT:
+        raise RosterExportTooLarge(
+            f"the roster has {total} people (limit {_ROSTER_EXPORT_LIMIT}); "
+            "export it through the API in pages instead"
+        )
+
+    rows = (
+        (
+            await session.execute(
+                select(User)
+                .options(selectinload(User.memberships))
+                # Service accounts are not people and have no place on a
+                # roster. Re-importing one would try to create a person under
+                # an address an automation identity already holds.
+                .where(User.is_service_account.is_(False))
+                .order_by(User.created_at.asc(), User.id.asc())
+            )
+        )
+        .scalars()
+        .unique()
+        .all()
+    )
+
+    header = ["email", "full_name", "team_id", "role", "is_active", "last_login_at"]
+    out = [CSV_BOM + csv_line(header)]
+    for user in rows:
+        # Deterministic rather than whichever row the loader returned first:
+        # a file that lists a different team for the same person on two
+        # consecutive exports is one an administrator cannot diff.
+        membership = min(
+            user.memberships, key=lambda m: str(m.team_id), default=None
+        )
+        out.append(
+            csv_line(
+                [
+                    user.email,
+                    user.full_name,
+                    membership.team_id if membership else None,
+                    membership.role if membership else None,
+                    user.is_active,
+                    user.last_login_at,
+                ]
+            )
+        )
+
+    log.info("admin.user.exported", actor_id=str(actor.id), row_count=len(rows))
+    return "".join(out)
