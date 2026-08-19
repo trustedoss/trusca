@@ -215,6 +215,14 @@
     ],
     [
       "GET",
+      "/v1/notification-rules/org/{organization_id}"
+    ],
+    [
+      "GET",
+      "/v1/notification-rules/teams/{team_id}"
+    ],
+    [
+      "GET",
       "/v1/intake-requests"
     ],
     [
@@ -230,6 +238,18 @@
     [
       "GET",
       "/v1/api-keys"
+    ],
+    [
+      "DELETE",
+      "/v1/notification-rules/{rule_id}"
+    ],
+    [
+      "POST",
+      "/v1/notification-rules/org/{organization_id}"
+    ],
+    [
+      "POST",
+      "/v1/notification-rules/teams/{team_id}"
     ],
     [
       "POST",

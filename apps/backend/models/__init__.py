@@ -69,6 +69,9 @@ from .notification import (  # noqa: E402,F401  (imported for metadata side effe
     Notification,
     NotificationPreferences,
 )
+from .notification_routing import (  # noqa: E402,F401  (imported for metadata side effects)
+    NotificationRoutingRule,
+)
 from .oauth_identity import (  # noqa: E402,F401  (imported for metadata side effects)
     OAUTH_PROVIDER_VALUES,
     OAuthIdentity,
@@ -142,6 +145,7 @@ __all__ = [
     "NOTIFICATION_KIND_VALUES",
     "Notification",
     "NotificationPreferences",
+    "NotificationRoutingRule",
     "OAUTH_PROVIDER_VALUES",
     "OAuthIdentity",
     "Obligation",

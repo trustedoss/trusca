@@ -1145,3 +1145,57 @@ def test_the_grades_a_deployment_setting_accepts_are_the_assignable_ones(
 
     monkeypatch.setenv("OIDC_GROUP_ROLE_MAP", "everyone:super_admin")
     assert oidc_group_role_map() == {}
+
+# ---------------------------------------------------------------------------
+# Notification routing conditions
+# ---------------------------------------------------------------------------
+
+
+def test_a_routing_rules_conditions_use_the_vocabularies_they_name() -> None:
+    """A rule's condition is written in three borrowed alphabets.
+
+    Kinds come from the dispatcher, severities from the finding enum, channels
+    from the delivery layer. Each is validated against its source at write
+    time, which is the behaviour worth having; what this pins is that the
+    source is the real one rather than a copy that will drift.
+
+    The drift is quiet in a particular way: a rule stored against a stale
+    vocabulary is not rejected and not fired. It sits in the table looking
+    like coverage nobody has.
+    """
+    from models.notification import NOTIFICATION_KIND_VALUES
+    from models.scan import VULN_SEVERITY_VALUES
+    from notifications.dispatcher import _KNOWN_CHANNELS
+    from schemas.notification_routing import NotificationRoutingRuleIn
+    from services.notification_routing_service import _SEVERITY_ORDER
+
+    # Every severity the resolver can rank is one the schema accepts, and the
+    # other way round. A severity the schema admits but the resolver cannot
+    # rank would be a rule that never matches anything.
+    assert set(_SEVERITY_ORDER) == set(VULN_SEVERITY_VALUES)
+
+    for kind in NOTIFICATION_KIND_VALUES:
+        NotificationRoutingRuleIn(
+            name="k", kinds=[kind], email_recipients=["ops@example.com"]
+        )
+    for severity in VULN_SEVERITY_VALUES:
+        NotificationRoutingRuleIn(
+            name="s", min_severity=severity, email_recipients=["ops@example.com"]
+        )
+    for channel in _KNOWN_CHANNELS:
+        NotificationRoutingRuleIn(name="c", channels=[channel])
+
+
+def test_the_severity_order_a_rule_ranks_by_is_worst_first() -> None:
+    """A floor means "this and everything above it", and above is a position.
+
+    Reversing the list would turn "at least high" into "high and below", which
+    is the same words and the opposite set, and every test naming a severity
+    by hand would still pass.
+    """
+    from services.notification_routing_service import _SEVERITY_ORDER
+
+    assert _SEVERITY_ORDER[0] == "critical"
+    assert _SEVERITY_ORDER.index("critical") < _SEVERITY_ORDER.index("high")
+    assert _SEVERITY_ORDER.index("high") < _SEVERITY_ORDER.index("medium")
+    assert _SEVERITY_ORDER.index("medium") < _SEVERITY_ORDER.index("low")
