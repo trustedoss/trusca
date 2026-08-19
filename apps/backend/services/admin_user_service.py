@@ -41,7 +41,7 @@ from sqlalchemy.orm import selectinload
 from starlette.concurrency import run_in_threadpool
 
 from core.config import default_member_role
-from core.security import CurrentUser, hash_password
+from core.security import CurrentUser, forget_principal, hash_password
 from core.sql_safety import escape_like
 from models import Membership, PasswordResetToken, RefreshToken, Scan, Team, User
 from schemas.admin import (
@@ -560,9 +560,10 @@ async def update_user_role(
                 "cannot demote the last active super_admin"
             ) from exc
         raise
-    # Expire so the refetch in get_user_detail picks up the new membership
-    # row instead of serving the User from the identity map (which may have
-    # been loaded without a memberships join).
+    # Their grade just changed, so any principal cached from the old one is
+    # wrong. Bounded by the lifetime either way; this is what makes the
+    # administrator's own next request show the new grade.
+    forget_principal(user_id)
     log.info(
         "admin.user.role_changed",
         actor_id=str(actor.id),
@@ -644,6 +645,7 @@ async def deactivate_user(
                 "cannot deactivate the last active super_admin"
             ) from exc
         raise
+    forget_principal(user_id)
     log.info(
         "admin.user.deactivated",
         actor_id=str(actor.id),
@@ -668,6 +670,7 @@ async def activate_user(
     user.is_active = True
     user.updated_at = _now()
     await session.commit()
+    forget_principal(user_id)
     log.info(
         "admin.user.activated",
         actor_id=str(actor.id),

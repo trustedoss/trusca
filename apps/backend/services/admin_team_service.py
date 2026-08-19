@@ -44,7 +44,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from core.audit import audit_context
-from core.security import CurrentUser
+from core.security import CurrentUser, forget_principal
 from core.sql_safety import escape_like
 from models import Membership, Organization, Project, Scan, Team, User
 from schemas.admin import (
@@ -500,8 +500,25 @@ async def delete_team(
             project_count=len(live_projects),
         )
 
+    # Read the members before the delete: the memberships go with the team on
+    # CASCADE, and a membership is where somebody's grade comes from. Somebody
+    # whose only team_admin row was here drops to the floor, and the rule the
+    # other writes keep is that a write which changes what somebody may do
+    # forgets them.
+    member_ids = list(
+        (
+            await session.execute(
+                select(Membership.user_id).where(Membership.team_id == team_id)
+            )
+        )
+        .scalars()
+        .all()
+    )
+
     await session.delete(team)
     await session.commit()
+    for member_id in member_ids:
+        forget_principal(member_id)
     log.info(
         "admin.team.deleted",
         actor_id=str(actor.id),
@@ -571,6 +588,7 @@ async def add_team_member(
         existing.updated_at = _now()
 
     await session.commit()
+    forget_principal(payload.user_id)
     log.info(
         "admin.team.member_added",
         actor_id=str(actor.id),
@@ -632,6 +650,7 @@ async def remove_team_member(
 
     await session.delete(membership)
     await session.commit()
+    forget_principal(user_id)
     log.info(
         "admin.team.member_removed",
         actor_id=str(actor.id),
