@@ -458,6 +458,31 @@
       "gate": "role>=viewer"
     },
     {
+      "method": "DELETE",
+      "path": "/v1/notification-rules/{rule_id}",
+      "gate": "role>=team_admin"
+    },
+    {
+      "method": "GET",
+      "path": "/v1/notification-rules/org/{organization_id}",
+      "gate": "role>=viewer"
+    },
+    {
+      "method": "POST",
+      "path": "/v1/notification-rules/org/{organization_id}",
+      "gate": "role>=team_admin"
+    },
+    {
+      "method": "GET",
+      "path": "/v1/notification-rules/teams/{team_id}",
+      "gate": "role>=viewer"
+    },
+    {
+      "method": "POST",
+      "path": "/v1/notification-rules/teams/{team_id}",
+      "gate": "role>=team_admin"
+    },
+    {
       "method": "GET",
       "path": "/v1/notifications",
       "gate": "authed"

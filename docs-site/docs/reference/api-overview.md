@@ -168,6 +168,11 @@ POST   /v1/approvals
 PATCH  /v1/approvals/{id}/transition         # If-Match required
 DELETE /v1/approvals/{id}
 
+GET    /v1/notification-rules/org/{organization_id}   who else hears, deployment-wide
+POST   /v1/notification-rules/org/{organization_id}   super_admin only
+GET    /v1/notification-rules/teams/{team_id}         includes the organization's own
+POST   /v1/notification-rules/teams/{team_id}         team_admin
+DELETE /v1/notification-rules/{rule_id}
 GET    /v1/notifications
 GET    /v1/notifications/unread-count
 PATCH  /v1/notifications/read-all

@@ -294,6 +294,10 @@ def _run_sweep() -> dict[str, Any]:
             # Context mirrors the in-app payload for a future outbound-channel
             # builder; with ``channels=[]`` today it is carried but unused.
             context = {
+                # The routing rules (N9) match on this. It was already carried
+                # alongside for the in-app row; naming it in the context is
+                # what lets a rule say "this project only".
+                "project_id": str(project_id),
                 "project_name": project_name,
                 "breach_count": str(sum(by_severity.values())),
                 "severity_breakdown": ", ".join(

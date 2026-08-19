@@ -66,6 +66,46 @@ Below the inbox, the **Preferences** section lists every trigger with four **glo
 
 Toggles enter a draft state. Click **Save** to persist your changes — the page tracks dirty state and disables Save until something changes.
 
+## Routing rules: who else hears {#routing-rules}
+
+Your toggles decide what reaches you. A routing rule decides who else hears,
+and it is written by an administrator rather than by the person receiving it.
+The rule an organization actually has is usually of this shape: "the security
+team hears about every critical finding", or "release@ gets a line whenever a
+scan finishes in this one project".
+
+A rule names some conditions and some destinations. Every condition is
+optional and an absent one matches everything:
+
+- **Kinds**: which triggers it covers. Empty means all of them.
+- **Minimum severity**: that severity and everything above it. A rule naming
+  one does not fire for a notification that carries no severity at all, since
+  "no severity" is the absence of an answer rather than a low one.
+- **Project**: one project, and it must be a project the rule's scope covers.
+
+And the destinations: channels to add, addresses to add, or both. A rule that
+names neither is refused, because a row that does nothing reads later as a row
+that is broken.
+
+<!-- docs-uat: id=notification-rules-list-api kind=api auth=admin url=/v1/notification-rules/teams/${TEAM_ID} expect=status:200 tier=nightly -->
+Team administrators write rules for their own team at
+`POST /v1/notification-rules/teams/{team_id}`; a super admin writes rules for
+the whole deployment at `/v1/notification-rules/org/{organization_id}`. Reading
+is open to everyone in the team, so people can see what reaches them without
+being able to change it. A team's list includes the organization's rules,
+because those apply to the team too.
+
+:::note Rules add, and never take away
+Every rule whose condition matches contributes, and the results are combined.
+A rule cannot remove a recipient or switch off a channel somebody enabled: two
+mechanisms deciding one question would mean the silencing one wins an argument
+nobody had, and a person whose notifications quietly stopped would have no way
+to find out why.
+
+Write no rules and nothing changes. Every notification goes exactly where it
+went before.
+:::
+
 ## How fresh is the bell?
 
 The frontend polls the unread count every **60 seconds** while the tab is active. Two optimisations keep the channel lean:

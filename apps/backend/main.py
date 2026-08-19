@@ -40,6 +40,7 @@ from api.v1 import (
     inventory_router,
     license_policies_router,
     licenses_router,
+    notification_routing_router,
     notifications_router,
     oauth_router,
     obligations_router,
@@ -254,6 +255,7 @@ app.include_router(license_policies_router)
 # router from the licence policy because the two answer different questions
 # even though both feed one verdict.
 app.include_router(gate_policies_router)
+app.include_router(notification_routing_router)
 app.include_router(organization_verdicts_router)
 app.include_router(service_accounts_router)
 app.include_router(transition_approvals_router)

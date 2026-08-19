@@ -124,6 +124,58 @@ def _apply_prefs_filter(
         return filtered
 
 
+def _union(first: list[str], second: list[str]) -> list[str]:
+    """First list, then anything in the second it did not already contain.
+
+    Order is preserved so the original recipients stay where they were, and
+    the comparison is case-folded for addresses: a rule naming the same team
+    in different case is one recipient, and somebody who receives an alert
+    twice stops reading either copy.
+    """
+    out = list(first)
+    seen = {value.strip().lower() for value in first}
+    for value in second:
+        folded = value.strip().lower()
+        if folded and folded not in seen:
+            seen.add(folded)
+            out.append(value)
+    return out
+
+
+def _routing_additions(*, kind: str, context: dict[str, Any]) -> Any:
+    """Ask the rules who else hears about this one.
+
+    Reads the project and severity out of the context the producer built. A
+    notification carrying neither cannot match a rule, which is the same
+    answer as having no rules at all, so the lookup is skipped entirely rather
+    than opening a session to learn nothing.
+
+    Never raises. A routing table that cannot be read is a reason to send the
+    notification the way it was already going, not a reason to lose it.
+    """
+    from services.notification_routing_service import ExtraDelivery
+
+    project_id = _coerce_uuid(context.get("project_id"))
+    if project_id is None:
+        return ExtraDelivery()
+
+    severity = context.get("severity")
+    try:
+        from core.db import sync_session_scope
+        from services.notification_routing_service import resolve_extra_delivery_sync
+
+        with sync_session_scope() as session:
+            return resolve_extra_delivery_sync(
+                session,
+                kind=kind,
+                severity=str(severity) if severity is not None else None,
+                project_id=project_id,
+            )
+    except Exception as exc:  # noqa: BLE001 (delivery survives a bad table)
+        log.warning("notification_routing_lookup_failed", kind=kind, error=str(exc)[:300])
+        return ExtraDelivery()
+
+
 def _coerce_uuid(value: Any) -> uuid.UUID | None:
     """Best-effort UUID coercion for JSON-serialized Celery args."""
     if value is None:
@@ -182,6 +234,16 @@ def _run_notification(
                 target_id=_coerce_uuid(in_app_target_id),
                 channels=effective_channels,
             )
+
+        # Rules an organization or team wrote about who else hears (N9).
+        # Applied after the target's own toggles and unioned with them, never
+        # subtracted: the toggles decide what reaches that person, and a rule
+        # decides who else. Empty for a deployment with no rules, which is
+        # what keeps this path identical to what it was.
+        extra = _routing_additions(kind=kind, context=context)
+        if extra.channels or extra.recipients:
+            effective_channels = _union(effective_channels, extra.channels)
+            recipients = _union(list(recipients or []), extra.recipients)
 
         if not effective_channels:
             # Nothing to dispatch — the user has disabled every outbound
