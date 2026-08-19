@@ -98,3 +98,13 @@ class AboutResponse(BaseModel):
     documents: list[NoticeDocumentOut] = Field(
         description="Notice documents, in display order."
     )
+    features: dict[str, bool] = Field(
+        default_factory=dict,
+        description=(
+            "Optional surfaces this deployment has turned on. A key absent or "
+            "false means the surface does not exist: its routes answer 404 "
+            "and the SPA renders no entry point for it. Carried here because "
+            "the shell already reads this response, and probing a route to "
+            "decide whether to draw a menu entry makes the menu flicker."
+        ),
+    )

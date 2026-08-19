@@ -46,7 +46,7 @@ from dataclasses import dataclass
 from datetime import UTC, datetime
 
 import structlog
-from sqlalchemy import and_, func, select
+from sqlalchemy import and_, func, select, update
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -548,6 +548,76 @@ async def create_approval(
 # ---------------------------------------------------------------------------
 # auto_create_pending_approvals — sync, system-context (scan pipeline)
 # ---------------------------------------------------------------------------
+
+
+def apply_intake_decisions(
+    session: Session,
+    *,
+    project_id: uuid.UUID,
+    created_component_ids: Iterable[uuid.UUID],
+) -> int:
+    """Carry an answer already given onto the approval a scan just opened.
+
+    Somebody who asked before pulling the package in should not be asked
+    again the moment a scan finds it. Without this the reward for following
+    the process is answering the same question twice, and the second answer
+    is the one the build gate reads.
+
+    Only decided requests are carried, and only onto approvals this scan
+    created, so nothing already under review by a person is overwritten by a
+    verdict recorded elsewhere.
+
+    Returns how many approvals were resolved this way. Off by default with the
+    intake surface, in which case there are no requests to find and this costs
+    one query that returns nothing.
+    """
+    from services.component_intake_service import decided_intake_status_by_purl
+
+    # Component ids, which is what ``auto_create_pending_approvals`` returns:
+    # its INSERT ... RETURNING reports the components it enrolled, not the
+    # approval rows. Matching on the wrong column here found nothing and
+    # carried nothing, silently.
+    ids = list(created_component_ids)
+    if not ids:
+        return 0
+
+    rows = session.execute(
+        select(ComponentApproval.id, Component.purl)
+        .join(Component, Component.id == ComponentApproval.component_id)
+        .where(
+            ComponentApproval.component_id.in_(ids),
+            ComponentApproval.project_id == project_id,
+        )
+    ).all()
+    purls = [purl for _approval_id, purl in rows if purl]
+    answered = decided_intake_status_by_purl(
+        session, project_id=project_id, purls=purls
+    )
+    if not answered:
+        return 0
+
+    now = _now()
+    resolved = 0
+    for approval_id, purl in rows:
+        verdict = answered.get(purl or "")
+        if verdict is None:
+            continue
+        session.execute(
+            update(ComponentApproval)
+            .where(ComponentApproval.id == approval_id)
+            .values(
+                status=verdict,
+                decided_at=now,
+                # No decider: the person is recorded on the intake request,
+                # and naming them here would say they reviewed this scan's
+                # finding when they reviewed the request that preceded it.
+                decided_by_user_id=None,
+                decision_note="carried from the intake request for this package",
+                version=ComponentApproval.version + 1,
+            )
+        )
+        resolved += 1
+    return resolved
 
 
 def auto_create_pending_approvals(

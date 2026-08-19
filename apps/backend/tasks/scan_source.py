@@ -125,7 +125,10 @@ from models import (
     VulnerabilityFinding,
 )
 from services import sbom_component_walk, sbom_document_metadata, scan_inputs
-from services.component_approval_service import auto_create_pending_approvals
+from services.component_approval_service import (
+    apply_intake_decisions,
+    auto_create_pending_approvals,
+)
 from services.eol import eol_catalog
 from services.license_expression import evaluate_expression
 from services.license_normalize import normalize_license_name
@@ -1941,6 +1944,20 @@ def _auto_create_conditional_approvals(
                 component_ids=component_ids,
                 scan_id=scan_uuid,
             )
+            # An answer already given for this package carries onto the
+            # approval just opened, so somebody who asked before pulling it in
+            # is not asked again. A no-op unless the deployment uses the
+            # ask-before-using queue, which is off by default.
+            carried = apply_intake_decisions(
+                session, project_id=project_id, created_component_ids=created_ids
+            )
+            if carried:
+                log.info(
+                    "approval.intake_decisions_carried",
+                    scan_id=str(scan_uuid),
+                    project_id=str(project_id),
+                    resolved=carried,
+                )
             # Summary audit row — only when at least one approval was created.
             # Same transaction as the approval inserts so the audit row and the
             # approvals commit (or roll back) together.

@@ -32,6 +32,15 @@ export interface About {
   copyright: string;
   source_url: string;
   documents: NoticeDocument[];
+  /**
+   * Optional surfaces this deployment turned on, by key.
+   *
+   * A key absent or false means the surface does not exist: its routes answer
+   * 404 and nothing should draw an entry point for it. Carried on this
+   * response because the shell already reads it, and probing a route to
+   * decide whether to draw a menu entry makes the menu flicker.
+   */
+  features?: Record<string, boolean>;
 }
 
 export async function getAbout(): Promise<About> {

@@ -1,0 +1,37 @@
+{
+  "title": "Intake requests",
+  "subtitle": "Ask about a package before it is pulled in, and answer before it reaches a build.",
+  "ask": "Ask",
+  "field": {
+    "project": "Project id",
+    "purl": "Package (purl)",
+    "justification": "Why this package"
+  },
+  "status": {
+    "pending": "Waiting",
+    "under_review": "Under review",
+    "approved": "Approved",
+    "rejected": "Rejected"
+  },
+  "action": {
+    "review": "Start review",
+    "approve": "Approve",
+    "reject": "Reject"
+  },
+  "empty": {
+    "title": "Nothing has been asked about yet",
+    "description": "Ask about a package here and somebody who administers the team answers before it reaches a build."
+  },
+  "disabled": {
+    "title": "This deployment does not use an intake queue",
+    "description": "Packages are reviewed after a scan finds them, on the Approvals page. An administrator can turn this on by setting INTAKE_REQUESTS_ENABLED."
+  },
+  "toast": {
+    "asked": "Asked. Somebody who administers the team answers next.",
+    "decided": "Recorded."
+  },
+  "errors": {
+    "ask_failed": "The request could not be recorded.",
+    "decide_failed": "The answer could not be recorded."
+  }
+}

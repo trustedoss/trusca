@@ -587,6 +587,22 @@ def app_env() -> str:
     return os.getenv("APP_ENV", "dev").lower()
 
 
+def intake_requests_enabled() -> bool:
+    """Whether the ask-before-using surface exists at all (N3).
+
+    Off by default, and off means the routes are not there rather than there
+    and empty. Whether an organization reviews a package before it is pulled
+    in or after a scan finds it is a decision about how they work, not one the
+    portal should make for them, and a menu entry that 403s teaches people the
+    feature is broken rather than that it is not for them.
+
+    Read at call time (rule #11) so a deployment can turn it on without a code
+    change, and so a test can flip it around a single request.
+    """
+    raw = os.getenv("INTAKE_REQUESTS_ENABLED", "false").strip().lower()
+    return raw in ("1", "true", "yes", "on")
+
+
 def demo_read_only() -> bool:
     """v2.1 Track B (B5) — live-demo read-only guard.
 

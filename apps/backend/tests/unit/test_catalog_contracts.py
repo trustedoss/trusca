@@ -984,3 +984,37 @@ def test_the_check_constraint_bounds_the_same_set() -> None:
     named = set(re.findall(r"'([a-z_]+)'", str(constraint.sqltext)))
 
     assert named == set(API_KEY_PERMISSION_BREADTHS)
+
+
+# ---------------------------------------------------------------------------
+# Intake requests vs the approvals they turn into
+# ---------------------------------------------------------------------------
+
+
+def test_intake_and_approval_share_one_status_vocabulary() -> None:
+    """A request and an approval are the same question at different times.
+
+    Two enums with the same four names is the drift that stays green per
+    module and surfaces the first time something joins them, which here would
+    be the carry-over that writes an intake verdict onto an approval row.
+    """
+    from models.component_approval import APPROVAL_STATUS_VALUES
+    from models.component_intake import ComponentIntakeRequest
+
+    intake_enum = ComponentIntakeRequest.__table__.c.status.type  # type: ignore[attr-defined]
+
+    assert set(intake_enum.enums) == set(APPROVAL_STATUS_VALUES)  # type: ignore[attr-defined]
+
+
+def test_intake_and_approval_share_one_transition_matrix() -> None:
+    """The same states have to mean the same moves.
+
+    An intake request that could jump from pending to approved while an
+    approval could not would let the ask-before-using path skip the review
+    step the states exist to record, and the carried verdict would land on the
+    approval as though it had been through it.
+    """
+    from services.component_approval_service import _TRANSITION_MAP
+    from services.component_intake_service import _TRANSITIONS
+
+    assert _TRANSITIONS == _TRANSITION_MAP

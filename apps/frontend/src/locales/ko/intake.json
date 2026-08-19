@@ -1,0 +1,37 @@
+{
+  "title": "사용 전 신청",
+  "subtitle": "패키지를 끌어오기 전에 물어보고, 빌드에 닿기 전에 답합니다.",
+  "ask": "신청",
+  "field": {
+    "project": "프로젝트 id",
+    "purl": "패키지 (purl)",
+    "justification": "이 패키지가 필요한 이유"
+  },
+  "status": {
+    "pending": "대기",
+    "under_review": "검토 중",
+    "approved": "승인",
+    "rejected": "거부"
+  },
+  "action": {
+    "review": "검토 시작",
+    "approve": "승인",
+    "reject": "거부"
+  },
+  "empty": {
+    "title": "아직 신청이 없습니다",
+    "description": "여기서 패키지를 신청하면 팀을 관리하는 사람이 빌드에 닿기 전에 답합니다."
+  },
+  "disabled": {
+    "title": "이 배포는 사용 전 신청을 쓰지 않습니다",
+    "description": "패키지는 스캔이 찾은 뒤 [승인] 화면에서 검토합니다. 관리자가 INTAKE_REQUESTS_ENABLED를 켜면 이 화면을 씁니다."
+  },
+  "toast": {
+    "asked": "신청했습니다. 팀을 관리하는 사람이 답합니다.",
+    "decided": "기록했습니다."
+  },
+  "errors": {
+    "ask_failed": "신청을 기록하지 못했습니다.",
+    "decide_failed": "답변을 기록하지 못했습니다."
+  }
+}

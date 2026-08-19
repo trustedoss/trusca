@@ -31,6 +31,7 @@ from api.v1 import (
     audit_router,
     auth_router,
     compliance_router,
+    component_intake_router,
     components_router,
     dashboard_router,
     gate_policies_router,
@@ -261,6 +262,7 @@ app.include_router(obligations_router)
 # legacy /licenses and /obligations endpoints remain for the existing drawers;
 # this endpoint is the single read backing the redesigned Compliance tab.
 app.include_router(compliance_router)
+app.include_router(component_intake_router)
 app.include_router(approvals_router)
 # M-3: team-scoped audit read. super_admin sees all; team_admin sees only the
 # teams where they hold team_admin (scope enforced server-side from
