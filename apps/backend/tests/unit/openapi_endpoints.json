@@ -36,6 +36,10 @@
   "DELETE /v1/projects/{project_id}": [
     "project_id"
   ],
+  "DELETE /v1/projects/{project_id}/obligations/{obligation_id}/fulfilment": [
+    "obligation_id",
+    "project_id"
+  ],
   "DELETE /v1/saved-searches/{saved_search_id}": [
     "saved_search_id"
   ],
@@ -345,6 +349,9 @@
     "release",
     "scan_id"
   ],
+  "GET /v1/projects/{project_id}/obligation-fulfilments": [
+    "project_id"
+  ],
   "GET /v1/projects/{project_id}/obligations": [
     "category",
     "kind",
@@ -649,6 +656,10 @@
   ],
   "PUT /v1/license-policies/teams/{team_id}": [
     "team_id"
+  ],
+  "PUT /v1/projects/{project_id}/obligations/{obligation_id}/fulfilment": [
+    "obligation_id",
+    "project_id"
   ],
   "PUT /v1/service-accounts/{service_account_id}/steward": [
     "service_account_id"

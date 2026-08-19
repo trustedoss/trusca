@@ -19,6 +19,7 @@ when ``download=true`` — both contracts are pinned here.
 from __future__ import annotations
 
 import os
+import re
 import subprocess
 import uuid
 from collections.abc import AsyncIterator
@@ -664,3 +665,340 @@ async def test_notice_download_filename_carries_utf8_round_trip_for_non_ascii_pr
     assert ascii_part.isascii()
     assert ascii_part.startswith("NOTICE-")
     assert ascii_part.endswith(".txt")
+
+
+# ---------------------------------------------------------------------------
+# N15: recording that an obligation was actually met
+#
+# Two contracts shape these. The reads above keep their shape, with the record
+# attached alongside rather than folded into the query that finds obligations:
+# a join would drop every obligation nobody has started, which is most of them
+# on the day this ships, and the list would read as the work having shrunk.
+#
+# And nothing recorded here reaches the generated notice. The notice is the
+# licence's words about the components; a fulfilment that could edit it would
+# be a way to make a compliance artefact say what somebody wished were true.
+# ---------------------------------------------------------------------------
+
+
+async def _record(
+    client: AsyncClient,
+    *,
+    user: User,
+    project_id: uuid.UUID,
+    obligation_id: uuid.UUID,
+    status: str = "done",
+    **extra: object,
+) -> dict:
+    response = await client.put(
+        f"/v1/projects/{project_id}/obligations/{obligation_id}/fulfilment",
+        headers=_bearer_for(user),
+        json={"status": status, **extra},
+    )
+    assert response.status_code == 200, response.text
+    return dict(response.json())
+
+
+def _without_the_stamp(notice: str) -> list[str]:
+    """The notice minus the line saying when it was generated.
+
+    That line differs between any two calls a second apart, so comparing the
+    whole text would pass or fail on the clock rather than on the content.
+    """
+    return [
+        line
+        for line in notice.splitlines()
+        if not re.search(r"\d{4}-\d{2}-\d{2}T\d{2}:\d{2}", line)
+    ]
+
+
+async def test_an_obligation_nobody_has_touched_reads_as_null(client) -> None:
+    """Null, not a fabricated 'not started' row.
+
+    Nothing recorded and a deliberate "this does not apply to us" are
+    different answers, and only one of them means somebody looked.
+    """
+    _org, team, user = await _seed_team_with_user(client)
+    project_id, scan_id, _name = await _seed_scanned_project(client, team_id=team.id)
+    await _seed_obligation(client, scan_id=scan_id)
+
+    listed = await client.get(
+        f"/v1/projects/{project_id}/obligations", headers=_bearer_for(user)
+    )
+
+    assert listed.status_code == 200, listed.text
+    assert listed.json()["items"], "the fixture should produce one obligation"
+    assert all(item["fulfilment"] is None for item in listed.json()["items"])
+
+
+async def test_recording_does_not_shrink_the_obligation_list(client) -> None:
+    """The failure this unit had to avoid.
+
+    Attaching the record with a join would drop every obligation nobody has
+    started. Recording against one obligation and finding the others gone is
+    the shape that would pass every test written about the record itself.
+    """
+    _org, team, user = await _seed_team_with_user(client)
+    project_id, scan_id, _name = await _seed_scanned_project(client, team_id=team.id)
+    _lic_a, ob_a = await _seed_obligation(client, scan_id=scan_id)
+    _lic_b, _ob_b = await _seed_obligation(client, scan_id=scan_id)
+    before = await client.get(
+        f"/v1/projects/{project_id}/obligations", headers=_bearer_for(user)
+    )
+
+    await _record(client, user=user, project_id=project_id, obligation_id=ob_a)
+
+    after = await client.get(
+        f"/v1/projects/{project_id}/obligations", headers=_bearer_for(user)
+    )
+
+    assert before.json()["total"] == after.json()["total"]
+    assert {i["id"] for i in before.json()["items"]} == {
+        i["id"] for i in after.json()["items"]
+    }
+    recorded = next(i for i in after.json()["items"] if i["id"] == str(ob_a))
+    untouched = next(i for i in after.json()["items"] if i["id"] != str(ob_a))
+    assert recorded["fulfilment"]["status"] == "done"
+    assert untouched["fulfilment"] is None
+
+
+async def test_the_notice_does_not_change_when_work_is_recorded(client) -> None:
+    """The record says somebody acted. It does not edit what they acted on.
+
+    A fulfilment that could change the notice would be a way to make a
+    compliance artefact say what somebody wished were true.
+    """
+    _org, team, user = await _seed_team_with_user(client)
+    project_id, scan_id, _name = await _seed_scanned_project(client, team_id=team.id)
+    _lic, ob_id = await _seed_obligation(client, scan_id=scan_id)
+    headers = _bearer_for(user)
+    before = await client.get(f"/v1/projects/{project_id}/notice", headers=headers)
+
+    await _record(
+        client,
+        user=user,
+        project_id=project_id,
+        obligation_id=ob_id,
+        status="not_applicable",
+        evidence_note="we do not distribute this service",
+    )
+
+    after = await client.get(f"/v1/projects/{project_id}/notice", headers=headers)
+
+    assert before.status_code == 200, before.text
+    assert after.status_code == 200, after.text
+    # Not a vacuous comparison: the notice has to have said something in the
+    # first place, or two empty documents would match and prove nothing.
+    assert len(_without_the_stamp(before.text)) > 3
+    # Everything but the generation stamp, which moves on its own.
+    assert _without_the_stamp(before.text) == _without_the_stamp(after.text)
+
+
+async def test_the_detail_read_carries_the_record_too(client) -> None:
+    _org, team, user = await _seed_team_with_user(client)
+    project_id, scan_id, _name = await _seed_scanned_project(client, team_id=team.id)
+    _lic, ob_id = await _seed_obligation(client, scan_id=scan_id)
+    await _record(
+        client,
+        user=user,
+        project_id=project_id,
+        obligation_id=ob_id,
+        evidence_url="https://example.com/releases/1.0",
+    )
+
+    detail = await client.get(
+        f"/v1/projects/{project_id}/obligations/{ob_id}", headers=_bearer_for(user)
+    )
+
+    assert detail.status_code == 200, detail.text
+    assert detail.json()["fulfilment"]["status"] == "done"
+    assert detail.json()["fulfilment"]["evidence_url"] == (
+        "https://example.com/releases/1.0"
+    )
+
+
+async def test_marking_done_records_when_and_who(client) -> None:
+    """A row that says done without saying when is not a record of anything."""
+    _org, team, user = await _seed_team_with_user(client)
+    project_id, scan_id, _name = await _seed_scanned_project(client, team_id=team.id)
+    _lic, ob_id = await _seed_obligation(client, scan_id=scan_id)
+
+    row = await _record(client, user=user, project_id=project_id, obligation_id=ob_id)
+
+    assert row["completed_at"] is not None
+    assert row["completed_by_user_id"] == str(user.id)
+
+
+async def test_reopening_clears_the_completion(client) -> None:
+    """Otherwise the row says "not done, finished on Tuesday"."""
+    _org, team, user = await _seed_team_with_user(client)
+    project_id, scan_id, _name = await _seed_scanned_project(client, team_id=team.id)
+    _lic, ob_id = await _seed_obligation(client, scan_id=scan_id)
+    done = await _record(client, user=user, project_id=project_id, obligation_id=ob_id)
+
+    reopened = await client.put(
+        f"/v1/projects/{project_id}/obligations/{ob_id}/fulfilment",
+        headers={**_bearer_for(user), "If-Match": f'"{done["version"]}"'},
+        json={"status": "in_progress"},
+    )
+
+    assert reopened.status_code == 200, reopened.text
+    assert reopened.json()["completed_at"] is None
+    assert reopened.json()["completed_by_user_id"] is None
+
+
+async def test_a_stale_version_is_refused(client) -> None:
+    _org, team, user = await _seed_team_with_user(client)
+    project_id, scan_id, _name = await _seed_scanned_project(client, team_id=team.id)
+    _lic, ob_id = await _seed_obligation(client, scan_id=scan_id)
+    await _record(client, user=user, project_id=project_id, obligation_id=ob_id)
+
+    response = await client.put(
+        f"/v1/projects/{project_id}/obligations/{ob_id}/fulfilment",
+        headers={**_bearer_for(user), "If-Match": '"999"'},
+        json={"status": "in_progress"},
+    )
+
+    assert response.status_code == 412, response.text
+
+
+async def test_an_assignee_from_another_team_is_refused(client) -> None:
+    """A name that makes the row look owned while nobody has been asked.
+
+    Worse than leaving it unassigned, which at least reads as waiting for
+    somebody.
+    """
+    _org, team, user = await _seed_team_with_user(client)
+    project_id, scan_id, _name = await _seed_scanned_project(client, team_id=team.id)
+    _lic, ob_id = await _seed_obligation(client, scan_id=scan_id)
+    _org2, _team2, outsider = await _seed_team_with_user(client)
+
+    response = await client.put(
+        f"/v1/projects/{project_id}/obligations/{ob_id}/fulfilment",
+        headers=_bearer_for(user),
+        json={"status": "in_progress", "assignee_user_id": str(outsider.id)},
+    )
+
+    assert response.status_code == 422, response.text
+
+
+async def test_clearing_puts_it_back_to_nothing_recorded(client) -> None:
+    """Distinct from not-applicable, which is a judgement worth keeping."""
+    _org, team, user = await _seed_team_with_user(client)
+    project_id, scan_id, _name = await _seed_scanned_project(client, team_id=team.id)
+    _lic, ob_id = await _seed_obligation(client, scan_id=scan_id)
+    await _record(client, user=user, project_id=project_id, obligation_id=ob_id)
+
+    cleared = await client.delete(
+        f"/v1/projects/{project_id}/obligations/{ob_id}/fulfilment",
+        headers=_bearer_for(user),
+    )
+    listed = await client.get(
+        f"/v1/projects/{project_id}/obligations", headers=_bearer_for(user)
+    )
+
+    assert cleared.status_code == 204, cleared.text
+    assert all(item["fulfilment"] is None for item in listed.json()["items"])
+
+
+async def test_another_teams_project_cannot_be_recorded_against(client) -> None:
+    _org, team, owner = await _seed_team_with_user(client)
+    project_id, scan_id, _name = await _seed_scanned_project(client, team_id=team.id)
+    _lic, ob_id = await _seed_obligation(client, scan_id=scan_id)
+    _org2, _team2, outsider = await _seed_team_with_user(client)
+
+    response = await client.put(
+        f"/v1/projects/{project_id}/obligations/{ob_id}/fulfilment",
+        headers=_bearer_for(outsider),
+        json={"status": "done"},
+    )
+
+    assert response.status_code == 404, response.text
+
+
+async def test_a_viewer_may_read_but_not_record(client) -> None:
+    """Recording is the engineer doing the release, not only their manager.
+
+    A viewer is the one grade that is explicitly read-only, so it is where the
+    line sits.
+    """
+    _org, team, viewer = await _seed_team_with_user(client, role="viewer")
+    project_id, scan_id, _name = await _seed_scanned_project(client, team_id=team.id)
+    _lic, ob_id = await _seed_obligation(client, scan_id=scan_id)
+
+    listed = await client.get(
+        f"/v1/projects/{project_id}/obligations", headers=_bearer_for(viewer)
+    )
+    recorded = await client.put(
+        f"/v1/projects/{project_id}/obligations/{ob_id}/fulfilment",
+        headers=_bearer_for(viewer),
+        json={"status": "done"},
+    )
+
+    assert listed.status_code == 200, listed.text
+    assert recorded.status_code == 403, recorded.text
+
+
+async def test_recording_leaves_an_audit_row(client) -> None:
+    """Who said the obligation was met, and when they said it.
+
+    This is the half of the record an auditor reads. The row itself says the
+    obligation is done; the audit trail says somebody put it there.
+    """
+    from sqlalchemy import select
+
+    from models import AuditLog
+
+    _org, team, user = await _seed_team_with_user(client)
+    project_id, scan_id, _name = await _seed_scanned_project(client, team_id=team.id)
+    _lic, ob_id = await _seed_obligation(client, scan_id=scan_id)
+
+    await _record(client, user=user, project_id=project_id, obligation_id=ob_id)
+
+    factory = await _factory(client)
+    async with factory() as session:
+        rows = (
+            await session.execute(
+                select(AuditLog).where(AuditLog.target_table == "obligation_fulfilments")
+            )
+        ).scalars().all()
+
+    assert rows, "the write should have produced an audit row"
+    assert rows[-1].actor_user_id == user.id
+
+
+async def test_a_developer_elsewhere_is_still_a_viewer_here(client) -> None:
+    """The grade that counts is the one held on this project's team.
+
+    Somebody who is a developer on one team and a viewer on another passes the
+    route gate on their highest grade. If the service also judged them by that
+    grade, being trusted anywhere would make them trusted everywhere, which is
+    cross-team escalation rather than a permission.
+    """
+    factory = await _factory(client)
+    _org_a, team_a, user = await _seed_team_with_user(client, role="developer")
+    _org_b, team_b, _other = await _seed_team_with_user(client)
+    async with factory() as session:
+        from sqlalchemy import select
+
+        from models import Team
+        from models import User as UserModel
+
+        team = (
+            await session.execute(select(Team).where(Team.id == team_b.id))
+        ).scalar_one()
+        actor = (
+            await session.execute(select(UserModel).where(UserModel.id == user.id))
+        ).scalar_one()
+        await make_membership(session, user=actor, team=team, role="viewer")
+    project_id, scan_id, _name = await _seed_scanned_project(client, team_id=team_b.id)
+    _lic, ob_id = await _seed_obligation(client, scan_id=scan_id)
+    assert team_a.id != team_b.id
+
+    response = await client.put(
+        f"/v1/projects/{project_id}/obligations/{ob_id}/fulfilment",
+        headers=_bearer_for(user),
+        json={"status": "done"},
+    )
+
+    assert response.status_code == 403, response.text

@@ -23,6 +23,7 @@ import { useNotice } from "@/features/projects/api/useNotice";
 import { useObligations } from "@/features/projects/api/useObligations";
 import { LicenseCategoryBadge } from "@/features/projects/components/LicenseCategoryBadge";
 import { ObligationDrawer } from "@/features/projects/components/ObligationDrawer";
+import { ObligationFulfilmentBadge } from "@/features/projects/components/ObligationFulfilmentBadge";
 import { ObligationsToolbar } from "@/features/projects/components/ObligationsToolbar";
 import {
   OBLIGATIONS_SEARCH_PARAM,
@@ -437,6 +438,9 @@ function ObligationsTableHeader() {
       <span className="w-32" role="columnheader">
         {t("obligations.column.kind")}
       </span>
+      <span className="w-32" role="columnheader">
+        {t("obligations.column.fulfilment")}
+      </span>
       <span className="w-20 text-right" role="columnheader">
         {t("obligations.column.affected_count")}
       </span>
@@ -472,6 +476,7 @@ function ObligationRow({
       data-spdx-id={obligation.license_spdx_id ?? ""}
       data-category={obligation.license_category}
       data-kind={obligation.kind}
+      data-fulfilment={obligation.fulfilment?.status ?? ""}
       data-row-index={rowIndex}
       role="row"
       // +2: the header is row 1, and aria-rowindex counts from 1.
@@ -512,6 +517,11 @@ function ObligationRow({
         {t(`obligations.kind.${obligation.kind}`, {
           defaultValue: obligation.kind,
         })}
+      </span>
+      <span className="w-32" role="cell">
+        <ObligationFulfilmentBadge
+          status={obligation.fulfilment?.status ?? null}
+        />
       </span>
       <span
         className="w-20 text-right font-mono text-xs tabular-nums"

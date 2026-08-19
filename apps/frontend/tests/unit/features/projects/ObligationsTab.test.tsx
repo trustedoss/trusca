@@ -79,6 +79,7 @@ function ob(
     link: overrides.link ?? null,
     affected_count: overrides.affected_count ?? 1,
     updated_at: overrides.updated_at ?? "2026-05-07T00:00:00Z",
+    fulfilment: overrides.fulfilment ?? null,
   };
 }
 
@@ -272,4 +273,86 @@ describe("ObligationsTab", () => {
       expect(screen.getByTestId("obligation-drawer")).toBeInTheDocument();
     });
   });
+
+  // -------------------------------------------------------------------------
+  // N15: the fulfilment column must not become a filter
+  //
+  // The named failure for this feature: attaching progress to the obligation
+  // list and then letting it narrow what the list shows. Somebody records four
+  // obligations as done, the table quietly drops to the rest, and the work
+  // reads as having shrunk rather than advanced.
+  // -------------------------------------------------------------------------
+
+  it("shows every obligation whatever its record says", async () => {
+    mockedList.mockResolvedValueOnce(
+      listResponse([
+        ob("attribution", { id: "obg-1", fulfilment: null }),
+        ob("notice", {
+          id: "obg-2",
+          fulfilment: {
+            id: "ful-2",
+            status: "done",
+            assignee_user_id: null,
+            due_on: null,
+            evidence_note: null,
+            evidence_url: null,
+            completed_at: "2026-08-18T00:00:00Z",
+            completed_by_user_id: null,
+            version: 1,
+            updated_at: "2026-08-18T00:00:00Z",
+          },
+        }),
+        ob("copyleft", {
+          id: "obg-3",
+          fulfilment: {
+            id: "ful-3",
+            status: "not_applicable",
+            assignee_user_id: null,
+            due_on: null,
+            evidence_note: null,
+            evidence_url: null,
+            completed_at: null,
+            completed_by_user_id: null,
+            version: 1,
+            updated_at: "2026-08-18T00:00:00Z",
+          },
+        }),
+      ]),
+    );
+    renderTab();
+
+    await waitFor(() => {
+      expect(screen.getAllByTestId("obligation-row")).toHaveLength(3);
+    });
+    expect(
+      screen.getAllByTestId("obligation-row").map((r) => r.dataset.fulfilment),
+    ).toEqual(["", "done", "not_applicable"]);
+  });
+
+  it("asks the server for the list without a fulfilment filter", async () => {
+    // Guarding the request as well as the render: a default sent to the API
+    // would shrink the list before the table ever sees it, and every
+    // assertion about rendered rows would still pass.
+    mockedList.mockResolvedValueOnce(listResponse([ob("attribution")]));
+    renderTab();
+
+    await waitFor(() => expect(mockedList).toHaveBeenCalled());
+    const params = mockedList.mock.calls[0][1] ?? {};
+    expect(Object.keys(params)).not.toContain("fulfilment");
+    expect(Object.keys(params)).not.toContain("status");
+  });
+
+  it("draws its own label for an obligation nobody has recorded", async () => {
+    // An empty cell would read as a rendering fault, and "not started" would
+    // claim somebody looked.
+    mockedList.mockResolvedValueOnce(
+      listResponse([ob("attribution", { fulfilment: null })]),
+    );
+    renderTab();
+
+    const badge = await screen.findByTestId("obligation-fulfilment-badge");
+    expect(badge.dataset.status).toBe("none");
+    expect(badge).toHaveTextContent("Not recorded");
+  });
+
 });

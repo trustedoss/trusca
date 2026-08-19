@@ -444,6 +444,44 @@ The **Compliance** tab with the **Has obligations** toggle on consolidates oblig
 
 ![Project detail — Compliance tab with the Has obligations toggle on, showing the per-component obligations distribution](/img/screenshots/user-obligations-distribution.png)
 
+### Recording that an obligation was met {#fulfilment}
+
+Knowing what a license asks is half the job. Click any obligation chip in the
+grid to open the obligation, and record what your project actually did about
+it:
+
+- **Status**: *Not started*, *In progress*, *Done*, or *Does not apply*. An
+  obligation nobody has touched shows **Not recorded**, which is deliberately
+  different from *Not started*: one means nobody has looked, the other means
+  somebody looked and has not begun.
+- **Needed by**: the date the work is due.
+- **What was done**: a note in the words of whoever did it.
+- **Where to look**: a link to the release page, the file in the repository,
+  or the ticket. A link rather than an upload, so the portal does not become a
+  second place the evidence can be out of date.
+- **Assign this to me**: takes ownership. A record already assigned to
+  somebody else on the team is not reassigned by editing it.
+
+<!-- docs-uat: id=obligation-fulfilments-list-api kind=api auth=admin url=/v1/projects/${PROJECT_ID}/obligation-fulfilments expect=status:200 tier=nightly -->
+On the API, `GET /v1/projects/{id}/obligation-fulfilments` returns everything
+the project has recorded, and `PUT` / `DELETE` on
+`/v1/projects/{id}/obligations/{obligation_id}/fulfilment` write and remove one
+record. The `PUT` accepts an `If-Match` header carrying the version you read,
+and answers 412 when somebody else has changed the record since.
+
+Marking an obligation *Done* stamps who did it and when. Reopening it clears
+that stamp, so a record never reads "not done, finished on Tuesday".
+
+Any member of the project's team can record fulfilment, not only a team
+administrator: the person who ships the release is usually the person who added
+the attribution. A viewer may read the record but not write it.
+
+:::note The record does not change the NOTICE
+The generated NOTICE states what the licenses ask of you. Nothing recorded on
+this panel edits it. A fulfilment that could change a compliance document
+would be a way to make that document say what somebody wished were true.
+:::
+
 :::note Obligation kinds in this release
 The obligations catalog covers the seven kinds listed above. Some
 AGPL / SSPL / BUSL-specific obligations are **not** modeled as discrete

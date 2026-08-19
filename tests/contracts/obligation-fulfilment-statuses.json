@@ -1,0 +1,23 @@
+{
+  "_comment": [
+    "How far along one project is with one obligation.",
+    "",
+    "Four answers, and the fourth is not a way of hiding one. An obligation",
+    "that binds a shipped binary need not bind an internal service, and",
+    "recording 'not applicable' says somebody looked and decided; an untouched",
+    "row says nobody looked at all. The two must not collapse into each other,",
+    "which is also why the absence of a record stays null rather than becoming",
+    "a fabricated 'not started'.",
+    "",
+    "Three places read this vocabulary: the backend validator that rejects an",
+    "unknown name, the frontend control that offers the choices, and this file.",
+    "A name the control offers but the API refuses fails only on save, after",
+    "the work is done; a name the API accepts but the control omits is a state",
+    "the table draws as unknown.",
+    "",
+    "Order is asserted: the control offers them in this order, from untouched",
+    "to finished, with the deliberate 'this does not bind us' answer last so it",
+    "does not read as a step along the way."
+  ],
+  "statuses": ["not_started", "in_progress", "done", "not_applicable"]
+}

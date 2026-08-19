@@ -19,6 +19,7 @@ import type {
 } from "@/features/projects/api/obligationsApi";
 import { useObligation } from "@/features/projects/api/useObligation";
 import { LicenseCategoryBadge } from "@/features/projects/components/LicenseCategoryBadge";
+import { ObligationFulfilmentEditor } from "@/features/projects/components/ObligationFulfilmentEditor";
 import { useAdvisoryTranslation } from "@/lib/advisoryTranslation";
 import { cn } from "@/lib/utils";
 import { problemMessage } from "@/lib/problemMessage";
@@ -37,8 +38,10 @@ import { problemMessage } from "@/lib/problemMessage";
  *     the parent license, with cross-link into the Components tab drawer
  *     (`?tab=components&drawer=<id>`).
  *
- * Read-only — the catalog is upstream-authoritative, so there are no
- * actions, transitions, or audit trail.
+ * The catalog half is read-only: an obligation is what a licence asks of
+ * everybody who uses it, and the drawer does not edit that. The one thing this
+ * project owns is its own record of having done it (N15), which is why the
+ * fulfilment editor is the only writable section here.
  */
 
 const ALLOWED_LINK_SCHEMES = new Set(["http:", "https:"]);
@@ -123,6 +126,11 @@ export function ObligationDrawer({
           <div className="flex flex-col gap-5">
             <DrawerMetaSection detail={detail.data} />
             <DrawerObligationBody detail={detail.data} />
+            <ObligationFulfilmentEditor
+              projectId={projectId as string}
+              obligationId={detail.data.id}
+              fulfilment={detail.data.fulfilment}
+            />
             <DrawerAffectedSection
               components={detail.data.affected_components ?? []}
               total={detail.data.affected_components_total}

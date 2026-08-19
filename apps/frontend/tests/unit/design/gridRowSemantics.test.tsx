@@ -147,6 +147,7 @@ describe("the grids' own rows", () => {
           rowIndex={0}
           showConflict={false}
           onSelect={() => {}}
+          onOpenObligation={() => {}}
           projectId="p1"
           teamId={null}
           projectRole="developer"
@@ -177,6 +178,7 @@ describe("the grids' own rows", () => {
             text_ko: null,
             link: null,
             updated_at: "2026-08-01T00:00:00Z",
+            fulfilment: null,
           }}
           rowIndex={0}
           onSelect={() => {}}

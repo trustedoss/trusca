@@ -37,6 +37,7 @@ import {
   UNSET_DISTRIBUTION_MODEL,
 } from "@/lib/projectConstants";
 import { API_KEY_PERMISSION_BREADTHS } from "@/types/apiKey";
+import { OBLIGATION_FULFILMENT_STATUSES } from "@/lib/obligationConstants";
 import {
   CISA_CLUSTER_ORDER,
   G7_CLUSTER_ORDER,
@@ -98,6 +99,7 @@ import approvableStatusesFixture from "../../../../../tests/contracts/approvable
 import approvalReasonsFixture from "../../../../../tests/contracts/approval-failure-reasons.json";
 import distributionModelsFixture from "../../../../../tests/contracts/distribution-models.json";
 import apiKeyBreadthsFixture from "../../../../../tests/contracts/api-key-breadths.json";
+import fulfilmentStatusesFixture from "../../../../../tests/contracts/obligation-fulfilment-statuses.json";
 // Backend G7 registry — the FE cluster ORDER mirror must follow its cluster
 // id order (same latent-drift class: the panel groups G7 checks by this list).
 import cisaRegistry from "../../../../backend/services/cisa_registry.json";
@@ -987,6 +989,33 @@ describe("API key breadths: the dropdown vs what the API accepts", () => {
       for (const breadth of API_KEY_PERMISSION_BREADTHS) {
         expect(map[breadth], `${name} copy for ${breadth}`).toBeTruthy();
       }
+    }
+  });
+});
+
+describe("obligation fulfilment statuses: the control vs what the API accepts", () => {
+  // Same drift class as the API key breadths, with an extra wrinkle: the
+  // absence of a record is its own state and is NOT in this list, so a mirror
+  // that helpfully added "unrecorded" would offer the user a status the API
+  // has no column value for.
+  it("OBLIGATION_FULFILMENT_STATUSES equals the shared fixture, in order", () => {
+    expect([...OBLIGATION_FULFILMENT_STATUSES]).toEqual(
+      fulfilmentStatusesFixture.statuses,
+    );
+  });
+
+  it("every status owns EN and KO copy, and so does the unrecorded state", () => {
+    const surfaces: Array<[string, Record<string, string>]> = [
+      ["EN", labelMap(enProjectDetail, "obligations", "fulfilment", "status")],
+      ["KO", labelMap(koProjectDetail, "obligations", "fulfilment", "status")],
+    ];
+    for (const [name, map] of surfaces) {
+      for (const status of OBLIGATION_FULFILMENT_STATUSES) {
+        expect(map[status], `${name} copy for ${status}`).toBeTruthy();
+      }
+      // Not a status the API knows, but a cell the table draws on every row
+      // nobody has touched, which on day one is every row.
+      expect(map.unrecorded, `${name} copy for the unrecorded state`).toBeTruthy();
     }
   });
 });

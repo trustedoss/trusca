@@ -98,6 +98,7 @@ import { useNotice } from "@/features/projects/api/useNotice";
 import { ConflictVerdictBadge } from "@/features/projects/components/ConflictVerdictBadge";
 import { LicenseCategoryBadge } from "@/features/projects/components/LicenseCategoryBadge";
 import { LicenseDrawer } from "@/features/projects/components/LicenseDrawer";
+import { ObligationDrawer } from "@/features/projects/components/ObligationDrawer";
 import { LicenseWaiveAction } from "@/features/projects/components/LicenseWaiveAction";
 import { useAdvisoryTranslation } from "@/lib/advisoryTranslation";
 import type { LicensePolicyOut } from "@/lib/licensePoliciesApi";
@@ -236,11 +237,11 @@ export function ComplianceTab({
         if (cview === "obligations") {
           next.set("compliance_has_obligations", "true");
         }
-        // Stale legacy keys from the obligations sub-view are dropped so
-        // they do not confuse the unified grid.
-        for (const stale of ["obligation"]) {
-          next.delete(stale);
-        }
+        // ``?obligation=<id>`` used to be dropped here as a stale key from
+        // the retired sub-view. It is live again (N15): the chips in the grid
+        // open the obligation drawer, which is where a project records what it
+        // did about the obligation. Deleting it on mount would close that
+        // drawer on every deep link into this tab.
         return next;
       },
       { replace: true },
@@ -297,6 +298,28 @@ export function ComplianceTab({
           next.set("license", findingId);
         } else {
           next.delete("license");
+        }
+        return next;
+      },
+      { replace: false },
+    );
+  }
+
+  // ``?obligation=<id>`` opens the obligation drawer, reached from the chips in
+  // the grid. A separate key from ``?license``: they are different objects and
+  // one URL has to be able to carry either.
+  const obligationDrawerId = searchParams.get("obligation");
+  const obligationDrawerOpen =
+    obligationDrawerId != null && obligationDrawerId.length > 0;
+
+  function setDrawerObligation(obligationId: string | null) {
+    setSearchParams(
+      (prev) => {
+        const next = new URLSearchParams(prev);
+        if (obligationId) {
+          next.set("obligation", obligationId);
+        } else {
+          next.delete("obligation");
         }
         return next;
       },
@@ -612,6 +635,7 @@ export function ComplianceTab({
                   rowIndex={index}
                   showConflict={conflictAssessed}
                   onSelect={() => setDrawerLicense(item.license_finding_id)}
+                  onOpenObligation={setDrawerObligation}
                   projectId={projectId}
                   teamId={teamId}
                   projectRole={projectRole}
@@ -635,6 +659,15 @@ export function ComplianceTab({
         }
         onOpenChange={(open) => {
           if (!open) setDrawerLicense(null);
+        }}
+      />
+
+      <ObligationDrawer
+        open={obligationDrawerOpen}
+        projectId={projectId}
+        obligationId={obligationDrawerId}
+        onOpenChange={(open) => {
+          if (!open) setDrawerObligation(null);
         }}
       />
     </div>
@@ -959,6 +992,8 @@ interface ComplianceGridRowProps {
   /** Only rendered when the project declares an outbound license. */
   showConflict: boolean;
   onSelect: () => void;
+  /** Open the obligation drawer, where the fulfilment record is written. */
+  onOpenObligation: (obligationId: string) => void;
   projectId: string;
   teamId: string | null;
   projectRole: TeamScopedRole;
@@ -982,6 +1017,7 @@ function ComplianceGridRow({
   rowIndex,
   showConflict,
   onSelect,
+  onOpenObligation,
   projectId,
   teamId,
   projectRole,
@@ -1125,7 +1161,11 @@ function ComplianceGridRow({
             </span>
           ) : (
             obligationsPreview.map((ob) => (
-              <ObligationChip key={ob.obligation_id} obligation={ob} />
+              <ObligationChip
+                key={ob.obligation_id}
+                obligation={ob}
+                onOpen={() => onOpenObligation(ob.obligation_id)}
+              />
             ))
           )}
           {extraObligations > 0 ? (
@@ -1216,10 +1256,13 @@ function ComplianceGridRow({
 }
 
 interface ObligationChipProps {
+  /** Opens the drawer. Stops the click reaching the row, which opens the
+   *  licence drawer instead (two drawers from one click is nobody's intent). */
+  onOpen: () => void;
   obligation: ComplianceObligation;
 }
 
-function ObligationChip({ obligation }: ObligationChipProps) {
+function ObligationChip({ obligation, onOpen }: ObligationChipProps) {
   const { t, i18n } = useTranslation("project_detail");
   const { pick } = useAdvisoryTranslation();
   // Re-use the obligations.kind.* dictionary the old ObligationsTab seeded.
@@ -1240,7 +1283,17 @@ function ObligationChip({ obligation }: ObligationChipProps) {
       data-testid="compliance-obligation-chip"
       data-kind={obligation.kind}
     >
-      <span className="truncate">{label}</span>
+      <button
+        type="button"
+        onClick={(e) => {
+          e.stopPropagation();
+          onOpen();
+        }}
+        className="truncate rounded-sm hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1"
+        data-testid="compliance-obligation-chip-open"
+      >
+        {label}
+      </button>
     </Badge>
   );
 }
