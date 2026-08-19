@@ -161,6 +161,36 @@ registered.
 The hosted providers (GitHub, Google) are unaffected and keep creating an
 account on first sign-in, which is what a signup is.
 
+## When a change to somebody's access takes effect {#permission-cache}
+
+Immediately, unless you have asked otherwise. Every authenticated request
+reads the user and their team memberships, so a demotion, a deactivation or a
+removal from a team is in force on the next request.
+
+`PERMISSION_CACHE_TTL_SECONDS` trades some of that for fewer database reads. It
+is off by default. Whatever you set it to is the longest a revocation can go
+unfelt: for up to that many seconds, a worker may still be answering with the
+grade somebody had before you changed it.
+
+A change made through the portal does drop the cached answer, but only in the
+worker that handled the request. The shipped deployments run four workers
+(Docker Compose) or two pods of four (Helm), so most requests after a demotion
+still land on a worker holding the old answer. Treat that drop as an
+optimisation, not a second guarantee: the lifetime is the only number that
+describes every worker.
+
+Values above 300 seconds are clamped to 300. Reach for the database connection
+pool first (`DB_POOL_SIZE`, `DB_MAX_OVERFLOW`); this setting is worth turning
+on when you have measured that permission reads are the cost, not before.
+
+:::caution Deactivation is the case to think about
+A demoted person can still read. A deactivated one is supposed to be gone, and
+with a lifetime set they are not gone everywhere until it expires. If you need
+a revocation to take effect the moment you make it, leave this at `0`. That is
+the only setting under which "deactivated" and "cannot reach anything" are the
+same instant.
+:::
+
 ## Adding an existing user to a team
 
 Users can belong to many teams. To add an existing user:

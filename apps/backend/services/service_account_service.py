@@ -31,7 +31,7 @@ from sqlalchemy import func, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from core.security import CurrentUser, hash_password
+from core.security import CurrentUser, forget_principal, hash_password
 from models import Membership, Team, User
 
 log = structlog.get_logger("services.service_account")
@@ -289,6 +289,11 @@ async def deactivate_service_account(
     account.is_active = False
     await session.commit()
     await session.refresh(account)
+    # It cannot hold an interactive session, so there is nothing cached to
+    # drop today. Dropping anyway keeps one rule rather than two: every write
+    # that stops somebody forgets them, and nobody has to remember which
+    # subjects were exempt when the next kind of principal is added.
+    forget_principal(account.id)
     log.info(
         "service_account_deactivated",
         service_account_id=str(account.id),

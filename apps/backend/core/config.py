@@ -2120,6 +2120,55 @@ def default_member_role() -> str | None:
     return "viewer"
 
 
+def permission_cache_ttl_seconds() -> int:
+    """How long a resolved principal may be reused before it is read again.
+
+    Zero, and off, unless a deployment says otherwise. Every authenticated
+    request currently costs two queries to rebuild the same answer, which is
+    the shape worth caching; what makes it dangerous is that the answer is
+    somebody's permissions, and a stale one keeps a demoted person at their
+    old grade or a deactivated one signed in.
+
+    So the number is the contract: whatever is written here is the longest a
+    revocation can take to be felt, and the tests pin exactly that. An
+    operator choosing a value is choosing how long they are willing to wait
+    for "you are no longer an administrator" to be true.
+
+    Off rather than a small positive default, because a deployment that has
+    not thought about that trade has not agreed to it, and the cost this saves
+    is one an installation only feels at a scale it can measure. The
+    connection pool is the first thing to tune, and this is the second.
+    """
+    raw = os.getenv("PERMISSION_CACHE_TTL_SECONDS", "").strip()
+    if not raw:
+        return 0
+    try:
+        seconds = int(raw)
+    except ValueError:
+        import structlog
+
+        structlog.get_logger("config").warning(
+            "config.permission_cache_ttl_invalid",
+            env_var="PERMISSION_CACHE_TTL_SECONDS",
+            value=raw,
+            fell_back_to=0,
+        )
+        return 0
+    if seconds <= 0:
+        return 0
+    # An upper bound as well as a lower one. A cache measured in hours is not
+    # a cache, it is a second copy of the permission model that nobody
+    # updates, and the operator who wrote it will not remember it when they
+    # deactivate somebody.
+    return min(seconds, _PERMISSION_CACHE_TTL_MAX)
+
+
+#: The longest lifetime this accepts, in seconds. Five minutes: long enough
+#: that a busy deployment stops re-reading the same rows, short enough that a
+#: revocation is felt inside the window an operator will sit and watch.
+_PERMISSION_CACHE_TTL_MAX = 300
+
+
 def self_registration_enabled() -> bool:
     """Whether anybody may create their own account at the sign-up form.
 

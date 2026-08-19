@@ -35,9 +35,10 @@ signatures because the parameter names match dependency names.
 from __future__ import annotations
 
 import hashlib
+import time
 import uuid
 from collections.abc import Callable
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from datetime import UTC, datetime, timedelta
 from typing import Any
 
@@ -52,6 +53,7 @@ from sqlalchemy.orm import selectinload
 from core.audit import audit_context
 from core.config import (
     access_token_expire_minutes,
+    permission_cache_ttl_seconds,
     refresh_token_expire_days,
     secret_key,
 )
@@ -251,6 +253,126 @@ def _bearer_token(request: Request) -> str | None:
     return parts[1].strip() or None
 
 
+# ---------------------------------------------------------------------------
+# Reusing a resolved principal (N5)
+#
+# Off unless a deployment sets a lifetime. What is cached is the answer to
+# "who is this and what may they do", which two queries rebuild on every
+# authenticated request; what makes caching it a decision rather than an
+# optimisation is that a stale answer keeps a demoted person at their old
+# grade. The lifetime is therefore the whole contract, and it is an upper
+# bound on how long a revocation can go unfelt.
+#
+# In the process rather than in Redis. A shared cache would need its own
+# invalidation protocol, a second failure mode on the authentication path, and
+# a round trip that eats much of what it saves. Per-process means each worker
+# holds its own copy, and the guarantee is the lifetime: nothing older than it
+# is used, anywhere.
+#
+# Writes that change somebody's standing drop their entry, but only in the
+# process that handled the write, and the shipped deployments run four workers
+# (docker-compose) or two pods of four (Helm). So the drop is a small
+# optimisation, not a second guarantee: on a normal deployment most requests
+# after a demotion still land on a worker holding the old answer until the
+# lifetime expires. An operator who needs a revocation to be immediate leaves
+# the lifetime at zero, and the documentation says so rather than implying the
+# drop covers them.
+# ---------------------------------------------------------------------------
+
+#: user id -> (principal, monotonic deadline).
+_principal_cache: dict[uuid.UUID, tuple[CurrentUser, float]] = {}
+
+#: How many principals one process will hold.
+#:
+#: An expired entry is only noticed when somebody looks it up, so a deployment
+#: where ten thousand people each sign in once would keep ten thousand dead
+#: entries that nothing ever reads again. The bound is what makes this a cache
+#: rather than a slowly filling map; the number is generous because the thing
+#: held is small and the deployments that turn this on are the ones with a lot
+#: of people.
+_PRINCIPAL_CACHE_MAX_ENTRIES = 10_000
+
+
+def _cached_principal(user_id: uuid.UUID, ttl: int) -> CurrentUser | None:
+    """The stored principal when it is still inside its lifetime.
+
+    Reads the clock through ``time.monotonic``, which cannot go backwards. A
+    wall clock that a system daemon steps forward would expire entries early
+    (harmless) and one stepped back would hold them past their lifetime, which
+    is the direction that breaks the promise this makes.
+    """
+    if ttl <= 0:
+        return None
+    entry = _principal_cache.get(user_id)
+    if entry is None:
+        return None
+    principal, deadline = entry
+    if time.monotonic() >= deadline:
+        del _principal_cache[user_id]
+        return None
+    return _detached(principal)
+
+
+def _remember_principal(principal: CurrentUser, ttl: int) -> None:
+    if ttl <= 0:
+        return
+    # A key principal carries the issuer's user id, so it would be stored
+    # under the same key their browser session uses. Serving one to the other
+    # would hand a scoped CI key the issuer's whole membership set, or hand
+    # their session a read-only flag. Only the JWT path reaches this function
+    # today; the refusal is here so that stays true without depending on who
+    # calls it.
+    if principal.api_key_project_id is not None or principal.api_key_read_only:
+        return
+    if (
+        principal.id not in _principal_cache
+        and len(_principal_cache) >= _PRINCIPAL_CACHE_MAX_ENTRIES
+    ):
+        # Drop the oldest rather than scanning for the soonest to expire. A
+        # dict keeps insertion order and every entry in a process is written
+        # with the same lifetime, so the oldest is the soonest anyway, and the
+        # scan it replaces ran on the event loop once per insert at exactly
+        # the load this feature exists for.
+        del _principal_cache[next(iter(_principal_cache))]
+    _principal_cache[principal.id] = (_detached(principal), time.monotonic() + ttl)
+
+
+def _detached(principal: CurrentUser) -> CurrentUser:
+    """A copy that shares no mutable state with the caller's.
+
+    The dataclass holds a list and a dict, and the stored object outlives the
+    request that built it. Without this, one ``actor.team_roles[t] = ...``
+    added anywhere downstream would rewrite what everybody holding that
+    session may do, for the rest of the lifetime. The key-principal path next
+    door already copies for the same reason, on the path where a mutation
+    would at least die with the request.
+    """
+    return replace(
+        principal,
+        team_ids=list(principal.team_ids),
+        team_roles=dict(principal.team_roles),
+    )
+
+
+def forget_principal(user_id: uuid.UUID) -> None:
+    """Drop a cached principal after something changed what they may do.
+
+    Called from the writes that change a grade or an activation. It is not the
+    guarantee, which is the lifetime; it is what makes the ordinary case
+    immediate, so an administrator who demotes somebody and refreshes the
+    screen sees the new grade rather than waiting out a timer.
+
+    Safe to call when nothing is cached, and safe to call when the lifetime is
+    zero: there is nothing to drop either way.
+    """
+    _principal_cache.pop(user_id, None)
+
+
+def reset_principal_cache() -> None:
+    """Empty it. For tests, and for a process that has just changed the TTL."""
+    _principal_cache.clear()
+
+
 async def _load_current_user(
     request: Request,
     session: AsyncSession,
@@ -276,6 +398,12 @@ async def _load_current_user(
         user_id = uuid.UUID(str(sub))
     except (ValueError, TypeError):
         return None
+
+    ttl = permission_cache_ttl_seconds()
+    cached = _cached_principal(user_id, ttl)
+    if cached is not None:
+        _bind_audit_actor(cached)
+        return cached
 
     # Local import — avoids a circular import at module load (models -> Base
     # -> auth which references nothing from us, but keeping the import lazy
@@ -306,13 +434,27 @@ async def _load_current_user(
         is_superuser=bool(user.is_superuser),
     )
 
-    # Bind the user into the audit context so any flush triggered later in
-    # this request gets actor_user_id populated automatically.
+    # Not cached: an inactive principal is one every caller refuses anyway,
+    # and holding it would mean a reactivated person waits out a timer to get
+    # back in. The refusal costs the queries; the ordinary path is what this
+    # is here to save.
+    if cu.is_active:
+        _remember_principal(cu, ttl)
+
+    _bind_audit_actor(cu)
+    return cu
+
+
+def _bind_audit_actor(cu: CurrentUser) -> None:
+    """Bind the user into the audit context.
+
+    Any flush later in this request then gets actor_user_id automatically.
+    Runs on the cached path too: the audit trail is per request, and a request
+    served from the cache mutates rows exactly like one that was not.
+    """
     ctx = dict(audit_context.get() or {})
     ctx["user_id"] = str(cu.id)
     audit_context.set(ctx)
-
-    return cu
 
 
 async def get_optional_current_user(
