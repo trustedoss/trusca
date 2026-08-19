@@ -1063,3 +1063,30 @@ def test_fulfilment_statuses_match_the_database_and_the_shared_fixture() -> None
         "tests/contracts/obligation-fulfilment-statuses.json AND the frontend "
         "mirror (obligationsApi.ts, the status control, locales) together."
     )
+
+
+def test_all_three_verdict_surfaces_share_one_status_vocabulary() -> None:
+    """A project approval, an organization verdict, and an intake request.
+
+    Two of these were already pinned to each other. The organization verdict
+    joined later and reuses the same enum object, so today they cannot drift.
+    That is the kind of guarantee that survives until somebody gives one
+    surface its own enum for a reason that looks local, which is how the
+    two-surface version of this drift got in.
+
+    Asserted as a three-way equality rather than two pairs, so a fourth
+    surface added tomorrow has one place to answer to.
+    """
+    from models.component_approval import APPROVAL_STATUS_VALUES, ComponentApproval
+    from models.component_intake import ComponentIntakeRequest
+    from models.organization_component_verdict import OrganizationComponentVerdict
+
+    def column_values(model: type) -> set[str]:
+        enum_type = model.__table__.c.status.type  # type: ignore[attr-defined]
+        return set(enum_type.enums)  # type: ignore[attr-defined]
+
+    declared = set(APPROVAL_STATUS_VALUES)
+
+    assert column_values(ComponentApproval) == declared
+    assert column_values(OrganizationComponentVerdict) == declared
+    assert column_values(ComponentIntakeRequest) == declared
