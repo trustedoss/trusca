@@ -129,7 +129,16 @@ _URL_REDACT_COLUMNS = frozenset({"git_url"})
 # access-log side-effect of SBOM/NOTICE export — the spec says an export leaves
 # only a structlog line, not an audit_logs row, so the report_downloads INSERT
 # must not trip the listener.
-_NON_AUDITED_TABLES = frozenset({"audit_logs", "alembic_version", "report_downloads"})
+#
+# `audit_export_cursors` (N17) is here for a sharper version of the recursion
+# reason. Auditing it makes the export feed itself: each run moves the cursor,
+# the move writes an audit row, the next run exports that row and moves the
+# cursor again. A deployment where nobody did anything all weekend would still
+# hand its collector a row every five minutes, all of them about the export.
+# The position of an export is bookkeeping, not something anybody did.
+_NON_AUDITED_TABLES = frozenset(
+    {"audit_logs", "alembic_version", "report_downloads", "audit_export_cursors"}
+)
 
 
 # ---------------------------------------------------------------------------

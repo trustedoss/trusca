@@ -145,6 +145,65 @@ docker-compose -f docker-compose.yml logs backend \
   | jq -c "select(.request_id == \"$REQ\")"
 ```
 
+## Continuous export to your log collector {#continuous-export}
+
+The CSV export above is something a person clicks. If you collect logs
+centrally, `AUDIT_EXPORT_URL` hands the trail over on its own: a background
+task posts batches of rows every five minutes to a URL you own.
+
+Off by default, and the audit page and its CSV export are unchanged either
+way. This adds a way to push the trail somewhere; it takes nothing away.
+
+Each batch carries the same columns the page shows, including `diff`, which
+was already masked when it was written: passwords, tokens and API keys never
+reach the column, so they cannot reach your collector.
+
+```json
+{
+  "version": 1,
+  "source": "trusca",
+  "destination": "https://logs.example.com/ingest/trusca-audit",
+  "count": 500,
+  "rows": [
+    {
+      "id": "…", "created_at": "2026-08-20T02:11:44.912+00:00",
+      "actor_user_id": "…", "team_id": "…",
+      "action": "update", "target_table": "projects", "target_id": "…",
+      "request_id": "…", "ip": "10.0.0.4", "user_agent": "…",
+      "diff": {"name": {"old": "api", "new": "payments-api"}}
+    }
+  ]
+}
+```
+
+Three behaviours are worth knowing before you switch it on.
+
+**It starts at the beginning.** A newly configured destination is handed the
+trail you already have, not just what happens next. An export that quietly
+began at the moment it was configured would leave a hole nobody would think to
+look for.
+
+**It stalls rather than skips.** The position moves only after your collector
+accepts a batch. A collector that is down, or that rejects the document, makes
+the export retry and then stop making progress until somebody fixes it. That
+is deliberate: the alternative to retrying is skipping rows, which is the one
+outcome this feature exists to prevent. `rows_exported` and `last_run_at` on
+the cursor row say how far it got.
+
+**It stays slightly behind the present.** A row is stamped when its
+transaction commits, so a transaction that began earlier can commit later. If
+the export read up to the current instant it could pass a position that a
+still-open transaction later writes behind, and that row would never be sent.
+`AUDIT_EXPORT_LAG_SECONDS` is the margin, thirty seconds by default; your
+collector's copy is that much behind, and no row is lost.
+
+:::note The trail itself does not change
+Nothing about the export marks rows in `audit_logs`. That table is append-only
+and a trigger enforces it, so an `exported_at` column would mean carving an
+exception into the property that makes the trail worth having. The position
+lives in its own table.
+:::
+
 ## Retention
 
 The audit log is **never auto-pruned**. Storage is cheap relative to its compliance value (a typical install grows by ~50 MB / year per active user). If you need to reduce the table size, the recommended path is **archive then truncate** with operator confirmation:
