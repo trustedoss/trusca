@@ -142,6 +142,24 @@ def _union(first: list[str], second: list[str]) -> list[str]:
     return out
 
 
+def _maybe_raise_a_ticket(*, kind: str, context: dict[str, Any]) -> None:
+    """Hand the event to the ticket webhook, if there is one.
+
+    Here rather than at each producer because this is where every notifiable
+    event already passes, and a second list of "things worth telling somebody
+    about" would drift from the first one within a release.
+
+    Never raises. The work the event describes is in the portal either way,
+    and the ticket is a convenience on top of it.
+    """
+    try:
+        from tasks.ticket_webhook import enqueue_ticket_event
+
+        enqueue_ticket_event(event=kind, context=context)
+    except Exception as exc:  # noqa: BLE001 (an integration is not the flow)
+        log.warning("ticket_event_hook_failed", kind=kind, error=str(exc)[:300])
+
+
 def _routing_additions(*, kind: str, context: dict[str, Any]) -> Any:
     """Ask the rules who else hears about this one.
 
@@ -240,6 +258,12 @@ def _run_notification(
         # subtracted: the toggles decide what reaches that person, and a rule
         # decides who else. Empty for a deployment with no rules, which is
         # what keeps this path identical to what it was.
+        # An event worth a ticket, if the deployment says this kind is one
+        # (N11). Enqueued rather than posted: a tracker having a slow morning
+        # must not become a notification that took eleven minutes, and its
+        # being down must not become one that failed.
+        _maybe_raise_a_ticket(kind=kind, context=context)
+
         extra = _routing_additions(kind=kind, context=context)
         if extra.channels or extra.recipients:
             effective_channels = _union(effective_channels, extra.channels)
