@@ -2120,6 +2120,55 @@ def default_member_role() -> str | None:
     return "viewer"
 
 
+def ticket_webhook_url() -> str | None:
+    """Where to post an event worth raising a ticket for, or None.
+
+    Unset, and off. Off means nothing is called: no request, no queued task,
+    no log line saying a delivery was skipped. A deployment that has not
+    written a URL should be indistinguishable from one built before this
+    existed.
+
+    Generic on purpose. The portal posts a structured event and the
+    organisation's own adapter turns it into a ticket in whatever tracker they
+    run, because the mapping from an event to a ticket is where organisations
+    differ most: which project, which issue type, which fields are mandatory,
+    who it is assigned to. Shipping an adapter for one tracker would serve one
+    organisation and mislead the rest.
+    """
+    raw = os.getenv("TICKET_WEBHOOK_URL", "").strip()
+    return raw or None
+
+
+def ticket_webhook_token() -> str | None:
+    """A bearer token sent with the post, or None.
+
+    Separate from the URL so a token can be rotated without touching the
+    endpoint, and so a URL that already carries a secret in its path (the
+    shape most trackers hand out) needs no second one.
+    """
+    raw = os.getenv("TICKET_WEBHOOK_TOKEN", "").strip()
+    return raw or None
+
+
+def ticket_webhook_events() -> frozenset[str]:
+    """Which event kinds are worth a ticket. Empty means all of them.
+
+    A ticket is raised for work somebody has to do, and not everything the
+    portal announces is that: a finished scan is worth a line in a channel and
+    is not worth a ticket anybody will close. Deployments disagree about where
+    that line sits, so the list is theirs to write.
+
+    Empty meaning "all" matches the notification routing rules, where an
+    absent condition matches everything. One convention across the settings
+    that filter by kind is worth more than each one being separately
+    defensible.
+    """
+    raw = os.getenv("TICKET_WEBHOOK_EVENTS", "").strip()
+    if not raw:
+        return frozenset()
+    return frozenset(part.strip() for part in raw.split(",") if part.strip())
+
+
 def metrics_enabled() -> bool:
     """Whether the deployment publishes an operational metrics endpoint.
 

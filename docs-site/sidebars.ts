@@ -69,6 +69,7 @@ const sidebars: SidebarsConfig = {
         "admin-guide/backup-and-restore",
         "admin-guide/api-keys",
         "admin-guide/github-app",
+        "admin-guide/ticket-integration",
       ],
     },
     {

@@ -52,6 +52,10 @@ _TASK_INCLUDES = [
     "tasks.scan_retention",
     # Phase 6 PR #18 — multi-channel notification fan-out (email/Slack/Teams).
     "tasks.notify",
+    # D5 (N11): post an event worth a ticket to whatever the organisation
+    # runs. Its own task so a slow tracker costs a worker slot rather than a
+    # scan, which is the failure this integration usually has.
+    "tasks.ticket_webhook",
     # Phase 6 chore PR #19 — automated backup + restore tasks.
     "tasks.backup",
     # PR-A1 (scan stability) — reclaim workspaces left by cancelled / killed /
