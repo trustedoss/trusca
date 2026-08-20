@@ -2167,6 +2167,52 @@ def ticket_webhook_events() -> frozenset[str]:
     if not raw:
         return frozenset()
     return frozenset(part.strip() for part in raw.split(",") if part.strip())
+def audit_export_url() -> str | None:
+    """Where to hand the audit trail as it accumulates, or None.
+
+    Unset, and off. The audit API is unchanged either way: this adds a way to
+    push the trail somewhere, and takes nothing away from the way an
+    administrator reads it in the portal.
+
+    The receiver is whatever the organisation collects logs with. The portal
+    posts batches of the same rows the audit screen shows, with the same
+    columns masked, and does not care what happens next.
+    """
+    raw = os.getenv("AUDIT_EXPORT_URL", "").strip()
+    return raw or None
+
+
+def audit_export_token() -> str | None:
+    """A bearer token sent with each batch, or None."""
+    raw = os.getenv("AUDIT_EXPORT_TOKEN", "").strip()
+    return raw or None
+
+
+def audit_export_batch_size() -> int:
+    """Rows per post. Bounded so one run cannot build an unbounded body.
+
+    Five hundred is the same order as the other paged reads in this codebase,
+    and a deployment that has fallen a day behind catches up over several runs
+    rather than in one request the receiver may refuse.
+    """
+    return _int_env("AUDIT_EXPORT_BATCH_SIZE", 500, minimum=1, maximum=5000)
+
+
+def audit_export_lag_seconds() -> int:
+    """How far behind now the export stays, in seconds.
+
+    Not a throttle. A row is stamped when its transaction commits, and a
+    transaction that began earlier can commit later, so ordering by the stamp
+    alone can place a row behind a position the export has already passed. The
+    row would then never be sent, and nothing anywhere would say so.
+
+    Staying a few seconds behind the present means the export only reads
+    stretches of time no open transaction can still write into. The default
+    covers a request far longer than any this codebase makes; a deployment with
+    long transactions raises it and pays with a slightly older trail at the
+    collector.
+    """
+    return _int_env("AUDIT_EXPORT_LAG_SECONDS", 30, minimum=0, maximum=3600)
 
 
 def metrics_enabled() -> bool:

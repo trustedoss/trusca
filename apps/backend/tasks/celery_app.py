@@ -56,6 +56,9 @@ _TASK_INCLUDES = [
     # runs. Its own task so a slow tracker costs a worker slot rather than a
     # scan, which is the failure this integration usually has.
     "tasks.ticket_webhook",
+    # D6 (N17): hand the audit trail to whatever the organisation collects
+    # logs with, a batch at a time. Off unless a destination is configured.
+    "tasks.audit_export",
     # Phase 6 chore PR #19 — automated backup + restore tasks.
     "tasks.backup",
     # PR-A1 (scan stability) — reclaim workspaces left by cancelled / killed /
@@ -181,6 +184,16 @@ def _build_beat_schedule() -> dict[str, dict[str, object]]:
         "workspace-cleaner-half-hourly": {
             "task": "trustedoss.workspace_cleaner",
             "schedule": _schedule(timedelta(minutes=30)),
+        },
+        # D6 (N17): hand the audit trail to the configured collector, a batch
+        # at a time. Every five minutes rather than hourly because the point
+        # of a continuous export is that the collector is roughly current;
+        # the task returns immediately when no destination is configured, so
+        # the cost on a deployment that has not switched it on is one function
+        # call reading one environment variable.
+        "audit-export-every-five-minutes": {
+            "task": "trustedoss.export_audit_log",
+            "schedule": _schedule(timedelta(minutes=5)),
         },
         # Phase 6 chore PR #19 — daily auto-backup at 00:00 UTC. The task
         # itself applies a 7-day retention pass to ``auto-*`` backups after

@@ -26,6 +26,9 @@ from .api_key import (  # noqa: E402,F401  (imported for metadata side effects)
     APIKey,
     WebhookDelivery,
 )
+from .audit_export import (  # noqa: E402,F401  (imported for metadata side effects)
+    AuditExportCursor,
+)
 from .auth import (  # noqa: E402,F401  (imported for metadata side effects)
     AuditLog,
     Membership,
@@ -145,6 +148,7 @@ __all__ = [
     "NOTIFICATION_KIND_VALUES",
     "Notification",
     "NotificationPreferences",
+    "AuditExportCursor",
     "NotificationRoutingRule",
     "OAUTH_PROVIDER_VALUES",
     "OAuthIdentity",
