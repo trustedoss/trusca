@@ -953,3 +953,41 @@ CVE-2026-56858
 CVE-2026-56859
 CVE-2026-56860
 CVE-2026-56862
+
+# ----------------------------------------------------------------------------
+# govulncheck v1.5.0 — golang.org/x/mod sumdb advisories
+# Target: usr/local/go-bin/govulncheck (gobinary) ONLY.
+#
+# Category (2): upstream is patched and the tool has not cut a release that
+# takes the patch. x/mod 0.40.0 fixes both; the newest x/vuln release (v1.7.0)
+# still requires x/mod 0.39.0, so no govulncheck version clears these today.
+# Bumping the pin does not help and was not done for that reason.
+#
+# Reach analysis, checked rather than argued. Both advisories are in
+# golang.org/x/mod/sumdb and sumdb/tlog, which is the checksum-database
+# client: tile verification in the transparency log, and hash lookup. Nothing
+# in x/vuln imports that package. Unpacking v1.5.0 from the module proxy and
+# grepping every import of x/mod finds exactly two, semver and modfile:
+#
+#     $ grep -rho 'golang.org/x/mod/[a-z/]*' x/vuln@v1.5.0 | sort | uniq -c
+#           3 golang.org/x/mod/semver
+#           1 golang.org/x/mod/modfile
+#
+# Trivy attributes at module granularity because a Go binary records its
+# module graph rather than its package graph, so x/mod appears in the report
+# whole even though only two of its packages are linked.
+#
+# The separate question of whether checksum verification happens at all: it is
+# the `go` command's job during module download, not the analyser's. The
+# worker runs govulncheck over source that is already on disk.
+#
+# CVE-2026-56864 / GO-2026-6179, x/mod/sumdb/tlog: transparency-log tile
+#   verification bypass
+# CVE-2026-56865 / GO-2026-6180, x/mod/sumdb: unauthenticated hashes accepted
+#   in Lookup
+#
+# Re-evaluate: on the first x/vuln release requiring x/mod >= 0.40.0, or
+# 2026-11-20, whichever is sooner. Check with
+# `go version -m /usr/local/go-bin/govulncheck | grep x/mod` inside the image.
+CVE-2026-56864
+CVE-2026-56865
