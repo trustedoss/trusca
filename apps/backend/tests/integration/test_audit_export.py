@@ -407,3 +407,213 @@ def test_the_audit_table_is_still_append_only(session) -> None:
         )
         session.commit()
     session.rollback()
+
+
+# ---------------------------------------------------------------------------
+# The delivered path
+#
+# Everything above stops short of a successful hand-over: the batch is built,
+# the position is checked, and the post is mocked away. These run the path a
+# working deployment takes every five minutes, which is the one worth being
+# sure about.
+# ---------------------------------------------------------------------------
+
+
+def test_a_delivered_batch_advances_the_position_and_reports_what_it_sent(
+    session, destination, monkeypatch
+) -> None:
+    from services.audit_export_service import get_or_create_cursor
+    from tasks import audit_export
+
+    monkeypatch.setenv("AUDIT_EXPORT_URL", destination)
+    monkeypatch.setenv("AUDIT_EXPORT_LAG_SECONDS", "0")
+    monkeypatch.setenv("AUDIT_EXPORT_BATCH_SIZE", "500")
+    at = _own_window()
+    _cursor_just_before(session, destination=destination, moment=at)
+    written = _insert_audit_rows(session, count=3, at=at)
+    sent: dict[str, object] = {}
+
+    async def _accept(url, body):
+        sent["url"] = url
+        sent["body"] = body
+        return 202
+
+    monkeypatch.setattr(audit_export, "_post", _accept)
+
+    result = audit_export._run(None)
+
+    assert result["status"] == "delivered"
+    assert result["exported"] >= 3
+    assert sent["url"] == destination
+    body = sent["body"]
+    assert {row["id"] for row in body["rows"]} >= set(written)  # type: ignore[index]
+
+    cursor = get_or_create_cursor(session, destination=destination)
+    session.refresh(cursor)
+    assert cursor.last_id is not None
+    assert cursor.rows_exported >= 3
+
+
+def test_a_run_with_nothing_to_send_is_idle_rather_than_a_delivery(
+    session, destination, monkeypatch
+) -> None:
+    """A collector that receives an empty batch every five minutes learns
+    nothing and logs forever."""
+    from services.audit_export_service import get_or_create_cursor
+    from tasks import audit_export
+
+    monkeypatch.setenv("AUDIT_EXPORT_URL", destination)
+    monkeypatch.setenv("AUDIT_EXPORT_LAG_SECONDS", "86400")
+    # Caught up: the position is the present, and the lag excludes everything
+    # after it. That is the state a healthy export spends most of its life in.
+    cursor = get_or_create_cursor(session, destination=destination)
+    cursor.last_created_at = datetime.now(tz=UTC)
+    cursor.last_id = uuid.UUID(int=(1 << 128) - 1)
+    session.commit()
+
+    async def _must_not_post(*_args, **_kwargs):
+        raise AssertionError("an empty batch was posted")
+
+    monkeypatch.setattr(audit_export, "_post", _must_not_post)
+
+    result = audit_export._run(None)
+
+    assert result["status"] == "idle"
+    assert result["exported"] == 0
+
+
+async def test_the_batch_travels_with_the_token_as_a_bearer_header(
+    monkeypatch,
+) -> None:
+    import httpx
+
+    from tasks import audit_export
+
+    monkeypatch.setenv("AUDIT_EXPORT_TOKEN", "collector-secret")
+    seen: dict[str, object] = {}
+
+    async def _capture(self, url, **kwargs):  # noqa: ANN001
+        seen["headers"] = dict(kwargs.get("headers") or {})
+        seen["json"] = kwargs.get("json")
+        return httpx.Response(200)
+
+    monkeypatch.setattr(httpx.AsyncClient, "post", _capture)
+
+    status = await audit_export._post("https://collector.example/x", {"rows": []})
+
+    assert status == 200
+    assert seen["headers"]["Authorization"] == "Bearer collector-secret"  # type: ignore[index]
+
+
+async def test_no_token_configured_means_no_authorization_header(monkeypatch) -> None:
+    import httpx
+
+    from tasks import audit_export
+
+    monkeypatch.delenv("AUDIT_EXPORT_TOKEN", raising=False)
+    seen: dict[str, object] = {}
+
+    async def _capture(self, url, **kwargs):  # noqa: ANN001
+        seen["headers"] = dict(kwargs.get("headers") or {})
+        return httpx.Response(200)
+
+    monkeypatch.setattr(httpx.AsyncClient, "post", _capture)
+
+    await audit_export._post("https://collector.example/x", {"rows": []})
+
+    assert "Authorization" not in seen["headers"]  # type: ignore[operator]
+
+
+async def test_a_collector_that_cannot_be_reached_is_a_retryable_failure(
+    monkeypatch,
+) -> None:
+    import httpx
+
+    from tasks import audit_export
+
+    async def _boom(*_args, **_kwargs):
+        raise httpx.ConnectError("no route to host")
+
+    monkeypatch.setattr(httpx.AsyncClient, "post", _boom)
+
+    with pytest.raises(audit_export.AuditExportDeliveryError):
+        await audit_export._post("https://collector.example/x", {"rows": []})
+
+
+@pytest.mark.parametrize("status_code", [400, 422, 500, 503])
+async def test_a_refused_batch_is_retried_rather_than_skipped(
+    monkeypatch, status_code: int
+) -> None:
+    """Including the 4xx cases, which the ticket webhook treats as permanent.
+
+    The two integrations differ on purpose. A dropped ticket is a
+    convenience lost; a dropped audit row is a hole in the record, so this one
+    keeps retrying and stalls visibly rather than moving past it.
+    """
+    import httpx
+
+    from tasks import audit_export
+
+    async def _refuse(*_args, **_kwargs):
+        return httpx.Response(status_code)
+
+    monkeypatch.setattr(httpx.AsyncClient, "post", _refuse)
+
+    with pytest.raises(audit_export.AuditExportDeliveryError):
+        await audit_export._post("https://collector.example/x", {"rows": []})
+
+
+def test_the_log_line_names_the_host_and_not_the_path(monkeypatch) -> None:
+    """Collector URLs often carry a token in the path."""
+    from tasks import audit_export
+
+    assert (
+        audit_export._safe_host("https://collector.example/ingest/s3cr3t")
+        == "collector.example"
+    )
+    assert audit_export._safe_host("not a url at all") in {"", "<unparseable>"}
+
+
+def test_how_far_behind_the_export_is(session, destination, monkeypatch) -> None:
+    """For the operator reading the cursor row, not for the loop."""
+    from services.audit_export_service import pending_count
+
+    monkeypatch.setenv("AUDIT_EXPORT_LAG_SECONDS", "0")
+    at = _own_window()
+    cursor = _cursor_just_before(session, destination=destination, moment=at)
+    _insert_audit_rows(session, count=4, at=at)
+
+    assert pending_count(session, cursor=cursor) >= 4
+
+
+def test_whether_a_destination_is_configured_is_readable(monkeypatch) -> None:
+    from services.audit_export_service import is_configured
+
+    monkeypatch.delenv("AUDIT_EXPORT_URL", raising=False)
+    assert is_configured() is False
+
+    monkeypatch.setenv("AUDIT_EXPORT_URL", "https://collector.example/x")
+    assert is_configured() is True
+
+
+def test_an_empty_batch_still_records_that_the_export_ran(
+    session, destination
+) -> None:
+    """Otherwise an operator cannot tell a healthy idle export from a stopped
+    one: both leave last_run_at where it was."""
+    from services.audit_export_service import (
+        Batch,
+        advance_cursor,
+        get_or_create_cursor,
+    )
+
+    cursor = get_or_create_cursor(session, destination=destination)
+    assert cursor.last_run_at is None
+
+    advance_cursor(
+        session, cursor=cursor, batch=Batch(rows=[], last_created_at=None, last_id=None)
+    )
+
+    session.refresh(cursor)
+    assert cursor.last_run_at is not None
+    assert cursor.last_id is None
