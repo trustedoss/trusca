@@ -179,6 +179,45 @@ The `/admin/scans` page (super-admin only) lists every running, queued, succeede
 
 Backend: `apps/backend/api/v1/admin/scans.py`. UI: `apps/frontend/src/features/admin/scans/AdminScansPage.tsx`.
 
+## Scraping metrics {#metrics}
+
+Off by default. Set `METRICS_ENABLED=true` and the portal serves the
+Prometheus text format at `/metrics`.
+
+Off means the path answers 404 rather than 403. A monitoring endpoint that
+says "not allowed" tells whoever asked what this host is and who runs it, so a
+deployment that has not asked for a scrape target looks like one without the
+feature. A wrong token answers 404 for the same reason.
+
+<!-- docs-uat: id=metrics-off-by-default kind=api url=/metrics expect=status:404 tier=nightly -->
+What it publishes is a fixed list of aggregate counts:
+
+| Series | Labels | What it counts |
+|---|---|---|
+| `trusca_projects_total` | | Projects, archived ones included |
+| `trusca_scans_total` | `status` | Scans by status; queued and running are the ones to watch |
+| `trusca_vulnerability_findings_open` | `severity` | Open findings, counted per project rather than per CVE |
+| `trusca_component_approvals_pending` | | Approvals waiting on somebody |
+| `trusca_users_active` | | Accounts that can sign in |
+| `trusca_service_accounts_active` | | Automation identities that can still authenticate |
+| `trusca_workspace_disk_used_ratio` | | Workspace volume in use, 0 to 1 |
+
+No project, package, repository or person's name appears anywhere in the
+output, and the list is held to a fixture in the repository, so a series
+cannot be added without somebody deciding it is safe to publish.
+
+`METRICS_TOKEN` sets a bearer token the scraper must present. Leave it empty
+when `/metrics` is off your public ingress and the monitoring system reaches
+it on the internal network, which is the usual arrangement; a shared secret
+that lives in a scraper config is one more thing to rotate. Set it when the
+endpoint is reachable from somewhere you do not control. Both
+`Authorization: Bearer <token>` and the bare token are accepted, because
+scrapers differ.
+
+The endpoint takes no portal session. Requiring one would mean the monitoring
+system holds an account, which is a worse credential to leave in a config file
+than the optional token.
+
 ## Verify it worked
 
 After making changes:

@@ -168,6 +168,7 @@ POST   /v1/approvals
 PATCH  /v1/approvals/{id}/transition         # If-Match 필수
 DELETE /v1/approvals/{id}
 
+GET    /metrics                                       off by default; 404 when off or on a wrong token
 GET    /v1/notification-rules/org/{organization_id}   who else hears, deployment-wide
 POST   /v1/notification-rules/org/{organization_id}   super_admin only
 GET    /v1/notification-rules/teams/{team_id}         includes the organization's own

@@ -1199,3 +1199,71 @@ def test_the_severity_order_a_rule_ranks_by_is_worst_first() -> None:
     assert _SEVERITY_ORDER.index("critical") < _SEVERITY_ORDER.index("high")
     assert _SEVERITY_ORDER.index("high") < _SEVERITY_ORDER.index("medium")
     assert _SEVERITY_ORDER.index("medium") < _SEVERITY_ORDER.index("low")
+
+
+# ---------------------------------------------------------------------------
+# What the metrics endpoint publishes
+# ---------------------------------------------------------------------------
+
+
+def test_the_metrics_contract_declares_only_aggregates_with_closed_labels() -> None:
+    """The shape rule, checked on the file rather than on one scrape.
+
+    A scrape shows what today's data happens to contain. This reads the
+    decision itself, so a series added with a label like ``project`` fails
+    here even on a deployment with no projects in it, which is exactly the
+    machine a contributor runs the suite on.
+    """
+    import json
+    from pathlib import Path
+
+    contract = json.loads(
+        (
+            Path(__file__).resolve().parents[4] / "tests/contracts/metrics-series.json"
+        ).read_text(encoding="utf-8")
+    )
+
+    # Label keys that would carry a name somebody chose. Severity and status
+    # are closed vocabularies this codebase owns; a project or a package is
+    # not, and neither is anything ending in name, email or id.
+    forbidden = {"project", "package", "component", "user", "team", "repository"}
+
+    assert contract["series"], "the contract must list what is published"
+    for series in contract["series"]:
+        assert series["name"].startswith("trusca_"), series["name"]
+        assert series["type"] in {"gauge", "counter"}, series
+        assert series["help"].strip(), f"{series['name']} has no help text"
+        for label in series["labels"]:
+            assert label not in forbidden, (
+                f"{series['name']} carries a {label} label; a metric label is "
+                "a closed vocabulary this codebase owns, never a name that "
+                "came from a user"
+            )
+            assert not label.endswith(("_name", "_email", "_id")), (
+                f"{series['name']} carries {label}, which names a row"
+            )
+
+
+def test_the_severity_labels_a_metric_can_carry_are_the_finding_severities() -> None:
+    """The label vocabulary and the enum are the same list.
+
+    A severity added to the enum and not to the metric would be findings that
+    exist and are counted nowhere, which reads on a dashboard as the work
+    having gone away.
+    """
+    # The renderer seeds its bucket dict from the enum, so this pins the
+    # relationship rather than a hand-written copy: the assertion is that
+    # nobody has replaced that seed with a literal list.
+    import inspect
+
+    from models.scan import VULN_SEVERITY_VALUES
+    from services.metrics_service import render_metrics  # noqa: F401  (import guard)
+
+    source = inspect.getsource(
+        __import__("services.metrics_service", fromlist=["render_metrics"]).render_metrics
+    )
+    assert "VULN_SEVERITY_VALUES" in source, (
+        "the open-findings buckets must be seeded from the severity enum, not "
+        "from a literal list that will fall behind it"
+    )
+    assert len(VULN_SEVERITY_VALUES) >= 4

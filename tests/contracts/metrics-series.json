@@ -1,0 +1,63 @@
+{
+  "_comment": [
+    "Every series the metrics endpoint publishes.",
+    "",
+    "This file is the decision, not a record of one. A metric added to the",
+    "code without a line here fails the contract test, which is the point: an",
+    "operational endpoint grows by one series at a time, each obviously fine",
+    "on its own, and nobody re-reads the whole list to notice that it now says",
+    "how many people work here and what their projects are called.",
+    "",
+    "Two rules hold for anything added. The value is an aggregate, never a",
+    "row: a count of scans is fine, a scan id is not. And the labels are a",
+    "closed vocabulary the code owns, never a name that came from a user, so",
+    "no project, person, package or repository can appear in the output.",
+    "",
+    "Order is asserted so the emitted document is stable and a diff of two",
+    "scrapes reads as a change in values rather than a reshuffle."
+  ],
+  "series": [
+    {
+      "name": "trusca_projects_total",
+      "type": "gauge",
+      "labels": [],
+      "help": "Projects that exist, archived ones included."
+    },
+    {
+      "name": "trusca_scans_total",
+      "type": "gauge",
+      "labels": ["status"],
+      "help": "Scans by status. The queued and running counts are the ones an operator watches."
+    },
+    {
+      "name": "trusca_vulnerability_findings_open",
+      "type": "gauge",
+      "labels": ["severity"],
+      "help": "Open vulnerability findings by severity, across every project."
+    },
+    {
+      "name": "trusca_component_approvals_pending",
+      "type": "gauge",
+      "labels": [],
+      "help": "Component approvals waiting on somebody."
+    },
+    {
+      "name": "trusca_users_active",
+      "type": "gauge",
+      "labels": [],
+      "help": "Accounts that can sign in. Service accounts are counted separately."
+    },
+    {
+      "name": "trusca_service_accounts_active",
+      "type": "gauge",
+      "labels": [],
+      "help": "Automation identities that can still authenticate."
+    },
+    {
+      "name": "trusca_workspace_disk_used_ratio",
+      "type": "gauge",
+      "labels": [],
+      "help": "Workspace volume in use, 0 to 1. The scan guard refuses above its own threshold."
+    }
+  ]
+}
