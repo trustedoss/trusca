@@ -179,6 +179,14 @@
     ],
     [
       "GET",
+      "/v1/scan-schedules/effective/{project_id}"
+    ],
+    [
+      "GET",
+      "/v1/scan-schedules/projects/{project_id}"
+    ],
+    [
+      "GET",
       "/v1/scans"
     ],
     [
@@ -386,6 +394,18 @@
     [
       "POST",
       "/v1/projects/{project_id}/vulnerabilities:bulk-transition"
+    ],
+    [
+      "PUT",
+      "/v1/scan-schedules/org/{organization_id}"
+    ],
+    [
+      "DELETE",
+      "/v1/scan-schedules/projects/{project_id}"
+    ],
+    [
+      "PUT",
+      "/v1/scan-schedules/projects/{project_id}"
     ],
     [
       "DELETE",

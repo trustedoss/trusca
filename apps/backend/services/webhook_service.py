@@ -56,11 +56,12 @@ from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from core.audit import audit_context
 from core.pii_mask import mask_git_url
-from models import Project, Scan, WebhookDelivery
-from services.scan_service import capacity_guard_reason, normalize_ref
-from tasks import enqueue_scan
+from models import Project, WebhookDelivery
+from services.scan_service import (
+    capacity_guard_reason,
+    enqueue_system_triggered_scan_async,
+)
 
 log = structlog.get_logger("webhook.service")
 
@@ -498,104 +499,15 @@ async def _finish_delivery(
 
 # ---------------------------------------------------------------------------
 # Scan enqueue helper
+#
+# The actual create-scan-and-dispatch sequence now lives in
+# ``services.scan_service.enqueue_system_triggered_scan_async`` — promoted
+# there so a second "no actor" caller (the N18 scheduled-scan poller) reuses
+# the SAME guard-and-insert sequence instead of a third copy of it. This
+# module keeps only the thin alias its two call sites already use.
 # ---------------------------------------------------------------------------
 
-
-async def _enqueue_source_scan(
-    session: AsyncSession,
-    project: Project,
-    *,
-    metadata: dict[str, Any],
-) -> uuid.UUID | None:
-    """
-    Create a queued source Scan for *project* and dispatch the Celery task.
-
-    Returns the new scan id, or None if a scan is already in progress for
-    this project (the partial unique index ``ix_scans_project_active`` makes
-    that an idempotent no-op from the webhook's perspective — we already
-    have a scan in the queue, no need to add another).
-
-    Bind the audit team_id so the SQLAlchemy listener tags the scan row with
-    the right tenant.
-    """
-    ctx = dict(audit_context.get() or {})
-    ctx["team_id"] = str(project.team_id)
-    audit_context.set(ctx)
-
-    # Read the id BEFORE any statement that may roll back. A rollback expires
-    # every ORM object in the session, so a later ``project.id`` triggers a
-    # synchronous lazy reload outside the greenlet context and raises
-    # MissingGreenlet — a 500 instead of the skip this function is written to
-    # perform. The callers already guard this for their own use of the id; the
-    # logging inside the except blocks below did not, so every collision with an
-    # active scan returned 500 to the Git host, which then retried it.
-    project_id_str = str(project.id)
-
-    scan = Scan(
-        project_id=project.id,
-        kind="source",
-        status="queued",
-        progress_percent=0,
-        current_step=None,
-        celery_task_id=None,
-        requested_by_user_id=None,  # webhook-driven — no user actor
-        scan_metadata=metadata,
-        # scan-retention: normalize the raw payload ref (refs/heads/main,
-        # refs/pull/12/merge, ...) into the same retention key the CI-action
-        # path produces, so a branch's webhook- and action-triggered scans
-        # supersede one another.
-        ref=normalize_ref(metadata.get("ref")),
-    )
-    session.add(scan)
-    try:
-        await session.flush()
-    except IntegrityError:
-        # ix_scans_project_active fired — another scan is already queued
-        # or running. Webhook is idempotent: roll back and report no new scan.
-        await session.rollback()
-        log.info(
-            "webhook.scan_skip_in_progress",
-            project_id=project_id_str,
-        )
-        return None
-
-    project.latest_scan_id = scan.id
-    try:
-        await session.commit()
-    except IntegrityError:
-        await session.rollback()
-        log.info(
-            "webhook.scan_skip_in_progress_commit",
-            project_id=project_id_str,
-        )
-        return None
-
-    await session.refresh(scan)
-
-    # Celery dispatch. Failure here is logged but does not block the webhook
-    # response — the scan row exists in queued state and the admin can
-    # re-enqueue or surface the failure via the admin scans dashboard.
-    try:
-        celery_task_id = enqueue_scan(scan)
-        scan.celery_task_id = celery_task_id
-        await session.commit()
-        await session.refresh(scan)
-    except Exception as exc:  # noqa: BLE001
-        log.error(
-            "webhook.scan_enqueue_failed",
-            scan_id=str(scan.id),
-            project_id=str(project.id),
-            error=str(exc),
-            exc_info=True,
-        )
-        scan.status = "failed"
-        scan.error_message = f"webhook_enqueue_failed: {exc}"
-        try:
-            await session.commit()
-        except Exception:  # noqa: BLE001
-            await session.rollback()
-
-    return scan.id
+_enqueue_source_scan = enqueue_system_triggered_scan_async
 
 
 # ---------------------------------------------------------------------------

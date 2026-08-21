@@ -114,6 +114,10 @@ from .scan import (  # noqa: E402,F401  (imported for metadata side effects)
     Vulnerability,
     VulnerabilityFinding,
 )
+from .scan_schedule import (  # noqa: E402,F401  (imported for metadata side effects)
+    SCAN_SCHEDULE_CADENCE_VALUES,
+    ScanSchedule,
+)
 from .transition_approval import (  # noqa: E402,F401  (imported for metadata side effects)
     TRANSITION_APPROVAL_STATES,
     TransitionApproval,
@@ -163,9 +167,11 @@ __all__ = [
     "ReportDownload",
     "SavedSearch",
     "SbomConformance",
+    "SCAN_SCHEDULE_CADENCE_VALUES",
     "Scan",
     "ScanArtifact",
     "ScanComponent",
+    "ScanSchedule",
     "Team",
     "User",
     "Vulnerability",

@@ -96,6 +96,11 @@ async def _factory(client: AsyncClient):
 
 @pytest.fixture
 def captured_dispatches(monkeypatch: pytest.MonkeyPatch) -> list[str]:
+    """The actual call now lives in ``services.scan_service.enqueue_scan``
+
+    (via ``enqueue_system_triggered_scan_async``, promoted there for the N18
+    scheduled-scan poller to reuse the same guard-and-insert sequence).
+    """
     calls: list[str] = []
 
     def _fake(scan):  # type: ignore[no-untyped-def]
@@ -103,7 +108,7 @@ def captured_dispatches(monkeypatch: pytest.MonkeyPatch) -> list[str]:
         return f"celery-task-{secrets.token_hex(4)}"
 
     monkeypatch.setattr(
-        "services.webhook_service.enqueue_scan",
+        "services.scan_service.enqueue_scan",
         _fake,
         raising=False,
     )

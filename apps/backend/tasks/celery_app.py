@@ -50,6 +50,10 @@ _TASK_INCLUDES = [
     # counterpart to the disk sweepers): reclaim superseded snapshots past grace
     # + aged-excess ref-less/failed scans per keep-last/max-age.
     "tasks.scan_retention",
+    # D7 (N18): a fixed-interval poller that starts a scan on its own, for
+    # whichever projects have a schedule (or inherit the organization
+    # default). No schedule anywhere means no automatic scan.
+    "tasks.scan_scheduler",
     # Phase 6 PR #18 — multi-channel notification fan-out (email/Slack/Teams).
     "tasks.notify",
     # D5 (N11): post an event worth a ticket to whatever the organisation
@@ -147,6 +151,7 @@ def _build_beat_schedule() -> dict[str, dict[str, object]]:
       - ``trustedoss.vuln_sla_sweep``               — daily at 02:45 UTC
       - ``trustedoss.malicious_catalog_refresh``    — weekly, Sun 02:40 UTC
       - ``trustedoss.trivy_db_refresh``             — weekly, Sun 03:00 UTC
+      - ``trustedoss.scan_schedule_poll``           — every 15 minutes
 
     chore PR #4 wires a `celery-beat` sidecar in
     ``docker-compose.dev.yml`` so these schedules actually fire.
@@ -279,6 +284,16 @@ def _build_beat_schedule() -> dict[str, dict[str, object]]:
         "trivy-db-refresh-weekly": {
             "task": "trustedoss.trivy_db_refresh",
             "schedule": crontab(minute=0, hour=3, day_of_week="sun"),
+        },
+        # D7 (N18) — ONE fixed-interval poller rather than one beat entry per
+        # project schedule, which would make this table grow with every
+        # project that sets a cadence. 15 minutes keeps a due hour's window
+        # open for four retries if the capacity/disk guard is momentarily
+        # blocking, without polling so often that an idle deployment (the
+        # common case: no schedule rows at all) pays for it.
+        "scan-schedule-poll-15-minutes": {
+            "task": "trustedoss.scan_schedule_poll",
+            "schedule": _schedule(timedelta(minutes=15)),
         },
     }
 
