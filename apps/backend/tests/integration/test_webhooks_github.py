@@ -105,7 +105,13 @@ async def _factory(client: AsyncClient):
 
 @pytest.fixture
 def captured_dispatches(monkeypatch: pytest.MonkeyPatch) -> list[str]:
-    """Replace ``services.webhook_service.enqueue_scan`` with a recorder.
+    """Replace ``services.scan_service.enqueue_scan`` with a recorder.
+
+    The webhook's create-scan-and-dispatch sequence lives in
+    ``services.scan_service.enqueue_system_triggered_scan_async`` (promoted
+    there so the N18 scheduled-scan poller reuses the same guard-and-insert
+    sequence), that module's ``enqueue_scan`` is the one actually called,
+    not ``services.webhook_service``'s.
 
     Returns the recording list so tests can assert call count + scan ids.
     """
@@ -116,7 +122,7 @@ def captured_dispatches(monkeypatch: pytest.MonkeyPatch) -> list[str]:
         return f"celery-task-{secrets.token_hex(4)}"
 
     monkeypatch.setattr(
-        "services.webhook_service.enqueue_scan",
+        "services.scan_service.enqueue_scan",
         _fake,
         raising=False,
     )

@@ -52,6 +52,7 @@ from api.v1 import (
     reports_router,
     saved_searches_router,
     sbom_router,
+    scan_schedules_router,
     scans_router,
     search_results_router,
     search_router,
@@ -245,6 +246,7 @@ app.include_router(saved_searches_router)
 app.include_router(inventory_router)
 
 app.include_router(scans_router)
+app.include_router(scan_schedules_router)
 app.include_router(components_router)
 app.include_router(vulnerabilities_router)
 app.include_router(licenses_router)

@@ -46,6 +46,9 @@
   "DELETE /v1/saved-searches/{saved_search_id}": [
     "saved_search_id"
   ],
+  "DELETE /v1/scan-schedules/projects/{project_id}": [
+    "project_id"
+  ],
   "DELETE /v1/scans/{scan_id}": [
     "force",
     "scan_id"
@@ -500,6 +503,12 @@
     "project_id"
   ],
   "GET /v1/saved-searches": [],
+  "GET /v1/scan-schedules/effective/{project_id}": [
+    "project_id"
+  ],
+  "GET /v1/scan-schedules/projects/{project_id}": [
+    "project_id"
+  ],
   "GET /v1/scans": [
     "page",
     "size",
@@ -679,6 +688,12 @@
   ],
   "PUT /v1/projects/{project_id}/obligations/{obligation_id}/fulfilment": [
     "obligation_id",
+    "project_id"
+  ],
+  "PUT /v1/scan-schedules/org/{organization_id}": [
+    "organization_id"
+  ],
+  "PUT /v1/scan-schedules/projects/{project_id}": [
     "project_id"
   ],
   "PUT /v1/service-accounts/{service_account_id}/steward": [

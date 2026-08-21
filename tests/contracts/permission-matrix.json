@@ -780,6 +780,31 @@
     },
     {
       "method": "GET",
+      "path": "/v1/scan-schedules/effective/{project_id}",
+      "gate": "role>=viewer"
+    },
+    {
+      "method": "PUT",
+      "path": "/v1/scan-schedules/org/{organization_id}",
+      "gate": "role>=developer"
+    },
+    {
+      "method": "DELETE",
+      "path": "/v1/scan-schedules/projects/{project_id}",
+      "gate": "role>=developer"
+    },
+    {
+      "method": "GET",
+      "path": "/v1/scan-schedules/projects/{project_id}",
+      "gate": "role>=viewer"
+    },
+    {
+      "method": "PUT",
+      "path": "/v1/scan-schedules/projects/{project_id}",
+      "gate": "role>=developer"
+    },
+    {
+      "method": "GET",
       "path": "/v1/scans",
       "gate": "role>=viewer"
     },

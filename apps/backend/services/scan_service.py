@@ -28,7 +28,7 @@ import structlog
 from sqlalchemy import delete, func, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy.orm import selectinload
+from sqlalchemy.orm import Session, selectinload
 
 from core.audit import bind_audit_team as _bind_audit_team
 from core.audit import get_audit_context
@@ -1221,6 +1221,198 @@ async def list_scans_for_actor(
     return rows, total
 
 
+# ---------------------------------------------------------------------------
+# System-triggered scans (no actor: webhooks, scheduled scans)
+#
+# The concurrency cap and disk guard above are written against the
+# request-time AsyncSession; the scheduled-scan poller (tasks.scan_scheduler)
+# runs inside a synchronous Celery worker (core.db.sync_session_scope) that
+# cannot share that engine. Rather than a poller that queues Celery tasks
+# straight past these guards, each has a sync twin below built from the exact
+# same query/threshold, so both callers refuse a scan for the same reasons.
+# ---------------------------------------------------------------------------
+
+
+def capacity_guard_reason_sync(session: Session, *, team_id: uuid.UUID) -> str | None:
+    """Sync twin of :func:`capacity_guard_reason`, for the Celery scheduler.
+
+    Same two stability guards, same statement shapes; only the execution
+    (``Session.execute`` vs. ``await AsyncSession.execute``) differs.
+    """
+    stmt = (
+        select(func.count())
+        .select_from(Scan)
+        .join(Project, Project.id == Scan.project_id)
+        .where(Project.team_id == team_id)
+        .where(Scan.status.in_(("queued", "running")))
+    )
+    active = int(session.execute(stmt).scalar_one())
+    cap = _concurrency_cap_per_team()
+    if cap > 0 and active >= cap:
+        return "skipped_team_at_capacity"
+    if _disk_over_hard_limit():
+        return "skipped_disk_full"
+    return None
+
+
+def _disk_over_hard_limit() -> bool:
+    """Sync twin of :func:`check_disk_guard`'s predicate, without raising.
+
+    ``_check_disk_guard`` already runs synchronously (``check_disk_guard``
+    only wraps it in ``asyncio.to_thread`` for the async request path); a
+    Celery worker is already off the event loop, so it is called directly.
+    """
+    try:
+        _check_disk_guard()
+    except ScanDiskFull:
+        return True
+    return False
+
+
+async def enqueue_system_triggered_scan_async(
+    session: AsyncSession,
+    project: Project,
+    *,
+    metadata: dict[str, object],
+) -> uuid.UUID | None:
+    """Create a queued ``kind='source'`` Scan with no human actor, and dispatch it.
+
+    The shared "no actor" path: originally the webhook receiver's private
+    helper, promoted here so any async caller (webhooks today) reuses ONE
+    guard-and-insert sequence rather than each re-implementing it. Returns the
+    new scan id, or ``None`` if a scan is already in progress for this project
+    (``ix_scans_project_active`` makes that an idempotent no-op: a scan is
+    already queued, no need to add another).
+    """
+    _bind_audit_team(project.team_id)
+
+    # Read the id BEFORE any statement that may roll back. A rollback expires
+    # every ORM object in the session, so a later ``project.id`` triggers a
+    # synchronous lazy reload outside the greenlet context and raises
+    # MissingGreenlet, a 500 instead of the skip this function performs.
+    project_id_str = str(project.id)
+
+    scan = Scan(
+        project_id=project.id,
+        kind="source",
+        status="queued",
+        progress_percent=0,
+        current_step=None,
+        celery_task_id=None,
+        requested_by_user_id=None,  # system-triggered, no user actor
+        scan_metadata=metadata,
+        ref=normalize_ref(metadata.get("ref")),  # type: ignore[arg-type]
+    )
+    session.add(scan)
+    try:
+        await session.flush()
+    except IntegrityError:
+        await session.rollback()
+        log.info("system_scan.skip_in_progress", project_id=project_id_str)
+        return None
+
+    project.latest_scan_id = scan.id
+    try:
+        await session.commit()
+    except IntegrityError:
+        await session.rollback()
+        log.info("system_scan.skip_in_progress_commit", project_id=project_id_str)
+        return None
+
+    await session.refresh(scan)
+
+    try:
+        celery_task_id = enqueue_scan(scan)
+        scan.celery_task_id = celery_task_id
+        await session.commit()
+        await session.refresh(scan)
+    except Exception as exc:  # noqa: BLE001
+        log.error(
+            "system_scan.enqueue_failed",
+            scan_id=str(scan.id),
+            project_id=str(project.id),
+            error=str(exc),
+            exc_info=True,
+        )
+        scan.status = "failed"
+        scan.error_message = f"system_enqueue_failed: {exc}"
+        try:
+            await session.commit()
+        except Exception:  # noqa: BLE001
+            await session.rollback()
+
+    return scan.id
+
+
+def enqueue_system_triggered_scan_sync(
+    session: Session,
+    project: Project,
+    *,
+    metadata: dict[str, object],
+) -> uuid.UUID | None:
+    """Sync twin of :func:`enqueue_system_triggered_scan_async`, for Celery.
+
+    Byte-for-byte the same guard/insert sequence; the scheduled-scan poller
+    (tasks.scan_scheduler) is the only caller, and it runs inside
+    ``core.db.sync_session_scope`` (CLAUDE.md: no asyncpg engine inside a
+    Celery worker). Kept in this module rather than local to the task so
+    "the existing scan service path" names one place, not two.
+    """
+    _bind_audit_team(project.team_id)
+    project_id_str = str(project.id)
+
+    scan = Scan(
+        project_id=project.id,
+        kind="source",
+        status="queued",
+        progress_percent=0,
+        current_step=None,
+        celery_task_id=None,
+        requested_by_user_id=None,
+        scan_metadata=metadata,
+        ref=normalize_ref(metadata.get("ref")),  # type: ignore[arg-type]
+    )
+    session.add(scan)
+    try:
+        session.flush()
+    except IntegrityError:
+        session.rollback()
+        log.info("system_scan.skip_in_progress", project_id=project_id_str)
+        return None
+
+    project.latest_scan_id = scan.id
+    try:
+        session.commit()
+    except IntegrityError:
+        session.rollback()
+        log.info("system_scan.skip_in_progress_commit", project_id=project_id_str)
+        return None
+
+    session.refresh(scan)
+
+    try:
+        celery_task_id = enqueue_scan(scan)
+        scan.celery_task_id = celery_task_id
+        session.commit()
+        session.refresh(scan)
+    except Exception as exc:  # noqa: BLE001
+        log.error(
+            "system_scan.enqueue_failed",
+            scan_id=str(scan.id),
+            project_id=str(project.id),
+            error=str(exc),
+            exc_info=True,
+        )
+        scan.status = "failed"
+        scan.error_message = f"system_enqueue_failed: {exc}"
+        try:
+            session.commit()
+        except Exception:  # noqa: BLE001
+            session.rollback()
+
+    return scan.id
+
+
 __all__ = [
     "DEMO_SANDBOX_PROJECT_NAME",
     "ConcurrentScanLimitExceeded",
@@ -1234,8 +1426,11 @@ __all__ = [
     "ScanInProgressConflict",
     "ScanNotFound",
     "capacity_guard_reason",
+    "capacity_guard_reason_sync",
     "check_disk_guard",
     "delete_scan",
+    "enqueue_system_triggered_scan_async",
+    "enqueue_system_triggered_scan_sync",
     "get_scan",
     "list_scans_for_actor",
     "list_scans_for_project",

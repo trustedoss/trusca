@@ -33,6 +33,7 @@ from .remediation import router as remediation_router
 from .reports import router as reports_router
 from .saved_searches import router as saved_searches_router
 from .sbom import router as sbom_router
+from .scan_schedules import router as scan_schedules_router
 from .scans import router as scans_router
 from .search import router as search_router
 from .search_results import router as search_results_router
@@ -75,6 +76,7 @@ __all__ = [
     "remediation_router",
     "reports_router",
     "sbom_router",
+    "scan_schedules_router",
     "scans_router",
     "inventory_router",
     "saved_searches_router",
