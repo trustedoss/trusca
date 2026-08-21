@@ -4,7 +4,7 @@
 Scheduled scans over HTTP (prefix ``/v1/scan-schedules``, N18).
 
 Reads sit at the lowest grade and writes at the project's team administrator
-(or, for the organization default, a super admin) — the same split
+(or, for the organization default, a super admin), the same split
 ``/v1/gate-policies`` uses. The route gate is a floor only; whether this
 particular caller may write this particular project's schedule is decided in
 the service, where the project's team is known.

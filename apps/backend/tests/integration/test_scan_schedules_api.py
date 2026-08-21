@@ -4,7 +4,7 @@ Scan schedules over HTTP (N18).
 Permission split mirrors ``/v1/gate-policies``: a project's own schedule is
 its team administrator's call, the organization default is a super admin's,
 and reads sit at viewer. The property worth pinning past the CRUD plumbing is
-the fall-through itself — the effective endpoint names which scope actually
+the fall-through itself: the effective endpoint names which scope actually
 decided, because that is the first thing an operator asks when a project
 scans on a cadence they did not expect.
 """

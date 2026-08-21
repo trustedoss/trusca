@@ -5,7 +5,7 @@ whole-row rather than field-by-field (N18).
 The contract worth pinning is the absence of one: a deployment that writes no
 rows must resolve to "no automatic scan" exactly as if this table did not
 exist. After that, the interesting case is a project that has decided
-something — even "off" — because that decision must never be blended with the
+something, even "off", because that decision must never be blended with the
 organization's cadence the way gate policy fields are.
 """
 
@@ -126,7 +126,7 @@ async def test_a_project_row_wins_wholesale_not_field_by_field(
 async def test_a_project_can_opt_out_of_the_organization_default(
     db_session: AsyncSession,
 ) -> None:
-    """is_active=false on the project row wins outright — no fall-through."""
+    """is_active=false on the project row wins outright, with no fall-through."""
     org, _team, project = await _seed(db_session)
     await _write_schedule(db_session, org=org, cadence="daily", hour=9, timezone="UTC")
     await _write_schedule(db_session, org=org, project=project, is_active=False)

@@ -4,18 +4,18 @@
 Celery task: ``trustedoss.scan_schedule_poll`` (D7, N18).
 
 ONE fixed-interval poller (every 15 minutes, see ``tasks.celery_app``) rather
-than one Beat entry per project — the row count in ``scan_schedules`` must
+than one Beat entry per project: the row count in ``scan_schedules`` must
 never become the row count in the Beat schedule. Each tick asks: which
 non-archived projects are due right now, in their own configured timezone,
-and have not already fired for this due window? Everything else — the
-concurrency cap, the disk guard, the Scan row shape, the Celery dispatch — is
+and have not already fired for this due window? Everything else (the
+concurrency cap, the disk guard, the Scan row shape, the Celery dispatch) is
 the exact sequence ``services.scan_service`` already enforces for a
 webhook-triggered scan; this task supplies none of its own.
 
 A project with no schedule of its own inherits the organization default; a
 project with a schedule of its own (even ``is_active=false``) never falls
 back to it. See ``services.scan_schedule_service.resolve_for_project`` for the
-same fall-through expressed for the (async) API path — this task re-derives it
+same fall-through expressed for the (async) API path; this task re-derives it
 in one query because it must resolve every project at once, not one at a time.
 """
 
@@ -44,7 +44,7 @@ def _is_due(schedule: ScanSchedule, now_utc: datetime) -> bool:
     """Whether *schedule* should fire at *now_utc*.
 
     Cadence and day-of-week are read against the schedule's OWN timezone, not
-    the server's — "09:00 Monday" means the same wall-clock moment in Seoul
+    the server's: "09:00 Monday" means the same wall-clock moment in Seoul
     that it does in London, each in its own zone. ``last_triggered_at`` is the
     only thing preventing the 15-minute poller from firing the same daily/
     weekly slot repeatedly across the hour it stays "due": a schedule that
@@ -54,7 +54,7 @@ def _is_due(schedule: ScanSchedule, now_utc: datetime) -> bool:
     try:
         tz = ZoneInfo(schedule.timezone)
     except (ZoneInfoNotFoundError, ValueError):
-        # A malformed/removed IANA name should never crash the poller — the
+        # A malformed/removed IANA name should never crash the poller: the
         # schema-level CHECK/validator already reject one on write, so this
         # only guards a zone the platform's tzdata later stopped shipping.
         log.warning(
@@ -83,8 +83,8 @@ def _due_targets(session: Session, now_utc: datetime) -> list[tuple[Project, Sca
 
     One query with two LEFT JOINs rather than one query per project: a
     project's own row (if any) and its organization's default row (if any),
-    picked in that order in Python. Archived projects are excluded up front
-    — scanning them would fight the "archiving disables new scans" invariant
+    picked in that order in Python. Archived projects are excluded up front:
+    scanning them would fight the "archiving disables new scans" invariant
     (services.scan_service.ScanArchivedConflict) forever, since nothing else
     ever clears a schedule row on archive.
     """
@@ -134,7 +134,7 @@ def poll_due_schedules(now_utc: datetime | None = None) -> dict[str, Any]:
                 continue
             if reason == "skipped_disk_full":
                 # The workspace volume is over its hard limit for every
-                # project, not just this one — stop the whole tick rather
+                # project, not just this one; stop the whole tick rather
                 # than burn guard queries on projects that will all fail the
                 # same way. The next poll tick tries again.
                 skipped_disk += 1
@@ -151,7 +151,7 @@ def poll_due_schedules(now_utc: datetime | None = None) -> dict[str, Any]:
                 },
             )
             if scan_id is None:
-                # A scan is already queued/running for this project — do NOT
+                # A scan is already queued/running for this project, so do NOT
                 # stamp last_triggered_at, so the next tick (still inside the
                 # same due hour) retries once that scan clears rather than
                 # silently losing today's/this week's run to a transient

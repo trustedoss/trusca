@@ -4,7 +4,7 @@ project's team (tasks._scan_pipeline.mark_succeeded/mark_failed).
 
 Nobody is watching a scheduled scan the way a person watches one they just
 clicked "scan" on, so this is the one trigger source that notifies on its
-own completion. A manual/webhook/CI scan must NOT gain this side effect —
+own completion. A manual/webhook/CI scan must NOT gain this side effect:
 each of those already reports through the surface that started it.
 """
 
@@ -135,7 +135,7 @@ async def test_a_schedule_triggered_failure_notifies_too(
 async def test_a_manually_triggered_scan_does_not_gain_this_notification(
     db_session, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """Only the schedule trigger gets this side effect — a manual/webhook/CI
+    """Only the schedule trigger gets this side effect. A manual/webhook/CI
     scan already reports through the surface that started it."""
     from tasks._scan_pipeline import mark_succeeded
 

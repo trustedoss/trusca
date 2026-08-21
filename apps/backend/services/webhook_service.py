@@ -501,7 +501,7 @@ async def _finish_delivery(
 # Scan enqueue helper
 #
 # The actual create-scan-and-dispatch sequence now lives in
-# ``services.scan_service.enqueue_system_triggered_scan_async`` — promoted
+# ``services.scan_service.enqueue_system_triggered_scan_async``, promoted
 # there so a second "no actor" caller (the N18 scheduled-scan poller) reuses
 # the SAME guard-and-insert sequence instead of a third copy of it. This
 # module keeps only the thin alias its two call sites already use.

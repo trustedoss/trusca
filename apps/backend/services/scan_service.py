@@ -1222,7 +1222,7 @@ async def list_scans_for_actor(
 
 
 # ---------------------------------------------------------------------------
-# System-triggered scans — no actor (webhooks, scheduled scans)
+# System-triggered scans (no actor: webhooks, scheduled scans)
 #
 # The concurrency cap and disk guard above are written against the
 # request-time AsyncSession; the scheduled-scan poller (tasks.scan_scheduler)
@@ -1236,7 +1236,7 @@ async def list_scans_for_actor(
 def capacity_guard_reason_sync(session: Session, *, team_id: uuid.UUID) -> str | None:
     """Sync twin of :func:`capacity_guard_reason`, for the Celery scheduler.
 
-    Same two stability guards, same statement shapes — only the execution
+    Same two stability guards, same statement shapes; only the execution
     (``Session.execute`` vs. ``await AsyncSession.execute``) differs.
     """
     stmt = (
@@ -1281,7 +1281,7 @@ async def enqueue_system_triggered_scan_async(
     helper, promoted here so any async caller (webhooks today) reuses ONE
     guard-and-insert sequence rather than each re-implementing it. Returns the
     new scan id, or ``None`` if a scan is already in progress for this project
-    (``ix_scans_project_active`` makes that an idempotent no-op — a scan is
+    (``ix_scans_project_active`` makes that an idempotent no-op: a scan is
     already queued, no need to add another).
     """
     _bind_audit_team(project.team_id)
@@ -1289,7 +1289,7 @@ async def enqueue_system_triggered_scan_async(
     # Read the id BEFORE any statement that may roll back. A rollback expires
     # every ORM object in the session, so a later ``project.id`` triggers a
     # synchronous lazy reload outside the greenlet context and raises
-    # MissingGreenlet — a 500 instead of the skip this function performs.
+    # MissingGreenlet, a 500 instead of the skip this function performs.
     project_id_str = str(project.id)
 
     scan = Scan(
@@ -1299,7 +1299,7 @@ async def enqueue_system_triggered_scan_async(
         progress_percent=0,
         current_step=None,
         celery_task_id=None,
-        requested_by_user_id=None,  # system-triggered — no user actor
+        requested_by_user_id=None,  # system-triggered, no user actor
         scan_metadata=metadata,
         ref=normalize_ref(metadata.get("ref")),  # type: ignore[arg-type]
     )
@@ -1352,7 +1352,7 @@ def enqueue_system_triggered_scan_sync(
 ) -> uuid.UUID | None:
     """Sync twin of :func:`enqueue_system_triggered_scan_async`, for Celery.
 
-    Byte-for-byte the same guard/insert sequence — the scheduled-scan poller
+    Byte-for-byte the same guard/insert sequence; the scheduled-scan poller
     (tasks.scan_scheduler) is the only caller, and it runs inside
     ``core.db.sync_session_scope`` (CLAUDE.md: no asyncpg engine inside a
     Celery worker). Kept in this module rather than local to the task so

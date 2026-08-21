@@ -60,7 +60,7 @@ log = structlog.get_logger("tasks.scan_pipeline")
 
 #: N18 x N9 pairing: nobody is watching a scheduled scan run, unlike a scan a
 #: person just triggered from the UI. Only THIS trigger source notifies on
-#: completion — a manual/webhook/CI scan still reports through the surface
+#: completion; a manual/webhook/CI scan still reports through the surface
 #: that started it (the UI polling, the Git host's check run), so extending
 #: this to every scan would duplicate an answer nobody asked for here.
 _SCHEDULE_TRIGGER = "schedule"
@@ -106,7 +106,7 @@ def _notify_schedule_completion(session: Session, scan: Scan, *, kind: str) -> N
             send_notification_task.delay(
                 kind,
                 {"project_id": str(project.id), "project_name": project.name},
-                [],  # base channels — in-app only; N9 rules may still add outbound ones
+                [],  # base channels: in-app only; N9 rules may still add outbound ones
                 [],
                 user_id=str(user_id),
                 in_app_title=title,
@@ -115,7 +115,7 @@ def _notify_schedule_completion(session: Session, scan: Scan, *, kind: str) -> N
                 in_app_target_table="scans",
                 in_app_target_id=str(scan.id),
             )
-    except Exception as exc:  # noqa: BLE001 — delivery must not fail the pipeline
+    except Exception as exc:  # noqa: BLE001 (delivery must not fail the pipeline)
         log.warning(
             "schedule_scan_notify_failed",
             scan_id=str(scan.id),

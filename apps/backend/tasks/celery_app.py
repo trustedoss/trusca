@@ -151,7 +151,7 @@ def _build_beat_schedule() -> dict[str, dict[str, object]]:
       - ``trustedoss.vuln_sla_sweep``               — daily at 02:45 UTC
       - ``trustedoss.malicious_catalog_refresh``    — weekly, Sun 02:40 UTC
       - ``trustedoss.trivy_db_refresh``             — weekly, Sun 03:00 UTC
-      - ``trustedoss.scan_schedule_poll``           — every 15 minutes
+      - ``trustedoss.scan_schedule_poll``           : every 15 minutes
 
     chore PR #4 wires a `celery-beat` sidecar in
     ``docker-compose.dev.yml`` so these schedules actually fire.
@@ -285,7 +285,7 @@ def _build_beat_schedule() -> dict[str, dict[str, object]]:
             "task": "trustedoss.trivy_db_refresh",
             "schedule": crontab(minute=0, hour=3, day_of_week="sun"),
         },
-        # D7 (N18) — ONE fixed-interval poller rather than one beat entry per
+        # D7 (N18): ONE fixed-interval poller rather than one beat entry per
         # project schedule, which would make this table grow with every
         # project that sets a cadence. 15 minutes keeps a due hour's window
         # open for four retries if the capacity/disk guard is momentarily

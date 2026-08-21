@@ -3,13 +3,13 @@
 """
 Scheduled scans (N18): a project's own cadence, or the organization's default.
 
-No row anywhere means no automatic scan — the deployment behaves exactly as it
-did before this table existed, and an operator opts in per project or for the
-whole organization at once.
+No row anywhere means no automatic scan, so the deployment behaves exactly as
+it did before this table existed, and an operator opts in per project or for
+the whole organization at once.
 
 Scoping mirrors ``gate_policies`` deliberately: one org-default row with
 ``project_id IS NULL``, and one optional row per project that overrides it. A
-project row is authoritative the moment it exists, active or not — writing one
+project row is authoritative the moment it exists, active or not: writing one
 with ``is_active=false`` is how a project opts out of an organization default
 without deleting anything, which is why ``is_active`` and ``cadence`` are both
 independently nullable rather than the row's mere existence being the signal.
@@ -81,14 +81,14 @@ class ScanSchedule(Base):
     is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default=text("true"))
 
     # NULL alongside is_active=false is the "written but not yet configured,
-    # or deliberately blank" state — resolves to no schedule either way.
+    # or deliberately blank" state; it resolves to no schedule either way.
     cadence: Mapped[str | None] = mapped_column(String(16), nullable=True)
 
     # Local hour-of-day (0-23) the schedule fires, read in `timezone`.
     hour: Mapped[int | None] = mapped_column(Integer, nullable=True)
 
     # 0=Monday .. 6=Sunday (``datetime.weekday()`` convention). Required when
-    # cadence='weekly', forbidden (must stay NULL) when cadence='daily' — a
+    # cadence='weekly', forbidden (must stay NULL) when cadence='daily': a
     # daily schedule that also carried a day-of-week would raise the question
     # of which one wins the day it disagrees with itself.
     day_of_week: Mapped[int | None] = mapped_column(Integer, nullable=True)
@@ -98,7 +98,7 @@ class ScanSchedule(Base):
     timezone: Mapped[str] = mapped_column(String(64), nullable=False, server_default=text("'UTC'"))
 
     # Stamped by the poller after it enqueues a scan for this row, in UTC.
-    # Read back to decide "have I already fired for today/this week" — the
+    # Read back to decide "have I already fired for today/this week": the
     # poller runs far more often than the schedule itself, so this is the only
     # thing standing between one due window and a scan every poll tick.
     last_triggered_at: Mapped[datetime | None] = mapped_column(
@@ -120,7 +120,7 @@ class ScanSchedule(Base):
     __table_args__ = (
         UniqueConstraint("organization_id", "project_id", name="uq_scan_schedules_org_project"),
         # Postgres treats NULLs as distinct, so the constraint above does not
-        # stop two org-default rows. This does — the same pairing
+        # stop two org-default rows. This does, the same pairing
         # gate_policies and license_policies use for their own org-default row.
         Index(
             "uq_scan_schedules_org_default",

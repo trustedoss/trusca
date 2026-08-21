@@ -4,7 +4,7 @@ The D7 scheduled-scan poller (N18).
 The property worth pinning is the one in the plan's own words: no schedule
 anywhere means no automatic scan. After that, the poller must refuse a scan
 for exactly the same reasons the webhook path already does (an active scan on
-the project, the team's concurrency cap) — it is not allowed a weaker guard
+the project, the team's concurrency cap); it is not allowed a weaker guard
 sequence of its own, sync twin or not.
 
 Uses the REAL sync Celery-side session (``core.db.sync_session_scope``), not
@@ -60,7 +60,7 @@ def _migrate_once() -> None:
 async def _clean_slate() -> None:
     """Truncate before each test, not just seed fresh orgs per test.
 
-    ``poll_due_schedules`` sweeps every project in the database by design —
+    ``poll_due_schedules`` sweeps every project in the database by design;
     that is the point of a poller. A leftover ``scan_schedules`` row from an
     earlier test (created for a different org, but still "due" at whatever
     ``now_utc`` a later test happens to poll with) would silently count
@@ -189,7 +189,7 @@ async def test_a_schedule_at_a_different_hour_does_not_fire(
 async def test_a_timezone_shifts_which_utc_hour_is_due(
     db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """09:00 in Seoul (UTC+9, no DST) is 00:00 UTC — not 09:00 UTC."""
+    """09:00 in Seoul (UTC+9, no DST) is 00:00 UTC, not 09:00 UTC."""
     from tasks.scan_scheduler import poll_due_schedules
 
     org, _team, _project = await _seed(db_session)
@@ -270,7 +270,7 @@ async def test_a_team_at_its_concurrency_cap_is_skipped(
     monkeypatch.setenv("SCAN_CONCURRENCY_CAP_PER_TEAM", "1")
     org, team, project = await _seed(db_session)
     # A project-level schedule (not org-default) so the only due target is
-    # `project` — a second, schedule-less project in the same team supplies
+    # `project`; a second, schedule-less project in the same team supplies
     # the active scan that fills the team's cap.
     await _write_schedule(
         db_session, org=org, project=project, cadence="daily", hour=9, timezone="UTC"

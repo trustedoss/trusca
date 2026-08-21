@@ -117,7 +117,7 @@ def upgrade() -> None:
     )
     # Postgres treats NULLs as distinct, so the UNIQUE constraint above does
     # not stop two org-default (project_id IS NULL) rows. This partial index
-    # does — the same pairing gate_policies/license_policies use.
+    # does, the same pairing gate_policies/license_policies use.
     op.create_index(
         "uq_scan_schedules_org_default",
         "scan_schedules",

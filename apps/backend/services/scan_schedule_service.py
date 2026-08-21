@@ -3,7 +3,7 @@
 """
 Resolving and writing scheduled-scan cadences (N18).
 
-A project row is authoritative the moment it exists — active or not — and only
+A project row is authoritative the moment it exists (active or not), and only
 its absence falls through to the organization default. This differs from the
 gate policy's per-field fall-through (services.gate_policy_service) on purpose:
 a schedule is one cohesive decision (when to scan), not several independent
@@ -116,7 +116,7 @@ async def resolve_for_project(
 ) -> ResolvedScanSchedule:
     """Return the schedule that applies to ``project_id``.
 
-    A project row — active or not — always wins over the organization default;
+    A project row (active or not) always wins over the organization default;
     only its absence falls through. This is deliberately whole-row rather than
     per-field: a schedule with no project decision at all inherits the
     organization's cadence outright, but a project that has decided anything

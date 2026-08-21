@@ -110,7 +110,7 @@ def captured_dispatches(monkeypatch: pytest.MonkeyPatch) -> list[str]:
     The webhook's create-scan-and-dispatch sequence lives in
     ``services.scan_service.enqueue_system_triggered_scan_async`` (promoted
     there so the N18 scheduled-scan poller reuses the same guard-and-insert
-    sequence) — that module's ``enqueue_scan`` is the one actually called,
+    sequence), that module's ``enqueue_scan`` is the one actually called,
     not ``services.webhook_service``'s.
 
     Returns the recording list so tests can assert call count + scan ids.
