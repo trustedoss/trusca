@@ -199,6 +199,7 @@ Both receivers are public: the signature covers the body, so the body is read an
 |---|---|---|---|
 | `PASSWORD_RESET_BASE_URL` | `http://localhost:5173` | `config.py` | Frontend base URL embedded in reset emails. The link template is `{base}/reset-password?token={token}`. |
 | `PASSWORD_RESET_RATE_LIMIT` | `5/minute` | `config.py` | Per-IP slowapi limit for `POST /auth/forgot-password`. |
+| `PASSWORD_RESET_CONFIRM_RATE_LIMIT` | `5/minute` | `config.py` | Per-IP slowapi limit for `POST /auth/reset-password`. The token is the credential there, so the endpoint is a guessing surface like login and gets the same default. |
 | `PASSWORD_RESET_EMAIL_COOLDOWN_SECONDS` | `300` | `config.py` | Minimum seconds between two reset emails to the same address. Returned as `Retry-After` on cooldown. |
 
 ## OAuth (demo SaaS only)

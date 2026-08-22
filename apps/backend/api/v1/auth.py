@@ -29,6 +29,7 @@ from core.audit import audit_context
 from core.config import (
     access_token_expire_minutes,
     app_env,
+    password_reset_confirm_rate_limit,
     password_reset_email_cooldown_seconds,
     password_reset_request_rate_limit,
     refresh_token_expire_days,
@@ -402,14 +403,21 @@ del _name
 @router.post(
     "/reset-password",
     status_code=status.HTTP_204_NO_CONTENT,
-    summary="Confirm a password reset using a one-shot token (public)",
+    summary="Confirm a password reset using a one-shot token (public, rate limited)",
 )
+@limiter.limit(password_reset_confirm_rate_limit())
 async def reset_password(
     request: Request,
     payload: ResetPasswordRequest,
     session: AsyncSession = Depends(get_db),
 ) -> Response:
     """Public — the reset token is the credential.
+
+    Limited to ``PASSWORD_RESET_CONFIRM_RATE_LIMIT`` (5/min/IP by default,
+    same as login): the token is guessable the same way a password is, and
+    the verify path costs a bcrypt call per live candidate, so this
+    endpoint needs no less protection than login (F1,
+    concurrency-scaling-plan-2026-08-22.md).
 
     On success: 204 + every refresh token for the user is revoked.
     On bad / expired / used token: 422 problem+json.
@@ -436,3 +444,19 @@ async def reset_password(
         )
 
     return Response(status_code=status.HTTP_204_NO_CONTENT)
+
+
+# Slowapi wrapper preservation, same hack as ``login`` and ``forgot_password``
+# above. This endpoint also accepts a Pydantic body, so without this fix
+# FastAPI's get_type_hints lookup misclassifies the body as a query
+# parameter.
+for _name in (
+    "ResetPasswordRequest",
+    "AsyncSession",
+    "Request",
+    "Response",
+    "Depends",
+):
+    if _name in globals():
+        reset_password.__globals__.setdefault(_name, globals()[_name])
+del _name

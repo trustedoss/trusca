@@ -60,18 +60,13 @@ BARE_NAMES = {
 
 # file:func:callable that are knowingly acceptable (must carry a reason here).
 #
-# password_reset_service.py calls verify_password inline in two async
-# functions (the timing-flattening dummy verification and the live
-# token-match loop). This is the same defect shape A1 fixed for password
-# login (services/auth_service.py) and API-key auth
-# (services/api_key_service.py). concurrency-scaling-plan-2026-08-22.md
-# §1.3 scoped A1 to those two paths only, not password reset. Allowlisted
-# here so the new BARE_NAMES entry does not fail CI on a pre-existing,
-# out-of-scope instance; a follow-up unit should offload these the same way.
-ALLOWLIST: set[str] = {
-    "services/password_reset_service.py:request_password_reset:verify_password",
-    "services/password_reset_service.py:consume_reset_token:verify_password",
-}
+# Empty. password_reset_service.py's two direct verify_password call sites
+# (allowlisted under A1, concurrency-scaling-plan-2026-08-22.md) were
+# offloaded by F1 in the same plan: the dummy branches now await
+# verify_password_async, and the candidate-match loop moved into a nested
+# sync function run via a single asyncio.to_thread call, which this audit
+# does not descend into (see the module docstring's nested-scope rule).
+ALLOWLIST: set[str] = set()
 
 
 def _violation(call: ast.Call) -> str | None:
