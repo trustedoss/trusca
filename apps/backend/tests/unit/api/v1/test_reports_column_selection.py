@@ -51,7 +51,7 @@ def test_component_columns_validated_against_their_own_vocabulary() -> None:
 
 
 # ---------------------------------------------------------------------------
-# _resolve_report_columns — priority: request-time > organization default > all
+# _resolve_report_columns: priority is request-time > organization default > all
 # ---------------------------------------------------------------------------
 
 
@@ -69,7 +69,7 @@ def test_neither_set_resolves_to_none_all_columns() -> None:
 
 def test_priority_never_merges_the_two_selections() -> None:
     """A regression here would silently union both selections instead of the
-    request-time one winning outright — the plan calls out this exact case."""
+    request-time one winning outright; the plan calls out this exact case."""
     merged_would_be = ["cve", "cvss", "summary", "status"]
     result = _resolve_report_columns(["cve"], ["cvss", "summary"])
     assert result == ["cve"]

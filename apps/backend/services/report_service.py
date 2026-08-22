@@ -207,7 +207,7 @@ def build_report_html(
     - ``vulnerability_columns`` / ``component_columns``: a subset of
       :data:`models.REPORT_VULNERABILITY_COLUMNS` /
       :data:`models.REPORT_COMPONENT_COLUMNS` to render, always in canonical
-      order regardless of the order passed in — this is a *selection*, never
+      order regardless of the order passed in; this is a *selection*, never
       a reorder or a computed column. ``None`` (the default) renders every
       column, exactly matching the pre-N22 output.
     """
@@ -292,7 +292,7 @@ def _resolve_columns(
 ) -> tuple[str, ...]:
     """A selection is always a subset of ``canonical``, in canonical order.
 
-    ``None`` (no selection given) renders every column — the pre-N22 output.
+    ``None`` (no selection given) renders every column, the pre-N22 output.
     An unknown name is dropped rather than raising: callers that validate
     (the API layer, via the schema) already reject unknown names before this
     point, so a defensive drop here only guards against a future caller that

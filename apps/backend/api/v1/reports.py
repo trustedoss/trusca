@@ -147,7 +147,7 @@ def _problem_for_project_error(request: Request, exc: ProjectError) -> Response:
 
 
 # ---------------------------------------------------------------------------
-# N22 column-selection helpers — request-time override, org default, or
+# N22 column-selection helpers: request-time override, org default, or
 # every column (unchanged pre-N22 behavior), in that priority order.
 # ---------------------------------------------------------------------------
 
@@ -184,7 +184,7 @@ def _resolve_report_columns(
     requested: list[str] | None, org_default: list[str] | None
 ) -> list[str] | None:
     """Priority: request-time override, then the organization default, then
-    ``None`` (every column — the pre-N22 output). Never a merge of the two."""
+    ``None`` (every column, the pre-N22 output). Never a merge of the two."""
     return requested or org_default
 
 
@@ -257,7 +257,7 @@ async def get_vulnerability_report_pdf_endpoint(
     )
 
     # N22: a request-time column override is validated before any further
-    # work — a typo answers 422 without the cost of gathering report data.
+    # work, so a typo answers 422 without the cost of gathering report data.
     try:
         requested_vuln_columns = _validate_requested_columns(
             vulnerability_columns, REPORT_VULNERABILITY_COLUMNS, "vulnerability_columns"

@@ -494,7 +494,7 @@ def test_translated_content_is_non_empty_and_actually_korean() -> None:
         assert _has_hangul(summary.ko), f"Korean summary has no Hangul for {spdx_id}"
         assert not _has_hangul(
             summary.en
-        ), f"English summary contains Hangul for {spdx_id} — swapped fields?"
+        ), f"English summary contains Hangul for {spdx_id}: swapped fields?"
 
 
 # ---------------------------------------------------------------------------
@@ -1255,14 +1255,14 @@ def test_the_severity_labels_a_metric_can_carry_are_the_finding_severities() -> 
 
 
 # ---------------------------------------------------------------------------
-# Report column vocabulary — N22 guard
+# Report column vocabulary: N22 guard
 # ---------------------------------------------------------------------------
 
 
 def test_report_column_headings_cover_exactly_the_canonical_vulnerability_columns() -> None:
     """``models.REPORT_VULNERABILITY_COLUMNS`` is the single source of truth
     for the vulnerability-table column vocabulary. The renderer's heading
-    dict and cell-selector branches are hand-written copies of that set — a
+    dict and cell-selector branches are hand-written copies of that set, and a
     column added to one without the other renders as a header with no cells,
     or a selection that silently drops a column, either invisible to the
     per-module tests, which only exercise columns that already exist."""
@@ -1281,7 +1281,7 @@ def test_report_column_headings_cover_exactly_the_canonical_component_columns() 
 
 def test_report_format_template_schema_validates_against_the_same_vocabulary() -> None:
     """The organization-template schema's column validator and the renderer
-    must reject/accept the identical set — otherwise an admin could save a
+    must reject/accept the identical set, otherwise an admin could save a
     template naming a column the renderer does not know how to draw."""
     import pytest
     from pydantic import ValidationError

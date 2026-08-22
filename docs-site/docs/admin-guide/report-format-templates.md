@@ -16,16 +16,16 @@ An organization can set a header line, replace the default brand text, and narro
 
 ## What it can and cannot do
 
-One row per organization, covering the PDF/HTML report only — the separate Excel report keeps its own, wider column set and is not affected.
+One row per organization, covering the PDF/HTML report only; the separate Excel report keeps its own, wider column set and is not affected.
 
 - `header_text` and `org_label` are plain text, not markup. `header_text` adds one line under the report header; `org_label` replaces the "TRUSCA" brand text. Both are HTML-escaped exactly like every other value the report already prints.
-- `vulnerability_columns` and `component_columns` are each a non-empty **subset** of a fixed vocabulary. Selecting fewer columns never reorders, renames, or computes a column — it only hides ones you did not list, always rendered in the same order the full report already uses.
+- `vulnerability_columns` and `component_columns` are each a non-empty **subset** of a fixed vocabulary. Selecting fewer columns never reorders, renames, or computes a column; it only hides ones you did not list, always rendered in the same order the full report already uses.
 - Vulnerability columns: `cve`, `cvss`, `summary`, `status`.
 - Component columns: `name`, `version`, `license`, `severity`, `vulns`.
 
 ## Request-time column override
 
-The PDF endpoint also accepts `vulnerability_columns` / `component_columns` as repeated query parameters. When given, they override the organization's stored default **for that request only** — the priority is request-time selection, then the organization default, then every column:
+The PDF endpoint also accepts `vulnerability_columns` / `component_columns` as repeated query parameters. When given, they override the organization's stored default **for that request only**; the priority is request-time selection, then the organization default, then every column:
 
 <!-- docs-uat: id=report-format-request-override kind=shell ctx=host tier=manual waiver=example-curl-placeholder-host-and-api-key -->
 ```bash
@@ -45,7 +45,7 @@ curl -sS -X PUT "https://trustedoss.example.com/v1/report-format-templates/org/<
   -d '{"org_label": "Acme Corp", "vulnerability_columns": ["cve", "cvss", "status"]}'
 ```
 
-Every field is optional, but at least one is required; a `PUT` with none of `header_text`, `org_label`, `vulnerability_columns`, or `component_columns` is rejected with `422 Unprocessable Entity`. Set only what you need — the rest stays absent.
+Every field is optional, but at least one is required; a `PUT` with none of `header_text`, `org_label`, `vulnerability_columns`, or `component_columns` is rejected with `422 Unprocessable Entity`. Set only what you need; the rest stays absent.
 
 ## Read or remove the row
 
@@ -76,7 +76,7 @@ All paths are under `/v1/report-format-templates/org/{organization_id}`.
 
 ### `422 Unprocessable Entity` on a `PUT`
 
-Either none of the four fields were set, one of the column lists was empty (omit it — null — instead), or a column list named a column outside the fixed vocabulary.
+Either none of the four fields were set, one of the column lists was empty (omit it, null, instead), or a column list named a column outside the fixed vocabulary.
 
 ### `422 Unprocessable Entity` on a report download
 
@@ -88,7 +88,7 @@ Only `super_admin` may write report formatting; it covers every project's report
 
 ### The formatting does not appear in a report
 
-Confirm the project belongs to the organization the row was written for; a row never crosses organizations. Confirm you are looking at the PDF/HTML report — the Excel report has its own column set and is not affected by this row.
+Confirm the project belongs to the organization the row was written for; a row never crosses organizations. Confirm you are looking at the PDF/HTML report: the Excel report has its own column set and is not affected by this row.
 
 ## See also
 

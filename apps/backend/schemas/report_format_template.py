@@ -13,7 +13,7 @@ from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from models import REPORT_COMPONENT_COLUMNS, REPORT_VULNERABILITY_COLUMNS
 
-#: Mirrors the NOTICE template clamp's spirit — a stability bound on a plain
+#: Mirrors the NOTICE template clamp's spirit: a stability bound on a plain
 #: free-text field, not a design constraint.
 _MAX_TEXT_LENGTH = 8_000
 _MAX_LABEL_LENGTH = 200

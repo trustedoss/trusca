@@ -398,7 +398,7 @@ def test_fmt_cvss_garbage_is_em_dash() -> None:
 
 
 # ---------------------------------------------------------------------------
-# N22 — report formatting (header text, org label, column selection)
+# N22: report formatting (header text, org label, column selection)
 # ---------------------------------------------------------------------------
 
 
@@ -406,7 +406,7 @@ def test_unformatted_golden_matches_every_pre_n22_test_above() -> None:
     """No formatting args given renders byte-identical to the pre-N22 shape.
 
     Every test above this section already pins that shape without passing
-    any N22 keyword — this test just states the contract explicitly, so a
+    any N22 keyword; this test just states the contract explicitly, so a
     regression in the *defaults* (not merely a new feature) fails loudly.
     """
     html = build_report_html(**_base_kwargs())

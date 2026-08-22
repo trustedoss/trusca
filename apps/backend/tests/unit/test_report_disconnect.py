@@ -42,7 +42,7 @@ def _patch_reads(monkeypatch, render_spy) -> None:
     monkeypatch.setattr(reports, "render_report_pdf", render_spy)
     monkeypatch.setattr(reports, "latest_succeeded_scan_id", AsyncMock(return_value=None))
     monkeypatch.setattr(reports, "record_report_download", AsyncMock(return_value=None))
-    # N22: no organization formatting row in this test — same behavior as
+    # N22: no organization formatting row in this test, same behavior as
     # before N22 shipped, which is what this abandonment-guard test isolates.
     monkeypatch.setattr(reports, "_organization_id_for_team", AsyncMock(return_value=uuid.uuid4()))
     monkeypatch.setattr(reports, "get_report_format_template", AsyncMock(return_value=None))

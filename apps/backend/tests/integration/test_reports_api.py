@@ -434,7 +434,7 @@ async def test_report_format_template_scoped_to_its_own_organization(
 
 
 async def test_pdf_report_rejects_an_unknown_request_time_column(client: AsyncClient) -> None:
-    """The 422 answers before any rendering, so it needs no weasyprint gate —
+    """The 422 answers before any rendering, so it needs no weasyprint gate,
     same posture as the auth-gate tests above."""
     _, user, project = await _seed(client)
 
