@@ -571,3 +571,140 @@ async def test_cooldown_holds_when_the_application_clock_runs_ahead(
     # Still inside the window: no second token, and Retry-After still says so.
     assert _disable_celery_dispatch.last["plaintext_token"] == first
     assert r2.headers.get("retry-after") == "300"
+
+
+# ---------------------------------------------------------------------------
+# /auth/reset-password: rate limit + bcrypt offload (F1,
+# concurrency-scaling-plan-2026-08-22.md; security-reviewer finding during
+# A1's review). Before F1 this endpoint had no rate limit at all, and its
+# bcrypt verify loop (up to 256 candidates, ~213ms each) ran synchronously
+# on the event loop, so a caller needing no authentication could stall the
+# whole worker. These tests need the limiter genuinely on, so they patch
+# ``core.ratelimit.limiter.enabled`` directly rather than relying on the
+# module's ``_ratelimit_off`` autouse fixture, which only sets an env var
+# that ``core.ratelimit`` reads once at import time (whichever test file the
+# process happens to import it from first) and would otherwise leave this
+# file's limiter state coupled to import order across the whole test run.
+# ---------------------------------------------------------------------------
+
+
+async def test_reset_password_rate_limit_returns_429_on_sixth_attempt(
+    client: AsyncClient,
+    monkeypatch,
+) -> None:
+    from core.ratelimit import limiter
+
+    monkeypatch.setattr(limiter, "enabled", True)
+
+    # 5 malformed-token attempts are allowed (422, not 429).
+    for i in range(5):
+        response = await client.post(
+            "/auth/reset-password",
+            json={
+                "token": f"not-a-real-token-{i}-but-long-enough",
+                "new_password": _strong_password(),
+            },
+            headers={"X-Forwarded-For": "203.0.113.91"},
+        )
+        assert response.status_code != 429, f"attempt {i + 1} unexpectedly rate-limited"
+
+    # 6th attempt within a minute trips the limiter.
+    sixth = await client.post(
+        "/auth/reset-password",
+        json={
+            "token": "not-a-real-token-6-but-long-enough",
+            "new_password": _strong_password(),
+        },
+        headers={"X-Forwarded-For": "203.0.113.91"},
+    )
+    assert sixth.status_code == 429
+    assert sixth.headers.get("Retry-After"), "missing Retry-After header"
+    assert sixth.headers["content-type"].startswith(PROBLEM_JSON)
+
+
+async def test_reset_password_timing_stays_flat_between_valid_and_invalid_token(
+    client: AsyncClient,
+    db_session: AsyncSession,
+    _disable_celery_dispatch,
+) -> None:
+    """Quantitative half of the F1 timing-flatness contract: a made-up
+    token and the one genuinely live token in the system must not diverge
+    in wall-clock by more than a generous margin.
+
+    The candidate query is table-wide (every live token for every user, not
+    scoped to one), so the comparison only means anything against a known
+    candidate count. This suite's other tests each leave their own live
+    tokens behind, and ``consume_reset_token`` orders candidates
+    newest-first, so without cleanup the valid path (this test's own,
+    freshest token) matches almost immediately while the invalid path
+    scans every leftover row from earlier tests: an order-of-magnitude
+    difference that reflects test-suite pollution, not F1. Those earlier
+    tests have already made their own assertions by the time this one
+    runs, so invalidating their leftover rows first does not weaken
+    anything they checked; it just gives both branches here the same,
+    known candidate count (one) to compare against. With one candidate,
+    the valid path pays one bcrypt call (a match) and the invalid path
+    pays two (a miss, then the dummy hash) plus the valid path's own
+    extra password rewrite and refresh-token revocation, real but small
+    next to bcrypt, so the bound stays loose (generous multiplier, a
+    large absolute floor) rather than exact, matching the pattern in
+    tests/unit/services/test_api_key_service.py's equivalent contract.
+    """
+    import time
+
+    from sqlalchemy import update
+
+    from models import PasswordResetToken
+
+    async def _invalidate_all_live_tokens() -> None:
+        await db_session.execute(
+            update(PasswordResetToken)
+            .where(
+                PasswordResetToken.used_at.is_(None),
+                PasswordResetToken.invalidated_at.is_(None),
+            )
+            .values(invalidated_at=datetime.now(tz=UTC))
+            .execution_options(synchronize_session=False)
+        )
+        await db_session.commit()
+
+    email = _unique_email("timing")
+    await _register_user(client, email, _strong_password())
+
+    # Isolate: leave exactly one live candidate (our own) before measuring
+    # the valid path.
+    await _invalidate_all_live_tokens()
+    forgot = await client.post("/auth/forgot-password", json={"email": email})
+    assert forgot.status_code == 204
+    plaintext = _disable_celery_dispatch.last["plaintext_token"]
+
+    start = time.perf_counter()
+    valid = await client.post(
+        "/auth/reset-password",
+        json={"token": plaintext, "new_password": _strong_password() + "V"},
+    )
+    valid_elapsed = time.perf_counter() - start
+    assert valid.status_code == 204, valid.text
+
+    # Same isolation, same shape (one live candidate), guessed wrong.
+    await _invalidate_all_live_tokens()
+    forgot2 = await client.post("/auth/forgot-password", json={"email": email})
+    assert forgot2.status_code == 204
+
+    start = time.perf_counter()
+    invalid = await client.post(
+        "/auth/reset-password",
+        json={
+            "token": "this-token-does-not-exist-but-long-enough",
+            "new_password": _strong_password(),
+        },
+    )
+    invalid_elapsed = time.perf_counter() - start
+    assert invalid.status_code == 422
+
+    slower, faster = max(valid_elapsed, invalid_elapsed), min(valid_elapsed, invalid_elapsed)
+    assert slower <= faster * 4 + 0.5, (
+        f"valid-token elapsed {valid_elapsed * 1000:.1f}ms vs "
+        f"invalid-token elapsed {invalid_elapsed * 1000:.1f}ms diverged more "
+        "than the timing-flatness contract allows"
+    )

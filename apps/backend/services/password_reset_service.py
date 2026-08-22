@@ -38,11 +38,13 @@ Two operations:
          hash directly, so we narrow with ``expires_at > now()`` and walk
          the survivors. The set is small (admin typically issues one row
          per user, expired rows are pruned by a future Beat task).
-      2. ``verify_password`` against each survivor in constant time. On a
-         match we update the user's ``hashed_password``, mark the token as
-         ``used_at = now()``, revoke ALL refresh tokens for the user
-         (reuse-defence — a stolen access token cannot be refreshed after
-         the password rotated), and commit.
+      2. ``verify_password`` against each survivor, off the event loop via
+         :func:`_match_reset_token_sync` (F1: up to 256 candidates at
+         bcrypt cost 12 is real CPU time, and this endpoint needs no
+         authentication to call). On a match we update the user's
+         ``hashed_password``, mark the token as ``used_at = now()``, revoke
+         ALL refresh tokens for the user (reuse-defence: a stolen access
+         token cannot be refreshed after the password rotated), and commit.
       3. On no match raise :class:`InvalidResetToken` so the router emits a
          422 RFC 7807 Problem Details response.
 
@@ -69,6 +71,7 @@ Design notes:
 
 from __future__ import annotations
 
+import asyncio
 import secrets
 import uuid
 from datetime import UTC, datetime, timedelta
@@ -82,7 +85,7 @@ from core.config import (
     password_reset_base_url,
     password_reset_email_cooldown_seconds,
 )
-from core.security import hash_password, verify_password
+from core.security import hash_password, verify_password, verify_password_async
 from models import PasswordResetToken, RefreshToken, User
 from notifications.dispatcher import (
     CHANNEL_EMAIL,
@@ -280,8 +283,11 @@ async def request_password_reset(
     # response cannot be used to find out which addresses are automation.
     if user is None or not user.is_active or user.is_service_account:
         # Timing-equivalent: pay one bcrypt + a tiny DB read so the
-        # response time does not depend on email existence.
-        verify_password("dummy-not-a-real-password", _DUMMY_BCRYPT_HASH)
+        # response time does not depend on email existence. Off the event
+        # loop (F1, same pattern as core.security.verify_password_async):
+        # a synchronous bcrypt call here would stall every other request on
+        # this worker for the ~213ms the hash takes.
+        await verify_password_async("dummy-not-a-real-password", _DUMMY_BCRYPT_HASH)
         log.info(
             "password_reset_requested_unknown_email",
             # Deliberately do NOT log the email — the structured field is
@@ -301,8 +307,9 @@ async def request_password_reset(
             cooldown_seconds=cooldown_seconds,
         )
         # Still pay timing-equivalent work so an attacker probing the
-        # cooldown branch does not learn about it via wall-clock.
-        verify_password("dummy-not-a-real-password", _DUMMY_BCRYPT_HASH)
+        # cooldown branch does not learn about it via wall-clock. Off the
+        # event loop, same reason as the branch above.
+        await verify_password_async("dummy-not-a-real-password", _DUMMY_BCRYPT_HASH)
         return {
             "matched": True,
             "cooldown_active": True,
@@ -366,6 +373,38 @@ async def request_password_reset(
 # ---------------------------------------------------------------------------
 
 
+def _match_reset_token_sync(
+    candidates: list[PasswordResetToken],
+    plaintext_token: str,
+) -> PasswordResetToken | None:
+    """Bcrypt verify loop, run in a worker thread by the caller.
+
+    Tries each candidate's ``token_hash`` against ``plaintext_token`` in
+    order and returns the first match. When nothing matches it still pays
+    one dummy bcrypt verification, same reason as the "unknown email"
+    branch above: the "no candidates survived the query" and "candidates
+    existed but none matched" cases must cost the same, or an attacker who
+    can submit many reset attempts learns which one happened from the
+    wall clock.
+
+    This is a plain synchronous function, not a coroutine, deliberately:
+    up to 256 candidates (``consume_reset_token``'s query cap) times bcrypt
+    cost 12 (~213ms each, concurrency-scaling-plan-2026-08-22.md §1.5) is
+    up to ~54s of CPU. Before F1, that ran inline in the request coroutine
+    and stalled every other request on this worker for the duration; an
+    endpoint that needs no authentication made that free to trigger. The
+    caller offloads this whole function with a single ``asyncio.to_thread``
+    call rather than one call per candidate, since it's one unit of
+    CPU-bound work and 256 thread hops would only add overhead without
+    freeing the loop up any sooner.
+    """
+    for row in candidates:
+        if verify_password(plaintext_token, row.token_hash):
+            return row
+    verify_password(plaintext_token, _DUMMY_BCRYPT_HASH)
+    return None
+
+
 async def consume_reset_token(
     session: AsyncSession,
     *,
@@ -405,19 +444,12 @@ async def consume_reset_token(
     result = await session.execute(stmt)
     candidates = list(result.scalars().all())
 
-    matched: PasswordResetToken | None = None
-    for row in candidates:
-        if verify_password(plaintext_token, row.token_hash):
-            matched = row
-            break
+    # Off the event loop (F1): see _match_reset_token_sync's docstring for
+    # why the whole verify loop, dummy fallback included, goes through one
+    # asyncio.to_thread call rather than an awaited call per candidate.
+    matched = await asyncio.to_thread(_match_reset_token_sync, candidates, plaintext_token)
 
     if matched is None:
-        # Pay one extra bcrypt verify against the dummy hash so the
-        # response time on "no candidates" matches "candidates but no
-        # match". This closes a low-grade enumeration oracle: an attacker
-        # who can submit many reset attempts could otherwise time-correlate
-        # the empty-candidates branch.
-        verify_password(plaintext_token, _DUMMY_BCRYPT_HASH)
         log.info("password_reset_consume_no_match")
         raise InvalidResetToken("token is invalid or expired")
 

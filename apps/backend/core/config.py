@@ -2151,6 +2151,19 @@ def password_reset_request_rate_limit() -> str:
     return os.getenv("PASSWORD_RESET_RATE_LIMIT", "5/minute")
 
 
+def password_reset_confirm_rate_limit() -> str:
+    """Per-IP slowapi limit for ``POST /auth/reset-password``.
+
+    Defaults to 5/minute, matching ``password_reset_request_rate_limit`` and
+    the login policy (CLAUDE.md §3). The presented token IS the credential
+    on this endpoint, so it is a guessing surface exactly like login and a
+    bcrypt-per-candidate verification loop besides (F1,
+    concurrency-scaling-plan-2026-08-22.md); there is no basis for a looser
+    default than login.
+    """
+    return os.getenv("PASSWORD_RESET_CONFIRM_RATE_LIMIT", "5/minute")
+
+
 def password_reset_email_cooldown_seconds() -> int:
     """Minimum seconds between two reset emails to the same address.
 
