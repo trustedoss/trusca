@@ -687,26 +687,19 @@ CATEGORY_RANK: dict[str, int] = {
 }
 
 
-async def compute_component_policy_categories(
-    session: AsyncSession,
-    scan_id: uuid.UUID,
+def _categorize_license_rows(
+    rows: list[tuple[uuid.UUID, str | None, str | None]],
     policy: LicensePolicy,
 ) -> dict[uuid.UUID, ComponentPolicyVerdict]:
-    """Resolve every scan component's license to its policy category.
+    """Resolve already-loaded ``(component_version_id, spdx_id, purl)`` rows.
 
-    Re-classifies each component's stored license expression through the policy
-    (overrides / exceptions / compound-operator strategy / unknown posture) via
-    the hardened compound-SPDX evaluator, keeping the WORST verdict per DISTINCT
-    ``component_version_id``. Shared by the build gate's forbidden count and the
-    C3 policy-annotated / policy-filtered SBOM export.
-
-    Performance: one batched query loads the (cv, expression) pairs; the
-    evaluation is pure CPU over a memoised cache so a license shared by many
-    components is classified once. The evaluator is hardened against adversarial
-    expressions (length/depth/token bounds; un-parseable → the policy's unknown
-    posture), so a hostile SBOM can never hang or crash the gate.
+    Pure CPU over rows the caller already fetched, split out of
+    :func:`compute_component_policy_categories` so a caller that has
+    batch-loaded rows for SEVERAL scans in one query (see
+    :func:`load_scan_license_rows_batch`) can run this per scan without an
+    extra round trip per scan. Behaviour is identical to the code this
+    replaced: same memoised cache, same worst-verdict-per-component reduction.
     """
-    rows = await _load_scan_license_rows(session, scan_id)
     strategy = dict(policy.compound_operator_strategy or {})
     unknown_posture = policy.unknown_license_category
 
@@ -738,6 +731,110 @@ async def compute_component_policy_categories(
             )
 
     return verdicts
+
+
+async def compute_component_policy_categories(
+    session: AsyncSession,
+    scan_id: uuid.UUID,
+    policy: LicensePolicy,
+) -> dict[uuid.UUID, ComponentPolicyVerdict]:
+    """Resolve every scan component's license to its policy category.
+
+    Re-classifies each component's stored license expression through the policy
+    (overrides / exceptions / compound-operator strategy / unknown posture) via
+    the hardened compound-SPDX evaluator, keeping the WORST verdict per DISTINCT
+    ``component_version_id``. Shared by the build gate's forbidden count and the
+    C3 policy-annotated / policy-filtered SBOM export.
+
+    Performance: one batched query loads the (cv, expression) pairs; the
+    evaluation is pure CPU over a memoised cache so a license shared by many
+    components is classified once. The evaluator is hardened against adversarial
+    expressions (length/depth/token bounds; un-parseable → the policy's unknown
+    posture), so a hostile SBOM can never hang or crash the gate.
+
+    Single-scan only: a caller resolving several scans at once (the dashboard
+    action queue, across a policy-enabled team's whole portfolio) should use
+    :func:`load_scan_license_rows_batch` plus :func:`_categorize_license_rows`
+    directly instead of calling this once per scan, which is the N+1 that
+    function replaced.
+    """
+    rows = await _load_scan_license_rows(session, scan_id)
+    return _categorize_license_rows(rows, policy)
+
+
+async def load_scan_license_rows_batch(
+    session: AsyncSession,
+    scan_ids: list[uuid.UUID],
+) -> dict[uuid.UUID, list[tuple[uuid.UUID, str | None, str | None]]]:
+    """Batch-load DISTINCT ``(component_version_id, spdx_id, purl)`` for MANY scans.
+
+    One query for the whole batch, grouped by ``scan_id`` in Python afterwards.
+    This is the multi-scan sibling of :func:`_load_scan_license_rows`, which
+    stays scan-at-a-time because :func:`evaluate_gate` only ever needs one
+    scan's rows. The dashboard action queue needs the dynamic forbidden-license
+    count for every scan in a policy-enabled team at once
+    (``services.action_queue_service``), and a query per scan there was
+    exactly the N+1 this function exists to avoid.
+
+    Callers are responsible for scoping ``scan_ids`` to what the caller may
+    see; this function does not itself re-check project or team visibility,
+    matching the single-scan sibling.
+    """
+    if not scan_ids:
+        return {}
+    stmt = (
+        select(
+            LicenseFinding.scan_id,
+            LicenseFinding.component_version_id,
+            LicenseModel.spdx_id,
+            ComponentVersion.purl_with_version,
+        )
+        .select_from(LicenseFinding)
+        .join(LicenseModel, LicenseModel.id == LicenseFinding.license_id)
+        .join(
+            ComponentVersion,
+            ComponentVersion.id == LicenseFinding.component_version_id,
+        )
+        .where(LicenseFinding.scan_id.in_(scan_ids))
+        .distinct()
+    )
+    result = await session.execute(stmt)
+    grouped: dict[uuid.UUID, list[tuple[uuid.UUID, str | None, str | None]]] = {}
+    for scan_id, cv_id, spdx_id, purl in result.all():
+        grouped.setdefault(scan_id, []).append((cv_id, spdx_id, purl))
+    return grouped
+
+
+async def load_flagged_purls_batch(
+    session: AsyncSession,
+    scan_ids: list[uuid.UUID],
+) -> dict[uuid.UUID, list[str]]:
+    """Batch-load flagged component purls for MANY scans in one round trip.
+
+    Multi-scan sibling of :func:`_flagged_purls_for_scan`, for the same reason
+    :func:`load_scan_license_rows_batch` exists: the dashboard action queue
+    needs every policy-enabled team's waiver-eligible scans at once, and a
+    query per scan is the N+1 this avoids. Same visibility caveat as that
+    function: callers scope ``scan_ids`` before calling.
+    """
+    if not scan_ids:
+        return {}
+    stmt = (
+        select(ScanComponent.scan_id, ComponentVersion.purl_with_version)
+        .select_from(ScanComponent)
+        .join(
+            ComponentVersion,
+            ComponentVersion.id == ScanComponent.component_version_id,
+        )
+        .where(ScanComponent.scan_id.in_(scan_ids))
+        .where(ComponentVersion.malicious_state == "flagged")
+        .distinct()
+    )
+    result = await session.execute(stmt)
+    grouped: dict[uuid.UUID, list[str]] = {}
+    for scan_id, purl in result.all():
+        grouped.setdefault(scan_id, []).append(purl)
+    return grouped
 
 
 async def _count_forbidden_license_components_dynamic(
@@ -1073,4 +1170,10 @@ async def evaluate_gate(
     return result
 
 
-__all__ = ["GateOutcome", "GateResult", "evaluate_gate"]
+__all__ = [
+    "GateOutcome",
+    "GateResult",
+    "evaluate_gate",
+    "load_flagged_purls_batch",
+    "load_scan_license_rows_batch",
+]

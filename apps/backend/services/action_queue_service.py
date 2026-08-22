@@ -22,14 +22,21 @@ critical findings, forbidden-licence components, EPSS-gated findings — grouped
 across every accessible project, with the same threshold applied on top.
 Always live, and the number of queries does not grow with the portfolio.
 
-One input resists grouping. A team licence policy can override an allowed
-licence to forbidden, waive a forbidden one, or decide what an unrecognised
-licence counts as, and none of that is visible in the stored
+One input resists grouping outright. A team licence policy can override an
+allowed licence to forbidden, waive a forbidden one, or decide what an
+unrecognised licence counts as, and none of that is visible in the stored
 ``License.category``. Policies resolve per team, so they are looked up once
-per distinct team and only projects in a policy-enabled team pay for the
-per-scan evaluator. Query *cost*, unlike query count, does grow with the
-portfolio: these aggregates read every open finding in scope, which is why
-the route is rate limited per actor.
+per distinct team, and only scans in a policy-enabled team pay for the
+per-scan evaluator at all. Re-classifying those scans is still per-scan CPU
+work (the memoised evaluator in ``services.policy_gate`` runs once per scan's
+distinct license expressions), but it is loaded with one batched query for
+every affected scan in the request (``policy_gate.load_scan_license_rows_batch``,
+``load_flagged_purls_batch`` for the malicious axis), not one query per scan.
+A portfolio with many projects in one policy-enabled team used to pay a query
+per project here; it now pays one query for the whole team regardless of how
+many projects it has. Query *cost* still grows with the portfolio, since
+these aggregates read every open finding in scope, which is why the route
+stays rate limited per actor.
 
 The cost of all this is that the blocking rule now exists in two places, which
 is exactly the duplicated-vocabulary trap CLAUDE.md hardening rule #2 is
@@ -85,9 +92,10 @@ from services.malicious import malicious_catalog
 from services.policy_gate import (
     _CLOSED_FINDING_STATUSES,
     _active_malicious_waivers,
-    _count_forbidden_license_components_dynamic,
-    _flagged_purls_for_scan,
+    _categorize_license_rows,
     _resolve_epss_threshold,
+    load_flagged_purls_batch,
+    load_scan_license_rows_batch,
 )
 
 logger = structlog.get_logger("action_queue.service")
@@ -252,9 +260,16 @@ async def _forbidden_counts_under_policy(
     listed until people stop reading the panel.
 
     Policies resolve per team, not per project, so the lookup is bounded by
-    team count. Only projects in a team that actually has an enabled policy
-    pay for the per-scan evaluator; everything else keeps the grouped result
-    it already has, which is the common case.
+    team count. Only scans in a team that actually has an enabled policy pay
+    for the dynamic re-classification; everything else keeps the grouped
+    result it already has, which is the common case.
+
+    The re-classification itself no longer costs a query per scan. Every scan
+    that needs it is collected first, then loaded in ONE query
+    (``policy_gate.load_scan_license_rows_batch``) regardless of how many
+    projects the policy-enabled team has, replacing the query-per-project
+    loop that used to make the panel's cost track the portfolio's project
+    count, not its team count.
     """
     if not scan_by_project:
         return static_counts
@@ -270,6 +285,10 @@ async def _forbidden_counts_under_policy(
     policies: dict[uuid.UUID, LicensePolicy | None] = {}
     counts = dict(static_counts)
 
+    # Scans whose owning team runs an enabled policy: the only ones that need
+    # the dynamic recount. Collected first so the row load below is one query
+    # for the whole batch.
+    scan_policy: dict[uuid.UUID, LicensePolicy] = {}
     for project_id, team_id in team_rows:
         if team_id is None:
             continue
@@ -278,10 +297,15 @@ async def _forbidden_counts_under_policy(
         policy = policies[team_id]
         if policy is None:
             continue
-        scan_id = scan_by_project[project_id]
-        counts[scan_id] = await _count_forbidden_license_components_dynamic(
-            session, scan_id, policy
-        )
+        scan_policy[scan_by_project[project_id]] = policy
+
+    if not scan_policy:
+        return counts
+
+    rows_by_scan = await load_scan_license_rows_batch(session, list(scan_policy))
+    for scan_id, policy in scan_policy.items():
+        verdicts = _categorize_license_rows(rows_by_scan.get(scan_id, []), policy)
+        counts[scan_id] = sum(1 for v in verdicts.values() if v.category == "forbidden")
 
     return counts
 
@@ -303,6 +327,12 @@ async def _malicious_counts_under_policy(
     ``policy_gate._active_malicious_waivers``, reused. Only teams that run a
     policy pay for the extra lookup, and a team with no malicious waivers
     exits after one dict miss.
+
+    The purl lookup that follows a waiver hit is one query for every affected
+    scan (``policy_gate.load_flagged_purls_batch``), not one query per scan:
+    the same batching :func:`_forbidden_counts_under_policy` applies to the
+    licence axis, for the same reason. A policy-enabled team's cost here used
+    to track its project count.
     """
     if not raw_counts or not scan_by_project:
         return raw_counts
@@ -319,6 +349,10 @@ async def _malicious_counts_under_policy(
     policies: dict[uuid.UUID, LicensePolicy | None] = {}
     counts = dict(raw_counts)
 
+    # Scans that (a) belong to a policy-bearing team and (b) have a nonzero
+    # raw malicious count (a scan with nothing flagged has nothing to waive).
+    # Collected first so the purl lookup below is one query for the batch.
+    scan_waived: dict[uuid.UUID, frozenset[str]] = {}
     for project_id, team_id in team_rows:
         scan_id = scan_by_project.get(project_id)
         if scan_id is None or not counts.get(scan_id):
@@ -330,7 +364,14 @@ async def _malicious_counts_under_policy(
         waived = _active_malicious_waivers(policies[team_id], now)
         if not waived:
             continue
-        purls = await _flagged_purls_for_scan(session, scan_id)
+        scan_waived[scan_id] = waived
+
+    if not scan_waived:
+        return counts
+
+    purls_by_scan = await load_flagged_purls_batch(session, list(scan_waived))
+    for scan_id, waived in scan_waived.items():
+        purls = purls_by_scan.get(scan_id, [])
         counts[scan_id] = sum(
             1 for purl in purls if malicious_catalog.base_purl(purl) not in waived
         )

@@ -18,6 +18,20 @@ it deliberately, in its own change, with the reason in the message.
 
 A budget is an upper bound, so it cannot catch a query that got slower, only
 one that got added. Wall-clock belongs to the load tests, which run outside CI.
+
+Dashboard (W5). The four ``/v1/dashboard/*`` GETs were entirely outside this
+file until W5, so a query added to any of them was as invisible to this
+budget as the policy read the paragraph above describes. ``/action-queue`` is
+the interesting one: its budget is measured against FIVE projects in one
+licence-policy-enabled team, not one, because that shape is exactly what used
+to make its cost track the portfolio's project count (a query per project for
+the dynamic forbidden-licence recount, see ``services/action_queue_service.py``
+and W5 in the concurrency-scaling plan). A single-project fixture would pass
+whether or not that N+1 were still there; five projects and a still-small
+budget is what proves it is gone. The project-count *invariance* itself
+(that six projects cost the same as one) is asserted more precisely in
+``tests/integration/test_action_queue_query_count.py``; this file only pins
+the absolute ceiling for a realistic multi-project request.
 """
 
 from __future__ import annotations
@@ -59,6 +73,20 @@ pytestmark = pytest.mark.integration
 AUTHENTICATED_READ_BUDGET = 8
 GATE_EVALUATION_BUDGET = 15
 STATUS_TRANSITION_BUDGET = 16
+
+# Dashboard (W5), measured the same way, on the fixtures each test below
+# builds. ``action-queue``'s is measured against five projects in one
+# licence-policy-enabled team, not one; see the module docstring for why that
+# shape, not a single project, is the one that matters for this route.
+#
+#   summary        3 statements measured (1 project, 1 succeeded scan)
+#   action-queue  16 statements measured (5 projects, 1 policy-enabled team)
+#   trends         8 statements measured (1 project, 1 succeeded scan)
+#   portfolio      8 statements measured (1 project, 1 succeeded scan)
+DASHBOARD_SUMMARY_BUDGET = 6
+DASHBOARD_ACTION_QUEUE_BUDGET = 19
+DASHBOARD_TRENDS_BUDGET = 11
+DASHBOARD_PORTFOLIO_BUDGET = 11
 
 
 def _require_database_url() -> str:
@@ -272,6 +300,165 @@ async def test_gate_evaluation_stays_within_its_query_budget(client, counting) -
     assert counter.count <= GATE_EVALUATION_BUDGET, (
         f"gate evaluation issued {counter.count} statements, over the budget of "
         f"{GATE_EVALUATION_BUDGET}:\n{counter.summary()}"
+    )
+
+
+async def _seed_team_with_member(client: AsyncClient):
+    """Organization + team + member, no project yet: the dashboard fixtures
+    below each add their own projects on top of this."""
+    factory = await _factory(client)
+    async with factory() as session:
+        org = await make_organization(session)
+        team = await make_team(session, organization=org)
+        user = await make_user(session)
+        await make_membership(session, user=user, team=team, role="developer")
+        return org.id, team.id, user
+
+
+async def _seed_policy_team_with_forbidden_projects(client: AsyncClient, *, project_count: int):
+    """A licence-policy-enabled team with ``project_count`` blocked projects.
+
+    Every project carries a component whose licence the policy OVERRIDE (not
+    the static catalogue) resolves to forbidden, so the dynamic recount in
+    ``services/action_queue_service.py`` runs for every one of them: this is
+    the shape that used to cost one query per project.
+    """
+    from models import (
+        Component,
+        ComponentVersion,
+        License,
+        LicenseFinding,
+        LicensePolicy,
+        ScanComponent,
+    )
+
+    factory = await _factory(client)
+    async with factory() as session:
+        org = await make_organization(session)
+        team = await make_team(session, organization=org)
+        user = await make_user(session)
+        await make_membership(session, user=user, team=team, role="developer")
+
+        overrides: dict[str, str] = {}
+        for _ in range(project_count):
+            project = await make_project(session, team=team)
+            scan = await make_scan(session, project=project, status="succeeded")
+
+            suffix = unique_suffix()
+            purl = f"pkg:npm/budget-forbidden-{suffix}"
+            component = Component(purl=purl, package_type="npm", name=f"budget-{suffix}")
+            session.add(component)
+            await session.commit()
+            await session.refresh(component)
+
+            cv = ComponentVersion(
+                component_id=component.id,
+                version="1.0.0",
+                purl_with_version=f"{purl}@1.0.0",
+            )
+            session.add(cv)
+            await session.commit()
+            await session.refresh(cv)
+
+            session.add(
+                ScanComponent(
+                    scan_id=scan.id, component_version_id=cv.id, direct=True, raw_data={}
+                )
+            )
+            spdx_id = f"MIT-{suffix}"
+            lic = License(spdx_id=spdx_id, name=spdx_id, category="allowed")
+            session.add(lic)
+            await session.commit()
+            await session.refresh(lic)
+            session.add(
+                LicenseFinding(
+                    scan_id=scan.id,
+                    component_version_id=cv.id,
+                    license_id=lic.id,
+                    kind="concluded",
+                    source_path=f"path-{suffix}",
+                )
+            )
+            await session.commit()
+            overrides[spdx_id] = "forbidden"
+
+        session.add(
+            LicensePolicy(
+                organization_id=org.id,
+                team_id=team.id,
+                name="query-budget policy",
+                enabled=True,
+                category_overrides=overrides,
+                license_exceptions=[],
+                unknown_license_category="conditional",
+            )
+        )
+        await session.commit()
+        return user
+
+
+async def test_dashboard_summary_stays_within_its_query_budget(client, counting) -> None:
+    """The portfolio-overview headline: project/scan/severity/licence counts."""
+    _org_id, _team_id, user = await _seed_team_with_member(client)
+    headers = _bearer_for(user)
+
+    counter = counting()
+    response = await client.get("/v1/dashboard/summary", headers=headers)
+
+    assert response.status_code == 200, response.text
+    assert counter.count <= DASHBOARD_SUMMARY_BUDGET, (
+        f"the dashboard summary issued {counter.count} statements, over the "
+        f"budget of {DASHBOARD_SUMMARY_BUDGET}:\n{counter.summary()}"
+    )
+
+
+async def test_dashboard_action_queue_stays_within_its_query_budget(client, counting) -> None:
+    """Measured against 5 projects in one policy-enabled team; see the
+    module docstring for why a multi-project fixture is the one that matters
+    for this route specifically."""
+    user = await _seed_policy_team_with_forbidden_projects(client, project_count=5)
+    headers = _bearer_for(user)
+
+    counter = counting()
+    response = await client.get("/v1/dashboard/action-queue", headers=headers)
+
+    assert response.status_code == 200, response.text
+    body = response.json()
+    assert len(body["gate_blocked"]) == 5, "fixture setup: expected all 5 projects blocked"
+    assert counter.count <= DASHBOARD_ACTION_QUEUE_BUDGET, (
+        f"the dashboard action queue issued {counter.count} statements over 5 "
+        f"policy-enabled projects, over the budget of "
+        f"{DASHBOARD_ACTION_QUEUE_BUDGET}:\n{counter.summary()}"
+    )
+
+
+async def test_dashboard_trends_stays_within_its_query_budget(client, counting) -> None:
+    _, user, project_id = await _seed_project_with_member(client)
+    await _seed_succeeded_scan(client, project_id=project_id)
+    headers = _bearer_for(user)
+
+    counter = counting()
+    response = await client.get("/v1/dashboard/trends", headers=headers)
+
+    assert response.status_code == 200, response.text
+    assert counter.count <= DASHBOARD_TRENDS_BUDGET, (
+        f"the dashboard trends issued {counter.count} statements, over the "
+        f"budget of {DASHBOARD_TRENDS_BUDGET}:\n{counter.summary()}"
+    )
+
+
+async def test_dashboard_portfolio_stays_within_its_query_budget(client, counting) -> None:
+    _, user, project_id = await _seed_project_with_member(client)
+    await _seed_succeeded_scan(client, project_id=project_id)
+    headers = _bearer_for(user)
+
+    counter = counting()
+    response = await client.get("/v1/dashboard/portfolio", headers=headers)
+
+    assert response.status_code == 200, response.text
+    assert counter.count <= DASHBOARD_PORTFOLIO_BUDGET, (
+        f"the dashboard portfolio issued {counter.count} statements, over the "
+        f"budget of {DASHBOARD_PORTFOLIO_BUDGET}:\n{counter.summary()}"
     )
 
 

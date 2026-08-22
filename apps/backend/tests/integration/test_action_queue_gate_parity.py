@@ -769,3 +769,115 @@ async def test_parity_holds_when_a_malicious_waiver_has_expired(
     assert blocked
     assert blocked[0].malicious_component_count == 1
 
+
+async def test_parity_holds_across_several_projects_in_one_policy_enabled_team(
+    db_session: AsyncSession,
+) -> None:
+    """W5's batching must attribute the right rows to the right scan.
+
+    Every parity case above builds one project per team, which the batched
+    recount (``services.policy_gate.load_scan_license_rows_batch`` /
+    ``load_flagged_purls_batch``) cannot reach at all: those functions load
+    several scans' rows in ONE query and group them by ``scan_id`` in Python,
+    and a grouping bug there (one project silently reading another's verdict)
+    is invisible to a single-project fixture no matter how many of them the
+    suite has. Four projects sharing one policy, each exercising a
+    different combination of the two dynamic axes, is the shape that would
+    catch it: a forbidden override, a clean project, a waived malicious
+    component, and an unwaived one.
+    """
+    from sqlalchemy import select
+
+    from models import ComponentVersion, LicensePolicy, ScanComponent
+    from services.action_queue_service import _blocked_for_projects
+    from services.policy_gate import evaluate_gate
+
+    org = await make_organization(db_session)
+    team = await make_team(db_session, organization=org)
+
+    # A: forbidden only through the policy override (static category "allowed").
+    project_a, scan_a = await _project_with_scan(db_session, team=team)
+    spdx_a = f"MIT-{unique_suffix()}"
+    await _component_with_license(
+        db_session, scan_id=scan_a, spdx_id=spdx_a, category="allowed"
+    )
+
+    # B: clean, a licensed component the policy has no opinion on.
+    project_b, scan_b = await _project_with_scan(db_session, team=team)
+    await _component_with_license(
+        db_session,
+        scan_id=scan_b,
+        spdx_id=f"Apache-2.0-{unique_suffix()}",
+        category="allowed",
+    )
+
+    # C: malicious, will be waived.
+    project_c, scan_c = await _project_with_scan(db_session, team=team)
+    cv_c_id = await _component_version(db_session)
+    cv_c = await db_session.get(ComponentVersion, cv_c_id)
+    assert cv_c is not None
+    cv_c.malicious_state = "flagged"
+    cv_c.malicious_source = "osv.dev@seed"
+    db_session.add(cv_c)
+    db_session.add(
+        ScanComponent(scan_id=scan_c, component_version_id=cv_c_id, direct=True, raw_data={})
+    )
+    await db_session.commit()
+    base_purl_c = cv_c.purl_with_version.rsplit("@", 1)[0]
+
+    # D: malicious, NOT waived (a distinct purl the waiver below does not cover).
+    project_d, scan_d = await _project_with_scan(db_session, team=team)
+    cv_d_id = await _component_version(db_session)
+    cv_d = await db_session.get(ComponentVersion, cv_d_id)
+    assert cv_d is not None
+    cv_d.malicious_state = "flagged"
+    cv_d.malicious_source = "osv.dev@seed"
+    db_session.add(cv_d)
+    db_session.add(
+        ScanComponent(scan_id=scan_d, component_version_id=cv_d_id, direct=True, raw_data={})
+    )
+    await db_session.commit()
+
+    await _enable_policy(
+        db_session,
+        organization_id=org.id,
+        team_id=team.id,
+        category_overrides={spdx_a: "forbidden"},
+    )
+    policy = (
+        await db_session.execute(
+            select(LicensePolicy).where(LicensePolicy.team_id == team.id)
+        )
+    ).scalar_one()
+    policy.malicious_exceptions = [
+        {
+            "component_purl": base_purl_c,
+            "reason": "waived for the parity-across-projects fixture",
+            "expires_at": (datetime.now(tz=UTC) + timedelta(days=7)).isoformat(),
+        }
+    ]
+    await db_session.commit()
+
+    project_ids = [project_a, project_b, project_c, project_d]
+    blocked_by_project = {
+        b.project_id: b
+        for b in await _blocked_for_projects(db_session, project_ids=project_ids)
+    }
+
+    for label, project_id in (
+        ("A: policy-forbidden override", project_a),
+        ("B: clean", project_b),
+        ("C: malicious, waived", project_c),
+        ("D: malicious, unwaived", project_d),
+    ):
+        verdict = await evaluate_gate(db_session, project_id)
+        entry = blocked_by_project.get(project_id)
+        if verdict.gate == "fail":
+            assert entry is not None, f"{label}: gate failed but the queue omitted it"
+            assert entry.forbidden_license_count == verdict.forbidden_license_count, label
+            assert (
+                entry.malicious_component_count == verdict.malicious_component_count
+            ), label
+        else:
+            assert entry is None, f"{label}: gate passed but the queue still listed it"
+
