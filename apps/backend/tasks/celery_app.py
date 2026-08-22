@@ -27,7 +27,7 @@ from celery import Celery
 from celery.schedules import crontab
 from celery.schedules import schedule as _schedule
 
-from core.config import redis_url
+from core.config import broker_visibility_timeout_seconds, redis_url
 from core.logging import configure_logging
 
 # Tasks defined in this PR — listed by import path so Celery can autoload
@@ -310,6 +310,20 @@ def create_celery_app() -> Celery:
         task_acks_late=True,
         task_reject_on_worker_lost=True,
         worker_prefetch_multiplier=1,
+        # S1 (concurrency-scaling-plan-2026-08-22.md §3.2): the Redis
+        # transport's own visibility_timeout default (3600s) sits BELOW this
+        # deployment's scan hard time limit default (3900s,
+        # scan_hard_time_limit_seconds()). Combined with task_acks_late=True
+        # above, a scan that runs past the visibility timeout is redelivered
+        # to a second worker while the first worker is still running it, and
+        # the same scan then occupies two slots. broker_visibility_timeout_seconds()
+        # derives the timeout from the same hard-limit accessor scan dispatch
+        # uses, so retuning SCAN_HARD_TIME_LIMIT_SECONDS moves this value with
+        # it; it is read fresh on every create_celery_app() call (rule #11),
+        # not cached as a module constant.
+        broker_transport_options={
+            "visibility_timeout": broker_visibility_timeout_seconds(),
+        },
         # PR-A1 (scan stability): do NOT set a GLOBAL task time limit here.
         # A global ``task_soft_time_limit`` / ``task_time_limit`` would also
         # cap notification / backup tasks, which is wrong — a 1-hour ceiling
@@ -317,7 +331,9 @@ def create_celery_app() -> Celery:
         # legitimately run longer than a scan. Scan tasks instead receive
         # their limits per-dispatch in ``tasks.enqueue_scan`` (read from env
         # at call time per CLAUDE.md rule #11) so only the two scan tasks
-        # are time-boxed.
+        # are time-boxed. S1's broker-level visibility_timeout above is a
+        # different mechanism (redelivery, not task cancellation) and does
+        # not reintroduce that global cap.
         task_default_queue="trustedoss.default",
         timezone="UTC",
         enable_utc=True,

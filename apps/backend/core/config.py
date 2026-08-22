@@ -1456,6 +1456,39 @@ def scan_hard_time_limit_seconds() -> int:
     return max(raw_hard, soft + SCAN_TIMEOUT_MIN_GRACE_SECONDS)
 
 
+# Fixed grace window the Redis broker's visibility timeout must sit ABOVE the
+# scan hard time limit, in seconds. Not operator-configurable (unlike the
+# scan time limits themselves); it exists only so
+# ``broker_visibility_timeout_seconds()`` never lands exactly on the hard
+# limit boundary, mirroring ``SCAN_TIMEOUT_MIN_GRACE_SECONDS`` above. 300s
+# covers the time between the hard-limit SIGKILL landing and the worker
+# actually acking (or the task-supervisor process observing the kill and
+# letting Celery's own bookkeeping settle) before the broker would otherwise
+# consider the message due for redelivery.
+BROKER_VISIBILITY_TIMEOUT_MARGIN_SECONDS = 300
+
+
+def broker_visibility_timeout_seconds() -> int:
+    """Redis transport ``visibility_timeout`` (seconds) for the Celery broker.
+
+    concurrency-scaling-plan-2026-08-22.md §1.1 / §3.2 (S1): Redis' own
+    transport default is 3600s, but this deployment's scan hard time limit
+    defaults to 3900s (``scan_hard_time_limit_seconds()``); the timeout was
+    never set explicitly, so the shorter Redis default silently won.
+    Combined with ``task_acks_late=True`` (celery_app.py), a scan that runs
+    past the visibility timeout gets redelivered to a second worker while the
+    first worker is still running it, and the same scan occupies two slots.
+
+    Derived from ``scan_hard_time_limit_seconds()`` plus a fixed margin
+    (never a hard-coded literal here) so retuning
+    ``SCAN_HARD_TIME_LIMIT_SECONDS`` moves this value automatically and the
+    invariant (visibility timeout > hard limit) cannot drift out of sync.
+    Read at call time (CLAUDE.md core rule #11); both this and the value it
+    derives from re-read the environment on every call.
+    """
+    return scan_hard_time_limit_seconds() + BROKER_VISIBILITY_TIMEOUT_MARGIN_SECONDS
+
+
 def workspace_orphan_max_age_seconds() -> int:
     """Minimum age before a terminal-scan workspace is eligible for reclaim.
 
