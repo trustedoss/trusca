@@ -4,6 +4,7 @@ the expensive weasyprint render when the caller has already disconnected.
 Unit-level: the 4 read services + auth are stubbed so the test isolates the
 ``request.is_disconnected()`` short-circuit and asserts the render is skipped.
 """
+
 from __future__ import annotations
 
 import uuid
@@ -39,12 +40,12 @@ def _patch_reads(monkeypatch, render_spy) -> None:
         reports, "list_project_vulnerabilities", AsyncMock(return_value=([], 0, {}))
     )
     monkeypatch.setattr(reports, "render_report_pdf", render_spy)
-    monkeypatch.setattr(
-        reports, "latest_succeeded_scan_id", AsyncMock(return_value=None)
-    )
-    monkeypatch.setattr(
-        reports, "record_report_download", AsyncMock(return_value=None)
-    )
+    monkeypatch.setattr(reports, "latest_succeeded_scan_id", AsyncMock(return_value=None))
+    monkeypatch.setattr(reports, "record_report_download", AsyncMock(return_value=None))
+    # N22: no organization formatting row in this test, same behavior as
+    # before N22 shipped, which is what this abandonment-guard test isolates.
+    monkeypatch.setattr(reports, "_organization_id_for_team", AsyncMock(return_value=uuid.uuid4()))
+    monkeypatch.setattr(reports, "get_report_format_template", AsyncMock(return_value=None))
 
 
 def _request(disconnected: bool):
@@ -62,6 +63,8 @@ async def test_pdf_skips_render_when_client_disconnected(monkeypatch) -> None:
     resp = await reports.get_vulnerability_report_pdf_endpoint(
         request=_request(disconnected=True),
         project_id=uuid.uuid4(),
+        vulnerability_columns=None,
+        component_columns=None,
         session=AsyncMock(),
         actor=SimpleNamespace(is_superuser=True),
     )
@@ -78,6 +81,8 @@ async def test_pdf_renders_when_client_connected(monkeypatch) -> None:
     resp = await reports.get_vulnerability_report_pdf_endpoint(
         request=_request(disconnected=False),
         project_id=uuid.uuid4(),
+        vulnerability_columns=None,
+        component_columns=None,
         session=AsyncMock(),
         actor=SimpleNamespace(is_superuser=True),
     )

@@ -269,6 +269,18 @@
     ],
     [
       "DELETE",
+      "/v1/report-format-templates/org/{organization_id}"
+    ],
+    [
+      "GET",
+      "/v1/report-format-templates/org/{organization_id}"
+    ],
+    [
+      "PUT",
+      "/v1/report-format-templates/org/{organization_id}"
+    ],
+    [
+      "DELETE",
       "/v1/notification-rules/{rule_id}"
     ],
     [

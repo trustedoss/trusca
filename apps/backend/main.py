@@ -50,6 +50,7 @@ from api.v1 import (
     policy_gate_router,
     projects_router,
     remediation_router,
+    report_format_templates_router,
     reports_router,
     saved_searches_router,
     sbom_router,
@@ -286,6 +287,8 @@ app.include_router(sbom_router)
 app.include_router(vex_router)
 # Scan-gap G2: vulnerability PDF report download.
 app.include_router(reports_router)
+# N22: organization defaults for the report's header/label/column selection.
+app.include_router(report_format_templates_router)
 # Scan-gap G3.2: source-tree viewer (list dir + read file) over the per-scan
 # tarball preserved in G3.1.
 app.include_router(source_tree_router)

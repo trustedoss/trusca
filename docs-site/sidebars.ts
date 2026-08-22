@@ -71,6 +71,7 @@ const sidebars: SidebarsConfig = {
         "admin-guide/github-app",
         "admin-guide/ticket-integration",
         "admin-guide/notice-templates",
+        "admin-guide/report-format-templates",
       ],
     },
     {

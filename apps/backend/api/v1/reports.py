@@ -41,6 +41,7 @@ from datetime import UTC, datetime
 import structlog
 from fastapi import APIRouter, Depends, Query, Request, Response, status
 from fastapi.concurrency import run_in_threadpool
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from api.v1._snapshot_anchor import snapshot_anchor
@@ -50,6 +51,7 @@ from core.errors import problem_response
 from core.pagination import PAGE_MAX
 from core.ratelimit import limiter
 from core.security import CurrentUser, require_role
+from models import REPORT_COMPONENT_COLUMNS, REPORT_VULNERABILITY_COLUMNS, Team
 from schemas.report_download import ReportHistoryResponse, ReportType
 from services.project_detail_service import (
     get_project_overview,
@@ -69,6 +71,9 @@ from services.report_download_service import (
     ReportHistoryNotFound,
     list_report_history,
     record_report_download,
+)
+from services.report_format_template_service import (
+    get_template as get_report_format_template,
 )
 from services.report_service import (
     ReportRenderingError,
@@ -117,7 +122,7 @@ def _format_content_disposition(project_name: str, *, ext: str = "pdf") -> str:
     ascii_filename = f"vulnerability-report-{token}.{ext}"
     utf8_full = f"vulnerability-report-{project_name}.{ext}"
     utf8_encoded = urllib.parse.quote(utf8_full, safe="")
-    return f'attachment; filename="{ascii_filename}"; filename*=UTF-8\'\'{utf8_encoded}'
+    return f"attachment; filename=\"{ascii_filename}\"; filename*=UTF-8''{utf8_encoded}"
 
 
 # ---------------------------------------------------------------------------
@@ -142,6 +147,48 @@ def _problem_for_project_error(request: Request, exc: ProjectError) -> Response:
 
 
 # ---------------------------------------------------------------------------
+# N22 column-selection helpers: request-time override, org default, or
+# every column (unchanged pre-N22 behavior), in that priority order.
+# ---------------------------------------------------------------------------
+
+
+class _InvalidReportColumns(ValueError):
+    """A request-time column override named a column outside the canonical set."""
+
+
+def _validate_requested_columns(
+    requested: list[str] | None, canonical: tuple[str, ...], field_name: str
+) -> list[str] | None:
+    """Reject an unknown column name in a request-time override.
+
+    The org-template's stored subset is already schema-validated at write
+    time (``schemas.report_format_template``); a request-time value is
+    checked here so a typo in the query string answers 422, not a silently
+    empty column.
+    """
+    if not requested:
+        return None
+    unknown = sorted(set(requested) - set(canonical))
+    if unknown:
+        raise _InvalidReportColumns(f"{field_name} contains unknown column(s): {unknown}")
+    return requested
+
+
+async def _organization_id_for_team(session: AsyncSession, team_id: uuid.UUID) -> uuid.UUID:
+    return (
+        await session.execute(select(Team.organization_id).where(Team.id == team_id))
+    ).scalar_one()
+
+
+def _resolve_report_columns(
+    requested: list[str] | None, org_default: list[str] | None
+) -> list[str] | None:
+    """Priority: request-time override, then the organization default, then
+    ``None`` (every column, the pre-N22 output). Never a merge of the two."""
+    return requested or org_default
+
+
+# ---------------------------------------------------------------------------
 # GET /v1/projects/{project_id}/vulnerability-report.pdf
 # ---------------------------------------------------------------------------
 
@@ -157,6 +204,11 @@ def _problem_for_project_error(request: Request, exc: ProjectError) -> Response:
         },
         401: {"description": "Authentication required"},
         404: {"description": "Project not found or not accessible"},
+        422: {
+            "description": "A vulnerability_columns/component_columns value names an "
+            "unknown column",
+            "content": {"application/problem+json": {}},
+        },
         500: {
             "description": "PDF rendering failed (e.g. weasyprint unavailable)",
             "content": {"application/problem+json": {}},
@@ -166,6 +218,20 @@ def _problem_for_project_error(request: Request, exc: ProjectError) -> Response:
 async def get_vulnerability_report_pdf_endpoint(
     request: Request,
     project_id: uuid.UUID,
+    vulnerability_columns: list[str] | None = Query(
+        default=None,
+        description=(
+            f"Subset of {list(REPORT_VULNERABILITY_COLUMNS)} to render. Overrides the "
+            "organization's report formatting default for this request only."
+        ),
+    ),
+    component_columns: list[str] | None = Query(
+        default=None,
+        description=(
+            f"Subset of {list(REPORT_COMPONENT_COLUMNS)} to render. Overrides the "
+            "organization's report formatting default for this request only."
+        ),
+    ),
     session: AsyncSession = Depends(get_db),
     actor: CurrentUser = Depends(require_role("viewer")),
 ) -> Response:
@@ -189,6 +255,30 @@ async def get_vulnerability_report_pdf_endpoint(
         resource_id=str(project_id),
         deny=lambda: ProjectForbidden(f"actor is not a member of team {project.team_id}"),
     )
+
+    # N22: a request-time column override is validated before any further
+    # work, so a typo answers 422 without the cost of gathering report data.
+    try:
+        requested_vuln_columns = _validate_requested_columns(
+            vulnerability_columns, REPORT_VULNERABILITY_COLUMNS, "vulnerability_columns"
+        )
+        requested_component_columns = _validate_requested_columns(
+            component_columns, REPORT_COMPONENT_COLUMNS, "component_columns"
+        )
+    except _InvalidReportColumns as exc:
+        return problem_response(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            title="Invalid Report Columns",
+            detail=str(exc),
+            instance=request.url.path,
+        )
+
+    # N22: the organization's formatting defaults (header/label/columns).
+    # Request-time columns (validated above) take priority over these; header
+    # text and the org label have no request-time override (deployment-wide
+    # boilerplate, same posture as the NOTICE template).
+    organization_id = await _organization_id_for_team(session, project.team_id)
+    format_template = await get_report_format_template(session, organization_id=organization_id)
 
     # Gather report data by reusing the existing read services — no duplicate
     # queries. Each enforces its own team guard internally as well.
@@ -223,6 +313,16 @@ async def get_vulnerability_report_pdf_endpoint(
         vulnerabilities=vulnerabilities,
         components_total=components_total,
         vulnerabilities_total=vulnerabilities_total,
+        header_text=format_template.header_text if format_template else None,
+        org_label=format_template.org_label if format_template else None,
+        vulnerability_columns=_resolve_report_columns(
+            requested_vuln_columns,
+            format_template.vulnerability_columns if format_template else None,
+        ),
+        component_columns=_resolve_report_columns(
+            requested_component_columns,
+            format_template.component_columns if format_template else None,
+        ),
     )
 
     # Client-abandonment guard (Tier 6): skip the expensive weasyprint render if
@@ -399,9 +499,7 @@ async def get_vulnerability_report_xlsx_endpoint(
     )
 
     headers = {
-        "content-disposition": _format_content_disposition(
-            overview["project_name"], ext="xlsx"
-        ),
+        "content-disposition": _format_content_disposition(overview["project_name"], ext="xlsx"),
     }
     return Response(
         content=xlsx_bytes,

@@ -620,6 +620,8 @@ The PDF response is `application/pdf`; the Excel response is `application/vnd.op
 Downloading the report requires `developer` or higher. Cross-team callers receive `404`, not `403`, so a non-member cannot tell whether the project exists.
 :::
 
+An organization can set a header line, replace the "TRUSCA" brand text, and narrow which columns the PDF/HTML report renders; see [Report format templates](../admin-guide/report-format-templates.md). The PDF endpoint also accepts `vulnerability_columns` / `component_columns` query parameters to override the organization default for a single request.
+
 ## VEX documents — export & import
 
 Your triage can leave the portal as a standards document and come back in:

@@ -47,6 +47,9 @@
     "obligation_id",
     "project_id"
   ],
+  "DELETE /v1/report-format-templates/org/{organization_id}": [
+    "organization_id"
+  ],
   "DELETE /v1/saved-searches/{saved_search_id}": [
     "saved_search_id"
   ],
@@ -524,10 +527,15 @@
     "scan_id"
   ],
   "GET /v1/projects/{project_id}/vulnerability-report.pdf": [
-    "project_id"
+    "component_columns",
+    "project_id",
+    "vulnerability_columns"
   ],
   "GET /v1/projects/{project_id}/vulnerability-report.xlsx": [
     "project_id"
+  ],
+  "GET /v1/report-format-templates/org/{organization_id}": [
+    "organization_id"
   ],
   "GET /v1/saved-searches": [],
   "GET /v1/scan-schedules/effective/{project_id}": [
@@ -720,6 +728,9 @@
   "PUT /v1/projects/{project_id}/obligations/{obligation_id}/fulfilment": [
     "obligation_id",
     "project_id"
+  ],
+  "PUT /v1/report-format-templates/org/{organization_id}": [
+    "organization_id"
   ],
   "PUT /v1/scan-schedules/org/{organization_id}": [
     "organization_id"

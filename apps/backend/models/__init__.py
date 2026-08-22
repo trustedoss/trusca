@@ -98,6 +98,11 @@ from .report_download import (  # noqa: E402,F401  (imported for metadata side e
     REPORT_TYPE_VALUES,
     ReportDownload,
 )
+from .report_format_template import (  # noqa: E402,F401  (imported for metadata side effects)
+    REPORT_COMPONENT_COLUMNS,
+    REPORT_VULNERABILITY_COLUMNS,
+    ReportFormatTemplate,
+)
 from .saved_search import (  # noqa: E402,F401  (imported for metadata side effects)
     SavedSearch,
 )
@@ -168,9 +173,12 @@ __all__ = [
     "Project",
     "REMEDIATION_PR_STATUS_VALUES",
     "REPORT_TYPE_VALUES",
+    "REPORT_COMPONENT_COLUMNS",
+    "REPORT_VULNERABILITY_COLUMNS",
     "RefreshToken",
     "RemediationPullRequest",
     "ReportDownload",
+    "ReportFormatTemplate",
     "SavedSearch",
     "SbomConformance",
     "SCAN_SCHEDULE_CADENCE_VALUES",

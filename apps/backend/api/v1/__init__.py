@@ -31,6 +31,7 @@ from .organization_verdicts import router as organization_verdicts_router
 from .policy_gate import router as policy_gate_router
 from .projects import router as projects_router
 from .remediation import router as remediation_router
+from .report_format_templates import router as report_format_templates_router
 from .reports import router as reports_router
 from .saved_searches import router as saved_searches_router
 from .sbom import router as sbom_router
@@ -76,6 +77,7 @@ __all__ = [
     "policy_gate_router",
     "projects_router",
     "remediation_router",
+    "report_format_templates_router",
     "reports_router",
     "sbom_router",
     "scan_schedules_router",

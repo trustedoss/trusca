@@ -37,13 +37,21 @@ G1 NOTICE work.
 from __future__ import annotations
 
 import html
+from collections.abc import Sequence
 from datetime import UTC, datetime
 from typing import Any, cast
 from urllib.parse import urlsplit
 
 import structlog
 
+from models import REPORT_COMPONENT_COLUMNS, REPORT_VULNERABILITY_COLUMNS
+
 log = structlog.get_logger("report.service")
+
+# Local aliases: this module renders the columns, ``models`` owns the
+# canonical vocabulary (shared with the formatting-template schema/service).
+_VULNERABILITY_COLUMNS = REPORT_VULNERABILITY_COLUMNS
+_COMPONENT_COLUMNS = REPORT_COMPONENT_COLUMNS
 
 
 # ---------------------------------------------------------------------------
@@ -175,6 +183,10 @@ def build_report_html(
     vulnerabilities: list[dict[str, Any]],
     components_total: int | None = None,
     vulnerabilities_total: int | None = None,
+    header_text: str | None = None,
+    org_label: str | None = None,
+    vulnerability_columns: Sequence[str] | None = None,
+    component_columns: Sequence[str] | None = None,
 ) -> str:
     """Build a self-contained HTML report string.
 
@@ -186,6 +198,18 @@ def build_report_html(
     addition does not break rendering.
 
     Every untrusted field is routed through :func:`_esc` / :func:`_safe_href`.
+
+    N22 formatting (all optional, all default to the pre-N22 output):
+
+    - ``header_text``: an extra plain-text line under the header. Absent by
+      default (no line rendered).
+    - ``org_label``: replaces the "TRUSCA" brand text. Defaults to "TRUSCA".
+    - ``vulnerability_columns`` / ``component_columns``: a subset of
+      :data:`models.REPORT_VULNERABILITY_COLUMNS` /
+      :data:`models.REPORT_COMPONENT_COLUMNS` to render, always in canonical
+      order regardless of the order passed in; this is a *selection*, never
+      a reorder or a computed column. ``None`` (the default) renders every
+      column, exactly matching the pre-N22 output.
     """
     capped_components = components[:_MAX_COMPONENTS]
     capped_vulns = vulnerabilities[:_MAX_VULNERABILITIES]
@@ -209,10 +233,12 @@ def build_report_html(
 
     # --- Header ---------------------------------------------------------
     parts.append('<header class="report-header">')
-    parts.append('<div class="brand">TRUSCA</div>')
+    parts.append(f'<div class="brand">{_esc(org_label or "TRUSCA")}</div>')
     parts.append('<h1 class="report-title">Vulnerability Report</h1>')
     parts.append(f'<div class="project-name">{_esc(project_name)}</div>')
     parts.append(f'<div class="generated">Generated: {_esc(generated_iso)}</div>')
+    if header_text:
+        parts.append(f'<div class="header-text">{_esc(header_text)}</div>')
     parts.append("</header>")
 
     # --- Risk summary ---------------------------------------------------
@@ -239,14 +265,43 @@ def build_report_html(
     )
 
     # --- Vulnerabilities (grouped by severity) -------------------------
-    parts.append(_render_vulnerabilities_section(capped_vulns, vuln_total))
+    parts.append(
+        _render_vulnerabilities_section(
+            capped_vulns,
+            vuln_total,
+            columns=_resolve_columns(vulnerability_columns, _VULNERABILITY_COLUMNS),
+        )
+    )
 
     # --- Components -----------------------------------------------------
-    parts.append(_render_components_section(capped_components, comp_total))
+    parts.append(
+        _render_components_section(
+            capped_components,
+            comp_total,
+            columns=_resolve_columns(component_columns, _COMPONENT_COLUMNS),
+        )
+    )
 
     parts.append("</body>")
     parts.append("</html>")
     return "\n".join(parts)
+
+
+def _resolve_columns(
+    requested: Sequence[str] | None, canonical: tuple[str, ...]
+) -> tuple[str, ...]:
+    """A selection is always a subset of ``canonical``, in canonical order.
+
+    ``None`` (no selection given) renders every column, the pre-N22 output.
+    An unknown name is dropped rather than raising: callers that validate
+    (the API layer, via the schema) already reject unknown names before this
+    point, so a defensive drop here only guards against a future caller that
+    forgets to.
+    """
+    if requested is None:
+        return canonical
+    wanted = set(requested)
+    return tuple(c for c in canonical if c in wanted)
 
 
 def _render_styles() -> str:
@@ -264,6 +319,8 @@ def _render_styles() -> str:
         "  .report-title { font-size: 20px; margin: 4px 0 2px 0; }\n"
         "  .project-name { font-size: 13px; font-weight: 600; }\n"
         "  .generated { font-size: 9px; color: #64748b; margin-top: 2px; }\n"
+        "  .header-text { font-size: 9px; color: #334155; margin-top: 6px;\n"
+        "                 white-space: pre-wrap; }\n"
         "  h2 { font-size: 13px; margin: 18px 0 6px 0; border-bottom: 1px solid #e2e8f0;\n"
         "       padding-bottom: 3px; }\n"
         "  h3 { font-size: 11px; margin: 12px 0 4px 0; }\n"
@@ -341,7 +398,7 @@ def _render_distribution_section(
             "</span></div>"
         )
     body = "\n".join(rows) if rows else '  <div class="muted">No data.</div>'
-    return f'<section>\n  <h2>{_esc(heading)}</h2>\n{body}\n</section>'
+    return f"<section>\n  <h2>{_esc(heading)}</h2>\n{body}\n</section>"
 
 
 def _severity_of(item: dict[str, Any]) -> str:
@@ -349,11 +406,31 @@ def _severity_of(item: dict[str, Any]) -> str:
     return str(sev).lower()
 
 
+_VULN_COLUMN_HEADINGS: dict[str, str] = {
+    "cve": "CVE",
+    "cvss": "CVSS",
+    "summary": "Summary",
+    "status": "Status",
+}
+
+
+def _vuln_cell(column: str, v: dict[str, Any]) -> str:
+    if column == "cve":
+        return f'<td class="mono">{_esc(v.get("cve_id"))}</td>'
+    if column == "cvss":
+        return f"<td>{_esc(_fmt_cvss(v.get('cvss_score')))}</td>"
+    if column == "summary":
+        return f'<td>{_esc(v.get("summary") or "")}</td>'
+    return f'<td>{_esc(v.get("status") or "")}</td>'  # status
+
+
 def _render_vulnerabilities_section(
     vulnerabilities: list[dict[str, Any]],
     total: int,
+    *,
+    columns: tuple[str, ...] = _VULNERABILITY_COLUMNS,
 ) -> str:
-    parts: list[str] = ['<section>', '  <h2>Vulnerabilities</h2>']
+    parts: list[str] = ["<section>", "  <h2>Vulnerabilities</h2>"]
     if not vulnerabilities:
         parts.append('  <div class="muted">No vulnerabilities detected.</div>')
         parts.append("</section>")
@@ -367,6 +444,8 @@ def _render_vulnerabilities_section(
     ordered_keys = [k for k in _SEVERITY_ORDER if k in grouped]
     ordered_keys.extend(k for k in grouped if k not in _SEVERITY_ORDER)
 
+    headings = "".join(f"<th>{_VULN_COLUMN_HEADINGS[c]}</th>" for c in columns)
+
     for key in ordered_keys:
         rows = grouped[key]
         color = _SEVERITY_COLOR.get(key, "#71717a")
@@ -376,20 +455,11 @@ def _render_vulnerabilities_section(
             f'<span class="muted">({len(rows)})</span></h3>'
         )
         parts.append("  <table>")
-        parts.append(
-            "    <thead><tr><th>CVE</th><th>CVSS</th>"
-            "<th>Summary</th><th>Status</th></tr></thead>"
-        )
+        parts.append(f"    <thead><tr>{headings}</tr></thead>")
         parts.append("    <tbody>")
         for v in rows:
-            cve = _esc(v.get("cve_id"))
-            cvss = _esc(_fmt_cvss(v.get("cvss_score")))
-            summary = _esc(v.get("summary") or "")
-            vstatus = _esc(v.get("status") or "")
-            parts.append(
-                f'      <tr><td class="mono">{cve}</td><td>{cvss}</td>'
-                f"<td>{summary}</td><td>{vstatus}</td></tr>"
-            )
+            cells = "".join(_vuln_cell(c, v) for c in columns)
+            parts.append(f"      <tr>{cells}</tr>")
         parts.append("    </tbody>")
         parts.append("  </table>")
 
@@ -403,36 +473,51 @@ def _render_vulnerabilities_section(
     return "\n".join(parts)
 
 
+_COMPONENT_COLUMN_HEADINGS: dict[str, str] = {
+    "name": "Name",
+    "version": "Version",
+    "license": "License",
+    "severity": "Max Severity",
+    "vulns": "Vulns",
+}
+
+
+def _component_cell(column: str, c: dict[str, Any]) -> str:
+    if column == "name":
+        return f"<td>{_esc(c.get('name'))}</td>"
+    if column == "version":
+        return f'<td class="mono">{_esc(c.get("version"))}</td>'
+    if column == "license":
+        return f'<td>{_esc(c.get("license") or "")}</td>'
+    if column == "severity":
+        sev = _severity_of(c)
+        sev_color = _SEVERITY_COLOR.get(sev, "#71717a")
+        return (
+            f'<td><span class="badge" style="background:{_esc(sev_color)};">'
+            f"{_esc(sev.capitalize())}</span></td>"
+        )
+    return f"<td>{int(c.get('vulnerability_count') or 0)}</td>"  # vulns
+
+
 def _render_components_section(
     components: list[dict[str, Any]],
     total: int,
+    *,
+    columns: tuple[str, ...] = _COMPONENT_COLUMNS,
 ) -> str:
-    parts: list[str] = ['<section>', '  <h2>Components</h2>']
+    parts: list[str] = ["<section>", "  <h2>Components</h2>"]
     if not components:
         parts.append('  <div class="muted">No components detected.</div>')
         parts.append("</section>")
         return "\n".join(parts)
 
+    headings = "".join(f"<th>{_COMPONENT_COLUMN_HEADINGS[c]}</th>" for c in columns)
     parts.append("  <table>")
-    parts.append(
-        "    <thead><tr><th>Name</th><th>Version</th><th>License</th>"
-        "<th>Max Severity</th><th>Vulns</th></tr></thead>"
-    )
+    parts.append(f"    <thead><tr>{headings}</tr></thead>")
     parts.append("    <tbody>")
     for c in components:
-        name = _esc(c.get("name"))
-        version = _esc(c.get("version"))
-        lic = _esc(c.get("license") or "")
-        sev = _severity_of(c)
-        sev_color = _SEVERITY_COLOR.get(sev, "#71717a")
-        vuln_count = int(c.get("vulnerability_count") or 0)
-        parts.append(
-            f'      <tr><td>{name}</td><td class="mono">{version}</td>'
-            f"<td>{lic}</td>"
-            f'<td><span class="badge" style="background:{_esc(sev_color)};">'
-            f"{_esc(sev.capitalize())}</span></td>"
-            f"<td>{vuln_count}</td></tr>"
-        )
+        cells = "".join(_component_cell(col, c) for col in columns)
+        parts.append(f"      <tr>{cells}</tr>")
     parts.append("    </tbody>")
     parts.append("  </table>")
 

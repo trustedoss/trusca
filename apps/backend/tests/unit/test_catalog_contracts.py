@@ -67,9 +67,7 @@ def test_notification_kind_enum_matches_the_shared_frontend_fixture() -> None:
 
     from models.notification import NOTIFICATION_KIND_VALUES
 
-    fixture = (
-        Path(__file__).resolve().parents[4] / "tests/contracts/notification-kinds.json"
-    )
+    fixture = Path(__file__).resolve().parents[4] / "tests/contracts/notification-kinds.json"
     assert fixture.is_file(), f"shared notification-kind fixture missing: {fixture}"
     kinds = json.loads(fixture.read_text(encoding="utf-8"))["kinds"]
 
@@ -284,9 +282,9 @@ def test_review_flag_router_pattern_matches_classifier_values() -> None:
 
     from services.license_flags import REVIEW_FLAG_VALUES
 
-    src = (
-        pathlib.Path(__file__).resolve().parents[2] / "api" / "v1" / "licenses.py"
-    ).read_text(encoding="utf-8")
+    src = (pathlib.Path(__file__).resolve().parents[2] / "api" / "v1" / "licenses.py").read_text(
+        encoding="utf-8"
+    )
     patterns = re.findall(r'pattern=r"\^\(([a-z_|]+)\)\$"', src)
     review_alternations = [p for p in patterns if "behavioral_use" in p]
     # The list endpoint and its CSV export (D9) both take this filter, so more
@@ -336,9 +334,9 @@ def test_conflict_router_pattern_matches_verdict_values() -> None:
 
     from services.license_conflict import CONFLICT_VERDICT_VALUES
 
-    src = (
-        pathlib.Path(__file__).resolve().parents[2] / "api" / "v1" / "licenses.py"
-    ).read_text(encoding="utf-8")
+    src = (pathlib.Path(__file__).resolve().parents[2] / "api" / "v1" / "licenses.py").read_text(
+        encoding="utf-8"
+    )
     patterns = re.findall(r'pattern=r"\^\(([a-z_|]+)\)\$"', src)
     conflict_alternations = [p for p in patterns if "incompatible" in p]
     # The list endpoint and its CSV export (D9) both take this filter, so more
@@ -464,12 +462,12 @@ def test_every_catalog_license_has_both_summaries() -> None:
     assert catalogued, "catalog exposes no SPDX ids — layout changed?"
     assert summarized, "summary module exposes nothing — layout changed?"
 
-    assert not (catalogued - summarized), (
-        f"catalogued licenses with no summary: {sorted(catalogued - summarized)}"
-    )
-    assert not (summarized - catalogued), (
-        f"summaries for licenses outside the catalog: {sorted(summarized - catalogued)}"
-    )
+    assert not (
+        catalogued - summarized
+    ), f"catalogued licenses with no summary: {sorted(catalogued - summarized)}"
+    assert not (
+        summarized - catalogued
+    ), f"summaries for licenses outside the catalog: {sorted(summarized - catalogued)}"
 
 
 def test_translated_content_is_non_empty_and_actually_korean() -> None:
@@ -494,9 +492,9 @@ def test_translated_content_is_non_empty_and_actually_korean() -> None:
         assert summary.en.strip(), f"empty English summary for {spdx_id}"
         assert summary.ko.strip(), f"empty Korean summary for {spdx_id}"
         assert _has_hangul(summary.ko), f"Korean summary has no Hangul for {spdx_id}"
-        assert not _has_hangul(summary.en), (
-            f"English summary contains Hangul for {spdx_id} — swapped fields?"
-        )
+        assert not _has_hangul(
+            summary.en
+        ), f"English summary contains Hangul for {spdx_id}: swapped fields?"
 
 
 # ---------------------------------------------------------------------------
@@ -526,13 +524,11 @@ def test_user_guide_documents_every_conflict_verdict() -> None:
     for guide in guides:
         assert guide.is_file(), f"{guide} is missing"
         body = guide.read_text(encoding="utf-8")
-        assert "outbound-license-conflicts" in body, (
-            f"{guide.name} no longer carries the outbound-conflict section"
-        )
+        assert (
+            "outbound-license-conflicts" in body
+        ), f"{guide.name} no longer carries the outbound-conflict section"
         missing = [v for v in CONFLICT_VERDICT_VALUES if f"`{v}`" not in body]
-        assert not missing, (
-            f"{guide.name} does not document these verdicts: {missing}"
-        )
+        assert not missing, f"{guide.name} does not document these verdicts: {missing}"
 
 
 # ---------------------------------------------------------------------------
@@ -644,17 +640,17 @@ def test_ai_verdicts_and_scenarios_are_documented_in_both_guides() -> None:
     for guide in guides:
         assert guide.is_file(), f"{guide} is missing"
         body = guide.read_text(encoding="utf-8")
-        assert "ai-usage-verdicts" in body, (
-            f"{guide.name} no longer carries the usage-verdict section"
-        )
+        assert (
+            "ai-usage-verdicts" in body
+        ), f"{guide.name} no longer carries the usage-verdict section"
         missing_verdicts = [v for v in AI_VERDICT_VALUES if f"`{v}`" not in body]
-        assert not missing_verdicts, (
-            f"{guide.name} does not document these verdicts: {missing_verdicts}"
-        )
+        assert (
+            not missing_verdicts
+        ), f"{guide.name} does not document these verdicts: {missing_verdicts}"
         missing_scenarios = [s for s in USAGE_SCENARIOS if f"`{s}`" not in body]
-        assert not missing_scenarios, (
-            f"{guide.name} does not document these scenarios: {missing_scenarios}"
-        )
+        assert (
+            not missing_scenarios
+        ), f"{guide.name} does not document these scenarios: {missing_scenarios}"
 
 
 def test_developer_reachable_csv_exports_are_rate_limited() -> None:
@@ -691,12 +687,12 @@ def test_developer_reachable_csv_exports_are_rate_limited() -> None:
     # Without this the assertion below is vacuous: a rename of the path suffix
     # would leave nothing matched and the test would pass having checked
     # nothing at all.
-    assert len(matched) == 5, (
-        f"expected the five developer-reachable CSV exports, matched: {matched}"
-    )
-    assert not unlimited, (
-        f"CSV export routes reachable by a developer with no rate limit: {unlimited}"
-    )
+    assert (
+        len(matched) == 5
+    ), f"expected the five developer-reachable CSV exports, matched: {matched}"
+    assert (
+        not unlimited
+    ), f"CSV export routes reachable by a developer with no rate limit: {unlimited}"
 
 
 # ---------------------------------------------------------------------------
@@ -824,9 +820,7 @@ def test_approvable_statuses_match_the_shared_fixture() -> None:
 
     from schemas.gate_policy import APPROVABLE_STATUSES
 
-    fixture = (
-        Path(__file__).resolve().parents[4] / "tests/contracts/approvable-statuses.json"
-    )
+    fixture = Path(__file__).resolve().parents[4] / "tests/contracts/approvable-statuses.json"
     assert fixture.is_file(), f"shared approvable-status fixture missing: {fixture}"
     statuses = json.loads(fixture.read_text(encoding="utf-8"))["statuses"]
 
@@ -862,10 +856,7 @@ def test_approval_failure_reasons_match_the_shared_fixture() -> None:
 
     from api.v1.transition_approvals import _REASON_FOR
 
-    fixture = (
-        Path(__file__).resolve().parents[4]
-        / "tests/contracts/approval-failure-reasons.json"
-    )
+    fixture = Path(__file__).resolve().parents[4] / "tests/contracts/approval-failure-reasons.json"
     assert fixture.is_file(), f"shared approval-reason fixture missing: {fixture}"
     reasons = json.loads(fixture.read_text(encoding="utf-8"))["reasons"]
 
@@ -905,9 +896,7 @@ def test_distribution_models_match_the_shared_fixture() -> None:
 
     from schemas.scan import DISTRIBUTION_MODELS
 
-    fixture = (
-        Path(__file__).resolve().parents[4] / "tests/contracts/distribution-models.json"
-    )
+    fixture = Path(__file__).resolve().parents[4] / "tests/contracts/distribution-models.json"
     assert fixture.is_file(), f"shared distribution-model fixture missing: {fixture}"
     models = json.loads(fixture.read_text(encoding="utf-8"))["models"]
 
@@ -948,9 +937,7 @@ def test_api_key_breadths_match_the_shared_fixture() -> None:
 
     from schemas.api_key import API_KEY_PERMISSION_BREADTHS
 
-    fixture = (
-        Path(__file__).resolve().parents[4] / "tests/contracts/api-key-breadths.json"
-    )
+    fixture = Path(__file__).resolve().parents[4] / "tests/contracts/api-key-breadths.json"
     assert fixture.is_file(), f"shared api-key-breadth fixture missing: {fixture}"
     breadths = json.loads(fixture.read_text(encoding="utf-8"))["breadths"]
 
@@ -1051,8 +1038,7 @@ def test_fulfilment_statuses_match_the_database_and_the_shared_fixture() -> None
     )
     allowed_by_the_database = set(re.findall(r"'([a-z_]+)'", str(constraint.sqltext)))
     fixture = (
-        Path(__file__).resolve().parents[4]
-        / "tests/contracts/obligation-fulfilment-statuses.json"
+        Path(__file__).resolve().parents[4] / "tests/contracts/obligation-fulfilment-statuses.json"
     )
     assert fixture.is_file(), f"shared fulfilment-status fixture missing: {fixture}"
     statuses = json.loads(fixture.read_text(encoding="utf-8"))["statuses"]
@@ -1139,12 +1125,13 @@ def test_the_grades_a_deployment_setting_accepts_are_the_assignable_ones(
         ",".join(f"group-{grade}:{grade}" for grade in sorted(assignable)),
     )
     mapped = oidc_group_role_map()
-    assert set(mapped.values()) == assignable, (
-        "OIDC_GROUP_ROLE_MAP dropped a grade a team membership can carry"
-    )
+    assert (
+        set(mapped.values()) == assignable
+    ), "OIDC_GROUP_ROLE_MAP dropped a grade a team membership can carry"
 
     monkeypatch.setenv("OIDC_GROUP_ROLE_MAP", "everyone:super_admin")
     assert oidc_group_role_map() == {}
+
 
 # ---------------------------------------------------------------------------
 # Notification routing conditions
@@ -1175,9 +1162,7 @@ def test_a_routing_rules_conditions_use_the_vocabularies_they_name() -> None:
     assert set(_SEVERITY_ORDER) == set(VULN_SEVERITY_VALUES)
 
     for kind in NOTIFICATION_KIND_VALUES:
-        NotificationRoutingRuleIn(
-            name="k", kinds=[kind], email_recipients=["ops@example.com"]
-        )
+        NotificationRoutingRuleIn(name="k", kinds=[kind], email_recipients=["ops@example.com"])
     for severity in VULN_SEVERITY_VALUES:
         NotificationRoutingRuleIn(
             name="s", min_severity=severity, email_recipients=["ops@example.com"]
@@ -1218,9 +1203,9 @@ def test_the_metrics_contract_declares_only_aggregates_with_closed_labels() -> N
     from pathlib import Path
 
     contract = json.loads(
-        (
-            Path(__file__).resolve().parents[4] / "tests/contracts/metrics-series.json"
-        ).read_text(encoding="utf-8")
+        (Path(__file__).resolve().parents[4] / "tests/contracts/metrics-series.json").read_text(
+            encoding="utf-8"
+        )
     )
 
     # Label keys that would carry a name somebody chose. Severity and status
@@ -1239,9 +1224,9 @@ def test_the_metrics_contract_declares_only_aggregates_with_closed_labels() -> N
                 "a closed vocabulary this codebase owns, never a name that "
                 "came from a user"
             )
-            assert not label.endswith(("_name", "_email", "_id")), (
-                f"{series['name']} carries {label}, which names a row"
-            )
+            assert not label.endswith(
+                ("_name", "_email", "_id")
+            ), f"{series['name']} carries {label}, which names a row"
 
 
 def test_the_severity_labels_a_metric_can_carry_are_the_finding_severities() -> None:
@@ -1267,3 +1252,47 @@ def test_the_severity_labels_a_metric_can_carry_are_the_finding_severities() -> 
         "from a literal list that will fall behind it"
     )
     assert len(VULN_SEVERITY_VALUES) >= 4
+
+
+# ---------------------------------------------------------------------------
+# Report column vocabulary: N22 guard
+# ---------------------------------------------------------------------------
+
+
+def test_report_column_headings_cover_exactly_the_canonical_vulnerability_columns() -> None:
+    """``models.REPORT_VULNERABILITY_COLUMNS`` is the single source of truth
+    for the vulnerability-table column vocabulary. The renderer's heading
+    dict and cell-selector branches are hand-written copies of that set, and a
+    column added to one without the other renders as a header with no cells,
+    or a selection that silently drops a column, either invisible to the
+    per-module tests, which only exercise columns that already exist."""
+    from models import REPORT_VULNERABILITY_COLUMNS
+    from services.report_service import _VULN_COLUMN_HEADINGS
+
+    assert set(_VULN_COLUMN_HEADINGS) == set(REPORT_VULNERABILITY_COLUMNS)
+
+
+def test_report_column_headings_cover_exactly_the_canonical_component_columns() -> None:
+    from models import REPORT_COMPONENT_COLUMNS
+    from services.report_service import _COMPONENT_COLUMN_HEADINGS
+
+    assert set(_COMPONENT_COLUMN_HEADINGS) == set(REPORT_COMPONENT_COLUMNS)
+
+
+def test_report_format_template_schema_validates_against_the_same_vocabulary() -> None:
+    """The organization-template schema's column validator and the renderer
+    must reject/accept the identical set, otherwise an admin could save a
+    template naming a column the renderer does not know how to draw."""
+    import pytest
+    from pydantic import ValidationError
+
+    from models import REPORT_COMPONENT_COLUMNS, REPORT_VULNERABILITY_COLUMNS
+    from schemas.report_format_template import ReportFormatTemplateUpsertIn
+
+    ReportFormatTemplateUpsertIn(vulnerability_columns=list(REPORT_VULNERABILITY_COLUMNS))
+    ReportFormatTemplateUpsertIn(component_columns=list(REPORT_COMPONENT_COLUMNS))
+
+    with pytest.raises(ValidationError, match="unknown"):
+        ReportFormatTemplateUpsertIn(vulnerability_columns=["not-a-real-column"])
+    with pytest.raises(ValidationError, match="unknown"):
+        ReportFormatTemplateUpsertIn(component_columns=["not-a-real-column"])
