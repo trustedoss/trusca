@@ -55,6 +55,10 @@
     ],
     [
       "GET",
+      "/v1/projects/export.csv"
+    ],
+    [
+      "GET",
       "/v1/projects/{project_id}"
     ],
     [
@@ -84,6 +88,10 @@
     [
       "GET",
       "/v1/projects/{project_id}/licenses"
+    ],
+    [
+      "GET",
+      "/v1/projects/{project_id}/licenses/export.csv"
     ],
     [
       "GET",

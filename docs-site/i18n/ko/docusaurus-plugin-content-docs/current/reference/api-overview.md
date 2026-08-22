@@ -131,6 +131,7 @@ DELETE /v1/users/me/oauth-identities/{identity_id}   # last-OAuth + has-password
                                                      # 409 → urn:trustedoss:problem:last-oauth-link
 
 GET    /v1/projects                          목록 (팀 범위)
+GET    /v1/projects/export.csv               목록과 동일한 행, 페이지 없이 전량 (D9)
 POST   /v1/projects
 GET    /v1/projects/{id}
 PATCH  /v1/projects/{id}
@@ -144,6 +145,7 @@ GET    /v1/projects/{id}/scans
 POST   /v1/projects/{id}/scans               202 Accepted; Celery 태스크 큐잉
 GET    /v1/projects/{id}/vulnerabilities
 GET    /v1/projects/{id}/licenses
+GET    /v1/projects/{id}/licenses/export.csv  목록과 동일한 행, 페이지 없이 전량 (D9)
 GET    /v1/projects/{id}/obligations
 GET    /v1/projects/{id}/obligations/{obligation_id}
 PUT    /v1/projects/{id}/obligations/{obligation_id}/fulfilment   # If-Match optional

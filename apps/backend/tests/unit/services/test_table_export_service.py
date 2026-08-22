@@ -206,9 +206,11 @@ def test_each_export_declares_its_own_problem_type() -> None:
         svc.VulnerabilitiesExportTooLarge("x"),
         svc.ComponentsExportTooLarge("x"),
         svc.InventoryExportTooLarge("x"),
+        svc.LicensesExportTooLarge("x"),
+        svc.ProjectsExportTooLarge("x"),
     ]
-    assert len({e.type_uri for e in errors}) == 3
-    assert len({e.extension for e in errors}) == 3
+    assert len({e.type_uri for e in errors}) == len(errors)
+    assert len({e.extension for e in errors}) == len(errors)
     for err in errors:
         assert err.status_code == 413
         assert err.extensions == {err.extension: True}
@@ -221,6 +223,8 @@ def test_column_contracts_are_stable_and_unique() -> None:
         svc.VULNERABILITIES_CSV_COLUMNS,
         svc.COMPONENTS_CSV_COLUMNS,
         svc.INVENTORY_CSV_COLUMNS,
+        svc.LICENSES_CSV_COLUMNS,
+        svc.PROJECTS_CSV_COLUMNS,
     ):
         assert len(columns) == len(set(columns))
         assert all(c and c.islower() for c in columns)
@@ -389,6 +393,27 @@ def test_export_columns_resolve_against_their_list_payloads() -> None:
             {},
             model_fields("schemas.inventory", "InventoryComponentRow"),
         ),
+        (
+            "licenses",
+            svc.LICENSES_CSV_COLUMNS,
+            {"license_finding_id": "id"},
+            # `conflict_verdict` is synthesized in `stream_licenses_csv` itself
+            # (flattening the nested {verdict, why, dependency_class} object
+            # `list_project_licenses` returns under the key `conflict`), not a
+            # key that service returns directly.
+            dict_keys_in("services/license_service.py", "list_project_licenses")
+            | {"conflict_verdict"},
+        ),
+        (
+            "projects",
+            svc.PROJECTS_CSV_COLUMNS,
+            {},
+            # Built inline in `stream_projects_csv` from ProjectPublic/ORM
+            # fields plus the same enrichment maps GET /v1/projects overlays
+            # onto its own JSON rows, so its own dict literal is the source
+            # of truth (there is no single upstream dict to compare against).
+            dict_keys_in("services/table_export_service.py", "stream_projects_csv"),
+        ),
     ]
 
     for label, columns, remap, available in cases:
@@ -422,3 +447,9 @@ def test_export_remaps_match_the_service_they_rename_from() -> None:
             f"the vulnerabilities export no longer remaps {csv_name} to "
             f"{service_key}; the column contract test needs updating with it"
         )
+
+    licenses_source = inspect.getsource(svc.stream_licenses_csv)
+    assert '"license_finding_id": "id"' in licenses_source, (
+        "the licenses export no longer remaps license_finding_id to id; "
+        "the column contract test needs updating with it"
+    )

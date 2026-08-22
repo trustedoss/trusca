@@ -54,12 +54,18 @@ log = structlog.get_logger(__name__)
 __all__ = [
     "COMPONENTS_CSV_COLUMNS",
     "INVENTORY_CSV_COLUMNS",
+    "LICENSES_CSV_COLUMNS",
+    "PROJECTS_CSV_COLUMNS",
     "VULNERABILITIES_CSV_COLUMNS",
     "ComponentsExportTooLarge",
     "InventoryExportTooLarge",
+    "LicensesExportTooLarge",
+    "ProjectsExportTooLarge",
     "VulnerabilitiesExportTooLarge",
     "stream_components_csv",
     "stream_inventory_csv",
+    "stream_licenses_csv",
+    "stream_projects_csv",
     "stream_vulnerabilities_csv",
 ]
 
@@ -104,6 +110,28 @@ class InventoryExportTooLarge(ExportTooLarge):
         )
 
 
+class LicensesExportTooLarge(ExportTooLarge):
+    title = "License Export Too Large"
+
+    def __init__(self, message: str) -> None:
+        super().__init__(
+            message,
+            type_uri=f"{_ERRORS_BASE}/licenses-export-too-large",
+            extension="licenses_export_too_large",
+        )
+
+
+class ProjectsExportTooLarge(ExportTooLarge):
+    title = "Project Export Too Large"
+
+    def __init__(self, message: str) -> None:
+        super().__init__(
+            message,
+            type_uri=f"{_ERRORS_BASE}/projects-export-too-large",
+            extension="projects_export_too_large",
+        )
+
+
 # Column order is the contract. A reader who has built a pivot table on last
 # month's export should not find the columns shuffled in this month's.
 VULNERABILITIES_CSV_COLUMNS = (
@@ -141,6 +169,45 @@ COMPONENTS_CSV_COLUMNS = (
     "currency_latest",
     "malicious_state",
     "component_id",
+)
+
+LICENSES_CSV_COLUMNS = (
+    "name",
+    "spdx_id",
+    "category",
+    "kind",
+    "affected_count",
+    "is_osi_approved",
+    "is_fsf_libre",
+    "review_flag",
+    "conflict_verdict",
+    "license_finding_id",
+)
+
+# The project-list JSON response's own field set (ProjectPublic + the
+# enrichment maps GET /v1/projects already overlays onto it), flattened. An
+# export that invented its own shape would answer a different question than
+# the screen it is supposed to let a reader take away.
+PROJECTS_CSV_COLUMNS = (
+    "name",
+    "slug",
+    "team_id",
+    "visibility",
+    "archived",
+    "latest_scan_status",
+    "severity_critical",
+    "severity_high",
+    "severity_medium",
+    "severity_low",
+    "license_forbidden",
+    "license_conditional",
+    "license_allowed",
+    "license_unknown",
+    "scan_count",
+    "release_count",
+    "last_scan_at",
+    "created_by",
+    "project_id",
 )
 
 INVENTORY_CSV_COLUMNS = (
@@ -366,5 +433,124 @@ async def stream_inventory_csv(
         fetch_page=fetch_page,
         too_large=InventoryExportTooLarge,
         label="inventory",
+    ):
+        yield chunk
+
+
+async def stream_licenses_csv(
+    session: AsyncSession,
+    *,
+    project_id: uuid.UUID,
+    actor: CurrentUser,
+    filters: dict[str, Any],
+) -> AsyncIterator[str]:
+    """The project's Licenses-tab rows, honouring the caller's active filters."""
+    from services.license_service import list_project_licenses
+
+    async def fetch_page(limit: int, offset: int) -> tuple[list[dict[str, Any]], int]:
+        items, _distribution, total, _declared, _conflict_summary = await list_project_licenses(
+            session,
+            project_id=project_id,
+            actor=actor,
+            limit=limit,
+            offset=offset,
+            **filters,
+        )
+        # `conflict` is a nested {verdict, why, dependency_class} object (or
+        # None); a spreadsheet cell wants the verdict alone, not a stringified
+        # dict.
+        for item in items:
+            conflict = item.get("conflict")
+            item["conflict_verdict"] = conflict.get("verdict") if conflict else None
+        return items, total
+
+    log.info(
+        "export.licenses.csv_started",
+        project_id=str(project_id),
+        actor_user_id=str(actor.id),
+    )
+    async for chunk in _stream(
+        columns=LICENSES_CSV_COLUMNS,
+        remap={"license_finding_id": "id"},
+        fetch_page=fetch_page,
+        too_large=LicensesExportTooLarge,
+        label="license",
+    ):
+        yield chunk
+
+
+async def stream_projects_csv(
+    session: AsyncSession,
+    *,
+    actor: CurrentUser,
+    filters: dict[str, Any],
+) -> AsyncIterator[str]:
+    """The project portfolio list, honouring the caller's active filters.
+
+    ``list_projects`` clamps ``size`` to 100 internally regardless of what is
+    asked for, so this pins the same 100 here rather than passing through
+    ``CSV_STREAM_CHUNK_ROWS`` (1000): page numbers only stay exact across
+    calls when every call derives them from the SAME per-page size the
+    service actually uses.
+    """
+    from services.project_list_enrichment import enrich_project_rows
+    from services.project_service import list_projects
+
+    page_size = 100
+
+    async def fetch_page(limit: int, offset: int) -> tuple[list[dict[str, Any]], int]:
+        page_number = offset // page_size + 1
+        rows, total = await list_projects(
+            session,
+            actor=actor,
+            page=page_number,
+            size=page_size,
+            **filters,
+        )
+        (
+            status_by_project,
+            severity_by_project,
+            counts_by_project,
+            license_by_project,
+            created_by_name,
+        ) = await enrich_project_rows(session, projects=rows)
+
+        items: list[dict[str, Any]] = []
+        for p in rows:
+            severity = severity_by_project.get(p.id) or {}
+            license_summary = license_by_project.get(p.id) or {}
+            counts = counts_by_project.get(p.id) or {}
+            items.append(
+                {
+                    "name": p.name,
+                    "slug": p.slug,
+                    "team_id": str(p.team_id),
+                    "visibility": p.visibility,
+                    "archived": p.archived_at is not None,
+                    "latest_scan_status": status_by_project.get(p.id),
+                    "severity_critical": severity.get("critical"),
+                    "severity_high": severity.get("high"),
+                    "severity_medium": severity.get("medium"),
+                    "severity_low": severity.get("low"),
+                    "license_forbidden": license_summary.get("forbidden"),
+                    "license_conditional": license_summary.get("conditional"),
+                    "license_allowed": license_summary.get("allowed"),
+                    "license_unknown": license_summary.get("unknown"),
+                    "scan_count": counts.get("scan_count"),
+                    "release_count": counts.get("release_count"),
+                    "last_scan_at": counts.get("last_scan_at"),
+                    "created_by": created_by_name.get(p.id),
+                    "project_id": str(p.id),
+                }
+            )
+        return items, total
+
+    log.info("export.projects.csv_started", actor_user_id=str(actor.id))
+    async for chunk in _stream(
+        columns=PROJECTS_CSV_COLUMNS,
+        remap={},
+        fetch_page=fetch_page,
+        too_large=ProjectsExportTooLarge,
+        label="project",
     ):
         yield chunk
