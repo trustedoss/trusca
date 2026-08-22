@@ -137,6 +137,10 @@ services:
       <<: *demo-scan-env
       DB_POOL_SIZE: "5"
       DB_MAX_OVERFLOW: "5"
+      # W2: the boot-time budget warning (main.py) needs to know this
+      # container actually runs 2 uvicorn workers, not the image's baked-in
+      # 4 (the base default docker-compose.yml sets for CONN_BUDGET_UVICORN_WORKERS).
+      CONN_BUDGET_UVICORN_WORKERS: "2"
     mem_limit: 512m
     deploy:
       resources:

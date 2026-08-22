@@ -39,6 +39,9 @@ def _clean_env() -> Iterator[None]:
         "DB_SYNC_MAX_OVERFLOW",
         "DB_SYNC_POOL_TIMEOUT",
         "DB_SYNC_POOL_RECYCLE",
+        "CONN_BUDGET_UVICORN_WORKERS",
+        "CONN_BUDGET_BACKEND_REPLICAS",
+        "CONN_BUDGET_WORKER_REPLICAS",
         "SCAN_TRIGGER_RATE_LIMIT",
         "SCAN_CONCURRENCY_CAP_PER_TEAM",
         "DISK_HARD_LIMIT_PCT",
@@ -61,8 +64,14 @@ def _clean_env() -> Iterator[None]:
 # ---------------------------------------------------------------------------
 
 
-def test_db_pool_defaults_are_raised_above_sqlalchemy_baseline() -> None:
-    """B1 raises the ceiling well above SQLAlchemy's 5 + 10 default."""
+def test_db_pool_defaults_fit_the_shipped_deployment_shapes() -> None:
+    """W2: sized against PROCESS count, not just one process.
+
+    The prior defaults (20 + 10) were themselves reasonable per-process, but
+    multiplied by the image's baked-in 4 uvicorn workers before Postgres ever
+    saw them (concurrency-scaling-plan-2026-08-22.md §1.6). See
+    test_connection_budget.py for the full per-deployment regression contract.
+    """
     from core.config import (
         db_max_overflow,
         db_pool_recycle_seconds,
@@ -70,13 +79,13 @@ def test_db_pool_defaults_are_raised_above_sqlalchemy_baseline() -> None:
         db_pool_timeout_seconds,
     )
 
-    assert db_pool_size() == 20
-    assert db_max_overflow() == 10
+    assert db_pool_size() == 5
+    assert db_max_overflow() == 3
     assert db_pool_timeout_seconds() == 30
     assert db_pool_recycle_seconds() == 1800
 
 
-def test_db_sync_pool_defaults_are_smaller_than_async() -> None:
+def test_db_sync_pool_defaults_are_smaller_or_equal_to_async() -> None:
     """Celery worker concurrency is low, so the sync pool stays small."""
     from core.config import (
         db_pool_size,
@@ -86,8 +95,8 @@ def test_db_sync_pool_defaults_are_smaller_than_async() -> None:
         db_sync_pool_timeout_seconds,
     )
 
-    assert db_sync_pool_size() == 5
-    assert db_sync_max_overflow() == 5
+    assert db_sync_pool_size() == 3
+    assert db_sync_max_overflow() == 3
     assert db_sync_pool_timeout_seconds() == 30
     assert db_sync_pool_recycle_seconds() == 1800
     # The async pool is the busier one — it must be at least as large.
@@ -128,9 +137,53 @@ def test_db_pool_size_falls_back_to_default_on_junk() -> None:
     from core.config import db_pool_size
 
     os.environ["DB_POOL_SIZE"] = "not-a-number"
-    assert db_pool_size() == 20
+    assert db_pool_size() == 5
     os.environ["DB_POOL_SIZE"] = ""
-    assert db_pool_size() == 20
+    assert db_pool_size() == 5
+
+
+# ---------------------------------------------------------------------------
+# W2: connection-budget fleet-shape hints. Purely informational (feed only
+# the boot-time warning), but they still read os.getenv at call time and
+# clamp junk the same way every other _int_env-backed knob does.
+# ---------------------------------------------------------------------------
+
+
+def test_conn_budget_hints_default_to_the_prod_compose_shape() -> None:
+    from core.config import (
+        conn_budget_backend_replicas,
+        conn_budget_uvicorn_workers,
+        conn_budget_worker_replicas,
+    )
+
+    assert conn_budget_uvicorn_workers() == 4
+    assert conn_budget_backend_replicas() == 1
+    assert conn_budget_worker_replicas() == 1
+
+
+def test_conn_budget_hints_read_env_at_call_time() -> None:
+    from core.config import (
+        conn_budget_backend_replicas,
+        conn_budget_uvicorn_workers,
+        conn_budget_worker_replicas,
+    )
+
+    os.environ["CONN_BUDGET_UVICORN_WORKERS"] = "2"
+    os.environ["CONN_BUDGET_BACKEND_REPLICAS"] = "3"
+    os.environ["CONN_BUDGET_WORKER_REPLICAS"] = "5"
+    assert conn_budget_uvicorn_workers() == 2
+    assert conn_budget_backend_replicas() == 3
+    assert conn_budget_worker_replicas() == 5
+
+
+def test_conn_budget_hints_clamp_zero_and_negative_to_minimum_one() -> None:
+    """A deployment cannot run zero or a negative number of processes."""
+    from core.config import conn_budget_uvicorn_workers
+
+    os.environ["CONN_BUDGET_UVICORN_WORKERS"] = "0"
+    assert conn_budget_uvicorn_workers() == 1
+    os.environ["CONN_BUDGET_UVICORN_WORKERS"] = "-4"
+    assert conn_budget_uvicorn_workers() == 1
 
 
 def test_db_pool_recycle_allows_minus_one_disable() -> None:

@@ -191,9 +191,17 @@ def redis_url() -> str:
 # Sizing guidance (per process):
 #   total connections = pool_size + max_overflow
 # Multiply by the number of uvicorn workers AND add the Celery worker pools
-# (see *_sync helpers below) to stay under Postgres `max_connections`. The
-# defaults below (20 + 10 = 30 per FastAPI process; 5 + 5 = 10 per Celery
-# worker process) leave generous headroom under Postgres' default 100.
+# (see *_sync helpers below) to stay under Postgres `max_connections`. W2
+# (concurrency-scaling-plan-2026-08-22.md §1.6) found the PREVIOUS defaults
+# (20 + 10 = 30 per FastAPI process) already over budget on their own once
+# multiplied by the image's baked-in 4 uvicorn workers (120, before the
+# Celery worker + beat pools are even added); the docstring said "leaves
+# generous headroom" while the arithmetic said otherwise. The defaults below
+# (5 + 3 = 8 per FastAPI process; 3 + 3 = 6 per Celery worker/beat process)
+# are sized so every deployment shape this repo ships (prod/dev/demo compose,
+# Helm) fits under its Postgres `max_connections` with the process-count
+# multiplier applied; see `core.connection_budget` for the shared formula
+# and `.env.example`'s worked examples for the per-deployment numbers.
 # ---------------------------------------------------------------------------
 
 
@@ -296,8 +304,14 @@ def _float_env(name: str, default: float, *, minimum: float, maximum: float) -> 
 
 
 def db_pool_size() -> int:
-    """Persistent connections kept open by the async (FastAPI) engine pool."""
-    return _int_env("DB_POOL_SIZE", 20, minimum=1, maximum=_MAX_POOL_SIZE)
+    """Persistent connections kept open by the async (FastAPI) engine pool.
+
+    W2: 5 (default) is sized against the *process count*, not just one
+    process; the image bakes 4 uvicorn workers, so this multiplies by 4
+    before it even reaches Postgres. See the module-level sizing comment
+    above and `core.connection_budget`.
+    """
+    return _int_env("DB_POOL_SIZE", 5, minimum=1, maximum=_MAX_POOL_SIZE)
 
 
 def db_max_overflow() -> int:
@@ -306,7 +320,7 @@ def db_max_overflow() -> int:
     0 is valid (hard cap at pool_size); negative is clamped to 0; an absurd
     value is clamped down to ``_MAX_POOL_OVERFLOW`` (L2).
     """
-    return _int_env("DB_MAX_OVERFLOW", 10, minimum=0, maximum=_MAX_POOL_OVERFLOW)
+    return _int_env("DB_MAX_OVERFLOW", 3, minimum=0, maximum=_MAX_POOL_OVERFLOW)
 
 
 def db_pool_timeout_seconds() -> int:
@@ -339,13 +353,72 @@ def db_sync_pool_size() -> int:
     far fewer connections than a FastAPI process. Kept on a separate env var
     so operators can tune worker pools independently of the API pool. Clamped
     up to ``_MAX_POOL_SIZE`` (L2) so a typo cannot exhaust max_connections.
+    W2: this budget applies per WORKER PROCESS *and* per beat process, both of
+    which multiply by their own replica counts; see `core.connection_budget`.
     """
-    return _int_env("DB_SYNC_POOL_SIZE", 5, minimum=1, maximum=_MAX_POOL_SIZE)
+    return _int_env("DB_SYNC_POOL_SIZE", 3, minimum=1, maximum=_MAX_POOL_SIZE)
 
 
 def db_sync_max_overflow() -> int:
     """Burst connections above ``db_sync_pool_size()`` for the Celery engine."""
-    return _int_env("DB_SYNC_MAX_OVERFLOW", 5, minimum=0, maximum=_MAX_POOL_OVERFLOW)
+    return _int_env("DB_SYNC_MAX_OVERFLOW", 3, minimum=0, maximum=_MAX_POOL_OVERFLOW)
+
+
+# ---------------------------------------------------------------------------
+# W2: connection-budget fleet-shape hints.
+#
+# The backend process cannot see how many sibling processes exist (a uvicorn
+# worker has no visibility into its own --workers count, and a container has
+# no visibility into how many replicas of itself are running). These three
+# knobs are NOT wired to anything that changes process counts; they exist
+# only so `core.connection_budget` can estimate this deployment's TOTAL
+# connection draw and warn at boot if it is over the Postgres
+# `max_connections` the database actually reports. Set them to match how you
+# actually run the containers; a mismatch only weakens the boot-time warning,
+# it does not change how many connections the pools actually open (that is
+# governed entirely by DB_POOL_SIZE / DB_MAX_OVERFLOW / DB_SYNC_* above,
+# multiplied by however many processes you actually run).
+#
+# Defaults mirror this repo's own production docker-compose.yml (1 backend
+# container x the image's baked-in 4 uvicorn workers; 1 worker container; 1
+# beat singleton) so an operator who deploys with the shipped defaults and
+# never touches these gets an accurate warning without any extra setup.
+# ---------------------------------------------------------------------------
+
+_MAX_CONN_BUDGET_REPLICAS = 256
+
+
+def conn_budget_uvicorn_workers() -> int:
+    """How many uvicorn worker processes ONE backend container runs.
+
+    Matches ``apps/backend/Dockerfile.prod``'s baked-in ``--workers 4`` by
+    default. Until W1 opens a real knob for this, the number is fixed at
+    image-build time; set this to whatever that image actually bakes in
+    (docker-compose.demo.yml overrides both the command and this hint to 2).
+    """
+    return _int_env("CONN_BUDGET_UVICORN_WORKERS", 4, minimum=1, maximum=_MAX_CONN_BUDGET_REPLICAS)
+
+
+def conn_budget_backend_replicas() -> int:
+    """How many backend CONTAINERS/PODS this deployment runs.
+
+    Plain `docker-compose up` never scales the backend service (no
+    `deploy.replicas`), so the compose default is 1. The Helm chart sets this
+    from `.Values.backend.replicaCount` (default 2).
+    """
+    return _int_env("CONN_BUDGET_BACKEND_REPLICAS", 1, minimum=1, maximum=_MAX_CONN_BUDGET_REPLICAS)
+
+
+def conn_budget_worker_replicas() -> int:
+    """How many Celery worker CONTAINERS/PODS this deployment runs.
+
+    Compose's `WORKER_REPLICAS` only takes effect under Docker Swarm's
+    `deploy.replicas` (plain `docker-compose up` ignores it; operators scale
+    with `--scale worker=N` instead), so it cannot double as this hint. Set
+    this to match whichever scaling method you actually use; the Helm chart
+    sets it from `.Values.worker.replicaCount` (default 2).
+    """
+    return _int_env("CONN_BUDGET_WORKER_REPLICAS", 1, minimum=1, maximum=_MAX_CONN_BUDGET_REPLICAS)
 
 
 def db_sync_pool_timeout_seconds() -> int:

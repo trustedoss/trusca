@@ -56,6 +56,14 @@ data:
   DB_SYNC_POOL_TIMEOUT: {{ .Values.env.dbPool.syncTimeout | quote }}
   DB_SYNC_POOL_RECYCLE: {{ .Values.env.dbPool.syncRecycle | quote }}
 
+  # ---- Connection-budget fleet-shape hints (W2) ----
+  # Feed ONLY the boot-time over-budget warning in main.py (see
+  # core.connection_budget); they do not change the actual pod / worker
+  # counts, which are the Deployment `replicas:` fields below.
+  CONN_BUDGET_UVICORN_WORKERS: {{ .Values.backend.uvicornWorkers | quote }}
+  CONN_BUDGET_BACKEND_REPLICAS: {{ .Values.backend.replicaCount | quote }}
+  CONN_BUDGET_WORKER_REPLICAS: {{ .Values.worker.replicaCount | quote }}
+
   # ---- Scan controls (B1 + A1) ----
   SCAN_TRIGGER_RATE_LIMIT: {{ .Values.env.scan.triggerRateLimit | quote }}
   SCAN_CONCURRENCY_CAP_PER_TEAM: {{ .Values.env.scan.concurrencyCapPerTeam | quote }}
