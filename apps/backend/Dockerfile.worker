@@ -265,6 +265,21 @@ RUN curl -fsSL https://deb.nodesource.com/setup_${NODE_MAJOR}.x | bash - \
         -C /usr/lib/node_modules/npm/node_modules/brace-expansion \
     && rm -f /tmp/brace-expansion-5.0.9.tgz \
     && node -e "const p=require('/usr/lib/node_modules/npm/node_modules/brace-expansion/package.json');if(p.version!=='5.0.9'){throw new Error('brace-expansion override failed: '+p.version)}" \
+    # tar under npm's OWN node_modules (CVE-2026-73566 HIGH, DoS via a
+    # crafted long-path tar archive — npm 11.18.0 bundles tar 7.5.19,
+    # fixed in 7.5.21). Same build-time-only reachability rationale as
+    # brace-expansion above (npm is invoked here at image-build time only;
+    # the celery worker runtime never shells to npm) and the same
+    # replace-not-ignore reasoning (an ignore would also mask this CVE id
+    # on the copy in cdxgen's tree, overridden separately below — that copy
+    # IS runtime-reachable since cdxgen extracts archives it did not author).
+    && npm pack tar@7.5.22 --pack-destination /tmp \
+    && rm -rf /usr/lib/node_modules/npm/node_modules/tar \
+    && mkdir -p /usr/lib/node_modules/npm/node_modules/tar \
+    && tar -xzf /tmp/tar-7.5.22.tgz --strip-components=1 \
+        -C /usr/lib/node_modules/npm/node_modules/tar \
+    && rm -f /tmp/tar-7.5.22.tgz \
+    && node -e "const p=require('/usr/lib/node_modules/npm/node_modules/tar/package.json');if(p.version!=='7.5.22'){throw new Error('tar override failed: '+p.version)}" \
     && node --version \
     && npm --version
 
@@ -324,22 +339,43 @@ ENV CDXGEN_VERSION=12.3.3
 RUN npm install -g --omit=dev --omit=optional "@cyclonedx/cdxgen@${CDXGEN_VERSION}" \
     && find /usr/lib/node_modules/@cyclonedx/cdxgen -path '*/@cdxgen/*' \
         -name '*.cdx.json' -print -delete \
-    # Force node-tar >= 7.5.19 inside cdxgen's own tree (CVE-2026-59873
+    # Force node-tar >= 7.5.22 inside cdxgen's own tree (CVE-2026-59873
     # CRITICAL gzip-bomb DoS / CVE-2026-59874 HIGH malformed-header DoS —
-    # cdxgen 12.3.3 pins 7.5.13). cdxgen DOES feed archives it did not
-    # author through tar, so this is not suppressible as unreached. The
-    # swap is a verbatim npm-pack extract over cdxgen/node_modules/tar —
-    # every nested require resolves there, and no npm dependency
-    # re-resolution runs (7.5.19 is a patch on the same 7.5 line, dep
-    # ranges unchanged). Drop this once the cdxgen pin moves past a
-    # release that bundles the fix (the §7 cdxgen bump will obsolete it).
-    && npm pack tar@7.5.19 --pack-destination /tmp \
+    # cdxgen 12.3.3 pins 7.5.13; CVE-2026-73566 HIGH added 2026-08, fixed
+    # in 7.5.21 — we go to 7.5.22, the current patch on the 7.5 line, so
+    # this does not need re-bumping for the next tooling-only patch
+    # release). cdxgen DOES feed archives it did not author through tar,
+    # so this is not suppressible as unreached. The swap is a verbatim
+    # npm-pack extract over cdxgen/node_modules/tar — every nested require
+    # resolves there, and no npm dependency re-resolution runs (7.5.22 is a
+    # patch on the same 7.5 line, dep ranges unchanged). Drop this once the
+    # cdxgen pin moves past a release that bundles the fix (the §7 cdxgen
+    # bump will obsolete it).
+    && npm pack tar@7.5.22 --pack-destination /tmp \
     && rm -rf /usr/lib/node_modules/@cyclonedx/cdxgen/node_modules/tar \
     && mkdir -p /usr/lib/node_modules/@cyclonedx/cdxgen/node_modules/tar \
-    && tar -xzf /tmp/tar-7.5.19.tgz --strip-components=1 \
+    && tar -xzf /tmp/tar-7.5.22.tgz --strip-components=1 \
         -C /usr/lib/node_modules/@cyclonedx/cdxgen/node_modules/tar \
-    && rm -f /tmp/tar-7.5.19.tgz \
-    && node -e "const p=require('/usr/lib/node_modules/@cyclonedx/cdxgen/node_modules/tar/package.json');if(p.version!=='7.5.19'){throw new Error('tar override failed: '+p.version)}" \
+    && rm -f /tmp/tar-7.5.22.tgz \
+    && node -e "const p=require('/usr/lib/node_modules/@cyclonedx/cdxgen/node_modules/tar/package.json');if(p.version!=='7.5.22'){throw new Error('tar override failed: '+p.version)}" \
+    # Force jsonata >= 2.2.2 inside cdxgen's own tree (CVE-2026-77413 /
+    # CVE-2026-77414 / CVE-2026-77415, all CRITICAL — arbitrary code
+    # execution via crafted JSONata expressions; cdxgen 12.3.3 pins
+    # jsonata 2.1.0). Same swap pattern as tar above: `npm view
+    # jsonata@2.2.2 dependencies` returns an empty object (jsonata ships no
+    # runtime dependencies), so a verbatim npm-pack extract over
+    # node_modules/jsonata cannot leave a stale transitive tree behind and
+    # needs no dependency re-resolution. This supersedes the .trivyignore
+    # entry for CVE-2026-52746 (jsonata 2.1.0 -> 2.2.0), which is removed
+    # now that the package itself moves past 2.2.0. Drop this once the
+    # cdxgen pin moves past a release that bundles jsonata >= 2.2.2.
+    && npm pack jsonata@2.2.2 --pack-destination /tmp \
+    && rm -rf /usr/lib/node_modules/@cyclonedx/cdxgen/node_modules/jsonata \
+    && mkdir -p /usr/lib/node_modules/@cyclonedx/cdxgen/node_modules/jsonata \
+    && tar -xzf /tmp/jsonata-2.2.2.tgz --strip-components=1 \
+        -C /usr/lib/node_modules/@cyclonedx/cdxgen/node_modules/jsonata \
+    && rm -f /tmp/jsonata-2.2.2.tgz \
+    && node -e "const p=require('/usr/lib/node_modules/@cyclonedx/cdxgen/node_modules/jsonata/package.json');if(p.version!=='2.2.2'){throw new Error('jsonata override failed: '+p.version)}" \
     # Force brace-expansion >= 5.0.9 and ip-address >= 10.3.1 (CVE-2026-69152
     # HIGH, CVE-2026-69192). Neither is suppressible as unreached: cdxgen puts
     # values it read from the SCANNED repository into glob patterns, and the
