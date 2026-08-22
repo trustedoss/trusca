@@ -77,6 +77,7 @@ from models import (
     Obligation,
     Project,
     ScanComponent,
+    Team,
 )
 from models import (
     License as LicenseModel,
@@ -1393,6 +1394,19 @@ async def generate_notice(
 
     generated_at = datetime.now(tz=UTC)
 
+    # D10 (N21): the organization's own preface/footer boilerplate for this
+    # format, if it has written one. None (the default) renders byte-for-byte
+    # what this function always rendered; see the module-level template
+    # service for why this is plain text rather than markup.
+    from services.notice_template_service import get_template
+
+    organization_id = (
+        await session.execute(select(Team.organization_id).where(Team.id == project.team_id))
+    ).scalar_one()
+    template = await get_template(session, organization_id=organization_id, format=fmt)
+    preface = template.preface if template is not None else None
+    footer = template.footer if template is not None else None
+
     # Anchor on the resolved snapshot scan — the pinned ``snapshot_scan_id``
     # when given, else the latest SUCCEEDED scan; never
     # ``project.latest_scan_id`` (the last *attempted* scan). A failed newest
@@ -1400,7 +1414,9 @@ async def generate_notice(
     # See ``services.scan_resolution``.
     scan_id = await resolve_snapshot_scan_id(session, project_id, snapshot_scan_id)
     if scan_id is None:
-        body = _render_empty_notice(project.name, generated_at, fmt=fmt)
+        body = _render_empty_notice(
+            project.name, generated_at, fmt=fmt, preface=preface, footer=footer
+        )
         return {
             "project_id": project.id,
             "project_name": project.name,
@@ -1428,6 +1444,8 @@ async def generate_notice(
         obligations_by_license=obligations_by_license,
         fmt=fmt,
         licenses_omitted=licenses_omitted,
+        preface=preface,
+        footer=footer,
     )
 
     # Inspection headers report the TRUE totals (rendered head + omitted tail)
@@ -1651,7 +1669,14 @@ async def _load_notice_data(
     return licenses_with_components, obligations_by_license, licenses_omitted
 
 
-def _render_empty_notice(project_name: str, generated_at: datetime, *, fmt: str) -> str:
+def _render_empty_notice(
+    project_name: str,
+    generated_at: datetime,
+    *,
+    fmt: str,
+    preface: str | None = None,
+    footer: str | None = None,
+) -> str:
     """Body for projects with no scan yet — keep the document well-formed."""
     if fmt == "html":
         return _render_notice_html(
@@ -1660,11 +1685,55 @@ def _render_empty_notice(project_name: str, generated_at: datetime, *, fmt: str)
             licenses_with_components=[],
             obligations_by_license={},
             empty_reason="No scan has been run for this project yet.",
+            preface=preface,
+            footer=footer,
         )
     header = _format_header(project_name, generated_at, fmt=fmt)
-    if fmt == "markdown":
-        return f"{header}\n\n_No scan has been run for this project yet._\n"
-    return f"{header}\n\n(no scan has been run for this project yet)\n"
+    parts = [header, "", *_preface_lines(preface, fmt=fmt)]
+    parts.append(
+        "_No scan has been run for this project yet._" if fmt == "markdown"
+        else "(no scan has been run for this project yet)"
+    )
+    parts.extend(_footer_lines(footer, fmt=fmt))
+    return "\n".join(parts).rstrip() + "\n"
+
+
+def _md_template_line(text: str) -> str:
+    """A template string as one safe, italicized markdown line.
+
+    ``_md_escape`` was written for MID-line interpolation (``## {name}``):
+    it neutralizes inline-active punctuation and collapses newlines, but
+    line-start structural markers (``#``, ``-``, ``>``, a fenced ```` ``` ````)
+    pass through untouched because the caller always embeds the result after
+    a prefix. A template renders as its OWN bare line, so wrapping it in
+    ``_..._`` (the same italic marker the "no obligations recorded" line
+    already uses) keeps the rendered line starting with ``_``, never with
+    whatever the organization typed. A preface of ``"# Not a heading"``
+    must not become a live heading in someone else's legal document.
+    """
+    return f"_{_md_escape(text)}_"
+
+
+def _preface_lines(preface: str | None, *, fmt: str) -> list[str]:
+    """D10 (N21): the organization's preface, as ready-to-append lines.
+
+    Plain text, escaped the same way every other untrusted string this
+    renderer prints already is for the format at hand; see
+    ``models.notice_template`` for why this stays plain text rather than
+    markup capable of restructuring the document around it.
+    """
+    if not preface:
+        return []
+    text = _md_template_line(preface) if fmt == "markdown" else preface
+    return [text, ""]
+
+
+def _footer_lines(footer: str | None, *, fmt: str) -> list[str]:
+    """D10 (N21): the organization's footer, as ready-to-append lines."""
+    if not footer:
+        return []
+    text = _md_template_line(footer) if fmt == "markdown" else footer
+    return ["", text]
 
 
 def _format_header(project_name: str, generated_at: datetime, *, fmt: str) -> str:
@@ -1682,6 +1751,8 @@ def _render_notice(
     obligations_by_license: dict[uuid.UUID, list[dict[str, Any]]],
     fmt: str,
     licenses_omitted: int = 0,
+    preface: str | None = None,
+    footer: str | None = None,
 ) -> str:
     if fmt == "html":
         return _render_notice_html(
@@ -1690,9 +1761,12 @@ def _render_notice(
             licenses_with_components=licenses_with_components,
             obligations_by_license=obligations_by_license,
             licenses_omitted=licenses_omitted,
+            preface=preface,
+            footer=footer,
         )
 
     parts: list[str] = [_format_header(project_name, generated_at, fmt=fmt), ""]
+    parts.extend(_preface_lines(preface, fmt=fmt))
 
     if fmt == "markdown":
         # G2/markdown-escape: every interpolated value below is untrusted
@@ -1793,6 +1867,7 @@ def _render_notice(
             if texts_omitted:
                 parts.append(f"_… and {texts_omitted} more license text(s) omitted._")
                 parts.append("")
+        parts.extend(_footer_lines(footer, fmt=fmt))
         return "\n".join(parts).rstrip() + "\n"
 
     # plain text
@@ -1863,6 +1938,7 @@ def _render_notice(
         if texts_omitted:
             parts.append(f"... and {texts_omitted} more license text(s) omitted")
             parts.append("")
+    parts.extend(_footer_lines(footer, fmt=fmt))
     return "\n".join(parts).rstrip() + "\n"
 
 
@@ -1896,6 +1972,12 @@ _NOTICE_HTML_STYLE = (
     "margin-top:1.5rem;padding:.6rem .8rem;border-radius:4px}"
     "section.license-review h3{color:#0f172a}"
     "p.meta{color:#64748b;font-size:.85rem}"
+    # D10 (N21): organization preface/footer boilerplate. Left border only,
+    # no background, so it reads as prose the document carries rather than a
+    # callout competing with the "License review needed" banner above.
+    "pre.notice-preface,pre.notice-footer{border-left:3px solid #e2e8f0;"
+    "padding-left:.8rem;font-family:Inter,system-ui,-apple-system,sans-serif;"
+    "font-size:.9rem}"
 )
 
 
@@ -1929,6 +2011,8 @@ def _render_notice_html(
     obligations_by_license: dict[uuid.UUID, list[dict[str, Any]]],
     empty_reason: str | None = None,
     licenses_omitted: int = 0,
+    preface: str | None = None,
+    footer: str | None = None,
 ) -> str:
     """Render the NOTICE as a complete, fully-escaped HTML document."""
     iso = generated_at.replace(microsecond=0).isoformat()
@@ -1946,6 +2030,8 @@ def _render_notice_html(
         f"<h1>Third-party Licenses for {esc_name}</h1>",
         f'<p class="generated">Generated: <code>{html_escape(iso)}</code></p>',
     ]
+    if preface:
+        parts.append(f'<pre class="notice-preface">{html_escape(preface)}</pre>')
 
     if empty_reason is not None:
         parts.append(f"<p>{html_escape(empty_reason)}</p>")
@@ -2031,6 +2117,8 @@ def _render_notice_html(
                 )
             parts.append("</section>")
 
+    if footer:
+        parts.append(f'<pre class="notice-footer">{html_escape(footer)}</pre>')
     parts.append("</body>")
     parts.append("</html>")
     # Drop the empty strings _html_reference_line returns for absent URLs.

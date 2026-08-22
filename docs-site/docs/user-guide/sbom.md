@@ -229,6 +229,8 @@ The output is byte-stable across exports for a given scan and format — diffabl
 
   `format` accepts `text`, `markdown`, `html`. Pass `download=true` so the response carries `Content-Disposition: attachment` and `-OJ` saves it under the server-supplied file name (`NOTICE-<project>.<ext>`); omit it to stream the body inline.
 
+An organization can add a preface and footer to every project's NOTICE (a distribution notice, a legal disclaimer) without touching the license/component/obligation content above; see [NOTICE templates](../admin-guide/notice-templates.md).
+
 ## VEX exports
 
 CycloneDX SBOMs include the project's VEX state for every finding. SPDX does not have a native VEX representation, so SPDX exports omit per-finding state; pair an SPDX export with a separate CycloneDX VEX document if your downstream consumer expects it.

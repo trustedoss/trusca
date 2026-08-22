@@ -22,6 +22,7 @@ from .inventory import router as inventory_router
 from .license_policies import router as license_policies_router
 from .licenses import router as licenses_router
 from .metrics import router as metrics_router
+from .notice_templates import router as notice_templates_router
 from .notification_routing import router as notification_routing_router
 from .notifications import router as notifications_router
 from .oauth import router as oauth_router
@@ -62,6 +63,7 @@ __all__ = [
     "health_router",
     "gate_policies_router",
     "metrics_router",
+    "notice_templates_router",
     "notification_routing_router",
     "organization_verdicts_router",
     "service_accounts_router",

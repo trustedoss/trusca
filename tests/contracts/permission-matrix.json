@@ -465,6 +465,21 @@
     },
     {
       "method": "DELETE",
+      "path": "/v1/notice-templates/org/{organization_id}/{format}",
+      "gate": "role>=developer"
+    },
+    {
+      "method": "GET",
+      "path": "/v1/notice-templates/org/{organization_id}/{format}",
+      "gate": "role>=developer"
+    },
+    {
+      "method": "PUT",
+      "path": "/v1/notice-templates/org/{organization_id}/{format}",
+      "gate": "role>=developer"
+    },
+    {
+      "method": "DELETE",
       "path": "/v1/notification-rules/{rule_id}",
       "gate": "role>=team_admin"
     },

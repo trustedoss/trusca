@@ -33,6 +33,10 @@
     "spdx_id",
     "team_id"
   ],
+  "DELETE /v1/notice-templates/org/{organization_id}/{format}": [
+    "format",
+    "organization_id"
+  ],
   "DELETE /v1/notification-rules/{rule_id}": [
     "rule_id"
   ],
@@ -242,6 +246,10 @@
   ],
   "GET /v1/license_findings/{finding_id}": [
     "finding_id"
+  ],
+  "GET /v1/notice-templates/org/{organization_id}/{format}": [
+    "format",
+    "organization_id"
   ],
   "GET /v1/notification-rules/org/{organization_id}": [
     "organization_id"
@@ -704,6 +712,10 @@
   ],
   "PUT /v1/license-policies/teams/{team_id}": [
     "team_id"
+  ],
+  "PUT /v1/notice-templates/org/{organization_id}/{format}": [
+    "format",
+    "organization_id"
   ],
   "PUT /v1/projects/{project_id}/obligations/{obligation_id}/fulfilment": [
     "obligation_id",

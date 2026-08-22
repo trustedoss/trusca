@@ -1002,3 +1002,142 @@ async def test_a_developer_elsewhere_is_still_a_viewer_here(client) -> None:
     )
 
     assert response.status_code == 403, response.text
+
+
+# ---------------------------------------------------------------------------
+# NOTICE templates (D10, N21)
+# ---------------------------------------------------------------------------
+
+
+async def test_notice_template_write_requires_super_admin(client) -> None:
+    org, _team, user = await _seed_team_with_user(client, role="team_admin")
+
+    response = await client.put(
+        f"/v1/notice-templates/org/{org.id}/text",
+        headers=_bearer_for(user),
+        json={"preface": "Internal only."},
+    )
+    assert response.status_code == 403
+    assert response.headers["content-type"].startswith(PROBLEM_JSON)
+
+
+async def test_notice_template_requires_preface_or_footer(client) -> None:
+    factory = await _factory(client)
+    async with factory() as session:
+        admin = await make_user(session, is_superuser=True)
+        org = await make_organization(session)
+
+    response = await client.put(
+        f"/v1/notice-templates/org/{org.id}/text",
+        headers=_bearer_for(admin),
+        json={},
+    )
+    assert response.status_code == 422
+    assert response.headers["content-type"].startswith(PROBLEM_JSON)
+
+
+async def test_notice_template_unknown_format_is_refused(client) -> None:
+    factory = await _factory(client)
+    async with factory() as session:
+        admin = await make_user(session, is_superuser=True)
+        org = await make_organization(session)
+
+    response = await client.put(
+        f"/v1/notice-templates/org/{org.id}/pdf",
+        headers=_bearer_for(admin),
+        json={"preface": "x"},
+    )
+    assert response.status_code == 422
+
+
+async def test_notice_template_read_404_when_none_written(client) -> None:
+    factory = await _factory(client)
+    async with factory() as session:
+        org = await make_organization(session)
+        user = await make_user(session)
+
+    response = await client.get(
+        f"/v1/notice-templates/org/{org.id}/text",
+        headers=_bearer_for(user),
+    )
+    assert response.status_code == 404
+    assert response.headers["content-type"].startswith(PROBLEM_JSON)
+
+
+async def test_notice_template_round_trips_and_appears_in_the_document(client) -> None:
+    """A super admin's template reaches the NOTICE a developer downloads."""
+    factory = await _factory(client)
+    async with factory() as session:
+        admin = await make_user(session, is_superuser=True)
+
+    org, team, user = await _seed_team_with_user(client, role="developer")
+    project_id, scan_id, _name = await _seed_scanned_project(client, team_id=team.id)
+    await _seed_obligation(client, scan_id=scan_id, kind="notice")
+
+    put_response = await client.put(
+        f"/v1/notice-templates/org/{org.id}/text",
+        headers=_bearer_for(admin),
+        json={"preface": "Internal distribution only.", "footer": "Example Corp."},
+    )
+    assert put_response.status_code == 200, put_response.text
+
+    notice_response = await client.get(
+        f"/v1/projects/{project_id}/notice",
+        headers=_bearer_for(user),
+    )
+    assert notice_response.status_code == 200, notice_response.text
+    body = notice_response.text
+    assert "Internal distribution only." in body
+    assert "Example Corp." in body
+
+
+async def test_notice_template_deleted_reverts_to_the_untemplated_document(client) -> None:
+    factory = await _factory(client)
+    async with factory() as session:
+        admin = await make_user(session, is_superuser=True)
+
+    org, team, user = await _seed_team_with_user(client, role="developer")
+    project_id, scan_id, _name = await _seed_scanned_project(client, team_id=team.id)
+    await _seed_obligation(client, scan_id=scan_id, kind="notice")
+
+    await client.put(
+        f"/v1/notice-templates/org/{org.id}/text",
+        headers=_bearer_for(admin),
+        json={"preface": "Internal distribution only."},
+    )
+    delete_response = await client.delete(
+        f"/v1/notice-templates/org/{org.id}/text",
+        headers=_bearer_for(admin),
+    )
+    assert delete_response.status_code == 204, delete_response.text
+
+    notice_response = await client.get(
+        f"/v1/projects/{project_id}/notice",
+        headers=_bearer_for(user),
+    )
+    assert "Internal distribution only." not in notice_response.text
+
+
+async def test_notice_template_scoped_to_its_own_organization(client) -> None:
+    """A template written for one organization must not leak into another's
+    NOTICE, the whole point of scoping this to `organization_id`."""
+    factory = await _factory(client)
+    async with factory() as session:
+        admin = await make_user(session, is_superuser=True)
+
+    org_a, _team_a, _user_a = await _seed_team_with_user(client)
+    _org_b, team_b, user_b = await _seed_team_with_user(client, role="developer")
+    project_id, scan_id, _name = await _seed_scanned_project(client, team_id=team_b.id)
+    await _seed_obligation(client, scan_id=scan_id, kind="notice")
+
+    await client.put(
+        f"/v1/notice-templates/org/{org_a.id}/text",
+        headers=_bearer_for(admin),
+        json={"preface": "Org A only."},
+    )
+
+    notice_response = await client.get(
+        f"/v1/projects/{project_id}/notice",
+        headers=_bearer_for(user_b),
+    )
+    assert "Org A only." not in notice_response.text

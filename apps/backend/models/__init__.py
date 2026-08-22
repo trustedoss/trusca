@@ -67,6 +67,10 @@ from .license_policy import (  # noqa: E402,F401  (imported for metadata side ef
 from .malicious_sync_state import (  # noqa: E402,F401  (imported for metadata side effects)
     MaliciousSyncState,
 )
+from .notice_template import (  # noqa: E402,F401  (imported for metadata side effects)
+    NOTICE_TEMPLATE_FORMAT_VALUES,
+    NoticeTemplate,
+)
 from .notification import (  # noqa: E402,F401  (imported for metadata side effects)
     NOTIFICATION_KIND_VALUES,
     Notification,
@@ -154,6 +158,8 @@ __all__ = [
     "NotificationPreferences",
     "AuditExportCursor",
     "NotificationRoutingRule",
+    "NOTICE_TEMPLATE_FORMAT_VALUES",
+    "NoticeTemplate",
     "OAUTH_PROVIDER_VALUES",
     "OAuthIdentity",
     "Obligation",
