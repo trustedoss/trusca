@@ -38,7 +38,7 @@ from core.security import (
     decode_token,
     hash_password,
     hash_refresh_token,
-    verify_password,
+    verify_password_async,
 )
 from models import Membership, Organization, RefreshToken, Team, User
 
@@ -214,7 +214,8 @@ async def authenticate(
     user = result.scalar_one_or_none()
 
     hashed = user.hashed_password if user is not None else _DUMMY_BCRYPT_HASH
-    password_ok = verify_password(password, hashed)
+    # Off the event loop (unit A1), see core.security.verify_password_async.
+    password_ok = await verify_password_async(password, hashed)
 
     # A service account is an identity for automation and has no way to be a
     # person at a login form. It is refused here rather than relying on its

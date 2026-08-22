@@ -891,3 +891,175 @@ async def test_authenticate_returns_none_on_garbage(db_session: AsyncSession) ->
 
     assert await authenticate_api_key(db_session, "") is None
     assert await authenticate_api_key(db_session, "garbage") is None
+
+
+# ---------------------------------------------------------------------------
+# authenticate_api_key: bcrypt thread offload (concurrency-scaling-plan
+# 2026-08-22.md §1.3/§1.5/§3.3, unit A1)
+#
+# A1 moved both bcrypt calls in this function onto a worker thread
+# (asyncio.to_thread) so a single API-key request no longer stalls every
+# other request on the same event loop for ~213ms. These tests pin the two
+# regression contracts from the plan's §4 A1 row: (1) the dummy
+# timing-flattening verification still actually runs, not just "returns
+# None the same way", when the prefix does not match any row, and (2) that
+# holds whether the caller passes an unknown prefix or garbage that fails
+# ``parse_bearer`` differently would be a bug, but here we only need the
+# real "unknown prefix reaches the dummy branch" path; and (3) auth
+# success/failure is unchanged after the offload.
+# ---------------------------------------------------------------------------
+
+
+async def test_authenticate_unknown_prefix_still_runs_dummy_bcrypt(
+    db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The dummy bcrypt verification must still execute after A1's thread
+    offload, not be skipped because it moved off the event loop.
+
+    Spies on ``api_key_service.verify_password_async`` (the function the
+    offloaded dummy branch now awaits) rather than the executor internals,
+    so this test asserts on behavior (bcrypt ran, with the sentinel hash),
+    not on ``asyncio.to_thread`` having been called.
+    """
+    # ``api_key_service`` imports ``verify_password_async`` from
+    # ``core.security`` (an implicit re-export) rather than defining it, so
+    # we grab the real implementation from its home module. Accessing it as
+    # ``api_key_service.verify_password_async`` trips mypy's
+    # no-implicit-reexport check, so we patch the module-level string path
+    # instead, which is not statically checked.
+    from core.security import verify_password_async as real_verify_password_async
+    from services import api_key_service
+    from services.api_key_service import authenticate_api_key
+
+    calls: list[tuple[str, str]] = []
+
+    async def spy(plain: str, hashed: str) -> bool:
+        calls.append((plain, hashed))
+        return await real_verify_password_async(plain, hashed)
+
+    monkeypatch.setattr("services.api_key_service.verify_password_async", spy)
+
+    found = await authenticate_api_key(db_session, "tos_deadbeef_unknown-secret-xx")
+
+    assert found is None
+    assert len(calls) == 1, "dummy verify_password_async must run on the unknown-prefix branch"
+    plain, hashed = calls[0]
+    assert plain == "tos_deadbeef_unknown-secret-xx"
+    assert hashed == api_key_service._DUMMY_BCRYPT_HASH
+
+
+async def test_authenticate_known_prefix_offloads_real_bcrypt(
+    db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The real verification (matched row) also runs through the thread
+    offload, and a correct plaintext still authenticates afterward."""
+    import asyncio
+
+    from services import api_key_service
+    from services.api_key_service import authenticate_api_key, issue_api_key
+
+    admin = await make_user(db_session, is_superuser=True)
+    actor = principal_for(admin, role="super_admin")
+    row, plaintext = await issue_api_key(
+        db_session, actor, name="offload", scope="org", team_id=None, project_id=None
+    )
+
+    calls: list[tuple[str, str]] = []
+    real_to_thread = asyncio.to_thread
+
+    async def spy_to_thread(func, *args, **kwargs):  # noqa: ANN001, ANN002, ANN003
+        if func is api_key_service.verify_api_key_plaintext:
+            calls.append(args)
+        return await real_to_thread(func, *args, **kwargs)
+
+    # ``api_key_service.asyncio`` is the same ``asyncio`` module object (it
+    # was imported, not defined, there). Accessing it as an attribute of
+    # ``api_key_service`` trips mypy's no-implicit-reexport check, so we
+    # patch via the dotted string path instead, which monkeypatch resolves
+    # at runtime without a static attribute lookup.
+    monkeypatch.setattr("services.api_key_service.asyncio.to_thread", spy_to_thread)
+
+    found = await authenticate_api_key(db_session, plaintext)
+
+    assert found is not None
+    assert found.id == row.id
+    assert len(calls) == 1, "real verify_api_key_plaintext must run via asyncio.to_thread"
+    called_plaintext, called_hash = calls[0]
+    assert called_plaintext == plaintext
+    assert called_hash == row.key_hash
+
+
+async def test_authenticate_success_failure_unchanged_after_offload(
+    db_session: AsyncSession,
+) -> None:
+    """Regression: A1 only relocates execution, it must not change who
+    authenticates. Exercises the same success/failure matrix the
+    pre-existing tests above cover, in one place, as a fast smoke check."""
+    from services.api_key_service import authenticate_api_key, issue_api_key, revoke_api_key
+
+    admin = await make_user(db_session, is_superuser=True)
+    actor = principal_for(admin, role="super_admin")
+    row, plaintext = await issue_api_key(
+        db_session, actor, name="matrix", scope="org", team_id=None, project_id=None
+    )
+
+    assert (await authenticate_api_key(db_session, plaintext)) is not None
+
+    wrong_secret = f"{row.key_prefix}_definitely-not-the-right-secret"
+    assert (await authenticate_api_key(db_session, wrong_secret)) is None
+
+    await revoke_api_key(db_session, actor, row.id)
+    assert (await authenticate_api_key(db_session, plaintext)) is None
+
+
+async def test_authenticate_timing_stays_flat_between_known_and_unknown_prefix(
+    db_session: AsyncSession,
+) -> None:
+    """Quantitative half of the plan's §4 A1 timing-flatness contract:
+    "존재하지 않는 키와 틀린 키의 타이밍이 여전히 평탄하다."
+
+    Both branches pay exactly one bcrypt cost-12 verification, the real one
+    (row found, wrong secret) or the dummy one (no row), so their means
+    should be close. The bound is deliberately loose (generous multiplier,
+    small sample) because this runs on shared CI hardware: the goal is to
+    catch a gross regression (e.g. one branch losing its offload and
+    contending for the thread pool differently than the other), not to
+    assert a precise bcrypt duration.
+    """
+    import statistics
+    import time
+
+    from services.api_key_service import authenticate_api_key, issue_api_key
+
+    admin = await make_user(db_session, is_superuser=True)
+    actor = principal_for(admin, role="super_admin")
+    row, _plaintext = await issue_api_key(
+        db_session, actor, name="timing", scope="org", team_id=None, project_id=None
+    )
+    wrong_secret = f"{row.key_prefix}_definitely-not-the-right-secret"
+    unknown_prefix = "tos_deadbeef_unknown-secret-xx"
+
+    iterations = 5
+    known_times: list[float] = []
+    unknown_times: list[float] = []
+    for _ in range(iterations):
+        start = time.perf_counter()
+        assert await authenticate_api_key(db_session, wrong_secret) is None
+        known_times.append(time.perf_counter() - start)
+
+        start = time.perf_counter()
+        assert await authenticate_api_key(db_session, unknown_prefix) is None
+        unknown_times.append(time.perf_counter() - start)
+
+    known_mean = statistics.mean(known_times)
+    unknown_mean = statistics.mean(unknown_times)
+    slower, faster = max(known_mean, unknown_mean), min(known_mean, unknown_mean)
+
+    # Generous: either branch may run up to 4x slower than the other before
+    # this fails, and a large absolute floor (250ms) covers CI jitter around
+    # a single ~213ms bcrypt call without making the test flaky.
+    assert slower <= faster * 4 + 0.25, (
+        f"known-prefix mean {known_mean * 1000:.1f}ms vs "
+        f"unknown-prefix mean {unknown_mean * 1000:.1f}ms diverged more than "
+        "the timing-flatness contract allows"
+    )
