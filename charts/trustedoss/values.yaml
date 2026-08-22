@@ -366,15 +366,15 @@ migrationJob:
 # ===========================================================================
 backend:
   replicaCount: 2
-  # W2 (concurrency-scaling-plan-2026-08-22.md §1.6/§3.5): the number of
-  # uvicorn worker PROCESSES each backend pod runs. This is informational
-  # only: it documents what apps/backend/Dockerfile.prod already bakes in
-  # (`CMD ["uvicorn", ..., "--workers", "4"]`) so the connection-budget
-  # formula below and the boot-time warning (CONN_BUDGET_UVICORN_WORKERS,
-  # wired into configmap-env.yaml) are accurate. Changing this value alone
-  # does NOT change how many uvicorn workers actually run; that knob does
-  # not exist yet (tracked as a separate follow-up); it only changes what
-  # NOTES.txt and the budget estimate believe.
+  # W1 (concurrency-scaling-plan-2026-08-22.md §1.6/§3.5): the number of
+  # uvicorn worker PROCESSES each backend pod runs. deployment-backend.yaml
+  # injects this as the UVICORN_WORKERS env var, which
+  # apps/backend/Dockerfile.prod's CMD reads at container start (a real
+  # knob, not just a documented default); see the `env:` comment there.
+  # Also what the connection-budget formula (NOTES.txt, values below) and
+  # the boot-time over-budget warning multiply DB_POOL_SIZE + DB_MAX_OVERFLOW
+  # by. Default 4 matches the image's own default when this is unset
+  # entirely (e.g. a bare `docker run`).
   uvicornWorkers: 4
   port: 8000
   resources:

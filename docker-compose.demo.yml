@@ -117,30 +117,24 @@ services:
           memory: 192M
 
   # ---------------------------------------------------------------------------
-  # API — two uvicorn workers (the prod image bakes `--workers 4`; we override
-  # the command for the small box) and a smaller async DB pool. Budget: 2 x
-  # (DB_POOL_SIZE 5 + DB_MAX_OVERFLOW 5) = 20 connections, well inside the 60
-  # ceiling above. The entrypoint (tini -> docker-entrypoint.sh) still runs and
-  # `exec`s this command, so AUTO_MIGRATE behaviour is unchanged.
+  # API: two uvicorn workers and a smaller async DB pool. The prod image bakes
+  # 4 workers by default; W1 opened UVICORN_WORKERS as a runtime env var (see
+  # apps/backend/Dockerfile.prod), so this no longer needs to override
+  # `command:` at all to get 2 instead. Budget: 2 x (DB_POOL_SIZE 5 +
+  # DB_MAX_OVERFLOW 5) = 20 connections, well inside the 60 ceiling above.
+  # The entrypoint (tini -> docker-entrypoint.sh) is unaffected either way,
+  # so AUTO_MIGRATE behaviour stays the same as prod.
   # ---------------------------------------------------------------------------
   backend:
-    command:
-      - "uvicorn"
-      - "main:app"
-      - "--host"
-      - "0.0.0.0"
-      - "--port"
-      - "8000"
-      - "--workers"
-      - "2"
     environment:
       <<: *demo-scan-env
       DB_POOL_SIZE: "5"
       DB_MAX_OVERFLOW: "5"
-      # W2: the boot-time budget warning (main.py) needs to know this
-      # container actually runs 2 uvicorn workers, not the image's baked-in
-      # 4 (the base default docker-compose.yml sets for CONN_BUDGET_UVICORN_WORKERS).
-      CONN_BUDGET_UVICORN_WORKERS: "2"
+      # W1: the real worker-count knob (apps/backend/Dockerfile.prod's CMD
+      # reads this at container start). Also what the W2 boot-time budget
+      # warning (main.py) reads to know this container runs 2, not the
+      # image's baked-in default of 4.
+      UVICORN_WORKERS: "2"
     mem_limit: 512m
     deploy:
       resources:

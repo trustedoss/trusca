@@ -52,6 +52,13 @@ spec:
                 name: {{ include "trustedoss.fullname" . }}-env
             {{- include "trustedoss.extraEnvFrom" . | nindent 12 }}
           env:
+            # W1 (concurrency-scaling-plan-2026-08-22.md §3.5): the real
+            # worker-count knob apps/backend/Dockerfile.prod's CMD reads at
+            # container start. Backend-only: worker/beat pods (the shared
+            # `-env` ConfigMap above) never run uvicorn, so this stays out
+            # of configmap-env.yaml on purpose.
+            - name: UVICORN_WORKERS
+              value: {{ .Values.backend.uvicornWorkers | quote }}
             {{- include "trustedoss.runtimeSecretEnv" . | nindent 12 }}
             {{- include "trustedoss.extraEnv" . | nindent 12 }}
             {{- if (.Values.backend.containerSecurityContext).readOnlyRootFilesystem }}

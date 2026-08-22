@@ -40,6 +40,7 @@ sidebar_position: 2
 | `APP_ENV` | `dev` | `config.py` | `dev`, `staging`, 또는 `prod`. 일부 CORS / 로그 기본값에 영향. |
 | `LOG_LEVEL` | `INFO` | `config.py` | `DEBUG`, `INFO`, `WARNING`, `ERROR`. |
 | `IMAGE_TAG` | `0.11.0` | `docker-compose.yml` | `ghcr.io/trustedoss/trusca-backend`, `…/trusca-backend-worker`, `…/trusca-frontend`의 핀 태그. |
+| `UVICORN_WORKERS` | `4` | `Dockerfile.prod`(uvicorn CLI), `config.py` | 백엔드 컨테이너가 띄우는 uvicorn 워커 프로세스 수. 값을 올리면 컨테이너를 늘리는 대신 컨테이너 하나가 쓰는 CPU 코어 수가 늘어나며, 값을 올리기 전에 아래 커넥션 예산 계산식에도 반영해야 한다. |
 
 ## 데이터베이스
 

@@ -365,38 +365,54 @@ def db_sync_max_overflow() -> int:
 
 
 # ---------------------------------------------------------------------------
-# W2: connection-budget fleet-shape hints.
+# W1: uvicorn worker count, a REAL knob.
 #
-# The backend process cannot see how many sibling processes exist (a uvicorn
-# worker has no visibility into its own --workers count, and a container has
-# no visibility into how many replicas of itself are running). These three
-# knobs are NOT wired to anything that changes process counts; they exist
-# only so `core.connection_budget` can estimate this deployment's TOTAL
-# connection draw and warn at boot if it is over the Postgres
-# `max_connections` the database actually reports. Set them to match how you
-# actually run the containers; a mismatch only weakens the boot-time warning,
-# it does not change how many connections the pools actually open (that is
-# governed entirely by DB_POOL_SIZE / DB_MAX_OVERFLOW / DB_SYNC_* above,
-# multiplied by however many processes you actually run).
-#
-# Defaults mirror this repo's own production docker-compose.yml (1 backend
-# container x the image's baked-in 4 uvicorn workers; 1 worker container; 1
-# beat singleton) so an operator who deploys with the shipped defaults and
-# never touches these gets an accurate warning without any extra setup.
+# ``apps/backend/Dockerfile.prod``'s CMD reads UVICORN_WORKERS at container
+# start (``${UVICORN_WORKERS:-4}`` inside an explicit ``sh -c``, evaluated at
+# runtime, not a Dockerfile ARG/ENV substitution baked in at build time), so
+# this accessor and the process uvicorn actually launched with always agree.
+# Before W1, `core.connection_budget`'s estimate and the actual worker count
+# were two independently-set values (a now-removed CONN_BUDGET_UVICORN_WORKERS
+# hint vs. whatever the image/compose `command:` happened to bake in); an
+# operator changing one without the other left the boot-time warning wrong.
+# Reading the real env var here removes that double-configuration state.
 # ---------------------------------------------------------------------------
 
 _MAX_CONN_BUDGET_REPLICAS = 256
 
 
-def conn_budget_uvicorn_workers() -> int:
-    """How many uvicorn worker processes ONE backend container runs.
+def uvicorn_workers() -> int:
+    """How many uvicorn worker processes THIS container was launched with.
 
-    Matches ``apps/backend/Dockerfile.prod``'s baked-in ``--workers 4`` by
-    default. Until W1 opens a real knob for this, the number is fixed at
-    image-build time; set this to whatever that image actually bakes in
-    (docker-compose.demo.yml overrides both the command and this hint to 2).
+    Default 4 matches ``Dockerfile.prod``'s CMD default for an unset env
+    (a bare ``docker run`` with no compose/Helm wiring). Minimum 1: zero
+    workers would mean no server. Read at call time (rule #11): this only
+    describes what the CMD already did at process start, it cannot change a
+    running process's actual worker count.
     """
-    return _int_env("CONN_BUDGET_UVICORN_WORKERS", 4, minimum=1, maximum=_MAX_CONN_BUDGET_REPLICAS)
+    return _int_env("UVICORN_WORKERS", 4, minimum=1, maximum=_MAX_CONN_BUDGET_REPLICAS)
+
+
+# ---------------------------------------------------------------------------
+# W2: connection-budget fleet-shape hints (informational only).
+#
+# The backend process cannot see how many sibling CONTAINERS exist (there is
+# no env var a container can read to learn its own replica count), unlike
+# uvicorn worker count above, which W1 turned into a real, directly-readable
+# knob. These two remain estimates only, so `core.connection_budget` can
+# still total this deployment's connection draw and warn at boot if it is
+# over the Postgres `max_connections` the database actually reports. Set
+# them to match how you actually run the containers; a mismatch only
+# weakens the boot-time warning, it does not change how many connections the
+# pools actually open (that is governed entirely by DB_POOL_SIZE /
+# DB_MAX_OVERFLOW / DB_SYNC_* above, multiplied by however many processes
+# you actually run).
+#
+# Defaults mirror this repo's own production docker-compose.yml (1 backend
+# container, 1 worker container) so an operator who deploys with the shipped
+# defaults and never touches these gets an accurate warning without any
+# extra setup.
+# ---------------------------------------------------------------------------
 
 
 def conn_budget_backend_replicas() -> int:
