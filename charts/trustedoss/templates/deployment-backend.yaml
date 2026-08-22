@@ -121,6 +121,22 @@ spec:
           {{- else }}
           emptyDir: {}
           {{- end }}
+      {{- with .Values.backend.topologySpreadConstraints }}
+      # W8 (concurrency-scaling-plan-2026-08-22.md §3.5): each entry names
+      # only {maxSkew, topologyKey, whenUnsatisfiable} in values.yaml; the
+      # labelSelector matching THIS Deployment's own pods is filled in here
+      # so operators do not have to repeat the selector labels by hand.
+      topologySpreadConstraints:
+        {{- range . }}
+        - maxSkew: {{ .maxSkew }}
+          topologyKey: {{ .topologyKey }}
+          whenUnsatisfiable: {{ .whenUnsatisfiable }}
+          labelSelector:
+            matchLabels:
+              {{- include "trustedoss.selectorLabels" $ | nindent 14 }}
+              app.kubernetes.io/component: backend
+        {{- end }}
+      {{- end }}
       {{- with .Values.nodeSelector }}
       nodeSelector:
         {{- toYaml . | nindent 8 }}

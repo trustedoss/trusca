@@ -420,6 +420,36 @@ backend:
     capabilities:
       drop:
         - ALL
+  # W8 (concurrency-scaling-plan-2026-08-22.md §3.5): this is an availability
+  # fix for an already-standing gap, not a feature flag, so it applies
+  # unconditionally rather than behind an `enabled` toggle (unlike
+  # worker.autoscaling below, which stays opt-in). maxUnavailable: 1 fits
+  # every replicaCount, including 1 -- Kubernetes' own PDB math computes
+  # desiredHealthy = replicaCount - maxUnavailable, and a voluntary eviction
+  # is allowed whenever currentHealthy > desiredHealthy. At replicaCount=1
+  # that is 1 > 0 (eviction proceeds; a single-replica install is never
+  # stuck), and at replicaCount=2 it is 2 > 1 (one pod may go down, the
+  # second is protected until the first is Ready again) -- see the
+  # pdb-backend.yaml template and its render-golden test for both cases.
+  podDisruptionBudget:
+    maxUnavailable: 1
+  # Spreads backend pods across nodes/zones so draining ONE node cannot take
+  # multiple replicas down at once (the gap PDB alone does not close: PDB
+  # only bounds voluntary disruption count, it says nothing about where pods
+  # already landed). `whenUnsatisfiable: ScheduleAnyway` (soft) on purpose --
+  # `DoNotSchedule` (hard) would leave a pod Pending forever on a single-node
+  # cluster (kind, a one-VM install) where the constraint cannot be
+  # satisfied, which is a worse regression than no spreading at all. Set to
+  # `[]` to drop spreading entirely; each entry is applied with a
+  # labelSelector matching this Deployment's own pods (deployment-backend.yaml
+  # fills that in; it is not a raw passthrough of the Kubernetes API shape).
+  topologySpreadConstraints:
+    - maxSkew: 1
+      topologyKey: kubernetes.io/hostname
+      whenUnsatisfiable: ScheduleAnyway
+    - maxSkew: 1
+      topologyKey: topology.kubernetes.io/zone
+      whenUnsatisfiable: ScheduleAnyway
 
 # ===========================================================================
 # Celery worker workload.
