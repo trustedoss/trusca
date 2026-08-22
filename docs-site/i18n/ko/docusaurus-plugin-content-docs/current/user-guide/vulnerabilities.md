@@ -604,6 +604,8 @@ PDF 응답은 `application/pdf`, Excel 응답은 `application/vnd.openxmlformats
 보고서 다운로드는 `developer` 이상이 필요합니다. 크로스팀 호출자는 `403`이 아닌 `404`를 받으므로 비멤버는 프로젝트의 존재 여부를 알 수 없습니다.
 :::
 
+조직은 머리말 한 줄을 추가하고 "TRUSCA" 브랜드 표기를 바꾸고, PDF/HTML 보고서가 렌더링하는 열을 좁힐 수 있습니다. [보고서 서식 템플릿](../admin-guide/report-format-templates.md)을 참고하세요. PDF 엔드포인트는 `vulnerability_columns`·`component_columns` 쿼리 매개변수도 받아 한 요청에 한해 조직 기본값을 덮어씁니다.
+
 ## VEX 문서 — 내보내기와 가져오기
 
 트리아지는 표준 문서로 포털을 나갔다가 돌아올 수 있습니다. 프로젝트의 현재

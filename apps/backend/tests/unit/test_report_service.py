@@ -188,9 +188,7 @@ def test_vulnerabilities_grouped_worst_first() -> None:
 
 
 def test_truncation_note_when_totals_exceed_rendered_rows() -> None:
-    html = build_report_html(
-        **_base_kwargs(components_total=5000, vulnerabilities_total=4000)
-    )
+    html = build_report_html(**_base_kwargs(components_total=5000, vulnerabilities_total=4000))
     assert "additional components omitted" in html
     assert "additional vulnerabilities omitted" in html
 
@@ -203,7 +201,7 @@ def test_truncation_note_when_totals_exceed_rendered_rows() -> None:
 @pytest.mark.parametrize(
     "hostile",
     [
-        '<script>alert(1)</script>',
+        "<script>alert(1)</script>",
         '"><img src=x onerror=alert(1)>',
         "Robert'); DROP TABLE components;--",
         "<b>bold</b> & <i>italic</i>",
@@ -239,7 +237,7 @@ def test_hostile_cve_fields_are_escaped() -> None:
                     "cve_id": "<script>cve</script>",
                     "severity": "critical",
                     "cvss_score": 9.8,
-                    "summary": '<img src=x onerror=alert(1)>',
+                    "summary": "<img src=x onerror=alert(1)>",
                     "status": "<b>new</b>",
                 }
             ]
@@ -259,7 +257,7 @@ def test_hostile_license_name_is_escaped() -> None:
                     "name": "pkg",
                     "version": "1.0.0",
                     "purl": "pkg:npm/pkg@1.0.0",
-                    "license": '<script>evil</script>',
+                    "license": "<script>evil</script>",
                     "license_category": "forbidden",
                     "severity_max": "high",
                     "vulnerability_count": 1,
@@ -275,7 +273,7 @@ def test_hostile_distribution_key_is_escaped() -> None:
     """A future / corrupted distribution key must not break out of the markup."""
     html = build_report_html(
         **_base_kwargs(
-            severity_distribution={"critical": 1, '<script>x</script>': 2},
+            severity_distribution={"critical": 1, "<script>x</script>": 2},
         )
     )
     assert "<script>x</script>" not in html
@@ -287,7 +285,7 @@ def test_hostile_distribution_key_is_escaped() -> None:
 
 
 def test_esc_quotes_all_metacharacters() -> None:
-    assert _esc('<>&"\'') == "&lt;&gt;&amp;&quot;&#x27;"
+    assert _esc("<>&\"'") == "&lt;&gt;&amp;&quot;&#x27;"
 
 
 def test_esc_none_is_empty_string() -> None:
@@ -397,3 +395,65 @@ def test_fmt_cvss_none_is_em_dash() -> None:
 
 def test_fmt_cvss_garbage_is_em_dash() -> None:
     assert _fmt_cvss("not-a-number") == "—"
+
+
+# ---------------------------------------------------------------------------
+# N22 — report formatting (header text, org label, column selection)
+# ---------------------------------------------------------------------------
+
+
+def test_unformatted_golden_matches_every_pre_n22_test_above() -> None:
+    """No formatting args given renders byte-identical to the pre-N22 shape.
+
+    Every test above this section already pins that shape without passing
+    any N22 keyword — this test just states the contract explicitly, so a
+    regression in the *defaults* (not merely a new feature) fails loudly.
+    """
+    html = build_report_html(**_base_kwargs())
+    assert '<div class="brand">TRUSCA</div>' in html
+    assert '<div class="header-text">' not in html
+    assert "<th>CVE</th><th>CVSS</th><th>Summary</th><th>Status</th>" in html
+    assert (
+        "<th>Name</th><th>Version</th><th>License</th>"
+        "<th>Max Severity</th><th>Vulns</th>" in html
+    )
+
+
+def test_org_label_replaces_the_brand_text() -> None:
+    html = build_report_html(**_base_kwargs(org_label="Acme Corp"))
+    assert '<div class="brand">Acme Corp</div>' in html
+    assert "TRUSCA" not in html
+
+
+def test_header_text_renders_when_given_and_is_escaped() -> None:
+    html = build_report_html(**_base_kwargs(header_text="Internal distribution only."))
+    assert '<div class="header-text">Internal distribution only.</div>' in html
+
+    hostile_html = build_report_html(**_base_kwargs(header_text="<script>alert(1)</script>"))
+    assert "<script>alert(1)</script>" not in hostile_html
+    assert "&lt;script&gt;alert(1)&lt;/script&gt;" in hostile_html
+
+
+def test_vulnerability_columns_render_only_the_selected_subset_in_canonical_order() -> None:
+    html = build_report_html(**_base_kwargs(vulnerability_columns=["status", "cve"]))
+    assert "<th>CVE</th><th>Status</th>" in html
+    assert "<th>CVSS</th>" not in html
+    assert "<th>Summary</th>" not in html
+    # The selected cells still render (CVE id + status), in canonical order.
+    assert "CVE-2026-1234" in html
+
+
+def test_component_columns_render_only_the_selected_subset_in_canonical_order() -> None:
+    html = build_report_html(**_base_kwargs(component_columns=["license", "name"]))
+    assert "<th>Name</th><th>License</th>" in html
+    assert "<th>Version</th>" not in html
+    assert "<th>Max Severity</th>" not in html
+    assert "<th>Vulns</th>" not in html
+    assert "left-pad" in html
+
+
+def test_column_selection_never_reorders_a_request_that_names_them_backwards() -> None:
+    """Selection is a subset filter, not a reorder: canonical order always wins."""
+    forward = build_report_html(**_base_kwargs(vulnerability_columns=["cve", "status"]))
+    backward = build_report_html(**_base_kwargs(vulnerability_columns=["status", "cve"]))
+    assert forward == backward

@@ -161,9 +161,7 @@ async def _seed(client: AsyncClient, *, role: str = "developer", is_superuser: b
 
 
 async def test_report_without_auth_returns_401(client: AsyncClient) -> None:
-    response = await client.get(
-        f"/v1/projects/{uuid.uuid4()}/vulnerability-report.pdf"
-    )
+    response = await client.get(f"/v1/projects/{uuid.uuid4()}/vulnerability-report.pdf")
     assert response.status_code == 401
     assert response.headers["content-type"].startswith(PROBLEM_JSON)
 
@@ -291,3 +289,186 @@ async def test_xlsx_super_admin_bypasses_team_check(client: AsyncClient) -> None
     )
     assert response.status_code == 200, response.text
     assert response.content.startswith(b"PK")
+
+
+# ---------------------------------------------------------------------------
+# Report formatting templates (D11, N22)
+# ---------------------------------------------------------------------------
+
+
+async def test_report_format_template_write_requires_super_admin(client: AsyncClient) -> None:
+    team, user, _project = await _seed(client, role="team_admin")
+
+    response = await client.put(
+        f"/v1/report-format-templates/org/{team.organization_id}",
+        headers=_bearer_for(user),
+        json={"org_label": "Acme"},
+    )
+    assert response.status_code == 403
+    assert response.headers["content-type"].startswith(PROBLEM_JSON)
+
+
+async def test_report_format_template_requires_at_least_one_field(client: AsyncClient) -> None:
+    _, admin, _ = await _seed(client, is_superuser=True)
+    factory = await _factory(client)
+    async with factory() as session:
+        org = await make_organization(session)
+
+    response = await client.put(
+        f"/v1/report-format-templates/org/{org.id}",
+        headers=_bearer_for(admin),
+        json={},
+    )
+    assert response.status_code == 422
+    assert response.headers["content-type"].startswith(PROBLEM_JSON)
+
+
+async def test_report_format_template_rejects_an_unknown_column(client: AsyncClient) -> None:
+    _, admin, _ = await _seed(client, is_superuser=True)
+    factory = await _factory(client)
+    async with factory() as session:
+        org = await make_organization(session)
+
+    response = await client.put(
+        f"/v1/report-format-templates/org/{org.id}",
+        headers=_bearer_for(admin),
+        json={"vulnerability_columns": ["cve", "not-a-column"]},
+    )
+    assert response.status_code == 422
+
+
+async def test_report_format_template_rejects_an_empty_column_list(client: AsyncClient) -> None:
+    _, admin, _ = await _seed(client, is_superuser=True)
+    factory = await _factory(client)
+    async with factory() as session:
+        org = await make_organization(session)
+
+    response = await client.put(
+        f"/v1/report-format-templates/org/{org.id}",
+        headers=_bearer_for(admin),
+        json={"component_columns": []},
+    )
+    assert response.status_code == 422
+
+
+async def test_report_format_template_read_404_when_none_written(client: AsyncClient) -> None:
+    team, user, _project = await _seed(client)
+
+    response = await client.get(
+        f"/v1/report-format-templates/org/{team.organization_id}",
+        headers=_bearer_for(user),
+    )
+    assert response.status_code == 404
+    assert response.headers["content-type"].startswith(PROBLEM_JSON)
+
+
+async def test_report_format_template_round_trips(client: AsyncClient) -> None:
+    team, user, _project = await _seed(client, role="developer")
+    _, admin, _ = await _seed(client, is_superuser=True)
+
+    put_response = await client.put(
+        f"/v1/report-format-templates/org/{team.organization_id}",
+        headers=_bearer_for(admin),
+        json={
+            "header_text": "Internal distribution only.",
+            "org_label": "Acme Corp",
+            "vulnerability_columns": ["cve", "status"],
+            "component_columns": ["name", "license"],
+        },
+    )
+    assert put_response.status_code == 200, put_response.text
+    body = put_response.json()
+    assert body["header_text"] == "Internal distribution only."
+    assert body["org_label"] == "Acme Corp"
+    assert body["vulnerability_columns"] == ["cve", "status"]
+    assert body["component_columns"] == ["name", "license"]
+
+    get_response = await client.get(
+        f"/v1/report-format-templates/org/{team.organization_id}",
+        headers=_bearer_for(user),
+    )
+    assert get_response.status_code == 200, get_response.text
+    assert get_response.json() == body
+
+
+async def test_report_format_template_deleted_reverts_to_404(client: AsyncClient) -> None:
+    team, _user, _project = await _seed(client)
+    _, admin, _ = await _seed(client, is_superuser=True)
+
+    await client.put(
+        f"/v1/report-format-templates/org/{team.organization_id}",
+        headers=_bearer_for(admin),
+        json={"org_label": "Acme Corp"},
+    )
+    delete_response = await client.delete(
+        f"/v1/report-format-templates/org/{team.organization_id}",
+        headers=_bearer_for(admin),
+    )
+    assert delete_response.status_code == 204, delete_response.text
+
+    get_response = await client.get(
+        f"/v1/report-format-templates/org/{team.organization_id}",
+        headers=_bearer_for(admin),
+    )
+    assert get_response.status_code == 404
+
+
+async def test_report_format_template_scoped_to_its_own_organization(
+    client: AsyncClient,
+) -> None:
+    team_a, _user_a, _project_a = await _seed(client)
+    team_b, user_b, _project_b = await _seed(client, role="developer")
+    _, admin, _ = await _seed(client, is_superuser=True)
+
+    await client.put(
+        f"/v1/report-format-templates/org/{team_a.organization_id}",
+        headers=_bearer_for(admin),
+        json={"org_label": "Org A only"},
+    )
+
+    response = await client.get(
+        f"/v1/report-format-templates/org/{team_b.organization_id}",
+        headers=_bearer_for(user_b),
+    )
+    assert response.status_code == 404
+
+
+async def test_pdf_report_rejects_an_unknown_request_time_column(client: AsyncClient) -> None:
+    """The 422 answers before any rendering, so it needs no weasyprint gate —
+    same posture as the auth-gate tests above."""
+    _, user, project = await _seed(client)
+
+    response = await client.get(
+        f"/v1/projects/{project.id}/vulnerability-report.pdf",
+        params={"vulnerability_columns": ["cve", "not-a-column"]},
+        headers=_bearer_for(user),
+    )
+    assert response.status_code == 422
+    assert response.headers["content-type"].startswith(PROBLEM_JSON)
+
+
+async def test_pdf_report_with_a_request_time_column_selection_still_renders(
+    client: AsyncClient,
+) -> None:
+    """The request-time override is honored on the happy path: still a valid
+    PDF, whatever the organization default is. The priority rule itself
+    (request-time beats the organization default) is pinned precisely in
+    ``tests/unit/api/v1/test_reports_column_selection.py``; this only proves
+    the query parameter reaches the renderer without breaking the response."""
+    _require_weasyprint()
+    team, user, project = await _seed(client)
+    _, admin, _ = await _seed(client, is_superuser=True)
+
+    await client.put(
+        f"/v1/report-format-templates/org/{team.organization_id}",
+        headers=_bearer_for(admin),
+        json={"vulnerability_columns": ["cve", "cvss", "summary", "status"]},
+    )
+
+    response = await client.get(
+        f"/v1/projects/{project.id}/vulnerability-report.pdf",
+        params={"vulnerability_columns": ["cve"]},
+        headers=_bearer_for(user),
+    )
+    assert response.status_code == 200, response.text
+    assert response.content.startswith(b"%PDF")

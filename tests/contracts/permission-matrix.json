@@ -480,6 +480,21 @@
     },
     {
       "method": "DELETE",
+      "path": "/v1/report-format-templates/org/{organization_id}",
+      "gate": "role>=developer"
+    },
+    {
+      "method": "GET",
+      "path": "/v1/report-format-templates/org/{organization_id}",
+      "gate": "role>=developer"
+    },
+    {
+      "method": "PUT",
+      "path": "/v1/report-format-templates/org/{organization_id}",
+      "gate": "role>=developer"
+    },
+    {
+      "method": "DELETE",
       "path": "/v1/notification-rules/{rule_id}",
       "gate": "role>=team_admin"
     },
