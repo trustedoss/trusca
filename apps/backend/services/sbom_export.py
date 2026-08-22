@@ -9,6 +9,14 @@ that wires up auth + IDOR + Content-Disposition; serialization decisions live
 here so the same code can be re-used by background export jobs (Excel/PDF
 report attachments, scheduled deliveries) without booting FastAPI.
 
+Threadpool offload (W3, concurrency-scaling-plan-2026-08-22.md §1.5/§3.5)
+--------------------------------------------------------------------------
+Loading is async (SQLAlchemy). Building + serializing the document is pure
+CPU (dict construction, ``json.dumps``, ``ET.tostring``, string joins) with
+no I/O, so it runs via ``run_in_threadpool`` for all four formats rather than
+inline on the event loop, matching the vulnerability PDF / XLSX reports
+(`api/v1/reports.py`).
+
 Output formats
 --------------
 - ``cyclonedx-json`` — CycloneDX 1.6 JSON  (Content-Type ``application/vnd.cyclonedx+json``)
@@ -89,6 +97,7 @@ from datetime import UTC, datetime
 from typing import Any
 
 import structlog
+from fastapi.concurrency import run_in_threadpool
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -1217,54 +1226,71 @@ async def export_sbom(
     content_type, _ = _FORMAT_CATALOG[fmt]
     filename = _filename(project, fmt, profile=profile)
 
-    if fmt == "cyclonedx-json":
-        body = _serialize_cyclonedx_json(
-            _build_cyclonedx_doc(
-                project=project,
-                scan=scan,
-                rows=rows,
-                licenses_by_cv=licenses_by_cv,
-                vuln_rows=vuln_rows,
-                now=timestamp,
-                profile=profile_marker,
+    def _render_body() -> str:
+        """Build + serialize the document (W3: pure CPU, no I/O).
+
+        This is the blocking half of the export: dict construction plus
+        ``json.dumps`` / ``ET.tostring`` / string-joining, all synchronous.
+        A large project's document can take tens of milliseconds to build and
+        serialize; called inline from this ``async def`` it would stall the
+        event loop for that long and serialize every other request on the
+        worker (concurrency-scaling-plan-2026-08-22.md §1.5, W3). Defined as a
+        nested closure (mirrors ``source_tree_service.py``'s offload shape) so
+        it captures the already-loaded, already-async-fetched inputs above
+        without re-touching the database, and runs via ``run_in_threadpool``
+        below. All four formats go through this same closure, so all four are
+        offloaded, not just one.
+        """
+        if fmt == "cyclonedx-json":
+            return _serialize_cyclonedx_json(
+                _build_cyclonedx_doc(
+                    project=project,
+                    scan=scan,
+                    rows=rows,
+                    licenses_by_cv=licenses_by_cv,
+                    vuln_rows=vuln_rows,
+                    now=timestamp,
+                    profile=profile_marker,
+                )
             )
-        )
-    elif fmt == "cyclonedx-xml":
-        body = _serialize_cyclonedx_xml(
-            _build_cyclonedx_doc(
-                project=project,
-                scan=scan,
-                rows=rows,
-                licenses_by_cv=licenses_by_cv,
-                vuln_rows=vuln_rows,
-                now=timestamp,
-                profile=profile_marker,
+        if fmt == "cyclonedx-xml":
+            return _serialize_cyclonedx_xml(
+                _build_cyclonedx_doc(
+                    project=project,
+                    scan=scan,
+                    rows=rows,
+                    licenses_by_cv=licenses_by_cv,
+                    vuln_rows=vuln_rows,
+                    now=timestamp,
+                    profile=profile_marker,
+                )
             )
-        )
-    elif fmt == "spdx-json":
-        body = _serialize_spdx_json(
-            _build_spdx_doc(
-                project=project,
-                scan=scan,
-                rows=rows,
-                licenses_by_cv=licenses_by_cv,
-                now=timestamp,
-                profile=profile_marker,
+        if fmt == "spdx-json":
+            return _serialize_spdx_json(
+                _build_spdx_doc(
+                    project=project,
+                    scan=scan,
+                    rows=rows,
+                    licenses_by_cv=licenses_by_cv,
+                    now=timestamp,
+                    profile=profile_marker,
+                )
             )
-        )
-    elif fmt == "spdx-tv":
-        body = _serialize_spdx_tv(
-            _build_spdx_doc(
-                project=project,
-                scan=scan,
-                rows=rows,
-                licenses_by_cv=licenses_by_cv,
-                now=timestamp,
-                profile=profile_marker,
+        if fmt == "spdx-tv":
+            return _serialize_spdx_tv(
+                _build_spdx_doc(
+                    project=project,
+                    scan=scan,
+                    rows=rows,
+                    licenses_by_cv=licenses_by_cv,
+                    now=timestamp,
+                    profile=profile_marker,
+                )
             )
-        )
-    else:  # pragma: no cover - guarded by the catalog check above
+        # pragma: no cover - guarded by the catalog check at function entry
         raise SBOMUnsupportedFormat(f"unknown SBOM format {fmt!r}")
+
+    body = await run_in_threadpool(_render_body)
 
     # Operational signal: SK Telecom (and most SBOM consumers) reject
     # ``pkg:generic/`` PURLs, which surface here as a "generic"/"unknown"

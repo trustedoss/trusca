@@ -1579,3 +1579,104 @@ async def test_an_unestablished_version_is_marked_not_asserted(
     )
     rows = {c.id: c for c in evaluate(body.encode("utf-8")).checks}
     assert component["name"] not in rows["cisa-component-version"].missing
+
+
+# ---------------------------------------------------------------------------
+# W3 (concurrency-scaling-plan-2026-08-22.md §1.5/§3.5/§4): the build +
+# serialize step runs off the event loop, and an exception raised inside it
+# still reaches the caller.
+# ---------------------------------------------------------------------------
+
+
+async def test_export_sbom_does_not_block_the_event_loop(
+    monkeypatch, db_session: AsyncSession
+) -> None:
+    """The document build + serialize step must not stall the event loop.
+
+    Monkeypatches the CycloneDX document builder to synchronously sleep for a
+    short, deterministic interval (standing in for a large project's
+    build-and-serialize duration), and asserts a concurrent
+    ``asyncio.sleep(0)`` ticker keeps advancing while ``export_sbom``'s
+    render is in flight. Before W3 this call ran inline in the coroutine
+    body (mirrors A1's ``test_verify_password_async_does_not_block_the_event_loop``),
+    so the ticker would stall for the sleep's duration; a free event loop
+    doing nothing but ``sleep(0)`` yields thousands of times a second, so a
+    floor far below that (but well above "zero, the loop was blocked") is
+    enough to catch a regression without being flaky.
+    """
+    import asyncio
+    import time
+
+    from services import sbom_export
+
+    _, project, _ = await _make_project_with_succeeded_scan(db_session)
+
+    real_build = sbom_export._build_cyclonedx_doc
+
+    def _slow_build(*args, **kwargs):
+        time.sleep(0.05)
+        return real_build(*args, **kwargs)
+
+    monkeypatch.setattr(sbom_export, "_build_cyclonedx_doc", _slow_build)
+
+    async def _run() -> int:
+        ticks = 0
+        stop = False
+
+        async def ticker() -> None:
+            nonlocal ticks
+            while not stop:
+                ticks += 1
+                await asyncio.sleep(0)
+
+        async def exporter() -> None:
+            nonlocal stop
+            await sbom_export.export_sbom(
+                db_session, project_id=project.id, fmt="cyclonedx-json"
+            )
+            stop = True
+
+        await asyncio.gather(ticker(), exporter())
+        return ticks
+
+    ticks = await _run()
+    assert ticks > 20, (
+        f"event loop only advanced {ticks} times while export_sbom's render "
+        "was pending; SBOM serialization may be running inline on the loop "
+        "again (W3 regression)"
+    )
+
+
+@pytest.mark.parametrize(
+    "fmt,patched_name",
+    [
+        ("cyclonedx-json", "_serialize_cyclonedx_json"),
+        ("cyclonedx-xml", "_serialize_cyclonedx_xml"),
+        ("spdx-json", "_serialize_spdx_json"),
+        ("spdx-tv", "_serialize_spdx_tv"),
+    ],
+)
+async def test_serializer_exception_propagates_across_the_thread_boundary(
+    monkeypatch, db_session: AsyncSession, fmt: str, patched_name: str
+) -> None:
+    """An exception raised inside the offloaded closure must reach the caller.
+
+    Each of the four formats' serializer is monkeypatched to raise; the same
+    exception instance must surface from ``export_sbom`` (not be swallowed,
+    and not hang the thread pool) so the router's existing RFC 7807 mapping
+    is unaffected by W3's threadpool offload.
+    """
+    from services import sbom_export
+
+    _, project, _ = await _make_project_with_succeeded_scan(db_session)
+
+    class _Boom(RuntimeError):
+        pass
+
+    def _raise(*args, **kwargs):
+        raise _Boom("serializer exploded")
+
+    monkeypatch.setattr(sbom_export, patched_name, _raise)
+
+    with pytest.raises(_Boom, match="serializer exploded"):
+        await sbom_export.export_sbom(db_session, project_id=project.id, fmt=fmt)
