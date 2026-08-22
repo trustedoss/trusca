@@ -59,8 +59,11 @@ data:
   # ---- Connection-budget fleet-shape hints (W2) ----
   # Feed ONLY the boot-time over-budget warning in main.py (see
   # core.connection_budget); they do not change the actual pod / worker
-  # counts, which are the Deployment `replicas:` fields below.
-  CONN_BUDGET_UVICORN_WORKERS: {{ .Values.backend.uvicornWorkers | quote }}
+  # counts, which are the Deployment `replicas:` fields below. The uvicorn
+  # worker count itself is now a real knob (W1, UVICORN_WORKERS, set on the
+  # backend container in deployment-backend.yaml only) rather than an
+  # informational hint here, so operators no longer have two places to keep
+  # in sync for that one number.
   CONN_BUDGET_BACKEND_REPLICAS: {{ .Values.backend.replicaCount | quote }}
   CONN_BUDGET_WORKER_REPLICAS: {{ .Values.worker.replicaCount | quote }}
 

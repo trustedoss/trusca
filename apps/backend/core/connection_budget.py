@@ -117,12 +117,16 @@ def current_process_budget(*, max_connections: int) -> ConnectionBudget:
     """Build the budget for this deployment from its current env + Postgres.
 
     Reads the pool-sizing knobs the engines are actually built with
-    (`core.db`) plus the three W2 fleet-shape hints an operator sets to match
-    how they run the containers (`core.config.conn_budget_*`). `max_connections`
-    is the caller's job to supply. The natural source is `SHOW max_connections`
-    against the very database the pools connect to, which is what
-    `main.py`'s boot check does; a caller with no live connection yet can pass
-    the value it plans to configure.
+    (`core.db`), the REAL uvicorn worker count this process was launched
+    with (`core.config.uvicorn_workers`, W1), and the two remaining W2
+    fleet-shape hints an operator sets to match how many containers they
+    run (`core.config.conn_budget_backend_replicas` /
+    `conn_budget_worker_replicas` -- there is no env var a container can
+    read to learn its own replica count, unlike uvicorn worker count).
+    `max_connections` is the caller's job to supply. The natural source is
+    `SHOW max_connections` against the very database the pools connect to,
+    which is what `main.py`'s boot check does; a caller with no live
+    connection yet can pass the value it plans to configure.
     """
     # Local import to avoid a hard dependency at module import time / keep
     # this module importable from a context (like a Helm-parity test) that
@@ -132,7 +136,7 @@ def current_process_budget(*, max_connections: int) -> ConnectionBudget:
     return ConnectionBudget(
         name="runtime",
         backend_replicas=config.conn_budget_backend_replicas(),
-        uvicorn_workers=config.conn_budget_uvicorn_workers(),
+        uvicorn_workers=config.uvicorn_workers(),
         pool_size=config.db_pool_size(),
         max_overflow=config.db_max_overflow(),
         worker_replicas=config.conn_budget_worker_replicas(),

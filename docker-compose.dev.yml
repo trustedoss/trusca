@@ -76,11 +76,16 @@ x-backend-env: &backend-env
   DB_SYNC_MAX_OVERFLOW: ${DB_SYNC_MAX_OVERFLOW:-3}
   DB_SYNC_POOL_TIMEOUT: ${DB_SYNC_POOL_TIMEOUT:-30}
   DB_SYNC_POOL_RECYCLE: ${DB_SYNC_POOL_RECYCLE:-1800}
+  # W1: the real worker-count knob (apps/backend/Dockerfile.prod's CMD reads
+  # it). Dev's own `command:` below runs uvicorn with `--reload`, which does
+  # not support multiple workers and never reads this var directly. Dev
+  # always runs exactly 1 uvicorn process regardless of this value. It is
+  # set here anyway so anything that reads the ACTUAL count (the W2
+  # boot-time budget warning below) sees the truth rather than the image's
+  # unrelated default of 4.
+  UVICORN_WORKERS: ${UVICORN_WORKERS:-1}
   # W2: connection-budget fleet-shape hints (see docker-compose.yml for the
-  # full explanation). Dev runs a single uvicorn process (no --workers flag,
-  # `uvicorn`'s own default is 1), so this is the one deployment where the
-  # hint differs from the image's baked-in 4.
-  CONN_BUDGET_UVICORN_WORKERS: ${CONN_BUDGET_UVICORN_WORKERS:-1}
+  # full explanation).
   CONN_BUDGET_BACKEND_REPLICAS: ${CONN_BUDGET_BACKEND_REPLICAS:-1}
   CONN_BUDGET_WORKER_REPLICAS: ${CONN_BUDGET_WORKER_REPLICAS:-1}
   # Scan-trigger abuse controls.

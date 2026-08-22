@@ -172,7 +172,7 @@ connections before alembic runs.
 | Key | Default | Description |
 |---|---|---|
 | `backend.replicaCount` | `2` | |
-| `backend.uvicornWorkers` | `4` | Informational (W2): documents the image's baked-in `--workers 4` for the connection-budget formula (see NOTES.txt). Does not itself change the worker count. |
+| `backend.uvicornWorkers` | `4` | W1: real knob, injected as `UVICORN_WORKERS` (`deployment-backend.yaml`) which `apps/backend/Dockerfile.prod`'s CMD reads at container start. Also what the connection-budget formula (see NOTES.txt) multiplies `env.dbPool.size`/`maxOverflow` by. |
 | `backend.port` | `8000` | |
 | `backend.healthPath` / `readyPath` | `/health` / `/health/ready` | Liveness / readiness (schema-gated). |
 | `worker.replicaCount` | `2` | Prefer scaling pods over `concurrency`. |

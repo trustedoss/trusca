@@ -39,7 +39,7 @@ def _clean_env() -> Iterator[None]:
         "DB_SYNC_MAX_OVERFLOW",
         "DB_SYNC_POOL_TIMEOUT",
         "DB_SYNC_POOL_RECYCLE",
-        "CONN_BUDGET_UVICORN_WORKERS",
+        "UVICORN_WORKERS",
         "CONN_BUDGET_BACKEND_REPLICAS",
         "CONN_BUDGET_WORKER_REPLICAS",
         "SCAN_TRIGGER_RATE_LIMIT",
@@ -143,47 +143,70 @@ def test_db_pool_size_falls_back_to_default_on_junk() -> None:
 
 
 # ---------------------------------------------------------------------------
+# W1: uvicorn_workers(), the REAL worker-count knob. Unlike the W2 hints
+# below, this one drives the process uvicorn actually launches with (the
+# Dockerfile CMD reads the same UVICORN_WORKERS env var).
+# ---------------------------------------------------------------------------
+
+
+def test_uvicorn_workers_default_matches_the_dockerfile_cmd() -> None:
+    from core.config import uvicorn_workers
+
+    assert uvicorn_workers() == 4
+
+
+def test_uvicorn_workers_reads_env_at_call_time() -> None:
+    from core.config import uvicorn_workers
+
+    os.environ["UVICORN_WORKERS"] = "8"
+    assert uvicorn_workers() == 8
+
+
+def test_uvicorn_workers_clamps_zero_and_negative_to_minimum_one() -> None:
+    """A container cannot run zero or a negative number of uvicorn workers."""
+    from core.config import uvicorn_workers
+
+    os.environ["UVICORN_WORKERS"] = "0"
+    assert uvicorn_workers() == 1
+    os.environ["UVICORN_WORKERS"] = "-4"
+    assert uvicorn_workers() == 1
+
+
+# ---------------------------------------------------------------------------
 # W2: connection-budget fleet-shape hints. Purely informational (feed only
 # the boot-time warning), but they still read os.getenv at call time and
-# clamp junk the same way every other _int_env-backed knob does.
+# clamp junk the same way every other _int_env-backed knob does. The
+# uvicorn-worker axis moved to the real `uvicorn_workers()` knob above in
+# W1; these two are what remains, because there is no env var a container
+# can read to learn its own replica count the way it can for its own
+# worker-process count.
 # ---------------------------------------------------------------------------
 
 
 def test_conn_budget_hints_default_to_the_prod_compose_shape() -> None:
-    from core.config import (
-        conn_budget_backend_replicas,
-        conn_budget_uvicorn_workers,
-        conn_budget_worker_replicas,
-    )
+    from core.config import conn_budget_backend_replicas, conn_budget_worker_replicas
 
-    assert conn_budget_uvicorn_workers() == 4
     assert conn_budget_backend_replicas() == 1
     assert conn_budget_worker_replicas() == 1
 
 
 def test_conn_budget_hints_read_env_at_call_time() -> None:
-    from core.config import (
-        conn_budget_backend_replicas,
-        conn_budget_uvicorn_workers,
-        conn_budget_worker_replicas,
-    )
+    from core.config import conn_budget_backend_replicas, conn_budget_worker_replicas
 
-    os.environ["CONN_BUDGET_UVICORN_WORKERS"] = "2"
     os.environ["CONN_BUDGET_BACKEND_REPLICAS"] = "3"
     os.environ["CONN_BUDGET_WORKER_REPLICAS"] = "5"
-    assert conn_budget_uvicorn_workers() == 2
     assert conn_budget_backend_replicas() == 3
     assert conn_budget_worker_replicas() == 5
 
 
 def test_conn_budget_hints_clamp_zero_and_negative_to_minimum_one() -> None:
     """A deployment cannot run zero or a negative number of processes."""
-    from core.config import conn_budget_uvicorn_workers
+    from core.config import conn_budget_backend_replicas
 
-    os.environ["CONN_BUDGET_UVICORN_WORKERS"] = "0"
-    assert conn_budget_uvicorn_workers() == 1
-    os.environ["CONN_BUDGET_UVICORN_WORKERS"] = "-4"
-    assert conn_budget_uvicorn_workers() == 1
+    os.environ["CONN_BUDGET_BACKEND_REPLICAS"] = "0"
+    assert conn_budget_backend_replicas() == 1
+    os.environ["CONN_BUDGET_BACKEND_REPLICAS"] = "-4"
+    assert conn_budget_backend_replicas() == 1
 
 
 def test_db_pool_recycle_allows_minus_one_disable() -> None:

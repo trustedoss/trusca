@@ -3,7 +3,8 @@
 # Goals vs. the dev Dockerfile:
 #   - Multi-stage so the runtime image doesn't carry build-essential / gcc.
 #   - Production deps only (`requirements.txt`, no `requirements-dev.txt`).
-#   - No `--reload`, multiple uvicorn workers (`--workers 4`).
+#   - No `--reload`, multiple uvicorn workers (`--workers`, default 4,
+#     runtime-configurable via `UVICORN_WORKERS`, see the CMD comment below).
 #   - `tini` as PID 1 so SIGTERM propagates cleanly when docker stops the container.
 #   - Non-root runtime user (uid 1000) — least privilege.
 #
@@ -117,6 +118,13 @@ HEALTHCHECK --interval=10s --timeout=5s --retries=6 --start-period=30s \
 # signals reach uvicorn cleanly. CMD is unchanged — the script runs it via
 # `exec "$@"`.
 ENTRYPOINT ["/usr/bin/tini", "--", "/app/docker-entrypoint.sh"]
-# 4 workers is a reasonable default for a 2-core deployment; operators
-# bump this in the prod compose under `command:` when they have more cores.
-CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000", "--workers", "4"]
+# W1 (concurrency-scaling-plan-2026-08-22.md §3.5): worker count is a
+# runtime env var, not a value baked into this image. UVICORN_WORKERS is
+# read by /bin/sh at CONTAINER START (this is shell-form CMD wrapped in an
+# explicit `sh -c`, not a Dockerfile ARG/ENV substitution done at build
+# time), so compose/Helm set it like any other env var (CLAUDE.md rule #11).
+# 4 is the default when it is unset, the same "reasonable default for a
+# 2-core deployment" this image has always shipped; operators raise it with
+# more cores instead of rewriting the whole command. `exec` hands the
+# process image to uvicorn directly (same PID chain tini already signals).
+CMD ["/bin/sh", "-c", "exec uvicorn main:app --host 0.0.0.0 --port 8000 --workers ${UVICORN_WORKERS:-4}"]

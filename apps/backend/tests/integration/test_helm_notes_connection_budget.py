@@ -9,9 +9,15 @@ This is the "golden" half of the W2 DoD ("차트 렌더 골든 테스트에도 �
 값을 포함시킨다"): it actually renders `charts/trustedoss` with `helm template`
 (skipped, not failed, when the binary is unavailable, matching this repo's
 convention of skipif-ing on a missing real external tool rather than mocking
-one) and reads back the numbers the ConfigMap actually carries into every
-pod, cross-checking them against `core.connection_budget`, the same oracle
-`.env.example`'s worked examples derive from.
+one) and reads back the numbers the ConfigMap AND the backend Deployment
+actually carry into every pod, cross-checking them against
+`core.connection_budget`, the same oracle `.env.example`'s worked examples
+derive from. UVICORN_WORKERS lives on the backend Deployment specifically
+(W1: it is a real per-container knob, not a value worker/beat pods need),
+while the two remaining fleet-shape hints stay on the shared ConfigMap (W2:
+still informational, since no env var lets a container learn its own
+replica count), so this file renders both templates and merges what they
+carry.
 
 Why `helm template` and not `helm install --dry-run` / `helm install
 --dry-run=client`: NOTES.txt is an install-time artifact, so it is tempting
@@ -25,7 +31,9 @@ a runner with no kubeconfig. `helm template`, by contrast, has never needed
 a cluster in any Helm version -- it just cannot print NOTES.txt (Helm
 excludes that one file from the manifest set on purpose). So this file reads
 the SAME numbers a different way: the ConfigMap every workload mounts via
-`envFrom`, rendered with `--show-only templates/configmap-env.yaml`.
+`envFrom` (`--show-only templates/configmap-env.yaml`) plus the backend
+Deployment's own `env:` entry for UVICORN_WORKERS
+(`--show-only templates/deployment-backend.yaml`).
 
 test_notes_template_source_multiplies_backend_by_uvicorn_workers below
 covers the actual historical bug (NOTES.txt's backend line silently
@@ -65,14 +73,13 @@ _REQUIRED_SET = [
 ]
 
 _ENV_LINE_RE = re.compile(r'^\s*([A-Z][A-Z0-9_]*):\s*"?(-?\d+)"?\s*$', re.MULTILINE)
+# The backend Deployment's `env:` is a YAML list (`- name: X` / `value: "N"`
+# on the next line), not the flat `KEY: "value"` map configmap-env.yaml
+# renders as, so it needs its own pattern.
+_ENV_LIST_ITEM_RE = re.compile(r'-\s*name:\s*([A-Z][A-Z0-9_]*)\s*\n\s*value:\s*"?(-?\d+)"?')
 
 
-def _render_configmap_env(*extra_set: str) -> dict[str, int]:
-    """Render `templates/configmap-env.yaml` and parse its integer-valued keys.
-
-    No cluster, no kubeconfig: `helm template` renders purely from the chart
-    + values, which is exactly what a render golden test wants.
-    """
+def _helm_show_only(template: str, *extra_set: str) -> str:
     assert HELM is not None, "caller must skip via pytest.mark.skipif(HELM is None, ...)"
     cmd = [
         HELM,
@@ -80,7 +87,7 @@ def _render_configmap_env(*extra_set: str) -> dict[str, int]:
         "trustedoss-golden",
         str(CHART_DIR),
         "--show-only",
-        "templates/configmap-env.yaml",
+        template,
         *_REQUIRED_SET,
         *extra_set,
     ]
@@ -88,14 +95,29 @@ def _render_configmap_env(*extra_set: str) -> dict[str, int]:
     assert (
         result.returncode == 0
     ), f"helm template failed:\nSTDOUT:\n{result.stdout}\nSTDERR:\n{result.stderr}"
-    return {key: int(value) for key, value in _ENV_LINE_RE.findall(result.stdout)}
+    return result.stdout
 
 
-def _budget_from_configmap(env: dict[str, int], *, max_connections: int = 100) -> ConnectionBudget:
+def _render_env(*extra_set: str) -> dict[str, int]:
+    """Render the shared ConfigMap AND the backend Deployment's own `env:`.
+
+    No cluster, no kubeconfig: `helm template` renders purely from the chart
+    + values, which is exactly what a render golden test wants. Merging the
+    two is safe -- W1 moved UVICORN_WORKERS off the ConfigMap onto the
+    backend Deployment specifically, so the key sets do not collide.
+    """
+    configmap_out = _helm_show_only("templates/configmap-env.yaml", *extra_set)
+    backend_out = _helm_show_only("templates/deployment-backend.yaml", *extra_set)
+    env = dict(_ENV_LINE_RE.findall(configmap_out))
+    env.update(_ENV_LIST_ITEM_RE.findall(backend_out))
+    return {key: int(value) for key, value in env.items()}
+
+
+def _budget_from_env(env: dict[str, int], *, max_connections: int = 100) -> ConnectionBudget:
     return ConnectionBudget(
-        name="charts/trustedoss configmap-env.yaml (rendered)",
+        name="charts/trustedoss (rendered)",
         backend_replicas=env["CONN_BUDGET_BACKEND_REPLICAS"],
-        uvicorn_workers=env["CONN_BUDGET_UVICORN_WORKERS"],
+        uvicorn_workers=env["UVICORN_WORKERS"],
         pool_size=env["DB_POOL_SIZE"],
         max_overflow=env["DB_MAX_OVERFLOW"],
         worker_replicas=env["CONN_BUDGET_WORKER_REPLICAS"],
@@ -106,30 +128,32 @@ def _budget_from_configmap(env: dict[str, int], *, max_connections: int = 100) -
 
 
 @pytest.mark.skipif(HELM is None, reason="helm binary not available")
-def test_configmap_conn_budget_hints_match_backend_and_worker_replica_counts() -> None:
-    """The W2 fleet-shape hints track the SAME replica counts NOTES.txt reads.
+def test_rendered_env_matches_backend_and_worker_replica_counts() -> None:
+    """The W1 knob and the W2 hints track the SAME counts NOTES.txt reads.
 
-    `CONN_BUDGET_BACKEND_REPLICAS` / `CONN_BUDGET_WORKER_REPLICAS` are wired
-    from `.Values.backend.replicaCount` / `.Values.worker.replicaCount` in
-    configmap-env.yaml -- the same values NOTES.txt's formula multiplies.
-    Confirms that wiring survives a real render at the chart's own defaults.
+    `UVICORN_WORKERS` (backend Deployment) and `CONN_BUDGET_BACKEND_REPLICAS`
+    / `CONN_BUDGET_WORKER_REPLICAS` (shared ConfigMap) are wired from
+    `.Values.backend.uvicornWorkers` / `.Values.backend.replicaCount` /
+    `.Values.worker.replicaCount` -- the same values NOTES.txt's formula
+    multiplies. Confirms that wiring survives a real render at the chart's
+    own defaults.
     """
-    env = _render_configmap_env()
+    env = _render_env()
     assert env["CONN_BUDGET_BACKEND_REPLICAS"] == 2  # values.yaml backend.replicaCount
     assert env["CONN_BUDGET_WORKER_REPLICAS"] == 2  # values.yaml worker.replicaCount
-    assert env["CONN_BUDGET_UVICORN_WORKERS"] == 4  # values.yaml backend.uvicornWorkers
+    assert env["UVICORN_WORKERS"] == 4  # values.yaml backend.uvicornWorkers
 
 
 @pytest.mark.skipif(HELM is None, reason="helm binary not available")
-def test_configmap_matches_the_python_oracle_at_chart_defaults() -> None:
+def test_rendered_env_matches_the_python_oracle_at_chart_defaults() -> None:
     """The rendered pool + fleet-shape env vars agree with core.connection_budget.
 
     Builds the ConnectionBudget straight from what `helm template` actually
-    put in the ConfigMap -- not from a hand-copied fixture -- so a values.yaml
-    edit that changes the numbers without a matching test update fails here.
+    rendered -- not from a hand-copied fixture -- so a values.yaml edit that
+    changes the numbers without a matching test update fails here.
     """
-    env = _render_configmap_env()
-    budget = _budget_from_configmap(env)
+    env = _render_env()
+    budget = _budget_from_env(env)
 
     # Same numbers test_connection_budget.py's HELM_DEFAULT fixture encodes
     # by hand; this is the render-time confirmation that fixture is accurate.
@@ -148,20 +172,41 @@ def test_configmap_matches_the_python_oracle_at_chart_defaults() -> None:
 
 
 @pytest.mark.skipif(HELM is None, reason="helm binary not available")
-def test_configmap_reflects_replicacount_overrides() -> None:
-    """Scaling `--set backend.replicaCount=N` changes the rendered hint too.
+def test_rendered_env_reflects_replicacount_overrides() -> None:
+    """Scaling `--set backend.replicaCount=N` changes the rendered hints too.
 
     Mirrors the arithmetic NOTES.txt's WARNING branch (and main.py's
     boot-time check) key off: scaling past default max_connections=100 is
-    something the rendered ConfigMap must be ABLE to reflect, since that is
+    something the rendered manifests must be ABLE to reflect, since that is
     what an operator's real `helm upgrade --set ...` would ship to every pod.
     """
-    env = _render_configmap_env("--set", "backend.replicaCount=4", "--set", "worker.replicaCount=6")
-    budget = _budget_from_configmap(env)
+    env = _render_env("--set", "backend.replicaCount=4", "--set", "worker.replicaCount=6")
+    budget = _budget_from_env(env)
     assert budget.backend_replicas == 4
     assert budget.worker_replicas == 6
     assert budget.total_connections == 4 * 4 * 8 + 6 * 6 + 6  # 128 + 36 + 6 = 170
     assert budget.over_budget
+
+
+@pytest.mark.skipif(HELM is None, reason="helm binary not available")
+def test_rendered_uvicorn_workers_is_backend_only_not_on_the_shared_configmap() -> None:
+    """W1: UVICORN_WORKERS is backend-specific, unlike the other pool knobs.
+
+    worker/beat pods never run uvicorn, so this must NOT leak onto the
+    shared `-env` ConfigMap they also mount -- confirms deployment-backend.yaml
+    carries it as its own `env:` entry rather than configmap-env.yaml. Checks
+    the PARSED key set, not a raw substring search: configmap-env.yaml's own
+    comments mention "UVICORN_WORKERS" by name (explaining why it moved), and
+    a plain `in` check on the raw YAML would trip on that prose, not on an
+    actual env entry.
+    """
+    configmap_out = _helm_show_only("templates/configmap-env.yaml")
+    configmap_keys = dict(_ENV_LINE_RE.findall(configmap_out))
+    assert "UVICORN_WORKERS" not in configmap_keys
+
+    backend_out = _helm_show_only("templates/deployment-backend.yaml")
+    backend_keys = dict(_ENV_LIST_ITEM_RE.findall(backend_out))
+    assert "UVICORN_WORKERS" in backend_keys
 
 
 def test_notes_template_source_multiplies_backend_by_uvicorn_workers() -> None:

@@ -41,6 +41,7 @@ These four must be present and non-empty. The wizard sets them.
 | `LOG_LEVEL` | `INFO` | `config.py` | `DEBUG`, `INFO`, `WARNING`, `ERROR`. |
 | `DEMO_READ_ONLY` | `false` | `config.py` | When truthy (`1`/`true`/`yes`/`on`), the backend runs as a **read-only live demo**: every non-auth mutation (POST/PUT/PATCH/DELETE) is rejected with an RFC 7807 `403`. Surfaces on `GET /health` so the SPA shows a banner. See [Live demo](../installation/live-demo.md). |
 | `IMAGE_TAG` | `0.11.0` | `docker-compose.yml` | Pinned tag for `ghcr.io/trustedoss/trusca-backend`, `…/trusca-backend-worker`, `…/trusca-frontend`. |
+| `UVICORN_WORKERS` | `4` | `Dockerfile.prod` (uvicorn CLI), `config.py` | Uvicorn worker process count for the backend container. Raising it uses more CPU cores per container instead of running more containers; multiply it into the connection-budget formula below before raising it. |
 
 ## Database
 

@@ -217,7 +217,7 @@ def _clean_env() -> Iterator[None]:
         "DB_MAX_OVERFLOW",
         "DB_SYNC_POOL_SIZE",
         "DB_SYNC_MAX_OVERFLOW",
-        "CONN_BUDGET_UVICORN_WORKERS",
+        "UVICORN_WORKERS",
         "CONN_BUDGET_BACKEND_REPLICAS",
         "CONN_BUDGET_WORKER_REPLICAS",
     ]
@@ -249,7 +249,7 @@ def test_current_process_budget_matches_the_prod_compose_defaults() -> None:
 
 
 def test_current_process_budget_reflects_env_overrides() -> None:
-    os.environ["CONN_BUDGET_UVICORN_WORKERS"] = "8"
+    os.environ["UVICORN_WORKERS"] = "8"
     os.environ["CONN_BUDGET_BACKEND_REPLICAS"] = "4"
     budget = current_process_budget(max_connections=100)
     assert budget.backend_processes == 32
