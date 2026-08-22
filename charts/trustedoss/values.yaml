@@ -162,16 +162,21 @@ env:
     timeoutSeconds: 300
 
   # -------------------------------------------------------------------------
-  # DB connection pool (B1). Total connections per process = size + overflow.
-  # Mind the budget (see NOTES.txt). The backend clamps each value.
+  # DB connection pool (B1). Total connections per process = size + overflow,
+  # multiplied by backend.replicaCount x backend.uvicornWorkers for the
+  # backend tier. W2 (concurrency-scaling-plan-2026-08-22.md §1.6) lowered
+  # these from 20/10/5/5; the OLD defaults put the backend tier alone at
+  # 2 x 4 x 30 = 240 connections against Postgres' default 100. Mind the
+  # budget (see NOTES.txt, which renders from the same formula as
+  # apps/backend/core/connection_budget.py). The backend clamps each value.
   # -------------------------------------------------------------------------
   dbPool:
-    size: 20            # DB_POOL_SIZE
-    maxOverflow: 10     # DB_MAX_OVERFLOW
+    size: 5             # DB_POOL_SIZE
+    maxOverflow: 3      # DB_MAX_OVERFLOW
     timeout: 30         # DB_POOL_TIMEOUT
     recycle: 1800       # DB_POOL_RECYCLE
-    syncSize: 5         # DB_SYNC_POOL_SIZE (per worker AND per beat pod)
-    syncMaxOverflow: 5  # DB_SYNC_MAX_OVERFLOW
+    syncSize: 3         # DB_SYNC_POOL_SIZE (per worker AND per beat pod)
+    syncMaxOverflow: 3  # DB_SYNC_MAX_OVERFLOW
     syncTimeout: 30     # DB_SYNC_POOL_TIMEOUT
     syncRecycle: 1800   # DB_SYNC_POOL_RECYCLE
 
@@ -361,6 +366,16 @@ migrationJob:
 # ===========================================================================
 backend:
   replicaCount: 2
+  # W2 (concurrency-scaling-plan-2026-08-22.md §1.6/§3.5): the number of
+  # uvicorn worker PROCESSES each backend pod runs. This is informational
+  # only: it documents what apps/backend/Dockerfile.prod already bakes in
+  # (`CMD ["uvicorn", ..., "--workers", "4"]`) so the connection-budget
+  # formula below and the boot-time warning (CONN_BUDGET_UVICORN_WORKERS,
+  # wired into configmap-env.yaml) are accurate. Changing this value alone
+  # does NOT change how many uvicorn workers actually run; that knob does
+  # not exist yet (tracked as a separate follow-up); it only changes what
+  # NOTES.txt and the budget estimate believe.
+  uvicornWorkers: 4
   port: 8000
   resources:
     requests:

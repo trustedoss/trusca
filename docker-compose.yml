@@ -131,18 +131,30 @@ x-backend-env: &backend-env
   # unset .env value resolves to the documented default rather than empty.
   #
   # DB connection pool — async (FastAPI) engine. Total connections opened by
-  # ONE backend process = DB_POOL_SIZE + DB_MAX_OVERFLOW. See the sizing
-  # formula in .env.example before raising these on a busy stack.
-  DB_POOL_SIZE: ${DB_POOL_SIZE:-20}
-  DB_MAX_OVERFLOW: ${DB_MAX_OVERFLOW:-10}
+  # ONE backend process = DB_POOL_SIZE + DB_MAX_OVERFLOW. That gets
+  # multiplied by the image's baked-in 4 uvicorn workers before it reaches
+  # Postgres; see the sizing formula in .env.example before raising these
+  # on a busy stack.
+  DB_POOL_SIZE: ${DB_POOL_SIZE:-5}
+  DB_MAX_OVERFLOW: ${DB_MAX_OVERFLOW:-3}
   DB_POOL_TIMEOUT: ${DB_POOL_TIMEOUT:-30}
   DB_POOL_RECYCLE: ${DB_POOL_RECYCLE:-1800}
   # DB connection pool — sync (Celery / psycopg2) engine. Applies per worker
   # AND per beat process. With worker.replicas=N this multiplies by N.
-  DB_SYNC_POOL_SIZE: ${DB_SYNC_POOL_SIZE:-5}
-  DB_SYNC_MAX_OVERFLOW: ${DB_SYNC_MAX_OVERFLOW:-5}
+  DB_SYNC_POOL_SIZE: ${DB_SYNC_POOL_SIZE:-3}
+  DB_SYNC_MAX_OVERFLOW: ${DB_SYNC_MAX_OVERFLOW:-3}
   DB_SYNC_POOL_TIMEOUT: ${DB_SYNC_POOL_TIMEOUT:-30}
   DB_SYNC_POOL_RECYCLE: ${DB_SYNC_POOL_RECYCLE:-1800}
+  # W2: connection-budget fleet-shape hints. NOT wired to the actual worker
+  # / replica counts (that is W1's job for uvicorn workers; WORKER_REPLICAS
+  # below is the real Swarm-only replica knob); these three only feed the
+  # boot-time over-budget warning in main.py. Defaults already match this
+  # file's own shape (1 backend container x 4 baked-in uvicorn workers, 1
+  # worker replica by default), so an unmodified `.env` needs no changes
+  # here; set them if you scale `--scale worker=N` or otherwise diverge.
+  CONN_BUDGET_UVICORN_WORKERS: ${CONN_BUDGET_UVICORN_WORKERS:-4}
+  CONN_BUDGET_BACKEND_REPLICAS: ${CONN_BUDGET_BACKEND_REPLICAS:-1}
+  CONN_BUDGET_WORKER_REPLICAS: ${CONN_BUDGET_WORKER_REPLICAS:-1}
   # Scan-trigger abuse controls. Per-user rate limit (slowapi "<n>/<period>")
   # and per-team concurrent (queued+running) scan cap (0 disables).
   SCAN_TRIGGER_RATE_LIMIT: ${SCAN_TRIGGER_RATE_LIMIT:-20/minute}
@@ -418,9 +430,10 @@ services:
   #
   # SIZING: total Postgres connections from the worker fleet =
   #   replicas x (DB_SYNC_POOL_SIZE + DB_SYNC_MAX_OVERFLOW).
-  # With the defaults (5+5) and 4 replicas that is 40 connections — add the
-  # backend + beat draw and stay under Postgres `max_connections` (100). See
-  # the formula block in .env.example.
+  # With the defaults (3+3) and 4 replicas that is 24 connections. Add the
+  # backend + beat draw and stay under Postgres `max_connections` (100); see
+  # the formula block in .env.example (core.connection_budget is the oracle
+  # both derive from).
   #
   # MEMORY: a worker container needs roughly
   #   CELERY_CONCURRENCY x ~2 GB  +  ~1 GB base (JRE / Node / scancode).

@@ -57,7 +57,7 @@ sidebar_position: 2
 | `POSTGRES_PASSWORD` | — | `docker-compose.yml` | 마법사가 생성. |
 | `POSTGRES_DB` | `trustedoss` | `docker-compose.yml` | 데이터베이스명. |
 
-`DB_*` 네 키 중 하나라도 설정되면 **모두** 설정해야 합니다 (그렇지 않으면 합성 분기에서 부팅 시 raise). 포털은 async SQLAlchemy + `asyncpg`를 사용합니다. 커넥션 풀 기본값은 FastAPI worker 수에 맞춰 튜닝되어 있습니다(uvicorn 워커 4 × 각 5 커넥션 = 20).
+`DB_*` 네 키 중 하나라도 설정되면 **모두** 설정해야 합니다 (그렇지 않으면 합성 분기에서 부팅 시 raise). 포털은 async SQLAlchemy + `asyncpg`를 사용합니다. 커넥션 풀 크기(`DB_POOL_SIZE`, `DB_MAX_OVERFLOW`, `DB_SYNC_POOL_SIZE`, `DB_SYNC_MAX_OVERFLOW`)는 `.env.example`의 "Postgres connection budget" 절에 정리되어 있습니다. FastAPI 풀 값에 uvicorn 워커 수와 백엔드 레플리카 수를 곱하고 Celery 워커·beat 풀을 더한 값이 Postgres `max_connections` 이내여야 하며, 배포 형태가 이 예산을 넘으면 백엔드가 부팅 시 경고를 남깁니다.
 
 ## Redis & Celery
 

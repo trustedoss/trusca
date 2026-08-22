@@ -67,15 +67,22 @@ x-backend-env: &backend-env
   # so these mostly just give you a knob to experiment with.
   #
   # DB connection pool — async (FastAPI) engine.
-  DB_POOL_SIZE: ${DB_POOL_SIZE:-20}
-  DB_MAX_OVERFLOW: ${DB_MAX_OVERFLOW:-10}
+  DB_POOL_SIZE: ${DB_POOL_SIZE:-5}
+  DB_MAX_OVERFLOW: ${DB_MAX_OVERFLOW:-3}
   DB_POOL_TIMEOUT: ${DB_POOL_TIMEOUT:-30}
   DB_POOL_RECYCLE: ${DB_POOL_RECYCLE:-1800}
   # DB connection pool — sync (Celery / psycopg2) engine.
-  DB_SYNC_POOL_SIZE: ${DB_SYNC_POOL_SIZE:-5}
-  DB_SYNC_MAX_OVERFLOW: ${DB_SYNC_MAX_OVERFLOW:-5}
+  DB_SYNC_POOL_SIZE: ${DB_SYNC_POOL_SIZE:-3}
+  DB_SYNC_MAX_OVERFLOW: ${DB_SYNC_MAX_OVERFLOW:-3}
   DB_SYNC_POOL_TIMEOUT: ${DB_SYNC_POOL_TIMEOUT:-30}
   DB_SYNC_POOL_RECYCLE: ${DB_SYNC_POOL_RECYCLE:-1800}
+  # W2: connection-budget fleet-shape hints (see docker-compose.yml for the
+  # full explanation). Dev runs a single uvicorn process (no --workers flag,
+  # `uvicorn`'s own default is 1), so this is the one deployment where the
+  # hint differs from the image's baked-in 4.
+  CONN_BUDGET_UVICORN_WORKERS: ${CONN_BUDGET_UVICORN_WORKERS:-1}
+  CONN_BUDGET_BACKEND_REPLICAS: ${CONN_BUDGET_BACKEND_REPLICAS:-1}
+  CONN_BUDGET_WORKER_REPLICAS: ${CONN_BUDGET_WORKER_REPLICAS:-1}
   # Scan-trigger abuse controls.
   SCAN_TRIGGER_RATE_LIMIT: ${SCAN_TRIGGER_RATE_LIMIT:-20/minute}
   SCAN_CONCURRENCY_CAP_PER_TEAM: ${SCAN_CONCURRENCY_CAP_PER_TEAM:-10}

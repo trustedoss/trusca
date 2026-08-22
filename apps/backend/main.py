@@ -79,6 +79,7 @@ from core.config import (
     validate_cors_origins,
     validate_demo_sandbox_limits,
 )
+from core.connection_budget import current_process_budget, log_if_over_budget
 from core.db import build_engine, build_session_factory
 from core.errors import install_exception_handlers
 from core.logging import configure_logging
@@ -130,6 +131,13 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
 
     async with engine.connect() as _conn:
         _role = (await _conn.execute(_sql_text("SELECT current_user"))).scalar()
+        # W2: connection-budget boot check. Read Postgres' OWN configured
+        # ceiling (not a guess) so the warning is accurate even when an
+        # operator has raised max_connections for their tier. See
+        # core.connection_budget for the formula and the CONN_BUDGET_* env
+        # vars this estimate depends on.
+        _max_conns_row = await _conn.execute(_sql_text("SHOW max_connections"))
+        _max_connections = int(_max_conns_row.scalar() or 0)
     log.info("db.role.connected", role=_role)
     if app_env() == "prod" and _os.getenv("DATABASE_URL_APP") and _role != "trustedoss_app":
         raise RuntimeError(
@@ -137,6 +145,9 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
             f"connected as role={_role!r} (expected 'trustedoss_app'). "
             f"Check docker-compose env wiring for the L1 split."
         )
+    if _max_connections > 0:
+        _budget = current_process_budget(max_connections=_max_connections)
+        log_if_over_budget(log, _budget)
 
     try:
         yield

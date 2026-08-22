@@ -636,6 +636,19 @@ jobs:
           sudo apt-get install -y --no-install-recommends postgresql-client-17
           pg_dump --version
 
+      # W2: tests/integration/test_helm_notes_connection_budget.py renders
+      # charts/trustedoss with `helm install --dry-run` (no cluster touched)
+      # and cross-checks NOTES.txt's connection-budget arithmetic against
+      # core.connection_budget, the same oracle .env.example documents
+      # against. Without helm on PATH the test skips rather than fails
+      # (matches this repo's convention for a missing real external tool),
+      # so this step is what turns "skipped" into "actually ran" on every PR.
+      - name: Setup Helm (chart render golden, backend-integration only)
+        if: matrix.target == 'backend-integration'
+        uses: azure/setup-helm@1a275c3b69536ee54be43f2070a358922e12c8d4  # v4.3.1
+        with:
+          version: v3.16.3
+
       # No per-leg coverage verdict: `--cov-fail-under=0` disables the
       # pyproject `fail_under` here so a leg cannot fail on a number that only
       # means something once both legs are combined. `coverage-gate` does the

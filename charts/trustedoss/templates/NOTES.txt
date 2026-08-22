@@ -20,10 +20,34 @@ Schema migration:
   (as the owner role) before the backend will become Ready.
   {{- end }}
 
-Postgres connection budget (keep under Postgres max_connections):
-  backend = {{ .Values.backend.replicaCount }} x ({{ .Values.env.dbPool.size }} + {{ .Values.env.dbPool.maxOverflow }})
-  worker  = {{ .Values.worker.replicaCount }} x ({{ .Values.env.dbPool.syncSize }} + {{ .Values.env.dbPool.syncMaxOverflow }})
-  beat    = 1 x ({{ .Values.env.dbPool.syncSize }} + {{ .Values.env.dbPool.syncMaxOverflow }})
+{{- /*
+W2 (concurrency-scaling-plan-2026-08-22.md §1.6): this formula and
+apps/backend/core/connection_budget.py are the two places the connection
+budget is computed, and a golden test cross-checks they agree. The backend
+line used to omit the `uvicornWorkers` multiplier here (it answered a number
+4x too small), while .env.example's copy of the formula already had it;
+that was the bug this section exists to not repeat.
+*/}}
+{{- $backendPerPodConns := add .Values.env.dbPool.size .Values.env.dbPool.maxOverflow }}
+{{- $syncPerProcConns := add .Values.env.dbPool.syncSize .Values.env.dbPool.syncMaxOverflow }}
+{{- $backendConns := mul (mul .Values.backend.replicaCount .Values.backend.uvicornWorkers) $backendPerPodConns }}
+{{- $workerConns := mul .Values.worker.replicaCount $syncPerProcConns }}
+{{- $beatConns := mul 1 $syncPerProcConns }}
+{{- $totalConns := add (add $backendConns $workerConns) $beatConns }}
+{{- $headroomConns := add $totalConns 5 }}
+Postgres connection budget (keep under Postgres max_connections, default 100):
+  backend = {{ .Values.backend.replicaCount }} pod(s) x {{ .Values.backend.uvicornWorkers }} uvicorn worker(s) x ({{ .Values.env.dbPool.size }} + {{ .Values.env.dbPool.maxOverflow }}) = {{ $backendConns }}
+  worker  = {{ .Values.worker.replicaCount }} x ({{ .Values.env.dbPool.syncSize }} + {{ .Values.env.dbPool.syncMaxOverflow }}) = {{ $workerConns }}
+  beat    = 1 x ({{ .Values.env.dbPool.syncSize }} + {{ .Values.env.dbPool.syncMaxOverflow }}) = {{ $beatConns }}
+  TOTAL   = {{ $totalConns }}  ({{ $headroomConns }} with ~5 admin/headroom)
+{{- if gt $headroomConns 95 }}
+
+WARNING: the connection budget above ({{ $headroomConns }} incl. headroom) is
+at or over Postgres' default max_connections (100), or within 5 of it. Lower
+env.dbPool.* or raise Postgres max_connections before scaling
+backend.replicaCount / worker.replicaCount further. The backend also logs
+this at boot by querying Postgres' actual configured max_connections.
+{{- end }}
 
 Scale workers out (preferred over raising concurrency):
   helm upgrade {{ .Release.Name }} . --set worker.replicaCount=4
