@@ -248,6 +248,141 @@ def test_render_empty_notice_markdown_uses_emphasis() -> None:
 
 
 # ---------------------------------------------------------------------------
+# NOTICE boilerplate templates (D10, N21), pure, no DB.
+#
+# The contract every case here is pinned against: with preface=None and
+# footer=None (every call above this section), the renderers must produce
+# EXACTLY what they did before this feature existed. Every pre-existing test
+# in this file already proves that by construction (the new parameters
+# default to None and only append lines when truthy). These cases cover the
+# one thing that changed: what a template actually adds, and that it can only
+# add text, never restructure the license/component/obligation list around it.
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize("fmt", ["text", "markdown"])
+def test_render_notice_with_preface_and_footer(fmt: str) -> None:
+    when = datetime(2026, 5, 7, 12, 0, 0, tzinfo=UTC)
+    lic_id = uuid.uuid4()
+    body = _render_notice(
+        project_name="MyProj",
+        generated_at=when,
+        licenses_with_components=[
+            {
+                "license_id": lic_id,
+                "spdx_id": "MIT",
+                "name": "MIT License",
+                "reference_url": None,
+                "components": _comps("foo @ 1.2.3"),
+            }
+        ],
+        obligations_by_license={lic_id: []},
+        fmt=fmt,
+        preface="Internal distribution only.",
+        footer="© Example Corp. All rights reserved.",
+    )
+    assert "Internal distribution only." in body
+    assert "Example Corp" in body
+    # The preface comes before the license list and the footer after it.
+    assert body.index("Internal distribution only.") < body.index("MIT")
+    assert body.index("MIT") < body.index("Example Corp")
+
+
+def test_render_notice_html_with_preface_and_footer() -> None:
+    when = datetime(2026, 5, 7, 12, 0, 0, tzinfo=UTC)
+    lic_id = uuid.uuid4()
+    body = _render_notice_html(
+        project_name="MyProj",
+        generated_at=when,
+        licenses_with_components=[
+            {
+                "license_id": lic_id,
+                "spdx_id": "MIT",
+                "name": "MIT License",
+                "reference_url": None,
+                "components": _comps("foo @ 1.2.3"),
+            }
+        ],
+        obligations_by_license={lic_id: []},
+        preface="Internal distribution only.",
+        footer="Example Corp.",
+    )
+    assert '<pre class="notice-preface">Internal distribution only.</pre>' in body
+    assert '<pre class="notice-footer">Example Corp.</pre>' in body
+    # Search for the tags themselves, not the bare class name: the stylesheet
+    # in <head> also mentions "notice-footer" in its selector, well before
+    # the tag this test cares about appears in <body>.
+    assert body.index('<pre class="notice-preface">') < body.index("<h2>MIT")
+    assert body.index("<h2>MIT") < body.index('<pre class="notice-footer">')
+
+
+def test_render_notice_markdown_preface_and_footer_are_escaped() -> None:
+    """A template is organization-authored, not scan metadata, but the
+    contract is still "plain text, never markup": the same escaping every
+    other untrusted string in this renderer already gets."""
+    when = datetime(2026, 5, 7, 12, 0, 0, tzinfo=UTC)
+    body = _render_notice(
+        project_name="MyProj",
+        generated_at=when,
+        licenses_with_components=[],
+        obligations_by_license={},
+        fmt="markdown",
+        preface="# Not a real heading",
+        footer="[click](javascript:alert(1))",
+    )
+    # Wrapped in italic markers, so the rendered line starts with `_`, never
+    # with the `#` the organization typed: it cannot become a live heading.
+    assert "\n_# Not a real heading_\n" in body
+    assert "\\[click\\]" in body
+
+
+def test_render_notice_html_preface_and_footer_are_escaped() -> None:
+    when = datetime(2026, 5, 7, 12, 0, 0, tzinfo=UTC)
+    body = _render_notice_html(
+        project_name="MyProj",
+        generated_at=when,
+        licenses_with_components=[],
+        obligations_by_license={},
+        preface='<script>alert("xss")</script>',
+        footer=None,
+    )
+    assert "<script>" not in body
+    assert "&lt;script&gt;" in body
+
+
+def test_render_empty_notice_still_carries_a_template() -> None:
+    """A project with no scan yet is still the organization's document."""
+    when = datetime(2026, 5, 7, 0, 0, 0, tzinfo=UTC)
+    body = _render_empty_notice(
+        "MyProj", when, fmt="text", preface="Internal distribution only.", footer="Example Corp."
+    )
+    assert "Internal distribution only." in body
+    assert "Example Corp." in body
+
+
+def test_render_notice_without_a_template_is_unaffected_by_the_new_params() -> None:
+    """Explicit None (the default) must match the pre-D10 signature's output."""
+    when = datetime(2026, 5, 7, 12, 0, 0, tzinfo=UTC)
+    lic_id = uuid.uuid4()
+    kwargs = dict(
+        project_name="MyProj",
+        generated_at=when,
+        licenses_with_components=[
+            {
+                "license_id": lic_id,
+                "spdx_id": "MIT",
+                "name": "MIT License",
+                "reference_url": None,
+                "components": _comps("foo @ 1.2.3"),
+            }
+        ],
+        obligations_by_license={lic_id: []},
+        fmt="text",
+    )
+    assert _render_notice(**kwargs) == _render_notice(**kwargs, preface=None, footer=None)
+
+
+# ---------------------------------------------------------------------------
 # HTML NOTICE rendering (G1) — pure, no DB. The interpolated values come from
 # scanned package metadata (untrusted), so escaping is a security property.
 # ---------------------------------------------------------------------------

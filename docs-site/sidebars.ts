@@ -70,6 +70,7 @@ const sidebars: SidebarsConfig = {
         "admin-guide/api-keys",
         "admin-guide/github-app",
         "admin-guide/ticket-integration",
+        "admin-guide/notice-templates",
       ],
     },
     {

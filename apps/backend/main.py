@@ -41,6 +41,7 @@ from api.v1 import (
     license_policies_router,
     licenses_router,
     metrics_router,
+    notice_templates_router,
     notification_routing_router,
     notifications_router,
     oauth_router,
@@ -258,6 +259,7 @@ app.include_router(license_policies_router)
 # router from the licence policy because the two answer different questions
 # even though both feed one verdict.
 app.include_router(gate_policies_router)
+app.include_router(notice_templates_router)
 app.include_router(notification_routing_router)
 # N10: reserved in PUBLIC_PATHS long before anything served it. Off by
 # default, and off answers 404 so a deployment that publishes nothing looks

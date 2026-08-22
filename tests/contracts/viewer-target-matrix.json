@@ -257,6 +257,18 @@
     ],
     [
       "DELETE",
+      "/v1/notice-templates/org/{organization_id}/{format}"
+    ],
+    [
+      "GET",
+      "/v1/notice-templates/org/{organization_id}/{format}"
+    ],
+    [
+      "PUT",
+      "/v1/notice-templates/org/{organization_id}/{format}"
+    ],
+    [
+      "DELETE",
       "/v1/notification-rules/{rule_id}"
     ],
     [
