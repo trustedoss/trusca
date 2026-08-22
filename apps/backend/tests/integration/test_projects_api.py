@@ -343,6 +343,92 @@ async def test_list_projects_excludes_archived_by_default(client) -> None:
 
 
 # ---------------------------------------------------------------------------
+# GET /v1/projects/export.csv  (D9, N20)
+# ---------------------------------------------------------------------------
+
+
+async def test_projects_export_csv_without_auth_returns_401(client) -> None:
+    response = await client.get("/v1/projects/export.csv")
+    assert response.status_code == 401
+    assert response.headers["content-type"].startswith(PROBLEM_JSON)
+
+
+async def test_projects_export_csv_streams_a_downloadable_file(client) -> None:
+    _, team, user = await _seed_team_with_user(client, role="developer")
+    headers = _bearer_for(user)
+    await _seed_project(client, team_id=team.id)
+
+    response = await client.get(
+        "/v1/projects/export.csv",
+        headers=headers,
+        params={"team_id": str(team.id)},
+    )
+    assert response.status_code == 200, response.text
+    assert response.headers["content-type"].startswith("text/csv")
+    assert "attachment" in response.headers["content-disposition"]
+    raw = response.content
+    assert raw[:3] == b"\xef\xbb\xbf"
+
+
+async def test_projects_export_csv_other_team_returns_403(client) -> None:
+    """The export refuses a cross-team ``team_id`` exactly as the list does."""
+    _, _my_team, user = await _seed_team_with_user(client, role="developer")
+    _, other_team, _ = await _seed_team_with_user(client, role="developer")
+    headers = _bearer_for(user)
+
+    response = await client.get(
+        "/v1/projects/export.csv",
+        headers=headers,
+        params={"team_id": str(other_team.id)},
+    )
+    assert response.status_code == 403
+    assert response.headers["content-type"].startswith(PROBLEM_JSON)
+
+
+async def test_projects_export_csv_matches_the_union_of_every_page(client) -> None:
+    """N20's contract: the export is the same rows the paginated list returns.
+
+    Walks the JSON list two pages at a time, unions the project ids, and
+    asserts the CSV names exactly that set, not a hand-picked sample of it.
+    """
+    _, team, user = await _seed_team_with_user(client, role="developer")
+    headers = _bearer_for(user)
+    seeded_ids = {(await _seed_project(client, team_id=team.id))[0] for _ in range(5)}
+
+    paged_ids: set[uuid.UUID] = set()
+    page = 1
+    while True:
+        response = await client.get(
+            "/v1/projects",
+            headers=headers,
+            params={"team_id": str(team.id), "page": page, "size": 2},
+        )
+        body = response.json()
+        items = body["items"]
+        if not items:
+            break
+        paged_ids.update(uuid.UUID(item["id"]) for item in items)
+        if len(paged_ids) >= body["total"]:
+            break
+        page += 1
+    assert seeded_ids <= paged_ids
+
+    export_response = await client.get(
+        "/v1/projects/export.csv",
+        headers=headers,
+        params={"team_id": str(team.id)},
+    )
+    assert export_response.status_code == 200, export_response.text
+    lines = export_response.content.decode("utf-8-sig").strip().splitlines()
+    header, *rows = lines
+    assert header.split(",")[0] == "name"
+    # The trailer ("# rows: N") is not a data row.
+    data_rows = rows[:-1]
+    exported_ids = {uuid.UUID(row.rsplit(",", 1)[-1]) for row in data_rows}
+    assert exported_ids == paged_ids
+
+
+# ---------------------------------------------------------------------------
 # #25 — list-row enrichment (latest_scan_status + severity_summary) and the
 # overview's last_succeeded_scan_at. These are WIRE-LEVEL tests: they drive the
 # real ASGI app so a router serialization regression (e.g. forgetting to thread

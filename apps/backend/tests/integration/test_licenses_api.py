@@ -365,3 +365,107 @@ async def test_detail_cross_team_existence_hide_returns_404(client) -> None:
     )
     assert response.status_code == 404
     assert response.headers["content-type"].startswith(PROBLEM_JSON)
+
+
+# ---------------------------------------------------------------------------
+# GET /v1/projects/{project_id}/licenses/export.csv  (D9, N20)
+# ---------------------------------------------------------------------------
+
+_LICENSES_EXPORT_HEADER = (
+    "name,spdx_id,category,kind,affected_count,is_osi_approved,is_fsf_libre,"
+    "review_flag,conflict_verdict,license_finding_id"
+)
+
+
+async def test_licenses_export_csv_without_auth_returns_401(client) -> None:
+    response = await client.get(
+        "/v1/projects/00000000-0000-0000-0000-000000000000/licenses/export.csv"
+    )
+    assert response.status_code == 401
+    assert response.headers["content-type"].startswith(PROBLEM_JSON)
+
+
+async def test_licenses_export_csv_other_team_returns_403(client) -> None:
+    """The export refuses a cross-team caller exactly as the list does."""
+    _, _my_team, my_user = await _seed_team_with_user(client)
+    _, other_team, _ = await _seed_team_with_user(client)
+    other_project_id, _ = await _seed_scanned_project(client, team_id=other_team.id)
+    headers = _bearer_for(my_user)
+
+    response = await client.get(
+        f"/v1/projects/{other_project_id}/licenses/export.csv",
+        headers=headers,
+    )
+    assert response.status_code == 403
+    assert response.headers["content-type"].startswith(PROBLEM_JSON)
+
+
+async def test_licenses_export_csv_streams_a_downloadable_file(client) -> None:
+    _, team, user = await _seed_team_with_user(client)
+    project_id, _scan_id = await _seed_scanned_project(client, team_id=team.id)
+    headers = _bearer_for(user)
+
+    response = await client.get(
+        f"/v1/projects/{project_id}/licenses/export.csv",
+        headers=headers,
+    )
+    assert response.status_code == 200, response.text
+    assert response.headers["content-type"].startswith("text/csv")
+    assert "attachment" in response.headers["content-disposition"]
+    raw = response.content
+    assert raw[:3] == b"\xef\xbb\xbf"
+    assert raw.decode("utf-8-sig").strip() == f"{_LICENSES_EXPORT_HEADER}\n# rows: 0"
+
+
+async def test_licenses_export_csv_matches_the_list_for_a_real_finding(client) -> None:
+    """N20's contract: the export is the same row the list endpoint returns.
+
+    Seeds one real license finding (not the empty-scan smoke test above) and
+    compares the CSV row against the JSON list's own item for the same finding.
+    """
+    _, team, user = await _seed_team_with_user(client)
+    project_id, scan_id = await _seed_scanned_project(client, team_id=team.id)
+    # Let spdx_id default to a unique per-test value (the catalog's spdx_id
+    # column is globally unique) rather than a real id like "MIT" that could
+    # already exist from seeded catalog data.
+    finding_id = await _seed_license_finding(client, scan_id=scan_id, category="allowed")
+    headers = _bearer_for(user)
+
+    list_response = await client.get(
+        f"/v1/projects/{project_id}/licenses",
+        headers=headers,
+    )
+    list_item = next(
+        item for item in list_response.json()["items"] if item["id"] == str(finding_id)
+    )
+
+    export_response = await client.get(
+        f"/v1/projects/{project_id}/licenses/export.csv",
+        headers=headers,
+    )
+    assert export_response.status_code == 200, export_response.text
+    lines = export_response.content.decode("utf-8-sig").strip().splitlines()
+    header, row, trailer = lines
+    assert header == _LICENSES_EXPORT_HEADER
+    assert trailer == "# rows: 1"
+    fields = row.split(",")
+    assert fields[0] == list_item["name"]
+    assert fields[1] == (list_item["spdx_id"] or "")
+    assert fields[2] == list_item["category"]
+    assert fields[-1] == str(finding_id)
+
+
+async def test_licenses_export_csv_rejects_a_filter_the_list_would_reject(
+    client,
+) -> None:
+    _, team, user = await _seed_team_with_user(client)
+    project_id, _scan_id = await _seed_scanned_project(client, team_id=team.id)
+    headers = _bearer_for(user)
+
+    response = await client.get(
+        f"/v1/projects/{project_id}/licenses/export.csv",
+        headers=headers,
+        params={"sort": "BOGUS"},
+    )
+    assert response.status_code == 422
+    assert response.headers["content-type"].startswith(PROBLEM_JSON)

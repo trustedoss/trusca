@@ -105,7 +105,7 @@ from services.source_archive_service import (
 from services.source_archive_service import (
     _max_upload_bytes as _source_archive_max_upload_bytes,
 )
-from services.table_export_service import stream_components_csv
+from services.table_export_service import stream_components_csv, stream_projects_csv
 
 router = APIRouter(prefix="/v1/projects", tags=["projects"])
 log = structlog.get_logger("projects.api")
@@ -358,6 +358,54 @@ async def list_projects_endpoint(
         status_code=status.HTTP_200_OK,
         media_type="application/json",
     )
+
+
+# ---------------------------------------------------------------------------
+# GET /v1/projects/export.csv  (D9, N20)
+#
+# Registered BEFORE /{project_id} so "export.csv" is never handed to that
+# route's uuid.UUID path converter (Starlette matches routes in registration
+# order; a route added after /{project_id} would never be reached).
+# ---------------------------------------------------------------------------
+
+
+@router.get(
+    "/export.csv",
+    response_class=StreamingResponse,
+    summary="The filtered project portfolio list as CSV",
+)
+@limiter.limit(csv_export_rate_limit, key_func=_authenticated_user_key)
+async def export_projects_csv_endpoint(
+    request: Request,
+    team_id: uuid.UUID | None = Query(default=None),
+    include_archived: bool = Query(default=False),
+    q: str | None = Query(default=None, max_length=255),
+    business_unit: str | None = Query(default=None, max_length=120),
+    distribution_model: str | None = Query(default=None, max_length=32),
+    session: AsyncSession = Depends(get_db),
+    actor: CurrentUser = Depends(require_role("viewer")),
+) -> Response:
+    """
+    The same rows the list endpoint would return, without the paging.
+
+    Filters and team-scoping are applied by ``list_projects`` itself rather
+    than by a second query, so the file and the screen cannot disagree.
+    """
+    stream = stream_projects_csv(
+        session,
+        actor=actor,
+        filters={
+            "team_id": team_id,
+            "include_archived": include_archived,
+            "q": q,
+            "business_unit": business_unit,
+            "distribution_model": distribution_model,
+        },
+    )
+    try:
+        return await csv_stream_response(request, stream=stream, filename="projects.csv")
+    except ProjectError as exc:
+        return _problem_for_project_error(request, exc)
 
 
 # ---------------------------------------------------------------------------

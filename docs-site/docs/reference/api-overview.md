@@ -131,6 +131,7 @@ DELETE /v1/users/me/oauth-identities/{identity_id}   # gates last-OAuth + has-pa
                                                      # 409 → urn:trustedoss:problem:last-oauth-link
 
 GET    /v1/projects                          list (team-scoped)
+GET    /v1/projects/export.csv               same rows as the list, unpaginated (D9)
 POST   /v1/projects
 GET    /v1/projects/{id}
 PATCH  /v1/projects/{id}
@@ -144,6 +145,7 @@ GET    /v1/projects/{id}/scans
 POST   /v1/projects/{id}/scans               202 Accepted; queues a Celery task
 GET    /v1/projects/{id}/vulnerabilities
 GET    /v1/projects/{id}/licenses
+GET    /v1/projects/{id}/licenses/export.csv  same rows as the list, unpaginated (D9)
 GET    /v1/projects/{id}/obligations
 GET    /v1/projects/{id}/obligations/{obligation_id}
 PUT    /v1/projects/{id}/obligations/{obligation_id}/fulfilment   # If-Match optional

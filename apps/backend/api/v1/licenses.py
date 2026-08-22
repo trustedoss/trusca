@@ -32,11 +32,15 @@ import uuid
 
 import structlog
 from fastapi import APIRouter, Depends, Query, Request, Response, status
+from fastapi.responses import StreamingResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from api.v1._csv_export_response import csv_stream_response
 from api.v1._snapshot_anchor import snapshot_anchor
+from core.config import csv_export_rate_limit
 from core.db import get_db
 from core.errors import problem_response
+from core.ratelimit import _authenticated_user_key, limiter
 from core.security import CurrentUser, require_role
 from schemas.license_detail import (
     AffectedComponentByLicense,
@@ -53,6 +57,7 @@ from services.license_service import (
 )
 from services.project_service import ProjectError
 from services.scan_resolution import SnapshotScanNotFound
+from services.table_export_service import stream_licenses_csv
 
 router = APIRouter(prefix="/v1", tags=["licenses"])
 log = structlog.get_logger("licenses.api")
@@ -176,6 +181,67 @@ async def list_project_licenses_endpoint(
         status_code=status.HTTP_200_OK,
         media_type="application/json",
     )
+
+
+# ---------------------------------------------------------------------------
+# GET /v1/projects/{project_id}/licenses/export.csv  (D9, N20)
+# ---------------------------------------------------------------------------
+
+
+@router.get(
+    "/projects/{project_id}/licenses/export.csv",
+    response_class=StreamingResponse,
+    summary="The filtered license list as CSV",
+)
+@limiter.limit(csv_export_rate_limit, key_func=_authenticated_user_key)
+async def export_project_licenses_csv_endpoint(
+    request: Request,
+    project_id: uuid.UUID,
+    category: list[str] | None = Query(default=None),
+    kind: list[str] | None = Query(default=None),
+    search: str | None = Query(default=None, max_length=255),
+    sort: str = Query(default="category", pattern=r"^(category|name|spdx_id|affected_count)$"),
+    order: str = Query(default="desc", pattern=r"^(asc|desc)$"),
+    review_flag: str | None = Query(default=None, pattern=r"^(behavioral_use|non_commercial)$"),
+    conflict: str | None = Query(
+        default=None, pattern=r"^(compatible|conditional|incompatible|unknown)$"
+    ),
+    scan_id: uuid.UUID | None = Depends(snapshot_anchor),
+    session: AsyncSession = Depends(get_db),
+    actor: CurrentUser = Depends(require_role("viewer")),
+) -> Response:
+    """
+    The same rows the list endpoint would return, without the paging.
+
+    Filters are applied by the list service itself rather than by a second
+    query, so the file and the screen cannot disagree, and the cross-team
+    check the list performs is the one this performs.
+    """
+    stream = stream_licenses_csv(
+        session,
+        project_id=project_id,
+        actor=actor,
+        filters={
+            "categories": category,
+            "kinds": kind,
+            "search": search,
+            "sort": sort,
+            "order": order,
+            "review_flag": review_flag,
+            "conflict": conflict,
+            "snapshot_scan_id": scan_id,
+        },
+    )
+    try:
+        return await csv_stream_response(
+            request,
+            stream=stream,
+            filename=f"licenses_{project_id}.csv",
+        )
+    except SnapshotScanNotFound:
+        return _problem_for_snapshot_not_found(request)
+    except (LicenseError, ProjectError) as exc:
+        return _problem_for_license_error(request, exc)
 
 
 # ---------------------------------------------------------------------------

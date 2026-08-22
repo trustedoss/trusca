@@ -289,11 +289,11 @@ def test_review_flag_router_pattern_matches_classifier_values() -> None:
     ).read_text(encoding="utf-8")
     patterns = re.findall(r'pattern=r"\^\(([a-z_|]+)\)\$"', src)
     review_alternations = [p for p in patterns if "behavioral_use" in p]
-    assert len(review_alternations) == 1, (
-        f"expected exactly one review_flag pattern in the router, found "
-        f"{len(review_alternations)}: {review_alternations}"
-    )
-    assert set(review_alternations[0].split("|")) == set(REVIEW_FLAG_VALUES)
+    # The list endpoint and its CSV export (D9) both take this filter, so more
+    # than one occurrence is expected; each must still hold the same set.
+    assert review_alternations, "no review_flag pattern found in the router"
+    for alternation in review_alternations:
+        assert set(alternation.split("|")) == set(REVIEW_FLAG_VALUES)
 
 
 # ---------------------------------------------------------------------------
@@ -341,11 +341,11 @@ def test_conflict_router_pattern_matches_verdict_values() -> None:
     ).read_text(encoding="utf-8")
     patterns = re.findall(r'pattern=r"\^\(([a-z_|]+)\)\$"', src)
     conflict_alternations = [p for p in patterns if "incompatible" in p]
-    assert len(conflict_alternations) == 1, (
-        f"expected exactly one conflict pattern in the router, found "
-        f"{len(conflict_alternations)}: {conflict_alternations}"
-    )
-    assert set(conflict_alternations[0].split("|")) == set(CONFLICT_VERDICT_VALUES)
+    # The list endpoint and its CSV export (D9) both take this filter, so more
+    # than one occurrence is expected; each must still hold the same set.
+    assert conflict_alternations, "no conflict pattern found in the router"
+    for alternation in conflict_alternations:
+        assert set(alternation.split("|")) == set(CONFLICT_VERDICT_VALUES)
 
 
 def test_conflict_summary_fields_cover_every_verdict() -> None:
@@ -667,7 +667,7 @@ def test_developer_reachable_csv_exports_are_rate_limited() -> None:
     the cheapest denial-of-service primitive the lowest role has. This is a
     contract rather than a behavioural test because exercising the limiter for
     real needs wall-clock time and a live backend; what regresses in practice
-    is someone adding a fourth export and forgetting the decorator.
+    is someone adding a new export and forgetting the decorator.
 
     ``/v1/admin/audit/export.csv`` is deliberately absent: it is super-admin
     only, so the blast radius of an unthrottled call is one trusted operator.
@@ -691,8 +691,8 @@ def test_developer_reachable_csv_exports_are_rate_limited() -> None:
     # Without this the assertion below is vacuous: a rename of the path suffix
     # would leave nothing matched and the test would pass having checked
     # nothing at all.
-    assert len(matched) == 3, (
-        f"expected the three developer-reachable CSV exports, matched: {matched}"
+    assert len(matched) == 5, (
+        f"expected the five developer-reachable CSV exports, matched: {matched}"
     )
     assert not unlimited, (
         f"CSV export routes reachable by a developer with no rate limit: {unlimited}"

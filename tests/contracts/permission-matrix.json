@@ -539,6 +539,11 @@
       "gate": "role>=developer"
     },
     {
+      "method": "GET",
+      "path": "/v1/projects/export.csv",
+      "gate": "role>=viewer"
+    },
+    {
       "method": "DELETE",
       "path": "/v1/projects/{project_id}",
       "gate": "role>=developer"
@@ -591,6 +596,11 @@
     {
       "method": "GET",
       "path": "/v1/projects/{project_id}/licenses",
+      "gate": "role>=viewer"
+    },
+    {
+      "method": "GET",
+      "path": "/v1/projects/{project_id}/licenses/export.csv",
       "gate": "role>=viewer"
     },
     {
