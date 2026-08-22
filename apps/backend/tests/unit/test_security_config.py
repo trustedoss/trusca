@@ -95,8 +95,10 @@ def test_authenticate_verifies_dummy_when_user_not_found(monkeypatch):
     the response time leaks no information about whether the email exists.
 
     We don't need a real DB here — a stub session with a result that returns
-    None is enough to drive the branch, and we observe verify_password being
-    called with the dummy hash.
+    None is enough to drive the branch, and we observe verify_password_async
+    being called with the dummy hash. ``auth_service.authenticate`` awaits
+    ``verify_password_async`` (unit A1 — bcrypt runs off the event loop), so
+    the patched replacement must itself be a coroutine function.
     """
     import asyncio
     from unittest.mock import MagicMock
@@ -105,11 +107,11 @@ def test_authenticate_verifies_dummy_when_user_not_found(monkeypatch):
 
     calls: list[tuple[str, str]] = []
 
-    def fake_verify(plain: str, hashed: str) -> bool:
+    async def fake_verify(plain: str, hashed: str) -> bool:
         calls.append((plain, hashed))
         return False
 
-    monkeypatch.setattr(auth_service, "verify_password", fake_verify)
+    monkeypatch.setattr(auth_service, "verify_password_async", fake_verify)
 
     # Stub session.execute().scalar_one_or_none() → None
     fake_result = MagicMock()

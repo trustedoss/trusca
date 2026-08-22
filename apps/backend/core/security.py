@@ -34,6 +34,7 @@ signatures because the parameter names match dependency names.
 
 from __future__ import annotations
 
+import asyncio
 import hashlib
 import time
 import uuid
@@ -107,6 +108,29 @@ def verify_password(plain: str, hashed: str) -> bool:
         return bool(_pwd_context.verify(plain[:72], hashed))
     except (ValueError, TypeError):
         return False
+
+
+async def verify_password_async(plain: str, hashed: str) -> bool:
+    """Same as :func:`verify_password`, off the event loop.
+
+    Bcrypt cost 12 measures ~213ms per call on commodity hardware
+    (concurrency-scaling-plan-2026-08-22.md §1.5). Calling ``verify_password``
+    directly from an ``async def`` endpoint runs that ~213ms of CPU work
+    inline on the event loop, which stalls every other request this worker
+    process is serving for the duration — one API-key or password-login
+    request pauses the whole process (§1.3, unit A1). ``asyncio.to_thread``
+    moves the call to the default thread pool, following the same pattern
+    already used for other blocking calls in a request path (e.g.
+    ``services.scan_service.check_disk_guard``).
+
+    Callers that authenticate a real request (password login, API-key
+    verification, including the timing-flattening dummy-hash branch) should
+    use this wrapper. Callers outside the request/response cycle (scripts,
+    the password-reset token sweep, and unit tests exercising the primitive
+    directly) may keep calling the synchronous :func:`verify_password` —
+    there is no event loop for them to block.
+    """
+    return await asyncio.to_thread(verify_password, plain, hashed)
 
 
 # ---------------------------------------------------------------------------
@@ -598,4 +622,5 @@ __all__ = [
     "require_super_admin_or_404",
     "require_team_member",
     "verify_password",
+    "verify_password_async",
 ]

@@ -43,10 +43,35 @@ QUALIFIED = {
 # Distinctive blocking method names (tarfile member I/O) — low false-positive.
 METHOD_NAMES = {"getmembers", "extractfile", "extractall"}
 # Heavy first-party callables that must be offloaded, never called inline.
-BARE_NAMES = {"render_report_pdf", "_open_tarball", "run_cdxgen", "run_scancode"}
+# ``verify_password`` added for A1 (concurrency-scaling-plan-2026-08-22.md
+# §1.3/§1.5/§3.3): bcrypt cost 12 measures ~213ms/call, and calling it
+# directly (rather than the ``verify_password_async`` wrapper, or
+# ``asyncio.to_thread``/``run_in_threadpool`` explicitly) from an async body
+# blocks the whole event loop for that long. Passing the name as an argument
+# (e.g. ``asyncio.to_thread(verify_password, ...)``) is not a Call node and
+# is unaffected — only a direct ``verify_password(...)`` call is flagged.
+BARE_NAMES = {
+    "render_report_pdf",
+    "_open_tarball",
+    "run_cdxgen",
+    "run_scancode",
+    "verify_password",
+}
 
 # file:func:callable that are knowingly acceptable (must carry a reason here).
-ALLOWLIST: set[str] = set()
+#
+# password_reset_service.py calls verify_password inline in two async
+# functions (the timing-flattening dummy verification and the live
+# token-match loop). This is the same defect shape A1 fixed for password
+# login (services/auth_service.py) and API-key auth
+# (services/api_key_service.py) — concurrency-scaling-plan-2026-08-22.md
+# §1.3 scoped A1 to those two paths only, not password reset. Allowlisted
+# here so the new BARE_NAMES entry does not fail CI on a pre-existing,
+# out-of-scope instance; a follow-up unit should offload these the same way.
+ALLOWLIST: set[str] = {
+    "services/password_reset_service.py:request_password_reset:verify_password",
+    "services/password_reset_service.py:consume_reset_token:verify_password",
+}
 
 
 def _violation(call: ast.Call) -> str | None:

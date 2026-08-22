@@ -49,6 +49,7 @@ Security contracts:
 
 from __future__ import annotations
 
+import asyncio
 import secrets
 import uuid
 from datetime import UTC, datetime, timedelta
@@ -58,7 +59,7 @@ from sqlalchemy import and_, func, or_, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from core.security import CurrentUser, hash_password, verify_password
+from core.security import CurrentUser, hash_password, verify_password, verify_password_async
 from models import APIKey, Project, User
 
 log = structlog.get_logger("api_key.service")
@@ -673,11 +674,17 @@ async def authenticate_api_key(
     if row is None:
         # Dummy bcrypt to flatten timing — passlib's verify is constant-time
         # against a single hash so we just call it on a known bcrypt hash that
-        # will never match (a freshly hashed empty string).
-        verify_password(plaintext, _DUMMY_BCRYPT_HASH)
+        # will never match (a freshly hashed empty string). Off the event
+        # loop like the real check below (unit A1) — a dummy verification is
+        # still ~213ms of bcrypt CPU, and skipping the offload here would
+        # leave an unauthenticated request (any string, matching no prefix)
+        # able to stall every other request on this worker, plus reopen the
+        # very timing gap this dummy hash exists to close if only the real
+        # branch were offloaded.
+        await verify_password_async(plaintext, _DUMMY_BCRYPT_HASH)
         return None
 
-    if not verify_api_key_plaintext(plaintext, row.key_hash):
+    if not await asyncio.to_thread(verify_api_key_plaintext, plaintext, row.key_hash):
         return None
 
     # Update last_used_at best-effort. We do NOT block the request on this
