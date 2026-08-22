@@ -46,7 +46,7 @@ async def get_template(
     """The organization's template for ``format``, or None if it has none.
 
     Called from the NOTICE renderer itself (any team member's request), so
-    this deliberately has no role gate of its own — reading the effective
+    this deliberately has no role gate of its own: reading the effective
     document is already authorized by ``generate_notice``'s own project
     team-access check.
     """

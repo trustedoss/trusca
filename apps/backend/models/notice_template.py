@@ -14,10 +14,10 @@ dependency the requirements doc rules out (conditionals/loops would let a
 template omit an obligation, which no organization setting is allowed to do).
 
 One row per (organization, format): the three renderers (text/markdown/html)
-answer different questions about the same boilerplate — a markdown preface
-that should read as a heading needs `#`, the html one needs no such marker —
-so an organization writes each format's wording once rather than one blob
-reused verbatim across all three.
+answer different questions about the same boilerplate. A markdown preface
+that should read as a heading needs `#`, while the html one needs no such
+marker, so an organization writes each format's wording once rather than
+one blob reused verbatim across all three.
 """
 
 from __future__ import annotations
