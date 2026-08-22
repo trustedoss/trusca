@@ -175,6 +175,8 @@ connections before alembic runs.
 | `backend.uvicornWorkers` | `4` | W1: real knob, injected as `UVICORN_WORKERS` (`deployment-backend.yaml`) which `apps/backend/Dockerfile.prod`'s CMD reads at container start. Also what the connection-budget formula (see NOTES.txt) multiplies `env.dbPool.size`/`maxOverflow` by. |
 | `backend.port` | `8000` | |
 | `backend.healthPath` / `readyPath` | `/health` / `/health/ready` | Liveness / readiness (schema-gated). |
+| `backend.podDisruptionBudget.maxUnavailable` | `1` | W8: renders `pdb-backend.yaml` unconditionally (no toggle; this closes an existing availability gap). `1` never blocks eviction, including at `replicaCount: 1`. |
+| `backend.topologySpreadConstraints` | hostname + zone, `ScheduleAnyway` | W8: spreads backend pods across nodes/zones (`deployment-backend.yaml`) so draining one node cannot take every replica down at once. Soft (`ScheduleAnyway`) so a single-node cluster still schedules; set `[]` to disable. |
 | `worker.replicaCount` | `2` | Prefer scaling pods over `concurrency`. |
 | `worker.concurrency` | `2` | Prefork slots per pod. |
 | `worker.autoscaling.enabled` | `false` | Optional HPA (off by default). |

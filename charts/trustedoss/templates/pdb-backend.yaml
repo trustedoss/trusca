@@ -1,0 +1,25 @@
+{{- /*
+SPDX-License-Identifier: Apache-2.0
+Copyright 2026 TRUSCA contributors
+*/ -}}
+{{- /*
+W8 (concurrency-scaling-plan-2026-08-22.md §3.5): availability fix for an
+already-standing gap (draining one node could take every backend replica
+down at once), not a feature flag, so this renders unconditionally rather
+than behind an `enabled` toggle. See values.yaml's backend.podDisruptionBudget
+comment for why maxUnavailable: 1 keeps a single-replica install evictable
+(the W8 regression contract in the plan's §4).
+*/ -}}
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: {{ include "trustedoss.fullname" . }}-backend
+  labels:
+    {{- include "trustedoss.labels" . | nindent 4 }}
+    app.kubernetes.io/component: backend
+spec:
+  maxUnavailable: {{ .Values.backend.podDisruptionBudget.maxUnavailable }}
+  selector:
+    matchLabels:
+      {{- include "trustedoss.selectorLabels" . | nindent 6 }}
+      app.kubernetes.io/component: backend

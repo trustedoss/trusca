@@ -14,3 +14,9 @@ mypy==1.13.0
 # fakeredis ships under BSD-3 (Apache-2.0 compatible). The [lua] extra pulls
 # in lupa so EVAL works against the breaker's _PROBE_GATE_LUA contract.
 fakeredis[lua]==2.26.1
+# W8: parses `helm template`'s rendered YAML (PodDisruptionBudget,
+# topologySpreadConstraints) in the chart render-golden tests. Test-only;
+# nothing in the runtime image imports it. types-PyYAML is the stub package
+# mypy needs (PyYAML ships no inline types).
+PyYAML==6.0.3
+types-PyYAML==6.0.12.20260724
