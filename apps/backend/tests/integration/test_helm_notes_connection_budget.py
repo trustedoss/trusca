@@ -53,12 +53,17 @@ _BUDGET_LINE_RE = {
 
 
 def _render_notes(*extra_set: str) -> str:
-    """Run `helm install --dry-run` and return the NOTES: section text.
+    """Run `helm install --dry-run=client` and return the NOTES: section text.
 
-    `helm template` does not print NOTES.txt (it is an install-time
-    concept); `helm install --dry-run` renders everything AND prints NOTES,
-    without touching a cluster (no --kube-context is configured in CI, so a
-    real install would fail loudly rather than silently reaching a cluster).
+    `helm template` does not print NOTES.txt (it is an install-time concept).
+    `helm install --dry-run` (bare, no value) DOES print NOTES but still
+    reaches for a live cluster to validate/discover API capabilities against
+    -- on a CI runner with no cluster configured that surfaces as "Kubernetes
+    cluster unreachable" rather than a render result, which is what this test
+    hit before switching to `--dry-run=client`: Helm 3.13+'s client-only mode
+    skips every API-server round trip (discovery, capability checks) and
+    renders + prints NOTES from local templates alone, which is exactly what
+    a render golden test wants (no cluster, no kubeconfig, ever).
     """
     assert HELM is not None, "caller must skip via pytest.mark.skipif(HELM is None, ...)"
     cmd = [
@@ -66,14 +71,14 @@ def _render_notes(*extra_set: str) -> str:
         "install",
         "trustedoss-golden",
         str(CHART_DIR),
-        "--dry-run",
+        "--dry-run=client",
         *_REQUIRED_SET,
         *extra_set,
     ]
     result = subprocess.run(cmd, capture_output=True, text=True, timeout=60, check=False)
     assert (
         result.returncode == 0
-    ), f"helm install --dry-run failed:\nSTDOUT:\n{result.stdout}\nSTDERR:\n{result.stderr}"
+    ), f"helm install --dry-run=client failed:\nSTDOUT:\n{result.stdout}\nSTDERR:\n{result.stderr}"
     marker = "NOTES:"
     assert marker in result.stdout, f"no NOTES: section in helm output:\n{result.stdout}"
     return result.stdout.split(marker, 1)[1]
