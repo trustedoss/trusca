@@ -1088,6 +1088,44 @@ def govulncheck_max_output_bytes() -> int:
     return int(os.getenv("GOVULNCHECK_MAX_OUTPUT_BYTES", str(64 * 1024 * 1024)))
 
 
+def reachability_soft_time_limit_seconds() -> int:
+    """Celery ``soft_time_limit`` for ``scan_reachability_task`` (S2).
+
+    concurrency-scaling-plan-2026-08-22.md §1.1 / §3.2 (S2): the reachability
+    follow-up was dispatched with no per-task time limit at all, so a hung
+    step (extraction, a DB stall) outside the already-bounded govulncheck
+    subprocess call could pin a worker slot indefinitely.
+
+    This is a SEPARATE limit from ``scan_soft_time_limit_seconds()``
+    (3600s), not a reuse of it. Reachability is a best-effort enrichment
+    layered onto an ALREADY-succeeded scan, and its dominant real cost (the
+    govulncheck subprocess) already self-bounds at
+    ``govulncheck_timeout_seconds()`` (default 600s). Reusing the scan's
+    65-minute ceiling would let a hung non-govulncheck step occupy a slot far
+    longer than this task ever legitimately needs. Default 900s leaves 300s
+    of headroom above the 600s subprocess bound for extraction + DB writes.
+
+    Read at call time per CLAUDE.md core rule #11.
+    """
+    return int(os.getenv("REACHABILITY_SOFT_TIME_LIMIT_SECONDS", "900"))
+
+
+def reachability_hard_time_limit_seconds() -> int:
+    """Celery ``time_limit`` (hard, SIGKILL) for ``scan_reachability_task`` (S2).
+
+    Same clamp pattern as ``scan_hard_time_limit_seconds()``: must be
+    strictly greater than the soft limit so the soft-limit handler (which
+    logs a WARNING and lets the task's ``finally`` reclaim the workspace,
+    WITHOUT touching the parent scan's status; see
+    ``tasks/scan_reachability.py``'s module docstring) always gets a window
+    before SIGKILL lands. Default 1200s (20 min). Read at call time (rule
+    #11).
+    """
+    soft = reachability_soft_time_limit_seconds()
+    raw_hard = int(os.getenv("REACHABILITY_HARD_TIME_LIMIT_SECONDS", "1200"))
+    return max(raw_hard, soft + SCAN_TIMEOUT_MIN_GRACE_SECONDS)
+
+
 # ---------------------------------------------------------------------------
 # G3.1 — source preservation (Protex-style source-tree view).
 #

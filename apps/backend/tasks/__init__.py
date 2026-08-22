@@ -118,10 +118,21 @@ def enqueue_reachability(scan_id: str) -> str | None:
     Best-effort: a dispatch failure NEVER propagates into the calling scan — the
     caller wraps this in its own swallow-and-log guard.
 
+    S2 (concurrency-scaling-plan-2026-08-22.md §3.2): time-boxed the same way
+    ``enqueue_scan`` time-boxes the scan tasks above (``soft_time_limit`` +
+    ``time_limit`` passed per dispatch, read from env at call time), but with
+    reachability's OWN limits, not the scan pipeline's; see
+    ``reachability_soft_time_limit_seconds()`` in ``core/config.py`` for why
+    reachability gets a separate, shorter budget.
+
     Args:
         scan_id: the source scan's UUID **string** (Celery JSON serialization).
     """
-    from core.config import reachability_enabled
+    from core.config import (
+        reachability_enabled,
+        reachability_hard_time_limit_seconds,
+        reachability_soft_time_limit_seconds,
+    )
 
     if not reachability_enabled():
         return None
@@ -129,7 +140,12 @@ def enqueue_reachability(scan_id: str) -> str | None:
     # ``Scan`` never pull Celery / Redis at import time.
     from tasks.scan_reachability import scan_reachability_task
 
-    async_result = scan_reachability_task.apply_async(args=(scan_id,))
+    # Read both env-driven limits at dispatch time (rule #11).
+    async_result = scan_reachability_task.apply_async(
+        args=(scan_id,),
+        soft_time_limit=reachability_soft_time_limit_seconds(),
+        time_limit=reachability_hard_time_limit_seconds(),
+    )
     return str(async_result.id)
 
 
