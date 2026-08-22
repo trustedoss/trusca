@@ -675,7 +675,7 @@ async def authenticate_api_key(
         # Dummy bcrypt to flatten timing — passlib's verify is constant-time
         # against a single hash so we just call it on a known bcrypt hash that
         # will never match (a freshly hashed empty string). Off the event
-        # loop like the real check below (unit A1) — a dummy verification is
+        # loop like the real check below (unit A1): a dummy verification is
         # still ~213ms of bcrypt CPU, and skipping the offload here would
         # leave an unauthenticated request (any string, matching no prefix)
         # able to stall every other request on this worker, plus reopen the

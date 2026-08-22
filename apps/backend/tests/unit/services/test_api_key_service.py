@@ -894,15 +894,15 @@ async def test_authenticate_returns_none_on_garbage(db_session: AsyncSession) ->
 
 
 # ---------------------------------------------------------------------------
-# authenticate_api_key — bcrypt thread offload (concurrency-scaling-plan
+# authenticate_api_key: bcrypt thread offload (concurrency-scaling-plan
 # 2026-08-22.md §1.3/§1.5/§3.3, unit A1)
 #
 # A1 moved both bcrypt calls in this function onto a worker thread
 # (asyncio.to_thread) so a single API-key request no longer stalls every
 # other request on the same event loop for ~213ms. These tests pin the two
 # regression contracts from the plan's §4 A1 row: (1) the dummy
-# timing-flattening verification still actually runs — not just "returns
-# None the same way" — when the prefix does not match any row, and (2) that
+# timing-flattening verification still actually runs, not just "returns
+# None the same way", when the prefix does not match any row, and (2) that
 # holds whether the caller passes an unknown prefix or garbage that fails
 # ``parse_bearer`` differently would be a bug, but here we only need the
 # real "unknown prefix reaches the dummy branch" path; and (3) auth
@@ -914,7 +914,7 @@ async def test_authenticate_unknown_prefix_still_runs_dummy_bcrypt(
     db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     """The dummy bcrypt verification must still execute after A1's thread
-    offload — not be skipped because it moved off the event loop.
+    offload, not be skipped because it moved off the event loop.
 
     Spies on ``api_key_service.verify_password_async`` (the function the
     offloaded dummy branch now awaits) rather than the executor internals,
@@ -923,10 +923,10 @@ async def test_authenticate_unknown_prefix_still_runs_dummy_bcrypt(
     """
     # ``api_key_service`` imports ``verify_password_async`` from
     # ``core.security`` (an implicit re-export) rather than defining it, so
-    # we grab the real implementation from its home module — accessing it as
+    # we grab the real implementation from its home module. Accessing it as
     # ``api_key_service.verify_password_async`` trips mypy's
-    # no-implicit-reexport check — and patch the module-level string path,
-    # which is not statically checked.
+    # no-implicit-reexport check, so we patch the module-level string path
+    # instead, which is not statically checked.
     from core.security import verify_password_async as real_verify_password_async
     from services import api_key_service
     from services.api_key_service import authenticate_api_key
@@ -973,7 +973,7 @@ async def test_authenticate_known_prefix_offloads_real_bcrypt(
         return await real_to_thread(func, *args, **kwargs)
 
     # ``api_key_service.asyncio`` is the same ``asyncio`` module object (it
-    # was imported, not defined, there) — accessing it as an attribute of
+    # was imported, not defined, there). Accessing it as an attribute of
     # ``api_key_service`` trips mypy's no-implicit-reexport check, so we
     # patch via the dotted string path instead, which monkeypatch resolves
     # at runtime without a static attribute lookup.
@@ -1018,8 +1018,8 @@ async def test_authenticate_timing_stays_flat_between_known_and_unknown_prefix(
     """Quantitative half of the plan's §4 A1 timing-flatness contract:
     "존재하지 않는 키와 틀린 키의 타이밍이 여전히 평탄하다."
 
-    Both branches pay exactly one bcrypt cost-12 verification — the real one
-    (row found, wrong secret) or the dummy one (no row) — so their means
+    Both branches pay exactly one bcrypt cost-12 verification, the real one
+    (row found, wrong secret) or the dummy one (no row), so their means
     should be close. The bound is deliberately loose (generous multiplier,
     small sample) because this runs on shared CI hardware: the goal is to
     catch a gross regression (e.g. one branch losing its offload and

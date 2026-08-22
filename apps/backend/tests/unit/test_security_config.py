@@ -97,7 +97,7 @@ def test_authenticate_verifies_dummy_when_user_not_found(monkeypatch):
     We don't need a real DB here — a stub session with a result that returns
     None is enough to drive the branch, and we observe verify_password_async
     being called with the dummy hash. ``auth_service.authenticate`` awaits
-    ``verify_password_async`` (unit A1 — bcrypt runs off the event loop), so
+    ``verify_password_async`` (unit A1, bcrypt runs off the event loop), so
     the patched replacement must itself be a coroutine function.
     """
     import asyncio

@@ -49,7 +49,7 @@ METHOD_NAMES = {"getmembers", "extractfile", "extractall"}
 # ``asyncio.to_thread``/``run_in_threadpool`` explicitly) from an async body
 # blocks the whole event loop for that long. Passing the name as an argument
 # (e.g. ``asyncio.to_thread(verify_password, ...)``) is not a Call node and
-# is unaffected — only a direct ``verify_password(...)`` call is flagged.
+# is unaffected: only a direct ``verify_password(...)`` call is flagged.
 BARE_NAMES = {
     "render_report_pdf",
     "_open_tarball",
@@ -64,7 +64,7 @@ BARE_NAMES = {
 # functions (the timing-flattening dummy verification and the live
 # token-match loop). This is the same defect shape A1 fixed for password
 # login (services/auth_service.py) and API-key auth
-# (services/api_key_service.py) — concurrency-scaling-plan-2026-08-22.md
+# (services/api_key_service.py). concurrency-scaling-plan-2026-08-22.md
 # §1.3 scoped A1 to those two paths only, not password reset. Allowlisted
 # here so the new BARE_NAMES entry does not fail CI on a pre-existing,
 # out-of-scope instance; a follow-up unit should offload these the same way.

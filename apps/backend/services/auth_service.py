@@ -214,7 +214,7 @@ async def authenticate(
     user = result.scalar_one_or_none()
 
     hashed = user.hashed_password if user is not None else _DUMMY_BCRYPT_HASH
-    # Off the event loop (unit A1) — see core.security.verify_password_async.
+    # Off the event loop (unit A1), see core.security.verify_password_async.
     password_ok = await verify_password_async(password, hashed)
 
     # A service account is an identity for automation and has no way to be a
