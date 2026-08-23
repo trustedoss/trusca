@@ -78,6 +78,7 @@ from core.config import (
     eol_enabled,
     license_fetch_enabled,
     malicious_enabled,
+    scan_load_test_delay_seconds,
     scan_scope_filter_enabled,
     scan_scope_filter_maven_enabled,
     scan_scope_filter_node_enabled,
@@ -263,15 +264,26 @@ def scan_source_task(self: Any, scan_id: str) -> None:
             # pipeline.
             scan_metadata = dict(scan.scan_metadata or {})
 
-        # Run the pipeline outside the first session so each stage commits
-        # its own progress update without holding a long-lived transaction.
-        _run_pipeline(
-            scan_uuid=scan_uuid,
-            project_id=project.id,
-            workspace=workspace,
-            git_url=project_git_url,
-            scan_metadata=scan_metadata,
-        )
+        # M1/M2 (concurrency-scaling plan) load-test mode: hold this worker
+        # slot busy for a fixed delay instead of running cdxgen/scancode/Trivy,
+        # so tests/load/scan_queue_wait.py can measure queue wait and
+        # processing time under N concurrent triggers. Gated to APP_ENV=dev
+        # with an explicit opt-in (core.config.scan_load_test_delay_seconds
+        # returns 0.0, falsy, on every other deployment), so this branch is
+        # unreachable outside a local load test.
+        delay_seconds = scan_load_test_delay_seconds()
+        if delay_seconds > 0:
+            _run_load_test_delay(scan_uuid=scan_uuid, delay_seconds=delay_seconds)
+        else:
+            # Run the pipeline outside the first session so each stage commits
+            # its own progress update without holding a long-lived transaction.
+            _run_pipeline(
+                scan_uuid=scan_uuid,
+                project_id=project.id,
+                workspace=workspace,
+                git_url=project_git_url,
+                scan_metadata=scan_metadata,
+            )
     except _FetchAborted as exc:
         # SSRF guard / fetch refused the project URL — terminal, not a
         # transient. Mark failed with the validator's human-readable reason
@@ -694,6 +706,37 @@ def _run_pipeline(
     # missing reachability signal is degraded, never fatal. The enqueue itself
     # honours REACHABILITY_ENABLED and returns None when disabled (no-op here).
     _dispatch_reachability(scan_uuid)
+
+
+def _run_load_test_delay(*, scan_uuid: uuid.UUID, delay_seconds: float) -> None:
+    """M1 (concurrency-scaling plan) queue-wait / processing-time load test mode.
+
+    Replaces the entire fetch → prep → cdxgen → scancode → Trivy chain with a
+    fixed sleep, then reuses the same state-transition writers the real
+    pipeline uses (``_set_stage``, ``_mark_succeeded``) so a load-test scan's
+    ``started_at``/``current_step``/``progress_percent``/``completed_at``
+    fields are filled in exactly the way a real scan's are (only the
+    toolchain in between is skipped). No workspace directory, SBOM, or
+    vulnerability finding is produced; that is by design (CLAUDE.md M1: this
+    mode measures queuing and slot-occupancy time, not scan output).
+
+    Never runs the reachability follow-up dispatch: that task expects a
+    preserved source tarball this mode never creates.
+
+    Only reachable when the caller already observed a positive
+    ``scan_load_test_delay_seconds()`` (see that accessor for the
+    ``APP_ENV=dev`` + explicit-opt-in gate that keeps this branch dead outside
+    a local load test).
+    """
+    log.warning(
+        "scan_source_load_test_delay_mode",
+        scan_id=str(scan_uuid),
+        delay_seconds=delay_seconds,
+    )
+    _set_stage(scan_uuid, "bootstrap")
+    time.sleep(delay_seconds)
+    _set_stage(scan_uuid, "finalize")
+    _mark_succeeded(scan_uuid)
 
 
 def _dispatch_reachability(scan_uuid: uuid.UUID) -> None:
