@@ -8,7 +8,7 @@ sidebar_position: 99
 
 # 온콜 런북
 
-프로덕션 TRUSCA 스택에 대해 가장 빈번한 4개의 PagerDuty 알림에 대한 빠른 참조 플레이북입니다. 각 시나리오는 다음을 나열합니다:
+프로덕션 TRUSCA 스택에서 가장 자주 나오는 PagerDuty·알림에 대한 빠른 참조 플레이북입니다. 각 시나리오는 다음을 나열합니다:
 
 - **증상** — 페이지를 트리거한 것
 - **고객 영향** — 사용자가 지금 할 수 있는 / 할 수 없는 것
@@ -214,11 +214,45 @@ docker-compose exec postgres psql -U trustedoss -d trustedoss \
 - workspace 정리 후에도 디스크가 90% 초과로 남아 있거나,
 - `audit_logs`가 24시간마다 두 배로 늘어나는 Postgres 증가세(근본 원인 필요 — 폭주하는 통합이 이벤트를 쏟아내는 가능성).
 
+## 시나리오 5 — 큐 적체 알림 발생
+
+### 증상
+`trustedoss.scan` 또는 `trustedoss.default`에 대해 "Queue backlog alert" 제목의 Slack/Teams 메시지(기존 알림 채널이며 새로 붙인 연동이 아닙니다). `QUEUE_BACKLOG_ALERT_ENABLED`와 `QUEUE_BACKLOG_METRICS_ENABLED`가 둘 다 켜져 있어야 발생합니다. [환경변수 - 큐 적체 알림](../reference/env-variables.md)과 [Docker Compose - 스캔 용량](../installation/docker-compose.md#scan-capacity-sizing-and-scaling)을 참고하세요.
+
+### 고객 영향
+- `trustedoss.scan`: 새 스캔이 기존 스캔 뒤로 밀려 시작까지 더 오래 걸립니다. 아무것도 실패하지는 않습니다 - 오류가 아니라 용량 신호입니다.
+- `trustedoss.default`: 알림, 백업, 감사 반출, 티켓 웹훅이 지연됩니다. 오래 지속된다면 단순 과부하보다 워커가 멈춘 상황을 먼저 의심하세요(진단 참고).
+
+### 진단
+<!-- docs-uat: id=oncall-queue-backlog-check kind=shell ctx=host tier=nightly waiver=runbook-diagnostic-prod-compose-worker -->
+```bash
+# 1. 현재 적체량과 가장 오래 기다린 스캔의 대기 시간(METRICS_ENABLED도 필요)
+curl -fsS "https://<your-host>/metrics" | grep -E 'trusca_broker_queue_backlog|trusca_scan_queue_wait_seconds'
+# 2. worker-scan 레플리카가 실제로 떠서 소비하고 있는가?
+docker-compose -f docker-compose.yml ps worker-scan
+docker-compose -f docker-compose.yml exec worker-scan celery -A apps.backend.tasks.celery_app inspect active
+# 3. 최근 스캔 처리량 - 스캔이 끝나고는 있는가, 아니면 쌓이기만 하는가?
+curl -fsS "https://<your-host>/v1/admin/scans?status=queued" \
+  -H "Authorization: Bearer $ACCESS_TOKEN" | jq '.total'
+```
+
+### 복구
+1. **도착률이 용량을 넘어선 경우(흔한 경우)**: 알림이 지목한 워커 서비스를 확장하세요. 스캔 처리량은 `worker-scan`, 나머지는 `worker-default`입니다 - 엉뚱한 쪽을 확장하면 아무것도 나아지지 않습니다(위에 링크한 용량 가이드 참고):
+   ```bash
+   docker-compose -f docker-compose.yml up -d --scale worker-scan=4
+   ```
+2. **실제 부하가 아니라 워커가 멈춘 경우**: `celery inspect active`에 정상 스캔보다 훨씬 오래 도는 태스크가 보이면(`SCAN_HARD_TIME_LIMIT_SECONDS`와 비교) 그 스캔부터 시나리오 3의 복구 절차를 따르세요. 멈춘 태스크를 정리하면 필요하지도 않은 용량을 영구히 늘리지 않고도 슬롯이 풀립니다.
+3. **정상화 확인**: 여전히 적체 상태라면 알림은 쿨다운 간격(`QUEUE_BACKLOG_ALERT_COOLDOWN_SECONDS`, 기본 1시간)마다 다시 발생하고, 이후 어느 beat 틱(5분 간격)에서 적체량이 임계값 이하로 내려가면 멈춥니다.
+
+### 에스컬레이션
+- `worker-scan`을 확장해도 스캔 한 건 소요 시간만큼의 주기 안에 적체가 줄지 않을 때(디스크·Postgres·브로커 자체가 병목일 가능성), 또는
+- 같은 큐에 대해 쿨다운을 넘겨서도 며칠에 걸쳐 알림이 계속 재발할 때.
+
 ## 표준 에스컬레이션 양식
 
 포털 개발팀에 호출 시 다음을 첨부:
 
-- 시나리오 번호(1-4)와 PagerDuty 알림 URL.
+- 시나리오 번호(1-5)와 PagerDuty 알림 URL.
 - 포털 버전: `docker-compose -f docker-compose.yml exec backend python -c "from main import app; print(app.version)"`
 - 관련 컨테이너의 마지막 2000 라인: `docker-compose logs --tail=2000 <svc>`
 - Trivy DB 이슈: 워커의 `/var/lib/trivy/db/metadata.json` 내용 + `docker-compose logs --tail=500 worker | grep trivy_db`.
@@ -229,3 +263,4 @@ docker-compose exec postgres psql -U trustedoss -d trustedoss \
 - [취약점 데이터 (Trivy DB)](./vulnerability-data.md) — DB 라이프사이클과 트러블슈팅.
 - [백업·복원](./backup-and-restore.md) — 백업 보존 + 복원 흐름.
 - [디스크·health](./disk-and-health.md) — 디스크 임계 모델 + Health 대시보드.
+- [Docker Compose - 스캔 용량](../installation/docker-compose.md#scan-capacity-sizing-and-scaling) — 슬롯 용량 계산식과 `worker-scan`/`worker-default` 확장.

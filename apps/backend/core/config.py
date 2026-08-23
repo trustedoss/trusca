@@ -2581,6 +2581,106 @@ def queue_backlog_metrics_enabled() -> bool:
     )
 
 
+def queue_backlog_alert_enabled() -> bool:
+    """Whether the beat sweep that turns a stuck queue into an alert runs (S6).
+
+    concurrency-scaling-plan-2026-08-22.md §3.2/§4 (S6): principle 4 says a
+    Compose deployment gets no autoscaler, only a capacity formula and a
+    signal that it has been exceeded. This is that signal's on/off switch,
+    off by default like every new toggle this plan opens (principle 5).
+
+    HARD dependency on :func:`queue_backlog_metrics_enabled` (M2): the sweep
+    reads the same broker LLEN this flag's sibling publishes to ``/metrics``,
+    just without going through the HTTP endpoint. Turning this on while M2's
+    switch is off does not raise - the beat task logs a WARNING and skips,
+    every tick, until the operator turns M2's switch on too (see
+    ``tasks.queue_backlog_alert``'s module docstring for the full contract).
+    That "never crash a beat task" convention is the same one
+    ``tasks.vuln_sla_sweep`` and ``tasks.trivy_db_refresh`` already use.
+    """
+    return os.getenv("QUEUE_BACKLOG_ALERT_ENABLED", "false").strip().lower() in (
+        "1",
+        "true",
+        "yes",
+        "on",
+    )
+
+
+def queue_backlog_alert_scan_queue_threshold() -> int:
+    """Messages waiting on ``trustedoss.scan`` before it counts as backlogged.
+
+    S3 split the single Celery queue into a scan queue and a default queue
+    (concurrency-scaling-plan-2026-08-22.md §3.2 S3), and §3.2's own S6 row
+    says the two need different thresholds because their normal wait time is
+    a different order of magnitude: a scan slot is busy for tens of minutes
+    (``scan_hard_time_limit_seconds()`` defaults to 3900s), so a handful of
+    messages queued behind it is ordinary, not an incident.
+
+    Default 10. At the smallest documented shape (prod compose defaults:
+    ``WORKER_REPLICAS=1`` x ``CELERY_CONCURRENCY=2`` = 2 scan slots, §1.1's
+    ``S x 60 / M`` at a 20-minute average scan), 10 queued scans is already
+    ~100 minutes of backlog ahead of the newest arrival - worth paging on,
+    not a normal Tuesday.
+
+    Read at call time (CLAUDE.md core rule #11). Clamped to a non-negative
+    integer; junk or a negative value falls back to the default.
+    """
+    return _int_env("QUEUE_BACKLOG_ALERT_SCAN_QUEUE_THRESHOLD", 10, minimum=0)
+
+
+def queue_backlog_alert_default_queue_threshold() -> int:
+    """Messages waiting on ``trustedoss.default`` before it counts as backlogged.
+
+    The default queue carries short, frequent work (notifications, backups,
+    audit export, catalog-refresh beats - see S3's queue split) that a
+    healthy deployment clears in seconds, so its normal backlog runs much
+    higher than the scan queue's before it means anything: dozens of
+    beat-fired tasks can land in the same second and drain just as fast.
+
+    Default 100 - an order of magnitude above the scan queue's default,
+    reflecting that difference in scale rather than a shared number picked
+    once and reused. Read at call time (CLAUDE.md core rule #11). Clamped to
+    a non-negative integer.
+    """
+    return _int_env("QUEUE_BACKLOG_ALERT_DEFAULT_QUEUE_THRESHOLD", 100, minimum=0)
+
+
+def queue_backlog_alert_sustain_seconds() -> int:
+    """How long a queue must stay over its threshold before it pages anybody.
+
+    A momentary spike (a burst of webhook-triggered scans landing on the same
+    beat tick) is not an incident; a queue that is STILL over threshold this
+    many seconds after it first crossed is. This is the "지속" (sustained) half
+    of the plan's S6 row - the beat sweep tracks a per-queue breach-start
+    timestamp in Redis and only alerts once the gap between that timestamp and
+    now reaches this value (``tasks.queue_backlog_alert._evaluate``).
+
+    Default 600 (10 minutes) - long enough that the sweep's own 5-minute beat
+    cadence (``tasks.celery_app``) samples the breach at least twice before
+    alerting, so a single missed tick cannot manufacture a false page. Read at
+    call time (CLAUDE.md core rule #11). Clamped to a positive integer.
+    """
+    return _int_env("QUEUE_BACKLOG_ALERT_SUSTAIN_SECONDS", 600, minimum=1)
+
+
+def queue_backlog_alert_cooldown_seconds() -> int:
+    """Minimum gap between two alerts for the SAME queue while still breached.
+
+    Without this, a queue stuck over threshold for three hours re-alerts
+    every 5-minute beat tick - 36 pages for one incident. The sweep records
+    when it last alerted (Redis, same per-queue state as the sustain window)
+    and skips a queue that is still within this cooldown of its last alert,
+    even if it never dropped below threshold in between. Once the cooldown
+    elapses, a still-breached queue alerts again - this is a repeat reminder,
+    not a one-shot notice, because an incident that outlives the cooldown is
+    exactly the kind an operator wants re-paged about.
+
+    Default 3600 (1 hour). Read at call time (CLAUDE.md core rule #11).
+    Clamped to a positive integer.
+    """
+    return _int_env("QUEUE_BACKLOG_ALERT_COOLDOWN_SECONDS", 3600, minimum=1)
+
+
 def permission_cache_ttl_seconds() -> int:
     """How long a resolved principal may be reused before it is read again.
 

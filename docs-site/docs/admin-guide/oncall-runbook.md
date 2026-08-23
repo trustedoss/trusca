@@ -8,8 +8,8 @@ sidebar_position: 99
 
 # On-call runbook
 
-Quick-reference playbook for the four most common PagerDuty alerts
-against a production TRUSCA stack. Each scenario lists:
+Quick-reference playbook for the most common PagerDuty / notification
+alerts against a production TRUSCA stack. Each scenario lists:
 
 - **Symptom** — what triggered the page
 - **Customer impact** — what users can/cannot do right now
@@ -215,11 +215,45 @@ docker-compose exec postgres psql -U trustedoss -d trustedoss \
 - After workspace cleanup, disk still > 90%, OR
 - Postgres growth is from `audit_logs` doubling every 24 hours (root cause needed — possibly a runaway integration emitting events).
 
+## Scenario 5 - Queue backlog alert fired
+
+### Symptom
+A Slack/Teams message titled "Queue backlog alert" for `trustedoss.scan` or `trustedoss.default` (the existing notification channels, this is not a new integration). Requires `QUEUE_BACKLOG_ALERT_ENABLED` + `QUEUE_BACKLOG_METRICS_ENABLED` to both be on; see [Environment variables - Queue backlog alert](../reference/env-variables.md) and [Docker Compose - Scan capacity](../installation/docker-compose.md#scan-capacity-sizing-and-scaling).
+
+### Customer impact
+- `trustedoss.scan`: new scans queue behind existing ones and take longer to start. Nothing fails outright, this is a capacity signal, not an error.
+- `trustedoss.default`: notifications, backups, audit export, and ticket webhooks are delayed. If sustained, treat it as a possible stuck worker rather than pure overload (see Diagnose).
+
+### Diagnose
+<!-- docs-uat: id=oncall-queue-backlog-check kind=shell ctx=host tier=nightly waiver=runbook-diagnostic-prod-compose-worker -->
+```bash
+# 1. Current backlog and oldest-queued-scan wait (needs METRICS_ENABLED too)
+curl -fsS "https://<your-host>/metrics" | grep -E 'trusca_broker_queue_backlog|trusca_scan_queue_wait_seconds'
+# 2. Are the worker-scan replicas actually up and consuming?
+docker-compose -f docker-compose.yml ps worker-scan
+docker-compose -f docker-compose.yml exec worker-scan celery -A apps.backend.tasks.celery_app inspect active
+# 3. Recent scan throughput - are scans finishing, or piling up?
+curl -fsS "https://<your-host>/v1/admin/scans?status=queued" \
+  -H "Authorization: Bearer $ACCESS_TOKEN" | jq '.total'
+```
+
+### Recover
+1. **This is arrival rate over capacity (the common case)**: scale the worker service the alert named. `worker-scan` for scan throughput, `worker-default` for everything else; scaling the wrong one does nothing (see the capacity guide linked above):
+   ```bash
+   docker-compose -f docker-compose.yml up -d --scale worker-scan=4
+   ```
+2. **This is a stuck worker, not real load**: if `celery inspect active` shows a task that has been running far longer than a normal scan (compare against `SCAN_HARD_TIME_LIMIT_SECONDS`), follow Scenario 3's recovery steps for that scan first. Clearing the stuck task frees the slot without permanently adding capacity you don't need.
+3. **Confirm it clears**: the alert re-fires on a cooldown (`QUEUE_BACKLOG_ALERT_COOLDOWN_SECONDS`, default 1h) while still breached, and stops once the backlog drops back at or under its threshold on a later beat tick (checked every 5 minutes).
+
+### Escalate
+- If scaling `worker-scan` does not bring the backlog down within one scan-duration cycle (suggests the bottleneck is elsewhere: disk, Postgres, or the broker itself), OR
+- If the alert keeps re-firing (past its cooldown) for the same queue across multiple days.
+
 ## Standard escalation form
 
 When paging the portal dev team, attach:
 
-- Scenario number (1-4) and PagerDuty alert URL.
+- Scenario number (1-5) and PagerDuty alert URL.
 - Portal version: `docker-compose -f docker-compose.yml exec backend python -c "from main import app; print(app.version)"`
 - Last 2000 lines of the relevant container: `docker-compose logs --tail=2000 <svc>`
 - For Trivy DB issues: the worker's `/var/lib/trivy/db/metadata.json` content and `docker-compose logs --tail=500 worker | grep trivy_db`.
@@ -230,3 +264,4 @@ When paging the portal dev team, attach:
 - [Vulnerability data (Trivy DB)](./vulnerability-data.md) — DB lifecycle and troubleshooting.
 - [Backup and restore](./backup-and-restore.md) — backup retention + restore flow.
 - [Disk and health](./disk-and-health.md) — disk threshold model + Health dashboard.
+- [Docker Compose - Scan capacity](../installation/docker-compose.md#scan-capacity-sizing-and-scaling) - slot capacity formula and scaling `worker-scan` / `worker-default`.

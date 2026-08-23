@@ -20,7 +20,7 @@ from typing import Any
 
 import pytest
 
-from services.metrics_service import _broker_queue_backlog, _oldest_queued_scan_wait_seconds
+from services.metrics_service import _broker_queue_backlogs, _oldest_queued_scan_wait_seconds
 
 # ---------------------------------------------------------------------------
 # _oldest_queued_scan_wait_seconds
@@ -82,7 +82,7 @@ async def test_never_negative_even_from_a_surprising_value() -> None:
 
 
 # ---------------------------------------------------------------------------
-# _broker_queue_backlog
+# _broker_queue_backlogs
 # ---------------------------------------------------------------------------
 
 
@@ -94,12 +94,14 @@ class _FakeCeleryApp:
 
 
 class _FakeRedisClient:
-    def __init__(self, length: int) -> None:
-        self._length = length
+    def __init__(self, lengths: dict[str, int]) -> None:
+        self._lengths = lengths
         self.closed = False
+        self.queried: list[str] = []
 
-    def llen(self, _queue: str) -> int:
-        return self._length
+    def llen(self, queue: str) -> int:
+        self.queried.append(queue)
+        return self._lengths.get(queue, 0)
 
     def close(self) -> None:
         self.closed = True
@@ -113,43 +115,47 @@ class _RaisingRedisClient:
         pass
 
 
-def test_the_backlog_is_the_queues_llen(monkeypatch: pytest.MonkeyPatch) -> None:
+def _install_fake_celery_app(monkeypatch: pytest.MonkeyPatch) -> None:
     import sys
     import types
 
     fake_tasks_module = types.ModuleType("tasks.celery_app")
     fake_tasks_module.celery_app = _FakeCeleryApp()  # type: ignore[attr-defined]
+    fake_tasks_module._SCAN_QUEUE = "trustedoss.scan"  # type: ignore[attr-defined]
     monkeypatch.setitem(sys.modules, "tasks.celery_app", fake_tasks_module)
 
-    client = _FakeRedisClient(length=17)
+
+def test_the_backlog_is_each_queues_llen(monkeypatch: pytest.MonkeyPatch) -> None:
+    """S3 split one queue into two - the series must report both by name."""
+    _install_fake_celery_app(monkeypatch)
+
+    client = _FakeRedisClient(lengths={"trustedoss.scan": 17, "trustedoss.default": 3})
     monkeypatch.setattr(
         "services.metrics_service._redis.Redis.from_url",
         lambda *a, **k: client,
     )
 
-    queue, backlog = _broker_queue_backlog()
+    backlogs = _broker_queue_backlogs()
 
-    assert queue == "trustedoss.default"
-    assert backlog == 17
+    assert backlogs == {"trustedoss.scan": 17, "trustedoss.default": 3}
+    assert client.queried == ["trustedoss.scan", "trustedoss.default"], (
+        "scan queue first - declaration order is what keeps the exposition stable"
+    )
     assert client.closed, "the client must be closed rather than left open per scrape"
 
 
-def test_a_broker_error_reports_zero_rather_than_raising(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_a_broker_error_reports_zero_for_every_queue_rather_than_raising(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     """The module docstring's rule (N10): one series failing does not take
     the rest of the scrape down with it."""
-    import sys
-    import types
-
-    fake_tasks_module = types.ModuleType("tasks.celery_app")
-    fake_tasks_module.celery_app = _FakeCeleryApp()  # type: ignore[attr-defined]
-    monkeypatch.setitem(sys.modules, "tasks.celery_app", fake_tasks_module)
+    _install_fake_celery_app(monkeypatch)
 
     monkeypatch.setattr(
         "services.metrics_service._redis.Redis.from_url",
         lambda *a, **k: _RaisingRedisClient(),
     )
 
-    queue, backlog = _broker_queue_backlog()
+    backlogs = _broker_queue_backlogs()
 
-    assert queue == "trustedoss.default"
-    assert backlog == 0
+    assert backlogs == {"trustedoss.scan": 0, "trustedoss.default": 0}

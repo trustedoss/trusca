@@ -83,6 +83,13 @@ class NotificationKind(str, Enum):
     APPROVAL_STATE_CHANGED = "approval_state_changed"
     USER_DEACTIVATED = "user_deactivated"
     PASSWORD_RESET = "password_reset"  # noqa: S105 — kind name, not a credential
+    # S6 (concurrency-scaling-plan-2026-08-22.md §3.2/§4): a Celery queue has
+    # stayed over its backlog threshold long enough that it is an operational
+    # incident, not a burst. Dispatch-only - deliberately no in-app row (see
+    # ``tests/unit/test_catalog_contracts.py``'s ``_DISPATCH_ONLY_KINDS``):
+    # this is a deployment-wide capacity signal, not addressed to any one
+    # user, so there is no ``user_id`` to fan an inbox row out to.
+    QUEUE_BACKLOG_ALERT = "queue_backlog_alert"
 
 
 # Channel name strings used in the public API.
@@ -213,6 +220,43 @@ def _build_user_deactivated(
     )
 
 
+def _build_queue_backlog_alert(
+    context: dict[str, Any],
+) -> tuple[dict[str, Any], dict[str, Any], dict[str, Any]]:
+    """S6: a Celery queue stayed over its backlog threshold long enough to page.
+
+    ``context`` comes from ``tasks.queue_backlog_alert`` - see that module's
+    docstring for the full sizing story this message points the operator at.
+    """
+    queue = _ctx_str(context, "queue", "<unknown queue>")
+    backlog = _ctx_str(context, "backlog", "0")
+    threshold = _ctx_str(context, "threshold", "0")
+    sustained_minutes = _ctx_str(context, "sustained_minutes", "0")
+    summary = (
+        f"TRUSCA queue '{queue}' has {backlog} messages waiting "
+        f"(threshold {threshold}), sustained for {sustained_minutes} min."
+    )
+    detail = (
+        f"{summary}\n\n"
+        "This is a capacity signal, not a crash: the queue is receiving work "
+        "faster than the worker pool assigned to it can drain. Scale the "
+        "worker service that consumes this queue "
+        "(`docker-compose up -d --scale worker-scan=N` for trustedoss.scan, "
+        "`--scale worker-default=N` for trustedoss.default; Helm deployments "
+        "raise worker.scan.replicaCount / worker.default.replicaCount) or "
+        "investigate a stuck worker. See the installation guide's queue "
+        "capacity section and the on-call runbook's queue-backlog scenario."
+    )
+    return (
+        {
+            "subject": f"TrustedOSS - Queue backlog: {queue}",
+            "body_text": detail,
+        },
+        {"text": summary},
+        {"title": "Queue backlog alert", "text": summary},
+    )
+
+
 # Lookup keyed by the ``str`` value of NotificationKind so the Celery task —
 # which accepts the kind as a JSON string per CLAUDE.md (no pickle) — can
 # resolve it without importing the enum.
@@ -223,6 +267,7 @@ _BUILDERS: dict[str, Callable[[dict[str, Any]], _BUilderResult]] = {
     NotificationKind.SCAN_COMPLETED.value: _build_scan_completed,
     NotificationKind.APPROVAL_STATE_CHANGED.value: _build_approval_state_changed,
     NotificationKind.USER_DEACTIVATED.value: _build_user_deactivated,
+    NotificationKind.QUEUE_BACKLOG_ALERT.value: _build_queue_backlog_alert,
 }
 
 

@@ -236,6 +236,28 @@ superseded·노후 스캔 스냅샷을 회수하는 자동 보존 sweep을 조�
 
 포털은 ID 토큰 서명을 검증하지 않습니다. 의도한 선택입니다. 인가 코드를 발급자의 토큰 엔드포인트와 TLS로 직접 교환하고 주체를 같은 경로의 userinfo에서 읽는데, 토큰 엔드포인트에서 곧바로 받은 토큰이라면 OpenID Connect Core §3.1.3.7이 이를 허용합니다. 대신 확인하는 것은 탐색 문서가 설정한 발급자의 것인지, 그리고 문서가 지정한 엔드포인트가 발급자 자신의 호스트인지입니다.
 
+## 큐 적체 알림 (S6)
+
+Compose 배포에는 오토스케일러 계층이 없습니다. 이 절의 키들은 그 대신
+제품이 주는 것으로, 용량 계산식([Docker Compose — 스캔 용량](../installation/docker-compose.md#scan-capacity-sizing-and-scaling)
+참고)과 짝을 이루는 신호입니다. beat 스윕이 5분마다 두 Celery
+큐(`trustedoss.scan`, `trustedoss.default` — S3의 큐 분리)의 브로커 대기
+길이를 재고, 한쪽이 임계값을 넘은 채 일정 시간 지속되면 Slack/Teams로
+알림 하나를 보냅니다(기존 채널을 그대로 씁니다 — 새 알림 채널이
+아닙니다).
+
+`QUEUE_BACKLOG_METRICS_ENABLED`(M2)에 강하게 의존합니다: 이 스윕은 그
+지표가 읽는 것과 같은 브로커 값을 읽습니다. M2를 끈 채 이 알림만 켜도
+오류가 나지는 않습니다 — 매 틱마다 WARNING 로그를 남기고 건너뜁니다.
+
+| 키 | 기본값 | 읽는 위치 | 설명 |
+|---|---|---|---|
+| `QUEUE_BACKLOG_ALERT_ENABLED` | `false` | `config.py` | 이 알림 스윕 자체의 켬/끔. 기본은 꺼짐이고, `QUEUE_BACKLOG_METRICS_ENABLED`가 함께 켜져 있어야 실제로 의미가 있습니다. |
+| `QUEUE_BACKLOG_ALERT_SCAN_QUEUE_THRESHOLD` | `10` | `config.py` | `trustedoss.scan`이 적체로 판단되기 전까지 허용하는 대기 메시지 수. 스캔 슬롯 하나가 수십 분씩 자리를 차지하므로(`scan_hard_time_limit_seconds()`), 스캔 몇 건이 밀려 있는 것은 보통 정상입니다. |
+| `QUEUE_BACKLOG_ALERT_DEFAULT_QUEUE_THRESHOLD` | `100` | `config.py` | `trustedoss.default`에 대한 같은 값으로, 한 자릿수 더 큽니다. 이 큐는 알림·백업·감사 반출·카탈로그 갱신 베트처럼 짧고 잦은 작업을 나르므로(S3의 큐 분리 참고), 정상 상태라면 몇 초 안에 비웁니다. |
+| `QUEUE_BACKLOG_ALERT_SUSTAIN_SECONDS` | `600` | `config.py` | 큐가 임계값을 넘은 채 몇 초를 버텨야 알림이 나가는지. 순간적인 폭주(같은 베트 틱에 몰린 웹훅 스캔 여러 건)는 장애가 아니고, 넘긴 뒤에도 이만큼 계속 그 상태면 장애입니다. |
+| `QUEUE_BACKLOG_ALERT_COOLDOWN_SECONDS` | `3600` | `config.py` | 같은 큐에 대해 두 알림 사이에 두는 최소 간격. 세 시간짜리 장애라면 5분마다가 아니라 이 간격으로 알립니다. 이 간격을 넘겨서도 여전히 적체 상태면 다시 알립니다 — 한 번만 알리고 마는 방식이 아니라 반복 알림입니다. |
+
 ## 백업
 
 | 키 | 기본값 | 읽는 위치 | 설명 |
