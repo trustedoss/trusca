@@ -20,6 +20,7 @@ Idempotency rules match :mod:`tasks.scan_source` — see that module's docstring
 from __future__ import annotations
 
 import shutil
+import time
 import uuid
 from datetime import UTC, datetime
 from pathlib import Path
@@ -30,7 +31,11 @@ from celery.exceptions import SoftTimeLimitExceeded
 from sqlalchemy import delete, select
 from sqlalchemy.orm import Session
 
-from core.config import scan_soft_time_limit_seconds, workspace_root
+from core.config import (
+    scan_load_test_delay_seconds,
+    scan_soft_time_limit_seconds,
+    workspace_root,
+)
 from core.db import sync_session_scope
 from integrations import trivy as trivy_adapter
 from integrations._size_guard import enforce_jsonb_row_size_limit
@@ -122,12 +127,21 @@ def scan_container_task(self: Any, scan_id: str) -> None:
             _reset_for_rerun(session, scan)
             _mark_running(session, scan)
 
-        _run_pipeline(
-            scan_uuid=scan_uuid,
-            image_ref=image_ref,
-            workspace=workspace,
-            verbose=verbose,
-        )
+        # M1/M2 (concurrency-scaling plan) load-test mode: see
+        # tasks.scan_source._run_load_test_delay for the full rationale. Gated
+        # to APP_ENV=dev with an explicit opt-in (scan_load_test_delay_seconds
+        # returns 0.0 on every other deployment), so this branch is
+        # unreachable outside a local load test.
+        delay_seconds = scan_load_test_delay_seconds()
+        if delay_seconds > 0:
+            _run_load_test_delay(scan_uuid=scan_uuid, delay_seconds=delay_seconds)
+        else:
+            _run_pipeline(
+                scan_uuid=scan_uuid,
+                image_ref=image_ref,
+                workspace=workspace,
+                verbose=verbose,
+            )
     except SoftTimeLimitExceeded:
         # PR-A1: Trivy (or a future container stage) exceeded
         # SCAN_SOFT_TIME_LIMIT_SECONDS. Mark failed with a clear message; the
@@ -179,6 +193,27 @@ def _run_pipeline(
     # detected_env writes: "observation must never fail a scan").
     _persist_os_metadata(scan_uuid=scan_uuid, report=trivy_result.report)
 
+    _set_stage(scan_uuid, "finalize")
+    _mark_succeeded(scan_uuid)
+
+
+def _run_load_test_delay(*, scan_uuid: uuid.UUID, delay_seconds: float) -> None:
+    """M1 (concurrency-scaling plan) queue-wait / processing-time load test mode.
+
+    Mirrors ``tasks.scan_source._run_load_test_delay`` for the container
+    pipeline: skips the Trivy image scan entirely, sleeps ``delay_seconds``,
+    then reuses ``_set_stage``/``_mark_succeeded`` so ``started_at`` /
+    ``current_step`` / ``progress_percent`` / ``completed_at`` fill in exactly
+    the way a real container scan's do. No workspace, Trivy report, or
+    vulnerability finding is produced, by design.
+    """
+    log.warning(
+        "scan_container_load_test_delay_mode",
+        scan_id=str(scan_uuid),
+        delay_seconds=delay_seconds,
+    )
+    _set_stage(scan_uuid, "bootstrap")
+    time.sleep(delay_seconds)
     _set_stage(scan_uuid, "finalize")
     _mark_succeeded(scan_uuid)
 
