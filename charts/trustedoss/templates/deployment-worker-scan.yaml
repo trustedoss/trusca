@@ -2,28 +2,38 @@
 SPDX-License-Identifier: Apache-2.0
 Copyright 2026 TRUSCA contributors
 */ -}}
+{{- /*
+S3 (concurrency-scaling-plan-2026-08-22.md §3.2/§4): the scan-pipeline
+worker. Split out of the single `worker` Deployment this chart used to
+render (see values.yaml's worker.scan block for why). Runs
+scan_source/scan_container/ingest_sbom/scan_reachability -- the only tasks
+that can occupy a slot for up to the scan hard time limit -- and, while
+worker.transitionSubscribeBothQueues is true (the default), the default
+queue as well, to drain anything left over from the pre-split single queue
+during a rolling upgrade. See _helpers.tpl's trustedoss.worker.subscribedQueues.
+*/ -}}
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: {{ include "trustedoss.fullname" . }}-worker
+  name: {{ include "trustedoss.fullname" . }}-worker-scan
   labels:
     {{- include "trustedoss.labels" . | nindent 4 }}
-    app.kubernetes.io/component: worker
+    app.kubernetes.io/component: worker-scan
 spec:
-  {{- if not .Values.worker.autoscaling.enabled }}
-  # When the HPA is enabled (worker.autoscaling.enabled) we omit replicas so the
-  # autoscaler owns the count; otherwise this static value applies.
-  replicas: {{ .Values.worker.replicaCount }}
+  {{- if not .Values.worker.scan.autoscaling.enabled }}
+  # When the HPA/KEDA is enabled (worker.scan.autoscaling) we omit replicas so
+  # the autoscaler owns the count; otherwise this static value applies.
+  replicas: {{ .Values.worker.scan.replicaCount }}
   {{- end }}
   selector:
     matchLabels:
       {{- include "trustedoss.selectorLabels" . | nindent 6 }}
-      app.kubernetes.io/component: worker
+      app.kubernetes.io/component: worker-scan
   template:
     metadata:
       labels:
         {{- include "trustedoss.selectorLabels" . | nindent 8 }}
-        app.kubernetes.io/component: worker
+        app.kubernetes.io/component: worker-scan
       annotations:
         checksum/env: {{ include (print $.Template.BasePath "/configmap-env.yaml") . | sha256sum }}
         {{- with .Values.podAnnotations }}
@@ -31,12 +41,12 @@ spec:
         {{- end }}
     spec:
       # S4 (concurrency-scaling-plan-2026-08-22.md §3.2/§4): give a
-      # terminating worker pod enough time to finish the scan it is already
-      # running instead of being SIGKILLed mid-scan (see worker.
-      # terminationGracePeriodSeconds in values.yaml for why this must stay
-      # above the scan pipeline's hard time limit).
-      terminationGracePeriodSeconds: {{ .Values.worker.terminationGracePeriodSeconds }}
-      serviceAccountName: {{ include "trustedoss.serviceAccountName" (dict "root" $ "component" "worker") }}
+      # terminating scan-worker pod enough time to finish the scan it is
+      # already running instead of being SIGKILLed mid-scan (see
+      # worker.scan.terminationGracePeriodSeconds in values.yaml for why this
+      # must stay above the scan pipeline's hard time limit).
+      terminationGracePeriodSeconds: {{ .Values.worker.scan.terminationGracePeriodSeconds }}
+      serviceAccountName: {{ include "trustedoss.serviceAccountName" (dict "root" $ "component" "worker-scan") }}
       {{- with .Values.imagePullSecrets }}
       imagePullSecrets:
         {{- toYaml . | nindent 8 }}
@@ -53,15 +63,25 @@ spec:
           securityContext:
             {{- toYaml . | nindent 12 }}
           {{- end }}
-          # Prefork concurrency = task slots per pod. Scale pods (replicaCount /
-          # HPA) in preference to this; each slot can fork a full pipeline.
+          # Prefork concurrency = task slots per pod. Scale pods
+          # (worker.scan.replicaCount / autoscaling) in preference to this;
+          # each slot can fork a full pipeline.
+          #
+          # S3: `-Q` pins this deployment to the scan queue (plus the default
+          # queue too, during the transition window -- see
+          # trustedoss.worker.subscribedQueues in _helpers.tpl). Every task
+          # name Celery routes here must appear in
+          # tests/contracts/queue-names.json's scan_task_names, which is the
+          # oracle apps/backend/tasks/celery_app.py's task_routes also reads.
           command:
             - celery
             - -A
             - tasks.celery_app
             - worker
             - --loglevel=info
-            - --concurrency={{ .Values.worker.concurrency }}
+            - --concurrency={{ .Values.worker.scan.concurrency }}
+            - -Q
+            - {{ include "trustedoss.worker.subscribedQueues" (dict "root" $ "own" "scan") }}
           # S4: Celery already treats a bare SIGTERM as a WARM shutdown (stop
           # consuming new tasks, let the currently-executing task run to
           # completion) as long as REMAP_SIGTERM is unset (it is, in this
@@ -123,7 +143,7 @@ spec:
             periodSeconds: 30
             timeoutSeconds: 15
           resources:
-            {{- toYaml .Values.worker.resources | nindent 12 }}
+            {{- toYaml .Values.worker.scan.resources | nindent 12 }}
       volumes:
         {{- if (.Values.worker.containerSecurityContext).readOnlyRootFilesystem }}
         - name: home

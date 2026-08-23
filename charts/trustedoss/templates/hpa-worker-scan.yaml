@@ -1,0 +1,42 @@
+{{- /*
+SPDX-License-Identifier: Apache-2.0
+Copyright 2026 TRUSCA contributors
+*/ -}}
+{{- if and .Values.worker.scan.autoscaling.enabled (eq .Values.worker.scan.autoscaling.mode "cpu") -}}
+# Scan-worker HPA - behind a feature flag, OFF by default (chart convention).
+# When enabled the scan-worker Deployment omits its static replicas so this
+# HPA owns the count.
+#
+# S3 (concurrency-scaling-plan-2026-08-22.md §3.2/§4): split out of the
+# single worker HPA this chart used to render - scopes to worker-scan only,
+# the workload S5's CPU-vs-queue judgment call was made for. See
+# hpa-worker-default.yaml for the default-queue worker's own (CPU-only) HPA.
+#
+# S5: only rendered when worker.scan.autoscaling.mode is "cpu" (the
+# default). Setting mode: queue renders scaledobject-worker-scan.yaml
+# INSTEAD of this file, never alongside it -- KEDA creates its own
+# HorizontalPodAutoscaler from a ScaledObject, so having both would put two
+# HPAs on the same scaleTargetRef, fighting each other over the replica
+# count.
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: {{ include "trustedoss.fullname" . }}-worker-scan
+  labels:
+    {{- include "trustedoss.labels" . | nindent 4 }}
+    app.kubernetes.io/component: worker-scan
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: {{ include "trustedoss.fullname" . }}-worker-scan
+  minReplicas: {{ .Values.worker.scan.autoscaling.minReplicas }}
+  maxReplicas: {{ .Values.worker.scan.autoscaling.maxReplicas }}
+  metrics:
+    - type: Resource
+      resource:
+        name: cpu
+        target:
+          type: Utilization
+          averageUtilization: {{ .Values.worker.scan.autoscaling.targetCPUUtilizationPercentage }}
+{{- end }}

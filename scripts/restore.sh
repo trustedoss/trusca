@@ -7,7 +7,7 @@
 #   bash scripts/restore.sh backups/2026-05-08-143000
 #
 # Steps:
-#   1. Stop application services (backend / frontend / worker / beat).
+#   1. Stop application services (backend / frontend / worker-scan / worker-default / beat).
 #      Postgres + Redis stay up — we restore in place.
 #   2. Restore PostgreSQL via pg_dump's clean-and-load output.
 #   3. Restore the workspace tar (if present).
@@ -92,7 +92,8 @@ fi
 # 1. Stop application services (DB + Redis remain up)
 # ---------------------------------------------------------------------------
 title "Stopping application containers"
-docker-compose -f docker-compose.yml stop backend frontend worker beat 2>/dev/null || true
+# S3: worker split into worker-scan / worker-default (concurrency-scaling-plan-2026-08-22.md §3.2/§4).
+docker-compose -f docker-compose.yml stop backend frontend worker-scan worker-default beat 2>/dev/null || true
 ok "application stopped"
 
 # ---------------------------------------------------------------------------

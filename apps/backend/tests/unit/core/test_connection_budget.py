@@ -79,7 +79,12 @@ HELM_DEFAULT = ConnectionBudget(
     uvicorn_workers=4,  # backend.uvicornWorkers (documents Dockerfile.prod)
     pool_size=5,  # env.dbPool.size
     max_overflow=3,  # env.dbPool.maxOverflow
-    worker_replicas=2,  # worker.replicaCount
+    # S3 (concurrency-scaling-plan-2026-08-22.md §3.2/§4): worker.replicaCount
+    # no longer exists post-queue-split -- worker.scan.replicaCount(2) +
+    # worker.default.replicaCount(1), since ConnectionBudget treats "worker
+    # replicas" as one uniform pool regardless of which queue kind it drains
+    # (see configmap-env.yaml's CONN_BUDGET_WORKER_REPLICAS comment).
+    worker_replicas=3,
     sync_pool_size=3,  # env.dbPool.syncSize
     sync_max_overflow=3,  # env.dbPool.syncMaxOverflow
     max_connections=100,  # statefulset-postgres.yaml applies no tuning

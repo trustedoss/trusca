@@ -471,9 +471,11 @@ jobs:
       #      by scripts/postgres-init.sh only during install.sh; a raw compose `up`
       #      never creates it, so prod mode fails password auth for trustedoss_app.
       # This gate proves the published images PULL, the production compose file
-      # RESOLVES + BOOTS all six services to health, migrations apply, and an
-      # authed first-scan API call works. It does NOT exercise the prod-only L1 /
-      # TLS edge (out of scope here; that is the install.sh + manual UAT path).
+      # RESOLVES + BOOTS all seven services (S3 split `worker` into
+      # `worker-scan` + `worker-default`, so what used to be six is now
+      # seven) to health, migrations apply, and an authed first-scan API call
+      # works. It does NOT exercise the prod-only L1 / TLS edge (out of scope
+      # here; that is the install.sh + manual UAT path).
       APP_ENV: dev
       # Traefik is not started, but DOMAIN / TLS_EMAIL / CORS are required for
       # `docker-compose config` to interpolate the production file cleanly. In
@@ -516,13 +518,16 @@ jobs:
       # Pull the three first-party images at the release version, then boot the
       # production stack (published images, no build) with the smoke overlay.
       # Traefik is deliberately omitted from the service list. depends_on gates
-      # the order: backend waits for postgres+redis healthy, worker for backend
-      # (schema at HEAD via /health/ready + AUTO_MIGRATE=true), beat for worker.
+      # the order: backend waits for postgres+redis healthy, worker-scan /
+      # worker-default for backend (schema at HEAD via /health/ready +
+      # AUTO_MIGRATE=true), beat for worker-default (S3: beat's own schedule
+      # only enqueues default-queue tasks, see docker-compose.yml's beat
+      # comment).
       - name: Pull & boot the published stack (no Traefik)
         run: |
           set -euo pipefail
           echo "release-gate: booting ${IMAGE_REGISTRY}/trusca-*:${IMAGE_TAG}"
-          docker-compose -f docker-compose.yml -f docker-compose.smoke.yml pull backend worker frontend
+          docker-compose -f docker-compose.yml -f docker-compose.smoke.yml pull backend worker-scan worker-default frontend
 
           # Cold-boot tolerance — mirror how production actually recovers, don't
           # out-run it. On a FRESH postgres volume the official image runs initdb
@@ -530,10 +535,11 @@ jobs:
           # trustedoss_app role script — a window that can outlast the published
           # backend image's fixed 10x3s DB-wait. So the backend's FIRST start can
           # exit before postgres accepts app connections, and `up` then reports
-          # `worker` (depends_on backend: service_healthy) "unhealthy" and exits
-          # non-zero. Production heals exactly this with `restart: unless-stopped`
-          # (line ~281): the backend restarts and connects once postgres is truly
-          # ready. Warm boots skip initdb, so CI / image-scan never hit it.
+          # `worker-scan` / `worker-default` (both `depends_on backend:
+          # service_healthy`) "unhealthy" and exits non-zero. Production heals
+          # exactly this with `restart: unless-stopped` (line ~281): the
+          # backend restarts and connects once postgres is truly ready. Warm
+          # boots skip initdb, so CI / image-scan never hit it.
           #
           # Therefore the gate must gate on the backend BECOMING HEALTHY (via the
           # restart-heal, in the next step's 180s wait), NOT on this `up`'s exit
@@ -542,7 +548,7 @@ jobs:
           # pre-gate: during initdb it answers on the socket before the real server
           # accepts network connections, giving a false-ready.)
           docker-compose -f docker-compose.yml -f docker-compose.smoke.yml up -d \
-            postgres redis backend worker beat frontend || true
+            postgres redis backend worker-scan worker-default beat frontend || true
 
       # Reused from install-uat.yml — the smoke overlay publishes backend :8000,
       # so we poll the host port directly (production routes this via Traefik).
@@ -556,12 +562,13 @@ jobs:
             if curl -fsS http://localhost:8000/health >/dev/null 2>&1; then
               echo "backend up"
               curl -fsS http://localhost:8000/health
-              # Backend is healthy now. Re-run `up` (idempotent) so worker / beat /
-              # frontend — which docker-compose may have left uncreated when the
-              # cold-boot `up` above bailed on the transient — start now that their
-              # `depends_on backend: service_healthy` is satisfied.
+              # Backend is healthy now. Re-run `up` (idempotent) so worker-scan /
+              # worker-default / beat / frontend - which docker-compose may have
+              # left uncreated when the cold-boot `up` above bailed on the
+              # transient - start now that their `depends_on backend:
+              # service_healthy` is satisfied.
               docker-compose -f docker-compose.yml -f docker-compose.smoke.yml up -d \
-                postgres redis backend worker beat frontend
+                postgres redis backend worker-scan worker-default beat frontend
               docker-compose -f docker-compose.yml -f docker-compose.smoke.yml ps
               exit 0
             fi

@@ -2,21 +2,30 @@
 # Copyright 2026 TRUSCA contributors
 """
 S4 (concurrency-scaling-plan-2026-08-22.md §3.2/§4): chart render golden for
-the worker Deployment's ``terminationGracePeriodSeconds`` and ``preStop``
-lifecycle hook.
+the scan worker Deployment's ``terminationGracePeriodSeconds`` and
+``preStop`` lifecycle hook.
 
 Regression contract this file holds: an operator who installs the chart with
 no extra ``--set`` gets a worker grace period long enough to outlive a scan
 running at the pipeline's own hard time limit
 (``core.config.scan_hard_time_limit_seconds()``). Kubernetes' own default
 (30s) is nowhere close, and Helm cannot read that Python accessor at render
-time, so ``worker.terminationGracePeriodSeconds`` (``values.yaml``) is a
+time, so ``worker.scan.terminationGracePeriodSeconds`` (``values.yaml``) is a
 STATIC mirror of it that a values.yaml edit could silently let drift below
 the hard limit. The margin cross-check test below (its name says what it
 checks) pins the two directly against each other, the same pattern
 ``test_helm_notes_connection_budget.py`` uses for the connection-budget
 formula, so that drift fails CI instead of surfacing as a SIGKILLed scan in
 production.
+
+S3 (concurrency-scaling-plan-2026-08-22.md §3.2/§4, S3 row) renamed the
+chart's single ``templates/deployment-worker.yaml`` /
+``worker.terminationGracePeriodSeconds`` to
+``templates/deployment-worker-scan.yaml`` / ``worker.scan.*`` when it split
+the worker into scan and default-queue Deployments; only the scan worker
+runs the scan pipeline this grace period protects, so this file follows it
+there. The default worker's own grace period (``worker.default.*``, sized
+off ``BACKUP_SUBPROCESS_TIMEOUT`` instead) is not this file's concern.
 
 Renders `charts/trustedoss` with `helm template` (skipped, not failed, when
 `helm` is unavailable, same convention as the W1/W2/W8 golden tests).
@@ -55,7 +64,7 @@ def _render_worker_deployment(*extra_set: str) -> dict[str, Any]:
         "trustedoss-golden",
         str(CHART_DIR),
         "--show-only",
-        "templates/deployment-worker.yaml",
+        "templates/deployment-worker-scan.yaml",
         *_REQUIRED_SET,
         *extra_set,
     ]
@@ -78,7 +87,9 @@ def test_termination_grace_period_renders_by_default_no_toggle_needed() -> None:
 
 @pytest.mark.skipif(HELM is None, reason="helm binary not available")
 def test_termination_grace_period_is_configurable() -> None:
-    deployment = _render_worker_deployment("--set", "worker.terminationGracePeriodSeconds=5400")
+    deployment = _render_worker_deployment(
+        "--set", "worker.scan.terminationGracePeriodSeconds=5400"
+    )
     pod_spec = deployment["spec"]["template"]["spec"]
     assert pod_spec["terminationGracePeriodSeconds"] == 5400
 

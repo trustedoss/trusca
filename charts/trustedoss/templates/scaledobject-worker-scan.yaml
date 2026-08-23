@@ -2,14 +2,14 @@
 SPDX-License-Identifier: Apache-2.0
 Copyright 2026 TRUSCA contributors
 */ -}}
-{{- if and .Values.worker.autoscaling.enabled (eq .Values.worker.autoscaling.mode "queue") -}}
-{{- $q := .Values.worker.autoscaling.queue -}}
+{{- if and .Values.worker.scan.autoscaling.enabled (eq .Values.worker.scan.autoscaling.mode "queue") -}}
+{{- $q := .Values.worker.scan.autoscaling.queue -}}
 {{- $redisAddress := $q.redis.address -}}
 {{- if not $redisAddress -}}
   {{- if .Values.redis.bundled -}}
     {{- $redisAddress = printf "%s:%s" (include "trustedoss.redis.fullname" .) (.Values.redis.service.port | toString) -}}
   {{- else -}}
-    {{- fail "worker.autoscaling.queue.redis.address is required when worker.autoscaling.mode=queue and redis.bundled=false (KEDA's redis scaler needs host:port, not a connection-string DSN) -- see charts/trustedoss/README.md 'Queue-depth autoscaling (KEDA)'." -}}
+    {{- fail "worker.scan.autoscaling.queue.redis.address is required when worker.scan.autoscaling.mode=queue and redis.bundled=false (KEDA's redis scaler needs host:port, not a connection-string DSN) -- see charts/trustedoss/README.md 'Queue-depth autoscaling (KEDA)'." -}}
   {{- end -}}
 {{- end -}}
 {{- if $q.redis.passwordSecretName }}
@@ -20,10 +20,10 @@ Copyright 2026 TRUSCA contributors
 apiVersion: keda.sh/v1alpha1
 kind: TriggerAuthentication
 metadata:
-  name: {{ include "trustedoss.fullname" . }}-worker-queue-redis
+  name: {{ include "trustedoss.fullname" . }}-worker-scan-queue-redis
   labels:
     {{- include "trustedoss.labels" . | nindent 4 }}
-    app.kubernetes.io/component: worker
+    app.kubernetes.io/component: worker-scan
 spec:
   secretTargetRef:
     - parameter: password
@@ -31,14 +31,22 @@ spec:
       key: {{ $q.redis.passwordSecretKey }}
 ---
 {{- end }}
-# S5 (concurrency-scaling-plan-2026-08-22.md §3.2/§4): scales the worker
-# Deployment on Celery broker queue depth instead of CPU utilization -- see
-# worker.autoscaling.mode's comment in values.yaml for why CPU utilization
-# does not track slot occupancy for this workload (cdxgen/Trivy pipelines are
-# network- and disk-wait heavy, not CPU-heavy).
+# S3 (concurrency-scaling-plan-2026-08-22.md §3.2/§4): split out of the
+# single worker ScaledObject this chart used to render -- scopes to
+# worker-scan only (see worker.scan.autoscaling.mode's comment in
+# values.yaml for why queue-depth scaling is a scan-worker-only judgment
+# call; the default worker only ever gets a CPU HPA,
+# hpa-worker-default.yaml).
+#
+# S5: scales the scan-worker Deployment on the SCAN queue's depth instead of
+# CPU utilization -- CPU utilization does not track slot occupancy for this
+# workload (cdxgen/Trivy pipelines are network- and disk-wait heavy, not
+# CPU-heavy). Reads worker.scan.autoscaling.queue.queueName, which defaults
+# to worker.queues.scan, not the combined depth this deployment may also be
+# draining during the transition window (worker.transitionSubscribeBothQueues).
 #
 # KEDA (https://keda.sh -- CNCF, Apache-2.0) creates and owns its own
-# HorizontalPodAutoscaler from this ScaledObject, so hpa-worker.yaml is
+# HorizontalPodAutoscaler from this ScaledObject, so hpa-worker-scan.yaml is
 # deliberately NOT rendered alongside this one (see that template's own
 # `mode == "cpu"` gate): two HPAs targeting the same scaleTargetRef would
 # fight each other over the replica count.
@@ -47,26 +55,26 @@ spec:
 # in the cluster. This chart does not install KEDA, and `helm template` /
 # `helm lint` cannot detect whether it is present -- neither command talks to
 # a cluster or validates that a CRD exists. Installing this chart with
-# worker.autoscaling.mode=queue on a cluster without KEDA will render and
-# `helm lint` cleanly, then fail at `helm install`/`upgrade` apply time with
-# "no matches for kind ScaledObject in version keda.sh/v1alpha1" -- install
-# KEDA first. See charts/trustedoss/README.md "Queue-depth autoscaling
-# (KEDA)" for the install pointer and the full set of assumptions this
-# template makes about the trigger.
+# worker.scan.autoscaling.mode=queue on a cluster without KEDA will render
+# and `helm lint` cleanly, then fail at `helm install`/`upgrade` apply time
+# with "no matches for kind ScaledObject in version keda.sh/v1alpha1" --
+# install KEDA first. See charts/trustedoss/README.md "Queue-depth
+# autoscaling (KEDA)" for the install pointer and the full set of
+# assumptions this template makes about the trigger.
 apiVersion: keda.sh/v1alpha1
 kind: ScaledObject
 metadata:
-  name: {{ include "trustedoss.fullname" . }}-worker
+  name: {{ include "trustedoss.fullname" . }}-worker-scan
   labels:
     {{- include "trustedoss.labels" . | nindent 4 }}
-    app.kubernetes.io/component: worker
+    app.kubernetes.io/component: worker-scan
 spec:
   scaleTargetRef:
     apiVersion: apps/v1
     kind: Deployment
-    name: {{ include "trustedoss.fullname" . }}-worker
-  minReplicaCount: {{ .Values.worker.autoscaling.minReplicas }}
-  maxReplicaCount: {{ .Values.worker.autoscaling.maxReplicas }}
+    name: {{ include "trustedoss.fullname" . }}-worker-scan
+  minReplicaCount: {{ .Values.worker.scan.autoscaling.minReplicas }}
+  maxReplicaCount: {{ .Values.worker.scan.autoscaling.maxReplicas }}
   pollingInterval: {{ $q.pollingInterval }}
   cooldownPeriod: {{ $q.cooldownPeriod }}
   triggers:
@@ -80,6 +88,6 @@ spec:
         enableTLS: {{ $q.redis.enableTLS | toString | quote }}
       {{- if $q.redis.passwordSecretName }}
       authenticationRef:
-        name: {{ include "trustedoss.fullname" . }}-worker-queue-redis
+        name: {{ include "trustedoss.fullname" . }}-worker-scan-queue-redis
       {{- end }}
 {{- end -}}

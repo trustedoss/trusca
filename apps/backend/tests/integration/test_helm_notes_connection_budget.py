@@ -134,13 +134,14 @@ def test_rendered_env_matches_backend_and_worker_replica_counts() -> None:
     `UVICORN_WORKERS` (backend Deployment) and `CONN_BUDGET_BACKEND_REPLICAS`
     / `CONN_BUDGET_WORKER_REPLICAS` (shared ConfigMap) are wired from
     `.Values.backend.uvicornWorkers` / `.Values.backend.replicaCount` /
-    `.Values.worker.replicaCount` -- the same values NOTES.txt's formula
-    multiplies. Confirms that wiring survives a real render at the chart's
-    own defaults.
+    (post-S3) `.Values.worker.scan.replicaCount` + `.Values.worker.default.replicaCount`
+    -- the same values NOTES.txt's formula multiplies. Confirms that wiring
+    survives a real render at the chart's own defaults.
     """
     env = _render_env()
     assert env["CONN_BUDGET_BACKEND_REPLICAS"] == 2  # values.yaml backend.replicaCount
-    assert env["CONN_BUDGET_WORKER_REPLICAS"] == 2  # values.yaml worker.replicaCount
+    # S3: worker.scan.replicaCount(2) + worker.default.replicaCount(1) = 3.
+    assert env["CONN_BUDGET_WORKER_REPLICAS"] == 3
     assert env["UVICORN_WORKERS"] == 4  # values.yaml backend.uvicornWorkers
 
 
@@ -157,17 +158,26 @@ def test_rendered_env_matches_the_python_oracle_at_chart_defaults() -> None:
 
     # Same numbers test_connection_budget.py's HELM_DEFAULT fixture encodes
     # by hand; this is the render-time confirmation that fixture is accurate.
+    #
+    # S3 (concurrency-scaling-plan-2026-08-22.md §3.2/§4): the chart's single
+    # `worker` Deployment split into `worker.scan` (replicaCount 2, unchanged
+    # from the pre-split default) and `worker.default` (replicaCount 1, new).
+    # CONN_BUDGET_WORKER_REPLICAS (configmap-env.yaml) now renders their SUM
+    # (3), not just the scan worker's count, since core.connection_budget's
+    # ConnectionBudget treats "worker replicas" as one uniform pool: every
+    # replica of either kind opens the same DB_SYNC_POOL_SIZE +
+    # DB_SYNC_MAX_OVERFLOW connections from the same shared ConfigMap.
     assert budget.backend_replicas == 2
     assert budget.uvicorn_workers == 4
     assert budget.pool_size == 5
     assert budget.max_overflow == 3
-    assert budget.worker_replicas == 2
+    assert budget.worker_replicas == 3  # worker.scan(2) + worker.default(1)
     assert budget.sync_pool_size == 3
     assert budget.sync_max_overflow == 3
     assert budget.backend_conns == 64  # 2 x 4 x (5 + 3)
-    assert budget.worker_conns == 12  # 2 x (3 + 3)
+    assert budget.worker_conns == 18  # 3 x (3 + 3)
     assert budget.beat_conns == 6  # 1 x (3 + 3)
-    assert budget.total_connections == 82
+    assert budget.total_connections == 88
     assert not budget.over_budget
 
 
@@ -179,8 +189,20 @@ def test_rendered_env_reflects_replicacount_overrides() -> None:
     boot-time check) key off: scaling past default max_connections=100 is
     something the rendered manifests must be ABLE to reflect, since that is
     what an operator's real `helm upgrade --set ...` would ship to every pod.
+
+    S3: `worker.replicaCount` no longer exists (split into `worker.scan.*` /
+    `worker.default.*`), so this overrides both halves: 4 + 2 = 6, the same
+    combined worker-replica total the pre-split test pinned, so the expected
+    numbers below are unchanged from before the split.
     """
-    env = _render_env("--set", "backend.replicaCount=4", "--set", "worker.replicaCount=6")
+    env = _render_env(
+        "--set",
+        "backend.replicaCount=4",
+        "--set",
+        "worker.scan.replicaCount=4",
+        "--set",
+        "worker.default.replicaCount=2",
+    )
     budget = _budget_from_env(env)
     assert budget.backend_replicas == 4
     assert budget.worker_replicas == 6

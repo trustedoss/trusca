@@ -417,43 +417,73 @@ services:
           memory: 1G
 
   # ---------------------------------------------------------------------------
-  # Celery worker — runs cdxgen / scancode / Trivy.
+  # Celery workers - split into two dedicated services (S3,
+  # concurrency-scaling-plan-2026-08-22.md §3.2/§4/§5). `worker-scan` runs
+  # cdxgen / scancode / Trivy for the scan pipeline
+  # (scan_source/scan_container/ingest_sbom/scan_reachability). `worker-default`
+  # runs everything else (notifications, backups, audit export, ticket
+  # webhooks, catalog-refresh beats, retention sweeps, the scan-schedule
+  # poll) - short, frequent tasks that must never queue behind an hour-long
+  # scan. Before this split both ran as one `worker` service on one queue.
   #
-  # Scaling out (work-B / B2): the worker is stateless apart from the shared
-  # `workspace` volume + the Redis broker, so it scales horizontally. Two
-  # knobs, used together:
+  # QUEUES (WORKER_SCAN_QUEUES / WORKER_DEFAULT_QUEUES, `-Q` below): for one
+  # release after this split ships, BOTH services default to subscribing to
+  # BOTH queues ("trustedoss.scan,trustedoss.default") - a rolling
+  # `docker-compose up` recreates containers one service at a time, so
+  # whichever new service comes up first must still be able to drain
+  # anything left on "trustedoss.default" (the unchanged pre-split queue
+  # name) from before the split, including scan-pipeline messages dispatched
+  # before the upgrade. Narrow to one queue each ONLY after confirming that
+  # backlog has drained - see the "Queue split transition" note in
+  # .env.example's worker section for the exact procedure. Cross-checked
+  # against tests/contracts/queue-names.json, the vocabulary
+  # apps/backend/tasks/celery_app.py's task_routes also reads.
   #
-  #   * CELERY_CONCURRENCY  — parallel task slots INSIDE one worker process
-  #                           (prefork). Each slot can fork a full
-  #                           cdxgen / scancode / Trivy / dotnet pipeline, so
-  #                           a slot can transiently use ~1.5-2 GB. Keep this
-  #                           modest (2-4) and prefer adding replicas.
-  #   * replicas            — number of worker CONTAINERS. Run more containers
-  #                           to spread load across cores / hosts.
+  # Scaling out (work-B / B2, still true post-split): two knobs per service,
+  # used together:
   #
-  # Bring up N worker containers two ways (docker-compose V1 — CLAUDE.md #10):
+  #   * CELERY_CONCURRENCY / CELERY_DEFAULT_CONCURRENCY - parallel task slots
+  #                           INSIDE one worker process (prefork). A scan
+  #                           slot can fork a full cdxgen / scancode / Trivy /
+  #                           dotnet pipeline (~1.5-2 GB transient) - keep
+  #                           CELERY_CONCURRENCY modest (2-4) and prefer
+  #                           adding replicas. Default-queue tasks are much
+  #                           lighter, so CELERY_DEFAULT_CONCURRENCY defaults
+  #                           higher.
+  #   * replicas            - number of worker CONTAINERS per service. Run
+  #                           more containers to spread load across cores /
+  #                           hosts.
   #
-  #   a) Ad-hoc:   docker-compose -f docker-compose.yml up -d --scale worker=4
+  # Bring up N containers of a given kind two ways (docker-compose V1 -
+  # CLAUDE.md #10):
+  #
+  #   a) Ad-hoc:   docker-compose -f docker-compose.yml up -d --scale worker-scan=4
   #   b) Pinned:   set `deploy.replicas` below (Swarm mode) OR keep --scale in
   #                your install/upgrade scripts. We default to a single
-  #                replica; uncomment `deploy.replicas` only under Swarm.
+  #                replica per service; uncomment `deploy.replicas` only
+  #                under Swarm.
   #
   # SIZING: total Postgres connections from the worker fleet =
-  #   replicas x (DB_SYNC_POOL_SIZE + DB_SYNC_MAX_OVERFLOW).
-  # With the defaults (3+3) and 4 replicas that is 24 connections. Add the
-  # backend + beat draw and stay under Postgres `max_connections` (100); see
-  # the formula block in .env.example (core.connection_budget is the oracle
-  # both derive from).
+  #   (WORKER_REPLICAS + WORKER_DEFAULT_REPLICAS) x (DB_SYNC_POOL_SIZE + DB_SYNC_MAX_OVERFLOW).
+  # Add the backend + beat draw and stay under Postgres `max_connections`
+  # (100); see the formula block in .env.example (core.connection_budget is
+  # the oracle both derive from). WORKER_REPLICAS keeps its pre-split name
+  # (worker-scan is the direct continuation of the pre-split single worker's
+  # identity - same env var, same default) so an existing .env file's value
+  # keeps applying to the heavy/tuned side of the split without an operator
+  # edit; WORKER_DEFAULT_REPLICAS is new.
   #
-  # MEMORY: a worker container needs roughly
+  # MEMORY: a scan-worker container needs roughly
   #   CELERY_CONCURRENCY x ~2 GB  +  ~1 GB base (JRE / Node / scancode).
   # The 6G limit below comfortably covers concurrency=2. Raise it in step
-  # with CELERY_CONCURRENCY; the SCANCODE_* guards cap per-task blowups.
+  # with CELERY_CONCURRENCY; the SCANCODE_* guards cap per-task blowups. The
+  # default-queue worker never forks that pipeline, so it gets a much
+  # smaller limit (see worker-default below).
   # ---------------------------------------------------------------------------
-  worker:
+  worker-scan:
     image: ${IMAGE_REGISTRY:-ghcr.io/trustedoss}/trusca-backend-worker:${IMAGE_TAG:-0.12.0}
     restart: unless-stopped
-    command: celery -A tasks.celery_app worker --loglevel=info --concurrency=${CELERY_CONCURRENCY:-2}
+    command: celery -A tasks.celery_app worker --loglevel=info --concurrency=${CELERY_CONCURRENCY:-2} -Q ${WORKER_SCAN_QUEUES:-trustedoss.scan,trustedoss.default}
     # S4 (concurrency-scaling-plan-2026-08-22.md §3.2/§4): how long
     # `docker-compose stop` / `down` waits after sending SIGTERM before it
     # SIGKILLs this container. Compose's own default is 10s, far shorter
@@ -467,9 +497,9 @@ services:
     # celery/apps/worker.py, and this image never sets REMAP_SIGTERM, so no
     # separate stop_signal override is needed here, only enough grace.
     #
-    # Mirrors the Helm chart's worker.terminationGracePeriodSeconds default
-    # (charts/trustedoss/values.yaml): the scan pipeline's hard time limit
-    # (SCAN_HARD_TIME_LIMIT_SECONDS, core/config.py::scan_hard_time_limit_seconds(),
+    # Mirrors the Helm chart's worker.scan.terminationGracePeriodSeconds
+    # default (charts/trustedoss/values.yaml): the scan pipeline's hard time
+    # limit (SCAN_HARD_TIME_LIMIT_SECONDS, core/config.py::scan_hard_time_limit_seconds(),
     # default 3900s / 65 min) plus the same 300s safety margin used there
     # (BROKER_VISIBILITY_TIMEOUT_MARGIN_SECONDS). Static, not derived (Compose
     # cannot read the Python accessor either), so raising
@@ -483,16 +513,18 @@ services:
       # at the host dir holding cosign.key/cosign.pub (default ./secrets/cosign,
       # created by scripts/cosign-keygen.sh). Mounted at /cosign so
       # COSIGN_KEY_PATH=/cosign/cosign.key. Harmless when keyless / unconfigured
-      # — an empty/absent dir just yields unsigned SBOMs (best-effort).
+      # - an empty/absent dir just yields unsigned SBOMs (best-effort). Scan-only:
+      # cosign signing happens in tasks/scan_source.py, which only ever runs on
+      # this service post-S3 - worker-default does not mount this.
       - ${COSIGN_KEYS_HOST_PATH:-./secrets/cosign}:/cosign:ro
       # W6-#44 — persistent Trivy DB cache. The worker downloads the DB
       # (~500 MiB) on boot via the worker_ready signal hook and refreshes it
       # weekly via the Celery beat. Without a persistent volume every
       # container restart would re-download the DB (3+ min cold-start hit).
-      # The cache is shared with the beat container below so the beat's
-      # weekly refresh writes through the same mount the worker reads from.
-      # Set TRIVY_CACHE_DIR=/var/lib/trivy in .env to point trivy at this
-      # mount.
+      # The cache is shared with the beat container and worker-default below
+      # so the beat's weekly refresh writes through the same mount every
+      # reader uses. Set TRIVY_CACHE_DIR=/var/lib/trivy in .env to point
+      # trivy at this mount.
       - trivy-cache:/var/lib/trivy
     depends_on:
       postgres:
@@ -527,7 +559,7 @@ services:
       start_period: 60s
     deploy:
       # `replicas` is honoured only under `docker stack deploy` (Swarm). Under
-      # plain `docker-compose up` it is ignored — use `--scale worker=N`
+      # plain `docker-compose up` it is ignored - use `--scale worker-scan=N`
       # instead (see the header note). Left at 1 so a non-Swarm `up` is
       # predictable; bump for a Swarm deployment.
       replicas: ${WORKER_REPLICAS:-1}
@@ -547,6 +579,73 @@ services:
           # so the scheduler does not over-pack a host and OOM-kill mid-scan.
           cpus: "1.0"
           memory: 2G
+
+  # ---------------------------------------------------------------------------
+  # Celery default-queue worker (S3) - notifications, backups, audit export,
+  # ticket webhooks, catalog-refresh beats, workspace/tarball retention
+  # sweeps, the scan-schedule poll. Never forks a cdxgen/scancode/Trivy
+  # pipeline, so it gets a much lighter resource profile than worker-scan
+  # above, and a higher default concurrency is safe for the same reason.
+  # Mirrors charts/trustedoss/values.yaml's worker.default block - see that
+  # file's comments for the full sizing rationale (S3 judgment call).
+  # ---------------------------------------------------------------------------
+  worker-default:
+    image: ${IMAGE_REGISTRY:-ghcr.io/trustedoss}/trusca-backend-worker:${IMAGE_TAG:-0.12.0}
+    restart: unless-stopped
+    command: celery -A tasks.celery_app worker --loglevel=info --concurrency=${CELERY_DEFAULT_CONCURRENCY:-4} -Q ${WORKER_DEFAULT_QUEUES:-trustedoss.scan,trustedoss.default}
+    # S3 judgment call: shorter than worker-scan's 4200s - this service never
+    # runs a scan task. Sized off BACKUP_SUBPROCESS_TIMEOUT's default (3600s,
+    # apps/backend/tasks/backup.py - the longest task this worker runs) plus
+    # the same 300s margin S4 uses elsewhere, not the scan pipeline's hard
+    # limit. Mirrors charts/trustedoss/values.yaml's
+    # worker.default.terminationGracePeriodSeconds; raising
+    # BACKUP_SUBPROCESS_TIMEOUT must be paired with raising this too.
+    stop_grace_period: 3900s
+    environment:
+      <<: *backend-env
+    volumes:
+      - workspace:/workspace
+      # trustedoss.vulnerability_rematch_one/_enqueue and
+      # trustedoss.trivy_db_refresh both run on this service (S3: neither is
+      # a scan-pipeline task) and both read/write the Trivy DB cache, so this
+      # mount is required here too, not just on worker-scan.
+      - trivy-cache:/var/lib/trivy
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      # Same schema-readiness gate as worker-scan - see that service's
+      # comment for the full AUTO_MIGRATE explanation.
+      backend:
+        condition: service_healthy
+    networks:
+      - trustedoss
+    healthcheck:
+      test:
+        - "CMD-SHELL"
+        - "celery -A tasks.celery_app inspect ping --timeout=5 -d celery@$$HOSTNAME > /dev/null 2>&1 || exit 1"
+      interval: 30s
+      timeout: 15s
+      retries: 5
+      start_period: 60s
+    deploy:
+      # `replicas` is honoured only under `docker stack deploy` (Swarm). Under
+      # plain `docker-compose up` it is ignored - use `--scale worker-default=N`
+      # instead.
+      replicas: ${WORKER_DEFAULT_REPLICAS:-1}
+      resources:
+        limits:
+          # No pipeline to fork here - a fraction of worker-scan's budget.
+          # Env-overridable for the same Compose-V2-CPU-limit-vs-host-count
+          # reason WORKER_CPU_LIMIT is (see worker-scan above); this worker's
+          # own default (1.0) is small enough that install.sh/upgrade.sh do
+          # not need to clamp it the way they clamp WORKER_CPU_LIMIT.
+          cpus: "${WORKER_DEFAULT_CPU_LIMIT:-1.0}"
+          memory: 1G
+        reservations:
+          cpus: "0.25"
+          memory: 256M
 
   # ---------------------------------------------------------------------------
   # Celery Beat — periodic scheduler (Trivy DB refresh, vulnerability re-match,
@@ -569,18 +668,28 @@ services:
         condition: service_healthy
       redis:
         condition: service_healthy
-      # v2.1 — SCHEMA-READINESS gate (B1, same rationale as the worker). beat
-      # already waits on worker-healthy (which in turn waits on backend), so beat
-      # starts after backend. Since backend's healthcheck now probes
-      # /health/ready (schema == Alembic HEAD), `service_healthy` GUARANTEES the
-      # schema is migrated before beat schedules its first DB-touching task —
-      # under BOTH toggles (AUTO_MIGRATE=true migrates on start; =false waits for
-      # the external owner-role `alembic upgrade head` before backend goes
-      # healthy). We list backend explicitly so the gate is self-documenting and
-      # holds even if the worker dependency is relaxed.
+      # v2.1 - SCHEMA-READINESS gate (B1, same rationale as the workers). beat
+      # already waits on worker-default-healthy (which in turn waits on
+      # backend), so beat starts after backend. Since backend's healthcheck
+      # now probes /health/ready (schema == Alembic HEAD), `service_healthy`
+      # GUARANTEES the schema is migrated before beat schedules its first
+      # DB-touching task - under BOTH toggles (AUTO_MIGRATE=true migrates on
+      # start; =false waits for the external owner-role `alembic upgrade
+      # head` before backend goes healthy). We list backend explicitly so
+      # the gate is self-documenting and holds even if the worker dependency
+      # is relaxed.
+      #
+      # S3: waits on worker-default specifically, not worker-scan - every
+      # task beat's own schedule enqueues directly (source_archive_cleaner,
+      # scan_source_cleaner, workspace_cleaner, backup.run, audit export,
+      # the catalog-refresh beats, trivy_db_refresh, scan_schedule_poll) is a
+      # default-queue task; none of beat's schedule entries are themselves
+      # scan_source/scan_container/ingest_sbom/scan_reachability (the poll
+      # only dispatches those indirectly, at task-run time, not at beat
+      # startup).
       backend:
         condition: service_healthy
-      worker:
+      worker-default:
         condition: service_healthy
     networks:
       - trustedoss

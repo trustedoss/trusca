@@ -48,7 +48,7 @@ if ! command -v cosign >/dev/null 2>&1; then
   echo "ERROR: cosign not found on PATH." >&2
   echo "Install it (https://docs.sigstore.dev/cosign/installation/) or run this" >&2
   echo "inside the worker container, which ships cosign:" >&2
-  echo "  docker-compose -f ${COMPOSE_FILE} run --rm worker bash scripts/cosign-keygen.sh" >&2
+  echo "  docker-compose -f ${COMPOSE_FILE} run --rm worker-scan bash scripts/cosign-keygen.sh" >&2
   exit 1
 fi
 
@@ -71,21 +71,23 @@ ENCRYPT_SNIPPET='python -c "import sys;from core.crypto import encrypt_secret;pr
 
 echo
 echo "==> Next: encrypt the key password for .env (COSIGN_KEY_PASSWORD_ENCRYPTED)."
-echo "    Run this INSIDE the worker container so it uses the app's Fernet key:"
+echo "    Run this INSIDE the worker-scan container so it uses the app's Fernet key"
+echo "    (S3: cosign signing only ever runs on worker-scan, so its keys and Fernet"
+echo "    key are wired there, not on worker-default):"
 echo
-echo "      docker-compose -f ${COMPOSE_FILE} run --rm worker \\"
+echo "      docker-compose -f ${COMPOSE_FILE} run --rm worker-scan \\"
 echo "        ${ENCRYPT_SNIPPET} 'YOUR_KEY_PASSWORD'"
 echo
 echo "    (A passwordless key is allowed — leave COSIGN_KEY_PASSWORD_ENCRYPTED unset.)"
 
 echo
-echo "==> Then add to .env (and mount the key into the worker):"
+echo "==> Then add to .env (and mount the key into worker-scan):"
 cat <<'EOF'
   COSIGN_KEYLESS=false
   COSIGN_KEY_PATH=/cosign/cosign.key
   COSIGN_KEY_PASSWORD_ENCRYPTED=<paste ciphertext from the encrypt step>
 
-  # docker-compose worker volume (already wired in docker-compose.yml /
+  # docker-compose worker-scan volume (already wired in docker-compose.yml /
   # docker-compose.dev.yml — point COSIGN_KEYS_HOST_PATH at your ${OUT_DIR}):
   COSIGN_KEYS_HOST_PATH=./secrets/cosign
 EOF

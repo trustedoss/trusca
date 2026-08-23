@@ -119,6 +119,30 @@ _TASK_INCLUDES = [
     "tasks.workspace_prep",
 ]
 
+# S3 (concurrency-scaling-plan-2026-08-22.md §3.2/§4, S3 row): the two queue
+# names and the four scan-pipeline task names task_routes below sends to
+# ``_SCAN_QUEUE``. Every other task name falls through to
+# ``task_default_queue`` (``_DEFAULT_QUEUE``) via Celery's own default-queue
+# behavior for names with no routing entry, so it is not enumerated here.
+#
+# These are literal constants, not read from
+# ``tests/contracts/queue-names.json`` at runtime, because that file lives at
+# the repo root, outside ``apps/backend``. The backend and worker Docker
+# images build with ``apps/backend`` as their build context
+# (``.github/workflows/release.yml``), so a shipped image does not contain
+# ``tests/contracts/``. The values are hand-kept equal to that file instead,
+# and ``tests/unit/tasks/test_queue_routing_contract.py`` is the
+# vocabulary-consistency check (repository hardening rule 2) that fails if
+# this dict and the JSON file drift apart.
+_SCAN_QUEUE = "trustedoss.scan"
+_DEFAULT_QUEUE = "trustedoss.default"
+_SCAN_TASK_NAMES = (
+    "trustedoss.scan_source",
+    "trustedoss.scan_container",
+    "trustedoss.ingest_sbom",
+    "trustedoss.scan_reachability",
+)
+
 # Beat-schedule key of the KEV catalog refresh entry. Shared with
 # ``services.kev_health_service``, which derives the admin panel's
 # ``next_refresh_at`` from this entry's live crontab object — a string
@@ -334,7 +358,15 @@ def create_celery_app() -> Celery:
         # are time-boxed. S1's broker-level visibility_timeout above is a
         # different mechanism (redelivery, not task cancellation) and does
         # not reintroduce that global cap.
-        task_default_queue="trustedoss.default",
+        task_default_queue=_DEFAULT_QUEUE,
+        # S3: route the scan-pipeline tasks onto their own queue so a
+        # 65-minute scan no longer sits in front of a one-second notification
+        # or a beat sweep on the same worker line (plan §1.1's "큐가 하나다").
+        # `-Q` on the worker command line (docker-compose.yml / the Helm
+        # deployment-worker-{scan,default}.yaml templates, devops-owned) is
+        # the other half of this split; task_routes is the half that
+        # actually decides which queue a task lands on when dispatched.
+        task_routes={name: {"queue": _SCAN_QUEUE} for name in _SCAN_TASK_NAMES},
         timezone="UTC",
         enable_utc=True,
         beat_schedule=_build_beat_schedule(),

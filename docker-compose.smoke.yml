@@ -22,7 +22,7 @@
 #
 # Usage (see release.yml → release-gate):
 #   docker-compose -f docker-compose.yml -f docker-compose.smoke.yml \
-#     up -d postgres redis backend worker beat frontend
+#     up -d postgres redis backend worker-scan worker-default beat frontend
 
 services:
   postgres:
@@ -37,8 +37,9 @@ services:
     # so `service_healthy` fires before the REAL server is up on TCP — releasing
     # the backend too early. Its bounded (10 x 3s) alembic-current probe reaches
     # over TCP to postgres:5432, finds no listener mid-initdb, exhausts the budget,
-    # and exits; `worker` (depends_on backend: service_healthy) then aborts `up`
-    # with "Container is unhealthy". Warm boots skip initdb, so CI never saw it.
+    # and exits; `worker-scan` / `worker-default` (both `depends_on backend:
+    # service_healthy`) then abort `up` with "Container is unhealthy". Warm
+    # boots skip initdb, so CI never saw it.
     #
     # Forcing a TCP probe (`-h 127.0.0.1`) makes the check FAIL during initdb
     # (the temp server has no TCP listener) and PASS only once the real server
@@ -69,11 +70,13 @@ services:
   # docker-compose V2 expands the nested form correctly, which is why a V2 local
   # run passed while the V1 CI gate failed.
   #
-  # This overlay overrides ONLY the two DSN keys for the three DB-touching
-  # services with a SINGLE-LEVEL `${DATABASE_URL}` that V1 resolves cleanly.
-  # The gate runs a single-role stack (app role == owner in dev mode), so both
-  # keys legitimately point at the same DSN. This is GATE-ONLY: the production
-  # base file (and its L1 split for real install.sh deployments) is untouched.
+  # This overlay overrides ONLY the two DSN keys for the four DB-touching
+  # services (S3 split `worker` into `worker-scan` + `worker-default`, so
+  # what used to be three is now four) with a SINGLE-LEVEL `${DATABASE_URL}`
+  # that V1 resolves cleanly. The gate runs a single-role stack (app role ==
+  # owner in dev mode), so both keys legitimately point at the same DSN.
+  # This is GATE-ONLY: the production base file (and its L1 split for real
+  # install.sh deployments) is untouched.
   backend:
     environment:
       DATABASE_URL: ${DATABASE_URL}
@@ -82,7 +85,11 @@ services:
     # http://localhost:8000/health and /v1/* directly, instead of via Traefik.
     ports:
       - "8000:8000"
-  worker:
+  worker-scan:
+    environment:
+      DATABASE_URL: ${DATABASE_URL}
+      DATABASE_URL_APP: ${DATABASE_URL}
+  worker-default:
     environment:
       DATABASE_URL: ${DATABASE_URL}
       DATABASE_URL_APP: ${DATABASE_URL}

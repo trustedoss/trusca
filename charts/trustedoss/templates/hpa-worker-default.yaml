@@ -1,0 +1,41 @@
+{{- /*
+SPDX-License-Identifier: Apache-2.0
+Copyright 2026 TRUSCA contributors
+*/ -}}
+{{- if .Values.worker.default.autoscaling.enabled -}}
+# Default-queue-worker HPA - behind a feature flag, OFF by default (chart
+# convention). When enabled the default-worker Deployment omits its static
+# replicas so this HPA owns the count.
+#
+# S3 (concurrency-scaling-plan-2026-08-22.md §3.2/§4): CPU-only, unlike the
+# scan worker's HPA/ScaledObject pair (hpa-worker-scan.yaml /
+# scaledobject-worker-scan.yaml) - worker.default.autoscaling has no `mode`
+# key at all, since this worker's tasks (notifications, backups, audit
+# export, catalog refreshes) are short and their CPU draw tracks their
+# actual load reasonably well, so a second KEDA ScaledObject here would add
+# CRD-dependency surface without a measured benefit yet. See
+# worker.scan.autoscaling.mode's comment in values.yaml for the full
+# rationale on why the scan worker needed queue-depth scaling in the first
+# place.
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: {{ include "trustedoss.fullname" . }}-worker-default
+  labels:
+    {{- include "trustedoss.labels" . | nindent 4 }}
+    app.kubernetes.io/component: worker-default
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: {{ include "trustedoss.fullname" . }}-worker-default
+  minReplicas: {{ .Values.worker.default.autoscaling.minReplicas }}
+  maxReplicas: {{ .Values.worker.default.autoscaling.maxReplicas }}
+  metrics:
+    - type: Resource
+      resource:
+        name: cpu
+        target:
+          type: Utilization
+          averageUtilization: {{ .Values.worker.default.autoscaling.targetCPUUtilizationPercentage }}
+{{- end }}
