@@ -137,8 +137,9 @@ export function ScanDetailPage() {
   // ring buffer, and the auth handshake are all reused.
   //
   // #137: this is the page's SECOND socket. The `ScanProgress` above holds the
-  // other one, and the per-user cap is three per worker process, so a second
-  // tab can evict either of them with 1001. When it takes this one the log
+  // other one, and the per-user cap (W4: 8, shared across every backend
+  // process rather than counted per worker) can still evict either of them
+  // with 1001 once enough tabs are open. When it takes this one the log
   // panel simply stops receiving lines, which is why it reports its own
   // give-up rather than borrowing the progress panel's.
   const {

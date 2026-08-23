@@ -287,6 +287,28 @@ describe("useScanWebSocket", () => {
     expect(FakeSocket.instances).toHaveLength(1);
   });
 
+  it("does not reconnect on 4429 (W4 global connection cap) and does not sign the reader out", async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    const onAuthExpired = vi.fn();
+    const { result } = renderHook(() =>
+      useScanWebSocket("scan-1", { socketFactory: factory, onAuthExpired }),
+    );
+    act(() => FakeSocket.instances[0].__open());
+    act(() =>
+      FakeSocket.instances[0].__closeFromServer(4429, "capacity_at_limit"),
+    );
+    await waitFor(() => {
+      expect(result.current.gaveUp).toBe(true);
+    });
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(60_000);
+    });
+    // No automatic reconnect (unlike 1011) …
+    expect(FakeSocket.instances).toHaveLength(1);
+    // … and, unlike 1008, this is NOT treated as an expired session.
+    expect(onAuthExpired).not.toHaveBeenCalled();
+  });
+
   it("cleans up the socket on unmount", () => {
     const { unmount } = renderHook(() =>
       useScanWebSocket("scan-1", { socketFactory: factory }),

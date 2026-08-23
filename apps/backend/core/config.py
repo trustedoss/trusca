@@ -1990,17 +1990,55 @@ def scan_progress_channel(scan_id: str) -> str:
 def websocket_max_connections_per_user() -> int:
     """Per-user concurrent WebSocket connection ceiling (DoS guard).
 
-    A 4th connection from the same user evicts the oldest with close code
-    1001 (going_away, reason="newer_connection"). Default 3 covers a normal
-    user with two browser tabs + an iOS app; production can tune via the
-    env var WEBSOCKET_MAX_CONNECTIONS_PER_USER.
+    Enforced against a Redis-backed counter shared by every backend process
+    (W4, see `api/v1/ws.py` module docstring), so the cap is exact regardless
+    of how many uvicorn workers or pods the deployment runs, and regardless
+    of which one a given connection lands on.
 
-    Note: the limit is enforced per worker process. Multi-worker deployments
-    therefore allow up to N * worker_count connections per user; migrating to
-    a Redis-backed counter is a follow-up TODO once we run more than one
-    backend replica.
+    Default 8. The scan detail page opens two sockets per open tab (progress
+    + tool log, `apps/frontend/src/features/scan/ScanDetailPage.tsx`), so 8
+    comfortably covers four tabs open at once. The over-the-cap connection
+    evicts the oldest with close code 1001 (going_away,
+    reason="newer_connection"). Tune via WEBSOCKET_MAX_CONNECTIONS_PER_USER.
     """
-    return int(os.getenv("WEBSOCKET_MAX_CONNECTIONS_PER_USER", "3"))
+    return int(os.getenv("WEBSOCKET_MAX_CONNECTIONS_PER_USER", "8"))
+
+
+def websocket_max_connections_global() -> int:
+    """System-wide concurrent WebSocket connection ceiling (abuse guard).
+
+    W4, the per-user cap alone does not bound how many *distinct* users can
+    hold sockets open at once, so a large enough sign-up flood (or a script
+    cycling through accounts) could still hold the gateway open indefinitely.
+    A connection that would push the global total over this ceiling is
+    refused outright (close code 4429, reason="capacity_at_limit"; NOT 1008,
+    which the frontend treats as an expired session and signs the reader
+    out) rather than evicting an unrelated user's live connection: unlike
+    the per-user cap, evicting someone else's socket to make room for a
+    stranger would be a worse surprise than just saying "not now".
+
+    Default 500. `docs/concurrency-scaling-plan-2026-08-22.md` §1.7 estimates
+    ~100 concurrent sockets at the largest documented deployment tier (T3,
+    250 concurrent users); 500 leaves 5x headroom above that estimate while
+    still bounding an unbounded flood. Tune via
+    WEBSOCKET_MAX_CONNECTIONS_GLOBAL.
+    """
+    return int(os.getenv("WEBSOCKET_MAX_CONNECTIONS_GLOBAL", "500"))
+
+
+# A scan detail tab can sit open, connected, and silent for a long time after
+# the scan finishes (no more progress frames to forward), so the Redis-backed
+# liveness key backing the caps above (``core.ws_registry.alive_key``) cannot
+# rely on message traffic to stay fresh. Each open connection refreshes its
+# own liveness key on this interval, with a TTL a few multiples longer so a
+# missed heartbeat or two (GC pause, brief Redis hiccup) does not prune a
+# connection that is still there. A key that expires anyway means the
+# connection is gone for real (crashed worker, killed pod) and the entry is
+# pruned before the next cap check. Not env-tunable, same reasoning as
+# ``SCAN_TIMEOUT_MIN_GRACE_SECONDS`` above: this is an internal safety
+# margin, not an operator-facing policy value.
+WEBSOCKET_PRESENCE_HEARTBEAT_SECONDS = 30
+WEBSOCKET_PRESENCE_TTL_SECONDS = 90
 
 
 def websocket_auth_timeout_seconds() -> float:

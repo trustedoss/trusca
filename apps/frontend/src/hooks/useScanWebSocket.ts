@@ -21,6 +21,14 @@
  *                                                stop reconnecting.
  *   - 4400 (bad_message) / 4403 / 4404         → no reconnect (client bug
  *                                                or server-rejected access).
+ *   - 4429 (capacity_at_limit, W4)             → no automatic reconnect
+ *                                                (retrying immediately would
+ *                                                hammer an already-full
+ *                                                server), but NOT treated as
+ *                                                an auth bounce, see
+ *                                                StreamStopped.tsx for why
+ *                                                this needed its own code
+ *                                                rather than reusing 1008.
  *   - 1011 / network failure                   → exponential backoff
  *                                                (1s → 2s → 4s → 8s → 30s).
  *                                                Stop after 5 minutes
@@ -203,7 +211,7 @@ const TERMINAL_STEPS: ReadonlySet<string> = new Set([
 ]);
 
 const NO_RECONNECT_CODES: ReadonlySet<number> = new Set([
-  1000, 1001, 1008, 4400, 4403, 4404,
+  1000, 1001, 1008, 4400, 4403, 4404, 4429,
 ]);
 
 function isTerminalStep(step: string | null | undefined): boolean {
