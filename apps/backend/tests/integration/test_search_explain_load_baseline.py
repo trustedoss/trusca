@@ -241,6 +241,10 @@ async def _explain_components_page(
     makes internally, i.e. it includes exactly the work
     ``services.search_results_service.search_results`` itself would do for
     this request, not the extra EXPLAIN re-execution.
+
+    ``index=2``, not 1: Q2 added a scan-id resolution query
+    (``latest_succeeded_scan_select``) as statement 0, pushing the COUNT to 1
+    and the page ``SELECT`` (the one this measures) to 2.
     """
     from services.search_results_service import search_results
 
@@ -251,7 +255,7 @@ async def _explain_components_page(
             session, actor=actor, kind="components", q=query, page=page, size=size
         )
 
-    result, plan_root, _sql = await explain_nth_statement(session, _call, index=1, analyze=True)
+    result, plan_root, _sql = await explain_nth_statement(session, _call, index=2, analyze=True)
     elapsed = time.perf_counter() - started
     return result, plan_root, elapsed
 

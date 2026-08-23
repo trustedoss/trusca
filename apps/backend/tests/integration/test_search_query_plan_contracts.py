@@ -247,6 +247,10 @@ async def test_dedup_step_present_in_plan(db_session: AsyncSession) -> None:
     ``.distinct()` call would still return "correct" rows here by accident,
     since one project has only one scan: this at least catches the plan
     shape disappearing).
+
+    ``index=2``, not 1: Q2 added a scan-id resolution query
+    (``latest_succeeded_scan_select``) as statement 0, pushing the COUNT to 1
+    and the page ``SELECT`` (the one this test wants) to 2.
     """
     org = await make_organization(db_session)
     team = await make_team(db_session, organization=org)
@@ -262,7 +266,7 @@ async def test_dedup_step_present_in_plan(db_session: AsyncSession) -> None:
     _result, plan_root, _sql = await explain_nth_statement(
         db_session,
         lambda: _call_components_search(db_session, actor=actor, q=QUERY_COMMON),
-        index=1,
+        index=2,
     )
     plan = plan_root["Plan"]
     types = node_types_in_plan(plan)
@@ -299,6 +303,10 @@ async def test_scan_components_rows_stay_flat_across_scan_history(
     (``rows_at_five_scans > rows_at_one_scan``) and its docstring said:
     "if this test starts failing because growth stopped, that is Q2 landing,
     not a regression". This is that update.
+
+    ``index=2``, not 1: Q2 added a scan-id resolution query
+    (``latest_succeeded_scan_select``) as statement 0, pushing the COUNT to 1
+    and the page ``SELECT`` (the one this test measures) to 2.
     """
     org = await make_organization(db_session)
     team = await make_team(db_session, organization=org)
@@ -316,7 +324,7 @@ async def test_scan_components_rows_stay_flat_across_scan_history(
     _result, plan_root, _sql = await explain_nth_statement(
         db_session,
         lambda: _call_components_search(db_session, actor=actor, q=marker),
-        index=1,
+        index=2,
         analyze=True,
     )
     rows_at_one_scan = total_actual_rows(plan_root["Plan"], relation="scan_components")
@@ -345,7 +353,7 @@ async def test_scan_components_rows_stay_flat_across_scan_history(
     _result2, plan_root2, _sql2 = await explain_nth_statement(
         db_session,
         lambda: _call_components_search(db_session, actor=actor, q=marker),
-        index=1,
+        index=2,
         analyze=True,
     )
     rows_at_five_scans = total_actual_rows(plan_root2["Plan"], relation="scan_components")
