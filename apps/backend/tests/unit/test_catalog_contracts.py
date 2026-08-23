@@ -1254,6 +1254,59 @@ def test_the_severity_labels_a_metric_can_carry_are_the_finding_severities() -> 
     assert len(VULN_SEVERITY_VALUES) >= 4
 
 
+def test_the_queue_backlog_series_declare_the_toggle_that_actually_gates_them() -> None:
+    """M2 (concurrency plan 2026-08-22 §3.1): the contract's ``toggle`` field
+    for the two broker-backlog series names the real env var, not a stale
+    one. A contract that names the wrong key would read as a working toggle
+    to anyone auditing this file while actually gating nothing.
+    """
+    import inspect
+    import json
+    from pathlib import Path
+
+    import core.config as config_module
+
+    contract = json.loads(
+        (Path(__file__).resolve().parents[4] / "tests/contracts/metrics-series.json").read_text(
+            encoding="utf-8"
+        )
+    )
+    queue_backlog_series = {
+        series["name"]: series
+        for series in contract["series"]
+        if series["name"] in {"trusca_broker_queue_backlog", "trusca_scan_queue_wait_seconds"}
+    }
+    assert set(queue_backlog_series) == {
+        "trusca_broker_queue_backlog",
+        "trusca_scan_queue_wait_seconds",
+    }, "M2's two series must both be declared in the contract"
+
+    toggle_source = inspect.getsource(config_module.queue_backlog_metrics_enabled)
+    for name, series in queue_backlog_series.items():
+        toggle = series["toggle"]
+        assert toggle in toggle_source, (
+            f"{name} declares toggle {toggle!r}, which "
+            "queue_backlog_metrics_enabled() does not read"
+        )
+
+    # And the series the renderer emits behind that toggle are exactly the
+    # ones the contract declares as gated by it (the reciprocal check, so a
+    # series added to the code without a matching contract entry, or a
+    # contract entry the code never emits, both fail here).
+    render_source = inspect.getsource(
+        __import__("services.metrics_service", fromlist=["render_metrics"]).render_metrics
+    )
+    gated_block = render_source.split("if queue_backlog_metrics_enabled():", 1)[1]
+    for name in queue_backlog_series:
+        assert name in gated_block, f"{name} is not emitted inside the M2 toggle's branch"
+    ungated_block = render_source.split("if queue_backlog_metrics_enabled():", 1)[0]
+    for name in queue_backlog_series:
+        assert name not in ungated_block, (
+            f"{name} is emitted outside the M2 toggle's branch, so it would "
+            "publish even with the toggle off"
+        )
+
+
 # ---------------------------------------------------------------------------
 # Report column vocabulary: N22 guard
 # ---------------------------------------------------------------------------

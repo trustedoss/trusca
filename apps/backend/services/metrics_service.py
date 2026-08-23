@@ -21,14 +21,26 @@ The exposition format is written by hand rather than pulled in as a
 dependency. It is four lines of string formatting for gauges, and the
 alternative is a package on the request path of an endpoint that exists to be
 scraped by something outside the deployment.
+
+Two series (``trusca_broker_queue_backlog``, ``trusca_scan_queue_wait_seconds``)
+carry their own switch, ``queue_backlog_metrics_enabled()`` (core.config),
+off by default and separate from the endpoint's own on/off. The other series
+here cost one Postgres query each, which a request to this endpoint already
+pays for six times over; these two open a second connection, to the broker,
+which is a different cost and a different failure mode. A deployment that
+already scrapes this endpoint does not get that trade unless it asks for it.
 """
 
 from __future__ import annotations
 
+import asyncio
+
+import redis as _redis
 import structlog
 from sqlalchemy import Select, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from core.config import queue_backlog_metrics_enabled, redis_url
 from models import (
     ComponentApproval,
     Project,
@@ -175,6 +187,30 @@ async def render_metrics(session: AsyncSession) -> str:
             [({}, await _workspace_used_ratio(session))],
         ),
     ]
+
+    # M2 (concurrency plan 2026-08-22 §3.1): off by default and independent
+    # of the endpoint's own switch, so a deployment that already scrapes the
+    # six series above does not get a broker round trip on every poll unless
+    # it asks for one. See queue_backlog_metrics_enabled().
+    if queue_backlog_metrics_enabled():
+        queue_name, backlog = await asyncio.to_thread(_broker_queue_backlog)
+        document.append(
+            _block(
+                "trusca_broker_queue_backlog",
+                "Messages waiting in the Celery broker queue, not yet delivered to a worker.",
+                "gauge",
+                [({"queue": queue_name}, float(backlog))],
+            )
+        )
+        document.append(
+            _block(
+                "trusca_scan_queue_wait_seconds",
+                "Age in seconds of the oldest scan still queued; 0 when nothing is queued.",
+                "gauge",
+                [({}, await _oldest_queued_scan_wait_seconds(session))],
+            )
+        )
+
     return "".join(document)
 
 
@@ -197,3 +233,64 @@ async def _workspace_used_ratio(session: AsyncSession) -> float:
     except Exception as exc:  # noqa: BLE001
         log.warning("metrics_workspace_disk_unavailable", error=str(exc)[:200])
     return 0.0
+
+
+def _broker_queue_backlog() -> tuple[str, int]:
+    """The default queue's length, read straight from the broker with ``LLEN``.
+
+    Concurrency plan 2026-08-22 §1.1: the DB-derived ``active_scans`` count
+    (admin_health_service) is queued+running together, so it cannot tell "the
+    worker died and ten scans piled up" from "ten scans are running fine".
+    This series answers a narrower question that count cannot: how many
+    messages are sitting in the broker, unclaimed by any worker, right now.
+    ``LLEN`` is O(1) and this deployment does not assign Celery message
+    priorities (grep confirms no ``priority=`` call site), so the bare queue
+    name is the one key that can hold anything; a deployment that starts
+    using priorities would need to sum the priority-suffixed keys too.
+
+    Synchronous client, the same shape as admin_health_service's Redis probe
+    (``_probe_redis``) and for the same reason: the caller offloads this to a
+    worker thread so a slow broker cannot hold the event loop for the rest of
+    the process. A broker that cannot be reached reports 0 rather than
+    failing the scrape (module docstring N10: one series going quiet does not
+    take the other six down with it).
+    """
+    from tasks.celery_app import celery_app
+
+    queue = str(celery_app.conf.task_default_queue)
+    try:
+        client = _redis.Redis.from_url(redis_url(), decode_responses=True)
+        try:
+            backlog = int(client.llen(queue))  # type: ignore[arg-type]
+        finally:
+            client.close()  # type: ignore[no-untyped-call]
+    except Exception as exc:  # noqa: BLE001
+        log.warning("metrics_broker_backlog_unavailable", error=str(exc)[:200])
+        return queue, 0
+    return queue, backlog
+
+
+async def _oldest_queued_scan_wait_seconds(session: AsyncSession) -> float:
+    """How long the longest-waiting queued scan has been sitting there.
+
+    Concurrency plan 2026-08-22 §1.1: the broker itself does not stamp a
+    message with the time it was enqueued (Celery does not add one, and this
+    deployment's tasks are dispatched from ``tasks/scan_*.py``, outside this
+    unit's scope, so no header can be added here to carry one). ``scans.
+    created_at`` is the measurable stand-in the docstring's "or at least
+    something measurable" allows for: it is stamped at the same moment the
+    scan is queued, by a column every scan already has.
+
+    ``func.now()`` rather than the process clock, so this is one Postgres
+    round trip comparing a column Postgres wrote against a timestamp Postgres
+    produces, immune to any drift between this process's clock and the
+    database's.
+    """
+    stmt = select(
+        func.coalesce(
+            func.max(func.extract("epoch", func.now() - Scan.created_at)),
+            0,
+        )
+    ).where(Scan.status == "queued")
+    value = (await session.execute(stmt)).scalar_one()
+    return round(float(value or 0.0), 3)

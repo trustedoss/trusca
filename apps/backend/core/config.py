@@ -2468,6 +2468,28 @@ def metrics_token() -> str | None:
     return raw or None
 
 
+def queue_backlog_metrics_enabled() -> bool:
+    """Whether ``/metrics`` also publishes the broker-backlog series (M2).
+
+    Off by default and independent of :func:`metrics_enabled`: turning the
+    operational endpoint on does not by itself turn this series on too. The
+    other series in that document read Postgres, which every request already
+    pays for; this one opens a second connection to the broker and reads a
+    live queue length from it, which is a different cost and a different
+    failure mode (a broker hiccup should not be able to take a scrape down).
+    A deployment opts into that trade explicitly.
+
+    Concurrency plan 2026-08-22 §3.1 M2: with this off, the endpoint's
+    behaviour is exactly what it was before this series existed.
+    """
+    return os.getenv("QUEUE_BACKLOG_METRICS_ENABLED", "false").strip().lower() in (
+        "1",
+        "true",
+        "yes",
+        "on",
+    )
+
+
 def permission_cache_ttl_seconds() -> int:
     """How long a resolved principal may be reused before it is read again.
 
