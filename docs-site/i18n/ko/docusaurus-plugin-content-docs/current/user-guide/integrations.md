@@ -19,7 +19,7 @@ sidebar_position: 9
 
 ## API Key
 
-`/integrations`를 열고 **API keys** 섹션으로 스크롤합니다. 목록은 본인이 관리할 수 있는 모든 Key를 표시합니다 — 라벨, prefix, scope, 만료, 마지막 사용 메타데이터.
+`/integrations`를 열고 **API keys** 섹션으로 스크롤합니다. 목록은 본인이 관리할 수 있는 모든 Key를 표시합니다 — 라벨, prefix, scope, 만료, 마지막 사용 메타데이터. 마지막 사용 시각은 정확한 요청 시각이 아니라 15분 단위로 반올림됩니다. 이유는 [Key 목록](../admin-guide/api-keys.md#key-목록)을 참고하세요.
 
 ![통합 — Create 버튼과 Key 표가 있는 API keys 섹션](/img/screenshots/user-integrations-keys.png)
 
@@ -157,7 +157,7 @@ GitLab에 등록할 URL — `https://<your-host>/v1/webhooks/gitlab`.
 
 - **Content-Type:** `application/json`.
 - **Token:** `X-Gitlab-Token` 헤더로 전송. 값을 프로젝트의 `webhook_secret`으로 설정.
-- **Events:** **Push events**와 **Merge request events**.
+- **Events:** Push events와 Merge request events.
 
 ## 정상 동작 확인
 
