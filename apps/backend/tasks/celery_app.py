@@ -117,6 +117,11 @@ _TASK_INCLUDES = [
     # SBOM-ingest no longer 500s with PermissionError on a fresh volume. Listed
     # here so the worker process imports it and the handler registers.
     "tasks.workspace_prep",
+    # S6 (concurrency-scaling-plan-2026-08-22.md §3.2/§4) - beat sweep that
+    # turns a sustained Celery-queue backlog into a Slack/Teams alert. Off
+    # unless both QUEUE_BACKLOG_ALERT_ENABLED and M2's
+    # QUEUE_BACKLOG_METRICS_ENABLED are set (see the module docstring).
+    "tasks.queue_backlog_alert",
 ]
 
 # S3 (concurrency-scaling-plan-2026-08-22.md §3.2/§4, S3 row): the two queue
@@ -176,6 +181,7 @@ def _build_beat_schedule() -> dict[str, dict[str, object]]:
       - ``trustedoss.malicious_catalog_refresh``    — weekly, Sun 02:40 UTC
       - ``trustedoss.trivy_db_refresh``             — weekly, Sun 03:00 UTC
       - ``trustedoss.scan_schedule_poll``           : every 15 minutes
+      - ``trustedoss.queue_backlog_alert_check``    : every 5 minutes
 
     chore PR #4 wires a `celery-beat` sidecar in
     ``docker-compose.dev.yml`` so these schedules actually fire.
@@ -318,6 +324,19 @@ def _build_beat_schedule() -> dict[str, dict[str, object]]:
         "scan-schedule-poll-15-minutes": {
             "task": "trustedoss.scan_schedule_poll",
             "schedule": _schedule(timedelta(minutes=15)),
+        },
+        # S6 - sample both Celery queues' broker backlog every 5 minutes and
+        # alert (Slack/Teams) once one has been over its threshold for a
+        # sustained window. Off unless QUEUE_BACKLOG_ALERT_ENABLED (and M2's
+        # QUEUE_BACKLOG_METRICS_ENABLED) are set; the task itself is the
+        # no-op when they are not (tasks.queue_backlog_alert). Five minutes
+        # is deliberately shorter than the default 10-minute sustain window
+        # (queue_backlog_alert_sustain_seconds()), so a breach is sampled at
+        # least twice before it can alert - a single missed or delayed tick
+        # cannot manufacture a page on its own.
+        "queue-backlog-alert-every-five-minutes": {
+            "task": "trustedoss.queue_backlog_alert_check",
+            "schedule": _schedule(timedelta(minutes=5)),
         },
     }
 

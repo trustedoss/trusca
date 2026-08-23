@@ -241,6 +241,80 @@ sudo crontab -e
 
 전체 복원 절차는 [백업·복원](../admin-guide/backup-and-restore.md)을 보세요.
 
+## 스캔 용량 - worker-scan 크기 산정과 확장 {#scan-capacity-sizing-and-scaling}
+
+Compose에는 오토스케일러가 없습니다. 큐를 지켜보다가 워커 컨테이너를
+알아서 늘려 주는 계층이 없다는 뜻입니다. 이것은 의도한 선택입니다 -
+Compose 배포에 오케스트레이터를 얹지 않기로 했고, 그래서 운영자가
+미리 용량을 산정해 두고 부족해지면 직접 늘립니다.
+
+**두 워커 서비스.** S3의 큐 분리 이후 프로덕션 스택은 Celery 워커
+서비스를 하나가 아니라 둘 운영합니다.
+
+- **`worker-scan`** - 스캔 파이프라인(`scan_source`, `scan_container`,
+  `ingest_sbom`, `scan_reachability`)을 실행합니다. 이 서비스를
+  확장해야만 동시에 도는 스캔 수가 늘어납니다. 스캔 하나는
+  `SCAN_HARD_TIME_LIMIT_SECONDS`(기본 3900초, 65분)까지 슬롯 하나를
+  차지할 수 있으므로, 스캔 처리량과 직결되는 것은 이 서비스의
+  용량입니다.
+- **`worker-default`** - 그 외 나머지(알림, 백업, 감사 반출, 티켓
+  웹훅, 카탈로그 갱신 beat, 스캔 일정 폴링)를 실행합니다. 짧고 잦은
+  작업이라 시간 단위로 도는 스캔 뒤에 절대 줄 서면 안 됩니다. 이
+  서비스를 확장해도 스캔 처리량은 늘지 않습니다.
+
+**용량 계산식.** 스캔 슬롯 하나는 워커 프로세스 하나가 스캔
+파이프라인 하나를 동시에 처리할 수 있는 자리입니다. 슬롯 수는 다음과
+같습니다.
+
+```
+슬롯 수 = WORKER_REPLICAS x CELERY_CONCURRENCY
+```
+
+`WORKER_REPLICAS`는 `worker-scan` 컨테이너를 몇 개 띄우는지입니다
+(`docker-compose up -d --scale worker-scan=N` - 일반 Compose는
+`deploy.replicas`를 따르지 않으므로 이렇게 지정합니다).
+`CELERY_CONCURRENCY`는 컨테이너 하나가 스캔을 동시에 몇 건 처리하는지입니다
+(`.env`, 기본 2 - cdxgen/scancode/Trivy 파이프라인 하나가 순간적으로
+1.5~2GB를 쓰므로 이 값은 낮게 유지하세요). 스캔 평균 소요를 분 단위로
+`M`이라 하면 슬롯의 시간당 처리량은 다음과 같습니다.
+
+```
+시간당 처리 스캔 수 = 슬롯 수 x 60 / M
+```
+
+배포 기본값(`WORKER_REPLICAS=1`, `CELERY_CONCURRENCY=2`, `M` ≈ 20분)에서는
+슬롯 2개, 시간당 6건입니다. 배포에 들어오는 스캔 요청(푸시, PR 갱신,
+예약 스캔, 웹훅 트리거를 모두 합친 것)이 이보다 많으면 스캔 큐가
+쌓입니다. `j`번째로 도착한 스캔은 대략 `floor((j-1) / 슬롯 수) x M`만큼
+기다린 뒤 시작합니다. 기본 슬롯 2개에 스캔 10건이 한꺼번에 몰리면
+마지막 스캔은 80분 가까이 기다립니다.
+
+**확장하기.** `.env`의 `WORKER_REPLICAS`를 올리고(또는 실행 시
+지정하고) `worker-scan` 서비스를 정확히 지정해 확장하세요 -
+`worker-default`를 확장해서는 이 문제가 풀리지 않습니다.
+
+```bash
+docker-compose -f docker-compose.yml up -d --scale worker-scan=4
+```
+
+레플리카를 늘리는 대신 `CELERY_CONCURRENCY`를 올려도 되지만, 레플리카
+쪽을 우선하세요. 컨테이너를 늘리면 cdxgen/scancode/Trivy가 쓰는
+메모리가 여러 cgroup에 나뉘어 실리지만, 동시성만 올리면 한 컨테이너에
+몰립니다. `worker-default`도 같은 방식으로 확장합니다
+(`--scale worker-default=N`). 이 서비스는 작업이 짧아 드물지만, 느린
+티켓 웹훅이나 멈춘 백업처럼 하류 연동이 막히면 여기도 밀릴 수
+있습니다.
+
+**언제 확장해야 하는지 알기.** `QUEUE_BACKLOG_METRICS_ENABLED`를
+켜면(`/metrics`에 `trusca_broker_queue_backlog`와
+`trusca_scan_queue_wait_seconds`가 노출됩니다)
+`QUEUE_BACKLOG_ALERT_ENABLED`를 함께 켤 수 있습니다. 큐 하나가
+임계값을 넘은 채 일정 시간 지속되면 Slack/Teams로 알립니다(새 채널이
+아니라 기존 알림 채널을 그대로 씁니다). 둘 다 기본은 꺼짐입니다.
+임계값·쿨다운 설정은 [환경변수 - 큐 적체 알림](../reference/env-variables.md)을,
+알림이 왔을 때 할 일은 [온콜 런북](../admin-guide/oncall-runbook.md)을
+보세요.
+
 ## 종단 간 첫 성공 체크리스트 (30분)
 
 `bash scripts/install.sh` 완료 후:

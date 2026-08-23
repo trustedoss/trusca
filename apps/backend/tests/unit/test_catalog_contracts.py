@@ -37,7 +37,21 @@ from pydantic import BaseModel
 #                         first — this test will flag it.
 #   - user_deactivated:   builder exists, no emit site yet (future admin
 #                         flow); same migration rule applies when it lands.
-_DISPATCH_ONLY_KINDS = {"password_reset", "new_critical_cve", "user_deactivated"}
+#   - queue_backlog_alert: S6 (concurrency-scaling-plan-2026-08-22.md
+#                         §3.2/§4) - a deployment-wide Celery-queue capacity
+#                         signal, not addressed to any one user, so there is
+#                         no ``user_id`` to fan an in-app row out to (unlike
+#                         vuln_sla_breach / malicious_detected, which fan out
+#                         per team member). If a future in-app "operations"
+#                         inbox surface wants this kind too, it needs an enum
+#                         migration (db-designer) and a frontend catalog
+#                         entry (frontend-dev) first - this test will flag it.
+_DISPATCH_ONLY_KINDS = {
+    "password_reset",
+    "new_critical_cve",
+    "user_deactivated",
+    "queue_backlog_alert",
+}
 
 
 def test_notification_kind_enum_matches_schema_literal() -> None:

@@ -129,7 +129,7 @@ docker-compose -f docker-compose.yml pull
 docker-compose -f docker-compose.yml up -d
 ```
 
-The published backend image's entrypoint **applies Alembic migrations automatically on start** (`AUTO_MIGRATE`, default `true`) and only then starts uvicorn — so the schema is at HEAD by the time the backend reports healthy. You do **not** need to run `alembic upgrade head` by hand. Automatic migration does **not** create users, so you still bootstrap the first admin once:
+The published backend image's entrypoint applies Alembic migrations automatically on start (`AUTO_MIGRATE`, default `true`) and only then starts uvicorn, so the schema is at HEAD by the time the backend reports healthy. You do **not** need to run `alembic upgrade head` by hand. Automatic migration does not create users, so you still bootstrap the first admin once:
 
 ```bash
 # Read the password into the shell WITHOUT echoing it, then pass only the
@@ -156,7 +156,7 @@ from the environment instead.
 :::note Managing the schema out-of-band
 The single-role `.env` template ships `AUTO_MIGRATE=true` and it just works. If you run an **L1 role-separated** stack (separate `DATABASE_URL_OWNER` for DDL and `DATABASE_URL_APP` for runtime), the runtime container only holds the DML-only app DSN and cannot run DDL, so automatic migration must be off.
 
-- **With the wizard (Step 2):** `install.sh` **detects L1** (`DATABASE_URL_OWNER` is set and differs from the runtime DSN) and **writes `AUTO_MIGRATE=false` to `.env` automatically**, then applies migrations as the owner role itself. You do not need to set anything.
+- **With the wizard (Step 2):** `install.sh` detects L1 (`DATABASE_URL_OWNER` is set and differs from the runtime DSN) and writes `AUTO_MIGRATE=false` to `.env` automatically, then applies migrations as the owner role itself. You do not need to set anything.
 - **On this no-clone path:** there is no wizard, so **you must set `AUTO_MIGRATE=false` in `.env` yourself** for an L1 stack and run `alembic upgrade head` as the owner role (override `DATABASE_URL` with `DATABASE_URL_OWNER` for that one command). If you leave it `true` on an L1 stack the backend entrypoint fails fast (exit 1, no crash-loop) with a clear DDL-permission error in the logs.
 :::
 
@@ -174,7 +174,7 @@ The backend exposes **two** unauthenticated health endpoints. They answer differ
 Since  (Track B), the `backend` service's Compose `healthcheck` probes **`/health/ready`**, so the `worker` and `beat` services — which declare `depends_on: backend (condition: service_healthy)` — start only **after the schema is migrated**, under both toggles:
 
 - **`AUTO_MIGRATE=true`** (single-role default): the backend container runs `alembic upgrade head` on start and `/health/ready` flips to `200` once it finishes. Workers then start against a migrated schema. This is the normal path and needs no operator action.
-- **`AUTO_MIGRATE=false`** (L1 role-separated stack): uvicorn answers `/health` immediately, but `/health/ready` stays `503` (the container stays `health: starting`) until your **external** `alembic upgrade head` (run as the owner role — `install.sh` / `upgrade.sh` do this) brings the schema to HEAD. **This is intended:** the worker and beat wait for the schema instead of starting against a not-yet-migrated database. If you forget to run the migration on an L1 stack, the backend will simply never become healthy — check `docker-compose logs backend` and run the owner-role migration.
+- **`AUTO_MIGRATE=false`** (L1 role-separated stack): uvicorn answers `/health` immediately, but `/health/ready` stays `503` (the container stays `health: starting`) until your external `alembic upgrade head` (run as the owner role, `install.sh` / `upgrade.sh` do this) brings the schema to HEAD. This is intended: the worker and beat wait for the schema instead of starting against a not-yet-migrated database. If you forget to run the migration on an L1 stack, the backend will simply never become healthy, check `docker-compose logs backend` and run the owner-role migration.
 
 :::note Why a long migration won't flip the container to `unhealthy`
 The backend healthcheck uses a generous `start_period` (60s). A large first migration on a big database can run for a while before `/health/ready` turns `200`; the `start_period` keeps Docker from marking the container `unhealthy` (and restarting it) before that first migrate completes.
@@ -248,6 +248,80 @@ sudo crontab -e
 `scripts/backup.sh` writes a timestamped directory under `backups/` containing `postgres.sql.gz`, `workspace.tar.gz`, and a `manifest.json`. Old backups are pruned after 7 days (override with `BACKUP_RETENTION_DAYS` in `.env`).
 
 For full restore procedures see [backup & restore](../admin-guide/backup-and-restore.md).
+
+## Scan capacity - sizing and scaling worker-scan {#scan-capacity-sizing-and-scaling}
+
+Compose has no autoscaler. There is no layer watching the queue and
+adding worker containers on its own - that is a deliberate choice (a
+Compose deployment does not get an orchestrator bolted onto it), and it
+means the operator sizes capacity ahead of time and scales by hand when
+it stops being enough.
+
+**The two worker services.** Since the S3 queue split, a production
+stack runs two Celery worker services, not one:
+
+- **`worker-scan`** - runs the scan pipeline (`scan_source`,
+  `scan_container`, `ingest_sbom`, `scan_reachability`). This is the ONLY
+  service whose scaling changes how many scans run at once - a scan can
+  occupy a slot for up to `SCAN_HARD_TIME_LIMIT_SECONDS` (default 3900s,
+  65 minutes), so its capacity is the one that matters for scan
+  throughput.
+- **`worker-default`** - runs everything else (notifications, backups,
+  audit export, ticket webhooks, catalog-refresh beats, the scan-schedule
+  poll). Short, frequent work that must never queue behind an hour-long
+  scan. Scaling this service does NOT increase scan throughput.
+
+**The capacity formula.** A scan slot is one worker process's ability to
+run one scan pipeline at a time. The number of slots is:
+
+```
+slots = WORKER_REPLICAS x CELERY_CONCURRENCY
+```
+
+`WORKER_REPLICAS` is how many `worker-scan` containers run
+(`docker-compose up -d --scale worker-scan=N`, since plain Compose does
+not honor `deploy.replicas`); `CELERY_CONCURRENCY` is how many scans one
+container runs in parallel (`.env`, default 2, keep this modest, a scan
+slot can fork a full cdxgen/scancode/Trivy pipeline at ~1.5-2 GB
+transient memory). With `M` the average scan duration in minutes, the
+slots' hourly throughput is:
+
+```
+scans per hour = slots x 60 / M
+```
+
+At the shipped defaults (`WORKER_REPLICAS=1`, `CELERY_CONCURRENCY=2`,
+`M` about 20 minutes) that is 2 slots and **6 scans/hour**. If your
+deployment's arrival rate (pushes, PR updates, scheduled scans, webhook
+triggers, all of it) is above that, the scan queue backs up: the
+`j`-th scan to arrive waits roughly `floor((j-1) / slots) x M` before it
+starts. Ten scans landing together against the default 2 slots means the
+last one waits about 80 minutes.
+
+**Scaling up.** Raise `WORKER_REPLICAS` in `.env` (or pass it inline)
+and scale the `worker-scan` service specifically; scaling
+`worker-default` does nothing for this:
+
+```bash
+docker-compose -f docker-compose.yml up -d --scale worker-scan=4
+```
+
+Raising `CELERY_CONCURRENCY` instead of adding replicas works too, but
+prefer replicas: more containers spread the cdxgen/scancode/Trivy memory
+load across more cgroups rather than piling it into one. `worker-default`
+scales the same way (`--scale worker-default=N`) when its own queue
+backs up. That is rare, since its work is short, but a stalled downstream
+integration (a slow ticket webhook, a stuck backup) can hold it up.
+
+**Knowing when you need to.** Turn on `QUEUE_BACKLOG_METRICS_ENABLED`
+(exposes `trusca_broker_queue_backlog` and `trusca_scan_queue_wait_seconds`
+on `/metrics`) and `QUEUE_BACKLOG_ALERT_ENABLED` (fires a Slack/Teams
+alert, the existing notification channels, not a new one, once a queue
+has stayed over its threshold for a sustained window). Both default off;
+see [Environment variables - Queue backlog alert](../reference/env-variables.md)
+for the threshold and cooldown knobs, and the
+[on-call runbook](../admin-guide/oncall-runbook.md) for what to do when
+one fires.
 
 ## End-to-end first-success checklist (30 minutes)
 

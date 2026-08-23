@@ -237,6 +237,24 @@ async def test_dispatch_email_with_no_recipients_is_skipped(monkeypatch) -> None
     assert report["retryable_failures"] is False
 
 
+async def test_dispatch_queue_backlog_alert_builds_slack_and_teams_payloads() -> None:
+    """S6: the queue-backlog alert kind renders the queue name, backlog count
+    and threshold into every channel's payload."""
+    report = await disp.dispatch(
+        kind=disp.NotificationKind.QUEUE_BACKLOG_ALERT,
+        context={
+            "queue": "trustedoss.scan",
+            "backlog": "42",
+            "threshold": "10",
+            "sustained_minutes": "12.5",
+        },
+        channels=[disp.CHANNEL_SLACK, disp.CHANNEL_TEAMS],
+    )
+
+    assert report["delivered_count"] == 2
+    assert report["failed_count"] == 0
+
+
 async def test_dispatch_kind_can_be_str_or_enum() -> None:
     """The Celery task forwards the JSON string; the password-reset service
     forwards the enum. Both must work."""

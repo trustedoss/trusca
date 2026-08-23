@@ -193,13 +193,16 @@ async def render_metrics(session: AsyncSession) -> str:
     # six series above does not get a broker round trip on every poll unless
     # it asks for one. See queue_backlog_metrics_enabled().
     if queue_backlog_metrics_enabled():
-        queue_name, backlog = await asyncio.to_thread(_broker_queue_backlog)
+        backlogs = await asyncio.to_thread(_broker_queue_backlogs)
         document.append(
             _block(
                 "trusca_broker_queue_backlog",
                 "Messages waiting in the Celery broker queue, not yet delivered to a worker.",
                 "gauge",
-                [({"queue": queue_name}, float(backlog))],
+                [
+                    ({"queue": queue_name}, float(backlog))
+                    for queue_name, backlog in backlogs.items()
+                ],
             )
         )
         document.append(
@@ -235,8 +238,8 @@ async def _workspace_used_ratio(session: AsyncSession) -> float:
     return 0.0
 
 
-def _broker_queue_backlog() -> tuple[str, int]:
-    """The default queue's length, read straight from the broker with ``LLEN``.
+def _broker_queue_backlogs() -> dict[str, int]:
+    """Every Celery queue's length, read straight from the broker with ``LLEN``.
 
     Concurrency plan 2026-08-22 §1.1: the DB-derived ``active_scans`` count
     (admin_health_service) is queued+running together, so it cannot tell "the
@@ -248,26 +251,37 @@ def _broker_queue_backlog() -> tuple[str, int]:
     name is the one key that can hold anything; a deployment that starts
     using priorities would need to sum the priority-suffixed keys too.
 
+    S3 (concurrency-scaling-plan-2026-08-22.md §3.2/§4) split the single
+    queue this function used to read into ``trustedoss.scan`` and
+    ``trustedoss.default``. Reading only ``task_default_queue`` after that
+    split would silently stop measuring the scan queue - the half §1.1's
+    slot-capacity math is actually about - so this reads both by name and
+    returns one entry per queue, scan first (declaration order, so the
+    document's sample order is stable scrape to scrape). S6 reuses this
+    function directly rather than re-reading the broker a second time
+    (``tasks.queue_backlog_alert``), so it is the one place this repository
+    reads a Celery queue's length.
+
     Synchronous client, the same shape as admin_health_service's Redis probe
     (``_probe_redis``) and for the same reason: the caller offloads this to a
     worker thread so a slow broker cannot hold the event loop for the rest of
-    the process. A broker that cannot be reached reports 0 rather than
-    failing the scrape (module docstring N10: one series going quiet does not
-    take the other six down with it).
+    the process. A broker that cannot be reached reports 0 for every queue
+    rather than failing the scrape (module docstring N10: one series going
+    quiet does not take the other six down with it).
     """
-    from tasks.celery_app import celery_app
+    from tasks.celery_app import _SCAN_QUEUE, celery_app
 
-    queue = str(celery_app.conf.task_default_queue)
+    default_queue = str(celery_app.conf.task_default_queue)
+    queues = [_SCAN_QUEUE, default_queue]
     try:
         client = _redis.Redis.from_url(redis_url(), decode_responses=True)
         try:
-            backlog = int(client.llen(queue))  # type: ignore[arg-type]
+            return {queue: int(client.llen(queue)) for queue in queues}  # type: ignore[arg-type]
         finally:
             client.close()  # type: ignore[no-untyped-call]
     except Exception as exc:  # noqa: BLE001
         log.warning("metrics_broker_backlog_unavailable", error=str(exc)[:200])
-        return queue, 0
-    return queue, backlog
+        return dict.fromkeys(queues, 0)
 
 
 async def _oldest_queued_scan_wait_seconds(session: AsyncSession) -> float:

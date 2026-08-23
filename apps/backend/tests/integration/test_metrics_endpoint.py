@@ -390,6 +390,42 @@ async def test_the_broker_backlog_value_reflects_a_real_redis_list(
         conn.close()
 
 
+async def test_the_broker_backlog_series_covers_the_scan_queue_too(
+    client, monkeypatch
+) -> None:
+    """S3 split the single queue this series used to read into two. A
+    deployment that upgraded past S3 and only ever read the (unchanged)
+    ``trustedoss.default`` label would believe the scan queue - the one
+    §1.1's slot-capacity math is actually about - never backs up."""
+    import redis as redis_lib
+
+    from core.config import redis_url
+    from tasks.celery_app import _SCAN_QUEUE
+
+    monkeypatch.setenv("METRICS_ENABLED", "true")
+    monkeypatch.setenv("QUEUE_BACKLOG_METRICS_ENABLED", "true")
+    monkeypatch.delenv("METRICS_TOKEN", raising=False)
+
+    conn = redis_lib.Redis.from_url(os.getenv("REDIS_URL") or redis_url())
+    try:
+        before = int(conn.llen(_SCAN_QUEUE))  # type: ignore[arg-type]
+        conn.lpush(_SCAN_QUEUE, b'{"probe": "m2-scan-queue-backlog-test"}')
+        try:
+            response = await client.get("/metrics")
+            assert response.status_code == 200, response.text
+            match = re.search(
+                r"^trusca_broker_queue_backlog\{queue=\"" + re.escape(_SCAN_QUEUE) + r"\"\} (\S+)$",
+                response.text,
+                flags=re.MULTILINE,
+            )
+            assert match, response.text
+            assert float(match.group(1)) == before + 1
+        finally:
+            conn.lrem(_SCAN_QUEUE, 1, b'{"probe": "m2-scan-queue-backlog-test"}')
+    finally:
+        conn.close()
+
+
 async def test_the_scan_wait_value_reflects_the_oldest_queued_scan(
     client, monkeypatch, db_session
 ) -> None:
