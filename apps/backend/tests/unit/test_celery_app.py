@@ -95,3 +95,75 @@ def test_w6_44_trivy_db_bootstrap_module_imported() -> None:
     from tasks.celery_app import _TASK_INCLUDES
 
     assert "tasks.trivy_db_bootstrap" in _TASK_INCLUDES
+
+
+# ---------------------------------------------------------------------------
+# W9 (concurrency-scaling-plan-2026-08-22.md §3.5): the three new retention
+# beats must be registered and on the expected daily cadence.
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize(
+    ("module", "task_name"),
+    [
+        ("tasks.auth_token_retention", "trustedoss.auth_token_retention"),
+        ("tasks.operational_retention", "trustedoss.operational_retention"),
+        ("tasks.audit_log_retention", "trustedoss.audit_log_retention_report"),
+    ],
+)
+def test_w9_retention_tasks_registered(module: str, task_name: str) -> None:
+    """W9: each retention task must be reachable via _TASK_INCLUDES."""
+    from tasks.celery_app import _TASK_INCLUDES
+
+    assert module in _TASK_INCLUDES
+    assert task_name in celery_app.tasks
+
+
+@pytest.mark.parametrize(
+    ("beat_key", "task_name", "hour", "minute"),
+    [
+        ("auth-token-retention-daily", "trustedoss.auth_token_retention", 3, 15),
+        ("operational-retention-daily", "trustedoss.operational_retention", 3, 30),
+        (
+            "audit-log-retention-report-daily",
+            "trustedoss.audit_log_retention_report",
+            3,
+            45,
+        ),
+    ],
+)
+def test_w9_retention_beat_schedule_is_daily(
+    beat_key: str, task_name: str, hour: int, minute: int
+) -> None:
+    """W9: each retention beat fires once a day at its assigned minute lane.
+
+    The three entries share the same UTC hour but different minutes so they
+    do not collide on the same tick, matching the convention every other
+    multi-beat hour in this schedule already follows (see the KEV / SLA /
+    EOL / malicious entries' minute-lane comments in _build_beat_schedule).
+    """
+    schedule = celery_app.conf.beat_schedule
+    assert beat_key in schedule
+    entry = schedule[beat_key]
+    assert entry["task"] == task_name
+    cron = entry["schedule"]
+    assert getattr(cron, "hour", None) == {hour}
+    assert getattr(cron, "minute", None) == {minute}
+
+
+def test_w9_retention_beat_minutes_do_not_collide() -> None:
+    """W9: the three new beats must not share a (hour, minute) with each
+    other or with the pre-existing weekly Trivy refresh at hour=3 minute=0."""
+    schedule = celery_app.conf.beat_schedule
+    keys = [
+        "auth-token-retention-daily",
+        "operational-retention-daily",
+        "audit-log-retention-report-daily",
+        "trivy-db-refresh-weekly",
+    ]
+    seen: set[tuple[frozenset[int], frozenset[int]]] = set()
+    for key in keys:
+        cron = schedule[key]["schedule"]
+        slot = (frozenset(cron.hour), frozenset(cron.minute))
+        assert slot not in seen, f"{key} collides with an earlier beat's (hour, minute)"
+        seen.add(slot)

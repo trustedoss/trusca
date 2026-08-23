@@ -122,6 +122,15 @@ _TASK_INCLUDES = [
     # unless both QUEUE_BACKLOG_ALERT_ENABLED and M2's
     # QUEUE_BACKLOG_METRICS_ENABLED are set (see the module docstring).
     "tasks.queue_backlog_alert",
+    # W9 (concurrency-scaling-plan-2026-08-22.md §3.5/§4) - caps the tables
+    # that had no retention policy: refresh_tokens + password_reset_tokens
+    # (deletes rows past their own expires_at), notifications /
+    # webhook_deliveries / report_downloads (deletes rows past an
+    # occurrence-time age), and a read-only audit_logs purge-readiness
+    # report (never deletes, see the module docstring for why).
+    "tasks.auth_token_retention",
+    "tasks.operational_retention",
+    "tasks.audit_log_retention",
 ]
 
 # S3 (concurrency-scaling-plan-2026-08-22.md §3.2/§4, S3 row): the two queue
@@ -182,6 +191,9 @@ def _build_beat_schedule() -> dict[str, dict[str, object]]:
       - ``trustedoss.trivy_db_refresh``             — weekly, Sun 03:00 UTC
       - ``trustedoss.scan_schedule_poll``           : every 15 minutes
       - ``trustedoss.queue_backlog_alert_check``    : every 5 minutes
+      - ``trustedoss.auth_token_retention``         : daily at 03:15 UTC
+      - ``trustedoss.operational_retention``        : daily at 03:30 UTC
+      - ``trustedoss.audit_log_retention_report``   : daily at 03:45 UTC
 
     chore PR #4 wires a `celery-beat` sidecar in
     ``docker-compose.dev.yml`` so these schedules actually fire.
@@ -337,6 +349,31 @@ def _build_beat_schedule() -> dict[str, dict[str, object]]:
         "queue-backlog-alert-every-five-minutes": {
             "task": "trustedoss.queue_backlog_alert_check",
             "schedule": _schedule(timedelta(minutes=5)),
+        },
+        # W9 - reclaim expired refresh + password-reset token rows daily.
+        # Both predicates key off ``expires_at`` (already indexed on both
+        # tables), so once-daily is ample against TTLs measured in days
+        # (refresh) and hours (password reset). 03:15 UTC sits in the same
+        # low-traffic window as the weekly Trivy refresh (03:00) without
+        # sharing its tick.
+        "auth-token-retention-daily": {
+            "task": "trustedoss.auth_token_retention",
+            "schedule": crontab(minute=15, hour=3),
+        },
+        # W9 - reclaim aged notifications / webhook deliveries / report
+        # downloads daily. 03:30 UTC, after the auth-token sweep and before
+        # the weekly Trivy refresh's own low-traffic window ends.
+        "operational-retention-daily": {
+            "task": "trustedoss.operational_retention",
+            "schedule": crontab(minute=30, hour=3),
+        },
+        # W9 - audit_logs purge-readiness report. Read-only (see the module
+        # docstring for why this beat never deletes). Daily is ample for an
+        # operator-facing signal; 03:45 UTC completes the same maintenance
+        # window as the two sweeps above.
+        "audit-log-retention-report-daily": {
+            "task": "trustedoss.audit_log_retention_report",
+            "schedule": crontab(minute=45, hour=3),
         },
     }
 

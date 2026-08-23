@@ -199,3 +199,48 @@ def pending_count(session: Session, *, cursor: AuditExportCursor) -> int:
 
 def is_configured() -> bool:
     return audit_export_url() is not None
+
+
+def purge_ready_count(
+    session: Session,
+    *,
+    destination: str,
+    retention_days: int,
+    now: datetime | None = None,
+) -> int:
+    """How many audit rows are safe to purge by hand right now (W9).
+
+    Read-only: it never touches ``audit_logs`` or the cursor row. A row
+    counts only when it is BOTH already delivered to *destination* (at or
+    before the cursor's ``(last_created_at, last_id)`` position, the same
+    pair :func:`collect_batch` orders by) AND older than *retention_days*. No
+    cursor yet (destination never configured, or configured but never run)
+    means nothing has been exported, so nothing is ever counted. An
+    unexported row is the one copy of that compliance record.
+
+    ``audit_logs`` stays append-only at the database layer (migration 0012);
+    this function feeds the manual, two-operator purge session documented at
+    docs-site/docs/admin-guide/audit-log.md#retention, it does not replace it.
+    """
+    now = now or datetime.now(tz=UTC)
+    cursor = session.execute(
+        select(AuditExportCursor).where(AuditExportCursor.destination == destination)
+    ).scalar_one_or_none()
+    if cursor is None or cursor.last_created_at is None or cursor.last_id is None:
+        return 0
+    age_cutoff = now - timedelta(days=retention_days)
+    stmt = (
+        select(func.count())
+        .select_from(AuditLog)
+        .where(
+            or_(
+                AuditLog.created_at < cursor.last_created_at,
+                and_(
+                    AuditLog.created_at == cursor.last_created_at,
+                    AuditLog.id <= cursor.last_id,
+                ),
+            ),
+            AuditLog.created_at < age_cutoff,
+        )
+    )
+    return int(session.execute(stmt).scalar_one())

@@ -74,6 +74,8 @@ sidebar_position: 2
 | `SECRET_KEY` | — | `config.py` | [필수 키](#required-keys) 참고. HS256 서명. |
 | `ACCESS_TOKEN_EXPIRE_MINUTES` | `30` | `config.py` | JWT access token 수명. |
 | `REFRESH_TOKEN_EXPIRE_DAYS` | `7` | `config.py` | Refresh token 수명. 회전 + 재사용 탐지 활성화. |
+| `REFRESH_TOKEN_RETENTION_GRACE_DAYS` | `1` | `tasks/auth_token_retention.py` | refresh token 행이 자신의 `expires_at`을 지난 뒤 며칠까지 남아 있다가 매일 도는 정리 작업에서 삭제되는지. 회전·로그아웃·재사용 탐지로 폐기된 행도 `expires_at` 값 자체는 바뀌지 않으므로, `REFRESH_TOKEN_EXPIRE_DAYS` 한 주기 안에 같은 조건으로 함께 삭제됩니다. 폐기 시각을 따로 추적하는 경로는 두지 않았습니다. |
+| `PASSWORD_RESET_TOKEN_RETENTION_GRACE_DAYS` | `1` | `tasks/auth_token_retention.py` | 비밀번호 재설정 토큰 행이 자신의 `expires_at`을 지난 뒤 며칠까지 남아 있다가 삭제되는지. 위 refresh token 항목과 같은 방식입니다. |
 
 ## 취약점 데이터
 
@@ -257,6 +259,28 @@ Compose 배포에는 오토스케일러 계층이 없습니다. 이 절의 키�
 | `QUEUE_BACKLOG_ALERT_DEFAULT_QUEUE_THRESHOLD` | `100` | `config.py` | `trustedoss.default`에 대한 같은 값으로, 한 자릿수 더 큽니다. 이 큐는 알림·백업·감사 반출·카탈로그 갱신 베트처럼 짧고 잦은 작업을 나르므로(S3의 큐 분리 참고), 정상 상태라면 몇 초 안에 비웁니다. |
 | `QUEUE_BACKLOG_ALERT_SUSTAIN_SECONDS` | `600` | `config.py` | 큐가 임계값을 넘은 채 몇 초를 버텨야 알림이 나가는지. 순간적인 폭주(같은 베트 틱에 몰린 웹훅 스캔 여러 건)는 장애가 아니고, 넘긴 뒤에도 이만큼 계속 그 상태면 장애입니다. |
 | `QUEUE_BACKLOG_ALERT_COOLDOWN_SECONDS` | `3600` | `config.py` | 같은 큐에 대해 두 알림 사이에 두는 최소 간격. 세 시간짜리 장애라면 5분마다가 아니라 이 간격으로 알립니다. 이 간격을 넘겨서도 여전히 적체 상태면 다시 알립니다 — 한 번만 알리고 마는 방식이 아니라 반복 알림입니다. |
+
+## 운영 데이터 보존
+
+세 테이블은 반출 커서나 사용 여부 같은 외부 신호를 기다리지 않고, 발생
+시각만 기준으로 오래된 행을 정리합니다. 매일 도는 beat 하나가 아래 기간을
+지난 행을 지웁니다. 전체 모델과 각 테이블의 보존 기간을 이렇게 정한 근거는
+[데이터 보존](../admin-guide/data-retention.md) 문서를 봅니다.
+
+`AUDIT_LOG_RETENTION_DAYS`는 다른 세 키와 성격이 다릅니다. `audit_logs`는
+데이터베이스 계층에서 append-only로 강제되는 테이블이라(마이그레이션
+0012의 트리거), 이 값은 삭제를 직접 실행하지 않습니다. `AUDIT_EXPORT_URL`로
+설정한 목적지에 이미 전달된 행 중에서, 이 값보다 오래된 것이 몇 건인지
+매일 세어 로그로만 남깁니다. 실제 삭제는 여전히 두 명의 운영자가 함께
+진행하는 수동 SQL 세션입니다([감사 로그 — 보존](../admin-guide/audit-log.md#retention)
+참고).
+
+| 키 | 기본값 | 읽는 위치 | 설명 |
+|---|---|---|---|
+| `AUDIT_LOG_RETENTION_DAYS` | `90` | `config.py` | 이미 반출된 감사 로그 행이 삭제 대상으로 잡히기까지의 나이. 위 설명대로 삭제 자체를 실행하지는 않습니다. |
+| `NOTIFICATION_RETENTION_DAYS` | `180` | `tasks/operational_retention.py` | 읽음·안 읽음과 무관하게 앱 내 알림 행이 정리되기까지의 나이. |
+| `WEBHOOK_DELIVERY_RETENTION_DAYS` | `90` | `tasks/operational_retention.py` | GitHub·GitLab에서 들어온 웹훅 수신 기록이 정리되기까지의 나이. 기본값을 `AUDIT_LOG_RETENTION_DAYS`와 맞췄습니다. |
+| `REPORT_DOWNLOAD_RETENTION_DAYS` | `365` | `tasks/operational_retention.py` | SBOM·NOTICE·취약점 보고서를 내려받은 기록이 정리되기까지의 나이. 셋 중 가장 긴 이유는 연간 컴플라이언스 점검에서 가장 먼저 찾을 이력이기 때문입니다. |
 
 ## 백업
 

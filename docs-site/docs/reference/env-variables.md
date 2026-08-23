@@ -75,6 +75,8 @@ If any of the four `DB_*` keys is set, **all** of them must be set (or the compo
 | `SECRET_KEY` | — | `config.py` | See [Required keys](#required-keys). HS256 signing. |
 | `ACCESS_TOKEN_EXPIRE_MINUTES` | `30` | `config.py` | JWT access token lifetime. |
 | `REFRESH_TOKEN_EXPIRE_DAYS` | `7` | `config.py` | Refresh token lifetime. Rotation + reuse detection enabled. |
+| `REFRESH_TOKEN_RETENTION_GRACE_DAYS` | `1` | `tasks/auth_token_retention.py` | Days past a refresh token's own `expires_at` before the daily sweep deletes the row. A rotated / logged-out / reuse-revoked row keeps its original `expires_at`, so it is caught by this same predicate within one `REFRESH_TOKEN_EXPIRE_DAYS` window of being revoked; there is no separate revoked-at pass. |
+| `PASSWORD_RESET_TOKEN_RETENTION_GRACE_DAYS` | `1` | `tasks/auth_token_retention.py` | Days past a password-reset token's own `expires_at` before the daily sweep deletes the row. Same reasoning as the refresh-token grace above. |
 
 ## Vulnerability data
 
@@ -241,6 +243,7 @@ The deployment's own identity provider. One provider, not a list: an organisatio
 | `AUDIT_EXPORT_TOKEN` | (empty) | `config.py` | Bearer token sent with each batch. |
 | `AUDIT_EXPORT_BATCH_SIZE` | `500` | `config.py` | Rows per post, clamped to 1..5000. A deployment that has fallen behind catches up over several runs rather than in one request the collector may refuse. |
 | `AUDIT_EXPORT_LAG_SECONDS` | `30` | `config.py` | How far behind the present the export reads, clamped to 0..3600. Not a throttle: a row is stamped when its transaction commits, so ordering by the stamp alone can place a row behind a position already passed, and it would never be sent. Raise it if your deployment holds long transactions. |
+| `AUDIT_LOG_RETENTION_DAYS` | `90` | `config.py` | Age past which an **already-exported** audit row is purge-ready. Does not delete anything: `audit_logs` is append-only at the database layer, and the sanctioned purge is a manual, two-operator SQL session. The daily readiness report only counts + logs rows that are both this old and past the export cursor above. See [Operational data retention](#operational-data-retention) and [Audit log → Retention](../admin-guide/audit-log.md#retention). |
 | `METRICS_ENABLED` | `false` | `config.py` | Whether this deployment publishes an operational metrics endpoint at `/metrics`. Off answers 404 rather than 403, so a deployment without a scrape target looks like one without the feature. What it publishes is a fixed list of aggregate counts held to `tests/contracts/metrics-series.json`; no project, package or person's name appears in the output. |
 | `METRICS_TOKEN` | (empty) | `config.py` | A bearer token a scraper must present. Empty means open to anyone who can reach the endpoint, which is the usual arrangement when `/metrics` is off the public ingress. Set it when the endpoint is reachable from somewhere you do not control. A wrong token answers 404, the same as switched off, and the comparison is constant-time. |
 | `QUEUE_BACKLOG_METRICS_ENABLED` | `false` | `config.py` | Whether `/metrics` also publishes the broker-backlog series (`trusca_broker_queue_backlog`, `trusca_scan_queue_wait_seconds`). Off by default and independent of `METRICS_ENABLED`: the other series in that document only read Postgres, and this one opens a second connection to the Celery broker, so turning the endpoint on does not by itself turn this series on too. |
@@ -257,6 +260,16 @@ The address comes from the standard `email` claim and the provider must report i
 Issuer, client id and secret must all be set, and the issuer must be https, before the provider reports itself configured. A deployment missing any of them shows no button rather than one that fails on click.
 
 The portal does not validate ID token signatures, by design. The authorization code is exchanged directly with the issuer's token endpoint over TLS and the subject is read from userinfo over the same channel, which is what OpenID Connect Core §3.1.3.7 permits for a token obtained straight from the token endpoint. What the portal does check is that the discovery document belongs to the configured issuer and that every endpoint it names is on the issuer's own host.
+
+## Operational data retention {#operational-data-retention}
+
+Three tables age out on their own occurrence-time clock; there is no export cursor or usage flag to wait on the way `audit_logs` has. A daily beat reclaims each past the age below. See [Data retention](../admin-guide/data-retention.md) for the full model, including why `audit_logs` itself is a read-only report rather than a delete.
+
+| Key | Default | Read by | Description |
+|---|---|---|---|
+| `NOTIFICATION_RETENTION_DAYS` | `180` | `tasks/operational_retention.py` | Age past which an in-app notification (read or unread) is reclaimed. |
+| `WEBHOOK_DELIVERY_RETENTION_DAYS` | `90` | `tasks/operational_retention.py` | Age past which an inbound GitHub/GitLab webhook-delivery record is reclaimed. Matches `AUDIT_LOG_RETENTION_DAYS` by default. |
+| `REPORT_DOWNLOAD_RETENTION_DAYS` | `365` | `tasks/operational_retention.py` | Age past which a report-download history row (SBOM / NOTICE / vulnerability-report emit record) is reclaimed. |
 
 ## Backups
 

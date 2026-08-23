@@ -208,6 +208,10 @@ lives in its own table.
 
 The audit log is **never auto-pruned**. Storage is cheap relative to its compliance value (a typical install grows by ~50 MB / year per active user). If you need to reduce the table size, the recommended path is **archive then truncate** with operator confirmation:
 
+:::tip Know when a purge is due
+The daily `trustedoss.audit_log_retention_report` beat counts rows that are both already handed to your log collector (past the [continuous export](#continuous-export) cursor) and older than `AUDIT_LOG_RETENTION_DAYS`, a read-only signal, never a delete. See [Data retention → Audit log retention: why this one stays manual](./data-retention.md#audit-log-retention-why-this-one-stays-manual).
+:::
+
 <!-- docs-uat: id=audit-archive-truncate kind=shell ctx=host tier=nightly waiver=destructive-retention-archive-on-production-compose -->
 ```bash
 docker-compose -f docker-compose.yml exec postgres \
