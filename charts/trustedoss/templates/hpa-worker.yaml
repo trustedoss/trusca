@@ -2,10 +2,17 @@
 SPDX-License-Identifier: Apache-2.0
 Copyright 2026 TRUSCA contributors
 */ -}}
-{{- if .Values.worker.autoscaling.enabled -}}
+{{- if and .Values.worker.autoscaling.enabled (eq .Values.worker.autoscaling.mode "cpu") -}}
 # Worker HPA — behind a feature flag, OFF by default (chart convention).
 # When enabled the worker Deployment omits its static replicas so this HPA
 # owns the count.
+#
+# S5 (concurrency-scaling-plan-2026-08-22.md §3.2/§4): only rendered when
+# worker.autoscaling.mode is "cpu" (the default). Setting mode: queue renders
+# scaledobject-worker.yaml INSTEAD of this file, never alongside it -- KEDA
+# creates its own HorizontalPodAutoscaler from a ScaledObject, so having both
+# would put two HPAs on the same scaleTargetRef, fighting each other over the
+# replica count.
 apiVersion: autoscaling/v2
 kind: HorizontalPodAutoscaler
 metadata:

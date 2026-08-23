@@ -179,11 +179,65 @@ connections before alembic runs.
 | `backend.topologySpreadConstraints` | hostname + zone, `ScheduleAnyway` | W8: spreads backend pods across nodes/zones (`deployment-backend.yaml`) so draining one node cannot take every replica down at once. Soft (`ScheduleAnyway`) so a single-node cluster still schedules; set `[]` to disable. |
 | `worker.replicaCount` | `2` | Prefer scaling pods over `concurrency`. |
 | `worker.concurrency` | `2` | Prefork slots per pod. |
-| `worker.autoscaling.enabled` | `false` | Optional HPA (off by default). |
+| `worker.autoscaling.enabled` | `false` | Optional autoscaler (off by default). |
+| `worker.autoscaling.mode` | `cpu` | `cpu` (HorizontalPodAutoscaler, this chart's original behavior) or `queue` (KEDA ScaledObject on Celery queue depth). See "Queue-depth autoscaling (KEDA)" below. |
+| `worker.terminationGracePeriodSeconds` | `4200` (70 min) | S4: must clear the backend's scan hard time limit (`scan_hard_time_limit_seconds()`, default 3900s) with margin, so a scaled-down or evicted pod finishes an in-flight scan instead of losing it to a redelivery-from-zero. |
 | `beat.resources` | see `values.yaml` | Singleton scheduler. |
 | `frontend.replicaCount` | `2` | |
 | `frontend.port` / `healthPath` | `8080` / `/healthz` | |
 | `*.resources` | see `values.yaml` | `requests` + `limits` set on every container. |
+
+### Queue-depth autoscaling (KEDA)
+
+`worker.autoscaling.mode: queue` scales the Celery worker Deployment on the
+broker's queue length (`LLEN` on the Redis list named by
+`worker.autoscaling.queue.queueName`) instead of CPU utilization. This
+matters for this workload specifically: cdxgen and Trivy pipelines spend most
+of their time waiting on the network or disk, not burning CPU, so a
+CPU-based HPA can read "idle" while the scan queue backs up - see
+`concurrency-scaling-plan-2026-08-22.md` §1.1 for the diagnosis this unit
+(S5) responds to.
+
+This mode is **opt-in and requires [KEDA](https://keda.sh)** (a CNCF
+project, Apache-2.0, not a vendor product) **already installed in the
+cluster**, with its CRDs (`ScaledObject`, `TriggerAuthentication`, both
+`keda.sh/v1alpha1`) present. This chart does not install KEDA and cannot
+detect whether it is installed: `helm template` and `helm lint` never
+contact a cluster, so they cannot see whether a CRD exists. Concretely:
+
+- `worker.autoscaling.mode` stays at its default (`cpu`) → nothing changes.
+  `hpa-worker.yaml` renders exactly as it always has; the KEDA template
+  (`scaledobject-worker.yaml`) renders nothing at all, whether or not KEDA
+  is installed. **A default install is never affected by this feature.**
+- `worker.autoscaling.mode: queue` on a cluster **without** KEDA installed:
+  `helm template`/`helm lint` still succeed (they only check the chart's own
+  YAML), but `helm install`/`helm upgrade` fails at apply time with `no
+  matches for kind "ScaledObject" in version "keda.sh/v1alpha1"`. Install
+  KEDA first (`helm install keda kedacore/keda -n keda --create-namespace`,
+  see KEDA's own docs), then retry.
+- `worker.autoscaling.mode: queue` on a cluster **with** KEDA installed:
+  `scaledobject-worker.yaml` renders a `ScaledObject` targeting the worker
+  Deployment; `hpa-worker.yaml` renders nothing. KEDA creates and manages its
+  own `HorizontalPodAutoscaler` from the `ScaledObject` - this chart
+  deliberately never renders both at once, since two HPAs on one
+  `scaleTargetRef` would fight each other over the replica count.
+
+Connection details for the Redis read (`worker.autoscaling.queue.redis.*`)
+default to the chart's own bundled Redis (`redis.bundled: true`, no
+password). KEDA's `redis` scaler wants `host:port`, not a connection-string
+DSN, so this chart does not attempt to parse `env.redis.url` - and when
+`env.secret.existingSecret` is set, `REDIS_URL`'s actual value is never
+visible to Helm at render time at all, so there would be nothing to parse in
+that case regardless. Point `worker.autoscaling.queue.redis.address` (and,
+if it requires auth, `passwordSecretName`/`passwordSecretKey`) at your own
+Redis / Memorystore when `redis.bundled: false`.
+
+`worker.autoscaling.minReplicas`/`maxReplicas` and
+`worker.terminationGracePeriodSeconds` apply the same way under either mode -
+S4's termination grace period is what makes a KEDA-triggered scale-down
+safe for a scan already in flight; `worker.autoscaling.queue.cooldownPeriod`
+(default matches the grace period, 4200s) is what keeps KEDA from being eager
+to scale down in the first place.
 
 ### Ingress
 

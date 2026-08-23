@@ -2,7 +2,7 @@ TrustedOSS Portal ({{ .Chart.Name }}-{{ .Chart.Version }}, app {{ .Chart.AppVers
 
 Workloads:
   backend  x {{ .Values.backend.replicaCount }}   (FastAPI, Service :{{ .Values.backend.port }}, AUTO_MIGRATE=false)
-  worker   x {{ if .Values.worker.autoscaling.enabled }}HPA {{ .Values.worker.autoscaling.minReplicas }}-{{ .Values.worker.autoscaling.maxReplicas }}{{ else }}{{ .Values.worker.replicaCount }}{{ end }}   (Celery, concurrency={{ .Values.worker.concurrency }})
+  worker   x {{ if .Values.worker.autoscaling.enabled }}{{ if eq .Values.worker.autoscaling.mode "queue" }}KEDA{{ else }}HPA{{ end }} {{ .Values.worker.autoscaling.minReplicas }}-{{ .Values.worker.autoscaling.maxReplicas }}{{ else }}{{ .Values.worker.replicaCount }}{{ end }}   (Celery, concurrency={{ .Values.worker.concurrency }})
   beat     x 1   (Celery scheduler — singleton)
   frontend x {{ .Values.frontend.replicaCount }}   (React SPA on nginx, Service :{{ .Values.frontend.port }})
 
@@ -51,8 +51,11 @@ this at boot by querying Postgres' actual configured max_connections.
 
 Scale workers out (preferred over raising concurrency):
   helm upgrade {{ .Release.Name }} . --set worker.replicaCount=4
-  # or enable the HPA:
+  # or enable CPU-based autoscaling:
   helm upgrade {{ .Release.Name }} . --set worker.autoscaling.enabled=true
+  # or, for queue-depth-based autoscaling (requires KEDA already installed —
+  # see README.md "Queue-depth autoscaling (KEDA)"):
+  helm upgrade {{ .Release.Name }} . --set worker.autoscaling.enabled=true --set worker.autoscaling.mode=queue
 
 {{ if .Values.ingress.enabled -}}
 Reach the portal:

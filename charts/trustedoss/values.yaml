@@ -492,12 +492,105 @@ worker:
     limits:
       cpu: "4"
       memory: 6Gi
-  # Optional HorizontalPodAutoscaler — OFF by default (chart convention).
+  # Optional autoscaler - OFF by default (chart convention).
   autoscaling:
     enabled: false
+    # S5 (concurrency-scaling-plan-2026-08-22.md §3.2/§4): "cpu" is this
+    # chart's original, only-ever-existed behavior -- a HorizontalPodAutoscaler
+    # (hpa-worker.yaml) scaling on CPU utilization. "queue" replaces it with a
+    # KEDA ScaledObject (scaledobject-worker.yaml) that scales on the Celery
+    # broker's queue length instead. CPU utilization does not track slot
+    # occupancy for this workload: cdxgen/Trivy pipelines are network- and
+    # disk-wait heavy, not CPU-heavy (plan §1.1, "cdxgen과 Trivy는 네트워크와
+    # 디스크 대기가 긴 작업이라 CPU 사용률이 슬롯 점유를 대표하지 않는다"), so a
+    # CPU-only autoscaler can read as idle while the queue backs up.
+    #
+    # "queue" REQUIRES KEDA (https://keda.sh -- CNCF, Apache-2.0) and its
+    # CRDs (ScaledObject, TriggerAuthentication under keda.sh/v1alpha1)
+    # already installed in the cluster. This chart does NOT install KEDA and
+    # cannot check whether it is present -- `helm template`/`helm lint` never
+    # validate that a CRD exists (no cluster access), so `mode: queue` on a
+    # cluster without KEDA will pass `helm template` cleanly but fail at
+    # `helm install`/`upgrade` apply time with "no matches for kind
+    # ScaledObject in version keda.sh/v1alpha1". Install KEDA FIRST. See
+    # charts/trustedoss/README.md "Queue-depth autoscaling (KEDA)".
+    #
+    # Leaving this at "cpu" (the default) renders byte-for-byte the same
+    # HPA this chart has always rendered when autoscaling.enabled=true --
+    # scaledobject-worker.yaml only renders when mode is exactly "queue", and
+    # hpa-worker.yaml only renders when mode is exactly "cpu", so the two are
+    # mutually exclusive by construction (two autoscalers targeting the same
+    # scaleTargetRef would fight each other over the replica count -- KEDA
+    # creates its own HPA under the hood from the ScaledObject, so pairing it
+    # with hpa-worker.yaml would mean TWO HPAs on one Deployment).
+    mode: cpu  # cpu | queue
     minReplicas: 2
     maxReplicas: 8
     targetCPUUtilizationPercentage: 75
+    # Read only when mode: queue.
+    queue:
+      # The Celery broker list this reads with `LLEN` (same key M2's
+      # `trusca_broker_queue_backlog` metric reads, services/metrics_service.py
+      # `_broker_queue_backlog()` -- this does NOT require that metric or its
+      # QUEUE_BACKLOG_METRICS_ENABLED flag to be on; KEDA's native Redis
+      # scaler reads the broker directly, no dependency on the app's
+      # /metrics endpoint). Must match tasks.celery_app's task_default_queue
+      # ("trustedoss.default") unless 19 (S3, queue split) has landed and
+      # split scan traffic onto its own queue -- if so, point this at that
+      # queue name instead, since the thing worth scaling worker replicas on
+      # is the SCAN queue's depth, not the shared one.
+      queueName: "trustedoss.default"
+      # KEDA's `listLength` metadata -- target average queue length per
+      # replica. KEDA scales replicas toward ceil(currentLength / listLength).
+      # Same role as targetCPUUtilizationPercentage above, but for backlog
+      # instead of CPU. Keep this in the single digits: this workload's slots
+      # are expensive (each can fork a full cdxgen/scancode/Trivy pipeline,
+      # ~1.5-2 GB transient -- see worker.resources above and B2's note at
+      # the top of this block), unlike a typical KEDA target sized for a
+      # cheap HTTP handler.
+      listLength: "5"
+      # Below this list length KEDA will scale to 0 replicas -- but only if
+      # minReplicas above is ALSO 0 (a ScaledObject never scales below its
+      # own minReplicaCount). At this chart's default minReplicas: 2 this
+      # has no effect; documented for operators who lower minReplicas to 0
+      # for a scale-to-zero worker pool.
+      activationListLength: "0"
+      # Seconds between KEDA's polls of the Redis list length.
+      pollingInterval: 15
+      # Seconds KEDA waits, after the queue metric drops below the scaling
+      # threshold, before it actually removes a replica. S4
+      # (worker.terminationGracePeriodSeconds above) already makes a
+      # scale-down SAFE for a replica running an in-flight scan -- Kubernetes
+      # gives that pod 4200s to finish before SIGKILL. This is a separate,
+      # complementary knob that makes KEDA LESS EAGER to scale down in the
+      # first place, so a queue that briefly drains and refills does not
+      # thrash replicas up and down. Defaults to the same 4200s so the two
+      # numbers do not drift apart without a reason to.
+      cooldownPeriod: 4200
+      # Connection details for the Redis LLEN read above. KEDA's `redis`
+      # scaler wants host:port, not a full connection-string DSN, so this
+      # chart does not try to parse env.redis.url / the bundled-Redis URL
+      # helper (trustedoss.redis.url) to derive one -- besides the format
+      # mismatch, env.secret.existingSecret can make REDIS_URL entirely
+      # opaque to Helm at render time (the chart never sees its value), so
+      # there would be nothing to parse in that case anyway. See README.md
+      # "Queue-depth autoscaling (KEDA)" for the full explanation.
+      redis:
+        # host:port. Empty (the default) means "derive from the bundled
+        # Redis Service" -- which only resolves to something reachable when
+        # redis.bundled: true. Required (the chart fails the render with a
+        # clear message otherwise) when mode: queue and redis.bundled: false.
+        address: ""
+        databaseIndex: 0
+        enableTLS: false
+        # Name of a pre-existing Secret holding the Redis password, and the
+        # key inside it holding the value. Leave passwordSecretName empty
+        # for no auth -- this chart's bundled Redis (deployment-redis.yaml)
+        # runs with no --requirepass, so that is this chart's own default
+        # too. Override both when pointing mode: queue at an external Redis
+        # / Memorystore that requires auth.
+        passwordSecretName: ""
+        passwordSecretKey: password
   # uid/gid 1000 is the `trustedoss` user the worker image creates and runs as
   # (apps/backend/Dockerfile.worker). fsGroup makes the workspace and Trivy
   # cache volumes group-writable for it. See backend.podSecurityContext for
