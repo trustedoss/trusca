@@ -49,7 +49,7 @@ from jose import JWTError, jwt
 from passlib.context import CryptContext
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy.orm import selectinload
+from sqlalchemy.orm import joinedload
 
 from core.audit import audit_context
 from core.config import (
@@ -281,7 +281,8 @@ def _bearer_token(request: Request) -> str | None:
 # Reusing a resolved principal (N5)
 #
 # Off unless a deployment sets a lifetime. What is cached is the answer to
-# "who is this and what may they do", which two queries rebuild on every
+# "who is this and what may they do", which one statement (A3,
+# concurrency-scaling-plan-2026-08-22.md §3.3) rebuilds on every
 # authenticated request; what makes caching it a decision rather than an
 # optimisation is that a stale answer keeps a demoted person at their old
 # grade. The lifetime is therefore the whole contract, and it is an upper
@@ -434,8 +435,17 @@ async def _load_current_user(
     # makes the security module safe to import from anywhere).
     from models import Membership, User
 
-    stmt = select(User).where(User.id == user_id).options(selectinload(User.memberships))
-    result = await session.execute(stmt)
+    # A3 (concurrency-scaling-plan-2026-08-22.md §3.3): one statement instead
+    # of two. ``joinedload`` pulls memberships through a LEFT OUTER JOIN
+    # rather than a second SELECT, which is safe here because there is only
+    # one collection being joined (no cross-product with a second collection)
+    # and a user's membership count is bounded by the number of teams in the
+    # organization: small, not the kind of fan-out joinedload warns against.
+    # A joined collection load requires deduplicating the parent rows before
+    # reading them off the result (SQLAlchemy 2.0 raises otherwise), hence
+    # ``.unique()``.
+    stmt = select(User).where(User.id == user_id).options(joinedload(User.memberships))
+    result = (await session.execute(stmt)).unique()
     user = result.scalar_one_or_none()
     if user is None:
         return None
