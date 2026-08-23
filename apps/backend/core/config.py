@@ -500,14 +500,20 @@ def api_read_rate_limit() -> str:
 def search_rate_limit() -> str:
     """slowapi limit string for the global search endpoint (per actor).
 
-    Global search (``GET /v1/search``) runs a leading-wildcard ``ILIKE`` over
-    ``components`` / ``vulnerabilities`` (non-SARGable → sequential scan + sort
-    per request; the ``LIMIT 20`` bounds output rows, not scan cost). The ⌘K
-    palette fires one debounced query per keystroke, so search gets its OWN,
-    tighter budget instead of sharing the CI-poll ``api_read_rate_limit`` bucket
-    — bounding the seq-scan amplifier a scripted client could otherwise drive
-    (security-review H-2, Low-1). Keyed per actor via ``_authenticated_user_key``.
-    Default 20/minute comfortably covers interactive typing while capping abuse.
+    Global search (``GET /v1/search``) matches a leading-wildcard ``ILIKE`` over
+    ``components`` / ``vulnerabilities``, served by the GIN trigram indexes from
+    migration ``0043_search_trigram_indexes`` (``pg_trgm`` + ``gin_trgm_ops`` on
+    ``components.name``, ``components.purl``, ``vulnerabilities.external_id``,
+    and ``vulnerabilities.summary``) rather than a sequential scan. Trigram
+    indexing only serves substrings of 3+ characters though, so the
+    2-character floor in ``services.search_service.MIN_QUERY_LEN`` still falls
+    back to a full scan on the shortest queries. The ⌘K palette fires one
+    debounced query per keystroke, so search gets its OWN, tighter budget
+    instead of sharing the CI-poll ``api_read_rate_limit`` bucket, bounding
+    the short-query scan-cost amplifier a scripted client could otherwise
+    drive (security-review H-2, Low-1). Keyed per actor via
+    ``_authenticated_user_key``. Default 20/minute comfortably covers
+    interactive typing while capping abuse.
     """
     return os.getenv("SEARCH_RATE_LIMIT", "20/minute")
 

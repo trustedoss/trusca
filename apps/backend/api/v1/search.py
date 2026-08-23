@@ -13,8 +13,9 @@ delegates every read + the team-isolation decision to
 through the single choke-point :func:`core.authz.team_scope_filter`. A member
 only ever sees hits in their own teams' projects; a super-admin sees all.
 
-Auth: role >= developer (any authenticated user). Anonymous → 401
-`application/problem+json` via the shared exception handlers.
+Auth: role >= viewer (any authenticated user, since viewer is the floor role
+in `core.security._ROLE_PRIORITY`). Anonymous → 401 `application/problem+json`
+via the shared exception handlers.
 
 Rate limit: per-actor (``_authenticated_user_key`` → ``user:<sub>``) using the
 dedicated ``search`` budget (``SEARCH_RATE_LIMIT``, default 20/minute — tighter
