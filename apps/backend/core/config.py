@@ -2523,6 +2523,25 @@ def audit_export_lag_seconds() -> int:
     return _int_env("AUDIT_EXPORT_LAG_SECONDS", 30, minimum=0, maximum=3600)
 
 
+def audit_log_retention_days() -> int:
+    """Age (days) past which an already-exported audit row is purge-ready.
+
+    W9 (concurrency-scaling-plan-2026-08-22.md §3.5). Ninety is the figure
+    ``models.auth.AuditLog``'s own docstring has quoted since Phase 5
+    ("Retention is 90 days"); this is the first code to read it.
+
+    This value does NOT drive an automated DELETE. ``audit_logs`` is
+    append-only at the database layer (migration 0012's BEFORE UPDATE/DELETE/
+    TRUNCATE triggers) and the admin guide documents the only sanctioned purge
+    as a manual, two-operator SQL session (a deliberate compliance control,
+    not a gap). ``tasks.audit_log_retention`` uses this figure only to report
+    how many rows are already exported (past the ``AUDIT_EXPORT_URL`` cursor)
+    AND older than this window, so an operator knows when that session is
+    due. See docs-site/docs/admin-guide/audit-log.md#retention.
+    """
+    return _int_env("AUDIT_LOG_RETENTION_DAYS", 90, minimum=0, maximum=3650)
+
+
 def metrics_enabled() -> bool:
     """Whether the deployment publishes an operational metrics endpoint.
 

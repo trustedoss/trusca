@@ -200,6 +200,10 @@ docker-compose -f docker-compose.yml logs backend \
 
 감사 로그는 **자동 정리되지 않습니다**. 컴플라이언스 가치 대비 저장소 비용이 저렴합니다(전형적 설치는 활성 사용자당 연 ~50 MB 증가). 테이블 크기를 줄여야 한다면 **archive then truncate**(운영자 확인 포함) 권장:
 
+:::tip 삭제해도 되는 시점을 알려면
+매일 도는 `trustedoss.audit_log_retention_report` beat가 이미 로그 수집기로 반출된([연속 반출](#continuous-export) 커서보다 앞선) 행 중 `AUDIT_LOG_RETENTION_DAYS`보다 오래된 것의 수를 셉니다. 삭제는 하지 않는, 읽기 전용 신호입니다. [데이터 보존 → 감사 로그 보존만 수동으로 남긴 이유](./data-retention.md#audit-log-retention-why-this-one-stays-manual)를 봅니다.
+:::
+
 <!-- docs-uat: id=audit-archive-truncate kind=shell ctx=host tier=nightly waiver=destructive-retention-archive-on-production-compose -->
 ```bash
 docker-compose -f docker-compose.yml exec postgres \
