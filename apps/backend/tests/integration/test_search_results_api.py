@@ -399,6 +399,23 @@ async def test_components_from_an_old_real_scan_drop_out_of_search(
     assert "openssl" in names
 
 
+async def test_components_with_no_current_scan_returns_empty_page(
+    client: AsyncClient,
+) -> None:
+    """A team with no succeeded scan anywhere resolves to an empty scan-id
+    set from ``latest_succeeded_scan_select``: the short-circuit branch
+    ``_components`` takes before ever building the main join.
+    """
+    token = _token()
+    _, user = await _seed_team_with_user(client)
+
+    resp = await _get(client, user, kind="components", q=token)
+    assert resp.status_code == 200, resp.text
+    body = resp.json()
+    assert body["total"] == 0
+    assert body["items_components"] == []
+
+
 # ---------------------------------------------------------------------------
 # Paging, facets, validation
 # ---------------------------------------------------------------------------
