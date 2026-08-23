@@ -78,6 +78,14 @@ AUTHENTICATED_READ_BUDGET = 7
 GATE_EVALUATION_BUDGET = 15
 STATUS_TRANSITION_BUDGET = 16
 
+# The measured count above (5, not the 7-statement budget with its margin) is
+# what A4's permission-cache documentation reasons about: the admin guide and
+# core.config.permission_cache_ttl_seconds() both state the cache's ceiling
+# as "1 of 5 statements, ~20%". This constant is that same measured count,
+# named so tests/unit/test_permission_cache_doc_contract.py can compute the
+# percentage from code instead of copying the digit.
+AUTHENTICATED_READ_MEASURED_STATEMENTS = 5
+
 # Dashboard (W5), measured the same way, on the fixtures each test below
 # builds. ``action-queue``'s is measured against five projects in one
 # licence-policy-enabled team, not one; see the module docstring for why that

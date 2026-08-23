@@ -183,6 +183,26 @@ Values above 300 seconds are clamped to 300. Reach for the database connection
 pool first (`DB_POOL_SIZE`, `DB_MAX_OVERFLOW`); this setting is worth turning
 on when you have measured that permission reads are the cost, not before.
 
+### When it is worth turning on {#permission-cache-criteria}
+
+Turn it on only when all three of these hold at the same time. If any one of
+them is not true, leave it at `0`.
+
+1. The authenticated-read p95 is over your target.
+2. The connection pool is already sized to this deployment (`DB_POOL_SIZE`,
+   `DB_MAX_OVERFLOW`); see the connection budget guidance in
+   [`.env.example`](https://github.com/trustedoss/trusca/blob/main/.env.example).
+3. Your organisation has accepted the revocation-delay ceiling above as
+   policy, not as an accident.
+
+And when all three hold, the ceiling on what it buys is modest. An
+authenticated read costs 5 SQL statements measured today, one query per
+request rebuilding the signed-in user's roles and team memberships (down
+from 6 before a prior optimisation removed a redundant statement from that
+same rebuild). This cache can remove at most that one remaining statement,
+roughly 20% of the request's SQL, in exchange for the revocation-delay
+window above. Weigh that fifth against the ceiling before you turn it on.
+
 :::caution Deactivation is the case to think about
 A demoted person can still read. A deactivated one is supposed to be gone, and
 with a lifetime set they are not gone everywhere until it expires. If you need

@@ -2703,11 +2703,15 @@ def queue_backlog_alert_cooldown_seconds() -> int:
 def permission_cache_ttl_seconds() -> int:
     """How long a resolved principal may be reused before it is read again.
 
-    Zero, and off, unless a deployment says otherwise. Every authenticated
-    request currently costs two queries to rebuild the same answer, which is
-    the shape worth caching; what makes it dangerous is that the answer is
-    somebody's permissions, and a stale one keeps a demoted person at their
-    old grade or a deactivated one signed in.
+    Zero, and off, unless a deployment says otherwise. Since A3
+    (concurrency-scaling-plan-2026-08-22.md §3.3) folded the user query and
+    the memberships query into one (``joinedload`` on
+    ``_load_current_user``), an authenticated read costs 5 statements
+    measured, of which principal resolution is 1. Caching that principal
+    removes at most that 1 statement, roughly 20% of the request's SQL,
+    which is the ceiling on what this setting can save. What makes it
+    dangerous is that the answer is somebody's permissions, and a stale one
+    keeps a demoted person at their old grade or a deactivated one signed in.
 
     So the number is the contract: whatever is written here is the longest a
     revocation can take to be felt, and the tests pin exactly that. An
@@ -2716,8 +2720,12 @@ def permission_cache_ttl_seconds() -> int:
 
     Off rather than a small positive default, because a deployment that has
     not thought about that trade has not agreed to it, and the cost this saves
-    is one an installation only feels at a scale it can measure. The
-    connection pool is the first thing to tune, and this is the second.
+    is one an installation only feels at a scale it can measure. Turn it on
+    only when three things hold together: the authenticated-read p95 is over
+    target, the connection pool (``DB_POOL_SIZE``, ``DB_MAX_OVERFLOW``) is
+    already sized to the deployment, and the organisation has accepted a
+    revocation-delay ceiling as policy. If any one of the three is not true,
+    this stays at 0.
     """
     raw = os.getenv("PERMISSION_CACHE_TTL_SECONDS", "").strip()
     if not raw:
