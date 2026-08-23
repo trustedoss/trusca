@@ -67,9 +67,11 @@ docker-compose -f docker-compose.yml logs --tail=50 beat \
 
 ## 정상 동작 확인
 
-<!-- docs-uat: id=data-retention-verify kind=manual tier=manual -->
+<!-- docs-uat: id=data-retention-verify-expired-token kind=manual tier=manual -->
 1. 만료된 refresh token을 하나 만듭니다. 로그인한 뒤 `psql`로 그 행의 `expires_at`을 과거로 바꿉니다(테스트 전용 단계이고, 이를 위한 API는 없습니다). 다음 `auth-token-retention-daily` 틱(또는 `celery -A tasks.celery_app call trustedoss.auth_token_retention` 수동 호출) 뒤에는 그 행이 사라지고, `SELECT count(*) FROM refresh_tokens WHERE id = '<id>'`는 `0`을 반환합니다.
+<!-- docs-uat: id=data-retention-verify-fresh-notification kind=manual tier=manual -->
 2. 알림을 하나 트리거한 뒤(어떤 스캔이든 완료되면 발생합니다) `/notifications`에 여전히 보이는지 확인합니다. 정리 작업은 `NOTIFICATION_RETENTION_DAYS`보다 오래된 행만 건드리므로 방금 만든 알림은 영향받지 않습니다.
+<!-- docs-uat: id=data-retention-verify-report-skipped kind=manual tier=manual -->
 3. `AUDIT_EXPORT_URL`을 설정하지 않은 상태에서 `celery -A tasks.celery_app call trustedoss.audit_log_retention_report`를 직접 실행하고, 로그 줄이 `status=skipped`와 `ready_to_purge=0`을 보이는지 확인합니다.
 
 ## 문제 해결

@@ -67,9 +67,11 @@ The line carries `ready_to_purge` and `retention_days`. When `ready_to_purge` is
 
 ## Verify it worked
 
-<!-- docs-uat: id=data-retention-verify kind=manual tier=manual -->
+<!-- docs-uat: id=data-retention-verify-expired-token kind=manual tier=manual -->
 1. Force an expired refresh token: log in, then update the row's `expires_at` to the past via `psql` (there is no API for this; it is a test-only step). After the next `auth-token-retention-daily` tick (or a manual `celery -A tasks.celery_app call trustedoss.auth_token_retention`), the row is gone; `SELECT count(*) FROM refresh_tokens WHERE id = '<id>'` returns `0`.
+<!-- docs-uat: id=data-retention-verify-fresh-notification kind=manual tier=manual -->
 2. Trigger a notification (any scan completion works), then confirm it still appears in `/notifications`. The sweep only reaches rows older than `NOTIFICATION_RETENTION_DAYS`, so a fresh one is unaffected.
+<!-- docs-uat: id=data-retention-verify-report-skipped kind=manual tier=manual -->
 3. With `AUDIT_EXPORT_URL` unset, run `celery -A tasks.celery_app call trustedoss.audit_log_retention_report` by hand and confirm the log line shows `status=skipped` and `ready_to_purge=0`.
 
 ## Troubleshooting
