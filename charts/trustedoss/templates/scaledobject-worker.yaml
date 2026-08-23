@@ -1,0 +1,85 @@
+{{- /*
+SPDX-License-Identifier: Apache-2.0
+Copyright 2026 TRUSCA contributors
+*/ -}}
+{{- if and .Values.worker.autoscaling.enabled (eq .Values.worker.autoscaling.mode "queue") -}}
+{{- $q := .Values.worker.autoscaling.queue -}}
+{{- $redisAddress := $q.redis.address -}}
+{{- if not $redisAddress -}}
+  {{- if .Values.redis.bundled -}}
+    {{- $redisAddress = printf "%s:%s" (include "trustedoss.redis.fullname" .) (.Values.redis.service.port | toString) -}}
+  {{- else -}}
+    {{- fail "worker.autoscaling.queue.redis.address is required when worker.autoscaling.mode=queue and redis.bundled=false (KEDA's redis scaler needs host:port, not a connection-string DSN) -- see charts/trustedoss/README.md 'Queue-depth autoscaling (KEDA)'." -}}
+  {{- end -}}
+{{- end -}}
+{{- if $q.redis.passwordSecretName }}
+# Referenced by the ScaledObject's trigger below via authenticationRef.
+# Only rendered when a password secret is configured -- the bundled Redis
+# (deployment-redis.yaml) runs with no --requirepass, so the common
+# evaluation path needs neither this nor an authenticationRef at all.
+apiVersion: keda.sh/v1alpha1
+kind: TriggerAuthentication
+metadata:
+  name: {{ include "trustedoss.fullname" . }}-worker-queue-redis
+  labels:
+    {{- include "trustedoss.labels" . | nindent 4 }}
+    app.kubernetes.io/component: worker
+spec:
+  secretTargetRef:
+    - parameter: password
+      name: {{ $q.redis.passwordSecretName }}
+      key: {{ $q.redis.passwordSecretKey }}
+---
+{{- end }}
+# S5 (concurrency-scaling-plan-2026-08-22.md §3.2/§4): scales the worker
+# Deployment on Celery broker queue depth instead of CPU utilization -- see
+# worker.autoscaling.mode's comment in values.yaml for why CPU utilization
+# does not track slot occupancy for this workload (cdxgen/Trivy pipelines are
+# network- and disk-wait heavy, not CPU-heavy).
+#
+# KEDA (https://keda.sh -- CNCF, Apache-2.0) creates and owns its own
+# HorizontalPodAutoscaler from this ScaledObject, so hpa-worker.yaml is
+# deliberately NOT rendered alongside this one (see that template's own
+# `mode == "cpu"` gate): two HPAs targeting the same scaleTargetRef would
+# fight each other over the replica count.
+#
+# REQUIRES KEDA's CRDs (this apiVersion, keda.sh/v1alpha1) already installed
+# in the cluster. This chart does not install KEDA, and `helm template` /
+# `helm lint` cannot detect whether it is present -- neither command talks to
+# a cluster or validates that a CRD exists. Installing this chart with
+# worker.autoscaling.mode=queue on a cluster without KEDA will render and
+# `helm lint` cleanly, then fail at `helm install`/`upgrade` apply time with
+# "no matches for kind ScaledObject in version keda.sh/v1alpha1" -- install
+# KEDA first. See charts/trustedoss/README.md "Queue-depth autoscaling
+# (KEDA)" for the install pointer and the full set of assumptions this
+# template makes about the trigger.
+apiVersion: keda.sh/v1alpha1
+kind: ScaledObject
+metadata:
+  name: {{ include "trustedoss.fullname" . }}-worker
+  labels:
+    {{- include "trustedoss.labels" . | nindent 4 }}
+    app.kubernetes.io/component: worker
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: {{ include "trustedoss.fullname" . }}-worker
+  minReplicaCount: {{ .Values.worker.autoscaling.minReplicas }}
+  maxReplicaCount: {{ .Values.worker.autoscaling.maxReplicas }}
+  pollingInterval: {{ $q.pollingInterval }}
+  cooldownPeriod: {{ $q.cooldownPeriod }}
+  triggers:
+    - type: redis
+      metadata:
+        address: {{ $redisAddress | quote }}
+        listName: {{ $q.queueName | quote }}
+        listLength: {{ $q.listLength | quote }}
+        activationListLength: {{ $q.activationListLength | quote }}
+        databaseIndex: {{ $q.redis.databaseIndex | toString | quote }}
+        enableTLS: {{ $q.redis.enableTLS | toString | quote }}
+      {{- if $q.redis.passwordSecretName }}
+      authenticationRef:
+        name: {{ include "trustedoss.fullname" . }}-worker-queue-redis
+      {{- end }}
+{{- end -}}
