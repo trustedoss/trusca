@@ -766,6 +766,63 @@ def scan_backend_mode() -> str:
     return os.getenv("TRUSTEDOSS_SCAN_BACKEND", "real").lower()
 
 
+def scan_load_test_delay_seconds() -> float:
+    """M1 (concurrency-scaling plan): fixed delay a scan task should sleep
+    before completing, for queue-depth load testing.
+
+    The existing ``mock`` backend (``scan_backend_mode() == "mock"``) writes
+    fixture output almost instantly, so a slot is freed before a second
+    trigger can even land, which is fine for functional tests but useless for
+    measuring queue wait, because there is never a queue. This accessor gives
+    the scan pipeline a number of seconds to hold a worker slot busy (instead
+    of running cdxgen/Trivy) so trigger-time vs. ``started_at`` and
+    ``started_at`` vs. ``completed_at`` gaps are actually measurable under N
+    concurrent triggers.
+
+    This function only returns the *value*; it does not itself pause anything.
+    The scan pipeline (``tasks/scan_source.py``, ``tasks/scan_container.py``)
+    is responsible for checking this at task start and, when positive,
+    sleeping for that many seconds and marking the scan succeeded instead of
+    invoking the real toolchain, mirroring the existing ``mock`` branch shape
+    without touching it. That wiring is scan-pipeline-specialist's file
+    surface, not this module's; this accessor exists so the toggle and its
+    safety gate live in one reviewable place.
+
+    Returns ``0.0`` (disabled, indistinguishable from "no delay requested")
+    unless ALL of the following hold, so a load-test knob left set in a real
+    deployment cannot silently fake every scan result:
+
+    - ``SCAN_LOAD_TEST_DELAY_ENABLED`` is truthy (default off; CLAUDE.md
+      principle: new toggles start disabled).
+    - ``app_env()`` is ``"dev"``. staging/prod are refused unconditionally,
+      even if an operator sets the enable flag, because there is no legitimate
+      production reason to fabricate scan results.
+    - ``SCAN_LOAD_TEST_DELAY_SECONDS`` parses to a finite value in
+      ``(0, 3600]`` (clamped otherwise, same convention as ``_float_env``).
+
+    Resolved at call time (CLAUDE.md core rule #11) so a load-test run does
+    not need a rebuild to dial the delay in.
+    """
+    raw_enabled = os.getenv("SCAN_LOAD_TEST_DELAY_ENABLED", "false").strip().lower()
+    if raw_enabled not in ("1", "true", "yes", "on"):
+        return 0.0
+    if app_env() != "dev":
+        # Local import keeps config import-time free of the logging stack.
+        import structlog
+
+        structlog.get_logger("config").warning(
+            "config.scan_load_test_delay_refused_outside_dev",
+            app_env=app_env(),
+        )
+        return 0.0
+    return _float_env(
+        "SCAN_LOAD_TEST_DELAY_SECONDS",
+        default=5.0,
+        minimum=0.1,
+        maximum=3600.0,
+    )
+
+
 def cdxgen_spec_version() -> str:
     """CycloneDX spec version cdxgen emits (``--spec-version``).
 
