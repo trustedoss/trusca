@@ -571,3 +571,95 @@ async def test_purl_scoped_exception_nonmatching_purl_does_not_waive(
 
     assert result.forbidden_license_count == 1
     assert result.gate == "fail"
+
+
+# ---------------------------------------------------------------------------
+# Batch loaders (W5): the multi-scan siblings the dashboard action queue
+# uses instead of calling the single-scan functions above once per project.
+# ---------------------------------------------------------------------------
+
+
+async def test_load_scan_license_rows_batch_on_an_empty_list_returns_empty(
+    db_session: AsyncSession,
+) -> None:
+    from services.policy_gate import load_scan_license_rows_batch
+
+    assert await load_scan_license_rows_batch(db_session, []) == {}
+
+
+async def test_load_flagged_purls_batch_on_an_empty_list_returns_empty(
+    db_session: AsyncSession,
+) -> None:
+    from services.policy_gate import load_flagged_purls_batch
+
+    assert await load_flagged_purls_batch(db_session, []) == {}
+
+
+async def test_load_scan_license_rows_batch_groups_by_scan_not_by_team(
+    db_session: AsyncSession,
+) -> None:
+    """Two scans in one batch call must not cross-contaminate each other's rows.
+
+    This is the property the query-per-project loop could never get wrong (it
+    only ever had one scan's rows in hand at a time) and the one a batched,
+    Python-side grouping step could: reading the wrong scan's rows for a given
+    ``scan_id`` key would silently misattribute a license to the wrong scan.
+    """
+    from services.policy_gate import load_scan_license_rows_batch
+
+    _org, team, _user, project_x = await _seed_project_with_team(db_session)
+    project_y = await make_project(db_session, team=team)
+    scan_x = await make_scan(db_session, project=project_x, status="succeeded")
+    scan_y = await make_scan(db_session, project=project_y, status="succeeded")
+
+    spdx_x = f"MIT-{unique_suffix()}"
+    spdx_y = f"ISC-{unique_suffix()}"
+    cv_x = await _component_with_license(
+        db_session, scan=scan_x, spdx_id=spdx_x, category="allowed"
+    )
+    cv_y = await _component_with_license(
+        db_session, scan=scan_y, spdx_id=spdx_y, category="allowed"
+    )
+
+    rows_by_scan = await load_scan_license_rows_batch(db_session, [scan_x.id, scan_y.id])
+
+    assert {r[0] for r in rows_by_scan[scan_x.id]} == {cv_x.id}
+    assert {r[1] for r in rows_by_scan[scan_x.id]} == {spdx_x}
+    assert {r[0] for r in rows_by_scan[scan_y.id]} == {cv_y.id}
+    assert {r[1] for r in rows_by_scan[scan_y.id]} == {spdx_y}
+
+
+async def test_load_flagged_purls_batch_groups_by_scan_not_by_team(
+    db_session: AsyncSession,
+) -> None:
+    """Same cross-contamination guard as the license-rows batch, for purls."""
+    from models import ScanComponent
+    from services.policy_gate import load_flagged_purls_batch
+
+    _org, team, _user, project_x = await _seed_project_with_team(db_session)
+    project_y = await make_project(db_session, team=team)
+    scan_x = await make_scan(db_session, project=project_x, status="succeeded")
+    scan_y = await make_scan(db_session, project=project_y, status="succeeded")
+
+    _component_x, cv_x = await _make_component_version(db_session)
+    cv_x.malicious_state = "flagged"
+    cv_x.malicious_source = "osv.dev@seed"
+    db_session.add(cv_x)
+    db_session.add(
+        ScanComponent(scan_id=scan_x.id, component_version_id=cv_x.id, direct=True)
+    )
+    await db_session.commit()
+
+    _component_y, cv_y = await _make_component_version(db_session)
+    cv_y.malicious_state = "flagged"
+    cv_y.malicious_source = "osv.dev@seed"
+    db_session.add(cv_y)
+    db_session.add(
+        ScanComponent(scan_id=scan_y.id, component_version_id=cv_y.id, direct=True)
+    )
+    await db_session.commit()
+
+    purls_by_scan = await load_flagged_purls_batch(db_session, [scan_x.id, scan_y.id])
+
+    assert purls_by_scan[scan_x.id] == [cv_x.purl_with_version]
+    assert purls_by_scan[scan_y.id] == [cv_y.purl_with_version]

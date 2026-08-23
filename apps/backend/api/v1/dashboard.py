@@ -52,12 +52,20 @@ router = APIRouter(prefix="/v1/dashboard", tags=["dashboard"])
     status_code=status.HTTP_200_OK,
     summary="Portfolio overview for the caller's accessible projects (auth required)",
 )
+@limiter.limit(api_read_rate_limit, key_func=_authenticated_user_key)
 async def get_dashboard_summary_endpoint(
+    request: Request,
     session: AsyncSession = Depends(get_db),
     actor: CurrentUser = Depends(get_current_user),
 ) -> DashboardSummary:
     """Aggregate counts (projects, scans, severities, licenses, approvals) plus
-    the 10 most recent scans, scoped to the caller's accessible projects."""
+    the 10 most recent scans, scoped to the caller's accessible projects.
+
+    Rate limited per actor on the same bucket and budget as the other three
+    dashboard routes (``/action-queue``, ``/trends``, ``/portfolio``): this
+    route used to be the one dashboard endpoint without a limiter, which made
+    it the cheapest way to repeatedly re-run the portfolio-wide aggregate.
+    """
     return await get_dashboard_summary(session, actor=actor)
 
 
