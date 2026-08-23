@@ -115,24 +115,11 @@ export class InventoryHarness {
   }
 
   // ───── empty state ─────────────────────────────────────────────────────
-
-  /**
-   * The way out of a fruitless search: this page only lists what each
-   * project's latest scan found, so a term that misses here may still be in
-   * the scan history. The link appears only when a term is active — with an
-   * empty box there is nothing to carry across.
-   */
-  searchHistoryLink(): Locator {
-    return this.page.getByTestId("inventory-empty-search-history");
-  }
-
-  /** Follow that link and land on the search page with the term intact. */
-  async followSearchHistory(): Promise<void> {
-    await this.searchHistoryLink().click();
-    await expect(this.page).toHaveURL(/\/search\?/, {
-      timeout: DEFAULT_TIMEOUT_MS,
-    });
-  }
+  //
+  // Concurrency-scaling plan Q2 (2026-08-22) removed the "Search every scan"
+  // link this page used to offer on a fruitless search: search narrowed to
+  // the same latest-scan-only scope this page already used, so the link
+  // would always land on another empty result. No harness verb replaces it.
 
   // ───── drawer ──────────────────────────────────────────────────────────
 

@@ -8,7 +8,7 @@ sidebar_position: 5
 
 # Search
 
-Press **⌘K** (macOS) / **Ctrl+K** (Windows, Linux) for a quick look. The same palette opens the full page: **Open full search** is the first row under **Pages**, and it carries whatever you have typed. They answer different questions on purpose: the palette shows a few of everything so you can jump somewhere, the page shows all of one thing so you can work through it.
+Press **⌘K** (macOS) / **Ctrl+K** (Windows, Linux) for a quick look. The same palette opens the full page: the first row under Pages, "Open full search," carries whatever you have typed. They answer different questions on purpose: the palette shows a few of everything so you can jump somewhere, the page shows all of one thing so you can work through it.
 
 Every group of results in the palette also ends with **See all results**, which lands you on the page with the same term applied and that group's tab already selected.
 
@@ -17,13 +17,13 @@ Every group of results in the palette also ends with **See all results**, which 
 | Tab | What it matches | Where a row leads |
 |---|---|---|
 | Projects | Name, slug, or clone URL. Archived projects appear, labelled. | The project's detail page. |
-| Components | Package name or purl, across a project's whole scan history. | That project's Components tab, filtered to the package. |
+| Components | Package name or purl, in each project's latest successful scan. | That project's Components tab, filtered to the package. |
 | Vulnerabilities | CVE id or summary, in each project's latest successful scan. | The finding's detail page. |
 | Licenses | SPDX id or license name, in each project's latest successful scan. | The project's Compliance tab. |
 
-Components search history while vulnerabilities and licenses read only the current scan. That difference is deliberate: *"have we ever shipped this package"* is a fair question, but a triage list should not resurface a CVE that a later scan already cleared, and a license finding from a superseded scan would misstate today's obligations.
+Projects is the only tab that is not scan-scoped at all: it matches the project directory directly. Components, Vulnerabilities, and Licenses all read each project's latest successful scan, not its whole history. That is deliberate: a triage list should not resurface a CVE that a later scan already cleared, and a license finding from a superseded scan would misstate today's obligations. The same reasoning now applies to a package that was removed a few releases ago: it will not turn up here, even though it once did. To confirm a package was ever present, or to see when it was removed, open the project and look at its scan history.
 
-Each tab says which of the two it is, on the line above the results — that line is also why the Components tab here can return more rows than the [component inventory](./inventory.md), which reads only the latest scan.
+Each tab says which of the two it is, on the line above the results. Components here reads the same latest-successful-scan scope as the [component inventory](./inventory.md), so the two normally agree; a difference between them comes from how the rows are shaped (one per match here, one per package organization-wide there), not from scan scope.
 
 You only ever see projects your team memberships reach.
 

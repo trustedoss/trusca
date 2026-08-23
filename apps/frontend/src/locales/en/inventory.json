@@ -63,11 +63,7 @@
   },
   "empty": {
     "title": "No packages match",
-    "subtitle": "Adjust the filters, or scan a project to populate the inventory.",
-    "wider": {
-      "hint": "This page lists only what each project's latest scan found. A package removed a few releases ago is still in the scan history.",
-      "action": "Search every scan"
-    }
+    "subtitle": "Adjust the filters, or scan a project to populate the inventory."
   },
   "errors": {
     "load_failed": "Could not load the inventory."

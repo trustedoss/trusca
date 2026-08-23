@@ -159,14 +159,14 @@ describe("SearchPage", () => {
     );
   });
 
-  // The scope line is the answer to "why does this tab show more rows than the
-  // /components inventory". The asymmetry is the backend's — components and
-  // projects search all of history, vulnerabilities and licences only the
-  // current scan — and it was documented nowhere the user could see.
+  // The scope line states which scan(s) a tab reads. Since the
+  // concurrency-scaling plan's Q2, only `projects` is not scan-scoped at all
+  // (it matches the `projects` table directly); components, vulnerabilities,
+  // and licences all read each project's current (latest succeeded) scan.
   // `as const` matters: without it the tuples widen to `string`, and
   // `emptyPage({ kind })` wants the literal union its wire type declares.
   it.each([
-    ["components", "all_scans"],
+    ["components", "current_scan"],
     ["projects", "all_scans"],
     ["vulnerabilities", "current_scan"],
     ["licenses", "current_scan"],

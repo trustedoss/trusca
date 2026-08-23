@@ -50,12 +50,15 @@ What this measures (concurrency-scaling plan §6's three questions)
      autovacuum has caught up, and nothing in the request path controls
      that timing today.
   2. Does the row count read from ``scan_components`` grow with scan
-     history rather than catalog size? Answered by comparing the CURRENT
-     (pre-Q2) all-scan-history query against an inline "Q2 preview" variant
-     that restricts the join to each project's latest succeeded scan only
-     (``services.scan_resolution.latest_succeeded_scan_select``: the same
-     helper ``_vulnerabilities``/``_licenses`` already use, so this is not a
-     hypothetical query shape, just one this endpoint does not use YET).
+     history rather than catalog size? Q2 (concurrency-scaling plan unit 22)
+     landed: ``search_results_service._components`` now restricts the join to
+     each project's latest succeeded scan only
+     (``services.scan_resolution.latest_succeeded_scan_select``, the same
+     helper ``_vulnerabilities``/``_licenses`` already used). Answered by
+     comparing that SHIPPED query against an inline "legacy" variant rebuilt
+     to the exact pre-Q2 shape (every scan a project has ever had), so the
+     baseline this file prints stays a live "how much did Q2 help" record
+     instead of going stale the moment the shipped query changed.
   3. Do sort / DISTINCT spill to disk? Recorded via ``Sort Method`` fields
      in the ``ANALYZE`` output; not hard-asserted either way (a spill here is
      an environment fact, ``work_mem``, not a code regression), but every
@@ -66,10 +69,10 @@ Every test prints a JSON summary (``print(json.dumps(..., indent=2))``) so
 running this file with ``pytest -s`` produces a paste-able baseline for the
 tracker. Assertions are deliberately narrower than "the ideal query plan":
 they catch outright breakage (the trigram index disappearing from the one
-case it should be nearly certain to win, the all-history variant reading
-strictly less than the latest-only one, which would mean the join is
-somehow WRONG) without pinning exact plan shapes that legitimately vary with
-``ANALYZE`` statistics and Postgres version.
+case it should be nearly certain to win, the shipped latest-only query
+reading MORE ``scan_components`` rows than the legacy all-history variant,
+which would mean the narrowing regressed) without pinning exact plan shapes
+that legitimately vary with ``ANALYZE`` statistics and Postgres version.
 """
 
 from __future__ import annotations
@@ -238,6 +241,10 @@ async def _explain_components_page(
     makes internally, i.e. it includes exactly the work
     ``services.search_results_service.search_results`` itself would do for
     this request, not the extra EXPLAIN re-execution.
+
+    ``index=2``, not 1: Q2 added a scan-id resolution query
+    (``latest_succeeded_scan_select``) as statement 0, pushing the COUNT to 1
+    and the page ``SELECT`` (the one this measures) to 2.
     """
     from services.search_results_service import search_results
 
@@ -248,50 +255,45 @@ async def _explain_components_page(
             session, actor=actor, kind="components", q=query, page=page, size=size
         )
 
-    result, plan_root, _sql = await explain_nth_statement(session, _call, index=1, analyze=True)
+    result, plan_root, _sql = await explain_nth_statement(session, _call, index=2, analyze=True)
     elapsed = time.perf_counter() - started
     return result, plan_root, elapsed
 
 
-async def _explain_latest_scan_only_variant(
+async def _explain_all_history_legacy_variant(
     session: AsyncSession, *, actor, query: str
 ) -> dict[str, Any]:
-    """The Q2-preview query: same predicate, joined through the LATEST
-    succeeded scan per project only, instead of every scan a project has
-    ever had.
+    """The pre-Q2 query: same predicate, joined through EVERY scan a project
+    has ever had instead of just its latest succeeded one.
 
     Not a call into application code: Q2 (concurrency-scaling plan unit 22)
-    has not landed, so there is no shipped function to call. Built inline
-    from the exact same pieces ``_vulnerabilities``/``_licenses`` in
-    ``search_results_service`` already use for this narrowing
-    (``core.authz.team_scope_filter`` + ``core.sql_safety.escape_like`` +
-    ``services.scan_resolution.latest_succeeded_scan_select``), so this is a
-    real, valid query shape and not a hypothetical one: just one this
-    endpoint does not run yet.
+    landed, so ``search_results_service._components`` no longer runs this
+    shape. Rebuilt inline to the exact join it used to run, the same pieces
+    the current query still shares (``core.authz.team_scope_filter`` +
+    ``core.sql_safety.escape_like``), just without the
+    ``services.scan_resolution.latest_succeeded_scan_select`` narrowing. That
+    keeps this a real, valid query shape (not a hypothetical one) so the
+    comparison below stays meaningful instead of going stale.
     """
     from sqlalchemy import or_
 
     from core.authz import team_scope_filter
     from core.sql_safety import escape_like
-    from models import Component, ComponentVersion, Project, ScanComponent
-    from services.scan_resolution import latest_succeeded_scan_select
+    from models import Component, ComponentVersion, Project, Scan, ScanComponent
 
     scope = team_scope_filter(actor)
     like = f"%{escape_like(query)}%"
 
-    current = latest_succeeded_scan_select(scope & Project.archived_at.is_(None))
-    scan_ids_result = await session.execute(current)
-    scan_ids = [row.scan_id for row in scan_ids_result.all()]
-
     async def _run() -> None:
-        if not scan_ids:
-            return
         stmt = (
             select(Component.id)
             .select_from(ScanComponent)
+            .join(Scan, Scan.id == ScanComponent.scan_id)
+            .join(Project, Project.id == Scan.project_id)
             .join(ComponentVersion, ComponentVersion.id == ScanComponent.component_version_id)
             .join(Component, Component.id == ComponentVersion.component_id)
-            .where(ScanComponent.scan_id.in_(scan_ids))
+            .where(scope)
+            .where(Project.archived_at.is_(None))
             .where(
                 or_(
                     Component.name.ilike(like, escape="\\"),
@@ -314,26 +316,26 @@ async def _explain_latest_scan_only_variant(
         ("uncommon-name", QUERY_UNCOMMON),
     ],
 )
-async def test_explain_baseline_current_vs_latest_scan_only(
+async def test_explain_baseline_latest_scan_only_vs_all_history_legacy(
     db_session: AsyncSession, label: str, query: str
 ) -> None:
     """Record + assert the concurrency-scaling plan §6 baseline for one query kind.
 
     Prints the full comparison so a run with ``pytest -s`` produces a
-    paste-able record for the tracker (concurrency-scaling-tracker.md #13).
+    paste-able record for the tracker (concurrency-scaling-tracker.md #13, #22).
 
     The assertion compares ``scan_components`` ROWS EXAMINED
     (:func:`total_actual_rows`), not total buffers. Buffers turned out to be
     the wrong metric here: at load-test scale the planner can independently
-    pick a trigram-driven plan for EITHER the current query or the
-    latest-only comparison variant, and that choice (not the row-count
-    property being measured) dominates the buffer count, occasionally making
-    the all-history query show FEWER buffers than the latest-only one even
-    though it does strictly more relational work. Row count on the
-    ``scan_components`` relation is not sensitive to which access path got
-    there; it is the same quantity the miniature test asserts exactly at
-    small scale (``test_scan_components_rows_scale_with_scan_history``), just
-    read from ``ANALYZE`` instead of controlled from the seed.
+    pick a trigram-driven plan for EITHER the shipped query or the
+    all-history legacy variant, and that choice (not the row-count property
+    being measured) dominates the buffer count, occasionally making the
+    legacy query show FEWER buffers than the shipped one even though it does
+    strictly more relational work. Row count on the ``scan_components``
+    relation is not sensitive to which access path got there; it is the same
+    quantity the miniature test asserts exactly at small scale
+    (``test_scan_components_rows_stay_flat_across_scan_history``), just read
+    from ``ANALYZE`` instead of controlled from the seed.
     """
     actor = await _actor(db_session)
 
@@ -346,20 +348,18 @@ async def test_explain_baseline_current_vs_latest_scan_only(
     current_indexes = index_names_in_plan(plan)
     spill_methods = sort_methods_in_plan(plan)
 
-    latest_only_plan_root = await _explain_latest_scan_only_variant(
+    legacy_plan_root = await _explain_all_history_legacy_variant(
         db_session, actor=actor, query=query
     )
-    latest_only_plan = latest_only_plan_root["Plan"]
-    latest_only_buffers = total_buffers(latest_only_plan)
-    latest_only_scan_component_rows = total_actual_rows(
-        latest_only_plan, relation="scan_components"
-    )
+    legacy_plan = legacy_plan_root["Plan"]
+    legacy_buffers = total_buffers(legacy_plan)
+    legacy_scan_component_rows = total_actual_rows(legacy_plan, relation="scan_components")
 
     summary = {
         "query_label": label,
         "query": query,
         "result_total": result.total,
-        "current_all_history": {
+        "current_latest_scan_only": {
             "buffers": current_buffers,
             "scan_components_rows_examined": current_scan_component_rows,
             "index_names": sorted(current_indexes),
@@ -368,25 +368,25 @@ async def test_explain_baseline_current_vs_latest_scan_only(
             "execution_time_ms": plan_root.get("Execution Time"),
             "wall_clock_seconds": round(elapsed, 4),
         },
-        "q2_preview_latest_scan_only": {
-            "buffers": latest_only_buffers,
-            "scan_components_rows_examined": latest_only_scan_component_rows,
+        "legacy_all_history_preview": {
+            "buffers": legacy_buffers,
+            "scan_components_rows_examined": legacy_scan_component_rows,
         },
     }
     print(json.dumps(summary, indent=2))  # noqa: T201 - intentional baseline record for the tracker
 
     assert result.total > 0, f"[{label}] query {query!r} matched nothing: seed data missing?"
-    # Pre-Q2 property (plan §6, §1.4): reading every scan a project has ever
-    # had can only examine AT LEAST as many scan_components rows as reading
-    # just the latest one. Strict equality would mean the two queries
-    # degenerated to the same join, which should not happen when a project
-    # has scan history beyond its latest scan (the default seed gives every
-    # project 20).
-    assert current_scan_component_rows >= latest_only_scan_component_rows, (
-        f"[{label}] all-history variant examined "
-        f"{current_scan_component_rows} scan_components rows, FEWER than the "
-        f"latest-scan-only variant's {latest_only_scan_component_rows}: "
-        "the pre-Q2 proportional-to-history property does not hold"
+    # Post-Q2 property (plan §6, §1.4, §3.4 Q2): reading only the latest
+    # succeeded scan can only examine AT MOST as many scan_components rows as
+    # reading every scan a project has ever had. Strict equality would mean
+    # the two queries degenerated to the same join, which should not happen
+    # when a project has scan history beyond its latest scan (the default
+    # seed gives every project 20).
+    assert current_scan_component_rows <= legacy_scan_component_rows, (
+        f"[{label}] shipped latest-scan-only query examined "
+        f"{current_scan_component_rows} scan_components rows, MORE than the "
+        f"all-history legacy variant's {legacy_scan_component_rows}: "
+        "the Q2 narrowing property does not hold"
     )
 
 

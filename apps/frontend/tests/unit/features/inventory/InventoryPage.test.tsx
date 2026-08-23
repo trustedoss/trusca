@@ -1,16 +1,15 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2026 TRUSCA contributors
 /**
- * InventoryPage — unit tests for the empty state's way out.
+ * InventoryPage: unit tests for the empty state.
  *
- * The inventory lists what each project's LATEST successful scan found. The
- * search page reaches back through every scan a project has run. When a term
- * finds nothing here it may still be in that history, and until now nothing on
- * screen said so — the two surfaces share tab names ("Components") and looked
- * like one was simply broken.
- *
- * The offer is conditional on purpose: with an empty search box there is no
- * term to carry across, so the generic "scan a project" copy stands.
+ * Concurrency-scaling plan Q2 (2026-08-22): the search page used to reach
+ * back through a project's whole scan history, so a term that missed here
+ * (latest-scan-only) could still be found there, and the empty state offered
+ * a "Search every scan" link to it. Q2 narrowed search to the current scan
+ * too, so the link would always land on another empty result and was
+ * removed. The empty state is now generic regardless of whether a search
+ * term is active.
  */
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { render, screen, waitFor } from "@testing-library/react";
@@ -63,43 +62,29 @@ afterEach(() => {
 });
 
 describe("InventoryPage empty state", () => {
-  it("offers the scan history when a term found nothing", async () => {
+  it("shows the generic empty state when a term finds nothing", async () => {
     renderPage("/components?inv_search=lodash");
 
     await waitFor(() => {
       expect(screen.getByTestId("inventory-empty")).toBeInTheDocument();
     });
 
-    const link = await screen.findByTestId("inventory-empty-search-history");
-    // The term rides along, and the components tab is the one that answers the
-    // same question the user just asked here.
-    expect(link).toHaveAttribute(
-      "href",
-      "/search?kind=components&q=lodash",
-    );
+    // No cross-surface offer: since Q2, the search page reads the same
+    // latest-scan-only scope this page does, so there is nothing else to try.
+    expect(
+      screen.queryByTestId("inventory-empty-search-history"),
+    ).not.toBeInTheDocument();
   });
 
-  it("stays generic when the search box is empty", async () => {
+  it("shows the same generic empty state when the search box is empty", async () => {
     renderPage("/components");
 
     await waitFor(() => {
       expect(screen.getByTestId("inventory-empty")).toBeInTheDocument();
     });
 
-    // Nothing to carry across — a tenant that has never scanned should be told
-    // to scan, not sent to search a history that does not exist.
     expect(
       screen.queryByTestId("inventory-empty-search-history"),
     ).not.toBeInTheDocument();
-  });
-
-  it("percent-encodes a term before putting it in the link", async () => {
-    renderPage("/components?inv_search=%40scope%2Fpkg");
-
-    const link = await screen.findByTestId("inventory-empty-search-history");
-    expect(link).toHaveAttribute(
-      "href",
-      "/search?kind=components&q=%40scope%2Fpkg",
-    );
   });
 });

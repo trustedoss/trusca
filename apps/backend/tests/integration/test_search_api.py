@@ -21,11 +21,12 @@ escaping, and the `kinds` filter are pinned here.
 
 from __future__ import annotations
 
+import json
 import os
 import subprocess
 import uuid
 from collections.abc import AsyncIterator
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
 import pytest
@@ -44,6 +45,11 @@ from tests._helpers import (
 
 BACKEND_ROOT = Path(__file__).resolve().parent.parent.parent
 PROBLEM_JSON = "application/problem+json"
+# Real captured CycloneDX fixtures the SBOM-ingest pipeline tests already use
+# (CLAUDE.md testing-guide rule 3: realistic-density scan history, not a
+# hand-built single-component blob), reused here to build TWO real scans of
+# one project for the Q2 "old scan drops out, latest scan stays" contract.
+_SBOM_FIXTURES = BACKEND_ROOT / "tests" / "fixtures" / "sbom_ingest"
 
 pytestmark = pytest.mark.integration
 
@@ -168,6 +174,57 @@ async def _seed_component(
 
         session.add(ScanComponent(scan_id=scan_id, component_version_id=cv.id, direct=True))
         await session.commit()
+
+
+async def _add_scan(client: AsyncClient, *, project_id: uuid.UUID) -> uuid.UUID:
+    """A second succeeded scan of an already-scanned project, strictly newer
+    than whatever scan it already has: the "current" half of an old-scan /
+    new-scan pair."""
+    factory = await _factory(client)
+    async with factory() as session:
+        from sqlalchemy import select
+
+        from models import Project
+
+        project = (
+            await session.execute(select(Project).where(Project.id == project_id))
+        ).scalar_one()
+        scan = await make_scan(session, project=project, status="succeeded")
+        scan.created_at = datetime.now(tz=UTC) + timedelta(minutes=10)
+        project.latest_scan_id = scan.id
+        await session.commit()
+        await session.refresh(scan)
+        return scan.id
+
+
+def _persist_sbom_fixture(*, scan_id: uuid.UUID, fixture_name: str) -> None:
+    """Persist a REAL captured CycloneDX SBOM fixture's components onto
+    ``scan_id`` through the shipped persist function, not a hand-built
+    minimal Component/ComponentVersion/ScanComponent row (CLAUDE.md
+    testing-guide rule 3: realistic density, from
+    ``tests/fixtures/sbom_ingest/``, is where defects like this one hide).
+
+    Synchronous (:func:`tasks.scan_source.persist_sbom_components` takes a
+    sync ``Session``), so this opens its own short-lived sync engine rather
+    than reusing the test's async session factory, the same split
+    ``tests/integration/scan/test_ingest_sbom_pipeline.py`` uses.
+    """
+    from sqlalchemy import create_engine
+    from sqlalchemy.orm import sessionmaker
+
+    from core.config import database_url_sync
+    from tasks.scan_source import persist_sbom_components
+
+    sbom = json.loads((_SBOM_FIXTURES / fixture_name).read_text())
+    engine = create_engine(database_url_sync(), pool_pre_ping=True, future=True)
+    factory = sessionmaker(bind=engine, expire_on_commit=False, future=True)
+    session = factory()
+    try:
+        persist_sbom_components(session, scan_uuid=scan_id, sbom=sbom)
+        session.commit()
+    finally:
+        session.close()
+        engine.dispose()
 
 
 async def _seed_vuln(
@@ -432,3 +489,58 @@ async def test_kinds_filter_vulnerabilities_only(client) -> None:
     body = resp.json()
     assert body["components"] == []
     assert len(body["vulnerabilities"]) == 1
+
+
+# ---------------------------------------------------------------------------
+# Concurrency-scaling plan Q2 (unit 22): components now read only each
+# project's CURRENT-STATE scan, not its whole history.
+# ---------------------------------------------------------------------------
+
+
+async def test_components_from_an_old_scan_drop_out_of_search(client) -> None:
+    """The Q2 contract change, pinned: a component that only ever existed in
+    a project's OLDER scan must no longer surface here once a newer scan has
+    succeeded, even though it is still real history (the scan detail /
+    history screens still show it).
+
+    Two REAL scans built from two disjoint captured CycloneDX fixtures
+    (realistic multi-ecosystem density, CLAUDE.md testing-guide rule 3): the
+    OLD scan carries ``realistic.cdx.json`` (lodash, minimist,
+    conditional-lib, jinja2); the NEW (latest) scan carries
+    ``centos7-rpm-no-os.cdx.json`` (openssl, glibc, curl), with no
+    overlapping purls so presence/absence is unambiguous.
+    """
+    _, team, user = await _seed_team_with_user(client)
+    project_id, old_scan = await _seed_scanned_project(client, team_id=team.id)
+    _persist_sbom_fixture(scan_id=old_scan, fixture_name="realistic.cdx.json")
+
+    new_scan = await _add_scan(client, project_id=project_id)
+    _persist_sbom_fixture(scan_id=new_scan, fixture_name="centos7-rpm-no-os.cdx.json")
+
+    # Old-scan-only component: gone.
+    resp_old = await client.get(
+        "/v1/search", headers=_bearer_for(user), params={"q": "lodash"}
+    )
+    assert resp_old.status_code == 200, resp_old.text
+    assert resp_old.json()["components"] == []
+
+    # Latest-scan component: found, same as any component search always was.
+    resp_new = await client.get(
+        "/v1/search", headers=_bearer_for(user), params={"q": "openssl"}
+    )
+    assert resp_new.status_code == 200, resp_new.text
+    names = {c["component_name"] for c in resp_new.json()["components"]}
+    assert "openssl" in names
+
+
+async def test_component_search_with_no_current_scan_returns_empty(client) -> None:
+    """A team with no succeeded scan anywhere resolves to an empty scan-id
+    set from ``latest_succeeded_scan_select``: the short-circuit branch
+    ``_search_components`` takes before ever building the main join.
+    """
+    token = _token()
+    _, _, user = await _seed_team_with_user(client)
+
+    resp = await client.get("/v1/search", headers=_bearer_for(user), params={"q": token})
+    assert resp.status_code == 200, resp.text
+    assert resp.json()["components"] == []

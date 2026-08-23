@@ -36,18 +36,26 @@ regression this file exists to catch: someone changes the WHERE clause shape
 (the column, the wildcard position, the ``ESCAPE`` clause) such that the
 GIN trigram index built by migration 0043 can no longer serve it at all.
 
-``test_scan_components_rows_scale_with_scan_history`` does NOT need the
-seqscan trick: it asserts an exact ``Actual Rows`` count from
-``EXPLAIN ANALYZE`` on a controlled dataset (1 scan vs. 5 scans of the SAME
-component), which is deterministic regardless of which scan strategy the
-planner picks. This is the miniature-scale form of the plan §6 question
-"does the row count read from ``scan_components`` grow with scan history":
-answered exactly instead of approximately, because at this scale exact is
-cheap. It is also the CURRENT (pre-Q2) behaviour and is EXPECTED to hold:
-Q2 (concurrency-scaling plan unit 22) is what will later narrow this to the
-latest scan only. If this test starts failing because growth stopped, that
-is Q2 landing, not a regression: update this test in the same PR that lands
-Q2, per the plan's §3.4 Q2 note.
+``test_component_result_count_stays_flat_across_scan_history`` does NOT need
+the seqscan trick: it asserts an exact search-result count on a controlled
+dataset (1 scan vs. 5 scans of the SAME component), which is deterministic
+regardless of which scan strategy the planner picks. This is the
+miniature-scale form of the plan §6 question "does the result grow with scan
+history": answered exactly instead of approximately, because at this scale
+exact is cheap.
+
+Q2 (concurrency-scaling plan unit 22) landed: the query now joins through
+``services.scan_resolution.latest_succeeded_scan_select`` instead of every
+scan a project has ever run, so growing a project's scan history no longer
+grows the result. Only the latest succeeded scan is ever examined. Before Q2
+this test asserted STRICT GROWTH (result count 1 -> 5) as the pre-Q2
+baseline; it now asserts the opposite (flat at 1), per the note this
+docstring carried until Q2 landed: "if this test starts failing because
+growth stopped, that is Q2 landing, not a regression." (An earlier revision
+of this update asserted an EXPLAIN-captured physical ``scan_components`` row
+count instead of the search result; that measurement proved fragile against
+the CI integration suite's large shared database, so it was replaced with
+the result-based assertion (see the test's own docstring).
 """
 
 from __future__ import annotations
@@ -81,7 +89,6 @@ from tests._search_explain import (
     explain_nth_statement,
     index_names_in_plan,
     node_types_in_plan,
-    total_actual_rows,
 )
 
 BACKEND_ROOT = Path(__file__).resolve().parent.parent.parent
@@ -241,6 +248,10 @@ async def test_dedup_step_present_in_plan(db_session: AsyncSession) -> None:
     ``.distinct()` call would still return "correct" rows here by accident,
     since one project has only one scan: this at least catches the plan
     shape disappearing).
+
+    ``index=2``, not 1: Q2 added a scan-id resolution query
+    (``latest_succeeded_scan_select``) as statement 0, pushing the COUNT to 1
+    and the page ``SELECT`` (the one this test wants) to 2.
     """
     org = await make_organization(db_session)
     team = await make_team(db_session, organization=org)
@@ -256,7 +267,7 @@ async def test_dedup_step_present_in_plan(db_session: AsyncSession) -> None:
     _result, plan_root, _sql = await explain_nth_statement(
         db_session,
         lambda: _call_components_search(db_session, actor=actor, q=QUERY_COMMON),
-        index=1,
+        index=2,
     )
     plan = plan_root["Plan"]
     types = node_types_in_plan(plan)
@@ -265,35 +276,49 @@ async def test_dedup_step_present_in_plan(db_session: AsyncSession) -> None:
     )
 
 
-async def test_scan_components_rows_scale_with_scan_history(db_session: AsyncSession) -> None:
-    """Pre-Q2 baseline (plan §6, §1.4): more scan history -> more rows read.
+async def test_component_result_count_stays_flat_across_scan_history(
+    db_session: AsyncSession,
+) -> None:
+    """Post-Q2 property (plan §6, §1.4, §3.4 Q2): more scan history, same result.
 
-    Same component, same project, first with ONE succeeded scan then with
-    FIVE. The current (pre-Q2) query joins through every scan a project has
-    ever had, not just its latest, so the ``scan_components`` rows Postgres
-    examines for the SAME logical component should grow strictly when scan
-    history grows.
+    Same project, first with ONE succeeded scan then with FIVE, each of the
+    four extra scans carrying its OWN distinct component named the same
+    marker (diamond-safe: the unique constraint is
+    ``(scan_id, component_version_id, dependency_path)``, and both
+    ``component_version_id`` and ``scan_id`` differ every time). The four
+    extra scans are backdated (``created_at`` in the past relative to the
+    first), so the FIRST scan stays each project's latest succeeded scan
+    throughout: the same setup this test used pre-Q2, but now exercising the
+    property Q2 introduced instead of the one it removed.
 
-    Asserts strict growth (``rows_at_five_scans > rows_at_one_scan``), not
-    exact counts (``== 1`` / ``== 5``). An earlier version of this test
-    asserted exact counts and passed cleanly against a freshly migrated
-    database, but failed intermittently against THIS repo's shared,
-    never-truncated integration database once enough unrelated test runs
-    had accumulated rows in ``scan_components``: past a certain size the
-    planner can pick a plan whose ``Actual Rows`` on the ``scan_components``
-    node reflects some multiple of a partial scan chunk rather than the
-    exact match count, even with a highly selective (UUID-suffixed) marker
-    name and even with ``enable_seqscan = off`` forced (both tried while
-    diagnosing this). That noise level is consistent between the two
-    measurements taken back-to-back in this one test run, so the STRICT
-    GROWTH the pre-Q2 property predicts survives it, while an exact count
-    does not. ``test_search_results_api.py``'s module docstring names the
-    "never truncated between tests" convention this accounts for.
+    The query now joins through
+    ``services.scan_resolution.latest_succeeded_scan_select`` instead of
+    every scan a project has ever run, so a search for this marker should
+    keep returning exactly ONE hit as backdated scan history accumulates:
+    growing the history no longer grows the result, because only the
+    current scan's row is ever in scope. Pre-Q2 this would have gone 1 -> 5
+    (a fresh, distinct marker-named component in every one of the five
+    scans, all reachable), which is the STRICT GROWTH this test asserted
+    before Q2 landed; the docstring at the time said "if this test starts
+    failing because growth stopped, that is Q2 landing, not a regression".
+    This is that update.
 
-    Q2 (concurrency-scaling plan unit 22) intentionally breaks this
-    assertion by narrowing the join to each project's latest succeeded scan
-    only: update this test in the same PR that lands Q2 (see module
-    docstring).
+    Asserts on the search RESULT (``SearchResultsPage.total``), not an
+    EXPLAIN-captured physical row count: an earlier version of this test
+    asserted ``total_actual_rows(..., relation="scan_components")`` before
+    and after, which passed against a freshly migrated database but failed
+    against the CI integration suite's shared, heavily-populated database
+    (1600+ preceding tests): the super-admin actor's unrestricted scope
+    feeds ``latest_succeeded_scan_select`` a large accumulated project set,
+    and at that scale Postgres can choose a plan for the marker's
+    highly-selective ILIKE where ``scan_components`` never appears as a
+    named EXPLAIN node even though the join still correctly touches it
+    (confirmed: the real service call logged ``total=1`` both times in that
+    CI run, i.e. the search itself was already correct; only the plan-node
+    introspection was fragile at that scale). The query RESULT is what the
+    plan's §4 Q2 regression contract actually names ("components in the
+    latest scan get the same result before and after narrowing"), and it is
+    not sensitive to which access path the planner happens to choose.
     """
     org = await make_organization(db_session)
     team = await make_team(db_session, organization=org)
@@ -308,18 +333,15 @@ async def test_scan_components_rows_scale_with_scan_history(db_session: AsyncSes
     marker = f"growth-marker-{unique_suffix()}"
     await _seed_component_version(db_session, scan_id=first_scan.id, name=marker)
 
-    _result, plan_root, _sql = await explain_nth_statement(
-        db_session,
-        lambda: _call_components_search(db_session, actor=actor, q=marker),
-        index=1,
-        analyze=True,
+    result_at_one_scan = await _call_components_search(db_session, actor=actor, q=marker)
+    assert result_at_one_scan.total == 1, (
+        f"expected exactly one match for a freshly-seeded marker, got "
+        f"{result_at_one_scan.total}"
     )
-    rows_at_one_scan = total_actual_rows(plan_root["Plan"], relation="scan_components")
 
-    # Four more succeeded scans of the SAME project, each carrying its own
-    # ScanComponent row for the SAME component_version (diamond-safe: the
-    # unique constraint is (scan_id, component_version_id, dependency_path),
-    # and scan_id differs every time).
+    # Four more succeeded scans of the SAME project, backdated so the FIRST
+    # scan remains "latest" throughout, each carrying its own distinct
+    # marker-named component on a scan Q2's join no longer reaches.
     latest_cv_id: uuid.UUID | None = None
     for i in range(4):
         scan = await make_scan(
@@ -328,20 +350,19 @@ async def test_scan_components_rows_scale_with_scan_history(db_session: AsyncSes
             status="succeeded",
             created_at=now - timedelta(minutes=(4 - i)),
         )
+        # `project.latest_scan_id` tracks the last *attempt*, not what the
+        # resolver reads (see `services.scan_resolution`'s module docstring),
+        # so updating it here to a chronologically OLDER (backdated) scan
+        # deliberately mismatches `created_at` order. A real backfill could
+        # do the same, and the resolver must still pick `first_scan`.
         project.latest_scan_id = scan.id
         await db_session.commit()
         latest_cv_id = await _seed_component_version(db_session, scan_id=scan.id, name=marker)
     assert latest_cv_id is not None
 
-    _result2, plan_root2, _sql2 = await explain_nth_statement(
-        db_session,
-        lambda: _call_components_search(db_session, actor=actor, q=marker),
-        index=1,
-        analyze=True,
-    )
-    rows_at_five_scans = total_actual_rows(plan_root2["Plan"], relation="scan_components")
-    assert rows_at_five_scans > rows_at_one_scan, (
-        f"expected more scan_components rows examined with 5 scans than with "
-        f"1 (got {rows_at_five_scans} vs {rows_at_one_scan}): the pre-Q2 "
-        "proportional-to-history property does not hold"
+    result_at_five_scans = await _call_components_search(db_session, actor=actor, q=marker)
+    assert result_at_five_scans.total == result_at_one_scan.total == 1, (
+        f"expected the SAME single match at 5 scans of backdated history as "
+        f"at 1 (got {result_at_five_scans.total} vs {result_at_one_scan.total}): "
+        "the post-Q2 flat-with-history property does not hold"
     )
