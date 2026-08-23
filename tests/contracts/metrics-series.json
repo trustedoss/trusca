@@ -58,6 +58,20 @@
       "type": "gauge",
       "labels": [],
       "help": "Workspace volume in use, 0 to 1. The scan guard refuses above its own threshold."
+    },
+    {
+      "name": "trusca_broker_queue_backlog",
+      "type": "gauge",
+      "labels": ["queue"],
+      "help": "Messages waiting in the Celery broker queue, not yet delivered to a worker.",
+      "toggle": "QUEUE_BACKLOG_METRICS_ENABLED"
+    },
+    {
+      "name": "trusca_scan_queue_wait_seconds",
+      "type": "gauge",
+      "labels": [],
+      "help": "Age in seconds of the oldest scan still queued; 0 when nothing is queued.",
+      "toggle": "QUEUE_BACKLOG_METRICS_ENABLED"
     }
   ]
 }

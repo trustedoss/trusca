@@ -27,11 +27,16 @@ from typing import Any
 
 import pytest
 from httpx import ASGITransport, AsyncClient
+from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
+
+from tests._helpers import make_organization, make_project, make_scan, make_team
 
 BACKEND_ROOT = Path(__file__).resolve().parent.parent.parent
 CONTRACT = (
     BACKEND_ROOT.parent.parent / "tests" / "contracts" / "metrics-series.json"
 )
+
+QUEUE_BACKLOG_SERIES = {"trusca_broker_queue_backlog", "trusca_scan_queue_wait_seconds"}
 
 pytestmark = pytest.mark.integration
 
@@ -69,6 +74,17 @@ async def client(app) -> AsyncIterator[AsyncClient]:
     transport = ASGITransport(app=app)
     async with AsyncClient(transport=transport, base_url="http://testserver") as ac:
         yield ac
+
+
+@pytest.fixture
+async def db_session() -> AsyncIterator[AsyncSession]:
+    from core.config import database_url
+
+    engine = create_async_engine(database_url(), pool_pre_ping=True, future=True)
+    factory = async_sessionmaker(engine, expire_on_commit=False, class_=AsyncSession)
+    async with factory() as session:
+        yield session
+    await engine.dispose()
 
 
 def _contract() -> list[dict[str, Any]]:
@@ -125,8 +141,15 @@ async def test_turning_it_on_publishes_the_series_the_contract_lists(
     client, monkeypatch
 ) -> None:
     """In the order the contract lists them, so a diff of two scrapes reads as
-    a change in values rather than a reshuffle."""
+    a change in values rather than a reshuffle.
+
+    M2 (concurrency plan 2026-08-22 §3.1) added two series behind their own,
+    separately-off toggle, so "everything the contract lists" now also needs
+    that toggle on (see test_the_queue_backlog_series_are_absent_when_
+    its_own_toggle_is_off below for the default state where it is not).
+    """
     monkeypatch.setenv("METRICS_ENABLED", "true")
+    monkeypatch.setenv("QUEUE_BACKLOG_METRICS_ENABLED", "true")
     monkeypatch.delenv("METRICS_TOKEN", raising=False)
 
     response = await client.get("/metrics")
@@ -230,6 +253,7 @@ async def test_the_document_is_served_in_the_format_a_scraper_expects(
     client, monkeypatch
 ) -> None:
     monkeypatch.setenv("METRICS_ENABLED", "true")
+    monkeypatch.setenv("QUEUE_BACKLOG_METRICS_ENABLED", "true")  # M2, see above
     monkeypatch.delenv("METRICS_TOKEN", raising=False)
 
     response = await client.get("/metrics")
@@ -254,3 +278,150 @@ async def test_reading_metrics_needs_no_account(client, monkeypatch) -> None:
     response = await client.get("/metrics")
 
     assert response.status_code == 200, response.text
+
+
+# ---------------------------------------------------------------------------
+# M2, the queue-backlog series (concurrency plan 2026-08-22 §3.1/§4)
+#
+# Its own switch, off by default and independent of METRICS_ENABLED: turning
+# the endpoint on does not by itself turn the broker round trip on too.
+# ---------------------------------------------------------------------------
+
+
+async def test_the_route_stays_gone_with_the_queue_backlog_toggle_on_alone(
+    client, monkeypatch
+) -> None:
+    """Neither toggle alone opens the route.
+
+    QUEUE_BACKLOG_METRICS_ENABLED cannot substitute for METRICS_ENABLED: the
+    default-off state described in the M2 contract holds even if an operator
+    sets only the newer of the two flags.
+    """
+    monkeypatch.delenv("METRICS_ENABLED", raising=False)
+    monkeypatch.setenv("QUEUE_BACKLOG_METRICS_ENABLED", "true")
+
+    response = await client.get("/metrics")
+
+    assert response.status_code == 404, response.text
+
+
+async def test_the_queue_backlog_series_are_absent_when_its_own_toggle_is_off(
+    client, monkeypatch
+) -> None:
+    """The endpoint's default behaviour is unchanged by M2 existing.
+
+    METRICS_ENABLED on and QUEUE_BACKLOG_METRICS_ENABLED at its default (off)
+    is exactly the pre-M2 six-series-shape, not six-plus-two-empty.
+    """
+    monkeypatch.setenv("METRICS_ENABLED", "true")
+    monkeypatch.delenv("QUEUE_BACKLOG_METRICS_ENABLED", raising=False)
+    monkeypatch.delenv("METRICS_TOKEN", raising=False)
+
+    response = await client.get("/metrics")
+
+    assert response.status_code == 200, response.text
+    emitted = set(_emitted_series(response.text))
+    assert emitted.isdisjoint(QUEUE_BACKLOG_SERIES)
+    assert emitted == {s["name"] for s in _contract()} - QUEUE_BACKLOG_SERIES
+
+
+async def test_the_queue_backlog_series_are_explicitly_off_too(client, monkeypatch) -> None:
+    """The same absence when the toggle is explicitly false, not only unset."""
+    monkeypatch.setenv("METRICS_ENABLED", "true")
+    monkeypatch.setenv("QUEUE_BACKLOG_METRICS_ENABLED", "false")
+    monkeypatch.delenv("METRICS_TOKEN", raising=False)
+
+    response = await client.get("/metrics")
+
+    assert response.status_code == 200, response.text
+    assert set(_emitted_series(response.text)).isdisjoint(QUEUE_BACKLOG_SERIES)
+
+
+async def test_turning_on_both_toggles_publishes_the_queue_backlog_series(
+    client, monkeypatch
+) -> None:
+    monkeypatch.setenv("METRICS_ENABLED", "true")
+    monkeypatch.setenv("QUEUE_BACKLOG_METRICS_ENABLED", "true")
+    monkeypatch.delenv("METRICS_TOKEN", raising=False)
+
+    response = await client.get("/metrics")
+
+    assert response.status_code == 200, response.text
+    emitted = set(_emitted_series(response.text))
+    assert emitted == {s["name"] for s in _contract()}
+    # In contract order, same guarantee the base six already carry.
+    assert _emitted_series(response.text) == [s["name"] for s in _contract()]
+
+
+async def test_the_broker_backlog_value_reflects_a_real_redis_list(
+    client, monkeypatch
+) -> None:
+    """Not a stub: pushing a raw message onto the broker's queue moves the
+    published number, without a worker ever consuming it (none is running in
+    this test)."""
+    import redis as redis_lib
+
+    from core.config import redis_url
+
+    monkeypatch.setenv("METRICS_ENABLED", "true")
+    monkeypatch.setenv("QUEUE_BACKLOG_METRICS_ENABLED", "true")
+    monkeypatch.delenv("METRICS_TOKEN", raising=False)
+
+    from tasks.celery_app import celery_app
+
+    queue = str(celery_app.conf.task_default_queue)
+    conn = redis_lib.Redis.from_url(os.getenv("REDIS_URL") or redis_url())
+    try:
+        before = int(conn.llen(queue))  # type: ignore[arg-type]
+        conn.lpush(queue, b'{"probe": "m2-broker-backlog-test"}')
+        try:
+            response = await client.get("/metrics")
+            assert response.status_code == 200, response.text
+            match = re.search(
+                r"^trusca_broker_queue_backlog\{queue=\"" + re.escape(queue) + r"\"\} (\S+)$",
+                response.text,
+                flags=re.MULTILINE,
+            )
+            assert match, response.text
+            assert float(match.group(1)) == before + 1
+        finally:
+            conn.lrem(queue, 1, b'{"probe": "m2-broker-backlog-test"}')
+    finally:
+        conn.close()
+
+
+async def test_the_scan_wait_value_reflects_the_oldest_queued_scan(
+    client, monkeypatch, db_session
+) -> None:
+    from datetime import UTC, datetime, timedelta
+
+    monkeypatch.setenv("METRICS_ENABLED", "true")
+    monkeypatch.setenv("QUEUE_BACKLOG_METRICS_ENABLED", "true")
+    monkeypatch.delenv("METRICS_TOKEN", raising=False)
+
+    org = await make_organization(db_session)
+    team = await make_team(db_session, organization=org)
+    project = await make_project(db_session, team=team)
+    old_enough = datetime.now(tz=UTC) - timedelta(seconds=120)
+    await make_scan(db_session, project=project, status="queued", created_at=old_enough)
+
+    response = await client.get("/metrics")
+
+    assert response.status_code == 200, response.text
+    match = re.search(
+        r"^trusca_scan_queue_wait_seconds (\S+)$", response.text, flags=re.MULTILINE
+    )
+    assert match, response.text
+    # >= 120s minus a few seconds of scheduling slack, never negative, never
+    # the zero this series would report with nothing queued.
+    assert float(match.group(1)) >= 110.0
+
+
+# The zero-baseline case ("nothing queued reports 0, not None") is pinned
+    # in tests/unit/test_metrics_service.py against a fake session instead of
+    # here: this integration database is shared with the rest of the suite,
+    # and other modules' fixtures default new scans to 'queued'
+    # (tests/_helpers.py make_scan), so "nothing is queued right now" is not
+    # a state this file can put the shared database into without either
+    # racing concurrently-running tests or mutating rows another test still
+    # expects to find in that status.
