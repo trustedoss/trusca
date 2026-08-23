@@ -462,6 +462,29 @@ backend:
 worker:
   replicaCount: 2
   concurrency: 2
+  # S4 (concurrency-scaling-plan-2026-08-22.md §3.2/§4): how long Kubernetes
+  # waits, after sending SIGTERM, before it SIGKILLs a terminating worker pod.
+  # The Kubernetes default (30s) is far shorter than a scan can legitimately
+  # run. tasks/celery_app.py sets task_acks_late=True + task_reject_on_worker_lost
+  # =True, so a SIGKILLed worker's in-flight scan is not lost outright -- it
+  # is redelivered and RESTARTS FROM ZERO on another worker. Scaling the
+  # worker pool down under a growing queue must never make the queue longer
+  # by discarding in-flight progress that way; that is the throughput paradox
+  # S4 exists to avoid (see the plan's §5 "오토스케일러의 축소가..." note),
+  # and it is why 18 (S5, queue-depth autoscaler) requires this unit first.
+  #
+  # This value must stay >= the scan pipeline's hard time limit
+  # (SCAN_HARD_TIME_LIMIT_SECONDS, core/config.py::scan_hard_time_limit_seconds(),
+  # default 3900s / 65 min) PLUS a safety margin for the worker's own
+  # SIGKILL-to-settled bookkeeping window after a hard-limit trip (mirrors
+  # BROKER_VISIBILITY_TIMEOUT_MARGIN_SECONDS in core/config.py, 300s). Helm
+  # cannot read that Python accessor at render time, so this default (4200s /
+  # 70 min = 3900s + 300s) is a STATIC mirror of it, not a derivation --
+  # raising SCAN_HARD_TIME_LIMIT_SECONDS in the backend's env must be paired
+  # with raising this value too, or a worker scaled down mid-scan can still
+  # be SIGKILLed before the hard-limit handler gets to mark the scan failed
+  # cleanly.
+  terminationGracePeriodSeconds: 4200
   resources:
     requests:
       cpu: "1"

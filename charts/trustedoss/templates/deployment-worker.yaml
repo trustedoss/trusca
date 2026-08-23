@@ -30,6 +30,12 @@ spec:
         {{- toYaml . | nindent 8 }}
         {{- end }}
     spec:
+      # S4 (concurrency-scaling-plan-2026-08-22.md §3.2/§4): give a
+      # terminating worker pod enough time to finish the scan it is already
+      # running instead of being SIGKILLed mid-scan (see worker.
+      # terminationGracePeriodSeconds in values.yaml for why this must stay
+      # above the scan pipeline's hard time limit).
+      terminationGracePeriodSeconds: {{ .Values.worker.terminationGracePeriodSeconds }}
       serviceAccountName: {{ include "trustedoss.serviceAccountName" (dict "root" $ "component" "worker") }}
       {{- with .Values.imagePullSecrets }}
       imagePullSecrets:
@@ -56,6 +62,31 @@ spec:
             - worker
             - --loglevel=info
             - --concurrency={{ .Values.worker.concurrency }}
+          # S4: Celery already treats a bare SIGTERM as a WARM shutdown (stop
+          # consuming new tasks, let the currently-executing task run to
+          # completion) as long as REMAP_SIGTERM is unset (it is, in this
+          # image -- see apps/backend/Dockerfile.worker) --
+          # celery/apps/worker.py maps SIGTERM -> 'Warm' by default. This
+          # preStop hook does not replace that; it triggers the SAME warm
+          # shutdown (celery.worker.control.shutdown() raises WorkerShutdown()
+          # in-process) through Celery's own control bus instead of relying
+          # solely on OS signal delivery, so the worker starts winding down
+          # the instant the pod is marked Terminating rather than only after
+          # kubelet finishes its own bookkeeping and gets around to sending
+          # SIGTERM. `-d celery@$HOSTNAME` scopes the broadcast to THIS pod
+          # only (same node-name pattern the livenessProbe below already
+          # uses) so scaling down one replica cannot shut down its siblings.
+          # `--timeout=5` bounds the control-bus round trip and `|| true`
+          # keeps a broker hiccup from blocking pod termination -- either way
+          # the subsequent SIGTERM (sent right after this hook returns) is
+          # the actual backstop.
+          lifecycle:
+            preStop:
+              exec:
+                command:
+                  - sh
+                  - -c
+                  - celery -A tasks.celery_app control shutdown -d celery@"$HOSTNAME" --timeout=5 || true
           envFrom:
             - configMapRef:
                 name: {{ include "trustedoss.fullname" . }}-env
