@@ -185,6 +185,29 @@ MIGRATION secret-backed env (pre-install/pre-upgrade Job ONLY). The Job runs
 DATABASE_URL pointed at the owner DSN, which alembic/env.py also honours).
 SECRET_KEY/REDIS_URL are not needed for migrations but are harmless to omit.
 */}}
+{{/*
+S3 (concurrency-scaling-plan-2026-08-22.md §3.2/§4/§5): comma-joined `-Q`
+argument for one worker kind. Call with a dict `{root: $, own: "scan"}` (or
+"default"). While worker.transitionSubscribeBothQueues is true (the
+default), EVERY worker kind subscribes to BOTH queues regardless of `own`,
+so a rolling upgrade drains whatever was left on the old single queue
+(worker.queues.default, unchanged from the pre-split task_default_queue) no
+matter which of the two new worker kinds picks it up first. Once an operator
+flips that value to false (see worker.transitionSubscribeBothQueues' own
+comment in values.yaml and README.md "Queue split transition" for the
+narrowing procedure), each kind narrows to only its own queue.
+*/}}
+{{- define "trustedoss.worker.subscribedQueues" -}}
+{{- $w := .root.Values.worker -}}
+{{- if $w.transitionSubscribeBothQueues -}}
+{{- printf "%s,%s" $w.queues.scan $w.queues.default -}}
+{{- else if eq .own "scan" -}}
+{{- $w.queues.scan -}}
+{{- else -}}
+{{- $w.queues.default -}}
+{{- end -}}
+{{- end -}}
+
 {{- define "trustedoss.migrationSecretEnv" -}}
 {{- $secretName := include "trustedoss.secretName" . -}}
 - name: DATABASE_URL_OWNER

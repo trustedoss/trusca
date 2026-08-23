@@ -144,13 +144,21 @@ if [[ $dt_env_set -eq 1 || -n "$dt_container" ]]; then
   else
     note "Polling \`celery inspect active\` for up to 10 minutes (set UPGRADE_SKIP_DRAIN=1 to skip)."
     drained=0
+    # S3 (concurrency-scaling-plan-2026-08-22.md §3.2/§4): the single
+    # `worker` service split into `worker-scan` and `worker-default` - poll
+    # BOTH, since an in-flight task can be active on either one.
     # Up to 60 polls x 10s = 10 minutes.
     for i in $(seq 1 60); do
-      # Empty/no-output OR `{}`-only output → no active tasks. ``|| true`` so a
-      # non-zero exit from inspect (broker unreachable, no workers) does not
-      # abort the upgrade — we re-check at the end of the loop.
-      active=$(docker-compose "${COMPOSE_ARGS[@]}" exec -T worker \
-        celery -A tasks.celery_app inspect active --timeout=5 2>/dev/null || true)
+      active=""
+      for svc in worker-scan worker-default; do
+        # Empty/no-output OR `{}`-only output → no active tasks. ``|| true``
+        # so a non-zero exit from inspect (broker unreachable, no workers,
+        # or a pre-split .env that no longer has this service) does not
+        # abort the upgrade - we re-check at the end of the loop.
+        svc_active=$(docker-compose "${COMPOSE_ARGS[@]}" exec -T "$svc" \
+          celery -A tasks.celery_app inspect active --timeout=5 2>/dev/null || true)
+        active="${active}${svc_active}"
+      done
       # `inspect active` prints "- empty -" when there are no tasks, OR an
       # `<worker>: OK` line followed by `- empty -`. Treat both empties OR an
       # absent worker (no output at all) as drained.
@@ -286,12 +294,17 @@ ok "images pulled"
 # redeliver indefinitely. We purge them BEFORE the new image comes up so
 # the new worker boots into a clean queue. Best-effort: ``|| true`` keeps
 # the upgrade going if the worker container is already stopped or celery
-# CLI is not present. NOTE: prod service is ``worker`` (docker-compose.yml);
-# dev is ``celery-worker`` (docker-compose.dev.yml).
+# CLI is not present. `celery purge` is a broker-side operation (it does not
+# matter which container issues it, only that it can reach the same Redis
+# broker), so any one worker service works - we use `worker-default`, the
+# service these non-scan legacy tasks would route to today. NOTE: prod
+# services are ``worker-scan`` / ``worker-default`` (S3,
+# docker-compose.yml); dev is still the single ``celery-worker``
+# (docker-compose.dev.yml, not split by S3).
 title "Draining removed DT tasks from the broker"
 note "Purging trustedoss.dt_{resync,health,orphan_cleaner,orphan_cleanup}"
 note "(in-flight DT messages would NACK forever against the new worker)."
-docker-compose "${COMPOSE_ARGS[@]}" exec -T worker \
+docker-compose "${COMPOSE_ARGS[@]}" exec -T worker-default \
   celery -A tasks.celery_app purge -f \
     --task-names=trustedoss.dt_resync,trustedoss.dt_health,trustedoss.dt_orphan_cleaner,trustedoss.dt_orphan_cleanup \
     >/dev/null 2>&1 || true
@@ -302,11 +315,15 @@ ok "broker drain complete (best-effort)"
 # ---------------------------------------------------------------------------
 # Same clamp install.sh applies at 2c, repeated here because an .env can reach
 # this point without it: installs that predate that step, hand-written files,
-# or a host that was resized down. docker-compose.yml caps the worker at
-# `${WORKER_CPU_LIMIT:-4.0}`, and Compose V2 treats a cpus limit above the
-# host's online CPU count as a HARD error at `up` ("range of CPUs is from 0.01
-# to N") — so the stock 4.0 aborts the recreate below on a 2-vCPU box, midway
-# through, with services already stopped.
+# or a host that was resized down. docker-compose.yml caps worker-scan at
+# `${WORKER_CPU_LIMIT:-4.0}` (S3: this env var kept its pre-split name and
+# now applies specifically to worker-scan, the heavier of the two split
+# services; worker-default's own `WORKER_DEFAULT_CPU_LIMIT` defaults to a
+# small enough value, 1.0, that it does not need this clamp), and Compose V2
+# treats a cpus limit above the host's online CPU count as a HARD error at
+# `up` ("range of CPUs is from 0.01 to N") - so the stock 4.0 aborts the
+# recreate below on a 2-vCPU box, midway through, with services already
+# stopped.
 title "Worker CPU limit"
 host_cpus=$(getconf _NPROCESSORS_ONLN 2>/dev/null || nproc 2>/dev/null || echo 4)
 case "$host_cpus" in ''|*[!0-9]*) host_cpus=4 ;; esac

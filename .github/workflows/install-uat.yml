@@ -207,9 +207,9 @@ jobs:
           # output and obvious from the call site.
           bash scripts/restore.sh --confirm "$BACKUP_DIR"
 
-      # Re-poll /health post-restore — restore.sh stops backend / frontend
-      # / worker / beat, restores the dump, and brings them back. We want
-      # to make sure the post-restore stack is reachable.
+      # Re-poll /health post-restore - restore.sh stops backend / frontend /
+      # worker-scan / worker-default / beat, restores the dump, and brings
+      # them back. We want to make sure the post-restore stack is reachable.
       - name: Verify backend healthy post-restore
         run: |
           set -euo pipefail
@@ -297,8 +297,11 @@ jobs:
           docker-compose -f docker-compose.yml config | grep -E "image: ghcr.io/trustedoss/trusca-(backend|backend-worker|frontend):"
           # Pull only the three first-party published images (postgres/redis/
           # traefik are upstream and always available). --include-deps off via
-          # explicit service list.
-          docker-compose -f docker-compose.yml pull backend worker frontend
+          # explicit service list. S3 split the single `worker` service into
+          # `worker-scan` + `worker-default` (both use the SAME
+          # trusca-backend-worker image, so this is still three distinct
+          # first-party IMAGES, just four SERVICES).
+          docker-compose -f docker-compose.yml pull backend worker-scan worker-default frontend
           echo "all three first-party images pulled for amd64"
 
   # ===========================================================================
@@ -324,7 +327,7 @@ jobs:
   # We do NOT drive scripts/install.sh here: its L1 REUSE path currently (a)
   # regenerates the owner password without syncing POSTGRES_PASSWORD (owner-auth
   # mismatch on a fresh volume) and (b) does a single `up -d` that DEADLOCKS on
-  # `worker`'s `depends_on backend: service_healthy` while backend is not-yet-ready
+  # `worker-scan`/`worker-default`'s `depends_on backend: service_healthy` while backend is not-yet-ready
   # under AUTO_MIGRATE=false. Both are tracked for a follow-up install.sh fix; once
   # they land this job should switch to invoking install.sh directly. The staged
   # sequence below (backend+deps -> owner migrate -> rest) is exactly what a fixed
@@ -549,22 +552,26 @@ jobs:
             || { echo "::error::app role was NOT denied DDL — L1 boundary broken"; exit 1; }
 
       # STAGE 3 — now that backend can go healthy, bring up the runtime fleet.
-      # worker/beat connect to the DB as the app role too (DML-only).
-      - name: Stage 3 — boot worker + beat + frontend
+      # worker-scan/worker-default/beat connect to the DB as the app role too
+      # (DML-only). S3 split the single `worker` service into two - wait on
+      # BOTH.
+      - name: Stage 3 - boot worker-scan + worker-default + beat + frontend
         run: |
           set -euo pipefail
-          docker-compose -f docker-compose.yml pull worker beat frontend
-          docker-compose -f docker-compose.yml up -d postgres redis backend worker beat frontend
-          echo "waiting for worker healthy..."
+          docker-compose -f docker-compose.yml pull worker-scan worker-default beat frontend
+          docker-compose -f docker-compose.yml up -d postgres redis backend worker-scan worker-default beat frontend
+          echo "waiting for worker-scan and worker-default healthy..."
           for _ in $(seq 1 30); do
-            if docker-compose -f docker-compose.yml ps worker | grep -q healthy; then
-              echo "worker healthy"; docker-compose -f docker-compose.yml ps; exit 0
+            scan_healthy=$(docker-compose -f docker-compose.yml ps worker-scan | grep -c healthy || true)
+            default_healthy=$(docker-compose -f docker-compose.yml ps worker-default | grep -c healthy || true)
+            if [ "$scan_healthy" -ge 1 ] && [ "$default_healthy" -ge 1 ]; then
+              echo "worker-scan and worker-default healthy"; docker-compose -f docker-compose.yml ps; exit 0
             fi
             sleep 4
           done
-          echo "::error::worker never became healthy on the app-role runtime"
+          echo "::error::worker-scan/worker-default never became healthy on the app-role runtime"
           docker-compose -f docker-compose.yml ps
-          docker-compose -f docker-compose.yml logs --tail=120 worker
+          docker-compose -f docker-compose.yml logs --tail=120 worker-scan worker-default
           exit 1
 
       # Seed the first super_admin via the RUNTIME (app role, DML INSERT) — the

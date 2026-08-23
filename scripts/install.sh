@@ -308,12 +308,16 @@ ok "secrets synced (idempotent) — strong owner password, DSN pinned to POSTGRE
 # ---------------------------------------------------------------------------
 # 2c. Worker CPU limit — clamp to the host's online CPU count (small-box safety)
 # ---------------------------------------------------------------------------
-# docker-compose.yml caps the Celery worker at `${WORKER_CPU_LIMIT:-4.0}` CPUs.
-# Under Compose V2, a `deploy.resources.limits.cpus` GREATER than the host's
-# online CPU count is a HARD error at `up` ("range of CPUs is from 0.01 to N"),
-# so the stock 4.0 cap breaks `docker-compose up -d` on a 2-vCPU box (e.g. the
-# CAX11 / CX23 demo default the runbook uses). Write a host-appropriate cap so a
-# fresh install just works; hosts with >= 4 CPUs keep the full 4.0.
+# docker-compose.yml caps the Celery scan worker (worker-scan - S3 split it
+# out of the single pre-split `worker` service, keeping this env var's name)
+# at `${WORKER_CPU_LIMIT:-4.0}` CPUs. Under Compose V2, a
+# `deploy.resources.limits.cpus` GREATER than the host's online CPU count is
+# a HARD error at `up` ("range of CPUs is from 0.01 to N"), so the stock 4.0
+# cap breaks `docker-compose up -d` on a 2-vCPU box (e.g. the CAX11 / CX23
+# demo default the runbook uses). Write a host-appropriate cap so a fresh
+# install just works; hosts with >= 4 CPUs keep the full 4.0.
+# worker-default's own WORKER_DEFAULT_CPU_LIMIT defaults to 1.0, small enough
+# that it does not need this clamp.
 title "Worker CPU limit"
 host_cpus=$(getconf _NPROCESSORS_ONLN 2>/dev/null || nproc 2>/dev/null || echo 4)
 case "$host_cpus" in ''|*[!0-9]*) host_cpus=4 ;; esac
@@ -525,7 +529,7 @@ done
 # Stage 3 — schema is at HEAD and backend is ready, so it can now go healthy.
 # Bring up the whole stack; worker / beat / frontend (+ traefik) start once
 # their `depends_on backend: service_healthy` gate is satisfied.
-title "Starting the runtime fleet (worker, beat, frontend)"
+title "Starting the runtime fleet (worker-scan, worker-default, beat, frontend)"
 # shellcheck disable=SC2086
 $DC -f docker-compose.yml up -d
 ok "all containers started"

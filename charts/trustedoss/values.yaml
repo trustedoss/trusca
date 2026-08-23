@@ -452,149 +452,238 @@ backend:
       whenUnsatisfiable: ScheduleAnyway
 
 # ===========================================================================
-# Celery worker workload.
+# Celery workers - split into two dedicated workloads (S3,
+# concurrency-scaling-plan-2026-08-22.md §3.2/§4/§5, "S3에 대한 판단" /
+# "큐 분리는 롤링 업그레이드 중에...").
 #
-# Horizontal scaling (B2): prefer raising `replicaCount` (more pods) over
-# `concurrency` (more prefork slots per pod) — each slot can fork a full
-# cdxgen/scancode/Trivy pipeline (~1.5-2 GB transient).
-# Postgres draw = replicaCount x (dbPool.syncSize + syncMaxOverflow).
+# worker.scan runs the scan pipeline (scan_source, scan_container,
+# ingest_sbom, scan_reachability) - the only tasks that can occupy a slot for
+# up to the scan hard time limit (default 3900s). worker.default runs
+# everything else (notifications, backups, audit export, ticket webhooks,
+# catalog-refresh beats, retention sweeps, the scan-schedule poll) - short,
+# frequent tasks that must never queue behind an hour-long scan. Before this
+# split both ran on one queue/worker pair (`worker.replicaCount` /
+# `worker.concurrency`, task_default_queue="trustedoss.default"); this is why
+# a rolling upgrade needs the transition handling below.
+#
+# worker.queues names the two Celery queues. `default` is deliberately the
+# SAME string this chart used as its single queue before the split
+# (tasks/celery_app.py's task_default_queue) - a message already sitting
+# there when a rolling upgrade lands this chart is a worker.queues.default
+# message either way, so any worker still subscribed to it drains it, no
+# rename step. Cross-checked against tests/contracts/queue-names.json, the
+# vocabulary this value and the backend's task_routes both derive from (see
+# that file's $comment for the full cross-check).
+#
+# worker.transitionSubscribeBothQueues (default true): for one release after
+# the split ships, BOTH worker kinds subscribe to BOTH queues (`-Q
+# <scan>,<default>`, not just their own queue). The rolling upgrade takes the
+# OLD single-queue worker out of rotation while the two NEW workers come up;
+# anything the old worker had not yet picked up is sitting in
+# worker.queues.default (the unchanged name), and that queue could still
+# hold scan-pipeline messages dispatched before the upgrade. Narrow this to
+# `false` only once an operator has confirmed the old queue has drained -
+# see charts/trustedoss/README.md "Queue split transition" for the exact
+# procedure and what to check first. Narrowing is a values change only, no
+# template edit.
+#
+# Horizontal scaling (B2, still true post-split): prefer raising a worker
+# kind's `replicaCount` (more pods) over its `concurrency` (more prefork
+# slots per pod) - each SCAN slot can fork a full cdxgen/scancode/Trivy
+# pipeline (~1.5-2 GB transient); default-queue tasks are much lighter.
+# Postgres draw = (scan.replicaCount + default.replicaCount) x
+# (dbPool.syncSize + syncMaxOverflow) - NOTES.txt's connection budget sums
+# both worker kinds into the one CONN_BUDGET_WORKER_REPLICAS hint W2 already
+# reads, so the formula there did not need to change shape, only its input.
 # ===========================================================================
 worker:
-  replicaCount: 2
-  concurrency: 2
-  # S4 (concurrency-scaling-plan-2026-08-22.md §3.2/§4): how long Kubernetes
-  # waits, after sending SIGTERM, before it SIGKILLs a terminating worker pod.
-  # The Kubernetes default (30s) is far shorter than a scan can legitimately
-  # run. tasks/celery_app.py sets task_acks_late=True + task_reject_on_worker_lost
-  # =True, so a SIGKILLed worker's in-flight scan is not lost outright -- it
-  # is redelivered and RESTARTS FROM ZERO on another worker. Scaling the
-  # worker pool down under a growing queue must never make the queue longer
-  # by discarding in-flight progress that way; that is the throughput paradox
-  # S4 exists to avoid (see the plan's §5 "오토스케일러의 축소가..." note),
-  # and it is why 18 (S5, queue-depth autoscaler) requires this unit first.
-  #
-  # This value must stay >= the scan pipeline's hard time limit
-  # (SCAN_HARD_TIME_LIMIT_SECONDS, core/config.py::scan_hard_time_limit_seconds(),
-  # default 3900s / 65 min) PLUS a safety margin for the worker's own
-  # SIGKILL-to-settled bookkeeping window after a hard-limit trip (mirrors
-  # BROKER_VISIBILITY_TIMEOUT_MARGIN_SECONDS in core/config.py, 300s). Helm
-  # cannot read that Python accessor at render time, so this default (4200s /
-  # 70 min = 3900s + 300s) is a STATIC mirror of it, not a derivation --
-  # raising SCAN_HARD_TIME_LIMIT_SECONDS in the backend's env must be paired
-  # with raising this value too, or a worker scaled down mid-scan can still
-  # be SIGKILLed before the hard-limit handler gets to mark the scan failed
-  # cleanly.
-  terminationGracePeriodSeconds: 4200
-  resources:
-    requests:
-      cpu: "1"
-      memory: 2Gi
-    limits:
-      cpu: "4"
-      memory: 6Gi
-  # Optional autoscaler - OFF by default (chart convention).
-  autoscaling:
-    enabled: false
-    # S5 (concurrency-scaling-plan-2026-08-22.md §3.2/§4): "cpu" is this
-    # chart's original, only-ever-existed behavior -- a HorizontalPodAutoscaler
-    # (hpa-worker.yaml) scaling on CPU utilization. "queue" replaces it with a
-    # KEDA ScaledObject (scaledobject-worker.yaml) that scales on the Celery
-    # broker's queue length instead. CPU utilization does not track slot
-    # occupancy for this workload: cdxgen/Trivy pipelines are network- and
-    # disk-wait heavy, not CPU-heavy (plan §1.1, "cdxgen과 Trivy는 네트워크와
-    # 디스크 대기가 긴 작업이라 CPU 사용률이 슬롯 점유를 대표하지 않는다"), so a
-    # CPU-only autoscaler can read as idle while the queue backs up.
-    #
-    # "queue" REQUIRES KEDA (https://keda.sh -- CNCF, Apache-2.0) and its
-    # CRDs (ScaledObject, TriggerAuthentication under keda.sh/v1alpha1)
-    # already installed in the cluster. This chart does NOT install KEDA and
-    # cannot check whether it is present -- `helm template`/`helm lint` never
-    # validate that a CRD exists (no cluster access), so `mode: queue` on a
-    # cluster without KEDA will pass `helm template` cleanly but fail at
-    # `helm install`/`upgrade` apply time with "no matches for kind
-    # ScaledObject in version keda.sh/v1alpha1". Install KEDA FIRST. See
-    # charts/trustedoss/README.md "Queue-depth autoscaling (KEDA)".
-    #
-    # Leaving this at "cpu" (the default) renders byte-for-byte the same
-    # HPA this chart has always rendered when autoscaling.enabled=true --
-    # scaledobject-worker.yaml only renders when mode is exactly "queue", and
-    # hpa-worker.yaml only renders when mode is exactly "cpu", so the two are
-    # mutually exclusive by construction (two autoscalers targeting the same
-    # scaleTargetRef would fight each other over the replica count -- KEDA
-    # creates its own HPA under the hood from the ScaledObject, so pairing it
-    # with hpa-worker.yaml would mean TWO HPAs on one Deployment).
-    mode: cpu  # cpu | queue
-    minReplicas: 2
-    maxReplicas: 8
-    targetCPUUtilizationPercentage: 75
-    # Read only when mode: queue.
-    queue:
-      # The Celery broker list this reads with `LLEN` (same key M2's
-      # `trusca_broker_queue_backlog` metric reads, services/metrics_service.py
-      # `_broker_queue_backlog()` -- this does NOT require that metric or its
-      # QUEUE_BACKLOG_METRICS_ENABLED flag to be on; KEDA's native Redis
-      # scaler reads the broker directly, no dependency on the app's
-      # /metrics endpoint). Must match tasks.celery_app's task_default_queue
-      # ("trustedoss.default") unless 19 (S3, queue split) has landed and
-      # split scan traffic onto its own queue -- if so, point this at that
-      # queue name instead, since the thing worth scaling worker replicas on
-      # is the SCAN queue's depth, not the shared one.
-      queueName: "trustedoss.default"
-      # KEDA's `listLength` metadata -- target average queue length per
-      # replica. KEDA scales replicas toward ceil(currentLength / listLength).
-      # Same role as targetCPUUtilizationPercentage above, but for backlog
-      # instead of CPU. Keep this in the single digits: this workload's slots
-      # are expensive (each can fork a full cdxgen/scancode/Trivy pipeline,
-      # ~1.5-2 GB transient -- see worker.resources above and B2's note at
-      # the top of this block), unlike a typical KEDA target sized for a
-      # cheap HTTP handler.
-      listLength: "5"
-      # Below this list length KEDA will scale to 0 replicas -- but only if
-      # minReplicas above is ALSO 0 (a ScaledObject never scales below its
-      # own minReplicaCount). At this chart's default minReplicas: 2 this
-      # has no effect; documented for operators who lower minReplicas to 0
-      # for a scale-to-zero worker pool.
-      activationListLength: "0"
-      # Seconds between KEDA's polls of the Redis list length.
-      pollingInterval: 15
-      # Seconds KEDA waits, after the queue metric drops below the scaling
-      # threshold, before it actually removes a replica. S4
-      # (worker.terminationGracePeriodSeconds above) already makes a
-      # scale-down SAFE for a replica running an in-flight scan -- Kubernetes
-      # gives that pod 4200s to finish before SIGKILL. This is a separate,
-      # complementary knob that makes KEDA LESS EAGER to scale down in the
-      # first place, so a queue that briefly drains and refills does not
-      # thrash replicas up and down. Defaults to the same 4200s so the two
-      # numbers do not drift apart without a reason to.
-      cooldownPeriod: 4200
-      # Connection details for the Redis LLEN read above. KEDA's `redis`
-      # scaler wants host:port, not a full connection-string DSN, so this
-      # chart does not try to parse env.redis.url / the bundled-Redis URL
-      # helper (trustedoss.redis.url) to derive one -- besides the format
-      # mismatch, env.secret.existingSecret can make REDIS_URL entirely
-      # opaque to Helm at render time (the chart never sees its value), so
-      # there would be nothing to parse in that case anyway. See README.md
-      # "Queue-depth autoscaling (KEDA)" for the full explanation.
-      redis:
-        # host:port. Empty (the default) means "derive from the bundled
-        # Redis Service" -- which only resolves to something reachable when
-        # redis.bundled: true. Required (the chart fails the render with a
-        # clear message otherwise) when mode: queue and redis.bundled: false.
-        address: ""
-        databaseIndex: 0
-        enableTLS: false
-        # Name of a pre-existing Secret holding the Redis password, and the
-        # key inside it holding the value. Leave passwordSecretName empty
-        # for no auth -- this chart's bundled Redis (deployment-redis.yaml)
-        # runs with no --requirepass, so that is this chart's own default
-        # too. Override both when pointing mode: queue at an external Redis
-        # / Memorystore that requires auth.
-        passwordSecretName: ""
-        passwordSecretKey: password
+  queues:
+    scan: "trustedoss.scan"
+    default: "trustedoss.default"
+  transitionSubscribeBothQueues: true
+
+  # -------------------------------------------------------------------------
+  # Scan-pipeline worker. Same sizing the pre-split single worker used - S1 /
+  # S4 / S5 already tuned these numbers for the heaviest tasks in the fleet,
+  # and splitting the queue does not change how expensive a scan slot is.
+  # -------------------------------------------------------------------------
+  scan:
+    replicaCount: 2
+    concurrency: 2
+    # S4 (concurrency-scaling-plan-2026-08-22.md §3.2/§4): how long Kubernetes
+    # waits, after sending SIGTERM, before it SIGKILLs a terminating worker
+    # pod. Unchanged from the pre-split default: the scan pipeline's hard
+    # time limit (SCAN_HARD_TIME_LIMIT_SECONDS,
+    # core/config.py::scan_hard_time_limit_seconds(), default 3900s / 65 min)
+    # PLUS the same 300s safety margin (BROKER_VISIBILITY_TIMEOUT_MARGIN_SECONDS).
+    # Helm cannot read that Python accessor at render time, so this default
+    # (4200s / 70 min) is a STATIC mirror, not a derivation -- raising
+    # SCAN_HARD_TIME_LIMIT_SECONDS in the backend's env must be paired with
+    # raising this value too, or a scan worker scaled down mid-scan can still
+    # be SIGKILLed before the hard-limit handler marks the scan failed cleanly.
+    terminationGracePeriodSeconds: 4200
+    resources:
+      requests:
+        cpu: "1"
+        memory: 2Gi
+      limits:
+        cpu: "4"
+        memory: 6Gi
+    # Optional autoscaler - OFF by default (chart convention). Only the scan
+    # worker offers mode: queue (KEDA) -- see the comment below for why the
+    # default worker does not need it.
+    autoscaling:
+      enabled: false
+      # S5 (concurrency-scaling-plan-2026-08-22.md §3.2/§4): "cpu" is this
+      # chart's original, only-ever-existed behavior -- a HorizontalPodAutoscaler
+      # (hpa-worker-scan.yaml) scaling on CPU utilization. "queue" replaces it
+      # with a KEDA ScaledObject (scaledobject-worker-scan.yaml) that scales
+      # on the scan queue's length instead. CPU utilization does not track
+      # slot occupancy for this workload: cdxgen/Trivy pipelines are network-
+      # and disk-wait heavy, not CPU-heavy (plan §1.1, "cdxgen과 Trivy는
+      # 네트워크와 디스크 대기가 긴 작업이라 CPU 사용률이 슬롯 점유를 대표하지
+      # 않는다"), so a CPU-only autoscaler can read as idle while the queue
+      # backs up. This mode choice is SCAN-ONLY (S3 judgment call, see
+      # worker.default.autoscaling below): the default worker's tasks are
+      # short and their CPU draw tracks their actual load reasonably well, so
+      # a second KEDA ScaledObject there would add CRD-dependency surface
+      # without a measured benefit yet.
+      #
+      # "queue" REQUIRES KEDA (https://keda.sh -- CNCF, Apache-2.0) and its
+      # CRDs (ScaledObject, TriggerAuthentication under keda.sh/v1alpha1)
+      # already installed in the cluster. This chart does NOT install KEDA and
+      # cannot check whether it is present -- `helm template`/`helm lint` never
+      # validate that a CRD exists (no cluster access), so `mode: queue` on a
+      # cluster without KEDA will pass `helm template` cleanly but fail at
+      # `helm install`/`upgrade` apply time with "no matches for kind
+      # ScaledObject in version keda.sh/v1alpha1". Install KEDA FIRST. See
+      # charts/trustedoss/README.md "Queue-depth autoscaling (KEDA)".
+      #
+      # Leaving this at "cpu" (the default) renders byte-for-byte the same
+      # HPA this chart has always rendered when autoscaling.enabled=true --
+      # scaledobject-worker-scan.yaml only renders when mode is exactly
+      # "queue", and hpa-worker-scan.yaml only renders when mode is exactly
+      # "cpu", so the two are mutually exclusive by construction (two
+      # autoscalers targeting the same scaleTargetRef would fight each other
+      # over the replica count -- KEDA creates its own HPA under the hood
+      # from the ScaledObject, so pairing it with hpa-worker-scan.yaml would
+      # mean TWO HPAs on one Deployment).
+      mode: cpu  # cpu | queue
+      minReplicas: 2
+      maxReplicas: 8
+      targetCPUUtilizationPercentage: 75
+      # Read only when mode: queue.
+      queue:
+        # The Celery broker list this reads with `LLEN` (same key M2's
+        # `trusca_broker_queue_backlog` metric reads, services/metrics_service.py
+        # `_broker_queue_backlog()` -- this does NOT require that metric or its
+        # QUEUE_BACKLOG_METRICS_ENABLED flag to be on; KEDA's native Redis
+        # scaler reads the broker directly, no dependency on the app's
+        # /metrics endpoint). Pinned to worker.queues.scan, not the combined
+        # depth: even while transitionSubscribeBothQueues is true and this
+        # worker is also draining worker.queues.default, the backlog that
+        # actually signals "this workload needs more scan slots" is the scan
+        # queue's own length.
+        queueName: "trustedoss.scan"
+        # KEDA's `listLength` metadata -- target average queue length per
+        # replica. KEDA scales replicas toward ceil(currentLength / listLength).
+        # Same role as targetCPUUtilizationPercentage above, but for backlog
+        # instead of CPU. Keep this in the single digits: this workload's
+        # slots are expensive (each can fork a full cdxgen/scancode/Trivy
+        # pipeline, ~1.5-2 GB transient -- see worker.scan.resources above),
+        # unlike a typical KEDA target sized for a cheap HTTP handler.
+        listLength: "5"
+        # Below this list length KEDA will scale to 0 replicas -- but only if
+        # minReplicas above is ALSO 0 (a ScaledObject never scales below its
+        # own minReplicaCount). At this chart's default minReplicas: 2 this
+        # has no effect; documented for operators who lower minReplicas to 0
+        # for a scale-to-zero worker pool.
+        activationListLength: "0"
+        # Seconds between KEDA's polls of the Redis list length.
+        pollingInterval: 15
+        # Seconds KEDA waits, after the queue metric drops below the scaling
+        # threshold, before it actually removes a replica. S4
+        # (worker.scan.terminationGracePeriodSeconds above) already makes a
+        # scale-down SAFE for a replica running an in-flight scan -- Kubernetes
+        # gives that pod 4200s to finish before SIGKILL. This is a separate,
+        # complementary knob that makes KEDA LESS EAGER to scale down in the
+        # first place, so a queue that briefly drains and refills does not
+        # thrash replicas up and down. Defaults to the same 4200s so the two
+        # numbers do not drift apart without a reason to.
+        cooldownPeriod: 4200
+        # Connection details for the Redis LLEN read above. KEDA's `redis`
+        # scaler wants host:port, not a full connection-string DSN, so this
+        # chart does not try to parse env.redis.url / the bundled-Redis URL
+        # helper (trustedoss.redis.url) to derive one -- besides the format
+        # mismatch, env.secret.existingSecret can make REDIS_URL entirely
+        # opaque to Helm at render time (the chart never sees its value), so
+        # there would be nothing to parse in that case anyway. See README.md
+        # "Queue-depth autoscaling (KEDA)" for the full explanation.
+        redis:
+          # host:port. Empty (the default) means "derive from the bundled
+          # Redis Service" -- which only resolves to something reachable when
+          # redis.bundled: true. Required (the chart fails the render with a
+          # clear message otherwise) when mode: queue and redis.bundled: false.
+          address: ""
+          databaseIndex: 0
+          enableTLS: false
+          # Name of a pre-existing Secret holding the Redis password, and the
+          # key inside it holding the value. Leave passwordSecretName empty
+          # for no auth -- this chart's bundled Redis (deployment-redis.yaml)
+          # runs with no --requirepass, so that is this chart's own default
+          # too. Override both when pointing mode: queue at an external Redis
+          # / Memorystore that requires auth.
+          passwordSecretName: ""
+          passwordSecretKey: password
+
+  # -------------------------------------------------------------------------
+  # Default-queue worker. Notifications, backups, audit export, ticket
+  # webhooks, catalog-refresh beats, workspace/tarball retention sweeps, the
+  # scan-schedule poll -- everything that is not the scan pipeline itself.
+  # A lighter resource profile than the scan worker (S3 judgment call): none
+  # of these tasks fork a cdxgen/scancode/Trivy pipeline, so the ~1.5-2 GB
+  # per-slot transient the scan worker is sized for does not apply here. A
+  # higher default concurrency is safe for the same reason -- more short,
+  # low-memory tasks fit per pod than scan slots do.
+  # -------------------------------------------------------------------------
+  default:
+    replicaCount: 1
+    concurrency: 4
+    # S3 judgment call: this worker never runs a scan task, so tying its
+    # grace period to the scan pipeline's 4200s (worker.scan above) would
+    # just make a stuck default-queue pod take 70 minutes to recycle for no
+    # reason. The longest task this worker DOES run is trustedoss.backup.run,
+    # bounded by BACKUP_SUBPROCESS_TIMEOUT (apps/backend/tasks/backup.py,
+    # default 3600s for EACH of the pg_dump and workspace-tar subprocesses it
+    # shells out to, so up to ~2x that back-to-back in the worst case -- this
+    # default is deliberately sized off one 3600s window plus the same 300s
+    # margin S4 uses elsewhere, not two, since the two subprocesses are the
+    # rare worst case, not the common one, and an operator running much
+    # larger backups should raise both BACKUP_SUBPROCESS_TIMEOUT and this
+    # value together). Helm cannot read that env accessor at render time --
+    # same static-mirror caveat as worker.scan.terminationGracePeriodSeconds.
+    terminationGracePeriodSeconds: 3900
+    resources:
+      requests:
+        cpu: 250m
+        memory: 256Mi
+      limits:
+        cpu: "1"
+        memory: 1Gi
+    # CPU-based only -- see worker.scan.autoscaling.mode's comment above for
+    # why queue-depth (KEDA) scaling is scoped to the scan worker only.
+    autoscaling:
+      enabled: false
+      minReplicas: 1
+      maxReplicas: 4
+      targetCPUUtilizationPercentage: 75
+
   # uid/gid 1000 is the `trustedoss` user the worker image creates and runs as
   # (apps/backend/Dockerfile.worker). fsGroup makes the workspace and Trivy
-  # cache volumes group-writable for it. See backend.podSecurityContext for
-  # what overriding these maps means.
+  # cache volumes group-writable for it. Shared by both worker kinds -- they
+  # run the same image and need the same pod security posture; only their
+  # replica/resource/scaling profile above differs. See backend.podSecurityContext
+  # for what overriding these maps means.
   podSecurityContext:
     runAsNonRoot: true
     runAsUser: 1000
@@ -602,12 +691,16 @@ worker:
     fsGroup: 1000
     seccompProfile:
       type: RuntimeDefault
-  # readOnlyRootFilesystem needs two emptyDir mounts, added by the Deployment:
-  # /home/trustedoss for the toolchain caches (gradle, mvn, npm, dotnet, go —
-  # the image pins every one of them under that directory so a single mount
-  # covers them) and /tmp for scratch. Both are per-pod, so caches are rebuilt
-  # after a restart; switch the home volume to a PVC if repeated Java or .NET
-  # scans make the re-download cost matter.
+  # readOnlyRootFilesystem needs two emptyDir mounts, added by each
+  # Deployment: /home/trustedoss for the toolchain caches (gradle, mvn, npm,
+  # dotnet, go - the image pins every one of them under that directory so a
+  # single mount covers them) and /tmp for scratch. Both are per-pod, so
+  # caches are rebuilt after a restart; switch the home volume to a PVC if
+  # repeated Java or .NET scans make the re-download cost matter. Shared by
+  # both worker kinds for the same reason podSecurityContext is: same image,
+  # same filesystem layout, only the scan worker actually populates most of
+  # these caches (cdxgen only runs there), which is harmless idle space on
+  # the default worker.
   containerSecurityContext:
     allowPrivilegeEscalation: false
     readOnlyRootFilesystem: true

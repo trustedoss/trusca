@@ -12,7 +12,8 @@ Production-complete Kubernetes deployment of [TrustedOSS Portal](https://github.
 | Workload | Kind | Notes |
 |---|---|---|
 | backend | Deployment | FastAPI API. `AUTO_MIGRATE=false` — migrations are run by the Job. |
-| worker | Deployment (+ optional HPA) | Celery worker (cdxgen / scancode / Trivy). |
+| worker-scan | Deployment (+ optional HPA/KEDA) | Celery worker, scan pipeline only (cdxgen / scancode / Trivy). |
+| worker-default | Deployment (+ optional HPA) | Celery worker, everything else (notifications, backups, audit export, catalog refreshes). |
 | beat | Deployment (replicas: 1) | Celery scheduler — singleton. |
 | frontend | Deployment | React SPA on nginx (`:8080`). |
 | postgres | StatefulSet | **Optional bundle** (`postgres.bundled`). |
@@ -120,14 +121,14 @@ connections before alembic runs.
 | `env.dbPool.*` | see `values.yaml` | Async + sync connection-pool sizing (B1). |
 | `env.scan.*` | see `values.yaml` | Scan rate limit / concurrency cap / time limits (B1+A1). |
 | `env.scancode.*` | see `values.yaml` | scancode license-detection guards (A2). |
-| `env.extraEnv` | `{}` | Map of any other runtime variable, injected into backend / worker / beat. Non-secret values only. |
+| `env.extraEnv` | `{}` | Map of any other runtime variable, injected into backend / worker-scan / worker-default / beat. Non-secret values only. |
 | `env.extraEnvFrom` | `[]` | Raw `envFrom` list, for Secrets you created yourself: OAuth, SMTP / Slack / Teams, the vendored-code service, Jira. |
 
 ### Workspace (shared scan volume)
 
 | Key | Default | Description |
 |---|---|---|
-| `workspace.mountPath` | `/workspace` | `WORKSPACE_HOST_PATH`; mounted by backend + worker. |
+| `workspace.mountPath` | `/workspace` | `WORKSPACE_HOST_PATH`; mounted by backend + worker-scan + worker-default. |
 | `workspace.persistence.enabled` | `true` | Provision a PVC. `false` → per-pod `emptyDir` (single-node only). |
 | `workspace.persistence.accessMode` | `ReadWriteMany` | RWX is required on multi-node clusters. |
 | `workspace.persistence.size` | `20Gi` | |
@@ -177,26 +178,82 @@ connections before alembic runs.
 | `backend.healthPath` / `readyPath` | `/health` / `/health/ready` | Liveness / readiness (schema-gated). |
 | `backend.podDisruptionBudget.maxUnavailable` | `1` | W8: renders `pdb-backend.yaml` unconditionally (no toggle; this closes an existing availability gap). `1` never blocks eviction, including at `replicaCount: 1`. |
 | `backend.topologySpreadConstraints` | hostname + zone, `ScheduleAnyway` | W8: spreads backend pods across nodes/zones (`deployment-backend.yaml`) so draining one node cannot take every replica down at once. Soft (`ScheduleAnyway`) so a single-node cluster still schedules; set `[]` to disable. |
-| `worker.replicaCount` | `2` | Prefer scaling pods over `concurrency`. |
-| `worker.concurrency` | `2` | Prefork slots per pod. |
-| `worker.autoscaling.enabled` | `false` | Optional autoscaler (off by default). |
-| `worker.autoscaling.mode` | `cpu` | `cpu` (HorizontalPodAutoscaler, this chart's original behavior) or `queue` (KEDA ScaledObject on Celery queue depth). See "Queue-depth autoscaling (KEDA)" below. |
-| `worker.terminationGracePeriodSeconds` | `4200` (70 min) | S4: must clear the backend's scan hard time limit (`scan_hard_time_limit_seconds()`, default 3900s) with margin, so a scaled-down or evicted pod finishes an in-flight scan instead of losing it to a redelivery-from-zero. |
+| `worker.queues.scan` / `worker.queues.default` | `trustedoss.scan` / `trustedoss.default` | S3: the two Celery queue names. `default` is unchanged from the pre-split single queue (`task_default_queue`). Cross-checked against `tests/contracts/queue-names.json`, which `apps/backend/tasks/celery_app.py`'s `task_routes` also reads. |
+| `worker.transitionSubscribeBothQueues` | `true` | S3: while true, BOTH worker kinds below subscribe to BOTH queues (rolling-upgrade transition - see "Queue split transition" below). Narrow to `false` only after confirming the old queue has drained. |
+| `worker.scan.replicaCount` | `2` | Prefer scaling pods over `concurrency`. |
+| `worker.scan.concurrency` | `2` | Prefork slots per pod. |
+| `worker.scan.autoscaling.enabled` | `false` | Optional autoscaler (off by default). |
+| `worker.scan.autoscaling.mode` | `cpu` | `cpu` (HorizontalPodAutoscaler) or `queue` (KEDA ScaledObject on the scan queue's depth). See "Queue-depth autoscaling (KEDA)" below. Scan-worker-only - the default worker has no `mode` key. |
+| `worker.scan.terminationGracePeriodSeconds` | `4200` (70 min) | S4: must clear the backend's scan hard time limit (`scan_hard_time_limit_seconds()`, default 3900s) with margin, so a scaled-down or evicted pod finishes an in-flight scan instead of losing it to a redelivery-from-zero. |
+| `worker.default.replicaCount` | `1` | Notifications / backups / audit export / catalog refreshes / the scan-schedule poll. |
+| `worker.default.concurrency` | `4` | Higher than the scan worker's default - none of these tasks fork a full pipeline. |
+| `worker.default.autoscaling.enabled` | `false` | CPU-based only (no `mode` key - see S3's judgment call in `values.yaml`). |
+| `worker.default.terminationGracePeriodSeconds` | `3900` (65 min) | S3: sized off `BACKUP_SUBPROCESS_TIMEOUT`'s default (3600s, `apps/backend/tasks/backup.py`) + the same 300s margin S4 uses, not the scan worker's 4200s - this worker never runs a scan task. |
 | `beat.resources` | see `values.yaml` | Singleton scheduler. |
 | `frontend.replicaCount` | `2` | |
 | `frontend.port` / `healthPath` | `8080` / `/healthz` | |
 | `*.resources` | see `values.yaml` | `requests` + `limits` set on every container. |
 
+### Queue split transition (S3)
+
+Chart versions before this unit rendered ONE worker Deployment consuming ONE
+queue (`trustedoss.default`) for everything - the scan pipeline and every
+other task (notifications, backups, audit export, catalog refreshes) shared
+it, so a hour-long scan could sit an alert behind it. This unit splits that
+into `worker-scan` (`deployment-worker-scan.yaml`, subscribes to
+`worker.queues.scan`) and `worker-default`
+(`deployment-worker-default.yaml`, subscribes to `worker.queues.default` -
+the same string the old single queue used).
+
+`worker.transitionSubscribeBothQueues` defaults to `true`: for one release,
+**both** worker kinds subscribe to **both** queues (`-Q
+trustedoss.scan,trustedoss.default` on every worker pod, regardless of
+kind). This is what makes the split safe to roll out: during the rolling
+upgrade, the old single-queue worker is being drained and replaced by the
+two new kinds, and anything the old worker had not yet picked up is sitting
+in `worker.queues.default` - a worker that only listened to its "own" queue
+from the first deploy could leave that backlog (which may include
+scan-pipeline messages dispatched before the upgrade) with no consumer.
+
+**Narrowing the transition (after upgrading, once you have confirmed it is
+safe):**
+
+1. Confirm the pre-split single-queue worker has been fully replaced -
+   `kubectl get deploy -l app.kubernetes.io/name=trustedoss` should show
+   `-worker-scan` and `-worker-default`, no bare `-worker` Deployment left
+   over from a pre-S3 release.
+2. Confirm `worker.queues.default`'s backlog from before the upgrade has
+   drained. `LLEN trustedoss.default` on the broker (or, if
+   `QUEUE_BACKLOG_METRICS_ENABLED=true`, the `trusca_broker_queue_backlog`
+   metric with `queue="trustedoss.default"`, M2) should be back to its
+   steady-state depth, not still working through a pre-upgrade spike.
+3. `helm upgrade <release> . --set worker.transitionSubscribeBothQueues=false`.
+   No template changes needed - this is a values-only flip. After it lands,
+   `worker-scan` only drains `worker.queues.scan` and `worker-default` only
+   drains `worker.queues.default`; a message that lands on the "wrong" queue
+   for its kind (for example, a scan task misrouted to the default queue)
+   will sit unconsumed, so step 2 matters.
+
+If you are not sure whether it is safe yet, leave it at `true`. The only
+cost of staying in the transition state is that each worker kind also
+services the other queue's traffic, which is a smaller queue than either
+would exclusively own before the split - it is not incorrect, just not fully
+narrowed.
+
 ### Queue-depth autoscaling (KEDA)
 
-`worker.autoscaling.mode: queue` scales the Celery worker Deployment on the
-broker's queue length (`LLEN` on the Redis list named by
-`worker.autoscaling.queue.queueName`) instead of CPU utilization. This
-matters for this workload specifically: cdxgen and Trivy pipelines spend most
-of their time waiting on the network or disk, not burning CPU, so a
-CPU-based HPA can read "idle" while the scan queue backs up - see
+`worker.scan.autoscaling.mode: queue` scales the scan-worker Deployment on
+the scan queue's length (`LLEN` on the Redis list named by
+`worker.scan.autoscaling.queue.queueName`, which defaults to
+`worker.queues.scan`) instead of CPU utilization. This matters for this
+workload specifically: cdxgen and Trivy pipelines spend most of their time
+waiting on the network or disk, not burning CPU, so a CPU-based HPA can read
+"idle" while the scan queue backs up - see
 `concurrency-scaling-plan-2026-08-22.md` §1.1 for the diagnosis this unit
-(S5) responds to.
+(S5) responds to. This mode is scoped to the scan worker only - the default
+worker (`worker.default.autoscaling`) is CPU-based only, since its tasks are
+short and their CPU draw tracks their actual load reasonably well (S3
+judgment call, see `values.yaml`'s `worker.scan.autoscaling.mode` comment).
 
 This mode is **opt-in and requires [KEDA](https://keda.sh)** (a CNCF
 project, Apache-2.0, not a vendor product) **already installed in the
@@ -205,39 +262,42 @@ cluster**, with its CRDs (`ScaledObject`, `TriggerAuthentication`, both
 detect whether it is installed: `helm template` and `helm lint` never
 contact a cluster, so they cannot see whether a CRD exists. Concretely:
 
-- `worker.autoscaling.mode` stays at its default (`cpu`) → nothing changes.
-  `hpa-worker.yaml` renders exactly as it always has; the KEDA template
-  (`scaledobject-worker.yaml`) renders nothing at all, whether or not KEDA
-  is installed. **A default install is never affected by this feature.**
-- `worker.autoscaling.mode: queue` on a cluster **without** KEDA installed:
-  `helm template`/`helm lint` still succeed (they only check the chart's own
-  YAML), but `helm install`/`helm upgrade` fails at apply time with `no
-  matches for kind "ScaledObject" in version "keda.sh/v1alpha1"`. Install
-  KEDA first (`helm install keda kedacore/keda -n keda --create-namespace`,
-  see KEDA's own docs), then retry.
-- `worker.autoscaling.mode: queue` on a cluster **with** KEDA installed:
-  `scaledobject-worker.yaml` renders a `ScaledObject` targeting the worker
-  Deployment; `hpa-worker.yaml` renders nothing. KEDA creates and manages its
-  own `HorizontalPodAutoscaler` from the `ScaledObject` - this chart
-  deliberately never renders both at once, since two HPAs on one
-  `scaleTargetRef` would fight each other over the replica count.
+- `worker.scan.autoscaling.mode` stays at its default (`cpu`) → nothing
+  changes. `hpa-worker-scan.yaml` renders exactly as `hpa-worker.yaml`
+  always did; the KEDA template (`scaledobject-worker-scan.yaml`) renders
+  nothing at all, whether or not KEDA is installed. **A default install is
+  never affected by this feature.**
+- `worker.scan.autoscaling.mode: queue` on a cluster **without** KEDA
+  installed: `helm template`/`helm lint` still succeed (they only check the
+  chart's own YAML), but `helm install`/`helm upgrade` fails at apply time
+  with `no matches for kind "ScaledObject" in version "keda.sh/v1alpha1"`.
+  Install KEDA first (`helm install keda kedacore/keda -n keda
+  --create-namespace`, see KEDA's own docs), then retry.
+- `worker.scan.autoscaling.mode: queue` on a cluster **with** KEDA
+  installed: `scaledobject-worker-scan.yaml` renders a `ScaledObject`
+  targeting the scan-worker Deployment; `hpa-worker-scan.yaml` renders
+  nothing. KEDA creates and manages its own `HorizontalPodAutoscaler` from
+  the `ScaledObject` - this chart deliberately never renders both at once,
+  since two HPAs on one `scaleTargetRef` would fight each other over the
+  replica count.
 
-Connection details for the Redis read (`worker.autoscaling.queue.redis.*`)
+Connection details for the Redis read (`worker.scan.autoscaling.queue.redis.*`)
 default to the chart's own bundled Redis (`redis.bundled: true`, no
 password). KEDA's `redis` scaler wants `host:port`, not a connection-string
 DSN, so this chart does not attempt to parse `env.redis.url` - and when
 `env.secret.existingSecret` is set, `REDIS_URL`'s actual value is never
 visible to Helm at render time at all, so there would be nothing to parse in
-that case regardless. Point `worker.autoscaling.queue.redis.address` (and,
-if it requires auth, `passwordSecretName`/`passwordSecretKey`) at your own
-Redis / Memorystore when `redis.bundled: false`.
+that case regardless. Point `worker.scan.autoscaling.queue.redis.address`
+(and, if it requires auth, `passwordSecretName`/`passwordSecretKey`) at your
+own Redis / Memorystore when `redis.bundled: false`.
 
-`worker.autoscaling.minReplicas`/`maxReplicas` and
-`worker.terminationGracePeriodSeconds` apply the same way under either mode -
-S4's termination grace period is what makes a KEDA-triggered scale-down
-safe for a scan already in flight; `worker.autoscaling.queue.cooldownPeriod`
-(default matches the grace period, 4200s) is what keeps KEDA from being eager
-to scale down in the first place.
+`worker.scan.autoscaling.minReplicas`/`maxReplicas` and
+`worker.scan.terminationGracePeriodSeconds` apply the same way under either
+mode - S4's termination grace period is what makes a KEDA-triggered
+scale-down safe for a scan already in flight;
+`worker.scan.autoscaling.queue.cooldownPeriod` (default matches the grace
+period, 4200s) is what keeps KEDA from being eager to scale down in the
+first place.
 
 ### Ingress
 

@@ -1,10 +1,23 @@
 TrustedOSS Portal ({{ .Chart.Name }}-{{ .Chart.Version }}, app {{ .Chart.AppVersion }}) installed.
 
+{{- /*
+S3 (concurrency-scaling-plan-2026-08-22.md §3.2/§4): the single "worker"
+line split into "worker-scan" and "worker-default". Each has its own
+autoscaler gate (worker.scan.autoscaling / worker.default.autoscaling).
+*/}}
 Workloads:
-  backend  x {{ .Values.backend.replicaCount }}   (FastAPI, Service :{{ .Values.backend.port }}, AUTO_MIGRATE=false)
-  worker   x {{ if .Values.worker.autoscaling.enabled }}{{ if eq .Values.worker.autoscaling.mode "queue" }}KEDA{{ else }}HPA{{ end }} {{ .Values.worker.autoscaling.minReplicas }}-{{ .Values.worker.autoscaling.maxReplicas }}{{ else }}{{ .Values.worker.replicaCount }}{{ end }}   (Celery, concurrency={{ .Values.worker.concurrency }})
-  beat     x 1   (Celery scheduler — singleton)
-  frontend x {{ .Values.frontend.replicaCount }}   (React SPA on nginx, Service :{{ .Values.frontend.port }})
+  backend        x {{ .Values.backend.replicaCount }}   (FastAPI, Service :{{ .Values.backend.port }}, AUTO_MIGRATE=false)
+  worker-scan    x {{ if .Values.worker.scan.autoscaling.enabled }}{{ if eq .Values.worker.scan.autoscaling.mode "queue" }}KEDA{{ else }}HPA{{ end }} {{ .Values.worker.scan.autoscaling.minReplicas }}-{{ .Values.worker.scan.autoscaling.maxReplicas }}{{ else }}{{ .Values.worker.scan.replicaCount }}{{ end }}   (Celery, queue={{ .Values.worker.queues.scan }}, concurrency={{ .Values.worker.scan.concurrency }})
+  worker-default x {{ if .Values.worker.default.autoscaling.enabled }}HPA {{ .Values.worker.default.autoscaling.minReplicas }}-{{ .Values.worker.default.autoscaling.maxReplicas }}{{ else }}{{ .Values.worker.default.replicaCount }}{{ end }}   (Celery, queue={{ .Values.worker.queues.default }}, concurrency={{ .Values.worker.default.concurrency }})
+  beat           x 1   (Celery scheduler — singleton)
+  frontend       x {{ .Values.frontend.replicaCount }}   (React SPA on nginx, Service :{{ .Values.frontend.port }})
+{{- if .Values.worker.transitionSubscribeBothQueues }}
+
+NOTE: worker.transitionSubscribeBothQueues=true (the default) — both worker
+kinds above are consuming BOTH queues right now, not just their own. This is
+the S3 rolling-upgrade transition window; see charts/trustedoss/README.md
+"Queue split transition" for when and how to narrow it to false.
+{{- end }}
 
 Datastores:
   postgres : {{ if .Values.postgres.bundled }}BUNDLED (StatefulSet{{ if .Values.postgres.persistence.enabled }}, PVC {{ .Values.postgres.persistence.size }}{{ else }}, ephemeral{{ end }}{{ if .Values.postgres.auth.roleSeparation }}, role-separated{{ end }}){{ else }}EXTERNAL (env.database.url){{ end }}
@@ -27,17 +40,27 @@ budget is computed, and a golden test cross-checks they agree. The backend
 line used to omit the `uvicornWorkers` multiplier here (it answered a number
 4x too small), while .env.example's copy of the formula already had it;
 that was the bug this section exists to not repeat.
+
+S3 (concurrency-scaling-plan-2026-08-22.md §3.2/§4): worker.replicaCount
+split into worker.scan.replicaCount + worker.default.replicaCount. Both
+worker kinds open the SAME per-process connection count (DB_SYNC_POOL_SIZE +
+DB_SYNC_MAX_OVERFLOW come from the one shared ConfigMap regardless of which
+queue a worker drains), so $workerConns sums the two replica counts before
+multiplying -- the formula's SHAPE is unchanged from before the split, only
+its input grew from one worker kind to two. This is the same sum
+configmap-env.yaml's CONN_BUDGET_WORKER_REPLICAS hint uses.
 */}}
 {{- $backendPerPodConns := add .Values.env.dbPool.size .Values.env.dbPool.maxOverflow }}
 {{- $syncPerProcConns := add .Values.env.dbPool.syncSize .Values.env.dbPool.syncMaxOverflow }}
 {{- $backendConns := mul (mul .Values.backend.replicaCount .Values.backend.uvicornWorkers) $backendPerPodConns }}
-{{- $workerConns := mul .Values.worker.replicaCount $syncPerProcConns }}
+{{- $workerReplicas := add .Values.worker.scan.replicaCount .Values.worker.default.replicaCount }}
+{{- $workerConns := mul $workerReplicas $syncPerProcConns }}
 {{- $beatConns := mul 1 $syncPerProcConns }}
 {{- $totalConns := add (add $backendConns $workerConns) $beatConns }}
 {{- $headroomConns := add $totalConns 5 }}
 Postgres connection budget (keep under Postgres max_connections, default 100):
   backend = {{ .Values.backend.replicaCount }} pod(s) x {{ .Values.backend.uvicornWorkers }} uvicorn worker(s) x ({{ .Values.env.dbPool.size }} + {{ .Values.env.dbPool.maxOverflow }}) = {{ $backendConns }}
-  worker  = {{ .Values.worker.replicaCount }} x ({{ .Values.env.dbPool.syncSize }} + {{ .Values.env.dbPool.syncMaxOverflow }}) = {{ $workerConns }}
+  worker  = ({{ .Values.worker.scan.replicaCount }} scan + {{ .Values.worker.default.replicaCount }} default = {{ $workerReplicas }}) x ({{ .Values.env.dbPool.syncSize }} + {{ .Values.env.dbPool.syncMaxOverflow }}) = {{ $workerConns }}
   beat    = 1 x ({{ .Values.env.dbPool.syncSize }} + {{ .Values.env.dbPool.syncMaxOverflow }}) = {{ $beatConns }}
   TOTAL   = {{ $totalConns }}  ({{ $headroomConns }} with ~5 admin/headroom)
 {{- if gt $headroomConns 95 }}
@@ -45,17 +68,25 @@ Postgres connection budget (keep under Postgres max_connections, default 100):
 WARNING: the connection budget above ({{ $headroomConns }} incl. headroom) is
 at or over Postgres' default max_connections (100), or within 5 of it. Lower
 env.dbPool.* or raise Postgres max_connections before scaling
-backend.replicaCount / worker.replicaCount further. The backend also logs
-this at boot by querying Postgres' actual configured max_connections.
+backend.replicaCount / worker.scan.replicaCount / worker.default.replicaCount
+further. The backend also logs this at boot by querying Postgres' actual
+configured max_connections.
 {{- end }}
 
-Scale workers out (preferred over raising concurrency):
-  helm upgrade {{ .Release.Name }} . --set worker.replicaCount=4
+Scale the scan worker out (preferred over raising concurrency — it is the
+one that can queue behind an hour-long scan):
+  helm upgrade {{ .Release.Name }} . --set worker.scan.replicaCount=4
   # or enable CPU-based autoscaling:
-  helm upgrade {{ .Release.Name }} . --set worker.autoscaling.enabled=true
+  helm upgrade {{ .Release.Name }} . --set worker.scan.autoscaling.enabled=true
   # or, for queue-depth-based autoscaling (requires KEDA already installed —
   # see README.md "Queue-depth autoscaling (KEDA)"):
-  helm upgrade {{ .Release.Name }} . --set worker.autoscaling.enabled=true --set worker.autoscaling.mode=queue
+  helm upgrade {{ .Release.Name }} . --set worker.scan.autoscaling.enabled=true --set worker.scan.autoscaling.mode=queue
+
+Scale the default-queue worker out (notifications / backups / audit export /
+catalog refreshes):
+  helm upgrade {{ .Release.Name }} . --set worker.default.replicaCount=2
+  # or enable CPU-based autoscaling:
+  helm upgrade {{ .Release.Name }} . --set worker.default.autoscaling.enabled=true
 
 {{ if .Values.ingress.enabled -}}
 Reach the portal:

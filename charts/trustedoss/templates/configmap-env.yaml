@@ -65,7 +65,14 @@ data:
   # informational hint here, so operators no longer have two places to keep
   # in sync for that one number.
   CONN_BUDGET_BACKEND_REPLICAS: {{ .Values.backend.replicaCount | quote }}
-  CONN_BUDGET_WORKER_REPLICAS: {{ .Values.worker.replicaCount | quote }}
+  # S3: the sum of BOTH worker kinds. core.connection_budget's ConnectionBudget
+  # treats "worker replicas" as one uniform pool (every replica opens
+  # DB_SYNC_POOL_SIZE + DB_SYNC_MAX_OVERFLOW connections from the SAME shared
+  # ConfigMap, regardless of which queue it drains), so a plain sum keeps that
+  # formula's shape unchanged post-split -- only its input grew from one
+  # worker kind to two. See worker.scan.replicaCount / worker.default.replicaCount
+  # in values.yaml.
+  CONN_BUDGET_WORKER_REPLICAS: {{ add .Values.worker.scan.replicaCount .Values.worker.default.replicaCount | quote }}
 
   # ---- Scan controls (B1 + A1) ----
   SCAN_TRIGGER_RATE_LIMIT: {{ .Values.env.scan.triggerRateLimit | quote }}

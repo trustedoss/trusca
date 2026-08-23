@@ -1,0 +1,164 @@
+{{- /*
+SPDX-License-Identifier: Apache-2.0
+Copyright 2026 TRUSCA contributors
+*/ -}}
+{{- /*
+S3 (concurrency-scaling-plan-2026-08-22.md §3.2/§4): the default-queue
+worker. Split out of the single `worker` Deployment this chart used to
+render (see values.yaml's worker.default block for why). Runs everything
+that is not the scan pipeline -- notifications, backups, audit export,
+ticket webhooks, catalog-refresh beats, retention sweeps, the scan-schedule
+poll -- and, while worker.transitionSubscribeBothQueues is true (the
+default), the scan queue as well, symmetrically with worker-scan, so a
+rolling upgrade never leaves a queue with no consumer even for one release.
+See _helpers.tpl's trustedoss.worker.subscribedQueues.
+*/ -}}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "trustedoss.fullname" . }}-worker-default
+  labels:
+    {{- include "trustedoss.labels" . | nindent 4 }}
+    app.kubernetes.io/component: worker-default
+spec:
+  {{- if not .Values.worker.default.autoscaling.enabled }}
+  # When the HPA is enabled (worker.default.autoscaling) we omit replicas so
+  # the autoscaler owns the count; otherwise this static value applies.
+  replicas: {{ .Values.worker.default.replicaCount }}
+  {{- end }}
+  selector:
+    matchLabels:
+      {{- include "trustedoss.selectorLabels" . | nindent 6 }}
+      app.kubernetes.io/component: worker-default
+  template:
+    metadata:
+      labels:
+        {{- include "trustedoss.selectorLabels" . | nindent 8 }}
+        app.kubernetes.io/component: worker-default
+      annotations:
+        checksum/env: {{ include (print $.Template.BasePath "/configmap-env.yaml") . | sha256sum }}
+        {{- with .Values.podAnnotations }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
+    spec:
+      # S3 judgment call (values.yaml's worker.default.terminationGracePeriodSeconds
+      # comment): shorter than the scan worker's 4200s -- this worker never
+      # runs a scan task, so its longest task (trustedoss.backup.run) needs a
+      # much smaller grace window.
+      terminationGracePeriodSeconds: {{ .Values.worker.default.terminationGracePeriodSeconds }}
+      serviceAccountName: {{ include "trustedoss.serviceAccountName" (dict "root" $ "component" "worker-default") }}
+      {{- with .Values.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.worker.podSecurityContext }}
+      securityContext:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      containers:
+        - name: worker
+          image: "{{ .Values.image.workerRepository }}:{{ .Values.image.tag }}"
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          {{- with .Values.worker.containerSecurityContext }}
+          securityContext:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          # Prefork concurrency = task slots per pod. Scale pods
+          # (worker.default.replicaCount / autoscaling) in preference to
+          # this.
+          #
+          # S3: `-Q` pins this deployment to the default queue (plus the scan
+          # queue too, during the transition window -- see
+          # trustedoss.worker.subscribedQueues in _helpers.tpl). Any task
+          # NOT listed in tests/contracts/queue-names.json's scan_task_names
+          # lands here via Celery's task_default_queue fallback (no explicit
+          # route needed per task).
+          command:
+            - celery
+            - -A
+            - tasks.celery_app
+            - worker
+            - --loglevel=info
+            - --concurrency={{ .Values.worker.default.concurrency }}
+            - -Q
+            - {{ include "trustedoss.worker.subscribedQueues" (dict "root" $ "own" "default") }}
+          # Mirrors worker-scan's preStop hook (same rationale: SIGTERM
+          # already triggers Celery's warm shutdown in this image, since
+          # REMAP_SIGTERM is unset -- this hook starts that shutdown the
+          # instant the pod is marked Terminating rather than waiting on
+          # kubelet's own SIGTERM delivery timing). `-d celery@$HOSTNAME`
+          # scopes the broadcast to this pod only.
+          lifecycle:
+            preStop:
+              exec:
+                command:
+                  - sh
+                  - -c
+                  - celery -A tasks.celery_app control shutdown -d celery@"$HOSTNAME" --timeout=5 || true
+          envFrom:
+            - configMapRef:
+                name: {{ include "trustedoss.fullname" . }}-env
+            {{- include "trustedoss.extraEnvFrom" . | nindent 12 }}
+          env:
+            {{- include "trustedoss.runtimeSecretEnv" . | nindent 12 }}
+            {{- include "trustedoss.extraEnv" . | nindent 12 }}
+          volumeMounts:
+            {{- if (.Values.worker.containerSecurityContext).readOnlyRootFilesystem }}
+            - name: home
+              mountPath: /home/trustedoss
+            - name: tmp
+              mountPath: /tmp
+            {{- end }}
+            - name: workspace
+              mountPath: {{ .Values.workspace.mountPath }}
+            # trustedoss.vulnerability_rematch_one/_enqueue and
+            # trustedoss.trivy_db_refresh both run on this worker kind (S3:
+            # neither is in scan_task_names) and both read/write the Trivy DB
+            # cache, so this mount is required here too, not just on
+            # worker-scan.
+            - name: trivy-cache
+              mountPath: {{ .Values.env.trivy.dbCacheDir }}
+          livenessProbe:
+            exec:
+              command:
+                - sh
+                - -c
+                - celery -A tasks.celery_app inspect ping --timeout=5 -d celery@$HOSTNAME > /dev/null 2>&1
+            initialDelaySeconds: 60
+            periodSeconds: 30
+            timeoutSeconds: 15
+          resources:
+            {{- toYaml .Values.worker.default.resources | nindent 12 }}
+      volumes:
+        {{- if (.Values.worker.containerSecurityContext).readOnlyRootFilesystem }}
+        - name: home
+          emptyDir: {}
+        - name: tmp
+          emptyDir: {}
+        {{- end }}
+        - name: workspace
+          {{- if .Values.workspace.persistence.enabled }}
+          persistentVolumeClaim:
+            claimName: {{ .Values.workspace.persistence.existingClaim | default (printf "%s-workspace" (include "trustedoss.fullname" .)) }}
+          {{- else }}
+          emptyDir: {}
+          {{- end }}
+        - name: trivy-cache
+          {{- if .Values.trivyCache.persistence.enabled }}
+          persistentVolumeClaim:
+            claimName: {{ .Values.trivyCache.persistence.existingClaim | default (printf "%s-trivy-cache" (include "trustedoss.fullname" .)) }}
+          {{- else }}
+          emptyDir: {}
+          {{- end }}
+      {{- with .Values.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.affinity }}
+      affinity:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
