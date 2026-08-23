@@ -175,7 +175,8 @@ Both receivers are public: the signature covers the body, so the body is read an
 
 | Key | Default | Read by | Description |
 |---|---|---|---|
-| `WEBSOCKET_MAX_CONNECTIONS_PER_USER` | `3` | `config.py` | Per-user concurrent connection ceiling. The 4th connection from the same user evicts the oldest with close code 1001 (`reason="newer_connection"`). The cap is enforced **per worker process** — multi-worker deployments allow up to N × worker-count. |
+| `WEBSOCKET_MAX_CONNECTIONS_PER_USER` | `8` | `config.py` | Per-user concurrent connection ceiling, enforced against a Redis-backed registry shared by every backend process (exact regardless of worker or pod count). The scan detail page opens two sockets per open tab, so 8 covers four tabs at once. The connection that pushes a user over the cap is admitted; the user's oldest connection is evicted with close code 1001 (`reason="newer_connection"`). |
+| `WEBSOCKET_MAX_CONNECTIONS_GLOBAL` | `500` | `config.py` | System-wide concurrent connection ceiling across every user, same Redis-backed registry as above. A connection that would push the total over this cap is refused outright (close code 4429, `reason="capacity_at_limit"`) rather than evicting anyone else's connection. |
 | `WEBSOCKET_AUTH_TIMEOUT_SECONDS` | `1.0` | `config.py` | How long the gateway waits for the first `{"type":"auth"}` frame. Connections that miss the window are closed with 1008 / `reason="auth_timeout"`. |
 
 ## Notifications

@@ -352,7 +352,8 @@
       "server": "The server ended the stream.",
       "rejected": "The server did not accept this connection.",
       "forbidden": "You do not have access to this scan.",
-      "missing": "There is no scan with this id."
+      "missing": "There is no scan with this id.",
+      "at_capacity": "The server is at its connection limit right now."
     },
     "unaffected": "The scan itself is unaffected and is still running.",
     "stale": "The status shown here may be out of date.",

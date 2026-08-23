@@ -174,7 +174,8 @@ superseded·노후 스캔 스냅샷을 회수하는 자동 보존 sweep을 조�
 
 | 키 | 기본값 | 읽는 위치 | 설명 |
 |---|---|---|---|
-| `WEBSOCKET_MAX_CONNECTIONS_PER_USER` | `3` | `config.py` | 사용자당 동시 커넥션 상한. 같은 사용자의 4번째 커넥션이 가장 오래된 것을 close code 1001(`reason="newer_connection"`)로 evict합니다. **워커 프로세스별** 적용 — 멀티 워커 배포는 N × worker-count까지 허용. |
+| `WEBSOCKET_MAX_CONNECTIONS_PER_USER` | `8` | `config.py` | 사용자당 동시 커넥션 상한. 모든 백엔드 프로세스가 공유하는 Redis 기반 레지스트리로 적용되므로 워커나 파드 수와 무관하게 정확합니다(스캔 상세 화면 하나가 탭 하나당 소켓 두 개를 쓰므로, 8이면 탭 네 개를 동시에 열어도 문제없습니다). 사용자를 상한 이상으로 밀어 올리는 커넥션은 받아들이고, 그 사용자의 가장 오래된 커넥션을 close code 1001(`reason="newer_connection"`)로 닫습니다. |
+| `WEBSOCKET_MAX_CONNECTIONS_GLOBAL` | `500` | `config.py` | 전체 사용자를 합친 동시 커넥션 상한. 위와 같은 Redis 기반 레지스트리를 씁니다. 이 상한을 넘기게 될 커넥션은 다른 사용자의 커넥션을 대신 닫는 것이 아니라 그 자체를 거부합니다(close code 4429, `reason="capacity_at_limit"`). |
 | `WEBSOCKET_AUTH_TIMEOUT_SECONDS` | `1.0` | `config.py` | 첫 `{"type":"auth"}` 프레임을 기다리는 시간. 윈도우 내 미수신 시 1008 / `reason="auth_timeout"`으로 닫힘. |
 
 ## 알림

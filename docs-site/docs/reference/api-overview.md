@@ -271,7 +271,7 @@ Every close the server sends, and what it means. The source is `apps/backend/api
 
 | Code | Reason | Cause |
 |---|---|---|
-| 1001 | `newer_connection` | Per-user connection cap (`WEBSOCKET_MAX_CONNECTIONS_PER_USER`, default 3) exceeded; the oldest socket is evicted. The count is kept **per worker process**, so a deployment running N workers admits up to 3N before anything is evicted, and which worker a socket lands on decides whether it counts against another. One open scan page holds two connections, so a second tab can evict the first when both land on the same worker. |
+| 1001 | `newer_connection` | Per-user connection cap (`WEBSOCKET_MAX_CONNECTIONS_PER_USER`, default 8) exceeded; the oldest socket is evicted. The count is kept in a Redis-backed registry shared by every backend process, so it is exact regardless of worker or pod count, the pre-W4 per-process count, and the "which worker a socket lands on decides" behavior it produced, are gone. One open scan page holds two connections, so a second tab can still evict a first tab's socket once the two tabs' four connections push the same user over the cap; it just no longer depends on luck. |
 | 1008 | `auth_timeout` | No first frame within `WEBSOCKET_AUTH_TIMEOUT_SECONDS`. |
 | 1008 | `auth_invalid` | The token did not decode, was not an access token, or its subject is not a user id. |
 | 1008 | `auth_inactive` | The account is deactivated or gone. |
@@ -280,6 +280,7 @@ Every close the server sends, and what it means. The source is `apps/backend/api
 | 4400 | `bad_message` | The first frame was not a valid `auth` message. |
 | 4403 | `forbidden` | The caller is not in the team that owns the scan. |
 | 4404 | `scan_not_found` | The id in the URL is not a UUID, **or** no such scan exists. Both close the same way. |
+| 4429 | `capacity_at_limit` | Global connection cap (`WEBSOCKET_MAX_CONNECTIONS_GLOBAL`, default 500) reached. The new connection is refused outright; no existing connection (this user's or anyone else's) is evicted to make room for it. Deliberately not 1008, the client treats 1008 as an expired session and signs the reader out, which would be wrong for a capacity refusal. |
 
 Two things a client cannot learn from that table alone:
 

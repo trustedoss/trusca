@@ -22,32 +22,60 @@ Lifecycle:
     4. IDOR gate — `services.scan_service.get_scan(...)` checks that the
        authenticated user belongs to the scan's project's owning team.
        Failure → close 4404 (scan_not_found) or 4403 (forbidden).
-    5. Initial sync push — the gateway emits one progress frame
+    5. Connection admission (W4): the gateway generates a per-connection id
+       and checks it against two Redis-backed caps shared by every backend
+       process: a per-user cap (evicts that user's oldest connection,
+       wherever it lives) and a global cap (refuses the new connection
+       outright). See "Connection caps" below.
+    6. Initial sync push: the gateway emits one progress frame
        `{"percent": int, "step": str, "ts": iso8601}` from the current row
        so a refreshed page sees the latest state without waiting for the
        next worker tick.
-    6. Redis subscribe loop — listens on
-       `core.config.scan_progress_channel(scan_id)` and forwards every
-       payload as text. The publisher is trusted, so we forward bytes
-       verbatim (no re-serialize) to avoid breaking forward compatibility.
-    7. Disconnect — natural close, or `WebSocketDisconnect`. The pubsub /
-       Redis client is always closed in `finally`.
+    7. Redis subscribe loop: listens on BOTH
+       `core.config.scan_progress_channel(scan_id)` (forwards every payload
+       as text; the publisher is trusted, so we forward verbatim, no
+       re-serialize) AND this connection's own eviction channel
+       (`core.ws_registry.evict_channel`). A message on the latter means the
+       per-user cap admitted a newer connection and this one lost its slot.
+       Polls with a timeout rather than blocking forever so a quiet
+       connection (scan finished, no more progress frames) still re-touches
+       its presence entry on `WEBSOCKET_PRESENCE_HEARTBEAT_SECONDS`.
+    8. Disconnect: natural close, self-eviction, or `WebSocketDisconnect`.
+       The registry entry and the Redis client/pubsub are always cleaned up
+       in `finally`.
 
 Close codes (single source of truth):
     1000   Normal closure
     1001   Going away (oldest evicted by per-user connection cap)
-    1008   Policy violation (auth timeout, bad token, origin rejected)
+    1008   Policy violation (auth timeout, bad token, origin rejected). The
+           frontend treats this code specifically as an expired session and
+           signs the reader out, so nothing else may use it.
     1011   Internal error (Redis connect failure, etc.)
     4400   Bad message format (first frame not parseable JSON)
     4403   IDOR / RBAC denial
     4404   Scan not found
+    4429   Global connection cap reached (the new connection is refused; no
+           existing connection is evicted for this one; see "Connection
+           caps" below)
 
-Per-user connection cap:
-    `core.config.websocket_max_connections_per_user()` (default 3) caps
-    concurrent connections per user. The 4th attempt evicts the oldest with
-    code 1001 reason="newer_connection". Tracking is in-process — multi-
-    worker deployments will need a Redis-backed counter (TODO inside
-    `_register_connection`).
+Connection caps (W4, `core.ws_registry`, `trusca-internal`
+`docs/concurrency-scaling-plan-2026-08-22.md` §1.7):
+    Both caps are enforced against Redis sorted sets shared by every backend
+    process, not a process-local dict, so admission no longer depends on
+    which uvicorn worker or pod a given connection happens to land on.
+
+    `core.config.websocket_max_connections_per_user()` (default 8) caps
+    concurrent connections per user. The connection that pushes a user over
+    this cap is admitted, and the user's OLDEST connection is evicted with
+    code 1001 reason="newer_connection", but the eviction is published on
+    that connection's own Redis channel and it closes ITSELF from within its
+    own asyncio task, whichever process that is. No connection ever closes a
+    socket it did not open.
+
+    `core.config.websocket_max_connections_global()` (default 500) caps
+    total concurrent connections across every user. A connection that would
+    push the total over this cap is refused outright (never admitted, no
+    one else evicted) with code 4429 reason="capacity_at_limit".
 
 Logging:
     Every connect/auth-failure/close is logged via structlog with the scan
@@ -60,10 +88,8 @@ from __future__ import annotations
 import asyncio
 import json
 import uuid
-from collections import deque
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
-from dataclasses import dataclass
 from datetime import UTC, datetime
 from typing import Any
 
@@ -76,17 +102,28 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 from sqlalchemy.orm import selectinload
 
 from core.config import (
+    WEBSOCKET_PRESENCE_HEARTBEAT_SECONDS,
+    WEBSOCKET_PRESENCE_TTL_SECONDS,
     app_env,
     cors_allowed_origins,
     redis_url,
     scan_progress_channel,
     websocket_auth_timeout_seconds,
+    websocket_max_connections_global,
     websocket_max_connections_per_user,
 )
 from core.security import (
     TOKEN_TYPE_ACCESS,
     CurrentUser,
     decode_token,
+)
+from core.ws_registry import (
+    evict_channel,
+    new_connection_id,
+    publish_eviction,
+    register_connection,
+    touch_connection,
+    unregister_connection,
 )
 from services.scan_service import (
     ScanForbidden,
@@ -110,8 +147,12 @@ WS_CLOSE_INTERNAL: int = 1011
 WS_CLOSE_BAD_MESSAGE: int = 4400
 WS_CLOSE_FORBIDDEN: int = 4403
 WS_CLOSE_NOT_FOUND: int = 4404
+# W4, deliberately NOT 1008: the frontend's close handler treats 1008 as an
+# expired session and signs the reader out (`useScanWebSocket.ts`), which
+# would be wrong for a capacity refusal that has nothing to do with auth.
+WS_CLOSE_CAPACITY: int = 4429
 
-# Reasons (short ASCII strings — RFC 6455 limits reason to 123 bytes).
+# Reasons (short ASCII strings, RFC 6455 limits reason to 123 bytes).
 REASON_AUTH_TIMEOUT = "auth_timeout"
 REASON_AUTH_INVALID = "auth_invalid"
 REASON_AUTH_INACTIVE = "auth_inactive"
@@ -121,68 +162,28 @@ REASON_FORBIDDEN = "forbidden"
 REASON_SCAN_NOT_FOUND = "scan_not_found"
 REASON_NEWER_CONNECTION = "newer_connection"
 REASON_INTERNAL = "internal"
+REASON_GLOBAL_CAPACITY = "capacity_at_limit"
 
 
 # ---------------------------------------------------------------------------
-# Per-user connection registry (per-process, in-memory)
+# Connection registry test hook (W4, the registry itself lives in Redis;
+# see core.ws_registry). Tests reset the shared keys between cases the same
+# way they reset a local dict before this change.
 # ---------------------------------------------------------------------------
 
 
-@dataclass
-class _Registry:
-    """Tracks open WebSockets keyed by user id.
-
-    `connections[user_id]` is an ordered deque (oldest first). When the size
-    exceeds the cap we pop the oldest and close it asynchronously.
-    """
-
-    connections: dict[uuid.UUID, deque[WebSocket]]
-    lock: asyncio.Lock
-
-
-def _new_registry() -> _Registry:
-    return _Registry(connections={}, lock=asyncio.Lock())
-
-
-# Module-level singleton; tests reset via `_reset_registry_for_tests`.
-_registry: _Registry = _new_registry()
-
-
-def _reset_registry_for_tests() -> None:  # pragma: no cover — test hook
-    """Reset the shared registry. Tests use this between cases."""
-    global _registry
-    _registry = _new_registry()
-
-
-async def _register_connection(
-    user_id: uuid.UUID, websocket: WebSocket, *, max_per_user: int
-) -> WebSocket | None:
-    """Register `websocket` and evict the oldest if over the cap.
-
-    Returns the evicted WebSocket (caller closes it) or None.
-
-    TODO: replace the in-process dict with a Redis-backed counter once the
-    backend runs more than one worker — today the cap is per-process.
-    """
-    async with _registry.lock:
-        bucket = _registry.connections.setdefault(user_id, deque())
-        bucket.append(websocket)
-        if len(bucket) > max_per_user:
-            return bucket.popleft()
-    return None
-
-
-async def _unregister_connection(user_id: uuid.UUID, websocket: WebSocket) -> None:
-    async with _registry.lock:
-        bucket = _registry.connections.get(user_id)
-        if bucket is None:
-            return
-        try:
-            bucket.remove(websocket)
-        except ValueError:
-            pass
-        if not bucket:
-            del _registry.connections[user_id]
+async def _reset_registry_for_tests() -> None:  # pragma: no cover, test hook
+    """Clear every `ws:conns:*` key. Integration tests call this between
+    cases so a per-user or global cap set by one test cannot leak into the
+    next. Unit tests that never touch a real Redis do not need this hook at
+    all. They monkeypatch `_redis_pubsub` instead."""
+    client: Any = redis_async.from_url(redis_url(), decode_responses=True)  # type: ignore[no-untyped-call]
+    try:
+        keys = [key async for key in client.scan_iter(match="ws:conns:*")]
+        if keys:
+            await client.delete(*keys)
+    finally:
+        await client.aclose()
 
 
 # ---------------------------------------------------------------------------
@@ -343,26 +344,37 @@ async def _resolve_user(session: AsyncSession, user_id: uuid.UUID) -> CurrentUse
 
 
 @asynccontextmanager
-async def _redis_pubsub(channel: str) -> AsyncIterator[Any]:
-    """Open a Redis client + pubsub on `channel`; close both on exit.
+async def _redis_pubsub(channels: tuple[str, ...]) -> AsyncIterator[tuple[Any, Any]]:
+    """Open a Redis client + subscribe to `channels`; close both on exit.
+
+    Yields `(client, pubsub)`. W4: the client is also handed to
+    `core.ws_registry` for the connection-cap ZSETs, so a single connection's
+    presence tracking and its progress/eviction subscriptions share one
+    Redis connection instead of opening two. `decode_responses=True` (unlike
+    the pre-W4 client) so registry members and channel names come back as
+    `str` without a manual decode at every call site; message *payloads* are
+    still handled defensively for both `str` and `bytes` below, since a
+    payload published by a `decode_responses=False` client (the worker side,
+    `tasks/_progress.py`) can still arrive as either depending on redis-py
+    version behaviour.
 
     `Any` rather than the redis.asyncio types because the redis library does
-    not export precise types for the pubsub object (and mypy-strict + that
-    library together is brittle).
+    not export precise types for the client/pubsub objects (and mypy-strict
+    + that library together is brittle).
     """
     # `redis.asyncio.from_url` is loosely-typed in the redis package — the
     # `# type: ignore[no-untyped-call]` keeps mypy --strict happy without
     # disabling the broader check in this module.
-    client: Any = redis_async.from_url(redis_url())  # type: ignore[no-untyped-call]
+    client: Any = redis_async.from_url(redis_url(), decode_responses=True)  # type: ignore[no-untyped-call]
     pubsub = client.pubsub()
-    await pubsub.subscribe(channel)
+    await pubsub.subscribe(*channels)
     try:
-        yield pubsub
+        yield client, pubsub
     finally:
         try:
-            await pubsub.unsubscribe(channel)
+            await pubsub.unsubscribe(*channels)
         except Exception:  # noqa: BLE001 — best-effort teardown
-            log.debug("ws_pubsub_unsubscribe_failed", channel=channel, exc_info=True)
+            log.debug("ws_pubsub_unsubscribe_failed", channels=channels, exc_info=True)
         try:
             await pubsub.aclose()
         except Exception:  # noqa: BLE001
@@ -371,6 +383,84 @@ async def _redis_pubsub(channel: str) -> AsyncIterator[Any]:
             await client.aclose()
         except Exception:  # noqa: BLE001
             log.debug("ws_redis_close_failed", exc_info=True)
+
+
+async def _forward_loop(
+    websocket: WebSocket,
+    pubsub: Any,
+    *,
+    client: Any,
+    progress_channel: str,
+    evict_channel_name: str,
+    connection_id: str,
+) -> tuple[int, str]:
+    """Forward progress/log frames until disconnect, self-eviction, or error.
+
+    W4: polls `pubsub.get_message(timeout=...)` rather than iterating
+    `pubsub.listen()` (the pre-W4 shape). A scan detail tab can sit open and
+    silent for a long time after the scan finishes (no more progress frames
+    to forward), and the Redis-backed connection-cap entry backing this
+    connection has nothing else to key its liveness off, so every quiet
+    interval re-touches it (`core.ws_registry.touch_connection`).
+
+    Two subscriptions share `pubsub`: the scan's progress channel and this
+    connection's own eviction channel. A message on the latter means the
+    per-user cap admitted a newer connection and picked this one as the
+    oldest: we close ourselves (nobody else ever calls `.close()` on a
+    socket it did not open) and return.
+
+    `WebSocketDisconnect` from `websocket.send_text` is deliberately NOT
+    caught here: it propagates to the caller, same as the pre-W4 shape,
+    which maps it to close_reason="client_disconnect" without an explicit
+    close (the peer is already gone).
+    """
+    while True:
+        message = await pubsub.get_message(
+            ignore_subscribe_messages=True, timeout=WEBSOCKET_PRESENCE_HEARTBEAT_SECONDS
+        )
+
+        if message is None:
+            # Nothing published during this quiet interval; prove we are
+            # still here so a cap check on another connection does not
+            # prune us as stale.
+            await touch_connection(
+                client,
+                connection_id=connection_id,
+                presence_ttl_seconds=WEBSOCKET_PRESENCE_TTL_SECONDS,
+            )
+            continue
+
+        channel = message.get("channel")
+        channel_name = channel.decode() if isinstance(channel, bytes | bytearray) else channel
+
+        if channel_name == evict_channel_name:
+            data = message.get("data")
+            reason = data.decode() if isinstance(data, bytes | bytearray) else str(data)
+            reason = reason or REASON_NEWER_CONNECTION
+            try:
+                await websocket.close(code=WS_CLOSE_GOING_AWAY, reason=reason)
+            except Exception:  # noqa: BLE001 (already-closed is fine)
+                log.debug("ws_self_evict_close_failed", exc_info=True)
+            return WS_CLOSE_GOING_AWAY, reason
+
+        if channel_name != progress_channel:
+            # We only ever subscribe to the two channels above (defensive
+            # check; should not happen).
+            log.debug("ws_skip_unexpected_channel", channel=channel_name)
+            continue
+
+        payload = message.get("data")
+        if isinstance(payload, bytes | bytearray):
+            text = bytes(payload).decode("utf-8", errors="replace")
+        elif isinstance(payload, str):
+            text = payload
+        else:
+            # Unexpected payload type: skip (publisher is trusted, so this
+            # is "should not happen" territory; we log and move on rather
+            # than tear the connection down).
+            log.debug("ws_skip_unknown_payload_type", payload_type=type(payload).__name__)
+            continue
+        await websocket.send_text(text)
 
 
 # ---------------------------------------------------------------------------
@@ -499,55 +589,68 @@ async def scan_progress_endpoint(websocket: WebSocket, scan_id: str) -> None:
             step=initial_step,
         )
 
-    # ---- 5. Register connection (per-user cap) -------------------------
-    max_per_user = websocket_max_connections_per_user()
-    evicted = await _register_connection(
-        current_user.id, websocket, max_per_user=max_per_user
-    )
-    if evicted is not None:
-        # Evict the oldest BEFORE we push anything to the new connection so
-        # the user does not briefly see two open streams from this worker.
-        try:
-            await evicted.close(
-                code=WS_CLOSE_GOING_AWAY, reason=REASON_NEWER_CONNECTION
-            )
-        except Exception:  # noqa: BLE001 — already-closed is fine
-            log.debug("ws_evict_close_failed", exc_info=True)
-
-    log.info("ws_connected", user_id=str(current_user.id))
-
-    # ---- 6. Initial sync push ------------------------------------------
-    try:
-        await websocket.send_text(initial_frame)
-    except WebSocketDisconnect:
-        await _unregister_connection(current_user.id, websocket)
-        log.info("ws_closed", code=WS_CLOSE_NORMAL, reason="client_disconnect_initial")
-        structlog.contextvars.unbind_contextvars("scan_id", "remote_addr", "user_id")
-        return
-
-    # ---- 7. Subscribe + forward loop -----------------------------------
-    channel = scan_progress_channel(scan_id)
+    # ---- 5-7. Admission (W4), initial sync push, subscribe + forward ---
+    # A single Redis client backs both the connection-cap registry and the
+    # progress/eviction pub/sub for this connection's whole lifetime.
+    connection_id = new_connection_id()
+    progress_channel = scan_progress_channel(scan_id)
+    my_evict_channel = evict_channel(connection_id)
     close_code = WS_CLOSE_NORMAL
     close_reason = ""
     try:
-        async with _redis_pubsub(channel) as pubsub:
-            async for message in pubsub.listen():
-                if not isinstance(message, dict):
-                    continue
-                if message.get("type") != "message":
-                    continue
-                payload = message.get("data")
-                if isinstance(payload, bytes | bytearray):
-                    text = bytes(payload).decode("utf-8", errors="replace")
-                elif isinstance(payload, str):
-                    text = payload
-                else:
-                    # Unexpected payload type — skip (publisher is trusted, so
-                    # this is "should not happen" territory; we log and move on
-                    # rather than tear the connection down).
-                    log.debug("ws_skip_unknown_payload_type", payload_type=type(payload).__name__)
-                    continue
-                await websocket.send_text(text)
+        async with _redis_pubsub((progress_channel, my_evict_channel)) as (client, pubsub):
+            # ---- 5. Admission: per-user + global caps (W4) -------------
+            result = await register_connection(
+                client,
+                user_id=current_user.id,
+                connection_id=connection_id,
+                max_per_user=websocket_max_connections_per_user(),
+                max_global=websocket_max_connections_global(),
+                presence_ttl_seconds=WEBSOCKET_PRESENCE_TTL_SECONDS,
+            )
+            if not result.accepted:
+                # Global cap: refuse outright. We never evict a stranger's
+                # live connection just to seat a new one.
+                log.warning("ws_global_capacity_reached", user_id=str(current_user.id))
+                close_code = WS_CLOSE_CAPACITY
+                close_reason = REASON_GLOBAL_CAPACITY
+                await websocket.close(code=close_code, reason=close_reason)
+                return
+            if result.evicted_connection_id is not None:
+                # Per-user cap: the oldest connection lost its slot. It
+                # closes ITSELF from within its own asyncio task (wherever
+                # that is) on receipt of this notice; we never touch a
+                # socket we did not open.
+                await publish_eviction(
+                    client, result.evicted_connection_id, reason=REASON_NEWER_CONNECTION
+                )
+
+            log.info("ws_connected", user_id=str(current_user.id))
+
+            # ---- 6. Initial sync push ----------------------------------
+            try:
+                await websocket.send_text(initial_frame)
+            except WebSocketDisconnect:
+                close_reason = "client_disconnect_initial"
+                await unregister_connection(
+                    client, user_id=current_user.id, connection_id=connection_id
+                )
+                return
+
+            # ---- 7. Subscribe + forward loop ---------------------------
+            try:
+                close_code, close_reason = await _forward_loop(
+                    websocket,
+                    pubsub,
+                    client=client,
+                    progress_channel=progress_channel,
+                    evict_channel_name=my_evict_channel,
+                    connection_id=connection_id,
+                )
+            finally:
+                await unregister_connection(
+                    client, user_id=current_user.id, connection_id=connection_id
+                )
     except WebSocketDisconnect:
         # Peer closed — normal path.
         close_reason = "client_disconnect"
@@ -560,7 +663,6 @@ async def scan_progress_endpoint(websocket: WebSocket, scan_id: str) -> None:
         except Exception:  # noqa: BLE001 — already closed is acceptable
             log.debug("ws_internal_close_failed", exc_info=True)
     finally:
-        await _unregister_connection(current_user.id, websocket)
         log.info("ws_closed", code=close_code, reason=close_reason)
         structlog.contextvars.unbind_contextvars("scan_id", "remote_addr", "user_id")
 
@@ -598,11 +700,13 @@ __all__ = [
     "REASON_AUTH_TIMEOUT",
     "REASON_BAD_MESSAGE",
     "REASON_FORBIDDEN",
+    "REASON_GLOBAL_CAPACITY",
     "REASON_INTERNAL",
     "REASON_NEWER_CONNECTION",
     "REASON_ORIGIN_REJECTED",
     "REASON_SCAN_NOT_FOUND",
     "WS_CLOSE_BAD_MESSAGE",
+    "WS_CLOSE_CAPACITY",
     "WS_CLOSE_FORBIDDEN",
     "WS_CLOSE_GOING_AWAY",
     "WS_CLOSE_INTERNAL",

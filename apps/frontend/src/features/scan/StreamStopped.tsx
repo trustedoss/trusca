@@ -20,6 +20,14 @@
  * whose silence is being reported, because the consequence differs: a frozen
  * progress panel means the status may be out of date, a frozen log panel
  * means the lines end where the stream did.
+ *
+ * W4: the per-user cap now lives in a Redis-backed registry shared by every
+ * backend process (was a per-worker-process dict), and a NEW global cap sits
+ * beside it. The two read differently to a reader, which is why they map to
+ * two different reasons below: an eviction (1001) is about THIS account's
+ * own connections, while a capacity refusal (4429) is about the whole
+ * deployment being full and has nothing to do with how many tabs this reader
+ * has open.
  */
 import { PlugZap, RefreshCw } from "lucide-react";
 import { useTranslation } from "react-i18next";
@@ -31,11 +39,12 @@ import { Button } from "@/components/ui/button";
  *
  * Traced to `apps/backend/api/v1/ws.py`, the only file in the backend that
  * closes this socket:
- *   1001 `newer_connection` (:511) - the per-user connection cap evicted the
- *        oldest socket. An open scan page holds two of the three allowed, so
- *        a second tab can take the first tab's stream. The count is per
- *        worker process, so on a multi-worker deployment this depends on
- *        which worker each socket landed on.
+ *   1001 `newer_connection` (W4) - the per-user connection cap evicted the
+ *        oldest socket. An open scan page holds two of the eight allowed, so
+ *        four or more tabs can take an earlier tab's stream. The count is
+ *        shared by every backend process (a Redis-backed registry, not a
+ *        per-worker dict), so this no longer depends on which worker a
+ *        socket happened to land on.
  *   1011 `internal` (:559) - an exception in the forward loop. uvicorn's own
  *        keepalive timeout also closes with 1011, so the copy says only that
  *        the server ended it, which covers both.
@@ -44,6 +53,8 @@ import { Button } from "@/components/ui/button";
  *   4404 `scan_not_found` (:408 and :472) - the id in the URL is not a UUID,
  *        OR the row is absent. "There is no scan with this id" is the one
  *        sentence true of both.
+ *   4429 `capacity_at_limit` (W4) - the global connection cap is full. Unlike
+ *        1001, this has nothing to do with this account's own tabs.
  *
  * Everything else falls back to the network sentence, which is right because
  * the fallback case is 1006: the browser's own code for "no close frame
@@ -56,7 +67,8 @@ type StreamStoppedReason =
   | "server"
   | "rejected"
   | "forbidden"
-  | "missing";
+  | "missing"
+  | "at_capacity";
 
 const REASON_BY_CLOSE_CODE: Record<number, StreamStoppedReason> = {
   1001: "evicted",
@@ -64,17 +76,24 @@ const REASON_BY_CLOSE_CODE: Record<number, StreamStoppedReason> = {
   4400: "rejected",
   4403: "forbidden",
   4404: "missing",
+  4429: "at_capacity",
 };
 
 /** Codes where pressing Reconnect would only repeat the same refusal. */
 const UNRETRYABLE_CLOSE_CODES = new Set([4400, 4403, 4404]);
+// 4429 (at_capacity) is deliberately NOT in this set, capacity is
+// transient (it frees up as other connections close), unlike the codes
+// above, which are permanent for this URL/session. The reader keeps the
+// Reconnect button; the hook just will not retry it automatically.
 
 /**
  * Reasons after which "the scan itself is unaffected" is still true.
  *
  * It is the sentence a reader most wants when a stream dies, and for a
  * dropped connection or an evicted socket it is exactly right: the scan runs
- * in a worker that never knew this socket existed.
+ * in a worker that never knew this socket existed. The same is true of a
+ * capacity refusal: it happens before the socket is admitted at all, so it
+ * cannot have touched the scan.
  *
  * Three reasons do not get it. For 4403 and 4404 it is nonsense - "there is
  * no scan with this id, the scan itself is unaffected and is still running"
@@ -89,6 +108,7 @@ const SCAN_UNAFFECTED_REASONS = new Set<StreamStoppedReason>([
   "network",
   "evicted",
   "rejected",
+  "at_capacity",
 ]);
 
 /**

@@ -116,13 +116,17 @@ def _migrate_once() -> None:
 
 @pytest.fixture(autouse=True)
 def _reset_ws_registry() -> Iterator[None]:
-    """The per-user connection registry is a module-level singleton — reset
-    it between tests so eviction tests start from a clean slate."""
+    """W4: the connection-cap registry lives in Redis, shared by every
+    process reading this same instance (that is the point: see
+    `core.ws_registry`). Reset the `ws:conns:*` keys between tests so cap
+    tests start from a clean slate instead of a previous test's leftovers."""
+    import asyncio
+
     from api.v1.ws import _reset_registry_for_tests
 
-    _reset_registry_for_tests()
+    asyncio.run(_reset_registry_for_tests())
     yield
-    _reset_registry_for_tests()
+    asyncio.run(_reset_registry_for_tests())
 
 
 # ---------------------------------------------------------------------------
@@ -712,25 +716,167 @@ def test_ws_terminal_step_succeeded_is_forwarded(client: TestClient) -> None:
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.skip(
-    reason=(
-        "Per-user connection cap eviction requires a single event loop shared "
-        "across the connections so `await evicted.close(...)` can complete on "
-        "the originating socket's loop. Starlette's TestClient gives each "
-        "websocket_connect its own anyio portal/thread, so the cross-loop "
-        "close hangs in tests even though the production single-loop path is "
-        "correct. The unit suite "
-        "(`tests/unit/test_ws_helpers.py::test_endpoint_evicts_oldest_on_"
-        "fourth_connection`) already pins this with an in-memory fake; an "
-        "integration smoke would need a real uvicorn process + httpx-ws "
-        "client. Tracked as a follow-up for the security review pass."
-    )
-)
 def test_ws_per_user_connection_limit_evicts_oldest(
-    app, monkeypatch: pytest.MonkeyPatch
+    client: TestClient, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """Reserved scenario — see skip reason above for the runtime constraint."""
-    raise NotImplementedError
+    """4th connection (cap=3) evicts the 1st with code 1001/newer_connection.
+
+    W4: this used to be skipped: eviction closed a DIFFERENT connection's
+    socket from within the new connection's own task, and Starlette's
+    TestClient gives every `websocket_connect` its own anyio portal/thread,
+    so that cross-loop `.close()` call hung. The Redis-backed registry
+    fixes this as a side effect of fixing the underlying defect: eviction is
+    now a pub/sub notice, and the evicted connection closes ITSELF from
+    within its own task, there is no cross-connection close left to hang.
+    """
+    monkeypatch.setenv("WEBSOCKET_MAX_CONNECTIONS_PER_USER", "3")
+    user_id, _team_id, scan_id = _seed_user_with_team_scan()
+    token = _bearer_token(user_id)
+
+    with client.websocket_connect(f"/ws/scans/{scan_id}") as ws1:
+        _send_auth(ws1, token)
+        ws1.receive_text()  # initial sync
+
+        with client.websocket_connect(f"/ws/scans/{scan_id}") as ws2:
+            _send_auth(ws2, token)
+            ws2.receive_text()
+
+            with client.websocket_connect(f"/ws/scans/{scan_id}") as ws3:
+                _send_auth(ws3, token)
+                ws3.receive_text()
+
+                with client.websocket_connect(f"/ws/scans/{scan_id}") as ws4:
+                    _send_auth(ws4, token)
+                    ws4.receive_text()
+
+                    # ws1 was the oldest, the 4th connection evicts it.
+                    disconnect = _expect_disconnect(ws1)
+                    assert disconnect.code == 1001
+                    assert disconnect.reason == "newer_connection"
+
+
+def _seed_two_users_same_team_one_scan() -> tuple[uuid.UUID, uuid.UUID, uuid.UUID]:
+    """Two users in the SAME team, both able to open the same scan's
+    stream, used by the global-cap test, where the second connection must
+    be refused for capacity, not for authorization."""
+    import asyncio
+
+    from sqlalchemy.ext.asyncio import (
+        AsyncSession,
+        async_sessionmaker,
+        create_async_engine,
+    )
+
+    from core.config import database_url
+    from models import Scan as ScanModel
+
+    async def _build() -> tuple[uuid.UUID, uuid.UUID, uuid.UUID]:
+        engine = create_async_engine(database_url(), pool_pre_ping=True, future=True)
+        factory = async_sessionmaker(engine, expire_on_commit=False, class_=AsyncSession)
+        async with factory() as s:
+            org = await make_organization(s)
+            team = await make_team(s, organization=org)
+            user_a = await make_user(s)
+            user_b = await make_user(s)
+            await make_membership(s, user=user_a, team=team, role="developer")
+            await make_membership(s, user=user_b, team=team, role="developer")
+            project = await make_project(s, team=team)
+            scan = ScanModel(
+                project_id=project.id,
+                kind="source",
+                status="running",
+                progress_percent=15,
+                current_step="fetch",
+                requested_by_user_id=user_a.id,
+                scan_metadata={},
+            )
+            s.add(scan)
+            await s.commit()
+            await s.refresh(scan)
+            return user_a.id, user_b.id, scan.id
+        await engine.dispose()  # unreachable, mypy-safe
+
+    return asyncio.run(_build())
+
+
+def test_ws_two_tabs_four_sockets_all_survive_the_default_cap(
+    client: TestClient,
+) -> None:
+    """Regression contract (W4): a scan detail tab opens two sockets, so two
+    tabs open four. With the default per-user cap (8) all four stay open:
+    each still receives a published progress frame after the fourth
+    connects, proving none of them were silently evicted."""
+    from tasks._progress import publish_progress, reset_publisher_for_tests
+
+    reset_publisher_for_tests()
+
+    user_id, _team_id, scan_id = _seed_user_with_team_scan()
+    token = _bearer_token(user_id)
+
+    with client.websocket_connect(f"/ws/scans/{scan_id}") as ws1:
+        _send_auth(ws1, token)
+        ws1.receive_text()
+        with client.websocket_connect(f"/ws/scans/{scan_id}") as ws2:
+            _send_auth(ws2, token)
+            ws2.receive_text()
+            with client.websocket_connect(f"/ws/scans/{scan_id}") as ws3:
+                _send_auth(ws3, token)
+                ws3.receive_text()
+                with client.websocket_connect(f"/ws/scans/{scan_id}") as ws4:
+                    _send_auth(ws4, token)
+                    ws4.receive_text()
+
+                    def _publish() -> None:
+                        time.sleep(0.05)
+                        publish_progress(scan_id, step="cdxgen", percent=42)
+
+                    publisher = threading.Thread(target=_publish)
+                    publisher.start()
+                    try:
+                        for ws in (ws1, ws2, ws3, ws4):
+                            forwarded = json.loads(ws.receive_text())
+                            assert forwarded["percent"] == 42
+                    finally:
+                        publisher.join(timeout=2.0)
+
+
+def test_ws_global_cap_refuses_new_connection_without_evicting_anyone(
+    client: TestClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The global cap never evicts a stranger's live connection: reaching it
+    refuses the NEW connection (4429/capacity_at_limit) and leaves the
+    connection already holding the last slot untouched."""
+    monkeypatch.setenv("WEBSOCKET_MAX_CONNECTIONS_GLOBAL", "1")
+    user_a_id, user_b_id, scan_id = _seed_two_users_same_team_one_scan()
+    token_a = _bearer_token(user_a_id)
+    token_b = _bearer_token(user_b_id)
+
+    with client.websocket_connect(f"/ws/scans/{scan_id}") as ws_a:
+        _send_auth(ws_a, token_a)
+        ws_a.receive_text()  # holds the only global slot
+
+        with client.websocket_connect(f"/ws/scans/{scan_id}") as ws_b:
+            _send_auth(ws_b, token_b)
+            disconnect = _expect_disconnect(ws_b)
+            assert disconnect.code == 4429
+            assert disconnect.reason == "capacity_at_limit"
+
+        # ws_a is untouched, it can still receive a published frame.
+        from tasks._progress import publish_progress, reset_publisher_for_tests
+
+        reset_publisher_for_tests()
+
+        def _publish() -> None:
+            time.sleep(0.05)
+            publish_progress(scan_id, step="cdxgen", percent=77)
+
+        publisher = threading.Thread(target=_publish)
+        publisher.start()
+        try:
+            forwarded = json.loads(ws_a.receive_text())
+        finally:
+            publisher.join(timeout=2.0)
+        assert forwarded["percent"] == 77
 
 
 # ---------------------------------------------------------------------------
