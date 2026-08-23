@@ -14,7 +14,12 @@
   },
   "summary": {
     "count": "{{total}} results",
+    "count_at_least": "{{total}}+ results",
     "type_more": "Type at least {{min}} characters to search."
+  },
+  "capped": {
+    "count": "{{count}}+",
+    "tooltip": "This count stopped at the display limit. The true number is at least this many."
   },
   "scope": {
     "all_scans": "every scan these projects have run",

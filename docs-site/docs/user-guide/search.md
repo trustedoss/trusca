@@ -35,6 +35,12 @@ Which facets exist depends on the tab: severity and status for vulnerabilities, 
 
 Everything — the term, the tab, the page, the facets — lives in the URL, so a search can be reloaded, bookmarked, and shared.
 
+## Result counts
+
+The total shown above the results, and every facet chip's count, stop counting past **1,000** matches. Below that, both are exact. At or past it, the number freezes at 1,000 and displays as **1000+** (a floor, not the true total), with a dotted underline on the total and a "+" on each affected chip so you can tell a capped count from an exact one at a glance.
+
+This keeps a broad, popular term (a package name that shows up in most of your projects, a CVE that affects half the catalog) cheap to search: the database stops counting once it knows there are at least 1,000 matches instead of tallying every one of them on every keystroke. Pagination follows the same floor: once you have paged through as many results as the capped total accounts for, **Next** stops offering another page even if more results exist past that point.
+
 ## Saving a search
 
 **Save search** parks the current query under a name. Saved searches appear on your dashboard; clicking one restores exactly the filters that were applied when you saved it.

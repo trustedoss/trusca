@@ -192,6 +192,12 @@ export function SearchPage() {
   const results = useSearchResults(params);
   const data = results.data;
   const total = data?.total ?? 0;
+  // When `countsCapped` is true, `total` is the count cap itself, not the
+  // true total (concurrency-scaling plan Q3), so the page count derived from
+  // it is a floor too, and the pagination footer's Next button stops one
+  // page short of the cap rather than offering pages past what the count
+  // can vouch for.
+  const countsCapped = data?.counts_capped ?? false;
   const totalPages = Math.max(1, Math.ceil(total / SEARCH_PAGE_SIZE));
   const belowThreshold = debouncedQuery.trim().length < SEARCH_MIN_CHARS;
 
@@ -243,6 +249,7 @@ export function SearchPage() {
       <SearchFacetBar
         kind={kind}
         facets={data?.facets ?? {}}
+        countsCapped={countsCapped}
         severity={severity}
         status={status}
         packageType={packageType}
@@ -256,12 +263,24 @@ export function SearchPage() {
         className="border-b px-6 py-2 text-sm text-muted-foreground"
         data-testid="search-summary"
         data-total={total}
+        data-total-capped={countsCapped}
         data-kind={kind}
       >
-        <span>
+        <span
+          title={
+            !belowThreshold && countsCapped ? t("capped.tooltip") : undefined
+          }
+          className={
+            !belowThreshold && countsCapped
+              ? "underline decoration-dotted underline-offset-4"
+              : undefined
+          }
+        >
           {belowThreshold
             ? t("summary.type_more", { min: SEARCH_MIN_CHARS })
-            : t("summary.count", { total })}
+            : countsCapped
+              ? t("summary.count_at_least", { total })
+              : t("summary.count", { total })}
         </span>
         {" · "}
         {/* Shown before a term is typed too, so switching tabs is when the

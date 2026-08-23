@@ -86,6 +86,14 @@ export interface SearchResultsPage {
   items_vulnerabilities: VulnerabilityResult[];
   items_licenses: LicenseResult[];
   total: number;
+  /**
+   * True when the match set is larger than the server's count cap
+   * (concurrency-scaling plan Q3): `total`, and every facet bucket's
+   * `count`, are then a floor rather than the exact number: the search
+   * matches AT LEAST this many. False means every count on this page is
+   * exact.
+   */
+  counts_capped: boolean;
   page: number;
   size: number;
   facets: Record<string, SearchFacetBucket[]>;
