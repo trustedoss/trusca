@@ -57,7 +57,7 @@ if TYPE_CHECKING:
 
 log = structlog.get_logger("search.service")
 
-MIN_QUERY_LEN = 2
+MIN_QUERY_LEN = 3
 PER_CATEGORY_LIMIT = 20
 COMPONENTS = "components"
 VULNERABILITIES = "vulnerabilities"

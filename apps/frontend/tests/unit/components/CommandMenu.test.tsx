@@ -453,7 +453,7 @@ describe("CommandMenu", () => {
 
   // --- BomLens parity Phase H-2: cross-project component/CVE search ---------
 
-  it("does NOT call the global-search endpoint below the 2-char threshold", async () => {
+  it("does NOT call the global-search endpoint below the 3-char threshold", async () => {
     const user = userEvent.setup();
     render(<ControlledHarness initiallyOpen={true} />);
 
@@ -469,7 +469,45 @@ describe("CommandMenu", () => {
     expect(mockedGlobalSearch).not.toHaveBeenCalled();
   });
 
-  it("calls global-search with the debounced query once it clears 2 chars", async () => {
+  it("does NOT call global-search at exactly 2 chars (concurrency-scaling Q1)", async () => {
+    // The regression this pins: the floor moved from 2 to 3, so a 2-char
+    // query (which used to fire) must now stay below threshold too.
+    const user = userEvent.setup();
+    render(<ControlledHarness initiallyOpen={true} />);
+
+    const input = await screen.findByPlaceholderText(
+      "Search projects, CVEs, pages...",
+    );
+    await user.type(input, "lo");
+
+    await new Promise((resolve) => setTimeout(resolve, 350));
+    expect(mockedGlobalSearch).not.toHaveBeenCalled();
+  });
+
+  it("calls global-search with the debounced query once it clears 3 chars", async () => {
+    const user = userEvent.setup();
+    mockedGlobalSearch.mockResolvedValue(
+      searchResults({ components: [componentHit()] }),
+    );
+    render(<ControlledHarness initiallyOpen={true} />);
+
+    const input = await screen.findByPlaceholderText(
+      "Search projects, CVEs, pages...",
+    );
+    await user.type(input, "lod");
+
+    await waitFor(
+      () => {
+        const matched = mockedGlobalSearch.mock.calls.some(
+          (c) => c[0] === "lod",
+        );
+        expect(matched).toBe(true);
+      },
+      { timeout: 1500 },
+    );
+  });
+
+  it("calls global-search with the debounced query once it clears the threshold", async () => {
     const user = userEvent.setup();
     mockedGlobalSearch.mockResolvedValue(
       searchResults({ components: [componentHit()] }),
@@ -572,7 +610,7 @@ describe("CommandMenu", () => {
     });
   });
 
-  it("clears component/CVE hits when the query drops back below 2 chars", async () => {
+  it("clears component/CVE hits when the query drops back below 3 chars", async () => {
     const user = userEvent.setup();
     mockedGlobalSearch.mockResolvedValue(
       searchResults({ components: [componentHit()] }),

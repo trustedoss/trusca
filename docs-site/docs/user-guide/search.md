@@ -45,8 +45,8 @@ You can keep up to 20. The Save button goes disabled once you reach the limit ra
 
 ## Verify it worked
 
-<!-- docs-uat: id=search-results-api kind=api auth=admin url=/v1/search/results?kind=components&q=lo expect=status:200 tier=nightly -->
-1. `GET /v1/search/results?kind=components&q=lo` returns 200 with `items_components`, `total`, `page`, `size`, and `facets`.
+<!-- docs-uat: id=search-results-api kind=api auth=admin url=/v1/search/results?kind=components&q=lod expect=status:200 tier=nightly -->
+1. `GET /v1/search/results?kind=components&q=lod` returns 200 with `items_components`, `total`, `page`, `size`, and `facets`.
 <!-- docs-uat: id=search-unknown-kind-422 kind=api auth=admin url=/v1/search/results?kind=bogus&q=lodash expect=status:422 tier=nightly -->
 2. An unknown `kind` returns 422.
 <!-- docs-uat: id=saved-searches-api kind=api auth=admin url=/v1/saved-searches expect=status:200 tier=nightly -->

@@ -43,7 +43,7 @@ log = structlog.get_logger("search.results.api")
     responses={
         200: {
             "description": (
-                "One page of results. A query shorter than 2 characters "
+                "One page of results. A query shorter than 3 characters "
                 "returns an empty page with a 200, not a 422, so the page can "
                 "fire as the user types."
             )

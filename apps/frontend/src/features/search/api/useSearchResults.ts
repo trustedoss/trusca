@@ -21,8 +21,14 @@ import {
 /** Rows per page. Matches the paginated-table surfaces elsewhere. */
 export const SEARCH_PAGE_SIZE = 25;
 
-/** Below this the server returns an empty page, so do not spend a request. */
-export const SEARCH_MIN_CHARS = 2;
+/**
+ * Below this the server returns an empty page, so do not spend a request.
+ * Must match the backend floor (`services.search_results_service.MIN_QUERY_LEN`)
+ * and the ⌘K palette mirror (`SEARCH_MIN_CHARS` in
+ * `components/CommandMenu.tsx`), pinned by
+ * `tests/unit/contracts/searchMinQueryLenContract.test.ts`.
+ */
+export const SEARCH_MIN_CHARS = 3;
 
 export const savedSearchesQueryKey = ["saved-searches"] as const;
 

@@ -1332,6 +1332,27 @@ def test_report_column_headings_cover_exactly_the_canonical_component_columns() 
     assert set(_COMPONENT_COLUMN_HEADINGS) == set(REPORT_COMPONENT_COLUMNS)
 
 
+def test_search_min_query_len_agrees_between_the_two_search_services() -> None:
+    """Two backend copies of one floor: the palette endpoint and the full
+    search page.
+
+    Concurrency-scaling plan Q1 raised the floor from 2 to 3 (the palette's
+    ``GET /v1/search`` and the full page's ``GET /v1/search/results`` are
+    separate endpoints on purpose, see ``search_results_service``'s module
+    docstring, but they must not diverge on WHEN they refuse to search, only
+    on how they answer once they do). A change to one without the other
+    would mean the palette rejects a query the full page happily answers, or
+    the reverse, both invisible to per-module tests.
+
+    The frontend half of this contract is
+    ``apps/frontend/tests/unit/contracts/searchMinQueryLenContract.test.ts``.
+    """
+    from services.search_results_service import MIN_QUERY_LEN as RESULTS_MIN_QUERY_LEN
+    from services.search_service import MIN_QUERY_LEN as PALETTE_MIN_QUERY_LEN
+
+    assert PALETTE_MIN_QUERY_LEN == RESULTS_MIN_QUERY_LEN == 3
+
+
 def test_report_format_template_schema_validates_against_the_same_vocabulary() -> None:
     """The organization-template schema's column validator and the renderer
     must reject/accept the identical set, otherwise an admin could save a

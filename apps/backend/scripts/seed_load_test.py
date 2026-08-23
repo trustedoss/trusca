@@ -150,9 +150,9 @@ RARE_COMPONENT_NAME = "zzq-rare-widget-9182"
 # Query fixtures the EXPLAIN regression tests import directly, so the seeded
 # data and the query under test can never drift apart. QUERY_3CHAR is a
 # 3-character substring of a common name (the plan's third query kind,
-# "3글자": services.search_service.MIN_QUERY_LEN is 2, but pg_trgm indexes
-# only help wildcards of length >= 3, which is exactly the case this string
-# exercises).
+# "3글자": the shortest length the search endpoints accept
+# (``services.search_service.MIN_QUERY_LEN`` == 3), which matches the pg_trgm
+# floor exactly (wildcards shorter than 3 characters cannot use the index).
 QUERY_3CHAR = "das"  # substring of "lodash"
 QUERY_COMMON = COMMON_COMPONENT_NAMES[0]  # "lodash": matches every project
 QUERY_UNCOMMON = RARE_COMPONENT_NAME  # matches only the first project

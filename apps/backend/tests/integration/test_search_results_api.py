@@ -394,6 +394,44 @@ async def test_short_query_is_an_empty_200_not_a_422(client: AsyncClient) -> Non
     assert res.json()["items_components"] == []
 
 
+async def test_two_char_query_is_now_below_the_floor(client: AsyncClient) -> None:
+    """Concurrency-scaling plan Q1: the floor moved from 2 to 3, here too.
+
+    A 2-char query never reaches the database (the length gate short-circuits
+    first), so seeding a component that would otherwise match and still
+    getting an empty page is the point.
+    """
+    query = "ab"
+    team, user = await _seed_team_with_user(client)
+    _, scan = await _seed_project(client, team_id=team.id, name=f"{query}-p")
+    await _seed_component(client, scan_id=scan, name=f"{query}-comp")
+
+    res = await _get(client, user, kind="components", q=query)
+    assert res.status_code == 200
+    assert res.json()["total"] == 0
+    assert res.json()["items_components"] == []
+
+
+async def test_three_char_query_meets_the_floor(client: AsyncClient) -> None:
+    """The other half of the Q1 contract: 3 characters still works normally.
+
+    Asserts the seeded row is present rather than an exact total, since the
+    integration DB is not truncated between tests and a 3-char substring has
+    only 16**3 slots in the token alphabet, so an incidental match from
+    unrelated data is plausible over a long-lived DB.
+    """
+    token = _token()
+    query = token[2:5]  # 3 chars from the random part, not the fixed "sr" prefix
+    team, user = await _seed_team_with_user(client)
+    _, scan = await _seed_project(client, team_id=team.id, name=f"{token}-p")
+    await _seed_component(client, scan_id=scan, name=f"{token}-comp")
+
+    res = await _get(client, user, kind="components", q=query)
+    assert res.status_code == 200
+    names = {row["component_name"] for row in res.json()["items_components"]}
+    assert f"{token}-comp" in names
+
+
 async def test_unknown_kind_is_422(client: AsyncClient) -> None:
     _, user = await _seed_team_with_user(client)
     res = await _get(client, user, kind="bogus", q="lodash")

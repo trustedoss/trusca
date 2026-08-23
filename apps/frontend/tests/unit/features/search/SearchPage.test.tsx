@@ -107,7 +107,7 @@ describe("SearchPage", () => {
     });
   });
 
-  it("does not spend a request below the two-character threshold", async () => {
+  it("does not spend a request below the three-character threshold", async () => {
     mockedFetch.mockResolvedValue(emptyPage());
     renderPage("/search?kind=components&q=a");
 
@@ -115,6 +115,29 @@ describe("SearchPage", () => {
       expect(screen.getByTestId("search-summary")).toBeInTheDocument();
     });
     expect(mockedFetch).not.toHaveBeenCalled();
+  });
+
+  it("does not spend a request at exactly 2 chars (concurrency-scaling Q1)", async () => {
+    // The regression this pins: the floor moved from 2 to 3, so a 2-char
+    // query (which used to fire) must now stay below threshold too.
+    mockedFetch.mockResolvedValue(emptyPage());
+    renderPage("/search?kind=components&q=lo");
+
+    await waitFor(() => {
+      expect(screen.getByTestId("search-summary")).toBeInTheDocument();
+    });
+    expect(mockedFetch).not.toHaveBeenCalled();
+  });
+
+  it("does spend a request at exactly 3 chars", async () => {
+    mockedFetch.mockResolvedValue(emptyPage({ query: "lod" }));
+    renderPage("/search?kind=components&q=lod");
+
+    await waitFor(() => {
+      expect(mockedFetch).toHaveBeenCalledWith(
+        expect.objectContaining({ kind: "components", q: "lod" }),
+      );
+    });
   });
 
   it("renders the rows the server returned and reports the total", async () => {
@@ -161,7 +184,7 @@ describe("SearchPage", () => {
 
   it("states the scope before a term is typed", async () => {
     mockedFetch.mockResolvedValue(emptyPage());
-    // Below the 2-char threshold nothing is fetched, but the tab still has to
+    // Below the 3-char threshold nothing is fetched, but the tab still has to
     // say what it would search — that is when someone is choosing a tab.
     renderPage("/search?kind=vulnerabilities");
 

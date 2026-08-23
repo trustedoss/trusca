@@ -538,9 +538,10 @@ def search_rate_limit() -> str:
     migration ``0043_search_trigram_indexes`` (``pg_trgm`` + ``gin_trgm_ops`` on
     ``components.name``, ``components.purl``, ``vulnerabilities.external_id``,
     and ``vulnerabilities.summary``) rather than a sequential scan. Trigram
-    indexing only serves substrings of 3+ characters though, so the
-    2-character floor in ``services.search_service.MIN_QUERY_LEN`` still falls
-    back to a full scan on the shortest queries. The ⌘K palette fires one
+    indexing only serves substrings of 3+ characters, which is exactly the
+    floor ``services.search_service.MIN_QUERY_LEN`` enforces (raised from 2,
+    concurrency-scaling plan Q1): a query the endpoint accepts always has an
+    index to use. The ⌘K palette fires one
     debounced query per keystroke, so search gets its OWN, tighter budget
     instead of sharing the CI-poll ``api_read_rate_limit`` bucket, bounding
     the short-query scan-cost amplifier a scripted client could otherwise

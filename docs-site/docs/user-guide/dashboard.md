@@ -53,7 +53,7 @@ Press **⌘K** (macOS) / **Ctrl+K** (Windows / Linux), or click the search box i
 - **Components** — find a package by name or purl across your projects; selecting a hit opens that project's **Components** tab filtered to the term.
 - **CVEs** — find a vulnerability by CVE id; selecting a hit opens that project's **Vulnerabilities** tab filtered to it.
 
-The Components and CVEs groups query as you type (from two characters up, debounced); Projects and Pages match instantly. Everything is keyboard-navigable — arrow keys to move, Enter to open, Esc to close.
+The Components and CVEs groups query as you type (from three characters up, debounced); Projects and Pages match instantly. Everything is keyboard-navigable: arrow keys to move, Enter to open, Esc to close.
 
 ## Empty state
 
