@@ -8,7 +8,7 @@ sidebar_position: 6
 
 # API Key
 
-API Key는 **비대화형** 클라이언트(CI 러너·Webhook·스크립트·GitHub Action)를 위한 자격증명입니다. 사용자의 JWT 세션을 소비하지 않고 머신 간 트래픽을 인증합니다.
+API Key는 CI 러너, Webhook, 스크립트, GitHub Action 같은 비대화형 클라이언트를 위한 자격증명입니다. 사용자의 JWT 세션을 소비하지 않고 머신 간 트래픽을 인증합니다.
 
 :::note 대상 독자
 소속 팀의 프로젝트에 대해 프로젝트 범위 Key를 발급하는 `developer`, 여기에 팀 범위 Key가 더해지는 `team_admin`, 조직 범위 Key까지 발급하는 `super_admin`.
@@ -40,7 +40,7 @@ tos_<8-char-prefix>_<32-char-secret>
 
 - **`tos_`** — 고정 prefix.
 - **`<8-char-prefix>`** — 랜덤이며 **공개**. 조회와 표시 라벨에 사용. 감사 로그에 노출.
-- **`<32-char-secret>`** — 랜덤이며 **비공개**. 서버에는 bcrypt 해시로만 저장. 전체 Key는 운영자에게 생성 시 **단 한 번** 표시되며 그 이후로는 절대 보이지 않음.
+- **`<32-char-secret>`** — 랜덤이며 비공개. 서버에는 bcrypt 해시로만 저장하고, 전체 Key는 운영자에게 생성 시 한 번만 표시된 뒤 다시 보이지 않습니다.
 
 조회는 prefix 전반에서 상수 시간이며, secret 비교는 타이밍 공격을 막기 위해 `bcrypt.checkpw`를 사용합니다.
 
@@ -130,6 +130,8 @@ curl -sS -H "Authorization: Bearer ${TRUSTEDOSS_API_KEY}" \
 ## Key 목록
 
 UI는 라벨, prefix, scope(`org` / `team` / `project`), 발급자, 생성 시각, 마지막 사용 시각, 만료(`expires_at`, 만료 없으면 null), 폐기 상태를 표시합니다. 기존 Key의 secret을 복구할 방법은 없습니다 — 의도된 설계입니다. 키별 역할, 허용 동작, 마지막 사용 IP 컬럼은 로드맵입니다(해당 모델 컬럼들이 아직 없음).
+
+마지막 사용 시각은 `API_KEY_LAST_USED_AT_UPDATE_INTERVAL_SECONDS`(기본 15분) 단위로 반올림됩니다. 인증할 때마다 정확한 순간을 기록하지 않습니다 — "그 구간 안에서 사용됨"을 뜻하지, "바로 이 초에 사용됨"을 뜻하지 않습니다. 하나의 CI 실행이 20분 동안 같은 Key로 수십 번 폴링해도 시각 갱신은 한두 번만 일어납니다. 이 정도 해상도면 "이 Key가 아직 쓰이고 있는가"라는, 이 컬럼이 실제로 답하는 질문에는 충분합니다. 요청 단위 감사 기록이 필요하면 구조화된 백엔드 로그(`api_key.auth_failed`, 그리고 그 Key의 요청이 남기는 도메인 감사 행)를 참고하세요.
 
 ## 감사 로그
 

@@ -19,7 +19,7 @@ sidebar_position: 9
 
 ## API keys
 
-Open `/integrations` and scroll to the **API keys** section. The list shows every key you can manage: label, prefix, scope, expiry, and last-used metadata.
+Open `/integrations` and scroll to the **API keys** section. The list shows every key you can manage: label, prefix, scope, expiry, and last-used metadata. The last-used time is rounded to a 15-minute window rather than the exact request; see [Listing keys](../admin-guide/api-keys.md#listing-keys) for why.
 
 ![Integrations — API keys section with the Create button and the keys table](/img/screenshots/user-integrations-keys.png)
 
@@ -32,7 +32,7 @@ Open `/integrations` and scroll to the **API keys** section. The list shows ever
 2. Fill in the form:
    - **Name**: free-text reminder of what the key is for (e.g. `github-action-checkout-service`).
    - **Scope**: the dropdown offers only the scopes you may issue, out of `project`, `team`, and `org`. Lower scopes are stricter; pick the smallest that covers the calls you need to make. The form has plain UUID inputs for `team_id` (required when scope=`team`) and `project_id` (required when scope=`project`); copy the IDs from the corresponding admin pages.
-   - **What this key may do**: **Read only** (the default) or **Read and write**. See [Read-only keys](#read-only-keys) below.
+   - **What this key may do**: Read only (the default) or Read and write. See [Read-only keys](#read-only-keys) below.
    - **Expiration**: **Never expires**, or one of the 30 / 90 / 180 / 365-day presets. After the chosen period the key stops authenticating and CI calls using it fail. A key that leaks into a pipeline log then lapses on its own instead of living until someone revokes it, so CI keys should carry a TTL and be rotated.
 
    Who can issue each scope:
@@ -157,7 +157,7 @@ URL to register at GitLab: `https://<your-host>/v1/webhooks/gitlab`.
 
 - **Content-Type:** `application/json`.
 - **Token:** sent in the `X-Gitlab-Token` header. Set this to the project's `webhook_secret`.
-- **Events:** **Push events** and **Merge request events**.
+- **Events:** Push events and Merge request events.
 
 ## Verify it worked
 

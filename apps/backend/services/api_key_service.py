@@ -59,6 +59,7 @@ from sqlalchemy import and_, func, or_, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from core.config import api_key_last_used_at_update_interval_seconds
 from core.security import CurrentUser, hash_password, verify_password, verify_password_async
 from models import APIKey, Project, User
 
@@ -687,10 +688,24 @@ async def authenticate_api_key(
     if not await asyncio.to_thread(verify_api_key_plaintext, plaintext, row.key_hash):
         return None
 
+    # last_used_at is coalesced into a bucket instead of updated once per
+    # request (concurrency-scaling-plan-2026-08-22.md A2). Skipping the write
+    # inside the interval is a deliberate resolution trade: this column means
+    # "used within the last api_key_last_used_at_update_interval_seconds()",
+    # not "used at this exact instant", see that function's docstring and the
+    # API-key admin guide. A CI scan that polls the same key dozens of times
+    # over its run now costs one or two write transactions instead of one
+    # per poll. NULL (never used) is unconditionally stale.
+    now = _now()
+    if row.last_used_at is not None:
+        elapsed_seconds = (now - row.last_used_at).total_seconds()
+        if elapsed_seconds < api_key_last_used_at_update_interval_seconds():
+            return row
+
     # Update last_used_at best-effort. We do NOT block the request on this
     # commit failing — a brief outage on this column is acceptable.
     try:
-        row.last_used_at = _now()
+        row.last_used_at = now
         await session.commit()
         await session.refresh(row)
     except Exception as exc:  # noqa: BLE001 — best-effort

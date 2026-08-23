@@ -20,6 +20,9 @@ Design notes:
     that round-trips ORM rows directly) cannot accidentally surface the hash.
   - Literal types on ``scope`` give us crisp OpenAPI + Pydantic v2 validation;
     a bogus value fails fast with a 422 RFC 7807 envelope.
+  - APIKeyListItem.last_used_at has interval resolution, not per-request
+    resolution (concurrency-scaling-plan-2026-08-22.md A2). See its field
+    description and ``core.config.api_key_last_used_at_update_interval_seconds``.
 """
 
 from __future__ import annotations
@@ -162,7 +165,18 @@ class APIKeyListItem(BaseModel):
         ),
     )
     created_at: datetime
-    last_used_at: datetime | None
+    last_used_at: datetime | None = Field(
+        default=None,
+        description=(
+            "When this key was last used to authenticate, rounded down to "
+            "the nearest update interval (15 minutes by default, "
+            "API_KEY_LAST_USED_AT_UPDATE_INTERVAL_SECONDS). This means "
+            "'used at some point within that interval', not the exact "
+            "instant of the most recent request. A key used twice inside "
+            "one interval keeps the first commit's value. None means the "
+            "key has never authenticated a request."
+        ),
+    )
     revoked_at: datetime | None
     expires_at: datetime | None = None
 

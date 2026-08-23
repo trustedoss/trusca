@@ -497,6 +497,39 @@ def api_read_rate_limit() -> str:
     return os.getenv("API_READ_RATE_LIMIT", "60/minute")
 
 
+def api_key_last_used_at_update_interval_seconds() -> int:
+    """Minimum gap between ``api_keys.last_used_at`` write commits (A2).
+
+    concurrency-scaling-plan-2026-08-22.md §1.3 / §3.3 (A2): before this,
+    every successful API-key authentication ran a write transaction to
+    stamp ``last_used_at`` with the current time on the auth hot path, and
+    the code's own comment already called that write best-effort. Under
+    CI-heavy traffic a single scan polls the same key repeatedly over its
+    ~20-minute run (trigger, status polls, result reads;
+    concurrency-scaling-plan-2026-08-22.md §0.2 G6), so that was a write
+    transaction per request for a column nothing reads at per-request
+    granularity.
+
+    CONTRACT CHANGE (services.api_key_service.authenticate_api_key):
+    ``last_used_at`` no longer means "the instant of the most recent use".
+    It means "used at some point within this interval". Two uses inside
+    one interval leave the first commit's value unchanged; the write is
+    skipped, not merely delayed. This is documented for operators in
+    docs-site's API-key admin guide. The key-list UI (IntegrationsPage)
+    still renders the raw value with no in-UI explanation of the coarser
+    resolution; adding that note there is a follow-up for frontend-dev.
+
+    Default 900s (15 minutes), chosen to be short enough that an admin
+    scanning the API-keys list for "is this key still alive" (the
+    operational purpose this column actually serves; nothing consumes it
+    at finer grain) sees an answer stale by at most a coffee break, and
+    long enough that a scan's burst of polling requests collapses from
+    one write per request to one or two writes for the whole run. Read at
+    call time per CLAUDE.md core rule #11.
+    """
+    return int(os.getenv("API_KEY_LAST_USED_AT_UPDATE_INTERVAL_SECONDS", "900"))
+
+
 def search_rate_limit() -> str:
     """slowapi limit string for the global search endpoint (per actor).
 

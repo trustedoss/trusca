@@ -16,6 +16,9 @@ Coverage:
   - parse_bearer / verify_api_key_plaintext: adversarial parametrize on the
     untrusted bearer string.
   - Scope mismatch + RBAC raise crisp domain errors, never 500.
+  - authenticate: last_used_at update-interval coalescing (A2). The write
+    happens once the interval has elapsed or the key was never used, and is
+    skipped inside the interval.
 """
 
 from __future__ import annotations
@@ -894,6 +897,119 @@ async def test_authenticate_returns_none_on_garbage(db_session: AsyncSession) ->
 
 
 # ---------------------------------------------------------------------------
+# ---------------------------------------------------------------------------
+# authenticate_api_key: last_used_at update interval (concurrency-scaling-plan
+# 2026-08-22.md §1.3/§3.3, unit A2)
+#
+# Before A2, every successful authentication ran a write transaction to stamp
+# last_used_at with the exact current time. A2 coalesces that into a bucket:
+# the column now means "used at some point within the update interval", not
+# "used at this exact instant" (documented in docs-site's admin-guide/api-keys
+# and schemas.api_key.APIKeyListItem.last_used_at). These two tests pin both
+# halves of that contract directly against the live default (900s / 15min),
+# not a monkeypatched value, so a change to the default cannot silently
+# desync the tests from the behaviour they are meant to lock in.
+# ---------------------------------------------------------------------------
+
+
+async def test_authenticate_updates_last_used_at_once_interval_has_elapsed(
+    db_session: AsyncSession,
+) -> None:
+    from datetime import UTC, datetime, timedelta
+
+    from core.config import api_key_last_used_at_update_interval_seconds
+    from services.api_key_service import authenticate_api_key, issue_api_key
+
+    admin = await make_user(db_session, is_superuser=True)
+    actor = principal_for(admin, role="super_admin")
+    _, plaintext = await issue_api_key(
+        db_session,
+        actor,
+        name="interval-elapsed",
+        scope="org",
+        team_id=None,
+        project_id=None,
+    )
+
+    first = await authenticate_api_key(db_session, plaintext)
+    assert first is not None
+    assert first.last_used_at is not None
+    first_seen = first.last_used_at
+
+    # Push the stamp back further than the update interval so the next
+    # authentication is due a refresh, without waiting in real time.
+    interval = api_key_last_used_at_update_interval_seconds()
+    backdated = datetime.now(UTC) - timedelta(seconds=interval + 5)
+    first.last_used_at = backdated
+    await db_session.commit()
+
+    second = await authenticate_api_key(db_session, plaintext)
+    assert second is not None
+    assert second.last_used_at is not None
+    # Moved forward past the backdate: the write happened, it was not just
+    # left at whatever we forced it to a moment ago.
+    assert second.last_used_at > backdated + timedelta(seconds=interval)
+    assert second.last_used_at != first_seen
+
+
+async def test_authenticate_skips_write_within_update_interval(
+    db_session: AsyncSession,
+) -> None:
+    """Two authentications inside one interval leave the first commit's value."""
+    from services.api_key_service import authenticate_api_key, issue_api_key
+
+    admin = await make_user(db_session, is_superuser=True)
+    actor = principal_for(admin, role="super_admin")
+    _, plaintext = await issue_api_key(
+        db_session,
+        actor,
+        name="interval-not-elapsed",
+        scope="org",
+        team_id=None,
+        project_id=None,
+    )
+
+    first = await authenticate_api_key(db_session, plaintext)
+    assert first is not None
+    assert first.last_used_at is not None
+    first_seen = first.last_used_at
+
+    second = await authenticate_api_key(db_session, plaintext)
+    assert second is not None
+    # Same instant back-to-back is well inside the default 900s interval, so
+    # the resolution-lowering branch must skip the write, not merely make it
+    # cheaper.
+    assert second.last_used_at == first_seen
+
+
+async def test_authenticate_first_use_always_stamps_last_used_at(
+    db_session: AsyncSession,
+) -> None:
+    """A never-used key (last_used_at IS NULL) is stamped on its first use.
+
+    NULL is not "0 seconds ago". The interval-gate must treat it as
+    unconditionally stale, or a freshly issued key would show "never used"
+    forever even after a successful authentication.
+    """
+    from services.api_key_service import authenticate_api_key, issue_api_key
+
+    admin = await make_user(db_session, is_superuser=True)
+    actor = principal_for(admin, role="super_admin")
+    row, plaintext = await issue_api_key(
+        db_session,
+        actor,
+        name="interval-first-use",
+        scope="org",
+        team_id=None,
+        project_id=None,
+    )
+    assert row.last_used_at is None
+
+    authed = await authenticate_api_key(db_session, plaintext)
+    assert authed is not None
+    assert authed.last_used_at is not None
+
+
 # authenticate_api_key: bcrypt thread offload (concurrency-scaling-plan
 # 2026-08-22.md §1.3/§1.5/§3.3, unit A1)
 #

@@ -40,7 +40,7 @@ Example: `tos_a1b2c3d4_eaff8b91d36c5e0a2f1c4d7e8a9b0c2d`.
 
 - **`tos_`** — fixed prefix.
 - **`<8-char-prefix>`** — random, **public**. Used for lookup and as a display label. Visible in the audit log.
-- **`<32-char-secret>`** — random, **private**. Stored only as a bcrypt hash on the server. The full key is shown to the operator **once**, at creation, and never again.
+- **`<32-char-secret>`**: random, private. Stored only as a bcrypt hash on the server. The full key is shown to the operator once, at creation, and never again.
 
 Lookups are constant-time across the prefix; secret comparison uses `bcrypt.checkpw` to defeat timing attacks.
 
@@ -130,6 +130,8 @@ Revocation is immediate and irreversible. To bring a key back, issue a new one.
 ## Listing keys
 
 The UI shows: label, prefix, scope (`org` / `team` / `project`), creator, created timestamp, last-used timestamp, expiry (`expires_at`, null when non-expiring), and revocation status. There is no way to recover the secret of an existing key — by design. Per-key role, allowed-actions, and last-used IP columns are on the roadmap (the corresponding model columns are not yet present).
+
+The last-used timestamp is rounded to the nearest `API_KEY_LAST_USED_AT_UPDATE_INTERVAL_SECONDS` (15 minutes by default). Authentication no longer stamps the exact instant of every request: it means "used at some point within that interval," not "used at this exact second." A key polled dozens of times by one CI run over 20 minutes shows one or two timestamp updates, not one per poll. This is enough resolution to answer "is this key still in use," which is what the column is for; it is not a per-request audit trail, so use the structured backend logs (`api_key.auth_failed` / the domain audit rows a key's requests create) for that.
 
 ## Audit log
 
