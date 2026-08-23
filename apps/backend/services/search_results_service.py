@@ -19,15 +19,22 @@ escaping so a literal ``%`` stays a percent sign.
 
 Which scan a hit comes from
 ---------------------------
-Projects and components search across every scan a project has ever had, the
-same as the palette — "is this package anywhere in our history" is a legitimate
-question and the palette has always answered it that way.
+Projects search matches on the ``projects`` table directly and is not
+scan-scoped at all: a project exists or it does not.
 
-Vulnerabilities and licences resolve to each project's CURRENT scan
-(:func:`services.scan_resolution.latest_succeeded_scan_select`). A CVE that was
-fixed two releases ago is not something the user wants back in a triage list,
-and a licence finding from a superseded scan would misreport today's obligation
-set. The asymmetry is deliberate and is the reason it is written down here.
+Components, vulnerabilities, and licences all resolve to each project's
+CURRENT scan (:func:`services.scan_resolution.latest_succeeded_scan_select`).
+Before the concurrency-scaling plan's Q2 (2026-08-22), components searched
+across every scan a project had ever run, the same as the palette did. "Is
+this package anywhere in our history" is a legitimate question, but it made
+search cost grow with a project's retained scan count (up to 30 under the
+scan-series retention policy) rather than with catalog size. Q2 narrowed both
+surfaces to the current scan, matching the rule vulnerabilities and licences
+already followed: a CVE that was fixed two releases ago is not something the
+user wants back in a triage list, a licence finding from a superseded scan
+would misreport today's obligation set, and a component removed a few
+releases ago should not read as "in use". "Was it ever here" is now answered
+by the scan detail and history screens, not by search.
 
 Ranking
 -------
@@ -279,7 +286,17 @@ async def _components(
     offset: int,
     package_type: list[str] | None,
 ) -> SearchResultsPage:
-    """Components whose name or purl matches, one row per (project, version)."""
+    """Components whose name or purl matches, one row per (project, version).
+
+    Concurrency-scaling plan Q2 (2026-08-22): restricted to each project's
+    current scan, same as vulnerabilities and licences below (see the module
+    docstring's "Which scan a hit comes from" section).
+    """
+    current = latest_succeeded_scan_select(scope & Project.archived_at.is_(None))
+    scan_ids = [row.scan_id for row in (await session.execute(current)).all()]
+    if not scan_ids:
+        return _empty(COMPONENTS, q, page, size)
+
     # One Label object, projected AND sorted on. Building two separate
     # `func.similarity(...)` expressions renders two different bind parameters,
     # and Postgres compares SELECT DISTINCT's ORDER BY against the select list
@@ -305,8 +322,7 @@ async def _components(
         .join(Project, Project.id == Scan.project_id)
         .join(ComponentVersion, ComponentVersion.id == ScanComponent.component_version_id)
         .join(Component, Component.id == ComponentVersion.component_id)
-        .where(scope)
-        .where(Project.archived_at.is_(None))
+        .where(ScanComponent.scan_id.in_(scan_ids))
         .where(
             or_(
                 Component.name.ilike(like, escape="\\"),

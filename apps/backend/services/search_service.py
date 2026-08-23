@@ -15,14 +15,22 @@ and matched with an explicit ``ESCAPE '\\'`` clause, so a literal ``%`` or ``_``
 in the query is matched as a character and cannot collapse the ``ILIKE`` into
 "match everything".
 
+Which scan a hit comes from (concurrency-scaling plan Q2, 2026-08-22): both
+categories resolve to each project's CURRENT-STATE scan
+(:func:`services.scan_resolution.latest_succeeded_scan_select`), not every
+scan the project has ever run. A component that only existed in an older,
+since-superseded scan no longer surfaces here; :mod:`services.search_results_service`
+carries the same rule for the full search page.
+
 Shaping rules (contract the frontend depends on):
   - ``q`` is trimmed; shorter than :data:`MIN_QUERY_LEN` → empty results (no
     422, so the debounced palette can fire on every keystroke harmlessly).
   - ``kinds`` is a comma-separated subset of :data:`ALLOWED_KINDS`; unknown
     tokens are ignored, absent means both categories.
   - each category is capped at :data:`PER_CATEGORY_LIMIT` (20) rows.
-  - results are de-duplicated (a component/CVE observed across several of a
-    project's scans collapses to one row) and ordered deterministically.
+  - results are de-duplicated (a component/CVE reached through more than one
+    dependency path or finding within that current scan collapses to one row)
+    and ordered deterministically.
 """
 
 from __future__ import annotations
@@ -49,6 +57,7 @@ from schemas.search import (
     GlobalSearchResults,
     VulnerabilitySearchHit,
 )
+from services.scan_resolution import latest_succeeded_scan_select
 
 if TYPE_CHECKING:
     from sqlalchemy.ext.asyncio import AsyncSession
@@ -88,11 +97,28 @@ async def _search_components(
 ) -> list[ComponentSearchHit]:
     """Components whose name or purl matches, within accessible projects.
 
-    Joins ``scan_components → scans → projects`` (scope choke-point applied on
-    ``projects``) and ``→ component_versions → components``. ``DISTINCT`` over
-    the projected tuple collapses the same (project, component-version) seen in
-    multiple scans to one row.
+    Concurrency-scaling plan Q2 (2026-08-22): joins through each project's
+    CURRENT-STATE scan only
+    (:func:`services.scan_resolution.latest_succeeded_scan_select`), not
+    every scan the project has ever had. Before Q2 this joined
+    ``scan_components → scans → projects``, which fanned out across a
+    project's full retained history (up to 30 scans under the scan-series
+    retention policy), so search cost grew with scan count rather than with
+    catalog size. A component that only ever appeared in an older,
+    since-superseded scan no longer surfaces here. That loss is intentional:
+    "is this package anywhere in the organization RIGHT NOW" is the question
+    the palette answers; "was it ever here" belongs to the scan detail and
+    history screens.
+
+    ``DISTINCT`` over the projected tuple still collapses the same
+    (project, component-version) reached through more than one dependency
+    path within that single scan.
     """
+    current = latest_succeeded_scan_select(scope & Project.archived_at.is_(None))
+    scan_ids = [row.scan_id for row in (await session.execute(current)).all()]
+    if not scan_ids:
+        return []
+
     stmt = (
         select(
             Project.id.label("project_id"),
@@ -107,8 +133,7 @@ async def _search_components(
         .join(Project, Project.id == Scan.project_id)
         .join(ComponentVersion, ComponentVersion.id == ScanComponent.component_version_id)
         .join(Component, Component.id == ComponentVersion.component_id)
-        .where(scope)
-        .where(Project.archived_at.is_(None))
+        .where(ScanComponent.scan_id.in_(scan_ids))
         .where(
             or_(
                 Component.name.ilike(like, escape="\\"),

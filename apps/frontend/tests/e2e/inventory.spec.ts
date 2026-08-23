@@ -163,7 +163,7 @@ test.describe("@inventory organization-wide components", () => {
     );
   });
 
-  test("I5) a fruitless search offers the wider scan history", async ({
+  test("I5) a fruitless search shows the generic empty state", async ({
     page,
   }, testInfo) => {
     const boot = await bootstrap(testInfo, page, {
@@ -174,18 +174,13 @@ test.describe("@inventory organization-wide components", () => {
     const inventory = new InventoryHarness(page);
     await inventory.goto();
 
-    // With no term the empty state stays generic — there is nothing to carry
-    // to the other surface, so offering the trip would be noise.
+    // Concurrency-scaling plan Q2 (2026-08-22): this used to offer a link to
+    // "search every scan", back when the search page reached further back
+    // through history than this page does. Q2 narrowed search to the same
+    // latest-scan-only scope this page already used, so that link would
+    // always land on another empty result and was removed. The empty state
+    // is generic now, term or no term.
     await inventory.search("zzz-no-such-package-anywhere");
     await expect(page.getByTestId("inventory-empty")).toBeVisible();
-    await expect(inventory.searchHistoryLink()).toBeVisible();
-
-    // This page shows each project's latest scan; the search page reaches back
-    // through the history. Following the link keeps the term and lands on the
-    // components tab, which is the one that answers the same question.
-    await inventory.followSearchHistory();
-    const url = new URL(page.url());
-    expect(url.searchParams.get("q")).toBe("zzz-no-such-package-anywhere");
-    expect(url.searchParams.get("kind")).toBe("components");
   });
 });

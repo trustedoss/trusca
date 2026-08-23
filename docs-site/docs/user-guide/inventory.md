@@ -39,15 +39,15 @@ Archived projects are excluded, and you only ever see projects your team members
 
 ## Finding a package
 
-The search box matches the package **name** or its **purl**, so you can paste a coordinate straight in. Type filters narrow by ecosystem. **Add filter** reveals the risk axes (severity, license category) and the lifecycle flags (end-of-life only, outdated only) when you need them — they stay out of the way otherwise.
+The search box matches the package name or its purl, so you can paste a coordinate straight in. Type filters narrow by ecosystem. **Add filter** reveals the risk axes (severity, license category) and the lifecycle flags (end-of-life only, outdated only) when you need them; they stay out of the way otherwise.
 
 Every filter is mirrored into the URL, so a filtered view can be reloaded, bookmarked, and shared.
 
-If a term finds nothing, the empty state offers **Search every scan**. This page reads only each project's latest successful scan, so a package that was removed a few releases ago is absent here but still present in the scan history — the [search page](./search.md) reaches back through all of it, and the link carries your term across.
+This page reads only each project's latest successful scan, so a package that was removed a few releases ago will not turn up here. The [search page](./search.md) reads the same latest-scan scope, so it will not turn up there either; to confirm a package was ever present, or see when it was removed, open the project and look at its scan history.
 
 ## Which projects use it
 
-Click any row to open the **Used by** panel: one entry per project and version, marked **Direct** or **Transitive**. Each entry links into that project's Components tab, already filtered — so going from "we use this somewhere" to "here is the manifest line" is two clicks.
+Click any row to open the **Used by** panel: one entry per project and version, marked Direct or Transitive. Each entry links into that project's Components tab, already filtered, so going from "we use this somewhere" to "here is the manifest line" is two clicks.
 
 ## Which projects a CVE reaches
 

@@ -197,13 +197,13 @@ test.describe("@search find-grade search page", () => {
     if (boot === null) return;
     const { prefix } = boot;
 
-    // The contract this pins: components and projects reach through every scan
-    // a project has run, vulnerabilities and licences resolve to the current
-    // one. Users cannot infer that from the rows, and it is the reason this
-    // tab's count differs from the /components inventory's.
+    // The contract this pins: only projects is not scan-scoped at all;
+    // components, vulnerabilities, and licences all resolve to each
+    // project's current (latest succeeded) scan. Users cannot infer that
+    // from the rows, so the tab states it directly.
     const search = new SearchPageHarness(page);
     await search.goto({ kind: "components", q: prefix });
-    expect(await search.getScope()).toBe("all_scans");
+    expect(await search.getScope()).toBe("current_scan");
 
     await search.selectKind("projects");
     expect(await search.getScope()).toBe("all_scans");

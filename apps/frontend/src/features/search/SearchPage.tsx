@@ -46,21 +46,23 @@ import { problemMessage } from "@/lib/problemMessage";
 /**
  * Which scans each tab draws from.
  *
- * The asymmetry belongs to the backend, not to this display: projects and
- * components search across every scan a project has ever had, because "is this
- * package anywhere in our history" is a legitimate question; vulnerabilities
- * and licences resolve to each project's current scan, because a CVE fixed two
- * releases ago should not reappear in a triage list. `search_results_service`
- * writes the rule down, and until now that was the only place it existed.
+ * The rule belongs to the backend, not to this display: `projects` matches
+ * the `projects` table directly (a project exists or it does not, archived
+ * ones included) and is not scan-scoped at all; `components`, `vulnerabilities`,
+ * and `licenses` all resolve to each project's current (latest succeeded) scan.
+ * `search_results_service` writes the rule down, and until now that was the
+ * only place it existed.
  *
- * Stating it on screen is what keeps this page's Components tab from reading as
- * a broken copy of the `/components` inventory — the inventory shows one row
- * per package from the latest scan, this shows one per (project, version)
- * across all of them, and the row counts differ for that reason alone.
+ * Before the concurrency-scaling plan's Q2 (2026-08-22), `components` was
+ * `"all_scans"` too: it searched a project's whole scan history, because "is
+ * this package anywhere in our history" is a legitimate question. Q2 narrowed
+ * it to the current scan, matching the `/components` inventory (which already
+ * read only the latest scan) and closing what used to be the reason this
+ * page's Components tab could return more rows than that inventory.
  */
 const KIND_SCOPE: Record<SearchKind, "all_scans" | "current_scan"> = {
   projects: "all_scans",
-  components: "all_scans",
+  components: "current_scan",
   vulnerabilities: "current_scan",
   licenses: "current_scan",
 };

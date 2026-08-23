@@ -14,10 +14,14 @@ response shape stays fixed; a test here asserts the palette still answers
 exactly what it answered before, so a future edit that "unifies" them has to
 break this deliberately rather than by accident.
 
-**Which scan each kind reads.** Components search a project's whole history;
-vulnerabilities and licences read only the current scan. That asymmetry is a
-decision, not an accident, so it is pinned: a CVE fixed in a newer scan must
-drop out of the vulnerability results while its component stays findable.
+**Which scan each kind reads.** Components, vulnerabilities, and licences all
+read only each project's current (latest succeeded) scan
+(:func:`services.scan_resolution.latest_succeeded_scan_select`). Before the
+concurrency-scaling plan's Q2 (unit 22, 2026-08-22), components searched a
+project's whole scan history while vulnerabilities and licences read only the
+current scan: a deliberate asymmetry. Q2 closed it: a component that only
+ever existed in an older, since-superseded scan now drops out exactly like a
+CVE a newer scan already cleared.
 
 Isolation note: the integration database is not truncated between tests and a
 super-admin sees everything in it, so each test embeds a unique token in the
@@ -26,6 +30,7 @@ names it seeds and searches for that token alone.
 
 from __future__ import annotations
 
+import json
 import os
 import subprocess
 import uuid
@@ -49,6 +54,10 @@ from tests._helpers import (
 
 BACKEND_ROOT = Path(__file__).resolve().parent.parent.parent
 PROBLEM_JSON = "application/problem+json"
+# Real captured CycloneDX fixtures the SBOM-ingest pipeline tests already use
+# (CLAUDE.md testing-guide rule 3: realistic-density scan history, not a
+# hand-built single-component blob), reused here for the Q2 contract test.
+_SBOM_FIXTURES = BACKEND_ROOT / "tests" / "fixtures" / "sbom_ingest"
 
 pytestmark = pytest.mark.integration
 
@@ -156,6 +165,36 @@ async def _add_scan(client: AsyncClient, *, project_id: uuid.UUID):
         await session.commit()
         await session.refresh(scan)
         return scan.id
+
+
+def _persist_sbom_fixture(*, scan_id: uuid.UUID, fixture_name: str) -> None:
+    """Persist a REAL captured CycloneDX SBOM fixture's components onto
+    ``scan_id`` through the shipped persist function, not a hand-built
+    minimal Component/ComponentVersion/ScanComponent row (CLAUDE.md
+    testing-guide rule 3: realistic density, from
+    ``tests/fixtures/sbom_ingest/``, is where defects like this one hide).
+
+    Synchronous (:func:`tasks.scan_source.persist_sbom_components` takes a
+    sync ``Session``), so this opens its own short-lived sync engine rather
+    than reusing the test's async session factory, the same split
+    ``tests/integration/scan/test_ingest_sbom_pipeline.py`` uses.
+    """
+    from sqlalchemy import create_engine
+    from sqlalchemy.orm import sessionmaker
+
+    from core.config import database_url_sync
+    from tasks.scan_source import persist_sbom_components
+
+    sbom = json.loads((_SBOM_FIXTURES / fixture_name).read_text())
+    engine = create_engine(database_url_sync(), pool_pre_ping=True, future=True)
+    factory = sessionmaker(bind=engine, expire_on_commit=False, future=True)
+    session = factory()
+    try:
+        persist_sbom_components(session, scan_uuid=scan_id, sbom=sbom)
+        session.commit()
+    finally:
+        session.close()
+        engine.dispose()
 
 
 async def _seed_component(
@@ -297,31 +336,67 @@ async def test_the_palette_endpoint_still_answers_its_old_shape(
 # ---------------------------------------------------------------------------
 
 
-async def test_vulnerabilities_read_only_the_current_scan(
+async def test_components_and_vulnerabilities_read_only_the_current_scan(
     client: AsyncClient,
 ) -> None:
-    """A CVE absent from the newest scan drops out; its component does not.
+    """A CVE, and since Q2 a component too, absent from the newest scan
+    drops out.
 
-    This is the asymmetry the service documents: a triage list should not
-    resurrect a finding that a later scan cleared, but "have we ever shipped
-    this package" is still a fair question.
+    Before the concurrency-scaling plan's Q2 (unit 22), components searched a
+    project's whole history while vulnerabilities read only the current scan:
+    a deliberate asymmetry the service documented. Q2 closed it: a
+    component that only ever existed in the OLDER scan must now drop out
+    exactly like a cleared CVE does, while a component in the NEWER (current)
+    scan stays findable.
     """
     token = _token()
     team, user = await _seed_team_with_user(client)
     project_id, old_scan = await _seed_project(client, team_id=team.id, name=f"{token}-p")
-    cv_id = await _seed_component(client, scan_id=old_scan, name=f"{token}-pkg")
+    cv_id = await _seed_component(client, scan_id=old_scan, name=f"{token}-oldpkg")
     cve_id = f"CVE-2099-{uuid.uuid4().hex[:8]}"
     await _seed_vuln(client, scan_id=old_scan, cv_id=cv_id, cve_id=cve_id)
 
-    # A newer succeeded scan that re-declares the component but not the CVE.
+    # A newer succeeded scan carrying a DIFFERENT, non-overlapping component
+    # (not just the same name again): old and new must be distinguishable.
     new_scan = await _add_scan(client, project_id=project_id)
-    await _seed_component(client, scan_id=new_scan, name=f"{token}-pkg2")
+    await _seed_component(client, scan_id=new_scan, name=f"{token}-newpkg")
 
     vulns = await _get(client, user, kind="vulnerabilities", q=cve_id)
     assert vulns.json()["total"] == 0, "a cleared finding must not resurface"
 
-    components = await _get(client, user, kind="components", q=f"{token}-pkg")
-    assert components.json()["total"] >= 1, "the package stays findable"
+    old_components = await _get(client, user, kind="components", q=f"{token}-oldpkg")
+    assert old_components.json()["total"] == 0, (
+        "an old-scan-only component must drop out of search (Q2 contract change)"
+    )
+
+    new_components = await _get(client, user, kind="components", q=f"{token}-newpkg")
+    assert new_components.json()["total"] >= 1, "the current scan's package stays findable"
+
+
+async def test_components_from_an_old_real_scan_drop_out_of_search(
+    client: AsyncClient,
+) -> None:
+    """The Q2 contract change on the results page, from two REAL scans built
+    off two disjoint captured CycloneDX fixtures (realistic multi-ecosystem
+    density, CLAUDE.md testing-guide rule 3): the OLD scan carries
+    ``realistic.cdx.json`` (lodash, minimist, conditional-lib, jinja2); the
+    NEW (latest) scan carries ``centos7-rpm-no-os.cdx.json`` (openssl, glibc,
+    curl), with no overlapping purls so presence/absence is unambiguous.
+    """
+    token = _token()
+    team, user = await _seed_team_with_user(client)
+    project_id, old_scan = await _seed_project(client, team_id=team.id, name=f"{token}-p")
+    _persist_sbom_fixture(scan_id=old_scan, fixture_name="realistic.cdx.json")
+
+    new_scan = await _add_scan(client, project_id=project_id)
+    _persist_sbom_fixture(scan_id=new_scan, fixture_name="centos7-rpm-no-os.cdx.json")
+
+    old_components = await _get(client, user, kind="components", q="lodash")
+    assert old_components.json()["total"] == 0
+
+    new_components = await _get(client, user, kind="components", q="openssl")
+    names = {row["component_name"] for row in new_components.json()["items_components"]}
+    assert "openssl" in names
 
 
 # ---------------------------------------------------------------------------

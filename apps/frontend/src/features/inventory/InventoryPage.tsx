@@ -11,13 +11,12 @@ import {
   type ComponentPropsWithoutRef,
 } from "react";
 import { useTranslation } from "react-i18next";
-import { Link, useSearchParams } from "react-router-dom";
+import { useSearchParams } from "react-router-dom";
 import { Virtuoso } from "react-virtuoso";
 
 import { EmptyState } from "@/components/EmptyState";
 import { PageHeader } from "@/components/PageHeader";
 import { Alert, AlertDescription } from "@/components/ui/alert";
-import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { InventoryDrawer } from "@/features/inventory/components/InventoryDrawer";
 import { InventoryRow } from "@/features/inventory/components/InventoryRow";
@@ -312,26 +311,15 @@ export function InventoryPage() {
             className="m-6"
             icon={<Boxes />}
             title={t("empty.title")}
-            /* A term that found nothing here is the one moment where the
-               difference between this page and the search page is actionable:
-               this lists what each project's latest scan found, the search page
-               reaches back through the whole scan history. Without a term
-               there is nothing to carry across, so the generic copy stands. */
-            description={
-              debouncedSearch ? t("empty.wider.hint") : t("empty.subtitle")
-            }
-            action={
-              debouncedSearch ? (
-                <Button asChild variant="outline" size="sm">
-                  <Link
-                    to={`/search?kind=components&q=${encodeURIComponent(debouncedSearch)}`}
-                    data-testid="inventory-empty-search-history"
-                  >
-                    {t("empty.wider.action")}
-                  </Link>
-                </Button>
-              ) : undefined
-            }
+            /* Concurrency-scaling plan Q2 (2026-08-22): the search page used
+               to reach back through a project's whole scan history, so a
+               term that missed here (latest-scan-only) could still be found
+               there, and this empty state offered that link. Q2 narrowed
+               search to the current scan too, so the two surfaces now share
+               the same latest-scan-only scope and the link would always land
+               on another empty result. Generic copy stands regardless of
+               whether a term is active. */
+            description={t("empty.subtitle")}
           />
         ) : null}
 

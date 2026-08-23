@@ -17,10 +17,12 @@ Two rules govern every query here.
 ``Project.latest_scan_id`` — that pointer tracks the last *attempt*, so a
 project whose newest run failed would report zero components (the verified bug
 that made ``scan_resolution`` exist). Not "every scan ever", either: joining
-across all scans the way ``/v1/search`` does would resurrect packages removed
-three releases ago and report them as in use. The resolver is the same
-definition the per-project detail surfaces use, so a component listed here is
-one the owning project's Components tab also shows.
+across all scans would resurrect packages removed three releases ago and
+report them as in use. The concurrency-scaling plan's Q2 (2026-08-22) applied
+that same reasoning to ``/v1/search`` and ``/v1/search/results``, which now
+share this same resolver rather than joining a project's full scan history.
+The resolver is the same definition the per-project detail surfaces use, so a
+component listed here is one the owning project's Components tab also shows.
 
 **Team isolation.** Every query funnels through
 :func:`core.authz.team_scope_filter`, the single choke-point, applied on
