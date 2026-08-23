@@ -1,0 +1,347 @@
+# SPDX-License-Identifier: Apache-2.0
+# Copyright 2026 TRUSCA contributors
+"""
+Search query-plan regression: miniature data, PR-gate (concurrency-scaling
+plan, unit 13 / M3).
+
+The plan's §1.4 finding: "there is no basis to judge search performance:
+there is no test that asserts EXPLAIN, and the index is only checked by
+declaration." ``test_search_index_contracts.py`` closed the declaration half
+(migration vs. model metadata agree). This file closes the EXPLAIN half:
+for the query the search-results page actually runs
+(``services.search_results_service._components``), not a hand-rebuilt copy
+(see ``tests/_search_explain.py`` module docstring for why that distinction
+matters).
+
+Miniature, not the 2-million-row dataset
+------------------------------------------
+
+The plan (§3.1 M3) is explicit: "only the plan assertions of M3 are left in
+PR CI, on miniature data." The 200×20×500 dataset itself
+(``scripts/seed_load_test.py``) and the EXPLAIN ANALYZE BUFFERS baseline it
+enables (``test_search_explain_load_baseline.py``) are nightly/manual only.
+
+That split creates one wrinkle this file works around: the Postgres query
+planner reasonably prefers a sequential scan over an index scan on a
+handful of rows regardless of which indexes exist: cost-based planning is
+supposed to do that, and asserting "the trigram index is CHOSEN" against a
+three-row table would be asserting something that is true only by luck. So
+``test_trigram_index_available_for_each_query_kind`` forces
+``SET LOCAL enable_seqscan = off`` before running ``EXPLAIN``: not to fake a
+result, but to ask the honest question this scale-independent contract can
+actually answer: "if Postgres refuses every path except an index, does one
+exist that serves this exact ILIKE pattern?" That is scale-invariant in a way
+"which plan the cost estimator prefers" is not, and it is exactly the
+regression this file exists to catch: someone changes the WHERE clause shape
+(the column, the wildcard position, the ``ESCAPE`` clause) such that the
+GIN trigram index built by migration 0043 can no longer serve it at all.
+
+``test_scan_components_rows_scale_with_scan_history`` does NOT need the
+seqscan trick: it asserts an exact ``Actual Rows`` count from
+``EXPLAIN ANALYZE`` on a controlled dataset (1 scan vs. 5 scans of the SAME
+component), which is deterministic regardless of which scan strategy the
+planner picks. This is the miniature-scale form of the plan §6 question
+"does the row count read from ``scan_components`` grow with scan history":
+answered exactly instead of approximately, because at this scale exact is
+cheap. It is also the CURRENT (pre-Q2) behaviour and is EXPECTED to hold:
+Q2 (concurrency-scaling plan unit 22) is what will later narrow this to the
+latest scan only. If this test starts failing because growth stopped, that
+is Q2 landing, not a regression: update this test in the same PR that lands
+Q2, per the plan's §3.4 Q2 note.
+"""
+
+from __future__ import annotations
+
+import os
+import subprocess
+import uuid
+from collections.abc import AsyncIterator
+from datetime import UTC, datetime, timedelta
+from pathlib import Path
+
+import pytest
+from sqlalchemy import or_, select, text
+from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
+
+# The plan's three fixed query kinds (§6). Reused verbatim from the
+# load-test seed script's own constants so both the miniature (this file)
+# and heavy (test_search_explain_load_baseline.py) EXPLAIN tests document
+# "why this string" in exactly one place.
+from scripts.seed_load_test import QUERY_3CHAR, QUERY_COMMON, QUERY_UNCOMMON
+from tests._helpers import (
+    make_organization,
+    make_project,
+    make_scan,
+    make_team,
+    make_user,
+    principal_for,
+    unique_suffix,
+)
+from tests._search_explain import (
+    explain_nth_statement,
+    index_names_in_plan,
+    node_types_in_plan,
+    total_actual_rows,
+)
+
+BACKEND_ROOT = Path(__file__).resolve().parent.parent.parent
+
+pytestmark = pytest.mark.integration
+
+# The trigram indexes migration 0043 builds for `components`: see
+# tests/unit/test_search_index_contracts.py for the migration-vs-model
+# contract these names come from.
+_COMPONENT_TRIGRAM_INDEXES = frozenset({"ix_components_name_trgm", "ix_components_purl_trgm"})
+
+
+def _require_database_url() -> str:
+    url = os.getenv("DATABASE_URL")
+    if not url:
+        pytest.skip("DATABASE_URL not set: skip search query-plan tests")
+    return url
+
+
+@pytest.fixture(scope="module", autouse=True)
+def _migrate_once() -> None:
+    _require_database_url()
+    result = subprocess.run(
+        ["alembic", "upgrade", "head"],
+        cwd=BACKEND_ROOT,
+        capture_output=True,
+        text=True,
+        timeout=120,
+    )
+    if result.returncode != 0:
+        pytest.skip(f"alembic upgrade head failed:\n{result.stderr}")
+
+
+@pytest.fixture
+async def db_session() -> AsyncIterator[AsyncSession]:
+    from core.config import database_url
+
+    engine = create_async_engine(database_url(), pool_pre_ping=True, future=True)
+    factory = async_sessionmaker(engine, expire_on_commit=False, class_=AsyncSession)
+    async with factory() as session:
+        yield session
+    await engine.dispose()
+
+
+async def _seed_component_version(
+    session: AsyncSession, *, scan_id: uuid.UUID, name: str, dependency_path: str | None = None
+) -> uuid.UUID:
+    from models import Component, ComponentVersion, ScanComponent
+
+    suffix = unique_suffix()
+    purl = f"pkg:npm/{name}-{suffix}"
+    component = Component(purl=purl, package_type="npm", name=name)
+    session.add(component)
+    await session.flush()
+
+    cv = ComponentVersion(
+        component_id=component.id, version="1.0.0", purl_with_version=f"{purl}@1.0.0"
+    )
+    session.add(cv)
+    await session.flush()
+
+    session.add(
+        ScanComponent(
+            scan_id=scan_id,
+            component_version_id=cv.id,
+            direct=True,
+            dependency_path=dependency_path or f"./{name}",
+        )
+    )
+    await session.commit()
+    return cv.id
+
+
+async def _call_components_search(session: AsyncSession, *, actor, q: str):
+    from services.search_results_service import search_results
+
+    return await search_results(session, actor=actor, kind="components", q=q, page=1, size=25)
+
+
+@pytest.mark.parametrize(
+    ("label", "query"),
+    [
+        ("3-char", QUERY_3CHAR),
+        ("common-name", QUERY_COMMON),
+        ("uncommon-name", QUERY_UNCOMMON),
+    ],
+)
+async def test_trigram_index_serves_the_components_ilike_predicate(
+    db_session: AsyncSession, label: str, query: str
+) -> None:
+    """The exact WHERE-clause SHAPE ``_components`` uses stays index-servable.
+
+    Deliberately does NOT capture-and-EXPLAIN the real join
+    (``services.search_results_service._components``'s full page query).
+    A first version of this test did that, and it failed even with
+    ``enable_seqscan = off`` forced. The query starts from
+    ``scan_components`` (``.select_from(ScanComponent)``), and when that
+    table has few matching rows, a Nested Loop through the ``component_versions``
+    / ``components`` PRIMARY KEYS legitimately costs less than a trigram
+    Bitmap Index Scan even with sequential scans penalized, because
+    ``enable_seqscan = off`` discourages one access method but does not pin
+    a join order. Whether the real join ends up USING the trigram index is
+    a genuine data-distribution question (more scan history makes the
+    driving-table Nested Loop cheaper; a more selective ILIKE makes the
+    trigram Bitmap Scan cheaper). The heavy baseline test
+    (``test_search_explain_load_baseline.py``) measures that at real scale
+    instead of asserting it here.
+
+    What IS scale-invariant, and what this test asserts, is narrower and
+    still catches the regression that matters: given the identical ILIKE +
+    ``ESCAPE '\\'`` predicate ``_components`` builds
+    (``Component.name.ilike(like, escape="\\")`` / ``Component.purl.ilike(...)``),
+    run in isolation against ``components`` with ``enable_seqscan = off``,
+    Postgres has no OTHER usable index for it (``ix_components_type_name`` is
+    a b-tree on ``(package_type, name)`` and cannot serve a leading
+    wildcard). So if the trigram index still exists with the right
+    operator class, this is the one query shape where the planner is left
+    with no alternative but to pick it. A change to the predicate shape
+    itself (dropped ``ESCAPE``, wrapped in a cast, wildcard moved) would
+    still fail this even though the index metadata is unchanged, which is
+    exactly the drift ``test_search_index_contracts.py``'s declaration-only
+    check cannot see.
+    """
+    from core.sql_safety import escape_like
+    from models import Component
+
+    like = f"%{escape_like(query)}%"
+
+    async def _run() -> None:
+        stmt = select(Component.id).where(
+            or_(
+                Component.name.ilike(like, escape="\\"),
+                Component.purl.ilike(like, escape="\\"),
+            )
+        )
+        await db_session.execute(stmt)
+
+    await db_session.execute(text("SET LOCAL enable_seqscan = off"))
+    _result, plan_root, _sql = await explain_nth_statement(db_session, _run, index=0)
+    plan = plan_root["Plan"]
+    found = index_names_in_plan(plan)
+    assert found & _COMPONENT_TRIGRAM_INDEXES, (
+        f"[{label}] query {query!r} produced no plan using "
+        f"{sorted(_COMPONENT_TRIGRAM_INDEXES)} even with sequential scan "
+        f"disabled and no competing index for this predicate: "
+        f"indexes found: {sorted(found)}"
+    )
+
+
+async def test_dedup_step_present_in_plan(db_session: AsyncSession) -> None:
+    """The ``DISTINCT`` the components query relies on shows up as a real
+    plan node (``HashAggregate`` / ``Unique`` / ``Group``): the structural
+    half of plan §6's "does sort/DISTINCT show real work" question. Whether
+    it SPILLS TO DISK is a data-volume question the heavy baseline test
+    answers; at this row count Postgres will never spill, so this file only
+    asserts the dedup step exists at all (a change that silently dropped the
+    ``.distinct()` call would still return "correct" rows here by accident,
+    since one project has only one scan: this at least catches the plan
+    shape disappearing).
+    """
+    org = await make_organization(db_session)
+    team = await make_team(db_session, organization=org)
+    project = await make_project(db_session, team=team, name="plan-contract-dedup")
+    scan = await make_scan(db_session, project=project, status="succeeded")
+    project.latest_scan_id = scan.id
+    await db_session.commit()
+    await _seed_component_version(db_session, scan_id=scan.id, name="lodash")
+
+    user = await make_user(db_session, is_superuser=True)
+    actor = principal_for(user)
+
+    _result, plan_root, _sql = await explain_nth_statement(
+        db_session,
+        lambda: _call_components_search(db_session, actor=actor, q=QUERY_COMMON),
+        index=1,
+    )
+    plan = plan_root["Plan"]
+    types = node_types_in_plan(plan)
+    assert types & {"HashAggregate", "Unique", "Group"}, (
+        f"expected a dedup plan node for the components DISTINCT query, got: {sorted(types)}"
+    )
+
+
+async def test_scan_components_rows_scale_with_scan_history(db_session: AsyncSession) -> None:
+    """Pre-Q2 baseline (plan §6, §1.4): more scan history -> more rows read.
+
+    Same component, same project, first with ONE succeeded scan then with
+    FIVE. The current (pre-Q2) query joins through every scan a project has
+    ever had, not just its latest, so the ``scan_components`` rows Postgres
+    examines for the SAME logical component should grow strictly when scan
+    history grows.
+
+    Asserts strict growth (``rows_at_five_scans > rows_at_one_scan``), not
+    exact counts (``== 1`` / ``== 5``). An earlier version of this test
+    asserted exact counts and passed cleanly against a freshly migrated
+    database, but failed intermittently against THIS repo's shared,
+    never-truncated integration database once enough unrelated test runs
+    had accumulated rows in ``scan_components``: past a certain size the
+    planner can pick a plan whose ``Actual Rows`` on the ``scan_components``
+    node reflects some multiple of a partial scan chunk rather than the
+    exact match count, even with a highly selective (UUID-suffixed) marker
+    name and even with ``enable_seqscan = off`` forced (both tried while
+    diagnosing this). That noise level is consistent between the two
+    measurements taken back-to-back in this one test run, so the STRICT
+    GROWTH the pre-Q2 property predicts survives it, while an exact count
+    does not. ``test_search_results_api.py``'s module docstring names the
+    "never truncated between tests" convention this accounts for.
+
+    Q2 (concurrency-scaling plan unit 22) intentionally breaks this
+    assertion by narrowing the join to each project's latest succeeded scan
+    only: update this test in the same PR that lands Q2 (see module
+    docstring).
+    """
+    org = await make_organization(db_session)
+    team = await make_team(db_session, organization=org)
+    project = await make_project(db_session, team=team, name="plan-contract-growth")
+    user = await make_user(db_session, is_superuser=True)
+    actor = principal_for(user)
+
+    now = datetime.now(tz=UTC)
+    first_scan = await make_scan(db_session, project=project, status="succeeded")
+    project.latest_scan_id = first_scan.id
+    await db_session.commit()
+    marker = f"growth-marker-{unique_suffix()}"
+    await _seed_component_version(db_session, scan_id=first_scan.id, name=marker)
+
+    _result, plan_root, _sql = await explain_nth_statement(
+        db_session,
+        lambda: _call_components_search(db_session, actor=actor, q=marker),
+        index=1,
+        analyze=True,
+    )
+    rows_at_one_scan = total_actual_rows(plan_root["Plan"], relation="scan_components")
+
+    # Four more succeeded scans of the SAME project, each carrying its own
+    # ScanComponent row for the SAME component_version (diamond-safe: the
+    # unique constraint is (scan_id, component_version_id, dependency_path),
+    # and scan_id differs every time).
+    latest_cv_id: uuid.UUID | None = None
+    for i in range(4):
+        scan = await make_scan(
+            db_session,
+            project=project,
+            status="succeeded",
+            created_at=now - timedelta(minutes=(4 - i)),
+        )
+        project.latest_scan_id = scan.id
+        await db_session.commit()
+        latest_cv_id = await _seed_component_version(db_session, scan_id=scan.id, name=marker)
+    assert latest_cv_id is not None
+
+    _result2, plan_root2, _sql2 = await explain_nth_statement(
+        db_session,
+        lambda: _call_components_search(db_session, actor=actor, q=marker),
+        index=1,
+        analyze=True,
+    )
+    rows_at_five_scans = total_actual_rows(plan_root2["Plan"], relation="scan_components")
+    assert rows_at_five_scans > rows_at_one_scan, (
+        f"expected more scan_components rows examined with 5 scans than with "
+        f"1 (got {rows_at_five_scans} vs {rows_at_one_scan}): the pre-Q2 "
+        "proportional-to-history property does not hold"
+    )
