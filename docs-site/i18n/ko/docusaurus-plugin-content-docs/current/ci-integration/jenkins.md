@@ -108,7 +108,7 @@ credential 값은 콘솔 출력에서 마스킹됩니다.
 
 - New item → **Pipeline**(피처 브랜치가 있는 레포라면 **Multibranch Pipeline**).
 - Pipeline definition — **Pipeline script from SCM**.
-- SCM — Git → 레포 URL → 빌드 대상 브랜치.
+- SCM — **Git**을 선택하고 레포 URL과 빌드 대상 브랜치를 입력합니다.
 
 파이프라인은 매 빌드마다 SCA 스테이지를 실행합니다.
 

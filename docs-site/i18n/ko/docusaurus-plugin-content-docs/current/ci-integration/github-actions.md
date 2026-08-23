@@ -220,7 +220,7 @@ PR 코멘트는 그대로 게시되며 체크는 green으로 유지됩니다.
 
 빌드 게이트는 기본적으로 Critical CVE와 금지 라이선스를 평가합니다. 여기에 EPSS 차원을 더하면 악용 예측 확률이 높은 CVE가 **Critical이 아니어도** 빌드를 실패시킬 수 있습니다 — 가장 공격받기 쉬운 소수의 결과를 잡는 데 유용합니다.
 
-이는 워크플로 입력이 아니라 **운영자 측, 조직 단위** 스위치입니다. **포털**(`.env`)에 `GATE_EPSS_THRESHOLD` 환경변수를 설정한 뒤 백엔드를 재기동하세요. **기본은 비활성**입니다 — 미설정으로 두면 기존 Critical-CVE / 금지-라이선스 게이트가 그대로 보존됩니다.
+이는 워크플로 입력이 아니라 **운영자 측, 조직 단위** 스위치입니다. 포털(`.env`)에 `GATE_EPSS_THRESHOLD` 환경변수를 설정한 뒤 백엔드를 재기동하세요. **기본은 비활성**입니다 — 미설정으로 두면 기존 Critical-CVE / 금지-라이선스 게이트가 그대로 보존됩니다.
 
 <!-- docs-uat: id=gha-epss-threshold-env kind=shell ctx=host tier=manual waiver=env-config-snippet-not-a-command -->
 ```bash
