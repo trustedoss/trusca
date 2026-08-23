@@ -31,8 +31,8 @@ cd trusca
 cp .env.example .env
 ```
 
-dev 이미지는 `uvicorn --reload`를 직접 실행하므로 — 프로덕션 이미지와 달리 — 부팅
-시 마이그레이션을 자동 적용하지 않습니다. 스키마를 먼저 생성해야 backend가 기동
+dev 이미지는 프로덕션 이미지와 달리 `uvicorn --reload`를 직접 실행하므로, 부팅
+시 마이그레이션을 자동으로 적용하지 않습니다. 스키마를 먼저 생성해야 backend가 기동
 즉시 healthy가 됩니다(아니면 health 게이트가 걸린 `celery-worker`가 `up`을 막습니다).
 
 <!-- docs-uat: id=qs-migrate kind=shell ctx=host expect=exit:0 retry=20x3s tier=gate -->
@@ -75,14 +75,14 @@ finding·의무사항 묶음이 약 10초 안에 생성됩니다. (`--demo-only`
 | Team admin | `explore@demo.trustedoss.dev` | `DemoTest2026!` |
 | Developer | `dev@demo.trustedoss.dev` | `DemoTest2026!` |
 
-시드는 팀별 관리자 계정도 함께 만듭니다 — `frontend-admin@`, `backend-admin@`,
+시드는 팀별 관리자 계정도 함께 만듭니다. `frontend-admin@`, `backend-admin@`,
 `security-admin@`이며 세 팀 이름을 그대로 딴 것입니다. `explore@`도 Frontend 팀의
 관리자이고, 로그인 화면이 안내하는 계정은 이쪽입니다. 주소에 팀 이름이 들어가면
 어떤 화면을 볼지 고르는 것처럼 읽히지만, 실제로는 누구의 데이터를 볼지가 갈릴
 뿐이기 때문입니다.
 
-데모 비밀번호는 `.env.example`에 정의되어 있으며 의도적으로 약하게 잡혀 있습니다 —
-외부 노출 가능한 호스트에서는 절대 그대로 쓰지 마십시오.
+데모 비밀번호는 `.env.example`에 정의되어 있으며 의도적으로 약하게 잡혀 있습니다.
+외부에 노출될 수 있는 호스트에서는 절대 그대로 쓰지 마십시오.
 
 ## 4. 둘러보기
 
@@ -103,16 +103,16 @@ finding·의무사항 묶음이 약 10초 안에 생성됩니다. (`--demo-only`
 
 <!-- docs-uat: id=qs-first-real-scan kind=manual tier=manual -->
 1. 사이드바에서 **Projects**를 클릭하고, 오른쪽 위 **New project**를 클릭합니다.
-2. **Name**과 공개 **Git URL**을 입력하고 — 락파일이 있는 저장소라면 무엇이든
-   됩니다 — **Create**를 클릭합니다.
+2. **Name**과 공개 **Git URL**을 입력하고(락파일이 있는 저장소라면 무엇이든
+   됩니다) **Create**를 클릭합니다.
 3. **Scan**을 클릭하고(프로젝트 목록의 행 끝, 또는 프로젝트 상세 헤더),
    **Source** 스캔 타입을 그대로 둔 채 **Start scan**을 클릭합니다.
 4. 드로어가 파이프라인 단계(fetch → cdxgen → scancode → vuln match →
    finalize)를 실시간으로 보여줍니다. 작은 저장소는 몇 분이면 끝나고, 탭을
    닫아도 스캔은 워커에서 계속 실행됩니다.
 5. 스캔이 성공하면 **Components** 탭에 발견된 패키지가, **Vulnerabilities**
-   탭에 미해결 결과가 나타납니다 — **업그레이드별** 보기로 전환하면 결과를
-   해소하는 정확한 버전 인상 목록을 볼 수 있습니다.
+   탭에 미해결 결과가 나타납니다. **업그레이드별** 보기로 전환하면 결과를
+   해결하는 정확한 버전 인상 목록을 볼 수 있습니다.
 
 :::note 첫 부팅 시 취약점 데이터베이스를 내려받습니다
 새 스택에서는 워커가 Trivy 취약점 데이터베이스를 백그라운드로 내려받습니다
@@ -123,16 +123,16 @@ finding·의무사항 묶음이 약 10초 안에 생성됩니다. (`--demo-only`
 [취약점 데이터](./admin-guide/vulnerability-data.md) 참고.
 :::
 
-사설 저장소는 자격 증명을 먼저 등록해야 합니다 —
+사설 저장소는 자격 증명을 먼저 등록해야 합니다.
 [사설 저장소](./user-guide/projects.md#사설-저장소) 참고. 스캔 전체
 레퍼런스(컨테이너 스캔, SBOM 업로드, 취소, 문제 해결)는
 [스캔](./user-guide/scans.md)입니다.
 
 ## 다음 단계
 
-- CI에 연결 → [GitHub Actions](./ci-integration/github-actions.md), [GitLab CI](./ci-integration/gitlab-ci.md), [Jenkins](./ci-integration/jenkins.md).
-- 팀 단위 운영 → [사용자·팀](./admin-guide/users-and-teams.md), [백업·복원](./admin-guide/backup-and-restore.md).
-- 프로덕션으로 이행 → [Docker Compose 설치](./installation/docker-compose.md).
+- CI에 연결: [GitHub Actions](./ci-integration/github-actions.md), [GitLab CI](./ci-integration/gitlab-ci.md), [Jenkins](./ci-integration/jenkins.md).
+- 팀 단위 운영: [사용자·팀](./admin-guide/users-and-teams.md), [백업·복원](./admin-guide/backup-and-restore.md).
+- 프로덕션으로 이행: [Docker Compose 설치](./installation/docker-compose.md).
 
 ## 스택 종료
 

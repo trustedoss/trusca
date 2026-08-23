@@ -87,7 +87,7 @@ bash scripts/install.sh --no-prompt
 ```
 
 `INSTALL_ADMIN_PASSWORD`를 비우면 스크립트가 임의 비밀번호를 생성하여
-stdout에 한 번 출력합니다 — 터미널이 스크롤되기 전에 캡처하세요. 첫 로그인
+stdout에 한 번 출력합니다. 터미널이 스크롤되기 전에 캡처하세요. 첫 로그인
 시 즉시 교체합니다.
 
 ### 기대 결과
@@ -171,8 +171,8 @@ bash scripts/restore.sh backups/2026-05-09-143022
 
 `restore.sh`가 destructive-action 프롬프트를 출력하면 **y**를 입력. 자동화
 시 `--confirm` argv flag 전달: `bash scripts/restore.sh --confirm <backup-dir>`.
-(legacy `BACKUP_RESTORE_CONFIRM=yes` env var는 marathon bundle 4에서 제거 — argv flag는
-`ps` 출력에 보이지만 env var는 보이지 않음.)
+(legacy `BACKUP_RESTORE_CONFIRM=yes` env var는 marathon bundle 4에서 제거했습니다. argv flag는
+`ps` 출력에 보이지만 env var는 보이지 않습니다.)
 
 **기대**: `restore.sh`가 `✓ alembic head matches manifest`로 종료.
 `vm-b`의 포털에 로그인하면 `vm-a`의 프로젝트/스캔/사용자가 그대로 보여야
@@ -183,7 +183,7 @@ bash scripts/restore.sh backups/2026-05-09-143022
 Postgres 메이저 업그레이드를 계획할 때만 수행:
 
 1. `vm-a` (Postgres 16) 에서: `bash scripts/backup.sh`.
-2. `vm-b` (Postgres 17 — 본 릴리스 기본): install.sh 실행 **전에**
+2. `vm-b` (Postgres 17, 본 릴리스 기본): install.sh 실행 **전에**
    `docker-compose.yml`을 17 이미지로 편집.
 3. §5를 그대로 따릅니다. 복원 단계가 덤프를 `psql`로 흘려보내며,
    이는 한 메이저 버전 차이까지는 forward-compatible입니다.
@@ -233,8 +233,8 @@ docker-compose -f docker-compose.yml logs -f backend
 
 ## 함께 보기
 
-- [Docker Compose 설치](./docker-compose.md) — 인스톨 번들의 기준 문서.
-- [백업·복원](../admin-guide/backup-and-restore.md) — 관리 UI 흐름 + 스케줄링.
-- [업그레이드](./upgrade.md) — `scripts/upgrade.sh` 사용법.
-- `.github/workflows/install-uat.yml` — 본 체크리스트의 CI 대응본
+- [Docker Compose 설치](./docker-compose.md): 인스톨 번들의 기준 문서.
+- [백업·복원](../admin-guide/backup-and-restore.md): 관리 UI 흐름 + 스케줄링.
+- [업그레이드](./upgrade.md): `scripts/upgrade.sh` 사용법.
+- `.github/workflows/install-uat.yml`: 본 체크리스트의 CI 대응본
   (cron마다 §2 + §4 + §5를 실행).
