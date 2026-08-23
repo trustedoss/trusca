@@ -9,7 +9,7 @@ sidebar_position: 8
 # 알림
 
 <!-- docs-uat: id=notifications-login kind=ui harness=login(dev@demo.trustedoss.dev,DemoTest2026!) tier=nightly -->
-알림 시스템은 본인이 관심 있는 프로젝트의 이벤트 — 스캔 종료, 게이트 실패, 의존하는 컴포넌트에 신규 CVE 등록, 승인 대기, 라이선스 정책 위반 — 를 알려줍니다. 알림은 **네 채널**(인앱·이메일·Slack·Microsoft Teams)로 팬-아웃되며, 어떤 채널로 받을지는 전역적으로 결정합니다.
+알림 시스템은 본인이 관심 있는 프로젝트의 이벤트(스캔 종료, 게이트 실패, 의존하는 컴포넌트에 신규 CVE 등록, 승인 대기, 라이선스 정책 위반)를 알려줍니다. 알림은 **네 채널**(인앱·이메일·Slack·Microsoft Teams)로 팬-아웃되며, 어떤 채널로 받을지는 전역적으로 결정합니다.
 
 :::note 대상 독자
 로그인된 모든 사용자. 헤더 종 아이콘과 `/notifications` 페이지는 모든 역할에 표시됩니다. admin은 추가로 SMTP / Slack / Teams 전송 경로를 [디스크·시스템 health](../admin-guide/disk-and-health.md)에서 구성합니다.

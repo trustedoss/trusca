@@ -35,7 +35,7 @@ sidebar_position: 2
 docker-compose -f docker-compose.yml ps
 ```
 
-모든 행이 `Up (healthy)`여야 합니다. 재시작 중이거나 unhealthy인 서비스가 있으면 먼저 그것을 해결하세요 — 깨진 설치 위에 업그레이드를 쌓지 마세요.
+모든 행이 `Up (healthy)`여야 합니다. 재시작 중이거나 unhealthy인 서비스가 있으면 먼저 그것을 해결하세요. 깨진 설치 위에 업그레이드를 쌓지 마세요.
 
 ## 2단계 — 업그레이드 래퍼 실행
 
@@ -45,11 +45,11 @@ bash scripts/upgrade.sh
 
 흐름:
 
-1. **사전 백업** — `bash scripts/backup.sh` (필수, 건너뛰는 플래그 없음).
-2. **`docker-compose pull`** — 새 이미지 가져오기.
-3. **`docker-compose up -d`** — 이미지 해시가 변경된 서비스만 재생성.
-4. **`alembic upgrade head`** — 새로운 마이그레이션 적용.
-5. **Health 프로브** — `/health`를 최대 60초간 폴링.
+1. **사전 백업**: `bash scripts/backup.sh` (필수, 건너뛰는 플래그 없음).
+2. **`docker-compose pull`**: 새 이미지 가져오기.
+3. **`docker-compose up -d`**: 이미지 해시가 변경된 서비스만 재생성.
+4. **`alembic upgrade head`**: 새로운 마이그레이션 적용.
+5. **Health 프로브**: `/health`를 최대 60초간 폴링.
 
 성공 시 출력:
 
@@ -63,7 +63,7 @@ Upgrade complete
 ## 3단계 — 업그레이드 검증
 
 1. 포털에 로그인.
-2. **/admin/health** 방문 — 모든 컴포넌트가 녹색이어야 합니다.
+2. **/admin/health** 방문. 모든 컴포넌트가 녹색이어야 합니다.
 3. 알려진 프로젝트(혹은 가장 최근 스캔된 프로젝트)에 작은 스캔을 실행. WebSocket 진행률이 **Completed**까지 이동하는지 확인.
 4. 릴리스 노트가 새 admin 화면이나 설정을 안내한다면 한 번씩 점검합니다.
 
@@ -111,7 +111,7 @@ Alpine 이미지만 스캔해 온 배포는 영향이 없습니다. 그 값은 �
 
 ### `alembic upgrade head`가 제약 조건 위반으로 실패
 
-대개 실제 데이터 문제입니다 — 기본값보다 앞선 행이 있는데 NOT NULL 컬럼이 추가된 경우 등. 백업을 복원하고 문제 행을 분석한 후 이슈 트래커에 마이그레이션 문제를 보고하세요.
+대개 실제 데이터 문제입니다. 기본값보다 앞선 행이 있는데 NOT NULL 컬럼이 추가된 경우 등입니다. 백업을 복원하고 문제 행을 분석한 후 이슈 트래커에 마이그레이션 문제를 보고하세요.
 
 ### Health 프로브가 60초 후 타임아웃
 

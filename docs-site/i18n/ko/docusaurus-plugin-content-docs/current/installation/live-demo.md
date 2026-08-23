@@ -9,7 +9,7 @@ sidebar_position: 4
 # 라이브 읽기 전용 데모
 
 포털을 **공개 라이브 데모**로 운영할 수 있습니다. 누구나 시드된 데모 계정으로
-로그인해 실제 프로젝트·스캔·취약점·라이선스·SBOM·보고서를 둘러볼 수 있지만,
+로그인해 실제 프로젝트, 스캔, 취약점, 라이선스, SBOM, 보고서를 둘러볼 수 있지만,
 **모든 쓰기 작업은 비활성화**되며 데이터셋은 매일 밤 깨끗한 상태로 초기화됩니다.
 
 ## 호스팅 데모 바로 써보기
@@ -23,7 +23,7 @@ sidebar_position: 4
   비밀번호는 모두 `DemoTest2026!`이고, 로그인 화면에는 자격 증명을 한 번에 채우는
   버튼이 있습니다. 회원가입은 제공하지 않습니다. 계정을 만드는 것도 쓰기 작업이라,
   데모에서는 공용 계정을 대신 안내합니다.
-- **둘러보기**: 실제 프로젝트·컴포넌트·CVE·라이선스·SBOM·보고서를 볼 수 있습니다.
+- **둘러보기**: 실제 프로젝트, 컴포넌트, CVE, 라이선스, SBOM, 보고서를 볼 수 있습니다.
   생성·수정·삭제는 모두 `403`으로 막힙니다. 읽기 전용이기 때문입니다.
 - **SBOM 업로드**: CycloneDX 파일(예: [BomLens](https://github.com/sktelecom/bomlens)로
   만든 SBOM)을 **Demo Sandbox** 프로젝트에 올리면 소스 없이도 TRUSCA가 라이선스와
@@ -48,18 +48,18 @@ sidebar_position: 4
 DEMO_READ_ONLY=true
 ```
 
-(허용되는 truthy 값: `1`, `true`, `yes`, `on` — 대소문자 무관. 요청 시점에
+(허용되는 truthy 값은 `1`, `true`, `yes`, `on`이며 대소문자를 구분하지 않습니다. 요청 시점에
 읽으므로, 값을 바꿀 때 재빌드 없이 프로세스 재시작만 하면 됩니다.)
 
 활성화되면 단일 미들웨어가 **API 전체**에 정책을 강제하므로, 개별 엔드포인트가
 정책을 우회할 수 없습니다.
 
-- **읽기는 항상 통과** — `GET`·`HEAD`·`OPTIONS` (마지막은 CORS preflight 유지용).
-- **쓰기는 기본 차단** — 모든 `POST`·`PUT`·`PATCH`·`DELETE`(및 기타 메서드)는
+- **읽기는 항상 통과**: `GET`, `HEAD`, `OPTIONS`(마지막은 CORS preflight 유지용).
+- **쓰기는 기본 차단**: 모든 `POST`, `PUT`, `PATCH`, `DELETE`(및 기타 메서드)는
   **허용 목록(allow-list)**에 없으면 거부됩니다.
 - 허용 목록은 데모에 꼭 필요한 인증 흐름뿐입니다: `POST /auth/login`,
-  `POST /auth/refresh`, `POST /auth/logout`. 그 외 — 회원가입, 비밀번호 재설정·
-  변경, 프로젝트 생성, 스캔 트리거, 승인, 설정, 웹훅, 파일 업로드 — 는 모두
+  `POST /auth/refresh`, `POST /auth/logout`. 그 외 회원가입, 비밀번호 재설정·
+  변경, 프로젝트 생성, 스캔 트리거, 승인, 설정, 웹훅, 파일 업로드는 모두
   차단됩니다.
 
 차단된 요청은 `Content-Type: application/problem+json`의 **RFC 7807** `403`을
@@ -101,7 +101,7 @@ SPA는 공개 `GET /health` 응답(`{"status":"ok","demo_read_only":true}`)에�
 Hetzner 데모 호스트는 리셋을 **systemd 타이머**로 실행합니다. 유닛 파일은
 `deploy/hetzner/`에 있습니다.
 
-- `trustedoss-demo-reset.service` — 리셋 스크립트를 실행 중인 백엔드 컨테이너
+- `trustedoss-demo-reset.service`: 리셋 스크립트를 실행 중인 백엔드 컨테이너
   안에서 실행하는 `oneshot` 유닛입니다.
 
   ```
@@ -111,14 +111,14 @@ Hetzner 데모 호스트는 리셋을 **systemd 타이머**로 실행합니다. 
 
   컨테이너 안에서 실행하면 HTTP `DEMO_READ_ONLY` 가드를 우회합니다(스크립트가
   Postgres에 직접 접근). 스크립트 자체의 `APP_ENV` 허용 목록이 안전 경계입니다.
-- `trustedoss-demo-reset.timer` — 서비스를 매일 **03:17 UTC**에 실행합니다
+- `trustedoss-demo-reset.timer`: 서비스를 매일 **03:17 UTC**에 실행합니다
   (`OnCalendar=*-*-* 03:17:00 UTC`, `Persistent=true` 이므로 호스트가 내려가 있어
   놓친 리셋은 다음 부팅 때 한 번 실행됩니다).
 
 리셋(`apps/backend/scripts/reset_demo.py`)은,
 
-- **데모 데이터셋만 삭제** — `demo-org` 조직(FK cascade로 팀 → 프로젝트 → 스캔 →
-  finding 제거)과 데모 사용자(**demo-org 멤버십 기준** — demo-org 에만 속한
+- **데모 데이터셋만 삭제**: `demo-org` 조직(FK cascade로 팀 → 프로젝트 → 스캔 →
+  finding 제거)과 데모 사용자(**demo-org 멤버십 기준**: demo-org 에만 속한
   사용자만 삭제; cascade로 멤버십·알림 제거). 전체 truncate가 아니므로 다른
   조직에도 속한 다른 테넌트의 데이터는 절대 건드리지 않습니다.
 - 멱등한 `seed_demo._seed`로 **재시드** 하므로 데이터셋 형태가 일반 시드와 단일

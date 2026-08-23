@@ -8,7 +8,7 @@ sidebar_position: 2
 
 # 코딩 표준
 
-이 컨벤션들은 코드 리뷰·CI lint·(가능한 경우) 자동 체크로 강제됩니다. 첫 PR 전에 읽어 두세요 — 나중에 수정하면 사이클을 낭비합니다.
+이 컨벤션들은 코드 리뷰, CI lint, (가능한 경우) 자동 체크로 강제됩니다. 첫 PR 전에 읽어 두세요 — 나중에 수정하면 사이클을 낭비합니다.
 
 :::note 대상 독자
 모든 컨트리뷰터. 코드 블록을 건드리는 chore·docs PR을 포함해 모든 PR에 적용됩니다.
@@ -75,7 +75,7 @@ def downgrade() -> None:
 
 두 가지 결과:
 
-- **Breaking 컬럼 변경은 3단계.** `NOT NULL` 추가, 컬럼 drop, rename은 *expand*(새 컬럼을 nullable로 추가) → *migrate data*(별도 revision 또는 일회성 Celery task) → *contract*(기존 컬럼 drop / NOT NULL 설정)로 분리. 한 revision에 결합 금지.
+- **Breaking 컬럼 변경은 3단계로 나눕니다.** `NOT NULL` 추가, 컬럼 drop, rename은 새 컬럼을 nullable로 추가하는 *expand*, 별도 revision이나 일회성 Celery task로 처리하는 *migrate data*, 기존 컬럼을 drop하거나 NOT NULL을 설정하는 *contract* 순서로 나누고, 한 revision에 결합하지 않습니다.
 - **스키마와 데이터 마이그레이션은 별도 revision.** 스키마 revision에는 몇 행 이상의 `bulk_insert`를 넣지 않습니다. 더 큰 데이터 이동은 **멱등한** 일회성 Celery task로 작성하고 별도 `data_xxxx_*` revision에서 큐에 넣으세요.
 
 ## RFC 7807 — `application/problem+json`
@@ -107,7 +107,7 @@ class GateFailedProblem(Problem):
     cve_findings: int
 ```
 
-예외 → Problem 변환은 단일 FastAPI `exception_handler`에서 일어납니다. 라우트에서 raw `HTTPException`을 반환하지 마세요.
+예외를 Problem으로 변환하는 과정은 단일 FastAPI `exception_handler`에서 일어납니다. 라우트에서 raw `HTTPException`을 반환하지 마세요.
 
 ## structlog — JSON 라인, 컨텍스트 전파
 
@@ -154,7 +154,7 @@ notifications.preferences.toggle-email-tooltip
 
 규칙:
 
-- **세그먼트 최소 3개:** feature → screen → element. 드물게 글로벌 헬퍼는 2개도 허용.
+- **세그먼트 최소 3개:** feature → screen → element. 드물게 글로벌 헬퍼는 2개도 허용됩니다.
 - **세그먼트 내 kebab-case.** camelCase·snake_case 회피.
 - **EN과 KO는 서로 mirror.** EN에 키를 추가하고 KO를 누락하면 CI의 `i18next-parser` 드리프트 게이트가 실패합니다.
 - **문자열 연결 금지.** ICU placeholder를 사용하세요 — `"badge.unread-count": "{{count}} unread"`.
@@ -193,7 +193,7 @@ PR에 **AI security review (findings-driven)** 제목의 코멘트가 붙을 수
 
 ## 프론트엔드 UI — 공용 프리미티브를 쓰세요
 
-프론트엔드는 단일 디자인 시스템을 따릅니다. [디자인 시스템 레퍼런스](../reference/design-system.md)가 토큰 · 컴포넌트 · 모션의 단일 진실입니다. 프리미티브가 이미 다루는 것을 직접 만들지 마세요:
+프론트엔드는 단일 디자인 시스템을 따릅니다. [디자인 시스템 레퍼런스](../reference/design-system.md)가 토큰, 컴포넌트, 모션의 단일 진실입니다. 프리미티브가 이미 다루는 것을 직접 만들지 마세요:
 
 - **페이지 헤더** — 모든 라우트 헤더를 `PageHeader`(stacked / bar)로 렌더링. bare `<header><h1>` 금지(브레드크럼 detail 페이지만 문서화된 예외).
 - **타이포그래피** — `typography.tsx` 프리미티브(`PageTitle` / `SectionTitle` / `Subtitle` / `Body` / `Caption` / `Eyebrow`)를 쓰고, raw `text-*` 유틸리티는 일회성 인라인 span 에만.
@@ -205,6 +205,6 @@ PR에 **AI security review (findings-driven)** 제목의 코멘트가 붙을 수
 
 ## 함께 보기
 
-- [디자인 시스템](../reference/design-system.md) — 토큰 · 컴포넌트 · 모션 · 접근성.
+- [디자인 시스템](../reference/design-system.md) — 토큰, 컴포넌트, 모션, 접근성.
 - [시작하기](./getting-started.md) — dev 스택 띄우기.
 - [테스트 가이드](./testing-guide.md) — pytest, Playwright, coverage 게이트.

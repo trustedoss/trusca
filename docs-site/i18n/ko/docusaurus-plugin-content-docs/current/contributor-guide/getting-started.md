@@ -150,13 +150,13 @@ CI 워크플로는 lint, typecheck, 단위 테스트, 통합 테스트, Playwrig
 
 ## 가이드 스크린샷 재생성
 
-사용자·관리자·컨트리뷰터 가이드는 `docs-site/static/img/screenshots/` 아래의 PNG 캡처를 동반합니다. 이 캡처는 Playwright spec(`apps/frontend/tests/screenshots/capture.spec.ts`)이 갓 시드한 super-admin으로 SPA를 드라이브하여 생성합니다.
+사용자, 관리자, 컨트리뷰터 가이드는 `docs-site/static/img/screenshots/` 아래의 PNG 캡처를 동반합니다. 이 캡처는 Playwright spec(`apps/frontend/tests/screenshots/capture.spec.ts`)이 갓 시드한 super-admin으로 SPA를 드라이브하여 생성합니다.
 
 다음 시점에 캡처를 재생성하세요:
 
 - 가이드 스크린샷이 묘사하는 UI 요소가 추가·변경된 경우,
 - 새 가이드 단락에 이미지가 필요한 경우, 또는
-- 디자인 시스템(타이포그래피·간격·컬러)이 기존 캡처를 무효화할 만큼 변한 경우.
+- 디자인 시스템(타이포그래피, 간격, 컬러)이 기존 캡처를 무효화할 만큼 변한 경우.
 
 ```bash
 # 1. dev stack 기동 — 캡처는 실제 backend / frontend 를 호출합니다.

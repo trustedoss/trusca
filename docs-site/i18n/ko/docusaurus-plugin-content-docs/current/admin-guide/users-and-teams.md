@@ -8,7 +8,7 @@ sidebar_position: 1
 
 # 사용자 및 팀
 
-포털은 권한을 하나의 **조직**, 다수의 **팀**, 세 가지 **역할**로 모델링합니다. 모든 사용자는 하나 이상의 팀에 소속되며 프로젝트는 팀에 귀속됩니다. 배포당 정확히 하나의 조직이 존재합니다.
+포털은 권한을 조직 하나, 팀 여러 개, 역할 세 가지로 모델링합니다. 모든 사용자는 하나 이상의 팀에 소속되며 프로젝트는 팀에 귀속됩니다. 배포당 정확히 하나의 조직이 존재합니다.
 
 :::note 대상 독자
 배포를 셋업하는 super-admin; 자기 팀의 멤버십을 관리하는 team admin.
@@ -194,7 +194,7 @@ v0.10.0에서 포털은 초대 이메일을 보내지 않습니다. 흐름은 �
 
 ## 사용자 역할 변경
 
-**/admin/users → 사용자** 드로어는 **Role** 드롭다운과 **Memberships** 섹션을 노출합니다. 한 사용자가 팀마다 다른 역할을 보유할 수 있습니다(팀 A에서 `team_admin`, 팀 B에서 `developer`) — Memberships 리스트가 모든 배정을 표시하며 인라인으로 편집합니다. Role 드롭다운은 Memberships 리스트에서 선택된 팀의 역할을 설정합니다(또는 `super_admin`으로 승격할 때의 글로벌 역할).
+**/admin/users → 사용자** 드로어는 Role 드롭다운과 Memberships 섹션을 노출합니다. 한 사용자가 팀마다 다른 역할을 보유할 수 있습니다(팀 A에서 `team_admin`, 팀 B에서 `developer`). Memberships 리스트가 모든 배정을 표시하며 인라인으로 편집합니다. Role 드롭다운은 Memberships 리스트에서 선택된 팀의 역할을 설정합니다(또는 `super_admin`으로 승격할 때의 글로벌 역할).
 
 1. **/admin/users** → 사용자 → **Role**.
 2. 새 역할 선택 → 제출.
@@ -249,13 +249,13 @@ docker-compose -f docker-compose.yml exec -T \
 스크립트 동작 순서:
 
 1. `ADMIN_EMAIL`로 행을 조회.
-2. 행이 존재하고 `super_admin` 이며 비활성 상태이면 → `is_active`를 `true`로 되돌리고 커밋 후 `super admin <email> reactivated` 출력. 저장된 비밀번호 해시는 **그대로 둠**(행이 비활성된 사실만 잊은 경우 재실행이 비파괴적으로 동작하도록).
-3. 행이 존재하고 이미 활성이면 → `super admin <email> already exists — noop` 출력 후 0 종료.
-4. 행이 존재하지만 `super_admin`이 **아니면** → 에러 출력 후 비0 종료. 재실행 전에 수동으로 승격·교체해야 합니다.
-5. 일치하는 행이 없으면 → 전달된 비밀번호로 새 super-admin 생성.
+2. 행이 존재하고 `super_admin`이며 비활성 상태이면 `is_active`를 `true`로 되돌리고 커밋한 뒤 `super admin <email> reactivated`를 출력합니다. 저장된 비밀번호 해시는 **그대로 둡니다**(행이 비활성된 사실만 잊은 경우 재실행이 비파괴적으로 동작하도록).
+3. 행이 존재하고 이미 활성이면 `super admin <email> already exists — noop`을 출력한 뒤 0으로 종료합니다.
+4. 행이 존재하지만 `super_admin`이 **아니면** 에러를 출력한 뒤 비0으로 종료합니다. 재실행 전에 수동으로 승격·교체해야 합니다.
+5. 일치하는 행이 없으면 전달된 비밀번호로 새 super-admin을 생성합니다.
 
 :::caution 재활성화 경로에서는 비밀번호가 유지됩니다
-`ADMIN_PASSWORD` 값은 행이 **생성**될 때만 사용됩니다. 재활성화 경로에서는 비밀번호 해시가 그대로 유지되므로 **현재** 비밀번호를 그대로 전달하면 됩니다(새 비밀번호 아님). 비밀번호도 잊었다면 재활성화로 `is_active`가 회복된 **뒤** [비밀번호 재설정](../user-guide/auth-and-profile.md#비밀번호-재설정) 절차를 따르거나, 두 번째 super-admin 계정에서 운영자 측 `/admin/users/{id}/password-reset` 엔드포인트를 사용하세요.
+`ADMIN_PASSWORD` 값은 행이 생성될 때만 사용됩니다. 재활성화 경로에서는 비밀번호 해시가 그대로 유지되므로 **현재** 비밀번호를 그대로 전달하면 됩니다(새 비밀번호 아님). 비밀번호도 잊었다면 재활성화로 `is_active`가 회복된 뒤 [비밀번호 재설정](../user-guide/auth-and-profile.md#비밀번호-재설정) 절차를 따르거나, 두 번째 super-admin 계정에서 운영자 측 `/admin/users/{id}/password-reset` 엔드포인트를 사용하세요.
 :::
 
 :::note 왜 UI 버튼이 아닌 재실행 방식인가요?

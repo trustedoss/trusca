@@ -36,7 +36,7 @@ sidebar_position: 10
 
 ### key-based vs keyless
 
-cosign은 두 가지 신뢰 모델을 지원합니다. TRUSCA는 둘 다 지원하며, 자체 호스팅·온프레미스·에어갭 배포에서는 **key-based가 기본값**입니다.
+cosign은 두 가지 신뢰 모델을 지원합니다. TRUSCA는 둘 다 지원하며, 자체 호스팅, 온프레미스, 에어갭 배포에서는 **key-based가 기본값**입니다.
 
 | 모델 | 배포가 서명하는 방식 | 검증자에게 필요한 것 | 사용 시점 |
 |---|---|---|---|
@@ -252,7 +252,7 @@ keyless 서명은 키페어가 **필요 없습니다**. cosign이 자체 OIDC �
 COSIGN_KEYLESS=true
 ```
 
-**사설** Sigstore 배포의 경우 워커 환경에 `COSIGN_OIDC_ISSUER`, `SIGSTORE_FULCIO_URL`, `SIGSTORE_REKOR_URL`도 설정하십시오. 검증자가 `cosign verify-blob`에 `--certificate-identity` / `--certificate-oidc-issuer`를 전달할 수 있도록 **기대 신원**과 **OIDC 발급자**를 검증자에게 공개하십시오.
+사설 Sigstore 배포의 경우 워커 환경에 `COSIGN_OIDC_ISSUER`, `SIGSTORE_FULCIO_URL`, `SIGSTORE_REKOR_URL`도 설정하십시오. 검증자가 `cosign verify-blob`에 `--certificate-identity` / `--certificate-oidc-issuer`를 전달할 수 있도록 **기대 신원**과 **OIDC 발급자**를 검증자에게 공개하십시오.
 
 ### provenance 빌더 신원
 
@@ -281,8 +281,8 @@ attestation은 provenance에 빌더 신원을 새깁니다. 검증자가 provena
 
 이는 정상이며 배포가 사용하는 모델을 알려 줍니다.
 
-- **key-based** → `/sbom/public-key`가 `cosign.pub`을 반환하고 `/sbom/certificate`는 `404`. `--key cosign.pub`으로 검증.
-- **keyless** → `/sbom/certificate`가 Fulcio 인증서를 반환하고 `/sbom/public-key`는 `404`. `--certificate …`로 검증.
+- **key-based**이면 `/sbom/public-key`가 `cosign.pub`을 반환하고 `/sbom/certificate`는 `404`입니다. `--key cosign.pub`으로 검증하십시오.
+- **keyless**이면 `/sbom/certificate`가 Fulcio 인증서를 반환하고 `/sbom/public-key`는 `404`입니다. `--certificate …`로 검증하십시오.
 
 번들은 올바른 파일을 자동으로 선택하므로 번들을 선호할 또 하나의 이유입니다.
 
@@ -297,7 +297,7 @@ SBOM 바이트가 서명과 맞지 않습니다. 둘 다 **같은** 번들에서
 ## 참고
 
 - [SBOM](../user-guide/sbom.md) — 서명 대상 SBOM 내보내기
-- [용어집](../reference/glossary.md) — SBOM·SCA·VEX·RBAC 역할 정의
+- [용어집](../reference/glossary.md) — SBOM, SCA, VEX, RBAC 역할 정의
 - [환경 변수](../reference/env-variables.md) — `COSIGN_*` 및 `SLSA_*` 키
 - [API 레퍼런스 (Redoc)](pathname:///reference/api) — 생성된 엔드포인트 계약
 - [이슈 보고](https://github.com/trustedoss/trusca/issues/new/choose) — 검증이 예기치 않게 실패할 때

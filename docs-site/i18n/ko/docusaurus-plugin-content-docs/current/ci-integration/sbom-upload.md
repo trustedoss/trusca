@@ -25,7 +25,7 @@ TRUSCA는 Dependency-Track API 호환이 **아닙니다**. Dependency-Track 방�
 - `tos_<prefix>_<secret>` 형식의 TRUSCA API Key. **/integrations → API keys → Create API key**에서 생성하며, 스코프 모델은 [API keys](../admin-guide/api-keys.md) 참고.
 - 대상 **프로젝트가 이미 존재**. UUID는 **Project Settings → CI/CD**에서 복사합니다. SBOM 업로드는 프로젝트를 생성하지 않습니다.
 - API Key의 스코프가 그 프로젝트를 커버 — 프로젝트에 바인딩된 `project` 스코프 키이거나, 팀이 소유한 프로젝트라면 `team` 스코프 키.
-- **CycloneDX-JSON** 문서(지원하는 `specVersion`은 `1.2`부터 `1.7`. 1.7이 ML-BOM 필드를 담는 버전입니다 — [AI SBOM 적합성](../user-guide/ai-sbom-conformance.md) 참고) **또는** JSON·Tag-Value 형식의 **SPDX** 문서. CVE 매칭에서는 Trivy가 포맷을 자동 감지하고, 컴포넌트 적재를 위해 SPDX는 CycloneDX로 변환됩니다. SPDX RDF/XML은 받지 않습니다.
+- **CycloneDX-JSON** 문서(지원하는 `specVersion`은 `1.2`부터 `1.7`. 1.7이 ML-BOM 필드를 담는 버전입니다 — [AI SBOM 적합성](../user-guide/ai-sbom-conformance.md) 참고) 또는 JSON·Tag-Value 형식의 **SPDX** 문서. CVE 매칭에서는 Trivy가 포맷을 자동 감지하고, 컴포넌트 적재를 위해 SPDX는 CycloneDX로 변환됩니다. SPDX RDF/XML은 받지 않습니다.
 - 프로젝트에 큐 대기 중이거나 실행 중인 스캔이 없음(프로젝트당 진행 스캔 1개, 두 번째는 `409` 반환).
 
 ## SBOM 업로드 방법
@@ -68,18 +68,18 @@ curl -X POST \
 
 ## 스캔 완료 확인
 
-같은 베어러 토큰으로 스캔이 최종 상태(`succeeded`·`failed`·`cancelled`)에 도달할 때까지 폴링합니다. [GitHub Actions](./github-actions.md) 연동이 쓰는 폴링 패턴과 동일합니다.
+같은 베어러 토큰으로 스캔이 최종 상태(`succeeded`, `failed`, `cancelled`)에 도달할 때까지 폴링합니다. [GitHub Actions](./github-actions.md) 연동이 쓰는 폴링 패턴과 동일합니다.
 
 ```bash
 curl https://trustedoss.example.com/v1/scans/<SCAN_ID> \
   -H "Authorization: Bearer $TRUSTEDOSS_API_KEY"
 ```
 
-`status`는 `queued → running → succeeded`로 이동합니다. 30초에 한 번 폴링하는 주기가 적당합니다. `status`가 `succeeded`가 되면 포털에서 프로젝트를 열어 컴포넌트·취약점·라이선스를 확인합니다.
+`status`는 `queued → running → succeeded`로 이동합니다. 30초에 한 번 폴링하는 주기가 적당합니다. `status`가 `succeeded`가 되면 포털에서 프로젝트를 열어 컴포넌트, 취약점, 라이선스를 확인합니다.
 
 ## 적합성(conformance) 결과 읽기
 
-SBOM을 업로드하면 TRUSCA는 매칭 이전에(그리고 매칭 여부와 무관하게) SBOM의 **품질**을 정해진 기준으로 채점합니다. 버전·패키지 URL·의존성 그래프가 없는 "껍데기" SBOM이 조용히 빈 결과를 내는 대신 드러나게 하기 위해서입니다. 결과는 다음으로 읽습니다.
+SBOM을 업로드하면 TRUSCA는 매칭 이전에(그리고 매칭 여부와 무관하게) SBOM의 **품질**을 정해진 기준으로 채점합니다. 버전, 패키지 URL, 의존성 그래프가 없는 "껍데기" SBOM이 조용히 빈 결과를 내는 대신 드러나게 하기 위해서입니다. 결과는 다음으로 읽습니다.
 
 ```bash
 curl -H "Authorization: Bearer $TRUSTEDOSS_API_KEY" \
@@ -107,12 +107,12 @@ curl -H "Authorization: Bearer $TRUSTEDOSS_API_KEY" \
 }
 ```
 
-- **`result`**는 `pass`·`warn`·`fail` 중 하나입니다. `fail`은 **필수** 검사가 실패했다는 뜻이고, `warn`은 필수 검사는 모두 통과했으나 **권장** 검사(라이선스 또는 해시 커버리지)가 기준에 못 미친 경우이며, `pass`는 모든 검사를 통과한 경우입니다.
+- **`result`**는 `pass`, `warn`, `fail` 중 하나입니다. `fail`은 필수 검사가 실패했다는 뜻이고, `warn`은 필수 검사는 모두 통과했으나 권장 검사(라이선스 또는 해시 커버리지)가 기준에 못 미친 경우이며, `pass`는 모든 검사를 통과한 경우입니다.
 - **필수 검사**: 타임스탬프, 도구 정보, name·version을 가진 최상위 컴포넌트, 컴포넌트 name+version 100%, PURL 커버리지가 `SBOM_CONFORMANCE_PURL_MIN_PCT`(기본 `90`) 이상, `pkg:generic` 자리표시자 없음, 전이 의존성 그래프 존재.
 - **권장 검사**(warn만): 라이선스 커버리지가 `SBOM_CONFORMANCE_LICENSE_MIN_PCT`(기본 `80`) 이상, 해시 커버리지가 `SBOM_CONFORMANCE_HASH_MIN_PCT`(기본 `50`) 이상.
 - **규제 필드 검사**(CycloneDX 전용, 판정 불변): 컴포넌트별 필드 커버리지 검사 5종이 `SBOM_CONFORMANCE_FIELD_MIN_PCT`(기본 `80`) 이상인지 봅니다 — 아래 [규제 필드 검사](#규제-필드-검사권고) 참고. `result`를 바꾸지 않습니다.
 - `fail` 결과여도 인제스트를 **중단하지 않습니다** — TRUSCA는 CVE 매칭과 라이선스 분류를 그대로 수행하므로 구체적 사유와 함께 부분 결과를 얻습니다. 공급사의 SBOM을 받아들일지 반려할지 판단하는 근거로 씁니다.
-- `purl_coverage_pct`·`license_coverage_pct`·`hash_coverage_pct`는 SPDX Tag-Value 문서에서는 `null`입니다. Tag-Value는 패키지별 커버리지가 아니라 존재 여부로 채점하기 때문입니다.
+- `purl_coverage_pct`, `license_coverage_pct`, `hash_coverage_pct`는 SPDX Tag-Value 문서에서는 `null`입니다. Tag-Value는 패키지별 커버리지가 아니라 존재 여부로 채점하기 때문입니다.
 - **패키지 컴포넌트가 0개인 SBOM**은 커버리지 검사에서 실패하지 않습니다. 측정할 대상이 없으면 PURL 커버리지는 0%로 깎이는 대신 `no packages to measure`로 통과합니다. CycloneDX 문서에서 데이터셋 컴포넌트(`"type": "data"` — 예: ML-BOM의 학습 데이터셋)는 패키지 성격의 검사(name+version, PURL, 규제 필드 검사 중 4종)의 측정 대상에서 빠지지만, 라이선스·체크섬 커버리지에는 그대로 포함됩니다. 데이터셋도 라이선스와 체크섬은 담을 수 있기 때문입니다. 다만 한 가지 보호 장치가 있습니다. 컴포넌트 **전부**가 `"data"` 타입인 문서는 정상적인 ML-BOM일 수 없으므로, 빈 분모로 통과하는 대신 name+version·PURL 검사가 `all components are typed "data"`를 보고하고 판정을 `warn`으로 내립니다.
 
 업로드한 문서에 `machine-learning-model` 컴포넌트가 있으면 `checks[]`에 권고 성격의 G7 AI SBOM 최소요소 항목 51개(`cluster`·`source` 태그 포함)가 추가됩니다 — [AI SBOM 적합성](../user-guide/ai-sbom-conformance.md) 참고.
@@ -215,10 +215,10 @@ TRUSCA는 EU 인공지능법, AI 기본법, EU 사이버복원력법을 비롯�
 
 - 검출 라이선스 — 소스 스캔이 파일 안에서 직접 찾는 라이선스 텍스트(scancode). 업로드된 SBOM은 복제도 스캔도 하지 않으므로 검출할 대상이 없습니다.
 - 레지스트리 concluded 라이선스 — 소스 스캔이 레지스트리 메타데이터에서 도출하는 정리된 라이선스.
-- SBOM 서명·증명 — 업로드된 SBOM은 서명(cosign)되지 않으므로 서명·인증서·증명 다운로드 엔드포인트가 제공할 대상이 없습니다.
+- SBOM 서명·증명 — 업로드된 SBOM은 서명(cosign)되지 않으므로 서명, 인증서, 증명 다운로드 엔드포인트가 제공할 대상이 없습니다.
 - 소스 보존 — 소스를 가져오거나 보관하지 않습니다.
 
-검출 라이선스·서명·소스 보존이 필요하면 저장소를 대상으로 소스 스캔을 실행하세요 — [Scans](../user-guide/scans.md) 참고.
+검출 라이선스, 서명, 소스 보존이 필요하면 저장소를 대상으로 소스 스캔을 실행하세요 — [Scans](../user-guide/scans.md) 참고.
 
 ## 운영체제 패키지
 
@@ -277,7 +277,7 @@ API Key의 스코프가 프로젝트를 커버하지 않습니다. 그 프로젝
 
 ### `415 Unsupported Media Type`
 
-TRUSCA는 CycloneDX-JSON과 SPDX(JSON 또는 Tag-Value)를 받습니다. 업로드가 허용된 미디어 타입(`application/json`·`application/vnd.cyclonedx+json`·`application/spdx+json`·`text/spdx`)이나 인식되는 파일명(`.json`·`.cdx.json`·`.spdx`·`.tag`)을 설정하는지 확인하세요. SPDX RDF/XML과 CycloneDX XML은 여기서 받지 않습니다.
+TRUSCA는 CycloneDX-JSON과 SPDX(JSON 또는 Tag-Value)를 받습니다. 업로드가 허용된 미디어 타입(`application/json`, `application/vnd.cyclonedx+json`, `application/spdx+json`, `text/spdx`)이나 인식되는 파일명(`.json`, `.cdx.json`, `.spdx`, `.tag`)을 설정하는지 확인하세요. SPDX RDF/XML과 CycloneDX XML은 여기서 받지 않습니다.
 
 ### `422 Unprocessable Entity`
 

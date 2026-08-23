@@ -14,7 +14,7 @@ TRUSCA는 코드와 그 의존성에 대해 서로 다른 여러 **종류**의 �
 어떤 분석을 실행할지 고르는 신규 도입자·플랫폼 담당자, 그리고 TRUSCA의 기능을 내부 체크리스트에 대응시키는 검토자. SBOM(Software Bill of Materials — 빌드의 의존성 목록), CVE(Common Vulnerabilities and Exposures), CI 빌드 게이트에 익숙하면 도움이 됩니다. 용어 정의는 [용어집](./glossary.md)을 참조하세요.
 :::
 
-:::note이 페이지는 데이터 신호가 아니라 파이프라인의 매트릭스입니다
+:::note 데이터 신호가 아니라 파이프라인의 매트릭스입니다
 본 페이지는 **분석 파이프라인** — 소스 스캔, 컨테이너 스캔, 빌드 게이트, reachability — 을 나열합니다. 짝 페이지인 [데이터 출처 → finding별 데이터 신호](./data-sources.md#per-finding-signals)는 각 finding이 담는 **데이터 신호**(NVD · OSV · GHSA · EPSS · KEV, 그리고 CVSS·CWE·수정 버전 등)의 매트릭스입니다. 두 페이지를 함께 읽으세요. 본 페이지는 *어떤 분석이 실행되는가*이고, 그 페이지는 *각 취약점 finding이 어떤 데이터를 담는가*입니다.
 :::
 

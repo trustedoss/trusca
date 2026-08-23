@@ -112,8 +112,8 @@ sidebar_position: 4
   `TRIVY_DB_REFRESH_HOURS`). [취약점 데이터 (Trivy DB)](../admin-guide/vulnerability-data.md)와
   [데이터 출처](./data-sources.md) 참고.
 - **DT — Dependency-Track.** Apache-2.0 취약점 인텔리전스 플랫폼.
-  TRUSCA는 까지 DT를 취약점 엔진으로 사용했고 v0.10.0에서 Trivy로
-  교체했습니다 —
+  TRUSCA는 v0.10.0 이전까지 DT를 취약점 엔진으로 사용했고 v0.10.0에서
+  Trivy로 교체했습니다 —
   [ADR-0001](https://github.com/trustedoss/trusca/blob/main/docs/decisions/0001-replace-dt-with-trivy.md)과
   본 용어집에 여전히 남아 있는 이유는 레거시 audit log 행이 DT를
   참조하기 때문입니다.
@@ -207,8 +207,8 @@ v0.10.0 에는 액션 단위 허용 목록이 없습니다 — 올바른 scope�
 ## 운영 용어
 
 - **회로 차단기 (CLOSED / OPEN / HALF_OPEN).** 실패 도메인을 격리하는
-  패턴. TRUSCA는 까지 Dependency-Track API 클라이언트를 차단기로
-  감쌌습니다. v0.10.0+에서는 Trivy DB가 워커 로컬에 있어 취약점 경로에서
+  패턴. TRUSCA는 v0.10.0 이전까지 Dependency-Track API 클라이언트를
+  차단기로 감쌌습니다. v0.10.0+에서는 Trivy DB가 워커 로컬에 있어 취약점 경로에서
   이 패턴은 더 이상 사용하지 않습니다. 일반 용어로는 운영 문헌에 계속
   등장합니다.
 - **`audit_logs`.** 상태를 변경하는 모든 작업(1급 엔티티의 CRUD,

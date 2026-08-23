@@ -40,9 +40,9 @@ Ingress, 데이터베이스 마이그레이션 Job을 포함합니다. PostgreSQ
 
 | 워크로드 | 종류 | 비고 |
 |---|---|---|
-| backend | Deployment | FastAPI API. `AUTO_MIGRATE=false` — 마이그레이션은 Job이 수행합니다. |
+| backend | Deployment | FastAPI API. `AUTO_MIGRATE=false`이며 마이그레이션은 Job이 수행합니다. |
 | worker | Deployment (+ 선택적 HPA) | Celery 워커 (cdxgen / scancode / Trivy). |
-| beat | Deployment (replicas: 1) | Celery 스케줄러 — 싱글턴. |
+| beat | Deployment (replicas: 1) | Celery 스케줄러. 싱글턴입니다. |
 | frontend | Deployment | nginx 위 React SPA (`:8080`). |
 | postgres | StatefulSet | 선택적 번들 (`postgres.bundled`). |
 | redis | Deployment | 선택적 번들 (`redis.bundled`). |
@@ -82,12 +82,12 @@ helm template trustedoss charts/trustedoss --namespace trustedoss \
 
 `helm lint`는 차트 구조 문제를 보고하고, `helm template`은 최소 필수 values로
 모든 매니페스트를 완전히 렌더링하므로 0이 아닌 종료 코드는 차트가 설치되지
-않음을 뜻합니다. 여기 `--set` 값은 일회용이며 — 실제 설치는 아래에서 본인의
+않음을 뜻합니다. 여기 `--set` 값은 일회용이며, 실제 설치는 아래에서 본인의
 시크릿을 사용합니다.
 
 ## 빠른 시작 (번들 데이터스토어, 평가용)
 
-PostgreSQL과 Redis를 클러스터 내부에서 실행합니다 — 빠르게 띄울 수 있지만
+PostgreSQL과 Redis를 클러스터 내부에서 실행합니다. 빠르게 띄울 수 있지만
 프로덕션 데이터에는 **권장하지 않습니다**.
 
 <!-- docs-uat: id=helm-install-bundled kind=shell ctx=host tier=manual waiver=needs-live-cluster -->
@@ -109,7 +109,7 @@ helm install trustedoss ./charts/trustedoss \
 이상의 용도라면 외부 관리형 데이터스토어(아래)를 사용하십시오.
 :::
 
-## 프로덕션 (외부 관리형 데이터스토어 — 권장)
+## 프로덕션(외부 관리형 데이터스토어 권장)
 
 클러스터 내부 번들 대신 PostgreSQL은 Cloud SQL / RDS, Redis는 Memorystore /
 ElastiCache를 권장합니다. values 파일을 제공하십시오.
@@ -156,8 +156,8 @@ helm install trustedoss ./charts/trustedoss \
 :::
 
 :::note 프로덕션 CORS
-`env.corsAllowedOrigins`는 SPA를 제공하는 정확한 오리진을 **열거**해야 합니다 —
-프로덕션에서 와일드카드 금지. 브라우저가 사용할 모든 scheme + host를 나열하십시오.
+`env.corsAllowedOrigins`는 SPA를 제공하는 정확한 오리진을 **열거**해야 합니다.
+프로덕션에서 와일드카드는 금지합니다. 브라우저가 사용할 모든 scheme + host를 나열하십시오.
 :::
 
 ## 마이그레이션 동작 방식
@@ -183,7 +183,7 @@ helm upgrade trustedoss ./trusca/charts/trustedoss \
 ```
 
 pre-upgrade 마이그레이션 Job이 새 파드 롤아웃 전에 새 스키마를 적용합니다.
-마이그레이션은 forward-only이므로 업그레이드 전에 데이터베이스를 백업하십시오 —
+마이그레이션은 forward-only이므로 업그레이드 전에 데이터베이스를 백업하십시오.
 [백업 및 복원](../admin-guide/backup-and-restore.md)을 참고하십시오.
 
 ## 주요 values
@@ -200,7 +200,7 @@ pre-upgrade 마이그레이션 Job이 새 파드 롤아웃 전에 새 스키마�
 | `env.secret.existingSecret` | `""` | 네 개 키를 담은 사전 생성 Secret; 차트 Secret을 비활성화. |
 | `postgres.bundled` | `true` | `false` → `env.database.*`(외부) 사용. |
 | `redis.bundled` | `true` | `false` → `env.redis.url`(외부) 사용. |
-| `env.trivy.dbRepository` | `ghcr.io/aquasecurity/trivy-db` | air-gapped 사내 미러로 오버라이드 — [Air-gapped 운영](../admin-guide/vulnerability-data.md#air-gapped) 참조. |
+| `env.trivy.dbRepository` | `ghcr.io/aquasecurity/trivy-db` | air-gapped 사내 미러로 오버라이드. [Air-gapped 운영](../admin-guide/vulnerability-data.md#air-gapped) 참조. |
 | `env.trivy.dbRefreshHours` | `168` | 주간 Trivy DB refresh. 낮추면 신선도↑. |
 | `worker.trivyDbPersistence.enabled` | `true` | `/var/lib/trivy`에 PVC 마운트해 워커 재시작마다 재다운로드 방지. |
 | `workspace.persistence.storageClassName` | `""` | 다중 노드 클러스터의 공유 스캔 볼륨용 RWX 클래스. |
@@ -319,10 +319,10 @@ Helm 설치에서 OAuth 로그인, SMTP·Slack·Teams 알림, 저장소에 포�
 
 ## 함께 보기
 
-- [Docker Compose로 설치](./docker-compose.md) — 단일 호스트 설치
-- [업그레이드](./upgrade.md) — Docker Compose 업그레이드 경로
-- [백업 및 복원](../admin-guide/backup-and-restore.md) — 업그레이드 전 백업
-- [환경 변수](../reference/env-variables.md) — 차트가 매핑하는 모든 설정
-- [아키텍처](../reference/architecture.md) — 서비스, Trivy DB 라이프사이클, 마이그레이션 모델
-- [취약점 데이터 (Trivy DB)](../admin-guide/vulnerability-data.md) — air-gapped 운영과 DB refresh
-- [v0.10.0 릴리스 노트](../release-notes/v0.10.0.md) — 차트 0.10.0 breaking changes
+- [Docker Compose로 설치](./docker-compose.md): 단일 호스트 설치
+- [업그레이드](./upgrade.md): Docker Compose 업그레이드 경로
+- [백업 및 복원](../admin-guide/backup-and-restore.md): 업그레이드 전 백업
+- [환경 변수](../reference/env-variables.md): 차트가 매핑하는 모든 설정
+- [아키텍처](../reference/architecture.md): 서비스, Trivy DB 라이프사이클, 마이그레이션 모델
+- [취약점 데이터 (Trivy DB)](../admin-guide/vulnerability-data.md): air-gapped 운영과 DB refresh
+- [v0.10.0 릴리스 노트](../release-notes/v0.10.0.md): 차트 0.10.0 breaking changes

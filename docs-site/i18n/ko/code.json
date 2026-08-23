@@ -6,7 +6,7 @@
     "message": "Apache-2.0 · 자체 호스팅 · v0.19.2"
   },
   "homepage.hero.subtitle": {
-    "message": "Trusted SCA — 취약점, 라이선스 컴플라이언스, SBOM을 자체 호스팅 UI 하나에서 관리합니다. 좌석당 라이선스 비용이 없습니다."
+    "message": "Trusted SCA — 취약점, 라이선스 컴플라이언스, SBOM을 하나의 자체 호스팅 UI에서 관리합니다. 사용자 수에 따른 라이선스 비용은 없습니다."
   },
   "homepage.hero.cta.quickstart": {
     "message": "Quickstart — 5분"
@@ -39,7 +39,7 @@
     "message": "한 포털, 세 가지 업무"
   },
   "homepage.features.subtitle": {
-    "message": "엔지니어링은 위험한 빌드를 차단. 법무는 라이선스 리스크를 마감. 보안은 CVE 트리아지를 운영. 모두 자체 호스팅 UI 한 곳에서 — 좌석당 과금 없음."
+    "message": "엔지니어링은 위험한 빌드를 차단하고, 법무는 라이선스 리스크를 정리하고, 보안은 CVE 트리아지를 수행합니다. 모두 하나의 자체 호스팅 UI에서 이용하며, 사용자 수에 따른 비용은 없습니다."
   },
   "homepage.feature.ci.audience": {
     "message": "엔지니어링"
