@@ -14,7 +14,7 @@
  *     jumps).
  *   - Components/CVEs hit `GET /v1/search?q=&kinds=components,vulnerabilities`
  *     (team-scoped by the backend, ≤ 20 hits per category). They only fire
- *     once the debounced query is ≥ 2 chars — below that the palette behaves
+ *     once the debounced query is ≥ 3 chars; below that the palette behaves
  *     like before (projects + pages only). Selecting a hit deep-links into the
  *     owning project's Components / Vulnerabilities tab pre-filtered by the
  *     component name / CVE id.
@@ -91,9 +91,15 @@ import { usePermissions } from "@/hooks/usePermissions";
 /**
  * Minimum debounced query length before the global-search endpoint fires.
  * Below this the palette shows only Projects + Pages, matching the pre-H-2
- * behavior and keeping the backend from doing prefix work on 1-char noise.
+ * behavior and keeping the backend from doing prefix work on 1-2 char noise.
+ * Must match the backend floor (`services.search_service.MIN_QUERY_LEN`) and
+ * the full-search-page mirror (`SEARCH_MIN_CHARS` in
+ * `features/search/api/useSearchResults.ts`): a lower value here would send
+ * queries the backend just discards; a higher one would hide results the
+ * backend is willing to return. Pinned by
+ * `tests/unit/contracts/searchMinQueryLenContract.test.ts`.
  */
-const SEARCH_MIN_CHARS = 2;
+export const SEARCH_MIN_CHARS = 3;
 
 /**
  * Map a backend severity token → the Tailwind risk-color token used for the
@@ -324,8 +330,8 @@ export function CommandMenu({ open, onOpenChange }: CommandMenuProps) {
 
   // Cross-project component/CVE search (BomLens parity Phase H-2). Fires only
   // once the debounced query clears SEARCH_MIN_CHARS so we don't fan out the
-  // endpoint on 1-char noise; below the threshold the palette behaves like the
-  // pre-H-2 version (projects + pages only).
+  // endpoint on 1-2 char noise; below the threshold the palette behaves like
+  // the pre-H-2 version (projects + pages only).
   const searchEnabled = open && debounced.length >= SEARCH_MIN_CHARS;
   const searchQuery = useQuery({
     queryKey: ["command-menu", "search", debounced],

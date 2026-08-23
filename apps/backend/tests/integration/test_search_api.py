@@ -322,6 +322,50 @@ async def test_query_too_short_returns_empty_200(client) -> None:
     assert body == {"query": "a", "components": [], "vulnerabilities": []}
 
 
+async def test_two_char_query_is_now_below_the_floor(client) -> None:
+    """Concurrency-scaling plan Q1: the floor moved from 2 to 3.
+
+    A 2-character query matched a component before this change and must not
+    after: it is still a 200 with empty results (no 422), not an error,
+    because the palette fires this on every keystroke. The two-char slice
+    never reaches the database (the length gate short-circuits first), so
+    there is no risk of it coincidentally matching another test's data.
+    """
+    # A fixed, deliberately generic 2-char term rather than a slice of
+    # `_token()` (which always starts "to" anyway): the point is that NO
+    # 2-char query works any more, regardless of what it looks like.
+    query = "ab"
+    _, team, user = await _seed_team_with_user(client)
+    _, scan = await _seed_scanned_project(client, team_id=team.id)
+    await _seed_component(client, scan_id=scan, name=f"{query}-comp")
+
+    resp = await client.get("/v1/search", headers=_bearer_for(user), params={"q": query})
+    assert resp.status_code == 200, resp.text
+    body = resp.json()
+    assert body == {"query": query, "components": [], "vulnerabilities": []}
+
+
+async def test_three_char_query_meets_the_floor(client) -> None:
+    """The other half of the Q1 contract: 3 characters still works normally.
+
+    Asserts the seeded row is PRESENT rather than pinning an exact count,
+    since the integration DB is not truncated between tests and a 3-character
+    substring has only 16**3 slots in the token alphabet, so a stray
+    incidental match from unrelated data is plausible over a long-lived DB.
+    The uniqueness that matters here is the per-test token, not the length.
+    """
+    token = _token()
+    query = token[3:6]  # 3 chars from the random part, not the fixed "tok" prefix
+    _, team, user = await _seed_team_with_user(client)
+    _, scan = await _seed_scanned_project(client, team_id=team.id)
+    await _seed_component(client, scan_id=scan, name=f"{token}-comp")
+
+    resp = await client.get("/v1/search", headers=_bearer_for(user), params={"q": query})
+    assert resp.status_code == 200, resp.text
+    body = resp.json()
+    assert f"{token}-comp" in {c["component_name"] for c in body["components"]}
+
+
 async def test_component_cap_is_20(client) -> None:
     token = _token()
     _, team, user = await _seed_team_with_user(client)

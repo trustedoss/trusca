@@ -9,7 +9,7 @@
  *
  * Backend contract — `GET /v1/search`:
  *   query params:
- *     - `q`     : search string (backend requires ≥ 2 chars; caller gates too).
+ *     - `q`     : search string (backend requires ≥ 3 chars; caller gates too).
  *     - `kinds` : comma-joined subset of {"components","vulnerabilities"}.
  *                 Omitted → backend returns every kind.
  *   The response is already team-scoped by the backend — only hits from

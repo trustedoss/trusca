@@ -45,7 +45,7 @@ sidebar_position: 5
 
 ## 동작 확인
 
-1. `GET /v1/search/results?kind=components&q=lo`가 `items_components`, `total`, `page`, `size`, `facets`를 담아 200으로 응답합니다.
+1. `GET /v1/search/results?kind=components&q=lod`가 `items_components`, `total`, `page`, `size`, `facets`를 담아 200으로 응답합니다.
 2. 알 수 없는 `kind`를 넘기면 422가 돌아옵니다.
 3. `GET /v1/saved-searches`가 저장한 검색 목록과 개인별 `limit`을 함께 반환합니다.
 

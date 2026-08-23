@@ -52,7 +52,7 @@ sidebar_position: 0
 - **Components** — 접근 가능한 프로젝트에서 패키지를 이름이나 purl로 검색; 결과를 선택하면 해당 프로젝트의 **Components** 탭이 그 검색어로 필터링되어 열립니다.
 - **CVEs** — 취약점을 CVE id로 검색; 결과를 선택하면 해당 프로젝트의 **Vulnerabilities** 탭이 그것으로 필터링되어 열립니다.
 
-Components·CVEs 그룹은 입력하는 대로(두 글자부터, 디바운스) 질의하고, Projects·Pages는 즉시 매칭됩니다. 모두 키보드로 조작할 수 있습니다 — 화살표로 이동, Enter로 열기, Esc로 닫기.
+Components·CVEs 그룹은 입력하는 대로(세 글자부터, 디바운스) 질의하고, Projects·Pages는 즉시 매칭됩니다. 모두 키보드로 조작할 수 있습니다 — 화살표로 이동, Enter로 열기, Esc로 닫기.
 
 ## 빈 상태
 

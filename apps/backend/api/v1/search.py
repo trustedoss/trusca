@@ -49,7 +49,7 @@ log = structlog.get_logger("search.api")
         200: {
             "description": (
                 "Search results, each category capped at 20 rows. A query "
-                "shorter than 2 chars (after trim) returns empty lists with a "
+                "shorter than 3 chars (after trim) returns empty lists with a "
                 "200 — not a 422 — so the debounced search palette can fire "
                 "harmlessly on every keystroke."
             ),
@@ -64,7 +64,7 @@ async def global_search_endpoint(
         ...,
         max_length=255,
         description=(
-            "Search term. Trimmed; a term shorter than 2 characters yields "
+            "Search term. Trimmed; a term shorter than 3 characters yields "
             "empty results. Matched case-insensitively as a substring against "
             "component name/purl and CVE id. LIKE metacharacters (`%`, `_`) are "
             "escaped and matched literally."

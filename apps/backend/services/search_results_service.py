@@ -76,7 +76,7 @@ if TYPE_CHECKING:
 
 log = structlog.get_logger("search.results")
 
-MIN_QUERY_LEN = 2
+MIN_QUERY_LEN = 3
 SIZE_DEFAULT = 25
 SIZE_MAX = 100
 
