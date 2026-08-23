@@ -39,8 +39,21 @@ Celery's own source rather than assumed:
   after SIGTERM" check below).
 - The worker subprocess is started with the exec-form `celery` command
   directly as the process being signalled (matching
-  ``Dockerfile.worker``'s ``CMD`` and ``deployment-worker.yaml``'s
+  ``Dockerfile.worker``'s ``CMD`` and ``deployment-worker-scan.yaml``'s
   ``command:``, no shell wrapper eating the signal).
+
+S3 (concurrency-scaling-plan-2026-08-22.md §3.2/§4, S3 row) note: the worker
+subprocess below is started with ``-Q trustedoss.scan,trustedoss.default``
+(the deployments' own transition default,
+``worker.transitionSubscribeBothQueues`` / Compose's ``WORKER_SCAN_QUEUES``),
+not with no ``-Q`` at all as it was pre-split. A worker started with no
+``-Q`` only consumes ``app.amqp.queues``, which is exactly
+``task_default_queue`` unless ``task_queues`` is set explicitly. Celery does
+NOT auto-subscribe a running worker to a queue that only appears in
+``task_routes``. Since ``scan_source`` now routes to ``trustedoss.scan``
+(``tasks/celery_app.py``'s ``task_routes``), a worker consuming only
+``trustedoss.default`` would never see the dispatched message and this test
+would hang until its own timeout.
 """
 
 from __future__ import annotations
@@ -218,6 +231,12 @@ def test_worker_sigterm_lets_the_in_flight_scan_finish_instead_of_losing_it(
             "--pool=prefork",
             "--without-mingle",
             "--without-gossip",
+            # S3: transition default (both worker kinds subscribe to both
+            # queue names). See the module docstring's S3 note for why a
+            # worker consuming only trustedoss.default would never see the
+            # scan_source task task_routes now sends to trustedoss.scan.
+            "-Q",
+            "trustedoss.scan,trustedoss.default",
         ],
         cwd=BACKEND_ROOT,
         env=env,
