@@ -55,9 +55,9 @@ pytest --cov=. --cov-report=term-missing --cov-report=xml
 
 ### 레이아웃 가이드
 
-- **Unit:** 테스트 대상 함수가 DB·HTTP·Celery를 사용하지 않음. 경계에서 mock.
-- **Integration:** 라우트를 FastAPI TestClient로 종단 간 실행, 실제 PostgreSQL은 `pytest-testcontainers`로. **SQLAlchemy를 mock하지 않음.**
-- **E2E (backend):** worker가 별도 fixture로 실제 동작하는 상태에서 HTTPX로 API를 블랙박스로 구동. Playwright가 주된 E2E이므로 절제해서 사용.
+- **Unit:** 테스트 대상 함수는 DB, HTTP, Celery를 사용하지 않습니다. 경계에서 mock합니다.
+- **Integration:** 라우트를 FastAPI TestClient로 종단 간 실행합니다. 실제 PostgreSQL은 `pytest-testcontainers`로 띄우고, **SQLAlchemy는 mock하지 않습니다.**
+- **E2E (backend):** worker가 별도 fixture로 실제 동작하는 상태에서 HTTPX로 API를 블랙박스로 구동합니다. Playwright가 주된 E2E이므로 절제해서 사용합니다.
 
 ## Frontend — `PortalPage` 하네스 기반 Playwright
 
@@ -116,7 +116,7 @@ E2E 실행 전 dev 스택이 떠 있어야 합니다(`docker-compose -f docker-c
 - Webhook URL·페이로드 파서(GitHub, GitLab, Slack, Teams).
 - SPDX·CycloneDX 표현식 정규화기.
 - OAuth `state`·`code` 파서.
-- 사용자 콘텐츠가 regex·경로·셸로 보간되는 모든 곳.
+- 사용자 콘텐츠가 regex, 경로, 셸로 보간되는 모든 곳.
 
 ### 매트릭스
 
@@ -153,7 +153,7 @@ def test_normalize_spdx_id(raw: str, expected: list[str]) -> None:
 
 ## 보강 규칙 — 2026-06 검증 캠페인이 가르쳐 준 것
 
-외부 검증팀이 가이드에서 도출한 1,360케이스를 라이브 포털에 전수 실행해, 우리 unit / functional / e2e가 전부 green인 상태에서 고유 결함 70건을 찾아냈습니다. 사후 분석으로 구조적 사각지대를 추적했고, 아래 각 규칙이 사각지대 하나씩을 닫으며 그 근거가 된 결함 클래스를 함께 적습니다. 이 규칙들은 신규 PR에 구속력이 있습니다(CLAUDE.md §2와 동일).
+외부 검증팀이 가이드에서 도출한 1,360케이스를 라이브 포털에 전수 실행해, 우리 unit / functional / e2e가 전부 green인 상태에서 고유 결함 70건을 찾아냈습니다. 사후 분석으로 구조적으로 확인되지 않던 범위를 추적했고, 아래 각 규칙이 그 범위를 하나씩 닫으며 그 근거가 된 결함 클래스를 함께 적습니다. 이 규칙들은 신규 PR에 구속력이 있습니다(CLAUDE.md §2와 동일).
 
 ### 1. 보안 단언은 권한 × 상태 매트릭스로
 

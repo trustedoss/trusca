@@ -20,7 +20,7 @@ sidebar_position: 1
 
 | 축 | 언제 바뀌는가 | 무엇이 최신으로 유지하는가 |
 |---|---|---|
-| **SBOM** (배포하는 컴포넌트) | 의존성을 추가·제거·버전 변경할 때 — 즉 소스 변경. | 트리를 다시 읽는 **소스 스캔**. |
+| **SBOM** (배포하는 컴포넌트) | 의존성을 추가, 제거, 버전 변경할 때 — 즉 소스 변경. | 트리를 다시 읽는 **소스 스캔**. |
 | **취약점 데이터** (알려진 CVE) | 이미 배포 중인 컴포넌트에 대해 Trivy가 새 권고를 게시할 때. | **Trivy DB 갱신 + 재매칭 beat** — 재스캔 없음. |
 
 SBOM(소프트웨어 자재 명세)은 스캔이 만들어 내는 컴포넌트의 기계 판독 가능한 목록입니다. CVE(공통 취약점·노출 식별자)는 알려진 취약점의 공식 ID입니다.
@@ -98,4 +98,7 @@ CI가 지나치게 잦다면, 스캔 단계를 의존성 매니페스트(`packag
 - [취약점 데이터 (Trivy DB)](../admin-guide/vulnerability-data.md) — 갱신 + 재매칭 수명 주기
 - [재탐지](../user-guide/vulnerabilities.md#재탐지) — 재스캔 없이 새 CVE가 드러나는 방식
 - [on-call 런북 — 시나리오 1](../admin-guide/oncall-runbook.md#시나리오-1--trivy-db-stale-또는-누락) — 오래된 Trivy DB 복구
-- [GitHub Actions](../ci-integration/github-actions.md) · [GitLab CI](../ci-integration/gitlab-ci.md) · [Jenkins](../ci-integration/jenkins.md) · [Webhook](../ci-integration/webhooks.md)
+- [GitHub Actions](../ci-integration/github-actions.md)
+- [GitLab CI](../ci-integration/gitlab-ci.md)
+- [Jenkins](../ci-integration/jenkins.md)
+- [Webhook](../ci-integration/webhooks.md)
