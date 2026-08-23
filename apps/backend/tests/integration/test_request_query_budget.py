@@ -67,10 +67,14 @@ pytestmark = pytest.mark.integration
 # for noise. It absorbs ordinary work (a column that needs another row loaded);
 # it is not room to spend on new lookups.
 #
-#   authenticated read   6 statements measured, budget 8
+#   authenticated read    5 statements measured, budget 7. A3 (concurrency-scaling-plan
+#                          -2026-08-22.md §3.3) took principal load from 2 statements to
+#                          1 (selectinload to joinedload on _load_current_user's
+#                          User.memberships load), so the prior 6-statement measurement
+#                          is now 5.
 #   gate evaluation     12 statements measured, budget 15
 #   status transition   13 statements measured, budget 16
-AUTHENTICATED_READ_BUDGET = 8
+AUTHENTICATED_READ_BUDGET = 7
 GATE_EVALUATION_BUDGET = 15
 STATUS_TRANSITION_BUDGET = 16
 
