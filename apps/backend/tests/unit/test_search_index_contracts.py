@@ -122,3 +122,82 @@ def test_searched_columns_are_all_covered() -> None:
     }
     covered = {(table, column) for _, table, column in _model_trigram_indexes()}
     assert covered == expected
+
+
+# ---------------------------------------------------------------------------
+# Comment-vs-index oracle (Q4): the rate-limit docstring and the router
+# docstring both make factual claims about the search path. This guards that
+# those claims stay true instead of quietly going stale again, the way the
+# "leading wildcard cannot use an index -> sequential scan" claim did after
+# migration 0043 added the trigram indexes without anyone updating the two
+# comments that predated it.
+# ---------------------------------------------------------------------------
+
+
+def test_search_rate_limit_docstring_names_the_actual_trigram_columns() -> None:
+    """``search_rate_limit``'s docstring must name exactly the indexed columns.
+
+    The docstring explains why a request is cheap (GIN trigram index) rather
+    than expensive (sequential scan) by naming the specific columns. If a
+    column is added to or dropped from the trigram set without updating this
+    docstring, the explanation silently drifts from what the database does.
+    """
+    from core.config import search_rate_limit
+
+    doc = search_rate_limit.__doc__
+    assert doc is not None
+
+    covered = {(table, column) for _, table, column in _model_trigram_indexes()}
+    searched_columns = {
+        (table, column) for table, column in covered if table in {"components", "vulnerabilities"}
+    }
+    assert searched_columns, "expected at least one trigram-indexed search column"
+    for table, column in searched_columns:
+        assert f"``{table}.{column}``" in doc, (
+            f"search_rate_limit() docstring does not name {table}.{column}, "
+            "which migration 0043 indexes for search, so update the docstring"
+        )
+
+    # The exact stale claim this unit retires: a leading-wildcard ILIKE on
+    # these columns is NOT a sequential scan once the trigram index exists.
+    assert "non-SARGable" not in doc
+    assert "sequential scan + sort per request" not in doc
+    assert "0043_search_trigram_indexes" in doc
+
+
+def test_search_router_docstring_role_matches_the_actual_dependency() -> None:
+    """The module docstring's stated auth role must match ``require_role(...)``.
+
+    ``api/v1/search.py``'s module docstring describes the auth floor in
+    prose ("Auth: role >= <role>"); the actual gate is the ``require_role``
+    dependency on the endpoint. Parsing the real argument out of the source
+    (rather than hand-copying it into this test) means a future change to the
+    dependency's argument fails this test unless the docstring is updated to
+    match, instead of the two silently diverging again.
+    """
+    import inspect
+    import re
+
+    from api.v1 import search as search_router
+
+    source = inspect.getsource(search_router)
+    match = re.search(r'require_role\("(\w+)"\)', source)
+    assert match is not None, "expected a require_role(...) dependency in search.py"
+    actual_role = match.group(1)
+
+    doc = search_router.__doc__
+    assert doc is not None
+    assert f"role >= {actual_role}" in doc, (
+        f"search.py's module docstring does not say 'role >= {actual_role}', "
+        "which is what require_role(...) actually enforces on the endpoint"
+    )
+
+    from core.security import _ROLE_PRIORITY
+
+    assert actual_role in _ROLE_PRIORITY
+    lowest_role = min(_ROLE_PRIORITY, key=lambda role: _ROLE_PRIORITY[role])
+    if actual_role == lowest_role:
+        assert "any authenticated user" in doc, (
+            f"'{actual_role}' is the floor role, so every authenticated user "
+            "satisfies it, so the docstring should say so"
+        )
