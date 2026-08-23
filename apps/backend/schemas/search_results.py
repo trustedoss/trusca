@@ -26,7 +26,11 @@ class SearchFacetBucket(BaseModel):
 
     Counts are computed over the whole matching set, not the current page —
     a facet that only counted the visible rows would tell the user nothing
-    about what clicking it would do.
+    about what clicking it would do. Whole here means "up to
+    ``services.search_results_service.RESULT_COUNT_CAP``" (Q3,
+    2026-08-24): when the page's ``counts_capped`` is true, every bucket's
+    ``count`` is a floor rather than the true count too, since it was tallied
+    from the same bounded window ``total`` was.
     """
 
     value: str
@@ -108,6 +112,12 @@ class SearchResultsPage(BaseModel):
     items_vulnerabilities: list[VulnerabilityResult] = Field(default_factory=list)
     items_licenses: list[LicenseResult] = Field(default_factory=list)
     total: int = 0
+    #: True when the match set is larger than
+    #: ``services.search_results_service.RESULT_COUNT_CAP`` (Q3, 2026-08-24):
+    #: ``total`` and every facet bucket's ``count`` are then a floor, not the
+    #: true count, so the query matches AT LEAST this many, not exactly this
+    #: many. False (the default) means every count on this page is exact.
+    counts_capped: bool = False
     page: int = 1
     size: int = 25
     #: Facet name → buckets, e.g. ``{"severity": [{"value": "high", "count": 3}]}``.

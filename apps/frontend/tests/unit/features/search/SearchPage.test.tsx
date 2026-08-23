@@ -46,6 +46,7 @@ function emptyPage(overrides: Partial<SearchResultsPage> = {}): SearchResultsPag
     items_vulnerabilities: [],
     items_licenses: [],
     total: 0,
+    counts_capped: false,
     page: 1,
     size: 25,
     facets: {},
@@ -157,6 +158,64 @@ describe("SearchPage", () => {
       "data-total",
       "2",
     );
+  });
+
+  it("shows an exact total when the server did not cap the count", async () => {
+    mockedFetch.mockResolvedValue(
+      emptyPage({
+        query: "lodash",
+        items_components: [componentRow("lodash")],
+        total: 2,
+        counts_capped: false,
+      }),
+    );
+    renderPage();
+
+    await waitFor(() => {
+      expect(screen.getByTestId("search-summary")).toHaveAttribute(
+        "data-total-capped",
+        "false",
+      );
+    });
+    expect(screen.getByText("2 results")).toBeInTheDocument();
+  });
+
+  it("marks the total as a lower bound when the server capped the count (Q3)", async () => {
+    mockedFetch.mockResolvedValue(
+      emptyPage({
+        query: "lodash",
+        items_components: [componentRow("lodash")],
+        total: 1000,
+        counts_capped: true,
+      }),
+    );
+    renderPage();
+
+    await waitFor(() => {
+      expect(screen.getByTestId("search-summary")).toHaveAttribute(
+        "data-total-capped",
+        "true",
+      );
+    });
+    expect(screen.getByText("1000+ results")).toBeInTheDocument();
+    // The exact-count phrasing must not also render alongside it.
+    expect(screen.queryByText("1000 results")).not.toBeInTheDocument();
+  });
+
+  it("marks facet chip counts as a lower bound when the server capped the count (Q3)", async () => {
+    mockedFetch.mockResolvedValue(
+      emptyPage({
+        kind: "vulnerabilities",
+        query: "CVE",
+        total: 1000,
+        counts_capped: true,
+        facets: { severity: [{ value: "critical", count: 1000 }] },
+      }),
+    );
+    renderPage("/search?kind=vulnerabilities&q=CVE");
+
+    const chip = await screen.findByTestId("search-facet-severity-critical");
+    expect(within(chip).getByText("1000+")).toBeInTheDocument();
   });
 
   // The scope line states which scan(s) a tab reads. Since the

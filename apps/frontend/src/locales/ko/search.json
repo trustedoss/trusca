@@ -14,7 +14,12 @@
   },
   "summary": {
     "count": "결과 {{total}}건",
+    "count_at_least": "결과 {{total}}건 이상",
     "type_more": "{{min}}자 이상 입력하면 검색합니다."
+  },
+  "capped": {
+    "count": "{{count}}+",
+    "tooltip": "표시 상한에 도달해 멈춘 값입니다. 실제 개수는 이보다 많습니다."
   },
   "scope": {
     "all_scans": "지금까지 실행한 모든 스캔이 대상",

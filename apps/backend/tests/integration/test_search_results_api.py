@@ -106,9 +106,7 @@ def _token() -> str:
 
 def _bearer_for(user: User) -> dict[str, str]:
     role = "super_admin" if user.is_superuser else None
-    return {
-        "Authorization": f"Bearer {create_access_token(subject=str(user.id), role=role)}"
-    }
+    return {"Authorization": f"Bearer {create_access_token(subject=str(user.id), role=role)}"}
 
 
 async def _factory(client: AsyncClient):
@@ -139,9 +137,7 @@ async def _seed_project(client: AsyncClient, *, team_id: uuid.UUID, name: str):
 
         from models import Team
 
-        team = (
-            await session.execute(select(Team).where(Team.id == team_id))
-        ).scalar_one()
+        team = (await session.execute(select(Team).where(Team.id == team_id))).scalar_one()
         project = await make_project(session, team=team, name=name)
         scan = await make_scan(session, project=project, status="succeeded")
         project.latest_scan_id = scan.id
@@ -219,9 +215,7 @@ async def _seed_component(
         session.add(cv)
         await session.commit()
         await session.refresh(cv)
-        session.add(
-            ScanComponent(scan_id=scan_id, component_version_id=cv.id, direct=True)
-        )
+        session.add(ScanComponent(scan_id=scan_id, component_version_id=cv.id, direct=True))
         await session.commit()
         return cv.id
 
@@ -238,9 +232,7 @@ async def _seed_vuln(
     async with factory() as session:
         from models import Vulnerability, VulnerabilityFinding
 
-        vuln = Vulnerability(
-            external_id=cve_id, source="NVD", severity=severity, summary=cve_id
-        )
+        vuln = Vulnerability(external_id=cve_id, source="NVD", severity=severity, summary=cve_id)
         session.add(vuln)
         await session.commit()
         await session.refresh(vuln)
@@ -255,10 +247,37 @@ async def _seed_vuln(
         await session.commit()
 
 
+async def _seed_license(
+    client: AsyncClient,
+    *,
+    scan_id: uuid.UUID,
+    cv_id: uuid.UUID,
+    spdx_id: str,
+    category: str = "allowed",
+) -> None:
+    factory = await _factory(client)
+    async with factory() as session:
+        from models import License, LicenseFinding
+
+        lic = License(spdx_id=spdx_id, name=spdx_id, category=category)
+        session.add(lic)
+        await session.commit()
+        await session.refresh(lic)
+        session.add(
+            LicenseFinding(
+                scan_id=scan_id,
+                component_version_id=cv_id,
+                license_id=lic.id,
+                kind="concluded",
+                source_path="path",
+                raw_data={},
+            )
+        )
+        await session.commit()
+
+
 async def _get(client: AsyncClient, user: User, **params):
-    return await client.get(
-        "/v1/search/results", params=params, headers=_bearer_for(user)
-    )
+    return await client.get("/v1/search/results", params=params, headers=_bearer_for(user))
 
 
 # ---------------------------------------------------------------------------
@@ -300,9 +319,7 @@ async def test_projects_kind_is_team_scoped(client: AsyncClient) -> None:
     await _seed_project(client, team_id=team_b.id, name=f"{token}-theirs")
 
     res = await _get(client, user_a, kind="projects", q=token)
-    assert {row["project_name"] for row in res.json()["items_projects"]} == {
-        f"{token}-mine"
-    }
+    assert {row["project_name"] for row in res.json()["items_projects"]} == {f"{token}-mine"}
 
 
 async def test_requires_authentication(client: AsyncClient) -> None:
@@ -324,9 +341,7 @@ async def test_the_palette_endpoint_still_answers_its_old_shape(
     which folds the two together has to delete this test on purpose.
     """
     _, user = await _seed_team_with_user(client)
-    res = await client.get(
-        "/v1/search", params={"q": "a"}, headers=_bearer_for(user)
-    )
+    res = await client.get("/v1/search", params={"q": "a"}, headers=_bearer_for(user))
     assert res.status_code == 200
     assert res.json() == {"query": "a", "components": [], "vulnerabilities": []}
 
@@ -365,9 +380,9 @@ async def test_components_and_vulnerabilities_read_only_the_current_scan(
     assert vulns.json()["total"] == 0, "a cleared finding must not resurface"
 
     old_components = await _get(client, user, kind="components", q=f"{token}-oldpkg")
-    assert old_components.json()["total"] == 0, (
-        "an old-scan-only component must drop out of search (Q2 contract change)"
-    )
+    assert (
+        old_components.json()["total"] == 0
+    ), "an old-scan-only component must drop out of search (Q2 contract change)"
 
     new_components = await _get(client, user, kind="components", q=f"{token}-newpkg")
     assert new_components.json()["total"] >= 1, "the current scan's package stays findable"
@@ -437,9 +452,7 @@ async def test_paging_reports_total_and_does_not_repeat_rows(
     assert len(second.json()["items_components"]) == 1
 
     def ids(payload):
-        return {
-            (row["component_id"], row["version"]) for row in payload["items_components"]
-        }
+        return {(row["component_id"], row["version"]) for row in payload["items_components"]}
 
     assert not (ids(first.json()) & ids(second.json()))
 
@@ -456,12 +469,43 @@ async def test_component_facets_count_the_whole_match_not_the_page(
     await _seed_component(client, scan_id=scan, name=f"{token}-py2", package_type="pypi")
 
     res = await _get(client, user, kind="components", q=token, size=1)
-    buckets = {
-        bucket["value"]: bucket["count"]
-        for bucket in res.json()["facets"]["package_type"]
-    }
+    buckets = {bucket["value"]: bucket["count"] for bucket in res.json()["facets"]["package_type"]}
     assert buckets == {"npm": 1, "pypi": 2}
     assert len(res.json()["items_components"]) == 1
+
+
+async def test_licenses_kind_matches_and_filters_by_category(client: AsyncClient) -> None:
+    """The ``licenses`` kind, otherwise untested at this endpoint: a plain
+    match, the ``license_category`` facet, and the filter it drives all in
+    one pass (the same current-scan and windowed-count/facet code path Q2 and
+    Q3 touch for ``components``/``vulnerabilities``, exercised here for the
+    fourth kind).
+    """
+    token = _token()
+    team, user = await _seed_team_with_user(client)
+    _, scan = await _seed_project(client, team_id=team.id, name=f"{token}-p")
+    cv_allowed = await _seed_component(client, scan_id=scan, name=f"{token}-allowed-pkg")
+    cv_forbidden = await _seed_component(client, scan_id=scan, name=f"{token}-forbidden-pkg")
+    await _seed_license(
+        client, scan_id=scan, cv_id=cv_allowed, spdx_id=f"{token}-MIT", category="allowed"
+    )
+    await _seed_license(
+        client, scan_id=scan, cv_id=cv_forbidden, spdx_id=f"{token}-GPL", category="forbidden"
+    )
+
+    res = await _get(client, user, kind="licenses", q=token)
+    assert res.status_code == 200, res.text
+    payload = res.json()
+    assert payload["total"] == 2
+    assert payload["counts_capped"] is False
+    spdx_ids = {row["spdx_id"] for row in payload["items_licenses"]}
+    assert spdx_ids == {f"{token}-MIT", f"{token}-GPL"}
+    facet_values = {b["value"] for b in payload["facets"]["license_category"]}
+    assert facet_values == {"allowed", "forbidden"}
+
+    filtered = await _get(client, user, kind="licenses", q=token, license_category="forbidden")
+    filtered_ids = {row["spdx_id"] for row in filtered.json()["items_licenses"]}
+    assert filtered_ids == {f"{token}-GPL"}
 
 
 async def test_package_type_filter_narrows(client: AsyncClient) -> None:
@@ -472,9 +516,7 @@ async def test_package_type_filter_narrows(client: AsyncClient) -> None:
     await _seed_component(client, scan_id=scan, name=f"{token}-py", package_type="pypi")
 
     res = await _get(client, user, kind="components", q=token, package_type="pypi")
-    assert {row["component_name"] for row in res.json()["items_components"]} == {
-        f"{token}-py"
-    }
+    assert {row["component_name"] for row in res.json()["items_components"]} == {f"{token}-py"}
 
 
 async def test_short_query_is_an_empty_200_not_a_422(client: AsyncClient) -> None:
@@ -528,6 +570,100 @@ async def test_unknown_kind_is_422(client: AsyncClient) -> None:
     _, user = await _seed_team_with_user(client)
     res = await _get(client, user, kind="bogus", q="lodash")
     assert res.status_code == 422
+
+
+# ---------------------------------------------------------------------------
+# Result count cap (Q3)
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize(
+    ("cap", "seeded", "expected_total", "expected_capped"),
+    [
+        (3, 2, 2, False),  # under the cap: exact
+        (3, 3, 3, False),  # exactly at the cap: still exact
+        (3, 4, 3, True),  # over the cap: floored at the cap, marked a lower bound
+    ],
+)
+async def test_total_is_exact_up_to_the_cap_then_becomes_a_lower_bound(
+    client: AsyncClient,
+    monkeypatch: pytest.MonkeyPatch,
+    cap: int,
+    seeded: int,
+    expected_total: int,
+    expected_capped: bool,
+) -> None:
+    """Concurrency-scaling plan Q3: ``total`` stops counting past the cap.
+
+    ``RESULT_COUNT_CAP`` is a module-level name specifically so a test can
+    monkeypatch it small instead of seeding a thousand real rows to reach it
+    (see the constant's docstring in ``search_results_service``).
+    """
+    from services import search_results_service
+
+    monkeypatch.setattr(search_results_service, "RESULT_COUNT_CAP", cap)
+
+    token = _token()
+    team, user = await _seed_team_with_user(client)
+    _, scan = await _seed_project(client, team_id=team.id, name=f"{token}-p")
+    for index in range(seeded):
+        await _seed_component(client, scan_id=scan, name=f"{token}-c{index}")
+
+    res = await _get(client, user, kind="components", q=token, size=1)
+    assert res.status_code == 200, res.text
+    payload = res.json()
+    assert payload["total"] == expected_total
+    assert payload["counts_capped"] is expected_capped
+
+
+async def test_capped_total_does_not_leak_another_teams_rows(
+    client: AsyncClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Wrapping the match set in a ``LIMIT`` must not drop the team-scope
+    ``WHERE`` it wraps.
+
+    An over-cap combined count looks the same (capped, at the cap) whether or
+    not team isolation held, so that alone would not catch a leak. This
+    checks the UNDER-cap side instead: team A has one matching component and
+    stays under a cap of 2 on its own, while team B (sharing the SAME search
+    token) has five, enough to exceed that cap by itself. If team A's query
+    leaked team B's rows into its window, team A's total would come out
+    capped and inflated instead of the exact value 1; its facet bucket would
+    also gain team B's package type. Checked both below the cap (team A) and
+    above it (team B) in the same test, matching plan §4's Q3 regression
+    contract.
+    """
+    from services import search_results_service
+
+    monkeypatch.setattr(search_results_service, "RESULT_COUNT_CAP", 2)
+
+    token = _token()
+    team_a, user_a = await _seed_team_with_user(client)
+    team_b, user_b = await _seed_team_with_user(client)
+    _, scan_a = await _seed_project(client, team_id=team_a.id, name=f"{token}-a")
+    _, scan_b = await _seed_project(client, team_id=team_b.id, name=f"{token}-b")
+
+    await _seed_component(client, scan_id=scan_a, name=f"{token}-solo", package_type="npm")
+    for index in range(5):
+        await _seed_component(
+            client, scan_id=scan_b, name=f"{token}-many{index}", package_type="pypi"
+        )
+
+    res_a = await _get(client, user_a, kind="components", q=token)
+    assert res_a.status_code == 200, res_a.text
+    payload_a = res_a.json()
+    assert payload_a["total"] == 1, "team A's own total must stay exact, not inflated by team B"
+    assert payload_a["counts_capped"] is False
+    names_a = {row["component_name"] for row in payload_a["items_components"]}
+    assert names_a == {f"{token}-solo"}
+    facet_values_a = {bucket["value"] for bucket in payload_a["facets"]["package_type"]}
+    assert facet_values_a == {"npm"}, "team B's package_type must not leak into team A's facets"
+
+    res_b = await _get(client, user_b, kind="components", q=token)
+    assert res_b.status_code == 200, res_b.text
+    payload_b = res_b.json()
+    assert payload_b["total"] == 2, "team B alone already exceeds the cap"
+    assert payload_b["counts_capped"] is True
 
 
 async def test_like_wildcards_are_escaped(client: AsyncClient) -> None:

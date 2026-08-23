@@ -14,6 +14,11 @@ import { cn } from "@/lib/utils";
  *
  * Counts come from the server over the WHOLE match, not the visible page, so a
  * chip reading "high 42" promises 42 results rather than 42-of-what-you-can-see.
+ * That promise has a ceiling since the concurrency-scaling plan's Q3
+ * (2026-08-24): past the server's count cap, a bucket's count is a floor
+ * rather than an exact number, and `countsCapped` marks every chip with a
+ * "+" and a tooltip so that distinction is visible rather than silently
+ * approximate.
  *
  * Which facets exist is a property of the kind: severity and status only make
  * sense for vulnerabilities, package type for components, category for
@@ -32,6 +37,9 @@ const FACET_PARAM: Record<string, string> = {
 export interface SearchFacetBarProps {
   kind: SearchKind;
   facets: Record<string, SearchFacetBucket[]>;
+  /** Concurrency-scaling plan Q3: true when the match set exceeded the
+   * server's count cap, so every bucket's count is a floor, not exact. */
+  countsCapped: boolean;
   severity: string[];
   status: string[];
   packageType: string[];
@@ -42,6 +50,7 @@ export interface SearchFacetBarProps {
 export function SearchFacetBar({
   kind,
   facets,
+  countsCapped,
   severity,
   status,
   packageType,
@@ -103,8 +112,14 @@ export function SearchFacetBar({
                     )}
                   >
                     <span>{bucket.value}</span>
-                    <Badge className="px-1 py-0 text-[10px]">
-                      {bucket.count}
+                    <Badge
+                      className="px-1 py-0 text-[10px]"
+                      data-capped={countsCapped}
+                      title={countsCapped ? t("capped.tooltip") : undefined}
+                    >
+                      {countsCapped
+                        ? t("capped.count", { count: bucket.count })
+                        : bucket.count}
                     </Badge>
                   </button>
                 );
