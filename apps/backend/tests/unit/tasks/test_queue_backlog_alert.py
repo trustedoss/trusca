@@ -435,3 +435,74 @@ def test_the_beat_task_never_raises_on_an_unexpected_error(
     assert result["skipped"] is True
     assert result["skipped_reason"].startswith("unexpected:")
     assert result["alerts_sent"] == 0
+
+
+# ---------------------------------------------------------------------------
+# core.config accessors - the real os.getenv bodies, not the monkeypatched
+# stand-ins the fixtures above use for _run_check/_threshold_for_queue.
+# ---------------------------------------------------------------------------
+
+
+def test_queue_backlog_alert_enabled_defaults_to_off(monkeypatch: pytest.MonkeyPatch) -> None:
+    from core.config import queue_backlog_alert_enabled
+
+    monkeypatch.delenv("QUEUE_BACKLOG_ALERT_ENABLED", raising=False)
+    assert queue_backlog_alert_enabled() is False
+
+
+@pytest.mark.parametrize("value", ["1", "true", "TRUE", "yes", "on"])
+def test_queue_backlog_alert_enabled_reads_truthy_values(
+    monkeypatch: pytest.MonkeyPatch, value: str
+) -> None:
+    from core.config import queue_backlog_alert_enabled
+
+    monkeypatch.setenv("QUEUE_BACKLOG_ALERT_ENABLED", value)
+    assert queue_backlog_alert_enabled() is True
+
+
+def test_queue_backlog_alert_scan_queue_threshold_default_and_override(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from core.config import queue_backlog_alert_scan_queue_threshold
+
+    monkeypatch.delenv("QUEUE_BACKLOG_ALERT_SCAN_QUEUE_THRESHOLD", raising=False)
+    assert queue_backlog_alert_scan_queue_threshold() == 10
+
+    monkeypatch.setenv("QUEUE_BACKLOG_ALERT_SCAN_QUEUE_THRESHOLD", "25")
+    assert queue_backlog_alert_scan_queue_threshold() == 25
+
+
+def test_queue_backlog_alert_default_queue_threshold_default_and_override(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from core.config import queue_backlog_alert_default_queue_threshold
+
+    monkeypatch.delenv("QUEUE_BACKLOG_ALERT_DEFAULT_QUEUE_THRESHOLD", raising=False)
+    assert queue_backlog_alert_default_queue_threshold() == 100
+
+    monkeypatch.setenv("QUEUE_BACKLOG_ALERT_DEFAULT_QUEUE_THRESHOLD", "250")
+    assert queue_backlog_alert_default_queue_threshold() == 250
+
+
+def test_queue_backlog_alert_sustain_seconds_default_and_override(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from core.config import queue_backlog_alert_sustain_seconds
+
+    monkeypatch.delenv("QUEUE_BACKLOG_ALERT_SUSTAIN_SECONDS", raising=False)
+    assert queue_backlog_alert_sustain_seconds() == 600
+
+    monkeypatch.setenv("QUEUE_BACKLOG_ALERT_SUSTAIN_SECONDS", "120")
+    assert queue_backlog_alert_sustain_seconds() == 120
+
+
+def test_queue_backlog_alert_cooldown_seconds_default_and_override(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from core.config import queue_backlog_alert_cooldown_seconds
+
+    monkeypatch.delenv("QUEUE_BACKLOG_ALERT_COOLDOWN_SECONDS", raising=False)
+    assert queue_backlog_alert_cooldown_seconds() == 3600
+
+    monkeypatch.setenv("QUEUE_BACKLOG_ALERT_COOLDOWN_SECONDS", "60")
+    assert queue_backlog_alert_cooldown_seconds() == 60
