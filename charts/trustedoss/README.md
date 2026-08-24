@@ -38,6 +38,7 @@ git clone https://github.com/trustedoss/trusca.git && cd trusca
 helm install trustedoss ./charts/trustedoss \
   --namespace trustedoss --create-namespace \
   --set env.secret.secretKey="$(openssl rand -hex 32)" \
+  --set env.secret.apiKeyHmacSecret="$(openssl rand -hex 32)" \
   --set postgres.auth.password="$(openssl rand -hex 24)" \
   --set ingress.host=trustedoss.example.com \
   --set env.corsAllowedOrigins=https://trustedoss.example.com
@@ -73,6 +74,21 @@ ingress:
 When `env.secret.existingSecret` is set, the chart renders **no** Secret; the
 referenced Secret **must** carry all five keys: `DATABASE_URL_APP`,
 `DATABASE_URL_OWNER`, `REDIS_URL`, `SECRET_KEY`, `API_KEY_HMAC_SECRET`.
+
+When it is unset (the chart renders its own Secret), both `env.secret.secretKey`
+and `env.secret.apiKeyHmacSecret` are required: the release fails to render
+rather than silently deriving `API_KEY_HMAC_SECRET` from `secretKey`. Generate
+each independently with `openssl rand -hex 32`; never reuse `secretKey` for
+both, and never commit real values to a values file.
+
+**Upgrade note (A5 follow-up).** Chart versions before this fix accepted a
+blank `env.secret.apiKeyHmacSecret` and derived a value from `secretKey`
+instead. If you installed or upgraded an earlier version with that field left
+blank, set it explicitly to a freshly generated value before upgrading, or
+the release fails with `env.secret.apiKeyHmacSecret is required ...`. A fresh
+value rotates `API_KEY_HMAC_SECRET` and invalidates any HMAC-format API keys
+issued since the A5 rollout (they must be reissued); bcrypt-format keys
+issued before A5 are unaffected, since this key never verified them.
 
 ## Migrations (B3 design)
 
@@ -114,7 +130,7 @@ connections before alembic runs.
 | `env.redis.url` | `""` | External `REDIS_URL`. Used when `redis.bundled=false`. |
 | `env.secret.existingSecret` | `""` | Pre-created Secret with all five keys; disables the chart Secret. |
 | `env.secret.secretKey` | `""` | `SECRET_KEY` (>=32 chars). Required unless `existingSecret`. |
-| `env.secret.apiKeyHmacSecret` | `""` | `API_KEY_HMAC_SECRET` (A5, >=32 chars), a dedicated key for hashing stored API-key secrets. Optional: left blank, the chart derives one deterministically from `secretKey` so the rendered Secret always carries a value. Set explicitly in production for an independently rotatable key. |
+| `env.secret.apiKeyHmacSecret` | `""` | `API_KEY_HMAC_SECRET` (A5, >=32 chars), a dedicated key for hashing stored API-key secrets. Required unless `existingSecret` (the render fails rather than deriving one from `secretKey`; see the upgrade note above). Never the same value as `secretKey`. |
 | `env.trivy.dbRepository` | `ghcr.io/aquasecurity/trivy-db` | `TRIVY_DB_REPOSITORY` — OCI registry the worker pulls the cached DB from. Override for an air-gapped mirror. |
 | `env.trivy.dbRefreshHours` | `168` | `TRIVY_DB_REFRESH_HOURS` — beat cadence for the DB refresh task. |
 | `env.trivy.dbCacheDir` | `/var/lib/trivy` | `TRIVY_DB_CACHE_DIR` — in-container path the cached DB lands at. |
@@ -320,7 +336,9 @@ first place.
 
 ```bash
 helm lint charts/trustedoss \
-  --set env.secret.secretKey=x..32.. --set postgres.auth.password=pw --set ingress.host=h.example.com
+  --set env.secret.secretKey=x..32.. --set env.secret.apiKeyHmacSecret=y..32.. \
+  --set postgres.auth.password=pw --set ingress.host=h.example.com
 helm template trustedoss charts/trustedoss \
-  --set env.secret.secretKey=x..32.. --set postgres.auth.password=pw --set ingress.host=h.example.com
+  --set env.secret.secretKey=x..32.. --set env.secret.apiKeyHmacSecret=y..32.. \
+  --set postgres.auth.password=pw --set ingress.host=h.example.com
 ```

@@ -67,6 +67,8 @@ _REQUIRED_SET = [
     "--set",
     "env.secret.secretKey=ci-golden-secret-key-0123456789abcdef",
     "--set",
+    "env.secret.apiKeyHmacSecret=ci-golden-hmac-key-abcdef0123456789",
+    "--set",
     "postgres.auth.password=ci-golden-pw",
     "--set",
     "ingress.host=trustedoss.ci-golden.example.com",

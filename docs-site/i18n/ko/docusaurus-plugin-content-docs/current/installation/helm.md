@@ -69,12 +69,15 @@ Ingress, 데이터베이스 마이그레이션 Job을 포함합니다. PostgreSQ
 <!-- docs-uat: id=helm-chart-validate kind=shell ctx=host expect=exit:0 tier=nightly -->
 ```bash
 SECRET=$(openssl rand -hex 32)
+HMAC_SECRET=$(openssl rand -hex 32)
 helm lint charts/trustedoss \
   --set env.secret.secretKey="$SECRET" \
+  --set env.secret.apiKeyHmacSecret="$HMAC_SECRET" \
   --set postgres.auth.password=throwaway \
   --set ingress.host=trustedoss.example.com
 helm template trustedoss charts/trustedoss --namespace trustedoss \
   --set env.secret.secretKey="$SECRET" \
+  --set env.secret.apiKeyHmacSecret="$HMAC_SECRET" \
   --set postgres.auth.password=throwaway \
   --set ingress.host=trustedoss.example.com \
   >/dev/null
@@ -96,6 +99,7 @@ git clone https://github.com/trustedoss/trusca.git && cd trusca
 helm install trustedoss ./charts/trustedoss \
   --namespace trustedoss --create-namespace \
   --set env.secret.secretKey="$(openssl rand -hex 32)" \
+  --set env.secret.apiKeyHmacSecret="$(openssl rand -hex 32)" \
   --set postgres.auth.password="$(openssl rand -hex 24)" \
   --set ingress.host=trustedoss.example.com \
   --set env.corsAllowedOrigins=https://trustedoss.example.com
@@ -128,7 +132,7 @@ env:
   redis:
     url: redis://memorystore:6379/0
   secret:
-    # 네 개 키를 모두 담은 사전 생성 Secret (아래 참고)
+    # 다섯 개 키를 모두 담은 사전 생성 Secret (아래 참고)
     existingSecret: trustedoss-prod-secrets
   corsAllowedOrigins: https://trustedoss.example.com
 ingress:
@@ -146,13 +150,21 @@ helm install trustedoss ./charts/trustedoss \
 
 :::warning Secret 구성은 필수입니다
 `env.secret.existingSecret`을 설정하면 차트는 자체 Secret을 렌더링하지
-**않습니다**. 참조하는 Secret은 네 개 키를 모두 담아야 하며, 그렇지 않으면 파드가
+**않습니다**. 참조하는 Secret은 다섯 개 키를 모두 담아야 하며, 그렇지 않으면 파드가
 시작되지 않습니다.
 
 - `DATABASE_URL_APP`
 - `DATABASE_URL_OWNER`
 - `REDIS_URL`
 - `SECRET_KEY` (최소 32자)
+- `API_KEY_HMAC_SECRET` (최소 32자, `SECRET_KEY`와 독립된 값. 두 값을 같게
+  두지 마십시오)
+
+`existingSecret`을 설정하지 않으면 `env.secret.secretKey`와
+`env.secret.apiKeyHmacSecret` 둘 다 차트 자체가 요구하는 필수 입력값입니다.
+값이 비어 있으면 `API_KEY_HMAC_SECRET`을 `secretKey`에서 유도하는 대신
+릴리스 렌더링 자체가 실패합니다. 각각 `openssl rand -hex 32`로 독립적으로
+생성하십시오.
 :::
 
 :::note 프로덕션 CORS
@@ -197,7 +209,8 @@ pre-upgrade 마이그레이션 Job이 새 파드 롤아웃 전에 새 스키마�
 | `ingress.host` | `""` | **필수.** 공개 호스트명. |
 | `env.corsAllowedOrigins` | `""` | **프로덕션 필수.** 허용 브라우저 오리진(와일드카드 금지). |
 | `env.secret.secretKey` | `""` | `SECRET_KEY`(≥32자). `existingSecret`이 없으면 필수. |
-| `env.secret.existingSecret` | `""` | 네 개 키를 담은 사전 생성 Secret; 차트 Secret을 비활성화. |
+| `env.secret.apiKeyHmacSecret` | `""` | `API_KEY_HMAC_SECRET`(≥32자), 저장된 API 키 비밀을 해시하는 전용 키. `existingSecret`이 없으면 필수이며, `secretKey`와 같은 값을 쓰면 안 됩니다. |
+| `env.secret.existingSecret` | `""` | 다섯 개 키를 담은 사전 생성 Secret; 차트 Secret을 비활성화. |
 | `postgres.bundled` | `true` | `false` → `env.database.*`(외부) 사용. |
 | `redis.bundled` | `true` | `false` → `env.redis.url`(외부) 사용. |
 | `env.trivy.dbRepository` | `ghcr.io/aquasecurity/trivy-db` | air-gapped 사내 미러로 오버라이드. [Air-gapped 운영](../admin-guide/vulnerability-data.md#air-gapped) 참조. |
