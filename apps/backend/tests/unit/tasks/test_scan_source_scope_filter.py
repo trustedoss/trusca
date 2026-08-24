@@ -308,23 +308,44 @@ def test_apply_scope_filter_rewrite_failure_keeps_memory_and_disk_unfiltered(
 
 
 def _call_order(func_name: str, module_path: Path) -> list[str]:
-    """First-call order of named functions inside ``func_name`` (AST walk)."""
+    """First-call order of named functions inside ``func_name`` (AST walk).
+
+    Pre-order depth-first over ``ast.iter_child_nodes`` (source/field order),
+    NOT ``ast.walk`` (breadth-first): ``ast.walk`` visits every statement at
+    the SAME nesting depth before descending into any of their bodies, so a
+    call inside an ``if``/``else`` branch is reported as happening AFTER a
+    call that comes later in the source but sits one level shallower (e.g. a
+    top-level statement right after the ``if``/``else``). S8
+    (concurrency-scaling-plan-2026-08-22.md §3.2) branches
+    ``_merge_cocoapods_components`` / ``_apply_scope_filter`` /
+    ``_stamp_document_metadata`` into the non-reuse ``else`` arm, one level
+    deeper than the ``_persist_artifact`` call that follows the whole
+    if/else: an ``ast.walk``-based order would misreport that as
+    "``_persist_artifact`` first" even though it always runs after, on every
+    branch. DFS in source order does not have that failure mode.
+    """
     tree = ast.parse(module_path.read_text(encoding="utf-8"))
+
+    def _name_of(call: ast.Call) -> str | None:
+        callee = call.func
+        if isinstance(callee, ast.Name):
+            return callee.id
+        if isinstance(callee, ast.Attribute):
+            return callee.attr
+        return None
+
+    def _visit(node: ast.AST, order: list[str]) -> None:
+        if isinstance(node, ast.Call):
+            name = _name_of(node)
+            if name and name not in order:
+                order.append(name)
+        for child in ast.iter_child_nodes(node):
+            _visit(child, order)
+
     for node in ast.walk(tree):
         if isinstance(node, ast.FunctionDef) and node.name == func_name:
             order: list[str] = []
-            for call in ast.walk(node):
-                if isinstance(call, ast.Call):
-                    callee = call.func
-                    name = (
-                        callee.id
-                        if isinstance(callee, ast.Name)
-                        else callee.attr
-                        if isinstance(callee, ast.Attribute)
-                        else None
-                    )
-                    if name and name not in order:
-                        order.append(name)
+            _visit(node, order)
             return order
     raise AssertionError(f"{func_name} not found in {module_path}")
 

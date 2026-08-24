@@ -40,6 +40,8 @@ class _FakeScan:
     project_id = uuid.uuid4()
     scan_metadata: dict[str, Any] | None = None
     id: uuid.UUID
+    # S8: scan_source_task snapshots scan.ref before the pipeline runs.
+    ref: str | None = None
 
 
 class _FakeProject:

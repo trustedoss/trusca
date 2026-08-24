@@ -74,6 +74,7 @@ from sqlalchemy.orm import Session
 
 from core.config import (
     cdxgen_fetch_license,
+    cdxgen_scanner_version,
     cdxgen_spec_version,
     eol_enabled,
     license_fetch_enabled,
@@ -125,6 +126,7 @@ from models import (
     ScanComponent,
     VulnerabilityFinding,
 )
+from models.scan_fingerprint import compute_scan_fingerprint
 from services import sbom_component_walk, sbom_document_metadata, scan_inputs
 from services.component_approval_service import (
     apply_intake_decisions,
@@ -141,7 +143,13 @@ from services.source_archive_service import (
     resolve_existing_archive,
     safe_extract_archive,
 )
-from services.source_preservation_service import preserve_scan_source
+from services.source_preservation_service import (
+    PreservationTooLarge,
+    PreservedSbomMissing,
+    SourcePreservationError,
+    extract_preserved_sbom,
+    preserve_scan_source,
+)
 from services.vulnerability_matching import persist_trivy_findings
 from tasks._progress import (
     close_log_file,
@@ -263,6 +271,11 @@ def scan_source_task(self: Any, scan_id: str) -> None:
             # async engine. A plain dict copy is safe to carry into the
             # pipeline.
             scan_metadata = dict(scan.scan_metadata or {})
+            # S8 (concurrency-scaling-plan-2026-08-22.md §3.2): the reuse
+            # decision compares this scan against the prior succeeded scan
+            # for the SAME (project_id, ref), snapshotted here for the same
+            # session-detach reason as scan_metadata above.
+            scan_ref = scan.ref
 
         # M1/M2 (concurrency-scaling plan) load-test mode: hold this worker
         # slot busy for a fixed delay instead of running cdxgen/scancode/Trivy,
@@ -283,6 +296,7 @@ def scan_source_task(self: Any, scan_id: str) -> None:
                 workspace=workspace,
                 git_url=project_git_url,
                 scan_metadata=scan_metadata,
+                ref=scan_ref,
             )
     except _FetchAborted as exc:
         # SSRF guard / fetch refused the project URL — terminal, not a
@@ -350,6 +364,7 @@ def _run_pipeline(
     workspace: Path,
     git_url: str | None,
     scan_metadata: dict[str, Any] | None = None,
+    ref: str | None = None,
 ) -> None:
     """Execute the scan stages, each with its own commit."""
     # Scan-log verbosity (feat/scan-log-verbosity): a per-scan
@@ -394,81 +409,154 @@ def _run_pipeline(
     detected_env = _detect_and_record_env(scan_uuid, project_root)
 
     # Scan provenance (gap #31): what the fetched tree declared, recorded before
-    # prep writes any lockfile of its own.
-    _record_input_manifests(scan_uuid, project_root)
+    # prep writes any lockfile of its own. The returned inventory is also the
+    # S8 fingerprint's manifest input (below): read once, used twice, rather
+    # than a second directory walk.
+    manifest_inventory = _record_input_manifests(scan_uuid, project_root)
 
-    # Stage 2.5 + 3 — build-prep + cdxgen, behind the ScanExecutor abstraction.
-    # cdxgen needs a populated lockfile to enumerate transitive deps for Ruby /
-    # Rust / Go / .NET; the 2026-05-07 ecosystem-matrix UAT showed bare-source
-    # scans returned 0 or only direct deps for those four ecosystems. The
-    # default in-process executor runs prep + cdxgen as worker-local subprocesses
-    # exactly as before (behaviour-preserving); SCAN_EXECUTOR=local_docker /
-    # k8s_job route environment-specific cdxgen sidecars instead (later
-    # increments). The in-process prep is INJECTED as a callable so this module
-    # stays the only importer of the executor package (no import cycle).
-    #
-    # prep is best-effort: a failed prep logs a warning and the scan continues
-    # with whatever cdxgen can extract (see _prepare_for_cdxgen). The executor
-    # advances "prep" then "cdxgen" so the percent/progress contract is intact.
-    executor = scan_executor.get_executor()
-    gen_request = scan_executor.SbomGenRequest(
+    # S8 (concurrency-scaling-plan-2026-08-22.md §3.2): decide, BEFORE cdxgen
+    # runs, whether this commit's dependency set is unchanged from the prior
+    # succeeded scan on the same (project, ref). The fingerprint folds in the
+    # scanner version and the scan-time cdxgen config so an upgraded worker or
+    # a changed toggle never reads as "unchanged" (accuracy requirement, plan
+    # §3.2 "주의할 것은 정확성이다"). Vulnerability-DB state and license policy
+    # are deliberately excluded: matching always re-runs regardless of reuse
+    # (models.scan_fingerprint module docstring).
+    dependency_fingerprint = compute_scan_fingerprint(
+        manifest_inventory=manifest_inventory,
+        scanner_version=cdxgen_scanner_version(),
+        scan_config={
+            "cdxgen_spec_version": cdxgen_spec_version(),
+            "cdxgen_fetch_license": cdxgen_fetch_license(),
+            "scan_scope_filter_enabled": scan_scope_filter_enabled(),
+            "scan_scope_filter_maven_enabled": scan_scope_filter_maven_enabled(),
+            "scan_scope_filter_node_enabled": scan_scope_filter_node_enabled(),
+        },
+    )
+    reuse_source_scan_id = _find_reusable_prior_scan(
+        project_id=project_id,
+        ref=ref,
         scan_uuid=scan_uuid,
-        source_dir=source_dir,
-        output_dir=workspace / "cdxgen",
-        detected_env=detected_env,
-        # K-f2: carry the resolved project root so a container sidecar targets
-        # the same directory ``detected_env`` was detected from (a git clone
-        # lands under source_dir; non-recursive detection + the sidecar's
-        # single-dir scan would otherwise mis-target the outer dir).
-        project_root=project_root,
-        verbose=verbose,
-        # spec-version / fetch-license toggles, resolved per-scan (rule #11) and
-        # carried on the request so both the in-process and sidecar executors
-        # apply the same values.
-        spec_version=cdxgen_spec_version(),
-        fetch_license=cdxgen_fetch_license(),
-    )
-    gen_result = executor.generate_sbom(
-        gen_request,
-        prep=lambda: _prepare_for_cdxgen(source_dir=project_root, scan_uuid=scan_uuid),
-        stage=lambda stage: _set_stage(scan_uuid, stage),
-        # P2 #8c — stream cdxgen stdout/stderr lines onto the scan WebSocket
-        # so the drawer can render a live tool trace. Best-effort: a publish
-        # error inside the callback never propagates, and the per-scan line
-        # budget caps runaway tools (publish_log enforces it internally).
-        line_callback=_make_line_callback(scan_uuid, stage="cdxgen"),
-    )
-    cdxgen_result = cdxgen_adapter.CdxgenResult(
-        sbom_path=gen_result.sbom_path, sbom=gen_result.sbom
+        fingerprint=dependency_fingerprint,
     )
 
-    # Stage 3.2 — CocoaPods lockfile fill-in (Phase L). cdxgen ran with
-    # --exclude-type cocoapods when a Podfile was present (its cataloger
-    # crashes without the `pod` CLI — see integrations/cdxgen.py), so the
-    # pods are reconstructed offline from Podfile.lock and merged here.
-    # MUST precede the scope filter so the filter's counts and the
-    # trusca:scope_filter property describe the FINAL document (cocoapods
-    # purls pass both keep-predicates untouched). Best-effort, never fatal.
-    _merge_cocoapods_components(
-        scan_uuid=scan_uuid, cdxgen_result=cdxgen_result, source_dir=project_root
-    )
+    # S8: try the reuse path first. A successful extraction gives us the
+    # PRIOR scan's fully-processed SBOM (cocoapods-merged, scope-filtered,
+    # metadata-stamped already, because that is exactly what
+    # ``_preserve_source_tree`` archived for that scan, below). None of those
+    # three stages need to (or should) run again over bytes that already
+    # carry their output. A failed extraction (tarball missing/corrupt since
+    # the fingerprint was written, e.g. reclaimed by retention) transparently
+    # falls back to the full cdxgen path, since reuse is an optimization,
+    # never a correctness dependency.
+    cdxgen_result: cdxgen_adapter.CdxgenResult | None = None
+    if reuse_source_scan_id is not None:
+        cdxgen_result = _reuse_prior_sbom(
+            scan_uuid=scan_uuid,
+            project_id=project_id,
+            prior_scan_id=reuse_source_scan_id,
+            workspace=workspace,
+        )
+        if cdxgen_result is None:
+            reuse_source_scan_id = None
 
-    # Stage 3.25 — runtime-scope post-filter (Phase K). MUST run before the
-    # artifact persist, cosign signing, SCANOSS and Trivy below so every
-    # downstream consumer (persisted components, the signed/downloadable
-    # artifact, vulnerability matching) sees ONE consistent filtered document.
-    # Best-effort: any failure leaves the SBOM exactly as cdxgen wrote it.
-    _apply_scope_filter(
-        scan_uuid=scan_uuid, cdxgen_result=cdxgen_result, source_dir=project_root
-    )
+    if cdxgen_result is not None:
+        # Reused path: still advance through "prep" then "cdxgen" so a WS
+        # client watching this scan sees the identical monotonic stage
+        # sequence the full pipeline would have driven through the executor's
+        # own ``stage=`` callback (see InProcessExecutor.generate_sbom). The
+        # regression contract requires the reuse and full paths to be
+        # indistinguishable from the outside.
+        _set_stage(scan_uuid, "prep")
+        _set_stage(scan_uuid, "cdxgen")
+        log.info(
+            "scan_dependency_fingerprint_reused",
+            scan_id=str(scan_uuid),
+            prior_scan_id=str(reuse_source_scan_id),
+        )
+    else:
+        # Stage 2.5 + 3: build-prep + cdxgen, behind the ScanExecutor
+        # abstraction. cdxgen needs a populated lockfile to enumerate
+        # transitive deps for Ruby / Rust / Go / .NET; the 2026-05-07
+        # ecosystem-matrix UAT showed bare-source scans returned 0 or only
+        # direct deps for those four ecosystems. The default in-process
+        # executor runs prep + cdxgen as worker-local subprocesses exactly as
+        # before (behaviour-preserving); SCAN_EXECUTOR=local_docker / k8s_job
+        # route environment-specific cdxgen sidecars instead (later
+        # increments). The in-process prep is INJECTED as a callable so this
+        # module stays the only importer of the executor package (no import
+        # cycle).
+        #
+        # prep is best-effort: a failed prep logs a warning and the scan
+        # continues with whatever cdxgen can extract (see
+        # _prepare_for_cdxgen). The executor advances "prep" then "cdxgen" so
+        # the percent/progress contract is intact.
+        executor = scan_executor.get_executor()
+        gen_request = scan_executor.SbomGenRequest(
+            scan_uuid=scan_uuid,
+            source_dir=source_dir,
+            output_dir=workspace / "cdxgen",
+            detected_env=detected_env,
+            # K-f2: carry the resolved project root so a container sidecar
+            # targets the same directory ``detected_env`` was detected from
+            # (a git clone lands under source_dir; non-recursive detection +
+            # the sidecar's single-dir scan would otherwise mis-target the
+            # outer dir).
+            project_root=project_root,
+            verbose=verbose,
+            # spec-version / fetch-license toggles, resolved per-scan
+            # (rule #11) and carried on the request so both the in-process
+            # and sidecar executors apply the same values.
+            spec_version=cdxgen_spec_version(),
+            fetch_license=cdxgen_fetch_license(),
+        )
+        gen_result = executor.generate_sbom(
+            gen_request,
+            prep=lambda: _prepare_for_cdxgen(
+                source_dir=project_root, scan_uuid=scan_uuid
+            ),
+            stage=lambda stage: _set_stage(scan_uuid, stage),
+            # P2 #8c: stream cdxgen stdout/stderr lines onto the scan
+            # WebSocket so the drawer can render a live tool trace.
+            # Best-effort: a publish error inside the callback never
+            # propagates, and the per-scan line budget caps runaway tools
+            # (publish_log enforces it internally).
+            line_callback=_make_line_callback(scan_uuid, stage="cdxgen"),
+        )
+        cdxgen_result = cdxgen_adapter.CdxgenResult(
+            sbom_path=gen_result.sbom_path, sbom=gen_result.sbom
+        )
 
-    # Stage 3.3 — document metadata (2026 SBOM minimum elements). MUST run
-    # after the scope filter and BEFORE the artifact persist and cosign
-    # signing, so the bytes we sign are the bytes that carry the statements.
-    # This is the SBOM a consumer actually receives; the export route
-    # (services/sbom_export) stamps the same things on its own document.
-    # Best-effort: a failure leaves the SBOM exactly as it was.
-    _stamp_document_metadata(scan_uuid=scan_uuid, cdxgen_result=cdxgen_result)
+        # Stage 3.2: CocoaPods lockfile fill-in (Phase L). cdxgen ran with
+        # --exclude-type cocoapods when a Podfile was present (its cataloger
+        # crashes without the `pod` CLI (see integrations/cdxgen.py), so the
+        # pods are reconstructed offline from Podfile.lock and merged here.
+        # MUST precede the scope filter so the filter's counts and the
+        # trusca:scope_filter property describe the FINAL document (cocoapods
+        # purls pass both keep-predicates untouched). Best-effort, never
+        # fatal.
+        _merge_cocoapods_components(
+            scan_uuid=scan_uuid, cdxgen_result=cdxgen_result, source_dir=project_root
+        )
+
+        # Stage 3.25: runtime-scope post-filter (Phase K). MUST run before
+        # the artifact persist, cosign signing, SCANOSS and Trivy below so
+        # every downstream consumer (persisted components, the
+        # signed/downloadable artifact, vulnerability matching) sees ONE
+        # consistent filtered document. Best-effort: any failure leaves the
+        # SBOM exactly as cdxgen wrote it.
+        _apply_scope_filter(
+            scan_uuid=scan_uuid, cdxgen_result=cdxgen_result, source_dir=project_root
+        )
+
+        # Stage 3.3: document metadata (2026 SBOM minimum elements). MUST
+        # run after the scope filter and BEFORE the artifact persist and
+        # cosign signing, so the bytes we sign are the bytes that carry the
+        # statements. This is the SBOM a consumer actually receives; the
+        # export route (services/sbom_export) stamps the same things on its
+        # own document. Best-effort: a failure leaves the SBOM exactly as it
+        # was.
+        _stamp_document_metadata(scan_uuid=scan_uuid, cdxgen_result=cdxgen_result)
 
     _persist_artifact(
         scan_uuid,
@@ -693,6 +781,17 @@ def _run_pipeline(
         scancode_json_path=scancode_json_path,
         sbom_path=cdxgen_result.sbom_path,
     )
+
+    # S8: stamp the fingerprint computed above onto the scan row NOW. A scan
+    # that does not reach this point (any terminal failure) keeps
+    # ``dependency_fingerprint`` NULL, and NULL is never treated as a reuse
+    # match by ``_find_reusable_prior_scan`` above. Written unconditionally of
+    # whether THIS scan itself took the reuse path: a reused scan's SBOM is
+    # byte-identical to its source scan's, so its fingerprint is the correct
+    # description of what it now offers as a reuse candidate for the NEXT
+    # scan on this ref, extending the reuse chain instead of collapsing it
+    # back to a two-scan cycle.
+    _persist_dependency_fingerprint(scan_uuid, dependency_fingerprint)
 
     # Stage 7 — finalize.
     _set_stage(scan_uuid, "finalize")
@@ -1446,7 +1545,9 @@ def _detect_and_record_env(scan_uuid: uuid.UUID, source_dir: Path) -> str:
     return detected_env
 
 
-def _record_input_manifests(scan_uuid: uuid.UUID, project_root: Path) -> None:
+def _record_input_manifests(
+    scan_uuid: uuid.UUID, project_root: Path
+) -> dict[str, Any] | None:
     """Record the dependency manifests the fetched tree carried (gap #31).
 
     Runs BEFORE build-prep, deliberately. Prep generates lockfiles for the
@@ -1458,10 +1559,15 @@ def _record_input_manifests(scan_uuid: uuid.UUID, project_root: Path) -> None:
     Best-effort like every other observation on this path: a failure logs a
     warning and leaves the column NULL, which reads as "not recorded" rather
     than "nothing found" (migration 0051).
+
+    Returns the collected inventory (the same shape written to
+    ``scan.input_manifests``, ``None`` when nothing was found or persistence
+    failed) so S8's fingerprint computation can reuse it without walking the
+    tree a second time.
     """
     inventory = scan_inputs.collect_manifest_inventory(project_root)
     if inventory is None:
-        return
+        return None
 
     log.info(
         "scan_input_manifests",
@@ -1481,6 +1587,142 @@ def _record_input_manifests(scan_uuid: uuid.UUID, project_root: Path) -> None:
             scan_id=str(scan_uuid),
             exc_info=True,
         )
+        return None
+    return inventory
+
+
+def _persist_dependency_fingerprint(
+    scan_uuid: uuid.UUID, fingerprint: str | None
+) -> None:
+    """S8: write this scan's dependency-set fingerprint at success time.
+
+    Called once, right before ``_mark_succeeded``. Best-effort like
+    ``_record_input_manifests`` above: a persistence failure logs a WARNING
+    and leaves the column NULL rather than failing an otherwise-successful
+    scan. The worst case is that the NEXT scan on this ref cannot reuse this
+    one's SBOM and re-runs cdxgen, not that this scan is marked failed for a
+    bookkeeping write.
+    """
+    if fingerprint is None:
+        return
+    try:
+        with sync_session_scope() as session:
+            scan = session.get(Scan, scan_uuid)
+            if scan is not None:
+                scan.dependency_fingerprint = fingerprint
+                session.commit()
+    except Exception:  # noqa: BLE001 (persistence is best-effort, never fatal)
+        log.warning(
+            "scan_dependency_fingerprint_persist_failed",
+            scan_id=str(scan_uuid),
+            exc_info=True,
+        )
+
+
+def _find_reusable_prior_scan(
+    *,
+    project_id: uuid.UUID,
+    ref: str | None,
+    scan_uuid: uuid.UUID,
+    fingerprint: str | None,
+) -> uuid.UUID | None:
+    """S8: the prior succeeded scan this scan's SBOM generation can reuse.
+
+    Returns the prior scan's id when the LATEST succeeded scan for this exact
+    ``(project_id, ref)`` carries a non-NULL ``dependency_fingerprint`` equal
+    to *fingerprint*, or ``None`` otherwise, including when *fingerprint*
+    itself is ``None`` (an un-fingerprintable scan is never a reuse
+    candidate: comparing ``None`` to ``None`` would call two DIFFERENT
+    un-fingerprinted trees "unchanged", which is exactly the false-positive
+    ``models.scan_fingerprint`` was written to avoid).
+
+    "Latest succeeded scan for this (project, ref)" is the same row
+    ``tasks._scan_pipeline.mark_succeeded``'s ``supersede_prior_ref_scans``
+    call already treats as authoritative for the ref, the scan a viewer
+    currently sees as "the" result. Comparing against anything older would
+    let a fingerprint match against a snapshot the retention model itself no
+    longer considers current.
+    """
+    if fingerprint is None:
+        return None
+    with sync_session_scope() as session:
+        ref_filter = Scan.ref.is_(None) if ref is None else Scan.ref == ref
+        row = session.execute(
+            select(Scan.id, Scan.dependency_fingerprint)
+            .where(
+                Scan.project_id == project_id,
+                ref_filter,
+                Scan.status == "succeeded",
+                Scan.id != scan_uuid,
+            )
+            .order_by(Scan.created_at.desc())
+            .limit(1)
+        ).first()
+    if row is None:
+        return None
+    prior_scan_id: uuid.UUID = row[0]
+    prior_fingerprint: str | None = row[1]
+    if prior_fingerprint is None or prior_fingerprint != fingerprint:
+        return None
+    return prior_scan_id
+
+
+def _reuse_prior_sbom(
+    *,
+    scan_uuid: uuid.UUID,
+    project_id: uuid.UUID,
+    prior_scan_id: uuid.UUID,
+    workspace: Path,
+) -> cdxgen_adapter.CdxgenResult | None:
+    """S8: extract *prior_scan_id*'s preserved SBOM in place of running cdxgen.
+
+    Writes into THIS scan's ``workspace / "cdxgen"`` directory (never the
+    prior scan's own workspace: that scan's workspace was already reclaimed
+    in its own ``finally`` block by the time this one runs), so the returned
+    ``CdxgenResult.sbom_path`` is exactly the shape the rest of the pipeline
+    already expects: a file inside the CURRENT scan's own workspace, cleaned
+    up by the current scan's own ``finally: shutil.rmtree(workspace)``.
+
+    The extracted bytes are the FINAL SBOM the prior scan produced,
+    cocoapods-merged, scope-filtered, and metadata-stamped already (that is
+    what ``_preserve_source_tree`` archives; ``extract_preserved_sbom`` reads
+    the same tarball member the weekly rematch beat reads). Returns ``None``
+    (never raises) on any extraction failure: a missing/corrupt preserved
+    tarball must never abort a scan; it only costs the fallback to the full
+    cdxgen path, exactly as if no fingerprint match had been found.
+    """
+    out_dir = workspace / "cdxgen"
+    out_dir.mkdir(parents=True, exist_ok=True)
+    try:
+        sbom_path = extract_preserved_sbom(
+            scan_id=prior_scan_id, project_id=project_id, dest_dir=out_dir
+        )
+        sbom = json.loads(sbom_path.read_text(encoding="utf-8"))
+    except (
+        FileNotFoundError,
+        PreservedSbomMissing,
+        PreservationTooLarge,
+        SourcePreservationError,
+        json.JSONDecodeError,
+        OSError,
+    ) as exc:
+        log.warning(
+            "scan_dependency_fingerprint_reuse_failed",
+            scan_id=str(scan_uuid),
+            prior_scan_id=str(prior_scan_id),
+            reason=type(exc).__name__,
+            error=str(exc)[:300],
+        )
+        return None
+    if not isinstance(sbom, dict):
+        log.warning(
+            "scan_dependency_fingerprint_reuse_failed",
+            scan_id=str(scan_uuid),
+            prior_scan_id=str(prior_scan_id),
+            reason="sbom_not_a_json_object",
+        )
+        return None
+    return cdxgen_adapter.CdxgenResult(sbom_path=sbom_path, sbom=sbom)
 
 
 def _merge_cocoapods_components(
