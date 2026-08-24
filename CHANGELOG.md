@@ -7,6 +7,18 @@ and the project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.
 
 ## [Unreleased]
 
+## [0.22.1] - 2026-08-24
+
+### Fixed
+
+- **The Hetzner demo overlay still defined the pre-split `worker` service**,
+  so v0.22.0's worker-scan/worker-default split (S3) broke the merged
+  compose file for that deployment (`invalid compose project`) and the
+  deploy's failure-recovery path brought the stack back up without the
+  overlay, dropping `DEMO_READ_ONLY` and the worker memory/CPU caps.
+  `docker-compose.demo.yml` now defines both services, split from the same
+  combined budget the single `worker` service used before v0.22.0.
+
 ## [0.22.0] - 2026-08-24
 
 153 commits landed since v0.21.0. Most of this release is two tracks that ran
