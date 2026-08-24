@@ -7,8 +7,8 @@ mutation. Mirrors the shape of ``tests/unit/services/test_admin_user_service.py`
 
 Coverage:
   - issue: org / team / project scope round-trips, plaintext returned ONCE,
-    bcrypt hash recoverable via verify_password, prefix uniqueness, RBAC
-    rejection across actor classes.
+    stored hash recoverable via verify_api_key_plaintext (HMAC-SHA256 as of
+    A5), prefix uniqueness, RBAC rejection across actor classes.
   - revoke: flips ``revoked_at``, idempotent on second call (returns the
     same row unchanged — service contract), audit row produced.
   - list: pagination, scope/team/project filter, include_revoked default,
@@ -19,6 +19,21 @@ Coverage:
   - authenticate: last_used_at update-interval coalescing (A2). The write
     happens once the interval has elapsed or the key was never used, and is
     skipped inside the interval.
+  - authenticate: dual hash-format matrix (A5, concurrency-scaling-plan-
+    2026-08-22.md §3.3): a key stored under either the legacy bcrypt hash
+    or the new keyed HMAC-SHA256 hash authenticates correctly, both formats
+    coexist in the same database, and the timing-flattening dummy targets
+    the fast format regardless of what the database currently holds.
+  - authenticate: min-duration timing padding (A5, security-reviewer
+    finding). Switching the default hash format to HMAC-SHA256 made real
+    HMAC verification and the dummy branch fast while a legacy bcrypt-format
+    row's wrong-secret branch stayed slow, reopening a timing oracle A1 had
+    closed. ``_verify_api_key_plaintext_padded`` pads every branch up to a
+    configured floor; pinned directly (padding primitive honours/disables
+    the floor) and end-to-end (four observable cases converge).
+  - count_legacy_hash_api_keys: active-key counts by format, excluding
+    revoked/expired rows. Also the signal for when the padding above (and
+    the later bcrypt-read contraction step) can be removed.
 """
 
 from __future__ import annotations
@@ -153,8 +168,8 @@ def test_parse_bearer_returns_none_for_non_string() -> None:
 
 
 async def test_issue_org_scope_round_trips_for_super_admin(db_session: AsyncSession) -> None:
-    from core.security import verify_password
-    from services.api_key_service import issue_api_key
+    from core.security import is_api_key_hmac_hash, verify_password
+    from services.api_key_service import issue_api_key, verify_api_key_plaintext
 
     admin = await make_user(db_session, is_superuser=True)
     actor = principal_for(admin, role="super_admin")
@@ -175,8 +190,15 @@ async def test_issue_org_scope_round_trips_for_super_admin(db_session: AsyncSess
     # Plaintext shape contract: tos_<8 hex>_<32 url-safe>.
     assert plaintext.startswith(row.key_prefix + "_")
     assert len(plaintext) > len(row.key_prefix) + 16
-    # bcrypt verifies the plaintext against the persisted hash.
-    assert verify_password(plaintext, row.key_hash) is True
+    # A5: newly-issued keys are hashed with the fast keyed HMAC format, not
+    # bcrypt. Both the dispatching verifier (what authenticate_api_key uses)
+    # and the format tag agree, and the legacy bcrypt verifier correctly
+    # refuses this hash (never a false positive across formats).
+    assert is_api_key_hmac_hash(row.key_hash) is True
+    assert verify_api_key_plaintext(plaintext, row.key_hash) is True
+    assert verify_password(plaintext, row.key_hash) is False
+    # The plaintext itself never appears inside its own stored hash.
+    assert plaintext not in row.key_hash
 
 
 async def test_issue_with_ttl_sets_expires_at(db_session: AsyncSession) -> None:
@@ -347,7 +369,12 @@ async def test_issue_writes_audit_row(db_session: AsyncSession) -> None:
 
 
 async def test_issue_audit_row_does_not_leak_key_hash(db_session: AsyncSession) -> None:
-    """The bcrypt hash must NOT appear in audit_logs.diff (sensitive column mask)."""
+    """The stored hash must NOT appear in audit_logs.diff (sensitive column mask).
+
+    A5 changed the default format from bcrypt to HMAC-SHA256; this checks
+    the mask for both markers so the assertion does not go stale (silently
+    pass for the wrong reason) if the default format changes again.
+    """
     from services.api_key_service import issue_api_key
 
     admin = await make_user(db_session, is_superuser=True)
@@ -356,7 +383,8 @@ async def test_issue_audit_row_does_not_leak_key_hash(db_session: AsyncSession) 
         db_session, actor, name="masked", scope="org", team_id=None, project_id=None
     )
     # Look at the most recent api_keys 'create' audit rows; the diff must NOT
-    # contain a bcrypt hash. (The sensitive-column mask replaces it with ***.)
+    # contain a bcrypt hash or an HMAC hash. (The sensitive-column mask
+    # replaces it with ***.)
     diffs = (
         await db_session.execute(
             text(
@@ -370,6 +398,7 @@ async def test_issue_audit_row_does_not_leak_key_hash(db_session: AsyncSession) 
     for diff in diffs:
         assert "$2b$" not in (diff or "")
         assert "$2a$" not in (diff or "")
+        assert "hmac-sha256$" not in (diff or "")
         # The masked sentinel must be present.
         assert '"key_hash": "***"' in (diff or "") or "key_hash" not in (diff or "")
 
@@ -869,7 +898,7 @@ async def test_authenticate_fails_for_revoked_key(db_session: AsyncSession) -> N
 
 
 async def test_authenticate_fails_for_wrong_secret(db_session: AsyncSession) -> None:
-    """Right prefix, wrong secret must NOT authenticate (constant-time bcrypt)."""
+    """Right prefix, wrong secret must NOT authenticate (constant-time verify)."""
     from services.api_key_service import authenticate_api_key, issue_api_key
 
     admin = await make_user(db_session, is_superuser=True)
@@ -1010,65 +1039,104 @@ async def test_authenticate_first_use_always_stamps_last_used_at(
     assert authed.last_used_at is not None
 
 
-# authenticate_api_key: bcrypt thread offload (concurrency-scaling-plan
-# 2026-08-22.md §1.3/§1.5/§3.3, unit A1)
+# authenticate_api_key: verification thread offload (concurrency-scaling-plan
+# 2026-08-22.md §1.3/§1.5/§3.3, units A1 and A5)
 #
-# A1 moved both bcrypt calls in this function onto a worker thread
+# A1 moved both verification calls in this function onto a worker thread
 # (asyncio.to_thread) so a single API-key request no longer stalls every
-# other request on the same event loop for ~213ms. These tests pin the two
-# regression contracts from the plan's §4 A1 row: (1) the dummy
-# timing-flattening verification still actually runs, not just "returns
-# None the same way", when the prefix does not match any row, and (2) that
-# holds whether the caller passes an unknown prefix or garbage that fails
-# ``parse_bearer`` differently would be a bug, but here we only need the
-# real "unknown prefix reaches the dummy branch" path; and (3) auth
-# success/failure is unchanged after the offload.
+# other request on the same event loop for ~213ms. A5 replaced the DEFAULT
+# hash format (bcrypt -> keyed HMAC-SHA256) and, with it, WHICH format the
+# unknown-prefix dummy branch targets (see authenticate_api_key's own
+# docstring for the reasoning). These tests pin the resulting regression
+# contracts: (1) the dummy timing-flattening verification still actually
+# runs, not just "returns None the same way", when the prefix does not
+# match any row, and it now targets the fast HMAC format; (2) the real
+# verification (matched row) still runs through the offload regardless of
+# which format that row's hash is; and (3) auth success/failure is
+# unchanged.
 # ---------------------------------------------------------------------------
 
 
-async def test_authenticate_unknown_prefix_still_runs_dummy_bcrypt(
+async def test_authenticate_unknown_prefix_still_runs_dummy_verification(
     db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """The dummy bcrypt verification must still execute after A1's thread
-    offload, not be skipped because it moved off the event loop.
+    """The dummy verification must still execute after A1's thread offload,
+    not be skipped because it moved off the event loop, and (A5) it must
+    target the fast HMAC-SHA256 format, not bcrypt.
 
-    Spies on ``api_key_service.verify_password_async`` (the function the
-    offloaded dummy branch now awaits) rather than the executor internals,
-    so this test asserts on behavior (bcrypt ran, with the sentinel hash),
-    not on ``asyncio.to_thread`` having been called.
+    Spies on ``asyncio.to_thread`` calls whose function is
+    ``verify_api_key_plaintext`` (the same call shape the real branch uses,
+    see the offload test below) rather than the executor internals, so this
+    test asserts on behavior, not on implementation plumbing.
     """
-    # ``api_key_service`` imports ``verify_password_async`` from
-    # ``core.security`` (an implicit re-export) rather than defining it, so
-    # we grab the real implementation from its home module. Accessing it as
-    # ``api_key_service.verify_password_async`` trips mypy's
-    # no-implicit-reexport check, so we patch the module-level string path
-    # instead, which is not statically checked.
-    from core.security import verify_password_async as real_verify_password_async
+    import asyncio
+
+    from core.security import is_api_key_hmac_hash
     from services import api_key_service
     from services.api_key_service import authenticate_api_key
 
     calls: list[tuple[str, str]] = []
+    real_to_thread = asyncio.to_thread
 
-    async def spy(plain: str, hashed: str) -> bool:
-        calls.append((plain, hashed))
-        return await real_verify_password_async(plain, hashed)
+    async def spy_to_thread(func, *args, **kwargs):  # noqa: ANN001, ANN002, ANN003
+        if func is api_key_service.verify_api_key_plaintext:
+            calls.append(args)
+        return await real_to_thread(func, *args, **kwargs)
 
-    monkeypatch.setattr("services.api_key_service.verify_password_async", spy)
+    monkeypatch.setattr("services.api_key_service.asyncio.to_thread", spy_to_thread)
 
     found = await authenticate_api_key(db_session, "tos_deadbeef_unknown-secret-xx")
 
     assert found is None
-    assert len(calls) == 1, "dummy verify_password_async must run on the unknown-prefix branch"
+    assert len(calls) == 1, "dummy verification must run on the unknown-prefix branch"
     plain, hashed = calls[0]
     assert plain == "tos_deadbeef_unknown-secret-xx"
-    assert hashed == api_key_service._DUMMY_BCRYPT_HASH
+    # A5: the dummy now targets the fast HMAC profile, not a bcrypt sentinel.
+    assert is_api_key_hmac_hash(hashed) is True
 
 
-async def test_authenticate_known_prefix_offloads_real_bcrypt(
+async def test_authenticate_unknown_prefix_dummy_hash_is_fresh_each_call(
+    db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The dummy hash is generated per-call, not a module-level constant.
+
+    Locks in the rationale in authenticate_api_key's inline comment: a
+    cached dummy would either violate CLAUDE.md rule 11 (env read at import
+    time) or reuse the exact same digest forever. Two misses in a row must
+    produce two different dummy hashes.
+    """
+    import asyncio
+
+    from services import api_key_service
+    from services.api_key_service import authenticate_api_key
+
+    seen_hashes: list[str] = []
+    real_to_thread = asyncio.to_thread
+
+    async def spy_to_thread(func, *args, **kwargs):  # noqa: ANN001, ANN002, ANN003
+        if func is api_key_service.verify_api_key_plaintext:
+            seen_hashes.append(args[1])
+        return await real_to_thread(func, *args, **kwargs)
+
+    monkeypatch.setattr("services.api_key_service.asyncio.to_thread", spy_to_thread)
+
+    assert await authenticate_api_key(db_session, "tos_deadbeef_unknown-secret-xx") is None
+    assert await authenticate_api_key(db_session, "tos_deadbeef_unknown-secret-xx") is None
+
+    assert len(seen_hashes) == 2
+    assert seen_hashes[0] != seen_hashes[1]
+
+
+async def test_authenticate_known_prefix_offloads_verification(
     db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     """The real verification (matched row) also runs through the thread
-    offload, and a correct plaintext still authenticates afterward."""
+    offload, and a correct plaintext still authenticates afterward.
+
+    Uses a key issued through the live service, so its stored hash is the
+    current default format (HMAC-SHA256 as of A5). A separate matrix test
+    below covers a row that is still in the legacy bcrypt format.
+    """
     import asyncio
 
     from services import api_key_service
@@ -1105,6 +1173,308 @@ async def test_authenticate_known_prefix_offloads_real_bcrypt(
     assert called_hash == row.key_hash
 
 
+# ---------------------------------------------------------------------------
+# authenticate_api_key: dual hash-format matrix (A5 expand/read-both)
+#
+# A5's rollout is expand-then-contract: new issuances write the HMAC
+# format, but a key issued before A5 landed keeps its bcrypt hash until it
+# is next reissued. The auth path must accept BOTH shapes correctly for as
+# long as that migration window lasts. There is no fixture generator for
+# a "pre-A5 key" (the code that wrote bcrypt-format keys is this same
+# issue_api_key, just before this change), so these tests build that state
+# directly: issue a key through the live service, then overwrite its
+# ``key_hash`` with what issue_api_key would have written before A5
+# (core.security.hash_password over the same plaintext), the exact
+# migration state a real deployment carries between the moment A5 ships
+# and the moment every existing key has been rotated.
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize("hash_format", ["legacy_bcrypt", "hmac_sha256"])
+async def test_authenticate_accepts_both_hash_formats(
+    db_session: AsyncSession, hash_format: str
+) -> None:
+    from core.security import hash_password
+    from services.api_key_service import authenticate_api_key, issue_api_key
+
+    admin = await make_user(db_session, is_superuser=True)
+    actor = principal_for(admin, role="super_admin")
+    row, plaintext = await issue_api_key(
+        db_session,
+        actor,
+        name=f"matrix-{hash_format}",
+        scope="org",
+        team_id=None,
+        project_id=None,
+    )
+    if hash_format == "legacy_bcrypt":
+        row.key_hash = hash_password(plaintext)
+        db_session.add(row)
+        await db_session.commit()
+
+    found = await authenticate_api_key(db_session, plaintext)
+    assert found is not None
+    assert found.id == row.id
+
+
+@pytest.mark.parametrize("hash_format", ["legacy_bcrypt", "hmac_sha256"])
+async def test_authenticate_rejects_wrong_secret_in_both_hash_formats(
+    db_session: AsyncSession, hash_format: str
+) -> None:
+    from core.security import hash_password
+    from services.api_key_service import authenticate_api_key, issue_api_key
+
+    admin = await make_user(db_session, is_superuser=True)
+    actor = principal_for(admin, role="super_admin")
+    row, plaintext = await issue_api_key(
+        db_session,
+        actor,
+        name=f"matrix-wrong-{hash_format}",
+        scope="org",
+        team_id=None,
+        project_id=None,
+    )
+    if hash_format == "legacy_bcrypt":
+        row.key_hash = hash_password(plaintext)
+        db_session.add(row)
+        await db_session.commit()
+
+    forged = f"{row.key_prefix}_definitely-not-the-right-secret-xxxx"
+    assert await authenticate_api_key(db_session, forged) is None
+
+
+@pytest.mark.parametrize("hash_format", ["legacy_bcrypt", "hmac_sha256"])
+async def test_authenticate_rejects_revoked_key_in_both_hash_formats(
+    db_session: AsyncSession, hash_format: str
+) -> None:
+    """Revocation must still block auth regardless of which hash format the
+    revoked row happens to carry."""
+    from core.security import hash_password
+    from services.api_key_service import authenticate_api_key, issue_api_key, revoke_api_key
+
+    admin = await make_user(db_session, is_superuser=True)
+    actor = principal_for(admin, role="super_admin")
+    row, plaintext = await issue_api_key(
+        db_session,
+        actor,
+        name=f"matrix-revoked-{hash_format}",
+        scope="org",
+        team_id=None,
+        project_id=None,
+    )
+    if hash_format == "legacy_bcrypt":
+        row.key_hash = hash_password(plaintext)
+        db_session.add(row)
+        await db_session.commit()
+
+    await revoke_api_key(db_session, actor, row.id)
+    assert await authenticate_api_key(db_session, plaintext) is None
+
+
+async def test_authenticate_mixed_formats_coexist_in_the_same_lookup_pass(
+    db_session: AsyncSession,
+) -> None:
+    """Two keys, one bcrypt-format and one HMAC-format, both authenticate
+    correctly in the same database at the same time: the realistic shape
+    of the migration window, not just isolated single-key cases."""
+    from core.security import hash_password
+    from services.api_key_service import authenticate_api_key, issue_api_key
+
+    admin = await make_user(db_session, is_superuser=True)
+    actor = principal_for(admin, role="super_admin")
+
+    legacy_row, legacy_plaintext = await issue_api_key(
+        db_session, actor, name="coexist-legacy", scope="org", team_id=None, project_id=None
+    )
+    legacy_row.key_hash = hash_password(legacy_plaintext)
+    db_session.add(legacy_row)
+    await db_session.commit()
+
+    new_row, new_plaintext = await issue_api_key(
+        db_session, actor, name="coexist-new", scope="org", team_id=None, project_id=None
+    )
+
+    legacy_found = await authenticate_api_key(db_session, legacy_plaintext)
+    new_found = await authenticate_api_key(db_session, new_plaintext)
+    assert legacy_found is not None and legacy_found.id == legacy_row.id
+    assert new_found is not None and new_found.id == new_row.id
+
+    # Cross-wiring check: the legacy plaintext must not authenticate the new
+    # row's prefix or vice versa (each row's own hash gates its own secret).
+    assert (
+        await authenticate_api_key(
+            db_session, f"{new_row.key_prefix}_{legacy_plaintext.split('_', 2)[2]}"
+        )
+        is None
+    )
+
+
+async def test_authenticate_dummy_format_does_not_depend_on_db_content(
+    db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Locks in the A5 timing-flattening judgment documented in
+    authenticate_api_key's docstring: the unknown-prefix dummy always
+    targets the fast HMAC profile, even in a database that currently holds
+    ONLY legacy bcrypt-format keys. If the dummy's format were somehow
+    derived from what already exists in the table (e.g. "mirror whatever
+    the majority format is"), an attacker could use the dummy's response
+    time to infer something about the deployment's migration state; tying
+    it unconditionally to the HMAC format avoids that. The wall-clock gap
+    this format choice reopened (HMAC/dummy fast, legacy-bcrypt-row slow)
+    is closed back up by min-duration padding, checked separately below in
+    ``test_authenticate_timing_flat_across_all_four_cases_with_padding``;
+    this test only pins the format the dummy hashes with, not timing.
+    """
+    import asyncio
+
+    from core.security import hash_password, is_api_key_hmac_hash
+    from services import api_key_service
+    from services.api_key_service import authenticate_api_key, issue_api_key
+
+    admin = await make_user(db_session, is_superuser=True)
+    actor = principal_for(admin, role="super_admin")
+    row, plaintext = await issue_api_key(
+        db_session,
+        actor,
+        name="dummy-format-legacy-db",
+        scope="org",
+        team_id=None,
+        project_id=None,
+    )
+    row.key_hash = hash_password(plaintext)
+    db_session.add(row)
+    await db_session.commit()
+
+    seen_hashes: list[str] = []
+    real_to_thread = asyncio.to_thread
+
+    async def spy_to_thread(func, *args, **kwargs):  # noqa: ANN001, ANN002, ANN003
+        if func is api_key_service.verify_api_key_plaintext:
+            seen_hashes.append(args[1])
+        return await real_to_thread(func, *args, **kwargs)
+
+    monkeypatch.setattr("services.api_key_service.asyncio.to_thread", spy_to_thread)
+
+    # Probes a prefix that matches nothing, in a DB whose only key is
+    # bcrypt-format.
+    assert await authenticate_api_key(db_session, "tos_deadbeef_unknown-secret-xx") is None
+    assert len(seen_hashes) == 1
+    assert is_api_key_hmac_hash(seen_hashes[0]) is True
+
+
+async def test_authenticate_timing_flat_across_all_four_cases_with_padding(
+    db_session: AsyncSession,
+) -> None:
+    """Pins the FIX for a timing oracle security-reviewer found on the A5
+    PR, not merely a documented trade-off: switching the default hash
+    format to HMAC-SHA256 made real HMAC verification and the dummy branch
+    both microseconds-fast, while a row still on the legacy bcrypt format
+    kept its ~213ms wrong-secret cost unchanged. Before the min-duration
+    padding fix (``core.config.api_key_verification_min_duration_seconds``,
+    ``services.api_key_service._verify_api_key_plaintext_padded``),
+    response time alone would tell an attacker "this key_prefix still
+    exists and is still bcrypt-format" without ever presenting a valid
+    secret -- reopening exactly the kind of gap unit A1 closed.
+
+    Exercises three of the four cases the review comment names (existing
+    HMAC-format key + wrong secret, existing legacy-format key + wrong
+    secret, and no matching key at all / the dummy branch). The fourth
+    named case, a VALID key, is deliberately excluded from this specific
+    contract: a successful authentication also pays a DB write
+    (last_used_at, A2) whose latency is unrelated to the verification
+    padding this test targets, and a legitimate holder of a valid key is
+    not the audience the constant-time contract protects (they already
+    know the secret; there is nothing left to infer from timing).
+    """
+    import statistics
+    import time
+
+    from core.security import hash_password
+    from services.api_key_service import authenticate_api_key, issue_api_key
+
+    admin = await make_user(db_session, is_superuser=True)
+    actor = principal_for(admin, role="super_admin")
+
+    hmac_row, _hmac_plaintext = await issue_api_key(
+        db_session, actor, name="flat-hmac", scope="org", team_id=None, project_id=None
+    )
+    legacy_row, legacy_plaintext = await issue_api_key(
+        db_session, actor, name="flat-legacy", scope="org", team_id=None, project_id=None
+    )
+    legacy_row.key_hash = hash_password(legacy_plaintext)
+    db_session.add(legacy_row)
+    await db_session.commit()
+
+    probes = {
+        "hmac_row_wrong_secret": f"{hmac_row.key_prefix}_definitely-not-the-right-secret-xx",
+        "legacy_row_wrong_secret": f"{legacy_row.key_prefix}_definitely-not-the-right-secret-xx",
+        "no_matching_row": "tos_deadbeef_unknown-secret-xx",
+    }
+
+    iterations = 3
+    means: dict[str, float] = {}
+    for label, probe in probes.items():
+        samples: list[float] = []
+        for _ in range(iterations):
+            start = time.perf_counter()
+            assert await authenticate_api_key(db_session, probe) is None
+            samples.append(time.perf_counter() - start)
+        means[label] = statistics.mean(samples)
+
+    slowest = max(means.values())
+    fastest = min(means.values())
+    # Generous bound: the padding floor is 220ms by default, so legitimate
+    # scheduling/GC jitter around that floor is expected. A REAL regression
+    # (e.g. a new branch routed around the padding wrapper, or the padding
+    # silently disabled) would blow past this by roughly bcrypt's own
+    # ~213ms, not a jitter-sized amount, so 2x + a 150ms floor comfortably
+    # separates noise from a real defect without the test itself asserting
+    # an exact duration.
+    assert slowest <= fastest * 2 + 0.15, (
+        "timing diverged across cases more than the padded-flatness contract allows: "
+        f"{ {k: round(v * 1000, 1) for k, v in means.items()} } ms"
+    )
+
+
+async def test_verify_api_key_plaintext_padded_honours_the_configured_floor(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Direct, deterministic test of the padding primitive itself, rather
+    than relying only on the statistical convergence test above: a fast
+    HMAC verification is slept up to whatever floor is configured, and
+    setting the floor to 0 disables padding entirely (the escape hatch
+    documented in core.config.api_key_verification_min_duration_seconds's
+    docstring, for a deployment that has independently confirmed no
+    legacy-format keys remain). Uses a small, deterministic floor (0.3s)
+    instead of the 220ms production default so the assertion threshold has
+    comfortable headroom above CI scheduling jitter without waiting long.
+    """
+    import time
+
+    from core.security import hash_api_key_secret
+    from services.api_key_service import _verify_api_key_plaintext_padded
+
+    monkeypatch.setenv("API_KEY_HMAC_SECRET", "test-padding-floor-secret-" + "x" * 20)
+    hashed = hash_api_key_secret("tos_deadbeef_padding-floor-check")
+
+    monkeypatch.setenv("API_KEY_VERIFICATION_MIN_DURATION_SECONDS", "0.3")
+    start = time.perf_counter()
+    result = await _verify_api_key_plaintext_padded("wrong-secret-value", hashed)
+    padded_elapsed = time.perf_counter() - start
+    assert result is False
+    assert padded_elapsed >= 0.28, (
+        f"expected the 0.3s floor to be honoured, got {padded_elapsed * 1000:.1f}ms"
+    )
+
+    monkeypatch.setenv("API_KEY_VERIFICATION_MIN_DURATION_SECONDS", "0")
+    start = time.perf_counter()
+    await _verify_api_key_plaintext_padded("wrong-secret-value", hashed)
+    unpadded_elapsed = time.perf_counter() - start
+    assert unpadded_elapsed < 0.28, (
+        f"expected floor=0 to disable padding, got {unpadded_elapsed * 1000:.1f}ms"
+    )
+
+
 async def test_authenticate_success_failure_unchanged_after_offload(
     db_session: AsyncSession,
 ) -> None:
@@ -1131,16 +1501,23 @@ async def test_authenticate_success_failure_unchanged_after_offload(
 async def test_authenticate_timing_stays_flat_between_known_and_unknown_prefix(
     db_session: AsyncSession,
 ) -> None:
-    """Quantitative half of the plan's §4 A1 timing-flatness contract:
+    """Quantitative half of the plan's §4 A1/A5 timing-flatness contract:
     "존재하지 않는 키와 틀린 키의 타이밍이 여전히 평탄하다."
 
-    Both branches pay exactly one bcrypt cost-12 verification, the real one
-    (row found, wrong secret) or the dummy one (no row), so their means
-    should be close. The bound is deliberately loose (generous multiplier,
-    small sample) because this runs on shared CI hardware: the goal is to
-    catch a gross regression (e.g. one branch losing its offload and
-    contending for the thread pool differently than the other), not to
-    assert a precise bcrypt duration.
+    Both branches pay exactly one verification, the real one (row found,
+    wrong secret, HMAC format since the key is freshly issued) or the dummy
+    one (no row, also HMAC format as of A5), so their means should be
+    close. The bound is deliberately loose (generous multiplier, small
+    sample) because this runs on shared CI hardware: the goal is to catch a
+    gross regression (e.g. one branch losing its offload and contending for
+    the thread pool differently than the other, or the dummy silently
+    reverting to a slow format while the real path stayed fast), not to
+    assert a precise duration. A separate test earlier in this file,
+    ``test_authenticate_timing_flat_across_all_four_cases_with_padding``,
+    extends this same contract to a row still on the legacy bcrypt format
+    (the case the min-duration padding fix exists for), and
+    ``test_verify_api_key_plaintext_padded_honours_the_configured_floor``
+    tests the padding primitive directly.
     """
     import statistics
     import time
@@ -1179,3 +1556,114 @@ async def test_authenticate_timing_stays_flat_between_known_and_unknown_prefix(
         f"unknown-prefix mean {unknown_mean * 1000:.1f}ms diverged more than "
         "the timing-flatness contract allows"
     )
+
+
+# ---------------------------------------------------------------------------
+# count_legacy_hash_api_keys (A5 migration visibility)
+# ---------------------------------------------------------------------------
+
+
+async def test_count_legacy_hash_api_keys_splits_by_format(db_session: AsyncSession) -> None:
+    from core.security import hash_password
+    from services.api_key_service import count_legacy_hash_api_keys, issue_api_key
+
+    admin = await make_user(db_session, is_superuser=True)
+    actor = principal_for(admin, role="super_admin")
+
+    before = await count_legacy_hash_api_keys(db_session)
+
+    legacy_row, legacy_plaintext = await issue_api_key(
+        db_session, actor, name="count-legacy", scope="org", team_id=None, project_id=None
+    )
+    legacy_row.key_hash = hash_password(legacy_plaintext)
+    db_session.add(legacy_row)
+    await db_session.commit()
+
+    await issue_api_key(
+        db_session, actor, name="count-hmac", scope="org", team_id=None, project_id=None
+    )
+
+    after = await count_legacy_hash_api_keys(db_session)
+    assert after.legacy_bcrypt == before.legacy_bcrypt + 1
+    assert after.hmac_sha256 == before.hmac_sha256 + 1
+    assert after.total == after.legacy_bcrypt + after.hmac_sha256
+
+
+async def test_count_legacy_hash_api_keys_excludes_revoked_and_expired(
+    db_session: AsyncSession,
+) -> None:
+    from datetime import UTC, datetime, timedelta
+
+    from core.security import hash_password
+    from services.api_key_service import count_legacy_hash_api_keys, issue_api_key, revoke_api_key
+
+    admin = await make_user(db_session, is_superuser=True)
+    actor = principal_for(admin, role="super_admin")
+    before = await count_legacy_hash_api_keys(db_session)
+
+    revoked_row, _ = await issue_api_key(
+        db_session, actor, name="count-revoked", scope="org", team_id=None, project_id=None
+    )
+    await revoke_api_key(db_session, actor, revoked_row.id)
+
+    expired_row, _ = await issue_api_key(
+        db_session, actor, name="count-expired", scope="org", team_id=None, project_id=None
+    )
+    expired_row.key_hash = hash_password("irrelevant-plaintext")
+    expired_row.expires_at = datetime.now(tz=UTC) - timedelta(days=1)
+    db_session.add(expired_row)
+    await db_session.commit()
+
+    after = await count_legacy_hash_api_keys(db_session)
+    # Neither the revoked (HMAC-format) nor the expired (bcrypt-format) key
+    # is active, so neither count should have moved.
+    assert after.legacy_bcrypt == before.legacy_bcrypt
+    assert after.hmac_sha256 == before.hmac_sha256
+
+
+# ---------------------------------------------------------------------------
+# hash_api_key_secret / verify_api_key_hmac (A5 primitive, core.security)
+# ---------------------------------------------------------------------------
+
+
+def test_hash_api_key_secret_round_trips_via_verify_api_key_plaintext() -> None:
+    from services.api_key_service import verify_api_key_plaintext
+
+    plaintext = "tos_deadbeef_some-random-secret-value"
+    from core.security import hash_api_key_secret
+
+    hashed = hash_api_key_secret(plaintext)
+    assert hashed.startswith("hmac-sha256$")
+    assert verify_api_key_plaintext(plaintext, hashed) is True
+    assert verify_api_key_plaintext(plaintext + "x", hashed) is False
+    # The plaintext must never appear inside its own hash.
+    assert plaintext not in hashed
+
+
+def test_hash_api_key_secret_is_deterministic_for_the_same_secret() -> None:
+    """Unlike bcrypt (which salts), HMAC-SHA256 is deterministic: the same
+    (key, plaintext) pair always produces the same digest. This is required
+    for verification to work at all (there is no salt stored alongside the
+    hash to reproduce), and is safe here specifically because the input is
+    already a 192-bit random value, not a low-entropy password where
+    determinism would enable a precomputed rainbow-table attack."""
+    from core.security import hash_api_key_secret
+
+    plaintext = "tos_deadbeef_deterministic-check"
+    assert hash_api_key_secret(plaintext) == hash_api_key_secret(plaintext)
+
+
+def test_verify_api_key_hmac_rejects_non_hmac_hash() -> None:
+    """A bcrypt-shaped value must never verify against the HMAC path."""
+    from core.security import hash_password, verify_api_key_hmac
+
+    bcrypt_hash = hash_password("whatever")
+    assert verify_api_key_hmac("whatever", bcrypt_hash) is False
+
+
+def test_is_api_key_hmac_hash_distinguishes_formats() -> None:
+    from core.security import hash_api_key_secret, hash_password, is_api_key_hmac_hash
+
+    assert is_api_key_hmac_hash(hash_api_key_secret("x")) is True
+    assert is_api_key_hmac_hash(hash_password("x")) is False
+    assert is_api_key_hmac_hash("not-a-recognized-format") is False

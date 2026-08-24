@@ -120,9 +120,15 @@ env:
 
   # -------------------------------------------------------------------------
   # Application secret material. The chart renders a Secret (secret.yaml)
-  # holding DATABASE_URL_APP / DATABASE_URL_OWNER / REDIS_URL / SECRET_KEY,
-  # UNLESS you supply an existingSecret — then ALL four keys must exist in it:
-  #   DATABASE_URL_APP, DATABASE_URL_OWNER, REDIS_URL, SECRET_KEY
+  # holding DATABASE_URL_APP / DATABASE_URL_OWNER / REDIS_URL / SECRET_KEY /
+  # API_KEY_HMAC_SECRET, UNLESS you supply an existingSecret, in which case
+  # ALL FIVE keys must exist in it:
+  #   DATABASE_URL_APP, DATABASE_URL_OWNER, REDIS_URL, SECRET_KEY,
+  #   API_KEY_HMAC_SECRET
+  # UPGRADE NOTE: API_KEY_HMAC_SECRET is a new required key (A5). An operator
+  # on an existingSecret from a chart version before this one must add this
+  # key before upgrading, or backend/worker/beat pods fail to start
+  # (CreateContainerConfigError: key API_KEY_HMAC_SECRET not found).
   # -------------------------------------------------------------------------
   secret:
     # Pre-created Secret to use instead of the chart-rendered one. When set,
@@ -132,6 +138,18 @@ env:
     # chart-rendered Secret. Generate with `openssl rand -hex 32`.
     # REQUIRED unless existingSecret is set. Never commit a real value.
     secretKey: ""
+    # API_KEY_HMAC_SECRET (A5, core.config.api_key_hmac_secret), a dedicated,
+    # rotatable HMAC key for hashing stored API-key secrets. Deliberately NOT
+    # the same value as secretKey (see core/config.py's docstring: reusing
+    # SECRET_KEY binds both credential families' blast radius together).
+    # Generate with `openssl rand -hex 32`. Inline value goes INTO the
+    # chart-rendered Secret. OPTIONAL: when left blank, secret.yaml derives a
+    # value deterministically from secretKey (sha256, domain-separated) so
+    # the chart always renders a real key into the Secret and the backend's
+    # own APP_ENV=prod fail-closed check never fires. Set this explicitly in
+    # production so API-key hashing has its own rotatable secret, independent
+    # of SECRET_KEY (rotating one then no longer silently changes the other).
+    apiKeyHmacSecret: ""
 
   # -------------------------------------------------------------------------
   # Trivy DB — vulnerability data path (v2.4.0+, ADR-0001).

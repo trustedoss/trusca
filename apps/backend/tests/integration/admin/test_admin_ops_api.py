@@ -26,7 +26,7 @@ from pathlib import Path
 import pytest
 from httpx import ASGITransport, AsyncClient
 
-from core.security import create_access_token
+from core.security import create_access_token, hash_password
 from models import User
 from tests._helpers import (
     make_membership,
@@ -35,6 +35,7 @@ from tests._helpers import (
     make_scan,
     make_team,
     make_user,
+    principal_for,
 )
 
 BACKEND_ROOT = Path(__file__).resolve().parent.parent.parent.parent
@@ -117,6 +118,9 @@ _AUTH_MATRIX_ENDPOINTS = [
     ("GET", "/v1/admin/kev/health"),
     # MAL-2b (#26): malicious-snapshot status panel — same existence-hide gate.
     ("GET", "/v1/admin/malicious/health"),
+    # A5 (concurrency-scaling-plan-2026-08-22.md §3.3): bcrypt-to-HMAC
+    # API-key hash migration status, same existence-hide gate.
+    ("GET", "/v1/admin/api-keys/hash-migration"),
 ]
 
 
@@ -513,3 +517,102 @@ async def test_admin_malicious_health_super_admin_returns_payload(
     assert body["next_refresh_at"] is not None
     if body["last_result"] is not None:
         assert body["last_result"] in {"synced", "skipped"}
+
+
+# ---------------------------------------------------------------------------
+# A5: API-key bcrypt-to-HMAC hash-migration status
+# (concurrency-scaling-plan-2026-08-22.md §3.3)
+# ---------------------------------------------------------------------------
+
+
+async def test_admin_api_keys_hash_migration_super_admin_returns_counts(
+    client: AsyncClient,
+) -> None:
+    """Counts active keys by format, and excludes revoked/expired ones.
+
+    A key issued through the live service (post-A5) is HMAC-format by
+    construction. To exercise the "still-legacy" branch without depending
+    on a pre-A5 fixture, this test does what a real bcrypt-era row looks
+    like: it overwrites one issued key's ``key_hash`` with a bcrypt hash
+    (the exact shape :func:`services.api_key_service.issue_api_key` wrote
+    before A5). A third key is revoked, and a fourth is already expired;
+    both must be excluded from every count, mirroring
+    :func:`services.api_key_service.authenticate_api_key`'s own active-row
+    filter (a key nobody can authenticate with any more should not count
+    toward "still needs to migrate").
+    """
+    from datetime import timedelta
+
+    from services.api_key_service import issue_api_key, revoke_api_key
+
+    factory = await _factory(client)
+    async with factory() as session:
+        admin = await make_user(session, is_superuser=True)
+        actor = principal_for(admin, role="super_admin")
+
+        # New-format key (HMAC), the common post-A5 case.
+        hmac_row, _ = await issue_api_key(
+            session,
+            actor,
+            name="hash-migration-hmac",
+            scope="org",
+            team_id=None,
+            project_id=None,
+        )
+
+        # Simulate a pre-A5 row: same table, bcrypt hash.
+        legacy_row, _ = await issue_api_key(
+            session,
+            actor,
+            name="hash-migration-legacy",
+            scope="org",
+            team_id=None,
+            project_id=None,
+        )
+        legacy_row.key_hash = hash_password("pre-a5-plaintext-not-real")
+        session.add(legacy_row)
+        await session.commit()
+
+        # Revoked key: must not count toward either format.
+        revoked_row, _ = await issue_api_key(
+            session,
+            actor,
+            name="hash-migration-revoked",
+            scope="org",
+            team_id=None,
+            project_id=None,
+        )
+        await revoke_api_key(session, actor, revoked_row.id)
+
+        # Expired key: must not count toward either format either, even
+        # though it was never revoked.
+        expired_row, _ = await issue_api_key(
+            session,
+            actor,
+            name="hash-migration-expired",
+            scope="org",
+            team_id=None,
+            project_id=None,
+        )
+        expired_row.expires_at = datetime.now(tz=UTC) - timedelta(days=1)
+        session.add(expired_row)
+        await session.commit()
+
+    response = await client.get("/v1/admin/api-keys/hash-migration", headers=_bearer_for(admin))
+    assert response.status_code == 200, response.text
+    body = response.json()
+    assert set(body.keys()) == {
+        "legacy_bcrypt_count",
+        "hmac_sha256_count",
+        "active_total",
+    }
+    # >= rather than == : other tests in this module issue their own keys
+    # against the same database and this file's tests are not guaranteed to
+    # run in isolation from each other within a module-scoped DB. What must
+    # hold regardless of that noise is that OUR two active keys are each
+    # counted in the right bucket, and the revoked/expired ones (which this
+    # test alone created) do not inflate either count beyond what the two
+    # active ones contribute.
+    assert body["hmac_sha256_count"] >= 1
+    assert body["legacy_bcrypt_count"] >= 1
+    assert body["active_total"] == body["hmac_sha256_count"] + body["legacy_bcrypt_count"]
