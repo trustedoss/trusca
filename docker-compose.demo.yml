@@ -143,40 +143,82 @@ services:
           memory: 512M
 
   # ---------------------------------------------------------------------------
-  # Celery worker — the load-bearing cap on this box.
+  # Celery workers — the load-bearing caps on this box.
   #
-  # `replicas: 1` (NOT 0 — the demo must be able to run a live sandbox scan) and
-  # `--concurrency=1` so exactly ONE scan runs at a time.
+  # S3 (concurrency-scaling-plan-2026-08-22.md) split the base file's single
+  # `worker:` service into `worker-scan` (forks cdxgen/Trivy) and
+  # `worker-default` (notifications, backups, audit export, ticket webhooks,
+  # catalog-refresh beats, retention sweeps, the scan-schedule poll — never
+  # forks a scan pipeline). This overlay mirrors that split. The combined
+  # budget below (2 G memory / 0.5 G reservation, 2.0 CPU / 0.5 CPU
+  # reservation) is UNCHANGED from the pre-split single `worker:` service —
+  # this overlay only DIVIDES that existing budget between the two services,
+  # weighted toward worker-scan (the heavier of the two); it does not grow
+  # the box's total footprint.
   #
-  # HARD 2 GB memory cap, enforced via `mem_limit` (+ `memswap_limit` equal to
-  # it to DISABLE swap for this container). Intent: if a visitor's ≤10 MiB scan
-  # somehow balloons past 2 GB, the kernel OOM-kills THAT scan's process inside
-  # the worker cgroup — the container's task fails, Celery reports the failure,
-  # and the HOST stays alive. Without this cap a pathological scan could exhaust
-  # all 4 GB and take Postgres / Traefik / the whole box down with it. Disabling
-  # swap turns a slow swap-thrash death spiral into a fast, contained OOM-kill.
+  # worker-scan keeps this overlay's original safety guarantee: `replicas: 1`
+  # (NOT 0 — the demo must be able to run a live sandbox scan) and an
+  # EXPLICIT `--concurrency=1` override. The base image's own default for
+  # this service (${CELERY_CONCURRENCY:-2}) is too high for this box, so the
+  # command is restated here (keeping the base's `-Q` queue flag as-is) with
+  # concurrency pinned to 1 so exactly ONE scan process runs at a time.
+  # SCAN_CONCURRENCY_CAP_PER_TEAM=1 (demo-scan-env above) already serialises
+  # visitor scans at the application layer; --concurrency=1 is a second,
+  # container-level backstop so a bug in that app-level cap cannot let two
+  # scan processes fight over the same memory ceiling.
+  #
+  # worker-default keeps the base image's default concurrency
+  # (${CELERY_DEFAULT_CONCURRENCY:-4}) — none of its tasks fork a scan
+  # pipeline, so the base default is safe here and does not need overriding.
+  #
+  # Both get HARD memory caps, enforced via `mem_limit` (+ `memswap_limit`
+  # equal to it to DISABLE swap for the container — see the ENFORCEMENT NOTE
+  # above). Intent: if a visitor's ≤10 MiB scan somehow balloons past
+  # worker-scan's cap, the kernel OOM-kills THAT scan's process inside the
+  # worker-scan cgroup — the container's task fails, Celery reports the
+  # failure, and the HOST (and worker-default, still running notifications /
+  # backups) stays alive. Without this cap a pathological scan could exhaust
+  # all 4 GB and take Postgres / Traefik / the whole box down with it.
+  # Disabling swap turns a slow swap-thrash death spiral into a fast,
+  # contained OOM-kill.
   #
   # A runaway scan therefore fails in isolation; every other visitor keeps
   # browsing. SCANCODE/SCANOSS off + the 10 MiB input cap make hitting this
   # ceiling unlikely in the first place.
   # ---------------------------------------------------------------------------
-  worker:
-    command: celery -A tasks.celery_app worker --loglevel=info --concurrency=1
+  worker-scan:
+    command: celery -A tasks.celery_app worker --loglevel=info --concurrency=1 -Q ${WORKER_SCAN_QUEUES:-trustedoss.scan,trustedoss.default}
     environment:
       <<: *demo-scan-env
-    mem_limit: 2g
-    memswap_limit: 2g
+    mem_limit: 1536m
+    memswap_limit: 1536m
     deploy:
       replicas: 1
       resources:
         limits:
-          cpus: "2.0"
-          memory: 2G
+          cpus: "1.5"
+          memory: 1536M
         reservations:
-          # Guarantee the worker enough to start the toolchain, but keep the
-          # floor modest on a 4 GB box so the scheduler does not over-reserve.
+          # Guarantee the scan worker enough to start the toolchain, but keep
+          # the floor modest on a 4 GB box so the scheduler does not
+          # over-reserve.
+          cpus: "0.4"
+          memory: 384M
+
+  worker-default:
+    environment:
+      <<: *demo-scan-env
+    mem_limit: 512m
+    memswap_limit: 512m
+    deploy:
+      replicas: 1
+      resources:
+        limits:
           cpus: "0.5"
           memory: 512M
+        reservations:
+          cpus: "0.1"
+          memory: 128M
 
   # ---------------------------------------------------------------------------
   # Celery Beat — kept running (re-match + Trivy DB refresh + retention still
