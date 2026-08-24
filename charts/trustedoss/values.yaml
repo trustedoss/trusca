@@ -129,6 +129,23 @@ env:
   # on an existingSecret from a chart version before this one must add this
   # key before upgrading, or backend/worker/beat pods fail to start
   # (CreateContainerConfigError: key API_KEY_HMAC_SECRET not found).
+  # UPGRADE NOTE 2: as of the chart version that closes the A5 security-review
+  # follow-up, env.secret.apiKeyHmacSecret is REQUIRED when
+  # env.secret.existingSecret is unset (previously optional: an unset value
+  # was silently derived from secretKey). An operator who was relying on that
+  # derivation -- i.e. installed/upgraded this chart with
+  # env.secret.apiKeyHmacSecret left blank -- must set it explicitly to a
+  # value before upgrading, or the release fails to render
+  # (`env.secret.apiKeyHmacSecret is required ...`). Setting a NEW value
+  # (not the old derived one) rotates API_KEY_HMAC_SECRET: any HMAC-format API
+  # keys already issued (A5's new default for keys issued going forward) stop
+  # verifying and must be reissued. Bcrypt-format keys (issued before A5, or
+  # under the bcrypt-read transition period) are unaffected -- they never used
+  # this secret. Reusing the previously-derived value
+  # (`sha256sum "trustedoss-api-key-hmac-secret-v1:<secretKey>"`, hex) instead
+  # avoids reissuing keys but keeps the credential-family coupling this
+  # change exists to remove -- prefer a fresh value and a planned key
+  # rotation.
   # -------------------------------------------------------------------------
   secret:
     # Pre-created Secret to use instead of the chart-rendered one. When set,
@@ -143,12 +160,11 @@ env:
     # the same value as secretKey (see core/config.py's docstring: reusing
     # SECRET_KEY binds both credential families' blast radius together).
     # Generate with `openssl rand -hex 32`. Inline value goes INTO the
-    # chart-rendered Secret. OPTIONAL: when left blank, secret.yaml derives a
-    # value deterministically from secretKey (sha256, domain-separated) so
-    # the chart always renders a real key into the Secret and the backend's
-    # own APP_ENV=prod fail-closed check never fires. Set this explicitly in
-    # production so API-key hashing has its own rotatable secret, independent
-    # of SECRET_KEY (rotating one then no longer silently changes the other).
+    # chart-rendered Secret. REQUIRED unless existingSecret is set -- the
+    # render fails rather than deriving a value from secretKey, so a leak of
+    # SECRET_KEY never silently exposes this key too (see UPGRADE NOTE 2
+    # above if you are upgrading from a chart version that derived this
+    # value automatically).
     apiKeyHmacSecret: ""
 
   # -------------------------------------------------------------------------

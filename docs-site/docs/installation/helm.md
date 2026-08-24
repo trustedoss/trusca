@@ -70,12 +70,15 @@ errors without touching a cluster (Helm 3+, from the repository root):
 <!-- docs-uat: id=helm-chart-validate kind=shell ctx=host expect=exit:0 tier=nightly -->
 ```bash
 SECRET=$(openssl rand -hex 32)
+HMAC_SECRET=$(openssl rand -hex 32)
 helm lint charts/trustedoss \
   --set env.secret.secretKey="$SECRET" \
+  --set env.secret.apiKeyHmacSecret="$HMAC_SECRET" \
   --set postgres.auth.password=throwaway \
   --set ingress.host=trustedoss.example.com
 helm template trustedoss charts/trustedoss --namespace trustedoss \
   --set env.secret.secretKey="$SECRET" \
+  --set env.secret.apiKeyHmacSecret="$HMAC_SECRET" \
   --set postgres.auth.password=throwaway \
   --set ingress.host=trustedoss.example.com \
   >/dev/null
@@ -97,6 +100,7 @@ git clone https://github.com/trustedoss/trusca.git && cd trusca
 helm install trustedoss ./charts/trustedoss \
   --namespace trustedoss --create-namespace \
   --set env.secret.secretKey="$(openssl rand -hex 32)" \
+  --set env.secret.apiKeyHmacSecret="$(openssl rand -hex 32)" \
   --set postgres.auth.password="$(openssl rand -hex 24)" \
   --set ingress.host=trustedoss.example.com \
   --set env.corsAllowedOrigins=https://trustedoss.example.com
@@ -129,7 +133,7 @@ env:
   redis:
     url: redis://memorystore:6379/0
   secret:
-    # pre-created Secret carrying all four keys (see below)
+    # pre-created Secret carrying all five keys (see below)
     existingSecret: trustedoss-prod-secrets
   corsAllowedOrigins: https://trustedoss.example.com
 ingress:
@@ -147,13 +151,20 @@ helm install trustedoss ./charts/trustedoss \
 
 :::warning Secret contents are mandatory
 When `env.secret.existingSecret` is set, the chart renders **no** Secret of its
-own. The referenced Secret **must** carry all four keys, or the pods will not
+own. The referenced Secret **must** carry all five keys, or the pods will not
 start:
 
 - `DATABASE_URL_APP`
 - `DATABASE_URL_OWNER`
 - `REDIS_URL`
 - `SECRET_KEY` (at least 32 characters)
+- `API_KEY_HMAC_SECRET` (at least 32 characters, independent of `SECRET_KEY`;
+  never reuse one value for both)
+
+When `existingSecret` is unset, both `env.secret.secretKey` and
+`env.secret.apiKeyHmacSecret` are required inputs to the chart itself: the
+release fails to render rather than deriving `API_KEY_HMAC_SECRET` from
+`secretKey`. Generate each independently with `openssl rand -hex 32`.
 :::
 
 :::note CORS in production
@@ -198,7 +209,8 @@ The values you most often set:
 | `ingress.host` | `""` | **Required.** Public hostname. |
 | `env.corsAllowedOrigins` | `""` | **Required in prod.** Allowed browser origins (no wildcard). |
 | `env.secret.secretKey` | `""` | `SECRET_KEY` (≥32 chars). Required unless `existingSecret`. |
-| `env.secret.existingSecret` | `""` | Pre-created Secret with all four keys; disables the chart Secret. |
+| `env.secret.apiKeyHmacSecret` | `""` | `API_KEY_HMAC_SECRET` (≥32 chars), a dedicated key for hashing stored API-key secrets. Required unless `existingSecret`; never the same value as `secretKey`. |
+| `env.secret.existingSecret` | `""` | Pre-created Secret with all five keys; disables the chart Secret. |
 | `postgres.bundled` | `true` | `false` → use `env.database.*` (external). |
 | `redis.bundled` | `true` | `false` → use `env.redis.url` (external). |
 | `env.trivy.dbRepository` | `ghcr.io/aquasecurity/trivy-db` | Override for an air-gapped internal mirror — see [Air-gapped operation](../admin-guide/vulnerability-data.md#air-gapped). |

@@ -220,7 +220,7 @@ that every doc is enrolled + lint-tracked), do a periodic **manual** full sweep
 3. Spot-check that no `tier=manual` step has silently become automatable (e.g. a
    new read-only API now exists for a step that was manual because it needed a
    POST).
-4. Validate the Helm chart: `helm lint charts/trustedoss && helm template trustedoss charts/trustedoss --set env.secret.secretKey=$(openssl rand -hex 32) --set postgres.auth.password=x --set ingress.host=example.com >/dev/null`.
+4. Validate the Helm chart: `helm lint charts/trustedoss && helm template trustedoss charts/trustedoss --set env.secret.secretKey=$(openssl rand -hex 32) --set env.secret.apiKeyHmacSecret=$(openssl rand -hex 32) --set postgres.auth.password=x --set ingress.host=example.com >/dev/null`.
 
 `extract-and-lint` already guarantees coverage + KO parity + drift on every PR,
 so this sweep is about catching *behavioral* regressions the sampled tiers might

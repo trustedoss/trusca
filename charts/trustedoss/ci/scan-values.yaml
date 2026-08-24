@@ -13,6 +13,7 @@
 env:
   secret:
     secretKey: scan-only-placeholder-not-a-real-secret-key
+    apiKeyHmacSecret: scan-only-placeholder-not-a-real-hmac-key
 ingress:
   host: scan.invalid
 postgres:

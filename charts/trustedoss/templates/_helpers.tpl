@@ -175,9 +175,10 @@ password or an OAuth client secret does not belong in a file people commit.
       name: {{ $secretName }}
       key: SECRET_KEY
 # A5 — dedicated, rotatable HMAC key for hashing stored API-key secrets
-# (core.config.api_key_hmac_secret). Mirrors SECRET_KEY's wiring; see
-# secret.yaml for how the key is resolved (pinned value, or derived from
-# secretKey when env.secret.apiKeyHmacSecret is left blank).
+# (core.config.api_key_hmac_secret). Mirrors SECRET_KEY's wiring, including
+# the fail-closed render policy: secret.yaml requires
+# env.secret.apiKeyHmacSecret to be set explicitly (no derivation from
+# secretKey) whenever env.secret.existingSecret is unset.
 - name: API_KEY_HMAC_SECRET
   valueFrom:
     secretKeyRef:
