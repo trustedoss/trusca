@@ -255,6 +255,37 @@ async def test_dispatch_queue_backlog_alert_builds_slack_and_teams_payloads() ->
     assert report["failed_count"] == 0
 
 
+async def test_dispatch_webhook_retry_exhausted_builds_slack_and_teams_payloads() -> None:
+    """S7: the exhausted-retry kind renders the delivery id, project id,
+    reason and attempt count into every channel's payload."""
+    report = await disp.dispatch(
+        kind=disp.NotificationKind.WEBHOOK_CAPACITY_RETRY_EXHAUSTED,
+        context={
+            "delivery_id": "11111111-2222-3333-4444-555555555555",
+            "project_id": "66666666-7777-8888-9999-000000000000",
+            "reason": "skipped_team_at_capacity",
+            "attempts": "6",
+        },
+        channels=[disp.CHANNEL_SLACK, disp.CHANNEL_TEAMS],
+    )
+
+    assert report["delivered_count"] == 2
+    assert report["failed_count"] == 0
+
+
+async def test_dispatch_webhook_retry_exhausted_defaults_missing_context() -> None:
+    """Builders must not crash on a misshapen context - see _ctx_str's own
+    defensive-default contract, already exercised by the other builders."""
+    report = await disp.dispatch(
+        kind=disp.NotificationKind.WEBHOOK_CAPACITY_RETRY_EXHAUSTED,
+        context={},
+        channels=[disp.CHANNEL_SLACK],
+    )
+
+    assert report["delivered_count"] == 1
+    assert report["failed_count"] == 0
+
+
 async def test_dispatch_kind_can_be_str_or_enum() -> None:
     """The Celery task forwards the JSON string; the password-reset service
     forwards the enum. Both must work."""

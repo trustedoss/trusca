@@ -170,13 +170,20 @@ def _problem_for_scan_error(request: Request, exc: ScanError) -> Response:
     # `type` URI, and a Retry-After header. M1 (security review): the live
     # running_scans count is deliberately NOT exposed (intra-team side-channel).
     if isinstance(exc, ConcurrentScanLimitExceeded):
+        # S7 - mirrors api/v1/projects.py::_problem_for_scan_error exactly
+        # (see that function's comment for the byte-for-byte-when-disabled
+        # rationale); tests/unit/test_scan_error_problem_mirror.py pins the
+        # two staying identical.
+        extensions: dict[str, object] = {"limit": exc.limit}
+        if exc.estimated_wait_seconds is not None:
+            extensions["estimated_wait_seconds"] = exc.estimated_wait_seconds
         response = problem_response(
             status_code=exc.status_code,
             title=exc.title,
             detail=str(exc) or exc.title,
             instance=request.url.path,
             type_=exc.type_uri,
-            limit=exc.limit,
+            **extensions,
         )
         response.headers["Retry-After"] = str(exc.retry_after_seconds)
         return response
@@ -785,7 +792,10 @@ async def download_sbom_signature_bundle_endpoint(
         429: {
             "description": (
                 "Rate limited (too many scan creations from this user) or the "
-                "team's concurrent-scan cap is reached. RFC 7807 + Retry-After."
+                "team's concurrent-scan cap is reached. RFC 7807 + Retry-After; "
+                "the concurrency-cap variant adds `limit` and, when the "
+                "deployment has queue-backlog metrics on, an "
+                "`estimated_wait_seconds` extension field (S7)."
             ),
             "content": {"application/problem+json": {}},
         },

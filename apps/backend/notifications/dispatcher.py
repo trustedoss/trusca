@@ -90,6 +90,13 @@ class NotificationKind(str, Enum):
     # this is a deployment-wide capacity signal, not addressed to any one
     # user, so there is no ``user_id`` to fan an inbox row out to.
     QUEUE_BACKLOG_ALERT = "queue_backlog_alert"
+    # S7 (concurrency-scaling-plan-2026-08-22.md §3.2/§4): a webhook-
+    # triggered scan's automatic capacity retry (``tasks.webhook_capacity_retry``)
+    # gave up after its bounded attempt count without capacity ever freeing
+    # up. Dispatch-only for the same reason as QUEUE_BACKLOG_ALERT above:
+    # nobody triggered this delivery by hand, so there is no ``user_id`` to
+    # address an inbox row to.
+    WEBHOOK_CAPACITY_RETRY_EXHAUSTED = "webhook_capacity_retry_exhausted"
 
 
 # Channel name strings used in the public API.
@@ -257,6 +264,42 @@ def _build_queue_backlog_alert(
     )
 
 
+def _build_webhook_capacity_retry_exhausted(
+    context: dict[str, Any],
+) -> tuple[dict[str, Any], dict[str, Any], dict[str, Any]]:
+    """S7: a webhook's automatic capacity retry ran out of attempts.
+
+    ``context`` comes from ``tasks.webhook_capacity_retry._dispatch_exhausted_notification``.
+    Deliberately does not name the project by URL/name (only its id) - this
+    module has no session to resolve one, and the operator receiving this
+    already has the portal open to look the delivery up.
+    """
+    delivery_id = _ctx_str(context, "delivery_id", "<unknown>")
+    project_id = _ctx_str(context, "project_id", "<unknown>")
+    reason = _ctx_str(context, "reason", "capacity")
+    attempts = _ctx_str(context, "attempts", "0")
+    summary = (
+        f"TRUSCA gave up retrying webhook delivery {delivery_id} for project "
+        f"{project_id} after {attempts} attempts (still {reason})."
+    )
+    detail = (
+        f"{summary}\n\n"
+        "The scan this delivery would have triggered never ran. A manual "
+        "redelivery from the Git host still works once capacity frees up - "
+        "see the webhooks guide's redelivery section - or scale the "
+        "worker-scan service (see the installation guide's queue capacity "
+        "section)."
+    )
+    return (
+        {
+            "subject": "TrustedOSS - Webhook capacity retry exhausted",
+            "body_text": detail,
+        },
+        {"text": summary},
+        {"title": "Webhook capacity retry exhausted", "text": summary},
+    )
+
+
 # Lookup keyed by the ``str`` value of NotificationKind so the Celery task —
 # which accepts the kind as a JSON string per CLAUDE.md (no pickle) — can
 # resolve it without importing the enum.
@@ -268,6 +311,9 @@ _BUILDERS: dict[str, Callable[[dict[str, Any]], _BUilderResult]] = {
     NotificationKind.APPROVAL_STATE_CHANGED.value: _build_approval_state_changed,
     NotificationKind.USER_DEACTIVATED.value: _build_user_deactivated,
     NotificationKind.QUEUE_BACKLOG_ALERT.value: _build_queue_backlog_alert,
+    NotificationKind.WEBHOOK_CAPACITY_RETRY_EXHAUSTED.value: (
+        _build_webhook_capacity_retry_exhausted
+    ),
 }
 
 

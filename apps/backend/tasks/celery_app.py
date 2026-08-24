@@ -131,6 +131,13 @@ _TASK_INCLUDES = [
     "tasks.auth_token_retention",
     "tasks.operational_retention",
     "tasks.audit_log_retention",
+    # S7 (concurrency-scaling-plan-2026-08-22.md §3.2/§4) - bounded, backed-
+    # off retry for a webhook-triggered scan turned away by the team
+    # concurrency cap or the disk guard, dispatched by
+    # services.webhook_service._schedule_capacity_retry the moment that
+    # happens. Not a beat entry - each delivery schedules its own chain of
+    # attempts via apply_async(countdown=...).
+    "tasks.webhook_capacity_retry",
 ]
 
 # S3 (concurrency-scaling-plan-2026-08-22.md §3.2/§4, S3 row): the two queue

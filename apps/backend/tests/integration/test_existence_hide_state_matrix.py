@@ -207,6 +207,56 @@ async def test_outsider_never_learns_the_active_scan_id(
 
 
 # ---------------------------------------------------------------------------
+# scan trigger × team-at-capacity (NEW 429 state surface, S7)
+#
+# S7 (concurrency-scaling-plan-2026-08-22.md §3.2/§4) adds an
+# ``estimated_wait_seconds`` field to the 429 ``ConcurrentScanLimitExceeded``
+# body. Hardening rule 1: a new state surface must have its own row in this
+# matrix. ``prepare_scan_target`` runs the team-access check (403) BEFORE the
+# concurrency-cap check (429) - see its own docstring's "Guard order" list -
+# so an outsider triggering a scan against a team that is AT its cap must
+# still get the existing permission denial, never a peek at the team's
+# capacity state via a 429.
+# ---------------------------------------------------------------------------
+
+
+async def test_trigger_on_other_team_at_capacity_is_permission_denial_not_429(
+    db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A team at its concurrency cap would 429 (ConcurrentScanLimitExceeded)
+    for a member - an outsider must hit the permission gate (403) first, on a
+    project with no active scan at all (so ScanInProgressConflict cannot be
+    what fires instead)."""
+    monkeypatch.setenv("SCAN_CONCURRENCY_CAP_PER_TEAM", "1")
+
+    from schemas.scan import ScanCreate
+    from services.scan_service import ConcurrentScanLimitExceeded, ScanForbidden, trigger_scan
+
+    actor, owning_team = await _outsider_and_resource_team(db_session)
+    # Puts the OWNING team at its cap via a different project - the outsider's
+    # target project below has no scan of its own, so only the team-wide cap
+    # (not the per-project active-scan index) could produce a 429 here.
+    capacity_holder = await make_project(db_session, team=owning_team)
+    await make_scan(db_session, project=capacity_holder, status="running")
+    project = await make_project(db_session, team=owning_team)
+
+    with pytest.raises(ScanForbidden) as raised:
+        await trigger_scan(
+            db_session,
+            project_id=project.id,
+            payload=ScanCreate(kind="source"),
+            actor=actor,
+        )
+
+    assert not isinstance(raised.value, ConcurrentScanLimitExceeded)
+    # Same belt-and-braces as the in-progress case above: the denial must not
+    # carry the new field (or any extension) that would confirm the team is
+    # at capacity.
+    assert getattr(raised.value, "extensions", {}) == {}
+    assert not hasattr(raised.value, "estimated_wait_seconds")
+
+
+# ---------------------------------------------------------------------------
 # sbom-ingest × scan already in progress / archived  (NEW 409 surfaces)
 #
 # POST /v1/projects/{id}/sbom-ingest reuses prepare_scan_target + the

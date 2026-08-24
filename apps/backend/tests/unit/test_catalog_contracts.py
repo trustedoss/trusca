@@ -46,11 +46,18 @@ from pydantic import BaseModel
 #                         inbox surface wants this kind too, it needs an enum
 #                         migration (db-designer) and a frontend catalog
 #                         entry (frontend-dev) first - this test will flag it.
+#   - webhook_capacity_retry_exhausted: S7 (concurrency-scaling-plan-
+#                         2026-08-22.md §3.2/§4) - same reasoning as
+#                         queue_backlog_alert: nobody triggered the webhook
+#                         delivery by hand, so there is no ``user_id`` to
+#                         address an in-app row to. Same migration rule
+#                         applies if a future ops inbox wants it too.
 _DISPATCH_ONLY_KINDS = {
     "password_reset",
     "new_critical_cve",
     "user_deactivated",
     "queue_backlog_alert",
+    "webhook_capacity_retry_exhausted",
 }
 
 

@@ -146,21 +146,37 @@ WEBHOOK_STATUSES = frozenset(
     }
 )
 
-# What ``webhook_deliveries.outcome`` can hold: every status except
-# ``duplicate``, which describes a request rather than a delivery. A replayed
-# delivery keeps the outcome it earned the first time.
-WEBHOOK_OUTCOMES = WEBHOOK_STATUSES - {"duplicate"}
+# S7 (concurrency-scaling-plan-2026-08-22.md §3.2/§4): outcomes that only the
+# automatic capacity-retry task (``tasks.webhook_capacity_retry``) stamps,
+# asynchronously, well after the synchronous HTTP response to the Git host
+# was already sent. Deliberately NOT in ``WEBHOOK_STATUSES``: that set is the
+# live, synchronous response contract the two routers document
+# (``test_webhook_status_vocabulary`` holds them to the same set), and no
+# code path here ever returns "capacity_retry_exhausted" as a
+# ``WebhookProcessResult.status`` - only the retry task, running minutes
+# later against the delivery row directly, ever writes it.
+_ASYNC_ONLY_OUTCOMES = frozenset({"capacity_retry_exhausted"})
+
+# What ``webhook_deliveries.outcome`` can hold: every synchronous status
+# except ``duplicate`` (which describes a request rather than a delivery - a
+# replayed delivery keeps the outcome it earned the first time), plus the
+# async-only outcomes above.
+WEBHOOK_OUTCOMES = (WEBHOOK_STATUSES - {"duplicate"}) | _ASYNC_ONLY_OUTCOMES
 
 # Outcomes a redelivery is allowed to supersede: the ones where no scan ever
 # started AND the condition is transient. The operator frees capacity and
 # redelivers; turning that away as a duplicate would leave the push unscanned
 # forever. ``ignored`` and ``skipped_active_scan`` are NOT here: an ignored
 # event will be ignored again, and an active scan on the ref means the commit
-# is already being covered.
+# is already being covered. ``capacity_retry_exhausted`` (S7) IS here for the
+# same reason the two ``skipped_*`` outcomes are: the automatic retry gave up,
+# but the transient condition may have cleared since, and a manual redelivery
+# must still be able to recover the push rather than read as a duplicate.
 _SUPERSEDABLE_OUTCOMES = frozenset(
     {
         "skipped_team_at_capacity",
         "skipped_disk_full",
+        "capacity_retry_exhausted",
     }
 )
 
@@ -205,6 +221,17 @@ class WebhookProcessResult:
     On GitLab installs that do not send a delivery UUID the id is derived from
     the payload and is therefore stable, which is what made the old loss
     permanent and this recovery reliable.
+
+    S7 (concurrency-scaling-plan-2026-08-22.md §3.2/§4): a capacity skip no
+    longer just sits there waiting for a human to notice and redeliver.
+    ``_schedule_capacity_retry`` enqueues ``tasks.webhook_capacity_retry``
+    (bounded exponential backoff), which either resolves the delivery to
+    ``enqueued`` / ``skipped_active_scan`` once capacity frees up, or gives
+    up and stamps ``capacity_retry_exhausted`` - a value this dataclass's
+    ``status`` never carries (it is written well after this function
+    returned), but that ``webhook_deliveries.outcome`` can hold; see
+    ``_ASYNC_ONLY_OUTCOMES``. Manual redelivery still works at any point in
+    that timeline (``_SUPERSEDABLE_OUTCOMES`` includes it).
     """
 
     status: str
@@ -497,6 +524,72 @@ async def _finish_delivery(
         )
 
 
+def _schedule_capacity_retry(
+    *,
+    delivery_row_id: uuid.UUID,
+    scm_delivery_id: str,
+    project_id: uuid.UUID,
+    metadata: dict[str, Any],
+) -> None:
+    """Enqueue the bounded, backed-off retry for a capacity-skipped delivery
+    (S7, concurrency-scaling-plan-2026-08-22.md §3.2/§4).
+
+    Best-effort and never raises: a Celery dispatch failure here must not turn
+    the 200 the Git host is about to receive into a 500, and must not mask the
+    capacity skip the caller already decided to report. Manual redelivery
+    (the pre-S7 recovery path) still works regardless of whether this
+    dispatch succeeds.
+
+    Takes ``delivery_row_id`` / ``scm_delivery_id`` as plain values rather
+    than the ``WebhookDelivery`` ORM instance on purpose: the caller runs this
+    AFTER ``_finish_delivery``'s commit, which (SQLAlchemy's default
+    ``expire_on_commit``) expires every attribute on that instance, so reading
+    ``delivery.id`` here would trigger a synchronous lazy reload outside the
+    greenlet context and raise ``MissingGreenlet`` - the exact bug class this
+    module's own comments already flag at three other call sites (see
+    ``project_id_value`` above). Plain values sidestep it entirely, and they
+    are also the shape Celery needs: task args cross the broker as JSON
+    (CLAUDE.md forbids pickle), never as an ORM instance.
+
+    Lazy imports (matching the convention ``services.metrics_service`` and
+    ``tasks.queue_backlog_alert`` already use for the same reason): this
+    module is imported by every request that touches a webhook, and importing
+    ``tasks.webhook_capacity_retry`` - which imports Celery's task machinery -
+    at module load time would put that cost on every one of those requests
+    whether or not a delivery ever hits the capacity guard.
+    """
+    from core.config import webhook_capacity_retry_enabled
+
+    if not webhook_capacity_retry_enabled():
+        return
+
+    from tasks.webhook_capacity_retry import (
+        RETRY_BACKOFF_BASE_SECONDS,
+        webhook_capacity_retry_task,
+    )
+
+    try:
+        webhook_capacity_retry_task.apply_async(
+            kwargs={
+                "delivery_id": str(delivery_row_id),
+                "project_id": str(project_id),
+                "metadata": metadata,
+            },
+            # First attempt waits one backoff step rather than firing
+            # immediately: we just ran this same capacity check a moment ago
+            # in this very request, so an instant re-check would almost
+            # certainly see the same answer.
+            countdown=RETRY_BACKOFF_BASE_SECONDS,
+        )
+    except Exception as exc:  # noqa: BLE001 - a broker hiccup must not break delivery
+        log.warning(
+            "webhook.capacity_retry_dispatch_failed",
+            delivery_id=scm_delivery_id,
+            project_id=str(project_id),
+            error=str(exc)[:200],
+        )
+
+
 # ---------------------------------------------------------------------------
 # Scan enqueue helper
 #
@@ -589,7 +682,8 @@ async def process_github_webhook(
     # synchronous lazy reload from outside the greenlet context and surface
     # as ``MissingGreenlet`` (regression seen in Chore L2 duplicate-delivery
     # tests). The id is a stable UUID, so caching is safe.
-    project_id_str = str(project.id)
+    project_id_value = project.id
+    project_id_str = str(project_id_value)
     # Same reason, and now load-bearing for the capacity guard too: the guard
     # runs AFTER _record_delivery, whose commit expires every ORM attribute on
     # this Project. Reading team_id off the instance at that point triggers a
@@ -609,6 +703,12 @@ async def process_github_webhook(
     # path, which expires every ORM instance in the session, and the rest
     # of this function reads `project`. Reload it before going on.
     await session.refresh(project)
+    # Same "capture before a later commit expires it" reason as
+    # project_id_value above - _finish_delivery's commit (Step 6/7) would
+    # otherwise turn a post-commit ``delivery.id`` read into MissingGreenlet.
+    # See _schedule_capacity_retry's docstring for why this is a plain UUID,
+    # not the ORM instance.
+    delivery_row_id = delivery.id
 
     if not is_new:
         log.info(
@@ -635,10 +735,26 @@ async def process_github_webhook(
         await _finish_delivery(session, delivery, "ignored")
         return WebhookProcessResult(status="ignored", delivery=delivery)
 
+    # Built once, ahead of the capacity guard, so both the direct enqueue
+    # below AND the S7 capacity-retry dispatch (which needs the same shape,
+    # replayed by a Celery task minutes later) use one definition rather than
+    # two copies that could drift.
+    scan_metadata: dict[str, Any] = {
+        "trigger": "webhook",
+        # ``source`` names the same thing the CI clients put here; the two
+        # halves of the system used different keys for one concept.
+        "source": "webhook-github",
+        "provider": "github",
+        "event_type": event_type,
+        "delivery_id": delivery_id,
+        "ref": _github_ref(payload, event_type),
+    }
+
     # Step 6: capacity guards. Asked only for events that would actually scan,
     # so a `ping` is never reported as "skipped because the disk is full". The
     # delivery row is already written, and a redelivery supersedes it once the
-    # operator frees capacity (see _record_delivery).
+    # operator frees capacity (see _record_delivery) - as does the automatic
+    # retry S7 schedules below.
     capacity_block = await capacity_guard_reason(session, team_id=project_team_id)
     if capacity_block is not None:
         log.warning(
@@ -648,23 +764,16 @@ async def process_github_webhook(
             reason=capacity_block,
         )
         await _finish_delivery(session, delivery, capacity_block)
+        _schedule_capacity_retry(
+            delivery_row_id=delivery_row_id,
+            scm_delivery_id=delivery_id,
+            project_id=project_id_value,
+            metadata=scan_metadata,
+        )
         return WebhookProcessResult(status=capacity_block, delivery=delivery)
 
     # Step 7: enqueue source scan.
-    scan_id = await _enqueue_source_scan(
-        session,
-        project,
-        metadata={
-            "trigger": "webhook",
-            # ``source`` names the same thing the CI clients put here; the two
-            # halves of the system used different keys for one concept.
-            "source": "webhook-github",
-            "provider": "github",
-            "event_type": event_type,
-            "delivery_id": delivery_id,
-            "ref": _github_ref(payload, event_type),
-        },
-    )
+    scan_id = await _enqueue_source_scan(session, project, metadata=scan_metadata)
     status = "enqueued" if scan_id else "skipped_active_scan"
     await _finish_delivery(session, delivery, status, scan_id=scan_id)
 
@@ -842,7 +951,8 @@ async def process_gitlab_webhook(
     payload_hash = compute_payload_hash(body)
     # See process_github_webhook — capture the project id before _record_delivery
     # may rollback and expire ORM state.
-    project_id_str = str(project.id)
+    project_id_value = project.id
+    project_id_str = str(project_id_value)
     # See the GitHub twin: the capacity guard reads this after _record_delivery
     # has expired the instance's attributes.
     project_team_id = project.team_id
@@ -859,6 +969,9 @@ async def process_gitlab_webhook(
     # path, which expires every ORM instance in the session, and the rest
     # of this function reads `project`. Reload it before going on.
     await session.refresh(project)
+    # See process_github_webhook - capture before _finish_delivery's commit
+    # expires ``delivery`` too.
+    delivery_row_id = delivery.id
 
     if not is_new:
         log.info(
@@ -881,8 +994,21 @@ async def process_gitlab_webhook(
         await _finish_delivery(session, delivery, "ignored")
         return WebhookProcessResult(status="ignored", delivery=delivery)
 
+    # Built once, ahead of the capacity guard - see the GitHub twin's
+    # comment: both the direct enqueue below and the S7 capacity-retry
+    # dispatch need the same shape.
+    scan_metadata: dict[str, Any] = {
+        "trigger": "webhook",
+        "source": "webhook-gitlab",
+        "provider": "gitlab",
+        "event_type": event_header,
+        "delivery_id": delivery_id,
+        "ref": _gitlab_ref(payload, event_header),
+    }
+
     # Capacity guards. See the GitHub twin: the row is written first and a
-    # redelivery supersedes it once capacity frees up.
+    # redelivery supersedes it once capacity frees up - as does the
+    # automatic retry S7 schedules below.
     capacity_block = await capacity_guard_reason(session, team_id=project_team_id)
     if capacity_block is not None:
         log.warning(
@@ -892,20 +1018,15 @@ async def process_gitlab_webhook(
             reason=capacity_block,
         )
         await _finish_delivery(session, delivery, capacity_block)
+        _schedule_capacity_retry(
+            delivery_row_id=delivery_row_id,
+            scm_delivery_id=delivery_id,
+            project_id=project_id_value,
+            metadata=scan_metadata,
+        )
         return WebhookProcessResult(status=capacity_block, delivery=delivery)
 
-    scan_id = await _enqueue_source_scan(
-        session,
-        project,
-        metadata={
-            "trigger": "webhook",
-            "source": "webhook-gitlab",
-            "provider": "gitlab",
-            "event_type": event_header,
-            "delivery_id": delivery_id,
-            "ref": _gitlab_ref(payload, event_header),
-        },
-    )
+    scan_id = await _enqueue_source_scan(session, project, metadata=scan_metadata)
     status = "enqueued" if scan_id else "skipped_active_scan"
     await _finish_delivery(session, delivery, status, scan_id=scan_id)
 

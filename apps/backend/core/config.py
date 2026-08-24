@@ -2858,6 +2858,95 @@ def queue_backlog_alert_cooldown_seconds() -> int:
     return _int_env("QUEUE_BACKLOG_ALERT_COOLDOWN_SECONDS", 3600, minimum=1)
 
 
+def scan_queue_slot_count() -> int:
+    """How many scan-queue Celery slots this deployment runs (S7 wait estimate).
+
+    concurrency-scaling-plan-2026-08-22.md S7: the 429 a caller gets from the
+    per-team concurrency cap (``ConcurrentScanLimitExceeded``) may carry an
+    ``estimated_wait_seconds`` extension, computed from S1.1's formula
+    ``floor(backlog / S) x M``. ``S`` is this value.
+
+    The backend process cannot observe the live worker count itself - workers
+    are separate Celery processes/containers started by Compose's
+    ``--scale worker-scan=N`` or Helm's ``worker.scan.replicaCount``, neither
+    of which this process can introspect (the same gap W1/W2 already noted
+    for uvicorn worker counts). So this is an operator-set hint, the same
+    shape as ``conn_budget_worker_replicas()`` (W2): a deployment's install
+    docs must set it to ``WORKER_REPLICAS x CELERY_CONCURRENCY`` (Compose) or
+    ``worker.scan.replicaCount x worker.scan.concurrency`` (Helm) for the
+    estimate to be accurate.
+
+    A wrong value only produces a wrong ESTIMATE - it never changes the 429
+    decision itself (the concurrency cap check does not read this at all) and
+    it never appears in a log a security reviewer would read as an
+    authorization signal.
+
+    Default 2, matching the Compose prod default (``WORKER_REPLICAS=1`` x
+    ``CELERY_CONCURRENCY=2``, the same default S1.1's own example computation
+    and ``queue_backlog_alert_scan_queue_threshold()`` use). Read at call time
+    (CLAUDE.md core rule #11). Clamped to at least 1 - zero slots can never
+    produce a finite estimate.
+    """
+    return _int_env("SCAN_QUEUE_SLOT_COUNT", 2, minimum=1)
+
+
+def scan_average_duration_seconds() -> int:
+    """Average scan-slot occupancy time, used only for the S7 wait estimate.
+
+    This is deliberately NOT the same value as ``scan_soft_time_limit_seconds()``
+    / ``scan_hard_time_limit_seconds()`` - those are worst-case ceilings a
+    pathological scan may reach, while this is the typical case S1.1's
+    ``S x 60 / M`` throughput formula needs to turn a queue backlog into a wait
+    estimate. Using the hard limit here would make every estimate report
+    "up to 65 minutes", which is technically not wrong and practically
+    useless.
+
+    Default 1200 (20 minutes) - the same M value S1.1 uses throughout the
+    plan document's own worked examples. Read at call time (CLAUDE.md core
+    rule #11). Clamped to at least 60 seconds.
+    """
+    return _int_env("SCAN_AVERAGE_DURATION_SECONDS", 1200, minimum=60)
+
+
+def webhook_capacity_retry_enabled() -> bool:
+    """Whether a webhook skipped for team-capacity/disk-full gets an automatic
+    retry (S7, concurrency-scaling-plan-2026-08-22.md S3.2/S4).
+
+    Before S7, ``services.scan_service.capacity_guard_reason`` turning away a
+    webhook-triggered scan was permanent until an operator noticed and
+    manually resent the delivery from the Git host's UI (S1.1: "재시도 큐가
+    없어 운영자가 훅을 다시 보내야 복구된다" - the plan's own words for the
+    most painful of the three capacity-exhaustion branches). This toggle
+    turns that silent, permanent drop into a bounded, backed-off retry
+    (``tasks.webhook_capacity_retry``) that gives up and stamps
+    ``capacity_retry_exhausted`` (still superseded by a later manual
+    redelivery, same as today) if capacity never frees up.
+
+    Unlike every OTHER toggle this plan opens (principle 5: "새로 여는 토글은
+    꺼짐으로 시작한다"), this one defaults to TRUE. Principle 5 protects
+    against a new toggle silently changing behaviour or adding cost a
+    deployment did not ask for - M2's broker round trip, S6's alert traffic,
+    W6's cache. This toggle's OFF state is not "unchanged": it is the
+    defect S1.1 names outright, a delivery that never recovers without a
+    human noticing and resending it. Turning it on only ever improves the
+    outcome for a delivery that was already being dropped; there is no
+    "preserve current behaviour" argument for a behaviour this plan
+    identifies as the bug. The retry itself is bounded (a fixed attempt
+    count with an exponential backoff, see ``tasks.webhook_capacity_retry``)
+    so leaving it on adds no unbounded cost. Operators who run their own
+    webhook redelivery tooling and do not want the two to race can still
+    turn it off.
+
+    Read at call time (CLAUDE.md core rule #11).
+    """
+    return os.getenv("WEBHOOK_CAPACITY_RETRY_ENABLED", "true").strip().lower() in (
+        "1",
+        "true",
+        "yes",
+        "on",
+    )
+
+
 def permission_cache_ttl_seconds() -> int:
     """How long a resolved principal may be reused before it is read again.
 

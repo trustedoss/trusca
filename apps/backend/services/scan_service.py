@@ -233,6 +233,18 @@ class ConcurrentScanLimitExceeded(ScanError):
     busy teammates are / how close the team is to its cap on each individual
     request). ``limit`` + ``Retry-After`` are sufficient for a client to back
     off; the precise count adds no client value over those two.
+
+    S7 (concurrency-scaling-plan-2026-08-22.md §3.2/§4): ``estimated_wait_seconds``
+    is a DIFFERENT field from ``running_scans`` and is deliberately allowed to
+    reach the response body. M1's ban is on the count that produces the wait
+    (how many scans this team has running right now), because that number is
+    an intra-team side-channel; a rounded ETA derived from the SYSTEM-WIDE
+    scan-queue backlog carries none of that team-specific information - two
+    different teams hitting their own cap at the same moment see the same
+    estimate. ``None`` when the estimate cannot be produced (queue-backlog
+    metrics off, or the broker is unreachable - see
+    :func:`_estimate_scan_queue_wait_seconds`), in which case the body simply
+    omits the field; ``Retry-After`` on its own is still a valid instruction.
     """
 
     status_code = 429
@@ -242,11 +254,21 @@ class ConcurrentScanLimitExceeded(ScanError):
     # so a coarse 30s back-off is appropriate (a finished scan frees a slot).
     retry_after_seconds = 30
 
-    def __init__(self, message: str, *, running_scans: int, limit: int) -> None:
+    def __init__(
+        self,
+        message: str,
+        *,
+        running_scans: int,
+        limit: int,
+        estimated_wait_seconds: int | None = None,
+    ) -> None:
         super().__init__(message)
         # Server-side only (log context). Not serialized into the 429 body.
         self.running_scans = running_scans
         self.limit = limit
+        # S7: safe to serialize into the 429 body - see the class docstring
+        # for why this is not the same leak M1 blocked.
+        self.estimated_wait_seconds = estimated_wait_seconds
 
 
 class ScanEnqueueFailed(ScanError):
@@ -448,7 +470,63 @@ async def _enforce_team_concurrency_cap(
             f"team {team_id} has {active} active scans (limit {cap})",
             running_scans=active,
             limit=cap,
+            estimated_wait_seconds=await _estimate_scan_queue_wait_seconds(),
         )
+
+
+async def _estimate_scan_queue_wait_seconds() -> int | None:
+    """Best-effort ETA for a caller just blocked by the team concurrency cap.
+
+    S7 (concurrency-scaling-plan-2026-08-22.md §1.1/§3.2/§4): the plan's own
+    wait-prediction formula is ``floor((j-1)/S) x M`` for the j-th of N
+    simultaneous arrivals against S slots averaging M seconds each. A caller
+    turned away by the cap is, in effect, the next arrival behind whatever is
+    already sitting in the scan queue, so ``j - 1`` is that queue's current
+    depth (the backlog) and the formula collapses to
+    ``floor(backlog / S) x M``.
+
+    Returns ``None`` - never 0 - when the estimate cannot be produced:
+
+      * ``queue_backlog_metrics_enabled()`` (M2) is off. This function reuses
+        M2's own broker reader (``services.metrics_service._broker_queue_backlogs``)
+        rather than opening a second connection to the broker on every 429, so
+        a deployment that has not opted into that round trip for ``/metrics``
+        does not pay it here either.
+      * the broker cannot be reached. ``_broker_queue_backlogs`` already
+        degrades to reporting 0 for every queue rather than raising (its own
+        docstring), which this function cannot tell apart from a genuinely
+        empty queue - so it asks ``queue_backlog_metrics_enabled()`` up front
+        instead of trying to infer a broker outage from an all-zero reading.
+
+    A missing estimate is not an error: the 429 body simply omits
+    ``estimated_wait_seconds``, and the fixed ``Retry-After`` header (already
+    present on every one of these responses) is still a valid instruction on
+    its own.
+
+    Blocking: the broker read is a synchronous Redis round trip (the same one
+    ``services.metrics_service.render_metrics`` offloads for the same reason),
+    so it runs in a worker thread via ``asyncio.to_thread`` rather than on
+    this coroutine's event loop.
+    """
+    from core.config import (
+        queue_backlog_metrics_enabled,
+        scan_average_duration_seconds,
+        scan_queue_slot_count,
+    )
+
+    if not queue_backlog_metrics_enabled():
+        return None
+
+    def _read_scan_queue_backlog() -> int:
+        from services.metrics_service import _broker_queue_backlogs
+        from tasks.celery_app import _SCAN_QUEUE
+
+        return _broker_queue_backlogs().get(_SCAN_QUEUE, 0)
+
+    backlog = await asyncio.to_thread(_read_scan_queue_backlog)
+    slots = scan_queue_slot_count()
+    average_seconds = scan_average_duration_seconds()
+    return (backlog // slots) * average_seconds
 
 
 def _disk_hard_limit_pct() -> float:
