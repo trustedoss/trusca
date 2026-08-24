@@ -1039,6 +1039,33 @@ def cdxgen_fetch_license() -> bool:
     }
 
 
+def cdxgen_scanner_version() -> str:
+    """The cdxgen version baked into this worker image (``CDXGEN_VERSION``).
+
+    S8 (concurrency-scaling-plan-2026-08-22.md §3.2): the scan pipeline
+    fingerprints its dependency set to decide whether a fresh commit can
+    reuse a prior scan's SBOM instead of re-running cdxgen. Two trees with
+    byte-identical manifests can still produce different SBOMs after a
+    cdxgen upgrade, so the fingerprint must fold in the scanner version (an
+    upgraded worker's first scan on an otherwise-unchanged tree must never
+    read as "unchanged" against a fingerprint an older worker wrote).
+
+    ``Dockerfile.worker`` sets ``ENV CDXGEN_VERSION=<pinned version>`` at
+    image-build time (see the ``cdxgen`` install stage there); this accessor
+    reads that at call time (rule #11) rather than caching it, so a value
+    baked into one image build is never carried over by a stale in-process
+    cache after a hot-swap. Returns ``"unknown"`` when unset, the same
+    non-placeholder convention :func:`slsa_builder_version` uses for
+    ``TRUSTEDOSS_VERSION``, which still participates in the fingerprint
+    hash (an "unknown"-tagged scan's fingerprint is simply never treated as
+    matching a version-tagged one unless both literally say "unknown").
+    """
+    raw = os.getenv("CDXGEN_VERSION")
+    if raw is None or raw.strip() == "":
+        return "unknown"
+    return raw.strip()
+
+
 def license_fetch_enabled() -> bool:
     """Whether the post-cdxgen license fetcher enriches unlicensed components.
 

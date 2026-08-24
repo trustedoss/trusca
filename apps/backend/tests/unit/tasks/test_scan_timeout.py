@@ -212,6 +212,9 @@ def test_scan_source_softtimeout_marks_failed_and_cleans_workspace(
         # pipeline; the source path carries no image_ref, so None → {}.
         scan_metadata = None
         id = scan_uuid
+        # S8: scan_source_task also snapshots scan.ref before the pipeline
+        # runs (unrelated to this timeout scenario, but read unconditionally).
+        ref = None
 
     class _FakeProject:
         id = _FakeScan.project_id

@@ -45,6 +45,8 @@ def test_stage_crash_marks_failed_and_reclaims_workspace(
         project_id = uuid.uuid4()
         scan_metadata = None
         id = scan_uuid
+        # S8: scan_source_task snapshots scan.ref before the pipeline runs.
+        ref = None
 
     class _FakeProject:
         id = _FakeScan.project_id

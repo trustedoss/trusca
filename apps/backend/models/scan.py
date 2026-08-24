@@ -386,6 +386,37 @@ class Scan(Base):
     input_document: Mapped[dict[str, Any] | None] = mapped_column(
         JSONB, nullable=True
     )
+    # Dependency-set fingerprint (S8, concurrency-scaling-plan-2026-08-22.md
+    # §3.2, migration 0070). SHA-256 hex digest over three inputs that
+    # together determine the bytes of the SBOM this scan would generate: the
+    # scanned tree's manifest/lockfile hashes (the same inventory recorded in
+    # ``input_manifests`` above; see ``services.scan_inputs.
+    # collect_manifest_inventory``), the cdxgen scanner version, and the
+    # scan-time config that shapes cdxgen's output (spec version,
+    # license-fetch toggle, runtime-scope filter toggles). Computed by
+    # ``models.scan_fingerprint.compute_scan_fingerprint``.
+    #
+    # NULL means "not computed": every scan before this migration, every
+    # container / SBOM-ingest scan (neither has a source tree to
+    # fingerprint), and any scan whose manifest walk was truncated or could
+    # not hash one of its own files in full (the same bounds
+    # ``collect_manifest_inventory`` already enforces). A NULL fingerprint is
+    # never equal to another NULL: two scans that were not fingerprinted have
+    # not been shown to share a dependency set, they simply were not compared.
+    #
+    # Deliberately excludes vulnerability-DB state and license policy: both
+    # are inputs to the vulnerability-matching stage, not to SBOM generation,
+    # and the reuse decision this fingerprint exists to support (a later
+    # revision) always re-runs matching regardless of whether the SBOM itself
+    # is reused; see the plan's "판단" paragraph under S8.
+    #
+    # Index: none. The natural lookup is "the latest succeeded scan for this
+    # (project_id, ref)", already served by ``ix_scans_project_ref`` below;
+    # the caller reads that row's ``dependency_fingerprint`` scalar and
+    # compares in application code rather than searching BY fingerprint.
+    dependency_fingerprint: Mapped[str | None] = mapped_column(
+        String(64), nullable=True
+    )
     # DT-style ref-keyed retention (scan-retention). Normalized git ref this
     # scan targets — ``refs/heads/main`` → ``main``, ``refs/pull/12/merge`` →
     # ``pr-12`` (see ``services.scan_service.normalize_ref``). NULL when the
