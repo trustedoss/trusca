@@ -848,7 +848,19 @@ function ProjectDetailHeader({
   return (
     <header
       className={cn(
-        "flex items-center justify-between gap-4 border-b px-6 py-3",
+        // G0-6 follow-up (F3): this row used to be a single unconditional
+        // flex row (`items-center justify-between`). At 390 px the
+        // breadcrumb/title/id/release-switcher block on the left and the
+        // scan chip + Scan button on the right needed ~2 px more than the
+        // viewport had, so the row spilled past the edge (the child blocks
+        // stayed under 390 px individually, only their sum plus padding
+        // and gap did not, which is why the overflow showed up on this
+        // `<header>` and its page wrapper, not on any control inside it).
+        // Below `sm` the two blocks stack instead of sharing a row, the
+        // same `flex-col … sm:flex-row` shape `ComponentsToolbar` already
+        // uses for its filter bar. At `sm` and up this renders exactly as
+        // before.
+        "flex flex-col gap-3 border-b px-4 py-3 sm:flex-row sm:items-center sm:justify-between sm:gap-4 sm:px-6",
       )}
       data-testid="project-detail-header"
     >
