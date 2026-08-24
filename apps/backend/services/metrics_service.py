@@ -257,10 +257,11 @@ def _broker_queue_backlogs() -> dict[str, int]:
     split would silently stop measuring the scan queue - the half §1.1's
     slot-capacity math is actually about - so this reads both by name and
     returns one entry per queue, scan first (declaration order, so the
-    document's sample order is stable scrape to scrape). S6 reuses this
-    function directly rather than re-reading the broker a second time
-    (``tasks.queue_backlog_alert``), so it is the one place this repository
-    reads a Celery queue's length.
+    document's sample order is stable scrape to scrape). S6 (``tasks.
+    queue_backlog_alert``) and S7 (``services.scan_service.
+    _estimate_scan_queue_wait_seconds``) both reuse this function directly
+    rather than re-reading the broker a second time, so it is the one place
+    this repository reads a Celery queue's length.
 
     Synchronous client, the same shape as admin_health_service's Redis probe
     (``_probe_redis``) and for the same reason: the caller offloads this to a

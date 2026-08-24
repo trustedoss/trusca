@@ -153,13 +153,24 @@ def _problem_for_scan_error(request: Request, exc: ScanError) -> Response:
     # side-channel). `limit` + `Retry-After` are enough for client back-off;
     # the count stays in the server-side log.warning only.
     if isinstance(exc, ConcurrentScanLimitExceeded):
+        # S7 (concurrency-scaling-plan-2026-08-22.md §3.2/§4): `limit` is
+        # always present; `estimated_wait_seconds` only rides along when
+        # M2's queue-backlog metrics are on (see the exception class
+        # docstring for why this field, unlike `running_scans`, is safe to
+        # expose). Building `extensions` conditionally rather than passing
+        # `estimated_wait_seconds=None` keeps a disabled deployment's 429
+        # body byte-for-byte what it was before S7 - the regression contract
+        # this change must not break.
+        extensions: dict[str, object] = {"limit": exc.limit}
+        if exc.estimated_wait_seconds is not None:
+            extensions["estimated_wait_seconds"] = exc.estimated_wait_seconds
         response = problem_response(
             status_code=exc.status_code,
             title=exc.title,
             detail=str(exc) or exc.title,
             instance=request.url.path,
             type_=exc.type_uri,
-            limit=exc.limit,
+            **extensions,
         )
         response.headers["Retry-After"] = str(exc.retry_after_seconds)
         return response
@@ -1011,8 +1022,10 @@ async def get_dependency_graph_endpoint(
                 "Rate limited (too many triggers from this user) or the "
                 "team's concurrent-scan cap is reached. RFC 7807 problem+json "
                 "with a Retry-After header; the concurrency-cap variant adds a "
-                "`limit` extension field. (The live per-team active-scan count "
-                "is intentionally not exposed — see M1.)"
+                "`limit` extension field and, when the deployment has queue-"
+                "backlog metrics on, an `estimated_wait_seconds` extension "
+                "field (S7). (The live per-team active-scan count is "
+                "intentionally not exposed - see M1.)"
             ),
             "content": {"application/problem+json": {}},
         },

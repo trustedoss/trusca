@@ -51,18 +51,33 @@ def test_the_two_routers_agree_with_each_other() -> None:
     assert _documented_statuses(github_router) == _documented_statuses(gitlab_router)
 
 
-def test_outcome_vocabulary_is_the_status_set_minus_duplicate() -> None:
+def test_outcome_vocabulary_is_the_status_set_minus_duplicate_plus_async_only() -> None:
     """What a delivery row can record, versus what a request can answer.
 
     ``duplicate`` describes this request ("we have seen this delivery"), not
     how the delivery ended. Recording it would overwrite the ending the row
     earned on its first pass, which is the one an operator asking "did this
     push get scanned" needs.
-    """
-    from services.webhook_service import WEBHOOK_OUTCOMES, WEBHOOK_STATUSES
 
-    assert WEBHOOK_OUTCOMES == WEBHOOK_STATUSES - {"duplicate"}
+    S7 (concurrency-scaling-plan-2026-08-22.md §3.2/§4) adds one outcome the
+    OTHER direction: ``capacity_retry_exhausted`` is written by
+    ``tasks.webhook_capacity_retry``, asynchronously, well after the
+    synchronous HTTP response was sent - so it is a valid ``outcome`` but
+    never a live ``WebhookProcessResult.status`` / router-documented value.
+    ``_ASYNC_ONLY_OUTCOMES`` names that one-way delta explicitly rather than
+    letting the two sets silently diverge.
+    """
+    from services.webhook_service import (
+        _ASYNC_ONLY_OUTCOMES,
+        WEBHOOK_OUTCOMES,
+        WEBHOOK_STATUSES,
+    )
+
+    assert WEBHOOK_OUTCOMES == (WEBHOOK_STATUSES - {"duplicate"}) | _ASYNC_ONLY_OUTCOMES
     assert "duplicate" not in WEBHOOK_OUTCOMES
+    # The async-only outcomes must never leak into the synchronous status set
+    # this test file's other cases hold the routers' OpenAPI docs to.
+    assert _ASYNC_ONLY_OUTCOMES.isdisjoint(WEBHOOK_STATUSES)
 
 
 def test_superseparable_outcomes_are_outcomes() -> None:
@@ -70,11 +85,16 @@ def test_superseparable_outcomes_are_outcomes() -> None:
     from services.webhook_service import _SUPERSEDABLE_OUTCOMES, WEBHOOK_OUTCOMES
 
     assert _SUPERSEDABLE_OUTCOMES <= WEBHOOK_OUTCOMES
-    # Both capacity skips, and nothing else: an ignored event will be ignored
-    # again, and an active scan on the ref already covers the commit.
+    # The two capacity skips, plus S7's own exhausted-retry outcome, and
+    # nothing else: an ignored event will be ignored again, and an active
+    # scan on the ref already covers the commit. capacity_retry_exhausted is
+    # supersedable for the same reason the two skips are - the automatic
+    # retry gave up, but the transient condition may have cleared since, and
+    # a manual redelivery must still be able to recover the push.
     assert _SUPERSEDABLE_OUTCOMES == {
         "skipped_team_at_capacity",
         "skipped_disk_full",
+        "capacity_retry_exhausted",
     }
 
 
