@@ -14,12 +14,12 @@ type: application
 
 # Chart version is the packaging version (SemVer); bump on every chart change.
 # Kept aligned with the application version while the two release in lock-step.
-version: 0.21.0
+version: 0.22.0
 
 # appVersion tracks the released container image tag (image.tag default).
 # Keep in lock-step with .env.example IMAGE_TAG / docker-compose IMAGE_TAG and
 # the .github/workflows/release.yml image tags.
-appVersion: "0.21.0"
+appVersion: "0.22.0"
 
 keywords:
   - sca
@@ -47,9 +47,23 @@ annotations:
     - name: TrustedOSS
       email: maintainers@trustedoss.dev
   artifacthub.io/prerelease: "false"
-  artifacthub.io/containsSecurityUpdates: "false"
+  artifacthub.io/containsSecurityUpdates: "true"
   artifacthub.io/changes: |
-    - kind: added
-      description: "env.extraEnv / env.extraEnvFrom set any runtime variable the chart does not name, including the OAuth, notification, vendored-code and Jira settings a Helm install previously could not reach"
+    - kind: security
+      description: "New API keys are hashed with HMAC-SHA256 instead of bcrypt; the chart now names apiKeyHmacSecret as its own required secret value instead of deriving it from secretKey"
+    - kind: fixed
+      description: "The rendered Secret no longer silently falls back to secretKey when apiKeyHmacSecret is left blank; a Helm install now fails closed the same way secretKey already does"
+    - kind: security
+      description: "Backend, frontend, worker, beat and redis containers get a full pod and container securityContext: a pinned non-root uid, every capability dropped, no privilege escalation, and a read-only root filesystem where the image allows it"
     - kind: changed
-      description: "Chart and appVersion realigned with the portal at 0.21.0; they had drifted nine minor versions, so a default install ran an old portal unless image.tag was overridden"
+      description: "The Celery worker Deployment can split into a scan-queue and a default-queue pair so an hour-long scan and a one-second alert no longer wait behind each other in the same queue"
+    - kind: added
+      description: "Workers can autoscale on Redis queue depth through an optional KEDA-backed HPA mode instead of only CPU, since cdxgen/Trivy scans are network- and disk-wait heavy; CPU-based autoscaling stays the default"
+    - kind: changed
+      description: "A worker pod's terminationGracePeriodSeconds and preStop hook are now sized to the scan hard time limit instead of Kubernetes' 30-second default, so scaling the pool down no longer restarts an in-flight scan from zero"
+    - kind: added
+      description: "The backend Deployment gets a PodDisruptionBudget and topologySpreadConstraints, closing a gap where draining one node could take every backend replica down at once"
+    - kind: changed
+      description: "UVICORN_WORKERS is a real runtime-configurable values.yaml knob instead of baked into the backend image's start command"
+    - kind: fixed
+      description: "Default connection-pool sizing lowered across backend, worker and beat so replica count times pool size fits under Postgres' default max_connections; the old defaults alone reached 240 connections against a ceiling of 100"

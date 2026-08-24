@@ -7,20 +7,466 @@ and the project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.
 
 ## [Unreleased]
 
+## [0.22.0] - 2026-08-24
+
+153 commits landed since v0.21.0. Most of this release is two tracks that ran
+in parallel: a configurability track that turns things the portal used to
+decide unilaterally (build-gate thresholds, who can accept a risk, who gets
+notified, whether a component needs sign-off before it ships) into settings an
+organization writes, and a concurrency and scaling track that makes the worker
+fleet, the database and the search paths behave under real load rather than
+under a demo seed. A security review alongside both found and closed an open
+redirect on the OAuth callback and moved API-key hashing off bcrypt.
+
 ### Added
 
-- Helm chart: `env.extraEnv` and `env.extraEnvFrom` set any runtime variable the
-  chart does not name, injected into backend, worker and beat. This is how a
-  Helm install reaches OAuth sign-in, SMTP / Slack / Teams notifications, the
-  vendored-code identification service and the Jira link, none of which were
-  configurable there before (#81).
+- **A deployment's own identity provider can sign people in.** A third OAuth
+  provider, `oidc`, configured by issuer rather than pinned like GitHub and
+  Google: an operator supplies an issuer, a client id and a secret, and the
+  portal reads the rest from the issuer's discovery document. Discovery is
+  checked against the issuer and requires HTTPS, and an address is only
+  trusted to match an existing account once the provider has vouched for it
+  as verified - a security review found and closed both gaps before this
+  shipped. `OIDC_EMAIL_CLAIM` was proposed and removed in the same review:
+  once the verified-address rule was in place, a deployment that used it to
+  read the address from a non-`email` claim could no longer connect any of
+  its own existing users, which made the setting unsafe rather than merely
+  unused (#163).
+- **Groups from the identity provider can decide the grade a new member
+  gets**, through a map an operator writes. Sign-in used to make every
+  arriving person the administrator of a personal team, which is right for a
+  demo and wrong for a deployment where a whole company signs in. Left unset,
+  nothing changes; `super_admin` cannot be granted through the map even if an
+  operator writes it there, since an external directory should not be able to
+  mint one (#164).
+- **A read-only `viewer` grade.** Every account below `developer` used to be
+  unable to look at anything; `developer` itself carries scan execution,
+  every write and the source tree along with ordinary reads. `viewer` opens
+  47 read routes (projects, components, vulnerabilities, licences,
+  obligations, SBOMs, reports, search, the approval queue, licence policy)
+  while leaving the source tree, credentials, the audit log and every write
+  where they were. A membership can hold it, the admin UI can assign it, and
+  every screen that offers a write action now checks rank instead of asking
+  "is this exactly developer", so a viewer sees the same buttons a viewer
+  should (#157, #158, #161, #162).
+- **The build gate can answer to a policy row instead of only the
+  environment.** `gate_policies` scopes the way licence policy already does -
+  an organization default with optional per-team overrides, every column
+  nullable and NULL meaning "not decided here" - with a read/write API and an
+  effective view naming which scope a value came from. The policy screen
+  gained the controls to edit it, with an explicit override switch per field
+  so an empty threshold ("follow the organization") and a threshold of zero
+  ("block on any score") stay distinguishable. A deployment with no rows
+  evaluates exactly as before (#165, #166, #167).
+- **A risk acceptance can require a second person.** An organization can name
+  which vulnerability statuses (suppressed, not-affected) need one: the first
+  analyst's transition opens a request instead of applying it, a different
+  team admin has to agree, and the requester cannot approve their own
+  request. Covers the single-finding transition, the bulk transition and VEX
+  import alike (#168).
+- **An organization can rule on a component once instead of per project.**
+  A package thirty projects depend on used to be reviewed thirty times with
+  usually the same answer, because the question is about the component. The
+  new organization-wide ruling fills the gap only where a project has not
+  decided; a project's own approval still wins (#171).
+- **A team can ask about a package before it is pulled into a build.** Off by
+  default. Approvals used to exist only after a scan found something; this
+  lets a team record an intake decision on a bare purl ahead of the scan, and
+  a later scan's approval picks up the earlier answer instead of asking again
+  (#175).
+- **Projects can record who owns them and how they ship** - an owning unit, a
+  contact, and a distribution model that decides which licence obligations
+  bind - with a portfolio filter for both (#172).
+- **API keys can be issued read-only.** New keys default to read-only; keys
+  issued before this release keep their existing read-write scope so nothing
+  already integrated stops working. A read-write key can be narrowed to
+  read-only from the keys table; narrowing is one-way (#173).
+- **A key can belong to a service account that outlives the person who issued
+  it.** A personal key stops working the day its owner is deactivated, which
+  is wrong for a year-old nightly build. A service account is a flagged row
+  in the same user table (kept off every people-facing surface: login,
+  password reset, OAuth matching, the user and team-member lists) so the auth
+  path's "is the issuer active" question needs no branch for it (#174).
+- **Obligation fulfilment can be recorded** - status, owner, due date and an
+  evidence link per project per obligation - so "did anyone actually publish
+  the notice" has an answer inside the portal instead of a spreadsheet beside
+  it. Recording it never narrows the obligation list and never changes the
+  generated NOTICE file (#176).
+- **An administrator can add and remove people in batches**, from a CSV in the
+  same shape the roster exports in. Every row runs through the same service
+  the single-user API uses, so a batch cannot admit an account the one-at-a-
+  time path would refuse. A deployment using its own identity provider can
+  also close the door on unknown people entirely: `AUTH_SELF_REGISTRATION`
+  and the auto-provisioning switch both have to be off to close it, since the
+  hosted sign-up form is a second way in (#178).
+- **A deployment can reuse a resolved principal for a short, configurable
+  time** instead of rebuilding it from the database on every request. Off by
+  default, clamped to five minutes, and the number a deployment sets is the
+  contract: the longest a demotion or deactivation can go unfelt (#179).
+- **An organization can say who else hears about a notification** - by kind,
+  minimum severity and project - on top of whoever a notification was
+  produced for. With no rules written, delivery is unchanged (#182).
+- **Operational metrics are published at `/metrics`** in Prometheus text
+  format, off by default, and off answers 404 rather than 403 so an outsider
+  cannot tell the endpoint exists. Seven series ship, each held to a
+  fixture so a new one cannot be added without a deliberate decision that
+  it is safe to expose; nothing identifies a project, package or person
+  (#183). Two more arrived later behind their own toggle: live broker
+  queue-backlog length and the age of the oldest still-queued scan, which
+  tell a growing backlog apart from a busy-but-circulating one (#204).
+- **A generic outbound webhook posts events worth a ticket to a URL an
+  organization owns.** Replaces Jira settings that were placeholders nothing
+  read. Off by default; an organization's own adapter turns the structured
+  event into a ticket in whatever tracker it runs (#184).
+- **The audit trail can be handed to a log collector.** A beat task posts
+  batches to a configured URL every five minutes and only advances past a
+  batch once the collector accepts it, so a failed delivery stalls visibly
+  instead of leaving a silent gap (#186).
+- **A project can scan itself on a schedule** - its own cadence, or an
+  organization-wide default - through the same capacity and concurrency
+  guards a webhook-triggered scan goes through. A schedule-triggered scan
+  notifies the owning team on completion, since nobody else is watching for
+  it (#188).
+- **The project portfolio and per-project licences can be exported in bulk**
+  as CSV, reusing the same list service and filters the screens use so the
+  file and the page cannot disagree (#189).
+- **An organization can add its own preface and footer to the generated
+  NOTICE file**, per format (text/markdown/html). With nothing written, the
+  document renders exactly as it always has (#190).
+- **The vulnerability report can carry an organization's own header and
+  column selection** instead of the built-in defaults, with the columns also
+  overridable per request (#191).
+- **`UVICORN_WORKERS` is a real runtime knob** rather than baked into the
+  backend image's start command, so every deployment shape (Compose, dev,
+  demo, Helm) sets its own worker count without rebuilding anything (#193).
+- **The Helm chart's backend gets a PodDisruptionBudget and
+  topologySpreadConstraints**, closing a standing gap where draining one node
+  could take every backend replica down at once (#194).
+- **The Helm chart can autoscale workers on queue depth instead of only
+  CPU**, through an optional KEDA-backed mode: cdxgen/Trivy pipelines are
+  network- and disk-wait heavy, so CPU usage can read idle while the scan
+  queue backs up. CPU-based autoscaling stays the default (#214).
+- **The Celery worker fleet can subscribe separately to scan work and
+  everything else**, in both the Helm chart and Compose, so an hour-long scan
+  and a one-second alert no longer sit behind each other in the same queue.
+  Both worker kinds subscribe to both queues by default until an operator
+  narrows them, so a rolling upgrade drains whatever is left on the
+  pre-split queue name first (#215).
+- **Compose deployments get an install-time capacity formula and a
+  queue-backlog alert.** Compose has no autoscaler, so the installation guide
+  now derives a slot count from the box's resources, and a beat sweep pages
+  Slack or Teams once either queue's backlog stays over threshold for a
+  sustained window, with a cooldown against repeat pages (#216).
+- **Six previously unbounded tables now age out on their own schedule** -
+  expired refresh and password-reset tokens, and old notifications, webhook
+  deliveries and report downloads - each on a daily Celery beat, reusing
+  indexes the tables already had. The audit log is deliberately excluded and
+  stays a manual, two-operator procedure; a new daily report says when that
+  session is due (#217).
+- **AI model and dataset licences are judged against how the model is
+  actually used** - internal experimentation, shipped inside a product, or
+  redistributed - rather than against one blanket rule, with the terms
+  vendored as data so a scenario change changes the verdict without a
+  re-upload. Advisory only: no build gate, no approval workflow (#92).
+- **A 429 from the concurrency cap can estimate how long the wait is**, and a
+  webhook delivery turned away for capacity or a full disk now retries
+  automatically with backoff instead of waiting for an operator to redeliver
+  it by hand (#223).
+- **A source scan skips cdxgen entirely when nothing it depends on has
+  changed** - same manifests and lockfiles, same scanner version, same
+  scan-time configuration as the project's prior succeeded scan on the same
+  ref - and reuses that scan's preserved SBOM instead of spending 5 to 30
+  minutes regenerating an identical one. Vulnerability matching and licence
+  classification always re-run against current data regardless (#225).
+- **A scan now records what it actually looked at, and a new scan-detail
+  section shows it.** A source scan records the manifests and lockfiles its
+  fetched tree carried (`scans.input_manifests`); an ingested SBOM records
+  what its generator claimed about itself (`scans.input_document`), read
+  from the original uploaded bytes rather than TRUSCA's conversion of them.
+  A new `GET /v1/scans/{scan_id}/provenance` route and scan-detail panel
+  make both readable, so a scan that reports fewer components than expected
+  can be answered - did it not find the package, or did it never see the
+  file that declares it (#45, #46, #47).
+- **A vendored-code match now reports how many files backed it.** Files
+  matching one purl used to collapse into a component keyed on purl and
+  version alone, which listed the same library more than once when its
+  files disagreed about the version; the match now carries the file count
+  instead (#59).
+- **Every CVE id, purl and CVSS vector has a copy button that names what it
+  copies**, and a CVE id links out to NVD and OSV. Two of those strings are
+  monospace and truncate, so dragging to select used to hand you half a
+  string with no sign it was half (#124).
+- **The browser tab is named after the screen**, and the record on it, so two
+  projects open side by side (or two entries in history) are distinguishable
+  again (#105).
+- **The approvals queue is addressable and names the requester.** Opening a
+  row is a URL now instead of component state, so it survives a reload and
+  can be shared; `?project=` scopes the queue to one project; the requester
+  column resolves a name instead of eight characters of a user id (#119).
+- **A new organization's dashboard says what to do next**, as a four-step
+  checklist read from the server rather than a single static instruction,
+  so "register a project" is no longer the entire onboarding experience
+  (#135).
+- **Vulnerabilities, components and the cross-project inventory can leave as
+  a filtered CSV file**, matching exactly what the toolbar is showing, the
+  way the audit log already could (#133).
+- **The application shell gained a skip link, a keyboard-shortcut sheet, a
+  combined profile menu, and sidebar count badges** on Scans and Approvals,
+  so destinations carrying work waiting on a person no longer look identical
+  to the ones that do not (#134).
+- **Web fonts are served from this origin instead of a third-party CDN.**
+  Every page load used to fetch Inter and JetBrains Mono from a font CDN,
+  which fails outright on an air-gapped install and announces every user's
+  browser to a third party on every load. The bundled files are the upstream
+  OFL-1.1 releases, satisfying the licence's per-copy attribution requirement
+  on their own (#122).
+- **A webhook delivery records why it went unscanned**, replacing a single
+  NULL that collapsed four different outcomes into one unanswerable question
+  (#98).
+- **The first-scan journey's empty states now say what is actually true and
+  offer a way forward** - the recent-scans table, the scan list, the
+  components table, the source viewer, the policy list and the integrations
+  card all used to state a generic absence or blame a filter nobody had set
+  (#140).
+- **A scan's WebSocket streams say when they have stopped**, instead of
+  showing a reconnect counter forever: the progress panel and the log panel
+  each report their own state now, with a reason drawn from what the server
+  actually sent rather than four largely incorrect close-code labels (#139,
+  #143).
+- **An unmatched route lands on a 404 inside the application shell** that
+  names the address, instead of silently redirecting to `/login` as though
+  the session had expired (#115).
+- Helm chart: `env.extraEnv` and `env.extraEnvFrom` set any runtime variable
+  the chart does not name, injected into backend, worker and beat. This is
+  how a Helm install reaches OAuth sign-in, SMTP / Slack / Teams
+  notifications, the vendored-code identification service and the Jira link,
+  none of which were configurable there before (#81, #101).
 
 ### Changed
 
-- Helm chart version and `appVersion` realigned with the portal at 0.21.0. They
-  had drifted nine minor versions, so a default `helm install` ran an old portal
-  unless the operator overrode `image.tag`. Bumping the chart is now a step in
-  the release procedure (#81).
+- **Minimum search query length raised from 2 to 3 characters.** A 2-character
+  query bypasses the trigram indexes search relies on and falls back to a
+  sequential scan; a 2-character partial match also hits the result cap
+  without a useful answer (#212).
+- **Component search (palette and full results page) narrowed to each
+  project's latest scan**, matching how vulnerability and licence search
+  already worked. Search cost used to grow with retained scan history - up
+  to 30x - rather than with catalogue size. A component that only ever
+  appeared in an older, superseded scan no longer surfaces in search (#218).
+- **The search results page caps its total and facet counts** at 1,000
+  matches instead of scanning the full match set on every keystroke. Below
+  the cap counts stay exact; at or past it, the UI shows "N+" rather than a
+  number it cannot vouch for (#219).
+- **`api_keys.last_used_at` is now written at most once every 15 minutes**
+  per key instead of on every authenticated request. The column's meaning
+  changes accordingly, from "used at this exact instant" to "used within
+  this interval," and the interval is documented in both guides (#209).
+- **Postgres connection pool defaults lowered across every deployment
+  shape** (prod and dev Compose, the demo overlay, Helm) so process count
+  times pool size fits under Postgres' default `max_connections`. The old
+  Helm defaults alone put the backend tier at 240 connections against a
+  default ceiling of 100; a boot-time warning now fires when a deployment's
+  declared shape still exceeds it (#192).
+- Helm chart version and `appVersion` realigned with the portal at 0.21.0.
+  They had drifted nine minor versions, so a default `helm install` ran an
+  old portal unless the operator overrode `image.tag`. Bumping the chart is
+  now a step in the release procedure (#81, #101).
+
+### Fixed
+- **The vulnerabilities table stopped at 100 findings, with no way to reach
+  the rest.** A project with more than a hundred findings hid them silently.
+  The list now pages the way the components table already did, and the
+  licences and obligations grids, which had the identical defect, page the
+  same way (#109, #111).
+- **An organization with more than roughly 32,000 in-scope projects got a
+  500 instead of a page.** The dashboard's scan-inventory query bound one
+  parameter per project id, and the database driver refuses a statement past
+  32,767 bound parameters. Past a configurable threshold the predicate now
+  goes in as a single array parameter instead (#152).
+- **The project detail header overflowed at 390px** on the Overview and
+  Vulnerabilities tabs; the title block and the scan controls now stack
+  instead of sharing a row below the small breakpoint (#222).
+- **Five list screens lost their filters on reload**, and Back left the page
+  instead of undoing the last change, because filter state lived in the
+  component rather than the URL. A shared hook now keeps all five in the
+  address bar (#125).
+- **The API key create button was hidden from developers who could already
+  issue a project-scoped key.** The button checked for team-admin-or-above;
+  the backend has always allowed any team member to issue a key at that
+  scope (#141).
+- **OFL-1.1 (the SIL Open Font License) classified as `uncategorized`**
+  instead of the weak-copyleft licence it is, so a component under it read
+  as unknown everywhere in the UI. A licence-conflict rule for it exists now
+  too (#150).
+- **A Creative Commons NonCommercial licence normalised to plain CC-BY and
+  passed the build gate.** The licence-name pattern let a wildcard swallow
+  the `NonCommercial` and `NoDerivatives` clauses, so "Attribution-
+  NonCommercial 4.0 International" stored, gated and displayed as an
+  ordinary permissive licence. NC now classifies as forbidden and ND as
+  conditional, and an unrecognised restricted variant fails closed instead
+  of falling through to plain CC-BY (#50).
+- **The conformance panel scored a dataset's governance as missing when the
+  SBOM declared it correctly.** Registry v3 looks for the dataset cluster
+  under CycloneDX's `data` field; the reader was still looking under
+  `.componentData`, a name that only ever existed in the schema's type
+  system, not in the JSON itself (#51).
+- **The public webhook receiver could answer 500 instead of refusing
+  cleanly.** `DISK_HARD_LIMIT_PCT` parsed through a bare `float()`, so a
+  typo in that setting raised out of the disk guard on every delivery
+  before a signature could even be checked; a value of `0` refused every
+  scan with nothing in the log. The receiver also had no request body-size
+  cap and no IP-keyed rate limit, the two bounds any surface that runs
+  ahead of authentication needs. All three are fixed together, since they
+  sit on the same unauthenticated code path (#64).
+- **The OpenAPI schema did not describe the errors the API actually
+  returns.** Every error leaves this API as an RFC 7807
+  `application/problem+json` response, and the generated schema still
+  declared only FastAPI's default 422 shape, with no 401, 403 or 404 on
+  routes that return them - so a generated client trusted a shape the
+  server never sent. The schema now states the real content type and the
+  status codes each route can answer with (#77).
+- **Every authenticated request loaded the current user in two statements
+  instead of one**, a separate query per request for something a single
+  join already answers. Folding it into one `LEFT JOIN` lowers the
+  authenticated-read query budget by one statement on every request in the
+  product (#208).
+- **A single forbidden licence on a tri-licensed component was not
+  re-checked against the licence registry.** cdxgen recorded only the first
+  matching classifier where the registry knows all of them (e.g. a
+  GPL/LGPL/MPL package, which should read conditional, not forbidden); the
+  scan now re-checks the one case that matters instead of every component
+  (#95).
+- **The password-reset cooldown was compared against the application's
+  clock instead of the database's**, which measured up to 2.8 seconds behind
+  it on the same machine - enough to leave a configured cooldown window
+  running longer than configured (#97).
+- **AI-model license conformance missed a model that is an SBOM's own
+  subject** rather than a dependency it names - an ML-BOM published about a
+  model, not about the job that built it, read as containing no models at
+  all, silently dropping the entire 51-check baseline (#93).
+- **Plural translation keys were never resolved.** The build gate's
+  known-malicious-package message used the old i18next v3 `_plural` suffix,
+  which v4 does not read, so a build blocked on five packages reported one.
+  `i18n:check` now rejects the old suffix, and a runtime contract test
+  resolves every plural key in both locales (#102).
+- **The five severity tiers had more than one Korean name.** Critical read
+  as 치명 in five places and 심각 in one, and the portfolio legend was left
+  in English in one more; a contract test now holds every place that names
+  the whole scale to one vocabulary (#103).
+- **Backend error messages reached Korean sessions in English** on 47 call
+  sites that read the API's (always-English) RFC 7807 detail text directly
+  instead of the translation keys sitting unused beside them. A shared
+  `problemMessage()` helper now classifies the failure and translates the
+  class, falling back to the backend's text only where nothing on the
+  frontend knows better (#104, #106).
+- **Counts rendered as raw digit strings with no thousands separator**, and
+  a quiet trend window printed "+0 −0" as though two changes had cancelled
+  out rather than nothing having happened (#130).
+- **The audit log printed a raw UTC instant with no timezone**, while every
+  other timestamp on the page rendered in the browser's own zone - the same
+  moment could read as two different times with nothing to explain the gap.
+  One shared formatter now names its zone everywhere (#126).
+- **`?release=` on the releases list and detail endpoints answered whether a
+  version label existed even for a team that could not read it** (403 for an
+  existing label, 404 for a nonexistent one - a status-code oracle). The
+  lookup is now team-scoped before it answers either way (#146).
+- **A very large `page` query parameter caused a 500 instead of a 422.**
+  Every listing endpoint bounded `page` below but not above, so an
+  unbounded value reached Postgres as an out-of-range integer. All 19
+  affected endpoints now share one ceiling (#74).
+- **A NUL byte in a text field caused a 500 instead of a 422** on any
+  endpoint that stores a caller-supplied string, since Postgres rejects
+  `U+0000` in `text` and `jsonb` after validation has already passed (#79).
+- **The Flagged-only component filter did nothing.** The toggle wrote a
+  query parameter the fetch hook never declared, so the list never
+  narrowed; a table width regression from the same period is also fixed
+  (#70).
+- **Backups failed with a permission error on the non-root worker.** Moving
+  the worker to a fixed uid left the backups directory unclaimed by it on
+  bind-mounted dev deployments; it now uses a named volume owned by that
+  uid (#70).
+- **A scan running past the Celery broker's visibility timeout could be
+  redelivered to a second worker while the first was still running it**,
+  letting one scan occupy two slots. The timeout is now derived from the
+  scan hard time limit plus a margin instead of using Redis's 3600-second
+  default (#195). Operators may see scan failures that this had previously
+  been masking as a silent retry.
+- **The reachability follow-up task had no time limit at all** and could pin
+  a worker slot indefinitely on a hang outside its already-bounded
+  `govulncheck` subprocess call (#196).
+- **bcrypt password verification ran on the request event loop**, blocking
+  every other request on that worker for its full ~213ms during every login
+  and API-key check. Verification now offloads to a thread (#197).
+- **SBOM export blocked the event loop while building and serializing large
+  documents**, serializing every other request behind it; all four export
+  formats now offload the same way the PDF/XLSX reports already did (#199).
+- **The dashboard's action-queue recount issued one query per project**
+  instead of batching every affected scan into one, and `/summary` carried
+  no rate limit while the other dashboard routes did (#200).
+- **The per-user WebSocket connection cap lived in a process-local dict**, so
+  whether a second tab evicted the first depended on which worker process or
+  pod the sockets happened to land on. It is now Redis-backed and exact
+  across the deployment, and a new global cap refuses connections outright
+  once the whole system is saturated instead of evicting an unrelated user
+  (#202).
+- **A worker pod's termination grace period (30s Kubernetes default, 10s
+  Compose default) was far shorter than a scan can legitimately run**, so
+  scaling the worker pool down under a growing queue could restart in-flight
+  scans from zero and make the queue longer instead of shorter. Both now
+  match the scan hard time limit with a margin, and a `preStop` hook
+  triggers Celery's warm shutdown (#211).
+- **A Helm-rendered Secret silently derived `API_KEY_HMAC_SECRET` from
+  `secretKey` when left blank**, so the fail-closed check meant to catch a
+  missing HMAC secret never fired, reopening the exact exposure the HMAC
+  migration (#221) closed: a leaked `SECRET_KEY` would also expose API-key
+  hashing. The chart now requires the value explicitly, the same as
+  `secretKey` (#226).
+- Container images stopped publishing a movable `latest` tag alongside the
+  versioned one; `docker/metadata-action`'s `flavor: latest=auto` appended it
+  automatically regardless of the workflow's own tag list (#72).
+
+### Security
+- **New API keys are hashed with HMAC-SHA256 instead of bcrypt.** An API-key
+  secret is a 192-bit random value, not a human-chosen password, so bcrypt's
+  deliberate slowness defends nothing while still costing roughly 213ms of
+  CPU per verification. Keys issued before this release keep authenticating
+  against their existing bcrypt hash; a new admin endpoint reports how many
+  are still on the legacy format. The change reopened a timing oracle where
+  response time alone could reveal whether a guessed key prefix existed on
+  the legacy format, which is closed by padding every verification branch to
+  a shared wall-clock floor until the fleet has migrated (#221). A related
+  Helm gap that could silently reuse `SECRET_KEY` for this secret is fixed
+  in the same release (#226, see Fixed).
+- **The `redirect_after` parameter on the public OAuth authorize endpoint was
+  never validated**, so a link could carry an absolute URL that travelled
+  into the signed OAuth state and out of the callback as a redirect in the
+  same response that sets the refresh cookie - an open redirect at the exact
+  moment a lookalike page is most convincing. It is now checked when the
+  state is minted and again when it is read, resolved only against the
+  frontend's own origin. A related, lower-severity gap on the frontend's own
+  post-login redirect is fixed in the same change (#120).
+- **`/auth/reset-password` had no rate limit and verified every candidate
+  reset token with a synchronous bcrypt loop** (up to 256 candidates) inside
+  the request handler, letting an unauthenticated caller stall the whole
+  worker for tens of seconds. It now shares login's 5/minute/IP default and
+  runs the verify loop as one offloaded unit of work (#198).
+- **Every production container now runs as its own unprivileged user
+  instead of root.** The frontend image runs as `nginx`, the worker image
+  (the last one still running as root, because its bundled SCA toolchain
+  caches under whoever's `HOME` runs it) now runs as `trustedoss` with every
+  cache path pinned under its home directory, and the Helm chart gives
+  backend, frontend, worker, beat and redis a real pod and container
+  security context: a pinned non-root uid, every capability dropped, no
+  privilege escalation, and a sealed root filesystem where the image allows
+  it (#62, #63, #65).
+- **Worker image: patched several CVEs surfaced by scheduled image
+  scanning** - cosign bumped past a `golang.org/x/net` denial-of-service
+  (#91); two Go stdlib waves patched across the bundled toolchain, with a
+  documented reach analysis for the two prebuilt binaries (cosign, the
+  Docker CLI) that ship their own Go runtime ahead of upstream fixing it
+  (#116, #127); and cdxgen's bundled `jsonata` (arbitrary code execution via
+  crafted expressions) and `tar` (path-length denial-of-service) patched via
+  the existing npm-pack-swap pattern (#201).
 
 ## [0.21.0] — 2026-08-10
 

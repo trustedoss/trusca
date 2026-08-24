@@ -15,7 +15,7 @@ sidebar_position: 3
 [Docker Compose 설치](./docker-compose.md)가 더 간단합니다.
 :::
 
-Helm 차트(`charts/trustedoss`, 차트 버전 **0.21.0**)는 포털 전체를 배포합니다.
+Helm 차트(`charts/trustedoss`, 차트 버전 **0.22.0**)는 포털 전체를 배포합니다.
 FastAPI 백엔드, Celery 워커와 beat 스케줄러, React 프론트엔드, TLS가 적용된
 Ingress, 데이터베이스 마이그레이션 Job을 포함합니다. PostgreSQL과 Redis는
 클러스터 내부에 번들(평가용)하거나 외부 관리형 데이터스토어를 가리킬 수
@@ -205,7 +205,7 @@ pre-upgrade 마이그레이션 Job이 새 파드 롤아웃 전에 새 스키마�
 
 | 키 | 기본값 | 용도 |
 |---|---|---|
-| `image.tag` | `0.21.0` | backend / worker / frontend 이미지 태그(절대 `:latest` 금지). |
+| `image.tag` | `0.22.0` | backend / worker / frontend 이미지 태그(절대 `:latest` 금지). |
 | `ingress.host` | `""` | **필수.** 공개 호스트명. |
 | `env.corsAllowedOrigins` | `""` | **프로덕션 필수.** 허용 브라우저 오리진(와일드카드 금지). |
 | `env.secret.secretKey` | `""` | `SECRET_KEY`(≥32자). `existingSecret`이 없으면 필수. |

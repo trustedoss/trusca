@@ -37,8 +37,9 @@ Organization (one per deployment)
 | **`super_admin`** | Org-wide | All admin screens (`/admin/**`). Can create / delete teams. Can edit any project. Can read every audit log. |
 | **`team_admin`** | Per team | Manage team membership and team settings. Edit any project owned by the team. Dispose approvals. Manage API keys for the team. |
 | **`developer`** | Per team | Read team projects. Create / edit projects. Run and cancel scans. Triage findings (VEX state). Cannot manage members or settings. |
+| **`viewer`** | Per team | Read-only across the portal: projects, components, vulnerabilities, licenses, obligations, SBOMs, reports, search, the approval queue, and license policy. Cannot run scans, edit anything, or reach the source tree, credentials, or the audit log. |
 
-Roles are **additive across teams** — a user can be `team_admin` in one team and `developer` in another. The role is evaluated per project based on the project's owning team.
+Roles are **additive across teams**: a user can be `team_admin` in one team and `developer` in another. The role is evaluated per project based on the project's owning team. Every write action checks rank rather than an exact role match, so `viewer` is the floor below `developer` rather than a separate permission set.
 
 `super_admin` is **not** a per-team role; it grants org-wide access regardless of team membership.
 

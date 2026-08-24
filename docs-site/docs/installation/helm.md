@@ -15,7 +15,7 @@ administration (Ingress, StorageClasses, cert-manager) proficiency. If you run a
 single host, the [Docker Compose install](./docker-compose.md) is simpler.
 :::
 
-The Helm chart (`charts/trustedoss`, chart version **0.21.0**) deploys the full
+The Helm chart (`charts/trustedoss`, chart version **0.22.0**) deploys the full
 portal: the FastAPI backend, the Celery worker and beat scheduler, the React
 frontend, an Ingress with TLS, and a database migration Job. PostgreSQL and
 Redis can either be bundled in-cluster (for evaluation) or pointed at external
@@ -205,7 +205,7 @@ The values you most often set:
 
 | Key | Default | Purpose |
 |---|---|---|
-| `image.tag` | `0.21.0` | Image tag for backend / worker / frontend (never `:latest`). |
+| `image.tag` | `0.22.0` | Image tag for backend / worker / frontend (never `:latest`). |
 | `ingress.host` | `""` | **Required.** Public hostname. |
 | `env.corsAllowedOrigins` | `""` | **Required in prod.** Allowed browser origins (no wildcard). |
 | `env.secret.secretKey` | `""` | `SECRET_KEY` (≥32 chars). Required unless `existingSecret`. |
