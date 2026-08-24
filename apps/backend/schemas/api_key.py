@@ -192,9 +192,35 @@ class APIKeyListPage(BaseModel):
     page_size: int
 
 
+class APIKeyHashMigrationOut(BaseModel):
+    """Response for ``GET /v1/admin/api-keys/hash-migration`` (A5).
+
+    concurrency-scaling-plan-2026-08-22.md §3.3 A5: API-key hashing moved
+    from bcrypt to a fast keyed HMAC-SHA256, expand-first. A key issued
+    before that change keeps its bcrypt hash until it is reissued (there is
+    no bulk-migration job), so this endpoint gives an operator the count
+    needed to confirm "every active key has moved" before the follow-up
+    change that drops bcrypt-hash reads from the auth path.
+    """
+
+    legacy_bcrypt_count: int = Field(
+        description=(
+            "Active (not revoked, not expired) API keys still hashed with "
+            "the legacy bcrypt format. Zero means it is safe to schedule "
+            "the contraction step (dropping bcrypt reads from the "
+            "authentication path)."
+        )
+    )
+    hmac_sha256_count: int = Field(
+        description="Active API keys already hashed with the new HMAC-SHA256 format."
+    )
+    active_total: int = Field(description="legacy_bcrypt_count + hmac_sha256_count.")
+
+
 __all__ = [
     "APIKeyCreateIn",
     "APIKeyCreateOut",
+    "APIKeyHashMigrationOut",
     "APIKeyListItem",
     "APIKeyListPage",
     "APIKeyScope",

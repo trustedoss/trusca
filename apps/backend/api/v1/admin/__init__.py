@@ -19,6 +19,7 @@ Sub-routers:
   - ``kev``    — ``/v1/admin/kev/*``     (Phase C: CISA KEV feed sync status panel)
   - ``eol``    — ``/v1/admin/eol/*``     (Phase M: endoflife.date snapshot status panel)
   - ``malicious`` — ``/v1/admin/malicious/*`` (#26: malicious-snapshot status panel)
+  - ``api_keys`` (``/v1/admin/api-keys/*``, A5: bcrypt-to-HMAC hash migration status)
 
 W6-#43a (ADR-0001): the ``dt`` sub-router was removed when DT was replaced
 by Trivy; previously-issued DT audit-log rows are preserved as
@@ -35,6 +36,7 @@ from fastapi import APIRouter, Depends
 from core.security import require_super_admin_or_404
 
 from . import (
+    api_keys,
     audit,
     backup,
     disk,
@@ -60,6 +62,7 @@ router = APIRouter(
 
 router.include_router(users.router)
 router.include_router(teams.router)
+router.include_router(api_keys.router)
 router.include_router(scans.router)
 router.include_router(disk.router)
 router.include_router(audit.router)

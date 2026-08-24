@@ -85,6 +85,7 @@
   "GET /v1/about/notices/{document_id}": [
     "document_id"
   ],
+  "GET /v1/admin/api-keys/hash-migration": [],
   "GET /v1/admin/audit": [
     "action",
     "actor_user_id",

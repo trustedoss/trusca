@@ -64,15 +64,15 @@ env:
   redis:
     url: redis://memorystore:6379/0
   secret:
-    existingSecret: trustedoss-prod-secrets   # carries DATABASE_URL_APP, DATABASE_URL_OWNER, REDIS_URL, SECRET_KEY
+    existingSecret: trustedoss-prod-secrets   # carries DATABASE_URL_APP, DATABASE_URL_OWNER, REDIS_URL, SECRET_KEY, API_KEY_HMAC_SECRET
   corsAllowedOrigins: https://trustedoss.example.com
 ingress:
   host: trustedoss.example.com
 ```
 
 When `env.secret.existingSecret` is set, the chart renders **no** Secret; the
-referenced Secret **must** carry all four keys: `DATABASE_URL_APP`,
-`DATABASE_URL_OWNER`, `REDIS_URL`, `SECRET_KEY`.
+referenced Secret **must** carry all five keys: `DATABASE_URL_APP`,
+`DATABASE_URL_OWNER`, `REDIS_URL`, `SECRET_KEY`, `API_KEY_HMAC_SECRET`.
 
 ## Migrations (B3 design)
 
@@ -112,8 +112,9 @@ connections before alembic runs.
 | `env.database.url` | `""` | External runtime (app) DSN. Used when `postgres.bundled=false`. |
 | `env.database.ownerUrl` | `""` | External owner/DDL DSN (migration Job). Falls back to `url`. |
 | `env.redis.url` | `""` | External `REDIS_URL`. Used when `redis.bundled=false`. |
-| `env.secret.existingSecret` | `""` | Pre-created Secret with all four keys; disables the chart Secret. |
+| `env.secret.existingSecret` | `""` | Pre-created Secret with all five keys; disables the chart Secret. |
 | `env.secret.secretKey` | `""` | `SECRET_KEY` (>=32 chars). Required unless `existingSecret`. |
+| `env.secret.apiKeyHmacSecret` | `""` | `API_KEY_HMAC_SECRET` (A5, >=32 chars), a dedicated key for hashing stored API-key secrets. Optional: left blank, the chart derives one deterministically from `secretKey` so the rendered Secret always carries a value. Set explicitly in production for an independently rotatable key. |
 | `env.trivy.dbRepository` | `ghcr.io/aquasecurity/trivy-db` | `TRIVY_DB_REPOSITORY` — OCI registry the worker pulls the cached DB from. Override for an air-gapped mirror. |
 | `env.trivy.dbRefreshHours` | `168` | `TRIVY_DB_REFRESH_HOURS` — beat cadence for the DB refresh task. |
 | `env.trivy.dbCacheDir` | `/var/lib/trivy` | `TRIVY_DB_CACHE_DIR` — in-container path the cached DB lands at. |

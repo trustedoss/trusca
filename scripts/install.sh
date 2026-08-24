@@ -20,6 +20,10 @@
 #   INSTALL_ADMIN_EMAIL     super-admin email   (default: admin@trustedoss.local)
 #   INSTALL_ADMIN_PASSWORD  super-admin password (default: openssl rand -base64 24)
 #   INSTALL_SECRET_KEY      JWT signing key      (default: openssl rand -hex 32)
+#   INSTALL_API_KEY_HMAC_SECRET
+#                           API-key hashing key (core.config.api_key_hmac_secret,
+#                           A5), a dedicated, rotatable HMAC key for hashing
+#                           stored API-key secrets. (default: openssl rand -hex 32)
 #   INSTALL_REUSE_ENV       "1" reuses an existing .env, else it is rotated to
 #                           .env.backup-<utc>. Default: 0 (rotate).
 #
@@ -51,7 +55,8 @@ Usage: bash scripts/install.sh [--no-prompt]
 
   --no-prompt   Run non-interactively. Reads INSTALL_HOST,
                 INSTALL_ADMIN_EMAIL, INSTALL_ADMIN_PASSWORD,
-                INSTALL_SECRET_KEY, INSTALL_REUSE_ENV from the environment.
+                INSTALL_SECRET_KEY, INSTALL_API_KEY_HMAC_SECRET,
+                INSTALL_REUSE_ENV from the environment.
 USAGE
       exit 0
       ;;
@@ -180,12 +185,25 @@ if [[ $NO_PROMPT -eq 1 && -n "${INSTALL_SECRET_KEY:-}" ]]; then
 else
   pinned_secret_key=""
 fi
+# API_KEY_HMAC_SECRET (A5, core.config.api_key_hmac_secret): unlike
+# GITHUB_APP_ENCRYPTION_KEY (opt-in integration, left blank by default) this
+# key sits on the default API-key auth path. core.config fails closed
+# (RuntimeError) when APP_ENV != dev and the var is unset, so a fresh prod
+# install must always come up with one already set. Same --no-prompt pin /
+# preserve-existing / generate precedence as SECRET_KEY above.
+if [[ $NO_PROMPT -eq 1 && -n "${INSTALL_API_KEY_HMAC_SECRET:-}" ]]; then
+  pinned_api_key_hmac_secret="$INSTALL_API_KEY_HMAC_SECRET"
+  note "using INSTALL_API_KEY_HMAC_SECRET (length=${#pinned_api_key_hmac_secret})"
+else
+  pinned_api_key_hmac_secret=""
+fi
 # Generated secrets use a COMPOSE-SAFE alphabet — openssl base64 minus '=+/'
 # leaves [A-Za-z0-9] only. That guarantees a generated value never needs
 # URL-encoding in a DSN and never trips docker-compose .env interpolation
 # ('$', '#', whitespace), so the raw POSTGRES_PASSWORD line and the DSN stay
 # byte-consistent (closes the special-char raw/DSN mismatch class).
 gen_secret_key=$(openssl rand -hex 32)
+gen_api_key_hmac_secret=$(openssl rand -hex 32)
 gen_db_password=$(openssl rand -base64 24 | tr -d '=+/')
 
 # Environment overrides (optional). When exported these seed .env so an
@@ -204,6 +222,8 @@ env_app_user="${POSTGRES_APP_USER:-}"
 mode=$(
   PINNED_SECRET="$pinned_secret_key" \
   GEN_SECRET="$gen_secret_key" \
+  PINNED_API_KEY_HMAC_SECRET="$pinned_api_key_hmac_secret" \
+  GEN_API_KEY_HMAC_SECRET="$gen_api_key_hmac_secret" \
   GEN_DB_PASSWORD="$gen_db_password" \
   ENV_PG_USER="$env_pg_user" \
   ENV_PG_PASSWORD="$env_pg_password" \
@@ -217,6 +237,8 @@ from urllib.parse import quote
 
 pinned_secret    = os.environ["PINNED_SECRET"]
 gen_secret       = os.environ["GEN_SECRET"]
+pinned_api_key_hmac_secret = os.environ["PINNED_API_KEY_HMAC_SECRET"]
+gen_api_key_hmac_secret    = os.environ["GEN_API_KEY_HMAC_SECRET"]
 gen_db_password  = os.environ["GEN_DB_PASSWORD"]
 env_pg_user      = os.environ["ENV_PG_USER"]
 env_pg_password  = os.environ["ENV_PG_PASSWORD"]
@@ -258,6 +280,19 @@ elif cur_secret and cur_secret != PLACEHOLDER_SECRET:
 else:
     secret = gen_secret
 text = upsert(text, "SECRET_KEY", secret)
+
+# --- API_KEY_HMAC_SECRET: pinned > existing-non-placeholder > generated ----
+# .env.example ships this key BLANK (unlike SECRET_KEY's placeholder string),
+# so "unset" is the placeholder state here: any non-empty existing value is a
+# genuine operator/prior-run value and is preserved (idempotent re-run).
+cur_api_key_hmac_secret = get("API_KEY_HMAC_SECRET")
+if pinned_api_key_hmac_secret:
+    api_key_hmac_secret = pinned_api_key_hmac_secret
+elif cur_api_key_hmac_secret:
+    api_key_hmac_secret = cur_api_key_hmac_secret    # preserve, idempotent re-run
+else:
+    api_key_hmac_secret = gen_api_key_hmac_secret
+text = upsert(text, "API_KEY_HMAC_SECRET", api_key_hmac_secret)
 
 # --- Owner (superuser) identity + password --------------------------------
 # Owner password precedence: explicit env override > a GENUINE existing value
@@ -304,6 +339,7 @@ print("L1" if app_password else "single-role")
 PYTHON
 )
 ok "secrets synced (idempotent) — strong owner password, DSN pinned to POSTGRES_PASSWORD [${mode}]"
+note "SECRET_KEY and API_KEY_HMAC_SECRET are set (generated unless pinned/preserved)"
 
 # ---------------------------------------------------------------------------
 # 2c. Worker CPU limit — clamp to the host's online CPU count (small-box safety)

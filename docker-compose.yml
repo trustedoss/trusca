@@ -198,6 +198,15 @@ x-backend-env: &backend-env
   # cosign key password). Unset in dev/CI derives from SECRET_KEY (WARNING);
   # APP_ENV=prod with no key FAILS CLOSED. See core/crypto.py + .env.example.
   GITHUB_APP_ENCRYPTION_KEY: ${GITHUB_APP_ENCRYPTION_KEY:-}
+  # A5 - dedicated, rotatable HMAC key for hashing stored API-key secrets
+  # (core.config.api_key_hmac_secret). Same fail-closed posture as
+  # GITHUB_APP_ENCRYPTION_KEY above (unset in dev/CI derives from SECRET_KEY
+  # with a WARNING; APP_ENV=prod with no key FAILS CLOSED), but unlike that
+  # var this one sits on the default authenticated-API path, not an opt-in
+  # integration. install.sh auto-generates it the same way it generates
+  # SECRET_KEY, so a fresh prod install always ships one. Read via
+  # os.getenv() at runtime (rule #11); never baked into the image.
+  API_KEY_HMAC_SECRET: ${API_KEY_HMAC_SECRET:-}
   # cosign SBOM signing (v2.3-s1). KEY-BASED is the default (D2); keyless is
   # opt-in via COSIGN_KEYLESS=true. Signing is best-effort — an unset key just
   # means unsigned SBOMs, not a failed scan. Worker reads each via os.getenv()

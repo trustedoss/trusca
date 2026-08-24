@@ -174,6 +174,15 @@ password or an OAuth client secret does not belong in a file people commit.
     secretKeyRef:
       name: {{ $secretName }}
       key: SECRET_KEY
+# A5 — dedicated, rotatable HMAC key for hashing stored API-key secrets
+# (core.config.api_key_hmac_secret). Mirrors SECRET_KEY's wiring; see
+# secret.yaml for how the key is resolved (pinned value, or derived from
+# secretKey when env.secret.apiKeyHmacSecret is left blank).
+- name: API_KEY_HMAC_SECRET
+  valueFrom:
+    secretKeyRef:
+      name: {{ $secretName }}
+      key: API_KEY_HMAC_SECRET
 {{- /* Chart 0.3.0 (W6 / ADR-0001) — DT_API_KEY removed. Trivy DB is local to
        the worker (no external engine), so no secret material is injected for
        vulnerability matching. */ -}}

@@ -10,12 +10,22 @@ Security contracts:
 
   - Plaintext format: ``tos_<8-char prefix>_<32-char url-safe secret>``.
     The plaintext is returned ONCE from :func:`issue_api_key` and immediately
-    discarded by the service (only the bcrypt hash and the public 12-char
+    discarded by the service (only the stored hash and the public 12-char
     prefix are persisted). Subsequent reads return the prefix + metadata.
 
-  - bcrypt cost-12 (CLAUDE.md §3) — same as user passwords.
-    Verification (:func:`verify_api_key_plaintext`) uses
-    :func:`core.security.verify_password` which is constant-time.
+  - Hashing (A5, concurrency-scaling-plan-2026-08-22.md §3.3): NEW keys are
+    hashed with keyed HMAC-SHA256 (:func:`core.security.hash_api_key_secret`),
+    not bcrypt. The secret half is a 192-bit random value, not a human-chosen
+    password, so bcrypt's slowness bought no defence against brute force
+    (the only recovery path either way is exhaustive search over 192 bits)
+    while still costing ~213ms of CPU per verification. Keys issued BEFORE
+    this landed keep their bcrypt hash: this is an expand/read-both
+    migration, not a rewrite. :func:`verify_api_key_plaintext` inspects the
+    stored value's format marker (:func:`core.security.is_api_key_hmac_hash`)
+    and dispatches to the matching verifier, both constant-time
+    (``hmac.compare_digest`` / passlib's bcrypt ``checkpw``). See
+    ``core.config.api_key_hmac_secret`` for the server-side key and
+    ``authenticate_api_key``'s docstring for the timing-flattening dummy.
 
   - Soft-delete on revocation. The auth path filters on ``revoked_at IS NULL``
     so a revoked key is invisible without losing audit history.
@@ -42,16 +52,18 @@ Security contracts:
     via ``core.audit._SENSITIVE_COLUMNS``.
 
   - Logging:
-    The plaintext key, the secret half, and the bcrypt hash NEVER appear in
-    log lines. We log only ``key_prefix``, ``id``, ``scope``, and the actor
-    metadata.
+    The plaintext key, the secret half, and the stored hash (either format)
+    NEVER appear in log lines. We log only ``key_prefix``, ``id``, ``scope``,
+    and the actor metadata.
 """
 
 from __future__ import annotations
 
 import asyncio
 import secrets
+import time
 import uuid
+from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 
 import structlog
@@ -59,8 +71,18 @@ from sqlalchemy import and_, func, or_, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from core.config import api_key_last_used_at_update_interval_seconds
-from core.security import CurrentUser, hash_password, verify_password, verify_password_async
+from core.config import (
+    api_key_last_used_at_update_interval_seconds,
+    api_key_verification_min_duration_seconds,
+)
+from core.security import (
+    API_KEY_HASH_SCHEME,
+    CurrentUser,
+    hash_api_key_secret,
+    is_api_key_hmac_hash,
+    verify_api_key_hmac,
+    verify_password,
+)
 from models import APIKey, Project, User
 
 log = structlog.get_logger("api_key.service")
@@ -176,8 +198,61 @@ def parse_bearer(plaintext: str) -> tuple[str, str] | None:
 
 
 def verify_api_key_plaintext(plaintext: str, hashed: str) -> bool:
-    """Constant-time bcrypt verification (delegates to core.security)."""
+    """Constant-time verification against a stored API-key hash.
+
+    Dispatches on ``hashed``'s format marker (A5,
+    concurrency-scaling-plan-2026-08-22.md §3.3):
+
+      - ``hmac-sha256$<hex>`` (new keys, issued after A5 landed) -> keyed
+        HMAC-SHA256 (:func:`core.security.verify_api_key_hmac`).
+      - anything else (bcrypt's own ``$2a$``/``$2b$``/``$2y$`` marker; every
+        key issued before A5) -> the legacy bcrypt path
+        (:func:`core.security.verify_password`), unchanged.
+
+    Both branches are constant-time within themselves, but NOT
+    constant-time relative to EACH OTHER (HMAC is microseconds, bcrypt is
+    ~213ms) -- see :func:`_verify_api_key_plaintext_padded` for the caller
+    that closes that gap back up. This function is itself synchronous and
+    CPU-bound on the bcrypt branch; callers on the request path MUST run it
+    via ``asyncio.to_thread`` (see :func:`authenticate_api_key`), never call
+    it directly from an ``async def`` body.
+    """
+    if is_api_key_hmac_hash(hashed):
+        return verify_api_key_hmac(plaintext, hashed)
     return verify_password(plaintext, hashed)
+
+
+async def _verify_api_key_plaintext_padded(plaintext: str, hashed: str) -> bool:
+    """Run :func:`verify_api_key_plaintext` off the event loop, then pad the
+    wall-clock time up to
+    :func:`core.config.api_key_verification_min_duration_seconds`.
+
+    Fixes a residual timing oracle the A5 hash-format migration opened
+    (security-reviewer finding on the A5 PR): once real HMAC verification
+    and the timing-flattening dummy branch both got fast, a row still on
+    the legacy bcrypt format kept its old ~213ms cost, so response time
+    ALONE could tell an attacker "this key_prefix still exists and is
+    still bcrypt-format" without ever presenting a valid secret. The
+    192-bit secret itself never leaked, but this reopened exactly the kind
+    of timing asymmetry unit A1 closed, which this migration must not
+    reopen any part of. Padding every branch (real HMAC, real bcrypt, or
+    the dummy) up to the same floor closes the gap again. See the floor
+    accessor's own docstring for the full rationale, why this padding is
+    temporary, and how to tell when it can be removed.
+
+    Both :func:`authenticate_api_key` call sites (the real branch and the
+    dummy branch) go through this wrapper rather than calling
+    ``asyncio.to_thread(verify_api_key_plaintext, ...)`` directly, so the
+    padding fix applies uniformly to every branch, not just some of them.
+    """
+    floor = api_key_verification_min_duration_seconds()
+    start = time.monotonic()
+    result = await asyncio.to_thread(verify_api_key_plaintext, plaintext, hashed)
+    elapsed = time.monotonic() - start
+    remaining = floor - elapsed
+    if remaining > 0:
+        await asyncio.sleep(remaining)
+    return result
 
 
 # ---------------------------------------------------------------------------
@@ -353,7 +428,10 @@ async def issue_api_key(
         prefix = _generate_prefix()
         secret = _generate_secret()
         plaintext = _format_plaintext(prefix, secret)
-        key_hash = hash_password(plaintext)
+        # A5: every key issued from this point on is hashed with the fast
+        # keyed HMAC format, not bcrypt. See the module docstring's
+        # "Hashing (A5)" contract.
+        key_hash = hash_api_key_secret(plaintext)
 
         row = APIKey(
             key_prefix=prefix,
@@ -388,8 +466,9 @@ async def issue_api_key(
             continue
 
         await session.refresh(row)
-        # Drop the bcrypt hash variable — defence in depth, the GC will get
-        # to it but be explicit so an accidental late log line cannot capture it.
+        # Drop the hash variable (defence in depth: the GC will get to it,
+        # but being explicit means an accidental late log line cannot
+        # capture it, whichever format it is).
         del key_hash
 
         log.info(
@@ -630,12 +709,36 @@ async def authenticate_api_key(
     401 depending on the route's policy.
 
     Constant-time path:
-      - We always run the bcrypt verification once on the matched row's
-        ``key_hash``. If no row matches, we run a dummy verification against
-        a sentinel hash so the timing distribution is similar between the
-        "wrong prefix" and "right prefix, wrong secret" branches. This is
-        defence in depth — a sophisticated attacker could still distinguish
-        via DB latency, but that requires repeated probes.
+      - We always run one verification (dispatched by
+        :func:`verify_api_key_plaintext` to whichever format the matched
+        row's ``key_hash`` uses) on the matched row. If no row matches, we
+        run a dummy verification against a sentinel hash so the timing
+        distribution is similar between the "wrong prefix" and "right
+        prefix, wrong secret" branches. This is defence in depth: a
+        sophisticated attacker could still distinguish via DB latency, but
+        that requires repeated probes.
+
+      - A5 (concurrency-scaling-plan-2026-08-22.md §3.3) changed WHICH
+        format the dummy targets: it now hashes with
+        :func:`core.security.hash_api_key_secret` (the fast HMAC-SHA256
+        path), not bcrypt. On its own this would OPEN a new gap: once real
+        verification is fast for the common case (a key issued after A5),
+        a row still on the legacy bcrypt format would keep its slow
+        ~213ms wrong-secret cost while everything else (HMAC, the dummy)
+        is microseconds, so response time alone would tell an attacker
+        "this key_prefix still exists and is still bcrypt-format" with no
+        valid secret required. security-reviewer flagged exactly this gap
+        on the A5 PR. The fix is :func:`_verify_api_key_plaintext_padded`
+        (used by BOTH branches below, real and dummy, either format):
+        it pads every verification's wall-clock time up to
+        :func:`core.config.api_key_verification_min_duration_seconds`
+        (default 220ms), so a branch that finished early sleeps off the
+        remainder and a branch already at or above the floor (bcrypt) is
+        unaffected. This padding is TEMPORARY -- it exists only while
+        bcrypt-format rows can still be matched, and should be removed once
+        :func:`count_legacy_hash_api_keys` reports zero in production and
+        the contract step (dropping bcrypt reads entirely) ships; see that
+        accessor's docstring for the removal criteria.
 
     Rate-limit coverage (RED-team F-1):
       Repeated probes are throttled ONLY on routes that carry a limiter
@@ -647,7 +750,7 @@ async def authenticate_api_key(
       (``default_limits=[]``), so any FUTURE route that accepts a key bearer
       MUST add ``@limiter.shared_limit(api_read_rate_limit, scope="api_read",
       key_func=_authenticated_user_key)`` (or a stricter policy) or it inherits
-      zero throttling on this bcrypt path.
+      zero throttling on this verification path.
     """
     parsed = parse_bearer(plaintext)
     if parsed is None:
@@ -673,19 +776,21 @@ async def authenticate_api_key(
     ).scalar_one_or_none()
 
     if row is None:
-        # Dummy bcrypt to flatten timing — passlib's verify is constant-time
-        # against a single hash so we just call it on a known bcrypt hash that
-        # will never match (a freshly hashed empty string). Off the event
-        # loop like the real check below (unit A1): a dummy verification is
-        # still ~213ms of bcrypt CPU, and skipping the offload here would
-        # leave an unauthenticated request (any string, matching no prefix)
-        # able to stall every other request on this worker, plus reopen the
-        # very timing gap this dummy hash exists to close if only the real
-        # branch were offloaded.
-        await verify_password_async(plaintext, _DUMMY_BCRYPT_HASH)
+        # Dummy verification to flatten timing (A1, retargeted to the fast
+        # HMAC profile by A5; see this function's docstring for why, and
+        # for the min-duration padding that closes the resulting gap back
+        # up). The dummy hash is built fresh on every call rather than
+        # cached at module scope: hash_api_key_secret reads
+        # API_KEY_HMAC_SECRET via os.getenv at call time (CLAUDE.md core
+        # rule #11), and a fresh random plaintext each call means the same
+        # dummy digest never repeats. Routed through the identical padded
+        # helper as the real branch below, so there is exactly one code
+        # path to keep offloaded-and-padded, not two.
+        dummy_hash = hash_api_key_secret(secrets.token_hex(32))
+        await _verify_api_key_plaintext_padded(plaintext, dummy_hash)
         return None
 
-    if not await asyncio.to_thread(verify_api_key_plaintext, plaintext, row.key_hash):
+    if not await _verify_api_key_plaintext_padded(plaintext, row.key_hash):
         return None
 
     # last_used_at is coalesced into a bucket instead of updated once per
@@ -719,20 +824,88 @@ async def authenticate_api_key(
     return row
 
 
-# A pre-computed bcrypt hash of an unguessable string. Used purely to keep
-# the bcrypt timing path uniform when no prefix matches. Generated at import
-# time once; the value never authenticates anyone.
-# bcrypt cost 12 — same as live keys.
-_DUMMY_BCRYPT_HASH = hash_password(secrets.token_hex(32))
+# ---------------------------------------------------------------------------
+# Hash-format migration visibility (A5)
+# ---------------------------------------------------------------------------
+
+
+@dataclass(frozen=True)
+class APIKeyHashFormatCounts:
+    """Snapshot of how many still-usable API keys use each hash format.
+
+    "Active" mirrors :func:`authenticate_api_key`'s own row filter: not
+    revoked, and not expired. A key nobody can use any more (revoked, or
+    past its ``expires_at``) is excluded, since it never runs through the
+    bcrypt-vs-HMAC branch again; counting it would overstate how much
+    legacy-format traffic remains.
+    """
+
+    legacy_bcrypt: int
+    hmac_sha256: int
+
+    @property
+    def total(self) -> int:
+        return self.legacy_bcrypt + self.hmac_sha256
+
+
+async def count_legacy_hash_api_keys(session: AsyncSession) -> APIKeyHashFormatCounts:
+    """Count active API keys by stored-hash format (A5 migration progress).
+
+    concurrency-scaling-plan-2026-08-22.md §3.3 A5: two things only happen
+    once every active key has moved to the new HMAC format. First, the
+    contraction step (dropping bcrypt reads from
+    :func:`authenticate_api_key` entirely). Second, removing the timing
+    padding in :func:`_verify_api_key_plaintext_padded` (see
+    ``core.config.api_key_verification_min_duration_seconds``'s docstring)
+    -- that padding exists only to hide the bcrypt-vs-HMAC timing gap, and
+    once no bcrypt-format row can be matched, there is nothing left to
+    hide. There is no bulk-migration job: a key's stored hash only changes
+    when the key is reissued (see the module docstring's "Hashing (A5)"
+    contract), so keys that are not rotated stay on bcrypt indefinitely.
+    This is the counter an operator uses to see migration progress, so
+    "every active key has moved" can be confirmed from data rather than
+    assumed from elapsed time. Exposed to super_admin via ``GET
+    /v1/admin/api-keys/hash-migration``.
+
+    Does no RBAC of its own: it counts across the whole deployment, not
+    one caller's visible set, so only a super_admin-gated caller may
+    reach it.
+    """
+    hmac_prefix = f"{API_KEY_HASH_SCHEME}$"
+    active_filter = and_(
+        APIKey.revoked_at.is_(None),
+        or_(
+            APIKey.expires_at.is_(None),
+            APIKey.expires_at > _now(),
+        ),
+    )
+    result = (
+        await session.execute(
+            select(
+                func.count().filter(APIKey.key_hash.startswith(hmac_prefix)).label("hmac_count"),
+                func.count().label("total_count"),
+            )
+            .select_from(APIKey)
+            .where(active_filter)
+        )
+    ).one()
+    hmac_count = int(result.hmac_count)
+    total_count = int(result.total_count)
+    return APIKeyHashFormatCounts(
+        legacy_bcrypt=total_count - hmac_count,
+        hmac_sha256=hmac_count,
+    )
 
 
 __all__ = [
     "APIKeyError",
     "APIKeyForbidden",
+    "APIKeyHashFormatCounts",
     "APIKeyIssueFailed",
     "APIKeyNotFound",
     "APIKeyScopeMismatch",
     "authenticate_api_key",
+    "count_legacy_hash_api_keys",
     "issue_api_key",
     "list_api_keys",
     "parse_bearer",

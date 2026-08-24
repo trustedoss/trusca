@@ -36,6 +36,7 @@ from __future__ import annotations
 
 import asyncio
 import hashlib
+import hmac
 import time
 import uuid
 from collections.abc import Callable
@@ -54,6 +55,7 @@ from sqlalchemy.orm import joinedload
 from core.audit import audit_context
 from core.config import (
     access_token_expire_minutes,
+    api_key_hmac_secret,
     permission_cache_ttl_seconds,
     refresh_token_expire_days,
     secret_key,
@@ -131,6 +133,76 @@ async def verify_password_async(plain: str, hashed: str) -> bool:
     since there is no event loop for them to block.
     """
     return await asyncio.to_thread(verify_password, plain, hashed)
+
+
+# ---------------------------------------------------------------------------
+# API-key keyed hashing (A5, concurrency-scaling-plan-2026-08-22.md §3.3)
+# ---------------------------------------------------------------------------
+#
+# API-key secrets (services.api_key_service) are 192-bit random values, not
+# human-chosen passwords, so bcrypt's deliberate slowness defends nothing;
+# see core.config.api_key_hmac_secret's docstring for the full argument.
+# HMAC-SHA256 keyed with a server-side secret is the replacement: forging a
+# valid hash for a chosen plaintext requires knowing that key, and the
+# comparison is constant-time via hmac.compare_digest.
+#
+# Stored format: ``"hmac-sha256$" + hex(HMAC-SHA256(api_key_hmac_secret(),
+# plaintext))``. The literal prefix acts as a version marker so a mixed
+# database (this key's rollout is expand-then-contract: new issuances write
+# this format, but keys issued before this landed keep their bcrypt hash
+# until they are next rotated) can tell which verifier a given row wants
+# without a separate schema column. bcrypt hashes never collide with this
+# prefix: passlib's bcrypt output always starts with ``$2a$``/``$2b$``/
+# ``$2y$``, so the check is unambiguous.
+
+API_KEY_HASH_SCHEME = "hmac-sha256"
+_API_KEY_HASH_PREFIX = f"{API_KEY_HASH_SCHEME}$"
+
+
+def hash_api_key_secret(plaintext: str) -> str:
+    """Return the keyed HMAC-SHA256 hash stored for a NEW API-key secret.
+
+    Used by :func:`services.api_key_service.issue_api_key` for every key
+    minted after A5 landed. Existing rows keep whatever bcrypt hash
+    :func:`hash_password` produced at issuance time; this function is not
+    retroactive.
+    """
+    digest = hmac.new(
+        api_key_hmac_secret().encode("utf-8"),
+        plaintext.encode("utf-8"),
+        hashlib.sha256,
+    ).hexdigest()
+    return f"{_API_KEY_HASH_PREFIX}{digest}"
+
+
+def is_api_key_hmac_hash(hashed: str) -> bool:
+    """True iff ``hashed`` is the new (A5) HMAC-SHA256 format.
+
+    False for the legacy bcrypt format (and for any other unrecognized
+    value); callers use this to route to the right verifier, and the
+    legacy/unrecognized branch is the SAFE default: it falls through to
+    bcrypt verification, which returns False rather than raising for a
+    malformed hash (see :func:`verify_password`).
+    """
+    return hashed.startswith(_API_KEY_HASH_PREFIX)
+
+
+def verify_api_key_hmac(plaintext: str, hashed: str) -> bool:
+    """Constant-time verification against a :func:`hash_api_key_secret` hash.
+
+    Returns False (never raises) if ``hashed`` is not in the expected
+    ``hmac-sha256$<hex>`` shape, mirroring :func:`verify_password`'s
+    fail-closed contract for a malformed stored value.
+    """
+    if not is_api_key_hmac_hash(hashed):
+        return False
+    expected_hex = hashed[len(_API_KEY_HASH_PREFIX) :]
+    candidate = hmac.new(
+        api_key_hmac_secret().encode("utf-8"),
+        plaintext.encode("utf-8"),
+        hashlib.sha256,
+    ).hexdigest()
+    return hmac.compare_digest(candidate, expected_hex)
 
 
 # ---------------------------------------------------------------------------

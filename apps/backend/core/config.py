@@ -690,6 +690,164 @@ def secret_key() -> str:
     return raw
 
 
+_API_KEY_HMAC_SECRET_ENV = "API_KEY_HMAC_SECRET"  # noqa: S105 -- env var name, not a secret value
+
+# Same floor as SECRET_KEY (_MIN_SECRET_LEN): both are HMAC/signing key
+# material and there is no reason to accept a weaker one here.
+_MIN_API_KEY_HMAC_SECRET_LEN = _MIN_SECRET_LEN
+
+
+def api_key_hmac_secret() -> str:
+    """Return the server-side key used to hash API-key secrets (A5).
+
+    concurrency-scaling-plan-2026-08-22.md §1.5 / §3.3 (A5): API-key secrets
+    are 192-bit random values (``secrets.token_urlsafe(24)``), not
+    human-chosen passwords, so bcrypt's deliberate slowness defends nothing
+    here (the only recovery path for a leaked hash is exhaustive search
+    over the same 192 bits either way, an infeasible size regardless of hash
+    speed). What it does cost is real CPU on every authenticated request
+    (~213ms/call measured at cost 12; 3.6 cores at the plan's T3 target
+    rate). A keyed hash (HMAC-SHA256) is the standard replacement for
+    machine credentials of this shape: correctness now depends on knowing
+    this server-side key, not on the hash function being slow. See
+    ``core.security.hash_api_key_secret`` / ``verify_api_key_hmac``.
+
+    Resolution order mirrors ``core.crypto``'s ``GITHUB_APP_ENCRYPTION_KEY``
+    (a DEDICATED key, deliberately not a reuse of ``secret_key()``), with
+    ONE deliberate difference in how strict the fail-closed check is (see
+    point 3):
+
+      1. ``API_KEY_HMAC_SECRET``, a dedicated, rotatable secret. This is the
+         path every non-dev deployment must use. Reusing ``SECRET_KEY``
+         (which signs every JWT) was considered and rejected: that key's
+         blast radius is every session in the system, and binding the
+         API-key hash to it means a leak of either secret compromises both
+         credential families at once, and rotating one to contain a leak
+         silently invalidates the other. A dedicated key keeps the two
+         credential systems independently rotatable and independently
+         contained.
+      2. If unset, DERIVE one deterministically (dev/CI convenience) from
+         ``secret_key()`` via a domain-separated SHA-256 digest, so local
+         bring-up needs no extra configuration. Domain separation (a fixed
+         label distinct from any other derivation in this codebase) keeps
+         this derived value different from e.g. ``core.crypto``'s derived
+         Fernet key even though both start from the same ``SECRET_KEY``.
+      3. Fail-closed on ``app_env() != "dev"`` (NOT just ``"prod"``): a
+         missing dedicated key RAISES rather than deriving, in staging as
+         well as prod. This is stricter than ``core.crypto``'s
+         ``GITHUB_APP_ENCRYPTION_KEY`` check, which only fails closed in
+         ``"prod"`` and still derives in staging. The two intentionally
+         differ: GitHub App credential storage is an opt-in feature (a
+         deployment that never registers a GitHub App never calls
+         ``encrypt_secret``), while API-key authentication is a default
+         request path the moment any API key exists, so a staging
+         environment that forgets to set this should fail loudly rather
+         than silently share the JWT secret's blast radius.
+
+    Raises:
+        RuntimeError: an explicitly-set value shorter than
+            ``_MIN_API_KEY_HMAC_SECRET_LEN`` characters, or a missing value
+            in a non-dev environment (staging or prod).
+    """
+    # Literal string (not the _API_KEY_HMAC_SECRET_ENV constant below) so
+    # tests/unit/test_config_key_contract.py's AST-based scan, which only
+    # recognizes a string literal as the first os.getenv() argument, counts
+    # this accessor as reading the key it documents.
+    raw = os.getenv("API_KEY_HMAC_SECRET")
+    if raw is not None and raw.strip() != "":
+        value = raw.strip()
+        if len(value) < _MIN_API_KEY_HMAC_SECRET_LEN:
+            raise RuntimeError(
+                f"{_API_KEY_HMAC_SECRET_ENV} must be at least "
+                f"{_MIN_API_KEY_HMAC_SECRET_LEN} characters (got {len(value)})"
+            )
+        return value
+
+    env = app_env()
+    if env != "dev":
+        raise RuntimeError(
+            f"{_API_KEY_HMAC_SECRET_ENV} is required in non-dev environments. "
+            "Refusing to derive the API-key hashing key from SECRET_KEY (that "
+            "would bind every stored API-key hash to the JWT secret's blast "
+            f"radius). Set a dedicated, rotatable {_API_KEY_HMAC_SECRET_ENV} "
+            f"(>={_MIN_API_KEY_HMAC_SECRET_LEN} chars)."
+        )
+
+    # Local import: keeps hashlib off the module's always-imported surface and
+    # matches the existing local-import-for-logging convention in this file.
+    import hashlib
+
+    # Local import: structlog stays off config's always-imported surface.
+    import structlog
+
+    structlog.get_logger("config").warning(
+        "config.api_key_hmac_secret_derived_from_secret_key",
+        detail=(
+            f"{_API_KEY_HMAC_SECRET_ENV} is unset; deriving the API-key "
+            "hashing key from SECRET_KEY. Set a dedicated, rotatable "
+            f"{_API_KEY_HMAC_SECRET_ENV} before deploying past dev (staging "
+            "or prod) -- otherwise rotating SECRET_KEY silently changes "
+            "every stored API-key hash's verification key too."
+        ),
+    )
+    # Domain-separated so this derived value differs from any other secret
+    # derived from the same SECRET_KEY elsewhere in the codebase (e.g.
+    # core.crypto's Fernet key derivation).
+    return hashlib.sha256(f"api-key-hmac-v1:{secret_key()}".encode()).hexdigest()
+
+
+def api_key_verification_min_duration_seconds() -> float:
+    """Wall-clock floor every API-key verification branch pads up to (A5).
+
+    security-reviewer finding on A5 (concurrency-scaling-plan-2026-08-22.md
+    §3.3): switching the default hash format from bcrypt to HMAC-SHA256
+    made the fast branches (HMAC verify, and the A1/A5 timing-flattening
+    dummy) MUCH faster than the branch that still checks a legacy
+    bcrypt-format row's wrong secret (~213ms, unchanged). During the
+    migration window that gap IS a timing oracle again: an attacker who
+    learns a ``key_prefix`` through any side channel (a partially-redacted
+    log, a support ticket, a screenshot) can now tell "this prefix still
+    exists and is still on the legacy format" from response time alone,
+    without ever presenting a valid secret. The 192-bit secret itself does
+    not leak, but this reopens exactly the kind of timing asymmetry unit A1
+    closed, and this migration is not allowed to reopen any part of it.
+
+    The fix: ``services.api_key_service.authenticate_api_key`` measures the
+    wall-clock time its verification call (real HMAC, real bcrypt, or the
+    dummy, whichever ran) actually took, and sleeps off the remainder up to
+    this floor before returning. A branch that was already at or above the
+    floor (bcrypt) is unaffected; branches that finished early (HMAC, the
+    dummy) get padded to match, so all four observable cases (unknown
+    prefix, known prefix + wrong secret in EITHER format, and by
+    construction the success path is at least as slow too) converge to
+    approximately the same wall-clock time again.
+
+    Default 0.220s (220ms): 213ms (the plan's §1.5 bcrypt measurement) plus
+    a small margin so bcrypt's own branch, which needs no padding, is never
+    the outlier on a slower core.
+
+    THIS IS TEMPORARY. It exists only because bcrypt-format rows can still
+    be matched during the A5 migration window. Once
+    ``services.api_key_service.count_legacy_hash_api_keys`` reports zero
+    active legacy-format keys in a real deployment (and the follow-up
+    "contract" step that stops reading bcrypt hashes at all has shipped),
+    this padding no longer has anything to hide and should be removed --
+    track that removal in the same place the contract step itself is
+    tracked (concurrency-scaling-tracker.md).
+
+    Setting this to ``0`` disables the padding outright (useful for a
+    fast local test run once the operator has independently confirmed
+    the deployment has no legacy-format keys left). Read at call time
+    per CLAUDE.md core rule #11.
+    """
+    return _float_env(
+        "API_KEY_VERIFICATION_MIN_DURATION_SECONDS",
+        default=0.220,
+        minimum=0.0,
+        maximum=5.0,
+    )
+
+
 def access_token_expire_minutes() -> int:
     return int(os.getenv("ACCESS_TOKEN_EXPIRE_MINUTES", "30"))
 
