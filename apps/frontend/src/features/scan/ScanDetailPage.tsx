@@ -143,6 +143,7 @@ export function ScanDetailPage() {
   // panel simply stops receiving lines, which is why it reports its own
   // give-up rather than borrowing the progress panel's.
   const {
+    lastMessage,
     logMessages,
     gaveUp: logStreamGaveUp,
     closeCode: logStreamCloseCode,
@@ -199,8 +200,20 @@ export function ScanDetailPage() {
   }, [filteredMessages.length, pinnedToBottom, filter]);
 
   // ---- Download log. Disabled until either (a) we have streamed at least
-  // one line in this session OR (b) the persisted status has moved past
-  // `queued` (the worker has started writing the on-disk log).
+  // one line in this session, (b) the persisted status has moved past
+  // `queued` (the worker has started writing the on-disk log), or (c) this
+  // page's own socket has observed a real step on its initial sync frame.
+  //
+  // (c) matters because this page opens a SECOND, later socket than the
+  // drawer's (see the comment above) and the backend sends no log-line
+  // backlog on connect, so a scan that finished emitting its early lines
+  // before this socket attached would otherwise never satisfy (a). Nothing
+  // ever invalidates `scanQuery` either (despite what its own comment
+  // claims), so (b) can stay frozen at the `queued` snapshot from page load.
+  // The initial sync frame is re-derived from the DB at THIS connection's
+  // admission time, though, so `lastMessage.step` (`""` while queued, per
+  // `build_progress_frame`) is the freshest signal available without
+  // touching the backend or adding a poll.
   const [downloading, setDownloading] = useState(false);
   const [toast, setToast] = useState<DownloadToast | null>(null);
   const toastSeq = useRef(0);
@@ -210,10 +223,12 @@ export function ScanDetailPage() {
     setToast({ id: toastSeq.current, text, variant });
   }
 
+  const wsObservedStart = lastMessage !== null && lastMessage.step !== "";
+
   const downloadDisabled =
     !scanId ||
     downloading ||
-    (liveStatus === "queued" && logMessages.length === 0);
+    (liveStatus === "queued" && !wsObservedStart && logMessages.length === 0);
 
   const handleDownload = useCallback(async () => {
     if (!scanId) return;
