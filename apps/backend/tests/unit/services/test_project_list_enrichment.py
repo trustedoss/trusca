@@ -616,6 +616,30 @@ async def test_counts_map_empty_project_ids_no_sql(db_session: AsyncSession) -> 
     assert counter["n"] == 0
 
 
+async def test_the_wide_scope_predicate_returns_the_same_enrichment(
+    db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Past ``_ID_INLINE_LIMIT`` the id predicates change shape (#160).
+
+    Every current caller pages at <= 100 projects, well under the real 32 767
+    asyncpg ceiling this mirrors from ``services.dashboard_service`` and
+    ``services.inventory_service`` (#131). Written defensively rather than
+    trusting that paging bound to hold forever: lower the limit to force the
+    wide branch on two projects and assert it agrees with the narrow one.
+    """
+    from services import project_list_enrichment
+    from services.project_list_enrichment import enrich_project_rows
+
+    _team, _user, project, _succeeded, _failed = await _ci_vulns_like_project(db_session)
+
+    narrow = await enrich_project_rows(db_session, projects=[project])
+
+    monkeypatch.setattr(project_list_enrichment, "_ID_INLINE_LIMIT", 1)
+    wide = await enrich_project_rows(db_session, projects=[project])
+
+    assert wide == narrow
+
+
 # ---------------------------------------------------------------------------
 # TASK 2 — overview last_succeeded_scan_at
 # ---------------------------------------------------------------------------

@@ -561,6 +561,43 @@ async def test_super_admin_sees_all_teams(db_session: AsyncSession) -> None:
     assert summary.recent_scans  # feed is non-empty
 
 
+async def test_the_wide_scope_predicate_returns_the_same_summary(
+    db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Past ``_ID_INLINE_LIMIT`` the id predicates change shape (#160).
+
+    ``_accessible_project_ids`` returns EVERY project for a super-admin,
+    unpaginated, so a large enough deployment hit asyncpg's 32 767-argument
+    ceiling: ``the number of query arguments cannot exceed 32767``. Below the
+    limit the ids go in one bind parameter each; above it they go in as a
+    single array (mirrors ``services.inventory_service``'s #131 fix).
+
+    Seeding 5 000+ projects to cross the real limit would cost minutes, so the
+    limit is lowered to force the wide branch on two. What is under test is
+    that the two shapes AGREE: a predicate that returned a different summary
+    would be a worse defect than the ceiling it was written to remove.
+    """
+    from services import dashboard_service
+    from services.dashboard_service import get_dashboard_summary
+
+    org = await make_organization(db_session)
+    team = await make_team(db_session, organization=org)
+    project_a = await make_project(db_session, team=team)
+    project_b = await make_project(db_session, team=team)
+    await make_scan(db_session, project=project_a, status="succeeded")
+    await make_scan(db_session, project=project_b, status="succeeded")
+
+    admin = await make_user(db_session, is_superuser=True)
+    actor = principal_for(admin, role="super_admin")  # no memberships
+
+    narrow = await get_dashboard_summary(db_session, actor=actor)
+
+    monkeypatch.setattr(dashboard_service, "_ID_INLINE_LIMIT", 1)
+    wide = await get_dashboard_summary(db_session, actor=actor)
+
+    assert wide == narrow
+
+
 async def test_archived_projects_excluded(db_session: AsyncSession) -> None:
     from services.dashboard_service import get_dashboard_summary
 

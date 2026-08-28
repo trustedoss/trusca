@@ -23,6 +23,7 @@ import os
 import subprocess
 import uuid
 from collections.abc import AsyncIterator
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
 import httpx
@@ -169,9 +170,17 @@ async def _finding(
     await session.commit()
 
 
-async def _scanned_project(session: AsyncSession, *, team, criticals: int = 0):
+async def _scanned_project(
+    session: AsyncSession,
+    *,
+    team,
+    criticals: int = 0,
+    scan_created_at: datetime | None = None,
+):
     project = await make_project(session, team=team)
-    scan = await make_scan(session, project=project, status="succeeded")
+    scan = await make_scan(
+        session, project=project, status="succeeded", created_at=scan_created_at
+    )
     for _ in range(criticals):
         await _finding(session, scan_id=scan.id)
     return project
@@ -354,8 +363,20 @@ async def test_the_counts_match_the_project_list(db_session: AsyncSession) -> No
     user = await make_user(db_session)
     await make_membership(db_session, user=user, team=team, role="developer")
 
-    project = await _scanned_project(db_session, team=team, criticals=2)
-    scan = await make_scan(db_session, project=project, status="succeeded")
+    # Explicit, clearly-ordered timestamps rather than relying on wall-clock
+    # separation between two commits (#159): `created_at` defaults to
+    # Postgres `now()`, which is transaction time, so two scans created close
+    # together are not guaranteed to sort apart, and the older scan's two
+    # criticals leaking into the newer scan's summary is exactly the defect
+    # this test exists to catch.
+    older = datetime.now(UTC) - timedelta(hours=1)
+    newer = datetime.now(UTC)
+    project = await _scanned_project(
+        db_session, team=team, criticals=2, scan_created_at=older
+    )
+    scan = await make_scan(
+        db_session, project=project, status="succeeded", created_at=newer
+    )
     await _finding(db_session, scan_id=scan.id, severity="high")
 
     grid = await get_dashboard_portfolio(

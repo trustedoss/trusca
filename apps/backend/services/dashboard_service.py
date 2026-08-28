@@ -48,7 +48,11 @@ from typing import Any
 
 import structlog
 from sqlalchemy import String, case, cast, func, literal, select
+from sqlalchemy.dialects.postgresql import ARRAY
+from sqlalchemy.dialects.postgresql import UUID as PG_UUID
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import InstrumentedAttribute
+from sqlalchemy.sql.elements import ColumnElement
 
 from core.security import CurrentUser
 from models import (
@@ -97,6 +101,32 @@ _LICENSE_RANK_TO_BUCKET: dict[int, str] = {
     2: "conditional",
     3: "prohibited",
 }
+
+
+#: Above this many ids the predicate below switches to a single array
+#: parameter. asyncpg refuses a statement carrying more than 32 767
+#: arguments; ``_accessible_project_ids`` returns EVERY project for a
+#: super-admin, unpaginated, so this module is the one place in the codebase
+#: where that ceiling is reachable from a single deployment's own data
+#: (services.inventory_service._among_scans hit the same ceiling first, at
+#: S8 concurrency-scaling; mirrors its threshold and shape).
+_ID_INLINE_LIMIT = 5_000
+
+
+def _among(
+    column: InstrumentedAttribute[uuid.UUID], ids: list[uuid.UUID]
+) -> ColumnElement[bool]:
+    """"This column's value is one of ``ids``", at any list size.
+
+    Under ``_ID_INLINE_LIMIT`` this is a plain ``IN`` (one bind parameter per
+    element), the fast path every deployment actually takes. Over it, the
+    list is passed as ONE array parameter instead: asyncpg's 32 767-argument
+    ceiling turned a super-admin's accessible-project count directly into
+    request failures otherwise, per services.inventory_service._among_scans.
+    """
+    if len(ids) <= _ID_INLINE_LIMIT:
+        return column.in_(ids)
+    return column == func.any(literal(ids, ARRAY(PG_UUID(as_uuid=True))))
 
 
 def _accessible_team_ids(actor: CurrentUser) -> list[uuid.UUID]:
@@ -181,6 +211,14 @@ async def _latest_succeeded_scan_ids(
     ``Project.latest_scan_id`` tracks the most recent scan of ANY status, so we
     cannot reuse it for finding aggregation. One ``DISTINCT ON`` pass gives the
     newest succeeded scan per project.
+
+    The tie-break after ``created_at`` is ``completed_at``, not the scan's id.
+    ``created_at`` defaults to Postgres ``now()`` (transaction time), so two
+    scans created in the same transaction share the identical value, not just
+    a rare microsecond coincidence; the id is a random UUID with no relation to
+    insertion order. ``completed_at`` is stamped by ``mark_succeeded`` with a
+    real, per-scan ``datetime.now(UTC)`` reading at the moment each scan
+    actually finished, which two different scans essentially never share.
     """
     if not project_ids:
         return []
@@ -188,9 +226,14 @@ async def _latest_succeeded_scan_ids(
     stmt = (
         select(Scan.id)
         .distinct(Scan.project_id)
-        .where(Scan.project_id.in_(project_ids))
+        .where(_among(Scan.project_id, project_ids))
         .where(cast(Scan.status, String) == "succeeded")
-        .order_by(Scan.project_id, Scan.created_at.desc(), Scan.id.desc())
+        .order_by(
+            Scan.project_id,
+            Scan.created_at.desc(),
+            Scan.completed_at.desc(),
+            Scan.id.desc(),
+        )
     )
     result = await session.execute(stmt)
     return list(result.scalars().all())
@@ -208,7 +251,7 @@ async def _scan_status_counts(
 
     stmt = (
         select(cast(Scan.status, String).label("status"), func.count().label("n"))
-        .where(Scan.project_id.in_(project_ids))
+        .where(_among(Scan.project_id, project_ids))
         .group_by(cast(Scan.status, String))
     )
     result = await session.execute(stmt)
@@ -247,7 +290,7 @@ async def _severity_counts(
         )
         .select_from(VulnerabilityFinding)
         .join(Vulnerability, Vulnerability.id == VulnerabilityFinding.vulnerability_id)
-        .where(VulnerabilityFinding.scan_id.in_(scan_ids))
+        .where(_among(VulnerabilityFinding.scan_id, scan_ids))
         .group_by(
             VulnerabilityFinding.scan_id,
             VulnerabilityFinding.component_version_id,
@@ -287,7 +330,7 @@ async def _license_counts(
         )
         .select_from(LicenseFinding)
         .join(LicenseModel, LicenseModel.id == LicenseFinding.license_id)
-        .where(LicenseFinding.scan_id.in_(scan_ids))
+        .where(_among(LicenseFinding.scan_id, scan_ids))
         .group_by(
             LicenseFinding.scan_id,
             LicenseFinding.component_version_id,
@@ -328,7 +371,7 @@ async def _pending_approvals_count(
     stmt = (
         select(func.count())
         .select_from(ComponentApproval)
-        .where(ComponentApproval.project_id.in_(project_ids))
+        .where(_among(ComponentApproval.project_id, project_ids))
         .where(cast(ComponentApproval.status, String).in_(("pending", "under_review")))
     )
     result = await session.execute(stmt)
@@ -359,7 +402,7 @@ async def _recent_scans(
             Scan.scan_metadata.label("scan_metadata"),
         )
         .join(Project, Project.id == Scan.project_id)
-        .where(Scan.project_id.in_(project_ids))
+        .where(_among(Scan.project_id, project_ids))
         .order_by(Scan.created_at.desc(), Scan.id.desc())
         .limit(limit)
     )

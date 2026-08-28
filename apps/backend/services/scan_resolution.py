@@ -116,9 +116,22 @@ async def latest_succeeded_scan_id(
     We deliberately do NOT use ``Project.latest_scan_id`` here: that pointer
     reflects the last *attempted* scan, so a successful scan whose last attempt
     failed would otherwise be evaluated against a non-succeeded scan. Querying
-    ``scans`` directly, ordered by ``created_at DESC, id DESC`` and clamped to
-    ``status='succeeded'``, gives the contract every current-state reader wants.
-    The compound index ``ix_scans_project_created_at`` covers this access path.
+    ``scans`` directly, ordered by ``created_at DESC, completed_at DESC,
+    id DESC`` and clamped to ``status='succeeded'``, gives the contract every
+    current-state reader wants. The compound index ``ix_scans_project_created_at``
+    covers this access path.
+
+    ``created_at`` defaults to Postgres ``now()`` (transaction time, not
+    statement time), so two scans created in the same transaction (a batch
+    seed, a bulk import) get the IDENTICAL value, not just a rare microsecond
+    coincidence. The old final tie-break, ``id DESC``, is a random UUID: with no
+    ``created_at`` gap to break the tie, which scan "wins" was a coin flip. Every
+    row here already satisfies ``status='succeeded'``, and ``mark_succeeded``
+    (the single place a scan reaches that status) always stamps
+    ``completed_at = datetime.now(UTC)`` at that exact moment, in application
+    code, per scan: a real wall-clock reading distinct scans essentially never
+    share. It goes before ``id`` because it is evidence about creation order,
+    while the id is not.
 
     Returns ``None`` when the project has never had a succeeded scan — callers
     map that to the same "empty 200" shapes they already return for a project
@@ -129,7 +142,12 @@ async def latest_succeeded_scan_id(
         .join(Project, Project.id == Scan.project_id)
         .where(Scan.project_id == project_id)
         .where(cast(Scan.status, String) == "succeeded")
-        .order_by(_on_main_line().desc(), Scan.created_at.desc(), Scan.id.desc())
+        .order_by(
+            _on_main_line().desc(),
+            Scan.created_at.desc(),
+            Scan.completed_at.desc(),
+            Scan.id.desc(),
+        )
         .limit(1)
     )
     if ref is not None:
@@ -180,6 +198,9 @@ def latest_succeeded_scan_select(
             # project's Components tab does not show.
             _on_main_line().desc(),
             Scan.created_at.desc(),
+            # See the single-project resolver's docstring above for why
+            # completed_at outranks id as the tie-break.
+            Scan.completed_at.desc(),
             Scan.id.desc(),
         )
     )
