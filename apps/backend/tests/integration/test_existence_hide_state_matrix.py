@@ -427,11 +427,14 @@ async def test_approval_transition_other_team_terminal_is_404_not_409(
     )
     db_session.add(component)
     await db_session.flush()
+    from datetime import UTC, datetime
+
     approval = ComponentApproval(
         component_id=component.id,
         project_id=project.id,
         team_id=owning_team.id,
         status=terminal_status,
+        decided_at=datetime.now(UTC),
     )
     db_session.add(approval)
     await db_session.commit()

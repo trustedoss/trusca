@@ -346,6 +346,35 @@ async def test_happy_path_create_and_transition(
     assert approval3.decision_note == "LGTM"
 
 
+@pytest.mark.asyncio
+async def test_terminal_row_without_decided_at_violates_db_constraint(
+    session: AsyncSession,
+    project_a,
+    component,
+):
+    """#169: ``ck_component_approvals_decided_at`` rejects the shape that let
+    a terminal row sort last in ``resolve_for_project``'s ``decided_at``
+    ordering and lose to an older decision. Nothing writes this shape today
+    (``transition_approval`` and ``seed_demo`` both set ``decided_at`` in the
+    same write that sets a terminal status); this pins the DB-level guard a
+    future backfill or data migration could otherwise slip past.
+    """
+    from sqlalchemy.exc import IntegrityError
+
+    from models.component_approval import ComponentApproval
+
+    bad = ComponentApproval(
+        component_id=component.id,
+        project_id=project_a.id,
+        team_id=project_a.team_id,
+        status=ApprovalStatus.approved,
+        decided_at=None,
+    )
+    session.add(bad)
+    with pytest.raises(IntegrityError, match="ck_component_approvals_decided_at"):
+        await session.commit()
+
+
 # ---------------------------------------------------------------------------
 # Case B — RBAC denial: non-member sees 404 (existence-hide)
 # ---------------------------------------------------------------------------

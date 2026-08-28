@@ -203,6 +203,7 @@ async def _make_approval(
         project_id=project_id,
         team_id=team_id,
         status=status,
+        decided_at=datetime.now(UTC) if status in ("approved", "rejected") else None,
     )
     session.add(ca)
     await session.commit()

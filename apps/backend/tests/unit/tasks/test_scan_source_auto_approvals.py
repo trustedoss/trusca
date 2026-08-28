@@ -24,6 +24,7 @@ from __future__ import annotations
 import subprocess
 import uuid
 from collections.abc import Iterator
+from datetime import UTC, datetime
 from pathlib import Path
 
 import pytest
@@ -552,6 +553,7 @@ def test_partial_index_predicate_lets_terminal_rows_coexist(session: Session) ->
             team_id=team_id,
             requested_by_user_id=None,
             status=ApprovalStatus.rejected,
+            decided_at=datetime.now(UTC),
             version=3,
         )
     )

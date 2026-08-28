@@ -18,6 +18,7 @@ import os
 import subprocess
 import uuid
 from collections.abc import AsyncIterator
+from datetime import UTC, datetime
 from pathlib import Path
 
 import pytest
@@ -209,6 +210,7 @@ async def test_the_projects_own_answer_wins(db_session: AsyncSession) -> None:
             project_id=project.id,
             team_id=team.id,
             status=ApprovalStatus.rejected,
+            decided_at=datetime.now(UTC),
         )
     )
     await db_session.commit()
