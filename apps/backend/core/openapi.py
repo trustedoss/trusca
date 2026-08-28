@@ -38,6 +38,12 @@ errs toward declaring.
 Left alone on purpose: 400, 409 and 503 showed up on a handful of operations
 each, and unlike the above they are specific to what those endpoints do. They
 belong in the route decorators, next to the code that raises them.
+
+The same fix-it-once shape applies to authentication (C7): every auth
+dependency reads the ``Authorization`` header off ``Request`` directly rather
+than through one of ``fastapi.security``'s classes, so FastAPI never had
+anything to base ``components.securitySchemes`` on and the spec did not
+describe how to authenticate at all. See :func:`describe_security`.
 """
 
 from __future__ import annotations
@@ -162,6 +168,45 @@ def describe_error_responses(schema: dict[str, Any]) -> dict[str, Any]:
     return schema
 
 
+BEARER_SECURITY_SCHEME_NAME = "bearerAuth"
+
+BEARER_SECURITY_SCHEME: dict[str, Any] = {
+    "type": "http",
+    "scheme": "bearer",
+    "description": (
+        "A JWT access token from POST /auth/login or /auth/refresh, or an "
+        "API key (`tos_<prefix>_<secret>`, see POST /v1/api-keys). Both are "
+        "sent the same way: `Authorization: Bearer <token>`."
+    ),
+}
+
+
+def describe_security(schema: dict[str, Any]) -> dict[str, Any]:
+    """Register the bearer scheme and apply it to every operation.
+
+    FastAPI only emits ``components.securitySchemes`` when a route depends on
+    one of ``fastapi.security``'s classes. Every auth dependency here reads
+    the ``Authorization`` header straight off ``Request`` instead
+    (``core.security`` / ``core.api_key_auth``), so the generated spec never
+    described how to authenticate at all, despite the great majority of
+    operations requiring it. Reuses :func:`_is_public` so this can never
+    disagree with :func:`describe_error_responses` about which paths need a
+    token.
+    """
+    schema.setdefault("components", {}).setdefault("securitySchemes", {})[
+        BEARER_SECURITY_SCHEME_NAME
+    ] = BEARER_SECURITY_SCHEME
+
+    for path, methods in schema.get("paths", {}).items():
+        public = _is_public(path)
+        for method, operation in methods.items():
+            if method.lower() not in _METHODS or not isinstance(operation, dict):
+                continue
+            operation["security"] = [] if public else [{BEARER_SECURITY_SCHEME_NAME: []}]
+
+    return schema
+
+
 def install_openapi(app: FastAPI) -> None:
     """Replace `app.openapi` so the served spec carries the error responses."""
 
@@ -174,7 +219,8 @@ def install_openapi(app: FastAPI) -> None:
             description=app.description,
             routes=app.routes,
         )
-        app.openapi_schema = describe_error_responses(schema)
+        schema = describe_error_responses(schema)
+        app.openapi_schema = describe_security(schema)
         return app.openapi_schema
 
     app.openapi = _openapi  # type: ignore[method-assign]
