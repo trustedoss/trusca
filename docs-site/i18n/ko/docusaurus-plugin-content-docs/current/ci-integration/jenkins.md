@@ -92,7 +92,7 @@ pipeline {
 
 ### 1. API Key 생성
 
-포털에서 **/integrations → API keys → Create API key**. 이 잡이 스캔할 프로젝트에 `project` scope로 묶거나, 팀이 소유한 모든 프로젝트를 덮으려면 `team`을 고르세요. 이번 릴리스에서 API Key는 발급자의 역할을 그대로 물려받으며, Key별 허용 동작 목록은 없습니다. [API keys](../admin-guide/api-keys.md) 참고.
+포털에서 **/integrations → API keys → Create API key**. 이 잡이 스캔할 프로젝트에 `project` scope로 묶거나, 팀이 소유한 모든 프로젝트를 덮으려면 `team`을 고르세요. "이 키가 할 수 있는 일"은 읽기 및 쓰기로 설정하세요. 스캔을 실행하는 동작이라 기본값인 읽기 전용 키는 거부됩니다. 그 외에는 발급자의 역할을 그대로 물려받습니다. [API keys](../admin-guide/api-keys.md) 참고.
 
 ### 2. Jenkins credential로 Key 추가
 

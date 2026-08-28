@@ -148,7 +148,15 @@ const VERBS: Record<string, (ctx: Ctx, args: string[]) => Promise<void>> = {
   // scans.md — the global scan queue + the post-scan project state.
   async scansListPopulated({ portal }) {
     await portal.goto("/scans");
-    await expect(portal.page.getByTestId("scans-table")).toBeVisible();
+    const table = portal.page.getByTestId("scans-table");
+    await expect(table).toBeVisible();
+    // The table renders unconditionally (skeleton rows while loading, real
+    // `scans-row`s once the fetch settles), so counting immediately after
+    // `toBeVisible` races the fetch and reads 0 whenever the query hasn't
+    // resolved yet. Wait for `aria-busy` to clear first.
+    await expect(table).toHaveAttribute("aria-busy", "false", {
+      timeout: 15_000,
+    });
     const rows = await portal.page.getByTestId("scans-row").count();
     expect(rows, "global scan queue rows").toBeGreaterThan(0);
   },

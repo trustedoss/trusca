@@ -159,9 +159,13 @@ jobs:
             | jq -r '.id')
           [ -n "$project_id" ] && [ "$project_id" != "null" ] || { echo "::error::project create failed"; exit 1; }
 
+          # permission_breadth defaults to read_only (the safe default for a
+          # key that only reads results), but this key drives ./actions/scan,
+          # which triggers a scan (a write). Ask for read_write explicitly.
           raw_key=$(curl -fsS -X POST "$api/v1/api-keys" \
             -H "Authorization: Bearer $jwt" -H 'Content-Type: application/json' \
-            -d "$(jq -nc --arg p "$project_id" '{name: "dogfood-ci", scope: "project", project_id: $p}')" \
+            -d "$(jq -nc --arg p "$project_id" \
+                  '{name: "dogfood-ci", scope: "project", project_id: $p, permission_breadth: "read_write"}')" \
             | jq -r '.raw_key')
           [ -n "$raw_key" ] && [ "$raw_key" != "null" ] || { echo "::error::api-key create failed"; exit 1; }
 

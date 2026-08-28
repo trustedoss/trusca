@@ -76,7 +76,7 @@ A ref with no succeeded scan yields the no-signal `pass` rather than another bra
 
 ### 1. Generate an API key
 
-In the portal: **/integrations → API keys → Create API key**. Pick scope `project` and bind it to the project CI will scan (or `team` if you intend one key to cover every project owned by a team). API keys inherit the issuing user's role in this release, and there is no per-key allowed-actions list. See [API keys](../admin-guide/api-keys.md) for the scope model.
+In the portal: **/integrations → API keys → Create API key**. Pick scope `project` and bind it to the project CI will scan (or `team` if you intend one key to cover every project owned by a team). Set "What this key may do" to Read and write; this action triggers a scan, which a read-only key (the default) is refused. API keys otherwise inherit the issuing user's role. See [API keys](../admin-guide/api-keys.md) for the scope and permission-breadth model.
 
 ### 2. Store the key in GitHub
 
@@ -220,7 +220,7 @@ Apply the gate only on `main`, advisory on PRs:
 
 The build gate evaluates Critical CVEs and forbidden licenses by default. You can add an EPSS dimension so a CVE with a high predicted exploitation probability fails the build **even when it is not Critical** — useful for catching the small set of findings most likely to be attacked.
 
-This is an **operator-side, org-wide** switch, not a workflow input: set the `GATE_EPSS_THRESHOLD` environment variable on the **portal** (`.env`), then restart the backend. It is **disabled by default** — leaving it unset preserves the existing Critical-CVE / forbidden-license gate exactly as before.
+This is an operator-side, org-wide switch, not a workflow input: set the `GATE_EPSS_THRESHOLD` environment variable on the portal (`.env`), then restart the backend. It is disabled by default; leaving it unset preserves the existing Critical-CVE / forbidden-license gate exactly as before.
 
 <!-- docs-uat: id=gha-epss-threshold-env kind=shell ctx=host tier=manual waiver=env-config-snippet-not-a-command -->
 ```bash
