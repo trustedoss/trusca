@@ -334,13 +334,11 @@ async def open_verdict(
     try:
         await session.flush()
     except IntegrityError as exc:
+        # core.audit's after_soft_rollback listener clears any CREATE audit
+        # row this flush staged (#170); a rollback used to leave it behind
+        # for the next flush on this session to write against a ruling that
+        # was never created.
         await session.rollback()
-        # The audit listener stages rows on the session between flush and
-        # commit, and a rollback does not clear them. Nothing reuses this
-        # session today, but a caller that caught the conflict and carried on
-        # would have the next flush write an audit row for a ruling that was
-        # never created.
-        session.info.pop("_pending_audit_rows", None)
         if _is_missing_reference(exc):
             # A component or organization that is not there. Reporting it as
             # "a ruling is already open" would send the caller looking for a

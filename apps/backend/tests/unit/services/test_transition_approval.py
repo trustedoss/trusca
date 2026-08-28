@@ -70,10 +70,12 @@ def _migrate_once() -> None:
 
 @pytest.fixture
 async def db_session() -> AsyncIterator[AsyncSession]:
+    from core.audit import install_audit_listeners
     from core.config import database_url
 
     engine = create_async_engine(database_url(), pool_pre_ping=True, future=True)
     factory = async_sessionmaker(engine, expire_on_commit=False, class_=AsyncSession)
+    install_audit_listeners(factory)
     async with factory() as session:
         yield session
     await engine.dispose()
@@ -335,6 +337,94 @@ async def test_only_one_request_may_be_open_for_a_finding(
             target_status="not_affected",
             justification="two",
         )
+
+
+async def test_a_rolled_back_conflict_does_not_leak_an_audit_row_into_the_next_write(
+    db_session: AsyncSession,
+) -> None:
+    """#170: the rejected second request must not haunt a later write.
+
+    ``core.audit``'s ``before_flush`` listener stages a CREATE audit row for
+    the second request's ``TransitionApproval`` before the flush that rejects
+    it. Before the general ``after_soft_rollback`` fix, that staged entry
+    survived ``open_request``'s ``session.rollback()`` (``session.info`` lives
+    on the session, not the transaction) and rode along into whatever this
+    session flushed next: a legitimate, unrelated request would get an extra
+    audit row describing a request that was never created.
+    """
+    from sqlalchemy import func, select
+
+    from models import AuditLog
+
+    # This table accumulates real committed rows across every test in the
+    # module (commit-eager pattern, no per-test rollback), so scope the audit
+    # query to what THIS test wrote, not the whole table's history. The
+    # boundary must come from Postgres's own clock (`created_at`'s source),
+    # not Python's: the app clock can trail the DB's by seconds, which would
+    # wrongly exclude rows this test just wrote.
+    test_started_at = (await db_session.execute(select(func.now()))).scalar_one()
+
+    _, team, _, finding_one = await _seed_finding(db_session)
+    _, team_two, _, finding_two = await _seed_finding(db_session)
+    first = await make_user(db_session)
+    second = await make_user(db_session)
+    third = await make_user(db_session)
+    # Capture plain values before the conflict below: `session.rollback()`
+    # expires every object already loaded in the session (SQLAlchemy always
+    # does this on rollback, regardless of `expire_on_commit`), and touching
+    # an expired attribute on an AsyncSession-bound object outside an
+    # `await` raises MissingGreenlet rather than transparently refreshing it.
+    team_id, team_two_id = team.id, team_two.id
+    finding_one_id, finding_two_id = finding_one.id, finding_two.id
+    first_principal = _principal(first, team_id)
+    second_principal = _principal(second, team_id)
+    third_principal = _principal(third, team_two_id)
+
+    opened = await open_request(
+        db_session,
+        first_principal,
+        finding_id=finding_one_id,
+        team_id=team_id,
+        target_status="suppressed",
+        justification="one",
+    )
+    opened_id = opened.id
+    with pytest.raises(ApprovalAlreadyOpen):
+        await open_request(
+            db_session,
+            second_principal,
+            finding_id=finding_one_id,
+            team_id=team_id,
+            target_status="not_affected",
+            justification="two",
+        )
+
+    legitimate = await open_request(
+        db_session,
+        third_principal,
+        finding_id=finding_two_id,
+        team_id=team_two_id,
+        target_status="suppressed",
+        justification="unrelated",
+    )
+    legitimate_id = legitimate.id
+
+    rows = (
+        (
+            await db_session.execute(
+                select(AuditLog).where(
+                    AuditLog.target_table == "transition_approvals",
+                    AuditLog.action == "create",
+                    AuditLog.created_at >= test_started_at,
+                )
+            )
+        )
+        .scalars()
+        .all()
+    )
+    # Exactly the two requests that actually succeeded, not a third row for
+    # the rejected one, and not a row with the wrong (None or stale) target_id.
+    assert {r.target_id for r in rows} == {str(opened_id), str(legitimate_id)}
 
 
 async def test_a_decided_request_reopens_the_slot(db_session: AsyncSession) -> None:
