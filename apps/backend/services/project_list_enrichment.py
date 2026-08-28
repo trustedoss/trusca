@@ -69,7 +69,11 @@ from datetime import datetime
 from typing import Any
 
 from sqlalchemy import String, and_, case, cast, func, literal, select
+from sqlalchemy.dialects.postgresql import ARRAY
+from sqlalchemy.dialects.postgresql import UUID as PG_UUID
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import InstrumentedAttribute
+from sqlalchemy.sql.elements import ColumnElement
 
 from models import (
     License as LicenseModel,
@@ -109,6 +113,26 @@ _LICENSE_FROM_RANK: dict[int, str] = {
     3: "forbidden",
 }
 _LICENSE_BUCKETS = ("forbidden", "conditional", "allowed", "unknown")
+
+#: Above this many ids the predicate below switches to a single array
+#: parameter, mirroring ``services.dashboard_service._among`` and
+#: ``services.inventory_service._among_scans``. Every current caller of this
+#: module passes a page-bound id list (``≤ 100``), well under the threshold,
+#: but the module is written defensively rather than trusting that to hold
+#: forever: asyncpg refuses a statement carrying more than 32 767 arguments.
+_ID_INLINE_LIMIT = 5_000
+
+
+def _among(
+    column: InstrumentedAttribute[uuid.UUID], ids: list[uuid.UUID]
+) -> ColumnElement[bool]:
+    """"This column's value is one of ``ids``", at any list size.
+
+    See ``services.dashboard_service._among`` for the full rationale.
+    """
+    if len(ids) <= _ID_INLINE_LIMIT:
+        return column.in_(ids)
+    return column == func.any(literal(ids, ARRAY(PG_UUID(as_uuid=True))))
 
 
 def _severity_rank_case() -> Any:
@@ -151,7 +175,7 @@ async def _latest_attempt_status_map(
 
     stmt = (
         select(Scan.id, cast(Scan.status, String).label("status"))
-        .where(Scan.id.in_(list(scan_id_to_project.keys())))
+        .where(_among(Scan.id, list(scan_id_to_project.keys())))
     )
     result = await session.execute(stmt)
     return {
@@ -173,6 +197,13 @@ async def _latest_succeeded_scan_id_map(
     can key the per-project severity aggregation). ``Project.latest_scan_id`` is
     deliberately NOT used: it tracks the last attempt, not the last success.
     Projects with no succeeded scan are absent → ``severity_summary = null``.
+
+    The tie-break after ``created_at`` is ``completed_at``, not the scan's id,
+    for the same reason as ``dashboard_service._latest_succeeded_scan_ids``:
+    ``created_at`` is Postgres transaction time (two same-transaction inserts
+    share it exactly), and the scan id is a random UUID unrelated to insertion
+    order, while ``completed_at`` is a real per-scan wall-clock reading stamped
+    by ``mark_succeeded`` at the moment each scan actually finished.
     """
     if not project_ids:
         return {}
@@ -180,12 +211,17 @@ async def _latest_succeeded_scan_id_map(
     stmt = (
         select(Scan.project_id, Scan.id)
         .distinct(Scan.project_id)
-        .where(Scan.project_id.in_(project_ids))
+        .where(_among(Scan.project_id, project_ids))
         .where(cast(Scan.status, String) == "succeeded")
-        # scan-retention: a superseded snapshot is never the live posture — its
-        # ref already has a newer winner — so it must not drive the risk badge.
+        # scan-retention: a superseded snapshot is never the live posture, its
+        # ref already has a newer winner, so it must not drive the risk badge.
         .where(Scan.superseded_at.is_(None))
-        .order_by(Scan.project_id, Scan.created_at.desc(), Scan.id.desc())
+        .order_by(
+            Scan.project_id,
+            Scan.created_at.desc(),
+            Scan.completed_at.desc(),
+            Scan.id.desc(),
+        )
     )
     result = await session.execute(stmt)
     return {row.project_id: row.id for row in result.all()}
@@ -229,7 +265,7 @@ async def _severity_summary_map(
         )
         .select_from(VulnerabilityFinding)
         .join(Vulnerability, Vulnerability.id == VulnerabilityFinding.vulnerability_id)
-        .where(VulnerabilityFinding.scan_id.in_(scan_ids))
+        .where(_among(VulnerabilityFinding.scan_id, scan_ids))
         .group_by(
             VulnerabilityFinding.scan_id,
             VulnerabilityFinding.component_version_id,
@@ -305,7 +341,7 @@ async def _license_summary_map(
         )
         .select_from(LicenseFinding)
         .join(LicenseModel, LicenseModel.id == LicenseFinding.license_id)
-        .where(LicenseFinding.scan_id.in_(scan_ids))
+        .where(_among(LicenseFinding.scan_id, scan_ids))
         .group_by(
             LicenseFinding.scan_id,
             LicenseFinding.component_version_id,
@@ -410,7 +446,7 @@ async def _scan_counts_map(
             release_count_col,
             last_scan_at_col,
         )
-        .where(Scan.project_id.in_(project_ids))
+        .where(_among(Scan.project_id, project_ids))
         .group_by(Scan.project_id)
     )
     result = await session.execute(stmt)

@@ -105,8 +105,14 @@ async def _make_scan_at(
     project_id: uuid.UUID,
     status: str,
     created_at: datetime,
+    completed_at: datetime | None = None,
 ):
-    """A scan row with an explicit ``created_at`` so ordering is deterministic."""
+    """A scan row with an explicit ``created_at`` so ordering is deterministic.
+
+    ``completed_at`` defaults to ``created_at`` for a succeeded scan (the
+    common case); pass it explicitly to pin the two apart while sharing the
+    same ``created_at`` (#159's tie-break tests).
+    """
     from models import Scan
 
     scan = Scan(
@@ -116,7 +122,11 @@ async def _make_scan_at(
         progress_percent=100 if status == "succeeded" else 0,
         scan_metadata={},
         created_at=created_at,
-        completed_at=created_at if status == "succeeded" else None,
+        completed_at=(
+            (completed_at if completed_at is not None else created_at)
+            if status == "succeeded"
+            else None
+        ),
     )
     session.add(scan)
     await session.commit()
@@ -357,6 +367,45 @@ async def test_resolver_returns_none_when_no_succeeded_scan(
     await db_session.commit()
 
     assert await latest_succeeded_scan_id(db_session, project.id) is None
+
+
+async def test_resolver_breaks_a_created_at_tie_on_completed_at_not_id(
+    db_session: AsyncSession,
+) -> None:
+    """#159: two succeeded scans sharing ``created_at`` must not coin-flip.
+
+    ``created_at`` defaults to Postgres ``now()`` (transaction time), so two
+    scans inserted in the same transaction (a batch seed, a bulk import) get
+    the IDENTICAL value; this test pins that shape directly rather than
+    relying on two commits landing in the same instant. Before the fix the
+    final tie-break was the scan's id, a random UUID with no relation to which
+    scan actually finished more recently, so which one "won" was a coin flip.
+    """
+    from services.scan_resolution import latest_succeeded_scan_id
+
+    org = await make_organization(db_session)
+    team = await make_team(db_session, organization=org)
+    project = await make_project(db_session, team=team)
+
+    tied_created_at = datetime.now(tz=UTC) - timedelta(hours=1)
+    older = await _make_scan_at(
+        db_session,
+        project_id=project.id,
+        status="succeeded",
+        created_at=tied_created_at,
+        completed_at=tied_created_at,
+    )
+    newer = await _make_scan_at(
+        db_session,
+        project_id=project.id,
+        status="succeeded",
+        created_at=tied_created_at,
+        completed_at=tied_created_at + timedelta(minutes=5),
+    )
+
+    resolved = await latest_succeeded_scan_id(db_session, project.id)
+    assert resolved == newer.id
+    assert resolved != older.id
 
 
 # ---------------------------------------------------------------------------

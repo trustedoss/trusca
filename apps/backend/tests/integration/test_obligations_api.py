@@ -953,13 +953,23 @@ async def test_recording_leaves_an_audit_row(client) -> None:
     project_id, scan_id, _name = await _seed_scanned_project(client, team_id=team.id)
     _lic, ob_id = await _seed_obligation(client, scan_id=scan_id)
 
-    await _record(client, user=user, project_id=project_id, obligation_id=ob_id)
+    fulfilment = await _record(client, user=user, project_id=project_id, obligation_id=ob_id)
 
     factory = await _factory(client)
     async with factory() as session:
+        # Scoped to this test's own fulfilment row, not "the last row":
+        # audit_logs accumulates real rows across every test in the suite (no
+        # per-test rollback), and a plain WHERE with no ORDER BY has no
+        # defined row order once the table is large enough for the planner to
+        # prefer an index scan over a sequential one, so `rows[-1]` stopped
+        # meaning "most recent" and started meaning "whatever the index
+        # happened to return last".
         rows = (
             await session.execute(
-                select(AuditLog).where(AuditLog.target_table == "obligation_fulfilments")
+                select(AuditLog).where(
+                    AuditLog.target_table == "obligation_fulfilments",
+                    AuditLog.target_id == str(fulfilment["id"]),
+                )
             )
         ).scalars().all()
 

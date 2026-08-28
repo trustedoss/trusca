@@ -484,6 +484,32 @@ def _after_flush(session: Session, _flush_context: Any) -> None:
     session.connection().execute(sa_insert(AuditLog), rows)
 
 
+def _after_soft_rollback(session: Session, _previous_transaction: Any) -> None:
+    """SQLAlchemy event hook: drop any CREATE audit rows stashed by a flush
+    that never reached :func:`_after_flush` (#170).
+
+    ``_before_flush`` stashes pending CREATE rows in ``session.info`` and
+    ``_after_flush`` is what clears them; when a flush raises (e.g. an
+    ``IntegrityError`` on a duplicate key) ``_after_flush`` never runs, so the
+    stashed entries survive the ``session.rollback()`` a caller does next.
+    ``session.info`` is NOT cleared by rollback: it lives on the ``Session``
+    object itself, not the transaction, so those entries would silently
+    attach themselves to whatever this session flushes next.
+
+    No live path hits this today: every request gets a fresh session, and the
+    services that currently catch a flush's ``IntegrityError`` return
+    immediately rather than continuing to write on the same session. It
+    becomes live the first time a caller catches a conflict and keeps going,
+    so this listener is the general fix rather than a per-caller workaround.
+    It runs on every rollback, including ``async_session.rollback()`` (which
+    delegates to the sync session underneath, same as flush), and only ever
+    discards data that would otherwise be lost anyway: the failed flush's
+    ORM state is gone, so only the extra dict entries in ``session.info``
+    would remain.
+    """
+    session.info.pop(_PENDING_AUDIT_KEY, None)
+
+
 __all__ = [
     "audit_context",
     "bind_audit_team",
@@ -509,3 +535,5 @@ def install_audit_listeners(session_factory: async_sessionmaker[Any]) -> None:
         event.listen(sync_session_class, "before_flush", _before_flush)
     if not event.contains(sync_session_class, "after_flush", _after_flush):
         event.listen(sync_session_class, "after_flush", _after_flush)
+    if not event.contains(sync_session_class, "after_soft_rollback", _after_soft_rollback):
+        event.listen(sync_session_class, "after_soft_rollback", _after_soft_rollback)

@@ -37,7 +37,7 @@ import enum
 import uuid
 from datetime import datetime
 
-from sqlalchemy import DateTime, ForeignKey, Index, Integer, Text, text
+from sqlalchemy import CheckConstraint, DateTime, ForeignKey, Index, Integer, Text, text
 from sqlalchemy.dialects.postgresql import ENUM as PG_ENUM
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
@@ -224,5 +224,13 @@ class ComponentApproval(Base):
             "project_id",
             unique=True,
             postgresql_where=text("status IN ('pending', 'under_review')"),
+        ),
+        # A terminal row without a timestamp sorts last in
+        # ``resolve_for_project``'s ``decided_at`` ordering, so it would lose to
+        # an older decision and the project's real answer would go unread.
+        # Mirrors ``ck_org_component_verdicts_decided_at`` (migration 0059).
+        CheckConstraint(
+            "status NOT IN ('approved', 'rejected') OR decided_at IS NOT NULL",
+            name="ck_component_approvals_decided_at",
         ),
     )
