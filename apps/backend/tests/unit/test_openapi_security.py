@@ -1,6 +1,6 @@
 # SPDX-License-Identifier: Apache-2.0
 # Copyright 2026 TRUSCA contributors
-"""core.openapi.describe_security — C7.
+"""core.openapi.describe_security (C7).
 
 Every auth dependency in this codebase reads the Authorization header
 straight off Request rather than through a fastapi.security class, so
@@ -13,13 +13,15 @@ token.
 
 from __future__ import annotations
 
+from typing import Any
+
 from core.openapi import (
     BEARER_SECURITY_SCHEME_NAME,
     describe_security,
 )
 
 
-def _schema(paths: dict[str, dict[str, dict]]) -> dict:
+def _schema(paths: dict[str, dict[str, Any]]) -> dict[str, Any]:
     return {"paths": paths}
 
 
@@ -49,7 +51,7 @@ def test_public_path_carries_no_security_requirement() -> None:
 
 def test_credential_path_is_unauthenticated_too() -> None:
     """/auth/login takes no bearer token even though it answers 401 on a
-    wrong password — that 401 is a separate concern from what this function
+    wrong password: that 401 is a separate concern from what this function
     describes (see describe_error_responses' CREDENTIAL_PATHS)."""
     schema = describe_security(
         _schema({"/auth/login": {"post": {"responses": {}}}})

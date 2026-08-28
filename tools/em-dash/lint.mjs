@@ -77,6 +77,13 @@ const SKIP_PREFIXES = [
   "apps/frontend/tests/visual/visual.spec.ts-snapshots/",
   "docs-site/i18n/",
   "THIRD_PARTY_NOTICES",
+  // Generated dumps of the live FastAPI schema (scripts/dump_openapi.py,
+  // apps/backend/tests/unit/test_openapi_contract.py's REGEN_ mode). Every
+  // line moves whenever the schema is regenerated regardless of what
+  // changed, so the diff surfaces every em dash already sitting in a route
+  // docstring anywhere in the API, not anything newly written here.
+  "docs-site/static/openapi.json",
+  "apps/backend/tests/unit/openapi_endpoints.json",
   // This tool. Its subject IS the character: the regexes match it, the
   // fixtures quote it, and the documentation shows what a placeholder looks
   // like. Sixteen allow-markers would say the same thing less clearly. The
