@@ -76,7 +76,7 @@ jobs:
 
 ### 1. API Key 생성
 
-포털에서 **/integrations → API keys → Create API key**. 스코프는 `project`를 선택하고 CI가 스캔할 프로젝트에 바인딩(또는 한 팀의 모든 프로젝트를 커버해야 한다면 `team`). v0.10.0에서 API Key는 발급 사용자의 역할을 상속하며 키별 허용 동작 목록은 존재하지 않습니다. 스코프 모델은 [API keys](../admin-guide/api-keys.md) 참고.
+포털에서 **/integrations → API keys → Create API key**. 스코프는 `project`를 선택하고 CI가 스캔할 프로젝트에 바인딩합니다(한 팀의 모든 프로젝트를 커버해야 한다면 `team`). "이 키가 할 수 있는 일"은 읽기 및 쓰기로 설정합니다. 스캔을 실행하는 동작이라 기본값인 읽기 전용 키는 거부됩니다. 그 외에는 발급한 사용자의 역할을 그대로 물려받습니다. 스코프와 권한 범위 모델은 [API keys](../admin-guide/api-keys.md) 참고.
 
 ### 2. GitHub에 Key 저장
 

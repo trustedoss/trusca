@@ -60,15 +60,19 @@ tos_<8-char-prefix>_<32-char-secret>
 | `team`   | super-admin, team-admin   |
 | `project`| super-admin, team-admin, developer (소속 팀의 프로젝트 한정) |
 
-Key는 요청 시점에 **발급한 사용자의 역할**을 상속합니다 — v0.10.0에는 별도의 "effective role"이나 "allowed actions" 목록이 없습니다. 권한 검사는 JWT로 인증된 요청과 동일한 RBAC 코드 경로를 따릅니다.
+Key는 요청 시점에 발급한 사용자의 역할을 상속하되, 자신의 **권한 범위**(아래)로 그 역할을 좁힙니다. v0.10.0에는 이보다 더 세분화된 "effective role"이나 개별 동작 단위 허용 목록은 없습니다. 권한 검사는 JWT로 인증된 요청과 동일한 RBAC 코드 경로를 따릅니다.
 
-Key는 **선택적 만료(TTL)**를 지원합니다. 발급 시 `expires_in_days`(1–1825)를 지정하면 그만큼의 일수가 지난 뒤 인증이 거부됩니다 — 유출된 CI 키(파이프라인 로그, 포크 PR 러너)가 수동 폐기 없이 스스로 만료됩니다. 생략하면 만료 없는 Key(기존 기본값)가 됩니다. CI 키는 TTL을 설정하고 회전하는 것을 권장합니다. 세분화된 `allowed_actions` taxonomy(`scan:trigger`, `scan:read`, `report:download`, …)는 여전히 로드맵입니다.
+### 권한 범위
+
+각 Key는 읽기 전용(기본값)이거나 읽기 및 쓰기 중 하나입니다. 읽기 전용 Key는 스캔 실행을 포함해 무언가를 바꾸는 모든 요청을 거부당하므로, 결과를 조회하거나 보고서를 내려받기만 하는 파이프라인은 이 값으로 충분하지만 스캔을 실행하는 파이프라인은 그럴 수 없습니다. 권한 범위는 생애 주기 동안 좁아지는 방향으로만 바뀝니다. 읽기 및 쓰기 Key를 읽기 전용으로 낮출 수는 있어도 그 반대는 안 되므로, 넓혀야 한다면 새 Key를 발급하세요. 호출자가 실제로 쓰기를 해야 할 때만 읽기 및 쓰기를 고르세요. 대부분의 CI 스캔 트리거는 필요하지만, 이전 스캔의 SBOM이나 게이트 결과만 읽는 파이프라인은 필요하지 않습니다.
+
+Key는 선택적 만료(TTL)를 지원합니다. 발급 시 `expires_in_days`(1-1825)를 지정하면 그만큼의 일수가 지난 뒤 인증이 거부되므로, 유출된 CI 키(파이프라인 로그, 포크 PR 러너)가 수동 폐기 없이 스스로 만료됩니다. 생략하면 만료 없는 Key(기존 기본값)가 됩니다. CI 키는 TTL을 설정하고 회전하는 것을 권장합니다. 위 읽기 전용/읽기 및 쓰기 구분보다 더 세분화된 `allowed_actions` taxonomy(`scan:trigger`, `scan:read`, `report:download` 등)는 여전히 로드맵입니다.
 
 <!-- docs-uat: id=apikeys-create-ttl kind=shell ctx=host tier=manual waiver=example-host-and-jwt-placeholder -->
 ```bash
 curl -sS -X POST "https://trustedoss.example.com/v1/api-keys" \
   -H "Authorization: Bearer ${JWT}" -H "Content-Type: application/json" \
-  -d '{"name": "ci-key", "scope": "project", "project_id": "<uuid>", "expires_in_days": 90}'
+  -d '{"name": "ci-key", "scope": "project", "project_id": "<uuid>", "permission_breadth": "read_write", "expires_in_days": 90}'
 ```
 
 ## Key 발급
@@ -82,6 +86,7 @@ curl -sS -X POST "https://trustedoss.example.com/v1/api-keys" \
    - **Name**(예: `github-action-checkout-service`)
    - **Scope** — `project`(기본). 팀 관리자라면 `team`도 함께 표시됩니다
    - **Project ID** — scope가 `project`일 때 필수. scope가 `team`이면 **Team ID**
+   - **이 키가 할 수 있는 일** — Read only(기본값, 권장) 또는 Read and write. 스캔을 실행할 Key라면 읽기 및 쓰기를 고릅니다
    - **Expiration** — **Never expires**(기본값) 또는 30 / 90 / 180 / 365일 프리셋. `expires_in_days`로 전송됩니다
 5. **Create**.
 
@@ -129,7 +134,7 @@ curl -sS -H "Authorization: Bearer ${TRUSTEDOSS_API_KEY}" \
 
 ## Key 목록
 
-UI는 라벨, prefix, scope(`org` / `team` / `project`), 발급자, 생성 시각, 마지막 사용 시각, 만료(`expires_at`, 만료 없으면 null), 폐기 상태를 표시합니다. 기존 Key의 secret을 복구할 방법은 없습니다 — 의도된 설계입니다. 키별 역할, 허용 동작, 마지막 사용 IP 컬럼은 로드맵입니다(해당 모델 컬럼들이 아직 없음).
+UI는 라벨, prefix, scope(`org` / `team` / `project`), 권한 범위(읽기 전용 / 읽기 및 쓰기), 발급자, 생성 시각, 마지막 사용 시각, 만료(`expires_at`, 만료 없으면 null), 폐기 상태를 표시합니다. 기존 Key의 secret을 복구할 방법은 없습니다. 의도된 설계입니다. 마지막 사용 IP 컬럼과 위에서 말한 더 세분화된 `allowed_actions` taxonomy는 로드맵입니다.
 
 마지막 사용 시각은 `API_KEY_LAST_USED_AT_UPDATE_INTERVAL_SECONDS`(기본 15분) 단위로 반올림됩니다. 인증할 때마다 정확한 순간을 기록하지 않습니다 — "그 구간 안에서 사용됨"을 뜻하지, "바로 이 초에 사용됨"을 뜻하지 않습니다. 하나의 CI 실행이 20분 동안 같은 Key로 수십 번 폴링해도 시각 갱신은 한두 번만 일어납니다. 이 정도 해상도면 "이 Key가 아직 쓰이고 있는가"라는, 이 컬럼이 실제로 답하는 질문에는 충분합니다. 요청 단위 감사 기록이 필요하면 구조화된 백엔드 로그(`api_key.auth_failed`, 그리고 그 Key의 요청이 남기는 도메인 감사 행)를 참고하세요.
 

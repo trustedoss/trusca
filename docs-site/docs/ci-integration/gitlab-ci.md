@@ -43,7 +43,7 @@ sca:
 
 ### 1. Generate an API key
 
-In the portal: **/integrations → API keys → Create API key**. Pick scope `project` and bind it to the project this pipeline scans (or `team` to cover every project a team owns). API keys inherit the issuing user's role in this release, and there is no per-key allowed-actions list. See [API keys](../admin-guide/api-keys.md).
+In the portal: **/integrations → API keys → Create API key**. Pick scope `project` and bind it to the project this pipeline scans (or `team` to cover every project a team owns). Set "What this key may do" to Read and write; this pipeline triggers a scan, which a read-only key (the default) is refused. API keys otherwise inherit the issuing user's role. See [API keys](../admin-guide/api-keys.md).
 
 ### 2. Store the key as a masked CI/CD variable
 

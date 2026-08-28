@@ -60,15 +60,19 @@ Who can issue each scope:
 | `team`   | super-admin, team-admin |
 | `project`| super-admin, team-admin, developer (within their team's projects) |
 
-The key inherits the **role of the issuing user** at request time — there is no separate "effective role" or "allowed actions" list in this release. Permission checks fall through to the same RBAC code path as a JWT-authenticated request.
+The key inherits the role of the issuing user at request time, narrowed by its own **permission breadth** (below); there is no finer-grained "effective role" or per-action allow-list in this release. Permission checks fall through to the same RBAC code path as a JWT-authenticated request.
 
-Keys support an **optional expiry (TTL)**. Pass `expires_in_days` (1–1825) when issuing and the key stops authenticating after that many days — a leaked CI key (pipeline log, forked-PR runner) then lapses on its own instead of living until manual revocation. Omit it for a non-expiring key (the legacy default). CI keys should set a TTL and rotate. A fine-grained `allowed_actions` taxonomy (`scan:trigger`, `scan:read`, `report:download`, …) is still on the roadmap.
+### Permission breadth
+
+Each key is also either read-only (the default) or read-write. A read-only key is refused every request that changes something, including triggering a scan, so a pipeline that only polls results or downloads reports cannot start one. Breadth only narrows over a key's life, so a read-write key can become read-only but not the reverse (issue a new key instead). Pick read-write only when the caller genuinely needs to write; most CI scan triggers do, while a pipeline that only reads a prior scan's SBOM or gate result does not.
+
+Keys support an optional expiry (TTL). Pass `expires_in_days` (1-1825) when issuing and the key stops authenticating after that many days, so a leaked CI key (pipeline log, forked-PR runner) lapses on its own instead of living until manual revocation. Omit it for a non-expiring key (the legacy default). CI keys should set a TTL and rotate. A fine-grained `allowed_actions` taxonomy (`scan:trigger`, `scan:read`, `report:download`, and so on) narrower than the read-only/read-write split above is still on the roadmap.
 
 <!-- docs-uat: id=apikeys-create-ttl kind=shell ctx=host tier=manual waiver=example-host-and-jwt-placeholder -->
 ```bash
 curl -sS -X POST "https://trustedoss.example.com/v1/api-keys" \
   -H "Authorization: Bearer ${JWT}" -H "Content-Type: application/json" \
-  -d '{"name": "ci-key", "scope": "project", "project_id": "<uuid>", "expires_in_days": 90}'
+  -d '{"name": "ci-key", "scope": "project", "project_id": "<uuid>", "permission_breadth": "read_write", "expires_in_days": 90}'
 ```
 
 ## Issuing a key
@@ -82,6 +86,7 @@ curl -sS -X POST "https://trustedoss.example.com/v1/api-keys" \
    - **Name** (e.g. `github-action-checkout-service`)
    - **Scope**: `project` (default); `team` also appears if you administer a team
    - **Project ID**: required when scope is `project`; **Team ID** when scope is `team`
+   - **What this key may do**: Read only (the default, recommended) or Read and write; pick read-write for a key that will trigger scans
    - **Expiration**: **Never expires** (the default), or a 30 / 90 / 180 / 365-day preset, submitted as `expires_in_days`
 5. **Create**.
 
@@ -129,7 +134,7 @@ Revocation is immediate and irreversible. To bring a key back, issue a new one.
 
 ## Listing keys
 
-The UI shows: label, prefix, scope (`org` / `team` / `project`), creator, created timestamp, last-used timestamp, expiry (`expires_at`, null when non-expiring), and revocation status. There is no way to recover the secret of an existing key — by design. Per-key role, allowed-actions, and last-used IP columns are on the roadmap (the corresponding model columns are not yet present).
+The UI shows: label, prefix, scope (`org` / `team` / `project`), permission breadth (read-only / read-write), creator, created timestamp, last-used timestamp, expiry (`expires_at`, null when non-expiring), and revocation status. There is no way to recover the secret of an existing key, by design. A last-used IP column and the finer-grained `allowed_actions` taxonomy above are on the roadmap.
 
 The last-used timestamp is rounded to the nearest `API_KEY_LAST_USED_AT_UPDATE_INTERVAL_SECONDS` (15 minutes by default). Authentication no longer stamps the exact instant of every request: it means "used at some point within that interval," not "used at this exact second." A key polled dozens of times by one CI run over 20 minutes shows one or two timestamp updates, not one per poll. This is enough resolution to answer "is this key still in use," which is what the column is for; it is not a per-request audit trail, so use the structured backend logs (`api_key.auth_failed` / the domain audit rows a key's requests create) for that.
 
