@@ -211,9 +211,9 @@ def test_streaming_timeout_reaps_child_process(
     def wrapped_popen(
         *args: object, **kwargs: object
     ) -> subprocess.Popen[bytes]:
-        inst = real_popen(*args, **kwargs)  # type: ignore[arg-type]
+        inst = real_popen(*args, **kwargs)  # type: ignore[call-overload]
         instances.append(inst)
-        return inst
+        return inst  # type: ignore[no-any-return]
 
     monkeypatch.setattr(subprocess, "Popen", wrapped_popen)
 
@@ -253,9 +253,9 @@ def test_no_callback_timeout_still_raises(
     def wrapped_popen(
         *args: object, **kwargs: object
     ) -> subprocess.Popen[bytes]:
-        inst = real_popen(*args, **kwargs)  # type: ignore[arg-type]
+        inst = real_popen(*args, **kwargs)  # type: ignore[call-overload]
         instances.append(inst)
-        return inst
+        return inst  # type: ignore[no-any-return]
 
     monkeypatch.setattr(subprocess, "Popen", wrapped_popen)
 
