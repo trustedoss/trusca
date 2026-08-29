@@ -73,10 +73,11 @@ def downgrade() -> None:
     raise NotImplementedError("forward-only migrations")
 ```
 
-두 가지 결과:
+세 가지 결과:
 
 - **Breaking 컬럼 변경은 3단계로 나눕니다.** `NOT NULL` 추가, 컬럼 drop, rename은 새 컬럼을 nullable로 추가하는 *expand*, 별도 revision이나 일회성 Celery task로 처리하는 *migrate data*, 기존 컬럼을 drop하거나 NOT NULL을 설정하는 *contract* 순서로 나누고, 한 revision에 결합하지 않습니다.
 - **스키마와 데이터 마이그레이션은 별도 revision.** 스키마 revision에는 몇 행 이상의 `bulk_insert`를 넣지 않습니다. 더 큰 데이터 이동은 **멱등한** 일회성 Celery task로 작성하고 별도 `data_xxxx_*` revision에서 큐에 넣으세요.
+- **새 테이블을 추가할 때는 런타임 권한을 판단합니다.** 런타임 롤 `trustedoss_app`이 그 테이블에 `UPDATE`나 `DELETE`를 실행해야 한다면, 같은 마이그레이션의 `upgrade()`에 `GRANT UPDATE, DELETE ON <table> TO trustedoss_app`을 명시적으로 추가하세요. append-only 테이블(`INSERT`만 실행)이라면 GRANT는 필요 없지만 `apps/backend/tests/fixtures/app_role_privileges.json`에 등재해야 합니다. 등재하지 않으면 `test_app_role_grant_matrix.py`가 실패하며 둘 중 무엇을 해야 하는지 알려줍니다.
 
 ## RFC 7807 — `application/problem+json`
 
