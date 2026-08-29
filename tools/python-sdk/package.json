@@ -1,0 +1,8 @@
+{
+  "name": "trusca-python-sdk-tooling",
+  "private": true,
+  "description": "Build-time tool: generates the Python client SDK from the committed OpenAPI spec (C5). Not shipped, not a runtime dependency of the product.",
+  "devDependencies": {
+    "@openapitools/openapi-generator-cli": "2.40.1"
+  }
+}

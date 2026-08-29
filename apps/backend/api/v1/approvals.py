@@ -175,7 +175,12 @@ async def list_approvals_endpoint(
     responses={
         200: {
             "description": "Approval found. ETag header contains the current version.",
-            "headers": {"ETag": {"description": "Current version as quoted string"}},
+            "headers": {
+                "ETag": {
+                    "description": "Current version as quoted string",
+                    "schema": {"type": "string"},
+                }
+            },
         },
         404: {"description": "Approval not found, or not visible to the caller."},
     },

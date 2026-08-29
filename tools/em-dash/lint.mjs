@@ -84,6 +84,9 @@ const SKIP_PREFIXES = [
   // docstring anywhere in the API, not anything newly written here.
   "docs-site/static/openapi.json",
   "apps/backend/tests/unit/openapi_endpoints.json",
+  // Same reasoning, one step removed: tools/postman derives this from the
+  // OpenAPI spec above, so it inherits the same route docstrings verbatim.
+  "docs-site/static/postman/trusca.postman_collection.json",
   // This tool. Its subject IS the character: the regexes match it, the
   // fixtures quote it, and the documentation shows what a placeholder looks
   // like. Sixteen allow-markers would say the same thing less clearly. The

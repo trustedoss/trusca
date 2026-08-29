@@ -19843,7 +19843,10 @@
             "description": "Approval found. ETag header contains the current version.",
             "headers": {
               "ETag": {
-                "description": "Current version as quoted string"
+                "description": "Current version as quoted string",
+                "schema": {
+                  "type": "string"
+                }
               }
             }
           },
