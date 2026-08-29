@@ -105,6 +105,30 @@ jobs:
     name: install-uat (ubuntu-22.04, docker-compose V1)
     runs-on: ubuntu-22.04
     timeout-minutes: 30
+    env:
+      # A2 (testing-hardening-plan-2026-08.md §A2) - the smoke below triggers
+      # a real scan through the API to prove the first-scan path, not just
+      # that the API answers. docker-compose.dev.yml's `x-backend-env`
+      # anchor interpolates this from the process environment
+      # (`${TRUSTEDOSS_SCAN_BACKEND:-real}`) into the backend/worker
+      # containers' env at `up` time, so `mock` reaches the worker without
+      # editing the generated .env. Mock mode short-circuits
+      # cdxgen/scancode/Trivy to fixture frames - the real toolchain takes
+      # 5-60 minutes per scan (CLAUDE.md core rule #3) and would blow this
+      # job's 30-minute timeout.
+      #
+      # Job-level, not step-level: install.sh's own `up` and restore.sh's
+      # post-restore `up -d` run in separate steps of this same job and must
+      # see the identical value, or docker-compose 1.29.x treats the second
+      # `up` as a config change and recreates the container - which trips a
+      # known docker-compose 1.29.x bug (`KeyError: 'ContainerConfig'` in
+      # merge_volume_bindings) on recreate. This was step-scoped on "Run
+      # install.sh in non-interactive mode" only until that regression
+      # surfaced (three straight failures of the restore.sh round-trip step
+      # on this branch); job-level env is visible to every step,
+      # so both `up` invocations agree and docker-compose reports the
+      # container "up-to-date" instead of recreating it.
+      TRUSTEDOSS_SCAN_BACKEND: mock
     steps:
       - uses: actions/checkout@v4
 
@@ -141,17 +165,6 @@ jobs:
           INSTALL_ADMIN_EMAIL: admin@uat.example.com
           INSTALL_ADMIN_PASSWORD: UatAdminPassword123!
           INSTALL_SECRET_KEY: ci-uat-secret-key-32-characters-min-padding
-          # A2 (testing-hardening-plan-2026-08.md §A2) - the smoke below now
-          # triggers a real scan through the API to prove the first-scan path,
-          # not just that the API answers. docker-compose.dev.yml's
-          # `x-backend-env` anchor interpolates this from the process
-          # environment (`${TRUSTEDOSS_SCAN_BACKEND:-real}`), and install.sh's
-          # `docker-compose ... up` inherits this step's env, so `mock` reaches
-          # the worker container without editing the generated .env. Mock mode
-          # short-circuits cdxgen/scancode/Trivy to fixture frames - the real
-          # toolchain takes 5-60 minutes per scan (CLAUDE.md core rule #3) and
-          # would blow this job's 30-minute timeout.
-          TRUSTEDOSS_SCAN_BACKEND: mock
         run: bash scripts/install.sh --no-prompt
 
       # docker-compose.dev.yml maps backend 8000 to host 8000, so we can
@@ -299,8 +312,8 @@ jobs:
         continue-on-error: true
         run: |
           set -euo pipefail
-          # Mock backend (TRUSTEDOSS_SCAN_BACKEND=mock, set on the install.sh
-          # step) short-circuits the pipeline to fixture frames - the e2e
+          # Mock backend (TRUSTEDOSS_SCAN_BACKEND=mock, job-level env)
+          # short-circuits the pipeline to fixture frames - the e2e
           # Playwright suite documents this completing "in seconds"
           # (apps/frontend/tests/e2e/scan_flow.spec.ts). 30 x 5s gives a wide
           # margin without letting a genuinely hung worker stall the job.
