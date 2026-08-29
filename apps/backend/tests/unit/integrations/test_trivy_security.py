@@ -29,6 +29,12 @@ both resolve their env at call time. The integrations conftest pins
 ``WORKSPACE_HOST_PATH`` to the per-test ``tmp_path`` via an autouse fixture
 so each test gets an isolated workspace boundary that matches its scratch
 directory.
+
+Interception boundary (testing-hardening-plan-2026-08.md, Wave 2, F1): the
+L2/L4 real-mode tests below patch ``integrations.trivy.run_with_line_streaming``,
+not ``subprocess.run``. Both ``run_trivy_image`` and ``run_trivy_sbom`` always
+pass a ``line_callback`` in production, so patching ``run_with_line_streaming``
+directly exercises the same call site production hits.
 """
 
 from __future__ import annotations
@@ -220,7 +226,7 @@ def test_load_json_within_size_cap_passes(
         )
         return subprocess.CompletedProcess(args=cmd, returncode=0, stdout=b"", stderr=b"")
 
-    monkeypatch.setattr("integrations.trivy.subprocess.run", fake_run)
+    monkeypatch.setattr("integrations.trivy.run_with_line_streaming", fake_run)
 
     result = trivy_adapter.run_trivy_sbom(
         sbom_path=sbom_path, output_dir=tmp_path / "trivy"
@@ -272,7 +278,7 @@ def test_load_json_exceeding_cap_raises_trivy_failed(
         )
         return subprocess.CompletedProcess(args=cmd, returncode=0, stdout=b"", stderr=b"")
 
-    monkeypatch.setattr("integrations.trivy.subprocess.run", fake_run)
+    monkeypatch.setattr("integrations.trivy.run_with_line_streaming", fake_run)
 
     with pytest.raises(trivy_adapter.TrivyFailed) as excinfo:
         trivy_adapter.run_trivy_sbom(
@@ -315,7 +321,7 @@ def test_load_json_empty_file_raises_json_decode_error(
         Path(cmd[out_idx]).write_bytes(b"")
         return subprocess.CompletedProcess(args=cmd, returncode=0, stdout=b"", stderr=b"")
 
-    monkeypatch.setattr("integrations.trivy.subprocess.run", fake_run)
+    monkeypatch.setattr("integrations.trivy.run_with_line_streaming", fake_run)
 
     with pytest.raises(json.JSONDecodeError):
         trivy_adapter.run_trivy_sbom(
@@ -386,7 +392,7 @@ def test_run_trivy_sbom_failure_safe_detail_uses_basename_only(
             stderr=b"trivy: db error",
         )
 
-    monkeypatch.setattr("integrations.trivy.subprocess.run", fake_run)
+    monkeypatch.setattr("integrations.trivy.run_with_line_streaming", fake_run)
 
     with pytest.raises(trivy_adapter.TrivyFailed) as excinfo:
         trivy_adapter.run_trivy_sbom(
@@ -424,7 +430,7 @@ def test_run_trivy_sbom_timeout_safe_detail_uses_basename_only(
     def fake_run(cmd: list[str], **kwargs: Any) -> subprocess.CompletedProcess[bytes]:
         raise subprocess.TimeoutExpired(cmd=cmd, timeout=kwargs.get("timeout", 1))
 
-    monkeypatch.setattr("integrations.trivy.subprocess.run", fake_run)
+    monkeypatch.setattr("integrations.trivy.run_with_line_streaming", fake_run)
 
     with pytest.raises(trivy_adapter.TrivyTimeout) as excinfo:
         trivy_adapter.run_trivy_sbom(
@@ -461,7 +467,7 @@ def test_run_trivy_image_failure_safe_detail_includes_image_ref(
             args=cmd, returncode=3, stdout=b"", stderr=b"trivy: registry auth failed"
         )
 
-    monkeypatch.setattr("integrations.trivy.subprocess.run", fake_run)
+    monkeypatch.setattr("integrations.trivy.run_with_line_streaming", fake_run)
 
     with pytest.raises(trivy_adapter.TrivyFailed) as excinfo:
         trivy_adapter.run_trivy_image(

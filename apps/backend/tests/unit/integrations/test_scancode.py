@@ -13,6 +13,13 @@ scancode is a heavy pure-Python tool; unit tests must NEVER spawn it. We cover:
   - Guards: SCANCODE_MAX_FILES (ScancodeTooLarge), SCANCODE_MAX_DETECTIONS cap.
   - Output parsing rare cases: malformed JSON, missing result file, binary
     files (null spdx), compound expressions, directory entries, empty tree.
+
+Interception boundary (testing-hardening-plan-2026-08.md, Wave 2, F1): the
+real-mode tests below patch ``integrations.scancode.run_with_line_streaming``,
+not ``subprocess.run``. ``run_scancode`` always passes a ``line_callback`` in
+production (``tasks/scan_source.py``), so patching ``run_with_line_streaming``
+directly exercises the same call site production hits, instead of the
+callback-less fast path inside the helper that production never takes.
 """
 
 from __future__ import annotations
@@ -201,7 +208,7 @@ def test_real_mode_too_large_raises(
     def _no_subprocess(*args: Any, **kwargs: Any) -> Any:  # pragma: no cover
         raise AssertionError("subprocess must not run when tree is too large")
 
-    monkeypatch.setattr("integrations.scancode.subprocess.run", _no_subprocess)
+    monkeypatch.setattr("integrations.scancode.run_with_line_streaming", _no_subprocess)
 
     source = tmp_path / "source"
     source.mkdir()
@@ -253,7 +260,7 @@ def captured_subprocess(monkeypatch: pytest.MonkeyPatch) -> dict[str, Any]:
         )
         return _FakeResult()
 
-    monkeypatch.setattr("integrations.scancode.subprocess.run", _capture)
+    monkeypatch.setattr("integrations.scancode.run_with_line_streaming", _capture)
     return captured
 
 
@@ -320,7 +327,7 @@ def test_real_mode_nonzero_exit_raises_failed(
         stderr = b"scancode: boom"
 
     monkeypatch.setattr(
-        "integrations.scancode.subprocess.run", lambda *a, **k: _FakeResult()
+        "integrations.scancode.run_with_line_streaming", lambda *a, **k: _FakeResult()
     )
 
     source = tmp_path / "source"
@@ -346,7 +353,7 @@ def test_real_mode_timeout_raises(
     def _raise_timeout(*a: Any, **k: Any) -> Any:
         raise subprocess.TimeoutExpired(cmd="scancode", timeout=1)
 
-    monkeypatch.setattr("integrations.scancode.subprocess.run", _raise_timeout)
+    monkeypatch.setattr("integrations.scancode.run_with_line_streaming", _raise_timeout)
 
     source = tmp_path / "source"
     source.mkdir()
