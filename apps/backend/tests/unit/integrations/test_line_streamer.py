@@ -182,8 +182,83 @@ def test_streaming_timeout_raises_with_partial_output() -> None:
     assert "first" in received
 
 
-def test_no_callback_timeout_still_raises() -> None:
-    """The fallback path also honours the timeout — no callback, same contract."""
+@pytest.mark.xfail(
+    strict=True,
+    reason=(
+        "_line_streamer.py streaming-path timeout branch calls proc.kill() "
+        "without a following proc.wait()/poll() before re-raising "
+        "TimeoutExpired, so the child is not yet reaped at this point "
+        "(testing-hardening-plan-2026-08 Type D / unit D1). Fix tracked "
+        "separately; remove this marker once it lands."
+    ),
+)
+def test_streaming_timeout_reaps_child_process(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """After a streaming-path timeout the killed child must already be reaped.
+
+    ``Popen.returncode`` is only populated once ``wait()``/``poll()`` has
+    actually collected the exit status, so asserting it is not ``None`` right
+    after ``TimeoutExpired`` is raised is a precise proxy for "the helper did
+    not leave a zombie behind". We monkeypatch ``subprocess.Popen`` with a
+    wrapper (rather than reading ``/proc/<pid>/stat``, which does not work on
+    a macOS dev machine) so we can inspect the exact instance the helper
+    created.
+    """
+    real_popen = subprocess.Popen
+    instances: list[subprocess.Popen[bytes]] = []
+
+    def wrapped_popen(
+        *args: object, **kwargs: object
+    ) -> subprocess.Popen[bytes]:
+        inst = real_popen(*args, **kwargs)  # type: ignore[arg-type]
+        instances.append(inst)
+        return inst
+
+    monkeypatch.setattr(subprocess, "Popen", wrapped_popen)
+
+    cmd = ["sh", "-c", "printf 'first\\n'; sleep 5"]
+    with pytest.raises(subprocess.TimeoutExpired):
+        run_with_line_streaming(
+            cmd,
+            timeout_seconds=1,
+            cwd=None,
+            env=None,
+            line_callback=lambda *_: None,
+            stage="unit",
+        )
+
+    assert len(instances) == 1
+    assert instances[0].returncode is not None, (
+        "child process was killed but not reaped before TimeoutExpired "
+        "was raised (zombie risk)"
+    )
+
+
+def test_no_callback_timeout_still_raises(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The fallback path also honours the timeout, no callback, same contract.
+
+    Also pins that the fallback reaps its child on timeout: ``subprocess.run``
+    calls ``proc.kill()`` followed by ``proc.wait()`` internally before
+    re-raising ``TimeoutExpired``, so ``returncode`` is always populated here.
+    This is the counterpart to ``test_streaming_timeout_reaps_child_process``
+    above, the same observation, green on this path, xfail on the streaming
+    one, pinning that the two paths currently give different guarantees.
+    """
+    real_popen = subprocess.Popen
+    instances: list[subprocess.Popen[bytes]] = []
+
+    def wrapped_popen(
+        *args: object, **kwargs: object
+    ) -> subprocess.Popen[bytes]:
+        inst = real_popen(*args, **kwargs)  # type: ignore[arg-type]
+        instances.append(inst)
+        return inst
+
+    monkeypatch.setattr(subprocess, "Popen", wrapped_popen)
+
     with pytest.raises(subprocess.TimeoutExpired):
         run_with_line_streaming(
             ["sh", "-c", "sleep 5"],
@@ -193,6 +268,9 @@ def test_no_callback_timeout_still_raises() -> None:
             line_callback=None,
             stage="unit",
         )
+
+    assert len(instances) == 1
+    assert instances[0].returncode is not None
 
 
 # ---------------------------------------------------------------------------
