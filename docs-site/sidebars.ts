@@ -110,6 +110,8 @@ const sidebars: SidebarsConfig = {
         "reference/faq",
         "reference/env-variables",
         "reference/api-overview",
+        "reference/postman-collection",
+        "reference/python-sdk",
         "reference/data-sources",
         "reference/analysis-types",
         "reference/license-policies",
