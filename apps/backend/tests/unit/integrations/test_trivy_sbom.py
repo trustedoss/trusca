@@ -19,6 +19,13 @@ matching against cdxgen SBOMs. This module pins the contract for the new
 Per CLAUDE.md core rule #11, ``scan_backend_mode`` resolves the env at call
 time, so each test toggles ``TRUSTEDOSS_SCAN_BACKEND`` through monkeypatch
 and never relies on module-level caching.
+
+Interception boundary (testing-hardening-plan-2026-08.md, Wave 2, F1): the
+real-mode tests below patch ``integrations.trivy.run_with_line_streaming``,
+not ``subprocess.run``. ``run_trivy_sbom`` always passes a ``line_callback``
+in production (``tasks/ingest_sbom.py``), so patching ``run_with_line_streaming``
+directly exercises the same call site production hits, instead of the
+callback-less fast path inside the helper that production never takes.
 """
 
 from __future__ import annotations
@@ -211,7 +218,7 @@ def test_run_trivy_sbom_real_mode_success_loads_report(
         )
         return subprocess.CompletedProcess(args=cmd, returncode=0, stdout=b"", stderr=b"")
 
-    monkeypatch.setattr("integrations.trivy.subprocess.run", fake_run)
+    monkeypatch.setattr("integrations.trivy.run_with_line_streaming", fake_run)
 
     result = trivy_adapter.run_trivy_sbom(
         sbom_path=sbom_path, output_dir=report_dir
@@ -248,7 +255,7 @@ def test_run_trivy_sbom_non_zero_returncode_raises_trivy_failed(
             stderr=b"trivy: unable to load db: connection refused",
         )
 
-    monkeypatch.setattr("integrations.trivy.subprocess.run", fake_run)
+    monkeypatch.setattr("integrations.trivy.run_with_line_streaming", fake_run)
 
     with pytest.raises(trivy_adapter.TrivyFailed) as excinfo:
         trivy_adapter.run_trivy_sbom(
@@ -280,7 +287,7 @@ def test_run_trivy_sbom_failed_truncates_stderr_to_1000_chars(
             args=cmd, returncode=1, stdout=b"", stderr=huge_stderr
         )
 
-    monkeypatch.setattr("integrations.trivy.subprocess.run", fake_run)
+    monkeypatch.setattr("integrations.trivy.run_with_line_streaming", fake_run)
 
     with pytest.raises(trivy_adapter.TrivyFailed) as excinfo:
         trivy_adapter.run_trivy_sbom(
@@ -307,7 +314,7 @@ def test_run_trivy_sbom_timeout_raises_trivy_timeout(
     def fake_run(cmd: list[str], **kwargs: Any) -> subprocess.CompletedProcess[bytes]:
         raise subprocess.TimeoutExpired(cmd=cmd, timeout=kwargs.get("timeout", 1))
 
-    monkeypatch.setattr("integrations.trivy.subprocess.run", fake_run)
+    monkeypatch.setattr("integrations.trivy.run_with_line_streaming", fake_run)
 
     with pytest.raises(trivy_adapter.TrivyTimeout) as excinfo:
         trivy_adapter.run_trivy_sbom(
@@ -341,7 +348,7 @@ def test_run_trivy_sbom_stderr_with_invalid_utf8_does_not_crash(
             args=cmd, returncode=1, stdout=b"", stderr=broken
         )
 
-    monkeypatch.setattr("integrations.trivy.subprocess.run", fake_run)
+    monkeypatch.setattr("integrations.trivy.run_with_line_streaming", fake_run)
 
     with pytest.raises(trivy_adapter.TrivyFailed) as excinfo:
         trivy_adapter.run_trivy_sbom(
@@ -416,7 +423,7 @@ def test_run_trivy_sbom_real_mode_passes_through_adversarial_severity(
         )
         return subprocess.CompletedProcess(args=cmd, returncode=0, stdout=b"", stderr=b"")
 
-    monkeypatch.setattr("integrations.trivy.subprocess.run", fake_run)
+    monkeypatch.setattr("integrations.trivy.run_with_line_streaming", fake_run)
 
     result = trivy_adapter.run_trivy_sbom(
         sbom_path=sbom_path, output_dir=tmp_path / "trivy"
@@ -472,7 +479,7 @@ def test_run_trivy_sbom_passes_through_adversarial_reference_urls(
         )
         return subprocess.CompletedProcess(args=cmd, returncode=0, stdout=b"", stderr=b"")
 
-    monkeypatch.setattr("integrations.trivy.subprocess.run", fake_run)
+    monkeypatch.setattr("integrations.trivy.run_with_line_streaming", fake_run)
 
     result = trivy_adapter.run_trivy_sbom(
         sbom_path=sbom_path, output_dir=tmp_path / "trivy"
@@ -509,7 +516,7 @@ def test_run_trivy_sbom_empty_vulnerabilities_array_is_zero_count(
         )
         return subprocess.CompletedProcess(args=cmd, returncode=0, stdout=b"", stderr=b"")
 
-    monkeypatch.setattr("integrations.trivy.subprocess.run", fake_run)
+    monkeypatch.setattr("integrations.trivy.run_with_line_streaming", fake_run)
 
     result = trivy_adapter.run_trivy_sbom(
         sbom_path=sbom_path, output_dir=tmp_path / "trivy"
@@ -541,7 +548,7 @@ def test_run_trivy_sbom_results_with_no_vuln_key_is_zero_count(
         )
         return subprocess.CompletedProcess(args=cmd, returncode=0, stdout=b"", stderr=b"")
 
-    monkeypatch.setattr("integrations.trivy.subprocess.run", fake_run)
+    monkeypatch.setattr("integrations.trivy.run_with_line_streaming", fake_run)
 
     # Must not raise — the inner `.get("Vulnerabilities", []) or []` pattern
     # tolerates both missing key and null value.
@@ -574,7 +581,7 @@ def test_run_trivy_sbom_null_vulnerabilities_is_zero_count(
         )
         return subprocess.CompletedProcess(args=cmd, returncode=0, stdout=b"", stderr=b"")
 
-    monkeypatch.setattr("integrations.trivy.subprocess.run", fake_run)
+    monkeypatch.setattr("integrations.trivy.run_with_line_streaming", fake_run)
 
     trivy_adapter.run_trivy_sbom(
         sbom_path=sbom_path, output_dir=tmp_path / "trivy"
@@ -603,7 +610,7 @@ def test_run_trivy_sbom_results_missing_entirely(
         )
         return subprocess.CompletedProcess(args=cmd, returncode=0, stdout=b"", stderr=b"")
 
-    monkeypatch.setattr("integrations.trivy.subprocess.run", fake_run)
+    monkeypatch.setattr("integrations.trivy.run_with_line_streaming", fake_run)
 
     result = trivy_adapter.run_trivy_sbom(
         sbom_path=sbom_path, output_dir=tmp_path / "trivy"
@@ -651,7 +658,7 @@ def test_run_trivy_sbom_oversized_report_loads(
         )
         return subprocess.CompletedProcess(args=cmd, returncode=0, stdout=b"", stderr=b"")
 
-    monkeypatch.setattr("integrations.trivy.subprocess.run", fake_run)
+    monkeypatch.setattr("integrations.trivy.run_with_line_streaming", fake_run)
 
     result = trivy_adapter.run_trivy_sbom(
         sbom_path=sbom_path, output_dir=tmp_path / "trivy"
@@ -698,7 +705,7 @@ def test_run_trivy_sbom_deeply_nested_json_loads(
         )
         return subprocess.CompletedProcess(args=cmd, returncode=0, stdout=b"", stderr=b"")
 
-    monkeypatch.setattr("integrations.trivy.subprocess.run", fake_run)
+    monkeypatch.setattr("integrations.trivy.run_with_line_streaming", fake_run)
 
     result = trivy_adapter.run_trivy_sbom(
         sbom_path=sbom_path, output_dir=tmp_path / "trivy"
@@ -737,7 +744,7 @@ def test_run_trivy_sbom_report_with_non_utf8_bytes_replaces(
         Path(cmd[out_idx]).write_bytes(b'{"k":"\xff"}')
         return subprocess.CompletedProcess(args=cmd, returncode=0, stdout=b"", stderr=b"")
 
-    monkeypatch.setattr("integrations.trivy.subprocess.run", fake_run)
+    monkeypatch.setattr("integrations.trivy.run_with_line_streaming", fake_run)
 
     with pytest.raises(UnicodeDecodeError):
         trivy_adapter.run_trivy_sbom(
@@ -792,7 +799,7 @@ def test_run_trivy_sbom_subprocess_env_excludes_worker_secrets(
         )
         return subprocess.CompletedProcess(args=cmd, returncode=0, stdout=b"", stderr=b"")
 
-    monkeypatch.setattr("integrations.trivy.subprocess.run", fake_run)
+    monkeypatch.setattr("integrations.trivy.run_with_line_streaming", fake_run)
 
     trivy_adapter.run_trivy_sbom(sbom_path=sbom_path, output_dir=tmp_path / "trivy")
 
@@ -838,7 +845,7 @@ def test_run_trivy_sbom_subprocess_env_forwards_trivy_db_mirror(
         )
         return subprocess.CompletedProcess(args=cmd, returncode=0, stdout=b"", stderr=b"")
 
-    monkeypatch.setattr("integrations.trivy.subprocess.run", fake_run)
+    monkeypatch.setattr("integrations.trivy.run_with_line_streaming", fake_run)
 
     trivy_adapter.run_trivy_sbom(sbom_path=sbom_path, output_dir=tmp_path / "trivy")
 
@@ -876,7 +883,7 @@ def test_run_trivy_sbom_cmd_pins_scanners_to_vuln(
         )
         return subprocess.CompletedProcess(args=cmd, returncode=0, stdout=b"", stderr=b"")
 
-    monkeypatch.setattr("integrations.trivy.subprocess.run", fake_run)
+    monkeypatch.setattr("integrations.trivy.run_with_line_streaming", fake_run)
 
     trivy_adapter.run_trivy_sbom(sbom_path=sbom_path, output_dir=tmp_path / "trivy")
 
@@ -893,7 +900,7 @@ def test_run_trivy_sbom_cmd_pins_scanners_to_vuln(
 def _fake_run_writing_empty_report(
     captured_cmd: list[str],
 ) -> Any:
-    """Build a fake subprocess.run that records argv and writes an empty report."""
+    """Build a fake run_with_line_streaming that records argv and writes an empty report."""
 
     def fake_run(cmd: list[str], **kwargs: Any) -> subprocess.CompletedProcess[bytes]:
         captured_cmd.clear()
@@ -923,7 +930,7 @@ def test_run_trivy_sbom_default_omits_quiet(
 
     captured_cmd: list[str] = []
     monkeypatch.setattr(
-        "integrations.trivy.subprocess.run", _fake_run_writing_empty_report(captured_cmd)
+        "integrations.trivy.run_with_line_streaming", _fake_run_writing_empty_report(captured_cmd)
     )
 
     trivy_adapter.run_trivy_sbom(sbom_path=sbom_path, output_dir=tmp_path / "trivy")
@@ -947,7 +954,7 @@ def test_run_trivy_sbom_verbose_adds_debug(
 
     captured_cmd: list[str] = []
     monkeypatch.setattr(
-        "integrations.trivy.subprocess.run", _fake_run_writing_empty_report(captured_cmd)
+        "integrations.trivy.run_with_line_streaming", _fake_run_writing_empty_report(captured_cmd)
     )
 
     trivy_adapter.run_trivy_sbom(
