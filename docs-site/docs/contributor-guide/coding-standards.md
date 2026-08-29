@@ -73,10 +73,11 @@ def downgrade() -> None:
     raise NotImplementedError("forward-only migrations")
 ```
 
-Two consequences:
+Three consequences:
 
 - **Breaking column changes are 3-stage.** Adding `NOT NULL`, dropping a column, or renaming requires *expand* (add new column nullable) → *migrate data* (a separate revision or one-shot Celery task) → *contract* (drop old column / set NOT NULL). Never combine in one revision.
 - **Schema and data migrations are separate revisions.** A schema revision should not embed a `bulk_insert` more than a few rows. For larger data shifts, write a one-shot Celery task that is **idempotent** and queue it from a separate `data_xxxx_*` revision.
+- **New table? Decide the runtime grant.** If the `trustedoss_app` runtime role needs to `UPDATE` or `DELETE` rows in the table, add an explicit `GRANT UPDATE, DELETE ON <table> TO trustedoss_app` to the same migration's `upgrade()`. If the table is append-only (`INSERT` only), no grant is needed, but update `apps/backend/tests/fixtures/app_role_privileges.json` to declare it. Otherwise `test_app_role_grant_matrix.py` fails and tells you which of the two to do.
 
 ## RFC 7807 — `application/problem+json`
 
