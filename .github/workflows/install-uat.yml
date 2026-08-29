@@ -141,6 +141,17 @@ jobs:
           INSTALL_ADMIN_EMAIL: admin@uat.example.com
           INSTALL_ADMIN_PASSWORD: UatAdminPassword123!
           INSTALL_SECRET_KEY: ci-uat-secret-key-32-characters-min-padding
+          # A2 (testing-hardening-plan-2026-08.md §A2) - the smoke below now
+          # triggers a real scan through the API to prove the first-scan path,
+          # not just that the API answers. docker-compose.dev.yml's
+          # `x-backend-env` anchor interpolates this from the process
+          # environment (`${TRUSTEDOSS_SCAN_BACKEND:-real}`), and install.sh's
+          # `docker-compose ... up` inherits this step's env, so `mock` reaches
+          # the worker container without editing the generated .env. Mock mode
+          # short-circuits cdxgen/scancode/Trivy to fixture frames - the real
+          # toolchain takes 5-60 minutes per scan (CLAUDE.md core rule #3) and
+          # would blow this job's 30-minute timeout.
+          TRUSTEDOSS_SCAN_BACKEND: mock
         run: bash scripts/install.sh --no-prompt
 
       # docker-compose.dev.yml maps backend 8000 to host 8000, so we can
@@ -163,7 +174,7 @@ jobs:
           docker-compose -f docker-compose.yml logs --tail=200
           exit 1
 
-      - name: Smoke — login + projects API
+      - name: Smoke - login
         run: |
           set -euo pipefail
           # The auth router mounts at /auth (apps/backend/api/v1/auth.py sets
@@ -181,10 +192,126 @@ jobs:
             | python3 -c 'import json,sys; print(json.load(sys.stdin)["access_token"])')
           test -n "$TOKEN"
           test "$TOKEN" != "null"
+          echo "::add-mask::$TOKEN"
           echo "got token (length=${#TOKEN})"
+          echo "UAT_TOKEN=$TOKEN" >> "$GITHUB_ENV"
+
+      - name: Smoke - projects API reachable
+        run: |
+          set -euo pipefail
           curl -fsS http://localhost:8000/v1/projects \
-            -H "Authorization: Bearer $TOKEN" >/dev/null
+            -H "Authorization: Bearer $UAT_TOKEN" >/dev/null
           echo "projects endpoint reachable"
+
+      # A2 (testing-hardening-plan-2026-08.md §A2) - everything below is new.
+      # The smoke used to stop at "projects endpoint reachable", which never
+      # exercises the path an operator actually takes after install.sh finishes:
+      # create_super_admin bootstraps a USER row only (no Organization, no
+      # Team - see scripts/create_super_admin.py), so the first admin who logs
+      # in must create a team before they can do anything else. Each call below
+      # is its own step and captures HTTP status + body separately (no `-f`)
+      # so a failure's log distinguishes a bootstrap-logic rejection (a 4xx
+      # body from the API itself, e.g. "No Organization Configured") from a
+      # plumbing problem (curl/DNS/timeout) at a glance, without re-deriving
+      # it from a raw curl exit code.
+      - name: Smoke - create team (admin bootstrap path)
+        run: |
+          set -euo pipefail
+          STATUS=$(curl -sS -o /tmp/uat_team.json -w '%{http_code}' \
+            -X POST http://localhost:8000/v1/admin/teams \
+            -H "Authorization: Bearer $UAT_TOKEN" \
+            -H "Content-Type: application/json" \
+            -d '{"name":"Install UAT Team","slug":"install-uat-team","description":"Created by the install-uat smoke test"}')
+          if [ "$STATUS" != "201" ]; then
+            echo "::error::team creation returned HTTP $STATUS (expected 201)"
+            cat /tmp/uat_team.json
+            if grep -q "No Organization Configured" /tmp/uat_team.json 2>/dev/null; then
+              echo "::error::bootstrap logic: create_super_admin never provisions an Organization row, so POST /v1/admin/teams has nothing to attach a team to. This is a backend fix (scripts/create_super_admin.py), not a workflow or permission problem."
+            elif [ "$STATUS" = "401" ] || [ "$STATUS" = "403" ]; then
+              echo "::error::permission problem: the freshly-bootstrapped admin was rejected by the auth/role gate on POST /v1/admin/teams (expected super_admin to pass require_super_admin_or_404)."
+            fi
+            exit 1
+          fi
+          TEAM_ID=$(python3 -c 'import json; print(json.load(open("/tmp/uat_team.json"))["id"])')
+          test -n "$TEAM_ID"
+          echo "created team $TEAM_ID"
+          echo "UAT_TEAM_ID=$TEAM_ID" >> "$GITHUB_ENV"
+
+      - name: Smoke - create project
+        run: |
+          set -euo pipefail
+          STATUS=$(curl -sS -o /tmp/uat_project.json -w '%{http_code}' \
+            -X POST http://localhost:8000/v1/projects \
+            -H "Authorization: Bearer $UAT_TOKEN" \
+            -H "Content-Type: application/json" \
+            -d "{\"team_id\":\"$UAT_TEAM_ID\",\"name\":\"Install UAT Project\",\"slug\":\"install-uat-project\",\"git_url\":\"https://github.com/trustedoss-e2e/install-uat-smoke.git\"}")
+          if [ "$STATUS" != "201" ]; then
+            echo "::error::project creation returned HTTP $STATUS (expected 201)"
+            cat /tmp/uat_project.json
+            if [ "$STATUS" = "401" ] || [ "$STATUS" = "403" ]; then
+              echo "::error::permission problem: POST /v1/projects rejected the admin against the team it just created."
+            fi
+            exit 1
+          fi
+          PROJECT_ID=$(python3 -c 'import json; print(json.load(open("/tmp/uat_project.json"))["id"])')
+          test -n "$PROJECT_ID"
+          echo "created project $PROJECT_ID"
+          echo "UAT_PROJECT_ID=$PROJECT_ID" >> "$GITHUB_ENV"
+
+      - name: Smoke - trigger scan
+        run: |
+          set -euo pipefail
+          STATUS=$(curl -sS -o /tmp/uat_scan.json -w '%{http_code}' \
+            -X POST "http://localhost:8000/v1/projects/$UAT_PROJECT_ID/scans" \
+            -H "Authorization: Bearer $UAT_TOKEN" \
+            -H "Content-Type: application/json" \
+            -d '{"kind":"source"}')
+          if [ "$STATUS" != "202" ]; then
+            echo "::error::scan trigger returned HTTP $STATUS (expected 202)"
+            cat /tmp/uat_scan.json
+            exit 1
+          fi
+          SCAN_ID=$(python3 -c 'import json; print(json.load(open("/tmp/uat_scan.json"))["id"])')
+          test -n "$SCAN_ID"
+          echo "triggered scan $SCAN_ID"
+          echo "UAT_SCAN_ID=$SCAN_ID" >> "$GITHUB_ENV"
+
+      - name: Smoke - poll scan to completion
+        run: |
+          set -euo pipefail
+          # Mock backend (TRUSTEDOSS_SCAN_BACKEND=mock, set on the install.sh
+          # step) short-circuits the pipeline to fixture frames - the e2e
+          # Playwright suite documents this completing "in seconds"
+          # (apps/frontend/tests/e2e/scan_flow.spec.ts). 30 x 5s gives a wide
+          # margin without letting a genuinely hung worker stall the job.
+          for i in $(seq 1 30); do
+            curl -fsS "http://localhost:8000/v1/scans/$UAT_SCAN_ID" \
+              -H "Authorization: Bearer $UAT_TOKEN" -o /tmp/uat_scan_poll.json
+            SCAN_STATUS=$(python3 -c 'import json; print(json.load(open("/tmp/uat_scan_poll.json"))["status"])')
+            case "$SCAN_STATUS" in
+              succeeded)
+                echo "scan $UAT_SCAN_ID succeeded after ~$(( (i - 1) * 5 ))s"
+                exit 0
+                ;;
+              failed|cancelled)
+                echo "::error::scan $UAT_SCAN_ID ended '$SCAN_STATUS' instead of 'succeeded'"
+                cat /tmp/uat_scan_poll.json
+                exit 1
+                ;;
+              queued|running)
+                echo "waiting for scan ($i/30, status=$SCAN_STATUS)"
+                sleep 5
+                ;;
+              *)
+                echo "::error::unexpected scan status '$SCAN_STATUS'"
+                cat /tmp/uat_scan_poll.json
+                exit 1
+                ;;
+            esac
+          done
+          echo "::error::scan $UAT_SCAN_ID never reached a terminal state within the poll budget"
+          cat /tmp/uat_scan_poll.json
+          exit 1
 
       - name: Backup round-trip — backup.sh
         run: |
@@ -392,6 +519,14 @@ jobs:
       # Skip the ~600 MB Trivy DB download — this gate proves the L1 boot + API,
       # not the vulnerability feed (worker health is a celery ping, DB-independent).
       TRIVY_DB_BOOTSTRAP_ON_START: 'false'
+      # A2 (testing-hardening-plan-2026-08.md §A2) - the smoke below now triggers
+      # a real scan through the app-role runtime to prove the first-scan path.
+      # docker-compose.yml's `x-backend-env` anchor only interpolates this knob
+      # (CI-only - see the anchor's comment) if it is present in the shell
+      # environment `docker-compose` runs in; without it the worker would try
+      # the real toolchain against a fictitious git_url and, more immediately,
+      # would need the Trivy DB this job deliberately skips above.
+      TRUSTEDOSS_SCAN_BACKEND: mock
     steps:
       - uses: actions/checkout@v4
 
@@ -586,7 +721,7 @@ jobs:
 
       # First-scan smoke on the app-role runtime: authenticate, then reach an
       # authed domain endpoint. The published image mounts auth at /auth/login.
-      - name: Smoke — login + projects API (app-role runtime)
+      - name: Smoke - login (app-role runtime)
         run: |
           set -euo pipefail
           LOGIN_RESPONSE=$(docker-compose -f docker-compose.yml exec -T backend \
@@ -597,11 +732,140 @@ jobs:
             | python3 -c 'import json,sys; print(json.load(sys.stdin)["access_token"])')
           test -n "$TOKEN"
           test "$TOKEN" != "null"
+          echo "::add-mask::$TOKEN"
           echo "got token (length=${#TOKEN})"
+          echo "L1_TOKEN=$TOKEN" >> "$GITHUB_ENV"
+
+      - name: Smoke - projects API reachable (app-role runtime)
+        run: |
+          set -euo pipefail
           docker-compose -f docker-compose.yml exec -T backend \
             curl -fsS http://127.0.0.1:8000/v1/projects \
-            -H "Authorization: Bearer $TOKEN" >/dev/null
+            -H "Authorization: Bearer $L1_TOKEN" >/dev/null
           echo "projects endpoint reachable on the L1 app-role runtime"
+
+      # A2 (testing-hardening-plan-2026-08.md §A2) - everything below is new,
+      # mirroring the `install-uat` job's extension but through
+      # `docker-compose exec` (production compose publishes only Traefik's 80/
+      # 443 - the backend has no host port here). This is also the job the
+      # plan calls out for a SECOND failure mode beyond bug 1: the runtime
+      # connects as the DML-only `trustedoss_app` role (see the job header),
+      # so a table that 0014's GRANT/DEFAULT PRIVILEGES never covered would
+      # surface here as a permission-denied error from Postgres, not from the
+      # app's own auth/role gate. Each step captures HTTP status + body with a
+      # single `curl -w` (no `-o` - the file would be INSIDE the container) so
+      # the log can tell bootstrap logic, apps-side auth, and DB-permission
+      # failures apart without re-deriving it from a raw exit code.
+      - name: Smoke - create team (admin bootstrap path, app-role runtime)
+        run: |
+          set -euo pipefail
+          RAW=$(docker-compose -f docker-compose.yml exec -T backend \
+            curl -sS -X POST http://127.0.0.1:8000/v1/admin/teams \
+            -H "Authorization: Bearer $L1_TOKEN" \
+            -H "Content-Type: application/json" \
+            -d '{"name":"Install UAT L1 Team","slug":"install-uat-l1-team","description":"Created by the install-uat-l1 smoke test"}' \
+            -w '\n%{http_code}')
+          STATUS="${RAW##*$'\n'}"
+          BODY="${RAW%$'\n'"$STATUS"}"
+          if [ "$STATUS" != "201" ]; then
+            echo "::error::team creation returned HTTP $STATUS (expected 201)"
+            echo "$BODY"
+            if echo "$BODY" | grep -q "No Organization Configured"; then
+              echo "::error::bootstrap logic: create_super_admin never provisions an Organization row, so POST /v1/admin/teams has nothing to attach a team to. This is a backend fix (scripts/create_super_admin.py), not a workflow, auth, or DB-permission problem."
+            elif [ "$STATUS" = "401" ] || [ "$STATUS" = "403" ]; then
+              echo "::error::permission problem (app-level): the freshly-bootstrapped admin was rejected by the auth/role gate on POST /v1/admin/teams."
+            elif echo "$BODY" | grep -qi "permission denied"; then
+              echo "::error::permission problem (DB-level): trustedoss_app was denied on the underlying table - check 0014's GRANT / ALTER DEFAULT PRIVILEGES list against the current schema (Wave 1 B1a covers the grant-vs-default-privileges contract, not full table coverage)."
+            fi
+            exit 1
+          fi
+          TEAM_ID=$(printf '%s' "$BODY" | python3 -c 'import json,sys; print(json.load(sys.stdin)["id"])')
+          test -n "$TEAM_ID"
+          echo "created team $TEAM_ID"
+          echo "L1_TEAM_ID=$TEAM_ID" >> "$GITHUB_ENV"
+
+      - name: Smoke - create project (app-role runtime)
+        run: |
+          set -euo pipefail
+          RAW=$(docker-compose -f docker-compose.yml exec -T backend \
+            curl -sS -X POST http://127.0.0.1:8000/v1/projects \
+            -H "Authorization: Bearer $L1_TOKEN" \
+            -H "Content-Type: application/json" \
+            -d "{\"team_id\":\"$L1_TEAM_ID\",\"name\":\"Install UAT L1 Project\",\"slug\":\"install-uat-l1-project\",\"git_url\":\"https://github.com/trustedoss-e2e/install-uat-l1-smoke.git\"}" \
+            -w '\n%{http_code}')
+          STATUS="${RAW##*$'\n'}"
+          BODY="${RAW%$'\n'"$STATUS"}"
+          if [ "$STATUS" != "201" ]; then
+            echo "::error::project creation returned HTTP $STATUS (expected 201)"
+            echo "$BODY"
+            if echo "$BODY" | grep -qi "permission denied"; then
+              echo "::error::permission problem (DB-level): trustedoss_app was denied on the projects table."
+            fi
+            exit 1
+          fi
+          PROJECT_ID=$(printf '%s' "$BODY" | python3 -c 'import json,sys; print(json.load(sys.stdin)["id"])')
+          test -n "$PROJECT_ID"
+          echo "created project $PROJECT_ID"
+          echo "L1_PROJECT_ID=$PROJECT_ID" >> "$GITHUB_ENV"
+
+      - name: Smoke - trigger scan (app-role runtime)
+        run: |
+          set -euo pipefail
+          RAW=$(docker-compose -f docker-compose.yml exec -T backend \
+            curl -sS -X POST "http://127.0.0.1:8000/v1/projects/$L1_PROJECT_ID/scans" \
+            -H "Authorization: Bearer $L1_TOKEN" \
+            -H "Content-Type: application/json" \
+            -d '{"kind":"source"}' \
+            -w '\n%{http_code}')
+          STATUS="${RAW##*$'\n'}"
+          BODY="${RAW%$'\n'"$STATUS"}"
+          if [ "$STATUS" != "202" ]; then
+            echo "::error::scan trigger returned HTTP $STATUS (expected 202)"
+            echo "$BODY"
+            if echo "$BODY" | grep -qi "permission denied"; then
+              echo "::error::permission problem (DB-level): trustedoss_app was denied on the scans table."
+            fi
+            exit 1
+          fi
+          SCAN_ID=$(printf '%s' "$BODY" | python3 -c 'import json,sys; print(json.load(sys.stdin)["id"])')
+          test -n "$SCAN_ID"
+          echo "triggered scan $SCAN_ID"
+          echo "L1_SCAN_ID=$SCAN_ID" >> "$GITHUB_ENV"
+
+      - name: Smoke - poll scan to completion (app-role runtime)
+        run: |
+          set -euo pipefail
+          # Same mock-backend rationale as the install-uat job: TRUSTEDOSS_SCAN_BACKEND=mock
+          # (job env, honoured via docker-compose.yml's x-backend-env anchor) completes in
+          # seconds, so 30 x 5s is a wide margin, not the expected wait.
+          for i in $(seq 1 30); do
+            RAW=$(docker-compose -f docker-compose.yml exec -T backend \
+              curl -fsS "http://127.0.0.1:8000/v1/scans/$L1_SCAN_ID" \
+              -H "Authorization: Bearer $L1_TOKEN")
+            SCAN_STATUS=$(printf '%s' "$RAW" | python3 -c 'import json,sys; print(json.load(sys.stdin)["status"])')
+            case "$SCAN_STATUS" in
+              succeeded)
+                echo "scan $L1_SCAN_ID succeeded after ~$(( (i - 1) * 5 ))s"
+                exit 0
+                ;;
+              failed|cancelled)
+                echo "::error::scan $L1_SCAN_ID ended '$SCAN_STATUS' instead of 'succeeded'"
+                echo "$RAW"
+                exit 1
+                ;;
+              queued|running)
+                echo "waiting for scan ($i/30, status=$SCAN_STATUS)"
+                sleep 5
+                ;;
+              *)
+                echo "::error::unexpected scan status '$SCAN_STATUS'"
+                echo "$RAW"
+                exit 1
+                ;;
+            esac
+          done
+          echo "::error::scan $L1_SCAN_ID never reached a terminal state within the poll budget"
+          exit 1
 
       - name: Dump compose logs on failure
         if: failure()

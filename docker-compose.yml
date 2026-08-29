@@ -103,6 +103,17 @@ x-backend-env: &backend-env
   # Trivy DB. Air-gapped sites override the upstream OCI registry with
   # TRIVY_DB_REPOSITORY (ghcr.io/aquasecurity/trivy-db by default).
   TRIVY_DB_REPOSITORY: ${TRIVY_DB_REPOSITORY:-ghcr.io/aquasecurity/trivy-db}
+  # CI-only knob - NOT for operator use. "mock" short-circuits
+  # cdxgen/scancode/Trivy in the worker to fixture frames instead of running
+  # the real toolchain (core.config.scan_backend_mode(), read at runtime per
+  # CLAUDE.md rule #11). A real deployment must never set this: it produces
+  # placeholder results with zero real vulnerability data. Exists here (with
+  # the same default as docker-compose.dev.yml) purely so install-uat.yml's
+  # `install-uat-l1` job can trigger and complete a first-scan smoke against
+  # the published L1 role-separated stack within its CI time budget instead
+  # of running the 5-60 minute real pipeline (which also needs a live Trivy
+  # DB the job deliberately skips via TRIVY_DB_BOOTSTRAP_ON_START=false).
+  TRUSTEDOSS_SCAN_BACKEND: ${TRUSTEDOSS_SCAN_BACKEND:-real}
   # W6-#44 — Trivy DB lifecycle. The worker downloads the DB on boot
   # (worker_ready signal hook) and the beat refreshes it weekly. The cache
   # path is mounted as a named volume on the worker — see the ``volumes:``
