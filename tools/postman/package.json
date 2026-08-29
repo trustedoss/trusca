@@ -1,0 +1,9 @@
+{
+  "name": "trusca-postman-tooling",
+  "private": true,
+  "description": "Build-time tool: converts the committed OpenAPI spec into a Postman collection (C6). Not shipped, not a runtime dependency of the product.",
+  "type": "module",
+  "dependencies": {
+    "openapi-to-postmanv2": "6.3.2"
+  }
+}

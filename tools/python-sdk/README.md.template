@@ -1,0 +1,87 @@
+# trusca_client
+
+Official Python client for the [TRUSCA](https://github.com/trustedoss/trusca) REST API, generated from the project's published OpenAPI spec with [OpenAPI Generator](https://openapi-generator.tech/).
+
+## Install
+
+Download the wheel from the [GitHub Release](https://github.com/trustedoss/trusca/releases) matching your deployment's version and install it directly:
+
+```bash
+pip install trusca_client-2.2.0-py3-none-any.whl
+```
+
+There is no PyPI package yet (roadmap) — the wheel attached to each release is generated from that exact release's API, so pinning the wheel to your deployment's version keeps the client and server in step.
+
+## Quickstart
+
+The example below runs the same four-step scenario as the project's [Postman collection](https://trustedoss.github.io/trusca/docs/reference/postman-collection): log in, create a project, trigger a scan, then export its SBOM.
+
+```python
+import trusca_client
+from trusca_client.models.login_request import LoginRequest
+from trusca_client.models.project_create import ProjectCreate
+from trusca_client.models.scan_create import ScanCreate
+from trusca_client.rest import ApiException
+
+configuration = trusca_client.Configuration(host="https://trustedoss.example.com")
+
+with trusca_client.ApiClient(configuration) as api_client:
+    auth_api = trusca_client.AuthApi(api_client)
+    projects_api = trusca_client.ProjectsApi(api_client)
+
+    # 1. Log in. The published demo login below only works against a
+    #    seed_demo-seeded instance — swap in a real account otherwise.
+    token = auth_api.login_auth_login_post(
+        LoginRequest(email="admin@demo.trustedoss.dev", password="DemoTest2026!")
+    )
+    configuration.access_token = token.access_token
+
+    # 2. Create a project. team_id must be a real team's UUID (see the
+    #    Projects user guide for how to look one up).
+    project = projects_api.create_project_endpoint_v1_projects_post(
+        ProjectCreate(
+            team_id="8f0c1e2a-...your team UUID...",
+            name="checkout-service",
+            slug="checkout-service",
+            description="Storefront checkout service",
+            git_url="https://github.com/acme/checkout-service.git",
+        )
+    )
+
+    # 3. Trigger a scan. A source scan runs for minutes — poll
+    #    scans_api.get_scan_endpoint_v1_scans_scan_id_get(scan.id) yourself,
+    #    or watch the portal UI, rather than blocking here.
+    scan = projects_api.trigger_scan_endpoint_v1_projects_project_id_scans_post(
+        project_id=project.id, scan_create=ScanCreate(kind="source")
+    )
+    print(f"scan {scan.id} queued for project {project.id}")
+
+    # 4. Once that scan has succeeded, export its SBOM:
+    sbom_api = trusca_client.SbomApi(api_client)
+    try:
+        cyclonedx = sbom_api.export_project_sbom_endpoint_v1_projects_project_id_sbom_get(
+            project_id=project.id, format="cyclonedx-json"
+        )
+    except ApiException as exc:
+        print(f"SBOM not ready yet (or another error): {exc}")
+```
+
+An API key (`tos_<prefix>_<secret>`, see [API keys](https://trustedoss.github.io/trusca/docs/admin-guide/api-keys)) works the same way as a JWT — set `configuration.access_token` to the raw key instead of calling `login_auth_login_post`.
+
+## Method names are the operation ids from the spec
+
+FastAPI derives each operation id from its Python function's own name, so `trigger_scan_endpoint_v1_projects_project_id_scans_post` is what the client generator saw — not a hand-picked SDK method name. Every method's real signature, and which model class each parameter takes, is documented per-endpoint under `docs/` in this package, generated straight from the same spec.
+
+## Regenerating this SDK
+
+This package is not committed to the `trusca` repository (see `tools/python-sdk/generate.sh`'s own comment for why). To build it yourself, from a checkout of the version you want:
+
+```bash
+bash tools/python-sdk/generate.sh 2.2.0
+```
+
+Requires Node (for the generator) and a JVM (the generator itself runs on one — this is a build-time tool, unrelated to the product's own JVM-free runtime).
+
+## License
+
+Apache-2.0, same as [TRUSCA](https://github.com/trustedoss/trusca) itself.

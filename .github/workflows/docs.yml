@@ -22,6 +22,10 @@ on:
       # with the code.
       - "apps/backend/**"
       - "scripts/dump_openapi.py"
+      # C6: the hosted Postman collection is regenerated from the OpenAPI
+      # spec above by tools/postman, so it needs the same backend trigger
+      # plus its own tool changes.
+      - "tools/postman/**"
 
 # Least-privilege default — the build job only reads source. The
 # subsequent deploy step has its own `permissions:` block elevating to
@@ -80,7 +84,22 @@ jobs:
         with:
           node-version: 20.x
           cache: npm
-          cache-dependency-path: docs-site/package-lock.json
+          cache-dependency-path: |
+            docs-site/package-lock.json
+            tools/postman/package-lock.json
+
+      # --- Regenerate the Postman collection from the OpenAPI spec just
+      # written above (C6), same "committed copy is only a local-build
+      # fallback" contract as the OpenAPI spec itself: the tool has its own
+      # package.json (openapi-to-postmanv2 is a real dependency tree, unlike
+      # the zero-dependency tools/em-dash and tools/ko-style), isolated here
+      # so it never touches the product's own dependency graph. ------------
+      - name: Install Postman collection tooling
+        working-directory: tools/postman
+        run: npm ci
+
+      - name: Regenerate Postman collection
+        run: node tools/postman/dump_postman_collection.mjs
 
       - name: Install dependencies
         working-directory: docs-site

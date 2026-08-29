@@ -413,6 +413,53 @@ jobs:
           set -euo pipefail
           gh release upload "$TAG" "trusca-${VERSION}.cdx.json" --clobber
 
+      # C5: the official Python client, generated from THIS release's own
+      # API rather than committed to the repo (tools/python-sdk/generate.sh's
+      # own comment explains why: ~900 generated files would make every
+      # API-shape change a multi-thousand-line review-noise diff). Mirrors
+      # the SBOM step above: generate, attach, --clobber for idempotent
+      # re-runs. docs-site/static/openapi.json is regenerated fresh here
+      # (not read from the committed copy) for the same reason docs.yml
+      # does: FastAPI/Pydantic serialise slightly differently across Python
+      # minor versions, so "the spec as of this exact tag, on this exact
+      # Python" is the only version worth shipping a client for.
+      - name: Setup Python (for the OpenAPI dump + SDK packaging)
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: apps/backend/requirements.txt
+
+      - name: Install backend deps
+        working-directory: apps/backend
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Regenerate OpenAPI spec at this tag
+        env:
+          SECRET_KEY: ci-secret-key-min-32-chars-padding-1234
+          DATABASE_URL: postgresql+asyncpg://trustedoss:trustedoss@localhost:5432/trustedoss
+          REDIS_URL: redis://localhost:6379/0
+        run: python scripts/dump_openapi.py
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20.x
+          cache: npm
+          cache-dependency-path: tools/python-sdk/package-lock.json
+
+      - name: Generate + package the Python SDK
+        run: bash tools/python-sdk/generate.sh "${{ steps.resolve.outputs.version }}"
+
+      - name: Attach the Python SDK to the Release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: ${{ steps.resolve.outputs.tag }}
+        run: |
+          set -euo pipefail
+          gh release upload "$TAG" tools/python-sdk/dist/*.whl tools/python-sdk/dist/*.tar.gz --clobber
+
   # ===========================================================================
   # release-gate — prove the PUBLISHED images before revealing the Release
   # (Phase I / P3-12, steps I2 + I3). Pulls the three multi-arch images at the
