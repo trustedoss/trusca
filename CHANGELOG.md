@@ -7,6 +7,52 @@ and the project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.
 
 ## [Unreleased]
 
+## [0.22.2] - 2026-08-29
+
+### Fixed
+
+- **The scan detail page's download button could stay disabled for the
+  rest of a scan.** It gated on a REST snapshot of the scan's status,
+  fetched once and never refreshed; a scan that finished emitting its
+  early log lines before the page's own WebSocket connected left nothing
+  to unstick it short of reloading the page. The live connection's own
+  step now counts too (#227).
+- **A super-admin's dashboard and project list failed outright past
+  32,767 projects** - the point where a predicate built with one bind
+  parameter per project id hits asyncpg's own ceiling. Mirrors the fix
+  already shipped for the inventory view: ids go in as before below the
+  ceiling, as a single array parameter above it (#228).
+- **Two scans created at the same instant could have either one picked
+  as "latest" at random.** Two succeeded scans of the same project can
+  share an identical `created_at` (it is transaction time, not a
+  per-row clock reading), and the tie-break behind it was a scan's
+  random id. The scan's actual completion time now breaks the tie
+  first (#228).
+- **A component approval could reach a decided state without recording
+  when.** A rejected component could then read as approved to a query
+  that orders by decision time. A database constraint now requires the
+  timestamp on every approved or rejected row; a migration backfills
+  the rare existing gap before enforcing it (#228).
+- **A failed write that a caller recovered from and retried on the same
+  session could carry a stray audit-log entry into the next write**,
+  recording it against whatever succeeded next rather than the change
+  that was actually rolled back (#228).
+
+### Added
+
+- **The published OpenAPI spec now documents how to authenticate.**
+  Every route reads its bearer token straight off the request rather
+  than through a class FastAPI can introspect, so the served spec never
+  had anything to base a security requirement on, despite nearly every
+  operation needing one (#229).
+- **A Postman collection and an official Python SDK**, both generated
+  from the same OpenAPI spec as the Swagger UI and Redoc reference. The
+  Postman collection ships from the docs site; four of its requests
+  (login, create a project, trigger a scan, export the SBOM) carry real
+  example values and pass their results to each other, so the
+  walkthrough is runnable rather than only readable. The Python SDK
+  ships as a wheel attached to this and future GitHub Releases (#230).
+
 ## [0.22.1] - 2026-08-24
 
 ### Fixed
