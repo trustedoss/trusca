@@ -138,6 +138,17 @@ END $$;
 """.strip()
 
 
+# Privileges the one-time GRANT (above) gives on existing tables that the
+# ALTER DEFAULT PRIVILEGES clause deliberately withholds from future tables.
+# This is a design decision, not an oversight (see "Why" above): a future
+# migration that adds a table needing UPDATE/DELETE for the runtime must
+# GRANT them explicitly in its own upgrade body. If the intended gap ever
+# changes, update this constant and record the reason in a comment here.
+# apps/backend/tests/unit/test_app_role_grant_contract.py asserts the DDL
+# matches it.
+_INTENTIONAL_DEFAULT_PRIVILEGE_GAP: frozenset[str] = frozenset({"UPDATE", "DELETE"})
+
+
 def upgrade() -> None:
     op.execute(_GRANT_DDL)
 
