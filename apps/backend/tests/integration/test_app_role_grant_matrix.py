@@ -166,7 +166,19 @@ def role_grant_matrix() -> Iterator[dict[str, list[str]]]:
                     # sharing this cluster) created it first. Reuse it; do
                     # not drop it at teardown since we didn't create it.
 
-            conn.execute(text(f'CREATE DATABASE "{tmp_db}" OWNER {owner["user"]}'))
+            try:
+                conn.execute(
+                    text(f'CREATE DATABASE "{tmp_db}" OWNER "{owner["user"]}"')
+                )
+            except Exception:
+                # If we just created the role above and CREATE DATABASE then
+                # fails, don't leak a NOLOGIN role with no owned objects.
+                # Drop it here since the module-scope finally block below
+                # never runs (this exception propagates out of fixture
+                # setup, before that block is entered).
+                if role_created_here:
+                    conn.execute(text(f"DROP ROLE IF EXISTS {_APP_ROLE}"))
+                raise
     finally:
         owner_engine.dispose()
 
