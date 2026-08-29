@@ -11,6 +11,7 @@ pythonpath = ["."]
 markers = [
     "integration: requires DATABASE_URL (and usually REDIS_URL) — runs against real services",
     "golden: real-stack golden-fixture drift gate (Tier 1) — nightly only; lives under tests/e2e/ which the PR run (tests/unit tests/integration) does not collect",
+    "serial: truncates or otherwise mutates shared DB state across the whole schema; must never run concurrently with another test. This repo's CI does not run pytest under xdist today, so nothing enforces this marker yet; it exists so a future parallelization change has something to grep for (and so isolation-groups can key off it).",
 ]
 
 [tool.ruff]
