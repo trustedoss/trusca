@@ -148,6 +148,15 @@ jobs:
     if: github.event_name != 'pull_request'
     runs-on: ubuntu-22.04
     timeout-minutes: 25
+    env:
+      # admin-guide/vulnerability-data.md's Path B assertion (E3) briefly
+      # brings up docker-compose.yml's worker-scan/worker-default alongside
+      # this dev stack - see docker-compose.docs-uat-workers.yml. Pinning the
+      # project name here makes the dev stack's default network resolvable
+      # (as `trustedoss_default`) from that overlay, and matches the doc's
+      # own "under default docker-compose naming (project prefix trustedoss)"
+      # volume-naming note.
+      COMPOSE_PROJECT_NAME: trustedoss
     steps:
       - uses: actions/checkout@v4
 
@@ -221,10 +230,74 @@ jobs:
           DOCS_UAT_API_BASE: http://localhost:8000
         run: node tools/docs-uat/run.mjs --tier=nightly --doc=admin-guide/users-and-teams.md
 
+      # admin-guide/vulnerability-data.md's Path B doc steps run literal
+      # `docker-compose -f docker-compose.yml stop/start worker-scan
+      # worker-default` (the production worker split - docker-compose.dev.yml
+      # only has one `celery-worker`, so those container names would
+      # otherwise never exist on this stack). Pre-create the two containers
+      # with docker-compose.docs-uat-workers.yml (reuses the already-built dev
+      # worker image) so the doc's own `-f docker-compose.yml` stop/start
+      # commands - run unmodified by run.mjs - find real containers under
+      # COMPOSE_PROJECT_NAME=trustedoss (set at the job level) to act on.
+      # `--no-deps` so this never touches docker-compose.yml's own postgres/
+      # redis/backend service definitions. `up` creates docker-compose.yml's
+      # own real `trustedoss` network (needed so the doc's later unmodified
+      # `start` command - no override file - can resolve it too; run
+      # 33290316834 hit "network trustedoss not found" when this network was
+      # instead redirected onto the dev stack's network via `external:`), so
+      # `docker network connect` joins the dev stack's already-running
+      # postgres/redis containers onto it afterwards.
+      - name: Start production worker-scan/worker-default (vulnerability-data.md Path B)
+        run: |
+          set -euo pipefail
+          docker-compose -f docker-compose.yml -f docker-compose.docs-uat-workers.yml \
+            up -d --no-deps worker-scan worker-default
+          docker network connect --alias postgres trustedoss \
+            "$(docker-compose -f docker-compose.dev.yml ps -q postgres)"
+          docker network connect --alias redis trustedoss \
+            "$(docker-compose -f docker-compose.dev.yml ps -q redis)"
+          echo "waiting for worker-scan and worker-default healthy..."
+          for i in $(seq 1 30); do
+            scan_healthy=$(docker-compose -f docker-compose.yml -f docker-compose.docs-uat-workers.yml ps worker-scan | grep -c healthy || true)
+            default_healthy=$(docker-compose -f docker-compose.yml -f docker-compose.docs-uat-workers.yml ps worker-default | grep -c healthy || true)
+            if [ "$scan_healthy" -ge 1 ] && [ "$default_healthy" -ge 1 ]; then
+              echo "worker-scan and worker-default healthy"; break
+            fi
+            echo "waiting for worker-scan/worker-default ($i/30)"; sleep 5
+          done
+          docker-compose -f docker-compose.yml -f docker-compose.docs-uat-workers.yml ps worker-scan worker-default
+
       - name: Run nightly assertions — admin-guide/vulnerability-data.md
         env:
           DOCS_UAT_API_BASE: http://localhost:8000
         run: node tools/docs-uat/run.mjs --tier=nightly --doc=admin-guide/vulnerability-data.md
+
+      # Mirrors the doc's own container/network lifecycle: stop+remove the
+      # two containers (unmodified `-f docker-compose.yml`, no override file
+      # needed for stop/rm), unplug the dev stack's postgres/redis from the
+      # `trustedoss` network, then remove that network so it does not linger
+      # for the rest of the job.
+      #
+      # `-t 30`: worker-scan/worker-default's production `stop_grace_period`
+      # (4200s/3900s, docker-compose.yml) applies to `stop` here too since
+      # this step deliberately drops the docs-uat-workers.yml overlay (whose
+      # shortened stop_grace_period only exists for `up`, which built these
+      # containers). Without an explicit timeout, `docker-compose stop`
+      # blocked past the job's 25-minute timeout waiting out that grace
+      # period (run 33291293513) - pass it on the command line instead of
+      # re-adding the overlay file.
+      - name: Stop production worker-scan/worker-default (cleanup)
+        if: always()
+        run: |
+          docker-compose -f docker-compose.yml \
+            stop -t 30 worker-scan worker-default || true
+          docker-compose -f docker-compose.yml \
+            rm -f worker-scan worker-default || true
+          docker network disconnect trustedoss \
+            "$(docker-compose -f docker-compose.dev.yml ps -q postgres)" || true
+          docker network disconnect trustedoss \
+            "$(docker-compose -f docker-compose.dev.yml ps -q redis)" || true
+          docker network rm trustedoss || true
 
       - name: Run nightly assertions — user-guide/sbom.md
         env:
@@ -236,6 +309,12 @@ jobs:
         run: |
           docker-compose -f docker-compose.dev.yml ps || true
           docker-compose -f docker-compose.dev.yml logs --tail=300 || true
+          # worker-scan/worker-default (docker-compose.yml, brought up for
+          # vulnerability-data.md Path B above) are usually already stopped
+          # and removed by the cleanup step by the time this runs - `|| true`
+          # covers both that and a genuine failure in the bring-up itself.
+          docker-compose -f docker-compose.yml -f docker-compose.docs-uat-workers.yml ps worker-scan worker-default || true
+          docker-compose -f docker-compose.yml -f docker-compose.docs-uat-workers.yml logs --tail=300 worker-scan worker-default || true
 
       - name: Tear down
         if: always()
