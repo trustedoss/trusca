@@ -182,16 +182,6 @@ def test_streaming_timeout_raises_with_partial_output() -> None:
     assert "first" in received
 
 
-@pytest.mark.xfail(
-    strict=True,
-    reason=(
-        "_line_streamer.py streaming-path timeout branch calls proc.kill() "
-        "without a following proc.wait()/poll() before re-raising "
-        "TimeoutExpired, so the child is not yet reaped at this point "
-        "(testing-hardening-plan-2026-08 Type D / unit D1). Fix tracked "
-        "separately; remove this marker once it lands."
-    ),
-)
 def test_streaming_timeout_reaps_child_process(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

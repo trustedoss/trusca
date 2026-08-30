@@ -2,12 +2,13 @@
 
 Background (testing-hardening-plan-2026-08.md §1 Type D / §2 D2): a PoC
 deployment surfaced a defect where ``integrations/_line_streamer.py``'s
-streaming-path timeout branch calls ``proc.kill()`` and then re-raises
+streaming-path timeout branch called ``proc.kill()`` and then re-raised
 ``TimeoutExpired`` without ever calling ``proc.wait()`` / ``proc.poll()`` to
-reap the killed child. ``test_line_streamer.py::test_streaming_timeout_reaps_child_process``
-already pins that *specific* behaviour as an xfail(strict=True). This file
-guards the *source pattern* itself, so a future adapter that copies the same
-shape (kill, then raise, no wait) gets caught by CI instead of by another
+reap the killed child. That specific defect is fixed (the branch now calls
+``proc.wait()`` right after ``proc.kill()``); ``test_line_streamer.py::
+test_streaming_timeout_reaps_child_process`` pins the fixed behaviour. This
+file guards the *source pattern* itself, so a future adapter that copies the
+old shape (kill, then raise, no wait) gets caught by CI instead of by another
 production incident.
 
 Design
@@ -47,8 +48,6 @@ import ast
 import textwrap
 from dataclasses import dataclass
 from pathlib import Path
-
-import pytest
 
 BACKEND_ROOT = Path(__file__).resolve().parents[2]
 SCANNED_DIRS = ["integrations", "tasks"]
@@ -341,19 +340,6 @@ def test_scanned_dirs_exist_and_are_the_only_popen_users() -> None:
     )
 
 
-@pytest.mark.xfail(
-    strict=True,
-    reason=(
-        "integrations/_line_streamer.py:227 calls proc.kill() in the "
-        "streaming-path timeout branch without a following proc.wait()/"
-        "poll() before re-raising TimeoutExpired -- the child is not yet "
-        "reaped (testing-hardening-plan-2026-08 Type D / unit D2; the "
-        "behavioural counterpart is test_line_streamer.py::"
-        "test_streaming_timeout_reaps_child_process, also xfail(strict)). "
-        "Fix tracked separately; remove this marker once the fix lands so "
-        "this guard starts enforcing zero violations."
-    ),
-)
 def test_no_kill_without_wait_violations_in_scanned_dirs() -> None:
     violations = _scan_dirs(BACKEND_ROOT, SCANNED_DIRS)
     assert violations == [], (

@@ -25,7 +25,8 @@ Timeout handling
 ----------------
 We use ``proc.wait(timeout=...)`` rather than ``communicate(timeout=...)`` so
 the drain threads stay in charge of reading the pipes. On timeout we kill the
-process, join the drain threads (with a short bound), and re-raise
+process, reap it with a follow-up ``proc.wait()`` so it is not left a zombie,
+join the drain threads (with a short bound), and re-raise
 :class:`subprocess.TimeoutExpired` — exactly what the caller already handles.
 
 Callback safety
@@ -225,6 +226,9 @@ def run_with_line_streaming(
         # honour SIGTERM cleanly — the subprocess has already blown its
         # budget so a hard kill is appropriate.
         proc.kill()
+        # Reap the killed child so it does not linger as a zombie: kill()
+        # only sends SIGKILL, the exit status still has to be collected.
+        proc.wait()
         # Bounded join so a wedged drain thread cannot keep the worker
         # hostage. Daemon=True means a still-stuck thread will die when the
         # process exits anyway.
