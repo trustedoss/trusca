@@ -1,11 +1,12 @@
 #!/usr/bin/env python3
 # SPDX-License-Identifier: Apache-2.0
 # Copyright 2026 TRUSCA contributors
-"""scan-bench — fixture/real-world 일괄 스캔 자동화.
+"""scan-bench, bulk scan automation for fixture/real-world targets.
 
-CLAUDE.md 운영 규칙 준수:
-- os.getenv 런타임 호출 (모듈 상수 캐싱 금지)
-- docker-compose V1 가정 (portal 외부에서 호출하므로 영향 없음)
+Follows the CLAUDE.md operating rules:
+- os.getenv called at runtime (no caching env vars as module constants)
+- assumes docker-compose V1 (irrelevant here since this calls the portal
+  from the outside)
 """
 
 from __future__ import annotations
