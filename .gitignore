@@ -99,3 +99,7 @@ docs-uat/manifest.json
 
 # vendored verify-spec runner writes a local JWT cache — never commit it
 tests/verify-specs/.tokens.json
+
+# Locust load-test report output (tests/load/README.md "Reports")
+tests/load/last-run.html
+tests/load/last-run_*.csv

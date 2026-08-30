@@ -1,0 +1,75 @@
+# SPDX-License-Identifier: Apache-2.0
+# Copyright 2026 TRUSCA contributors
+# TRUSCA - Locust load-test rig (self-resource-validation-plan-2026-08-30.md §6-4).
+#
+# tests/load/locustfile.py and its README already existed and describe three
+# stages (capacity 250 / buffer 1,250 / stress 10,000), but the file the
+# README's own "How to start" section calls up
+# (`docker-compose -f docker-compose.load.yml up`) never existed, and a single
+# Locust process tops out well under the buffer/stress stage's user counts -
+# distributed mode (a master plus scalable workers) is what those need. This
+# is that file.
+#
+# A SEPARATE compose project from docker-compose.dev.yml on purpose (brought
+# up in its own step, per the README), not merged via `-f dev.yml -f
+# load.yml`: the load rig's own lifecycle (start it, stop it, scale workers
+# up and down) has nothing to do with the app stack's. It joins the dev
+# stack's network as an EXTERNAL network instead, the same pattern
+# tests/load/run_hard.sh already uses for its bare `docker run` invocations -
+# LOAD_NETWORK, because the default network's actual name is
+# `<compose-project-name>_default`, and the project name is the checkout
+# directory's basename, which is not the same on every machine this gets
+# cloned onto. Find yours with `docker network ls` (look for the one the dev
+# stack's containers are on) and export LOAD_NETWORK before bringing this up
+# if it is not the default below.
+#
+# Usage (see tests/load/README.md for the full runbook):
+#   docker-compose -f docker-compose.dev.yml up -d          # the app stack first
+#   LOAD_NETWORK=<your-network> docker-compose -f docker-compose.load.yml up -d locust-master
+#   docker-compose -f docker-compose.load.yml up -d --scale locust-worker=4 locust-worker
+#   open http://localhost:8089
+#
+# Or headless, no Web UI (see tests/load/README.md's capacity/buffer/stress
+# commands for the plain `locust` CLI equivalent; this project's `run` form
+# reuses this file's image/network/volumes instead):
+#   docker-compose -f docker-compose.load.yml run --rm locust-master \
+#     -f /mnt/locust/locustfile.py --config /mnt/locust/locust.conf --headless \
+#     --html /mnt/locust/last-run.html --csv /mnt/locust/last-run
+
+services:
+  locust-master:
+    image: locustio/locust:2.31.8
+    command: >-
+      -f /mnt/locust/locustfile.py --config /mnt/locust/locust.conf
+      --master --host ${LOAD_HOST:-http://backend:8000}
+    volumes:
+      - ./tests/load:/mnt/locust:ro
+    ports:
+      - "8089:8089"
+    environment:
+      LOAD_TEST_EMAIL: ${LOAD_TEST_EMAIL:-e2e-admin@trustedoss.dev}
+      LOAD_TEST_PASSWORD: ${LOAD_TEST_PASSWORD:-E2eAdminPass2026}
+      LOAD_MAX_FAIL_RATIO: ${LOAD_MAX_FAIL_RATIO:-0.01}
+      LOAD_MAX_P95_MS: ${LOAD_MAX_P95_MS:-1500}
+      LOAD_MAX_P99_MS: ${LOAD_MAX_P99_MS:-4000}
+      LOAD_SLO_ENFORCE: ${LOAD_SLO_ENFORCE:-true}
+
+  # Scale with: docker-compose -f docker-compose.load.yml up -d --scale locust-worker=N locust-worker
+  # One worker process per vCPU you can spare it is the usual starting point;
+  # tests/load/README.md's own math (~1 vCPU per 10 simulated users) says the
+  # capacity stage (250) wants a worker fleet with roughly 25 vCPU total.
+  locust-worker:
+    image: locustio/locust:2.31.8
+    command: -f /mnt/locust/locustfile.py --worker --master-host locust-master
+    volumes:
+      - ./tests/load:/mnt/locust:ro
+    depends_on:
+      - locust-master
+    environment:
+      LOAD_TEST_EMAIL: ${LOAD_TEST_EMAIL:-e2e-admin@trustedoss.dev}
+      LOAD_TEST_PASSWORD: ${LOAD_TEST_PASSWORD:-E2eAdminPass2026}
+
+networks:
+  default:
+    name: ${LOAD_NETWORK:-trustedoss-portal_default}
+    external: true

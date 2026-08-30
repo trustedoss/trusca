@@ -64,10 +64,21 @@ docker-compose -f docker-compose.dev.yml up -d
 docker-compose -f docker-compose.dev.yml exec backend \
   python scripts/seed_e2e_user.py --project-names load-1,load-2,load-3,load-4,load-5
 
-# 3. Bring up Locust.
-docker-compose -f docker-compose.load.yml up
+# 3. Bring up Locust. docker-compose.load.yml is a SEPARATE compose project
+#    from docker-compose.dev.yml (its own lifecycle), joining the dev stack's
+#    network as external -- find yours with `docker network ls` (the network
+#    docker-compose.dev.yml's own containers are on; its name is
+#    <compose-project-name>_default, and the project name is your checkout
+#    directory's basename, so this varies machine to machine).
+LOAD_NETWORK=<your-network> docker-compose -f docker-compose.load.yml up -d locust-master
 
-# 4. Open the dashboard.
+# 4. Scale workers to the vCPU budget you have for this run (one worker
+#    process per ~1 vCPU is the rule of thumb from "Capacity, buffer, and
+#    stress" above; the capacity stage's 250 users wants roughly 25 vCPU
+#    total across however many workers that takes).
+LOAD_NETWORK=<your-network> docker-compose -f docker-compose.load.yml up -d --scale locust-worker=4 locust-worker
+
+# 5. Open the dashboard.
 open http://localhost:8089
 ```
 

@@ -84,7 +84,7 @@ import time
 import requests
 from locust import HttpUser, between, events, task
 from locust.env import Environment
-from locust.runners import WorkerRunner
+from locust.runners import MasterRunner, WorkerRunner
 
 LOAD_TEST_EMAIL = os.getenv("LOAD_TEST_EMAIL", "e2e-admin@trustedoss.dev")
 LOAD_TEST_PASSWORD = os.getenv("LOAD_TEST_PASSWORD", "E2eAdminPass2026")
@@ -124,10 +124,29 @@ _SBOM_FORMATS = ("cyclonedx-json", "cyclonedx-xml", "spdx-json", "spdx-tv")
 _SHARED = {"token": None, "project_ids": [], "api_key": None, "api_key_project_id": None}
 
 
+# §6-4 (self-resource-validation-plan-2026-08-30.md): distributed mode runs
+# each worker as its own OS process (often on a separate machine), so the
+# module-level ``_SHARED`` dict this file relies on is NOT actually shared --
+# a worker's own copy stays at its initial all-None state forever unless the
+# master pushes it across Locust's RPC channel. Without this, every
+# worker-spawned user silently sent unauthenticated requests (empty
+# Authorization header) in real --master/--worker runs; a single-process run
+# never surfaced it because there master and "worker" are the same process.
+@events.init.add_listener
+def _register_shared_auth_message(environment: Environment, **_kw) -> None:
+    if isinstance(environment.runner, (MasterRunner, WorkerRunner)):
+        environment.runner.register_message("shared_auth", _on_shared_auth_message)
+
+
+def _on_shared_auth_message(environment: Environment, msg, **_kw) -> None:
+    _SHARED.update(msg.data)
+    print("LOAD bootstrap: shared auth received from master")
+
+
 @events.test_start.add_listener
 def _bootstrap_shared_auth(environment: Environment, **_kw) -> None:
     if isinstance(environment.runner, WorkerRunner):
-        return  # the master broadcasts; workers read _SHARED via on_start retry
+        return  # the master broadcasts below; workers wait for the message
     host = environment.host or "http://localhost:8000"
     try:
         r = requests.post(
@@ -174,6 +193,12 @@ def _bootstrap_shared_auth(environment: Environment, **_kw) -> None:
             print(f"LOAD bootstrap login FAILED: {r.status_code}")
     except Exception as exc:  # noqa: BLE001
         print(f"LOAD bootstrap error: {exc}")
+    finally:
+        # Broadcast even on failure (all-None _SHARED): a worker that never
+        # hears back would otherwise wait forever rather than running with no
+        # token, which at least surfaces as visible 401s instead of a stall.
+        if isinstance(environment.runner, MasterRunner):
+            environment.runner.send_message("shared_auth", dict(_SHARED))
 
 
 class _AuthedUser(HttpUser):
