@@ -36,15 +36,18 @@ Trivy entry points.
 
 ``--skip-db-update`` / offline mode
 ------------------------------------
-Air-gapped operation is supposed to pass an offline flag to Trivy so a
-disconnected worker does not stall retrying a DB fetch it cannot complete.
-That flag does not exist in the adapter today; this is a known gap (see
-testing-hardening-plan-2026-08.md §2 C1), tracked as a product bug for a
-separate fix, not something this unit invents a test for. The trivy_image /
-trivy_sbom / trivy_db_download required-flag sets below lock down only the
-argv that exists right now; adding the offline flag later means updating the
-relevant ``required`` set, and this file's job is to make that addition
-impossible to forget again.
+Air-gapped operation passes ``--skip-db-update`` to Trivy so a disconnected
+worker does not stall retrying a DB fetch it cannot complete (bug 3,
+testing-hardening-plan-2026-08.md §2 C1). ``run_trivy_image`` /
+``run_trivy_sbom`` add the flag when
+``core.config.trivy_db_bootstrap_on_start()`` is ``False`` (the operator's
+``TRIVY_DB_BOOTSTRAP_ON_START=false`` signal that the cache is populated by a
+separate process and the worker must never attempt a network pull); the base
+case in the table below is the default (bootstrap on, online), where the
+flag stays absent. The two dedicated conditional-flag tests below the table
+cover the offline case. ``trivy_db_download`` (``download_db_only``) never
+takes the flag, in either mode - that call's entire job is to update the DB,
+so skipping the update would defeat its purpose.
 
 Census defense
 --------------
@@ -88,12 +91,14 @@ _INTEGRATIONS_DIR = Path(__file__).resolve().parents[3] / "integrations"
 
 
 def _invoke_trivy_image(
-    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, *, verbose: bool = False
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, *, verbose: bool = False, offline: bool = False
 ) -> list[str]:
     from integrations import trivy as trivy_adapter
 
     monkeypatch.setenv("TRUSTEDOSS_SCAN_BACKEND", "real")
     monkeypatch.setattr("integrations.trivy.shutil.which", lambda _n: "/usr/local/bin/trivy")
+    if offline:
+        monkeypatch.setenv("TRIVY_DB_BOOTSTRAP_ON_START", "false")
 
     captured: dict[str, list[str]] = {}
 
@@ -115,12 +120,14 @@ def _invoke_trivy_image(
 
 
 def _invoke_trivy_sbom(
-    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, *, verbose: bool = False
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, *, verbose: bool = False, offline: bool = False
 ) -> list[str]:
     from integrations import trivy as trivy_adapter
 
     monkeypatch.setenv("TRUSTEDOSS_SCAN_BACKEND", "real")
     monkeypatch.setattr("integrations.trivy.shutil.which", lambda _n: "/usr/local/bin/trivy")
+    if offline:
+        monkeypatch.setenv("TRIVY_DB_BOOTSTRAP_ON_START", "false")
 
     sbom_path = tmp_path / "sbom.cdx.json"
     sbom_path.write_text('{"bomFormat":"CycloneDX"}', encoding="utf-8")
@@ -340,22 +347,28 @@ _CASES: list[ArgvCase] = [
         required=frozenset(
             {"trivy", "image", "--format", "json", "--output", "--scanners", "vuln"}
         ),
-        # --skip-db-update: not yet implemented, see module docstring.
+        # --skip-db-update: only added in offline mode
+        # (TRIVY_DB_BOOTSTRAP_ON_START=false); the base case here is the
+        # online default, so it stays absent. See
+        # test_trivy_image_offline_mode_adds_skip_db_update_flag below.
         forbidden=frozenset({"--debug", "--skip-db-update", "--quiet"}),
     ),
     ArgvCase(
         key="trivy_sbom",
         invoke=_invoke_trivy_sbom,
         required=frozenset({"trivy", "sbom", "--format", "json", "--output", "--scanners", "vuln"}),
-        # --skip-db-update: not yet implemented, see module docstring.
+        # --skip-db-update: only added in offline mode, same as trivy_image.
+        # See test_trivy_sbom_offline_mode_adds_skip_db_update_flag below.
         forbidden=frozenset({"--debug", "--skip-db-update", "--quiet"}),
     ),
     ArgvCase(
         key="trivy_db_download",
         invoke=_invoke_trivy_db_download,
         required=frozenset({"trivy", "image", "--download-db-only", "--quiet", "--no-progress"}),
-        # --skip-db-update: not yet implemented, see module docstring; this
-        # is the exact call site the offline-mode bug report is about.
+        # --skip-db-update: permanently forbidden here, in every mode -
+        # this call's entire job is to update the DB, so skipping the
+        # update would defeat its purpose. Unlike trivy_image/trivy_sbom,
+        # there is no conditional variant of this case.
         forbidden=frozenset({"--skip-db-update", "--format"}),
     ),
     ArgvCase(
@@ -435,6 +448,34 @@ def test_trivy_image_verbose_adds_debug_flag(
 ) -> None:
     cmd = _invoke_trivy_image(monkeypatch, tmp_path, verbose=True)
     assert "--debug" in cmd
+
+
+def test_trivy_image_offline_mode_adds_skip_db_update_flag(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """bug 3 - TRIVY_DB_BOOTSTRAP_ON_START=false must add --skip-db-update
+    so an air-gapped worker never tries a network DB pull mid-scan."""
+    cmd = _invoke_trivy_image(monkeypatch, tmp_path, offline=True)
+    assert "--skip-db-update" in cmd
+
+
+def test_trivy_sbom_offline_mode_adds_skip_db_update_flag(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """bug 3 - same offline signal as trivy_image, see that test."""
+    cmd = _invoke_trivy_sbom(monkeypatch, tmp_path, offline=True)
+    assert "--skip-db-update" in cmd
+
+
+def test_trivy_db_download_offline_mode_never_adds_skip_db_update_flag(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """download_db_only's entire job is to update the DB, so the offline
+    signal must not reach it - --skip-db-update there would make the
+    Path B "populate while connected" bootstrap silently do nothing."""
+    monkeypatch.setenv("TRIVY_DB_BOOTSTRAP_ON_START", "false")
+    cmd = _invoke_trivy_db_download(monkeypatch, tmp_path)
+    assert "--skip-db-update" not in cmd
 
 
 def test_trivy_sbom_verbose_adds_debug_flag(

@@ -41,7 +41,7 @@ from typing import Any, Literal
 
 import structlog
 
-from core.config import scan_backend_mode, workspace_root
+from core.config import scan_backend_mode, trivy_db_bootstrap_on_start, workspace_root
 from integrations._line_streamer import LineCallback, run_with_line_streaming
 from integrations._subprocess_env import scrubbed_env_for_trivy
 
@@ -213,6 +213,15 @@ def run_trivy_image(
     # ``--debug`` for full matcher diagnostics.
     if verbose:
         cmd.append("--debug")
+    if not trivy_db_bootstrap_on_start():
+        # Offline mode (bug 3, testing-hardening-plan-2026-08.md §2 C1):
+        # TRIVY_DB_BOOTSTRAP_ON_START=false means the operator populates the
+        # cache from a separate process and the worker must never attempt a
+        # network pull. Without this flag, ``trivy image`` still tries its
+        # own DB-update check by default on every scan, stalling (or
+        # outright failing) a genuinely air-gapped worker instead of using
+        # the pre-populated cache the docs promise (Path B).
+        cmd.append("--skip-db-update")
     cmd.append(image_ref)
     log.info("trivy_start", image=image_ref, output=str(report_path), verbose=verbose)
     try:
@@ -364,6 +373,9 @@ def run_trivy_sbom(
     # adds full diagnostics in verbose mode.
     if verbose:
         cmd.append("--debug")
+    if not trivy_db_bootstrap_on_start():
+        # Offline mode - see the matching comment in run_trivy_image.
+        cmd.append("--skip-db-update")
     cmd.append(str(sbom_path))
     log.info(
         "trivy_sbom_start", sbom=str(sbom_path), output=str(report_path), verbose=verbose
