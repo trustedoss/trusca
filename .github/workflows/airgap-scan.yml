@@ -450,25 +450,15 @@ jobs:
             echo "CLI verdict: accept"
           fi
 
-          # Judgement:
-          #  - CLI rejects, app still says fresh: the known, tracked mismatch
-          #    (Wave 1 E2, apps/backend/tests/unit/integrations/
-          #    test_trivy_db_metadata_oracle.py, xfail(strict=True) -
-          #    get_trivy_db_status() reads UpdatedAt/Version only and never
-          #    looks at DownloadedAt). Not a new finding - warn, do not fail.
-          #  - CLI rejects, app no longer says fresh: the E2 fix likely landed.
-          #    Fail loud so this carve-out and the E2 xfail both get removed
-          #    together, same as an xfail(strict=True) failing on an
-          #    unexpected pass.
-          #  - anything else: a genuinely new divergence between the two
-          #    judges. This step exists to catch exactly that - fail.
-          if [ "$cli_rejected_corrupt" = "true" ] && [ "$app_corrupt" = "fresh" ]; then
-            echo "::warning::known, tracked divergence reproduced against a real trivy binary: the CLI rejects a DownloadedAt=zero DB but get_trivy_db_status() still reports 'fresh'. Tracked in testing-hardening-plan-2026-08.md type E / unit E2 (apps/backend/tests/unit/integrations/test_trivy_db_metadata_oracle.py). Not failing this job for the known case - remove this carve-out once that fix lands."
-          elif [ "$cli_rejected_corrupt" = "true" ] && [ "$app_corrupt" != "fresh" ]; then
-            echo "::error::the CLI still rejects a DownloadedAt=zero DB, but get_trivy_db_status() now reports '$app_corrupt' instead of 'fresh' - this looks like the E2 bug got fixed. Remove the known-bug carve-out in this workflow (and the xfail(strict=True) in test_trivy_db_metadata_oracle.py) and turn this into a hard agreement assertion."
-            exit 1
+          # Judgement (E2 fix landed - integrations/trivy.py::
+          # _has_zero_value_downloaded_at - so this is now a hard agreement
+          # assertion, not a known-mismatch carve-out):
+          #  - CLI rejects, app also says not-fresh: the two judges agree.
+          #  - anything else: a divergence between the two judges - fail.
+          if [ "$cli_rejected_corrupt" = "true" ] && [ "$app_corrupt" != "fresh" ]; then
+            echo "app and CLI agree: a DownloadedAt=zero DB is treated as unusable by both"
           else
-            echo "::error::unexpected divergence between the two judges: CLI verdict=$( [ "$cli_rejected_corrupt" = "true" ] && echo reject || echo accept ), app verdict=$app_corrupt. This does not match the tracked E2 case - investigate before waiving it."
+            echo "::error::divergence between the two judges on a DownloadedAt=zero DB: CLI verdict=$( [ "$cli_rejected_corrupt" = "true" ] && echo reject || echo accept ), app verdict=$app_corrupt (expected both to reject / non-fresh). get_trivy_db_status() (apps/backend/integrations/trivy.py) should treat a zero-value DownloadedAt the same as a missing metadata.json - see test_trivy_db_metadata_oracle.py."
             exit 1
           fi
 

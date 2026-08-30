@@ -6,12 +6,12 @@ type E ("offline operating mode"), unit ``E2. metadata.json 판정 일치``.
 
 The on-disk ``metadata.json`` written by ``trivy --download-db-only`` carries
 four fields: ``Version``, ``NextUpdate``, ``UpdatedAt``, ``DownloadedAt``.
-``get_trivy_db_status`` only reads ``UpdatedAt`` and ``Version`` when it
-classifies freshness for the admin/health panel; it never looks at
-``DownloadedAt``. When the real CLI treats ``DownloadedAt`` as a corruption
-signal (a zero/epoch value means the download never actually completed),
-the two judges of the same on-disk state can disagree: the CLI rejects the
-DB while the panel still reports it "fresh".
+``get_trivy_db_status`` reads ``DownloadedAt`` alongside ``UpdatedAt`` /
+``Version`` when it classifies freshness for the admin/health panel: a
+zero-value ``DownloadedAt`` (Go's zero ``time.Time``, the real CLI's
+corruption signal meaning the download never actually completed) is treated
+as if the metadata file did not exist, so the panel no longer disagrees with
+the CLI by reporting an unusable DB "fresh".
 
 This module only fixes the panel's judgement in isolation; it does not
 invoke the real ``trivy`` binary. The cross-check against actual CLI
@@ -96,18 +96,6 @@ def test_real_capture_metadata_classifies_fresh_shortly_after_update(
     assert status.freshness == "fresh"
 
 
-@pytest.mark.xfail(
-    strict=True,
-    reason=(
-        "get_trivy_db_status() (integrations/trivy.py) only reads "
-        "UpdatedAt/Version from metadata.json and ignores DownloadedAt, so "
-        "a zero-value DownloadedAt (Go's zero time.Time, the real CLI's "
-        "corruption signal) still classifies as 'fresh'. Judgement "
-        "mismatch tracked in trusca-internal testing-hardening-plan-2026-08.md "
-        "type E / unit E2; fixing get_trivy_db_status() is out of scope "
-        "for this test."
-    ),
-)
 def test_zero_value_downloaded_at_is_not_reported_fresh(trivy_cache: Path) -> None:
     """A metadata.json whose ``DownloadedAt`` is the Go zero-value must not
     be classified 'fresh' by the admin panel, even though ``UpdatedAt``
