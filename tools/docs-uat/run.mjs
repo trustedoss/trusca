@@ -133,8 +133,8 @@ const _resolved = {};
 async function resolvePortalWebProject() {
   // The seeded `portal-web` project is deterministic and carries the CVEs +
   // license findings the SCA read endpoints document. Its owning team is the
-  // "frontend" team from seed_demo.py, which is what TEAM_ID resolves to as
-  // well — one lookup backs both placeholders.
+  // "frontend" team from seed_demo.py, which is what TEAM_ID resolves to, so
+  // one lookup backs both placeholders.
   const token = await getAdminToken();
   const res = await fetch(`${API_BASE}/v1/projects?q=portal-web&page=1&size=1`, {
     headers: { Authorization: `Bearer ${token}` },
