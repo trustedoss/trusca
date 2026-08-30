@@ -798,6 +798,14 @@ def _parse_trivy_metadata(metadata_path: Path) -> dict[str, Any] | None:
         return None
 
 
+# Go's zero-value ``time.Time`` serialises to this RFC3339 string. Trivy
+# writes ``DownloadedAt`` from that zero-value when a download is recorded
+# but never actually completed (e.g. the process was killed mid-pull); the
+# real ``trivy`` CLI treats a DB in this state as corrupted and refuses to
+# use it, even though ``UpdatedAt`` alone can look recent.
+_GO_ZERO_TIME = datetime(1, 1, 1, tzinfo=UTC)
+
+
 def _parse_iso(value: Any) -> datetime | None:
     """Parse Trivy's RFC3339 timestamps; tolerate ``Z`` suffix and ``None``."""
     if not isinstance(value, str) or not value:
@@ -814,6 +822,16 @@ def _parse_iso(value: Any) -> datetime | None:
     if parsed.tzinfo is None:
         parsed = parsed.replace(tzinfo=UTC)
     return parsed
+
+
+def _has_zero_value_downloaded_at(metadata: dict[str, Any]) -> bool:
+    """True when ``DownloadedAt`` is Go's zero ``time.Time`` value.
+
+    See :data:`_GO_ZERO_TIME`. The admin panel must not report a DB in this
+    state as usable, even though ``UpdatedAt``/``Version`` alone would
+    otherwise classify it fresh.
+    """
+    return _parse_iso(metadata.get("DownloadedAt")) == _GO_ZERO_TIME
 
 
 def _sum_db_size(db_dir: Path) -> int | None:
@@ -849,6 +867,16 @@ def get_trivy_db_status(*, now: datetime | None = None) -> TrivyDbStatus:
     refresh_hours = trivy_db_refresh_interval_hours()
 
     metadata = _parse_trivy_metadata(metadata_path)
+    if metadata is not None and _has_zero_value_downloaded_at(metadata):
+        # The real trivy CLI refuses to use a DB in this state (E2,
+        # testing-hardening-plan-2026-08.md type E): treat it exactly like
+        # "no metadata.json yet" so this panel doesn't disagree with the CLI
+        # and report an unusable DB as fresh.
+        log.warning(
+            "trivy_db_metadata_zero_downloaded_at",
+            path=str(metadata_path),
+        )
+        metadata = None
 
     last_update: datetime | None = None
     db_version: str | None = None
