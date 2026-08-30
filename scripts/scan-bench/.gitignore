@@ -3,4 +3,6 @@ sources/
 *.zip
 warehouse.db
 warehouse.db-*
+cohort.db
+cohort.db-*
 __pycache__/
