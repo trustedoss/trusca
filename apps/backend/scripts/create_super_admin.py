@@ -22,6 +22,20 @@ Idempotent (ensure-active semantics):
     bootstrap command instead of opening a psql shell.
   - If the email exists but the user is NOT super_admin → SystemExit (the
     operator must explicitly demote / promote outside this script).
+
+Organization bootstrap:
+  - A pristine database has zero ``Organization`` rows, and the single-org
+    deployment model (CLAUDE.md "조직/팀/권한 모델": "Organization (배포
+    단위, 1개)") means every team is created under whichever organization
+    ``admin_team_service._pick_default_org()`` finds. Without one, the very
+    first ``POST /v1/admin/teams`` an operator makes after bootstrap fails
+    with 422 ``NoOrganizationConfigured``.
+  - This script therefore ensures exactly one ``Organization`` row exists,
+    on every invocation (including the reactivate / already-exists / noop
+    branches, so re-running the bootstrap self-heals a database that
+    somehow ended up admin-only). It reuses the oldest existing row rather
+    than creating a second one, mirroring ``_pick_default_org``'s own
+    tie-break.
 """
 
 from __future__ import annotations
@@ -31,11 +45,30 @@ import os
 import sys
 
 from sqlalchemy import select
-from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
+from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
 from core.config import database_url
 from core.security import hash_password
-from models import User
+from models import Organization, User
+
+_DEFAULT_ORG_NAME = "TrustedOSS Portal"
+_DEFAULT_ORG_SLUG = "default"
+
+
+async def _ensure_organization(session: AsyncSession) -> None:
+    """Create the deployment's one ``Organization`` row if none exists yet.
+
+    Reuses the oldest row when one is already there (mirrors
+    ``admin_team_service._pick_default_org``'s tie-break) instead of
+    creating a second organization in a single-org deployment.
+    """
+    existing = (
+        await session.execute(select(Organization).order_by(Organization.created_at.asc()).limit(1))
+    ).scalar_one_or_none()
+    if existing is not None:
+        return
+    session.add(Organization(name=_DEFAULT_ORG_NAME, slug=_DEFAULT_ORG_SLUG))
+    await session.commit()
 
 
 async def _main() -> int:
@@ -52,6 +85,8 @@ async def _main() -> int:
     factory = async_sessionmaker(engine, expire_on_commit=False)
     try:
         async with factory() as session:
+            await _ensure_organization(session)
+
             existing = (
                 await session.execute(select(User).where(User.email == email))
             ).scalar_one_or_none()

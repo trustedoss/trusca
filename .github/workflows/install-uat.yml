@@ -219,22 +219,15 @@ jobs:
       # A2 (testing-hardening-plan-2026-08.md §A2) - everything below is new.
       # The smoke used to stop at "projects endpoint reachable", which never
       # exercises the path an operator actually takes after install.sh finishes:
-      # create_super_admin bootstraps a USER row only (no Organization, no
-      # Team - see scripts/create_super_admin.py), so the first admin who logs
-      # in must create a team before they can do anything else. Each call below
-      # is its own step and captures HTTP status + body separately (no `-f`)
-      # so a failure's log distinguishes a bootstrap-logic rejection (a 4xx
-      # body from the API itself, e.g. "No Organization Configured") from a
-      # plumbing problem (curl/DNS/timeout) at a glance, without re-deriving
-      # it from a raw curl exit code.
-      # known-failing, pending bug 1 fix (create_super_admin does not
-      # provision an Organization row) - see testing-hardening-plan-2026-08.md
-      # §A2. continue-on-error is temporary: the guard step at the end of
-      # this job fails the run once these steps start passing, forcing
-      # removal of continue-on-error (and of the guard itself).
+      # create_super_admin bootstraps the admin user AND ensures the
+      # deployment's one Organization row exists (see
+      # scripts/create_super_admin.py::_ensure_organization), so the first
+      # admin who logs in can create a team right away. Each call below is
+      # its own step and captures HTTP status + body separately (no `-f`) so
+      # a failure's log distinguishes a bootstrap-logic rejection (a 4xx body
+      # from the API itself) from a plumbing problem (curl/DNS/timeout) at a
+      # glance, without re-deriving it from a raw curl exit code.
       - name: Smoke - create team (admin bootstrap path)
-        id: create_team
-        continue-on-error: true
         run: |
           set -euo pipefail
           STATUS=$(curl -sS -o /tmp/uat_team.json -w '%{http_code}' \
@@ -246,7 +239,7 @@ jobs:
             echo "::error::team creation returned HTTP $STATUS (expected 201)"
             cat /tmp/uat_team.json
             if grep -q "No Organization Configured" /tmp/uat_team.json 2>/dev/null; then
-              echo "::error::bootstrap logic: create_super_admin never provisions an Organization row, so POST /v1/admin/teams has nothing to attach a team to. This is a backend fix (scripts/create_super_admin.py), not a workflow or permission problem."
+              echo "::error::bootstrap logic regression: create_super_admin should ensure an Organization row exists (scripts/create_super_admin.py::_ensure_organization), so POST /v1/admin/teams has nothing to attach a team to. This is a backend fix, not a workflow or permission problem."
             elif [ "$STATUS" = "401" ] || [ "$STATUS" = "403" ]; then
               echo "::error::permission problem: the freshly-bootstrapped admin was rejected by the auth/role gate on POST /v1/admin/teams (expected super_admin to pass require_super_admin_or_404)."
             fi
@@ -257,12 +250,7 @@ jobs:
           echo "created team $TEAM_ID"
           echo "UAT_TEAM_ID=$TEAM_ID" >> "$GITHUB_ENV"
 
-      # known-failing, pending bug 1 fix - see the comment on the "Smoke -
-      # create team" step above. This step depends on UAT_TEAM_ID, which
-      # bug 1 prevents from ever being set.
       - name: Smoke - create project
-        id: create_project
-        continue-on-error: true
         run: |
           set -euo pipefail
           STATUS=$(curl -sS -o /tmp/uat_project.json -w '%{http_code}' \
@@ -283,11 +271,7 @@ jobs:
           echo "created project $PROJECT_ID"
           echo "UAT_PROJECT_ID=$PROJECT_ID" >> "$GITHUB_ENV"
 
-      # known-failing, pending bug 1 fix - see the comment on the "Smoke -
-      # create team" step above.
       - name: Smoke - trigger scan
-        id: trigger_scan
-        continue-on-error: true
         run: |
           set -euo pipefail
           STATUS=$(curl -sS -o /tmp/uat_scan.json -w '%{http_code}' \
@@ -305,11 +289,7 @@ jobs:
           echo "triggered scan $SCAN_ID"
           echo "UAT_SCAN_ID=$SCAN_ID" >> "$GITHUB_ENV"
 
-      # known-failing, pending bug 1 fix - see the comment on the "Smoke -
-      # create team" step above.
       - name: Smoke - poll scan to completion
-        id: poll_scan
-        continue-on-error: true
         run: |
           set -euo pipefail
           # Mock backend (TRUSTEDOSS_SCAN_BACKEND=mock, job-level env)
@@ -345,25 +325,6 @@ jobs:
           echo "::error::scan $UAT_SCAN_ID never reached a terminal state within the poll budget"
           cat /tmp/uat_scan_poll.json
           exit 1
-
-      # Strict xfail-equivalent for the four continue-on-error steps above
-      # (create_team / create_project / trigger_scan / poll_scan). Mirrors
-      # pytest's xfail(strict=True): a currently-failing check is tolerated,
-      # but the SAME check turning green again must fail the run, so nobody
-      # forgets to remove the continue-on-error once bug 1 is fixed.
-      # `if: always()` so this still evaluates even if an unrelated earlier
-      # step in the job genuinely failed.
-      - name: Guard - fail if the known-failing first-scan steps all passed
-        if: always()
-        run: |
-          set -euo pipefail
-          outcomes="${{ steps.create_team.outcome }} ${{ steps.create_project.outcome }} ${{ steps.trigger_scan.outcome }} ${{ steps.poll_scan.outcome }}"
-          echo "create_team=${{ steps.create_team.outcome }} create_project=${{ steps.create_project.outcome }} trigger_scan=${{ steps.trigger_scan.outcome }} poll_scan=${{ steps.poll_scan.outcome }}"
-          if [ "$outcomes" = "success success success success" ]; then
-            echo "::error::All four known-failing first-scan smoke steps just passed. That means bug 1 (create_super_admin doesn't provision an Organization row) is fixed. Remove 'continue-on-error: true' and the 'id:' from those four steps and delete this guard step - see testing-hardening-plan-2026-08.md §A2."
-            exit 1
-          fi
-          echo "still known-failing (bug 1 not fixed yet) - guard passes"
 
       - name: Backup round-trip — backup.sh
         run: |
@@ -808,14 +769,7 @@ jobs:
       # single `curl -w` (no `-o` - the file would be INSIDE the container) so
       # the log can tell bootstrap logic, apps-side auth, and DB-permission
       # failures apart without re-deriving it from a raw exit code.
-      # known-failing, pending bug 1 fix (create_super_admin does not
-      # provision an Organization row) - see testing-hardening-plan-2026-08.md
-      # §A2. continue-on-error is temporary: the guard step at the end of
-      # this job fails the run once these steps start passing, forcing
-      # removal of continue-on-error (and of the guard itself).
       - name: Smoke - create team (admin bootstrap path, app-role runtime)
-        id: l1_create_team
-        continue-on-error: true
         run: |
           set -euo pipefail
           RAW=$(docker-compose -f docker-compose.yml exec -T backend \
@@ -830,7 +784,7 @@ jobs:
             echo "::error::team creation returned HTTP $STATUS (expected 201)"
             echo "$BODY"
             if echo "$BODY" | grep -q "No Organization Configured"; then
-              echo "::error::bootstrap logic: create_super_admin never provisions an Organization row, so POST /v1/admin/teams has nothing to attach a team to. This is a backend fix (scripts/create_super_admin.py), not a workflow, auth, or DB-permission problem."
+              echo "::error::bootstrap logic regression: create_super_admin should ensure an Organization row exists (scripts/create_super_admin.py::_ensure_organization), so POST /v1/admin/teams has nothing to attach a team to. This is a backend fix, not a workflow, auth, or DB-permission problem."
             elif [ "$STATUS" = "401" ] || [ "$STATUS" = "403" ]; then
               echo "::error::permission problem (app-level): the freshly-bootstrapped admin was rejected by the auth/role gate on POST /v1/admin/teams."
             elif echo "$BODY" | grep -qi "permission denied"; then
@@ -843,11 +797,7 @@ jobs:
           echo "created team $TEAM_ID"
           echo "L1_TEAM_ID=$TEAM_ID" >> "$GITHUB_ENV"
 
-      # known-failing, pending bug 1 fix - see the comment on the "Smoke -
-      # create team (admin bootstrap path, app-role runtime)" step above.
       - name: Smoke - create project (app-role runtime)
-        id: l1_create_project
-        continue-on-error: true
         run: |
           set -euo pipefail
           RAW=$(docker-compose -f docker-compose.yml exec -T backend \
@@ -871,11 +821,7 @@ jobs:
           echo "created project $PROJECT_ID"
           echo "L1_PROJECT_ID=$PROJECT_ID" >> "$GITHUB_ENV"
 
-      # known-failing, pending bug 1 fix - see the comment on the "Smoke -
-      # create team (admin bootstrap path, app-role runtime)" step above.
       - name: Smoke - trigger scan (app-role runtime)
-        id: l1_trigger_scan
-        continue-on-error: true
         run: |
           set -euo pipefail
           RAW=$(docker-compose -f docker-compose.yml exec -T backend \
@@ -899,11 +845,7 @@ jobs:
           echo "triggered scan $SCAN_ID"
           echo "L1_SCAN_ID=$SCAN_ID" >> "$GITHUB_ENV"
 
-      # known-failing, pending bug 1 fix - see the comment on the "Smoke -
-      # create team (admin bootstrap path, app-role runtime)" step above.
       - name: Smoke - poll scan to completion (app-role runtime)
-        id: l1_poll_scan
-        continue-on-error: true
         run: |
           set -euo pipefail
           # Same mock-backend rationale as the install-uat job: TRUSTEDOSS_SCAN_BACKEND=mock
@@ -937,25 +879,6 @@ jobs:
           done
           echo "::error::scan $L1_SCAN_ID never reached a terminal state within the poll budget"
           exit 1
-
-      # Strict xfail-equivalent for the four continue-on-error steps above
-      # (l1_create_team / l1_create_project / l1_trigger_scan / l1_poll_scan).
-      # Mirrors pytest's xfail(strict=True): a currently-failing check is
-      # tolerated, but the SAME check turning green again must fail the run,
-      # so nobody forgets to remove the continue-on-error once bug 1 is
-      # fixed. `if: always()` so this still evaluates even if an unrelated
-      # earlier step in the job genuinely failed.
-      - name: Guard - fail if the known-failing first-scan steps all passed
-        if: always()
-        run: |
-          set -euo pipefail
-          outcomes="${{ steps.l1_create_team.outcome }} ${{ steps.l1_create_project.outcome }} ${{ steps.l1_trigger_scan.outcome }} ${{ steps.l1_poll_scan.outcome }}"
-          echo "l1_create_team=${{ steps.l1_create_team.outcome }} l1_create_project=${{ steps.l1_create_project.outcome }} l1_trigger_scan=${{ steps.l1_trigger_scan.outcome }} l1_poll_scan=${{ steps.l1_poll_scan.outcome }}"
-          if [ "$outcomes" = "success success success success" ]; then
-            echo "::error::All four known-failing first-scan smoke steps just passed on the L1 role-separated runtime. That means bug 1 (create_super_admin doesn't provision an Organization row) is fixed. Remove 'continue-on-error: true' and the 'id:' from those four steps and delete this guard step - see testing-hardening-plan-2026-08.md §A2."
-            exit 1
-          fi
-          echo "still known-failing (bug 1 not fixed yet) - guard passes"
 
       - name: Dump compose logs on failure
         if: failure()
