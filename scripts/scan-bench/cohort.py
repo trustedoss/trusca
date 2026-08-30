@@ -140,23 +140,26 @@ def mark_progress(
     """Record whatever got created so a retry resumes past it instead of
     re-creating (the team/project creation paths are themselves idempotent
     on slug conflict, but skipping the call entirely is one less request).
+
+    A single static statement with ``COALESCE`` rather than building the SET
+    clause from the arguments that were actually passed: a dynamic column
+    list built with string formatting is exactly the shape semgrep's
+    sqlalchemy-execute-raw-query rule flags, even though every value here
+    still travels as a bound parameter and nothing here is user input.
     """
-    fields, values = [], []
-    if team_id is not None:
-        fields.append("team_id = ?")
-        values.append(team_id)
-    if project_id is not None:
-        fields.append("project_id = ?")
-        values.append(project_id)
-    if scan_id is not None:
-        fields.append("scan_id = ?")
-        values.append(scan_id)
-        fields.append("register_status = 'registered'")
-        fields.append("error = NULL")
-    fields.append("updated_at = ?")
-    values.append(_now())
-    values.append(row_id)
-    conn.execute(f"UPDATE cohort_targets SET {', '.join(fields)} WHERE id = ?", values)
+    conn.execute(
+        """
+        UPDATE cohort_targets
+        SET team_id = COALESCE(?, team_id),
+            project_id = COALESCE(?, project_id),
+            scan_id = COALESCE(?, scan_id),
+            register_status = CASE WHEN ? IS NOT NULL THEN 'registered' ELSE register_status END,
+            error = CASE WHEN ? IS NOT NULL THEN NULL ELSE error END,
+            updated_at = ?
+        WHERE id = ?
+        """,
+        (team_id, project_id, scan_id, scan_id, scan_id, _now(), row_id),
+    )
     conn.commit()
 
 
