@@ -128,22 +128,31 @@ const getAdminToken = () => getToken("admin");
 // of these against the live API (admin-authed) once, cache them, and substitute
 // them into api `url`s. Only the allow-list is touched, so shell-local braces
 // like `${SECRET}` in the helm validate step are left for bash to expand.
-const _RESOLVABLE = new Set(["PROJECT_ID"]);
+const _RESOLVABLE = new Set(["PROJECT_ID", "TEAM_ID"]);
 const _resolved = {};
+async function resolvePortalWebProject() {
+  // The seeded `portal-web` project is deterministic and carries the CVEs +
+  // license findings the SCA read endpoints document. Its owning team is the
+  // "frontend" team from seed_demo.py, which is what TEAM_ID resolves to as
+  // well — one lookup backs both placeholders.
+  const token = await getAdminToken();
+  const res = await fetch(`${API_BASE}/v1/projects?q=portal-web&page=1&size=1`, {
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  if (!res.ok) throw new Error(`resolve PROJECT_ID/TEAM_ID: GET /v1/projects → ${res.status}`);
+  const body = await res.json();
+  const item = body.items?.[0];
+  if (!item) throw new Error("resolve PROJECT_ID/TEAM_ID: portal-web not found in /v1/projects");
+  return item;
+}
 async function resolveValue(name) {
   if (name in _resolved) return _resolved[name];
   let value;
   if (name === "PROJECT_ID") {
-    // The seeded `portal-web` project is deterministic and carries the CVEs +
-    // license findings the SCA read endpoints document.
-    const token = await getAdminToken();
-    const res = await fetch(`${API_BASE}/v1/projects?q=portal-web&page=1&size=1`, {
-      headers: { Authorization: `Bearer ${token}` },
-    });
-    if (!res.ok) throw new Error(`resolve PROJECT_ID: GET /v1/projects → ${res.status}`);
-    const body = await res.json();
-    value = body.items?.[0]?.id;
-    if (!value) throw new Error("resolve PROJECT_ID: portal-web not found in /v1/projects");
+    value = (await resolvePortalWebProject()).id;
+  } else if (name === "TEAM_ID") {
+    value = (await resolvePortalWebProject()).team_id;
+    if (!value) throw new Error("resolve TEAM_ID: portal-web project has no team_id");
   } else {
     throw new Error(`resolve: no resolver for \${${name}}`);
   }
