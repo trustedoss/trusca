@@ -16,6 +16,8 @@ import json
 import os
 import re
 import shutil
+import socket
+import subprocess
 import sys
 import time
 import urllib.error
@@ -27,6 +29,8 @@ from datetime import datetime, timezone
 from http.cookiejar import CookieJar
 from pathlib import Path
 from typing import Any
+
+import warehouse
 
 PORTAL_URL = "http://localhost:8000"
 EMAIL = "frontend-admin@demo.trustedoss.dev"
@@ -46,6 +50,21 @@ EXCLUDE_FILES = {".DS_Store"}
 
 POLL_INTERVAL_SEC = 5
 SCAN_TIMEOUT_SEC = 60 * 60  # 60 min hard ceiling
+
+# Overridable per-host so a cohort runner can point this at its own persistent
+# disk instead of the repo checkout, which CI wipes between runs.
+DEFAULT_WAREHOUSE_DB = Path(__file__).resolve().parent / "warehouse.db"
+
+
+def _trusca_commit() -> str | None:
+    try:
+        out = subprocess.run(
+            ["git", "rev-parse", "HEAD"],
+            cwd=REPO_ROOT, capture_output=True, text=True, timeout=5, check=True,
+        )
+        return out.stdout.strip()
+    except Exception:
+        return None
 
 
 # ---------------------------------------------------------------------------
@@ -600,7 +619,15 @@ def main() -> int:
     )
     parser.add_argument("--only", help="comma-separated names to run (substring match)")
     parser.add_argument("--portal-url", default=PORTAL_URL)
+    parser.add_argument(
+        "--warehouse-db",
+        default=os.getenv("SCAN_BENCH_WAREHOUSE_DB", str(DEFAULT_WAREHOUSE_DB)),
+        help="SQLite file to append this run's results to, for run-over-run "
+             "comparison (env SCAN_BENCH_WAREHOUSE_DB). Set empty to skip.",
+    )
     args = parser.parse_args()
+
+    run_started_at = datetime.now(timezone.utc).isoformat()
 
     client = PortalClient(args.portal_url)
     print(f"[login] {EMAIL}", flush=True)
@@ -651,6 +678,36 @@ def main() -> int:
 
     csv_path, md_path, jsonl_path = write_outputs(args.suite, results)
     print(f"\n[out] {csv_path}\n[out] {md_path}\n[out] {jsonl_path}")
+
+    if args.warehouse_db:
+        db_path = Path(args.warehouse_db)
+        conn = warehouse.connect(db_path)
+        try:
+            run_id = warehouse.record_run(
+                conn,
+                suite=args.suite,
+                started_at=run_started_at,
+                finished_at=datetime.now(timezone.utc).isoformat(),
+                trusca_commit=_trusca_commit(),
+                host=socket.gethostname(),
+                portal_url=args.portal_url,
+                target_count=len(results),
+            )
+            warehouse.record_results(conn, run_id, results)
+            print(f"[warehouse] run {run_id} recorded in {db_path}")
+            prev_id = warehouse.previous_run_id(conn, args.suite, run_id)
+            if prev_id is not None:
+                diff = warehouse.diff_runs(conn, prev_id, run_id)
+                print(
+                    f"[warehouse] vs run {prev_id}: "
+                    f"{len(diff['status_changes'])} status change(s), "
+                    f"{len(diff['only_in_a'])} target(s) dropped, "
+                    f"{len(diff['only_in_b'])} target(s) added, "
+                    f"see warehouse_report.py compare --suite {args.suite}"
+                )
+        finally:
+            conn.close()
+
     return 0
 
 

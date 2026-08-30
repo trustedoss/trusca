@@ -25,7 +25,29 @@ python3 run_bench.py --suite container
 python3 run_bench.py --suite fixtures --only node
 ```
 
-산출: `out/<suite>-<timestamp>.{csv,md,jsonl}`
+산출: `out/<suite>-<timestamp>.{csv,md,jsonl}` (회차마다 새 파일, 비교는 안 됨)
+
+## 결과 창고 (회차 간 비교)
+
+`out/`의 CSV는 회차마다 새 파일이라 이전 회차와 비교하거나 추세를 볼 수 없다. 매 실행은
+자동으로 SQLite 창고(`warehouse.db`, 기본 위치는 이 디렉터리)에도 결과를 남기고, 직전 회차와의
+차이를 요약해 출력한다. 포털의 Postgres를 쓰지 않는 이유는 계획 문서
+(`~/projects/trusca-internal/docs/self-resource-validation-plan-2026-08-30.md` §6-1)에
+적어 뒀다: 포털의 findings 보존 정책이 7일 뒤 지우므로 그대로는 못 쓴다.
+
+```bash
+# 회차 이력
+python3 warehouse_report.py history --suite fixtures
+
+# 최신 회차 vs 직전 회차 (상태 변화·수치 델타·추가/탈락 대상)
+python3 warehouse_report.py compare --suite fixtures
+
+# 특정 두 회차 비교
+python3 warehouse_report.py compare --suite fixtures --run-a 3 --run-b 7
+```
+
+창고 위치는 `SCAN_BENCH_WAREHOUSE_DB` 환경변수 또는 `--warehouse-db`로 바꿀 수 있다. 코호트
+러너처럼 이 저장소 밖 영구 디스크에 두고 싶을 때 쓴다. 빈 문자열을 주면 창고 기록을 건너뛴다.
 
 ## 동작
 1. 로그인 → access_token + refresh cookie 보관 (30분 만료 자동 갱신)
