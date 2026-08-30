@@ -74,8 +74,15 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Verify docker-compose V1 available
-        run: docker-compose version
+      # ubuntu-* GitHub-hosted runners ship no docker-compose V1 binary (only
+      # the `docker compose` V2 plugin, if anything). install-uat.yml hit the
+      # same gap; pin the same version here for consistency.
+      - name: Install docker-compose V1
+        run: |
+          sudo curl -L "https://github.com/docker/compose/releases/download/1.29.2/docker-compose-$(uname -s)-$(uname -m)" \
+            -o /usr/local/bin/docker-compose
+          sudo chmod +x /usr/local/bin/docker-compose
+          docker-compose --version
 
       # Pre-build so a cold image cache surfaces as its own step. Only the scan
       # path is needed: no frontend.
