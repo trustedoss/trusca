@@ -432,13 +432,19 @@ def test_all_combined_with_other_tokens_still_routes_everything(
 
 
 def test_blank_value_falls_back_to_default_instead_of_routing_nothing(
-    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+    scan_backend_mock: None, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
     """security review finding: os.getenv(name, default) only substitutes the
     default when the variable is unset, not when it is set to blank, so an
     explicitly empty SCAN_LOCAL_DOCKER_ENVS would otherwise parse to an empty
     set (route nothing) -- dropping even the default's Android isolation
-    rather than falling back to it."""
+    rather than falling back to it.
+
+    scan_backend_mock keeps the inprocess fallback from spawning a real
+    cdxgen subprocess; the scan_backend_mode override is local_docker's own
+    top-level mock-mode short-circuit, which must stay off here so the
+    routing decision this test is about actually runs (matching
+    test_default_routes_android_only's pattern)."""
     monkeypatch.setenv("SCAN_LOCAL_DOCKER_ENVS", "")
     monkeypatch.setattr(f"{_MOD}.scan_backend_mode", lambda: "real")
     monkeypatch.setattr(f"{_MOD}.shutil.which", lambda _n: "/usr/bin/docker")
