@@ -36,6 +36,7 @@ SCAN_LOCAL_DOCKER_ENVS=android,node,go,rust,ruby,java,python,php,dotnet
 
 또는 환경을 하나씩 나열하는 대신 `all` 예약값으로 전부 라우팅할 수 있습니다.
 
+<!-- docs-uat: id=dynamic-scan-executor-routed-envs-all kind=shell ctx=host tier=manual waiver=env-config-snippet-not-a-command -->
 ```bash
 SCAN_LOCAL_DOCKER_ENVS=all
 ```

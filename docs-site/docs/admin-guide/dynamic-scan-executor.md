@@ -36,6 +36,7 @@ SCAN_LOCAL_DOCKER_ENVS=android,node,go,rust,ruby,java,python,php,dotnet
 
 Or route every environment with the `all` sentinel, rather than enumerating each one:
 
+<!-- docs-uat: id=dynamic-scan-executor-routed-envs-all kind=shell ctx=host tier=manual waiver=env-config-snippet-not-a-command -->
 ```bash
 SCAN_LOCAL_DOCKER_ENVS=all
 ```
