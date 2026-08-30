@@ -384,6 +384,116 @@ def test_widened_set_routes_node_to_cdxgen_image(
     assert "ghcr.io/cyclonedx/cdxgen-node20:v12" in captured["cmd"]
 
 
+def test_all_sentinel_routes_an_unlisted_environment(
+    monkeypatch: pytest.MonkeyPatch, _docker_present: None, tmp_path: Path
+) -> None:
+    """SCAN_LOCAL_DOCKER_ENVS=all routes everything, not just an enumerated set.
+
+    self-resource-validation-plan-2026-08-30.md §6-3: scanning source that
+    isn't trusted (e.g. a public-repo cohort) needs every ecosystem isolated,
+    and a hand-written list is one missed language away from an unsandboxed
+    build. python is a stand-in for "some language the operator forgot to
+    list", and it is deliberately not one of the languages named in the other
+    SCAN_LOCAL_DOCKER_ENVS examples in this file.
+    """
+    monkeypatch.setenv("SCAN_LOCAL_DOCKER_ENVS", "all")
+    monkeypatch.delenv("CDXGEN_IMAGE_TAG", raising=False)
+    captured = _stub_sidecar(monkeypatch)
+    res = LocalDockerExecutor().generate_sbom(_request(tmp_path, detected_env="python"))
+
+    assert res.executor == "local_docker"
+    assert res.image == "ghcr.io/cyclonedx/cdxgen-python312:v12"
+    assert "ghcr.io/cyclonedx/cdxgen-python312:v12" in captured["cmd"]
+
+
+def test_all_sentinel_is_case_insensitive(
+    monkeypatch: pytest.MonkeyPatch, _docker_present: None, tmp_path: Path
+) -> None:
+    monkeypatch.setenv("SCAN_LOCAL_DOCKER_ENVS", "ALL")
+    _stub_sidecar(monkeypatch)
+    res = LocalDockerExecutor().generate_sbom(_request(tmp_path, detected_env="ruby"))
+    assert res.executor == "local_docker"
+
+
+def test_all_combined_with_other_tokens_still_routes_everything(
+    monkeypatch: pytest.MonkeyPatch, _docker_present: None, tmp_path: Path
+) -> None:
+    """security review finding: "all" only matched the whole trimmed string,
+    so a natural-looking value like "android,all" (combining the two forms
+    the docs show side by side) fell through to the per-token branch and
+    produced {"android", "all"} -- functionally identical to "android" alone,
+    since no detected_env is ever literally "all". python here stands in for
+    any environment that isn't android, to prove the combined form still
+    isolates it rather than silently degrading to android-only coverage."""
+    monkeypatch.setenv("SCAN_LOCAL_DOCKER_ENVS", "android,all")
+    _stub_sidecar(monkeypatch)
+    res = LocalDockerExecutor().generate_sbom(_request(tmp_path, detected_env="python"))
+    assert res.executor == "local_docker"
+
+
+def test_blank_value_falls_back_to_default_instead_of_routing_nothing(
+    scan_backend_mock: None, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """security review finding: os.getenv(name, default) only substitutes the
+    default when the variable is unset, not when it is set to blank, so an
+    explicitly empty SCAN_LOCAL_DOCKER_ENVS would otherwise parse to an empty
+    set (route nothing) -- dropping even the default's Android isolation
+    rather than falling back to it.
+
+    scan_backend_mock keeps the inprocess fallback from spawning a real
+    cdxgen subprocess; the scan_backend_mode override is local_docker's own
+    top-level mock-mode short-circuit, which must stay off here so the
+    routing decision this test is about actually runs (matching
+    test_default_routes_android_only's pattern)."""
+    monkeypatch.setenv("SCAN_LOCAL_DOCKER_ENVS", "")
+    monkeypatch.setattr(f"{_MOD}.scan_backend_mode", lambda: "real")
+    monkeypatch.setattr(f"{_MOD}.shutil.which", lambda _n: "/usr/bin/docker")
+    # node still falls back to inprocess (blank resolved to the "android"-only
+    # default, not to routing everything).
+    res = LocalDockerExecutor().generate_sbom(_request(tmp_path, detected_env="node"))
+    assert res.executor == "inprocess"
+
+
+def test_whitespace_only_value_falls_back_to_default(
+    monkeypatch: pytest.MonkeyPatch, _docker_present: None, tmp_path: Path
+) -> None:
+    monkeypatch.setenv("SCAN_LOCAL_DOCKER_ENVS", "   ")
+    _stub_sidecar(monkeypatch)
+    # android is still routed (the fallback default), proving the blank value
+    # did not silently disable isolation altogether.
+    res = LocalDockerExecutor().generate_sbom(_request(tmp_path, detected_env="android"))
+    assert res.executor == "local_docker"
+
+
+def test_routed_envs_returns_none_for_all_sentinel(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Direct unit test on the sentinel contract, so a future refactor that
+    changes what "route everything" is represented by (e.g. frozenset({"*"}))
+    is caught here rather than only via _is_routed's behavior."""
+    from integrations.scan_executor.local_docker import _routed_envs
+
+    monkeypatch.setenv("SCAN_LOCAL_DOCKER_ENVS", "all")
+    assert _routed_envs() is None
+
+    monkeypatch.setenv("SCAN_LOCAL_DOCKER_ENVS", "android")
+    assert _routed_envs() == frozenset({"android"})
+
+
+def test_all_sentinel_routes_the_allinone_fallback_environments(
+    monkeypatch: pytest.MonkeyPatch, _docker_present: None, tmp_path: Path
+) -> None:
+    """cpp/mixed/unknown have no per-language image and fall back to the
+    all-in-one image; the all-in-one image is pinned by default, so this
+    needs no SCAN_ALLOW_UNPINNED_IMAGE override to route."""
+    monkeypatch.setenv("SCAN_LOCAL_DOCKER_ENVS", "all")
+    monkeypatch.delenv("SCAN_ALLOW_UNPINNED_IMAGE", raising=False)
+    captured = _stub_sidecar(monkeypatch)
+    res = LocalDockerExecutor().generate_sbom(_request(tmp_path, detected_env="unknown"))
+
+    assert res.executor == "local_docker"
+    assert res.image == "ghcr.io/cyclonedx/cdxgen:v12.5.0"
+    assert "ghcr.io/cyclonedx/cdxgen:v12.5.0" in captured["cmd"]
+
+
 def test_language_image_is_pinned_without_allow_flag(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
