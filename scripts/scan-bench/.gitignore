@@ -1,3 +1,6 @@
 out/
 sources/
 *.zip
+warehouse.db
+warehouse.db-*
+__pycache__/
