@@ -11,19 +11,15 @@ through the HTTP surface. Nothing else has ever written to this database.
 
 This is the logic-level twin of A2 (which extends the ``install-uat``
 workflow's real-deployment smoke test to the same depth, on a separate
-branch). A1 proves the sequence fails from first principles, in-process,
-without needing a full docker-compose stack.
+branch). A1 proves the sequence in-process, without needing a full
+docker-compose stack.
 
-Status: this whole module is expected to fail today. ``create_super_admin``
-only inserts a ``User`` row; it never creates an ``Organization``. The team
-service's ``_pick_default_org`` picks the oldest ``Organization`` and raises
-``NoOrganizationConfigured`` (422 "No Organization Configured") when none
-exists. On a pristine database, ``create_super_admin`` is therefore not
-sufficient to bootstrap a working deployment: the very first
-``POST /v1/admin/teams`` call an operator makes fails. See
-``services/admin_team_service.py::_pick_default_org`` and
-``scripts/create_super_admin.py``. No fix issue has been filed for this yet
-(2026-08-29); see testing-hardening-plan-2026-08.md §1 유형 A / §2 A1.
+``create_super_admin`` now ensures exactly one ``Organization`` row exists
+(reusing one if already present) on every invocation, so the team service's
+``_pick_default_org`` always has a row to pick from and the very first
+``POST /v1/admin/teams`` call an operator makes after bootstrap succeeds.
+See ``services/admin_team_service.py::_pick_default_org`` and
+``scripts/create_super_admin.py::_ensure_organization``.
 """
 
 from __future__ import annotations
@@ -330,21 +326,6 @@ async def _create_super_admin_via_function(*, email: str, password: str) -> None
     )
 
 
-@pytest.mark.xfail(
-    strict=True,
-    reason=(
-        "bug 1 (testing-hardening-plan-2026-08.md §1 유형 A / §2 A1): "
-        "scripts/create_super_admin.py only inserts a User row and never "
-        "creates an Organization. admin_team_service._pick_default_org() "
-        "raises NoOrganizationConfigured (422) when zero organizations "
-        "exist, so POST /v1/admin/teams is unreachable from a pristine "
-        "database. No fix issue filed yet as of 2026-08-29. Once the "
-        "bootstrap path creates (or the team service tolerates the "
-        "absence of) a default organization, this whole sequence should "
-        "pass and this marker must be removed: strict=True fails CI if "
-        "it is left in place after the fix lands."
-    ),
-)
 async def test_bootstrap_from_empty_db_reaches_first_scan(client: AsyncClient) -> None:
     """The exact sequence a fresh install walks: bootstrap -> login -> team
     -> project -> scan. Every step asserts its own status code so a
@@ -368,8 +349,8 @@ async def test_bootstrap_from_empty_db_reaches_first_scan(client: AsyncClient) -
     access_token = login.json()["access_token"]
     auth_headers = {"Authorization": f"Bearer {access_token}"}
 
-    # Step 3: create the first team. This is the step that fails today:
-    # _pick_default_org() has no Organization row to pick from.
+    # Step 3: create the first team. create_super_admin's _ensure_organization
+    # gives _pick_default_org() a row to pick from.
     team_slug = f"bootstrap-team-{uuid.uuid4().hex[:10]}"
     team_resp = await client.post(
         "/v1/admin/teams",
@@ -377,9 +358,7 @@ async def test_bootstrap_from_empty_db_reaches_first_scan(client: AsyncClient) -
         headers=auth_headers,
     )
     assert team_resp.status_code == 201, (
-        "team creation failed on a pristine database (this is bug 1: "
-        "create_super_admin never creates an Organization for "
-        "_pick_default_org() to pick): "
+        "team creation failed on a pristine database: "
         f"{team_resp.status_code} {team_resp.text}"
     )
     team_id = team_resp.json()["id"]
