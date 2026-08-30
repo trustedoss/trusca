@@ -277,11 +277,20 @@ jobs:
       # needed for stop/rm), unplug the dev stack's postgres/redis from the
       # `trustedoss` network, then remove that network so it does not linger
       # for the rest of the job.
+      #
+      # `-t 30`: worker-scan/worker-default's production `stop_grace_period`
+      # (4200s/3900s, docker-compose.yml) applies to `stop` here too since
+      # this step deliberately drops the docs-uat-workers.yml overlay (whose
+      # shortened stop_grace_period only exists for `up`, which built these
+      # containers). Without an explicit timeout, `docker-compose stop`
+      # blocked past the job's 25-minute timeout waiting out that grace
+      # period (run 33291293513) - pass it on the command line instead of
+      # re-adding the overlay file.
       - name: Stop production worker-scan/worker-default (cleanup)
         if: always()
         run: |
           docker-compose -f docker-compose.yml \
-            stop worker-scan worker-default || true
+            stop -t 30 worker-scan worker-default || true
           docker-compose -f docker-compose.yml \
             rm -f worker-scan worker-default || true
           docker network disconnect trustedoss \
