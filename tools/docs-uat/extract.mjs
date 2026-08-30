@@ -311,14 +311,46 @@ export function lint(manifest) {
   return { errors, warnings };
 }
 
-function summarize(manifest) {
+/**
+ * Waiver census: every annotated step carries a `waiver=<reason>` or it
+ * doesn't, and this tallies both, grouped by reason. Reasons are whatever the
+ * docs actually use (see the `waiver=` field grammar in README.md); this
+ * function does not know the catalog of reasons in advance, so a brand-new
+ * reason value just shows up as its own row next time a doc introduces one.
+ *
+ * Scope: `manifest.steps` (every annotated block/prose target, waived or
+ * not) rather than `executableBlocks`, because coverage-exempt fences (e.g.
+ * non-bash/sh/http/sql languages) and unannotated-but-not-yet-required
+ * blocks in un-enrolled docs are a different question (lint coverage) from
+ * "of what IS annotated, how much is waived and why" (this census). Added
+ * for E3 (testing-hardening-plan-2026-08.md, section 2): the ~87-of-~250
+ * waiver count that had no visible tally anywhere.
+ */
+export function waiverCensus(manifest) {
+  const byReason = {};
+  let waived = 0;
+  for (const s of manifest.steps) {
+    if (!s.waiver) continue;
+    waived += 1;
+    byReason[s.waiver] = (byReason[s.waiver] || 0) + 1;
+  }
+  return { total: manifest.steps.length, waived, byReason };
+}
+
+export function summarize(manifest) {
   const byTier = {};
   const byKind = {};
   for (const s of manifest.steps) {
     byTier[s.tier] = (byTier[s.tier] || 0) + 1;
     byKind[s.kind] = (byKind[s.kind] || 0) + 1;
   }
-  return { docs: manifest.docs.length, steps: manifest.steps.length, byTier, byKind };
+  return {
+    docs: manifest.docs.length,
+    steps: manifest.steps.length,
+    byTier,
+    byKind,
+    waivers: waiverCensus(manifest),
+  };
 }
 
 // ───── CLI ────────────────────────────────────────────────────────────────
@@ -336,6 +368,13 @@ function main() {
       `${sum.docs} enrolled doc(s), ${sum.steps} step(s) ` +
       `[tier ${JSON.stringify(sum.byTier)} · kind ${JSON.stringify(sum.byKind)}]`,
   );
+
+  const w = sum.waivers;
+  const pct = w.total ? ((w.waived / w.total) * 100).toFixed(1) : "0.0";
+  console.log(`docs-uat: waiver census, ${w.waived}/${w.total} step(s) waived (${pct}%)`);
+  for (const [reason, count] of Object.entries(w.byReason).sort((a, b) => b[1] - a[1])) {
+    console.log(`  ${count.toString().padStart(3)}  ${reason}`);
+  }
 
   if (!doLint) return;
 
