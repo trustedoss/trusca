@@ -241,7 +241,19 @@ services:
     <<: *worker-build
     image: trustedoss/backend-worker:dev
     restart: unless-stopped
-    command: celery -A tasks.celery_app worker --loglevel=info --concurrency=2
+    # `-Q` explicit since S3 (concurrency-scaling-plan-2026-08-22.md) split
+    # scan-pipeline tasks onto a dedicated `trustedoss.scan` queue via
+    # `task_routes` (tasks/celery_app.py) - a worker started with no `-Q`
+    # only binds the implicit `task_default_queue` (`trustedoss.default`),
+    # so this single dev worker stopped ever consuming a triggered scan the
+    # moment that routing landed. Confirmed locally with
+    # `celery inspect active_queues` before this fix (only trustedoss.default
+    # was bound) and after (both are). Matches the queue list production's
+    # worker-scan / worker-default both consume by default in
+    # docker-compose.yml. Root cause of the open weekly-dogfood-scan alert
+    # (#210) - dogfood-scan.yml triggers a real scan against this same
+    # service and its poll never sees the task leave "queued".
+    command: celery -A tasks.celery_app worker --loglevel=info --concurrency=2 -Q trustedoss.default,trustedoss.scan
     environment:
       <<: *backend-env
       # bug-hunter 검증용: 가장 느린 scancode(첫 파티 소스 라이선스) 단계를 스킵해 real 스캔을 단축한다.
