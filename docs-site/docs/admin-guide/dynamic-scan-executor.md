@@ -34,6 +34,14 @@ So routing those other languages buys you no detection improvement on-prem. If y
 SCAN_LOCAL_DOCKER_ENVS=android,node,go,rust,ruby,java,python,php,dotnet
 ```
 
+Or route every environment with the `all` sentinel, rather than enumerating each one:
+
+```bash
+SCAN_LOCAL_DOCKER_ENVS=all
+```
+
+This is the setting to use when the source being scanned is not trusted (for example, a large cohort of public repositories pulled in for validation rather than a customer's own code): a hand-written list is one missed language away from an unsandboxed build running arbitrary code on the worker, and `all` also covers `cpp`, `mixed`, and `unknown`, which fall back to the all-in-one image and are easy to leave off a manual list.
+
 Each routed language pulls its cdxgen image on first use (multi-GB each). The language images are pinned by the `CDXGEN_IMAGE_TAG` (`v12`) tag, so they are accepted without the unpinned-image override; only Android's `:latest` needs `SCAN_ANDROID_IMAGE_TAG` pinned.
 
 :::warning On-prem, single-tenant only
@@ -127,7 +135,7 @@ These mirror the **Dynamic scan executor** section of `.env.example`. All are re
 | Key | Default | Description |
 |---|---|---|
 | `SCAN_EXECUTOR` | `inprocess` | `inprocess` runs cdxgen as a worker subprocess; `local_docker` launches a per-environment sidecar over the Docker socket (on-prem only). |
-| `SCAN_LOCAL_DOCKER_ENVS` | `android` | Comma-separated environments routed to a sidecar. Only `android` is a detection gap; widen for per-build isolation (see below). |
+| `SCAN_LOCAL_DOCKER_ENVS` | `android` | Comma-separated environments routed to a sidecar, or `all` to route every one. Only `android` is a detection gap; widen for per-build isolation (see below). |
 | `SCAN_DOCKER_VOLUME_STRATEGY` | `named` | `named` mounts only the workspace volume into the sidecar; `volumes_from` re-mounts every worker volume (refused without the ack below). |
 | `SCAN_WORKSPACE_VOLUME` | — | Required for `named`: the compose-prefixed workspace volume name (e.g. `trustedoss-portal_scan-workspace`). Unset falls back to in-process. |
 | `SCAN_WORKSPACE_MOUNT` | `/tmp/trustedoss` | Mount point of the workspace volume inside the sidecar (production: `/workspace`). |

@@ -65,6 +65,14 @@ _BUILD_PREP_SOURCE = Path(__file__).with_name("build_prep_source.sh")
 # worker (Colima-verified), so routing them is opt-in for isolation, not detection.
 _DEFAULT_ROUTED_ENVS = "android"
 
+# Sentinel for SCAN_LOCAL_DOCKER_ENVS that routes every environment, rather than
+# requiring an operator to enumerate each one by name. Scanning source whose
+# build tooling is not trusted (self-resource-validation-plan-2026-08-30.md
+# §6-3: a large cohort of public repositories) needs every ecosystem isolated,
+# and a hand-written list is one missed language away from an unsandboxed
+# build running arbitrary code on the worker.
+_ALL_ENVS_SENTINEL = "all"
+
 # Matches the cdxgen adapter's default per-stage timeout.
 _DEFAULT_SIDECAR_TIMEOUT = 30 * 60
 
@@ -114,10 +122,53 @@ def _allow_unpinned_image() -> bool:
     }
 
 
-def _routed_envs() -> frozenset[str]:
-    """Detected environments to route to a sidecar (SCAN_LOCAL_DOCKER_ENVS)."""
-    raw = os.getenv("SCAN_LOCAL_DOCKER_ENVS", _DEFAULT_ROUTED_ENVS)
-    return frozenset(e.strip() for e in raw.split(",") if e.strip())
+def _routed_envs() -> frozenset[str] | None:
+    """Detected environments to route to a sidecar (SCAN_LOCAL_DOCKER_ENVS).
+
+    ``None`` means the ``"all"`` sentinel: every environment routes.
+
+    Two fail-open shapes get corrected here rather than left to fall through
+    silently (security review, self-resource-validation-plan-2026-08-30.md
+    §6-3):
+
+    - An explicitly blank/whitespace value (as opposed to unset) would
+      otherwise parse to an empty set -- "route nothing", which drops even
+      the default's Android isolation rather than falling back to it.
+      ``os.getenv(name, default)`` only substitutes the default when the
+      variable is unset, not when it is set to blank, so that fallback has
+      to happen here.
+    - ``"all"`` matched only the whole trimmed string, so a natural-looking
+      value like ``"android,all"`` (combining the two forms the docs show)
+      silently fell through to the per-token branch and produced
+      ``{"android", "all"}`` -- functionally identical to ``"android"``
+      alone, since no detected environment is ever literally ``"all"``, and
+      with no warning that most of what was asked for was ignored.
+    """
+    raw = os.getenv("SCAN_LOCAL_DOCKER_ENVS", _DEFAULT_ROUTED_ENVS).strip()
+    if not raw:
+        log.warning(
+            "scan_local_docker_envs_blank_falls_back_to_default",
+            default=_DEFAULT_ROUTED_ENVS,
+        )
+        raw = _DEFAULT_ROUTED_ENVS
+    parts = [e.strip() for e in raw.split(",") if e.strip()]
+    if any(p.lower() == _ALL_ENVS_SENTINEL for p in parts):
+        if len(parts) > 1:
+            log.warning(
+                "scan_local_docker_envs_all_combined_with_others",
+                raw=raw,
+                detail=(
+                    "'all' already routes every environment; the other "
+                    "entries are redundant and were ignored"
+                ),
+            )
+        return None
+    return frozenset(parts)
+
+
+def _is_routed(detected_env: str) -> bool:
+    routed = _routed_envs()
+    return routed is None or detected_env in routed
 
 
 def _pids_limit() -> str:
@@ -187,9 +238,10 @@ class LocalDockerExecutor(ScanExecutor):
         # node/go/rust/ruby/java/python/php/dotnet IDENTICALLY to the dedicated
         # cdxgen images (e.g. node 68==68, rust 15==15), so routing those buys no
         # detection gain on-prem; Android is the one verified gap (0→67, no SDK in
-        # the worker). Operators wanting per-build isolation can widen the set via
-        # SCAN_LOCAL_DOCKER_ENVS (see docs).
-        if request.detected_env not in _routed_envs():
+        # the worker). Operators wanting per-build isolation (or scanning source
+        # whose build tooling isn't trusted, e.g. a cohort of public repos) widen
+        # the set via SCAN_LOCAL_DOCKER_ENVS, up to and including "all" (see docs).
+        if not _is_routed(request.detected_env):
             log.info(
                 "local_docker_fallback_inprocess",
                 scan_id=str(request.scan_uuid),

@@ -34,6 +34,14 @@ manifest만 읽어서는 분석할 수 없는 프로젝트가 있습니다. 예�
 SCAN_LOCAL_DOCKER_ENVS=android,node,go,rust,ruby,java,python,php,dotnet
 ```
 
+또는 환경을 하나씩 나열하는 대신 `all` 예약값으로 전부 라우팅할 수 있습니다.
+
+```bash
+SCAN_LOCAL_DOCKER_ENVS=all
+```
+
+스캔 대상 소스를 신뢰할 수 없을 때(예: 고객 자체 코드가 아니라 검증용으로 대량으로 가져온 공개 저장소 코호트) 쓰는 설정입니다. 손으로 나열한 목록은 언어 하나만 빠뜨려도 그 빌드가 격리 없이 워커에서 임의 코드를 실행하게 되고, `all`은 올인원 이미지로 처리되는 `cpp`·`mixed`·`unknown`까지 놓치지 않고 포함합니다.
+
 라우팅한 언어는 처음 사용할 때 cdxgen 이미지를 받습니다(언어마다 수 GB). 언어 이미지는 `CDXGEN_IMAGE_TAG`(`v12`) 태그로 고정돼 있어 미고정 이미지 예외 없이 그대로 통과합니다. Android의 `:latest`만 `SCAN_ANDROID_IMAGE_TAG` 고정이 필요합니다.
 
 :::warning 온프레·단일 테넌트 전용
