@@ -236,16 +236,26 @@ jobs:
       # only has one `celery-worker`, so those container names would
       # otherwise never exist on this stack). Pre-create the two containers
       # with docker-compose.docs-uat-workers.yml (reuses the already-built dev
-      # worker image, joins the dev stack's network) so the doc's own
-      # `-f docker-compose.yml` stop/start commands - run unmodified by
-      # run.mjs - find real containers under COMPOSE_PROJECT_NAME=trustedoss
-      # (set at the job level) to act on. `--no-deps` so this never touches
-      # docker-compose.yml's own postgres/redis/backend service definitions.
+      # worker image) so the doc's own `-f docker-compose.yml` stop/start
+      # commands - run unmodified by run.mjs - find real containers under
+      # COMPOSE_PROJECT_NAME=trustedoss (set at the job level) to act on.
+      # `--no-deps` so this never touches docker-compose.yml's own postgres/
+      # redis/backend service definitions. `up` creates docker-compose.yml's
+      # own real `trustedoss` network (needed so the doc's later unmodified
+      # `start` command - no override file - can resolve it too; run
+      # 33290316834 hit "network trustedoss not found" when this network was
+      # instead redirected onto the dev stack's network via `external:`), so
+      # `docker network connect` joins the dev stack's already-running
+      # postgres/redis containers onto it afterwards.
       - name: Start production worker-scan/worker-default (vulnerability-data.md Path B)
         run: |
           set -euo pipefail
           docker-compose -f docker-compose.yml -f docker-compose.docs-uat-workers.yml \
             up -d --no-deps worker-scan worker-default
+          docker network connect --alias postgres trustedoss \
+            "$(docker-compose -f docker-compose.dev.yml ps -q postgres)"
+          docker network connect --alias redis trustedoss \
+            "$(docker-compose -f docker-compose.dev.yml ps -q redis)"
           echo "waiting for worker-scan and worker-default healthy..."
           for i in $(seq 1 30); do
             scan_healthy=$(docker-compose -f docker-compose.yml -f docker-compose.docs-uat-workers.yml ps worker-scan | grep -c healthy || true)
@@ -262,13 +272,23 @@ jobs:
           DOCS_UAT_API_BASE: http://localhost:8000
         run: node tools/docs-uat/run.mjs --tier=nightly --doc=admin-guide/vulnerability-data.md
 
+      # Mirrors the doc's own container/network lifecycle: stop+remove the
+      # two containers (unmodified `-f docker-compose.yml`, no override file
+      # needed for stop/rm), unplug the dev stack's postgres/redis from the
+      # `trustedoss` network, then remove that network so it does not linger
+      # for the rest of the job.
       - name: Stop production worker-scan/worker-default (cleanup)
         if: always()
         run: |
-          docker-compose -f docker-compose.yml -f docker-compose.docs-uat-workers.yml \
+          docker-compose -f docker-compose.yml \
             stop worker-scan worker-default || true
-          docker-compose -f docker-compose.yml -f docker-compose.docs-uat-workers.yml \
+          docker-compose -f docker-compose.yml \
             rm -f worker-scan worker-default || true
+          docker network disconnect trustedoss \
+            "$(docker-compose -f docker-compose.dev.yml ps -q postgres)" || true
+          docker network disconnect trustedoss \
+            "$(docker-compose -f docker-compose.dev.yml ps -q redis)" || true
+          docker network rm trustedoss || true
 
       - name: Run nightly assertions — user-guide/sbom.md
         env:

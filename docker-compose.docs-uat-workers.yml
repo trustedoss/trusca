@@ -22,16 +22,23 @@
 #   * image: reuses the already-built docker-compose.dev.yml celery-worker
 #     image tag (same commit, same schema) instead of pulling
 #     ghcr.io/trustedoss/trusca-backend-worker over the network.
-#   * networks.trustedoss: redirected onto the dev stack's default network
-#     (external) so `postgres` / `redis` resolve to the containers the dev
-#     bring-up already started. Requires COMPOSE_PROJECT_NAME=trustedoss set
-#     for BOTH the dev bring-up and this overlay in the same job - see the
-#     job's `env:` in docs-uat.yml.
 #   * stop_grace_period: shortened for these two ephemeral CI containers only
 #     (production keeps its own long grace period in docker-compose.yml,
 #     untouched by this file) - no hour-long scan can be in flight here, and a
 #     4200s grace period would blow the job's timeout if a container ever
 #     failed to exit cleanly on SIGTERM.
+#
+# NOT redirecting docker-compose.yml's own `trustedoss` network onto the dev
+# stack's network (an earlier version of this overlay did, via `external:`) -
+# the doc's own Path B commands later re-run `docker-compose -f
+# docker-compose.yml start worker-scan worker-default` UNMODIFIED (no
+# override file), which re-resolves the network from docker-compose.yml alone
+# and fails with "network trustedoss not found" if the real `trustedoss`
+# network was never created (run 33290316834). Instead the bring-up step lets
+# docker-compose.yml create its own real `trustedoss` network as usual, then
+# `docker network connect` joins the dev stack's already-running postgres/
+# redis containers onto it (aliased as `postgres` / `redis`) - see the
+# "Start production worker-scan/worker-default" step in docs-uat.yml.
 #
 # Brought up with `--no-deps` so it never touches docker-compose.yml's own
 # postgres/redis/backend service definitions, which would otherwise collide
@@ -48,8 +55,3 @@ services:
   worker-default:
     image: trustedoss/backend-worker:dev
     stop_grace_period: 30s
-
-networks:
-  trustedoss:
-    external: true
-    name: trustedoss_default
