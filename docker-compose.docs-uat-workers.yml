@@ -1,0 +1,55 @@
+# SPDX-License-Identifier: Apache-2.0
+# Copyright 2026 TRUSCA contributors
+# TRUSCA - docs-uat nightly worker-split overlay (E3).
+#
+# Layered ONLY over the production docker-compose.yml, and ONLY by the
+# `docs-uat-nightly` job's own bring-up/cleanup steps in
+# .github/workflows/docs-uat.yml (docker-compose.yml stays the plain doc-cited
+# form everywhere else).
+#
+# Why this exists: admin-guide/vulnerability-data.md's Path B ("fully offline
+# cache volume") documents `docker-compose -f docker-compose.yml stop/start
+# worker-scan worker-default` - the production worker split (see
+# docker-compose.yml's header; there is no single `worker` service any more).
+# docker-compose.dev.yml, which the docs-uat-nightly job otherwise runs end to
+# end, only has one `celery-worker`, so those container names never exist on
+# that stack and the documented commands have nothing to stop/start (2026-08
+# run 33289480646: "No containers to start").
+#
+# This overlay brings worker-scan/worker-default up from docker-compose.yml
+# for real, pointed at the SAME postgres/redis the dev stack already started
+# in the same job - not a second, separate stack:
+#   * image: reuses the already-built docker-compose.dev.yml celery-worker
+#     image tag (same commit, same schema) instead of pulling
+#     ghcr.io/trustedoss/trusca-backend-worker over the network.
+#   * networks.trustedoss: redirected onto the dev stack's default network
+#     (external) so `postgres` / `redis` resolve to the containers the dev
+#     bring-up already started. Requires COMPOSE_PROJECT_NAME=trustedoss set
+#     for BOTH the dev bring-up and this overlay in the same job - see the
+#     job's `env:` in docs-uat.yml.
+#   * stop_grace_period: shortened for these two ephemeral CI containers only
+#     (production keeps its own long grace period in docker-compose.yml,
+#     untouched by this file) - no hour-long scan can be in flight here, and a
+#     4200s grace period would blow the job's timeout if a container ever
+#     failed to exit cleanly on SIGTERM.
+#
+# Brought up with `--no-deps` so it never touches docker-compose.yml's own
+# postgres/redis/backend service definitions, which would otherwise collide
+# with the already-running dev containers.
+#
+# Usage (see docs-uat.yml -> docs-uat-nightly):
+#   docker-compose -f docker-compose.yml -f docker-compose.docs-uat-workers.yml \
+#     up -d --no-deps worker-scan worker-default
+
+services:
+  worker-scan:
+    image: trustedoss/backend-worker:dev
+    stop_grace_period: 30s
+  worker-default:
+    image: trustedoss/backend-worker:dev
+    stop_grace_period: 30s
+
+networks:
+  trustedoss:
+    external: true
+    name: trustedoss_default
