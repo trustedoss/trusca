@@ -48,6 +48,8 @@ from core.security import CurrentUser, forget_principal
 from core.sql_safety import escape_like
 from models import Membership, Organization, Project, Scan, Team, User
 from schemas.admin import (
+    AdminOrganizationListItem,
+    AdminOrganizationListPage,
     AdminTeamCreate,
     AdminTeamDetail,
     AdminTeamListItem,
@@ -130,6 +132,46 @@ class NoOrganizationConfigured(AdminTeamError):
     title = "No Organization Configured"
 
 
+class MultipleOrganizationsConfigured(AdminTeamError):
+    """422 -- more than one Organization exists and the caller did not say
+    which one a new team belongs to (security review, self-resource-
+    validation-plan-2026-08-30.md §6-5).
+
+    Self-signup (and OAuth signup) each create a personal Organization per
+    user, so any deployment with self-registration open genuinely has many.
+    ``_pick_default_org`` used to silently pick the oldest one regardless,
+    which meant a super_admin's ``POST /v1/admin/teams`` could attach a new
+    team to a stranger's personal Organization -- and OrganizationComponentVerdict
+    and any other org-scoped data would then be visible across what should
+    be isolated tenants. Refusing and asking for an explicit
+    ``organization_id`` beats guessing wrong silently.
+    """
+
+    status_code = 422
+    title = "Multiple Organizations Configured"
+
+
+class PersonalOrganizationNotAssignable(AdminTeamError):
+    """422 -- an explicit ``organization_id`` named a personal Organization
+    (security review, self-resource-validation-plan-2026-08-30.md §6-5,
+    second pass).
+
+    The ``organization_id`` override on ``AdminTeamCreate`` exists so a
+    super_admin can name a platform Organization once more than one exists
+    (``MultipleOrganizationsConfigured``). Without this guard that same
+    override could be pointed at a signup-created personal Organization just
+    as easily as the auto-pick path it was built to replace -- the id alone
+    does not say which kind of Organization it is, and ``GET
+    /v1/admin/organizations`` now exposes ``is_personal`` so the caller can
+    tell before choosing. There is no legitimate admin workflow for adding a
+    team to somebody else's personal Organization, so this refuses
+    unconditionally rather than accepting an override flag.
+    """
+
+    status_code = 422
+    title = "Personal Organization Not Assignable"
+
+
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
@@ -192,18 +234,44 @@ async def _lock_team_for_destructive_op(
 
 async def _pick_default_org(session: AsyncSession) -> Organization:
     """
-    Pick the lone organization for new-team creation.
+    Pick the lone PLATFORM organization for new-team creation when the
+    caller did not name one explicitly.
 
     Single-org assumption (CLAUDE.md "조직/팀/권한 모델"): "Organization
-    (배포 단위, 1개)". If the deployment somehow has multiple orgs we deterministically
-    pick the oldest by created_at — Phase 8 SaaS will revisit this when
-    multi-org becomes a real shape.
+    (배포 단위, 1개)" -- true for an on-prem deployment with self-registration
+    closed. It stops being true the moment self-signup is open (each signup
+    gets its own personal Organization), so this refuses rather than
+    guessing when more than one platform org exists (see
+    ``MultipleOrganizationsConfigured``).
+
+    Only ever considers ``is_personal=False`` rows (security review,
+    self-resource-validation-plan-2026-08-30.md §6-5, second pass): counting
+    ALL organizations was not enough, because "exactly one organization
+    exists" does not mean it is the shared one -- a demo-SaaS deployment
+    sits at exactly one organization for as long as it takes for the first
+    self-registration to happen and no longer, and that lone organization is
+    the first signup's *personal* one. Excluding personal organizations from
+    the count means that window correctly refuses (falls through to the
+    "no platform organization" branch below) instead of silently attaching a
+    new admin-created team to a stranger's tenant.
     """
-    stmt = select(Organization).order_by(Organization.created_at.asc()).limit(1)
-    org = (await session.execute(stmt)).scalar_one_or_none()
-    if org is None:
-        raise NoOrganizationConfigured("no organization is configured for this deployment")
-    return org
+    stmt = (
+        select(Organization)
+        .where(Organization.is_personal.is_(False))
+        .order_by(Organization.created_at.asc())
+    )
+    orgs = (await session.execute(stmt)).scalars().all()
+    if not orgs:
+        raise NoOrganizationConfigured(
+            "no platform organization is configured for this deployment "
+            "(only personal organizations exist, if any); specify "
+            "organization_id explicitly"
+        )
+    if len(orgs) > 1:
+        raise MultipleOrganizationsConfigured(
+            f"{len(orgs)} platform organizations exist; specify organization_id explicitly"
+        )
+    return orgs[0]
 
 
 async def _team_has_active_scans(session: AsyncSession, team_id: uuid.UUID) -> bool:
@@ -273,6 +341,55 @@ async def _count_team_projects(
     if not include_archived:
         stmt = stmt.where(Project.archived_at.is_(None))
     return int((await session.execute(stmt)).scalar_one())
+
+
+async def _count_organization_teams(session: AsyncSession, organization_id: uuid.UUID) -> int:
+    stmt = select(func.count()).select_from(Team).where(Team.organization_id == organization_id)
+    return int((await session.execute(stmt)).scalar_one())
+
+
+async def list_organizations(
+    session: AsyncSession,
+    *,
+    actor: CurrentUser,  # noqa: ARG001
+    page: int = 1,
+    page_size: int = 50,
+) -> AdminOrganizationListPage:
+    """List every Organization (super_admin only), read-only.
+
+    No create/update/delete counterpart: an Organization comes into being
+    only as a side effect of self-signup or OAuth signup (each makes its
+    own, for tenant isolation of org-scoped data -- security review, §6-5),
+    never through an admin-driven API call. This exists so a super_admin can
+    find the ``organization_id`` ``AdminTeamCreate`` now requires once more
+    than one exists, not to manage organizations directly.
+    """
+    page = max(page, 1)
+    page_size = max(min(page_size, 200), 1)
+
+    count_stmt = select(func.count()).select_from(Organization)
+    total = int((await session.execute(count_stmt)).scalar_one())
+    rows_stmt = (
+        select(Organization)
+        .order_by(Organization.created_at.asc(), Organization.id.asc())
+        .limit(page_size)
+        .offset((page - 1) * page_size)
+    )
+    orgs = list((await session.execute(rows_stmt)).scalars().all())
+
+    items = [
+        AdminOrganizationListItem(
+            id=org.id,
+            name=org.name,
+            slug=org.slug,
+            is_personal=org.is_personal,
+            team_count=await _count_organization_teams(session, org.id),
+            created_at=org.created_at,
+        )
+        for org in orgs
+    ]
+
+    return AdminOrganizationListPage(items=items, total=total, page=page, page_size=page_size)
 
 
 # ---------------------------------------------------------------------------
@@ -389,7 +506,16 @@ async def create_team(
     actor: CurrentUser,
     payload: AdminTeamCreate,
 ) -> AdminTeamDetail:
-    org = await _pick_default_org(session)
+    if payload.organization_id is not None:
+        org = await session.get(Organization, payload.organization_id)
+        if org is None:
+            raise AdminTeamNotFound(f"organization {payload.organization_id} not found")
+        if org.is_personal:
+            raise PersonalOrganizationNotAssignable(
+                f"organization {payload.organization_id} is a personal organization"
+            )
+    else:
+        org = await _pick_default_org(session)
     team = Team(
         organization_id=org.id,
         name=payload.name,
@@ -667,12 +793,15 @@ __all__ = [
     "AdminTeamSlugConflict",
     "AdminTeamUserNotFound",
     "LastTeamAdminProtected",
+    "MultipleOrganizationsConfigured",
     "NoOrganizationConfigured",
+    "PersonalOrganizationNotAssignable",
     "TeamHasActiveScans",
     "add_team_member",
     "create_team",
     "delete_team",
     "get_team_detail",
+    "list_organizations",
     "list_teams",
     "remove_team_member",
     "update_team",

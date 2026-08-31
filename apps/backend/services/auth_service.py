@@ -169,7 +169,11 @@ async def register_user(
 
     if _register_creates_team():
         suffix = user.id.hex[:12]
-        org = Organization(name=f"Personal org ({suffix})", slug=f"org-{suffix}")
+        # is_personal=True: security review, self-resource-validation-plan-
+        # 2026-08-30.md §6-5. Lets admin_team_service._pick_default_org tell
+        # this apart from a platform-provisioned shared org and refuse to
+        # auto-attach a new admin-created team to it.
+        org = Organization(name=f"Personal org ({suffix})", slug=f"org-{suffix}", is_personal=True)
         session.add(org)
         await session.flush()
         team = Team(

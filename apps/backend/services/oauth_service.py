@@ -143,6 +143,16 @@ class OAuthUserInactive(OAuthError):
 
 
 class NoOrganizationConfigured(OAuthError):
+    """Kept though nothing in this module raises it any more: OAuth signup
+    now creates its own Organization per user (security review, self-
+    resource-validation-plan-2026-08-30.md §6-5) instead of depending on one
+    already existing, so this can no longer fire from that path. Left
+    defined because ``api/v1/oauth.py``'s callback handler and the front
+    end (``LoginPage.tsx``'s ``oauth_no_organization`` failure reason) both
+    still handle it; removing it is a separate cleanup, not required by
+    this change.
+    """
+
     status_code = 422
     title = "No Organization Configured"
 
@@ -254,20 +264,6 @@ def _decode_state(state: str, *, expected_provider: str) -> dict[str, Any]:
     if claims.get("provider") != expected_provider:
         raise OAuthInvalidState("oauth state provider mismatch")
     return claims
-
-
-async def _pick_default_org(session: AsyncSession) -> Organization:
-    """Pick the lone organization for new-user team creation.
-
-    Mirrors :func:`services.admin_team_service._pick_default_org`. Single-org
-    assumption (CLAUDE.md "조직/팀/권한 모델"). Multi-org is a Phase 8+
-    follow-up that will pivot off the email domain.
-    """
-    stmt = select(Organization).order_by(Organization.created_at.asc()).limit(1)
-    org = (await session.execute(stmt)).scalar_one_or_none()
-    if org is None:
-        raise NoOrganizationConfigured("no organization is configured for this deployment")
-    return org
 
 
 def _personal_team_slug(provider: str, provider_user_id: str) -> str:
@@ -412,8 +408,6 @@ async def complete_oauth(
         OAuthCallbackFailed: provider returned an unrecoverable error during
             exchange or userinfo fetch.
         OAuthUserInactive: the matched User has ``is_active=False``.
-        NoOrganizationConfigured: the deployment has zero organizations
-            configured (cannot create a personal team).
     """
     try:
         prov = get_provider(provider)
@@ -699,14 +693,24 @@ async def _create_user_with_personal_team(
     info: OAuthUserInfo,
 ) -> tuple[User, OAuthIdentity]:
     """
-    Create a fresh User + personal Team (team_admin) + OAuthIdentity.
+    Create a fresh User + personal Organization + personal Team (team_admin)
+    + OAuthIdentity.
+
+    A dedicated Organization per signup, not the deployment's existing one
+    (security review, self-resource-validation-plan-2026-08-30.md §6-5): the
+    password-signup path (auth_service.py's ``_register_creates_team``)
+    already creates a personal Organization per user for exactly this
+    reason -- ``OrganizationComponentVerdict`` and other org-scoped data are
+    isolated by ``organization_id``, and attaching every OAuth signup's
+    personal team to whichever Organization happened to be created first
+    (the previous behaviour, via ``_pick_default_org``) would pool unrelated
+    signups' org-scoped data together in a multi-org (demo SaaS) deployment.
+    This mirrors that path instead of a picking a shared default.
 
     The User's ``hashed_password`` is set to a random bcrypt-hashed string
     so no one can ever sign in via /auth/login as this account (CWE-287).
     Setting a real password requires the ``/auth/forgot-password`` flow.
     """
-    org = await _pick_default_org(session)
-
     user = User(
         email=info.email,
         # Random bcrypt input — never derived from anything attacker-known.
@@ -759,6 +763,13 @@ async def _create_user_with_personal_team(
         await session.flush()
         return existing, identity
 
+    org_suffix = user.id.hex[:12]
+    org = Organization(
+        name=f"Personal org ({org_suffix})", slug=f"org-{org_suffix}", is_personal=True
+    )
+    session.add(org)
+    await session.flush()
+
     team = Team(
         organization_id=org.id,
         name=_personal_team_name(full_name=info.full_name, email=info.email),
@@ -773,15 +784,20 @@ async def _create_user_with_personal_team(
         # ever fires we fall back to a uuid-suffixed slug. A second
         # collision indicates a bug; we let it propagate.
         await session.rollback()
+        # Re-add the user and org; the rollback wiped both.
+        session.add(user)
+        await session.flush()
+        org = Organization(
+            name=f"Personal org ({org_suffix})", slug=f"org-{org_suffix}", is_personal=True
+        )
+        session.add(org)
+        await session.flush()
         team = Team(
             organization_id=org.id,
             name=_personal_team_name(full_name=info.full_name, email=info.email),
             slug=f"{info.provider}-{uuid.uuid4().hex[:8]}",
             description=f"Personal team for {info.email}",
         )
-        # Re-add the user; the rollback wiped it.
-        session.add(user)
-        await session.flush()
         session.add(team)
         await session.flush()
 

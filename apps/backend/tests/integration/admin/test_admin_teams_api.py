@@ -9,6 +9,11 @@ super_admin), plus team-specific contracts:
     last_team_admin_protected.
   - Slug conflict -> 409.
   - All 4xx responses are application/problem+json.
+
+Also covers /v1/admin/organizations (§6-5, read-only list) and the
+organization_id contract POST /v1/admin/teams gained alongside it: refused
+with 422 when the deployment has more than one Organization and the caller
+didn't say which, accepted when it does.
 """
 
 from __future__ import annotations
@@ -158,7 +163,7 @@ async def test_super_admin_create_team_returns_201_and_audits(
 ) -> None:
     factory = await _factory(client)
     async with factory() as session:
-        await make_organization(session)
+        org = await make_organization(session)
         admin = await make_user(session, is_superuser=True)
 
     suffix = unique_suffix()
@@ -169,6 +174,7 @@ async def test_super_admin_create_team_returns_201_and_audits(
             "name": f"Created Team {suffix}",
             "slug": f"created-{suffix}",
             "description": "From admin API",
+            "organization_id": str(org.id),
         },
     )
     assert response.status_code == 201, response.text
@@ -195,12 +201,12 @@ async def test_super_admin_create_team_duplicate_slug_returns_409(
 ) -> None:
     factory = await _factory(client)
     async with factory() as session:
-        await make_organization(session)
+        org = await make_organization(session)
         admin = await make_user(session, is_superuser=True)
 
     headers = _bearer_for(admin)
     suffix = unique_suffix()
-    payload = {"name": "X", "slug": f"dup-{suffix}"}
+    payload = {"name": "X", "slug": f"dup-{suffix}", "organization_id": str(org.id)}
 
     first = await client.post("/v1/admin/teams", headers=headers, json=payload)
     assert first.status_code == 201
@@ -208,7 +214,7 @@ async def test_super_admin_create_team_duplicate_slug_returns_409(
     second = await client.post(
         "/v1/admin/teams",
         headers=headers,
-        json={"name": "Y", "slug": f"dup-{suffix}"},
+        json={"name": "Y", "slug": f"dup-{suffix}", "organization_id": str(org.id)},
     )
     assert second.status_code == 409
     assert second.headers["content-type"].startswith(PROBLEM_JSON)
@@ -437,3 +443,118 @@ async def test_add_member_as_viewer_is_accepted_and_stored(
     assert response.status_code == 200, response.text
     body = response.json()
     assert any(m["user_id"] == str(target.id) and m["role"] == "viewer" for m in body["members"])
+
+
+# ---------------------------------------------------------------------------
+# GET /v1/admin/organizations (§6-5)
+# ---------------------------------------------------------------------------
+
+
+async def test_list_organizations_anonymous_returns_401(client: AsyncClient) -> None:
+    response = await client.get("/v1/admin/organizations")
+    assert response.status_code == 401
+    assert response.headers["content-type"].startswith(PROBLEM_JSON)
+
+
+async def test_list_organizations_developer_returns_404(client: AsyncClient) -> None:
+    factory = await _factory(client)
+    async with factory() as session:
+        org = await make_organization(session)
+        team = await make_team(session, organization=org)
+        user = await make_user(session)
+        await make_membership(session, user=user, team=team, role="developer")
+
+    response = await client.get("/v1/admin/organizations", headers=_bearer_for(user))
+    assert response.status_code == 404
+
+
+async def test_super_admin_can_list_organizations_with_team_counts(client: AsyncClient) -> None:
+    factory = await _factory(client)
+    async with factory() as session:
+        org = await make_organization(session)
+        await make_team(session, organization=org)
+        await make_team(session, organization=org)
+        admin = await make_user(session, is_superuser=True)
+
+    response = await client.get(
+        "/v1/admin/organizations?page=1&page_size=200",
+        headers=_bearer_for(admin),
+    )
+    assert response.status_code == 200, response.text
+    body = response.json()
+    row = next(item for item in body["items"] if item["id"] == str(org.id))
+    assert row["team_count"] == 2
+
+
+async def test_create_team_without_organization_id_refuses_when_multiple_orgs_exist_via_api(
+    client: AsyncClient,
+) -> None:
+    factory = await _factory(client)
+    async with factory() as session:
+        await make_organization(session)
+        await make_organization(session)
+        admin = await make_user(session, is_superuser=True)
+
+    response = await client.post(
+        "/v1/admin/teams",
+        headers=_bearer_for(admin),
+        json={"name": "E", "slug": f"e-{unique_suffix()}"},
+    )
+    assert response.status_code == 422, response.text
+    assert response.headers["content-type"].startswith(PROBLEM_JSON)
+
+
+async def test_create_team_with_organization_id_succeeds_via_api(client: AsyncClient) -> None:
+    factory = await _factory(client)
+    async with factory() as session:
+        await make_organization(session)
+        target_org = await make_organization(session)
+        admin = await make_user(session, is_superuser=True)
+
+    suffix = unique_suffix()
+    response = await client.post(
+        "/v1/admin/teams",
+        headers=_bearer_for(admin),
+        json={
+            "name": f"Targeted {suffix}",
+            "slug": f"targeted-{suffix}",
+            "organization_id": str(target_org.id),
+        },
+    )
+    assert response.status_code == 201, response.text
+
+
+async def test_create_team_with_organization_id_refuses_a_personal_organization_via_api(
+    client: AsyncClient,
+) -> None:
+    factory = await _factory(client)
+    async with factory() as session:
+        personal_org = await make_organization(session, is_personal=True)
+        admin = await make_user(session, is_superuser=True)
+
+    response = await client.post(
+        "/v1/admin/teams",
+        headers=_bearer_for(admin),
+        json={
+            "name": "I",
+            "slug": f"i-{unique_suffix()}",
+            "organization_id": str(personal_org.id),
+        },
+    )
+    assert response.status_code == 422, response.text
+    assert response.headers["content-type"].startswith(PROBLEM_JSON)
+
+
+async def test_list_organizations_exposes_is_personal_via_api(client: AsyncClient) -> None:
+    factory = await _factory(client)
+    async with factory() as session:
+        personal_org = await make_organization(session, is_personal=True)
+        admin = await make_user(session, is_superuser=True)
+
+    response = await client.get(
+        "/v1/admin/organizations?page=1&page_size=200",
+        headers=_bearer_for(admin),
+    )
+    assert response.status_code == 200, response.text
+    row = next(item for item in response.json()["items"] if item["id"] == str(personal_org.id))
+    assert row["is_personal"] is True

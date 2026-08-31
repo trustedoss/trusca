@@ -51,11 +51,13 @@ async def make_organization(
     *,
     name: str | None = None,
     slug: str | None = None,
+    is_personal: bool = False,
 ) -> Organization:
     suffix = unique_suffix()
     org = Organization(
         name=name or f"Org {suffix}",
         slug=slug or f"org-{suffix}",
+        is_personal=is_personal,
     )
     session.add(org)
     await session.commit()

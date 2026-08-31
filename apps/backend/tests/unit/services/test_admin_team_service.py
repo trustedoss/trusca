@@ -151,7 +151,7 @@ async def test_create_team_persists_and_writes_audit(db_session: AsyncSession) -
     from schemas.admin import AdminTeamCreate
     from services.admin_team_service import create_team
 
-    await make_organization(db_session)  # ensures at least one org
+    org = await make_organization(db_session)
 
     admin = await make_user(db_session, is_superuser=True)
     actor = principal_for(admin, role="super_admin")
@@ -164,6 +164,7 @@ async def test_create_team_persists_and_writes_audit(db_session: AsyncSession) -
             name=f"New Team {suffix}",
             slug=f"new-{suffix}",
             description="hello",
+            organization_id=org.id,
         ),
     )
     assert detail.slug == f"new-{suffix}"
@@ -188,7 +189,7 @@ async def test_create_team_duplicate_slug_returns_conflict(
     from schemas.admin import AdminTeamCreate
     from services.admin_team_service import AdminTeamSlugConflict, create_team
 
-    await make_organization(db_session)
+    org = await make_organization(db_session)
 
     admin = await make_user(db_session, is_superuser=True)
     actor = principal_for(admin, role="super_admin")
@@ -197,14 +198,235 @@ async def test_create_team_duplicate_slug_returns_conflict(
     await create_team(
         db_session,
         actor=actor,
-        payload=AdminTeamCreate(name="A", slug=slug),
+        payload=AdminTeamCreate(name="A", slug=slug, organization_id=org.id),
     )
     with pytest.raises(AdminTeamSlugConflict):
         await create_team(
             db_session,
             actor=actor,
-            payload=AdminTeamCreate(name="B", slug=slug),
+            payload=AdminTeamCreate(name="B", slug=slug, organization_id=org.id),
         )
+
+
+# ---------------------------------------------------------------------------
+# Multi-organization safety (security review, self-resource-validation-
+# plan-2026-08-30.md §6-5): _pick_default_org must refuse rather than
+# silently guess once more than one Organization exists, and an explicit
+# organization_id must route the team to that org, not whichever _pick_
+# default_org would have chosen.
+# ---------------------------------------------------------------------------
+
+
+async def test_create_team_without_organization_id_refuses_when_multiple_orgs_exist(
+    db_session: AsyncSession,
+) -> None:
+    from schemas.admin import AdminTeamCreate
+    from services.admin_team_service import MultipleOrganizationsConfigured, create_team
+
+    await make_organization(db_session)
+    await make_organization(db_session)
+
+    admin = await make_user(db_session, is_superuser=True)
+    actor = principal_for(admin, role="super_admin")
+
+    with pytest.raises(MultipleOrganizationsConfigured):
+        await create_team(
+            db_session,
+            actor=actor,
+            payload=AdminTeamCreate(name="C", slug=f"c-{unique_suffix()}"),
+        )
+
+
+async def test_create_team_with_explicit_organization_id_ignores_other_orgs(
+    db_session: AsyncSession,
+) -> None:
+    """An explicit organization_id must route the team to THAT org even when
+    other orgs exist (and even when it is not the oldest one, which is what
+    the old silent _pick_default_org tie-break would have picked)."""
+    from schemas.admin import AdminTeamCreate
+    from services.admin_team_service import create_team
+
+    older_org = await make_organization(db_session)
+    target_org = await make_organization(db_session)
+    assert older_org.created_at <= target_org.created_at
+
+    admin = await make_user(db_session, is_superuser=True)
+    actor = principal_for(admin, role="super_admin")
+
+    suffix = unique_suffix()
+    detail = await create_team(
+        db_session,
+        actor=actor,
+        payload=AdminTeamCreate(
+            name=f"Targeted {suffix}", slug=f"targeted-{suffix}", organization_id=target_org.id
+        ),
+    )
+
+    from models import Team
+
+    team = (await db_session.execute(select(Team).where(Team.id == detail.id))).scalar_one()
+    assert team.organization_id == target_org.id
+    assert team.organization_id != older_org.id
+
+
+async def test_create_team_with_unknown_organization_id_raises_not_found(
+    db_session: AsyncSession,
+) -> None:
+    from schemas.admin import AdminTeamCreate
+    from services.admin_team_service import AdminTeamNotFound, create_team
+
+    admin = await make_user(db_session, is_superuser=True)
+    actor = principal_for(admin, role="super_admin")
+
+    with pytest.raises(AdminTeamNotFound):
+        await create_team(
+            db_session,
+            actor=actor,
+            payload=AdminTeamCreate(
+                name="D", slug=f"d-{unique_suffix()}", organization_id=uuid.uuid4()
+            ),
+        )
+
+
+async def test_create_team_with_explicit_organization_id_refuses_a_personal_organization(
+    db_session: AsyncSession,
+) -> None:
+    """security review, second pass (self-resource-validation-plan-2026-08-30
+    .md §6-5): the explicit organization_id override must not be usable to
+    reach the exact outcome _pick_default_org's is_personal filter exists to
+    prevent -- attaching an admin-created team to a stranger's personal
+    organization."""
+    from schemas.admin import AdminTeamCreate
+    from services.admin_team_service import PersonalOrganizationNotAssignable, create_team
+
+    personal_org = await make_organization(db_session, is_personal=True)
+
+    admin = await make_user(db_session, is_superuser=True)
+    actor = principal_for(admin, role="super_admin")
+
+    with pytest.raises(PersonalOrganizationNotAssignable):
+        await create_team(
+            db_session,
+            actor=actor,
+            payload=AdminTeamCreate(
+                name="H", slug=f"h-{unique_suffix()}", organization_id=personal_org.id
+            ),
+        )
+
+
+async def test_list_organizations_reports_is_personal(db_session: AsyncSession) -> None:
+    from services.admin_team_service import list_organizations
+
+    platform_org = await make_organization(db_session, is_personal=False)
+    personal_org = await make_organization(db_session, is_personal=True)
+
+    admin = await make_user(db_session, is_superuser=True)
+    actor = principal_for(admin, role="super_admin")
+
+    page = await list_organizations(db_session, actor=actor, page=1, page_size=200)
+    by_id = {item.id: item for item in page.items}
+    assert by_id[platform_org.id].is_personal is False
+    assert by_id[personal_org.id].is_personal is True
+
+
+async def test_pick_default_org_outcome_is_unaffected_by_adding_personal_orgs(
+    db_session: AsyncSession,
+) -> None:
+    """security review, second pass (self-resource-validation-plan-2026-08-30
+    .md §6-5): "exactly one organization exists" is not sufficient evidence
+    it is safe to auto-pick -- it could be the very first self-signup's
+    personal org, in the narrow window before a platform org or a second
+    signup exists. _pick_default_org must ignore personal organizations
+    entirely, so adding any number of them must never change what it
+    resolves to.
+
+    Written as a before/after invariant rather than asserting an absolute
+    organization count: this test file's db_session commits against the
+    real, shared test database (no per-test rollback), so other tests in
+    this run -- and prior runs -- may have already left platform
+    organizations behind. Only the relative claim ("adding personal orgs
+    changes nothing") holds regardless of that accumulated state.
+    """
+    from services.admin_team_service import (
+        MultipleOrganizationsConfigured,
+        NoOrganizationConfigured,
+        _pick_default_org,
+    )
+
+    async def _resolve() -> tuple[str, uuid.UUID | None]:
+        try:
+            org = await _pick_default_org(db_session)
+        except NoOrganizationConfigured:
+            return ("none", None)
+        except MultipleOrganizationsConfigured:
+            return ("multiple", None)
+        return ("ok", org.id)
+
+    before = await _resolve()
+
+    await make_organization(db_session, is_personal=True)
+    await make_organization(db_session, is_personal=True)
+
+    after = await _resolve()
+    assert before == after
+
+
+async def test_pick_default_org_never_returns_a_personal_organization(
+    db_session: AsyncSession,
+) -> None:
+    from services.admin_team_service import (
+        MultipleOrganizationsConfigured,
+        NoOrganizationConfigured,
+        _pick_default_org,
+    )
+
+    personal_org = await make_organization(db_session, is_personal=True)
+
+    try:
+        org = await _pick_default_org(db_session)
+    except (NoOrganizationConfigured, MultipleOrganizationsConfigured):
+        return  # refusing is fine; returning the personal org would not be
+    assert org.id != personal_org.id
+    assert org.is_personal is False
+
+
+async def test_create_team_refuses_when_multiple_platform_orgs_exist_even_with_personal_ones(
+    db_session: AsyncSession,
+) -> None:
+    from schemas.admin import AdminTeamCreate
+    from services.admin_team_service import MultipleOrganizationsConfigured, create_team
+
+    await make_organization(db_session, is_personal=True)
+    await make_organization(db_session, is_personal=False)
+    await make_organization(db_session, is_personal=False)
+
+    admin = await make_user(db_session, is_superuser=True)
+    actor = principal_for(admin, role="super_admin")
+
+    with pytest.raises(MultipleOrganizationsConfigured):
+        await create_team(
+            db_session,
+            actor=actor,
+            payload=AdminTeamCreate(name="G", slug=f"g-{unique_suffix()}"),
+        )
+
+
+async def test_list_organizations_reports_team_counts(db_session: AsyncSession) -> None:
+    from services.admin_team_service import list_organizations
+
+    org_a = await make_organization(db_session)
+    org_b = await make_organization(db_session)
+    await make_team(db_session, organization=org_a)
+    await make_team(db_session, organization=org_a)
+    await make_team(db_session, organization=org_b)
+
+    admin = await make_user(db_session, is_superuser=True)
+    actor = principal_for(admin, role="super_admin")
+
+    page = await list_organizations(db_session, actor=actor, page=1, page_size=200)
+    by_id = {item.id: item for item in page.items}
+    assert by_id[org_a.id].team_count == 2
+    assert by_id[org_b.id].team_count == 1
 
 
 async def test_update_team_changes_name(db_session: AsyncSession) -> None:

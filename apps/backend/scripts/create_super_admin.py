@@ -56,18 +56,30 @@ _DEFAULT_ORG_SLUG = "default"
 
 
 async def _ensure_organization(session: AsyncSession) -> None:
-    """Create the deployment's one ``Organization`` row if none exists yet.
+    """Create the deployment's one PLATFORM ``Organization`` row if none
+    exists yet.
 
-    Reuses the oldest row when one is already there (mirrors
+    Reuses the oldest platform row when one is already there (mirrors
     ``admin_team_service._pick_default_org``'s tie-break) instead of
-    creating a second organization in a single-org deployment.
+    creating a second one in a single-org deployment. Specifically a
+    platform row (``is_personal=False``), not just any row (security
+    review, self-resource-validation-plan-2026-08-30.md §6-5): this script
+    is a re-runnable recovery hatch, so it can run after self-registration
+    has already created personal organizations, and a personal org must
+    never be mistaken for the platform one ``_pick_default_org`` needs to
+    find.
     """
     existing = (
-        await session.execute(select(Organization).order_by(Organization.created_at.asc()).limit(1))
+        await session.execute(
+            select(Organization)
+            .where(Organization.is_personal.is_(False))
+            .order_by(Organization.created_at.asc())
+            .limit(1)
+        )
     ).scalar_one_or_none()
     if existing is not None:
         return
-    session.add(Organization(name=_DEFAULT_ORG_NAME, slug=_DEFAULT_ORG_SLUG))
+    session.add(Organization(name=_DEFAULT_ORG_NAME, slug=_DEFAULT_ORG_SLUG, is_personal=False))
     await session.commit()
 
 

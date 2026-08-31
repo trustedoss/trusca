@@ -10,6 +10,9 @@ anonymous = 401).
 Sub-routers:
   - ``users``  — ``/v1/admin/users/*``   (PR #13)
   - ``teams``  — ``/v1/admin/teams/*``   (PR #13)
+  - ``organizations``: ``/v1/admin/organizations`` (§6-5, read-only list, so a
+    super_admin can find the organization_id POST /v1/admin/teams now needs
+    once a deployment has more than one)
   - ``scans``  — ``/v1/admin/scans/*``   (PR #14: cross-team queue + cancel)
   - ``disk``   — ``/v1/admin/disk``      (PR #14: workspace + DB telemetry)
   - ``audit``  — ``/v1/admin/audit/*``   (PR #14: search + CSV export)
@@ -44,6 +47,7 @@ from . import (
     health,
     kev,
     malicious,
+    organizations,
     scans,
     teams,
     trivy,
@@ -62,6 +66,7 @@ router = APIRouter(
 
 router.include_router(users.router)
 router.include_router(teams.router)
+router.include_router(organizations.router)
 router.include_router(api_keys.router)
 router.include_router(scans.router)
 router.include_router(disk.router)
