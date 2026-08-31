@@ -462,7 +462,7 @@ async def test_callback_creates_own_organization_not_the_seeded_one(
         team = (
             await session.execute(select(Team).where(Team.id == membership.team_id))
         ).scalar_one()
-        return team.organization_id
+        return uuid.UUID(str(team.organization_id))
 
     async with db_factory() as session:
         org_a = await _org_id_for(session, email_a)
