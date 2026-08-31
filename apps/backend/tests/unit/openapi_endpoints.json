@@ -113,6 +113,10 @@
   "GET /v1/admin/health": [],
   "GET /v1/admin/kev/health": [],
   "GET /v1/admin/malicious/health": [],
+  "GET /v1/admin/organizations": [
+    "page",
+    "page_size"
+  ],
   "GET /v1/admin/scans": [
     "kind",
     "page",

@@ -248,6 +248,41 @@ class AdminUserRoleUpdate(BaseModel):
 
 
 # ---------------------------------------------------------------------------
+# Organizations (read-only: an Organization is created implicitly by
+# self-signup or OAuth signup, never through this API -- see
+# GET /v1/admin/organizations' docstring for why there is no POST here.)
+# ---------------------------------------------------------------------------
+
+
+class AdminOrganizationListItem(BaseModel):
+    """Row in the organization list -- lets an admin discover the id to pass
+    as ``AdminTeamCreate.organization_id`` once more than one exists."""
+
+    model_config = ConfigDict(from_attributes=True)
+
+    id: uuid.UUID
+    name: str
+    slug: str
+    is_personal: bool = Field(
+        description=(
+            "True for an organization created as a side effect of a signup "
+            "(self-registration or OAuth), one per user. AdminTeamCreate."
+            "organization_id refuses these -- surfaced here so a caller can "
+            "tell before choosing, not just find out from the 422."
+        )
+    )
+    team_count: int = 0
+    created_at: datetime
+
+
+class AdminOrganizationListPage(BaseModel):
+    items: list[AdminOrganizationListItem]
+    total: int
+    page: int
+    page_size: int
+
+
+# ---------------------------------------------------------------------------
 # Teams
 # ---------------------------------------------------------------------------
 
@@ -312,6 +347,17 @@ class AdminTeamCreate(BaseModel):
     name: str = Field(min_length=1, max_length=255)
     slug: str = Field(min_length=1, max_length=64)
     description: str | None = Field(default=None, max_length=1024)
+    organization_id: uuid.UUID | None = Field(
+        default=None,
+        description=(
+            "Which Organization the team belongs to. Required once a deployment "
+            "has more than one (self-signup creates a personal Organization per "
+            "user, so a demo SaaS deployment usually does): the create call "
+            "refuses with 422 rather than silently guessing. Omit on a "
+            "single-organization deployment; see GET /v1/admin/organizations "
+            "to find the id."
+        ),
+    )
 
     @field_validator("name")
     @classmethod
@@ -389,6 +435,8 @@ class AdminTeamMemberAdd(BaseModel):
 
 
 __all__ = [
+    "AdminOrganizationListItem",
+    "AdminOrganizationListPage",
     "AdminTeamCreate",
     "AdminTeamDetail",
     "AdminTeamListItem",

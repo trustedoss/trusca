@@ -78,6 +78,18 @@ class Organization(Base):
     id: Mapped[uuid.UUID] = mapped_column(UUID_PK, primary_key=True, server_default=GEN_UUID)
     name: Mapped[str] = mapped_column(String(255), nullable=False, unique=True)
     slug: Mapped[str] = mapped_column(String(64), nullable=False, unique=True)
+    # True for an org created as a side effect of a signup (self-registration
+    # or OAuth), one per user, for tenant isolation of org-scoped data. False
+    # for the shared/platform org an installer or admin provisions (security
+    # review, self-resource-validation-plan-2026-08-30.md §6-5:
+    # _pick_default_org must never auto-attach a new admin-created team to a
+    # stranger's personal org, which "exactly one org exists" alone cannot
+    # rule out -- that lone org can itself be the first signup's personal
+    # one). Existing rows backfill to False (platform org) on migration:
+    # every pre-existing single-org deployment already relied on that row
+    # being the shared one, so this preserves current behaviour rather than
+    # guessing intent retroactively.
+    is_personal: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default="false")
     settings: Mapped[dict[str, Any]] = mapped_column(
         JSONB, nullable=False, server_default=EMPTY_JSONB
     )

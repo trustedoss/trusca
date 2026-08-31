@@ -412,6 +412,80 @@ async def test_callback_creates_new_user_and_personal_team(
         assert "Team" in team.name
 
 
+async def test_callback_creates_own_organization_not_the_seeded_one(
+    client: AsyncClient,
+    db_factory: async_sessionmaker[Any],
+    seed_organization: None,
+    patch_async_client: Callable[[Callable[[httpx.Request], httpx.Response]], None],
+) -> None:
+    """security review, self-resource-validation-plan-2026-08-30.md §6-5: a
+    new OAuth signup must get its OWN Organization, not the deployment's
+    existing (oldest) one -- org-scoped data (OrganizationComponentVerdict
+    and similar) must not pool across unrelated signups in a multi-org
+    (demo SaaS) deployment. Two separate new-user signups must also each get
+    a DIFFERENT organization from each other.
+    """
+    from models import Organization, Team
+
+    async with db_factory() as session:
+        seeded_org_ids = set(
+            (await session.execute(select(Organization.id))).scalars().all()
+        )
+
+    def _signup(suffix: str) -> str:
+        email = f"orgiso-{suffix}@example.com"
+        user_id = abs(hash(email)) % (10**9)
+        patch_async_client(_github_handler(user_id=user_id, email=email, name="Org Isolation"))
+        return email
+
+    email_a = _signup(uuid.uuid4().hex[:8])
+    state_a = await _mint_state("github", "/dashboard")
+    resp_a = await client.get(
+        "/auth/oauth/github/callback", params={"code": "abc", "state": state_a}
+    )
+    assert resp_a.status_code == 302, resp_a.text
+
+    email_b = _signup(uuid.uuid4().hex[:8])
+    state_b = await _mint_state("github", "/dashboard")
+    resp_b = await client.get(
+        "/auth/oauth/github/callback", params={"code": "abc", "state": state_b}
+    )
+    assert resp_b.status_code == 302, resp_b.text
+
+    async def _org_id_for(session: Any, email: str) -> uuid.UUID:
+        from models import Membership, User
+
+        user = (await session.execute(select(User).where(User.email == email))).scalar_one()
+        membership = (
+            await session.execute(select(Membership).where(Membership.user_id == user.id))
+        ).scalar_one()
+        team = (
+            await session.execute(select(Team).where(Team.id == membership.team_id))
+        ).scalar_one()
+        return uuid.UUID(str(team.organization_id))
+
+    async with db_factory() as session:
+        org_a = await _org_id_for(session, email_a)
+        org_b = await _org_id_for(session, email_b)
+
+    assert org_a not in seeded_org_ids
+    assert org_b not in seeded_org_ids
+    assert org_a != org_b
+
+
+# The team-slug-collision retry branch in _create_user_with_personal_team is
+# not covered by an integration test here: Team's uniqueness is scoped
+# (organization_id, slug), and every signup now gets its own freshly-created
+# Organization (this PR), so a real collision would need a pre-seeded row
+# under an Organization whose id is a server-generated UUID this test has no
+# way to predict in advance. Forcing the branch would need mocking
+# AsyncSession.flush at exactly the Team insert, which the ASGI-transport
+# fixtures this file uses do not expose a clean seam for. The duplicate
+# session.add(team)/flush() this branch previously carried (dead code, not a
+# behavioural bug) was removed in the same change that added Organization
+# creation here.
+
+
 # ---------------------------------------------------------------------------
 # /callback — existing OAuth identity reused
 # ---------------------------------------------------------------------------
