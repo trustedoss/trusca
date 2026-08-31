@@ -7,6 +7,65 @@ and the project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.
 
 ## [Unreleased]
 
+## [0.22.3] - 2026-08-31
+
+### Security
+
+- **A team or an OAuth signup could end up attached to a stranger's
+  organization.** Organization is documented as a deployment-level
+  singleton, but self-signup and OAuth signup each create a personal
+  organization for tenant isolation of org-scoped data. Two admin-facing
+  paths still assumed the singleton model and silently picked or reused
+  "the" organization regardless of how many existed - once a member joined
+  such a team, they could read that stranger's organization-scoped
+  verdicts. Admin team creation now refuses to guess whenever more than one
+  organization exists, and OAuth signup creates its own personal
+  organization instead of reusing one. A new `Organization.is_personal`
+  column (backfilled for existing deployments) closes two further gaps a
+  security review surfaced in the initial fix: a demo deployment sitting at
+  exactly one, personal, organization right after its first self-registration,
+  and an explicit organization override with no awareness of which
+  organizations are personal (#257).
+
+### Fixed
+
+- **The first team an operator created after `create_super_admin` always
+  failed with a 422.** Bootstrap only inserted a super-admin `User` row and
+  never an `Organization`, so the single-org deployment model had nothing
+  for the first team to attach to. `create_super_admin` now provisions the
+  organization it needs, reusing an existing one if the command runs again
+  (#246).
+- **A scan's build tooling could survive its own timeout as an unreaped
+  zombie process.** The streaming subprocess helper called `kill()` on
+  timeout but never followed up with `wait()`, leaving the killed child for
+  the kernel to hold onto indefinitely once its parent moved on. It now
+  waits for the child after killing it, the same pattern already used
+  elsewhere in the codebase (#245).
+- **A fully offline Trivy DB cache (`TRIVY_DB_BOOTSTRAP_ON_START=false`)
+  still made every scan try to phone home for a database update check**,
+  stalling instead of using the pre-populated cache the offline-install
+  guide promises. Scan-time Trivy calls now pass `--skip-db-update` in that
+  mode (#248).
+- **The admin panel could report a Trivy database as "fresh" that the
+  Trivy CLI itself would refuse to use.** Freshness only checked the
+  metadata's update timestamp and version, ignoring a zero-value
+  `DownloadedAt` - the CLI's own signal that a download never actually
+  completed. The panel now treats that shape as if the metadata were
+  missing (#247).
+- **In a role-separated deployment, 21 tables added since the runtime
+  role's original grant could not be updated or deleted by the runtime
+  at all**, surfacing as unhandled 500s on ordinary writes - most
+  seriously, a leaked GitHub App key could not be revoked. Every
+  affected table's actual read/write needs were verified against the
+  service and task code and granted explicitly (#249).
+
+### Added
+
+- **`SCAN_LOCAL_DOCKER_ENVS=all` routes every detected build environment
+  through the sandboxed sidecar**, not just Android, without requiring an
+  operator to enumerate every language by hand. Recommended when scanning
+  source with unknown or untrusted build scripts (#255).
+
 ## [0.22.2] - 2026-08-29
 
 ### Fixed
