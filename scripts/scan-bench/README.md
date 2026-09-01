@@ -95,7 +95,7 @@ python3 bulk_register.py register --cohort github-2026-09 --input targets.json -
 # --git-credential (or COHORT_GIT_CREDENTIAL env var) PATCHes a read-only token onto
 # every project via the encrypted git_credential field, right after it's created.
 # Omit for public targets.
-python3 bulk_register.py register --cohort tde-2026-09 --input targets.json \
+python3 bulk_register.py register --cohort internal-2026-09 --input targets.json \
     --admin-email admin@example.com --admin-password '...' --git-credential '...'
 
 # refresh in-flight scan status (once, or with --watch until everything is done)
@@ -109,6 +109,34 @@ Registration and scan state accumulate in this directory's `cohort.db` (SQLite,
 changeable via `COHORT_DB`/`--cohort-db`). Both `register` and `poll` keep going when
 a single target fails, recording why, so one exception at a 1,800-target scale
 doesn't stop the rest.
+
+## Sourcing targets.json from a self-hosted GitLab instance
+
+`gitlab_targets.py` builds `bulk_register.py`'s `targets.json` from a self-hosted
+GitLab instance's own project listing, for when the source of a cohort is "every
+repository we can read" rather than a curated list. GitLab's namespace hierarchy is
+usually far more fragmented than a useful cohort unit (a large instance can have
+thousands of top-level namespaces, most tiny) - this labels each repository by the
+first segment of its `name_with_namespace` (the top-level group's display name) and
+groups by that.
+
+```bash
+# paginate the whole instance into a raw cache (repeat with --resume if interrupted)
+python3 gitlab_targets.py list --gitlab-url https://gitlab.example.com \
+    --gitlab-token "$GITLAB_TOKEN" --output gitlab_projects.json
+
+# see the org-label size distribution before committing to a cutoff
+python3 gitlab_targets.py stats --input gitlab_projects.json
+
+# build targets.json from orgs with 10-30 repos each, capped at 120 orgs
+python3 gitlab_targets.py build --input gitlab_projects.json --output targets.json \
+    --min-repos 10 --max-repos 30 --max-orgs 120
+```
+
+`build` is pure (no network) so re-running it against the same `gitlab_projects.json`
+with a different `--min-repos`/`--max-repos`/`--max-orgs` is instant, and picks the
+same subset deterministically on repeat runs (team/project slugs are stable given
+the same input).
 
 ## How it works (run_bench.py, small fixture/real-world targets)
 1. Log in, holding the access token + refresh cookie (auto-renewed on 30-minute expiry)
