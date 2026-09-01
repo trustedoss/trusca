@@ -102,6 +102,21 @@ def _ensure_project(client: PortalClient, *, team_id: str, name: str, slug: str,
     raise RuntimeError(f"project create failed {code}: {body}")
 
 
+def _set_git_credential(client: PortalClient, *, project_id: str, credential: str) -> None:
+    """PATCH the encrypted git_credential onto a project.
+
+    ``POST /v1/projects`` (``ProjectCreate``) has no ``git_credential`` field,
+    it only exists on ``ProjectUpdate`` (self-resource-validation-plan-2026-08-30.md
+    S1.5), so internal/private TDE GitLab targets need this follow-up call or
+    the worker has no way to authenticate the clone.
+    """
+    code, body = client.request(
+        "PATCH", f"/v1/projects/{project_id}", json_body={"git_credential": credential}
+    )
+    if code != 200:
+        raise RuntimeError(f"git_credential PATCH failed {code}: {body}")
+
+
 def _trigger_scan(client: PortalClient, *, project_id: str) -> str:
     code, body = client.request(
         "POST", f"/v1/projects/{project_id}/scans", json_body={"kind": "source"}
@@ -109,6 +124,10 @@ def _trigger_scan(client: PortalClient, *, project_id: str) -> str:
     if code != 202:
         raise RuntimeError(f"scan trigger failed {code}: {body}")
     return body["id"]
+
+
+def _resolve_git_credential(args: argparse.Namespace) -> str | None:
+    return args.git_credential or os.getenv("COHORT_GIT_CREDENTIAL")
 
 
 def cmd_register(args: argparse.Namespace) -> int:
@@ -125,6 +144,7 @@ def cmd_register(args: argparse.Namespace) -> int:
     if not pending:
         return 0
 
+    git_credential = _resolve_git_credential(args)
     client = _login(args)
     ok = 0
     for i, row in enumerate(pending, 1):
@@ -140,6 +160,13 @@ def cmd_register(args: argparse.Namespace) -> int:
                 slug=row["project_slug"], git_url=row["git_url"],
             )
             cohort.mark_progress(conn, row["id"], project_id=project_id)
+
+            # Every pass re-sends the credential (even for a reused project_id
+            # from a prior/failed pass) rather than tracking a separate
+            # "credential set" flag: the PATCH is idempotent, and this is
+            # the only way a retry-after-PATCH-failure catches up.
+            if git_credential:
+                _set_git_credential(client, project_id=project_id, credential=git_credential)
 
             scan_id = _trigger_scan(client, project_id=project_id)
             cohort.mark_progress(conn, row["id"], scan_id=scan_id)
@@ -213,6 +240,16 @@ def main() -> int:
     p_register.add_argument("--input", required=True, help="targets.json (see README.md)")
     p_register.add_argument("--retry-failed", action="store_true", help="also retry previously failed targets")
     p_register.add_argument("--limit", type=int, default=None, help="process at most N targets this pass")
+    p_register.add_argument(
+        "--git-credential",
+        default=None,
+        help=(
+            "read-only PAT/deploy token PATCHed onto every project via the encrypted "
+            "git_credential field, for internal/private targets (e.g. TDE GitLab) the "
+            "worker cannot clone unauthenticated. Also via COHORT_GIT_CREDENTIAL env var. "
+            "Omit for public targets."
+        ),
+    )
 
     p_poll = sub.add_parser("poll", parents=[common], help="check in-flight scan status")
     p_poll.add_argument("--watch", action="store_true", help="loop until nothing is in flight")

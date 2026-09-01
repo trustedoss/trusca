@@ -91,6 +91,13 @@ python3 bulk_register.py register --cohort github-2026-09 --input targets.json \
 python3 bulk_register.py register --cohort github-2026-09 --input targets.json --retry-failed \
     --admin-email admin@example.com --admin-password '...'
 
+# internal/private targets (e.g. TDE GitLab) the worker can't clone unauthenticated:
+# --git-credential (or COHORT_GIT_CREDENTIAL env var) PATCHes a read-only token onto
+# every project via the encrypted git_credential field, right after it's created.
+# Omit for public targets.
+python3 bulk_register.py register --cohort tde-2026-09 --input targets.json \
+    --admin-email admin@example.com --admin-password '...' --git-credential '...'
+
 # refresh in-flight scan status (once, or with --watch until everything is done)
 python3 bulk_register.py poll --cohort github-2026-09 --admin-email ... --admin-password ...
 
