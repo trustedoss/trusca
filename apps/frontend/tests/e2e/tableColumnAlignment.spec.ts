@@ -215,6 +215,23 @@ test.describe.serial("@tables column headers align with their data", () => {
     const portal = new PortalPage(sharedPage);
     await portal.selectTab("components");
     await portal.expectComponentsTabReady();
+    // `expectComponentsTabReady()` only waits for the `components-virtual`
+    // container to mount: Virtuoso mounts that container as soon as the
+    // page's data has landed, but it paints on an *estimated* row height
+    // first and only commits real row nodes after its own measurement pass
+    // (the same hazard `expectVulnerabilityWindowSettled()` below exists
+    // for). On a loaded CI runner that measurement pass can still be
+    // in-flight the instant this test's own `page.evaluate` looks for the
+    // first `component-row` node, throwing "no row: component-row" even
+    // though the row lands moments later; reproduced against the nightly
+    // run's own trace (issue #260), where the post-failure DOM snapshot
+    // shows a fully rendered table. Waiting for the row to attach (not a
+    // fixed sleep, but Playwright's own auto-retrying wait) closes that
+    // window.
+    await sharedPage
+      .getByTestId("component-row")
+      .first()
+      .waitFor({ state: "attached", timeout: 10_000 });
     expectColumnsAligned(
       await readTableGeometry(
         sharedPage,
@@ -229,7 +246,13 @@ test.describe.serial("@tables column headers align with their data", () => {
   test("A2) the Vulnerabilities table's headings sit above their own cells", async () => {
     const portal = new PortalPage(sharedPage);
     await portal.selectTab("vulnerabilities");
-    await portal.expectVulnerabilitiesTabReady();
+    // Not `expectVulnerabilitiesTabReady()`, which only waits for the
+    // `vulnerabilities-virtual` container, which Virtuoso mounts before its
+    // estimated-height measurement pass finishes committing real rows (see
+    // the A1 comment above; same hazard, and the fix already lives in the
+    // harness for this tab). `expectVulnerabilityWindowSettled()` waits for
+    // that pass to land before this test reads row geometry.
+    await portal.expectVulnerabilityWindowSettled();
     expectColumnsAligned(
       await readTableGeometry(
         sharedPage,
