@@ -938,6 +938,7 @@ async def _seed(  # noqa: PLR0915 — a single linear seed routine reads better 
     # Validate the spread up front (ValueError on unknown tokens) so a typo
     # is a clean exit-2, not a mid-transaction surprise.
     kev_spread_tokens = _parse_kev_due_spread(kev_due_spread)
+    from create_super_admin import _ensure_organization
     from sqlalchemy.ext.asyncio import (
         AsyncSession,
         async_sessionmaker,
@@ -1001,6 +1002,15 @@ async def _seed(  # noqa: PLR0915 — a single linear seed routine reads better 
     factory = async_sessionmaker(engine, expire_on_commit=False, class_=AsyncSession)
     try:
         async with factory() as session:
+            # The per-run org below is personal (isolation between seed
+            # calls), so it does not satisfy `_pick_default_org`'s single-
+            # platform-org requirement (admin_team_service.py) on its own.
+            # The e2e CI job never runs create_super_admin.py, and this
+            # script's own smoke-run is the only thing that touches
+            # Organization before Playwright's admin/team specs need one to
+            # exist, so ensure it here too.
+            await _ensure_organization(session)
+
             org = Organization(
                 name=f"E2E Org {suffix}", slug=f"e2e-org-{suffix}", is_personal=True
             )
