@@ -975,3 +975,39 @@ CVE-2026-56862
 # `go version -m /usr/local/go-bin/govulncheck | grep x/mod` inside the image.
 CVE-2026-56864
 CVE-2026-56865
+
+# CVE-2026-56854 (GO-2026-6303) — golang.org/x/crypto/ssh unenforced
+#   source-address restriction on a certificate-restricted key — HIGH
+# Target: usr/local/bin/cosign (gobinary) ONLY. Fixed version is x/crypto
+#   0.55.0, and there is no cosign release built against it: v3.1.3 (latest,
+#   published 2026-08-06) still carries v0.53.0 (verified: `go version -m`
+#   on the v3.1.3 linux-amd64 release binary shows
+#   `dep golang.org/x/crypto v0.53.0`). Bumping the binary does not clear
+#   the finding. Category-2 UNRELEASED-UPSTREAM (same situation as the
+#   x/text entry above).
+# CVSS: 7.5 HIGH (AV:N/AC:L/PR:N/UI:N/S:U/C:H/I:N/A:N) — an SSH server's
+#   auth-callback (PasswordCallback / KeyboardInteractiveCallback /
+#   NoClientAuthCallback / GSSAPIWithMICConfig.AllowLogin) can return
+#   Permissions with a source-address CriticalOption that the package never
+#   checks, so a certificate-restricted key authenticates from a
+#   disallowed address.
+# Reach: this is a SERVER-side auth-callback bug (GO-2026-6303 names
+#   `NewServerConn` / `connection.serverAuthenticate` as the vulnerable
+#   symbols), not a client-side one. `go tool nm` on the v3.1.3 release
+#   binary confirms neither symbol is linked, nor is `NewClientConn` /
+#   `Dial` / any handshake or authenticate routine — cosign links only
+#   ssh key/certificate parsing utilities (`Certificate.Verify`,
+#   `NewPublicKey`, per-key-type `Verify`, `FingerprintSHA256`), used for
+#   its SSH-format signing-key support. No SSH connection code — server or
+#   client — is compiled into the binary at all. Independently, cosign is
+#   invoked here only as `sign-blob` / `attest-blob` / `verify-blob` over
+#   local, portal-generated files plus the deployment's configured
+#   Fulcio/Rekor HTTPS endpoints (integrations/cosign.py: _sign_key_based,
+#   _sign_keyless, _attest_key_based, _attest_keyless, verify_blob) — every
+#   argv list is fixed, and scrubbed_env_for_cosign
+#   (integrations/_subprocess_env.py) passes neither SSH_AUTH_SOCK nor
+#   GIT_SSH_COMMAND to the subprocess.
+# Re-evaluate: on the first cosign release built against x/crypto >= 0.55.0
+#   (check `go version -m /usr/local/bin/cosign | grep x/crypto`) or
+#   2026-12-01, whichever is sooner.
+CVE-2026-56854
