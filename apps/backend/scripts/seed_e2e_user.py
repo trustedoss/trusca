@@ -1001,7 +1001,9 @@ async def _seed(  # noqa: PLR0915 — a single linear seed routine reads better 
     factory = async_sessionmaker(engine, expire_on_commit=False, class_=AsyncSession)
     try:
         async with factory() as session:
-            org = Organization(name=f"E2E Org {suffix}", slug=f"e2e-org-{suffix}")
+            org = Organization(
+                name=f"E2E Org {suffix}", slug=f"e2e-org-{suffix}", is_personal=True
+            )
             session.add(org)
             await session.commit()
             await session.refresh(org)
