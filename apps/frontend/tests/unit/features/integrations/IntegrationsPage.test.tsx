@@ -35,7 +35,7 @@ vi.mock("@/lib/apiKeysApi", () => ({
 // IntegrationsPage always renders ServiceAccountsPanel alongside the API-key
 // table (L-16/L-18 gate which panel is interactive, not whether it mounts).
 // Its own useQuery calls listServiceAccounts unconditionally whenever the
-// logged-in user carries a teamId, which every fixture here does — leaving
+// logged-in user carries a teamId, which every fixture here does; leaving
 // this unmocked meant every test in this file fired a real, unmocked
 // `GET /v1/service-accounts` that jsdom has no server to answer, surfacing
 // as a stray AggregateError/socket-error under CI load (issue #267).
