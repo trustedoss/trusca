@@ -32,17 +32,33 @@ vi.mock("@/lib/apiKeysApi", () => ({
   narrowApiKey: vi.fn(),
 }));
 
+// IntegrationsPage always renders ServiceAccountsPanel alongside the API-key
+// table (L-16/L-18 gate which panel is interactive, not whether it mounts).
+// Its own useQuery calls listServiceAccounts unconditionally whenever the
+// logged-in user carries a teamId, which every fixture here does — leaving
+// this unmocked meant every test in this file fired a real, unmocked
+// `GET /v1/service-accounts` that jsdom has no server to answer, surfacing
+// as a stray AggregateError/socket-error under CI load (issue #267).
+vi.mock("@/lib/serviceAccountsApi", () => ({
+  listServiceAccounts: vi.fn(),
+  createServiceAccount: vi.fn(),
+  deactivateServiceAccount: vi.fn(),
+  assignServiceAccountSteward: vi.fn(),
+}));
+
 import {
   createApiKey,
   listApiKeys,
   narrowApiKey,
   revokeApiKey,
 } from "@/lib/apiKeysApi";
+import { listServiceAccounts } from "@/lib/serviceAccountsApi";
 
 const mockedList = vi.mocked(listApiKeys);
 const mockedCreate = vi.mocked(createApiKey);
 const mockedRevoke = vi.mocked(revokeApiKey);
 const mockedNarrow = vi.mocked(narrowApiKey);
+const mockedListServiceAccounts = vi.mocked(listServiceAccounts);
 
 function key(name: string, overrides: Partial<APIKeyListItem> = {}): APIKeyListItem {
   return {
@@ -133,6 +149,10 @@ describe("IntegrationsPage", () => {
     mockedList.mockReset();
     mockedCreate.mockReset();
     mockedRevoke.mockReset();
+    // Default to an empty service-account list so ServiceAccountsPanel
+    // settles quietly; tests that care about its contents override this.
+    mockedListServiceAccounts.mockReset();
+    mockedListServiceAccounts.mockResolvedValue({ items: [], total: 0 });
     // L-18 hides create/revoke from developers — the legacy tests exercise
     // the full management flows, so they run as a team_admin by default.
     loginAs(authUser());
