@@ -127,6 +127,10 @@ from .scan_schedule import (  # noqa: E402,F401  (imported for metadata side eff
     SCAN_SCHEDULE_CADENCE_VALUES,
     ScanSchedule,
 )
+from .task_run import (  # noqa: E402,F401  (imported for metadata side effects)
+    TASK_RUN_OUTCOME_VALUES,
+    TaskRun,
+)
 from .transition_approval import (  # noqa: E402,F401  (imported for metadata side effects)
     TRANSITION_APPROVAL_STATES,
     TransitionApproval,
@@ -146,6 +150,8 @@ __all__ = [
     "GitHubAppCredential",
     "GitHubAppInstallation",
     "KevSyncState",
+    "TaskRun",
+    "TASK_RUN_OUTCOME_VALUES",
     "License",
     "LicenseFetchCache",
     "LicenseFinding",

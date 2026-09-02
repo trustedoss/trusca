@@ -1,53 +1,278 @@
 {
   "_generated_by": "tests/integration/test_app_role_grant_matrix.py (B1), captured from a real `alembic upgrade head` run against a throwaway database with the literal `trustedoss_app` role provisioned, then read back via has_table_privilege(). Not hand-written.",
-  "_captured_against_head_revision": "0072",
+  "_captured_against_head_revision": "0075",
   "tables": {
-    "alembic_version": ["DELETE", "INSERT", "SELECT", "UPDATE"],
-    "api_keys": ["DELETE", "INSERT", "SELECT", "UPDATE"],
-    "audit_export_cursors": ["INSERT", "SELECT", "UPDATE"],
-    "audit_logs": ["INSERT", "SELECT"],
-    "component_approvals": ["DELETE", "INSERT", "SELECT", "UPDATE"],
-    "component_dependency_edges": ["DELETE", "INSERT", "SELECT"],
-    "component_intake_requests": ["INSERT", "SELECT", "UPDATE"],
-    "component_versions": ["DELETE", "INSERT", "SELECT", "UPDATE"],
-    "components": ["DELETE", "INSERT", "SELECT", "UPDATE"],
-    "eol_sync_state": ["INSERT", "SELECT", "UPDATE"],
-    "gate_policies": ["DELETE", "INSERT", "SELECT", "UPDATE"],
-    "github_app_credentials": ["INSERT", "SELECT", "UPDATE"],
-    "github_app_installations": ["DELETE", "INSERT", "SELECT", "UPDATE"],
-    "kev_sync_state": ["INSERT", "SELECT", "UPDATE"],
-    "license_fetch_cache": ["DELETE", "INSERT", "SELECT", "UPDATE"],
-    "license_findings": ["DELETE", "INSERT", "SELECT", "UPDATE"],
-    "license_policies": ["DELETE", "INSERT", "SELECT", "UPDATE"],
-    "licenses": ["DELETE", "INSERT", "SELECT", "UPDATE"],
-    "malicious_sync_state": ["INSERT", "SELECT", "UPDATE"],
-    "memberships": ["DELETE", "INSERT", "SELECT", "UPDATE"],
-    "notice_templates": ["DELETE", "INSERT", "SELECT", "UPDATE"],
-    "notification_preferences": ["DELETE", "INSERT", "SELECT", "UPDATE"],
-    "notification_routing_rules": ["DELETE", "INSERT", "SELECT"],
-    "notifications": ["DELETE", "INSERT", "SELECT", "UPDATE"],
-    "oauth_identities": ["DELETE", "INSERT", "SELECT", "UPDATE"],
-    "obligation_fulfilments": ["DELETE", "INSERT", "SELECT", "UPDATE"],
-    "obligations": ["DELETE", "INSERT", "SELECT", "UPDATE"],
-    "organization_component_verdicts": ["INSERT", "SELECT", "UPDATE"],
-    "organizations": ["DELETE", "INSERT", "SELECT", "UPDATE"],
-    "password_reset_tokens": ["DELETE", "INSERT", "SELECT", "UPDATE"],
-    "projects": ["DELETE", "INSERT", "SELECT", "UPDATE"],
-    "refresh_tokens": ["DELETE", "INSERT", "SELECT", "UPDATE"],
-    "remediation_pull_requests": ["INSERT", "SELECT", "UPDATE"],
-    "report_downloads": ["DELETE", "INSERT", "SELECT"],
-    "report_format_templates": ["DELETE", "INSERT", "SELECT", "UPDATE"],
-    "saved_searches": ["DELETE", "INSERT", "SELECT"],
-    "sbom_conformance": ["DELETE", "INSERT", "SELECT"],
-    "scan_artifacts": ["DELETE", "INSERT", "SELECT", "UPDATE"],
-    "scan_components": ["DELETE", "INSERT", "SELECT", "UPDATE"],
-    "scan_schedules": ["DELETE", "INSERT", "SELECT", "UPDATE"],
-    "scans": ["DELETE", "INSERT", "SELECT", "UPDATE"],
-    "teams": ["DELETE", "INSERT", "SELECT", "UPDATE"],
-    "transition_approvals": ["INSERT", "SELECT", "UPDATE"],
-    "users": ["DELETE", "INSERT", "SELECT", "UPDATE"],
-    "vulnerabilities": ["DELETE", "INSERT", "SELECT", "UPDATE"],
-    "vulnerability_findings": ["DELETE", "INSERT", "SELECT", "UPDATE"],
-    "webhook_deliveries": ["DELETE", "INSERT", "SELECT", "UPDATE"]
+    "alembic_version": [
+      "DELETE",
+      "INSERT",
+      "SELECT",
+      "UPDATE"
+    ],
+    "api_keys": [
+      "DELETE",
+      "INSERT",
+      "SELECT",
+      "UPDATE"
+    ],
+    "audit_export_cursors": [
+      "INSERT",
+      "SELECT",
+      "UPDATE"
+    ],
+    "audit_logs": [
+      "INSERT",
+      "SELECT"
+    ],
+    "component_approvals": [
+      "DELETE",
+      "INSERT",
+      "SELECT",
+      "UPDATE"
+    ],
+    "component_dependency_edges": [
+      "DELETE",
+      "INSERT",
+      "SELECT"
+    ],
+    "component_intake_requests": [
+      "INSERT",
+      "SELECT",
+      "UPDATE"
+    ],
+    "component_versions": [
+      "DELETE",
+      "INSERT",
+      "SELECT",
+      "UPDATE"
+    ],
+    "components": [
+      "DELETE",
+      "INSERT",
+      "SELECT",
+      "UPDATE"
+    ],
+    "eol_sync_state": [
+      "INSERT",
+      "SELECT",
+      "UPDATE"
+    ],
+    "gate_policies": [
+      "DELETE",
+      "INSERT",
+      "SELECT",
+      "UPDATE"
+    ],
+    "github_app_credentials": [
+      "INSERT",
+      "SELECT",
+      "UPDATE"
+    ],
+    "github_app_installations": [
+      "DELETE",
+      "INSERT",
+      "SELECT",
+      "UPDATE"
+    ],
+    "kev_sync_state": [
+      "INSERT",
+      "SELECT",
+      "UPDATE"
+    ],
+    "license_fetch_cache": [
+      "DELETE",
+      "INSERT",
+      "SELECT",
+      "UPDATE"
+    ],
+    "license_findings": [
+      "DELETE",
+      "INSERT",
+      "SELECT",
+      "UPDATE"
+    ],
+    "license_policies": [
+      "DELETE",
+      "INSERT",
+      "SELECT",
+      "UPDATE"
+    ],
+    "licenses": [
+      "DELETE",
+      "INSERT",
+      "SELECT",
+      "UPDATE"
+    ],
+    "malicious_sync_state": [
+      "INSERT",
+      "SELECT",
+      "UPDATE"
+    ],
+    "memberships": [
+      "DELETE",
+      "INSERT",
+      "SELECT",
+      "UPDATE"
+    ],
+    "notice_templates": [
+      "DELETE",
+      "INSERT",
+      "SELECT",
+      "UPDATE"
+    ],
+    "notification_preferences": [
+      "DELETE",
+      "INSERT",
+      "SELECT",
+      "UPDATE"
+    ],
+    "notification_routing_rules": [
+      "DELETE",
+      "INSERT",
+      "SELECT"
+    ],
+    "notifications": [
+      "DELETE",
+      "INSERT",
+      "SELECT",
+      "UPDATE"
+    ],
+    "oauth_identities": [
+      "DELETE",
+      "INSERT",
+      "SELECT",
+      "UPDATE"
+    ],
+    "obligation_fulfilments": [
+      "DELETE",
+      "INSERT",
+      "SELECT",
+      "UPDATE"
+    ],
+    "obligations": [
+      "DELETE",
+      "INSERT",
+      "SELECT",
+      "UPDATE"
+    ],
+    "organization_component_verdicts": [
+      "INSERT",
+      "SELECT",
+      "UPDATE"
+    ],
+    "organizations": [
+      "DELETE",
+      "INSERT",
+      "SELECT",
+      "UPDATE"
+    ],
+    "password_reset_tokens": [
+      "DELETE",
+      "INSERT",
+      "SELECT",
+      "UPDATE"
+    ],
+    "projects": [
+      "DELETE",
+      "INSERT",
+      "SELECT",
+      "UPDATE"
+    ],
+    "refresh_tokens": [
+      "DELETE",
+      "INSERT",
+      "SELECT",
+      "UPDATE"
+    ],
+    "remediation_pull_requests": [
+      "INSERT",
+      "SELECT",
+      "UPDATE"
+    ],
+    "report_downloads": [
+      "DELETE",
+      "INSERT",
+      "SELECT"
+    ],
+    "report_format_templates": [
+      "DELETE",
+      "INSERT",
+      "SELECT",
+      "UPDATE"
+    ],
+    "saved_searches": [
+      "DELETE",
+      "INSERT",
+      "SELECT"
+    ],
+    "sbom_conformance": [
+      "DELETE",
+      "INSERT",
+      "SELECT"
+    ],
+    "scan_artifacts": [
+      "DELETE",
+      "INSERT",
+      "SELECT",
+      "UPDATE"
+    ],
+    "scan_components": [
+      "DELETE",
+      "INSERT",
+      "SELECT",
+      "UPDATE"
+    ],
+    "scan_schedules": [
+      "DELETE",
+      "INSERT",
+      "SELECT",
+      "UPDATE"
+    ],
+    "scans": [
+      "DELETE",
+      "INSERT",
+      "SELECT",
+      "UPDATE"
+    ],
+    "task_runs": [
+      "DELETE",
+      "INSERT",
+      "SELECT",
+      "UPDATE"
+    ],
+    "teams": [
+      "DELETE",
+      "INSERT",
+      "SELECT",
+      "UPDATE"
+    ],
+    "transition_approvals": [
+      "INSERT",
+      "SELECT",
+      "UPDATE"
+    ],
+    "users": [
+      "DELETE",
+      "INSERT",
+      "SELECT",
+      "UPDATE"
+    ],
+    "vulnerabilities": [
+      "DELETE",
+      "INSERT",
+      "SELECT",
+      "UPDATE"
+    ],
+    "vulnerability_findings": [
+      "DELETE",
+      "INSERT",
+      "SELECT",
+      "UPDATE"
+    ],
+    "webhook_deliveries": [
+      "DELETE",
+      "INSERT",
+      "SELECT",
+      "UPDATE"
+    ]
   }
 }
