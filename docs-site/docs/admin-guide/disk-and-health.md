@@ -201,10 +201,28 @@ What it publishes is a fixed list of aggregate counts:
 | `trusca_users_active` | | Accounts that can sign in |
 | `trusca_service_accounts_active` | | Automation identities that can still authenticate |
 | `trusca_workspace_disk_used_ratio` | | Workspace volume in use, 0 to 1 |
+| `trusca_task_runs_24h` | `task`, `outcome` | Background task runs in the last day. `outcome=running` counts runs that started and never reported an end |
+| `trusca_task_run_duration_seconds_p50_24h` | `task` | Median duration of runs that finished in the last day |
+| `trusca_task_run_duration_seconds_p95_24h` | `task` | Same at the 95th percentile |
+| `trusca_task_runs_last_recorded_timestamp_seconds` | | Unix time of the newest task-run row, `0` when the table is empty |
 
 No project, package, repository or person's name appears anywhere in the
 output, and the list is held to a fixture in the repository, so a series
 cannot be added without somebody deciding it is safe to publish.
+
+The four task-run series are gauges over a fixed one-day window, not counters.
+Task history is swept on a retention schedule, so a cumulative count would go
+down when the sweep runs and a collector reads a falling counter as a restart.
+The window is in the name because changing it changes what the series means.
+
+`trusca_task_runs_last_recorded_timestamp_seconds` is worth an alert of its
+own. It watches the recorder rather than the work: recording history is
+designed never to fail a task, so a missing database grant or an unrun
+migration produces no error anywhere, and the symptom is only that this value
+stops moving while everything else looks healthy. No threshold ships with it,
+because schedules here run anywhere from every five minutes to weekly and
+which ones a deployment enables is a local fact. Compare it against your own
+busiest schedule.
 
 `METRICS_TOKEN` sets a bearer token the scraper must present. Leave it empty
 when `/metrics` is off your public ingress and the monitoring system reaches

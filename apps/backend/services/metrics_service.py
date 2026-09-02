@@ -34,6 +34,7 @@ already scrapes this endpoint does not get that trade unless it asks for it.
 from __future__ import annotations
 
 import asyncio
+from datetime import UTC, datetime, timedelta
 
 import redis as _redis
 import structlog
@@ -50,6 +51,7 @@ from models import (
     VulnerabilityFinding,
 )
 from models.scan import SCAN_STATUS_VALUES, VULN_SEVERITY_VALUES
+from models.task_run import TaskRun
 from services.policy_gate import _CLOSED_FINDING_STATUSES
 
 log = structlog.get_logger("services.metrics")
@@ -76,6 +78,103 @@ def _block(
 
 async def _count(session: AsyncSession, stmt: Select[tuple[int]]) -> int:
     return int((await session.execute(stmt)).scalar_one())
+
+
+
+#: Window the task-run aggregates cover. A constant rather than a setting:
+#: changing it changes what the series means, and a time series whose
+#: definition moved cannot be compared with its own past. Ninety days of rows
+#: are retained, but a ninety-day average would hide a regression that started
+#: yesterday, which is the case these metrics exist for.
+_TASK_RUN_WINDOW = timedelta(hours=24)
+
+#: Quantiles reported for task duration, and the suffix each is published
+#: under. They go in the metric name rather than a ``quantile`` label: that
+#: label belongs to Prometheus' summary type, which also promises ``_sum`` and
+#: ``_count`` and a counter underneath. These are gauges over a sliding
+#: window, so borrowing the label would describe them as something they are
+#: not.
+#:
+#: p99 is left out on purpose. Beat schedules here range from every five
+#: minutes to weekly, so a day's window holds one or two runs of the sparse
+#: ones and a 99th percentile of two samples is just the maximum wearing a
+#: statistic's name.
+_DURATION_QUANTILES = ((0.5, "p50"), (0.95, "p95"))
+
+
+async def _task_run_outcomes(session: AsyncSession) -> dict[tuple[str, str], int]:
+    """Runs per (task, outcome) inside the window.
+
+    Unfinished runs carry a NULL outcome and are counted under ``running``.
+    They are not dropped: a task that starts and never reports back is the
+    shape a killed worker leaves, and a series that omitted it would show the
+    failure as an absence of data rather than as a number.
+    """
+    cutoff = datetime.now(UTC) - _TASK_RUN_WINDOW
+    rows = (
+        await session.execute(
+            select(TaskRun.task_name, TaskRun.outcome, func.count())
+            .where(TaskRun.started_at >= cutoff)
+            .group_by(TaskRun.task_name, TaskRun.outcome)
+        )
+    ).all()
+    return {
+        (str(name), str(outcome) if outcome else "running"): int(count)
+        for name, outcome, count in rows
+    }
+
+
+async def _task_run_durations(
+    session: AsyncSession,
+) -> dict[tuple[str, str], float]:
+    """Duration quantiles per task, over finished runs inside the window.
+
+    Computed in the database with ``percentile_cont`` rather than by pulling
+    rows into Python: this runs on every scrape and the row count grows with
+    scheduler traffic.
+    """
+    cutoff = datetime.now(UTC) - _TASK_RUN_WINDOW
+    seconds = func.extract("epoch", TaskRun.finished_at - TaskRun.started_at)
+    columns = [
+        func.percentile_cont(q).within_group(seconds.asc()).label(suffix)
+        for q, suffix in _DURATION_QUANTILES
+    ]
+    rows = (
+        await session.execute(
+            select(TaskRun.task_name, *columns)
+            .where(TaskRun.started_at >= cutoff, TaskRun.finished_at.is_not(None))
+            .group_by(TaskRun.task_name)
+        )
+    ).all()
+
+    out: dict[tuple[str, str], float] = {}
+    for row in rows:
+        name = str(row[0])
+        for i, (_, suffix) in enumerate(_DURATION_QUANTILES):
+            value = row[i + 1]
+            if value is not None:
+                out[(name, suffix)] = float(value)
+    return out
+
+
+async def _task_run_last_recorded(session: AsyncSession) -> float:
+    """Unix time of the most recent task-run row, 0 when there are none.
+
+    This one watches the watcher. The recorder swallows its own errors so that
+    recording history can never fail the work being recorded, which means a
+    missing grant, an unrun migration or a revoked permission produces no
+    symptom: tasks keep succeeding and the table quietly stays empty. A
+    deployment whose scheduler runs every few minutes and whose newest row is
+    hours old has lost its history without anything else noticing.
+
+    No threshold is applied here. Beat schedules in this repo range from five
+    minutes to weekly, and which of them a given deployment enables is a local
+    fact, so the judgement belongs to whatever scrapes this.
+    """
+    newest = (
+        await session.execute(select(func.max(TaskRun.started_at)))
+    ).scalar_one_or_none()
+    return newest.timestamp() if newest else 0.0
 
 
 async def render_metrics(session: AsyncSession) -> str:
@@ -187,6 +286,49 @@ async def render_metrics(session: AsyncSession) -> str:
             [({}, await _workspace_used_ratio(session))],
         ),
     ]
+
+    # O5: what the background scheduler has been doing. Gauges over a fixed
+    # window rather than counters, because task_runs has a retention sweep and
+    # a counter that goes down reads to a collector as a process restart.
+    outcomes = await _task_run_outcomes(session)
+    document.append(
+        _block(
+            "trusca_task_runs_24h",
+            "Background task runs in the last 24h by task and outcome. "
+            "outcome=running counts runs that started and never reported an end.",
+            "gauge",
+            [
+                ({"task": task, "outcome": outcome}, float(count))
+                for (task, outcome), count in sorted(outcomes.items())
+            ],
+        )
+    )
+
+    durations = await _task_run_durations(session)
+    for _, suffix in _DURATION_QUANTILES:
+        document.append(
+            _block(
+                f"trusca_task_run_duration_seconds_{suffix}_24h",
+                f"Task duration in seconds, {suffix} over runs that finished "
+                f"in the last 24h.",
+                "gauge",
+                [
+                    ({"task": task}, value)
+                    for (task, this_suffix), value in sorted(durations.items())
+                    if this_suffix == suffix
+                ],
+            )
+        )
+
+    document.append(
+        _block(
+            "trusca_task_runs_last_recorded_timestamp_seconds",
+            "Unix time of the newest task-run row; 0 when the table is empty. "
+            "Watches the recorder itself, which fails silently by design.",
+            "gauge",
+            [({}, await _task_run_last_recorded(session))],
+        )
+    )
 
     # M2 (concurrency plan 2026-08-22 §3.1): off by default and independent
     # of the endpoint's own switch, so a deployment that already scrapes the
