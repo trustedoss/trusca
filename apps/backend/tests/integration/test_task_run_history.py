@@ -29,7 +29,14 @@ BACKEND_ROOT = Path(__file__).resolve().parents[2]
 
 
 def _sync_url() -> str:
-    return os.environ["DATABASE_URL"].replace("+asyncpg", "+psycopg")
+    """The async URL rewritten for the sync driver the image actually ships.
+
+    psycopg2, not psycopg: the requirements pin ``psycopg2-binary`` and the
+    bare ``psycopg`` dialect resolves to a package that is not installed.
+    """
+    return os.environ["DATABASE_URL"].replace(
+        "postgresql+asyncpg://", "postgresql+psycopg2://"
+    )
 
 
 @pytest.fixture(scope="module", autouse=True)
