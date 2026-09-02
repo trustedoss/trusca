@@ -182,6 +182,29 @@ def test_zero_cap_disables_the_cleaner(
     assert root.exists()
 
 
+def test_every_queue_gets_its_own_cleaner_pass(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Each worker can only clean the filesystem it is running on.
+
+    The task walks and deletes local paths, and each worker mounts its own
+    cache volume. A single beat entry would fall through to the default
+    queue, leaving worker-scan -- which holds the larger cache, being the one
+    that resolves dependency graphs -- growing unbounded with nothing
+    scheduled to touch it.
+    """
+    from tasks.celery_app import _DEFAULT_QUEUE, _SCAN_QUEUE, celery_app
+
+    entries = [
+        entry
+        for entry in celery_app.conf.beat_schedule.values()
+        if entry["task"] == "trustedoss.toolchain_cache_cleaner"
+    ]
+    queues = {entry.get("options", {}).get("queue") for entry in entries}
+
+    assert queues == {_DEFAULT_QUEUE, _SCAN_QUEUE}
+
+
 def test_a_configured_cache_that_does_not_exist_is_not_an_error(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:

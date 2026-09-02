@@ -194,7 +194,8 @@ def _build_beat_schedule() -> dict[str, dict[str, object]]:
       - ``trustedoss.source_archive_cleaner``       — every 6 hours
       - ``trustedoss.scan_source_cleaner``          — every 6 hours
       - ``trustedoss.workspace_cleaner``            — every 30 minutes
-      - ``trustedoss.toolchain_cache_cleaner``      : every 6 hours
+      - ``trustedoss.toolchain_cache_cleaner``      : every 6 hours, once per
+        queue (each worker cleans its own cache mount)
       - ``trustedoss.backup.run``                   — daily at 00:00 UTC
       - ``trustedoss.vulnerability_rematch_enqueue`` — every 6h at :15
       - ``trustedoss.kev_catalog_refresh``          — daily at 01:45 UTC
@@ -249,9 +250,26 @@ def _build_beat_schedule() -> dict[str, dict[str, object]]:
         # six figures of small files once a corpus has been through, and the
         # thing it guards against is days of accumulation rather than a burst.
         # Same cadence as the other retention sweeps for that reason.
-        "toolchain-cache-cleaner-six-hourly": {
+        #
+        # ONE ENTRY PER QUEUE, and both are required. The task reads and
+        # deletes files on the local filesystem of whichever worker executes
+        # it, and each worker has its own cache mount (see the volume
+        # declarations in docker-compose.yml). A single entry would fall
+        # through to the default queue, so worker-default would tidy itself
+        # while worker-scan -- which holds the larger cache, because it is
+        # the one resolving dependency graphs -- grew unbounded and unwatched.
+        # These are the only beat entries that pin a queue, for that reason:
+        # every other task acts on the database or the shared workspace, so
+        # it does not matter where it runs.
+        "toolchain-cache-cleaner-default-six-hourly": {
             "task": "trustedoss.toolchain_cache_cleaner",
             "schedule": _schedule(timedelta(hours=6)),
+            "options": {"queue": _DEFAULT_QUEUE},
+        },
+        "toolchain-cache-cleaner-scan-six-hourly": {
+            "task": "trustedoss.toolchain_cache_cleaner",
+            "schedule": _schedule(timedelta(hours=6)),
+            "options": {"queue": _SCAN_QUEUE},
         },
         # D6 (N17): hand the audit trail to the configured collector, a batch
         # at a time. Every five minutes rather than hourly because the point
