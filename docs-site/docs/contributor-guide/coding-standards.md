@@ -192,6 +192,25 @@ Two things follow from where its input comes from. The comment quotes code and t
 
 The parsing, caps, and rendering behind it live in `tools/ai-review/`; `python tools/ai-review/selftest.py` exercises them offline and runs on every PR as part of `lint (backend)`.
 
+## MCP servers and agent tools
+
+Much of this repository is written with an AI coding agent, and an agent's tool calls never pass through a pull request. A Model Context Protocol (MCP) server hands its tool descriptions to the agent as context and can reach services outside the repository, so a server added quietly in a local configuration is an input to the build that nobody reviewed.
+
+`.mcp.json` at the repository root declares the approved servers. It is committed and it is currently empty. Adding a server means editing that file in a pull request rather than only a local setting, so the addition arrives as a diff someone can read.
+
+Establish four things before a server lands, and record the outcome in the pull request:
+
+- **Origin.** Publisher, the repository it is built from, recent commit activity. Listing in a marketplace or a registry is not a review.
+- **Tool descriptions.** Read them. They enter the agent's context as instructions, so a description carrying hidden directives has the effect of an edited system prompt.
+- **Data egress.** Which external endpoints the server talks to, and whether anything from this repository can leave through them.
+- **Version.** Pin it. A package that was clean when it was approved can change in a later release, which is how published MCP servers have turned malicious.
+
+Read the tool descriptions again when you move the pin, because a server update can rewrite them.
+
+Scan a candidate before adopting it (Snyk's agent-scan, or Cisco's mcp-scanner). Both execute the server in order to inspect it, so run them in a container or a throwaway environment, not on the machine you work from.
+
+Agent skills and IDE extensions get the same treatment. They run with your permissions, they appear in no lockfile, and no SCA run in this repository will see them. Re-check what you have installed once a quarter.
+
 ## Frontend UI — use the shared primitives
 
 The frontend has a single design system; the [Design system reference](../reference/design-system.md) is the source of truth for tokens, components, and motion. Do not hand-roll what a primitive already covers:
