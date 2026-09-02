@@ -27,10 +27,15 @@ which means the three catalog refresh tasks and nothing else. Other periodic
 tasks also put a ``skipped_reason`` in their returned summary dict
 (``vulnerability_rematch`` has ``trivy_timeout``, ``queue_backlog_alert`` has
 ``metrics_disabled``, and so on), but those values are never persisted to
-these tables and are not members here. Whether the two families should merge
-is a question for whatever ends up recording task runs generally; until then,
-widening this tuple with a value no sync-state row can hold would make the
-contract test below assert something untrue.
+these tables and are not members here. Widening this tuple with a value no sync-state
+row can hold would make the contract tests assert something untrue.
+
+When a general task-run record arrives it will need both families. The shape
+that avoids a fourth copy is nesting rather than duplication: keep this tuple
+as the sync-state contract, and build the wider set from it plus the
+task-only reasons, so ``SYNC_SKIPPED_REASON_VALUES`` stays a subset by
+construction and every value is still written exactly once. That is why this
+module holds only half the vocabulary today.
 """
 
 from __future__ import annotations
