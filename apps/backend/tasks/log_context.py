@@ -46,6 +46,8 @@ from typing import Any
 import structlog
 from celery.signals import before_task_publish, task_postrun, task_prerun
 
+from services.task_run_recorder import record_finish, record_start
+
 log = structlog.get_logger("tasks.log_context")
 
 #: Header key on the Celery message. Namespaced to avoid colliding with the
@@ -67,6 +69,32 @@ def _current_request_id() -> str | None:
     bound = structlog.contextvars.get_contextvars()
     value = bound.get("request_id")
     return str(value) if value else None
+
+
+
+def _request_id_of(task: Any) -> str | None:
+    """The request id this task was dispatched with, if any."""
+    try:
+        request = getattr(task, "request", None)
+        value = getattr(request, REQUEST_ID_HEADER, None) if request else None
+        return str(value) if value else None
+    except Exception:  # noqa: BLE001 - a missing field is not worth an error
+        return None
+
+
+def _attempt_of(task: Any) -> int:
+    """Which try this is, counting from 1.
+
+    Celery counts retries from 0, so the first run reports ``retries == 0``.
+    The column counts attempts, which reads better in a list and matches how
+    an operator says it ("failed on the third attempt").
+    """
+    try:
+        request = getattr(task, "request", None)
+        retries = getattr(request, "retries", 0) if request else 0
+        return int(retries) + 1
+    except Exception:  # noqa: BLE001 - default to a first attempt
+        return 1
 
 
 def attach_request_id(
@@ -93,7 +121,7 @@ def bind_task_context(
     task: Any = None,
     **_: Any,
 ) -> None:
-    """Bind the request id, the task name and the Celery task id."""
+    """Bind the request id, task name and task id, and open a history row."""
     try:
         fields: dict[str, str] = {}
         if task_id:
@@ -111,6 +139,38 @@ def bind_task_context(
             structlog.contextvars.bind_contextvars(**fields)
     except Exception as exc:  # noqa: BLE001 - never fail a task
         log.warning("log_context.bind_failed", error=str(exc))
+
+    # Outside the try above on purpose: the recorder has its own error
+    # handling, and a failure to bind context should not also skip the row.
+    record_start(
+        task_name=str(getattr(task, "name", "") or "unknown"),
+        celery_task_id=str(task_id) if task_id else None,
+        request_id=_request_id_of(task),
+        attempt=_attempt_of(task),
+    )
+
+
+def close_task_run(
+    task_id: str | None = None,
+    task: Any = None,
+    retval: Any = None,
+    state: str | None = None,
+    **_: Any,
+) -> None:
+    """Close the history row, then unbind the context.
+
+    ``state`` is Celery's own verdict. Anything other than ``SUCCESS`` is a
+    failure here; the recorder downgrades a success to ``skipped`` when the
+    task's return value says it did no work.
+    """
+    outcome = "succeeded" if state == "SUCCESS" else "failed"
+    record_finish(
+        celery_task_id=str(task_id) if task_id else None,
+        attempt=_attempt_of(task),
+        outcome=outcome,
+        retval=retval,
+    )
+    clear_task_context()
 
 
 def clear_task_context(**_: Any) -> None:
@@ -133,4 +193,4 @@ def clear_task_context(**_: Any) -> None:
 # connection in one visible place.
 before_task_publish.connect(attach_request_id)
 task_prerun.connect(bind_task_context)
-task_postrun.connect(clear_task_context)
+task_postrun.connect(close_task_run)

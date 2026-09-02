@@ -57,7 +57,8 @@ from sqlalchemy import delete
 from sqlalchemy.orm import Session
 
 from core.db import sync_session_scope
-from models import Notification, ReportDownload, WebhookDelivery
+from models import Notification, ReportDownload, TaskRun, WebhookDelivery
+from services.task_run_recorder import task_run_retention_days
 from tasks.celery_app import celery_app
 
 log = structlog.get_logger("tasks.operational_retention")
@@ -78,6 +79,15 @@ def _report_download_retention_days() -> int:
     return max(int(os.getenv("REPORT_DOWNLOAD_RETENTION_DAYS", "365")), 0)
 
 
+def _task_run_retention_days() -> int:
+    """Age (days) past which a task-run row is reclaimed (default 90).
+
+    Delegates so the default lives with the writer rather than being restated
+    here, which is how the sync-state vocabulary drifted.
+    """
+    return task_run_retention_days()
+
+
 @celery_app.task(name="trustedoss.operational_retention")  # type: ignore[misc]
 def operational_retention_task() -> dict[str, Any]:
     """Delete aged notifications / webhook deliveries / report downloads.
@@ -90,10 +100,12 @@ def operational_retention_task() -> dict[str, Any]:
     notification_cutoff = now - timedelta(days=_notification_retention_days())
     webhook_cutoff = now - timedelta(days=_webhook_delivery_retention_days())
     report_cutoff = now - timedelta(days=_report_download_retention_days())
+    task_run_cutoff = now - timedelta(days=_task_run_retention_days())
 
     deleted_notifications = 0
     deleted_webhook_deliveries = 0
     deleted_report_downloads = 0
+    deleted_task_runs = 0
     try:
         with sync_session_scope() as session:
             deleted_notifications = _delete_aged(
@@ -107,6 +119,10 @@ def operational_retention_task() -> dict[str, Any]:
             deleted_report_downloads = _delete_aged(
                 session, ReportDownload, ReportDownload.created_at, report_cutoff
             )
+        with sync_session_scope() as session:
+            deleted_task_runs = _delete_aged(
+                session, TaskRun, TaskRun.started_at, task_run_cutoff
+            )
     finally:
         structlog.contextvars.unbind_contextvars("task_name")
 
@@ -115,11 +131,13 @@ def operational_retention_task() -> dict[str, Any]:
         deleted_notifications=deleted_notifications,
         deleted_webhook_deliveries=deleted_webhook_deliveries,
         deleted_report_downloads=deleted_report_downloads,
+        deleted_task_runs=deleted_task_runs,
     )
     return {
         "deleted_notifications": deleted_notifications,
         "deleted_webhook_deliveries": deleted_webhook_deliveries,
         "deleted_report_downloads": deleted_report_downloads,
+        "deleted_task_runs": deleted_task_runs,
     }
 
 

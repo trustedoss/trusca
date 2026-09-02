@@ -21,6 +21,7 @@ from tasks.log_context import (
     attach_request_id,
     bind_task_context,
     clear_task_context,
+    close_task_run,
 )
 
 
@@ -251,7 +252,10 @@ def test_importing_the_app_connects_all_three_signals() -> None:
     for signal, handler in (
         (before_task_publish, attach_request_id),
         (task_prerun, bind_task_context),
-        (task_postrun, clear_task_context),
+        # postrun runs the composite: it closes the history row and then
+        # clears the context, in that order. Clearing first would drop the
+        # ids the row is matched on.
+        (task_postrun, close_task_run),
     ):
         receivers = [r[1]() if callable(r[1]) else r[1] for r in signal.receivers]
         assert handler in receivers, f"{handler.__name__} is not connected"
