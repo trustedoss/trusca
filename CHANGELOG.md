@@ -22,7 +22,8 @@ and the project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.
   the per-scan summary log carries a `catalog_races` count. On the rematch
   path, where the same transaction had already deleted the scan's prior
   findings, the session-wide rollback also restored them and the re-insert then
-  failed the finding uniqueness constraint, taking the whole rematch down.
+  failed the finding uniqueness constraint, taking the whole rematch down
+  (#290).
 
 ## [0.22.4] - 2026-09-02
 
