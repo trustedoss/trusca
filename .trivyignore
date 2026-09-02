@@ -1011,3 +1011,23 @@ CVE-2026-56865
 #   (check `go version -m /usr/local/bin/cosign | grep x/crypto`) or
 #   2026-12-01, whichever is sooner.
 CVE-2026-56854
+
+# CVE-2026-84304 (GHSA-vp52-pcj8-j9qc) — google.golang.org/grpc v1.82.0
+#   heap memory exhaustion via HTTP/2 DATA frame fragmentation — HIGH
+# Target: usr/local/bin/cosign (gobinary) ONLY. cosign v3.1.3 is the LATEST
+#   upstream release (2026-08-06) and its go.mod still pins
+#   google.golang.org/grpc v1.82.0 (indirect), below the 1.83.1 fix — there
+#   is no fixed binary to bump to. Same situation as GHSA-hrxh-6v49-42gf
+#   above, which is the previous grpc advisory against this same binary.
+# CVSS: HIGH (unauthenticated remote attacker fragments a payload into
+#   millions of 1-byte DATA frames; per-frame allocation overhead exhausts
+#   heap while staying inside flow-control limits).
+# Reach: the advisory's precondition is a gRPC-Go SERVER accepting inbound
+#   HTTP/2 streams. cosign here signs / verifies portal-generated local
+#   blobs through CLI invocations (integrations/cosign.py); it never runs a
+#   gRPC server, never listens on a socket, and takes no network input in
+#   our use. Category-3 UNREACHED.
+# Re-evaluate: on the first cosign release built with grpc >= 1.83.1
+#   (check `go version -m /usr/local/bin/cosign | grep grpc`) or
+#   2026-12-01, whichever is sooner.
+CVE-2026-84304
