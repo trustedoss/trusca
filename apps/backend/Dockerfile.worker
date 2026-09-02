@@ -51,10 +51,16 @@
 # built on the same host.
 # ---------------------------------------------------------------------------
 # Chore P (Phase 8 worker-image refresh): bumped python:3.12.7 → 3.12.13.
-# 6 patch releases of CPython security fixes land on top of the same Debian
-# bookworm-slim base; all backend deps (asyncpg / sqlalchemy / fastapi)
-# already support 3.12.x without changes. Stays on 3.12 (not 3.13) so the
-# api Dockerfile (still on 3.12) and the worker share a Python ABI.
+# 2026-09-02: bumped 3.12.13 → 3.12.14. Two effects, both wanted. It picks up
+# the current CPython patch release, and it invalidates the layer cache below
+# so the `apt-get upgrade -y` steps re-run against a fresh apt index. That
+# second effect is why the bump is the fix for a stale OS package: CI builds
+# the worker with `cache-from: type=gha,scope=worker-<week>`, so within one
+# week the upgrade layer is replayed from cache and a mid-week Debian security
+# update (here expat 2.5.0-1+deb12u2 → +deb12u3, CVE-2026-56408) never lands.
+# All backend deps (asyncpg / sqlalchemy / fastapi) already support 3.12.x
+# without changes. Stays on 3.12 (not 3.13) so the api Dockerfile (still on
+# 3.12) and the worker share a Python ABI.
 #
 # Explicit `-bookworm` suffix: as of late 2026 the upstream `python:3.12-slim`
 # tag was rebased onto Debian 13 (trixie). Our apt-repo additions (Microsoft
@@ -64,7 +70,7 @@
 # second pre-image resistance ... SHA1 is not considered secure since
 # 2026-02-01"). Stay on bookworm until both upstreams publish trixie-
 # compatible signing keys; revisit when bumping to Python 3.13.
-FROM python:3.12.13-slim-bookworm AS base
+FROM python:3.12.14-slim-bookworm AS base
 
 # The release build passes the tag here so the running image can state its
 # own version — SLSA provenance, the About surface and every SBOM we emit
