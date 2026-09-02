@@ -116,7 +116,7 @@ Logs are JSON, one event per line. `structlog` is configured in `apps/backend/co
 
 - `request_id` — `X-Request-ID` from the inbound header, or a UUIDv7 minted by the middleware.
 - `user_id`, `team_id` — set by the auth middleware, `None` for unauthenticated calls.
-- `task_name`, `celery_task_id`: bound in the worker for every task.
+- `task_name`, `task_id`: bound in the worker for every task. Before, 22 task modules bound `task_name` by hand and 12 bound `task_id`, so the ten that bound neither had no way to say what had run.
 
 In a worker, `request_id` is the id of the request that dispatched the task. It is copied onto the message at dispatch and bound again on the other side by the signal handlers in `apps/backend/tasks/log_context.py`, so the HTTP request and the scan it started share one id. Tasks that beat dispatches have no request behind them and carry no `request_id`; that absence is meaningful and is not filled in with a substitute.
 

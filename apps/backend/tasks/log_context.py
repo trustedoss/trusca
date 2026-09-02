@@ -18,7 +18,10 @@ Three signals close that gap, and none of them requires touching a call site:
 ``task_prerun``
     Runs in the worker. Reads the header back and binds it, together with the
     task name and the Celery task id, so every line the task logs carries all
-    three.
+    three. The two key names are the ones the tasks already use by hand
+    (``task_name`` in 22 modules, ``task_id`` in 12), so the handler writes
+    the same field rather than a second one under a different name. Where
+    both paths run, the values agree and the task's own bind simply wins.
 
 ``task_postrun``
     Clears what was bound. Worker processes are reused, so a value left behind
@@ -51,7 +54,7 @@ REQUEST_ID_HEADER = "trusca_request_id"
 
 #: Context keys this module owns. ``task_postrun`` clears exactly these, so a
 #: task that binds something of its own keeps responsibility for unbinding it.
-_BOUND_KEYS = ("request_id", "task_name", "celery_task_id")
+_BOUND_KEYS = ("request_id", "task_name", "task_id")
 
 
 def _current_request_id() -> str | None:
@@ -94,7 +97,7 @@ def bind_task_context(
     try:
         fields: dict[str, str] = {}
         if task_id:
-            fields["celery_task_id"] = str(task_id)
+            fields["task_id"] = str(task_id)
         name = getattr(task, "name", None)
         if name:
             fields["task_name"] = str(name)

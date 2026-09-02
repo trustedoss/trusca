@@ -110,7 +110,7 @@ def test_worker_binds_all_three_fields() -> None:
     assert _bound() == {
         "request_id": "req-2",
         "task_name": "trustedoss.scan_source",
-        "celery_task_id": "celery-1",
+        "task_id": "celery-1",
     }
 
 
@@ -123,7 +123,7 @@ def test_worker_binds_what_it_has_when_there_is_no_request_id() -> None:
     bound = _bound()
     assert bound == {
         "task_name": "trustedoss.kev_catalog_refresh",
-        "celery_task_id": "celery-2",
+        "task_id": "celery-2",
     }
     assert "request_id" not in bound
 
@@ -131,7 +131,7 @@ def test_worker_binds_what_it_has_when_there_is_no_request_id() -> None:
 def test_worker_handles_a_task_without_a_request() -> None:
     bind_task_context(task_id="celery-3", task=_Task("trustedoss.x"))
 
-    assert _bound() == {"task_name": "trustedoss.x", "celery_task_id": "celery-3"}
+    assert _bound() == {"task_name": "trustedoss.x", "task_id": "celery-3"}
 
 
 def test_worker_never_raises_into_the_task() -> None:
