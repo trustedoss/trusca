@@ -1,0 +1,30 @@
+{
+  "packageKey": {
+    "system": "NPM",
+    "name": "lodash"
+  },
+  "versions": [
+    {
+      "versionKey": {
+        "system": "NPM",
+        "name": "lodash",
+        "version": "0.1.0"
+      },
+      "publishedAt": "2012-04-23T16:37:12Z",
+      "isDefault": false,
+      "isDeprecated": false,
+      "deprecatedReason": ""
+    },
+    {
+      "versionKey": {
+        "system": "NPM",
+        "name": "lodash",
+        "version": "0.10.0"
+      },
+      "publishedAt": "2013-08-31T04:56:09Z",
+      "isDefault": false,
+      "isDeprecated": false,
+      "deprecatedReason": ""
+    }
+  ]
+}

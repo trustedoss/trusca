@@ -1391,3 +1391,39 @@ def test_report_format_template_schema_validates_against_the_same_vocabulary() -
         ReportFormatTemplateUpsertIn(vulnerability_columns=["not-a-real-column"])
     with pytest.raises(ValidationError, match="unknown"):
         ReportFormatTemplateUpsertIn(component_columns=["not-a-real-column"])
+
+
+def test_external_package_ecosystems_match_the_shared_fixture() -> None:
+    """Backend allow-list vs the fixture the frontend ecosystem <Select> is
+    pinned against.
+
+    deps.dev returns 404 for both an unknown package and an unknown system
+    slug, so this closed list is the only thing telling a caller "that
+    ecosystem was never valid" instead of a confusing empty result. A slug
+    the form offers but the backend rejects (or the reverse) fails silently
+    for whoever hits the mismatch first.
+
+    The frontend half of this contract is
+    ``apps/frontend/tests/unit/contracts/catalogMirrors.test.ts``.
+    """
+    import json
+    from pathlib import Path
+
+    from integrations.depsdev import PURL_TYPE_BY_SLUG, SYSTEM_SLUGS
+
+    fixture = (
+        Path(__file__).resolve().parents[4] / "tests/contracts/external-package-ecosystems.json"
+    )
+    assert fixture.is_file(), f"shared ecosystem fixture missing: {fixture}"
+    ecosystems = json.loads(fixture.read_text(encoding="utf-8"))["ecosystems"]
+
+    fixture_slugs = {entry["slug"] for entry in ecosystems}
+    fixture_purl_types = {entry["slug"]: entry["purl_type"] for entry in ecosystems}
+
+    assert fixture_slugs == SYSTEM_SLUGS, (
+        "SYSTEM_SLUGS drifted from tests/contracts/external-package-ecosystems.json "
+        "-- update both, and the frontend ecosystem <Select>."
+    )
+    assert fixture_purl_types == PURL_TYPE_BY_SLUG, (
+        "PURL_TYPE_BY_SLUG drifted from tests/contracts/external-package-ecosystems.json"
+    )

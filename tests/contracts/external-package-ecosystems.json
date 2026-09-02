@@ -1,0 +1,25 @@
+{
+  "_comment": [
+    "The ecosystems the pre-adoption catalog lookup (deps.dev) can query.",
+    "",
+    "deps.dev has no fuzzy search, only exact lookups keyed by one of a fixed",
+    "set of system slugs, and it returns 404 for both an unknown package AND",
+    "an unknown system slug (verified 2026-09-02) -- so this closed list is",
+    "the only thing standing between a caller and a confusing 'not found'",
+    "for a slug deps.dev never supported in the first place.",
+    "",
+    "Three places read this vocabulary: the backend allow-list",
+    "(integrations.depsdev.SYSTEM_SLUGS), the frontend ecosystem <Select>,",
+    "and this file. purl_type is what services.purl_build.build_purl needs",
+    "to construct the right pkg: prefix -- it matches slug everywhere except",
+    "go, whose purl type is golang."
+  ],
+  "ecosystems": [
+    { "slug": "npm", "purl_type": "npm" },
+    { "slug": "pypi", "purl_type": "pypi" },
+    { "slug": "maven", "purl_type": "maven" },
+    { "slug": "go", "purl_type": "golang" },
+    { "slug": "cargo", "purl_type": "cargo" },
+    { "slug": "nuget", "purl_type": "nuget" }
+  ]
+}

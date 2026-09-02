@@ -15,6 +15,14 @@
     ],
     [
       "GET",
+      "/v1/external-advisories/{advisory_id}"
+    ],
+    [
+      "GET",
+      "/v1/external-packages"
+    ],
+    [
+      "GET",
       "/v1/gate-policies/effective/{project_id}"
     ],
     [

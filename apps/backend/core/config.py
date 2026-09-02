@@ -552,6 +552,31 @@ def search_rate_limit() -> str:
     return os.getenv("SEARCH_RATE_LIMIT", "20/minute")
 
 
+def external_package_lookup_rate_limit() -> str:
+    """slowapi limit string for ``GET /v1/external-packages`` (per actor).
+
+    Unlike ``search_rate_limit``, every call here is a real round trip to a
+    third party (``api.deps.dev``), not an indexed local query, so it is
+    kept more conservative even though the endpoint is submit-triggered
+    (a button click, not per-keystroke). Default 10/minute. Keyed per actor
+    via ``_authenticated_user_key``.
+    """
+    return os.getenv("EXTERNAL_PACKAGE_LOOKUP_RATE_LIMIT", "10/minute")
+
+
+def external_advisory_lookup_rate_limit() -> str:
+    """slowapi limit string for ``GET /v1/external-advisories/{id}`` (per actor).
+
+    This one rides the ``/search`` page's existing debounced typing flow
+    (a CVE/GHSA-shaped search term triggers it automatically, the same
+    cadence as ``search_rate_limit``), not a deliberate button click like
+    the package lookup, so it gets the same 20/minute budget as
+    ``search_rate_limit`` rather than the package lookup's tighter one.
+    Keyed per actor via ``_authenticated_user_key``.
+    """
+    return os.getenv("EXTERNAL_ADVISORY_LOOKUP_RATE_LIMIT", "20/minute")
+
+
 def csv_export_rate_limit() -> str:
     """slowapi limit string for the table CSV exports (per actor).
 
@@ -1087,6 +1112,28 @@ def license_fetch_enabled() -> bool:
     ``false`` / ``0`` / ``no`` disable; read at call time (rule #11).
     """
     return os.getenv("LICENSE_FETCH_ENABLED", "true").strip().lower() not in {
+        "false",
+        "0",
+        "no",
+    }
+
+
+def external_package_lookup_enabled() -> bool:
+    """Whether the deps.dev package/advisory lookup makes outbound calls.
+
+    Same shape as :func:`license_fetch_enabled`: this is a real-time
+    egress path (``integrations.depsdev``), triggered by a user typing a
+    package name or a CVE-shaped search term, to a fixed public host
+    (``api.deps.dev``). Default ``true`` since only a package name /
+    ecosystem or an advisory id leaves the network, no scanned-artifact
+    content. An air-gapped deployment sets this ``false`` to hide the
+    lookup entry points and answer 404 rather than a per-call timeout.
+    Gates both ``GET /v1/external-packages`` and
+    ``GET /v1/external-advisories/{id}`` -- one switch, since both are the
+    same "deps.dev outbound" risk axis. Only the exact falsy tokens
+    ``false`` / ``0`` / ``no`` disable; read at call time (rule #11).
+    """
+    return os.getenv("EXTERNAL_PACKAGE_LOOKUP_ENABLED", "true").strip().lower() not in {
         "false",
         "0",
         "no",
