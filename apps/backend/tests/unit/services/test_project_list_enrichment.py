@@ -649,14 +649,14 @@ async def test_the_wide_scope_predicate_returns_the_same_enrichment(
 
 
 # ---------------------------------------------------------------------------
-# team breadcrumb — _team_name_map / enrich_project_rows team_name
+# team breadcrumb: _team_name_map / enrich_project_rows team_name
 # ---------------------------------------------------------------------------
 
 
 async def test_team_name_map_keys_by_team_id_not_project_id(
     db_session: AsyncSession,
 ) -> None:
-    """The team map is keyed by ``team_id`` — the one map that differs from
+    """The team map is keyed by ``team_id``, the one map that differs from
     every other enrichment map, which key by project id."""
     from services.project_list_enrichment import _team_name_map
 
@@ -672,7 +672,7 @@ async def test_team_name_map_keys_by_team_id_not_project_id(
 async def test_team_name_map_dedupes_projects_sharing_a_team(
     db_session: AsyncSession,
 ) -> None:
-    """One team query per distinct team id, not per project — two projects on
+    """One team query per distinct team id, not per project: two projects on
     the same team must not fetch or overwrite with anything surprising."""
     from services.project_list_enrichment import _team_name_map
 
@@ -695,8 +695,8 @@ async def test_team_name_map_empty_projects_no_sql(db_session: AsyncSession) -> 
 async def test_enrich_project_rows_team_name_reflects_each_projects_own_team(
     db_session: AsyncSession,
 ) -> None:
-    """Two projects on two different teams — the cross-team page every super
-    admin's project list is — each resolve to their OWN team's name, not the
+    """Two projects on two different teams (the cross-team page every super
+    admin's project list is) each resolve to their OWN team's name, not the
     other's or a stale one."""
     from services.project_list_enrichment import enrich_project_rows
 

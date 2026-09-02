@@ -187,7 +187,7 @@ function parseLicenseParam(v: string | null): LicenseFilterKey | null {
  * The team filter from the URL, or null for "no filter". Unlike status /
  * severity / license, the valid set is not fixed at build time (it is
  * whichever teams' projects the actor can see), so this just trims blanks
- * rather than checking membership in an enum — an id for a team no longer in
+ * rather than checking membership in an enum: an id for a team no longer in
  * the loaded page simply matches nothing, same as a stale severity value
  * would.
  */
@@ -419,8 +419,8 @@ export function ProjectListPage() {
   const serverTotal = projectsQuery.data?.total ?? 0;
   const isTruncated = !projectsQuery.isLoading && serverTotal > (items?.length ?? 0);
 
-  // Teams represented on the currently loaded page — the toolbar's team
-  // filter options AND the row breadcrumb's on/off switch share this: fewer
+  // Teams represented on the currently loaded page: the toolbar's team
+  // filter options AND the row breadcrumb's on/off switch share this. Fewer
   // than two teams means every row already looks the same without it, so
   // there is nothing for either to add. Computed from `items` (pre client
   // filter), matching how severityDistByProject/licenseDistByProject read the
@@ -852,7 +852,7 @@ interface ProjectRowProps {
   /**
    * GitLab-style "{team} / {project}" breadcrumb (vs. a bare project name).
    * The parent turns this on only when the loaded page spans more than one
-   * team — the super admin's cross-team view, where identically-named rows
+   * team: the super admin's cross-team view, where identically-named rows
    * otherwise carry no clue which team they belong to.
    */
   showTeamBreadcrumb?: boolean;

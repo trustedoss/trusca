@@ -52,8 +52,8 @@ export interface ProjectListToolbarProps {
   /**
    * The teams represented in the currently loaded page, `{id, name}`. Fewer
    * than two entries means every visible row already shares one team (the
-   * common case for a team-scoped Developer/Team Admin) — the control adds
-   * nothing there, so the toolbar renders no team filter at all rather than a
+   * common case for a team-scoped Developer/Team Admin), so the control adds
+   * nothing there: the toolbar renders no team filter at all rather than a
    * useless one-option dropdown.
    */
   teamOptions: { id: string; name: string }[];

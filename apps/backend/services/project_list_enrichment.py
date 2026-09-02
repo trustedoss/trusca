@@ -468,7 +468,7 @@ async def _team_name_map(
     projects: list[Any],
 ) -> dict[uuid.UUID, str]:
     """``{team_id: team_name}`` for the page's projects (GitLab-style row
-    breadcrumb: "{team} / {project}" — see ProjectListPage). A cross-team
+    breadcrumb: "{team} / {project}", see ProjectListPage). A cross-team
     list (the super admin's, who has no home team to scope by) otherwise
     renders every row identically; the team name is the only thing that
     tells them apart.
@@ -505,7 +505,7 @@ async def enrich_project_rows(
       - ``counts_by_project.get(p.id)`` → ``{scan_count, release_count,
         last_scan_at}`` (absent ⇒ caller defaults to ``(0, 0, None)`` — the
         project has no scans at all). W3 #30 discoverability aggregates.
-      - ``team_name_by_team.get(p.team_id)`` → ``team_name`` — keyed by
+      - ``team_name_by_team.get(p.team_id)`` → ``team_name``, keyed by
         **team_id**, not project id (a page's projects usually share teams,
         so this is the one map the caller indexes differently).
 
