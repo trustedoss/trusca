@@ -61,6 +61,7 @@ import type { TriageRole } from "@/features/projects/lib/vulnerabilityTransition
 import type { OAuthProvider as ProfileOAuthProvider } from "@/features/profile/api/oauthIdentitiesApi";
 import type { OAuthProviderName } from "@/lib/api";
 import { ROLE_RANK, effectiveRole } from "@/lib/roles";
+import { EXTERNAL_PACKAGE_ECOSYSTEMS } from "@/features/external-package-lookup/api/externalPackagesApi";
 import { visualFor } from "@/features/projects/components/ProjectStatusBadge";
 import {
   AI_USAGE_SCENARIOS,
@@ -100,6 +101,7 @@ import approvalReasonsFixture from "../../../../../tests/contracts/approval-fail
 import distributionModelsFixture from "../../../../../tests/contracts/distribution-models.json";
 import apiKeyBreadthsFixture from "../../../../../tests/contracts/api-key-breadths.json";
 import fulfilmentStatusesFixture from "../../../../../tests/contracts/obligation-fulfilment-statuses.json";
+import externalPackageEcosystemsFixture from "../../../../../tests/contracts/external-package-ecosystems.json";
 // Backend G7 registry — the FE cluster ORDER mirror must follow its cluster
 // id order (same latent-drift class: the panel groups G7 checks by this list).
 import cisaRegistry from "../../../../backend/services/cisa_registry.json";
@@ -918,6 +920,17 @@ describe("approval failure reasons: the token vs the copy that explains it", () 
         expect(map[`${prefix}${reason}`], `${name} copy for ${reason}`).toBeTruthy();
       }
     }
+  });
+});
+
+describe("external package ecosystems: the lookup <select> vs the deps.dev allow-list", () => {
+  // An ecosystem the select offers and the backend rejects fails on submit;
+  // one the backend accepts and the select omits is unreachable from the
+  // screen, since deps.dev has no fuzzy search to fall back on.
+  it("EXTERNAL_PACKAGE_ECOSYSTEMS equals the shared fixture's slugs, in fixture order", () => {
+    expect([...EXTERNAL_PACKAGE_ECOSYSTEMS]).toEqual(
+      externalPackageEcosystemsFixture.ecosystems.map((e) => e.slug),
+    );
   });
 });
 

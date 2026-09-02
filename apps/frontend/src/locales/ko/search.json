@@ -2,6 +2,9 @@
   "page": {
     "title": "검색"
   },
+  "advisory": {
+    "cvss": "CVSS {{score}}"
+  },
   "tab": {
     "projects": "프로젝트",
     "components": "컴포넌트",

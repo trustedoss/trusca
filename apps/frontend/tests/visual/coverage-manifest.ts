@@ -118,6 +118,12 @@ export const VISUAL_COVERAGE: Record<string, VisualCoverage> = {
       "not need. The queue reuses the workflow-queue template ApprovalsPage " +
       "already guards.",
   },
+  ExternalPackageLookupPage: {
+    exempt:
+      "Single-shot lookup form, no data-density layout to regress. Reuses " +
+      "the same disabled-notice and EmptyState templates already guarded " +
+      "elsewhere (IntakeRequestsPage, SearchPage).",
+  },
   PoliciesPage: { exempt: "Settings form template." },
   IntegrationsPage: { exempt: "Settings form template." },
   NotificationsPage: { exempt: "Feed list; content volatile." },

@@ -8,6 +8,7 @@ import { useSearchParams } from "react-router-dom";
 import { EmptyState } from "@/components/EmptyState";
 import { PageHeader } from "@/components/PageHeader";
 import { Alert, AlertDescription } from "@/components/ui/alert";
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -21,6 +22,7 @@ import {
   SEARCH_PAGE_SIZE,
   useSearchResults,
 } from "@/features/search/api/useSearchResults";
+import { useExternalAdvisory } from "@/features/search/api/useExternalAdvisory";
 import { SearchFacetBar } from "@/features/search/components/SearchFacetBar";
 import { SearchResultsTable } from "@/features/search/components/SearchResultsTable";
 import { SaveSearchButton } from "@/features/search/components/SaveSearchButton";
@@ -192,6 +194,7 @@ export function SearchPage() {
   const results = useSearchResults(params);
   const data = results.data;
   const total = data?.total ?? 0;
+  const advisory = useExternalAdvisory(kind, debouncedQuery);
   // When `countsCapped` is true, `total` is the count cap itself, not the
   // true total (concurrency-scaling plan Q3), so the page count derived from
   // it is a floor too, and the pagination footer's Next button stops one
@@ -325,6 +328,39 @@ export function SearchPage() {
                 : t("empty.none.subtitle")
             }
           />
+        ) : null}
+
+        {advisory.data?.found ? (
+          <div
+            className="mx-6 mt-4 space-y-2 rounded-lg border p-4"
+            data-testid="search-advisory-card"
+          >
+            <div className="flex flex-wrap items-center gap-2">
+              <span className="font-mono text-sm">{advisory.data.advisory_id}</span>
+              {advisory.data.cvss3_score !== null ? (
+                <Badge variant="outline" data-testid="search-advisory-cvss">
+                  {t("advisory.cvss", { score: advisory.data.cvss3_score })}
+                </Badge>
+              ) : null}
+            </div>
+            {advisory.data.title ? (
+              <p className="text-sm">{advisory.data.title}</p>
+            ) : null}
+            {advisory.data.cvss3_vector ? (
+              <p className="font-mono text-xs text-muted-foreground">
+                {advisory.data.cvss3_vector}
+              </p>
+            ) : null}
+            {advisory.data.aliases.length > 0 ? (
+              <div className="flex flex-wrap gap-1">
+                {advisory.data.aliases.map((alias) => (
+                  <Badge key={alias} variant="outline" data-testid="search-advisory-alias">
+                    {alias}
+                  </Badge>
+                ))}
+              </div>
+            ) : null}
+          </div>
         ) : null}
 
         {data && total > 0 ? <SearchResultsTable page={data} /> : null}
