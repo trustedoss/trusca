@@ -36,7 +36,9 @@ Where [Intake](./approvals.md#intake-requests) is turned on, a result carries a 
 
 <!-- docs-uat: id=external-package-lookup-api kind=api auth=viewer url=/v1/external-packages?ecosystem=npm&name=lodash expect=status:200 tier=nightly -->
 1. `GET /v1/external-packages?ecosystem=npm&name=lodash` returns 200 with `found`, `licenses`, `advisory_count`, and `internal_projects`.
+<!-- docs-uat: id=external-package-lookup-not-found kind=api auth=viewer url=/v1/external-packages?ecosystem=npm&name=this-package-does-not-exist-xyz-123 expect=status:200 tier=nightly -->
 2. A package the catalog has never heard of returns 200 with `found: false`, not an error.
+<!-- docs-uat: id=external-package-lookup-rate-limits kind=manual tier=manual waiver=rate-limit-count-not-a-single-check -->
 3. Rate limits: 10 package lookups per minute, 20 advisory lookups per minute (both per authenticated user).
 
 ## See also

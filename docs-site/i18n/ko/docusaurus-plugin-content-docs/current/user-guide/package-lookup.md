@@ -36,7 +36,9 @@ npm, PyPI, Maven, Go, crates.io, NuGet 6개 생태계를 지원합니다.
 
 <!-- docs-uat: id=external-package-lookup-api kind=api auth=viewer url=/v1/external-packages?ecosystem=npm&name=lodash expect=status:200 tier=nightly -->
 1. `GET /v1/external-packages?ecosystem=npm&name=lodash`는 `found`, `licenses`, `advisory_count`, `internal_projects`를 포함한 200을 반환합니다.
+<!-- docs-uat: id=external-package-lookup-not-found kind=api auth=viewer url=/v1/external-packages?ecosystem=npm&name=this-package-does-not-exist-xyz-123 expect=status:200 tier=nightly -->
 2. 카탈로그가 모르는 패키지는 오류가 아니라 `found: false`를 담은 200을 반환합니다.
+<!-- docs-uat: id=external-package-lookup-rate-limits kind=manual tier=manual waiver=rate-limit-count-not-a-single-check -->
 3. 요청 제한: 패키지 조회는 분당 10회, 보안 권고 조회는 분당 20회(둘 다 인증된 사용자 단위).
 
 ## 함께 보기
