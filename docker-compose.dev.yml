@@ -49,11 +49,6 @@ x-backend-env: &backend-env
   # Disable slowapi 5/min login limiter when set (e2e CI only). Empty default
   # keeps the limiter enabled in dev / prod. See core/ratelimit.py.
   RATELIMIT_DISABLED: ${RATELIMIT_DISABLED:-}
-  # Asking to use a package before a scan finds it (C8 phase 3). Off by
-  # default, same as the backend's own default; the e2e job turns this on
-  # for its own compose stack only (ci.yml), so ui-gates' baselines never
-  # see the extra sidebar entry this flag draws.
-  INTAKE_REQUESTS_ENABLED: ${INTAKE_REQUESTS_ENABLED:-false}
   # Marathon bundle 3 (D2) — tasks.backup now drives pg_dump / psql
   # directly via DATABASE_URL using postgresql-client-17 baked into the
   # backend + worker images. The legacy script-delegation env var
@@ -112,6 +107,22 @@ x-backend-env: &backend-env
   SCANOSS_API_URL: ${SCANOSS_API_URL:-https://api.osskb.org}
   SCANOSS_API_KEY: ${SCANOSS_API_KEY:-}
   SCANOSS_TIMEOUT_SECONDS: ${SCANOSS_TIMEOUT_SECONDS:-300}
+  # These six were documented in .env.example but never listed here, so
+  # setting any of them in .env had no effect on the running container:
+  # compose only passes through a var that is named in this anchor. Found
+  # while auditing the two opt-in outbound lookups below: an air-gapped site
+  # following the docs to set EXTERNAL_PACKAGE_LOOKUP_ENABLED=false would not
+  # actually have turned it off. Defaults match core/config.py and
+  # .env.example exactly, so an unset .env changes nothing for an existing
+  # deployment. INTAKE_REQUESTS_ENABLED used to be its own line up near
+  # RATELIMIT_DISABLED (C8 phase 3), folded in here with the same default and
+  # the same e2e override in ci.yml.
+  LICENSE_FETCH_ENABLED: ${LICENSE_FETCH_ENABLED:-true}
+  SEARCH_RATE_LIMIT: ${SEARCH_RATE_LIMIT:-20/minute}
+  INTAKE_REQUESTS_ENABLED: ${INTAKE_REQUESTS_ENABLED:-false}
+  EXTERNAL_PACKAGE_LOOKUP_ENABLED: ${EXTERNAL_PACKAGE_LOOKUP_ENABLED:-true}
+  EXTERNAL_PACKAGE_LOOKUP_RATE_LIMIT: ${EXTERNAL_PACKAGE_LOOKUP_RATE_LIMIT:-10/minute}
+  EXTERNAL_ADVISORY_LOOKUP_RATE_LIMIT: ${EXTERNAL_ADVISORY_LOOKUP_RATE_LIMIT:-20/minute}
   # Fernet key for secrets-at-rest (GitHub App creds AND — v2.3-s1 — the cosign
   # key password). Unset in dev derives from SECRET_KEY (WARNING). See core/crypto.py.
   GITHUB_APP_ENCRYPTION_KEY: ${GITHUB_APP_ENCRYPTION_KEY:-}
