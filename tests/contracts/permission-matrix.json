@@ -335,6 +335,16 @@
     },
     {
       "method": "GET",
+      "path": "/v1/external-advisories/{advisory_id}",
+      "gate": "role>=viewer"
+    },
+    {
+      "method": "GET",
+      "path": "/v1/external-packages",
+      "gate": "role>=viewer"
+    },
+    {
+      "method": "GET",
       "path": "/v1/gate-policies/effective/{project_id}",
       "gate": "role>=viewer"
     },

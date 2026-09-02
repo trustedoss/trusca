@@ -34,6 +34,7 @@ from api.v1 import (
     component_intake_router,
     components_router,
     dashboard_router,
+    external_packages_router,
     gate_policies_router,
     github_app_router,
     health_router,
@@ -253,6 +254,10 @@ app.include_router(search_router)
 app.include_router(search_results_router)
 # Saved searches — user-scoped bookmarks for the search page (S3).
 app.include_router(saved_searches_router)
+# Pre-adoption catalog lookup (deps.dev): packages / advisories nothing has
+# scanned yet. Always registered; core.config.external_package_lookup_enabled
+# gates each call at 404 rather than at router inclusion.
+app.include_router(external_packages_router)
 
 # Organization-wide component inventory (S2). Same team-isolation
 # choke-point as search; every route fans out across projects.

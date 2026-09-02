@@ -184,6 +184,13 @@
   "GET /v1/dashboard/trends": [
     "days"
   ],
+  "GET /v1/external-advisories/{advisory_id}": [
+    "advisory_id"
+  ],
+  "GET /v1/external-packages": [
+    "ecosystem",
+    "name"
+  ],
   "GET /v1/gate-policies/effective/{project_id}": [
     "project_id"
   ],
