@@ -1981,6 +1981,21 @@ def toolchain_cache_idle_seconds() -> int:
     return _int_env("TOOLCHAIN_CACHE_IDLE_SECONDS", 900, minimum=0)
 
 
+def stale_running_scan_grace_seconds() -> int:
+    """Extra grace on top of the hard time limit before a scan is reaped.
+
+    ``tasks.stale_scan_reaper`` marks a scan failed once it has said
+    ``running`` for longer than a live task could possibly still be running,
+    which is ``scan_hard_time_limit_seconds()`` (Celery SIGKILLs there). This
+    is the margin on top, so the reaper cannot race the soft-limit handler
+    that is at that moment writing its own ``mark_failed``.
+
+    Default 900s, matching the workspace orphan cleaner's grace, which exists
+    for the same reason against the same handler. Read at call time (rule #11).
+    """
+    return _int_env("STALE_RUNNING_SCAN_GRACE_SECONDS", 900, minimum=0)
+
+
 def jsonb_row_size_limit_bytes() -> int:
     """Per-row JSON byte ceiling before truncate (I-1 guard)."""
     return int(os.getenv("JSONB_ROW_SIZE_LIMIT_BYTES", str(256 * 1024)))

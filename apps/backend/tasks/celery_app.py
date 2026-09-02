@@ -72,6 +72,10 @@ _TASK_INCLUDES = [
     # license index) under a size cap. They are what makes the second scan of
     # a dependency fast, and until this task nothing ever deleted any of it.
     "tasks.toolchain_cache_cleaner",
+    # The row-side counterpart to workspace_cleaner: a scan whose worker was
+    # SIGKILLed or restarted stays `running` forever, holding both the
+    # project's active-scan slot and one of the team's concurrency slots.
+    "tasks.stale_scan_reaper",
     # W6-#42 — automatic vulnerability re-matching against preserved SBOMs.
     # Promotes DT's "rematch on DB update" feature to a Trivy-backed beat
     # after ADR-0001 removed DT.
@@ -196,6 +200,7 @@ def _build_beat_schedule() -> dict[str, dict[str, object]]:
       - ``trustedoss.workspace_cleaner``            — every 30 minutes
       - ``trustedoss.toolchain_cache_cleaner``      : every 6 hours, once per
         queue (each worker cleans its own cache mount)
+      - ``trustedoss.stale_scan_reaper``            : every 30 minutes
       - ``trustedoss.backup.run``                   — daily at 00:00 UTC
       - ``trustedoss.vulnerability_rematch_enqueue`` — every 6h at :15
       - ``trustedoss.kev_catalog_refresh``          — daily at 01:45 UTC
@@ -270,6 +275,13 @@ def _build_beat_schedule() -> dict[str, dict[str, object]]:
             "task": "trustedoss.toolchain_cache_cleaner",
             "schedule": _schedule(timedelta(hours=6)),
             "options": {"queue": _SCAN_QUEUE},
+        },
+        # Same cadence as the workspace cleaner it mirrors, and for the same
+        # reason: one bounded SELECT, and every pass it does not run is a
+        # project that keeps refusing to scan.
+        "stale-scan-reaper-half-hourly": {
+            "task": "trustedoss.stale_scan_reaper",
+            "schedule": _schedule(timedelta(minutes=30)),
         },
         # D6 (N17): hand the audit trail to the configured collector, a batch
         # at a time. Every five minutes rather than hourly because the point
