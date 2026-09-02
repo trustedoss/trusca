@@ -18,6 +18,7 @@ from services.scan_service import (
     ScanDiskFull,
     _check_disk_guard,
     _disk_hard_limit_pct,
+    _guarded_paths,
     check_disk_guard,
 )
 
@@ -167,3 +168,115 @@ async def test_check_disk_guard_propagates_scan_disk_full(
     monkeypatch.setattr(os, "statvfs", lambda _p: _fake_statvfs(blocks=100, bavail=2))
     with pytest.raises(ScanDiskFull):
         await check_disk_guard()
+
+
+# ---------------------------------------------------------------------------
+# The guard watches more than the workspace volume
+#
+# Reading only ``WORKSPACE_HOST_PATH`` is correct only while the workspace
+# shares a filesystem with everything else a scan writes. Put the workspace on
+# network storage (the documented way to scan a corpus bigger than one host's
+# disk) and the guard reports the network volume while the toolchain caches
+# fill the container's own. A 26 GB root partition hit 100% that way with the
+# guard reporting 12%, and no scan was ever refused.
+# ---------------------------------------------------------------------------
+
+
+def test_guarded_paths_include_the_workspace_and_the_root_filesystem(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("WORKSPACE_HOST_PATH", "/mnt/nas/workspace")
+    monkeypatch.delenv("DISK_GUARD_EXTRA_PATHS", raising=False)
+
+    paths = _guarded_paths()
+
+    assert paths[0] == "/mnt/nas/workspace", "workspace stays the headline path"
+    assert "/" in paths
+
+
+def test_guarded_paths_take_extra_mounts_from_the_environment(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Operators who split caches onto their own mount can guard those too."""
+    monkeypatch.setenv("WORKSPACE_HOST_PATH", "/mnt/nas/workspace")
+    monkeypatch.setenv("DISK_GUARD_EXTRA_PATHS", " /, /var/cache/toolchains ,")
+
+    assert _guarded_paths() == [
+        "/mnt/nas/workspace",
+        "/",
+        "/var/cache/toolchains",
+    ]
+
+
+def test_guarded_paths_do_not_repeat_the_workspace(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A single-filesystem deployment naming the same path twice reads it once."""
+    monkeypatch.setenv("WORKSPACE_HOST_PATH", "/")
+    monkeypatch.setenv("DISK_GUARD_EXTRA_PATHS", "/")
+
+    assert _guarded_paths() == ["/"]
+
+
+def test_guarded_paths_can_be_narrowed_back_to_the_workspace(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """An empty list is how an operator opts out, not a parse failure."""
+    monkeypatch.setenv("WORKSPACE_HOST_PATH", "/mnt/nas/workspace")
+    monkeypatch.setenv("DISK_GUARD_EXTRA_PATHS", "")
+
+    assert _guarded_paths() == ["/mnt/nas/workspace"]
+
+
+def test_guard_blocks_on_a_full_root_while_the_workspace_is_empty(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The exact shape of the outage: roomy network workspace, full root."""
+    monkeypatch.setenv("DISK_HARD_LIMIT_PCT", "95.0")
+    monkeypatch.setenv("WORKSPACE_HOST_PATH", "/mnt/nas/workspace")
+    monkeypatch.delenv("DISK_GUARD_EXTRA_PATHS", raising=False)
+
+    def _statvfs(path: str) -> SimpleNamespace:
+        if path == "/mnt/nas/workspace":
+            return _fake_statvfs(blocks=100, bavail=88)  # 12% used
+        return _fake_statvfs(blocks=100, bavail=0)  # 100% used
+
+    monkeypatch.setattr(os, "statvfs", _statvfs)
+
+    with pytest.raises(ScanDiskFull) as excinfo:
+        _check_disk_guard()
+
+    # The operator has to know WHICH volume to drain; "workspace disk usage"
+    # would have sent them at the one that was fine.
+    assert "/" in str(excinfo.value)
+    assert "12" not in str(excinfo.value)
+
+
+def test_guard_skips_an_unreadable_path_and_keeps_checking_the_rest(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """One missing mount must not blind the guard to the others."""
+    monkeypatch.setenv("DISK_HARD_LIMIT_PCT", "95.0")
+    monkeypatch.setenv("WORKSPACE_HOST_PATH", "/mnt/nas/workspace")
+    monkeypatch.delenv("DISK_GUARD_EXTRA_PATHS", raising=False)
+
+    def _statvfs(path: str) -> SimpleNamespace:
+        if path == "/mnt/nas/workspace":
+            raise OSError("not mounted")
+        return _fake_statvfs(blocks=100, bavail=1)  # 99% used
+
+    monkeypatch.setattr(os, "statvfs", _statvfs)
+
+    with pytest.raises(ScanDiskFull):
+        _check_disk_guard()
+
+
+def test_guard_passes_when_every_guarded_volume_has_room(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("DISK_HARD_LIMIT_PCT", "95.0")
+    monkeypatch.setenv("WORKSPACE_HOST_PATH", "/mnt/nas/workspace")
+    monkeypatch.delenv("DISK_GUARD_EXTRA_PATHS", raising=False)
+    monkeypatch.setattr(os, "statvfs", lambda _p: _fake_statvfs(blocks=100, bavail=50))
+
+    _check_disk_guard()

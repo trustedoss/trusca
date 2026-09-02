@@ -641,6 +641,42 @@ def disk_hard_limit_pct() -> float:
     )
 
 
+#: Filesystems the disk guard checks besides the workspace one. See
+#: :func:`disk_guard_extra_paths` for why the workspace path alone is not
+#: enough. ``/`` is the container's own root, which is where every toolchain
+#: cache lands when nothing is mounted over the worker's ``HOME``.
+_DEFAULT_DISK_GUARD_EXTRA_PATHS = "/"
+
+
+def disk_guard_extra_paths() -> list[str]:
+    """Extra filesystems the scan disk guard must check, beyond the workspace.
+
+    The guard used to read ``WORKSPACE_HOST_PATH`` and nothing else, which is
+    correct only while the workspace shares a filesystem with everything else
+    a scan writes. It usually does not. Putting the workspace on network
+    storage is the documented way to scan a corpus larger than one host's
+    disk, and the moment an operator does that, ``statvfs`` on the workspace
+    reports the *network* volume while the toolchain caches a scan fills
+    (Maven, npm, Go, NuGet, the license index, all pinned under the worker's
+    ``HOME``) keep growing on the container's own filesystem, which nothing
+    was watching. A 26 GB root partition reached 100% that way with the guard
+    reporting 12% and the dashboard agreeing; the Docker daemon went down with
+    it, and no scan was ever refused.
+
+    So the default is ``/``: the container root, which holds the writable
+    layer unless a volume is mounted over it. Operators who split caches or
+    Postgres onto their own mounts add them here, comma-separated. Blank
+    entries are dropped, and a path that does not resolve is skipped by the
+    guard with a warning rather than blocking every scan.
+
+    Set to an empty string to check only the workspace (the old behaviour).
+    """
+    raw = os.getenv("DISK_GUARD_EXTRA_PATHS")
+    if raw is None:
+        raw = _DEFAULT_DISK_GUARD_EXTRA_PATHS
+    return [part.strip() for part in raw.split(",") if part.strip()]
+
+
 # The webhook receivers are the one unauthenticated surface that does real
 # work before it knows who is calling: the HMAC (GitHub) or shared token
 # (GitLab) can only be checked once the body has been read and the repository

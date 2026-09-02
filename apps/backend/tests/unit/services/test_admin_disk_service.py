@@ -398,6 +398,39 @@ async def test_get_disk_telemetry_runs_statvfs_off_the_loop(
 
     await get_disk_telemetry(_UnavailableSession())  # type: ignore[arg-type]
 
-    # workspace + trivy_db + redis
-    assert len(seen) == 3
+    # workspace + trivy_db + root_fs + redis
+    assert len(seen) == 4
     assert loop_thread not in seen
+
+
+async def test_get_disk_telemetry_reports_the_root_filesystem(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The panel must show the volume the other cards can be mounted away from.
+
+    Move the workspace to network storage and every filesystem card reports
+    somewhere other than the disk the toolchain caches fill. That is how a
+    root partition reached 100% while this panel showed room everywhere.
+    """
+    from services.admin_disk_service import get_disk_telemetry
+
+    monkeypatch.setenv("WORKSPACE_HOST_PATH", "/mnt/nas/workspace")
+    probed: list[str] = []
+
+    def _recording_disk_usage(path: str) -> Any:
+        probed.append(path)
+        return _fake_disk_usage_factory(1000, 500, 500)(path)
+
+    monkeypatch.setattr(
+        "services.admin_disk_service.shutil.disk_usage", _recording_disk_usage
+    )
+    monkeypatch.setattr(
+        "services.admin_disk_service._redis.Redis.from_url",
+        lambda _url, **_kw: (_ for _ in ()).throw(ConnectionError("not under test")),
+    )
+
+    out = await get_disk_telemetry(_UnavailableSession())  # type: ignore[arg-type]
+
+    root = next(item for item in out.items if item.name == "root_fs")
+    assert root.path == "/"
+    assert "/" in probed

@@ -287,6 +287,7 @@ Three tables age out on their own occurrence-time clock; there is no export curs
 | Key | Default | Read by | Description |
 |---|---|---|---|
 | `DISK_HARD_LIMIT_PCT` | `95.0` | `apps/backend/core/config.py` | Red gauge + new scans blocked + admin notification. Accepted range `50`–`100`; a value outside it is clamped and a value that is not a number falls back to `95.0`, both logged at WARNING. |
+| `DISK_GUARD_EXTRA_PATHS` | `/` | `apps/backend/core/config.py` | Filesystems the disk guard checks besides the workspace one, comma-separated. The default is the container root, which is where the toolchain caches land. Needed because `WORKSPACE_HOST_PATH` is often a network mount, and then reading only it reports the network volume's free space while the container's own filesystem fills. Set to an empty string to check only the workspace. A path that does not resolve is skipped with a warning, not treated as full. |
 
 ## Traefik / TLS
 

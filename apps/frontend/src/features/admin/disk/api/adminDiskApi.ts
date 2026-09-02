@@ -13,7 +13,12 @@
  */
 import { api } from "@/lib/api";
 
-export type DiskItemName = "workspace" | "trivy_db" | "postgres" | "redis";
+export type DiskItemName =
+  | "workspace"
+  | "trivy_db"
+  | "root_fs"
+  | "postgres"
+  | "redis";
 export type DiskHealthStatus = "ok" | "degraded" | "down";
 
 export interface AdminDiskItem {
