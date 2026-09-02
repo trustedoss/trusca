@@ -1,0 +1,147 @@
+name: attestation-check
+
+# ER18. release.yml runs only on a `v*.*.*` tag, so a change in buildx that
+# broke the attestation merge would first show up DURING a release, after the
+# images had been pushed. This workflow rehearses the exact shape release.yml
+# uses, on a registry that lives and dies with the job:
+#
+#   two `push-by-digest` builds with provenance + SBOM attestations
+#     -> `docker buildx imagetools create`
+#     -> the same scripts/verify-image-attestations.sh the release gate runs
+#
+# It builds a three-line probe image rather than the real Dockerfiles: what is
+# under test is buildx and imagetools behaviour, not our build. Keeping the
+# subject tiny is what makes a foreign-architecture leg affordable here, since
+# both platforms are built on one runner through QEMU instead of on the two
+# native runners release.yml uses. That difference does not matter to the
+# merge: `imagetools create` sees two digests in a registry either way.
+#
+# Nothing is pushed anywhere public. The registry service container is
+# unreachable from outside the job and is discarded when the job ends.
+
+on:
+  pull_request:
+    paths:
+      - ".github/workflows/attestation-check.yml"
+      - ".github/workflows/release.yml"
+      - "scripts/verify-image-attestations.sh"
+      - "scripts/assert-buildx-version.sh"
+  # Releases are infrequent, so the PR trigger alone would leave long gaps in
+  # which a buildx change could land unnoticed. Weekly, off the hour used by
+  # the other scheduled jobs.
+  schedule:
+    - cron: "17 2 * * 2" # Tuesdays 02:17 UTC
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  # Keep in step with release.yml's floor of the same name.
+  BUILDX_MIN_VERSION: "0.33.0"
+  PROBE_IMAGE: localhost:5000/attestation-probe
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  merge-preserves-attestations:
+    name: imagetools create preserves attestations
+    runs-on: ubuntu-22.04
+    timeout-minutes: 20
+    services:
+      # Pinned, per CLAUDE.md rule #9. Published on the runner so the buildkit
+      # container (started with network=host below) and the buildx CLI both
+      # reach it at the same localhost:5000 address.
+      registry:
+        image: registry:2.8.3
+        ports:
+          - 5000:5000
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      # Both platforms are built here on one amd64 runner, so the arm64 leg
+      # needs emulation. The probe image is three lines, so this is cheap.
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v3
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+        with:
+          # network=host puts buildkit in the runner's network namespace so it
+          # can reach the published registry service; the inline config lets it
+          # talk plain HTTP to that registry (it has no TLS and never leaves
+          # the job).
+          driver-opts: network=host
+          buildkitd-config-inline: |
+            [registry."localhost:5000"]
+              http = true
+
+      - name: Assert buildx is new enough to carry attestations
+        run: scripts/assert-buildx-version.sh "$BUILDX_MIN_VERSION"
+
+      - name: Write the probe build context
+        run: |
+          set -euo pipefail
+          mkdir -p "${RUNNER_TEMP}/probe"
+          cat > "${RUNNER_TEMP}/probe/Dockerfile" <<'EOF'
+          FROM alpine:3.20
+          RUN echo attestation-probe > /probe.txt
+          EOF
+          cat "${RUNNER_TEMP}/probe/Dockerfile"
+
+      # The two flags under test, set exactly as release.yml sets them.
+      - name: Build both platforms by digest
+        run: |
+          set -euo pipefail
+          for platform in linux/amd64 linux/arm64; do
+            arch="${platform#linux/}"
+            echo "::group::build ${platform}"
+            docker buildx build \
+              --file "${RUNNER_TEMP}/probe/Dockerfile" \
+              --platform "${platform}" \
+              --provenance=mode=max \
+              --sbom=true \
+              --output "type=image,name=${PROBE_IMAGE},push-by-digest=true,name-canonical=true,push=true,registry.insecure=true" \
+              --metadata-file "${RUNNER_TEMP}/meta-${arch}.json" \
+              "${RUNNER_TEMP}/probe"
+            echo "::endgroup::"
+          done
+
+      # A per-arch push with attestations on is an INDEX, not a plain manifest.
+      # Assert that before merging, so a failure downstream is unambiguous
+      # about which half of the pipeline changed.
+      - name: Assert each per-arch push is an attestation-carrying index
+        run: |
+          set -euo pipefail
+          for arch in amd64 arm64; do
+            digest="$(jq -r '."containerimage.digest"' "${RUNNER_TEMP}/meta-${arch}.json")"
+            echo "${arch}: ${digest}"
+            raw="$(docker buildx imagetools inspect --raw "${PROBE_IMAGE}@${digest}")"
+            media="$(jq -r '.mediaType' <<< "$raw")"
+            att="$(jq '[.manifests[] | select(.annotations["vnd.docker.reference.type"] == "attestation-manifest")] | length' <<< "$raw")"
+            echo "  mediaType=${media} attestation manifests=${att}"
+            case "$media" in
+              *image.index*) : ;;
+              *) echo "::error::${arch} push is ${media}, expected an image index"; exit 1 ;;
+            esac
+            if [ "$att" -ne 1 ]; then
+              echo "::error::${arch} push carries ${att} attestation manifests, expected 1"
+              exit 1
+            fi
+            echo "digest_${arch}=${digest}" >> "$GITHUB_OUTPUT"
+          done
+        id: perarch
+
+      - name: Merge the digests into a manifest list
+        run: |
+          set -euo pipefail
+          docker buildx imagetools create -t "${PROBE_IMAGE}:probe" \
+            "${PROBE_IMAGE}@${{ steps.perarch.outputs.digest_amd64 }}" \
+            "${PROBE_IMAGE}@${{ steps.perarch.outputs.digest_arm64 }}"
+
+      # The point of the whole workflow: the same assertion release.yml runs.
+      - name: Verify attestations survived the merge
+        run: scripts/verify-image-attestations.sh "${PROBE_IMAGE}:probe" 2
