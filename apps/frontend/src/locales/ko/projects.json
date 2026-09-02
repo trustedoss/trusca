@@ -21,7 +21,9 @@
       "binary": "바이너리",
       "source": "소스",
       "embedded": "기기 내장"
-    }
+    },
+    "filter_team_label": "팀",
+    "filter_team_all": "모든 팀"
   },
   "list": {
     "truncated": "조건에 맞는 프로젝트 {{total}}개 중 {{shown}}개를 표시했습니다. 검색어를 좁히면 나머지를 확인할 수 있습니다."

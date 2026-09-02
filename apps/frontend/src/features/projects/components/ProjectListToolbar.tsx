@@ -49,6 +49,17 @@ export interface ProjectListToolbarProps {
   /** Null means no filter, which keeps every project including the unset ones. */
   distribution: string | null;
   onDistributionChange: (value: string | null) => void;
+  /**
+   * The teams represented in the currently loaded page, `{id, name}`. Fewer
+   * than two entries means every visible row already shares one team (the
+   * common case for a team-scoped Developer/Team Admin) — the control adds
+   * nothing there, so the toolbar renders no team filter at all rather than a
+   * useless one-option dropdown.
+   */
+  teamOptions: { id: string; name: string }[];
+  /** Null means no filter, which keeps every team's projects in. */
+  team: string | null;
+  onTeamChange: (value: string | null) => void;
   className?: string;
 }
 
@@ -61,6 +72,9 @@ export function ProjectListToolbar({
   onSortChange,
   distribution,
   onDistributionChange,
+  teamOptions,
+  team,
+  onTeamChange,
   className,
 }: ProjectListToolbarProps) {
   const { t } = useTranslation("projects");
@@ -148,6 +162,31 @@ export function ProjectListToolbar({
           </option>
         </select>
       </div>
+
+      {teamOptions.length > 1 ? (
+        <div className="flex items-center gap-2">
+          <label
+            htmlFor="project-team-filter"
+            className="text-xs font-medium text-muted-foreground"
+          >
+            {t("toolbar.filter_team_label")}
+          </label>
+          <select
+            id="project-team-filter"
+            value={team ?? ""}
+            onChange={(event) => onTeamChange(event.target.value || null)}
+            className="h-9 rounded-md border border-input bg-background px-2 text-sm shadow-sm transition-colors duration-fast ease-out-soft hover:bg-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+            data-testid="project-team-filter"
+          >
+            <option value="">{t("toolbar.filter_team_all")}</option>
+            {teamOptions.map((opt) => (
+              <option key={opt.id} value={opt.id}>
+                {opt.name}
+              </option>
+            ))}
+          </select>
+        </div>
+      ) : null}
 
       <div className="flex items-center gap-2">
         <label

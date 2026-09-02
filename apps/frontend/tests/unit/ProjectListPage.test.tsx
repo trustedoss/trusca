@@ -130,6 +130,7 @@ function project(name: string, overrides: Partial<ProjectPublic> = {}): ProjectP
     severity_summary: null,
     license_category_summary: null,
     created_by_user_name: null,
+    team_name: null,
     has_git_credential: false,
     // W3 #30 — list-row discoverability aggregates default to never-scanned.
     // Individual tests override these to exercise the ScanMetadataSummary.
@@ -192,6 +193,77 @@ describe("ProjectListPage", () => {
     await waitFor(() => {
       expect(screen.getByTestId("project-list-error")).toBeInTheDocument();
     });
+  });
+
+  it("does not show a team breadcrumb or filter when every row shares one team", async () => {
+    mockedListProjects.mockResolvedValueOnce(
+      listResponse([
+        project("Alpha", { team_id: "team-1", team_name: "Platform" }),
+        project("Bravo", { team_id: "team-1", team_name: "Platform" }),
+      ]),
+    );
+    renderPage();
+    await waitFor(() => {
+      expect(screen.getAllByTestId("project-row")).toHaveLength(2);
+    });
+    expect(screen.queryByTestId("project-row-team")).not.toBeInTheDocument();
+    expect(screen.queryByTestId("project-team-filter")).not.toBeInTheDocument();
+  });
+
+  it("shows a GitLab-style team breadcrumb once the page spans more than one team", async () => {
+    mockedListProjects.mockResolvedValueOnce(
+      listResponse([
+        project("Alpha", { team_id: "team-1", team_name: "Platform" }),
+        project("Bravo", { team_id: "team-2", team_name: "Payments" }),
+      ]),
+    );
+    renderPage();
+    await waitFor(() => {
+      expect(screen.getAllByTestId("project-row")).toHaveLength(2);
+    });
+    const teamLabels = screen.getAllByTestId("project-row-team");
+    expect(teamLabels.map((el) => el.textContent)).toEqual([
+      "Platform",
+      "Payments",
+    ]);
+    expect(screen.getByTestId("project-team-filter")).toBeInTheDocument();
+  });
+
+  it("narrows the list to one team when the team filter is used, and writes it to the URL", async () => {
+    mockedListProjects.mockResolvedValue(
+      listResponse([
+        project("Alpha", { team_id: "team-1", team_name: "Platform" }),
+        project("Bravo", { team_id: "team-2", team_name: "Payments" }),
+      ]),
+    );
+    renderPage();
+    await waitFor(() => {
+      expect(screen.getAllByTestId("project-row")).toHaveLength(2);
+    });
+
+    await userEvent.selectOptions(
+      screen.getByTestId("project-team-filter"),
+      "team-2",
+    );
+
+    await waitFor(() => {
+      expect(screen.getAllByTestId("project-row")).toHaveLength(1);
+    });
+    expect(screen.getByTestId("project-row-link")).toHaveTextContent("Bravo");
+  });
+
+  it("hydrates the team filter from ?team= deep-link on first render", async () => {
+    mockedListProjects.mockResolvedValueOnce(
+      listResponse([
+        project("Alpha", { team_id: "team-1", team_name: "Platform" }),
+        project("Bravo", { team_id: "team-2", team_name: "Payments" }),
+      ]),
+    );
+    renderPage({ initialUrl: "/projects?team=team-1" });
+    await waitFor(() => {
+      expect(screen.getAllByTestId("project-row")).toHaveLength(1);
+    });
+    expect(screen.getByTestId("project-row-link")).toHaveTextContent("Alpha");
   });
 
   it("sends the debounced search term to the server and renders its answer", async () => {
@@ -339,6 +411,7 @@ describe("ProjectListPage", () => {
           severity_summary: { critical: 10, high: 13, medium: 0, low: 27 },
           license_category_summary: null,
           created_by_user_name: null,
+          team_name: null,
         }),
       ]),
     );
@@ -374,6 +447,7 @@ describe("ProjectListPage", () => {
           severity_summary: { critical: 0, high: 0, medium: 0, low: 0 },
           license_category_summary: null,
           created_by_user_name: null,
+          team_name: null,
         }),
       ]),
     );

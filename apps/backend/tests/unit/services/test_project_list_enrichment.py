@@ -25,11 +25,12 @@ TASK 2 — ``get_project_overview`` returns ``last_succeeded_scan_at`` = the
 latest succeeded scan's ``created_at`` (the same anchor sbom_export uses), or null
 when there is no succeeded scan. ``last_scan_at`` (the last *attempt*) is kept.
 
-Batched-ness: ``enrich_project_rows`` issues exactly 4 statements regardless of
-page size (status map / succeeded-id map / one grouped severity aggregation / one
-grouped count aggregation). The batching test asserts the statement count does
-NOT grow with the number of projects (no per-row query explosion), via a
-SQLAlchemy ``before_cursor_execute`` counter.
+Batched-ness: ``enrich_project_rows`` issues a small constant number of
+statements regardless of page size (status map / succeeded-id map / severity
+aggregation / count aggregation / license aggregation / created-by batch /
+team-name batch). The batching test asserts the statement count does NOT grow
+with the number of projects (no per-row query explosion), via a SQLAlchemy
+``before_cursor_execute`` counter.
 
 Runs against the real Postgres (CLAUDE.md core rule #1) — the severity
 aggregation depends on live ENUM / CASE behaviour; mocking would test the mock.
@@ -266,7 +267,7 @@ async def test_failed_latest_attempt_keeps_severity_from_earlier_succeeded_scan(
 
     _team, _user, project, _succeeded, _failed = await _ci_vulns_like_project(db_session)
 
-    status_map, sev_map, counts_map, _lic, _cb = await enrich_project_rows(
+    status_map, sev_map, counts_map, _lic, _cb, _team = await enrich_project_rows(
         db_session, projects=[project]
     )
 
@@ -292,7 +293,7 @@ async def test_never_scanned_project_both_null(db_session: AsyncSession) -> None
     team = await make_team(db_session, organization=org)
     project = await make_project(db_session, team=team)
 
-    status_map, sev_map, counts_map, _lic, _cb = await enrich_project_rows(
+    status_map, sev_map, counts_map, _lic, _cb, _team = await enrich_project_rows(
         db_session, projects=[project]
     )
 
@@ -321,7 +322,7 @@ async def test_succeeded_scan_with_no_cves_is_all_zero_not_null(
     await _attach_component(db_session, scan_id=succeeded.id, cv_id=cv.id)
     await _set_latest_scan(db_session, project=project, scan_id=succeeded.id)
 
-    status_map, sev_map, counts_map, _lic, _cb = await enrich_project_rows(
+    status_map, sev_map, counts_map, _lic, _cb, _team = await enrich_project_rows(
         db_session, projects=[project]
     )
 
@@ -364,7 +365,7 @@ async def test_info_severity_findings_excluded_from_summary_buckets(
     )
     await _set_latest_scan(db_session, project=project, scan_id=succeeded.id)
 
-    _status_map, sev_map, _counts_map, _lic, _cb = await enrich_project_rows(
+    _status_map, sev_map, _counts_map, _lic, _cb, _team = await enrich_project_rows(
         db_session, projects=[project]
     )
 
@@ -387,7 +388,7 @@ async def test_only_failed_scan_status_failed_but_no_severity(
     )
     await _set_latest_scan(db_session, project=project, scan_id=failed.id)
 
-    status_map, sev_map, counts_map, _lic, _cb = await enrich_project_rows(
+    status_map, sev_map, counts_map, _lic, _cb, _team = await enrich_project_rows(
         db_session, projects=[project]
     )
 
@@ -403,10 +404,17 @@ async def test_only_failed_scan_status_failed_but_no_severity(
 async def test_empty_page_issues_no_sql(db_session: AsyncSession) -> None:
     from services.project_list_enrichment import enrich_project_rows
 
-    status_map, sev_map, counts_map, lic_map, cb_map = await enrich_project_rows(
+    status_map, sev_map, counts_map, lic_map, cb_map, team_map = await enrich_project_rows(
         db_session, projects=[]
     )
-    assert (status_map, sev_map, counts_map, lic_map, cb_map) == ({}, {}, {}, {}, {})
+    assert (status_map, sev_map, counts_map, lic_map, cb_map, team_map) == (
+        {},
+        {},
+        {},
+        {},
+        {},
+        {},
+    )
 
 
 async def test_enrichment_is_batched_not_per_row(db_session: AsyncSession) -> None:
@@ -461,13 +469,13 @@ async def test_enrichment_is_batched_not_per_row(db_session: AsyncSession) -> No
     # Constant statement count regardless of page size — no N+1.
     assert one_row_stmts == five_row_stmts
     # And it is a small constant: status map + succeeded-id map + severity agg
-    # + count agg + license agg + created-by user batch = up to 6 queries
-    # (W3 #30 = 4; user-test cycle's by-project axis + Created-by column
-    # adds the 5th and 6th).
-    assert five_row_stmts <= 6
+    # + count agg + license agg + created-by user batch + team name batch = up
+    # to 7 queries (W3 #30 = 4; user-test cycle's by-project axis + Created-by
+    # column adds the 5th and 6th; the team breadcrumb adds the 7th).
+    assert five_row_stmts <= 7
 
     # Correctness over the 5-project page: each has 1 critical, 1 scan, 1 release.
-    _status_map, sev_map, counts_map, _lic, _cb = await enrich_project_rows(
+    _status_map, sev_map, counts_map, _lic, _cb, _team = await enrich_project_rows(
         db_session, projects=projects
     )
     for project in projects:
@@ -638,6 +646,72 @@ async def test_the_wide_scope_predicate_returns_the_same_enrichment(
     wide = await enrich_project_rows(db_session, projects=[project])
 
     assert wide == narrow
+
+
+# ---------------------------------------------------------------------------
+# team breadcrumb — _team_name_map / enrich_project_rows team_name
+# ---------------------------------------------------------------------------
+
+
+async def test_team_name_map_keys_by_team_id_not_project_id(
+    db_session: AsyncSession,
+) -> None:
+    """The team map is keyed by ``team_id`` — the one map that differs from
+    every other enrichment map, which key by project id."""
+    from services.project_list_enrichment import _team_name_map
+
+    org = await make_organization(db_session)
+    team = await make_team(db_session, organization=org)
+    project = await make_project(db_session, team=team)
+
+    team_map = await _team_name_map(db_session, projects=[project])
+
+    assert team_map == {team.id: team.name}
+
+
+async def test_team_name_map_dedupes_projects_sharing_a_team(
+    db_session: AsyncSession,
+) -> None:
+    """One team query per distinct team id, not per project — two projects on
+    the same team must not fetch or overwrite with anything surprising."""
+    from services.project_list_enrichment import _team_name_map
+
+    org = await make_organization(db_session)
+    team = await make_team(db_session, organization=org)
+    project_a = await make_project(db_session, team=team)
+    project_b = await make_project(db_session, team=team)
+
+    team_map = await _team_name_map(db_session, projects=[project_a, project_b])
+
+    assert team_map == {team.id: team.name}
+
+
+async def test_team_name_map_empty_projects_no_sql(db_session: AsyncSession) -> None:
+    from services.project_list_enrichment import _team_name_map
+
+    assert await _team_name_map(db_session, projects=[]) == {}
+
+
+async def test_enrich_project_rows_team_name_reflects_each_projects_own_team(
+    db_session: AsyncSession,
+) -> None:
+    """Two projects on two different teams — the cross-team page every super
+    admin's project list is — each resolve to their OWN team's name, not the
+    other's or a stale one."""
+    from services.project_list_enrichment import enrich_project_rows
+
+    org = await make_organization(db_session)
+    team_a = await make_team(db_session, organization=org)
+    team_b = await make_team(db_session, organization=org)
+    project_a = await make_project(db_session, team=team_a)
+    project_b = await make_project(db_session, team=team_b)
+
+    *_rest, team_name_by_team = await enrich_project_rows(
+        db_session, projects=[project_a, project_b]
+    )
+
+    assert team_name_by_team[project_a.team_id] == team_a.name
+    assert team_name_by_team[project_b.team_id] == team_b.name
 
 
 # ---------------------------------------------------------------------------

@@ -785,6 +785,19 @@ class ProjectPublic(BaseModel):
             "to null. The FE list table renders this in a Created-by column."
         ),
     )
+    team_name: str | None = Field(
+        default=None,
+        description=(
+            "The owning team's display name. `null` when the team row is "
+            "gone (the FK is preserved for audit but the name can no longer "
+            "be resolved). Populated only on the list endpoint (one batched "
+            "`SELECT FROM teams WHERE id IN (...)` over the page's distinct "
+            "team_ids); single-project responses default to null. The FE "
+            "list row renders `{team_name} / {name}` so a cross-team view "
+            "(no active-team filter, e.g. the super admin's) does not read "
+            "as one flat list of identical-looking rows."
+        ),
+    )
     # W3 #30 — list-row discoverability aggregates. Populated ONLY on the list
     # endpoint (GET /v1/projects), which fills them via one batched GROUP BY
     # query alongside the status / severity maps. On single-project responses

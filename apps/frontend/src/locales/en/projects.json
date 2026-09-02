@@ -21,7 +21,9 @@
       "binary": "Binary",
       "source": "Source",
       "embedded": "Embedded"
-    }
+    },
+    "filter_team_label": "Team",
+    "filter_team_all": "All teams"
   },
   "list": {
     "truncated": "Showing {{shown}} of {{total}} matching projects. Narrow your search to see the rest."

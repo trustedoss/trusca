@@ -115,6 +115,15 @@ export interface ProjectPublic {
    */
   created_by_user_name: string | null;
   /**
+   * The owning team's display name. `null` when the team row is gone (the FK
+   * is preserved for audit but the name can no longer be resolved). Populated
+   * only on the list endpoint; single-project responses default to null. The
+   * FE list row renders `{team_name} / {name}` so a cross-team view (no
+   * active-team filter, e.g. the super admin's) does not read as one flat
+   * list of identical-looking rows.
+   */
+  team_name: string | null;
+  /**
    * Whether a git credential (PAT/token) is stored for cloning private https
    * repos (feature #18). The plaintext/ciphertext value is NEVER returned by
    * the backend — only this boolean presence flag.

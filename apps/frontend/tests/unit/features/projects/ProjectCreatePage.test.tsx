@@ -131,6 +131,7 @@ describe("ProjectCreatePage", () => {
       severity_summary: null,
       license_category_summary: null,
       created_by_user_name: null,
+      team_name: null,
       has_git_credential: false,
       scan_count: 0,
       release_count: 0,
