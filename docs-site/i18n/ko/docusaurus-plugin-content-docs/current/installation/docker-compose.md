@@ -98,7 +98,7 @@ compose 스택에 필요한 세 파일(compose 파일, env 템플릿, 1회용 Po
 
 ```bash
 mkdir -p trustedoss && cd trustedoss
-BASE=https://raw.githubusercontent.com/trustedoss/trusca/v0.10.0
+BASE=https://raw.githubusercontent.com/trustedoss/trusca/v0.22.4
 
 # 1. 자기완결적 프로덕션 compose 파일(`build:` 섹션 없음 — ghcr.io에서 이미지 pull)
 #    과 env 템플릿.
@@ -113,8 +113,8 @@ chmod +x scripts/postgres-init.sh
 
 # 3. .env 편집 — 최소한 SECRET_KEY(openssl rand -hex 32), 강력한
 #    POSTGRES_PASSWORD / POSTGRES_APP_PASSWORD, DOMAIN, TLS_EMAIL,
-#    CORS_ALLOWED_ORIGINS=https://<도메인> 을 설정. 원하는 릴리스로 IMAGE_TAG
-#    고정(기본 2.0.0).
+#    CORS_ALLOWED_ORIGINS=https://<도메인> 을 설정. 실행할 릴리스를
+#    IMAGE_TAG 에 지정.
 $EDITOR .env
 
 # 4. pull 후 기동.
@@ -186,7 +186,7 @@ cd trusca
 포크를 운영한다면 포크 레포를 클론하세요. 재현 가능한 설치를 위해 릴리스 태그로 체크아웃합니다.
 
 ```bash
-git checkout v0.10.0
+git checkout v0.22.4
 ```
 
 ## 2단계 — 설치 마법사 실행

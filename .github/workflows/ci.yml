@@ -244,6 +244,20 @@ jobs:
         if: matrix.target == 'frontend'
         run: node tools/license-header/lint.mjs --all
 
+      # Every documented tag reference must name a tag that exists. The repo
+      # has been recreated twice and each recreation dropped the tags before
+      # it, leaving the CI-integration and install guides pinned to v0.10.0:
+      # the copy-paste quickstart failed to resolve and the curl install 404ed.
+      # The selftest runs first for the same reason the license-header one
+      # does: a pattern that silently matches nothing reports clean.
+      - name: Run release-refs selftest
+        if: matrix.target == 'frontend'
+        run: node tools/release-refs/selftest.mjs
+
+      - name: Run release-refs gate
+        if: matrix.target == 'frontend'
+        run: node tools/release-refs/lint.mjs
+
   # -------------------------------------------------------------------------
   # 1b) Shellcheck — install/backup/restore/upgrade/release wrappers.
   #
