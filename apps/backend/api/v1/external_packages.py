@@ -119,6 +119,16 @@ async def lookup_external_package(
         else []
     )
 
+    # The only signal an operator has today into how much this feature is
+    # actually used, or how often it comes back empty -- there is no metrics
+    # series for it yet (upstream failures already warn above).
+    log.info(
+        "external_package_lookup_completed",
+        ecosystem=ecosystem,
+        found=result.found,
+        advisory_count=result.advisory_count,
+    )
+
     out = ExternalPackageLookupOut(
         ecosystem=result.ecosystem,
         name=result.name,
@@ -186,6 +196,12 @@ async def lookup_external_advisory(
             detail="deps.dev did not answer this lookup cleanly",
             instance=request.url.path,
         )
+
+    log.info(
+        "external_advisory_lookup_completed",
+        advisory_id=advisory_id[:64],
+        found=result.found,
+    )
 
     out = ExternalAdvisoryOut(
         advisory_id=result.advisory_id,

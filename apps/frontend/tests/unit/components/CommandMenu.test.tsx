@@ -35,6 +35,11 @@ vi.mock("@/lib/searchApi", async () => {
   };
 });
 
+const mockedUseDeploymentFeatures = vi.fn();
+vi.mock("@/features/about/api/useDeploymentFeatures", () => ({
+  useDeploymentFeatures: () => mockedUseDeploymentFeatures(),
+}));
+
 import { listProjects } from "@/lib/projectsApi";
 import {
   globalSearch,
@@ -228,6 +233,8 @@ describe("CommandMenu", () => {
     mockedGlobalSearch.mockReset();
     mockedGlobalSearch.mockResolvedValue(searchResults());
     setUser({ superuser: false });
+    mockedUseDeploymentFeatures.mockReset();
+    mockedUseDeploymentFeatures.mockReturnValue({});
   });
 
   afterEach(() => {
@@ -690,6 +697,26 @@ describe("CommandMenu", () => {
       // picks a tab from there.
       expect(hit?.search).toBe("?q=lodash");
     });
+  });
+
+  // package-lookup is off in every deployment that has not opted in
+  // (EXTERNAL_PACKAGE_LOOKUP_ENABLED defaults true, but a fresh render
+  // before the /v1/about answer lands must not offer a route that 404s).
+  it("does not offer package lookup before the deployment's features are known", async () => {
+    render(<ControlledHarness initiallyOpen={true} />);
+
+    expect(
+      screen.queryByTestId("command-menu-open-package-lookup"),
+    ).not.toBeInTheDocument();
+  });
+
+  it("offers package lookup once the deployment has turned it on", async () => {
+    mockedUseDeploymentFeatures.mockReturnValue({ external_package_lookup: true });
+    render(<ControlledHarness initiallyOpen={true} />);
+
+    expect(
+      await screen.findByTestId("command-menu-open-package-lookup"),
+    ).toBeInTheDocument();
   });
 });
 
