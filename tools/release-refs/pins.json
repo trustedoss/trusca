@@ -1,0 +1,93 @@
+{
+  "_about": "Places that must carry the current release version. Tag-shaped refs into this repository are found by pattern (see lint.mjs); this file lists the bare version literals a pattern cannot tell apart from any other number. Each entry captures the version in group 1.",
+  "pins": [
+    {
+      "file": "charts/trustedoss/Chart.yaml",
+      "pattern": "^version: (\\d+\\.\\d+\\.\\d+)$",
+      "note": "chart packaging version, kept in lock-step with the app"
+    },
+    {
+      "file": "charts/trustedoss/Chart.yaml",
+      "pattern": "^appVersion: \"(\\d+\\.\\d+\\.\\d+)\"$",
+      "note": "released container image tag"
+    },
+    {
+      "file": "charts/trustedoss/values.yaml",
+      "pattern": "^  tag: \"(\\d+\\.\\d+\\.\\d+)\"$",
+      "note": "image.tag default a chart install pulls"
+    },
+    {
+      "file": "README.md",
+      "pattern": "release-v(\\d+\\.\\d+\\.\\d+)-",
+      "note": "release badge on the repository front page"
+    },
+    {
+      "file": "docs-site/docs/installation/helm.md",
+      "pattern": "chart version \\*\\*(\\d+\\.\\d+\\.\\d+)\\*\\*",
+      "note": "prose statement of the chart version"
+    },
+    {
+      "file": "docs-site/docs/installation/helm.md",
+      "pattern": "^\\| `image\\.tag` \\| `(\\d+\\.\\d+\\.\\d+)` \\|",
+      "note": "values table default"
+    },
+    {
+      "file": "docs-site/i18n/ko/docusaurus-plugin-content-docs/current/installation/helm.md",
+      "pattern": "차트 버전 \\*\\*(\\d+\\.\\d+\\.\\d+)\\*\\*",
+      "note": "KO mirror of the prose statement"
+    },
+    {
+      "file": "docs-site/i18n/ko/docusaurus-plugin-content-docs/current/installation/helm.md",
+      "pattern": "^\\| `image\\.tag` \\| `(\\d+\\.\\d+\\.\\d+)` \\|",
+      "note": "KO mirror of the values table default"
+    },
+    {
+      "file": "docs-site/docs/ci-integration/github-actions.md",
+      "pattern": "# v(\\d+\\.\\d+\\.\\d+)$",
+      "note": "comment naming the release the pinned commit SHA belongs to"
+    },
+    {
+      "file": "docs-site/i18n/ko/docusaurus-plugin-content-docs/current/ci-integration/github-actions.md",
+      "pattern": "# v(\\d+\\.\\d+\\.\\d+)$",
+      "note": "KO mirror of the pinned-SHA comment"
+    },
+    {
+      "file": "docs-site/docs/ci-integration/gitlab-ci.md",
+      "pattern": "release tag \\(`v(\\d+\\.\\d+\\.\\d+)`\\)",
+      "note": "prose naming the tag to pin the include URL to"
+    },
+    {
+      "file": "docs-site/i18n/ko/docusaurus-plugin-content-docs/current/ci-integration/gitlab-ci.md",
+      "pattern": "릴리스 태그\\(`v(\\d+\\.\\d+\\.\\d+)`\\)",
+      "note": "KO mirror of the prose naming the pin tag"
+    }
+  ],
+  "_pending_about": "Pins that belong in `pins` but whose files are held by other work in flight. The linter prints them as a notice and does not fail on them. Moving an entry up into `pins` is the whole of the follow-up.",
+  "pending": [
+    {
+      "file": ".env.example",
+      "pattern": "^IMAGE_TAG=(\\d+\\.\\d+\\.\\d+)$",
+      "note": "image tag the production compose stack pulls",
+      "blocked_by": "held by PR #285; enroll once it lands"
+    },
+    {
+      "file": "docker-compose.yml",
+      "pattern": "\\$\\{IMAGE_TAG:-(\\d+\\.\\d+\\.\\d+)\\}",
+      "note": "fallback used when .env carries no IMAGE_TAG",
+      "blocked_by": "held by open worktrees on branches a2-uat-guard-continue and test/a2-install-uat-first-scan; enroll once they land"
+    },
+    {
+      "file": "docs-site/docs/installation/docker-compose.md",
+      "pattern": "defaults to (\\d+\\.\\d+\\.\\d+)\\)",
+      "note": "stated IMAGE_TAG default in the quick-install comment",
+      "blocked_by": "the sentence stated a default this change cannot make true; restore it, in EN and KO, in the same change that fixes the docker-compose.yml fallback"
+    }
+  ],
+  "_exclude_about": "Files whose tag-shaped refs are history, not instructions. A reader is not meant to run them against today's release.",
+  "exclude": [
+    "CHANGELOG.md",
+    "docs-site/docs/release-notes/",
+    "docs-site/i18n/ko/docusaurus-plugin-content-docs/current/release-notes/",
+    "tools/release-refs/"
+  ]
+}

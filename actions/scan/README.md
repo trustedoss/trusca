@@ -25,7 +25,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - name: TRUSCA SCA scan
-        uses: trustedoss/scan-action@v1
+        uses: trustedoss/trusca/actions/scan@v0.22.4
         with:
           api-url: https://trustedoss.example.com
           api-key: ${{ secrets.TRUSTEDOSS_API_KEY }}
@@ -79,7 +79,7 @@ That's it. The action:
 Useful while you're seeding policies and don't want to block PRs yet.
 
 ```yaml
-- uses: trustedoss/scan-action@v1
+- uses: trustedoss/trusca/actions/scan@v0.22.4
   with:
     api-url: https://trustedoss.example.com
     api-key: ${{ secrets.TRUSTEDOSS_API_KEY }}
@@ -90,7 +90,7 @@ Useful while you're seeding policies and don't want to block PRs yet.
 ### Container scan instead of source scan
 
 ```yaml
-- uses: trustedoss/scan-action@v1
+- uses: trustedoss/trusca/actions/scan@v0.22.4
   with:
     api-url: https://trustedoss.example.com
     api-key: ${{ secrets.TRUSTEDOSS_API_KEY }}
@@ -102,7 +102,7 @@ Useful while you're seeding policies and don't want to block PRs yet.
 
 ```yaml
 - id: sca
-  uses: trustedoss/scan-action@v1
+  uses: trustedoss/trusca/actions/scan@v0.22.4
   with:
     api-url: https://trustedoss.example.com
     api-key: ${{ secrets.TRUSTEDOSS_API_KEY }}
@@ -142,11 +142,11 @@ visible in the workflow log for debugging.)
 
 ### 3. Pin the action version
 
-The example above uses `@v1`, which floats with patch and minor releases. For
-maximum reproducibility, pin a commit SHA:
+The examples above name a release tag. A tag can be moved or deleted, so pin
+the commit itself for maximum reproducibility:
 
 ```yaml
-- uses: trustedoss/scan-action@<full-commit-sha>
+- uses: trustedoss/trusca/actions/scan@176bc3f0632bf0cf209c443da308e3d863dfde44
 ```
 
 ---
