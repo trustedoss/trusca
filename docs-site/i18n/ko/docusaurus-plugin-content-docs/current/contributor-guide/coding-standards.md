@@ -116,7 +116,11 @@ class GateFailedProblem(Problem):
 
 - `request_id` — 인바운드 헤더 `X-Request-ID`, 또는 미들웨어가 생성한 UUIDv7.
 - `user_id`, `team_id` — 인증 미들웨어가 설정. 비인증 호출은 `None`.
-- `task_id` — Celery가 task에 설정(worker 로그).
+- `task_name`, `task_id`: worker에서 모든 task에 바인드합니다. 전에는 22개 모듈이 `task_name`을, 12개가 `task_id`를 손으로 넣었고, 둘 다 넣지 않은 열 개는 무엇이 돌았는지 로그에 남길 방법이 없었습니다.
+
+worker에서 `request_id`는 그 task를 보낸 요청의 id입니다. 디스패치 시점에 메시지에 실리고 반대편에서 `apps/backend/tasks/log_context.py`의 시그널 핸들러가 다시 바인드하므로, HTTP 요청과 그 요청이 시작한 스캔이 같은 id를 공유합니다. beat가 보내는 task는 뒤에 요청이 없어 `request_id`를 갖지 않으며, 이 부재는 그 자체로 뜻이 있어 임의의 값으로 채우지 않습니다.
+
+이 밖의 값은 task의 몫이라 task가 직접 바인드하고 해제합니다. 스캔 파이프라인의 `scan_id`, 스윕의 `dry_run`이 그렇습니다. 핸들러는 자기가 바인드한 것만 지웁니다.
 
 binder 패턴:
 
