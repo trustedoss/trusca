@@ -71,6 +71,12 @@ from sqlalchemy.dialects.postgresql import insert as pg_insert
 from core.config import kev_refresh_enabled
 from integrations.kev_feed import KevEntry, KevFeedUnavailable, fetch_kev_catalog
 from models import KevSyncState, Vulnerability
+from models.sync_state import (
+    SYNC_SKIPPED_DISABLED,
+    SYNC_SKIPPED_FEED_BELOW_SANITY_FLOOR,
+    SYNC_SKIPPED_FEED_UNAVAILABLE,
+    unexpected_reason,
+)
 from tasks.celery_app import celery_app
 
 log = structlog.get_logger("tasks.kev_catalog_refresh")
@@ -229,7 +235,7 @@ def refresh_kev_catalog(self: Any) -> dict[str, Any]:
     try:
         if not kev_refresh_enabled():
             summary["skipped"] = True
-            summary["skipped_reason"] = "disabled"
+            summary["skipped_reason"] = SYNC_SKIPPED_DISABLED
             log.info("kev_catalog_refresh_disabled")
             return summary
 
@@ -239,7 +245,7 @@ def refresh_kev_catalog(self: Any) -> dict[str, Any]:
             # Leave existing flags untouched — a transient CISA outage must
             # not mass-delist the catalog. Next daily tick retries.
             summary["skipped"] = True
-            summary["skipped_reason"] = "feed_unavailable"
+            summary["skipped_reason"] = SYNC_SKIPPED_FEED_UNAVAILABLE
             log.warning(
                 "kev_catalog_refresh_feed_unavailable",
                 error=str(exc)[:300],
@@ -253,7 +259,7 @@ def refresh_kev_catalog(self: Any) -> dict[str, Any]:
             # document must never reach the delist pass; see the constant's
             # rationale above. Same operator posture as a feed outage.
             summary["skipped"] = True
-            summary["skipped_reason"] = "feed_below_sanity_floor"
+            summary["skipped_reason"] = SYNC_SKIPPED_FEED_BELOW_SANITY_FLOOR
             log.warning(
                 "kev_catalog_refresh_feed_below_sanity_floor",
                 feed_count=len(catalog),
@@ -309,7 +315,7 @@ def refresh_kev_catalog(self: Any) -> dict[str, Any]:
         return summary
     except Exception as exc:  # noqa: BLE001 — task must not raise into the beat
         summary["skipped"] = True
-        summary["skipped_reason"] = f"unexpected:{type(exc).__name__}"
+        summary["skipped_reason"] = unexpected_reason(exc)
         summary["duration_seconds"] = time.monotonic() - started
         log.warning(
             "kev_catalog_refresh_unexpected_error",

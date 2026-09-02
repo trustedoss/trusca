@@ -51,6 +51,13 @@ from models import (
     ScanComponent,
     User,
 )
+from models.sync_state import (
+    SYNC_SKIPPED_DISABLED,
+    SYNC_SKIPPED_FEED_BELOW_SANITY_FLOOR,
+    SYNC_SKIPPED_FEED_UNAVAILABLE,
+    SYNC_SKIPPED_REFRESH_DISABLED,
+    unexpected_reason,
+)
 from services.malicious import malicious_catalog
 from tasks.celery_app import celery_app
 
@@ -120,7 +127,7 @@ def _fetch_half(summary: dict[str, Any]) -> None:
     reason that snapshot is in the repo.
     """
     if not malicious_refresh_enabled():
-        summary["skipped_reason"] = "refresh_disabled"
+        summary["skipped_reason"] = SYNC_SKIPPED_REFRESH_DISABLED
         return
 
     previous = malicious_catalog.load_index()
@@ -131,26 +138,26 @@ def _fetch_half(summary: dict[str, Any]) -> None:
 
         code = rebuild()
     except Exception as exc:  # noqa: BLE001 — a fetch failure is a degradation
-        summary["skipped_reason"] = f"unexpected:{type(exc).__name__}"
+        summary["skipped_reason"] = unexpected_reason(exc)
         log.warning("malicious_refresh_failed", error=str(exc), exc_info=True)
         return
 
     if code != 0:
         # The builder writes nothing on failure and says why on stderr; the
         # previous snapshot stays in place.
-        summary["skipped_reason"] = "feed_unavailable"
+        summary["skipped_reason"] = SYNC_SKIPPED_FEED_UNAVAILABLE
         return
 
     malicious_catalog.load_index.cache_clear()
     refreshed = malicious_catalog.load_index()
     if refreshed is None:
-        summary["skipped_reason"] = "feed_unavailable"
+        summary["skipped_reason"] = SYNC_SKIPPED_FEED_UNAVAILABLE
         return
 
     if previous_count and len(refreshed.packages) < previous_count * _SANITY_FLOOR:
         # The builder has its own floor; this one guards the case where it
         # wrote a file that nonetheless collapsed relative to what we ran on.
-        summary["skipped_reason"] = "feed_below_sanity_floor"
+        summary["skipped_reason"] = SYNC_SKIPPED_FEED_BELOW_SANITY_FLOOR
         log.warning(
             "malicious_refresh_below_floor",
             previous=previous_count,
@@ -322,7 +329,7 @@ def refresh_malicious_catalog(self: Any) -> dict[str, Any]:
     }
 
     if not malicious_enabled():
-        summary["skipped_reason"] = "disabled"
+        summary["skipped_reason"] = SYNC_SKIPPED_DISABLED
         summary["duration_seconds"] = time.monotonic() - started
         _persist_sync_state(summary)
         return summary
@@ -333,7 +340,9 @@ def refresh_malicious_catalog(self: Any) -> dict[str, Any]:
         evaluator = malicious_catalog.build_evaluator()
         index = malicious_catalog.load_index()
         if evaluator is None or index is None:
-            summary["skipped_reason"] = summary["skipped_reason"] or "feed_unavailable"
+            summary["skipped_reason"] = (
+                summary["skipped_reason"] or SYNC_SKIPPED_FEED_UNAVAILABLE
+            )
             return summary
 
         summary["snapshot_date"] = index.snapshot
@@ -375,7 +384,7 @@ def refresh_malicious_catalog(self: Any) -> dict[str, Any]:
             summary["newly_flagged"] = len(newly)
             summary["notifications_enqueued"] = _notify_newly_flagged(session, newly)
     except Exception as exc:  # noqa: BLE001 — a beat must not raise
-        summary["skipped_reason"] = f"unexpected:{type(exc).__name__}"
+        summary["skipped_reason"] = unexpected_reason(exc)
         log.warning("malicious_refresh_tick_failed", error=str(exc), exc_info=True)
     finally:
         summary["duration_seconds"] = time.monotonic() - started

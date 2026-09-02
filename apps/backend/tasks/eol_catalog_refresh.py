@@ -45,6 +45,16 @@ from sqlalchemy.dialects.postgresql import insert as pg_insert
 from core.config import eol_enabled, eol_refresh_enabled
 from integrations.eol_feed import EolFeedUnavailable, fetch_eol_dataset
 from models import ComponentVersion, EolSyncState
+from models.sync_state import (
+    SYNC_SKIPPED_DISABLED,
+    SYNC_SKIPPED_FEED_BELOW_SANITY_FLOOR,
+    SYNC_SKIPPED_FEED_UNAVAILABLE,
+    SYNC_SKIPPED_NO_DATASET,
+    SYNC_SKIPPED_NO_PRODUCTS_MAPPED,
+    SYNC_SKIPPED_REFRESH_DISABLED,
+    SYNC_SKIPPED_SNAPSHOT_TOO_LARGE,
+    unexpected_reason,
+)
 from services.eol.eol_catalog import (
     EolDataset,
     load_dataset,
@@ -181,7 +191,7 @@ def _fetch_half(summary: dict[str, Any]) -> EolDataset | None:
     """
     if not eol_refresh_enabled():
         summary["skipped"] = True
-        summary["skipped_reason"] = "refresh_disabled"
+        summary["skipped_reason"] = SYNC_SKIPPED_REFRESH_DISABLED
         return None
 
     products = [rule.product for rule in load_rules()]
@@ -189,14 +199,14 @@ def _fetch_half(summary: dict[str, Any]) -> EolDataset | None:
     products = list(dict.fromkeys(products))
     if not products:
         summary["skipped"] = True
-        summary["skipped_reason"] = "no_products_mapped"
+        summary["skipped_reason"] = SYNC_SKIPPED_NO_PRODUCTS_MAPPED
         return None
 
     try:
         result = fetch_eol_dataset(products)
     except EolFeedUnavailable as exc:
         summary["skipped"] = True
-        summary["skipped_reason"] = "feed_unavailable"
+        summary["skipped_reason"] = SYNC_SKIPPED_FEED_UNAVAILABLE
         log.warning("eol_catalog_refresh_feed_unavailable", error=str(exc)[:300])
         return None
 
@@ -206,7 +216,7 @@ def _fetch_half(summary: dict[str, Any]) -> EolDataset | None:
         # the missing products would all evaluate to "unknown" and a later
         # good sweep would churn them back. Same posture as an outage.
         summary["skipped"] = True
-        summary["skipped_reason"] = "feed_below_sanity_floor"
+        summary["skipped_reason"] = SYNC_SKIPPED_FEED_BELOW_SANITY_FLOOR
         log.warning(
             "eol_catalog_refresh_feed_below_sanity_floor",
             fetched=len(result.fetched),
@@ -221,7 +231,7 @@ def _fetch_half(summary: dict[str, Any]) -> EolDataset | None:
         # tripping it means a hostile/broken mirror. Same posture as a bad
         # sweep: last-good snapshot survives.
         summary["skipped"] = True
-        summary["skipped_reason"] = "snapshot_too_large"
+        summary["skipped_reason"] = SYNC_SKIPPED_SNAPSHOT_TOO_LARGE
         log.warning(
             "eol_catalog_refresh_snapshot_too_large",
             bytes=snapshot_bytes,
@@ -279,7 +289,7 @@ def refresh_eol_catalog(self: Any) -> dict[str, Any]:
             # Feature fully off — no fetch, no re-stamp, and the status row
             # records the disabled tick.
             summary["skipped"] = True
-            summary["skipped_reason"] = "disabled"
+            summary["skipped_reason"] = SYNC_SKIPPED_DISABLED
             log.info("eol_catalog_refresh_disabled")
             return summary
 
@@ -304,7 +314,7 @@ def refresh_eol_catalog(self: Any) -> dict[str, Any]:
                 # No usable dataset anywhere — nothing to re-stamp against.
                 if not summary["skipped"]:
                     summary["skipped"] = True
-                    summary["skipped_reason"] = "no_dataset"
+                    summary["skipped_reason"] = SYNC_SKIPPED_NO_DATASET
                 log.warning("eol_catalog_refresh_no_dataset")
                 return summary
 
@@ -382,7 +392,7 @@ def refresh_eol_catalog(self: Any) -> dict[str, Any]:
         return summary
     except Exception as exc:  # noqa: BLE001 — task must not raise into the beat
         summary["skipped"] = True
-        summary["skipped_reason"] = f"unexpected:{type(exc).__name__}"
+        summary["skipped_reason"] = unexpected_reason(exc)
         summary["duration_seconds"] = time.monotonic() - started
         log.warning("eol_catalog_refresh_unexpected_error", error=str(exc)[:300])
         return summary
