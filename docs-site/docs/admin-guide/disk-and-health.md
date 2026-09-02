@@ -46,8 +46,8 @@ Each row maps to a real probe in `services/admin_health_service.py`:
 | `redis` | `redis-cli ping`-equivalent through the asyncio client. |
 | `celery` | Celery `inspect ping` returns within the configured timeout. |
 | `disk` | Workspace volume usage compared to the warn / critical thresholds. |
-| `active_scans` | Count of scans currently in `running` state — informational, surfaces to `degraded` when the queue length crosses an internal threshold. |
-| `last_24h_errors` | Count of `ERROR`-level structured-log events in the last 24 h — informational. |
+| `active_scans` | Count of scans currently `queued` or `running`. Informational; surfaces as `degraded` when the queue length crosses an internal threshold. |
+| `last_24h_errors` | Count of scans that **failed** in the last 24 h, counted by completion time. Informational. The name is historical and does not describe what is counted. |
 
 The portal does not separately probe `backend`, `worker`, `beat`, `frontend`, or `traefik`. Their liveness is implicit: if the dashboard renders at all, the backend is up; if the `celery` row is `ok`, the worker (and the broker the worker depends on) are reachable.
 

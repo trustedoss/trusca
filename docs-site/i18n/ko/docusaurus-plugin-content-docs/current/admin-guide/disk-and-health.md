@@ -46,8 +46,8 @@ sidebar_position: 3
 | `redis` | asyncio 클라이언트를 통한 `redis-cli ping` 동등 호출. |
 | `celery` | Celery `inspect ping`이 설정 타임아웃 이내 응답. |
 | `disk` | Workspace 볼륨 사용량을 warn / critical 임계와 비교. |
-| `active_scans` | 현재 `running` 상태인 스캔 수 — 정보성, 큐 길이가 내부 임계를 넘으면 `degraded` 노출. |
-| `last_24h_errors` | 최근 24시간 동안 `ERROR` 레벨 구조화 로그 이벤트 수 — 정보성. |
+| `active_scans` | 현재 `queued` 또는 `running` 상태인 스캔 수. 정보성이며 큐 길이가 내부 임계를 넘으면 `degraded`로 표시됩니다. |
+| `last_24h_errors` | 최근 24시간 안에 종료 시각 기준으로 실패한 스캔 수. 정보성입니다. 이름은 과거 명칭이라 세는 대상과 맞지 않습니다. |
 
 포털은 `backend`, `worker`, `beat`, `frontend`, `traefik`을 별도 프로브하지 않습니다. 이들의 liveness는 암묵적입니다 — 대시보드가 렌더되면 backend 가동 중, `celery` 행이 `ok`이면 worker(와 worker가 의존하는 broker)도 도달 가능.
 
