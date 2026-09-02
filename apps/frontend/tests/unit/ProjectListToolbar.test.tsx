@@ -5,11 +5,14 @@ import { describe, expect, it, vi } from "vitest";
 import { ProjectListToolbar } from "@/features/projects/components/ProjectListToolbar";
 
 describe("ProjectListToolbar", () => {
-  function setup() {
+  function setup(
+    options: { teamOptions?: { id: string; name: string }[] } = {},
+  ) {
     const onQueryChange = vi.fn();
     const onStatusChange = vi.fn();
     const onSortChange = vi.fn();
     const onDistributionChange = vi.fn();
+    const onTeamChange = vi.fn();
     render(
       <ProjectListToolbar
         query=""
@@ -20,6 +23,9 @@ describe("ProjectListToolbar", () => {
         onSortChange={onSortChange}
         distribution={null}
         onDistributionChange={onDistributionChange}
+        teamOptions={options.teamOptions ?? []}
+        team={null}
+        onTeamChange={onTeamChange}
       />,
     );
     return {
@@ -27,6 +33,7 @@ describe("ProjectListToolbar", () => {
       onStatusChange,
       onSortChange,
       onDistributionChange,
+      onTeamChange,
     };
   }
 
@@ -93,4 +100,33 @@ describe("ProjectListToolbar", () => {
     ).toBeInTheDocument();
   });
 
+  it("hides the team filter when the page spans at most one team", () => {
+    setup({ teamOptions: [] });
+    expect(screen.queryByTestId("project-team-filter")).not.toBeInTheDocument();
+
+    setup({ teamOptions: [{ id: "t1", name: "Team A" }] });
+    expect(screen.queryByTestId("project-team-filter")).not.toBeInTheDocument();
+  });
+
+  it("offers a team option per team once the page spans more than one", async () => {
+    const { onTeamChange } = setup({
+      teamOptions: [
+        { id: "t1", name: "Team A" },
+        { id: "t2", name: "Team B" },
+      ],
+    });
+    const select = screen.getByTestId("project-team-filter");
+    expect(
+      screen.getByRole("option", { name: "Team A" }),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole("option", { name: "Team B" }),
+    ).toBeInTheDocument();
+
+    await userEvent.selectOptions(select, "t2");
+    expect(onTeamChange).toHaveBeenLastCalledWith("t2");
+
+    await userEvent.selectOptions(select, "");
+    expect(onTeamChange).toHaveBeenLastCalledWith(null);
+  });
 });

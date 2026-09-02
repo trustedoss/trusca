@@ -81,6 +81,7 @@ from models import (
 from models import (
     LicenseFinding,
     Scan,
+    Team,
     User,
     Vulnerability,
     VulnerabilityFinding,
@@ -461,6 +462,25 @@ async def _scan_counts_map(
     return out
 
 
+async def _team_name_map(
+    session: AsyncSession,
+    *,
+    projects: list[Any],
+) -> dict[uuid.UUID, str]:
+    """``{team_id: team_name}`` for the page's projects (GitLab-style row
+    breadcrumb: "{team} / {project}", see ProjectListPage). A cross-team
+    list (the super admin's, who has no home team to scope by) otherwise
+    renders every row identically; the team name is the only thing that
+    tells them apart.
+    """
+    team_ids = {p.team_id for p in projects if getattr(p, "team_id", None) is not None}
+    if not team_ids:
+        return {}
+    stmt = select(Team.id, Team.name).where(Team.id.in_(team_ids))
+    result = await session.execute(stmt)
+    return {row.id: row.name for row in result.all()}
+
+
 async def enrich_project_rows(
     session: AsyncSession,
     *,
@@ -471,8 +491,9 @@ async def enrich_project_rows(
     dict[uuid.UUID, dict[str, Any]],
     dict[uuid.UUID, dict[str, int]],
     dict[uuid.UUID, str],
+    dict[uuid.UUID, str],
 ]:
-    """Return ``(status, severity_summary, counts, license_summary, created_by_name)``.
+    """Return ``(status, severity_summary, counts, license_summary, created_by_name, team_name)``.
 
     All three maps are computed in BATCHED queries over the page's project ids —
     never per row. The caller overlays them onto each ``ProjectPublic`` row:
@@ -484,12 +505,15 @@ async def enrich_project_rows(
       - ``counts_by_project.get(p.id)`` → ``{scan_count, release_count,
         last_scan_at}`` (absent ⇒ caller defaults to ``(0, 0, None)`` — the
         project has no scans at all). W3 #30 discoverability aggregates.
+      - ``team_name_by_team.get(p.team_id)`` → ``team_name``, keyed by
+        **team_id**, not project id (a page's projects usually share teams,
+        so this is the one map the caller indexes differently).
 
     A pure read with NO auth check: the caller has already team-scoped ``projects``.
-    Returns three empty dicts for an empty page (no SQL issued).
+    Returns empty dicts for an empty page (no SQL issued).
     """
     if not projects:
-        return {}, {}, {}, {}, {}
+        return {}, {}, {}, {}, {}, {}
 
     project_ids = [p.id for p in projects]
 
@@ -507,6 +531,7 @@ async def enrich_project_rows(
     created_by_name_by_project = await _created_by_user_name_map(
         session, projects=projects
     )
+    team_name_by_team = await _team_name_map(session, projects=projects)
 
     return (
         status_by_project,
@@ -514,6 +539,7 @@ async def enrich_project_rows(
         counts_by_project,
         license_summary_by_project,
         created_by_name_by_project,
+        team_name_by_team,
     )
 
 

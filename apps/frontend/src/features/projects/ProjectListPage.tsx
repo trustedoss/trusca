@@ -183,6 +183,18 @@ function parseLicenseParam(v: string | null): LicenseFilterKey | null {
     : null;
 }
 
+/**
+ * The team filter from the URL, or null for "no filter". Unlike status /
+ * severity / license, the valid set is not fixed at build time (it is
+ * whichever teams' projects the actor can see), so this just trims blanks
+ * rather than checking membership in an enum: an id for a team no longer in
+ * the loaded page simply matches nothing, same as a stale severity value
+ * would.
+ */
+function parseTeamParam(v: string | null): string | null {
+  return v && v.trim() ? v : null;
+}
+
 export function ProjectListPage() {
   const { t } = useTranslation("projects");
   // v2.1 B5: in the read-only live demo, write actions (trigger scan, create
@@ -215,6 +227,7 @@ export function ProjectListPage() {
   const distributionFilter = parseDistributionParam(
     searchParams.get("distribution"),
   );
+  const teamFilter = parseTeamParam(searchParams.get("team"));
   const [query, setQuery] = useState(() => searchParams.get("search") ?? "");
   const [debouncedQuery, setDebouncedQuery] = useState(query);
 
@@ -259,6 +272,20 @@ export function ProjectListPage() {
           // nothing.
           if (next === null) out.delete("distribution");
           else out.set("distribution", next);
+          return out;
+        },
+        { replace: false },
+      );
+    },
+    [setSearchParams],
+  );
+  const setTeamFilter = useCallback(
+    (next: string | null) => {
+      setSearchParams(
+        (prev) => {
+          const out = new URLSearchParams(prev);
+          if (next === null) out.delete("team");
+          else out.set("team", next);
           return out;
         },
         { replace: false },
@@ -392,10 +419,28 @@ export function ProjectListPage() {
   const serverTotal = projectsQuery.data?.total ?? 0;
   const isTruncated = !projectsQuery.isLoading && serverTotal > (items?.length ?? 0);
 
+  // Teams represented on the currently loaded page: the toolbar's team
+  // filter options AND the row breadcrumb's on/off switch share this. Fewer
+  // than two teams means every row already looks the same without it, so
+  // there is nothing for either to add. Computed from `items` (pre client
+  // filter), matching how severityDistByProject/licenseDistByProject read the
+  // unfiltered page so picking a team doesn't collapse its own dropdown.
+  const teamOptions = useMemo(() => {
+    const seen = new Map<string, string>();
+    for (const p of items ?? []) {
+      if (!seen.has(p.team_id)) seen.set(p.team_id, p.team_name ?? p.team_id);
+    }
+    return Array.from(seen.entries())
+      .map(([id, name]) => ({ id, name }))
+      .sort((a, b) => a.name.localeCompare(b.name));
+  }, [items]);
+  const showTeamBreadcrumb = teamOptions.length > 1;
+
   const filteredItems = useMemo(() => {
     const source = items ?? [];
     const filtered = source.filter((project) => {
       if (!statusFilterMatches(project, statusFilter)) return false;
+      if (teamFilter !== null && project.team_id !== teamFilter) return false;
       if (severityFilter !== null) {
         const s = project.severity_summary;
         if (!s) return false;
@@ -430,7 +475,7 @@ export function ProjectListPage() {
     });
     const sorter = SORTERS[sort];
     return [...filtered].sort(sorter);
-  }, [items, statusFilter, severityFilter, licenseFilter, sort]);
+  }, [items, statusFilter, teamFilter, severityFilter, licenseFilter, sort]);
 
   // By-PROJECT axis distributions — collapse each project's worst bucket and
   // count the projects that land in each. Never-scanned projects are skipped
@@ -650,6 +695,9 @@ export function ProjectListPage() {
           onSortChange={setSort}
           distribution={distributionFilter}
           onDistributionChange={setDistributionFilter}
+          teamOptions={teamOptions}
+          team={teamFilter}
+          onTeamChange={setTeamFilter}
         />
       </div>
 
@@ -727,6 +775,7 @@ export function ProjectListPage() {
                   onScan={() => handleOpenSourceDialog(project)}
                   rowIndex={index}
                   writeDisabled={demoReadOnly}
+                  showTeamBreadcrumb={showTeamBreadcrumb}
                 />
               )}
             />
@@ -800,6 +849,13 @@ interface ProjectRowProps {
   onScan: () => void;
   rowIndex: number;
   writeDisabled?: boolean;
+  /**
+   * GitLab-style "{team} / {project}" breadcrumb (vs. a bare project name).
+   * The parent turns this on only when the loaded page spans more than one
+   * team: the super admin's cross-team view, where identically-named rows
+   * otherwise carry no clue which team they belong to.
+   */
+  showTeamBreadcrumb?: boolean;
 }
 
 function ProjectRow({
@@ -807,6 +863,7 @@ function ProjectRow({
   onScan,
   rowIndex,
   writeDisabled = false,
+  showTeamBreadcrumb = false,
 }: ProjectRowProps) {
   const { t } = useTranslation("projects");
   return (
@@ -828,10 +885,25 @@ function ProjectRow({
         <Link
           to={`/projects/${project.id}`}
           className="truncate font-medium hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
-          title={project.name}
+          title={
+            showTeamBreadcrumb && project.team_name
+              ? `${project.team_name} / ${project.name}`
+              : project.name
+          }
           data-testid="project-row-link"
           data-project-id={project.id}
         >
+          {showTeamBreadcrumb && project.team_name ? (
+            <>
+              <span
+                className="font-normal text-muted-foreground"
+                data-testid="project-row-team"
+              >
+                {project.team_name}
+              </span>
+              <span className="font-normal text-muted-foreground"> / </span>
+            </>
+          ) : null}
           {project.name}
         </Link>
         <span

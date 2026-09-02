@@ -513,6 +513,7 @@ async def stream_projects_csv(
             counts_by_project,
             license_by_project,
             created_by_name,
+            _team_name_by_team,
         ) = await enrich_project_rows(session, projects=rows)
 
         items: list[dict[str, Any]] = []

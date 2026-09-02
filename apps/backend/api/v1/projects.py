@@ -333,6 +333,7 @@ async def list_projects_endpoint(
         counts_by_project,
         license_by_project,
         created_by_name,
+        team_name_by_team,
     ) = await enrich_project_rows(session, projects=rows)
 
     items: list[ProjectPublic] = []
@@ -349,6 +350,7 @@ async def list_projects_endpoint(
             LicenseCategorySummary(**lic) if lic is not None else None
         )
         item.created_by_user_name = created_by_name.get(p.id)
+        item.team_name = team_name_by_team.get(p.team_id)
         # W3 #30 — absent ⇒ project has no scans at all; keep schema defaults
         # (0 / 0 / null) instead of overwriting with explicit zeros.
         counts = counts_by_project.get(p.id)
