@@ -90,6 +90,11 @@ def record_start(
                     started_at=datetime.now(UTC),
                 )
             )
+            # sync_session_scope does not commit on exit: the scan pipeline
+            # mixes intermediate and terminal commits, so the helper leaves
+            # the decision to the caller. Forgetting it here writes nothing
+            # and raises nothing.
+            session.commit()
     except Exception as exc:  # noqa: BLE001 - history must not fail the task
         log.warning(
             "task_run.record_start_failed", task_name=task_name, error=str(exc)
@@ -134,6 +139,7 @@ def record_finish(
                 )
                 .values(**fields)
             )
+            session.commit()
     except Exception as exc:  # noqa: BLE001 - history must not fail the task
         log.warning("task_run.record_finish_failed", error=str(exc))
 

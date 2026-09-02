@@ -21,11 +21,18 @@ from services import task_run_recorder as rec
 
 
 class _Session:
-    """Minimal stand-in for the sync session scope."""
+    """Minimal stand-in for the sync session scope.
+
+    Counts commits, because ``sync_session_scope`` does not commit on exit and
+    a recorder that forgets writes nothing while raising nothing. The first
+    version of this stub had no ``commit`` at all, so it passed against code
+    that never called one.
+    """
 
     def __init__(self) -> None:
         self.added: list[Any] = []
         self.executed: list[Any] = []
+        self.commits = 0
 
     def add(self, obj: Any) -> None:
         self.added.append(obj)
@@ -33,6 +40,9 @@ class _Session:
     def execute(self, stmt: Any) -> Any:
         self.executed.append(stmt)
         return None
+
+    def commit(self) -> None:
+        self.commits += 1
 
     def __enter__(self) -> _Session:
         return self
@@ -72,6 +82,27 @@ def test_start_writes_a_row_before_the_work_runs(session: _Session) -> None:
     assert row.request_id == "req-1"
     assert row.attempt == 1
     assert row.finished_at is None
+
+
+def test_start_commits(session: _Session) -> None:
+    """``sync_session_scope`` leaves the commit to the caller.
+
+    Its docstring says so: the scan pipeline mixes intermediate and terminal
+    commits, so the helper cannot decide. A recorder that forgets produces no
+    error, no log line and no row, which is the hardest kind of nothing to
+    notice.
+    """
+    rec.record_start(
+        task_name="t", celery_task_id="x", request_id=None, attempt=1
+    )
+
+    assert session.commits == 1
+
+
+def test_finish_commits(session: _Session) -> None:
+    rec.record_finish(celery_task_id="x", attempt=1, outcome="succeeded")
+
+    assert session.commits == 1
 
 
 def test_start_floors_the_attempt_at_one(session: _Session) -> None:
