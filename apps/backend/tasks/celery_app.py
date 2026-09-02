@@ -30,6 +30,11 @@ from celery.schedules import schedule as _schedule
 from core.config import broker_visibility_timeout_seconds, redis_url
 from core.logging import configure_logging
 
+# Importing for the side effect: the module connects the three Celery signals
+# that carry ``request_id`` from the dispatching request into the worker and
+# clear it afterwards. Nothing here calls into it.
+from tasks import log_context as _log_context  # noqa: F401
+
 # Tasks defined in this PR — listed by import path so Celery can autoload
 # them. Beat schedule entries below reference these by their ``name=`` kwargs.
 _TASK_INCLUDES = [

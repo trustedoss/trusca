@@ -116,7 +116,11 @@ Logs are JSON, one event per line. `structlog` is configured in `apps/backend/co
 
 - `request_id` — `X-Request-ID` from the inbound header, or a UUIDv7 minted by the middleware.
 - `user_id`, `team_id` — set by the auth middleware, `None` for unauthenticated calls.
-- `task_id` — set by Celery for tasks (worker logs).
+- `task_name`, `celery_task_id`: bound in the worker for every task.
+
+In a worker, `request_id` is the id of the request that dispatched the task. It is copied onto the message at dispatch and bound again on the other side by the signal handlers in `apps/backend/tasks/log_context.py`, so the HTTP request and the scan it started share one id. Tasks that beat dispatches have no request behind them and carry no `request_id`; that absence is meaningful and is not filled in with a substitute.
+
+Anything beyond those fields belongs to the task and is the task's to bind and unbind: `scan_id` in the scan pipeline, `dry_run` in the sweeps. The handlers clear only what they bound.
 
 Use the binder pattern:
 
