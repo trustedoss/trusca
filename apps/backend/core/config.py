@@ -1905,7 +1905,10 @@ def toolchain_cache_roots() -> list[str]:
         if raw is not None
         else list(_DEFAULT_TOOLCHAIN_CACHE_ROOTS)
     )
-    home = os.getenv("HOME", "/home/trustedoss")
+    # ``expanduser`` rather than ``os.getenv("HOME")``: it falls back to the
+    # password database when HOME is unset, which is the case for a container
+    # started without one, and it is not an operator-facing setting.
+    home = os.path.expanduser("~")
     return [p if os.path.isabs(p) else os.path.join(home, p) for p in parts]
 
 
