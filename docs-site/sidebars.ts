@@ -99,6 +99,7 @@ const sidebars: SidebarsConfig = {
         "ci-integration/scheduled-scans",
         "ci-integration/sbom-upload",
         "ci-integration/sbom-signature-verification",
+        "ci-integration/release-verification",
       ],
     },
     {
