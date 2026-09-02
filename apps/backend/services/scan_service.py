@@ -541,43 +541,72 @@ def _disk_hard_limit_pct() -> float:
     return disk_hard_limit_pct()
 
 
+def _guarded_paths() -> list[str]:
+    """Every filesystem a scan can fill: the workspace, plus the extras.
+
+    Read at call time (CLAUDE.md core rule #11). The rationale for the extras
+    and their default lives in ``core.config.disk_guard_extra_paths``; the
+    short version is that the workspace is routinely a network mount and the
+    toolchain caches a scan writes are not on it.
+
+    The workspace comes first so its usage is what an operator sees in the
+    common case where it is the volume under pressure.
+    """
+    from core.config import disk_guard_extra_paths
+
+    workspace = os.getenv("WORKSPACE_HOST_PATH", "/opt/trustedoss/workspace")
+    paths = [workspace]
+    for extra in disk_guard_extra_paths():
+        if extra not in paths:
+            paths.append(extra)
+    return paths
+
+
 def _check_disk_guard() -> None:
-    """Raise :class:`ScanDiskFull` if workspace volume is past the hard limit.
+    """Raise :class:`ScanDiskFull` if any guarded volume is past the hard limit.
 
     Blocking: ``os.statvfs`` is a syscall. This is the body that runs in a
     worker thread; everything on the event loop calls :func:`check_disk_guard`.
 
-    Best-effort: if statvfs fails (eg. workspace dir missing), we let the
-    scan through — the alternative (blanket 503) is worse than a scan that
-    hits a real disk error inside the worker. Operators get the warning
-    via the admin disk dashboard either way.
+    Best-effort per path: if statvfs fails (eg. the directory is missing) we
+    skip that one and keep checking the rest, then let the scan through. The
+    alternative (blanket 503) is worse than a scan that hits a real disk error
+    inside the worker. Operators get the warning via the admin disk dashboard
+    either way.
+
+    Two paths that turn out to be the same filesystem are both read rather
+    than deduplicated. ``statvfs`` carries no dependable device id, so telling
+    them apart would need a second syscall per path to buy nothing: the reads
+    are microseconds, they already run off the event loop, and the first one
+    over the limit raises regardless.
     """
-    workspace = os.getenv("WORKSPACE_HOST_PATH", "/opt/trustedoss/workspace")
-    try:
-        stat = os.statvfs(workspace)
-    except OSError as exc:
-        log.warning(
-            "scan.disk_guard_unavailable",
-            workspace=workspace,
-            error=type(exc).__name__,
-        )
-        return
-    total = stat.f_blocks * stat.f_frsize
-    free = stat.f_bavail * stat.f_frsize
-    if total <= 0:
-        return
-    used_pct = ((total - free) / total) * 100.0
     limit = _disk_hard_limit_pct()
-    if used_pct >= limit:
-        log.error(
-            "scan.disk_guard_blocked",
-            workspace=workspace,
-            used_pct=round(used_pct, 1),
-            limit_pct=limit,
-        )
-        raise ScanDiskFull(
-            f"workspace disk usage {used_pct:.1f}% >= hard limit {limit:.1f}%"
-        )
+    for path in _guarded_paths():
+        try:
+            stat = os.statvfs(path)
+        except OSError as exc:
+            log.warning(
+                "scan.disk_guard_unavailable",
+                workspace=path,
+                error=type(exc).__name__,
+            )
+            continue
+        total = stat.f_blocks * stat.f_frsize
+        free = stat.f_bavail * stat.f_frsize
+        if total <= 0:
+            continue
+        used_pct = ((total - free) / total) * 100.0
+        if used_pct >= limit:
+            log.error(
+                "scan.disk_guard_blocked",
+                workspace=path,
+                used_pct=round(used_pct, 1),
+                limit_pct=limit,
+            )
+            raise ScanDiskFull(
+                f"disk usage {used_pct:.1f}% on {path} "
+                f">= hard limit {limit:.1f}%"
+            )
 
 
 async def check_disk_guard() -> None:

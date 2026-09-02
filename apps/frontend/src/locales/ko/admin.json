@@ -243,6 +243,7 @@
       "card": {
         "workspace": "워크스페이스",
         "trivy_db": "Trivy DB 캐시",
+        "root_fs": "루트 파일시스템",
         "postgres": "PostgreSQL",
         "redis": "Redis"
       },

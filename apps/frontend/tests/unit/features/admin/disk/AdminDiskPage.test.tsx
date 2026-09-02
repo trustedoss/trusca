@@ -66,24 +66,31 @@ describe("AdminDiskPage", () => {
     mockedGet.mockReset();
   });
 
-  it("renders four cards mapped to their backend names", async () => {
+  it("renders five cards mapped to their backend names", async () => {
     mockedGet.mockResolvedValue(
       diskFixture([
         diskItem("workspace"),
         diskItem("trivy_db"),
+        diskItem("root_fs"),
         diskItem("postgres"),
         diskItem("redis"),
       ]),
     );
     renderPage();
     await waitFor(() => {
-      expect(screen.getAllByTestId("admin-disk-card")).toHaveLength(4);
+      expect(screen.getAllByTestId("admin-disk-card")).toHaveLength(5);
     });
     expect(
       document.querySelector('[data-card-name="workspace"]'),
     ).toBeInTheDocument();
     expect(
       document.querySelector('[data-card-name="postgres"]'),
+    ).toBeInTheDocument();
+    // The root filesystem is the one card that stays put when an operator
+    // moves the workspace to network storage, which is when it starts being
+    // the volume that actually fills.
+    expect(
+      document.querySelector('[data-card-name="root_fs"]'),
     ).toBeInTheDocument();
   });
 

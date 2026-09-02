@@ -243,6 +243,7 @@
       "card": {
         "workspace": "Workspace",
         "trivy_db": "Trivy DB cache",
+        "root_fs": "Root filesystem",
         "postgres": "PostgreSQL",
         "redis": "Redis"
       },

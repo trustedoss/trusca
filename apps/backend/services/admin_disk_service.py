@@ -11,6 +11,19 @@ Returns the storage footprint of the backends the operator cares about:
                      ``TRIVY_CACHE_DIR`` (M-32). Shared with the worker
                      (H-6); freshness detail lives on the admin/health
                      panel, this card covers the bytes.
+  - ``root_fs``    : the container's own root filesystem. Every card above
+                     can sit on network storage, and once the workspace does,
+                     none of them reports the volume that the toolchain
+                     caches (Maven, npm, Go, the license index, all pinned
+                     under the worker's ``HOME``) actually fill. Nothing was
+                     watching it: a 26 GB root partition reached 100% with
+                     the workspace card reporting 12%, which took the
+                     container runtime down with it. The scan disk guard
+                     grew the same blind spot at the same time; see
+                     ``core.config.disk_guard_extra_paths``, which is
+                     configurable where this card is deliberately not: the
+                     card names a fixed, always-present filesystem so the
+                     panel keeps a stable layout.
   - ``postgres``   — total PostgreSQL DB size via ``pg_database_size``.
   - ``redis``      — Redis memory usage via ``INFO memory``.
 
@@ -285,10 +298,10 @@ def _probe_redis() -> AdminDiskItem:
 
 async def get_disk_telemetry(session: AsyncSession) -> AdminDiskOut:
     """
-    Return all four storage backends' current usage in one payload.
+    Return all five storage backends' current usage in one payload.
 
-    Order is fixed (workspace → trivy_db → postgres → redis) so the UI can
-    render a stable card layout without mapping by name. Each probe is
+    Order is fixed (workspace → trivy_db → root_fs → postgres → redis) so the
+    UI can render a stable card layout without mapping by name. Each probe is
     independent — a failure in one is reported via the per-item ``error``
     field, never raised.
 
@@ -305,6 +318,11 @@ async def get_disk_telemetry(session: AsyncSession) -> AdminDiskOut:
         await asyncio.to_thread(
             _probe_filesystem, name="trivy_db", path=str(trivy_cache_dir())
         ),
+        # The filesystem every other card can be mounted away from. Fixed at
+        # ``/`` rather than read from config: this is the one volume that is
+        # always there, and a card whose path moved would take the panel's
+        # stable layout with it.
+        await asyncio.to_thread(_probe_filesystem, name="root_fs", path="/"),
         await _probe_postgres(session),
         await asyncio.to_thread(_probe_redis),
     ]
