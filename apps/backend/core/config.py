@@ -1906,6 +1906,81 @@ def workspace_orphan_max_age_seconds() -> int:
     return int(os.getenv("WORKSPACE_ORPHAN_MAX_AGE_SECONDS", "900"))
 
 
+#: Toolchain cache directories, relative to the worker's ``HOME``. These are
+#: the paths ``Dockerfile.worker`` pins its ``MAVEN_OPTS`` /
+#: ``npm_config_cache`` / ``GRADLE_USER_HOME`` / ``GOPATH`` / ``XDG_CACHE_HOME``
+#: / ``NUGET_PACKAGES`` env vars at, so that a deployment can cover every one
+#: of them by mounting a single volume at ``HOME``. Anything a scan downloads
+#: to resolve a dependency graph lands under one of these.
+_DEFAULT_TOOLCHAIN_CACHE_ROOTS = (
+    ".m2/repository",
+    ".npm",
+    ".cache",
+    ".gradle",
+    ".nuget/packages",
+    "go/pkg/mod",
+    ".bundle",
+    ".composer",
+)
+
+
+def toolchain_cache_roots() -> list[str]:
+    """Absolute paths of the caches the toolchain cache cleaner may reclaim.
+
+    Relative entries resolve against ``HOME``, which is where the worker image
+    pins every tool's cache. Override with ``TOOLCHAIN_CACHE_ROOTS``
+    (comma-separated; absolute paths allowed) when a deployment moves them.
+
+    Every path here must hold nothing but regenerable data: the cleaner
+    removes whole subtrees, and each tool is expected to re-download what it
+    needs. Do not add a directory that also holds state worth keeping.
+    """
+    raw = os.getenv("TOOLCHAIN_CACHE_ROOTS")
+    parts = (
+        [p.strip() for p in raw.split(",") if p.strip()]
+        if raw is not None
+        else list(_DEFAULT_TOOLCHAIN_CACHE_ROOTS)
+    )
+    # ``expanduser`` rather than ``os.getenv("HOME")``: it falls back to the
+    # password database when HOME is unset, which is the case for a container
+    # started without one, and it is not an operator-facing setting.
+    home = os.path.expanduser("~")
+    return [p if os.path.isabs(p) else os.path.join(home, p) for p in parts]
+
+
+def toolchain_cache_max_bytes() -> int:
+    """Total size the toolchain caches may reach before the cleaner reclaims.
+
+    A scan resolves its dependency graph for real (cdxgen shells out to mvn,
+    gradle, npm, go and dotnet), and every artifact those fetch is cached
+    under the worker's ``HOME`` so the next scan does not re-download it. That
+    is the right trade for a handful of projects and the wrong one for a
+    corpus: the caches grow with the number of *distinct dependencies* seen,
+    which has no bound short of the ecosystem itself. Measured on a real
+    corpus: 4.3 GB across two workers in 48 hours, still climbing, on a 26 GB
+    root partition it shares with Postgres.
+
+    Nothing in the product bounded it before this, on any deployment. Default
+    8 GiB. ``0`` disables the cleaner, which is the right setting only where
+    the caches have a volume of their own that nothing else competes for.
+    """
+    return _int_env("TOOLCHAIN_CACHE_MAX_BYTES", 8 * 1024**3, minimum=0)
+
+
+def toolchain_cache_idle_seconds() -> int:
+    """How long a cache must go untouched before the cleaner may reclaim it.
+
+    The cleaner removes whole cache subtrees, so it must never take one out
+    from under a scan that is mid-resolve. A cache whose newest file has not
+    changed for this long is not in use by anything running: dependency
+    resolution writes continuously while it works.
+
+    Default 900s, the same grace the workspace orphan cleaner uses for the
+    same reason. Read at call time (rule #11).
+    """
+    return _int_env("TOOLCHAIN_CACHE_IDLE_SECONDS", 900, minimum=0)
+
+
 def jsonb_row_size_limit_bytes() -> int:
     """Per-row JSON byte ceiling before truncate (I-1 guard)."""
     return int(os.getenv("JSONB_ROW_SIZE_LIMIT_BYTES", str(256 * 1024)))

@@ -68,6 +68,10 @@ _TASK_INCLUDES = [
     # PR-A1 (scan stability) — reclaim workspaces left by cancelled / killed /
     # crashed scans whose `finally: rmtree` did not run.
     "tasks.workspace_cleaner",
+    # Hold the dependency-resolution caches (Maven, npm, Go, NuGet, the
+    # license index) under a size cap. They are what makes the second scan of
+    # a dependency fast, and until this task nothing ever deleted any of it.
+    "tasks.toolchain_cache_cleaner",
     # W6-#42 — automatic vulnerability re-matching against preserved SBOMs.
     # Promotes DT's "rematch on DB update" feature to a Trivy-backed beat
     # after ADR-0001 removed DT.
@@ -190,6 +194,8 @@ def _build_beat_schedule() -> dict[str, dict[str, object]]:
       - ``trustedoss.source_archive_cleaner``       — every 6 hours
       - ``trustedoss.scan_source_cleaner``          — every 6 hours
       - ``trustedoss.workspace_cleaner``            — every 30 minutes
+      - ``trustedoss.toolchain_cache_cleaner``      : every 6 hours, once per
+        queue (each worker cleans its own cache mount)
       - ``trustedoss.backup.run``                   — daily at 00:00 UTC
       - ``trustedoss.vulnerability_rematch_enqueue`` — every 6h at :15
       - ``trustedoss.kev_catalog_refresh``          — daily at 01:45 UTC
@@ -238,6 +244,32 @@ def _build_beat_schedule() -> dict[str, dict[str, object]]:
         "workspace-cleaner-half-hourly": {
             "task": "trustedoss.workspace_cleaner",
             "schedule": _schedule(timedelta(minutes=30)),
+        },
+        # Hold the toolchain caches under their cap, every 6 hours. Not more
+        # often: the pass walks every cached artifact to size it, which is
+        # six figures of small files once a corpus has been through, and the
+        # thing it guards against is days of accumulation rather than a burst.
+        # Same cadence as the other retention sweeps for that reason.
+        #
+        # ONE ENTRY PER QUEUE, and both are required. The task reads and
+        # deletes files on the local filesystem of whichever worker executes
+        # it, and each worker has its own cache mount (see the volume
+        # declarations in docker-compose.yml). A single entry would fall
+        # through to the default queue, so worker-default would tidy itself
+        # while worker-scan -- which holds the larger cache, because it is
+        # the one resolving dependency graphs -- grew unbounded and unwatched.
+        # These are the only beat entries that pin a queue, for that reason:
+        # every other task acts on the database or the shared workspace, so
+        # it does not matter where it runs.
+        "toolchain-cache-cleaner-default-six-hourly": {
+            "task": "trustedoss.toolchain_cache_cleaner",
+            "schedule": _schedule(timedelta(hours=6)),
+            "options": {"queue": _DEFAULT_QUEUE},
+        },
+        "toolchain-cache-cleaner-scan-six-hourly": {
+            "task": "trustedoss.toolchain_cache_cleaner",
+            "schedule": _schedule(timedelta(hours=6)),
+            "options": {"queue": _SCAN_QUEUE},
         },
         # D6 (N17): hand the audit trail to the configured collector, a batch
         # at a time. Every five minutes rather than hourly because the point
