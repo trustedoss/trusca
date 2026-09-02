@@ -266,3 +266,21 @@ def test_fetch_half_rejects_an_oversized_snapshot(
     summary = _base_summary(snapshot=None)
     assert _fetch_half(summary) is None
     assert summary["skipped_reason"] == "snapshot_too_large"
+
+
+def test_fetch_half_skips_when_no_rule_maps_a_product(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """An empty ruleset means there is nothing to ask the feed about.
+
+    This is a distinct outcome from the feed being down: the deployment has
+    simply mapped no products, so a refresh has no question to ask and the
+    status row should say so rather than reporting an upstream problem.
+    """
+    monkeypatch.setenv("EOL_REFRESH_ENABLED", "true")
+    monkeypatch.setattr("tasks.eol_catalog_refresh.load_rules", list)
+
+    summary = _base_summary()
+    assert _fetch_half(summary) is None
+    assert summary["skipped"] is True
+    assert summary["skipped_reason"] == "no_products_mapped"

@@ -266,3 +266,133 @@ def test_a_flagged_package_nobody_ships_notifies_nobody(
 
     assert mod._notify_newly_flagged(_Session([]), [("pkg:npm/x@1.0.0", None)]) == 0
 
+
+
+# ---------------------------------------------------------------------------
+# _fetch_half failure paths
+#
+# Four ways the refresh gives up, each leaving the previous snapshot in place
+# and recording why. None of them was covered before: the tests above drive
+# the task body, which stubs the fetch out entirely. These call the fetch half
+# directly, which is also the only way to reach the two "the builder said it
+# worked but the result is unusable" branches.
+# ---------------------------------------------------------------------------
+
+
+def _fetch_summary() -> dict[str, Any]:
+    return {"skipped_reason": None}
+
+
+def _stub_load_index(*results: Any) -> Any:
+    """Stand-in for the cached ``load_index``, returning *results* in order.
+
+    It has to carry ``cache_clear`` because the fetch half calls that before
+    re-reading, and a plain function does not have one.
+    """
+    remaining = iter(results)
+
+    def _load() -> Any:
+        return next(remaining)
+
+    _load.cache_clear = lambda: None  # type: ignore[attr-defined]
+    return _load
+
+
+def test_fetch_half_records_the_builder_crashing(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """An exception out of the builder names the class, not the message.
+
+    The message can carry a feed URL with credentials in it, and the column
+    is 64 characters wide.
+    """
+    import tasks.malicious_catalog_refresh as mod
+
+    monkeypatch.setenv("MALICIOUS_REFRESH_ENABLED", "true")
+
+    def _boom() -> int:
+        raise TimeoutError("https://user:secret@feed.example/all.json timed out")
+
+    monkeypatch.setitem(
+        __import__("sys").modules,
+        "scripts.refresh_malicious_snapshot",
+        type("_M", (), {"main": staticmethod(_boom)}),
+    )
+
+    summary = _fetch_summary()
+    mod._fetch_half(summary)
+
+    assert summary["skipped_reason"] == "unexpected:TimeoutError"
+    assert "secret" not in summary["skipped_reason"]
+
+
+def test_fetch_half_records_a_nonzero_builder_exit(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The builder writes nothing on failure, so the old snapshot survives."""
+    import tasks.malicious_catalog_refresh as mod
+
+    monkeypatch.setenv("MALICIOUS_REFRESH_ENABLED", "true")
+    monkeypatch.setitem(
+        __import__("sys").modules,
+        "scripts.refresh_malicious_snapshot",
+        type("_M", (), {"main": staticmethod(lambda: 1)}),
+    )
+
+    summary = _fetch_summary()
+    mod._fetch_half(summary)
+
+    assert summary["skipped_reason"] == "feed_unavailable"
+
+
+def test_fetch_half_records_an_unloadable_result(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Exit 0 but nothing loads back. Treated as a failed fetch, not as empty.
+
+    Reading it as "the catalog is now empty" would clear every existing
+    verdict, so the distinction matters.
+    """
+    import tasks.malicious_catalog_refresh as mod
+    from services.malicious import malicious_catalog
+
+    monkeypatch.setenv("MALICIOUS_REFRESH_ENABLED", "true")
+    monkeypatch.setitem(
+        __import__("sys").modules,
+        "scripts.refresh_malicious_snapshot",
+        type("_M", (), {"main": staticmethod(lambda: 0)}),
+    )
+    monkeypatch.setattr(malicious_catalog, "load_index", _stub_load_index(None, None))
+
+    summary = _fetch_summary()
+    mod._fetch_half(summary)
+
+    assert summary["skipped_reason"] == "feed_unavailable"
+
+
+def test_fetch_half_rejects_a_collapsed_snapshot(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A snapshot that lost more than half its packages is not accepted.
+
+    The builder has its own floor; this one catches the case where it wrote a
+    file that still collapsed relative to what we were running on.
+    """
+    import tasks.malicious_catalog_refresh as mod
+    from services.malicious import malicious_catalog
+
+    monkeypatch.setenv("MALICIOUS_REFRESH_ENABLED", "true")
+    monkeypatch.setitem(
+        __import__("sys").modules,
+        "scripts.refresh_malicious_snapshot",
+        type("_M", (), {"main": staticmethod(lambda: 0)}),
+    )
+
+    before = type("_I", (), {"packages": {f"p{i}": {} for i in range(100)}})()
+    after = type("_I", (), {"packages": {f"p{i}": {} for i in range(10)}})()
+    monkeypatch.setattr(malicious_catalog, "load_index", _stub_load_index(before, after))
+
+    summary = _fetch_summary()
+    mod._fetch_half(summary)
+
+    assert summary["skipped_reason"] == "feed_below_sanity_floor"
