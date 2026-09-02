@@ -49,6 +49,11 @@ x-backend-env: &backend-env
   # Disable slowapi 5/min login limiter when set (e2e CI only). Empty default
   # keeps the limiter enabled in dev / prod. See core/ratelimit.py.
   RATELIMIT_DISABLED: ${RATELIMIT_DISABLED:-}
+  # Asking to use a package before a scan finds it (C8 phase 3). Off by
+  # default, same as the backend's own default; the e2e job turns this on
+  # for its own compose stack only (ci.yml), so ui-gates' baselines never
+  # see the extra sidebar entry this flag draws.
+  INTAKE_REQUESTS_ENABLED: ${INTAKE_REQUESTS_ENABLED:-false}
   # Marathon bundle 3 (D2) — tasks.backup now drives pg_dump / psql
   # directly via DATABASE_URL using postgresql-client-17 baked into the
   # backend + worker images. The legacy script-delegation env var
