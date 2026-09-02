@@ -9,7 +9,7 @@ body:
         Thanks for proposing a new feature.
 
         Before submitting, please:
-        - Search [existing issues](https://github.com/trustedoss/trusca/issues?q=is%3Aissue) and [discussions](https://github.com/trustedoss/trusca/discussions) to avoid duplicates.
+        - Search [existing issues](https://github.com/trustedoss/trusca/issues?q=is%3Aissue) to avoid duplicates.
         - Check the [v2 execution plan](https://github.com/trustedoss/trusca/blob/main/docs/v2-execution-plan.md) — your idea may already be on the roadmap.
 
   - type: textarea
@@ -106,7 +106,7 @@ body:
     attributes:
       label: Pre-flight checks
       options:
-        - label: I searched existing issues and discussions for duplicates.
+        - label: I searched existing issues for duplicates.
           required: true
         - label: I checked the v2 execution plan and confirmed this is not already roadmapped (or noted where it diverges).
           required: true

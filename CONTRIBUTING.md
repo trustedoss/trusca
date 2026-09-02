@@ -27,7 +27,7 @@ This document describes how to set up the project locally, the conventions we fo
 
 ## Code of Conduct
 
-This project adheres to the [Contributor Covenant 2.1](CODE_OF_CONDUCT.md). By participating, you agree to uphold its terms. Report unacceptable behavior to **conduct@trustedoss.io**.
+This project adheres to the [Contributor Covenant 2.1](CODE_OF_CONDUCT.md). By participating, you agree to uphold its terms. See [Reporting](CODE_OF_CONDUCT.md#reporting) for how to raise unacceptable behavior privately.
 
 ---
 
@@ -156,7 +156,7 @@ Why:
 - Tests document behavior. Reading the harness tells you what the feature is supposed to do.
 - Reviewers can read tests first to understand the change.
 
-If you add a feature with no harness, the PR is incomplete. See `apps/frontend/tests/_harness/PortalPage.ts` and `apps/backend/tests/_harness/` (forthcoming) for examples.
+If you add a feature with no harness, the PR is incomplete. See `apps/frontend/tests/_harness/PortalPage.ts` for the UI pattern, and the shared fixtures in `apps/backend/tests/conftest.py` for the API side.
 
 ---
 
