@@ -1132,6 +1132,11 @@ jobs:
       # dependent services (celery-worker, frontend) never reach
       # `service_healthy`.
       AUTO_MIGRATE: "true"
+      # C8 phase 3: external_package_lookup.spec.ts drives the intake
+      # prefill flow, which needs the queue turned on. Scoped to this job's
+      # own compose stack only; ui-gates.yml is a separate workflow and
+      # never sees this var, so its baselines stay unaffected.
+      INTAKE_REQUESTS_ENABLED: "true"
     steps:
       - uses: actions/checkout@v4
 

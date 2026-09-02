@@ -58,13 +58,13 @@ function row(overrides: Record<string, unknown> = {}) {
   };
 }
 
-function renderPage() {
+function renderPage(initialUrl = "/intake") {
   const client = new QueryClient({
     defaultOptions: { queries: { retry: false } },
   });
   return render(
     <QueryClientProvider client={client}>
-      <MemoryRouter>
+      <MemoryRouter initialEntries={[initialUrl]}>
         <IntakeRequestsPage />
       </MemoryRouter>
     </QueryClientProvider>,
@@ -148,5 +148,38 @@ describe("IntakeRequestsPage", () => {
     await screen.findByTestId("intake-row-r-1");
     expect(screen.queryByTestId("intake-approve-r-1")).not.toBeInTheDocument();
     expect(screen.queryByTestId("intake-reject-r-1")).not.toBeInTheDocument();
+  });
+
+  it("prefills the purl field from the package lookup page's CTA", async () => {
+    useDeploymentFeatures.mockReturnValue({ intake_requests: true });
+    listIntakeRequests.mockResolvedValue({ items: [], total: 0 });
+
+    renderPage("/intake?purl=pkg%3Anpm%2Flodash");
+
+    expect(await screen.findByTestId("intake-purl")).toHaveValue("pkg:npm/lodash");
+  });
+
+  it("still prefills a purl carrying a stray version, so the request is not silently dropped", async () => {
+    // A versioned purl breaks the later scan-carries-the-answer match
+    // (component_intake_service compares the versionless form), but that is
+    // a submission-time concern, not a reason to hide what was passed in --
+    // the field stays editable either way.
+    useDeploymentFeatures.mockReturnValue({ intake_requests: true });
+    listIntakeRequests.mockResolvedValue({ items: [], total: 0 });
+
+    renderPage("/intake?purl=pkg%3Anpm%2Flodash%404.17.21");
+
+    expect(await screen.findByTestId("intake-purl")).toHaveValue(
+      "pkg:npm/lodash@4.17.21",
+    );
+  });
+
+  it("leaves the purl field empty with no query param", async () => {
+    useDeploymentFeatures.mockReturnValue({ intake_requests: true });
+    listIntakeRequests.mockResolvedValue({ items: [], total: 0 });
+
+    renderPage();
+
+    expect(await screen.findByTestId("intake-purl")).toHaveValue("");
   });
 });

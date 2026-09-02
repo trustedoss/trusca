@@ -14,6 +14,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { ClipboardList } from "lucide-react";
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
+import { useSearchParams } from "react-router-dom";
 
 import { EmptyState } from "@/components/EmptyState";
 import { PageHeader } from "@/components/PageHeader";
@@ -44,8 +45,13 @@ export function IntakeRequestsPage() {
   const enabled = features.intake_requests === true;
   const activeTeamId = useUIStore((s) => s.activeTeamId);
 
+  const [searchParams] = useSearchParams();
   const [projectId, setProjectId] = useState("");
-  const [purl, setPurl] = useState("");
+  // Carried from the package lookup page's "ask about this package" CTA
+  // (`?purl=<purl>`). The lookup page always sends a versionless purl, but
+  // this field stays free text either way, so somebody arriving with a
+  // stray `@version` on it can still edit it before asking.
+  const [purl, setPurl] = useState(() => searchParams.get("purl") ?? "");
   const [justification, setJustification] = useState("");
 
   const query = useQuery<IntakeRequestListOut, Error>({
