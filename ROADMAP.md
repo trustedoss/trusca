@@ -14,7 +14,7 @@ Legend: ☐ planned · ◐ in progress
 
 ---
 
-## Recently shipped (v0.11.0 – v0.20.1)
+## Recently shipped (v0.11.0 - v0.22.4)
 
 Highlights only, and only what closes a roadmap line — the itemised history,
 including the v0.10.0 foundation (Trivy as the single matching engine, VEX,
@@ -38,6 +38,11 @@ Align with CISA 2025 / SLSA, cut noise further.
 
 - ☐ **Reachability**-based prioritization (best-effort, rolled out per language)
 - ☐ **Declared-vs-actual SBOM drift** — diff an uploaded SBOM against TRUSCA's own scan of the same ref and report what each side is missing. The conformance score grades whether the document's fields are filled in; this answers whether the document matches the code.
+- ☐ **Signed releases of TRUSCA itself**: signed git tags, cosign-signed container images, and a provenance attestation alongside the SBOM a release already attaches. This is about the artifacts we ship, not about the scans TRUSCA runs: signing the SBOM of a *scanned* project already works.
+
+## Documentation
+
+- ☐ **Hardening guide**: one page collecting the settings an operator should change before exposing a deployment, instead of the short list in [`SECURITY.md`](SECURITY.md) pointing at scattered references.
 
 ## Threat Detection & Deeper Prioritization
 
@@ -57,8 +62,8 @@ Close the biggest remaining gaps vs commercial SCA, reusing best-of-breed open s
 
 ## Backlog (not yet scheduled)
 
-SSO / OIDC, native Jenkins plugin, per-project / per-scan exclude paths (ignore generated / test / vendored trees in first-party license detection), a daily rather than weekly malicious re-check (the re-stamp half needs no network, and a package can be flagged hours after it ships).
+Native Jenkins plugin, per-project / per-scan exclude paths (ignore generated / test / vendored trees in first-party license detection), a daily rather than weekly malicious re-check (the re-stamp half needs no network, and a package can be flagged hours after it ships).
 
 ---
 
-Roadmap items are proposals, not commitments — dates are deliberately omitted. Feedback and contributions are welcome: open a [discussion](https://github.com/trustedoss/trusca/discussions) or an issue referencing the relevant section.
+Roadmap items are proposals, not commitments, and dates are deliberately omitted. Feedback and contributions are welcome: open an [issue](https://github.com/trustedoss/trusca/issues) referencing the relevant section.
