@@ -68,6 +68,10 @@ _TASK_INCLUDES = [
     # PR-A1 (scan stability) — reclaim workspaces left by cancelled / killed /
     # crashed scans whose `finally: rmtree` did not run.
     "tasks.workspace_cleaner",
+    # Hold the dependency-resolution caches (Maven, npm, Go, NuGet, the
+    # license index) under a size cap. They are what makes the second scan of
+    # a dependency fast, and until this task nothing ever deleted any of it.
+    "tasks.toolchain_cache_cleaner",
     # W6-#42 — automatic vulnerability re-matching against preserved SBOMs.
     # Promotes DT's "rematch on DB update" feature to a Trivy-backed beat
     # after ADR-0001 removed DT.
@@ -190,6 +194,7 @@ def _build_beat_schedule() -> dict[str, dict[str, object]]:
       - ``trustedoss.source_archive_cleaner``       — every 6 hours
       - ``trustedoss.scan_source_cleaner``          — every 6 hours
       - ``trustedoss.workspace_cleaner``            — every 30 minutes
+      - ``trustedoss.toolchain_cache_cleaner``      : every 6 hours
       - ``trustedoss.backup.run``                   — daily at 00:00 UTC
       - ``trustedoss.vulnerability_rematch_enqueue`` — every 6h at :15
       - ``trustedoss.kev_catalog_refresh``          — daily at 01:45 UTC
@@ -238,6 +243,15 @@ def _build_beat_schedule() -> dict[str, dict[str, object]]:
         "workspace-cleaner-half-hourly": {
             "task": "trustedoss.workspace_cleaner",
             "schedule": _schedule(timedelta(minutes=30)),
+        },
+        # Hold the toolchain caches under their cap, every 6 hours. Not more
+        # often: the pass walks every cached artifact to size it, which is
+        # six figures of small files once a corpus has been through, and the
+        # thing it guards against is days of accumulation rather than a burst.
+        # Same cadence as the other retention sweeps for that reason.
+        "toolchain-cache-cleaner-six-hourly": {
+            "task": "trustedoss.toolchain_cache_cleaner",
+            "schedule": _schedule(timedelta(hours=6)),
         },
         # D6 (N17): hand the audit trail to the configured collector, a batch
         # at a time. Every five minutes rather than hourly because the point

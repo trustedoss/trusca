@@ -546,6 +546,10 @@ services:
       # reader uses. Set TRIVY_CACHE_DIR=/var/lib/trivy in .env to point
       # trivy at this mount.
       - trivy-cache:/var/lib/trivy
+      # Every toolchain cache in one mount. See the volume declaration at the
+      # bottom of this file for why the image pins them all under HOME and
+      # what goes wrong when nothing is mounted here.
+      - worker-scan-cache:/home/trustedoss
     depends_on:
       postgres:
         condition: service_healthy
@@ -630,6 +634,11 @@ services:
       # a scan-pipeline task) and both read/write the Trivy DB cache, so this
       # mount is required here too, not just on worker-scan.
       - trivy-cache:/var/lib/trivy
+      # This service resolves dependency graphs too (the rematch task reads
+      # preserved SBOMs through the same toolchain), so it fills the same
+      # caches and needs the same mount. Measured: 2.0 GB of Maven and npm in
+      # its writable layer over 48 hours, against worker-scan's 2.3 GB.
+      - worker-default-cache:/home/trustedoss
     depends_on:
       postgres:
         condition: service_healthy
@@ -768,3 +777,23 @@ volumes:
   # can bind-mount a host directory instead — see
   # docs-site/docs/admin-guide/vulnerability-data.md §"Air-gapped operation".
   trivy-cache:
+  # The toolchain caches (Maven, npm, Go, NuGet, Gradle, the license index).
+  # ``Dockerfile.worker`` pins every tool's cache under the worker's HOME
+  # precisely so one mount covers all of them, and the Helm chart already
+  # mounts an emptyDir there. Compose did not, so on every compose deployment
+  # the caches went to the container's writable layer instead: invisible to
+  # ``docker system df``, impossible to clear without recreating the
+  # container (which kills whatever scan is running), and growing with every
+  # distinct dependency the corpus has ever pulled. 4.3 GB in 48 hours on a
+  # 26 GB root partition, measured.
+  #
+  # One volume per worker rather than one shared between them, matching the
+  # chart's per-pod emptyDir: Maven writes into its local repository without
+  # locking, so two containers sharing one would be a new race for the sake
+  # of a cache-hit rate neither of them was getting before.
+  #
+  # Size is held by ``trustedoss.toolchain_cache_cleaner`` (beat, 6-hourly,
+  # TOOLCHAIN_CACHE_MAX_BYTES). A deployment that would rather give the
+  # caches their own disk can redirect these two to a bind mount.
+  worker-scan-cache:
+  worker-default-cache:
