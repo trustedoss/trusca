@@ -2,6 +2,9 @@
   "page": {
     "title": "Search"
   },
+  "advisory": {
+    "cvss": "CVSS {{score}}"
+  },
   "tab": {
     "projects": "Projects",
     "components": "Components",

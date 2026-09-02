@@ -1,0 +1,43 @@
+{
+  "title": "패키지 조회",
+  "subtitle": "패키지를 끌어오기 전에 외부 카탈로그에서 미리 살펴보고, 사내에서 이미 쓰고 있는지 확인합니다.",
+  "field": {
+    "ecosystem": "생태계",
+    "name": "패키지 이름",
+    "version_seen": "버전 {{version}}",
+    "homepage": "홈페이지",
+    "source": "소스 저장소"
+  },
+  "ecosystem": {
+    "npm": "npm",
+    "pypi": "PyPI",
+    "maven": "Maven",
+    "go": "Go",
+    "cargo": "crates.io",
+    "nuget": "NuGet"
+  },
+  "submit": "조회",
+  "not_found": {
+    "title": "그 이름으로 찾지 못했습니다",
+    "description": "생태계와 정확한 패키지 이름을 확인하세요. 외부 카탈로그는 정확히 일치하는 것만 찾습니다."
+  },
+  "advisories": {
+    "none": "알려진 보안 권고가 없습니다",
+    "count": "알려진 보안 권고 {{count}}건",
+    "count_other": "알려진 보안 권고 {{count}}건",
+    "more": "외 {{count}}건 더"
+  },
+  "internal_usage": {
+    "title": "사내 사용 현황",
+    "none": "사내에서 아직 쓰지 않습니다.",
+    "version": "버전 {{version}}"
+  },
+  "intake_cta": "이 패키지 사용 신청하기",
+  "disabled": {
+    "title": "이 배포는 외부 카탈로그 조회를 쓰지 않습니다",
+    "description": "관리자가 EXTERNAL_PACKAGE_LOOKUP_ENABLED를 켜면 이 화면을 씁니다."
+  },
+  "errors": {
+    "lookup_failed": "패키지를 조회하지 못했습니다."
+  }
+}

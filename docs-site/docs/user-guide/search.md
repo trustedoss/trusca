@@ -41,6 +41,10 @@ The total shown above the results, and every facet chip's count, stop counting p
 
 This keeps a broad, popular term (a package name that shows up in most of your projects, a CVE that affects half the catalog) cheap to search: the database stops counting once it knows there are at least 1,000 matches instead of tallying every one of them on every keystroke. Pagination follows the same floor: once you have paged through as many results as the capped total accounts for, **Next** stops offering another page even if more results exist past that point.
 
+## External advisory details
+
+On the Vulnerabilities tab, typing a term shaped like a CVE (`CVE-2021-23337`) or GHSA id shows an extra card above the results: the advisory's title, CVSS score and vector, and any other ids it goes by. This comes from the external catalog, not your scans, so it appears whether or not any project here has a match; it answers "what is this," while the results table below it answers "are we affected." See [Package lookup](./package-lookup.md) for the same catalog used the other way, before a package is pulled in.
+
 ## Saving a search
 
 **Save search** parks the current query under a name. Saved searches appear on your dashboard; clicking one restores exactly the filters that were applied when you saved it.

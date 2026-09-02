@@ -44,6 +44,7 @@ import {
   KeyRound,
   ListChecks,
   Package,
+  PackageSearch,
   Scale,
   ScanLine,
   Search as SearchIcon,
@@ -391,6 +392,17 @@ export function CommandMenu({ open, onOpenChange }: CommandMenuProps) {
     navigate(debounced ? `/search?q=${encodeURIComponent(debounced)}` : "/search");
   }
 
+  // Same standing-door rationale as handleOpenSearchPage, for the external
+  // catalog lookup. Only the name field is prefilled: the lookup is a
+  // deps.dev exact match, so guessing an ecosystem from a free-text term
+  // would just as often be wrong as right.
+  function handleOpenPackageLookup(): void {
+    onOpenChange(false);
+    navigate(
+      debounced ? `/packages/lookup?name=${encodeURIComponent(debounced)}` : "/packages/lookup",
+    );
+  }
+
   // Deep-link into the owning project's Components tab, pre-filtered by the
   // component name. The tab reads its own `?components_search=` key into the
   // free-text filter (S1-5 gave each tab a distinct param so a term typed on
@@ -578,6 +590,18 @@ export function CommandMenu({ open, onOpenChange }: CommandMenuProps) {
               {t("command_menu.open_search_hint")}
             </span>
             <CommandShortcut className="font-mono">/search</CommandShortcut>
+          </CommandItem>
+          <CommandItem
+            value={`package-lookup ${t("command_menu.open_package_lookup")} ${debounced}`}
+            onSelect={handleOpenPackageLookup}
+            data-testid="command-menu-open-package-lookup"
+          >
+            <PackageSearch className="h-4 w-4 text-muted-foreground" aria-hidden />
+            <span>{t("command_menu.open_package_lookup")}</span>
+            <span className="ml-2 truncate text-xs text-muted-foreground">
+              {t("command_menu.open_package_lookup_hint")}
+            </span>
+            <CommandShortcut className="font-mono">/packages/lookup</CommandShortcut>
           </CommandItem>
           {visibleRoutes.map((route) => {
             const Icon = route.icon;

@@ -1,0 +1,43 @@
+{
+  "title": "Package lookup",
+  "subtitle": "Look a package up on the external catalog before it is pulled in, and see whether it is already in use internally.",
+  "field": {
+    "ecosystem": "Ecosystem",
+    "name": "Package name",
+    "version_seen": "version {{version}}",
+    "homepage": "Homepage",
+    "source": "Source repository"
+  },
+  "ecosystem": {
+    "npm": "npm",
+    "pypi": "PyPI",
+    "maven": "Maven",
+    "go": "Go",
+    "cargo": "crates.io",
+    "nuget": "NuGet"
+  },
+  "submit": "Look up",
+  "not_found": {
+    "title": "Nothing found under that name",
+    "description": "Check the ecosystem and the exact package name. The external catalog only answers exact matches."
+  },
+  "advisories": {
+    "none": "No known advisories",
+    "count": "{{count}} known advisory",
+    "count_other": "{{count}} known advisories",
+    "more": "and {{count}} more"
+  },
+  "internal_usage": {
+    "title": "Internal usage",
+    "none": "Not used internally yet.",
+    "version": "version {{version}}"
+  },
+  "intake_cta": "Ask about this package",
+  "disabled": {
+    "title": "This deployment does not look packages up externally",
+    "description": "An administrator can turn this on by setting EXTERNAL_PACKAGE_LOOKUP_ENABLED."
+  },
+  "errors": {
+    "lookup_failed": "The package could not be looked up."
+  }
+}

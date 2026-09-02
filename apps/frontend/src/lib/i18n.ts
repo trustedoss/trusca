@@ -13,6 +13,7 @@ import enIntake from "@/locales/en/intake.json";
 import enAuth from "@/locales/en/auth.json";
 import enCommon from "@/locales/en/common.json";
 import enDashboard from "@/locales/en/dashboard.json";
+import enExternalPackageLookup from "@/locales/en/external_package_lookup.json";
 import enIntegrations from "@/locales/en/integrations.json";
 import enInventory from "@/locales/en/inventory.json";
 import enNotifications from "@/locales/en/notifications.json";
@@ -30,6 +31,7 @@ import koIntake from "@/locales/ko/intake.json";
 import koAuth from "@/locales/ko/auth.json";
 import koCommon from "@/locales/ko/common.json";
 import koDashboard from "@/locales/ko/dashboard.json";
+import koExternalPackageLookup from "@/locales/ko/external_package_lookup.json";
 import koIntegrations from "@/locales/ko/integrations.json";
 import koInventory from "@/locales/ko/inventory.json";
 import koNotifications from "@/locales/ko/notifications.json";
@@ -61,6 +63,7 @@ void i18n
         approvals: enApprovals,
         intake: enIntake,
         dashboard: enDashboard,
+        external_package_lookup: enExternalPackageLookup,
         integrations: enIntegrations,
       inventory: enInventory,
         notifications: enNotifications,
@@ -80,6 +83,7 @@ void i18n
         approvals: koApprovals,
         intake: koIntake,
         dashboard: koDashboard,
+        external_package_lookup: koExternalPackageLookup,
         integrations: koIntegrations,
       inventory: koInventory,
         notifications: koNotifications,
@@ -102,6 +106,7 @@ void i18n
       "approvals",
       "intake",
       "dashboard",
+      "external_package_lookup",
       "integrations",
     "inventory",
       "notifications",

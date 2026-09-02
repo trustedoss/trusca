@@ -31,6 +31,7 @@ const sidebars: SidebarsConfig = {
         "user-guide/components-and-licenses",
         "user-guide/inventory",
         "user-guide/search",
+        "user-guide/package-lookup",
         "user-guide/vulnerabilities",
         "user-guide/vex",
         "user-guide/triage",

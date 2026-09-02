@@ -106,7 +106,9 @@
     },
     "see_all": "See all results",
     "open_search": "Open full search",
-    "open_search_hint": "Page, filter and save results"
+    "open_search_hint": "Page, filter and save results",
+    "open_package_lookup": "Look up a package externally",
+    "open_package_lookup_hint": "Check a package before it is pulled in"
   },
   "errors": {
     "request_failed": "The request failed. Please try again.",

@@ -106,7 +106,9 @@
     },
     "see_all": "모든 결과 보기",
     "open_search": "검색 화면 열기",
-    "open_search_hint": "쪽 넘기기·필터·저장까지"
+    "open_search_hint": "쪽 넘기기·필터·저장까지",
+    "open_package_lookup": "외부에서 패키지 조회",
+    "open_package_lookup_hint": "끌어오기 전에 미리 확인"
   },
   "errors": {
     "unauthorized": "세션이 종료되었습니다. 다시 로그인해 주세요.",

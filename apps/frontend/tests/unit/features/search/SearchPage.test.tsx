@@ -30,12 +30,31 @@ vi.mock("@/features/search/api/searchResultsApi", async () => {
   };
 });
 
+vi.mock("@/features/search/api/externalAdvisoryApi", async () => {
+  const actual = await vi.importActual<
+    typeof import("@/features/search/api/externalAdvisoryApi")
+  >("@/features/search/api/externalAdvisoryApi");
+  return {
+    ...actual,
+    lookupExternalAdvisory: vi.fn(),
+  };
+});
+
+const useDeploymentFeatures = vi.fn();
+vi.mock("@/features/about/api/useDeploymentFeatures", () => ({
+  useDeploymentFeatures: () => useDeploymentFeatures(),
+}));
+
 const { fetchSearchResults, listSavedSearches, createSavedSearch } =
   await import("@/features/search/api/searchResultsApi");
+const { lookupExternalAdvisory } = await import(
+  "@/features/search/api/externalAdvisoryApi"
+);
 
 const mockedFetch = vi.mocked(fetchSearchResults);
 const mockedSaved = vi.mocked(listSavedSearches);
 const mockedCreate = vi.mocked(createSavedSearch);
+const mockedAdvisory = vi.mocked(lookupExternalAdvisory);
 
 function emptyPage(overrides: Partial<SearchResultsPage> = {}): SearchResultsPage {
   return {
@@ -88,6 +107,15 @@ beforeEach(() => {
     kind: "components",
     params: {},
     created_at: new Date().toISOString(),
+  });
+  useDeploymentFeatures.mockReturnValue({ external_package_lookup: true });
+  mockedAdvisory.mockResolvedValue({
+    advisory_id: "not-called",
+    found: false,
+    title: null,
+    cvss3_score: null,
+    cvss3_vector: null,
+    aliases: [],
   });
 });
 
@@ -409,6 +437,72 @@ describe("SearchPage", () => {
     renderPage();
     await waitFor(() => {
       expect(screen.getByTestId("search-error")).toBeInTheDocument();
+    });
+  });
+
+  describe("external advisory card", () => {
+    it("only calls the external advisory API for a CVE-shaped term on the vulnerabilities tab", async () => {
+      mockedFetch.mockResolvedValue(emptyPage({ kind: "vulnerabilities", query: "lodash" }));
+      renderPage("/search?kind=vulnerabilities&q=lodash");
+
+      await waitFor(() => {
+        expect(mockedFetch).toHaveBeenCalled();
+      });
+      expect(mockedAdvisory).not.toHaveBeenCalled();
+    });
+
+    it("does not call the external advisory API outside the vulnerabilities tab, even for a CVE-shaped term", async () => {
+      mockedFetch.mockResolvedValue(
+        emptyPage({ kind: "components", query: "CVE-2021-23337" }),
+      );
+      renderPage("/search?kind=components&q=CVE-2021-23337");
+
+      await waitFor(() => {
+        expect(mockedFetch).toHaveBeenCalled();
+      });
+      expect(mockedAdvisory).not.toHaveBeenCalled();
+    });
+
+    it("renders the advisory card when the term is CVE-shaped and the advisory is found", async () => {
+      mockedFetch.mockResolvedValue(
+        emptyPage({ kind: "vulnerabilities", query: "CVE-2021-23337" }),
+      );
+      mockedAdvisory.mockResolvedValue({
+        advisory_id: "CVE-2021-23337",
+        found: true,
+        title: "lodash command injection",
+        cvss3_score: 7.2,
+        cvss3_vector: "CVSS:3.1/AV:N/AC:L/PR:H/UI:N/S:U/C:H/I:H/A:H",
+        aliases: ["GHSA-35jh-r3h4-6jhm"],
+      });
+      renderPage("/search?kind=vulnerabilities&q=CVE-2021-23337");
+
+      await waitFor(() => {
+        expect(mockedAdvisory).toHaveBeenCalledWith("CVE-2021-23337");
+      });
+      const card = await screen.findByTestId("search-advisory-card");
+      expect(within(card).getByText("lodash command injection")).toBeInTheDocument();
+      expect(within(card).getByText("GHSA-35jh-r3h4-6jhm")).toBeInTheDocument();
+    });
+
+    it("renders no card when the advisory is not found", async () => {
+      mockedFetch.mockResolvedValue(
+        emptyPage({ kind: "vulnerabilities", query: "CVE-9999-99999" }),
+      );
+      mockedAdvisory.mockResolvedValue({
+        advisory_id: "CVE-9999-99999",
+        found: false,
+        title: null,
+        cvss3_score: null,
+        cvss3_vector: null,
+        aliases: [],
+      });
+      renderPage("/search?kind=vulnerabilities&q=CVE-9999-99999");
+
+      await waitFor(() => {
+        expect(mockedAdvisory).toHaveBeenCalled();
+      });
+      expect(screen.queryByTestId("search-advisory-card")).not.toBeInTheDocument();
     });
   });
 });

@@ -15,6 +15,7 @@ import { AdminScansPage } from "@/features/admin/scans/AdminScansPage";
 import { AdminTeamsPage } from "@/features/admin/teams/AdminTeamsPage";
 import { AdminUsersPage } from "@/features/admin/users/AdminUsersPage";
 import { ApprovalsPage } from "@/features/approvals/ApprovalsPage";
+import { ExternalPackageLookupPage } from "@/features/external-package-lookup/ExternalPackageLookupPage";
 import { IntakeRequestsPage } from "@/features/intake/IntakeRequestsPage";
 import { IntegrationsPage } from "@/features/integrations/IntegrationsPage";
 import { InventoryPage } from "@/features/inventory/InventoryPage";
@@ -126,6 +127,8 @@ export function AppRoutes() {
             than on the not-found page. The page says so; the shell draws no
             entry point. */}
         <Route path="intake" element={<IntakeRequestsPage />} />
+        {/* Same always-routed-even-when-off treatment as intake above. */}
+        <Route path="packages/lookup" element={<ExternalPackageLookupPage />} />
         <Route path="policies" element={<PoliciesPage />} />
         <Route path="integrations" element={<IntegrationsPage />} />
         <Route path="notifications" element={<NotificationsPage />} />
