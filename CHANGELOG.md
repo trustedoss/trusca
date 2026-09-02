@@ -7,6 +7,52 @@ and the project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.
 
 ## [Unreleased]
 
+## [0.22.4] - 2026-09-02
+
+### Fixed
+
+- **A full disk could take the whole stack down while the dashboard
+  reported room to spare.** The scan disk guard and the admin disk panel
+  both read `WORKSPACE_HOST_PATH` and nothing else. That is only the right
+  filesystem while the workspace shares one with everything else a scan
+  writes; move the workspace to network storage, which is how a corpus
+  larger than one host's disk gets scanned, and both report the network
+  volume while the toolchain caches fill the container's own. Observed: a
+  26 GB root partition at 100% with the guard reporting 12%, no scan ever
+  refused, and the container runtime down with the disk. The guard now
+  checks the workspace plus `DISK_GUARD_EXTRA_PATHS` (default `/`) and
+  names the offending path in its 503; the panel gains a `root_fs` card
+  (#273).
+- **The worker toolchain caches were unbounded and, on Compose, invisible.**
+  `Dockerfile.worker` pins every tool's cache under the worker's `HOME` so
+  one mount covers them all, and the Helm chart mounts an `emptyDir` there,
+  but `docker-compose.yml` mounted nothing: the caches went to the
+  container's writable layer, absent from `docker system df` and
+  unclearable without recreating the container. Nothing anywhere ever
+  deleted a byte of them, and they grow with the number of distinct
+  dependencies a deployment has ever scanned. Adds a named cache volume per
+  worker and `trustedoss.toolchain_cache_cleaner`, a 6-hourly beat holding
+  them under `TOOLCHAIN_CACHE_MAX_BYTES` (default 8 GiB) that never touches
+  a cache written to within `TOOLCHAIN_CACHE_IDLE_SECONDS` (#274).
+- **A scan whose worker died stayed `running` forever.** Scan tasks mark
+  their own row terminal on every in-process exit path, which does not
+  cover a hard-time-limit SIGKILL, an OOM kill, or a container runtime
+  restart. The abandoned row holds the project's active-scan index slot, so
+  every retry of that project 409s, and one of the team's concurrency
+  slots, both silently. Adds `trustedoss.stale_scan_reaper`, a half-hourly
+  beat that fails scans older than the hard time limit plus
+  `STALE_RUNNING_SCAN_GRACE_SECONDS`, since no live task can outlive that
+  limit. Queued scans are never reaped: queue wait is unbounded under
+  backlog (#275).
+
+### Added
+
+- Project list rows show a GitLab-style `{team} / {project}` breadcrumb and
+  the toolbar gains a team filter, both whenever the loaded page spans more
+  than one team. A cross-team list (a super admin's, which no active-team
+  filter narrows) otherwise renders identically-named projects with nothing
+  telling them apart (#272).
+
 ## [0.22.3] - 2026-08-31
 
 ### Security
