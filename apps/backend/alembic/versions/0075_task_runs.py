@@ -36,6 +36,12 @@ Notes:
     it is written from a signal handler that must not fail the task it is
     recording. A cascade or a constraint violation there would do exactly
     that.
+
+    Grants are explicit. A new table gives ``trustedoss_app`` nothing, and the
+    role needs all four verbs here: INSERT to open a row, UPDATE to close it,
+    SELECT for the admin list, DELETE for the retention sweep. Without the
+    grant the recorder fails silently, because it swallows its own errors on
+    purpose so that history never fails the work it is recording.
 """
 
 from __future__ import annotations
@@ -91,6 +97,21 @@ def upgrade() -> None:
     op.create_index("ix_task_runs_started_at", "task_runs", ["started_at"])
     op.create_index(
         "ix_task_runs_celery_task_id", "task_runs", ["celery_task_id"]
+    )
+    op.execute(
+        """
+        DO $$
+        BEGIN
+            IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'trustedoss_app') THEN
+                GRANT SELECT, INSERT, UPDATE, DELETE
+                    ON task_runs TO trustedoss_app;
+            ELSE
+                RAISE NOTICE 'trustedoss_app role not found - '
+                    'single-role legacy mode (no-op)';
+            END IF;
+        END
+        $$;
+        """
     )
 
 
