@@ -34,9 +34,12 @@ Semantics of the nullable columns:
   - ``last_result`` mirrors the task summary's outcome: ``"synced"`` or
     ``"skipped"`` (closed 2-value vocabulary owned by the task — VARCHAR,
     not native ENUM, same reasoning as sbom_conformance.py).
-  - ``skipped_reason`` mirrors the task's ``skipped_reason``: ``disabled`` /
-    ``feed_unavailable`` / ``feed_below_sanity_floor`` /
-    ``unexpected:<ExceptionName>`` — 64 chars covers the longest form.
+  - ``skipped_reason``: one of ``SYNC_SKIPPED_REASON_VALUES``, or an
+    ``unexpected:<ExceptionName>`` value built by ``unexpected_reason()``.
+    Both live in ``models.sync_state`` and are shared with the other
+    sync-state tables and the refresh tasks; do not restate the members
+    here, that is exactly how this list drifted from the code before.
+    64 chars covers the longest form.
   - Everything except ``id`` / ``updated_at`` is nullable: before the first
     tick ever runs the row (if seeded) legitimately has no outcome, and a
     skip carries no counters.

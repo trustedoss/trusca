@@ -26,9 +26,11 @@ Semantics:
   - ``last_result`` is the FETCH outcome: ``"synced"`` | ``"skipped"``
     (closed task-owned vocabulary, VARCHAR not native ENUM — the
     kev_sync_state reasoning).
-  - ``skipped_reason``: ``disabled`` / ``refresh_disabled`` /
-    ``feed_unavailable`` / ``feed_below_sanity_floor`` /
-    ``unexpected:<ExceptionName>``.
+  - ``skipped_reason``: one of ``SYNC_SKIPPED_REASON_VALUES``, or an
+    ``unexpected:<ExceptionName>`` value built by ``unexpected_reason()``.
+    Both live in ``models.sync_state`` and are shared with the other
+    sync-state tables and the refresh tasks; do not restate the members
+    here, that is exactly how this list drifted from the code before.
   - ``snapshot_date`` mirrors the stored ``snapshot["_snapshot"]`` as a DATE
     so the health panel's staleness maths never parses JSONB.
 
