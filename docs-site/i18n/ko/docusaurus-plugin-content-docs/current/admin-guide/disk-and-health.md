@@ -43,8 +43,8 @@ sidebar_position: 3
 | 컴포넌트 | 프로브 |
 |---|---|
 | `postgres` | 애플리케이션의 asyncpg 풀로 `SELECT 1`. |
-| `redis` | asyncio 클라이언트를 통한 `redis-cli ping` 동등 호출. |
-| `celery` | Celery `inspect ping`이 설정 타임아웃 이내 응답. |
+| `redis` | 동기 redis 클라이언트로 보내는 `PING`. |
+| `celery` | Celery `control.ping`이 고정된 2초 안에 응답하는지 확인하며, 값은 응답한 워커 수입니다. |
 | `disk` | Workspace 볼륨 사용량을 warn / critical 임계와 비교. |
 | `active_scans` | 현재 `queued` 또는 `running` 상태인 스캔 수. 정보성이며 큐 길이가 내부 임계를 넘으면 `degraded`로 표시됩니다. |
 | `last_24h_errors` | 최근 24시간 안에 종료 시각 기준으로 실패한 스캔 수. 정보성입니다. 이름은 과거 명칭이라 세는 대상과 맞지 않습니다. |

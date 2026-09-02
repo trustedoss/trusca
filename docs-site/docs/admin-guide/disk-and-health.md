@@ -43,8 +43,8 @@ Each row maps to a real probe in `services/admin_health_service.py`:
 | Component | Probe |
 |---|---|
 | `postgres` | `SELECT 1` over the application's asyncpg pool. |
-| `redis` | `redis-cli ping`-equivalent through the asyncio client. |
-| `celery` | Celery `inspect ping` returns within the configured timeout. |
+| `redis` | `PING` through the synchronous redis client. |
+| `celery` | Celery `control.ping` answers within a fixed 2-second budget; the value is the number of workers that replied. |
 | `disk` | Workspace volume usage compared to the warn / critical thresholds. |
 | `active_scans` | Count of scans currently `queued` or `running`. Informational; surfaces as `degraded` when the queue length crosses an internal threshold. |
 | `last_24h_errors` | Count of scans that **failed** in the last 24 h, counted by completion time. Informational. The name is historical and does not describe what is counted. |
