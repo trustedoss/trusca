@@ -11,12 +11,13 @@ Workloads:
   worker-default x {{ if .Values.worker.default.autoscaling.enabled }}HPA {{ .Values.worker.default.autoscaling.minReplicas }}-{{ .Values.worker.default.autoscaling.maxReplicas }}{{ else }}{{ .Values.worker.default.replicaCount }}{{ end }}   (Celery, queue={{ .Values.worker.queues.default }}, concurrency={{ .Values.worker.default.concurrency }})
   beat           x 1   (Celery scheduler — singleton)
   frontend       x {{ .Values.frontend.replicaCount }}   (React SPA on nginx, Service :{{ .Values.frontend.port }})
-{{- if .Values.worker.transitionSubscribeBothQueues }}
+{{- if gt (len .Values.worker.subscriptions.scan) 1 }}
 
-NOTE: worker.transitionSubscribeBothQueues=true (the default) — both worker
-kinds above are consuming BOTH queues right now, not just their own. This is
-the S3 rolling-upgrade transition window; see charts/trustedoss/README.md
-"Queue split transition" for when and how to narrow it to false.
+NOTE: worker-scan is consuming {{ join ", " .Values.worker.subscriptions.scan }}, not
+just its own queue. That is the default: it is the kind that can run a scan
+task, so it stays able to drain a pre-split scan message still sitting in
+{{ .Values.worker.queues.default }}. See charts/trustedoss/README.md "Queue split
+transition" for when and how to narrow it.
 {{- end }}
 
 Datastores:
