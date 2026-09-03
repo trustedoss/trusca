@@ -262,6 +262,33 @@ x-backend-env: &backend-env
   GITHUB_TOKEN: ${GITHUB_TOKEN:-}
   TRUSTEDOSS_GITHUB_TOKEN: ${TRUSTEDOSS_GITHUB_TOKEN:-}
   PORTAL_PUBLIC_URL: ${PORTAL_PUBLIC_URL:-}
+  # compose-env-var wiring audit: vulnerability matching (KEV catalog,
+  # malicious-package snapshot, reachability analysis), the license/malicious
+  # build gate, and vulnerability SLA alerting. Documented in .env.example but
+  # never listed in this anchor, so setting any of them in .env had no effect
+  # on the running container. Defaults match core/config.py exactly, so an
+  # unset .env changes nothing for an existing deployment.
+  GATE_EPSS_THRESHOLD: ${GATE_EPSS_THRESHOLD:-}
+  GATE_MALICIOUS_ENABLED: ${GATE_MALICIOUS_ENABLED:-true}
+  GATE_REACHABLE_CRITICAL_ONLY: ${GATE_REACHABLE_CRITICAL_ONLY:-}
+  KEV_FEED_URL: ${KEV_FEED_URL:-https://www.cisa.gov/sites/default/files/feeds/known_exploited_vulnerabilities.json}
+  KEV_REFRESH_ENABLED: ${KEV_REFRESH_ENABLED:-true}
+  KEV_REFRESH_TIMEOUT_SECONDS: ${KEV_REFRESH_TIMEOUT_SECONDS:-30}
+  MALICIOUS_ENABLED: ${MALICIOUS_ENABLED:-true}
+  MALICIOUS_REFRESH_ENABLED: ${MALICIOUS_REFRESH_ENABLED:-}
+  MALICIOUS_SNAPSHOT_STALE_DAYS: ${MALICIOUS_SNAPSHOT_STALE_DAYS:-}
+  MALICIOUS_WAIVE_MAX_DAYS: ${MALICIOUS_WAIVE_MAX_DAYS:-30}
+  REACHABILITY_ENABLED: ${REACHABILITY_ENABLED:-true}
+  REACHABILITY_HARD_TIME_LIMIT_SECONDS: ${REACHABILITY_HARD_TIME_LIMIT_SECONDS:-1200}
+  REACHABILITY_SOFT_TIME_LIMIT_SECONDS: ${REACHABILITY_SOFT_TIME_LIMIT_SECONDS:-900}
+  VULN_REMATCH_BATCH_SIZE: ${VULN_REMATCH_BATCH_SIZE:-50}
+  VULN_REMATCH_INTERVAL_HOURS: ${VULN_REMATCH_INTERVAL_HOURS:-6}
+  VULN_REMATCH_LOCK_SKEW_SECONDS: ${VULN_REMATCH_LOCK_SKEW_SECONDS:-30}
+  VULN_SLA_ALERTS_ENABLED: ${VULN_SLA_ALERTS_ENABLED:-true}
+  VULN_SLA_DAYS_CRITICAL: ${VULN_SLA_DAYS_CRITICAL:-7}
+  VULN_SLA_DAYS_HIGH: ${VULN_SLA_DAYS_HIGH:-30}
+  VULN_SLA_DAYS_MEDIUM: ${VULN_SLA_DAYS_MEDIUM:-90}
+  VULN_SLA_DAYS_LOW: ${VULN_SLA_DAYS_LOW:-180}
 
 services:
   # ---------------------------------------------------------------------------
