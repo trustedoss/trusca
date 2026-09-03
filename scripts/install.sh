@@ -246,7 +246,35 @@ env_pg_db        = os.environ["ENV_PG_DB"]
 env_app_user     = os.environ["ENV_APP_USER"]
 env_app_password = os.environ["ENV_APP_PASSWORD"]
 
-PLACEHOLDER_SECRET = "change-this-to-a-random-secret-key-min-32-chars"
+# Words that only appear in a key nobody generated. Kept in step with
+# core/config.py's _PLACEHOLDER_SECRET_MARKERS, which is what the backend
+# refuses to start on; the two are pinned together by
+# apps/backend/tests/unit/test_placeholder_secret_rejection.py. This script
+# cannot import that module (it runs on the host, before any container), so the
+# list is duplicated and the test is what stops the copies from drifting.
+#
+# Matching a family rather than one exact string on purpose: the previous
+# version compared against a hardcoded copy of the .env.example value, so
+# editing that file to any OTHER weak value made this script reclassify it as a
+# genuine operator secret and preserve it into .env.
+PLACEHOLDER_SECRET_MARKERS = (
+    "change",
+    "replace",
+    "placeholder",
+    "example",
+    "your-secret",
+    "your_secret",
+    "yoursecret",
+    "insecure",
+    "do-not-use",
+    "donotuse",
+    "dev-only",
+    "min-32-chars",
+)
+
+def is_placeholder_secret(value):
+    lowered = value.lower()
+    return any(marker in lowered for marker in PLACEHOLDER_SECRET_MARKERS)
 # Well-known non-secret owner-password defaults that must NEVER survive as a
 # real Postgres SUPERUSER password (they are public in .env.example / dev
 # compose). Treated as "regenerate me", exactly like the SECRET_KEY placeholder,
@@ -275,7 +303,7 @@ def upsert(body, key, value):
 cur_secret = get("SECRET_KEY")
 if pinned_secret:
     secret = pinned_secret
-elif cur_secret and cur_secret != PLACEHOLDER_SECRET:
+elif cur_secret and not is_placeholder_secret(cur_secret):
     secret = cur_secret            # preserve — idempotent re-run
 else:
     secret = gen_secret

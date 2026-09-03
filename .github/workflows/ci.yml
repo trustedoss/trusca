@@ -607,7 +607,7 @@ jobs:
     env:
       DATABASE_URL: postgresql+asyncpg://trustedoss:trustedoss@localhost:5432/trustedoss
       REDIS_URL: redis://localhost:6379/0
-      SECRET_KEY: ci-secret-key-min-32-chars-padding-1234
+      SECRET_KEY: ci-fixture-secret-key-for-workflow-runs
     steps:
       - uses: actions/checkout@v4
 
@@ -1129,7 +1129,7 @@ jobs:
       TRUSTEDOSS_SCAN_BACKEND: mock
       # Pin SECRET_KEY so the JWT signer doesn't rotate between containers
       # (worker + api would mutually invalidate tokens otherwise).
-      SECRET_KEY: ci-e2e-secret-key-min-32-chars-padding-aabbcc
+      SECRET_KEY: ci-e2e-fixture-secret-key-for-workflow-runs
       # Vite dev server URL — Playwright's default. Pinned so a future
       # config drift doesn't silently swap the browser target.
       PLAYWRIGHT_BASE_URL: http://localhost:5173

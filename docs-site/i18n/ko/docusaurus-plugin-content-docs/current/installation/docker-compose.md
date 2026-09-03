@@ -122,6 +122,8 @@ docker-compose -f docker-compose.yml pull
 docker-compose -f docker-compose.yml up -d
 ```
 
+3번은 선택이 아닙니다. `.env.example`은 `SECRET_KEY`를 비운 채로 배포되고, `APP_ENV=dev`가 아닌 환경에서 backend는 이 값 없이는 기동하지 않습니다. 예전에 담겨 있던 자리표시자 문자열과 같은 방식으로 만든 값도 거부하는데, 오래된 `.env`가 그런 값을 들고 있을 수 있기 때문입니다. 기동 오류가 무엇이 문제인지와 고치는 명령을 함께 알려 줍니다. 이전 릴리스는 이 파일에 `APP_ENV=dev`를 고정해 두었고, `.env`로 복사되면 프로덕션 기본값을 덮어써서 이렇게 설치한 스택이 dev 모드로 돌았습니다. 그 상태에서는 위 검사가 하나도 적용되지 않았습니다.
+
 게시된 backend 이미지의 entrypoint는 **기동 시 Alembic 마이그레이션을 자동 적용**(`AUTO_MIGRATE`, 기본 `true`)한 뒤 uvicorn을 시작하므로, backend가 healthy로 보고될 때 스키마는 이미 HEAD입니다. 수동 `alembic upgrade head`는 필요 없습니다. 다만 자동 마이그레이션은 사용자를 생성하지 않으므로, 첫 관리자는 한 번 부트스트랩합니다:
 
 ```bash
@@ -304,6 +306,22 @@ docker-compose -f docker-compose.yml up -d --scale worker-scan=4
 (`--scale worker-default=N`). 이 서비스는 작업이 짧아 드물지만, 느린
 티켓 웹훅이나 멈춘 백업처럼 하류 연동이 막히면 여기도 밀릴 수
 있습니다.
+
+:::danger `beat`은 절대 늘리지 마세요
+확장 대상은 워커이지 스케줄러가 아닙니다. `beat`은 프로세스가 정확히
+하나여야 합니다. Celery beat은 락을 잡지 않아서 beat 프로세스마다 자기
+시계로 전체 스케줄을 발화합니다. 두 개가 뜨면 모든 주기 작업이 두 번씩
+큐에 들어가고, 카탈로그 갱신과 보관 정리, 스캔 일정 폴링이 전부 두 배로
+돕니다. 오류도 경고도 나지 않으므로 눈에 띄는 증상은 같은 일이 두 번
+일어난다는 것뿐입니다.
+
+겉보기가 다른 두 실수가 여기에 해당합니다. 하나는 `--scale beat=2`처럼
+드러나는 경우입니다. 다른 하나는 같은 데이터베이스와 브로커를 바라보는
+두 번째 호스트에서 이 compose 파일을 함께 띄우는 경우로, 호스트마다는
+하나로 보이지만 스케줄러는 둘입니다. 가용성 때문에 예비 스케줄러가
+필요하다면 RedBeat 같은 락을 쓰는 스케줄러가 있어야 하며, 이 배포는
+그것을 포함하지 않습니다.
+:::
 
 **언제 확장해야 하는지 알기.** `QUEUE_BACKLOG_METRICS_ENABLED`를
 켜면(`/metrics`에 `trusca_broker_queue_backlog`와

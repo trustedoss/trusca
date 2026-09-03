@@ -144,10 +144,12 @@ sudo systemctl enable --now trustedoss-demo-reset.timer
 ```
 
 :::note Pin a stable demo password
-Set `DEMO_SUPER_ADMIN_PASSWORD` in the host `.env` to a known value so the
-published demo credentials survive the nightly reset. If you leave it unset, the
-reseed generates a random password each night but does **not** log the
-plaintext, so you would not learn the new credential.
+Set `DEMO_SUPER_ADMIN_PASSWORD` in the host `.env`. Leaving it unset does
+**not** produce a random password: the seed falls back to a fixed value that is
+published in this repository and in the pages that document the public demo, so
+every account on your instance would have a password anyone can look up. Pin
+your own, and treat a demo as reachable by whoever can reach the network it is
+on.
 :::
 
 See [Demo SaaS hosting](./gcp-deploy.md) for where the public demo runs and how it is operated.

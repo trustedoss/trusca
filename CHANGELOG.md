@@ -42,24 +42,6 @@ and the project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.
   publish upstream cannot blank good scores.
 
 
-### Removed
-
-- **BREAKING (API): `vuln_data_available` is gone from
-  `GET /v1/projects/{id}/overview`.** The field reported whether the
-  vulnerability database held any data when the anchored scan ran, and it was
-  derived from a `scan_metadata` key that nothing has written since
-  Dependency-Track was replaced at v0.10.0. It has therefore been `null` on
-  every response since, and the UI caveat it drove rendered only on `false`,
-  so it has never appeared. Reviving it has no target: Trivy fails the scan
-  outright when its database is unusable, so the failure mode the caveat
-  warned about no longer exists. A field that is always `null` looks like a
-  guarantee that is not being made, so it is removed rather than left. A
-  consumer that reads the key defensively is unaffected; one that requires it
-  to be present will break. The caveat it was meant to carry is now served by
-  `component_outcome` below.
-
-### Added
-
 - **A scan that finds nothing now says so, instead of looking like a clean
   project.** Nothing on the scan path counted components, so a tree cdxgen
   could not parse produced an empty SBOM, exited 0, and finished `succeeded`:
@@ -78,7 +60,39 @@ and the project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.
   drops the transitive ones) is deliberately not folded in: it is a populated
   SBOM with a different cause and a different fix.
 
+### Removed
+
+- **BREAKING (API): `vuln_data_available` is gone from
+  `GET /v1/projects/{id}/overview`.** The field reported whether the
+  vulnerability database held any data when the anchored scan ran, and it was
+  derived from a `scan_metadata` key that nothing has written since
+  Dependency-Track was replaced at v0.10.0. It has therefore been `null` on
+  every response since, and the UI caveat it drove rendered only on `false`,
+  so it has never appeared. Reviving it has no target: Trivy fails the scan
+  outright when its database is unusable, so the failure mode the caveat
+  warned about no longer exists. A field that is always `null` looks like a
+  guarantee that is not being made, so it is removed rather than left. A
+  consumer that reads the key defensively is unaffected; one that requires it
+  to be present will break. The caveat it was meant to carry is now served by
+  `component_outcome` below.
+
 ### Fixed
+
+- **A session scope that writes and never commits now says so.** Two sweep
+  tasks fixed rows in memory, counted the fixes into their summaries, and
+  returned success while the database kept its old values, because
+  `sync_session_scope` leaves the commit to the caller and neither caller made
+  one. Those two are fixed; this closes the class. A static check cannot find
+  it, because the write may sit in the task and the commit in a service the
+  task calls, so reading files flags eight tasks that correctly delegate their
+  writes and catches nothing real. The scope now asks the session at close
+  whether it emitted DML that was never committed and logs a warning when it
+  did; a deliberate rollback answers the question, so the dry-run paths stay
+  quiet. The test suite turns that warning into a failure, so a task written
+  without its commit fails in CI instead of shipping and doing nothing.
+
+
+
 
 - **The dashboard stopped counting at 100 projects, and undercounted risk in
   the dangerous direction.** Every KPI and both distribution charts were

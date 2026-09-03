@@ -315,7 +315,7 @@ These keys are read only by the bootstrap and demo-seed scripts. They are not co
 |---|---|---|---|
 | `ADMIN_EMAIL` | — | `apps/backend/scripts/create_super_admin.py` | Email of the first super-admin to provision when the script is invoked. Lower-cased and stripped on read. |
 | `ADMIN_PASSWORD` | — | `apps/backend/scripts/create_super_admin.py` | Password for the bootstrap super-admin. Must be ≥ 12 characters; the script aborts otherwise. |
-| `DEMO_SUPER_ADMIN_PASSWORD` | (auto-generated) | `apps/backend/scripts/seed_demo.py` | Override for the demo seed's super-admin password. Required when `APP_ENV` is `staging` or `prod`; must be ≥ 12 characters when set. |
+| `DEMO_SUPER_ADMIN_PASSWORD` | a fixed value published with the public demo | `apps/backend/scripts/seed_demo.py` | Password given to every seeded demo account. Unset means the published default, not a generated one, so pin your own on any instance others can reach. Seeding refuses to run at all unless `APP_ENV` is `dev` or `demo`. Must be ≥ 12 characters when set. |
 
 ## Validation
 

@@ -196,7 +196,8 @@ connections before alembic runs.
 | `backend.podDisruptionBudget.maxUnavailable` | `1` | W8: renders `pdb-backend.yaml` unconditionally (no toggle; this closes an existing availability gap). `1` never blocks eviction, including at `replicaCount: 1`. |
 | `backend.topologySpreadConstraints` | hostname + zone, `ScheduleAnyway` | W8: spreads backend pods across nodes/zones (`deployment-backend.yaml`) so draining one node cannot take every replica down at once. Soft (`ScheduleAnyway`) so a single-node cluster still schedules; set `[]` to disable. |
 | `worker.queues.scan` / `worker.queues.default` | `trustedoss.scan` / `trustedoss.default` | S3: the two Celery queue names. `default` is unchanged from the pre-split single queue (`task_default_queue`). Cross-checked against `tests/contracts/queue-names.json`, which `apps/backend/tasks/celery_app.py`'s `task_routes` also reads. |
-| `worker.transitionSubscribeBothQueues` | `true` | S3: while true, BOTH worker kinds below subscribe to BOTH queues (rolling-upgrade transition - see "Queue split transition" below). Narrow to `false` only after confirming the old queue has drained. |
+| `worker.subscriptions.scan` | `["trustedoss.scan","trustedoss.default"]` | Queues worker-scan consumes. Keeps the default queue so it can drain a pre-split scan message left there; narrow after confirming that queue has drained (see "Queue split transition"). |
+| `worker.subscriptions.default` | `["trustedoss.default"]` | Queues worker-default consumes. Deliberately excludes the scan queue: a worker-default that took it could pick up an hour-long scan and the short tasks it exists to serve would queue behind it. |
 | `worker.scan.replicaCount` | `2` | Prefer scaling pods over `concurrency`. |
 | `worker.scan.concurrency` | `2` | Prefork slots per pod. |
 | `worker.scan.autoscaling.enabled` | `false` | Optional autoscaler (off by default). |
@@ -222,18 +223,22 @@ into `worker-scan` (`deployment-worker-scan.yaml`, subscribes to
 (`deployment-worker-default.yaml`, subscribes to `worker.queues.default` -
 the same string the old single queue used).
 
-`worker.transitionSubscribeBothQueues` defaults to `true`: for one release,
-**both** worker kinds subscribe to **both** queues (`-Q
-trustedoss.scan,trustedoss.default` on every worker pod, regardless of
-kind). This is what makes the split safe to roll out: during the rolling
-upgrade, the old single-queue worker is being drained and replaced by the
-two new kinds, and anything the old worker had not yet picked up is sitting
-in `worker.queues.default` - a worker that only listened to its "own" queue
-from the first deploy could leave that backlog (which may include
-scan-pipeline messages dispatched before the upgrade) with no consumer.
+For one release after the split, **both** worker kinds subscribed to **both**
+queues, which is what made the split safe to roll out: the old single-queue
+worker was being drained and replaced, and anything it had not yet picked up
+was sitting in `worker.queues.default`, possibly including scan-pipeline
+messages dispatched before the upgrade.
 
-**Narrowing the transition (after upgrading, once you have confirmed it is
-safe):**
+That window is closed. `worker.subscriptions.default` is now
+`["trustedoss.default"]`, because a worker-default that also took the scan
+queue can pick up an hour-long scan and the short, frequent tasks it exists
+to serve then queue behind it, which is the isolation the split was for.
+
+`worker.subscriptions.scan` still lists both. worker-scan is the kind that
+can actually run a scan task, so it stays able to drain a pre-split scan
+message still sitting in `worker.queues.default` in a cluster upgrading late.
+
+**Narrowing worker-scan too (once you have confirmed it is safe):**
 
 1. Confirm the pre-split single-queue worker has been fully replaced -
    `kubectl get deploy -l app.kubernetes.io/name=trustedoss` should show
@@ -244,18 +249,15 @@ safe):**
    `QUEUE_BACKLOG_METRICS_ENABLED=true`, the `trusca_broker_queue_backlog`
    metric with `queue="trustedoss.default"`, M2) should be back to its
    steady-state depth, not still working through a pre-upgrade spike.
-3. `helm upgrade <release> . --set worker.transitionSubscribeBothQueues=false`.
-   No template changes needed - this is a values-only flip. After it lands,
-   `worker-scan` only drains `worker.queues.scan` and `worker-default` only
-   drains `worker.queues.default`; a message that lands on the "wrong" queue
-   for its kind (for example, a scan task misrouted to the default queue)
-   will sit unconsumed, so step 2 matters.
+3. `helm upgrade <release> . --set worker.subscriptions.scan={trustedoss.scan}`.
+   No template changes needed - this is a values-only edit. After it lands,
+   `worker-scan` only drains `worker.queues.scan`; a scan message that lands
+   on the default queue will sit unconsumed, so step 2 matters.
 
-If you are not sure whether it is safe yet, leave it at `true`. The only
-cost of staying in the transition state is that each worker kind also
-services the other queue's traffic, which is a smaller queue than either
-would exclusively own before the split - it is not incorrect, just not fully
-narrowed.
+If you are not sure whether it is safe yet, leave the default. The only cost
+of worker-scan also listening to the default queue is that it services some
+short-task traffic alongside worker-default, which is not incorrect, just not
+fully narrowed.
 
 ### Queue-depth autoscaling (KEDA)
 

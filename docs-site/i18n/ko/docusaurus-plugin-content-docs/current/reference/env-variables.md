@@ -335,7 +335,7 @@ Compose 배포에는 오토스케일러 계층이 없습니다. 이 절의 키�
 |---|---|---|---|
 | `ADMIN_EMAIL` | — | `apps/backend/scripts/create_super_admin.py` | 스크립트 실행 시 프로비저닝할 첫 super-admin의 이메일. 읽을 때 소문자화·trim. |
 | `ADMIN_PASSWORD` | — | `apps/backend/scripts/create_super_admin.py` | 부트스트랩 super-admin의 비밀번호. 12자 이상 필수 — 그렇지 않으면 스크립트가 중단됩니다. |
-| `DEMO_SUPER_ADMIN_PASSWORD` | (자동 생성) | `apps/backend/scripts/seed_demo.py` | 데모 시드의 super-admin 비밀번호 오버라이드. `APP_ENV`가 `staging` 또는 `prod`일 때 필수이며 설정 시 12자 이상이어야 합니다. |
+| `DEMO_SUPER_ADMIN_PASSWORD` | 공개 데모와 함께 공개된 고정값 | `apps/backend/scripts/seed_demo.py` | 시드된 모든 데모 계정에 부여되는 비밀번호입니다. 설정하지 않으면 생성된 값이 아니라 공개된 고정값이 쓰이므로, 남이 접근할 수 있는 인스턴스에서는 직접 값을 정하세요. `APP_ENV`가 `dev`나 `demo`가 아니면 시드 자체가 실행되지 않습니다. 설정할 경우 12자 이상이어야 합니다. |
 
 ## 검증
 

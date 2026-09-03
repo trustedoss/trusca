@@ -129,6 +129,8 @@ docker-compose -f docker-compose.yml pull
 docker-compose -f docker-compose.yml up -d
 ```
 
+Step 3 is not optional. `.env.example` ships `SECRET_KEY` empty, and outside `APP_ENV=dev` the backend refuses to start without one; it also refuses the placeholder string it used to ship and values built the same way, in case an older `.env` carries one. The startup error names what is wrong and the command to fix it. Earlier releases pinned `APP_ENV=dev` in this file, which overrode the production default once it was copied to `.env`, so a stack installed this way ran in dev mode and none of these checks applied.
+
 The published backend image's entrypoint applies Alembic migrations automatically on start (`AUTO_MIGRATE`, default `true`) and only then starts uvicorn, so the schema is at HEAD by the time the backend reports healthy. You do **not** need to run `alembic upgrade head` by hand. Automatic migration does not create users, so you still bootstrap the first admin once:
 
 ```bash
@@ -312,6 +314,21 @@ load across more cgroups rather than piling it into one. `worker-default`
 scales the same way (`--scale worker-default=N`) when its own queue
 backs up. That is rare, since its work is short, but a stalled downstream
 integration (a slow ticket webhook, a stuck backup) can hold it up.
+
+:::danger Never scale `beat`
+Scale the workers, never the scheduler. `beat` must run as exactly one
+process. Celery beat takes no lock, so every beat process fires the whole
+schedule on its own clock: a second one double-enqueues every periodic task,
+doubling the catalog refreshes, the retention sweeps and the scan-schedule
+poll. Nothing errors and nothing warns, so the only visible symptom is work
+happening twice.
+
+This applies to two mistakes that look different. `--scale beat=2` is the
+obvious one. The other is running this compose file on a second host against
+the same database and broker, which is two schedulers even though each host
+sees one. If you need a standby scheduler for availability, you need a
+locking scheduler such as RedBeat; this deployment does not ship one.
+:::
 
 **Knowing when you need to.** Turn on `QUEUE_BACKLOG_METRICS_ENABLED`
 (exposes `trusca_broker_queue_backlog` and `trusca_scan_queue_wait_seconds`

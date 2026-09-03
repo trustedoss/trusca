@@ -460,18 +460,23 @@ services:
   # poll) - short, frequent tasks that must never queue behind an hour-long
   # scan. Before this split both ran as one `worker` service on one queue.
   #
-  # QUEUES (WORKER_SCAN_QUEUES / WORKER_DEFAULT_QUEUES, `-Q` below): for one
-  # release after this split ships, BOTH services default to subscribing to
-  # BOTH queues ("trustedoss.scan,trustedoss.default") - a rolling
-  # `docker-compose up` recreates containers one service at a time, so
-  # whichever new service comes up first must still be able to drain
-  # anything left on "trustedoss.default" (the unchanged pre-split queue
-  # name) from before the split, including scan-pipeline messages dispatched
-  # before the upgrade. Narrow to one queue each ONLY after confirming that
-  # backlog has drained - see the "Queue split transition" note in
-  # .env.example's worker section for the exact procedure. Cross-checked
-  # against tests/contracts/queue-names.json, the vocabulary
-  # apps/backend/tasks/celery_app.py's task_routes also reads.
+  # QUEUES (WORKER_SCAN_QUEUES / WORKER_DEFAULT_QUEUES, `-Q` below). The split
+  # shipped with BOTH services on BOTH queues for one release, so a rolling
+  # `docker-compose up` could still drain scan-pipeline messages left on
+  # "trustedoss.default" (the unchanged pre-split queue name). That window is
+  # long closed, and leaving it open meant the isolation this split exists for
+  # did not hold: a worker-default subscribed to "trustedoss.scan" can pick up
+  # an hour-long scan, and the short, frequent tasks it is there to serve then
+  # queue behind it (ER11).
+  #
+  # So worker-default now takes "trustedoss.default" alone. worker-scan keeps
+  # BOTH on purpose: it is the service that can actually run a scan task, so
+  # it stays able to drain a pre-split scan message still sitting on
+  # "trustedoss.default" in a deployment upgrading late. Narrowing it to
+  # "trustedoss.scan" is safe once that backlog is confirmed empty - see the
+  # worker section of .env.example. These two defaults are cross-checked
+  # against tests/contracts/queue-names.json (worker_subscriptions), the same
+  # vocabulary the Helm chart and celery_app.py's task_routes read.
   #
   # Scaling out (work-B / B2, still true post-split): two knobs per service,
   # used together:
@@ -630,7 +635,7 @@ services:
   worker-default:
     image: ${IMAGE_REGISTRY:-ghcr.io/trustedoss}/trusca-backend-worker:${IMAGE_TAG:-0.12.0}
     restart: unless-stopped
-    command: celery -A tasks.celery_app worker --loglevel=info --concurrency=${CELERY_DEFAULT_CONCURRENCY:-4} -Q ${WORKER_DEFAULT_QUEUES:-trustedoss.scan,trustedoss.default}
+    command: celery -A tasks.celery_app worker --loglevel=info --concurrency=${CELERY_DEFAULT_CONCURRENCY:-4} -Q ${WORKER_DEFAULT_QUEUES:-trustedoss.default}
     # S3 judgment call: shorter than worker-scan's 4200s - this service never
     # runs a scan task. Sized off BACKUP_SUBPROCESS_TIMEOUT's default (3600s,
     # apps/backend/tasks/backup.py - the longest task this worker runs) plus
@@ -700,6 +705,16 @@ services:
     command: celery -A tasks.celery_app beat --loglevel=info --schedule=/tmp/celerybeat-schedule
     environment:
       <<: *backend-env
+    # RUN EXACTLY ONE. Celery beat holds no lock: every beat process fires the
+    # whole schedule on its own clock, so a second one double-enqueues every
+    # periodic task. `docker-compose up --scale beat=2`, or two hosts each
+    # running this file, silently doubles the catalog refreshes, the retention
+    # sweeps and the scan-schedule poll. There is no error to notice, only
+    # duplicate work. Scale the workers instead, which is what a backlog
+    # actually needs (ER11). An HA deployment that genuinely needs a standby
+    # scheduler needs a locking scheduler such as RedBeat; this file does not
+    # ship one.
+    #
     # NOTE: beat does NOT mount the trivy-cache volume. Beat is a
     # pure scheduler — it only enqueues ``trustedoss.trivy_db_refresh`` into
     # the broker. The actual ``trivy --download-db-only`` subprocess runs

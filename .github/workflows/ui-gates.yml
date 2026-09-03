@@ -123,7 +123,7 @@ jobs:
       DATABASE_URL: postgresql+asyncpg://trustedoss:trustedoss@postgres:5432/trustedoss
       DATABASE_URL_OWNER: postgresql+asyncpg://trustedoss:trustedoss@postgres:5432/trustedoss
       REDIS_URL: redis://redis:6379/0
-      SECRET_KEY: ci-visual-secret-key-min-32-chars-padding-aabbcc
+      SECRET_KEY: ci-visual-fixture-secret-key-for-workflow-runs
       # DT_URL / DT_API_KEY were here, pointing a stub at a Dependency-Track
       # that ADR-0001 removed. Nothing read them.
       WORKSPACE_HOST_PATH: ${{ github.workspace }}/workspace

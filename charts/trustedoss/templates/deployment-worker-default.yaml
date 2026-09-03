@@ -8,10 +8,10 @@ worker. Split out of the single `worker` Deployment this chart used to
 render (see values.yaml's worker.default block for why). Runs everything
 that is not the scan pipeline -- notifications, backups, audit export,
 ticket webhooks, catalog-refresh beats, retention sweeps, the scan-schedule
-poll -- and, while worker.transitionSubscribeBothQueues is true (the
-default), the scan queue as well, symmetrically with worker-scan, so a
-rolling upgrade never leaves a queue with no consumer even for one release.
-See _helpers.tpl's trustedoss.worker.subscribedQueues.
+poll. It subscribes to worker.subscriptions.default, which is the default
+queue alone: a worker-default that also took the scan queue could pick up an
+hour-long scan, and the short, frequent tasks it exists to serve would queue
+behind it (ER11). See _helpers.tpl's trustedoss.worker.subscribedQueues.
 */ -}}
 apiVersion: apps/v1
 kind: Deployment
@@ -67,8 +67,8 @@ spec:
           # (worker.default.replicaCount / autoscaling) in preference to
           # this.
           #
-          # S3: `-Q` pins this deployment to the default queue (plus the scan
-          # queue too, during the transition window -- see
+          # S3: `-Q` pins this deployment to worker.subscriptions.default,
+          # which is the default queue alone (ER11 -- see
           # trustedoss.worker.subscribedQueues in _helpers.tpl). Any task
           # NOT listed in tests/contracts/queue-names.json's scan_task_names
           # lands here via Celery's task_default_queue fallback (no explicit
