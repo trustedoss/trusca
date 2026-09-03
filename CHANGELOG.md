@@ -9,6 +9,29 @@ and the project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.
 
 ### Added
 
+- **Three indexes the hot read paths were missing.** Opening a vulnerability
+  ran its history panel through `ix_audit_logs_target_table` alone, which
+  matches `target_table` and leaves `target_id` to a heap filter over the
+  largest bucket that column has, because the scan pipeline writes one create
+  row per finding. Measured on 200,000 audit rows, reading five: 3,309 buffers
+  and 28,566 rows discarded, 116 ms, now 52 buffers and 2.7 ms. The
+  actor-filtered admin audit search sorted its results, and under a `LIMIT`
+  the planner preferred walking the time index backwards and discarding every
+  other actor's rows: 4,734 buffers, now 44. The active-project list, which
+  the dashboard also reads, sorted every project a team owns because the index
+  covering its two predicates carried no `updated_at`: 802 buffers over a
+  3,000-row sort on 60,000 projects, now 37 with a partial index on the
+  unarchived half.
+
+  **Upgrade note.** Migration `0078` builds all three in a transaction, which
+  takes a write lock on `audit_logs` and `projects` for the duration.
+  `CREATE INDEX CONCURRENTLY` cannot run inside one, so this matches every
+  other index revision in the tree. On a small deployment the build is
+  imperceptible; on one with a large `audit_logs`, either upgrade inside a
+  maintenance window or pre-build the three indexes online beforehand, after
+  which the migration finds them already present. The statements are in the
+  migration's own docstring.
+
 - **A configured EPSS threshold that decides nothing now says so.** The gate
   reported `epss_gate_count: 0` both when nothing scored above the threshold
   and when nothing was scored at all, and passed the build either way. On a

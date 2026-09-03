@@ -451,4 +451,20 @@ class AuditLog(Base):
             "actor_user_id",
             "created_at",
         ),
+        # ER12 (0078) - the finding history panel. Two queries per vulnerability
+        # opened, both keyed on (target_table, target_id) and ordered by time.
+        # ``ix_audit_logs_target_table`` alone leaves target_id to a heap
+        # filter, and ``vulnerability_findings`` is the biggest bucket that
+        # column has: the scan pipeline writes one create row per finding.
+        Index(
+            "ix_audit_logs_target_table_target_id_created_at",
+            "target_table",
+            "target_id",
+            "created_at",
+        ),
+        # ER12 (0078) - the admin audit search filtered by actor. The
+        # actor-only index above leaves the ordering to a sort, and under a
+        # LIMIT the planner would rather walk the created_at index backwards
+        # and discard everyone else's rows.
+        Index("ix_audit_logs_actor_created_at", "actor_user_id", "created_at"),
     )

@@ -281,6 +281,17 @@ class Project(Base):
         # Active-projects list page: WHERE team_id = ? AND archived_at IS NULL
         # ORDER BY updated_at DESC.
         Index("ix_projects_team_archived", "team_id", "archived_at"),
+        # ER12 (0078) - the same query, with the ordering. The index above
+        # covers both predicates and carries no ``updated_at``, so the sort ran
+        # over every project the team owns. Partial because the list only ever
+        # reads the unarchived half, and archived rows should not pay upkeep
+        # for an index nothing reads them through.
+        Index(
+            "ix_projects_team_updated_active",
+            "team_id",
+            text("updated_at DESC"),
+            postgresql_where=text("archived_at IS NULL"),
+        ),
         # Webhook lookup: "find project by clone URL".
         Index("ix_projects_git_url", "git_url"),
         Index("ix_projects_created_by_user_id", "created_by_user_id"),
