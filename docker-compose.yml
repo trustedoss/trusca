@@ -398,6 +398,25 @@ x-backend-env: &backend-env
   PERMISSION_CACHE_TTL_SECONDS: ${PERMISSION_CACHE_TTL_SECONDS:-}
   PASSWORD_RESET_TOKEN_RETENTION_GRACE_DAYS: ${PASSWORD_RESET_TOKEN_RETENTION_GRACE_DAYS:-1}
   REFRESH_TOKEN_RETENTION_GRACE_DAYS: ${REFRESH_TOKEN_RETENTION_GRACE_DAYS:-1}
+  # compose-env-var wiring audit: the audit-log export webhook (batch size,
+  # lag, auth token, target URL), the audit hash-chain key, and various
+  # retention windows (audit log, notifications, report downloads, webhook
+  # deliveries, Celery task-run records) plus the pg_dump/psql subprocess
+  # timeout. Documented in .env.example but never listed in this anchor, so
+  # setting any of them in .env had no effect on the running container.
+  # Defaults match core/config.py exactly, so an unset .env changes nothing
+  # for an existing deployment.
+  AUDIT_EXPORT_BATCH_SIZE: ${AUDIT_EXPORT_BATCH_SIZE:-500}
+  AUDIT_EXPORT_LAG_SECONDS: ${AUDIT_EXPORT_LAG_SECONDS:-30}
+  AUDIT_EXPORT_TOKEN: ${AUDIT_EXPORT_TOKEN:-}
+  AUDIT_EXPORT_URL: ${AUDIT_EXPORT_URL:-}
+  AUDIT_HASH_KEY: ${AUDIT_HASH_KEY:-}
+  AUDIT_LOG_RETENTION_DAYS: ${AUDIT_LOG_RETENTION_DAYS:-90}
+  BACKUP_SUBPROCESS_TIMEOUT: ${BACKUP_SUBPROCESS_TIMEOUT:-3600}
+  NOTIFICATION_RETENTION_DAYS: ${NOTIFICATION_RETENTION_DAYS:-180}
+  REPORT_DOWNLOAD_RETENTION_DAYS: ${REPORT_DOWNLOAD_RETENTION_DAYS:-365}
+  TASK_RUN_RETENTION_DAYS: ${TASK_RUN_RETENTION_DAYS:-90}
+  WEBHOOK_DELIVERY_RETENTION_DAYS: ${WEBHOOK_DELIVERY_RETENTION_DAYS:-90}
 
 services:
   # ---------------------------------------------------------------------------
