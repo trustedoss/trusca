@@ -71,6 +71,7 @@ from api.v1 import (
 )
 from core.audit import install_audit_listeners
 from core.config import (
+    api_key_hmac_secret,
     app_env,
     cors_allowed_origins,
     demo_allow_sandbox_scans,
@@ -100,10 +101,18 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     log = structlog.get_logger("startup")
     log.info("backend_starting", app_env=app_env())
 
-    # C-1: fail fast if SECRET_KEY is missing/short in non-dev environments.
-    # secret_key() raises RuntimeError; we let it propagate so the process
-    # crashes on boot rather than booting with a weak key.
+    # C-1: fail fast if SECRET_KEY is missing/short/a template value in non-dev
+    # environments. secret_key() raises RuntimeError; we let it propagate so the
+    # process crashes on boot rather than booting with a weak key.
     secret_key()
+
+    # The other signing key, checked here for the same reason. It is otherwise
+    # read lazily, on the first request that presents an API key, so a
+    # deployment configured with a template value booted healthy, passed its
+    # health probe and its install smoke, and then 500ed every CI call it was
+    # asked to authenticate. The failure landed on the pipelines rather than on
+    # whoever made the change, at an arbitrary later time.
+    api_key_hmac_secret()
 
     # M-1 (security review): if the public-demo sandbox carve-out is on but the
     # safe-limit overlay was not applied, crash the boot rather than silently

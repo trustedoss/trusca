@@ -50,7 +50,7 @@ jobs:
       # e2e job uses `mock` for speed; here we want true detection on our repo.
       TRUSTEDOSS_SCAN_BACKEND: real
       # Pin so the api + worker sign/verify the same JWTs across containers.
-      SECRET_KEY: dogfood-ci-secret-key-min-32-chars-padding-aabbcc
+      SECRET_KEY: dogfood-fixture-secret-key-for-workflow-runs
       # The runner has a single egress IP; the bootstrap below does several
       # auth calls (register + login) that would trip the 5/min login limiter.
       RATELIMIT_DISABLED: "1"

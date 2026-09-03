@@ -129,6 +129,8 @@ docker-compose -f docker-compose.yml pull
 docker-compose -f docker-compose.yml up -d
 ```
 
+Step 3 is not optional. `.env.example` ships `SECRET_KEY` empty, and outside `APP_ENV=dev` the backend refuses to start without one; it also refuses the placeholder string it used to ship and values built the same way, in case an older `.env` carries one. The startup error names what is wrong and the command to fix it. Earlier releases pinned `APP_ENV=dev` in this file, which overrode the production default once it was copied to `.env`, so a stack installed this way ran in dev mode and none of these checks applied.
+
 The published backend image's entrypoint applies Alembic migrations automatically on start (`AUTO_MIGRATE`, default `true`) and only then starts uvicorn, so the schema is at HEAD by the time the backend reports healthy. You do **not** need to run `alembic upgrade head` by hand. Automatic migration does not create users, so you still bootstrap the first admin once:
 
 ```bash

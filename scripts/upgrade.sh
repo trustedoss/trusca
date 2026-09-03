@@ -171,6 +171,34 @@ else
 fi
 
 # ---------------------------------------------------------------------------
+# 1.4 Secret pre-flight
+# ---------------------------------------------------------------------------
+# Checked BEFORE the pull, because the backend refuses to start on a template
+# SECRET_KEY outside dev and the entrypoint applies Alembic migrations first.
+# Without this the stack ends up migrated and crash-looping, and the only clue
+# is in `docker-compose logs`. Here it is a message on the operator's terminal
+# with the stack still up. The marker list mirrors
+# apps/backend/core/config.py's _PLACEHOLDER_SECRET_MARKERS, pinned by
+# apps/backend/tests/unit/test_placeholder_secret_rejection.py.
+title "Secret pre-flight"
+if [ -f .env ]; then
+  preflight_app_env="$(sed -n 's/^APP_ENV=\(.*\)$/\1/p' .env | tail -n 1)"
+  preflight_secret="$(sed -n 's/^SECRET_KEY=\(.*\)$/\1/p' .env | tail -n 1)"
+  if [ "${preflight_app_env:-prod}" = "dev" ]; then
+    note "APP_ENV=dev, so the placeholder guard does not apply."
+  elif [ -z "$preflight_secret" ]; then
+    fail "SECRET_KEY is empty in .env, and the backend will not start outside dev. Generate one with 'openssl rand -hex 32'."
+  elif printf '%s' "$preflight_secret" | tr '[:upper:]' '[:lower:]' \
+       | grep -qE 'change|replace|placeholder|example|your-secret|your_secret|yoursecret|insecure|do-not-use|donotuse|dev-only|min-32-chars'; then
+    fail "SECRET_KEY in .env is a template value, not a generated one. The backend will refuse to start. Replace it with 'openssl rand -hex 32' output and re-run."
+  else
+    ok "SECRET_KEY looks like generated key material"
+  fi
+else
+  warn ".env not found, skipping the secret pre-flight."
+fi
+
+# ---------------------------------------------------------------------------
 # 1.5 .env sync — append-only (W6-chore-seed B)
 # ---------------------------------------------------------------------------
 title "Environment sync"

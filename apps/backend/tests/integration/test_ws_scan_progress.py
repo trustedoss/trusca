@@ -348,9 +348,7 @@ def _seed_user_with_terminal_scan(
 
     async def _build() -> tuple[uuid.UUID, uuid.UUID]:
         engine = create_async_engine(database_url(), pool_pre_ping=True, future=True)
-        factory = async_sessionmaker(
-            engine, expire_on_commit=False, class_=AsyncSession
-        )
+        factory = async_sessionmaker(engine, expire_on_commit=False, class_=AsyncSession)
         async with factory() as s:
             org = await make_organization(s)
             team = await make_team(s, organization=org)
@@ -407,9 +405,7 @@ def test_ws_initial_sync_for_failed_scan_reports_failed_step(
     client: TestClient,
 ) -> None:
     """Mirror of the succeeded test for the failed terminal branch."""
-    user_id, scan_id = _seed_user_with_terminal_scan(
-        scan_status="failed", progress_percent=60
-    )
+    user_id, scan_id = _seed_user_with_terminal_scan(scan_status="failed", progress_percent=60)
     token = _bearer_token(user_id)
 
     with client.websocket_connect(f"/ws/scans/{scan_id}") as ws:
@@ -425,9 +421,7 @@ def test_ws_initial_sync_for_cancelled_scan_reports_cancelled_step(
     client: TestClient,
 ) -> None:
     """Mirror of the succeeded test for the cancelled terminal branch."""
-    user_id, scan_id = _seed_user_with_terminal_scan(
-        scan_status="cancelled", progress_percent=30
-    )
+    user_id, scan_id = _seed_user_with_terminal_scan(scan_status="cancelled", progress_percent=30)
     token = _bearer_token(user_id)
 
     with client.websocket_connect(f"/ws/scans/{scan_id}") as ws:
@@ -515,9 +509,7 @@ def test_ws_refresh_token_rejected_with_1008(client: TestClient) -> None:
 # ---------------------------------------------------------------------------
 
 
-def test_ws_auth_timeout_closes_1008(
-    app, monkeypatch: pytest.MonkeyPatch
-) -> None:
+def test_ws_auth_timeout_closes_1008(app, monkeypatch: pytest.MonkeyPatch) -> None:
     """If the client does not send the first auth frame within the configured
     window the server must close 1008 / ``auth_timeout``."""
     monkeypatch.setenv("APP_ENV", "dev")
@@ -884,9 +876,7 @@ def test_ws_global_cap_refuses_new_connection_without_evicting_anyone(
 # ---------------------------------------------------------------------------
 
 
-def test_ws_origin_rejected_in_prod_closes_1008(
-    app, monkeypatch: pytest.MonkeyPatch
-) -> None:
+def test_ws_origin_rejected_in_prod_closes_1008(app, monkeypatch: pytest.MonkeyPatch) -> None:
     """In production, an Origin not in CORS_ALLOWED_ORIGINS must close 1008
     with reason ``origin_rejected`` BEFORE the server accepts the upgrade.
     """
@@ -896,6 +886,14 @@ def test_ws_origin_rejected_in_prod_closes_1008(
     # Required-in-prod SECRET_KEY: keep the dev placeholder length but rename
     # so the secret_key() guard passes.
     monkeypatch.setenv("SECRET_KEY", "ws-integration-prod-secret-32-chars!")
+    # Booting under prod also demands a dedicated API-key hashing secret, which
+    # the lifespan now checks at startup rather than on the first request that
+    # presents an API key. A real prod deployment must set one, so setting it
+    # here is the test matching the contract rather than working around it.
+    monkeypatch.setenv(
+        "API_KEY_HMAC_SECRET",
+        "4b91e2c07da58f36b14c9e0a7d23f85c61b0e4a97c35d28f06e1b4a7d93c052e",
+    )
 
     # Seed has to happen BEFORE the TestClient lifespan boots the app under
     # prod env so the seed engine reads the right URL — both share DATABASE_URL.
