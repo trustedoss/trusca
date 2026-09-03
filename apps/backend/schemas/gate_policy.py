@@ -111,6 +111,44 @@ class GatePolicyOut(BaseModel):
     updated_at: datetime
 
 
+class EpssAvailabilityOut(BaseModel):
+    """Whether this deployment has EPSS data behind any threshold set on it.
+
+    Deployment-scoped on purpose, and separate from the gate result for the
+    same reason: the gate answers "did the EPSS axis judge anything on THIS
+    scan", which a policy screen cannot ask because it is not looking at one.
+    An administrator setting a threshold needs to know whether the deployment
+    collects EPSS at all, before the next scan runs.
+    """
+
+    available: bool = Field(
+        description=(
+            "False when the daily sync is off, has not succeeded recently, or "
+            "has never written a score. A threshold set while this is false "
+            "decides nothing, and the builds it was meant to block pass."
+        ),
+    )
+    refresh_enabled: bool = Field(
+        description=(
+            "Whether `EPSS_REFRESH_ENABLED` is on. Off is the default, so a "
+            "threshold on a fresh install has nothing to evaluate until an "
+            "operator turns the sync on or points `EPSS_FEED_URL` at a mirror."
+        ),
+    )
+    scored_cves: int = Field(
+        ge=0,
+        description="CVEs in this deployment's catalog carrying an EPSS score.",
+    )
+    last_synced_at: datetime | None = Field(
+        default=None,
+        description=(
+            "When the sync last completed successfully; `null` when it never "
+            "has. A timestamp several days old means recent ticks have not "
+            "landed, so the scores are drifting even though values exist."
+        ),
+    )
+
+
 class EffectiveGatePolicyOut(BaseModel):
     """What a project actually evaluates against, after the fall-through.
 
@@ -131,6 +169,39 @@ class EffectiveGatePolicyOut(BaseModel):
             "Statuses this project may not reach without a second person. "
             "The organization's list plus anything the team added: a team may "
             "be stricter than its organization, never looser."
+        ),
+    )
+    epss_data_available: bool = Field(
+        default=True,
+        description=(
+            "Whether this deployment actually has EPSS data behind the "
+            "threshold above. False when the daily sync is switched off, has "
+            "not succeeded recently, or has never written a score, in which "
+            "case a threshold set here decides nothing and the builds it was "
+            "meant to block pass. The fields below say which of those it is."
+        ),
+    )
+    epss_refresh_enabled: bool = Field(
+        default=False,
+        description=(
+            "Whether `EPSS_REFRESH_ENABLED` is on for this deployment. Off is "
+            "the default, so a threshold configured on a fresh install has "
+            "nothing to evaluate until an operator turns the sync on or "
+            "points `EPSS_FEED_URL` at an internal mirror."
+        ),
+    )
+    epss_scored_cves: int = Field(
+        default=0,
+        ge=0,
+        description="CVEs in this deployment's catalog that carry an EPSS score.",
+    )
+    epss_last_synced_at: datetime | None = Field(
+        default=None,
+        description=(
+            "When the EPSS sync last completed successfully. `null` when it "
+            "has never run. A timestamp several days old means recent ticks "
+            "have not landed, so the scores are drifting even though values "
+            "exist."
         ),
     )
     sources: dict[str, str] = Field(

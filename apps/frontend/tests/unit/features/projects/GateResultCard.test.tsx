@@ -186,6 +186,54 @@ describe("GateResultCard", () => {
     );
   });
 
+  it("says the EPSS axis was not evaluated instead of rendering a zero", async () => {
+    // ER43: a threshold is set and nothing on the scan carries a score, so the
+    // count is 0 because the axis judged nothing. Drawing "EPSS >= 0.5 · 0"
+    // here would state the opposite of what happened.
+    mockedGet.mockResolvedValueOnce(
+      gate({ epss_threshold: 0.5, epss_gate_count: 0, epss_outcome: "no_data" }),
+    );
+    renderCard();
+    await waitFor(() => {
+      expect(screen.getByTestId("gate-epss-no-data")).toBeInTheDocument();
+    });
+    expect(screen.queryByTestId("gate-metric-epss")).not.toBeInTheDocument();
+    expect(screen.getByTestId("gate-epss-no-data").textContent).toContain("0.5");
+  });
+
+  it("keeps the EPSS metric but qualifies it on partial coverage", async () => {
+    // Partial is the common state, so the count still stands: a finding above
+    // the threshold blocks either way. What it cannot claim is completeness.
+    mockedGet.mockResolvedValueOnce(
+      gate({ epss_threshold: 0.5, epss_gate_count: 2, epss_outcome: "partial" }),
+    );
+    renderCard();
+    await waitFor(() => {
+      expect(screen.getByTestId("gate-metric-epss")).toBeInTheDocument();
+    });
+    expect(screen.getByTestId("gate-metric-epss")).toHaveAttribute(
+      "data-value",
+      "2",
+    );
+    expect(screen.getByTestId("gate-epss-partial")).toBeInTheDocument();
+  });
+
+  it("renders the plain metric when every finding carried a score", async () => {
+    mockedGet.mockResolvedValueOnce(
+      gate({
+        epss_threshold: 0.5,
+        epss_gate_count: 0,
+        epss_outcome: "evaluated",
+      }),
+    );
+    renderCard();
+    await waitFor(() => {
+      expect(screen.getByTestId("gate-metric-epss")).toBeInTheDocument();
+    });
+    expect(screen.queryByTestId("gate-epss-no-data")).not.toBeInTheDocument();
+    expect(screen.queryByTestId("gate-epss-partial")).not.toBeInTheDocument();
+  });
+
   it("renders a neutral no-scan state when scan_id is null", async () => {
     mockedGet.mockResolvedValueOnce(gate({ scan_id: null }));
     renderCard();

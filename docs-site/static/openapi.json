@@ -4454,6 +4454,38 @@
             "title": "Approval Required Statuses",
             "type": "array"
           },
+          "epss_data_available": {
+            "default": true,
+            "description": "Whether this deployment actually has EPSS data behind the threshold above. False when the daily sync is switched off, has not succeeded recently, or has never written a score, in which case a threshold set here decides nothing and the builds it was meant to block pass. The fields below say which of those it is.",
+            "title": "Epss Data Available",
+            "type": "boolean"
+          },
+          "epss_last_synced_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "When the EPSS sync last completed successfully. `null` when it has never run. A timestamp several days old means recent ticks have not landed, so the scores are drifting even though values exist.",
+            "title": "Epss Last Synced At"
+          },
+          "epss_refresh_enabled": {
+            "default": false,
+            "description": "Whether `EPSS_REFRESH_ENABLED` is on for this deployment. Off is the default, so a threshold configured on a fresh install has nothing to evaluate until an operator turns the sync on or points `EPSS_FEED_URL` at an internal mirror.",
+            "title": "Epss Refresh Enabled",
+            "type": "boolean"
+          },
+          "epss_scored_cves": {
+            "default": 0,
+            "description": "CVEs in this deployment's catalog that carry an EPSS score.",
+            "minimum": 0.0,
+            "title": "Epss Scored Cves",
+            "type": "integer"
+          },
           "epss_threshold": {
             "anyOf": [
               {
@@ -4821,6 +4853,47 @@
           "refresh_enabled"
         ],
         "title": "EolStatusOut",
+        "type": "object"
+      },
+      "EpssAvailabilityOut": {
+        "description": "Whether this deployment has EPSS data behind any threshold set on it.\n\nDeployment-scoped on purpose, and separate from the gate result for the\nsame reason: the gate answers \"did the EPSS axis judge anything on THIS\nscan\", which a policy screen cannot ask because it is not looking at one.\nAn administrator setting a threshold needs to know whether the deployment\ncollects EPSS at all, before the next scan runs.",
+        "properties": {
+          "available": {
+            "description": "False when the daily sync is off, has not succeeded recently, or has never written a score. A threshold set while this is false decides nothing, and the builds it was meant to block pass.",
+            "title": "Available",
+            "type": "boolean"
+          },
+          "last_synced_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "When the sync last completed successfully; `null` when it never has. A timestamp several days old means recent ticks have not landed, so the scores are drifting even though values exist.",
+            "title": "Last Synced At"
+          },
+          "refresh_enabled": {
+            "description": "Whether `EPSS_REFRESH_ENABLED` is on. Off is the default, so a threshold on a fresh install has nothing to evaluate until an operator turns the sync on or points `EPSS_FEED_URL` at a mirror.",
+            "title": "Refresh Enabled",
+            "type": "boolean"
+          },
+          "scored_cves": {
+            "description": "CVEs in this deployment's catalog carrying an EPSS score.",
+            "minimum": 0.0,
+            "title": "Scored Cves",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "available",
+          "refresh_enabled",
+          "scored_cves"
+        ],
+        "title": "EpssAvailabilityOut",
         "type": "object"
       },
       "ExternalAdvisoryOut": {
@@ -5276,6 +5349,18 @@
             "minimum": 0.0,
             "title": "Epss Gate Count",
             "type": "integer"
+          },
+          "epss_on_missing_data": {
+            "default": "allow",
+            "description": "What `GATE_EPSS_ON_MISSING_DATA` told the gate to do when the EPSS axis decided nothing. `allow` (the default) lets the build through, which is the historical behaviour; `block` fails it, so a configured threshold cannot be ignored in silence. `block` applies to `no_data` only and deliberately not to `partial`: gaps in EPSS coverage are normal, and an option that fires on a normal state is one nobody can leave switched on.",
+            "title": "Epss On Missing Data",
+            "type": "string"
+          },
+          "epss_outcome": {
+            "default": "not_configured",
+            "description": "What the EPSS axis was able to judge on the evaluated scan. `not_configured`: no threshold is set, so the axis is off by choice and `epss_gate_count` of 0 means what it says. `evaluated`: a threshold is set and every open finding carries a score, so the count is a complete answer. `partial`: some open findings carry no score, so a count of 0 does not mean nothing would have tripped the threshold. `no_data`: not one open finding carries a score, so the axis decided nothing at all and a `pass` here is the absence of a verdict rather than a clean one. A consumer must not print an all-clear for the EPSS axis on `no_data`, and should qualify it on `partial`.",
+            "title": "Epss Outcome",
+            "type": "string"
           },
           "epss_threshold": {
             "anyOf": [
@@ -21403,6 +21488,53 @@
           }
         ],
         "summary": "What this project's build gate actually applies",
+        "tags": [
+          "gate-policies"
+        ]
+      }
+    },
+    "/v1/gate-policies/epss-availability": {
+      "get": {
+        "description": "Deployment-scoped, so the policy editor can qualify a threshold it shows.\n\nNot derived from a project or a scan: the question an administrator has\nwhile setting a threshold is whether this deployment collects EPSS, and\nthat has one answer regardless of which project they came from. The\nper-scan version of the question rides on the gate result instead.\n\nNo path parameter, so nothing to authorize beyond being a signed-in\nreader: the response describes the deployment's own configuration and\ncarries no project, team or finding data.",
+        "operationId": "epss_availability_endpoint_v1_gate_policies_epss_availability_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EpssAvailabilityOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetail"
+                }
+              }
+            },
+            "description": "Not authenticated"
+          },
+          "403": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetail"
+                }
+              }
+            },
+            "description": "Not permitted for this caller"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "summary": "Whether this deployment has EPSS data behind its thresholds",
         "tags": [
           "gate-policies"
         ]

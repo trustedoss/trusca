@@ -117,6 +117,29 @@ export async function deleteTeamGatePolicy(teamId: string): Promise<void> {
   await api.delete(`/v1/gate-policies/teams/${teamId}`);
 }
 
+export interface EpssAvailabilityOut {
+  available: boolean;
+  refresh_enabled: boolean;
+  scored_cves: number;
+  last_synced_at: string | null;
+}
+
+/**
+ * Deployment-scoped: whether anything backs an EPSS threshold at all.
+ *
+ * The gate result answers the per-scan version of this question. A policy
+ * editor cannot ask that one, because it is not looking at a scan.
+ */
+export async function getEpssAvailability(
+  config?: AxiosRequestConfig,
+): Promise<EpssAvailabilityOut> {
+  const { data } = await api.get<EpssAvailabilityOut>(
+    "/v1/gate-policies/epss-availability",
+    config,
+  );
+  return data;
+}
+
 export async function getEffectiveGatePolicy(
   projectId: string,
   config?: AxiosRequestConfig,

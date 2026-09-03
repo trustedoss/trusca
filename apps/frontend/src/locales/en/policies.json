@@ -109,8 +109,10 @@
     "description": "What stops a build for this team. A field left off follows the organization.",
     "inherited": "Following the organization.",
     "epss": {
-      "label": "Exploit-prediction threshold",
       "help": "Block when an open finding's score reaches this. Between 0 and 1.",
+      "label": "Exploit-prediction threshold",
+      "no_data_disabled": "This deployment does not collect EPSS scores (EPSS_REFRESH_ENABLED is off), so this threshold decides nothing and the builds it would block pass instead.",
+      "no_data_stale": "The EPSS sync has not completed recently, so this threshold is evaluated against scores that are drifting. CVEs carrying a score in this deployment: {{count}}.",
       "range": "Enter a number between 0 and 1."
     },
     "reachable": {

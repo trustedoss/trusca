@@ -221,7 +221,8 @@ export function GateResultCard({ projectId, scanId }: GateResultCardProps) {
                   {t("overview.gate_card.malicious_unassessed")}
                 </div>
               ) : null}
-              {data.epss_threshold != null ? (
+              {data.epss_threshold != null &&
+              data.epss_outcome !== "no_data" ? (
                 <GateMetric
                   label={t("overview.gate_card.epss_findings", {
                     defaultValue: "EPSS ≥ {{threshold}}",
@@ -231,6 +232,34 @@ export function GateResultCard({ projectId, scanId }: GateResultCardProps) {
                   emphasize={data.epss_gate_count > 0}
                   testid="gate-metric-epss"
                 />
+              ) : null}
+              {data.epss_threshold != null &&
+              data.epss_outcome === "no_data" ? (
+                /* A threshold is set and nothing on this scan carries a score,
+                   so the axis judged nothing. Rendering "EPSS ≥ 0.5 · 0" here
+                   would say the opposite of what happened. */
+                <div
+                  className="text-xs text-muted-foreground"
+                  data-testid="gate-epss-no-data"
+                >
+                  {t("overview.gate_card.epss_no_data", {
+                    defaultValue:
+                      "EPSS ≥ {{threshold}} was not evaluated: no finding on this scan has an EPSS score.",
+                    threshold: data.epss_threshold,
+                  })}
+                </div>
+              ) : null}
+              {data.epss_threshold != null &&
+              data.epss_outcome === "partial" ? (
+                <div
+                  className="text-xs text-muted-foreground"
+                  data-testid="gate-epss-partial"
+                >
+                  {t("overview.gate_card.epss_partial", {
+                    defaultValue:
+                      "Some findings on this scan have no EPSS score, so this count is not complete.",
+                  })}
+                </div>
               ) : null}
             </dl>
           </>

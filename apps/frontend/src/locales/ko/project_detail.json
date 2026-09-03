@@ -215,18 +215,25 @@
       "run_scan": "스캔 실행"
     },
     "gate_card": {
-      "title": "빌드 차단 게이트",
-      "subtitle": "최근 성공한 스캔을 기준으로 한 빌드 차단 판정입니다.",
-      "pass": "통과",
+      "critical_cves": "Critical CVE",
+      "epss_findings": "EPSS ≥ {{threshold}}",
+      "epss_no_data": "EPSS ≥ {{threshold}} 조건은 평가되지 않았습니다. 이 스캔의 어떤 항목에도 EPSS 점수가 없습니다.",
+      "epss_partial": "이 스캔에는 EPSS 점수가 없는 항목이 있어 이 수치는 완전하지 않습니다.",
+      "error_detail": "다시 시도해 주세요.",
+      "error_title": "빌드 차단 게이트를 불러오지 못했습니다",
+      "errors": {
+        "not_found": "이 프로젝트가 더 이상 존재하지 않거나 접근 권한이 없습니다.",
+        "forbidden": "이 프로젝트의 빌드 차단 게이트를 볼 권한이 없습니다.",
+        "unknown": "빌드 차단 게이트를 불러오지 못했습니다. 다시 시도해 주세요."
+      },
       "fail": "차단",
+      "forbidden_licenses": "금지 라이선스",
+      "malicious_packages": "알려진 악성 패키지",
+      "malicious_unassessed": "알려진 악성 패키지: 이 스캔에서는 확인하지 않았습니다",
       "no_scan_badge": "스캔 전",
       "no_scan_detail": "빌드 차단 게이트를 평가하려면 스캔을 한 번 성공적으로 실행하세요.",
+      "pass": "통과",
       "pass_detail": "이 빌드를 차단하는 Critical CVE나 금지 라이선스가 없습니다.",
-      "critical_cves": "Critical CVE",
-      "forbidden_licenses": "금지 라이선스",
-      "epss_findings": "EPSS ≥ {{threshold}}",
-      "error_title": "빌드 차단 게이트를 불러오지 못했습니다",
-      "error_detail": "다시 시도해 주세요.",
       "reason": {
         "intro": "다음 사유로 이 빌드가 차단되었습니다:",
         "critical_cve": "미해결 Critical CVE {{count}}건",
@@ -236,13 +243,8 @@
         "malicious": "알려진 악성 패키지 {{count}}개를 제거하고, 이 빌드가 접근할 수 있던 자격증명을 교체하십시오",
         "malicious_other": "알려진 악성 패키지 {{count}}개를 제거하고, 이 빌드가 접근할 수 있던 자격증명을 교체하십시오"
       },
-      "errors": {
-        "not_found": "이 프로젝트가 더 이상 존재하지 않거나 접근 권한이 없습니다.",
-        "forbidden": "이 프로젝트의 빌드 차단 게이트를 볼 권한이 없습니다.",
-        "unknown": "빌드 차단 게이트를 불러오지 못했습니다. 다시 시도해 주세요."
-      },
-      "malicious_packages": "알려진 악성 패키지",
-      "malicious_unassessed": "알려진 악성 패키지: 이 스캔에서는 확인하지 않았습니다"
+      "subtitle": "최근 성공한 스캔을 기준으로 한 빌드 차단 판정입니다.",
+      "title": "빌드 차단 게이트"
     },
     "errors": {
       "title": "개요를 불러오지 못했습니다.",

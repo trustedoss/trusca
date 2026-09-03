@@ -17,6 +17,7 @@ import {
   type GatePolicyUpsertIn,
   deleteTeamGatePolicy,
   getEffectiveGatePolicy,
+  getEpssAvailability,
   getTeamGatePolicy,
   upsertOrgGatePolicy,
   upsertTeamGatePolicy,
@@ -107,5 +108,19 @@ export function useDeleteTeamGatePolicy(teamId: string | null) {
     onSuccess: () => {
       void client.invalidateQueries({ queryKey: ["gate-policies"] });
     },
+  });
+}
+
+/**
+ * Whether this deployment has EPSS data behind any threshold set on it.
+ *
+ * Deployment-scoped, so it takes no id and is safe to share across every
+ * policy screen. Kept fresh for a minute: it changes once a day at most.
+ */
+export function useEpssAvailability() {
+  return useQuery({
+    queryKey: ["gate-policies", "epss-availability"],
+    queryFn: () => getEpssAvailability(),
+    staleTime: 60_000,
   });
 }

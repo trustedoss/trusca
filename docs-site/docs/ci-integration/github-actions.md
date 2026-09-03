@@ -124,6 +124,7 @@ Drop `.github/workflows/sca.yml` (above) into the repo. On the next PR, the SCA 
 | `forbidden-license-count` | Distinct components carrying a forbidden-classification license. |
 | `epss-gate-count` | Open findings whose EPSS score met or exceeded the configured EPSS threshold. `0` when the EPSS gate is disabled (the default). See [Gate the build on EPSS](#gate-the-build-on-epss-optional). |
 | `malicious-component-count` | Distinct components the malicious-package snapshot flags. These block regardless of severity — remove the package and rotate any credentials the build could reach. |
+| `epss-outcome` | What the EPSS axis of the gate was able to judge. `not_configured`: no threshold set, so the axis was off by choice. `evaluated`: every open finding carried an EPSS score, so `epss-gate-count` is a complete answer. `partial`: some open findings carried no score, so a `0` there is not proof nothing would have tripped the threshold. `no_data`: not one open finding carried a score, so the axis decided nothing at all and the pass is the absence of a verdict. Empty on a portal too old to report it. |
 | `sarif-file` | Path of the SARIF document written, or empty when the `sarif-file` input was not set. |
 | `component-outcome` | What the scan's SBOM ended up containing. `components_found` is the ordinary case. `empty_no_manifests` and `empty_with_manifests` both mean the scan produced no components, so a passing gate reflects the absence of anything to judge rather than a clean result: the first is expected for a build system TRUSCA does not read, the second points at a scan failure. Empty on a portal too old to report it. |
 
@@ -279,6 +280,36 @@ GATE_EPSS_THRESHOLD=0.5
 ```
 
 With the threshold set, the gate also fails when any open finding has `epss_score >= GATE_EPSS_THRESHOLD`. The gate result then carries two extra fields, `epss_gate_count` (offending findings) and `epss_threshold` (the configured value), and the action exposes `epss-gate-count` as an [output](#outputs). Findings without an EPSS value never trip the gate (a missing score cannot satisfy `>=`). See [`GATE_EPSS_THRESHOLD`](../reference/env-variables.md#build--policy-gate) for the full reference and [EPSS — exploitation probability](../user-guide/vulnerabilities.md#epss--exploitation-probability) for the concept.
+
+#### When the threshold cannot be evaluated
+
+`epss_gate_count` is `0` both when nothing scored above the threshold and when
+nothing was scored at all, and those are not the same result. EPSS values are
+filled by a daily sync that is **off by default**
+(`EPSS_REFRESH_ENABLED`), so on a deployment that has never turned it on, or
+one whose mirror is unreachable, every open finding has a NULL score and the
+threshold you configured decides nothing. Before this was reported, that read
+as a passing build.
+
+The `epss-outcome` [output](#outputs) says which case you are in, and the
+action writes a job-summary row and a warning annotation for `no_data` and
+`partial`. `GATE_EPSS_ON_MISSING_DATA` on the portal decides what the verdict
+should be:
+
+<!-- docs-uat: id=gha-epss-on-missing-data kind=shell ctx=host tier=manual waiver=env-config-snippet-not-a-command -->
+```bash
+# Default. An undecided EPSS axis lets the build through, which is what
+# every deployment did before this option existed.
+GATE_EPSS_ON_MISSING_DATA=allow
+
+# Fail the build instead, so a configured threshold cannot be ignored.
+GATE_EPSS_ON_MISSING_DATA=block
+```
+
+`block` applies to `no_data` only. It deliberately does not fire on `partial`,
+because EPSS does not score every CVE and gaps are normal even with a healthy
+sync: an option that fires on a normal state is one nobody can leave switched
+on, and a control that has been switched off protects nothing.
 
 ### Pin to a tag
 

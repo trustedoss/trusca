@@ -345,6 +345,11 @@
     },
     {
       "method": "GET",
+      "path": "/v1/gate-policies/epss-availability",
+      "gate": "role>=viewer"
+    },
+    {
+      "method": "GET",
       "path": "/v1/gate-policies/effective/{project_id}",
       "gate": "role>=viewer"
     },

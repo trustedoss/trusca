@@ -124,6 +124,7 @@ jobs:
 | `forbidden-license-count` | 금지 분류 라이선스를 가진 고유 컴포넌트 수. |
 | `epss-gate-count` | EPSS score가 구성된 EPSS 임계 이상인 미해결 결과 수. EPSS 게이트가 비활성(기본)이면 `0`. [EPSS로 빌드 게이팅](#epss로-빌드-게이팅-선택) 참고. |
 | `malicious-component-count` | 악성 패키지 스냅샷이 지목한 컴포넌트 수. 심각도와 무관하게 빌드를 막습니다. 패키지를 제거하고 이 빌드가 닿을 수 있던 자격 증명을 교체하세요. |
+| `epss-outcome` | 게이트의 EPSS 축이 무엇을 판정할 수 있었는지입니다. `not_configured`는 임계가 설정되지 않아 축이 꺼져 있었다는 뜻이고, `evaluated`는 미해결 결과에 모두 EPSS 점수가 있어 `epss-gate-count`가 완전한 답이라는 뜻입니다. `partial`은 점수가 없는 미해결 결과가 섞여 있어 `0`이 곧 임계를 넘는 것이 없었다는 증거가 되지 못한다는 뜻이고, `no_data`는 점수를 가진 결과가 하나도 없어 축이 아무것도 판정하지 못했다는 뜻입니다. 이 값을 보고하지 못하는 구버전 포털에서는 비어 있습니다. |
 | `sarif-file` | 기록한 SARIF 문서의 경로입니다. `sarif-file` 입력을 주지 않았으면 비어 있습니다. |
 | `component-outcome` | 스캔의 SBOM에 무엇이 담겼는지입니다. `components_found`가 통상적인 경우입니다. `empty_no_manifests`와 `empty_with_manifests`는 둘 다 컴포넌트가 하나도 나오지 않았다는 뜻이라, 게이트 통과는 깨끗하다는 판정이 아니라 판단할 대상이 없었다는 뜻입니다. 앞은 TRUSCA가 읽지 못하는 빌드 시스템에서 정상적으로 나오는 값이고, 뒤는 스캔이 실패했다는 신호입니다. 이 값을 보고하지 못하는 구버전 포털에서는 비어 있습니다. |
 
@@ -277,6 +278,34 @@ GATE_EPSS_THRESHOLD=0.5
 ```
 
 임계가 설정되면 미해결 결과 중 `epss_score >= GATE_EPSS_THRESHOLD`인 것이 있을 때도 게이트가 실패합니다. 게이트 결과에는 추가 필드 `epss_gate_count`(위반 결과 수)와 `epss_threshold`(구성된 값)가 실리며, action은 `epss-gate-count`를 [출력](#출력)으로 노출합니다. EPSS 값이 없는 결과는 게이트를 트리거하지 않습니다(누락된 score는 `>=`를 만족할 수 없음). 전체 레퍼런스는 [`GATE_EPSS_THRESHOLD`](../reference/env-variables.md#빌드--정책-게이트), 개념은 [EPSS — 악용 확률](../user-guide/vulnerabilities.md#epss--악용-확률) 참고.
+
+#### 임계를 평가할 수 없을 때
+
+`epss_gate_count`는 임계를 넘는 것이 없을 때도 `0`이고 점수가 매겨진 것이 하나도
+없을 때도 `0`인데, 둘은 같은 결과가 아닙니다. EPSS 값은 **기본값이 꺼짐**인 일간
+동기화(`EPSS_REFRESH_ENABLED`)가 채웁니다. 그래서 한 번도 켠 적이 없는 배포나
+미러에 닿지 못하는 배포에서는 모든 미해결 결과의 점수가 NULL이고, 설정한 임계가
+아무것도 판정하지 못합니다. 이 사실을 보고하기 전에는 그 상태가 빌드 통과로
+보였습니다.
+
+어느 경우인지는 `epss-outcome` [출력](#출력)이 알려 주고, action은 `no_data`와
+`partial`에 대해 작업 요약 행과 경고 어노테이션을 남깁니다. 판정을 어떻게 할지는
+포털의 `GATE_EPSS_ON_MISSING_DATA`가 정합니다.
+
+<!-- docs-uat: id=gha-epss-on-missing-data kind=shell ctx=host tier=manual waiver=env-config-snippet-not-a-command -->
+```bash
+# 기본값. 판정하지 못한 EPSS 축은 빌드를 통과시킵니다. 이 옵션이 생기기 전에
+# 모든 배포가 하던 동작입니다.
+GATE_EPSS_ON_MISSING_DATA=allow
+
+# 대신 빌드를 실패시킵니다. 설정한 임계가 조용히 무시되지 않습니다.
+GATE_EPSS_ON_MISSING_DATA=block
+```
+
+`block`은 `no_data`에만 적용됩니다. `partial`에는 의도적으로 적용하지 않습니다.
+EPSS는 모든 CVE에 점수를 매기지 않아 동기화가 정상이어도 빈 자리가 생기는데, 흔한
+상태에서 발화하는 옵션은 아무도 켜 둘 수 없고, 꺼 둔 안전장치는 아무것도 지키지
+않기 때문입니다.
 
 ### 태그 핀
 

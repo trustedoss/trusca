@@ -113,6 +113,34 @@ class GateResultResponse(BaseModel):
             "scan predating this capture: unknown, not either answer."
         ),
     )
+    epss_outcome: str = Field(
+        default="not_configured",
+        description=(
+            "What the EPSS axis was able to judge on the evaluated scan. "
+            "`not_configured`: no threshold is set, so the axis is off by "
+            "choice and `epss_gate_count` of 0 means what it says. "
+            "`evaluated`: a threshold is set and every open finding carries a "
+            "score, so the count is a complete answer. `partial`: some open "
+            "findings carry no score, so a count of 0 does not mean nothing "
+            "would have tripped the threshold. `no_data`: not one open "
+            "finding carries a score, so the axis decided nothing at all and "
+            "a `pass` here is the absence of a verdict rather than a clean "
+            "one. A consumer must not print an all-clear for the EPSS axis on "
+            "`no_data`, and should qualify it on `partial`."
+        ),
+    )
+    epss_on_missing_data: str = Field(
+        default="allow",
+        description=(
+            "What `GATE_EPSS_ON_MISSING_DATA` told the gate to do when the "
+            "EPSS axis decided nothing. `allow` (the default) lets the build "
+            "through, which is the historical behaviour; `block` fails it, so "
+            "a configured threshold cannot be ignored in silence. `block` "
+            "applies to `no_data` only and deliberately not to `partial`: "
+            "gaps in EPSS coverage are normal, and an option that fires on a "
+            "normal state is one nobody can leave switched on."
+        ),
+    )
     malicious_gate_enforced: bool = Field(
         default=True,
         description="Whether the known-malicious axis was active for this "

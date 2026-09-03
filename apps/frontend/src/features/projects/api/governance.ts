@@ -22,6 +22,13 @@ export interface GovernanceGate {
   critical_cve_count: number;
   forbidden_license_count: number;
   epss_gate_count: number;
+  /**
+   * What the EPSS axis was able to judge. `epss_gate_count` is 0 both when
+   * nothing scored above the threshold and when nothing was scored at all, so
+   * a 0 without this is not an answer. Optional: a portal older than the field
+   * omits it.
+   */
+  epss_outcome?: "not_configured" | "evaluated" | "partial" | "no_data";
   malicious_component_count: number;
   scan_id: string | null;
 }

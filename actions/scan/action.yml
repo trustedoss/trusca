@@ -108,6 +108,14 @@ outputs:
       build system TRUSCA cannot read, the second points at a scan failure.
       Empty on a portal too old to report it.
     value: ${{ steps.gate.outputs.component_outcome }}
+  epss-outcome:
+    description: >-
+      What the EPSS axis of the gate was able to judge: `not_configured` (no
+      threshold set), `evaluated` (every open finding carried a score),
+      `partial` (some did not, so `epss-gate-count` of 0 is not a full answer),
+      or `no_data` (none did, so the axis decided nothing at all). Empty on a
+      portal too old to report it.
+    value: ${{ steps.gate.outputs.epss_outcome }}
 
 # -----------------------------------------------------------------------------
 # Steps
@@ -401,6 +409,8 @@ runs:
         malicious_assessed=$(echo "$json_body" | jq -r '.malicious_scan_assessed // false')
         epss=$(echo "$json_body" | jq -r '.epss_gate_count // 0')
         outcome=$(echo "$json_body" | jq -r '.component_outcome // ""')
+        epss_outcome=$(echo "$json_body" | jq -r '.epss_outcome // ""')
+        epss_threshold=$(echo "$json_body" | jq -r '.epss_threshold // ""')
 
         # SARIF export (ER29). Fetched with the same ref anchor as the verdict
         # above, so the document describes this branch rather than the
@@ -460,6 +470,7 @@ runs:
           echo "malicious_component_count=${malicious}"
           echo "epss_gate_count=${epss}"
           echo "component_outcome=${outcome}"
+          echo "epss_outcome=${epss_outcome}"
           echo "sarif_file=${sarif_file}"
         } >> "$GITHUB_OUTPUT"
 
@@ -485,6 +496,18 @@ runs:
           # because there was nothing to judge. Reported unconditionally when
           # it happens, because every count above reads 0 either way and the
           # table would otherwise be indistinguishable from a clean build.
+          # The EPSS axis reports 0 both when nothing scored above the
+          # threshold and when nothing was scored at all. Only said when a
+          # threshold is actually configured: on a deployment that never opted
+          # in there is nothing to caveat.
+          case "${epss_outcome}" in
+            no_data)
+              echo "| EPSS (>= ${epss_threshold}) | **not evaluated**. No open finding on this scan has an EPSS score, so the threshold you configured decided nothing. Set EPSS_REFRESH_ENABLED on the portal, or point EPSS_FEED_URL at a mirror. |"
+              ;;
+            partial)
+              echo "| EPSS (>= ${epss_threshold}) | ${epss} over the threshold, but some open findings carry no EPSS score, so this count is not a complete answer. |"
+              ;;
+          esac
           case "${outcome}" in
             empty_no_manifests)
               echo "| Components | **none found**. No dependency manifest in this tree, so nothing was scanned. Verify TRUSCA supports this build system before treating the verdict as a pass. |"
@@ -499,6 +522,18 @@ runs:
         } >> "$GITHUB_STEP_SUMMARY"
 
         echo "TrustedOSS gate=${gate} critical=${critical} forbidden=${forbidden} malicious=${malicious} components=${outcome:-unknown}"
+
+        case "${epss_outcome}" in
+          no_data)
+            # Warning, not a failure: whether an undecided EPSS axis should
+            # block is the portal's GATE_EPSS_ON_MISSING_DATA policy to make,
+            # and it has already made it by the time this verdict arrives.
+            echo "::warning title=TRUSCA could not evaluate the EPSS gate::A threshold of ${epss_threshold} is configured, but no open finding on this scan carries an EPSS score, so 'epss-gate-count=0' means the axis judged nothing rather than that nothing was risky."
+            ;;
+          partial)
+            echo "::warning title=TRUSCA evaluated the EPSS gate on partial data::Some open findings on this scan carry no EPSS score, so 'epss-gate-count=${epss}' counts only the findings that had one."
+            ;;
+        esac
 
         case "${outcome}" in
           empty_no_manifests|empty_with_manifests)

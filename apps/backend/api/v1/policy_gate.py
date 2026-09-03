@@ -225,6 +225,8 @@ def _build_response_body(result: GateResult) -> GateResultResponse:
         malicious_gate_enforced=result.malicious_gate_enforced,
         malicious_scan_assessed=result.malicious_scan_assessed,
         component_outcome=result.component_outcome,
+        epss_outcome=result.epss_outcome,
+        epss_on_missing_data=result.epss_on_missing_data,
         project_id=result.project_id,
         scan_id=result.scan_id,
         evaluated_at=result.evaluated_at,
