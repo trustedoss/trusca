@@ -75,6 +75,7 @@ from core.config import database_url
 from core.db import sync_session_scope
 from models import AuditLog
 from services.backup_service import (
+    _REQUIRED_ARTIFACTS,
     BackupNotFoundError,
     backups_root,
     get_backup_path,
@@ -472,6 +473,103 @@ def _wait_bounded(
     for thread in drains:
         thread.join(timeout=30)
     return returncode
+def _require_backup_artifacts(
+    *, backup_path: Path, name: str, actor_uuid: uuid.UUID | None
+) -> None:
+    """Refuse a backup that is missing what a restore needs.
+
+    ``workspace.tar.gz`` is optional: a deployment may have no workspace, and
+    the manifest records that. The manifest itself is not optional, and its
+    absence is the mark of a run that was killed partway, since it is written
+    last of all.
+
+    Reads the same list the listing reads for its ``complete`` flag, so what an
+    operator is shown and what a restore will accept cannot drift apart.
+    """
+    for artifact in _REQUIRED_ARTIFACTS:
+        if (backup_path / artifact).is_file():
+            continue
+        log.error("admin.backup.restore_artifact_missing", name=name, artifact=artifact)
+        _emit_audit(
+            actor_user_id=actor_uuid,
+            action="backup.restore_failed",
+            target_id=name,
+            diff={"error": "incomplete_artifacts", "missing": artifact},
+        )
+        raise RestoreTaskError(f"missing artifact: {artifact}")
+
+
+def _verify_backup_checksums(
+    *,
+    backup_path: Path,
+    manifest: dict[str, Any],
+    name: str,
+    actor_uuid: uuid.UUID | None,
+) -> None:
+    """Re-check the artifacts against the manifest before anything is replaced.
+
+    Guards against on-disk corruption that would otherwise restore a
+    partially-good dump. Split out from the restore body so it can be exercised
+    on its own: the branch that matters most is the one that refuses, and
+    reaching it through a whole restore means having a database to destroy.
+    """
+    raw_checksums = manifest.get("checksums")
+    if not isinstance(raw_checksums, dict) or not raw_checksums:
+        # A manifest with no checksums block at all is the older format, which
+        # `scripts/backup.sh` still writes. Those backups are legitimate and
+        # predate this verification, so refusing them would strand restore
+        # points an operator has been keeping. Say so rather than pass silently:
+        # what is skipped here is the only guard against on-disk corruption.
+        log.warning(
+            "admin.backup.restore_unverified",
+            name=name,
+            reason="manifest records no checksums",
+        )
+        return
+    expected_checksums = raw_checksums
+    for fname in ("postgres.sql.gz", "workspace.tar.gz"):
+        expected = expected_checksums.get(fname)
+        artifact_path = backup_path / fname
+        if not artifact_path.is_file():
+            # No workspace archive is a normal backup, not a damaged one: the
+            # manifest records ``has_workspace: false`` and lists no checksum
+            # for it either.
+            continue
+        if expected is None:
+            # The manifest accounts for some artifacts and not this one, which
+            # is different from accounting for none: this file arrived after
+            # the manifest was written, or was replaced. Previously it fell
+            # into the same branch as "there is no such file" and was extracted
+            # unverified, which made two defences look like two when they were
+            # one -- only the pre-flight's insistence on a manifest kept an
+            # unaccounted-for artifact out, and relaxing that would have taken
+            # the checksum check with it silently.
+            _emit_audit(
+                actor_user_id=actor_uuid,
+                action="backup.restore_failed",
+                target_id=name,
+                diff={"error": "checksum_missing", "artifact": fname},
+            )
+            raise RestoreTaskError(
+                f"no checksum recorded for {fname}: the manifest does not account "
+                "for an artifact that is present, so its contents cannot be trusted"
+            )
+        actual = _sha256_file(artifact_path)
+        if actual != expected:
+            _emit_audit(
+                actor_user_id=actor_uuid,
+                action="backup.restore_failed",
+                target_id=name,
+                diff={
+                    "error": "checksum_mismatch",
+                    "artifact": fname,
+                    "expected": expected,
+                    "actual": actual,
+                },
+            )
+            raise RestoreTaskError(
+                f"checksum mismatch on {fname}: expected={expected} actual={actual}"
+            )
 
 
 def _run_pg_dump(target_gz: Path) -> None:
@@ -879,50 +977,17 @@ def _run_restore(
         )
         raise RestoreTaskError(f"backup not found: {name}") from exc
 
-    # Pre-flight: postgres.sql.gz + manifest.json must be present.
-    # workspace.tar.gz is optional — backup may have skipped it.
-    for artifact in ("postgres.sql.gz", "manifest.json"):
-        if not (backup_path / artifact).is_file():
-            log.error(
-                "admin.backup.restore_artifact_missing",
-                name=name,
-                artifact=artifact,
-            )
-            _emit_audit(
-                actor_user_id=actor_uuid,
-                action="backup.restore_failed",
-                target_id=name,
-                diff={"error": "incomplete_artifacts", "missing": artifact},
-            )
-            raise RestoreTaskError(f"missing artifact: {artifact}")
+    _require_backup_artifacts(backup_path=backup_path, name=name, actor_uuid=actor_uuid)
 
     manifest_before = _read_manifest(name)
     revision_before = manifest_before.get("alembic_head")
 
-    # Optional checksum re-verify before restore — guards against on-disk
-    # corruption that would otherwise restore a partially-good dump.
-    expected_checksums = manifest_before.get("checksums") or {}
-    for fname in ("postgres.sql.gz", "workspace.tar.gz"):
-        expected = expected_checksums.get(fname)
-        artifact_path: Path = backup_path / fname
-        if expected is None or not artifact_path.is_file():
-            continue
-        actual = _sha256_file(artifact_path)
-        if actual != expected:
-            _emit_audit(
-                actor_user_id=actor_uuid,
-                action="backup.restore_failed",
-                target_id=name,
-                diff={
-                    "error": "checksum_mismatch",
-                    "artifact": fname,
-                    "expected": expected,
-                    "actual": actual,
-                },
-            )
-            raise RestoreTaskError(
-                f"checksum mismatch on {fname}: expected={expected} actual={actual}"
-            )
+    _verify_backup_checksums(
+        backup_path=backup_path,
+        manifest=manifest_before,
+        name=name,
+        actor_uuid=actor_uuid,
+    )
 
     try:
         try:

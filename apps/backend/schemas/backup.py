@@ -49,6 +49,18 @@ class BackupInfo(BaseModel):
             "only by the script's ``unknown`` fallback)."
         ),
     )
+    complete: bool = Field(
+        default=True,
+        description=(
+            "Whether the artifacts a restore requires are all present. False "
+            "means the run did not finish: the manifest is written last, after "
+            "both artifacts and their checksums, so a backup killed partway "
+            "leaves its directory without one. Such a backup is refused at "
+            "restore time, and without this field the listing showed it as an "
+            "ordinary row, so an operator counting their restore points "
+            "counted one that would not restore."
+        ),
+    )
 
 
 class BackupListResponse(BaseModel):
