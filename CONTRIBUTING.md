@@ -131,9 +131,11 @@ We block PRs that lower test coverage. The thresholds are enforced in CI:
 | Backend lines, whole tree | `coverage-gate (backend)` | **≥ 80%** (`fail_under=80` in `pyproject.toml`) |
 | Backend lines, changed by the PR | `diff-cover` in the same job | **≥ 80%** |
 | Frontend lines | `vitest --coverage` | **≥ 80%** lines / 70% branches (`vite.config.ts`) |
-| E2E core scenarios | Playwright (harness pattern) | always green |
+| E2E core scenarios | Playwright (harness pattern) | not run on pull requests |
 
 A change that lowers coverage below the floor will fail CI. Add tests for the lines you write.
+
+The E2E row is the exception: the Playwright suite runs on the nightly schedule and on a manual `workflow_dispatch`, not on pull requests (`.github/workflows/ci.yml`). Opening a PR does not exercise it, so do not rely on it to catch a regression in a user-visible flow. If your change touches one, run the suite yourself or ask a maintainer to dispatch it.
 
 ### What to test
 

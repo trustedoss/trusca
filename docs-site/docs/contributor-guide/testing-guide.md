@@ -8,7 +8,7 @@ sidebar_position: 3
 
 # Testing guide
 
-Tests are first-class. The PR merge gate is **≥ 80 % line coverage on changed code** and **all E2E core scenarios green**. This page walks the layout, the harness pattern, and the adversarial-input rules that catch the bugs static analysis cannot.
+Tests are first-class. The PR merge gate is **≥ 80 % line coverage on changed code**; the Playwright E2E suite does not run on pull requests (see [Coverage gate](#coverage-gate) below). This page walks the layout, the harness pattern, and the adversarial-input rules that catch the bugs static analysis cannot.
 
 :::note Audience
 All contributors. Apply on every PR that touches `apps/backend/` or `apps/frontend/`.
@@ -290,12 +290,12 @@ reasons.
 Both gates walk one screen register (`tests/_harness/screenIds.ts`), so
 they cannot disagree about what is covered.
 
-## Coverage gate — concrete
+## Coverage gate, concretely {#coverage-gate}
 
 The merge gate is enforced in `.github/workflows/ci.yml`:
 
 - **Unit + integration combined:** ≥ 80 % line coverage overall, and ≥ 80 % on the **lines the pull request changed**. The two suites run as separate jobs; `coverage-gate (backend)` combines them before judging, because neither leg's number means anything alone.
-- **E2E (Playwright):** core scenarios in `apps/frontend/tests/e2e/_core/` must all pass. New core scenarios are added with the relevant feature.
+- **E2E (Playwright):** NOT part of the pull-request gate. The suite runs on the nightly schedule and on a manual `workflow_dispatch`, so opening a PR does not exercise it. Core scenarios live in `apps/frontend/tests/e2e/_core/` and are added with the relevant feature; if your change touches a user-visible flow, run them yourself or ask a maintainer to dispatch the workflow.
 - **Design tokens:** `token:lint` ratchet, above.
 - **Visual + accessibility:** `ui-gates.yml`, above.
 
