@@ -158,6 +158,7 @@ live portal and surfaced 70 unique defects that our unit / functional / e2e
 suites — all green — had missed. The post-mortem traced them to a handful of
 structural blind spots; each rule below closes one and names the defect class
 that proved it. These rules are binding for new PRs (they mirror CLAUDE.md §2).
+Rule 6 came later, from the 2026-09 adoption-readiness review.
 
 ### 1. Security assertions are permission × state matrices
 
@@ -217,6 +218,16 @@ assembled at runtime, and a key forwarded to a child process rather than read.
 Single-operation tests passed while revoke → re-register was a permanent 409
 (the unique constraint counted revoked rows). Create → revoke → re-create,
 archive → restore → use: test the sequence, not just each verb.
+
+### 6. A task that writes owns a test that runs it
+
+Two maintenance tasks reported success while writing nothing. They mutated
+rows in memory, put the mutated count in their summary, and never called
+`session.commit()`, so `sync_session_scope` closed and dropped the work (the
+helper does not auto-commit, and its docstring says so). Neither task had a
+test that executed it, and a test that only imports a task, or asserts on a
+helper the task calls, cannot see this. Every task that writes gets at least
+one test that runs it and reads the row back from the database.
 
 ### Two regression nets, on purpose
 
