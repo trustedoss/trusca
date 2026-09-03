@@ -204,6 +204,8 @@ What it publishes is a fixed list of aggregate counts:
 | `trusca_task_runs_24h` | `task`, `outcome` | Background task runs in the last day. `outcome=running` counts runs that started and never reported an end |
 | `trusca_task_run_duration_seconds_p50_24h` | `task` | Median duration of runs that finished in the last day |
 | `trusca_task_run_duration_seconds_p95_24h` | `task` | Same at the 95th percentile |
+| `trusca_vuln_db_last_update_timestamp_seconds` | | Unix time the vulnerability database was last updated upstream, `0` when none has been downloaded |
+| `trusca_vuln_db_refresh_interval_hours` | | Configured hours between refresh attempts |
 | `trusca_task_runs_last_recorded_timestamp_seconds` | | Unix time of the newest task-run row, `0` when the table is empty |
 
 No project, package, repository or person's name appears anywhere in the
@@ -214,6 +216,20 @@ The four task-run series are gauges over a fixed one-day window, not counters.
 Task history is swept on a retention schedule, so a cumulative count would go
 down when the sweep runs and a collector reads a falling counter as a restart.
 The window is in the name because changing it changes what the series means.
+
+The two vulnerability-database series belong together: the timestamp says when
+the data stopped changing, the interval says how long that is supposed to be
+able to go on. Neither answers on its own, because an air-gapped install
+mirroring on a slower cadence is not broken and only the interval separates it
+from one that is. No staleness verdict ships in the metrics, and the fresh /
+stale wording the panel uses is deliberately not published: that bucketing is
+for a screen somebody is reading, and a series carrying it would put the
+judgement beyond your collector's reach.
+
+This one deserves an alert because a stale database is silent. Scans keep
+running, keep finding what the database knew when it stopped, and report
+success. One deployment was found 46 days behind with every scan green, and
+what surfaced it was somebody looking at the disk for an unrelated reason.
 
 `trusca_task_runs_last_recorded_timestamp_seconds` is worth an alert of its
 own. It watches the recorder rather than the work: recording history is

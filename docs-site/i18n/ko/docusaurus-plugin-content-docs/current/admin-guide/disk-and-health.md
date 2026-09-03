@@ -199,6 +199,8 @@ docker-compose -f docker-compose.yml exec backend \
 | `trusca_task_runs_24h` | `task`, `outcome` | 최근 하루 동안의 배경 작업 실행 수. `outcome=running`은 시작한 뒤 종료를 보고하지 않은 실행입니다 |
 | `trusca_task_run_duration_seconds_p50_24h` | `task` | 최근 하루 동안 끝난 실행의 소요 시간 중앙값 |
 | `trusca_task_run_duration_seconds_p95_24h` | `task` | 같은 값의 95 백분위수 |
+| `trusca_vuln_db_last_update_timestamp_seconds` | | 취약점 데이터베이스가 업스트림에서 마지막으로 갱신된 유닉스 시각. 내려받은 적이 없으면 `0` |
+| `trusca_vuln_db_refresh_interval_hours` | | 설정된 갱신 시도 간격(시간) |
 | `trusca_task_runs_last_recorded_timestamp_seconds` | | 가장 최근 작업 이력 행의 유닉스 시각. 테이블이 비어 있으면 `0` |
 
 프로젝트·패키지·저장소·사람 이름은 출력 어디에도 나오지 않습니다. 목록은
@@ -209,6 +211,16 @@ docker-compose -f docker-compose.yml exec backend \
 보존 주기에 따라 정리되므로 누적 카운트로 내면 정리가 돌 때 값이 줄고, 수집기는 줄어드는
 카운터를 프로세스 재시작으로 읽습니다. 창 길이를 이름에 넣은 이유는 창이 바뀌면 계열의
 뜻이 달라지기 때문입니다.
+
+취약점 데이터베이스 계열 둘은 함께 봐야 합니다. 시각은 데이터가 언제 멈췄는지를, 간격은 그
+상태가 얼마나 지속돼도 되는지를 말합니다. 하나만으로는 판단할 수 없습니다. 폐쇄망에서 더 성긴
+주기로 미러링하는 배포는 고장이 아니고, 그것과 실제로 멈춘 배포를 가르는 것이 간격이기
+때문입니다. 지표에는 신선도 판정을 넣지 않습니다. 관리자 화면이 쓰는 fresh·stale 구분은
+사람이 보는 화면을 위한 것이고, 계열에 담으면 그 판단이 수집기 손을 벗어납니다.
+
+이 값에 경보가 필요한 이유는 낡은 데이터베이스가 조용하기 때문입니다. 스캔은 계속 돌고,
+데이터베이스가 멈춘 시점에 알던 것을 계속 찾아내고, 성공을 보고합니다. 어느 배포는 46일
+뒤처진 채로 모든 스캔이 정상이었고, 그것을 드러낸 것은 다른 일로 디스크를 살펴보던 사람이었습니다.
 
 `trusca_task_runs_last_recorded_timestamp_seconds`에는 별도 경보를 걸어 둘 만합니다.
 이 값은 작업이 아니라 기록 장치를 봅니다. 이력 기록은 작업을 실패시키지 않도록 설계돼

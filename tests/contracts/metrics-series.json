@@ -89,6 +89,18 @@
       "help": "Task duration in seconds, p95 over runs that finished in the last 24h."
     },
     {
+      "name": "trusca_vuln_db_last_update_timestamp_seconds",
+      "type": "gauge",
+      "labels": [],
+      "help": "Unix time the vulnerability database was last updated upstream; 0 when none has been downloaded. Scans keep succeeding against a stale database, so nothing else reports this."
+    },
+    {
+      "name": "trusca_vuln_db_refresh_interval_hours",
+      "type": "gauge",
+      "labels": [],
+      "help": "Configured hours between refresh attempts. Published so a collector can derive staleness from this deployment's own cadence rather than a threshold baked in here."
+    },
+    {
       "name": "trusca_task_runs_last_recorded_timestamp_seconds",
       "type": "gauge",
       "labels": [],
