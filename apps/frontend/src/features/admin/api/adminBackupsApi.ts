@@ -36,6 +36,13 @@ export interface BackupInfo {
   created_at: string;
   size_bytes: number;
   db_revision: string | null;
+  /**
+   * Whether the artifacts a restore requires are all present. False means the
+   * run did not finish: the manifest is written last, so a backup killed
+   * partway has none. Such a backup is refused at restore time, and the
+   * listing used to show it as an ordinary row.
+   */
+  complete: boolean;
 }
 
 export interface BackupListResponse {

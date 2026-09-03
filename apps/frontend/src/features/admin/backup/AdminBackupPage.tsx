@@ -440,7 +440,21 @@ function BackupRow({
         className="border-b transition-colors duration-fast ease-out-soft hover:bg-accent/40"
         style={{ height: "var(--table-row)" }}
       >
-        <td className="truncate px-6 font-mono text-xs">{item.name}</td>
+        <td className="truncate px-6 font-mono text-xs">
+          <span className="flex items-center gap-2">
+            <span className="truncate">{item.name}</span>
+            {item.complete ? null : (
+              <Badge
+                variant="outline"
+                className="border-status-warning-border bg-status-warning-subtle text-status-warning-foreground"
+                title={t("admin.backup.tooltip.incomplete")}
+                data-testid="admin-backup-incomplete-badge"
+              >
+                {t("admin.backup.status.incomplete")}
+              </Badge>
+            )}
+          </span>
+        </td>
         <td className="px-3">
           <Badge
             variant="outline"

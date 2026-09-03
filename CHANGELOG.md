@@ -101,6 +101,25 @@ and the project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.
 
 ### Fixed
 
+- **A backup that did not finish now says so in the listing.** The manifest is
+  written last, after both artifacts and their checksums, so a run killed
+  partway leaves a directory without one. The restore already refused such a
+  backup; the listing showed it as an ordinary row, so an operator counting
+  restore points counted one that would not restore and found out on the day
+  it mattered. The listing carries a `complete` flag and the admin page marks
+  the row, and the listing and the restore now read one list of required
+  artifacts rather than two copies of it.
+
+  The checksum re-verify also skipped any artifact the manifest did not
+  mention, in the same branch that skipped an artifact that was not there. Only
+  the pre-flight's insistence on a manifest kept an unaccounted-for file out,
+  so two defences were really one, and relaxing the pre-flight later would have
+  taken the checksum check with it unnoticed. A file that is present and
+  unlisted is now refused, while a manifest with no checksums at all is still
+  accepted, because `scripts/backup.sh` wrote that shape and those backups are
+  real restore points. That script now records checksums too, so the path we
+  ship stops producing backups that skip verification, and a contract test runs
+  both producers' manifest code and compares them.
 - **The backup timeout now bounds the backup.** `BACKUP_SUBPROCESS_TIMEOUT` is
   documented, settable, read at run time and passed to `proc.wait()`, and it
   bounded nothing: the two calls ahead of that wait read the child's pipes to

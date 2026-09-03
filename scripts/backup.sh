@@ -52,6 +52,16 @@ mkdir -p "$out_dir"
 
 title "Backup → $out_dir"
 
+# SHA-256 of a file, on either of the two names this is shipped under:
+# coreutils calls it sha256sum, macOS and some BSDs ship shasum instead.
+sha256_of() {
+  if command -v sha256sum >/dev/null 2>&1; then
+    sha256sum "$1" | awk '{print $1}'
+  else
+    shasum -a 256 "$1" | awk '{print $1}'
+  fi
+}
+
 # ---------------------------------------------------------------------------
 # 1. PostgreSQL dump
 # ---------------------------------------------------------------------------
@@ -82,13 +92,31 @@ db_size=$(docker-compose -f docker-compose.yml exec -T postgres \
   "SELECT pg_size_pretty(pg_database_size('trustedoss'));" 2>/dev/null \
   | tr -d '[:space:]' || echo "unknown")
 
+# Checksums, in the same shape tasks/backup.py writes. A restore re-verifies
+# these before it replaces anything; a manifest without them is accepted for
+# compatibility but skips that check and says so in the log, and a path we
+# support should not be producing a permanent warning nobody can act on.
+pg_sha=$(sha256_of "$out_dir/postgres.sql.gz")
+if [[ "$has_workspace" == "true" ]]; then
+  ws_sha=$(sha256_of "$out_dir/workspace.tar.gz")
+  checksums="{
+    \"postgres.sql.gz\": \"$pg_sha\",
+    \"workspace.tar.gz\": \"$ws_sha\"
+  }"
+else
+  checksums="{
+    \"postgres.sql.gz\": \"$pg_sha\"
+  }"
+fi
+
 cat > "$out_dir/manifest.json" <<JSON
 {
   "timestamp": "$stamp",
   "alembic_head": "$alembic_head",
   "db_size": "$db_size",
   "workspace_path": "$WORKSPACE_HOST_PATH",
-  "has_workspace": $has_workspace
+  "has_workspace": $has_workspace,
+  "checksums": $checksums
 }
 JSON
 ok "wrote $out_dir/manifest.json (alembic head = $alembic_head)"

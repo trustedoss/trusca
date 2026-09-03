@@ -136,6 +136,11 @@ def get_backup_path(name: str) -> Path:
 # ---------------------------------------------------------------------------
 
 
+#: What a restore refuses to proceed without. Kept here rather than inlined so
+#: the listing and ``tasks.backup`` cannot drift on what "complete" means.
+_REQUIRED_ARTIFACTS = ("postgres.sql.gz", "manifest.json")
+
+
 def _parse_manifest(path: Path) -> dict[str, object]:
     """Read ``manifest.json`` from a backup dir, return ``{}`` on failure.
 
@@ -192,12 +197,18 @@ def _backup_info_from_dir(path: Path) -> BackupInfo | None:
     except OSError:
         mtime = datetime.now(tz=UTC)
 
+    # The same two artifacts the restore pre-flight insists on, asked here so
+    # the listing can say what the restore would say. The manifest is written
+    # last, so its absence is the mark of a run that was killed partway.
+    complete = all((path / artifact).is_file() for artifact in _REQUIRED_ARTIFACTS)
+
     return BackupInfo(
         name=name,
         kind=kind,
         created_at=mtime,
         size_bytes=_dir_size_bytes(path),
         db_revision=db_revision,
+        complete=complete,
     )
 
 

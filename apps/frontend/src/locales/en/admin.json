@@ -443,8 +443,12 @@
         "delete": "Delete",
         "restore": "Restore"
       },
+      "status": {
+        "incomplete": "Incomplete"
+      },
       "tooltip": {
-        "auto_pruned": "Auto backups are pruned after 7 days."
+        "auto_pruned": "Auto backups are pruned after 7 days.",
+        "incomplete": "This backup did not finish, so it cannot be restored. Its manifest is missing, which is what a run writes last."
       },
       "confirm": {
         "delete": "Delete the backup \"{{name}}\"? This is irreversible."
