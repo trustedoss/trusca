@@ -30,7 +30,8 @@ def _clean_env(monkeypatch: pytest.MonkeyPatch) -> Iterator[None]:
 
 def test_defaults_off() -> None:
     """The stage is opt-in. Most deployments scan for CVEs, which this does not
-    feed, and it is expensive enough to have filled a root partition."""
+    feed, and it reads every eligible file in the tree to produce output they
+    never look at."""
     assert scancode_enabled() is False
 
 

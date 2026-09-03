@@ -1272,10 +1272,10 @@ def scancode_enabled() -> bool:
     deployment scanning for CVEs pays for the stage on every scan and reads
     none of its output.
 
-    The cost is not marginal. On a 2,080-repository corpus run, scancode's rule
-    index reached 2.99 GB in one worker overnight, which was that worker's
-    entire toolchain cache and enough to take a 26 GB root partition to 100%.
-    The run stopped after 5 of 90 batches.
+    The cost is per-scan wall clock: scancode reads every eligible file in the
+    tree, which is why the stage carries its own timeout (default 600s), its
+    own file ceiling, and its own detection cap. The public demo has always run
+    with it off for exactly that reason.
 
     Turning it OFF is a supported, non-fatal skip that predates this change:
     :func:`integrations.scancode.run_scancode` short-circuits with
