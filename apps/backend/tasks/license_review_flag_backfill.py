@@ -134,8 +134,8 @@ def _sweep_with_session(
     Used when a ``session`` is injected (integration tests): the caller controls
     the transaction boundary, so we neither open our own connection nor commit —
     which lets the sweep SEE the caller's un-committed seed rows and lets the
-    caller assert the mutation before rollback. Production takes the batched,
-    independent-session path in the task body, which commits each batch.
+    caller assert the mutation before rollback. Production uses the batched,
+    independent-session, per-batch-commit path in the task body instead.
     """
     rows = list(session.execute(select(LicenseModel)).scalars().all())
     summary["scanned"] += len(rows)
@@ -236,9 +236,10 @@ def backfill_license_review_flags(
             if dry_run:
                 scoped.rollback()
             else:
-                # ER39: see the same commit in
-                # ``tasks.vulnerability_catalog_refresh``. Without it the
-                # reconcile ran, counted itself, and wrote nothing.
+                # The docstring above promises a per-batch commit. It has to be
+                # written: sync_session_scope leaves the commit to the caller,
+                # so the batch would otherwise roll back at scope exit and the
+                # backfill would report rows it never wrote.
                 scoped.commit()
 
             last_id = ids[-1]

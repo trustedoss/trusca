@@ -1996,6 +1996,24 @@ def stale_running_scan_grace_seconds() -> int:
     return _int_env("STALE_RUNNING_SCAN_GRACE_SECONDS", 900, minimum=0)
 
 
+def stale_queued_scan_grace_seconds() -> int:
+    """How long a scan may sit ``queued`` before the reaper may reclaim it.
+
+    ER11: a ``queued`` row whose broker message is gone (a Redis restart, an
+    eviction) waits forever, holding the project's active-scan slot so every
+    retry gets a 409, and one slot of the team's concurrency cap. The reaper
+    only reclaims a row once the broker confirms it is holding no message for
+    it, so this is NOT the test for whether the scan is dead. It only keeps
+    the reaper away from the window between the row being committed and its
+    task being published, where the broker legitimately knows nothing yet.
+
+    Default 900s, the same grace the running reaper uses. It can be generous
+    precisely because it is not doing the deciding. Read at call time
+    (rule #11).
+    """
+    return _int_env("STALE_QUEUED_SCAN_GRACE_SECONDS", 900, minimum=0)
+
+
 def jsonb_row_size_limit_bytes() -> int:
     """Per-row JSON byte ceiling before truncate (I-1 guard)."""
     return int(os.getenv("JSONB_ROW_SIZE_LIMIT_BYTES", str(256 * 1024)))
