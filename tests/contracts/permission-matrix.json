@@ -589,6 +589,11 @@
       "gate": "role>=developer"
     },
     {
+      "method": "POST",
+      "path": "/v1/projects:batch",
+      "gate": "role>=developer"
+    },
+    {
       "method": "GET",
       "path": "/v1/projects/export.csv",
       "gate": "role>=viewer"
@@ -867,6 +872,11 @@
       "method": "GET",
       "path": "/v1/scans",
       "gate": "role>=viewer"
+    },
+    {
+      "method": "POST",
+      "path": "/v1/scans:batch",
+      "gate": "role>=developer"
     },
     {
       "method": "DELETE",

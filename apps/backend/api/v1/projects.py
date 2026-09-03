@@ -50,6 +50,7 @@ from core.pagination import PAGE_MAX
 from core.ratelimit import _authenticated_user_key, limiter
 from core.security import CurrentUser, require_role
 from models import AuditLog
+from schemas.batch import BatchResult, ProjectBatchCreate
 from schemas.dependency_graph import ProjectDependencyGraph
 from schemas.project_detail import (
     ComponentListResponse,
@@ -72,6 +73,7 @@ from schemas.scan import (
     SeveritySummary,
     SourceArchiveUploadResponse,
 )
+from services.batch_service import create_projects_batch
 from services.dependency_graph_service import get_dependency_graph
 from services.project_detail_service import (
     get_project_overview,
@@ -240,6 +242,64 @@ def _declared_content_length(request: Request) -> int | None:
     return value if value >= 0 else None
 
 
+def _batch_response(result: BatchResult) -> Response:
+    """Serialise a batch result, choosing the status code from its outcome.
+
+    207 rather than 200 for a partial failure: a client library treats 200 as
+    success and many callers never look further, which is how a batch that
+    half-failed gets recorded as having worked.
+    """
+    return Response(
+        content=result.model_dump_json(),
+        media_type="application/json",
+        status_code=(
+            status.HTTP_201_CREATED if result.all_succeeded else status.HTTP_207_MULTI_STATUS
+        ),
+    )
+
+
+# ---------------------------------------------------------------------------
+# POST /v1/projects:batch
+# ---------------------------------------------------------------------------
+
+
+@router.post(
+    ":batch",
+    response_model=BatchResult,
+    status_code=status.HTTP_201_CREATED,
+    responses={
+        207: {
+            "model": BatchResult,
+            "description": (
+                "Some rows did not succeed. The body is the same shape; read "
+                "`all_succeeded` and `failed_by_status`."
+            ),
+        }
+    },
+    summary="Create many projects in one request (auth required, role >= developer)",
+)
+async def create_projects_batch_endpoint(
+    payload: ProjectBatchCreate,
+    session: AsyncSession = Depends(get_db),
+    actor: CurrentUser = Depends(require_role("developer")),
+) -> Response:
+    """Register a set of repositories as projects.
+
+    Rows are independent: one the caller may not create, or one whose slug the
+    team already uses, is reported and the rest still land. Onboarding an
+    organization means creating a project per repository, and failing the whole
+    request over a single repository would make that unusable.
+
+    Status is 201 when every row succeeded and 207 when any did not, so a
+    script can branch on the status line alone. A row whose project already
+    exists counts as success: re-running to finish an interrupted onboarding is
+    the normal path, and reporting that as failure would make every re-run look
+    broken.
+    """
+    result = await create_projects_batch(session, payload=payload, actor=actor)
+    return _batch_response(result)
+
+
 # ---------------------------------------------------------------------------
 # POST /v1/projects
 # ---------------------------------------------------------------------------
@@ -346,9 +406,7 @@ async def list_projects_endpoint(
         sev = severity_by_project.get(p.id)
         item.severity_summary = SeveritySummary(**sev) if sev is not None else None
         lic = license_by_project.get(p.id)
-        item.license_category_summary = (
-            LicenseCategorySummary(**lic) if lic is not None else None
-        )
+        item.license_category_summary = LicenseCategorySummary(**lic) if lic is not None else None
         item.created_by_user_name = created_by_name.get(p.id)
         item.team_name = team_name_by_team.get(p.team_id)
         # W3 #30 — absent ⇒ project has no scans at all; keep schema defaults
@@ -602,9 +660,7 @@ async def get_project_governance_endpoint(
     not belong to is a 403 and a missing one a 404, both as problem+json.
     """
     try:
-        body = await get_project_governance(
-            session, project_id=project_id, actor=actor
-        )
+        body = await get_project_governance(session, project_id=project_id, actor=actor)
     except ProjectError as exc:
         return _problem_for_project_error(request, exc)
 
@@ -828,7 +884,7 @@ async def list_project_releases_endpoint(
         description=(
             "Optional version label filter (e.g. '4.0'), matched exactly against "
             "the scan's ``metadata.release`` with surrounding whitespace trimmed. "
-            "This is the lookup for \"which snapshot is version 4.0?\": a label "
+            'This is the lookup for "which snapshot is version 4.0?": a label '
             "identifies at most one live snapshot, so the filtered list carries "
             "one row whose ``scan_id`` you then pin on the detail endpoints via "
             "``?scan_id=``. An unknown label returns an empty list, not a 404."
