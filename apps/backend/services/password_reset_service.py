@@ -85,7 +85,12 @@ from core.config import (
     password_reset_base_url,
     password_reset_email_cooldown_seconds,
 )
-from core.security import hash_password, verify_password, verify_password_async
+from core.security import (
+    hash_password,
+    set_password,
+    verify_password,
+    verify_password_async,
+)
 from models import PasswordResetToken, RefreshToken, User
 from notifications.dispatcher import (
     CHANNEL_EMAIL,
@@ -270,9 +275,7 @@ async def request_password_reset(
     """
     normalized_email = email.strip().lower()
 
-    user_result = await session.execute(
-        select(User).where(User.email == normalized_email)
-    )
+    user_result = await session.execute(select(User).where(User.email == normalized_email))
     user = user_result.scalar_one_or_none()
 
     cooldown_seconds = password_reset_email_cooldown_seconds()
@@ -297,9 +300,7 @@ async def request_password_reset(
         return {"matched": False, "cooldown_active": False, "retry_after_seconds": None}
 
     # Cooldown check — must not enqueue a second email within the window.
-    cooldown_active = await _has_recent_token(
-        session, user_id=user.id, cooldown=cooldown
-    )
+    cooldown_active = await _has_recent_token(session, user_id=user.id, cooldown=cooldown)
     if cooldown_active:
         log.info(
             "password_reset_cooldown_active",
@@ -453,9 +454,7 @@ async def consume_reset_token(
         log.info("password_reset_consume_no_match")
         raise InvalidResetToken("token is invalid or expired")
 
-    user_result = await session.execute(
-        select(User).where(User.id == matched.user_id)
-    )
+    user_result = await session.execute(select(User).where(User.id == matched.user_id))
     user = user_result.scalar_one_or_none()
     # A service account has no person to send a reset to, and its password is
     # unusable by construction. Treated exactly like an unknown address so the
@@ -463,8 +462,10 @@ async def consume_reset_token(
     if user is None or not user.is_active or user.is_service_account:
         raise InvalidResetToken("token is invalid or expired")
 
-    # Rotate the password.
-    user.hashed_password = hash_password(new_password)
+    # Rotate the password. `set_password` also stamps `password_changed_at`,
+    # which is what refuses the access tokens already in circulation; assigning
+    # the hash directly would leave those alive until they expire.
+    set_password(user, new_password)
 
     # Mark the token consumed.
     matched.used_at = now

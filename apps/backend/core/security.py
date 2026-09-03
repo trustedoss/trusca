@@ -104,6 +104,49 @@ def hash_password(plain: str) -> str:
     return str(_pwd_context.hash(plain[:72]))
 
 
+def set_password(user: Any, plain: str) -> None:
+    """Rotate a user's password hash and stamp when it changed.
+
+    The one place an existing user's password is written. Both halves belong
+    together: the timestamp is what lets ``_load_current_user`` refuse an
+    access token minted before the change, and a caller that assigned
+    ``hashed_password`` directly would get a user who believes their old
+    sessions ended when they have not. Doing it here rather than at the call
+    sites means a future password-change path cannot forget the second half,
+    because there is nothing to forget.
+
+    Typed loosely on purpose: ``models`` imports from this module, so naming
+    ``User`` here would be a cycle. ``test_password_change_invalidates_tokens``
+    asserts every production path that rotates a hash comes through here.
+    """
+    user.hashed_password = hash_password(plain)
+    user.password_changed_at = datetime.now(UTC)
+
+
+def password_change_invalidates(
+    issued_at: int | None, password_changed_at: datetime | None
+) -> bool:
+    """Whether a token minted at ``issued_at`` predates the password change.
+
+    ``iat`` is whole seconds (RFC 7519) while the column keeps microseconds, so
+    the comparison is made in seconds. Rounding the change time DOWN is
+    deliberate: a token minted in the same second as the change survives.
+    Rounding up would kill the token issued to the person who just changed
+    their password, which is a logout at the exact moment they were told the
+    action worked. The one-second window that leaves is worth that: an attacker
+    would have to mint a token inside the same second as the change, and they
+    cannot mint one at all without the password they no longer know.
+
+    ``None`` for either side means no opinion: a token without ``iat`` is
+    already rejected by ``decode_token``, and a NULL column is a user whose
+    password has not changed since migration 0077.
+    """
+    if issued_at is None or password_changed_at is None:
+        return False
+    changed_at_second = int(password_changed_at.timestamp())
+    return issued_at < changed_at_second
+
+
 def verify_password(plain: str, hashed: str) -> bool:
     """Constant-time bcrypt verification. Returns False on any error."""
     try:
@@ -520,6 +563,13 @@ async def _load_current_user(
     result = (await session.execute(stmt)).unique()
     user = result.scalar_one_or_none()
     if user is None:
+        return None
+
+    # A token minted before the password changed is refused here rather than
+    # at the edge, so every authenticated path is covered by construction: the
+    # permission cache above is keyed per user and populated only after this
+    # check, so a cached principal cannot outlive its own password change.
+    if password_change_invalidates(claims.get("iat"), user.password_changed_at):
         return None
 
     memberships: list[Membership] = list(user.memberships)
