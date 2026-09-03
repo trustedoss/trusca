@@ -364,6 +364,20 @@ x-backend-env: &backend-env
   DEMO_ALLOW_SANDBOX_SCANS: ${DEMO_ALLOW_SANDBOX_SCANS:-false}
   DEMO_READ_ONLY: ${DEMO_READ_ONLY:-false}
   DEMO_SUPER_ADMIN_PASSWORD: ${DEMO_SUPER_ADMIN_PASSWORD:-}
+  # compose-env-var wiring audit: three small, unrelated clusters bundled
+  # into one PR since each is only 2-3 vars: cosign public-key path override
+  # + SLSA provenance builder ID, the generic ticket webhook (events/token/
+  # URL), and two API rate limits. Documented in .env.example but never
+  # listed in this anchor, so setting any of them in .env had no effect on
+  # the running container. Defaults match core/config.py exactly, so an
+  # unset .env changes nothing for an existing deployment.
+  COSIGN_PUBLIC_KEY_PATH: ${COSIGN_PUBLIC_KEY_PATH:-}
+  SLSA_BUILDER_ID: ${SLSA_BUILDER_ID:-https://github.com/trustedoss/trusca/worker}
+  TICKET_WEBHOOK_EVENTS: ${TICKET_WEBHOOK_EVENTS:-}
+  TICKET_WEBHOOK_TOKEN: ${TICKET_WEBHOOK_TOKEN:-}
+  TICKET_WEBHOOK_URL: ${TICKET_WEBHOOK_URL:-}
+  API_READ_RATE_LIMIT: ${API_READ_RATE_LIMIT:-60/minute}
+  CSV_EXPORT_RATE_LIMIT: ${CSV_EXPORT_RATE_LIMIT:-5/minute}
 
 services:
   postgres:
