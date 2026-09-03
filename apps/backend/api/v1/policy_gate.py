@@ -34,6 +34,7 @@ the bearer's owner has at request time.
 
 from __future__ import annotations
 
+import json
 import os
 import uuid
 from typing import Any
@@ -47,6 +48,7 @@ from api.v1._snapshot_anchor import snapshot_anchor
 from core.api_key_auth import get_api_key_principal
 from core.audit import bind_audit_team, get_audit_context, mask_sensitive_columns
 from core.authz import assert_team_access
+from core.config import slsa_builder_version
 from core.db import get_db
 from core.errors import problem_response
 from core.security import CurrentUser, get_optional_current_user
@@ -71,6 +73,7 @@ from schemas.policy_gate import (
     PostPRCommentRequest,
     PostPRCommentResponse,
 )
+from services.gate_sarif import build_sarif
 from services.policy_gate import GateResult, evaluate_gate
 from services.project_service import ProjectError, ProjectNotFound
 from services.sca_comment import (
@@ -289,6 +292,147 @@ async def get_gate_result_endpoint(
         content=body.model_dump_json(),
         status_code=status.HTTP_200_OK,
         media_type="application/json",
+    )
+
+
+#: Finding statuses kept OUT of the SARIF document.
+#:
+#: The first three are the gate's own closed set (``services.policy_gate.
+#: _CLOSED_FINDING_STATUSES``): a triager has said the code is not affected,
+#: the report was wrong, or it is already fixed. ``suppressed`` is added here
+#: and NOT there, which is the one deliberate divergence between the two
+#: surfaces: the gate counts a suppression because "may this build proceed" is
+#: not answered by a local decision to look away, while code scanning must not
+#: re-raise an alert a team already triaged, because a scanner that does that
+#: teaches reviewers to ignore it. Anything else, including ``new`` and
+#: ``analyzing``, is reported.
+_SARIF_EXCLUDED_STATUSES: tuple[str, ...] = (
+    "not_affected",
+    "false_positive",
+    "fixed",
+    "suppressed",
+)
+
+
+# ---------------------------------------------------------------------------
+# GET /v1/projects/{project_id}/gate-result/sarif
+# ---------------------------------------------------------------------------
+
+
+async def _open_findings_for_sarif(
+    session: AsyncSession,
+    *,
+    scan_id: uuid.UUID,
+) -> list[dict[str, Any]]:
+    """Open findings on a scan, flattened for the SARIF mapper.
+
+    The same join and the same ``_CLOSED_FINDING_STATUSES`` filter the gate
+    counts with, so the two surfaces cannot disagree about what "open" means.
+    Suppressed findings are excluded here even though the gate counts them:
+    see the module docstring of ``services.gate_sarif`` for why the two answers
+    differ on purpose.
+    """
+    rows = (
+        await session.execute(
+            select(
+                VulnerabilityModel.external_id.label("cve_id"),
+                cast(VulnerabilityModel.severity, String).label("severity"),
+                VulnerabilityModel.summary.label("title"),
+                VulnerabilityModel.details.label("description"),
+                Component.name.label("component_name"),
+                ComponentVersion.version.label("component_version"),
+                VulnerabilityFinding.fixed_version.label("fixed_version"),
+            )
+            .select_from(VulnerabilityFinding)
+            .join(
+                VulnerabilityModel,
+                VulnerabilityModel.id == VulnerabilityFinding.vulnerability_id,
+            )
+            .join(
+                ComponentVersion,
+                ComponentVersion.id == VulnerabilityFinding.component_version_id,
+            )
+            .join(Component, Component.id == ComponentVersion.component_id)
+            .where(VulnerabilityFinding.scan_id == scan_id)
+            .where(
+                cast(VulnerabilityFinding.status, String).notin_(_SARIF_EXCLUDED_STATUSES)
+            )
+            .order_by(VulnerabilityModel.external_id, Component.name)
+        )
+    ).all()
+    return [dict(row._mapping) for row in rows]
+
+
+@router.get(
+    "/projects/{project_id}/gate-result/sarif",
+    summary="The project's open findings as a SARIF 2.1.0 document",
+    response_class=Response,
+    responses={200: {"content": {"application/sarif+json": {}}}},
+)
+async def get_gate_result_sarif_endpoint(
+    request: Request,
+    project_id: uuid.UUID,
+    scan_id: uuid.UUID | None = Depends(snapshot_anchor),
+    ref: str | None = Query(
+        default=None,
+        max_length=255,
+        description=(
+            "Optional branch anchor, resolved exactly as for the gate verdict: "
+            "a CI job should pass its own ref so the document it uploads "
+            "describes its own branch rather than the project's main line."
+        ),
+    ),
+    session: AsyncSession = Depends(get_db),
+    actor: CurrentUser = Depends(_principal_from_jwt_or_api_key),
+) -> Response:
+    """Emit the scan's open findings in the format code-scanning tools ingest.
+
+    Access control, snapshot anchoring and ref normalisation are the gate
+    endpoint's, deliberately: this is the same data in another representation,
+    so a caller who may read the verdict may read this, and a caller who may
+    not gets the same existence-hiding 404.
+
+    A project with no succeeded scan returns an empty-but-valid document rather
+    than a 404. That is what a CI job must be able to upload: an empty run is
+    how code scanning learns that previously-reported alerts are gone, and a
+    404 here would either fail the job or leave stale alerts standing forever.
+    """
+    try:
+        await _load_project_for_gate(session, project_id, actor)
+    except ProjectError as exc:
+        return _problem_for_project_error(request, exc)
+
+    try:
+        resolved_scan_id = await resolve_snapshot_scan_id(
+            session, project_id, scan_id, ref=normalize_ref(ref)
+        )
+    except SnapshotScanNotFound:
+        return problem_response(
+            status_code=status.HTTP_404_NOT_FOUND,
+            title="Scan Snapshot Not Found",
+            detail="No succeeded scan with that id exists for this project.",
+            instance=request.url.path,
+        )
+
+    project = await session.get(Project, project_id)
+    project_name = project.slug if project is not None else str(project_id)
+
+    findings: list[dict[str, Any]] = []
+    if resolved_scan_id is not None:
+        findings = await _open_findings_for_sarif(session, scan_id=resolved_scan_id)
+
+    document = build_sarif(
+        findings=findings,
+        project_name=project_name,
+        tool_version=slsa_builder_version(),
+    )
+    return Response(
+        content=json.dumps(document),
+        status_code=status.HTTP_200_OK,
+        # The registered media type. GitHub accepts either this or
+        # application/json; naming it correctly is what lets any other consumer
+        # content-negotiate.
+        media_type="application/sarif+json",
     )
 
 

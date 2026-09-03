@@ -44,6 +44,15 @@ inputs:
     description: 'If "true" (and triggered by pull_request event), post the SCA report to the PR.'
     required: false
     default: 'true'
+  sarif-file:
+    description: >-
+      Path to write the scan's open findings to as a SARIF 2.1.0 document.
+      Empty (the default) writes nothing. Upload it with
+      github/codeql-action/upload-sarif to put the findings in the repository's
+      Code scanning tab. Written even when the gate passes: an empty run is what
+      clears alerts that have since been fixed.
+    required: false
+    default: ''
   poll-timeout-seconds:
     description: 'Maximum seconds to wait for the scan to reach a terminal state (succeeded/failed/cancelled). Default: 1800 (30 min).'
     required: false
@@ -85,6 +94,11 @@ outputs:
       default — a zero here does not mean the axis was assessed and came back
       clean.
     value: ${{ steps.gate.outputs.epss_gate_count }}
+  sarif-file:
+    description: >-
+      Path of the SARIF document written, or empty when the `sarif-file` input
+      was not set. Lets an upload step reference it without repeating the path.
+    value: ${{ steps.gate.outputs.sarif_file }}
   component-outcome:
     description: >-
       What the scan's SBOM ended up containing. `components_found` is the
@@ -347,6 +361,7 @@ runs:
         TOS_API_KEY: ${{ inputs.api-key }}
         TOS_PROJECT_ID: ${{ inputs.project-id }}
         TOS_REF: ${{ github.ref }}
+        TOS_SARIF_FILE: ${{ inputs.sarif-file }}
       run: |
         set -euo pipefail
         api="${TOS_API_URL%/}"
@@ -387,6 +402,52 @@ runs:
         epss=$(echo "$json_body" | jq -r '.epss_gate_count // 0')
         outcome=$(echo "$json_body" | jq -r '.component_outcome // ""')
 
+        # SARIF export (ER29). Fetched with the same ref anchor as the verdict
+        # above, so the document describes this branch rather than the
+        # project's main line. Written whenever `sarif-file` is set, including
+        # on a passing gate: code scanning only learns that a fixed alert is
+        # gone from a run that no longer reports it, so skipping the upload on
+        # green would leave stale alerts standing forever.
+        sarif_file=""
+        if [ -n "${TOS_SARIF_FILE}" ]; then
+          sarif_args=(--fail-with-body -sS
+            -H "Authorization: Bearer ${TOS_API_KEY}"
+            -H "Accept: application/sarif+json"
+            -w "\n%{http_code}"
+            --get "${api}/v1/projects/${TOS_PROJECT_ID}/gate-result/sarif")
+          if [ -n "${TOS_REF}" ]; then
+            sarif_args+=(--data-urlencode "ref=${TOS_REF}")
+          fi
+
+          sarif_response=$(curl "${sarif_args[@]}") || {
+              echo "::error::GET /v1/projects/${TOS_PROJECT_ID}/gate-result/sarif failed:"
+              echo "${sarif_response}"
+              exit 1
+            }
+          sarif_code=$(echo "$sarif_response" | tail -n1)
+          sarif_body=$(echo "$sarif_response" | sed '$d')
+
+          if [ "$sarif_code" != "200" ]; then
+            echo "::error::Unexpected HTTP ${sarif_code} from gate-result/sarif:"
+            echo "${sarif_body}"
+            exit 1
+          fi
+
+          # Refuse to write something an upload would choke on. A truncated
+          # body fails the step here, where the message names the cause, rather
+          # than inside upload-sarif where it reads as a schema error.
+          if ! echo "$sarif_body" | jq -e '.version == "2.1.0" and (.runs | length) > 0' >/dev/null; then
+            echo "::error::gate-result/sarif returned a body that is not a SARIF 2.1.0 run:"
+            echo "${sarif_body}" | head -c 2000
+            exit 1
+          fi
+
+          mkdir -p "$(dirname "${TOS_SARIF_FILE}")"
+          printf '%s' "$sarif_body" > "${TOS_SARIF_FILE}"
+          sarif_file="${TOS_SARIF_FILE}"
+          echo "wrote SARIF to ${TOS_SARIF_FILE} ($(echo "$sarif_body" | jq '.runs[0].results | length') results)"
+        fi
+
         # GITHUB_OUTPUT supports multi-line via heredoc, but reason is single
         # line by contract — we still defensively strip newlines.
         reason_oneline=$(printf '%s' "$reason" | tr -d '\r\n')
@@ -399,6 +460,7 @@ runs:
           echo "malicious_component_count=${malicious}"
           echo "epss_gate_count=${epss}"
           echo "component_outcome=${outcome}"
+          echo "sarif_file=${sarif_file}"
         } >> "$GITHUB_OUTPUT"
 
         # Job summary block — visible on the workflow run page.
