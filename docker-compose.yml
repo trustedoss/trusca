@@ -383,6 +383,21 @@ x-backend-env: &backend-env
   TOOLCHAIN_CACHE_IDLE_SECONDS: ${TOOLCHAIN_CACHE_IDLE_SECONDS:-900}
   TOOLCHAIN_CACHE_MAX_BYTES: ${TOOLCHAIN_CACHE_MAX_BYTES:-8589934592}
   TOOLCHAIN_CACHE_ROOTS: ${TOOLCHAIN_CACHE_ROOTS:-}
+  # compose-env-var wiring audit: self-registration policy, default team
+  # role, API-key bookkeeping, and permission/token retention. Documented in
+  # .env.example but never listed in this anchor, so setting any of them in
+  # .env had no effect on the running container. Defaults match
+  # core/config.py exactly, so an unset .env changes nothing for an existing
+  # deployment.
+  API_KEY_LAST_USED_AT_UPDATE_INTERVAL_SECONDS: ${API_KEY_LAST_USED_AT_UPDATE_INTERVAL_SECONDS:-900}
+  API_KEY_VERIFICATION_MIN_DURATION_SECONDS: ${API_KEY_VERIFICATION_MIN_DURATION_SECONDS:-0.22}
+  AUTH_AUTO_REGISTER: ${AUTH_AUTO_REGISTER:-false}
+  AUTH_REGISTER_CREATES_TEAM: ${AUTH_REGISTER_CREATES_TEAM:-true}
+  AUTH_SELF_REGISTRATION: ${AUTH_SELF_REGISTRATION:-true}
+  DEFAULT_MEMBER_ROLE: ${DEFAULT_MEMBER_ROLE:-}
+  PERMISSION_CACHE_TTL_SECONDS: ${PERMISSION_CACHE_TTL_SECONDS:-}
+  PASSWORD_RESET_TOKEN_RETENTION_GRACE_DAYS: ${PASSWORD_RESET_TOKEN_RETENTION_GRACE_DAYS:-1}
+  REFRESH_TOKEN_RETENTION_GRACE_DAYS: ${REFRESH_TOKEN_RETENTION_GRACE_DAYS:-1}
 
 services:
   # ---------------------------------------------------------------------------
