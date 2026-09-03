@@ -412,3 +412,113 @@ async def test_an_oauth_callback_racing_a_reset_is_refused(factory, captured_res
             await _issue_token_pair_in_session(completing, user=who)
 
     assert await _active_refresh_count(factory, user_id) == 0
+
+
+async def test_a_user_deleted_mid_request_gets_no_session(factory) -> None:
+    """The row is gone by the time the lock is granted.
+
+    An admin deleting an account while that account is signing in is the
+    ordinary way to reach this. Refusing matters for the same reason the rest of
+    this file does: the row that would be inserted belongs to nobody, and
+    nothing would ever revoke it.
+    """
+    from services.auth_service import StaleCredential, issue_token_pair
+
+    async with factory() as setup:
+        user = await make_user(setup)
+        user_id = user.id
+
+    async with factory() as signing_in:
+        who = (await signing_in.execute(select(User).where(User.id == user_id))).scalar_one()
+
+        async with factory() as deleting:
+            row = (await deleting.execute(select(User).where(User.id == user_id))).scalar_one()
+            await deleting.delete(row)
+            await deleting.commit()
+
+        with pytest.raises(StaleCredential):
+            await issue_token_pair(signing_in, user=who)
+
+
+async def test_an_absent_stored_credential_is_refused_not_waved_through(factory) -> None:
+    """Two absent values must not compare equal and read as "unchanged".
+
+    Unreachable through the column today, which is NOT NULL. Reached here from
+    the other side: the caller holds a user whose hash is absent. The branch is
+    defence for a schema that stops guaranteeing the value, and the direction it
+    fails in is the whole point of it, so it is executed rather than argued for.
+    """
+    from services.auth_service import StaleCredential, lock_user_for_session_write
+
+    async with factory() as session:
+        user = await make_user(session)
+        # Detached first: the column really is NOT NULL, so leaving the object
+        # attached would have autoflush try to write the None and fail on the
+        # constraint instead of reaching the branch under test.
+        session.expunge(user)
+        user.hashed_password = None  # type: ignore[assignment]
+
+        with pytest.raises(StaleCredential):
+            await lock_user_for_session_write(session, user)
+
+
+async def test_a_refresh_token_whose_subject_is_not_a_uuid_is_refused(factory) -> None:
+    """`sub` is signed, but signed does not mean well-formed.
+
+    It reaches a UUID column, and the lock is taken by that value, so it is
+    parsed before use rather than handed to the database to reject.
+    """
+    from core.security import create_refresh_token
+    from services.auth_service import InvalidRefreshToken, rotate_refresh
+
+    token, _jti, _exp = create_refresh_token(subject="not-a-uuid")
+
+    async with factory() as session:
+        with pytest.raises(InvalidRefreshToken):
+            await rotate_refresh(session, raw_refresh=token)
+
+
+async def test_a_refresh_token_for_a_deleted_user_is_refused(factory) -> None:
+    """No user means no lock to take, so the rotation cannot be serialised."""
+    import uuid as _uuid
+
+    from core.security import create_refresh_token
+    from services.auth_service import InvalidRefreshToken, rotate_refresh
+
+    token, _jti, _exp = create_refresh_token(subject=str(_uuid.uuid4()))
+
+    async with factory() as session:
+        with pytest.raises(InvalidRefreshToken):
+            await rotate_refresh(session, raw_refresh=token)
+
+
+async def test_a_refresh_row_belonging_to_another_user_is_refused(factory) -> None:
+    """The signed subject and the stored row must agree.
+
+    The lock is taken on the subject in the token. If the row named by the same
+    ``jti`` belongs to somebody else, rotating it would write one user's row
+    while holding another user's lock, which is exactly the serialisation this
+    change exists to establish.
+    """
+    from core.security import create_refresh_token, hash_refresh_token
+    from models import RefreshToken as RefreshTokenModel
+    from services.auth_service import InvalidRefreshToken, rotate_refresh
+
+    async with factory() as setup:
+        subject = await make_user(setup)
+        other = await make_user(setup)
+        token, jti, expires = create_refresh_token(subject=str(subject.id))
+        setup.add(
+            RefreshTokenModel(
+                user_id=other.id,
+                jti=jti,
+                token_hash=hash_refresh_token(token),
+                parent_jti=None,
+                expires_at=expires,
+            )
+        )
+        await setup.commit()
+
+    async with factory() as session:
+        with pytest.raises(InvalidRefreshToken):
+            await rotate_refresh(session, raw_refresh=token)
