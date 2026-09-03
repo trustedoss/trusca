@@ -1,0 +1,304 @@
+name: Upgrade UAT (previous release to HEAD)
+
+# ER15. CI only ever migrates an EMPTY database: every backend test leg starts
+# from a fresh postgres and runs `alembic upgrade head` against nothing. That
+# proves the migrations parse and apply in order. It cannot prove what an
+# operator actually does, which is run them over a database that already holds
+# rows written by the previous release. Data migrations are exactly the class
+# of change an empty-database run cannot fail on: migration 0074 backfills
+# personal organizations, and with no users present there is nothing to backfill.
+#
+# So this job builds a populated database the only way that is honest, by
+# running the PREVIOUS RELEASE's published images and using the product through
+# its own API, then upgrades the backend to the current tree and reads the same
+# rows back.
+#
+#   1. boot the previous release from ghcr, pinned to an explicit version
+#   2. seed through the API: admin, team, project, a scan run to completion
+#   3. record the alembic revision that release left in the database
+#   4. build the backend from this checkout and start it on the SAME volume
+#   5. assert the revision advanced to this tree's head
+#   6. read the pre-upgrade rows back, and write a new one
+#
+# Scope: the backend owns the schema, so the backend is what gets upgraded.
+# The workers and frontend stay on the previous release's images and are
+# stopped for the upgrade half rather than being run against a schema they do
+# not know. Post-upgrade coverage is therefore API-level, not a fresh scan.
+#
+# The seed and verify halves live in scripts/ci/upgrade-smoke.sh so the two
+# sides cannot drift. Its calls mirror install-uat.yml's smoke deliberately;
+# that workflow is being edited elsewhere, so the shape is duplicated for now
+# rather than shared, and can be collapsed once it settles.
+
+on:
+  # Migrations are the payload this guards, so a PR that adds one gets the
+  # answer in the PR rather than in a release three weeks later.
+  pull_request:
+    paths:
+      - "apps/backend/alembic/**"
+      - "apps/backend/models/**"
+      - "scripts/upgrade.sh"
+      - "scripts/ci/upgrade-smoke.sh"
+      - ".github/workflows/upgrade-uat.yml"
+  schedule:
+    - cron: "23 2 * * 4" # Thursdays 02:23 UTC
+  workflow_dispatch:
+    inputs:
+      from_tag:
+        description: "Release to upgrade FROM (e.g. 0.22.4). Defaults to the latest published release."
+        required: false
+        type: string
+
+permissions:
+  contents: read
+  packages: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  resolve-from-tag:
+    name: resolve the release to upgrade from
+    runs-on: ubuntu-22.04
+    timeout-minutes: 5
+    outputs:
+      tag: ${{ steps.pick.outputs.tag }}
+    steps:
+      - name: Resolve tag
+        id: pick
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_REPO: ${{ github.repository }}
+          REQUESTED: ${{ github.event.inputs.from_tag }}
+        run: |
+          set -euo pipefail
+          if [ -n "${REQUESTED}" ]; then
+            tag="${REQUESTED#v}"
+            echo "using dispatch-supplied tag ${tag}"
+          else
+            tag="$(gh release view --json tagName --jq '.tagName')"
+            tag="${tag#v}"
+            echo "resolved latest published release to ${tag}"
+          fi
+          # Never fall back to a floating tag. A stale `latest` still exists in
+          # this registry and points at an old release, so an empty value here
+          # must fail rather than resolve to something surprising.
+          if [ -z "${tag}" ]; then
+            echo "::error::could not resolve a published release tag to upgrade from"
+            exit 1
+          fi
+          case "${tag}" in
+            [0-9]*.[0-9]*.[0-9]*) : ;;
+            *) echo "::error::resolved tag '${tag}' is not an explicit X.Y.Z version"; exit 1 ;;
+          esac
+          echo "tag=${tag}" >> "$GITHUB_OUTPUT"
+
+  upgrade-uat:
+    name: upgrade ${{ needs.resolve-from-tag.outputs.tag }} to HEAD
+    runs-on: ubuntu-22.04
+    timeout-minutes: 45
+    needs: resolve-from-tag
+    env:
+      # Mock scanning so the seed's scan finishes in seconds; the real
+      # toolchain takes 5-60 minutes (CLAUDE.md core rule #3). Job-level so
+      # every `up` in this job agrees, which keeps docker-compose 1.29.x from
+      # treating a later `up` as a config change (see install-uat.yml).
+      TRUSTEDOSS_SCAN_BACKEND: mock
+      IMAGE_REGISTRY: ghcr.io/trustedoss
+      # The tag the freshly built backend is published under locally. Never
+      # `latest` (CLAUDE.md core rule #9), and distinct from any real release
+      # so it cannot be confused with a published image.
+      UPGRADE_IMAGE_TAG: upgrade-under-test
+      ADMIN_EMAIL: admin@upgrade-uat.example.com
+      ADMIN_PASSWORD: UpgradeUatPassword123!
+      # Production compose needs these to interpolate. Same posture as the
+      # release gate: dev app mode, no Traefik, plain http on the runner.
+      APP_ENV: dev
+      DOMAIN: localhost
+      TLS_EMAIL: upgrade-uat@example.invalid
+      TRAEFIK_LOG_LEVEL: INFO
+      SECRET_KEY: upgrade-uat-secret-key-32-characters-minimum
+      CORS_ALLOWED_ORIGINS: http://localhost:8080
+      POSTGRES_USER: trustedoss
+      POSTGRES_PASSWORD: trustedoss
+      POSTGRES_DB: trustedoss
+      DATABASE_URL: postgresql+asyncpg://trustedoss:trustedoss@postgres:5432/trustedoss
+      WORKER_CPU_LIMIT: "2.0"
+      TRIVY_DB_BOOTSTRAP_ON_START: "false"
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      # Project standard (CLAUDE.md rule #10): docker-compose V1. Ubuntu 22.04
+      # runners ship V2 only, so install the pinned V1 release.
+      - name: Install docker-compose V1
+        run: |
+          sudo curl -L "https://github.com/docker/compose/releases/download/1.29.2/docker-compose-$(uname -s)-$(uname -m)" \
+            -o /usr/local/bin/docker-compose
+          sudo chmod +x /usr/local/bin/docker-compose
+          docker-compose --version
+
+      - name: Log in to GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      # ---------------------------------------------------------------------
+      # Phase 1 - the previous release, populated
+      # ---------------------------------------------------------------------
+      - name: Boot the previous release
+        env:
+          IMAGE_TAG: ${{ needs.resolve-from-tag.outputs.tag }}
+        run: |
+          set -euo pipefail
+          echo "booting ${IMAGE_REGISTRY}/trusca-*:${IMAGE_TAG}"
+          docker-compose -f docker-compose.yml -f docker-compose.smoke.yml \
+            pull backend worker-scan worker-default frontend
+          # Cold initdb can outlast the backend's fixed DB wait, and production
+          # heals that with `restart: unless-stopped`. Gate on health below
+          # rather than on this exit code (same reasoning as the release gate).
+          docker-compose -f docker-compose.yml -f docker-compose.smoke.yml up -d \
+            postgres redis backend worker-scan worker-default beat frontend || true
+
+      - name: Wait for the previous release to be healthy
+        env:
+          IMAGE_TAG: ${{ needs.resolve-from-tag.outputs.tag }}
+        run: |
+          set -euo pipefail
+          for i in $(seq 1 30); do
+            if curl -fsS http://localhost:8000/health >/dev/null 2>&1; then
+              echo "previous release is up"
+              docker-compose -f docker-compose.yml -f docker-compose.smoke.yml up -d \
+                postgres redis backend worker-scan worker-default beat frontend
+              docker-compose -f docker-compose.yml -f docker-compose.smoke.yml ps
+              exit 0
+            fi
+            echo "waiting for backend ($i/30)"
+            sleep 6
+          done
+          echo "::error::the previous release never came up"
+          docker-compose -f docker-compose.yml -f docker-compose.smoke.yml ps
+          docker-compose -f docker-compose.yml -f docker-compose.smoke.yml logs --tail=200
+          exit 1
+
+      - name: Bootstrap the admin on the previous release
+        env:
+          IMAGE_TAG: ${{ needs.resolve-from-tag.outputs.tag }}
+        run: |
+          set -euo pipefail
+          docker-compose -f docker-compose.yml -f docker-compose.smoke.yml exec -T \
+            -e ADMIN_EMAIL="${ADMIN_EMAIL}" \
+            -e ADMIN_PASSWORD="${ADMIN_PASSWORD}" \
+            backend python -m scripts.create_super_admin
+
+      - name: Seed data through the previous release's API
+        run: scripts/ci/upgrade-smoke.sh seed http://localhost:8000 "${RUNNER_TEMP}/upgrade-state.json"
+
+      - name: Record the pre-upgrade alembic revision
+        id: before
+        env:
+          IMAGE_TAG: ${{ needs.resolve-from-tag.outputs.tag }}
+        run: |
+          set -euo pipefail
+          rev="$(docker-compose -f docker-compose.yml -f docker-compose.smoke.yml exec -T postgres \
+            psql -U "${POSTGRES_USER}" -d "${POSTGRES_DB}" -tAc 'select version_num from alembic_version')"
+          rev="$(printf '%s' "$rev" | tr -d '[:space:]')"
+          if [ -z "$rev" ]; then
+            echo "::error::the previous release left no alembic_version row"
+            exit 1
+          fi
+          echo "pre-upgrade revision: ${rev}"
+          echo "revision=${rev}" >> "$GITHUB_OUTPUT"
+
+      # ---------------------------------------------------------------------
+      # Phase 2 - upgrade the backend onto the same volume
+      # ---------------------------------------------------------------------
+      # A plain `docker build` rather than build-push-action: the image only
+      # has to land in this runner's local image store for compose to resolve
+      # it, and going through a buildx driver to achieve that adds a moving
+      # part with nothing to gain here.
+      - name: Build the backend from this checkout
+        run: |
+          set -euo pipefail
+          docker build \
+            --file apps/backend/Dockerfile.prod \
+            --build-arg TRUSTEDOSS_VERSION=0.0.0-upgrade-uat \
+            --tag "${IMAGE_REGISTRY}/trusca-backend:${UPGRADE_IMAGE_TAG}" \
+            apps/backend
+          docker image inspect "${IMAGE_REGISTRY}/trusca-backend:${UPGRADE_IMAGE_TAG}" \
+            --format 'built {{.RepoTags}}'
+
+      # The workers and frontend belong to the previous release and are not
+      # part of what is under test, so they stop here rather than run against a
+      # schema they do not know. postgres keeps running: its volume IS the
+      # subject of this test and must not be recreated.
+      - name: Stop the previous release's app containers
+        env:
+          IMAGE_TAG: ${{ needs.resolve-from-tag.outputs.tag }}
+        run: |
+          set -euo pipefail
+          docker-compose -f docker-compose.yml -f docker-compose.smoke.yml \
+            stop backend worker-scan worker-default beat frontend
+          # Remove the backend container specifically so the next `up` creates
+          # it fresh from the new image instead of recreating in place, which
+          # docker-compose 1.29.x does badly (KeyError: 'ContainerConfig').
+          docker-compose -f docker-compose.yml -f docker-compose.smoke.yml rm -f backend
+          docker-compose -f docker-compose.yml -f docker-compose.smoke.yml ps
+
+      - name: Start the new backend on the populated database
+        env:
+          IMAGE_TAG: ${{ env.UPGRADE_IMAGE_TAG }}
+        run: |
+          set -euo pipefail
+          # AUTO_MIGRATE defaults true, so the container runs
+          # `alembic upgrade head` on start. That is the path an operator takes.
+          docker-compose -f docker-compose.yml -f docker-compose.smoke.yml up -d \
+            postgres redis backend
+          for i in $(seq 1 40); do
+            if curl -fsS http://localhost:8000/health/ready >/dev/null 2>&1; then
+              echo "upgraded backend is ready (schema at head)"
+              exit 0
+            fi
+            echo "waiting for the upgraded backend ($i/40)"
+            sleep 6
+          done
+          echo "::error::the upgraded backend never became ready. The migration over populated data is the first suspect."
+          docker-compose -f docker-compose.yml -f docker-compose.smoke.yml logs --tail=300 backend
+          exit 1
+
+      - name: Assert the revision advanced to this tree's head
+        env:
+          IMAGE_TAG: ${{ env.UPGRADE_IMAGE_TAG }}
+          BEFORE: ${{ steps.before.outputs.revision }}
+        run: |
+          set -euo pipefail
+          after="$(docker-compose -f docker-compose.yml -f docker-compose.smoke.yml exec -T postgres \
+            psql -U "${POSTGRES_USER}" -d "${POSTGRES_DB}" -tAc 'select version_num from alembic_version')"
+          after="$(printf '%s' "$after" | tr -d '[:space:]')"
+          expected="$(python3 scripts/ci/alembic_head.py apps/backend/alembic/versions)"
+          echo "before=${BEFORE} after=${after} expected=${expected}"
+          if [ "$after" != "$expected" ]; then
+            echo "::error::after the upgrade the database is at ${after}, but this tree's head is ${expected}"
+            exit 1
+          fi
+          if [ "$after" = "$BEFORE" ]; then
+            echo "no migration was pending between the two versions; the run still proves the older schema boots under the new code"
+          else
+            echo "migrated ${BEFORE} -> ${after} over populated data"
+          fi
+
+      - name: Verify the pre-upgrade data through the new code
+        run: scripts/ci/upgrade-smoke.sh verify http://localhost:8000 "${RUNNER_TEMP}/upgrade-state.json"
+
+      - name: Dump compose logs on failure
+        if: failure()
+        run: |
+          docker-compose -f docker-compose.yml -f docker-compose.smoke.yml ps || true
+          docker-compose -f docker-compose.yml -f docker-compose.smoke.yml logs --tail=300 || true
+
+      - name: Tear down
+        if: always()
+        run: docker-compose -f docker-compose.yml -f docker-compose.smoke.yml down -v || true
