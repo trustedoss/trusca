@@ -89,15 +89,34 @@ Domain extensions are `snake_case` and modelled in the OpenAPI schema. Two well-
 
 ## Pagination
 
-List endpoints accept:
+**There are three shapes, not one.** This page previously described a single
+`limit` / `offset` contract; that was true of eight endpoints and wrong about
+the other twenty-one. Read the shape off the endpoint you are calling, in the
+[OpenAPI schema](#openapi-schema) or the table below, rather than assuming one.
 
-| Query param | Default | Description |
+| Shape | Query params | Response fields | Endpoints |
+|---|---|---|---|
+| Offset | `limit`, `offset` | `items`, `total`, `limit`, `offset` | 8 |
+| Numbered (`page_size`) | `page`, `page_size` | `items`, `total`, `page`, `page_size` | 15 |
+| Numbered (`size`) | `page`, `size` | `items`, `total`, `page`, `page_size` | 6 |
+
+Defaults and maxima vary within each shape as well, so do not hard-code them:
+
+| Shape | Page size default | Maximum |
 |---|---|---|
-| `limit` | `50` | Page size. Max 200. |
-| `offset` | `0` | 0-based row offset. |
-| `sort` | endpoint-specific | Comma-separated `field` or `-field` (descending). |
+| Offset | `50` | `200` on the inventory endpoints, `500` on the per-project ones |
+| Numbered (`page_size`) | `50`, except `20` on `/v1/notifications` | `200` |
+| Numbered (`size`) | `20`, except `25` on search and `100` on the source tree | `100`, except `500` on the source tree |
 
-Response envelope:
+`page` is 1-based. `offset` is a 0-based row count. Both are capped, and a
+request past the cap is rejected rather than silently clamped.
+
+`sort` is separate from pagination and is accepted by ten endpoints (the
+component, licence, obligation, vulnerability, compliance and inventory lists,
+plus their CSV exports). It takes a comma-separated `field` or `-field`, where
+the leading minus is descending, and the permitted fields are per-endpoint.
+
+Response envelope, offset shape:
 
 ```json
 {
@@ -107,6 +126,36 @@ Response envelope:
   "offset": 0
 }
 ```
+
+Numbered shape, including the endpoints whose query params are `page` / `size`.
+The response field is `page_size` in both cases:
+
+```json
+{
+  "items": [ … ],
+  "total": 1273,
+  "page": 1,
+  "page_size": 50
+}
+```
+
+### Why three, and what happens next {#pagination-convergence}
+
+They accumulated. Nothing forced a new endpoint to match an existing one, and
+each was locally reasonable when written. That is a defect, not a design: a
+client library or an export script needs a branch per shape, which is the cost
+this section exists to make visible rather than to excuse.
+
+New endpoints use one shared schema, so the count above stops growing. The
+existing twenty-nine are left alone deliberately. TRUSCA is pre-1.0 and
+[`SECURITY.md`](https://github.com/trustedoss/trusca/blob/main/SECURITY.md)
+says a minor release may change the HTTP API; converging them is a breaking
+change that belongs at 1.0.0, where callers expect one, rather than spread
+across minors as a series of smaller surprises. Adding a compatibility layer
+that accepts both spellings was considered and rejected: it would promise more
+stability than the project currently offers, and leave two code paths to keep
+correct in the meantime. The convergence is tracked on the
+[roadmap](https://github.com/trustedoss/trusca/blob/main/ROADMAP.md).
 
 ## Surface map
 
@@ -289,7 +338,7 @@ Two things a client cannot learn from that table alone:
 
 The endpoint sends no `1000`. A client that observes one closed the socket itself.
 
-## OpenAPI download
+## OpenAPI download {#openapi-schema}
 
 ```bash
 curl -sS https://trustedoss.example.com/api/openapi.json > openapi.json
