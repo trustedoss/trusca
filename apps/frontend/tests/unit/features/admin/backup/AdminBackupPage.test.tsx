@@ -56,6 +56,7 @@ function backup(overrides: Partial<BackupInfo>): BackupInfo {
     created_at: overrides.created_at ?? "2026-05-09T12:00:00Z",
     size_bytes: overrides.size_bytes ?? 1024,
     db_revision: overrides.db_revision ?? "abcdef1234567",
+    complete: overrides.complete ?? true,
   };
 }
 
@@ -222,6 +223,48 @@ describe("AdminBackupPage", () => {
     await waitFor(() => {
       expect(mockedDownload).toHaveBeenCalledWith("manual-dl");
     });
+  });
+
+  it("Marks a backup whose run did not finish, and leaves finished ones unmarked", async () => {
+    // Both rows together, because a badge that appears on every row says as
+    // little as one that appears on none: what the operator reads is the
+    // difference between the two.
+    const finished = backup({ name: "manual-ok", complete: true });
+    const killed = backup({ name: "auto-killed", kind: "auto", complete: false });
+    mockedList.mockResolvedValue(listResponse([finished, killed]));
+    renderPage();
+
+    await waitFor(() => {
+      expect(screen.getAllByTestId("admin-backup-row")).toHaveLength(2);
+    });
+
+    const rows = screen.getAllByTestId("admin-backup-row");
+    const finishedRow = rows.find((r) => within(r).queryByText("manual-ok"));
+    const killedRow = rows.find((r) => within(r).queryByText("auto-killed"));
+
+    expect(
+      within(killedRow as HTMLElement).getByTestId("admin-backup-incomplete-badge"),
+    ).toBeInTheDocument();
+    expect(
+      within(finishedRow as HTMLElement).queryByTestId("admin-backup-incomplete-badge"),
+    ).toBeNull();
+  });
+
+  it("Explains the mark in words, not by colour alone", async () => {
+    // The badge is the only thing standing between an operator and counting a
+    // restore point that will not restore, so it has to say what it means:
+    // colour is not a signal on its own (design system, A11y).
+    const killed = backup({ name: "auto-killed", kind: "auto", complete: false });
+    mockedList.mockResolvedValue(listResponse([killed]));
+    renderPage();
+
+    await waitFor(() => {
+      expect(screen.getByTestId("admin-backup-incomplete-badge")).toBeInTheDocument();
+    });
+
+    const badge = screen.getByTestId("admin-backup-incomplete-badge");
+    expect(badge.textContent?.trim()).not.toHaveLength(0);
+    expect(badge.getAttribute("title")).toBeTruthy();
   });
 
   it("Renders an error alert when the list query fails", async () => {
