@@ -14,6 +14,7 @@ leaked. Thirty minutes of continued access is the wrong answer to that.
 from __future__ import annotations
 
 import re
+import uuid
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
@@ -23,9 +24,16 @@ from core.security import password_change_invalidates, set_password
 
 
 class _User:
-    """Stands in for the ORM row: `set_password` writes two attributes."""
+    """Stands in for the ORM row.
+
+    Carries an ``id`` because `set_password` also drops the cached principal
+    for that user: the permission cache is keyed by user, so an entry warmed
+    before the change would otherwise keep serving the tokens the change is
+    meant to refuse.
+    """
 
     def __init__(self) -> None:
+        self.id = uuid.uuid4()
         self.hashed_password = "old-hash"
         self.password_changed_at: datetime | None = None
 
@@ -49,19 +57,24 @@ def test_a_token_issued_after_the_change_is_kept() -> None:
     assert password_change_invalidates(issued, changed) is False
 
 
-def test_a_token_issued_in_the_same_second_survives() -> None:
-    """The rounding direction, asserted because either choice is defensible.
+def test_a_token_issued_in_the_same_second_is_refused() -> None:
+    """The rounding direction, and it is not a coin flip.
 
-    `iat` is whole seconds and the column keeps microseconds. Rounding the
-    change time UP would refuse the token issued to the person who just
-    changed their password, logging them out at the moment they were told it
-    worked. Rounding down leaves a one-second window instead, which an attacker
-    cannot use without the password they no longer have.
+    `iat` is whole seconds and the column keeps microseconds, so one of them
+    has to give. Keeping the same-second token was the first choice, to avoid
+    logging out whoever had just changed their password. Nobody is in that
+    position: `/auth/reset-password` answers 204 with no tokens and sends the
+    user back to sign in.
+
+    The window was reachable on purpose, though. `/auth/refresh` mints a token
+    with `iat = now` on every call, so an attacker holding a stolen refresh
+    cookie and polling it lands one inside the change's own second most of the
+    time, and it then outlives the reset for its full lifetime.
     """
     changed = datetime(2026, 9, 3, 12, 0, 0, 500_000, tzinfo=UTC)
     same_second = int(datetime(2026, 9, 3, 12, 0, 0, tzinfo=UTC).timestamp())
 
-    assert password_change_invalidates(same_second, changed) is False
+    assert password_change_invalidates(same_second, changed) is True
 
 
 def test_the_second_before_the_change_is_refused() -> None:
@@ -176,4 +189,80 @@ def test_no_production_code_assigns_hashed_password_outside_the_choke_point() ->
     assert not offenders, (
         "these rotate a password hash without going through `set_password`, so "
         "the sessions they were meant to end stay alive:\n" + "\n".join(offenders)
+    )
+
+
+def test_a_naive_timestamp_is_read_as_utc() -> None:
+    """A naive value would otherwise be read in the process timezone.
+
+    East of UTC that yields a smaller epoch, which skips refusals: the
+    fail-open direction. asyncpg returns aware values for timestamptz, so this
+    is defence in depth rather than an observed failure, and it matches how
+    `auth_service` handles refresh-token expiry.
+    """
+    aware = datetime(2026, 9, 3, 12, 0, 0, tzinfo=UTC)
+    naive = aware.replace(tzinfo=None)
+    earlier = int((aware - timedelta(minutes=1)).timestamp())
+
+    assert password_change_invalidates(earlier, naive) is True
+    assert password_change_invalidates(earlier, aware) is True
+
+
+def test_a_token_without_iat_is_rejected_before_this_check() -> None:
+    """`decode_token` requires `iat`, so the None branch is unreachable in prod.
+
+    Asserted because the None branch fails open: if the requirement were ever
+    dropped, a token with the claim stripped would sail past the password
+    check rather than being refused.
+    """
+    import pytest as _pytest
+    from jose import JWTError, jwt
+
+    from core.config import secret_key
+    from core.security import JWT_ALGORITHM, TOKEN_TYPE_ACCESS, decode_token
+
+    no_iat = jwt.encode(
+        {"sub": "11111111-1111-1111-1111-111111111111", "type": TOKEN_TYPE_ACCESS},
+        secret_key(),
+        algorithm=JWT_ALGORITHM,
+    )
+
+    with _pytest.raises(JWTError):
+        decode_token(no_iat, expected_type=TOKEN_TYPE_ACCESS)
+
+
+# ---------------------------------------------------------------------------
+# The WebSocket path resolves users itself, so it needs its own check
+# ---------------------------------------------------------------------------
+
+
+def test_the_websocket_resolver_consults_the_password_change() -> None:
+    """`api/v1/ws.py` re-implements `_load_current_user` and does not inherit.
+
+    The duplication is deliberate (a WebSocket scope has no Request for the
+    dependency to take), and the cost is that a check added to the original is
+    not added here. It was not: a stolen token kept streaming scan progress and
+    log lines after the victim reset their password, while the same token was
+    correctly refused on every HTTP route.
+
+    Asserted structurally rather than by driving a socket, because what breaks
+    is somebody adding a third resolver, and the shape is what says whether
+    this one still consults the column.
+    """
+    for candidate in Path(__file__).resolve().parents:
+        ws = candidate / "api" / "v1" / "ws.py"
+        if ws.is_file():
+            break
+    else:
+        pytest.skip("api/v1/ws.py not found above this file")
+
+    source = ws.read_text(encoding="utf-8")
+
+    assert "password_change_invalidates" in source, (
+        "the WebSocket resolver does not consult the password-change check, so "
+        "a token refused on HTTP routes still opens a socket"
+    )
+    assert 'issued_at=claims.get("iat")' in source, (
+        "the WebSocket call site does not pass the token's iat, so the check "
+        "it now imports has nothing to judge and silently permits everything"
     )

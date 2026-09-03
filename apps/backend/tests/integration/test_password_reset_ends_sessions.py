@@ -14,6 +14,7 @@ from __future__ import annotations
 import os
 import subprocess
 from collections.abc import AsyncIterator
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
 import pytest
@@ -117,8 +118,17 @@ async def test_a_token_issued_before_the_reset_stops_working(
         email = user.email
         user_id = user.id
 
-    headers = {"Authorization": f"Bearer {create_access_token(subject=str(user_id))}"}
-    before = await client.get("/v1/users/me", headers=headers)
+    # Backdated a minute, which is what a stolen token looks like: minted at
+    # some earlier point in its 30-minute life, not in the same second as the
+    # reset. A token minted inside that second deliberately survives (see
+    # `password_change_invalidates`), so issuing one here would test the
+    # tie-breaking rule rather than the behaviour this exists for.
+    issued_at = datetime.now(UTC) - timedelta(minutes=1)
+    stolen = create_access_token(
+        subject=str(user_id), extra_claims={"iat": int(issued_at.timestamp())}
+    )
+    headers = {"Authorization": f"Bearer {stolen}"}
+    before = await client.get("/auth/me", headers=headers)
     assert before.status_code == 200, "the token should work before the reset"
 
     await _reset_password(
@@ -128,7 +138,7 @@ async def test_a_token_issued_before_the_reset_stops_working(
         captured=captured_reset_email,
     )
 
-    after = await client.get("/v1/users/me", headers=headers)
+    after = await client.get("/auth/me", headers=headers)
 
     assert (
         after.status_code == 401
@@ -156,8 +166,16 @@ async def test_a_token_issued_after_the_reset_works(
         captured=captured_reset_email,
     )
 
-    fresh = {"Authorization": f"Bearer {create_access_token(subject=str(user_id))}"}
-    response = await client.get("/v1/users/me", headers=fresh)
+    # A second later, which is what signing in again actually looks like: the
+    # reset returns 204 and sends the user to /login, so the next token is
+    # minted by a separate request. A token minted inside the change's own
+    # second is refused on purpose, and asserting the opposite here would pin
+    # the window an attacker polling /auth/refresh was using.
+    later = datetime.now(UTC) + timedelta(seconds=2)
+    fresh_token = create_access_token(
+        subject=str(user_id), extra_claims={"iat": int(later.timestamp())}
+    )
+    response = await client.get("/auth/me", headers={"Authorization": f"Bearer {fresh_token}"})
 
     assert response.status_code == 200, response.text
 
@@ -176,7 +194,7 @@ async def test_an_untouched_user_keeps_their_session(client: AsyncClient) -> Non
         assert user.password_changed_at is None
 
     headers = {"Authorization": f"Bearer {create_access_token(subject=str(user_id))}"}
-    response = await client.get("/v1/users/me", headers=headers)
+    response = await client.get("/auth/me", headers=headers)
 
     assert response.status_code == 200, response.text
 
@@ -214,3 +232,70 @@ async def test_the_reset_stamps_the_column(client: AsyncClient, captured_reset_e
             .all()
         )
         assert not leftover, "the consumed reset token was left usable"
+
+
+async def test_the_permission_cache_does_not_serve_a_revoked_token(
+    client: AsyncClient, captured_reset_email, monkeypatch
+) -> None:
+    """With the cache on, a warm entry must not carry a pre-reset token.
+
+    The cache is keyed by user id, not by token, so an entry warmed by any
+    token was handed to every later token for that user without re-reading the
+    row. The stolen token's own pre-reset request warmed it, and the victim's
+    new session refilled it on every expiry, so the window was the token's full
+    lifetime rather than the cache TTL.
+
+    The default TTL is 0, which is why the other tests here did not see it.
+    """
+    monkeypatch.setenv("PERMISSION_CACHE_TTL_SECONDS", "300")
+    # The cache is process-global and other tests in this run have populated
+    # it while the TTL was 0. Start from empty so the warm entry below is the
+    # one this test creates, and confirm the knob actually took: reading it
+    # here rather than trusting `setenv` is what separates "the cache is off"
+    # from "the cache is on and correct", which are the same green otherwise.
+    from core.config import permission_cache_ttl_seconds
+    from core.security import _principal_cache
+
+    _principal_cache.clear()
+    assert permission_cache_ttl_seconds() == 300, "the cache is not actually on"
+
+    factory = await _factory(client)
+    async with factory() as session:
+        user = await make_user(session)
+        email = user.email
+        user_id = user.id
+
+    issued_at = datetime.now(UTC) - timedelta(minutes=1)
+    stolen = create_access_token(
+        subject=str(user_id), extra_claims={"iat": int(issued_at.timestamp())}
+    )
+    headers = {"Authorization": f"Bearer {stolen}"}
+
+    warm = await client.get("/auth/me", headers=headers)
+    assert warm.status_code == 200, "the token should work before the reset"
+    assert _principal_cache, "nothing was cached, so this proves nothing"
+
+    await _reset_password(
+        client,
+        email=email,
+        new_password="cache eviction passphrase 3",
+        captured=captured_reset_email,
+    )
+
+    replayed = await client.get("/auth/me", headers=headers)
+    assert (
+        replayed.status_code == 401
+    ), "the permission cache served a token minted before the password change"
+
+    # And the victim's own new session must still work. Minted a second later,
+    # because signing in again is a separate request: a token minted inside
+    # the change's own second is refused on purpose.
+    later = datetime.now(UTC) + timedelta(seconds=2)
+    fresh = {
+        "Authorization": "Bearer "
+        + create_access_token(subject=str(user_id), extra_claims={"iat": int(later.timestamp())})
+    }
+    assert (await client.get("/auth/me", headers=fresh)).status_code == 200
+
+    replayed_again = await client.get("/auth/me", headers=headers)
+    assert replayed_again.status_code == 401, "a refilled cache entry let the revoked token back in"
