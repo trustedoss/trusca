@@ -1,4 +1,4 @@
-# Composite action — turn a scheduled run's result into a tracked issue.
+# Composite action - turn a scheduled run's result into a tracked issue.
 #
 # WHY THIS EXISTS: a nightly gate that fails silently is worse than no gate.
 # Between 2026-08-03 and 2026-08-12 the verify-specs nightly failed nine
@@ -9,11 +9,30 @@
 #
 # The alert follows the pattern sca-self.yml already uses for Critical CVEs:
 # one issue per label, opened on the first failure, updated (not duplicated)
-# on subsequent ones, closed automatically when a scheduled run goes green.
-# The label is created on demand so a fresh clone of the repo needs no manual
-# setup.
+# on subsequent ones.
 #
-# The caller decides what counts as failure — pass the aggregated result of
+# WHEN IT CLOSES (ER40): a single isolated failure still closes itself on the
+# next green run, which is what keeps the alert from becoming noise. An issue
+# that recorded MORE THAN ONE failure never closes itself; it gets a comment
+# saying the run recovered and stays open for a person.
+#
+# That rule exists because the old one erased the hardest class of defect the
+# fastest. Issue #224 recorded six consecutive nightly e2e failures and a
+# single green run on 2026-08-30 auto-closed it. Nobody had diagnosed them,
+# and closing the issue removed the trail back to them; the cause was still
+# latent weeks later. One green run does not establish that an intermittent
+# cause is gone.
+#
+# A failure also REOPENS the most recently auto-closed issue for this label
+# (within the cutoff below) rather than opening a fresh one, so an alternating
+# fail/green pattern accumulates on one issue instead of resetting its count
+# every other night. That alternation is the same intermittency by another
+# shape.
+#
+# The failure history lives in the issue body behind an HTML-comment marker;
+# alert_state.py owns that format.
+#
+# The caller decides what counts as failure - pass the aggregated result of
 # the jobs it cares about. Cancelled runs are the caller's business too; they
 # should normally NOT be reported as failures (a cancel is usually a superseded
 # run, not a regression).
@@ -34,6 +53,13 @@ inputs:
     description: Markdown appended to the issue body, e.g. which job failed and what to look at.
     required: false
     default: ""
+  reopen-within-days:
+    description: >-
+      How far back to look for an auto-closed issue to reopen instead of filing
+      a new one. Keeps an alternating fail/green pattern on a single issue.
+      Set to 0 to always open a fresh issue.
+    required: false
+    default: "14"
   token:
     description: "Token with `issues: write` permission."
     required: true
@@ -42,8 +68,8 @@ runs:
   using: composite
   steps:
     # GH_REPO is set explicitly on every step so the action works in jobs that
-    # never checked out the repo — `gh` otherwise infers the repo from the git
-    # remote and fails outright.
+    # never checked out the whole repo - `gh` otherwise infers the repo from
+    # the git remote and fails outright.
     - name: Ensure the alert label exists
       if: ${{ inputs.failed == 'true' }}
       shell: bash
@@ -60,7 +86,7 @@ runs:
           --description "Auto-managed alert for a scheduled workflow that is failing" \
           --force
 
-    - name: Open or update the alert issue
+    - name: Open, reopen or update the alert issue
       if: ${{ inputs.failed == 'true' }}
       shell: bash
       env:
@@ -69,61 +95,103 @@ runs:
         LABEL: ${{ inputs.label }}
         TITLE: ${{ inputs.title }}
         DETAILS: ${{ inputs.details }}
+        REOPEN_WITHIN_DAYS: ${{ inputs.reopen-within-days }}
+        ACTION_PATH: ${{ github.action_path }}
       run: |
         set -euo pipefail
-        run_url="${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}"
-        body=$(cat <<EOF
-        The scheduled run of \`${GITHUB_WORKFLOW}\` failed.
+        export RUN_URL="${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}"
+        export RUN_STARTED_AT="$(date -u +%Y-%m-%dT%H:%MZ)"
+        work="$(mktemp -d)"
 
-        - Run: [\`${GITHUB_RUN_ID}\`](${run_url})
-        - Event: \`${GITHUB_EVENT_NAME}\`
-        - Commit: \`${GITHUB_SHA}\`
+        existing="$(gh issue list --label "$LABEL" --state open \
+          --json number --jq '.[0].number // empty')"
 
-        ${DETAILS}
-
-        A scheduled gate that stays red stops being a gate. Either fix the
-        regression it found or fix the gate, then let the next scheduled run
-        close this issue.
-
-        *Auto-managed by \`.github/actions/nightly-failure-issue\` via the
-        \`${LABEL}\` label. It is updated in place while the run keeps failing
-        and closed on the first green scheduled run. Do not edit the title.*
-        EOF
-        )
-
-        existing=$(gh issue list \
-          --label "$LABEL" \
-          --state open \
-          --json number \
-          --jq '.[0].number // empty')
-
-        if [ -n "$existing" ]; then
-          echo "Updating existing alert issue #$existing"
-          gh issue edit "$existing" --title "$TITLE" --body "$body"
-        else
-          echo "Opening alert issue"
-          gh issue create --title "$TITLE" --body "$body" --label "$LABEL"
+        # No open issue: prefer reopening the one this action closed most
+        # recently, so an alternating fail/green pattern keeps one count
+        # instead of starting over every other night.
+        if [ -z "$existing" ] && [ "${REOPEN_WITHIN_DAYS}" != "0" ]; then
+          # datetime.UTC is 3.11+; ubuntu-22.04 runners ship python 3.10.
+          cutoff="$(python3 -c "
+        import datetime, os
+        days = int(os.environ['REOPEN_WITHIN_DAYS'])
+        now = datetime.datetime.now(datetime.timezone.utc)
+        print((now - datetime.timedelta(days=days)).date())
+        ")"
+          # Build an array before indexing: `.[0] | select(.body | ...)` on an
+          # empty result indexes null and makes jq (and so gh) exit non-zero,
+          # which `set -e` would turn into a failed alert step.
+          candidate="$(gh issue list --label "$LABEL" --state closed \
+            --search "closed:>=${cutoff}" --limit 1 \
+            --json number,body \
+            --jq '[.[] | select(.body | contains("nightly-alert-state"))] | .[0].number // empty')"
+          if [ -n "$candidate" ]; then
+            echo "Reopening recently closed alert issue #$candidate (closed on or after ${cutoff})"
+            gh issue reopen "$candidate"
+            existing="$candidate"
+          fi
         fi
 
-    - name: Close the alert issue after a green run
+        if [ -n "$existing" ]; then
+          gh issue view "$existing" --json body --jq '.body' > "${work}/old.md"
+        else
+          : > "${work}/old.md"
+        fi
+
+        totals="$(python3 "${ACTION_PATH}/alert_state.py" record-failure \
+          "${work}/old.md" "${work}/new.md")"
+        echo "alert state: ${totals}"
+
+        if [ -n "$existing" ]; then
+          echo "Updating alert issue #$existing"
+          gh issue edit "$existing" --title "$TITLE" --body-file "${work}/new.md"
+        else
+          echo "Opening alert issue"
+          gh issue create --title "$TITLE" --body-file "${work}/new.md" --label "$LABEL"
+        fi
+
+    - name: Close or annotate the alert issue after a green run
       if: ${{ inputs.failed != 'true' }}
       shell: bash
       env:
         GH_TOKEN: ${{ inputs.token }}
         GH_REPO: ${{ github.repository }}
         LABEL: ${{ inputs.label }}
+        DETAILS: ${{ inputs.details }}
+        ACTION_PATH: ${{ github.action_path }}
       run: |
         set -euo pipefail
-        existing=$(gh issue list \
-          --label "$LABEL" \
-          --state open \
-          --json number \
-          --jq '.[0].number // empty')
-        if [ -n "$existing" ]; then
-          run_url="${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}"
-          echo "Closing alert issue #$existing"
+        existing="$(gh issue list --label "$LABEL" --state open \
+          --json number --jq '.[0].number // empty')"
+        if [ -z "$existing" ]; then
+          echo "No open ${LABEL} issue - nothing to close."
+          exit 0
+        fi
+
+        run_url="${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}"
+        work="$(mktemp -d)"
+        gh issue view "$existing" --json body --jq '.body' > "${work}/old.md"
+
+        state="$(python3 "${ACTION_PATH}/alert_state.py" read-state "${work}/old.md")"
+        total="${state%% *}"; total="${total#total=}"
+        echo "alert state: ${state}"
+
+        # An issue with no recorded history predates this state format (or was
+        # hand-edited). Treat it as a single failure so the old behaviour of
+        # closing on green still applies rather than pinning it open forever.
+        if [ "$total" -le 1 ]; then
+          echo "Closing alert issue #$existing (${total} recorded failure(s))"
           gh issue close "$existing" \
             --comment "Auto-closed: the scheduled run of \`${GITHUB_WORKFLOW}\` is green again. Run [\`${GITHUB_RUN_ID}\`](${run_url})."
-        else
-          echo "No open ${LABEL} issue - nothing to close."
+          exit 0
         fi
+
+        echo "Leaving alert issue #$existing open (${total} recorded failures)"
+        python3 "${ACTION_PATH}/alert_state.py" render-recovery \
+          "${work}/old.md" "${work}/new.md" >/dev/null
+        gh issue edit "$existing" --body-file "${work}/new.md"
+        cat > "${work}/comment.md" <<EOF
+        The scheduled run of \`${GITHUB_WORKFLOW}\` is green again (run [\`${GITHUB_RUN_ID}\`](${run_url})), but this issue recorded ${total} failures and is left open on purpose.
+
+        One green run does not establish that an intermittent cause is gone. Close this by hand once the cause is understood, and say what it was.
+        EOF
+        gh issue comment "$existing" --body-file "${work}/comment.md"
