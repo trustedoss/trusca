@@ -264,6 +264,31 @@ x-backend-env: &backend-env
   SOURCE_ARCHIVE_RETENTION_HOURS: ${SOURCE_ARCHIVE_RETENTION_HOURS:-24}
   VEX_IMPORT_MAX_BYTES: ${VEX_IMPORT_MAX_BYTES:-8388608}
   VEX_IMPORT_MAX_STATEMENTS: ${VEX_IMPORT_MAX_STATEMENTS:-100000}
+  # compose-env-var wiring audit: cdxgen image/spec selection, govulncheck
+  # subprocess limits, scancode enable flag, and the shared per-language
+  # toolchain cache (size/idle/roots). Documented in .env.example but never
+  # listed in this anchor, so setting any of them in .env had no effect on
+  # the running container. Defaults match core/config.py exactly, so an
+  # unset .env changes nothing for an existing deployment.
+  #
+  # NOT included here: EXTRACTCODE_LIBARCHIVE_PATH / TYPECODE_LIBMAGIC_PATH.
+  # Both are also documented in .env.example and also missing from this
+  # anchor, but Dockerfile.worker bakes them as image ENV (pointing
+  # scancode's ctypes loader at the arm64 system libarchive/libmagic, see
+  # integrations/_subprocess_env.py). Adding an `${VAR:-}` line here would
+  # shadow that image default with an empty string and crash scancode on
+  # import, which is worse than the gap it would "fix". They stay
+  # unreferenced deliberately.
+  CDXGEN_ALLINONE_IMAGE: ${CDXGEN_ALLINONE_IMAGE:-ghcr.io/cyclonedx/cdxgen:v12.5.0}
+  CDXGEN_FETCH_LICENSE: ${CDXGEN_FETCH_LICENSE:-}
+  CDXGEN_IMAGE_TAG: ${CDXGEN_IMAGE_TAG:-v12}
+  CDXGEN_SPEC_VERSION: ${CDXGEN_SPEC_VERSION:-1.5}
+  GOVULNCHECK_MAX_OUTPUT_BYTES: ${GOVULNCHECK_MAX_OUTPUT_BYTES:-67108864}
+  GOVULNCHECK_TIMEOUT_SECONDS: ${GOVULNCHECK_TIMEOUT_SECONDS:-600}
+  SCANCODE_ENABLED: ${SCANCODE_ENABLED:-true}
+  TOOLCHAIN_CACHE_IDLE_SECONDS: ${TOOLCHAIN_CACHE_IDLE_SECONDS:-900}
+  TOOLCHAIN_CACHE_MAX_BYTES: ${TOOLCHAIN_CACHE_MAX_BYTES:-8589934592}
+  TOOLCHAIN_CACHE_ROOTS: ${TOOLCHAIN_CACHE_ROOTS:-}
 
 services:
   postgres:
