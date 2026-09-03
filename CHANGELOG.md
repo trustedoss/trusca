@@ -18,8 +18,10 @@ and the project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.
   logged disagreed with the rows a user could see, and the create audit rows
   for the discarded findings stayed behind, naming detections that no finding
   row backed. The catalog insert now runs in a SAVEPOINT, so only the losing
-  insert is undone; the audit writer skips a finding that left the session; and
-  the per-scan summary log carries a `catalog_races` count. On the rematch
+  insert is undone; the audit writer now asks the session whether a row backs
+  a finding before recording it, because a rolled-back INSERT leaves the
+  object transient with its assigned key still readable; and the per-scan
+  summary log carries `catalog_races` and `audits_emitted` counts. On the rematch
   path, where the same transaction had already deleted the scan's prior
   findings, the session-wide rollback also restored them and the re-insert then
   failed the finding uniqueness constraint, taking the whole rematch down

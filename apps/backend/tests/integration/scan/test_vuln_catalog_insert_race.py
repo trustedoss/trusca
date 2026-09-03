@@ -36,6 +36,7 @@ from typing import Any
 
 import pytest
 from sqlalchemy import create_engine, delete, func, select
+from sqlalchemy import inspect as sa_inspect
 from sqlalchemy.orm import Session, sessionmaker
 from structlog.testing import capture_logs
 
@@ -263,6 +264,26 @@ def _steal_catalog_row(
     return thread
 
 
+def _scan_is_locked_elsewhere(
+    factory: sessionmaker[Session], scan_id: uuid.UUID
+) -> bool:
+    """Does a SEPARATE session find the scan row already claimed?
+
+    ``skip_locked=True`` never blocks: it returns no row when someone else
+    holds the lock, which is exactly the question the rematch task's claim
+    depends on.
+    """
+    probe = factory()
+    try:
+        row = probe.execute(
+            select(Scan).where(Scan.id == scan_id).with_for_update(skip_locked=True)
+        ).scalar_one_or_none()
+        probe.rollback()
+        return row is None
+    finally:
+        probe.close()
+
+
 def _findings_by_package(session: Session, scan_id: uuid.UUID) -> dict[str, int]:
     rows = session.execute(
         select(Component.name, func.count(VulnerabilityFinding.id))
@@ -341,53 +362,6 @@ def test_findings_staged_before_a_catalog_race_are_not_discarded(
             .where(VulnerabilityFinding.scan_id == scan_id)
         ).scalar_one()
         by_package = _findings_by_package(verify, scan_id)
-        raced_present = verify.execute(
-            select(func.count())
-            .select_from(VulnerabilityFinding)
-            .join(
-                Vulnerability,
-                Vulnerability.id == VulnerabilityFinding.vulnerability_id,
-            )
-            .where(VulnerabilityFinding.scan_id == scan_id)
-            .where(Vulnerability.external_id == raced_cve)
-        ).scalar_one()
-    finally:
-        verify.close()
-
-    assert stored == TOTAL_FINDINGS
-    assert inserted == stored, "the reported count must match what committed"
-    assert by_package == PER_PACKAGE
-    assert raced_present == 1, "the raced CVE reuses the winner's catalog row"
-
-
-def test_a_catalog_race_does_not_leave_orphan_audit_rows(
-    session_factory: sessionmaker[Session],
-    seeded: tuple[uuid.UUID, dict[str, Any], str],
-) -> None:
-    """One create audit row per finding that exists, and none for one that does not.
-
-    A rolled-back finding keeps its assigned PK on the attribute while the
-    object leaves the session, so emitting audits straight off the staged list
-    recorded a detection with no finding behind it. These rows ARE the
-    compliance evidence chain, so over-reporting is the failure to guard.
-    """
-    scan_id, report, raced_cve = seeded
-    ready = threading.Event()
-    thief = _steal_catalog_row(session_factory, raced_cve, ready)
-    assert ready.wait(10), "second session never opened its insert"
-
-    session = session_factory()
-    try:
-        with capture_logs() as logs:
-            persist_trivy_findings(session, scan_uuid=scan_id, trivy_report=report)
-        session.commit()
-    finally:
-        session.close()
-    thief.join(10)
-    _assert_race_actually_fired(logs, raced_cve)
-
-    verify = session_factory()
-    try:
         audit_targets = set(
             verify.execute(
                 select(AuditLog.target_id)
@@ -407,13 +381,26 @@ def test_a_catalog_race_does_not_leave_orphan_audit_rows(
             .scalars()
             .all()
         }
+        raced_present = verify.execute(
+            select(func.count())
+            .select_from(VulnerabilityFinding)
+            .join(
+                Vulnerability,
+                Vulnerability.id == VulnerabilityFinding.vulnerability_id,
+            )
+            .where(VulnerabilityFinding.scan_id == scan_id)
+            .where(Vulnerability.external_id == raced_cve)
+        ).scalar_one()
     finally:
         verify.close()
 
-    # Equality first: on the defect this reads as five audit rows naming
-    # finding ids that no longer exist, which is the claim being guarded.
+    assert stored == TOTAL_FINDINGS
+    assert inserted == stored, "the reported count must match what committed"
+    assert by_package == PER_PACKAGE
+    assert raced_present == 1, "the raced CVE reuses the winner's catalog row"
+    # One create audit row per finding, no more and no fewer. Before ER8 this
+    # read as twelve audit rows over seven findings.
     assert audit_targets == finding_ids
-    assert len(finding_ids) == TOTAL_FINDINGS
 
 
 def test_a_catalog_race_during_rematch_does_not_trip_the_finding_constraint(
@@ -475,11 +462,18 @@ def test_a_catalog_race_during_rematch_does_not_trip_the_finding_constraint(
                 session, scan_uuid=scan_id, trivy_report=report
             )
         session.flush()
+        # The lock has to still be ours. A session-wide rollback ends the
+        # transaction, and PostgreSQL releases the row lock with it, so
+        # another worker could claim a scan this task believes it owns. Ask
+        # from a second session while this one is still open: skip_locked
+        # returns nothing when the row is held.
+        still_locked = _scan_is_locked_elsewhere(session_factory, scan_id)
         session.commit()
     finally:
         session.close()
     thief.join(10)
     _assert_race_actually_fired(logs, raced_cve)
+    assert still_locked, "the race released the row lock the task means to hold"
 
     verify = session_factory()
     try:
@@ -495,17 +489,18 @@ def test_a_catalog_race_during_rematch_does_not_trip_the_finding_constraint(
     assert stored == TOTAL_FINDINGS
 
 
-def test_the_audit_writer_ignores_a_finding_that_left_the_session(
+def test_the_audit_writer_ignores_a_rolled_back_finding(
     session_factory: sessionmaker[Session],
     seeded: tuple[uuid.UUID, dict[str, Any], str],
 ) -> None:
-    """A detached finding gets no audit row even though its PK is still set.
+    """A finding whose INSERT was rolled back gets no audit row.
 
-    The guard on its own, without the race that produced the situation. A
-    rolled-back INSERT leaves exactly this shape behind: the object is out of
-    the session, its server-assigned id is still on the attribute, and the row
-    is gone. ``emit_finding_create_audits`` is handed the staged list, so
-    reading ``f.id`` alone would name a finding that no row backs.
+    The guard on its own, in the shape a rollback actually produces. Rolling
+    a SAVEPOINT back expunges with ``to_transient=True``: the object goes
+    TRANSIENT, not detached, and its attributes are never cleared, so the
+    server-assigned PK is still readable on an object no row backs. Neither
+    ``f.id is None`` nor ``detached`` sees that, which is why the check asks
+    the session for membership instead.
     """
     scan_id, report, _raced_cve = seeded
 
@@ -514,21 +509,49 @@ def test_the_audit_writer_ignores_a_finding_that_left_the_session(
         persist_trivy_findings(session, scan_uuid=scan_id, trivy_report=report)
         session.commit()
 
-        kept, dropped = (
+        live = (
             session.execute(
                 select(VulnerabilityFinding)
                 .where(VulnerabilityFinding.scan_id == scan_id)
                 .order_by(VulnerabilityFinding.id)
-                .limit(2)
+                .limit(1)
             )
             .scalars()
-            .all()
+            .one()
         )
-        dropped_id = str(dropped.id)
-        session.expunge(dropped)
+
+        # A catalog row of its own, so the rolled-back finding does not
+        # collide with ``live`` on uq_vuln_findings_scan_version_vuln.
+        other_vuln = Vulnerability(
+            external_id=f"CVE-2097-{uuid.uuid4().hex[:8]}",
+            source="trivy",
+            severity="high",
+        )
+        session.add(other_vuln)
+        session.commit()
+
+        # Build the rolled-back shape for real: flush inside a SAVEPOINT so
+        # the PK is assigned, then roll that SAVEPOINT back.
+        rolled_back = VulnerabilityFinding(
+            scan_id=scan_id,
+            component_version_id=live.component_version_id,
+            vulnerability_id=other_vuln.id,
+            status="new",
+        )
+        nested = session.begin_nested()
+        session.add(rolled_back)
+        session.flush()
+        rolled_back_id = str(rolled_back.id)
+        nested.rollback()
+
+        state = sa_inspect(rolled_back)
+        assert state.transient, "a rolled-back INSERT leaves the object transient"
+        assert not state.detached, "so a detached check would never fire"
+        assert rolled_back.id is not None, "and the PK survives on the attribute"
+        assert rolled_back not in session
 
         emitted = emit_finding_create_audits(
-            session, scan_uuid=scan_id, findings=[kept, dropped]
+            session, scan_uuid=scan_id, findings=[live, rolled_back]
         )
         session.commit()
     finally:
@@ -536,7 +559,7 @@ def test_the_audit_writer_ignores_a_finding_that_left_the_session(
 
     verify = session_factory()
     try:
-        targets = set(
+        targets = list(
             verify.execute(
                 select(AuditLog.target_id)
                 .where(AuditLog.target_table == "vulnerability_findings")
@@ -548,8 +571,6 @@ def test_the_audit_writer_ignores_a_finding_that_left_the_session(
     finally:
         verify.close()
 
-    assert emitted == 1
-    # persist_trivy_findings already audited all twelve; the extra call added
-    # one row for the live finding and none for the detached one.
-    assert dropped_id in targets, "the detached finding's own earlier audit stays"
-    assert len(targets) == TOTAL_FINDINGS
+    assert emitted == 1, "only the finding that still has a row is audited"
+    assert rolled_back_id not in targets
+    assert targets.count(str(live.id)) == 2, "the live finding got this call's row"
