@@ -5,32 +5,22 @@ ownership. The governance model that defines these roles is in
 [`GOVERNANCE.md`](GOVERNANCE.md). Path-level review assignment is in
 [`.github/CODEOWNERS`](.github/CODEOWNERS).
 
-Every name and handle on this page is still a placeholder. Nothing here names a
-real account, so treat the roster as unpublished rather than as a list you can
-route a request to. [`SUPPORT.md`](SUPPORT.md) has the channels that do work.
-
-## Lead maintainer
+## Maintainers
 
 | Name | GitHub | Areas |
 |---|---|---|
-| _not yet published_ | _not yet published_ | Overall direction, releases, tie-breaking |
+| Haksung Jang | [`@haksungjang`](https://github.com/haksungjang) | Everything, including releases and tie-breaking |
 
-## Maintainers
+One maintainer covers every path today, so there is no per-area split and
+[`.github/CODEOWNERS`](.github/CODEOWNERS) names this account directly rather
+than a team. Splitting ownership by area, and moving CODEOWNERS to a GitHub
+team, is worth doing when there are enough people for the split to mean
+something.
 
-Ownership is not split by area today: [`.github/CODEOWNERS`](.github/CODEOWNERS)
-assigns every path to one team. The split below is what the areas would be once
-there are enough maintainers to divide them.
-
-| Area | Paths |
-|---|---|
-| Backend | `apps/backend/` (API, services, scan pipeline, integrations) |
-| Frontend | `apps/frontend/` (React UI, i18n) |
-| Deployment | `charts/`, `scripts/`, `.github/` |
-| Documentation | `docs-site/`, root meta files |
-
-The `@trustedoss/maintainers` team referenced in [`.github/CODEOWNERS`](.github/CODEOWNERS)
-is the GitHub team that will contain the people above once the roster is
-published.
+The lead-maintainer role that [`GOVERNANCE.md`](GOVERNANCE.md) describes for
+tie-breaking is held by the same person, which is what it means for a project
+with one maintainer: there is no consensus to break a tie in, and the
+governance model applies as written once a second maintainer joins.
 
 ## Security contacts
 

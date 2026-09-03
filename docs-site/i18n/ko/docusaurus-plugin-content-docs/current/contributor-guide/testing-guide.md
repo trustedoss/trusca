@@ -8,7 +8,7 @@ sidebar_position: 3
 
 # 테스트 가이드
 
-테스트는 1급 시민입니다. PR 머지 게이트는 **변경된 코드의 line coverage ≥ 80 %**와 **모든 E2E 핵심 시나리오 green**입니다. 이 페이지는 레이아웃, 하네스 패턴, 정적 분석으로는 못 잡는 버그를 잡는 적대적 입력 규칙을 다룹니다.
+테스트는 1급 시민입니다. PR 머지 게이트는 **변경된 코드의 line coverage ≥ 80 %**이며, Playwright E2E 스위트는 PR에서 실행되지 않습니다(아래 [커버리지 게이트](#coverage-gate) 참고). 이 페이지는 레이아웃, 하네스 패턴, 정적 분석으로는 못 잡는 버그를 잡는 적대적 입력 규칙을 다룹니다.
 
 :::note 대상 독자
 모든 컨트리뷰터. `apps/backend/`나 `apps/frontend/`를 건드리는 모든 PR에 적용.
@@ -215,12 +215,12 @@ skip 라벨은 의도적으로 두지 않습니다. 라벨이 필요할 만큼 �
 
 두 게이트는 화면 목록 하나(`tests/_harness/screenIds.ts`)를 공유하므로 커버 범위에 대해 서로 어긋날 수 없습니다.
 
-## Coverage 게이트 — 구체
+## Coverage 게이트 상세 {#coverage-gate}
 
 머지 게이트는 `.github/workflows/ci.yml`에서 강제됩니다.
 
 - **Unit + integration 합산:** 전체 line coverage ≥ 80 %, 그리고 **PR이 바꾼 라인** 기준 ≥ 80 %. 두 스위트는 별도 잡으로 돌고 `coverage-gate (backend)`가 합친 뒤에 판정합니다. 한쪽 잡만 놓고 보는 숫자는 뜻이 없기 때문입니다.
-- **E2E (Playwright):** `apps/frontend/tests/e2e/_core/`의 핵심 시나리오 전부 통과. 새 핵심 시나리오는 해당 기능과 함께 추가합니다.
+- **E2E (Playwright):** PR 게이트에 포함되지 않습니다. 이 스위트는 나이틀리 일정과 수동 `workflow_dispatch`에서만 실행되므로 PR을 올려도 돌지 않습니다. 핵심 시나리오는 `apps/frontend/tests/e2e/_core/`에 있고 해당 기능과 함께 추가합니다. 사용자에게 보이는 흐름을 바꿨다면 직접 실행하거나 메인테이너에게 워크플로 실행을 요청하세요.
 - **디자인 토큰:** 위의 `token:lint` 래칫.
 - **시각·접근성:** 위의 `ui-gates.yml`.
 
