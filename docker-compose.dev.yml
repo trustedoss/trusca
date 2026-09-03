@@ -153,6 +153,27 @@ x-backend-env: &backend-env
   TRIVY_DB_BOOTSTRAP_ON_START: ${TRIVY_DB_BOOTSTRAP_ON_START:-true}
   TRIVY_DB_BOOTSTRAP_TIMEOUT_SECONDS: ${TRIVY_DB_BOOTSTRAP_TIMEOUT_SECONDS:-900}
   TRIVY_DB_REFRESH_TIMEOUT_SECONDS: ${TRIVY_DB_REFRESH_TIMEOUT_SECONDS:-900}
+  # compose-env-var wiring audit: OAuth / OIDC social login + GitHub App PR
+  # comments. Documented in .env.example but never listed in this anchor, so
+  # setting any of them in .env had no effect on the running container
+  # (compose only passes through a var named here). Defaults match
+  # core/config.py exactly, so an unset .env changes nothing for an existing
+  # deployment.
+  GITHUB_CLIENT_ID: ${GITHUB_CLIENT_ID:-}
+  GITHUB_CLIENT_SECRET: ${GITHUB_CLIENT_SECRET:-}
+  GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID:-}
+  GOOGLE_CLIENT_SECRET: ${GOOGLE_CLIENT_SECRET:-}
+  OIDC_CLIENT_ID: ${OIDC_CLIENT_ID:-}
+  OIDC_CLIENT_SECRET: ${OIDC_CLIENT_SECRET:-}
+  OIDC_ISSUER: ${OIDC_ISSUER:-}
+  OIDC_SCOPES: ${OIDC_SCOPES:-}
+  OIDC_GROUPS_CLAIM: ${OIDC_GROUPS_CLAIM:-}
+  OIDC_GROUP_ROLE_MAP: ${OIDC_GROUP_ROLE_MAP:-}
+  GITHUB_API_URL: ${GITHUB_API_URL:-https://api.github.com}
+  GITHUB_APP_TOKEN_HTTP_TIMEOUT_SECONDS: ${GITHUB_APP_TOKEN_HTTP_TIMEOUT_SECONDS:-10}
+  GITHUB_TOKEN: ${GITHUB_TOKEN:-}
+  TRUSTEDOSS_GITHUB_TOKEN: ${TRUSTEDOSS_GITHUB_TOKEN:-}
+  PORTAL_PUBLIC_URL: ${PORTAL_PUBLIC_URL:-}
 
 services:
   postgres:
