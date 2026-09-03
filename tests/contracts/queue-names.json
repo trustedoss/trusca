@@ -1,5 +1,5 @@
 {
-  "$comment": "S3 (concurrency-scaling-plan-2026-08-22.md §3.2/§4, S3 row): the queue-split vocabulary both sides of the split reference. 'scan_queue' and 'default_queue' are the two Celery queue names; 'scan_task_names' is every task Celery routes onto scan_queue (everything else falls through to default_queue via Celery's task_default_queue, so it is not enumerated here). default_queue is deliberately the SAME string the single-queue deployment already used as task_default_queue - during the transition window (see transition_subscribe_both_queues) any message already sitting in that queue before the split ships is exactly a default_queue message, so a worker that still subscribes to default_queue drains it without a rename step. Backend: apps/backend/tasks/celery_app.py's task_routes must route every name in scan_task_names to scan_queue and leave task_default_queue equal to default_queue (backend-owned, see the S3 hand-off note in the concurrency tracker). Infra: charts/trustedoss/values.yaml's worker.queues.{scan,default} and docker-compose.yml's worker-scan/worker-default `-Q` arguments must equal these two strings (devops-owned). A vocabulary-consistency test on each side asserts against this file rather than against each other directly, per the repository's hardening rule 2 (shared vocabulary needs a cross-check, not two independent copies).",
+  "$comment": "S3 (concurrency-scaling-plan-2026-08-22.md 3.2/4, S3 row) + ER11: the queue-split vocabulary every side of the split references. 'scan_queue' and 'default_queue' are the two Celery queue names; 'scan_task_names' is every task Celery routes onto scan_queue (everything else falls through to default_queue via Celery's task_default_queue, so it is not enumerated here). default_queue is deliberately the SAME string the single-queue deployment already used as task_default_queue, so a message sitting in it from before the split is drained without a rename step. 'worker_subscriptions' is which queues each worker kind subscribes to with -Q. It replaced a single 'transition_subscribe_both_queues' boolean, which could only say 'both kinds take both queues' or 'each takes its own' and so could not express the state that is actually correct now: worker-default takes only default_queue, because a worker-default subscribed to scan_queue can pick up an hour-long scan and the short tasks it exists to serve then queue behind it (ER11); worker-scan keeps both, because it is the kind that can actually run a scan task and so remains able to drain a pre-split scan message still sitting on default_queue in a deployment upgrading late. Backend: apps/backend/tasks/celery_app.py's task_routes must route every name in scan_task_names to scan_queue and leave task_default_queue equal to default_queue. Infra: charts/trustedoss/values.yaml's worker.queues/worker.subscriptions and docker-compose.yml's worker-scan/worker-default -Q defaults must equal these values. Each side asserts against this file rather than against each other directly, per the repository's hardening rule 2 (shared vocabulary needs a cross-check, not independent copies).",
   "scan_queue": "trustedoss.scan",
   "default_queue": "trustedoss.default",
   "scan_task_names": [
@@ -8,5 +8,13 @@
     "trustedoss.ingest_sbom",
     "trustedoss.scan_reachability"
   ],
-  "transition_subscribe_both_queues": true
+  "worker_subscriptions": {
+    "scan": [
+      "trustedoss.scan",
+      "trustedoss.default"
+    ],
+    "default": [
+      "trustedoss.default"
+    ]
+  }
 }

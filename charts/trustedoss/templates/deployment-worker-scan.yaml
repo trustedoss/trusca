@@ -7,10 +7,10 @@ S3 (concurrency-scaling-plan-2026-08-22.md §3.2/§4): the scan-pipeline
 worker. Split out of the single `worker` Deployment this chart used to
 render (see values.yaml's worker.scan block for why). Runs
 scan_source/scan_container/ingest_sbom/scan_reachability -- the only tasks
-that can occupy a slot for up to the scan hard time limit -- and, while
-worker.transitionSubscribeBothQueues is true (the default), the default
-queue as well, to drain anything left over from the pre-split single queue
-during a rolling upgrade. See _helpers.tpl's trustedoss.worker.subscribedQueues.
+that can occupy a slot for up to the scan hard time limit -- and, per
+worker.subscriptions.scan (both queues by default), the default queue as
+well, so it can drain a pre-split scan message still sitting there in a
+cluster upgrading late. See _helpers.tpl's trustedoss.worker.subscribedQueues.
 */ -}}
 apiVersion: apps/v1
 kind: Deployment
@@ -67,8 +67,9 @@ spec:
           # (worker.scan.replicaCount / autoscaling) in preference to this;
           # each slot can fork a full pipeline.
           #
-          # S3: `-Q` pins this deployment to the scan queue (plus the default
-          # queue too, during the transition window -- see
+          # S3: `-Q` pins this deployment to worker.subscriptions.scan, which
+          # keeps the default queue alongside the scan queue so a pre-split
+          # message left there still drains (see
           # trustedoss.worker.subscribedQueues in _helpers.tpl). Every task
           # name Celery routes here must appear in
           # tests/contracts/queue-names.json's scan_task_names, which is the

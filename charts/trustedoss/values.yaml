@@ -509,17 +509,26 @@ backend:
 # vocabulary this value and the backend's task_routes both derive from (see
 # that file's $comment for the full cross-check).
 #
-# worker.transitionSubscribeBothQueues (default true): for one release after
-# the split ships, BOTH worker kinds subscribe to BOTH queues (`-Q
-# <scan>,<default>`, not just their own queue). The rolling upgrade takes the
-# OLD single-queue worker out of rotation while the two NEW workers come up;
-# anything the old worker had not yet picked up is sitting in
-# worker.queues.default (the unchanged name), and that queue could still
-# hold scan-pipeline messages dispatched before the upgrade. Narrow this to
-# `false` only once an operator has confirmed the old queue has drained -
-# see charts/trustedoss/README.md "Queue split transition" for the exact
-# procedure and what to check first. Narrowing is a values change only, no
-# template edit.
+# worker.subscriptions: which queues each worker kind consumes. This replaced
+# a single transitionSubscribeBothQueues boolean, which could only say "both
+# kinds take both queues" or "each takes its own" and so could not express the
+# state that is correct now.
+#
+# worker.default takes worker.queues.default ALONE. It used to take both for
+# one release after the split, so a rolling upgrade could drain scan-pipeline
+# messages left in worker.queues.default (the unchanged pre-split name). That
+# window is long closed, and leaving it open defeated the split: a
+# worker-default subscribed to the scan queue can pick up an hour-long scan,
+# and the short, frequent tasks it exists to serve then queue behind it
+# (ER11).
+#
+# worker.scan keeps BOTH deliberately. It is the kind that can actually run a
+# scan task, so it stays able to drain a pre-split scan message still sitting
+# in worker.queues.default in a cluster upgrading late. Drop the default queue
+# from its list once an operator has confirmed that queue has drained - see
+# charts/trustedoss/README.md "Queue split transition". Either change is a
+# values change only, no template edit. Cross-checked against
+# tests/contracts/queue-names.json (worker_subscriptions).
 #
 # Horizontal scaling (B2, still true post-split): prefer raising a worker
 # kind's `replicaCount` (more pods) over its `concurrency` (more prefork
@@ -534,7 +543,13 @@ worker:
   queues:
     scan: "trustedoss.scan"
     default: "trustedoss.default"
-  transitionSubscribeBothQueues: true
+  # Which queues each worker kind subscribes to with `-Q`.
+  subscriptions:
+    scan:
+      - "trustedoss.scan"
+      - "trustedoss.default"
+    default:
+      - "trustedoss.default"
 
   # -------------------------------------------------------------------------
   # Scan-pipeline worker. Same sizing the pre-split single worker used - S1 /
@@ -614,7 +629,7 @@ worker:
         # QUEUE_BACKLOG_METRICS_ENABLED flag to be on; KEDA's native Redis
         # scaler reads the broker directly, no dependency on the app's
         # /metrics endpoint). Pinned to worker.queues.scan, not the combined
-        # depth: even while transitionSubscribeBothQueues is true and this
+        # depth: even though worker.subscriptions.scan includes both and this
         # worker is also draining worker.queues.default, the backlog that
         # actually signals "this workload needs more scan slots" is the scan
         # queue's own length.
