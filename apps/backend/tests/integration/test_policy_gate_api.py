@@ -634,15 +634,19 @@ async def test_post_pr_comment_posted_writes_audit_row(client, monkeypatch) -> N
     factory = await _factory(client)
     async with factory() as session:
         row = (
-            await session.execute(
-                select(AuditLog)
-                .where(
-                    AuditLog.action == "sca_pr_comment.posted",
-                    AuditLog.target_id == str(scan_id),
+            (
+                await session.execute(
+                    select(AuditLog)
+                    .where(
+                        AuditLog.action == "sca_pr_comment.posted",
+                        AuditLog.target_id == str(scan_id),
+                    )
+                    .order_by(AuditLog.created_at.desc())
                 )
-                .order_by(AuditLog.created_at.desc())
             )
-        ).scalars().first()
+            .scalars()
+            .first()
+        )
     assert row is not None, "posting a PR comment must leave an audit row"
     assert row.target_table == "scans"
     assert row.actor_user_id == user.id
@@ -677,11 +681,105 @@ async def test_post_pr_comment_dry_run_writes_no_audit_row(client) -> None:
     factory = await _factory(client)
     async with factory() as session:
         rows = (
-            await session.execute(
-                select(AuditLog).where(
-                    AuditLog.action.like("sca_pr_comment.%"),
-                    AuditLog.target_id == str(scan_id),
+            (
+                await session.execute(
+                    select(AuditLog).where(
+                        AuditLog.action.like("sca_pr_comment.%"),
+                        AuditLog.target_id == str(scan_id),
+                    )
                 )
             )
-        ).scalars().all()
+            .scalars()
+            .all()
+        )
     assert rows == [], "dry_run has no side effect and must not be audited"
+
+
+# ---------------------------------------------------------------------------
+# An empty scan passes the gate, and the payload has to say why (ER1)
+# ---------------------------------------------------------------------------
+#
+# Nothing on the scan path counts components, so a tree the scanner cannot
+# parse produces an empty SBOM, exits 0, and lands as `succeeded`. Every count
+# the gate reads is then 0 and the verdict is `pass`, indistinguishable in
+# the response body, from a project that was scanned properly and is clean.
+# The verdict is deliberately left as `pass`: an empty result is the correct
+# answer for an unsupported build system, and failing there would break
+# pipelines that are working. What changes is that the payload carries which
+# kind of result it was, so the CI client can say so.
+
+
+async def _set_component_outcome(client: AsyncClient, *, scan_id: uuid.UUID, outcome: str) -> None:
+    factory = await _factory(client)
+    async with factory() as session:
+        from sqlalchemy import select
+
+        from models import Scan
+
+        scan = (await session.execute(select(Scan).where(Scan.id == scan_id))).scalar_one()
+        merged = dict(scan.scan_metadata or {})
+        merged["component_outcome"] = outcome
+        scan.scan_metadata = merged
+        await session.commit()
+
+
+async def test_gate_result_reports_an_empty_scan_alongside_its_pass(
+    client,
+) -> None:
+    _, team, user = await _seed_team_and_user(client)
+    project_id = await _seed_project(client, team_id=team.id)
+    scan_id = await _seed_succeeded_scan(client, project_id=project_id)
+    await _set_component_outcome(client, scan_id=scan_id, outcome="empty_no_manifests")
+
+    response = await client.get(
+        f"/v1/projects/{project_id}/gate-result",
+        headers=_bearer_for(user),
+    )
+
+    assert response.status_code == 200, response.text
+    body = response.json()
+    # Still a pass: an unreadable build system is not a policy violation.
+    assert body["gate"] == "pass"
+    assert body["critical_cve_count"] == 0
+    # But the reason every count is 0 now travels with the verdict.
+    assert body["component_outcome"] == "empty_no_manifests"
+
+
+async def test_gate_result_separates_an_empty_scan_from_a_failed_one(
+    client,
+) -> None:
+    """The two empties need different actions, so they are different values."""
+    _, team, user = await _seed_team_and_user(client)
+    project_id = await _seed_project(client, team_id=team.id)
+    scan_id = await _seed_succeeded_scan(client, project_id=project_id)
+    await _set_component_outcome(client, scan_id=scan_id, outcome="empty_with_manifests")
+
+    response = await client.get(
+        f"/v1/projects/{project_id}/gate-result",
+        headers=_bearer_for(user),
+    )
+
+    assert response.status_code == 200, response.text
+    assert response.json()["component_outcome"] == "empty_with_manifests"
+
+
+async def test_gate_result_reports_no_outcome_for_a_scan_predating_the_capture(
+    client,
+) -> None:
+    """Unknown must read as unknown, not as either answer.
+
+    Every scan that ran before this field existed has no value for it, and
+    defaulting those to "found components" would tell the CI client a scan was
+    fine on no evidence.
+    """
+    _, team, user = await _seed_team_and_user(client)
+    project_id = await _seed_project(client, team_id=team.id)
+    await _seed_succeeded_scan(client, project_id=project_id)
+
+    response = await client.get(
+        f"/v1/projects/{project_id}/gate-result",
+        headers=_bearer_for(user),
+    )
+
+    assert response.status_code == 200, response.text
+    assert response.json()["component_outcome"] is None

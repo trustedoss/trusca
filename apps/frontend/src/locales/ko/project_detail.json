@@ -163,8 +163,10 @@
       "license": "라이선스",
       "security_counts": "Critical {{critical}} · High {{high}}",
       "license_counts": "금지 {{forbidden}} · 조건부 {{conditional}}",
-      "vuln_data_empty_title": "스캔 시점에 취약점 데이터 없음",
-      "vuln_data_empty_body": "이 스캔이 실행될 때 취약점 데이터베이스가 비어 있었습니다. 따라서 CVE 0건은 안전을 의미하지 않고 데이터가 없었다는 뜻입니다. NVD 미러 적재가 끝난 뒤 다시 스캔하세요."
+      "empty_sbom_unsupported_title": "이 스캔은 컴포넌트를 찾지 못했습니다",
+      "empty_sbom_unsupported_body": "스캔은 성공했지만 결과가 비어 있고, 소스에도 인식할 수 있는 의존성 매니페스트가 없었습니다. 이 화면의 모든 수치가 0인 것은 그 때문이며 의존성이 없다는 뜻이 아닙니다. 결과를 정상으로 보기 전에 TRUSCA가 이 프로젝트의 빌드 시스템을 지원하는지 확인하세요.",
+      "empty_sbom_manifests_title": "이 스캔은 컴포넌트를 찾지 못했지만 소스에는 의존성이 선언되어 있습니다",
+      "empty_sbom_manifests_body": "소스에 의존성 매니페스트가 있는데도 스캔이 성공하면서 아무것도 만들지 못했습니다. 프로젝트가 비어 있는 것이 아니라 스캔 도중 문제가 생겼다는 뜻입니다. 스캔 로그에서 어느 단계가 비었는지 확인한 뒤 다시 실행하세요."
     },
     "risk_gauge": {
       "aria": "프로젝트 리스크 점수: 100점 만점에 {{score}}점"
@@ -346,7 +348,9 @@
       "subtitle": "현재 필터가 모든 컴포넌트를 걸러 냈습니다.",
       "unfiltered_title": "아직 컴포넌트가 없습니다",
       "unfiltered_subtitle": "이 표는 스캔이 채웁니다.",
-      "run_scan": "스캔 실행"
+      "run_scan": "스캔 실행",
+      "scanned_empty_title": "스캔했지만 아무것도 찾지 못했습니다",
+      "scanned_empty_subtitle": "스캔은 성공했으나 컴포넌트가 하나도 나오지 않았습니다. 의존성이 없다는 뜻이 아닙니다. 어느 경우이고 무엇을 해야 하는지는 개요 탭의 안내를 보세요."
     },
     "errors": {
       "load_failed": "컴포넌트를 불러오지 못했습니다."

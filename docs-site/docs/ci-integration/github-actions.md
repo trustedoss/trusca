@@ -123,6 +123,7 @@ Drop `.github/workflows/sca.yml` (above) into the repo. On the next PR, the SCA 
 | `forbidden-license-count` | Distinct components carrying a forbidden-classification license. |
 | `epss-gate-count` | Open findings whose EPSS score met or exceeded the configured EPSS threshold. `0` when the EPSS gate is disabled (the default). See [Gate the build on EPSS](#gate-the-build-on-epss-optional). |
 | `malicious-component-count` | Distinct components the malicious-package snapshot flags. These block regardless of severity — remove the package and rotate any credentials the build could reach. |
+| `component-outcome` | What the scan's SBOM ended up containing. `components_found` is the ordinary case. `empty_no_manifests` and `empty_with_manifests` both mean the scan produced no components, so a passing gate reflects the absence of anything to judge rather than a clean result: the first is expected for a build system TRUSCA does not read, the second points at a scan failure. Empty on a portal too old to report it. |
 
 Use them in subsequent steps:
 

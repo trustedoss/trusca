@@ -214,22 +214,32 @@ export function OverviewTab({
             4. Recent scans (col-span-2)
           */}
 
-      {/* W6-#35 caveat hoisted above everything else so a "0 CVE, no data"
-          state is the first thing the user sees, not a footnote. */}
-      {data.total_components > 0 &&
-      data.security_score === 0 &&
-      data.vuln_data_available === false ? (
+      {/* Hoisted above everything else, because if the scan found nothing then
+          every number below it is 0 for that reason and reading them in order
+          would mean reading a clean bill of health first and the reason for it
+          last. The two cases are kept apart deliberately: one is the expected
+          answer for a build system we cannot read, the other is a scan that
+          failed to do its job, and they need different actions from the user.
+          Nothing is drawn when the outcome is null (a scan predating the
+          capture): unknown is not the same as either answer. */}
+      {data.component_outcome === "empty_no_manifests" ||
+      data.component_outcome === "empty_with_manifests" ? (
         <Alert
           className="border-status-warning-border bg-status-warning-subtle text-status-warning-foreground md:col-span-2"
-          data-testid="overview-vuln-data-unavailable"
+          data-testid="overview-empty-sbom"
+          data-outcome={data.component_outcome}
         >
           <AlertTriangle className="h-4 w-4" aria-hidden />
           <AlertDescription>
             <span className="font-semibold">
-              {t("overview.risk_card.vuln_data_empty_title")}
+              {data.component_outcome === "empty_with_manifests"
+                ? t("overview.risk_card.empty_sbom_manifests_title")
+                : t("overview.risk_card.empty_sbom_unsupported_title")}
             </span>
             <span className="mt-1 block">
-              {t("overview.risk_card.vuln_data_empty_body")}
+              {data.component_outcome === "empty_with_manifests"
+                ? t("overview.risk_card.empty_sbom_manifests_body")
+                : t("overview.risk_card.empty_sbom_unsupported_body")}
             </span>
           </AlertDescription>
         </Alert>

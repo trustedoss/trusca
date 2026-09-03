@@ -7,6 +7,58 @@ and the project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.
 
 ## [Unreleased]
 
+### Removed
+
+- **BREAKING (API): `vuln_data_available` is gone from
+  `GET /v1/projects/{id}/overview`.** The field reported whether the
+  vulnerability database held any data when the anchored scan ran, and it was
+  derived from a `scan_metadata` key that nothing has written since
+  Dependency-Track was replaced at v0.10.0. It has therefore been `null` on
+  every response since, and the UI caveat it drove rendered only on `false`,
+  so it has never appeared. Reviving it has no target: Trivy fails the scan
+  outright when its database is unusable, so the failure mode the caveat
+  warned about no longer exists. A field that is always `null` looks like a
+  guarantee that is not being made, so it is removed rather than left. A
+  consumer that reads the key defensively is unaffected; one that requires it
+  to be present will break. The caveat it was meant to carry is now served by
+  `component_outcome` below.
+
+### Added
+
+- **A scan that finds nothing now says so, instead of looking like a clean
+  project.** Nothing on the scan path counted components, so a tree cdxgen
+  could not parse produced an empty SBOM, exited 0, and finished `succeeded`:
+  the project then showed no components, no licences and no CVEs, the build
+  gate passed because every count it reads was 0, and the Components tab
+  showed the never-scanned empty state to somebody who had just scanned. Such
+  scans still succeed, because for a build system the scanner does not read an
+  empty result is the correct answer and failing there would break working
+  pipelines. What is new is that the scan records which kind of empty it was:
+  `empty_no_manifests` when the source declared no dependency manifest either,
+  and `empty_with_manifests` when it did, which points at a scan failure
+  rather than an empty project. Surfaced on the project overview, on the
+  Components tab, as `component_outcome` on the gate result, and as a warning
+  next to the verdict in the GitHub Action's job summary. Under-reporting (a
+  manifest without its lockfile, which yields the direct dependencies and
+  drops the transitive ones) is deliberately not folded in: it is a populated
+  SBOM with a different cause and a different fix.
+
+### Fixed
+
+- **The dashboard stopped counting at 100 projects, and undercounted risk in
+  the dangerous direction.** Every KPI and both distribution charts were
+  computed in the browser from one page of `GET /v1/projects`, whose `size`
+  caps at 100. Past that the numbers were not merely incomplete: the list is
+  ordered `updated_at DESC`, so what fell off the end was whatever nobody had
+  touched lately, which is where risk accumulates. Measured on a 105-project
+  seed with every critical finding on the 5 least recently updated projects,
+  the dashboard showed `critical: 0` against a real 5. The page now reads
+  `GET /v1/dashboard/summary`, which has always aggregated the whole
+  portfolio; the endpoint gains project-shaped severity and licence counts,
+  because the charts count projects while the KPI beside them counts
+  components. The "no projects yet" state also moves to the server count, so a
+  failed project-list request no longer renders as an empty portfolio.
+
 ## [0.22.4] - 2026-09-02
 
 ### Fixed

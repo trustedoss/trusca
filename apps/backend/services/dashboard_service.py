@@ -69,6 +69,8 @@ from models import (
 from schemas.dashboard import (
     DashboardSummary,
     LicenseCategoryCounts,
+    ProjectLicenseCounts,
+    ProjectSeverityCounts,
     RecentScan,
     ScanStatusCounts,
     VulnerabilitySeverityCounts,
@@ -110,13 +112,23 @@ _LICENSE_RANK_TO_BUCKET: dict[int, str] = {
 #: where that ceiling is reachable from a single deployment's own data
 #: (services.inventory_service._among_scans hit the same ceiling first, at
 #: S8 concurrency-scaling; mirrors its threshold and shape).
+# Same ranks as `_LICENSE_RANK_TO_BUCKET`, but keyed to the PERSISTED category
+# names. The project-shaped chart deep-links into `/projects?license_category=`,
+# which filters on what the database stores, so translating to the UI labels
+# here would produce a segment whose own link returns nothing.
+_PROJECT_LICENSE_FROM_RANK: dict[int, str] = {
+    0: "unknown",
+    1: "allowed",
+    2: "conditional",
+    3: "forbidden",
+}
+
+
 _ID_INLINE_LIMIT = 5_000
 
 
-def _among(
-    column: InstrumentedAttribute[uuid.UUID], ids: list[uuid.UUID]
-) -> ColumnElement[bool]:
-    """"This column's value is one of ``ids``", at any list size.
+def _among(column: InstrumentedAttribute[uuid.UUID], ids: list[uuid.UUID]) -> ColumnElement[bool]:
+    """ "This column's value is one of ``ids``", at any list size.
 
     Under ``_ID_INLINE_LIMIT`` this is a plain ``IN`` (one bind parameter per
     element), the fast path every deployment actually takes. Over it, the
@@ -353,6 +365,112 @@ async def _license_counts(
     return LicenseCategoryCounts(**buckets)
 
 
+async def _project_severity_counts(
+    session: AsyncSession,
+    *,
+    scan_ids: list[uuid.UUID],
+) -> ProjectSeverityCounts:
+    """Projects bucketed by their single worst finding, over the latest scans.
+
+    The dashboard chart this feeds counts projects, not components, and each
+    segment deep-links to ``/projects?severity=...``. Computing it in the
+    client off one page of projects is what made the chart wrong above 100
+    projects, and wrong in the dangerous direction: the page is ordered by
+    ``updated_at DESC``, so the projects that fall off the end are the ones
+    nobody has touched in a while, which is where risk accumulates.
+
+    A project whose latest succeeded scan carries no finding lands in
+    ``none``. A project with no succeeded scan lands in no bucket at all: we
+    have not looked at it, which is not the same as finding it clean.
+    """
+    counts = ProjectSeverityCounts()
+    if not scan_ids:
+        return counts
+
+    sev_rank = _severity_rank_case()
+    per_project = (
+        select(
+            Scan.project_id.label("project_id"),
+            func.max(sev_rank).label("max_rank"),
+        )
+        .select_from(Scan)
+        .outerjoin(
+            VulnerabilityFinding,
+            VulnerabilityFinding.scan_id == Scan.id,
+        )
+        .outerjoin(
+            Vulnerability,
+            Vulnerability.id == VulnerabilityFinding.vulnerability_id,
+        )
+        .where(_among(Scan.id, scan_ids))
+        .group_by(Scan.project_id)
+        .subquery()
+    )
+
+    stmt = select(per_project.c.max_rank, func.count().label("n")).group_by(per_project.c.max_rank)
+    result = await session.execute(stmt)
+
+    buckets: dict[str, int] = {
+        "critical": 0,
+        "high": 0,
+        "medium": 0,
+        "low": 0,
+        "info": 0,
+        "none": 0,
+    }
+    for row in result.all():
+        # A scan with no finding at all produces a NULL max, not 0: the outer
+        # join leaves nothing for the CASE to evaluate. Both mean "clean".
+        rank = 0 if row.max_rank is None else int(row.max_rank)
+        buckets[_SEVERITY_FROM_RANK.get(rank, "none")] += int(row.n)
+    return ProjectSeverityCounts(**buckets)
+
+
+async def _project_license_counts(
+    session: AsyncSession,
+    *,
+    scan_ids: list[uuid.UUID],
+) -> ProjectLicenseCounts:
+    """Projects bucketed by their worst license verdict, over the latest scans.
+
+    Buckets carry the persisted category names rather than the UI labels used
+    by ``LicenseCategoryCounts``, because this chart's segments deep-link to
+    ``/projects?license_category=...`` and that filter matches persisted
+    values.
+    """
+    counts = ProjectLicenseCounts()
+    if not scan_ids:
+        return counts
+
+    lic_rank = _license_rank_case()
+    per_project = (
+        select(
+            Scan.project_id.label("project_id"),
+            func.max(lic_rank).label("max_rank"),
+        )
+        .select_from(Scan)
+        .outerjoin(LicenseFinding, LicenseFinding.scan_id == Scan.id)
+        .outerjoin(LicenseModel, LicenseModel.id == LicenseFinding.license_id)
+        .where(_among(Scan.id, scan_ids))
+        .group_by(Scan.project_id)
+        .subquery()
+    )
+
+    stmt = select(per_project.c.max_rank, func.count().label("n")).group_by(per_project.c.max_rank)
+    result = await session.execute(stmt)
+
+    buckets: dict[str, int] = {
+        "forbidden": 0,
+        "conditional": 0,
+        "allowed": 0,
+        "unknown": 0,
+    }
+    for row in result.all():
+        rank = 0 if row.max_rank is None else int(row.max_rank)
+        buckets[_PROJECT_LICENSE_FROM_RANK.get(rank, "unknown")] += int(row.n)
+    return ProjectLicenseCounts(**buckets)
+
+
 async def _pending_approvals_count(
     session: AsyncSession,
     *,
@@ -461,6 +579,8 @@ async def get_dashboard_summary(
     scan_status_counts = await _scan_status_counts(session, project_ids=project_ids)
     severity_counts = await _severity_counts(session, scan_ids=latest_scan_ids)
     license_counts = await _license_counts(session, scan_ids=latest_scan_ids)
+    project_severity = await _project_severity_counts(session, scan_ids=latest_scan_ids)
+    project_license = await _project_license_counts(session, scan_ids=latest_scan_ids)
     pending = await _pending_approvals_count(session, project_ids=project_ids)
     recent = await _recent_scans(session, project_ids=project_ids)
 
@@ -476,6 +596,8 @@ async def get_dashboard_summary(
         scan_status_counts=scan_status_counts,
         vulnerability_severity_counts=severity_counts,
         license_category_counts=license_counts,
+        project_severity_counts=project_severity,
+        project_license_counts=project_license,
         pending_approvals_count=pending,
         recent_scans=recent,
     )

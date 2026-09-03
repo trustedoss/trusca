@@ -463,6 +463,13 @@ export function ComponentsTab({
   // Phase K — runtime-scope filter transparency. Non-null only when the
   // rendered scan's worker telemetry says components were actually dropped.
   const scopeFilter = useScanScopeFilter(scanId, overview.data?.recent_scans);
+  // "No components yet / A scan is what fills this table" is the right sentence
+  // for a project nobody has scanned, and the wrong one for a project that was
+  // scanned and came back empty: it tells someone who just ran a scan to run a
+  // scan. The scan itself now records which happened.
+  const scannedAndEmpty =
+    overview.data?.component_outcome === "empty_no_manifests" ||
+    overview.data?.component_outcome === "empty_with_manifests";
 
   return (
     <div data-testid="components-tab" className="flex flex-1 flex-col">
@@ -670,18 +677,23 @@ export function ComponentsTab({
           className="m-6"
           data-testid="components-empty"
           icon={<Boxes />}
+          data-outcome={overview.data?.component_outcome ?? undefined}
           title={
             hasNarrowingFilters
               ? t("components.empty.title")
-              : t("components.empty.unfiltered_title")
+              : scannedAndEmpty
+                ? t("components.empty.scanned_empty_title")
+                : t("components.empty.unfiltered_title")
           }
           description={
             hasNarrowingFilters
               ? t("components.empty.subtitle")
-              : t("components.empty.unfiltered_subtitle")
+              : scannedAndEmpty
+                ? t("components.empty.scanned_empty_subtitle")
+                : t("components.empty.unfiltered_subtitle")
           }
           action={
-            !hasNarrowingFilters && onScan ? (
+            !hasNarrowingFilters && !scannedAndEmpty && onScan ? (
               <Button
                 size="sm"
                 onClick={onScan}

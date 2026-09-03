@@ -188,6 +188,22 @@ needs neither Xcode, a Swift toolchain, nor the CocoaPods CLI:
 Commit `Podfile.lock` and `Package.resolved` to the repository — without
 them an iOS scan finds only what the manifests declare.
 
+## When a scan finds nothing {#empty-scan}
+
+A scan can succeed and still produce no components. That is not the same as a project having no dependencies, and the portal says which one happened rather than showing you an empty page and letting you guess.
+
+The scan still succeeds. `cdxgen` does not recognise every build system, and for a tree it cannot read an empty result is the correct answer; failing the scan there would break a pipeline that is working as intended. What you get instead is a note on the project's Overview tab, a different empty state on the Components tab, and a `component_outcome` field on the gate result that the CI action prints.
+
+| What happened | What it means | What to do |
+|---|---|---|
+| Components were found | The ordinary case. | Nothing. |
+| No components, and the source declared no dependency manifest | The scanner did not recognise this build system, so there was nothing for it to read. Every count on the project is 0 for that reason. | Check the [supported ecosystems](../reference/data-sources.md) before treating the result as clean. |
+| No components, but the source does carry dependency manifests | Something failed during the scan. Build preparation is best-effort, and when it cannot produce the lockfile `cdxgen` needs, that ecosystem comes back empty. | Open the scan log, find the stage that came back empty, and re-run. |
+
+A build gate on an empty scan passes, because every count it reads is 0 and there is nothing to block on. The CI action prints a warning next to that verdict so a passing build does not read as an all-clear. See [`component-outcome`](../ci-integration/github-actions.md#outputs).
+
+This is separate from under-reporting. A project with a `package.json` and no committed `package-lock.json` produces its direct dependencies and drops the transitive ones: that is a populated SBOM that is quietly incomplete, it has a different cause, and committing the lockfile is what fixes it.
+
 ## Average duration
 
 | Project size | Source scan | Container scan |
