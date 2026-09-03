@@ -438,7 +438,7 @@ def test_attest_env_strips_worker_secrets(
 ) -> None:
     monkeypatch.setenv("DT_API_KEY", "dt-secret")
     monkeypatch.setenv("DATABASE_URL", "postgresql://u:p@h/db")
-    monkeypatch.setenv("SECRET_KEY", "j" * 40)
+    monkeypatch.setenv("SECRET_KEY", "55dbfe78cec3f737ea6ecdb4a7902e7a50cba0db")
     monkeypatch.setenv("SLACK_WEBHOOK_URL", "https://hooks.slack.com/x")
 
     captured = _capture_run(monkeypatch)

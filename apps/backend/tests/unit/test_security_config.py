@@ -59,7 +59,7 @@ def test_secret_key_strong_value_returned(monkeypatch):
     """A 32+ char value is returned verbatim, regardless of APP_ENV."""
     from core import config
 
-    strong = "x" * 64
+    strong = "9d2f74a1c608e35b7f04ad91c2e86b530af17d64c93e05b28a4f1d70e6c3b9825"
     monkeypatch.setenv("APP_ENV", "prod")
     monkeypatch.setenv("SECRET_KEY", strong)
 

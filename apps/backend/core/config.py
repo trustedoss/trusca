@@ -27,6 +27,38 @@ _MIN_SECRET_LEN = 32
 # The string is intentionally self-documenting so a leak is obvious.
 _DEV_PLACEHOLDER_SECRET = "dev-only-secret-key-min-32-chars-DO-NOT-USE-IN-PROD"  # noqa: S105
 
+# Words that only appear in a key nobody generated. `.env.example` shipped
+# `change-this-to-a-random-secret-key-min-32-chars`, which is 47 characters and
+# therefore cleared the length floor above; the no-clone install instructions
+# tell operators to `curl` that file down as their `.env`, so every deployment
+# that took the quick path and skipped the edit was signing JWTs with a key
+# published in a public repository. Anyone could mint a token for any of them.
+#
+# Matched case-insensitively as substrings, because the failure is a value
+# somebody left alone rather than a value somebody typed exactly. None of these
+# can occur in a key from the documented generator (`openssl rand -hex 32`):
+# each contains at least one letter outside `[0-9a-f]`.
+_PLACEHOLDER_SECRET_MARKERS: tuple[str, ...] = (
+    "change",
+    "replace",
+    "placeholder",
+    "example",
+    "your-secret",
+    "your_secret",
+    "yoursecret",
+    "insecure",
+    "do-not-use",
+    "donotuse",
+    "dev-only",
+    "min-32-chars",
+)
+
+# A key built from a handful of distinct characters is not random regardless of
+# how long it is; `"ab" * 32` clears any length floor. Sixteen distinct
+# characters is what a hex key of this length has, so the floor sits well under
+# anything the documented generator produces.
+_MIN_DISTINCT_SECRET_CHARS = 8
+
 
 def database_url() -> str:
     """Return the SQLAlchemy async DSN (asyncpg driver) for runtime use.
@@ -721,6 +753,59 @@ def webhook_rate_limit() -> str:
     return os.getenv("WEBHOOK_RATE_LIMIT", "120/minute")
 
 
+def placeholder_secret_reason(value: str) -> str | None:
+    """Why ``value`` is unusable as key material, or ``None`` if it is fine.
+
+    Length alone does not separate a real key from one nobody generated: the
+    placeholder this exists for was 47 characters.
+
+    This recognises the shipped template and values written like it. It is not
+    a general judgement about whether a key was generated, and it cannot be:
+    a hand-typed `qwertyuiopasdfghjklzxcvbnm1234567890` carries no marker, is
+    aperiodic and has 36 distinct characters. The defence against that one is
+    that it was never published. Do not read a pass here as "this key is
+    strong"; read it as "this is not the key we shipped".
+
+    Deliberately NOT a character-class rule. The generator the installation
+    guides tell operators to run is ``openssl rand -hex 32``, whose output is
+    lowercase hex: two classes. Requiring three would reject every correctly
+    generated key and teach people to weaken one until it was accepted.
+    """
+    lowered = value.lower()
+    for marker in _PLACEHOLDER_SECRET_MARKERS:
+        if marker in lowered:
+            return f"it contains {marker!r}, so it is a template value, not a generated one"
+
+    if len(set(value)) < _MIN_DISTINCT_SECRET_CHARS:
+        return (
+            f"it is built from only {len(set(value))} distinct characters "
+            f"(at least {_MIN_DISTINCT_SECRET_CHARS} expected)"
+        )
+
+    # A repeated block is long without being random. The doubled-string trick
+    # finds the shortest period: a non-periodic string only reappears in its own
+    # double at the halfway point.
+    if (value + value).find(value, 1) != len(value):
+        return "it is one short block repeated, so its real length is much smaller"
+
+    return None
+
+
+def _require_generated_secret(name: str, value: str) -> None:
+    """Raise unless ``value`` looks like key material somebody generated.
+
+    Startup is the right place to fail. Accepting a published placeholder does
+    not degrade anything visibly: the portal comes up, tokens verify, and the
+    only sign of trouble is that someone else can mint them too.
+    """
+    reason = placeholder_secret_reason(value)
+    if reason is not None:
+        raise RuntimeError(
+            f"{name} is not a usable secret: {reason}. "
+            "Generate one with `openssl rand -hex 32` and set it in your .env."
+        )
+
+
 def secret_key() -> str:
     """
     Return the JWT signing key.
@@ -748,6 +833,11 @@ def secret_key() -> str:
         raise RuntimeError(
             f"SECRET_KEY must be at least {_MIN_SECRET_LEN} characters " f"(got {len(raw)})"
         )
+
+    # dev is exempt on purpose: it is where the self-documenting placeholder is
+    # meant to be used, and the branch above hands it out unprompted.
+    if env != "dev":
+        _require_generated_secret("SECRET_KEY", raw)
     return raw
 
 
@@ -822,6 +912,10 @@ def api_key_hmac_secret() -> str:
                 f"{_API_KEY_HMAC_SECRET_ENV} must be at least "
                 f"{_MIN_API_KEY_HMAC_SECRET_LEN} characters (got {len(value)})"
             )
+        # Same reasoning as SECRET_KEY: this is signing key material read from
+        # the same file, so a template value reaches it by the same route.
+        if app_env() != "dev":
+            _require_generated_secret(_API_KEY_HMAC_SECRET_ENV, value)
         return value
 
     env = app_env()
@@ -1199,10 +1293,7 @@ def scan_scope_filter_enabled() -> bool:
     Default ``true``. Only ``false`` / ``0`` / ``no`` (case-insensitive)
     disable it. Read at call time (rule #11).
     """
-    return (
-        os.getenv("SCAN_SCOPE_FILTER_ENABLED", "true").strip().lower()
-        not in _SCOPE_FILTER_FALSY
-    )
+    return os.getenv("SCAN_SCOPE_FILTER_ENABLED", "true").strip().lower() not in _SCOPE_FILTER_FALSY
 
 
 def scan_scope_filter_maven_enabled() -> bool:
@@ -2418,9 +2509,7 @@ def eol_feed_url_template() -> str:
     ``core.url_guard``); point it at an internal mirror to keep the egress
     inside your network. Read at call time (rule #11).
     """
-    return os.getenv(
-        "EOL_FEED_URL_TEMPLATE", "https://endoflife.date/api/{product}.json"
-    ).strip()
+    return os.getenv("EOL_FEED_URL_TEMPLATE", "https://endoflife.date/api/{product}.json").strip()
 
 
 def eol_refresh_timeout_seconds() -> int:
@@ -2851,6 +2940,8 @@ def ticket_webhook_events() -> frozenset[str]:
     if not raw:
         return frozenset()
     return frozenset(part.strip() for part in raw.split(",") if part.strip())
+
+
 def audit_export_url() -> str | None:
     """Where to hand the audit trail as it accumulates, or None.
 
@@ -3522,9 +3613,7 @@ def validate_demo_sandbox_limits() -> None:
         )
 
     if scancode_enabled():
-        violations.append(
-            "SCANCODE_ENABLED must be false (scancode disabled) in the demo sandbox"
-        )
+        violations.append("SCANCODE_ENABLED must be false (scancode disabled) in the demo sandbox")
 
     ingest_bytes = sbom_ingest_max_bytes()
     if ingest_bytes > _DEMO_SANDBOX_MAX_SBOM_INGEST_BYTES:
@@ -3542,6 +3631,5 @@ def validate_demo_sandbox_limits() -> None:
     if violations:
         raise RuntimeError(
             "DEMO_ALLOW_SANDBOX_SCANS is on but safe limits are not applied — "
-            "layer docker-compose.demo.yml / set the demo env. Violations: "
-            + "; ".join(violations)
+            "layer docker-compose.demo.yml / set the demo env. Violations: " + "; ".join(violations)
         )

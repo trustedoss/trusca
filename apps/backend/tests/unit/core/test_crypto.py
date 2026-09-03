@@ -70,7 +70,7 @@ def test_round_trip_with_derived_key(monkeypatch: pytest.MonkeyPatch) -> None:
 
     monkeypatch.delenv("GITHUB_APP_ENCRYPTION_KEY", raising=False)
     monkeypatch.setenv("APP_ENV", "dev")
-    monkeypatch.setenv("SECRET_KEY", "x" * 40)
+    monkeypatch.setenv("SECRET_KEY", "7f3a91c4e08b256d4af1c93e75b028da6c14e9f3")
     token = encrypt_secret(PEM_SAMPLE)
     assert decrypt_secret(token) == PEM_SAMPLE
 
@@ -81,7 +81,7 @@ def test_derived_key_emits_warning(monkeypatch: pytest.MonkeyPatch) -> None:
 
     monkeypatch.delenv("GITHUB_APP_ENCRYPTION_KEY", raising=False)
     monkeypatch.setenv("APP_ENV", "dev")
-    monkeypatch.setenv("SECRET_KEY", "y" * 40)
+    monkeypatch.setenv("SECRET_KEY", "241bdf90a275dc32ccf4f2448f94a74559f196e6")
 
     events: list[str] = []
 
@@ -99,7 +99,7 @@ def test_empty_env_key_falls_back_to_derived(monkeypatch: pytest.MonkeyPatch) ->
 
     monkeypatch.setenv("GITHUB_APP_ENCRYPTION_KEY", "   ")
     monkeypatch.setenv("APP_ENV", "dev")
-    monkeypatch.setenv("SECRET_KEY", "z" * 40)
+    monkeypatch.setenv("SECRET_KEY", "b4ea8c86a66f27320a4a8a66e5ee00680e6ce126")
     token = encrypt_secret(PEM_SAMPLE)
     assert decrypt_secret(token) == PEM_SAMPLE
 
@@ -133,10 +133,10 @@ def test_derived_key_changes_when_secret_rotates(
 
     monkeypatch.delenv("GITHUB_APP_ENCRYPTION_KEY", raising=False)
     monkeypatch.setenv("APP_ENV", "dev")
-    monkeypatch.setenv("SECRET_KEY", "a" * 40)
+    monkeypatch.setenv("SECRET_KEY", "b28e4d70a915c3f6e0d47b1a89c25f30e6a4d19c")
     token = encrypt_secret(PEM_SAMPLE)
 
-    monkeypatch.setenv("SECRET_KEY", "b" * 40)
+    monkeypatch.setenv("SECRET_KEY", "6c78c141f3b3dc9739be569ecfcbed345ea404b0")
     with pytest.raises(SecretDecryptionError):
         decrypt_secret(token)
 
@@ -195,7 +195,7 @@ def test_prod_missing_key_fails_closed_on_encrypt(
 
     monkeypatch.delenv("GITHUB_APP_ENCRYPTION_KEY", raising=False)
     monkeypatch.setenv("APP_ENV", "prod")
-    monkeypatch.setenv("SECRET_KEY", "p" * 40)
+    monkeypatch.setenv("SECRET_KEY", "e57c20a94f1d836b0ac7e49215f3d68b1c0a7e94")
     with pytest.raises(SecretEncryptionError):
         encrypt_secret(PEM_SAMPLE)
 
@@ -208,7 +208,7 @@ def test_prod_blank_key_fails_closed_on_decrypt(
 
     monkeypatch.setenv("GITHUB_APP_ENCRYPTION_KEY", "   ")
     monkeypatch.setenv("APP_ENV", "prod")
-    monkeypatch.setenv("SECRET_KEY", "q" * 40)
+    monkeypatch.setenv("SECRET_KEY", "0a203a754b0d57d61fed901e45ffeb287cca5b95")
     with pytest.raises(SecretEncryptionError):
         # Any non-empty token reaches the key-resolution step, which fails closed.
         decrypt_secret("gAAAAA-not-a-real-token-but-non-empty")
@@ -230,6 +230,6 @@ def test_non_prod_missing_key_still_derives(monkeypatch: pytest.MonkeyPatch) -> 
 
     monkeypatch.delenv("GITHUB_APP_ENCRYPTION_KEY", raising=False)
     monkeypatch.setenv("APP_ENV", "staging")
-    monkeypatch.setenv("SECRET_KEY", "r" * 40)
+    monkeypatch.setenv("SECRET_KEY", "6fd4a101cf1173b6243fb086da7ac9bf72448457")
     token = encrypt_secret(PEM_SAMPLE)
     assert decrypt_secret(token) == PEM_SAMPLE

@@ -122,6 +122,8 @@ docker-compose -f docker-compose.yml pull
 docker-compose -f docker-compose.yml up -d
 ```
 
+3번은 선택이 아닙니다. `.env.example`은 `SECRET_KEY`를 비운 채로 배포되고, `APP_ENV=dev`가 아닌 환경에서 backend는 이 값 없이는 기동하지 않습니다. 예전에 담겨 있던 자리표시자 문자열과 같은 방식으로 만든 값도 거부하는데, 오래된 `.env`가 그런 값을 들고 있을 수 있기 때문입니다. 기동 오류가 무엇이 문제인지와 고치는 명령을 함께 알려 줍니다. 이전 릴리스는 이 파일에 `APP_ENV=dev`를 고정해 두었고, `.env`로 복사되면 프로덕션 기본값을 덮어써서 이렇게 설치한 스택이 dev 모드로 돌았습니다. 그 상태에서는 위 검사가 하나도 적용되지 않았습니다.
+
 게시된 backend 이미지의 entrypoint는 **기동 시 Alembic 마이그레이션을 자동 적용**(`AUTO_MIGRATE`, 기본 `true`)한 뒤 uvicorn을 시작하므로, backend가 healthy로 보고될 때 스키마는 이미 HEAD입니다. 수동 `alembic upgrade head`는 필요 없습니다. 다만 자동 마이그레이션은 사용자를 생성하지 않으므로, 첫 관리자는 한 번 부트스트랩합니다:
 
 ```bash

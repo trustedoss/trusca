@@ -493,9 +493,12 @@ jobs:
       # exactly as an operator would. Override IMAGE_TAG on dispatch if needed.
       IMAGE_TAG: ${{ needs.resolve-image-tag.outputs.tag }}
       IMAGE_REGISTRY: ghcr.io/trustedoss
-      # APP_ENV=dev matches install.sh's default .env (it copies .env.example, which
-      # pins APP_ENV=dev, and never sets prod). It also lets the smoke reach the API
-      # over http on the runner — prod mode would require https CORS origins. L1 role
+      # APP_ENV=dev is set HERE, deliberately. `.env.example` no longer pins it
+      # (pinning overrode the production compose file's own `${APP_ENV:-prod}`
+      # once copied to .env, which is how prod stacks came up in dev mode), so
+      # this job states what it wants rather than inheriting it. dev lets the
+      # smoke reach the API over http on the runner; prod mode would require
+      # https CORS origins. L1 role
       # separation is orthogonal to APP_ENV: the runtime connects as trustedoss_app
       # regardless. (Same rationale as release-gate.)
       APP_ENV: dev
