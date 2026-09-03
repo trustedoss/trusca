@@ -438,6 +438,17 @@ x-backend-env: &backend-env
   WEBHOOK_CAPACITY_RETRY_ENABLED: ${WEBHOOK_CAPACITY_RETRY_ENABLED:-true}
   WEBSOCKET_MAX_CONNECTIONS_GLOBAL: ${WEBSOCKET_MAX_CONNECTIONS_GLOBAL:-500}
   WEBSOCKET_MAX_CONNECTIONS_PER_USER: ${WEBSOCKET_MAX_CONNECTIONS_PER_USER:-8}
+  # compose-env-var wiring audit: license-metadata enrichment sources
+  # (ClearlyDefined, OSORI) and the license/malicious-package waiver policy.
+  # Documented in .env.example but never listed in this anchor, so setting
+  # any of them in .env had no effect on the running container. Defaults
+  # match core/config.py exactly, so an unset .env changes nothing for an
+  # existing deployment.
+  CLEARLYDEFINED_ENABLED: ${CLEARLYDEFINED_ENABLED:-}
+  LICENSE_FETCH_TTL_SECONDS: ${LICENSE_FETCH_TTL_SECONDS:-86400}
+  LICENSE_WAIVE_MAX_DAYS: ${LICENSE_WAIVE_MAX_DAYS:-90}
+  OSORI_ENABLED: ${OSORI_ENABLED:-true}
+  OSORI_SNAPSHOT_PATH: ${OSORI_SNAPSHOT_PATH:-}
 
 services:
   # ---------------------------------------------------------------------------
