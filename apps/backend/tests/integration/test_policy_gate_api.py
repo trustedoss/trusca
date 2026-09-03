@@ -911,3 +911,387 @@ async def test_gate_sarif_hides_another_teams_project(client) -> None:
     )
     assert response.status_code == 404
     assert response.headers["content-type"].startswith(PROBLEM_JSON)
+
+
+# ---------------------------------------------------------------------------
+# KEV and end-of-life gate axes (ER29)
+#
+# The point of these axes is what they say when they could NOT judge. A count
+# of 0 is produced both by "nothing is exploited" and by "the catalog was never
+# synced", and only the outcome field separates them. Every test below pins
+# which of the two a given deployment state produces.
+# ---------------------------------------------------------------------------
+
+
+async def _seed_kev_finding(
+    session,
+    *,
+    scan_id: uuid.UUID,
+    kev: bool,
+    vuln_created_at: datetime | None = None,
+) -> None:
+    from models import (
+        Component,
+        ComponentVersion,
+        ScanComponent,
+        Vulnerability,
+        VulnerabilityFinding,
+    )
+
+    suffix = unique_suffix()
+    purl = f"pkg:npm/kev-{suffix}"
+    component = Component(purl=purl, package_type="npm", name=f"kev-{suffix}")
+    session.add(component)
+    await session.commit()
+    await session.refresh(component)
+
+    cv = ComponentVersion(
+        component_id=component.id,
+        version="1.0.0",
+        purl_with_version=f"{purl}@1.0.0",
+    )
+    session.add(cv)
+    await session.commit()
+    await session.refresh(cv)
+
+    session.add(
+        ScanComponent(scan_id=scan_id, component_version_id=cv.id, direct=True, raw_data={})
+    )
+    vuln = Vulnerability(
+        external_id=f"CVE-2025-{suffix}",
+        source="NVD",
+        severity="high",
+        summary="kev fixture",
+        kev=kev,
+    )
+    if vuln_created_at is not None:
+        vuln.created_at = vuln_created_at
+    session.add(vuln)
+    await session.commit()
+    await session.refresh(vuln)
+
+    session.add(
+        VulnerabilityFinding(
+            scan_id=scan_id,
+            component_version_id=cv.id,
+            vulnerability_id=vuln.id,
+            status="new",
+        )
+    )
+    await session.commit()
+
+
+async def _set_kev_last_synced(session, *, when: datetime | None) -> None:
+    """Put the deployment's KEV sync state where the test needs it."""
+    from sqlalchemy import delete
+
+    from models import KevSyncState
+
+    await session.execute(delete(KevSyncState))
+    if when is not None:
+        session.add(KevSyncState(id=True, last_synced_at=when, last_result="synced"))
+    await session.commit()
+
+
+async def test_kev_axis_is_off_by_default(client, monkeypatch) -> None:
+    """No deployment that has not opted in changes behaviour."""
+    monkeypatch.delenv("GATE_KEV_ENABLED", raising=False)
+    _, team, user = await _seed_team_and_user(client)
+    project_id = await _seed_project(client, team_id=team.id)
+    scan_id = await _seed_succeeded_scan(client, project_id=project_id)
+    factory = await _factory(client)
+    async with factory() as session:
+        await _set_kev_last_synced(session, when=datetime.now(UTC))
+        await _seed_kev_finding(session, scan_id=scan_id, kev=True)
+
+    body = (
+        await client.get(
+            f"/v1/projects/{project_id}/gate-result", headers=_bearer_for(user)
+        )
+    ).json()
+    assert body["kev_gate_enabled"] is False
+    assert body["kev_gate_count"] == 0
+    assert body["kev_outcome"] == "not_configured"
+    assert body["gate"] == "pass"
+
+
+async def test_a_known_exploited_cve_fails_the_build(client, monkeypatch) -> None:
+    monkeypatch.setenv("GATE_KEV_ENABLED", "true")
+    _, team, user = await _seed_team_and_user(client)
+    project_id = await _seed_project(client, team_id=team.id)
+    scan_id = await _seed_succeeded_scan(client, project_id=project_id)
+    factory = await _factory(client)
+    async with factory() as session:
+        await _set_kev_last_synced(session, when=datetime.now(UTC) + timedelta(hours=1))
+        await _seed_kev_finding(session, scan_id=scan_id, kev=True)
+
+    body = (
+        await client.get(
+            f"/v1/projects/{project_id}/gate-result", headers=_bearer_for(user)
+        )
+    ).json()
+    assert body["kev_gate_count"] == 1
+    assert body["kev_outcome"] == "evaluated"
+    assert body["gate"] == "fail"
+    assert "known-exploited" in body["reason"]
+
+
+async def test_an_unsynced_kev_catalog_is_not_reported_as_clean(
+    client, monkeypatch
+) -> None:
+    """The failure this axis exists to prevent.
+
+    With no sync, every `kev` flag is the column default. The count is 0 and
+    the build passes, and without `kev_outcome` that pass is indistinguishable
+    from a real all-clear.
+    """
+    monkeypatch.setenv("GATE_KEV_ENABLED", "true")
+    _, team, user = await _seed_team_and_user(client)
+    project_id = await _seed_project(client, team_id=team.id)
+    scan_id = await _seed_succeeded_scan(client, project_id=project_id)
+    factory = await _factory(client)
+    async with factory() as session:
+        await _set_kev_last_synced(session, when=None)
+        await _seed_kev_finding(session, scan_id=scan_id, kev=False)
+
+    body = (
+        await client.get(
+            f"/v1/projects/{project_id}/gate-result", headers=_bearer_for(user)
+        )
+    ).json()
+    assert body["kev_gate_count"] == 0
+    assert body["kev_outcome"] == "no_data"
+    # Default policy still passes; the caller is told not to read it as clean.
+    assert body["gate"] == "pass"
+
+
+async def test_unsynced_kev_blocks_when_the_operator_asks(client, monkeypatch) -> None:
+    monkeypatch.setenv("GATE_KEV_ENABLED", "true")
+    monkeypatch.setenv("GATE_KEV_ON_MISSING_DATA", "block")
+    _, team, user = await _seed_team_and_user(client)
+    project_id = await _seed_project(client, team_id=team.id)
+    scan_id = await _seed_succeeded_scan(client, project_id=project_id)
+    factory = await _factory(client)
+    async with factory() as session:
+        await _set_kev_last_synced(session, when=None)
+        await _seed_kev_finding(session, scan_id=scan_id, kev=False)
+
+    body = (
+        await client.get(
+            f"/v1/projects/{project_id}/gate-result", headers=_bearer_for(user)
+        )
+    ).json()
+    assert body["kev_outcome"] == "no_data"
+    assert body["gate"] == "fail"
+    assert "never been synced" in body["reason"]
+
+
+async def test_a_finding_newer_than_the_last_sync_is_partial(
+    client, monkeypatch
+) -> None:
+    """The gap that is easy to miss.
+
+    The sync runs daily. A CVE discovered this morning carries `kev = false`
+    because nothing has reconciled it yet, so the axis must not claim it
+    checked. `partial` never blocks, but it must not read as `evaluated`.
+    """
+    monkeypatch.setenv("GATE_KEV_ENABLED", "true")
+    monkeypatch.setenv("GATE_KEV_ON_MISSING_DATA", "block")
+    _, team, user = await _seed_team_and_user(client)
+    project_id = await _seed_project(client, team_id=team.id)
+    scan_id = await _seed_succeeded_scan(client, project_id=project_id)
+    factory = await _factory(client)
+    async with factory() as session:
+        synced_at = datetime.now(UTC) - timedelta(days=1)
+        await _set_kev_last_synced(session, when=synced_at)
+        # One CVE the sync has already reconciled (rows are shared across
+        # scans, so most findings reuse a long-existing vulnerability row) ...
+        await _seed_kev_finding(
+            session,
+            scan_id=scan_id,
+            kev=False,
+            vuln_created_at=synced_at - timedelta(days=30),
+        )
+        # ... and one discovered since, whose `kev = false` is the column
+        # default rather than an answer.
+        await _seed_kev_finding(
+            session,
+            scan_id=scan_id,
+            kev=False,
+            vuln_created_at=datetime.now(UTC),
+        )
+
+    body = (
+        await client.get(
+            f"/v1/projects/{project_id}/gate-result", headers=_bearer_for(user)
+        )
+    ).json()
+    assert body["kev_outcome"] == "partial"
+    # Even under `block`: partial is normal, and an option that fires on a
+    # normal state is one nobody can leave switched on.
+    assert body["gate"] == "pass"
+
+
+async def _seed_component_with_eol(
+    session,
+    *,
+    scan_id: uuid.UUID,
+    eol_state: str | None,
+    evaluated: bool,
+) -> None:
+    """One scanned component with a given lifecycle answer.
+
+    ``evaluated=False`` leaves ``eol_evaluated_at`` NULL, which is a component
+    the lifecycle catalog never looked at. ``eol_state='unknown'`` is the other
+    half of "no answer": looked at, but the catalog has no entry for it.
+    """
+    from models import Component, ComponentVersion, ScanComponent
+
+    suffix = unique_suffix()
+    purl = f"pkg:npm/eol-{suffix}"
+    component = Component(purl=purl, package_type="npm", name=f"eol-{suffix}")
+    session.add(component)
+    await session.commit()
+    await session.refresh(component)
+
+    cv = ComponentVersion(
+        component_id=component.id,
+        version="1.0.0",
+        purl_with_version=f"{purl}@1.0.0",
+        eol_state=eol_state,
+        eol_evaluated_at=datetime.now(UTC) if evaluated else None,
+    )
+    session.add(cv)
+    await session.commit()
+    await session.refresh(cv)
+
+    session.add(
+        ScanComponent(scan_id=scan_id, component_version_id=cv.id, direct=True, raw_data={})
+    )
+    await session.commit()
+
+
+async def test_eol_axis_is_off_by_default(client, monkeypatch) -> None:
+    monkeypatch.delenv("GATE_EOL_ENABLED", raising=False)
+    _, team, user = await _seed_team_and_user(client)
+    project_id = await _seed_project(client, team_id=team.id)
+    scan_id = await _seed_succeeded_scan(client, project_id=project_id)
+    factory = await _factory(client)
+    async with factory() as session:
+        await _seed_component_with_eol(
+            session, scan_id=scan_id, eol_state="eol", evaluated=True
+        )
+
+    body = (
+        await client.get(
+            f"/v1/projects/{project_id}/gate-result", headers=_bearer_for(user)
+        )
+    ).json()
+    assert body["eol_gate_enabled"] is False
+    assert body["eol_gate_count"] == 0
+    assert body["eol_outcome"] == "not_configured"
+    assert body["gate"] == "pass"
+
+
+async def test_an_end_of_life_component_fails_the_build(client, monkeypatch) -> None:
+    monkeypatch.setenv("GATE_EOL_ENABLED", "true")
+    _, team, user = await _seed_team_and_user(client)
+    project_id = await _seed_project(client, team_id=team.id)
+    scan_id = await _seed_succeeded_scan(client, project_id=project_id)
+    factory = await _factory(client)
+    async with factory() as session:
+        await _seed_component_with_eol(
+            session, scan_id=scan_id, eol_state="eol", evaluated=True
+        )
+
+    body = (
+        await client.get(
+            f"/v1/projects/{project_id}/gate-result", headers=_bearer_for(user)
+        )
+    ).json()
+    assert body["eol_gate_count"] == 1
+    assert body["eol_outcome"] == "evaluated"
+    assert body["gate"] == "fail"
+    assert "past end of life" in body["reason"]
+
+
+async def test_a_never_evaluated_catalog_is_not_reported_as_clean(
+    client, monkeypatch
+) -> None:
+    """Every component unevaluated: the count is 0 because nothing was checked."""
+    monkeypatch.setenv("GATE_EOL_ENABLED", "true")
+    _, team, user = await _seed_team_and_user(client)
+    project_id = await _seed_project(client, team_id=team.id)
+    scan_id = await _seed_succeeded_scan(client, project_id=project_id)
+    factory = await _factory(client)
+    async with factory() as session:
+        await _seed_component_with_eol(
+            session, scan_id=scan_id, eol_state=None, evaluated=False
+        )
+
+    body = (
+        await client.get(
+            f"/v1/projects/{project_id}/gate-result", headers=_bearer_for(user)
+        )
+    ).json()
+    assert body["eol_gate_count"] == 0
+    assert body["eol_outcome"] == "no_data"
+    assert body["gate"] == "pass"
+
+
+async def test_uncovered_components_make_the_eol_axis_partial(
+    client, monkeypatch
+) -> None:
+    """The ordinary state, and it must never block.
+
+    The lifecycle catalog covers a curated set of runtimes and frameworks, so
+    most application dependencies resolve to `unknown`. If `block` fired here
+    it would fire on nearly every build, and an option like that gets switched
+    off within the week.
+    """
+    monkeypatch.setenv("GATE_EOL_ENABLED", "true")
+    monkeypatch.setenv("GATE_EOL_ON_MISSING_DATA", "block")
+    _, team, user = await _seed_team_and_user(client)
+    project_id = await _seed_project(client, team_id=team.id)
+    scan_id = await _seed_succeeded_scan(client, project_id=project_id)
+    factory = await _factory(client)
+    async with factory() as session:
+        await _seed_component_with_eol(
+            session, scan_id=scan_id, eol_state="supported", evaluated=True
+        )
+        # Checked, but the catalog has no entry for this product.
+        await _seed_component_with_eol(
+            session, scan_id=scan_id, eol_state="unknown", evaluated=True
+        )
+
+    body = (
+        await client.get(
+            f"/v1/projects/{project_id}/gate-result", headers=_bearer_for(user)
+        )
+    ).json()
+    assert body["eol_outcome"] == "partial"
+    assert body["gate"] == "pass"
+
+
+async def test_unevaluated_eol_blocks_when_the_operator_asks(
+    client, monkeypatch
+) -> None:
+    monkeypatch.setenv("GATE_EOL_ENABLED", "true")
+    monkeypatch.setenv("GATE_EOL_ON_MISSING_DATA", "block")
+    _, team, user = await _seed_team_and_user(client)
+    project_id = await _seed_project(client, team_id=team.id)
+    scan_id = await _seed_succeeded_scan(client, project_id=project_id)
+    factory = await _factory(client)
+    async with factory() as session:
+        await _seed_component_with_eol(
+            session, scan_id=scan_id, eol_state=None, evaluated=False
+        )
+
+    body = (
+        await client.get(
+            f"/v1/projects/{project_id}/gate-result", headers=_bearer_for(user)
+        )
+    ).json()
+    assert body["eol_outcome"] == "no_data"
+    assert body["gate"] == "fail"
+    assert "end-of-life gate could not be evaluated" in body["reason"]

@@ -141,6 +141,76 @@ class GateResultResponse(BaseModel):
             "normal state is one nobody can leave switched on."
         ),
     )
+    kev_gate_count: int = Field(
+        default=0,
+        description=(
+            "Open findings whose CVE is listed in the CISA Known Exploited "
+            "Vulnerabilities catalog. Always 0 when the KEV axis is off "
+            "(`GATE_KEV_ENABLED` unset, the default). Read `kev_outcome` "
+            "before treating a 0 as an all-clear."
+        ),
+    )
+    kev_gate_enabled: bool = Field(
+        default=False,
+        description=(
+            "Whether the KEV axis was switched on for this evaluation. When "
+            "false, `kev_gate_count` is 0 because nothing was asked, not "
+            "because nothing is exploited."
+        ),
+    )
+    kev_outcome: str = Field(
+        default="not_configured",
+        description=(
+            "What the KEV axis was able to judge. `not_configured`: the axis "
+            "is off by choice. `evaluated`: every open finding has been "
+            "through a KEV catalog sync. `partial`: some findings were "
+            "discovered after the last successful sync, so their `kev` flag "
+            "is the column default rather than an answer. `no_data`: the KEV "
+            "catalog has never synced on this deployment, so every flag is a "
+            "default and the axis decided nothing at all."
+        ),
+    )
+    kev_on_missing_data: str = Field(
+        default="allow",
+        description=(
+            "What `GATE_KEV_ON_MISSING_DATA` told the gate to do when the KEV "
+            "axis decided nothing. `allow` (default) lets the build through; "
+            "`block` fails it. As with EPSS, `block` applies to `no_data` "
+            "only, never to `partial`."
+        ),
+    )
+    eol_gate_count: int = Field(
+        default=0,
+        description=(
+            "Components on the evaluated scan whose release line is past end "
+            "of life. Always 0 when the EOL axis is off (`GATE_EOL_ENABLED` "
+            "unset, the default)."
+        ),
+    )
+    eol_gate_enabled: bool = Field(
+        default=False,
+        description="Whether the end-of-life axis was switched on for this evaluation.",
+    )
+    eol_outcome: str = Field(
+        default="not_configured",
+        description=(
+            "What the end-of-life axis was able to judge. `not_configured`: "
+            "off by choice. `evaluated`: every component on the scan has a "
+            "lifecycle answer. `partial`: some components were never matched "
+            "against the lifecycle catalog, which is the ordinary state, "
+            "because the catalog covers a curated set of runtimes and "
+            "frameworks rather than every dependency. `no_data`: not one "
+            "component has an answer, so the axis decided nothing."
+        ),
+    )
+    eol_on_missing_data: str = Field(
+        default="allow",
+        description=(
+            "What `GATE_EOL_ON_MISSING_DATA` told the gate to do when the "
+            "end-of-life axis decided nothing. Same semantics as the KEV and "
+            "EPSS equivalents."
+        ),
+    )
     malicious_gate_enforced: bool = Field(
         default=True,
         description="Whether the known-malicious axis was active for this "

@@ -534,6 +534,15 @@ export interface GateResultResponse {
    * the field omits it.
    */
   epss_outcome?: "not_configured" | "evaluated" | "partial" | "no_data";
+  /** ER29 KEV axis. `kev_gate_count` is 0 both when nothing is exploited and
+   *  when the catalog never synced; `kev_outcome` is what separates them. */
+  kev_gate_count?: number;
+  kev_gate_enabled?: boolean;
+  kev_outcome?: "not_configured" | "evaluated" | "partial" | "no_data";
+  /** ER29 end-of-life axis, same shape. */
+  eol_gate_count?: number;
+  eol_gate_enabled?: boolean;
+  eol_outcome?: "not_configured" | "evaluated" | "partial" | "no_data";
   /** #26 — components the malicious snapshot flags on the evaluated scan. */
   malicious_component_count: number;
   /** Whether the malicious axis ran at all (false → the count means "not checked"). */

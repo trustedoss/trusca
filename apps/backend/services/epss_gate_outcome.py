@@ -60,17 +60,36 @@ from __future__ import annotations
 
 from typing import Final
 
+from services.gate_axis_outcome import (
+    AXIS_EVALUATED,
+    AXIS_NO_DATA,
+    AXIS_NOT_CONFIGURED,
+    AXIS_PARTIAL,
+    ON_MISSING_ALLOW,
+    ON_MISSING_BLOCK,
+    axis_blocks,
+    classify_axis_outcome,
+)
+
+# ER29 moved these four strings, and the rule for reading them, into
+# ``services.gate_axis_outcome`` when KEV and end-of-life needed the same
+# vocabulary. They are aliased rather than redefined so there is one definition
+# of what "partial" means across every axis: three copies of four strings drift,
+# and a drifted copy makes the same word mean different things depending on
+# which axis produced it. The EPSS-specific reasoning above still applies and is
+# why this module exists at all.
+
 #: No threshold configured; the EPSS axis is off by choice.
-EPSS_NOT_CONFIGURED: Final = "not_configured"
+EPSS_NOT_CONFIGURED: Final = AXIS_NOT_CONFIGURED
 
 #: Threshold set and every open finding carries a score.
-EPSS_EVALUATED: Final = "evaluated"
+EPSS_EVALUATED: Final = AXIS_EVALUATED
 
 #: Threshold set; some open findings carry no score.
-EPSS_PARTIAL: Final = "partial"
+EPSS_PARTIAL: Final = AXIS_PARTIAL
 
 #: Threshold set; no open finding carries a score, so the axis decided nothing.
-EPSS_NO_DATA: Final = "no_data"
+EPSS_NO_DATA: Final = AXIS_NO_DATA
 
 EPSS_GATE_OUTCOME_VALUES: Final = (
     EPSS_NOT_CONFIGURED,
@@ -85,12 +104,12 @@ EPSS_GATE_OUTCOME_VALUES: Final = (
 #: Let an undecided EPSS axis through. The default: an existing deployment
 #: with the sync off must not have every build start failing on upgrade,
 #: because nothing about that deployment changed.
-EPSS_MISSING_ALLOW: Final = "allow"
+EPSS_MISSING_ALLOW: Final = ON_MISSING_ALLOW
 
 #: Block when the EPSS axis decided nothing, so a configured threshold cannot
 #: be ignored in silence. See the module docstring on why this is ``no_data``
 #: only.
-EPSS_MISSING_BLOCK: Final = "block"
+EPSS_MISSING_BLOCK: Final = ON_MISSING_BLOCK
 
 EPSS_ON_MISSING_DATA_VALUES: Final = (
     EPSS_MISSING_ALLOW,
@@ -117,15 +136,11 @@ def classify_epss_gate_outcome(
     answer rather than an absence of one. Calling that ``no_data`` would put a
     caveat on the cleanest possible result.
     """
-    if threshold is None:
-        return EPSS_NOT_CONFIGURED
-    if open_findings == 0:
-        return EPSS_EVALUATED
-    if findings_with_score == 0:
-        return EPSS_NO_DATA
-    if findings_with_score < open_findings:
-        return EPSS_PARTIAL
-    return EPSS_EVALUATED
+    return classify_axis_outcome(
+        configured=threshold is not None,
+        candidates=open_findings,
+        with_data=findings_with_score,
+    )
 
 
 def epss_gate_blocks(outcome: str, on_missing_data: str) -> bool:
@@ -134,7 +149,7 @@ def epss_gate_blocks(outcome: str, on_missing_data: str) -> bool:
     Only ``no_data`` under ``block``. Every other combination passes,
     including ``partial`` under ``block`` (see the module docstring).
     """
-    return outcome == EPSS_NO_DATA and on_missing_data == EPSS_MISSING_BLOCK
+    return axis_blocks(outcome, on_missing_data)
 
 
 __all__ = [

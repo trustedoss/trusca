@@ -219,6 +219,12 @@
       "epss_findings": "EPSS ≥ {{threshold}}",
       "epss_no_data": "EPSS ≥ {{threshold}} 조건은 평가되지 않았습니다. 이 스캔의 어떤 항목에도 EPSS 점수가 없습니다.",
       "epss_partial": "이 스캔에는 EPSS 점수가 없는 항목이 있어 이 수치는 완전하지 않습니다.",
+      "kev_findings": "악용 중 (KEV)",
+      "kev_no_data": "악용 중 여부를 판단하지 못했습니다. 이 포털에서 KEV 목록이 한 번도 동기화되지 않았습니다.",
+      "kev_partial": "마지막 KEV 동기화 이후에 발견된 결과가 있어 이 개수가 전부는 아닙니다.",
+      "eol_findings": "지원 종료",
+      "eol_no_data": "지원 종료 여부를 판단하지 못했습니다. 이 스캔의 어떤 컴포넌트도 수명 카탈로그와 대조되지 않았습니다.",
+      "eol_partial": "수명 카탈로그가 다루지 않는 컴포넌트가 있어 이 개수가 전부는 아닙니다.",
       "error_detail": "다시 시도해 주세요.",
       "error_title": "빌드 차단 게이트를 불러오지 못했습니다",
       "errors": {

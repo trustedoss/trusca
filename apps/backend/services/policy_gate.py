@@ -83,6 +83,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from models import (
     ComponentVersion,
+    KevSyncState,
     LicenseFinding,
     LicensePolicy,
     Project,
@@ -104,6 +105,14 @@ from services.epss_gate_outcome import (
     EPSS_ON_MISSING_DATA_VALUES,
     classify_epss_gate_outcome,
     epss_gate_blocks,
+)
+from services.gate_axis_outcome import (
+    AXIS_NO_DATA,
+    AXIS_NOT_CONFIGURED,
+    ON_MISSING_ALLOW,
+    ON_MISSING_DATA_VALUES,
+    axis_blocks,
+    classify_axis_outcome,
 )
 from services.gate_policy_service import resolve_for_project
 from services.license_expression import evaluate_expression
@@ -185,6 +194,20 @@ class GateResult:
     # no threshold configured, and an undecided axis lets the build through.
     epss_outcome: str = EPSS_NOT_CONFIGURED
     epss_on_missing_data: str = EPSS_MISSING_ALLOW
+
+    # ER29 KEV axis. `kev_gate_count` is 0 both when nothing is known-exploited
+    # and when the catalog was never synced; `kev_outcome` separates those.
+    # Defaults leave every deployment that has not opted in exactly as it was.
+    kev_gate_count: int = 0
+    kev_gate_enabled: bool = False
+    kev_outcome: str = AXIS_NOT_CONFIGURED
+    kev_on_missing_data: str = ON_MISSING_ALLOW
+
+    # ER29 end-of-life axis, same shape.
+    eol_gate_count: int = 0
+    eol_gate_enabled: bool = False
+    eol_outcome: str = AXIS_NOT_CONFIGURED
+    eol_on_missing_data: str = ON_MISSING_ALLOW
 
 
 # The latest-succeeded-scan resolver was PROMOTED to ``services.scan_resolution``
@@ -395,6 +418,32 @@ def _resolve_epss_on_missing_data() -> str:
     return raw
 
 
+def _resolve_axis_enabled(env_name: str) -> bool:
+    """Read an opt-in axis switch at evaluation time (rule #11).
+
+    Off unless explicitly turned on. Switching an axis on changes which builds
+    fail, so it is never inferred from the presence of data.
+    """
+    return (os.getenv(env_name) or "").strip().lower() in {"1", "true", "yes", "on"}
+
+
+def _resolve_axis_on_missing_data(env_name: str) -> str:
+    """Read an axis's undecided-data policy at evaluation time (rule #11).
+
+    Same fallback reasoning as ``_resolve_epss_on_missing_data``: an
+    unrecognised value falls back to ``allow`` (the historical behaviour) and is
+    logged, so a typo neither starts failing builds nor silently relaxes
+    anything without saying so.
+    """
+    raw = (os.getenv(env_name) or "").strip().lower()
+    if not raw:
+        return ON_MISSING_ALLOW
+    if raw not in ON_MISSING_DATA_VALUES:
+        log.warning("policy_gate.axis_on_missing_data_unrecognised", env=env_name, raw=raw)
+        return ON_MISSING_ALLOW
+    return raw
+
+
 async def _count_open_epss_findings(
     session: AsyncSession,
     scan_id: uuid.UUID,
@@ -457,6 +506,150 @@ async def _count_epss_coverage(
         .where(
             cast(VulnerabilityFinding.status, String).notin_(_CLOSED_FINDING_STATUSES),
         )
+    )
+    row = (await session.execute(stmt)).one()
+    return int(row[0]), int(row[1])
+
+
+async def _count_open_kev_findings(
+    session: AsyncSession,
+    scan_id: uuid.UUID,
+) -> int:
+    """Open findings on ``scan_id`` whose CVE is in the CISA KEV catalog."""
+    stmt = (
+        select(func.count())
+        .select_from(VulnerabilityFinding)
+        .join(
+            VulnerabilityModel,
+            VulnerabilityModel.id == VulnerabilityFinding.vulnerability_id,
+        )
+        .where(VulnerabilityFinding.scan_id == scan_id)
+        .where(VulnerabilityModel.kev.is_(True))
+        .where(cast(VulnerabilityFinding.status, String).notin_(_CLOSED_FINDING_STATUSES))
+    )
+    return int((await session.execute(stmt)).scalar_one())
+
+
+async def _count_kev_coverage(
+    session: AsyncSession,
+    scan_id: uuid.UUID,
+) -> tuple[int, int]:
+    """``(open findings, how many the KEV sync has actually reconciled)``.
+
+    ``vulnerabilities.kev`` is NOT NULL and defaults to false, so unlike EPSS
+    the row itself cannot say whether it was ever checked: "not in the catalog"
+    and "never looked" are the same false. The reconciliation is observable
+    from the other side, though. ``kev_catalog_refresh`` stamps every matching
+    row on each successful pass and records when that pass finished, so a
+    vulnerability row created AFTER the last successful sync has not been
+    through one.
+
+    That gap is real rather than theoretical: the sync runs daily, and a scan
+    that discovers a CVE this morning inserts it with ``kev = false``. If that
+    CVE is in the catalog the axis will not see it until tonight's pass, and
+    without this the gate would call that a clean result.
+
+    With no successful sync ever, ``with_data`` is 0 and the axis reports
+    ``no_data`` rather than passing quietly, which is the air-gapped
+    deployment with ``KEV_REFRESH_ENABLED=false``.
+    """
+    last_synced_at = (
+        await session.execute(select(KevSyncState.last_synced_at).limit(1))
+    ).scalar_one_or_none()
+
+    open_findings = int(
+        (
+            await session.execute(
+                select(func.count())
+                .select_from(VulnerabilityFinding)
+                .where(VulnerabilityFinding.scan_id == scan_id)
+                .where(
+                    cast(VulnerabilityFinding.status, String).notin_(
+                        _CLOSED_FINDING_STATUSES
+                    )
+                )
+            )
+        ).scalar_one()
+    )
+    if last_synced_at is None:
+        return open_findings, 0
+
+    reconciled = int(
+        (
+            await session.execute(
+                select(func.count())
+                .select_from(VulnerabilityFinding)
+                .join(
+                    VulnerabilityModel,
+                    VulnerabilityModel.id == VulnerabilityFinding.vulnerability_id,
+                )
+                .where(VulnerabilityFinding.scan_id == scan_id)
+                .where(
+                    cast(VulnerabilityFinding.status, String).notin_(
+                        _CLOSED_FINDING_STATUSES
+                    )
+                )
+                .where(VulnerabilityModel.created_at <= last_synced_at)
+            )
+        ).scalar_one()
+    )
+    return open_findings, reconciled
+
+
+async def _count_eol_components(
+    session: AsyncSession,
+    scan_id: uuid.UUID,
+) -> int:
+    """Component versions on ``scan_id`` whose release line is past end of life."""
+    stmt = (
+        select(func.count())
+        .select_from(ScanComponent)
+        .join(
+            ComponentVersion,
+            ComponentVersion.id == ScanComponent.component_version_id,
+        )
+        .where(ScanComponent.scan_id == scan_id)
+        .where(ComponentVersion.eol_state == "eol")
+    )
+    return int((await session.execute(stmt)).scalar_one())
+
+
+async def _count_eol_coverage(
+    session: AsyncSession,
+    scan_id: uuid.UUID,
+) -> tuple[int, int]:
+    """``(components on the scan, how many have a real end-of-life answer)``.
+
+    ``eol_state`` is three-valued and only two of them are answers: ``eol`` and
+    ``supported`` come from a catalog match, while ``unknown`` means
+    endoflife.date has no entry for this product. A NULL ``eol_evaluated_at``
+    means the row was never looked at.
+
+    ``partial`` is therefore the ordinary state here, not a fault: the catalog
+    is a curated set of runtimes and frameworks, so most application
+    dependencies will never have an entry. That is exactly why ``block`` fires
+    on ``no_data`` alone (see ``services.gate_axis_outcome``).
+    """
+    stmt = (
+        select(
+            func.count(),
+            func.count(
+                case(
+                    (
+                        (ComponentVersion.eol_evaluated_at.isnot(None))
+                        & (ComponentVersion.eol_state.in_(("eol", "supported"))),
+                        1,
+                    ),
+                    else_=None,
+                )
+            ),
+        )
+        .select_from(ScanComponent)
+        .join(
+            ComponentVersion,
+            ComponentVersion.id == ScanComponent.component_version_id,
+        )
+        .where(ScanComponent.scan_id == scan_id)
     )
     row = (await session.execute(stmt)).one()
     return int(row[0]), int(row[1])
@@ -971,6 +1164,10 @@ def _build_reason(
     *,
     reachable_critical_only: bool = False,
     epss_blocked: bool = False,
+    kev_gate_count: int = 0,
+    kev_blocked: bool = False,
+    eol_gate_count: int = 0,
+    eol_blocked: bool = False,
 ) -> str | None:
     """Compose the human-readable ``reason`` field. ``None`` on pass.
 
@@ -1007,6 +1204,29 @@ def _build_reason(
         parts.append(
             f"the EPSS >= {epss_threshold:g} gate could not be evaluated "
             "because no open finding on this scan has an EPSS score"
+        )
+    if kev_gate_count > 0:
+        # Named for what it is rather than by severity: these are being
+        # exploited now, which is a different argument for patching than "this
+        # scores 9.8".
+        parts.append(
+            f"{kev_gate_count} open "
+            f"{'CVE' if kev_gate_count == 1 else 'CVEs'} listed as known-exploited (CISA KEV)",
+        )
+    if kev_blocked:
+        parts.append(
+            "the known-exploited (KEV) gate could not be evaluated because the "
+            "KEV catalog has never been synced on this deployment"
+        )
+    if eol_gate_count > 0:
+        parts.append(
+            f"{eol_gate_count} "
+            f"{'component' if eol_gate_count == 1 else 'components'} past end of life",
+        )
+    if eol_blocked:
+        parts.append(
+            "the end-of-life gate could not be evaluated because no component "
+            "on this scan has been checked against the lifecycle catalog"
         )
     if malicious_component_count > 0:
         # Worded as an instruction, not a count: an upgrade is the wrong move
@@ -1160,6 +1380,53 @@ async def evaluate_gate(
                 open_findings=open_findings,
                 on_missing_data=epss_on_missing_data,
             )
+    # ER29 KEV axis. Same shape as EPSS above: the count alone cannot say
+    # whether the catalog was ever synced, so the coverage pair is asked for
+    # only when the axis is on, and a deployment that never opted in pays no
+    # extra query.
+    kev_gate_enabled = _resolve_axis_enabled("GATE_KEV_ENABLED")
+    kev_on_missing_data = _resolve_axis_on_missing_data("GATE_KEV_ON_MISSING_DATA")
+    kev_gate_count = 0
+    kev_outcome = AXIS_NOT_CONFIGURED
+    if kev_gate_enabled:
+        kev_gate_count = await _count_open_kev_findings(session, scan_id)
+        kev_candidates, kev_reconciled = await _count_kev_coverage(session, scan_id)
+        kev_outcome = classify_axis_outcome(
+            configured=True,
+            candidates=kev_candidates,
+            with_data=kev_reconciled,
+        )
+        if kev_outcome == AXIS_NO_DATA:
+            log.warning(
+                "policy_gate.kev_no_data",
+                project_id=str(project_id),
+                scan_id=str(scan_id),
+                open_findings=kev_candidates,
+                on_missing_data=kev_on_missing_data,
+            )
+
+    # ER29 end-of-life axis, same shape.
+    eol_gate_enabled = _resolve_axis_enabled("GATE_EOL_ENABLED")
+    eol_on_missing_data = _resolve_axis_on_missing_data("GATE_EOL_ON_MISSING_DATA")
+    eol_gate_count = 0
+    eol_outcome = AXIS_NOT_CONFIGURED
+    if eol_gate_enabled:
+        eol_gate_count = await _count_eol_components(session, scan_id)
+        eol_candidates, eol_known = await _count_eol_coverage(session, scan_id)
+        eol_outcome = classify_axis_outcome(
+            configured=True,
+            candidates=eol_candidates,
+            with_data=eol_known,
+        )
+        if eol_outcome == AXIS_NO_DATA:
+            log.warning(
+                "policy_gate.eol_no_data",
+                project_id=str(project_id),
+                scan_id=str(scan_id),
+                components=eol_candidates,
+                on_missing_data=eol_on_missing_data,
+            )
+
     if malicious_gate_enabled:
         malicious_component_count, malicious_counts = await _resolve_malicious_count(
             session, project_id=project_id, scan_id=scan_id, now=evaluated_at
@@ -1227,6 +1494,10 @@ async def evaluate_gate(
         malicious_component_count,
         reachable_critical_only=relaxation_applies,
         epss_blocked=epss_gate_blocks(epss_outcome, epss_on_missing_data),
+        kev_gate_count=kev_gate_count,
+        kev_blocked=axis_blocks(kev_outcome, kev_on_missing_data),
+        eol_gate_count=eol_gate_count,
+        eol_blocked=axis_blocks(eol_outcome, eol_on_missing_data),
     )
     gate: GateOutcome = "fail" if reason is not None else "pass"
 
@@ -1249,6 +1520,14 @@ async def evaluate_gate(
         scan_id=scan_id,
         evaluated_at=evaluated_at,
         epss_gate_count=epss_gate_count,
+        kev_gate_count=kev_gate_count,
+        kev_gate_enabled=kev_gate_enabled,
+        kev_outcome=kev_outcome,
+        kev_on_missing_data=kev_on_missing_data,
+        eol_gate_count=eol_gate_count,
+        eol_gate_enabled=eol_gate_enabled,
+        eol_outcome=eol_outcome,
+        eol_on_missing_data=eol_on_missing_data,
         epss_threshold=epss_threshold,
         reachable_critical_cve_count=reachable_critical_cve_count,
         reachable_gate_enforced=reachable_critical_only,

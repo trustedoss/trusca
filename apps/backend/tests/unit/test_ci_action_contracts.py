@@ -384,3 +384,69 @@ def test_the_gate_schema_describes_every_missing_data_policy() -> None:
     assert not missing, (
         f"the gate response describes epss_on_missing_data without naming {missing}"
     )
+
+
+# ER29 added two more axes with the same "did this judge anything" vocabulary.
+# The guard below is the EPSS one generalised: one axis handled everywhere and
+# another silently dropped is exactly the drift that made the shared vocabulary
+# worth extracting.
+
+
+@pytest.mark.parametrize("subject", ["kev_outcome", "eol_outcome"])
+def test_every_axis_outcome_is_branched_on_in_the_action(subject: str) -> None:
+    """Backend, action and docs must name the same four outcomes per axis."""
+    from services.gate_axis_outcome import AXIS_OUTCOME_VALUES
+
+    backend = set(AXIS_OUTCOME_VALUES)
+    assert backend == {
+        "not_configured",
+        "evaluated",
+        "partial",
+        "no_data",
+    }, "the shared vocabulary changed; update every consumer with it"
+
+    # `not_configured` and `evaluated` need no branch: an axis that was off by
+    # choice, or that saw everything, has nothing to caveat.
+    caveated = backend - {"not_configured", "evaluated"}
+
+    blocks = _case_blocks(_action_gate_step_script(), subject=subject)
+    assert len(blocks) >= 2, (
+        f"expected the gate step to branch on {subject} twice (summary row and "
+        f"warning annotation); found {len(blocks)} case block(s)"
+    )
+    for index, block in enumerate(blocks):
+        missing = caveated - block
+        assert not missing, (
+            f"case block {index} for {subject} has no branch for "
+            f"{sorted(missing)}, so a scan with that outcome goes unreported"
+        )
+
+
+def test_the_axis_vocabulary_has_one_definition() -> None:
+    """Hardening rule 2 across the three axes that share it.
+
+    EPSS keeps its own constant names for its existing importers, so the risk
+    is not that a name disappears but that one copy quietly means something
+    else. Asserting equality is what keeps `partial` describing the same state
+    whichever axis produced it.
+    """
+    from services.epss_gate_outcome import EPSS_GATE_OUTCOME_VALUES
+    from services.gate_axis_outcome import AXIS_OUTCOME_VALUES
+
+    assert tuple(EPSS_GATE_OUTCOME_VALUES) == AXIS_OUTCOME_VALUES
+
+
+@pytest.mark.parametrize("axis", ["kev", "eol"])
+def test_each_axis_outcome_is_documented(axis: str) -> None:
+    """A value a user can read out of an output but not look up is not usable."""
+    from services.gate_axis_outcome import AXIS_OUTCOME_VALUES
+
+    doc = _doc_text()
+    assert f"{axis}-outcome" in doc, (
+        f"the `{axis}-outcome` output is not described in github-actions.md"
+    )
+    for value in AXIS_OUTCOME_VALUES:
+        assert value in doc, (
+            f"{value!r} is not described in github-actions.md, so a user "
+            f"reading it out of `{axis}-outcome` has nowhere to look it up"
+        )

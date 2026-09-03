@@ -126,6 +126,10 @@ Drop `.github/workflows/sca.yml` (above) into the repo. On the next PR, the SCA 
 | `malicious-component-count` | Distinct components the malicious-package snapshot flags. These block regardless of severity — remove the package and rotate any credentials the build could reach. |
 | `epss-outcome` | What the EPSS axis of the gate was able to judge. `not_configured`: no threshold set, so the axis was off by choice. `evaluated`: every open finding carried an EPSS score, so `epss-gate-count` is a complete answer. `partial`: some open findings carried no score, so a `0` there is not proof nothing would have tripped the threshold. `no_data`: not one open finding carried a score, so the axis decided nothing at all and the pass is the absence of a verdict. Empty on a portal too old to report it. |
 | `sarif-file` | Path of the SARIF document written, or empty when the `sarif-file` input was not set. |
+| `kev-gate-count` | Open findings whose CVE is listed in the CISA Known Exploited Vulnerabilities catalog. `0` when the KEV axis is off (the default). Read `kev-outcome` before treating a `0` as an all-clear. |
+| `kev-outcome` | What the KEV axis was able to judge. `not_configured`: off by choice. `evaluated`: every open finding has been through a catalog sync. `partial`: some findings were discovered since the last sync, so their flag is a default rather than an answer. `no_data`: the catalog has never synced here, so the axis judged nothing. |
+| `eol-gate-count` | Components on the evaluated scan whose release line is past end of life. `0` when the end-of-life axis is off (the default). |
+| `eol-outcome` | What the end-of-life axis was able to judge, with the same four values. `partial` is the ordinary state: the lifecycle catalog covers a curated set of runtimes and frameworks, so most application dependencies have no entry. |
 | `component-outcome` | What the scan's SBOM ended up containing. `components_found` is the ordinary case. `empty_no_manifests` and `empty_with_manifests` both mean the scan produced no components, so a passing gate reflects the absence of anything to judge rather than a clean result: the first is expected for a build system TRUSCA does not read, the second points at a scan failure. Empty on a portal too old to report it. |
 
 Use them in subsequent steps:
@@ -218,6 +222,46 @@ Apply the gate only on `main`, advisory on PRs:
     api-key: ${{ secrets.TRUSTEDOSS_API_KEY }}
     project-id: ${{ vars.TRUSTEDOSS_PROJECT_ID }}
     fail-on-gate: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' && 'true' || 'false' }}
+```
+
+### Gate on known-exploited CVEs and end-of-life components (optional)
+
+Severity says how bad a flaw could be. Two other signals say something
+severity cannot, and each is its own opt-in axis on the portal (`.env`, then
+restart the backend):
+
+| Variable | What it blocks on |
+|---|---|
+| `GATE_KEV_ENABLED=true` | Any open finding whose CVE is in the [CISA KEV](https://www.cisa.gov/known-exploited-vulnerabilities-catalog) catalog: somebody is exploiting it right now, whatever it scores. |
+| `GATE_EOL_ENABLED=true` | Any component past end of life. Its CVE count understates the risk, because the flaws that will never be patched are the ones not yet found. |
+
+Both are off by default, and switching one on changes which builds fail.
+
+**When the axis cannot judge.** Each reports a `*-outcome` alongside its count,
+because a count of `0` has two very different meanings: nothing was found, or
+nothing was checked. A KEV count of `0` on a portal whose catalog never synced
+is not an all-clear, and the same is true of an end-of-life count on a scan
+whose components were never matched against the lifecycle catalog. The action
+prints a warning annotation and a job-summary row for both undecided states, so
+a passing build says so rather than looking clean.
+
+If you would rather an undecided axis fail the build than pass quietly, set
+`GATE_KEV_ON_MISSING_DATA=block` or `GATE_EOL_ON_MISSING_DATA=block` on the
+portal. Both apply to `no_data` only, never to `partial`: partial coverage is
+normal for all three data-driven axes, and an option that fires on a normal
+state is one that gets switched off within a week, which protects nothing.
+
+```yaml
+- uses: trustedoss/scan-action@v1
+  id: sca
+  with:
+    api-url: https://trustedoss.example.com
+    api-key: ${{ secrets.TRUSTEDOSS_API_KEY }}
+    project-id: 8f1c...
+
+- name: Escalate a known-exploited finding
+  if: steps.sca.outputs.kev-gate-count != '0'
+  run: echo "::error::${{ steps.sca.outputs.kev-gate-count }} known-exploited CVE(s) in this build"
 ```
 
 ### Publish findings to code scanning

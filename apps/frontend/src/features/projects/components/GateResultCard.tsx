@@ -261,6 +261,73 @@ export function GateResultCard({ projectId, scanId }: GateResultCardProps) {
                   })}
                 </div>
               ) : null}
+              {data.kev_gate_enabled && data.kev_outcome !== "no_data" ? (
+                <GateMetric
+                  label={t("overview.gate_card.kev_findings", {
+                    defaultValue: "Known-exploited (KEV)",
+                  })}
+                  value={data.kev_gate_count ?? 0}
+                  emphasize={(data.kev_gate_count ?? 0) > 0}
+                  testid="gate-metric-kev"
+                />
+              ) : null}
+              {data.kev_gate_enabled && data.kev_outcome === "no_data" ? (
+                /* Same reasoning as the EPSS branch above: the catalog never
+                   synced, so a "0" here would report an all-clear for
+                   something nobody checked. */
+                <div
+                  className="text-xs text-muted-foreground"
+                  data-testid="gate-kev-no-data"
+                >
+                  {t("overview.gate_card.kev_no_data", {
+                    defaultValue:
+                      "Known-exploited was not evaluated: the KEV catalog has never synced on this portal.",
+                  })}
+                </div>
+              ) : null}
+              {data.kev_gate_enabled && data.kev_outcome === "partial" ? (
+                <div
+                  className="text-xs text-muted-foreground"
+                  data-testid="gate-kev-partial"
+                >
+                  {t("overview.gate_card.kev_partial", {
+                    defaultValue:
+                      "Some findings were discovered since the last KEV sync, so this count is not complete.",
+                  })}
+                </div>
+              ) : null}
+              {data.eol_gate_enabled && data.eol_outcome !== "no_data" ? (
+                <GateMetric
+                  label={t("overview.gate_card.eol_findings", {
+                    defaultValue: "Past end of life",
+                  })}
+                  value={data.eol_gate_count ?? 0}
+                  emphasize={(data.eol_gate_count ?? 0) > 0}
+                  testid="gate-metric-eol"
+                />
+              ) : null}
+              {data.eol_gate_enabled && data.eol_outcome === "no_data" ? (
+                <div
+                  className="text-xs text-muted-foreground"
+                  data-testid="gate-eol-no-data"
+                >
+                  {t("overview.gate_card.eol_no_data", {
+                    defaultValue:
+                      "End of life was not evaluated: no component on this scan has been checked against the lifecycle catalog.",
+                  })}
+                </div>
+              ) : null}
+              {data.eol_gate_enabled && data.eol_outcome === "partial" ? (
+                <div
+                  className="text-xs text-muted-foreground"
+                  data-testid="gate-eol-partial"
+                >
+                  {t("overview.gate_card.eol_partial", {
+                    defaultValue:
+                      "Some components are not covered by the lifecycle catalog, so this count is not complete.",
+                  })}
+                </div>
+              ) : null}
             </dl>
           </>
         )}
