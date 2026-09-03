@@ -228,8 +228,21 @@ def test_transition_worker_drains_a_message_left_on_the_old_default_queue(
             want={"running", "succeeded", "failed"},
             timeout=_WORKER_READY_TIMEOUT_SECONDS,
         )
-        if running_status not in {"running", "succeeded"} and proc.stdout:
-            worker_output = proc.stdout.read()
+        if running_status not in {"running", "succeeded"}:
+            # End the worker before reading it. ``read()`` waits for EOF, EOF
+            # arrives when the child closes its pipe, and the child closes it
+            # when it exits -- which the ``finally`` below only arranges once
+            # this line has returned. So the branch written to report a failure
+            # waited forever instead, and the failure never reached anybody:
+            # the run burned its whole time budget with no message. Terminating
+            # first keeps the worker log, which is the only account of why the
+            # message was never drained.
+            proc.terminate()
+            try:
+                worker_output, _ = proc.communicate(timeout=10)
+            except subprocess.TimeoutExpired:
+                proc.kill()
+                worker_output, _ = proc.communicate(timeout=10)
             pytest.fail(
                 f"scan never left {running_status!r} within "
                 f"{_WORKER_READY_TIMEOUT_SECONDS}s: the transition worker likely "
