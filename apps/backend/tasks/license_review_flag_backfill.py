@@ -235,6 +235,12 @@ def backfill_license_review_flags(
 
             if dry_run:
                 scoped.rollback()
+            else:
+                # The docstring above promises a per-batch commit. It has to be
+                # written: sync_session_scope leaves the commit to the caller,
+                # so the batch would otherwise roll back at scope exit and the
+                # backfill would report rows it never wrote.
+                scoped.commit()
 
             last_id = ids[-1]
 
