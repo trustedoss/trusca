@@ -2,13 +2,13 @@
 Unit tests for the ``scancode_enabled`` config accessor and the
 ``run_scancode`` disabled short-circuit (feat/demo-sandbox-scan).
 
-scancode is a pure-local pass (no egress), so unlike ``scanoss_enabled`` it
-defaults ON and fails OPEN (only ``false`` / ``0`` / ``no`` disable it) — a typo
-keeps detection running rather than silently dropping detected-license data. The
-public sandbox worker sets ``SCANCODE_ENABLED=false`` to shed the per-scan cost;
-``run_scancode`` then raises ``ScancodeDisabled`` (a ``ScancodeError`` subclass)
-so the pipeline's existing best-effort handler skips the stage. Read at call time
-(CLAUDE.md core rule #11).
+scancode defaults OFF and fails CLOSED (only ``true`` / ``1`` / ``yes`` enable
+it), the same shape as ``scanoss_enabled``. It detects licences in first-party
+source; dependency licences come declared from cdxgen and neither feeds
+vulnerability matching, so a deployment scanning for CVEs pays for the stage on
+every scan and reads none of its output. When off, ``run_scancode`` raises
+``ScancodeDisabled`` (a ``ScancodeError`` subclass) so the pipeline's existing
+best-effort handler skips the stage. Read at call time (CLAUDE.md core rule #11).
 """
 
 from __future__ import annotations
@@ -28,24 +28,32 @@ def _clean_env(monkeypatch: pytest.MonkeyPatch) -> Iterator[None]:
     yield
 
 
-def test_defaults_on() -> None:
-    assert scancode_enabled() is True
-
-
-@pytest.mark.parametrize("value", ["false", "FALSE", "0", "no", "NO", " no "])
-def test_falsy_tokens_disable(value: str, monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setenv("SCANCODE_ENABLED", value)
+def test_defaults_off() -> None:
+    """The stage is opt-in. Most deployments scan for CVEs, which this does not
+    feed, and it is expensive enough to have filled a root partition."""
     assert scancode_enabled() is False
 
 
-@pytest.mark.parametrize(
-    "value", ["true", "1", "yes", "on", "", "  ", "off", "disable", "junk"]
-)
-def test_fails_open_on_non_falsy(
-    value: str, monkeypatch: pytest.MonkeyPatch
-) -> None:
+@pytest.mark.parametrize("value", ["true", "TRUE", "1", "yes", "YES", " yes "])
+def test_truthy_tokens_enable(value: str, monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("SCANCODE_ENABLED", value)
     assert scancode_enabled() is True
+
+
+@pytest.mark.parametrize(
+    "value", ["false", "0", "no", "on", "", "  ", "off", "enable", "junk"]
+)
+def test_fails_closed_on_non_truthy(
+    value: str, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A typo leaves the stage off rather than silently paying for it.
+
+    ``on`` and ``enable`` are in this list deliberately: they read as intent to
+    turn it on, and they do not, which is why the accepted tokens are named in
+    the docstring and in .env.example rather than guessed at.
+    """
+    monkeypatch.setenv("SCANCODE_ENABLED", value)
+    assert scancode_enabled() is False
 
 
 def test_run_scancode_short_circuits_when_disabled(

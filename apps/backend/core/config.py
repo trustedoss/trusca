@@ -1260,24 +1260,39 @@ def scan_executor_mode() -> str:
 def scancode_enabled() -> bool:
     """Master switch for the scancode first-party license-detection stage.
 
-    Default ``true`` — scancode is a pure-local pass with NO network egress, so
-    it stays on by default and existing behaviour is unchanged. Only the exact
-    falsy tokens ``false`` / ``0`` / ``no`` (case-insensitive) disable it, so a
-    typo fails OPEN to running (correct-by-default) rather than silently dropping
-    detected-license data.
+    Default ``false``. Only the exact truthy tokens ``true`` / ``1`` / ``yes``
+    (case-insensitive) enable it; anything else, typos included, reads as OFF.
+    This is the same fail-closed shape as :func:`scanoss_enabled`, and it is a
+    reversal: the stage used to default ON and fail OPEN.
 
-    The public demo sets ``SCANCODE_ENABLED=false`` to shed the per-scan cost on
-    the shared sandbox worker (bound alongside SCANOSS off + concurrency cap 1 +
-    the ≤10 MiB input ceiling). When disabled, :func:`integrations.scancode.
-    run_scancode` short-circuits with a ``ScancodeDisabled`` skip and the
-    pipeline continues on declared (cdxgen) licenses only — a degraded-but-non-
-    fatal outcome, identical to the existing best-effort skip paths. Read at call
-    time (CLAUDE.md core rule #11).
+    What changed the default is what the stage costs against what most scans
+    ask of it. scancode reads first-party source to *detect* licences in code
+    the organisation wrote. Dependency licences come *declared* from cdxgen and
+    do not go through here, and neither path feeds vulnerability matching. So a
+    deployment scanning for CVEs pays for the stage on every scan and reads
+    none of its output.
+
+    The cost is not marginal. On a 2,080-repository corpus run, scancode's rule
+    index reached 2.99 GB in one worker overnight, which was that worker's
+    entire toolchain cache and enough to take a 26 GB root partition to 100%.
+    The run stopped after 5 of 90 batches.
+
+    Turning it OFF is a supported, non-fatal skip that predates this change:
+    :func:`integrations.scancode.run_scancode` short-circuits with
+    ``ScancodeDisabled`` and the pipeline continues on declared licences, which
+    is how the public demo has always been configured.
+
+    UPGRADE NOTE: a deployment that relies on detected first-party licences
+    must now set ``SCANCODE_ENABLED=true`` explicitly. Detected licences are
+    how vendored or pasted third-party code is found, and dependency metadata
+    never shows it, so licence-compliance deployments should turn this on.
+
+    Read at call time (CLAUDE.md core rule #11).
     """
-    return os.getenv("SCANCODE_ENABLED", "true").strip().lower() not in {
-        "false",
-        "0",
-        "no",
+    return os.getenv("SCANCODE_ENABLED", "false").strip().lower() in {
+        "true",
+        "1",
+        "yes",
     }
 
 
