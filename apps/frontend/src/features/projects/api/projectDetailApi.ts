@@ -527,6 +527,13 @@ export interface GateResultResponse {
    * when the EPSS gate is disabled (`epss_threshold === null`).
    */
   epss_gate_count: number;
+  /**
+   * ER43 — what the EPSS axis was able to judge. `epss_gate_count` is 0 both
+   * when nothing scored above the threshold and when nothing was scored at
+   * all, so a 0 without this is not an answer. Optional: a portal older than
+   * the field omits it.
+   */
+  epss_outcome?: "not_configured" | "evaluated" | "partial" | "no_data";
   /** #26 — components the malicious snapshot flags on the evaluated scan. */
   malicious_component_count: number;
   /** Whether the malicious axis ran at all (false → the count means "not checked"). */

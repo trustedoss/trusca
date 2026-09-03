@@ -656,3 +656,240 @@ async def test_evaluate_gate_epss_ge_boundary(
     # here is attributable to the EPSS comparator alone.
     assert result.critical_cve_count == 0
     assert result.forbidden_license_count == 0
+
+
+# ---------------------------------------------------------------------------
+# ER43: what a count of 0 on the EPSS axis actually meant
+# ---------------------------------------------------------------------------
+#
+# ``epss_gate_count`` is 0 both when nothing scored above the threshold and
+# when nothing was scored at all, and until now the gate passed either way with
+# nothing to tell them apart. An operator who set a threshold had said they
+# want this axis to block; on a deployment with no EPSS data that intent was
+# discarded in silence, which is the same shape as an empty SBOM finishing
+# "succeeded".
+
+
+async def test_epss_outcome_is_no_data_when_nothing_carries_a_score(
+    db_session: AsyncSession, monkeypatch
+) -> None:
+    """A threshold is set, findings exist, and not one of them has a score."""
+    from services.policy_gate import evaluate_gate
+
+    monkeypatch.setenv("GATE_EPSS_THRESHOLD", "0.5")
+    monkeypatch.delenv("GATE_EPSS_ON_MISSING_DATA", raising=False)
+
+    _, _, project = await _seed_project_with_team(db_session)
+    scan = await make_scan(db_session, project=project, status="succeeded")
+    _, cv = await _make_component_version(db_session)
+    await _attach_scan_component(db_session, scan_id=scan.id, cv_id=cv.id)
+    vuln = await _make_vulnerability(db_session, severity="medium", epss_score=None)
+    await _attach_vuln_finding(
+        db_session, scan_id=scan.id, cv_id=cv.id, vulnerability_id=vuln.id, status="new"
+    )
+
+    result = await evaluate_gate(db_session, project.id)
+
+    assert result.epss_outcome == "no_data"
+    # Default policy: the build still passes. Changing that by default would
+    # break every existing air-gapped deployment on upgrade.
+    assert result.gate == "pass"
+    assert result.epss_gate_count == 0
+    assert result.epss_on_missing_data == "allow"
+
+
+async def test_epss_outcome_is_partial_when_only_some_carry_a_score(
+    db_session: AsyncSession, monkeypatch
+) -> None:
+    """The common state: EPSS does not score every CVE, even with a live sync."""
+    from services.policy_gate import evaluate_gate
+
+    monkeypatch.setenv("GATE_EPSS_THRESHOLD", "0.9")
+
+    _, _, project = await _seed_project_with_team(db_session)
+    scan = await make_scan(db_session, project=project, status="succeeded")
+    _, cv_scored = await _make_component_version(db_session)
+    _, cv_unscored = await _make_component_version(db_session)
+    await _attach_scan_component(db_session, scan_id=scan.id, cv_id=cv_scored.id)
+    await _attach_scan_component(db_session, scan_id=scan.id, cv_id=cv_unscored.id)
+
+    scored = await _make_vulnerability(
+        db_session, severity="medium", epss_score=Decimal("0.10000")
+    )
+    unscored = await _make_vulnerability(db_session, severity="medium", epss_score=None)
+    await _attach_vuln_finding(
+        db_session,
+        scan_id=scan.id,
+        cv_id=cv_scored.id,
+        vulnerability_id=scored.id,
+        status="new",
+    )
+    await _attach_vuln_finding(
+        db_session,
+        scan_id=scan.id,
+        cv_id=cv_unscored.id,
+        vulnerability_id=unscored.id,
+        status="new",
+    )
+
+    result = await evaluate_gate(db_session, project.id)
+
+    assert result.epss_outcome == "partial"
+    assert result.gate == "pass"
+
+
+async def test_epss_outcome_is_evaluated_when_every_finding_carries_a_score(
+    db_session: AsyncSession, monkeypatch
+) -> None:
+    from services.policy_gate import evaluate_gate
+
+    monkeypatch.setenv("GATE_EPSS_THRESHOLD", "0.9")
+
+    _, _, project = await _seed_project_with_team(db_session)
+    scan = await make_scan(db_session, project=project, status="succeeded")
+    _, cv = await _make_component_version(db_session)
+    await _attach_scan_component(db_session, scan_id=scan.id, cv_id=cv.id)
+    vuln = await _make_vulnerability(
+        db_session, severity="medium", epss_score=Decimal("0.10000")
+    )
+    await _attach_vuln_finding(
+        db_session, scan_id=scan.id, cv_id=cv.id, vulnerability_id=vuln.id, status="new"
+    )
+
+    result = await evaluate_gate(db_session, project.id)
+
+    assert result.epss_outcome == "evaluated"
+    assert result.gate == "pass"
+
+
+async def test_epss_outcome_is_not_configured_without_a_threshold(
+    db_session: AsyncSession, monkeypatch
+) -> None:
+    """No threshold means the axis was off by choice, not undecided."""
+    from services.policy_gate import evaluate_gate
+
+    monkeypatch.delenv("GATE_EPSS_THRESHOLD", raising=False)
+
+    _, _, project = await _seed_project_with_team(db_session)
+    scan = await make_scan(db_session, project=project, status="succeeded")
+    _, cv = await _make_component_version(db_session)
+    await _attach_scan_component(db_session, scan_id=scan.id, cv_id=cv.id)
+    vuln = await _make_vulnerability(db_session, severity="medium", epss_score=None)
+    await _attach_vuln_finding(
+        db_session, scan_id=scan.id, cv_id=cv.id, vulnerability_id=vuln.id, status="new"
+    )
+
+    result = await evaluate_gate(db_session, project.id)
+
+    assert result.epss_outcome == "not_configured"
+    assert result.gate == "pass"
+
+
+async def test_no_data_blocks_the_build_when_the_operator_asks_for_it(
+    db_session: AsyncSession, monkeypatch
+) -> None:
+    """``block`` is what makes a configured threshold impossible to ignore."""
+    from services.policy_gate import evaluate_gate
+
+    monkeypatch.setenv("GATE_EPSS_THRESHOLD", "0.5")
+    monkeypatch.setenv("GATE_EPSS_ON_MISSING_DATA", "block")
+
+    _, _, project = await _seed_project_with_team(db_session)
+    scan = await make_scan(db_session, project=project, status="succeeded")
+    _, cv = await _make_component_version(db_session)
+    await _attach_scan_component(db_session, scan_id=scan.id, cv_id=cv.id)
+    vuln = await _make_vulnerability(db_session, severity="medium", epss_score=None)
+    await _attach_vuln_finding(
+        db_session, scan_id=scan.id, cv_id=cv.id, vulnerability_id=vuln.id, status="new"
+    )
+
+    result = await evaluate_gate(db_session, project.id)
+
+    assert result.epss_outcome == "no_data"
+    assert result.gate == "fail"
+    assert result.reason is not None
+    # The reason must say the axis could not be evaluated, not report a count:
+    # the reader's action is to get EPSS data in, not to fix a CVE.
+    assert "could not be evaluated" in result.reason
+    assert "no open finding on this scan has an EPSS score" in result.reason
+
+
+async def test_partial_does_not_block_even_under_block(
+    db_session: AsyncSession, monkeypatch
+) -> None:
+    """The decision that keeps the option switchable.
+
+    Gaps in EPSS coverage are normal. If ``block`` fired on them the option
+    would go red on ordinary scans, get switched off in the first week, and
+    protect nothing thereafter.
+    """
+    from services.policy_gate import evaluate_gate
+
+    monkeypatch.setenv("GATE_EPSS_THRESHOLD", "0.9")
+    monkeypatch.setenv("GATE_EPSS_ON_MISSING_DATA", "block")
+
+    _, _, project = await _seed_project_with_team(db_session)
+    scan = await make_scan(db_session, project=project, status="succeeded")
+    _, cv_scored = await _make_component_version(db_session)
+    _, cv_unscored = await _make_component_version(db_session)
+    await _attach_scan_component(db_session, scan_id=scan.id, cv_id=cv_scored.id)
+    await _attach_scan_component(db_session, scan_id=scan.id, cv_id=cv_unscored.id)
+    scored = await _make_vulnerability(
+        db_session, severity="medium", epss_score=Decimal("0.10000")
+    )
+    unscored = await _make_vulnerability(db_session, severity="medium", epss_score=None)
+    await _attach_vuln_finding(
+        db_session,
+        scan_id=scan.id,
+        cv_id=cv_scored.id,
+        vulnerability_id=scored.id,
+        status="new",
+    )
+    await _attach_vuln_finding(
+        db_session,
+        scan_id=scan.id,
+        cv_id=cv_unscored.id,
+        vulnerability_id=unscored.id,
+        status="new",
+    )
+
+    result = await evaluate_gate(db_session, project.id)
+
+    assert result.epss_outcome == "partial"
+    assert result.gate == "pass"
+
+
+async def test_a_clean_scan_with_a_threshold_is_evaluated_not_undecided(
+    db_session: AsyncSession, monkeypatch
+) -> None:
+    """No open findings at all is a real answer, so it gets no caveat.
+
+    Classifying the cleanest possible result as ``no_data`` would put a warning
+    on every green build, and under ``block`` it would fail them.
+    """
+    from services.policy_gate import evaluate_gate
+
+    monkeypatch.setenv("GATE_EPSS_THRESHOLD", "0.5")
+    monkeypatch.setenv("GATE_EPSS_ON_MISSING_DATA", "block")
+
+    _, _, project = await _seed_project_with_team(db_session)
+    await make_scan(db_session, project=project, status="succeeded")
+
+    result = await evaluate_gate(db_session, project.id)
+
+    assert result.epss_outcome == "evaluated"
+    assert result.gate == "pass"
+
+
+def test_an_unrecognised_missing_data_policy_falls_back_to_allow(monkeypatch) -> None:
+    """A typo must not start failing builds, and must not relax anything either."""
+    from services.policy_gate import _resolve_epss_on_missing_data
+
+    monkeypatch.setenv("GATE_EPSS_ON_MISSING_DATA", "BLOCK")
+    assert _resolve_epss_on_missing_data() == "block", "matching is case-insensitive"
+
+    monkeypatch.setenv("GATE_EPSS_ON_MISSING_DATA", "fail")
+    assert _resolve_epss_on_missing_data() == "allow"
+
+    monkeypatch.delenv("GATE_EPSS_ON_MISSING_DATA", raising=False)
+    assert _resolve_epss_on_missing_data() == "allow"

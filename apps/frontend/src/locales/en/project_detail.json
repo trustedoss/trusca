@@ -215,18 +215,25 @@
       "run_scan": "Run a scan"
     },
     "gate_card": {
-      "title": "Build gate",
-      "subtitle": "Build-blocking verdict from the latest successful scan.",
-      "pass": "Pass",
+      "critical_cves": "Critical CVEs",
+      "epss_findings": "EPSS ≥ {{threshold}}",
+      "epss_no_data": "EPSS ≥ {{threshold}} was not evaluated: no finding on this scan has an EPSS score.",
+      "epss_partial": "Some findings on this scan have no EPSS score, so this count is not complete.",
+      "error_detail": "Please try again.",
+      "error_title": "Could not load the build gate",
+      "errors": {
+        "not_found": "This project no longer exists or you no longer have access to it.",
+        "forbidden": "You do not have permission to view this project's build gate.",
+        "unknown": "Could not load the build gate. Please try again."
+      },
       "fail": "Fail",
+      "forbidden_licenses": "Forbidden licenses",
+      "malicious_packages": "Known-malicious packages",
+      "malicious_unassessed": "Known-malicious packages: not assessed on this scan",
       "no_scan_badge": "No scan yet",
       "no_scan_detail": "Run a successful scan to evaluate the build gate.",
+      "pass": "Pass",
       "pass_detail": "No critical CVEs or forbidden licenses block this build.",
-      "critical_cves": "Critical CVEs",
-      "forbidden_licenses": "Forbidden licenses",
-      "epss_findings": "EPSS ≥ {{threshold}}",
-      "error_title": "Could not load the build gate",
-      "error_detail": "Please try again.",
       "reason": {
         "intro": "This build is blocked because:",
         "critical_cve": "{{count}} open critical CVE(s)",
@@ -236,13 +243,8 @@
         "malicious": "{{count}} known-malicious package — remove it and rotate the credentials this build could reach",
         "malicious_other": "{{count}} known-malicious packages — remove them and rotate the credentials this build could reach"
       },
-      "errors": {
-        "not_found": "This project no longer exists or you no longer have access to it.",
-        "forbidden": "You do not have permission to view this project's build gate.",
-        "unknown": "Could not load the build gate. Please try again."
-      },
-      "malicious_packages": "Known-malicious packages",
-      "malicious_unassessed": "Known-malicious packages: not assessed on this scan"
+      "subtitle": "Build-blocking verdict from the latest successful scan.",
+      "title": "Build gate"
     },
     "errors": {
       "title": "Could not load overview.",

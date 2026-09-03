@@ -97,6 +97,14 @@ from models import (
     Vulnerability as VulnerabilityModel,
 )
 from services import scan_outcome
+from services.epss_gate_outcome import (
+    EPSS_MISSING_ALLOW,
+    EPSS_NO_DATA,
+    EPSS_NOT_CONFIGURED,
+    EPSS_ON_MISSING_DATA_VALUES,
+    classify_epss_gate_outcome,
+    epss_gate_blocks,
+)
 from services.gate_policy_service import resolve_for_project
 from services.license_expression import evaluate_expression
 from services.license_policy_service import effective_category, get_effective_policy
@@ -169,6 +177,14 @@ class GateResult:
     #: because there was nothing to judge, and a CI log that does not say so
     #: reads as an all-clear. ``None`` on a scan predating the capture.
     component_outcome: str | None = None
+    # ER43: what the EPSS axis was able to judge, and the policy that decided
+    # what to do when it judged nothing. ``epss_gate_count`` is 0 both when
+    # nothing scored above the threshold and when nothing was scored at all,
+    # and only ``epss_outcome`` separates those. Defaults keep every existing
+    # keyword-construction call site valid and describe the legacy behaviour:
+    # no threshold configured, and an undecided axis lets the build through.
+    epss_outcome: str = EPSS_NOT_CONFIGURED
+    epss_on_missing_data: str = EPSS_MISSING_ALLOW
 
 
 # The latest-succeeded-scan resolver was PROMOTED to ``services.scan_resolution``
@@ -360,6 +376,25 @@ def _resolve_epss_threshold() -> float | None:
     return value
 
 
+def _resolve_epss_on_missing_data() -> str:
+    """Read ``GATE_EPSS_ON_MISSING_DATA`` at evaluation time (rule #11).
+
+    Defaults to ``allow`` and falls back to it for any unrecognised value: a
+    typo in a gate policy must never make builds start failing, and it must
+    never silently relax anything either, which ``allow`` (the historical
+    behaviour) satisfies on both counts. The unrecognised value is logged so
+    the operator can see their setting was not applied rather than concluding
+    the option does nothing.
+    """
+    raw = (os.getenv("GATE_EPSS_ON_MISSING_DATA") or "").strip().lower()
+    if not raw:
+        return EPSS_MISSING_ALLOW
+    if raw not in EPSS_ON_MISSING_DATA_VALUES:
+        log.warning("policy_gate.epss_on_missing_data_unrecognised", raw=raw)
+        return EPSS_MISSING_ALLOW
+    return raw
+
+
 async def _count_open_epss_findings(
     session: AsyncSession,
     scan_id: uuid.UUID,
@@ -389,6 +424,42 @@ async def _count_open_epss_findings(
     )
     result = await session.execute(stmt)
     return int(result.scalar_one())
+
+
+async def _count_epss_coverage(
+    session: AsyncSession,
+    scan_id: uuid.UUID,
+) -> tuple[int, int]:
+    """``(open findings, how many of them carry an EPSS score)`` for ``scan_id``.
+
+    The EPSS count above cannot distinguish "nothing scored above the
+    threshold" from "nothing was scored at all", because ``NULL >= x`` is NULL
+    either way. This is the pair that tells them apart, so the caller can say
+    whether the axis actually judged anything (see
+    ``services.epss_gate_outcome``).
+
+    One query, two conditional counts, over exactly the row set
+    ``_count_open_epss_findings`` uses. Deriving them separately would let the
+    two drift apart, and a coverage figure computed over a different row set
+    than the count it qualifies is worse than none.
+    """
+    stmt = (
+        select(
+            func.count(),
+            func.count(VulnerabilityModel.epss_score),
+        )
+        .select_from(VulnerabilityFinding)
+        .join(
+            VulnerabilityModel,
+            VulnerabilityModel.id == VulnerabilityFinding.vulnerability_id,
+        )
+        .where(VulnerabilityFinding.scan_id == scan_id)
+        .where(
+            cast(VulnerabilityFinding.status, String).notin_(_CLOSED_FINDING_STATUSES),
+        )
+    )
+    row = (await session.execute(stmt)).one()
+    return int(row[0]), int(row[1])
 
 
 async def _count_forbidden_license_components(
@@ -899,6 +970,7 @@ def _build_reason(
     malicious_component_count: int = 0,
     *,
     reachable_critical_only: bool = False,
+    epss_blocked: bool = False,
 ) -> str | None:
     """Compose the human-readable ``reason`` field. ``None`` on pass.
 
@@ -928,6 +1000,13 @@ def _build_reason(
         parts.append(
             f"{epss_gate_count} open "
             f"{'CVE' if epss_gate_count == 1 else 'CVEs'} with EPSS >= {epss_threshold:g}",
+        )
+    if epss_blocked:
+        # Worded as what happened rather than as a count: there is no count to
+        # give. The reader's action is to get EPSS data in, not to fix a CVE.
+        parts.append(
+            f"the EPSS >= {epss_threshold:g} gate could not be evaluated "
+            "because no open finding on this scan has an EPSS score"
         )
     if malicious_component_count > 0:
         # Worded as an instruction, not a count: an upgrade is the wrong move
@@ -1054,6 +1133,33 @@ async def evaluate_gate(
         if epss_threshold is not None
         else 0
     )
+    # ER43: what that 0 means. Only asked when a threshold is set, so a
+    # deployment that never opted into the EPSS axis pays no extra query.
+    epss_on_missing_data = _resolve_epss_on_missing_data()
+    if epss_threshold is None:
+        epss_outcome = EPSS_NOT_CONFIGURED
+    else:
+        open_findings, findings_with_score = await _count_epss_coverage(
+            session, scan_id
+        )
+        epss_outcome = classify_epss_gate_outcome(
+            threshold=epss_threshold,
+            open_findings=open_findings,
+            findings_with_score=findings_with_score,
+        )
+        if epss_outcome == EPSS_NO_DATA:
+            # The operator asked this axis to block and it judged nothing.
+            # Worth a WARNING whichever way the policy resolves: under
+            # ``allow`` the build passed on an axis that never ran, and under
+            # ``block`` the operator needs the reason the build went red.
+            log.warning(
+                "policy_gate.epss_no_data",
+                project_id=str(project_id),
+                scan_id=str(scan_id),
+                epss_threshold=epss_threshold,
+                open_findings=open_findings,
+                on_missing_data=epss_on_missing_data,
+            )
     if malicious_gate_enabled:
         malicious_component_count, malicious_counts = await _resolve_malicious_count(
             session, project_id=project_id, scan_id=scan_id, now=evaluated_at
@@ -1120,6 +1226,7 @@ async def evaluate_gate(
         epss_threshold,
         malicious_component_count,
         reachable_critical_only=relaxation_applies,
+        epss_blocked=epss_gate_blocks(epss_outcome, epss_on_missing_data),
     )
     gate: GateOutcome = "fail" if reason is not None else "pass"
 
@@ -1150,12 +1257,15 @@ async def evaluate_gate(
         malicious_gate_enforced=malicious_gate_enabled,
         malicious_scan_assessed=malicious_scan_assessed,
         component_outcome=component_outcome,
+        epss_outcome=epss_outcome,
+        epss_on_missing_data=epss_on_missing_data,
     )
     log.info(
         "policy_gate.evaluated",
         project_id=str(project_id),
         gate=result.gate,
         scan_id=str(scan_id),
+        epss_outcome=epss_outcome,
         critical_cve_count=blocking_critical_count,
         all_critical_cve_count=all_critical_cve_count,
         reachable_critical_cve_count=reachable_critical_cve_count,

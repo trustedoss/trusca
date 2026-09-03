@@ -223,14 +223,20 @@ def _action_gate_step_script() -> str:
     raise AssertionError("action.yml has no step with id 'gate'")
 
 
-def _case_blocks(script: str) -> list[set[str]]:
-    """The branch labels of each ``case ... esac`` block, in order."""
+def _case_blocks(script: str, *, subject: str) -> list[set[str]]:
+    """The branch labels of each ``case ... esac`` block on ``subject``.
+
+    Keyed on the variable being matched, because the gate step now branches on
+    more than one vocabulary. Collecting every block regardless of subject
+    would make each vocabulary's test demand the other's labels.
+    """
     blocks: list[set[str]] = []
     current: set[str] | None = None
+    wanted = f'case "${{{subject}}}" in'
     for line in script.splitlines():
         stripped = line.strip()
         if stripped.startswith("case "):
-            current = set()
+            current = set() if stripped == wanted else None
             continue
         if stripped == "esac":
             if current is not None:
@@ -267,7 +273,7 @@ def test_component_outcome_vocabulary_is_the_same_everywhere() -> None:
     # Checking the step as a whole passes on a typo in either, because the
     # other block still spells the value correctly, which is the exact drift
     # this guards: one branch stops matching and silently prints nothing.
-    blocks = _case_blocks(_action_gate_step_script())
+    blocks = _case_blocks(_action_gate_step_script(), subject="outcome")
     assert len(blocks) >= 2, (
         "expected the gate step to branch on the outcome twice (summary row "
         f"and warning annotation); found {len(blocks)} case block(s)"
@@ -301,3 +307,80 @@ def test_the_gate_schema_and_the_classifier_agree() -> None:
     described = GateResultResponse.model_fields["component_outcome"].description or ""
     missing = [value for value in COMPONENT_OUTCOME_VALUES if value not in described]
     assert not missing, f"the gate response describes component_outcome without naming {missing}"
+
+
+# ---------------------------------------------------------------------------
+# The EPSS gate-outcome vocabulary, across the same four places
+# ---------------------------------------------------------------------------
+#
+# Same shape as the component-outcome contract above and for the same reason.
+# `epss_outcome` is what tells a reader that `epss_gate_count=0` means the axis
+# judged nothing rather than that nothing was risky, so a value the backend
+# emits and the action does not branch on is a build that silently prints an
+# all-clear, which is the exact defect this vocabulary was added to close.
+
+
+def test_epss_gate_outcome_vocabulary_is_the_same_everywhere() -> None:
+    """Backend, action and docs must name the same four outcomes."""
+    from services.epss_gate_outcome import EPSS_GATE_OUTCOME_VALUES
+
+    backend = set(EPSS_GATE_OUTCOME_VALUES)
+    assert backend == {
+        "not_configured",
+        "evaluated",
+        "partial",
+        "no_data",
+    }, "the published vocabulary changed; update every consumer below with it"
+
+    # The two the action branches on. `not_configured` and `evaluated` need no
+    # branch: there is nothing to caveat about an axis that was off by choice
+    # or that saw every score.
+    caveated = backend - {"not_configured", "evaluated"}
+
+    # Per `case` block, not "does the string appear in the step": the step
+    # branches twice, once for the job-summary row and once for the warning
+    # annotation, and a value has to be handled by both. Checking the step as a
+    # whole passes on a typo in either.
+    blocks = _case_blocks(_action_gate_step_script(), subject="epss_outcome")
+    assert len(blocks) >= 2, (
+        "expected the gate step to branch on the EPSS outcome twice (summary "
+        f"row and warning annotation); found {len(blocks)} case block(s)"
+    )
+    for index, block in enumerate(blocks):
+        missing = caveated - block
+        assert not missing, (
+            f"case block {index} in action.yml's gate step has no branch for "
+            f"{sorted(missing)}, so a scan with that outcome goes unreported "
+            "there"
+        )
+
+    doc = _doc_text()
+    for value in backend:
+        assert value in doc, (
+            f"{value!r} is not described in github-actions.md, so a user "
+            "reading the output has no way to interpret it"
+        )
+
+
+def test_the_gate_schema_describes_every_epss_outcome() -> None:
+    """A value the classifier emits and the schema never names is unbranchable."""
+    from schemas.policy_gate import GateResultResponse
+    from services.epss_gate_outcome import EPSS_GATE_OUTCOME_VALUES
+
+    described = GateResultResponse.model_fields["epss_outcome"].description or ""
+    missing = [v for v in EPSS_GATE_OUTCOME_VALUES if v not in described]
+    assert not missing, f"the gate response describes epss_outcome without naming {missing}"
+
+
+def test_the_gate_schema_describes_every_missing_data_policy() -> None:
+    """Same for the policy vocabulary: an unnamed value is one nobody sets."""
+    from schemas.policy_gate import GateResultResponse
+    from services.epss_gate_outcome import EPSS_ON_MISSING_DATA_VALUES
+
+    described = (
+        GateResultResponse.model_fields["epss_on_missing_data"].description or ""
+    )
+    missing = [v for v in EPSS_ON_MISSING_DATA_VALUES if v not in described]
+    assert not missing, (
+        f"the gate response describes epss_on_missing_data without naming {missing}"
+    )
