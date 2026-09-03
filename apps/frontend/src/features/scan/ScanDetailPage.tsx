@@ -119,11 +119,14 @@ export function ScanDetailPage() {
   // page's liveness entirely dependent on the socket, and the download button
   // is gated on `liveStatus === "queued"`, so a socket that never delivered
   // left a finished scan showing a permanently disabled Download button with
-  // no recovery short of a manual reload. That is reachable in production, not
-  // just under test: the hook deliberately does NOT auto-reconnect after a
-  // 4429 capacity close, and a proxy or load balancer that drops idle upgrades
-  // ends in the same place. It is also what made the nightly e2e
-  // `scan_detail_page` spec fail on six consecutive nights (ER40).
+  // no recovery short of a manual reload. The hook deliberately does NOT
+  // auto-reconnect after a 4429 capacity close, and a proxy or load balancer
+  // that drops an idle upgrade ends in the same place, so this is reachable
+  // by a real user and not only under test.
+  //
+  // Found while diagnosing the ER40 nightly e2e failures, though it is NOT
+  // what caused them: those were a dev-compose worker that bound only the
+  // default queue and so consumed no scans at all, fixed in #240.
   //
   // useProjectOverview already polls for exactly this reason. Terminal scans
   // stop the timer, so a finished scan costs nothing.

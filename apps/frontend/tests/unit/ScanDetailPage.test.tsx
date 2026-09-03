@@ -5,9 +5,9 @@
  * this guard the only thing that could lift that gate was a WebSocket frame:
  * the scan query had no polling and nothing in the app invalidated it, so a
  * socket that never delivered left a finished scan showing a permanently
- * disabled button. That is reachable in production (the hook does not
- * auto-reconnect after a 4429 capacity close) and it is what made the nightly
- * e2e `scan_detail_page` spec fail on six consecutive nights.
+ * disabled button. That is reachable in production: the hook does not
+ * auto-reconnect after a 4429 capacity close, and a proxy that drops an idle
+ * upgrade ends in the same place.
  *
  * These tests drive the page with a socket that says nothing at all, which is
  * the condition the old code could not recover from.
