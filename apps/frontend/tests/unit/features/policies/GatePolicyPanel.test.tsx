@@ -17,6 +17,21 @@ import { GatePolicyPanel } from "@/features/policies/GatePolicyPanel";
 const getTeamGatePolicy = vi.fn();
 const upsertTeamGatePolicy = vi.fn();
 const deleteTeamGatePolicy = vi.fn();
+const getEpssAvailability = vi.fn();
+
+/** A team row with every axis inherited, for the tests that only vary one. */
+const POLICY = {
+  id: "p1",
+  organization_id: "o1",
+  team_id: "team-1",
+  name: null,
+  epss_threshold: null,
+  reachable_critical_only: null,
+  malicious_blocks: null,
+  approval_required_statuses: null,
+  created_at: "2026-08-18T00:00:00Z",
+  updated_at: "2026-08-18T00:00:00Z",
+};
 
 // Spread the real module rather than listing its exports: a stub that names
 // them one by one goes stale the moment the module grows a constant, and it
@@ -28,6 +43,7 @@ vi.mock("@/lib/gatePoliciesApi", async (importOriginal) => ({
   deleteTeamGatePolicy: (...args: unknown[]) => deleteTeamGatePolicy(...args),
   upsertOrgGatePolicy: vi.fn(),
   getEffectiveGatePolicy: vi.fn(),
+  getEpssAvailability: (...args: unknown[]) => getEpssAvailability(...args),
 }));
 
 vi.mock("react-i18next", () => ({
@@ -50,6 +66,13 @@ describe("GatePolicyPanel", () => {
     vi.clearAllMocks();
     upsertTeamGatePolicy.mockResolvedValue({});
     deleteTeamGatePolicy.mockResolvedValue(undefined);
+    // Healthy by default: the caveat is the exception, not the baseline.
+    getEpssAvailability.mockResolvedValue({
+      available: true,
+      refresh_enabled: true,
+      scored_cves: 1200,
+      last_synced_at: "2026-09-03T02:20:00Z",
+    });
   });
 
   it("sends null for a field the team has not taken over", async () => {
@@ -206,5 +229,77 @@ describe("GatePolicyPanel", () => {
     expect(
       upsertTeamGatePolicy.mock.calls[0][1].approval_required_statuses,
     ).toBeNull();
+  });
+
+  it("warns that a threshold decides nothing when the deployment has no EPSS", async () => {
+    // ER43 condition 1: the person who sets the threshold is not the one
+    // reading CI output, so without this they never learn it is inert.
+    getEpssAvailability.mockResolvedValue({
+      available: false,
+      refresh_enabled: false,
+      scored_cves: 0,
+      last_synced_at: null,
+    });
+    getTeamGatePolicy.mockResolvedValue({ ...POLICY, epss_threshold: 0.5 });
+    renderPanel();
+
+    await waitFor(() => {
+      expect(screen.getByTestId("gate-epss-unavailable")).toBeInTheDocument();
+    });
+    expect(screen.getByTestId("gate-epss-unavailable").textContent).toContain(
+      "no_data_disabled",
+    );
+  });
+
+  it("distinguishes a stale sync from one that was never switched on", async () => {
+    // Different problem, different fix: one is an env var, the other is a
+    // feed that stopped landing.
+    getEpssAvailability.mockResolvedValue({
+      available: false,
+      refresh_enabled: true,
+      scored_cves: 42,
+      last_synced_at: "2026-08-01T02:20:00Z",
+    });
+    getTeamGatePolicy.mockResolvedValue({ ...POLICY, epss_threshold: 0.5 });
+    renderPanel();
+
+    await waitFor(() => {
+      expect(screen.getByTestId("gate-epss-unavailable")).toBeInTheDocument();
+    });
+    expect(screen.getByTestId("gate-epss-unavailable").textContent).toContain(
+      "no_data_stale",
+    );
+  });
+
+  it("says nothing when the deployment has usable EPSS data", async () => {
+    getTeamGatePolicy.mockResolvedValue({ ...POLICY, epss_threshold: 0.5 });
+    renderPanel();
+
+    await waitFor(() => {
+      expect(screen.getByTestId("gate-epss")).toBeInTheDocument();
+    });
+    expect(
+      screen.queryByTestId("gate-epss-unavailable"),
+    ).not.toBeInTheDocument();
+  });
+
+  it("says nothing when this team sets no threshold of its own", async () => {
+    // The caveat belongs next to a threshold somebody set. On an inherited
+    // row it would be noise on a screen the reader cannot act from.
+    getEpssAvailability.mockResolvedValue({
+      available: false,
+      refresh_enabled: false,
+      scored_cves: 0,
+      last_synced_at: null,
+    });
+    getTeamGatePolicy.mockResolvedValue({ ...POLICY, epss_threshold: null });
+    renderPanel();
+
+    await waitFor(() => {
+      expect(screen.getByTestId("gate-epss")).toBeInTheDocument();
+    });
+    expect(
+      screen.queryByTestId("gate-epss-unavailable"),
+    ).not.toBeInTheDocument();
   });
 });

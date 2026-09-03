@@ -28,9 +28,11 @@ from core.errors import problem_response
 from core.security import CurrentUser, require_role
 from schemas.gate_policy import (
     EffectiveGatePolicyOut,
+    EpssAvailabilityOut,
     GatePolicyOut,
     GatePolicyUpsertIn,
 )
+from services.epss_availability import get_epss_availability
 from services.gate_policy_service import (
     GatePolicyForbidden,
     GatePolicyScopeNotFound,
@@ -184,6 +186,35 @@ async def delete_team_policy_endpoint(
 
 
 @router.get(
+    "/epss-availability",
+    response_model=EpssAvailabilityOut,
+    summary="Whether this deployment has EPSS data behind its thresholds",
+)
+async def epss_availability_endpoint(
+    session: AsyncSession = Depends(get_db),
+    actor: CurrentUser = Depends(require_role("viewer")),
+) -> EpssAvailabilityOut:
+    """Deployment-scoped, so the policy editor can qualify a threshold it shows.
+
+    Not derived from a project or a scan: the question an administrator has
+    while setting a threshold is whether this deployment collects EPSS, and
+    that has one answer regardless of which project they came from. The
+    per-scan version of the question rides on the gate result instead.
+
+    No path parameter, so nothing to authorize beyond being a signed-in
+    reader: the response describes the deployment's own configuration and
+    carries no project, team or finding data.
+    """
+    availability = await get_epss_availability(session)
+    return EpssAvailabilityOut(
+        available=availability.usable,
+        refresh_enabled=availability.refresh_enabled,
+        scored_cves=availability.scored_cves,
+        last_synced_at=availability.last_synced_at,
+    )
+
+
+@router.get(
     "/effective/{project_id}",
     response_model=EffectiveGatePolicyOut,
     summary="What this project's build gate actually applies",
@@ -227,9 +258,19 @@ async def effective_policy_endpoint(
         else _resolve_gate_malicious_enabled()
     )
 
+    # ER43: a threshold shown without saying whether anything backs it invites
+    # the operator to believe the axis is active. This is the DEPLOYMENT-level
+    # question, which is the one this screen can answer; the per-scan version
+    # rides on the gate result.
+    availability = await get_epss_availability(session)
+
     return EffectiveGatePolicyOut(
         project_id=project_id,
         epss_threshold=epss,
+        epss_data_available=availability.usable,
+        epss_refresh_enabled=availability.refresh_enabled,
+        epss_scored_cves=availability.scored_cves,
+        epss_last_synced_at=availability.last_synced_at,
         reachable_critical_only=reachable,
         malicious_blocks=malicious,
         approval_required_statuses=resolved.approval_required_statuses or [],

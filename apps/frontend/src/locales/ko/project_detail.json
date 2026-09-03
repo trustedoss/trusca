@@ -217,7 +217,7 @@
     "gate_card": {
       "critical_cves": "Critical CVE",
       "epss_findings": "EPSS ≥ {{threshold}}",
-      "epss_no_data": "EPSS ≥ {{threshold}} 조건은 평가되지 않았습니다. 이 스캔의 어떤 항목도 EPSS 점수를 갖고 있지 않습니다.",
+      "epss_no_data": "EPSS ≥ {{threshold}} 조건은 평가되지 않았습니다. 이 스캔의 어떤 항목에도 EPSS 점수가 없습니다.",
       "epss_partial": "이 스캔에는 EPSS 점수가 없는 항목이 있어 이 수치는 완전하지 않습니다.",
       "error_detail": "다시 시도해 주세요.",
       "error_title": "빌드 차단 게이트를 불러오지 못했습니다",

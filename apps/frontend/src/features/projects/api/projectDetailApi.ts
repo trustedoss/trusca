@@ -528,7 +528,7 @@ export interface GateResultResponse {
    */
   epss_gate_count: number;
   /**
-   * ER43 — what the EPSS axis was able to judge. `epss_gate_count` is 0 both
+   * ER43: what the EPSS axis was able to judge. `epss_gate_count` is 0 both
    * when nothing scored above the threshold and when nothing was scored at
    * all, so a 0 without this is not an answer. Optional: a portal older than
    * the field omits it.

@@ -9,6 +9,29 @@ and the project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.
 
 ### Added
 
+- **A configured EPSS threshold that decides nothing now says so.** The gate
+  reported `epss_gate_count: 0` both when nothing scored above the threshold
+  and when nothing was scored at all, and passed the build either way. On a
+  deployment with no EPSS data, which is every deployment that has not turned
+  the daily sync on, an operator who set a threshold had their intent
+  discarded in silence and the pass looked like a verdict. The gate result now
+  carries `epss_outcome`: `not_configured`, `evaluated`, `partial` (some open
+  findings carry no score, so the count is not a complete answer) or `no_data`
+  (none do, so the axis judged nothing). The CI action exposes it as
+  `epss-outcome` and writes a job-summary row and a warning annotation, the
+  project's gate card says the axis was not evaluated instead of drawing a
+  zero, and the team policy editor says when the deployment has nothing behind
+  a threshold it is showing, distinguishing a sync that was never switched on
+  from one that has stopped landing.
+
+  `GATE_EPSS_ON_MISSING_DATA` decides the verdict. It defaults to `allow`,
+  which is what every deployment did before, so upgrading changes no build's
+  result; `block` fails the build instead, so a configured threshold cannot be
+  ignored. `block` applies to `no_data` only and deliberately not to
+  `partial`: EPSS does not score every CVE and gaps are normal even with a
+  healthy sync, so an option that fired on them would be switched off in the
+  first week and protect nothing after that.
+
 - **EPSS scores are now actually collected, so the features built on them
   work.** `vulnerabilities.epss_score` and `epss_percentile` have existed
   since v2.4 and nothing ever wrote them: the scanner emits no EPSS on either

@@ -21,6 +21,7 @@ import { APPROVABLE_STATUSES, type GatePolicyUpsertIn } from "@/lib/gatePolicies
 
 import {
   useDeleteTeamGatePolicy,
+  useEpssAvailability,
   useTeamGatePolicy,
   useUpsertTeamGatePolicy,
 } from "./useGatePolicies";
@@ -90,6 +91,8 @@ export function GatePolicyPanel({ teamId, canEdit }: GatePolicyPanelProps) {
   const query = useTeamGatePolicy(teamId);
   const upsert = useUpsertTeamGatePolicy(teamId);
   const remove = useDeleteTeamGatePolicy(teamId);
+  // Deployment-scoped, so it is the same answer whichever team is open.
+  const { data: epssData } = useEpssAvailability();
   const [draft, setDraft] = useState<Draft>(EMPTY_DRAFT);
 
   useEffect(() => {
@@ -141,6 +144,23 @@ export function GatePolicyPanel({ teamId, canEdit }: GatePolicyPanelProps) {
             {epssInvalid ? (
               <p className="text-xs text-destructive" role="alert">
                 {t("gate.epss.range")}
+              </p>
+            ) : null}
+            {/* ER43: a threshold set on a deployment that collects no EPSS
+                decides nothing, and the builds it was meant to block pass. The
+                person who sets it here is not the one reading CI output, so
+                without this they never find out. */}
+            {draft.epssOverridden && epssData?.available === false ? (
+              <p
+                className="text-xs text-muted-foreground"
+                role="status"
+                data-testid="gate-epss-unavailable"
+              >
+                {epssData.refresh_enabled
+                  ? t("gate.epss.no_data_stale", {
+                      count: epssData.scored_cves,
+                    })
+                  : t("gate.epss.no_data_disabled")}
               </p>
             ) : null}
           </div>
