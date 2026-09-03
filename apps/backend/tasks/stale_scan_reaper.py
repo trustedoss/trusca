@@ -35,9 +35,26 @@ and has not been written to for longer than that limit cannot belong to a live
 task, whatever the deployment's timings are. The grace period on top is only
 there so the reaper never races the soft-limit handler's own ``mark_failed``.
 
-Only ``running`` is reaped. A ``queued`` row is waiting in the broker, where
-sitting for hours is a backlog rather than a fault, and redelivery is the
-broker visibility timeout's job.
+Why ``queued`` needs a different test (ER11)
+-------------------------------------------
+``queued`` used to be left alone on the grounds that sitting for hours is a
+backlog rather than a fault. That is right about age and wrong about the
+outcome: when the broker loses the message (a Redis restart, an eviction)
+nothing redelivers it, and the row waits forever holding the same two things
+a stuck ``running`` row holds. One Redis restart can leave a project unable
+to scan until someone edits the database by hand.
+
+Age cannot separate the two cases, because a queue list has no bound and a
+genuinely backlogged scan may legitimately wait longer than any threshold. So
+the reaper asks the broker instead: ``tasks._broker_inventory`` lists every
+task id still held in a queue list or in ``unacked``, and only a row the
+broker has no message for is reclaimed. When the broker cannot be read the
+queued pass is skipped entirely, because reaping a live scan is worse than
+leaving a dead row.
+
+The grace period below is not the test for death; it only keeps the reaper out
+of the window between the row being committed and its task being published,
+where the broker has legitimately not heard of it yet.
 
 Liveness is read as the LATEST of ``started_at`` and ``updated_at``: any write
 to the row (a progress step, a stage change) proves the task was alive at that
@@ -58,10 +75,12 @@ from sqlalchemy import func, select
 
 from core.config import (
     scan_hard_time_limit_seconds,
+    stale_queued_scan_grace_seconds,
     stale_running_scan_grace_seconds,
 )
 from core.db import sync_session_scope
 from models import Scan
+from tasks._broker_inventory import broker_known_task_ids
 from tasks._scan_pipeline import mark_failed
 from tasks.celery_app import celery_app
 
@@ -75,12 +94,76 @@ log = structlog.get_logger("tasks.stale_scan_reaper")
 _MAX_REAPED_PER_PASS = 200
 
 
+def _reap_orphaned_queued_scans() -> list[str]:
+    """Fail ``queued`` scans the broker is no longer holding a message for.
+
+    Returns the reclaimed scan ids. Returns an empty list without touching the
+    database whenever the broker inventory is unavailable, which is the
+    fail-safe direction: a scan that is actually waiting must never be killed.
+    """
+    known = broker_known_task_ids()
+    if known is None:
+        log.info("orphaned_queued_scan_scan_skipped", reason="broker_unreadable")
+        return []
+
+    grace_seconds = stale_queued_scan_grace_seconds()
+    cutoff = datetime.now(UTC) - timedelta(seconds=grace_seconds)
+
+    orphaned: list[str] = []
+    with sync_session_scope() as session:
+        stmt = (
+            select(Scan)
+            .where(Scan.status == "queued")
+            .where(Scan.created_at < cutoff)
+            .order_by(Scan.created_at)
+            .limit(_MAX_REAPED_PER_PASS)
+        )
+        for scan in session.execute(stmt).scalars().all():
+            task_id = scan.celery_task_id
+            if task_id:
+                if task_id in known:
+                    continue
+            elif known:
+                # No task id to match on. scan_service commits the row before
+                # it publishes and only then writes the id back, so a crash in
+                # between can leave a NULL id on a row whose message IS live.
+                # That message would be indistinguishable from any other id in
+                # the inventory, so a NULL row is only safe to reclaim when the
+                # broker is holding nothing at all.
+                log.info(
+                    "orphaned_queued_scan_skipped",
+                    scan_id=str(scan.id),
+                    reason="null_task_id_with_live_broker_messages",
+                )
+                continue
+            scan_id: uuid.UUID = scan.id
+            mark_failed(
+                session,
+                scan,
+                "this scan was queued but the broker no longer holds a message "
+                "for it (the queue was restarted or the message was lost), so "
+                "no worker will ever pick it up; it is marked failed and can "
+                "be retried",
+            )
+            orphaned.append(str(scan_id))
+            log.warning(
+                "orphaned_queued_scan_reaped",
+                scan_id=str(scan_id),
+                project_id=str(scan.project_id),
+                celery_task_id=task_id,
+                grace_seconds=grace_seconds,
+            )
+    return orphaned
+
+
 @celery_app.task(name="trustedoss.stale_scan_reaper")  # type: ignore[misc]
 def stale_scan_reaper_task() -> dict[str, Any]:
     """
     Mark scans failed whose worker died without marking them.
 
-    Returns ``{"reaped": [<scan_id>, ...], "cutoff_seconds": N}``.
+    Two passes: ``running`` rows whose worker died (``reaped``), and
+    ``queued`` rows the broker is no longer holding a message for
+    (``orphaned_queued``). Returns both lists plus the running pass's cutoff.
     """
     structlog.contextvars.bind_contextvars(task_name="stale_scan_reaper")
     try:
@@ -126,15 +209,22 @@ def stale_scan_reaper_task() -> dict[str, Any]:
                     cutoff_seconds=cutoff_seconds,
                 )
 
-        if reaped:
+        orphaned = _reap_orphaned_queued_scans()
+
+        if reaped or orphaned:
             log.warning(
                 "stale_scan_reaper_complete",
                 reaped_count=len(reaped),
+                orphaned_count=len(orphaned),
                 cutoff_seconds=cutoff_seconds,
             )
         else:
             log.info("stale_scan_reaper_clean", cutoff_seconds=cutoff_seconds)
-        return {"reaped": reaped, "cutoff_seconds": cutoff_seconds}
+        return {
+            "reaped": reaped,
+            "orphaned_queued": orphaned,
+            "cutoff_seconds": cutoff_seconds,
+        }
     finally:
         structlog.contextvars.unbind_contextvars("task_name")
 

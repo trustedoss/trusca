@@ -221,22 +221,36 @@ def test_a_long_but_live_scan_is_left_alone(db_session: Session) -> None:
     assert _status_of(db_session, scan_id) == "running"
 
 
-def test_a_queued_scan_is_never_reaped_however_old(db_session: Session) -> None:
+def test_a_queued_scan_is_never_reaped_by_the_running_pass(
+    db_session: Session, monkeypatch: pytest.MonkeyPatch
+) -> None:
     """Queue wait is unbounded under backlog: sitting for hours is a backlog,
-    not a fault, and redelivery belongs to the broker."""
+    not a fault.
+
+    ER11 gave `queued` its own pass, which decides on what the broker is
+    holding rather than on age. The running pass must still never touch these
+    rows, and age alone must still never reclaim one, so the broker is pinned
+    here as still holding the message.
+    """
+    from tasks import stale_scan_reaper
     from tasks.stale_scan_reaper import stale_scan_reaper_task
 
     project_id = _make_project(db_session)
-    scan_id = _make_scan(
+    task_id = str(uuid.uuid4())
+    scan_id = _make_queued_scan(
         db_session,
         project_id=project_id,
-        status="queued",
         age_seconds=_cutoff_seconds() * 5,
+        celery_task_id=task_id,
     )
 
+    monkeypatch.setattr(
+        stale_scan_reaper, "broker_known_task_ids", lambda: {task_id}
+    )
     out = stale_scan_reaper_task()
 
     assert str(scan_id) not in out["reaped"]
+    assert str(scan_id) not in out["orphaned_queued"]
     assert _status_of(db_session, scan_id) == "queued"
 
 
@@ -307,3 +321,194 @@ def test_reaping_frees_the_project_active_scan_slot(db_session: Session) -> None
         db_session, project_id=project_id, status="queued", age_seconds=0
     )
     assert _status_of(db_session, replacement) == "queued"
+
+
+# ---------------------------------------------------------------------------
+# ER11 - orphaned `queued` scans
+#
+# The reaper decides these by asking the broker, not by age, so every test
+# below pins what the broker claims to be holding. Each one runs the real task
+# rather than the helper, because the failure this guards against is a pass
+# that selects rows correctly and never commits them.
+# ---------------------------------------------------------------------------
+
+
+def _make_queued_scan(
+    session: Session,
+    *,
+    project_id: uuid.UUID,
+    age_seconds: float,
+    celery_task_id: str | None,
+) -> uuid.UUID:
+    scan_id = uuid.uuid4()
+    stamp = datetime.now(UTC) - timedelta(seconds=age_seconds)
+    session.execute(
+        text(
+            "INSERT INTO scans (id, project_id, kind, status, progress_percent, "
+            "metadata, created_at, updated_at, celery_task_id) "
+            "VALUES (:id, :project, 'source', 'queued', 0, '{}'::jsonb, "
+            ":stamp, :stamp, :task_id)"
+        ),
+        {
+            "id": scan_id,
+            "project": project_id,
+            "stamp": stamp,
+            "task_id": celery_task_id,
+        },
+    )
+    session.commit()
+    return scan_id
+
+
+def _queued_grace_seconds() -> int:
+    from core.config import stale_queued_scan_grace_seconds
+
+    return stale_queued_scan_grace_seconds()
+
+
+def test_a_queued_scan_the_broker_still_holds_is_left_alone(
+    db_session: Session, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A deep backlog is not a fault. Age alone must never reclaim a scan."""
+    from tasks import stale_scan_reaper
+    from tasks.stale_scan_reaper import stale_scan_reaper_task
+
+    project_id = _make_project(db_session)
+    task_id = str(uuid.uuid4())
+    scan_id = _make_queued_scan(
+        db_session,
+        project_id=project_id,
+        age_seconds=_queued_grace_seconds() + 86_400,
+        celery_task_id=task_id,
+    )
+
+    monkeypatch.setattr(
+        stale_scan_reaper, "broker_known_task_ids", lambda: {task_id}
+    )
+    out = stale_scan_reaper_task()
+
+    assert str(scan_id) not in out["orphaned_queued"]
+    assert _status_of(db_session, scan_id) == "queued"
+
+
+def test_a_queued_scan_the_broker_lost_is_marked_failed(
+    db_session: Session, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The observed case: Redis restarted and the message went with it."""
+    from tasks import stale_scan_reaper
+    from tasks.stale_scan_reaper import stale_scan_reaper_task
+
+    project_id = _make_project(db_session)
+    scan_id = _make_queued_scan(
+        db_session,
+        project_id=project_id,
+        age_seconds=_queued_grace_seconds() + 600,
+        celery_task_id=str(uuid.uuid4()),
+    )
+
+    # The broker is reachable and holding nothing, which is what licenses a
+    # reap. An empty set is deliberately not the same as None.
+    monkeypatch.setattr(stale_scan_reaper, "broker_known_task_ids", lambda: set())
+    out = stale_scan_reaper_task()
+
+    assert str(scan_id) in out["orphaned_queued"]
+    assert _status_of(db_session, scan_id) == "failed"
+
+
+def test_a_recently_queued_scan_is_left_alone(
+    db_session: Session, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The publish window: the row is committed before the task is published,
+    so the broker legitimately knows nothing about it yet."""
+    from tasks import stale_scan_reaper
+    from tasks.stale_scan_reaper import stale_scan_reaper_task
+
+    project_id = _make_project(db_session)
+    scan_id = _make_queued_scan(
+        db_session,
+        project_id=project_id,
+        age_seconds=0,
+        celery_task_id=str(uuid.uuid4()),
+    )
+
+    monkeypatch.setattr(stale_scan_reaper, "broker_known_task_ids", lambda: set())
+    out = stale_scan_reaper_task()
+
+    assert str(scan_id) not in out["orphaned_queued"]
+    assert _status_of(db_session, scan_id) == "queued"
+
+
+def test_an_unreadable_broker_reaps_nothing(
+    db_session: Session, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """"Could not look" must never be read as "nothing is out there"."""
+    from tasks import stale_scan_reaper
+    from tasks.stale_scan_reaper import stale_scan_reaper_task
+
+    project_id = _make_project(db_session)
+    scan_id = _make_queued_scan(
+        db_session,
+        project_id=project_id,
+        age_seconds=_queued_grace_seconds() + 86_400,
+        celery_task_id=str(uuid.uuid4()),
+    )
+
+    monkeypatch.setattr(stale_scan_reaper, "broker_known_task_ids", lambda: None)
+    out = stale_scan_reaper_task()
+
+    assert out["orphaned_queued"] == []
+    assert _status_of(db_session, scan_id) == "queued"
+
+
+def test_a_queued_scan_that_was_never_published_is_marked_failed(
+    db_session: Session, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """No task id means no message was ever published, so nothing will run it."""
+    from tasks import stale_scan_reaper
+    from tasks.stale_scan_reaper import stale_scan_reaper_task
+
+    project_id = _make_project(db_session)
+    scan_id = _make_queued_scan(
+        db_session,
+        project_id=project_id,
+        age_seconds=_queued_grace_seconds() + 600,
+        celery_task_id=None,
+    )
+
+    monkeypatch.setattr(stale_scan_reaper, "broker_known_task_ids", lambda: set())
+    out = stale_scan_reaper_task()
+
+    assert str(scan_id) in out["orphaned_queued"]
+    assert _status_of(db_session, scan_id) == "failed"
+
+
+def test_a_queued_scan_without_a_task_id_survives_a_busy_broker(
+    db_session: Session, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The crash window between publishing and recording the id.
+
+    scan_service commits the row, publishes, then writes the id back. A crash
+    in between leaves a NULL id on a row whose message may be live, and that
+    message is indistinguishable from any other id in the inventory. So while
+    the broker is holding anything at all, a NULL row must be left alone.
+    """
+    from tasks import stale_scan_reaper
+    from tasks.stale_scan_reaper import stale_scan_reaper_task
+
+    project_id = _make_project(db_session)
+    scan_id = _make_queued_scan(
+        db_session,
+        project_id=project_id,
+        age_seconds=_queued_grace_seconds() + 86_400,
+        celery_task_id=None,
+    )
+
+    monkeypatch.setattr(
+        stale_scan_reaper,
+        "broker_known_task_ids",
+        lambda: {str(uuid.uuid4())},
+    )
+    out = stale_scan_reaper_task()
+
+    assert str(scan_id) not in out["orphaned_queued"]
+    assert _status_of(db_session, scan_id) == "queued"
