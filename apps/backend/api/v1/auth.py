@@ -32,6 +32,7 @@ from core.config import (
     password_reset_confirm_rate_limit,
     password_reset_email_cooldown_seconds,
     password_reset_request_rate_limit,
+    refresh_rate_limit,
     refresh_token_expire_days,
 )
 from core.db import get_db
@@ -227,8 +228,9 @@ del _name
 @router.post(
     "/refresh",
     response_model=TokenResponse,
-    summary="Rotate refresh token (public; refresh cookie is the credential)",
+    summary="Rotate refresh token (public; refresh cookie is the credential, rate limited)",
 )
+@limiter.limit(refresh_rate_limit())
 async def refresh(
     request: Request,
     refresh_token: str | None = Cookie(default=None, alias=REFRESH_COOKIE_NAME),

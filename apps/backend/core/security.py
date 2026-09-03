@@ -104,6 +104,69 @@ def hash_password(plain: str) -> str:
     return str(_pwd_context.hash(plain[:72]))
 
 
+def set_password(user: Any, plain: str) -> None:
+    """Rotate a user's password hash and stamp when it changed.
+
+    The one place an existing user's password is written. Both halves belong
+    together: the timestamp is what lets ``_load_current_user`` refuse an
+    access token minted before the change, and a caller that assigned
+    ``hashed_password`` directly would get a user who believes their old
+    sessions ended when they have not. Doing it here rather than at the call
+    sites means a future password-change path cannot forget the second half,
+    because there is nothing to forget.
+
+    Typed loosely on purpose: ``models`` imports from this module, so naming
+    ``User`` here would be a cycle. ``test_password_change_invalidates_tokens``
+    asserts every production path that rotates a hash comes through here.
+    """
+    user.hashed_password = hash_password(plain)
+    user.password_changed_at = datetime.now(UTC)
+    # The permission cache is keyed by user, not by token, so an entry warmed
+    # before this call carries the OLD timestamp and would keep serving tokens
+    # this change was meant to refuse. Dropping it here means the next request
+    # rebuilds from the row.
+    forget_principal(user.id)
+
+
+def password_change_invalidates(
+    issued_at: int | None, password_changed_at: datetime | None
+) -> bool:
+    """Whether a token minted at ``issued_at`` predates the password change.
+
+    ``iat`` is whole seconds (RFC 7519) while the column keeps microseconds, so
+    the comparison is made in seconds, and a token minted in the same second as
+    the change is refused rather than kept.
+
+    That direction was chosen the other way first, to avoid logging out the
+    person who had just changed their password. There is nobody to protect:
+    ``POST /auth/reset-password`` answers 204 with no tokens and no cookie, and
+    the user is sent back to sign in. Meanwhile the leniency was reachable on
+    purpose. ``/auth/refresh`` mints an access token with ``iat = now`` on
+    every call, so somebody holding a stolen refresh cookie and polling it
+    lands a token inside the change's own second most of the time, and that
+    token then outlives the reset for its full lifetime. A window that helps
+    only the attacker is not a trade.
+
+    If a self-service change-password endpoint is added later, it should
+    return a fresh token pair in the same response rather than depend on this
+    boundary.
+
+    ``None`` for either side means no opinion: a token carrying no ``iat``
+    (``decode_token`` requires one, so this is defence in depth) and a NULL
+    column, which is a user whose password has not changed since 0077.
+    """
+    if issued_at is None or password_changed_at is None:
+        return False
+    # asyncpg returns aware values for timestamptz, but a naive value would be
+    # read in the process timezone and could produce a SMALLER epoch, skipping
+    # refusals. Normalise rather than trust, as `auth_service` does for
+    # refresh-token expiry.
+    if password_changed_at.tzinfo is None:
+        password_changed_at = password_changed_at.replace(tzinfo=UTC)
+    changed_at_second = int(password_changed_at.timestamp())
+    return issued_at <= changed_at_second
+
+
 def verify_password(plain: str, hashed: str) -> bool:
     """Constant-time bcrypt verification. Returns False on any error."""
     try:
@@ -270,7 +333,16 @@ def decode_token(token: str, *, expected_type: str) -> dict[str, Any]:
 
     Callers should catch JWTError or ValueError and translate into 401.
     """
-    claims: dict[str, Any] = jwt.decode(token, secret_key(), algorithms=[JWT_ALGORITHM])
+    # `require_iat`: every token this service mints carries `iat`, and the
+    # password-change check reads it. Without this a token with the claim
+    # stripped decodes cleanly and that check silently has no opinion, which
+    # is the fail-open direction.
+    claims: dict[str, Any] = jwt.decode(
+        token,
+        secret_key(),
+        algorithms=[JWT_ALGORITHM],
+        options={"require_iat": True},
+    )
     actual_type = claims.get("type")
     if actual_type != expected_type:
         raise JWTError(f"unexpected token type: {actual_type!r} != {expected_type!r}")
@@ -325,6 +397,14 @@ class CurrentUser:
     # inherits it here. False for every JWT principal: a person's session is
     # not narrowed by this.
     api_key_read_only: bool = False
+    # When this user's password last changed, carried so the permission cache
+    # can be judged without re-reading the row. The cache is keyed by user id,
+    # not by token, so a cached principal warmed by ANY token would otherwise
+    # be handed to a token minted before the change: the entry is refilled by
+    # the victim's own new session, so the stale token rides it for its whole
+    # life rather than for the cache TTL. ``None`` for API-key principals,
+    # which are a separate credential with their own revocation.
+    password_changed_at: datetime | None = None
 
 
 def _highest_role(roles: list[str], *, is_superuser: bool) -> str:
@@ -499,6 +579,22 @@ async def _load_current_user(
     ttl = permission_cache_ttl_seconds()
     cached = _cached_principal(user_id, ttl)
     if cached is not None:
+        # Judged against the value the cached principal carries. That value is
+        # only trustworthy for entries built at or after the change, so
+        # `set_password` drops the entry as it stamps the row: an entry warmed
+        # BEFORE a change holds the old value (usually NULL) and would pass a
+        # stolen token, because the cached copy does not know the password
+        # moved.
+        #
+        # The drop is per-process and the deployment runs several workers, so
+        # it is not the whole guarantee on its own. What closes the gap is that
+        # every worker's entry expires within PERMISSION_CACHE_TTL_SECONDS
+        # (capped at 300) and is then rebuilt from the row, and that the
+        # rebuilt entry carries the new timestamp, so a refill cannot hand the
+        # stolen token back its access the way it would if the check lived
+        # only on the miss path.
+        if password_change_invalidates(claims.get("iat"), cached.password_changed_at):
+            return None
         _bind_audit_actor(cached)
         return cached
 
@@ -522,6 +618,14 @@ async def _load_current_user(
     if user is None:
         return None
 
+    # A token minted before the password changed is refused. The cached branch
+    # above applies the same predicate against the value carried on the
+    # principal: "populated only after this check" is not enough on its own,
+    # because the entry is keyed by user and serves whichever token comes
+    # next.
+    if password_change_invalidates(claims.get("iat"), user.password_changed_at):
+        return None
+
     memberships: list[Membership] = list(user.memberships)
     team_ids = [m.team_id for m in memberships]
     team_roles = {m.team_id: m.role for m in memberships}
@@ -538,6 +642,9 @@ async def _load_current_user(
         team_roles=team_roles,
         is_active=bool(user.is_active),
         is_superuser=bool(user.is_superuser),
+        # Carried so the cached branch above can judge a later token without
+        # re-reading the row.
+        password_changed_at=user.password_changed_at,
     )
 
     # Not cached: an inactive principal is one every caller refuses anyway,
