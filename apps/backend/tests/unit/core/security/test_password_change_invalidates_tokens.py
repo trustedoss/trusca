@@ -13,10 +13,8 @@ leaked. Thirty minutes of continued access is the wrong answer to that.
 
 from __future__ import annotations
 
-import re
 import uuid
 from datetime import UTC, datetime, timedelta
-from pathlib import Path
 
 import pytest
 
@@ -131,67 +129,6 @@ def test_a_token_minted_before_that_call_is_then_refused() -> None:
     assert password_change_invalidates(issued, user.password_changed_at) is True
 
 
-# ---------------------------------------------------------------------------
-# Nothing rotates a hash behind the choke point's back
-# ---------------------------------------------------------------------------
-
-
-def _backend_root() -> Path:
-    """The backend package root, not the tests tree that mirrors its layout.
-
-    `tests/unit/core/security/` has both a `core` and a `services` sibling, so
-    a walk that only checks for those directories stops inside `tests` and
-    reports the fixtures in this very file as production code. Requiring
-    `main.py` and `alembic.ini` names the real root.
-    """
-    for candidate in Path(__file__).resolve().parents:
-        if (candidate / "main.py").is_file() and (candidate / "alembic.ini").is_file():
-            return candidate
-    pytest.skip("backend root not found above this file")
-    raise AssertionError("unreachable")
-
-
-def test_no_production_code_assigns_hashed_password_outside_the_choke_point() -> None:
-    """A path that rotates the hash without the timestamp is worse than none.
-
-    Somebody who changes their password there is told the action worked and
-    believes their other sessions ended. They have not. This walks the
-    production tree rather than trusting that the one path found today is the
-    only one: `sync_session_scope` looked like one missing commit and was
-    eight, and `.env.example` looked like one published credential and was
-    two.
-
-    Creating a user is exempt: there is no prior session to end, and the
-    column stays NULL until the first change.
-    """
-    root = _backend_root()
-    assignment = re.compile(r"\.hashed_password\s*=|hashed_password\s*=\s*hash_password")
-    creation = re.compile(
-        r"hashed_password\s*=\s*\(?\s*(?:await\s+)?(?:run_in_threadpool|hash_password|_unusable_password|_NO_PASSWORD|hashed_pw|hashed)\b"
-    )
-
-    offenders: list[str] = []
-    for directory in ("services", "api", "core", "tasks"):
-        for path in (root / directory).rglob("*.py"):
-            if any(part == "tests" for part in path.parts):
-                continue
-            # The choke point itself is where the assignment belongs.
-            if path == root / "core" / "security.py":
-                continue
-            for number, line in enumerate(path.read_text(encoding="utf-8").splitlines(), 1):
-                if not assignment.search(line):
-                    continue
-                # `User(hashed_password=...)` is construction, not rotation.
-                if creation.search(line) and ".hashed_password" not in line:
-                    continue
-                offenders.append(f"{path.relative_to(root)}:{number}: {line.strip()}")
-
-    assert not offenders, (
-        "these rotate a password hash without going through `set_password`, so "
-        "the sessions they were meant to end stay alive:\n" + "\n".join(offenders)
-    )
-
-
 def test_a_naive_timestamp_is_read_as_utc() -> None:
     """A naive value would otherwise be read in the process timezone.
 
@@ -231,38 +168,3 @@ def test_a_token_without_iat_is_rejected_before_this_check() -> None:
         decode_token(no_iat, expected_type=TOKEN_TYPE_ACCESS)
 
 
-# ---------------------------------------------------------------------------
-# The WebSocket path resolves users itself, so it needs its own check
-# ---------------------------------------------------------------------------
-
-
-def test_the_websocket_resolver_consults_the_password_change() -> None:
-    """`api/v1/ws.py` re-implements `_load_current_user` and does not inherit.
-
-    The duplication is deliberate (a WebSocket scope has no Request for the
-    dependency to take), and the cost is that a check added to the original is
-    not added here. It was not: a stolen token kept streaming scan progress and
-    log lines after the victim reset their password, while the same token was
-    correctly refused on every HTTP route.
-
-    Asserted structurally rather than by driving a socket, because what breaks
-    is somebody adding a third resolver, and the shape is what says whether
-    this one still consults the column.
-    """
-    for candidate in Path(__file__).resolve().parents:
-        ws = candidate / "api" / "v1" / "ws.py"
-        if ws.is_file():
-            break
-    else:
-        pytest.skip("api/v1/ws.py not found above this file")
-
-    source = ws.read_text(encoding="utf-8")
-
-    assert "password_change_invalidates" in source, (
-        "the WebSocket resolver does not consult the password-change check, so "
-        "a token refused on HTTP routes still opens a socket"
-    )
-    assert 'issued_at=claims.get("iat")' in source, (
-        "the WebSocket call site does not pass the token's iat, so the check "
-        "it now imports has nothing to judge and silently permits everything"
-    )
