@@ -101,6 +101,24 @@ and the project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.
 
 ### Fixed
 
+- **The backup timeout now bounds the backup.** `BACKUP_SUBPROCESS_TIMEOUT` is
+  documented, settable, read at run time and passed to `proc.wait()`, and it
+  bounded nothing: the two calls ahead of that wait read the child's pipes to
+  EOF, and EOF only arrives once the child has exited. A `pg_dump` stalled on
+  storage or on a lock never reached the wait, so the `kill()` in its timeout
+  handler was unreachable and the task never raised, which also means nothing
+  was recorded as failed while a worker slot stayed occupied. The nightly beat
+  would go quiet rather than report. Both pipes are now drained on their own
+  threads and the bounded wait is the only thing the main thread does.
+
+  The same two calls could deadlock outright. With stdout being copied and
+  stderr unread, a dump emitting more warnings than a pipe buffer holds (about
+  64 KiB) stops writing and never finishes the output the copy is waiting on.
+  The restore path had it worse: it opened `psql`'s stdout as a pipe and read
+  it nowhere, staying under the buffer only because `psql` runs with `--quiet`.
+  Neither showed up in testing, because the existing round-trip test exercises
+  the path where nothing goes wrong, and on that path the old code was fine.
+
 - **Changing a password now ends the sessions that were already open.** A
   reset revoked the user's refresh tokens, which stopped renewal, and left the
   access token an attacker was already holding to run out its own thirty
