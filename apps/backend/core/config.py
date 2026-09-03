@@ -2822,6 +2822,23 @@ def password_reset_base_url() -> str:
     return os.getenv("PASSWORD_RESET_BASE_URL", "http://localhost:5173").rstrip("/")
 
 
+def refresh_rate_limit() -> str:
+    """Rate limit for ``POST /auth/refresh``.
+
+    It was the only credential-bearing endpoint on the auth router with no
+    limit, and it mints an access token on every call. That made it a token
+    oracle: somebody holding a stolen refresh cookie could poll it to keep a
+    freshly-minted access token in hand at all times, which is what let them
+    land one inside the same second as a password change and outlive the reset
+    that revoked their refresh chain.
+
+    Higher than the login limit on purpose. Refresh is a legitimate background
+    action every open tab performs on a schedule, so the ceiling has to clear
+    a person with several tabs open without leaving room to poll.
+    """
+    return os.getenv("REFRESH_RATE_LIMIT", "30/minute")
+
+
 def password_reset_request_rate_limit() -> str:
     """Per-IP slowapi limit for ``POST /auth/forgot-password``.
 

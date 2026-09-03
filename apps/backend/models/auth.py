@@ -161,6 +161,15 @@ class User(Base):
     # CITEXT — case-insensitive; UNIQUE constraint covers the usual lookups.
     email: Mapped[str] = mapped_column(CITEXT(), nullable=False, unique=True)
     hashed_password: Mapped[str] = mapped_column(String(255), nullable=False)
+    # Set by `set_password`, which is the only place the hash is rotated for an
+    # existing user. Access tokens minted before this are refused, so changing
+    # a password ends the sessions that were already open. NULL means the
+    # password has not changed since the column was added (migration 0077):
+    # the check is skipped, because backfilling it would have logged out every
+    # user of a running deployment at upgrade time.
+    password_changed_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
     full_name: Mapped[str | None] = mapped_column(String(255), nullable=True)
     is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default=text("true"))
     is_superuser: Mapped[bool] = mapped_column(

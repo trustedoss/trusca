@@ -116,6 +116,8 @@ from core.security import (
     TOKEN_TYPE_ACCESS,
     CurrentUser,
     decode_token,
+    highest_role,
+    password_change_invalidates,
 )
 from core.ws_registry import (
     evict_channel,
@@ -298,12 +300,23 @@ async def _await_first_frame(websocket: WebSocket, *, timeout: float) -> str:
     return await asyncio.wait_for(websocket.receive_text(), timeout=timeout)
 
 
-async def _resolve_user(session: AsyncSession, user_id: uuid.UUID) -> CurrentUser | None:
+async def _resolve_user(
+    session: AsyncSession,
+    user_id: uuid.UUID,
+    *,
+    issued_at: int | None = None,
+) -> CurrentUser | None:
     """Load the user + memberships and project them into a CurrentUser.
 
     Mirrors `core.security._load_current_user` (which expects an HTTP
     Request); we re-implement the SELECT here because WebSocket scopes do
     not provide a Request object the dependency would accept.
+
+    Because it is a copy, it does not inherit the checks added to the
+    original. ``issued_at`` is the token's ``iat``, refused when it predates
+    the user's last password change: without it a stolen token kept streaming
+    scan progress and log lines after the victim reset their password, while
+    the same token was correctly refused on every HTTP route.
     """
     from models import Membership, User  # local import — avoid module cycles
 
@@ -313,19 +326,21 @@ async def _resolve_user(session: AsyncSession, user_id: uuid.UUID) -> CurrentUse
     if user is None:
         return None
 
+    if password_change_invalidates(issued_at, user.password_changed_at):
+        return None
+
     memberships: list[Membership] = list(user.memberships)
     team_ids = [m.team_id for m in memberships]
     team_roles = {m.team_id: m.role for m in memberships}
 
-    # Highest role (super_admin > team_admin > developer); duplicate of the
-    # tiny helper in core.security to avoid pulling a private symbol.
-    role_priority = {"developer": 1, "team_admin": 2, "super_admin": 3}
-    if user.is_superuser:
-        role = "super_admin"
-    elif memberships:
-        role = max((m.role for m in memberships), key=lambda r: role_priority.get(r, 0))
-    else:
-        role = "developer"
+    # The shared helper, not a second copy of it. The copy that used to live
+    # here listed three grades and omitted ``viewer``, which the contract test
+    # covering the real priority map could not see, because it did not know
+    # this map existed.
+    role = highest_role(
+        [m.role for m in memberships],
+        is_superuser=bool(user.is_superuser),
+    )
 
     return CurrentUser(
         id=user.id,
@@ -335,6 +350,7 @@ async def _resolve_user(session: AsyncSession, user_id: uuid.UUID) -> CurrentUse
         team_roles=team_roles,
         is_active=bool(user.is_active),
         is_superuser=bool(user.is_superuser),
+        password_changed_at=user.password_changed_at,
     )
 
 
@@ -501,9 +517,7 @@ async def scan_progress_endpoint(websocket: WebSocket, scan_id: str) -> None:
 
     # ---- 3. First-message auth ----------------------------------------
     try:
-        raw = await _await_first_frame(
-            websocket, timeout=websocket_auth_timeout_seconds()
-        )
+        raw = await _await_first_frame(websocket, timeout=websocket_auth_timeout_seconds())
     except TimeoutError:
         log.warning("ws_auth_failed", reason=REASON_AUTH_TIMEOUT)
         await websocket.close(code=WS_CLOSE_POLICY_VIOLATION, reason=REASON_AUTH_TIMEOUT)
@@ -543,12 +557,10 @@ async def scan_progress_endpoint(websocket: WebSocket, scan_id: str) -> None:
     # Load user from DB (active check + team_ids for IDOR).
     session_factory = _session_factory(websocket)
     async with session_factory() as session:
-        current_user = await _resolve_user(session, user_id)
+        current_user = await _resolve_user(session, user_id, issued_at=claims.get("iat"))
         if current_user is None or not current_user.is_active:
             log.warning("ws_auth_failed", reason=REASON_AUTH_INACTIVE)
-            await websocket.close(
-                code=WS_CLOSE_POLICY_VIOLATION, reason=REASON_AUTH_INACTIVE
-            )
+            await websocket.close(code=WS_CLOSE_POLICY_VIOLATION, reason=REASON_AUTH_INACTIVE)
             structlog.contextvars.unbind_contextvars("scan_id", "remote_addr")
             return
 

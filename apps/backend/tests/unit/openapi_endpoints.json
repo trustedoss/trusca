@@ -370,6 +370,12 @@
     "release",
     "scan_id"
   ],
+  "GET /v1/projects/{project_id}/gate-result/sarif": [
+    "project_id",
+    "ref",
+    "release",
+    "scan_id"
+  ],
   "GET /v1/projects/{project_id}/governance": [
     "project_id"
   ],

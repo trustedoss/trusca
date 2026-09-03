@@ -103,6 +103,20 @@ class RefreshReuseDetected(AuthError):
     title = "Refresh Token Reuse Detected"
 
 
+class StaleCredential(AuthError):
+    """The credential this request acted on stopped being the user's.
+
+    Raised when a password change committed between the moment a path checked
+    a credential and the moment it went to write the session. 401 rather than
+    409, because from the caller's side the credential they presented is no
+    longer valid, which is what 401 means; a conflict code would invite a retry
+    of the same rejected credential.
+    """
+
+    status_code = 401
+    title = "Credential No Longer Valid"
+
+
 # ---------------------------------------------------------------------------
 # Registration
 # ---------------------------------------------------------------------------
@@ -239,6 +253,82 @@ async def authenticate(
 # ---------------------------------------------------------------------------
 
 
+# ---------------------------------------------------------------------------
+# Serialising session creation against password changes
+#
+# Revoking "every active refresh token" only covers the rows that exist when
+# the revoking statement runs. A path that creates a session reads its inputs,
+# then inserts a new row; if a password change commits in between, the sweep
+# never had that row as a candidate and the session outlives the change. A row
+# lock does not help by itself, because the row being inserted does not exist
+# yet to be locked.
+#
+# So the two sides meet on the user row instead, which both of them touch, and
+# every creator takes it before writing. That leaves two orders and closes both:
+#
+#   creator first  - the change waits, and when its sweep finally runs the new
+#                    row is committed and in range.
+#   change first   - the creator waits, and on the far side finds the credential
+#                    it acted on replaced, so it refuses instead of inserting.
+#
+# LOCK ORDER: user row first, refresh rows second. Anything touching both must
+# keep that order or the two will deadlock, which is why creators go through
+# ``lock_user_for_session_write`` rather than writing the SELECT themselves.
+# ---------------------------------------------------------------------------
+
+
+async def _lock_user_row(session: AsyncSession, user_id: uuid.UUID) -> tuple[bool, str | None]:
+    """Take the per-user session-write lock. Returns (row exists, stored hash).
+
+    The read happens under the lock, so it reflects whatever a password change
+    committed before the lock was granted rather than whatever the caller saw
+    earlier.
+
+    The id comes back alongside the hash so the two ways of getting nothing stay
+    apart: no such user, and a user whose hash is NULL. ``hashed_password`` is
+    NOT NULL today and every signup path fills it (an OAuth signup stores the
+    bcrypt of a random string, precisely so the column has a value), so the
+    second case does not arise. It is distinguished anyway because if the column
+    is ever relaxed, ``None == None`` would read as "unchanged" and wave the
+    request through, which is the wrong direction to fail in.
+    """
+    row = (
+        await session.execute(
+            select(User.id, User.hashed_password).where(User.id == user_id).with_for_update()
+        )
+    ).one_or_none()
+    if row is None:
+        return False, None
+    return True, row[1]
+
+
+async def lock_user_for_session_write(session: AsyncSession, user: User) -> None:
+    """Take the lock, then confirm the credential the caller acted on still holds.
+
+    Raises :class:`StaleCredential` if the password was rotated between the
+    caller reading the user and this lock being granted. The comparison is on
+    the stored hash rather than on a timestamp: no clock is involved, and a
+    rotation even to the same password still yields a different bcrypt hash,
+    so it cannot miss a change the way comparing times within one second can.
+    """
+    held_hash = user.hashed_password
+    exists, current = await _lock_user_row(session, user.id)
+
+    if not exists:
+        # Deleted while we were reading it. Nothing to open a session for.
+        raise StaleCredential("user no longer exists")
+
+    if current is None or held_hash is None:
+        # Only reachable if the column stops being NOT NULL. Refuse rather than
+        # let two absent values compare equal and count as "nothing changed".
+        log.warning("session_creation_refused_no_stored_credential", user_id=str(user.id))
+        raise StaleCredential("no stored credential to compare against")
+
+    if current != held_hash:
+        log.warning("session_creation_refused_stale_credential", user_id=str(user.id))
+        raise StaleCredential("the password changed while this request was in flight")
+
+
 async def issue_token_pair(
     session: AsyncSession,
     *,
@@ -248,6 +338,8 @@ async def issue_token_pair(
     Mint an access + refresh pair, persist the refresh row, and return
     (access_token, refresh_token, refresh_expires_at).
     """
+    await lock_user_for_session_write(session, user)
+
     access_token = create_access_token(
         subject=str(user.id),
         role="super_admin" if user.is_superuser else None,
@@ -331,10 +423,28 @@ async def rotate_refresh(
     if not jti or not sub:
         raise InvalidRefreshToken("malformed refresh token")
 
+    # Take the per-user lock before reading the row. The refresh token is the
+    # credential here, so the re-read of ``revoked_at`` below IS the check that
+    # it still holds; taking the lock first is what makes that read see a
+    # password change that committed, and what makes a change arriving later
+    # find this rotation's new row already in range for its sweep. See the
+    # LOCK ORDER note above ``_lock_user_row``.
+    try:
+        subject_id = uuid.UUID(str(sub))
+    except (ValueError, AttributeError) as exc:
+        raise InvalidRefreshToken("malformed refresh token") from exc
+    subject_exists, _ = await _lock_user_row(session, subject_id)
+    if not subject_exists:
+        raise InvalidRefreshToken("unknown user")
+
     result = await session.execute(select(RefreshToken).where(RefreshToken.jti == jti))
     row = result.scalar_one_or_none()
     if row is None:
         raise InvalidRefreshToken("unknown refresh token")
+    if row.user_id != subject_id:
+        # The signed subject and the stored row disagree. We locked the subject,
+        # so proceeding would write the row under the wrong lock.
+        raise InvalidRefreshToken("refresh token does not match its subject")
 
     now = datetime.now(tz=UTC)
 

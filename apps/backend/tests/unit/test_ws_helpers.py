@@ -723,7 +723,9 @@ def _patch_authenticated_path(
         lambda *args, **kwargs: {"sub": str(user.id), "type": "access"},
     )
 
-    async def _resolve(_session: Any, _user_id: uuid.UUID) -> _FakeUser:
+    async def _resolve(
+        _session: Any, _user_id: uuid.UUID, *, issued_at: int | None = None
+    ) -> _FakeUser:
         return user
 
     monkeypatch.setattr("api.v1.ws._resolve_user", _resolve)
@@ -812,7 +814,9 @@ def test_endpoint_closes_1008_when_user_inactive(
         lambda *args, **kwargs: {"sub": str(user.id), "type": "access"},
     )
 
-    async def _resolve(_session: Any, _user_id: uuid.UUID) -> _FakeUser:
+    async def _resolve(
+        _session: Any, _user_id: uuid.UUID, *, issued_at: int | None = None
+    ) -> _FakeUser:
         return user
 
     monkeypatch.setattr("api.v1.ws._resolve_user", _resolve)
@@ -1027,9 +1031,9 @@ def test_multi_task_two_tabs_four_sockets_all_survive_the_per_user_cap(
     asyncio.run(_scenario())
 
     for i, ws in enumerate(sockets):
-        assert ws.close_code is None, (
-            f"socket {i} was closed with code={ws.close_code} reason={ws.close_reason}"
-        )
+        assert (
+            ws.close_code is None
+        ), f"socket {i} was closed with code={ws.close_code} reason={ws.close_reason}"
 
 
 def test_global_cap_refuses_new_connection_without_evicting_anyone(
@@ -1054,7 +1058,9 @@ def test_global_cap_refuses_new_connection_without_evicting_anyone(
         lambda tok, **_kwargs: {"sub": str(users_by_token[tok].id), "type": "access"},
     )
 
-    async def _resolve(_session: Any, user_id: uuid.UUID) -> _FakeUser:
+    async def _resolve(
+        _session: Any, user_id: uuid.UUID, *, issued_at: int | None = None
+    ) -> _FakeUser:
         for candidate in users_by_token.values():
             if candidate.id == user_id:
                 return candidate
@@ -1074,12 +1080,8 @@ def test_global_cap_refuses_new_connection_without_evicting_anyone(
     monkeypatch.setattr("api.v1.ws._redis_pubsub", _fake_redis_pubsub(broker))
 
     scan_id = str(uuid.uuid4())
-    ws_a = _FakeWebSocket(
-        origin=None, incoming=[json.dumps({"type": "auth", "token": "token-a"})]
-    )
-    ws_b = _FakeWebSocket(
-        origin=None, incoming=[json.dumps({"type": "auth", "token": "token-b"})]
-    )
+    ws_a = _FakeWebSocket(origin=None, incoming=[json.dumps({"type": "auth", "token": "token-a"})])
+    ws_b = _FakeWebSocket(origin=None, incoming=[json.dumps({"type": "auth", "token": "token-b"})])
 
     async def _scenario() -> None:
         tasks = await _open_concurrent([ws_a, ws_b], scan_id)
@@ -1125,9 +1127,7 @@ def test_endpoint_handles_disconnect_during_initial_push(
     # for a key that once existed; what matters is that it carries no data).
     assert broker._zsets.get("ws:conns:global", {}) == {}
     assert all(
-        members == {}
-        for key, members in broker._zsets.items()
-        if key.startswith("ws:conns:user:")
+        members == {} for key, members in broker._zsets.items() if key.startswith("ws:conns:user:")
     )
 
 

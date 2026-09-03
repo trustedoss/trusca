@@ -85,12 +85,18 @@ from core.config import (
     password_reset_base_url,
     password_reset_email_cooldown_seconds,
 )
-from core.security import hash_password, verify_password, verify_password_async
-from models import PasswordResetToken, RefreshToken, User
+from core.security import (
+    hash_password,
+    set_password,
+    verify_password,
+    verify_password_async,
+)
+from models import PasswordResetToken, User
 from notifications.dispatcher import (
     CHANNEL_EMAIL,
     NotificationKind,
 )
+from services.auth_service import _revoke_all_active_for_user
 
 log = structlog.get_logger("auth.password_reset")
 
@@ -270,9 +276,7 @@ async def request_password_reset(
     """
     normalized_email = email.strip().lower()
 
-    user_result = await session.execute(
-        select(User).where(User.email == normalized_email)
-    )
+    user_result = await session.execute(select(User).where(User.email == normalized_email))
     user = user_result.scalar_one_or_none()
 
     cooldown_seconds = password_reset_email_cooldown_seconds()
@@ -297,9 +301,7 @@ async def request_password_reset(
         return {"matched": False, "cooldown_active": False, "retry_after_seconds": None}
 
     # Cooldown check — must not enqueue a second email within the window.
-    cooldown_active = await _has_recent_token(
-        session, user_id=user.id, cooldown=cooldown
-    )
+    cooldown_active = await _has_recent_token(session, user_id=user.id, cooldown=cooldown)
     if cooldown_active:
         log.info(
             "password_reset_cooldown_active",
@@ -453,9 +455,7 @@ async def consume_reset_token(
         log.info("password_reset_consume_no_match")
         raise InvalidResetToken("token is invalid or expired")
 
-    user_result = await session.execute(
-        select(User).where(User.id == matched.user_id)
-    )
+    user_result = await session.execute(select(User).where(User.id == matched.user_id))
     user = user_result.scalar_one_or_none()
     # A service account has no person to send a reset to, and its password is
     # unusable by construction. Treated exactly like an unknown address so the
@@ -463,30 +463,34 @@ async def consume_reset_token(
     if user is None or not user.is_active or user.is_service_account:
         raise InvalidResetToken("token is invalid or expired")
 
-    # Rotate the password.
-    user.hashed_password = hash_password(new_password)
+    # Rotate the password. `set_password` also stamps `password_changed_at`,
+    # which is what refuses the access tokens already in circulation; assigning
+    # the hash directly would leave those alive until they expire.
+    set_password(user, new_password)
 
     # Mark the token consumed.
     matched.used_at = now
 
-    # Revoke every active refresh token for this user. We surface this as
-    # ``revoked_reason='password_reset'`` so the audit trail differentiates
-    # it from a routine logout.
-    refresh_result = await session.execute(
-        select(RefreshToken).where(
-            RefreshToken.user_id == user.id,
-            RefreshToken.revoked_at.is_(None),
-        )
+    # Send the user UPDATE now rather than at commit. That row is the lock every
+    # session-creating path takes before it inserts (see the LOCK ORDER note in
+    # services.auth_service), and holding it from here is what puts the sweep
+    # below and any in-flight login or rotation in a defined order. Left to
+    # autoflush, the lock would be taken at some point inside the sweep instead,
+    # and a creation could still slip its row in behind it.
+    await session.flush()
+
+    # Revoke every refresh token the user still has. One statement rather than a
+    # read-then-assign loop: the loop revoked the rows visible at SELECT time,
+    # and a session created while this transaction ran was not among them.
+    #
+    # The reason is 'reuse_detected' because the schema's CHECK constraint
+    # enumerates 'rotated' | 'logout' | 'reuse_detected' | 'expired' and the
+    # operational meaning is the same: every existing session is to be treated
+    # as compromised. A later migration can add a dedicated reason if the audit
+    # query needs to tell a reset apart from a genuine reuse.
+    revoked_count = await _revoke_all_active_for_user(
+        session, user_id=user.id, reason="reuse_detected", now=now
     )
-    for refresh_row in refresh_result.scalars().all():
-        refresh_row.revoked_at = now
-        # The schema's CHECK constraint enumerates allowed reasons:
-        # 'rotated' | 'logout' | 'reuse_detected' | 'expired'. We map a
-        # password-reset revocation onto 'reuse_detected' because the
-        # operational meaning is the same — every existing session must
-        # be considered compromised. A future schema migration can add a
-        # dedicated reason if the audit query needs to distinguish them.
-        refresh_row.revoked_reason = "reuse_detected"
 
     await session.commit()
     await session.refresh(user)
@@ -495,6 +499,10 @@ async def consume_reset_token(
         "password_reset_consumed",
         user_id=str(user.id),
         token_id=str(matched.id),
+        # From the statement's own rowcount, so the number is what the database
+        # actually changed. The old loop reported nothing and the count came
+        # from len() of a list read a moment earlier.
+        sessions_revoked=revoked_count,
     )
 
     return user

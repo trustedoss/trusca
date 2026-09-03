@@ -51,6 +51,7 @@ from core.db import get_db
 from core.errors import problem_response
 from core.ratelimit import OAUTH_AUTHORIZE_RATE_LIMIT, limiter
 from schemas.oauth import OAuthProvidersResponse, OAuthProviderStatusOut
+from services.auth_service import StaleCredential
 from services.oauth_service import (
     NoOrganizationConfigured,
     OAuthCallbackFailed,
@@ -356,6 +357,13 @@ async def callback(
     except NoOrganizationConfigured:
         log.error("oauth_callback_no_organization", provider=provider)
         return _failure_redirect("oauth_no_organization")
+    except StaleCredential:
+        # The user's password was reset while this callback was completing, so
+        # the reset's revocation sweep could not have covered the session this
+        # would open. Sending them back to sign in again is cheap; leaving a
+        # session the reset believes it ended is not.
+        log.warning("oauth_callback_credential_changed", provider=provider)
+        return _failure_redirect("oauth_failed")
 
     # Build the success redirect, falling back to the configured default
     # when the state carried nothing usable.

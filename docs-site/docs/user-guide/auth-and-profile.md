@@ -51,7 +51,9 @@ The link in the email lands on `/reset-password?token=<opaque>`.
 2. Confirm it in the second field.
 3. Submit.
 
-On success you are redirected to `/login`. The new password is bcrypt-hashed and the reset token is consumed. All existing refresh tokens for the account are revoked, forcing every other session to re-authenticate.
+On success you are redirected to `/login`. The new password is bcrypt-hashed and the reset token is consumed. Every other session ends immediately: refresh tokens are revoked, access tokens issued before the change are refused rather than being allowed to run out their remaining lifetime, and a sign-in or token renewal running alongside the reset cannot leave a session behind it. Somebody who resets because they think a credential leaked does not have to wait for the stolen session to expire.
+
+API keys are not affected. They are a separate credential with their own lifecycle, so a build that authenticates with one keeps working. If you are resetting because of a suspected compromise, review your keys on the Integrations page as well.
 
 If the token has expired or has already been used, the page renders an error with a link back to `/forgot-password` to request a fresh one.
 

@@ -109,6 +109,7 @@ Drop `.github/workflows/sca.yml` (above) into the repo. On the next PR, the SCA 
 | `image-ref` | when `scan-kind: container` | — | Image the portal pulls, e.g. `ghcr.io/acme/api:1.4.0`. Push it before this step runs. |
 | `fail-on-gate` | no | `true` | If `true`, the job exits 1 when the gate verdict is `fail`. |
 | `post-pr-comment` | no | `true` | If `true` (and the workflow was triggered by `pull_request`), posts the SCA report as a PR comment. |
+| `sarif-file` | no | - | Path to write the scan's open findings to as a SARIF 2.1.0 document, for upload to the repository's Code scanning tab. Empty writes nothing. See [Publish findings to code scanning](#publish-findings-to-code-scanning). |
 | `poll-timeout-seconds` | no | `1800` | Max seconds to wait for the scan to reach a terminal state. |
 | `poll-interval-seconds` | no | `30` | Seconds between scan-status polls. |
 
@@ -124,6 +125,7 @@ Drop `.github/workflows/sca.yml` (above) into the repo. On the next PR, the SCA 
 | `epss-gate-count` | Open findings whose EPSS score met or exceeded the configured EPSS threshold. `0` when the EPSS gate is disabled (the default). See [Gate the build on EPSS](#gate-the-build-on-epss-optional). |
 | `malicious-component-count` | Distinct components the malicious-package snapshot flags. These block regardless of severity — remove the package and rotate any credentials the build could reach. |
 | `epss-outcome` | What the EPSS axis of the gate was able to judge. `not_configured`: no threshold set, so the axis was off by choice. `evaluated`: every open finding carried an EPSS score, so `epss-gate-count` is a complete answer. `partial`: some open findings carried no score, so a `0` there is not proof nothing would have tripped the threshold. `no_data`: not one open finding carried a score, so the axis decided nothing at all and the pass is the absence of a verdict. Empty on a portal too old to report it. |
+| `sarif-file` | Path of the SARIF document written, or empty when the `sarif-file` input was not set. |
 | `component-outcome` | What the scan's SBOM ended up containing. `components_found` is the ordinary case. `empty_no_manifests` and `empty_with_manifests` both mean the scan produced no components, so a passing gate reflects the absence of anything to judge rather than a clean result: the first is expected for a build system TRUSCA does not read, the second points at a scan failure. Empty on a portal too old to report it. |
 
 Use them in subsequent steps:
@@ -217,6 +219,53 @@ Apply the gate only on `main`, advisory on PRs:
     project-id: ${{ vars.TRUSTEDOSS_PROJECT_ID }}
     fail-on-gate: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' && 'true' || 'false' }}
 ```
+
+### Publish findings to code scanning
+
+The gate answers one question: may this build proceed. It does not put the
+findings anywhere a reviewer reads them. Setting `sarif-file` writes the scan's
+open findings as a SARIF 2.1.0 document, which GitHub renders in the
+repository's **Code scanning** tab beside every other scanner's results.
+
+```yaml
+permissions:
+  contents: read
+  security-events: write   # required by upload-sarif
+
+steps:
+  - uses: trustedoss/scan-action@v1
+    id: sca
+    with:
+      api-url: https://trustedoss.example.com
+      api-key: ${{ secrets.TRUSTEDOSS_API_KEY }}
+      project-id: 8f1c...
+      sarif-file: trusca.sarif
+
+  - uses: github/codeql-action/upload-sarif@v3
+    # `always()` matters: on a failing gate the action exits non-zero, and
+    # without this the upload is skipped exactly when there is most to report.
+    if: always()
+    with:
+      sarif_file: ${{ steps.sca.outputs.sarif-file }}
+```
+
+Three behaviours worth knowing:
+
+- **The file is written even when the gate passes.** An empty run is how code
+  scanning learns that an alert it raised earlier is fixed. Skipping the upload
+  on green would leave resolved alerts standing on the branch forever.
+- **Suppressed findings are omitted**, though the gate still counts them. A
+  suppression is a decision your team already made; re-raising it as an alert
+  is how a scanner teaches reviewers to ignore it. The gate takes the opposite
+  view on purpose, because "we agreed to look away" does not answer whether a
+  release should ship.
+- **Severity maps onto SARIF's three levels.** SARIF has no *critical*, so
+  critical and high both arrive as `error`; the exact severity stays in the
+  alert body, and the numeric `security-severity` is what GitHub sorts on.
+
+The document describes the branch the workflow is running on, resolved the same
+way as the gate verdict, so a pull request's alerts are its own rather than the
+main line's.
 
 ### Gate the build on EPSS (optional)
 

@@ -109,6 +109,7 @@ jobs:
 | `image-ref` | `scan-kind: container`일 때 필수 | — | 포털이 받아 올 이미지. 예: `ghcr.io/acme/api:1.4.0`. 이 스텝 전에 푸시해 두세요. |
 | `fail-on-gate` | no | `true` | `true`이면 게이트 verdict가 `fail`일 때 잡이 1로 종료. |
 | `post-pr-comment` | no | `true` | `true`이고 `pull_request` 이벤트로 트리거되면 SCA 보고서를 PR 코멘트로 게시. |
+| `sarif-file` | no | - | 스캔의 미해결 결과를 SARIF 2.1.0 문서로 쓸 경로입니다. 저장소의 Code scanning 탭에 올리는 데 씁니다. 비워 두면 아무것도 쓰지 않습니다. [코드 스캐닝에 결과 게시](#코드-스캐닝에-결과-게시)를 보세요. |
 | `poll-timeout-seconds` | no | `1800` | 스캔이 최종 상태에 도달할 때까지 기다리는 최대 초. |
 | `poll-interval-seconds` | no | `30` | 스캔 상태 폴링 간격(초). |
 
@@ -124,6 +125,7 @@ jobs:
 | `epss-gate-count` | EPSS score가 구성된 EPSS 임계 이상인 미해결 결과 수. EPSS 게이트가 비활성(기본)이면 `0`. [EPSS로 빌드 게이팅](#epss로-빌드-게이팅-선택) 참고. |
 | `malicious-component-count` | 악성 패키지 스냅샷이 지목한 컴포넌트 수. 심각도와 무관하게 빌드를 막습니다. 패키지를 제거하고 이 빌드가 닿을 수 있던 자격 증명을 교체하세요. |
 | `epss-outcome` | 게이트의 EPSS 축이 무엇을 판정할 수 있었는지입니다. `not_configured`는 임계가 설정되지 않아 축이 꺼져 있었다는 뜻이고, `evaluated`는 미해결 결과에 모두 EPSS 점수가 있어 `epss-gate-count`가 완전한 답이라는 뜻입니다. `partial`은 점수가 없는 미해결 결과가 섞여 있어 `0`이 곧 임계를 넘는 것이 없었다는 증거가 되지 못한다는 뜻이고, `no_data`는 점수를 가진 결과가 하나도 없어 축이 아무것도 판정하지 못했다는 뜻입니다. 이 값을 보고하지 못하는 구버전 포털에서는 비어 있습니다. |
+| `sarif-file` | 기록한 SARIF 문서의 경로입니다. `sarif-file` 입력을 주지 않았으면 비어 있습니다. |
 | `component-outcome` | 스캔의 SBOM에 무엇이 담겼는지입니다. `components_found`가 통상적인 경우입니다. `empty_no_manifests`와 `empty_with_manifests`는 둘 다 컴포넌트가 하나도 나오지 않았다는 뜻이라, 게이트 통과는 깨끗하다는 판정이 아니라 판단할 대상이 없었다는 뜻입니다. 앞은 TRUSCA가 읽지 못하는 빌드 시스템에서 정상적으로 나오는 값이고, 뒤는 스캔이 실패했다는 신호입니다. 이 값을 보고하지 못하는 구버전 포털에서는 비어 있습니다. |
 
 후속 스텝에서 사용:
@@ -217,6 +219,51 @@ PR 코멘트는 그대로 게시되며 체크는 green으로 유지됩니다.
     project-id: ${{ vars.TRUSTEDOSS_PROJECT_ID }}
     fail-on-gate: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' && 'true' || 'false' }}
 ```
+
+### 코드 스캐닝에 결과 게시
+
+게이트는 이 빌드를 진행해도 되는지 하나만 답합니다. 결과를 검토자가 읽는 자리에
+놓아 주지는 않습니다. `sarif-file`을 지정하면 스캔의 미해결 결과를 SARIF 2.1.0
+문서로 기록하고, GitHub이 그것을 저장소의 **Code scanning** 탭에서 다른 스캐너
+결과와 나란히 보여 줍니다.
+
+```yaml
+permissions:
+  contents: read
+  security-events: write   # upload-sarif에 필요합니다
+
+steps:
+  - uses: trustedoss/scan-action@v1
+    id: sca
+    with:
+      api-url: https://trustedoss.example.com
+      api-key: ${{ secrets.TRUSTEDOSS_API_KEY }}
+      project-id: 8f1c...
+      sarif-file: trusca.sarif
+
+  - uses: github/codeql-action/upload-sarif@v3
+    # `always()`가 중요합니다. 게이트가 실패하면 액션이 0이 아닌 값으로 끝나므로,
+    # 이것이 없으면 보고할 것이 가장 많은 순간에 업로드를 건너뜁니다.
+    if: always()
+    with:
+      sarif_file: ${{ steps.sca.outputs.sarif-file }}
+```
+
+알아 두면 좋은 동작이 셋 있습니다.
+
+- **게이트가 통과해도 파일을 씁니다.** 앞서 올린 경보가 해소됐다는 것을 코드
+  스캐닝이 아는 방법이 결과가 비어 있는 실행 하나뿐입니다. 통과했다고 업로드를
+  건너뛰면 이미 고친 경보가 브랜치에 계속 남습니다.
+- **suppressed 결과는 빠집니다.** 게이트는 그것을 세는데도 그렇습니다. 억제는
+  팀이 이미 내린 판단이고, 그것을 경보로 다시 올리는 것은 검토자에게 스캐너를
+  무시하도록 가르치는 일입니다. 게이트가 반대로 세는 것도 의도한 것입니다.
+  "보지 않기로 했다"는 릴리스를 내보내도 되는지에 대한 답이 아니기 때문입니다.
+- **심각도는 SARIF의 세 단계로 옮깁니다.** SARIF에는 critical이 없어서 critical과
+  high가 모두 `error`로 갑니다. 정확한 심각도는 경보 본문에 남고, GitHub이 정렬에
+  쓰는 것은 숫자 값인 `security-severity`입니다.
+
+문서는 워크플로가 도는 브랜치를 기술하며 게이트 판정과 같은 방식으로 해석하므로,
+Pull Request의 경보는 main이 아니라 그 PR 자신의 것입니다.
 
 ### EPSS로 빌드 게이팅 (선택)
 

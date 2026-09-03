@@ -205,12 +205,29 @@ async def test_last_recorded_tracks_the_newest_row(
     The recorder swallows its own errors, so a missing grant or an unrun
     migration leaves tasks succeeding and the table empty. This value going
     stale is the only outward sign.
+
+    The new row is placed a second past both the current maximum and the
+    present moment, rather than a second before now. The series reports a
+    maximum over the whole table and this suite shares its database with
+    every other integration test, so a row recorded at ``now()`` by any of
+    them is one this test cannot beat by reaching into the past.
+
+    Taking the later of the two bounds closes that in both directions: past
+    the maximum when the maximum is recent, and past ``now()`` when it is
+    not. Only the first is needed while the suite runs serially, but the
+    repository already anticipates parallel runs (see the ``serial`` marker
+    in pyproject), and under those the second is what holds.
     """
     before = await _task_run_last_recorded(session)
 
+    now = datetime.now(UTC)
+    newest = max(datetime.fromtimestamp(before, tz=UTC), now) if before else now
     await _insert(
-        session, task_name, started_ago=timedelta(seconds=1),
-        duration=timedelta(seconds=1), outcome="succeeded",
+        session,
+        task_name,
+        started_ago=datetime.now(UTC) - (newest + timedelta(seconds=1)),
+        duration=timedelta(seconds=1),
+        outcome="succeeded",
     )
 
     after = await _task_run_last_recorded(session)

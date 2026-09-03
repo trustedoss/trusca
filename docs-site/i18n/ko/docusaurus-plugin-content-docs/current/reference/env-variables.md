@@ -202,6 +202,7 @@ superseded·노후 스캔 스냅샷을 회수하는 자동 보존 sweep을 조�
 |---|---|---|---|
 | `PASSWORD_RESET_BASE_URL` | `http://localhost:5173` | `config.py` | 재설정 이메일에 임베드되는 프론트엔드 base URL. 링크 템플릿: `{base}/reset-password?token={token}`. |
 | `PASSWORD_RESET_RATE_LIMIT` | `5/minute` | `config.py` | `POST /auth/forgot-password`에 대한 IP별 slowapi 한도. |
+| `REFRESH_RATE_LIMIT` | `30/minute` | `config.py` | `POST /auth/refresh`의 IP당 slowapi 상한입니다. 열려 있는 탭마다 주기적으로 갱신하므로 로그인 상한보다 높게 두되, 훔친 refresh 쿠키를 반복 호출해 갓 발급된 access 토큰을 계속 손에 쥐고 있을 수는 없을 만큼 낮게 잡았습니다. |
 | `PASSWORD_RESET_CONFIRM_RATE_LIMIT` | `5/minute` | `config.py` | `POST /auth/reset-password`에 대한 IP별 slowapi 한도. 이 엔드포인트는 토큰 자체가 자격증명이라 로그인과 같은 추측 공격 표면이고, 그래서 기본값도 로그인과 같게 뒀다. |
 | `PASSWORD_RESET_EMAIL_COOLDOWN_SECONDS` | `300` | `config.py` | 같은 주소로 두 번째 재설정 이메일 발송까지 최소 초 수. 쿨다운 시 `Retry-After`로 반환. |
 
