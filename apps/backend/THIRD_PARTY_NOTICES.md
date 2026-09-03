@@ -176,6 +176,41 @@ a reader of one of those files is entitled to know where its copyright lines
 came from. Per-component provenance is stamped in
 `scan_components.raw_data["copyright_source"]`.
 
+### EPSS (Exploit Prediction Scoring System)
+
+- **Source**: https://epss.empiricalsecurity.com/epss_scores-current.csv.gz (daily CSV, unauthenticated)
+- **Steward**: the EPSS Special Interest Group at FIRST (https://www.first.org/epss)
+- **Scores generated and published by**: Empirical Security
+- **License**: none declared. FIRST publishes the scores freely and requests attribution; see below
+- **Covers**: nothing vendored. Fetched at runtime into `vulnerabilities.epss_score` and `vulnerabilities.epss_percentile`
+
+EPSS estimates the probability that a CVE will be exploited in the next 30
+days. TRUSCA stores the score and the percentile per CVE and uses them for the
+Vulnerabilities tab's sort and filter, the `sort=priority` ranking, the REST
+API, the Excel and PDF reports, and the optional `GATE_EPSS_THRESHOLD` build
+gate.
+
+Nothing is redistributed with TRUSCA. Each installation downloads the daily
+CSV itself, at most once a day, into its own database; the file is not vendored
+into the source tree, the container images, or any release artifact. The
+refresh is operator-controlled (`EPSS_REFRESH_ENABLED`, off by default) and can
+be pointed at an internal mirror for air-gapped deployments. The bulk CSV is
+deliberately the only ingest path: FIRST's own guidance is that the lookup API
+"should not be used for bulk downloads or to keep a local copy of all scores in
+sync", and that the daily CSV is the right mechanism for that.
+
+FIRST asks that attribution be provided where possible when EPSS data is used
+in publications or products. TRUSCA carries that attribution here, in the
+data-sources reference page, and in the module docstring of the feed client.
+The citation FIRST supplies is:
+
+    Jay Jacobs, Sasha Romanosky, Benjamin Edwards, Michael Roytman,
+    Idris Adjerid (2021), Exploit Prediction Scoring System,
+    Digital Threats Research and Practice, 2(3)
+
+TRUSCA claims no ownership of this data, and neither FIRST nor Empirical
+Security endorses TRUSCA.
+
 ### Inter — the interface typeface
 
 - **Source**: https://github.com/rsms/inter/releases/tag/v4.1 (`web/` directory)
