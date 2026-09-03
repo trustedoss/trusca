@@ -83,8 +83,42 @@ env:
   BUILDX_MIN_VERSION: "0.33.0"
 
 jobs:
+  # ER18. Report whether this release's tag is signed, before anything is
+  # published. Runs first and gates the rest so that, once it is enforced, an
+  # unsigned tag stops the release rather than being noticed afterwards.
+  #
+  # NOT enforced yet: REQUIRE_SIGNED_TAGS stays unset until the release
+  # manager's SSH signing key is registered and listed in
+  # .github/allowed_signers, because until then every tag is unsigned and a
+  # hard failure would block releasing rather than improve it. Flipping this
+  # to "true" is the whole remaining step. See the script's header and
+  # docs-site contributor-guide/releasing.md.
+  tag-signature:
+    name: tag signature
+    runs-on: ubuntu-22.04
+    timeout-minutes: 5
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          # The tag OBJECT is what carries the signature, and a shallow
+          # checkout of the commit does not bring it.
+          fetch-depth: 0
+          fetch-tags: true
+
+      - name: Verify the release tag is signed
+        env:
+          REQUIRE_SIGNED_TAGS: "false"
+          INPUT_TAG: ${{ github.event.inputs.tag }}
+          REF_NAME: ${{ github.ref_name }}
+        run: |
+          set -euo pipefail
+          TAG="${INPUT_TAG:-$REF_NAME}"
+          scripts/verify-tag-signature.sh "$TAG"
+
   build:
     name: build ${{ matrix.image.image }} (${{ matrix.platform.arch }})
+    needs: tag-signature
     runs-on: ${{ matrix.platform.runner }}
     timeout-minutes: 60
     strategy:

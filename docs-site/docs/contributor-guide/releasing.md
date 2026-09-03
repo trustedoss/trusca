@@ -114,7 +114,10 @@ unrelated (e.g. infrastructure) reason, a maintainer can reveal it by hand with
    claims to release in lock-step with the portal and drifted nine minor
    versions once, which left a default `helm install` running an old portal
    unless the operator overrode `image.tag`.
-5. Tag and push: `git tag vX.Y.Z && git push origin vX.Y.Z`.
+5. Tag and push: `git tag -s vX.Y.Z -m "vX.Y.Z" && git push origin vX.Y.Z`.
+   `-s` signs it and implies `-a`. A plain `git tag` makes a *lightweight*
+   tag, which is a ref pointing straight at a commit with no tag object, so it
+   cannot carry a signature at all. See [Signing release tags](#signing-release-tags).
 6. Watch the `release-gate` job. When it goes green the Release is public and
    marked `latest` automatically — no manual step is needed.
 7. Approve the demo deploy. Revealing the Release queues a `deploy-hetzner.yml`
@@ -122,6 +125,61 @@ unrelated (e.g. infrastructure) reason, a maintainer can reveal it by hand with
    unapproved if the demo should stay on the previous release. The queued run
    never reseeds — when the release changes `scripts/seed_demo.py`, dispatch the
    workflow by hand with `reseed: true` instead.
+
+## Signing release tags
+
+Release tags are signed with SSH by the release manager. The `tag-signature`
+job checks every release and is the first thing that runs, so once it is
+enforced an unsigned tag stops the release before anything is published.
+
+:::note Not enforced yet
+`REQUIRE_SIGNED_TAGS` is `"false"` in `release.yml`, so today the job reports
+an unsigned tag and lets the release continue. That is deliberate: until the
+signing key is registered every tag is unsigned, and a hard failure would
+block releasing rather than improve it. Flip it to `"true"` once the setup
+below is done and `.github/allowed_signers` lists the key. That flip is the
+only remaining step.
+:::
+
+### One-time setup, release manager
+
+1. Create a signing key, separate from any key used for server access:
+
+   ```bash
+   ssh-keygen -t ed25519 -C "release@trusca" -f ~/.ssh/trusca_release
+   ```
+
+2. Tell git to sign tags with it:
+
+   ```bash
+   git config --global gpg.format ssh
+   git config --global user.signingkey ~/.ssh/trusca_release.pub
+   ```
+
+3. Add the **public** key to GitHub twice, under Settings → SSH and GPG keys.
+   Once as an *Authentication* key if you want it to work for git, and once as
+   a **Signing key**, which is what makes GitHub show tags as `Verified`. They
+   are separate entries for the same key and it is easy to add only the first.
+
+4. Add it to `.github/allowed_signers`, which is what tells a verifier *which*
+   key counts, and open a PR for that file:
+
+   ```
+   release@trusca ssh-ed25519 AAAA... release@trusca
+   ```
+
+5. Flip `REQUIRE_SIGNED_TAGS` to `"true"` in `release.yml`.
+
+The private key never leaves the release manager's machine. CI does not sign
+and needs no secret; it only verifies.
+
+### Why the allowed-signers file matters
+
+A signature that verifies cryptographically only says the tag was signed by
+somebody. `git verify-tag` reports `Good "git" signature` for *any* valid key,
+including one an attacker generated. What makes it mean anything is
+`.github/allowed_signers`: without a matching entry git adds `No principal
+matched` and the check fails. Verifying without that file is theatre.
 
 ## See also
 
