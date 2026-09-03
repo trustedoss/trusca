@@ -76,12 +76,15 @@ def test_the_licence_backfill_commits_what_it_counts(session: Session) -> None:
     from tasks.license_review_flag_backfill import backfill_license_review_flags
 
     key = f"TEST-COMMIT-{uuid.uuid4().hex[:8]}"
+    # The name has to trip the classifier or nothing is reconciled and the
+    # test would pass against a sweep that writes nothing. "Non-Commercial"
+    # is one of the tokens classify_review_flag() matches.
     session.execute(
         text(
-            "INSERT INTO licenses (spdx_id, name, classification, review_flag)"
-            " VALUES (:k, :k, 'forbidden', NULL)"
+            "INSERT INTO licenses (spdx_id, name, category, review_flag)"
+            " VALUES (:k, :n, 'conditional', NULL)"
         ),
-        {"k": key},
+        {"k": key, "n": f"{key} Non-Commercial License"},
     )
     session.commit()
 
@@ -95,9 +98,9 @@ def test_the_licence_backfill_commits_what_it_counts(session: Session) -> None:
             {"k": key},
         ).scalar_one()
 
-        assert flag is not None, (
+        assert flag == "non_commercial", (
             "the sweep counted this row as updated but the value was never "
-            "committed; a second connection still sees NULL"
+            f"committed; a second connection still sees {flag!r}"
         )
     finally:
         session.execute(
@@ -120,10 +123,10 @@ def test_a_dry_run_of_the_licence_backfill_writes_nothing(
     key = f"TEST-DRY-{uuid.uuid4().hex[:8]}"
     session.execute(
         text(
-            "INSERT INTO licenses (spdx_id, name, classification, review_flag)"
-            " VALUES (:k, :k, 'forbidden', NULL)"
+            "INSERT INTO licenses (spdx_id, name, category, review_flag)"
+            " VALUES (:k, :n, 'conditional', NULL)"
         ),
-        {"k": key},
+        {"k": key, "n": f"{key} Non-Commercial License"},
     )
     session.commit()
 
@@ -153,15 +156,19 @@ def test_the_catalog_refresh_commits_what_it_counts(session: Session) -> None:
     """
     from tasks.vulnerability_catalog_refresh import refresh_stale_catalog_rows
 
-    cve = f"CVE-9999-{uuid.uuid4().int % 100000:05d}"
+    external_id = f"CVE-9999-{uuid.uuid4().int % 100000:05d}"
+    # source != 'trivy' is one of the staleness conditions, and a markdown
+    # scalar in references is the shape the sweep rewrites. Seeding both makes
+    # the row unambiguously stale without depending on the other conditions.
     session.execute(
         text(
-            "INSERT INTO vulnerabilities (cve_id, severity, description, "
-            '"references") VALUES (:c, \'high\', :d, :r)'
+            "INSERT INTO vulnerabilities"
+            ' (external_id, source, severity, summary, "references")'
+            " VALUES (:e, 'NVD', 'high', :s, CAST(:r AS jsonb))"
         ),
         {
-            "c": cve,
-            "d": "seed row for the commit contract",
+            "e": external_id,
+            "s": "seed row for the commit contract",
             "r": '["* [ADVISORY] (https://example.test/a)"]',
         },
     )
@@ -173,8 +180,8 @@ def test_the_catalog_refresh_commits_what_it_counts(session: Session) -> None:
 
         session.expire_all()
         stored = session.execute(
-            text('SELECT "references" FROM vulnerabilities WHERE cve_id = :c'),
-            {"c": cve},
+            text('SELECT "references" FROM vulnerabilities WHERE external_id = :e'),
+            {"e": external_id},
         ).scalar_one()
 
         assert "[ADVISORY]" not in str(stored), (
@@ -183,6 +190,7 @@ def test_the_catalog_refresh_commits_what_it_counts(session: Session) -> None:
         )
     finally:
         session.execute(
-            text("DELETE FROM vulnerabilities WHERE cve_id = :c"), {"c": cve}
+            text("DELETE FROM vulnerabilities WHERE external_id = :e"),
+            {"e": external_id},
         )
         session.commit()
