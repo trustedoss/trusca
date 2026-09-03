@@ -54,6 +54,7 @@ Security:
 
 from __future__ import annotations
 
+import contextlib
 import gzip
 import hashlib
 import json
@@ -61,10 +62,11 @@ import os
 import shutil
 import subprocess  # noqa: S404 — pg_dump/psql/alembic with fixed argv, no shell=True
 import tarfile
+import threading
 import uuid
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import Any, Literal
+from typing import IO, Any, Literal
 from urllib.parse import unquote, urlparse
 
 import structlog
@@ -370,6 +372,108 @@ def _workspace_host_path() -> Path:
 # ---------------------------------------------------------------------------
 
 
+# ---------------------------------------------------------------------------
+# Draining a child's pipes while it runs
+#
+# Reading a pipe to EOF does not return until the child closes it, which it
+# does when it exits. So a read placed before ``proc.wait(timeout=...)`` decides
+# how long the call takes, and the timeout below it never gets to. That is how
+# ``BACKUP_SUBPROCESS_TIMEOUT`` came to bound nothing and the ``kill()`` in its
+# handler came to be unreachable: a dump stalled on storage or on a lock held a
+# worker slot for as long as it lived, raising nothing, so nothing was recorded
+# as failed either.
+#
+# A pipe nobody reads is the other half. It holds perhaps 64 KiB, and a child
+# that fills it stops writing -- including on its other stream, the one we are
+# waiting on. Both sides then wait for the other.
+#
+# So every pipe gets a thread that empties it, and the wait with the timeout is
+# the only thing the main thread does. ``integrations/_line_streamer`` reaches
+# the same arrangement for the scanners, and for the same reason;
+# ``communicate(timeout=...)`` is not usable here because stdout is a multi-GB
+# dump that goes to a file rather than into memory.
+# ---------------------------------------------------------------------------
+
+
+def _drain_to_file(stream: IO[bytes], sink: IO[bytes]) -> None:
+    """Copy a pipe into an open file in 64 KiB chunks, bounding RSS."""
+    try:
+        shutil.copyfileobj(stream, sink, length=65536)
+    except (OSError, ValueError):
+        # The pipe went away because the child was killed. The wait below is
+        # what reports that; a broken pipe here says nothing extra.
+        pass
+    finally:
+        with contextlib.suppress(OSError):
+            stream.close()
+
+
+def _drain_to_memory(stream: IO[bytes], into: list[bytes], *, cap: int = 64 * 1024) -> None:
+    """Keep a pipe empty, retaining at most ``cap`` bytes for an error message.
+
+    Retained from the front: callers slice the head into the message, and a
+    child that fails usually says why before it goes quiet. Everything past the
+    cap is still read and dropped, because reading is the point -- it is what
+    keeps the child from blocking.
+    """
+    kept = 0
+    try:
+        for chunk in iter(lambda: stream.read(65536), b""):
+            if kept < cap:
+                into.append(chunk[: cap - kept])
+                kept += len(chunk)
+    except (OSError, ValueError):
+        pass
+    finally:
+        with contextlib.suppress(OSError):
+            stream.close()
+
+
+def _feed_stdin(source: IO[bytes], sink: IO[bytes]) -> None:
+    """Pump a file into a child's stdin, then close it so the child can finish.
+
+    On its own thread for the same reason the drains are: a child that has
+    stopped reading (because its own output pipe is full) leaves this write
+    blocked, and a blocked write on the main thread is another way past the
+    timeout.
+    """
+    try:
+        shutil.copyfileobj(source, sink, length=65536)
+    except (OSError, ValueError):
+        pass
+    finally:
+        with contextlib.suppress(OSError):
+            sink.close()
+
+
+def _wait_bounded(
+    proc: subprocess.Popen[bytes],
+    drains: list[threading.Thread],
+    *,
+    timeout: int,
+    what: str,
+    error: type[Exception],
+) -> int:
+    """Wait for a child under a real time bound, then let its drains finish.
+
+    Raises ``error`` if the child outlives ``timeout``. The threads are joined
+    afterwards rather than waited on first: joining a drain of a live child is
+    the same unbounded wait this exists to remove.
+    """
+    try:
+        returncode = proc.wait(timeout=timeout)
+    except subprocess.TimeoutExpired as exc:
+        proc.kill()
+        proc.wait()
+        for thread in drains:
+            thread.join(timeout=5)
+        raise error(f"{what} timed out after {exc.timeout}s") from exc
+
+    for thread in drains:
+        thread.join(timeout=30)
+    return returncode
+
+
 def _run_pg_dump(target_gz: Path) -> None:
     """Stream ``pg_dump --clean --if-exists`` into ``target_gz`` (gzipped).
 
@@ -407,17 +511,22 @@ def _run_pg_dump(target_gz: Path) -> None:
             )
             assert proc.stdout is not None
             assert proc.stderr is not None
-            try:
-                # 64 KiB chunks — bounds RSS regardless of dump size.
-                shutil.copyfileobj(proc.stdout, gz_out, length=65536)
-                stderr_bytes = proc.stderr.read()
-                rc = proc.wait(timeout=timeout)
-            except subprocess.TimeoutExpired as exc:
-                proc.kill()
-                proc.wait()
-                raise BackupTaskError(f"pg_dump timed out after {exc.timeout}s") from exc
+            captured_stderr: list[bytes] = []
+            drains = [
+                threading.Thread(
+                    target=_drain_to_file, args=(proc.stdout, gz_out), daemon=True
+                ),
+                threading.Thread(
+                    target=_drain_to_memory, args=(proc.stderr, captured_stderr), daemon=True
+                ),
+            ]
+            for thread in drains:
+                thread.start()
+            rc = _wait_bounded(
+                proc, drains, timeout=timeout, what="pg_dump", error=BackupTaskError
+            )
         if rc != 0:
-            stderr = stderr_bytes.decode("utf-8", errors="replace")[-2048:]
+            stderr = b"".join(captured_stderr).decode("utf-8", errors="replace")[-2048:]
             raise BackupTaskError(f"pg_dump exited {rc}: {stderr}")
     except FileNotFoundError as exc:
         raise BackupTaskError(
@@ -451,18 +560,37 @@ def _run_psql_restore(source_gz: Path) -> None:
                 stderr=subprocess.PIPE,
             )
             assert proc.stdin is not None
+            assert proc.stdout is not None
             assert proc.stderr is not None
-            try:
-                shutil.copyfileobj(gz_in, proc.stdin, length=65536)
-                proc.stdin.close()
-                stderr_bytes = proc.stderr.read()
-                rc = proc.wait(timeout=timeout)
-            except subprocess.TimeoutExpired as exc:
-                proc.kill()
-                proc.wait()
-                raise RestoreTaskError(f"psql timed out after {exc.timeout}s") from exc
+            captured_stderr: list[bytes] = []
+            captured_stdout: list[bytes] = []
+            # stdout is drained as well, not only stderr. It is opened as a pipe
+            # and was read nowhere: psql runs with --quiet, so it stayed under
+            # the buffer and the trap never sprang. That is a flag holding the
+            # product up, and the day somebody drops --quiet for a diagnosis, or
+            # a psql release grows chattier, a restore stops halfway with the
+            # database already dropped.
+            drains = [
+                threading.Thread(
+                    target=_drain_to_memory, args=(proc.stdout, captured_stdout), daemon=True
+                ),
+                threading.Thread(
+                    target=_drain_to_memory, args=(proc.stderr, captured_stderr), daemon=True
+                ),
+            ]
+            for thread in drains:
+                thread.start()
+
+            feeder = threading.Thread(
+                target=_feed_stdin, args=(gz_in, proc.stdin), daemon=True
+            )
+            feeder.start()
+
+            rc = _wait_bounded(
+                proc, [*drains, feeder], timeout=timeout, what="psql", error=RestoreTaskError
+            )
         if rc != 0:
-            stderr = stderr_bytes.decode("utf-8", errors="replace")[-2048:]
+            stderr = b"".join(captured_stderr).decode("utf-8", errors="replace")[-2048:]
             raise RestoreTaskError(f"psql exited {rc}: {stderr}")
     except FileNotFoundError as exc:
         raise RestoreTaskError(
