@@ -407,7 +407,17 @@ class CurrentUser:
     password_changed_at: datetime | None = None
 
 
-def _highest_role(roles: list[str], *, is_superuser: bool) -> str:
+def highest_role(roles: list[str], *, is_superuser: bool) -> str:
+    """The most privileged grade among a user's memberships.
+
+    Public because the WebSocket path needs it too. It cannot use
+    ``_load_current_user`` (a WebSocket scope carries no Request for the
+    dependency to take) and so hand-copied this, priority map and all, with a
+    comment saying the copy existed to avoid importing a private name. The copy
+    then drifted: it was missing ``viewer``, and it did not inherit the
+    password-change check added to the original. Exporting the function is the
+    cheaper answer than keeping two of it.
+    """
     if is_superuser:
         return "super_admin"
     if not roles:
@@ -629,7 +639,7 @@ async def _load_current_user(
     memberships: list[Membership] = list(user.memberships)
     team_ids = [m.team_id for m in memberships]
     team_roles = {m.team_id: m.role for m in memberships}
-    role = _highest_role(
+    role = highest_role(
         [m.role for m in memberships],
         is_superuser=bool(user.is_superuser),
     )

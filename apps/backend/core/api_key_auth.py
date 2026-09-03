@@ -48,6 +48,7 @@ from core.security import (
     CurrentUser,
     _has_at_least,
     get_optional_current_user,
+    highest_role,
 )
 from models import APIKey, Project, User
 from services.api_key_service import authenticate_api_key, parse_bearer
@@ -249,13 +250,7 @@ async def get_api_key_principal(
     # Role is the issuer's highest role WITHIN the key's scope (not the global
     # max across all their teams), mirroring the per-team philosophy of
     # _can_admin_team. super_admin issuers stay super_admin.
-    if user.is_superuser:
-        role = "super_admin"
-    elif team_roles:
-        role_priority = {"developer": 1, "team_admin": 2, "super_admin": 3}
-        role = max(team_roles.values(), key=lambda r: role_priority.get(r, 0))
-    else:
-        role = "developer"
+    role = highest_role(list(team_roles.values()), is_superuser=bool(user.is_superuser))
 
     principal = CurrentUser(
         id=user.id,
