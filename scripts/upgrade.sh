@@ -72,6 +72,81 @@ fi
 note "compose files: ${COMPOSE_ARGS[*]}"
 
 # ---------------------------------------------------------------------------
+# 0.5 Version guard - refuse a downgrade or a skipped major (ER15)
+# ---------------------------------------------------------------------------
+# Alembic is forward-only (CLAUDE.md core rule #6): there is no downgrade path,
+# so pointing this script at an OLDER image set does not roll anything back. It
+# starts old code against a newer schema, which fails in ways a restore is the
+# only exit from. Skipping a major has the same shape one step removed, since
+# the release notes for the major in between are where the manual steps live
+# (the v2.3 to v2.4 prelude below is exactly such a step).
+#
+# The running version is read from the backend container's own image tag rather
+# than from the API: /health carries no version and /v1/about needs a login,
+# neither of which an unattended upgrade has. When either side cannot be
+# determined this warns and continues, because refusing to upgrade over a
+# parsing failure would be worse than the risk it guards.
+title "Version check"
+
+# Prints "<major> <minor> <patch>" for an X.Y.Z tag, dropping any prerelease or
+# build suffix. Returns non-zero for anything that is not a version.
+semver_parts() {
+  local raw="${1#v}"
+  raw="${raw%%-*}"
+  raw="${raw%%+*}"
+  case "$raw" in
+    [0-9]*.[0-9]*.[0-9]*) ;;
+    *) return 1 ;;
+  esac
+  local major minor patch
+  IFS=. read -r major minor patch <<< "$raw"
+  case "${major}${minor}${patch}" in
+    *[!0-9]*) return 1 ;;
+  esac
+  printf '%s %s %s\n' "$major" "$minor" "$patch"
+}
+
+running_version=""
+backend_cid="$(docker-compose "${COMPOSE_ARGS[@]}" ps -q backend 2>/dev/null || true)"
+if [ -n "$backend_cid" ]; then
+  running_image="$(docker inspect -f '{{.Config.Image}}' "$backend_cid" 2>/dev/null || true)"
+  if [ -n "$running_image" ] && [ "${running_image##*:}" != "$running_image" ]; then
+    running_version="${running_image##*:}"
+  fi
+fi
+
+target_version="${IMAGE_TAG:-}"
+if [ -z "$target_version" ] && [ -f .env ]; then
+  target_version="$(grep -E '^IMAGE_TAG=' .env | tail -1 | cut -d= -f2- || true)"
+fi
+
+if [ -z "$running_version" ] || [ -z "$target_version" ]; then
+  warn "could not determine both versions - skipping the version check."
+  note "running: ${running_version:-unknown}, target: ${target_version:-unknown}"
+elif ! running_parts="$(semver_parts "$running_version")" ||      ! target_parts="$(semver_parts "$target_version")"; then
+  warn "one of the versions is not an X.Y.Z tag - skipping the version check."
+  note "running: ${running_version}, target: ${target_version}"
+else
+  read -r run_major run_minor run_patch <<< "$running_parts"
+  read -r tgt_major tgt_minor tgt_patch <<< "$target_parts"
+  note "running ${running_version} -> target ${target_version}"
+
+  running_num=$(( run_major * 1000000 + run_minor * 1000 + run_patch ))
+  target_num=$(( tgt_major * 1000000 + tgt_minor * 1000 + tgt_patch ))
+
+  if [ "${UPGRADE_ALLOW_VERSION_SKIP:-false}" = "true" ]; then
+    warn "UPGRADE_ALLOW_VERSION_SKIP=true - version checks bypassed."
+  elif [ "$target_num" -lt "$running_num" ]; then
+    fail "refusing to move from ${running_version} DOWN to ${target_version}. Migrations are forward-only, so this is not a rollback; to go back, restore a backup with scripts/restore.sh. Set UPGRADE_ALLOW_VERSION_SKIP=true only if you know the schema is unchanged between the two."
+  elif [ "$tgt_major" -gt "$(( run_major + 1 ))" ]; then
+    fail "refusing to skip a major version (${running_version} -> ${target_version}). Upgrade one major at a time so each major's release notes and migration prelude run. Set UPGRADE_ALLOW_VERSION_SKIP=true to override."
+  elif [ "$target_num" -eq "$running_num" ]; then
+    note "already at ${target_version} - continuing (image digests may still differ)."
+  fi
+  ok "version check passed"
+fi
+
+# ---------------------------------------------------------------------------
 # 1. Pre-upgrade backup
 # ---------------------------------------------------------------------------
 # Mandatory while there is a live database to dump — and skipped when there is

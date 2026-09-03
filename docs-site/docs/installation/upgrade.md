@@ -92,7 +92,14 @@ If `manifest.json` is missing or the head does not match, the script prints a wa
 
 ## Skipping versions
 
-A single `upgrade.sh` run can hop multiple versions provided each intermediate has a forward-only migration path. The migration chain is exercised end-to-end in CI, so 2.0.0 → 2.0.5 in one step is supported.
+A single `upgrade.sh` run can hop multiple versions provided each intermediate has a forward-only migration path, so 2.0.0 → 2.0.5 in one step is supported. CI exercises the chain both on an empty database and, from the latest published release to the development head, on one populated through the API, so a data migration that only misbehaves when there are rows to migrate is caught before release.
+
+The wrapper refuses two moves before it changes anything:
+
+- **A downgrade.** Migrations are forward-only, so pointing `IMAGE_TAG` at an older release does not roll anything back; it starts older code against a newer schema. To go back, [restore a backup](#rollback).
+- **A skipped major**, for example 1.x straight to 3.x. Each major's release notes carry the manual steps for that hop, and the wrapper's own migration preludes are keyed to single-major moves.
+
+Both checks compare the running backend container's image tag against the `IMAGE_TAG` you are moving to. If either version cannot be read as `X.Y.Z` (a custom tag, or a stack that is currently down), the check reports what it saw and continues rather than blocking the upgrade. Set `UPGRADE_ALLOW_VERSION_SKIP=true` to override a refusal deliberately.
 
 For major-version hops, follow the release-notes "Migration steps" section before invoking the wrapper.
 
