@@ -247,6 +247,7 @@ action writes a job-summary row and a warning annotation for `no_data` and
 `partial`. `GATE_EPSS_ON_MISSING_DATA` on the portal decides what the verdict
 should be:
 
+<!-- docs-uat: id=gha-epss-on-missing-data kind=shell ctx=host tier=manual waiver=env-config-snippet-not-a-command -->
 ```bash
 # Default. An undecided EPSS axis lets the build through, which is what
 # every deployment did before this option existed.
