@@ -78,6 +78,26 @@ and the project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.
 
 ### Fixed
 
+- **Changing a password now ends the sessions that were already open.** A
+  reset revoked the user's refresh tokens, which stopped renewal, and left the
+  access token an attacker was already holding to run out its own thirty
+  minutes. Access tokens minted before the change are now refused, using a
+  `users.password_changed_at` stamp compared against the token's issue time,
+  so there is no revocation list to keep and no extra query to make. Existing
+  rows are left unstamped rather than backfilled, because backfilling would
+  have logged out every user of a running deployment at upgrade.
+
+  Revoking "every active refresh token" also only covered the rows that
+  existed when the sweep ran. A login, a token renewal or an OAuth callback
+  that read its inputs just before the reset and inserted its row just after
+  left a live session the reset had never seen, and its holder could renew
+  from there into an access token new enough to pass the check above. All
+  three now take the same per-user lock before writing, and on the far side of
+  it a path whose credential has since been replaced is refused instead of
+  opening a session. `/auth/refresh` also gained a rate limit
+  (`REFRESH_RATE_LIMIT`, 30/minute by default), because minting tokens on
+  demand was how the boundary was reached.
+
 - **A session scope that writes and never commits now says so.** Two sweep
   tasks fixed rows in memory, counted the fixes into their summaries, and
   returned success while the database kept its old values, because

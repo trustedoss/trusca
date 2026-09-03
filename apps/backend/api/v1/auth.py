@@ -56,6 +56,7 @@ from services.auth_service import (
     InvalidRefreshToken,
     RefreshReuseDetected,
     RegistrationClosed,
+    StaleCredential,
     authenticate,
     issue_token_pair,
     register_user,
@@ -184,7 +185,15 @@ async def login(
     ctx["user_id"] = str(user.id)
     audit_context.set(ctx)
 
-    access_token, refresh_token, _ = await issue_token_pair(session, user=user)
+    try:
+        access_token, refresh_token, _ = await issue_token_pair(session, user=user)
+    except StaleCredential as exc:
+        # A password change committed between the bcrypt check above and the
+        # session being written. Refusing is the point: the reset's sweep has
+        # already run, so a session opened here would be one it could not have
+        # revoked. 401 sends the caller back to the form, where the new
+        # password works.
+        return _problem_for_auth_error(request, exc)
 
     body = TokenResponse(
         access_token=access_token,
