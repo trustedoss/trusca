@@ -99,7 +99,7 @@ jobs:
     timeout-minutes: 5
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262  # v4.4.0
         with:
           # The tag OBJECT is what carries the signature, and a shallow
           # checkout of the commit does not bring it.
@@ -152,16 +152,16 @@ jobs:
             runner: ubuntu-24.04-arm
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262  # v4.4.0
 
       - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
+        uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f  # v3.12.0
 
       - name: Assert buildx is new enough to carry attestations
         run: scripts/assert-buildx-version.sh "$BUILDX_MIN_VERSION"
 
       - name: Log in to GitHub Container Registry
-        uses: docker/login-action@v3
+        uses: docker/login-action@c94ce9fb468520275223c153574b00df6fe4bcc9  # v3.7.0
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
@@ -171,7 +171,7 @@ jobs:
 
       - name: Derive OCI labels
         id: meta
-        uses: docker/metadata-action@v5
+        uses: docker/metadata-action@c299e40c65443455700f0fdfc63efafe5b349051  # v5.10.0
         with:
           images: ${{ env.REGISTRY_NAMESPACE }}/${{ matrix.image.image }}
           # The merge job's semver pattern, repeated here for `outputs.version`
@@ -209,7 +209,7 @@ jobs:
 
       - name: Build & push by digest (${{ matrix.platform.platform }})
         id: build
-        uses: docker/build-push-action@v6
+        uses: docker/build-push-action@10e90e3645eae34f1e60eeb005ba3a3d33f178e8  # v6.19.2
         with:
           context: ${{ matrix.image.context }}
           file: ${{ matrix.image.dockerfile }}
@@ -266,7 +266,7 @@ jobs:
           touch "${RUNNER_TEMP}/digests/${digest#sha256:}"
 
       - name: Upload digest
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02  # v4.6.2
         with:
           # Image name LAST so the merge job's suffix-anchored download pattern
           # (`digest-*-<image>`) cannot prefix-match a longer image name — e.g.
@@ -304,10 +304,10 @@ jobs:
       # manifest list built from artifacts). The verify step below runs a
       # script from the tree, so the checkout is now load-bearing.
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262  # v4.4.0
 
       - name: Download digests
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093  # v4.3.0
         with:
           # Suffix-anchored on the image name so `trusca-backend` matches only
           # digest-amd64-trusca-backend / digest-arm64-trusca-backend — NOT
@@ -317,13 +317,13 @@ jobs:
           path: ${{ runner.temp }}/digests
 
       - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
+        uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f  # v3.12.0
 
       - name: Assert buildx is new enough to carry attestations
         run: scripts/assert-buildx-version.sh "$BUILDX_MIN_VERSION"
 
       - name: Log in to GitHub Container Registry
-        uses: docker/login-action@v3
+        uses: docker/login-action@c94ce9fb468520275223c153574b00df6fe4bcc9  # v3.7.0
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
@@ -331,7 +331,7 @@ jobs:
 
       - name: Derive image tags & OCI labels
         id: meta
-        uses: docker/metadata-action@v5
+        uses: docker/metadata-action@c299e40c65443455700f0fdfc63efafe5b349051  # v5.10.0
         with:
           images: ${{ env.REGISTRY_NAMESPACE }}/${{ matrix.image.image }}
           # On a tag push the ref drives the semver; on workflow_dispatch we
@@ -394,7 +394,7 @@ jobs:
       # references each platform manifest by digest, so verifying the index
       # covers what is pulled for either architecture.
       - name: Attest build provenance for the merged image
-        uses: actions/attest-build-provenance@v4
+        uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8  # v4.2.2
         with:
           subject-name: ${{ env.REGISTRY_NAMESPACE }}/${{ matrix.image.image }}
           subject-digest: ${{ steps.verify.outputs.digest }}
@@ -426,7 +426,7 @@ jobs:
       version: ${{ steps.resolve.outputs.version }}
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262  # v4.4.0
 
       - name: Resolve tag & version
         id: resolve
@@ -530,7 +530,7 @@ jobs:
       # minor versions, so "the spec as of this exact tag, on this exact
       # Python" is the only version worth shipping a client for.
       - name: Setup Python (for the OpenAPI dump + SDK packaging)
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065  # v5.6.0
         with:
           python-version: "3.12"
           cache: pip
@@ -549,7 +549,7 @@ jobs:
           REDIS_URL: redis://localhost:6379/0
         run: python scripts/dump_openapi.py
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020  # v4.4.0
         with:
           node-version: 20.x
           cache: npm
@@ -649,7 +649,7 @@ jobs:
       TRIVY_DB_BOOTSTRAP_ON_START: "false"
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262  # v4.4.0
 
       # Project standard (CLAUDE.md rule #10): docker-compose V1. Ubuntu 22.04
       # runners ship V2 only — install the pinned V1 release so the gate
@@ -662,7 +662,7 @@ jobs:
           docker-compose --version
 
       - name: Log in to GitHub Container Registry
-        uses: docker/login-action@v3
+        uses: docker/login-action@c94ce9fb468520275223c153574b00df6fe4bcc9  # v3.7.0
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
