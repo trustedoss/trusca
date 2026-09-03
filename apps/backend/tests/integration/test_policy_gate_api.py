@@ -783,3 +783,131 @@ async def test_gate_result_reports_no_outcome_for_a_scan_predating_the_capture(
 
     assert response.status_code == 200, response.text
     assert response.json()["component_outcome"] is None
+
+
+# ---------------------------------------------------------------------------
+# GET /v1/projects/{project_id}/gate-result/sarif  (ER29)
+# ---------------------------------------------------------------------------
+
+SARIF_JSON = "application/sarif+json"
+
+
+async def test_gate_sarif_unauthenticated_returns_401_problem(client) -> None:
+    project_id = uuid.uuid4()
+    response = await client.get(f"/v1/projects/{project_id}/gate-result/sarif")
+    assert response.status_code == 401
+    assert response.headers["content-type"].startswith(PROBLEM_JSON)
+
+
+async def test_gate_sarif_without_a_scan_is_valid_and_empty(client) -> None:
+    """A project with no scan must still upload cleanly.
+
+    An empty run is how code scanning learns that previously-reported alerts
+    are gone. A 404 here would either fail the CI step or leave stale alerts
+    standing on the branch forever.
+    """
+    _, team, user = await _seed_team_and_user(client)
+    project_id = await _seed_project(client, team_id=team.id)
+
+    response = await client.get(
+        f"/v1/projects/{project_id}/gate-result/sarif",
+        headers=_bearer_for(user),
+    )
+    assert response.status_code == 200, response.text
+    assert response.headers["content-type"].startswith(SARIF_JSON)
+    body = response.json()
+    assert body["version"] == "2.1.0"
+    assert body["runs"][0]["results"] == []
+    assert body["runs"][0]["tool"]["driver"]["name"] == "TRUSCA"
+
+
+async def test_gate_sarif_reports_an_open_finding(client) -> None:
+    _, team, user = await _seed_team_and_user(client)
+    project_id = await _seed_project(client, team_id=team.id)
+    await _seed_succeeded_scan(client, project_id=project_id, critical=True)
+
+    response = await client.get(
+        f"/v1/projects/{project_id}/gate-result/sarif",
+        headers=_bearer_for(user),
+    )
+    assert response.status_code == 200, response.text
+    run = response.json()["runs"][0]
+
+    assert len(run["results"]) == 1
+    result = run["results"][0]
+    rules = run["tool"]["driver"]["rules"]
+
+    # A critical CVE must arrive as `error`: SARIF has no "critical", and
+    # anything softer buries it among mediums in the code-scanning list.
+    assert result["level"] == "error"
+    assert result["ruleId"].startswith("CVE-")
+    # ruleIndex must actually address the rule, or GitHub renders the wrong one.
+    assert rules[result["ruleIndex"]]["id"] == result["ruleId"]
+    assert rules[result["ruleIndex"]]["properties"]["security-severity"] == "9.5"
+
+    # Every result needs a location or the upload is rejected.
+    location = result["locations"][0]["physicalLocation"]
+    assert location["artifactLocation"]["uri"]
+    assert location["region"]["startLine"] == 1
+    assert result["partialFingerprints"]["truscaFindingId"]
+
+
+async def test_gate_sarif_omits_a_suppressed_finding(client) -> None:
+    """The one place SARIF and the gate deliberately disagree.
+
+    The gate counts a suppressed finding, because a local decision to look away
+    does not answer "may this build proceed". Code scanning must not re-raise
+    it, because a scanner that re-raises triaged findings teaches reviewers to
+    ignore it.
+    """
+    from sqlalchemy import select, update
+
+    from models import VulnerabilityFinding
+
+    _, team, user = await _seed_team_and_user(client)
+    project_id = await _seed_project(client, team_id=team.id)
+    scan_id = await _seed_succeeded_scan(client, project_id=project_id, critical=True)
+
+    factory = await _factory(client)
+    async with factory() as session:
+        await session.execute(
+            update(VulnerabilityFinding)
+            .where(VulnerabilityFinding.scan_id == scan_id)
+            .values(status="suppressed")
+        )
+        await session.commit()
+        remaining = (
+            await session.execute(
+                select(VulnerabilityFinding).where(VulnerabilityFinding.scan_id == scan_id)
+            )
+        ).scalars().all()
+        assert len(remaining) == 1, "fixture should still have the finding, just suppressed"
+
+    response = await client.get(
+        f"/v1/projects/{project_id}/gate-result/sarif",
+        headers=_bearer_for(user),
+    )
+    assert response.status_code == 200, response.text
+    assert response.json()["runs"][0]["results"] == []
+
+    # ... while the gate still counts it. Asserted here rather than in a
+    # separate test so the divergence is visible in one place.
+    gate = await client.get(
+        f"/v1/projects/{project_id}/gate-result",
+        headers=_bearer_for(user),
+    )
+    assert gate.json()["critical_cve_count"] == 1
+
+
+async def test_gate_sarif_hides_another_teams_project(client) -> None:
+    """Same existence-hiding as the verdict: this is the same data."""
+    _, team, _owner = await _seed_team_and_user(client)
+    project_id = await _seed_project(client, team_id=team.id)
+    _, _other_team, outsider = await _seed_team_and_user(client)
+
+    response = await client.get(
+        f"/v1/projects/{project_id}/gate-result/sarif",
+        headers=_bearer_for(outsider),
+    )
+    assert response.status_code == 404
+    assert response.headers["content-type"].startswith(PROBLEM_JSON)

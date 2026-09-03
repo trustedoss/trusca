@@ -645,6 +645,11 @@
     },
     {
       "method": "GET",
+      "path": "/v1/projects/{project_id}/gate-result/sarif",
+      "gate": "authed"
+    },
+    {
+      "method": "GET",
       "path": "/v1/projects/{project_id}/governance",
       "gate": "role>=viewer"
     },
