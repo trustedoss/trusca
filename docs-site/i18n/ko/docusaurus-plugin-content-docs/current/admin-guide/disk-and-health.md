@@ -196,10 +196,26 @@ docker-compose -f docker-compose.yml exec backend \
 | `trusca_users_active` | | 로그인할 수 있는 계정 수 |
 | `trusca_service_accounts_active` | | 아직 인증되는 자동화 주체 수 |
 | `trusca_workspace_disk_used_ratio` | | 작업 공간 볼륨 사용률, 0에서 1 |
+| `trusca_task_runs_24h` | `task`, `outcome` | 최근 하루 동안의 배경 작업 실행 수. `outcome=running`은 시작한 뒤 종료를 보고하지 않은 실행입니다 |
+| `trusca_task_run_duration_seconds_p50_24h` | `task` | 최근 하루 동안 끝난 실행의 소요 시간 중앙값 |
+| `trusca_task_run_duration_seconds_p95_24h` | `task` | 같은 값의 95 백분위수 |
+| `trusca_task_runs_last_recorded_timestamp_seconds` | | 가장 최근 작업 이력 행의 유닉스 시각. 테이블이 비어 있으면 `0` |
 
 프로젝트·패키지·저장소·사람 이름은 출력 어디에도 나오지 않습니다. 목록은
 저장소의 픽스처로 고정돼 있어, 누군가 공개해도 되는지 판단하지 않으면 계열을
 추가할 수 없습니다.
+
+작업 이력 계열 넷은 카운터가 아니라 하루 창을 기준으로 한 게이지입니다. 작업 이력은
+보존 주기에 따라 정리되므로 누적 카운트로 내면 정리가 돌 때 값이 줄고, 수집기는 줄어드는
+카운터를 프로세스 재시작으로 읽습니다. 창 길이를 이름에 넣은 이유는 창이 바뀌면 계열의
+뜻이 달라지기 때문입니다.
+
+`trusca_task_runs_last_recorded_timestamp_seconds`에는 별도 경보를 걸어 둘 만합니다.
+이 값은 작업이 아니라 기록 장치를 봅니다. 이력 기록은 작업을 실패시키지 않도록 설계돼
+있어서 데이터베이스 권한이 빠지거나 마이그레이션이 돌지 않아도 어디에도 오류가 나지
+않고, 다른 모든 것이 정상으로 보이는 채 이 값만 멈춥니다. 기본 임계는 제공하지 않습니다.
+이 저장소의 주기 작업은 5분에서 주 단위까지 걸쳐 있고 어느 것을 켜 두는지는 배포마다
+다르므로, 각 배포에서 가장 촘촘한 주기와 견주어 정하십시오.
 
 `METRICS_TOKEN`은 수집기가 제시해야 하는 토큰입니다. `/metrics`가 외부에
 노출되지 않고 모니터링 시스템이 내부 망에서 접근하는 일반적인 구성이라면

@@ -26,13 +26,17 @@
     {
       "name": "trusca_scans_total",
       "type": "gauge",
-      "labels": ["status"],
+      "labels": [
+        "status"
+      ],
       "help": "Scans by status. The queued and running counts are the ones an operator watches."
     },
     {
       "name": "trusca_vulnerability_findings_open",
       "type": "gauge",
-      "labels": ["severity"],
+      "labels": [
+        "severity"
+      ],
       "help": "Open vulnerability findings by severity, across every project."
     },
     {
@@ -60,9 +64,42 @@
       "help": "Workspace volume in use, 0 to 1. The scan guard refuses above its own threshold."
     },
     {
+      "name": "trusca_task_runs_24h",
+      "type": "gauge",
+      "labels": [
+        "task",
+        "outcome"
+      ],
+      "help": "Background task runs in the last 24h by task and outcome. outcome=running counts runs that started and never reported an end."
+    },
+    {
+      "name": "trusca_task_run_duration_seconds_p50_24h",
+      "type": "gauge",
+      "labels": [
+        "task"
+      ],
+      "help": "Task duration in seconds, p50 over runs that finished in the last 24h."
+    },
+    {
+      "name": "trusca_task_run_duration_seconds_p95_24h",
+      "type": "gauge",
+      "labels": [
+        "task"
+      ],
+      "help": "Task duration in seconds, p95 over runs that finished in the last 24h."
+    },
+    {
+      "name": "trusca_task_runs_last_recorded_timestamp_seconds",
+      "type": "gauge",
+      "labels": [],
+      "help": "Unix time of the newest task-run row; 0 when the table is empty. Watches the recorder itself, which fails silently by design."
+    },
+    {
       "name": "trusca_broker_queue_backlog",
       "type": "gauge",
-      "labels": ["queue"],
+      "labels": [
+        "queue"
+      ],
       "help": "Messages waiting in the Celery broker queue, not yet delivered to a worker.",
       "toggle": "QUEUE_BACKLOG_METRICS_ENABLED"
     },
