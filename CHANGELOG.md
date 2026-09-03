@@ -7,6 +7,41 @@ and the project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.
 
 ## [Unreleased]
 
+### Added
+
+- **EPSS scores are now actually collected, so the features built on them
+  work.** `vulnerabilities.epss_score` and `epss_percentile` have existed
+  since v2.4 and nothing ever wrote them: the scanner emits no EPSS on either
+  the SBOM or the image path, measured across 88 and 107 live findings with
+  zero EPSS keys, and every row the scanner had created was NULL. So the EPSS
+  column and the `min_epss` filter on the Vulnerabilities tab showed nothing,
+  the EPSS term in `sort=priority` never moved a ranking, the reports carried
+  a blank column, and `GATE_EPSS_THRESHOLD` passed every build no matter how
+  low it was set, which is worse than an absent gate because the pass looks
+  like a verdict. A daily beat now syncs the scores from FIRST's published CSV
+  onto the CVEs this deployment has actually seen.
+
+  Off by default (`EPSS_REFRESH_ENABLED`), following the EOL and
+  malicious-package feeds rather than KEV: installing the product should not
+  reach the public internet on its own, and an air-gapped deployment can point
+  `EPSS_FEED_URL` at an internal mirror. While it is off those surfaces stay
+  empty, which the data-sources reference now says plainly instead of implying
+  the scores are always there.
+
+  The bulk CSV is the only ingest path and the API is deliberately not used:
+  FIRST's own guidance is that their lookup API must not be used for bulk
+  downloads or to keep a local copy in sync. Attribution and terms are
+  recorded in `THIRD_PARTY_NOTICES.md`, in the data-sources page and in the
+  feed client. Nothing is redistributed: each installation downloads the file
+  itself.
+
+  A sync reads the whole feed but keeps only the CVEs already in the catalog,
+  so peak memory tracks the deployment rather than the 367,000-row document,
+  and it writes only the rows whose score actually moved. A document that
+  parses to implausibly few rows is refused before any write, so a truncated
+  publish upstream cannot blank good scores.
+
+
 ### Removed
 
 - **BREAKING (API): `vuln_data_available` is gone from

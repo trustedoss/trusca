@@ -2302,6 +2302,72 @@ def kev_refresh_timeout_seconds() -> int:
 
 
 # ---------------------------------------------------------------------------
+# EPSS (Exploit Prediction Scoring System) daily score sync.
+#
+# The vulnerability catalog has carried ``epss_score`` / ``epss_percentile``
+# columns since v2.4, and the Vulnerabilities tab, the ``sort=priority``
+# ranking and the optional ``GATE_EPSS_THRESHOLD`` build gate all read them,
+# but nothing ever wrote them: the scanner's own output does not carry EPSS on
+# either the SBOM or the image path (measured across 88 and 107 findings, zero
+# EPSS keys), so every one of those surfaces was empty. This sync is what fills
+# them.
+# ---------------------------------------------------------------------------
+
+
+def epss_feed_url() -> str:
+    """URL of the daily EPSS score CSV (gzipped).
+
+    Default is the published daily file; ``-current`` redirects to that day's
+    dated file. Override for an air-gapped mirror, the same way
+    ``KEV_FEED_URL`` and ``TRIVY_DB_REPOSITORY`` are overridden.
+
+    Deliberately NOT an ``api.first.org`` endpoint: FIRST's own guidance is
+    that the lookup API must not be used for bulk downloads or to keep a local
+    copy in sync, and the bulk CSV is the mechanism they name for that. See
+    ``integrations/epss_feed.py`` for the full reasoning and the attribution.
+
+    Operator-controlled env configuration only, with no user write path, so it
+    is not routed through ``core.url_guard`` (same trust model as
+    ``kev_feed_url``).
+    """
+    return os.getenv(
+        "EPSS_FEED_URL",
+        "https://epss.empiricalsecurity.com/epss_scores-current.csv.gz",
+    )
+
+
+def epss_refresh_enabled() -> bool:
+    """Whether the daily EPSS sync beat actually fetches the feed.
+
+    Default ``false``, following the ``EOL_REFRESH_ENABLED`` /
+    ``MALICIOUS_REFRESH_ENABLED`` convention rather than KEV's default-on: a
+    deployment should not reach the public internet because it was installed,
+    and an air-gapped install is the case this product is built for. Turning
+    it on is one env var; leaving it off leaves ``epss_score`` NULL and every
+    EPSS surface empty, which the documentation says plainly.
+
+    Truthy: ``1`` / ``true`` / ``yes`` / ``on`` (case-insensitive).
+    Anything else → ``false``.
+    """
+    raw = os.getenv("EPSS_REFRESH_ENABLED", "false").strip().lower()
+    return raw in {"1", "true", "yes", "on"}
+
+
+def epss_refresh_timeout_seconds() -> int:
+    """HTTP timeout (seconds) for the EPSS CSV download. Default 60s.
+
+    The file is ~2.6 MiB gzipped; 60 seconds absorbs a slow corporate proxy
+    with room to spare. Bounded ``[1, 600]``. Read at call time (rule #11).
+    """
+    return _int_env(
+        "EPSS_REFRESH_TIMEOUT_SECONDS",
+        default=60,
+        minimum=1,
+        maximum=600,
+    )
+
+
+# ---------------------------------------------------------------------------
 # Phase M — end-of-life (EOL) component flagging (endoflife.date).
 #
 # The default path is FULLY offline: verdicts come from a snapshot vendored

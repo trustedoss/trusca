@@ -24,7 +24,35 @@ TRUSCA는 5개 공개 취약점 피드를 컴파일한 번들인 **Trivy DB**로
 | **EPSS** — Exploit Prediction Scoring System | FIRST | 일간 | 30일 익스플로잇 확률 `0.0–1.0` + 백분위. 선택적 EPSS 게이트 구동. |
 | **KEV** — Known Exploited Vulnerabilities | CISA | 발표 시 | 해당 CVE의 실환경 익스플로잇 확인 여부 boolean. 최우선 트리아지 신호. |
 
-다섯 출처 모두 동일한 Trivy DB 번들에 함께 들어 있습니다 — 포털은 스캔 시점에 이 API들을 **호출하지 않습니다**. 스캔별 매칭은 워커의 `/var/lib/trivy/db/`에서 읽으며, [Trivy DB refresh 태스크](../admin-guide/vulnerability-data.md)가 이를 최신으로 유지합니다.
+다섯 중 셋(NVD, OSV, GHSA)이 같은 Trivy DB 번들에 들어 있습니다. 포털은 스캔
+시점에 어떤 API도 **호출하지 않습니다**. 스캔별 매칭은 워커의
+`/var/lib/trivy/db/`에서 읽으며, [Trivy DB refresh 태스크](../admin-guide/vulnerability-data.md)가
+이를 최신으로 유지합니다.
+
+EPSS와 KEV는 스캐너에서 오지 않습니다. 스캐너 출력에 둘 다 없기 때문에 각각 별도의
+일간 동기화가 취약점 카탈로그에 값을 씁니다. KEV는 CISA 피드에서, EPSS는 FIRST의
+일간 CSV에서 받습니다.
+
+두 동기화 모두 네트워크를 쓰므로 끌 수 있고, `EPSS_REFRESH_ENABLED`는 **기본값이
+꺼짐**입니다. 꺼져 있는 동안 `epss_score`와 `epss_percentile`은 비어 있고, 이를 읽는
+표면도 함께 빕니다. Vulnerabilities 탭의 EPSS 열과 `min_epss` 필터, `sort=priority`의
+EPSS 항목, Excel·PDF 보고서의 EPSS 열, 그리고 선택적 `GATE_EPSS_THRESHOLD` 빌드
+게이트입니다. 특히 게이트는 임계를 아무리 낮춰도 모든 빌드를 통과시킵니다. 이 기능들에
+기대기 전에 동기화를 켜거나 `EPSS_FEED_URL`을 사내 미러로 지정하세요.
+
+EPSS는 [FIRST의 EPSS Special Interest Group](https://www.first.org/epss)이 관리하며
+점수 생성과 발행은 Empirical Security가 맡습니다. FIRST는 가능한 곳에 귀속 표기를
+요청하며, 제시하는 인용은 다음과 같습니다.
+
+```
+Jay Jacobs, Sasha Romanosky, Benjamin Edwards, Michael Roytman,
+Idris Adjerid (2021), Exploit Prediction Scoring System,
+Digital Threats Research and Practice, 2(3)
+```
+
+전체 조건은 `THIRD_PARTY_NOTICES.md`에 있습니다. 수집 경로를 벌크 CSV 하나로 둔 것은
+의도적입니다. FIRST는 자사 조회 API를 벌크 내려받기나 로컬 사본 동기화에 쓰지 말라고
+안내합니다.
 
 컴포넌트 수준 출처 하나는 Trivy DB 밖에 있습니다:
 
