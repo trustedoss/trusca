@@ -194,6 +194,7 @@
   "GET /v1/gate-policies/effective/{project_id}": [
     "project_id"
   ],
+  "GET /v1/gate-policies/epss-availability": [],
   "GET /v1/gate-policies/teams/{team_id}": [
     "team_id"
   ],
