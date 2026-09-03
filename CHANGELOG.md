@@ -59,6 +59,27 @@ and the project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.
   components. The "no projects yet" state also moves to the server count, so a
   failed project-list request no longer renders as an empty portfolio.
 
+- **Two workers scanning at once could drop a scan's vulnerability findings
+  without failing the scan.** Both workers miss the same CVE in the
+  vulnerability catalog and both insert it; the loser's flush hits the unique
+  constraint on `vulnerabilities.external_id`. Recovering from that rolled the
+  whole session transaction back, which discarded every finding already staged
+  in it. Nothing raised, so the scan still reported success while the count it
+  logged disagreed with the rows a user could see, and the create audit rows
+  for the discarded findings stayed behind, naming detections that no finding
+  row backed. The catalog insert now runs in a SAVEPOINT, so only the losing
+  insert is undone; the audit writer now asks the session whether a row backs
+  a finding before recording it, because a rolled-back INSERT leaves the
+  object transient with its assigned key still readable; and the per-scan
+  summary log carries `catalog_races` and `audits_emitted` counts. On the rematch
+  path, where the same transaction had already deleted the scan's prior
+  findings, the session-wide rollback also restored them and the re-insert then
+  failed the finding uniqueness constraint, taking the whole rematch down
+  (#290). The container persister carried the same unguarded insert and
+  failed the whole scan on it; it now goes through the same shared upsert,
+  which also gets it the reference sanitisation and the stale-row refresh
+  the source path already had.
+
 ## [0.22.4] - 2026-09-02
 
 ### Fixed
