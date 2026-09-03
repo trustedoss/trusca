@@ -29,6 +29,12 @@ export interface GovernanceGate {
    * omits it.
    */
   epss_outcome?: "not_configured" | "evaluated" | "partial" | "no_data";
+  kev_gate_count?: number;
+  kev_gate_enabled?: boolean;
+  kev_outcome?: "not_configured" | "evaluated" | "partial" | "no_data";
+  eol_gate_count?: number;
+  eol_gate_enabled?: boolean;
+  eol_outcome?: "not_configured" | "evaluated" | "partial" | "no_data";
   malicious_component_count: number;
   scan_id: string | null;
 }

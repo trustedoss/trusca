@@ -108,6 +108,31 @@ outputs:
       build system TRUSCA cannot read, the second points at a scan failure.
       Empty on a portal too old to report it.
     value: ${{ steps.gate.outputs.component_outcome }}
+  kev-gate-count:
+    description: >-
+      Open findings whose CVE is in the CISA Known Exploited Vulnerabilities
+      catalog. `0` when the KEV axis is disabled (the default). Read
+      `kev-outcome` before treating a `0` as an all-clear.
+    value: ${{ steps.gate.outputs.kev_gate_count }}
+  kev-outcome:
+    description: >-
+      What the KEV axis was able to judge: `not_configured`, `evaluated`,
+      `partial` (findings discovered since the last catalog sync carry a
+      default flag rather than an answer), or `no_data` (the catalog has never
+      synced, so the axis decided nothing).
+    value: ${{ steps.gate.outputs.kev_outcome }}
+  eol-gate-count:
+    description: >-
+      Components on the evaluated scan past end of life. `0` when the
+      end-of-life axis is disabled (the default).
+    value: ${{ steps.gate.outputs.eol_gate_count }}
+  eol-outcome:
+    description: >-
+      What the end-of-life axis was able to judge: `not_configured`,
+      `evaluated`, `partial` (the lifecycle catalog covers a curated set of
+      products, so uncovered dependencies are the ordinary case), or `no_data`
+      (nothing on this scan has been checked at all).
+    value: ${{ steps.gate.outputs.eol_outcome }}
   epss-outcome:
     description: >-
       What the EPSS axis of the gate was able to judge: `not_configured` (no
@@ -409,6 +434,10 @@ runs:
         malicious_assessed=$(echo "$json_body" | jq -r '.malicious_scan_assessed // false')
         epss=$(echo "$json_body" | jq -r '.epss_gate_count // 0')
         outcome=$(echo "$json_body" | jq -r '.component_outcome // ""')
+        kev=$(echo "$json_body" | jq -r '.kev_gate_count // 0')
+        kev_outcome=$(echo "$json_body" | jq -r '.kev_outcome // "not_configured"')
+        eol=$(echo "$json_body" | jq -r '.eol_gate_count // 0')
+        eol_outcome=$(echo "$json_body" | jq -r '.eol_outcome // "not_configured"')
         epss_outcome=$(echo "$json_body" | jq -r '.epss_outcome // ""')
         epss_threshold=$(echo "$json_body" | jq -r '.epss_threshold // ""')
 
@@ -470,6 +499,10 @@ runs:
           echo "malicious_component_count=${malicious}"
           echo "epss_gate_count=${epss}"
           echo "component_outcome=${outcome}"
+          echo "kev_gate_count=${kev}"
+          echo "kev_outcome=${kev_outcome}"
+          echo "eol_gate_count=${eol}"
+          echo "eol_outcome=${eol_outcome}"
           echo "epss_outcome=${epss_outcome}"
           echo "sarif_file=${sarif_file}"
         } >> "$GITHUB_OUTPUT"
@@ -508,6 +541,31 @@ runs:
               echo "| EPSS (>= ${epss_threshold}) | ${epss} over the threshold, but some open findings carry no EPSS score, so this count is not a complete answer. |"
               ;;
           esac
+          # Only shown when the axis actually ran. A "Known-exploited | 0" row
+          # on a deployment that never enabled KEV would read as an all-clear
+          # for something nobody checked.
+          if [ "${kev_outcome}" != "not_configured" ] && [ "${kev}" != "0" ]; then
+            echo "| Known-exploited (CISA KEV) | ${kev} listed as being exploited in the wild; patch ahead of severity order |"
+          fi
+          case "${kev_outcome}" in
+            no_data)
+              echo "| Known-exploited (CISA KEV) | **not evaluated**. The KEV catalog has never synced on this portal, so every flag is a default rather than an answer. Enable KEV_REFRESH_ENABLED, or point KEV_FEED_URL at a mirror. |"
+              ;;
+            partial)
+              echo "| Known-exploited (CISA KEV) | ${kev} listed, but some findings were discovered since the last catalog sync, so this count is not a complete answer. |"
+              ;;
+          esac
+          if [ "${eol_outcome}" != "not_configured" ] && [ "${eol}" != "0" ]; then
+            echo "| End of life | ${eol} component(s) past end of life, so no further security patches |"
+          fi
+          case "${eol_outcome}" in
+            no_data)
+              echo "| End of life | **not evaluated**. No component on this scan has been checked against the lifecycle catalog, so this axis judged nothing. |"
+              ;;
+            partial)
+              echo "| End of life | ${eol} past end of life, but some components are not covered by the lifecycle catalog, so this count is not a complete answer. |"
+              ;;
+          esac
           case "${outcome}" in
             empty_no_manifests)
               echo "| Components | **none found**. No dependency manifest in this tree, so nothing was scanned. Verify TRUSCA supports this build system before treating the verdict as a pass. |"
@@ -532,6 +590,27 @@ runs:
             ;;
           partial)
             echo "::warning title=TRUSCA evaluated the EPSS gate on partial data::Some open findings on this scan carry no EPSS score, so 'epss-gate-count=${epss}' counts only the findings that had one."
+            ;;
+        esac
+
+        case "${kev_outcome}" in
+          no_data)
+            # Warning, not a failure: whether an undecided axis blocks is the
+            # portal's GATE_KEV_ON_MISSING_DATA policy, already applied by the
+            # time this verdict arrives.
+            echo "::warning title=TRUSCA could not evaluate the KEV gate::The KEV axis is enabled but the catalog has never synced on this portal, so 'kev-gate-count=0' means the axis judged nothing rather than that nothing is being exploited."
+            ;;
+          partial)
+            echo "::warning title=TRUSCA evaluated the KEV gate on partial data::Some findings on this scan were discovered since the last KEV catalog sync, so 'kev-gate-count=${kev}' counts only the findings the sync has reconciled."
+            ;;
+        esac
+
+        case "${eol_outcome}" in
+          no_data)
+            echo "::warning title=TRUSCA could not evaluate the end-of-life gate::The end-of-life axis is enabled but no component on this scan has been checked against the lifecycle catalog, so 'eol-gate-count=0' means the axis judged nothing."
+            ;;
+          partial)
+            echo "::warning title=TRUSCA evaluated the end-of-life gate on partial data::Some components on this scan are not covered by the lifecycle catalog, so 'eol-gate-count=${eol}' counts only the components that have an answer."
             ;;
         esac
 

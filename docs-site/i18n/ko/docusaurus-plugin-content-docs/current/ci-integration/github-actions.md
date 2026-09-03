@@ -126,6 +126,10 @@ jobs:
 | `malicious-component-count` | 악성 패키지 스냅샷이 지목한 컴포넌트 수. 심각도와 무관하게 빌드를 막습니다. 패키지를 제거하고 이 빌드가 닿을 수 있던 자격 증명을 교체하세요. |
 | `epss-outcome` | 게이트의 EPSS 축이 무엇을 판정할 수 있었는지입니다. `not_configured`는 임계가 설정되지 않아 축이 꺼져 있었다는 뜻이고, `evaluated`는 미해결 결과에 모두 EPSS 점수가 있어 `epss-gate-count`가 완전한 답이라는 뜻입니다. `partial`은 점수가 없는 미해결 결과가 섞여 있어 `0`이 곧 임계를 넘는 것이 없었다는 증거가 되지 못한다는 뜻이고, `no_data`는 점수를 가진 결과가 하나도 없어 축이 아무것도 판정하지 못했다는 뜻입니다. 이 값을 보고하지 못하는 구버전 포털에서는 비어 있습니다. |
 | `sarif-file` | 기록한 SARIF 문서의 경로입니다. `sarif-file` 입력을 주지 않았으면 비어 있습니다. |
+| `kev-gate-count` | CVE가 CISA Known Exploited Vulnerabilities 목록에 있는 미해결 결과 수입니다. KEV 축이 꺼져 있으면(기본) `0`입니다. `0`을 이상 없음으로 읽기 전에 `kev-outcome`을 보세요. |
+| `kev-outcome` | KEV 축이 무엇을 판단할 수 있었는지입니다. `not_configured`는 꺼 둔 상태, `evaluated`는 모든 미해결 결과가 목록 동기화를 거친 상태, `partial`은 마지막 동기화 이후에 발견된 결과가 있어 그 플래그가 답이 아니라 기본값인 상태, `no_data`는 이 배포에서 목록이 한 번도 동기화되지 않아 축이 아무것도 판단하지 못한 상태입니다. |
+| `eol-gate-count` | 평가한 스캔에서 지원 종료된 릴리스 라인을 쓰는 컴포넌트 수입니다. 지원 종료 축이 꺼져 있으면(기본) `0`입니다. |
+| `eol-outcome` | 지원 종료 축이 무엇을 판단할 수 있었는지이며 값 네 개는 같습니다. 여기서는 `partial`이 통상적인 상태입니다. 수명 카탈로그가 런타임과 프레임워크를 추린 목록이라 대부분의 애플리케이션 의존성에는 항목이 없습니다. |
 | `component-outcome` | 스캔의 SBOM에 무엇이 담겼는지입니다. `components_found`가 통상적인 경우입니다. `empty_no_manifests`와 `empty_with_manifests`는 둘 다 컴포넌트가 하나도 나오지 않았다는 뜻이라, 게이트 통과는 깨끗하다는 판정이 아니라 판단할 대상이 없었다는 뜻입니다. 앞은 TRUSCA가 읽지 못하는 빌드 시스템에서 정상적으로 나오는 값이고, 뒤는 스캔이 실패했다는 신호입니다. 이 값을 보고하지 못하는 구버전 포털에서는 비어 있습니다. |
 
 후속 스텝에서 사용:
@@ -218,6 +222,44 @@ PR 코멘트는 그대로 게시되며 체크는 green으로 유지됩니다.
     api-key: ${{ secrets.TRUSTEDOSS_API_KEY }}
     project-id: ${{ vars.TRUSTEDOSS_PROJECT_ID }}
     fail-on-gate: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' && 'true' || 'false' }}
+```
+
+### 악용 중인 CVE와 지원 종료 컴포넌트로 게이팅 (선택)
+
+심각도는 결함이 얼마나 나쁠 수 있는지를 말합니다. 심각도가 말하지 못하는 신호가
+둘 있고, 각각 포털에서 따로 켜는 축입니다(`.env` 수정 후 백엔드 재시작).
+
+| 변수 | 무엇을 막는지 |
+|---|---|
+| `GATE_KEV_ENABLED=true` | CVE가 [CISA KEV](https://www.cisa.gov/known-exploited-vulnerabilities-catalog) 목록에 있는 미해결 결과입니다. 점수가 얼마든 지금 실제로 악용되고 있다는 뜻입니다. |
+| `GATE_EOL_ENABLED=true` | 지원이 끝난 컴포넌트입니다. 앞으로 고쳐지지 않을 결함은 아직 발견되지 않은 것들이라, CVE 개수가 위험을 실제보다 작게 보이게 합니다. |
+
+둘 다 기본은 꺼져 있습니다. 켜면 실패하는 빌드가 달라지므로 운영자가 정할 일입니다.
+
+**축이 판단하지 못했을 때.** 각 축은 개수와 함께 `*-outcome`을 보고합니다. 개수 `0`이
+두 가지 전혀 다른 뜻을 갖기 때문입니다. 찾았는데 없었다는 뜻일 수도 있고, 아무것도
+확인하지 않았다는 뜻일 수도 있습니다. 목록을 한 번도 동기화하지 않은 포털에서 나온 KEV
+개수 `0`은 이상 없음이 아니고, 컴포넌트를 수명 카탈로그와 대조한 적이 없는 스캔의 지원
+종료 개수도 마찬가지입니다. 액션은 두 미판단 상태 모두에 경고 주석과 작업 요약 행을
+남기므로, 통과한 빌드가 깨끗해 보이는 대신 그 사실을 말합니다.
+
+판단하지 못한 축을 조용히 통과시키는 대신 빌드를 실패시키려면 포털에
+`GATE_KEV_ON_MISSING_DATA=block` 또는 `GATE_EOL_ON_MISSING_DATA=block`을 설정하세요.
+둘 다 `no_data`에만 적용되고 `partial`에는 적용되지 않습니다. 데이터가 일부만 있는 것은
+세 축 모두에서 정상이고, 정상 상태에서 발화하는 옵션은 일주일 안에 꺼지며 꺼진 안전
+장치는 아무것도 지키지 못합니다.
+
+```yaml
+- uses: trustedoss/scan-action@v1
+  id: sca
+  with:
+    api-url: https://trustedoss.example.com
+    api-key: ${{ secrets.TRUSTEDOSS_API_KEY }}
+    project-id: 8f1c...
+
+- name: 악용 중인 결과를 즉시 드러내기
+  if: steps.sca.outputs.kev-gate-count != '0'
+  run: echo "::error::이 빌드에 악용 중인 CVE ${{ steps.sca.outputs.kev-gate-count }}건이 있습니다"
 ```
 
 ### 코드 스캐닝에 결과 게시

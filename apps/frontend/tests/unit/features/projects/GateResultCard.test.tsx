@@ -291,4 +291,77 @@ describe("GateResultCard", () => {
       "no longer exists",
     );
   });
+
+  // ER29. The KEV and end-of-life axes each report a count and an outcome, and
+  // the whole reason the outcome exists is that a count of 0 means two
+  // different things. These pin that the card never shows the count alone when
+  // the axis could not judge.
+
+  it("does not mention KEV or end of life when the axes are off", async () => {
+    mockedGet.mockResolvedValueOnce(gate());
+    renderCard();
+    await waitFor(() => {
+      expect(screen.getByTestId("gate-card")).toBeInTheDocument();
+    });
+    expect(screen.queryByTestId("gate-metric-kev")).not.toBeInTheDocument();
+    expect(screen.queryByTestId("gate-metric-eol")).not.toBeInTheDocument();
+  });
+
+  it("shows the KEV count when the axis evaluated", async () => {
+    mockedGet.mockResolvedValueOnce(
+      gate({ kev_gate_enabled: true, kev_outcome: "evaluated", kev_gate_count: 2 }),
+    );
+    renderCard();
+    await waitFor(() => {
+      expect(screen.getByTestId("gate-metric-kev")).toBeInTheDocument();
+    });
+    expect(screen.getByTestId("gate-metric-kev").textContent).toContain("2");
+  });
+
+  it("replaces the KEV count with a caveat when the catalog never synced", async () => {
+    // A "Known-exploited · 0" row here would report an all-clear for something
+    // nobody checked, which is the defect this axis exists to close.
+    mockedGet.mockResolvedValueOnce(
+      gate({ kev_gate_enabled: true, kev_outcome: "no_data", kev_gate_count: 0 }),
+    );
+    renderCard();
+    await waitFor(() => {
+      expect(screen.getByTestId("gate-kev-no-data")).toBeInTheDocument();
+    });
+    expect(screen.queryByTestId("gate-metric-kev")).not.toBeInTheDocument();
+  });
+
+  it("qualifies a partial KEV count instead of hiding it", async () => {
+    mockedGet.mockResolvedValueOnce(
+      gate({ kev_gate_enabled: true, kev_outcome: "partial", kev_gate_count: 1 }),
+    );
+    renderCard();
+    await waitFor(() => {
+      expect(screen.getByTestId("gate-metric-kev")).toBeInTheDocument();
+    });
+    // The count is true as far as it goes, so it stays, with the caveat beside it.
+    expect(screen.getByTestId("gate-kev-partial")).toBeInTheDocument();
+  });
+
+  it("replaces the end-of-life count with a caveat when nothing was checked", async () => {
+    mockedGet.mockResolvedValueOnce(
+      gate({ eol_gate_enabled: true, eol_outcome: "no_data", eol_gate_count: 0 }),
+    );
+    renderCard();
+    await waitFor(() => {
+      expect(screen.getByTestId("gate-eol-no-data")).toBeInTheDocument();
+    });
+    expect(screen.queryByTestId("gate-metric-eol")).not.toBeInTheDocument();
+  });
+
+  it("qualifies a partial end-of-life count, the ordinary state", async () => {
+    mockedGet.mockResolvedValueOnce(
+      gate({ eol_gate_enabled: true, eol_outcome: "partial", eol_gate_count: 3 }),
+    );
+    renderCard();
+    await waitFor(() => {
+      expect(screen.getByTestId("gate-metric-eol")).toBeInTheDocument();
+    });
+    expect(screen.getByTestId("gate-eol-partial")).toBeInTheDocument();
+  });
 });

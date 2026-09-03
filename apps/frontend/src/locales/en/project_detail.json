@@ -219,6 +219,12 @@
       "epss_findings": "EPSS ≥ {{threshold}}",
       "epss_no_data": "EPSS ≥ {{threshold}} was not evaluated: no finding on this scan has an EPSS score.",
       "epss_partial": "Some findings on this scan have no EPSS score, so this count is not complete.",
+      "kev_findings": "Known-exploited (KEV)",
+      "kev_no_data": "Known-exploited was not evaluated: the KEV catalog has never synced on this portal.",
+      "kev_partial": "Some findings were discovered since the last KEV sync, so this count is not complete.",
+      "eol_findings": "Past end of life",
+      "eol_no_data": "End of life was not evaluated: no component on this scan has been checked against the lifecycle catalog.",
+      "eol_partial": "Some components are not covered by the lifecycle catalog, so this count is not complete.",
       "error_detail": "Please try again.",
       "error_title": "Could not load the build gate",
       "errors": {
