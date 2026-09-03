@@ -700,6 +700,16 @@ services:
     command: celery -A tasks.celery_app beat --loglevel=info --schedule=/tmp/celerybeat-schedule
     environment:
       <<: *backend-env
+    # RUN EXACTLY ONE. Celery beat holds no lock: every beat process fires the
+    # whole schedule on its own clock, so a second one double-enqueues every
+    # periodic task. `docker-compose up --scale beat=2`, or two hosts each
+    # running this file, silently doubles the catalog refreshes, the retention
+    # sweeps and the scan-schedule poll. There is no error to notice, only
+    # duplicate work. Scale the workers instead, which is what a backlog
+    # actually needs (ER11). An HA deployment that genuinely needs a standby
+    # scheduler needs a locking scheduler such as RedBeat; this file does not
+    # ship one.
+    #
     # NOTE: beat does NOT mount the trivy-cache volume. Beat is a
     # pure scheduler — it only enqueues ``trustedoss.trivy_db_refresh`` into
     # the broker. The actual ``trivy --download-db-only`` subprocess runs

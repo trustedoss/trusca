@@ -313,6 +313,21 @@ scales the same way (`--scale worker-default=N`) when its own queue
 backs up. That is rare, since its work is short, but a stalled downstream
 integration (a slow ticket webhook, a stuck backup) can hold it up.
 
+:::danger Never scale `beat`
+Scale the workers, never the scheduler. `beat` must run as exactly one
+process. Celery beat takes no lock, so every beat process fires the whole
+schedule on its own clock: a second one double-enqueues every periodic task,
+doubling the catalog refreshes, the retention sweeps and the scan-schedule
+poll. Nothing errors and nothing warns, so the only visible symptom is work
+happening twice.
+
+This applies to two mistakes that look different. `--scale beat=2` is the
+obvious one. The other is running this compose file on a second host against
+the same database and broker, which is two schedulers even though each host
+sees one. If you need a standby scheduler for availability, you need a
+locking scheduler such as RedBeat; this deployment does not ship one.
+:::
+
 **Knowing when you need to.** Turn on `QUEUE_BACKLOG_METRICS_ENABLED`
 (exposes `trusca_broker_queue_backlog` and `trusca_scan_queue_wait_seconds`
 on `/metrics`) and `QUEUE_BACKLOG_ALERT_ENABLED` (fires a Slack/Teams
