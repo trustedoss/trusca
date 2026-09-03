@@ -699,6 +699,7 @@
   "POST /v1/projects/{project_id}/vulnerabilities:bulk-transition": [
     "project_id"
   ],
+  "POST /v1/projects:batch": [],
   "POST /v1/saved-searches": [],
   "POST /v1/scans/{scan_id}/cancel": [
     "scan_id"
@@ -706,6 +707,7 @@
   "POST /v1/scans/{scan_id}/post-pr-comment": [
     "scan_id"
   ],
+  "POST /v1/scans:batch": [],
   "POST /v1/service-accounts": [],
   "POST /v1/transition-approvals": [],
   "POST /v1/transition-approvals/{approval_id}/decision": [

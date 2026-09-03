@@ -36,11 +36,13 @@ from core.errors import problem_response
 from core.pagination import PAGE_MAX
 from core.ratelimit import _authenticated_user_key, limiter
 from core.security import CurrentUser, require_role
+from schemas.batch import BatchResult, ScanBatchCreate
 from schemas.scan import ScanListResponse, ScanProvenance, ScanPublic
 from services.admin_scan_service import (
     AdminScanError,
     cancel_scan_for_actor,
 )
+from services.batch_service import trigger_scans_batch
 from services.scan_service import (
     ScanError,
     delete_scan,
@@ -93,6 +95,51 @@ def _problem_for_admin_scan_error(request: Request, exc: AdminScanError) -> Resp
 # ---------------------------------------------------------------------------
 # GET /v1/scans  (cross-project list — Step 4)
 # ---------------------------------------------------------------------------
+
+
+@router.post(
+    "/scans:batch",
+    response_model=BatchResult,
+    status_code=status.HTTP_201_CREATED,
+    responses={
+        207: {
+            "model": BatchResult,
+            "description": (
+                "Some rows did not start. The body is the same shape; read "
+                "`all_succeeded` and `failed_by_status`."
+            ),
+        }
+    },
+    summary="Start a scan on many projects (auth required, role >= developer)",
+)
+async def trigger_scans_batch_endpoint(
+    payload: ScanBatchCreate,
+    session: AsyncSession = Depends(get_db),
+    actor: CurrentUser = Depends(require_role("developer")),
+) -> Response:
+    """Start the first scan on a set of freshly registered projects.
+
+    The team's concurrent-scan cap is re-counted for each row against the
+    team's live active-scan total, so a batch starts scans up to the cap and
+    reports the rest as `rate_limited` with an estimated wait. It is not a way
+    around the cap: the cap protects the shared worker pool, and queueing past
+    it would move the load rather than shed it. Send the remainder again once
+    the earlier scans finish.
+
+    A project that already has a queued or running scan counts as success, for
+    the same reason an existing project does in the project batch: that is the
+    state the caller asked for.
+
+    Status is 201 when every row started and 207 when any did not.
+    """
+    result = await trigger_scans_batch(session, payload=payload, actor=actor)
+    return Response(
+        content=result.model_dump_json(),
+        media_type="application/json",
+        status_code=(
+            status.HTTP_201_CREATED if result.all_succeeded else status.HTTP_207_MULTI_STATUS
+        ),
+    )
 
 
 @router.get(
@@ -237,9 +284,7 @@ async def get_scan_provenance_endpoint(
         )
     except ValidationError:
         log.warning("scan_provenance_unreadable", scan_id=str(scan.id))
-        body = ScanProvenance.model_validate(
-            {"scan_id": scan.id, "kind": scan.kind}
-        )
+        body = ScanProvenance.model_validate({"scan_id": scan.id, "kind": scan.kind})
     return Response(
         content=body.model_dump_json(),
         status_code=status.HTTP_200_OK,
@@ -526,8 +571,8 @@ async def list_scans_endpoint(
             "Optional branch filter. Accepts a bare branch (``main``) or a "
             "fully-qualified ref (``refs/heads/main``, ``refs/pull/12/merge``), "
             "normalized the same way scan triggers normalize it. Unlike the "
-            "releases list this covers every status, so it answers \"what has "
-            "this branch done lately\" including failures."
+            'releases list this covers every status, so it answers "what has '
+            'this branch done lately" including failures.'
         ),
     ),
     session: AsyncSession = Depends(get_db),
