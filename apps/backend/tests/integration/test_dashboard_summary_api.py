@@ -146,9 +146,7 @@ async def _critical_finding(session, *, scan_id: uuid.UUID) -> None:
     await session.refresh(vuln)
 
     session.add(
-        VulnerabilityFinding(
-            scan_id=scan_id, component_version_id=cv.id, vulnerability_id=vuln.id
-        )
+        VulnerabilityFinding(scan_id=scan_id, component_version_id=cv.id, vulnerability_id=vuln.id)
     )
     await session.commit()
 
@@ -256,3 +254,126 @@ async def test_summary_is_rate_limited_like_the_other_three_dashboard_routes(
     assert body["type"]
     assert body["detail"]
     assert body["instance"]
+
+
+# ---------------------------------------------------------------------------
+# Truncation (ER9)
+# ---------------------------------------------------------------------------
+#
+# The dashboard used to compute its KPIs and both distribution charts in the
+# browser, from one page of `GET /v1/projects`, whose `size` caps at 100. Above
+# 100 projects the numbers were not merely incomplete, they were biased: that
+# list is ordered `updated_at DESC`, so what falls off the end is whatever
+# nobody has touched recently, which is exactly where risk accumulates. A seed
+# of 105 projects with every critical finding on the 5 oldest showed
+# `critical: 0` on screen against a real 5.
+#
+# These tests pin the direction of that bias, not just the totals: they put the
+# findings where the old truncation would have hidden them.
+
+
+async def _seed_many_projects(
+    client: AsyncClient,
+    *,
+    total: int,
+    critical_on_oldest: int,
+) -> tuple[User, int]:
+    """Seed one team with `total` projects, findings on the oldest N only.
+
+    Returns the actor and the number of projects carrying a critical finding.
+    `updated_at` is written explicitly rather than left to the insert clock, so
+    the "oldest" projects are unambiguously outside the first page of 100 no
+    matter how fast the inserts run.
+    """
+    from datetime import UTC, datetime, timedelta
+
+    factory = await _factory(client)
+    base = datetime.now(UTC) - timedelta(days=total + 1)
+
+    async with factory() as session:
+        org = await make_organization(session)
+        team = await make_team(session, organization=org)
+        user = await make_user(session)
+        await make_membership(session, user=user, team=team, role="team_admin")
+
+        for index in range(total):
+            project = await make_project(session, team=team)
+            # Oldest first: index 0 is the furthest in the past, so it sorts
+            # last under `updated_at DESC` and is the first to be truncated.
+            project.updated_at = base + timedelta(minutes=index)
+            session.add(project)
+            scan = await make_scan(session, project=project, status="succeeded")
+            if index < critical_on_oldest:
+                await _critical_finding(session, scan_id=scan.id)
+        await session.commit()
+
+    return user, critical_on_oldest
+
+
+async def test_summary_counts_every_project_past_the_list_page_ceiling(
+    client: AsyncClient,
+) -> None:
+    """`project_count` is the real total, not the 100-row page it used to be."""
+    user, _ = await _seed_many_projects(client, total=105, critical_on_oldest=5)
+
+    response = await client.get("/v1/dashboard/summary", headers=_bearer_for(user))
+
+    assert response.status_code == 200, response.text
+    body = response.json()
+    assert body["project_count"] == 105
+    assert body["scan_status_counts"]["succeeded"] == 105
+
+
+async def test_summary_sees_risk_in_the_projects_a_100_row_page_would_drop(
+    client: AsyncClient,
+) -> None:
+    """The findings sit on the oldest projects, which the old page never loaded.
+
+    This is the regression that matters. Counting off a truncated,
+    recency-ordered page reported `critical: 0` here while five projects were
+    actually critical, so the chart read cleanest exactly when it was most
+    wrong.
+    """
+    user, expected_critical = await _seed_many_projects(client, total=105, critical_on_oldest=5)
+
+    response = await client.get("/v1/dashboard/summary", headers=_bearer_for(user))
+
+    assert response.status_code == 200, response.text
+    body = response.json()
+
+    # Project-shaped: five projects are in critical shape.
+    assert body["project_severity_counts"]["critical"] == expected_critical
+    # Component-shaped: one critical component in each of them.
+    assert body["vulnerability_severity_counts"]["critical"] == expected_critical
+    # And the other 100 are clean rather than unaccounted for.
+    assert body["project_severity_counts"]["none"] == 105 - expected_critical
+
+
+async def test_project_and_component_counts_answer_different_questions(
+    client: AsyncClient,
+) -> None:
+    """Two critical CVEs on one project is 1 project, 2 components.
+
+    The chart deep-links each segment to `/projects?severity=...`, so its
+    counts have to be project-shaped; the KPI beside it is component-shaped.
+    Conflating them is how a single noisy project came to dominate a portfolio
+    view.
+    """
+    factory = await _factory(client)
+    async with factory() as session:
+        org = await make_organization(session)
+        team = await make_team(session, organization=org)
+        user = await make_user(session)
+        await make_membership(session, user=user, team=team, role="team_admin")
+        project = await make_project(session, team=team)
+        scan = await make_scan(session, project=project, status="succeeded")
+        await _critical_finding(session, scan_id=scan.id)
+        await _critical_finding(session, scan_id=scan.id)
+
+    response = await client.get("/v1/dashboard/summary", headers=_bearer_for(user))
+
+    assert response.status_code == 200, response.text
+    body = response.json()
+    assert body["project_severity_counts"]["critical"] == 1
+    assert body["vulnerability_severity_counts"]["critical"] == 2
+

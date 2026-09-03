@@ -123,6 +123,7 @@ jobs:
 | `forbidden-license-count` | 금지 분류 라이선스를 가진 고유 컴포넌트 수. |
 | `epss-gate-count` | EPSS score가 구성된 EPSS 임계 이상인 미해결 결과 수. EPSS 게이트가 비활성(기본)이면 `0`. [EPSS로 빌드 게이팅](#epss로-빌드-게이팅-선택) 참고. |
 | `malicious-component-count` | 악성 패키지 스냅샷이 지목한 컴포넌트 수. 심각도와 무관하게 빌드를 막습니다. 패키지를 제거하고 이 빌드가 닿을 수 있던 자격 증명을 교체하세요. |
+| `component-outcome` | 스캔의 SBOM에 무엇이 담겼는지입니다. `components_found`가 통상적인 경우입니다. `empty_no_manifests`와 `empty_with_manifests`는 둘 다 컴포넌트가 하나도 나오지 않았다는 뜻이라, 게이트 통과는 깨끗하다는 판정이 아니라 판단할 대상이 없었다는 뜻입니다. 앞은 TRUSCA가 읽지 못하는 빌드 시스템에서 정상적으로 나오는 값이고, 뒤는 스캔이 실패했다는 신호입니다. 이 값을 보고하지 못하는 구버전 포털에서는 비어 있습니다. |
 
 후속 스텝에서 사용:
 

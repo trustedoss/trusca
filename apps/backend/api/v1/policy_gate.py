@@ -203,10 +203,7 @@ async def _load_project_for_gate(
     # a single-project CI key read a SIBLING project's gate data / SCA report
     # (and, with dry_run=false, exfiltrate it to an arbitrary PR). Hide
     # existence with the same 404 the cross-team branch uses.
-    if (
-        actor.api_key_project_id is not None
-        and actor.api_key_project_id != project.id
-    ):
+    if actor.api_key_project_id is not None and actor.api_key_project_id != project.id:
         raise ProjectNotFound(f"project {project_id} not found")
     return project
 
@@ -224,6 +221,7 @@ def _build_response_body(result: GateResult) -> GateResultResponse:
         malicious_component_count=result.malicious_component_count,
         malicious_gate_enforced=result.malicious_gate_enforced,
         malicious_scan_assessed=result.malicious_scan_assessed,
+        component_outcome=result.component_outcome,
         project_id=result.project_id,
         scan_id=result.scan_id,
         evaluated_at=result.evaluated_at,
@@ -356,15 +354,10 @@ async def _build_recommended_upgrades(
             .outerjoin(
                 ScanComponent,
                 (ScanComponent.scan_id == VulnerabilityFinding.scan_id)
-                & (
-                    ScanComponent.component_version_id
-                    == VulnerabilityFinding.component_version_id
-                ),
+                & (ScanComponent.component_version_id == VulnerabilityFinding.component_version_id),
             )
             .where(VulnerabilityFinding.scan_id == scan_id)
-            .where(
-                cast(VulnerabilityFinding.status, String).notin_(_CLOSED_FINDING_STATUSES)
-            )
+            .where(cast(VulnerabilityFinding.status, String).notin_(_CLOSED_FINDING_STATUSES))
         )
     ).all()
 
@@ -449,9 +442,7 @@ async def _build_summary_for_scan(
     if scan_id is not None:
         # Component count for this scan.
         components_stmt = (
-            select(func.count())
-            .select_from(ScanComponent)
-            .where(ScanComponent.scan_id == scan_id)
+            select(func.count()).select_from(ScanComponent).where(ScanComponent.scan_id == scan_id)
         )
         components_count = int((await session.execute(components_stmt)).scalar_one())
 
@@ -503,9 +494,7 @@ async def _build_summary_for_scan(
 
     recommended_upgrades: tuple[RecommendedUpgrade, ...] = ()
     if scan_id is not None:
-        recommended_upgrades = await _build_recommended_upgrades(
-            session, scan_id=scan_id
-        )
+        recommended_upgrades = await _build_recommended_upgrades(session, scan_id=scan_id)
 
     return CommentSummary(
         components_count=components_count,
@@ -531,9 +520,7 @@ async def post_pr_comment_endpoint(
     # Resolve the scan -> project so we authorize against the project's
     # owning team, not against the scan id directly. A scan_id that the
     # caller cannot read is existence-hidden as 404.
-    scan_row = (
-        await session.execute(select(Scan).where(Scan.id == scan_id))
-    ).scalar_one_or_none()
+    scan_row = (await session.execute(select(Scan).where(Scan.id == scan_id))).scalar_one_or_none()
     if scan_row is None:
         return problem_response(
             status_code=status.HTTP_404_NOT_FOUND,

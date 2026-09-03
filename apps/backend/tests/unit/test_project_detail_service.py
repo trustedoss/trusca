@@ -166,9 +166,7 @@ async def _make_license(
     from models import License
 
     resolved_spdx = spdx_id or f"LicenseRef-{unique_suffix()}"
-    existing = await session.scalar(
-        select(License).where(License.spdx_id == resolved_spdx)
-    )
+    existing = await session.scalar(select(License).where(License.spdx_id == resolved_spdx))
     if existing is not None:
         return existing
 
@@ -312,9 +310,7 @@ async def test_overview_for_project_without_any_scan_returns_empty_distributions
     project = await make_project(db_session, team=team)
     actor = principal_for(user, team_ids=[team.id], role="developer")
 
-    overview = await get_project_overview(
-        db_session, project_id=project.id, actor=actor
-    )
+    overview = await get_project_overview(db_session, project_id=project.id, actor=actor)
     assert overview["total_components"] == 0
     assert overview["risk_score"] == 0.0
     assert overview["last_scan_at"] is None
@@ -322,25 +318,31 @@ async def test_overview_for_project_without_any_scan_returns_empty_distributions
     # Buckets present even if empty (frontend stable bar/donut).
     assert set(overview["severity_distribution"].keys()) >= {"critical", "high", "medium"}
     assert all(v == 0 for v in overview["severity_distribution"].values())
-    # No succeeded scan → vuln-data availability is unknown, never a false caveat.
-    assert overview["vuln_data_available"] is None
+    # No succeeded scan → the outcome is unknown, never a false caveat.
+    assert overview["component_outcome"] is None
 
 
 @pytest.mark.parametrize(
     ("metadata", "expected"),
     [
-        # DB empty when this scan ran → 0 CVEs means "no data", not "safe" (#35).
-        ({"dt_vulnerability_count": 0}, False),
-        # DB populated → an empty Security axis is a genuine clean result.
-        ({"dt_vulnerability_count": 43048}, True),
+        # The ordinary case.
+        ({"component_outcome": "components_found"}, "components_found"),
+        # The scan found nothing and the tree declared nothing: expected for a
+        # build system we do not read, and NOT a clean result.
+        ({"component_outcome": "empty_no_manifests"}, "empty_no_manifests"),
+        # Nothing found despite manifests: a scan failure, a different fix.
+        ({"component_outcome": "empty_with_manifests"}, "empty_with_manifests"),
         # Scan predates the capture (no key) → unknown → no caveat.
         ({}, None),
+        # A value we do not publish is not passed through to the UI, which
+        # renders on exact matches and would silently show nothing for it.
+        ({"component_outcome": "something_else"}, None),
     ],
 )
-async def test_overview_vuln_data_available_from_scan_metadata(
+async def test_overview_component_outcome_from_scan_metadata(
     db_session: AsyncSession,
-    metadata: dict[str, int],
-    expected: bool | None,
+    metadata: dict[str, str],
+    expected: str | None,
 ) -> None:
     from services.project_detail_service import get_project_overview
 
@@ -354,10 +356,8 @@ async def test_overview_vuln_data_available_from_scan_metadata(
     await db_session.commit()
 
     actor = principal_for(user, team_ids=[team.id], role="developer")
-    overview = await get_project_overview(
-        db_session, project_id=project.id, actor=actor
-    )
-    assert overview["vuln_data_available"] is expected
+    overview = await get_project_overview(db_session, project_id=project.id, actor=actor)
+    assert overview["component_outcome"] == expected
 
 
 async def test_overview_aggregates_severity_and_license_distributions(
@@ -394,9 +394,7 @@ async def test_overview_aggregates_severity_and_license_distributions(
         db_session, scan_id=scan.id, cv_id=cv2.id, license_id=allowed_lic.id
     )
 
-    overview = await get_project_overview(
-        db_session, project_id=project.id, actor=actor
-    )
+    overview = await get_project_overview(db_session, project_id=project.id, actor=actor)
 
     # Three components total.
     assert overview["total_components"] == 3
@@ -446,9 +444,7 @@ async def test_overview_unknown_project_is_404(db_session: AsyncSession) -> None
     actor = principal_for(user, role="super_admin")
 
     with pytest.raises(ProjectNotFound):
-        await get_project_overview(
-            db_session, project_id=uuid.uuid4(), actor=actor
-        )
+        await get_project_overview(db_session, project_id=uuid.uuid4(), actor=actor)
 
 
 async def test_overview_super_admin_bypasses_team_check(
@@ -462,9 +458,7 @@ async def test_overview_super_admin_bypasses_team_check(
     admin = await make_user(db_session, is_superuser=True)
     actor = principal_for(admin, role="super_admin")
 
-    overview = await get_project_overview(
-        db_session, project_id=project.id, actor=actor
-    )
+    overview = await get_project_overview(db_session, project_id=project.id, actor=actor)
     assert overview["project_id"] == project.id
 
 
@@ -485,9 +479,7 @@ async def test_overview_current_user_role_super_admin(
     admin = await make_user(db_session, is_superuser=True)
     actor = principal_for(admin, role="super_admin")
 
-    overview = await get_project_overview(
-        db_session, project_id=project.id, actor=actor
-    )
+    overview = await get_project_overview(db_session, project_id=project.id, actor=actor)
     assert overview["current_user_role"] == "super_admin"
 
 
@@ -506,9 +498,7 @@ async def test_overview_current_user_role_team_admin(
     # service must resolve team_admin from the DB membership regardless.
     actor = principal_for(user, team_ids=[team.id], role="team_admin")
 
-    overview = await get_project_overview(
-        db_session, project_id=project.id, actor=actor
-    )
+    overview = await get_project_overview(db_session, project_id=project.id, actor=actor)
     assert overview["current_user_role"] == "team_admin"
 
 
@@ -525,9 +515,7 @@ async def test_overview_current_user_role_developer(
     project = await make_project(db_session, team=team)
     actor = principal_for(user, team_ids=[team.id], role="developer")
 
-    overview = await get_project_overview(
-        db_session, project_id=project.id, actor=actor
-    )
+    overview = await get_project_overview(db_session, project_id=project.id, actor=actor)
     assert overview["current_user_role"] == "developer"
 
 
@@ -550,9 +538,7 @@ async def test_overview_current_user_role_resolved_from_db_not_jwt(
     # Stale claim: principal says developer, DB says team_admin.
     actor = principal_for(user, team_ids=[team.id], role="developer")
 
-    overview = await get_project_overview(
-        db_session, project_id=project.id, actor=actor
-    )
+    overview = await get_project_overview(db_session, project_id=project.id, actor=actor)
     assert overview["current_user_role"] == "team_admin"
 
 
@@ -597,9 +583,7 @@ async def test_list_components_returns_empty_when_project_has_no_scan(
     project = await make_project(db_session, team=team)
     actor = principal_for(user, team_ids=[team.id], role="developer")
 
-    items, total = await list_components_for_project(
-        db_session, project_id=project.id, actor=actor
-    )
+    items, total = await list_components_for_project(db_session, project_id=project.id, actor=actor)
     assert items == []
     assert total == 0
 
@@ -823,9 +807,7 @@ async def test_list_components_idor_other_team_is_forbidden(
     actor = principal_for(user, team_ids=[other_team.id], role="developer")
 
     with pytest.raises(ProjectForbidden):
-        await list_components_for_project(
-            db_session, project_id=project.id, actor=actor
-        )
+        await list_components_for_project(db_session, project_id=project.id, actor=actor)
 
 
 async def test_list_components_unknown_project_is_404(
@@ -838,9 +820,7 @@ async def test_list_components_unknown_project_is_404(
     actor = principal_for(admin, role="super_admin")
 
     with pytest.raises(ProjectNotFound):
-        await list_components_for_project(
-            db_session, project_id=uuid.uuid4(), actor=actor
-        )
+        await list_components_for_project(db_session, project_id=uuid.uuid4(), actor=actor)
 
 
 async def test_list_components_caps_limit_at_max(
@@ -884,21 +864,13 @@ async def test_component_detail_returns_drawer_payload_with_vulns(
     _, cv = await _make_component_version(db_session, name=f"drawer-vulns-{unique_suffix()}")
     await _attach_to_scan(db_session, scan_id=scan.id, cv_id=cv.id)
 
-    crit_v = await _make_vulnerability(
-        db_session, severity="critical", summary="Critical RCE"
-    )
-    await _attach_vuln_finding(
-        db_session, scan_id=scan.id, cv_id=cv.id, vulnerability_id=crit_v.id
-    )
+    crit_v = await _make_vulnerability(db_session, severity="critical", summary="Critical RCE")
+    await _attach_vuln_finding(db_session, scan_id=scan.id, cv_id=cv.id, vulnerability_id=crit_v.id)
 
     mit = await _make_license(db_session, category="allowed", spdx_id="MIT")
-    await _attach_license_finding(
-        db_session, scan_id=scan.id, cv_id=cv.id, license_id=mit.id
-    )
+    await _attach_license_finding(db_session, scan_id=scan.id, cv_id=cv.id, license_id=mit.id)
 
-    detail = await get_component_detail(
-        db_session, component_version_id=cv.id, actor=actor
-    )
+    detail = await get_component_detail(db_session, component_version_id=cv.id, actor=actor)
     assert detail["id"] == cv.id
     assert detail["project_id"] == project.id
     assert detail["severity_max"] == "critical"
@@ -925,9 +897,7 @@ async def test_component_detail_vuln_ref_exposes_fixed_version(
     await _attach_to_scan(db_session, scan_id=scan.id, cv_id=cv.id)
 
     v_fixed = await _make_vulnerability(db_session, severity="high", summary="Fixable")
-    v_unfixed = await _make_vulnerability(
-        db_session, severity="low", summary="No fix yet"
-    )
+    v_unfixed = await _make_vulnerability(db_session, severity="low", summary="No fix yet")
     await _attach_vuln_finding(
         db_session,
         scan_id=scan.id,
@@ -943,9 +913,7 @@ async def test_component_detail_vuln_ref_exposes_fixed_version(
         fixed_version=None,
     )
 
-    detail = await get_component_detail(
-        db_session, component_version_id=cv.id, actor=actor
-    )
+    detail = await get_component_detail(db_session, component_version_id=cv.id, actor=actor)
     by_cve = {v["cve_id"]: v for v in detail["vulnerabilities"]}
     assert by_cve[v_fixed.external_id]["fixed_version"] == "3.2.0"
     assert by_cve[v_unfixed.external_id]["fixed_version"] is None
@@ -972,13 +940,9 @@ async def test_component_detail_vuln_ref_carries_epss(
         epss_score=0.73210,
         epss_percentile=0.98765,
     )
-    await _attach_vuln_finding(
-        db_session, scan_id=scan.id, cv_id=cv.id, vulnerability_id=v.id
-    )
+    await _attach_vuln_finding(db_session, scan_id=scan.id, cv_id=cv.id, vulnerability_id=v.id)
 
-    detail = await get_component_detail(
-        db_session, component_version_id=cv.id, actor=actor
-    )
+    detail = await get_component_detail(db_session, component_version_id=cv.id, actor=actor)
     assert len(detail["vulnerabilities"]) == 1
     entry = detail["vulnerabilities"][0]
     assert isinstance(entry["epss_score"], float)
@@ -999,13 +963,9 @@ async def test_component_detail_vuln_ref_epss_none_when_unset(
     await _attach_to_scan(db_session, scan_id=scan.id, cv_id=cv.id)
 
     v = await _make_vulnerability(db_session, severity="high")  # no EPSS
-    await _attach_vuln_finding(
-        db_session, scan_id=scan.id, cv_id=cv.id, vulnerability_id=v.id
-    )
+    await _attach_vuln_finding(db_session, scan_id=scan.id, cv_id=cv.id, vulnerability_id=v.id)
 
-    detail = await get_component_detail(
-        db_session, component_version_id=cv.id, actor=actor
-    )
+    detail = await get_component_detail(db_session, component_version_id=cv.id, actor=actor)
     entry = detail["vulnerabilities"][0]
     assert entry["epss_score"] is None
     assert entry["epss_percentile"] is None
@@ -1023,9 +983,7 @@ async def test_component_detail_unknown_id_is_404(
     actor = principal_for(admin, role="super_admin")
 
     with pytest.raises(ComponentNotFound):
-        await get_component_detail(
-            db_session, component_version_id=uuid.uuid4(), actor=actor
-        )
+        await get_component_detail(db_session, component_version_id=uuid.uuid4(), actor=actor)
 
 
 async def test_component_detail_other_team_user_gets_404_not_403(
@@ -1046,15 +1004,11 @@ async def test_component_detail_other_team_user_gets_404_not_403(
     org2 = await make_organization(db_session)
     other_team = await make_team(db_session, organization=org2)
     outsider = await make_user(db_session)
-    await make_membership(
-        db_session, user=outsider, team=other_team, role="developer"
-    )
+    await make_membership(db_session, user=outsider, team=other_team, role="developer")
     actor = principal_for(outsider, team_ids=[other_team.id], role="developer")
 
     with pytest.raises(ComponentNotFound):
-        await get_component_detail(
-            db_session, component_version_id=cv.id, actor=actor
-        )
+        await get_component_detail(db_session, component_version_id=cv.id, actor=actor)
 
 
 async def test_component_detail_super_admin_bypasses_team_check(
@@ -1069,9 +1023,7 @@ async def test_component_detail_super_admin_bypasses_team_check(
     admin = await make_user(db_session, is_superuser=True)
     actor = principal_for(admin, role="super_admin")
 
-    detail = await get_component_detail(
-        db_session, component_version_id=cv.id, actor=actor
-    )
+    detail = await get_component_detail(db_session, component_version_id=cv.id, actor=actor)
     assert detail["id"] == cv.id
     assert detail["project_id"] == project.id
 
@@ -1092,9 +1044,7 @@ async def test_component_detail_returns_license_obligations(
     team, user, project, scan = await _make_project_with_scan(db_session)
     actor = principal_for(user, team_ids=[team.id], role="developer")
 
-    _, cv = await _make_component_version(
-        db_session, name=f"drawer-obligations-{unique_suffix()}"
-    )
+    _, cv = await _make_component_version(db_session, name=f"drawer-obligations-{unique_suffix()}")
     await _attach_to_scan(db_session, scan_id=scan.id, cv_id=cv.id)
 
     # Fresh license (unique spdx_id) so the obligation set is fully ours —
@@ -1102,9 +1052,7 @@ async def test_component_detail_returns_license_obligations(
     licence = await _make_license(
         db_session, spdx_id=f"Test-Obl-{unique_suffix()}", category="conditional"
     )
-    await _attach_license_finding(
-        db_session, scan_id=scan.id, cv_id=cv.id, license_id=licence.id
-    )
+    await _attach_license_finding(db_session, scan_id=scan.id, cv_id=cv.id, license_id=licence.id)
     # Inserted in reverse-alphabetical kind order to prove the service sorts.
     ob_notice = await _attach_obligation(
         db_session,
@@ -1121,9 +1069,7 @@ async def test_component_detail_returns_license_obligations(
         link="https://example.org/attribution",
     )
 
-    detail = await get_component_detail(
-        db_session, component_version_id=cv.id, actor=actor
-    )
+    detail = await get_component_detail(db_session, component_version_id=cv.id, actor=actor)
 
     assert [o["kind"] for o in detail["obligations"]] == ["attribution", "notice"]
     first, second = detail["obligations"]
@@ -1154,9 +1100,7 @@ async def test_component_detail_obligations_span_all_licenses_deterministically(
     team, user, _, scan = await _make_project_with_scan(db_session)
     actor = principal_for(user, team_ids=[team.id], role="developer")
 
-    _, cv = await _make_component_version(
-        db_session, name=f"drawer-dual-lic-{unique_suffix()}"
-    )
+    _, cv = await _make_component_version(db_session, name=f"drawer-dual-lic-{unique_suffix()}")
     await _attach_to_scan(db_session, scan_id=scan.id, cv_id=cv.id)
 
     suffix = unique_suffix()
@@ -1170,9 +1114,7 @@ async def test_component_detail_obligations_span_all_licenses_deterministically(
     await _attach_obligation(db_session, license_id=lic_a.id, kind="notice")
     await _attach_obligation(db_session, license_id=lic_b.id, kind="attribution")
 
-    detail = await get_component_detail(
-        db_session, component_version_id=cv.id, actor=actor
-    )
+    detail = await get_component_detail(db_session, component_version_id=cv.id, actor=actor)
     assert [(o["kind"], o["license"]) for o in detail["obligations"]] == [
         ("attribution", lic_b.spdx_id),
         ("notice", lic_a.spdx_id),
@@ -1189,14 +1131,10 @@ async def test_component_detail_without_license_has_empty_obligations(
     team, user, _, scan = await _make_project_with_scan(db_session)
     actor = principal_for(user, team_ids=[team.id], role="developer")
 
-    _, cv = await _make_component_version(
-        db_session, name=f"drawer-no-lic-{unique_suffix()}"
-    )
+    _, cv = await _make_component_version(db_session, name=f"drawer-no-lic-{unique_suffix()}")
     await _attach_to_scan(db_session, scan_id=scan.id, cv_id=cv.id)
 
-    detail = await get_component_detail(
-        db_session, component_version_id=cv.id, actor=actor
-    )
+    detail = await get_component_detail(db_session, component_version_id=cv.id, actor=actor)
     assert detail["license"] is None
     assert detail["obligations"] == []
 
@@ -1211,21 +1149,13 @@ async def test_component_detail_license_without_catalog_obligations_is_empty(
     team, user, _, scan = await _make_project_with_scan(db_session)
     actor = principal_for(user, team_ids=[team.id], role="developer")
 
-    _, cv = await _make_component_version(
-        db_session, name=f"drawer-bare-lic-{unique_suffix()}"
-    )
+    _, cv = await _make_component_version(db_session, name=f"drawer-bare-lic-{unique_suffix()}")
     await _attach_to_scan(db_session, scan_id=scan.id, cv_id=cv.id)
 
-    licence = await _make_license(
-        db_session, spdx_id=f"Test-NoObl-{unique_suffix()}"
-    )
-    await _attach_license_finding(
-        db_session, scan_id=scan.id, cv_id=cv.id, license_id=licence.id
-    )
+    licence = await _make_license(db_session, spdx_id=f"Test-NoObl-{unique_suffix()}")
+    await _attach_license_finding(db_session, scan_id=scan.id, cv_id=cv.id, license_id=licence.id)
 
-    detail = await get_component_detail(
-        db_session, component_version_id=cv.id, actor=actor
-    )
+    detail = await get_component_detail(db_session, component_version_id=cv.id, actor=actor)
     assert detail["license"] == licence.spdx_id
     assert detail["obligations"] == []
 
@@ -1245,21 +1175,11 @@ async def test_list_components_exposes_depth_and_direct(
     team, user, project, scan = await _make_project_with_scan(db_session)
     actor = principal_for(user, team_ids=[team.id], role="developer")
 
-    _, cv_direct = await _make_component_version(
-        db_session, name=f"direct-{unique_suffix()}"
-    )
-    _, cv_trans = await _make_component_version(
-        db_session, name=f"transitive-{unique_suffix()}"
-    )
-    _, cv_nograph = await _make_component_version(
-        db_session, name=f"nograph-{unique_suffix()}"
-    )
-    await _attach_to_scan(
-        db_session, scan_id=scan.id, cv_id=cv_direct.id, direct=True, depth=1
-    )
-    await _attach_to_scan(
-        db_session, scan_id=scan.id, cv_id=cv_trans.id, direct=False, depth=3
-    )
+    _, cv_direct = await _make_component_version(db_session, name=f"direct-{unique_suffix()}")
+    _, cv_trans = await _make_component_version(db_session, name=f"transitive-{unique_suffix()}")
+    _, cv_nograph = await _make_component_version(db_session, name=f"nograph-{unique_suffix()}")
+    await _attach_to_scan(db_session, scan_id=scan.id, cv_id=cv_direct.id, direct=True, depth=1)
+    await _attach_to_scan(db_session, scan_id=scan.id, cv_id=cv_trans.id, direct=False, depth=3)
     # No graph for this one — depth NULL, direct False.
     await _attach_to_scan(
         db_session, scan_id=scan.id, cv_id=cv_nograph.id, direct=False, depth=None
@@ -1289,12 +1209,8 @@ async def test_list_components_reports_shallowest_depth_across_paths(
 
     _, cv = await _make_component_version(db_session, name=f"diamond-{unique_suffix()}")
     # Same cv at two paths: a transitive one (depth 4) and a direct one (depth 1).
-    await _attach_to_scan(
-        db_session, scan_id=scan.id, cv_id=cv.id, direct=False, depth=4
-    )
-    await _attach_to_scan(
-        db_session, scan_id=scan.id, cv_id=cv.id, direct=True, depth=1
-    )
+    await _attach_to_scan(db_session, scan_id=scan.id, cv_id=cv.id, direct=False, depth=4)
+    await _attach_to_scan(db_session, scan_id=scan.id, cv_id=cv.id, direct=True, depth=1)
 
     items, _ = await list_components_for_project(
         db_session, project_id=project.id, actor=actor, limit=50, offset=0
@@ -1315,13 +1231,9 @@ async def test_component_detail_exposes_depth_and_direct(
     actor = principal_for(user, team_ids=[team.id], role="developer")
 
     _, cv = await _make_component_version(db_session, name=f"drawer-{unique_suffix()}")
-    await _attach_to_scan(
-        db_session, scan_id=scan.id, cv_id=cv.id, direct=True, depth=1
-    )
+    await _attach_to_scan(db_session, scan_id=scan.id, cv_id=cv.id, direct=True, depth=1)
 
-    detail = await get_component_detail(
-        db_session, component_version_id=cv.id, actor=actor
-    )
+    detail = await get_component_detail(db_session, component_version_id=cv.id, actor=actor)
     assert detail["depth"] == 1
     assert detail["direct"] is True
 
@@ -1341,25 +1253,13 @@ async def test_list_components_exposes_dependency_scope(
     team, user, project, scan = await _make_project_with_scan(db_session)
     actor = principal_for(user, team_ids=[team.id], role="developer")
 
-    _, cv_req = await _make_component_version(
-        db_session, name=f"req-{unique_suffix()}"
-    )
-    _, cv_opt = await _make_component_version(
-        db_session, name=f"opt-{unique_suffix()}"
-    )
-    _, cv_unspec = await _make_component_version(
-        db_session, name=f"unspec-{unique_suffix()}"
-    )
-    await _attach_to_scan(
-        db_session, scan_id=scan.id, cv_id=cv_req.id, dependency_scope="required"
-    )
-    await _attach_to_scan(
-        db_session, scan_id=scan.id, cv_id=cv_opt.id, dependency_scope="optional"
-    )
+    _, cv_req = await _make_component_version(db_session, name=f"req-{unique_suffix()}")
+    _, cv_opt = await _make_component_version(db_session, name=f"opt-{unique_suffix()}")
+    _, cv_unspec = await _make_component_version(db_session, name=f"unspec-{unique_suffix()}")
+    await _attach_to_scan(db_session, scan_id=scan.id, cv_id=cv_req.id, dependency_scope="required")
+    await _attach_to_scan(db_session, scan_id=scan.id, cv_id=cv_opt.id, dependency_scope="optional")
     # NULL scope: the common case for ecosystems that don't encode scope.
-    await _attach_to_scan(
-        db_session, scan_id=scan.id, cv_id=cv_unspec.id, dependency_scope=None
-    )
+    await _attach_to_scan(db_session, scan_id=scan.id, cv_id=cv_unspec.id, dependency_scope=None)
 
     items, _ = await list_components_for_project(
         db_session, project_id=project.id, actor=actor, limit=50, offset=0
@@ -1383,15 +1283,9 @@ async def test_list_components_required_wins_over_optional_across_paths(
     team, user, project, scan = await _make_project_with_scan(db_session)
     actor = principal_for(user, team_ids=[team.id], role="developer")
 
-    _, cv = await _make_component_version(
-        db_session, name=f"mixed-{unique_suffix()}"
-    )
-    await _attach_to_scan(
-        db_session, scan_id=scan.id, cv_id=cv.id, dependency_scope="optional"
-    )
-    await _attach_to_scan(
-        db_session, scan_id=scan.id, cv_id=cv.id, dependency_scope="required"
-    )
+    _, cv = await _make_component_version(db_session, name=f"mixed-{unique_suffix()}")
+    await _attach_to_scan(db_session, scan_id=scan.id, cv_id=cv.id, dependency_scope="optional")
+    await _attach_to_scan(db_session, scan_id=scan.id, cv_id=cv.id, dependency_scope="required")
 
     items, _ = await list_components_for_project(
         db_session, project_id=project.id, actor=actor, limit=50, offset=0
@@ -1409,18 +1303,10 @@ async def test_list_components_filters_by_direct_true(
     team, user, project, scan = await _make_project_with_scan(db_session)
     actor = principal_for(user, team_ids=[team.id], role="developer")
 
-    _, cv_direct = await _make_component_version(
-        db_session, name=f"d-{unique_suffix()}"
-    )
-    _, cv_trans = await _make_component_version(
-        db_session, name=f"t-{unique_suffix()}"
-    )
-    await _attach_to_scan(
-        db_session, scan_id=scan.id, cv_id=cv_direct.id, direct=True, depth=1
-    )
-    await _attach_to_scan(
-        db_session, scan_id=scan.id, cv_id=cv_trans.id, direct=False, depth=2
-    )
+    _, cv_direct = await _make_component_version(db_session, name=f"d-{unique_suffix()}")
+    _, cv_trans = await _make_component_version(db_session, name=f"t-{unique_suffix()}")
+    await _attach_to_scan(db_session, scan_id=scan.id, cv_id=cv_direct.id, direct=True, depth=1)
+    await _attach_to_scan(db_session, scan_id=scan.id, cv_id=cv_trans.id, direct=False, depth=2)
 
     items_direct, total_direct = await list_components_for_project(
         db_session,
@@ -1460,24 +1346,12 @@ async def test_list_components_filters_by_dependency_scope(
     team, user, project, scan = await _make_project_with_scan(db_session)
     actor = principal_for(user, team_ids=[team.id], role="developer")
 
-    _, cv_req = await _make_component_version(
-        db_session, name=f"r-{unique_suffix()}"
-    )
-    _, cv_opt = await _make_component_version(
-        db_session, name=f"o-{unique_suffix()}"
-    )
-    _, cv_unspec = await _make_component_version(
-        db_session, name=f"u-{unique_suffix()}"
-    )
-    await _attach_to_scan(
-        db_session, scan_id=scan.id, cv_id=cv_req.id, dependency_scope="required"
-    )
-    await _attach_to_scan(
-        db_session, scan_id=scan.id, cv_id=cv_opt.id, dependency_scope="optional"
-    )
-    await _attach_to_scan(
-        db_session, scan_id=scan.id, cv_id=cv_unspec.id, dependency_scope=None
-    )
+    _, cv_req = await _make_component_version(db_session, name=f"r-{unique_suffix()}")
+    _, cv_opt = await _make_component_version(db_session, name=f"o-{unique_suffix()}")
+    _, cv_unspec = await _make_component_version(db_session, name=f"u-{unique_suffix()}")
+    await _attach_to_scan(db_session, scan_id=scan.id, cv_id=cv_req.id, dependency_scope="required")
+    await _attach_to_scan(db_session, scan_id=scan.id, cv_id=cv_opt.id, dependency_scope="optional")
+    await _attach_to_scan(db_session, scan_id=scan.id, cv_id=cv_unspec.id, dependency_scope=None)
 
     items_req, _ = await list_components_for_project(
         db_session,
@@ -1522,9 +1396,7 @@ async def test_list_components_scope_filter_drops_unknown_values(
     actor = principal_for(user, team_ids=[team.id], role="developer")
 
     _, cv = await _make_component_version(db_session, name=f"x-{unique_suffix()}")
-    await _attach_to_scan(
-        db_session, scan_id=scan.id, cv_id=cv.id, dependency_scope="required"
-    )
+    await _attach_to_scan(db_session, scan_id=scan.id, cv_id=cv.id, dependency_scope="required")
 
     items_garbage, total_garbage = await list_components_for_project(
         db_session,
@@ -1559,9 +1431,7 @@ async def test_component_detail_exposes_dependency_scope(
     team, user, project, scan = await _make_project_with_scan(db_session)
     actor = principal_for(user, team_ids=[team.id], role="developer")
 
-    _, cv_req = await _make_component_version(
-        db_session, name=f"drawer-req-{unique_suffix()}"
-    )
+    _, cv_req = await _make_component_version(db_session, name=f"drawer-req-{unique_suffix()}")
     _, cv_unspec = await _make_component_version(
         db_session, name=f"drawer-unspec-{unique_suffix()}"
     )
@@ -1582,9 +1452,7 @@ async def test_component_detail_exposes_dependency_scope(
         dependency_scope=None,
     )
 
-    detail_req = await get_component_detail(
-        db_session, component_version_id=cv_req.id, actor=actor
-    )
+    detail_req = await get_component_detail(db_session, component_version_id=cv_req.id, actor=actor)
     detail_unspec = await get_component_detail(
         db_session, component_version_id=cv_unspec.id, actor=actor
     )
@@ -1633,12 +1501,8 @@ async def test_list_components_exposes_currency_state_and_latest(
     team, user, project, scan = await _make_project_with_scan(db_session)
     actor = principal_for(user, team_ids=[team.id], role="developer")
 
-    _, cv_outdated = await _make_component_version(
-        db_session, name=f"cur-out-{unique_suffix()}"
-    )
-    _, cv_untracked = await _make_component_version(
-        db_session, name=f"cur-null-{unique_suffix()}"
-    )
+    _, cv_outdated = await _make_component_version(db_session, name=f"cur-out-{unique_suffix()}")
+    _, cv_untracked = await _make_component_version(db_session, name=f"cur-null-{unique_suffix()}")
     await _attach_to_scan(db_session, scan_id=scan.id, cv_id=cv_outdated.id)
     await _attach_to_scan(db_session, scan_id=scan.id, cv_id=cv_untracked.id)
     await _set_currency(
@@ -1670,9 +1534,7 @@ async def test_component_detail_exposes_currency_columns(
     team, user, project, scan = await _make_project_with_scan(db_session)
     actor = principal_for(user, team_ids=[team.id], role="developer")
 
-    _, cv = await _make_component_version(
-        db_session, name=f"cur-drawer-{unique_suffix()}"
-    )
+    _, cv = await _make_component_version(db_session, name=f"cur-drawer-{unique_suffix()}")
     await _attach_to_scan(db_session, scan_id=scan.id, cv_id=cv.id, depth=1)
     released = date(2024, 3, 1)
     await _set_currency(
@@ -1683,9 +1545,7 @@ async def test_component_detail_exposes_currency_columns(
         currency_latest_release_date=released,
     )
 
-    detail = await get_component_detail(
-        db_session, component_version_id=cv.id, actor=actor
-    )
+    detail = await get_component_detail(db_session, component_version_id=cv.id, actor=actor)
     assert detail["currency_state"] == "outdated"
     assert detail["currency_latest"] == "4.2.16"
     assert detail["currency_latest_release_date"] == released
@@ -1702,22 +1562,16 @@ async def test_list_components_filters_by_outdated_true(
     team, user, project, scan = await _make_project_with_scan(db_session)
     actor = principal_for(user, team_ids=[team.id], role="developer")
 
-    _, cv_outdated = await _make_component_version(
-        db_session, name=f"f-out-{unique_suffix()}"
-    )
-    _, cv_current = await _make_component_version(
-        db_session, name=f"f-cur-{unique_suffix()}"
-    )
-    _, cv_unknown = await _make_component_version(
-        db_session, name=f"f-unk-{unique_suffix()}"
-    )
-    _, cv_untracked = await _make_component_version(
-        db_session, name=f"f-null-{unique_suffix()}"
-    )
+    _, cv_outdated = await _make_component_version(db_session, name=f"f-out-{unique_suffix()}")
+    _, cv_current = await _make_component_version(db_session, name=f"f-cur-{unique_suffix()}")
+    _, cv_unknown = await _make_component_version(db_session, name=f"f-unk-{unique_suffix()}")
+    _, cv_untracked = await _make_component_version(db_session, name=f"f-null-{unique_suffix()}")
     for cv in (cv_outdated, cv_current, cv_unknown, cv_untracked):
         await _attach_to_scan(db_session, scan_id=scan.id, cv_id=cv.id)
     await _set_currency(
-        db_session, cv_id=cv_outdated.id, currency_state="outdated",
+        db_session,
+        cv_id=cv_outdated.id,
+        currency_state="outdated",
         currency_latest="4.2.16",
     )
     await _set_currency(db_session, cv_id=cv_current.id, currency_state="current")
@@ -1725,8 +1579,12 @@ async def test_list_components_filters_by_outdated_true(
     # cv_untracked stays NULL.
 
     items_out, total_out = await list_components_for_project(
-        db_session, project_id=project.id, actor=actor,
-        outdated=True, limit=50, offset=0,
+        db_session,
+        project_id=project.id,
+        actor=actor,
+        outdated=True,
+        limit=50,
+        offset=0,
     )
     out_ids = {i["id"] for i in items_out}
     assert out_ids == {cv_outdated.id}
@@ -1734,8 +1592,12 @@ async def test_list_components_filters_by_outdated_true(
 
     # outdated=false keeps everything else INCLUDING current/unknown/NULL.
     items_rest, total_rest = await list_components_for_project(
-        db_session, project_id=project.id, actor=actor,
-        outdated=False, limit=50, offset=0,
+        db_session,
+        project_id=project.id,
+        actor=actor,
+        outdated=False,
+        limit=50,
+        offset=0,
     )
     rest_ids = {i["id"] for i in items_rest}
     assert cv_outdated.id not in rest_ids
@@ -1771,6 +1633,10 @@ async def test_list_components_outdated_filter_hides_other_team_before_state(
 
     with pytest.raises(ProjectForbidden):
         await list_components_for_project(
-            db_session, project_id=project.id, actor=actor,
-            outdated=True, limit=50, offset=0,
+            db_session,
+            project_id=project.id,
+            actor=actor,
+            outdated=True,
+            limit=50,
+            offset=0,
         )

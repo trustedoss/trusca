@@ -102,6 +102,17 @@ class GateResultResponse(BaseModel):
             "to check)."
         ),
     )
+    component_outcome: str | None = Field(
+        default=None,
+        description=(
+            "What the evaluated scan's SBOM contained. `components_found` is "
+            "the ordinary case. `empty_no_manifests` and `empty_with_manifests` "
+            "both mean the scan produced no components, so a `pass` here is the "
+            "absence of anything to judge rather than a clean result, and a CI "
+            "consumer must say so instead of printing an all-clear. `null` on a "
+            "scan predating this capture: unknown, not either answer."
+        ),
+    )
     malicious_gate_enforced: bool = Field(
         default=True,
         description="Whether the known-malicious axis was active for this "
@@ -140,8 +151,7 @@ class GateResultResponse(BaseModel):
         "``gate == 'pass'`` is returned by convention (no signal = no block).",
     )
     evaluated_at: datetime = Field(
-        description="Server timestamp at which the verdict was computed (UTC, "
-        "ISO-8601).",
+        description="Server timestamp at which the verdict was computed (UTC, " "ISO-8601).",
     )
 
 

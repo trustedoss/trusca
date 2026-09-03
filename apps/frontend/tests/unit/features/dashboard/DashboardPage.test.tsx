@@ -1,11 +1,15 @@
 /**
  * DashboardPage — unit tests (W9-#50 / audit D1-001).
  *
- * We mock the three list endpoints the page fans out to so the tests stay
- * focused on aggregation + rendering behaviour:
- *   - listProjects   → KPI counts + distribution charts + last-scan KPI
- *   - listMyScans    → recent-scans table
- *   - listApprovals  → pending-approvals KPI
+ * We mock the endpoints the page reads so the tests stay focused on rendering
+ * behaviour:
+ *   - getDashboardSummary → every KPI number and both distribution charts
+ *   - listProjects        → onboarding checklist + "no projects yet" state
+ *   - listMyScans         → recent-scans table
+ *
+ * The counts used to be derived here from a page of `listProjects`, which is
+ * what broke above 100 projects (ER9). They now come from the server, so the
+ * fixtures below set them directly instead of implying them.
  *
  * The dashboard renders inside an AppShell-free harness because the chrome
  * (sidebar + header) is exercised separately in App.test.tsx.
@@ -19,9 +23,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { DashboardPage } from "@/features/dashboard/DashboardPage";
 import { useUIStore } from "@/stores/uiStore";
-import type {
-  ApprovalListPage,
-} from "@/lib/approvalsApi";
+import type { DashboardSummary } from "@/features/dashboard/api/summary";
 import type {
   ProjectListResponse,
   ProjectPublic,
@@ -45,16 +47,43 @@ vi.mock("@/lib/projectsApi", async () => {
   };
 });
 
-vi.mock("@/lib/approvalsApi", async () => {
-  const actual =
-    await vi.importActual<typeof import("@/lib/approvalsApi")>(
-      "@/lib/approvalsApi",
-    );
-  return {
-    ...actual,
-    listApprovals: vi.fn(),
-  };
-});
+// Mocked at the transport, not at the module: the real `useDashboardSummary`
+// calls its own module-local `getDashboardSummary`, which a module mock cannot
+// intercept. Same shape as ActionQueuePanel.test.tsx.
+const apiGet = vi.hoisted(() => vi.fn());
+vi.mock("@/lib/api", () => ({ api: { get: apiGet } }));
+
+/**
+ * Serve `/v1/dashboard/summary` and let every other `api.get` reject.
+ *
+ * The page also mounts the action-queue and trends panels, which go through
+ * the same client. Before this file mocked the transport those requests simply
+ * failed and each panel rendered its own error state, which is the condition
+ * these tests were written under; answering all of them with the summary
+ * payload instead crashes the panels on a shape they never asked for.
+ */
+function serveSummary(
+  summary: DashboardSummary,
+  { failFirst = false }: { failFirst?: boolean } = {},
+) {
+  let summaryCalls = 0;
+  apiGet.mockImplementation((url: string) => {
+    if (!url.startsWith("/v1/dashboard/summary")) {
+      return Promise.reject(new Error(`unstubbed GET ${url}`));
+    }
+    summaryCalls += 1;
+    return failFirst && summaryCalls === 1
+      ? Promise.reject(new Error("boom"))
+      : Promise.resolve({ data: summary });
+  });
+}
+
+/** How many times the summary route specifically was requested. */
+function summaryCallCount(): number {
+  return apiGet.mock.calls.filter((call) =>
+    String(call[0]).startsWith("/v1/dashboard/summary"),
+  ).length;
+}
 
 // useDemoMode hits /v1/health on mount; stub it so tests don't fan out.
 vi.mock("@/hooks/useDemoMode", () => ({
@@ -76,12 +105,10 @@ vi.mock("@/features/integrations/useApiKeys", () => ({
   useApiKeys: () => ({ data: { items: [], total: apiKeyCount() } }),
 }));
 
-import { listApprovals } from "@/lib/approvalsApi";
 import { listMyScans, listProjects } from "@/lib/projectsApi";
 
 const mockedListProjects = vi.mocked(listProjects);
 const mockedListMyScans = vi.mocked(listMyScans);
-const mockedListApprovals = vi.mocked(listApprovals);
 
 // ---------------------------------------------------------------------------
 // Fixture builders
@@ -160,8 +187,44 @@ function scansResponse(items: ScanPublic[]): ScanListResponse {
   return { items, total: items.length, page: 1, size: 10 };
 }
 
-function approvalsResponse(total: number): ApprovalListPage {
-  return { items: [], total, page: 1, page_size: 1 };
+/** A zeroed summary, with only the fields a test cares about overridden. */
+function summaryResponse(
+  overrides: Partial<DashboardSummary> = {},
+): DashboardSummary {
+  return {
+    project_count: 0,
+    scan_status_counts: { queued: 0, running: 0, succeeded: 0, failed: 0 },
+    vulnerability_severity_counts: {
+      critical: 0,
+      high: 0,
+      medium: 0,
+      low: 0,
+      info: 0,
+    },
+    license_category_counts: {
+      prohibited: 0,
+      conditional: 0,
+      permissive: 0,
+      unknown: 0,
+    },
+    project_severity_counts: {
+      critical: 0,
+      high: 0,
+      medium: 0,
+      low: 0,
+      info: 0,
+      none: 0,
+    },
+    project_license_counts: {
+      forbidden: 0,
+      conditional: 0,
+      allowed: 0,
+      unknown: 0,
+    },
+    pending_approvals_count: 0,
+    recent_scans: [],
+    ...overrides,
+  };
 }
 
 // ---------------------------------------------------------------------------
@@ -192,11 +255,11 @@ describe("DashboardPage", () => {
     apiKeyCount.mockReturnValue(0);
     mockedListProjects.mockReset();
     mockedListMyScans.mockReset();
-    mockedListApprovals.mockReset();
+    apiGet.mockReset();
     // Default empty so individual tests opt-in to richer fixtures.
     mockedListProjects.mockResolvedValue(projectsResponse([]));
     mockedListMyScans.mockResolvedValue(scansResponse([]));
-    mockedListApprovals.mockResolvedValue(approvalsResponse(0));
+    serveSummary(summaryResponse());
   });
   afterEach(() => {
     void i18n.changeLanguage("en");
@@ -237,7 +300,38 @@ describe("DashboardPage", () => {
         }),
       ]),
     );
-    mockedListApprovals.mockResolvedValue(approvalsResponse(7));
+    serveSummary(
+      summaryResponse({
+        project_count: 3,
+        vulnerability_severity_counts: {
+          critical: 2,
+          high: 5,
+          medium: 4,
+          low: 6,
+          info: 0,
+        },
+        project_severity_counts: {
+          critical: 1,
+          high: 0,
+          medium: 1,
+          low: 0,
+          info: 0,
+          none: 1,
+        },
+        pending_approvals_count: 7,
+        recent_scans: [
+          {
+            scan_id: "scan-1",
+            project_id: "project-alpha",
+            project_name: "Alpha",
+            status: "succeeded",
+            kind: "source",
+            finished_at: "2026-05-27T09:00:00Z",
+            release: null,
+          },
+        ],
+      }),
+    );
 
     renderPage();
 
@@ -250,15 +344,15 @@ describe("DashboardPage", () => {
     expect(screen.getByTestId("dashboard-kpi-approvals")).toBeInTheDocument();
     expect(screen.getByTestId("dashboard-kpi-last-scan")).toBeInTheDocument();
 
-    // Active projects = 3 (none archived)
+    // Active projects comes straight from the server aggregate.
     expect(
       screen.getByTestId("dashboard-kpi-projects-value").textContent,
     ).toBe("3");
-    // Open vulns = sum across both scanned projects = 14 + 3 = 17
+    // Open vulns = critical + high + medium + low, excluding info.
     expect(screen.getByTestId("dashboard-kpi-vulns-value").textContent).toBe(
       "17",
     );
-    // Pending approvals total surfaces from approvalsResponse.
+    // Pending approvals total surfaces from the same aggregate.
     expect(
       screen.getByTestId("dashboard-kpi-approvals-value").textContent,
     ).toBe("7");
@@ -307,20 +401,19 @@ describe("DashboardPage", () => {
   });
 
   it("super admin sees the full project slice across teams (mocked)", async () => {
-    // Simulating super_admin scope: the backend returns projects from
-    // multiple teams. We assert the dashboard sums across the slice
-    // without filtering client-side.
-    mockedListProjects.mockResolvedValue(
-      projectsResponse([
-        makeProject("Alpha", {
-          team_id: "team-a",
-          severity_summary: { critical: 1, high: 1, medium: 0, low: 0 },
-        }),
-        makeProject("Bravo", {
-          team_id: "team-b",
-          severity_summary: { critical: 0, high: 0, medium: 2, low: 3 },
-        }),
-      ]),
+    // Simulating super_admin scope: the aggregate already spans every team the
+    // caller can read, and the page renders it without filtering.
+    serveSummary(
+      summaryResponse({
+        project_count: 2,
+        vulnerability_severity_counts: {
+          critical: 1,
+          high: 1,
+          medium: 2,
+          low: 3,
+          info: 0,
+        },
+      }),
     );
     renderPage();
     await waitFor(() => {
@@ -328,13 +421,14 @@ describe("DashboardPage", () => {
         screen.getByTestId("dashboard-kpi-projects-value").textContent,
       ).toBe("2");
     });
-    // 1 + 1 + 2 + 3 = 7
+    // 1 + 1 + 2 + 3 = 7, info excluded
     expect(
       screen.getByTestId("dashboard-kpi-vulns-value").textContent,
     ).toBe("7");
   });
 
   it("KPI 'view all' link navigates to the matching list page", async () => {
+    serveSummary(summaryResponse({ project_count: 1 }));
     mockedListProjects.mockResolvedValue(
       projectsResponse([makeProject("Alpha")]),
     );
@@ -348,12 +442,18 @@ describe("DashboardPage", () => {
   });
 
   it("chart segment click deep-links into /projects?severity=", async () => {
-    mockedListProjects.mockResolvedValue(
-      projectsResponse([
-        makeProject("Alpha", {
-          severity_summary: { critical: 1, high: 0, medium: 0, low: 0 },
-        }),
-      ]),
+    serveSummary(
+      summaryResponse({
+        project_count: 1,
+        project_severity_counts: {
+          critical: 1,
+          high: 0,
+          medium: 0,
+          low: 0,
+          info: 0,
+          none: 0,
+        },
+      }),
     );
     // jsdom's default window.location.assign throws — replace with a spy.
     const assignSpy = vi.fn();
@@ -408,17 +508,17 @@ describe("DashboardPage", () => {
   });
 
   it("Retry refetches only the failed queries and restores the dashboard", async () => {
-    // First projects call fails; scans + approvals succeed. The beforeEach
+    // First summary call fails; projects + scans succeed. The beforeEach
     // default (empty list) serves the retry, so recovery lands on the
     // empty-state branch - with the checklist dismissed, which is what makes
     // that branch the one recovery lands on.
     useUIStore.setState({ onboardingDismissed: true });
-    mockedListProjects.mockRejectedValueOnce(new Error("boom"));
+    serveSummary(summaryResponse(), { failFirst: true });
     renderPage();
     const retry = await screen.findByTestId("dashboard-error-retry");
+    expect(summaryCallCount()).toBe(1);
     expect(mockedListProjects).toHaveBeenCalledTimes(1);
     expect(mockedListMyScans).toHaveBeenCalledTimes(1);
-    expect(mockedListApprovals).toHaveBeenCalledTimes(1);
 
     await act(async () => {
       await userEvent.click(retry);
@@ -428,10 +528,10 @@ describe("DashboardPage", () => {
       expect(screen.getByTestId("dashboard-empty")).toBeInTheDocument();
     });
     expect(screen.queryByTestId("dashboard-error")).not.toBeInTheDocument();
-    // Only the failed projects query was refetched.
-    expect(mockedListProjects).toHaveBeenCalledTimes(2);
+    // Only the failed summary query was refetched.
+    expect(summaryCallCount()).toBe(2);
+    expect(mockedListProjects).toHaveBeenCalledTimes(1);
     expect(mockedListMyScans).toHaveBeenCalledTimes(1);
-    expect(mockedListApprovals).toHaveBeenCalledTimes(1);
   });
 
   it("renders the KPI grid normally when all queries succeed (no error state)", async () => {

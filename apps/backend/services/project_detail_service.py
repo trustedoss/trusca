@@ -71,7 +71,7 @@ from models import (
 from models import (
     License as LicenseModel,
 )
-from services import risk_score
+from services import risk_score, scan_outcome
 from services.project_service import (
     ProjectError,
     ProjectForbidden,
@@ -401,10 +401,11 @@ async def get_project_overview(
     outdated_count = 0
     last_scan_at: Any = None
     last_succeeded_scan_at: Any = None
-    # #35 Surface B — tri-state: True/False once we know the DT vuln-DB size at
-    # scan time, None when unknown (no succeeded scan, or a scan predating the
-    # capture). None means "no caveat" — we never cry wolf on missing data.
-    vuln_data_available: bool | None = None
+    # Which kind of result the snapshot scan produced, so the UI can tell a
+    # project with nothing in it from a project nobody has scanned. ``None``
+    # for a scan predating the capture, which means "no caveat": we never cry
+    # wolf on missing data. See ``services.scan_outcome``.
+    component_outcome: str | None = None
     recent: list[Scan] = []
 
     # Anchor the current-state aggregation on the resolved snapshot scan: the
@@ -526,12 +527,12 @@ async def get_project_overview(
         succeeded_row = succeeded_meta_result.one_or_none()
         if succeeded_row is not None:
             last_succeeded_scan_at = succeeded_row.created_at
-            dt_vuln_count = (succeeded_row.scan_metadata or {}).get(
-                "dt_vulnerability_count"
+            recorded_outcome = (succeeded_row.scan_metadata or {}).get(
+                scan_outcome.METADATA_KEY
             )
             # Absent key (scan predates the capture) → leave None (no caveat).
-            if dt_vuln_count is not None:
-                vuln_data_available = int(dt_vuln_count) > 0
+            if recorded_outcome in scan_outcome.COMPONENT_OUTCOME_VALUES:
+                component_outcome = str(recorded_outcome)
 
         severity_distribution, license_distribution, total_components = distributions
 
@@ -570,7 +571,7 @@ async def get_project_overview(
         "recent_scans": recent,
         "last_scan_at": last_scan_at,
         "last_succeeded_scan_at": last_succeeded_scan_at,
-        "vuln_data_available": vuln_data_available,
+        "component_outcome": component_outcome,
         # Feature #18 Part B — read-only "credential configured?" flag. Never the
         # plaintext / ciphertext, only the boolean derived from the model property.
         "has_git_credential": project.has_git_credential,

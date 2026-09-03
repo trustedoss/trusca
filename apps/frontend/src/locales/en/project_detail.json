@@ -163,8 +163,10 @@
       "license": "License",
       "security_counts": "{{critical}} Critical · {{high}} High",
       "license_counts": "{{forbidden}} Forbidden · {{conditional}} Conditional",
-      "vuln_data_empty_title": "No vulnerability data at scan time",
-      "vuln_data_empty_body": "The vulnerability database was empty when this scan ran, so 0 CVEs means data was missing — not that the project is safe. Re-scan once the NVD mirror has finished loading."
+      "empty_sbom_unsupported_title": "This scan found no components",
+      "empty_sbom_unsupported_body": "The scan succeeded but produced nothing, and the source carried no dependency manifest we recognise. Every count on this page is 0 for that reason, not because the project has no dependencies. Check that TRUSCA supports this project's build system before treating the result as clean.",
+      "empty_sbom_manifests_title": "This scan found no components, but the source declares dependencies",
+      "empty_sbom_manifests_body": "The scan succeeded and produced nothing even though the source carries dependency manifests. That points at a failure during the scan rather than an empty project. Open the scan log to see which stage came up empty, then re-run it."
     },
     "risk_gauge": {
       "aria": "Project risk score: {{score}} of 100"
@@ -346,7 +348,9 @@
       "subtitle": "Every component was excluded by the current filters.",
       "unfiltered_title": "No components yet",
       "unfiltered_subtitle": "A scan is what fills this table.",
-      "run_scan": "Run a scan"
+      "run_scan": "Run a scan",
+      "scanned_empty_title": "This project was scanned and nothing was found",
+      "scanned_empty_subtitle": "The scan succeeded but produced no components. That is not the same as having none: see the note on the Overview tab for which case this is and what to do about it."
     },
     "errors": {
       "load_failed": "Could not load components."

@@ -555,6 +555,7 @@
             "enum": [
               "workspace",
               "trivy_db",
+              "root_fs",
               "postgres",
               "redis"
             ],
@@ -570,7 +571,7 @@
                 "type": "null"
               }
             ],
-            "description": "Filesystem path the bytes were read from (only set for the filesystem-backed ``workspace`` / ``trivy_db`` entries — DB-backed entries have no single canonical path).",
+            "description": "Filesystem path the bytes were read from (only set for the filesystem-backed ``workspace`` / ``trivy_db`` / ``root_fs`` entries; DB-backed entries have no single canonical path).",
             "title": "Path"
           },
           "status": {
@@ -653,6 +654,79 @@
           "collected_at"
         ],
         "title": "AdminDiskOut",
+        "type": "object"
+      },
+      "AdminOrganizationListItem": {
+        "description": "Row in the organization list -- lets an admin discover the id to pass\nas ``AdminTeamCreate.organization_id`` once more than one exists.",
+        "properties": {
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "is_personal": {
+            "description": "True for an organization created as a side effect of a signup (self-registration or OAuth), one per user. AdminTeamCreate.organization_id refuses these -- surfaced here so a caller can tell before choosing, not just find out from the 422.",
+            "title": "Is Personal",
+            "type": "boolean"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "slug": {
+            "title": "Slug",
+            "type": "string"
+          },
+          "team_count": {
+            "default": 0,
+            "title": "Team Count",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "slug",
+          "is_personal",
+          "created_at"
+        ],
+        "title": "AdminOrganizationListItem",
+        "type": "object"
+      },
+      "AdminOrganizationListPage": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/AdminOrganizationListItem"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "page": {
+            "title": "Page",
+            "type": "integer"
+          },
+          "page_size": {
+            "title": "Page Size",
+            "type": "integer"
+          },
+          "total": {
+            "title": "Total",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "items",
+          "total",
+          "page",
+          "page_size"
+        ],
+        "title": "AdminOrganizationListPage",
         "type": "object"
       },
       "AdminScanListItem": {
@@ -834,6 +908,19 @@
             "minLength": 1,
             "title": "Name",
             "type": "string"
+          },
+          "organization_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Which Organization the team belongs to. Required once a deployment has more than one (self-signup creates a personal Organization per user, so a demo SaaS deployment usually does): the create call refuses with 422 rather than silently guessing. Omit on a single-organization deployment; see GET /v1/admin/organizations to find the id.",
+            "title": "Organization Id"
           },
           "slug": {
             "maxLength": 64,
@@ -3666,6 +3753,14 @@
             "title": "Project Count",
             "type": "integer"
           },
+          "project_license_counts": {
+            "$ref": "#/components/schemas/ProjectLicenseCounts",
+            "description": "Projects bucketed by their worst license verdict. Component-shaped counts are in ``license_category_counts``."
+          },
+          "project_severity_counts": {
+            "$ref": "#/components/schemas/ProjectSeverityCounts",
+            "description": "Projects bucketed by their worst finding. Component-shaped counts are in ``vulnerability_severity_counts``."
+          },
           "recent_scans": {
             "description": "The 10 most recent scans across accessible projects, newest first.",
             "items": {
@@ -4589,6 +4684,184 @@
         "title": "EolStatusOut",
         "type": "object"
       },
+      "ExternalAdvisoryOut": {
+        "description": "One deps.dev advisory lookup result, keyed by CVE or GHSA id.",
+        "example": {
+          "advisory_id": "GHSA-f23m-r3pf-42rh",
+          "aliases": [
+            "CVE-2025-13465"
+          ],
+          "cvss3_score": 6.5,
+          "cvss3_vector": "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:N/I:L/A:L",
+          "found": true,
+          "title": "lodash vulnerable to Prototype Pollution"
+        },
+        "properties": {
+          "advisory_id": {
+            "title": "Advisory Id",
+            "type": "string"
+          },
+          "aliases": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Aliases",
+            "type": "array"
+          },
+          "cvss3_score": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Cvss3 Score"
+          },
+          "cvss3_vector": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Cvss3 Vector"
+          },
+          "found": {
+            "title": "Found",
+            "type": "boolean"
+          },
+          "title": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Title"
+          }
+        },
+        "required": [
+          "advisory_id",
+          "found"
+        ],
+        "title": "ExternalAdvisoryOut",
+        "type": "object"
+      },
+      "ExternalPackageLookupOut": {
+        "description": "One deps.dev package lookup result.",
+        "example": {
+          "advisory_count": 0,
+          "advisory_ids": [],
+          "ecosystem": "npm",
+          "found": true,
+          "homepage_url": "https://lodash.com/",
+          "internal_projects": [],
+          "licenses": [
+            "MIT"
+          ],
+          "name": "lodash",
+          "purl": "pkg:npm/lodash",
+          "source_repo_url": "git+https://github.com/lodash/lodash.git",
+          "version": "4.18.1"
+        },
+        "properties": {
+          "advisory_count": {
+            "default": 0,
+            "title": "Advisory Count",
+            "type": "integer"
+          },
+          "advisory_ids": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Advisory Ids",
+            "type": "array"
+          },
+          "ecosystem": {
+            "title": "Ecosystem",
+            "type": "string"
+          },
+          "found": {
+            "title": "Found",
+            "type": "boolean"
+          },
+          "homepage_url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Homepage Url"
+          },
+          "internal_projects": {
+            "items": {
+              "$ref": "#/components/schemas/InternalProjectUsage"
+            },
+            "title": "Internal Projects",
+            "type": "array"
+          },
+          "licenses": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Licenses",
+            "type": "array"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "purl": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Purl"
+          },
+          "source_repo_url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Source Repo Url"
+          },
+          "version": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Version"
+          }
+        },
+        "required": [
+          "ecosystem",
+          "name",
+          "found"
+        ],
+        "title": "ExternalPackageLookupOut",
+        "type": "object"
+      },
       "ForgotPasswordRequest": {
         "description": "Inbound payload for POST /auth/forgot-password.",
         "properties": {
@@ -4840,6 +5113,18 @@
       "GateResultResponse": {
         "description": "Build-gate verdict for the project's latest successful scan.",
         "properties": {
+          "component_outcome": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "What the evaluated scan's SBOM contained. `components_found` is the ordinary case. `empty_no_manifests` and `empty_with_manifests` both mean the scan produced no components, so a `pass` here is the absence of anything to judge rather than a clean result, and a CI consumer must say so instead of printing an all-clear. `null` on a scan predating this capture: unknown, not either answer.",
+            "title": "Component Outcome"
+          },
           "critical_cve_count": {
             "description": "Number of open critical-severity findings on the evaluated scan. Open = status not in (not_affected, fixed, false_positive).",
             "minimum": 0.0,
@@ -6065,6 +6350,42 @@
           "status"
         ],
         "title": "IntakeRequestTransitionIn",
+        "type": "object"
+      },
+      "InternalProjectUsage": {
+        "description": "One project (within the caller's team scope) already using this purl.",
+        "example": {
+          "project_id": "6f9619ff-8b86-d011-b42d-00cf4fc964ff",
+          "project_name": "Payments API",
+          "project_slug": "payments-api",
+          "version": "4.17.19"
+        },
+        "properties": {
+          "project_id": {
+            "format": "uuid",
+            "title": "Project Id",
+            "type": "string"
+          },
+          "project_name": {
+            "title": "Project Name",
+            "type": "string"
+          },
+          "project_slug": {
+            "title": "Project Slug",
+            "type": "string"
+          },
+          "version": {
+            "title": "Version",
+            "type": "string"
+          }
+        },
+        "required": [
+          "project_id",
+          "project_name",
+          "project_slug",
+          "version"
+        ],
+        "title": "InternalProjectUsage",
         "type": "object"
       },
       "InventoryComponentListResponse": {
@@ -10145,6 +10466,37 @@
         "title": "ProjectGovernance",
         "type": "object"
       },
+      "ProjectLicenseCounts": {
+        "description": "Projects by their single worst license verdict.\n\nThe project-shaped counterpart to ``LicenseCategoryCounts``, for the same\nreason as ``ProjectSeverityCounts``. Bucket names are the persisted\ncategory values, because the chart's segments deep-link to\n``/projects?license_category=...`` and that filter takes persisted values.",
+        "properties": {
+          "allowed": {
+            "default": 0,
+            "minimum": 0.0,
+            "title": "Allowed",
+            "type": "integer"
+          },
+          "conditional": {
+            "default": 0,
+            "minimum": 0.0,
+            "title": "Conditional",
+            "type": "integer"
+          },
+          "forbidden": {
+            "default": 0,
+            "minimum": 0.0,
+            "title": "Forbidden",
+            "type": "integer"
+          },
+          "unknown": {
+            "default": 0,
+            "minimum": 0.0,
+            "title": "Unknown",
+            "type": "integer"
+          }
+        },
+        "title": "ProjectLicenseCounts",
+        "type": "object"
+      },
       "ProjectListResponse": {
         "description": "Page of projects + total count for client-side paging UI.",
         "properties": {
@@ -10180,6 +10532,18 @@
       "ProjectOverviewResponse": {
         "description": "Aggregated risk / scan picture for the project detail Overview tab.",
         "properties": {
+          "component_outcome": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "What the anchored scan's SBOM ended up containing, captured in scan_metadata at scan time. `components_found` is the ordinary case. `empty_no_manifests` means the scan produced no components and the tree declared no dependency manifest either, which is the expected answer for a build system the scanner cannot read: the empty Components tab is not evidence of a dependency-free project. `empty_with_manifests` means no components DESPITE manifests being present, which points at a failure during the scan rather than at an empty project. `null` = unknown (no succeeded scan, or a scan predating this capture); the UI shows no caveat (never cry wolf). Under-reporting, where a manifest without its lockfile yields the direct dependencies and drops the transitive ones, is a populated SBOM and is deliberately NOT one of these values.",
+            "title": "Component Outcome"
+          },
           "current_user_role": {
             "description": "The requesting user's effective role *within this project's owning team*: 'super_admin' for platform superusers, otherwise the user's membership role on the project's team ('team_admin' / 'developer'). Users who can read the project via org-wide visibility but hold no membership default to the least-privileged 'developer'. The frontend uses this (not the global JWT role) to gate team-scoped actions such as vulnerability suppression (BUG-005).",
             "enum": [
@@ -10297,18 +10661,6 @@
           "total_components": {
             "title": "Total Components",
             "type": "integer"
-          },
-          "vuln_data_available": {
-            "anyOf": [
-              {
-                "type": "boolean"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "description": "#35 Surface B — whether the DT vulnerability database held any data WHEN the anchored scan ran (captured in scan_metadata at scan time). True = the DB was populated, so an empty Security axis is a real clean result. False = the DB was empty, so 0 CVEs means 'no data', NOT 'safe' — the UI shows a caveat prompting a rescan once the NVD mirror finishes. None = unknown (no succeeded scan, or a scan that predates this capture); the UI shows no caveat (never cry wolf).",
-            "title": "Vuln Data Available"
           }
         },
         "required": [
@@ -10576,6 +10928,18 @@
             "title": "Team Id",
             "type": "string"
           },
+          "team_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The owning team's display name. `null` when the team row is gone (the FK is preserved for audit but the name can no longer be resolved). Populated only on the list endpoint (one batched `SELECT FROM teams WHERE id IN (...)` over the page's distinct team_ids); single-project responses default to null. The FE list row renders `{team_name} / {name}` so a cross-team view (no active-team filter, e.g. the super admin's) does not read as one flat list of identical-looking rows.",
+            "title": "Team Name"
+          },
           "updated_at": {
             "format": "date-time",
             "title": "Updated At",
@@ -10647,6 +11011,49 @@
           "project_slug"
         ],
         "title": "ProjectResult",
+        "type": "object"
+      },
+      "ProjectSeverityCounts": {
+        "description": "Projects by their single worst vulnerability finding.\n\nThis is a different question from ``VulnerabilitySeverityCounts``, which\ncounts *components*. The dashboard's distribution chart asks \"how many of\nmy projects are in critical shape\", and each of its segments deep-links to\n``/projects?severity=...``, so a project-shaped count is what makes the\nclick land on the set the segment just described.\n\nA project whose latest succeeded scan carries no finding at all is in\n``none``; a project with no succeeded scan is in no bucket, because we know\nnothing about it rather than knowing it is clean.",
+        "properties": {
+          "critical": {
+            "default": 0,
+            "minimum": 0.0,
+            "title": "Critical",
+            "type": "integer"
+          },
+          "high": {
+            "default": 0,
+            "minimum": 0.0,
+            "title": "High",
+            "type": "integer"
+          },
+          "info": {
+            "default": 0,
+            "minimum": 0.0,
+            "title": "Info",
+            "type": "integer"
+          },
+          "low": {
+            "default": 0,
+            "minimum": 0.0,
+            "title": "Low",
+            "type": "integer"
+          },
+          "medium": {
+            "default": 0,
+            "minimum": 0.0,
+            "title": "Medium",
+            "type": "integer"
+          },
+          "none": {
+            "default": 0,
+            "minimum": 0.0,
+            "title": "None",
+            "type": "integer"
+          }
+        },
+        "title": "ProjectSeverityCounts",
         "type": "object"
       },
       "ProjectUpdate": {
@@ -17432,6 +17839,99 @@
         ]
       }
     },
+    "/v1/admin/organizations": {
+      "get": {
+        "operationId": "list_organizations_endpoint_v1_admin_organizations_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "page",
+            "required": false,
+            "schema": {
+              "default": 1,
+              "maximum": 1000000,
+              "minimum": 1,
+              "title": "Page",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "page_size",
+            "required": false,
+            "schema": {
+              "default": 50,
+              "maximum": 200,
+              "minimum": 1,
+              "title": "Page Size",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AdminOrganizationListPage"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetail"
+                }
+              }
+            },
+            "description": "Not authenticated"
+          },
+          "403": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetail"
+                }
+              }
+            },
+            "description": "Not permitted for this caller"
+          },
+          "404": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetail"
+                }
+              }
+            },
+            "description": "Not found"
+          },
+          "422": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetail"
+                }
+              }
+            },
+            "description": "Validation error"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "summary": "List organizations (admin), paginated",
+        "tags": [
+          "admin",
+          "admin"
+        ]
+      }
+    },
     "/v1/admin/scans": {
       "get": {
         "operationId": "list_scans_endpoint_v1_admin_scans_get",
@@ -20483,6 +20983,154 @@
         "summary": "Daily risk series for the caller's accessible projects (auth required)",
         "tags": [
           "dashboard"
+        ]
+      }
+    },
+    "/v1/external-advisories/{advisory_id}": {
+      "get": {
+        "operationId": "lookup_external_advisory_v1_external_advisories__advisory_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "advisory_id",
+            "required": true,
+            "schema": {
+              "maxLength": 64,
+              "minLength": 1,
+              "title": "Advisory Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ExternalAdvisoryOut"
+                }
+              }
+            },
+            "description": "Lookup result. `found=false` means deps.dev has no such advisory -- not an error."
+          },
+          "401": {
+            "description": "No / invalid bearer token."
+          },
+          "403": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetail"
+                }
+              }
+            },
+            "description": "Not permitted for this caller"
+          },
+          "404": {
+            "description": "The lookup is disabled on this deployment."
+          },
+          "422": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetail"
+                }
+              }
+            },
+            "description": "Validation error"
+          },
+          "502": {
+            "description": "deps.dev did not answer cleanly."
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "summary": "Look up advisory metadata on deps.dev by CVE or GHSA id",
+        "tags": [
+          "external-packages"
+        ]
+      }
+    },
+    "/v1/external-packages": {
+      "get": {
+        "operationId": "lookup_external_package_v1_external_packages_get",
+        "parameters": [
+          {
+            "description": "One of: cargo, go, maven, npm, nuget, pypi.",
+            "in": "query",
+            "name": "ecosystem",
+            "required": true,
+            "schema": {
+              "description": "One of: cargo, go, maven, npm, nuget, pypi.",
+              "maxLength": 64,
+              "title": "Ecosystem",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "name",
+            "required": true,
+            "schema": {
+              "maxLength": 255,
+              "minLength": 1,
+              "title": "Name",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ExternalPackageLookupOut"
+                }
+              }
+            },
+            "description": "Lookup result. `found=false` means deps.dev has no such package -- not an error."
+          },
+          "401": {
+            "description": "No / invalid bearer token."
+          },
+          "403": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetail"
+                }
+              }
+            },
+            "description": "Not permitted for this caller"
+          },
+          "404": {
+            "description": "The lookup is disabled on this deployment."
+          },
+          "422": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetail"
+                }
+              }
+            },
+            "description": "Validation error"
+          },
+          "502": {
+            "description": "deps.dev did not answer cleanly."
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "summary": "Look up a package on deps.dev by exact ecosystem and name",
+        "tags": [
+          "external-packages"
         ]
       }
     },
