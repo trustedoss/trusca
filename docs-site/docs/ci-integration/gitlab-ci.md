@@ -24,7 +24,7 @@ Engineers maintaining a GitLab project that uses GitLab CI / CD. You need an API
 ```yaml
 # .gitlab-ci.yml
 include:
-  - remote: 'https://raw.githubusercontent.com/trustedoss/trusca/v0.10.0/templates/gitlab-ci.yml'
+  - remote: 'https://raw.githubusercontent.com/trustedoss/trusca/v0.22.4/templates/gitlab-ci.yml'
 
 variables:
   TRUSTEDOSS_API_URL: 'https://trustedoss.example.com'
@@ -84,7 +84,7 @@ Either way, only `TRUSTEDOSS_API_KEY` must be masked.
 
 ```yaml
 include:
-  - remote: 'https://raw.githubusercontent.com/trustedoss/trusca/v0.10.0/templates/gitlab-ci.yml'
+  - remote: 'https://raw.githubusercontent.com/trustedoss/trusca/v0.22.4/templates/gitlab-ci.yml'
 
 variables:
   TRUSTEDOSS_API_URL: 'https://trustedoss.example.com'
@@ -100,7 +100,7 @@ Override the rules of the included job:
 
 ```yaml
 include:
-  - remote: 'https://raw.githubusercontent.com/trustedoss/trusca/v0.10.0/templates/gitlab-ci.yml'
+  - remote: 'https://raw.githubusercontent.com/trustedoss/trusca/v0.22.4/templates/gitlab-ci.yml'
 
 .trustedoss-sca:
   rules:
@@ -112,7 +112,7 @@ include:
 
 ```yaml
 include:
-  - remote: 'https://raw.githubusercontent.com/trustedoss/trusca/v0.10.0/templates/gitlab-ci.yml'
+  - remote: 'https://raw.githubusercontent.com/trustedoss/trusca/v0.22.4/templates/gitlab-ci.yml'
 
 trustedoss:scan-container:
   extends: .trustedoss-sca
@@ -122,7 +122,7 @@ trustedoss:scan-container:
 
 ### Pin to a tag
 
-Pin the `include` URL to a release tag (`v0.10.0`) instead of `main` for reproducible pipelines.
+Pin the `include` URL to a release tag (`v0.22.4`) instead of `main` for reproducible pipelines.
 
 ## Anatomy of the template (advanced)
 

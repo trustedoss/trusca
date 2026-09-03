@@ -211,8 +211,20 @@ def _make_client() -> httpx.AsyncClient:
     )
 
 
-def _pick_version(versions: object) -> str | None:
-    """The default version, or the most recently published one, or ``None``.
+def _pick_version_key(versions: object) -> tuple[str, str] | None:
+    """The (canonical name, version) pair for the default version, or the
+    most recently published one, or ``None``.
+
+    Returns the name deps.dev's own ``versionKey.name`` echoes back rather
+    than assuming it matches what the caller typed: deps.dev's lookup
+    itself is lenient about casing (``GET .../packages/Django`` and
+    ``.../packages/django`` both resolve), but the *name* it hands back in
+    the response is the ecosystem's canonical form (pypi normalizes per PEP
+    503, for one). Building the purl from the caller's raw input instead
+    would silently mismatch what cdxgen wrote for the same package --
+    ``services.external_package_usage`` compares purls by equality, not
+    fuzzily, so a case mismatch reads as "not used internally" for a
+    package that plainly is.
 
     deps.dev marks exactly one version ``isDefault: true`` in every package
     observed so far, but the field is not documented as guaranteed, so both
@@ -223,9 +235,9 @@ def _pick_version(versions: object) -> str | None:
         return None
     for entry in versions:
         if isinstance(entry, dict) and entry.get("isDefault") is True:
-            version = _extract_version(entry.get("versionKey"))
-            if version is not None:
-                return version
+            key = _extract_version_key(entry.get("versionKey"))
+            if key is not None:
+                return key
 
     def _published_at(entry: object) -> str:
         if isinstance(entry, dict):
@@ -236,15 +248,50 @@ def _pick_version(versions: object) -> str | None:
 
     latest = max(versions, key=_published_at, default=None)
     if isinstance(latest, dict):
-        return _extract_version(latest.get("versionKey"))
+        return _extract_version_key(latest.get("versionKey"))
     return None
 
 
-def _extract_version(version_key: object) -> str | None:
+def _extract_version_key(version_key: object) -> tuple[str, str] | None:
     if isinstance(version_key, dict):
+        name = version_key.get("name")
         version = version_key.get("version")
-        if isinstance(version, str):
-            return version
+        if isinstance(name, str) and isinstance(version, str):
+            return name, version
+    return None
+
+
+#: Schemes seen in real registry metadata (package.json ``repository.url``,
+#: PyPI project URLs) that are not executable in a browser context. Notably
+#: NOT a bare "http(s)-only" allowlist: real npm SOURCE_REPO links commonly
+#: arrive as ``git+https://...`` (verified against lodash's actual
+#: metadata), which a narrower filter would have wrongly stripped.
+_SAFE_LINK_SCHEMES = (
+    "http://",
+    "https://",
+    "git://",
+    "git+http://",
+    "git+https://",
+    "git+ssh://",
+    "ssh://",
+)
+
+
+def _safe_link(url: object) -> str | None:
+    """``url`` if it uses one of :data:`_SAFE_LINK_SCHEMES`, else ``None``.
+
+    deps.dev's ``links`` array is registry metadata the package's own
+    author controls, not something TRUSCA validated --
+    ``ExternalPackageLookupPage`` renders it straight into an anchor
+    ``href``. A ``javascript:`` (or other script-executing) scheme there
+    would be the first fully author-controlled URL this app has ever
+    rendered as a link: every other href in the app comes from a value a
+    TRUSCA user typed, not a third party's registry entry.
+    """
+    if not isinstance(url, str):
+        return None
+    if url.lower().startswith(_SAFE_LINK_SCHEMES):
+        return url
     return None
 
 
@@ -272,9 +319,10 @@ async def lookup_package(
         if versions_doc is None:
             return ExternalPackageLookup(ecosystem=ecosystem_slug, name=name, found=False)
 
-        version = _pick_version(versions_doc.get("versions"))
-        if version is None:
+        version_key = _pick_version_key(versions_doc.get("versions"))
+        if version_key is None:
             return ExternalPackageLookup(ecosystem=ecosystem_slug, name=name, found=False)
+        canonical_name, version = version_key
 
         detail = await _fetch_json(
             client,
@@ -296,7 +344,7 @@ async def lookup_package(
     from services.purl_build import build_purl
 
     purl_type = PURL_TYPE_BY_SLUG[ecosystem_slug]
-    purl = build_purl(purl_type, name, None)
+    purl = build_purl(purl_type, canonical_name, None)
 
     licenses = [item for item in (detail.get("licenses") or []) if isinstance(item, str)]
     advisory_ids = [
@@ -319,8 +367,8 @@ async def lookup_package(
         licenses=licenses,
         advisory_count=len(advisory_ids),
         advisory_ids=advisory_ids[:_ADVISORY_IDS_CAP],
-        homepage_url=links.get("HOMEPAGE"),
-        source_repo_url=links.get("SOURCE_REPO"),
+        homepage_url=_safe_link(links.get("HOMEPAGE")),
+        source_repo_url=_safe_link(links.get("SOURCE_REPO")),
     )
 
 

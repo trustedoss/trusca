@@ -14,7 +14,8 @@
 # Steps:
 #   1. Validate the tag is SemVer (`vX.Y.Z` or `vX.Y.Z-rc.N`).
 #   2. Verify CHANGELOG.md contains the version.
-#   3. Confirm with the operator.
+#   3. Verify every documented reference already names it.
+#   4. Confirm with the operator.
 #   4. Create an annotated tag pointing at HEAD of main.
 #   5. Push the tag.
 #   6. Create a GitHub Release whose body is the CHANGELOG section.
@@ -49,6 +50,21 @@ version_no_v="${TAG#v}"
 grep -q "^## \[$version_no_v\]" CHANGELOG.md \
   || fail "CHANGELOG.md has no '## [$version_no_v]' section. Add release notes first."
 ok "CHANGELOG entry found"
+
+# 3b. Documented references point at this release.
+#
+# The install and CI-integration guides pin copy-paste examples to a tag. If
+# they still name the previous one, the tag this script is about to push is
+# born stale and every reader following the quickstart hits a ref that does
+# not resolve. The linter derives the expected value from the CHANGELOG entry
+# checked just above, so this runs before the tag exists.
+if command -v node >/dev/null 2>&1; then
+  node tools/release-refs/lint.mjs \
+    || fail "documented references do not name $version_no_v. Run 'node tools/release-refs/lint.mjs --fix', commit, then re-run."
+  ok "documented references name $version_no_v"
+else
+  printf "! node not found; skipping the release-refs check\n" >&2
+fi
 
 # 4. Tag does not already exist
 if git rev-parse "$TAG" >/dev/null 2>&1; then

@@ -46,7 +46,7 @@ function overview(
     recent_scans: [],
     last_scan_at: null,
     last_succeeded_scan_at: null,
-    vuln_data_available: true,
+    component_outcome: "components_found" as const,
     current_user_role: "developer",
     has_git_credential: false,
     ...overrides,
@@ -153,30 +153,47 @@ describe("OverviewTab", () => {
     ).toBeInTheDocument();
   });
 
-  it("warns when the vuln DB was empty at scan time and Security is 0 (#35 Surface B)", async () => {
+  it("says an empty scan found nothing, rather than showing a clean page", async () => {
+    // Every number here is 0 because the scan produced no components, which is
+    // the exact state that used to render as a project with no risk.
     mockedGet.mockResolvedValueOnce(
       overview({
-        total_components: 12,
+        total_components: 0,
         severity_distribution: {},
         security_score: 0,
-        vuln_data_available: false,
+        component_outcome: "empty_no_manifests",
       }),
     );
     renderTab();
-    await waitFor(() => {
-      expect(
-        screen.getByTestId("overview-vuln-data-unavailable"),
-      ).toBeInTheDocument();
-    });
+    const alert = await screen.findByTestId("overview-empty-sbom");
+    expect(alert).toHaveAttribute("data-outcome", "empty_no_manifests");
+    // The unsupported-ecosystem wording, not the scan-failure wording: the two
+    // ask the user for different things.
+    expect(alert.textContent).toContain("no dependency manifest we recognise");
   });
 
-  it("shows NO caveat when vuln data was available, even with Security 0", async () => {
+  it("separates a failed scan from an unsupported ecosystem", async () => {
+    mockedGet.mockResolvedValueOnce(
+      overview({
+        total_components: 0,
+        severity_distribution: {},
+        security_score: 0,
+        component_outcome: "empty_with_manifests",
+      }),
+    );
+    renderTab();
+    const alert = await screen.findByTestId("overview-empty-sbom");
+    expect(alert).toHaveAttribute("data-outcome", "empty_with_manifests");
+    expect(alert.textContent).toContain("points at a failure during the scan");
+  });
+
+  it("shows NO caveat when the scan found components", async () => {
     mockedGet.mockResolvedValueOnce(
       overview({
         total_components: 12,
         severity_distribution: {},
         security_score: 0,
-        vuln_data_available: true,
+        component_outcome: "components_found",
       }),
     );
     renderTab();
@@ -184,17 +201,17 @@ describe("OverviewTab", () => {
       expect(screen.getByTestId("overview-tab")).toBeInTheDocument();
     });
     expect(
-      screen.queryByTestId("overview-vuln-data-unavailable"),
+      screen.queryByTestId("overview-empty-sbom"),
     ).not.toBeInTheDocument();
   });
 
-  it("shows NO caveat when availability is unknown (null)", async () => {
+  it("shows NO caveat when the outcome is unknown (null)", async () => {
     mockedGet.mockResolvedValueOnce(
       overview({
         total_components: 12,
         severity_distribution: {},
         security_score: 0,
-        vuln_data_available: null,
+        component_outcome: null,
       }),
     );
     renderTab();
@@ -202,7 +219,7 @@ describe("OverviewTab", () => {
       expect(screen.getByTestId("overview-tab")).toBeInTheDocument();
     });
     expect(
-      screen.queryByTestId("overview-vuln-data-unavailable"),
+      screen.queryByTestId("overview-empty-sbom"),
     ).not.toBeInTheDocument();
   });
 

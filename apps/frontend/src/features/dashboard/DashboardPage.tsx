@@ -23,12 +23,19 @@
  *   4. Recent scans + activity — scans = `useScans` slice (top-10), activity
  *      (grid-cols-3)            = notifications slice (top-10).
  *
- * Server state lives in TanStack Query exclusively. There is NO backend
- * dashboard aggregation endpoint — we fan out three existing list endpoints
- * (`/v1/projects`, `/v1/scans`, `/v1/approvals`) and do counts client-side.
- * That is intentionally cheap for the demo SaaS scale (≤100 projects per
- * team); a dedicated `/v1/dashboard/summary` endpoint is captured as a
- * follow-up in the PR body.
+ * Server state lives in TanStack Query exclusively. Every number on this page
+ * comes from `GET /v1/dashboard/summary`, which aggregates the whole portfolio
+ * server-side. It used to be counted here in the browser from one page of
+ * `GET /v1/projects`, whose `size` caps at 100, which silently under-reported
+ * above 100 projects and skewed the charts: that list is ordered
+ * `updated_at DESC`, so the projects it dropped were the least recently
+ * touched, which is where risk accumulates.
+ *
+ * Two list reads remain because the summary does not carry what they carry.
+ * `/v1/scans` gives the recent-scans table its `started_at`, without which no
+ * duration can be shown. `/v1/projects` feeds the onboarding checklist, which
+ * needs per-project `release_count`; the checklist only appears on a brand-new
+ * portfolio, so one page is all of it.
  */
 import { useQuery } from "@tanstack/react-query";
 import {
@@ -64,7 +71,6 @@ import { LicenseDistributionChart } from "@/features/projects/components/License
 import { SeverityDistributionChart } from "@/features/projects/components/SeverityDistributionChart";
 import { useScans } from "@/features/scans/useScans";
 import { useDemoMode } from "@/hooks/useDemoMode";
-import { listApprovals } from "@/lib/approvalsApi";
 import {
   listProjects,
   type ProjectPublic,
@@ -80,12 +86,16 @@ import {
   OnboardingChecklist,
   useOnboardingChecklist,
 } from "@/features/dashboard/OnboardingChecklist";
+import {
+  openVulnerabilityTotal,
+  useDashboardSummary,
+} from "@/features/dashboard/api/summary";
 import { TrendsPanel } from "@/features/dashboard/TrendsPanel";
 
 // Project list page-size ceiling matches ProjectListPage (size=100, the
-// backend `GET /v1/projects` cap). Counts are computed off this slice, so
-// at ≥100 projects the dashboard under-reports — a known limitation called
-// out in the PR body as a follow-up (backend aggregation endpoint).
+// backend `GET /v1/projects` cap). Nothing counted on this page reads this
+// slice any more; it feeds the onboarding checklist, which is only rendered
+// while the portfolio is small enough for one page to be all of it.
 const PROJECT_PAGE_SIZE = 100;
 const RECENT_SCANS_LIMIT = 10;
 
@@ -191,6 +201,22 @@ interface LicenseCounts {
  * `severityDistByProject` calc the ProjectListPage already does on its
  * distribution card, so segment-click deep-link semantics match.
  */
+const EMPTY_SEVERITY_COUNTS: SeverityCounts = {
+  critical: 0,
+  high: 0,
+  medium: 0,
+  low: 0,
+  info: 0,
+  none: 0,
+};
+
+const EMPTY_LICENSE_COUNTS: LicenseCounts = {
+  forbidden: 0,
+  conditional: 0,
+  allowed: 0,
+  unknown: 0,
+};
+
 export function aggregateSeverityByProject(
   projects: readonly ProjectPublic[],
 ): SeverityCounts {
@@ -298,10 +324,13 @@ export function DashboardPage() {
   const { demoReadOnly } = useDemoMode();
   const locale = resolveLocale(i18n);
 
-  // Projects slice — drives the active-projects KPI, the open-vuln total,
-  // the last-scan KPI, and both distribution charts. Same query shape /
-  // size as ProjectListPage so the TanStack cache lights up immediately on
-  // navigation between the two surfaces.
+  // Portfolio totals, aggregated server-side over every accessible project.
+  // This is the source for both KPI numbers and both distribution charts.
+  const summaryQuery = useDashboardSummary();
+
+  // Projects slice: the onboarding checklist and the "no projects yet" empty
+  // state, nothing counted. Same query shape / size as ProjectListPage so the
+  // TanStack cache lights up immediately on navigation between the two.
   const projectsQuery = useQuery({
     queryKey: ["projects", { page: 1, size: PROJECT_PAGE_SIZE }],
     queryFn: () => listProjects({ page: 1, size: PROJECT_PAGE_SIZE }),
@@ -312,15 +341,6 @@ export function DashboardPage() {
   // because the hook defaults page-size to 20.
   const scansQuery = useScans({ page: 1, size: RECENT_SCANS_LIMIT });
 
-  // Pending-approvals count — we only need the total (not the rows), so we
-  // request page_size=1 and read `.total`. Stale time follows the hook's
-  // default.
-  const approvalsQuery = useQuery({
-    queryKey: ["approvals", { status: "pending", page: 1, page_size: 1 }],
-    queryFn: () => listApprovals({ status: "pending", page: 1, page_size: 1 }),
-    staleTime: 30_000,
-  });
-
   // Stable reference so dependent useMemo blocks below don't re-fire when
   // the surrounding render is unrelated. `projectsQuery.data` itself is
   // already memoised by TanStack Query — we just need to coalesce the
@@ -329,44 +349,59 @@ export function DashboardPage() {
     () => projectsQuery.data?.items ?? [],
     [projectsQuery.data],
   );
-  const activeProjectCount = useMemo(
-    () => projects.filter((p) => p.archived_at == null).length,
-    [projects],
-  );
-  const severityByProject = useMemo(
-    () => aggregateSeverityByProject(projects),
-    [projects],
-  );
-  const licenseByProject = useMemo(
-    () => aggregateLicenseByProject(projects),
-    [projects],
-  );
-  const openVulns = useMemo(
-    () => aggregateOpenVulnerabilities(projects),
-    [projects],
-  );
-  const lastScannedProject = useMemo(
-    () => pickLastScannedProject(projects),
-    [projects],
-  );
+  // `project_count` already excludes archived projects, which is what the
+  // "active projects" KPI has always meant.
+  const activeProjectCount = summaryQuery.data?.project_count ?? 0;
+  const severityByProject: SeverityCounts = summaryQuery.data
+    ? {
+        critical: summaryQuery.data.project_severity_counts.critical,
+        high: summaryQuery.data.project_severity_counts.high,
+        medium: summaryQuery.data.project_severity_counts.medium,
+        low: summaryQuery.data.project_severity_counts.low,
+        info: summaryQuery.data.project_severity_counts.info,
+        none: summaryQuery.data.project_severity_counts.none,
+      }
+    : EMPTY_SEVERITY_COUNTS;
+  const licenseByProject: LicenseCounts = summaryQuery.data
+    ? {
+        forbidden: summaryQuery.data.project_license_counts.forbidden,
+        conditional: summaryQuery.data.project_license_counts.conditional,
+        allowed: summaryQuery.data.project_license_counts.allowed,
+        unknown: summaryQuery.data.project_license_counts.unknown,
+      }
+    : EMPTY_LICENSE_COUNTS;
+  const openVulns = summaryQuery.data
+    ? openVulnerabilityTotal(summaryQuery.data.vulnerability_severity_counts)
+    : 0;
+  // Newest scan across the whole portfolio, not just a page of it. `finished_at`
+  // is null while a scan is still running, and `recent_scans` is already
+  // ordered newest-first, so the first row with a timestamp is the answer.
+  const lastScan =
+    summaryQuery.data?.recent_scans.find((scan) => scan.finished_at != null) ??
+    null;
 
-  const pendingApprovalsCount = approvalsQuery.data?.total ?? 0;
+  const pendingApprovalsCount = summaryQuery.data?.pending_approvals_count ?? 0;
   const recentScans = scansQuery.data?.items.slice(0, RECENT_SCANS_LIMIT) ?? [];
 
   const isAnyLoading =
-    projectsQuery.isLoading || scansQuery.isLoading || approvalsQuery.isLoading;
+    summaryQuery.isLoading || projectsQuery.isLoading || scansQuery.isLoading;
   const isAnyError =
-    projectsQuery.isError || scansQuery.isError || approvalsQuery.isError;
+    summaryQuery.isError || projectsQuery.isError || scansQuery.isError;
 
   // M-18 — retry only the queries that actually failed; the healthy ones
   // keep their cache and re-render instantly once the failed ones recover.
   function retryFailedQueries() {
+    if (summaryQuery.isError) void summaryQuery.refetch();
     if (projectsQuery.isError) void projectsQuery.refetch();
     if (scansQuery.isError) void scansQuery.refetch();
-    if (approvalsQuery.isError) void approvalsQuery.refetch();
   }
   const projectsLoaded = !projectsQuery.isLoading && !projectsQuery.isError;
-  const hasNoProjects = projectsLoaded && projects.length === 0;
+  // "No projects" is a fact about the portfolio, so it comes from the count the
+  // server computed. Reading it off the first page of the project list said the
+  // same thing when the list query merely failed, which is a different
+  // situation and already has its own error state.
+  const summaryLoaded = !summaryQuery.isLoading && !summaryQuery.isError;
+  const hasNoProjects = summaryLoaded && activeProjectCount === 0;
 
   // C2: the checklist and the no-projects empty state open with the same
   // sentence, so only one of them appears. This hook is the single source for
@@ -532,32 +567,29 @@ export function DashboardPage() {
               label={t("kpi.pending_approvals")}
               value={formatNumber(pendingApprovalsCount, locale)}
               link={{ to: "/approvals", label: t("kpi.view_all") }}
-              loading={approvalsQuery.isLoading}
+              loading={summaryQuery.isLoading}
             />
             <KpiCard
               testId="dashboard-kpi-last-scan"
               icon={ScanLine}
               label={t("kpi.last_scan")}
               value={
-                lastScannedProject?.last_scan_at ? (
-                  <RelativeTime
-                    value={lastScannedProject.last_scan_at}
-                    locale={locale}
-                  />
+                lastScan?.finished_at ? (
+                  <RelativeTime value={lastScan.finished_at} locale={locale} />
                 ) : (
                   t("kpi.never_scanned")
                 )
               }
-              hint={lastScannedProject?.name ?? undefined}
+              hint={lastScan?.project_name ?? undefined}
               link={
-                lastScannedProject
+                lastScan
                   ? {
-                      to: `/projects/${lastScannedProject.id}`,
+                      to: `/projects/${lastScan.project_id}`,
                       label: t("kpi.view_all"),
                     }
                   : undefined
               }
-              loading={projectsQuery.isLoading}
+              loading={summaryQuery.isLoading}
             />
           </section>
 
@@ -576,7 +608,7 @@ export function DashboardPage() {
                 </CardDescription>
               </CardHeader>
               <CardContent>
-                {projectsQuery.isLoading ? (
+                {summaryQuery.isLoading ? (
                   <Skeleton className="h-20 w-full" />
                 ) : (
                   <SeverityDistributionChart
@@ -601,7 +633,7 @@ export function DashboardPage() {
                 </CardDescription>
               </CardHeader>
               <CardContent>
-                {projectsQuery.isLoading ? (
+                {summaryQuery.isLoading ? (
                   <Skeleton className="h-20 w-full" />
                 ) : (
                   <LicenseDistributionChart

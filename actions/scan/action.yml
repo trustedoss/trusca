@@ -85,6 +85,15 @@ outputs:
       default — a zero here does not mean the axis was assessed and came back
       clean.
     value: ${{ steps.gate.outputs.epss_gate_count }}
+  component-outcome:
+    description: >-
+      What the scan's SBOM ended up containing. `components_found` is the
+      ordinary case. `empty_no_manifests` and `empty_with_manifests` both mean
+      no components were produced, so a passing gate reflects the absence of
+      anything to judge rather than a clean result; the first is expected for a
+      build system TRUSCA cannot read, the second points at a scan failure.
+      Empty on a portal too old to report it.
+    value: ${{ steps.gate.outputs.component_outcome }}
 
 # -----------------------------------------------------------------------------
 # Steps
@@ -376,6 +385,7 @@ runs:
         malicious=$(echo "$json_body" | jq -r '.malicious_component_count // 0')
         malicious_assessed=$(echo "$json_body" | jq -r '.malicious_scan_assessed // false')
         epss=$(echo "$json_body" | jq -r '.epss_gate_count // 0')
+        outcome=$(echo "$json_body" | jq -r '.component_outcome // ""')
 
         # GITHUB_OUTPUT supports multi-line via heredoc, but reason is single
         # line by contract — we still defensively strip newlines.
@@ -388,6 +398,7 @@ runs:
           echo "forbidden_license_count=${forbidden}"
           echo "malicious_component_count=${malicious}"
           echo "epss_gate_count=${epss}"
+          echo "component_outcome=${outcome}"
         } >> "$GITHUB_OUTPUT"
 
         # Job summary block — visible on the workflow run page.
@@ -408,12 +419,33 @@ runs:
             # A zero nobody computed must not read like a clean result.
             echo "| Known-malicious packages | not assessed on this scan |"
           fi
+          # A gate that passes on a scan which found no components passed
+          # because there was nothing to judge. Reported unconditionally when
+          # it happens, because every count above reads 0 either way and the
+          # table would otherwise be indistinguishable from a clean build.
+          case "${outcome}" in
+            empty_no_manifests)
+              echo "| Components | **none found**. No dependency manifest in this tree, so nothing was scanned. Verify TRUSCA supports this build system before treating the verdict as a pass. |"
+              ;;
+            empty_with_manifests)
+              echo "| Components | **none found**. The tree carries dependency manifests, so this is a scan failure rather than an empty project. Check the scan log before relying on this verdict. |"
+              ;;
+          esac
           if [ -n "${reason_oneline}" ]; then
             echo "| Reason | ${reason_oneline} |"
           fi
         } >> "$GITHUB_STEP_SUMMARY"
 
-        echo "TrustedOSS gate=${gate} critical=${critical} forbidden=${forbidden} malicious=${malicious}"
+        echo "TrustedOSS gate=${gate} critical=${critical} forbidden=${forbidden} malicious=${malicious} components=${outcome:-unknown}"
+
+        case "${outcome}" in
+          empty_no_manifests|empty_with_manifests)
+            # A warning annotation, not a failure: for a build system the
+            # scanner cannot read, an empty result is the correct answer and
+            # failing here would break a working pipeline.
+            echo "::warning title=TRUSCA found no components::The gate verdict is '${gate}', but this scan produced no components (${outcome}). Every count it reports is 0 for that reason, not because the project is clean."
+            ;;
+        esac
 
     # -------------------------------------------------------------------------
     # 4) Post PR comment — only on pull_request events, only when caller

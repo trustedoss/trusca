@@ -110,7 +110,12 @@ export interface ProjectOverviewResponse {
    * `true` → an empty Security axis is a real clean result; `null` → unknown
    * (no succeeded scan or a scan predating the capture) → show no caveat.
    */
-  vuln_data_available: boolean | null;
+  /** See `schemas/project_detail.py`; null means unknown, not clean. */
+  component_outcome:
+    | "components_found"
+    | "empty_no_manifests"
+    | "empty_with_manifests"
+    | null;
   /**
    * The requesting user's effective role within this project's owning team.
    * Used (not the global JWT role) to gate team-scoped actions such as

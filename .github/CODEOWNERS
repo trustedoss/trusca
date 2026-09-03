@@ -21,9 +21,6 @@
 # Helm chart.
 /charts/                @trustedoss/maintainers
 
-# Infrastructure as code.
-/terraform/             @trustedoss/maintainers
-
 # CI/CD, issue templates, and repo automation.
 /.github/               @trustedoss/maintainers
 

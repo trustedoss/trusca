@@ -5,25 +5,32 @@ ownership. The governance model that defines these roles is in
 [`GOVERNANCE.md`](GOVERNANCE.md). Path-level review assignment is in
 [`.github/CODEOWNERS`](.github/CODEOWNERS).
 
-> GitHub handles below are placeholders to be replaced with real accounts.
+Every name and handle on this page is still a placeholder. Nothing here names a
+real account, so treat the roster as unpublished rather than as a list you can
+route a request to. [`SUPPORT.md`](SUPPORT.md) has the channels that do work.
 
 ## Lead maintainer
 
 | Name | GitHub | Areas |
 |---|---|---|
-| _TBD_ | `@trustedoss-lead` | Overall direction, releases, tie-breaking |
+| _not yet published_ | _not yet published_ | Overall direction, releases, tie-breaking |
 
 ## Maintainers
 
-| Name | GitHub | Areas of ownership |
-|---|---|---|
-| _TBD_ | `@trustedoss-backend` | Backend (`apps/backend/`) — API, services, scan pipeline, integrations |
-| _TBD_ | `@trustedoss-frontend` | Frontend (`apps/frontend/`) — React UI, i18n |
-| _TBD_ | `@trustedoss-devops` | Deployment (`charts/`, `terraform/`, `scripts/`, `.github/`) |
-| _TBD_ | `@trustedoss-docs` | Documentation (`docs-site/`, root meta files) |
+Ownership is not split by area today: [`.github/CODEOWNERS`](.github/CODEOWNERS)
+assigns every path to one team. The split below is what the areas would be once
+there are enough maintainers to divide them.
+
+| Area | Paths |
+|---|---|
+| Backend | `apps/backend/` (API, services, scan pipeline, integrations) |
+| Frontend | `apps/frontend/` (React UI, i18n) |
+| Deployment | `charts/`, `scripts/`, `.github/` |
+| Documentation | `docs-site/`, root meta files |
 
 The `@trustedoss/maintainers` team referenced in [`.github/CODEOWNERS`](.github/CODEOWNERS)
-is the GitHub team that contains the people above.
+is the GitHub team that will contain the people above once the roster is
+published.
 
 ## Security contacts
 

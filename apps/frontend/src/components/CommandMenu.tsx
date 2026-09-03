@@ -72,6 +72,7 @@ import {
   CommandList,
   CommandShortcut,
 } from "@/components/ui/command";
+import { useDeploymentFeatures } from "@/features/about/api/useDeploymentFeatures";
 import {
   COMPONENTS_SEARCH_PARAM,
   VULNERABILITIES_SEARCH_PARAM,
@@ -302,6 +303,8 @@ export function CommandMenu({ open, onOpenChange }: CommandMenuProps) {
   const { t } = useTranslation("common");
   const navigate = useNavigate();
   const { isSuperAdmin } = usePermissions();
+  const features = useDeploymentFeatures();
+  const packageLookupEnabled = features.external_package_lookup === true;
 
   const [query, setQuery] = useState("");
   const debounced = useDebouncedValue(query.trim(), 200);
@@ -591,18 +594,20 @@ export function CommandMenu({ open, onOpenChange }: CommandMenuProps) {
             </span>
             <CommandShortcut className="font-mono">/search</CommandShortcut>
           </CommandItem>
-          <CommandItem
-            value={`package-lookup ${t("command_menu.open_package_lookup")} ${debounced}`}
-            onSelect={handleOpenPackageLookup}
-            data-testid="command-menu-open-package-lookup"
-          >
-            <PackageSearch className="h-4 w-4 text-muted-foreground" aria-hidden />
-            <span>{t("command_menu.open_package_lookup")}</span>
-            <span className="ml-2 truncate text-xs text-muted-foreground">
-              {t("command_menu.open_package_lookup_hint")}
-            </span>
-            <CommandShortcut className="font-mono">/packages/lookup</CommandShortcut>
-          </CommandItem>
+          {packageLookupEnabled ? (
+            <CommandItem
+              value={`package-lookup ${t("command_menu.open_package_lookup")} ${debounced}`}
+              onSelect={handleOpenPackageLookup}
+              data-testid="command-menu-open-package-lookup"
+            >
+              <PackageSearch className="h-4 w-4 text-muted-foreground" aria-hidden />
+              <span>{t("command_menu.open_package_lookup")}</span>
+              <span className="ml-2 truncate text-xs text-muted-foreground">
+                {t("command_menu.open_package_lookup_hint")}
+              </span>
+              <CommandShortcut className="font-mono">/packages/lookup</CommandShortcut>
+            </CommandItem>
+          ) : null}
           {visibleRoutes.map((route) => {
             const Icon = route.icon;
             const namespace = route.labelKey.split(":")[0];

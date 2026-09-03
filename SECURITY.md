@@ -18,15 +18,11 @@ The fastest, most reliable channel is GitHub's built-in private vulnerability re
 
 This creates a private security advisory visible only to you and the maintainers. Use this channel whenever possible.
 
-### Alternative — Encrypted email
+### If you cannot use private reporting
 
-If you cannot use GitHub's private reporting, send an encrypted email to:
+GitHub's private vulnerability reporting is the only channel we operate. We do not run a security mailbox and we do not publish a PGP key, so there is no encrypted-email fallback to give you.
 
-- **Address:** `security@trustedoss.io`
-- **PGP key fingerprint:** `0000 0000 0000 0000 0000  0000 0000 0000 0000 0000` *(placeholder — to be replaced before v2.0.0 GA)*
-- **PGP public key:** published at [https://trustedoss.io/.well-known/pgp-key.asc](https://trustedoss.io/.well-known/pgp-key.asc) *(placeholder)*
-
-If encryption is genuinely impossible, plain email is acceptable but strongly discouraged. Avoid pasting full proof-of-concept payloads in plain text.
+If private reporting is unavailable to you, open a regular issue that says only that you have found a security problem and how to reach you privately. Do not describe the vulnerability, and do not attach a proof of concept: the issue is public from the moment you file it. A maintainer will open a private advisory and invite you to it.
 
 ### What to include
 
@@ -80,12 +76,15 @@ We do not currently run a paid bug bounty program. We may offer swag for high-qu
 
 ## Supported Versions
 
+TRUSCA is pre-1.0. Only the newest release receives security patches.
+
 | Version | Support status |
 |---|---|
-| Pre-release / `main` branch | Best effort during the v2 development phase. |
-| `v2.x` | Will be defined at v2.0.0 GA. We expect to support the latest minor for security patches and the previous minor for at least 6 months. |
+| Latest `0.x` patch release | Supported. Security fixes ship as a new patch release. |
+| Any earlier `0.x` release | Not supported. Upgrade to the latest patch. |
+| `main` branch | Best effort. Not a supported deployment target. |
 
-Older versions (including v1) do not receive security patches. Please upgrade.
+Because the project is pre-1.0, a minor release may change the HTTP API, the configuration keys, or the database schema. A longer support window covering the previous minor as well will be defined at 1.0.0.
 
 ---
 
@@ -98,7 +97,7 @@ This policy covers vulnerabilities in:
 - Bundled integrations and Celery tasks (`apps/backend/integrations/`, `apps/backend/tasks/`)
 - Official Docker images, Docker Compose configurations, and Helm chart
 - Official install / upgrade / backup / restore scripts (`scripts/`)
-- Demo SaaS deployment (`demo.trustedoss.io`)
+- The public demo deployment (`trusca-demo.duckdns.org`)
 - The official GitHub Action / GitLab CI template / Jenkinsfile examples
 
 ### Out of scope
@@ -115,23 +114,20 @@ This policy covers vulnerabilities in:
 If you operate a TRUSCA deployment, we recommend reviewing:
 
 - Enabling HTTPS at the edge (Traefik configuration is included in the production compose file).
-- Rotating the `SECRET_KEY`, `DT_API_KEY`, and database password on installation.
+- Rotating the `SECRET_KEY` and the database passwords on installation.
 - Restricting the production CORS allowlist to your portal domain only.
 - Setting `DISK_HARD_LIMIT_PCT` so scans abort before disk exhaustion.
 - Subscribing to release notifications on the GitHub repo so you are alerted when patches ship.
 
-A more detailed hardening guide will ship with the v2.0.0 GA documentation.
+A dedicated hardening guide is on the [roadmap](ROADMAP.md). Until it ships, the [admin guide](https://trustedoss.github.io/trusca/docs/admin-guide/oncall-runbook) and the [environment variable reference](https://trustedoss.github.io/trusca/docs/reference/env-variables) cover the settings above.
 
 ---
 
 ## Cryptographic Verification
 
-Starting at **v2.0.0 GA**, every release tag will be:
+Every release attaches a CycloneDX SBOM of the source tree to its GitHub Release.
 
-- Signed by the maintainer release key (Sigstore / cosign for container images, GPG for tags).
-- Accompanied by an SBOM (CycloneDX JSON) and SLSA provenance attestation.
-
-Verification instructions will be published in the release notes.
+Release tags are not GPG-signed and container images are not cosign-signed today. Signed tags, signed images, and a provenance attestation are on the [roadmap](ROADMAP.md); when they ship, verification instructions go in the release notes and this section is updated. Until then, verify a release by its commit SHA and by the image digest the release workflow prints.
 
 ---
 
@@ -139,9 +135,9 @@ Verification instructions will be published in the release notes.
 
 | Topic | Channel |
 |---|---|
-| **Vulnerability report** | [GitHub Private Vulnerability Reporting](https://github.com/trustedoss/trusca/security/advisories/new) → fall back to `security@trustedoss.io` |
-| Security policy questions | `security@trustedoss.io` (no encryption needed) |
-| Conduct concerns | `conduct@trustedoss.io` (see [`CODE_OF_CONDUCT.md`](CODE_OF_CONDUCT.md)) |
-| Everything else | GitHub Issues / Discussions |
+| **Vulnerability report** | [GitHub Private Vulnerability Reporting](https://github.com/trustedoss/trusca/security/advisories/new) |
+| Security policy questions | [GitHub Issues](https://github.com/trustedoss/trusca/issues) (the policy itself is public; only reports are private) |
+| Conduct concerns | A private report to the maintainers, see [`CODE_OF_CONDUCT.md`](CODE_OF_CONDUCT.md) |
+| Everything else | [GitHub Issues](https://github.com/trustedoss/trusca/issues) |
 
 Thank you for helping keep TRUSCA and its users safe.

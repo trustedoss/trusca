@@ -153,7 +153,7 @@ function overview(
     recent_scans: [],
     last_scan_at: null,
     last_succeeded_scan_at: null,
-    vuln_data_available: true,
+    component_outcome: "components_found" as const,
     current_user_role: "developer",
     has_git_credential: false,
     ...overrides,

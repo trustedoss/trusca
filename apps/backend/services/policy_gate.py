@@ -86,6 +86,7 @@ from models import (
     LicenseFinding,
     LicensePolicy,
     Project,
+    Scan,
     ScanComponent,
     VulnerabilityFinding,
 )
@@ -95,6 +96,7 @@ from models import (
 from models import (
     Vulnerability as VulnerabilityModel,
 )
+from services import scan_outcome
 from services.gate_policy_service import resolve_for_project
 from services.license_expression import evaluate_expression
 from services.license_policy_service import effective_category, get_effective_policy
@@ -162,6 +164,11 @@ class GateResult:
     #: False when this scan's components were never evaluated — a count of 0
     #: then means "not checked", not "nothing found".
     malicious_scan_assessed: bool = False
+    #: What the evaluated scan's SBOM contained (``services.scan_outcome``).
+    #: A gate that passes on a scan which found no components at all passed
+    #: because there was nothing to judge, and a CI log that does not say so
+    #: reads as an all-clear. ``None`` on a scan predating the capture.
+    component_outcome: str | None = None
 
 
 # The latest-succeeded-scan resolver was PROMOTED to ``services.scan_resolution``
@@ -170,6 +177,18 @@ class GateResult:
 # (see that module's docstring for the bug this prevents). ``_latest_succeeded_scan_id``
 # is kept as a thin re-export so existing in-tree callers / tests keep working.
 _latest_succeeded_scan_id = latest_succeeded_scan_id
+
+
+async def _resolve_component_outcome(session: AsyncSession, *, scan_id: uuid.UUID) -> str | None:
+    """Read ``scan_metadata['component_outcome']`` off the evaluated scan.
+
+    Returns ``None`` for a scan written before the capture existed, which the
+    consumer must render as "unknown" rather than as either answer.
+    """
+    row = await session.execute(select(Scan.scan_metadata).where(Scan.id == scan_id))
+    metadata = row.scalar_one_or_none() or {}
+    recorded = metadata.get(scan_outcome.METADATA_KEY)
+    return str(recorded) if recorded in scan_outcome.COMPONENT_OUTCOME_VALUES else None
 
 
 @dataclass(frozen=True)
@@ -227,21 +246,15 @@ async def _critical_reachability_counts(
         select(
             func.count(),
             func.coalesce(
-                func.sum(
-                    case((VulnerabilityFinding.reachable.is_(True), 1), else_=0)
-                ),
+                func.sum(case((VulnerabilityFinding.reachable.is_(True), 1), else_=0)),
                 0,
             ),
             func.coalesce(
-                func.sum(
-                    case((VulnerabilityFinding.reachable.isnot(None), 1), else_=0)
-                ),
+                func.sum(case((VulnerabilityFinding.reachable.isnot(None), 1), else_=0)),
                 0,
             ),
             func.coalesce(
-                func.sum(
-                    case((VulnerabilityFinding.reachable.is_(False), 1), else_=0)
-                ),
+                func.sum(case((VulnerabilityFinding.reachable.is_(False), 1), else_=0)),
                 0,
             ),
         )
@@ -504,9 +517,7 @@ async def _flagged_purls_for_scan(
     return list(rows)
 
 
-def _active_malicious_waivers(
-    policy: LicensePolicy | None, now: datetime
-) -> frozenset[str]:
+def _active_malicious_waivers(policy: LicensePolicy | None, now: datetime) -> frozenset[str]:
     """Base purls waived by *policy* and not yet expired.
 
     An entry without a parseable ``expires_at`` is ignored rather than treated
@@ -521,9 +532,7 @@ def _active_malicious_waivers(
         # JSONB holds whatever was written to it. A shape we cannot read is
         # not a reason to fail every gate read for this team, and it is not a
         # reason to honour waivers we cannot parse either — so: no waivers.
-        log.warning(
-            "policy_gate.malicious_exceptions_malformed", policy_id=str(policy.id)
-        )
+        log.warning("policy_gate.malicious_exceptions_malformed", policy_id=str(policy.id))
         return frozenset()
     waived: set[str] = set()
     for entry in entries:
@@ -571,18 +580,12 @@ async def _resolve_malicious_count(
         return 0, counts
 
     team_id = await _team_id_for_project(session, project_id)
-    policy = (
-        await get_effective_policy(session, team_id=team_id)
-        if team_id is not None
-        else None
-    )
+    policy = await get_effective_policy(session, team_id=team_id) if team_id is not None else None
     waived = _active_malicious_waivers(policy, now)
     if not waived:
         return len(counts.flagged_purls), counts
     blocking = sum(
-        1
-        for purl in counts.flagged_purls
-        if malicious_catalog.base_purl(purl) not in waived
+        1 for purl in counts.flagged_purls if malicious_catalog.base_purl(purl) not in waived
     )
     return blocking, counts
 
@@ -723,12 +726,8 @@ def _categorize_license_rows(
             ).category
             cache[key] = category
         prior = verdicts.get(cv_id)
-        if prior is None or CATEGORY_RANK.get(category, 0) > CATEGORY_RANK.get(
-            prior.category, 0
-        ):
-            verdicts[cv_id] = ComponentPolicyVerdict(
-                category=category, spdx_id=expression
-            )
+        if prior is None or CATEGORY_RANK.get(category, 0) > CATEGORY_RANK.get(prior.category, 0):
+            verdicts[cv_id] = ComponentPolicyVerdict(category=category, spdx_id=expression)
 
     return verdicts
 
@@ -1065,9 +1064,7 @@ async def evaluate_gate(
         # and `assessed > 0` would call that "assessed" and report a clean
         # zero for the 4,998 rows nobody looked at. An empty scan satisfies
         # this trivially, which is correct: there was nothing to examine.
-        malicious_scan_assessed = (
-            malicious_counts.assessed == malicious_counts.total
-        )
+        malicious_scan_assessed = malicious_counts.assessed == malicious_counts.total
     else:
         malicious_component_count = 0
         malicious_scan_assessed = False
@@ -1126,6 +1123,12 @@ async def evaluate_gate(
     )
     gate: GateOutcome = "fail" if reason is not None else "pass"
 
+    # Read the scan's own record of what it found. A pass on a scan with zero
+    # components is not a clean bill of health, and the CI consumer needs the
+    # difference in the payload rather than having to infer it from counts that
+    # are all 0 for both reasons.
+    component_outcome = await _resolve_component_outcome(session, scan_id=scan_id)
+
     result = GateResult(
         gate=gate,
         reason=reason,
@@ -1146,6 +1149,7 @@ async def evaluate_gate(
         malicious_component_count=malicious_component_count,
         malicious_gate_enforced=malicious_gate_enabled,
         malicious_scan_assessed=malicious_scan_assessed,
+        component_outcome=component_outcome,
     )
     log.info(
         "policy_gate.evaluated",
@@ -1165,6 +1169,7 @@ async def evaluate_gate(
         malicious_component_count=malicious_component_count,
         malicious_gate_enforced=malicious_gate_enabled,
         malicious_scan_assessed=malicious_scan_assessed,
+        component_outcome=component_outcome,
         reason=reason,
     )
     return result

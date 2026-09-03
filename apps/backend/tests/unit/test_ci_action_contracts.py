@@ -122,9 +122,7 @@ def test_every_output_is_actually_written_by_its_step() -> None:
 
     unwritten: list[str] = []
     for name, spec in (action.get("outputs") or {}).items():
-        ref = re.search(
-            r"steps\.([a-z0-9_-]+)\.outputs\.([a-z0-9_]+)", str(spec.get("value", ""))
-        )
+        ref = re.search(r"steps\.([a-z0-9_-]+)\.outputs\.([a-z0-9_]+)", str(spec.get("value", "")))
         assert ref, f"output {name!r} does not reference a step output"
         step_id, key = ref.group(1), ref.group(2)
         assert step_id in steps, f"output {name!r} references unknown step {step_id!r}"
@@ -203,3 +201,103 @@ def test_build_and_merge_agree_on_the_version_pattern() -> None:
         "build and merge derive {{version}} differently; the image would state "
         "a version other than the tag it is published under"
     )
+
+
+# ---------------------------------------------------------------------------
+# The component-outcome vocabulary, across all three places that name it
+# ---------------------------------------------------------------------------
+#
+# `component_outcome` travels from the backend, through the gate response, into
+# the action's shell, and is described in the docs a user reads. Four places
+# spelling the same three values is exactly the shape hardening rule 2 exists
+# for: each is green on its own while the set they agree on has quietly split,
+# and the failure surfaces as an empty-scan warning that never prints because
+# the action is matching a value the backend stopped emitting.
+
+
+def _action_gate_step_script() -> str:
+    action = _load_action()
+    for step in action["runs"]["steps"]:
+        if step.get("id") == "gate":
+            return str(step.get("run", ""))
+    raise AssertionError("action.yml has no step with id 'gate'")
+
+
+def _case_blocks(script: str) -> list[set[str]]:
+    """The branch labels of each ``case ... esac`` block, in order."""
+    blocks: list[set[str]] = []
+    current: set[str] | None = None
+    for line in script.splitlines():
+        stripped = line.strip()
+        if stripped.startswith("case "):
+            current = set()
+            continue
+        if stripped == "esac":
+            if current is not None:
+                blocks.append(current)
+            current = None
+            continue
+        if current is None or not stripped.endswith(")"):
+            continue
+        for raw in stripped[:-1].split("|"):
+            label = raw.strip()
+            if re.fullmatch(r"[a-z_]+", label):
+                current.add(label)
+    return blocks
+
+
+def test_component_outcome_vocabulary_is_the_same_everywhere() -> None:
+    """Backend, action and docs must name the same three outcomes."""
+    from services.scan_outcome import COMPONENT_OUTCOME_VALUES
+
+    backend = set(COMPONENT_OUTCOME_VALUES)
+    assert backend == {
+        "components_found",
+        "empty_no_manifests",
+        "empty_with_manifests",
+    }, "the published vocabulary changed; update every consumer below with it"
+
+    # The two empty values are the ones the action branches on. Requiring the
+    # ordinary value there too would be wrong: there is nothing to say about it.
+    empty_values = backend - {"components_found"}
+
+    # Per `case` block, not "does the string appear anywhere in the step".
+    # The step has two of them, one writing the job-summary row and one
+    # emitting the warning annotation, and a value has to be handled by both.
+    # Checking the step as a whole passes on a typo in either, because the
+    # other block still spells the value correctly, which is the exact drift
+    # this guards: one branch stops matching and silently prints nothing.
+    blocks = _case_blocks(_action_gate_step_script())
+    assert len(blocks) >= 2, (
+        "expected the gate step to branch on the outcome twice (summary row "
+        f"and warning annotation); found {len(blocks)} case block(s)"
+    )
+    for index, block in enumerate(blocks):
+        missing = empty_values - block
+        assert not missing, (
+            f"case block {index} in action.yml's gate step has no branch for "
+            f"{sorted(missing)}, so a scan with that outcome goes unreported "
+            "there"
+        )
+
+    doc = _doc_text()
+    for value in backend:
+        assert value in doc, (
+            f"{value!r} is not described in github-actions.md, so a user "
+            "reading the output has no way to interpret it"
+        )
+
+
+def test_the_gate_schema_and_the_classifier_agree() -> None:
+    """The API description must enumerate what the classifier can produce.
+
+    The description is what a consumer reads to decide which values to handle,
+    so a value the classifier emits and the schema never names is a value
+    nobody will branch on.
+    """
+    from schemas.policy_gate import GateResultResponse
+    from services.scan_outcome import COMPONENT_OUTCOME_VALUES
+
+    described = GateResultResponse.model_fields["component_outcome"].description or ""
+    missing = [value for value in COMPONENT_OUTCOME_VALUES if value not in described]
+    assert not missing, f"the gate response describes component_outcome without naming {missing}"

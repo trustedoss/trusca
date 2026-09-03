@@ -59,8 +59,8 @@ body:
     id: version
     attributes:
       label: TrustedOSS Portal version
-      description: Output of the `/api/v1/version` endpoint, or the Git commit SHA if running from source.
-      placeholder: v2.0.0 / 9c19b5a
+      description: The release tag you deployed (your `IMAGE_TAG`, or the chart's `appVersion`), or the Git commit SHA if running from source.
+      placeholder: v0.22.4 / 9c19b5a
     validations:
       required: true
 
@@ -72,7 +72,7 @@ body:
         - Docker Compose (development)
         - Docker Compose (production)
         - Helm chart (Kubernetes)
-        - Demo SaaS (trustedoss.io)
+        - The public demo (trusca-demo.duckdns.org)
         - Other (describe in environment)
     validations:
       required: true

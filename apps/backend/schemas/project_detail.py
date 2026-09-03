@@ -233,16 +233,22 @@ class ProjectOverviewResponse(BaseModel):
             "downloaded; the two differ whenever the latest attempt failed."
         ),
     )
-    vuln_data_available: bool | None = Field(
+    component_outcome: str | None = Field(
         default=None,
         description=(
-            "#35 Surface B — whether the DT vulnerability database held any data "
-            "WHEN the anchored scan ran (captured in scan_metadata at scan time). "
-            "True = the DB was populated, so an empty Security axis is a real "
-            "clean result. False = the DB was empty, so 0 CVEs means 'no data', "
-            "NOT 'safe' — the UI shows a caveat prompting a rescan once the NVD "
-            "mirror finishes. None = unknown (no succeeded scan, or a scan that "
-            "predates this capture); the UI shows no caveat (never cry wolf)."
+            "What the anchored scan's SBOM ended up containing, captured in "
+            "scan_metadata at scan time. `components_found` is the ordinary "
+            "case. `empty_no_manifests` means the scan produced no components "
+            "and the tree declared no dependency manifest either, which is the "
+            "expected answer for a build system the scanner cannot read: the "
+            "empty Components tab is not evidence of a dependency-free project. "
+            "`empty_with_manifests` means no components DESPITE manifests being "
+            "present, which points at a failure during the scan rather than at "
+            "an empty project. `null` = unknown (no succeeded scan, or a scan "
+            "predating this capture); the UI shows no caveat (never cry wolf). "
+            "Under-reporting, where a manifest without its lockfile yields the "
+            "direct dependencies and drops the transitive ones, is a populated "
+            "SBOM and is deliberately NOT one of these values."
         ),
     )
     has_git_credential: bool = Field(

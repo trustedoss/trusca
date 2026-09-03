@@ -86,6 +86,43 @@ class LicenseCategoryCounts(BaseModel):
     unknown: int = Field(default=0, ge=0)
 
 
+class ProjectSeverityCounts(BaseModel):
+    """Projects by their single worst vulnerability finding.
+
+    This is a different question from ``VulnerabilitySeverityCounts``, which
+    counts *components*. The dashboard's distribution chart asks "how many of
+    my projects are in critical shape", and each of its segments deep-links to
+    ``/projects?severity=...``, so a project-shaped count is what makes the
+    click land on the set the segment just described.
+
+    A project whose latest succeeded scan carries no finding at all is in
+    ``none``; a project with no succeeded scan is in no bucket, because we know
+    nothing about it rather than knowing it is clean.
+    """
+
+    critical: int = Field(default=0, ge=0)
+    high: int = Field(default=0, ge=0)
+    medium: int = Field(default=0, ge=0)
+    low: int = Field(default=0, ge=0)
+    info: int = Field(default=0, ge=0)
+    none: int = Field(default=0, ge=0)
+
+
+class ProjectLicenseCounts(BaseModel):
+    """Projects by their single worst license verdict.
+
+    The project-shaped counterpart to ``LicenseCategoryCounts``, for the same
+    reason as ``ProjectSeverityCounts``. Bucket names are the persisted
+    category values, because the chart's segments deep-link to
+    ``/projects?license_category=...`` and that filter takes persisted values.
+    """
+
+    forbidden: int = Field(default=0, ge=0)
+    conditional: int = Field(default=0, ge=0)
+    allowed: int = Field(default=0, ge=0)
+    unknown: int = Field(default=0, ge=0)
+
+
 # ---------------------------------------------------------------------------
 # Recent-scan row
 # ---------------------------------------------------------------------------
@@ -114,7 +151,7 @@ class RecentScan(BaseModel):
         default=None,
         description=(
             "Feature #18 Part A — the optional release/version label the scan was "
-            "triggered with (e.g. \"v1.2.3\"), read from ``scans.metadata.release``. "
+            'triggered with (e.g. "v1.2.3"), read from ``scans.metadata.release``. '
             "``null`` when the scan carried no release label."
         ),
     )
@@ -142,8 +179,20 @@ class DashboardSummary(BaseModel):
     vulnerability_severity_counts: VulnerabilitySeverityCounts = Field(
         default_factory=VulnerabilitySeverityCounts
     )
-    license_category_counts: LicenseCategoryCounts = Field(
-        default_factory=LicenseCategoryCounts
+    license_category_counts: LicenseCategoryCounts = Field(default_factory=LicenseCategoryCounts)
+    project_severity_counts: ProjectSeverityCounts = Field(
+        default_factory=ProjectSeverityCounts,
+        description=(
+            "Projects bucketed by their worst finding. Component-shaped counts "
+            "are in ``vulnerability_severity_counts``."
+        ),
+    )
+    project_license_counts: ProjectLicenseCounts = Field(
+        default_factory=ProjectLicenseCounts,
+        description=(
+            "Projects bucketed by their worst license verdict. Component-shaped "
+            "counts are in ``license_category_counts``."
+        ),
     )
     pending_approvals_count: int = Field(
         ge=0,
@@ -199,6 +248,8 @@ class DashboardSummary(BaseModel):
 __all__ = [
     "DashboardSummary",
     "LicenseCategoryCounts",
+    "ProjectLicenseCounts",
+    "ProjectSeverityCounts",
     "RecentScan",
     "ScanStatusCounts",
     "VulnerabilitySeverityCounts",

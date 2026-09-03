@@ -12,7 +12,9 @@ Coverage:
   - ``lookup_package``: found with advisories, found with none, not found,
     versions-present-but-detail-missing, empty versions list, no isDefault
     entry (falls back to latest publishedAt), maven namespace/purl split,
-    npm scoped-name purl split, missing links.
+    npm scoped-name purl split, missing links, purl built from deps.dev's
+    canonical (not the caller's raw-cased) name, non-http(s) link schemes
+    dropped.
   - Input validation: unknown ecosystem, empty/too-long/control-char name.
   - Transport failures: timeout, connection error, non-JSON body, oversized
     body (wire-count cap, not just decompressed-count).
@@ -190,6 +192,106 @@ async def test_npm_scoped_name_purl_split() -> None:
 
     assert result.found is True
     assert result.purl == "pkg:npm/%40angular/core"
+
+
+async def test_purl_uses_deps_dev_canonical_name_not_caller_input() -> None:
+    """Regression: deps.dev's lookup is lenient about casing (GET
+    .../packages/Django resolves fine), but pypi normalizes the name it
+    echoes back per PEP 503 (verified live: requesting "Django" returns
+    versionKey.name == "django"). Building the purl from the caller's raw
+    "Django" would silently mismatch what cdxgen wrote for the same
+    package, since services.external_package_usage compares purls by
+    equality."""
+    versions = json.dumps(
+        {
+            "packageKey": {"system": "PYPI", "name": "django"},
+            "versions": [
+                {
+                    "versionKey": {"system": "PYPI", "name": "django", "version": "5.1.0"},
+                    "publishedAt": "2026-01-01T00:00:00Z",
+                    "isDefault": True,
+                    "isDeprecated": False,
+                    "deprecatedReason": "",
+                }
+            ],
+        }
+    )
+    detail = json.dumps(
+        {
+            "versionKey": {"system": "PYPI", "name": "django", "version": "5.1.0"},
+            "publishedAt": "2026-01-01T00:00:00Z",
+            "isDefault": True,
+            "isDeprecated": False,
+            "deprecatedReason": "",
+            "licenses": ["BSD-3-Clause"],
+            "advisoryKeys": [],
+            "links": [],
+        }
+    )
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        if "/versions/" in request.url.path:
+            return _json_response(detail)
+        return _json_response(versions)
+
+    async with _client(handler) as client:
+        # Caller types "Django" (mixed case); deps.dev accepts it but its
+        # own response normalizes to "django".
+        result = await lookup_package("pypi", "Django", http_client=client)
+
+    assert result.found is True
+    assert result.purl == "pkg:pypi/django"
+    # The echoed-back `name` field still reflects what the caller typed --
+    # only purl construction uses the canonical form.
+    assert result.name == "Django"
+
+
+async def test_javascript_scheme_link_is_dropped() -> None:
+    """deps.dev's ``links`` are registry metadata the package author
+    controls, not something TRUSCA validated. ExternalPackageLookupPage
+    renders these straight into an anchor href, so a non-http(s)-family
+    scheme must never reach the response."""
+    versions = json.dumps(
+        {
+            "packageKey": {"system": "NPM", "name": "evil-pkg"},
+            "versions": [
+                {
+                    "versionKey": {"system": "NPM", "name": "evil-pkg", "version": "1.0.0"},
+                    "publishedAt": "2026-01-01T00:00:00Z",
+                    "isDefault": True,
+                    "isDeprecated": False,
+                    "deprecatedReason": "",
+                }
+            ],
+        }
+    )
+    detail = json.dumps(
+        {
+            "versionKey": {"system": "NPM", "name": "evil-pkg", "version": "1.0.0"},
+            "publishedAt": "2026-01-01T00:00:00Z",
+            "isDefault": True,
+            "isDeprecated": False,
+            "deprecatedReason": "",
+            "licenses": ["MIT"],
+            "advisoryKeys": [],
+            "links": [
+                {"label": "HOMEPAGE", "url": "javascript:alert(document.cookie)"},
+                {"label": "SOURCE_REPO", "url": "data:text/html,<script>1</script>"},
+            ],
+        }
+    )
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        if "/versions/" in request.url.path:
+            return _json_response(detail)
+        return _json_response(versions)
+
+    async with _client(handler) as client:
+        result = await lookup_package("npm", "evil-pkg", http_client=client)
+
+    assert result.found is True
+    assert result.homepage_url is None
+    assert result.source_repo_url is None
 
 
 # ---------------------------------------------------------------------------

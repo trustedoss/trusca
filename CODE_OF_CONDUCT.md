@@ -30,10 +30,9 @@ This Code of Conduct applies in all project-managed spaces — GitHub repositori
 
 ## Reporting
 
-Reports of conduct concerns can be sent to:
+Report a conduct concern privately through GitHub's [private vulnerability reporting](https://github.com/trustedoss/trusca/security/advisories/new) form, which is the only private channel to the maintainers we operate. Write `Conduct report` in the title. The form is built for security reports, but it is a private draft advisory visible only to you and the maintainers, which is the property a conduct report needs. We do not run a conduct mailbox.
 
-- **Email:** `conduct@trustedoss.io`
-- **Encrypted email (optional):** PGP key fingerprint published in [`SECURITY.md`](SECURITY.md) (the same key is reused for confidential conduct reports).
+If the concern involves a maintainer, say so in the report; that maintainer is recused from handling it.
 
 All reports will be reviewed and investigated promptly and fairly. Project leaders are obligated to respect the privacy and security of the reporter of any incident.
 

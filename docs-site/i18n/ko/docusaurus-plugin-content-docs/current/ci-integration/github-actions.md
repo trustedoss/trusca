@@ -15,7 +15,7 @@ GitHub Actions를 사용하는 GitHub 저장소를 운영하는 엔지니어. �
 :::
 
 :::note 액션 출처
-모노레포의 `actions/scan/action.yml` 컴포지트 액션을 `uses: trustedoss/trusca/actions/scan@v0.10.0`로 직접 참조하세요. 독립된 Marketplace 게시는 로드맵에 있습니다.
+모노레포의 `actions/scan/action.yml` 컴포지트 액션을 `uses: trustedoss/trusca/actions/scan@v0.22.4`로 직접 참조하세요. 독립된 Marketplace 게시는 로드맵에 있습니다.
 :::
 
 ## 시작 전 준비
@@ -53,7 +53,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - name: TRUSCA SCA scan
-        uses: trustedoss/trusca/actions/scan@v0.10.0
+        uses: trustedoss/trusca/actions/scan@v0.22.4
         with:
           api-url: https://trustedoss.example.com
           api-key: ${{ secrets.TRUSTEDOSS_API_KEY }}
@@ -123,13 +123,14 @@ jobs:
 | `forbidden-license-count` | 금지 분류 라이선스를 가진 고유 컴포넌트 수. |
 | `epss-gate-count` | EPSS score가 구성된 EPSS 임계 이상인 미해결 결과 수. EPSS 게이트가 비활성(기본)이면 `0`. [EPSS로 빌드 게이팅](#epss로-빌드-게이팅-선택) 참고. |
 | `malicious-component-count` | 악성 패키지 스냅샷이 지목한 컴포넌트 수. 심각도와 무관하게 빌드를 막습니다. 패키지를 제거하고 이 빌드가 닿을 수 있던 자격 증명을 교체하세요. |
+| `component-outcome` | 스캔의 SBOM에 무엇이 담겼는지입니다. `components_found`가 통상적인 경우입니다. `empty_no_manifests`와 `empty_with_manifests`는 둘 다 컴포넌트가 하나도 나오지 않았다는 뜻이라, 게이트 통과는 깨끗하다는 판정이 아니라 판단할 대상이 없었다는 뜻입니다. 앞은 TRUSCA가 읽지 못하는 빌드 시스템에서 정상적으로 나오는 값이고, 뒤는 스캔이 실패했다는 신호입니다. 이 값을 보고하지 못하는 구버전 포털에서는 비어 있습니다. |
 
 후속 스텝에서 사용:
 
 ```yaml
 - name: TRUSCA SCA scan
   id: sca
-  uses: trustedoss/trusca/actions/scan@v0.10.0
+  uses: trustedoss/trusca/actions/scan@v0.22.4
   with:
     api-url: https://trustedoss.example.com
     api-key: ${{ secrets.TRUSTEDOSS_API_KEY }}
@@ -150,7 +151,7 @@ jobs:
 정책을 시드하는 동안 PR을 차단하지 않으려는 경우에 유용합니다.
 
 ```yaml
-- uses: trustedoss/trusca/actions/scan@v0.10.0
+- uses: trustedoss/trusca/actions/scan@v0.22.4
   with:
     api-url: https://trustedoss.example.com
     api-key: ${{ secrets.TRUSTEDOSS_API_KEY }}
@@ -163,7 +164,7 @@ PR 코멘트는 그대로 게시되며 체크는 green으로 유지됩니다.
 ### 컨테이너 스캔
 
 ```yaml
-- uses: trustedoss/trusca/actions/scan@v0.10.0
+- uses: trustedoss/trusca/actions/scan@v0.22.4
   with:
     api-url: https://trustedoss.example.com
     api-key: ${{ secrets.TRUSTEDOSS_API_KEY }}
@@ -182,7 +183,7 @@ PR 코멘트는 그대로 게시되며 체크는 green으로 유지됩니다.
 
 ```yaml
 - name: SCA — source
-  uses: trustedoss/trusca/actions/scan@v0.10.0
+  uses: trustedoss/trusca/actions/scan@v0.22.4
   with:
     api-url: https://trustedoss.example.com
     api-key: ${{ secrets.TRUSTEDOSS_API_KEY }}
@@ -190,7 +191,7 @@ PR 코멘트는 그대로 게시되며 체크는 green으로 유지됩니다.
     scan-kind: source
 
 - name: SCA — container
-  uses: trustedoss/trusca/actions/scan@v0.10.0
+  uses: trustedoss/trusca/actions/scan@v0.22.4
   with:
     api-url: https://trustedoss.example.com
     api-key: ${{ secrets.TRUSTEDOSS_API_KEY }}
@@ -208,7 +209,7 @@ PR 코멘트는 그대로 게시되며 체크는 green으로 유지됩니다.
 `main`에서만 게이트를 적용하고 PR에서는 advisory:
 
 ```yaml
-- uses: trustedoss/trusca/actions/scan@v0.10.0
+- uses: trustedoss/trusca/actions/scan@v0.22.4
   with:
     api-url: https://trustedoss.example.com
     api-key: ${{ secrets.TRUSTEDOSS_API_KEY }}
@@ -232,10 +233,11 @@ GATE_EPSS_THRESHOLD=0.5
 
 ### 태그 핀
 
-`@v1` 태그는 떠 있습니다(floating). 재현성을 위해 특정 커밋에 핀:
+릴리스 태그는 지금은 커밋 하나를 가리키지만 태그는 옮기거나 지울 수 있습니다.
+재현성이 필요하면 커밋 자체에 고정하세요.
 
 ```yaml
-- uses: trustedoss/trusca/actions/scan@a1b2c3d4e5f6     # v0.10.0
+- uses: trustedoss/trusca/actions/scan@176bc3f0632bf0cf209c443da308e3d863dfde44  # v0.22.4
 ```
 
 ## ref가 하는 일 {#how-the-ref-becomes-a-retention-key}

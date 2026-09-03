@@ -127,7 +127,12 @@ from models import (
     VulnerabilityFinding,
 )
 from models.scan_fingerprint import compute_scan_fingerprint
-from services import sbom_component_walk, sbom_document_metadata, scan_inputs
+from services import (
+    sbom_component_walk,
+    sbom_document_metadata,
+    scan_inputs,
+    scan_outcome,
+)
 from services.component_approval_service import (
     apply_intake_decisions,
     auto_create_pending_approvals,
@@ -330,9 +335,7 @@ def scan_source_task(self: Any, scan_id: str) -> None:
         # terminal, not retryable.
         soft_limit = scan_soft_time_limit_seconds()
         log.warning("scan_timed_out", scan_id=str(scan_uuid), soft_limit_seconds=soft_limit)
-        _record_terminal_failure(
-            scan_uuid, f"scan exceeded the time limit ({soft_limit}s)"
-        )
+        _record_terminal_failure(scan_uuid, f"scan exceeded the time limit ({soft_limit}s)")
     except Exception as exc:
         # Any unhandled exception terminates the scan with status='failed'
         # and surfaces the error message in the UI. Re-raising would have
@@ -512,9 +515,7 @@ def _run_pipeline(
         )
         gen_result = executor.generate_sbom(
             gen_request,
-            prep=lambda: _prepare_for_cdxgen(
-                source_dir=project_root, scan_uuid=scan_uuid
-            ),
+            prep=lambda: _prepare_for_cdxgen(source_dir=project_root, scan_uuid=scan_uuid),
             stage=lambda stage: _set_stage(scan_uuid, stage),
             # P2 #8c: stream cdxgen stdout/stderr lines onto the scan
             # WebSocket so the drawer can render a live tool trace.
@@ -574,9 +575,7 @@ def _run_pipeline(
     # duplicate rows. Attestation only runs when signing produced a signature, so
     # we never claim "attested" over an SBOM whose integrity we could not sign.
     _set_stage(scan_uuid, "sign")
-    signed = _sign_sbom(
-        scan_uuid=scan_uuid, sbom_path=cdxgen_result.sbom_path, workspace=workspace
-    )
+    signed = _sign_sbom(scan_uuid=scan_uuid, sbom_path=cdxgen_result.sbom_path, workspace=workspace)
     if signed:
         _attest_sbom(
             scan_uuid=scan_uuid,
@@ -632,9 +631,7 @@ def _run_pipeline(
         )
         scancode_detections = scancode_result.detections
         scancode_json_path = scancode_result.result_path
-        _persist_artifact(
-            scan_uuid, kind="scancode_result", path=scancode_result.result_path
-        )
+        _persist_artifact(scan_uuid, kind="scancode_result", path=scancode_result.result_path)
         log.info("scancode_stage_done", detections=len(scancode_detections))
     except scancode_adapter.ScancodeError as exc:
         # ScancodeNotInstalled / Failed / Timeout / TooLarge all land here —
@@ -749,9 +746,7 @@ def _run_pipeline(
     # Persist the Trivy report alongside the cdxgen SBOM so admin / debug can
     # diff what Trivy actually consumed against what we matched. Same pattern
     # as the ``scancode_result`` artifact above.
-    _persist_artifact(
-        scan_uuid, kind="trivy_sbom_report", path=trivy_result.report_path
-    )
+    _persist_artifact(scan_uuid, kind="trivy_sbom_report", path=trivy_result.report_path)
     with sync_session_scope() as session:
         inserted = persist_trivy_findings(
             session,
@@ -792,6 +787,16 @@ def _run_pipeline(
     # scan on this ref, extending the reuse chain instead of collapsing it
     # back to a two-scan cycle.
     _persist_dependency_fingerprint(scan_uuid, dependency_fingerprint)
+
+    # Record which kind of result this was, so a scan that found nothing can be
+    # told apart from one that found things. Written from the FINAL document,
+    # after the cocoapods merge and the scope filter, because those change the
+    # component count and the answer has to describe what the user will see.
+    _record_component_outcome(
+        scan_uuid,
+        sbom=cdxgen_result.sbom,
+        manifest_inventory=manifest_inventory,
+    )
 
     # Stage 7 — finalize.
     _set_stage(scan_uuid, "finalize")
@@ -852,9 +857,7 @@ def _dispatch_reachability(scan_uuid: uuid.UUID) -> None:
         if task_id is not None:
             log.info("reachability_enqueued", scan_id=str(scan_uuid), task_id=task_id)
     except Exception as exc:  # noqa: BLE001 — dispatch must never fail the scan
-        log.warning(
-            "reachability_enqueue_failed", scan_id=str(scan_uuid), error=str(exc)[:300]
-        )
+        log.warning("reachability_enqueue_failed", scan_id=str(scan_uuid), error=str(exc)[:300])
 
 
 # ---------------------------------------------------------------------------
@@ -1143,9 +1146,7 @@ def _fetch_source(
     credential_injected = clone_url != normalized_url  # pragma: no cover
 
     resolve_option = (  # pragma: no cover
-        f"http.curloptResolve={host}:{port}:{resolved_ip}"
-        if scheme in ("http", "https")
-        else None
+        f"http.curloptResolve={host}:{port}:{resolved_ip}" if scheme in ("http", "https") else None
     )
     ref = git_ref_to_fetch(metadata)  # pragma: no cover
     commands = build_git_fetch_commands(  # pragma: no cover
@@ -1237,9 +1238,7 @@ def run_git_fetch_commands(
         # lands in `scan.error_message` (surfaced in the UI / audit).
         safe_stderr = _scrub_clone_stderr(completed.stderr.strip(), credential)
         if ref is None:
-            raise _FetchAborted(
-                f"git clone exited {completed.returncode}: {safe_stderr}"
-            )
+            raise _FetchAborted(f"git clone exited {completed.returncode}: {safe_stderr}")
         # A named ref that will not fetch is usually gone rather than wrong: a
         # pull request merged or force-pushed between the trigger and the
         # worker picking it up, which on a busy queue is minutes. Failing the
@@ -1545,9 +1544,53 @@ def _detect_and_record_env(scan_uuid: uuid.UUID, source_dir: Path) -> str:
     return detected_env
 
 
-def _record_input_manifests(
-    scan_uuid: uuid.UUID, project_root: Path
-) -> dict[str, Any] | None:
+def _record_component_outcome(
+    scan_uuid: uuid.UUID,
+    *,
+    sbom: dict[str, Any] | None,
+    manifest_inventory: dict[str, Any] | None,
+) -> str:
+    """Stamp ``scan_metadata['component_outcome']`` on a scan about to succeed.
+
+    An empty SBOM is not an error (see ``services.scan_outcome``), so this
+    never fails the scan; it only makes the difference visible. Best-effort in
+    the same sense as ``_record_input_manifests``: a persistence failure logs
+    and the scan still succeeds, because a scan must not die describing itself.
+
+    Counts nested components too, the same walk persistence uses, so the number
+    here is the number of rows the project ends up with rather than the length
+    of the SBOM's top-level array.
+    """
+    components = list(sbom_component_walk.iter_components((sbom or {}).get("components")))
+    outcome = scan_outcome.classify_component_outcome(
+        component_count=len(components),
+        manifest_inventory=manifest_inventory,
+    )
+    log.info(
+        "scan_component_outcome",
+        scan_id=str(scan_uuid),
+        outcome=outcome,
+        component_count=len(components),
+        manifest_count=scan_outcome.manifest_count(manifest_inventory),
+    )
+    try:
+        with sync_session_scope() as session:
+            scan = session.get(Scan, scan_uuid)
+            if scan is not None:
+                merged = dict(scan.scan_metadata or {})
+                merged[scan_outcome.METADATA_KEY] = outcome
+                scan.scan_metadata = merged
+                session.commit()
+    except Exception:  # noqa: BLE001 - persistence is best-effort, never fatal
+        log.warning(
+            "scan_component_outcome_persist_failed",
+            scan_id=str(scan_uuid),
+            exc_info=True,
+        )
+    return outcome
+
+
+def _record_input_manifests(scan_uuid: uuid.UUID, project_root: Path) -> dict[str, Any] | None:
     """Record the dependency manifests the fetched tree carried (gap #31).
 
     Runs BEFORE build-prep, deliberately. Prep generates lockfiles for the
@@ -1591,9 +1634,7 @@ def _record_input_manifests(
     return inventory
 
 
-def _persist_dependency_fingerprint(
-    scan_uuid: uuid.UUID, fingerprint: str | None
-) -> None:
+def _persist_dependency_fingerprint(scan_uuid: uuid.UUID, fingerprint: str | None) -> None:
     """S8: write this scan's dependency-set fingerprint at success time.
 
     Called once, right before ``_mark_succeeded``. Best-effort like
@@ -1747,9 +1788,7 @@ def _merge_cocoapods_components(
         merged = cocoapods_lockfile.merge_into_sbom(working, lock_data)
         if merged <= 0:
             return
-        if not sbom_scope_filter.rewrite_sbom_file(
-            cdxgen_result.sbom_path, working
-        ):
+        if not sbom_scope_filter.rewrite_sbom_file(cdxgen_result.sbom_path, working):
             return
         cdxgen_result.sbom.clear()
         cdxgen_result.sbom.update(working)
@@ -1773,9 +1812,7 @@ def _merge_cocoapods_components(
                 exc_info=True,
             )
     except Exception:  # noqa: BLE001 — the fill-in must never fail the scan
-        log.warning(
-            "cocoapods_merge_stage_failed", scan_id=str(scan_uuid), exc_info=True
-        )
+        log.warning("cocoapods_merge_stage_failed", scan_id=str(scan_uuid), exc_info=True)
 
 
 def _resolve_project_root(source_dir: Path) -> Path:
@@ -1818,9 +1855,7 @@ def _stamp_document_metadata(
         cdxgen_result.sbom.clear()
         cdxgen_result.sbom.update(working)
     except Exception:
-        log.warning(
-            "sbom_document_metadata_failed", scan_id=str(scan_uuid), exc_info=True
-        )
+        log.warning("sbom_document_metadata_failed", scan_id=str(scan_uuid), exc_info=True)
 
 
 def _apply_scope_filter(
@@ -1852,9 +1887,7 @@ def _apply_scope_filter(
         if not result.applied:
             return
         if result.dropped:
-            if not sbom_scope_filter.rewrite_sbom_file(
-                cdxgen_result.sbom_path, working
-            ):
+            if not sbom_scope_filter.rewrite_sbom_file(cdxgen_result.sbom_path, working):
                 return
             # Same object identity — CdxgenResult stays valid either way.
             cdxgen_result.sbom.clear()
@@ -1867,14 +1900,10 @@ def _apply_scope_filter(
         )
         _record_scope_filter(scan_uuid, result)
     except Exception:  # noqa: BLE001 — the filter must never fail the scan
-        log.warning(
-            "scope_filter_stage_failed", scan_id=str(scan_uuid), exc_info=True
-        )
+        log.warning("scope_filter_stage_failed", scan_id=str(scan_uuid), exc_info=True)
 
 
-def _record_scope_filter(
-    scan_uuid: uuid.UUID, result: sbom_scope_filter.ScopeFilterResult
-) -> None:
+def _record_scope_filter(scan_uuid: uuid.UUID, result: sbom_scope_filter.ScopeFilterResult) -> None:
     """Persist the filter outcome onto ``scan_metadata`` (best-effort).
 
     Same JSONB reassign-fresh-dict pattern as ``_detect_and_record_env`` —
@@ -1898,9 +1927,7 @@ def _record_scope_filter(
                 scan.scan_metadata = merged
                 session.commit()
     except Exception:  # noqa: BLE001 — telemetry is best-effort, never fatal
-        log.warning(
-            "scope_filter_persist_failed", scan_id=str(scan_uuid), exc_info=True
-        )
+        log.warning("scope_filter_persist_failed", scan_id=str(scan_uuid), exc_info=True)
 
 
 def _persist_artifact(
@@ -2118,9 +2145,7 @@ def _build_auto_enrol_audit_diff(
     }
 
 
-def _conditional_component_ids(
-    session: Session, *, scan_uuid: uuid.UUID
-) -> list[uuid.UUID]:
+def _conditional_component_ids(session: Session, *, scan_uuid: uuid.UUID) -> list[uuid.UUID]:
     """Return the components in this scan whose *effective* license category is
     exactly ``conditional``.
 
@@ -2174,9 +2199,7 @@ def _conditional_component_ids(
     return [row.component_id for row in session.execute(stmt).all()]
 
 
-def _auto_create_conditional_approvals(
-    *, scan_uuid: uuid.UUID, project_id: uuid.UUID
-) -> None:
+def _auto_create_conditional_approvals(*, scan_uuid: uuid.UUID, project_id: uuid.UUID) -> None:
     """Stage 4.5 — open a Pending approval for every conditional-license
     component in this scan (BUG-010).
 
@@ -2355,9 +2378,7 @@ def _preserve_source_tree(
     """
     try:
         workspace = source_dir.parent
-        json_path = _resolve_scancode_json_path(
-            scan_uuid, workspace, scancode_json_path
-        )
+        json_path = _resolve_scancode_json_path(scan_uuid, workspace, scancode_json_path)
         tar_path = preserve_scan_source(
             scan_id=scan_uuid,
             project_id=project_id,
@@ -2368,9 +2389,7 @@ def _preserve_source_tree(
         if tar_path is None:
             log.info("scan_source_preserve_skipped_stage", scan_id=str(scan_uuid))
             return
-        _persist_artifact(
-            scan_uuid, kind=_SOURCE_TARBALL_ARTIFACT_KIND, path=tar_path
-        )
+        _persist_artifact(scan_uuid, kind=_SOURCE_TARBALL_ARTIFACT_KIND, path=tar_path)
         log.info(
             "scan_source_preserve_artifact_written",
             scan_id=str(scan_uuid),
@@ -2425,9 +2444,7 @@ def _prepare_for_cdxgen(*, source_dir: Path, scan_uuid: uuid.UUID) -> None:
     timeout = _PREP_STEP_TIMEOUT_SECONDS
 
     if (source_dir / "Gemfile").exists() and not (source_dir / "Gemfile.lock").exists():
-        _run_prep(
-            "bundle lock", ["bundle", "lock"], source_dir, timeout, scan_uuid
-        )
+        _run_prep("bundle lock", ["bundle", "lock"], source_dir, timeout, scan_uuid)
     if (source_dir / "Cargo.toml").exists() and not (source_dir / "Cargo.lock").exists():
         _run_prep(
             "cargo generate-lockfile",
@@ -2602,9 +2619,7 @@ def _prepare_poetry(*, source_dir: Path, scan_uuid: uuid.UUID) -> None:
         return
 
     try:
-        (source_dir / "requirements.txt").write_text(
-            "\n".join(lines) + "\n", encoding="utf-8"
-        )
+        (source_dir / "requirements.txt").write_text("\n".join(lines) + "\n", encoding="utf-8")
     except OSError as exc:
         log.warning(
             "prep_poetry_requirements_write_failed",
@@ -2799,9 +2814,7 @@ def _sanitize_jsonb_payload(payload: dict[str, Any]) -> dict[str, Any]:
         return payload
     # Top-level dict handled inline (mypy: keys of a dict[str, Any] are str,
     # so the cleaned mapping stays dict[str, Any]); values recurse.
-    return {
-        sanitize_jsonb_text(k): _deep_sanitize_jsonb(v) for k, v in payload.items()
-    }
+    return {sanitize_jsonb_text(k): _deep_sanitize_jsonb(v) for k, v in payload.items()}
 
 
 def _component_text_field(value: Any, fallback: str) -> str:
@@ -2919,9 +2932,7 @@ def persist_sbom_components(
     # 'clear' is a real answer meaning "this snapshot does not know it".
     # None here means NOT ASSESSED and leaves the columns NULL — the surfaces
     # must not render that as a zero.
-    malicious_evaluator = (
-        malicious_catalog.build_evaluator() if malicious_enabled() else None
-    )
+    malicious_evaluator = malicious_catalog.build_evaluator() if malicious_enabled() else None
     malicious_stamped_count = 0
     malicious_flagged_count = 0
 
@@ -2971,9 +2982,7 @@ def persist_sbom_components(
                     eol_stamped_count += 1
             except Exception:  # noqa: BLE001 — enrichment is best-effort
                 eol_evaluator = None  # disable for the rest of the scan
-                log.warning(
-                    "eol_stamp_failed", scan_id=str(scan_uuid), exc_info=True
-                )
+                log.warning("eol_stamp_failed", scan_id=str(scan_uuid), exc_info=True)
 
         # #26 — stamp the shared catalog row with its malicious verdict.
         # Changed-value-guarded like EOL, and direction-agnostic: a withdrawn
@@ -2989,14 +2998,10 @@ def persist_sbom_components(
                 # that as "not one of the named versions" and clear a row that
                 # is genuinely malicious — for EVERY project sharing the
                 # catalog row, since this table is org-wide.
-                pinned_version = (
-                    malicious_catalog.version_from_purl(purl) or version
-                )
+                pinned_version = malicious_catalog.version_from_purl(purl) or version
                 verdict = malicious_evaluator.verdict_for(purl, pinned_version)
                 was_flagged = component_version.malicious_state == "flagged"
-                if malicious_catalog.stamp_component_version(
-                    component_version, verdict, eol_now
-                ):
+                if malicious_catalog.stamp_component_version(component_version, verdict, eol_now):
                     malicious_stamped_count += 1
                     if was_flagged and verdict.state == "clear":
                         # Legitimate when a snapshot refresh drops a withdrawn
@@ -3012,16 +3017,12 @@ def persist_sbom_components(
                     malicious_flagged_count += 1
             except Exception:  # noqa: BLE001 — enrichment is best-effort
                 malicious_evaluator = None  # disable for the rest of the scan
-                log.warning(
-                    "malicious_stamp_failed", scan_id=str(scan_uuid), exc_info=True
-                )
+                log.warning("malicious_stamp_failed", scan_id=str(scan_uuid), exc_info=True)
 
         bom_ref = raw.get("bom-ref")
         # TEXT column — persist the CLEANED ref; the raw one keys the maps.
         # F-3: a non-string bom-ref carries no path information → NULL.
-        dependency_path = (
-            sanitize_jsonb_text(bom_ref) or None if isinstance(bom_ref, str) else None
-        )
+        dependency_path = sanitize_jsonb_text(bom_ref) or None if isinstance(bom_ref, str) else None
 
         # F-2: sanitisation can make two DISTINCT raw components converge on
         # the same identity — ``a@1.0.0`` and ``a@1.0.0\\x00`` clean to the
@@ -3568,9 +3569,7 @@ def _persist_component_licenses(
     """
     spdx_pairs = _extract_spdx_ids(cdxgen_component)
     for spdx_id, ref_url in spdx_pairs:
-        license_row = _get_or_create_license(
-            session, spdx_id=spdx_id, reference_url=ref_url
-        )
+        license_row = _get_or_create_license(session, spdx_id=spdx_id, reference_url=ref_url)
         finding = LicenseFinding(
             scan_id=scan_uuid,
             component_version_id=component_version_id,
@@ -3799,9 +3798,7 @@ def _persist_detected_licenses(
         if key in seen:
             continue
         seen.add(key)
-        license_row = _get_or_create_license(
-            session, spdx_id=det.spdx_id, reference_url=None
-        )
+        license_row = _get_or_create_license(session, spdx_id=det.spdx_id, reference_url=None)
         finding = LicenseFinding(
             scan_id=scan_uuid,
             component_version_id=fp_version.id,
@@ -4064,9 +4061,7 @@ def _get_or_create_first_party_component_version(
 def _get_or_create_component(
     session: Session, *, purl: str, name: str, package_type: str
 ) -> Component:
-    existing = session.execute(
-        select(Component).where(Component.purl == purl)
-    ).scalar_one_or_none()
+    existing = session.execute(select(Component).where(Component.purl == purl)).scalar_one_or_none()
     if existing is not None:
         return existing
     component = Component(purl=purl, name=name, package_type=package_type)
@@ -4083,9 +4078,7 @@ def _get_or_create_component_version(
     purl_with_version: str,
 ) -> ComponentVersion:
     existing = session.execute(
-        select(ComponentVersion).where(
-            ComponentVersion.purl_with_version == purl_with_version
-        )
+        select(ComponentVersion).where(ComponentVersion.purl_with_version == purl_with_version)
     ).scalar_one_or_none()
     if existing is not None:
         return existing

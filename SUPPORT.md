@@ -12,15 +12,16 @@ Most "how do I…" answers are in the documentation site:
 It covers installation, running scans, reading results, admin operations, and CI
 integration, in English and Korean. Start there before opening an issue.
 
-## Questions and discussion
+## Questions and ideas
 
-For usage questions, ideas, "is this the right approach", and show-and-tell, use
-**GitHub Discussions**:
+For usage questions, ideas, and "is this the right approach", open a **GitHub
+Issue**:
 
-→ **https://github.com/trustedoss/trusca/discussions**
+→ **https://github.com/trustedoss/trusca/issues/new**
 
-Discussions are the best place when you are not yet sure whether something is a
-bug.
+You do not need to be sure it is a bug. Open a blank issue, say what you were
+trying to do and what happened, and we will sort out which it is. Issues are
+the only public channel we run today.
 
 ## Bug reports and feature requests
 
@@ -43,7 +44,7 @@ private disclosure process in [`SECURITY.md`](SECURITY.md):
 ## Roadmap and project direction
 
 To understand what is planned, see [`ROADMAP.md`](ROADMAP.md). To propose a
-direction change, open an issue or discussion first — see
+direction change, open an issue first. See
 [Proposing a change](GOVERNANCE.md#proposing-a-change).
 
 ## Contributing
@@ -54,10 +55,7 @@ process.
 
 ## Commercial inquiries
 
-TRUSCA is a community-driven, Apache-2.0 project. For commercial
-inquiries — managed hosting, support contracts, or partnerships — email
-**hello@trustedoss.io**. There is no paid support tier today; community channels
-above are the supported path.
-
-> Email addresses and links on this page are placeholders where the
-> corresponding accounts are not yet provisioned.
+TRUSCA is a community-driven, Apache-2.0 project. There is no paid support
+tier, no managed hosting, and no commercial entity behind it. The community
+channels above are the only supported path. For a partnership proposal, open
+an issue.
