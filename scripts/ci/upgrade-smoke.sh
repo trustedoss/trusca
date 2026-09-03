@@ -32,6 +32,13 @@ STATE_FILE="${3:?usage: upgrade-smoke.sh <seed|verify> <base-url> <state-file>}"
 : "${ADMIN_EMAIL:?ADMIN_EMAIL must be set}"
 : "${ADMIN_PASSWORD:?ADMIN_PASSWORD must be set}"
 
+# The scan below really clones this URL. TRUSTEDOSS_SCAN_BACKEND=mock stubs the
+# scanner toolchain (cdxgen, scancode, Trivy) but NOT the fetch step, so a
+# placeholder URL fails with "could not read Username for 'https://github.com'"
+# rather than being skipped. This is the same public fixture repository
+# install-uat.yml scans.
+SMOKE_GIT_URL="${SMOKE_GIT_URL:-https://github.com/trustedoss-e2e/install-uat-smoke.git}"
+
 WORK_DIR="$(mktemp -d)"
 trap 'rm -rf "$WORK_DIR"' EXIT
 
@@ -81,7 +88,7 @@ seed() {
   echo "created team ${team_id}"
 
   post_json /v1/projects \
-    "{\"team_id\":\"${team_id}\",\"name\":\"Upgrade UAT Project\",\"slug\":\"upgrade-uat-project\",\"git_url\":\"https://github.com/trustedoss-e2e/upgrade-uat-smoke.git\"}" \
+    "{\"team_id\":\"${team_id}\",\"name\":\"Upgrade UAT Project\",\"slug\":\"upgrade-uat-project\",\"git_url\":\"${SMOKE_GIT_URL}\"}" \
     201 "${WORK_DIR}/project.json"
   local project_id
   project_id="$(json_field "${WORK_DIR}/project.json" id)"
@@ -188,7 +195,7 @@ verify() {
   # Writes must work on the migrated schema, not just reads. A NOT NULL column
   # added without a default breaks here and nowhere above.
   post_json /v1/projects \
-    "{\"team_id\":\"${team_id}\",\"name\":\"Post Upgrade Project\",\"slug\":\"post-upgrade-project\",\"git_url\":\"https://github.com/trustedoss-e2e/post-upgrade-smoke.git\"}" \
+    "{\"team_id\":\"${team_id}\",\"name\":\"Post Upgrade Project\",\"slug\":\"post-upgrade-project\",\"git_url\":\"${SMOKE_GIT_URL}\"}" \
     201 "${WORK_DIR}/new-project.json"
   echo "created a new project on the migrated schema"
 }
