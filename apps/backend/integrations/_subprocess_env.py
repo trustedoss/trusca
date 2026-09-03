@@ -124,6 +124,12 @@ _PREP_EXTRA_ALLOWLIST: frozenset[str] = frozenset(
         "BUNDLE_PATH",
         "BUNDLE_USER_HOME",
         "GEM_HOME",
+        # Python. Only the cache controls: the prep step does not resolve
+        # Python dependencies itself, but the tools it runs can shell into pip,
+        # and the worker image's PIP_NO_CACHE_DIR=1 has to survive that hop or
+        # the cache it exists to prevent gets written anyway.
+        "PIP_NO_CACHE_DIR",
+        "PIP_CACHE_DIR",
     }
 )
 
@@ -157,6 +163,15 @@ _CDXGEN_EXTRA_ALLOWLIST: frozenset[str] = frozenset(
         # Python (cdxgen consults pip configuration)
         "PIP_INDEX_URL",
         "PIP_EXTRA_INDEX_URL",
+        # The worker image sets PIP_NO_CACHE_DIR=1 precisely so resolving a
+        # Python project does not leave a download cache behind. Without it in
+        # this allowlist the image's setting stopped at the worker process and
+        # every scan's pip run cached again under HOME: 3.3 GB in one worker
+        # inside a day on a 2,080-repository corpus, which is most of what took
+        # a 26 GB root partition to 100%. PIP_CACHE_DIR rides along so a
+        # deployment that WANTS the cache can put it somewhere with room.
+        "PIP_NO_CACHE_DIR",
+        "PIP_CACHE_DIR",
     }
 )
 
