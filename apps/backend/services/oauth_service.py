@@ -95,6 +95,7 @@ from models import (
     Team,
     User,
 )
+from services.auth_service import lock_user_for_session_write
 
 log = structlog.get_logger("oauth.service")
 
@@ -842,6 +843,11 @@ async def _issue_token_pair_in_session(
     / Team / Membership rows. A single ``session.commit()`` at the end
     persists the whole graph atomically.
     """
+    # Same per-user lock every session creator takes, so a password change
+    # cannot commit between this read and this INSERT and leave the row behind
+    # its sweep. See the LOCK ORDER note in services.auth_service.
+    await lock_user_for_session_write(session, user)
+
     access_token = create_access_token(
         subject=str(user.id),
         role="super_admin" if user.is_superuser else None,
