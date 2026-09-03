@@ -7,6 +7,30 @@ and the project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.
 
 ## [Unreleased]
 
+### Fixed
+
+- **Two one-shot backfill tasks reported the rows they had fixed and fixed
+  none of them.** `vulnerability_catalog_refresh` and
+  `license_review_flag_backfill` walk a catalog in batches, correct each row
+  in place, and count the corrections into a summary. Neither committed.
+  `sync_session_scope` deliberately does not commit on exit, so every batch
+  was discarded when its block closed: the tasks logged `stale=N` /
+  `updated=N` and the database kept its old values, with nothing raised and
+  nothing logged to say otherwise. Both now commit per batch, and the dry-run
+  paths still roll back. They survived because nothing ran them: the only
+  tests covered the row-level helpers and an injected-session path that by
+  contract does not commit, so the production path had never executed. Each
+  gained an integration test that runs the real entry point and reads the rows
+  back on a separate connection.
+- **A session scope that writes and never commits now says so.** The same
+  mistake was invisible by construction, and a static check cannot find it,
+  because the write may be in the task and the commit in a service it calls.
+  `sync_session_scope` now asks the session at close whether it emitted DML
+  that was never committed, and logs a warning when it did. The test suite
+  turns that warning into a failure, so a new task written without its commit
+  fails in CI rather than shipping and quietly doing nothing.
+
+
 ### Removed
 
 - **BREAKING (API): `vuln_data_available` is gone from
