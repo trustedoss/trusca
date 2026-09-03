@@ -83,6 +83,11 @@ interface DownloadToast {
   variant: "destructive" | "default";
 }
 
+// How often to re-read a non-terminal scan when the socket is silent. Slow
+// enough not to matter next to the WebSocket, fast enough that a stuck page
+// recovers within a few seconds rather than never.
+const SCAN_DETAIL_POLL_MS = 4000;
+
 function statusBadgeTone(
   status: ScanStatus | null | undefined,
 ): "info" | "low" | "success" | "critical" {
@@ -104,17 +109,35 @@ export function ScanDetailPage() {
   const { t } = useTranslation("scans");
   const { scanId } = useParams<{ scanId: string }>();
 
-  // ---- Scan summary (single fetch, no realtime). The WebSocket below carries
-  // the live progress; this query gives us the persisted status + release for
-  // the header chrome and the download button gating.
+  // ---- Scan summary. The WebSocket below carries the live progress; this
+  // query gives us the persisted status + release for the header chrome and
+  // the download button gating.
+  //
+  // It polls while the scan is not terminal. The comment here used to say the
+  // WS hook's React state made TanStack refetch this implicitly, and that was
+  // simply not true: nothing in the app invalidates this query. That left the
+  // page's liveness entirely dependent on the socket, and the download button
+  // is gated on `liveStatus === "queued"`, so a socket that never delivered
+  // left a finished scan showing a permanently disabled Download button with
+  // no recovery short of a manual reload. That is reachable in production, not
+  // just under test: the hook deliberately does NOT auto-reconnect after a
+  // 4429 capacity close, and a proxy or load balancer that drops idle upgrades
+  // ends in the same place. It is also what made the nightly e2e
+  // `scan_detail_page` spec fail on six consecutive nights (ER40).
+  //
+  // useProjectOverview already polls for exactly this reason. Terminal scans
+  // stop the timer, so a finished scan costs nothing.
   const scanQuery = useQuery({
     queryKey: ["scans", scanId, "detail"],
     queryFn: () => getScan(scanId as string),
     enabled: typeof scanId === "string" && scanId.length > 0,
-    // Refetch only if the WS reports a terminal frame and the cached status
-    // still says queued/running — TanStack handles this implicitly because
-    // the WS hook publishes via React state and the consumer invalidates.
     staleTime: 30_000,
+    refetchInterval: (query) => {
+      const status = query.state.data?.status;
+      return status === "queued" || status === "running"
+        ? SCAN_DETAIL_POLL_MS
+        : false;
+    },
   });
 
   const scan = scanQuery.data;
@@ -151,6 +174,12 @@ export function ScanDetailPage() {
     isTerminal: logStreamSawTerminal,
   } = useScanWebSocket(scanId ?? "", {
     enabled: typeof scanId === "string" && scanId.length > 0,
+    // BUG-007 fallback, the same one ScanProgress wires. A socket that closes
+    // without a terminal frame means the persisted status is now the only
+    // truth, so read it rather than waiting for a frame that is not coming.
+    onNonTerminalClose: () => {
+      void scanQuery.refetch();
+    },
   });
 
   // A finished scan sends no more lines, so a closed socket is the expected
