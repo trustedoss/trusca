@@ -15,15 +15,16 @@ from collections.abc import AsyncIterator, Iterator
 from contextlib import contextmanager
 from typing import Any
 
+import structlog
 from fastapi import Request
-from sqlalchemy import Engine, create_engine
+from sqlalchemy import Engine, create_engine, event
 from sqlalchemy.ext.asyncio import (
     AsyncEngine,
     AsyncSession,
     async_sessionmaker,
     create_async_engine,
 )
-from sqlalchemy.orm import Session, sessionmaker
+from sqlalchemy.orm import Session, SessionTransaction, sessionmaker
 
 from .config import (
     database_url,
@@ -156,6 +157,69 @@ def get_sync_session_factory() -> sessionmaker[Session]:
     return _sync_session_factory
 
 
+# ER39: "this session wrote something and nobody committed it".
+#
+# ``sync_session_scope`` does not auto-commit (see its docstring for why), so a
+# task that forgets ``session.commit()`` mutates rows in memory, reports the
+# work in its summary, and leaves the database untouched. Nothing raises and
+# nothing is logged: two catalog backfill tasks were entirely inert this way
+# and their summaries said otherwise.
+#
+# A static check cannot answer this. The write may be in the task body or
+# inside a service the task calls, and the commit may be in either place too,
+# so "does this file contain .commit()" flags every task that correctly
+# delegates its writes. What we actually want to ask is of the session at the
+# moment it closes: did you emit DML that was never committed. These three
+# listeners carry that one bit.
+_UNCOMMITTED_DML = "_uncommitted_dml"
+
+
+@event.listens_for(Session, "after_flush")
+def _mark_uncommitted_dml(session: Session, _ctx: Any) -> None:
+    """A flush emitted INSERT/UPDATE/DELETE; it is not durable until commit."""
+    session.info[_UNCOMMITTED_DML] = True
+
+
+@event.listens_for(Session, "after_commit")
+def _clear_on_commit(session: Session) -> None:
+    session.info.pop(_UNCOMMITTED_DML, None)
+
+
+@event.listens_for(Session, "after_soft_rollback")
+def _clear_on_rollback(session: Session, _txn: SessionTransaction) -> None:
+    """A deliberate discard is not a lost write.
+
+    This is what keeps the dry-run paths quiet: they mutate for counting and
+    roll back on purpose, and rolling back is an answer to the question.
+    """
+    session.info.pop(_UNCOMMITTED_DML, None)
+
+
+def _warn_if_uncommitted(session: Session) -> None:
+    """WARNING, never an exception.
+
+    Raising would turn every task that has been silently inert into a loudly
+    failing one at the moment this lands, which is a change to production
+    behaviour that belongs with the fix for each task rather than with the
+    detector. The test suite escalates this to a failure instead
+    (``tests/conftest.py``), where a new task pays for the mistake in CI.
+    """
+    if not (
+        session.info.get(_UNCOMMITTED_DML)
+        or session.new
+        or session.dirty
+        or session.deleted
+    ):
+        return
+    structlog.get_logger("core.db").warning(
+        "session_scope_closed_with_uncommitted_writes",
+        new=len(session.new),
+        dirty=len(session.dirty),
+        deleted=len(session.deleted),
+        flushed=bool(session.info.get(_UNCOMMITTED_DML)),
+    )
+
+
 @contextmanager
 def sync_session_scope() -> Iterator[Session]:
     """
@@ -173,6 +237,9 @@ def sync_session_scope() -> Iterator[Session]:
     progress updates) should call `session.commit()` explicitly inside the
     block — this helper does NOT auto-commit on exit because the scan
     pipeline mixes intermediate commits with terminal status updates.
+
+    Because that rule is easy to forget, the scope reports a block that wrote
+    and never committed (ER39). See ``_warn_if_uncommitted``.
     """
     factory = get_sync_session_factory()
     session = factory()
@@ -181,5 +248,7 @@ def sync_session_scope() -> Iterator[Session]:
     except Exception:
         session.rollback()
         raise
+    else:
+        _warn_if_uncommitted(session)
     finally:
         session.close()

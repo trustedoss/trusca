@@ -7,6 +7,22 @@ and the project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.
 
 ## [Unreleased]
 
+### Fixed
+
+- **A session scope that writes and never commits now says so.** Two sweep
+  tasks fixed rows in memory, counted the fixes into their summaries, and
+  returned success while the database kept its old values, because
+  `sync_session_scope` leaves the commit to the caller and neither caller made
+  one. Those two are fixed; this closes the class. A static check cannot find
+  it, because the write may sit in the task and the commit in a service the
+  task calls, so reading files flags eight tasks that correctly delegate their
+  writes and catches nothing real. The scope now asks the session at close
+  whether it emitted DML that was never committed and logs a warning when it
+  did; a deliberate rollback answers the question, so the dry-run paths stay
+  quiet. The test suite turns that warning into a failure, so a task written
+  without its commit fails in CI instead of shipping and doing nothing.
+
+
 ### Removed
 
 - **BREAKING (API): `vuln_data_available` is gone from

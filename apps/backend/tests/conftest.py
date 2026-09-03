@@ -51,6 +51,44 @@ def _stub_enqueue_scan(monkeypatch: pytest.MonkeyPatch) -> None:
 
 
 @pytest.fixture(autouse=True)
+def _fail_on_uncommitted_session_scope(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Escalate ER39's warning to a test failure.
+
+    ``core.db.sync_session_scope`` warns when a block emitted DML and closed
+    without committing; in production it stays a warning, because raising
+    would turn tasks that have been silently inert into loudly failing ones.
+    Here the same condition is an error, so a task written without its commit
+    fails in CI instead of shipping and doing nothing.
+
+    This only fires for tests that actually run the task. A write task with no
+    test that executes it is still invisible, which is why the two tasks fixed
+    alongside this guard each gained one.
+    """
+    try:
+        import core.db as core_db
+    except Exception:  # pragma: no cover - tests that don't import the db layer
+        return
+
+    def _raise(session: object) -> None:
+        info = getattr(session, "info", {})
+        if not (
+            info.get(core_db._UNCOMMITTED_DML)
+            or session.new  # type: ignore[attr-defined]
+            or session.dirty  # type: ignore[attr-defined]
+            or session.deleted  # type: ignore[attr-defined]
+        ):
+            return
+        raise AssertionError(
+            "a sync_session_scope block wrote and closed without committing "
+            "(ER39). sync_session_scope does not auto-commit: call "
+            "session.commit() inside the block, or session.rollback() if the "
+            "discard is deliberate."
+        )
+
+    monkeypatch.setattr(core_db, "_warn_if_uncommitted", _raise)
+
+
+@pytest.fixture(autouse=True)
 def _reset_rate_limiter() -> None:
     """Clear slowapi's in-memory storage so rate-limit state never leaks."""
     try:
