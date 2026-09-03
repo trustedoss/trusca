@@ -64,6 +64,22 @@ vi.mock("@/lib/projectsApi", () => ({
   listProjects: vi.fn(),
 }));
 
+// This page renders GatePolicyPanel, which reads the gate policy API. Left
+// unmocked those calls leave the test and hit a real server: on a developer
+// machine with the dev stack up they quietly succeed, and in CI they surface
+// as an AggregateError from the retrying query. Stubbed so the page's own
+// assertions do not depend on what is listening on localhost.
+vi.mock("@/lib/gatePoliciesApi", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@/lib/gatePoliciesApi")>()),
+  getTeamGatePolicy: vi.fn().mockResolvedValue(null),
+  getEpssAvailability: vi.fn().mockResolvedValue({
+    available: true,
+    refresh_enabled: true,
+    scored_cves: 1,
+    last_synced_at: "2026-09-03T02:20:00Z",
+  }),
+}));
+
 import {
   deleteTeamPolicy,
   getOrgPolicy,
