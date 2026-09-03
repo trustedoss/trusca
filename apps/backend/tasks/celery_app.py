@@ -104,6 +104,12 @@ _TASK_INCLUDES = [
     # Known Exploited Vulnerabilities feed. Backs the Vulnerabilities tab's
     # ``sort=priority`` ranking (KEV → severity → EPSS).
     "tasks.kev_catalog_refresh",
+    # Daily EPSS score sync: fills ``vulnerabilities.epss_score`` /
+    # ``epss_percentile``, which the scanner does not emit and which every
+    # EPSS surface (the tab column and filter, the ``sort=priority`` ranking,
+    # the reports, the optional build gate) reads. Off unless
+    # EPSS_REFRESH_ENABLED.
+    "tasks.epss_catalog_refresh",
     # Phase M — endoflife.date refresh beat: weekly re-stamp of the
     # ``component_versions.eol_*`` columns (migration 0038) against the
     # newest snapshot (vendored or, when EOL_REFRESH_ENABLED, freshly
@@ -184,6 +190,9 @@ _SCAN_TASK_NAMES = (
 # the key is a module constant (CLAUDE.md 표준 §2 hardening rule 2 spirit:
 # one vocabulary, one owner).
 KEV_BEAT_ENTRY_NAME = "kev-catalog-refresh-daily"
+# Daily EPSS score sync. Same naming convention and the same reason for a
+# module constant as KEV_BEAT_ENTRY_NAME above.
+EPSS_BEAT_ENTRY_NAME = "epss-catalog-refresh-daily"
 
 # Beat-schedule key of the EOL catalog refresh entry — shared with
 # ``services.eol_health_service`` for the same live-crontab derivation
@@ -209,6 +218,7 @@ def _build_beat_schedule() -> dict[str, dict[str, object]]:
       - ``trustedoss.backup.run``                   — daily at 00:00 UTC
       - ``trustedoss.vulnerability_rematch_enqueue`` — every 6h at :15
       - ``trustedoss.kev_catalog_refresh``          — daily at 01:45 UTC
+      - ``trustedoss.epss_catalog_refresh``         : daily at 02:20 UTC
       - ``trustedoss.vuln_sla_sweep``               — daily at 02:45 UTC
       - ``trustedoss.malicious_catalog_refresh``    — weekly, Sun 02:40 UTC
       - ``trustedoss.trivy_db_refresh``             — weekly, Sun 03:00 UTC
@@ -330,6 +340,20 @@ def _build_beat_schedule() -> dict[str, dict[str, object]]:
         KEV_BEAT_ENTRY_NAME: {
             "task": "trustedoss.kev_catalog_refresh",
             "schedule": crontab(minute=45, hour=1),
+        },
+        # Daily EPSS score sync at 02:20 UTC. Minute-lane check: :00 is owned
+        # by the 6h sweepers, the daily backup and the weekly Trivy refresh,
+        # :15 by the 6h rematch and the Sunday EOL refresh, :30 by 6h
+        # scan-retention, :40 by the Sunday malicious refresh, and :45 by the
+        # daily KEV refresh and the SLA sweep, so :20 is unused and this never
+        # shares a tick with anything. The hour is deliberately between the
+        # 01:45 KEV refresh and the 02:45 SLA sweep: both inputs to the
+        # priority ranking (KEV first, then EPSS) land before the sweep reads
+        # them. The work is one ~2.6 MiB download plus an UPDATE pass over
+        # only the rows whose score actually moved.
+        EPSS_BEAT_ENTRY_NAME: {
+            "task": "trustedoss.epss_catalog_refresh",
+            "schedule": crontab(minute=20, hour=2),
         },
         # X1 step 2 — daily vulnerability SLA-breach sweep at 02:45 UTC. The
         # 24h cadence pairs with the sweep's trailing-24h due-date window so

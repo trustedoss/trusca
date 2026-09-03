@@ -7,39 +7,40 @@ and the project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.
 
 ## [Unreleased]
 
-### Fixed
-
-- **A session scope that writes and never commits now says so.** Two sweep
-  tasks fixed rows in memory, counted the fixes into their summaries, and
-  returned success while the database kept its old values, because
-  `sync_session_scope` leaves the commit to the caller and neither caller made
-  one. Those two are fixed; this closes the class. A static check cannot find
-  it, because the write may sit in the task and the commit in a service the
-  task calls, so reading files flags eight tasks that correctly delegate their
-  writes and catches nothing real. The scope now asks the session at close
-  whether it emitted DML that was never committed and logs a warning when it
-  did; a deliberate rollback answers the question, so the dry-run paths stay
-  quiet. The test suite turns that warning into a failure, so a task written
-  without its commit fails in CI instead of shipping and doing nothing.
-
-
-### Removed
-
-- **BREAKING (API): `vuln_data_available` is gone from
-  `GET /v1/projects/{id}/overview`.** The field reported whether the
-  vulnerability database held any data when the anchored scan ran, and it was
-  derived from a `scan_metadata` key that nothing has written since
-  Dependency-Track was replaced at v0.10.0. It has therefore been `null` on
-  every response since, and the UI caveat it drove rendered only on `false`,
-  so it has never appeared. Reviving it has no target: Trivy fails the scan
-  outright when its database is unusable, so the failure mode the caveat
-  warned about no longer exists. A field that is always `null` looks like a
-  guarantee that is not being made, so it is removed rather than left. A
-  consumer that reads the key defensively is unaffected; one that requires it
-  to be present will break. The caveat it was meant to carry is now served by
-  `component_outcome` below.
-
 ### Added
+
+- **EPSS scores are now actually collected, so the features built on them
+  work.** `vulnerabilities.epss_score` and `epss_percentile` have existed
+  since v2.4 and nothing ever wrote them: the scanner emits no EPSS on either
+  the SBOM or the image path, measured across 88 and 107 live findings with
+  zero EPSS keys, and every row the scanner had created was NULL. So the EPSS
+  column and the `min_epss` filter on the Vulnerabilities tab showed nothing,
+  the EPSS term in `sort=priority` never moved a ranking, the reports carried
+  a blank column, and `GATE_EPSS_THRESHOLD` passed every build no matter how
+  low it was set, which is worse than an absent gate because the pass looks
+  like a verdict. A daily beat now syncs the scores from FIRST's published CSV
+  onto the CVEs this deployment has actually seen.
+
+  Off by default (`EPSS_REFRESH_ENABLED`), following the EOL and
+  malicious-package feeds rather than KEV: installing the product should not
+  reach the public internet on its own, and an air-gapped deployment can point
+  `EPSS_FEED_URL` at an internal mirror. While it is off those surfaces stay
+  empty, which the data-sources reference now says plainly instead of implying
+  the scores are always there.
+
+  The bulk CSV is the only ingest path and the API is deliberately not used:
+  FIRST's own guidance is that their lookup API must not be used for bulk
+  downloads or to keep a local copy in sync. Attribution and terms are
+  recorded in `THIRD_PARTY_NOTICES.md`, in the data-sources page and in the
+  feed client. Nothing is redistributed: each installation downloads the file
+  itself.
+
+  A sync reads the whole feed but keeps only the CVEs already in the catalog,
+  so peak memory tracks the deployment rather than the 367,000-row document,
+  and it writes only the rows whose score actually moved. A document that
+  parses to implausibly few rows is refused before any write, so a truncated
+  publish upstream cannot blank good scores.
+
 
 - **A scan that finds nothing now says so, instead of looking like a clean
   project.** Nothing on the scan path counted components, so a tree cdxgen
@@ -59,7 +60,39 @@ and the project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.
   drops the transitive ones) is deliberately not folded in: it is a populated
   SBOM with a different cause and a different fix.
 
+### Removed
+
+- **BREAKING (API): `vuln_data_available` is gone from
+  `GET /v1/projects/{id}/overview`.** The field reported whether the
+  vulnerability database held any data when the anchored scan ran, and it was
+  derived from a `scan_metadata` key that nothing has written since
+  Dependency-Track was replaced at v0.10.0. It has therefore been `null` on
+  every response since, and the UI caveat it drove rendered only on `false`,
+  so it has never appeared. Reviving it has no target: Trivy fails the scan
+  outright when its database is unusable, so the failure mode the caveat
+  warned about no longer exists. A field that is always `null` looks like a
+  guarantee that is not being made, so it is removed rather than left. A
+  consumer that reads the key defensively is unaffected; one that requires it
+  to be present will break. The caveat it was meant to carry is now served by
+  `component_outcome` below.
+
 ### Fixed
+
+- **A session scope that writes and never commits now says so.** Two sweep
+  tasks fixed rows in memory, counted the fixes into their summaries, and
+  returned success while the database kept its old values, because
+  `sync_session_scope` leaves the commit to the caller and neither caller made
+  one. Those two are fixed; this closes the class. A static check cannot find
+  it, because the write may sit in the task and the commit in a service the
+  task calls, so reading files flags eight tasks that correctly delegate their
+  writes and catches nothing real. The scope now asks the session at close
+  whether it emitted DML that was never committed and logs a warning when it
+  did; a deliberate rollback answers the question, so the dry-run paths stay
+  quiet. The test suite turns that warning into a failure, so a task written
+  without its commit fails in CI instead of shipping and doing nothing.
+
+
+
 
 - **The dashboard stopped counting at 100 projects, and undercounted risk in
   the dangerous direction.** Every KPI and both distribution charts were

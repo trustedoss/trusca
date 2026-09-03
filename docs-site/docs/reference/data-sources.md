@@ -24,7 +24,37 @@ Security leads, auditors, and operators answering "where does this CVE come from
 | **EPSS** — Exploit Prediction Scoring System | FIRST | Daily | 30-day exploit probability `0.0–1.0` and percentile. Drives the optional EPSS gate. |
 | **KEV** — Known Exploited Vulnerabilities | CISA | As published | Boolean flag: this CVE has confirmed in-the-wild exploitation. Highest-priority triage signal. |
 
-All five live in the same Trivy DB bundle — the portal does **not** call any of these APIs at scan time. Per-scan matching reads from `/var/lib/trivy/db/` on the worker, which the [Trivy DB refresh task](../admin-guide/vulnerability-data.md) keeps current.
+Three of the five (NVD, OSV, GHSA) live in the same Trivy DB bundle, and the
+portal does **not** call any API at scan time: per-scan matching reads from
+`/var/lib/trivy/db/` on the worker, which the
+[Trivy DB refresh task](../admin-guide/vulnerability-data.md) keeps current.
+
+EPSS and KEV do **not** come from the scanner. Its output carries neither, so
+each has its own daily sync that writes onto the vulnerability catalog: KEV
+from CISA's feed, EPSS from FIRST's daily CSV.
+
+Both syncs reach the network, so both can be turned off, and `EPSS_REFRESH_ENABLED`
+is **off by default**. While it is off `epss_score` and `epss_percentile` stay
+empty, and every surface that reads them is empty with it: the EPSS column and
+the `min_epss` filter on the Vulnerabilities tab, the EPSS term in
+`sort=priority`, the EPSS columns in the Excel and PDF reports, and the
+optional `GATE_EPSS_THRESHOLD` build gate, which then passes every build no
+matter how low the threshold is set. Turn the sync on, or point `EPSS_FEED_URL`
+at an internal mirror, before relying on any of them.
+
+EPSS is stewarded by the [EPSS Special Interest Group at FIRST](https://www.first.org/epss);
+the scores are generated and published by Empirical Security. FIRST asks for
+attribution where possible, and the citation they supply is:
+
+```
+Jay Jacobs, Sasha Romanosky, Benjamin Edwards, Michael Roytman,
+Idris Adjerid (2021), Exploit Prediction Scoring System,
+Digital Threats Research and Practice, 2(3)
+```
+
+Full terms are in `THIRD_PARTY_NOTICES.md`. The bulk CSV is deliberately the
+only ingest path: FIRST's guidance is that their lookup API must not be used
+for bulk downloads or to keep a local copy in sync.
 
 One component-level source sits outside the Trivy DB:
 
