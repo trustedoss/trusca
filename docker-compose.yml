@@ -449,6 +449,15 @@ x-backend-env: &backend-env
   LICENSE_WAIVE_MAX_DAYS: ${LICENSE_WAIVE_MAX_DAYS:-90}
   OSORI_ENABLED: ${OSORI_ENABLED:-true}
   OSORI_SNAPSHOT_PATH: ${OSORI_SNAPSHOT_PATH:-}
+  # compose-env-var wiring audit: demo SaaS mode (sandbox-scan allowance,
+  # read-only lockdown) and the seed_demo.py bootstrap super-admin password
+  # override. Documented in .env.example but never listed in this anchor, so
+  # setting any of them in .env had no effect on the running container.
+  # Defaults match core/config.py exactly, so an unset .env changes nothing
+  # for an existing deployment.
+  DEMO_ALLOW_SANDBOX_SCANS: ${DEMO_ALLOW_SANDBOX_SCANS:-false}
+  DEMO_READ_ONLY: ${DEMO_READ_ONLY:-false}
+  DEMO_SUPER_ADMIN_PASSWORD: ${DEMO_SUPER_ADMIN_PASSWORD:-}
 
 services:
   # ---------------------------------------------------------------------------
