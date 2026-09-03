@@ -241,6 +241,237 @@ x-backend-env: &backend-env
   COSIGN_KEY_PATH: ${COSIGN_KEY_PATH:-}
   COSIGN_KEY_PASSWORD_ENCRYPTED: ${COSIGN_KEY_PASSWORD_ENCRYPTED:-}
   COSIGN_TIMEOUT_SECONDS: ${COSIGN_TIMEOUT_SECONDS:-120}
+  # compose-env-var wiring audit: OAuth / OIDC social login + GitHub App PR
+  # comments. Documented in .env.example but never listed in this anchor, so
+  # setting any of them in .env had no effect on the running container
+  # (compose only passes through a var named here). Defaults match
+  # core/config.py exactly, so an unset .env changes nothing for an existing
+  # deployment.
+  GITHUB_CLIENT_ID: ${GITHUB_CLIENT_ID:-}
+  GITHUB_CLIENT_SECRET: ${GITHUB_CLIENT_SECRET:-}
+  GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID:-}
+  GOOGLE_CLIENT_SECRET: ${GOOGLE_CLIENT_SECRET:-}
+  OIDC_CLIENT_ID: ${OIDC_CLIENT_ID:-}
+  OIDC_CLIENT_SECRET: ${OIDC_CLIENT_SECRET:-}
+  OIDC_ISSUER: ${OIDC_ISSUER:-}
+  OIDC_SCOPES: ${OIDC_SCOPES:-}
+  OIDC_GROUPS_CLAIM: ${OIDC_GROUPS_CLAIM:-}
+  OIDC_GROUP_ROLE_MAP: ${OIDC_GROUP_ROLE_MAP:-}
+  GITHUB_API_URL: ${GITHUB_API_URL:-https://api.github.com}
+  GITHUB_APP_TOKEN_HTTP_TIMEOUT_SECONDS: ${GITHUB_APP_TOKEN_HTTP_TIMEOUT_SECONDS:-10}
+  GITHUB_TOKEN: ${GITHUB_TOKEN:-}
+  TRUSTEDOSS_GITHUB_TOKEN: ${TRUSTEDOSS_GITHUB_TOKEN:-}
+  PORTAL_PUBLIC_URL: ${PORTAL_PUBLIC_URL:-}
+  # compose-env-var wiring audit: vulnerability matching (KEV catalog,
+  # malicious-package snapshot, reachability analysis), the license/malicious
+  # build gate, and vulnerability SLA alerting. Documented in .env.example but
+  # never listed in this anchor, so setting any of them in .env had no effect
+  # on the running container. Defaults match core/config.py exactly, so an
+  # unset .env changes nothing for an existing deployment.
+  GATE_EPSS_THRESHOLD: ${GATE_EPSS_THRESHOLD:-}
+  GATE_MALICIOUS_ENABLED: ${GATE_MALICIOUS_ENABLED:-true}
+  GATE_REACHABLE_CRITICAL_ONLY: ${GATE_REACHABLE_CRITICAL_ONLY:-}
+  KEV_FEED_URL: ${KEV_FEED_URL:-https://www.cisa.gov/sites/default/files/feeds/known_exploited_vulnerabilities.json}
+  KEV_REFRESH_ENABLED: ${KEV_REFRESH_ENABLED:-true}
+  KEV_REFRESH_TIMEOUT_SECONDS: ${KEV_REFRESH_TIMEOUT_SECONDS:-30}
+  MALICIOUS_ENABLED: ${MALICIOUS_ENABLED:-true}
+  MALICIOUS_REFRESH_ENABLED: ${MALICIOUS_REFRESH_ENABLED:-}
+  MALICIOUS_SNAPSHOT_STALE_DAYS: ${MALICIOUS_SNAPSHOT_STALE_DAYS:-}
+  MALICIOUS_WAIVE_MAX_DAYS: ${MALICIOUS_WAIVE_MAX_DAYS:-30}
+  REACHABILITY_ENABLED: ${REACHABILITY_ENABLED:-true}
+  REACHABILITY_HARD_TIME_LIMIT_SECONDS: ${REACHABILITY_HARD_TIME_LIMIT_SECONDS:-1200}
+  REACHABILITY_SOFT_TIME_LIMIT_SECONDS: ${REACHABILITY_SOFT_TIME_LIMIT_SECONDS:-900}
+  VULN_REMATCH_BATCH_SIZE: ${VULN_REMATCH_BATCH_SIZE:-50}
+  VULN_REMATCH_INTERVAL_HOURS: ${VULN_REMATCH_INTERVAL_HOURS:-6}
+  VULN_REMATCH_LOCK_SKEW_SECONDS: ${VULN_REMATCH_LOCK_SKEW_SECONDS:-30}
+  VULN_SLA_ALERTS_ENABLED: ${VULN_SLA_ALERTS_ENABLED:-true}
+  VULN_SLA_DAYS_CRITICAL: ${VULN_SLA_DAYS_CRITICAL:-7}
+  VULN_SLA_DAYS_HIGH: ${VULN_SLA_DAYS_HIGH:-30}
+  VULN_SLA_DAYS_MEDIUM: ${VULN_SLA_DAYS_MEDIUM:-90}
+  VULN_SLA_DAYS_LOW: ${VULN_SLA_DAYS_LOW:-180}
+  # compose-env-var wiring audit: scan executor selection, Docker sidecar
+  # hardening (resource caps, capabilities, network, volume strategy), Android
+  # scan image selection, and scan-log persistence/retention. Documented in
+  # .env.example but never listed in this anchor, so setting any of them in
+  # .env had no effect on the running container. Defaults match
+  # core/config.py exactly, so an unset .env changes nothing for an existing
+  # deployment.
+  SCAN_ALLOW_UNPINNED_IMAGE: ${SCAN_ALLOW_UNPINNED_IMAGE:-}
+  SCAN_ANDROID_API_DEFAULT: ${SCAN_ANDROID_API_DEFAULT:-34}
+  SCAN_ANDROID_IMAGE_PREFIX: ${SCAN_ANDROID_IMAGE_PREFIX:-ghcr.io/sktelecom/sbom-scanner-android-sdk}
+  SCAN_ANDROID_IMAGE_TAG: ${SCAN_ANDROID_IMAGE_TAG:-latest}
+  SCAN_AVERAGE_DURATION_SECONDS: ${SCAN_AVERAGE_DURATION_SECONDS:-1200}
+  SCAN_DOCKER_VOLUME_STRATEGY: ${SCAN_DOCKER_VOLUME_STRATEGY:-named}
+  SCAN_EXECUTOR: ${SCAN_EXECUTOR:-inprocess}
+  SCAN_LOCAL_DOCKER_ENVS: ${SCAN_LOCAL_DOCKER_ENVS:-android}
+  SCAN_LOG_LINE_MAX_LEN: ${SCAN_LOG_LINE_MAX_LEN:-2000}
+  SCAN_LOG_MAX_LINES_PER_SCAN: ${SCAN_LOG_MAX_LINES_PER_SCAN:-20000}
+  SCAN_LOG_PERSIST_ENABLED: ${SCAN_LOG_PERSIST_ENABLED:-true}
+  SCAN_QUEUE_SLOT_COUNT: ${SCAN_QUEUE_SLOT_COUNT:-2}
+  SCAN_RETENTION_KEEP_LAST: ${SCAN_RETENTION_KEEP_LAST:-30}
+  SCAN_RETENTION_MAX_AGE_DAYS: ${SCAN_RETENTION_MAX_AGE_DAYS:-180}
+  SCAN_RETENTION_SUPERSEDED_GRACE_DAYS: ${SCAN_RETENTION_SUPERSEDED_GRACE_DAYS:-7}
+  SCAN_SIDECAR_CAP_ADD: ${SCAN_SIDECAR_CAP_ADD:-CHOWN,DAC_OVERRIDE,FOWNER,SETGID,SETUID}
+  SCAN_SIDECAR_CAP_DROP: ${SCAN_SIDECAR_CAP_DROP:-ALL}
+  SCAN_SIDECAR_CPUS: ${SCAN_SIDECAR_CPUS:-2}
+  SCAN_SIDECAR_MEMORY: ${SCAN_SIDECAR_MEMORY:-4g}
+  SCAN_SIDECAR_NETWORK: ${SCAN_SIDECAR_NETWORK:-}
+  SCAN_SIDECAR_PIDS_LIMIT: ${SCAN_SIDECAR_PIDS_LIMIT:-4096}
+  SCAN_VOLUMES_FROM_ACK: ${SCAN_VOLUMES_FROM_ACK:-}
+  SCAN_WORKER_CONTAINER: ${SCAN_WORKER_CONTAINER:-}
+  # NOTE: /workspace here (not the /tmp/trustedoss code default), because this file's
+  # named volume mounts the worker/beat/backend at /workspace (see the
+  # `volumes:` section below). _docker_volume._workspace_mount()'s own
+  # docstring says as much: "prod sets this to /workspace." A docker-executor
+  # sidecar must see the same mount point the worker itself uses, or
+  # source_dir resolution breaks.
+  SCAN_WORKSPACE_MOUNT: ${SCAN_WORKSPACE_MOUNT:-/workspace}
+  SCAN_WORKSPACE_VOLUME: ${SCAN_WORKSPACE_VOLUME:-}
+  STALE_RUNNING_SCAN_GRACE_SECONDS: ${STALE_RUNNING_SCAN_GRACE_SECONDS:-900}
+  # compose-env-var wiring audit: source/SBOM ingest and download size
+  # limits (raw upload tarballs, source archives, SBOM upload/download,
+  # dependency-graph node cap, VEX import, npm manifest parsing) and SBOM
+  # conformance thresholds. Documented in .env.example but never listed in
+  # this anchor, so setting any of them in .env had no effect on the running
+  # container. Defaults match core/config.py exactly, so an unset .env
+  # changes nothing for an existing deployment.
+  DEPENDENCY_GRAPH_MAX_NODES: ${DEPENDENCY_GRAPH_MAX_NODES:-5000}
+  NPM_MANIFEST_MAX_BYTES: ${NPM_MANIFEST_MAX_BYTES:-1048576}
+  SBOM_CONFORMANCE_FIELD_MIN_PCT: ${SBOM_CONFORMANCE_FIELD_MIN_PCT:-80}
+  SBOM_CONFORMANCE_HASH_MIN_PCT: ${SBOM_CONFORMANCE_HASH_MIN_PCT:-50}
+  SBOM_CONFORMANCE_LICENSE_MIN_PCT: ${SBOM_CONFORMANCE_LICENSE_MIN_PCT:-80}
+  SBOM_CONFORMANCE_PURL_MIN_PCT: ${SBOM_CONFORMANCE_PURL_MIN_PCT:-90}
+  SBOM_DOWNLOAD_MAX_BYTES: ${SBOM_DOWNLOAD_MAX_BYTES:-67108864}
+  SBOM_INGEST_MAX_BYTES: ${SBOM_INGEST_MAX_BYTES:-33554432}
+  SBOM_INGEST_MAX_COMPONENTS: ${SBOM_INGEST_MAX_COMPONENTS:-50000}
+  SCAN_SOURCE_MAX_TARBALL_BYTES: ${SCAN_SOURCE_MAX_TARBALL_BYTES:-536870912}
+  SCAN_SOURCE_PROJECT_QUOTA_BYTES: ${SCAN_SOURCE_PROJECT_QUOTA_BYTES:-1073741824}
+  SCAN_SOURCE_RAW_DOWNLOAD_MAX_BYTES: ${SCAN_SOURCE_RAW_DOWNLOAD_MAX_BYTES:-536870912}
+  SCAN_SOURCE_RETENTION: ${SCAN_SOURCE_RETENTION:-latest}
+  SCAN_SOURCE_VIEWER_MAX_FILE_BYTES: ${SCAN_SOURCE_VIEWER_MAX_FILE_BYTES:-2097152}
+  SOURCE_ARCHIVE_MAX_BYTES: ${SOURCE_ARCHIVE_MAX_BYTES:-104857600}
+  SOURCE_ARCHIVE_MAX_COMPRESSION_RATIO: ${SOURCE_ARCHIVE_MAX_COMPRESSION_RATIO:-200}
+  SOURCE_ARCHIVE_MAX_EXTRACTED_BYTES: ${SOURCE_ARCHIVE_MAX_EXTRACTED_BYTES:-1073741824}
+  SOURCE_ARCHIVE_MAX_MEMBERS: ${SOURCE_ARCHIVE_MAX_MEMBERS:-50000}
+  SOURCE_ARCHIVE_PROJECT_QUOTA_BYTES: ${SOURCE_ARCHIVE_PROJECT_QUOTA_BYTES:-524288000}
+  SOURCE_ARCHIVE_RATIO_GUARD_MIN_BYTES: ${SOURCE_ARCHIVE_RATIO_GUARD_MIN_BYTES:-10485760}
+  SOURCE_ARCHIVE_RETENTION_HOURS: ${SOURCE_ARCHIVE_RETENTION_HOURS:-24}
+  VEX_IMPORT_MAX_BYTES: ${VEX_IMPORT_MAX_BYTES:-8388608}
+  VEX_IMPORT_MAX_STATEMENTS: ${VEX_IMPORT_MAX_STATEMENTS:-100000}
+  # compose-env-var wiring audit: cdxgen image/spec selection, govulncheck
+  # subprocess limits, scancode enable flag, and the shared per-language
+  # toolchain cache (size/idle/roots). Documented in .env.example but never
+  # listed in this anchor, so setting any of them in .env had no effect on
+  # the running container. Defaults match core/config.py exactly, so an
+  # unset .env changes nothing for an existing deployment.
+  #
+  # NOT included here: EXTRACTCODE_LIBARCHIVE_PATH / TYPECODE_LIBMAGIC_PATH.
+  # Both are also documented in .env.example and also missing from this
+  # anchor, but Dockerfile.worker bakes them as image ENV (pointing
+  # scancode's ctypes loader at the arm64 system libarchive/libmagic, see
+  # integrations/_subprocess_env.py). Adding an `${VAR:-}` line here would
+  # shadow that image default with an empty string and crash scancode on
+  # import, which is worse than the gap it would "fix". They stay
+  # unreferenced deliberately.
+  CDXGEN_ALLINONE_IMAGE: ${CDXGEN_ALLINONE_IMAGE:-ghcr.io/cyclonedx/cdxgen:v12.5.0}
+  CDXGEN_FETCH_LICENSE: ${CDXGEN_FETCH_LICENSE:-}
+  CDXGEN_IMAGE_TAG: ${CDXGEN_IMAGE_TAG:-v12}
+  CDXGEN_SPEC_VERSION: ${CDXGEN_SPEC_VERSION:-1.5}
+  GOVULNCHECK_MAX_OUTPUT_BYTES: ${GOVULNCHECK_MAX_OUTPUT_BYTES:-67108864}
+  GOVULNCHECK_TIMEOUT_SECONDS: ${GOVULNCHECK_TIMEOUT_SECONDS:-600}
+  SCANCODE_ENABLED: ${SCANCODE_ENABLED:-true}
+  TOOLCHAIN_CACHE_IDLE_SECONDS: ${TOOLCHAIN_CACHE_IDLE_SECONDS:-900}
+  TOOLCHAIN_CACHE_MAX_BYTES: ${TOOLCHAIN_CACHE_MAX_BYTES:-8589934592}
+  TOOLCHAIN_CACHE_ROOTS: ${TOOLCHAIN_CACHE_ROOTS:-}
+  # compose-env-var wiring audit: self-registration policy, default team
+  # role, API-key bookkeeping, and permission/token retention. Documented in
+  # .env.example but never listed in this anchor, so setting any of them in
+  # .env had no effect on the running container. Defaults match
+  # core/config.py exactly, so an unset .env changes nothing for an existing
+  # deployment.
+  API_KEY_LAST_USED_AT_UPDATE_INTERVAL_SECONDS: ${API_KEY_LAST_USED_AT_UPDATE_INTERVAL_SECONDS:-900}
+  API_KEY_VERIFICATION_MIN_DURATION_SECONDS: ${API_KEY_VERIFICATION_MIN_DURATION_SECONDS:-0.22}
+  AUTH_AUTO_REGISTER: ${AUTH_AUTO_REGISTER:-false}
+  AUTH_REGISTER_CREATES_TEAM: ${AUTH_REGISTER_CREATES_TEAM:-true}
+  AUTH_SELF_REGISTRATION: ${AUTH_SELF_REGISTRATION:-true}
+  DEFAULT_MEMBER_ROLE: ${DEFAULT_MEMBER_ROLE:-}
+  PERMISSION_CACHE_TTL_SECONDS: ${PERMISSION_CACHE_TTL_SECONDS:-}
+  PASSWORD_RESET_TOKEN_RETENTION_GRACE_DAYS: ${PASSWORD_RESET_TOKEN_RETENTION_GRACE_DAYS:-1}
+  REFRESH_TOKEN_RETENTION_GRACE_DAYS: ${REFRESH_TOKEN_RETENTION_GRACE_DAYS:-1}
+  # compose-env-var wiring audit: the audit-log export webhook (batch size,
+  # lag, auth token, target URL), the audit hash-chain key, and various
+  # retention windows (audit log, notifications, report downloads, webhook
+  # deliveries, Celery task-run records) plus the pg_dump/psql subprocess
+  # timeout. Documented in .env.example but never listed in this anchor, so
+  # setting any of them in .env had no effect on the running container.
+  # Defaults match core/config.py exactly, so an unset .env changes nothing
+  # for an existing deployment.
+  AUDIT_EXPORT_BATCH_SIZE: ${AUDIT_EXPORT_BATCH_SIZE:-500}
+  AUDIT_EXPORT_LAG_SECONDS: ${AUDIT_EXPORT_LAG_SECONDS:-30}
+  AUDIT_EXPORT_TOKEN: ${AUDIT_EXPORT_TOKEN:-}
+  AUDIT_EXPORT_URL: ${AUDIT_EXPORT_URL:-}
+  AUDIT_HASH_KEY: ${AUDIT_HASH_KEY:-}
+  AUDIT_LOG_RETENTION_DAYS: ${AUDIT_LOG_RETENTION_DAYS:-90}
+  BACKUP_SUBPROCESS_TIMEOUT: ${BACKUP_SUBPROCESS_TIMEOUT:-3600}
+  NOTIFICATION_RETENTION_DAYS: ${NOTIFICATION_RETENTION_DAYS:-180}
+  REPORT_DOWNLOAD_RETENTION_DAYS: ${REPORT_DOWNLOAD_RETENTION_DAYS:-365}
+  TASK_RUN_RETENTION_DAYS: ${TASK_RUN_RETENTION_DAYS:-90}
+  WEBHOOK_DELIVERY_RETENTION_DAYS: ${WEBHOOK_DELIVERY_RETENTION_DAYS:-90}
+  # compose-env-var wiring audit: admin/health thresholds (disk, active-scan
+  # count), Prometheus metrics exporter, scan-queue backlog alerting, webhook
+  # capacity retry, and WebSocket connection caps. Documented in .env.example
+  # but never listed in this anchor, so setting any of them in .env had no
+  # effect on the running container. Defaults match core/config.py exactly,
+  # so an unset .env changes nothing for an existing deployment.
+  DISK_THRESHOLD_CRITICAL_PCT: ${DISK_THRESHOLD_CRITICAL_PCT:-90.0}
+  DISK_THRESHOLD_WARNING_PCT: ${DISK_THRESHOLD_WARNING_PCT:-80.0}
+  HEALTH_ACTIVE_SCANS_CRIT: ${HEALTH_ACTIVE_SCANS_CRIT:-200}
+  HEALTH_ACTIVE_SCANS_WARN: ${HEALTH_ACTIVE_SCANS_WARN:-50}
+  METRICS_ENABLED: ${METRICS_ENABLED:-false}
+  METRICS_TOKEN: ${METRICS_TOKEN:-}
+  QUEUE_BACKLOG_ALERT_COOLDOWN_SECONDS: ${QUEUE_BACKLOG_ALERT_COOLDOWN_SECONDS:-3600}
+  QUEUE_BACKLOG_ALERT_DEFAULT_QUEUE_THRESHOLD: ${QUEUE_BACKLOG_ALERT_DEFAULT_QUEUE_THRESHOLD:-100}
+  QUEUE_BACKLOG_ALERT_ENABLED: ${QUEUE_BACKLOG_ALERT_ENABLED:-false}
+  QUEUE_BACKLOG_ALERT_SCAN_QUEUE_THRESHOLD: ${QUEUE_BACKLOG_ALERT_SCAN_QUEUE_THRESHOLD:-10}
+  QUEUE_BACKLOG_ALERT_SUSTAIN_SECONDS: ${QUEUE_BACKLOG_ALERT_SUSTAIN_SECONDS:-600}
+  QUEUE_BACKLOG_METRICS_ENABLED: ${QUEUE_BACKLOG_METRICS_ENABLED:-false}
+  WEBHOOK_CAPACITY_RETRY_ENABLED: ${WEBHOOK_CAPACITY_RETRY_ENABLED:-true}
+  WEBSOCKET_MAX_CONNECTIONS_GLOBAL: ${WEBSOCKET_MAX_CONNECTIONS_GLOBAL:-500}
+  WEBSOCKET_MAX_CONNECTIONS_PER_USER: ${WEBSOCKET_MAX_CONNECTIONS_PER_USER:-8}
+  # compose-env-var wiring audit: license-metadata enrichment sources
+  # (ClearlyDefined, OSORI) and the license/malicious-package waiver policy.
+  # Documented in .env.example but never listed in this anchor, so setting
+  # any of them in .env had no effect on the running container. Defaults
+  # match core/config.py exactly, so an unset .env changes nothing for an
+  # existing deployment.
+  CLEARLYDEFINED_ENABLED: ${CLEARLYDEFINED_ENABLED:-}
+  LICENSE_FETCH_TTL_SECONDS: ${LICENSE_FETCH_TTL_SECONDS:-86400}
+  LICENSE_WAIVE_MAX_DAYS: ${LICENSE_WAIVE_MAX_DAYS:-90}
+  OSORI_ENABLED: ${OSORI_ENABLED:-true}
+  OSORI_SNAPSHOT_PATH: ${OSORI_SNAPSHOT_PATH:-}
+  # compose-env-var wiring audit: demo SaaS mode (sandbox-scan allowance,
+  # read-only lockdown) and the seed_demo.py bootstrap super-admin password
+  # override. Documented in .env.example but never listed in this anchor, so
+  # setting any of them in .env had no effect on the running container.
+  # Defaults match core/config.py exactly, so an unset .env changes nothing
+  # for an existing deployment.
+  DEMO_ALLOW_SANDBOX_SCANS: ${DEMO_ALLOW_SANDBOX_SCANS:-false}
+  DEMO_READ_ONLY: ${DEMO_READ_ONLY:-false}
+  DEMO_SUPER_ADMIN_PASSWORD: ${DEMO_SUPER_ADMIN_PASSWORD:-}
+  # compose-env-var wiring audit: three small, unrelated clusters bundled
+  # into one PR since each is only 2-3 vars: cosign public-key path override
+  # + SLSA provenance builder ID, the generic ticket webhook (events/token/
+  # URL), and two API rate limits. Documented in .env.example but never
+  # listed in this anchor, so setting any of them in .env had no effect on
+  # the running container. Defaults match core/config.py exactly, so an
+  # unset .env changes nothing for an existing deployment.
+  COSIGN_PUBLIC_KEY_PATH: ${COSIGN_PUBLIC_KEY_PATH:-}
+  SLSA_BUILDER_ID: ${SLSA_BUILDER_ID:-https://github.com/trustedoss/trusca/worker}
+  TICKET_WEBHOOK_EVENTS: ${TICKET_WEBHOOK_EVENTS:-}
+  TICKET_WEBHOOK_TOKEN: ${TICKET_WEBHOOK_TOKEN:-}
+  TICKET_WEBHOOK_URL: ${TICKET_WEBHOOK_URL:-}
+  API_READ_RATE_LIMIT: ${API_READ_RATE_LIMIT:-60/minute}
+  CSV_EXPORT_RATE_LIMIT: ${CSV_EXPORT_RATE_LIMIT:-5/minute}
 
 services:
   # ---------------------------------------------------------------------------
@@ -460,18 +691,23 @@ services:
   # poll) - short, frequent tasks that must never queue behind an hour-long
   # scan. Before this split both ran as one `worker` service on one queue.
   #
-  # QUEUES (WORKER_SCAN_QUEUES / WORKER_DEFAULT_QUEUES, `-Q` below): for one
-  # release after this split ships, BOTH services default to subscribing to
-  # BOTH queues ("trustedoss.scan,trustedoss.default") - a rolling
-  # `docker-compose up` recreates containers one service at a time, so
-  # whichever new service comes up first must still be able to drain
-  # anything left on "trustedoss.default" (the unchanged pre-split queue
-  # name) from before the split, including scan-pipeline messages dispatched
-  # before the upgrade. Narrow to one queue each ONLY after confirming that
-  # backlog has drained - see the "Queue split transition" note in
-  # .env.example's worker section for the exact procedure. Cross-checked
-  # against tests/contracts/queue-names.json, the vocabulary
-  # apps/backend/tasks/celery_app.py's task_routes also reads.
+  # QUEUES (WORKER_SCAN_QUEUES / WORKER_DEFAULT_QUEUES, `-Q` below). The split
+  # shipped with BOTH services on BOTH queues for one release, so a rolling
+  # `docker-compose up` could still drain scan-pipeline messages left on
+  # "trustedoss.default" (the unchanged pre-split queue name). That window is
+  # long closed, and leaving it open meant the isolation this split exists for
+  # did not hold: a worker-default subscribed to "trustedoss.scan" can pick up
+  # an hour-long scan, and the short, frequent tasks it is there to serve then
+  # queue behind it (ER11).
+  #
+  # So worker-default now takes "trustedoss.default" alone. worker-scan keeps
+  # BOTH on purpose: it is the service that can actually run a scan task, so
+  # it stays able to drain a pre-split scan message still sitting on
+  # "trustedoss.default" in a deployment upgrading late. Narrowing it to
+  # "trustedoss.scan" is safe once that backlog is confirmed empty - see the
+  # worker section of .env.example. These two defaults are cross-checked
+  # against tests/contracts/queue-names.json (worker_subscriptions), the same
+  # vocabulary the Helm chart and celery_app.py's task_routes read.
   #
   # Scaling out (work-B / B2, still true post-split): two knobs per service,
   # used together:
@@ -630,7 +866,7 @@ services:
   worker-default:
     image: ${IMAGE_REGISTRY:-ghcr.io/trustedoss}/trusca-backend-worker:${IMAGE_TAG:-0.12.0}
     restart: unless-stopped
-    command: celery -A tasks.celery_app worker --loglevel=info --concurrency=${CELERY_DEFAULT_CONCURRENCY:-4} -Q ${WORKER_DEFAULT_QUEUES:-trustedoss.scan,trustedoss.default}
+    command: celery -A tasks.celery_app worker --loglevel=info --concurrency=${CELERY_DEFAULT_CONCURRENCY:-4} -Q ${WORKER_DEFAULT_QUEUES:-trustedoss.default}
     # S3 judgment call: shorter than worker-scan's 4200s - this service never
     # runs a scan task. Sized off BACKUP_SUBPROCESS_TIMEOUT's default (3600s,
     # apps/backend/tasks/backup.py - the longest task this worker runs) plus

@@ -89,15 +89,34 @@ Domain extensions are `snake_case` and modelled in the OpenAPI schema. Two well-
 
 ## Pagination
 
-List endpoints accept:
+**There are three shapes, not one.** This page previously described a single
+`limit` / `offset` contract; that was true of eight endpoints and wrong about
+the other twenty-one. Read the shape off the endpoint you are calling, in the
+[OpenAPI schema](#openapi-schema) or the table below, rather than assuming one.
 
-| Query param | Default | Description |
+| Shape | Query params | Response fields | Endpoints |
+|---|---|---|---|
+| Offset | `limit`, `offset` | `items`, `total`, `limit`, `offset` | 8 |
+| Numbered (`page_size`) | `page`, `page_size` | `items`, `total`, `page`, `page_size` | 15 |
+| Numbered (`size`) | `page`, `size` | `items`, `total`, `page`, `page_size` | 6 |
+
+Defaults and maxima vary within each shape as well, so do not hard-code them:
+
+| Shape | Page size default | Maximum |
 |---|---|---|
-| `limit` | `50` | Page size. Max 200. |
-| `offset` | `0` | 0-based row offset. |
-| `sort` | endpoint-specific | Comma-separated `field` or `-field` (descending). |
+| Offset | `50` | `200` on the inventory endpoints, `500` on the per-project ones |
+| Numbered (`page_size`) | `50`, except `20` on `/v1/notifications` | `200` |
+| Numbered (`size`) | `20`, except `25` on search and `100` on the source tree | `100`, except `500` on the source tree |
 
-Response envelope:
+`page` is 1-based. `offset` is a 0-based row count. Both are capped, and a
+request past the cap is rejected rather than silently clamped.
+
+`sort` is separate from pagination and is accepted by ten endpoints (the
+component, licence, obligation, vulnerability, compliance and inventory lists,
+plus their CSV exports). It takes a comma-separated `field` or `-field`, where
+the leading minus is descending, and the permitted fields are per-endpoint.
+
+Response envelope, offset shape:
 
 ```json
 {
@@ -107,6 +126,97 @@ Response envelope:
   "offset": 0
 }
 ```
+
+Numbered shape, including the endpoints whose query params are `page` / `size`.
+The response field is `page_size` in both cases:
+
+```json
+{
+  "items": [ … ],
+  "total": 1273,
+  "page": 1,
+  "page_size": 50
+}
+```
+
+### Why three, and what happens next {#pagination-convergence}
+
+They accumulated. Nothing forced a new endpoint to match an existing one, and
+each was locally reasonable when written. That is a defect, not a design: a
+client library or an export script needs a branch per shape, which is the cost
+this section exists to make visible rather than to excuse.
+
+New endpoints use one shared schema, so the count above stops growing. The
+existing twenty-nine are left alone deliberately. TRUSCA is pre-1.0 and
+[`SECURITY.md`](https://github.com/trustedoss/trusca/blob/main/SECURITY.md)
+says a minor release may change the HTTP API; converging them is a breaking
+change that belongs at 1.0.0, where callers expect one, rather than spread
+across minors as a series of smaller surprises. Adding a compatibility layer
+that accepts both spellings was considered and rejected: it would promise more
+stability than the project currently offers, and leave two code paths to keep
+correct in the meantime. The convergence is tracked on the
+[roadmap](https://github.com/trustedoss/trusca/blob/main/ROADMAP.md).
+
+## Batch endpoints
+
+Onboarding an organization means creating a project per repository. Two
+endpoints take a list so that does not become three hundred HTTP calls:
+
+| Endpoint | Body | Creates |
+|---|---|---|
+| `POST /v1/projects:batch` | `{"projects": [ … ]}`, each entry the body `POST /v1/projects` takes | Projects |
+| `POST /v1/scans:batch` | `{"project_ids": [ … ], "ref": "main"}` | One scan per project |
+
+At most 200 rows per request. Rows are processed in order and independently: a
+row that fails does not undo the rows before it, and the rows after it still
+run. That is deliberate, and it is what makes a re-run safe.
+
+### Reading the result
+
+```json
+{
+  "all_succeeded": false,
+  "total": 300,
+  "created": 287,
+  "already_existed": 8,
+  "failed": 5,
+  "failed_by_status": { "forbidden": 4, "rate_limited": 1 },
+  "rows": [ { "index": 0, "status": "created", "project_id": "…" } ]
+}
+```
+
+**Check the status code or `all_succeeded`, not the rows.** The endpoint
+answers `201` when every row succeeded and `207 Multi-Status` when any did
+not, so a script can branch on the status line alone. `200` is deliberately not
+used for a partial failure: client libraries treat it as success, and a batch
+that half-failed would be recorded as having worked.
+
+Each row carries one of five statuses:
+
+| Status | Counts as | Meaning | What to do |
+|---|---|---|---|
+| `created` | success | The project or scan was created. | Nothing. |
+| `already_exists` | success | It was already there. For scans, one is already queued or running. | Nothing. This is the normal result of a re-run. |
+| `forbidden` | failure | The caller is not a member of the target team. | Get access, then send those rows again. |
+| `invalid` | failure | The row was rejected for another reason; `detail` says which. | Fix the row. |
+| `rate_limited` | failure | The team's concurrent-scan cap was reached. `retry_after_seconds` estimates the wait. | Send the remaining rows again later. |
+
+`already_exists` counts as success on purpose. Re-running a batch is how an
+interrupted onboarding is finished, and on the second run most rows already
+exist; counting those as failures would make every re-run report failure. A
+re-run that changes nothing returns `created: 0` with `already_existed` equal
+to `total`, which is how a caller knows the earlier run completed. Existing
+rows carry their `project_id`, so a caller that lost the first response can
+recover the ids.
+
+### Scans and the concurrency cap
+
+`POST /v1/scans:batch` does not bypass the per-team concurrent-scan cap, and is
+not meant to: the cap protects the shared worker pool. The cap is re-counted
+against the team's live active-scan total for every row, so a batch starts
+scans up to the cap and reports the remainder as `rate_limited`. Queueing past
+the cap would move the load rather than shed it, so the remainder is refused
+rather than held; send it again once the earlier scans finish.
 
 ## Surface map
 
@@ -289,7 +399,7 @@ Two things a client cannot learn from that table alone:
 
 The endpoint sends no `1000`. A client that observes one closed the socket itself.
 
-## OpenAPI download
+## OpenAPI download {#openapi-schema}
 
 ```bash
 curl -sS https://trustedoss.example.com/api/openapi.json > openapi.json

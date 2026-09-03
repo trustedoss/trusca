@@ -25,10 +25,27 @@ callback-less fast path inside the helper that production never takes.
 from __future__ import annotations
 
 import json
+from collections.abc import Iterator
 from pathlib import Path
 from typing import Any
 
 import pytest
+
+
+@pytest.fixture(autouse=True)
+def _scancode_on(monkeypatch: pytest.MonkeyPatch) -> Iterator[None]:
+    """Enable the stage for every test in this file.
+
+    ``SCANCODE_ENABLED`` defaults to false: the stage detects licences in
+    first-party source, which does not feed vulnerability matching, so most
+    deployments would pay for it and read none of its output. These tests are
+    about what the adapter does WHEN it runs, so they turn it on. The
+    off-by-default behaviour and the skip it produces are covered in
+    ``tests/unit/test_scancode_config.py``.
+    """
+    monkeypatch.setenv("SCANCODE_ENABLED", "true")
+    yield
+
 
 # ---------------------------------------------------------------------------
 # Helpers

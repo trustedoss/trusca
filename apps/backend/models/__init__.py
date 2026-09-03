@@ -48,6 +48,9 @@ from .component_intake import (  # noqa: E402,F401  (imported for metadata side 
 from .eol_sync_state import (  # noqa: E402,F401  (imported for metadata side effects)
     EolSyncState,
 )
+from .epss_sync_state import (  # noqa: E402,F401  (imported for metadata side effects)
+    EpssSyncState,
+)
 from .gate_policy import (  # noqa: E402,F401  (imported for metadata side effects)
     GatePolicy,
 )
@@ -149,6 +152,7 @@ __all__ = [
     "MaliciousSyncState",
     "GitHubAppCredential",
     "GitHubAppInstallation",
+    "EpssSyncState",
     "KevSyncState",
     "TaskRun",
     "TASK_RUN_OUTCOME_VALUES",

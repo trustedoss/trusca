@@ -199,6 +199,36 @@ def test_cdxgen_forwards_jvm_keys(monkeypatch: pytest.MonkeyPatch) -> None:
     assert env["GRADLE_USER_HOME"] == "/work/gradle"
 
 
+def test_cdxgen_forwards_pip_cache_control(monkeypatch: pytest.MonkeyPatch) -> None:
+    """The image turns pip's download cache off; the scan must inherit that.
+
+    ``Dockerfile.worker`` sets ``PIP_NO_CACHE_DIR=1`` so resolving a Python
+    project leaves no download cache behind. That setting stopped at the worker
+    process while this key was missing from the allowlist, and every scan's pip
+    run cached again under HOME: 3.3 GB in one worker inside a day on a
+    2,080-repository corpus, most of what took a 26 GB root partition to 100%.
+
+    ``PIP_CACHE_DIR`` is here for the opposite deployment, the one that wants
+    the cache and has somewhere with room to put it.
+    """
+    monkeypatch.setenv("PIP_NO_CACHE_DIR", "1")
+    monkeypatch.setenv("PIP_CACHE_DIR", "/work/pip-cache")
+
+    env = scrubbed_env_for_cdxgen()
+
+    assert env["PIP_NO_CACHE_DIR"] == "1"
+    assert env["PIP_CACHE_DIR"] == "/work/pip-cache"
+
+
+def test_prep_forwards_pip_cache_control(monkeypatch: pytest.MonkeyPatch) -> None:
+    """The prep step resolves Python projects too, so it needs the same key."""
+    monkeypatch.setenv("PIP_NO_CACHE_DIR", "1")
+
+    env = scrubbed_env_for_prep()
+
+    assert env["PIP_NO_CACHE_DIR"] == "1"
+
+
 # ---------------------------------------------------------------------------
 # scancode (PR-A2): base allowlist only — no toolchain keys, no prefix band
 # ---------------------------------------------------------------------------

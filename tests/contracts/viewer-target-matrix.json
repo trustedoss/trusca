@@ -384,6 +384,14 @@
       "/v1/projects"
     ],
     [
+      "POST",
+      "/v1/projects:batch"
+    ],
+    [
+      "POST",
+      "/v1/scans:batch"
+    ],
+    [
       "DELETE",
       "/v1/projects/{project_id}"
     ],

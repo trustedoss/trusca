@@ -56,6 +56,11 @@
       "SELECT",
       "UPDATE"
     ],
+    "epss_sync_state": [
+      "INSERT",
+      "SELECT",
+      "UPDATE"
+    ],
     "gate_policies": [
       "DELETE",
       "INSERT",

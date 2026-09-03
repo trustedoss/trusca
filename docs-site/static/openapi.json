@@ -2306,6 +2306,145 @@
         "title": "BackupTriggerResponse",
         "type": "object"
       },
+      "BatchResult": {
+        "description": "The envelope both batch endpoints return.\n\nRead ``all_succeeded`` first. It is the whole point of the shape: a caller\nthat only checks the status code sees 207 and stops, and a caller that\nreads one field learns the same thing without walking ``rows``.",
+        "properties": {
+          "all_succeeded": {
+            "description": "True when every row succeeded (`created` or `already_exists`). The endpoint answers 201 when this is true and 207 when it is not, so a script can branch on either.",
+            "title": "All Succeeded",
+            "type": "boolean"
+          },
+          "already_existed": {
+            "description": "Rows whose target was already there. Counted as success. A re-run that changes nothing reports `created: 0` with this equal to `total`, which is how a caller knows the earlier run finished.",
+            "minimum": 0.0,
+            "title": "Already Existed",
+            "type": "integer"
+          },
+          "created": {
+            "description": "Rows that created something new.",
+            "minimum": 0.0,
+            "title": "Created",
+            "type": "integer"
+          },
+          "failed": {
+            "description": "Rows that did not succeed.",
+            "minimum": 0.0,
+            "title": "Failed",
+            "type": "integer"
+          },
+          "failed_by_status": {
+            "additionalProperties": {
+              "type": "integer"
+            },
+            "description": "Failure counts keyed by row status, so a caller sees at a glance how many need access, how many were rejected and how many are worth retrying. Only non-zero entries appear.",
+            "title": "Failed By Status",
+            "type": "object"
+          },
+          "rows": {
+            "description": "One entry per submitted row, in request order.",
+            "items": {
+              "$ref": "#/components/schemas/BatchRowResult"
+            },
+            "title": "Rows",
+            "type": "array"
+          },
+          "total": {
+            "description": "Rows submitted.",
+            "minimum": 0.0,
+            "title": "Total",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "all_succeeded",
+          "total",
+          "created",
+          "already_existed",
+          "failed",
+          "rows"
+        ],
+        "title": "BatchResult",
+        "type": "object"
+      },
+      "BatchRowResult": {
+        "description": "What happened to one row, in the order it was sent.",
+        "properties": {
+          "detail": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Why, for a row that is not `created`. Written for a person reading a CI log; branch on `status`, not on this text.",
+            "title": "Detail"
+          },
+          "index": {
+            "description": "0-based position in the request array. The only stable way to match a result back to what was sent, since a rejected row may have no id.",
+            "minimum": 0.0,
+            "title": "Index",
+            "type": "integer"
+          },
+          "project_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The project, when one exists. Populated for `already_exists` too, so a re-run can pick up ids it did not record the first time.",
+            "title": "Project Id"
+          },
+          "retry_after_seconds": {
+            "anyOf": [
+              {
+                "minimum": 0.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "For `rate_limited` rows: roughly how long until a slot frees. Best-effort, from the same estimate the single-scan 429 carries.",
+            "title": "Retry After Seconds"
+          },
+          "scan_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The scan started for this row. `null` outside scan batches.",
+            "title": "Scan Id"
+          },
+          "status": {
+            "enum": [
+              "created",
+              "already_exists",
+              "forbidden",
+              "invalid",
+              "rate_limited"
+            ],
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "index",
+          "status"
+        ],
+        "title": "BatchRowResult",
+        "type": "object"
+      },
       "Body_import_project_vex_endpoint_v1_projects__project_id__vex_import_post": {
         "properties": {
           "upload": {
@@ -10025,6 +10164,27 @@
         "title": "Problem Detail",
         "type": "object"
       },
+      "ProjectBatchCreate": {
+        "additionalProperties": false,
+        "description": "Inbound payload for ``POST /v1/projects:batch``.",
+        "properties": {
+          "projects": {
+            "description": "Projects to create, at most 200. Each entry is the same body `POST /v1/projects` takes. Rows are processed in order and independently: a row that fails does not undo the rows before it.",
+            "items": {
+              "$ref": "#/components/schemas/ProjectCreate"
+            },
+            "maxItems": 200,
+            "minItems": 1,
+            "title": "Projects",
+            "type": "array"
+          }
+        },
+        "required": [
+          "projects"
+        ],
+        "title": "ProjectBatchCreate",
+        "type": "object"
+      },
       "ProjectCreate": {
         "additionalProperties": false,
         "description": "Inbound payload for POST /v1/projects.",
@@ -12483,6 +12643,41 @@
           "created_at"
         ],
         "title": "SbomConformanceRead",
+        "type": "object"
+      },
+      "ScanBatchCreate": {
+        "additionalProperties": false,
+        "description": "Inbound payload for ``POST /v1/scans:batch``.",
+        "properties": {
+          "project_ids": {
+            "description": "Projects to scan, at most 200. The team's concurrent-scan cap still applies and is re-counted per row, so a batch starts scans up to the cap and reports the rest as `rate_limited` rather than queueing past it.",
+            "items": {
+              "format": "uuid",
+              "type": "string"
+            },
+            "maxItems": 200,
+            "minItems": 1,
+            "title": "Project Ids",
+            "type": "array"
+          },
+          "ref": {
+            "anyOf": [
+              {
+                "maxLength": 255,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Git ref to scan, applied to every row. Omit for the default branch.",
+            "title": "Ref"
+          }
+        },
+        "required": [
+          "project_ids"
+        ],
+        "title": "ScanBatchCreate",
         "type": "object"
       },
       "ScanCreate": {
@@ -30757,6 +30952,83 @@
         ]
       }
     },
+    "/v1/projects:batch": {
+      "post": {
+        "description": "Register a set of repositories as projects.\n\nRows are independent: one the caller may not create, or one whose slug the\nteam already uses, is reported and the rest still land. Onboarding an\norganization means creating a project per repository, and failing the whole\nrequest over a single repository would make that unusable.\n\nStatus is 201 when every row succeeded and 207 when any did not, so a\nscript can branch on the status line alone. A row whose project already\nexists counts as success: re-running to finish an interrupted onboarding is\nthe normal path, and reporting that as failure would make every re-run look\nbroken.",
+        "operationId": "create_projects_batch_endpoint_v1_projects_batch_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ProjectBatchCreate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BatchResult"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "207": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BatchResult"
+                }
+              }
+            },
+            "description": "Some rows did not succeed. The body is the same shape; read `all_succeeded` and `failed_by_status`."
+          },
+          "401": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetail"
+                }
+              }
+            },
+            "description": "Not authenticated"
+          },
+          "403": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetail"
+                }
+              }
+            },
+            "description": "Not permitted for this caller"
+          },
+          "422": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetail"
+                }
+              }
+            },
+            "description": "Validation error"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "summary": "Create many projects in one request (auth required, role >= developer)",
+        "tags": [
+          "projects"
+        ]
+      }
+    },
     "/v1/report-format-templates/org/{organization_id}": {
       "delete": {
         "operationId": "delete_template_endpoint_v1_report_format_templates_org__organization_id__delete",
@@ -32052,6 +32324,83 @@
           }
         ],
         "summary": "Where a scan's results came from (IDOR-safe via project team membership)",
+        "tags": [
+          "scans"
+        ]
+      }
+    },
+    "/v1/scans:batch": {
+      "post": {
+        "description": "Start the first scan on a set of freshly registered projects.\n\nThe team's concurrent-scan cap is re-counted for each row against the\nteam's live active-scan total, so a batch starts scans up to the cap and\nreports the rest as `rate_limited` with an estimated wait. It is not a way\naround the cap: the cap protects the shared worker pool, and queueing past\nit would move the load rather than shed it. Send the remainder again once\nthe earlier scans finish.\n\nA project that already has a queued or running scan counts as success, for\nthe same reason an existing project does in the project batch: that is the\nstate the caller asked for.\n\nStatus is 201 when every row started and 207 when any did not.",
+        "operationId": "trigger_scans_batch_endpoint_v1_scans_batch_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ScanBatchCreate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BatchResult"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "207": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BatchResult"
+                }
+              }
+            },
+            "description": "Some rows did not start. The body is the same shape; read `all_succeeded` and `failed_by_status`."
+          },
+          "401": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetail"
+                }
+              }
+            },
+            "description": "Not authenticated"
+          },
+          "403": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetail"
+                }
+              }
+            },
+            "description": "Not permitted for this caller"
+          },
+          "422": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetail"
+                }
+              }
+            },
+            "description": "Validation error"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "summary": "Start a scan on many projects (auth required, role >= developer)",
         "tags": [
           "scans"
         ]

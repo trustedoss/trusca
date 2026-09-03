@@ -1351,24 +1351,39 @@ def scan_executor_mode() -> str:
 def scancode_enabled() -> bool:
     """Master switch for the scancode first-party license-detection stage.
 
-    Default ``true`` — scancode is a pure-local pass with NO network egress, so
-    it stays on by default and existing behaviour is unchanged. Only the exact
-    falsy tokens ``false`` / ``0`` / ``no`` (case-insensitive) disable it, so a
-    typo fails OPEN to running (correct-by-default) rather than silently dropping
-    detected-license data.
+    Default ``false``. Only the exact truthy tokens ``true`` / ``1`` / ``yes``
+    (case-insensitive) enable it; anything else, typos included, reads as OFF.
+    This is the same fail-closed shape as :func:`scanoss_enabled`, and it is a
+    reversal: the stage used to default ON and fail OPEN.
 
-    The public demo sets ``SCANCODE_ENABLED=false`` to shed the per-scan cost on
-    the shared sandbox worker (bound alongside SCANOSS off + concurrency cap 1 +
-    the ≤10 MiB input ceiling). When disabled, :func:`integrations.scancode.
-    run_scancode` short-circuits with a ``ScancodeDisabled`` skip and the
-    pipeline continues on declared (cdxgen) licenses only — a degraded-but-non-
-    fatal outcome, identical to the existing best-effort skip paths. Read at call
-    time (CLAUDE.md core rule #11).
+    What changed the default is what the stage costs against what most scans
+    ask of it. scancode reads first-party source to *detect* licences in code
+    the organisation wrote. Dependency licences come *declared* from cdxgen and
+    do not go through here, and neither path feeds vulnerability matching. So a
+    deployment scanning for CVEs pays for the stage on every scan and reads
+    none of its output.
+
+    The cost is per-scan wall clock: scancode reads every eligible file in the
+    tree, which is why the stage carries its own timeout (default 600s), its
+    own file ceiling, and its own detection cap. The public demo has always run
+    with it off for exactly that reason.
+
+    Turning it OFF is a supported, non-fatal skip that predates this change:
+    :func:`integrations.scancode.run_scancode` short-circuits with
+    ``ScancodeDisabled`` and the pipeline continues on declared licences, which
+    is how the public demo has always been configured.
+
+    UPGRADE NOTE: a deployment that relies on detected first-party licences
+    must now set ``SCANCODE_ENABLED=true`` explicitly. Detected licences are
+    how vendored or pasted third-party code is found, and dependency metadata
+    never shows it, so licence-compliance deployments should turn this on.
+
+    Read at call time (CLAUDE.md core rule #11).
     """
-    return os.getenv("SCANCODE_ENABLED", "true").strip().lower() not in {
-        "false",
-        "0",
-        "no",
+    return os.getenv("SCANCODE_ENABLED", "false").strip().lower() in {
+        "true",
+        "1",
+        "yes",
     }
 
 
@@ -2387,6 +2402,72 @@ def kev_refresh_timeout_seconds() -> int:
     return _int_env(
         "KEV_REFRESH_TIMEOUT_SECONDS",
         default=30,
+        minimum=1,
+        maximum=600,
+    )
+
+
+# ---------------------------------------------------------------------------
+# EPSS (Exploit Prediction Scoring System) daily score sync.
+#
+# The vulnerability catalog has carried ``epss_score`` / ``epss_percentile``
+# columns since v2.4, and the Vulnerabilities tab, the ``sort=priority``
+# ranking and the optional ``GATE_EPSS_THRESHOLD`` build gate all read them,
+# but nothing ever wrote them: the scanner's own output does not carry EPSS on
+# either the SBOM or the image path (measured across 88 and 107 findings, zero
+# EPSS keys), so every one of those surfaces was empty. This sync is what fills
+# them.
+# ---------------------------------------------------------------------------
+
+
+def epss_feed_url() -> str:
+    """URL of the daily EPSS score CSV (gzipped).
+
+    Default is the published daily file; ``-current`` redirects to that day's
+    dated file. Override for an air-gapped mirror, the same way
+    ``KEV_FEED_URL`` and ``TRIVY_DB_REPOSITORY`` are overridden.
+
+    Deliberately NOT an ``api.first.org`` endpoint: FIRST's own guidance is
+    that the lookup API must not be used for bulk downloads or to keep a local
+    copy in sync, and the bulk CSV is the mechanism they name for that. See
+    ``integrations/epss_feed.py`` for the full reasoning and the attribution.
+
+    Operator-controlled env configuration only, with no user write path, so it
+    is not routed through ``core.url_guard`` (same trust model as
+    ``kev_feed_url``).
+    """
+    return os.getenv(
+        "EPSS_FEED_URL",
+        "https://epss.empiricalsecurity.com/epss_scores-current.csv.gz",
+    )
+
+
+def epss_refresh_enabled() -> bool:
+    """Whether the daily EPSS sync beat actually fetches the feed.
+
+    Default ``false``, following the ``EOL_REFRESH_ENABLED`` /
+    ``MALICIOUS_REFRESH_ENABLED`` convention rather than KEV's default-on: a
+    deployment should not reach the public internet because it was installed,
+    and an air-gapped install is the case this product is built for. Turning
+    it on is one env var; leaving it off leaves ``epss_score`` NULL and every
+    EPSS surface empty, which the documentation says plainly.
+
+    Truthy: ``1`` / ``true`` / ``yes`` / ``on`` (case-insensitive).
+    Anything else → ``false``.
+    """
+    raw = os.getenv("EPSS_REFRESH_ENABLED", "false").strip().lower()
+    return raw in {"1", "true", "yes", "on"}
+
+
+def epss_refresh_timeout_seconds() -> int:
+    """HTTP timeout (seconds) for the EPSS CSV download. Default 60s.
+
+    The file is ~2.6 MiB gzipped; 60 seconds absorbs a slow corporate proxy
+    with room to spare. Bounded ``[1, 600]``. Read at call time (rule #11).
+    """
+    return _int_env(
+        "EPSS_REFRESH_TIMEOUT_SECONDS",
+        default=60,
         minimum=1,
         maximum=600,
     )

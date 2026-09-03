@@ -40,6 +40,15 @@ Align with CISA 2025 / SLSA, cut noise further.
 - ☐ **Declared-vs-actual SBOM drift** — diff an uploaded SBOM against TRUSCA's own scan of the same ref and report what each side is missing. The conformance score grades whether the document's fields are filled in; this answers whether the document matches the code.
 - ☐ **Signed releases of TRUSCA itself**: signed git tags, cosign-signed container images, and a provenance attestation alongside the SBOM a release already attaches. This is about the artifacts we ship, not about the scans TRUSCA runs: signing the SBOM of a *scanned* project already works.
 
+## For 1.0.0
+
+Changes that break callers. They are held here rather than shipped across
+minors because a single breaking release is easier to absorb than a series of
+smaller surprises, and because [`SECURITY.md`](SECURITY.md) says a pre-1.0
+minor may change the HTTP API, which is a warning rather than an invitation.
+
+- ☐ **One pagination shape across the API.** Three are in use today: `limit` / `offset` on 8 endpoints, `page` / `page_size` on 15, and `page` / `size` on 6, with page-size defaults and maxima varying inside each group. A client library needs a branch per shape. New endpoints already use one shared schema, so the count stops growing; converging the existing 29 is the breaking half. See [pagination](https://trustedoss.github.io/trusca/docs/reference/api-overview#pagination).
+
 ## Documentation
 
 - ☐ **Hardening guide**: one page collecting the settings an operator should change before exposing a deployment, instead of the short list in [`SECURITY.md`](SECURITY.md) pointing at scattered references.

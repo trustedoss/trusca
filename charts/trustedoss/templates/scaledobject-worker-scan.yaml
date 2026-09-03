@@ -43,7 +43,7 @@ spec:
 # workload (cdxgen/Trivy pipelines are network- and disk-wait heavy, not
 # CPU-heavy). Reads worker.scan.autoscaling.queue.queueName, which defaults
 # to worker.queues.scan, not the combined depth this deployment may also be
-# draining during the transition window (worker.transitionSubscribeBothQueues).
+# draining, which worker.subscriptions.scan keeps it able to do.
 #
 # KEDA (https://keda.sh -- CNCF, Apache-2.0) creates and owns its own
 # HorizontalPodAutoscaler from this ScaledObject, so hpa-worker-scan.yaml is
