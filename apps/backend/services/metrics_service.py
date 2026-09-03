@@ -53,6 +53,7 @@ from models import (
 from models.scan import SCAN_STATUS_VALUES, VULN_SEVERITY_VALUES
 from models.task_run import TaskRun
 from services.policy_gate import _CLOSED_FINDING_STATUSES
+from services.trivy_health_service import get_trivy_db_status_cached
 
 log = structlog.get_logger("services.metrics")
 
@@ -175,6 +176,36 @@ async def _task_run_last_recorded(session: AsyncSession) -> float:
         await session.execute(select(func.max(TaskRun.started_at)))
     ).scalar_one_or_none()
     return newest.timestamp() if newest else 0.0
+
+
+
+def _vuln_db_freshness() -> tuple[float, float]:
+    """When the vulnerability database was last updated, and our refresh gap.
+
+    Two values because neither answers the question alone. The timestamp says
+    when the data stopped changing; the interval says how long that is
+    supposed to be able to go on. A collector that has both can decide
+    staleness for the deployment it is watching, which is the only place that
+    decision can be made correctly: schedules differ, and an air-gapped
+    install that mirrors the database on a slower cadence is not broken.
+
+    No threshold is computed here, and the panel's own fresh / stale
+    classification is deliberately not published. That bucketing exists for a
+    screen somebody is looking at; a series carrying it would freeze one
+    judgement into the metric and make the collector's own rule unreachable.
+
+    Reads the cached snapshot. The uncached read touches the filesystem, and
+    this runs on every scrape.
+
+    Returns ``(0.0, interval)`` when no database has been downloaded yet.
+    Zero is distinguishable from any real timestamp and keeps the series
+    present, which matters: a missing series draws nothing on a dashboard and
+    reads as nothing being wrong, and "no database at all" is the worst state
+    this can be in.
+    """
+    status = get_trivy_db_status_cached()
+    last_update = status.last_update.timestamp() if status.last_update else 0.0
+    return last_update, float(status.refresh_interval_hours)
 
 
 async def render_metrics(session: AsyncSession) -> str:
@@ -320,6 +351,29 @@ async def render_metrics(session: AsyncSession) -> str:
             )
         )
 
+    vuln_db_last_update, vuln_db_interval_hours = await asyncio.to_thread(
+        _vuln_db_freshness
+    )
+    document.append(
+        _block(
+            "trusca_vuln_db_last_update_timestamp_seconds",
+            "Unix time the vulnerability database was last updated upstream; "
+            "0 when none has been downloaded. Scans keep succeeding against a "
+            "stale database, so nothing else reports this.",
+            "gauge",
+            [({}, vuln_db_last_update)],
+        )
+    )
+    document.append(
+        _block(
+            "trusca_vuln_db_refresh_interval_hours",
+            "Configured hours between refresh attempts. Published so a "
+            "collector can derive staleness from this deployment's own "
+            "cadence rather than a threshold baked in here.",
+            "gauge",
+            [({}, vuln_db_interval_hours)],
+        )
+    )
     document.append(
         _block(
             "trusca_task_runs_last_recorded_timestamp_seconds",
