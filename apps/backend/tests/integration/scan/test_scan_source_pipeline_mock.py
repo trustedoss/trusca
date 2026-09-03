@@ -199,6 +199,10 @@ def test_scan_source_pipeline_completes_with_mock_backend(
     """A full pipeline run against mock cdxgen / scancode + stub Trivy must reach `succeeded`."""
     monkeypatch.setenv("TRUSTEDOSS_SCAN_BACKEND", "mock")
     monkeypatch.setenv("WORKSPACE_HOST_PATH", str(tmp_path))
+    # SCANCODE_ENABLED defaults to false, and this test asserts the stage's
+    # artifact is persisted, so it has to ask for the stage. The pipeline's
+    # behaviour when the stage is off is covered by the config unit tests.
+    monkeypatch.setenv("SCANCODE_ENABLED", "true")
 
     # W6: stub Trivy so no subprocess is spawned.
     _stub_trivy_empty(monkeypatch)
