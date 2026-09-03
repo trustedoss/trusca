@@ -186,6 +186,30 @@ The format is:
 
 Reviewers reject suppressions that lack a justification or whose justification does not address the rule. If multiple lines need the same suppression, lift the offending logic into a single function and suppress once.
 
+## `secret-scan` reads history, not your files {#secret-scan-reads-history}
+
+`gitleaks detect` scans the commits reachable from your branch's HEAD. It does not scan the checked-out tree. That distinction is invisible until the check fails, and then it explains a failure that otherwise looks impossible.
+
+**Deleting the value does not clear the finding.** The commit that introduced it is still on the branch, so the scan still sees it. If you remove the value, commit, push, and the check fails again with the same finding, nothing went wrong with your fix: it was never the problem being reported. Somebody has already lost two rounds of CI to this, editing the working tree a second and third time.
+
+**Another contributor's branch cannot fail your pull request.** `fetch-depth: 0` reads as "fetch everything", but it means all of *this ref's* history: `actions/checkout` fetches only the pull-request ref, so no other branch is in the checkout to be read. The run logs bear it out, with each pull request scanning main's commit count plus its own rather than the whole repository.
+
+To clear a finding, the commit carrying it has to go. From a clean tree, with nobody else building on your branch:
+
+```bash
+git fetch origin
+git rebase origin/main       # FIRST, before collapsing anything
+git reset --soft origin/main # your whole diff becomes one staged change
+git commit                   # one commit, without the value
+git push --force-with-lease
+```
+
+Rebase before the reset. `git reset --soft origin/main` moves your branch to wherever `origin/main` points **now** while keeping your working tree, so if main advanced after you branched, the single commit you create reverts everything merged in between. It happens silently, because your own files are all still correct. This has happened in this repository: 125 lines from two merged pull requests were undone that way, and the only clue was a diffstat showing far more deletions than the change could account for. Before committing, read `git diff --stat origin/main`, and confirm `git diff --name-only origin/main` lists nothing you did not touch.
+
+If the value was a real credential, rotate it. It reached a remote, so treat it as disclosed regardless of what the history looks like afterwards. Rewriting history hides it from the next scan; it does not un-publish it.
+
+Only add a value to `.gitleaks.toml` when you can prove it is not a secret, and record the proof in the comment beside it. "It is only used in CI" is context, not proof.
+
 ## AI review comments — advisory, never a gate
 
 A pull request may pick up a comment headed **AI security review (findings-driven)**. It comes from `.github/workflows/ai-review.yml`, which re-runs `semgrep` over the files you changed — without the severity filter and the `--error` flag the SAST gate uses — and asks a model to sort what it flagged into true and false positives.
