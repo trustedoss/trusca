@@ -574,3 +574,155 @@ def test_the_audit_writer_ignores_a_rolled_back_finding(
     assert emitted == 1, "only the finding that still has a row is audited"
     assert rolled_back_id not in targets
     assert targets.count(str(live.id)) == 2, "the live finding got this call's row"
+
+
+# ---------------------------------------------------------------------------
+# Container path (ER8, second arm)
+#
+# The container persister hand-rolled its own catalog INSERT with no race
+# handling at all, and that flush also writes the ScanComponent and
+# VulnerabilityFinding rows staged earlier in the loop, so a unique violation
+# aborted the whole transaction and failed the scan outright. It now goes
+# through the same upsert. OS packages are the likeliest collision there is:
+# glibc, openssl, musl and busybox appear in nearly every image, and source
+# scans feed the same catalog table.
+# ---------------------------------------------------------------------------
+
+IMAGE_FIXTURE = (
+    BACKEND_ROOT / "tests" / "fixtures" / "trivy" / "alpine-3.19-image-report.json"
+)
+# Fifth of ten in the recording, so four findings are already staged when the
+# race fires.
+CONTAINER_RACED_CVE_BASE = "CVE-2026-40200"
+CONTAINER_TOTAL_FINDINGS = 10
+
+
+def _seed_container_scan() -> uuid.UUID:
+    import asyncio
+
+    from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
+
+    from core.config import database_url
+
+    async def _build() -> uuid.UUID:
+        engine = create_async_engine(database_url(), pool_pre_ping=True, future=True)
+        factory = async_sessionmaker(engine, expire_on_commit=False, class_=AsyncSession)
+        async with factory() as s:
+            org = await make_organization(s)
+            team = await make_team(s, organization=org)
+            user = await make_user(s)
+            await make_membership(s, user=user, team=team, role="developer")
+            project = await make_project(s, team=team)
+            scan = Scan(
+                project_id=project.id,
+                kind="container",
+                status="running",
+                progress_percent=60,
+                requested_by_user_id=user.id,
+                scan_metadata={},
+            )
+            s.add(scan)
+            await s.commit()
+            await s.refresh(scan)
+            scan_id = scan.id
+        await engine.dispose()
+        return scan_id
+
+    return asyncio.run(_build())
+
+
+def _namespace_image_report(report: dict[str, Any], suffix: str) -> dict[str, Any]:
+    """Per-run PURLs and CVE ids, for the reason ``_namespace_report`` gives."""
+    for result in report["Results"]:
+        for vuln in result.get("Vulnerabilities") or []:
+            name = vuln["PkgName"]
+            vuln["PkgIdentifier"]["PURL"] = vuln["PkgIdentifier"]["PURL"].replace(
+                f"/{name}@", f"/{name}-{suffix}@"
+            )
+            vuln["PkgName"] = f"{name}-{suffix}"
+            vuln["VulnerabilityID"] = f"{vuln['VulnerabilityID']}-{suffix}"
+    return report
+
+
+def test_a_catalog_race_does_not_fail_a_container_scan(
+    session_factory: sessionmaker[Session],
+) -> None:
+    """A concurrent catalog insert costs the container scan nothing.
+
+    Before ER8 the losing flush aborted the transaction and the exception rose
+    all the way to ``_mark_failed``: a benign collision on a package as common
+    as musl took down the whole scan and every row it had staged.
+    """
+    from tasks.scan_container import _persist_trivy_report
+
+    scan_id = _seed_container_scan()
+    suffix = uuid.uuid4().hex[:8]
+    report = _namespace_image_report(
+        json.loads(IMAGE_FIXTURE.read_text()), suffix
+    )
+    raced_cve = f"{CONTAINER_RACED_CVE_BASE}-{suffix}"
+
+    ready = threading.Event()
+    thief = _steal_catalog_row(session_factory, raced_cve, ready)
+    assert ready.wait(10), "second session never opened its insert"
+
+    session = session_factory()
+    try:
+        with capture_logs() as logs:
+            _persist_trivy_report(session, scan_uuid=scan_id, report=report)
+        session.commit()
+    finally:
+        session.close()
+    thief.join(10)
+
+    raced = [
+        entry["external_id"]
+        for entry in logs
+        if entry.get("event") == "vuln_catalog_insert_race"
+    ]
+    assert raced == [raced_cve], (
+        f"expected one catalog race on {raced_cve}, saw {raced}. The two "
+        "sessions did not collide, so this run asserts nothing about the defect."
+    )
+    summaries = [
+        entry for entry in logs if entry.get("event") == "container_findings_persisted"
+    ]
+    assert summaries and summaries[-1]["catalog_races"] == 1
+
+    verify = session_factory()
+    try:
+        stored = verify.execute(
+            select(func.count())
+            .select_from(VulnerabilityFinding)
+            .where(VulnerabilityFinding.scan_id == scan_id)
+        ).scalar_one()
+        components = verify.execute(
+            select(func.count())
+            .select_from(ScanComponent)
+            .where(ScanComponent.scan_id == scan_id)
+        ).scalar_one()
+        audit_targets = set(
+            verify.execute(
+                select(AuditLog.target_id)
+                .where(AuditLog.target_table == "vulnerability_findings")
+                .where(AuditLog.diff["scan_id"].astext == str(scan_id))
+            )
+            .scalars()
+            .all()
+        )
+        finding_ids = {
+            str(row)
+            for row in verify.execute(
+                select(VulnerabilityFinding.id).where(
+                    VulnerabilityFinding.scan_id == scan_id
+                )
+            )
+            .scalars()
+            .all()
+        }
+    finally:
+        verify.close()
+
+    assert stored == CONTAINER_TOTAL_FINDINGS
+    assert components == 5, "one ScanComponent per package, not per CVE (H-1)"
+    assert audit_targets == finding_ids

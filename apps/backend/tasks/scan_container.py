@@ -47,7 +47,6 @@ from models import (
     Scan,
     ScanArtifact,
     ScanComponent,
-    Vulnerability,
     VulnerabilityFinding,
 )
 from services.vulnerability_matching import (
@@ -55,6 +54,7 @@ from services.vulnerability_matching import (
     _purl_from_identifier,
     _resolve_first_detected_map,
     _resolve_triage_map,
+    _upsert_vulnerability_from_trivy,
     emit_finding_create_audits,
 )
 from tasks._progress import make_line_callback, publish_progress
@@ -335,6 +335,10 @@ def _persist_trivy_report(
     # each component's unique bom-ref; the container target string is shared,
     # so we dedup explicitly here.
     seen_components: set[tuple[uuid.UUID, str]] = set()
+    # ER8: catalog rows a concurrent inserter won during this call. Reported on
+    # the summary line so an operator can alarm on a field rather than grep for
+    # the per-CVE warning.
+    catalog_races = 0
     for result in results:
         if not isinstance(result, dict):
             continue
@@ -396,20 +400,29 @@ def _persist_trivy_report(
                     )
                 )
 
-            vuln_row = session.execute(
-                select(Vulnerability).where(Vulnerability.external_id == cve_id)
-            ).scalar_one_or_none()
+            # ER8: through the shared upsert, not a hand-rolled INSERT. Two
+            # workers scanning at once both miss the same CVE and both insert
+            # it; the loser's flush trips the unique constraint on
+            # ``vulnerabilities.external_id``. Here that flush also writes the
+            # ScanComponent and VulnerabilityFinding rows staged earlier in
+            # this loop, so the violation aborted the whole transaction and
+            # the container scan failed outright. The shared helper runs the
+            # insert in a SAVEPOINT and re-reads the winner's row. OS packages
+            # are the likeliest collision of all: ``glibc``, ``openssl`` and
+            # ``curl`` appear in nearly every image and in source scans too,
+            # and both paths feed this one catalog.
+            vuln_row, raced = _upsert_vulnerability_from_trivy(
+                session, external_id=cve_id, vuln=vuln, scan_uuid=scan_uuid
+            )
+            if raced:
+                catalog_races += 1
             if vuln_row is None:
-                vuln_row = Vulnerability(
-                    external_id=cve_id,
-                    source="trivy",
-                    severity=_normalize_severity(vuln.get("Severity")),
-                    summary=vuln.get("Title"),
-                    details=vuln.get("Description"),
-                    references=vuln.get("References") or [],
+                log.warning(
+                    "container_finding_skipped_no_vuln_row",
+                    scan_id=str(scan_uuid),
+                    vuln_id=cve_id,
                 )
-                session.add(vuln_row)
-                session.flush()
+                continue
 
             guarded_finding = enforce_jsonb_row_size_limit(
                 vuln,
@@ -453,7 +466,23 @@ def _persist_trivy_report(
             created_findings.append(finding)
 
     # M-6: per-finding create audit rows (same transaction as the findings).
-    emit_finding_create_audits(session, scan_uuid=scan_uuid, findings=created_findings)
+    emitted = emit_finding_create_audits(
+        session, scan_uuid=scan_uuid, findings=created_findings
+    )
+    if emitted != len(created_findings):
+        log.warning(
+            "container_finding_audit_gap",
+            scan_id=str(scan_uuid),
+            findings=len(created_findings),
+            audits_emitted=emitted,
+        )
+    log.info(
+        "container_findings_persisted",
+        scan_id=str(scan_uuid),
+        inserted=len(created_findings),
+        catalog_races=catalog_races,
+        audits_emitted=emitted,
+    )
 
 
 def extract_os_metadata(report: dict[str, Any]) -> dict[str, Any] | None:
@@ -608,14 +637,6 @@ def _get_or_create_component_version(
     session.add(cv)
     session.flush()
     return cv
-
-
-def _normalize_severity(value: Any) -> str:
-    """Map Trivy severity strings to our ``vuln_severity`` enum."""
-    raw = (str(value or "")).lower()
-    if raw in ("critical", "high", "medium", "low", "info"):
-        return raw
-    return "unknown"
 
 
 __all__ = ["scan_container_task"]

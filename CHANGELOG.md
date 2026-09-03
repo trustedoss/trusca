@@ -25,7 +25,10 @@ and the project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.
   path, where the same transaction had already deleted the scan's prior
   findings, the session-wide rollback also restored them and the re-insert then
   failed the finding uniqueness constraint, taking the whole rematch down
-  (#290).
+  (#290). The container persister carried the same unguarded insert and
+  failed the whole scan on it; it now goes through the same shared upsert,
+  which also gets it the reference sanitisation and the stale-row refresh
+  the source path already had.
 
 ## [0.22.4] - 2026-09-02
 
