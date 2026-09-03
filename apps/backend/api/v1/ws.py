@@ -116,6 +116,7 @@ from core.security import (
     TOKEN_TYPE_ACCESS,
     CurrentUser,
     decode_token,
+    highest_role,
     password_change_invalidates,
 )
 from core.ws_registry import (
@@ -332,15 +333,14 @@ async def _resolve_user(
     team_ids = [m.team_id for m in memberships]
     team_roles = {m.team_id: m.role for m in memberships}
 
-    # Highest role (super_admin > team_admin > developer); duplicate of the
-    # tiny helper in core.security to avoid pulling a private symbol.
-    role_priority = {"developer": 1, "team_admin": 2, "super_admin": 3}
-    if user.is_superuser:
-        role = "super_admin"
-    elif memberships:
-        role = max((m.role for m in memberships), key=lambda r: role_priority.get(r, 0))
-    else:
-        role = "developer"
+    # The shared helper, not a second copy of it. The copy that used to live
+    # here listed three grades and omitted ``viewer``, which the contract test
+    # covering the real priority map could not see, because it did not know
+    # this map existed.
+    role = highest_role(
+        [m.role for m in memberships],
+        is_superuser=bool(user.is_superuser),
+    )
 
     return CurrentUser(
         id=user.id,
