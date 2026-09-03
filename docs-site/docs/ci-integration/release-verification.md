@@ -16,7 +16,7 @@ Every TRUSCA release publishes three multi-architecture images to GitHub Contain
 This page is for anyone who self-hosts TRUSCA and wants to prove that what they pulled is what we published.
 
 :::note Scope
-This covers **container images**. The SBOM that TRUSCA generates for *your* projects is a different artifact with its own signature; see [Verify SBOM signatures](./sbom-signature-verification.md). Release **tags** are not signed yet.
+This covers **container images**. The SBOM that TRUSCA generates for *your* projects is a different artifact with its own signature; see [Verify SBOM signatures](./sbom-signature-verification.md). For the git tag a release was cut from, see [Verify the release tag](#verify-the-release-tag).
 :::
 
 ## Prerequisites
@@ -117,6 +117,43 @@ gh attestation verify "oci://${IMAGE}@${DIGEST}" \
 ```
 
 The simplest option remains verifying on a connected machine and mirroring the **digest** internally. A digest carries the guarantee with it.
+
+## Verify the release tag
+
+The images above tell you a workflow built them. The tag tells you a person
+cut that release. They answer different questions, so check both if the second
+one matters to you.
+
+:::note Not signed on every release yet
+Tag signing is being rolled out: the release workflow already checks each tag
+and reports an unsigned one, but does not yet refuse the release. Until a
+release's tag carries a signature the commands below report that, which is the
+honest answer rather than a pass.
+:::
+
+Release tags are signed with SSH. Verification needs the repository's
+allowed-signers file, which says **which** key counts, so clone the repo rather
+than working from a tarball:
+
+```bash
+git clone https://github.com/trustedoss/trusca.git
+cd trusca
+git config gpg.ssh.allowedSignersFile .github/allowed_signers
+git verify-tag v0.22.5
+```
+
+A good result names the signer. What you are looking for is a principal, not
+just a good signature:
+
+```
+Good "git" signature for release@trusca with ED25519 key SHA256:...
+```
+
+If you see `Good "git" signature` **without** a signer, followed by
+`No principal matched`, the tag was signed by a key that is not the release
+manager's. Treat that as a failure. That distinction is the entire value of the
+allowed-signers file: a bare `git verify-tag` accepts any valid key, including
+one an attacker made a minute ago.
 
 ## The `unknown/unknown` entry in the package listing
 

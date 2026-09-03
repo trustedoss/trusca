@@ -110,7 +110,10 @@ pull해서 실행해봐야만 설치 가능 여부를 증명할 수 있기 때�
    차트는 포털과 같은 주기로 릴리스한다고 적어 두었는데 한 번 아홉 마이너 버전이나
    벌어졌고, 그 동안 기본 `helm install`은 운영자가 `image.tag`를 직접 지정하지 않으면
    오래된 포털을 설치했습니다.
-5. 태그를 push합니다. `git tag vX.Y.Z && git push origin vX.Y.Z`.
+5. 태그를 push합니다. `git tag -s vX.Y.Z -m "vX.Y.Z" && git push origin vX.Y.Z`.
+   `-s`는 서명을 하고 `-a`를 함께 적용합니다. 옵션 없는 `git tag`는 커밋을 직접
+   가리키는 ref만 만드는 경량 태그라 태그 객체가 없고, 그래서 서명을 담을 수
+   없습니다. [릴리스 태그 서명](#릴리스-태그-서명)을 보세요.
 6. `release-gate` 잡을 지켜봅니다. 초록색이 되면 Release가 자동으로 공개되고
    `latest`로 표시됩니다. 별도 수동 작업은 필요 없습니다.
 7. 데모 배포를 승인합니다. Release가 공개되면 `demo` 환경에 대한
@@ -118,6 +121,62 @@ pull해서 실행해봐야만 설치 가능 여부를 증명할 수 있기 때�
    릴리스에 그대로 두려면 승인하지 않으면 됩니다. 이렇게 걸린 실행은 시드를
    다시 만들지 않으므로, 릴리스가 `scripts/seed_demo.py`를 바꿨다면 워크플로를
    직접 `reseed: true`로 실행하십시오.
+
+## 릴리스 태그 서명
+
+릴리스 태그는 릴리스 담당자가 SSH로 서명합니다. `tag-signature` 잡이 모든
+릴리스에서 이것을 검사하며 가장 먼저 돌기 때문에, 강제로 바뀐 뒤에는 서명이
+없는 태그가 무엇이 발행되기 전에 릴리스를 멈춥니다.
+
+:::note 아직 강제하지 않습니다
+`release.yml`의 `REQUIRE_SIGNED_TAGS`가 `"false"`라서 지금은 서명이 없어도
+알리기만 하고 릴리스를 계속 진행합니다. 의도한 것입니다. 서명 키가 등록되기
+전에는 모든 태그가 서명되어 있지 않고, 그 상태에서 실패로 막으면 릴리스를
+개선하는 것이 아니라 못 하게 만듭니다. 아래 설정을 마치고
+`.github/allowed_signers`에 키가 올라간 뒤 `"true"`로 바꾸면 됩니다. 그
+전환이 남은 유일한 단계입니다.
+:::
+
+### 릴리스 담당자 최초 설정
+
+1. 서버 접속에 쓰는 키와 분리된 서명 전용 키를 만듭니다.
+
+   ```bash
+   ssh-keygen -t ed25519 -C "release@trusca" -f ~/.ssh/trusca_release
+   ```
+
+2. git이 그 키로 태그에 서명하도록 설정합니다.
+
+   ```bash
+   git config --global gpg.format ssh
+   git config --global user.signingkey ~/.ssh/trusca_release.pub
+   ```
+
+3. GitHub의 Settings에서 SSH and GPG keys로 가서 공개키를 두 번 등록합니다.
+   git 인증에 쓰려면 Authentication key로 한 번, 그리고 GitHub이 태그를
+   `Verified`로 표시하게 하려면 Signing key로 한 번입니다. 같은 키를 별개
+   항목으로 넣는 것이라 앞의 것만 등록하고 끝내기 쉽습니다.
+
+4. `.github/allowed_signers`에 추가하고 그 파일로 PR을 엽니다. 이 파일이
+   검증하는 쪽에 어느 키가 유효한지 알려 줍니다.
+
+   ```
+   release@trusca ssh-ed25519 AAAA... release@trusca
+   ```
+
+5. `release.yml`의 `REQUIRE_SIGNED_TAGS`를 `"true"`로 바꿉니다.
+
+개인키는 릴리스 담당자의 장비를 벗어나지 않습니다. CI는 서명하지 않으므로
+시크릿이 필요 없고 검증만 합니다.
+
+### allowed-signers 파일이 필요한 이유
+
+암호학적으로 검증되는 서명은 누군가가 서명했다는 사실만 말합니다.
+`git verify-tag`는 유효한 키라면 공격자가 방금 만든 키에도
+`Good "git" signature`를 출력합니다. 그것에 의미를 주는 것이
+`.github/allowed_signers`입니다. 해당 항목이 없으면 git이
+`No principal matched`를 덧붙이고 검사는 실패합니다. 이 파일 없이 하는 검증은
+형식만 갖춘 것입니다.
 
 ## 함께 보기
 
