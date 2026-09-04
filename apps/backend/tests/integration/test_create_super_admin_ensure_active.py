@@ -29,20 +29,15 @@ import pytest
 from sqlalchemy import delete, select
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
+from tests._db_required import require_database_url
+
 BACKEND_ROOT = Path(__file__).resolve().parent.parent.parent
 pytestmark = pytest.mark.integration
 
 
-def _require_database_url() -> str:
-    url = os.getenv("DATABASE_URL")
-    if not url:
-        pytest.skip("DATABASE_URL not set — skip create_super_admin tests")
-    return url
-
-
 @pytest.fixture
 async def session_factory() -> AsyncIterator[async_sessionmaker]:
-    url = _require_database_url()
+    url = require_database_url()
     engine = create_async_engine(url)
     factory = async_sessionmaker(engine, expire_on_commit=False)
     try:

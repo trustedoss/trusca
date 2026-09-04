@@ -14,8 +14,6 @@ CLAUDE.md core rule #1: PostgreSQL only — no SQLite, even in tests.
 
 from __future__ import annotations
 
-import os
-import subprocess
 from pathlib import Path
 
 import pytest
@@ -23,26 +21,9 @@ from httpx import ASGITransport, AsyncClient
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
+from tests._db_required import migrate_to_head
+
 BACKEND_ROOT = Path(__file__).resolve().parent.parent.parent
-
-
-def _require_db() -> None:
-    if not os.getenv("DATABASE_URL"):
-        pytest.skip("DATABASE_URL not set — skip /health/ready integration test")
-
-
-def _alembic_upgrade_head() -> None:
-    result = subprocess.run(
-        ["alembic", "upgrade", "head"],
-        cwd=BACKEND_ROOT,
-        capture_output=True,
-        text=True,
-        timeout=60,
-    )
-    assert result.returncode == 0, (
-        f"alembic upgrade head failed (exit {result.returncode})\n"
-        f"stdout:\n{result.stdout}\nstderr:\n{result.stderr}"
-    )
 
 
 @pytest.fixture
@@ -57,8 +38,7 @@ async def client():
 @pytest.mark.integration
 async def test_health_ready_returns_200_when_schema_at_head(client) -> None:
     """With the schema migrated to HEAD, the probe returns 200 ready."""
-    _require_db()
-    _alembic_upgrade_head()
+    migrate_to_head()
 
     resp = await client.get("/health/ready")
     assert resp.status_code == 200, resp.text
@@ -68,8 +48,7 @@ async def test_health_ready_returns_200_when_schema_at_head(client) -> None:
 @pytest.mark.integration
 async def test_health_ready_is_unauthenticated(client) -> None:
     """The probe answers with NO Authorization header (CLAUDE.md #12 public)."""
-    _require_db()
-    _alembic_upgrade_head()
+    migrate_to_head()
 
     resp = await client.get("/health/ready")  # no auth header
     assert resp.status_code == 200
@@ -85,8 +64,7 @@ async def test_health_ready_503_when_db_revision_behind_head(client) -> None:
     The version pointer is restored to HEAD in ``finally`` so downstream tests
     see a migrated schema.
     """
-    _require_db()
-    _alembic_upgrade_head()
+    migrate_to_head()
 
     from core.config import database_url
 
