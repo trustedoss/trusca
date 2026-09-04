@@ -10,8 +10,18 @@ sidebar_position: 2
 
 포털은 GitHub Action을 미러링하는 `include` 가능한 GitLab CI 템플릿을 제공합니다 — 스캔을 트리거하고 최종 상태까지 폴링한 다음 빌드 게이트를 평가합니다. 템플릿은 단일 잡이며, 어떤 필드든 확장하거나 오버라이드할 수 있습니다.
 
-:::warning GitLab MR 코멘트 — 아직 출하되지 않음
-현재 릴리스의 포털 PR-코멘트 통합은 GitHub 전용입니다. `templates/gitlab-ci.yml`의 MR-코멘트 잡은 요청을 스테이징하지만, 백엔드 `services/sca_comment.py`는 `api.github.com` 호출만 알고 있습니다 — GitLab `repo_full_name`으로 호출하면 404가 반환됩니다. GitLab Notes API 클라이언트가 도착할 때까지 GitLab 측에서는 빌드 게이트의 종료 코드를 사용하세요.
+:::note MR 코멘트에는 설정 둘이 필요합니다
+템플릿이 SCA 보고서를 머지 요청 노트로 답니다. 그러려면 포털에 두 가지를 설정해야
+합니다.
+
+- `GITLAB_TOKEN` 입니다. 스캔 대상 프로젝트에 노트를 쓸 수 있는 토큰이어야 합니다.
+  배포 단위라서 포털은 어디서나 하나의 신원으로 코멘트합니다.
+- 자체 호스팅이라면 `GITLAB_API_BASE` 입니다. 기본값이
+  `https://gitlab.com/api/v4` 이고, 자체 호스팅은
+  `https://gitlab.example.com/api/v4` 형태입니다.
+
+그 인스턴스가 사내 인증기관의 인증서를 쓴다면 이 호출도 다른 모든 외부 호출과 같은
+방식으로 검증합니다. [사설 인증기관](../admin-guide/private-ca.md)을 봅니다.
 :::
 
 :::note 대상 독자

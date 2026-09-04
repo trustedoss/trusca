@@ -47,7 +47,41 @@ from services.policy_gate import GateResult
 
 log = structlog.get_logger("sca_comment.service")
 
+#: Constant, not configurable. GitHub Enterprise Server is self-hosted and
+#: would need this to be a setting, and the rest of the GitHub path assumes
+#: github.com in ways this constant alone does not fix. Opening it belongs with
+#: that work; this is the place to start looking when somebody does.
 GITHUB_API_BASE = "https://api.github.com"
+
+
+def gitlab_api_base() -> str:
+    """Where the GitLab API lives, read at call time (CLAUDE.md rule 11).
+
+    Configurable where GitHub's is not, and the asymmetry is the point: a
+    self-hosted GitLab is the ordinary case rather than the exception, and a
+    client that only spoke to gitlab.com would be no use to the deployments
+    this exists for.
+
+    A private certificate authority on that instance is the next thing that
+    stops this call, and it is configured the same way every other outbound
+    call is: see the admin guide's private-CA page.
+    """
+    import os
+
+    return (os.getenv("GITLAB_API_BASE") or "https://gitlab.com/api/v4").rstrip("/")
+
+
+def _gitlab_project_path(repo_full_name: str) -> str:
+    """URL-encode the project path for GitLab's ``:id`` path segment.
+
+    GitLab addresses a project either by numeric id or by its full path with
+    the slashes percent-encoded. The schema has already checked the shape, so
+    this only has to encode; doing it here rather than at the call sites keeps
+    the three functions below from each having their own opinion about it.
+    """
+    from urllib.parse import quote
+
+    return quote(repo_full_name, safe="")
 
 # The marker is a literal HTML comment so it never renders, and it is unique
 # enough that a search for it across other bots' comments returns no false
@@ -400,6 +434,169 @@ async def _update_comment(
 
 
 # ---------------------------------------------------------------------------
+# GitLab Notes API
+# ---------------------------------------------------------------------------
+#
+# Written from the GitLab REST documentation for merge request notes
+# (docs.gitlab.com/api/notes/, "Merge requests" section) and not verified
+# against a live instance. The response fields below are what that page
+# documents; if you have run this against a real GitLab and confirmed them,
+# delete this paragraph rather than leaving it to imply doubt that is no
+# longer there.
+#
+# Three differences from the GitHub client above, and they are why this is a
+# second implementation rather than an interface over the first: the auth
+# header is a bare token rather than a bearer, an update is PUT where GitHub
+# uses PATCH, and notes are addressed under the merge request itself rather
+# than through a separate issue-comment namespace.
+
+
+def _gitlab_auth_headers(token: str) -> dict[str, str]:
+    """GitLab REST headers. Token is in-memory only, never logged."""
+    return {
+        "PRIVATE-TOKEN": token,
+        "User-Agent": "trustedoss-sca-bot",
+    }
+
+
+async def _find_existing_note(
+    client: httpx.AsyncClient,
+    *,
+    repo_full_name: str,
+    mr_iid: int,
+    token: str,
+) -> dict[str, Any] | None:
+    """Page through MR notes looking for one carrying our marker.
+
+    Same five-page cap as the GitHub side and for the same reason: past that
+    the comment thread is noise and posting a new note is better than reading
+    forever.
+    """
+    project = _gitlab_project_path(repo_full_name)
+    for page in range(1, 6):
+        url = (
+            f"{gitlab_api_base()}/projects/{project}/merge_requests/{mr_iid}/notes"
+            f"?per_page=100&page={page}"
+        )
+        try:
+            response = await client.get(url, headers=_gitlab_auth_headers(token))
+        except httpx.HTTPError as exc:
+            raise SCACommentBadGateway(f"gitlab get-notes failed: {exc}") from exc
+
+        if response.status_code in (401, 403):
+            raise SCACommentUnauthorized(
+                f"gitlab rejected token while listing notes: {response.status_code}",
+            )
+        if response.status_code >= 500:
+            raise SCACommentBadGateway(
+                f"gitlab returned {response.status_code} listing notes",
+            )
+        if response.status_code == 404:
+            raise SCACommentBadGateway(
+                "gitlab returned 404 listing notes - token lacks read access, "
+                "or the project path or merge request iid does not exist",
+            )
+        if response.status_code != 200:
+            raise SCACommentBadGateway(
+                f"gitlab returned unexpected {response.status_code} listing notes",
+            )
+
+        notes = response.json()
+        if not isinstance(notes, list):
+            raise SCACommentBadGateway("gitlab notes response was not a list")
+        for note in notes:
+            if isinstance(note, dict) and COMMENT_MARKER in (note.get("body") or ""):
+                return note
+        if len(notes) < 100:
+            return None
+    return None
+
+
+async def _create_note(
+    client: httpx.AsyncClient,
+    *,
+    repo_full_name: str,
+    mr_iid: int,
+    body: str,
+    token: str,
+) -> dict[str, Any]:
+    project = _gitlab_project_path(repo_full_name)
+    url = f"{gitlab_api_base()}/projects/{project}/merge_requests/{mr_iid}/notes"
+    try:
+        response = await client.post(
+            url,
+            headers=_gitlab_auth_headers(token),
+            json={"body": body},
+        )
+    except httpx.HTTPError as exc:
+        raise SCACommentBadGateway(f"gitlab post-note failed: {exc}") from exc
+
+    if response.status_code in (401, 403):
+        raise SCACommentUnauthorized(
+            f"gitlab rejected token while posting note: {response.status_code}",
+        )
+    if response.status_code >= 500:
+        raise SCACommentBadGateway(
+            f"gitlab returned {response.status_code} posting note",
+        )
+    if response.status_code not in (200, 201):
+        raise SCACommentBadGateway(
+            f"gitlab returned unexpected {response.status_code} posting note",
+        )
+    payload = response.json()
+    if not isinstance(payload, dict):
+        raise SCACommentBadGateway("gitlab post-note response was not an object")
+    return payload
+
+
+async def _update_note(
+    client: httpx.AsyncClient,
+    *,
+    repo_full_name: str,
+    mr_iid: int,
+    note_id: int,
+    body: str,
+    token: str,
+) -> dict[str, Any]:
+    """PUT, where the GitHub client PATCHes.
+
+    The note id alone is not enough to address it: GitLab scopes notes under
+    the merge request, so the path carries both. That is why this signature
+    takes ``mr_iid`` and the GitHub counterpart does not.
+    """
+    project = _gitlab_project_path(repo_full_name)
+    url = (
+        f"{gitlab_api_base()}/projects/{project}"
+        f"/merge_requests/{mr_iid}/notes/{note_id}"
+    )
+    try:
+        response = await client.put(
+            url,
+            headers=_gitlab_auth_headers(token),
+            json={"body": body},
+        )
+    except httpx.HTTPError as exc:
+        raise SCACommentBadGateway(f"gitlab put-note failed: {exc}") from exc
+
+    if response.status_code in (401, 403):
+        raise SCACommentUnauthorized(
+            f"gitlab rejected token while updating note: {response.status_code}",
+        )
+    if response.status_code >= 500:
+        raise SCACommentBadGateway(
+            f"gitlab returned {response.status_code} updating note",
+        )
+    if response.status_code != 200:
+        raise SCACommentBadGateway(
+            f"gitlab returned unexpected {response.status_code} updating note",
+        )
+    payload = response.json()
+    if not isinstance(payload, dict):
+        raise SCACommentBadGateway("gitlab put-note response was not an object")
+    return payload
+
+
+# ---------------------------------------------------------------------------
 # Public entry point
 # ---------------------------------------------------------------------------
 
@@ -421,6 +618,7 @@ async def post_pr_comment(
     gate_result: GateResult,
     summary: CommentSummary,
     github_token: str | None,
+    provider: str = "github",
     dry_run: bool = False,
     http_client: httpx.AsyncClient | None = None,
 ) -> PostedComment:
@@ -470,29 +668,59 @@ async def post_pr_comment(
         # Caller must provide a token for the live path. We do not surface
         # the absence of the env var in the response — only that a token was
         # required.
-        raise SCACommentUnauthorized("github token required for non-dry-run posts")
+        raise SCACommentUnauthorized(f"{provider} token required for non-dry-run posts")
+
+    # The two forges differ in the auth header, in the verb an update uses, and
+    # in whether a comment is addressed on its own or under the request it
+    # belongs to. Those are the three places an interface over both would leak,
+    # so this dispatches to two implementations instead of unifying them. A
+    # third forge is the moment to look at what the two have in common; a
+    # framework built now would be shaped by one of them.
+    is_gitlab = provider == "gitlab"
+    #: GitHub calls it html_url, GitLab web_url. Both are the link a person
+    #: opens, and neither is guaranteed present.
+    url_field = "web_url" if is_gitlab else "html_url"
 
     owns_client = http_client is None
     client = http_client or httpx.AsyncClient(timeout=_HTTP_TIMEOUT_SECONDS)
     try:
-        existing = await _find_existing_comment(
-            client,
-            repo_full_name=repo_full_name,
-            pr_number=pr_number,
-            token=github_token,
-        )
+        if is_gitlab:
+            existing = await _find_existing_note(
+                client,
+                repo_full_name=repo_full_name,
+                mr_iid=pr_number,
+                token=github_token,
+            )
+        else:
+            existing = await _find_existing_comment(
+                client,
+                repo_full_name=repo_full_name,
+                pr_number=pr_number,
+                token=github_token,
+            )
 
         if existing is not None:
             comment_id = int(existing["id"])
-            updated = await _update_comment(
-                client,
-                repo_full_name=repo_full_name,
-                comment_id=comment_id,
-                body=body,
-                token=github_token,
-            )
+            if is_gitlab:
+                updated = await _update_note(
+                    client,
+                    repo_full_name=repo_full_name,
+                    mr_iid=pr_number,
+                    note_id=comment_id,
+                    body=body,
+                    token=github_token,
+                )
+            else:
+                updated = await _update_comment(
+                    client,
+                    repo_full_name=repo_full_name,
+                    comment_id=comment_id,
+                    body=body,
+                    token=github_token,
+                )
             log.info(
                 "sca_comment.updated",
+                provider=provider,
                 repo_full_name=repo_full_name,
                 pr_number=pr_number,
                 comment_id=comment_id,
@@ -501,19 +729,31 @@ async def post_pr_comment(
             return PostedComment(
                 status="updated",
                 comment_id=int(updated.get("id", comment_id)),
-                comment_url=str(updated.get("html_url") or existing.get("html_url") or ""),
+                comment_url=str(
+                    updated.get(url_field) or existing.get(url_field) or ""
+                ),
                 body_preview=body_preview,
             )
 
-        created = await _create_comment(
-            client,
-            repo_full_name=repo_full_name,
-            pr_number=pr_number,
-            body=body,
-            token=github_token,
-        )
+        if is_gitlab:
+            created = await _create_note(
+                client,
+                repo_full_name=repo_full_name,
+                mr_iid=pr_number,
+                body=body,
+                token=github_token,
+            )
+        else:
+            created = await _create_comment(
+                client,
+                repo_full_name=repo_full_name,
+                pr_number=pr_number,
+                body=body,
+                token=github_token,
+            )
         log.info(
             "sca_comment.posted",
+            provider=provider,
             repo_full_name=repo_full_name,
             pr_number=pr_number,
             comment_id=created.get("id"),
@@ -523,7 +763,7 @@ async def post_pr_comment(
         return PostedComment(
             status="posted",
             comment_id=int(new_id) if isinstance(new_id, int) else None,
-            comment_url=str(created.get("html_url") or ""),
+            comment_url=str(created.get(url_field) or ""),
             body_preview=body_preview,
         )
     finally:

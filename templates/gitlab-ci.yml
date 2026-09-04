@@ -287,13 +287,20 @@
       fi
 
       api="${TRUSTEDOSS_API_URL%/}"
-      # CI_PROJECT_PATH is "group/project" — the same shape the portal expects
-      # for repo_full_name. CI_MERGE_REQUEST_IID is the MR number (per-project,
-      # the human-visible "!123").
+      # CI_PROJECT_PATH is the project's full path, including any groups it
+      # nests under, which is what the portal wants for repo_full_name.
+      # CI_MERGE_REQUEST_IID is the MR number (per-project, the human-visible
+      # "!123"), not the instance-wide id.
+      #
+      # provider is sent explicitly. It defaults to "github" server-side so
+      # that integrations written before GitLab was supported keep working,
+      # which means a GitLab pipeline that leaves it out gets a GitHub error
+      # about a project it never named. The response reports when the default
+      # was assumed, but saying it here means never seeing that.
       body=$(jq -nc \
         --arg repo "$CI_PROJECT_PATH" \
         --argjson pr "$CI_MERGE_REQUEST_IID" \
-        '{repo_full_name: $repo, pr_number: $pr, dry_run: false}')
+        '{provider: "gitlab", repo_full_name: $repo, pr_number: $pr, dry_run: false}')
 
       response=$(curl --fail-with-body -sS -X POST \
         -H "Authorization: Bearer ${TRUSTEDOSS_API_KEY}" \
