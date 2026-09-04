@@ -703,10 +703,11 @@ worker:
     # just make a stuck default-queue pod take 70 minutes to recycle for no
     # reason. The longest task this worker DOES run is trustedoss.backup.run,
     # bounded by BACKUP_SUBPROCESS_TIMEOUT (apps/backend/tasks/backup.py,
-    # default 3600s for EACH of the pg_dump and workspace-tar subprocesses it
-    # shells out to, so up to ~2x that back-to-back in the worst case -- this
+    # default 3600s for EACH of its two long steps, the pg_dump it shells out
+    # to and the workspace tar it builds in-process, so up to ~2x that
+    # back-to-back in the worst case -- this
     # default is deliberately sized off one 3600s window plus the same 300s
-    # margin S4 uses elsewhere, not two, since the two subprocesses are the
+    # margin S4 uses elsewhere, not two, since both steps running long is the
     # rare worst case, not the common one, and an operator running much
     # larger backups should raise both BACKUP_SUBPROCESS_TIMEOUT and this
     # value together). Helm cannot read that env accessor at render time --

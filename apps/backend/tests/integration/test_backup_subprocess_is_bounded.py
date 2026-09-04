@@ -151,3 +151,68 @@ def test_a_restore_whose_child_writes_to_stdout_still_completes(
     elapsed = time.monotonic() - started
 
     assert elapsed < 30, f"took {elapsed:.1f}s: psql filled its stdout pipe and stopped"
+
+
+def test_the_workspace_tar_stops_at_the_timeout(tmp_path, monkeypatch) -> None:
+    """The other long step, which no setting reached until now.
+
+    `BACKUP_SUBPROCESS_TIMEOUT` bounds the dump because that is a subprocess
+    and `proc.wait` takes a timeout. The workspace archive is Python
+    `tarfile`, so nothing bounded it at all -- while the chart sizes this
+    worker's grace period on the premise that both long steps are bounded by
+    that setting. A workspace big enough, or a filesystem slow enough, ran past
+    the grace period and was killed, which is the case backups can least afford
+    because it happens on the largest deployments.
+
+    Driven with a real tree and a clock that has already run out, so the
+    deadline is reached on the first member rather than after minutes of
+    honest work.
+    """
+    import time as _time
+
+    from tasks import backup as task
+
+    workspace = tmp_path / "workspace"
+    (workspace / "nested").mkdir(parents=True)
+    for i in range(5):
+        (workspace / "nested" / f"f{i}.bin").write_bytes(b"x" * 1024)
+
+    monkeypatch.setenv("WORKSPACE_HOST_PATH", str(workspace))
+    monkeypatch.setenv("BACKUP_SUBPROCESS_TIMEOUT", "1")
+
+    # A clock that reads normally once and then jumps. The first read sets the
+    # deadline, so shifting every read (the obvious version of this) moves the
+    # deadline by the same amount and the comparison never fires -- which is
+    # what the first draft of this test did, and it passed for that reason.
+    real_monotonic = _time.monotonic
+    reads = {"n": 0}
+
+    def _clock() -> float:
+        reads["n"] += 1
+        return real_monotonic() if reads["n"] == 1 else real_monotonic() + 100
+
+    with pytest.raises(task.BackupTaskError) as failure:
+        task._create_workspace_archive(tmp_path / "workspace.tar.gz", clock=_clock)
+
+    assert "timed out" in str(failure.value).lower(), failure.value
+
+
+def test_a_workspace_that_fits_in_the_budget_is_archived(tmp_path, monkeypatch) -> None:
+    """And the ordinary case is untouched.
+
+    A bound that also stopped normal backups would be worse than none: the
+    failure would be silent to whoever set the timeout generously and expected
+    it never to fire.
+    """
+    from tasks import backup as task
+
+    workspace = tmp_path / "workspace"
+    workspace.mkdir()
+    (workspace / "a.bin").write_bytes(b"y" * 4096)
+
+    monkeypatch.setenv("WORKSPACE_HOST_PATH", str(workspace))
+    monkeypatch.setenv("BACKUP_SUBPROCESS_TIMEOUT", "3600")
+
+    target = tmp_path / "workspace.tar.gz"
+    assert task._create_workspace_archive(target) is True
+    assert target.is_file() and target.stat().st_size > 0

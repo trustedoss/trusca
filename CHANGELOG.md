@@ -124,6 +124,18 @@ and the project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.
 
 ### Fixed
 
+- **The workspace archive is now bounded by the backup timeout, like the dump
+  already was.** `BACKUP_SUBPROCESS_TIMEOUT` reached the `pg_dump` subprocess
+  and not the workspace tar, because that step is Python `tarfile` and nothing
+  was checking a clock. The Helm chart sizes this worker's
+  `terminationGracePeriodSeconds` on the premise that both long steps are
+  bounded by that setting, so a workspace large enough or a filesystem slow
+  enough ran past the grace period and was killed, on exactly the deployments
+  that can least afford it. The deadline is checked once per file, so a single
+  file larger than the remaining budget still overshoots by one file rather
+  than by the whole tree. The chart comment, which described the tar as a
+  subprocess, now says what it is.
+
 - **A half-written backup artifact no longer carries the name a restore reads.**
   The dump and the workspace archive were written straight to
   `postgres.sql.gz` and `workspace.tar.gz`. A process killed partway leaves no
