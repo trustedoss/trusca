@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # SPDX-License-Identifier: Apache-2.0
 # Copyright 2026 TRUSCA contributors
-"""Run the same lint and typecheck commands CI runs (ER62).
+"""Run CI's STATIC checks: the lint, typecheck and shellcheck jobs (ER62).
 
 Why this exists
 ---------------
@@ -13,10 +13,10 @@ has to be made correctly every time for the habit to hold.
 Two properties matter more than convenience:
 
 1. **It cannot drift from CI quietly.** The table below is keyed by the
-   workflow's own step names, and ``tests/unit/test_local_ci_matches_ci.py``
-   asserts every ``run:`` step in the lint and typecheck jobs appears here. A
-   new CI step fails that test rather than being silently absent from the
-   local run.
+   workflow's own step names, and ``tests/unit/test_static_checks_match_ci.py``
+   asserts every ``run:`` step in the covered jobs appears here. A new CI step,
+   or a whole new job, fails that test rather than being silently absent from
+   the local run.
 
 2. **It never reports success for something it did not run.** A missing tool
    is a FAILURE, not a skip. A run that quietly covered half the checks and
@@ -35,16 +35,23 @@ from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 
-#: CI installs dependencies in its own steps. Locally the toolchain is the
-#: developer's, so these are recorded (so the coverage test sees them) and not
-#: executed. They are the ONLY steps allowed to have no local command.
-INSTALL_STEPS = frozenset(
-    {
-        "Install backend dev deps",
-        "Install frontend deps",
-        "Fetch the base branch for the em-dash diff",
-    }
-)
+#: CI steps that are deliberately not run here, each with the reason. Recorded
+#: rather than omitted so the contract test still sees them: a step missing
+#: from both this map and CHECKS fails, which is what stops a real check being
+#: dropped by accident. Carrying a reason is what keeps this from becoming a
+#: quiet place to park something inconvenient.
+STEPS_NOT_RUN_LOCALLY: dict[str, str] = {
+    "Install backend dev deps": "the local toolchain is the developer's, not "
+    "something this should install over",
+    "Install frontend deps": "same; a missing node_modules is reported as a "
+    "precondition with the npm ci remedy instead",
+    "Install shellcheck": "installs an apt package; reported as a missing tool "
+    "instead when it is absent",
+    "Show shellcheck version": "prints a version for the CI log and asserts "
+    "nothing",
+    "Fetch the base branch for the em-dash diff": "deepens the CI clone; a "
+    "local checkout already has the history the diff needs",
+}
 
 
 @dataclass(frozen=True)
@@ -177,6 +184,18 @@ CHECKS: list[Check] = [
         "tools/release-refs/lint.mjs",
         ["node"],
     ),
+    Check(
+        "Run shellcheck (severity=warning)",
+        "scripts",
+        [
+            "sh",
+            "-c",
+            "shellcheck --severity=warning scripts/*.sh deploy/hetzner/*.sh",
+        ],
+        REPO_ROOT,
+        "shellcheck --severity=warning",
+        ["shellcheck"],
+    ),
 ]
 
 
@@ -199,9 +218,9 @@ def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument(
         "--scope",
-        choices=["all", "backend", "frontend"],
+        choices=["all", "backend", "frontend", "scripts"],
         default="all",
-        help="which CI targets to run; 'all' is what CI runs on a pull request",
+        help="which scope to run; 'all' is every static check, not every CI job",
     )
     args = parser.parse_args()
 

@@ -30,11 +30,13 @@ help:
 	@echo "  make dev-logs              tail backend + worker logs"
 	@echo "  make dev-ps                list service health"
 	@echo ""
-	@echo "Local CI checks (same commands as the lint / typecheck jobs)"
-	@echo "  make check                 everything those two jobs run"
-	@echo "  make check-backend         ruff + mypy + ai-review selftest ONLY"
-	@echo "  make check-frontend        eslint, tsc, i18n, tokens and the repo linters ONLY"
-	@echo "                             (the two partial targets are not what CI runs)"
+	@echo "Static checks (CI's lint / typecheck / shellcheck jobs, NOT the tests)"
+	@echo "  make static-checks         every static check CI runs"
+	@echo "  make static-checks-backend ruff + mypy + ai-review selftest ONLY"
+	@echo "  make static-checks-frontend eslint, tsc, i18n, tokens, repo linters ONLY"
+	@echo "  make static-checks-scripts shellcheck ONLY"
+	@echo "                             green here is not a green CI: the test,"
+	@echo "                             e2e and build jobs are out of scope"
 	@echo ""
 	@echo "Guide screenshot capture (Playwright)"
 	@echo "  make screenshots-capture   regenerate guide PNGs via tests/screenshots/"
@@ -44,29 +46,39 @@ help:
 	@echo "  make walkthroughs-capture  record webm via tests/walkthroughs/"
 	@echo "  make walkthroughs-encode   convert webm to mp4 + gif under $(WALKTHROUGH_DIR)/"
 
-# ER62 — one entry point for the checks CI's lint and typecheck jobs run, so
-# nobody has to decide per change which of them are worth running. Deciding by
-# the shape of a change is how a test-only edit skips mypy.
+# ER62: one entry point for CI's STATIC checks, so nobody has to decide per
+# change which of them are worth running. Deciding by the shape of a change is
+# how a test-only edit skips mypy.
 #
-# The command list lives in tools/local-ci/run.py and is compared against
-# .github/workflows/ci.yml by tests/unit/test_local_ci_matches_ci.py, so it
-# cannot fall behind CI without a test failing.
+# Named "static-checks" and not "local CI" on purpose. It runs the lint,
+# typecheck and shellcheck jobs; the test, e2e, coverage and build jobs need a
+# database, browsers or an image and are out of scope. A name promising CI
+# would invite the surprise this exists to prevent.
+#
+# The command list lives in tools/static-checks/run.py and is compared against
+# .github/workflows/ci.yml by tests/unit/test_static_checks_match_ci.py, which
+# also asserts every job in that workflow is either covered or excluded with a
+# reason. It cannot fall behind CI without a test failing.
 #
 # A missing tool FAILS rather than being skipped: a run that quietly covered
 # less than it appears to and still ended green would be worse than no target.
-.PHONY: check
-check:
-	@python3 tools/local-ci/run.py --scope all
+.PHONY: static-checks
+static-checks:
+	@python3 tools/static-checks/run.py --scope all
 
-# Deliberately named for their scope. Passing one of these is NOT the same as
-# passing what CI runs, and the runner says so on the last line.
-.PHONY: check-backend
-check-backend:
-	@python3 tools/local-ci/run.py --scope backend
+# Named for their scope. Passing one of these is not passing even the static
+# checks, and the runner says so on its last line.
+.PHONY: static-checks-backend
+static-checks-backend:
+	@python3 tools/static-checks/run.py --scope backend
 
-.PHONY: check-frontend
-check-frontend:
-	@python3 tools/local-ci/run.py --scope frontend
+.PHONY: static-checks-frontend
+static-checks-frontend:
+	@python3 tools/static-checks/run.py --scope frontend
+
+.PHONY: static-checks-scripts
+static-checks-scripts:
+	@python3 tools/static-checks/run.py --scope scripts
 
 .PHONY: dev-up
 dev-up:
