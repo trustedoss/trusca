@@ -65,7 +65,10 @@ That file lives in the common git directory and applies to every worktree, so
 `0081_*.py` would hide a colleague's real `0081_finding_assignment.py` from
 their `git status` and let them open a PR without its migration. Delete the
 stub the moment the real revision lands on `main`, before you rebase: two
-files declaring the same `revision` string stop alembic outright.
+files declaring the same `revision` string stop alembic outright. Delete its
+line from `.git/info/exclude` at the same time. A stale line there is not
+harmless: it is shared, it names a path nobody can see any more, and the next
+person has to work out what it was protecting.
 
 ### Coverage
 
