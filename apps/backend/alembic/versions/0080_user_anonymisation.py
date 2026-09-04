@@ -9,7 +9,7 @@ Forward-only: yes
 
 If you are writing a database function
 -------------------------------------
-This migration and 0083 are the repository's first functions to pin a search
+This migration and 0082 are the repository's first functions to pin a search
 path at all, so whatever they do is what the next one will copy. Two things
 carry:
 
