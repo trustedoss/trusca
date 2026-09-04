@@ -7,6 +7,21 @@ Create Date: 2026-09-04
 Kind: schema (new table, one function, one trigger-function replacement)
 Forward-only: yes
 
+If you are writing a database function
+-------------------------------------
+This migration and 0083 are the repository's first functions to pin a search
+path at all, so whatever they do is what the next one will copy. Two things
+carry:
+
+    SET search_path = pg_catalog, public, pg_temp
+
+and every table named with its schema. ``pg_temp`` last is not decoration and
+its absence is invisible: a function pinned to ``pg_catalog, public`` looks
+correct, passes a shadow-table test as long as its references are qualified,
+and resolves an unqualified reference to the caller's temp table the first
+time somebody adds one. This file was written that way and the mistake was
+only found because somebody measured it.
+
 What:
   - Create ``user_anonymisation_requests`` (see the model for column meanings).
   - Replace ``audit_logs_prevent_mutation()`` so that ``ip`` and
