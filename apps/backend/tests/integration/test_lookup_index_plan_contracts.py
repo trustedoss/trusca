@@ -21,6 +21,27 @@ narrows the partial predicate, or changes the query's WHERE shape so the index
 can no longer apply. It does not catch "the planner stopped preferring it at
 scale", which is a data-distribution question the load baseline measures.
 
+When a plan assertion may name ONE index
+----------------------------------------
+Only when the penalised planner has one index to choose from. Not when one
+index covers the whole predicate, which is the test an earlier version of this
+file applied and got wrong twice.
+
+The difference is what the planner needs an index to do. It does not need one
+that answers the query; it needs one whose leading columns match part of the
+predicate, and it will take the rest as a heap filter and the ordering as a
+sort. By that measure ``ix_audit_logs_target_table`` competes with the
+three-column index on ``(target_table, target_id, created_at)``, and
+``ix_audit_logs_actor_user_id`` competes with ``(actor_user_id, created_at)``,
+even though neither covers its query. Which one wins is then a cost decision
+that moves with the data, and both assertions duly went red when a change
+elsewhere added audit rows.
+
+So: count the indexes whose leading column the predicate constrains. More than
+one means a definition contract, as the two audit tests and the project test
+below use. Asserting the winner is asserting the statistics that happen to be
+in the table when the suite reaches this file.
+
 The numbers behind each index are in migration 0078's docstring; they were
 measured on 200,000 audit rows and 60,000 projects, not estimated.
 """
@@ -255,10 +276,10 @@ async def test_the_active_project_index_is_shaped_for_the_query_it_serves(
 ) -> None:
     """A definition contract, not a plan one, and the difference is deliberate.
 
-    Both audit-log indexes have competitors that cover their predicate, so
-    each asserts that SOME index serves the query plus a definition contract on
-    the index 0078 added, rather than naming the winner of a cost decision.
-    This one competes with ``ix_projects_team_archived``,
+    Every index this file covers has a competitor by the standard above, so all
+    three tests assert that SOME index serves the query plus a definition
+    contract on the index the migration added, rather than naming the winner of
+    a cost decision. This one competes with ``ix_projects_team_archived``,
     which covers both predicates and differs only in the ordering, so which
     index wins is a genuine cost decision that moves with the data. On the
     handful of rows a PR-gate test can seed, preferring the plain index and
