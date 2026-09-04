@@ -14,13 +14,10 @@ exists to remove, so it must not be reintroduced by the fix for it.
 
 from __future__ import annotations
 
-import os
-import subprocess
 import uuid
 from collections.abc import AsyncIterator
 from datetime import UTC, datetime, timedelta
 from decimal import Decimal
-from pathlib import Path
 
 import pytest
 from sqlalchemy import delete
@@ -28,34 +25,15 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_asyn
 
 from models import EpssSyncState
 from models import Vulnerability as VulnerabilityModel
+from tests._db_required import migrate_to_head
 
 pytestmark = pytest.mark.integration
 
-BACKEND_ROOT = Path(__file__).resolve().parents[2]
-
-
-def _require_database_url() -> str:
-    url = os.getenv("DATABASE_URL")
-    if not url:
-        pytest.skip("DATABASE_URL not set, skipping EPSS availability integration")
-    return url
 
 
 @pytest.fixture(scope="module", autouse=True)
 def _migrate_once() -> None:
-    _require_database_url()
-    result = subprocess.run(
-        ["alembic", "upgrade", "head"],
-        cwd=BACKEND_ROOT,
-        capture_output=True,
-        text=True,
-        timeout=120,
-    )
-    if result.returncode != 0:
-        pytest.skip(
-            f"alembic upgrade head failed; EPSS availability tests cannot run\n"
-            f"stdout:\n{result.stdout}\nstderr:\n{result.stderr}"
-        )
+    migrate_to_head()
 
 
 @pytest.fixture

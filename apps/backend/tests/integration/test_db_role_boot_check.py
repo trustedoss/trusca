@@ -16,36 +16,17 @@ lived in the wiring rather than the logic:
 
 from __future__ import annotations
 
-import os
-import subprocess
-from pathlib import Path
-
 import pytest
 from sqlalchemy import text
 
-BACKEND_ROOT = Path(__file__).resolve().parent.parent.parent
+from tests._db_required import migrate_to_head, require_database_url
+
 pytestmark = pytest.mark.integration
-
-
-def _require_database_url() -> str:
-    url = os.getenv("DATABASE_URL")
-    if not url:
-        pytest.skip("DATABASE_URL not set, skipping db role boot check")
-    return url
 
 
 @pytest.fixture(scope="module", autouse=True)
 def _migrate_once() -> None:
-    _require_database_url()
-    result = subprocess.run(
-        ["alembic", "upgrade", "head"],
-        cwd=BACKEND_ROOT,
-        capture_output=True,
-        text=True,
-        timeout=180,
-    )
-    if result.returncode != 0:
-        pytest.skip(f"alembic upgrade head failed:\n{result.stdout}\n{result.stderr}")
+    migrate_to_head()
 
 
 async def _boot() -> None:
@@ -119,7 +100,7 @@ async def test_the_probe_tells_a_privileged_role_from_a_dml_only_one(
     monkeypatch.delenv("REQUIRE_DB_ROLE_SEPARATION", raising=False)
     role = f"er49_probe_{secrets.token_hex(4)}"
     password = secrets.token_urlsafe(16)
-    parsed = urlparse(_require_database_url().replace("+asyncpg", ""))
+    parsed = urlparse(require_database_url().replace("+asyncpg", ""))
     database = (parsed.path or "/").lstrip("/")
 
     engine = build_engine()

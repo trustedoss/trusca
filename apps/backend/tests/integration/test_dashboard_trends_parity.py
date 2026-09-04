@@ -35,13 +35,10 @@ it proved agreement where disagreement was impossible):
 
 from __future__ import annotations
 
-import os
-import subprocess
 import uuid
 from collections.abc import AsyncIterator
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
-from pathlib import Path
 
 import pytest
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
@@ -49,6 +46,7 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_asyn
 from core.security import CurrentUser
 from services.dashboard_trends_service import get_dashboard_trends
 from services.project_diff_service import _open_findings_by_key, diff_release_snapshots
+from tests._db_required import migrate_to_head
 from tests._helpers import (
     make_membership,
     make_organization,
@@ -60,8 +58,6 @@ from tests._helpers import (
     unique_suffix,
 )
 
-BACKEND_ROOT = Path(__file__).resolve().parent.parent.parent
-
 pytestmark = pytest.mark.integration
 
 NOW = datetime(2026, 7, 15, 12, 0, tzinfo=UTC)
@@ -69,25 +65,9 @@ BASE_DAYS_AGO = 4
 TARGET_DAYS_AGO = 1
 
 
-def _require_database_url() -> str:
-    url = os.getenv("DATABASE_URL")
-    if not url:
-        pytest.skip("DATABASE_URL not set — skip dashboard trends parity tests")
-    return url
-
-
 @pytest.fixture(scope="module", autouse=True)
 def _migrate_once() -> None:
-    _require_database_url()
-    result = subprocess.run(
-        ["alembic", "upgrade", "head"],
-        cwd=BACKEND_ROOT,
-        capture_output=True,
-        text=True,
-        timeout=120,
-    )
-    if result.returncode != 0:
-        pytest.skip(f"alembic upgrade head failed:\n{result.stderr}")
+    migrate_to_head()
 
 
 @pytest.fixture

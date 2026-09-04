@@ -15,12 +15,9 @@ outstanding obligations fills with completed work and stops being read.
 
 from __future__ import annotations
 
-import os
-import subprocess
 import uuid
 from collections.abc import AsyncIterator
 from datetime import UTC, datetime, timedelta
-from pathlib import Path
 
 import pytest
 from sqlalchemy import select, text
@@ -38,35 +35,16 @@ from services.user_anonymisation_service import (
     list_awaiting_execution,
     open_request,
 )
+from tests._db_required import migrate_to_head, require_database_url
 from tests._helpers import make_user
 
 pytestmark = pytest.mark.integration
 
-BACKEND_ROOT = Path(__file__).resolve().parents[2]
-
-
-def _require_database_url() -> str:
-    url = os.getenv("DATABASE_URL")
-    if not url:
-        pytest.skip("DATABASE_URL not set, skipping anonymisation command tests")
-    return url
 
 
 @pytest.fixture(scope="module", autouse=True)
 def _migrate_once() -> None:
-    _require_database_url()
-    result = subprocess.run(
-        ["alembic", "upgrade", "head"],
-        cwd=BACKEND_ROOT,
-        capture_output=True,
-        text=True,
-        timeout=180,
-    )
-    if result.returncode != 0:
-        pytest.skip(
-            "alembic upgrade head failed; anonymisation command tests cannot run\n"
-            f"stdout:\n{result.stdout}\nstderr:\n{result.stderr}"
-        )
+    migrate_to_head()
 
 
 @pytest.fixture
@@ -80,7 +58,7 @@ async def session() -> AsyncIterator[AsyncSession]:
     """
     from core.audit import install_audit_listeners
 
-    url = _require_database_url()
+    url = require_database_url()
     engine = create_async_engine(url, future=True)
     factory = async_sessionmaker(engine, expire_on_commit=False, class_=AsyncSession)
     install_audit_listeners(factory)

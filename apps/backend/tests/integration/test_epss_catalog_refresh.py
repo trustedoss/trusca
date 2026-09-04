@@ -19,8 +19,6 @@ question is whether it is durable.
 from __future__ import annotations
 
 import gzip
-import os
-import subprocess
 from collections.abc import Iterator
 from decimal import Decimal
 from pathlib import Path
@@ -31,6 +29,7 @@ from sqlalchemy import create_engine, delete, select
 from sqlalchemy.orm import Session, sessionmaker
 
 from models import EpssSyncState, Vulnerability
+from tests._db_required import migrate_to_head
 
 pytestmark = pytest.mark.integration
 
@@ -47,28 +46,9 @@ CURL_CVE = "CVE-2015-3153"
 CURL_SCORE = Decimal("0.07247")
 
 
-def _require_database_url() -> str:
-    url = os.getenv("DATABASE_URL")
-    if not url:
-        pytest.skip("DATABASE_URL not set, skipping EPSS sync integration")
-    return url
-
-
 @pytest.fixture(scope="module", autouse=True)
 def _migrate_once() -> None:
-    _require_database_url()
-    result = subprocess.run(
-        ["alembic", "upgrade", "head"],
-        cwd=BACKEND_ROOT,
-        capture_output=True,
-        text=True,
-        timeout=120,
-    )
-    if result.returncode != 0:
-        pytest.skip(
-            f"alembic upgrade head failed; EPSS sync integration cannot run\n"
-            f"stdout:\n{result.stdout}\nstderr:\n{result.stderr}"
-        )
+    migrate_to_head()
 
 
 @pytest.fixture
