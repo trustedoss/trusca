@@ -67,7 +67,14 @@ function statusVisuals(status: PanelStatus): {
     // Muted, not green. Nothing was checked and found well; there is simply
     // nothing outstanding, and a success colour here would train the eye to
     // read this panel as reassurance rather than as a worklist.
-    return { icon: CheckCircle2, badge: "border-border bg-muted text-slate-600" };
+    //
+    // The sibling panels write `text-slate-600` here. That is recorded debt,
+    // not a pattern to copy: the token lint fails a NEW raw colour, and the
+    // semantic pairing for a muted surface is its own foreground.
+    return {
+      icon: CheckCircle2,
+      badge: "border-border bg-muted text-muted-foreground",
+    };
   }
   if (status === "waiting") {
     return {
