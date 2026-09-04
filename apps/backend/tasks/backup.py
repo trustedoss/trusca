@@ -63,7 +63,9 @@ import shutil
 import subprocess  # noqa: S404 — pg_dump/psql/alembic with fixed argv, no shell=True
 import tarfile
 import threading
+import time
 import uuid
+from collections.abc import Callable
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import IO, Any, Literal
@@ -709,22 +711,51 @@ _MAX_MEMBER_BYTES = 5 * 1024**3
 _MAX_TOTAL_BYTES = 50 * 1024**3
 
 
-def _create_workspace_archive(target_tar_gz: Path) -> bool:
+def _create_workspace_archive(
+    target_tar_gz: Path, *, clock: Callable[[], float] = time.monotonic
+) -> bool:
     """Tar-gz the workspace into ``target_tar_gz``.
 
     Returns True when a workspace was archived, False when the path
     didn't exist (the operator may not have one yet — backup proceeds
     without the workspace artifact).
+
+    Bounded by ``BACKUP_SUBPROCESS_TIMEOUT`` like the dump is, despite this
+    step being ``tarfile`` rather than a subprocess. The chart sizes this
+    worker's ``terminationGracePeriodSeconds`` on the premise that both long
+    steps are bounded by that setting, and until now only one of them was: a
+    workspace large enough or a filesystem slow enough could run past the grace
+    period and be killed, which is the case backups are least able to afford,
+    since it happens on the biggest deployments.
+
+    The deadline is checked once per member rather than continuously, so a
+    single file bigger than the remaining time still overshoots. That residual
+    is bounded by one file rather than by the whole tree, which is the
+    difference between a backup finishing late and one never finishing.
+
+    ``clock`` is injected so a test can reach the timeout without waiting for
+    it. Patching ``time.monotonic`` through this module instead would replace
+    it for everything else running in the process, and the deadline would move
+    with the reads, which is a way to write a test that cannot fail.
     """
     workspace = _workspace_host_path()
     if not workspace.is_dir():
         log.warning("admin.backup.workspace_missing", path=str(workspace))
         return False
+
+    timeout = int(os.getenv("BACKUP_SUBPROCESS_TIMEOUT", "3600"))
+    deadline = clock() + timeout
+
+    def _stop_when_out_of_time(info: tarfile.TarInfo) -> tarfile.TarInfo:
+        if clock() > deadline:
+            raise BackupTaskError(f"workspace tar timed out after {timeout}s")
+        return info
+
     # Use a deterministic arcname (= the workspace dir's basename) so the
     # restore mirrors the legacy script's ``tar -C parent -xzf …`` layout.
     arcname = workspace.name
     with tarfile.open(target_tar_gz, "w:gz") as tf:
-        tf.add(str(workspace), arcname=arcname)
+        tf.add(str(workspace), arcname=arcname, filter=_stop_when_out_of_time)
     return True
 
 
