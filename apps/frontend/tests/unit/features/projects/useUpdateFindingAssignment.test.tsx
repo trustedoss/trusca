@@ -212,6 +212,53 @@ describe("useUpdateFindingAssignment", () => {
     );
   });
 
+  it("flips the row from cannot-act to yours after a takeover", async () => {
+    // ER54 closes on both halves here. Rendering the blocked state is one; the
+    // list actually moving off it once somebody takes the work is the other.
+    // A takeover that left the row reading "owner cannot act" would look like
+    // the takeover had not happened.
+    mockedList.mockResolvedValueOnce({
+      items: [
+        {
+          id: FINDING_ID,
+          assignee_user_id: "99999999-9999-9999-9999-999999999999",
+          assignee_is_active: false,
+        },
+      ],
+      total: 1,
+      severity_distribution: {},
+    } as never);
+    mockedList.mockResolvedValue(listPage(USER_ID));
+    mockedPatch.mockResolvedValue(detailAfterSave());
+
+    const client = new QueryClient({
+      defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
+    });
+    const wrap = wrapper(client);
+
+    const list = renderHook(() => useVulnerabilities(PROJECT_ID, FILTERS), {
+      wrapper: wrap,
+    });
+    await waitFor(() => expect(list.result.current.isSuccess).toBe(true));
+    expect(
+      list.result.current.data?.pages[0].items[0].assignee_is_active,
+    ).toBe(false);
+
+    const save = renderHook(() => useUpdateFindingAssignment(PROJECT_ID), {
+      wrapper: wrap,
+    });
+    save.result.current.mutate({
+      findingId: FINDING_ID,
+      body: { assignee_user_id: USER_ID },
+    });
+
+    await waitFor(() => {
+      const row = list.result.current.data?.pages[0].items[0];
+      expect(row?.assignee_user_id).toBe(USER_ID);
+      expect(row?.assignee_is_active).toBe(true);
+    });
+  });
+
   it("writes the server's payload into the detail cache", async () => {
     mockedList.mockResolvedValue(listPage(null));
     mockedPatch.mockResolvedValue(detailAfterSave());
