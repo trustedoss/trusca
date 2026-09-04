@@ -140,6 +140,36 @@ ingress:
   host: trustedoss.example.com
 ```
 
+### Checking the database role at startup {#database-role-check}
+
+At startup the backend asks PostgreSQL what the role it connected as is able to
+do, and logs the answer:
+
+- `db.role.separation.active`: the runtime can read and write rows and nothing
+  more. This is what `env.database.ownerUrl` buys you: a compromise of the
+  backend cannot drop the audit trigger or alter tables.
+- `db.role.separation.missing`: the runtime holds DDL rights. Expected when
+  `env.database.url` points at the owning role, which is a supported
+  single-role deployment. The message names what to change if you want the
+  split.
+
+The check asks about privileges, not about role names, so a database whose
+DML-only role is called something other than `trustedoss_app` is recognised
+correctly.
+
+To make the second case refuse to start rather than warn, set
+`REQUIRE_DB_ROLE_SEPARATION=true`. It is off by default because single-role is
+supported; turn it on where the split is mandatory. If the privilege cannot be
+determined, it fails closed.
+
+:::note Versions before this check
+Earlier versions refused to start whenever `DATABASE_URL_APP` was set and the
+connected role was not literally `trustedoss_app`. Because the chart always
+writes that key, a single-role external database, the configuration
+`values.yaml` recommends, could not start, and the error told operators to
+check `docker-compose` wiring that does not exist on Kubernetes.
+:::
+
 Then install:
 
 <!-- docs-uat: id=helm-install-prod kind=shell ctx=host tier=manual waiver=needs-live-cluster -->

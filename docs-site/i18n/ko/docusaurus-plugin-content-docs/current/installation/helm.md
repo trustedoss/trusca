@@ -139,6 +139,32 @@ ingress:
   host: trustedoss.example.com
 ```
 
+### 기동 시 데이터베이스 역할 확인 {#database-role-check}
+
+백엔드는 기동할 때 PostgreSQL에 지금 접속한 역할이 무엇을 할 수 있는지 묻고 그 결과를
+기록합니다.
+
+- `db.role.separation.active`: 런타임이 행을 읽고 쓰는 것까지만 할 수 있습니다.
+  `env.database.ownerUrl`을 따로 두는 이유가 이것입니다. 백엔드가 장악되더라도 감사
+  트리거를 지우거나 테이블을 바꿀 수 없습니다.
+- `db.role.separation.missing`: 런타임은 DDL까지 수행할 수 있습니다. `env.database.url`이
+  소유 역할을 가리키면 이렇게 나오며, 이것도 지원하는 단일 역할 배포입니다. 분리하고
+  싶다면 무엇을 바꿔야 하는지 메시지에 담겨 있습니다.
+
+이 확인은 역할 이름이 아니라 권한을 묻습니다. 그래서 DML 전용 역할의 이름이
+`trustedoss_app`이 아닌 데이터베이스도 올바르게 판정됩니다.
+
+두 번째 경우를 경고가 아니라 기동 실패로 다루려면 `REQUIRE_DB_ROLE_SEPARATION=true`를
+설정합니다. 단일 역할도 지원하는 구성이라 기본값은 꺼짐이며, 분리가 필수인 곳에서만
+켜십시오. 권한을 판정할 수 없으면 통과시키지 않고 막습니다.
+
+:::note 예전 버전의 기동 거부
+이전 버전은 `DATABASE_URL_APP`이 설정돼 있는데 접속한 역할이 `trustedoss_app`이
+아니면 무조건 기동을 거부했습니다. 차트는 그 키를 언제나 쓰기 때문에, `values.yaml`이
+권하는 구성인 단일 역할 외부 데이터베이스가 뜨지 못했습니다. 게다가 오류 메시지는
+쿠버네티스에는 있지도 않은 `docker-compose` 배선을 확인하라고 안내했습니다.
+:::
+
 설치합니다.
 
 <!-- docs-uat: id=helm-install-prod kind=shell ctx=host tier=manual waiver=needs-live-cluster -->

@@ -130,14 +130,23 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     # repeated starts (tests + uvicorn reloader) do not double-fire.
     install_audit_listeners(session_factory)
 
-    # Marathon bundle 8 (L1) — surface the connected role at boot so
-    # operators verifying the install can confirm DML-only mode is
-    # active. In APP_ENV=prod with DATABASE_URL_APP set, refuse to
-    # start when the runtime ended up connecting as a non-app role
-    # (mismatched env wiring → fail loud, not silent regression).
-    import os as _os
-
+    # ER49: surface what the connected role can DO at boot, so an operator
+    # verifying the install can see whether the runtime is limited to DML.
+    #
+    # This replaces a check that refused to start when DATABASE_URL_APP was set
+    # and the role was not `trustedoss_app`. That variable is populated on every
+    # deployment (compose defaults it from DATABASE_URL; the chart always writes
+    # it), so the check fired on deployments that had never configured
+    # separation and could not fire on the collapse it was written for, where
+    # the DSN user and current_user are both the owner and agree. See
+    # core.db_role for the full reasoning.
     from sqlalchemy import text as _sql_text
+
+    from core.db_role import (
+        DDL_PROBE_SQL,
+        evaluate_db_role,
+        require_db_role_separation,
+    )
 
     async with engine.connect() as _conn:
         _role = (await _conn.execute(_sql_text("SELECT current_user"))).scalar()
@@ -149,12 +158,34 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         _max_conns_row = await _conn.execute(_sql_text("SHOW max_connections"))
         _max_connections = int(_max_conns_row.scalar() or 0)
     log.info("db.role.connected", role=_role)
-    if app_env() == "prod" and _os.getenv("DATABASE_URL_APP") and _role != "trustedoss_app":
-        raise RuntimeError(
-            f"DATABASE_URL_APP is set in APP_ENV=prod but the runtime "
-            f"connected as role={_role!r} (expected 'trustedoss_app'). "
-            f"Check docker-compose env wiring for the L1 split."
-        )
+
+    # The probe gets its OWN connection, and that is the whole point rather
+    # than tidiness. A failing statement aborts the transaction it runs in, so
+    # sharing the connection above meant a probe error left every following
+    # statement raising InFailedSQLTransactionError and the app refusing to
+    # start. The check would then have become the outage it exists to warn
+    # about. Discarding a poisoned connection costs one round trip.
+    try:
+        async with engine.connect() as _probe_conn:
+            _holds_ddl = bool(
+                (await _probe_conn.execute(_sql_text(DDL_PROBE_SQL))).scalar()
+            )
+    except Exception as _probe_exc:  # noqa: BLE001 - must never fail the boot
+        # A missing table, a restricted role or a connection fault makes the
+        # answer unknown, not fatal. evaluate_db_role decides what unknown
+        # means, and only strict mode treats it as a refusal.
+        log.warning("db.role.probe_failed", error=str(_probe_exc)[:200])
+        _holds_ddl = None
+
+    _verdict = evaluate_db_role(
+        role=str(_role),
+        holds_ddl=_holds_ddl,
+        strict=require_db_role_separation(),
+    )
+    getattr(log, _verdict.level)(_verdict.event, detail=_verdict.message)
+    if _verdict.fatal:
+        raise RuntimeError(_verdict.message)
+
     if _max_connections > 0:
         _budget = current_process_budget(max_connections=_max_connections)
         log_if_over_budget(log, _budget)
