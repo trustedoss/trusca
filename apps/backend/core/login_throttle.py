@@ -232,15 +232,33 @@ def _decay_seconds() -> int:
 def _degraded(action: str, exc: Exception) -> None:
     """Redis is unreachable, or the client is unusable. Say so and carry on.
 
-    ``RuntimeError`` is caught alongside ``RedisError`` because a client bound
-    to a loop that has closed raises the former, and that is not a reason to
-    stop people signing in either. It is also not a reason to hide it, which is
-    what the log line is for.
-
     Failing the sign-in instead would make Redis a hard dependency of
     authentication for the sake of a control this module's own docstring calls
     a slowdown rather than a last line. The per-IP limiter still applies, and
     the password still has to be right.
+
+    What this catches has to be chosen rather than widened, because the two
+    ways of getting it wrong point in opposite directions and both have already
+    happened here.
+
+    Too narrow and the process dies on something survivable: a client bound to
+    a loop that has closed raises ``RuntimeError``, which is not a
+    ``RedisError``, so it used to walk straight past this and 500 the login
+    path until a restart. Hence both are caught.
+
+    Too wide and an outage is filed as normal operation: a clustered Redis
+    answers CROSSSLOT for a script whose keys land in different slots, and that
+    *is* a ``RedisError``, so it arrives here and switches the control silently
+    off for every address at once. Nothing in this handler could tell it from a
+    Redis that is merely down. That one is not solved by narrowing the catch,
+    it is solved by not producing it -- the keys carry a hash tag so they share
+    a slot (see ``_keys``).
+
+    Which is the shape of the rule: this handler is for "Redis cannot answer
+    right now", and anything that is really a defect in how we talk to Redis
+    belongs fixed rather than logged. The warning exists so that the difference
+    is visible to somebody reading logs, since the outward behaviour of both is
+    the same throttle quietly not running.
     """
     log.warning("auth.throttle_unavailable", action=action, error=str(exc))
 
