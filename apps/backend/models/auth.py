@@ -93,6 +93,20 @@ class Organization(Base):
     settings: Mapped[dict[str, Any]] = mapped_column(
         JSONB, nullable=False, server_default=EMPTY_JSONB
     )
+    #: IANA name the organization's calendar deadlines are read in (0083).
+    #:
+    #: A column rather than a ``settings`` key because a verdict reads it: a
+    #: misspelt JSONB key returns NULL and silently falls back to UTC, and the
+    #: only symptom would be western users going overdue hours early. The rule
+    #: this follows is in 0083's docstring.
+    #:
+    #: Not constrained here: a CHECK cannot consult ``pg_timezone_names``.
+    #: ``schemas.admin`` rejects names ``zoneinfo`` will not load, and
+    #: ``services.due_date`` treats an unloadable stored value as UTC rather
+    #: than raising in the middle of a sweep.
+    timezone: Mapped[str] = mapped_column(
+        String(64), nullable=False, server_default="UTC"
+    )
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, server_default=NOW
     )

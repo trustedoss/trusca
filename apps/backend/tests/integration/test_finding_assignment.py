@@ -92,8 +92,15 @@ async def _factory(client: AsyncClient):  # noqa: ANN202
     return factory
 
 
-async def _seed_finding(client: AsyncClient, *, severity: str = "high"):  # noqa: ANN202
-    """One finding, its project, and a developer who can edit it."""
+async def _seed_finding(  # noqa: ANN202
+    client: AsyncClient, *, severity: str = "high", timezone: str = "UTC"
+):
+    """One finding, its project, and a developer who can edit it.
+
+    ``timezone`` is the owning organization's; it decides when a written
+    deadline expires (ER55), so the contract below can put two zones in one
+    run.
+    """
     from models import (
         Component,
         ComponentVersion,
@@ -106,6 +113,7 @@ async def _seed_finding(client: AsyncClient, *, severity: str = "high"):  # noqa
     factory = await _factory(client)
     async with factory() as session:
         org = await make_organization(session)
+        org.timezone = timezone
         team = await make_team(session, organization=org)
         dev = await make_user(session)
         await make_membership(session, user=dev, team=team, role="developer")
@@ -325,8 +333,21 @@ async def _principal(user: User, team_id: uuid.UUID):  # noqa: ANN202
         ("info", None),
     ],
 )
+@pytest.mark.parametrize(
+    "org_timezone",
+    [
+        # East of UTC: the day ends earlier in absolute terms, so a written
+        # deadline expires sooner than the UTC reading would say.
+        "Asia/Seoul",
+        # West: it expires later. This is the direction the UTC reading got
+        # wrong in a way people noticed, because it took hours away.
+        "America/New_York",
+        # The old behaviour, so the earlier cases keep meaning what they meant.
+        "UTC",
+    ],
+)
 async def test_sql_and_python_agree_on_the_effective_deadline(
-    client, severity, written_date  # noqa: ANN001
+    client, severity, written_date, org_timezone  # noqa: ANN001
 ) -> None:
     """The four NULL combinations, through the real list query and the real
     drawer path.
@@ -341,7 +362,9 @@ async def test_sql_and_python_agree_on_the_effective_deadline(
         list_project_vulnerabilities,
     )
 
-    finding, project, team, dev = await _seed_finding(client, severity=severity)
+    finding, project, team, dev = await _seed_finding(
+        client, severity=severity, timezone=org_timezone
+    )
     if written_date is not None:
         await client.patch(
             _url(finding.id),
@@ -365,7 +388,7 @@ async def test_sql_and_python_agree_on_the_effective_deadline(
     assert row["due_source"] == detail["due_source"]
     # ...and both with the rule they are supposed to implement.
     expected, expected_source = effective_due(
-        sla_due=detail["sla_due_date"], due_on=written_date
+        sla_due=detail["sla_due_date"], due_on=written_date, timezone=org_timezone
     )
     assert row["effective_due_date"] == expected
     assert row["due_source"] == expected_source
