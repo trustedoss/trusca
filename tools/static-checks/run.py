@@ -27,6 +27,7 @@ Two properties matter more than convenience:
 from __future__ import annotations
 
 import argparse
+import re
 import shutil
 import subprocess
 import sys
@@ -240,6 +241,11 @@ CI_TOOL_SOURCE = {
 }
 
 
+#: A dotted number, which is what every version this reports looks like:
+#: ``0.8.4``, ``1.13.0``, ``v20.20.2``, ``Version 5.6.3``, ``version: 0.11.0``.
+_VERSION_SHAPE = re.compile(r"\d+\.\d+")
+
+
 def _probe_version(argv: list[str], cwd: Path) -> str:
     """One tool's version string, or why it could not be read."""
     if shutil.which(argv[0]) is None:
@@ -261,14 +267,22 @@ def _probe_version(argv: list[str], cwd: Path) -> str:
     ]
     if not lines:
         return "no output"
-    # Prefer a line that actually carries a number. shellcheck's first line is
-    # a banner ("ShellCheck - shell script analysis tool") and its version is
-    # on the next one, so taking line one reports something that looks like an
-    # answer and contains no version at all.
+    # Pick the first line carrying something shaped like a version. Taking
+    # line one reported shellcheck's banner ("ShellCheck - shell script
+    # analysis tool"), which put a plausible non-answer where the version
+    # belongs: no error, output present, and the one tool whose version was
+    # most likely to differ from CI's was the only one not showing it.
+    #
+    # The shape check is what keeps that from recurring on the NEXT tool. A
+    # banner containing a year or an edition number would satisfy "has a
+    # digit", so a line only counts when it holds a dotted number. If nothing
+    # does, say the version could not be read rather than printing a line that
+    # reads like an answer. A wrong-looking answer is worse than a blank one,
+    # because a blank invites suspicion and a plausible one does not.
     for line in lines:
-        if any(char.isdigit() for char in line):
+        if _VERSION_SHAPE.search(line):
             return line
-    return lines[0]
+    return "could not read version (unexpected --version output)"
 
 
 def _print_versions(scope: str) -> None:
