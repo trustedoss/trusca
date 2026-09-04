@@ -319,6 +319,10 @@ Three tables age out on their own occurrence-time clock; there is no export curs
 | `JIRA_URL` | (empty) | (none) | Stub. See above. |
 | `JIRA_TOKEN` | (empty) | (none) | Stub. See above. |
 | `HTTP_PROXY` / `HTTPS_PROXY` / `NO_PROXY` | (empty) | subprocess env | Honored by `git clone`, `cdxgen`, and the `trivy --download-db-only` boot / refresh path. |
+| `SSL_CERT_FILE` / `SSL_CERT_DIR` | (empty) | subprocess env, portal HTTPS | Private certificate authority for Trivy, cosign, govulncheck and the portal's own outbound calls. **Replaces** the trust set for the portal, so the file must also carry the public roots. See [Private certificate authorities](../admin-guide/private-ca.md). |
+| `NODE_EXTRA_CA_CERTS` | (empty) | subprocess env | Private certificate authority for `cdxgen`. Additive. |
+| `REQUESTS_CA_BUNDLE` | (empty) | subprocess env | Private certificate authority for `scancode` and `scanoss`. The portal's own HTTPS calls ignore it. |
+| `GIT_SSL_CAINFO` / `GIT_SSL_CAPATH` | (empty) | subprocess env | Private certificate authority for `git clone`. git reads neither `SSL_CERT_FILE` nor `CURL_CA_BUNDLE`, so cloning from an internal host needs one of these. |
 
 ## Bootstrap / scripts
 

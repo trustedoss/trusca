@@ -136,6 +136,11 @@ _TASK_INCLUDES = [
     # SBOM-ingest no longer 500s with PermissionError on a fresh volume. Listed
     # here so the worker process imports it and the handler registers.
     "tasks.workspace_prep",
+    # ER25: worker + beat boot hooks, NOT tasks. Each process reports the
+    # certificate authorities its own outbound calls will trust. Listed here
+    # so the signal handlers register; without this line the worker, which is
+    # where the scanners reach the network, says nothing.
+    "tasks.tls_trust_boot",
     # S6 (concurrency-scaling-plan-2026-08-22.md §3.2/§4) - beat sweep that
     # turns a sustained Celery-queue backlog into a Slack/Teams alert. Off
     # unless both QUEUE_BACKLOG_ALERT_ENABLED and M2's

@@ -48,6 +48,8 @@ _BASE_HINTS = {
     "SSL_CERT_FILE": "/etc/ssl/corporate-ca.pem",
     "REQUESTS_CA_BUNDLE": "/etc/ssl/corporate-ca.pem",
     "NODE_EXTRA_CA_CERTS": "/etc/ssl/corporate-ca.pem",
+    "GIT_SSL_CAINFO": "/etc/ssl/corporate-ca.pem",
+    "GIT_SSL_CAPATH": "/etc/ssl/corporate-certs",
     "HTTP_PROXY": "http://proxy.corp.example:8080",
     "HTTPS_PROXY": "http://proxy.corp.example:8080",
     "NO_PROXY": "localhost,127.0.0.1,.corp.example",
@@ -441,3 +443,58 @@ def test_each_call_reflects_current_environ(monkeypatch: pytest.MonkeyPatch) -> 
 
     assert first["GOPROXY"] == "https://proxy-a.example"
     assert second["GOPROXY"] == "https://proxy-b.example"
+
+
+# ---------------------------------------------------------------------------
+# git's own CA variables (ER25)
+# ---------------------------------------------------------------------------
+
+
+def test_the_git_ca_variables_reach_the_clone(monkeypatch: pytest.MonkeyPatch) -> None:
+    """``git clone`` reads neither ``SSL_CERT_FILE`` nor ``CURL_CA_BUNDLE``.
+
+    Measured in the worker image rather than assumed: pointed at a path that
+    does not exist, ``GIT_SSL_CAINFO`` and ``GIT_SSL_CAPATH`` make
+    ``git ls-remote`` exit 128, while ``SSL_CERT_FILE``, ``SSL_CERT_DIR`` and
+    ``CURL_CA_BUNDLE`` leave it at 0. Until these two were forwarded, cloning
+    from an internal host behind a private certificate authority could not be
+    fixed by anything in the allowlist, and a source scan stopped at its first
+    step with the rest of the pipeline correctly configured.
+
+    The clone runs on the prep env (``scan_source._scrubbed_env`` is
+    ``scrubbed_env_for_prep``), so that is the builder under test.
+    """
+    monkeypatch.setenv("GIT_SSL_CAINFO", "/etc/ssl/corporate-ca.pem")
+    monkeypatch.setenv("GIT_SSL_CAPATH", "/etc/ssl/corporate-certs")
+
+    env = scrubbed_env_for_prep()
+
+    assert env["GIT_SSL_CAINFO"] == "/etc/ssl/corporate-ca.pem"
+    assert env["GIT_SSL_CAPATH"] == "/etc/ssl/corporate-certs"
+
+
+def test_the_clone_uses_the_env_these_variables_are_in() -> None:
+    """The forwarding above is only worth anything if the clone uses that env.
+
+    ``scan_source`` aliases its scrubbed-env helper, so a future change that
+    pointed the clone at a different builder would leave the test above
+    passing and the clone still broken.
+    """
+    from tasks import scan_source
+
+    assert scan_source._scrubbed_env is scrubbed_env_for_prep
+
+
+def test_curl_ca_bundle_is_deliberately_not_forwarded(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Nothing we run reads it, and forwarding it would suggest it works.
+
+    An operator who sets it and sees it arrive would conclude the certificate
+    is configured. git ignores it (exit 0 with a nonexistent path), and so do
+    the Go tools.
+    """
+    monkeypatch.setenv("CURL_CA_BUNDLE", "/etc/ssl/corporate-ca.pem")
+
+    for builder in (scrubbed_env_for_prep, scrubbed_env_for_cdxgen):
+        assert "CURL_CA_BUNDLE" not in builder()
