@@ -153,3 +153,33 @@ def test_the_hooks_cover_the_processes_the_page_names() -> None:
     source = inspect.getsource(tls_trust_boot)
     assert 'process="worker"' in source
     assert 'process="beat"' in source
+
+
+@pytest.mark.parametrize("page", [GUIDE_EN, GUIDE_KO])
+def test_the_page_says_how_to_find_the_lines(page: pathlib.Path) -> None:
+    """A log line nobody can filter for is a line nobody reads.
+
+    The worker's own output is mostly scan progress, so the instruction to
+    check three processes is only actionable with something to grep. The
+    prefix is asserted against the events actually emitted, so renaming them
+    and leaving the page pointing at the old string fails here.
+    """
+    import structlog
+
+    from core.tls_trust import log_trust_store
+
+    text = page.read_text(encoding="utf-8")
+    assert "grep tls_trust" in text, (
+        "the page tells the operator to check three processes without saying "
+        "how to find their lines"
+    )
+
+    with structlog.testing.capture_logs() as captured:
+        log_trust_store(process="api")
+    events = [entry["event"] for entry in captured]
+    assert events, "nothing was logged, so the prefix below proves nothing"
+    for event in events:
+        assert event.startswith("tls_trust"), (
+            f"{event} does not carry the prefix the page tells operators to "
+            "grep for, so filtering on it would hide this line"
+        )

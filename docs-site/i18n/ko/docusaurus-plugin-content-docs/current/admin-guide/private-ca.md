@@ -93,7 +93,14 @@ GIT_SSL_CAINFO=/etc/ssl/corp-ca.pem
 ## 잘 됐는지 확인합니다
 
 세 프로세스가 각자 자기 신뢰 집합을 부팅할 때 남기고, 어느 쪽인지 이름을 함께
-적습니다.
+적습니다. 이 문서가 다루는 줄은 전부 `tls_trust`로 시작하므로 그것으로 거릅니다.
+worker 로그는 대부분 스캔 진행 출력이라, 거르지 않으면 줄이 남아 있어도 찾지
+못합니다.
+
+```bash
+docker-compose logs backend worker beat | grep tls_trust
+```
+
 
 ```
 tls_trust.outbound  process=api     authorities=140 bundled_authorities=120 source=SSL_CERT_FILE path=/etc/ssl/corp-ca.pem

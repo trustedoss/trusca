@@ -98,7 +98,14 @@ fails and everything else works, `GIT_SSL_CAINFO` is the one that was missing.
 ## Checking it worked
 
 Each of the three processes states its own trust set at boot, and names
-itself:
+itself. Every line this page is about carries the prefix `tls_trust`, which is
+what to filter on. A worker's own output is mostly scan progress, so the line
+is there and unfindable without it:
+
+```bash
+docker-compose logs backend worker beat | grep tls_trust
+```
+
 
 ```
 tls_trust.outbound  process=api     authorities=140 bundled_authorities=120 source=SSL_CERT_FILE path=/etc/ssl/corp-ca.pem
