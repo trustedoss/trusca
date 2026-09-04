@@ -74,7 +74,11 @@ from schemas.policy_gate import (
     PostPRCommentResponse,
 )
 from services.gate_sarif import build_sarif
-from services.policy_gate import GateResult, evaluate_gate
+from services.policy_gate import (
+    _CLOSED_FINDING_STATUSES,
+    GateResult,
+    evaluate_gate,
+)
 from services.project_service import ProjectError, ProjectNotFound
 from services.sca_comment import (
     CommentSummary,
@@ -103,11 +107,6 @@ _LICENSE_KEYS = ("forbidden", "conditional", "allowed", "unknown")
 _MAX_COMMENT_RECOMMENDATIONS = 10
 # Cap on how many CVE ids we list per recommended upgrade row.
 _MAX_CVES_PER_RECOMMENDATION = 5
-
-# Finding statuses that are NOT open work — mirrors
-# services.policy_gate._CLOSED_FINDING_STATUSES so the comment's upgrade
-# recommendations reflect exactly the findings the gate still considers open.
-_CLOSED_FINDING_STATUSES = ("not_affected", "fixed", "false_positive")
 
 router = APIRouter(prefix="/v1", tags=["policy-gate"])
 log = structlog.get_logger("policy_gate.api")
