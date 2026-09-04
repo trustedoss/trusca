@@ -97,6 +97,7 @@ Two details worth knowing when you write the list:
 Most enterprise images are not public. A super-admin stores one login per
 registry per organization:
 
+<!-- docs-uat: id=scans-registry-credential-put kind=shell ctx=host tier=manual waiver=example-curl-placeholder-host-and-token -->
 ```bash
 curl -X PUT \
   -H "Authorization: Bearer $TOKEN" \

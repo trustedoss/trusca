@@ -93,6 +93,7 @@ ref 없이 트리거한 스캔은 — **Scan** 버튼과 `metadata.ref`를 생�
 기업 이미지는 대부분 공개되어 있지 않습니다. 슈퍼 관리자가 조직마다 레지스트리별로
 로그인을 하나씩 저장합니다.
 
+<!-- docs-uat: id=scans-registry-credential-put kind=shell ctx=host tier=manual waiver=example-curl-placeholder-host-and-token -->
 ```bash
 curl -X PUT \
   -H "Authorization: Bearer $TOKEN" \
