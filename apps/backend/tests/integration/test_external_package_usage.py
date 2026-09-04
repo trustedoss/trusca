@@ -21,6 +21,7 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_asyn
 from core.security import CurrentUser
 from models import Component, ComponentVersion, ScanComponent
 from services.external_package_usage import internal_usage_by_purl
+from tests._db_required import migrate_to_head
 from tests._helpers import (
     make_organization,
     make_project,
@@ -32,8 +33,19 @@ from tests._helpers import (
 pytestmark = pytest.mark.integration
 
 
+@pytest.fixture(scope="module")
+def _schema() -> None:
+    """This module used to build no schema of its own.
+
+    It opened an engine and queried tables that some earlier module's fixture
+    had happened to create, so it passed in a full run and failed all six ways
+    when run alone. ER66.
+    """
+    migrate_to_head()
+
+
 @pytest.fixture
-async def db_session():
+async def db_session(_schema):  # noqa: ANN001
     from core.config import database_url
 
     engine = create_async_engine(database_url(), pool_pre_ping=True, future=True)
