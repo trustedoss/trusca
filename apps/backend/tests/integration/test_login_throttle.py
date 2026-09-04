@@ -624,3 +624,51 @@ def test_the_per_ip_limiter_still_gets_to_go_first(monkeypatch: pytest.MonkeyPat
         f"the per-IP budget ({per_ip}), so a single machine meets this control "
         "before the limiter and the limiter's documented behaviour is dead"
     )
+
+
+async def test_an_attempt_the_ip_limiter_refuses_does_not_count_against_the_address(
+    client: AsyncClient, address: str, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The premise the threshold rests on, asserted rather than assumed.
+
+    Raising the threshold above the per-IP budget only produces the intended
+    division of labour if an attempt the limiter turns away never reaches the
+    per-address counter. If it did, one machine would accumulate failures as
+    fast as it could send them rather than at five a minute, would reach the
+    threshold long before meeting the limiter twice, and the collision this
+    ordering was meant to fix would reopen at a higher number.
+
+    The threshold here sits between the two possible counts. Twelve requests go
+    out from one address; five of them reach the handler and seven are refused
+    by the limiter before it. A threshold of eight is therefore not reached if
+    only the five counted, and comfortably passed if all twelve did, so the
+    outcome names which happened rather than merely being consistent with it.
+
+    slowapi refuses from a decorator, so the handler never runs. That is a
+    property of where the decorator sits, which is the kind of thing a refactor
+    moves without anyone noticing.
+    """
+    from core.login_throttle import seconds_until_retry, throttle_keys
+
+    monkeypatch.setenv("LOGIN_THROTTLE_FAILURES", "8")
+
+    refusals = 0
+    for _ in range(12):
+        response = await client.post(
+            "/auth/login",
+            json={"email": address, "password": "definitely not it 1"},
+            headers={"X-Forwarded-For": "203.0.113.99"},
+        )
+        if response.status_code == 429:
+            refusals += 1
+
+    assert refusals > 0, (
+        "the per-IP limiter never engaged, so this test cannot say whether its "
+        "refusals are counted; is RATELIMIT_DISABLED set?"
+    )
+
+    assert await seconds_until_retry(address) == 0, (
+        "attempts the per-IP limiter refused were counted against the address, "
+        "so a single machine reaches the per-address threshold as fast as it "
+        f"can send requests ({throttle_keys(address)[0]})"
+    )
