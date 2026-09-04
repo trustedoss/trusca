@@ -115,6 +115,19 @@ _SEVERITY_ORDER = ("critical", "high", "medium", "low")
 # ---------------------------------------------------------------------------
 
 
+
+def _policy_due(severity: str, first_detected: datetime) -> datetime | None:
+    """The deadline the policy alone gives a finding, or None.
+
+    Two callers here compute this, and the windows are environment variables
+    read at call time, so writing it twice would let a future change to one
+    reading drift from the other. ``None`` for severities that carry no window
+    (info, unknown): those have no policy deadline, only whatever somebody
+    wrote down.
+    """
+    days = vuln_sla_days(severity)
+    return None if days is None else first_detected + timedelta(days=days)
+
 def _select_breached(
     rows: Iterable[
         tuple[uuid.UUID, str, str, datetime, date | None, str, uuid.UUID]
@@ -154,8 +167,7 @@ def _select_breached(
     ) in rows:
         if status in _CLOSED_FINDING_STATUSES:
             continue
-        days = vuln_sla_days(severity)
-        policy_due = None if days is None else first_detected + timedelta(days=days)
+        policy_due = _policy_due(severity, first_detected)
         due, _source = effective_due(
             sla_due=policy_due,
             due_on=due_on,
@@ -169,6 +181,7 @@ def _select_breached(
         per_project = breached.setdefault(project_id, {})
         per_project[severity] = per_project.get(severity, 0) + 1
     return breached
+
 
 
 def _build_in_app_payload(

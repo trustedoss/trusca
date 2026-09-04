@@ -192,6 +192,47 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         _budget = current_process_budget(max_connections=_max_connections)
         log_if_over_budget(log, _budget)
 
+    # ER56: how many findings the CURRENT SLA windows leave overdue, logged
+    # beside the windows that produced the number.
+    #
+    # The windows are environment variables, so narrowing one takes a restart,
+    # and the restart is therefore the moment the policy changes. Everything
+    # that goes overdue by that change went overdue in the past, which is what
+    # `vuln_sla_sweep`'s trailing window is built to exclude, so nobody is
+    # told. This does not tell anybody either, but it leaves something to find:
+    # two consecutive starts read as "the windows went 30 to 7 and the overdue
+    # count went 40 to 380". The windows are in the same line on purpose,
+    # because a count without them says nothing about why it moved.
+    #
+    # Counted with one aggregate rather than by reading rows, and that is what
+    # makes the number exact. A row scan has to bound itself somewhere, and a
+    # bound erases the signal precisely where it matters: a deployment already
+    # over the cap reports the same truncated figure before and after the
+    # change, so the two lines this exists to be compared against read the
+    # same. The deployments with the most findings are the ones where
+    # narrowing a window is the biggest surprise.
+    #
+    # Its own connection, and never fatal, for the reasons in the role probe
+    # above: this is an observation, not a gate, and a census that failed the
+    # boot would be worse than no census.
+    try:
+        from core.config import vuln_sla_days
+        from services.vulnerability_service import overdue_counts_by_severity
+
+        async with session_factory() as _census_session:
+            _counts = await overdue_counts_by_severity(_census_session)
+        log.info(
+            "vuln_sla.overdue_at_boot",
+            windows={
+                sev: vuln_sla_days(sev)
+                for sev in ("critical", "high", "medium", "low")
+            },
+            overdue=_counts,
+            total=sum(_counts.values()),
+        )
+    except Exception as _census_exc:  # noqa: BLE001 - must never fail the boot
+        log.warning("vuln_sla.overdue_census_failed", error=str(_census_exc)[:200])
+
     try:
         yield
     finally:

@@ -109,6 +109,14 @@ Per-severity remediation-SLA windows, counted from a finding's project-level **f
 | `VULN_SLA_DAYS_HIGH` | `30` | `config.py` | Remediation window (days) for High findings. Same fallback rule. |
 | `VULN_SLA_DAYS_MEDIUM` | `90` | `config.py` | Remediation window (days) for Medium findings. Same fallback rule. |
 | `VULN_SLA_DAYS_LOW` | `180` | `config.py` | Remediation window (days) for Low findings. Same fallback rule. `Info` / `Unknown` severities have no window and no key — they carry no SLA. |
+
+:::note Narrowing a window makes findings overdue silently
+These are read at call time, so changing one takes an edit and a restart. Every finding the new window puts past its deadline went past it in the past, and the SLA sweep only alerts on deadlines crossed within its trailing window, so none of them produce a notification. Nobody is told, and the change surfaces later as a longer `?sla=overdue` list.
+
+Each backend start logs `vuln_sla.overdue_at_boot` with the window values in force and the overdue count per severity. Comparing the line from before the restart with the one after shows what the change did: `high` from 30 to 7, overdue from 40 to 380. The count is exact at any size, because it is one aggregate rather than a scan; a scan would have to stop somewhere, and a deployment past that point would report the same number on both sides of the change.
+
+The log is the whole of it. There is no alert, so somebody has to look, and the reason to keep it is the person who asks months later when the backlog grew.
+:::
 | `VULN_SLA_ALERTS_ENABLED` | `true` | `config.py` | Toggles the daily SLA-breach sweep (Celery beat `trustedoss.vuln_sla_sweep`, 02:45 UTC). The sweep is a pure internal computation with no egress; only the exact tokens `false` / `0` / `no` disable it. |
 
 ## Build gate {#build--policy-gate}
