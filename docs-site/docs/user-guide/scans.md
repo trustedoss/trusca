@@ -66,7 +66,7 @@ Pick **Container** in the scan dialog to scan a built image instead of source. T
 
 1. Open the scan dialog from the project row's **Scan** button.
 2. At the top of the dialog, select **Container**.
-3. Enter the **container image** reference in `name:tag` form, for example `alpine:3.19` or `ghcr.io/org/app:1.2.3`. The image must be pullable from the worker. Public registries work as shipped; private registries need credentials the worker does not carry yet, so an image behind one fails to pull. An operator may also restrict which registries are allowed at all (see [Allowed registries](#allowed-registries) below), in which case an image outside that list is rejected when you start the scan.
+3. Enter the **container image** reference in `name:tag` form, for example `alpine:3.19` or `ghcr.io/org/app:1.2.3`. The image must be pullable from the worker. Public registries work as shipped; a private registry needs a credential an administrator has stored for it (see [Private registries](#private-registries) below). An operator may also restrict which registries are allowed at all (see [Allowed registries](#allowed-registries)), in which case an image outside that list is rejected when you start the scan.
 4. Click **Start scan**.
 
 The same progress drawer opens. When the scan reaches `succeeded`, the OS-package vulnerabilities appear under the project's **Vulnerabilities** tab.
@@ -91,6 +91,66 @@ Two details worth knowing when you write the list:
 - Hosts match exactly. `ghcr.io` does not admit `ghcr.io.example.com`, and it
   does not admit `evil.example.com/ghcr.io/app` either, where the allowed name
   appears only in the path.
+
+#### Private registries {#private-registries}
+
+Most enterprise images are not public. A super-admin stores one login per
+registry per organization:
+
+<!-- docs-uat: id=scans-registry-credential-put kind=shell ctx=host tier=manual waiver=example-curl-placeholder-host-and-token -->
+```bash
+curl -X PUT \
+  -H "Authorization: Bearer $TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{"registry_host":"ghcr.io","username":"bot","password":"'"$TOKEN_VALUE"'"}' \
+  "https://trustedoss.example.com/v1/admin/organizations/$ORG_ID/registry-credentials"
+```
+
+`registry_host` is the host as it appears in an image reference (`ghcr.io`,
+`registry.example.com`, `registry:5000`). A pasted `https://ghcr.io/` is
+normalised for you. A URL carrying the login itself
+(`https://bot:token@ghcr.io/`) is rejected rather than cleaned up: this field is
+returned by the API and written to the audit log, so a password reaching it
+would sit in plaintext next to the encrypted one.
+
+For Docker Hub use `docker.io`, the same name an image with no registry segment
+resolves to. Storing it under `index.docker.io` means the scan-time lookup
+never finds the row.
+
+This feature needs secret encryption configured (`GITHUB_APP_ENCRYPTION_KEY`,
+which also covers the other credentials the portal stores). Without it in
+production, storing a credential is refused rather than saved unencrypted.
+
+What happens to the credential:
+
+- **Stored encrypted**, with the same mechanism as every other credential this
+  product holds. It is never returned by any endpoint, including the one that
+  created it, so `GET` shows the registry and username and nothing else.
+- **Sent only to its own registry.** The worker writes a Docker `config.json`
+  for the single registry the image being scanned comes from, so a credential
+  for one registry is never offered to another, and credentials for registries
+  this scan does not touch are not written at all.
+- **Never in the scanner's environment.** It reaches Trivy as a file the
+  scanner reads, not as an environment variable, so a scanner crash report or
+  error path has no credential to carry out. The file lives outside the scan
+  workspace so backups never capture it, and is deleted when the scan ends,
+  including when it fails.
+
+One limit worth knowing before you store a login, because the file permissions
+invite a stronger reading than they support. The file is private to the worker
+user, which keeps it away from other users on the host. It does not separate
+one running scan from another: worker processes share a user, so a scan's Trivy
+could read a concurrently running scan's file. Reaching that takes arbitrary
+file read or code execution inside Trivy itself, so it is a residual risk
+rather than an open door, and it is the reason credentials are narrowed to the
+one registry a scan actually pulls from. If your deployment scans images for
+organizations that should not be able to reach each other's registries even
+under that assumption, run container scans at a concurrency of 1.
+
+If the registry is not on the allowed list, storing a credential for it is
+rejected: it could never be used. A credential stored before the list was
+tightened stays but shows `"allowed": false` in the listing, so a setting that
+has stopped working is visible rather than silent.
 
 #### Base-image OS end-of-life {#container-os-eol}
 

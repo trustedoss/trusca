@@ -12,8 +12,11 @@ import pytest
 
 from services.registry_allowlist import (
     DEFAULT_REGISTRY,
+    DOCKER_HUB_AUTH_KEY,
     is_registry_allowed,
+    is_registry_host_allowed,
     parse_allowed_registries,
+    registry_auth_key,
     split_registry_host,
 )
 
@@ -133,3 +136,57 @@ def test_an_empty_entry_never_matches() -> None:
     """A malformed list must fail closed, not open."""
     assert is_registry_allowed("ghcr.io/app", ("",)) is False
     assert is_registry_allowed("ghcr.io/app", ("/",)) is False
+
+
+# --- Credential-store keys -------------------------------------------------
+#
+# A credential stored under the wrong key is not consulted, and the pull then
+# proceeds anonymously and fails with a permission error. Nothing distinguishes
+# that from a wrong password, which is why these are pinned rather than left to
+# read like an implementation detail.
+
+
+@pytest.mark.parametrize("host", ["docker.io", "index.docker.io", "DOCKER.IO"])
+def test_docker_hub_credentials_are_keyed_by_the_legacy_v1_url(host: str) -> None:
+    """Measured against Trivy 0.71.2: keyed by host, the credential is never
+    sent (anonymous token, then `UNAUTHORIZED: authentication required`). Keyed
+    by this URL the registry answers `incorrect username or password`, which is
+    a credential it actually received."""
+    assert registry_auth_key(host) == DOCKER_HUB_AUTH_KEY
+
+
+@pytest.mark.parametrize(
+    "host", ["ghcr.io", "registry.example.com", "registry:5000", "localhost:5000"]
+)
+def test_every_other_registry_is_keyed_by_its_own_host(host: str) -> None:
+    """Not a blanket rewrite. `ghcr.io` keyed by its own host IS consulted, so
+    rewriting everything would break the common case."""
+    assert registry_auth_key(host) == host
+
+
+# --- Host-level allow-list -------------------------------------------------
+
+
+def test_a_path_scoped_entry_still_admits_its_host() -> None:
+    """The regression this predicate exists for. A credential has only a host,
+    and asking the reference-level predicate with a synthetic path appended
+    made `ghcr.io/trustedoss` reject a credential for `ghcr.io` while happily
+    allowing scans of `ghcr.io/trustedoss/app`."""
+    allowed = ("ghcr.io/trustedoss",)
+    assert is_registry_host_allowed("ghcr.io", allowed) is True
+    # The two predicates must agree that this host is usable.
+    assert is_registry_allowed("ghcr.io/trustedoss/app", allowed) is True
+
+
+def test_the_host_predicate_still_refuses_a_host_that_is_not_listed() -> None:
+    assert is_registry_host_allowed("evil.com", ("ghcr.io/trustedoss",)) is False
+
+
+def test_the_host_predicate_does_not_match_on_a_prefix() -> None:
+    """Same bypass the reference predicate guards: equality, never startswith."""
+    assert is_registry_host_allowed("ghcr.io.evil.com", ("ghcr.io",)) is False
+
+
+def test_an_empty_allow_list_admits_any_host() -> None:
+    """Opt-in, exactly as the reference predicate treats it."""
+    assert is_registry_host_allowed("anything.example.com", ()) is True

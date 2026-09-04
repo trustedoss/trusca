@@ -21,6 +21,27 @@ narrows the partial predicate, or changes the query's WHERE shape so the index
 can no longer apply. It does not catch "the planner stopped preferring it at
 scale", which is a data-distribution question the load baseline measures.
 
+When a plan assertion may name ONE index
+----------------------------------------
+Only when the penalised planner has one index to choose from. Not when one
+index covers the whole predicate, which is the test an earlier version of this
+file applied and got wrong twice.
+
+The difference is what the planner needs an index to do. It does not need one
+that answers the query; it needs one whose leading columns match part of the
+predicate, and it will take the rest as a heap filter and the ordering as a
+sort. By that measure ``ix_audit_logs_target_table`` competes with the
+three-column index on ``(target_table, target_id, created_at)``, and
+``ix_audit_logs_actor_user_id`` competes with ``(actor_user_id, created_at)``,
+even though neither covers its query. Which one wins is then a cost decision
+that moves with the data, and both assertions duly went red when a change
+elsewhere added audit rows.
+
+So: count the indexes whose leading column the predicate constrains. More than
+one means a definition contract, as the two audit tests and the project test
+below use. Asserting the winner is asserting the statistics that happen to be
+in the table when the suite reaches this file.
+
 The numbers behind each index are in migration 0078's docstring; they were
 measured on 200,000 audit rows and 60,000 projects, not estimated.
 """
@@ -149,10 +170,36 @@ async def test_finding_history_lookup_has_an_index_that_serves_it(
     )
 
     indexes = index_names_in_plan(plan)
-    assert "ix_audit_logs_target_table_target_id_created_at" in indexes, (
-        "the finding history query no longer resolves through the index built "
-        f"for it; either its WHERE shape changed or the index did. Postgres "
-        f"chose {sorted(indexes)}"
+    # Any index leading with target_table can serve this predicate, and three
+    # of them do (`ix_audit_logs_target_table`,
+    # `ix_audit_logs_target_actor_created`, and the one 0078 added). Naming one
+    # asserts a cost decision; what is scale-invariant is that Postgres is not
+    # left with a scan.
+    assert indexes & {
+        "ix_audit_logs_target_table_target_id_created_at",
+        "ix_audit_logs_target_actor_created",
+        "ix_audit_logs_target_table",
+    }, (
+        "no index serves the finding history lookup even with sequential scans "
+        f"penalised; either its WHERE shape changed or the indexes did. "
+        f"Postgres chose {sorted(indexes)}"
+    )
+
+    row = (
+        await db_session.execute(
+            text(
+                "SELECT indexdef FROM pg_indexes WHERE indexname = "
+                "'ix_audit_logs_target_table_target_id_created_at'"
+            )
+        )
+    ).scalar_one_or_none()
+
+    assert row is not None, "the finding-history index is missing entirely"
+    definition = " ".join(row.split())
+    assert "(target_table, target_id, created_at)" in definition, (
+        "the finding-history index no longer covers target_table and target_id "
+        "before created_at, so target_id goes back to a heap filter over the "
+        f"biggest bucket that column has: {definition}"
     )
 
 
@@ -161,9 +208,28 @@ async def test_actor_scoped_audit_search_has_an_index_that_serves_it(
 ) -> None:
     """Actor equality plus the newest-first ordering the admin search uses.
 
-    ``ix_audit_logs_actor_user_id`` serves the predicate and leaves the order
-    to a sort; under a LIMIT the planner would rather walk the created_at
-    index backwards and discard every other actor's rows.
+    A definition contract plus a weak plan one, for the reason the
+    active-project test gives: this index HAS a competitor.
+    ``ix_audit_logs_actor_user_id`` covers the actor predicate on its own and
+    leaves the ordering to a sort, so which of the two wins is a cost decision
+    that moves with the data rather than a property of the index.
+
+    It was a plan assertion naming ``ix_audit_logs_actor_created_at``, on the
+    premise stated in this module that nothing else "gives actor plus time
+    ordering". That premise reads the index as having to serve the whole query;
+    the planner only needs it to serve the predicate, which the plain actor
+    index does. The assertion therefore held by luck, and it went red exactly
+    as this module's own docstring warned: a change elsewhere added audit rows,
+    the estimate moved, and Postgres chose the sibling index. Nothing about the
+    index or the query had changed.
+
+    So this asserts what is scale-invariant. An index serves the predicate at
+    all, and the composite one is shaped the way the ORDER BY needs: actor
+    first, then created_at, which a btree walks backwards for the newest-first
+    order without a sort. Drop it or reorder its columns and this fails, which
+    is every way it could stop being the index the query needs at the size that
+    matters. The "is it preferred at 200,000 rows" question belongs to
+    migration 0078's measurement, not to a test that runs on six rows.
     """
     actor_id = await _seed_audit_rows(db_session, target_id=str(uuid.uuid4()))
 
@@ -179,9 +245,29 @@ async def test_actor_scoped_audit_search_has_an_index_that_serves_it(
     )
 
     indexes = index_names_in_plan(plan)
-    assert "ix_audit_logs_actor_created_at" in indexes, (
-        "the actor-scoped audit search no longer resolves through the index "
-        f"built for it; Postgres chose {sorted(indexes)}"
+    # Either actor index is a correct answer here. What must not happen is
+    # Postgres being left with a scan when scans are penalised, which is what
+    # "no index applies to this predicate any more" looks like.
+    assert indexes & {"ix_audit_logs_actor_created_at", "ix_audit_logs_actor_user_id"}, (
+        "no index serves the actor-scoped audit search even with sequential "
+        f"scans penalised; Postgres chose {sorted(indexes)}"
+    )
+
+    row = (
+        await db_session.execute(
+            text(
+                "SELECT indexdef FROM pg_indexes "
+                "WHERE indexname = 'ix_audit_logs_actor_created_at'"
+            )
+        )
+    ).scalar_one_or_none()
+
+    assert row is not None, "the actor-scoped audit index is missing entirely"
+    definition = " ".join(row.split())
+    assert "(actor_user_id, created_at)" in definition, (
+        "the actor-scoped audit index no longer leads with actor_user_id "
+        "followed by created_at, so it cannot serve the admin search's "
+        f"ORDER BY without a sort: {definition}"
     )
 
 
@@ -190,10 +276,10 @@ async def test_the_active_project_index_is_shaped_for_the_query_it_serves(
 ) -> None:
     """A definition contract, not a plan one, and the difference is deliberate.
 
-    The other two indexes have no competitor: nothing else covers
-    ``(target_table, target_id)`` or gives actor plus time ordering, so with
-    sequential scans penalised Postgres has one option and the plan assertion
-    holds at any size. This one competes with ``ix_projects_team_archived``,
+    Every index this file covers has a competitor by the standard above, so all
+    three tests assert that SOME index serves the query plus a definition
+    contract on the index the migration added, rather than naming the winner of
+    a cost decision. This one competes with ``ix_projects_team_archived``,
     which covers both predicates and differs only in the ordering, so which
     index wins is a genuine cost decision that moves with the data. On the
     handful of rows a PR-gate test can seed, preferring the plain index and
