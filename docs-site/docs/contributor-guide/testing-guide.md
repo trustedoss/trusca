@@ -96,6 +96,95 @@ to catch: the answer was right and the reasoning was empty.
 
 Point the same query at something you know exists first. Without that
 positive control, a zero means nothing at all.
+### Say in the assertion what it is protecting
+
+A red test means one of two things: you broke something the test was put there
+to hold, or the test describes a world that no longer exists. They look
+identical, and only one of them is fixed by making the test pass. Wrapping it
+in whatever it now needs is always the shorter path, so the ambiguity resolves
+toward erasing the guard.
+
+The way out is that the assertion says what it is for. A body-content test
+went red across twenty-one cases with "No QueryClient set"; the obvious move
+was to wrap it in a provider. Its own docstring said the body is deliberately
+surface-agnostic and that a hard dependency on the drawer would surface here
+first. That sentence turned a mechanical fix into a design change: the editor
+became a slot the surface fills.
+
+Write the reason where the failure will be read, not in a commit message.
+
+### A screen that is half right is harder than one that is all wrong
+
+Nothing fails, no error appears, and part of the interface updates correctly.
+A wrong cache-invalidation key does this: the mutation succeeds, the drawer
+refreshes from its own write, and only the table stays stale. Attention goes
+to the half that looks wrong, which is the table, while the cause sits in the
+half that looks right.
+
+When only part of a view is stale, suspect what connects them before
+suspecting the stale part. The correct half is not evidence that its path is
+sound; often it is correct for a reason that bypasses the broken step
+entirely.
+
+### A neighbour that passes is not permission {#neighbour-passing}
+
+Writing something the way the file next door writes it, and then finding that
+your version fails a check its version passes, is a normal afternoon here. The
+instinct is to conclude that you got the detail wrong. Sometimes you did.
+Often the neighbour passes for a reason that does not extend to you, and there
+are at least three:
+
+- **It is a recorded exception.** `token:lint` and its siblings fail only on
+  newly added violations and carry a budget of existing ones, so the
+  `text-slate-600` in every health panel is debt somebody wrote down, not the
+  convention. A new panel written the same way fails while its neighbours
+  pass.
+- **It was justified in that spot and is not in yours.** A `nosemgrep` exists
+  in three places in this repository, and one directory holds twenty-three
+  cases of the same shape written without it. Adding a fourth suppression
+  there would have taught the next reader that the rule is optional.
+- **The check cannot see it.** An i18n key in a neighbouring component passed
+  extraction while an identical-looking one failed, because the neighbour's
+  key is a template literal: the static analyser cannot read it and files it
+  as dynamic. Its position was never validated at all.
+
+The three look identical from outside, which is the point of listing them: a
+reader who knows only about baselines will check the baseline, find nothing,
+and conclude the neighbour is the convention. Establish which one you are
+looking at before copying.
+
+### Running locally: give each run its own Postgres and its own Redis
+
+The suite talks to a real Postgres and a real Redis, and neither is isolated
+for you. Two runs pointed at the same database or the same Redis index will
+interfere, and the two interfere very differently.
+
+Sharing a **database** announces itself: alembic refuses, or a test reads a
+row it did not write. That is why "a database per branch" became the habit
+here. Give the run its own:
+
+```bash
+createdb trusca_mybranch          # or docker exec ... psql -c 'CREATE DATABASE ...'
+export DATABASE_URL=postgresql+asyncpg://trustedoss:trustedoss@localhost:5432/trusca_mybranch
+```
+
+Sharing a **Redis index** is silent, which is why no habit grew around it.
+Celery's broker lives there, so a worker started by the other run will happily
+consume a message this one published. The task never arrives, the test waits
+out its timeout, and the failure looks exactly like a defect in the code you
+are holding. Give the run an index nobody else is on:
+
+```bash
+export REDIS_URL=redis://localhost:6379/7   # any index that is empty
+```
+
+`conftest.py` checks this at session start and stops the run if the index
+already holds keys, printing the count and a sample. It does not clear
+anything: on a shared index that would break whoever else is mid-run. If the
+keys are your own leftovers, clear them; if they are not, move.
+
+CI needs none of this. Each job gets its own Postgres and Redis container, so
+the fixed URLs in the workflow are already private to that job.
 
 ### Coverage
 
@@ -326,6 +415,14 @@ often enough to name:
   exact strings, and remember that parentheses, brackets and dots inside a
   value mean something else to a regex.
 
+  The same holds for counting things in source. Fixing a helper's return type
+  meant finding every five-element tuple in a test file; `grep` found three,
+  the run still failed, and an `ast` walk found five. The two it missed were
+  written in shapes the pattern did not anticipate, one of them inside a
+  second helper. A pattern finds the notation you imagined; a parse finds what
+  is there. This repository already asserts over ASTs in several places, so it
+  is not a new tool to reach for.
+
   A specific wrong answer is more dangerous than an empty one. Nobody trusts
   a tool that returns nothing, but "13 of 17 checks never ran" carries a
   count and a list, and the detail is what makes it credible: it looks like
@@ -395,13 +492,10 @@ files that shrink also fail, asking for the lowered baseline to be
 committed. That last direction is the point — a budget you paid down but
 did not record is a budget someone else can spend.
 
-A consequence worth stating, because it catches people copying from the file
-next door: a raw colour class you can see in `apps/frontend/src` is not
-evidence that raw colour classes are allowed. It may be an entry in the
-baseline. The health panels all write `text-slate-600` for a muted badge, and
-a new panel written the same way fails the gate while its neighbours pass.
-Check the baseline before following a neighbour; reading it costs less than a
-round trip through CI.
+A raw colour class you can see in `apps/frontend/src` is not evidence that
+raw colour classes are allowed: it may be a baseline entry. Check the
+baseline before following a neighbour. See
+[A neighbour that passes is not permission](#neighbour-passing).
 
 ```bash
 npm run token:lint          # check
