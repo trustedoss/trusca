@@ -242,7 +242,15 @@ for containment checks, for assertions that ask whether something failed but
 not why, and for a value captured in a loop. Write the assertion, then break
 the thing it guards and confirm the test goes red.
 
-### 8. When a mutation survives for no clear reason, look for a second layer
+### 8. When a mutation survives for no clear reason, check it landed, then look for a second layer
+
+First confirm the mutation actually took effect. A mutation that never
+applied hands you a green run as evidence, and the conclusion you draw from
+it is the opposite of the truth. Two cases in the adoption-readiness review:
+an added compose block that became a duplicate key the parser resolved to
+the other one, and an UPDATE that changed nothing because the target row
+already held the value being written. Both read as "the guard does not
+catch this" when the guard was fine.
 
 Two layers that can produce the same outcome hide each other: delete either
 and the result is unchanged, so neither is verified. The reverse also
