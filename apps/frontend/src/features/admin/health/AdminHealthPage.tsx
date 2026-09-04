@@ -22,6 +22,7 @@ import {
   type HealthComponent,
   type HealthStatus,
 } from "@/features/admin/health/api/adminHealthApi";
+import { AnonymisationBacklogPanel } from "@/features/admin/health/AnonymisationBacklogPanel";
 import { EolPanel } from "@/features/admin/health/EolPanel";
 import { MaliciousPanel } from "@/features/admin/health/MaliciousPanel";
 import { KevFeedPanel } from "@/features/admin/health/KevFeedPanel";
@@ -197,6 +198,7 @@ export function AdminHealthPage() {
           <KevFeedPanel />
           <EolPanel />
           <MaliciousPanel />
+          <AnonymisationBacklogPanel />
         </div>
 
         <div

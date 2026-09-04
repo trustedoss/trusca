@@ -146,24 +146,33 @@ def test_decode_state_rejects_expired_token() -> None:
 # ---------------------------------------------------------------------------
 
 
-def test_personal_team_name_uses_full_name_when_available() -> None:
-    from services.oauth_service import _personal_team_name
+def test_personal_team_name_carries_no_personal_data(  # ER32
+) -> None:
+    """The team name is on screen, so it must not be the person's name.
 
-    assert _personal_team_name(full_name="Jane Doe", email="jane@x.com") == "Jane Doe's Team"
+    It used to be ``{full_name}'s Team``, falling back to the email's local
+    part. Both are personal data and both render in the team list, the
+    switcher and every membership row, so an anonymised user would keep
+    appearing there under their own name.
+    """
+    import uuid as _uuid
+
+    from services.oauth_service import personal_team_name
+
+    user_id = _uuid.UUID("3f1d8c2a-0000-0000-0000-00000000abcd")
+    name = personal_team_name(user_id=user_id)
+
+    assert name == "Personal team (3f1d8c2a0000)"
+    assert "@" not in name
 
 
-def test_personal_team_name_falls_back_to_email_localpart() -> None:
-    from services.oauth_service import _personal_team_name
+def test_personal_team_name_fits_the_column() -> None:
+    """``teams.name`` is VARCHAR(255); an id-derived name cannot approach it."""
+    import uuid as _uuid
 
-    assert _personal_team_name(full_name=None, email="alice@example.org") == "alice's Team"
+    from services.oauth_service import personal_team_name
 
-
-def test_personal_team_name_caps_long_names() -> None:
-    """A 1000-char name must not blow past `teams.name` VARCHAR(255)."""
-    from services.oauth_service import _personal_team_name
-
-    name = _personal_team_name(full_name="A" * 1000, email="x@y.com")
-    assert len(name) <= 255
+    assert len(personal_team_name(user_id=_uuid.uuid4())) <= 255
 
 
 def test_personal_team_slug_is_deterministic_per_provider_user_id() -> None:

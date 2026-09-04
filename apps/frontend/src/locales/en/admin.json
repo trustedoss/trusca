@@ -510,6 +510,21 @@
         "refresh_off": "Re-check only, no rebuild"
       },
       "footer": "{{ecosystems}} ecosystems · {{stamped}} verdicts changed · last run {{last}}"
+    },
+    "anonymisation": {
+      "title": "Anonymisation awaiting execution",
+      "description": "Two super admins have approved these erasures. Nothing is erased until an operator runs the command on the server, so each row is work this deployment still owes someone.",
+      "waiting": "Waiting {{count}} days",
+      "status": {
+        "clear": "Nothing outstanding",
+        "waiting": "Awaiting an operator",
+        "overdue": "Overdue"
+      },
+      "empty": {
+        "title": "No erasures are waiting",
+        "description": "Approved requests appear here until an operator carries them out."
+      },
+      "parties": "Requested by {{requester}}, approved by {{approver}}"
     }
   }
 }

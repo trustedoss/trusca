@@ -510,6 +510,21 @@
         "refresh_off": "재확인만, 재생성 안 함"
       },
       "footer": "생태계 {{ecosystems}}종 · 판정 변경 {{stamped}}건 · 마지막 실행 {{last}}"
+    },
+    "anonymisation": {
+      "title": "이행을 기다리는 익명화",
+      "description": "최고 관리자 두 명이 승인한 삭제입니다. 운영자가 서버에서 명령을 실행해야 실제로 지워지므로, 각 항목은 아직 이행하지 않은 약속입니다.",
+      "waiting": "{{count}}일 대기",
+      "status": {
+        "clear": "대기 중인 항목 없음",
+        "waiting": "운영자 이행 대기",
+        "overdue": "기한 초과"
+      },
+      "empty": {
+        "title": "기다리는 삭제가 없습니다",
+        "description": "승인된 요청은 운영자가 이행할 때까지 여기에 표시됩니다."
+      },
+      "parties": "요청 {{requester}}, 승인 {{approver}}"
     }
   }
 }

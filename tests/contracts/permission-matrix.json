@@ -984,6 +984,31 @@
       "gate": "role>=developer"
     },
     {
+      "method": "POST",
+      "path": "/v1/user-anonymisation",
+      "gate": "super_admin_404"
+    },
+    {
+      "method": "GET",
+      "path": "/v1/user-anonymisation/awaiting-execution",
+      "gate": "super_admin_404"
+    },
+    {
+      "method": "DELETE",
+      "path": "/v1/user-anonymisation/{request_id}",
+      "gate": "super_admin_404"
+    },
+    {
+      "method": "POST",
+      "path": "/v1/user-anonymisation/{request_id}/approval",
+      "gate": "super_admin_404"
+    },
+    {
+      "method": "GET",
+      "path": "/v1/users/me/export",
+      "gate": "authed"
+    },
+    {
       "method": "GET",
       "path": "/v1/users/me/notification-prefs",
       "gate": "authed"

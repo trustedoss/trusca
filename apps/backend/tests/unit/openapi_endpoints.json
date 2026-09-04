@@ -67,6 +67,9 @@
   "DELETE /v1/service-accounts/{service_account_id}": [
     "service_account_id"
   ],
+  "DELETE /v1/user-anonymisation/{request_id}": [
+    "request_id"
+  ],
   "DELETE /v1/users/me/oauth-identities/{identity_id}": [
     "identity_id"
   ],
@@ -602,6 +605,8 @@
     "team_id"
   ],
   "GET /v1/transition-approvals": [],
+  "GET /v1/user-anonymisation/awaiting-execution": [],
+  "GET /v1/users/me/export": [],
   "GET /v1/users/me/notification-prefs": [],
   "GET /v1/users/me/oauth-identities": [],
   "GET /v1/vulnerability_findings/{finding_id}": [
@@ -729,6 +734,10 @@
   "POST /v1/transition-approvals": [],
   "POST /v1/transition-approvals/{approval_id}/decision": [
     "approval_id"
+  ],
+  "POST /v1/user-anonymisation": [],
+  "POST /v1/user-anonymisation/{request_id}/approval": [
+    "request_id"
   ],
   "POST /v1/webhooks/github": [
     "X-GitHub-Delivery",

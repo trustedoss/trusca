@@ -43,6 +43,7 @@ from .search_results import router as search_results_router
 from .service_accounts import router as service_accounts_router
 from .source_tree import router as source_tree_router
 from .transition_approvals import router as transition_approvals_router
+from .user_anonymisation import router as user_anonymisation_router
 from .users_me import router as users_me_router
 from .vex import router as vex_router
 from .vulnerabilities import router as vulnerabilities_router
@@ -71,6 +72,7 @@ __all__ = [
     "organization_verdicts_router",
     "service_accounts_router",
     "transition_approvals_router",
+    "user_anonymisation_router",
     "license_policies_router",
     "licenses_router",
     "notifications_router",

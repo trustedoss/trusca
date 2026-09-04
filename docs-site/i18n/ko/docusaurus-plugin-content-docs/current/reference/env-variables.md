@@ -340,6 +340,8 @@ Compose 배포에는 오토스케일러 계층이 없습니다. 이 절의 키�
 | `ADMIN_EMAIL` | — | `apps/backend/scripts/create_super_admin.py` | 스크립트 실행 시 프로비저닝할 첫 super-admin의 이메일. 읽을 때 소문자화·trim. |
 | `ADMIN_PASSWORD` | — | `apps/backend/scripts/create_super_admin.py` | 부트스트랩 super-admin의 비밀번호. 12자 이상 필수 — 그렇지 않으면 스크립트가 중단됩니다. |
 | `DEMO_SUPER_ADMIN_PASSWORD` | 공개 데모와 함께 공개된 고정값 | `apps/backend/scripts/seed_demo.py` | 시드된 모든 데모 계정에 부여되는 비밀번호입니다. 설정하지 않으면 생성된 값이 아니라 공개된 고정값이 쓰이므로, 남이 접근할 수 있는 인스턴스에서는 직접 값을 정하세요. `APP_ENV`가 `dev`나 `demo`가 아니면 시드 자체가 실행되지 않습니다. 설정할 경우 12자 이상이어야 합니다. |
+| `SUBJECT_USER_ID` | - | `apps/backend/scripts/anonymise_user.py` | 익명화 명령이 개인정보를 지울 대상 사용자입니다. UUID 여야 하며 그 밖의 값이면 명령이 중단됩니다. [사용자 익명화](../admin-guide/user-anonymisation.md)를 참고하십시오. |
+| `CONFIRM` | - | `apps/backend/scripts/anonymise_user.py` | 익명화를 실행하려면 `yes` 여야 합니다. 최고 관리자 두 명의 승인은 대상자에 대한 결정이고, 이 값은 운영자가 지금 이 배포에서 이 식별자를 대상으로 실행할 뜻이 있음을 확인하는 것입니다. 되돌릴 수 없습니다. |
 
 ## 검증
 

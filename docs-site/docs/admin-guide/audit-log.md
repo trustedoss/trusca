@@ -47,6 +47,18 @@ The append-only contract is enforced **at two layers**:
 
 These triggers close a defense-in-depth gap that PR #44 had documented as roadmap. **Known residual bypass**: in the default install the migration role and the runtime app role are the same PostgreSQL role (`trustedoss`). That role owns the function and the triggers, which means it can `DROP TRIGGER` / `ALTER FUNCTION ... OWNER` and bypass the gate via "DROP TRIGGER → mutate → re-CREATE TRIGGER". A Phase 7 / 8 hardening PR is expected to split the runtime role from the migration role (`trustedoss_app` DML-only on `audit_logs` + `trustedoss_owner` for migrations) at which point the triggers become unbypassable from the runtime app. Until then, the bypass is observable: `DROP TRIGGER` is itself a DDL statement, captured by `pg_event_trigger` (future audit-of-audit hardening) and by the operator's session log for two-operator retention purges.
 
+### The one exception, and its shape
+
+Since migration `0080` there is exactly one UPDATE the trigger allows: clearing `ip` and `user_agent` on the rows of a user being anonymised. It is narrow by construction. The caller must be a member of the table's owner role; the two columns may only move toward NULL; every other column, `diff` included, must be unchanged; and the function that performs it refuses unless the request table holds an approved request for that subject.
+
+**On a role-separated install the application role is not a member of the owner role, so none of this is reachable from the running portal. On a single-role install it is**, because there the runtime role and the owner are the same role: the membership check is trivially true, and the owner's implicit EXECUTE on the scrub function survives the REVOKE. The paragraph above about the same-role default applies here too. Role separation is what makes this exception a boundary rather than a formality; see [User anonymisation](./user-anonymisation.md).
+
+The function's approval check is a check that a row exists, not proof that two people agreed. Anything that can write to `user_anonymisation_requests` can produce such a row. What stands behind it is the two-person flow in the product, an operator who can see and contact both named parties, and the fact that a request written directly to the database leaves no matching entries in this log.
+
+`diff` is deliberately outside the exception. An exception wide enough to rewrite what a change contained would end the property that makes this table evidence. The consequence, that an old address can survive inside a `diff`, is stated in [User anonymisation](./user-anonymisation.md) rather than quietly resolved by widening the hole.
+
+One thing worth knowing before testing this yourself: the trigger compares values, so an UPDATE that writes a column the value it already holds changes nothing and passes. Aim a forged scrub at a row whose `ip` is already NULL and Postgres answers `UPDATE 1`, which reads like a bypass and is not.
+
 ## What gets logged
 
 Every authenticated `POST`, `PATCH`, `PUT`, and `DELETE` produces exactly one entry. Read endpoints (`GET`) do not. SBOM exports emit a structlog `sbom_exported` event but **do not** create an `audit_logs` row in this release; integrating exports into the audit table is on the roadmap.

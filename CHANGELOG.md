@@ -9,6 +9,38 @@ and the project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.
 
 ### Added
 
+- **Erasing a user's personal data, behind two people and an operator.** A
+  super admin opens a request against a user; a different super admin approves
+  it; an operator then runs `python -m scripts.anonymise_user` with the owner
+  database credential. The command clears the account's email and name,
+  removes its OAuth links, sessions and saved searches, renames a personal team
+  named after the person, and clears `ip` and `user_agent` from the subject's
+  audit rows. The account row survives, because audit entries reference it and
+  that reference is what keeps the trail saying who rather than somebody, but
+  no route authenticates it afterwards.
+
+  Reaching inside `audit_logs` needs an exception to the append-only trigger,
+  and it is the narrowest shape that does the job: the caller must be a member
+  of the table's owner role, the two columns may only move toward NULL, every
+  other column must be unchanged, and the function refuses unless an approved
+  request exists. `diff` is deliberately outside the exception, so an address
+  written into a diff before this version stays there. What the operation does
+  not erase is written down rather than glossed: see the admin guide.
+
+  Approval and execution are separated on purpose, which leaves a state where
+  two people have agreed and nothing has happened yet. **Administration →
+  Health** lists those requests with how long each has waited, because an
+  erasure request usually carries a deadline and a backlog nobody can see is
+  the way that deadline passes.
+
+- **`GET /v1/users/me/export`.** Any signed-in user can download the personal
+  data held about them: account, notification preferences, sign-in methods,
+  team memberships, saved searches, and their own activity record. Work
+  product is not included, and change contents are stripped from the activity
+  record because an entry describing a change to another user carries that
+  user's data. The activity record is capped, and when it is capped the
+  payload says so and gives the true total.
+
 - **Three indexes the hot read paths were missing.** Opening a vulnerability
   ran its history panel through `ix_audit_logs_target_table` alone, which
   matches `target_table` and leaves `target_id` to a heap filter over the
@@ -165,6 +197,23 @@ and the project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.
   real restore points. That script now records checksums too, so the path we
   ship stops producing backups that skip verification, and a contract test runs
   both producers' manifest code and compares them.
+
+- **A personal team carried its owner's name or email address in its own
+  name.** Signing in through OAuth for the first time creates a personal team,
+  and it was named `{full_name}'s Team`, falling back to the email's local
+  part when the provider sent no name. Its description read `Personal team for
+  <address>`. Both are personal data and both are on screen rather than in a
+  log: the team list, the team switcher, every membership row. The name now
+  carries an identifier, `Personal team (<id prefix>)`, matching the
+  `Personal org (<suffix>)` built beside it from the same user id, and the
+  description is left empty because its only content was the address.
+
+  **Teams created before this version keep their existing names.** Renaming
+  them in a migration would change a label people recognise, on data whose
+  owner has not asked for anything, so it is left to the operator: an admin
+  can rename a team from the teams screen. Anonymising a user clears their own
+  personal team's name and description as part of the erasure.
+
 - **The backup timeout now bounds the backup.** `BACKUP_SUBPROCESS_TIMEOUT` is
   documented, settable, read at run time and passed to `proc.wait()`, and it
   bounded nothing: the two calls ahead of that wait read the child's pipes to
