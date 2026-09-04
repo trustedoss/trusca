@@ -215,6 +215,17 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     # Its own connection, and never fatal, for the reasons in the role probe
     # above: this is an observation, not a gate, and a census that failed the
     # boot would be worse than no census.
+    # What our own outbound HTTPS calls will trust, stated on every boot.
+    # An operator behind a private certificate authority changes this, and the
+    # same variable that ADDS one for the Go tools REPLACES it here, so a
+    # deployment can end up with working scans and silently unverifiable
+    # feeds. Reported unconditionally rather than only on suspicion: trusting
+    # only a private authority is a legitimate configuration, and a warning
+    # that fires on a correct setup is one somebody turns off.
+    from core.tls_trust import log_trust_store
+
+    log_trust_store()
+
     try:
         from core.config import vuln_sla_days
         from services.vulnerability_service import overdue_counts_by_severity

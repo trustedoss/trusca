@@ -338,6 +338,10 @@ Compose 배포에는 오토스케일러 계층이 없습니다. 이 절의 키�
 | `JIRA_URL` | (비어있음) | (없음) | 스텁. 위 참고. |
 | `JIRA_TOKEN` | (비어있음) | (없음) | 스텁. 위 참고. |
 | `HTTP_PROXY` / `HTTPS_PROXY` / `NO_PROXY` | (비어있음) | 서브프로세스 env | `git clone`, `cdxgen`, `trivy --download-db-only` 부팅 / refresh 경로가 존중. |
+| `SSL_CERT_FILE` / `SSL_CERT_DIR` | (비어있음) | 서브프로세스 env, 포털 HTTPS | Trivy와 cosign과 govulncheck, 그리고 포털 자신의 외부 호출이 쓰는 사설 인증기관입니다. 포털 쪽에서는 신뢰 집합을 갈아치우므로 공용 루트 인증서도 같은 파일에 담아야 합니다. [사설 인증기관](../admin-guide/private-ca.md)을 봅니다. |
+| `NODE_EXTRA_CA_CERTS` | (비어있음) | 서브프로세스 env | `cdxgen`이 쓰는 사설 인증기관입니다. 기존 루트에 더해집니다. |
+| `REQUESTS_CA_BUNDLE` | (비어있음) | 서브프로세스 env | `scancode`와 `scanoss`가 쓰는 사설 인증기관입니다. 포털 자신의 호출은 이 변수를 보지 않습니다. |
+| `GIT_SSL_CAINFO` / `GIT_SSL_CAPATH` | (비어있음) | 서브프로세스 env | `git clone`이 쓰는 사설 인증기관입니다. git은 `SSL_CERT_FILE`도 `CURL_CA_BUNDLE`도 읽지 않으므로, 사내 저장소를 내려받으려면 이 둘 중 하나가 필요합니다. |
 
 ## 부트스트랩 / 스크립트
 

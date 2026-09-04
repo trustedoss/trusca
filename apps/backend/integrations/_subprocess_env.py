@@ -60,10 +60,40 @@ _BASE_ALLOWLIST: frozenset[str] = frozenset(
         "LC_ALL",
         "TZ",
         # Corporate CA / proxy hints (chore PR #5 L1).
+        #
+        # Four names for one idea, and they are NOT interchangeable. Which one
+        # a tool reads was measured in the worker image, not assumed, because
+        # sitting in one list makes them look equivalent:
+        #
+        #   SSL_CERT_FILE / SSL_CERT_DIR   Go (trivy, cosign, govulncheck) and
+        #       Python. Go keeps reading the system directory when only the
+        #       file is set, so there a private CA ADDS to the public roots.
+        #       Our own httpx calls are the opposite: httpx builds its context
+        #       from this file alone and never loads certifi, so setting it
+        #       REPLACES the trust set. A bundle that holds only a corporate CA
+        #       leaves every public endpoint unverifiable. See the boot log in
+        #       ``main`` and the private-CA page in the admin guide.
+        #   REQUESTS_CA_BUNDLE   ``requests`` only, which here means scancode
+        #       and scanoss. Our own code uses httpx, which IGNORES it. An
+        #       operator who sets only this one gets working scan tools and
+        #       silently broken vulnerability feeds.
+        #   NODE_EXTRA_CA_CERTS   Node (cdxgen). Additive by design: the
+        #       built-in roots stay.
+        #
+        # git is the exception that made this list wrong until now, and it is
+        # measured too: with a nonexistent path, ``GIT_SSL_CAINFO`` and
+        # ``GIT_SSL_CAPATH`` make ``git ls-remote`` exit 128 while
+        # ``SSL_CERT_FILE``, ``SSL_CERT_DIR`` and ``CURL_CA_BUNDLE`` exit 0.
+        # git reads only its own two, so before they were forwarded, cloning
+        # from an internal host behind a private CA could not be fixed by
+        # anything here, and a source scan stopped at its first step.
+        # ``CURL_CA_BUNDLE`` is deliberately absent: nothing we run reads it.
         "SSL_CERT_FILE",
         "SSL_CERT_DIR",
         "REQUESTS_CA_BUNDLE",
         "NODE_EXTRA_CA_CERTS",
+        "GIT_SSL_CAINFO",
+        "GIT_SSL_CAPATH",
         "HTTP_PROXY",
         "HTTPS_PROXY",
         "NO_PROXY",

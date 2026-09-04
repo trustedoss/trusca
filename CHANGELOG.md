@@ -156,6 +156,41 @@ and the project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.
 
 ### Fixed
 
+- **A private certificate authority could not be configured for `git clone`.**
+  The worker forwards `SSL_CERT_FILE`, `SSL_CERT_DIR`, `REQUESTS_CA_BUNDLE` and
+  `NODE_EXTRA_CA_CERTS` to every tool it runs, and git reads none of them.
+  Measured in the worker image: pointed at a path that does not exist,
+  `GIT_SSL_CAINFO` and `GIT_SSL_CAPATH` make `git ls-remote` exit 128 while the
+  other three leave it at 0. On a network with an internal authority, a source
+  scan therefore stopped at its first step no matter how the rest was
+  configured. Both are now forwarded. `CURL_CA_BUNDLE` deliberately is not:
+  nothing we run reads it, and an operator who saw it arrive would conclude the
+  certificate was configured.
+
+- **The same variable adds a certificate for some tools and replaces the trust
+  set for others, silently.** The Go tools keep reading the system certificate
+  directory when only `SSL_CERT_FILE` is set, so there a private authority is
+  added to the public roots. The portal's own outbound calls build their trust
+  from that file alone. Point it at a bundle holding only a corporate authority
+  and scans keep working while the vulnerability feeds, Slack, GitHub and the
+  ticket webhook quietly become unverifiable, which reads as a feed outage
+  rather than a certificate setting.
+
+  The backend now states its trust set on every boot: how many certificate
+  authorities its own calls will accept, how many it ships with, and which
+  setting decided. Unconditional rather than only on suspicion, because
+  trusting a private authority alone is a legitimate configuration and a
+  warning that fires on a correct setup is one somebody turns off. The warning
+  is layered on top for the case that is almost certainly a mistake, and says
+  what to do about it. Where a certificate directory is configured the count
+  reads as unknown rather than zero: such a store loads certificates on demand
+  and reports none until it does.
+
+  A new admin-guide page covers the whole setup for Docker Compose, including
+  the two limits this release does not lift: the Helm chart takes extra
+  environment variables but not extra volumes, and image pulls made by the
+  Docker daemon are outside the portal's environment entirely.
+
 - **A finding's assignee, deadline and ticket lasted about six hours.** The
   four columns were written and read correctly everywhere, but nothing carried
   them onto the row that replaced the one they were on. Findings are per-scan
