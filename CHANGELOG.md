@@ -9,6 +9,24 @@ and the project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.
 
 ### Added
 
+- **The Helm chart can mount a file, so a private certificate authority works
+  on Kubernetes too.** `env.extraVolumes` and `env.extraVolumeMounts` are raw
+  lists appended to the backend, the scheduler and both workers, the same four
+  workloads `extraEnv` already reached. The frontend and Redis are deliberately
+  left out: they make no outbound calls, so a certificate there would be a
+  mount nothing reads.
+
+  The certificate variables could already be set through `extraEnv` and had
+  nothing to point at, and the chart's default `readOnlyRootFilesystem: true`
+  rules out writing one in at container start, so a mount was the only way. The
+  admin guide now carries the Helm recipe beside the Compose one, and the limit
+  it recorded a release ago is gone.
+
+  Beat is the one workload that mounts nothing when the root filesystem is left
+  writable, so its `volumes:` key was inside that condition and an extra volume
+  now brings the key with it.
+
+
 - **Erasing a user's personal data, behind two people and an operator.** A
   super admin opens a request against a user; a different super admin approves
   it; an operator then runs `python -m scripts.anonymise_user` with the owner

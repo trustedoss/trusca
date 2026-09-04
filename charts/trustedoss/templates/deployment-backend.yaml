@@ -84,6 +84,7 @@ spec:
           # Liveness — PURE liveness (/health). Restarts the pod only when the
           # process itself is wedged; it must NOT depend on schema state, or a
           # pre-migration pod would be killed in a loop.
+            {{- include "trustedoss.extraVolumeMounts" . | nindent 12 }}
           livenessProbe:
             httpGet:
               path: {{ .Values.backend.healthPath }}
@@ -121,6 +122,7 @@ spec:
           {{- else }}
           emptyDir: {}
           {{- end }}
+        {{- include "trustedoss.extraVolumes" . | nindent 8 }}
       {{- with .Values.backend.topologySpreadConstraints }}
       # W8 (concurrency-scaling-plan-2026-08-22.md §3.5): each entry names
       # only {maxSkew, topologyKey, whenUnsatisfiable} in values.yaml; the

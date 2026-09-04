@@ -100,6 +100,39 @@ env:
   #
   extraEnvFrom: []
 
+  # `extraVolumes` and `extraVolumeMounts` are raw lists, appended to backend,
+  # beat and both workers. They exist because a setting that names a file needs
+  # the file: the certificate variables for a private authority can be set
+  # through `extraEnv`, and without a mount they name a path that is not there.
+  # The default `readOnlyRootFilesystem: true` also rules out writing one in at
+  # container start, so a mount is the way.
+  #
+  # A private certificate authority, end to end. Create the Secret yourself
+  # (`kubectl create secret generic corp-ca --from-file=ca-bundle.pem=...`),
+  # and put your authority AND the public roots in that file: SSL_CERT_FILE
+  # replaces the portal's trust set rather than adding to it, so a bundle with
+  # only your CA leaves scans working and vulnerability feeds unverifiable.
+  # The admin guide's "Private certificate authorities" page has the detail,
+  # and each process logs what it ended up trusting at boot.
+  #
+  #   extraVolumes:
+  #     - name: corp-ca
+  #       secret:
+  #         secretName: corp-ca
+  #   extraVolumeMounts:
+  #     - name: corp-ca
+  #       mountPath: /etc/ssl/corp-ca.pem
+  #       subPath: ca-bundle.pem
+  #       readOnly: true
+  #   extraEnv:
+  #     SSL_CERT_FILE: /etc/ssl/corp-ca.pem
+  #     NODE_EXTRA_CA_CERTS: /etc/ssl/corp-ca.pem
+  #     REQUESTS_CA_BUNDLE: /etc/ssl/corp-ca.pem
+  #     GIT_SSL_CAINFO: /etc/ssl/corp-ca.pem
+  #
+  extraVolumes: []
+  extraVolumeMounts: []
+
   # -------------------------------------------------------------------------
   # External datastore DSNs. Used ONLY when postgres.bundled / redis.bundled
   # are false. Leave blank when bundling. asyncpg driver for Postgres.

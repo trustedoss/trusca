@@ -140,6 +140,8 @@ connections before alembic runs.
 | `env.scancode.*` | see `values.yaml` | scancode license-detection guards (A2). |
 | `env.extraEnv` | `{}` | Map of any other runtime variable, injected into backend / worker-scan / worker-default / beat. Non-secret values only. |
 | `env.extraEnvFrom` | `[]` | Raw `envFrom` list, for Secrets you created yourself: OAuth, SMTP / Slack / Teams, the vendored-code service, Jira. |
+| `env.extraVolumes` | `[]` | Raw `volumes` list, appended to backend / worker-scan / worker-default / beat. For a private certificate authority: mount the Secret holding your CA bundle. |
+| `env.extraVolumeMounts` | `[]` | Raw `volumeMounts` list for the same four. Use `subPath` to land a Secret key as a file rather than a directory. |
 
 ### Workspace (shared scan volume)
 

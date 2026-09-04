@@ -246,6 +246,8 @@ pre-upgrade 마이그레이션 Job이 새 파드 롤아웃 전에 새 스키마�
 | `worker.replicaCount` | `2` | 파드별 `concurrency`보다 워커 파드 스케일링을 권장. |
 | `env.extraEnv` | `{}` | 차트가 이름으로 다루지 않는 런타임 변수. 아래 참고. |
 | `env.extraEnvFrom` | `[]` | 직접 만든 Secret을 붙이는 `envFrom` 항목. 아래 참고. |
+| `env.extraVolumes` | `[]` | backend와 worker와 beat에 붙는 `volumes` 항목입니다. 사설 인증기관 인증서가 여기로 들어갑니다. |
+| `env.extraVolumeMounts` | `[]` | 같은 셋에 붙는 `volumeMounts` 항목입니다. [사설 인증기관](../admin-guide/private-ca.md)을 봅니다. |
 
 ### 차트가 이름으로 다루지 않는 설정 {#extra-env}
 

@@ -118,6 +118,7 @@ spec:
             # worker-scan.
             - name: trivy-cache
               mountPath: {{ .Values.env.trivy.dbCacheDir }}
+            {{- include "trustedoss.extraVolumeMounts" . | nindent 12 }}
           livenessProbe:
             exec:
               command:
@@ -150,6 +151,7 @@ spec:
           {{- else }}
           emptyDir: {}
           {{- end }}
+        {{- include "trustedoss.extraVolumes" . | nindent 8 }}
       {{- with .Values.nodeSelector }}
       nodeSelector:
         {{- toYaml . | nindent 8 }}
