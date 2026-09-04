@@ -96,6 +96,38 @@ to catch: the answer was right and the reasoning was empty.
 
 Point the same query at something you know exists first. Without that
 positive control, a zero means nothing at all.
+### Running locally: give each run its own Postgres and its own Redis
+
+The suite talks to a real Postgres and a real Redis, and neither is isolated
+for you. Two runs pointed at the same database or the same Redis index will
+interfere, and the two interfere very differently.
+
+Sharing a **database** announces itself: alembic refuses, or a test reads a
+row it did not write. That is why "a database per branch" became the habit
+here. Give the run its own:
+
+```bash
+createdb trusca_mybranch          # or docker exec ... psql -c 'CREATE DATABASE ...'
+export DATABASE_URL=postgresql+asyncpg://trustedoss:trustedoss@localhost:5432/trusca_mybranch
+```
+
+Sharing a **Redis index** is silent, which is why no habit grew around it.
+Celery's broker lives there, so a worker started by the other run will happily
+consume a message this one published. The task never arrives, the test waits
+out its timeout, and the failure looks exactly like a defect in the code you
+are holding. Give the run an index nobody else is on:
+
+```bash
+export REDIS_URL=redis://localhost:6379/7   # any index that is empty
+```
+
+`conftest.py` checks this at session start and stops the run if the index
+already holds keys, printing the count and a sample. It does not clear
+anything: on a shared index that would break whoever else is mid-run. If the
+keys are your own leftovers, clear them; if they are not, move.
+
+CI needs none of this. Each job gets its own Postgres and Redis container, so
+the fixed URLs in the workflow are already private to that job.
 
 ### Coverage
 

@@ -64,6 +64,26 @@ pytest -s tests/integration/test_api_key_endpoints.py::test_revoke_immediate
 아무것도 찾지 못한 질의와 잘못 쓴 질의는 같은 답을 냅니다. 위의 오염을 확인하던 대조가 `findings.assignee_user_id`를 물었는데 실제 테이블은 `vulnerability_findings`라, 어느 데이터베이스에서든 0이 나왔습니다. 데이터베이스가 실제로 오염돼 있었으므로 결론은 그대로 살아남았고 어긋나 보이는 곳이 없었습니다. 이 종류가 잡기 어려운 이유가 그것입니다. 답은 맞았고 근거만 비어 있었습니다.
 
 같은 질의를 존재한다고 아는 것에 먼저 걸어 보십시오. 그 양성 대조가 없으면 0은 아무 뜻도 없습니다.
+### 로컬 실행: Postgres도 Redis도 실행마다 따로 씁니다
+
+이 스위트는 실제 Postgres와 실제 Redis에 붙고, 둘 다 자동으로 격리되지 않습니다. 같은 데이터베이스나 같은 Redis 인덱스를 가리키는 실행 둘은 서로 간섭하는데, 간섭하는 방식이 아주 다릅니다.
+
+**데이터베이스**를 공유하면 곧바로 드러납니다. alembic이 거부하거나, 테스트가 자기가 쓰지 않은 행을 읽습니다. "브랜치마다 데이터베이스 하나"가 관행으로 자리 잡은 이유가 그것입니다. 실행마다 따로 만드십시오.
+
+```bash
+createdb trusca_mybranch          # 또는 docker exec ... psql -c 'CREATE DATABASE ...'
+export DATABASE_URL=postgresql+asyncpg://trustedoss:trustedoss@localhost:5432/trusca_mybranch
+```
+
+**Redis 인덱스**를 공유하면 조용합니다. 그래서 관행이 생기지 않았습니다. Celery 브로커가 거기 있으므로, 다른 실행이 띄운 워커가 이 실행이 발행한 메시지를 그대로 가져갑니다. 작업은 도착하지 않고 테스트는 시간 초과까지 기다리며, 그 실패는 지금 손에 든 코드의 결함처럼 보입니다. 아무도 쓰지 않는 인덱스를 잡으십시오.
+
+```bash
+export REDIS_URL=redis://localhost:6379/7   # 비어 있는 아무 인덱스
+```
+
+`conftest.py`가 세션 시작 시 이것을 확인해, 인덱스에 이미 키가 있으면 개수와 표본을 찍고 실행을 멈춥니다. 아무것도 지우지 않습니다. 공유 중인 인덱스를 비우면 실행 중인 다른 쪽이 깨지기 때문입니다. 자기 실행이 남긴 것이면 직접 지우고, 아니면 자리를 옮기십시오.
+
+CI에는 이 준비가 필요 없습니다. 잡마다 Postgres와 Redis 컨테이너를 따로 받으므로 워크플로의 고정된 URL이 이미 그 잡 전용입니다.
 
 ### Coverage
 
