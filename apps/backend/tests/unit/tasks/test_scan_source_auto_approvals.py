@@ -21,11 +21,9 @@ mirroring the ``sync_session`` fixture in
 
 from __future__ import annotations
 
-import subprocess
 import uuid
 from collections.abc import Iterator
 from datetime import UTC, datetime
-from pathlib import Path
 
 import pytest
 from sqlalchemy import create_engine, select
@@ -52,8 +50,7 @@ from tasks.scan_source import (
     _CONDITIONAL_RANK,
     _conditional_component_ids,
 )
-
-BACKEND_ROOT = Path(__file__).resolve().parent.parent.parent.parent
+from tests._db_required import migrate_to_head
 
 pytestmark = pytest.mark.integration
 
@@ -79,26 +76,7 @@ _ALEMBIC_RAN = False
 
 @pytest.fixture(scope="module", autouse=True)
 def _migrate_once() -> None:
-    import os
-
-    if not os.getenv("DATABASE_URL"):
-        pytest.skip("DATABASE_URL not set — skip auto-approval DB tests")
-    global _ALEMBIC_RAN
-    if _ALEMBIC_RAN:
-        return
-    result = subprocess.run(
-        ["alembic", "upgrade", "head"],
-        cwd=BACKEND_ROOT,
-        capture_output=True,
-        text=True,
-        timeout=120,
-    )
-    if result.returncode != 0:
-        pytest.skip(
-            f"alembic upgrade head failed:\nstdout:\n{result.stdout}\n"
-            f"stderr:\n{result.stderr}"
-        )
-    _ALEMBIC_RAN = True
+    migrate_to_head()
 
 
 @pytest.fixture

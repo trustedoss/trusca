@@ -19,8 +19,6 @@ DB tests run against a FRESH test DB (DATABASE_URL only) per the r1 brief.
 
 from __future__ import annotations
 
-import os
-import subprocess
 import tarfile
 import uuid
 from collections.abc import Iterator
@@ -30,9 +28,7 @@ import pytest
 
 from integrations import govulncheck as gv
 from tasks import scan_reachability as sr
-
-BACKEND_ROOT = Path(__file__).resolve().parent.parent.parent.parent
-
+from tests._db_required import migrate_to_head
 
 # ---------------------------------------------------------------------------
 # Pure-unit: _lookup_verdict
@@ -464,24 +460,7 @@ _ALEMBIC_RAN = False
 
 @pytest.fixture(scope="module")
 def _migrate_once() -> None:
-    if not os.getenv("DATABASE_URL"):
-        pytest.skip("DATABASE_URL not set — skip reachability DB tests")
-    global _ALEMBIC_RAN
-    if _ALEMBIC_RAN:
-        return
-    result = subprocess.run(
-        ["alembic", "upgrade", "head"],
-        cwd=BACKEND_ROOT,
-        capture_output=True,
-        text=True,
-        timeout=180,
-    )
-    if result.returncode != 0:
-        pytest.skip(
-            f"alembic upgrade head failed:\nstdout:\n{result.stdout}\n"
-            f"stderr:\n{result.stderr}"
-        )
-    _ALEMBIC_RAN = True
+    migrate_to_head()
 
 
 @pytest.fixture
