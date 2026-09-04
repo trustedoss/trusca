@@ -158,7 +158,7 @@ live portal and surfaced 70 unique defects that our unit / functional / e2e
 suites — all green — had missed. The post-mortem traced them to a handful of
 structural blind spots; each rule below closes one and names the defect class
 that proved it. These rules are binding for new PRs (they mirror CLAUDE.md §2).
-Rule 6 came later, from the 2026-09 adoption-readiness review.
+Rules 6 to 8 came later, from the 2026-09 adoption-readiness review.
 
 ### 1. Security assertions are permission × state matrices
 
@@ -228,6 +228,31 @@ helper does not auto-commit, and its docstring says so). Neither task had a
 test that executed it, and a test that only imports a task, or asserts on a
 helper the task calls, cannot see this. Every task that writes gets at least
 one test that runs it and reads the row back from the database.
+
+### 7. Break what a new assertion guards, and watch it fail
+
+A passing test does not tell you what it holds. Five assertions in the
+adoption-readiness review held nothing: a limit check that passed because the
+same number appeared in the docs with a different meaning; a call check that
+passed on the name appearing in a comment; a blocking check that passed
+because deleting the block still failed the scan for a different reason; a
+naming check that passed with the email still inside the name; an
+invalidation check that only ever read the last token a loop captured. Watch
+for containment checks, for assertions that ask whether something failed but
+not why, and for a value captured in a loop. Write the assertion, then break
+the thing it guards and confirm the test goes red.
+
+### 8. When a mutation survives for no clear reason, look for a second layer
+
+Two layers that can produce the same outcome hide each other: delete either
+and the result is unchanged, so neither is verified. The reverse also
+happens, where an outer check keeps the inner one unreachable, so what looks
+like two defences is one and relaxing the outer silently removes the inner.
+Three cases in the adoption-readiness review: a checksum verification the
+manifest pre-check kept unreachable; a sign-in throttle where the router's
+early rejection and the counter's guard covered for each other; an audit
+trigger the GRANT layer had kept from ever being exercised. Assert separately
+that each layer is reached and that it works alone.
 
 ### Two regression nets, on purpose
 
