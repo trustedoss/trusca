@@ -78,6 +78,17 @@ def _redis_index_is_not_shared() -> None:
     outside, and only you know which it is. Nothing is deleted: on a shared
     index, clearing it would break whoever else is mid-run.
 
+    What it does NOT cover: this looks once, at session start. An index that
+    is empty now can be joined a second later by a run that starts after this
+    one, and nothing here notices. So a quiet start means "nobody was here
+    when I began", not "this run has the index to itself". The convention of
+    one index per session is what provides the second half; this only catches
+    the case where somebody is already there.
+
+    Skipped entirely when ``REDIS_URL`` is unset, matching the tests that
+    need a broker: they skip on the same condition, so a run without one is
+    not made to fail here for a resource it was never going to use.
+
     CI does not hit this. Its redis is a fresh container per job, so the
     index is empty and the check passes without comment.
     """
@@ -101,7 +112,9 @@ def _redis_index_is_not_shared() -> None:
         "messages published here.\n"
         "If these are leftovers from your own earlier run, clear them "
         "yourself and re-run. If they are not yours, point REDIS_URL at an "
-        "index nobody else is using.",
+        "index nobody else is using.\n"
+        "Note that this is checked only at session start: an index empty now "
+        "can still be joined by a run that begins after this one.",
         returncode=3,
     )
 
