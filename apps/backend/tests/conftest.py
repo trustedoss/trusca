@@ -91,6 +91,30 @@ def _redis_index_is_not_shared() -> None:
 
     CI does not hit this. Its redis is a fresh container per job, so the
     index is empty and the check passes without comment.
+
+    A limit worth knowing, and how to see whether it still holds.
+
+    This check reads ``REDIS_URL`` once, at session start.
+    ``core/ratelimit.py`` binds its storage when the module is imported. If
+    anything changed ``REDIS_URL`` between those two moments, the two would
+    watch different indexes and this check would guard the wrong one.
+
+    As of 2026-09-04 nothing does, for two independent reasons. Seven places
+    write ``REDIS_URL`` (three in ``tests/unit/test_celery_app.py``, four in
+    ``tests/unit/tasks/test_progress_publisher.py``), and all seven are
+    ``monkeypatch.setenv`` inside plain test functions rather than fixtures,
+    so they revert at teardown. Every value they write points at a host that
+    does not exist - ``example-a``, ``primary.local``, ``broker-a.local``,
+    ``only-one-url.local`` - or at ``localhost:6390``, which is not this
+    Redis. Either reason alone would be enough.
+
+    To check whether that is still true, parse the test tree and find calls
+    that WRITE the variable - ``monkeypatch.setenv``, ``os.environ[...] =``,
+    ``setdefault``, ``delenv`` - with ``"REDIS_URL"`` as the name; reading it
+    is harmless. For each, ask two things: is it inside a fixture (which would
+    outlive the test), and does its value name a host that actually exists. A
+    count other than seven means somebody added one, which is the signal to
+    look rather than assume.
     """
     import os
 
@@ -216,3 +240,42 @@ async def _isolate_engine_per_test() -> AsyncIterator[None]:
         del app.state.__dict__["engine"]
     if "session_factory" in app.state.__dict__:
         del app.state.__dict__["session_factory"]
+
+
+@pytest.fixture(scope="session", autouse=True)
+def _schema_is_left_where_the_migration_put_it():
+    """Notice a test that changes the schema and does not change it back.
+
+    The migration now runs once per process and the result is remembered, so
+    a module that damages the schema is no longer repaired by the next
+    module's own `alembic upgrade head`. Nobody designed that repair - it was
+    a side effect of every module migrating for itself - and removing it took
+    nothing away that anyone was relying on. But it did remove a safety net,
+    and the way that shows up is a failure in an unrelated module much later,
+    with the cause far behind it.
+
+    A comment would not help: the person who writes a schema-mutating test is
+    not the person reading this file. So the session checks instead. It costs
+    one query, and it cannot name the guilty test - it only says the schema
+    moved during this run. That is still worth much more than chasing an
+    unrelated failure next week.
+
+    Both current mutators put things back themselves: `test_health_ready.py`
+    rewinds `alembic_version` and restores it in `finally`, and
+    `test_backup_task_round_trip.py` drops and restores from its own dump.
+    """
+    yield
+    from tests import _db_required
+
+    expected = _db_required.revision_after_migrating()
+    if expected is None:
+        return  # this run never migrated; there is nothing to compare against
+    actual = _db_required.head_revision()
+    if actual is None:
+        return  # the database went away; that is its own, louder problem
+    assert actual == expected, (
+        f"the schema revision changed during this run: {expected} -> {actual}. "
+        "Some test moved it and did not move it back. Because the migration is "
+        "cached per process, nothing repairs that afterwards, and later "
+        "failures in unrelated modules are the symptom."
+    )

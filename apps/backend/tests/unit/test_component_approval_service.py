@@ -25,8 +25,6 @@ Coverage target: ≥ 80% of service code changed in this PR.
 
 from __future__ import annotations
 
-import os
-import subprocess
 import uuid
 from collections.abc import AsyncIterator
 from pathlib import Path
@@ -52,6 +50,7 @@ from services.component_approval_service import (
     resolve_requester_name,
     transition_approval,
 )
+from tests._db_required import migrate_to_head, require_database_url
 from tests._helpers import (
     make_membership,
     make_organization,
@@ -162,36 +161,11 @@ def test_terminal_states_have_no_transitions() -> None:
 # ---------------------------------------------------------------------------
 
 
-def _alembic_head() -> None:
-    """Run `alembic upgrade head` against the test DB."""
-    result = subprocess.run(
-        ["alembic", "upgrade", "head"],
-        capture_output=True,
-        text=True,
-        cwd=str(BACKEND_ROOT),
-    )
-    if result.returncode != 0:
-        raise RuntimeError(f"alembic upgrade failed:\n{result.stderr}")
-
-
 @pytest.fixture(scope="module")
 def db_url() -> str:
-    url = os.environ.get("DATABASE_URL", "")
-    if not url:
-        pytest.skip("DATABASE_URL not set — skipping DB-backed tests")
-    return url
+    return require_database_url()
 
 
-_ALEMBIC_RAN = False
-
-
-def _alembic_once() -> None:
-    """Run alembic upgrade head only once per pytest session."""
-    global _ALEMBIC_RAN
-    if _ALEMBIC_RAN:
-        return
-    _alembic_head()
-    _ALEMBIC_RAN = True
 
 
 @pytest.fixture
@@ -202,7 +176,7 @@ async def db_session_factory(db_url: str) -> AsyncIterator[async_sessionmaker[As
     event loop cause asyncpg "another operation is in progress" errors —
     function scope here keeps each test isolated to its own loop.
     """
-    _alembic_once()
+    migrate_to_head()
     engine = create_async_engine(db_url, echo=False)
     factory = async_sessionmaker(engine, expire_on_commit=False)
 

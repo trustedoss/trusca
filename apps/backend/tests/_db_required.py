@@ -90,6 +90,10 @@ def require_database_url() -> str:
 # costs one dict lookup and means none ever can.
 _ATTEMPTS: dict[str, subprocess.CompletedProcess[str]] = {}
 
+# The revision the database reported just after this process migrated it, so
+# the end of the session can tell whether something moved it since.
+_REVISION_AFTER_MIGRATION: str | None = None
+
 
 def _attempt_migration(timeout: float) -> subprocess.CompletedProcess[str]:
     """Run `alembic upgrade head` once per process and remember the outcome.
@@ -186,6 +190,9 @@ def migrate_to_head(timeout: float = 120) -> None:
     """
     result = _attempt_migration(timeout)
     unreachable = connection_error() if result.returncode != 0 else None
+    global _REVISION_AFTER_MIGRATION
+    if result.returncode == 0 and _REVISION_AFTER_MIGRATION is None:
+        _REVISION_AFTER_MIGRATION = head_revision()
     if result.returncode != 0 and unreachable is None:
         pytest.fail(
             "alembic upgrade head failed against a database that is up, so "
@@ -206,3 +213,23 @@ def migrate_to_head(timeout: float = 120) -> None:
 def _reset_for_testing() -> None:
     """Forget every attempt. For this module's own tests only."""
     _ATTEMPTS.clear()
+
+def head_revision() -> str | None:
+    """The revision the database currently reports, or None if unknowable."""
+    from core.config import database_url_owner_sync
+
+    try:
+        import psycopg2
+
+        with psycopg2.connect(database_url_owner_sync(), connect_timeout=5) as conn:
+            with conn.cursor() as cur:
+                cur.execute("SELECT version_num FROM alembic_version")
+                row = cur.fetchone()
+                return row[0] if row else None
+    except Exception:  # noqa: BLE001 - no answer is not a failure to report
+        return None
+
+
+def revision_after_migrating() -> str | None:
+    """What the revision was just after this process migrated, if it did."""
+    return _REVISION_AFTER_MIGRATION

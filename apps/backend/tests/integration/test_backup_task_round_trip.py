@@ -29,7 +29,6 @@ nothing else.
 
 from __future__ import annotations
 
-import os
 import subprocess
 import uuid
 from contextlib import contextmanager
@@ -40,15 +39,9 @@ import pytest
 from sqlalchemy import text
 
 from core.config import database_url
+from tests._db_required import require_database_url
 
 pytestmark = pytest.mark.integration
-
-
-def _require_database_url() -> str:
-    url = os.getenv("DATABASE_URL")
-    if not url:
-        pytest.skip("DATABASE_URL not set — skip backup round-trip integration test")
-    return url
 
 
 def _require_pg_client() -> None:
@@ -125,7 +118,7 @@ async def test_backup_round_trip_preserves_sentinel_row(
     don't pollute audit_logs (the test cleans up only the sentinel
     table, not the audit log).
     """
-    _require_database_url()
+    require_database_url()
     _require_pg_client()
 
     from sqlalchemy.ext.asyncio import create_async_engine

@@ -32,29 +32,52 @@ from pathlib import Path
 
 TESTS_ROOT = Path(__file__).resolve().parent.parent
 
-# Modules that legitimately touch the database machinery without a gate.
+# Modules that legitimately touch the database machinery without using the
+# shared gate, and why each cannot. The reason matters more than the entry: it
+# is what tells the next person whether a file may come off this list.
+#
+# Two kinds so far, and a third would want its own paragraph rather than being
+# filed under "special".
+#
+#   Testing the tool itself. Running the migration is the subject, so gating on
+#   it removes what the test exists to check.
+#
+#   Migrating a different database. The helper migrates the configured
+#   DATABASE_URL and caches per URL; a module that builds its own database and
+#   migrates that cannot delegate to it. (Note this is not the same as needing
+#   the database in a particular state - that a module can arrange for itself,
+#   and test_bootstrap_from_empty.py does exactly that, migrating to head
+#   through the helper and then truncating.)
 EXEMPT: dict[str, str] = {
     "unit/core/test_config_database_url.py": (
-        "Tests core.config.database_url itself by deleting DATABASE_URL from "
-        "the environment. Gating it on that variable would remove its subject."
+        "Tests the tool itself: core.config.database_url is the subject, and it "
+        "is exercised by deleting DATABASE_URL from the environment. Gating on "
+        "that variable would remove what is being tested."
+    ),
+    "integration/test_alembic_upgrade.py": (
+        "Tests the tool itself: that `alembic upgrade head` succeeds and that "
+        "`alembic current` then reports head. The migration running IS the "
+        "assertion."
+    ),
+    "integration/test_scan_dependency_fingerprint_migration.py": (
+        "Tests the tool itself: the shape revision 0070 leaves behind, and that "
+        "its downgrade() fails loudly instead of silently doing nothing."
+    ),
+    "integration/test_app_role_grant_matrix.py": (
+        "Migrates a different database: it creates a throwaway one, then runs "
+        "alembic against it in a subprocess with DATABASE_URL repointed, to "
+        "test the role-first-then-migrate ordering. The helper migrates the "
+        "configured database, which is not the one under test here."
     ),
 }
 
-# DEBT, not a directory. These modules still carry their own copy of the gate
-# and are being moved to tests._db_required in batches. Nothing may be added:
-# the count is asserted to only ever fall, so a new entry fails this test even
-# though the code it describes works. If you are writing a new module that
-# needs a database, import tests._db_required - do not add yourself here.
-STILL_ROLLING_THEIR_OWN: frozenset[str] = frozenset({
-    "integration/test_alembic_upgrade.py",
-    "integration/test_app_role_grant_matrix.py",
-    "integration/test_backup_task_round_trip.py",
-    "integration/test_bootstrap_from_empty.py",
-    "integration/test_create_super_admin_ensure_active.py",
-    "integration/test_health_ready.py",
-    "integration/test_scan_dependency_fingerprint_migration.py",
-    "unit/test_component_approval_service.py",
-})
+# DEBT, and now empty: every module that gates on the database calls
+# tests._db_required. It stays here because the assertions below still use it,
+# and because a future bulk change might need it again - but it starts at zero
+# and may only ever be zero. Nothing may be added: a new entry fails this test
+# even though the code it describes works. If you are writing a module that
+# needs a database, import tests._db_required.
+STILL_ROLLING_THEIR_OWN: frozenset[str] = frozenset()
 
 
 def _string_constants(node: ast.AST) -> set[str]:
@@ -201,17 +224,27 @@ def test_no_module_reaches_the_database_without_gating_on_it() -> None:
 
 
 def test_the_exemptions_are_all_real() -> None:
-    # An exemption for a module that no longer exists, or that has since grown
-    # a gate, is a line nobody will remove on their own.
-    uses, gated, _ = _survey()
+    """An exemption for a file that no longer exists is a line nobody removes.
+
+    What an exemption means is "this module may keep its own arrangement", not
+    "this module has no gate". The first version asserted the latter, because
+    the only exemption then was a module with no gate at all; the three added
+    when the last batch landed do gate, with their own copy, for reasons the
+    list states. So the check is that the file exists and still uses the
+    database - not what shape its gate has.
+    """
+    uses, _gated, _own = _survey()
     for module in EXEMPT:
         assert (TESTS_ROOT / module).exists(), f"{module} is exempted but does not exist"
         assert module in uses, f"{module} is exempted but does not use the database"
-        assert module not in gated, f"{module} now gates properly; drop the exemption"
+        assert EXEMPT[module].strip(), f"{module} is exempted without a reason"
 
 
 def test_the_debt_list_only_shrinks() -> None:
     _, _, own_copy = _survey()
+    # Exempt modules keep their own gate on purpose; that is what the exemption
+    # is for, so they are not debt.
+    own_copy = {m for m in own_copy if m not in EXEMPT}
     added = own_copy - STILL_ROLLING_THEIR_OWN
     assert not added, (
         "these modules gate on the database with their own copy instead of "

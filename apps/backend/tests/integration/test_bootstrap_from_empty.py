@@ -25,7 +25,6 @@ See ``services/admin_team_service.py::_pick_default_org`` and
 from __future__ import annotations
 
 import os
-import subprocess
 import uuid
 from collections.abc import AsyncIterator, Iterator
 from pathlib import Path
@@ -34,46 +33,17 @@ import pytest
 from httpx import ASGITransport, AsyncClient
 from sqlalchemy import create_engine, text
 
+from tests._db_required import migrate_to_head, require_database_url
+
 BACKEND_ROOT = Path(__file__).resolve().parent.parent.parent
 PROBLEM_JSON = "application/problem+json"
 
 pytestmark = [pytest.mark.integration, pytest.mark.serial]
 
 
-def _require_database_url() -> str:
-    url = os.getenv("DATABASE_URL")
-    if not url:
-        pytest.skip("DATABASE_URL not set, skip bootstrap-from-empty test")
-    return url
-
-
 def _sync_dsn(url: str) -> str:
     """asyncpg DSN -> psycopg2 DSN (mirrors core.config.database_url_sync)."""
     return url.replace("postgresql+asyncpg://", "postgresql://")
-
-
-def _migrate_to_head(url: str) -> None:
-    """Bring the schema to head via the real Alembic CLI (not the ORM).
-
-    Mirrors the ``_migrate_once`` pattern used by
-    ``test_auth_flow.py`` / ``test_audit_log_db_immutable.py`` /
-    ``test_role_separation.py``: a fresh install runs ``alembic upgrade
-    head`` before anything else touches the database, so the test should
-    exercise that exact path rather than ``Base.metadata.create_all``.
-    """
-    result = subprocess.run(
-        ["alembic", "upgrade", "head"],
-        cwd=BACKEND_ROOT,
-        capture_output=True,
-        text=True,
-        timeout=120,
-    )
-    if result.returncode != 0:
-        pytest.skip(
-            "alembic upgrade head failed; bootstrap-from-empty test cannot run\n"
-            f"stdout:\n{result.stdout}\nstderr:\n{result.stderr}"
-        )
-    del url  # dsn not needed by the CLI invocation; kept for signature symmetry
 
 
 def _all_public_tables(conn) -> set[str]:  # type: ignore[no-untyped-def]
@@ -280,8 +250,8 @@ def pristine_db() -> Iterator[None]:
     an enforced one. The marker exists so a future parallelization change
     has something to grep for.
     """
-    url = _require_database_url()
-    _migrate_to_head(url)
+    url = require_database_url()
+    migrate_to_head()
     _truncate_every_table_except_alembic_version(url)
     yield
 
