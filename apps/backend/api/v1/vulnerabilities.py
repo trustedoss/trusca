@@ -190,12 +190,13 @@ async def list_project_vulnerabilities_endpoint(
     ),
     assignee: str | None = Query(
         default=None,
-        pattern=r"^(me|unassigned)$",
+        pattern=r"^(me|unassigned|inactive)$",
         description=(
-            "Ownership filter (ER28b). `me` returns the caller's own findings, "
-            "`unassigned` the ones nobody has taken. Deliberately not a user "
-            "id: a developer can only assign to themselves, because no "
-            "endpoint lets them enumerate their team, so accepting an id "
+            "Ownership filter. `me` returns the caller's own findings, "
+            "`unassigned` the ones nobody has taken, and `inactive` the ones "
+            "assigned to somebody whose account is closed, which look owned "
+            "and cannot move. Values name a state rather than a person: the "
+            "parameter already says whose. Deliberately not a user id, which "
             "would add a way to ask which findings a named person owns "
             "without any screen needing it."
         ),
@@ -281,7 +282,7 @@ async def export_project_vulnerabilities_csv_endpoint(
     min_epss: float | None = Query(default=None, ge=0, le=1),
     reachable: str | None = Query(default=None, pattern=r"^(true|false|unknown)$"),
     sla: str | None = Query(default=None, pattern=r"^(overdue|imminent|ok)$"),
-    assignee: str | None = Query(default=None, pattern=r"^(me|unassigned)$"),
+    assignee: str | None = Query(default=None, pattern=r"^(me|unassigned|inactive)$"),
     sort: str = Query(
         default="severity",
         pattern=r"^(severity|cvss|status|discovered_at|epss|reachable|component|priority|sla_due)$",

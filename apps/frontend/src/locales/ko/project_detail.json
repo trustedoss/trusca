@@ -527,6 +527,7 @@
       "assignee_label": "담당",
       "assignee_me": "내 것",
       "assignee_unassigned": "미배정",
+      "assignee_inactive": "담당자 비활성",
       "minEpss": "EPSS ≥",
       "minEpssClear": "지우기",
       "minEpssHint": "0과 1 사이의 EPSS 확률을 입력하면 그 값 이상인 취약점만 표시됩니다.",

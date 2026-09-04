@@ -1427,3 +1427,89 @@ def test_external_package_ecosystems_match_the_shared_fixture() -> None:
     assert fixture_purl_types == PURL_TYPE_BY_SLUG, (
         "PURL_TYPE_BY_SLUG drifted from tests/contracts/external-package-ecosystems.json"
     )
+
+
+def test_the_assignee_filter_vocabulary_is_the_same_in_every_place_it_lives() -> None:
+    """Four copies of three tokens, and nothing compared them until ER67.
+
+    The service validates against ``_VALID_ASSIGNEE_FILTER``, two route
+    parameters validate against a regex, and the frontend keeps its own set to
+    decide whether a URL parameter is worth sending. A token added to the
+    service and missed in a pattern is a 422 on a request the product just
+    learned to make; missed in the frontend, the option is unreachable and
+    nothing reports it.
+
+    All four are read here rather than restated. Restating them would make this
+    a fifth copy, which is the shape of the problem.
+    """
+    import re
+    from pathlib import Path
+
+    from api.v1 import vulnerabilities as routes
+    from services.vulnerability_service import _VALID_ASSIGNEE_FILTER
+
+    expected = set(_VALID_ASSIGNEE_FILTER)
+    assert len(expected) >= 3, "the vocabulary shrank; this contract assumed three"
+
+    source = Path(routes.__file__).read_text(encoding="utf-8")
+    patterns = re.findall(r'pattern=r"\^\(((?:me|unassigned|inactive|\|)+)\)\$"', source)
+    assert len(patterns) == 2, (
+        f"expected two assignee route patterns, found {len(patterns)}. If a "
+        "route was added or removed, this contract has to move with it."
+    )
+    for pattern in patterns:
+        assert set(pattern.split("|")) == expected, (
+            f"a route accepts {sorted(set(pattern.split('|')))} while the "
+            f"service accepts {sorted(expected)}. The narrower one wins at "
+            "runtime, so a token the product sends is refused at the edge."
+        )
+
+    frontend = (
+        Path(__file__).resolve().parents[4]
+        / "apps/frontend/src/features/projects/components/VulnerabilitiesTab.tsx"
+    )
+    assert frontend.is_file(), f"frontend mirror moved: {frontend}"
+    mirror = re.search(
+        r"VALID_ASSIGNEE = new Set<AssigneeFilter>\(\[([^\]]*)\]\)",
+        frontend.read_text(encoding="utf-8"),
+    )
+    assert mirror, "the frontend no longer declares VALID_ASSIGNEE as a literal set"
+    tokens = {t.strip().strip('"').strip("'") for t in mirror.group(1).split(",") if t.strip()}
+    assert tokens == expected, (
+        f"the frontend accepts {sorted(tokens)} and the service accepts "
+        f"{sorted(expected)}. A token missing there makes the filter "
+        "unreachable from the screen with nothing reporting it."
+    )
+
+
+def test_the_guide_documents_every_ownership_filter_token() -> None:
+    """Hardening rule 4. The guide tells people what to type in the URL.
+
+    Each token is a thing a reader can put in a link, so one that exists and is
+    not described is a feature nobody finds, and one that is described and does
+    not exist is a link that 422s. Read off the service rather than listed
+    here, so adding a token without a word in the guide fails.
+    """
+    from pathlib import Path
+
+    from services.vulnerability_service import _VALID_ASSIGNEE_FILTER
+
+    root = Path(__file__).resolve().parents[4]
+    pages = [
+        root / "docs-site/docs/user-guide/vulnerabilities.md",
+        root
+        / "docs-site/i18n/ko/docusaurus-plugin-content-docs/current/user-guide/vulnerabilities.md",
+    ]
+    for page in pages:
+        assert page.is_file(), f"{page} moved; this oracle needs updating"
+        text = page.read_text(encoding="utf-8")
+        missing = sorted(
+            token
+            for token in _VALID_ASSIGNEE_FILTER
+            if f"?assignee={token}" not in text
+        )
+        assert not missing, (
+            f"{page.name} does not show ?assignee={missing}. The filter is "
+            "reachable and undocumented, so the only people who find it are "
+            "the ones who read the source."
+        )

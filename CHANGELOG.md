@@ -9,6 +9,25 @@ and the project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.
 
 ### Added
 
+- **A filter for work that looks owned and cannot move.** `?assignee=inactive`
+  returns findings assigned to somebody whose account has been deactivated.
+  Closing an account does not remove its assignments, because dropping them
+  would hide that somebody had picked the work up, so what is left is a row
+  with a name on it that nobody is acting on. There was no way to find those,
+  which made the sweep after somebody leaves a team impossible to run.
+
+  The value that reports this used to be a correlated subquery, which the
+  planner evaluates above the LIMIT, so filtering on it would have moved the
+  evaluation below and run it once per table row. Measured on 5,000 findings in
+  one scan before changing anything: output-only at `loops=50`, and with a
+  filter the same subplan appeared twice, `loops=50` for the projection and
+  `loops=5000` for the filter. It is an outer join now, `loops=1` either way,
+  so the output-only path did not regress and the filter costs nothing.
+
+  Outer and not inner: an unassigned finding has no user row, and an inner join
+  would have removed every one of them from every list in the product.
+
+
 - **An endpoint that says who a project's work may be assigned to.** `GET
   /v1/projects/{project_id}/assignable-members` returns the people the
   assignment save accepts: members of the team that owns the project, active,

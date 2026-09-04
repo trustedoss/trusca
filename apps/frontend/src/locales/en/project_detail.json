@@ -527,6 +527,7 @@
       "assignee_label": "Owner",
       "assignee_me": "Mine",
       "assignee_unassigned": "Unassigned",
+      "assignee_inactive": "Inactive assignee",
       "minEpss": "EPSS ≥",
       "minEpssClear": "Clear",
       "minEpssHint": "Enter an EPSS probability between 0 and 1 to keep findings at or above it.",

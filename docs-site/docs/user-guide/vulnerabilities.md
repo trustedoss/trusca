@@ -402,15 +402,23 @@ your own name: the control assigns to you, so nobody can be volunteered.
 
 #### Finding your own work {#assignment-filter}
 
-The **Owner** filter offers **Anyone**, **Mine** and **Unassigned**, and the
-choice stays in the URL (`?assignee=me`, `?assignee=unassigned`), so a filtered
-list can be shared or bookmarked. It also carries into the CSV export, where
-**Mine** resolves to whoever exports the file rather than to whoever built the
-link.
+The **Owner** filter offers **Anyone**, **Mine**, **Unassigned** and
+**Inactive assignee**, and the choice stays in the URL (`?assignee=me`,
+`?assignee=unassigned`, `?assignee=inactive`), so a filtered list can be shared
+or bookmarked. It also carries into the CSV export, where **Mine** resolves to
+whoever exports the file rather than to whoever built the link.
 
-One caution: **Unassigned** means the field is genuinely empty. Findings whose
-owner cannot act *do* have an owner, so they will not show up there. Those are
-the ones worth sweeping for separately after somebody leaves the team.
+**Unassigned** means the field is genuinely empty, and that is narrower than it
+sounds. A finding whose owner cannot act still has an owner, so it is not
+unassigned and will not appear there.
+
+**Inactive assignee** is that other group: work assigned to somebody whose
+account has been deactivated. An assignment is not removed when an account
+closes, because dropping it would hide the fact that somebody had picked the
+work up. What it leaves behind is a row that looks owned and cannot move, and
+this is how you find those. The list is the sweep worth running after somebody
+leaves the team, and [what the screen offers](#assignment-on-screen) is what to
+do with each row it returns.
 
 ### Per-severity windows
 
