@@ -96,6 +96,36 @@ to catch: the answer was right and the reasoning was empty.
 
 Point the same query at something you know exists first. Without that
 positive control, a zero means nothing at all.
+### Say in the assertion what it is protecting
+
+A red test means one of two things: you broke something the test was put there
+to hold, or the test describes a world that no longer exists. They look
+identical, and only one of them is fixed by making the test pass. Wrapping it
+in whatever it now needs is always the shorter path, so the ambiguity resolves
+toward erasing the guard.
+
+The way out is that the assertion says what it is for. A body-content test
+went red across twenty-one cases with "No QueryClient set"; the obvious move
+was to wrap it in a provider. Its own docstring said the body is deliberately
+surface-agnostic and that a hard dependency on the drawer would surface here
+first. That sentence turned a mechanical fix into a design change: the editor
+became a slot the surface fills.
+
+Write the reason where the failure will be read, not in a commit message.
+
+### A screen that is half right is harder than one that is all wrong
+
+Nothing fails, no error appears, and part of the interface updates correctly.
+A wrong cache-invalidation key does this: the mutation succeeds, the drawer
+refreshes from its own write, and only the table stays stale. Attention goes
+to the half that looks wrong, which is the table, while the cause sits in the
+half that looks right.
+
+When only part of a view is stale, suspect what connects them before
+suspecting the stale part. The correct half is not evidence that its path is
+sound; often it is correct for a reason that bypasses the broken step
+entirely.
+
 ### A neighbour that passes is not permission {#neighbour-passing}
 
 Writing something the way the file next door writes it, and then finding that
@@ -384,6 +414,14 @@ often enough to name:
   match what a pattern built by hand expects. Parse the structure or compare
   exact strings, and remember that parentheses, brackets and dots inside a
   value mean something else to a regex.
+
+  The same holds for counting things in source. Fixing a helper's return type
+  meant finding every five-element tuple in a test file; `grep` found three,
+  the run still failed, and an `ast` walk found five. The two it missed were
+  written in shapes the pattern did not anticipate, one of them inside a
+  second helper. A pattern finds the notation you imagined; a parse finds what
+  is there. This repository already asserts over ASTs in several places, so it
+  is not a new tool to reach for.
 
   A specific wrong answer is more dangerous than an empty one. Nobody trusts
   a tool that returns nothing, but "13 of 17 checks never ran" carries a
