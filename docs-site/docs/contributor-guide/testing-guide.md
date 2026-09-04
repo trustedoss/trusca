@@ -484,7 +484,7 @@ often enough to name:
 - **A tool found nothing**, and the result alone cannot say whether there was
   nothing to find or whether the tool was not looking there. A repository lint
   run from the wrong tree reports zero findings for a file it never opened.
-  Two ways a hand-built pattern misses what is in front of it. `gh` and
+  *The pattern only finds the notation you imagined.* `gh` and
   `EXPLAIN` return JSON, and a name like `lint (backend)` or a plan node
   nested under `SubPlan` does not match a pattern built without expecting
   parentheses or nesting, so parentheses, brackets and dots inside a value
@@ -496,20 +496,20 @@ often enough to name:
   compare exact strings; this repository already asserts over ASTs in several
   places, so it is not a new tool to reach for.
 
-  Parsing is only half of it, because a parse's output can be read as text
-  again: a census searched `ast.dump()` output for `"alembic"` in double quotes
-  and reported zero, since dump writes apostrophes. Read the nodes.
+  *A parse can be read as text again.* A census searched `ast.dump()` output
+  for `"alembic"` in double quotes and reported zero, since dump writes
+  apostrophes. Read the nodes.
 
-  What such a tool normalises away is its definition of "the same", and that
+  *What you erase in order to compare is what counts as the same.* That
   decision, not the comparison after it, produces the answer. Erasing string
   literals to compare fixtures merged eight unrelated ones, the strings being
   the payload; erasing decorators would have merged different lifetimes.
-  Widening also voids the sample you took before it - counting a second way of
+  *A wider definition needs a fresh sample.* Counting a second way of
   reaching the database swept in eighty-three modules that never open a
-  connection - so re-read what a census catches after every change to what it
+  connection, so re-read what a census catches after every change to what it
   counts. That one was wrong six times, five of them right after it grew.
 
-  A specific wrong answer is more dangerous than an empty one. Nobody trusts a
+  *A specific wrong answer is more dangerous than an empty one.* Nobody trusts a
   tool that returns nothing, but "13 of 17 checks never ran" carries a count
   and a list, and the detail is what makes it credible: it looks like
   arithmetic, and it is arithmetic on a broken premise. Counting is the common
@@ -521,13 +521,13 @@ often enough to name:
   confirm it does. If the answer is a number, check what the number is
   attached to.
 
-  The counterpart is a tool that says what it does not do. `tools/static-checks`
+  *The counterpart: a tool that says what it does not do.* `tools/static-checks`
   names the CI steps it deliberately omits and why, because a local runner that
   silently skips a check and reports success is worse than one admitting the
   gap. Its contract test against the workflow is what caught a later change
   adding a CI step without registering it - not review.
 
-  Testing the checker has its own version of this. The input you plant has to
+  *Testing the checker has its own version of this.* The input you plant has to
   be something the checker declares it catches, or "it did not fire" means
   both "the checker is not running" and "that was never a violation". A
   clumsy Korean sentence planted to prove a style lint was reading a new file
