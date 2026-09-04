@@ -219,15 +219,30 @@ Single-operation tests passed while revoke → re-register was a permanent 409
 (the unique constraint counted revoked rows). Create → revoke → re-create,
 archive → restore → use: test the sequence, not just each verb.
 
-### 6. A task that writes owns a test that runs it
+### 6. Code that writes owns a test that runs it
 
 Two maintenance tasks reported success while writing nothing. They mutated
 rows in memory, put the mutated count in their summary, and never called
 `session.commit()`, so `sync_session_scope` closed and dropped the work (the
 helper does not auto-commit, and its docstring says so). Neither task had a
 test that executed it, and a test that only imports a task, or asserts on a
-helper the task calls, cannot see this. Every task that writes gets at least
-one test that runs it and reads the row back from the database.
+helper the task calls, cannot see this.
+
+This rule first said "background task", and the narrower wording let the same
+defect through again somewhere else. The user-anonymisation service flushed
+and never committed, and `get_db` does not commit either, so all four of its
+routes answered with a populated object and persisted nothing: opening a
+request returned 201 with a real id for a row that was gone a moment later,
+the two-person approval flow was inert end to end, the operator command
+always refused for want of an approved request, and the admin panel built to
+show overdue erasures reported "nothing outstanding" permanently. Every test
+it had called the service functions directly and committed the session
+itself, so every one of them passed.
+
+The defect does not live in tasks. It lives in a write that is never
+committed, and a route, a service, a script or a task can all host one. Any
+code that writes gets at least one test that drives it the way production
+does and then asks again, in a separate read, whether the write survived.
 
 ### 7. Break what a new assertion guards, and watch it fail
 
@@ -241,6 +256,34 @@ invalidation check that only ever read the last token a loop captured. Watch
 for containment checks, for assertions that ask whether something failed but
 not why, and for a value captured in a loop. Write the assertion, then break
 the thing it guards and confirm the test goes red.
+
+The ways an assertion stops being able to fail repeat, and six have shown up
+often enough to name:
+
+- **The manipulation never reached the target**, so nothing changed and the
+  test passed on an unchanged system. See rule 8.
+- **The code that writes and the code that reads are the same**, so any
+  implementation agrees with itself.
+- **A tool found nothing**, and the result alone cannot say whether there was
+  nothing to find or whether the tool was not looking there. A repository lint
+  run from the wrong tree reports zero findings for a file it never opened.
+- **A fixture never populated the field**, so a guard over that field is blind
+  and reports success for every input.
+- **Isolation removed a condition rather than removing noise.** Running one
+  file alone, using a minimal fixture, mocking a dependency and testing a
+  function directly all change the conditions instead of clearing them. A
+  celery registration check failed when its file ran alone and passed in the
+  full suite, and the single-file failure was read as the clean result; the
+  imports performed by other test modules were part of what the assertion
+  depended on. Before drawing a conclusion from an isolated run, name what
+  the isolation took away.
+- **A comparison was read past what it can answer.** Running the same test on
+  your branch and on `main` says whether your change caused the result and
+  nothing about what did: whatever both sides share, the invocation included,
+  is invisible to it. The same celery check failed identically on both
+  branches, which established "not mine" and was then read as "not the way I
+  ran it" as well. Any A/B has this limit, whether the pair is two branches,
+  two environments or two configurations.
 
 ### 8. When a mutation survives for no clear reason, check it landed, then look for a second layer
 
@@ -286,6 +329,14 @@ and the gate is a ratchet: new bypasses fail, files that grow fail, and
 files that shrink also fail, asking for the lowered baseline to be
 committed. That last direction is the point — a budget you paid down but
 did not record is a budget someone else can spend.
+
+A consequence worth stating, because it catches people copying from the file
+next door: a raw colour class you can see in `apps/frontend/src` is not
+evidence that raw colour classes are allowed. It may be an entry in the
+baseline. The health panels all write `text-slate-600` for a muted badge, and
+a new panel written the same way fails the gate while its neighbours pass.
+Check the baseline before following a neighbour; reading it costs less than a
+round trip through CI.
 
 ```bash
 npm run token:lint          # check
