@@ -31,14 +31,21 @@ Operators set the secret directly in the database:
 <!-- docs-uat: id=webhooks-secret-sql kind=sql ctx=postgres tier=manual waiver=operator-sql-placeholder-project-uuid -->
 ```sql
 UPDATE projects
-   SET webhook_secret = encode(gen_random_bytes(32), 'base64')
+   SET webhook_secret = encode(gen_random_bytes(32), 'base64'),
+       webhook_provider = 'github'   -- or 'gitlab'
  WHERE id = '<project-uuid>'
-RETURNING webhook_secret;
+RETURNING webhook_secret, webhook_provider;
 ```
 
-`RETURNING` prints the generated secret so you do not need a second query for
-it. Share it with the repo owner to paste into GitHub/GitLab → Settings →
-Webhooks → "Secret".
+Both columns, and the second one is not optional. The gateway looks a project
+up by its git URL, its secret being set, AND `webhook_provider` matching the
+kind of delivery that arrived, so that one provider's secret cannot be replayed
+against the other. A row with a secret and no provider matches nothing: every
+delivery is refused, the operator has done what this page said, and the only
+symptom is that scans never start.
+
+`RETURNING` prints both so you do not need a second query. Share the secret with
+the repo owner to paste into GitHub/GitLab → Settings → Webhooks → "Secret".
 
 The column holds the secret verbatim — it is the HMAC key the portal verifies
 deliveries with, so it cannot be hashed. Treat a database dump accordingly, and

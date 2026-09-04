@@ -222,6 +222,23 @@ and the project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.
 
 ### Fixed
 
+- **The documented way to turn a webhook on did not turn it on.** Activation is
+  operator-only in this release, so the guide's `UPDATE` is the procedure. It
+  set `webhook_secret` and left `webhook_provider` NULL, and the gateway
+  matches a project on its git URL, its secret being set, and its provider
+  agreeing with the delivery that arrived. A row with a secret and no provider
+  matched nothing, for GitHub and GitLab alike.
+
+  Nothing said so. The operator had followed the page, the deliveries were
+  refused, and the only symptom was that scans never started. Nothing in
+  product code writes that column, so every deployment that followed the page
+  is in this state.
+
+  The statement now sets both, and a test reads it out of the page, runs it,
+  and asks the gateway's own lookup whether the project is found. Restoring the
+  old statement fails that test for both providers.
+
+
 - **A worker that registered none of the portal's tasks used to start anyway,
   and then destroy the work it could not do.** Measured: such a worker logs
   `ready.` like a healthy one, and when a scan arrives it answers `Received
