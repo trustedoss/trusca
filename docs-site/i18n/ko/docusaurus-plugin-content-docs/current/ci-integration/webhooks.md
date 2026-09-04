@@ -31,14 +31,20 @@ Project Settings 탭은 아직 Webhook 컨트롤을 노출하지 않습니다.
 <!-- docs-uat: id=webhooks-secret-sql kind=sql ctx=postgres tier=manual waiver=operator-sql-placeholder-project-uuid -->
 ```sql
 UPDATE projects
-   SET webhook_secret = encode(gen_random_bytes(32), 'base64')
+   SET webhook_secret = encode(gen_random_bytes(32), 'base64'),
+       webhook_provider = 'github'   -- or 'gitlab'
  WHERE id = '<project-uuid>'
-RETURNING webhook_secret;
+RETURNING webhook_secret, webhook_provider;
 ```
 
-`RETURNING`이 생성된 시크릿을 출력하므로 따로 조회할 필요가 없습니다. 이 값을
-레포 소유자에게 전달해 GitHub/GitLab → Settings → Webhooks → "Secret"에 붙여
-넣게 하세요.
+두 컬럼을 함께 씁니다. 두 번째는 선택이 아닙니다. 게이트웨이는 프로젝트를 git URL과
+시크릿 설정 여부와 `webhook_provider`가 도착한 전송의 종류와 일치하는지로 찾습니다. 한
+provider의 시크릿을 다른 쪽에 재사용하지 못하게 하려는 것입니다. 시크릿만 있고 provider가
+없는 행은 아무것도 매칭하지 않습니다. 모든 전송이 거부되고, 운영자는 이 문서가 시킨 대로
+했는데, 보이는 증상은 스캔이 시작되지 않는 것뿐입니다.
+
+`RETURNING`이 둘 다 출력하므로 따로 조회할 필요가 없습니다. 시크릿을 레포 소유자에게
+전달해 GitHub/GitLab → Settings → Webhooks → "Secret"에 붙여 넣게 하세요.
 
 이 컬럼은 시크릿을 그대로 저장합니다. 포털이 전송을 검증할 때 쓰는 HMAC 키라
 해시할 수 없기 때문입니다. 데이터베이스 덤프를 다룰 때 이 점을 감안하시고,
