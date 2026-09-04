@@ -32,6 +32,7 @@ import { useProjectOverview } from "@/features/projects/api/useProjectOverview";
 import { useUpgradeClusters } from "@/features/projects/api/useUpgradeClusters";
 import { useVulnerabilities } from "@/features/projects/api/useVulnerabilities";
 import type {
+  AssigneeFilter,
   ReachabilityFilter,
   SlaFilter,
   SlaStatus,
@@ -246,6 +247,16 @@ const VALID_SLA = new Set<SlaFilter>(SLA_STATUS_VALUES);
  * for "no filter" — same defensive narrowing as `parseReachable` so a
  * hand-edited URL can't wedge the filter into a value the backend 422s on.
  */
+const VALID_ASSIGNEE = new Set<AssigneeFilter>(["me", "unassigned"]);
+
+/** ER28b — `?assignee=me|unassigned`, same single-token shape as `sla`. */
+function parseAssignee(raw: string | null): AssigneeFilter | null {
+  if (raw && VALID_ASSIGNEE.has(raw as AssigneeFilter)) {
+    return raw as AssigneeFilter;
+  }
+  return null;
+}
+
 function parseSla(raw: string | null): SlaFilter | null {
   if (raw && VALID_SLA.has(raw as SlaFilter)) {
     return raw as SlaFilter;
@@ -320,6 +331,11 @@ export function VulnerabilitiesTab({
   // same inline-select pattern as `reachable`).
   const [sla, setSla] = useState<SlaFilter | null>(() =>
     parseSla(searchParams.get("sla")),
+  );
+  // ER28b — ownership filter, `?assignee=me|unassigned`. Two tokens, not a
+  // user id: a developer can only assign to themselves.
+  const [assignee, setAssignee] = useState<AssigneeFilter | null>(() =>
+    parseAssignee(searchParams.get("assignee")),
   );
   // W2 #33 — License-risk multi-select. Mirrors the Components tab's pattern:
   // CSV-encoded in `?license_category=`, the same `parseList` helper, and the
@@ -427,6 +443,7 @@ export function VulnerabilitiesTab({
     setMinEpss(null);
     setReachable(null);
     setSla(null);
+    setAssignee(null);
     setLicenseCategory([]);
     setVexSuppressedOnly(false);
   }
@@ -529,6 +546,7 @@ export function VulnerabilitiesTab({
       min_epss: minEpss,
       reachable,
       sla,
+      assignee,
       license_category: licenseCategory,
       limit: PAGE_SIZE,
       scanId,
@@ -542,6 +560,7 @@ export function VulnerabilitiesTab({
       minEpss,
       reachable,
       sla,
+      assignee,
       licenseCategory,
       scanId,
     ],
@@ -747,6 +766,7 @@ export function VulnerabilitiesTab({
             min_epss: filters.min_epss ?? undefined,
             reachable: filters.reachable ?? undefined,
             sla: filters.sla ?? undefined,
+            assignee: filters.assignee ?? undefined,
           })
         }
         groupBy={groupBy}

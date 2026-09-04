@@ -522,10 +522,14 @@
       "empty": "이 심각도에는 SLA가 없습니다"
     },
     "filter": {
+      "assignee_all": "전체",
+      "assignee_label": "담당",
+      "assignee_me": "내 것",
+      "assignee_unassigned": "미배정",
       "minEpss": "EPSS ≥",
-      "minEpssPlaceholder": "0.00–1.00",
       "minEpssClear": "지우기",
-      "minEpssHint": "0과 1 사이의 EPSS 확률을 입력하면 그 값 이상인 취약점만 표시됩니다."
+      "minEpssHint": "0과 1 사이의 EPSS 확률을 입력하면 그 값 이상인 취약점만 표시됩니다.",
+      "minEpssPlaceholder": "0.00–1.00"
     },
     "vex": {
       "marker": "VEX",
@@ -652,6 +656,7 @@
       "load_more": "더 불러오기"
     },
     "errors": {
+      "assignment_save": "배정 저장",
       "load_failed": "취약점을 불러오지 못했습니다."
     },
     "detail_page": {
@@ -749,7 +754,26 @@
       "advisory_osv": "OSV",
       "advisory_aria": "{{name}}, 새 탭에서 열림"
     },
-    "table_aria": "취약점 목록"
+    "table_aria": "취약점 목록",
+    "assignee": {
+      "assign_to_me": "나에게 배정",
+      "assigned": "배정됨",
+      "assigned_elsewhere": "다른 사람에게 배정됨",
+      "due_help": "직접 정하는 날짜입니다. 이 날짜와 정책 기한 중 이른 쪽이 적용되며 날짜는 UTC 기준으로 읽습니다.",
+      "due_ignored": "적으신 날짜가 더 늦어서 정책 기한 {{policyDate}}이 그대로 적용됩니다.",
+      "due_label": "기한",
+      "inactive": "담당자가 처리할 수 없음",
+      "inactive_help": "계정이 비활성화된 사람에게 배정돼 있어 아무도 처리할 수 없습니다.",
+      "mine": "내가 담당",
+      "save": "저장",
+      "saving": "저장 중",
+      "section_heading": "담당",
+      "take_over": "비활성 담당자에게서 인계받기",
+      "ticket_key_label": "티켓 번호",
+      "ticket_url_label": "티켓 링크",
+      "unassign": "배정 해제",
+      "unassigned": "미배정"
+    }
   },
   "licenses": {
     "tab_label": "라이선스",

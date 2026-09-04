@@ -522,10 +522,14 @@
       "empty": "No SLA for this severity"
     },
     "filter": {
+      "assignee_all": "Anyone",
+      "assignee_label": "Owner",
+      "assignee_me": "Mine",
+      "assignee_unassigned": "Unassigned",
       "minEpss": "EPSS ≥",
-      "minEpssPlaceholder": "0.00–1.00",
       "minEpssClear": "Clear",
-      "minEpssHint": "Enter an EPSS probability between 0 and 1 to keep findings at or above it."
+      "minEpssHint": "Enter an EPSS probability between 0 and 1 to keep findings at or above it.",
+      "minEpssPlaceholder": "0.00–1.00"
     },
     "vex": {
       "marker": "VEX",
@@ -652,6 +656,7 @@
       "load_more": "Load more findings"
     },
     "errors": {
+      "assignment_save": "save the assignment",
       "load_failed": "Could not load vulnerabilities."
     },
     "detail_page": {
@@ -749,7 +754,26 @@
       "advisory_osv": "OSV",
       "advisory_aria": "{{name}}, opens in a new tab"
     },
-    "table_aria": "Vulnerability findings"
+    "table_aria": "Vulnerability findings",
+    "assignee": {
+      "assign_to_me": "Assign to me",
+      "assigned": "Assigned",
+      "assigned_elsewhere": "Assigned to somebody else",
+      "due_help": "A date you commit to. The earlier of this and the policy deadline applies, and dates are read in UTC.",
+      "due_ignored": "The policy deadline of {{policyDate}} still applies, because the date you set is later.",
+      "due_label": "Deadline",
+      "inactive": "Owner cannot act",
+      "inactive_help": "Assigned to somebody whose account is deactivated, so nobody is able to pick this up.",
+      "mine": "Assigned to you",
+      "save": "Save",
+      "saving": "Saving",
+      "section_heading": "Ownership",
+      "take_over": "Take over from the deactivated owner",
+      "ticket_key_label": "Ticket ID",
+      "ticket_url_label": "Ticket link",
+      "unassign": "Unassign",
+      "unassigned": "Unassigned"
+    }
   },
   "licenses": {
     "tab_label": "Licenses",
