@@ -11,42 +11,20 @@ the scan — and ONLY for that scan (a sibling scan's rows are untouched).
 
 from __future__ import annotations
 
-import os
-import subprocess
 from collections.abc import Iterator
-from pathlib import Path
 
 import pytest
 from sqlalchemy import create_engine, func, select
 from sqlalchemy.orm import Session, sessionmaker
 
-BACKEND_ROOT = Path(__file__).resolve().parent.parent.parent.parent
+from tests._db_required import migrate_to_head
 
 pytestmark = pytest.mark.integration
 
 
-def _require_database_url() -> str:
-    url = os.getenv("DATABASE_URL")
-    if not url:
-        pytest.skip("DATABASE_URL not set — skip scan rerun reset test")
-    return url
-
-
 @pytest.fixture(scope="module", autouse=True)
 def _migrate_once() -> None:
-    _require_database_url()
-    result = subprocess.run(
-        ["alembic", "upgrade", "head"],
-        cwd=BACKEND_ROOT,
-        capture_output=True,
-        text=True,
-        timeout=120,
-    )
-    if result.returncode != 0:
-        pytest.skip(
-            "alembic upgrade head failed; scan rerun reset test cannot run\n"
-            f"stdout:\n{result.stdout}\nstderr:\n{result.stderr}"
-        )
+    migrate_to_head()
 
 
 @pytest.fixture

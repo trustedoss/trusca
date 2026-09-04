@@ -37,8 +37,6 @@ passes on one CVE and corrupts five.
 from __future__ import annotations
 
 import json
-import os
-import subprocess
 import uuid
 from collections.abc import Iterator
 from datetime import UTC, datetime, timedelta
@@ -59,6 +57,7 @@ from services.vulnerability_matching import (
     capture_triage_state,
     persist_trivy_findings,
 )
+from tests._db_required import migrate_to_head
 
 BACKEND_ROOT = Path(__file__).resolve().parent.parent.parent.parent
 FIXTURES = BACKEND_ROOT / "tests" / "fixtures" / "sbom_ingest"
@@ -73,28 +72,9 @@ _FIXTURE_PURLS = (
 _EXPECTED_FINDINGS = 5
 
 
-def _require_database_url() -> str:
-    url = os.getenv("DATABASE_URL")
-    if not url:
-        pytest.skip("DATABASE_URL not set — skip triage carry-forward integration")
-    return url
-
-
 @pytest.fixture(scope="module", autouse=True)
 def _migrate_once() -> None:
-    _require_database_url()
-    result = subprocess.run(
-        ["alembic", "upgrade", "head"],
-        cwd=BACKEND_ROOT,
-        capture_output=True,
-        text=True,
-        timeout=120,
-    )
-    if result.returncode != 0:
-        pytest.skip(
-            "alembic upgrade head failed; triage carry-forward cannot run\n"
-            f"stdout:\n{result.stdout}\nstderr:\n{result.stderr}"
-        )
+    migrate_to_head()
 
 
 @pytest.fixture

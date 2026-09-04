@@ -45,6 +45,7 @@ from sqlalchemy import create_engine, select
 from sqlalchemy.orm import Session, sessionmaker
 
 from models import Scan
+from tests._db_required import migrate_to_head
 from tests._helpers import make_membership, make_organization, make_project, make_team, make_user
 
 BACKEND_ROOT = Path(__file__).resolve().parent.parent.parent.parent
@@ -66,13 +67,6 @@ _SCAN_QUEUE = "trustedoss.scan"
 _DEFAULT_QUEUE = "trustedoss.default"
 
 
-def _require_database_url() -> str:
-    url = os.getenv("DATABASE_URL")
-    if not url:
-        pytest.skip("DATABASE_URL not set: skip queue transition-consumption integration")
-    return url
-
-
 def _require_redis_url() -> str:
     url = os.getenv("REDIS_URL")
     if not url:
@@ -82,20 +76,7 @@ def _require_redis_url() -> str:
 
 @pytest.fixture(scope="module", autouse=True)
 def _migrate_once() -> None:
-    _require_database_url()
-    _require_redis_url()
-    result = subprocess.run(
-        ["alembic", "upgrade", "head"],
-        cwd=BACKEND_ROOT,
-        capture_output=True,
-        text=True,
-        timeout=120,
-    )
-    if result.returncode != 0:
-        pytest.skip(
-            "alembic upgrade head failed; queue transition-consumption integration "
-            f"cannot run\nstdout:\n{result.stdout}\nstderr:\n{result.stderr}"
-        )
+    migrate_to_head()
 
 
 @pytest.fixture
