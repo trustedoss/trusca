@@ -57,6 +57,43 @@ class LoginRequest(BaseModel):
     password: str = Field(min_length=1, max_length=256)
 
 
+class MfaVerifyRequest(BaseModel):
+    """Inbound payload for POST /auth/mfa/verify."""
+
+    mfa_token: str = Field(min_length=1, max_length=4096)
+    # Wide enough for a six-digit TOTP code or a recovery code with its
+    # separator, and bounded so a caller cannot make the server hash something
+    # enormous ten times over.
+    code: str = Field(min_length=1, max_length=64)
+
+
+class MfaEnrolStartResponse(BaseModel):
+    """What the setup screen needs to draw a QR code.
+
+    The secret is returned alongside the URI because somebody whose camera or
+    scanner will not cooperate has to be able to type it in, and this is the
+    only moment it can be shown: it is encrypted at rest and never read back
+    out to a client again.
+    """
+
+    secret: str
+    provisioning_uri: str
+    mfa_token: str
+
+
+class MfaEnrolCompleteRequest(BaseModel):
+    """A code proving the authenticator app is working."""
+
+    mfa_token: str = Field(min_length=1, max_length=4096)
+    code: str = Field(min_length=1, max_length=64)
+
+
+class RecoveryCodesResponse(BaseModel):
+    """Shown once. They are stored as hashes, so this is the only readable form."""
+
+    codes: list[str]
+
+
 class UserPublic(BaseModel):
     """Shape returned for every user-bearing response. Never includes secrets."""
 

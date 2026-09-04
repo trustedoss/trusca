@@ -21,8 +21,12 @@ works against `localhost` browsers.
 
 from __future__ import annotations
 
+import json
+import uuid
+
 import structlog
 from fastapi import APIRouter, Cookie, Depends, Request, Response, status
+from jose import JWTError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from core.audit import audit_context
@@ -39,11 +43,20 @@ from core.db import get_db
 from core.errors import problem_response
 from core.login_throttle import clear, record_failure, seconds_until_retry
 from core.ratelimit import LOGIN_RATE_LIMIT, limiter
-from core.security import CurrentUser, get_current_user
+from core.security import (
+    MFA_PENDING_EXPIRE_MINUTES,
+    TOKEN_TYPE_MFA_PENDING,
+    CurrentUser,
+    create_mfa_pending_token,
+    decode_token,
+    get_current_user,
+)
+from models import User
 from schemas.auth import (
     ForgotPasswordRequest,
     LoginRequest,
     MembershipPublic,
+    MfaVerifyRequest,
     RegisterRequest,
     ResetPasswordRequest,
     TokenResponse,
@@ -64,6 +77,7 @@ from services.auth_service import (
     revoke_refresh,
     rotate_refresh,
 )
+from services.mfa_service import MfaError, verify_second_factor
 from services.password_reset_service import (
     InvalidResetToken,
     PasswordResetError,
@@ -76,6 +90,27 @@ log = structlog.get_logger("auth.api")
 
 REFRESH_COOKIE_NAME = "refresh_token"
 REFRESH_COOKIE_PATH = "/auth"
+
+
+def _mfa_required_response(user: User) -> Response:
+    """202 with a pending token: the password was right, a code is owed.
+
+    Not 200, because nothing was signed in; not 401, because nothing was
+    refused. The body carries the pending token rather than a cookie, so
+    nothing about this response resembles a session.
+    """
+    body = {
+        "mfa_required": True,
+        "mfa_token": create_mfa_pending_token(
+            subject=str(user.id), token_type=TOKEN_TYPE_MFA_PENDING
+        ),
+        "expires_in": MFA_PENDING_EXPIRE_MINUTES * 60,
+    }
+    return Response(
+        content=json.dumps(body),
+        media_type="application/json",
+        status_code=status.HTTP_202_ACCEPTED,
+    )
 
 
 def _throttled_response(request: Request, retry_after: int) -> Response:
@@ -230,6 +265,12 @@ async def login(
     ctx["user_id"] = str(user.id)
     audit_context.set(ctx)
 
+    if user.mfa_enabled:
+        # No session yet. What goes back proves the password and nothing else,
+        # and the type check refuses it on every other route, so a client that
+        # ignores the code screen has nothing to ignore it with.
+        return _mfa_required_response(user)
+
     try:
         access_token, refresh_token, _ = await issue_token_pair(session, user=user)
     except StaleCredential as exc:
@@ -243,9 +284,12 @@ async def login(
     # Cleared here, not after the password check, because this is where the
     # request has actually succeeded. The version above cleared on "password
     # correct", which meant the StaleCredential refusal a few lines up returned
-    # 401 with the count already zeroed -- and when a second factor arrives,
-    # whoever adds it would inherit a throttle that a correct password alone
-    # resets, which is the bypass this was meant to avoid.
+    # 401 with the count already zeroed.
+    #
+    # The second factor arrived, and this is the line that comment warned
+    # about. It stays below the branch that hands out a pending token: with MFA
+    # on, a correct password is not a success and must not refill the budget,
+    # or somebody who knows the password gets unlimited attempts at the code.
     await clear(str(payload.email))
 
     body = TokenResponse(
@@ -329,6 +373,76 @@ async def refresh(
         status_code=status.HTTP_200_OK,
     )
     _set_refresh_cookie(response, refresh_token=new_refresh)
+    return response
+
+
+@router.post(
+    "/mfa/verify",
+    response_model=TokenResponse,
+    summary="Finish a sign-in by supplying the second factor (public, rate limited)",
+)
+@limiter.limit(LOGIN_RATE_LIMIT)
+async def mfa_verify(
+    request: Request,
+    payload: MfaVerifyRequest,
+    session: AsyncSession = Depends(get_db),
+) -> Response:
+    """
+    Public. The pending token from `POST /auth/login` is the credential, and it
+    is worth nothing on its own.
+
+    On success: 200 + access_token, refresh as an HttpOnly cookie. This is the
+    first point at which a session exists.
+    """
+    try:
+        claims = decode_token(payload.mfa_token, expected_type=TOKEN_TYPE_MFA_PENDING)
+    except (JWTError, ValueError):
+        return _problem_for_auth_error(request, InvalidCredentials("invalid or expired"))
+
+    user = await session.get(User, uuid.UUID(str(claims["sub"])))
+    if user is None or not user.is_active:
+        return _problem_for_auth_error(request, InvalidCredentials("invalid or expired"))
+
+    # Same counter the password attempts went into, keyed by the same address.
+    # Two counters would mean an attacker could take each to just under its
+    # threshold, doubling what the limit is supposed to allow; and counting
+    # only passwords would leave the code itself unlimited, which for six
+    # digits is a matter of time rather than of difficulty.
+    retry_after = await seconds_until_retry(user.email)
+    if retry_after > 0:
+        return _throttled_response(request, retry_after)
+
+    try:
+        await verify_second_factor(session, user=user, code=payload.code)
+    except MfaError:
+        wait = await record_failure(user.email)
+        if wait > 0:
+            return _throttled_response(request, wait)
+        return _problem_for_auth_error(request, InvalidCredentials("invalid code"))
+
+    ctx = dict(audit_context.get() or {})
+    ctx["user_id"] = str(user.id)
+    audit_context.set(ctx)
+
+    try:
+        access_token, refresh_token, _ = await issue_token_pair(session, user=user)
+    except StaleCredential as exc:
+        return _problem_for_auth_error(request, exc)
+
+    # Here, not after the password. This is the success the throttle counts.
+    await clear(user.email)
+
+    body = TokenResponse(
+        access_token=access_token,
+        token_type="bearer",
+        expires_in=access_token_expire_minutes() * 60,
+    )
+    response = Response(
+        content=body.model_dump_json(),
+        media_type="application/json",
+        status_code=status.HTTP_200_OK,
+    )
+    _set_refresh_cookie(response, refresh_token=refresh_token)
     return response
 
 
