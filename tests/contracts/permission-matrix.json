@@ -15,6 +15,12 @@
     },
     {
       "method": "POST",
+      "path": "/auth/mfa/verify",
+      "gate": "public",
+      "why": "Pre-authentication: the pending token from /auth/login is the credential, and it grants nothing until this call exchanges it for a session."
+    },
+    {
+      "method": "POST",
       "path": "/auth/logout",
       "gate": "public",
       "why": "Pre-authentication: revoking a refresh token must work without a live access token."
@@ -271,6 +277,11 @@
     {
       "method": "POST",
       "path": "/v1/admin/users/{user_id}/unlock-sign-in",
+      "gate": "super_admin_404"
+    },
+    {
+      "method": "POST",
+      "path": "/v1/admin/users/{user_id}/clear-mfa",
       "gate": "super_admin_404"
     },
     {
@@ -1006,6 +1017,21 @@
     {
       "method": "GET",
       "path": "/v1/users/me/export",
+      "gate": "authed"
+    },
+    {
+      "method": "POST",
+      "path": "/v1/users/me/mfa/enrol",
+      "gate": "authed"
+    },
+    {
+      "method": "POST",
+      "path": "/v1/users/me/mfa/enrol/confirm",
+      "gate": "authed"
+    },
+    {
+      "method": "POST",
+      "path": "/v1/users/me/mfa/recovery-codes",
       "gate": "authed"
     },
     {

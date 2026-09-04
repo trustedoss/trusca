@@ -23,15 +23,36 @@ import uuid
 import structlog
 from fastapi import APIRouter, Depends, Request, Response, status
 from fastapi.responses import JSONResponse
+from jose import JWTError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from core.db import get_db
 from core.errors import problem_response
-from core.security import CurrentUser, get_current_user
+from core.security import (
+    TOKEN_TYPE_MFA_ENROLLING,
+    CurrentUser,
+    create_mfa_pending_token,
+    decode_token,
+    get_current_user,
+)
+from models import User
+from schemas.auth import (
+    MfaEnrolCompleteRequest,
+    MfaEnrolStartResponse,
+    RecoveryCodesResponse,
+)
 from schemas.notification import NotificationPrefsIn, NotificationPrefsOut
 from schemas.oauth_identity import (
     OAuthIdentityListResponse,
     OAuthIdentityOut,
+)
+from services.mfa_service import (
+    InvalidMfaCode,
+    MfaAlreadyEnabled,
+    MfaNotEnrolled,
+    begin_enrolment,
+    complete_enrolment,
+    regenerate_recovery_codes,
 )
 from services.notification_service import (
     get_or_create_prefs,
@@ -272,4 +293,177 @@ async def export_self(
                 f'attachment; filename="trusca-export-{actor.id}.json"'
             )
         },
+    )
+
+
+# ---------------------------------------------------------------------------
+# Second factor
+#
+# Enrolment is two calls, not one. The first stores a secret and returns it to
+# be scanned; the second proves the authenticator produced a code from it and
+# only then turns the factor on. Doing it in one call means anybody who closes
+# the tab between scanning and confirming is locked out of their own account at
+# the next sign-in, asked for a code their app was never set up to make.
+# ---------------------------------------------------------------------------
+
+
+@router.post(
+    "/mfa/enrol",
+    response_model=MfaEnrolStartResponse,
+    summary="Start enrolling a second factor",
+)
+async def start_mfa_enrolment(
+    request: Request,
+    session: AsyncSession = Depends(get_db),
+    current_user: CurrentUser = Depends(get_current_user),
+) -> Response:
+    """Store a secret and hand back what the setup screen needs to show it."""
+    user = await session.get(User, current_user.id)
+    if user is None:
+        return problem_response(
+            status_code=status.HTTP_404_NOT_FOUND,
+            title="User Not Found",
+            detail="user not found",
+            instance=str(request.url.path),
+        )
+
+    try:
+        secret, uri = await begin_enrolment(session, user=user)
+    except MfaAlreadyEnabled:
+        return problem_response(
+            status_code=status.HTTP_409_CONFLICT,
+            title="Already Enabled",
+            detail=(
+                "a second factor is already enabled; clear it before enrolling "
+                "again"
+            ),
+            instance=str(request.url.path),
+        )
+
+    body = MfaEnrolStartResponse(
+        secret=secret,
+        provisioning_uri=uri,
+        # A separate type from the sign-in one. If they were the same, starting
+        # an enrolment would mint something that finishes a sign-in, which is a
+        # way past the very factor being enrolled.
+        mfa_token=create_mfa_pending_token(
+            subject=str(user.id), token_type=TOKEN_TYPE_MFA_ENROLLING
+        ),
+    )
+    return Response(
+        content=body.model_dump_json(),
+        media_type="application/json",
+        status_code=status.HTTP_200_OK,
+    )
+
+
+@router.post(
+    "/mfa/enrol/confirm",
+    response_model=RecoveryCodesResponse,
+    summary="Finish enrolling by proving the authenticator works",
+)
+async def confirm_mfa_enrolment(
+    request: Request,
+    payload: MfaEnrolCompleteRequest,
+    session: AsyncSession = Depends(get_db),
+    current_user: CurrentUser = Depends(get_current_user),
+) -> Response:
+    """Turn the factor on and return the recovery codes, shown once."""
+    try:
+        claims = decode_token(payload.mfa_token, expected_type=TOKEN_TYPE_MFA_ENROLLING)
+    except (JWTError, ValueError):
+        return problem_response(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            title="Invalid Enrolment Token",
+            detail="the enrolment has expired; start again",
+            instance=str(request.url.path),
+        )
+
+    # The token names a user and the request carries a session. They have to be
+    # the same person: without this, somebody could finish their own enrolment
+    # against another account's session, or the reverse.
+    if str(claims.get("sub")) != str(current_user.id):
+        return problem_response(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            title="Invalid Enrolment Token",
+            detail="the enrolment does not belong to this session",
+            instance=str(request.url.path),
+        )
+
+    user = await session.get(User, current_user.id)
+    if user is None:
+        return problem_response(
+            status_code=status.HTTP_404_NOT_FOUND,
+            title="User Not Found",
+            detail="user not found",
+            instance=str(request.url.path),
+        )
+
+    try:
+        codes = await complete_enrolment(session, user=user, code=payload.code)
+    except MfaAlreadyEnabled:
+        return problem_response(
+            status_code=status.HTTP_409_CONFLICT,
+            title="Already Enabled",
+            detail="a second factor is already enabled",
+            instance=str(request.url.path),
+        )
+    except MfaNotEnrolled:
+        return problem_response(
+            status_code=status.HTTP_409_CONFLICT,
+            title="No Enrolment In Progress",
+            detail="start the enrolment again",
+            instance=str(request.url.path),
+        )
+    except InvalidMfaCode:
+        return problem_response(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            title="Invalid Code",
+            detail="that code did not match; check the time on your device",
+            instance=str(request.url.path),
+        )
+
+    body = RecoveryCodesResponse(codes=codes)
+    return Response(
+        content=body.model_dump_json(),
+        media_type="application/json",
+        status_code=status.HTTP_200_OK,
+    )
+
+
+@router.post(
+    "/mfa/recovery-codes",
+    response_model=RecoveryCodesResponse,
+    summary="Replace the unused recovery codes with a fresh set",
+)
+async def regenerate_mfa_recovery_codes(
+    request: Request,
+    session: AsyncSession = Depends(get_db),
+    current_user: CurrentUser = Depends(get_current_user),
+) -> Response:
+    """Issue a new set, invalidating every unused code from the old one."""
+    user = await session.get(User, current_user.id)
+    if user is None:
+        return problem_response(
+            status_code=status.HTTP_404_NOT_FOUND,
+            title="User Not Found",
+            detail="user not found",
+            instance=str(request.url.path),
+        )
+
+    try:
+        codes = await regenerate_recovery_codes(session, user=user)
+    except MfaNotEnrolled:
+        return problem_response(
+            status_code=status.HTTP_409_CONFLICT,
+            title="Not Enabled",
+            detail="no second factor is enabled",
+            instance=str(request.url.path),
+        )
+
+    body = RecoveryCodesResponse(codes=codes)
+    return Response(
+        content=body.model_dump_json(),
+        media_type="application/json",
+        status_code=status.HTTP_200_OK,
     )
