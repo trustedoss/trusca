@@ -53,6 +53,7 @@ from pathlib import Path
 import structlog
 
 from core.config import scan_hard_time_limit_seconds, workspace_root
+from services.registry_allowlist import registry_auth_key
 
 log = structlog.get_logger("tasks.registry_auth")
 
@@ -93,15 +94,20 @@ def _assert_outside_workspace(path: Path) -> None:
 def build_docker_config(credentials: dict[str, tuple[str, str]]) -> dict[str, object]:
     """Render a Docker ``config.json`` for ``{host: (username, password)}``.
 
-    The ``auths`` map is keyed by registry host, which is what binds a
-    credential to the registry it belongs to: Trivy sends it only when pulling
-    from that host, so a credential for one registry is never offered to
-    another.
+    The ``auths`` map is keyed by the registry's credential-store key, which is
+    what binds a credential to the registry it belongs to: Trivy sends it only
+    when pulling from that registry, so a credential for one is never offered
+    to another.
+
+    That key is the host for every registry except Docker Hub, which is why it
+    goes through :func:`registry_auth_key` rather than being used directly. A
+    wrong key here is silent: the pull falls back to anonymous and fails with a
+    permission error that looks like a rejected password.
     """
     auths: dict[str, dict[str, str]] = {}
     for host, (username, password) in credentials.items():
         token = b64encode(f"{username}:{password}".encode()).decode("ascii")
-        auths[host] = {"auth": token}
+        auths[registry_auth_key(host)] = {"auth": token}
     return {"auths": auths}
 
 
@@ -115,8 +121,18 @@ def registry_auth_dir(
 
     The directory is per scan, so two scans running at once never share one and
     one scan's credentials are never visible in another's ``DOCKER_CONFIG``.
-    Mode 0700 on the directory and 0600 on the file keep it off other users on
+    Mode 0700 on the directory and 0600 on the file keep it off OTHER USERS on
     the same host.
+
+    What that does not buy, stated plainly because the mode bits invite the
+    stronger reading: worker processes all run as the same user, so a scan's
+    Trivy can read another concurrent scan's file. The separation above is by
+    ``DOCKER_CONFIG`` and not by the filesystem. Reaching it takes arbitrary
+    file read or code execution inside Trivy, which is the same class of bug
+    this module keeps credentials out of the environment for, so it is a
+    residual risk rather than an open door. Closing it needs either a separate
+    uid per scan or a container-scan concurrency of 1; both cost throughput and
+    neither is decided here.
 
     Yields None for an empty credential set so the caller passes no
     ``DOCKER_CONFIG`` at all rather than an empty one.
@@ -171,7 +187,17 @@ def sweep_stale_auth_dirs(*, now: float | None = None) -> int:
     Never raises: a sweep failure must not stop the scan that called it. The
     worst case is a file that survives one more cycle.
     """
-    cutoff = (now if now is not None else time.time()) - scan_hard_time_limit_seconds()
+    # The margin is not cosmetic. The hard limit is read at call time (rule
+    # #11), so an operator who lowers it puts already-running scans below the
+    # cutoff at once and the next scan's sweep deletes a live scan's
+    # credentials out from under it. An hour past the limit cannot belong to a
+    # task the worker still has, and sweeping late only costs one more cycle.
+    _SWEEP_MARGIN_SECONDS = 3600
+    cutoff = (
+        (now if now is not None else time.time())
+        - scan_hard_time_limit_seconds()
+        - _SWEEP_MARGIN_SECONDS
+    )
     removed = 0
     try:
         root = _temp_root()

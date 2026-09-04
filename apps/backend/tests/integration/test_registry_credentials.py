@@ -241,3 +241,110 @@ async def test_the_stored_password_is_not_plaintext(client, monkeypatch) -> None
         from core.crypto import decrypt_secret
 
         assert decrypt_secret(row.password_encrypted) == "plaintext-here"
+
+
+async def test_a_narrow_path_scoped_allow_list_still_accepts_its_host(
+    client, monkeypatch
+) -> None:
+    """The configuration the allow-list documentation recommends.
+
+    A credential carries a host and nothing else, so the save has to ask
+    whether ANY pull from that host is allowed. Asking the reference-level
+    predicate with a synthetic path appended made this deployment shape reject
+    the credential for the very registry its scans were allowed to pull from.
+    """
+    monkeypatch.setenv("CONTAINER_SCAN_ALLOWED_REGISTRIES", "ghcr.io/trustedoss")
+    org, admin = await _seed_org_and_admin(client)
+
+    put = await client.put(
+        _url(org.id),
+        headers=_bearer(admin),
+        json={"registry_host": "ghcr.io", "username": "bot", "password": "x"},
+    )
+    assert put.status_code == 200, put.text
+    # The flag operators act on. Reading false here is what made them delete
+    # credentials that were in use.
+    assert put.json()["allowed"] is True
+
+    rows = (await client.get(_url(org.id), headers=_bearer(admin))).json()["items"]
+    assert [r["allowed"] for r in rows] == [True]
+
+
+async def test_a_host_outside_a_path_scoped_allow_list_is_still_rejected(
+    client, monkeypatch
+) -> None:
+    """The loosening above must not turn the allow-list off."""
+    monkeypatch.setenv("CONTAINER_SCAN_ALLOWED_REGISTRIES", "ghcr.io/trustedoss")
+    org, admin = await _seed_org_and_admin(client)
+
+    put = await client.put(
+        _url(org.id),
+        headers=_bearer(admin),
+        json={"registry_host": "evil.example.com", "username": "bot", "password": "x"},
+    )
+    assert put.status_code == 422, put.text
+
+
+async def test_a_credential_pasted_into_the_host_field_is_refused(
+    client, monkeypatch
+) -> None:
+    """`registry_host` is not a secret anywhere: it comes back from the API, goes
+    into the audit diff and is logged. A pasted `https://bot:token@ghcr.io/`
+    would put the password in plaintext beside the encrypted column, which
+    makes the encryption misleading rather than protective."""
+    monkeypatch.delenv("CONTAINER_SCAN_ALLOWED_REGISTRIES", raising=False)
+    org, admin = await _seed_org_and_admin(client)
+
+    secret = "ghp_supersecrettoken"
+    put = await client.put(
+        _url(org.id),
+        headers=_bearer(admin),
+        json={
+            "registry_host": f"https://bot:{secret}@ghcr.io/",
+            "username": "bot",
+            "password": secret,
+        },
+    )
+    assert put.status_code == 422, put.text
+    # The rejection must not echo what it rejected: that would move the token
+    # into the response body and the client's logs, which is the point.
+    assert secret not in put.text
+
+    rows = (await client.get(_url(org.id), headers=_bearer(admin))).json()["items"]
+    assert rows == []
+
+
+async def test_a_put_for_an_unknown_organization_is_a_404(client, monkeypatch) -> None:
+    """Left to the foreign key this is an IntegrityError, and SQLAlchemy puts
+    the bound parameters in its message. Those include the ciphertext we just
+    produced, so the row we refused to write would land in an
+    unhandled-exception traceback in the logs."""
+    monkeypatch.delenv("CONTAINER_SCAN_ALLOWED_REGISTRIES", raising=False)
+    _org, admin = await _seed_org_and_admin(client)
+
+    response = await client.put(
+        _url(uuid.uuid4()),
+        headers=_bearer(admin),
+        json={"registry_host": "ghcr.io", "username": "bot", "password": "x"},
+    )
+    assert response.status_code == 404, response.text
+    assert response.headers["content-type"].startswith(PROBLEM_JSON)
+
+
+async def test_a_team_admin_cannot_read_credentials(client, monkeypatch) -> None:
+    """Permission x role, not just the anonymous-vs-super-admin axis. A team
+    admin is the role most likely to be assumed sufficient here."""
+    from tests._helpers import make_membership, make_team
+
+    monkeypatch.delenv("CONTAINER_SCAN_ALLOWED_REGISTRIES", raising=False)
+    org, _admin = await _seed_org_and_admin(client)
+    factory = await _factory(client)
+    async with factory() as session:
+        team = await make_team(session, organization=org)
+        team_admin = await make_user(session)
+        await make_membership(
+            session, user=team_admin, team=team, role="team_admin"
+        )
+
+    response = await client.get(_url(org.id), headers=_bearer(team_admin))
+    assert response.status_code == 404

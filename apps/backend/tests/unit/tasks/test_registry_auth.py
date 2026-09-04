@@ -23,6 +23,7 @@ from typing import cast
 
 import pytest
 
+from services.registry_allowlist import DOCKER_HUB_AUTH_KEY
 from tasks._registry_auth import (
     RegistryAuthLocationError,
     build_docker_config,
@@ -176,3 +177,65 @@ def test_the_sweep_never_raises(monkeypatch: pytest.MonkeyPatch) -> None:
 
     monkeypatch.setattr("tasks._registry_auth._temp_root", _boom)
     assert sweep_stale_auth_dirs() == 0
+
+
+@pytest.mark.parametrize("host", ["docker.io", "index.docker.io"])
+def test_docker_hub_is_written_under_the_key_trivy_actually_reads(host: str) -> None:
+    """Docker Hub is the one registry whose auth key is not its hostname.
+
+    Keyed by the host, the credential is never consulted: the pull gets an
+    anonymous token and fails with a permission error that reads exactly like a
+    wrong password, so nothing about the symptom points at the key. Measured
+    against Trivy 0.71.2.
+    """
+    config = build_docker_config({host: ("bot", "hub-token")})
+    auths = cast("dict[str, dict[str, str]]", config["auths"])
+
+    assert set(auths) == {DOCKER_HUB_AUTH_KEY}
+    # The host spelling must NOT be what lands in the file. Asserting only that
+    # the v1 key is present would pass while the dead entry sat beside it.
+    assert host not in auths
+    assert b64decode(auths[DOCKER_HUB_AUTH_KEY]["auth"]).decode() == "bot:hub-token"
+
+
+def test_a_hub_credential_and_another_registry_stay_separate() -> None:
+    """The rewrite must not collapse two registries into one entry."""
+    config = build_docker_config(
+        {"docker.io": ("hubuser", "hubpass"), "ghcr.io": ("ghuser", "ghpass")}
+    )
+    auths = cast("dict[str, dict[str, str]]", config["auths"])
+    assert set(auths) == {DOCKER_HUB_AUTH_KEY, "ghcr.io"}
+    assert b64decode(auths["ghcr.io"]["auth"]).decode() == "ghuser:ghpass"
+
+
+def test_the_sweep_leaves_a_live_scan_alone_when_the_limit_is_lowered(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """The hard limit is read at call time, so lowering it must not make the
+    next scan's sweep delete a running scan's credentials out from under it."""
+    monkeypatch.setattr("tasks._registry_auth._temp_root", lambda: tmp_path)
+    # The effective hard limit is clamped to soft + grace, so the soft limit
+    # has to come down too for the lowered value to be the one in force.
+    monkeypatch.setenv("SCAN_SOFT_TIME_LIMIT_SECONDS", "600")
+
+    live = tmp_path / "trusca-registry-auth-live"
+    live.mkdir()
+    started = 10_000_000.0
+    os.utime(live, (started, started))
+
+    # A scan that started 5000s ago under a two-hour limit is plainly live.
+    monkeypatch.setenv("SCAN_HARD_TIME_LIMIT_SECONDS", "7200")
+    now = started + 5000
+    assert sweep_stale_auth_dirs(now=now) == 0
+    assert live.exists()
+
+    # The operator now lowers the limit to 30 minutes. The running scan does
+    # not stop, and without the margin this sweep would delete its credentials
+    # (cutoff would be started + 3200, past the directory's mtime).
+    monkeypatch.setenv("SCAN_HARD_TIME_LIMIT_SECONDS", "1800")
+    assert sweep_stale_auth_dirs(now=now) == 0
+    assert live.exists()
+
+    # Far enough past the limit that no task can still hold it.
+    assert sweep_stale_auth_dirs(now=started + 1800 + 3600 + 100) == 1
+    assert not live.exists()

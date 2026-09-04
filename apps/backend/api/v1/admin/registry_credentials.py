@@ -29,6 +29,7 @@ from core.db import get_db
 from core.errors import problem_response
 from core.security import CurrentUser, require_super_admin_or_404
 from services.registry_credential_service import (
+    OrganizationNotFound,
     RegistryCredentialError,
     RegistryNotAllowed,
     delete_credential,
@@ -132,6 +133,16 @@ async def put_registry_credential_endpoint(
             username=payload.username,
             password=payload.password,
             created_by_user_id=actor.id,
+        )
+    except OrganizationNotFound:
+        # Ahead of the 422 branches: an id that names nothing is not a
+        # configuration problem. Super admins see every organization, so there
+        # is nothing to hide behind a different status here.
+        return problem_response(
+            status_code=status.HTTP_404_NOT_FOUND,
+            title="Organization Not Found",
+            detail="No such organization.",
+            instance=request.url.path,
         )
     except RegistryNotAllowed as exc:
         # 422 rather than 403: the request is well-formed and the caller is
