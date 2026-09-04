@@ -35,6 +35,7 @@ from typing import Any
 import pytest
 
 from tasks.task_registry_guard import (
+    EXIT_NO_TASKS,
     TASK_PREFIX,
     refuse_if_no_tasks,
     registered_task_count,
@@ -155,10 +156,13 @@ def test_a_worker_with_none_of_our_tasks_stops_with_a_failure_code() -> None:
         "the worker stayed up, or stopped claiming success. Both leave a "
         "deployment that silently discards every scan it is sent."
     )
-    assert result.returncode == 1, (
-        f"expected exit 1, got {result.returncode}. Exit 0 in particular tells "
-        "an operator and any monitoring reading exit codes that a worker which "
-        "cannot run a single task finished normally."
+    assert result.returncode == EXIT_NO_TASKS, (
+        f"expected exit {EXIT_NO_TASKS}, got {result.returncode}. Exit 0 in "
+        "particular tells an operator and any monitoring reading exit codes "
+        "that a worker which cannot run a single task finished normally, and "
+        "a plain 1 is what this process reports for nearly any reason it dies. "
+        "The code is the one channel that survives an output failure, so it "
+        "has to say which condition this was."
     )
 
 
@@ -337,12 +341,12 @@ def test_the_explanation_is_written_before_the_process_ends(
         guard.refuse_if_no_tasks(_EmptyApp())
 
     assert order, "the refusal path did not run"
-    assert order[-1] == "os._exit:1", (
+    assert order[-1] == f"os._exit:{EXIT_NO_TASKS}", (
         f"the process ended before finishing its explanation: {order}"
     )
     assert order.index("write:FATAL task_registry.empty") < order.index(
         "logging.shutdown"
-    ) < order.index("os._exit:1"), (
+    ) < order.index(f"os._exit:{EXIT_NO_TASKS}"), (
         "the explanation has to be written and the handlers flushed before the "
         f"process ends, and this order does not do that: {order}"
     )
@@ -445,4 +449,7 @@ def test_a_stream_that_cannot_be_flushed_does_not_bury_the_refusal(
     with pytest.raises(_Stopped):
         guard.refuse_if_no_tasks(_EmptyApp())
 
-    assert exits == [1], "the broken stream stopped the refusal from completing"
+    assert exits == [EXIT_NO_TASKS], (
+        "the broken stream stopped the refusal from completing, and the exit "
+        "code is the only thing left to say what happened"
+    )

@@ -183,7 +183,10 @@ and the project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.
   and a healthy worker started later found nothing to do.
 
   It now stops instead, which leaves the message in the queue, and it says why
-  on the way down. Stopping is visible in the shapes an operator already reads:
+  on the way down. The exit code is 78 rather than 1, because every step of the
+  refusal is written to survive an output failure and the code is then the only
+  channel left: a plain 1 is what the process reports for almost any reason it
+  dies, and 78 says which one with no message needed. Stopping is visible in the shapes an operator already reads:
   a restart loop under Compose, CrashLoopBackOff under Kubernetes. The on-call
   runbook has the scenario, including the one command that separates an
   incomplete image from a module that fails to import.

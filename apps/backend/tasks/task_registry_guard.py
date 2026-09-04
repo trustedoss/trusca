@@ -35,7 +35,7 @@ Measured, because the obvious spellings do not do what they read like:
                           behaviour is warn.
     WorkerShutdown        the worker stops, and the process exits 0.
     sys.exit(1)           the same, exit code 0.
-    os._exit(1)           the process ends with 1.
+    os._exit(n)           the process ends with n.
 
 Exit code zero is not a small difference here. Both Compose and Kubernetes
 restart on it, so the restart loop appears either way, but ``Exited (0)`` tells
@@ -86,6 +86,14 @@ log = structlog.get_logger("tasks.task_registry_guard")
 #: ``celery.group`` and so on), so "no tasks at all" is a condition that never
 #: occurs and a guard written that way would never fire.
 TASK_PREFIX = "trustedoss."
+
+#: The code this process exits with. ``EX_CONFIG`` from ``sysexits.h``.
+#:
+#: Every step to the exit is best effort, so the refusal completes even when
+#: writing the reason fails. That leaves a case where the exit code is the only
+#: thing the operator gets, and a plain 1 is what this process reports for
+#: nearly any reason it dies. 78 says which one, with no message needed.
+EXIT_NO_TASKS = 78
 
 
 def registered_task_count(app: Any) -> int:
@@ -170,7 +178,7 @@ def refuse_if_no_tasks(app: Any) -> int:
             # be flushed must not turn a clean refusal into a traceback that
             # buries it.
             pass
-    os._exit(1)
+    os._exit(EXIT_NO_TASKS)
 
 
 @worker_ready.connect  # type: ignore[misc]
@@ -182,6 +190,7 @@ def _on_worker_ready(sender: Any | None = None, **_: Any) -> None:
 
 
 __all__ = [
+    "EXIT_NO_TASKS",
     "TASK_PREFIX",
     "_on_worker_ready",
     "refuse_if_no_tasks",

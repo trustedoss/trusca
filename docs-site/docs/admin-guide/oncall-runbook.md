@@ -262,6 +262,12 @@ FATAL task_registry.empty: this worker registered none of the portal's tasks
 Under Compose the service restarts in a loop; under Kubernetes the pod reports
 CrashLoopBackOff.
 
+The container exits with **78**. If the log shows nothing at all, that number
+alone is the diagnosis: the worker stopped because it had none of the portal's
+tasks. A plain `1` is what the process reports for almost any other reason it
+dies, so 78 is reserved for this one and every step of the refusal is written
+to survive an output failure.
+
 ### Customer impact
 Scans queued for that worker do not run. They stay queued rather than
 disappearing, which is the point of the worker stopping: a worker with no tasks
