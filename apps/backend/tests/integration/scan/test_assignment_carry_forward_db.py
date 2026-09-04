@@ -41,12 +41,9 @@ project with one pair's values instead of resolving per pair fails here.
 
 from __future__ import annotations
 
-import os
-import subprocess
 import uuid
 from collections.abc import Iterator
 from datetime import date
-from pathlib import Path
 
 import pytest
 from sqlalchemy import create_engine, delete
@@ -57,6 +54,7 @@ from services.vulnerability_matching import (
     capture_assignment_state,
     persist_trivy_findings,
 )
+from tests._db_required import migrate_to_head
 
 # Data helpers only. The two fixtures are defined below rather than imported:
 # a fixture imported into a module whose tests take a parameter of the same
@@ -73,31 +71,16 @@ from tests.integration.scan.test_triage_carry_forward_db import (
 
 pytestmark = pytest.mark.integration
 
-BACKEND_ROOT = Path(__file__).resolve().parents[3]
-
-
-def _require_database_url() -> str:
-    url = os.getenv("DATABASE_URL")
-    if not url:
-        pytest.skip("DATABASE_URL not set")
-    return url
-
-
 @pytest.fixture(scope="module", autouse=True)
 def _migrate_once() -> None:
-    _require_database_url()
-    result = subprocess.run(
-        ["alembic", "upgrade", "head"],
-        cwd=BACKEND_ROOT,
-        capture_output=True,
-        text=True,
-        timeout=120,
-    )
-    if result.returncode != 0:
-        pytest.skip(
-            "alembic upgrade head failed; assignment carry-forward cannot run\n"
-            f"stdout:\n{result.stdout}\nstderr:\n{result.stderr}"
-        )
+    """ER66's shared gate rather than a fourth private copy of it.
+
+    Written with its own copy because the sibling this file borrows its
+    fixtures from still has one, and copying the neighbour reproduced the
+    behaviour ER66 exists to remove: a missing database or a broken migration
+    turning into a skip, so the job that would have caught it exits green.
+    """
+    migrate_to_head()
 
 
 @pytest.fixture
