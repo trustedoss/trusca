@@ -100,6 +100,12 @@ export type SlaFilter = SlaStatus;
 export type ReachabilityFilter = "true" | "false" | "unknown";
 
 /**
+ * Ownership filter tokens (ER28b). Not a user id: see
+ * `VulnerabilitiesQueryFilters.assignee` for why.
+ */
+export type AssigneeFilter = "me" | "unassigned";
+
+/**
  * Provenance of a finding's current status (v2.1 A2 — VEX import / consume).
  * `vex_import` marks a status that was auto-transitioned by an uploaded VEX
  * document; `manual` (or `null` on legacy rows) is the human PATCH workflow.
@@ -243,6 +249,42 @@ export interface VulnerabilityListItem {
    * window-policy drift) and show rows a filter claims to exclude.
    */
   sla_status: SlaStatus | null;
+  /**
+   * Who owns remediating this finding; `null` when nobody does.
+   */
+  assignee_user_id: string | null;
+  /**
+   * Whether that person can still act. THREE values, and `null` is not
+   * `false`:
+   *
+   * - `null`  - unassigned. Visibly waiting for somebody.
+   * - `true`  - assigned to somebody who can act.
+   * - `false` - assigned to somebody who cannot (deactivated account).
+   *
+   * The last one is the case ER54 exists for: the row looks owned, so it
+   * reads as being handled, while nobody can pick it up. Test it with
+   * `=== null` / `=== true` / `=== false`, never with truthiness: `!value`
+   * is true for BOTH `null` and `false`, which folds "nobody has this" and
+   * "somebody who cannot act has this" into one branch and recreates exactly
+   * the confusion the field was added to remove.
+   *
+   * Computed per request, because it changes when the person changes rather
+   * than when the finding does.
+   */
+  assignee_is_active: boolean | null;
+  /**
+   * A deadline somebody wrote down, as a calendar date. Competes with
+   * `sla_due_date`; the EARLIER of the two governs. Interpreted in UTC.
+   */
+  due_on: string | null;
+  /** The deadline actually in force, which `sla_status` judges. */
+  effective_due_date: string | null;
+  /** Which deadline won: the per-severity policy, or the written-down date. */
+  due_source: "sla" | "manual" | null;
+  /** Where the work is tracked externally. */
+  ticket_url: string | null;
+  /** Ticket identifier in that tracker, e.g. `SEC-1234`. */
+  ticket_key: string | null;
   updated_at: string;
 }
 
@@ -379,6 +421,49 @@ export interface VulnerabilityDetail {
    * badge and the table badge never disagree. Never recomputed client-side.
    */
   sla_status: SlaStatus | null;
+  /**
+   * Who owns remediating this finding; `null` when nobody does.
+   */
+  assignee_user_id: string | null;
+  /**
+   * Whether that person can still act. THREE values, and `null` is not
+   * `false`:
+   *
+   * - `null`  - unassigned. Visibly waiting for somebody.
+   * - `true`  - assigned to somebody who can act.
+   * - `false` - assigned to somebody who cannot (deactivated account).
+   *
+   * The last one is the case ER54 exists for: the row looks owned, so it
+   * reads as being handled, while nobody can pick it up. Test it with
+   * `=== null` / `=== true` / `=== false`, never with truthiness: `!value`
+   * is true for BOTH `null` and `false`, which folds "nobody has this" and
+   * "somebody who cannot act has this" into one branch and recreates exactly
+   * the confusion the field was added to remove.
+   *
+   * Computed per request, because it changes when the person changes rather
+   * than when the finding does.
+   */
+  assignee_is_active: boolean | null;
+  /**
+   * A deadline somebody wrote down, as a calendar date. Competes with
+   * `sla_due_date`; the EARLIER of the two governs. Interpreted in UTC.
+   */
+  due_on: string | null;
+  /** The deadline actually in force, which `sla_status` judges. */
+  effective_due_date: string | null;
+  /** Which deadline won: the per-severity policy, or the written-down date. */
+  due_source: "sla" | "manual" | null;
+  /** Where the work is tracked externally. */
+  ticket_url: string | null;
+  /** Ticket identifier in that tracker, e.g. `SEC-1234`. */
+  ticket_key: string | null;
+  /**
+   * True when `due_on` names a LATER calendar day than the policy's, so the
+   * policy still governs. Read from the server rather than recomputed here:
+   * the comparison is on calendar days while the verdict is on instants, and
+   * a second implementation of that rule would drift from the first.
+   */
+  manual_due_ignored: boolean;
   created_at: string;
   updated_at: string;
 }
@@ -411,6 +496,8 @@ export interface ListVulnerabilitiesParams {
    * without an SLA (`sla_status IS NULL`) never match any token.
    */
   sla?: SlaFilter;
+  /** ER28b ownership filter: `me` or `unassigned`. */
+  assignee?: AssigneeFilter;
   /**
    * License-category buckets (W2 #33). Multi-value; the backend keeps any
    * finding whose component's worst-category license is in the set. The
@@ -540,6 +627,33 @@ export async function updateVulnerabilityStatus(
 ): Promise<VulnerabilityDetail> {
   const { data } = await api.patch<VulnerabilityDetail>(
     `/v1/vulnerability_findings/${findingId}/status`,
+    body,
+  );
+  return data;
+}
+
+/**
+ * PATCH body for the assignment endpoint (ER28b).
+ *
+ * Every field is optional AND nullable, and those mean different things: an
+ * ABSENT key is left alone, a key sent as `null` is cleared. Build this with
+ * only the fields being changed, or a save that meant to set a ticket will
+ * also unassign the finding.
+ */
+export interface UpdateFindingAssignmentBody {
+  assignee_user_id?: string | null;
+  due_on?: string | null;
+  ticket_url?: string | null;
+  ticket_key?: string | null;
+  if_match?: string | null;
+}
+
+export async function updateFindingAssignment(
+  findingId: string,
+  body: UpdateFindingAssignmentBody,
+): Promise<VulnerabilityDetail> {
+  const { data } = await api.patch<VulnerabilityDetail>(
+    `/v1/vulnerability_findings/${findingId}/assignment`,
     body,
   );
   return data;

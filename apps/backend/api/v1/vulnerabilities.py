@@ -188,6 +188,18 @@ async def list_project_vulnerabilities_endpoint(
             "match any token. Omit to disable SLA filtering."
         ),
     ),
+    assignee: str | None = Query(
+        default=None,
+        pattern=r"^(me|unassigned)$",
+        description=(
+            "Ownership filter (ER28b). `me` returns the caller's own findings, "
+            "`unassigned` the ones nobody has taken. Deliberately not a user "
+            "id: a developer can only assign to themselves, because no "
+            "endpoint lets them enumerate their team, so accepting an id "
+            "would add a way to ask which findings a named person owns "
+            "without any screen needing it."
+        ),
+    ),
     sort: str = Query(
         default="severity",
         pattern=r"^(severity|cvss|status|discovered_at|epss|reachable|component|priority|sla_due)$",
@@ -220,6 +232,7 @@ async def list_project_vulnerabilities_endpoint(
             min_epss=min_epss,
             reachable=reachable,
             sla=sla,
+            assignee=assignee,
             sort=sort,
             order=order,
             snapshot_scan_id=scan_id,
@@ -268,6 +281,7 @@ async def export_project_vulnerabilities_csv_endpoint(
     min_epss: float | None = Query(default=None, ge=0, le=1),
     reachable: str | None = Query(default=None, pattern=r"^(true|false|unknown)$"),
     sla: str | None = Query(default=None, pattern=r"^(overdue|imminent|ok)$"),
+    assignee: str | None = Query(default=None, pattern=r"^(me|unassigned)$"),
     sort: str = Query(
         default="severity",
         pattern=r"^(severity|cvss|status|discovered_at|epss|reachable|component|priority|sla_due)$",
@@ -301,6 +315,7 @@ async def export_project_vulnerabilities_csv_endpoint(
             "min_epss": min_epss,
             "reachable": reachable,
             "sla": sla,
+            "assignee": assignee,
             "sort": sort,
             "order": order,
             "snapshot_scan_id": scan_id,

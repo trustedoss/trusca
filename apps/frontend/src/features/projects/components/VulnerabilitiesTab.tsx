@@ -32,6 +32,7 @@ import { useProjectOverview } from "@/features/projects/api/useProjectOverview";
 import { useUpgradeClusters } from "@/features/projects/api/useUpgradeClusters";
 import { useVulnerabilities } from "@/features/projects/api/useVulnerabilities";
 import type {
+  AssigneeFilter,
   ReachabilityFilter,
   SlaFilter,
   SlaStatus,
@@ -49,6 +50,7 @@ import { ActiveFilterChips } from "@/features/projects/components/ActiveFilterCh
 import { AxisPill } from "@/features/projects/components/AxisPill";
 import { KevBadge } from "@/features/projects/components/KevBadge";
 import { ReachabilityBadge } from "@/features/projects/components/ReachabilityBadge";
+import { AssigneeBadge } from "@/features/projects/components/AssigneeBadge";
 import { SlaBadge } from "@/features/projects/components/SlaBadge";
 import { SeverityBadge } from "@/features/projects/components/SeverityBadge";
 import { SeverityDistributionChart } from "@/features/projects/components/SeverityDistributionChart";
@@ -80,6 +82,7 @@ import { problemMessage } from "@/lib/problemMessage";
 import RelativeTime from "@/components/RelativeTime";
 import { toggleSingleValue } from "@/lib/searchParamsToggle";
 import { cn } from "@/lib/utils";
+import { useAuthStore } from "@/stores/authStore";
 
 /**
  * VulnerabilitiesTab — Phase 3 PR #11.
@@ -145,6 +148,13 @@ function getVulnColumnsCatalog(
     // users with a persisted visibility set see it after toggling it on.
     { id: "sla_due", label: t("vulnerabilities.column.sla_due") },
     { id: "status", label: t("vulnerabilities.column.status") },
+    // ER28b - who owns the finding. Display only, and NOT sortable: the
+    // "can this person act" half comes from a correlated subquery that is
+    // evaluated above the LIMIT, so sorting or filtering on it would move the
+    // evaluation below the LIMIT and run it once per table row instead of once
+    // per visible row. Ownership filtering uses the assignee_user_id column
+    // through the toolbar instead.
+    { id: "assignee", label: t("vulnerabilities.column.assignee") },
     { id: "discovered", label: t("vulnerabilities.column.discovered") },
   ];
 }
@@ -246,6 +256,16 @@ const VALID_SLA = new Set<SlaFilter>(SLA_STATUS_VALUES);
  * for "no filter" — same defensive narrowing as `parseReachable` so a
  * hand-edited URL can't wedge the filter into a value the backend 422s on.
  */
+const VALID_ASSIGNEE = new Set<AssigneeFilter>(["me", "unassigned"]);
+
+/** ER28b - `?assignee=me|unassigned`, same single-token shape as `sla`. */
+function parseAssignee(raw: string | null): AssigneeFilter | null {
+  if (raw && VALID_ASSIGNEE.has(raw as AssigneeFilter)) {
+    return raw as AssigneeFilter;
+  }
+  return null;
+}
+
 function parseSla(raw: string | null): SlaFilter | null {
   if (raw && VALID_SLA.has(raw as SlaFilter)) {
     return raw as SlaFilter;
@@ -318,8 +338,15 @@ export function VulnerabilitiesTab({
   );
   // X1 — SLA status filter. URL flag `sla=overdue|imminent|ok` (single value,
   // same inline-select pattern as `reachable`).
+  // ER28b - read once here; the rows receive it as a prop.
+  const currentUserId = useAuthStore((state) => state.user?.id ?? null);
   const [sla, setSla] = useState<SlaFilter | null>(() =>
     parseSla(searchParams.get("sla")),
+  );
+  // ER28b - ownership filter, `?assignee=me|unassigned`. Two tokens, not a
+  // user id: a developer can only assign to themselves.
+  const [assignee, setAssignee] = useState<AssigneeFilter | null>(() =>
+    parseAssignee(searchParams.get("assignee")),
   );
   // W2 #33 — License-risk multi-select. Mirrors the Components tab's pattern:
   // CSV-encoded in `?license_category=`, the same `parseList` helper, and the
@@ -427,6 +454,7 @@ export function VulnerabilitiesTab({
     setMinEpss(null);
     setReachable(null);
     setSla(null);
+    setAssignee(null);
     setLicenseCategory([]);
     setVexSuppressedOnly(false);
   }
@@ -490,6 +518,8 @@ export function VulnerabilitiesTab({
         else next.delete("reachable");
         if (sla != null) next.set("sla", sla);
         else next.delete("sla");
+        if (assignee != null) next.set("assignee", assignee);
+        else next.delete("assignee");
         // W2 #33 — `?license_category=forbidden,conditional,...`. Empty array
         // drops the key entirely so the default URL stays clean.
         if (licenseCategory.length)
@@ -514,6 +544,7 @@ export function VulnerabilitiesTab({
     minEpss,
     reachable,
     sla,
+    assignee,
     licenseCategory,
     vexSuppressedOnly,
     setSearchParams,
@@ -529,6 +560,7 @@ export function VulnerabilitiesTab({
       min_epss: minEpss,
       reachable,
       sla,
+      assignee,
       license_category: licenseCategory,
       limit: PAGE_SIZE,
       scanId,
@@ -542,6 +574,7 @@ export function VulnerabilitiesTab({
       minEpss,
       reachable,
       sla,
+      assignee,
       licenseCategory,
       scanId,
     ],
@@ -747,6 +780,7 @@ export function VulnerabilitiesTab({
             min_epss: filters.min_epss ?? undefined,
             reachable: filters.reachable ?? undefined,
             sla: filters.sla ?? undefined,
+            assignee: filters.assignee ?? undefined,
           })
         }
         groupBy={groupBy}
@@ -770,6 +804,10 @@ export function VulnerabilitiesTab({
         sla={sla}
         onSlaChange={(next) => {
           setSla(next);
+        }}
+        assignee={assignee}
+        onAssigneeChange={(next) => {
+          setAssignee(next);
         }}
         vexSuppressedOnly={vexSuppressedOnly}
         onVexSuppressedOnlyChange={(next) => {
@@ -1025,6 +1063,7 @@ export function VulnerabilitiesTab({
                     selected={selectedIds.has(item.id)}
                     selectionDisabled={readOnly}
                     visibleColumns={visibleColumns}
+                    currentUserId={currentUserId}
                     onToggleSelected={(checked) =>
                       toggleSelection(item.id, checked)
                     }
@@ -1384,6 +1423,14 @@ interface VulnerabilityRowProps {
   selectionDisabled?: boolean;
   /** W9 #52 — controlled by the ColumnsPicker. See `VULN_COLUMNS_STORAGE_KEY`. */
   visibleColumns: Set<string>;
+  /**
+   * The signed-in user, so a row they own reads as "assigned to you".
+   *
+   * Threaded down rather than read from the store here: rows are virtualized,
+   * and a store subscription per row buys nothing when every row wants the
+   * same value.
+   */
+  currentUserId: string | null;
   onToggleSelected: (checked: boolean) => void;
   onSelect: () => void;
 }
@@ -1394,6 +1441,7 @@ function VulnerabilityRow({
   selected,
   selectionDisabled = false,
   visibleColumns,
+  currentUserId,
   onToggleSelected,
   onSelect,
 }: VulnerabilityRowProps) {
@@ -1545,6 +1593,19 @@ function VulnerabilityRow({
           status={vulnerability.sla_status}
           dueDate={vulnerability.sla_due_date}
         />
+      ) : null}
+      {visibleColumns.has("assignee") ? (
+        <span
+          className="flex w-32 items-center"
+          role="cell"
+          data-testid="vulnerability-row-assignee"
+        >
+          <AssigneeBadge
+            assigneeUserId={vulnerability.assignee_user_id}
+            assigneeIsActive={vulnerability.assignee_is_active}
+            currentUserId={currentUserId}
+          />
+        </span>
       ) : null}
       {visibleColumns.has("status") ? (
         <span className="flex w-32 items-center gap-1" role="cell">

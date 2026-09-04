@@ -698,3 +698,190 @@ async def test_the_overdue_count_leaves_out_findings_nobody_owes_work_on(
         after = await overdue_counts_by_severity(session)
 
     assert after.get("high", 0) == before.get("high", 0) - 1
+
+
+
+# --- the ownership filter (ER28b) -------------------------------------------
+
+
+async def test_the_assignee_filter_returns_only_my_findings(client) -> None:  # noqa: ANN001
+    from services.vulnerability_service import list_project_vulnerabilities
+
+    mine, project, team, dev = await _seed_finding(client)
+    await client.patch(
+        _url(mine.id), headers=_bearer(dev), json={"assignee_user_id": str(dev.id)}
+    )
+
+    factory = await _factory(client)
+    async with factory() as session:
+        actor = await _principal(dev, team.id)
+        items, _total, _dist = await list_project_vulnerabilities(
+            session, project_id=project.id, actor=actor, assignee="me"
+        )
+    assert [r["id"] for r in items] == [mine.id]
+
+
+async def test_the_unassigned_filter_excludes_owned_findings(client) -> None:  # noqa: ANN001
+    """The other half of the queue: what nobody has picked up."""
+    from services.vulnerability_service import list_project_vulnerabilities
+
+    finding, project, team, dev = await _seed_finding(client)
+    factory = await _factory(client)
+    async with factory() as session:
+        actor = await _principal(dev, team.id)
+        before, _t, _d = await list_project_vulnerabilities(
+            session, project_id=project.id, actor=actor, assignee="unassigned"
+        )
+    assert finding.id in [r["id"] for r in before]
+
+    await client.patch(
+        _url(finding.id), headers=_bearer(dev), json={"assignee_user_id": str(dev.id)}
+    )
+    async with factory() as session:
+        actor = await _principal(dev, team.id)
+        after, _t, _d = await list_project_vulnerabilities(
+            session, project_id=project.id, actor=actor, assignee="unassigned"
+        )
+    assert finding.id not in [r["id"] for r in after]
+
+
+async def test_an_unknown_assignee_token_is_refused(client) -> None:  # noqa: ANN001
+    """Rejected rather than ignored: a filter that silently does nothing shows
+    a full list to somebody who asked for a narrowed one."""
+    from services.vulnerability_service import (
+        VulnerabilityError,
+        list_project_vulnerabilities,
+    )
+
+    _finding, project, team, dev = await _seed_finding(client)
+    factory = await _factory(client)
+    async with factory() as session:
+        actor = await _principal(dev, team.id)
+        with pytest.raises(VulnerabilityError):
+            await list_project_vulnerabilities(
+                session,
+                project_id=project.id,
+                actor=actor,
+                assignee=str(dev.id),  # a user id is not an accepted token
+            )
+
+
+async def test_the_filter_reads_the_column_not_the_active_flag(client) -> None:  # noqa: ANN001
+    """A finding assigned to a DEACTIVATED user is still assigned.
+
+    The distinction matters because the two look interchangeable and are not.
+    `assignee_user_id` is a real column; `assignee_is_active` is a correlated
+    subquery evaluated above the LIMIT, so filtering on it would move the
+    evaluation below the LIMIT and run it once per table row. Filtering on
+    ownership must not quietly become filtering on ability to act.
+    """
+    from sqlalchemy import update
+
+    from models import User as UserModel
+    from services.vulnerability_service import list_project_vulnerabilities
+
+    finding, project, team, dev = await _seed_finding(client)
+    await client.patch(
+        _url(finding.id), headers=_bearer(dev), json={"assignee_user_id": str(dev.id)}
+    )
+    factory = await _factory(client)
+    async with factory() as session:
+        await session.execute(
+            update(UserModel).where(UserModel.id == dev.id).values(is_active=False)
+        )
+        await session.commit()
+
+    async with factory() as session:
+        actor = await _principal(dev, team.id)
+        items, _t, _d = await list_project_vulnerabilities(
+            session, project_id=project.id, actor=actor, assignee="me"
+        )
+    row = next(r for r in items if r["id"] == finding.id)
+    assert row["assignee_user_id"] == dev.id
+    # ...and the row still reports that the owner cannot act, which is what the
+    # screen needs to show rather than hide by filtering.
+    assert row["assignee_is_active"] is False
+
+
+async def test_the_csv_export_resolves_me_to_the_exporting_user(client) -> None:  # noqa: ANN001
+    """`me` is a reference to the request's user, not a value.
+
+    The export forwards filters with ``**filters``, so the parameter certainly
+    arrives. That says nothing about whether ``me`` resolves to the person
+    doing the exporting: a path that passed a different actor, or none, would
+    still forward the token and still be wrong. So this asserts the CONTENT of
+    the file, with two people's findings in the same project to tell the
+    outcomes apart.
+    """
+    mine, project, team, dev = await _seed_finding(client)
+
+    # A second developer on the same team, with their own finding in the same
+    # project. One assignee would make "only mine" and "everything" identical.
+    factory = await _factory(client)
+    async with factory() as session:
+        from tests._helpers import make_membership
+
+        other = await make_user(session)
+        await make_membership(session, user=other, team=team, role="developer")
+
+    theirs, _p2, _t2, _d2 = await _seed_finding(client)
+    async with factory() as session:
+        from sqlalchemy import update
+
+        from models import VulnerabilityFinding as VF
+
+        # Put the second finding in THIS project's latest scan so both are in
+        # the same export, then give it to the other developer.
+        await session.execute(
+            update(VF).where(VF.id == theirs.id).values(scan_id=mine.scan_id)
+        )
+        await session.execute(
+            update(VF).where(VF.id == theirs.id).values(assignee_user_id=other.id)
+        )
+        await session.commit()
+
+    await client.patch(
+        _url(mine.id), headers=_bearer(dev), json={"assignee_user_id": str(dev.id)}
+    )
+
+    async with factory() as session:
+        from sqlalchemy import select
+
+        from models import Vulnerability, VulnerabilityFinding
+
+        my_cve = (
+            await session.execute(
+                select(Vulnerability.external_id)
+                .join(
+                    VulnerabilityFinding,
+                    VulnerabilityFinding.vulnerability_id == Vulnerability.id,
+                )
+                .where(VulnerabilityFinding.id == mine.id)
+            )
+        ).scalar_one()
+        their_cve = (
+            await session.execute(
+                select(Vulnerability.external_id)
+                .join(
+                    VulnerabilityFinding,
+                    VulnerabilityFinding.vulnerability_id == Vulnerability.id,
+                )
+                .where(VulnerabilityFinding.id == theirs.id)
+            )
+        ).scalar_one()
+
+    url = f"/v1/projects/{project.id}/vulnerabilities/export.csv"
+    everything = await client.get(url, headers=_bearer(dev))
+    assert everything.status_code == 200, everything.text
+    # Both are in the unfiltered export, so the filtered one below is a real
+    # narrowing rather than a file that never had the other row.
+    assert my_cve in everything.text
+    assert their_cve in everything.text
+
+    only_mine = await client.get(f"{url}?assignee=me", headers=_bearer(dev))
+    assert only_mine.status_code == 200, only_mine.text
+    assert my_cve in only_mine.text
+    assert their_cve not in only_mine.text, (
+        "the export returned another user's finding for assignee=me, so `me` "
+        "resolved to somebody other than the exporting user"
+    )

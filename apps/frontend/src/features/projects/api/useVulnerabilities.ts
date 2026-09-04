@@ -27,6 +27,7 @@ import {
 import type { LicenseCategoryName } from "@/features/projects/api/projectDetailApi";
 import {
   listProjectVulnerabilities,
+  type AssigneeFilter,
   type ReachabilityFilter,
   type SlaFilter,
   type SortOrder,
@@ -59,6 +60,20 @@ export interface VulnerabilitiesQueryFilters {
    */
   sla: SlaFilter | null;
   /**
+   * Ownership filter (ER28b). `"me"` is the caller's own findings, and
+   * `"unassigned"` the ones nobody has taken; `null` disables it.
+   *
+   * Two tokens rather than a user id, because a developer can only assign to
+   * themselves: no endpoint lets them enumerate their team, so an id would
+   * add a way to ask which findings a named person owns that no screen needs.
+   *
+   * Keyed on the finding's `assignee_user_id` column server-side. NOT on
+   * `assignee_is_active`, which looks equivalent and is not: filtering on
+   * that would hide findings owned by a deactivated account, which is exactly
+   * the state the list has to make visible.
+   */
+  assignee: AssigneeFilter | null;
+  /**
    * License-category buckets to keep (W2 #33). Empty array = no filter (all
    * categories). Members are the four `LicenseCategoryName` tokens; the
    * "unknown" bucket also covers findings whose component has no license
@@ -74,6 +89,21 @@ export interface VulnerabilitiesQueryFilters {
   scanId?: string;
 }
 
+/**
+ * The part of the list key that identifies the project's vulnerability list,
+ * without the filters.
+ *
+ * Exported so callers that need to invalidate the whole list can build the
+ * prefix from HERE rather than writing `["projects", id, "vulnerabilities"]`
+ * out again. A hand-written copy is not a compile error and not a runtime
+ * error: a key that does not match invalidates nothing, silently, so the
+ * copy would go stale without anything failing. ER28b's assignment mutation
+ * had exactly that bug before this existed.
+ */
+export function vulnerabilitiesKeyPrefix(projectId: string) {
+  return ["projects", projectId, "vulnerabilities"] as const;
+}
+
 export function vulnerabilitiesKey(
   projectId: string,
   filters: VulnerabilitiesQueryFilters,
@@ -82,9 +112,7 @@ export function vulnerabilitiesKey(
   // client compares keys structurally, so [crit,high] and [high,crit] would
   // otherwise produce two cache entries.
   return [
-    "projects",
-    projectId,
-    "vulnerabilities",
+    ...vulnerabilitiesKeyPrefix(projectId),
     {
       search: filters.search,
       severity: [...filters.severity].sort(),
@@ -94,6 +122,7 @@ export function vulnerabilitiesKey(
       min_epss: filters.min_epss,
       reachable: filters.reachable,
       sla: filters.sla,
+      assignee: filters.assignee,
       license_category: [...filters.license_category].sort(),
       limit: filters.limit,
       scanId: filters.scanId ?? null,
@@ -132,6 +161,7 @@ export function useVulnerabilities(
         min_epss: filters.min_epss ?? undefined,
         reachable: filters.reachable ?? undefined,
         sla: filters.sla ?? undefined,
+        assignee: filters.assignee ?? undefined,
         license_category: filters.license_category.length
           ? filters.license_category
           : undefined,

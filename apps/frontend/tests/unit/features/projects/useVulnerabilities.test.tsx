@@ -48,6 +48,13 @@ function row(id: string): VulnerabilityListItem {
     discovered_at: null,
     sla_due_at: null,
     sla_status: null,
+    assignee_user_id: null,
+    assignee_is_active: null,
+    due_on: null,
+    effective_due_date: null,
+    due_source: null,
+    ticket_url: null,
+    ticket_key: null,
     analysis_source: null,
     fixed_version: null,
   } as unknown as VulnerabilityListItem;
@@ -70,6 +77,7 @@ const FILTERS = {
   min_epss: null,
   reachable: null,
   sla: null,
+  assignee: null,
   license_category: [],
   limit: 100,
 };
