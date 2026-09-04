@@ -108,19 +108,28 @@ def refuse_if_no_tasks(app: Any) -> int:
         log.info("task_registry.ready", tasks=count, prefix=TASK_PREFIX)
         return count
 
-    log.error(
-        "task_registry.empty",
-        tasks=0,
-        prefix=TASK_PREFIX,
-        include_count=len(app.conf.include or []),
-        action=(
-            "This worker registered none of the portal's tasks and cannot run "
-            "any work. Left running it would take messages it cannot execute "
-            "and discard them, so it is stopping instead, which leaves them in "
-            "the queue. Check that tasks.celery_app's include list is intact "
-            "and that every module on it imports."
-        ),
-    )
+    # Wrapped because the refusal has to complete whatever the logging pipeline
+    # is doing. A test with an unwritable stream found this: the exception came
+    # out of here, Celery swallowed it the way it swallows anything a signal
+    # handler raises, and the worker carried on in the state this exists to
+    # stop. The plain stderr line below is the fallback, and it is the one that
+    # matters, so nothing above it may prevent reaching it.
+    try:
+        log.error(
+            "task_registry.empty",
+            tasks=0,
+            prefix=TASK_PREFIX,
+            include_count=len(app.conf.include or []),
+            action=(
+                "This worker registered none of the portal's tasks and cannot "
+                "run any work. Left running it would take messages it cannot "
+                "execute and discard them, so it is stopping instead, which "
+                "leaves them in the queue. Check that tasks.celery_app's "
+                "include list is intact and that every module on it imports."
+            ),
+        )
+    except Exception:  # noqa: BLE001, S110 - see above
+        pass
     # The structured line above may not survive, and the diagnosis is the whole
     # value of this guard, so it is also written to the process's real stderr.
     # A running worker has replaced ``sys.stdout`` and ``sys.stderr`` with its
@@ -131,15 +140,22 @@ def refuse_if_no_tasks(app: Any) -> int:
     # passing. Measured: without this the guard stopped the
     # worker and its explanation never appeared, leaving a container that dies
     # on boot saying nothing.
-    if sys.__stderr__ is not None:
-        sys.__stderr__.write(
-            "FATAL task_registry.empty: this worker registered none of the "
-            "portal's tasks and cannot run any work. It is stopping rather "
-            "than consuming messages it would have to discard. Check that "
-            "tasks.celery_app's include list is intact and that every module "
-            "on it imports.\n"
-        )
-        sys.__stderr__.flush()
+    try:
+        if sys.__stderr__ is not None:
+            sys.__stderr__.write(
+                "FATAL task_registry.empty: this worker registered none of the "
+                "portal's tasks and cannot run any work. It is stopping rather "
+                "than consuming messages it would have to discard. Check that "
+                "tasks.celery_app's include list is intact and that every "
+                "module on it imports.\n"
+            )
+            sys.__stderr__.flush()
+    except Exception:  # noqa: BLE001, S110 - see below
+        # Every step from here to the exit is best effort. Stopping is the part
+        # that protects the queued work, and it must happen even on a process
+        # whose output is entirely broken: the alternative is this exception
+        # leaving the handler, Celery swallowing it, and the worker running on.
+        pass
 
     # Then the ordinary machinery, in the order that gets the most out before
     # the process ends: handlers first, because one writing to a file or a

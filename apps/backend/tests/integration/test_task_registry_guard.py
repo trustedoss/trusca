@@ -283,3 +283,166 @@ def test_the_cleanup_leaves_a_key_it_did_not_create() -> None:
         )
     finally:
         client.delete(name)
+
+
+class _Stopped(BaseException):
+    """Stands in for the process ending, so the test can carry on afterwards."""
+
+
+def test_the_explanation_is_written_before_the_process_ends(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The refusal is driven in this process, in order, with the exit stubbed.
+
+    The subprocess tests above prove the worker stops and that its reason
+    reaches the output, but they observe the result and not the sequence. The
+    sequence is the fragile part: ``os._exit`` skips every buffer, so an
+    explanation written after it is an explanation nobody gets, and moving one
+    line would produce a worker that dies silently while both subprocess tests
+    still pass. It also runs the refusal branch where coverage can see it.
+    """
+    import logging as logging_module
+    import sys as sys_module
+
+    from tasks import task_registry_guard as guard
+
+    order: list[str] = []
+
+    class _Stderr:
+        def write(self, text: str) -> int:
+            order.append(f"write:{text.split(':')[0]}")
+            return len(text)
+
+        def flush(self) -> None:
+            order.append("stderr-flush")
+
+    def _shutdown() -> None:
+        order.append("logging.shutdown")
+
+    def _exit(code: int) -> None:
+        order.append(f"os._exit:{code}")
+        raise _Stopped
+
+    monkeypatch.setattr(sys_module, "__stderr__", _Stderr())
+    monkeypatch.setattr(logging_module, "shutdown", _shutdown)
+    monkeypatch.setattr(os, "_exit", _exit)
+
+    class _EmptyApp:
+        tasks: dict[str, object] = {}
+
+        class conf:
+            include: list[str] = []
+
+    with pytest.raises(_Stopped):
+        guard.refuse_if_no_tasks(_EmptyApp())
+
+    assert order, "the refusal path did not run"
+    assert order[-1] == "os._exit:1", (
+        f"the process ended before finishing its explanation: {order}"
+    )
+    assert order.index("write:FATAL task_registry.empty") < order.index(
+        "logging.shutdown"
+    ) < order.index("os._exit:1"), (
+        "the explanation has to be written and the handlers flushed before the "
+        f"process ends, and this order does not do that: {order}"
+    )
+
+
+def test_the_healthy_path_touches_none_of_that(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A worker with tasks must not have its logging shut down on the way past.
+
+    Guards the test above from being satisfied by a function that always
+    refuses, and guards the product from a guard that closes the log handlers
+    of every healthy worker at boot.
+    """
+    import logging as logging_module
+
+    from tasks import task_registry_guard as guard
+
+    def _fail(*_: object) -> None:
+        raise AssertionError("the healthy path must not reach here")
+
+    monkeypatch.setattr(logging_module, "shutdown", _fail)
+    monkeypatch.setattr(os, "_exit", _fail)
+
+    class _App:
+        tasks = {"trustedoss.scan_source": object(), "celery.chain": object()}
+
+        class conf:
+            include = ["tasks.scan_source"]
+
+    assert guard.refuse_if_no_tasks(_App()) == 1
+
+
+def test_the_signal_handler_reads_the_real_app(monkeypatch: pytest.MonkeyPatch) -> None:
+    """The wiring, exercised in this process rather than only in a worker.
+
+    A handler that read the wrong app, or a delegation that quietly stopped
+    calling the decision, would leave every subprocess test passing for the
+    reason it always did: the app the worker builds is the one being checked
+    there, and nothing looks at which app this handler picks up.
+    """
+    from tasks import task_registry_guard as guard
+    from tasks.celery_app import celery_app
+
+    seen: list[object] = []
+
+    def _record(app: object) -> int:
+        seen.append(app)
+        return 1
+
+    monkeypatch.setattr(guard, "refuse_if_no_tasks", _record)
+    guard._on_worker_ready()
+
+    assert seen == [celery_app], (
+        "the handler checked something other than the application's own Celery "
+        "app, so a worker's real registry would go unexamined"
+    )
+
+
+def test_a_stream_that_cannot_be_flushed_does_not_bury_the_refusal(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A broken stream must not turn a clean stop into a traceback.
+
+    The refusal is what the operator reads. A flush that raises on the way out
+    would replace it with a stack trace about the flush, which is the least
+    useful thing that could be on the screen at that moment.
+    """
+    import logging as logging_module
+    import sys as sys_module
+
+    from tasks import task_registry_guard as guard
+
+    class _Broken:
+        def write(self, text: str) -> int:
+            return len(text)
+
+        def flush(self) -> None:
+            raise OSError("stream is gone")
+
+    monkeypatch.setattr(sys_module, "__stderr__", _Broken())
+    monkeypatch.setattr(sys_module, "stdout", _Broken())
+    monkeypatch.setattr(sys_module, "stderr", _Broken())
+    monkeypatch.setattr(logging_module, "shutdown", lambda: None)
+
+    exits: list[int] = []
+
+    def _exit(code: int) -> None:
+        exits.append(code)
+        raise _Stopped
+
+    monkeypatch.setattr(os, "_exit", _exit)
+
+    class _EmptyApp:
+        tasks: dict[str, object] = {}
+
+        class conf:
+            include: list[str] = []
+
+    with pytest.raises(_Stopped):
+        guard.refuse_if_no_tasks(_EmptyApp())
+
+    assert exits == [1], "the broken stream stopped the refusal from completing"
