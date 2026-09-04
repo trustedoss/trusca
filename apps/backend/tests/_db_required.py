@@ -20,6 +20,7 @@ different ways - ``test_health_ready.py`` asserts on the return code,
 ``test_queue_transition_consumption.py`` calls ``pytest.fail``. This module is
 not a new convention; it is those three collapsed into one that the other 376
 can share.
+
 These are plain functions, called from each module's own fixture, and NOT
 fixtures themselves. That is deliberate twice over, and the second reason is
 the one that is easy to lose:
@@ -46,9 +47,6 @@ Putting the fixture in ``conftest.py`` avoids the import and so avoids F811
 entirely. That is the orthodox answer and it stays open, but it needs one
 fixture name and scope agreed across every module that uses it, which makes it
 a design change rather than the mechanical move this is.
-
-"""
-
 """
 
 from __future__ import annotations
