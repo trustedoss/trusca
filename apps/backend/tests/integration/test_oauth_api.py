@@ -14,11 +14,8 @@ graph is created end-to-end.
 
 from __future__ import annotations
 
-import os
-import subprocess
 import uuid
 from collections.abc import AsyncIterator, Callable
-from pathlib import Path
 from typing import Any
 from urllib.parse import parse_qs, urlsplit
 
@@ -28,33 +25,14 @@ from httpx import ASGITransport, AsyncClient
 from sqlalchemy import select, text
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
-BACKEND_ROOT = Path(__file__).resolve().parent.parent.parent
+from tests._db_required import migrate_to_head
 
 pytestmark = pytest.mark.integration
 
 
-def _require_database_url() -> str:
-    url = os.getenv("DATABASE_URL")
-    if not url:
-        pytest.skip("DATABASE_URL not set — skip oauth integration test")
-    return url
-
-
 @pytest.fixture(scope="module", autouse=True)
 def _migrate_once() -> None:
-    _require_database_url()
-    result = subprocess.run(
-        ["alembic", "upgrade", "head"],
-        cwd=BACKEND_ROOT,
-        capture_output=True,
-        text=True,
-        timeout=120,
-    )
-    if result.returncode != 0:
-        pytest.skip(
-            f"alembic upgrade head failed; oauth tests cannot run\n"
-            f"stdout:\n{result.stdout}\nstderr:\n{result.stderr}"
-        )
+    migrate_to_head()
 
 
 @pytest.fixture(autouse=True)

@@ -23,19 +23,15 @@ transactions, not what our code says about it.
 from __future__ import annotations
 
 import asyncio
-import os
-import subprocess
 from collections.abc import AsyncIterator
-from pathlib import Path
 
 import pytest
 from sqlalchemy import func, select
 
 from core.security import set_password
 from models import RefreshToken, User
+from tests._db_required import migrate_to_head
 from tests._helpers import make_user
-
-BACKEND_ROOT = Path(__file__).resolve().parent.parent.parent
 
 pytestmark = pytest.mark.integration
 
@@ -45,23 +41,9 @@ pytestmark = pytest.mark.integration
 _BLOCKED_WAIT_SECONDS = 5.0
 
 
-def _require_database_url() -> None:
-    if not os.getenv("DATABASE_URL"):
-        pytest.skip("DATABASE_URL not set: skip reset/session-creation race tests")
-
-
 @pytest.fixture(scope="module", autouse=True)
 def _migrate_once() -> None:
-    _require_database_url()
-    result = subprocess.run(
-        ["alembic", "upgrade", "head"],
-        cwd=BACKEND_ROOT,
-        capture_output=True,
-        text=True,
-        timeout=180,
-    )
-    if result.returncode != 0:
-        pytest.skip(f"alembic upgrade head failed: {result.stderr}")
+    migrate_to_head()
 
 
 @pytest.fixture

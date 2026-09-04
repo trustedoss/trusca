@@ -23,8 +23,6 @@ CLAUDE.md compliance:
 from __future__ import annotations
 
 import json
-import os
-import subprocess
 import uuid
 from collections.abc import AsyncIterator
 from datetime import date
@@ -37,6 +35,7 @@ from sqlalchemy import select
 
 from integrations.kev_feed import KevEntry, KevFeedUnavailable, parse_kev_catalog
 from models import KevSyncState, Vulnerability
+from tests._db_required import migrate_to_head
 
 BACKEND_ROOT = Path(__file__).resolve().parent.parent.parent
 FIXTURE_PATH = BACKEND_ROOT / "tests" / "fixtures" / "kev" / "cisa-kev-excerpt.json"
@@ -46,28 +45,9 @@ LOG4SHELL = "CVE-2021-44228"
 pytestmark = pytest.mark.integration
 
 
-def _require_database_url() -> str:
-    url = os.getenv("DATABASE_URL")
-    if not url:
-        pytest.skip("DATABASE_URL not set — skip KEV catalog refresh tests")
-    return url
-
-
 @pytest.fixture(scope="module", autouse=True)
 def _migrate_once() -> None:
-    _require_database_url()
-    result = subprocess.run(
-        ["alembic", "upgrade", "head"],
-        cwd=BACKEND_ROOT,
-        capture_output=True,
-        text=True,
-        timeout=120,
-    )
-    if result.returncode != 0:
-        pytest.skip(
-            "alembic upgrade head failed; KEV refresh tests cannot run\n"
-            f"stdout:\n{result.stdout}\nstderr:\n{result.stderr}"
-        )
+    migrate_to_head()
 
 
 @pytest.fixture

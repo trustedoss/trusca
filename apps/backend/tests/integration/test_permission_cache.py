@@ -16,11 +16,8 @@ for this unit.
 
 from __future__ import annotations
 
-import os
-import subprocess
 import uuid
 from collections.abc import AsyncIterator, Iterator
-from pathlib import Path
 from typing import Any
 
 import pytest
@@ -29,6 +26,7 @@ from sqlalchemy import select
 
 from core.security import create_access_token, reset_principal_cache
 from models import Membership, User
+from tests._db_required import migrate_to_head
 from tests._helpers import (
     make_membership,
     make_organization,
@@ -36,30 +34,12 @@ from tests._helpers import (
     make_user,
 )
 
-BACKEND_ROOT = Path(__file__).resolve().parent.parent.parent
-
 pytestmark = pytest.mark.integration
-
-
-def _require_database_url() -> str:
-    url = os.getenv("DATABASE_URL")
-    if not url:
-        pytest.skip("DATABASE_URL not set, skipping permission cache tests")
-    return url
 
 
 @pytest.fixture(scope="module", autouse=True)
 def _migrate_once() -> None:
-    _require_database_url()
-    result = subprocess.run(
-        ["alembic", "upgrade", "head"],
-        cwd=BACKEND_ROOT,
-        capture_output=True,
-        text=True,
-        check=False,
-    )
-    if result.returncode != 0:
-        pytest.skip(f"alembic upgrade failed: {result.stderr[-400:]}")
+    migrate_to_head()
 
 
 @pytest.fixture(autouse=True)
