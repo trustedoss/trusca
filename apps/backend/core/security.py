@@ -70,6 +70,26 @@ JWT_ALGORITHM = "HS256"
 TOKEN_TYPE_ACCESS = "access"
 TOKEN_TYPE_REFRESH = "refresh"
 
+#: A password was accepted and a second factor is still owed. Carries no
+#: authority of its own: ``decode_token(expected_type=...)`` refuses it
+#: everywhere except the endpoint that completes the sign-in, so presenting it
+#: to an ordinary route is the same as presenting nothing.
+#:
+#: It has to be a distinct type rather than an access token with a flag on it.
+#: A flag is something every reader has to remember to check, and the readers
+#: are every authenticated route; a type is something they refuse by default.
+TOKEN_TYPE_MFA_PENDING = "mfa-pending"
+
+#: The same shape, for somebody who is signed in and enrolling. Kept apart from
+#: the sign-in one on purpose: a token minted while setting MFA up must not be
+#: usable to finish a sign-in, or scanning a QR code would hand out a way past
+#: the factor it is enrolling.
+TOKEN_TYPE_MFA_ENROLLING = "mfa-enrolling"
+
+#: Minutes a pending token lives. Long enough to open an authenticator app and
+#: read a code, short enough that one left in a browser history is stale.
+MFA_PENDING_EXPIRE_MINUTES = 5
+
 # Role priority. Higher value means more privileged.
 #
 # The numbers start at 1, not 0, because ``_has_at_least`` reads this map with
@@ -310,6 +330,33 @@ def create_access_token(
         claims["role"] = role
     if extra_claims:
         claims.update(extra_claims)
+    return str(jwt.encode(claims, secret_key(), algorithm=JWT_ALGORITHM))
+
+
+def create_mfa_pending_token(*, subject: str, token_type: str) -> str:
+    """Mint a short-lived token that proves one factor and grants nothing.
+
+    ``token_type`` is one of :data:`TOKEN_TYPE_MFA_PENDING` (a sign-in awaiting
+    its second factor) or :data:`TOKEN_TYPE_MFA_ENROLLING` (an enrolment
+    awaiting its first code). They are separate so neither can be spent where
+    the other belongs.
+
+    Deliberately not a cookie and not a refresh token. Setting a refresh cookie
+    before the second factor is verified would leave a complete session behind
+    the screen that asks for the code, and a client that ignores the screen and
+    calls the refresh endpoint would be signed in without ever supplying it.
+    """
+    if token_type not in (TOKEN_TYPE_MFA_PENDING, TOKEN_TYPE_MFA_ENROLLING):
+        raise ValueError(f"not an MFA token type: {token_type!r}")
+    now = _now()
+    expires = now + timedelta(minutes=MFA_PENDING_EXPIRE_MINUTES)
+    claims: dict[str, Any] = {
+        "sub": subject,
+        "type": token_type,
+        "iat": int(now.timestamp()),
+        "exp": int(expires.timestamp()),
+        "jti": uuid.uuid4().hex,
+    }
     return str(jwt.encode(claims, secret_key(), algorithm=JWT_ALGORITHM))
 
 
@@ -824,6 +871,7 @@ def require_team_member() -> Callable[..., CurrentUser]:
 __all__ = [
     "CurrentUser",
     "create_access_token",
+    "create_mfa_pending_token",
     "create_refresh_token",
     "normalize_email",
     "decode_token",
