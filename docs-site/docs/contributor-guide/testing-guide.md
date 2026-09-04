@@ -58,6 +58,15 @@ worktree's own copy. To confirm a lint is reading your files, put a violation
 in one of them and check it is caught at the right line, then remove it: a
 file count only differs when your branch adds a file.
 
+The other surprise is `git diff --name-only origin/main`, which is how most
+people check a rebase for stray files. It answers "what differs", and that
+mixes your change with everything `main` gained since you branched, so a file
+somebody else merged reads as one you deleted. Compare against the merge base,
+or rebase first and then look. When an unfamiliar name does appear,
+`git log HEAD..origin/main` says whether `main` moved or you did. Getting this
+wrong is not only confusing: unfamiliar names on every check teach you to skim
+the list, and the real accident is in that list.
+
 If you need a placeholder migration so `alembic upgrade head` resolves while
 the revision before yours is still on someone else's branch, put `_local_stub`
 in its filename and add that exact path to `.git/info/exclude`. Not a glob.
@@ -152,6 +161,16 @@ The three look identical from outside, which is the point of listing them: a
 reader who knows only about baselines will check the baseline, find nothing,
 and conclude the neighbour is the convention. Establish which one you are
 looking at before copying.
+
+A fourth case is not about the neighbour passing at all. What you take from it
+can be right and wrong at once, and taking it as one piece hides the seam. The
+assignment carry-forward tests needed two fixtures from the file next door, a
+session and a database gate; importing a fixture that a test also names as a
+parameter is a redefinition, so both were written locally instead. The session
+fixture had no shared version and the gate did, and copying them together
+reproduced the private gate that ER66 exists to remove. Nothing pointed at the
+gate, because it arrived attached to something that was fine. When you bring
+over more than one thing, ask of each separately whether it belongs to you.
 
 ### Running locally: give each run its own Postgres and its own Redis
 
@@ -456,27 +475,36 @@ often enough to name:
 - **A tool found nothing**, and the result alone cannot say whether there was
   nothing to find or whether the tool was not looking there. A repository lint
   run from the wrong tree reports zero findings for a file it never opened.
-  This bites hardest when you scan structured output with a regular
-  expression instead of parsing it: `gh` and `EXPLAIN` both return JSON, and
-  a name like `lint (backend)` or a plan node nested under `SubPlan` does not
-  match what a pattern built by hand expects. Parse the structure or compare
-  exact strings, and remember that parentheses, brackets and dots inside a
-  value mean something else to a regex.
+  Two ways a hand-built pattern misses what is in front of it. `gh` and
+  `EXPLAIN` return JSON, and a name like `lint (backend)` or a plan node
+  nested under `SubPlan` does not match a pattern built without expecting
+  parentheses or nesting, so parentheses, brackets and dots inside a value
+  mean something else to a regex than they do to you. And counting things in
+  source has the same problem: `grep` found three of the five five-element
+  tuples in a test file, the two it missed written in shapes the pattern did
+  not anticipate, one of them inside a second helper. A pattern finds the
+  notation you imagined; a parse finds what is there. Parse the structure or
+  compare exact strings; this repository already asserts over ASTs in several
+  places, so it is not a new tool to reach for.
 
-  The same holds for counting things in source. Fixing a helper's return type
-  meant finding every five-element tuple in a test file; `grep` found three,
-  the run still failed, and an `ast` walk found five. The two it missed were
-  written in shapes the pattern did not anticipate, one of them inside a
-  second helper. A pattern finds the notation you imagined; a parse finds what
-  is there. This repository already asserts over ASTs in several places, so it
-  is not a new tool to reach for.
-
-  A specific wrong answer is more dangerous than an empty one. Nobody trusts
-  a tool that returns nothing, but "13 of 17 checks never ran" carries a
-  count and a list, and the detail is what makes it credible: it looks like
-  arithmetic, and it is arithmetic on a broken premise. When a new check
+  A specific wrong answer is more dangerous than an empty one. Nobody trusts a
+  tool that returns nothing, but "13 of 17 checks never ran" carries a count
+  and a list, and the detail is what makes it credible: it looks like
+  arithmetic, and it is arithmetic on a broken premise. Counting is the common
+  way to arrive at one, because a count discards the relationships it counted
+  over: rendering a chart with a certificate mounted produced four mount
+  paths, which was the expected number, while one of the four had no volume
+  behind it and would have been refused by Kubernetes. When a new check
   produces a plausible answer, feed it one input you know it should match and
-  confirm it does.
+  confirm it does. If the answer is a number, check what the number is
+  attached to.
+
+  Testing the checker has its own version of this. The input you plant has to
+  be something the checker declares it catches, or "it did not fire" means
+  both "the checker is not running" and "that was never a violation". A
+  clumsy Korean sentence planted to prove a style lint was reading a new file
+  went uncaught because no rule in its catalogue covered that shape; a real
+  rule from the catalogue was caught immediately.
 - **A fixture never populated the field**, so a guard over that field is blind
   and reports success for every input.
 - **Isolation removed a condition rather than removing noise.** Running one
@@ -504,6 +532,14 @@ an added compose block that became a duplicate key the parser resolved to
 the other one, and an UPDATE that changed nothing because the target row
 already held the value being written. Both read as "the guard does not
 catch this" when the guard was fine.
+
+The mutation is subject to everything on the list above, including the string
+matching it is often testing. Checking that a documentation contract noticed a
+variable disappearing from a page, the "removal" renamed `GIT_SSL_CAPATH` to
+`GIT_SSL_CAPATH_REMOVED_FROM_DOCS`, which still contains the original as a
+substring, so the containment check passed and read as a weak contract. Assert
+the state the mutation was supposed to produce, not that the text changed:
+here, that the old name is absent.
 
 Two layers that can produce the same outcome hide each other: delete either
 and the result is unchanged, so neither is verified. The reverse also
