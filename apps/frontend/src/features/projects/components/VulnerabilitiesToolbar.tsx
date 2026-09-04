@@ -538,6 +538,9 @@ export function VulnerabilitiesToolbar({
           <option value="unassigned">
             {t("vulnerabilities.filter.assignee_unassigned")}
           </option>
+          <option value="inactive">
+            {t("vulnerabilities.filter.assignee_inactive")}
+          </option>
         </select>
       </div>
 

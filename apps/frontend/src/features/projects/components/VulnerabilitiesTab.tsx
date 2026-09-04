@@ -256,9 +256,9 @@ const VALID_SLA = new Set<SlaFilter>(SLA_STATUS_VALUES);
  * for "no filter" — same defensive narrowing as `parseReachable` so a
  * hand-edited URL can't wedge the filter into a value the backend 422s on.
  */
-const VALID_ASSIGNEE = new Set<AssigneeFilter>(["me", "unassigned"]);
+const VALID_ASSIGNEE = new Set<AssigneeFilter>(["me", "unassigned", "inactive"]);
 
-/** ER28b - `?assignee=me|unassigned`, same single-token shape as `sla`. */
+/** `?assignee=me|unassigned|inactive`, same single-token shape as `sla`. */
 function parseAssignee(raw: string | null): AssigneeFilter | null {
   if (raw && VALID_ASSIGNEE.has(raw as AssigneeFilter)) {
     return raw as AssigneeFilter;

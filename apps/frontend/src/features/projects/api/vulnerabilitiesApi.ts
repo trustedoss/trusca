@@ -100,10 +100,15 @@ export type SlaFilter = SlaStatus;
 export type ReachabilityFilter = "true" | "false" | "unknown";
 
 /**
- * Ownership filter tokens (ER28b). Not a user id: see
+ * Ownership filter tokens. Not a user id: see
  * `VulnerabilitiesQueryFilters.assignee` for why.
+ *
+ * Each names a state rather than a person, because the parameter already says
+ * whose. `inactive` is work assigned to a closed account, which looks owned
+ * and cannot move. A backend contract test compares this list against the
+ * service and both route patterns, so adding a token here alone fails.
  */
-export type AssigneeFilter = "me" | "unassigned";
+export type AssigneeFilter = "me" | "unassigned" | "inactive";
 
 /**
  * Provenance of a finding's current status (v2.1 A2 — VEX import / consume).

@@ -726,6 +726,85 @@ async def test_the_unassigned_filter_excludes_owned_findings(client) -> None:  #
     assert finding.id not in [r["id"] for r in after]
 
 
+async def test_the_inactive_filter_finds_work_that_cannot_move(client) -> None:  # noqa: ANN001
+    """ER67. Assigned to a closed account, so it looks owned and is stuck.
+
+    Three states in one run, because a filter that returned everything would
+    pass a test that only looked for the one row it wants: the finding is
+    unassigned, then assigned to an active person, then that person is
+    deactivated, and the filter is asked at each step.
+    """
+    from sqlalchemy import update
+
+    from services.vulnerability_service import list_project_vulnerabilities
+
+    finding, project, team, dev = await _seed_finding(client)
+    factory = await _factory(client)
+
+    async def _inactive() -> list[uuid.UUID]:
+        async with factory() as session:
+            actor = await _principal(dev, team.id)
+            rows, _t, _d = await list_project_vulnerabilities(
+                session, project_id=project.id, actor=actor, assignee="inactive"
+            )
+            return [r["id"] for r in rows]
+
+    assert finding.id not in await _inactive(), (
+        "an unassigned finding matched the inactive filter; NULL is not False "
+        "and a row nobody owns is not a row owned by somebody who cannot act"
+    )
+
+    await client.patch(
+        _url(finding.id), headers=_bearer(dev), json={"assignee_user_id": str(dev.id)}
+    )
+    assert finding.id not in await _inactive(), (
+        "a finding owned by an active person matched the inactive filter"
+    )
+
+    async with factory() as session:
+        await session.execute(
+            update(User).where(User.id == dev.id).values(is_active=False)
+        )
+        await session.commit()
+
+    assert finding.id in await _inactive(), (
+        "the assignee's account is closed and the finding did not surface, so "
+        "there is still no way to find work that cannot move"
+    )
+
+
+async def test_the_join_does_not_change_what_an_unfiltered_list_returns(
+    client,  # noqa: ANN001
+) -> None:
+    """ER67 replaced a correlated subquery with an outer join.
+
+    An inner join would have dropped every unassigned finding from every list
+    in the product, which is most of them, and no assignee test would have
+    noticed because they all assign first. This asks the unfiltered list for a
+    finding nobody owns.
+    """
+    from services.vulnerability_service import list_project_vulnerabilities
+
+    finding, project, team, dev = await _seed_finding(client)
+    factory = await _factory(client)
+    async with factory() as session:
+        actor = await _principal(dev, team.id)
+        rows, total, _dist = await list_project_vulnerabilities(
+            session, project_id=project.id, actor=actor
+        )
+
+    ids = [r["id"] for r in rows]
+    assert finding.id in ids, (
+        "an unassigned finding vanished from the unfiltered list, so the join "
+        "is inner rather than outer"
+    )
+    assert total == len(ids)
+    row = next(r for r in rows if r["id"] == finding.id)
+    assert row["assignee_is_active"] is None, (
+        "unassigned has to read as None; False would say the owner cannot act"
+    )
+
+
 async def test_an_unknown_assignee_token_is_refused(client) -> None:  # noqa: ANN001
     """Rejected rather than ignored: a filter that silently does nothing shows
     a full list to somebody who asked for a narrowed one."""
