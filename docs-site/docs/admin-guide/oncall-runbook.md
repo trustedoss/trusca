@@ -249,6 +249,63 @@ curl -fsS "https://<your-host>/v1/admin/scans?status=queued" \
 - If scaling `worker-scan` does not bring the backlog down within one scan-duration cycle (suggests the bottleneck is elsewhere: disk, Postgres, or the broker itself), OR
 - If the alert keeps re-firing (past its cooldown) for the same queue across multiple days.
 
+## Scenario 6 - A worker restarts on boot with `task_registry.empty`
+
+### Symptom
+A worker container will not stay up. Its log ends with a line naming
+`task_registry.empty`, or on the process's own stderr:
+
+```
+FATAL task_registry.empty: this worker registered none of the portal's tasks
+```
+
+Under Compose the service restarts in a loop; under Kubernetes the pod reports
+CrashLoopBackOff.
+
+The container exits with **78**. If the log shows nothing at all, that number
+alone is the diagnosis: the worker stopped because it had none of the portal's
+tasks. A plain `1` is what the process reports for almost any other reason it
+dies, so 78 is reserved for this one and every step of the refusal is written
+to survive an output failure.
+
+### Customer impact
+Scans queued for that worker do not run. They stay queued rather than
+disappearing, which is the point of the worker stopping: a worker with no tasks
+that keeps running takes those messages, cannot execute them, and discards
+them, and a healthy worker started afterwards finds nothing left to do.
+
+If another worker of the same kind is healthy it will pick the work up and
+there is no customer impact at all, only a restarting container.
+
+### Diagnose
+The worker's task list is built from an include list in the application, so
+this is a deployment or packaging fault rather than a configuration one. It
+means either that the list is empty or that no module on it imported.
+
+<!-- docs-uat: id=oncall-task-registry-check kind=shell ctx=host tier=nightly waiver=runbook-diagnostic-prod-compose-worker -->
+```bash
+# 1. What the worker says on the way down
+docker-compose -f docker-compose.yml logs --tail=50 worker-scan | grep -i task_registry
+# 2. Whether the modules import at all in that image
+docker-compose -f docker-compose.yml run --rm --entrypoint python worker-scan \
+  -c "from tasks.celery_app import celery_app; celery_app.loader.import_default_modules(); \
+      print(len([t for t in celery_app.tasks if t.startswith('trustedoss.')]))"
+```
+
+The second command prints the count the guard would see. A healthy image prints
+a number in the twenties or thirties. Zero, or a traceback, is the fault.
+
+### Recover
+1. **A mismatched or partial image**: pull the tagged image again and recreate
+   the service. An image built from an incomplete tree is the usual cause.
+2. **A module that fails to import**: the second command above prints the
+   traceback. That is a defect in the release rather than something to
+   configure around; roll back to the previous tag.
+
+### Escalate
+Immediately if the second command shows a traceback on an official release
+image: every worker of that kind in every deployment on that tag is affected.
+
 ## Standard escalation form
 
 When paging the portal dev team, attach:
