@@ -47,12 +47,10 @@ from __future__ import annotations
 
 import json
 import os
-import subprocess
 import threading
 import time
 import uuid
 from collections.abc import Iterator
-from pathlib import Path
 
 import pytest
 from fastapi.testclient import TestClient
@@ -63,6 +61,7 @@ from core.security import (
     create_access_token,
     create_refresh_token,
 )
+from tests._db_required import migrate_to_head
 from tests._helpers import (
     make_membership,
     make_organization,
@@ -71,21 +70,12 @@ from tests._helpers import (
     make_user,
 )
 
-BACKEND_ROOT = Path(__file__).resolve().parent.parent.parent
-
 pytestmark = pytest.mark.integration
 
 
 # ---------------------------------------------------------------------------
 # Module-scoped bring-up
 # ---------------------------------------------------------------------------
-
-
-def _require_database_url() -> str:
-    url = os.getenv("DATABASE_URL")
-    if not url:
-        pytest.skip("DATABASE_URL not set — skip ws integration test")
-    return url
 
 
 def _require_redis_url() -> str:
@@ -97,21 +87,7 @@ def _require_redis_url() -> str:
 
 @pytest.fixture(scope="module", autouse=True)
 def _migrate_once() -> None:
-    """Run alembic upgrade head once before any ws integration test."""
-    _require_database_url()
-    _require_redis_url()
-    result = subprocess.run(
-        ["alembic", "upgrade", "head"],
-        cwd=BACKEND_ROOT,
-        capture_output=True,
-        text=True,
-        timeout=120,
-    )
-    if result.returncode != 0:
-        pytest.skip(
-            f"alembic upgrade head failed; ws integration cannot run\n"
-            f"stdout:\n{result.stdout}\nstderr:\n{result.stderr}"
-        )
+    migrate_to_head()
 
 
 @pytest.fixture(autouse=True)

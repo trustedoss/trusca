@@ -17,6 +17,7 @@ import pytest
 
 from core.db import sync_session_scope
 from models import Membership
+from tests._db_required import migrate_to_head
 from tests._helpers import (
     make_membership,
     make_organization,
@@ -29,29 +30,9 @@ from tests._helpers import (
 pytestmark = pytest.mark.integration
 
 
-def _require_database_url() -> None:
-    import os
-
-    if not os.getenv("DATABASE_URL"):
-        pytest.skip("DATABASE_URL not set: skip schedule-scan notification tests")
-
-
 @pytest.fixture(scope="module", autouse=True)
 def _migrate_once() -> None:
-    import subprocess
-    from pathlib import Path
-
-    _require_database_url()
-    backend_root = Path(__file__).resolve().parent.parent.parent
-    result = subprocess.run(
-        ["alembic", "upgrade", "head"],
-        cwd=backend_root,
-        capture_output=True,
-        text=True,
-        timeout=120,
-    )
-    if result.returncode != 0:
-        pytest.skip(f"alembic upgrade head failed\n{result.stdout}\n{result.stderr}")
+    migrate_to_head()
 
 
 async def _seed_team_of_two(db_session):
