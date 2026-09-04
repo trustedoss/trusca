@@ -608,6 +608,15 @@ jobs:
       DATABASE_URL: postgresql+asyncpg://trustedoss:trustedoss@localhost:5432/trustedoss
       REDIS_URL: redis://localhost:6379/0
       SECRET_KEY: ci-fixture-secret-key-for-workflow-runs
+      # Here a database is promised, so not having one is a failure and not a
+      # reason to skip. Without this the tests that need a schema skip when the
+      # migration breaks, and the job that exists to catch a broken migration
+      # exits 0. Measured before this flag existed: a deliberately broken head
+      # migration left the integration leg with 1824 of its tests skipped and
+      # the unit leg with 989, and what turned either leg red was a handful of
+      # modules that had no gate at all rather than the gates working.
+      # tests/_db_required.py holds the rule.
+      TRUSCA_TESTS_REQUIRE_DB: "1"
     steps:
       - uses: actions/checkout@v4
 

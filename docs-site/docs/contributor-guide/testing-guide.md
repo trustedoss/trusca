@@ -186,6 +186,44 @@ keys are your own leftovers, clear them; if they are not, move.
 CI needs none of this. Each job gets its own Postgres and Redis container, so
 the fixed URLs in the workflow are already private to that job.
 
+### When the database is missing, the venue decides {#db-required}
+
+Tests that need a schema call `tests._db_required`, which reads
+`TRUSCA_TESTS_REQUIRE_DB` and answers one question: is not having a database a
+reason to skip, or a failure?
+
+Locally the flag is unset and those tests skip, which is what makes the suite
+runnable without Postgres. CI sets it, because there a database is promised and
+its absence is a fault.
+
+The reason is worth knowing, because the old behaviour looked harmless. Every
+module skipped when `alembic upgrade head` failed, so a pull request that broke
+a migration made all the tests that needed the schema skip, and the job that
+exists to catch a broken migration exited 0. Measured on a probe branch with a
+deliberately broken head migration: the integration leg skipped 1824 tests and
+the unit leg 989, and what turned either leg red was a handful of modules that
+had no gate at all - not the gates working.
+
+Two details of the helper follow from the same measurement:
+
+- **The migration runs once per process and the outcome is remembered, failure
+  included.** Each module used to run its own, so when one broke, the first
+  module reported the real error and every later one reported
+  `relation "..." already exists` from re-running a chain that had stopped
+  partway. Retrying cannot succeed, and it replaces the true diagnosis with a
+  false one.
+- **A module that uses the database must gate on it.** One that opens a session
+  and migrates nothing passes only while some earlier module happens to have
+  built the schema, and fails on its own. `test_database_gates_are_shared.py`
+  fails if any module does this, and fails if a new module writes its own copy
+  of the gate instead of calling the helper.
+
+To see what CI sees, set the flag:
+
+```bash
+TRUSCA_TESTS_REQUIRE_DB=1 pytest tests/integration
+```
+
 ### Coverage
 
 ```bash

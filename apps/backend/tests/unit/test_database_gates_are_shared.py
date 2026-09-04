@@ -408,3 +408,32 @@ def test_the_debt_list_only_shrinks() -> None:
     assert not stale, (
         f"already moved, remove from STILL_ROLLING_THEIR_OWN: {sorted(stale)}"
     )
+
+
+def test_ci_sets_the_flag_on_the_job_that_runs_the_database_tests() -> None:
+    """The helper only changes anything where the flag is set.
+
+    Everything else in this file could pass with the flag set nowhere, and the
+    suite would go on skipping exactly as before. This reads the workflow so
+    that deleting the line is a test failure rather than a silent return to
+    the old behaviour.
+    """
+    import yaml
+
+    workflow = yaml.safe_load(
+        (TESTS_ROOT.parent.parent.parent / ".github/workflows/ci.yml").read_text()
+    )
+    jobs = workflow["jobs"]
+    runners = [
+        name
+        for name, job in jobs.items()
+        if any("pytest" in str(step.get("run", "")) for step in job.get("steps", []))
+    ]
+    assert runners, "no job in ci.yml appears to run pytest"
+    for name in runners:
+        env = jobs[name].get("env") or {}
+        assert str(env.get("TRUSCA_TESTS_REQUIRE_DB", "")).strip() in {"1", "true"}, (
+            f"job {name!r} runs the database tests without "
+            "TRUSCA_TESTS_REQUIRE_DB, so a broken migration would let them "
+            "skip and the job would pass"
+        )
