@@ -194,20 +194,26 @@ BEGIN
 
   RETURN NEW;
 END;
-$$ LANGUAGE plpgsql SET search_path = pg_catalog, public;
+$$ LANGUAGE plpgsql SET search_path = pg_catalog, public, pg_temp;
 """.strip()
 
 
 # The only thing that may set the flag. Two columns named, nothing else
 # reachable from here: widening it means editing this body in a migration.
 #
-# ``SET search_path`` is pinned, and every table it touches is schema
-# qualified. A SECURITY DEFINER function runs with the owner's rights but the
-# CALLER's search path, so without this a caller could create its own
-# ``audit_logs`` in a schema it controls, put that schema first, and have the
-# function operate on the decoy while believing it had the real table. That is
-# the same shape as the flag hole above: a boundary that depended on a value
-# the other side could set.
+# ``SET search_path`` is pinned AND every table it touches is schema
+# qualified, and both are needed. A SECURITY DEFINER function runs with the
+# owner's rights but the CALLER's search path, so a caller could otherwise
+# create its own ``audit_logs`` in a schema it controls, put that schema
+# first, and have the function operate on the decoy while believing it had
+# the real table.
+#
+# ``pg_temp`` is listed last on purpose, and leaving it out is the trap.
+# PostgreSQL searches the temporary schema FIRST for a relation unless the
+# path names it explicitly, so ``SET search_path = pg_catalog, public`` does
+# not push it down, it merely fails to mention it. Measured on 17.2: a
+# function pinned without ``pg_temp`` read a caller's temp table of the same
+# name; adding ``pg_temp`` at the end made it read the real one.
 #
 # It also verifies the two-person approval itself. EXECUTE on this function
 # would otherwise be sufficient authority to erase anyone's audit details,
@@ -260,7 +266,8 @@ BEGIN
   PERFORM set_config('trusca.audit_scrub', 'off', true);
   RETURN touched;
 END;
-$$ LANGUAGE plpgsql SECURITY DEFINER SET search_path = pg_catalog, public;
+$$ LANGUAGE plpgsql SECURITY DEFINER
+   SET search_path = pg_catalog, public, pg_temp;
 """.strip()
 
 

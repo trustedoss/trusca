@@ -331,6 +331,20 @@ async def test_a_shadow_table_cannot_forge_the_owner_check(
 
     The layer-two test above passed throughout, because it never made a temp
     table. A guard is only tested against the attacks somebody thought of.
+
+    Two things stop it and each was checked alone, because two defences that
+    cover for each other are two defences nobody has verified. Removing the
+    schema qualification and keeping the pinned path: still refused. Removing
+    ``pg_temp`` from the path and keeping the qualification: still refused.
+    Removing both: the forged scrub goes through, which is what makes this
+    test worth having.
+
+    ``pg_temp`` is the part that is easy to leave out and looks fine without.
+    PostgreSQL searches the temporary schema first for a relation unless the
+    path names it, so ``SET search_path = pg_catalog, public`` does not
+    demote it; it just does not mention it. Measured on 17.2 with two
+    otherwise identical functions: without ``pg_temp`` the function read the
+    caller's temp table, with it the real one.
     """
     await _require_app_role(session)
     actor = await make_user(session)
