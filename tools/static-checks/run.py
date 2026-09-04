@@ -47,8 +47,9 @@ STEPS_NOT_RUN_LOCALLY: dict[str, str] = {
     "precondition with the npm ci remedy instead",
     "Install shellcheck": "installs an apt package; reported as a missing tool "
     "instead when it is absent",
-    "Show shellcheck version": "prints a version for the CI log and asserts "
-    "nothing",
+    "Show shellcheck version": "asserts nothing; this runner prints the "
+    "versions of every tool it used at the end, which serves the same purpose "
+    "and covers the others too",
     "Fetch the base branch for the em-dash diff": "deepens the CI clone; a "
     "local checkout already has the history the diff needs",
 }
@@ -199,6 +200,88 @@ CHECKS: list[Check] = [
 ]
 
 
+#: The tools whose VERSION changes the answer, and where to ask each one.
+#:
+#: The contract test pins the commands identical to CI's. It cannot pin the
+#: binary that runs them. CI installs shellcheck from ubuntu-22.04's apt and
+#: ruff/mypy from requirements-dev.txt; a developer machine has whatever it
+#: has, and these tools gain and drop checks between releases. Same command,
+#: different tool, different answer.
+#:
+#: The harmless direction is a newer local tool reporting more than CI does.
+#: The direction that matters is the opposite: green here and red there, which
+#: is the situation this whole runner exists to remove. Printing versions does
+#: not prevent it, but it stops the reader at "which tool?" instead of leaving
+#: them at "the command is identical, why does it differ?".
+#:
+#: Matching the versions is deliberately NOT attempted. Installing Ubuntu's apt
+#: build on a developer machine costs more than the confusion it saves. Making
+#: the difference visible is the whole intervention.
+VERSION_PROBES: list[tuple[str, list[str], Path, str]] = [
+    ("ruff", ["ruff", "--version"], BACKEND, "backend"),
+    ("mypy", ["mypy", "--version"], BACKEND, "backend"),
+    ("node", ["node", "--version"], REPO_ROOT, "frontend"),
+    ("npm", ["npm", "--version"], FRONTEND, "frontend"),
+    ("typescript", ["npx", "tsc", "--version"], FRONTEND, "frontend"),
+    (
+        "shellcheck",
+        ["shellcheck", "--version"],
+        REPO_ROOT,
+        "scripts",
+    ),
+]
+
+#: Where CI's copy of a tool comes from, printed beside the local version when
+#: they are most likely to differ.
+CI_TOOL_SOURCE = {
+    "shellcheck": "CI uses ubuntu-22.04's apt build",
+    "ruff": "CI installs from requirements-dev.txt",
+    "mypy": "CI installs from requirements-dev.txt",
+}
+
+
+def _probe_version(argv: list[str], cwd: Path) -> str:
+    """One tool's version string, or why it could not be read."""
+    if shutil.which(argv[0]) is None:
+        return "not installed"
+    try:
+        result = subprocess.run(
+            argv, cwd=cwd, capture_output=True, text=True, timeout=60
+        )
+    except (OSError, subprocess.SubprocessError) as exc:  # pragma: no cover
+        return f"could not run ({exc})"
+    if result.returncode != 0:
+        # npx tsc fails when node_modules is absent; say so rather than
+        # printing an empty version that reads as "fine".
+        return "could not read (dependencies installed?)"
+    lines = [
+        line.strip()
+        for line in (result.stdout or result.stderr).strip().splitlines()
+        if line.strip()
+    ]
+    if not lines:
+        return "no output"
+    # Prefer a line that actually carries a number. shellcheck's first line is
+    # a banner ("ShellCheck - shell script analysis tool") and its version is
+    # on the next one, so taking line one reports something that looks like an
+    # answer and contains no version at all.
+    for line in lines:
+        if any(char.isdigit() for char in line):
+            return line
+    return lines[0]
+
+
+def _print_versions(scope: str) -> None:
+    relevant = [p for p in VERSION_PROBES if scope in ("all", p[3])]
+    if not relevant:
+        return
+    print("\n\033[1m=== tool versions used ===\033[0m")
+    for label, argv, cwd, _scope in relevant:
+        note = CI_TOOL_SOURCE.get(label, "")
+        suffix = f"   [{note}]" if note else ""
+        print(f"  {label:12} {_probe_version(argv, cwd)}{suffix}")
+
+
 def _run_one(check: Check) -> tuple[str, str]:
     """Run one check. Returns ``(outcome, detail)``; outcome is a status word."""
     absent = [remedy for path, remedy in check.needs_paths if not path.exists()]
@@ -229,6 +312,8 @@ def main() -> int:
     for check in selected:
         outcome, detail = _run_one(check)
         results.append((check, outcome, detail))
+
+    _print_versions(args.scope)
 
     print("\n\033[1m=== summary ===\033[0m")
     for check, outcome, detail in results:
