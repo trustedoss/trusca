@@ -126,6 +126,10 @@ jobs:
           # the throwaway test stack (docker-compose.dev.yml passes it through;
           # mirrors the e2e workflow's RATELIMIT_DISABLED=1).
           RATELIMIT_DISABLED: "1"
+          # The per-address sign-in throttle defaults to on, and a suite that
+          # drives /auth/login repeatedly (fuzzing, documented status codes)
+          # would start meeting 429 where it expects 401 or 422.
+          LOGIN_THROTTLE_ENABLED: "false"
         run: node tools/docs-uat/run.mjs --tier=gate --doc=quickstart.md
 
       - name: Dump compose logs on failure
@@ -190,6 +194,10 @@ jobs:
           # the throwaway test stack (docker-compose.dev.yml passes it through;
           # mirrors the e2e workflow's RATELIMIT_DISABLED=1).
           RATELIMIT_DISABLED: "1"
+          # The per-address sign-in throttle defaults to on, and a suite that
+          # drives /auth/login repeatedly (fuzzing, documented status codes)
+          # would start meeting 429 where it expects 401 or 422.
+          LOGIN_THROTTLE_ENABLED: "false"
         run: |
           set -euo pipefail
           cp .env.example .env
@@ -377,6 +385,10 @@ jobs:
           # the throwaway test stack (docker-compose.dev.yml passes it through;
           # mirrors the e2e workflow's RATELIMIT_DISABLED=1).
           RATELIMIT_DISABLED: "1"
+          # The per-address sign-in throttle defaults to on, and a suite that
+          # drives /auth/login repeatedly (fuzzing, documented status codes)
+          # would start meeting 429 where it expects 401 or 422.
+          LOGIN_THROTTLE_ENABLED: "false"
         run: |
           set -euo pipefail
           cp .env.example .env

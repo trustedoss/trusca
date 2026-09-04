@@ -79,6 +79,10 @@ jobs:
           # 5-logins/min/IP limit on a cold cache (PROVENANCE.md runtime
           # assumptions; mirrors the e2e / docs-uat workflows).
           RATELIMIT_DISABLED: "1"
+          # The per-address sign-in throttle defaults to on, and a suite that
+          # drives /auth/login repeatedly (fuzzing, documented status codes)
+          # would start meeting 429 where it expects 401 or 422.
+          LOGIN_THROTTLE_ENABLED: "false"
         run: |
           docker-compose -f docker-compose.dev.yml up -d backend celery-worker
           for i in $(seq 1 60); do

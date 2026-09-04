@@ -37,6 +37,7 @@ from core.config import (
 )
 from core.db import get_db
 from core.errors import problem_response
+from core.login_throttle import clear, record_failure, seconds_until_retry
 from core.ratelimit import LOGIN_RATE_LIMIT, limiter
 from core.security import CurrentUser, get_current_user
 from schemas.auth import (
@@ -75,6 +76,29 @@ log = structlog.get_logger("auth.api")
 
 REFRESH_COOKIE_NAME = "refresh_token"
 REFRESH_COOKIE_PATH = "/auth"
+
+
+def _throttled_response(request: Request, retry_after: int) -> Response:
+    """429 with Retry-After, saying when rather than why.
+
+    Identical for an address that exists and one that does not, so it cannot be
+    used to enumerate accounts. What it can say is when to come back, which is
+    what somebody who mistyped their password needs, and the sign-in form pairs
+    it with an offer to reset.
+
+    Built by the shared problem helper rather than by hand: the RFC 7807 shape
+    is defined in one place, and a second copy of it here would drift.
+    """
+    response = problem_response(
+        status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+        title="Too Many Attempts",
+        detail=("Too many failed sign-in attempts. Wait and try again, or reset " "your password."),
+        instance=str(request.url.path),
+        type_="https://trustedoss.dev/problems/too-many-attempts",
+        retry_after_seconds=retry_after,
+    )
+    response.headers["Retry-After"] = str(retry_after)
+    return response
 
 
 def _problem_for_auth_error(request: Request, exc: AuthError) -> Response:
@@ -175,8 +199,29 @@ async def login(
     On success: 200 + access_token in the body, refresh as HttpOnly cookie.
     On bad credentials: 401 problem+json.
     """
+    # Refused before the password is looked at, and refused the same way
+    # whether or not the address belongs to anybody: a reply that differed
+    # would answer "does this account exist" for free, which is a wider
+    # question than this endpoint is here to answer.
+    #
+    # Returning here rather than after `authenticate` is part of that, not a
+    # saved bcrypt. Reaching the credential check makes the reply's timing
+    # depend on whether the address exists, which is the leak the dummy hash in
+    # `authenticate` exists to close, and it lets somebody being refused go on
+    # spending the server's time. Deleting this to simplify the flow would put
+    # both back.
+    retry_after = await seconds_until_retry(str(payload.email))
+    if retry_after > 0:
+        return _throttled_response(request, retry_after)
+
     user = await authenticate(session, email=str(payload.email), password=payload.password)
     if user is None:
+        # Counted for addresses that exist and addresses that do not, for the
+        # same reason. The call returns how long the address is now refused,
+        # which the caller is told rather than left to discover by retrying.
+        wait = await record_failure(str(payload.email))
+        if wait > 0:
+            return _throttled_response(request, wait)
         exc = InvalidCredentials("invalid email or password")
         return _problem_for_auth_error(request, exc)
 
@@ -194,6 +239,14 @@ async def login(
         # revoked. 401 sends the caller back to the form, where the new
         # password works.
         return _problem_for_auth_error(request, exc)
+
+    # Cleared here, not after the password check, because this is where the
+    # request has actually succeeded. The version above cleared on "password
+    # correct", which meant the StaleCredential refusal a few lines up returned
+    # 401 with the count already zeroed -- and when a second factor arrives,
+    # whoever adds it would inherit a throttle that a correct password alone
+    # resets, which is the bypass this was meant to avoid.
+    await clear(str(payload.email))
 
     body = TokenResponse(
         access_token=access_token,

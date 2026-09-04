@@ -31,10 +31,14 @@ import structlog
 from fastapi import APIRouter, Depends, Query, Request, Response, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from core.audit import get_audit_context
 from core.db import get_db
 from core.errors import problem_response
+from core.login_throttle import clear as clear_login_throttle
+from core.login_throttle import throttle_keys
 from core.pagination import PAGE_MAX
 from core.security import CurrentUser, require_super_admin_or_404
+from models import AuditLog, User
 from schemas.admin import (
     AdminUserCreateIn,
     AdminUserDetail,
@@ -46,6 +50,7 @@ from schemas.admin import (
 )
 from services.admin_user_service import (
     AdminUserError,
+    AdminUserNotFound,
     activate_user,
     bulk_create_users,
     bulk_deactivate_users,
@@ -333,6 +338,85 @@ async def password_reset_endpoint(
         actor_id=str(actor.id),
         target_user_id=str(user_id),
         reset_token_id=str(reset_token_id),
+    )
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
+
+
+@router.post(
+    "/{user_id}/unlock-sign-in",
+    status_code=status.HTTP_204_NO_CONTENT,
+    summary="Clear a person's failed sign-in count",
+)
+async def unlock_sign_in_endpoint(
+    request: Request,
+    user_id: uuid.UUID,
+    session: AsyncSession = Depends(get_db),
+    actor: CurrentUser = Depends(require_super_admin_or_404()),
+) -> Response:
+    """
+    Clears the per-address failed sign-in count so the person can try again.
+
+    Failed sign-ins are counted per address, and a refusal lasts until its
+    window runs out. That is a slowdown for somebody guessing and an
+    inconvenience for somebody who mistyped, but it is also a way to keep an
+    account's owner out on purpose: anybody who knows an email can supply
+    failures for it. Two things answer that. Completing a password reset
+    clears the count, which needs the inbox and so cannot be blocked by the
+    person doing the guessing. This is the other, for somebody who has lost
+    access to that inbox.
+
+    It is not otherwise recoverable by hand. The counter is keyed by an HMAC
+    of the address, which is deliberate -- Redis then holds no list of who has
+    tried to sign in -- and the cost is that an operator cannot find or delete
+    one person's key without the deployment secret and a script.
+
+    Super-admin only, and audited: this acts on somebody else's account, and
+    clearing a count during an attack is a decision somebody should be able to
+    review afterwards.
+
+    Returns 404 for an unknown user, on the same reasoning as the sibling
+    password-reset route: the caller can already list every user, so the 404
+    tells them nothing new. The public sign-in path must not copy it.
+    """
+    user = await session.get(User, user_id)
+    if user is None:
+        return _problem_for_admin_user_error(request, AdminUserNotFound("user not found"))
+
+    # Written by hand rather than by the ORM listener, which only sees row
+    # changes: this clears a Redis counter and touches no table, so without
+    # this the action would leave no trace at all.
+    throttle_key = throttle_keys(user.email)[0]
+    ctx = get_audit_context()
+    session.add(
+        AuditLog(
+            actor_user_id=actor.id,
+            team_id=None,
+            target_table="users",
+            target_id=str(user_id),
+            action="user.sign_in_unlocked",
+            request_id=ctx.get("request_id"),
+            ip=ctx.get("ip"),
+            user_agent=ctx.get("user_agent"),
+            # The key the throttle logs under, so this row can be lined up with
+            # the `auth.login_throttled` events it answers. The address itself
+            # is not recorded: the counter is keyed by a digest precisely so
+            # that nothing accumulates a list of who has tried to sign in.
+            diff={"throttle_key": throttle_key},
+        )
+    )
+    await session.commit()
+
+    # After the row, not before it. The endpoint exists so that clearing a count
+    # during an attack can be reviewed afterwards, and a commit that fails with
+    # the count already gone leaves the one action this route was added for with
+    # no record of it. The clear is idempotent and best effort, so it is the
+    # half that can safely go second.
+    await clear_login_throttle(user.email)
+
+    log.info(
+        "admin.user.sign_in_unlocked",
+        actor_id=str(actor.id),
+        target_user_id=str(user_id),
     )
     return Response(status_code=status.HTTP_204_NO_CONTENT)
 

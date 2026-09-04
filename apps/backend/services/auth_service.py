@@ -38,6 +38,7 @@ from core.security import (
     decode_token,
     hash_password,
     hash_refresh_token,
+    normalize_email,
     verify_password_async,
 )
 from models import Membership, Organization, RefreshToken, Team, User
@@ -161,7 +162,7 @@ async def register_user(
     if not self_registration_enabled():
         raise RegistrationClosed("this deployment does not accept sign-ups")
 
-    normalized_email = email.strip().lower()
+    normalized_email = normalize_email(email)
 
     user = User(
         email=normalized_email,
@@ -227,7 +228,7 @@ async def authenticate(
     pre-computed dummy hash so the response time does not reveal whether the
     email exists.
     """
-    normalized_email = email.strip().lower()
+    normalized_email = normalize_email(email)
     result = await session.execute(select(User).where(User.email == normalized_email))
     user = result.scalar_one_or_none()
 

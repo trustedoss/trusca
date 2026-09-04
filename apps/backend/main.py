@@ -85,6 +85,7 @@ from core.connection_budget import current_process_budget, log_if_over_budget
 from core.db import build_engine, build_session_factory
 from core.errors import install_exception_handlers
 from core.logging import configure_logging
+from core.login_throttle import close_client as close_login_throttle_client
 from core.middleware import (
     AuditContextMiddleware,
     DemoReadOnlyMiddleware,
@@ -163,6 +164,10 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         yield
     finally:
         await engine.dispose()
+        # The sign-in throttle keeps one Redis client for the process rather
+        # than opening one per request on the pre-authentication path; this is
+        # where it gets closed.
+        await close_login_throttle_client()
         log.info("backend_stopped")
 
 
