@@ -521,6 +521,7 @@
     "project_id"
   ],
   "GET /v1/projects/{project_id}/vulnerabilities": [
+    "assignee",
     "license_category",
     "limit",
     "min_epss",
@@ -537,6 +538,7 @@
     "status"
   ],
   "GET /v1/projects/{project_id}/vulnerabilities/export.csv": [
+    "assignee",
     "license_category",
     "min_epss",
     "order",
