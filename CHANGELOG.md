@@ -156,6 +156,32 @@ and the project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.
 
 ### Fixed
 
+- **A finding's assignee, deadline and ticket lasted about six hours.** The
+  four columns were written and read correctly everywhere, but nothing carried
+  them onto the row that replaced the one they were on. Findings are per-scan
+  rows: a rescan inserts new ones, and the rematch beat deletes and re-inserts
+  every succeeded scan's findings on a six-hour default cadence that nobody
+  triggers. So an assignment made in the morning was gone by the afternoon,
+  while the user guide promised without qualification that a finding carries
+  who is fixing it and by when. The SLA clock and the analyst's verdict were
+  already carried forward; these were not, which is what made it read as an
+  oversight rather than a decision.
+
+  They are now carried the same way, keyed on the same (component version, CVE)
+  pair, so upgrading a package still starts its findings unowned. The one
+  difference from the verdict is deliberate: the verdict lookup skips
+  undecided rows so a scan that ran before the carry-forward existed is stepped
+  over, and doing that here would mean skipping rows with nobody on them. A row
+  has nobody on it both when the feature was missing and when somebody removed
+  the person on purpose, and restoring an assignment that was deliberately
+  removed would be a worse defect than the one being fixed, so the most recent
+  row wins whatever it holds.
+
+  A guard now compares the finding PATCH request models against the
+  carry-forward set, so opening a new column for editing and forgetting it
+  fails a test rather than losing data later. The same shape had already cost
+  the analyst's verdict once before this.
+
 - **The last super admin could be demoted from behind a table the caller
   made.** The database trigger that refuses to leave a deployment with zero
   active super admins counted the survivors with an unqualified `FROM users`,
