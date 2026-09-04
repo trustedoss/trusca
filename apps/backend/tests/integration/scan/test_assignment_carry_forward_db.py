@@ -42,12 +42,11 @@ project with one pair's values instead of resolving per pair fails here.
 from __future__ import annotations
 
 import uuid
-from collections.abc import Iterator
 from datetime import date
 
 import pytest
-from sqlalchemy import create_engine, delete
-from sqlalchemy.orm import Session, sessionmaker
+from sqlalchemy import delete
+from sqlalchemy.orm import Session
 
 from models import VulnerabilityFinding
 from services.vulnerability_matching import (
@@ -82,19 +81,6 @@ def _migrate_once() -> None:
     """
     migrate_to_head()
 
-
-@pytest.fixture
-def sync_session() -> Iterator[Session]:
-    from core.config import database_url_sync
-
-    engine = create_engine(database_url_sync(), pool_pre_ping=True, future=True)
-    factory = sessionmaker(bind=engine, expire_on_commit=False, future=True)
-    session = factory()
-    try:
-        yield session
-    finally:
-        session.close()
-        engine.dispose()
 
 _DUE = date(2026, 12, 31)
 _TICKET_URL = "https://tracker.example.com/browse/SEC-1"

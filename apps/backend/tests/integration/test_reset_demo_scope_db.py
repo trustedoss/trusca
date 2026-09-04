@@ -20,12 +20,11 @@ and prove:
 from __future__ import annotations
 
 import uuid
-from collections.abc import AsyncIterator
 from typing import Any
 
 import pytest
 from sqlalchemy import delete, select
-from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
+from sqlalchemy.ext.asyncio import async_sessionmaker
 
 from tests._db_required import migrate_to_head
 
@@ -41,18 +40,6 @@ def _migrate_once() -> None:
 def _demo_env(monkeypatch: pytest.MonkeyPatch) -> None:
     # The seed/reset guard requires APP_ENV ∈ {dev, demo}.
     monkeypatch.setenv("APP_ENV", "demo")
-
-
-@pytest.fixture
-async def db_factory() -> AsyncIterator[async_sessionmaker[Any]]:
-    from core.config import database_url
-
-    engine = create_async_engine(database_url(), pool_pre_ping=True, future=True)
-    factory = async_sessionmaker(engine, expire_on_commit=False)
-    try:
-        yield factory
-    finally:
-        await engine.dispose()
 
 
 async def test_reset_preserves_cross_tenant_user_and_deletes_demo_only(
