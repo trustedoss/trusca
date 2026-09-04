@@ -30,6 +30,12 @@ help:
 	@echo "  make dev-logs              tail backend + worker logs"
 	@echo "  make dev-ps                list service health"
 	@echo ""
+	@echo "Local CI checks (same commands as the lint / typecheck jobs)"
+	@echo "  make check                 everything those two jobs run"
+	@echo "  make check-backend         ruff + mypy + ai-review selftest ONLY"
+	@echo "  make check-frontend        eslint, tsc, i18n, tokens and the repo linters ONLY"
+	@echo "                             (the two partial targets are not what CI runs)"
+	@echo ""
 	@echo "Guide screenshot capture (Playwright)"
 	@echo "  make screenshots-capture   regenerate guide PNGs via tests/screenshots/"
 	@echo "  make screenshots-clean     remove staging captures (keeps committed assets)"
@@ -37,6 +43,30 @@ help:
 	@echo "Animated walkthroughs (Playwright + ffmpeg)"
 	@echo "  make walkthroughs-capture  record webm via tests/walkthroughs/"
 	@echo "  make walkthroughs-encode   convert webm to mp4 + gif under $(WALKTHROUGH_DIR)/"
+
+# ER62 — one entry point for the checks CI's lint and typecheck jobs run, so
+# nobody has to decide per change which of them are worth running. Deciding by
+# the shape of a change is how a test-only edit skips mypy.
+#
+# The command list lives in tools/local-ci/run.py and is compared against
+# .github/workflows/ci.yml by tests/unit/test_local_ci_matches_ci.py, so it
+# cannot fall behind CI without a test failing.
+#
+# A missing tool FAILS rather than being skipped: a run that quietly covered
+# less than it appears to and still ended green would be worse than no target.
+.PHONY: check
+check:
+	@python3 tools/local-ci/run.py --scope all
+
+# Deliberately named for their scope. Passing one of these is NOT the same as
+# passing what CI runs, and the runner says so on the last line.
+.PHONY: check-backend
+check-backend:
+	@python3 tools/local-ci/run.py --scope backend
+
+.PHONY: check-frontend
+check-frontend:
+	@python3 tools/local-ci/run.py --scope frontend
 
 .PHONY: dev-up
 dev-up:
