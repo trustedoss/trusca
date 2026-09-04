@@ -250,6 +250,8 @@ The values you most often set:
 | `worker.replicaCount` | `2` | Prefer scaling worker pods over per-pod `concurrency`. |
 | `env.extraEnv` | `{}` | Any runtime variable the chart does not name. See below. |
 | `env.extraEnvFrom` | `[]` | `envFrom` entries, for Secrets you created yourself. See below. |
+| `env.extraVolumes` | `[]` | `volumes` entries for backend, worker and beat. A certificate for a private authority goes here. |
+| `env.extraVolumeMounts` | `[]` | `volumeMounts` entries for the same three. See [Private certificate authorities](../admin-guide/private-ca.md). |
 
 ### Settings the chart does not name {#extra-env}
 

@@ -149,6 +149,48 @@ password or an OAuth client secret does not belong in a file people commit.
 {{- end }}
 {{- end -}}
 
+{{/*
+Extra volumes and mounts for the same four workloads.
+
+Why the chart needs these and `extraEnv` was not enough: a setting that names a
+FILE is only half a setting. The certificate variables an operator sets for a
+private authority (`SSL_CERT_FILE`, `NODE_EXTRA_CA_CERTS`, `REQUESTS_CA_BUNDLE`,
+`GIT_SSL_CAINFO`) could already be passed through `extraEnv`, and had nothing to
+point at: the chart could not mount the certificate, and its default
+`readOnlyRootFilesystem: true` rules out writing one in at start. So the
+variables arrived and every path they named was absent.
+
+Raw lists rather than a shape of our own, for the reason `extraEnvFrom` is one:
+the source is the operator's (a Secret, a ConfigMap, a CSI driver), and a
+wrapper would support the sources we thought of.
+
+Both go to backend, beat and both workers, not to frontend or redis. A
+certificate is for the processes that make outbound calls, and the two that do
+not are left alone rather than given a mount they would not read.
+*/}}
+{{- define "trustedoss.extraVolumes" -}}
+{{- with .Values.env.extraVolumes }}
+{{- toYaml . }}
+{{- end }}
+{{- end -}}
+
+{{- define "trustedoss.extraVolumeMounts" -}}
+{{- with .Values.env.extraVolumeMounts }}
+{{- toYaml . }}
+{{- end }}
+{{- end -}}
+
+{{/*
+Whether this workload renders a `volumes:` key at all.
+
+Beat and the workers only mount anything when the root filesystem is sealed, so
+the key is inside that conditional. An operator who turns the seal off and adds
+an extra volume would otherwise get a volume list with no key above it.
+*/}}
+{{- define "trustedoss.hasExtraVolumes" -}}
+{{- if .Values.env.extraVolumes }}true{{- end }}
+{{- end -}}
+
 {{- define "trustedoss.runtimeSecretEnv" -}}
 {{- $secretName := include "trustedoss.secretName" . -}}
 - name: DATABASE_URL_APP

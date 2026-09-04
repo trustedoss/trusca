@@ -63,25 +63,38 @@ spec:
           env:
             {{- include "trustedoss.runtimeSecretEnv" . | nindent 12 }}
             {{- include "trustedoss.extraEnv" . | nindent 12 }}
-          {{- if (.Values.beat.containerSecurityContext).readOnlyRootFilesystem }}
+          {{- $beatSealed := (.Values.beat.containerSecurityContext).readOnlyRootFilesystem }}
+          {{- if or $beatSealed .Values.env.extraVolumes }}
           # beat writes its schedule database to /tmp (see the --schedule flag
           # above), so a sealed root filesystem needs this mount or the process
           # cannot start. The home mount is for the same toolchain caches the
           # worker needs; beat shares the image and inherits the cache paths.
+          #
+          # Unlike the other workloads beat mounts nothing when the root
+          # filesystem is left writable, so the key itself is conditional. An
+          # operator who unseals the filesystem and adds an extra volume would
+          # otherwise get a list of mounts with no `volumeMounts:` above it.
           volumeMounts:
+            {{- if $beatSealed }}
             - name: home
               mountPath: /home/trustedoss
             - name: tmp
               mountPath: /tmp
+            {{- end }}
+            {{- include "trustedoss.extraVolumeMounts" . | nindent 12 }}
           {{- end }}
           resources:
             {{- toYaml .Values.beat.resources | nindent 12 }}
-      {{- if (.Values.beat.containerSecurityContext).readOnlyRootFilesystem }}
+      {{- $beatSealed := (.Values.beat.containerSecurityContext).readOnlyRootFilesystem }}
+      {{- if or $beatSealed .Values.env.extraVolumes }}
       volumes:
+        {{- if $beatSealed }}
         - name: home
           emptyDir: {}
         - name: tmp
           emptyDir: {}
+        {{- end }}
+        {{- include "trustedoss.extraVolumes" . | nindent 8 }}
       {{- end }}
       {{- with .Values.nodeSelector }}
       nodeSelector:

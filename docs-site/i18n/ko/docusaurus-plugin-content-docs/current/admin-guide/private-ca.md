@@ -53,6 +53,39 @@ cat /path/to/corp-root-ca.pem /etc/ssl/certs/ca-certificates.crt \
   > /etc/ssl/corp/ca-bundle.pem
 ```
 
+### Helm으로 설치했다면
+
+Secret을 직접 만들고, 차트가 그것을 마운트하고 변수를 설정하게 합니다.
+
+```bash
+kubectl create secret generic corp-ca --from-file=ca-bundle.pem=/etc/ssl/corp/ca-bundle.pem
+```
+
+```yaml
+env:
+  extraVolumes:
+    - name: corp-ca
+      secret:
+        secretName: corp-ca
+  extraVolumeMounts:
+    - name: corp-ca
+      mountPath: /etc/ssl/corp-ca.pem
+      subPath: ca-bundle.pem
+      readOnly: true
+  extraEnv:
+    SSL_CERT_FILE: /etc/ssl/corp-ca.pem
+    NODE_EXTRA_CA_CERTS: /etc/ssl/corp-ca.pem
+    REQUESTS_CA_BUNDLE: /etc/ssl/corp-ca.pem
+    GIT_SSL_CAINFO: /etc/ssl/corp-ca.pem
+```
+
+`subPath`가 있어야 인증서가 그 경로에 파일로 올라옵니다. 없으면 디렉터리가
+덮어써서 위 변수들이 가리키는 파일이 존재하지 않습니다. 마운트는 backend와
+beat와 워커 둘에 붙고, 바깥으로 나가지 않는 frontend와 Redis에는 붙지 않습니다.
+
+번들 규칙은 같습니다. 사내 인증기관과 공용 루트 인증서를 한 파일에 담습니다.
+이유는 다음 절에 있습니다.
+
 ## 도구들이 그 파일을 보게 합니다
 
 `.env`에 다음을 넣습니다.
@@ -101,7 +134,6 @@ worker 로그는 대부분 스캔 진행 출력이라, 거르지 않으면 줄�
 docker-compose logs backend worker beat | grep tls_trust
 ```
 
-
 ```
 tls_trust.outbound  process=api     authorities=140 bundled_authorities=120 source=SSL_CERT_FILE path=/etc/ssl/corp-ca.pem
 tls_trust.outbound  process=worker  authorities=140 bundled_authorities=120 source=SSL_CERT_FILE path=/etc/ssl/corp-ca.pem
@@ -138,6 +170,3 @@ Docker 데몬이 수행하는 컨테이너 이미지 내려받기는 포털 설�
 레지스트리에서 이미지를 가져오지 못해 컨테이너 스캔이 실패한다면, 그 호스트의
 데몬에 인증서를 설치해야 합니다. 포털의 환경변수는 거기까지 닿지 않습니다.
 
-Kubernetes 환경에서는 아직 Helm 차트로 인증서를 마운트할 수 없습니다. 차트가
-추가 환경변수는 받지만 추가 볼륨은 받지 않아서, 위 변수들이 가리킬 파일이
-없습니다. 지원되기 전까지는 배포 리소스에 패치를 적용해 마운트합니다.

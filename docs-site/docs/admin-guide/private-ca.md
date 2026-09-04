@@ -56,6 +56,40 @@ cat /path/to/corp-root-ca.pem /etc/ssl/certs/ca-certificates.crt \
   > /etc/ssl/corp/ca-bundle.pem
 ```
 
+### With Helm
+
+Create the Secret yourself, then let the chart mount it and set the variables:
+
+```bash
+kubectl create secret generic corp-ca --from-file=ca-bundle.pem=/etc/ssl/corp/ca-bundle.pem
+```
+
+```yaml
+env:
+  extraVolumes:
+    - name: corp-ca
+      secret:
+        secretName: corp-ca
+  extraVolumeMounts:
+    - name: corp-ca
+      mountPath: /etc/ssl/corp-ca.pem
+      subPath: ca-bundle.pem
+      readOnly: true
+  extraEnv:
+    SSL_CERT_FILE: /etc/ssl/corp-ca.pem
+    NODE_EXTRA_CA_CERTS: /etc/ssl/corp-ca.pem
+    REQUESTS_CA_BUNDLE: /etc/ssl/corp-ca.pem
+    GIT_SSL_CAINFO: /etc/ssl/corp-ca.pem
+```
+
+`subPath` is what makes the certificate a file rather than a directory over
+that path, and without it the variables above name something that is not
+there. The mount goes to the backend, the scheduler and both workers, and not
+to the frontend or Redis, which make no outbound calls.
+
+The same bundle rule applies: your authority and the public roots in one file,
+for the reason in the next section.
+
 ## Pointing the tools at it
 
 Add these to your `.env`:
@@ -106,7 +140,6 @@ is there and unfindable without it:
 docker-compose logs backend worker beat | grep tls_trust
 ```
 
-
 ```
 tls_trust.outbound  process=api     authorities=140 bundled_authorities=120 source=SSL_CERT_FILE path=/etc/ssl/corp-ca.pem
 tls_trust.outbound  process=worker  authorities=140 bundled_authorities=120 source=SSL_CERT_FILE path=/etc/ssl/corp-ca.pem
@@ -146,7 +179,3 @@ configuration. If a container scan fails to pull an image from an internal
 registry behind a private authority, the certificate has to be installed for
 the daemon on that host; nothing in the portal's environment reaches it.
 
-Kubernetes deployments cannot yet mount the certificate through the Helm
-chart. The chart takes extra environment variables but not extra volumes, so
-the variables above have nothing to point at. Until that lands, mount the
-certificate with a patch on the deployments.

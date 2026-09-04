@@ -111,17 +111,46 @@ def test_the_page_names_the_boot_log_fields_that_exist(page: pathlib.Path) -> No
 
 
 @pytest.mark.parametrize("page", [GUIDE_EN, GUIDE_KO])
-def test_the_page_records_the_limits_we_know_about(page: pathlib.Path) -> None:
-    """Two things this release does not solve, said rather than left to be found.
+def test_the_page_records_the_limit_we_cannot_lift(page: pathlib.Path) -> None:
+    """Image pulls made by the Docker daemon are outside our configuration.
 
-    Both were established during the investigation: the Helm chart takes extra
-    environment variables but no extra volumes, so the variables have nothing
-    to point at there, and image pulls made by the Docker daemon are outside
-    the portal's environment entirely.
+    Said rather than left to be discovered: an operator whose container scan
+    cannot reach an internal registry needs to know the fix is on the host, not
+    in any setting the portal has. The Helm limit that sat here with it is gone,
+    because the chart now mounts the certificate.
     """
     text = page.read_text(encoding="utf-8")
-    assert "Helm" in text
     assert "Docker" in text or "docker" in text
+
+
+@pytest.mark.parametrize("page", [GUIDE_EN, GUIDE_KO])
+def test_the_page_carries_a_helm_recipe_that_matches_the_chart(
+    page: pathlib.Path,
+) -> None:
+    """The values the page tells an operator to set have to be the chart's.
+
+    Read off the chart rather than typed here, so renaming a value and leaving
+    the page telling people to use the old name fails. The page is the only
+    place the four certificate variables and the mount appear together, and an
+    operator who follows it and finds nothing mounted has no next step.
+    """
+    import yaml
+
+    text = page.read_text(encoding="utf-8")
+    values = yaml.safe_load(
+        (REPO_ROOT / "charts" / "trustedoss" / "values.yaml").read_text()
+    )
+    for key in ("extraVolumes", "extraVolumeMounts", "extraEnv"):
+        assert key in values["env"], f"the chart no longer declares env.{key}"
+        assert key in text, (
+            f"the page tells operators to configure Helm without naming {key}, "
+            "which the chart needs to mount anything"
+        )
+    assert "subPath" in text, (
+        "without subPath the Secret mounts as a directory over the path and "
+        "the file the certificate variables name does not exist, so the page "
+        "has to show it"
+    )
 
 
 @pytest.mark.parametrize("page", [GUIDE_EN, GUIDE_KO])
