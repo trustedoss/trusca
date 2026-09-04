@@ -28,7 +28,9 @@ from __future__ import annotations
 import os
 import subprocess
 import sys
+from collections.abc import Iterator
 from pathlib import Path
+from typing import Any
 
 import pytest
 
@@ -41,7 +43,61 @@ from tasks.task_registry_guard import (
 BACKEND_ROOT = Path(__file__).resolve().parents[2]
 PROBE = Path(__file__).resolve().parent / "_taskless_worker.py"
 
+#: The queue the probe worker declares. Named here because the cleanup below
+#: deletes by name.
+PROBE_QUEUE = "er61-probe"
+
 pytestmark = pytest.mark.integration
+
+
+@pytest.fixture(autouse=True)
+def _remove_this_test_s_own_broker_keys() -> Iterator[None]:
+    """Delete the broker keys this file creates, and only those.
+
+    Booting a real worker leaves kombu bindings behind, and the session-start
+    check in ``conftest`` refuses a Redis index that still holds keys. Without
+    this, running the file twice needs a manual flush in between, and somebody
+    who flushes out of habit has disabled the check that exists to stop two
+    runs sharing an index.
+
+    Two conditions together, rather than either alone. The key has to be one of
+    the names a worker on this queue produces, AND it has to have appeared
+    while this test ran. The name alone is not enough for the control-queue
+    binding, whose name says nothing about who made it; "new since the test
+    started" alone would be a licence to delete whatever else showed up.
+
+    This is not the same act as clearing the index, which is what the
+    session-start check exists to prevent.
+    """
+    names = [
+        f"_kombu.binding.{PROBE_QUEUE}",
+        PROBE_QUEUE,
+        # Every Celery worker declares a control queue. Generic, so it is only
+        # removed when this test is what brought it into existence.
+        "_kombu.binding.celery.pidbox",
+    ]
+
+    def _client() -> Any:
+        import redis
+
+        return redis.Redis.from_url(os.environ["REDIS_URL"])
+
+    before: set[bytes] = set()
+    try:
+        client = _client()
+        before = {name for name in names if client.exists(name)}  # type: ignore[misc]
+    except Exception:  # noqa: BLE001 - a broker we cannot inspect is not a failure
+        before = set()
+
+    yield
+
+    try:
+        client = _client()
+        for name in names:
+            if name not in before:
+                client.delete(name)
+    except Exception:  # noqa: BLE001 - cleanup must not turn a pass into a failure
+        pass
 
 
 def _broker_url() -> str:

@@ -274,6 +274,7 @@ Compose에서는 재시작 반복으로, Kubernetes에서는 CrashLoopBackOff로
 설정 문제가 아니라 배포나 패키징 문제입니다. 목록이 비었거나, 목록의 어떤 모듈도
 import되지 않았다는 뜻입니다.
 
+<!-- docs-uat: id=oncall-task-registry-check kind=shell ctx=host tier=nightly waiver=runbook-diagnostic-prod-compose-worker -->
 ```bash
 # 1. 내려가면서 워커가 남긴 말
 docker-compose -f docker-compose.yml logs --tail=50 worker-scan | grep -i task_registry

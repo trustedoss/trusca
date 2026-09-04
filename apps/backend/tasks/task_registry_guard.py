@@ -125,7 +125,10 @@ def refuse_if_no_tasks(app: Any) -> int:
     # value of this guard, so it is also written to the process's real stderr.
     # A running worker has replaced ``sys.stdout`` and ``sys.stderr`` with its
     # own logging proxies; ``sys.__stderr__`` is the descriptor the container
-    # runtime is actually reading. Measured: without this the guard stopped the
+    # runtime is actually reading. This is why a ``print`` or an ordinary
+    # logger here does not work, and swapping one in later makes the worker
+    # die silently again while every test that only reads the exit code keeps
+    # passing. Measured: without this the guard stopped the
     # worker and its explanation never appeared, leaving a container that dies
     # on boot saying nothing.
     if sys.__stderr__ is not None:

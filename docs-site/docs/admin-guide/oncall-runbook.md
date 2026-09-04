@@ -276,6 +276,7 @@ The worker's task list is built from an include list in the application, so
 this is a deployment or packaging fault rather than a configuration one. It
 means either that the list is empty or that no module on it imported.
 
+<!-- docs-uat: id=oncall-task-registry-check kind=shell ctx=host tier=nightly waiver=runbook-diagnostic-prod-compose-worker -->
 ```bash
 # 1. What the worker says on the way down
 docker-compose -f docker-compose.yml logs --tail=50 worker-scan | grep -i task_registry
