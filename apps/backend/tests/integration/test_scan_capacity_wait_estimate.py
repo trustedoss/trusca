@@ -23,7 +23,6 @@ from __future__ import annotations
 
 import json
 import os
-import subprocess
 import uuid
 from collections.abc import AsyncIterator
 from pathlib import Path
@@ -36,9 +35,9 @@ from core.config import redis_url
 from core.security import create_access_token
 from models import User
 from tasks.celery_app import _SCAN_QUEUE
+from tests._db_required import migrate_to_head
 from tests._helpers import make_membership, make_organization, make_project, make_team, make_user
 
-BACKEND_ROOT = Path(__file__).resolve().parent.parent.parent
 PROBLEM_JSON = "application/problem+json"
 
 _VALID_SBOM = json.dumps(
@@ -60,25 +59,9 @@ _STUB_TASK_ID = "11111111-2222-3333-4444-555555555555"
 pytestmark = pytest.mark.integration
 
 
-def _require_database_url() -> str:
-    url = os.getenv("DATABASE_URL")
-    if not url:
-        pytest.skip("DATABASE_URL not set - skip S7 wait-estimate tests")
-    return url
-
-
 @pytest.fixture(scope="module", autouse=True)
 def _migrate_once() -> None:
-    _require_database_url()
-    result = subprocess.run(
-        ["alembic", "upgrade", "head"],
-        cwd=BACKEND_ROOT,
-        capture_output=True,
-        text=True,
-        timeout=120,
-    )
-    if result.returncode != 0:
-        pytest.skip(f"alembic upgrade head failed\n{result.stdout}\n{result.stderr}")
+    migrate_to_head()
 
 
 @pytest.fixture(autouse=True)

@@ -20,7 +20,6 @@ from __future__ import annotations
 import json
 import os
 import re
-import subprocess
 from collections.abc import AsyncIterator
 from pathlib import Path
 from typing import Any
@@ -29,6 +28,7 @@ import pytest
 from httpx import ASGITransport, AsyncClient
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
+from tests._db_required import migrate_to_head
 from tests._helpers import make_organization, make_project, make_scan, make_team
 
 BACKEND_ROOT = Path(__file__).resolve().parent.parent.parent
@@ -41,25 +41,9 @@ QUEUE_BACKLOG_SERIES = {"trusca_broker_queue_backlog", "trusca_scan_queue_wait_s
 pytestmark = pytest.mark.integration
 
 
-def _require_database_url() -> str:
-    url = os.getenv("DATABASE_URL")
-    if not url:
-        pytest.skip("DATABASE_URL not set, skipping metrics tests")
-    return url
-
-
 @pytest.fixture(scope="module", autouse=True)
 def _migrate_once() -> None:
-    _require_database_url()
-    result = subprocess.run(
-        ["alembic", "upgrade", "head"],
-        cwd=BACKEND_ROOT,
-        capture_output=True,
-        text=True,
-        check=False,
-    )
-    if result.returncode != 0:
-        pytest.skip(f"alembic upgrade failed: {result.stderr[-400:]}")
+    migrate_to_head()
 
 
 @pytest.fixture
