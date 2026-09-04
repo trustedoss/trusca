@@ -224,7 +224,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     # that fires on a correct setup is one somebody turns off.
     from core.tls_trust import log_trust_store
 
-    log_trust_store()
+    log_trust_store(process="api")
 
     try:
         from core.config import vuln_sla_days

@@ -88,8 +88,14 @@ def describe_trust_store() -> dict[str, Any]:
     }
 
 
-def log_trust_store() -> dict[str, Any]:
+def log_trust_store(*, process: str) -> dict[str, Any]:
     """State the trust set at boot, and warn when an override shrank it.
+
+    ``process`` names which one is reporting: ``api``, ``worker`` or ``beat``.
+    All three report, and the name is on the line, because Compose gives each
+    service its own environment and the scanners go out from the worker. One
+    line saying the certificate is configured would otherwise be read as
+    covering a process that never saw it.
 
     Never raises: a deployment must not fail to start because this could not
     describe its certificates. Returns what it reported so a caller can assert
@@ -98,10 +104,10 @@ def log_trust_store() -> dict[str, Any]:
     try:
         facts = describe_trust_store()
     except Exception as exc:  # noqa: BLE001 - reporting must not stop a boot
-        log.warning("tls_trust.describe_failed", error=str(exc)[:200])
+        log.warning("tls_trust.describe_failed", process=process, error=str(exc)[:200])
         return {}
 
-    log.info("tls_trust.outbound", **facts)
+    log.info("tls_trust.outbound", process=process, **facts)
 
     authorities = facts["authorities"]
     if (
@@ -111,6 +117,7 @@ def log_trust_store() -> dict[str, Any]:
     ):
         log.warning(
             "tls_trust.public_roots_dropped",
+            process=process,
             source=facts["source"],
             path=facts["path"],
             authorities=authorities,

@@ -176,9 +176,12 @@ and the project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.
   ticket webhook quietly become unverifiable, which reads as a feed outage
   rather than a certificate setting.
 
-  The backend now states its trust set on every boot: how many certificate
-  authorities its own calls will accept, how many it ships with, and which
-  setting decided. Unconditional rather than only on suspicion, because
+  The API, the worker and the scheduler each state their own trust set at
+  boot, naming themselves: how many certificate authorities that process's
+  calls will accept, how many it ships with, and which setting decided. All
+  three, because Compose gives every service its own environment and the
+  scanners reach the network from the worker, so one line read as covering the
+  deployment is how a half-configured install looks correct. Unconditional rather than only on suspicion, because
   trusting a private authority alone is a legitimate configuration and a
   warning that fires on a correct setup is one somebody turns off. The warning
   is layered on top for the case that is almost certainly a mistake, and says

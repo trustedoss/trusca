@@ -97,11 +97,20 @@ fails and everything else works, `GIT_SSL_CAINFO` is the one that was missing.
 
 ## Checking it worked
 
-The backend states its trust set on every boot:
+Each of the three processes states its own trust set at boot, and names
+itself:
 
 ```
-tls_trust.outbound  authorities=140 bundled_authorities=120 source=SSL_CERT_FILE path=/etc/ssl/corp-ca.pem
+tls_trust.outbound  process=api     authorities=140 bundled_authorities=120 source=SSL_CERT_FILE path=/etc/ssl/corp-ca.pem
+tls_trust.outbound  process=worker  authorities=140 bundled_authorities=120 source=SSL_CERT_FILE path=/etc/ssl/corp-ca.pem
+tls_trust.outbound  process=beat    authorities=140 bundled_authorities=120 source=SSL_CERT_FILE path=/etc/ssl/corp-ca.pem
 ```
+
+Look for all three. Compose gives each service its own environment, so a
+certificate configured for one and missed on another is an ordinary mistake,
+and the worker is the one that matters most: the scanners reach the network
+from there. A `process=worker` line that still reads `source=bundled` means the
+worker never got the setting.
 
 `authorities` is how many certificate authorities the portal's own HTTPS calls
 will accept and `bundled_authorities` is how many it ships with. A number

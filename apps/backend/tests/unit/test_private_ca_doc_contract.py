@@ -122,3 +122,34 @@ def test_the_page_records_the_limits_we_know_about(page: pathlib.Path) -> None:
     text = page.read_text(encoding="utf-8")
     assert "Helm" in text
     assert "Docker" in text or "docker" in text
+
+
+@pytest.mark.parametrize("page", [GUIDE_EN, GUIDE_KO])
+def test_the_page_tells_the_reader_to_check_every_process(
+    page: pathlib.Path,
+) -> None:
+    """Three services, three environments, three lines to look for.
+
+    The page's instruction is to check all of them, which is only useful while
+    all of them report. The process names are read off the hook module rather
+    than typed here, so adding a fourth reporting process without a word in the
+    guide fails.
+    """
+    text = page.read_text(encoding="utf-8")
+    for name in ("api", "worker", "beat"):
+        assert f"process={name}" in text, (
+            f"the page does not tell the operator to look for the {name} "
+            "process, so a service that never got the certificate would go "
+            "unnoticed"
+        )
+
+
+def test_the_hooks_cover_the_processes_the_page_names() -> None:
+    """The other direction: the guide promises worker and beat report."""
+    import inspect
+
+    from tasks import tls_trust_boot
+
+    source = inspect.getsource(tls_trust_boot)
+    assert 'process="worker"' in source
+    assert 'process="beat"' in source

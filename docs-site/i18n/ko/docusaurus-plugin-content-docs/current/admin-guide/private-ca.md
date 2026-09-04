@@ -92,11 +92,19 @@ GIT_SSL_CAINFO=/etc/ssl/corp-ca.pem
 
 ## 잘 됐는지 확인합니다
 
-backend는 부팅할 때마다 자기 신뢰 집합을 남깁니다.
+세 프로세스가 각자 자기 신뢰 집합을 부팅할 때 남기고, 어느 쪽인지 이름을 함께
+적습니다.
 
 ```
-tls_trust.outbound  authorities=140 bundled_authorities=120 source=SSL_CERT_FILE path=/etc/ssl/corp-ca.pem
+tls_trust.outbound  process=api     authorities=140 bundled_authorities=120 source=SSL_CERT_FILE path=/etc/ssl/corp-ca.pem
+tls_trust.outbound  process=worker  authorities=140 bundled_authorities=120 source=SSL_CERT_FILE path=/etc/ssl/corp-ca.pem
+tls_trust.outbound  process=beat    authorities=140 bundled_authorities=120 source=SSL_CERT_FILE path=/etc/ssl/corp-ca.pem
 ```
+
+셋을 다 확인합니다. Compose는 서비스마다 환경을 따로 주므로 한쪽에만 설정하고
+다른 쪽을 빠뜨리는 일이 흔하고, 그중 worker가 가장 중요합니다. 스캐너들이 거기서
+바깥으로 나가기 때문입니다. `process=worker` 줄이 `source=bundled`로 남아 있으면
+worker에는 설정이 전달되지 않은 것입니다.
 
 `authorities`는 포털 자신의 HTTPS 호출이 받아들일 인증기관 수이고,
 `bundled_authorities`는 포털이 기본으로 담고 있는 수입니다. 앞의 값이 더 크면
