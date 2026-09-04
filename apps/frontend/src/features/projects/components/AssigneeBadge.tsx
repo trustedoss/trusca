@@ -5,7 +5,7 @@ import { useTranslation } from "react-i18next";
 import { Badge } from "@/components/ui/badge";
 
 /**
- * AssigneeBadge — ER28b.
+ * AssigneeBadge - ER28b.
  *
  * Says which of three states a finding's ownership is in. The third is the
  * reason this exists at all.

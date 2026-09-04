@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2026 TRUSCA contributors
 /**
- * useUpdateFindingAssignment — ER28b.
+ * useUpdateFindingAssignment - ER28b.
  *
  * PATCH /v1/vulnerability_findings/{id}/assignment.
  *

@@ -1,10 +1,10 @@
 /**
- * AssigneeBadge — ER28b / ER54.
+ * AssigneeBadge - ER28b / ER54.
  *
  * Three states, and the whole point is that two of them are easy to collapse.
  * `!assignee_is_active` is true for BOTH `null` and `false`, so a natural
  * implementation folds "nobody owns this" together with "somebody who cannot
- * act owns this" — which is the confusion the field was added to remove.
+ * act owns this" - which is the confusion the field was added to remove.
  *
  * So `null` and `false` are asserted to render DIFFERENTLY from each other,
  * not merely to render. A folded implementation still renders, still passes

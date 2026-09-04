@@ -148,7 +148,7 @@ function getVulnColumnsCatalog(
     // users with a persisted visibility set see it after toggling it on.
     { id: "sla_due", label: t("vulnerabilities.column.sla_due") },
     { id: "status", label: t("vulnerabilities.column.status") },
-    // ER28b — who owns the finding. Display only, and NOT sortable: the
+    // ER28b - who owns the finding. Display only, and NOT sortable: the
     // "can this person act" half comes from a correlated subquery that is
     // evaluated above the LIMIT, so sorting or filtering on it would move the
     // evaluation below the LIMIT and run it once per table row instead of once
@@ -258,7 +258,7 @@ const VALID_SLA = new Set<SlaFilter>(SLA_STATUS_VALUES);
  */
 const VALID_ASSIGNEE = new Set<AssigneeFilter>(["me", "unassigned"]);
 
-/** ER28b — `?assignee=me|unassigned`, same single-token shape as `sla`. */
+/** ER28b - `?assignee=me|unassigned`, same single-token shape as `sla`. */
 function parseAssignee(raw: string | null): AssigneeFilter | null {
   if (raw && VALID_ASSIGNEE.has(raw as AssigneeFilter)) {
     return raw as AssigneeFilter;
@@ -338,12 +338,12 @@ export function VulnerabilitiesTab({
   );
   // X1 — SLA status filter. URL flag `sla=overdue|imminent|ok` (single value,
   // same inline-select pattern as `reachable`).
-  // ER28b — read once here; the rows receive it as a prop.
+  // ER28b - read once here; the rows receive it as a prop.
   const currentUserId = useAuthStore((state) => state.user?.id ?? null);
   const [sla, setSla] = useState<SlaFilter | null>(() =>
     parseSla(searchParams.get("sla")),
   );
-  // ER28b — ownership filter, `?assignee=me|unassigned`. Two tokens, not a
+  // ER28b - ownership filter, `?assignee=me|unassigned`. Two tokens, not a
   // user id: a developer can only assign to themselves.
   const [assignee, setAssignee] = useState<AssigneeFilter | null>(() =>
     parseAssignee(searchParams.get("assignee")),

@@ -257,9 +257,9 @@ export interface VulnerabilityListItem {
    * Whether that person can still act. THREE values, and `null` is not
    * `false`:
    *
-   * - `null`  — unassigned. Visibly waiting for somebody.
-   * - `true`  — assigned to somebody who can act.
-   * - `false` — assigned to somebody who cannot (deactivated account).
+   * - `null`  - unassigned. Visibly waiting for somebody.
+   * - `true`  - assigned to somebody who can act.
+   * - `false` - assigned to somebody who cannot (deactivated account).
    *
    * The last one is the case ER54 exists for: the row looks owned, so it
    * reads as being handled, while nobody can pick it up. Test it with
@@ -429,9 +429,9 @@ export interface VulnerabilityDetail {
    * Whether that person can still act. THREE values, and `null` is not
    * `false`:
    *
-   * - `null`  — unassigned. Visibly waiting for somebody.
-   * - `true`  — assigned to somebody who can act.
-   * - `false` — assigned to somebody who cannot (deactivated account).
+   * - `null`  - unassigned. Visibly waiting for somebody.
+   * - `true`  - assigned to somebody who can act.
+   * - `false` - assigned to somebody who cannot (deactivated account).
    *
    * The last one is the case ER54 exists for: the row looks owned, so it
    * reads as being handled, while nobody can pick it up. Test it with

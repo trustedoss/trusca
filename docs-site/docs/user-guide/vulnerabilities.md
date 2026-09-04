@@ -365,6 +365,51 @@ as ordinary progress.
 Deleting a user is the one case that clears the field: their findings become
 unassigned rather than blocking the deletion.
 
+#### What the screen shows, and how to take work over {#assignment-on-screen}
+
+The **Owner** column in the list and the **Assignment** block in the drawer
+report one of three states, and it is worth knowing which of them is a problem:
+
+| On screen | What it means | Can it be worked on? |
+|---|---|---|
+| **Unassigned** | Nobody has been asked yet. | Yes, once somebody takes it. |
+| A person's name | Assigned to somebody active on the team. | Yes, by them. |
+| A name plus **cannot act** | Assigned, but that person has been deactivated or has left the team. | Not by them. Somebody has to take it over. |
+
+The third state is the one people mistake for a fault in the portal. It is a
+state, not an error, and it arises the ordinary way: eligibility is checked when
+you assign and not again afterwards, so a finding assigned in March to somebody
+who left in June still carries their name. Nothing went wrong at the time. What
+would be wrong is clearing the name quietly, because then the work would look
+untouched instead of stalled, and nobody would know it had been dropped.
+
+So the portal keeps the name and marks it. That marking is your cue to take the
+finding over:
+
+- **A finding nobody owns** offers **Take**, to anyone on the team.
+- **A finding whose owner cannot act** offers **Take over**. Same control, and
+  deliberately different wording, because the two are not the same act: one
+  picks up unowned work, the other displaces a name already on the row.
+- **A finding an active person owns** offers no control at all. If it belongs
+  with somebody else, ask them to release it. Quietly taking somebody's work is
+  worse than not offering it.
+- **A finding you own yourself** can be released back to unassigned, or handed
+  to another team member.
+
+Taking a finding over puts your name on it immediately, and it is only ever
+your own name: the control assigns to you, so nobody can be volunteered.
+
+#### Finding your own work {#assignment-filter}
+
+The **Assignee** filter has **Assigned to me** and **Unassigned**, and the
+choice stays in the URL, so a filtered list can be shared or bookmarked. It also
+carries into the CSV export, where **Assigned to me** resolves to whoever
+exported the file rather than to whoever built the link.
+
+One caution: **Unassigned** means the field is genuinely empty. Findings whose
+owner cannot act *do* have an owner, so they will not show up there. Those are
+the ones worth sweeping for separately after somebody leaves the team.
+
 ### Per-severity windows
 
 The due date is *first detected + the severity's window*:

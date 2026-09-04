@@ -1,5 +1,5 @@
 /**
- * useUpdateFindingAssignment — unit tests (ER28b).
+ * useUpdateFindingAssignment - unit tests (ER28b).
  *
  * The assertion that matters here is that the LIST ends up showing the new
  * value. "invalidateQueries was called" passes with a key that matches

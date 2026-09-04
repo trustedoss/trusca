@@ -465,7 +465,7 @@
     "column": {
       "affected": "Affected",
       "affected_more_count": "+{{count}}",
-      "affected_more_count_tooltip": "{{count}} more component(s) also affected — see drawer",
+      "affected_more_count_tooltip": "{{count}} more component(s) also affected (see drawer)",
       "assignee": "Owner",
       "component": "Component",
       "cve_id": "CVE ID",

@@ -165,7 +165,7 @@ export interface VulnerabilitiesToolbarProps {
    */
   sla: SlaFilter | null;
   onSlaChange: (value: SlaFilter | null) => void;
-  /** ER28b — ownership filter; `null` is "anyone". */
+  /** ER28b - ownership filter; `null` is "anyone". */
   assignee: AssigneeFilter | null;
   onAssigneeChange: (value: AssigneeFilter | null) => void;
   /**
@@ -509,7 +509,7 @@ export function VulnerabilitiesToolbar({
         </select>
       </div>
 
-      {/* ER28b — ownership filter. Two tokens and no user picker: a developer
+      {/* ER28b - ownership filter. Two tokens and no user picker: a developer
           can only assign to themselves, because nothing lets them enumerate
           their team. The labels reuse the badge's vocabulary so the filter and
           the column chip say the same words. */}
