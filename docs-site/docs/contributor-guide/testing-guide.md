@@ -465,6 +465,15 @@ for containment checks, for assertions that ask whether something failed but
 not why, and for a value captured in a loop. Write the assertion, then break
 the thing it guards and confirm the test goes red.
 
+`tools/mutate/mutate.py` is one safe way to do that, and is not required. It
+edits one file and refuses when the anchor is missing, when it is ambiguous,
+or when the replacement leaves the file unchanged, exiting non-zero so a `&&`
+chain stops before the tests run. The last refusal is the one worth having: an
+anchor can match while the edit changes nothing, and the green run that follows
+reads as evidence the assertion is weak. `--restore` puts the file back from a
+backup rather than through `git checkout`, which would also discard
+uncommitted work in that file.
+
 The ways an assertion stops being able to fail repeat, and six have shown up
 often enough to name:
 

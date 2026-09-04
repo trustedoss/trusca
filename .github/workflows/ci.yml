@@ -112,6 +112,16 @@ jobs:
         if: matrix.target == 'backend'
         run: python tools/ai-review/selftest.py
 
+      # tools/mutate, same reasoning and the same job: standard library only,
+      # under a second. It is a development aid rather than a gate on the
+      # source, so what CI checks is that the tool still refuses what it
+      # promises to refuse. A mutation helper that silently stopped noticing
+      # unapplied edits would hand out green runs as evidence, which is the
+      # failure it exists to prevent.
+      - name: Run mutate selftest
+        if: matrix.target == 'backend'
+        run: python tools/mutate/selftest.py
+
       - name: Setup Node
         if: matrix.target == 'frontend'
         uses: actions/setup-node@v4
