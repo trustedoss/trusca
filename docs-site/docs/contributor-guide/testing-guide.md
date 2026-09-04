@@ -96,6 +96,33 @@ to catch: the answer was right and the reasoning was empty.
 
 Point the same query at something you know exists first. Without that
 positive control, a zero means nothing at all.
+### A neighbour that passes is not permission {#neighbour-passing}
+
+Writing something the way the file next door writes it, and then finding that
+your version fails a check its version passes, is a normal afternoon here. The
+instinct is to conclude that you got the detail wrong. Sometimes you did.
+Often the neighbour passes for a reason that does not extend to you, and there
+are at least three:
+
+- **It is a recorded exception.** `token:lint` and its siblings fail only on
+  newly added violations and carry a budget of existing ones, so the
+  `text-slate-600` in every health panel is debt somebody wrote down, not the
+  convention. A new panel written the same way fails while its neighbours
+  pass.
+- **It was justified in that spot and is not in yours.** A `nosemgrep` exists
+  in three places in this repository, and one directory holds twenty-three
+  cases of the same shape written without it. Adding a fourth suppression
+  there would have taught the next reader that the rule is optional.
+- **The check cannot see it.** An i18n key in a neighbouring component passed
+  extraction while an identical-looking one failed, because the neighbour's
+  key is a template literal: the static analyser cannot read it and files it
+  as dynamic. Its position was never validated at all.
+
+The three look identical from outside, which is the point of listing them: a
+reader who knows only about baselines will check the baseline, find nothing,
+and conclude the neighbour is the convention. Establish which one you are
+looking at before copying.
+
 ### Running locally: give each run its own Postgres and its own Redis
 
 The suite talks to a real Postgres and a real Redis, and neither is isolated
@@ -427,13 +454,10 @@ files that shrink also fail, asking for the lowered baseline to be
 committed. That last direction is the point — a budget you paid down but
 did not record is a budget someone else can spend.
 
-A consequence worth stating, because it catches people copying from the file
-next door: a raw colour class you can see in `apps/frontend/src` is not
-evidence that raw colour classes are allowed. It may be an entry in the
-baseline. The health panels all write `text-slate-600` for a muted badge, and
-a new panel written the same way fails the gate while its neighbours pass.
-Check the baseline before following a neighbour; reading it costs less than a
-round trip through CI.
+A raw colour class you can see in `apps/frontend/src` is not evidence that
+raw colour classes are allowed: it may be a baseline entry. Check the
+baseline before following a neighbour. See
+[A neighbour that passes is not permission](#neighbour-passing).
 
 ```bash
 npm run token:lint          # check
