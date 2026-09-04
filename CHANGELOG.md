@@ -26,6 +26,35 @@ and the project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.
 
   Outer and not inner: an unassigned finding has no user row, and an inner join
   would have removed every one of them from every list in the product.
+- **The SCA report can be posted to a GitLab merge request.** It was
+  GitHub-only, and the GitLab CI template already staged the request, so a
+  GitLab shop got the build gate and a 404 where the comment should have been.
+  `POST /v1/scans/{id}/post-pr-comment` now takes `provider`, and the shipped
+  template sends it.
+
+  `provider` defaults to `github` so an integration written before this keeps
+  working, and the response says when the default was used. An assumption is
+  fine; one that is not stated leaves a GitLab pipeline reading a GitHub error
+  about a project it never named.
+
+  `GITLAB_API_BASE` is configurable where GitHub's base URL is a constant. That
+  asymmetry is deliberate: a self-hosted GitLab is the ordinary case, and
+  GitHub Enterprise Server needs more than a base URL to support, so opening
+  one and not the other says what is true rather than what is symmetrical. An
+  instance behind an internal certificate authority is configured like every
+  other outbound call; the GitLab CI page points at that page.
+
+  Two implementations rather than an interface over both. They differ in the
+  auth header, in the verb an update uses, and in whether a comment is
+  addressed on its own or under the request it belongs to, which are the three
+  places an abstraction would leak. `repo_full_name` is validated per provider
+  for the same reason: GitHub is `owner/repo` and nothing longer, GitLab is a
+  full path through however many groups it nests under, and one pattern loose
+  enough for both would accept `a/b/c` as a GitHub repository.
+
+  The mocked responses carry every field GitLab's documentation lists rather
+  than the three this code reads, and the tests say so: they were written from
+  that documentation and have not been run against a live instance.
 
 
 - **An endpoint that says who a project's work may be assigned to.** `GET

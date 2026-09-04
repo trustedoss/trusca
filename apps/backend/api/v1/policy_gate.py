@@ -467,6 +467,24 @@ def _resolve_github_token() -> str | None:
     return os.getenv("GITHUB_TOKEN") or os.getenv("TRUSTEDOSS_GITHUB_TOKEN")
 
 
+def _resolve_gitlab_token() -> str | None:
+    """The GitLab counterpart, read at request time for the same reason.
+
+    Deployment-wide like the GitHub one, so the portal comments as a single
+    identity everywhere. That is a limit rather than a design: a company whose
+    teams live in separate GitLab groups needs one token per group and cannot
+    express it. It predates this and is not made worse by having two providers
+    instead of one, but it is now visible in two places.
+    """
+    return os.getenv("GITLAB_TOKEN") or os.getenv("TRUSTEDOSS_GITLAB_TOKEN")
+
+
+def _resolve_comment_token(provider: str) -> str | None:
+    return (
+        _resolve_gitlab_token() if provider == "gitlab" else _resolve_github_token()
+    )
+
+
 async def _build_recommended_upgrades(
     session: AsyncSession,
     *,
@@ -709,14 +727,19 @@ async def post_pr_comment_endpoint(
         scan_id=gate_result.scan_id,
     )
 
-    github_token = None if payload.dry_run else _resolve_github_token()
+    # Whether the caller named a provider, as opposed to which one applies.
+    # `model_fields_set` is what separates "said github" from "said nothing and
+    # got github", and the response reports the difference.
+    provider_assumed = "provider" not in payload.model_fields_set
+    token = None if payload.dry_run else _resolve_comment_token(payload.provider)
     try:
         posted = await post_pr_comment(
             repo_full_name=payload.repo_full_name,
             pr_number=payload.pr_number,
             gate_result=gate_result,
             summary=summary,
-            github_token=github_token,
+            github_token=token,
+            provider=payload.provider,
             dry_run=payload.dry_run,
         )
     except SCACommentError as exc:
@@ -764,6 +787,8 @@ async def post_pr_comment_endpoint(
         comment_url=posted.comment_url,
         body_preview=posted.body_preview,
         gate=gate_result.gate,
+        provider=payload.provider,
+        provider_assumed=provider_assumed,
     )
     return Response(
         content=body.model_dump_json(),

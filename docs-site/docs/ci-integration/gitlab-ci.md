@@ -10,8 +10,19 @@ sidebar_position: 2
 
 The portal ships an `include`-able GitLab CI template that mirrors the GitHub Action: it triggers a scan, polls until terminal, and evaluates the build gate. The template is a single job; you can extend or override any field.
 
-:::warning GitLab MR comments — not yet shipped
-The portal's PR-comment integration is GitHub-only in this release. The `templates/gitlab-ci.yml` MR-comment job stages a request, but the backend `services/sca_comment.py` only knows how to call `api.github.com` — calling it with a GitLab `repo_full_name` returns 404. Use the build-gate exit code on the GitLab side until the GitLab Notes API client lands.
+:::note MR comments need two settings
+The template posts the SCA report as a merge request note. Two things have to
+be set on the portal for that to work:
+
+- `GITLAB_TOKEN`, a token that may write notes on the projects you scan. It is
+  deployment-wide, so the portal comments as one identity everywhere.
+- `GITLAB_API_BASE`, if you self-host. It defaults to
+  `https://gitlab.com/api/v4`, and a self-hosted instance is
+  `https://gitlab.example.com/api/v4`.
+
+If that instance presents a certificate from an internal authority, this call
+verifies it the same way every other outbound call does: see
+[Private certificate authorities](../admin-guide/private-ca.md).
 :::
 
 :::note Audience

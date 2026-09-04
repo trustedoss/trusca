@@ -31,7 +31,7 @@ import uuid
 from datetime import datetime
 from typing import Literal
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 GateOutcome = Literal["pass", "fail"]
 
@@ -262,23 +262,61 @@ class GateResultResponse(BaseModel):
 # letters, digits, hyphen, underscore, dot. We pin a defensive pattern so
 # attackers cannot inject path traversal or encoded URLs into the call we
 # make to api.github.com.
-_REPO_SLUG_PATTERN = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]*/[A-Za-z0-9][A-Za-z0-9._-]*$")
+_SEGMENT = r"[A-Za-z0-9][A-Za-z0-9._-]*"
+
+#: GitHub is always ``owner/repo``: exactly two segments, and a third would be
+#: a path this service has no business constructing.
+_GITHUB_SLUG_PATTERN = re.compile(rf"^{_SEGMENT}/{_SEGMENT}$")
+
+#: GitLab projects live under groups that nest, so ``group/subgroup/project``
+#: is ordinary and the depth is not fixed. Capped at eight segments: deeper
+#: than any real hierarchy, and a bound is what keeps this from being "any
+#: number of slashes".
+_GITLAB_PATH_PATTERN = re.compile(rf"^{_SEGMENT}(?:/{_SEGMENT}){{1,7}}$")
+
+#: Kept as one name per provider rather than one loose pattern. Widening the
+#: GitHub rule to allow more slashes would let ``a/b/c`` through on the GitHub
+#: path, where it is not a repository and the request should be refused.
+_SLUG_PATTERNS = {
+    "github": _GITHUB_SLUG_PATTERN,
+    "gitlab": _GITLAB_PATH_PATTERN,
+}
 
 
 class PostPRCommentRequest(BaseModel):
     """CI-side input for ``POST /v1/scans/{scan_id}/post-pr-comment``."""
 
+    provider: Literal["github", "gitlab"] = Field(
+        default="github",
+        description=(
+            "Which forge to comment on. Defaults to `github`, which is what "
+            "every caller was before GitLab existed here, so an existing "
+            "integration keeps working unchanged. The response says when the "
+            "default was used: a GitLab pipeline that omits this field would "
+            "otherwise get a GitHub error about a project it never named."
+        ),
+    )
     repo_full_name: str = Field(
         min_length=3,
         max_length=140,
-        description="GitHub ``owner/repo`` slug. Validated against the GitHub "
-        "naming rules so we never call api.github.com with attacker-controlled "
-        "path segments.",
+        description=(
+            "The project's full path. The name says `repo` because the whole "
+            "surface speaks GitHub, down to `post-pr-comment` in the path; the "
+            "format is the provider's. GitHub takes `owner/repo` and nothing "
+            "longer. GitLab takes the full path including any groups it nests "
+            "under, such as `group/subgroup/project`. Validated per provider "
+            "so the service never builds an API path out of a segment count it "
+            "did not expect."
+        ),
     )
     pr_number: int = Field(
         ge=1,
         le=10_000_000,
-        description="GitHub PR number.",
+        description=(
+            "The pull request number on GitHub, or the merge request IID on "
+            "GitLab. The IID is the per-project number in the MR's URL, not "
+            "the instance-wide `id`."
+        ),
     )
     dry_run: bool = Field(
         default=False,
@@ -287,14 +325,26 @@ class PostPRCommentRequest(BaseModel):
         "default integration tests so they do not require network access.",
     )
 
-    @field_validator("repo_full_name")
-    @classmethod
-    def _validate_repo_full_name(cls, value: str) -> str:
-        if not _REPO_SLUG_PATTERN.match(value):
-            raise ValueError(
-                "repo_full_name must look like 'owner/repo' with [A-Za-z0-9._-] segments",
+    @model_validator(mode="after")
+    def _validate_path_for_provider(self) -> PostPRCommentRequest:
+        """Check the path against the provider's own shape, not a union of both.
+
+        A single pattern permissive enough for GitLab would accept ``a/b/c`` on
+        the GitHub path, which is not a repository, and the service would build
+        a request to a URL that means something else.
+        """
+        pattern = _SLUG_PATTERNS[self.provider]
+        if not pattern.match(self.repo_full_name):
+            expected = (
+                "'owner/repo'"
+                if self.provider == "github"
+                else "'group/project', with any number of nested groups up to eight segments"
             )
-        return value
+            raise ValueError(
+                f"repo_full_name must look like {expected} for provider "
+                f"'{self.provider}', with [A-Za-z0-9._-] segments"
+            )
+        return self
 
 
 class PostPRCommentResponse(BaseModel):
@@ -310,7 +360,23 @@ class PostPRCommentResponse(BaseModel):
     )
     comment_url: str | None = Field(
         default=None,
-        description="``html_url`` of the comment on github.com.",
+        description=(
+            "Link to the comment: GitHub's `html_url`, or GitLab's `web_url`."
+        ),
+    )
+    provider: Literal["github", "gitlab"] = Field(
+        default="github",
+        description="Which forge the comment went to.",
+    )
+    provider_assumed: bool = Field(
+        default=False,
+        description=(
+            "True when the request did not name a provider and `github` was "
+            "used. Reported rather than left silent: a GitLab pipeline that "
+            "omits the field otherwise receives a GitHub error naming a "
+            "project it never mentioned, and nothing says why. The assumption "
+            "is fine; an unstated one is not."
+        ),
     )
     body_preview: str = Field(
         description="The first 280 characters of the rendered comment body. The "
