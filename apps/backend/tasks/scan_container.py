@@ -49,6 +49,11 @@ from models import (
     ScanComponent,
     VulnerabilityFinding,
 )
+from services.registry_allowlist import (
+    allowed_registries,
+    is_registry_allowed,
+    split_registry_host,
+)
 from services.vulnerability_matching import (
     _build_purl,
     _purl_from_identifier,
@@ -117,6 +122,23 @@ def scan_container_task(self: Any, scan_id: str) -> None:
             image_ref = _resolve_image_ref(scan.scan_metadata)
             if not image_ref:
                 _mark_failed(session, scan, "scan.metadata.image_ref is required")
+                return
+
+            # ER3. Enforced here as well as at trigger time, not instead of it.
+            # The API check is what gives a caller a useful error; this one is
+            # what actually protects the worker, because a row can reach this
+            # task without passing through that schema (a re-run of a scan
+            # queued before the list was tightened, or any future producer).
+            # The registry is named in the failure because the operator's fix
+            # is to add it to the list or correct the reference.
+            allowed = allowed_registries()
+            if not is_registry_allowed(image_ref, allowed):
+                _mark_failed(
+                    session,
+                    scan,
+                    f"registry {split_registry_host(image_ref)!r} is not in "
+                    "CONTAINER_SCAN_ALLOWED_REGISTRIES, so this image was not pulled",
+                )
                 return
 
             # Scan-log verbosity (feat/scan-log-verbosity): snapshot the

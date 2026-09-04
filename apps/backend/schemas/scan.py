@@ -968,6 +968,30 @@ class ScanCreate(BaseModel):
             raise ValueError(
                 "metadata.image_ref (str) is required when kind == 'container'",
             )
+
+        # ER3. Reject a registry the operator has not allowed at trigger time,
+        # for the same reason the emptiness check above moved here: the worker
+        # rejects it too, and without this the caller gets a 202, waits for a
+        # slot, and only then learns the request was never viable. The worker
+        # check is the one that protects the pull; this one is the one that
+        # gives a person something to act on.
+        #
+        # Imported here rather than at module scope: this schema is imported by
+        # the CI action's contract tests and other tooling that must not pull
+        # in the service layer.
+        from services.registry_allowlist import (
+            allowed_registries,
+            is_registry_allowed,
+            split_registry_host,
+        )
+
+        allowed = allowed_registries()
+        if not is_registry_allowed(image_ref, allowed):
+            raise ValueError(
+                f"registry {split_registry_host(image_ref)!r} is not allowed for "
+                "container scans on this deployment; ask an operator to add it "
+                "to CONTAINER_SCAN_ALLOWED_REGISTRIES",
+            )
         return self
 
 

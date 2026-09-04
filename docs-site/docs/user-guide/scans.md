@@ -66,10 +66,31 @@ Pick **Container** in the scan dialog to scan a built image instead of source. T
 
 1. Open the scan dialog from the project row's **Scan** button.
 2. At the top of the dialog, select **Container**.
-3. Enter the **container image** reference in `name:tag` form, for example `alpine:3.19` or `ghcr.io/org/app:1.2.3`. The image must be pullable from the worker (public registries, or a registry the worker is authenticated against).
+3. Enter the **container image** reference in `name:tag` form, for example `alpine:3.19` or `ghcr.io/org/app:1.2.3`. The image must be pullable from the worker. Public registries work as shipped; private registries need credentials the worker does not carry yet, so an image behind one fails to pull. An operator may also restrict which registries are allowed at all (see [Allowed registries](#allowed-registries) below), in which case an image outside that list is rejected when you start the scan.
 4. Click **Start scan**.
 
 The same progress drawer opens. When the scan reaches `succeeded`, the OS-package vulnerabilities appear under the project's **Vulnerabilities** tab.
+
+#### Allowed registries {#allowed-registries}
+
+A container scan makes the worker pull an image, which is an outbound request
+to whatever address the reference names. Operators can restrict that with
+`CONTAINER_SCAN_ALLOWED_REGISTRIES` on the portal: a comma-separated list of
+hosts (`ghcr.io`) or host-plus-prefix entries (`ghcr.io/your-org`).
+
+Unset means no restriction, which is the behaviour of every deployment that has
+not configured it. Setting it rejects anything else when the scan is started,
+with an error naming the registry, so you find out immediately rather than
+after waiting for a worker slot.
+
+Two details worth knowing when you write the list:
+
+- An image with no registry segment resolves to Docker Hub. `alpine:3.19` and
+  `myorg/app` both need `docker.io` on the list, even though neither string
+  mentions it.
+- Hosts match exactly. `ghcr.io` does not admit `ghcr.io.example.com`, and it
+  does not admit `evil.example.com/ghcr.io/app` either, where the allowed name
+  appears only in the path.
 
 #### Base-image OS end-of-life {#container-os-eol}
 
