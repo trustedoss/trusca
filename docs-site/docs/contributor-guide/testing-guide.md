@@ -289,6 +289,19 @@ often enough to name:
 - **A tool found nothing**, and the result alone cannot say whether there was
   nothing to find or whether the tool was not looking there. A repository lint
   run from the wrong tree reports zero findings for a file it never opened.
+  This bites hardest when you scan structured output with a regular
+  expression instead of parsing it: `gh` and `EXPLAIN` both return JSON, and
+  a name like `lint (backend)` or a plan node nested under `SubPlan` does not
+  match what a pattern built by hand expects. Parse the structure or compare
+  exact strings, and remember that parentheses, brackets and dots inside a
+  value mean something else to a regex.
+
+  A specific wrong answer is more dangerous than an empty one. Nobody trusts
+  a tool that returns nothing, but "13 of 17 checks never ran" carries a
+  count and a list, and the detail is what makes it credible: it looks like
+  arithmetic, and it is arithmetic on a broken premise. When a new check
+  produces a plausible answer, feed it one input you know it should match and
+  confirm it does.
 - **A fixture never populated the field**, so a guard over that field is blind
   and reports success for every input.
 - **Isolation removed a condition rather than removing noise.** Running one
