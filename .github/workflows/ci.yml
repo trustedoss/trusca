@@ -1138,6 +1138,10 @@ jobs:
       # scan_flow.spec.ts ×4) trip the limit on the third / fourth scenario.
       # Production / dev keep this unset → limiter enabled by default.
       RATELIMIT_DISABLED: "1"
+      # The per-address sign-in throttle defaults to on, and a suite that
+      # drives /auth/login repeatedly (fuzzing, documented status codes)
+      # would start meeting 429 where it expects 401 or 422.
+      LOGIN_THROTTLE_ENABLED: "false"
       # /health/ready (the dev compose backend healthcheck) returns 200
       # only after Alembic schema is at HEAD. Set AUTO_MIGRATE so the
       # entrypoint runs `alembic upgrade head` before uvicorn binds —

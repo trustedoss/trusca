@@ -29,8 +29,17 @@ Any signed-in user. No special role required to manage your own identities. The 
 - A successful login returns a JWT **access token (30 min)** and a refresh token (**7 days**, rotated on every use, with reuse-detection that revokes the entire chain).
 - Refresh tokens live in an `HttpOnly`, `Secure`, `SameSite=Lax` cookie. They are never visible to JavaScript.
 - The login endpoint is rate-limited to **5 attempts per minute per IP**. Excess requests return HTTP 429 with a `Retry-After` header.
+- Failed attempts are also counted **per email address**, so guessing spread across many source addresses is slowed too. After a few failures that address is refused for a short while, and each successive refusal lasts longer. The reply says how long to wait and is identical whether or not the address belongs to an account.
 
 If you see *"Invalid email or password"*, check the email is correct and try once more — the message is intentionally generic so an attacker cannot enumerate accounts.
+
+### If you are told to wait
+
+An address is refused after several wrong passwords, and the count is not only yours: anyone who knows your email can supply failures for it. Three things get you back in.
+
+- **Waiting.** A refusal always ends on its own, and re-opening one costs a fresh run of failures rather than a single attempt, so somebody would have to keep guessing to keep you out.
+- **Resetting your password.** This clears the count immediately, and it is the way back that does not depend on whoever is guessing stopping, because it needs your inbox rather than your password. Use the most recent reset email: requesting a new one invalidates the previous link, so an older message in your inbox may no longer work.
+- **Asking an administrator.** A super admin can clear the count for you, which is the answer when you have lost access to the inbox as well.
 
 ## Forgot your password
 

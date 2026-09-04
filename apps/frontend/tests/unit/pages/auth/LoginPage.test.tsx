@@ -190,6 +190,101 @@ describe("LoginPage", () => {
     expect(mockedFetchMe).not.toHaveBeenCalled();
   });
 
+  it("tells a refused sign-in how long to wait and offers a reset", async () => {
+    // The 429 body says nothing about whether the address exists, on purpose.
+    // The wait and the offer to reset are the only things in it a person can
+    // act on, so a bare "too many requests" would leave somebody who mistyped
+    // their password with no idea what to do next.
+    mockedPostLogin.mockRejectedValueOnce(
+      new ProblemError("too many attempts", {
+        status: 429,
+        title: "Too Many Attempts",
+        detail: "Too many failed sign-in attempts.",
+        problem: {
+          type: "https://trustedoss.dev/problems/too-many-attempts",
+          title: "Too Many Attempts",
+          status: 429,
+          detail: "Too many failed sign-in attempts.",
+          instance: "/auth/login",
+          retry_after_seconds: 900,
+        },
+      }),
+    );
+
+    const user = userEvent.setup();
+    renderLogin();
+    await user.type(screen.getByTestId("login-email"), "alice@example.com");
+    await user.type(screen.getByTestId("login-password"), "wrong-password-but-12");
+    await user.click(screen.getByTestId("login-submit"));
+
+    const alert = await screen.findByTestId("login-error");
+    expect(alert).toHaveTextContent(/15 minutes/i);
+    expect(alert).toHaveTextContent(/reset/i);
+    expect(useAuthStore.getState().isAuthenticated).toBe(false);
+  });
+
+  it("leaves the per-IP limiter's 429 to the generic message", async () => {
+    // Two different 429s reach this page. The per-IP limiter counts every
+    // attempt, successful ones included, so telling that caller their password
+    // was wrong too many times would be untrue and would send them to the reset
+    // form for no reason. Branching on the status code alone could not tell
+    // them apart, which is why this asserts on the one that must not match.
+    mockedPostLogin.mockRejectedValueOnce(
+      new ProblemError("rate limit exceeded", {
+        status: 429,
+        title: "Too Many Requests",
+        detail: "Rate limit exceeded",
+        problem: {
+          type: "about:blank",
+          title: "Too Many Requests",
+          status: 429,
+          detail: "Rate limit exceeded",
+          instance: "/auth/login",
+        },
+      }),
+    );
+
+    const user = userEvent.setup();
+    renderLogin();
+    await user.type(screen.getByTestId("login-email"), "alice@example.com");
+    await user.type(screen.getByTestId("login-password"), "wrong-password-but-12");
+    await user.click(screen.getByTestId("login-submit"));
+
+    const alert = await screen.findByTestId("login-error");
+    expect(alert.textContent ?? "").not.toMatch(/failed sign-in attempts/i);
+  });
+
+  it("still says what to do when the wait is missing from the body", async () => {
+    // The hint is an extension field, so a proxy that strips unknown keys or a
+    // future backend that stops sending it leaves the number absent. Falling
+    // through to the generic rate-limit sentence would drop the reset offer
+    // with it, which is the part that matters most.
+    mockedPostLogin.mockRejectedValueOnce(
+      new ProblemError("too many attempts", {
+        status: 429,
+        title: "Too Many Attempts",
+        detail: "Too many failed sign-in attempts.",
+        problem: {
+          type: "https://trustedoss.dev/problems/too-many-attempts",
+          title: "Too Many Attempts",
+          status: 429,
+          detail: "Too many failed sign-in attempts.",
+          instance: "/auth/login",
+        },
+      }),
+    );
+
+    const user = userEvent.setup();
+    renderLogin();
+    await user.type(screen.getByTestId("login-email"), "alice@example.com");
+    await user.type(screen.getByTestId("login-password"), "wrong-password-but-12");
+    await user.click(screen.getByTestId("login-submit"));
+
+    const alert = await screen.findByTestId("login-error");
+    expect(alert).toHaveTextContent(/reset/i);
+    expect(alert.textContent).not.toMatch(/NaN|undefined/);
+  });
+
   it("falls back to a generic network message on transport failure", async () => {
     mockedPostLogin.mockRejectedValueOnce(
       new ProblemError("Failed to fetch", {

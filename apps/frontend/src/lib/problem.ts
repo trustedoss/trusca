@@ -76,6 +76,7 @@ export const KNOWN_PROBLEM_EXTENSION_KEYS = [
   // gives the UI a stable, locale-independent signal to show the friendly
   // "this is a read-only live demo" toast instead of a generic 403.
   "demo_read_only",
+  "retry_after_seconds",
 ] as const;
 
 export type KnownProblemExtensionKey =
@@ -109,6 +110,11 @@ const KNOWN_EXTENSION_SCHEMAS: Record<KnownProblemExtensionKey, z.ZodTypeAny> = 
   components_export_too_large: z.boolean(),
   inventory_export_too_large: z.boolean(),
   demo_read_only: z.boolean(),
+  // How long a refused sign-in has to wait. Whitelisted so the login form can
+  // say when to come back rather than only that something went wrong: the
+  // 429 body deliberately says nothing about whether the address exists, so
+  // this number is the only actionable thing in it.
+  retry_after_seconds: z.number(),
 };
 
 /**

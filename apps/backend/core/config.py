@@ -2822,6 +2822,109 @@ def password_reset_base_url() -> str:
     return os.getenv("PASSWORD_RESET_BASE_URL", "http://localhost:5173").rstrip("/")
 
 
+def login_throttle_enabled() -> bool:
+    """Whether failed sign-ins are counted per address as well as per IP."""
+    return os.getenv("LOGIN_THROTTLE_ENABLED", "true").strip().lower() not in (
+        "0",
+        "false",
+        "no",
+    )
+
+
+def login_throttle_failures() -> int:
+    """Consecutive failures for one address before it is refused (default 10).
+
+    Above the per-IP budget on purpose, not merely larger than three. That
+    budget is 5/minute, so a threshold of 5 would fire on the fifth attempt
+    from one machine and the per-IP limiter would never be reached from a
+    single address at all: its documented sixth-attempt 429 would become
+    unreachable, and a person mistyping their password would meet the harsher
+    of the two controls instead of the forgiving one that resets every minute.
+
+    Ten leaves the per-IP limiter in front for anyone signing in from one
+    place, and reserves this one for what it is for: failures accumulating
+    against a single address from many sources, which no per-IP budget sees.
+
+    A value below 1 would refuse an address that had never failed, and a
+    non-numeric one would raise from inside the sign-in path and turn every
+    failed login into a 500. Both fall back to the default with a warning
+    rather than being obeyed or crashing, because a throttle that is silently
+    off looks exactly like a throttle that is working.
+    """
+    return _positive_int_setting(
+        "LOGIN_THROTTLE_FAILURES", default=10, maximum=_MAX_THROTTLE_FAILURES
+    )
+
+
+def login_throttle_windows() -> tuple[int, ...]:
+    """How long each successive refusal lasts, in seconds.
+
+    Growing rather than fixed, so somebody who has forgotten which password
+    they used loses a minute while somebody working through a list loses half
+    an hour per round. The last entry is the ceiling and repeats: a window
+    nobody would wait out is a permanent lockout under another name.
+
+    ``LOGIN_THROTTLE_WINDOWS=0`` used to disable the feature outright and
+    silently -- zero is a valid int, so it passed the parse, and a zero-second
+    expiry deletes the key it is applied to. Values below 1 are rejected.
+    """
+    raw = os.getenv("LOGIN_THROTTLE_WINDOWS", "").strip()
+    default = (60, 300, 900, 1800)
+    if not raw:
+        return default
+    try:
+        parsed = tuple(int(part) for part in raw.split(",") if part.strip())
+    except ValueError:
+        _warn_invalid("LOGIN_THROTTLE_WINDOWS", raw)
+        return default
+    if not parsed or any(seconds < 1 for seconds in parsed):
+        _warn_invalid("LOGIN_THROTTLE_WINDOWS", raw)
+        return default
+    if any(seconds > _MAX_THROTTLE_WINDOW_SECONDS for seconds in parsed):
+        # Bounded at both ends on purpose. Rejecting values below 1 stops the
+        # control being switched off silently; rejecting enormous ones stops it
+        # becoming the thing it exists to avoid. An operator who reads "the last
+        # value is the ceiling" and sets a day, or adds a zero by accident, has
+        # locked out everybody whose address anyone chooses to guess at, and the
+        # only ways back are an administrator or a password reset.
+        _warn_invalid("LOGIN_THROTTLE_WINDOWS", raw)
+        return default
+    return parsed
+
+
+#: An hour. Past this a refusal is not a slowdown, it is a lockout, and every
+#: recovery path other than an administrator or a password reset is gone.
+_MAX_THROTTLE_WINDOW_SECONDS = 3600
+
+#: A threshold this high is the control switched off in the other direction:
+#: nobody reaches it, so nothing is ever refused.
+_MAX_THROTTLE_FAILURES = 100
+
+
+def _positive_int_setting(name: str, *, default: int, maximum: int | None = None) -> int:
+    raw = os.getenv(name, "").strip()
+    if not raw:
+        return default
+    try:
+        value = int(raw)
+    except ValueError:
+        _warn_invalid(name, raw)
+        return default
+    if value < 1 or (maximum is not None and value > maximum):
+        _warn_invalid(name, raw)
+        return default
+    return value
+
+
+def _warn_invalid(name: str, raw: str) -> None:
+    """Say that a setting was ignored. Silence here reads as "it is working"."""
+    # Local import keeps config import-time free of the logging stack, matching
+    # the other helpers in this module.
+    import structlog
+
+    structlog.get_logger("config").warning("config.invalid_setting", env_var=name, value=raw)
+
+
 def refresh_rate_limit() -> str:
     """Rate limit for ``POST /auth/refresh``.
 

@@ -95,6 +95,19 @@ log = structlog.get_logger("auth")
 # ---------------------------------------------------------------------------
 
 
+def normalize_email(email: str) -> str:
+    """The one spelling of an address the product recognises.
+
+    Registration, sign-in and password reset all reduce an address this way
+    before touching the database, so ``Alice@Example.com`` and
+    ``alice@example.com`` are one account. Anything that keys off an address
+    has to agree: a failed-sign-in counter treating case as significant would
+    hand an attacker a fresh budget for every capitalisation of one address,
+    while the lookup it exists to protect resolved them all to one user.
+    """
+    return email.strip().lower()
+
+
 def hash_password(plain: str) -> str:
     """Return a bcrypt hash with cost 12. Truncates to 72 bytes per bcrypt."""
     # bcrypt has a 72-byte hard limit on the input. passlib raises for longer
@@ -812,6 +825,7 @@ __all__ = [
     "CurrentUser",
     "create_access_token",
     "create_refresh_token",
+    "normalize_email",
     "decode_token",
     "get_current_user",
     "get_optional_current_user",

@@ -71,6 +71,10 @@ jobs:
       # The runner has a single egress IP; the bootstrap below does a
       # register + login pair that would otherwise trip the 5/min login limiter.
       RATELIMIT_DISABLED: "1"
+      # The per-address sign-in throttle defaults to on, and a suite that
+      # drives /auth/login repeatedly (fuzzing, documented status codes)
+      # would start meeting 429 where it expects 401 or 422.
+      LOGIN_THROTTLE_ENABLED: "false"
     steps:
       - uses: actions/checkout@v4
 

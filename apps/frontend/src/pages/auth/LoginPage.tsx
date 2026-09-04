@@ -31,6 +31,7 @@ import { Input } from "@/components/ui/input";
 import { useOAuthProviders } from "@/hooks/useOAuthProviders";
 import { fetchMe, postLogin } from "@/lib/api";
 import { getApiBase } from "@/lib/apiBase";
+import { ProblemError } from "@/lib/problem";
 import { problemMessage } from "@/lib/problemMessage";
 import { safeReturnPath } from "@/lib/returnPath";
 import { cn } from "@/lib/utils";
@@ -54,6 +55,11 @@ type LoginValues = z.infer<ReturnType<typeof buildSchema>>;
 // `?error=oauth_*` (see apps/backend/api/v1/oauth.py:178-224). Anything
 // else falls through to the generic `unknown` key — the SPA never trusts
 // the raw query string verbatim because it's reflected from the browser.
+/** The sign-in throttle's problem type. Distinct from the per-IP limiter's
+ * `about:blank` 429, which counts all attempts rather than failed ones. */
+const TOO_MANY_ATTEMPTS_TYPE =
+  "https://trustedoss.dev/problems/too-many-attempts";
+
 const OAUTH_ERROR_KEYS: Record<string, string> = {
   oauth_denied: "oauth.errors.denied",
   oauth_invalid_state: "oauth.errors.invalid_state",
@@ -189,6 +195,29 @@ export function LoginPage() {
       setStatus("authenticated");
       navigate(returnTo, { replace: true });
     } catch (err) {
+      // A refused sign-in is the one class where the backend knows something
+      // worth passing on: how long to wait. It deliberately does not say
+      // whether the address exists, so the wait and the offer to reset are the
+      // only actionable things in the reply, and a bare "too many requests"
+      // leaves somebody who mistyped their password with nothing to do.
+      // Matched on the problem type, not on 429. The per-IP limiter answers 429
+      // too, and it counts every attempt rather than every failure, so telling
+      // that caller their password was wrong too many times would be untrue and
+      // would send them to the reset form for no reason.
+      if (
+        err instanceof ProblemError &&
+        err.problem?.type === TOO_MANY_ATTEMPTS_TYPE
+      ) {
+        const seconds = err.problem?.retry_after_seconds;
+        setApiError(
+          typeof seconds === "number" && seconds > 0
+            ? t("errors.too_many_attempts_wait", {
+                count: Math.max(1, Math.ceil(seconds / 60)),
+              })
+            : t("errors.too_many_attempts"),
+        );
+        return;
+      }
       // `prefix` rather than `action`: the auth namespace already words these
       // classes for the sign-in context ("errors.network", "errors.unknown").
       setApiError(problemMessage(err, t, { prefix: "errors" }));

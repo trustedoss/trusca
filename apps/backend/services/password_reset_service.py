@@ -85,8 +85,10 @@ from core.config import (
     password_reset_base_url,
     password_reset_email_cooldown_seconds,
 )
+from core.login_throttle import clear as clear_login_throttle
 from core.security import (
     hash_password,
+    normalize_email,
     set_password,
     verify_password,
     verify_password_async,
@@ -274,7 +276,7 @@ async def request_password_reset(
     Never raises for "user not found" — that branch must look identical
     to the matching branch from a timing / response-shape perspective.
     """
-    normalized_email = email.strip().lower()
+    normalized_email = normalize_email(email)
 
     user_result = await session.execute(select(User).where(User.email == normalized_email))
     user = user_result.scalar_one_or_none()
@@ -494,6 +496,13 @@ async def consume_reset_token(
 
     await session.commit()
     await session.refresh(user)
+
+    # The way back that an attacker cannot stand in front of. Somebody who
+    # locked this address out by guessing at it cannot stop its owner reading
+    # the reset mail, so consuming the token is what clears the count -- not
+    # asking for one, which anybody can do for any address and which would
+    # otherwise refill a guessing budget on demand.
+    await clear_login_throttle(user.email)
 
     log.info(
         "password_reset_consumed",

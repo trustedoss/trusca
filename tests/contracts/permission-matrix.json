@@ -269,6 +269,11 @@
       "gate": "super_admin_404"
     },
     {
+      "method": "POST",
+      "path": "/v1/admin/users/{user_id}/unlock-sign-in",
+      "gate": "super_admin_404"
+    },
+    {
       "method": "PATCH",
       "path": "/v1/admin/users/{user_id}/role",
       "gate": "super_admin_404"
