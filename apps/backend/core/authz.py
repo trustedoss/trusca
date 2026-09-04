@@ -114,6 +114,13 @@ def team_scope_filter(actor: CurrentUser) -> ColumnElement[bool]:
     lives in exactly one place and a future tweak (org-wide viewer role, etc.)
     lands here only.
 
+    One caller does not go through this and would be widened by such a tweak
+    without touching it: ``GET /v1/projects/{project_id}/assignable-members``
+    derives a team from a project and lists its members, which is safe only
+    while reaching a project means being on its team. Enabling organization-wide
+    visibility makes project access a weaker statement than team membership, so
+    read that route before turning it on.
+
     Contract:
 
     - super-admin (``actor.is_superuser`` OR ``actor.role == "super_admin"``)

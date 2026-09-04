@@ -73,6 +73,7 @@ from schemas.scan import (
     SeveritySummary,
     SourceArchiveUploadResponse,
 )
+from schemas.vulnerability_detail import AssignableMember, AssignableMemberList
 from services.batch_service import create_projects_batch
 from services.dependency_graph_service import get_dependency_graph
 from services.project_detail_service import (
@@ -1243,6 +1244,86 @@ async def upload_source_archive_endpoint(
     return Response(
         content=body.model_dump_json(),
         status_code=status.HTTP_201_CREATED,
+        media_type="application/json",
+    )
+
+
+
+# ---------------------------------------------------------------------------
+# GET /v1/projects/{project_id}/assignable-members
+# ---------------------------------------------------------------------------
+
+
+@router.get(
+    "/{project_id}/assignable-members",
+    response_model=AssignableMemberList,
+    summary="People this project's work may be assigned to",
+    responses={
+        403: {
+            "description": (
+                "Caller is not on the team that owns the project. Matches the "
+                "project read above rather than the finding PATCH's 404: "
+                "reaching this needs a project id the caller already has."
+            )
+        },
+        404: {"description": "No such project."},
+    },
+)
+async def list_assignable_members_endpoint(
+    request: Request,
+    project_id: uuid.UUID,
+    session: AsyncSession = Depends(get_db),
+    actor: CurrentUser = Depends(require_role("developer")),
+) -> Response:
+    """Who may be named as the owner of a finding or an obligation here.
+
+    Addressed by project rather than by team because that is what a caller
+    holds: the screen is a project's finding list, and asking it for a team id
+    would mean handing out team ids to look work up by. The team is derived
+    here, and access is the project's own rule.
+
+    ``developer`` for the same reason the assignment PATCH is: a caller who may
+    perform an assignment has to be able to compose one, and a list gated
+    higher would leave the write reachable only by somebody who already knew
+    the id.
+
+    The set is exactly what ``services.assignee`` will accept, because both go
+    through one predicate rather than two copies of three conditions.
+
+    A premise that holds today and will not always
+    ---------------------------------------------
+    Deriving the team from the project is safe because reaching a project means
+    being on its team. Only ``visibility='team'`` is honoured
+    (``services.project_service``), so there is no other way in.
+
+    Organization-wide visibility would end that. Somebody on another team could
+    then read the project, and this route would hand them its members, which is
+    the enumeration the tests here refuse. Whoever enables it has to decide what
+    this endpoint does: most likely keep it on team membership rather than on
+    project access, since being allowed to read a project's findings is not the
+    same as being allowed to list the people on it.
+
+    ``core.authz.team_scope_filter`` carries a pointer back here, because that
+    is the file the change lands in.
+    """
+    from services.assignee import list_assignable_members
+
+    try:
+        project = await get_project(session, project_id=project_id, actor=actor)
+    except ProjectError as exc:
+        return _problem_for_project_error(request, exc)
+
+    rows = await list_assignable_members(session, project.team_id)
+    body = AssignableMemberList(
+        members=[
+            AssignableMember(user_id=user_id, full_name=full_name)
+            for user_id, full_name in rows
+        ],
+        total=len(rows),
+    )
+    return Response(
+        content=body.model_dump_json(),
+        status_code=status.HTTP_200_OK,
         media_type="application/json",
     )
 
