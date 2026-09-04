@@ -318,6 +318,9 @@
   "GET /v1/projects/{project_id}": [
     "project_id"
   ],
+  "GET /v1/projects/{project_id}/assignable-members": [
+    "project_id"
+  ],
   "GET /v1/projects/{project_id}/compliance": [
     "category",
     "conflict",

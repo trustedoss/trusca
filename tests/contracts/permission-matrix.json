@@ -1044,6 +1044,12 @@
       "gate": "role>=developer"
     },
     {
+      "method": "GET",
+      "path": "/v1/projects/{project_id}/assignable-members",
+      "gate": "role>=developer",
+      "why": "Feeds the assignment PATCH above, so it is gated the same: a caller who may assign has to be able to compose one. Scoped to the project's own team by get_project."
+    },
+    {
       "method": "POST",
       "path": "/v1/webhooks/github",
       "gate": "public",

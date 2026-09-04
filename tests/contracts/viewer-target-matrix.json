@@ -265,6 +265,10 @@
   "deny": [
     [
       "GET",
+      "/v1/projects/{project_id}/assignable-members"
+    ],
+    [
+      "GET",
       "/v1/api-keys"
     ],
     [

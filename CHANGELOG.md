@@ -9,6 +9,35 @@ and the project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.
 
 ### Added
 
+- **An endpoint that says who a project's work may be assigned to.** `GET
+  /v1/projects/{project_id}/assignable-members` returns the people the
+  assignment save accepts: members of the team that owns the project, active,
+  and not service accounts. Until now nothing below super admin listed users at
+  all, so a screen could only offer the signed-in person to themselves.
+
+  It returns an id and a display name, and nothing else. Not the email, which
+  the admin team view carries because an administrator auditing who can reach a
+  team needs one, and which would make every project page somewhere addresses
+  can be collected from. Not the role, which does not decide who may be named.
+  Service accounts are absent rather than labelled, because they cannot be
+  assigned, so what comes back is the set the write accepts rather than a
+  superset the caller has to filter.
+
+  Addressed by project rather than by team, so a caller never needs a team id
+  to look work up by, and gated at `developer` to match the assignment it
+  feeds: a caller who may perform an assignment has to be able to compose one.
+  A caller outside the owning team is refused by the project's own rule.
+
+  The list and the write are computed from one query. Two copies of three
+  conditions drift in a way that shows only from opposite ends: offering
+  somebody the save refuses is met immediately, and failing to offer somebody
+  it would accept is invisible, because the work goes to whoever is on the
+  list instead. A query rather than a shared condition, because a condition
+  leaves the join to the caller and a caller who forgets it gets a cross join
+  that returns every active person in the deployment, with no error and no
+  warning.
+
+
 - **The Helm chart can mount a file, so a private certificate authority works
   on Kubernetes too.** `env.extraVolumes` and `env.extraVolumeMounts` are raw
   lists appended to the backend, the scheduler and both workers, the same four
