@@ -41,6 +41,7 @@ from schemas.vulnerability_detail import (
     UpgradeClusterFinding,
     UpgradeClusterListResponse,
     UpgradeRecommendation,
+    VulnerabilityAssignmentUpdate,
     VulnerabilityBulkStatusResponse,
     VulnerabilityBulkStatusResult,
     VulnerabilityBulkStatusUpdate,
@@ -63,6 +64,7 @@ from services.vulnerability_service import (
     bulk_transition_status,
     get_vulnerability_detail,
     list_project_vulnerabilities,
+    update_finding_assignment,
     update_vulnerability_status,
 )
 
@@ -431,6 +433,19 @@ def _detail_response(payload: dict[str, Any]) -> Response:
         first_detected_at=payload["first_detected_at"],
         sla_due_date=payload["sla_due_date"],
         sla_status=payload["sla_status"],
+        # ER28a: ownership, deadline and ticket. Listed explicitly because
+        # this builder names every field, which is the same reason kev /
+        # kev_due_date went missing above: a payload key nobody adds here is
+        # dropped silently and reads as "the server does not have it".
+        # `test_the_detail_builder_drops_nothing` fails when that happens again.
+        due_on=payload["due_on"],
+        effective_due_date=payload["effective_due_date"],
+        due_source=payload["due_source"],
+        manual_due_ignored=payload["manual_due_ignored"],
+        assignee_user_id=payload["assignee_user_id"],
+        assignee_is_active=payload["assignee_is_active"],
+        ticket_url=payload["ticket_url"],
+        ticket_key=payload["ticket_key"],
         created_at=payload["created_at"],
         updated_at=payload["updated_at"],
     )
@@ -520,6 +535,70 @@ async def update_vulnerability_status_endpoint(
     except VulnerabilityConflict as exc:
         # 409 — distinct from 422 because it indicates concurrent modification,
         # not an invalid request shape.
+        return _problem_for_vulnerability_error(request, exc)
+    except (VulnerabilityError, ProjectError) as exc:
+        return _problem_for_vulnerability_error(request, exc)
+    return _detail_response(result)
+
+
+# ---------------------------------------------------------------------------
+# PATCH /v1/vulnerability_findings/{finding_id}/assignment  (ER28a)
+# ---------------------------------------------------------------------------
+
+
+@router.patch(
+    "/vulnerability_findings/{finding_id}/assignment",
+    response_model=VulnerabilityDetailResponse,
+    summary="Set a finding's owner, deadline and ticket (audit-logged)",
+    responses={
+        200: {
+            "description": (
+                "Assignment updated. The body is the post-commit detail "
+                "payload, which carries `effective_due_date`, `due_source` and "
+                "`manual_due_ignored` so the caller can tell the person "
+                "immediately when a date they just set does not govern."
+            ),
+        },
+        404: {
+            "description": (
+                "Finding does not exist, or exists in a team the caller cannot "
+                "access. Returned in lieu of 403 to avoid leaking existence."
+            ),
+        },
+        409: {"description": "if_match snapshot did not match the current updated_at."},
+        422: {
+            "description": (
+                "No fields supplied, or the assignee is not an active person "
+                "on the project's team."
+            ),
+        },
+    },
+)
+async def update_vulnerability_assignment_endpoint(
+    request: Request,
+    finding_id: uuid.UUID,
+    payload: VulnerabilityAssignmentUpdate,
+    session: AsyncSession = Depends(get_db),
+    actor: CurrentUser = Depends(require_role("developer")),
+) -> Response:
+    # Only what the caller actually sent: `model_fields_set` is what separates
+    # "clear this field" (sent as null) from "leave it alone" (absent). Reading
+    # the model's values instead would unassign every finding whose PATCH only
+    # meant to set a ticket.
+    changes = {
+        field: getattr(payload, field)
+        for field in payload.model_fields_set
+        if field != "if_match"
+    }
+    try:
+        result = await update_finding_assignment(
+            session,
+            finding_id=finding_id,
+            actor=actor,
+            changes=changes,
+            if_match=payload.if_match,
+        )
+    except VulnerabilityConflict as exc:
         return _problem_for_vulnerability_error(request, exc)
     except (VulnerabilityError, ProjectError) as exc:
         return _problem_for_vulnerability_error(request, exc)

@@ -644,6 +644,9 @@
   "PATCH /v1/projects/{project_id}": [
     "project_id"
   ],
+  "PATCH /v1/vulnerability_findings/{finding_id}/assignment": [
+    "finding_id"
+  ],
   "PATCH /v1/vulnerability_findings/{finding_id}/status": [
     "finding_id"
   ],

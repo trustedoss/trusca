@@ -1059,6 +1059,32 @@ class VulnerabilityFinding(Base):
         nullable=True,
     )
     analyzed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    # ER28a: who owns this finding, by when, and where the work is tracked.
+    #
+    # The assignee vocabulary is deliberately identical to
+    # ``ObligationFulfilment.assignee_user_id``: same ``users`` reference, same
+    # ``ON DELETE SET NULL``, same partial index. Two spellings of "who owns
+    # this" would drift, and whatever the user-lifecycle work does to one table
+    # has to do the same to the other. ``analyst_user_id`` above already uses
+    # the same ondelete, so the table is internally consistent too.
+    #
+    # SET NULL means a deleted user's assignments become unassigned rather than
+    # blocking the delete. That is the right trade (a person must be removable)
+    # but it is silent, so the list has to make an unassigned-but-was-assigned
+    # finding visible rather than letting it fall out of everyone's view.
+    assignee_user_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID_PK,
+        ForeignKey("users.id", ondelete="SET NULL"),
+        nullable=True,
+    )
+    # A date, not a timestamp: a remediation deadline is a calendar commitment,
+    # and the SLA window it competes with is also counted in days.
+    due_on: Mapped[date | None] = mapped_column(Date, nullable=True)
+    # Where the work is tracked externally. Both nullable and both free text:
+    # the ticket system is the operator's, so nothing here parses or validates
+    # a key format beyond length.
+    ticket_url: Mapped[str | None] = mapped_column(String(2048), nullable=True)
+    ticket_key: Mapped[str | None] = mapped_column(String(255), nullable=True)
     # Project-level first-detection timestamp for this (component_version ×
     # vulnerability) pairing (X1 SLA/aging, migration 0041). Carried forward
     # across re-scans / re-matches by persist_trivy_findings — per-scan
@@ -1089,6 +1115,28 @@ class VulnerabilityFinding(Base):
         Index("ix_vuln_findings_component_version_id", "component_version_id"),
         Index("ix_vuln_findings_vulnerability_id", "vulnerability_id"),
         Index("ix_vuln_findings_analyst_user_id", "analyst_user_id"),
+        # ER28a. Partial like the reachable index below and like
+        # ``ix_obligation_fulfilments_assignee``: most findings are unassigned,
+        # so indexing only the assigned ones keeps the structure small while
+        # still serving "what is assigned to me".
+        Index(
+            "ix_vuln_findings_assignee",
+            "assignee_user_id",
+            postgresql_where=text("assignee_user_id IS NOT NULL"),
+        ),
+        # Dated and still open. The closed set is the gate's
+        # (``services.policy_gate._CLOSED_FINDING_STATUSES``); a finding that is
+        # fixed, not affected or a false positive has no deadline left to miss.
+        # Note `suppressed` is NOT closed there, so a suppressed finding keeps
+        # its deadline, which is what the SLA sweep already does.
+        Index(
+            "ix_vuln_findings_due",
+            "due_on",
+            postgresql_where=text(
+                "due_on IS NOT NULL AND status <> 'not_affected' "
+                "AND status <> 'fixed' AND status <> 'false_positive'"
+            ),
+        ),
         # "Show open findings for this scan" — list view default filter.
         Index("ix_vuln_findings_scan_status", "scan_id", "status"),
         # Reachable-only hot path (v2.3 r2, migration 0023). PARTIAL index keyed

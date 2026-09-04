@@ -11,7 +11,7 @@ live in ``tests/integration/test_vuln_sla_sweep_db.py``.
 from __future__ import annotations
 
 import uuid
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, date, datetime, timedelta
 from typing import Any
 
 import pytest
@@ -33,18 +33,23 @@ def _row(
     status: str = "new",
     severity: str = "critical",
     due_delta: timedelta,
-) -> tuple[uuid.UUID, str, str, datetime]:
-    """Candidate row whose DUE date sits at ``_NOW + due_delta``.
+    due_on: date | None = None,
+) -> tuple[uuid.UUID, str, str, datetime, date | None]:
+    """Candidate row whose POLICY due date sits at ``_NOW + due_delta``.
 
     ``first_detected`` is derived backwards through ``vuln_sla_days`` so the
     test reads in due-date space (the window contract's native coordinates).
+
+    ``due_on`` is the date somebody wrote down (ER28a). It defaults to None, so
+    every case written before that existed still describes a finding whose only
+    deadline is the policy's.
     """
     from core.config import vuln_sla_days
 
     days = vuln_sla_days(severity)
     assert days is not None, "use _row only for SLA-carrying severities"
     first_detected = _NOW + due_delta - timedelta(days=days)
-    return (project_id or uuid.uuid4(), status, severity, first_detected)
+    return (project_id or uuid.uuid4(), status, severity, first_detected, due_on)
 
 
 # ---------------------------------------------------------------------------
@@ -121,7 +126,7 @@ def test_status_vocabulary_mirrors_gate() -> None:
 @pytest.mark.parametrize("severity", ["info", "unknown"])
 def test_no_sla_severities_are_excluded(severity: str) -> None:
     # No due date exists for these; hand a first_detected directly.
-    rows = [(uuid.uuid4(), "new", severity, _NOW - timedelta(days=400))]
+    rows = [(uuid.uuid4(), "new", severity, _NOW - timedelta(days=400), None)]
     assert _select_breached(rows, now=_NOW, window=_WINDOW) == {}
 
 
@@ -135,7 +140,7 @@ def test_aggregation_groups_by_project_and_severity() -> None:
         # noise: outside window / closed / no SLA
         _row(project_id=p1, due_delta=-timedelta(days=3)),
         _row(project_id=p2, status="fixed", due_delta=-timedelta(hours=1)),
-        (p2, "new", "info", _NOW - timedelta(days=400)),
+        (p2, "new", "info", _NOW - timedelta(days=400), None),
     ]
     assert _select_breached(rows, now=_NOW, window=_WINDOW) == {
         p1: {"critical": 2, "high": 1},
@@ -148,7 +153,7 @@ def test_env_override_moves_the_due_date(monkeypatch: pytest.MonkeyPatch) -> Non
     monkeypatch.setenv("VULN_SLA_DAYS_HIGH", "10")
     pid = uuid.uuid4()
     # first_detected 10d + 1h ago → due (10d window) crossed 1h ago → in window.
-    rows = [(pid, "new", "high", _NOW - timedelta(days=10, hours=1))]
+    rows = [(pid, "new", "high", _NOW - timedelta(days=10, hours=1), None)]
     assert _select_breached(rows, now=_NOW, window=_WINDOW) == {pid: {"high": 1}}
     # Same row under the default 30d window: due is 20d away → not selected.
     monkeypatch.delenv("VULN_SLA_DAYS_HIGH")
@@ -276,3 +281,108 @@ def test_enqueue_swallows_per_descriptor_broker_failure(
     enqueued = _enqueue_notifications([_descriptor(), _descriptor()])
     assert enqueued == 1  # first failed, second went through — never raises
     assert len(attempts) == 2
+
+
+# ---------------------------------------------------------------------------
+# ER28a: a written-down deadline the sweep has to honour, and what happens
+# when somebody moves it.
+# ---------------------------------------------------------------------------
+
+
+def _dated_row(
+    *,
+    project_id: uuid.UUID,
+    due_on: date,
+    severity: str = "info",
+) -> tuple[uuid.UUID, str, str, datetime, date | None]:
+    """A finding whose ONLY deadline is the one somebody wrote down.
+
+    ``info`` carries no SLA window, so the policy contributes nothing and the
+    row's deadline is exactly ``due_on``. That isolates the written date: any
+    selection here is the written deadline being honoured and not the policy's
+    leaking in.
+    """
+    return (project_id, "new", severity, _NOW - timedelta(days=400), due_on)
+
+
+def test_a_written_deadline_is_swept_even_without_an_sla_window() -> None:
+    """Before ER28a an info finding could never be overdue, so writing a date
+    on one recorded an intention nothing acted on."""
+    pid = uuid.uuid4()
+    # The deadline expires at the END of the named day, so a date of
+    # "yesterday" crossed at midnight, inside a 24h window.
+    yesterday = (_NOW - timedelta(days=1)).date()
+    assert _select_breached(
+        [_dated_row(project_id=pid, due_on=yesterday)], now=_NOW, window=_WINDOW
+    ) == {pid: {"info": 1}}
+
+
+def test_moving_a_deadline_forward_alerts_again_when_it_is_missed_again() -> None:
+    """The lifecycle, not a single moment.
+
+    The sweep holds no "already told you" state on purpose: the persistent view
+    is the overdue list, and the alert only says "these crossed in the last
+    24h". So a deadline that is missed, moved out, and missed again alerts
+    twice, and that is the intended reading rather than a duplicate: the
+    commitment was remade and missed again.
+
+    A single-moment test cannot see this. It needs the sequence.
+    """
+    pid = uuid.uuid4()
+    first_due = (_NOW - timedelta(days=1)).date()
+
+    # 1. Missed, and inside this tick's window: alerted.
+    assert _select_breached(
+        [_dated_row(project_id=pid, due_on=first_due)], now=_NOW, window=_WINDOW
+    ) == {pid: {"info": 1}}
+
+    # 2. Somebody moves the deadline out. At the same instant it is no longer
+    #    overdue at all, so nothing is alerted.
+    moved_to = (_NOW + timedelta(days=30)).date()
+    assert (
+        _select_breached(
+            [_dated_row(project_id=pid, due_on=moved_to)], now=_NOW, window=_WINDOW
+        )
+        == {}
+    )
+
+    # 3. Time passes and the NEW deadline is missed: alerted again.
+    later = datetime.combine(
+        moved_to + timedelta(days=1), datetime.min.time(), tzinfo=UTC
+    ) + timedelta(hours=1)
+    assert _select_breached(
+        [_dated_row(project_id=pid, due_on=moved_to)], now=later, window=_WINDOW
+    ) == {pid: {"info": 1}}
+
+
+def test_moving_a_deadline_out_does_not_alert_on_the_old_one_again() -> None:
+    """The half that would be a real duplicate: the sweep must not keep
+    reporting the deadline that was replaced."""
+    pid = uuid.uuid4()
+    moved_to = (_NOW + timedelta(days=30)).date()
+    later = datetime.combine(
+        moved_to + timedelta(days=1), datetime.min.time(), tzinfo=UTC
+    ) + timedelta(hours=1)
+
+    breached = _select_breached(
+        [_dated_row(project_id=pid, due_on=moved_to)], now=later, window=_WINDOW
+    )
+    # Exactly one crossing is counted at the new date, not two.
+    assert breached == {pid: {"info": 1}}
+
+
+def test_an_earlier_written_date_beats_the_policy_in_the_sweep() -> None:
+    """The sweep has to apply the same precedence rule as the list and the
+    drawer. A critical finding is 7 days from detection by policy; a date
+    written for yesterday is earlier, so the sweep sees yesterday."""
+    pid = uuid.uuid4()
+    yesterday = (_NOW - timedelta(days=1)).date()
+    # Policy due is far in the future, so any selection is the written date.
+    row = (
+        pid,
+        "new",
+        "critical",
+        _NOW,  # detected now → policy due in 7 days
+        yesterday,
+    )
+    assert _select_breached([row], now=_NOW, window=_WINDOW) == {pid: {"critical": 1}}

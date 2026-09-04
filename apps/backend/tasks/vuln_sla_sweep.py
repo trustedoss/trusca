@@ -73,7 +73,7 @@ from __future__ import annotations
 
 import uuid
 from collections.abc import Iterable
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, date, datetime, timedelta
 from typing import Any
 
 import structlog
@@ -94,6 +94,7 @@ from models import (
 # The build gate's closed set is the single owner of "no longer open work"
 # (hardening rule #2 — one vocabulary, one owner). Importing it keeps the
 # sweep, the gate and the upgrade engine counting the same findings.
+from services.due_date import effective_due
 from services.policy_gate import _CLOSED_FINDING_STATUSES
 from tasks.celery_app import celery_app
 
@@ -113,20 +114,24 @@ _SEVERITY_ORDER = ("critical", "high", "medium", "low")
 
 
 def _select_breached(
-    rows: Iterable[tuple[uuid.UUID, str, str, datetime]],
+    rows: Iterable[tuple[uuid.UUID, str, str, datetime, date | None]],
     *,
     now: datetime,
     window: timedelta = _SWEEP_WINDOW,
 ) -> dict[uuid.UUID, dict[str, int]]:
     """Reduce candidate rows to ``project_id → {severity: crossed_count}``.
 
-    ``rows`` are ``(project_id, status, severity, first_detected)`` tuples for
+    ``rows`` are ``(project_id, status, severity, first_detected, due_on)``
+    tuples for
     the latest-succeeded-scan findings (the SQL side deliberately does NOT
     pre-filter status/severity/window so this function owns the full selection
     contract and unit tests can drive every branch with plain tuples):
 
       - closed statuses (gate vocabulary) are dropped;
-      - severities without an SLA window (``vuln_sla_days`` → None) are
+      - the deadline is the EFFECTIVE one (``services.due_date``): a
+        written-down ``due_on`` wins when it is earlier than the policy's,
+        which also means a finding whose severity has no SLA window still has
+        a deadline once somebody writes one down. A row with neither is
         dropped;
       - only due dates inside ``now - window <= due < now`` count — a due
         date at exactly ``now - window`` is INcluded (it belongs to this
@@ -134,13 +139,14 @@ def _select_breached(
         tomorrow's tick owns it).
     """
     breached: dict[uuid.UUID, dict[str, int]] = {}
-    for project_id, status, severity, first_detected in rows:
+    for project_id, status, severity, first_detected, due_on in rows:
         if status in _CLOSED_FINDING_STATUSES:
             continue
         days = vuln_sla_days(severity)
-        if days is None:
+        policy_due = None if days is None else first_detected + timedelta(days=days)
+        due, _source = effective_due(sla_due=policy_due, due_on=due_on)
+        if due is None:
             continue
-        due = first_detected + timedelta(days=days)
         if not (now - window <= due < now):
             continue
         per_project = breached.setdefault(project_id, {})
@@ -183,8 +189,8 @@ def _build_in_app_payload(
 
 def _candidate_rows(
     session: Session,
-) -> list[tuple[uuid.UUID, str, str, datetime]]:
-    """Fetch ``(project_id, status, severity, first_detected)`` for every
+) -> list[tuple[uuid.UUID, str, str, datetime, date | None]]:
+    """Fetch ``(project_id, status, severity, first_detected, due_on)`` for every
     finding on every project's latest succeeded scan.
 
     The latest-scan anchor mirrors ``scan_resolution.latest_succeeded_scan_id``
@@ -210,6 +216,7 @@ def _candidate_rows(
                 VulnerabilityFinding.first_detected_at,
                 VulnerabilityFinding.created_at,
             ),
+            VulnerabilityFinding.due_on,
         )
         .select_from(VulnerabilityFinding)
         .join(latest, latest.c.scan_id == VulnerabilityFinding.scan_id)
@@ -218,7 +225,7 @@ def _candidate_rows(
             Vulnerability.id == VulnerabilityFinding.vulnerability_id,
         )
     ).all()
-    return [(r[0], str(r[1]), str(r[2]), r[3]) for r in rows]
+    return [(r[0], str(r[1]), str(r[2]), r[3], r[4]) for r in rows]
 
 
 def _project_meta(
