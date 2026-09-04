@@ -476,6 +476,10 @@
       "/v1/vulnerability_findings/{finding_id}/status"
     ],
     [
+      "PATCH",
+      "/v1/vulnerability_findings/{finding_id}/assignment"
+    ],
+    [
       "POST",
       "/v1/transition-approvals"
     ],

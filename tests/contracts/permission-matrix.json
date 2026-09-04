@@ -1039,6 +1039,11 @@
       "gate": "role>=developer"
     },
     {
+      "method": "PATCH",
+      "path": "/v1/vulnerability_findings/{finding_id}/assignment",
+      "gate": "role>=developer"
+    },
+    {
       "method": "POST",
       "path": "/v1/webhooks/github",
       "gate": "public",
