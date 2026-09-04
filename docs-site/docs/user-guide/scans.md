@@ -66,7 +66,7 @@ Pick **Container** in the scan dialog to scan a built image instead of source. T
 
 1. Open the scan dialog from the project row's **Scan** button.
 2. At the top of the dialog, select **Container**.
-3. Enter the **container image** reference in `name:tag` form, for example `alpine:3.19` or `ghcr.io/org/app:1.2.3`. The image must be pullable from the worker. Public registries work as shipped; private registries need credentials the worker does not carry yet, so an image behind one fails to pull. An operator may also restrict which registries are allowed at all (see [Allowed registries](#allowed-registries) below), in which case an image outside that list is rejected when you start the scan.
+3. Enter the **container image** reference in `name:tag` form, for example `alpine:3.19` or `ghcr.io/org/app:1.2.3`. The image must be pullable from the worker. Public registries work as shipped; a private registry needs a credential an administrator has stored for it (see [Private registries](#private-registries) below). An operator may also restrict which registries are allowed at all (see [Allowed registries](#allowed-registries)), in which case an image outside that list is rejected when you start the scan.
 4. Click **Start scan**.
 
 The same progress drawer opens. When the scan reaches `succeeded`, the OS-package vulnerabilities appear under the project's **Vulnerabilities** tab.
@@ -91,6 +91,43 @@ Two details worth knowing when you write the list:
 - Hosts match exactly. `ghcr.io` does not admit `ghcr.io.example.com`, and it
   does not admit `evil.example.com/ghcr.io/app` either, where the allowed name
   appears only in the path.
+
+#### Private registries {#private-registries}
+
+Most enterprise images are not public. A super-admin stores one login per
+registry per organization:
+
+```bash
+curl -X PUT \
+  -H "Authorization: Bearer $TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{"registry_host":"ghcr.io","username":"bot","password":"'"$TOKEN_VALUE"'"}' \
+  "https://trustedoss.example.com/v1/admin/organizations/$ORG_ID/registry-credentials"
+```
+
+`registry_host` is the host as it appears in an image reference (`ghcr.io`,
+`registry.example.com`, `registry:5000`). A pasted `https://ghcr.io/` is
+normalised for you.
+
+What happens to the credential:
+
+- **Stored encrypted**, with the same mechanism as every other credential this
+  product holds. It is never returned by any endpoint, including the one that
+  created it, so `GET` shows the registry and username and nothing else.
+- **Sent only to its own registry.** The worker writes a Docker `config.json`
+  keyed by host for the single registry the image being scanned comes from, so
+  a credential for one registry is never offered to another, and credentials
+  for registries this scan does not touch are not written at all.
+- **Never in the scanner's environment.** It reaches Trivy as a file the
+  scanner reads, not as an environment variable, so a scanner crash report or
+  error path has no credential to carry out. The file is created private to the
+  worker user, lives outside the scan workspace so backups never capture it,
+  and is deleted when the scan ends, including when it fails.
+
+If the registry is not on the allowed list, storing a credential for it is
+rejected: it could never be used. A credential stored before the list was
+tightened stays but shows `"allowed": false` in the listing, so a setting that
+has stopped working is visible rather than silent.
 
 #### Base-image OS end-of-life {#container-os-eol}
 

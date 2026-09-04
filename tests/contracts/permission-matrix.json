@@ -170,6 +170,21 @@
     },
     {
       "method": "GET",
+      "path": "/v1/admin/organizations/{organization_id}/registry-credentials",
+      "gate": "super_admin_404"
+    },
+    {
+      "method": "PUT",
+      "path": "/v1/admin/organizations/{organization_id}/registry-credentials",
+      "gate": "super_admin_404"
+    },
+    {
+      "method": "DELETE",
+      "path": "/v1/admin/organizations/{organization_id}/registry-credentials/{credential_id}",
+      "gate": "super_admin_404"
+    },
+    {
+      "method": "GET",
       "path": "/v1/admin/teams",
       "gate": "super_admin_404"
     },

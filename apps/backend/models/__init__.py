@@ -93,6 +93,9 @@ from .obligation_fulfilment import (  # noqa: E402,F401  (imported for metadata 
 from .organization_component_verdict import (  # noqa: E402,F401  (imported for metadata side effects)
     OrganizationComponentVerdict,
 )
+from .registry_credential import (  # noqa: E402,F401  (imported for metadata side effects)
+    RegistryCredential,
+)
 from .remediation_pr import (  # noqa: E402,F401  (imported for metadata side effects)
     REMEDIATION_PR_STATUS_VALUES,
     RemediationPullRequest,
@@ -154,6 +157,7 @@ __all__ = [
     "GitHubAppInstallation",
     "EpssSyncState",
     "KevSyncState",
+    "RegistryCredential",
     "TaskRun",
     "TASK_RUN_OUTCOME_VALUES",
     "License",

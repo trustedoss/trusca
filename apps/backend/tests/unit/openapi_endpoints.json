@@ -2,6 +2,10 @@
   "DELETE /v1/admin/backup/{name}": [
     "name"
   ],
+  "DELETE /v1/admin/organizations/{organization_id}/registry-credentials/{credential_id}": [
+    "credential_id",
+    "organization_id"
+  ],
   "DELETE /v1/admin/teams/{team_id}": [
     "team_id"
   ],
@@ -116,6 +120,9 @@
   "GET /v1/admin/organizations": [
     "page",
     "page_size"
+  ],
+  "GET /v1/admin/organizations/{organization_id}/registry-credentials": [
+    "organization_id"
   ],
   "GET /v1/admin/scans": [
     "kind",
@@ -729,6 +736,9 @@
     "X-Gitlab-Event",
     "X-Gitlab-Token",
     "X-Gitlab-Webhook-UUID"
+  ],
+  "PUT /v1/admin/organizations/{organization_id}/registry-credentials": [
+    "organization_id"
   ],
   "PUT /v1/gate-policies/org/{organization_id}": [
     "organization_id"

@@ -4,7 +4,11 @@
 Trivy adapter — container image vulnerability scanner.
 
 Trivy 0.72.0 ships with the worker image and can pull images directly from
-any reachable registry (with credentials from ``~/.docker/config.json``).
+any reachable registry. For a private one the caller passes
+``docker_config_dir``: a directory holding a ``config.json`` that
+``tasks._registry_auth`` writes per scan from the organization's stored
+credential. Nothing is mounted from the host, and the credential never enters
+this process's environment (see ``_image_env``).
 This adapter wraps a single ``trivy image --format json --output ...`` call.
 
 Output JSON shape::
@@ -152,6 +156,23 @@ class TrivyResult:
 # ---------------------------------------------------------------------------
 
 
+def _image_env(docker_config_dir: Path | None) -> dict[str, str]:
+    """Trivy's environment, plus a registry-auth directory when there is one.
+
+    ``DOCKER_CONFIG`` names a DIRECTORY holding ``config.json``; Trivy reads
+    the credential from that file. What enters the environment is therefore a
+    path, never a username or password, which is what keeps the guarantee
+    ``scrubbed_env_for_trivy`` exists for: Trivy parses attacker-influenced
+    images, so a crash report or an error-path DNS lookup must have no
+    credential in the process environment to carry out. ``TRIVY_USERNAME`` /
+    ``TRIVY_PASSWORD`` stay stripped and a test pins that closed.
+    """
+    env = scrubbed_env_for_trivy()
+    if docker_config_dir is not None:
+        env["DOCKER_CONFIG"] = str(docker_config_dir)
+    return env
+
+
 def run_trivy_image(
     *,
     image_ref: str,
@@ -160,6 +181,7 @@ def run_trivy_image(
     backend: str | None = None,
     line_callback: LineCallback | None = None,
     verbose: bool = False,
+    docker_config_dir: Path | None = None,
 ) -> TrivyResult:
     """
     Scan `image_ref` (e.g. ``alpine:3.19`` or ``ghcr.io/foo/bar@sha256:...``).
@@ -229,7 +251,7 @@ def run_trivy_image(
             cmd,
             timeout_seconds=timeout_seconds,
             cwd=None,
-            env=scrubbed_env_for_trivy(),
+            env=_image_env(docker_config_dir),
             line_callback=line_callback,
             stage="trivy",
         )

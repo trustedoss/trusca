@@ -88,6 +88,12 @@ _SENSITIVE_COLUMNS = frozenset(
         # credential add / rotate / clear UPDATE on ``projects`` never copies
         # the ciphertext into ``audit_logs.diff``.
         "git_credential_encrypted",
+        # ER3 - per-organization private registry login. Fernet ciphertext of
+        # the registry password. Encrypted at rest; masking it out of the audit
+        # diff is defence-in-depth so an add / rotate / delete on
+        # ``registry_credentials`` never copies the ciphertext into
+        # ``audit_logs.diff``.
+        "password_encrypted",
     }
 )
 

@@ -47,6 +47,7 @@ from models import (
     Scan,
     ScanArtifact,
     ScanComponent,
+    Team,
     VulnerabilityFinding,
 )
 from services.registry_allowlist import (
@@ -54,6 +55,7 @@ from services.registry_allowlist import (
     is_registry_allowed,
     split_registry_host,
 )
+from services.registry_credential_service import credentials_for_image
 from services.vulnerability_matching import (
     _build_purl,
     _purl_from_identifier,
@@ -63,6 +65,7 @@ from services.vulnerability_matching import (
     emit_finding_create_audits,
 )
 from tasks._progress import make_line_callback, publish_progress
+from tasks._registry_auth import registry_auth_dir, sweep_stale_auth_dirs
 from tasks.celery_app import celery_app
 
 log = structlog.get_logger("tasks.scan_container")
@@ -187,21 +190,62 @@ def scan_container_task(self: Any, scan_id: str) -> None:
 # ---------------------------------------------------------------------------
 
 
+def _resolve_registry_credentials(
+    *, scan_uuid: uuid.UUID, image_ref: str
+) -> dict[str, tuple[str, str]]:
+    """The organization's login for the registry this image comes from, if any.
+
+    Resolves scan -> project -> team -> organization, because credentials are
+    organization-scoped: a private registry is shared infrastructure rather
+    than something each team configures separately.
+
+    Returns an empty mapping for a public image or an organization with no
+    credential, which is the ordinary case and means no ``config.json`` is
+    written at all.
+    """
+    with sync_session_scope() as session:
+        organization_id = session.execute(
+            select(Team.organization_id)
+            .select_from(Scan)
+            .join(Project, Project.id == Scan.project_id)
+            .join(Team, Team.id == Project.team_id)
+            .where(Scan.id == scan_uuid)
+        ).scalar_one_or_none()
+        if organization_id is None:
+            return {}
+        return credentials_for_image(
+            session, organization_id=organization_id, image_ref=image_ref
+        )
+
+
 def _run_pipeline(
     *, scan_uuid: uuid.UUID, image_ref: str, workspace: Path, verbose: bool = False
 ) -> None:
     _set_stage(scan_uuid, "bootstrap")
     workspace.mkdir(parents=True, exist_ok=True)
 
+    # Clear anything a SIGKILLed run left behind before writing our own. The
+    # `finally` below cannot run when the process is killed outright, so this
+    # is the admitted gap being closed rather than a claim that it never
+    # happens.
+    sweep_stale_auth_dirs()
+
+    credentials = _resolve_registry_credentials(scan_uuid=scan_uuid, image_ref=image_ref)
+
     _set_stage(scan_uuid, "trivy")
-    trivy_result = trivy_adapter.run_trivy_image(
-        image_ref=image_ref,
-        output_dir=workspace / "trivy",
-        # Stream Trivy's progress/diagnostic lines onto the scan log
-        # (feat/scan-log-verbosity); ``verbose`` adds --debug.
-        line_callback=make_line_callback(scan_uuid, stage="trivy"),
-        verbose=verbose,
-    )
+    with registry_auth_dir(credentials, scan_id=scan_uuid) as auth_dir:
+        trivy_result = trivy_adapter.run_trivy_image(
+            image_ref=image_ref,
+            output_dir=workspace / "trivy",
+            # Stream Trivy's progress/diagnostic lines onto the scan log
+            # (feat/scan-log-verbosity); ``verbose`` adds --debug.
+            line_callback=make_line_callback(scan_uuid, stage="trivy"),
+            verbose=verbose,
+            # A directory path, never the credential itself. The context
+            # manager deletes it in a `finally`, so a Trivy failure does not
+            # leave the file behind.
+            docker_config_dir=auth_dir,
+        )
     _persist_artifact(scan_uuid, kind="trivy_json", path=trivy_result.report_path)
 
     _set_stage(scan_uuid, "persist")

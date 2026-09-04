@@ -188,6 +188,12 @@
       "SELECT",
       "UPDATE"
     ],
+    "registry_credentials": [
+      "DELETE",
+      "INSERT",
+      "SELECT",
+      "UPDATE"
+    ],
     "remediation_pull_requests": [
       "INSERT",
       "SELECT",

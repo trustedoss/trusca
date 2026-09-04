@@ -48,6 +48,7 @@ from . import (
     kev,
     malicious,
     organizations,
+    registry_credentials,
     scans,
     teams,
     trivy,
@@ -72,6 +73,7 @@ router.include_router(scans.router)
 router.include_router(disk.router)
 router.include_router(audit.router)
 router.include_router(health.router)
+router.include_router(registry_credentials.router)
 router.include_router(backup.router)
 router.include_router(trivy.router)
 router.include_router(kev.router)
