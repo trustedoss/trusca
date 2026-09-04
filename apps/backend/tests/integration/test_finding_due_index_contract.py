@@ -17,6 +17,23 @@ Both directions, because they fail differently:
     the other in source;
   - the LIVE index predicate against the Python tuple catches a database whose
     index was built from an older revision, which the constant alone cannot see.
+
+If these fail, do NOT edit 0081
+-------------------------------
+The obvious repair when the vocabulary changes is to edit the predicate in
+migration 0081 until these go green. That is the wrong repair, and it is wrong
+in a way that hides itself.
+
+Migrations are forward-only and 0081 has already run everywhere it is going to
+run. Editing it changes nothing about an existing database: the index there was
+built by the old text and stays built that way. These tests rebuild from
+scratch, so they would go green while every deployed database keeps an index
+whose predicate no longer matches the query. A partial index that stops
+matching is not an error, it is just unused, so nothing would ever report it.
+
+Changing the vocabulary means writing a NEW migration that drops and recreates
+``ix_vuln_findings_due`` with the new predicate, and updating the tuple in 0081
+only as a record of what that revision created.
 """
 
 from __future__ import annotations
@@ -85,7 +102,11 @@ def test_the_migration_constant_matches_the_gate_vocabulary() -> None:
     assert _migration_constant() == frozenset(_CLOSED_FINDING_STATUSES), (
         "the due index's closed-status list has drifted from the gate's. A "
         "partial index whose predicate no longer matches the query is not an "
-        "error: Postgres stops using it and the only symptom is a slower query."
+        "error: Postgres stops using it and the only symptom is a slower query. "
+        "FIX FORWARD: do not edit 0081's predicate to match. It has already run, "
+        "so editing it leaves every existing database's index built from the old "
+        "text while this test goes green. Add a NEW migration that drops and "
+        "recreates ix_vuln_findings_due."
     )
 
 
@@ -115,7 +136,9 @@ async def test_the_live_index_predicate_matches_the_gate_vocabulary(
     in_index = frozenset(re.findall(r"status <> '([a-z_]+)'", definition))
     assert in_index == frozenset(_CLOSED_FINDING_STATUSES), (
         f"the live index excludes {sorted(in_index)} but the gate closes "
-        f"{sorted(_CLOSED_FINDING_STATUSES)}"
+        f"{sorted(_CLOSED_FINDING_STATUSES)}. FIX FORWARD: add a NEW migration "
+        f"that drops and recreates ix_vuln_findings_due with the current "
+        f"vocabulary. Editing 0081 cannot change an index that already exists."
     )
 
 
