@@ -124,6 +124,16 @@ and the project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.
 
 ### Fixed
 
+- **A half-written backup artifact no longer carries the name a restore reads.**
+  The dump and the workspace archive were written straight to
+  `postgres.sql.gz` and `workspace.tar.gz`. A process killed partway leaves no
+  Python running to tidy up, so a truncated file sat in the backup directory
+  under a name that means "this is the dump". They are now written under a
+  temporary name and moved into place once complete, which is a rename inside
+  one directory and therefore atomic: the name either does not exist or names a
+  finished file. This does not replace the manifest being written last, since a
+  run that fails for reasons unrelated to a partial file leaves the same state.
+
 - **A backup that did not finish now says so in the listing.** The manifest is
   written last, after both artifacts and their checksums, so a run killed
   partway leaves a directory without one. The restore already refused such a

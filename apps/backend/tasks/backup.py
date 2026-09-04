@@ -834,9 +834,24 @@ def _run_backup(
     pg_dump_path = backup_dir / "postgres.sql.gz"
     workspace_path = backup_dir / "workspace.tar.gz"
 
+    # Written under a temporary name and moved into place once complete, so a
+    # half-written file never carries the name a restore looks for. A process
+    # killed partway (the grace period running out on a slow tar, the disk
+    # filling, an OOM) leaves no Python running to tidy up, and the artifact it
+    # was writing would otherwise sit in the backup directory looking finished.
+    # The move is a rename within one directory, so it is atomic and cheap.
+    #
+    # This does not replace the manifest being written last: a killed run still
+    # leaves a directory the listing marks incomplete, and it has to, because
+    # the same state arises when the dump itself fails for reasons that have
+    # nothing to do with a partial file.
+    pg_dump_partial = backup_dir / "postgres.sql.gz.partial"
+    workspace_partial = backup_dir / "workspace.tar.gz.partial"
+
     try:
         try:
-            _run_pg_dump(pg_dump_path)
+            _run_pg_dump(pg_dump_partial)
+            pg_dump_partial.replace(pg_dump_path)
         except BackupTaskError as exc:
             log.error("admin.backup.pg_dump_failed", name=name, error=str(exc))
             _emit_audit(
@@ -853,7 +868,9 @@ def _run_backup(
 
         has_workspace = False
         try:
-            has_workspace = _create_workspace_archive(workspace_path)
+            has_workspace = _create_workspace_archive(workspace_partial)
+            if has_workspace:
+                workspace_partial.replace(workspace_path)
         except (OSError, tarfile.TarError) as exc:
             log.error("admin.backup.workspace_tar_failed", name=name, error=str(exc))
             _emit_audit(
