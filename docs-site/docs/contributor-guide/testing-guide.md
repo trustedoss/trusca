@@ -496,25 +496,18 @@ often enough to name:
   compare exact strings; this repository already asserts over ASTs in several
   places, so it is not a new tool to reach for.
 
-  Reaching for a parse is only half of it, because the parse's output can be
-  read as text again. A census of database gates searched `ast.dump()` output
-  for `"alembic"` in double quotes and reported zero, since dump writes
-  apostrophes: the string matching had moved up a level rather than gone away.
-  Read the nodes.
+  Parsing is only half of it, because a parse's output can be read as text
+  again: a census searched `ast.dump()` output for `"alembic"` in double quotes
+  and reported zero, since dump writes apostrophes. Read the nodes.
 
   What such a tool normalises away is its definition of "the same", and that
-  decision, not the comparison that follows it, produces the answer. Comparing
-  test fixtures for duplication, erasing string literals merged eight unrelated
-  fixtures into one group because for a fixture the strings are the payload -
-  which variable, which team - and erasing decorators would have merged
-  fixtures with different lifetimes into one recommendation. Whenever the
-  definition widens, the sample taken before it no longer covers what it now
-  catches: the same census, widened to count a second way of reaching the
-  database, swept in eighty-three modules that skip over a missing binary and
-  never open a connection. It was wrong six times while being written, once by
-  counting too few and five times by counting too many, and each of the five
-  arrived immediately after the definition grew. Re-read what it catches after
-  every change to what it counts.
+  decision, not the comparison after it, produces the answer. Erasing string
+  literals to compare fixtures merged eight unrelated ones, the strings being
+  the payload; erasing decorators would have merged different lifetimes.
+  Widening also voids the sample you took before it - counting a second way of
+  reaching the database swept in eighty-three modules that never open a
+  connection - so re-read what a census catches after every change to what it
+  counts. That one was wrong six times, five of them right after it grew.
 
   A specific wrong answer is more dangerous than an empty one. Nobody trusts a
   tool that returns nothing, but "13 of 17 checks never ran" carries a count
@@ -528,12 +521,11 @@ often enough to name:
   confirm it does. If the answer is a number, check what the number is
   attached to.
 
-  The counterpart is to make a tool say what it does not do. `tools/static-checks`
-  runs what CI runs, and names the steps it deliberately leaves out along with
-  the reason for each, because a local runner that silently omits a check and
-  then reports success is worse than one that admits the gap. A contract test
-  holds that list against the workflow, and when a later change added a CI step
-  without registering it there, that test is what noticed - not review.
+  The counterpart is a tool that says what it does not do. `tools/static-checks`
+  names the CI steps it deliberately omits and why, because a local runner that
+  silently skips a check and reports success is worse than one admitting the
+  gap. Its contract test against the workflow is what caught a later change
+  adding a CI step without registering it - not review.
 
   Testing the checker has its own version of this. The input you plant has to
   be something the checker declares it catches, or "it did not fire" means
@@ -541,14 +533,11 @@ often enough to name:
   clumsy Korean sentence planted to prove a style lint was reading a new file
   went uncaught because no rule in its catalogue covered that shape; a real
   rule from the catalogue was caught immediately.
-- **A rule was induced from a single example**, so the example's incidental
-  properties are inside the rule and nothing distinguishes them from its
-  essential ones. An exemption list with one entry asserted that exempt
-  modules have no database gate, which was true of that one module by
-  accident; the next three exemptions keep their own gates deliberately, and
-  the assertion failed for all three. What an exemption means is "may keep its
-  own arrangement", not "has none". A second instance is what separates the
-  essential from the incidental, in a rule as much as in a fixture.
+- **A rule was induced from a single example**, so that example's accidents are
+  inside it. An exemption list with one entry asserted that exempt modules have
+  no database gate, true of that one by coincidence; the next three keep their
+  gates deliberately and it failed for all three. A second instance is what
+  separates the essential from the incidental, in a rule as much as in data.
 - **A fixture never populated the field**, so a guard over that field is blind
   and reports success for every input.
 - **Isolation removed a condition rather than removing noise.** Running one
@@ -585,34 +574,23 @@ substring, so the containment check passed and read as a weak contract. Assert
 the state the mutation was supposed to produce, not that the text changed:
 here, that the old name is absent.
 
-The same question - did it land - is worth asking before a bulk change as
-well as after a mutation. Declare how many files an edit must touch and make a
-mismatch stop the run with nothing written, because a pattern matching nothing
-otherwise reports "nothing to do", which reads as "not applicable here". On the
-193-module gate conversion that check stopped three runs, and all three were
-arithmetic on the operator's side rather than a fault in the tool: a file
-counted from the wrong directory, and twice `wc -l` on a list with no trailing
-newline, which counts newlines and so is short by one. It never once caught the
-transformation being wrong. That is worth stating plainly, because it says which
-input was the weaker one.
+Did it land is worth asking before a bulk change too. Declare how many files an
+edit must touch and stop with nothing written on a mismatch, because a pattern
+matching nothing reports "nothing to do", which reads as "not applicable". Over
+193 modules that stopped three runs, all three the operator's arithmetic rather
+than the tool - twice `wc -l` on a list with no trailing newline, which counts
+newlines and is short by one - and never the transformation, which says which
+input was weaker. Count independently of the tool, or the two always agree and
+nothing is checked, and hold the same bar whatever the size: one file edited by
+hand is not safer than a hundred edited by a transformation already run against
+the whole tree.
 
-A declared number has a second use that is easy to miss: it can disagree with
-you. A prediction that one batch would shrink by one came back unchanged, and
-the reason was a wrong model of which list the file belonged to. Without the
-prediction written down, the correct result would have read as confirmation and
-the wrong model would have survived intact.
-
-Keep the count independent of the tool, though - if the prediction is computed
-the way the tool computes it, the two always agree and nothing is checked - and
-hold the same bar whatever the size. One file edited by hand is not safer than a
-hundred edited by a transformation that has already run against the whole tree;
-parsing every file afterwards costs one command either way.
-
-And if changing something twice produces an identical failure, the thing being
-changed is not the variable. Three attempts to repair a mangled docstring each
-moved the insertion point and each produced the same error, because the fragment
-being inserted carried a stray docstring terminator. The second identical result
-was already enough to say the insertion point was not the problem.
+A declared number can also disagree with you. A prediction that a batch would
+shrink by one came back unchanged, the model of which list the file belonged to
+being wrong; unwritten, the correct result would have read as confirmation. And
+two identical failures mean the thing being changed is not the variable: three
+repairs to a docstring each moved the insertion point and each failed the same
+way, because the inserted fragment carried a stray terminator.
 
 Two layers that can produce the same outcome hide each other: delete either
 and the result is unchanged, so neither is verified. The reverse also
