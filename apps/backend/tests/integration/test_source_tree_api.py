@@ -19,8 +19,6 @@ from __future__ import annotations
 
 import io
 import json
-import os
-import subprocess
 import tarfile
 import uuid
 from collections.abc import AsyncIterator
@@ -36,6 +34,7 @@ from services.source_preservation_service import (
     SCANCODE_MEMBER_NAME,
     scan_source_tarball_path,
 )
+from tests._db_required import migrate_to_head
 from tests._helpers import (
     make_membership,
     make_organization,
@@ -45,34 +44,14 @@ from tests._helpers import (
     make_user,
 )
 
-BACKEND_ROOT = Path(__file__).resolve().parent.parent.parent
 PROBLEM_JSON = "application/problem+json"
 
 pytestmark = pytest.mark.integration
 
 
-def _require_database_url() -> str:
-    url = os.getenv("DATABASE_URL")
-    if not url:
-        pytest.skip("DATABASE_URL not set — skip source-tree API tests")
-    return url
-
-
 @pytest.fixture(scope="module", autouse=True)
 def _migrate_once() -> None:
-    _require_database_url()
-    result = subprocess.run(
-        ["alembic", "upgrade", "head"],
-        cwd=BACKEND_ROOT,
-        capture_output=True,
-        text=True,
-        timeout=120,
-    )
-    if result.returncode != 0:
-        pytest.skip(
-            f"alembic upgrade head failed; source-tree API tests cannot run\n"
-            f"stdout:\n{result.stdout}\nstderr:\n{result.stderr}"
-        )
+    migrate_to_head()
 
 
 @pytest.fixture(autouse=True)

@@ -12,11 +12,9 @@ reason: a delete is not observable from unit tests over the recorder.
 from __future__ import annotations
 
 import os
-import subprocess
 import uuid
 from collections.abc import Iterator
 from datetime import UTC, datetime, timedelta
-from pathlib import Path
 
 import pytest
 from sqlalchemy import create_engine, select, text
@@ -24,8 +22,7 @@ from sqlalchemy.orm import Session, sessionmaker
 
 from models.task_run import TaskRun
 from services import task_run_recorder as rec
-
-BACKEND_ROOT = Path(__file__).resolve().parents[2]
+from tests._db_required import migrate_to_head
 
 
 def _sync_url() -> str:
@@ -41,17 +38,7 @@ def _sync_url() -> str:
 
 @pytest.fixture(scope="module", autouse=True)
 def _migrate_once() -> None:
-    if not os.getenv("DATABASE_URL"):
-        pytest.skip("DATABASE_URL not set")
-    result = subprocess.run(
-        ["alembic", "upgrade", "head"],
-        cwd=BACKEND_ROOT,
-        capture_output=True,
-        text=True,
-        check=False,
-    )
-    if result.returncode != 0:
-        pytest.skip(f"alembic upgrade failed: {result.stderr[-400:]}")
+    migrate_to_head()
 
 
 @pytest.fixture

@@ -19,11 +19,8 @@ point of the guard is the tasks nobody has written yet.
 
 from __future__ import annotations
 
-import os
-import subprocess
 import uuid
 from collections.abc import Iterator
-from pathlib import Path
 
 import pytest
 from sqlalchemy import select
@@ -31,34 +28,15 @@ from structlog.testing import capture_logs
 
 from core.db import _warn_if_uncommitted as _REAL_WARN
 from models import Organization
+from tests._db_required import migrate_to_head
 
 pytestmark = pytest.mark.integration
 
-BACKEND_ROOT = Path(__file__).resolve().parents[2]
-
-
-def _require_database_url() -> str:
-    url = os.getenv("DATABASE_URL")
-    if not url:
-        pytest.skip("DATABASE_URL not set, skipping uncommitted-scope guard tests")
-    return url
 
 
 @pytest.fixture(scope="module", autouse=True)
 def _migrate_once() -> None:
-    _require_database_url()
-    result = subprocess.run(
-        ["alembic", "upgrade", "head"],
-        cwd=BACKEND_ROOT,
-        capture_output=True,
-        text=True,
-        timeout=120,
-    )
-    if result.returncode != 0:
-        pytest.skip(
-            f"alembic upgrade head failed; scope guard tests cannot run\n"
-            f"stdout:\n{result.stdout}\nstderr:\n{result.stderr}"
-        )
+    migrate_to_head()
 
 
 @pytest.fixture

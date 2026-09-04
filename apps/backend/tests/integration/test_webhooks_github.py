@@ -28,9 +28,7 @@ from __future__ import annotations
 import hashlib
 import hmac
 import json
-import os
 import secrets
-import subprocess
 import uuid
 from collections.abc import AsyncIterator
 from pathlib import Path
@@ -41,6 +39,7 @@ from httpx import ASGITransport, AsyncClient
 from sqlalchemy import select
 
 from models import Project, WebhookDelivery
+from tests._db_required import migrate_to_head
 from tests._helpers import (
     make_organization,
     make_project,
@@ -55,28 +54,9 @@ PROBLEM_JSON = "application/problem+json"
 pytestmark = pytest.mark.integration
 
 
-def _require_database_url() -> str:
-    url = os.getenv("DATABASE_URL")
-    if not url:
-        pytest.skip("DATABASE_URL not set — skip GitHub webhook tests")
-    return url
-
-
 @pytest.fixture(scope="module", autouse=True)
 def _migrate_once() -> None:
-    _require_database_url()
-    result = subprocess.run(
-        ["alembic", "upgrade", "head"],
-        cwd=BACKEND_ROOT,
-        capture_output=True,
-        text=True,
-        timeout=120,
-    )
-    if result.returncode != 0:
-        pytest.skip(
-            f"alembic upgrade head failed; GitHub webhook tests cannot run\n"
-            f"stdout:\n{result.stdout}\nstderr:\n{result.stderr}"
-        )
+    migrate_to_head()
 
 
 @pytest.fixture
