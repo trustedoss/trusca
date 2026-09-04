@@ -463,21 +463,22 @@
       "collapse": "Close remediation"
     },
     "column": {
-      "cve_id": "CVE ID",
-      "severity": "Severity",
-      "license": "License",
-      "reachable": "Reachability",
-      "cvss": "CVSS",
-      "epss": "EPSS",
-      "summary": "Summary",
-      "title": "Title",
-      "component": "Component",
+      "affected": "Affected",
       "affected_more_count": "+{{count}}",
       "affected_more_count_tooltip": "{{count}} more component(s) also affected — see drawer",
-      "affected": "Affected",
-      "status": "Status",
+      "assignee": "Owner",
+      "component": "Component",
+      "cve_id": "CVE ID",
+      "cvss": "CVSS",
       "discovered": "Discovered",
-      "sla_due": "SLA due"
+      "epss": "EPSS",
+      "license": "License",
+      "reachable": "Reachability",
+      "severity": "Severity",
+      "sla_due": "SLA due",
+      "status": "Status",
+      "summary": "Summary",
+      "title": "Title"
     },
     "reachability": {
       "label": {

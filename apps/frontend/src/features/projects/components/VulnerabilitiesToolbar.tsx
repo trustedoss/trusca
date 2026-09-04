@@ -21,6 +21,7 @@ import type {
 } from "@/features/projects/api/projectDetailApi";
 import type {
   ReachabilityFilter,
+  AssigneeFilter,
   SlaFilter,
   VulnFindingStatus,
   VulnSeverity,
@@ -164,6 +165,9 @@ export interface VulnerabilitiesToolbarProps {
    */
   sla: SlaFilter | null;
   onSlaChange: (value: SlaFilter | null) => void;
+  /** ER28b — ownership filter; `null` is "anyone". */
+  assignee: AssigneeFilter | null;
+  onAssigneeChange: (value: AssigneeFilter | null) => void;
   /**
    * Keep only findings whose status was driven by a VEX import
    * (`analysis_source === "vex_import"`), v2.1 A3. Client-side narrowing of the
@@ -262,6 +266,8 @@ export function VulnerabilitiesToolbar({
   onReachableChange,
   sla,
   onSlaChange,
+  assignee,
+  onAssigneeChange,
   vexSuppressedOnly,
   onVexSuppressedOnlyChange,
   projectId,
@@ -500,6 +506,38 @@ export function VulnerabilitiesToolbar({
               {t(`vulnerabilities.toolbar.reachable_option.${opt}`)}
             </option>
           ))}
+        </select>
+      </div>
+
+      {/* ER28b — ownership filter. Two tokens and no user picker: a developer
+          can only assign to themselves, because nothing lets them enumerate
+          their team. The labels reuse the badge's vocabulary so the filter and
+          the column chip say the same words. */}
+      <div className="flex flex-col">
+        <label
+          htmlFor="vulnerabilities-assignee-filter"
+          className="text-xs font-medium text-muted-foreground"
+        >
+          {t("vulnerabilities.filter.assignee_label")}
+        </label>
+        <select
+          id="vulnerabilities-assignee-filter"
+          value={assignee ?? ""}
+          onChange={(event) =>
+            onAssigneeChange(
+              event.target.value === ""
+                ? null
+                : (event.target.value as AssigneeFilter),
+            )
+          }
+          className="mt-1 h-9 w-36 rounded-md border border-input bg-background px-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+          data-testid="vulnerabilities-assignee-filter"
+        >
+          <option value="">{t("vulnerabilities.filter.assignee_all")}</option>
+          <option value="me">{t("vulnerabilities.filter.assignee_me")}</option>
+          <option value="unassigned">
+            {t("vulnerabilities.filter.assignee_unassigned")}
+          </option>
         </select>
       </div>
 
