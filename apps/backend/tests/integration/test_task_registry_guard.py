@@ -50,6 +50,48 @@ PROBE_QUEUE = "er61-probe"
 pytestmark = pytest.mark.integration
 
 
+#: The broker keys a worker on ``PROBE_QUEUE`` brings into existence.
+PROBE_KEYS = (
+    f"_kombu.binding.{PROBE_QUEUE}",
+    PROBE_QUEUE,
+    # Every Celery worker declares a control queue, and its name says nothing
+    # about who declared it. Kept on the list because leaving it behind blocks
+    # the next run, and made safe by the second condition rather than the name.
+    "_kombu.binding.celery.pidbox",
+)
+
+
+def _redis() -> Any:
+    import redis
+
+    return redis.Redis.from_url(os.environ["REDIS_URL"])
+
+
+def existing_probe_keys() -> set[str]:
+    """Which of ``PROBE_KEYS`` are already there before a run."""
+    client = _redis()
+    return {name for name in PROBE_KEYS if client.exists(name)}
+
+
+def delete_probe_keys(before: set[str]) -> None:
+    """Remove the probe's keys, except any that were already present.
+
+    Two conditions, and both are load-bearing. The name alone would delete a
+    control-queue binding somebody else's worker declared, because that name
+    identifies a kind of key and not its owner. "Appeared during the run" alone
+    would be a licence to delete whatever else happened to show up.
+
+    ``test_the_cleanup_leaves_a_key_it_did_not_create`` holds the second one.
+    Without it the restraint is invisible: an implementation that deletes
+    everything and one that deletes only its own both leave the index empty,
+    which is the only thing the other tests observe.
+    """
+    client = _redis()
+    for name in PROBE_KEYS:
+        if name not in before:
+            client.delete(name)
+
+
 @pytest.fixture(autouse=True)
 def _remove_this_test_s_own_broker_keys() -> Iterator[None]:
     """Delete the broker keys this file creates, and only those.
@@ -60,42 +102,18 @@ def _remove_this_test_s_own_broker_keys() -> Iterator[None]:
     who flushes out of habit has disabled the check that exists to stop two
     runs sharing an index.
 
-    Two conditions together, rather than either alone. The key has to be one of
-    the names a worker on this queue produces, AND it has to have appeared
-    while this test ran. The name alone is not enough for the control-queue
-    binding, whose name says nothing about who made it; "new since the test
-    started" alone would be a licence to delete whatever else showed up.
-
-    This is not the same act as clearing the index, which is what the
+    This is not the same act as clearing the index, which is what that
     session-start check exists to prevent.
     """
-    names = [
-        f"_kombu.binding.{PROBE_QUEUE}",
-        PROBE_QUEUE,
-        # Every Celery worker declares a control queue. Generic, so it is only
-        # removed when this test is what brought it into existence.
-        "_kombu.binding.celery.pidbox",
-    ]
-
-    def _client() -> Any:
-        import redis
-
-        return redis.Redis.from_url(os.environ["REDIS_URL"])
-
-    before: set[str] = set()
     try:
-        client = _client()
-        before = {name for name in names if client.exists(name)}  # type: ignore[misc]
+        before = existing_probe_keys()
     except Exception:  # noqa: BLE001 - a broker we cannot inspect is not a failure
         before = set()
 
     yield
 
     try:
-        client = _client()
-        for name in names:
-            if name not in before:
-                client.delete(name)
+        delete_probe_keys(before)
     except Exception:  # noqa: BLE001 - cleanup must not turn a pass into a failure
         pass
 
@@ -222,3 +240,46 @@ def test_the_guard_returns_the_count_when_there_are_tasks() -> None:
         f"only {count} tasks are registered after loading the include list; "
         "either the list shrank or this is not loading it"
     )
+
+
+def test_the_cleanup_leaves_a_key_it_did_not_create() -> None:
+    """The restraint half of the cleanup, which nothing else observes.
+
+    Every other signal here is "the index ended up empty", and that is equally
+    true of an implementation that deletes everything. So this plants one of
+    the very keys the cleanup is allowed to remove, declares it as already
+    present, and requires it to survive.
+
+    The control-queue binding is the one used deliberately: its name is on the
+    delete list, so only the "was it already there" condition can save it. When
+    that condition was accidentally disabled by a wrong type annotation, the
+    suite stayed green and the index still ended up empty.
+    """
+    _broker_url()
+    name = "_kombu.binding.celery.pidbox"
+    client = _redis()
+
+    planted = not client.exists(name)
+    if planted:
+        client.sadd(name, "planted-by-the-restraint-test")
+    try:
+        assert client.exists(name), "the key to be protected is not there"
+
+        # Exactly what the fixture does, with this key declared pre-existing.
+        delete_probe_keys(before={name})
+
+        assert client.exists(name), (
+            "the cleanup deleted a key that was already there when the run "
+            "started, so it is clearing the index rather than removing what it "
+            "made, and a concurrent run's keys would go with it"
+        )
+
+        # And the other direction, so the test is not satisfied by a cleanup
+        # that deletes nothing at all.
+        delete_probe_keys(before=set())
+        assert not client.exists(name), (
+            "the cleanup left a key it did create, so a second run of this "
+            "file is blocked by the session-start check"
+        )
+    finally:
+        client.delete(name)
