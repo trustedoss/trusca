@@ -409,7 +409,13 @@ async def test_callback_creates_new_user_and_personal_team(
             await session.execute(select(Team).where(Team.id == membership.team_id))
         ).scalar_one()
         assert team.slug.startswith("github-")
-        assert "Team" in team.name
+        # ER32: the name is an identifier, not the person. It renders in the
+        # team list and the switcher, so a name or an address here would keep
+        # showing after the account was anonymised.
+        assert team.name == f"Personal team ({user.id.hex[:12]})"
+        assert email not in team.name
+        assert "OAuth Newbie" not in team.name
+        assert team.description is None
 
 
 async def test_callback_creates_own_organization_not_the_seeded_one(

@@ -167,12 +167,6 @@ def _now() -> datetime:
     return datetime.now(tz=UTC)
 
 
-def _email_localpart(email: str) -> str:
-    """Best-effort localpart extraction for personal-team naming."""
-    at = email.find("@")
-    return email[:at] if at > 0 else email
-
-
 def safe_redirect_after(candidate: str | None) -> str | None:
     """Reduce a caller-supplied ``redirect_after`` to something safe to obey.
 
@@ -282,11 +276,20 @@ def _personal_team_slug(provider: str, provider_user_id: str) -> str:
     return f"{provider}-{digest[:6]}"
 
 
-def _personal_team_name(*, full_name: str | None, email: str) -> str:
-    """`{full_name}'s Team` if available, else `{localpart}'s Team`."""
-    base = (full_name or "").strip() or _email_localpart(email)
-    # Cap at 200 chars — `teams.name` is VARCHAR(255), leave room for suffix.
-    return f"{base[:200]}'s Team"
+def _personal_team_name(*, user_id: uuid.UUID) -> str:
+    """``Personal team (<id prefix>)``: no name, no address (ER32).
+
+    This used to be ``{full_name}'s Team``, falling back to the email's local
+    part. Both are personal data, and unlike the copy in an audit diff this one
+    is on screen: the team list, the switcher, every membership row. A user who
+    asked to be anonymised would keep appearing there under their own name.
+
+    So it carries an identifier instead, matching the ``Personal org
+    (<suffix>)`` built a few lines above from the same user id. The suffix is
+    only for humans telling two personal teams apart in an admin list; the id
+    itself is the identity.
+    """
+    return f"Personal team ({user_id.hex[:12]})"
 
 
 # ---------------------------------------------------------------------------
@@ -773,9 +776,11 @@ async def _create_user_with_personal_team(
 
     team = Team(
         organization_id=org.id,
-        name=_personal_team_name(full_name=info.full_name, email=info.email),
+        name=_personal_team_name(user_id=user.id),
         slug=_personal_team_slug(info.provider, info.provider_user_id),
-        description=f"Personal team for {info.email}",
+        # No description: it used to read "Personal team for <email>", which
+        # put the address on screen and into every audit diff of this row.
+        description=None,
     )
     session.add(team)
     try:
@@ -795,9 +800,9 @@ async def _create_user_with_personal_team(
         await session.flush()
         team = Team(
             organization_id=org.id,
-            name=_personal_team_name(full_name=info.full_name, email=info.email),
+            name=_personal_team_name(user_id=user.id),
             slug=f"{info.provider}-{uuid.uuid4().hex[:8]}",
-            description=f"Personal team for {info.email}",
+            description=None,
         )
         session.add(team)
         await session.flush()

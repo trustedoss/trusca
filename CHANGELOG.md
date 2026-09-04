@@ -143,6 +143,24 @@ and the project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.
   real restore points. That script now records checksums too, so the path we
   ship stops producing backups that skip verification, and a contract test runs
   both producers' manifest code and compares them.
+
+- **A personal team carried its owner's name or email address in its own
+  name.** Signing in through OAuth for the first time creates a personal team,
+  and it was named `{full_name}'s Team`, falling back to the email's local
+  part when the provider sent no name. Its description read `Personal team for
+  <address>`. Both are personal data and both are on screen rather than in a
+  log: the team list, the team switcher, every membership row. The name now
+  carries an identifier, `Personal team (<id prefix>)`, matching the
+  `Personal org (<suffix>)` built beside it from the same user id, and the
+  description is left empty because its only content was the address.
+
+  **Teams created before this version keep their existing names.** Renaming
+  them in a migration would change a label people recognise, on data whose
+  owner has not asked for anything, so it is left to the operator: an admin
+  can rename a team from the teams screen. Anonymising a user, when that
+  lands, will clear their own personal team's name and description as part of
+  the request.
+
 - **The backup timeout now bounds the backup.** `BACKUP_SUBPROCESS_TIMEOUT` is
   documented, settable, read at run time and passed to `proc.wait()`, and it
   bounded nothing: the two calls ahead of that wait read the child's pipes to
