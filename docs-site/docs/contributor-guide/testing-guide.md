@@ -45,6 +45,26 @@ pytest -q -k "api_key and revoke"
 pytest -s tests/integration/test_api_key_endpoints.py::test_revoke_immediate
 ```
 
+### Working in a git worktree
+
+Two things surprise people here.
+
+Repository tooling under `tools/` resolves the repository root differently
+depending on the tool. `tools/em-dash/lint.mjs` asks git, so it follows where
+you run it. `tools/ko-style/lint.mjs` derives the root from its own location,
+so calling the main checkout's copy by absolute path checks the main tree even
+from inside a worktree and even when you pass it worktree paths. Run the
+worktree's own copy. To confirm a lint is reading your files, put a violation
+in one of them and check it is caught at the right line, then remove it: a
+file count only differs when your branch adds a file.
+
+If you need a placeholder migration so `alembic upgrade head` resolves while
+the revision before yours is still on someone else's branch, put `_local_stub`
+in its filename and add that exact path to `.git/info/exclude`. Not a glob.
+That file lives in the common git directory and applies to every worktree, so
+`0081_*.py` would hide a colleague's real `0081_finding_assignment.py` from
+their `git status` and let them open a PR without its migration.
+
 ### Coverage
 
 ```bash
