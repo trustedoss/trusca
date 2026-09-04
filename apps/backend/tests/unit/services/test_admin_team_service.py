@@ -16,6 +16,10 @@ import subprocess
 import uuid
 from collections.abc import AsyncIterator
 from pathlib import Path
+from typing import TYPE_CHECKING, Any
+
+if TYPE_CHECKING:
+    from schemas.admin import AdminOrganizationListItem
 
 import pytest
 from sqlalchemy import select, text
@@ -81,6 +85,46 @@ async def db_session() -> AsyncIterator[AsyncSession]:
 # ---------------------------------------------------------------------------
 # list_teams / get_team_detail
 # ---------------------------------------------------------------------------
+
+
+async def _organizations_by_id(
+    session: AsyncSession, *, actor: Any, wanted: set[uuid.UUID]
+) -> dict[uuid.UUID, AdminOrganizationListItem]:
+    """Find these organizations wherever the listing has put them.
+
+    ``list_organizations`` returns every organization in the deployment,
+    oldest first, and caps ``page_size`` at 200. Reading page one and
+    expecting your own rows there is really asserting that the deployment has
+    fewer than 200 organizations: true on an empty database, false on any
+    database this suite has already run against. Four tests asserted it and
+    failed with ``KeyError`` once a reused database crossed the boundary.
+
+    The rows a test just created are the newest, so they are at the end.
+    Walking back from the last page finds them in one request in the common
+    case and stays correct when they straddle a page boundary.
+    """
+    from services.admin_team_service import list_organizations
+
+    found: dict[uuid.UUID, AdminOrganizationListItem] = {}
+    page_size = 200
+    first = await list_organizations(session, actor=actor, page=1, page_size=page_size)
+    last_page = max(1, -(-first.total // page_size))
+    for page in range(last_page, 0, -1):
+        listing = (
+            first
+            if page == 1
+            else await list_organizations(
+                session, actor=actor, page=page, page_size=page_size
+            )
+        )
+        for item in listing.items:
+            if item.id in wanted:
+                found[item.id] = item
+        if len(found) == len(wanted):
+            break
+    missing = wanted - set(found)
+    assert not missing, f"organizations absent from the listing entirely: {missing}"
+    return found
 
 
 async def test_list_teams_returns_pagination_envelope(db_session: AsyncSession) -> None:
@@ -315,7 +359,6 @@ async def test_create_team_with_explicit_organization_id_refuses_a_personal_orga
 
 
 async def test_list_organizations_reports_is_personal(db_session: AsyncSession) -> None:
-    from services.admin_team_service import list_organizations
 
     platform_org = await make_organization(db_session, is_personal=False)
     personal_org = await make_organization(db_session, is_personal=True)
@@ -323,8 +366,9 @@ async def test_list_organizations_reports_is_personal(db_session: AsyncSession) 
     admin = await make_user(db_session, is_superuser=True)
     actor = principal_for(admin, role="super_admin")
 
-    page = await list_organizations(db_session, actor=actor, page=1, page_size=200)
-    by_id = {item.id: item for item in page.items}
+    by_id = await _organizations_by_id(
+        db_session, actor=actor, wanted={platform_org.id, personal_org.id}
+    )
     assert by_id[platform_org.id].is_personal is False
     assert by_id[personal_org.id].is_personal is True
 
@@ -412,7 +456,6 @@ async def test_create_team_refuses_when_multiple_platform_orgs_exist_even_with_p
 
 
 async def test_list_organizations_reports_team_counts(db_session: AsyncSession) -> None:
-    from services.admin_team_service import list_organizations
 
     org_a = await make_organization(db_session)
     org_b = await make_organization(db_session)
@@ -423,8 +466,9 @@ async def test_list_organizations_reports_team_counts(db_session: AsyncSession) 
     admin = await make_user(db_session, is_superuser=True)
     actor = principal_for(admin, role="super_admin")
 
-    page = await list_organizations(db_session, actor=actor, page=1, page_size=200)
-    by_id = {item.id: item for item in page.items}
+    by_id = await _organizations_by_id(
+        db_session, actor=actor, wanted={org_a.id, org_b.id}
+    )
     assert by_id[org_a.id].team_count == 2
     assert by_id[org_b.id].team_count == 1
 

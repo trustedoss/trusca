@@ -468,6 +468,52 @@ async def test_list_organizations_developer_returns_404(client: AsyncClient) -> 
     assert response.status_code == 404
 
 
+
+async def _organization_rows(
+    client: AsyncClient, admin, *, wanted: set[str]
+) -> dict[str, dict]:
+    """Fetch these organizations from the listing, wherever it has put them.
+
+    ``GET /v1/admin/organizations`` returns every organization in the
+    deployment, oldest first, and caps ``page_size`` at 200. Asking for page
+    one and picking your own rows out of it is really asserting that the
+    deployment holds fewer than 200 organizations: true on an empty database,
+    false on any database this suite has already run against, where it fails
+    with ``StopIteration``.
+
+    Rows a test just created are the newest, so they sit at the end. Walk back
+    from the last page: one request in the common case, still correct when the
+    rows straddle a page boundary.
+    """
+    found: dict[str, dict] = {}
+    page_size = 200
+    first = await client.get(
+        f"/v1/admin/organizations?page=1&page_size={page_size}",
+        headers=_bearer_for(admin),
+    )
+    assert first.status_code == 200, first.text
+    body = first.json()
+    last_page = max(1, -(-body["total"] // page_size))
+    for page in range(last_page, 0, -1):
+        if page == 1:
+            payload = body
+        else:
+            response = await client.get(
+                f"/v1/admin/organizations?page={page}&page_size={page_size}",
+                headers=_bearer_for(admin),
+            )
+            assert response.status_code == 200, response.text
+            payload = response.json()
+        for item in payload["items"]:
+            if item["id"] in wanted:
+                found[item["id"]] = item
+        if len(found) == len(wanted):
+            break
+    missing = wanted - set(found)
+    assert not missing, f"organizations absent from the listing entirely: {missing}"
+    return found
+
+
 async def test_super_admin_can_list_organizations_with_team_counts(client: AsyncClient) -> None:
     factory = await _factory(client)
     async with factory() as session:
@@ -476,14 +522,8 @@ async def test_super_admin_can_list_organizations_with_team_counts(client: Async
         await make_team(session, organization=org)
         admin = await make_user(session, is_superuser=True)
 
-    response = await client.get(
-        "/v1/admin/organizations?page=1&page_size=200",
-        headers=_bearer_for(admin),
-    )
-    assert response.status_code == 200, response.text
-    body = response.json()
-    row = next(item for item in body["items"] if item["id"] == str(org.id))
-    assert row["team_count"] == 2
+    rows = await _organization_rows(client, admin, wanted={str(org.id)})
+    assert rows[str(org.id)]["team_count"] == 2
 
 
 async def test_create_team_without_organization_id_refuses_when_multiple_orgs_exist_via_api(
@@ -551,10 +591,5 @@ async def test_list_organizations_exposes_is_personal_via_api(client: AsyncClien
         personal_org = await make_organization(session, is_personal=True)
         admin = await make_user(session, is_superuser=True)
 
-    response = await client.get(
-        "/v1/admin/organizations?page=1&page_size=200",
-        headers=_bearer_for(admin),
-    )
-    assert response.status_code == 200, response.text
-    row = next(item for item in response.json()["items"] if item["id"] == str(personal_org.id))
-    assert row["is_personal"] is True
+    rows = await _organization_rows(client, admin, wanted={str(personal_org.id)})
+    assert rows[str(personal_org.id)]["is_personal"] is True

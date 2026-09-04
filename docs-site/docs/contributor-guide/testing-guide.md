@@ -70,6 +70,33 @@ line from `.git/info/exclude` at the same time. A stale line there is not
 harmless: it is shared, it names a path nobody can see any more, and the next
 person has to work out what it was protecting.
 
+### A database a placeholder touched is spent
+
+Applying a placeholder migration stamps its revision as done without running
+any of its DDL. When the real revision later lands, alembic sees the id in
+`alembic_version` and skips it, and no amount of `alembic upgrade head`
+recovers: the database reports the newest revision while missing the columns
+that revision added. Nothing looks wrong until one test fails on a missing
+column, which reads exactly like a defect in the code you are holding. That
+happened here, and the wrong hunt had already started before the schema was
+compared against the recorded revision.
+
+So keep one throwaway database for work that needs a placeholder and drop it
+afterwards. The stamping cannot be avoided, since resolving the chain is the
+whole point of the stub; reuse can.
+
+### Check for absence with a query you have seen return something
+
+A query that finds nothing and a query that asks the wrong question give the
+same answer. Confirming the poisoning above, a check queried
+`findings.assignee_user_id`; the table is `vulnerability_findings`, so every
+database answered zero. The databases really were poisoned, so the conclusion
+survived and there was nothing to notice, which is what makes this one hard
+to catch: the answer was right and the reasoning was empty.
+
+Point the same query at something you know exists first. Without that
+positive control, a zero means nothing at all.
+
 ### Coverage
 
 ```bash
