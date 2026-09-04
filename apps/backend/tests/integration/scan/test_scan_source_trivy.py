@@ -26,8 +26,6 @@ What we pin:
 from __future__ import annotations
 
 import json
-import os
-import subprocess
 import uuid
 from collections.abc import Iterator
 from pathlib import Path
@@ -45,6 +43,7 @@ from models import (
     Vulnerability,
     VulnerabilityFinding,
 )
+from tests._db_required import migrate_to_head
 from tests._helpers import (
     make_membership,
     make_organization,
@@ -53,33 +52,12 @@ from tests._helpers import (
     make_user,
 )
 
-BACKEND_ROOT = Path(__file__).resolve().parent.parent.parent.parent
-
 pytestmark = pytest.mark.integration
-
-
-def _require_database_url() -> str:
-    url = os.getenv("DATABASE_URL")
-    if not url:
-        pytest.skip("DATABASE_URL not set — skip scan_source Trivy integration")
-    return url
 
 
 @pytest.fixture(scope="module", autouse=True)
 def _migrate_once() -> None:
-    _require_database_url()
-    result = subprocess.run(
-        ["alembic", "upgrade", "head"],
-        cwd=BACKEND_ROOT,
-        capture_output=True,
-        text=True,
-        timeout=120,
-    )
-    if result.returncode != 0:
-        pytest.skip(
-            f"alembic upgrade head failed; Trivy integration cannot run\n"
-            f"stdout:\n{result.stdout}\nstderr:\n{result.stderr}"
-        )
+    migrate_to_head()
 
 
 @pytest.fixture
