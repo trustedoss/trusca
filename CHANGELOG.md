@@ -174,6 +174,24 @@ and the project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.
 
 ### Fixed
 
+- **A worker that registered none of the portal's tasks used to start anyway,
+  and then destroy the work it could not do.** Measured: such a worker logs
+  `ready.` like a healthy one, and when a scan arrives it answers `Received
+  unregistered task`, rejects the message, and does not requeue it. The queue
+  went from one message to none. So the misconfigured worker was not leaving
+  the work waiting for somebody to notice, it was consuming and discarding it,
+  and a healthy worker started later found nothing to do.
+
+  It now stops instead, which leaves the message in the queue, and it says why
+  on the way down. Stopping is visible in the shapes an operator already reads:
+  a restart loop under Compose, CrashLoopBackOff under Kubernetes. The on-call
+  runbook has the scenario, including the one command that separates an
+  incomplete image from a module that fails to import.
+
+  The count is of tasks named `trustedoss.*`. Celery registers builtins of its
+  own on every app, so a guard written as "no tasks at all" would never fire.
+
+
 - **A private certificate authority could not be configured for `git clone`.**
   The worker forwards `SSL_CERT_FILE`, `SSL_CERT_DIR`, `REQUESTS_CA_BUNDLE` and
   `NODE_EXTRA_CA_CERTS` to every tool it runs, and git reads none of them.

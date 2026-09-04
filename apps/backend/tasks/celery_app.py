@@ -141,6 +141,12 @@ _TASK_INCLUDES = [
     # so the signal handlers register; without this line the worker, which is
     # where the scanners reach the network, says nothing.
     "tasks.tls_trust_boot",
+    # ER61: worker boot hook, NOT a task. Stops a worker that registered none
+    # of our tasks, which can otherwise consume and discard the work it cannot
+    # run. Listed here for the same reason as the hooks above, and this one
+    # depends on the list: an include list that fails to bring in any task is
+    # exactly the state it exists to catch.
+    "tasks.task_registry_guard",
     # S6 (concurrency-scaling-plan-2026-08-22.md §3.2/§4) - beat sweep that
     # turns a sustained Celery-queue backlog into a Slack/Teams alert. Off
     # unless both QUEUE_BACKLOG_ALERT_ENABLED and M2's

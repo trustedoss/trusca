@@ -248,6 +248,55 @@ curl -fsS "https://<your-host>/v1/admin/scans?status=queued" \
 - `worker-scan`을 확장해도 스캔 한 건 소요 시간만큼의 주기 안에 적체가 줄지 않을 때(디스크·Postgres·브로커 자체가 병목일 가능성), 또는
 - 같은 큐에 대해 쿨다운을 넘겨서도 며칠에 걸쳐 알림이 계속 재발할 때.
 
+## 시나리오 6 — 워커가 부팅하자마자 `task_registry.empty`로 재시작합니다
+
+### 증상
+워커 컨테이너가 뜨지 못하고 재시작을 반복합니다. 로그 끝에 `task_registry.empty`가
+있거나, 프로세스 stderr에 다음 줄이 나옵니다.
+
+```
+FATAL task_registry.empty: this worker registered none of the portal's tasks
+```
+
+Compose에서는 재시작 반복으로, Kubernetes에서는 CrashLoopBackOff로 나타납니다.
+
+### 고객 영향
+그 워커가 맡을 스캔이 돌지 않습니다. 다만 큐에 남아 있고 사라지지는 않습니다.
+워커가 멈추는 이유가 그것입니다. 태스크가 없는 워커가 계속 돌면 그 메시지들을
+가져가서 실행하지 못하고 버리고, 나중에 정상 워커를 붙여도 할 일이 남아 있지
+않습니다.
+
+같은 종류의 다른 워커가 정상이면 그쪽이 일을 가져가므로 고객 영향은 없고
+재시작하는 컨테이너만 남습니다.
+
+### 진단
+워커의 태스크 목록은 애플리케이션 안의 include 목록으로 만들어집니다. 그래서 이것은
+설정 문제가 아니라 배포나 패키징 문제입니다. 목록이 비었거나, 목록의 어떤 모듈도
+import되지 않았다는 뜻입니다.
+
+```bash
+# 1. 내려가면서 워커가 남긴 말
+docker-compose -f docker-compose.yml logs --tail=50 worker-scan | grep -i task_registry
+# 2. 그 이미지 안에서 모듈이 import되는지
+docker-compose -f docker-compose.yml run --rm --entrypoint python worker-scan \
+  -c "from tasks.celery_app import celery_app; celery_app.loader.import_default_modules(); \
+      print(len([t for t in celery_app.tasks if t.startswith('trustedoss.')]))"
+```
+
+두 번째 명령이 가드가 보는 개수를 그대로 찍습니다. 정상 이미지는 20~30대의 수를
+찍습니다. 0이거나 트레이스백이면 그것이 원인입니다.
+
+### 복구
+1. 이미지가 어긋났거나 일부만 담긴 경우입니다. 태그 이미지를 다시 받아 서비스를
+   재생성합니다. 불완전한 트리에서 빌드된 이미지가 흔한 원인입니다.
+2. import에 실패하는 모듈이 있는 경우입니다. 위 두 번째 명령이 트레이스백을
+   보여 줍니다. 설정으로 우회할 것이 아니라 릴리스의 결함이므로 이전 태그로
+   되돌립니다.
+
+### 에스컬레이션
+정식 릴리스 이미지에서 두 번째 명령이 트레이스백을 보이면 즉시 올립니다. 그 태그를
+쓰는 모든 배포의 해당 워커가 전부 같은 상태입니다.
+
 ## 표준 에스컬레이션 양식
 
 포털 개발팀에 호출 시 다음을 첨부:
