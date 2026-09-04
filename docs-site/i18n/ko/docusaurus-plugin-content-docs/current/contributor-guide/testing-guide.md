@@ -51,7 +51,7 @@ pytest -s tests/integration/test_api_key_endpoints.py::test_revoke_immediate
 
 `tools/` 아래 저장소 도구가 저장소 루트를 찾는 방식이 서로 다릅니다. `tools/em-dash/lint.mjs`는 git에게 물으므로 실행 위치를 따릅니다. `tools/ko-style/lint.mjs`는 자기 파일 위치에서 루트를 계산하므로, 메인 체크아웃의 복사본을 절대경로로 부르면 워크트리 안에서 실행하든 워크트리 파일을 인자로 주든 메인 트리를 검사합니다. 워크트리 자기 복사본을 쓰십시오. 린트가 내 파일을 읽고 있는지 확인하려면 그중 하나에 위반을 심어 정확한 줄에서 잡히는지 보고 되돌립니다. 검사한 파일 수는 내 브랜치가 파일을 추가했을 때만 달라지므로 그것만으로는 알 수 없습니다.
 
-내 앞 리비전이 아직 다른 사람 브랜치에 남아 있어 `alembic upgrade head`가 풀리지 않을 때는 자리표시자 마이그레이션을 만들되, 파일 이름에 `_local_stub`을 넣고 `.git/info/exclude`에는 그 정확한 경로를 적습니다. 글롭이 아닙니다. 그 파일은 git 공통 디렉터리에 하나뿐이라 모든 워크트리에 적용되므로, `0081_*.py`라고 적으면 동료의 진짜 `0081_finding_assignment.py`가 그쪽 `git status`에서 사라지고 마이그레이션이 빠진 채로 PR이 열립니다.
+내 앞 리비전이 아직 다른 사람 브랜치에 남아 있어 `alembic upgrade head`가 풀리지 않을 때는 자리표시자 마이그레이션을 만들되, 파일 이름에 `_local_stub`을 넣고 `.git/info/exclude`에는 그 정확한 경로를 적습니다. 글롭이 아닙니다. 그 파일은 git 공통 디렉터리에 하나뿐이라 모든 워크트리에 적용되므로, `0081_*.py`라고 적으면 동료의 진짜 `0081_finding_assignment.py`가 그쪽 `git status`에서 사라지고 마이그레이션이 빠진 채로 PR이 열립니다. 그리고 진짜 리비전이 `main`에 들어오는 즉시, 리베이스하기 전에 자리표시자를 지우십시오. 같은 `revision` 문자열을 선언한 파일이 둘이면 alembic이 아예 멈춥니다.
 
 ### Coverage
 
