@@ -21,31 +21,19 @@ from __future__ import annotations
 import gzip
 import itertools
 import json
-import os
-import subprocess
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
 import pytest
 
-BACKEND_ROOT = Path(__file__).resolve().parent.parent.parent
+from tests._db_required import migrate_to_head
 
 pytestmark = pytest.mark.integration
 
 
 @pytest.fixture(scope="module", autouse=True)
 def _migrate_once() -> None:
-    if not os.getenv("DATABASE_URL"):
-        pytest.skip("DATABASE_URL not set")
-    result = subprocess.run(
-        ["alembic", "upgrade", "head"],
-        cwd=BACKEND_ROOT,
-        capture_output=True,
-        text=True,
-        timeout=180,
-    )
-    if result.returncode != 0:
-        pytest.skip(f"alembic upgrade head failed: {result.stderr}")
+    migrate_to_head()
 
 
 @pytest.fixture
