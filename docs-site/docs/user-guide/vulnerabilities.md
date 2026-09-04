@@ -313,6 +313,58 @@ Two timestamps look similar but answer different questions:
 
 The SLA due date is always computed from the first detection, never from the latest scan — re-scanning a project does not reset any deadline. Findings recorded by a release that predates SLA tracking have no stored first-detection time; they fall back to the row's creation time.
 
+### Owning a finding: assignee, deadline and ticket {#assignment}
+
+A finding can carry who is fixing it, by when, and where the work is tracked:
+
+- **Assignee**: anyone active on the project's team. Assigning somebody
+  outside the team is refused, because a name that cannot act makes a finding
+  look owned while nobody has been asked.
+- **Deadline** (`due_on`): a calendar date you set yourself.
+- **Ticket**: a link and an identifier in your own tracker. Only `http://` and
+  `https://` addresses are accepted.
+
+#### When your date and the policy disagree {#due-date-precedence}
+
+Both deadlines can exist at once, and **the earlier of the two wins**. You can
+commit to a date sooner than the policy; you cannot push the policy out.
+
+- Set a date **before** the policy's and it becomes the deadline: the finding
+  goes overdue on your date.
+- Set a date **after** it and the policy's date still governs. The date you set
+  is kept and shown, and the portal tells you at the moment you save it that it
+  is not the one in force, so you are not left believing a deadline moved.
+- Set a date on a finding whose severity has **no** SLA window (`info`,
+  `unknown`) and it becomes that finding's only deadline. Before this, such a
+  finding could never be overdue no matter what you wrote on it.
+
+If you need a deadline genuinely relaxed, that is a policy question: change the
+severity window, or record the decision as a status change. A due date is a
+plan, not an exemption.
+
+The **Overdue / Due soon / On track** state, the `sla` filter, and `sort=sla_due`
+all judge whichever deadline is in force. `sla_status` is therefore empty only
+when a finding has no deadline **of either kind**, which is narrower than it
+used to be.
+
+:::note Deadlines are read in UTC
+`due_on` is a date, and it expires at the **end of that day UTC**. If you are
+west of UTC, a finding due "the 7th" flips to overdue during your afternoon of
+the 7th; east of UTC you get the extra hours. There is no per-organization
+timezone setting yet, so pick dates with that in mind.
+:::
+
+#### When the assignee can no longer act
+
+Eligibility is checked when you assign, and not again afterwards. If the person
+is later deactivated or leaves the team, **the assignment stays**, because deleting it
+silently would hide the work. The finding reports whether its assignee is still
+active, so "assigned to somebody who cannot act" is visible rather than reading
+as ordinary progress.
+
+Deleting a user is the one case that clears the field: their findings become
+unassigned rather than blocking the deletion.
+
 ### Per-severity windows
 
 The due date is *first detected + the severity's window*:

@@ -127,7 +127,15 @@ _PII_COLUMNS = frozenset({"email", "full_name"})
 # Instead we strip only the userinfo via :func:`mask_git_url`, keeping the
 # diff useful while never persisting the token (C-2). New rows only — existing
 # immutable audit rows are not rewritten.
-_URL_REDACT_COLUMNS = frozenset({"git_url"})
+# ``ticket_url`` (ER28a) is here for the same reason and is deliberately
+# REDUNDANT with the input check that rejects userinfo outright. Two layers on
+# purpose, because they fail differently: the input check can be relaxed by
+# somebody who decides a credentialed tracker URL is legitimate, and rows
+# written before that check existed are already in the table. `audit_logs`
+# forbids UPDATE by trigger, so a token that lands here cannot be removed
+# afterwards. Each layer is asserted on its own, so neither is a dead branch
+# nobody would notice the loss of.
+_URL_REDACT_COLUMNS = frozenset({"git_url", "ticket_url"})
 
 
 # Tables we never audit. `audit_logs` itself would otherwise recurse, and
@@ -198,7 +206,8 @@ def mask_sensitive_columns(payload: dict[str, Any]) -> dict[str, Any]:
       - ``_PII_COLUMNS`` (``email``, ``full_name``) → replaced with
         ``{"sha256": "<hex>"}``. Investigators can still match identical
         values across audit rows but the plaintext is gone (CWE-359).
-      - ``_URL_REDACT_COLUMNS`` (``git_url``) → userinfo segment stripped via
+      - ``_URL_REDACT_COLUMNS`` (``git_url``, ``ticket_url``) → userinfo
+        segment stripped via
         :func:`redact_url_userinfo`, keeping host/path so the diff stays useful
         while never persisting an embedded token (C-2).
       - Everything else → passed through unchanged.

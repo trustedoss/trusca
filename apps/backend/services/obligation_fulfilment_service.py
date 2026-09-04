@@ -30,12 +30,11 @@ from core.authz import assert_team_access
 from core.security import CurrentUser
 from models import (
     OBLIGATION_FULFILMENT_STATUSES,
-    Membership,
     Obligation,
     ObligationFulfilment,
     Project,
-    User,
 )
+from services.assignee import is_assignable_to_team
 
 log = structlog.get_logger("services.obligation_fulfilment")
 
@@ -100,24 +99,12 @@ async def _assert_assignee_is_on_the_team(
 ) -> None:
     """The person named has to be somebody who could actually do it.
 
-    Assigning outside the team records a name that makes the row look owned
-    while nobody has been asked, which is worse than an unassigned row: an
-    unassigned row is visibly waiting for somebody.
+    The rule itself lives in :func:`services.assignee.is_assignable_to_team`,
+    shared with vulnerability findings (ER28a). Two copies of "who may be
+    assigned" would drift; this wrapper only turns the answer into this
+    module's error type.
     """
-    member = (
-        await session.execute(
-            select(User.id)
-            .join(Membership, Membership.user_id == User.id)
-            .where(
-                User.id == assignee_id,
-                User.is_active.is_(True),
-                User.is_service_account.is_(False),
-                Membership.team_id == team_id,
-            )
-            .limit(1)
-        )
-    ).scalar_one_or_none()
-    if member is None:
+    if not await is_assignable_to_team(session, assignee_id, team_id):
         raise FulfilmentInvalid(
             "the assignee must be an active person on this project's team"
         )
