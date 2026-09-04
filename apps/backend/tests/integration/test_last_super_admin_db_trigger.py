@@ -366,3 +366,96 @@ async def test_trigger_raise_message_matches_service_layer_matcher(
         assert _is_last_super_admin_violation(excinfo.value) is True
 
         await session.rollback()
+
+
+async def test_trigger_cannot_be_fooled_by_a_shadow_users_table(
+    client: AsyncClient,
+) -> None:
+    """A temp table named ``users`` must not change what the trigger counts.
+
+    The function asks how many active super admins remain. Until it pinned
+    its ``search_path`` and qualified the name, it asked that of whatever
+    ``users`` resolved to for the caller, and PostgreSQL searches the temp
+    schema first while TEMP is granted to PUBLIC. So a caller could create a
+    temp table called ``users``, populate it with rows that look like other
+    super admins, and demote the real last one: the count came from their own
+    table and the guard saw nothing to protect.
+
+    This needs no extra privilege. The application role already holds UPDATE
+    and DELETE on ``users``, which is how it manages accounts, so anything
+    reaching SQL through the portal could do it. The result is a deployment
+    with zero active super admins, which nobody can administer and which
+    needs the owner credential to undo.
+
+    Measured before the fix: the demotion succeeded and the count went to
+    zero. The neighbouring tests all passed throughout, because none of them
+    creates a temp table.
+    """
+    factory = await _factory(client)
+    async with factory() as session:
+        target = await make_user(session, is_superuser=True, is_active=True)
+        target_id = str(target.id)
+
+    async with factory() as session:
+        await session.execute(
+            text(
+                "UPDATE users SET is_active = FALSE "
+                "WHERE is_superuser = TRUE AND is_active = TRUE AND id <> :tid"
+            ),
+            {"tid": target_id},
+        )
+
+        # Precondition. Without it the trigger never fires and the demotion
+        # below would succeed for an entirely legitimate reason, which reads
+        # identical to the attack working.
+        remaining = (
+            await session.execute(
+                text(
+                    "SELECT count(*) FROM public.users "
+                    "WHERE is_superuser AND is_active"
+                )
+            )
+        ).scalar_one()
+        assert remaining == 1, (
+            f"expected exactly one active super admin, found {remaining}; "
+            "the guard has nothing to protect and this test proves nothing"
+        )
+
+        await session.execute(
+            text(
+                "CREATE TEMP TABLE users "
+                "(id uuid, is_superuser boolean, is_active boolean)"
+            )
+        )
+        await session.execute(
+            text(
+                "INSERT INTO users VALUES "
+                "(gen_random_uuid(), TRUE, TRUE), (gen_random_uuid(), TRUE, TRUE)"
+            )
+        )
+
+        with pytest.raises(IntegrityError) as excinfo:
+            await session.execute(
+                text("UPDATE public.users SET is_superuser = FALSE WHERE id = :tid"),
+                {"tid": target_id},
+            )
+            await session.flush()
+        assert "last active super_admin" in str(excinfo.value)
+        await session.rollback()
+
+    async with factory() as session:
+        row = (
+            await session.execute(
+                text(
+                    "SELECT is_superuser, is_active FROM public.users "
+                    "WHERE id = :tid"
+                ),
+                {"tid": target_id},
+            )
+        ).first()
+        assert row is not None
+        assert row.is_superuser is True, (
+            "the last super admin was demoted behind a shadow table, leaving "
+            "the deployment with nobody who can administer it"
+        )
+        assert row.is_active is True

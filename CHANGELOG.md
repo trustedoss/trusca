@@ -156,6 +156,24 @@ and the project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.
 
 ### Fixed
 
+- **The last super admin could be demoted from behind a table the caller
+  made.** The database trigger that refuses to leave a deployment with zero
+  active super admins counted the survivors with an unqualified `FROM users`,
+  and its function pinned no search path. PostgreSQL looks in the temporary
+  schema first when it resolves a relation, and TEMP is granted to everyone,
+  so a caller could create a temp table called `users`, fill it with rows that
+  look like other super admins, and demote the real last one: the count came
+  from their own table and the guard saw company. The result is an instance
+  nobody can administer, undoable only with the owner database credential.
+
+  This needed no extra privilege. The application role already holds UPDATE
+  and DELETE on `users`, which is how it manages accounts. The function now
+  pins `search_path` to `pg_catalog, public, pg_temp` and names the table with
+  its schema; either half stops it alone, and listing `pg_temp` is the part
+  that is easy to omit because omitting it does not demote the temporary
+  schema, it just fails to mention it.
+
+
 - **The workspace archive is now bounded by the backup timeout, like the dump
   already was.** `BACKUP_SUBPROCESS_TIMEOUT` reached the `pg_dump` subprocess
   and not the workspace tar, because that step is Python `tarfile` and nothing
