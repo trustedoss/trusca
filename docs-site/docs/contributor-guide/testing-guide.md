@@ -188,13 +188,23 @@ the fixed URLs in the workflow are already private to that job.
 
 ### When the database is missing, the venue decides {#db-required}
 
-Tests that need a schema call `tests._db_required`, which reads
-`TRUSCA_TESTS_REQUIRE_DB` and answers one question: is not having a database a
-reason to skip, or a failure?
+Tests that need a schema call `tests._db_required`, which separates two
+situations that used to be treated alike.
 
-Locally the flag is unset and those tests skip, which is what makes the suite
-runnable without Postgres. CI sets it, because there a database is promised and
-its absence is a fault.
+**No database** is an environment fact. On a laptop with no Postgres running,
+or pointed at a database that does not exist, those tests skip - that is what
+makes the suite runnable without setting anything up. `TRUSCA_TESTS_REQUIRE_DB`
+governs this one: CI sets it, because there a database is promised and its
+absence is a fault.
+
+**A database that answers but will not migrate** is a fault, and it is the same
+fault on CI and on your laptop. That fails everywhere, flag or no flag.
+Skipping it locally would mean whoever broke a migration hears about it from CI
+instead of from the run they just did.
+
+Which of the two you are in is decided by opening a connection, not by reading
+the migration's error text: driver wording changes between versions and is not
+something to match on.
 
 The reason is worth knowing, because the old behaviour looked harmless. Every
 module skipped when `alembic upgrade head` failed, so a pull request that broke
