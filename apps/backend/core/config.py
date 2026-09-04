@@ -2832,11 +2832,18 @@ def login_throttle_enabled() -> bool:
 
 
 def login_throttle_failures() -> int:
-    """Consecutive failures for one address before it is refused (default 5).
+    """Consecutive failures for one address before it is refused (default 10).
 
-    Five rather than three because the per-IP budget is already 5/minute, so a
-    person mistyping their password from one machine meets that first; this
-    number is aimed at guessing spread across many source addresses.
+    Above the per-IP budget on purpose, not merely larger than three. That
+    budget is 5/minute, so a threshold of 5 would fire on the fifth attempt
+    from one machine and the per-IP limiter would never be reached from a
+    single address at all: its documented sixth-attempt 429 would become
+    unreachable, and a person mistyping their password would meet the harsher
+    of the two controls instead of the forgiving one that resets every minute.
+
+    Ten leaves the per-IP limiter in front for anyone signing in from one
+    place, and reserves this one for what it is for: failures accumulating
+    against a single address from many sources, which no per-IP budget sees.
 
     A value below 1 would refuse an address that had never failed, and a
     non-numeric one would raise from inside the sign-in path and turn every
@@ -2845,7 +2852,7 @@ def login_throttle_failures() -> int:
     off looks exactly like a throttle that is working.
     """
     return _positive_int_setting(
-        "LOGIN_THROTTLE_FAILURES", default=5, maximum=_MAX_THROTTLE_FAILURES
+        "LOGIN_THROTTLE_FAILURES", default=10, maximum=_MAX_THROTTLE_FAILURES
     )
 
 

@@ -204,7 +204,7 @@ superseded·노후 스캔 스냅샷을 회수하는 자동 보존 sweep을 조�
 | `PASSWORD_RESET_RATE_LIMIT` | `5/minute` | `config.py` | `POST /auth/forgot-password`에 대한 IP별 slowapi 한도. |
 | `REFRESH_RATE_LIMIT` | `30/minute` | `config.py` | `POST /auth/refresh`의 IP당 slowapi 상한입니다. 열려 있는 탭마다 주기적으로 갱신하므로 로그인 상한보다 높게 두되, 훔친 refresh 쿠키를 반복 호출해 갓 발급된 access 토큰을 계속 손에 쥐고 있을 수는 없을 만큼 낮게 잡았습니다. |
 | `LOGIN_THROTTLE_ENABLED` | `true` | `config.py` | 실패한 로그인을 IP뿐 아니라 주소 단위로도 셀지 여부입니다. 끄면 IP 제한만 남는데, 그것은 여러 주소에 흩어진 추측을 보지 못합니다. |
-| `LOGIN_THROTTLE_FAILURES` | `5` | `config.py` | 한 주소가 거절되기까지 허용하는 연속 실패 횟수입니다. IP 제한이 이미 분당 5회라 비밀번호를 잘못 입력한 사람은 그쪽에 먼저 걸리므로 3이 아니라 5로 둡니다. |
+| `LOGIN_THROTTLE_FAILURES` | `10` | `config.py` | 한 주소가 거절되기까지 허용하는 연속 실패 횟수입니다. IP 제한(분당 5회)보다 일부러 높게 둡니다. 5로 두면 한 대에서 로그인하는 사람이 이쪽에 먼저 걸려서, 문서에 적힌 IP 제한의 여섯 번째 429 에 도달할 수 없고 비밀번호를 잘못 입력한 사람이 더 가혹한 쪽을 만나게 됩니다. 이 통제는 여러 출처에서 한 주소로 실패가 쌓이는 경우를 위한 것입니다. |
 | `LOGIN_THROTTLE_WINDOWS` | `60,300,900,1800` | `config.py` | 거절이 이어질 때 각 구간의 길이입니다(초). 마지막 값이 상한이며 그 뒤로는 되풀이됩니다. 구간은 스스로 만료되고, 다음 구간을 열려면 시도 한 번이 아니라 문턱만큼의 새 실패가 필요합니다. 그래서 남을 막아 두려면 추측을 계속 이어 가야 합니다. 다만 완전히 막을 수는 없습니다. N회 실패로 거절하는 장치는 N회 실패를 공급할 수 있는 사람이 계속 열어 둘 수 있습니다. 공격자가 멈추지 않아도 되는 복귀 경로는 둘입니다. 받은 편지함이 필요한 비밀번호 재설정, 그리고 `POST /v1/admin/users/{id}/unlock-sign-in` 입니다. 1 미만 값은 경고와 함께 거부됩니다. |
 | `PASSWORD_RESET_CONFIRM_RATE_LIMIT` | `5/minute` | `config.py` | `POST /auth/reset-password`에 대한 IP별 slowapi 한도. 이 엔드포인트는 토큰 자체가 자격증명이라 로그인과 같은 추측 공격 표면이고, 그래서 기본값도 로그인과 같게 뒀다. |
 | `PASSWORD_RESET_EMAIL_COOLDOWN_SECONDS` | `300` | `config.py` | 같은 주소로 두 번째 재설정 이메일 발송까지 최소 초 수. 쿨다운 시 `Retry-After`로 반환. |

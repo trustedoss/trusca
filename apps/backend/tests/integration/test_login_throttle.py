@@ -474,7 +474,7 @@ async def test_an_unparseable_setting_does_not_switch_the_throttle_off(
     monkeypatch.setenv("LOGIN_THROTTLE_FAILURES", "0")
     from core.config import login_throttle_failures
 
-    assert login_throttle_failures() == 5
+    assert login_throttle_failures() == 10
 
     # And the throttle still works with the fallbacks rather than raising.
     monkeypatch.setenv("LOGIN_THROTTLE_WINDOWS", "2")
@@ -592,3 +592,35 @@ async def test_the_owner_can_still_reset_while_an_attacker_holds_the_address(
         assert signed_in.status_code == 200, signed_in.text
     finally:
         await clear(email)
+
+
+def test_the_per_ip_limiter_still_gets_to_go_first(monkeypatch: pytest.MonkeyPatch) -> None:
+    """The two controls have to stay in the order the docs describe.
+
+    The per-IP limiter allows 5 attempts a minute and answers 429 on the sixth.
+    This one refuses an address after a threshold of failures. Set the
+    threshold at or below the IP budget and it fires first for anybody signing
+    in from one machine: the limiter's documented sixth-attempt 429 becomes
+    unreachable, and somebody who mistyped their password meets the control
+    with the growing window instead of the one that resets every minute.
+
+    That is not hypothetical. It is what happened: the default was 5, and
+    `test_login_rate_limit_returns_429_on_sixth_attempt` failed on the fifth
+    attempt. Asserted by comparing the two settings rather than by driving
+    sixty requests, so it also fails if either budget is changed on its own.
+    """
+    from core.config import login_throttle_failures
+    from core.ratelimit import LOGIN_RATE_LIMIT
+
+    # The shipped default, not the small one the autouse fixture sets so the
+    # other tests here finish in seconds. What ships is what the ordering
+    # depends on.
+    monkeypatch.delenv("LOGIN_THROTTLE_FAILURES", raising=False)
+
+    per_ip = int(LOGIN_RATE_LIMIT.split("/")[0])
+
+    assert login_throttle_failures() > per_ip, (
+        f"the per-address threshold ({login_throttle_failures()}) is not above "
+        f"the per-IP budget ({per_ip}), so a single machine meets this control "
+        "before the limiter and the limiter's documented behaviour is dead"
+    )
