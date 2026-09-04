@@ -20,6 +20,35 @@ different ways - ``test_health_ready.py`` asserts on the return code,
 ``test_queue_transition_consumption.py`` calls ``pytest.fail``. This module is
 not a new convention; it is those three collapsed into one that the other 376
 can share.
+These are plain functions, called from each module's own fixture, and NOT
+fixtures themselves. That is deliberate twice over, and the second reason is
+the one that is easy to lose:
+
+1. Each module keeps its own fixture, with its own scope and its own position
+   relative to that module's other fixtures. Nothing about ordering changes.
+2. Sharing a *fixture* means importing it, and ruff rejects that. Measured on
+   this tree: ``from tests._helpers import make_user`` followed by
+   ``def test_x(make_user)`` produces both ``F401`` (imported but unused) and
+   ``F811`` (redefinition of unused name). pytest understands that form; the
+   linter does not.
+
+So "make these fixtures, it is more idiomatic" is a change to decline: it
+would trade a form the linter accepts for one it rejects, and the way out of
+that is the copying this module exists to end.
+
+What made the pattern spread to 193 files is not recorded and is not claimed
+here. One case was traced: a file took two fixtures from a sibling, hit F811
+on the import, and moved both into itself - and only one of the two had a
+shared version to use instead. That is one file's history, not the history of
+the other 192.
+
+Putting the fixture in ``conftest.py`` avoids the import and so avoids F811
+entirely. That is the orthodox answer and it stays open, but it needs one
+fixture name and scope agreed across every module that uses it, which makes it
+a design change rather than the mechanical move this is.
+
+"""
+
 """
 
 from __future__ import annotations
