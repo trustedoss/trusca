@@ -84,8 +84,10 @@ from core.config import vuln_sla_alerts_enabled, vuln_sla_days
 from core.db import sync_session_scope
 from models import (
     Membership,
+    Organization,
     Project,
     Scan,
+    Team,
     User,
     Vulnerability,
     VulnerabilityFinding,
@@ -113,8 +115,23 @@ _SEVERITY_ORDER = ("critical", "high", "medium", "low")
 # ---------------------------------------------------------------------------
 
 
+
+def _policy_due(severity: str, first_detected: datetime) -> datetime | None:
+    """The deadline the policy alone gives a finding, or None.
+
+    Two callers here compute this, and the windows are environment variables
+    read at call time, so writing it twice would let a future change to one
+    reading drift from the other. ``None`` for severities that carry no window
+    (info, unknown): those have no policy deadline, only whatever somebody
+    wrote down.
+    """
+    days = vuln_sla_days(severity)
+    return None if days is None else first_detected + timedelta(days=days)
+
 def _select_breached(
-    rows: Iterable[tuple[uuid.UUID, str, str, datetime, date | None]],
+    rows: Iterable[
+        tuple[uuid.UUID, str, str, datetime, date | None, str, uuid.UUID]
+    ],
     *,
     now: datetime,
     window: timedelta = _SWEEP_WINDOW,
@@ -139,12 +156,24 @@ def _select_breached(
         tomorrow's tick owns it).
     """
     breached: dict[uuid.UUID, dict[str, int]] = {}
-    for project_id, status, severity, first_detected, due_on in rows:
+    for (
+        project_id,
+        status,
+        severity,
+        first_detected,
+        due_on,
+        timezone,
+        organization_id,
+    ) in rows:
         if status in _CLOSED_FINDING_STATUSES:
             continue
-        days = vuln_sla_days(severity)
-        policy_due = None if days is None else first_detected + timedelta(days=days)
-        due, _source = effective_due(sla_due=policy_due, due_on=due_on)
+        policy_due = _policy_due(severity, first_detected)
+        due, _source = effective_due(
+            sla_due=policy_due,
+            due_on=due_on,
+            timezone=timezone,
+            organization_id=organization_id,
+        )
         if due is None:
             continue
         if not (now - window <= due < now):
@@ -152,6 +181,7 @@ def _select_breached(
         per_project = breached.setdefault(project_id, {})
         per_project[severity] = per_project.get(severity, 0) + 1
     return breached
+
 
 
 def _build_in_app_payload(
@@ -189,9 +219,15 @@ def _build_in_app_payload(
 
 def _candidate_rows(
     session: Session,
-) -> list[tuple[uuid.UUID, str, str, datetime, date | None]]:
-    """Fetch ``(project_id, status, severity, first_detected, due_on)`` for every
-    finding on every project's latest succeeded scan.
+) -> list[tuple[uuid.UUID, str, str, datetime, date | None, str, uuid.UUID]]:
+    """Fetch one row per finding on every project's latest succeeded scan.
+
+    ``(project_id, status, severity, first_detected, due_on, timezone,
+    organization_id)``. The timezone is read per row rather than once for the
+    deployment: a written-down deadline expires at the end of that day in the
+    owning organization's zone (ER55), and this sweep spans organizations. A
+    single value applied to all of them would be wrong for every organization
+    but one, and wrong silently.
 
     The latest-scan anchor mirrors ``scan_resolution.latest_succeeded_scan_id``
     (``created_at DESC, id DESC``, status='succeeded') batched as one
@@ -217,6 +253,8 @@ def _candidate_rows(
                 VulnerabilityFinding.created_at,
             ),
             VulnerabilityFinding.due_on,
+            Organization.timezone,
+            Organization.id,
         )
         .select_from(VulnerabilityFinding)
         .join(latest, latest.c.scan_id == VulnerabilityFinding.scan_id)
@@ -224,8 +262,13 @@ def _candidate_rows(
             Vulnerability,
             Vulnerability.id == VulnerabilityFinding.vulnerability_id,
         )
+        .join(Project, Project.id == latest.c.project_id)
+        .join(Team, Team.id == Project.team_id)
+        .join(Organization, Organization.id == Team.organization_id)
     ).all()
-    return [(r[0], str(r[1]), str(r[2]), r[3], r[4]) for r in rows]
+    return [
+        (r[0], str(r[1]), str(r[2]), r[3], r[4], str(r[5]), r[6]) for r in rows
+    ]
 
 
 def _project_meta(

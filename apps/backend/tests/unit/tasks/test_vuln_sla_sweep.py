@@ -34,7 +34,9 @@ def _row(
     severity: str = "critical",
     due_delta: timedelta,
     due_on: date | None = None,
-) -> tuple[uuid.UUID, str, str, datetime, date | None]:
+    timezone: str = "UTC",
+    organization_id: uuid.UUID | None = None,
+) -> tuple[uuid.UUID, str, str, datetime, date | None, str, uuid.UUID]:
     """Candidate row whose POLICY due date sits at ``_NOW + due_delta``.
 
     ``first_detected`` is derived backwards through ``vuln_sla_days`` so the
@@ -43,13 +45,25 @@ def _row(
     ``due_on`` is the date somebody wrote down (ER28a). It defaults to None, so
     every case written before that existed still describes a finding whose only
     deadline is the policy's.
+
+    ``timezone`` is the owning organization's, which decides when a written
+    date expires (ER55). It defaults to UTC so those same earlier cases keep
+    describing what they described.
     """
     from core.config import vuln_sla_days
 
     days = vuln_sla_days(severity)
     assert days is not None, "use _row only for SLA-carrying severities"
     first_detected = _NOW + due_delta - timedelta(days=days)
-    return (project_id or uuid.uuid4(), status, severity, first_detected, due_on)
+    return (
+        project_id or uuid.uuid4(),
+        status,
+        severity,
+        first_detected,
+        due_on,
+        timezone,
+        organization_id or uuid.uuid4(),
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -126,7 +140,9 @@ def test_status_vocabulary_mirrors_gate() -> None:
 @pytest.mark.parametrize("severity", ["info", "unknown"])
 def test_no_sla_severities_are_excluded(severity: str) -> None:
     # No due date exists for these; hand a first_detected directly.
-    rows = [(uuid.uuid4(), "new", severity, _NOW - timedelta(days=400), None)]
+    rows = [
+        (uuid.uuid4(), "new", severity, _NOW - timedelta(days=400), None, "UTC", uuid.uuid4())
+    ]
     assert _select_breached(rows, now=_NOW, window=_WINDOW) == {}
 
 
@@ -140,7 +156,7 @@ def test_aggregation_groups_by_project_and_severity() -> None:
         # noise: outside window / closed / no SLA
         _row(project_id=p1, due_delta=-timedelta(days=3)),
         _row(project_id=p2, status="fixed", due_delta=-timedelta(hours=1)),
-        (p2, "new", "info", _NOW - timedelta(days=400), None),
+        (p2, "new", "info", _NOW - timedelta(days=400), None, "UTC", uuid.uuid4()),
     ]
     assert _select_breached(rows, now=_NOW, window=_WINDOW) == {
         p1: {"critical": 2, "high": 1},
@@ -153,7 +169,9 @@ def test_env_override_moves_the_due_date(monkeypatch: pytest.MonkeyPatch) -> Non
     monkeypatch.setenv("VULN_SLA_DAYS_HIGH", "10")
     pid = uuid.uuid4()
     # first_detected 10d + 1h ago → due (10d window) crossed 1h ago → in window.
-    rows = [(pid, "new", "high", _NOW - timedelta(days=10, hours=1), None)]
+    rows = [
+        (pid, "new", "high", _NOW - timedelta(days=10, hours=1), None, "UTC", uuid.uuid4())
+    ]
     assert _select_breached(rows, now=_NOW, window=_WINDOW) == {pid: {"high": 1}}
     # Same row under the default 30d window: due is 20d away → not selected.
     monkeypatch.delenv("VULN_SLA_DAYS_HIGH")
@@ -294,7 +312,8 @@ def _dated_row(
     project_id: uuid.UUID,
     due_on: date,
     severity: str = "info",
-) -> tuple[uuid.UUID, str, str, datetime, date | None]:
+    timezone: str = "UTC",
+) -> tuple[uuid.UUID, str, str, datetime, date | None, str, uuid.UUID]:
     """A finding whose ONLY deadline is the one somebody wrote down.
 
     ``info`` carries no SLA window, so the policy contributes nothing and the
@@ -302,7 +321,15 @@ def _dated_row(
     selection here is the written deadline being honoured and not the policy's
     leaking in.
     """
-    return (project_id, "new", severity, _NOW - timedelta(days=400), due_on)
+    return (
+        project_id,
+        "new",
+        severity,
+        _NOW - timedelta(days=400),
+        due_on,
+        timezone,
+        uuid.uuid4(),
+    )
 
 
 def test_a_written_deadline_is_swept_even_without_an_sla_window() -> None:
@@ -384,5 +411,7 @@ def test_an_earlier_written_date_beats_the_policy_in_the_sweep() -> None:
         "critical",
         _NOW,  # detected now → policy due in 7 days
         yesterday,
+        "UTC",
+        uuid.uuid4(),
     )
     assert _select_breached([row], now=_NOW, window=_WINDOW) == {pid: {"critical": 1}}

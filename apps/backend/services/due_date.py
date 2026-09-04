@@ -42,7 +42,12 @@ rounding in its own direction.
 
 from __future__ import annotations
 
-from datetime import UTC, date, datetime, time, timedelta
+from datetime import UTC, date, datetime, time, timedelta, tzinfo
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
+
+import structlog
+
+log = structlog.get_logger("services.due_date")
 
 #: What ``due_source`` can say. ``None`` when the finding has no deadline at
 #: all (no SLA window for its severity, and nobody wrote a date down).
@@ -51,22 +56,76 @@ DUE_SOURCE_MANUAL = "manual"
 DUE_SOURCE_VALUES = (DUE_SOURCE_SLA, DUE_SOURCE_MANUAL)
 
 
-def manual_due_instant(due_on: date | None) -> datetime | None:
-    """The instant a calendar deadline expires: the start of the NEXT day, UTC.
+#: Used when an organization has no timezone, and when the one it has cannot
+#: be loaded. Matches the column default, so a deployment that sets nothing
+#: keeps the behaviour it had before 0083.
+DEFAULT_TIMEZONE = "UTC"
+
+
+def resolve_timezone(name: str | None, *, organization_id: object = None) -> tzinfo:
+    """The zone to read calendar deadlines in, falling back to UTC.
+
+    Falls back rather than raising, and that is a deliberate trade. The
+    column takes any text because a CHECK constraint cannot consult
+    ``pg_timezone_names``, so a value written straight to the database can be
+    nonsense. This function is called from the SLA sweep and from list
+    endpoints; raising there would take out an unrelated tenant's alerting
+    over one organization's bad string. The input path (``schemas.admin``)
+    rejects unloadable names, so this branch should be unreachable through
+    the product.
+    """
+    if not name:
+        return UTC
+    try:
+        return ZoneInfo(name)
+    except (ZoneInfoNotFoundError, ValueError):
+        # The organization id travels with the value: without it the line
+        # says a string could not be loaded and nobody can find whose setting
+        # to fix, and that organization goes on believing its timezone
+        # applies.
+        log.warning(
+            "due_date_timezone_unloadable",
+            timezone=name,
+            organization_id=None if organization_id is None else str(organization_id),
+        )
+        return UTC
+
+
+def manual_due_instant(
+    due_on: date | None,
+    *,
+    timezone: str | None = None,
+    organization_id: object = None,
+) -> datetime | None:
+    """The instant a calendar deadline expires: the start of the NEXT day.
+
+    Next day *in the organization's timezone*, not in UTC. A date somebody
+    typed is a calendar date in the place they work: read in UTC, a deadline
+    of the 7th expires at 19:00 on the 7th for someone at UTC-5, while it is
+    still the day they were given. East of UTC the same reading hands out
+    extra hours instead, which is why only half of this was ever reported.
 
     The SQL twin builds the same instant with
-    ``timezone('UTC', due_on::timestamp + interval '1 day')``. Written in UTC
-    explicitly rather than casting to ``timestamptz``, which would interpret
-    the date in whatever the session timezone happens to be and make the
-    verdict depend on a connection setting.
+    ``timezone('UTC', timezone(<zone>, due_on::timestamp + interval '1 day'))``:
+    the inner call reads the naive next-midnight AS that zone's wall clock and
+    yields an instant, the outer normalises it back to UTC for comparison.
+    Casting to ``timestamptz`` instead would read the date in whatever the
+    session timezone happens to be and make the verdict depend on a connection
+    setting. ``tests`` drives both against each other across zones east of,
+    west of, and equal to UTC.
     """
     if due_on is None:
         return None
-    return datetime.combine(due_on, time.min, tzinfo=UTC) + timedelta(days=1)
+    zone = resolve_timezone(timezone, organization_id=organization_id)
+    return datetime.combine(due_on + timedelta(days=1), time.min, tzinfo=zone)
 
 
 def effective_due(
-    *, sla_due: datetime | None, due_on: date | None
+    *,
+    sla_due: datetime | None,
+    due_on: date | None,
+    timezone: str | None = None,
+    organization_id: object = None,
 ) -> tuple[datetime | None, str | None]:
     """``(instant, source)`` for the deadline that actually governs.
 
@@ -74,7 +133,9 @@ def effective_due(
     resolves to the policy, which changes no verdict and keeps the source
     stable when a person writes down exactly the policy date.
     """
-    manual = manual_due_instant(due_on)
+    manual = manual_due_instant(
+        due_on, timezone=timezone, organization_id=organization_id
+    )
     if manual is None and sla_due is None:
         return None, None
     if manual is None:
@@ -122,6 +183,8 @@ __all__ = [
     "DUE_SOURCE_SLA",
     "DUE_SOURCE_VALUES",
     "effective_due",
+    "DEFAULT_TIMEZONE",
     "manual_due_instant",
+    "resolve_timezone",
     "manual_due_is_ignored",
 ]
