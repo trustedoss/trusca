@@ -15,11 +15,8 @@ Two layers, mirroring :file:`tests/unit/test_obligation_service.py`:
 
 from __future__ import annotations
 
-import os
-import subprocess
 from collections.abc import AsyncIterator
 from datetime import UTC, datetime
-from pathlib import Path
 
 import pytest
 from sqlalchemy import select
@@ -37,6 +34,7 @@ from services.obligation_catalog import (
     get_license_obligations,
     obligations_for,
 )
+from tests._db_required import migrate_to_head
 from tests._helpers import (
     make_membership,
     make_organization,
@@ -46,9 +44,6 @@ from tests._helpers import (
     make_user,
     unique_suffix,
 )
-
-BACKEND_ROOT = Path(__file__).resolve().parent.parent.parent
-
 
 # ---------------------------------------------------------------------------
 # Pure catalog correctness — structured obligation facts (no DB).
@@ -316,28 +311,9 @@ def test_every_catalog_entry_self_consistent() -> None:
 pytestmark_db = pytest.mark.integration
 
 
-def _require_database_url() -> str:
-    url = os.getenv("DATABASE_URL")
-    if not url:
-        pytest.skip("DATABASE_URL not set — skip obligation catalog DB tests")
-    return url
-
-
 @pytest.fixture(scope="module")
 def _migrate_once() -> None:
-    _require_database_url()
-    result = subprocess.run(
-        ["alembic", "upgrade", "head"],
-        cwd=BACKEND_ROOT,
-        capture_output=True,
-        text=True,
-        timeout=120,
-    )
-    if result.returncode != 0:
-        pytest.skip(
-            "alembic upgrade head failed; obligation catalog DB tests cannot run\n"
-            f"stdout:\n{result.stdout}\nstderr:\n{result.stderr}"
-        )
+    migrate_to_head()
 
 
 @pytest.fixture

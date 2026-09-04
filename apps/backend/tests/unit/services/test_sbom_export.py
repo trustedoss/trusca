@@ -18,16 +18,14 @@ Coverage targets:
 from __future__ import annotations
 
 import json
-import os
-import subprocess
 import uuid
 import xml.etree.ElementTree as ET
 from collections.abc import AsyncIterator
-from pathlib import Path
 
 import pytest
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
+from tests._db_required import migrate_to_head
 from tests._helpers import (
     make_organization,
     make_project,
@@ -36,33 +34,12 @@ from tests._helpers import (
     unique_suffix,
 )
 
-BACKEND_ROOT = Path(__file__).resolve().parent.parent.parent.parent
-
 pytestmark = pytest.mark.integration
-
-
-def _require_database_url() -> str:
-    url = os.getenv("DATABASE_URL")
-    if not url:
-        pytest.skip("DATABASE_URL not set — skip sbom export tests")
-    return url
 
 
 @pytest.fixture(scope="module", autouse=True)
 def _migrate_once() -> None:
-    _require_database_url()
-    result = subprocess.run(
-        ["alembic", "upgrade", "head"],
-        cwd=BACKEND_ROOT,
-        capture_output=True,
-        text=True,
-        timeout=120,
-    )
-    if result.returncode != 0:
-        pytest.skip(
-            f"alembic upgrade head failed; sbom export tests cannot run\n"
-            f"stdout:\n{result.stdout}\nstderr:\n{result.stderr}"
-        )
+    migrate_to_head()
 
 
 @pytest.fixture
