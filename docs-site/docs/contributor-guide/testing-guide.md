@@ -484,7 +484,7 @@ often enough to name:
 - **A tool found nothing**, and the result alone cannot say whether there was
   nothing to find or whether the tool was not looking there. A repository lint
   run from the wrong tree reports zero findings for a file it never opened.
-  Two ways a hand-built pattern misses what is in front of it. `gh` and
+  *The pattern only finds the notation you imagined.* `gh` and
   `EXPLAIN` return JSON, and a name like `lint (backend)` or a plan node
   nested under `SubPlan` does not match a pattern built without expecting
   parentheses or nesting, so parentheses, brackets and dots inside a value
@@ -496,7 +496,20 @@ often enough to name:
   compare exact strings; this repository already asserts over ASTs in several
   places, so it is not a new tool to reach for.
 
-  A specific wrong answer is more dangerous than an empty one. Nobody trusts a
+  *A parse can be read as text again.* A census searched `ast.dump()` output
+  for `"alembic"` in double quotes and reported zero, since dump writes
+  apostrophes. Read the nodes.
+
+  *What you erase in order to compare is what counts as the same.* That
+  decision, not the comparison after it, produces the answer. Erasing string
+  literals to compare fixtures merged eight unrelated ones, the strings being
+  the payload; erasing decorators would have merged different lifetimes.
+  *A wider definition needs a fresh sample.* Counting a second way of
+  reaching the database swept in eighty-three modules that never open a
+  connection, so re-read what a census catches after every change to what it
+  counts. That one was wrong six times, five of them right after it grew.
+
+  *A specific wrong answer is more dangerous than an empty one.* Nobody trusts a
   tool that returns nothing, but "13 of 17 checks never ran" carries a count
   and a list, and the detail is what makes it credible: it looks like
   arithmetic, and it is arithmetic on a broken premise. Counting is the common
@@ -508,12 +521,23 @@ often enough to name:
   confirm it does. If the answer is a number, check what the number is
   attached to.
 
-  Testing the checker has its own version of this. The input you plant has to
+  *The counterpart: a tool that says what it does not do.* `tools/static-checks`
+  names the CI steps it deliberately omits and why, because a local runner that
+  silently skips a check and reports success is worse than one admitting the
+  gap. Its contract test against the workflow is what caught a later change
+  adding a CI step without registering it - not review.
+
+  *Testing the checker has its own version of this.* The input you plant has to
   be something the checker declares it catches, or "it did not fire" means
   both "the checker is not running" and "that was never a violation". A
   clumsy Korean sentence planted to prove a style lint was reading a new file
   went uncaught because no rule in its catalogue covered that shape; a real
   rule from the catalogue was caught immediately.
+- **A rule was induced from a single example**, so that example's accidents are
+  inside it. An exemption list with one entry asserted that exempt modules have
+  no database gate, true of that one by coincidence; the next three keep their
+  gates deliberately and it failed for all three. A second instance is what
+  separates the essential from the incidental, in a rule as much as in data.
 - **A fixture never populated the field**, so a guard over that field is blind
   and reports success for every input.
 - **Isolation removed a condition rather than removing noise.** Running one
@@ -549,6 +573,24 @@ variable disappearing from a page, the "removal" renamed `GIT_SSL_CAPATH` to
 substring, so the containment check passed and read as a weak contract. Assert
 the state the mutation was supposed to produce, not that the text changed:
 here, that the old name is absent.
+
+Did it land is worth asking before a bulk change too. Declare how many files an
+edit must touch and stop with nothing written on a mismatch, because a pattern
+matching nothing reports "nothing to do", which reads as "not applicable". Over
+193 modules that stopped three runs, all three the operator's arithmetic rather
+than the tool - twice `wc -l` on a list with no trailing newline, which counts
+newlines and is short by one - and never the transformation, which says which
+input was weaker. Count independently of the tool, or the two always agree and
+nothing is checked, and hold the same bar whatever the size: one file edited by
+hand is not safer than a hundred edited by a transformation already run against
+the whole tree.
+
+A declared number can also disagree with you. A prediction that a batch would
+shrink by one came back unchanged, the model of which list the file belonged to
+being wrong; unwritten, the correct result would have read as confirmation. And
+two identical failures mean the thing being changed is not the variable: three
+repairs to a docstring each moved the insertion point and each failed the same
+way, because the inserted fragment carried a stray terminator.
 
 Two layers that can produce the same outcome hide each other: delete either
 and the result is unchanged, so neither is verified. The reverse also
