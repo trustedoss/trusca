@@ -56,9 +56,12 @@ def require_database_url() -> str:
     return url
 
 
-# The outcome of the one migration attempt this process makes. None until it
-# has been tried; afterwards the CompletedProcess, success or failure.
-_ATTEMPT: subprocess.CompletedProcess[str] | None = None
+# What this process knows about migrating, keyed by the database it migrated.
+# The key matters: without it, "we have migrated" loses track of WHICH database
+# it migrated, and a test pointed at a second database in the same process
+# would be handed somebody else's success. No test does that today; the key
+# costs one dict lookup and means none ever can.
+_ATTEMPTS: dict[str, subprocess.CompletedProcess[str]] = {}
 
 
 def _attempt_migration(timeout: float) -> subprocess.CompletedProcess[str]:
@@ -91,9 +94,9 @@ def _attempt_migration(timeout: float) -> subprocess.CompletedProcess[str]:
     xdist today (there is a ``serial`` marker in pyproject.toml left for
     whoever parallelises), so this is a note for that day, not a live defect.
     """
-    global _ATTEMPT
-    if _ATTEMPT is None:
-        _ATTEMPT = subprocess.run(
+    key = require_database_url()
+    if key not in _ATTEMPTS:
+        _ATTEMPTS[key] = subprocess.run(
             ["alembic", "upgrade", "head"],
             cwd=BACKEND_ROOT,
             capture_output=True,
@@ -101,7 +104,7 @@ def _attempt_migration(timeout: float) -> subprocess.CompletedProcess[str]:
             timeout=timeout,
             check=False,
         )
-    return _ATTEMPT
+    return _ATTEMPTS[key]
 
 
 def migrate_to_head(timeout: float = 120) -> None:
@@ -111,7 +114,6 @@ def migrate_to_head(timeout: float = 120) -> None:
     text is the whole diagnosis: without it the reader sees tests that did not
     run and no reason, and looks for the fault in the tests.
     """
-    require_database_url()
     result = _attempt_migration(timeout)
     if result.returncode != 0:
         _unavailable(
@@ -121,6 +123,5 @@ def migrate_to_head(timeout: float = 120) -> None:
 
 
 def _reset_for_testing() -> None:
-    """Forget the attempt. For this module's own tests only."""
-    global _ATTEMPT
-    _ATTEMPT = None
+    """Forget every attempt. For this module's own tests only."""
+    _ATTEMPTS.clear()

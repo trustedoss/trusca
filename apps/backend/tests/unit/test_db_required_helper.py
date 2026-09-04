@@ -140,3 +140,33 @@ def test_a_success_is_not_repeated_either(monkeypatch) -> None:  # noqa: ANN001
     for _ in range(5):
         _db_required.migrate_to_head()
     assert len(calls) == 1, f"alembic was run {len(calls)} times, not once"
+
+
+def test_a_second_database_is_not_handed_the_first_ones_success(monkeypatch) -> None:  # noqa: ANN001
+    """The cache answers "did WE migrate", so it has to say which database.
+
+    Without the key, a process that migrated one database would report success
+    for a different one it never touched, and the tests pointed at the second
+    would run against whatever schema it happened to have.
+    """
+    monkeypatch.delenv(_db_required.REQUIRE_ENV, raising=False)
+    seen: list[str] = []
+
+    def _succeeds_once_then_fails(*_args, **_kwargs):
+        # Only the first database migrates cleanly.
+        ok = not seen
+        seen.append("run")
+        return subprocess.CompletedProcess(
+            args=[], returncode=0 if ok else 1, stdout="", stderr="second is broken"
+        )
+
+    monkeypatch.setattr("tests._db_required.subprocess.run", _succeeds_once_then_fails)
+
+    monkeypatch.setenv("DATABASE_URL", "postgresql+asyncpg://u:p@h:5432/first")
+    _db_required.migrate_to_head()
+
+    monkeypatch.setenv("DATABASE_URL", "postgresql+asyncpg://u:p@h:5432/second")
+    with pytest.raises(BaseException) as caught:
+        _db_required.migrate_to_head()
+    assert "second is broken" in str(caught.value)
+    assert len(seen) == 2, "the second database reused the first one's verdict"
