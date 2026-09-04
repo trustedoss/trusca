@@ -183,7 +183,7 @@ def test_a_broken_migration_fails_even_with_the_flag_off(monkeypatch) -> None:  
     """
     monkeypatch.setenv("DATABASE_URL", "postgresql+asyncpg://u:p@h:5432/d")
     monkeypatch.delenv(_db_required.REQUIRE_ENV, raising=False)
-    monkeypatch.setattr("tests._db_required.database_is_reachable", lambda: True)
+    monkeypatch.setattr("tests._db_required.connection_error", lambda: None)
     monkeypatch.setattr(
         "tests._db_required.subprocess.run",
         lambda *a, **k: subprocess.CompletedProcess(
@@ -199,7 +199,9 @@ def test_an_unreachable_database_still_skips_with_the_flag_off(monkeypatch) -> N
     """The other half: no database is an environment fact, not a fault."""
     monkeypatch.setenv("DATABASE_URL", "postgresql+asyncpg://u:p@h:5432/d")
     monkeypatch.delenv(_db_required.REQUIRE_ENV, raising=False)
-    monkeypatch.setattr("tests._db_required.database_is_reachable", lambda: False)
+    monkeypatch.setattr(
+        "tests._db_required.connection_error", lambda: "could not connect to ::1:5432"
+    )
     monkeypatch.setattr(
         "tests._db_required.subprocess.run",
         lambda *a, **k: subprocess.CompletedProcess(
@@ -215,7 +217,9 @@ def test_an_unreachable_database_fails_when_the_flag_is_on(monkeypatch) -> None:
     """And on CI even that is a fault, which is what the flag is for."""
     monkeypatch.setenv("DATABASE_URL", "postgresql+asyncpg://u:p@h:5432/d")
     monkeypatch.setenv(_db_required.REQUIRE_ENV, "1")
-    monkeypatch.setattr("tests._db_required.database_is_reachable", lambda: False)
+    monkeypatch.setattr(
+        "tests._db_required.connection_error", lambda: "could not connect to ::1:5432"
+    )
     monkeypatch.setattr(
         "tests._db_required.subprocess.run",
         lambda *a, **k: subprocess.CompletedProcess(
@@ -238,7 +242,7 @@ def test_reachability_is_decided_by_connecting_not_by_reading_stderr() -> None:
     import ast
     import inspect
 
-    tree = ast.parse(inspect.getsource(_db_required.database_is_reachable).lstrip())
+    tree = ast.parse(inspect.getsource(_db_required.connection_error).lstrip())
     calls = {
         node.func.attr
         for node in ast.walk(tree)
@@ -259,3 +263,52 @@ def test_reachability_is_decided_by_connecting_not_by_reading_stderr() -> None:
     assert not touched & {"stdout", "stderr"}, (
         "reachability must not be decided by reading the migration's output"
     )
+
+
+def test_the_skip_says_why_it_could_not_connect(monkeypatch) -> None:  # noqa: ANN001
+    """A skip with a reason is a different object from a bare skip.
+
+    "Cannot connect" has two causes. One is that there is no database, which
+    is what the skip is for. The other is a local misconfiguration - on this
+    project's machines, Postgres on IPv4 while psycopg2 resolves localhost to
+    ::1 - and that one is fixable in half a minute IF the message says what
+    failed. Without it the reader concludes "no database here" and moves on,
+    which is the silent-infrastructure-failure shape this track exists to
+    remove, just on the developer's side of it.
+    """
+    monkeypatch.setenv("DATABASE_URL", "postgresql+asyncpg://u:p@h:5432/d")
+    monkeypatch.delenv(_db_required.REQUIRE_ENV, raising=False)
+    monkeypatch.setattr(
+        "tests._db_required.connection_error",
+        lambda: 'connection to server at "::1", port 5432 failed: refused',
+    )
+    monkeypatch.setattr(
+        "tests._db_required.subprocess.run",
+        lambda *a, **k: subprocess.CompletedProcess(
+            args=[], returncode=1, stdout="", stderr="whatever alembic said"
+        ),
+    )
+    with pytest.raises(BaseException) as caught:
+        _db_required.migrate_to_head()
+    assert caught.typename == "Skipped", caught.typename
+    assert "::1" in str(caught.value), "the skip must name what it could not reach"
+
+
+def test_the_reason_survives_an_exception_with_no_message(monkeypatch) -> None:  # noqa: ANN001
+    """Some driver errors stringify to nothing; the class name still tells you
+    something, and an empty reason would read as no reason at all."""
+    class _Silent(Exception):
+        def __str__(self) -> str:
+            return "   "
+
+    def _explode(*_args, **_kwargs):
+        raise _Silent
+
+    import sys
+    import types
+
+    fake = types.ModuleType("psycopg2")
+    fake.connect = _explode  # type: ignore[attr-defined]  # a stand-in module
+    monkeypatch.setitem(sys.modules, "psycopg2", fake)
+    monkeypatch.setenv("DATABASE_URL", "postgresql+asyncpg://u:p@h:5432/d")
+    assert _db_required.connection_error() == "_Silent"

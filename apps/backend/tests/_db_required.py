@@ -107,13 +107,26 @@ def _attempt_migration(timeout: float) -> subprocess.CompletedProcess[str]:
     return _ATTEMPTS[key]
 
 
-def database_is_reachable() -> bool:
-    """Whether something is actually answering at the configured address.
+def connection_error() -> str | None:
+    """``None`` if the database answers, else why it did not.
 
     This is what separates the two ways a migration can fail. Deciding it by
     reading the migration's stderr would mean matching driver wording, which
     changes between versions and between drivers; opening a connection asks
     the question directly.
+
+    The reason is returned rather than discarded because a bare skip reads as
+    "no database here" and the reader moves on, while a skip carrying the
+    error is usually answered in half a minute.
+
+    The case that prompted this: a database that had not been created yet.
+    libpq reports one line per address it tried, and the first of them was
+    ``connection to server at "localhost" (::1), port 5432 failed: Connection
+    refused`` - true, since nothing listens on IPv6 here, but not the reason.
+    The reason was three lines down: ``FATAL: database "..." does not exist``.
+    Read through a ``tail``, the first line looked like the answer and an hour
+    went into an IPv6 theory that explained nothing. So: keep the whole error,
+    and remember that libpq's last line is the one that matters.
     """
     from core.config import database_url_owner_sync
 
@@ -121,9 +134,9 @@ def database_is_reachable() -> bool:
         import psycopg2
 
         psycopg2.connect(database_url_owner_sync(), connect_timeout=5).close()
-    except Exception:  # noqa: BLE001 - any failure here means "cannot reach it"
-        return False
-    return True
+    except Exception as exc:  # noqa: BLE001 - any failure here means "cannot reach it"
+        return str(exc).strip() or exc.__class__.__name__
+    return None
 
 
 def migrate_to_head(timeout: float = 120) -> None:
@@ -145,16 +158,21 @@ def migrate_to_head(timeout: float = 120) -> None:
     run and no reason, and looks for the fault in the tests.
     """
     result = _attempt_migration(timeout)
-    if result.returncode != 0 and database_is_reachable():
+    unreachable = connection_error() if result.returncode != 0 else None
+    if result.returncode != 0 and unreachable is None:
         pytest.fail(
             "alembic upgrade head failed against a database that is up, so "
             "something is wrong with the migrations rather than with this "
             f"environment.\nstdout:\n{result.stdout}\nstderr:\n{result.stderr}"
         )
     if result.returncode != 0:
+        # Both, in that order. The connection error is what the reader can
+        # act on; alembic's own output is the raw evidence and dropping it
+        # would trade one silence for another.
         _unavailable(
-            "alembic upgrade head failed, so the schema these tests need does "
-            f"not exist.\nstdout:\n{result.stdout}\nstderr:\n{result.stderr}"
+            "the database could not be reached, so the schema these tests "
+            f"need does not exist.\nconnecting said: {unreachable}\n"
+            f"alembic said:\n{result.stderr}"
         )
 
 
