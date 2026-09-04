@@ -9,6 +9,7 @@ Surfaces:
 
   - ``notification-prefs`` (Chore A2) — channel toggles.
   - ``oauth-identities``  (Chore G)  — list / unlink linked OAuth providers.
+  - ``export``            (ER32)     - take a copy of one's own personal data.
 
 Auth: every endpoint requires :func:`get_current_user`. There is no
 ``user_id`` in the URL or body — even if the client supplies one in a stray
@@ -21,6 +22,7 @@ import uuid
 
 import structlog
 from fastapi import APIRouter, Depends, Request, Response, status
+from fastapi.responses import JSONResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from core.db import get_db
@@ -42,6 +44,7 @@ from services.oauth_identity_service import (
     unlink_oauth_identity,
     user_has_password,
 )
+from services.user_export_service import build_self_export
 
 router = APIRouter(prefix="/v1/users/me", tags=["users-me"])
 log = structlog.get_logger("users_me.api")
@@ -220,3 +223,53 @@ async def delete_oauth_identity(
 
 
 __all__ = ["router"]
+
+
+# ---------------------------------------------------------------------------
+# GET /v1/users/me/export
+# ---------------------------------------------------------------------------
+@router.get(
+    "/export",
+    summary="Download a copy of your own personal data",
+    responses={
+        200: {
+            "description": (
+                "The personal data held about the caller. Work product "
+                "(projects, scans, findings, policies) is not included: it "
+                "belongs to the organisation, not to the individual. The "
+                "activity section reports its own total and says when it has "
+                "been capped."
+            ),
+            "content": {"application/json": {}},
+        },
+    },
+)
+async def export_self(
+    session: AsyncSession = Depends(get_db),
+    actor: CurrentUser = Depends(get_current_user),
+) -> Response:
+    """Keyed off the JWT, never off a parameter.
+
+    There is no ``user_id`` anywhere in this route. An export endpoint that
+    accepted one would be an endpoint for reading other people's personal
+    data, guarded only by whatever check somebody remembered to write.
+    """
+    payload = await build_self_export(session, user_id=actor.id)
+    if payload is None:
+        # The token authenticated against a row that no longer exists.
+        return problem_response(
+            status_code=status.HTTP_404_NOT_FOUND,
+            title="Not Found",
+            detail="No account for this token.",
+            instance="/v1/users/me/export",
+        )
+    return JSONResponse(
+        content=payload,
+        headers={
+            # Named for the person, dated, so a support inbox holding several
+            # of these can tell them apart.
+            "Content-Disposition": (
+                f'attachment; filename="trusca-export-{actor.id}.json"'
+            )
+        },
+    )

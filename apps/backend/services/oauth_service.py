@@ -276,7 +276,7 @@ def _personal_team_slug(provider: str, provider_user_id: str) -> str:
     return f"{provider}-{digest[:6]}"
 
 
-def _personal_team_name(*, user_id: uuid.UUID) -> str:
+def personal_team_name(*, user_id: uuid.UUID) -> str:
     """``Personal team (<id prefix>)``: no name, no address (ER32).
 
     This used to be ``{full_name}'s Team``, falling back to the email's local
@@ -776,7 +776,7 @@ async def _create_user_with_personal_team(
 
     team = Team(
         organization_id=org.id,
-        name=_personal_team_name(user_id=user.id),
+        name=personal_team_name(user_id=user.id),
         slug=_personal_team_slug(info.provider, info.provider_user_id),
         # No description: it used to read "Personal team for <email>", which
         # put the address on screen and into every audit diff of this row.
@@ -800,7 +800,7 @@ async def _create_user_with_personal_team(
         await session.flush()
         team = Team(
             organization_id=org.id,
-            name=_personal_team_name(user_id=user.id),
+            name=personal_team_name(user_id=user.id),
             slug=f"{info.provider}-{uuid.uuid4().hex[:8]}",
             description=None,
         )

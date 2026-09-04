@@ -141,6 +141,9 @@ from .transition_approval import (  # noqa: E402,F401  (imported for metadata si
     TRANSITION_APPROVAL_STATES,
     TransitionApproval,
 )
+from .user_anonymisation_request import (  # noqa: E402,F401  (imported for metadata side effects)
+    UserAnonymisationRequest,
+)
 
 __all__ = [
     "APIKey",
@@ -170,6 +173,7 @@ __all__ = [
     "ObligationFulfilment",
     "OrganizationComponentVerdict",
     "TransitionApproval",
+    "UserAnonymisationRequest",
     "LicensePolicy",
     "Membership",
     "NOTIFICATION_KIND_VALUES",

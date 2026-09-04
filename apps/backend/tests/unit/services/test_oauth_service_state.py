@@ -157,10 +157,10 @@ def test_personal_team_name_carries_no_personal_data(  # ER32
     """
     import uuid as _uuid
 
-    from services.oauth_service import _personal_team_name
+    from services.oauth_service import personal_team_name
 
     user_id = _uuid.UUID("3f1d8c2a-0000-0000-0000-00000000abcd")
-    name = _personal_team_name(user_id=user_id)
+    name = personal_team_name(user_id=user_id)
 
     assert name == "Personal team (3f1d8c2a0000)"
     assert "@" not in name
@@ -170,9 +170,9 @@ def test_personal_team_name_fits_the_column() -> None:
     """``teams.name`` is VARCHAR(255); an id-derived name cannot approach it."""
     import uuid as _uuid
 
-    from services.oauth_service import _personal_team_name
+    from services.oauth_service import personal_team_name
 
-    assert len(_personal_team_name(user_id=_uuid.uuid4())) <= 255
+    assert len(personal_team_name(user_id=_uuid.uuid4())) <= 255
 
 
 def test_personal_team_slug_is_deterministic_per_provider_user_id() -> None:
