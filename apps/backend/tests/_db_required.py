@@ -107,14 +107,50 @@ def _attempt_migration(timeout: float) -> subprocess.CompletedProcess[str]:
     return _ATTEMPTS[key]
 
 
+def database_is_reachable() -> bool:
+    """Whether something is actually answering at the configured address.
+
+    This is what separates the two ways a migration can fail. Deciding it by
+    reading the migration's stderr would mean matching driver wording, which
+    changes between versions and between drivers; opening a connection asks
+    the question directly.
+    """
+    from core.config import database_url_owner_sync
+
+    try:
+        import psycopg2
+
+        psycopg2.connect(database_url_owner_sync(), connect_timeout=5).close()
+    except Exception:  # noqa: BLE001 - any failure here means "cannot reach it"
+        return False
+    return True
+
+
 def migrate_to_head(timeout: float = 120) -> None:
     """Bring the database to head, or say why these tests cannot run.
+
+    Two different situations end up here and they deserve different verdicts.
+
+    No database is an environment fact: on a laptop without Postgres running,
+    skipping is right, and that is what the flag governs.
+
+    A database that answers but will not migrate is a fault. It is the same
+    fault whether it happens on CI or on somebody's laptop, and skipping it
+    locally means the person who broke a migration finds out from CI instead
+    of from the run they just did. So that one fails everywhere, flag or no
+    flag.
 
     The stderr of a failed migration is carried into the message because that
     text is the whole diagnosis: without it the reader sees tests that did not
     run and no reason, and looks for the fault in the tests.
     """
     result = _attempt_migration(timeout)
+    if result.returncode != 0 and database_is_reachable():
+        pytest.fail(
+            "alembic upgrade head failed against a database that is up, so "
+            "something is wrong with the migrations rather than with this "
+            f"environment.\nstdout:\n{result.stdout}\nstderr:\n{result.stderr}"
+        )
     if result.returncode != 0:
         _unavailable(
             "alembic upgrade head failed, so the schema these tests need does "

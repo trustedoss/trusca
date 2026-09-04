@@ -170,3 +170,92 @@ def test_a_second_database_is_not_handed_the_first_ones_success(monkeypatch) -> 
         _db_required.migrate_to_head()
     assert "second is broken" in str(caught.value)
     assert len(seen) == 2, "the second database reused the first one's verdict"
+
+
+def test_a_broken_migration_fails_even_with_the_flag_off(monkeypatch) -> None:  # noqa: ANN001
+    """A database that answers but will not migrate is a fault everywhere.
+
+    Skipping it locally means whoever broke a migration hears about it from
+    CI rather than from the run they just did. Before this split, the one
+    module in the tree that raised unconditionally was the only thing that
+    told a local developer anything, and converting it to the shared helper
+    would have taken that away.
+    """
+    monkeypatch.setenv("DATABASE_URL", "postgresql+asyncpg://u:p@h:5432/d")
+    monkeypatch.delenv(_db_required.REQUIRE_ENV, raising=False)
+    monkeypatch.setattr("tests._db_required.database_is_reachable", lambda: True)
+    monkeypatch.setattr(
+        "tests._db_required.subprocess.run",
+        lambda *a, **k: subprocess.CompletedProcess(
+            args=[], returncode=1, stdout="", stderr="relation exists"
+        ),
+    )
+    with pytest.raises(BaseException) as caught:
+        _db_required.migrate_to_head()
+    assert caught.typename == "Failed", caught.typename
+
+
+def test_an_unreachable_database_still_skips_with_the_flag_off(monkeypatch) -> None:  # noqa: ANN001
+    """The other half: no database is an environment fact, not a fault."""
+    monkeypatch.setenv("DATABASE_URL", "postgresql+asyncpg://u:p@h:5432/d")
+    monkeypatch.delenv(_db_required.REQUIRE_ENV, raising=False)
+    monkeypatch.setattr("tests._db_required.database_is_reachable", lambda: False)
+    monkeypatch.setattr(
+        "tests._db_required.subprocess.run",
+        lambda *a, **k: subprocess.CompletedProcess(
+            args=[], returncode=1, stdout="", stderr="connection refused"
+        ),
+    )
+    with pytest.raises(BaseException) as caught:
+        _db_required.migrate_to_head()
+    assert caught.typename == "Skipped", caught.typename
+
+
+def test_an_unreachable_database_fails_when_the_flag_is_on(monkeypatch) -> None:  # noqa: ANN001
+    """And on CI even that is a fault, which is what the flag is for."""
+    monkeypatch.setenv("DATABASE_URL", "postgresql+asyncpg://u:p@h:5432/d")
+    monkeypatch.setenv(_db_required.REQUIRE_ENV, "1")
+    monkeypatch.setattr("tests._db_required.database_is_reachable", lambda: False)
+    monkeypatch.setattr(
+        "tests._db_required.subprocess.run",
+        lambda *a, **k: subprocess.CompletedProcess(
+            args=[], returncode=1, stdout="", stderr="connection refused"
+        ),
+    )
+    with pytest.raises(BaseException) as caught:
+        _db_required.migrate_to_head()
+    assert caught.typename == "Failed", caught.typename
+
+
+def test_reachability_is_decided_by_connecting_not_by_reading_stderr() -> None:
+    """Guard the mechanism, not just the outcome.
+
+    Matching driver wording would pass these tests too, and would then break
+    on a driver upgrade or a translated message. This asserts that the
+    reachability check opens a connection and never inspects the migration's
+    output.
+    """
+    import ast
+    import inspect
+
+    tree = ast.parse(inspect.getsource(_db_required.database_is_reachable).lstrip())
+    calls = {
+        node.func.attr
+        for node in ast.walk(tree)
+        if isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute)
+    }
+    assert "connect" in calls, "reachability must be decided by connecting"
+
+    # Read the code, not the prose. The first version of this banned the words
+    # "stdout" and "stderr" from the source and so failed on the docstring that
+    # explains why they are not used - the usual trap with forbidden-word
+    # checks, where the legitimate mention is indistinguishable from the thing
+    # being banned.
+    touched = {
+        node.attr
+        for node in ast.walk(tree)
+        if isinstance(node, ast.Attribute)
+    }
+    assert not touched & {"stdout", "stderr"}, (
+        "reachability must not be decided by reading the migration's output"
+    )
