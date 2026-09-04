@@ -57,13 +57,24 @@ down_revision: str | None = "0080"
 branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
 
-#: Kept as a module constant so the guard test can read it from here rather
-#: than parsing it back out of the index DDL string.
+#: The closed statuses this migration's due index excludes, named here so a
+#: test can compare them without parsing SQL.
+#:
+#: The predicate below repeats them as a literal rather than being built from
+#: this tuple, which looks like duplication and is deliberate. Every other
+#: partial index in this directory passes ``sa.text()`` a literal, and building
+#: the string from a variable trips the ``avoid-sqlalchemy-text`` rule in the
+#: SAST gate: the values here are hardcoded, but the rule cannot see that and
+#: suppressing it would train the next reader to suppress it somewhere it
+#: matters.
+#:
+#: The two copies cannot drift apart unnoticed, because they are pinned
+#: SEPARATELY to the same third thing rather than to each other.
+#: ``test_finding_due_index_contract`` compares this tuple with
+#: ``services.policy_gate._CLOSED_FINDING_STATUSES``, and compares the LIVE
+#: index predicate read back from ``pg_indexes`` with the same tuple. Editing
+#: either copy alone fails one of those.
 CLOSED_STATUSES_IN_DUE_INDEX = ("not_affected", "fixed", "false_positive")
-
-_DUE_INDEX_PREDICATE = "due_on IS NOT NULL AND " + " AND ".join(
-    f"status <> '{status}'" for status in CLOSED_STATUSES_IN_DUE_INDEX
-)
 
 
 def upgrade() -> None:
@@ -104,7 +115,10 @@ def upgrade() -> None:
         "ix_vuln_findings_due",
         "vulnerability_findings",
         ["due_on"],
-        postgresql_where=sa.text(_DUE_INDEX_PREDICATE),
+        postgresql_where=sa.text(
+            "due_on IS NOT NULL AND status <> 'not_affected' "
+            "AND status <> 'fixed' AND status <> 'false_positive'"
+        ),
     )
 
 
