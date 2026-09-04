@@ -82,7 +82,7 @@ def _remove_this_test_s_own_broker_keys() -> Iterator[None]:
 
         return redis.Redis.from_url(os.environ["REDIS_URL"])
 
-    before: set[bytes] = set()
+    before: set[str] = set()
     try:
         client = _client()
         before = {name for name in names if client.exists(name)}  # type: ignore[misc]
