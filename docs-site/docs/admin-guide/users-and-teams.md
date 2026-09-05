@@ -291,6 +291,46 @@ The `ADMIN_PASSWORD` value is **only** used when the row is being created. On th
 Reactivating the *last* admin from the UI would be a bootstrap paradox — there is no admin available to click the button. The script runs inside the backend container with database credentials, so it is the safe recovery hatch even when no super-admin can sign in. The action is idempotent: running it on an already-active row is a no-op.
 :::
 
+## Helping somebody who cannot sign in {#sign-in-recovery}
+
+The user drawer at **/admin/users → user** carries two actions for this, and
+they answer different problems. Both are recorded in the audit log.
+
+### Sign-in is refused before the password is even checked
+
+Failed attempts are counted per email address, so an address can be refused
+because of guesses that were never the account holder's. **Unlock sign-in**
+clears that count.
+
+1. **/admin/users** → user → **Unlock sign-in**.
+2. Confirm.
+
+Finishing a password reset clears the count too, and it needs the inbox rather
+than the password, so this action is for somebody who has lost access to that
+as well. It changes nothing else: the password, the sessions and the second
+factor are all left as they were.
+
+### A lost authenticator
+
+**Clear second factor** appears only on an account that has one. It removes the
+flag, the stored secret and every unused recovery code, and ends the sessions
+that are open.
+
+1. **/admin/users** → user → **Clear second factor**.
+2. Confirm.
+
+The user is notified in the portal that it happened. That notice is the point
+of the action being reviewable: somebody who did not ask for their factor to be
+cleared finds out that it was.
+
+Do this only after you are satisfied the request came from the account holder,
+by some channel other than their portal account. The action removes the control
+that a stolen password would otherwise still run into, and a request to remove
+it is exactly what somebody holding a stolen password would send.
+
+A user who still has a recovery code does not need you: entering one where the
+six digits are asked for signs them in, and `/profile` then issues a fresh set.
+
 ## Deactivating a user
 
 Deactivation revokes all sessions and refresh tokens. The user cannot sign in. Their audit-log entries persist (rows are append-only).

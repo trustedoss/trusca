@@ -27,6 +27,19 @@ def test_codes_are_issued_in_the_documented_shape() -> None:
         assert _DISPLAY.match(code), code
 
 
+def test_ten_codes_are_issued_because_that_is_what_the_guide_says() -> None:
+    """The literal, not the constant.
+
+    ``len(codes) == CODE_COUNT`` compares the value with itself and agrees
+    with any number. What a reader was told is ten, and ten is a decision:
+    each code is one sign-in rather than one attempt, so the count is how many
+    times somebody can get back in after losing the authenticator. Changing it
+    means changing the user guide in the same edit.
+    """
+    assert CODE_COUNT == 10
+    assert len(generate_codes()) == 10
+
+
 def test_the_alphabet_excludes_characters_that_are_read_wrong() -> None:
     """These end up on paper, so 0/O and 1/I/L are not in them.
 

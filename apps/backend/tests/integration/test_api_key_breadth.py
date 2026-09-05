@@ -495,3 +495,40 @@ async def test_another_teams_key_cannot_be_narrowed(client) -> None:
     )
 
     assert response.status_code == 404, response.text
+
+
+async def test_a_key_keeps_working_for_an_account_that_requires_a_second_factor(
+    client,
+) -> None:
+    """The user guide promises this, and it is a promise about a build.
+
+    A key is something the holder has, not something they know, so a second
+    factor adds nothing to it; what a code prompt would add is a pipeline that
+    stops at three in the morning waiting for a phone. The failure mode is
+    quiet in the other direction too: whoever adds a factor check to the
+    authentication path would break every CI job in the deployment at once,
+    and no test here would have said so.
+
+    The other half of the promise is in the guide next to this: a key is worth
+    a password, so it is revoked rather than trusted to a second factor.
+    """
+    _team, user, project = await _seed(client)
+    raw_key, _key_id = await _issue(
+        client, user=user, project_id=project.id, breadth="read_write"
+    )
+
+    factory = await _factory(client)
+    async with factory() as session:
+        await session.execute(
+            text("UPDATE users SET mfa_enabled = true WHERE id = :id"),
+            {"id": user.id},
+        )
+        await session.commit()
+
+    triggered = await client.post(
+        f"/v1/projects/{project.id}/scans",
+        json={"kind": "source"},
+        headers={"Authorization": f"Bearer {raw_key}"},
+    )
+
+    assert triggered.status_code == 202, triggered.text
