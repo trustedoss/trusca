@@ -1,6 +1,6 @@
 {
   "_generated_by": "tests/integration/test_app_role_grant_matrix.py (B1), captured from a real `alembic upgrade head` run against a throwaway database with the literal `trustedoss_app` role provisioned, then read back via has_table_privilege(). Not hand-written.",
-  "_captured_against_head_revision": "0080",
+  "_captured_against_head_revision": "0087",
   "tables": {
     "alembic_version": [
       "DELETE",
@@ -262,6 +262,12 @@
       "UPDATE"
     ],
     "user_anonymisation_requests": [
+      "INSERT",
+      "SELECT",
+      "UPDATE"
+    ],
+    "user_recovery_codes": [
+      "DELETE",
       "INSERT",
       "SELECT",
       "UPDATE"
