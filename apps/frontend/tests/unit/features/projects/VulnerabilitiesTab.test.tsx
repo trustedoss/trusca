@@ -1678,6 +1678,7 @@ describe("VulnerabilitiesTab", () => {
       summary: null,
       details: null,
       references: [],
+      matching_provenance: null,
       published_at: null,
       status: "new",
       analysis_state: null,

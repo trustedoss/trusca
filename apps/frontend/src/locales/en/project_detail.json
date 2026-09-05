@@ -754,7 +754,10 @@
       "advisories_label": "Look it up",
       "advisory_nvd": "NVD",
       "advisory_osv": "OSV",
-      "advisory_aria": "{{name}}, opens in a new tab"
+      "advisory_aria": "{{name}}, opens in a new tab",
+      "provenance_heading": "Why this match",
+      "provenance_absent": "The scanner did not report which feed flagged this package.",
+      "provenance_feed_link": "Browse this feed's advisories"
     },
     "table_aria": "Vulnerability findings",
     "assignee": {

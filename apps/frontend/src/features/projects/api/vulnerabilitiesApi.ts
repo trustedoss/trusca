@@ -390,6 +390,19 @@ export interface VulnerabilityDetail {
   summary: string | null;
   details: string | null;
   references: VulnerabilityReference[];
+  /**
+   * Which advisory feed reported this package as affected (E5a). Null when the
+   * scanner named no source, which is a state it actually reports: an SBOM
+   * scan of CentOS 7 RPMs carries none on any finding.
+   *
+   * `feed_url` opens the feed's listing, not this advisory. Per-advisory links
+   * are in `references`.
+   */
+  matching_provenance: {
+    name: string;
+    id?: string | null;
+    feed_url?: string | null;
+  } | null;
   published_at: string | null;
   status: VulnFindingStatus;
   analysis_state: string | null;

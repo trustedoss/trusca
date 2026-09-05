@@ -422,6 +422,7 @@ def _detail_response(payload: dict[str, Any]) -> Response:
         summary=payload["summary"],
         details=payload["details"],
         references=payload["references"],
+        matching_provenance=payload["matching_provenance"],
         published_at=payload["published_at"],
         status=payload["status"],
         analysis_state=payload["analysis_state"],

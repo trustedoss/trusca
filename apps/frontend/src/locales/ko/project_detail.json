@@ -754,7 +754,10 @@
       "advisories_label": "외부에서 찾기",
       "advisory_nvd": "NVD",
       "advisory_osv": "OSV",
-      "advisory_aria": "{{name}}, 새 탭에서 열림"
+      "advisory_aria": "{{name}}, 새 탭에서 열림",
+      "provenance_heading": "이 매칭의 근거",
+      "provenance_absent": "스캐너가 이 패키지를 지목한 피드를 알려 주지 않았습니다.",
+      "provenance_feed_link": "이 피드의 권고 목록 열기"
     },
     "table_aria": "취약점 목록",
     "assignee": {
