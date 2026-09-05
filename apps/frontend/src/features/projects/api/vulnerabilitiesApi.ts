@@ -677,6 +677,39 @@ export async function updateFindingAssignment(
   return data;
 }
 
+/**
+ * One person a finding in this project may be assigned to (ER65).
+ *
+ * Two fields, and the absence of a third is deliberate. The server does not
+ * send an email here: a picker only has to name colleagues, and a screen that
+ * does not receive addresses cannot become a place they are collected from.
+ * Do not add one to render a nicer label.
+ *
+ * `full_name` is null for anyone who registered without one. They are still
+ * listed, because they are assignable, so the picker shows the id for them
+ * rather than hiding them or repeating a placeholder that makes two such
+ * people indistinguishable.
+ */
+export interface AssignableMember {
+  user_id: string;
+  full_name: string | null;
+}
+
+export interface AssignableMemberList {
+  members: AssignableMember[];
+  /** Length of `members`; the endpoint neither pages nor caps. */
+  total: number;
+}
+
+export async function fetchAssignableMembers(
+  projectId: string,
+): Promise<AssignableMemberList> {
+  const { data } = await api.get<AssignableMemberList>(
+    `/v1/projects/${projectId}/assignable-members`,
+  );
+  return data;
+}
+
 // ---------------------------------------------------------------------------
 // Upgrade clusters (W9-#53 — "Group by upgrade")
 // ---------------------------------------------------------------------------

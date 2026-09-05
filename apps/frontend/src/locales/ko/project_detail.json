@@ -767,6 +767,8 @@
       "due_help": "직접 정하는 날짜입니다. 이 날짜와 정책 기한 중 이른 쪽이 적용되며 날짜는 UTC 기준으로 읽습니다.",
       "due_ignored": "적으신 날짜가 더 늦어서 정책 기한 {{policyDate}}이 그대로 적용됩니다.",
       "due_label": "기한",
+      "hand_to_label": "다른 사람에게 넘기기",
+      "hand_to_placeholder": "팀원을 고르세요",
       "inactive": "담당자가 처리할 수 없음",
       "inactive_help": "계정이 비활성화된 사람에게 배정돼 있어 아무도 처리할 수 없습니다.",
       "mine": "내가 담당",
