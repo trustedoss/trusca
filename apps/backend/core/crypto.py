@@ -40,22 +40,26 @@ Security contract:
     the JWT secret's blast radius. The derive-from-secret fallback is non-prod
     only.
 
-  Follow-up (tracked): key ROTATION currently requires re-registering every
-  credential (the new key cannot decrypt rows written under the old one).
-  Rolling rotation via ``cryptography.fernet.MultiFernet`` (accept old keys for
-  decrypt, encrypt with the newest) is a planned enhancement; until then,
-  ``.env.example`` documents the re-registration requirement next to
-  ``GITHUB_APP_ENCRYPTION_KEY``.
+  Rotation: ``GITHUB_APP_ENCRYPTION_KEY`` takes a comma-separated list. The
+  first key encrypts, every key can decrypt. Put the new key first, run
+  ``scripts/reencrypt_secrets.py`` until nothing is left on an older key, then
+  drop the last entry. Removing it first leaves rows nothing can open, so the
+  count of rows still on an older key is reported by the command and at boot.
+
+  The old key has to outlive the backups taken before the rotation. Restoring
+  one brings back ciphertext written under it, and a key that is no longer in
+  the list cannot read it.
 """
 
 from __future__ import annotations
 
 import base64
 import hashlib
+import hmac
 import os
 
 import structlog
-from cryptography.fernet import Fernet, InvalidToken
+from cryptography.fernet import Fernet, InvalidToken, MultiFernet
 
 log = structlog.get_logger("crypto")
 
@@ -112,31 +116,111 @@ def _derive_key_from_secret() -> bytes:
     return base64.urlsafe_b64encode(digest)
 
 
-def _resolve_fernet() -> Fernet:
-    """Build a Fernet from the resolved key at call time (rule #11).
+def configured_keys() -> list[bytes]:
+    """The encryption keys this process holds, newest first.
 
-    Raises :class:`SecretEncryptionError` if an explicitly-provided
-    ``GITHUB_APP_ENCRYPTION_KEY`` is malformed (not a valid 32-byte urlsafe
-    base64 key) — a misconfiguration we want to surface clearly rather than
-    silently falling back to the derived key (which would make ciphertext
-    written under the bad config undecryptable later).
+    ``GITHUB_APP_ENCRYPTION_KEY`` takes a comma-separated list. The first
+    entry encrypts; every entry can decrypt. A deployment that has one key
+    has a value with no comma in it and reaches exactly the same code path it
+    did before the list was allowed, which is why the variable was widened
+    rather than replaced.
+
+    Order is the whole contract. Rotation means putting the new key first,
+    re-encrypting, then removing the last one. Removing it before the
+    re-encryption finishes leaves rows nothing can open, and that is not
+    recoverable, which is why ``stale_row_count`` exists.
+
+    Blank entries are dropped so a trailing comma, or the spaces somebody
+    leaves after one, does not become a key that fails to parse.
     """
     raw = os.getenv(_ENCRYPTION_KEY_ENV)
-    if raw is not None and raw.strip() != "":
-        key_bytes = raw.strip().encode("utf-8")
+    if raw is None or raw.strip() == "":
+        return [_derive_key_from_secret()]
+
+    keys: list[bytes] = []
+    for index, entry in enumerate(raw.split(",")):
+        candidate = entry.strip()
+        if candidate == "":
+            continue
+        key_bytes = candidate.encode("utf-8")
         try:
-            return Fernet(key_bytes)
+            Fernet(key_bytes)
         except (ValueError, TypeError) as exc:
-            # Do NOT echo the key material into the error.
+            # Position, never the value. An operator with four keys needs to
+            # know which one to look at, and the bytes must not reach a log.
             raise SecretEncryptionError(
-                f"{_ENCRYPTION_KEY_ENV} is set but is not a valid urlsafe-base64 "
-                "32-byte Fernet key (generate one with "
+                f"{_ENCRYPTION_KEY_ENV} entry {index + 1} is not a valid "
+                "urlsafe-base64 32-byte Fernet key (generate one with "
                 "Fernet.generate_key().decode())"
             ) from exc
-    return Fernet(_derive_key_from_secret())
+        keys.append(key_bytes)
+
+    if not keys:
+        # Every entry was blank, which is a value like "," or "  ". Treating
+        # that as "unset" would silently fall back to the derived key and
+        # write ciphertext nothing later expects.
+        raise SecretEncryptionError(
+            f"{_ENCRYPTION_KEY_ENV} is set but contains no keys"
+        )
+    return keys
 
 
-def encrypt_secret(plaintext: str) -> str:
+def _resolve_fernet() -> MultiFernet:
+    """The cipher for the shared key, at call time (rule #11).
+
+    A :class:`MultiFernet` even when there is one key, so the single-key and
+    rotating cases run the same code. Encryption uses the first key; decrypt
+    tries each in order.
+    """
+    return MultiFernet([Fernet(k) for k in configured_keys()])
+
+
+def _fernet_key_material() -> bytes:
+    """The key new ciphertext is written under.
+
+    Named separately from the list because purpose subkeys derive from this
+    one alone: a subkey derived from an old master would encrypt new rows
+    under a key the rotation is trying to retire.
+    """
+    return configured_keys()[0]
+
+
+def purpose_cipher(purpose: str, key: bytes) -> Fernet:
+    """The cipher for one purpose under one master key.
+
+    Secrets kept for different reasons should not open with the same key, so
+    a purpose derives a subkey rather than reusing the master. Deterministic,
+    so the same master and purpose always give the same subkey, which is what
+    lets rotation build a list of "this purpose under each master".
+
+    Kept separate from :func:`purpose_multi` because rotation needs a single
+    master's subkey (to ask whether a row is on the newest key) as well as
+    the whole list (to open a row written under any of them).
+    """
+    subkey = hmac.new(
+        base64.urlsafe_b64decode(key),
+        f"trusca/secret/{purpose}/v1".encode(),
+        hashlib.sha256,
+    ).digest()
+    return Fernet(base64.urlsafe_b64encode(subkey))
+
+
+def purpose_multi(purpose: str | None) -> MultiFernet:
+    """Every key that can open this purpose, newest first.
+
+    ``None`` is the shared key and must stay that way: the credentials
+    already sitting in deployments were written under it. Moving a column
+    from ``None`` to a purpose is a data migration, and
+    ``core.encrypted_columns`` is where that decision is recorded so a test
+    can refuse a change that skips the migration.
+    """
+    keys = configured_keys()
+    if purpose is None:
+        return MultiFernet([Fernet(k) for k in keys])
+    return MultiFernet([purpose_cipher(purpose, k) for k in keys])
+
+
+def encrypt_secret(plaintext: str, *, purpose: str | None = None) -> str:
     """Encrypt ``plaintext`` and return a URL-safe Fernet token (str).
 
     The returned token is what gets persisted in the ``*_encrypted`` columns.
@@ -145,12 +229,12 @@ def encrypt_secret(plaintext: str) -> str:
     """
     if not isinstance(plaintext, str):
         raise SecretEncryptionError("plaintext to encrypt must be a str")
-    fernet = _resolve_fernet()
+    fernet = purpose_multi(purpose)
     token = fernet.encrypt(plaintext.encode("utf-8"))
     return token.decode("utf-8")
 
 
-def decrypt_secret(token: str) -> str:
+def decrypt_secret(token: str, *, purpose: str | None = None) -> str:
     """Decrypt a Fernet ``token`` (as produced by :func:`encrypt_secret`).
 
     Raises :class:`SecretDecryptionError` on any failure — wrong/rotated key,
@@ -159,7 +243,7 @@ def decrypt_secret(token: str) -> str:
     """
     if not isinstance(token, str) or token == "":
         raise SecretDecryptionError("ciphertext token to decrypt must be a non-empty str")
-    fernet = _resolve_fernet()
+    fernet = purpose_multi(purpose)
     try:
         plaintext = fernet.decrypt(token.encode("utf-8"))
     except InvalidToken as exc:

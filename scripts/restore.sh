@@ -147,4 +147,34 @@ if [[ -f "$BACKUP_DIR/manifest.json" ]]; then
   fi
 fi
 
+# ---------------------------------------------------------------------------
+# 6. Encrypted columns open with the keys this deployment has
+# ---------------------------------------------------------------------------
+# A backup carries ciphertext written under whatever key was current when it
+# was taken. If the encryption key has been rotated since, and the old one has
+# been removed from GITHUB_APP_ENCRYPTION_KEY, those columns cannot be read.
+#
+# Nothing about that is visible otherwise. The restore succeeds, every row is
+# there, the app starts, and the failure arrives later as a webhook that stops
+# being accepted or a private registry that stops authenticating. This asks
+# the question here, while the person who did the restore is still watching.
+title "Checking encrypted columns against the configured keys"
+if unreadable=$(docker-compose -f docker-compose.yml exec -T backend \
+      env MODE=count python scripts/reencrypt_secrets.py 2>&1); then
+  ok "every encrypted column opens with a configured key"
+else
+  if grep -q "could not be opened by any configured key" <<<"$unreadable"; then
+    warn "some encrypted values cannot be read with the keys this deployment has."
+    warn "This backup predates a key rotation. Add the key that was current when"
+    warn "it was taken back to GITHUB_APP_ENCRYPTION_KEY, then re-run:"
+    warn "  MODE=rewrite python scripts/reencrypt_secrets.py"
+    printf '%s\n' "$unreadable" | sed 's/^/    /'
+  else
+    # A non-zero exit that is not the unreadable case means rows are merely on
+    # an older key, which is a rotation left unfinished rather than a loss.
+    warn "some values are still on an older encryption key:"
+    printf '%s\n' "$unreadable" | sed 's/^/    /'
+  fi
+fi
+
 title "Restore complete"

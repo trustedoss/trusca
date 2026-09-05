@@ -244,6 +244,44 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     except Exception as _census_exc:  # noqa: BLE001 - must never fail the boot
         log.warning("vuln_sla.overdue_census_failed", error=str(_census_exc)[:200])
 
+    # E22b: while a key rotation is in progress, how many stored secrets are
+    # still on an older key. Zero is the condition for removing the old key,
+    # and removing it early makes those rows unreadable for good.
+    #
+    # The person who runs the re-encryption and the person who edits the
+    # environment are often not the same person, and the command's output was
+    # only ever on the first one's terminal. This puts the number where the
+    # second one is already looking.
+    #
+    # Only when more than one key is configured. With one key there is nothing
+    # to be stale relative to, and scanning every encrypted column on every
+    # boot to report a guaranteed zero is work that buys nothing.
+    try:
+        from core.crypto import configured_keys
+        from services.key_rotation_service import count_stale
+
+        _keys = len(configured_keys())
+        if _keys > 1:
+            async with session_factory() as _rotation_session:
+                _rotation = await count_stale(_rotation_session)
+            log.info(
+                "key_rotation.stale_at_boot",
+                keys=_keys,
+                stale=_rotation.stale_total,
+                by_column={
+                    c.column.label: c.stale for c in _rotation.columns if c.stale
+                },
+                detail=(
+                    "rows still encrypted under an older key. Removing the "
+                    "oldest key while this is above zero makes them "
+                    "permanently unreadable."
+                    if _rotation.stale_total
+                    else "nothing is on an older key; removing the oldest is safe"
+                ),
+            )
+    except Exception as _rotation_exc:  # noqa: BLE001 - must never fail the boot
+        log.warning("key_rotation.census_failed", error=str(_rotation_exc)[:200])
+
     try:
         yield
     finally:

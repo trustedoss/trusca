@@ -335,6 +335,7 @@ These keys are read only by the bootstrap and demo-seed scripts. They are not co
 | `DEMO_SUPER_ADMIN_PASSWORD` | a fixed value published with the public demo | `apps/backend/scripts/seed_demo.py` | Password given to every seeded demo account. Unset means the published default, not a generated one, so pin your own on any instance others can reach. Seeding refuses to run at all unless `APP_ENV` is `dev` or `demo`. Must be ≥ 12 characters when set. |
 | `SUBJECT_USER_ID` | - | `apps/backend/scripts/anonymise_user.py` | The user whose personal data the anonymisation command erases. A UUID; the command aborts on anything else. See [User anonymisation](../admin-guide/user-anonymisation.md). |
 | `CONFIRM` | - | `apps/backend/scripts/anonymise_user.py` | Must be `yes` for the anonymisation to run. Two super admins approving is a decision about the subject; this is the operator confirming they mean to run it now, against this id, on this deployment. The erasure cannot be undone. |
+| `MODE` | `count` | `apps/backend/scripts/reencrypt_secrets.py` | `count` reports how many stored secrets are still encrypted under an older key and changes nothing; `rewrite` moves them onto the newest key. `count` must report zero before an old key is removed from `GITHUB_APP_ENCRYPTION_KEY`, because rows still holding ciphertext from a removed key cannot be recovered. See [Rotating the encryption key](../admin-guide/encryption-key-rotation.md). |
 
 ## Validation
 
