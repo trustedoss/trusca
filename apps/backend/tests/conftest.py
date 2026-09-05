@@ -17,10 +17,14 @@ itself. See :func:`_redis_index_is_not_shared`.
 from __future__ import annotations
 
 import sys
-from collections.abc import AsyncIterator
+from collections.abc import AsyncIterator, Iterator
 from pathlib import Path
+from typing import Any
 
 import pytest
+from sqlalchemy import create_engine
+from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
+from sqlalchemy.orm import Session, sessionmaker
 
 BACKEND_ROOT = Path(__file__).resolve().parent.parent
 if str(BACKEND_ROOT) not in sys.path:
@@ -279,3 +283,72 @@ def _schema_is_left_where_the_migration_put_it():
         "cached per process, nothing repairs that afterwards, and later "
         "failures in unrelated modules are the symptom."
     )
+
+# Fixtures live here when there is nothing left to decide about them: one
+# body, one scope, and nothing that changes who receives them. Everything
+# else stays where it is.
+#
+# Counted across the test tree on 2026-09-04, comparing bodies rather than
+# names, with string literals and decorators KEPT - erasing either makes
+# different fixtures compare equal, since the strings carry the payload
+# (which variable, which team) and the decorator carries the lifetime.
+#
+# Lifted:
+#   sync_session   23 files, one body, function scope, not autouse
+#   db_factory      3 files, one body, function scope, not autouse
+#
+# Considered and left alone, with the reason, so the next person counting
+# does not repeat the investigation:
+#
+#   _workspace   12 files, one body, one scope - but autouse, and spread over
+#       four directories (integration, unit, unit/tasks, unit/services). The
+#       only conftest covering all four is this one, so lifting it would hand
+#       an autouse fixture to the whole backend suite: 12 files receiving it
+#       becomes thousands. Its cost is trivial (one monkeypatch.setenv), but
+#       cheapness is not a reason to apply something everywhere - the real
+#       cost is checking whether any of those thousands depends on
+#       WORKSPACE_HOST_PATH being unset, and that exceeds the value of
+#       removing 12 duplicates.
+#
+#   client (89 files, 14 bodies), app (79, 5), db_session (66, 11) - a
+#       majority body exists in each, but lifting it means the minority
+#       silently inherits unless every one of them overrides. pytest allows
+#       that override without any sign of which file diverges or why. Visible
+#       duplication beats invisible inheritance: duplicates might drift,
+#       whereas these have already drifted and the drift would stop showing.
+#
+#   session (15 files, 9 bodies), _clean_env (12, 10) - as many shapes as
+#       files. There is no common version to lift.
+#
+#   Naming drift, out of scope here because the gain is small and the diff
+#       wide, but recorded so somebody editing one finds the other:
+#       temp_backups / temp_backups_root, anon_client / client,
+#       _patch_async_client / patch_async_client.
+
+
+@pytest.fixture
+def sync_session() -> Iterator[Session]:
+    """A synchronous session against the configured database."""
+    from core.config import database_url_sync
+
+    engine = create_engine(database_url_sync(), pool_pre_ping=True, future=True)
+    factory = sessionmaker(bind=engine, expire_on_commit=False, future=True)
+    session = factory()
+    try:
+        yield session
+    finally:
+        session.close()
+        engine.dispose()
+
+
+@pytest.fixture
+async def db_factory() -> AsyncIterator[async_sessionmaker[Any]]:
+    """An async session factory against the configured database."""
+    from core.config import database_url
+
+    engine = create_async_engine(database_url(), pool_pre_ping=True, future=True)
+    factory = async_sessionmaker(engine, expire_on_commit=False)
+    try:
+        yield factory
+    finally:
+        await engine.dispose()

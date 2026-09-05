@@ -23,7 +23,7 @@ import httpx
 import pytest
 from httpx import ASGITransport, AsyncClient
 from sqlalchemy import select, text
-from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
+from sqlalchemy.ext.asyncio import async_sessionmaker
 
 from tests._db_required import migrate_to_head
 
@@ -64,18 +64,6 @@ async def client(app) -> AsyncIterator[AsyncClient]:
     transport = ASGITransport(app=app, raise_app_exceptions=False)
     async with AsyncClient(transport=transport, base_url="http://testserver") as ac:
         yield ac
-
-
-@pytest.fixture
-async def db_factory() -> AsyncIterator[async_sessionmaker[Any]]:
-    from core.config import database_url
-
-    engine = create_async_engine(database_url(), pool_pre_ping=True, future=True)
-    factory = async_sessionmaker(engine, expire_on_commit=False)
-    try:
-        yield factory
-    finally:
-        await engine.dispose()
 
 
 @pytest.fixture

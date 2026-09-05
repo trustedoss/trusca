@@ -23,13 +23,12 @@ from __future__ import annotations
 
 import json
 import uuid
-from collections.abc import Iterator
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
 import pytest
-from sqlalchemy import create_engine, delete, func, select
-from sqlalchemy.orm import Session, sessionmaker
+from sqlalchemy import delete, func, select
+from sqlalchemy.orm import Session
 
 from models import (
     Component,
@@ -60,20 +59,6 @@ _EXPECTED_FINDINGS = 5
 @pytest.fixture(scope="module", autouse=True)
 def _migrate_once() -> None:
     migrate_to_head()
-
-
-@pytest.fixture
-def sync_session() -> Iterator[Session]:
-    from core.config import database_url_sync
-
-    engine = create_engine(database_url_sync(), pool_pre_ping=True, future=True)
-    factory = sessionmaker(bind=engine, expire_on_commit=False, future=True)
-    session = factory()
-    try:
-        yield session
-    finally:
-        session.close()
-        engine.dispose()
 
 
 def _trivy_report() -> dict[str, object]:

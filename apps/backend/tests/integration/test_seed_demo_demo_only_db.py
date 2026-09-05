@@ -21,12 +21,11 @@ Postgres (CLAUDE.md core rule #1) and pin:
 
 from __future__ import annotations
 
-from collections.abc import AsyncIterator
 from typing import Any
 
 import pytest
 from sqlalchemy import select
-from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
+from sqlalchemy.ext.asyncio import async_sessionmaker
 
 from tests._db_required import migrate_to_head
 
@@ -61,18 +60,6 @@ def _demo_env(monkeypatch: pytest.MonkeyPatch) -> None:
     # documented-5-projects assertions are not perturbed by a leaked env var.
     # The flag-on path has its own dedicated test below.
     monkeypatch.delenv("DEMO_ALLOW_SANDBOX_SCANS", raising=False)
-
-
-@pytest.fixture
-async def db_factory() -> AsyncIterator[async_sessionmaker[Any]]:
-    from core.config import database_url
-
-    engine = create_async_engine(database_url(), pool_pre_ping=True, future=True)
-    factory = async_sessionmaker(engine, expire_on_commit=False)
-    try:
-        yield factory
-    finally:
-        await engine.dispose()
 
 
 async def _demo_project_names(
