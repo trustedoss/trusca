@@ -396,7 +396,15 @@ finding over:
   with somebody else, ask them to release it. Quietly taking somebody's work is
   worse than not offering it.
 - **A finding you own yourself** can be released back to unassigned, or handed
-  to another team member.
+  to another team member through the **Hand to** list. That list holds everyone
+  active on the project's team, and shows a person's name where they have one
+  and their id where they do not - a name is optional at registration, and
+  somebody without one is still assignable. It never shows email addresses: a
+  list for naming colleagues is not a place to read addresses out of.
+
+  The same list appears on an unassigned finding and on one whose owner cannot
+  act, which is how work gets distributed rather than only picked up. It does
+  not appear while an active person owns the finding; ask them to release it.
 
 Taking a finding over puts your name on it immediately, and it is only ever
 your own name: the control assigns to you, so nobody can be volunteered.

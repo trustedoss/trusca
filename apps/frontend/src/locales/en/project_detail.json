@@ -767,6 +767,8 @@
       "due_help": "A date you commit to. The earlier of this and the policy deadline applies, and dates are read in UTC.",
       "due_ignored": "The policy deadline of {{policyDate}} still applies, because the date you set is later.",
       "due_label": "Deadline",
+      "hand_to_label": "Hand to",
+      "hand_to_placeholder": "Choose a team member",
       "inactive": "Owner cannot act",
       "inactive_help": "Assigned to somebody whose account is deactivated, so nobody is able to pick this up.",
       "mine": "Assigned to you",

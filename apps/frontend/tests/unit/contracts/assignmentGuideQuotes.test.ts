@@ -33,6 +33,7 @@ const QUOTED_KEYS = [
   "vulnerabilities.filter.assignee_all",
   "vulnerabilities.filter.assignee_me",
   "vulnerabilities.filter.assignee_unassigned",
+  "vulnerabilities.assignee.hand_to_label",
 ] as const;
 
 function lookup(bundle: unknown, dotted: string): string {
