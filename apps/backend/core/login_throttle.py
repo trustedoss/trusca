@@ -332,6 +332,17 @@ async def spend_once(jti: str, *, seconds: int) -> bool:
     try:
         created = await _redis().set(f"{_KEY_PREFIX}spent:{jti}", "1", ex=seconds, nx=True)
     except (RedisError, RuntimeError) as exc:
+        # Its own line, above the generic one. "Redis is unavailable" tells an
+        # operator that something is broken; it does not tell them that for the
+        # duration a pending credential can be exchanged more than once. Whoever
+        # investigates an incident afterwards needs to know that this specific
+        # protection was off during that window, and the generic message does
+        # not say which protection.
+        log.warning(
+            "auth.mfa_single_use_not_enforced",
+            reason="redis unavailable",
+            window_seconds=seconds,
+        )
         _degraded("spend_once", exc)
         return True
     return bool(created)

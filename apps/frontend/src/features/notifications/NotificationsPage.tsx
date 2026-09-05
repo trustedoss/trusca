@@ -33,6 +33,7 @@ import {
   CheckCircle2,
   ClipboardCheck,
   FileWarning,
+  KeyRound,
   ShieldAlert,
   ShieldX,
   XCircle,
@@ -84,6 +85,10 @@ const KIND_ICONS: Record<NotificationKind, LucideIcon> = {
   // MAL-2b (#26) — a package already in the project was named by a new
   // advisory. Not a vulnerability to schedule: the artifact is the attack.
   malicious_detected: ShieldX,
+  // ER19-3 - something changed about how this person signs in. A key rather
+  // than a shield: the shields here mean "a threat was found", and this means
+  // "your own sign-in was altered", which needs a different first impression.
+  account_security: KeyRound,
 };
 
 const KIND_TONE: Record<NotificationKind, string> = {
@@ -98,6 +103,10 @@ const KIND_TONE: Record<NotificationKind, string> = {
   approval_state_changed: "text-risk-info",
   vuln_sla_breach: "text-risk-high",
   malicious_detected: "text-risk-critical",
+  // Not critical. Most of these are an unlock the person asked for; the ones
+  // that matter are the ones they did not, and painting every one red would
+  // teach them to skip the colour.
+  account_security: "text-risk-high",
 };
 
 function NotificationKindIcon({ kind }: { kind: NotificationKind }) {

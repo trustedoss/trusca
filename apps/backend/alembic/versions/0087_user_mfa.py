@@ -59,6 +59,16 @@ NOW = sa.text("now()")
 
 
 def upgrade() -> None:
+    # A kind for "something changed about how you sign in". The first of them
+    # is an administrator clearing somebody's second factor: that person has to
+    # find out, because an unlock they did not ask for is the one sign that
+    # somebody else is acting on their account.
+    #
+    # ALTER TYPE ADD VALUE is the forward-only path this enum was chosen for
+    # (see 0011). IF NOT EXISTS because a re-run must not fail, and outside the
+    # transaction is not needed on Postgres 12+, which is our floor.
+    op.execute("ALTER TYPE notification_kind ADD VALUE IF NOT EXISTS 'account_security'")
+
     op.add_column(
         "users",
         sa.Column("mfa_enabled", sa.Boolean(), nullable=False, server_default=sa.text("false")),

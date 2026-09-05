@@ -419,7 +419,7 @@ async def clear_mfa_endpoint(
     await create_notification(
         session,
         user_id=user_id,
-        kind="security",
+        kind="account_security",
         title="Your second factor was removed",
         body=(
             "An administrator cleared the authenticator app on your account. "
