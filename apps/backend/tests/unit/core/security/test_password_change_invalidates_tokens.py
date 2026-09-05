@@ -168,3 +168,48 @@ def test_a_token_without_iat_is_rejected_before_this_check() -> None:
         decode_token(no_iat, expected_type=TOKEN_TYPE_ACCESS)
 
 
+
+
+def test_the_credential_boundary_consults_both_timestamps() -> None:
+    """Either credential moving refuses a token minted before it.
+
+    Asserted one side at a time. A version that read only the password half
+    passes every test built from a user whose password also changed, and the
+    half that gets dropped is the newer one -- which is what happened: the
+    column was written by two services and read by nothing.
+    """
+    from core.security import credential_change_invalidates
+
+    issued = 1_700_000_000
+    before = datetime.fromtimestamp(issued - 5, tz=UTC)
+    after = datetime.fromtimestamp(issued + 5, tz=UTC)
+
+    # Neither moved after the token was minted.
+    assert (
+        credential_change_invalidates(
+            issued, password_changed_at=before, mfa_changed_at=before
+        )
+        is False
+    )
+    # The password moved.
+    assert (
+        credential_change_invalidates(
+            issued, password_changed_at=after, mfa_changed_at=before
+        )
+        is True
+    )
+    # The second factor moved, and nothing else did. This is the case a
+    # password-only check answers wrongly.
+    assert (
+        credential_change_invalidates(
+            issued, password_changed_at=before, mfa_changed_at=after
+        )
+        is True
+    )
+    # Neither is set, which is every user before they change either.
+    assert (
+        credential_change_invalidates(
+            issued, password_changed_at=None, mfa_changed_at=None
+        )
+        is False
+    )

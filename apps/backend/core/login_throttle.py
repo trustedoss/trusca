@@ -48,6 +48,7 @@ import asyncio
 import hashlib
 import hmac
 import threading
+import time
 from typing import Any
 from weakref import WeakKeyDictionary
 
@@ -209,6 +210,96 @@ async def close_client() -> None:
         await client.aclose()
 
 
+#: INCR and, on the first attempt only, set the TTL. One round trip so the
+#: two cannot come apart: an INCR whose EXPIRE fails leaves a key that never
+#: expires, and the key is named after a token id, so that leaks one per
+#: attempt for ever.
+_SPEND_ATTEMPT = """
+local used = redis.call('INCR', KEYS[1])
+if used == 1 then
+  redis.call('EXPIRE', KEYS[1], tonumber(ARGV[1]))
+end
+return used
+"""
+
+#: How many wrong codes one pending token tolerates before it is finished.
+#: Three, because a person reading six digits off a phone mistypes, and the
+#: code changes every thirty seconds so the honest retry is the common case.
+#: Against guessing it is the number that matters: three tries at one in a
+#: million per token, on top of the per-address counter.
+MFA_ATTEMPTS_PER_TOKEN = 3
+
+
+#: The in-process floor, used when Redis cannot answer. ``jti`` to
+#: ``(attempts used, when the entry expires)``.
+_local_attempts: dict[str, tuple[int, float]] = {}
+_local_attempts_lock = threading.Lock()
+
+
+def _local_spend_attempt(jti: str, *, seconds: int) -> bool:
+    """The same count, kept in this process, for when Redis cannot answer.
+
+    Per worker, so the effective cap across a deployment is workers times
+    :data:`MFA_ATTEMPTS_PER_TOKEN` rather than that number. That is a floor,
+    not the guarantee, and it is written here rather than left implicit
+    because the difference matters: a six-digit code has no work factor behind
+    it, so what stands in front of it during an outage is this and the per-IP
+    limiter, and a reader deciding whether that is enough needs the real
+    number.
+
+    The first version of this fallback did not exist at all: the counter
+    returned "could not answer" and the caller let the exchange through, which
+    left a pending token with no cap and no single use for the whole of an
+    outage while a comment claimed the opposite.
+    """
+    now = time.monotonic()
+    with _local_attempts_lock:
+        # Pruned on the way past rather than on a timer. The map is only
+        # written during an outage and each entry lives as long as a pending
+        # token, so it stays small; without this it would not.
+        for key, (_used, expires) in list(_local_attempts.items()):
+            if expires <= now:
+                del _local_attempts[key]
+
+        used, expires = _local_attempts.get(jti, (0, now + seconds))
+        used += 1
+        _local_attempts[jti] = (used, expires)
+
+    return used <= MFA_ATTEMPTS_PER_TOKEN
+
+
+async def spend_attempt(jti: str, *, seconds: int) -> bool:
+    """Count one wrong-code attempt against a pending token.
+
+    ``True`` while the token has attempts left, ``False`` once it is finished.
+
+    Never "could not answer". An unavailable counter used to mean no cap at
+    all, which is the wrong way for this control to fail: the code it guards
+    is six digits with a one-step drift window either side, so three values in
+    a million, and an unlimited number of tries against that inside the
+    token's five minutes is not a wall. When Redis cannot answer this falls
+    back to :func:`_local_spend_attempt`, which is per worker and therefore
+    weaker, but finite.
+
+    The TTL is set once, when the counter is created, and never refreshed, so
+    the window cannot be pushed forward by attempting again. That is the same
+    mistake the failure counter above made and had to be corrected for.
+    """
+    key = f"{_KEY_PREFIX}attempts:{jti}"
+    try:
+        client = _redis()
+        # One round trip, and atomic. INCR followed by EXPIRE leaves a key
+        # with no TTL if the second call is the one that fails, and the
+        # failure counter above already solved this with a script.
+        used = await client.eval(  # type: ignore[misc]
+            _SPEND_ATTEMPT, 1, key, str(seconds)
+        )
+    except (RedisError, RuntimeError) as exc:
+        _degraded("spend_attempt", exc)
+        return _local_spend_attempt(jti, seconds=seconds)
+    return int(used) <= MFA_ATTEMPTS_PER_TOKEN
+
+
 def _keys(email: str) -> tuple[str, str, str]:
     subkey = hmac.new(secret_key().encode("utf-8"), _KEY_INFO, hashlib.sha256).digest()
     digest = hmac.new(subkey, normalize_email(email).encode("utf-8"), hashlib.sha256).hexdigest()
@@ -312,6 +403,73 @@ async def record_failure(email: str) -> int:
     return seconds
 
 
+async def release_spend(jti: str) -> None:
+    """Give back a claim taken by :func:`spend_once` that was not used.
+
+    The claim is taken before the code is checked, so that two requests
+    racing with the same token cannot both proceed. A wrong code then has to
+    give it back, or one mistyped digit would finish the token: the attempt
+    counter is what bounds retries, not this.
+
+    Failures are ignored on purpose. The claim expires with the token either
+    way, so the worst a failed release does is cost somebody the rest of that
+    token's attempts, which is the same as it working perfectly and them
+    running out.
+    """
+    try:
+        await _redis().delete(f"{_KEY_PREFIX}spent:{jti}")
+    except (RedisError, RuntimeError) as exc:
+        _degraded("release_spend", exc)
+
+
+async def spend_once(jti: str, *, seconds: int) -> bool:
+    """Claim a token id. False if somebody already has it.
+
+    A pending credential is worth one exchange. Leaving it usable after that
+    is not exploitable on its own -- whoever holds it still has to supply a
+    second factor -- but a value that arrives in a redirect and lives in
+    browser history should stop working the moment it has done its job, rather
+    than merely stop being useful.
+
+    ``SET NX`` is the whole mechanism: the first caller creates the key and
+    gets True, everybody after gets False, and the key expires with the token
+    so nothing accumulates.
+
+    Not gated on ``login_throttle_enabled``, unlike the counters above. Single
+    use is not a rate: an operator who turns the throttle off is asking for
+    failed passwords to stop being counted, and reading that as "and let a
+    pending token be exchanged repeatedly" is a decision they did not make.
+    That coupling was here first and is the kind that only shows up in an
+    incident, when the setting was changed for one reason and took a second
+    control with it.
+
+    Redis being unreachable degrades to allowing the exchange. That is a real
+    hole and it is not closed here: what bounds it instead is
+    :func:`spend_attempt`, which falls back to an in-process counter rather
+    than to permitting everything, so a token remains finite during an outage
+    even though it stops being single use. Said plainly because the first
+    version of this claimed a fallback made the exchange stricter and it did
+    not: with Redis down neither control applied at all.
+    """
+    try:
+        created = await _redis().set(f"{_KEY_PREFIX}spent:{jti}", "1", ex=seconds, nx=True)
+    except (RedisError, RuntimeError) as exc:
+        # Its own line, above the generic one. "Redis is unavailable" tells an
+        # operator that something is broken; it does not tell them that for the
+        # duration a pending credential can be exchanged more than once. Whoever
+        # investigates an incident afterwards needs to know that this specific
+        # protection was off during that window, and the generic message does
+        # not say which protection.
+        log.warning(
+            "auth.mfa_single_use_not_enforced",
+            reason="redis unavailable",
+            window_seconds=seconds,
+        )
+        _degraded("spend_once", exc)
+        return True
+    return bool(created)
+
+
 async def clear(email: str) -> None:
     """Forget an address's failures.
 
@@ -344,9 +502,13 @@ def throttle_keys(email: str) -> tuple[str, str, str]:
 
 
 __all__: list[Any] = [
+    "MFA_ATTEMPTS_PER_TOKEN",
     "clear",
     "close_client",
     "record_failure",
     "seconds_until_retry",
+    "release_spend",
+    "spend_attempt",
+    "spend_once",
     "throttle_keys",
 ]

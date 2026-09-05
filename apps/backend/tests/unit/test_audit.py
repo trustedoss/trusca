@@ -65,6 +65,27 @@ def test_mask_sensitive_columns_removes_password_hash():
     assert "sha256" in masked["email"]
 
 
+def test_mask_covers_the_second_factor_secret_and_the_recovery_hashes():
+    """Both live on audited tables, and both reached the diff unmasked.
+
+    The column names are read off the models rather than typed here, so a
+    rename moves the test with the code instead of leaving it guarding a name
+    nothing writes any more.
+    """
+    from core.audit import mask_sensitive_columns
+    from models.auth import User, UserRecoveryCode
+
+    secret_column = User.mfa_secret_encrypted.key
+    hash_column = UserRecoveryCode.code_hash.key
+
+    masked = mask_sensitive_columns(
+        {secret_column: "gAAAAABciphertext", hash_column: "$2b$12$hash"}
+    )
+
+    assert masked[secret_column] == "***"
+    assert masked[hash_column] == "***"
+
+
 def test_listener_skips_audit_log_table():
     """Recursion guard: AuditLog inserts must not trigger another audit row."""
     from core.audit import is_audited_table

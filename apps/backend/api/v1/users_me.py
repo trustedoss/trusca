@@ -23,17 +23,43 @@ import uuid
 import structlog
 from fastapi import APIRouter, Depends, Request, Response, status
 from fastapi.responses import JSONResponse
+from jose import JWTError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from core.db import get_db
 from core.errors import problem_response
-from core.security import CurrentUser, get_current_user
+from core.login_throttle import record_failure, seconds_until_retry
+from core.security import (
+    TOKEN_TYPE_MFA_ENROLLING,
+    CurrentUser,
+    create_mfa_pending_token,
+    decode_token,
+    get_current_user,
+)
+from models import User
+from schemas.auth import (
+    MfaEnrolCompleteRequest,
+    MfaEnrolStartResponse,
+    MfaStepUpRequest,
+    RecoveryCodesResponse,
+)
 from schemas.notification import NotificationPrefsIn, NotificationPrefsOut
 from schemas.oauth_identity import (
     OAuthIdentityListResponse,
     OAuthIdentityOut,
 )
+from services.mfa_service import (
+    InvalidMfaCode,
+    MfaAlreadyEnabled,
+    MfaNotEnrolled,
+    ReauthenticationRequired,
+    begin_enrolment,
+    complete_enrolment,
+    reauthenticate,
+    regenerate_recovery_codes,
+)
 from services.notification_service import (
+    create_notification,
     get_or_create_prefs,
     update_prefs,
 )
@@ -272,4 +298,309 @@ async def export_self(
                 f'attachment; filename="trusca-export-{actor.id}.json"'
             )
         },
+    )
+
+
+# ---------------------------------------------------------------------------
+# Second factor
+#
+# Enrolment is two calls, not one. The first stores a secret and returns it to
+# be scanned; the second proves the authenticator produced a code from it and
+# only then turns the factor on. Doing it in one call means anybody who closes
+# the tab between scanning and confirming is locked out of their own account at
+# the next sign-in, asked for a code their app was never set up to make.
+# ---------------------------------------------------------------------------
+
+
+def _throttled_step_up(request: Request, retry_after: int) -> Response:
+    """429 with Retry-After, in the same shape the sign-in screen gets.
+
+    A second copy of the RFC 7807 body would drift from that one; what differs
+    is only the wording, because somebody here is confirming who they are
+    rather than signing in.
+    """
+    response = problem_response(
+        status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+        title="Too Many Attempts",
+        detail=(
+            "Too many failed attempts to confirm it is you. Wait and try again."
+        ),
+        instance=str(request.url.path),
+        type_="https://trustedoss.dev/problems/too-many-attempts",
+        retry_after_seconds=retry_after,
+    )
+    response.headers["Retry-After"] = str(retry_after)
+    return response
+
+
+async def _step_up_or_problem(
+    request: Request,
+    session: AsyncSession,
+    *,
+    user: User,
+    payload: MfaStepUpRequest,
+) -> Response | None:
+    """``None`` when the person proved themselves, a problem response otherwise.
+
+    One shape for both routes, so the answer cannot differ between them. The
+    401 is 401 rather than 403: the session is fine, what is missing is a
+    fresh proof, and a client that reads 403 as "this account may not" would
+    hide the retry rather than offer it.
+
+    Counted, and this is not decoration. The premise of the step-up is that a
+    session is not enough because a stolen one is what the factor exists to
+    survive. An uncounted password check here hands whoever holds that session
+    an unlimited guessing oracle for the credential above it, which is worth
+    more than the session: a password survives revocation and is often reused
+    elsewhere. So the control added to make a stolen session less valuable
+    would have made it more so.
+
+    Counted into the same per-address counter as the sign-in screen rather
+    than a second one of its own. Two counters mean an attacker takes each to
+    just under its threshold and gets the sum, and one counter puts a step-up
+    attack in the place an operator already looks.
+    """
+    retry_after = await seconds_until_retry(user.email)
+    if retry_after > 0:
+        return _throttled_step_up(request, retry_after)
+
+    try:
+        await reauthenticate(
+            session, user=user, password=payload.password, code=payload.code
+        )
+    except ReauthenticationRequired:
+        wait = await record_failure(user.email)
+        log.warning("auth.mfa_step_up_failed", user_id=str(user.id))
+        if wait > 0:
+            return _throttled_step_up(request, wait)
+        # Deliberately the same answer for a wrong password, a wrong code and
+        # nothing supplied. Distinguishing them tells whoever holds a stolen
+        # session which of the two proofs is worth attacking.
+        return problem_response(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            title="Confirm It Is You",
+            detail=(
+                "enter your current password, or a code from your "
+                "authenticator app, to continue"
+            ),
+            instance=str(request.url.path),
+        )
+    return None
+
+
+@router.post(
+    "/mfa/enrol",
+    response_model=MfaEnrolStartResponse,
+    summary="Start enrolling a second factor",
+)
+async def start_mfa_enrolment(
+    request: Request,
+    payload: MfaStepUpRequest,
+    session: AsyncSession = Depends(get_db),
+    current_user: CurrentUser = Depends(get_current_user),
+) -> Response:
+    """Store a secret and hand back what the setup screen needs to show it.
+
+    Behind a step-up. Enrolling on somebody else's account is a takeover: the
+    attacker's authenticator becomes the factor, and the owner is locked out
+    by the control they never set up.
+    """
+    user = await session.get(User, current_user.id)
+    if user is None:
+        return problem_response(
+            status_code=status.HTTP_404_NOT_FOUND,
+            title="User Not Found",
+            detail="user not found",
+            instance=str(request.url.path),
+        )
+
+    step_up = await _step_up_or_problem(request, session, user=user, payload=payload)
+    if step_up is not None:
+        return step_up
+
+    try:
+        secret, uri = await begin_enrolment(session, user=user)
+    except MfaAlreadyEnabled:
+        return problem_response(
+            status_code=status.HTTP_409_CONFLICT,
+            title="Already Enabled",
+            detail=(
+                "a second factor is already enabled; clear it before enrolling "
+                "again"
+            ),
+            instance=str(request.url.path),
+        )
+
+    body = MfaEnrolStartResponse(
+        secret=secret,
+        provisioning_uri=uri,
+        # A separate type from the sign-in one. If they were the same, starting
+        # an enrolment would mint something that finishes a sign-in, which is a
+        # way past the very factor being enrolled.
+        mfa_token=create_mfa_pending_token(
+            subject=str(user.id), token_type=TOKEN_TYPE_MFA_ENROLLING
+        ),
+    )
+    return Response(
+        content=body.model_dump_json(),
+        media_type="application/json",
+        status_code=status.HTTP_200_OK,
+    )
+
+
+@router.post(
+    "/mfa/enrol/confirm",
+    response_model=RecoveryCodesResponse,
+    summary="Finish enrolling by proving the authenticator works",
+)
+async def confirm_mfa_enrolment(
+    request: Request,
+    payload: MfaEnrolCompleteRequest,
+    session: AsyncSession = Depends(get_db),
+    current_user: CurrentUser = Depends(get_current_user),
+) -> Response:
+    """Turn the factor on and return the recovery codes, shown once."""
+    try:
+        claims = decode_token(payload.mfa_token, expected_type=TOKEN_TYPE_MFA_ENROLLING)
+    except (JWTError, ValueError):
+        return problem_response(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            title="Invalid Enrolment Token",
+            detail="the enrolment has expired; start again",
+            instance=str(request.url.path),
+        )
+
+    # The token names a user and the request carries a session. They have to be
+    # the same person: without this, somebody could finish their own enrolment
+    # against another account's session, or the reverse.
+    if str(claims.get("sub")) != str(current_user.id):
+        return problem_response(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            title="Invalid Enrolment Token",
+            detail="the enrolment does not belong to this session",
+            instance=str(request.url.path),
+        )
+
+    user = await session.get(User, current_user.id)
+    if user is None:
+        return problem_response(
+            status_code=status.HTTP_404_NOT_FOUND,
+            title="User Not Found",
+            detail="user not found",
+            instance=str(request.url.path),
+        )
+
+    try:
+        codes = await complete_enrolment(session, user=user, code=payload.code)
+    except MfaAlreadyEnabled:
+        return problem_response(
+            status_code=status.HTTP_409_CONFLICT,
+            title="Already Enabled",
+            detail="a second factor is already enabled",
+            instance=str(request.url.path),
+        )
+    except MfaNotEnrolled:
+        return problem_response(
+            status_code=status.HTTP_409_CONFLICT,
+            title="No Enrolment In Progress",
+            detail="start the enrolment again",
+            instance=str(request.url.path),
+        )
+    except InvalidMfaCode:
+        return problem_response(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            title="Invalid Code",
+            detail="that code did not match; check the time on your device",
+            instance=str(request.url.path),
+        )
+
+    # Told, not just logged. Somebody who did not set this up needs to find
+    # out that their account now asks for a code, and the only place they will
+    # look is the portal. Written after the enrolment landed, so a notice can
+    # never describe something that did not happen.
+    await create_notification(
+        session,
+        user_id=user.id,
+        kind="account_security",
+        title="Two-step sign-in is now on",
+        body=(
+            "An authenticator app was set up on your account. If that was not "
+            "you, change your password and tell your administrator: whoever "
+            "did it can sign in as you."
+        ),
+        link="/profile",
+        target_table="users",
+        target_id=user.id,
+    )
+    body = RecoveryCodesResponse(codes=codes)
+    return Response(
+        content=body.model_dump_json(),
+        media_type="application/json",
+        status_code=status.HTTP_200_OK,
+    )
+
+
+@router.post(
+    "/mfa/recovery-codes",
+    response_model=RecoveryCodesResponse,
+    summary="Replace the unused recovery codes with a fresh set",
+)
+async def regenerate_mfa_recovery_codes(
+    request: Request,
+    payload: MfaStepUpRequest,
+    session: AsyncSession = Depends(get_db),
+    current_user: CurrentUser = Depends(get_current_user),
+) -> Response:
+    """Issue a new set, invalidating every unused code from the old one.
+
+    Behind a step-up, because what it hands back is ten sign-ins that bypass
+    the factor, survive a password change, and are not touched by revoking
+    sessions. Gating that on a session alone means a stolen token is worth ten
+    of them, and a stolen session is the case the factor exists to survive.
+    """
+    user = await session.get(User, current_user.id)
+    if user is None:
+        return problem_response(
+            status_code=status.HTTP_404_NOT_FOUND,
+            title="User Not Found",
+            detail="user not found",
+            instance=str(request.url.path),
+        )
+
+    step_up = await _step_up_or_problem(request, session, user=user, payload=payload)
+    if step_up is not None:
+        return step_up
+
+    try:
+        codes = await regenerate_recovery_codes(session, user=user)
+    except MfaNotEnrolled:
+        return problem_response(
+            status_code=status.HTTP_409_CONFLICT,
+            title="Not Enabled",
+            detail="no second factor is enabled",
+            instance=str(request.url.path),
+        )
+
+    # The codes just issued are ten sign-ins that bypass the factor, and the
+    # old set stopped working. Somebody who did not ask for that has to hear
+    # about it.
+    await create_notification(
+        session,
+        user_id=user.id,
+        kind="account_security",
+        title="New recovery codes were issued",
+        body=(
+            "A fresh set of recovery codes was created for your account and "
+            "the previous set no longer works. If that was not you, change "
+            "your password and tell your administrator."
+        ),
+        link="/profile",
+        target_table="users",
+        target_id=user.id,
+    )
+    body = RecoveryCodesResponse(codes=codes)
+    return Response(
+        content=body.model_dump_json(),
+        media_type="application/json",
+        status_code=status.HTTP_200_OK,
     )

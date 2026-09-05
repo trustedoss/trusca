@@ -136,7 +136,9 @@ async def test_a_rotation_racing_the_reset_leaves_no_live_session(
     async with factory() as setup:
         user = await make_user(setup)
         email, user_id = user.email, user.id
-        _access, refresh, _exp = await issue_token_pair(setup, user=user)
+        _access, refresh, _exp = await issue_token_pair(
+            setup, user=user, second_factor_satisfied=True
+        )
 
     reset_token = await _issue_reset_token(factory, email, captured_reset_email)
 
@@ -190,7 +192,9 @@ async def test_a_login_racing_the_reset_leaves_no_live_session(
         assert who is not None, "the fixture password does not authenticate"
 
         reached, release = _gate_first_commit(logging_in)
-        login_task = asyncio.create_task(issue_token_pair(logging_in, user=who))
+        login_task = asyncio.create_task(
+            issue_token_pair(logging_in, user=who, second_factor_satisfied=True)
+        )
         await asyncio.wait_for(reached.wait(), timeout=10.0)
 
         reset_task = asyncio.create_task(
@@ -222,7 +226,9 @@ async def test_a_rotation_after_the_reset_is_refused(factory, captured_reset_ema
     async with factory() as setup:
         user = await make_user(setup)
         email, user_id = user.email, user.id
-        _access, refresh, _exp = await issue_token_pair(setup, user=user)
+        _access, refresh, _exp = await issue_token_pair(
+            setup, user=user, second_factor_satisfied=True
+        )
 
     reset_token = await _issue_reset_token(factory, email, captured_reset_email)
 
@@ -272,7 +278,7 @@ async def test_a_login_that_verified_the_old_password_cannot_mint_after_the_rese
             )
 
         with pytest.raises(Exception) as refusal:
-            await issue_token_pair(logging_in, user=who)
+            await issue_token_pair(logging_in, user=who, second_factor_satisfied=True)
 
     assert "credential" in str(refusal.value).lower() or refusal.type.__name__ in {
         "StaleCredential",
@@ -305,7 +311,7 @@ async def test_the_reset_locks_the_user_before_it_sweeps(factory, captured_reset
     async with factory() as setup:
         user = await make_user(setup)
         email, user_id = user.email, user.id
-        await issue_token_pair(setup, user=user)
+        await issue_token_pair(setup, user=user, second_factor_satisfied=True)
 
     reset_token = await _issue_reset_token(factory, email, captured_reset_email)
 
@@ -356,7 +362,9 @@ async def test_an_oauth_only_user_signs_in_normally(factory) -> None:
     async with factory() as session:
         user = await make_user(session)
         user_id = user.id
-        access, refresh, _expires = await _issue_token_pair_in_session(session, user=user)
+        access, refresh, _expires = await _issue_token_pair_in_session(
+            session, user=user, second_factor_satisfied=True
+        )
 
     assert access and refresh
     assert await _active_refresh_count(factory, user_id) == 1
@@ -391,7 +399,7 @@ async def test_an_oauth_callback_racing_a_reset_is_refused(factory, captured_res
             )
 
         with pytest.raises(StaleCredential):
-            await _issue_token_pair_in_session(completing, user=who)
+            await _issue_token_pair_in_session(completing, user=who, second_factor_satisfied=True)
 
     assert await _active_refresh_count(factory, user_id) == 0
 
@@ -419,7 +427,7 @@ async def test_a_user_deleted_mid_request_gets_no_session(factory) -> None:
             await deleting.commit()
 
         with pytest.raises(StaleCredential):
-            await issue_token_pair(signing_in, user=who)
+            await issue_token_pair(signing_in, user=who, second_factor_satisfied=True)
 
 
 async def test_an_absent_stored_credential_is_refused_not_waved_through(factory) -> None:

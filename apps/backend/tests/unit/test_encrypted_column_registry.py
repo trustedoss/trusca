@@ -50,6 +50,7 @@ EXPECTED_PURPOSES: dict[str, str | None] = {
     "projects.git_credential_encrypted": None,
     "registry_credentials.password_encrypted": None,
     "projects.webhook_secret_encrypted": None,
+    "users.mfa_secret_encrypted": "totp",
 }
 
 
@@ -165,6 +166,36 @@ def test_every_encryption_call_site_passes_the_purpose_the_registry_records()  -
         f"{unknown}. Add the column and its purpose to "
         "core.encrypted_columns, or the rotation command will not know the "
         "rows exist."
+    )
+
+
+def test_every_encrypted_column_is_masked_out_of_the_audit_diff() -> None:
+    """Ciphertext must not reach ``audit_logs.diff``, and this is where it does.
+
+    The audit listener copies changed columns into the diff by name. Every
+    encrypted column is on a table the listener audits, so a column added to
+    the registry and not to the mask writes its ciphertext into an audit row
+    on the next UPDATE that touches it.
+
+    That is worse here than the masking elsewhere in the codebase, for two
+    reasons this file can state. ``audit_logs`` refuses UPDATE by trigger, so
+    a value that lands there cannot be scrubbed afterwards. And rotation walks
+    this registry, so it rewrites the column and cannot reach the copy in the
+    diff, which then stays readable under a key the operator has retired.
+
+    The TOTP secret arrived without its mask entry, which is what this exists
+    to stop happening to the next one.
+    """
+    from core.audit import _SENSITIVE_COLUMNS
+
+    unmasked = sorted(
+        c.label for c in ENCRYPTED_COLUMNS if c.column not in _SENSITIVE_COLUMNS
+    )
+    assert not unmasked, (
+        f"these encrypted columns are not masked out of the audit diff: "
+        f"{unmasked}. Add the column name to core.audit._SENSITIVE_COLUMNS. "
+        "audit_logs is append-only, so a diff that captures ciphertext keeps "
+        "it after the column itself has been re-encrypted."
     )
 
 

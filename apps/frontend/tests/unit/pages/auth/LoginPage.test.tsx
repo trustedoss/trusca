@@ -11,16 +11,29 @@ import { useAuthStore, type AuthUser } from "@/stores/authStore";
 // Mock the wire layer so the unit test never touches axios / network. The
 // integration coverage for the real interceptor is in api.test.ts; here we
 // only care about the page's behavioural contract.
-vi.mock("@/lib/api", () => ({
+vi.mock("@/lib/api", async (importOriginal) => ({
+  // The real module first, then the stubs over it. A whole-module factory
+  // replaces every export, so one added later arrives here as undefined and
+  // the page calls it: `isMfaRequired` did exactly that, and every response
+  // then looked like a completed sign-in, which is the branch this file
+  // exists to check.
+  ...(await importOriginal<typeof import("@/lib/api")>()),
   postLogin: vi.fn(),
+  postMfaVerify: vi.fn(),
   fetchMe: vi.fn(),
   postRegister: vi.fn(),
   postLogout: vi.fn(),
   fetchOAuthProviders: vi.fn(),
 }));
 
-import { fetchMe, fetchOAuthProviders, postLogin } from "@/lib/api";
+import {
+  fetchMe,
+  fetchOAuthProviders,
+  postLogin,
+  postMfaVerify,
+} from "@/lib/api";
 const mockedPostLogin = vi.mocked(postLogin);
+const mockedPostMfaVerify = vi.mocked(postMfaVerify);
 const mockedFetchMe = vi.mocked(fetchMe);
 const mockedFetchProviders = vi.mocked(fetchOAuthProviders);
 
@@ -283,6 +296,98 @@ describe("LoginPage", () => {
     const alert = await screen.findByTestId("login-error");
     expect(alert).toHaveTextContent(/reset/i);
     expect(alert.textContent).not.toMatch(/NaN|undefined/);
+  });
+
+  it("asks for a code instead of signing in when a second factor is owed", async () => {
+    // The password form gives way to the code form rather than sitting beside
+    // it: leaving the fields visible invites a retype, which starts a fresh
+    // sign-in and discards the pending token being asked for.
+    mockedPostLogin.mockResolvedValueOnce({
+      mfa_required: true,
+      mfa_token: "pending-token",
+      expires_in: 300,
+    });
+
+    const user = userEvent.setup();
+    renderLogin();
+    await user.type(screen.getByTestId("login-email"), "alice@example.com");
+    await user.type(screen.getByTestId("login-password"), "right-password-12");
+    await user.click(screen.getByTestId("login-submit"));
+
+    expect(await screen.findByTestId("login-mfa-form")).toBeInTheDocument();
+    expect(screen.queryByTestId("login-password")).not.toBeInTheDocument();
+    expect(useAuthStore.getState().isAuthenticated).toBe(false);
+    expect(mockedFetchMe).not.toHaveBeenCalled();
+  });
+
+  it("signs in once the code is accepted", async () => {
+    mockedPostLogin.mockResolvedValueOnce({
+      mfa_required: true,
+      mfa_token: "pending-token",
+      expires_in: 300,
+    });
+    mockedPostMfaVerify.mockResolvedValueOnce({
+      access_token: "real-token",
+      token_type: "bearer",
+      expires_in: 1800,
+    });
+    mockedFetchMe.mockResolvedValueOnce(sampleUser);
+
+    const user = userEvent.setup();
+    renderLogin();
+    await user.type(screen.getByTestId("login-email"), "alice@example.com");
+    await user.type(screen.getByTestId("login-password"), "right-password-12");
+    await user.click(screen.getByTestId("login-submit"));
+
+    await user.type(await screen.findByTestId("login-mfa-code"), "123456");
+    await user.click(screen.getByTestId("login-mfa-submit"));
+
+    await waitFor(() => {
+      expect(useAuthStore.getState().isAuthenticated).toBe(true);
+    });
+    expect(mockedPostMfaVerify).toHaveBeenCalledWith({
+      mfa_token: "pending-token",
+      code: "123456",
+    });
+  });
+
+  it("keeps the code step open when the code is wrong", async () => {
+    // Sending somebody back to the password form would discard a pending token
+    // that is still good, and the next code from their app is thirty seconds
+    // away. The field is cleared so the wrong digits are not resubmitted.
+    mockedPostLogin.mockResolvedValueOnce({
+      mfa_required: true,
+      mfa_token: "pending-token",
+      expires_in: 300,
+    });
+    mockedPostMfaVerify.mockRejectedValueOnce(
+      new ProblemError("invalid code", {
+        status: 401,
+        title: "Invalid Credentials",
+        detail: "invalid code",
+        problem: {
+          type: "about:blank",
+          title: "Invalid Credentials",
+          status: 401,
+          detail: "invalid code",
+          instance: "/auth/mfa/verify",
+        },
+      }),
+    );
+
+    const user = userEvent.setup();
+    renderLogin();
+    await user.type(screen.getByTestId("login-email"), "alice@example.com");
+    await user.type(screen.getByTestId("login-password"), "right-password-12");
+    await user.click(screen.getByTestId("login-submit"));
+
+    await user.type(await screen.findByTestId("login-mfa-code"), "000000");
+    await user.click(screen.getByTestId("login-mfa-submit"));
+
+    expect(await screen.findByTestId("login-error")).toBeInTheDocument();
+    expect(screen.getByTestId("login-mfa-form")).toBeInTheDocument();
+    expect(screen.getByTestId("login-mfa-code")).toHaveValue("");
+    expect(useAuthStore.getState().isAuthenticated).toBe(false);
   });
 
   it("falls back to a generic network message on transport failure", async () => {

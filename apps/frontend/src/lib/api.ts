@@ -214,12 +214,33 @@ export interface UserPublicWire {
   created_at: string;
   /** Present on /auth/me; absent on /auth/register. */
   memberships?: MembershipWire[];
+  /** Present on the authenticated /auth/me shape only. */
+  mfa_enabled?: boolean;
 }
 
 export interface TokenResponse {
   access_token: string;
   token_type: string;
   expires_in: number;
+}
+
+/** What `/auth/login` answers when the password was right and a code is owed.
+ *
+ * A separate shape rather than an optional field on {@link TokenResponse},
+ * because the two say opposite things about whether anybody is signed in. A
+ * caller that forgets to check a boolean carries on as though it has a token;
+ * one handed a union has to look. */
+export interface MfaRequiredResponse {
+  mfa_required: true;
+  mfa_token: string;
+  expires_in: number;
+}
+
+export type LoginResult = TokenResponse | MfaRequiredResponse;
+
+/** Whether a sign-in stopped for a second factor rather than completing. */
+export function isMfaRequired(result: LoginResult): result is MfaRequiredResponse {
+  return "mfa_required" in result;
 }
 
 /** Map the wire shape to the canonical {@link AuthUser}. */
@@ -240,6 +261,7 @@ function toAuthUser(u: UserPublicWire): AuthUser {
       u.is_superuser,
       memberships.map((m) => m.role),
     ),
+    mfaEnabled: u.mfa_enabled ?? false,
     isActive: u.is_active,
     isSuperuser: u.is_superuser,
     // memberships are ordered oldest-first by the backend; [0] is the stable
@@ -249,8 +271,17 @@ function toAuthUser(u: UserPublicWire): AuthUser {
   };
 }
 
-export async function postLogin(payload: LoginPayload): Promise<TokenResponse> {
-  const { data } = await api.post<TokenResponse>("/auth/login", payload);
+export async function postLogin(payload: LoginPayload): Promise<LoginResult> {
+  const { data } = await api.post<LoginResult>("/auth/login", payload);
+  return data;
+}
+
+/** Exchange a pending token and a code for a real session. */
+export async function postMfaVerify(payload: {
+  mfa_token: string;
+  code: string;
+}): Promise<TokenResponse> {
+  const { data } = await api.post<TokenResponse>("/auth/mfa/verify", payload);
   return data;
 }
 

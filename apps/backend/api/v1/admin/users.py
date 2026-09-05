@@ -63,6 +63,8 @@ from services.admin_user_service import (
     update_user_role,
 )
 from services.csv_export import CSV_MEDIA_TYPE
+from services.mfa_service import clear_for_user as clear_mfa_for_user
+from services.notification_service import create_notification
 
 router = APIRouter(prefix="/users", tags=["admin"])
 log = structlog.get_logger("admin.users.api")
@@ -338,6 +340,102 @@ async def password_reset_endpoint(
         actor_id=str(actor.id),
         target_user_id=str(user_id),
         reset_token_id=str(reset_token_id),
+    )
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
+
+
+@router.post(
+    "/{user_id}/clear-mfa",
+    status_code=status.HTTP_204_NO_CONTENT,
+    summary="Clear a person's second factor",
+)
+async def clear_mfa_endpoint(
+    request: Request,
+    user_id: uuid.UUID,
+    session: AsyncSession = Depends(get_db),
+    actor: CurrentUser = Depends(require_super_admin_or_404()),
+) -> Response:
+    """
+    Undoes somebody's second-factor enrolment: the flag, the secret, the replay
+    counter and every unused recovery code, with existing sessions ended.
+
+    This exists because losing an authenticator is the ordinary failure of a
+    second factor, and the alternatives do not cover it. A password reset
+    cannot: unlocking the factor by mailbox would reduce it to owning the
+    mailbox, which is what the first factor already proves. Recovery codes do,
+    for anybody who kept them.
+
+    -- What this does not protect against ------------------------------------
+
+    A compromised super admin. That is not new, and it is not created here:
+    the same account can already change roles and create users, so it can mint
+    itself a fresh super admin with no second factor. What this adds is the
+    ability to impersonate one *specific* existing person, and the notification
+    below is what narrows that: somebody who did not ask for their factor to be
+    cleared finds out that it was.
+
+    Deliberately not two-person: an unlock is reversible, since the owner can
+    enrol again, and making somebody who is locked out wait for a second
+    approver costs more than it buys.
+    """
+    user = await session.get(User, user_id)
+    if user is None:
+        return _problem_for_admin_user_error(request, AdminUserNotFound("user not found"))
+
+    if not user.mfa_enabled and user.mfa_secret_encrypted is None:
+        return _problem_for_admin_user_error(
+            request, AdminUserNotFound("no second factor to clear")
+        )
+
+    # The row first, then the effect. The reason this endpoint exists is that
+    # clearing somebody's factor should be reviewable afterwards, and a commit
+    # that fails with the factor already gone leaves the one action it was
+    # added for unrecorded.
+    ctx = get_audit_context()
+    session.add(
+        AuditLog(
+            actor_user_id=actor.id,
+            team_id=None,
+            target_table="users",
+            target_id=str(user_id),
+            action="user.mfa_cleared",
+            request_id=ctx.get("request_id"),
+            ip=ctx.get("ip"),
+            user_agent=ctx.get("user_agent"),
+            diff={},
+        )
+    )
+    await session.commit()
+
+    await clear_mfa_for_user(session, user=user)
+
+    # Told, not just logged. An audit row is read by whoever goes looking; this
+    # reaches the person whose account changed, which is the only way somebody
+    # learns their factor was removed without them asking.
+    # In-app rather than through the dispatcher: this must not depend on a
+    # Celery worker being up, and the person it is for is by definition able to
+    # sign in and read it once they enrol again. Written after the clear so a
+    # failure here cannot leave a notice about something that did not happen.
+    await create_notification(
+        session,
+        user_id=user_id,
+        kind="account_security",
+        title="Your second factor was removed",
+        body=(
+            "An administrator cleared the authenticator app on your account. "
+            "If you did not ask for this, tell your administrator and set up "
+            "two-factor sign-in again straight away."
+        ),
+        link="/profile",
+        target_table="users",
+        target_id=user_id,
+    )
+    await session.commit()
+
+    log.info(
+        "admin.user.mfa_cleared",
+        actor_id=str(actor.id),
+        target_user_id=str(user_id),
     )
     return Response(status_code=status.HTTP_204_NO_CONTENT)
 

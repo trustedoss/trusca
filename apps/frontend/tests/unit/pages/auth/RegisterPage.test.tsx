@@ -8,7 +8,12 @@ import { RegisterPage } from "@/pages/auth/RegisterPage";
 import { ProblemError } from "@/lib/problem";
 import { useAuthStore, type AuthUser } from "@/stores/authStore";
 
-vi.mock("@/lib/api", () => ({
+vi.mock("@/lib/api", async (importOriginal) => ({
+  // A whole-module mock replaces every export, including ones added later:
+  // `isMfaRequired` became undefined here and the auto-login after
+  // registration threw, which reads as a page that stopped working. The real
+  // module is spread in first so a new export arrives rather than vanishes.
+  ...(await importOriginal<typeof import("@/lib/api")>()),
   // `api.get` backs useDemoMode's /health probe. The page renders a skeleton
   // until that settles, so these tests must resolve it as a normal (non-demo)
   // deploy or they would never see the form.

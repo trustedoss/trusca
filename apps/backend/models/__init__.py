@@ -37,6 +37,7 @@ from .auth import (  # noqa: E402,F401  (imported for metadata side effects)
     RefreshToken,
     Team,
     User,
+    UserRecoveryCode,
 )
 from .component_approval import (  # noqa: E402,F401  (imported for metadata side effects)
     ApprovalStatus,
@@ -206,6 +207,7 @@ __all__ = [
     "ScanSchedule",
     "Team",
     "User",
+    "UserRecoveryCode",
     "Vulnerability",
     "VulnerabilityFinding",
     "WebhookDelivery",

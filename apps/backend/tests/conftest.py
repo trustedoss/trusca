@@ -232,6 +232,17 @@ async def _isolate_engine_per_test() -> AsyncIterator[None]:
     core.db._ensure_state to rebuild it under the new loop.
     """
     yield
+    # The sign-in throttle keeps one Redis client per event loop for the same
+    # reason the engine is per-loop. Nothing closes it when the loop ends, so
+    # the connection is collected later against a loop that is already shut
+    # and prints "Event loop is closed" from a destructor, which is noise a
+    # reader has to rule out before trusting a run.
+    try:
+        from core.login_throttle import close_client
+    except Exception:  # pragma: no cover - the module is always importable
+        pass
+    else:
+        await close_client()
     try:
         from main import app
     except Exception:  # pragma: no cover

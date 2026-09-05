@@ -22,6 +22,7 @@ from urllib.parse import parse_qs, urlsplit
 import httpx
 import pytest
 from httpx import ASGITransport, AsyncClient
+from jose import JWTError
 from sqlalchemy import select, text
 from sqlalchemy.ext.asyncio import async_sessionmaker
 
@@ -889,3 +890,107 @@ def _patch_sync_client(
         real_init(self, *args, **kwargs)
 
     monkeypatch.setattr(httpx.Client, "__init__", _patched)
+
+
+async def test_the_callback_stops_for_a_second_factor_and_leaves_no_session(
+    client: AsyncClient,
+    db_factory: async_sessionmaker[Any],
+    seed_organization: None,
+    patch_async_client: Callable[[Callable[[httpx.Request], httpx.Response]], None],
+) -> None:
+    """A provider proves the provider account, not the second factor.
+
+    The user guide says OAuth still asks for the code, and this is the only
+    place that can be true or false. The branch is easy to get wrong in a way
+    that looks fine: a cookie set here plus a code screen in the SPA leaves a
+    complete session sitting behind that screen, and a client that skips the
+    screen and calls ``/auth/refresh`` is signed in having supplied no code.
+    """
+    from core.security import TOKEN_TYPE_MFA_PENDING, decode_token
+    from models import User
+
+    email = f"mfaoauth-{uuid.uuid4().hex[:8]}@example.com"
+    user_id = abs(hash(email)) % (10**9)
+
+    # Sign in once to create the account, then turn the factor on for it.
+    patch_async_client(_github_handler(user_id=user_id, email=email, name="Has MFA"))
+    first = await client.get(
+        "/auth/oauth/github/callback",
+        params={"code": "abc", "state": await _mint_state("github", "/dashboard")},
+    )
+    assert first.status_code == 302
+    assert "refresh_token=" in first.headers.get("set-cookie", "")
+
+    async with db_factory() as session:
+        user = (
+            await session.execute(select(User).where(User.email == email))
+        ).scalar_one()
+        user.mfa_enabled = True
+        user.mfa_secret_encrypted = "not-read-on-this-path"
+        await session.commit()
+
+    async with db_factory() as session:
+        first_login_at = (
+            await session.execute(select(User).where(User.email == email))
+        ).scalar_one().last_login_at
+    assert first_login_at is not None, "the first sign-in recorded nothing to compare"
+
+    client.cookies.clear()
+    patch_async_client(_github_handler(user_id=user_id, email=email, name="Has MFA"))
+    second = await client.get(
+        "/auth/oauth/github/callback",
+        params={"code": "abc", "state": await _mint_state("github", "/dashboard")},
+    )
+
+    assert second.status_code == 302
+    assert "refresh_token=" not in second.headers.get("set-cookie", "")
+
+    location = second.headers["location"]
+    # The fragment, not the query: a fragment never reaches a server, so it
+    # stays out of Referer headers and access logs on the way to the SPA.
+    assert "#mfa_token=" in location, location
+    assert "?mfa_token=" not in location
+    fragment = location.split("#", 1)[1]
+    token = parse_qs(fragment)["mfa_token"][0]
+
+    # What rode along proves the provider account and nothing else.
+    claims = decode_token(token, expected_type=TOKEN_TYPE_MFA_PENDING)
+    assert claims["sub"] == str(user.id)
+    with pytest.raises(JWTError):
+        decode_token(token, expected_type="access")
+
+    # And no session was written on the way. Minting one and discarding the
+    # value leaves a live refresh row for an account that has not supplied its
+    # code, which is a session by every measure except the cookie. The count is
+    # taken against the row created by the first sign-in, so this is asking
+    # whether the second one added anything rather than whether any exist.
+    from models import RefreshToken
+
+    async with db_factory() as session:
+        live = (
+            (
+                await session.execute(
+                    select(RefreshToken).where(
+                        RefreshToken.user_id == user.id,
+                        RefreshToken.revoked_at.is_(None),
+                    )
+                )
+            )
+            .scalars()
+            .all()
+        )
+    assert len(live) == 1, (
+        f"{len(live)} live refresh tokens: the callback minted a session for "
+        "an account that still owes a second factor"
+    )
+
+    # Nor was it recorded as a sign-in. last_login_at feeds dormant-account
+    # reaping and the admin list, and an attempt that stopped at the code
+    # screen is not one.
+    async with db_factory() as session:
+        again = (
+            await session.execute(select(User).where(User.email == email))
+        ).scalar_one()
+        assert again.last_login_at == first_login_at, (
+            "last_login_at moved on a sign-in that never completed"
+        )

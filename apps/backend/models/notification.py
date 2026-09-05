@@ -85,6 +85,12 @@ NOTIFICATION_KIND_VALUES = (
     # is why this kind exists: nobody re-scans an old release, so without an
     # alert the finding waits for the next build that happens to touch it.
     "malicious_detected",
+    # ER19-3: something changed about how this person signs in. Emitted when an
+    # administrator clears somebody's second factor, which is an action taken
+    # on their account by somebody else -- being told is the whole control, so
+    # the notification is written in the request rather than dispatched to a
+    # worker that may not be running.
+    "account_security",
 )
 
 

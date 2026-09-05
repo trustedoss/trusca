@@ -35,6 +35,17 @@ export interface AuthUser {
   isActive: boolean;
   isSuperuser: boolean;
   /**
+   * Whether this account asks for a second factor at sign-in.
+   *
+   * Optional rather than required, and not because twenty test fixtures would
+   * otherwise need editing. It is genuinely absent from some shapes: the
+   * register response carries no MFA state, and a just-created account has
+   * none. Making it required would push a meaningless `false` into every place
+   * that builds a user without knowing, which reads as an answer when it is
+   * really "not asked".
+   */
+  mfaEnabled?: boolean;
+  /**
    * Default team id, resolved from the first membership returned by
    * /auth/me (oldest-first). `null` only when the user has no memberships.
    * Used by project creation / write scoping.

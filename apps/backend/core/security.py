@@ -70,6 +70,26 @@ JWT_ALGORITHM = "HS256"
 TOKEN_TYPE_ACCESS = "access"
 TOKEN_TYPE_REFRESH = "refresh"
 
+#: A password was accepted and a second factor is still owed. Carries no
+#: authority of its own: ``decode_token(expected_type=...)`` refuses it
+#: everywhere except the endpoint that completes the sign-in, so presenting it
+#: to an ordinary route is the same as presenting nothing.
+#:
+#: It has to be a distinct type rather than an access token with a flag on it.
+#: A flag is something every reader has to remember to check, and the readers
+#: are every authenticated route; a type is something they refuse by default.
+TOKEN_TYPE_MFA_PENDING = "mfa-pending"
+
+#: The same shape, for somebody who is signed in and enrolling. Kept apart from
+#: the sign-in one on purpose: a token minted while setting MFA up must not be
+#: usable to finish a sign-in, or scanning a QR code would hand out a way past
+#: the factor it is enrolling.
+TOKEN_TYPE_MFA_ENROLLING = "mfa-enrolling"
+
+#: Minutes a pending token lives. Long enough to open an authenticator app and
+#: read a code, short enough that one left in a browser history is stale.
+MFA_PENDING_EXPIRE_MINUTES = 5
+
 # Role priority. Higher value means more privileged.
 #
 # The numbers start at 1, not 0, because ``_has_at_least`` reads this map with
@@ -180,6 +200,34 @@ def password_change_invalidates(
     return issued_at <= changed_at_second
 
 
+def credential_change_invalidates(
+    issued_at: int | None,
+    *,
+    password_changed_at: datetime | None,
+    mfa_changed_at: datetime | None,
+) -> bool:
+    """Whether a token predates either credential moving.
+
+    Two timestamps, one boundary. A token minted before the password changed
+    is refused, and so is one minted before the second factor was turned on,
+    turned off, or cleared by an administrator.
+
+    The second half is what makes the admin action mean what the guide says it
+    means. Clearing somebody's factor is what an operator reaches for when the
+    account is believed compromised, and without this the tokens the attacker
+    already holds keep working: the column was written and read by nothing,
+    which is the same as not having it.
+
+    Written as one call rather than two at each site because there are three
+    sites (the cached principal, the loaded row, and the WebSocket resolver)
+    and the one that gets forgotten is the one that matters. A guard test
+    pins each of them.
+    """
+    return password_change_invalidates(
+        issued_at, password_changed_at
+    ) or password_change_invalidates(issued_at, mfa_changed_at)
+
+
 def verify_password(plain: str, hashed: str) -> bool:
     """Constant-time bcrypt verification. Returns False on any error."""
     try:
@@ -209,6 +257,18 @@ async def verify_password_async(plain: str, hashed: str) -> bool:
     since there is no event loop for them to block.
     """
     return await asyncio.to_thread(verify_password, plain, hashed)
+
+
+async def hash_password_async(plain: str) -> str:
+    """Same as :func:`hash_password`, off the event loop.
+
+    The mirror of :func:`verify_password_async`, and needed for the same
+    reason: hashing costs what verifying costs, so a request that produces
+    several hashes stalls the worker for the sum of them. Issuing ten recovery
+    codes is ten hashes, about two seconds, and it is reachable by any
+    authenticated user.
+    """
+    return await asyncio.to_thread(hash_password, plain)
 
 
 # ---------------------------------------------------------------------------
@@ -310,6 +370,33 @@ def create_access_token(
         claims["role"] = role
     if extra_claims:
         claims.update(extra_claims)
+    return str(jwt.encode(claims, secret_key(), algorithm=JWT_ALGORITHM))
+
+
+def create_mfa_pending_token(*, subject: str, token_type: str) -> str:
+    """Mint a short-lived token that proves one factor and grants nothing.
+
+    ``token_type`` is one of :data:`TOKEN_TYPE_MFA_PENDING` (a sign-in awaiting
+    its second factor) or :data:`TOKEN_TYPE_MFA_ENROLLING` (an enrolment
+    awaiting its first code). They are separate so neither can be spent where
+    the other belongs.
+
+    Deliberately not a cookie and not a refresh token. Setting a refresh cookie
+    before the second factor is verified would leave a complete session behind
+    the screen that asks for the code, and a client that ignores the screen and
+    calls the refresh endpoint would be signed in without ever supplying it.
+    """
+    if token_type not in (TOKEN_TYPE_MFA_PENDING, TOKEN_TYPE_MFA_ENROLLING):
+        raise ValueError(f"not an MFA token type: {token_type!r}")
+    now = _now()
+    expires = now + timedelta(minutes=MFA_PENDING_EXPIRE_MINUTES)
+    claims: dict[str, Any] = {
+        "sub": subject,
+        "type": token_type,
+        "iat": int(now.timestamp()),
+        "exp": int(expires.timestamp()),
+        "jti": uuid.uuid4().hex,
+    }
     return str(jwt.encode(claims, secret_key(), algorithm=JWT_ALGORITHM))
 
 
@@ -418,6 +505,10 @@ class CurrentUser:
     # life rather than for the cache TTL. ``None`` for API-key principals,
     # which are a separate credential with their own revocation.
     password_changed_at: datetime | None = None
+    # When the second factor last moved, carried for the same reason and
+    # judged by the same boundary. ``None`` for API-key principals and for a
+    # user who has never enrolled.
+    mfa_changed_at: datetime | None = None
 
 
 def highest_role(roles: list[str], *, is_superuser: bool) -> str:
@@ -616,7 +707,11 @@ async def _load_current_user(
         # rebuilt entry carries the new timestamp, so a refill cannot hand the
         # stolen token back its access the way it would if the check lived
         # only on the miss path.
-        if password_change_invalidates(claims.get("iat"), cached.password_changed_at):
+        if credential_change_invalidates(
+            claims.get("iat"),
+            password_changed_at=cached.password_changed_at,
+            mfa_changed_at=cached.mfa_changed_at,
+        ):
             return None
         _bind_audit_actor(cached)
         return cached
@@ -646,7 +741,11 @@ async def _load_current_user(
     # principal: "populated only after this check" is not enough on its own,
     # because the entry is keyed by user and serves whichever token comes
     # next.
-    if password_change_invalidates(claims.get("iat"), user.password_changed_at):
+    if credential_change_invalidates(
+        claims.get("iat"),
+        password_changed_at=user.password_changed_at,
+        mfa_changed_at=user.mfa_changed_at,
+    ):
         return None
 
     memberships: list[Membership] = list(user.memberships)
@@ -668,6 +767,7 @@ async def _load_current_user(
         # Carried so the cached branch above can judge a later token without
         # re-reading the row.
         password_changed_at=user.password_changed_at,
+        mfa_changed_at=user.mfa_changed_at,
     )
 
     # Not cached: an inactive principal is one every caller refuses anyway,
@@ -824,6 +924,7 @@ def require_team_member() -> Callable[..., CurrentUser]:
 __all__ = [
     "CurrentUser",
     "create_access_token",
+    "create_mfa_pending_token",
     "create_refresh_token",
     "normalize_email",
     "decode_token",

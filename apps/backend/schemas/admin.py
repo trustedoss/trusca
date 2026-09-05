@@ -218,6 +218,14 @@ class AdminUserDetail(BaseModel):
     created_at: datetime
     updated_at: datetime
     scan_count: int = 0
+    mfa_enabled: bool = Field(
+        default=False,
+        description=(
+            "Whether the account requires a second factor at sign-in. The "
+            "drawer shows the clear action only when this is true, so an "
+            "administrator is not offered a factor to remove that is not there."
+        ),
+    )
     memberships: list[TeamMembershipPublic] = Field(default_factory=list)
 
 

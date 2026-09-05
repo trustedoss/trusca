@@ -31,6 +31,8 @@ import { useState } from "react";
 import { useTranslation } from "react-i18next";
 
 import { PageHeader } from "@/components/PageHeader";
+
+import { MfaEnrolment } from "./MfaEnrolment";
 import { ProviderIcon } from "@/components/ProviderIcon";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
@@ -289,6 +291,11 @@ export function UserProfilePage() {
       />
 
       <div className="flex-1 space-y-8 overflow-y-auto px-6 py-6">
+        {/* ---------- Second factor ------------------------------------ */}
+        <div className="rounded-md border bg-card p-4">
+          <MfaEnrolment enabled={user?.mfaEnabled ?? false} />
+        </div>
+
         {/* ---------- Account header ----------------------------------- */}
         <section
           className="grid grid-cols-1 gap-4 rounded-md border bg-card p-4 sm:grid-cols-2"

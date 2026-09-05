@@ -432,6 +432,7 @@ async def get_user_detail(
         created_at=user.created_at,
         updated_at=user.updated_at,
         scan_count=scan_count,
+        mfa_enabled=bool(user.mfa_enabled),
         memberships=[
             TeamMembershipPublic(
                 team_id=m.team_id,

@@ -103,6 +103,18 @@ _SENSITIVE_COLUMNS = frozenset(
         # ``registry_credentials`` never copies the ciphertext into
         # ``audit_logs.diff``.
         "password_encrypted",
+        # ER19-3 - the TOTP seed and the recovery codes. ``mfa_secret_encrypted``
+        # is the Fernet ciphertext of the seed an authenticator app holds, and
+        # ``code_hash`` the bcrypt hash of one recovery code.
+        #
+        # These matter more than the entries above rather than less, for two
+        # reasons that do not apply to the others. ``audit_logs`` is immutable
+        # by trigger, so a value copied here cannot be scrubbed afterwards. And
+        # key rotation walks ``core.encrypted_columns``, which rewrites the
+        # ``users`` column and cannot reach a copy sitting in a diff, so that
+        # copy stays readable under a key the operator has retired.
+        "mfa_secret_encrypted",
+        "code_hash",
     }
 )
 

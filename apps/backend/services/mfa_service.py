@@ -1,0 +1,362 @@
+# SPDX-License-Identifier: Apache-2.0
+# Copyright 2026 TRUSCA contributors
+"""Enrolling in, verifying and clearing a second factor.
+
+Every function here that changes something commits it. That is not a style
+preference: two of these writes are the kind whose absence leaves the happy
+path working. Recording the TOTP step is what prevents a replay, and if the
+row never reaches the database the code still verifies, the sign-in still
+succeeds, and the only way to notice is to present the same code twice and
+watch it work both times. Spending a recovery code is the same shape.
+"""
+
+from __future__ import annotations
+
+import uuid
+from datetime import UTC, datetime
+
+import structlog
+from sqlalchemy import or_, select, update
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from core import totp
+from core.crypto import decrypt_secret, encrypt_secret
+from core.recovery_codes import generate_codes, normalise
+from core.security import (
+    forget_principal,
+    hash_password_async,
+    verify_password_async,
+)
+from models import RefreshToken, User, UserRecoveryCode
+
+log = structlog.get_logger("auth.mfa")
+
+#: Its own key, not the one the forge credentials share. A stolen TOTP secret
+#: generates a second factor for ever.
+ENCRYPTION_PURPOSE = "totp"
+
+
+class MfaError(Exception):
+    """Base for the refusals this service makes."""
+
+
+class MfaNotEnrolled(MfaError):
+    """No secret stored, so there is nothing to verify against."""
+
+
+class MfaAlreadyEnabled(MfaError):
+    """Enrolling again would replace a working factor without proving anything."""
+
+
+class InvalidMfaCode(MfaError):
+    """Neither a valid TOTP code nor an unused recovery code."""
+
+
+async def begin_enrolment(session: AsyncSession, *, user: User) -> tuple[str, str]:
+    """Store a secret and return it with its provisioning URI.
+
+    The secret is written now and ``mfa_enabled`` stays false. Enabling here
+    would lock out anybody who closed the tab before their authenticator was
+    working: the next sign-in would ask for a code they cannot produce, and the
+    only way back would be an administrator.
+    """
+    if user.mfa_enabled:
+        raise MfaAlreadyEnabled("second factor already enabled")
+
+    secret = totp.generate_secret()
+    user.mfa_secret_encrypted = encrypt_secret(secret, purpose=ENCRYPTION_PURPOSE)
+    user.mfa_last_counter = None
+    await session.commit()
+
+    uri = totp.provisioning_uri(secret, account=user.email, issuer="TRUSCA")
+    log.info("auth.mfa_enrolment_started", user_id=str(user.id))
+    return secret, uri
+
+
+async def complete_enrolment(
+    session: AsyncSession, *, user: User, code: str
+) -> list[str]:
+    """Turn the factor on, once a code proves the app is working.
+
+    Returns the recovery codes, which are shown once and never again: they are
+    stored as hashes, so this return value is the only time they exist in a
+    readable form.
+    """
+    if user.mfa_enabled:
+        raise MfaAlreadyEnabled("second factor already enabled")
+    if not user.mfa_secret_encrypted:
+        raise MfaNotEnrolled("no enrolment in progress")
+
+    secret = decrypt_secret(user.mfa_secret_encrypted, purpose=ENCRYPTION_PURPOSE)
+    counter = totp.verify(secret, code)
+    if counter is None:
+        raise InvalidMfaCode("code did not match")
+
+    user.mfa_enabled = True
+    user.mfa_last_counter = counter
+    # Deliberately NOT stamping ``mfa_changed_at`` here.
+    #
+    # The stamp refuses every token minted before it, and the token making
+    # this request is one of them: stamping would sign the person out of the
+    # portal at the moment they finished setting the factor up, which reads as
+    # the feature breaking. There would be a case for it -- turning a factor on
+    # after suspecting somebody else is signed in as you ought to evict them --
+    # but that wants a fresh token pair handed back in this response, and until
+    # that exists the honest thing is to not claim the eviction.
+    #
+    # The user guide says so under "Turn it on", in as many words: turning it
+    # on protects later sign-ins and does not end sessions that are already
+    # open, and the thing to reach for in that case is a password reset. This
+    # comment claimed that before the sentence existed, which is the same
+    # shape as the defect this whole unit was reviewed for.
+    codes = await _issue_recovery_codes(session, user=user)
+    await session.commit()
+
+    log.info("auth.mfa_enabled", user_id=str(user.id))
+    return codes
+
+
+class ReauthenticationRequired(MfaError):
+    """The caller did not prove who they are, or proved it wrongly."""
+
+
+async def reauthenticate(
+    session: AsyncSession,
+    *,
+    user: User,
+    password: str | None = None,
+    code: str | None = None,
+) -> None:
+    """Prove the person is here, not just that a session is.
+
+    Raises :class:`ReauthenticationRequired` otherwise.
+
+    Enrolling a factor and reissuing recovery codes both hand back credentials
+    that survive everything else: ten recovery codes are ten sign-ins, they
+    outlive a password change, and revoking sessions does not touch them. A
+    session on its own is the wrong thing to gate that on, because a stolen
+    session is the case a second factor is bought to survive. Somebody holding
+    one would otherwise call the reissue endpoint once and hold a bypass for
+    as long as they like.
+
+    Either proof is accepted. A code, because whoever has the authenticator is
+    the person the factor is about; the password, because an account with no
+    factor yet has no code to give, and because a lost authenticator is the
+    ordinary case rather than the strange one.
+
+    A code spent here is spent for sign-in too: it goes through the same
+    replay check, so somebody who watches this one being typed cannot turn
+    around and use it at the login screen.
+    """
+    if code:
+        if not user.mfa_enabled:
+            raise ReauthenticationRequired("no second factor to check a code against")
+        try:
+            await verify_second_factor(session, user=user, code=code)
+        except MfaError as exc:
+            raise ReauthenticationRequired("code did not match") from exc
+        return
+
+    if password:
+        stored = getattr(user, "hashed_password", None)
+        if stored and await verify_password_async(password, stored):
+            return
+        raise ReauthenticationRequired("password did not match")
+
+    raise ReauthenticationRequired("supply the current password or a code")
+
+
+async def verify_second_factor(session: AsyncSession, *, user: User, code: str) -> None:
+    """Accept a TOTP code or a recovery code, and spend it.
+
+    Raises :class:`InvalidMfaCode` for anything else. Both branches write: the
+    TOTP one records the step so the same code cannot be presented again, and
+    the recovery one marks the row used. A caller that skipped the commit would
+    see both succeed and neither take effect.
+    """
+    if not user.mfa_enabled or not user.mfa_secret_encrypted:
+        raise MfaNotEnrolled("second factor is not enabled")
+
+    secret = decrypt_secret(user.mfa_secret_encrypted, purpose=ENCRYPTION_PURPOSE)
+    counter = totp.verify(secret, code)
+    if counter is not None:
+        # A code is valid for its whole thirty-second step, so accepting one
+        # from a step already spent lets somebody who saw it use it again.
+        #
+        # The write decides, not the read. Comparing the loaded value and then
+        # assigning is two statements with a gap between them, and two requests
+        # carrying the same code on different workers both read the old value
+        # and both proceed. The condition rides along with the UPDATE instead,
+        # so exactly one of them changes a row and the other is told the code
+        # is spent. No lock: the database is already serialising the write.
+        moved = await session.execute(
+            update(User)
+            .where(
+                User.id == user.id,
+                or_(User.mfa_last_counter.is_(None), User.mfa_last_counter < counter),
+            )
+            .values(mfa_last_counter=counter)
+        )
+        await session.commit()
+        if moved.rowcount == 0:
+            log.warning("auth.mfa_replayed", user_id=str(user.id), counter=counter)
+            raise InvalidMfaCode("code already used")
+        # The in-memory row is now behind the column this statement wrote.
+        await session.refresh(user, attribute_names=["mfa_last_counter"])
+        return
+
+    if await _spend_recovery_code(session, user=user, candidate=code):
+        return
+
+    raise InvalidMfaCode("code did not match")
+
+
+async def regenerate_recovery_codes(session: AsyncSession, *, user: User) -> list[str]:
+    """Replace the unused codes with a fresh set.
+
+    Only the unused ones. A spent code is already refused, and deleting it
+    would erase what the account page shows; leaving an unused one alive would
+    defeat the reason somebody regenerates, which is usually that they believe
+    the old set leaked.
+    """
+    if not user.mfa_enabled:
+        raise MfaNotEnrolled("second factor is not enabled")
+
+    codes = await _issue_recovery_codes(session, user=user)
+    await session.commit()
+    log.info("auth.mfa_recovery_codes_regenerated", user_id=str(user.id))
+    return codes
+
+
+async def clear_for_user(session: AsyncSession, *, user: User) -> None:
+    """Undo the enrolment completely, for an administrator unlocking somebody.
+
+    All of it, not just the flag. Leaving the secret behind would let the
+    account re-enable with the same one, and the reason somebody asks for this
+    is usually that the device or the secret is gone.
+    """
+    now = datetime.now(UTC)
+    user.mfa_enabled = False
+    user.mfa_secret_encrypted = None
+    user.mfa_last_counter = None
+    user.mfa_changed_at = now
+
+    for row in await _live_codes(session, user_id=user.id):
+        await session.delete(row)
+
+    # The sessions that are open have to end, and two things are needed for
+    # that rather than one. ``mfa_changed_at`` refuses access tokens minted
+    # before now, and this refuses the refresh tokens that would otherwise
+    # mint new ones for another seven days. Without the second, an operator
+    # who clears a factor because they believe the account is compromised has
+    # done nothing to the attacker holding the refresh cookie.
+    live_tokens = (
+        (
+            await session.execute(
+                select(RefreshToken).where(
+                    RefreshToken.user_id == user.id,
+                    RefreshToken.revoked_at.is_(None),
+                )
+            )
+        )
+        .scalars()
+        .all()
+    )
+    for token in live_tokens:
+        token.revoked_at = now
+        token.revoked_reason = "logout"
+
+    await session.commit()
+
+    # The third layer, and the one that is invisible until somebody turns the
+    # cache on. ``_load_current_user`` judges a token against the principal it
+    # has cached, and an entry warmed before this clear carries the old
+    # ``mfa_changed_at``, so it passes the token this just refused. The cache
+    # is off by default, which is why every test here would pass without this
+    # line; ``set_password`` drops the entry for exactly the same reason.
+    forget_principal(user.id)
+
+    log.info(
+        "auth.mfa_cleared",
+        user_id=str(user.id),
+        refresh_tokens_revoked=len(live_tokens),
+    )
+
+
+async def _issue_recovery_codes(session: AsyncSession, *, user: User) -> list[str]:
+    """Delete the unused rows and insert a fresh set. Does not commit."""
+    for row in await _live_codes(session, user_id=user.id):
+        await session.delete(row)
+
+    codes = generate_codes()
+    for code in codes:
+        # bcrypt at cost 12, so issuing ten costs about two seconds. Off the
+        # event loop, because the loop is shared: run inline, those two seconds
+        # stall every other request this worker is serving, and the endpoint
+        # that reissues codes is reachable by any authenticated user, so the
+        # cost is not "paid once by the person enrolling" as this comment used
+        # to claim. Lowering the cost to make it quicker would weaken the codes.
+        session.add(
+            UserRecoveryCode(
+                user_id=user.id, code_hash=await hash_password_async(normalise(code))
+            )
+        )
+    return codes
+
+
+async def _live_codes(
+    session: AsyncSession, *, user_id: uuid.UUID
+) -> list[UserRecoveryCode]:
+    result = await session.execute(
+        select(UserRecoveryCode).where(
+            UserRecoveryCode.user_id == user_id,
+            UserRecoveryCode.used_at.is_(None),
+        )
+    )
+    return list(result.scalars().all())
+
+
+async def _spend_recovery_code(
+    session: AsyncSession, *, user: User, candidate: str
+) -> bool:
+    """Mark a matching unused code used. Commits, or returns False."""
+    typed = normalise(candidate)
+    if not typed:
+        return False
+
+    for row in await _live_codes(session, user_id=user.id):
+        if not await verify_password_async(typed, row.code_hash):
+            continue
+        # Same reasoning as the TOTP step above: the row was read as unused,
+        # and the claim has to survive until the write. ``used_at IS NULL`` in
+        # the statement means a second request holding the same code changes no
+        # row and is told the code is spent, rather than both being let in and
+        # ten codes being worth more than ten sign-ins.
+        spent = await session.execute(
+            update(UserRecoveryCode)
+            .where(UserRecoveryCode.id == row.id, UserRecoveryCode.used_at.is_(None))
+            .values(used_at=datetime.now(UTC))
+        )
+        await session.commit()
+        if spent.rowcount == 0:
+            log.warning("auth.mfa_recovery_code_replayed", user_id=str(user.id))
+            return False
+        log.info("auth.mfa_recovery_code_used", user_id=str(user.id))
+        return True
+    return False
+
+
+__all__ = [
+    "ENCRYPTION_PURPOSE",
+    "InvalidMfaCode",
+    "MfaAlreadyEnabled",
+    "MfaError",
+    "MfaNotEnrolled",
+    "ReauthenticationRequired",
+    "begin_enrolment",
+    "clear_for_user",
+    "complete_enrolment",
+    "reauthenticate",
+    "regenerate_recovery_codes",
+    "verify_second_factor",
+]

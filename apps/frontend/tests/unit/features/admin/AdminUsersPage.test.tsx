@@ -67,6 +67,7 @@ function detail(item: AdminUserListItem): AdminUserDetail {
     ...item,
     updated_at: item.created_at,
     scan_count: 3,
+    mfa_enabled: false,
     memberships: [],
   };
 }

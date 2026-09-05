@@ -115,9 +115,9 @@ from core.config import (
 from core.security import (
     TOKEN_TYPE_ACCESS,
     CurrentUser,
+    credential_change_invalidates,
     decode_token,
     highest_role,
-    password_change_invalidates,
 )
 from core.ws_registry import (
     evict_channel,
@@ -326,7 +326,11 @@ async def _resolve_user(
     if user is None:
         return None
 
-    if password_change_invalidates(issued_at, user.password_changed_at):
+    if credential_change_invalidates(
+        issued_at,
+        password_changed_at=user.password_changed_at,
+        mfa_changed_at=user.mfa_changed_at,
+    ):
         return None
 
     memberships: list[Membership] = list(user.memberships)
@@ -351,6 +355,7 @@ async def _resolve_user(
         is_active=bool(user.is_active),
         is_superuser=bool(user.is_superuser),
         password_changed_at=user.password_changed_at,
+        mfa_changed_at=user.mfa_changed_at,
     )
 
 

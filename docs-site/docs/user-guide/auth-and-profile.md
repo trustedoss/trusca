@@ -66,6 +66,80 @@ API keys are not affected. They are a separate credential with their own lifecyc
 
 If the token has expired or has already been used, the page renders an error with a link back to `/forgot-password` to request a fresh one.
 
+## Two-step sign-in
+
+A password can be guessed, reused, or phished. Turning on a second factor means
+a sign-in also needs a six-digit code from an app on your phone, which changes
+every 30 seconds and never travels over email.
+
+This is off until you turn it on, and you turn it on for yourself.
+
+### Turn it on
+
+1. Open `/profile` and find **Two-step sign-in**.
+2. Click **Set up**, then enter your current password. You are asked again
+   even though you are signed in: what setting this up hands out keeps working
+   after a password change, so an open browser tab is not enough on its own.
+3. The portal shows a QR code and, below it, the same secret as text.
+4. Scan the code with an authenticator app, or type the text version in if you
+   are on a desktop app, your camera will not focus, or you are using a screen
+   reader.
+5. Enter the six digits the app shows, and submit.
+
+The step between showing the secret and asking for a code is not ceremony.
+Nothing is switched on until a code proves the app really has the secret, so
+closing the tab halfway leaves you signed in exactly as before.
+
+Turning it on protects the sign-ins that come after it. It does not end
+sessions that are already open, and it is not the thing to reach for if you
+think somebody else is signed in as you: reset your password, which ends every
+other session immediately.
+
+When it succeeds the portal shows **ten recovery codes**. This is the only time
+they are readable: they are stored as hashes, so nobody, including an
+administrator, can show them to you again. Save them somewhere that is not the
+phone holding the authenticator.
+
+### Sign in from then on
+
+1. Enter your email and password as before.
+2. The page then asks for the code. Enter the six digits.
+
+You have five minutes between the two steps. If you take longer, start again
+from the password: nothing was signed in yet, so nothing is lost.
+
+Each code works once. A code you have already used is refused even inside the
+30 seconds it is still displayed, which is what stops somebody who watched you
+type it from following you in.
+
+### If you lose the authenticator
+
+Use a recovery code where the six digits are asked for. Each one works once and
+then it is gone, so ten of them is ten sign-ins, not ten attempts.
+
+Once you are back in, `/profile` will issue a fresh set. It asks for your
+password or a code from the app first, for the same reason setting it up does.
+Issuing a set cancels every code from the old one, so the list you printed
+before is no longer worth anything to whoever finds it.
+
+You are notified in the portal whenever a factor is set up on your account or
+new recovery codes are issued. If a notice arrives that you did not cause,
+change your password and tell your administrator: somebody else is signed in
+as you.
+
+If you have neither the app nor a code, a super admin can clear the second
+factor from your account, and you are told when that happens.
+
+### What is not covered
+
+- **API keys keep working.** A key is already something you hold rather than
+  something you know, and a build that stops for a code on your phone is a
+  build that never finishes. Treat a key as equivalent to a password and
+  revoke it the way you would change one.
+- **OAuth still asks.** Signing in with GitHub or Google proves the provider
+  account, not the second factor, so the portal asks for the code after the
+  provider hands you back.
+
 ## Sign in with OAuth
 
 If GitHub or Google is configured, the `/login` page shows the corresponding buttons below the email field.
@@ -75,6 +149,8 @@ If GitHub or Google is configured, the `/login` page shows the corresponding but
 3. You are redirected back to the portal and signed in.
 
 **First-time OAuth sign-in** auto-creates an account from the provider's verified email. A personal team is provisioned automatically (named `<your-handle>`'s team).
+
+If you have turned on two-step sign-in, the portal asks for the code after the provider redirects you back, before anything is signed in.
 
 **Subsequent sign-ins** look up the existing identity by `(provider, provider_user_id)`. The provider's `email` field is **never** used to match — this prevents account-takeover via a recycled email address at the provider.
 

@@ -330,15 +330,52 @@ async def lock_user_for_session_write(session: AsyncSession, user: User) -> None
         raise StaleCredential("the password changed while this request was in flight")
 
 
+class SecondFactorNotSatisfied(Exception):
+    """A session was about to be minted for an account that needs a code.
+
+    Not an error a client sees. It fires when a caller mints a session for an
+    account with a second factor without saying the factor was supplied, which
+    is a defect in that caller rather than something a person did.
+    """
+
+
+def refuse_session_without_second_factor(user: User, satisfied: bool) -> None:
+    """The chokepoint for the second factor.
+
+    Enforcing it in the routes covers the routes that exist. The next thing
+    that obtains a session -- an SSO variant, a device-code flow, an
+    impersonation tool, a script -- gets no check and nothing fails, which is
+    how a control ends up being a comment. The same argument put the
+    service-account refusal in ``complete_oauth`` rather than on one of its
+    three arrival paths.
+
+    A keyword rather than a lookup, because the answer is not in the row: the
+    row says a factor is required, and only the caller knows whether one was
+    supplied in this exchange.
+    """
+    if getattr(user, "mfa_enabled", False) and not satisfied:
+        raise SecondFactorNotSatisfied(
+            f"refusing to mint a session for user {user.id}: the account "
+            "requires a second factor and the caller did not say one was "
+            "supplied"
+        )
+
+
 async def issue_token_pair(
     session: AsyncSession,
     *,
     user: User,
+    second_factor_satisfied: bool,
 ) -> tuple[str, str, datetime]:
     """
     Mint an access + refresh pair, persist the refresh row, and return
     (access_token, refresh_token, refresh_expires_at).
+
+    ``second_factor_satisfied`` says whether this exchange supplied the code.
+    Required rather than defaulted: a default is a claim every future caller
+    makes without noticing.
     """
+    refuse_session_without_second_factor(user, second_factor_satisfied)
     await lock_user_for_session_write(session, user)
 
     access_token = create_access_token(

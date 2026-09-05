@@ -9,6 +9,7 @@
     "policy_gate_failed",
     "approval_state_changed",
     "vuln_sla_breach",
-    "malicious_detected"
+    "malicious_detected",
+    "account_security"
   ]
 }

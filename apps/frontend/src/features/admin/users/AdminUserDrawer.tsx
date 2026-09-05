@@ -7,7 +7,8 @@
  *   - Header: email, role badge, active/inactive badge.
  *   - Meta: created_at, last_login_at, scan_count.
  *   - Memberships: per-team role list.
- *   - Actions: change role (inline form), deactivate/activate, reset password.
+ *   - Actions: change role (inline form), deactivate/activate, reset password,
+ *     unlock sign-in, clear the second factor.
  *
  * Confirmation pattern: the destructive action uses a small inline
  * "Are you sure?" prompt below the row instead of a dialog. This avoids
@@ -37,8 +38,10 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { useAdminUser } from "@/features/admin/api/useAdminUser";
 import {
   useActivateUser,
+  useClearMfa,
   useDeactivateUser,
   useResetUserPassword,
+  useUnlockSignIn,
   useUpdateUserRole,
 } from "@/features/admin/api/useAdminUserMutations";
 import type { UserRole } from "@/features/admin/api/adminUsersApi";
@@ -62,7 +65,13 @@ interface AdminUserDrawerProps {
   notify: (text: string, tone: "success" | "error", key?: string) => void;
 }
 
-type ConfirmKind = "deactivate" | "activate" | "reset_password" | null;
+type ConfirmKind =
+  | "deactivate"
+  | "activate"
+  | "reset_password"
+  | "unlock_sign_in"
+  | "clear_mfa"
+  | null;
 
 export function AdminUserDrawer({
   open,
@@ -82,6 +91,8 @@ export function AdminUserDrawer({
   const deactivate = useDeactivateUser();
   const activate = useActivateUser();
   const reset = useResetUserPassword();
+  const unlock = useUnlockSignIn();
+  const clearMfa = useClearMfa();
 
   // Reset transient form state whenever the loaded user changes.
   const detailId = detail.data?.id;
@@ -176,6 +187,32 @@ export function AdminUserDrawer({
     }
   }
 
+  async function handleUnlock() {
+    if (!detail.data) return;
+    try {
+      await unlock.mutateAsync({ userId: detail.data.id });
+      notify(
+        t("admin.users.toast.sign_in_unlocked"),
+        "success",
+        "sign_in_unlocked",
+      );
+      setConfirm(null);
+    } catch (err) {
+      notify(t(adminErrorMessageKey(err)), "error", adminErrorExtension(err));
+    }
+  }
+
+  async function handleClearMfa() {
+    if (!detail.data) return;
+    try {
+      await clearMfa.mutateAsync({ userId: detail.data.id });
+      notify(t("admin.users.toast.mfa_cleared"), "success", "mfa_cleared");
+      setConfirm(null);
+    } catch (err) {
+      notify(t(adminErrorMessageKey(err)), "error", adminErrorExtension(err));
+    }
+  }
+
   return (
     <Sheet open={open} onOpenChange={onOpenChange}>
       <SheetContent
@@ -244,6 +281,16 @@ export function AdminUserDrawer({
               <Meta
                 label={t("admin.users.drawer.scan_count")}
                 value={String(detail.data.scan_count)}
+              />
+              <Meta
+                label={t("admin.users.drawer.mfa")}
+                value={
+                  <span data-testid="admin-user-mfa-state">
+                    {detail.data.mfa_enabled
+                      ? t("admin.users.drawer.mfa_on")
+                      : t("admin.users.drawer.mfa_off")}
+                  </span>
+                }
               />
             </section>
 
@@ -318,6 +365,24 @@ export function AdminUserDrawer({
               >
                 {t("admin.users.action.reset_password")}
               </Button>
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={() => setConfirm("unlock_sign_in")}
+                data-testid="admin-user-action-unlock"
+              >
+                {t("admin.users.action.unlock_sign_in")}
+              </Button>
+              {detail.data.mfa_enabled ? (
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={() => setConfirm("clear_mfa")}
+                  data-testid="admin-user-action-clear-mfa"
+                >
+                  {t("admin.users.action.clear_mfa")}
+                </Button>
+              ) : null}
             </section>
 
             {showRoleForm ? (
@@ -403,17 +468,26 @@ export function AdminUserDrawer({
               <ConfirmStrip
                 kind={confirm}
                 onCancel={() => setConfirm(null)}
+                // A lookup rather than a ternary chain: the chain ended in a
+                // fallback, so a new kind added to the union ran the last
+                // branch's action instead of failing to compile.
                 onConfirm={
-                  confirm === "deactivate"
-                    ? handleDeactivate
-                    : confirm === "activate"
-                      ? handleActivate
-                      : handleReset
+                  {
+                    deactivate: handleDeactivate,
+                    activate: handleActivate,
+                    reset_password: handleReset,
+                    unlock_sign_in: handleUnlock,
+                    clear_mfa: handleClearMfa,
+                  }[confirm]
                 }
                 isPending={
-                  (confirm === "deactivate" && deactivate.isPending) ||
-                  (confirm === "activate" && activate.isPending) ||
-                  (confirm === "reset_password" && reset.isPending)
+                  {
+                    deactivate: deactivate.isPending,
+                    activate: activate.isPending,
+                    reset_password: reset.isPending,
+                    unlock_sign_in: unlock.isPending,
+                    clear_mfa: clearMfa.isPending,
+                  }[confirm]
                 }
               />
             ) : null}
@@ -441,7 +515,7 @@ function Meta({ label, value }: MetaProps) {
 }
 
 interface ConfirmStripProps {
-  kind: "deactivate" | "activate" | "reset_password";
+  kind: Exclude<ConfirmKind, null>;
   onCancel: () => void;
   onConfirm: () => void;
   isPending: boolean;

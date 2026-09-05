@@ -95,7 +95,10 @@ from models import (
     Team,
     User,
 )
-from services.auth_service import lock_user_for_session_write
+from services.auth_service import (
+    lock_user_for_session_write,
+    refuse_session_without_second_factor,
+)
 
 log = structlog.get_logger("oauth.service")
 
@@ -390,7 +393,7 @@ async def complete_oauth(
     code: str,
     state: str,
     redirect_uri: str,
-) -> tuple[User, str, str, str | None]:
+) -> tuple[User, str | None, str | None, str | None]:
     """
     Handle the OAuth callback end-to-end.
 
@@ -471,12 +474,28 @@ async def complete_oauth(
     if not user.is_active:
         raise OAuthUserInactive(f"user {user.id} is inactive")
 
+    if user.mfa_enabled:
+        # No session, and nothing recorded as a sign-in, because this is not
+        # one yet: the provider proved the provider account and the second
+        # factor is still outstanding. Minting here and letting the route
+        # discard the value leaves a live refresh row behind for an account
+        # that has not supplied its code, and stamping ``last_login_at`` would
+        # record a sign-in that never completed.
+        await session.commit()
+        log.info(
+            "oauth_second_factor_required",
+            provider=provider,
+            user_id=str(user.id),
+            oauth_identity_id=str(identity.id),
+        )
+        return user, None, None, redirect_after
+
     now = _now()
     user.last_login_at = now
     identity.last_login_at = now
 
     portal_access, portal_refresh, _refresh_expires = await _issue_token_pair_in_session(
-        session, user=user
+        session, user=user, second_factor_satisfied=True
     )
 
     log.info(
@@ -840,6 +859,7 @@ async def _issue_token_pair_in_session(
     session: AsyncSession,
     *,
     user: User,
+    second_factor_satisfied: bool,
 ) -> tuple[str, str, datetime]:
     """Mint access+refresh, persist the refresh row, COMMIT once.
 
@@ -847,7 +867,13 @@ async def _issue_token_pair_in_session(
     inside a transaction that has already added the User / OAuthIdentity
     / Team / Membership rows. A single ``session.commit()`` at the end
     persists the whole graph atomically.
+
+    ``second_factor_satisfied`` is required for the reason the service-account
+    refusal above is where it is: a check that lives in the route covers the
+    routes that exist today, and the next arrival path inherits nothing. A
+    caller has to state the claim rather than have it assumed.
     """
+    refuse_session_without_second_factor(user, second_factor_satisfied)
     # Same per-user lock every session creator takes, so a password change
     # cannot commit between this read and this INSERT and leave the row behind
     # its sweep. See the LOCK ORDER note in services.auth_service.

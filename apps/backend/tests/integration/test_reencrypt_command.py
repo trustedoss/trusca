@@ -73,26 +73,35 @@ async def _only_this_test_s_ciphertext(session: AsyncSession) -> AsyncIterator[N
     unreadable here, so without this the command is right to exit non-zero and
     the assertion below would be measuring the neighbours.
 
-    Rows are deleted rather than nulled. ``private_key_encrypted`` is NOT NULL,
-    so a credential row cannot be emptied of its ciphertext and still exist;
-    the first version of this nulled every column and passed locally only
-    because no such row had been created yet.
+    Some rows are deleted rather than nulled. ``private_key_encrypted`` is NOT
+    NULL, so a credential row cannot be emptied of its ciphertext and still
+    exist; the first version of this nulled every column and passed locally
+    only because no such row had been created yet.
+
+    Which columns get cleared comes from the registry rather than from a list
+    written here, because a list written here goes stale silently: the column
+    added for the TOTP secret was not in it, the MFA tests run earlier in the
+    same database, and this file then counted their rows as leftovers on a
+    missing key. The only decision left per table is whether the row is
+    nothing but a credential and should go with it.
     """
     from core.encrypted_columns import ENCRYPTED_COLUMNS
 
-    tables = {c.table for c in ENCRYPTED_COLUMNS}
-    for table in ("github_app_credentials", "registry_credentials"):
-        if table in tables:
-            await session.execute(text(f"DELETE FROM {table}"))  # noqa: S608
-    # ``projects`` holds far more than ciphertext, so its columns are nulled
-    # rather than its rows removed. Both are nullable.
-    await session.execute(
-        text(
-            "UPDATE projects "
-            "   SET webhook_secret_encrypted = NULL, "
-            "       git_credential_encrypted = NULL"
+    #: Tables whose rows exist only to hold a credential, and whose ciphertext
+    #: column is NOT NULL, so the row cannot outlive it.
+    delete_whole_row = {"github_app_credentials", "registry_credentials"}
+
+    for table in sorted({c.table for c in ENCRYPTED_COLUMNS} & delete_whole_row):
+        await session.execute(text(f"DELETE FROM {table}"))  # noqa: S608
+
+    # Everything else carries far more than ciphertext, so the column is
+    # nulled and the row stays.
+    for column in ENCRYPTED_COLUMNS:
+        if column.table in delete_whole_row:
+            continue
+        await session.execute(
+            text(f"UPDATE {column.table} SET {column.column} = NULL")  # noqa: S608
         )
-    )
     await session.commit()
     yield
 

@@ -22,6 +22,7 @@ from datetime import datetime
 from typing import Any
 
 from sqlalchemy import (
+    BigInteger,
     Boolean,
     CheckConstraint,
     DateTime,
@@ -184,6 +185,32 @@ class User(Base):
     password_changed_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True
     )
+    # Second factor. The secret and the flag are separate on purpose: a secret
+    # exists from the moment somebody scans the QR code, and enabling there
+    # would lock out anyone who closed the tab before their app was working.
+    mfa_enabled: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, server_default=text("false")
+    )
+    mfa_secret_encrypted: Mapped[str | None] = mapped_column(Text, nullable=True)
+    # The TOTP step most recently accepted. A code is valid for its whole step,
+    # so this is what stops one being presented twice.
+    mfa_last_counter: Mapped[int | None] = mapped_column(BigInteger, nullable=True)
+    # Stamped when an administrator clears the second factor, so the sessions
+    # open at that moment end: ``credential_change_invalidates`` refuses every
+    # access token minted before it, and the clear revokes the refresh rows.
+    #
+    # NOT stamped when somebody finishes enrolling. The request that turns the
+    # factor on carries a token minted before it, so stamping there signs that
+    # person out on the recovery-code screen. Turning a factor on to evict a
+    # session you do not trust would need a fresh token pair handed back in
+    # the same response; until that exists the guide says to reset the
+    # password for that case.
+    #
+    # Separate from password_changed_at rather than shared, so the two reasons
+    # stay distinguishable.
+    mfa_changed_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
     full_name: Mapped[str | None] = mapped_column(String(255), nullable=True)
     is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default=text("true"))
     is_superuser: Mapped[bool] = mapped_column(
@@ -300,6 +327,30 @@ class Membership(Base):
 # ---------------------------------------------------------------------------
 # RefreshToken (rotation + reuse detection)
 # ---------------------------------------------------------------------------
+
+
+class UserRecoveryCode(Base):
+    """One single-use code, stored the way a password is.
+
+    A spent row is kept rather than deleted so the account page can show what
+    was used and when. Regenerating deletes the unused ones: a spent code is
+    already refused, and leaving an unused one live would defeat the reason
+    somebody regenerates.
+    """
+
+    __tablename__ = "user_recovery_codes"
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID_PK, primary_key=True, server_default=GEN_UUID)
+    user_id: Mapped[uuid.UUID] = mapped_column(
+        UUID_PK,
+        ForeignKey("users.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    code_hash: Mapped[str] = mapped_column(String(255), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=NOW
+    )
+    used_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
 
 class RefreshToken(Base):
