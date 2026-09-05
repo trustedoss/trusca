@@ -23,13 +23,17 @@ vi.mock("@/features/admin/api/adminUsersApi", async () => {
     deactivateUser: vi.fn(),
     activateUser: vi.fn(),
     requestPasswordReset: vi.fn(),
+    unlockSignIn: vi.fn(),
+    clearMfa: vi.fn(),
   };
 });
 
 import {
+  clearMfa,
   deactivateUser,
   getAdminUser,
   requestPasswordReset,
+  unlockSignIn,
   updateUserRole,
 } from "@/features/admin/api/adminUsersApi";
 
@@ -37,6 +41,8 @@ const mockedGet = vi.mocked(getAdminUser);
 const mockedUpdateRole = vi.mocked(updateUserRole);
 const mockedDeactivate = vi.mocked(deactivateUser);
 const mockedReset = vi.mocked(requestPasswordReset);
+const mockedUnlock = vi.mocked(unlockSignIn);
+const mockedClearMfa = vi.mocked(clearMfa);
 
 function detail(overrides: Partial<AdminUserDetail> = {}): AdminUserDetail {
   return {
@@ -49,6 +55,7 @@ function detail(overrides: Partial<AdminUserDetail> = {}): AdminUserDetail {
     created_at: "2026-04-01T00:00:00Z",
     updated_at: "2026-05-01T00:00:00Z",
     scan_count: 5,
+    mfa_enabled: false,
     memberships: [],
     ...overrides,
   };
@@ -79,6 +86,8 @@ describe("AdminUserDrawer", () => {
     mockedUpdateRole.mockReset();
     mockedDeactivate.mockReset();
     mockedReset.mockReset();
+    mockedUnlock.mockReset();
+    mockedClearMfa.mockReset();
   });
   afterEach(() => {
     vi.useRealTimers();
@@ -160,5 +169,88 @@ describe("AdminUserDrawer", () => {
       "success",
       expect.any(String),
     );
+  });
+
+  it("unlocks sign-in for an address that failed too often", async () => {
+    mockedGet.mockResolvedValue(detail());
+    mockedUnlock.mockResolvedValue();
+    const { notify } = renderDrawer();
+    await waitFor(() => {
+      expect(screen.getByTestId("admin-user-drawer")).toBeInTheDocument();
+    });
+    await userEvent.click(screen.getByTestId("admin-user-action-unlock"));
+    await userEvent.click(screen.getByTestId("admin-user-confirm-ok"));
+    await waitFor(() => {
+      expect(mockedUnlock).toHaveBeenCalledWith("u1");
+    });
+    expect(notify).toHaveBeenCalledWith(
+      expect.any(String),
+      "success",
+      "sign_in_unlocked",
+    );
+    // The other actions share the confirm strip. If the dispatch fell back to
+    // a neighbour, this is what would show it.
+    expect(mockedReset).not.toHaveBeenCalled();
+    expect(mockedClearMfa).not.toHaveBeenCalled();
+  });
+
+  it("offers to clear a second factor only when there is one", async () => {
+    mockedGet.mockResolvedValue(detail({ mfa_enabled: false }));
+    renderDrawer();
+    await waitFor(() => {
+      expect(screen.getByTestId("admin-user-drawer")).toBeInTheDocument();
+    });
+    expect(
+      screen.queryByTestId("admin-user-action-clear-mfa"),
+    ).not.toBeInTheDocument();
+    expect(screen.getByTestId("admin-user-mfa-state")).toHaveTextContent(
+      "Not set up",
+    );
+  });
+
+  it("clears the second factor after confirmation", async () => {
+    mockedGet.mockResolvedValue(detail({ mfa_enabled: true }));
+    mockedClearMfa.mockResolvedValue();
+    const { notify } = renderDrawer();
+    await waitFor(() => {
+      expect(screen.getByTestId("admin-user-drawer")).toBeInTheDocument();
+    });
+    expect(screen.getByTestId("admin-user-mfa-state")).toHaveTextContent(
+      "Required",
+    );
+    await userEvent.click(screen.getByTestId("admin-user-action-clear-mfa"));
+    // The wording has to say what the person loses, because they cannot get
+    // it back from here: the codes are gone and the sessions are closed.
+    expect(screen.getByTestId("admin-user-confirm-strip")).toHaveTextContent(
+      /recovery codes/i,
+    );
+    await userEvent.click(screen.getByTestId("admin-user-confirm-ok"));
+    await waitFor(() => {
+      expect(mockedClearMfa).toHaveBeenCalledWith("u1");
+    });
+    expect(notify).toHaveBeenCalledWith(
+      expect.any(String),
+      "success",
+      "mfa_cleared",
+    );
+    expect(mockedUnlock).not.toHaveBeenCalled();
+  });
+
+  it("reports a failure to clear rather than claiming it worked", async () => {
+    mockedGet.mockResolvedValue(detail({ mfa_enabled: true }));
+    mockedClearMfa.mockRejectedValue(new Error("boom"));
+    const { notify } = renderDrawer();
+    await waitFor(() => {
+      expect(screen.getByTestId("admin-user-drawer")).toBeInTheDocument();
+    });
+    await userEvent.click(screen.getByTestId("admin-user-action-clear-mfa"));
+    await userEvent.click(screen.getByTestId("admin-user-confirm-ok"));
+    await waitFor(() => {
+      expect(notify).toHaveBeenCalledWith(
+        expect.any(String),
+        "error",
+        "unknown",
+      );
+    });
   });
 });

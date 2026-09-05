@@ -45,12 +45,16 @@
         "change_role": "역할 변경",
         "deactivate": "비활성화",
         "activate": "활성화",
-        "reset_password": "비밀번호 재설정"
+        "reset_password": "비밀번호 재설정",
+        "unlock_sign_in": "로그인 잠금 해제",
+        "clear_mfa": "2단계 인증 해제"
       },
       "confirm": {
         "deactivate": "이 사용자를 비활성화하시겠습니까? 활성 세션이 취소됩니다.",
         "activate": "이 사용자를 다시 활성화하시겠습니까?",
-        "reset_password": "이 사용자에게 비밀번호 재설정 링크를 발급하시겠습니까?"
+        "reset_password": "이 사용자에게 비밀번호 재설정 링크를 발급하시겠습니까?",
+        "unlock_sign_in": "이 주소의 로그인 실패 횟수를 지우고 다시 시도할 수 있게 하시겠습니까?",
+        "clear_mfa": "이 사용자의 2단계 인증을 해제하시겠습니까? 인증 앱과 복구 코드를 더 이상 쓸 수 없고, 로그인 중인 세션이 끊기며, 사용자에게 알림이 갑니다."
       },
       "form": {
         "role_label": "역할",
@@ -64,13 +68,18 @@
         "scan_count": "실행한 스캔",
         "created_at": "생성",
         "last_login_at": "최근 로그인",
-        "never": "없음"
+        "never": "없음",
+        "mfa": "2단계 인증",
+        "mfa_on": "사용",
+        "mfa_off": "미설정"
       },
       "toast": {
         "role_updated": "역할이 업데이트되었습니다.",
         "deactivated": "사용자가 비활성화되었습니다.",
         "activated": "사용자가 다시 활성화되었습니다.",
-        "password_reset_sent": "비밀번호 재설정 링크가 발급되었습니다."
+        "password_reset_sent": "비밀번호 재설정 링크가 발급되었습니다.",
+        "sign_in_unlocked": "로그인 잠금을 해제했습니다.",
+        "mfa_cleared": "2단계 인증을 해제했습니다."
       },
       "pagination": {
         "page_size_label": "페이지당 행",

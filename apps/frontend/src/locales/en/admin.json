@@ -45,12 +45,16 @@
         "change_role": "Change role",
         "deactivate": "Deactivate",
         "activate": "Activate",
-        "reset_password": "Reset password"
+        "reset_password": "Reset password",
+        "unlock_sign_in": "Unlock sign-in",
+        "clear_mfa": "Clear second factor"
       },
       "confirm": {
         "deactivate": "Deactivate this user? Active sessions will be revoked.",
         "activate": "Re-activate this user?",
-        "reset_password": "Issue a password-reset link for this user?"
+        "reset_password": "Issue a password-reset link for this user?",
+        "unlock_sign_in": "Clear the failed sign-in count for this address so it can be tried again?",
+        "clear_mfa": "Remove this user's second factor? Their authenticator and recovery codes stop working, their sessions end, and they are notified."
       },
       "form": {
         "role_label": "Role",
@@ -64,13 +68,18 @@
         "scan_count": "Scans triggered",
         "created_at": "Created",
         "last_login_at": "Last sign-in",
-        "never": "Never"
+        "never": "Never",
+        "mfa": "Second factor",
+        "mfa_on": "Required",
+        "mfa_off": "Not set up"
       },
       "toast": {
         "role_updated": "Role updated.",
         "deactivated": "User deactivated.",
         "activated": "User reactivated.",
-        "password_reset_sent": "Password-reset link issued."
+        "password_reset_sent": "Password-reset link issued.",
+        "sign_in_unlocked": "Sign-in unlocked.",
+        "mfa_cleared": "Second factor removed."
       },
       "pagination": {
         "page_size_label": "Rows per page",

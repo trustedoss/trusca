@@ -20,7 +20,9 @@ import { adminUserQueryKey } from "@/features/admin/api/useAdminUser";
 import {
   activateUser,
   deactivateUser,
+  clearMfa,
   requestPasswordReset,
+  unlockSignIn,
   updateUserRole,
   type AdminUserDetail,
   type RoleUpdatePayload,
@@ -76,5 +78,26 @@ export function useResetUserPassword() {
   return useMutation<void, Error, { userId: string }>({
     mutationFn: ({ userId }) => requestPasswordReset(userId),
     meta: { errorToast: false },
+  });
+}
+
+export function useUnlockSignIn() {
+  return useMutation<void, Error, { userId: string }>({
+    mutationFn: ({ userId }) => unlockSignIn(userId),
+    meta: { errorToast: false },
+  });
+}
+
+export function useClearMfa() {
+  const queryClient = useQueryClient();
+  return useMutation<void, Error, { userId: string }>({
+    mutationFn: ({ userId }) => clearMfa(userId),
+    meta: { errorToast: false },
+    onSuccess: () => {
+      // Unlike a password reset, this changes something the drawer displays:
+      // the account stops requiring a second factor. Without the refetch the
+      // panel still offers to clear a factor that is already gone.
+      invalidateAll(queryClient);
+    },
   });
 }

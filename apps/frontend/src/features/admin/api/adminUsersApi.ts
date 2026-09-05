@@ -41,6 +41,8 @@ export interface AdminUserListItem {
 export interface AdminUserDetail extends AdminUserListItem {
   updated_at: string;
   scan_count: number;
+  /** Whether the account requires a second factor at sign-in. */
+  mfa_enabled: boolean;
   memberships: TeamMembershipPublic[];
 }
 
@@ -132,6 +134,34 @@ export async function activateUser(userId: string): Promise<AdminUserDetail> {
  */
 export async function requestPasswordReset(userId: string): Promise<void> {
   await api.post(`/v1/admin/users/${userId}/password-reset`);
+}
+
+/**
+ * Clears a person's failed sign-in count so they can try again.
+ *
+ * Failures are counted per address, and the count is not only their own:
+ * anybody who knows an email can supply failures for it. Finishing a password
+ * reset clears it too, and needs the inbox rather than the password, so this
+ * is for somebody who has lost access to that as well.
+ */
+export async function unlockSignIn(userId: string): Promise<void> {
+  await api.post(`/v1/admin/users/${userId}/unlock-sign-in`);
+}
+
+/**
+ * Removes a person's second factor entirely: the flag, the secret, the replay
+ * counter and every unused recovery code, ending their existing sessions.
+ *
+ * Losing an authenticator is the ordinary failure of a second factor, and the
+ * alternatives do not cover it. A password reset cannot: unlocking the factor
+ * by mailbox reduces it to owning the mailbox, which is what the first factor
+ * already proves. Recovery codes do, for anybody who kept them.
+ *
+ * The person is notified, which is what makes this reviewable rather than
+ * quiet: somebody who did not ask for their factor to be cleared finds out.
+ */
+export async function clearMfa(userId: string): Promise<void> {
+  await api.post(`/v1/admin/users/${userId}/clear-mfa`);
 }
 
 // ---------------------------------------------------------------------------
