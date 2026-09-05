@@ -1170,7 +1170,7 @@ async def _seed_verify_baseline(session: Any) -> dict[str, Any]:
             description="verification baseline — approval-flow fixture",
             git_url=_FX_APPR_GIT_URL,
             webhook_provider="github",
-            webhook_secret=_FX_APPR_WEBHOOK_SECRET,
+            webhook_secret_encrypted=encrypt_secret(_FX_APPR_WEBHOOK_SECRET),
         )
         session.add(fx)
         await session.flush()
@@ -1204,7 +1204,7 @@ async def _seed_verify_baseline(session: Any) -> dict[str, Any]:
     ).scalars().first()
     if pipeline is not None and pipeline.webhook_provider is None:
         pipeline.webhook_provider = "gitlab"
-        pipeline.webhook_secret = _GITLAB_WEBHOOK_SECRET
+        pipeline.webhook_secret_encrypted = encrypt_secret(_GITLAB_WEBHOOK_SECRET)
     summary["gitlab_slot"] = str(pipeline.id) if pipeline else None
 
     # ── cancelled + superseded scans on portal-api ────────────────────────
@@ -1685,7 +1685,7 @@ async def _seed_verify_baseline(session: Any) -> dict[str, Any]:
                 description="verification baseline — gitlab webhook fixture",
                 git_url="https://github.com/trustedoss-e2e/x.git",
                 webhook_provider="gitlab",
-                webhook_secret=_GITLAB_WEBHOOK_SECRET,
+                webhook_secret_encrypted=encrypt_secret(_GITLAB_WEBHOOK_SECRET),
             )
         )
     summary["gitlab_webhook_slot"] = True

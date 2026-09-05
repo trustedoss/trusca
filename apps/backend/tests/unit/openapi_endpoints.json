@@ -568,6 +568,9 @@
   "GET /v1/projects/{project_id}/vulnerability-report.xlsx": [
     "project_id"
   ],
+  "GET /v1/projects/{project_id}/webhook": [
+    "project_id"
+  ],
   "GET /v1/report-format-templates/org/{organization_id}": [
     "organization_id"
   ],
@@ -727,6 +730,9 @@
     "project_id"
   ],
   "POST /v1/projects/{project_id}/vulnerabilities:bulk-transition": [
+    "project_id"
+  ],
+  "POST /v1/projects/{project_id}/webhook-secret": [
     "project_id"
   ],
   "POST /v1/projects:batch": [],

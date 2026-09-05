@@ -12,7 +12,8 @@ Required headers:
   X-Gitlab-Event:        "Push Hook" | "Merge Request Hook" | ...
 
 Public endpoint — no JWT. Authentication is the X-Gitlab-Token header
-compared against ``projects.webhook_secret`` in constant time.
+compared, in constant time, against the plaintext decrypted from
+``projects.webhook_secret_encrypted``.
 
 Notes:
   - Older GitLab versions did not send X-Gitlab-Webhook-UUID. For those we

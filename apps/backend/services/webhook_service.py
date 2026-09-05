@@ -56,6 +56,7 @@ from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from core.crypto import SecretDecryptionError, decrypt_secret
 from core.pii_mask import mask_git_url
 from models import Project, WebhookDelivery
 from services.scan_service import (
@@ -79,7 +80,7 @@ class WebhookError(Exception):
 
 
 class WebhookSignatureInvalid(WebhookError):
-    """401 — signature / token did not match the project's webhook_secret.
+    """401. The signature or token did not match the project's shared secret.
 
     We return 401 (not 403) because a missing / wrong signature is
     indistinguishable from "you're not authorised to talk to this endpoint at
@@ -321,7 +322,7 @@ def verify_github_signature(
     """Verify the X-Hub-Signature-256 header against *body* using *secret*.
 
     GitHub sends ``sha256=<hex>``. We HMAC the raw body with the project's
-    webhook_secret and compare in constant time.
+    shared secret and compare in constant time.
 
     Returns False on any failure (missing prefix, invalid hex, length
     mismatch). Never raises — callers translate False into 401.
@@ -389,6 +390,43 @@ def _normalize_repo_url(url: str | None) -> str | None:
     return cleaned.rstrip("/")
 
 
+def _readable_webhook_secret(project: Project, *, delivery_id: str | None) -> str | None:
+    """The project's shared secret, or ``None`` when it cannot be produced.
+
+    Two different situations collapse into ``None`` on purpose. A project with
+    no secret has never had its webhook activated. A project whose ciphertext
+    will not decrypt has been through an encryption-key change that left the
+    stored value unreadable. Both are answered to the caller exactly as a bad
+    signature is: the alternative hands an unauthenticated caller a way to tell
+    a configured repository from an unconfigured one.
+
+    They are not the same in the log, because they need different actions. The
+    first is somebody who has not finished setting up; the second is a
+    deployment whose key moved, where every delivery for every affected project
+    is being refused and re-issuing the secret is the fix.
+    """
+    if project.webhook_secret_encrypted is None:
+        return None
+    try:
+        return decrypt_secret(project.webhook_secret_encrypted)
+    except SecretDecryptionError:
+        # No ciphertext, no key bytes, no exception text that could carry
+        # either: core.crypto's message is credential-free but this does not
+        # depend on that staying true.
+        log.error(
+            "webhook.secret_undecryptable",
+            project_id=str(project.id),
+            delivery_id=delivery_id,
+            detail=(
+                "the stored webhook secret could not be decrypted; the "
+                "credential encryption key has probably changed. Every "
+                "delivery for this project is being refused until the secret "
+                "is re-issued."
+            ),
+        )
+        return None
+
+
 async def _find_project_by_git_url(
     session: AsyncSession,
     repo_url: str,
@@ -397,7 +435,7 @@ async def _find_project_by_git_url(
 ) -> Project | None:
     """Find the Project whose git_url matches *repo_url* and webhook is enabled.
 
-    The webhook is considered "enabled" when ``webhook_secret`` is set AND
+    The webhook is considered "enabled" when ``webhook_secret_encrypted`` is set AND
     ``webhook_provider`` matches *expected_provider*. A project that has a
     GitHub secret but receives a GitLab payload (or vice versa) will not
     match — preventing cross-provider replay.
@@ -413,7 +451,7 @@ async def _find_project_by_git_url(
 
     stmt = select(Project).where(
         Project.git_url.in_(candidates_urls),
-        Project.webhook_secret.isnot(None),
+        Project.webhook_secret_encrypted.isnot(None),
         Project.webhook_provider == expected_provider,
         Project.archived_at.is_(None),
     )
@@ -624,7 +662,7 @@ async def process_github_webhook(
       1. Headers present? Else 400.
       2. Resolve project by ``payload.repository.clone_url`` (or ``html_url``
          as fallback). Project must have ``webhook_provider == 'github'``
-         and a non-null ``webhook_secret``.
+         and a non-null ``webhook_secret_encrypted``.
       3. Verify HMAC over the raw body. Else 401.
       4. Insert the delivery row (idempotency gate). Duplicate → 200 dup.
       5. Whitelist the event_type. Non-whitelisted → 200 ignored.
@@ -645,7 +683,13 @@ async def process_github_webhook(
         repo_url,
         expected_provider="github",
     )
-    if project is None or project.webhook_secret is None:
+    secret = None if project is None else _readable_webhook_secret(
+        project, delivery_id=delivery_id
+    )
+    # ``project is None`` is redundant with ``secret is None`` at runtime and
+    # is not redundant to the reader below: the reject helper is NoReturn, so
+    # this is what narrows ``project`` for the rest of the function.
+    if project is None or secret is None:
         # Answer exactly as a bad signature does. The lookup has to precede
         # verification (the secret is per-project), so the response code was
         # the only thing separating "this repo is configured here" from "it is
@@ -665,7 +709,7 @@ async def process_github_webhook(
         )
 
     # Step 3: HMAC verification.
-    if not verify_github_signature(body, signature_header, project.webhook_secret):
+    if not verify_github_signature(body, signature_header, secret):
         # Log the failure with project + delivery id only — never the
         # signature or secret.
         log.warning(
@@ -928,7 +972,13 @@ async def process_gitlab_webhook(
         repo_url,
         expected_provider="gitlab",
     )
-    if project is None or project.webhook_secret is None:
+    secret = None if project is None else _readable_webhook_secret(
+        project, delivery_id=delivery_id
+    )
+    # ``project is None`` is redundant with ``secret is None`` at runtime and
+    # is not redundant to the reader below: the reject helper is NoReturn, so
+    # this is what narrows ``project`` for the rest of the function.
+    if project is None or secret is None:
         # Same reasoning as the GitHub path: answer as a token mismatch so the
         # status code cannot be read as "this repository is configured here".
         verify_gitlab_token(token_header, secrets.token_urlsafe(32))
@@ -940,7 +990,7 @@ async def process_gitlab_webhook(
         )
         raise WebhookSignatureInvalid("X-Gitlab-Token mismatch")
 
-    if not verify_gitlab_token(token_header, project.webhook_secret):
+    if not verify_gitlab_token(token_header, secret):
         log.warning(
             "webhook.gitlab.token_invalid",
             project_id=str(project.id),
