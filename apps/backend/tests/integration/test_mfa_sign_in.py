@@ -157,8 +157,12 @@ async def test_the_same_code_cannot_be_presented_twice(client, factory) -> None:
     # whole second login, so a 429 from the per-IP limiter would satisfy
     # ">= 400" without the replay check ever running.
     assert second.status_code == 401, second.text
-    assert second.json()["title"] != "Too many requests", (
-        "this was refused by the rate limiter, so the replay check was never "
+    # The titles the code can actually emit are "Too Many Attempts" (the
+    # address counter) and "Too Many Requests" (slowapi). Compared against the
+    # wrong casing this could never fail, which is the shape hardening rule 7
+    # names: an assertion that guards nothing reads exactly like one that does.
+    assert second.json()["title"] not in {"Too Many Attempts", "Too Many Requests"}, (
+        "this was refused by a rate limiter, so the replay check was never "
         "reached and this test proves nothing about it"
     )
 
@@ -192,7 +196,10 @@ async def test_a_pending_token_is_spent_by_the_exchange(client, factory) -> None
     )
 
     assert replayed.status_code == 401, replayed.text
-    assert replayed.json()["title"] != "Too many requests", replayed.text
+    assert replayed.json()["title"] not in {
+        "Too Many Attempts",
+        "Too Many Requests",
+    }, replayed.text
 
 
 async def test_a_mistyped_code_does_not_end_the_sign_in(client, factory) -> None:
@@ -378,3 +385,51 @@ async def test_minting_a_session_without_the_code_is_refused_at_the_source(
             session, user=user, second_factor_satisfied=True
         )
     assert access and refresh
+
+
+async def test_a_token_stays_finite_when_redis_cannot_count(
+    client, factory, monkeypatch
+) -> None:
+    """Degrading has to leave a floor, and the first version left none.
+
+    With Redis unreachable the attempt counter answered "could not say" and
+    the caller let the exchange through, so a pending token had no cap and no
+    single use for the whole of an outage. Nothing else stands in front of a
+    six-digit code with a one-step drift window either side, which is three
+    values in a million and no work factor, so unlimited tries inside the
+    token's five minutes is not a wall.
+
+    The floor is per worker rather than global, so this asserts the shape
+    rather than a number that would be wrong in a deployment: the guesses run
+    out, and the correct code afterwards does not rescue the token.
+    """
+    from redis.exceptions import ConnectionError as RedisConnectionError
+
+    from core import login_throttle
+    from core.login_throttle import MFA_ATTEMPTS_PER_TOKEN
+
+    _id, email, secret = await _enrolled_user(factory)
+    started = await client.post(
+        "/auth/login", json={"email": email, "password": "a long enough password 7"}
+    )
+    pending = started.json()["mfa_token"]
+
+    def _down() -> None:
+        raise RedisConnectionError("redis is down")
+
+    monkeypatch.setattr(login_throttle, "_redis", _down)
+
+    for attempt in range(MFA_ATTEMPTS_PER_TOKEN):
+        refused = await client.post(
+            "/auth/mfa/verify", json={"mfa_token": pending, "code": "000000"}
+        )
+        assert refused.status_code == 401, (attempt, refused.text)
+
+    exhausted = await client.post(
+        "/auth/mfa/verify",
+        json={"mfa_token": pending, "code": totp.code_at(secret, counter=_now_counter())},
+    )
+    assert exhausted.status_code == 401, (
+        "the token still accepted a code after its attempts ran out, so with "
+        "Redis down there is no cap at all"
+    )

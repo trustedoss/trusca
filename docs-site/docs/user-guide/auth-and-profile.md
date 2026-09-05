@@ -90,6 +90,11 @@ The step between showing the secret and asking for a code is not ceremony.
 Nothing is switched on until a code proves the app really has the secret, so
 closing the tab halfway leaves you signed in exactly as before.
 
+Turning it on protects the sign-ins that come after it. It does not end
+sessions that are already open, and it is not the thing to reach for if you
+think somebody else is signed in as you: reset your password, which ends every
+other session immediately.
+
 When it succeeds the portal shows **ten recovery codes**. This is the only time
 they are readable: they are stored as hashes, so nobody, including an
 administrator, can show them to you again. Save them somewhere that is not the

@@ -1,4 +1,22 @@
+import type { AxiosRequestConfig } from "axios";
+
 import { api } from "@/lib/api";
+
+/**
+ * Keep the response interceptor out of the step-up.
+ *
+ * It reads any 401 as a stale access token: it calls `/auth/refresh`, swaps
+ * the token and replays the request. A step-up refusal is a different 401,
+ * the session is fine and the proof was wrong, and letting it through there
+ * does three unwanted things. The request is replayed, so one wrong password
+ * is two attempts against the backend and the body carrying that password is
+ * sent twice. A refresh rotation fires for nothing. And if the refresh fails,
+ * its catch signs the person out, which would happen at the moment they were
+ * trying to secure their account.
+ */
+const SKIP_REFRESH = { _skipAuthRefresh: true } as AxiosRequestConfig & {
+  _skipAuthRefresh?: boolean;
+};
 
 /** What the setup screen needs to show a QR code and a typed fallback. */
 export interface MfaEnrolStart {
@@ -35,6 +53,7 @@ export async function startMfaEnrolment(
   const { data } = await api.post<MfaEnrolStart>(
     "/v1/users/me/mfa/enrol",
     proof,
+    SKIP_REFRESH,
   );
   return data;
 }
@@ -58,6 +77,7 @@ export async function regenerateRecoveryCodes(
   const { data } = await api.post<RecoveryCodes>(
     "/v1/users/me/mfa/recovery-codes",
     proof,
+    SKIP_REFRESH,
   );
   return data;
 }

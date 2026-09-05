@@ -135,8 +135,11 @@ async def test_regenerating_retires_every_unused_code(client, factory) -> None:
         "/auth/mfa/verify",
         json={"mfa_token": started.json()["mfa_token"], "code": old_codes[0]},
     )
-    assert refused.status_code >= 400, (
-        "a recovery code from before the regeneration was still accepted"
+    # The specific status, not "did it fail". Each of these performs a whole
+    # sign-in, so a 429 from the shared address counter satisfies ">= 400"
+    # without the code ever being checked.
+    assert refused.status_code == 401, (
+        f"a recovery code from before the regeneration: {refused.text}"
     )
 
     # And a new one does, which is what says the refusal above was about age
@@ -185,7 +188,7 @@ async def test_a_recovery_code_works_once(client, factory) -> None:
         json={"mfa_token": second_start.json()["mfa_token"], "code": codes[0]},
     )
 
-    assert second.status_code >= 400, "a spent recovery code was accepted again"
+    assert second.status_code == 401, f"a spent recovery code: {second.text}"
 
 
 async def test_clearing_and_re_enrolling_produces_a_different_secret(
@@ -528,3 +531,103 @@ async def test_the_person_is_told_when_codes_are_reissued(client, factory) -> No
 
     assert len(rows) == 1, f"{len(rows)} account_security notifications, expected 1"
     assert "recovery codes" in rows[0].title.lower()
+
+
+async def test_guessing_the_password_at_the_step_up_is_counted(
+    client, factory
+) -> None:
+    """Otherwise the control makes a stolen session worth more, not less.
+
+    The step-up exists because a session alone is not enough. An uncounted
+    password check behind it hands whoever holds that session an unlimited
+    oracle for the credential above it, and a password is worth more than a
+    session: it survives revocation and people reuse it elsewhere.
+
+    Counted into the same per-address counter as the sign-in screen, so this
+    also asserts that the two share a budget rather than each having one.
+    """
+    from core.config import login_throttle_failures
+    from core.login_throttle import clear
+
+    _user_id, email = await _make_user(factory, enrolled=True)
+    token = await _sign_in(client, email)
+    auth = {"Authorization": f"Bearer {token}"}
+    await clear(email)
+
+    threshold = login_throttle_failures()
+    saw_429 = False
+    for attempt in range(threshold + 1):
+        refused = await client.post(
+            "/v1/users/me/mfa/recovery-codes",
+            json={"password": f"wrong guess {attempt}"},
+            headers=auth,
+        )
+        assert refused.status_code in (401, 429), (attempt, refused.text)
+        if refused.status_code == 429:
+            saw_429 = True
+            assert refused.headers.get("Retry-After"), refused.headers
+            break
+
+    assert saw_429, (
+        f"{threshold + 1} wrong passwords at the step-up and none was refused, "
+        "so this endpoint is an unmetered password oracle for anybody holding "
+        "a session"
+    )
+
+    # And the budget is shared with the sign-in screen rather than separate:
+    # the address is now refused there too, without a wrong password ever
+    # having been sent to it.
+    at_login = await client.post(
+        "/auth/login", json={"email": email, "password": _PASSWORD}
+    )
+    assert at_login.status_code == 429, at_login.text
+
+    await clear(email)
+
+
+async def test_a_warm_cache_entry_does_not_survive_the_clear(
+    client, factory, monkeypatch
+) -> None:
+    """The layer that is invisible while the cache is off.
+
+    ``_load_current_user`` has two branches and the other tests here reach
+    only one, because ``PERMISSION_CACHE_TTL_SECONDS`` defaults to 0. On a
+    deployment that turned it on, an entry warmed before the clear carries the
+    old ``mfa_changed_at``, so the cached branch passes the very token the
+    loaded branch refuses, for up to the TTL per worker.
+
+    Hardening rule 8: two layers can produce the same 401 and a test that
+    reaches one of them says nothing about the other.
+    """
+    from core.config import permission_cache_ttl_seconds
+    from core.security import _principal_cache
+
+    monkeypatch.setenv("PERMISSION_CACHE_TTL_SECONDS", "300")
+    _principal_cache.clear()
+    # Read it back rather than trust setenv: "the cache is off" and "the cache
+    # is on and correct" are the same green otherwise.
+    assert permission_cache_ttl_seconds() == 300, "the cache is not actually on"
+
+    user_id, email = await _make_user(factory, enrolled=True)
+    _admin_id, admin_email = await _make_user(factory, enrolled=False, superuser=True)
+
+    victim_token = await _sign_in(client, email)
+    headers = {"Authorization": f"Bearer {victim_token}"}
+
+    warm = await client.get("/auth/me", headers=headers)
+    assert warm.status_code == 200, warm.text
+    assert _principal_cache, "nothing was cached, so this test proves nothing"
+
+    admin_token = await _sign_in(client, admin_email)
+    cleared = await client.post(
+        f"/v1/admin/users/{user_id}/clear-mfa",
+        headers={"Authorization": f"Bearer {admin_token}"},
+    )
+    assert cleared.status_code == 204, cleared.text
+
+    after = await client.get("/auth/me", headers=headers)
+    assert after.status_code == 401, (
+        "the cached principal still carries the pre-clear state, so a "
+        "deployment with the cache on keeps serving the token the clear was "
+        "supposed to end"
+    )

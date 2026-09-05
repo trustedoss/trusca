@@ -28,6 +28,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from core.db import get_db
 from core.errors import problem_response
+from core.login_throttle import record_failure, seconds_until_retry
 from core.security import (
     TOKEN_TYPE_MFA_ENROLLING,
     CurrentUser,
@@ -311,6 +312,27 @@ async def export_self(
 # ---------------------------------------------------------------------------
 
 
+def _throttled_step_up(request: Request, retry_after: int) -> Response:
+    """429 with Retry-After, in the same shape the sign-in screen gets.
+
+    A second copy of the RFC 7807 body would drift from that one; what differs
+    is only the wording, because somebody here is confirming who they are
+    rather than signing in.
+    """
+    response = problem_response(
+        status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+        title="Too Many Attempts",
+        detail=(
+            "Too many failed attempts to confirm it is you. Wait and try again."
+        ),
+        instance=str(request.url.path),
+        type_="https://trustedoss.dev/problems/too-many-attempts",
+        retry_after_seconds=retry_after,
+    )
+    response.headers["Retry-After"] = str(retry_after)
+    return response
+
+
 async def _step_up_or_problem(
     request: Request,
     session: AsyncSession,
@@ -318,22 +340,42 @@ async def _step_up_or_problem(
     user: User,
     payload: MfaStepUpRequest,
 ) -> Response | None:
-    """``None`` when the person proved themselves, a 401 problem otherwise.
+    """``None`` when the person proved themselves, a problem response otherwise.
 
     One shape for both routes, so the answer cannot differ between them. The
-    status is 401 rather than 403: the session is fine, what is missing is a
+    401 is 401 rather than 403: the session is fine, what is missing is a
     fresh proof, and a client that reads 403 as "this account may not" would
     hide the retry rather than offer it.
+
+    Counted, and this is not decoration. The premise of the step-up is that a
+    session is not enough because a stolen one is what the factor exists to
+    survive. An uncounted password check here hands whoever holds that session
+    an unlimited guessing oracle for the credential above it, which is worth
+    more than the session: a password survives revocation and is often reused
+    elsewhere. So the control added to make a stolen session less valuable
+    would have made it more so.
+
+    Counted into the same per-address counter as the sign-in screen rather
+    than a second one of its own. Two counters mean an attacker takes each to
+    just under its threshold and gets the sum, and one counter puts a step-up
+    attack in the place an operator already looks.
     """
+    retry_after = await seconds_until_retry(user.email)
+    if retry_after > 0:
+        return _throttled_step_up(request, retry_after)
+
     try:
         await reauthenticate(
             session, user=user, password=payload.password, code=payload.code
         )
     except ReauthenticationRequired:
+        wait = await record_failure(user.email)
+        log.warning("auth.mfa_step_up_failed", user_id=str(user.id))
+        if wait > 0:
+            return _throttled_step_up(request, wait)
         # Deliberately the same answer for a wrong password, a wrong code and
         # nothing supplied. Distinguishing them tells whoever holds a stolen
         # session which of the two proofs is worth attacking.
-        log.warning("auth.mfa_step_up_failed", user_id=str(user.id))
         return problem_response(
             status_code=status.HTTP_401_UNAUTHORIZED,
             title="Confirm It Is You",

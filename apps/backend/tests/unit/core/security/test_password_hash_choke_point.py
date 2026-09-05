@@ -247,12 +247,22 @@ def test_the_websocket_resolver_calls_the_password_change_check() -> None:
 
 #: Modules that hash on the loop today, found when this guard was written.
 #:
-#: Each is one hash rather than ten, on a path a person triggers by hand, so
-#: none is the two-second stall that prompted the guard. They are listed rather
-#: than fixed because they belong to registration and password reset, not to
-#: the change that added this file, and because a list that names them is what
-#: makes them get paid off; a guard narrowed to avoid them would report a clean
-#: tree that is not clean. This list only shrinks.
+#: Each is one hash rather than ten, so none is the two-second stall that
+#: prompted the guard. They are listed rather than fixed because they belong to
+#: registration and password reset, not to the change that added this file, and
+#: because a list that names them is what makes them get paid off; a guard
+#: narrowed to avoid them would report a clean tree that is not clean.
+#:
+#: They are not equally exposed, and whoever pays this down should start with
+#: the one that is. ``auth_service.register_user`` sits behind
+#: ``POST /auth/register``, which carries no ``@limiter.limit`` and needs no
+#: credential, so on a deployment with open registration it is an
+#: unauthenticated 213ms event-loop stall per request. The other three are
+#: bounded: the password-reset hash is behind a per-IP limit and a per-address
+#: cooldown, and the remaining two are admin-gated or behind a provider round
+#: trip.
+#:
+#: This list only shrinks.
 ALREADY_BLOCKING = {
     "services/admin_user_service.py",
     "services/auth_service.py",
@@ -276,8 +286,14 @@ def _sync_bcrypt_calls_inside_async(path: Path) -> list[tuple[int, str]]:
         if not isinstance(node, ast.AsyncFunctionDef):
             continue
         for inner in ast.walk(node):
-            # A nested synchronous def inside the coroutine is usually the
-            # thing being handed to a thread, so it is not blocking the loop.
+            # ``continue`` skips this node, not its body: ``ast.walk`` has
+            # already queued the children, so a call inside a nested
+            # synchronous def is still reported. That is stricter than the
+            # rule needs to be, since such a def is often the thing being
+            # handed to a thread, and it is left that way deliberately: the
+            # looser reading would need to know whether the def is called
+            # inline or passed to an executor, which is not something a walk
+            # can tell. Written down so whoever trips it is not surprised.
             if isinstance(inner, ast.FunctionDef):
                 continue
             if not isinstance(inner, ast.Call):

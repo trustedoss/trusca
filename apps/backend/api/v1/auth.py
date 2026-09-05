@@ -44,6 +44,7 @@ from core.errors import problem_response
 from core.login_throttle import (
     clear,
     record_failure,
+    release_spend,
     seconds_until_retry,
     spend_attempt,
     spend_once,
@@ -428,18 +429,21 @@ async def mfa_verify(
     # Unlimited is the other end and is worse: five minutes of guessing at one
     # in a million is not a wall on its own, and the per-address counter is
     # shared with passwords rather than dedicated to this.
-    #
-    # ``None`` means the counter could not answer. There is then no cap, so the
-    # token is spent up front instead and the strict one-guess rule comes back.
-    # Degrading has to make this stricter, never looser: the code is six digits
-    # with no work factor behind it, and this is the whole of what stands in
-    # front of it.
-    attempts_left = await spend_attempt(jti, seconds=window)
-    if attempts_left is False:
+    if not await spend_attempt(jti, seconds=window):
         log.warning("auth.mfa_token_attempts_exhausted", user_id=str(user.id))
         await spend_once(jti, seconds=window)
         return _problem_for_auth_error(request, InvalidCredentials("invalid or expired"))
-    if attempts_left is None and not await spend_once(jti, seconds=window):
+
+    # The single-use claim, taken before the code is checked and given back if
+    # the code is wrong.
+    #
+    # Taken first because two requests racing with the same token must not both
+    # proceed; given back because otherwise this is the mistyped-digit defect
+    # again by another route. Taken AFTER the code is checked was the second
+    # shape and it was also wrong: a replayed token with a fresh valid code
+    # spent that code and then answered 401, so a client retrying after a
+    # network timeout lost a recovery code and saw an error.
+    if not await spend_once(jti, seconds=window):
         log.warning("auth.mfa_token_replayed", user_id=str(user.id))
         return _problem_for_auth_error(request, InvalidCredentials("invalid or expired"))
 
@@ -455,19 +459,14 @@ async def mfa_verify(
     try:
         await verify_second_factor(session, user=user, code=payload.code)
     except MfaError:
+        # The claim goes back, so the next code from the app can use the same
+        # token. What stops this being unlimited is the attempt counter above,
+        # which does not go back.
+        await release_spend(jti)
         wait = await record_failure(user.email)
         if wait > 0:
             return _throttled_response(request, wait)
         return _problem_for_auth_error(request, InvalidCredentials("invalid code"))
-
-    # The code was right, so now the token is finished. It reaches the browser
-    # in a redirect fragment on the OAuth path and lives in history for its
-    # five minutes; a credential that has done its job should stop working.
-    # Two requests racing here means the loser is refused rather than handed a
-    # second session.
-    if attempts_left is not None and not await spend_once(jti, seconds=window):
-        log.warning("auth.mfa_token_replayed", user_id=str(user.id))
-        return _problem_for_auth_error(request, InvalidCredentials("invalid or expired"))
 
     ctx = dict(audit_context.get() or {})
     ctx["user_id"] = str(user.id)

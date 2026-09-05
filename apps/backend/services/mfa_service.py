@@ -22,7 +22,11 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from core import totp
 from core.crypto import decrypt_secret, encrypt_secret
 from core.recovery_codes import generate_codes, normalise
-from core.security import hash_password_async, verify_password_async
+from core.security import (
+    forget_principal,
+    hash_password_async,
+    verify_password_async,
+)
 from models import RefreshToken, User, UserRecoveryCode
 
 log = structlog.get_logger("auth.mfa")
@@ -98,8 +102,13 @@ async def complete_enrolment(
     # the feature breaking. There would be a case for it -- turning a factor on
     # after suspecting somebody else is signed in as you ought to evict them --
     # but that wants a fresh token pair handed back in this response, and until
-    # that exists the honest thing is to not claim the eviction. The user guide
-    # says so, and says to reset the password for that case instead.
+    # that exists the honest thing is to not claim the eviction.
+    #
+    # The user guide says so under "Turn it on", in as many words: turning it
+    # on protects later sign-ins and does not end sessions that are already
+    # open, and the thing to reach for in that case is a password reset. This
+    # comment claimed that before the sentence existed, which is the same
+    # shape as the defect this whole unit was reviewed for.
     codes = await _issue_recovery_codes(session, user=user)
     await session.commit()
 
@@ -258,6 +267,15 @@ async def clear_for_user(session: AsyncSession, *, user: User) -> None:
         token.revoked_reason = "logout"
 
     await session.commit()
+
+    # The third layer, and the one that is invisible until somebody turns the
+    # cache on. ``_load_current_user`` judges a token against the principal it
+    # has cached, and an entry warmed before this clear carries the old
+    # ``mfa_changed_at``, so it passes the token this just refused. The cache
+    # is off by default, which is why every test here would pass without this
+    # line; ``set_password`` drops the entry for exactly the same reason.
+    forget_principal(user.id)
+
     log.info(
         "auth.mfa_cleared",
         user_id=str(user.id),
