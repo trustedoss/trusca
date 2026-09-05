@@ -39,6 +39,7 @@ from models import User
 from schemas.auth import (
     MfaEnrolCompleteRequest,
     MfaEnrolStartResponse,
+    MfaStepUpRequest,
     RecoveryCodesResponse,
 )
 from schemas.notification import NotificationPrefsIn, NotificationPrefsOut
@@ -50,11 +51,14 @@ from services.mfa_service import (
     InvalidMfaCode,
     MfaAlreadyEnabled,
     MfaNotEnrolled,
+    ReauthenticationRequired,
     begin_enrolment,
     complete_enrolment,
+    reauthenticate,
     regenerate_recovery_codes,
 )
 from services.notification_service import (
+    create_notification,
     get_or_create_prefs,
     update_prefs,
 )
@@ -307,6 +311,41 @@ async def export_self(
 # ---------------------------------------------------------------------------
 
 
+async def _step_up_or_problem(
+    request: Request,
+    session: AsyncSession,
+    *,
+    user: User,
+    payload: MfaStepUpRequest,
+) -> Response | None:
+    """``None`` when the person proved themselves, a 401 problem otherwise.
+
+    One shape for both routes, so the answer cannot differ between them. The
+    status is 401 rather than 403: the session is fine, what is missing is a
+    fresh proof, and a client that reads 403 as "this account may not" would
+    hide the retry rather than offer it.
+    """
+    try:
+        await reauthenticate(
+            session, user=user, password=payload.password, code=payload.code
+        )
+    except ReauthenticationRequired:
+        # Deliberately the same answer for a wrong password, a wrong code and
+        # nothing supplied. Distinguishing them tells whoever holds a stolen
+        # session which of the two proofs is worth attacking.
+        log.warning("auth.mfa_step_up_failed", user_id=str(user.id))
+        return problem_response(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            title="Confirm It Is You",
+            detail=(
+                "enter your current password, or a code from your "
+                "authenticator app, to continue"
+            ),
+            instance=str(request.url.path),
+        )
+    return None
+
+
 @router.post(
     "/mfa/enrol",
     response_model=MfaEnrolStartResponse,
@@ -314,10 +353,16 @@ async def export_self(
 )
 async def start_mfa_enrolment(
     request: Request,
+    payload: MfaStepUpRequest,
     session: AsyncSession = Depends(get_db),
     current_user: CurrentUser = Depends(get_current_user),
 ) -> Response:
-    """Store a secret and hand back what the setup screen needs to show it."""
+    """Store a secret and hand back what the setup screen needs to show it.
+
+    Behind a step-up. Enrolling on somebody else's account is a takeover: the
+    attacker's authenticator becomes the factor, and the owner is locked out
+    by the control they never set up.
+    """
     user = await session.get(User, current_user.id)
     if user is None:
         return problem_response(
@@ -326,6 +371,10 @@ async def start_mfa_enrolment(
             detail="user not found",
             instance=str(request.url.path),
         )
+
+    step_up = await _step_up_or_problem(request, session, user=user, payload=payload)
+    if step_up is not None:
+        return step_up
 
     try:
         secret, uri = await begin_enrolment(session, user=user)
@@ -423,6 +472,24 @@ async def confirm_mfa_enrolment(
             instance=str(request.url.path),
         )
 
+    # Told, not just logged. Somebody who did not set this up needs to find
+    # out that their account now asks for a code, and the only place they will
+    # look is the portal. Written after the enrolment landed, so a notice can
+    # never describe something that did not happen.
+    await create_notification(
+        session,
+        user_id=user.id,
+        kind="account_security",
+        title="Two-step sign-in is now on",
+        body=(
+            "An authenticator app was set up on your account. If that was not "
+            "you, change your password and tell your administrator: whoever "
+            "did it can sign in as you."
+        ),
+        link="/profile",
+        target_table="users",
+        target_id=user.id,
+    )
     body = RecoveryCodesResponse(codes=codes)
     return Response(
         content=body.model_dump_json(),
@@ -438,10 +505,17 @@ async def confirm_mfa_enrolment(
 )
 async def regenerate_mfa_recovery_codes(
     request: Request,
+    payload: MfaStepUpRequest,
     session: AsyncSession = Depends(get_db),
     current_user: CurrentUser = Depends(get_current_user),
 ) -> Response:
-    """Issue a new set, invalidating every unused code from the old one."""
+    """Issue a new set, invalidating every unused code from the old one.
+
+    Behind a step-up, because what it hands back is ten sign-ins that bypass
+    the factor, survive a password change, and are not touched by revoking
+    sessions. Gating that on a session alone means a stolen token is worth ten
+    of them, and a stolen session is the case the factor exists to survive.
+    """
     user = await session.get(User, current_user.id)
     if user is None:
         return problem_response(
@@ -450,6 +524,10 @@ async def regenerate_mfa_recovery_codes(
             detail="user not found",
             instance=str(request.url.path),
         )
+
+    step_up = await _step_up_or_problem(request, session, user=user, payload=payload)
+    if step_up is not None:
+        return step_up
 
     try:
         codes = await regenerate_recovery_codes(session, user=user)
@@ -461,6 +539,23 @@ async def regenerate_mfa_recovery_codes(
             instance=str(request.url.path),
         )
 
+    # The codes just issued are ten sign-ins that bypass the factor, and the
+    # old set stopped working. Somebody who did not ask for that has to hear
+    # about it.
+    await create_notification(
+        session,
+        user_id=user.id,
+        kind="account_security",
+        title="New recovery codes were issued",
+        body=(
+            "A fresh set of recovery codes was created for your account and "
+            "the previous set no longer works. If that was not you, change "
+            "your password and tell your administrator."
+        ),
+        link="/profile",
+        target_table="users",
+        target_id=user.id,
+    )
     body = RecoveryCodesResponse(codes=codes)
     return Response(
         content=body.model_dump_json(),

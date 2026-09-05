@@ -26,6 +26,7 @@ import {
   regenerateRecoveryCodes,
   startMfaEnrolment,
   type MfaEnrolStart,
+  type MfaStepUp,
 } from "./api/mfaApi";
 
 type Step = "idle" | "scan" | "done";
@@ -38,12 +39,47 @@ export function MfaEnrolment({ enabled }: { enabled: boolean }) {
   const [codes, setCodes] = useState<string[] | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // Which action is waiting on a proof. Both endpoints hand back credentials
+  // that outlive a password change and survive revoking sessions, so an open
+  // session is not enough to ask for them: a stolen one is the case the
+  // factor exists to survive.
+  const [proofFor, setProofFor] = useState<"enrol" | "reissue" | null>(null);
+  const [password, setPassword] = useState("");
+  const [proofCode, setProofCode] = useState("");
 
-  async function begin() {
+  function askForProof(action: "enrol" | "reissue") {
+    setError(null);
+    setPassword("");
+    setProofCode("");
+    setProofFor(action);
+  }
+
+  function clearProof() {
+    setProofFor(null);
+    setPassword("");
+    setProofCode("");
+  }
+
+  async function submitProof(event: React.FormEvent) {
+    event.preventDefault();
+    if (!proofFor) return;
+    const proof = {
+      password: password.trim() || undefined,
+      code: proofCode.trim() || undefined,
+    };
+    if (proofFor === "enrol") {
+      await begin(proof);
+    } else {
+      await reissue(proof);
+    }
+  }
+
+  async function begin(proof: MfaStepUp) {
     setError(null);
     setBusy(true);
     try {
-      setEnrolment(await startMfaEnrolment());
+      setEnrolment(await startMfaEnrolment(proof));
+      clearProof();
       setStep("scan");
     } catch (err) {
       setError(problemMessage(err, t, { prefix: "errors" }));
@@ -77,11 +113,12 @@ export function MfaEnrolment({ enabled }: { enabled: boolean }) {
     }
   }
 
-  async function reissue() {
+  async function reissue(proof: MfaStepUp) {
     setError(null);
     setBusy(true);
     try {
-      setCodes((await regenerateRecoveryCodes()).codes);
+      setCodes((await regenerateRecoveryCodes(proof)).codes);
+      clearProof();
     } catch (err) {
       setError(problemMessage(err, t, { prefix: "errors" }));
     } finally {
@@ -105,11 +142,74 @@ export function MfaEnrolment({ enabled }: { enabled: boolean }) {
       {step === "idle" ? (
         <div className="space-y-3">
           <p className="text-sm text-muted-foreground">{t("mfa.off_description")}</p>
-          <Button onClick={begin} disabled={busy} data-testid="profile-mfa-start">
+          <Button
+            onClick={() => askForProof("enrol")}
+            disabled={busy}
+            data-testid="profile-mfa-start"
+          >
             {busy ? <Loader2 className="h-4 w-4 animate-spin" aria-hidden /> : null}
             {t("mfa.start")}
           </Button>
         </div>
+      ) : null}
+
+      {proofFor ? (
+        <form
+          onSubmit={submitProof}
+          className="space-y-3 rounded-md border bg-muted/20 p-3"
+          data-testid="profile-mfa-step-up"
+        >
+          <p className="text-sm text-muted-foreground">{t("mfa.step_up_description")}</p>
+          <div className="space-y-1">
+            <Label htmlFor="profile-mfa-password">{t("mfa.password_label")}</Label>
+            <Input
+              id="profile-mfa-password"
+              type="password"
+              value={password}
+              onChange={(event) => setPassword(event.target.value)}
+              autoComplete="current-password"
+              data-testid="profile-mfa-password"
+            />
+          </div>
+          {enabled ? (
+            // Only where there is a factor to produce one. Offering the field
+            // on an account with no authenticator asks for something that
+            // cannot exist yet.
+            <div className="space-y-1">
+              <Label htmlFor="profile-mfa-step-up-code">
+                {t("mfa.step_up_code_label")}
+              </Label>
+              <Input
+                id="profile-mfa-step-up-code"
+                value={proofCode}
+                onChange={(event) => setProofCode(event.target.value)}
+                autoComplete="one-time-code"
+                inputMode="numeric"
+                data-testid="profile-mfa-step-up-code"
+              />
+            </div>
+          ) : null}
+          <div className="flex gap-2">
+            <Button
+              type="submit"
+              disabled={
+                busy || (password.trim().length === 0 && proofCode.trim().length === 0)
+              }
+              data-testid="profile-mfa-step-up-submit"
+            >
+              {busy ? <Loader2 className="h-4 w-4 animate-spin" aria-hidden /> : null}
+              {t("mfa.step_up_submit")}
+            </Button>
+            <Button
+              type="button"
+              variant="ghost"
+              onClick={clearProof}
+              data-testid="profile-mfa-step-up-cancel"
+            >
+              {t("mfa.step_up_cancel")}
+            </Button>
+          </div>
+        </form>
       ) : null}
 
       {step === "scan" && enrolment ? (
@@ -155,7 +255,7 @@ export function MfaEnrolment({ enabled }: { enabled: boolean }) {
           <p className="text-sm text-muted-foreground">{t("mfa.on_description")}</p>
           <Button
             variant="outline"
-            onClick={reissue}
+            onClick={() => askForProof("reissue")}
             disabled={busy}
             data-testid="profile-mfa-reissue"
           >

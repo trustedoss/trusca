@@ -10,7 +10,10 @@ import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-vi.mock("@/features/profile/api/mfaApi", () => ({
+vi.mock("@/features/profile/api/mfaApi", async (importOriginal) => ({
+  // Real module first: a whole-module factory replaces every export, so one
+  // added later arrives here as undefined and the component calls it.
+  ...(await importOriginal<typeof import("@/features/profile/api/mfaApi")>()),
   startMfaEnrolment: vi.fn(),
   confirmMfaEnrolment: vi.fn(),
   regenerateRecoveryCodes: vi.fn(),
@@ -37,6 +40,12 @@ beforeEach(() => {
   vi.clearAllMocks();
 });
 
+/** Fill in the step-up the two credential-issuing actions sit behind. */
+async function proveIdentity(user: ReturnType<typeof userEvent.setup>) {
+  await user.type(screen.getByTestId("profile-mfa-password"), "a real password");
+  await user.click(screen.getByTestId("profile-mfa-step-up-submit"));
+}
+
 describe("MfaEnrolment", () => {
   it("does not enable anything until a code is confirmed", async () => {
     // The secret is stored server-side when this call returns, and the factor
@@ -47,6 +56,7 @@ describe("MfaEnrolment", () => {
     const user = userEvent.setup();
     render(<MfaEnrolment enabled={false} />);
     await user.click(screen.getByTestId("profile-mfa-start"));
+    await proveIdentity(user);
 
     expect(await screen.findByTestId("profile-mfa-scan")).toBeInTheDocument();
     expect(screen.queryByTestId("profile-mfa-enabled")).not.toBeInTheDocument();
@@ -62,6 +72,7 @@ describe("MfaEnrolment", () => {
     const user = userEvent.setup();
     render(<MfaEnrolment enabled={false} />);
     await user.click(screen.getByTestId("profile-mfa-start"));
+    await proveIdentity(user);
 
     expect(await screen.findByTestId("profile-mfa-secret")).toHaveValue(
       ENROLMENT.secret,
@@ -75,6 +86,7 @@ describe("MfaEnrolment", () => {
     const user = userEvent.setup();
     render(<MfaEnrolment enabled={false} />);
     await user.click(screen.getByTestId("profile-mfa-start"));
+    await proveIdentity(user);
     await user.type(await screen.findByTestId("profile-mfa-code"), "123456");
     await user.click(screen.getByTestId("profile-mfa-confirm"));
 
@@ -95,6 +107,7 @@ describe("MfaEnrolment", () => {
     const user = userEvent.setup();
     render(<MfaEnrolment enabled={false} />);
     await user.click(screen.getByTestId("profile-mfa-start"));
+    await proveIdentity(user);
     await user.type(await screen.findByTestId("profile-mfa-code"), "000000");
     await user.click(screen.getByTestId("profile-mfa-confirm"));
 
@@ -116,11 +129,75 @@ describe("MfaEnrolment", () => {
     const user = userEvent.setup();
     render(<MfaEnrolment enabled />);
     await user.click(screen.getByTestId("profile-mfa-reissue"));
+    await proveIdentity(user);
 
     await waitFor(() => {
       expect(screen.getByTestId("profile-mfa-codes")).toHaveTextContent(
         "EEEEE-FFFFF",
       );
     });
+  });
+
+  it("asks who you are before it will issue anything", async () => {
+    const user = userEvent.setup();
+    render(<MfaEnrolment enabled={false} />);
+
+    await user.click(screen.getByTestId("profile-mfa-start"));
+
+    // The click alone must not reach the endpoint. What it returns is a
+    // credential that outlives a password change, so an open session is not
+    // the thing to hand it out on.
+    expect(mockedStart).not.toHaveBeenCalled();
+    expect(screen.getByTestId("profile-mfa-step-up")).toBeInTheDocument();
+
+    await user.type(screen.getByTestId("profile-mfa-password"), "hunter22222");
+    await user.click(screen.getByTestId("profile-mfa-step-up-submit"));
+
+    await waitFor(() => {
+      expect(mockedStart).toHaveBeenCalledWith({
+        password: "hunter22222",
+        code: undefined,
+      });
+    });
+  });
+
+  it("takes a code instead of the password when there is a factor", async () => {
+    mockedReissue.mockResolvedValueOnce({ codes: ["GGGGG-HHHHH"] });
+    const user = userEvent.setup();
+    render(<MfaEnrolment enabled />);
+
+    await user.click(screen.getByTestId("profile-mfa-reissue"));
+    await user.type(screen.getByTestId("profile-mfa-step-up-code"), "123456");
+    await user.click(screen.getByTestId("profile-mfa-step-up-submit"));
+
+    await waitFor(() => {
+      expect(mockedReissue).toHaveBeenCalledWith({
+        password: undefined,
+        code: "123456",
+      });
+    });
+  });
+
+  it("does not offer a code field on an account with no factor", async () => {
+    const user = userEvent.setup();
+    render(<MfaEnrolment enabled={false} />);
+    await user.click(screen.getByTestId("profile-mfa-start"));
+
+    // Asking for a code from an app nobody has set up yet is asking for
+    // something that cannot exist.
+    expect(
+      screen.queryByTestId("profile-mfa-step-up-code"),
+    ).not.toBeInTheDocument();
+    expect(screen.getByTestId("profile-mfa-password")).toBeInTheDocument();
+  });
+
+  it("will not submit an empty proof", async () => {
+    const user = userEvent.setup();
+    render(<MfaEnrolment enabled={false} />);
+    await user.click(screen.getByTestId("profile-mfa-start"));
+
+    expect(screen.getByTestId("profile-mfa-step-up-submit")).toBeDisabled();
+    await user.click(screen.getByTestId("profile-mfa-step-up-submit"));
+    expect(mockedStart).not.toHaveBeenCalled();
   });
 });

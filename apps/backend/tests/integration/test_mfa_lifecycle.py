@@ -32,6 +32,9 @@ from tests._helpers import make_user, unique_suffix
 pytestmark = pytest.mark.integration
 
 _PASSWORD = "a long enough password 8"
+#: The step-up body these endpoints ask for. Both hand back credentials that
+#: outlive a password change, so a session alone does not get them.
+_PROOF = {"password": _PASSWORD}
 _SEED = base64.b32encode(b"12345678901234567890").decode("ascii").rstrip("=")
 
 
@@ -111,12 +114,16 @@ async def test_regenerating_retires_every_unused_code(client, factory) -> None:
     token = await _sign_in(client, email)
     auth = {"Authorization": f"Bearer {token}"}
 
-    first_set = await client.post("/v1/users/me/mfa/recovery-codes", headers=auth)
+    first_set = await client.post(
+        "/v1/users/me/mfa/recovery-codes", json=_PROOF, headers=auth
+    )
     assert first_set.status_code == 200, first_set.text
     old_codes = first_set.json()["codes"]
     assert len(old_codes) >= 2
 
-    second_set = await client.post("/v1/users/me/mfa/recovery-codes", headers=auth)
+    second_set = await client.post(
+        "/v1/users/me/mfa/recovery-codes", json=_PROOF, headers=auth
+    )
     assert second_set.status_code == 200, second_set.text
     new_codes = second_set.json()["codes"]
 
@@ -156,6 +163,7 @@ async def test_a_recovery_code_works_once(client, factory) -> None:
     codes = (
         await client.post(
             "/v1/users/me/mfa/recovery-codes",
+            json=_PROOF,
             headers={"Authorization": f"Bearer {token}"},
         )
     ).json()["codes"]
@@ -229,7 +237,9 @@ async def test_clearing_and_re_enrolling_produces_a_different_secret(
 
     token = await _sign_in(client, email)
     started = await client.post(
-        "/v1/users/me/mfa/enrol", headers={"Authorization": f"Bearer {token}"}
+        "/v1/users/me/mfa/enrol",
+        json=_PROOF,
+        headers={"Authorization": f"Bearer {token}"},
     )
     assert started.status_code == 200, started.text
 
@@ -249,7 +259,9 @@ async def test_clearing_leaves_no_recovery_codes_behind(client, factory) -> None
 
     token = await _sign_in(client, email)
     await client.post(
-        "/v1/users/me/mfa/recovery-codes", headers={"Authorization": f"Bearer {token}"}
+        "/v1/users/me/mfa/recovery-codes",
+        json=_PROOF,
+        headers={"Authorization": f"Bearer {token}"},
     )
 
     async with factory() as reader:
@@ -294,7 +306,9 @@ async def test_finishing_enrolment_does_not_sign_the_person_out(client, factory)
     token = await _sign_in(client, email)
     headers = {"Authorization": f"Bearer {token}"}
 
-    started = await client.post("/v1/users/me/mfa/enrol", headers=headers)
+    started = await client.post(
+        "/v1/users/me/mfa/enrol", json=_PROOF, headers=headers
+    )
     assert started.status_code == 200, started.text
     secret = started.json()["secret"]
 
@@ -399,3 +413,118 @@ async def test_clearing_ends_the_sessions_that_were_open(client, factory) -> Non
             )
         ).scalars().all()
     assert not live, f"{len(live)} refresh token(s) left live after the clear"
+
+
+async def test_a_session_alone_does_not_issue_recovery_codes(client, factory) -> None:
+    """The finding this endpoint was opened by.
+
+    Ten recovery codes are ten sign-ins that bypass the factor. They outlive a
+    password change, revoking sessions does not touch them, and the owner was
+    never told. Somebody holding a stolen access token called this once and
+    held a bypass for as long as they liked, which is the case a second factor
+    is bought to survive.
+    """
+    _user_id, email = await _make_user(factory, enrolled=True)
+    token = await _sign_in(client, email)
+    auth = {"Authorization": f"Bearer {token}"}
+
+    refused = await client.post(
+        "/v1/users/me/mfa/recovery-codes", json={}, headers=auth
+    )
+    assert refused.status_code == 401, refused.text
+    assert refused.json()["title"] == "Confirm It Is You"
+
+    wrong = await client.post(
+        "/v1/users/me/mfa/recovery-codes",
+        json={"password": "not the password"},
+        headers=auth,
+    )
+    assert wrong.status_code == 401, wrong.text
+    # The same answer as the empty one. Telling them apart tells whoever holds
+    # the session which proof is worth attacking.
+    assert wrong.json()["title"] == refused.json()["title"]
+    assert wrong.json()["detail"] == refused.json()["detail"]
+
+    allowed = await client.post(
+        "/v1/users/me/mfa/recovery-codes", json=_PROOF, headers=auth
+    )
+    assert allowed.status_code == 200, allowed.text
+    assert len(allowed.json()["codes"]) == 10
+
+
+async def test_a_session_alone_does_not_start_an_enrolment(client, factory) -> None:
+    """Enrolling on somebody else's account is a takeover.
+
+    The attacker's authenticator becomes the factor and the owner is locked
+    out by a control they never set up, so this is gated on the same proof.
+    """
+    _user_id, email = await _make_user(factory, enrolled=False)
+    token = await _sign_in(client, email)
+    auth = {"Authorization": f"Bearer {token}"}
+
+    refused = await client.post("/v1/users/me/mfa/enrol", json={}, headers=auth)
+    assert refused.status_code == 401, refused.text
+
+    allowed = await client.post("/v1/users/me/mfa/enrol", json=_PROOF, headers=auth)
+    assert allowed.status_code == 200, allowed.text
+    assert allowed.json()["secret"]
+
+
+async def test_a_code_from_the_app_proves_it_too(client, factory) -> None:
+    """Because the ordinary reason to reissue is that the codes ran out.
+
+    Somebody who has the authenticator is the person the factor is about, and
+    requiring the password as well would mean a lost password blocks the
+    recovery path rather than the factor doing so.
+    """
+    _user_id, email = await _make_user(factory, enrolled=True)
+    token = await _sign_in(client, email)
+
+    issued = await client.post(
+        "/v1/users/me/mfa/recovery-codes",
+        # A step ahead of the one the sign-in above just spent: the same code
+        # is refused by the replay check, which is the point of it.
+        json={"code": totp.code_at(_SEED, counter=_counter() + 1)},
+        headers={"Authorization": f"Bearer {token}"},
+    )
+
+    assert issued.status_code == 200, issued.text
+    assert len(issued.json()["codes"]) == 10
+
+
+async def test_the_person_is_told_when_codes_are_reissued(client, factory) -> None:
+    """The notice is what makes this reviewable rather than quiet.
+
+    The administrator's clear already notifies. The self-service path is the
+    one an attacker uses, and it did neither the proof nor the notice.
+    """
+    from sqlalchemy import select
+
+    from models import Notification
+
+    user_id, email = await _make_user(factory, enrolled=True)
+    token = await _sign_in(client, email)
+
+    issued = await client.post(
+        "/v1/users/me/mfa/recovery-codes",
+        json=_PROOF,
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    assert issued.status_code == 200, issued.text
+
+    async with factory() as session:
+        rows = (
+            (
+                await session.execute(
+                    select(Notification).where(
+                        Notification.user_id == user_id,
+                        Notification.kind == "account_security",
+                    )
+                )
+            )
+            .scalars()
+            .all()
+        )
+
+    assert len(rows) == 1, f"{len(rows)} account_security notifications, expected 1"
+    assert "recovery codes" in rows[0].title.lower()

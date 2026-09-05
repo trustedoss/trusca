@@ -107,6 +107,56 @@ async def complete_enrolment(
     return codes
 
 
+class ReauthenticationRequired(MfaError):
+    """The caller did not prove who they are, or proved it wrongly."""
+
+
+async def reauthenticate(
+    session: AsyncSession,
+    *,
+    user: User,
+    password: str | None = None,
+    code: str | None = None,
+) -> None:
+    """Prove the person is here, not just that a session is.
+
+    Raises :class:`ReauthenticationRequired` otherwise.
+
+    Enrolling a factor and reissuing recovery codes both hand back credentials
+    that survive everything else: ten recovery codes are ten sign-ins, they
+    outlive a password change, and revoking sessions does not touch them. A
+    session on its own is the wrong thing to gate that on, because a stolen
+    session is the case a second factor is bought to survive. Somebody holding
+    one would otherwise call the reissue endpoint once and hold a bypass for
+    as long as they like.
+
+    Either proof is accepted. A code, because whoever has the authenticator is
+    the person the factor is about; the password, because an account with no
+    factor yet has no code to give, and because a lost authenticator is the
+    ordinary case rather than the strange one.
+
+    A code spent here is spent for sign-in too: it goes through the same
+    replay check, so somebody who watches this one being typed cannot turn
+    around and use it at the login screen.
+    """
+    if code:
+        if not user.mfa_enabled:
+            raise ReauthenticationRequired("no second factor to check a code against")
+        try:
+            await verify_second_factor(session, user=user, code=code)
+        except MfaError as exc:
+            raise ReauthenticationRequired("code did not match") from exc
+        return
+
+    if password:
+        stored = getattr(user, "hashed_password", None)
+        if stored and await verify_password_async(password, stored):
+            return
+        raise ReauthenticationRequired("password did not match")
+
+    raise ReauthenticationRequired("supply the current password or a code")
+
+
 async def verify_second_factor(session: AsyncSession, *, user: User, code: str) -> None:
     """Accept a TOTP code or a recovery code, and spend it.
 
@@ -284,9 +334,11 @@ __all__ = [
     "MfaAlreadyEnabled",
     "MfaError",
     "MfaNotEnrolled",
+    "ReauthenticationRequired",
     "begin_enrolment",
     "clear_for_user",
     "complete_enrolment",
+    "reauthenticate",
     "regenerate_recovery_codes",
     "verify_second_factor",
 ]

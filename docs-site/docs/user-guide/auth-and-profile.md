@@ -77,12 +77,14 @@ This is off until you turn it on, and you turn it on for yourself.
 ### Turn it on
 
 1. Open `/profile` and find **Two-step sign-in**.
-2. Click **Set up**. The portal shows a QR code and, below it, the same secret
-   as text.
-3. Scan the code with an authenticator app, or type the text version in if you
+2. Click **Set up**, then enter your current password. You are asked again
+   even though you are signed in: what setting this up hands out keeps working
+   after a password change, so an open browser tab is not enough on its own.
+3. The portal shows a QR code and, below it, the same secret as text.
+4. Scan the code with an authenticator app, or type the text version in if you
    are on a desktop app, your camera will not focus, or you are using a screen
    reader.
-4. Enter the six digits the app shows, and submit.
+5. Enter the six digits the app shows, and submit.
 
 The step between showing the secret and asking for a code is not ceremony.
 Nothing is switched on until a code proves the app really has the secret, so
@@ -110,9 +112,15 @@ type it from following you in.
 Use a recovery code where the six digits are asked for. Each one works once and
 then it is gone, so ten of them is ten sign-ins, not ten attempts.
 
-Once you are back in, `/profile` will issue a fresh set. Doing so cancels every
-code from the old set, so the list you printed before is no longer worth
-anything to whoever finds it.
+Once you are back in, `/profile` will issue a fresh set. It asks for your
+password or a code from the app first, for the same reason setting it up does.
+Issuing a set cancels every code from the old one, so the list you printed
+before is no longer worth anything to whoever finds it.
+
+You are notified in the portal whenever a factor is set up on your account or
+new recovery codes are issued. If a notice arrives that you did not cause,
+change your password and tell your administrator: somebody else is signed in
+as you.
 
 If you have neither the app nor a code, a super admin can clear the second
 factor from your account, and you are told when that happens.

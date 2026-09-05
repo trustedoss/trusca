@@ -81,6 +81,19 @@ class MfaEnrolStartResponse(BaseModel):
     mfa_token: str
 
 
+class MfaStepUpRequest(BaseModel):
+    """Proof that the person is present, not just that a session is.
+
+    Either field. A code where the account already has a factor, the password
+    otherwise or when the authenticator is not to hand. Both empty is refused
+    rather than treated as the session being enough, because the session is
+    exactly what a stolen token supplies.
+    """
+
+    password: str | None = Field(default=None, max_length=1024)
+    code: str | None = Field(default=None, max_length=64)
+
+
 class MfaEnrolCompleteRequest(BaseModel):
     """A code proving the authenticator app is working."""
 
