@@ -9,7 +9,9 @@ Two sub-routers:
   - ``gitlab`` — POST /v1/webhooks/gitlab
 
 Both are PUBLIC endpoints (no JWT required) but each delivery is authenticated
-via a per-project shared secret stored in ``projects.webhook_secret``:
+via a per-project shared secret stored in
+``projects.webhook_secret_encrypted`` (Fernet ciphertext; decrypted for the
+comparison and never surfaced):
 
   - GitHub: HMAC-SHA256 signature over the request body
             (``X-Hub-Signature-256: sha256=<hex>``).

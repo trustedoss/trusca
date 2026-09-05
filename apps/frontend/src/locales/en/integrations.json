@@ -107,7 +107,7 @@
   },
   "webhooks": {
     "section_title": "Webhook URLs",
-    "section_description": "Point your repository's webhook configuration to one of these URLs. The shared secret is the project's webhook_secret (set it in the project's Settings tab).",
+    "section_description": "Point your repository's webhook configuration to one of these URLs. The shared secret is issued per project and is shown once when it is issued; a team admin can issue one from the project's webhook settings.",
     "github": {
       "label": "GitHub",
       "header": "Header: X-Hub-Signature-256 (HMAC-SHA256 of the body)"

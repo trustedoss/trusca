@@ -412,7 +412,8 @@ app.include_router(source_tree_router)
 app.include_router(remediation_router)
 # Phase 5 PR #16: API Key management + Webhook receivers (GitHub / GitLab).
 # Webhook endpoints are PUBLIC (no JWT) but each delivery is HMAC-authenticated
-# against a per-project shared secret stored in `projects.webhook_secret`.
+# against a per-project shared secret stored, as ciphertext, in
+# `projects.webhook_secret_encrypted`.
 app.include_router(api_keys_router)
 # v2.2-b1: GitHub App credential storage + token-minting foundation. Team-scoped
 # CRUD for a GitHub App's reversibly-encrypted PEM private key (Fernet at rest)

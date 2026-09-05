@@ -23,32 +23,47 @@ Webhook은 Git 호스트가 포털로 이벤트를 푸시하게 합니다 — �
 
 두 엔드포인트 모두 공개(JWT 없음)이지만 프로젝트의 webhook secret을 요구합니다. 시크릿은 프로젝트별이며 Webhook 활성화 시 생성됩니다.
 
-### Webhook 시크릿 부트스트래핑 (v0.10.0 에서는 운영자 전용)
+### Webhook 시크릿 발급
 
-Project Settings 탭은 아직 Webhook 컨트롤을 노출하지 않습니다.
-운영자가 데이터베이스에서 직접 시크릿을 설정합니다.
+포털에 요청해서 받습니다. 시크릿은 암호화해서 저장하므로 SQL로 직접 쓸 수 없고,
+발급 경로는 이것 하나입니다.
 
-<!-- docs-uat: id=webhooks-secret-sql kind=sql ctx=postgres tier=manual waiver=operator-sql-placeholder-project-uuid -->
-```sql
-UPDATE projects
-   SET webhook_secret = encode(gen_random_bytes(32), 'base64'),
-       webhook_provider = 'github'   -- or 'gitlab'
- WHERE id = '<project-uuid>'
-RETURNING webhook_secret, webhook_provider;
+<!-- docs-uat: id=webhooks-secret-issue kind=manual tier=manual -->
+```http
+POST /v1/projects/{project_id}/webhook-secret
+Authorization: Bearer <token>
+Content-Type: application/json
+
+{"provider": "github"}
 ```
 
-두 컬럼을 함께 씁니다. 두 번째는 선택이 아닙니다. 게이트웨이는 프로젝트를 git URL과
-시크릿 설정 여부와 `webhook_provider`가 도착한 전송의 종류와 일치하는지로 찾습니다. 한
-provider의 시크릿을 다른 쪽에 재사용하지 못하게 하려는 것입니다. 시크릿만 있고 provider가
-없는 행은 아무것도 매칭하지 않습니다. 모든 전송이 거부되고, 운영자는 이 문서가 시킨 대로
-했는데, 보이는 증상은 스캔이 시작되지 않는 것뿐입니다.
+`provider`는 `github` 또는 `gitlab`이고 필수입니다. 게이트웨이는 프로젝트를 git URL,
+시크릿, provider 셋으로 찾습니다. 한 provider의 시크릿을 다른 쪽에 재사용하지 못하게
+하려는 것입니다. 이 요청에는 둘 중 하나만 설정되는 형태가 없습니다.
 
-`RETURNING`이 둘 다 출력하므로 따로 조회할 필요가 없습니다. 시크릿을 레포 소유자에게
-전달해 GitHub/GitLab → Settings → Webhooks → "Secret"에 붙여 넣게 하세요.
+응답이 시크릿을 한 번 담아 줍니다.
 
-이 컬럼은 시크릿을 그대로 저장합니다. 포털이 전송을 검증할 때 쓰는 HMAC 키라
-해시할 수 없기 때문입니다. 데이터베이스 덤프를 다룰 때 이 점을 감안하시고,
-교체할 때는 위 문장을 다시 실행하면 됩니다.
+```json
+{
+  "project_id": "...",
+  "provider": "github",
+  "issued_at": "2026-09-05T09:00:00Z",
+  "replaced_existing": false,
+  "secret": "..."
+}
+```
+
+이 자리에서 받아 두세요. 암호문으로 저장되고 다시 돌려주는 엔드포인트는 없습니다.
+`GET /v1/projects/{project_id}/webhook`은 설정 여부와 provider 만 알려 주고 값은
+알려 주지 않습니다. 잃어버리면 새로 발급하는 수밖에 없습니다.
+
+GitHub/GitLab → Settings → Webhooks → "Secret"에 붙여 넣습니다.
+
+이미 시크릿이 있는 프로젝트에 다시 호출하면 교체됩니다. 그때는 `replaced_existing`이
+`true`로 옵니다. 이전 값은 즉시 거부되므로 새 값이 SCM에 들어갈 때까지 전송이
+실패합니다. 이것이 교체 경로이고 따로 있지 않습니다.
+
+프로젝트를 소유한 팀의 `team_admin` 권한이 필요합니다.
 
 셀프 서비스 활성화 UI는 로드맵 항목입니다.
 

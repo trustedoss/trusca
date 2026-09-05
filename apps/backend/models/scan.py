@@ -227,14 +227,24 @@ class Project(Base):
         ),
         nullable=True,
     )
-    # Phase 5 PR #16 — webhook reception. ``webhook_secret`` stores the
-    # plaintext shared secret negotiated with the SCM (GitHub: HMAC key for
-    # X-Hub-Signature-256; GitLab: token compared to X-Gitlab-Token). It is
-    # 64 chars (cryptographic random urlsafe) and is masked in audit_logs via
-    # ``core.audit._SENSITIVE_COLUMNS`` (the ``secret`` token catches it).
+    # Phase 5 PR #16 (webhook reception), moved to ciphertext in 0084-0086.
+    # ``webhook_secret_encrypted`` holds the Fernet token of the shared secret
+    # negotiated with the SCM (GitHub: HMAC key for X-Hub-Signature-256;
+    # GitLab: token compared to X-Gitlab-Token). The plaintext is 64 chars of
+    # urlsafe random, is surfaced once when it is issued, and is never stored.
+    #
+    # It is encrypted rather than hashed because verification needs the value
+    # back: an HMAC is recomputed from it and a GitLab token is compared to it.
+    # ``github_app_credentials.webhook_secret_encrypted`` holds the same class
+    # of value the same way; these two columns are meant to stay alike.
+    #
+    # Masked in audit_logs via ``core.audit._SENSITIVE_COLUMNS``. Ciphertext is
+    # masked as well as plaintext: an audit diff is immutable, so a column that
+    # ever carries credential bytes must never reach it.
+    #
     # ``webhook_provider`` is the closed set 'github' | 'gitlab' so the
     # gateway knows which header schema to apply.
-    webhook_secret: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    webhook_secret_encrypted: Mapped[str | None] = mapped_column(Text, nullable=True)
     webhook_provider: Mapped[str | None] = mapped_column(String(16), nullable=True)
     # Feature #18 Part B (schema half) — private-repo scanning. Stores the
     # Fernet ciphertext of the user-supplied git credential (a PAT / deploy

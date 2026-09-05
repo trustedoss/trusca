@@ -1050,6 +1050,18 @@
       "why": "Feeds the assignment PATCH above, so it is gated the same: a caller who may assign has to be able to compose one. Scoped to the project's own team by get_project."
     },
     {
+      "method": "GET",
+      "path": "/v1/projects/{project_id}/webhook",
+      "gate": "role>=team_admin",
+      "why": "Says whether the webhook is configured and for which provider, never the secret. Same gate as issuing it: knowing a repository can drive this deployment is part of the same setting."
+    },
+    {
+      "method": "POST",
+      "path": "/v1/projects/{project_id}/webhook-secret",
+      "gate": "role>=team_admin",
+      "why": "Issues the shared secret that lets a repository start scans here, and re-issuing invalidates the current one. Same level that edits the project's other settings; scoped to the owning team by get_project."
+    },
+    {
       "method": "POST",
       "path": "/v1/webhooks/github",
       "gate": "public",

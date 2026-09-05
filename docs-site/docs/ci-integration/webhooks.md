@@ -23,33 +23,49 @@ Webhooks let your Git host push events to the portal — typically `push` and `p
 
 Both endpoints are public (no JWT) but require the project's webhook secret. The secret is per-project, generated when you enable the webhook.
 
-### Bootstrapping a webhook secret (operator-only in this release)
+### Issuing a webhook secret
 
-The Project Settings tab does not yet expose webhook controls.
-Operators set the secret directly in the database:
+Ask the portal for one. The secret is stored encrypted, so it cannot be written
+by hand in SQL, and this is the only way to produce it.
 
-<!-- docs-uat: id=webhooks-secret-sql kind=sql ctx=postgres tier=manual waiver=operator-sql-placeholder-project-uuid -->
-```sql
-UPDATE projects
-   SET webhook_secret = encode(gen_random_bytes(32), 'base64'),
-       webhook_provider = 'github'   -- or 'gitlab'
- WHERE id = '<project-uuid>'
-RETURNING webhook_secret, webhook_provider;
+<!-- docs-uat: id=webhooks-secret-issue kind=manual tier=manual -->
+```http
+POST /v1/projects/{project_id}/webhook-secret
+Authorization: Bearer <token>
+Content-Type: application/json
+
+{"provider": "github"}
 ```
 
-Both columns, and the second one is not optional. The gateway looks a project
-up by its git URL, its secret being set, AND `webhook_provider` matching the
-kind of delivery that arrived, so that one provider's secret cannot be replayed
-against the other. A row with a secret and no provider matches nothing: every
-delivery is refused, the operator has done what this page said, and the only
-symptom is that scans never start.
+`provider` is `github` or `gitlab` and is required. The gateway matches a
+delivery on the project's git URL, its secret, AND the provider, so that one
+provider's secret cannot be replayed against the other. There is no shape of
+this request that sets one and not the other.
 
-`RETURNING` prints both so you do not need a second query. Share the secret with
-the repo owner to paste into GitHub/GitLab → Settings → Webhooks → "Secret".
+The response carries the secret once:
 
-The column holds the secret verbatim — it is the HMAC key the portal verifies
-deliveries with, so it cannot be hashed. Treat a database dump accordingly, and
-rotate by re-running the statement above.
+```json
+{
+  "project_id": "...",
+  "provider": "github",
+  "issued_at": "2026-09-05T09:00:00Z",
+  "replaced_existing": false,
+  "secret": "..."
+}
+```
+
+Capture it here. It is stored as ciphertext and no endpoint returns it again;
+`GET /v1/projects/{project_id}/webhook` answers whether one is set and for
+which provider, never what it is. Losing it means issuing a new one.
+
+Paste it into GitHub/GitLab → Settings → Webhooks → "Secret".
+
+Calling this again on a project that already has a secret replaces it, and
+`replaced_existing` comes back `true`. The old value stops being accepted
+immediately, so deliveries fail until the new one reaches the SCM. That is the
+rotation path; there is no separate one.
+
+Requires `team_admin` on the team that owns the project.
 
 A self-service activation UI lives on the roadmap.
 
@@ -57,7 +73,7 @@ A self-service activation UI lives on the roadmap.
 
 ### 1. Enable the webhook in the portal
 
-In this release webhook activation is operator-only. The Project Settings tab does not yet expose webhook controls. Operators bootstrap a per-project `webhook_secret` server-side (see `apps/backend/services/webhook_service.py`); the resulting webhook URL is shown in the **Integrations** page → Webhooks section. A self-service activation UI is on the roadmap.
+Issue the secret with `POST /v1/projects/{project_id}/webhook-secret` as above. The Project Settings tab does not yet expose webhook controls, so the call is how activation happens; the resulting webhook URL is shown in the **Integrations** page → Webhooks section. A self-service activation UI is on the roadmap.
 
 ### 2. Configure on GitHub
 
@@ -81,7 +97,7 @@ Push a commit. In the portal: **Project → Scans** should show a new scan withi
 
 ### 1. Enable the webhook in the portal
 
-In this release webhook activation is operator-only. The Project Settings tab does not yet expose webhook controls. Operators bootstrap a per-project `webhook_secret` server-side (see `apps/backend/services/webhook_service.py`); the resulting webhook URL is shown in the **Integrations** page → Webhooks section. A self-service activation UI is on the roadmap.
+Issue the secret with `POST /v1/projects/{project_id}/webhook-secret` as above. The Project Settings tab does not yet expose webhook controls, so the call is how activation happens; the resulting webhook URL is shown in the **Integrations** page → Webhooks section. A self-service activation UI is on the roadmap.
 
 ### 2. Configure on GitLab
 

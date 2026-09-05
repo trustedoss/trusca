@@ -107,7 +107,7 @@
   },
   "webhooks": {
     "section_title": "웹훅 URL",
-    "section_description": "저장소 웹훅 설정에서 아래 URL 중 하나를 가리키도록 하세요. 공유 시크릿은 프로젝트의 webhook_secret(프로젝트 Settings 탭에서 설정)입니다.",
+    "section_description": "저장소 웹훅 설정에서 아래 URL 중 하나를 가리키도록 하세요. 공유 시크릿은 프로젝트마다 따로 발급하며 발급할 때 한 번만 보여 줍니다. 팀 관리자가 프로젝트 웹훅 설정에서 발급할 수 있습니다.",
     "github": {
       "label": "GitHub",
       "header": "헤더: X-Hub-Signature-256 (본문의 HMAC-SHA256)"

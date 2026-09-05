@@ -69,8 +69,12 @@ _SENSITIVE_COLUMNS = frozenset(
         # the bcrypt hash of an API key plaintext (never the plaintext, but
         # masking in audit diff is defence-in-depth: a future code path that
         # mutates this column on a soft-revoke etc. must not write the hash
-        # into ``audit_logs.diff``). ``webhook_secret`` IS the plaintext shared
-        # secret used for HMAC verification — masking is mandatory.
+        # into ``audit_logs.diff``).
+        #
+        # ``webhook_secret`` was the plaintext shared secret on ``projects``
+        # until 0086 dropped the column. The entry stays: masking is keyed on
+        # the column name, an audit row written before that upgrade still
+        # carries the name, and nothing reserves it against reuse.
         "key_hash",
         "webhook_secret",
         # v2.2-b1 — GitHub App credential columns. ``private_key_encrypted`` is
@@ -79,6 +83,11 @@ _SENSITIVE_COLUMNS = frozenset(
         # Both are already encrypted at rest, but masking them out of the audit
         # diff is defence-in-depth: a register / soft-revoke / re-link UPDATE
         # must never copy credential ciphertext into ``audit_logs.diff``.
+        #
+        # Since 0084 ``projects`` has a column of the same name holding the
+        # same class of value. Masking is by column name and not by table, so
+        # that one is covered by this entry. A test pins the pairing rather
+        # than leaving it to be noticed.
         "private_key_encrypted",
         "webhook_secret_encrypted",
         # Feature #18 Part B — per-project git credential for private-repo

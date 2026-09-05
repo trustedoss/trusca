@@ -2,7 +2,7 @@
 Integration tests for POST /v1/webhooks/github — Phase 5 PR #16.
 
 Public endpoint (no JWT). Authentication is HMAC-SHA256 over the raw body
-keyed by the project's ``webhook_secret``. The endpoint is idempotent on
+keyed by the project's shared secret. The endpoint is idempotent on
 ``X-GitHub-Delivery`` so duplicate retries from the SCM do not re-enqueue
 a scan.
 
@@ -38,6 +38,7 @@ import pytest
 from httpx import ASGITransport, AsyncClient
 from sqlalchemy import select
 
+from core.crypto import encrypt_secret
 from models import Project, WebhookDelivery
 from tests._db_required import migrate_to_head
 from tests._helpers import (
@@ -127,7 +128,7 @@ async def _make_github_project(
     constant default URL would leave many ``Project`` rows sharing the same
     ``git_url`` from prior sessions. ``services.webhook_service._find_project_by_git_url``
     does ``select(Project).where(...).first()`` with no ORDER BY, so it would
-    pick an arbitrary stale project (with a different ``webhook_secret``) and
+    pick an arbitrary stale project (with a different shared secret) and
     HMAC verification would fail (401). Using a unique URL per call is the
     test-isolation fix.
     """
@@ -137,11 +138,12 @@ async def _make_github_project(
         team = await make_team(session, organization=org)
         project = await make_project(session, team=team)
         project.git_url = git_url or f"https://github.com/acme/widgets-{unique_suffix()}"
-        project.webhook_secret = secret or secrets.token_urlsafe(32)
+        raw = secret or secrets.token_urlsafe(32)
+        project.webhook_secret_encrypted = encrypt_secret(raw)
         project.webhook_provider = "github"
         await session.commit()
         await session.refresh(project)
-        return project, project.webhook_secret
+        return project, raw
 
 
 def _push_payload(repo_url: str | None = "https://github.com/acme/widgets") -> dict[str, object]:

@@ -74,6 +74,11 @@ from schemas.scan import (
     SourceArchiveUploadResponse,
 )
 from schemas.vulnerability_detail import AssignableMember, AssignableMemberList
+from schemas.webhook_activation import (
+    WebhookSecretIssueIn,
+    WebhookSecretIssueOut,
+    WebhookStatusOut,
+)
 from services.batch_service import create_projects_batch
 from services.dependency_graph_service import get_dependency_graph
 from services.project_detail_service import (
@@ -1324,6 +1329,130 @@ async def list_assignable_members_endpoint(
     return Response(
         content=body.model_dump_json(),
         status_code=status.HTTP_200_OK,
+        media_type="application/json",
+    )
+
+
+# ---------------------------------------------------------------------------
+# GET  /v1/projects/{project_id}/webhook
+# POST /v1/projects/{project_id}/webhook-secret
+# ---------------------------------------------------------------------------
+
+
+@router.get(
+    "/{project_id}/webhook",
+    response_model=WebhookStatusOut,
+    summary="Whether this project's webhook is active (role >= team_admin)",
+    responses={
+        403: {"description": "Caller is not a team admin on the owning team."},
+        404: {"description": "No such project."},
+    },
+)
+async def get_webhook_status_endpoint(
+    request: Request,
+    project_id: uuid.UUID,
+    session: AsyncSession = Depends(get_db),
+    actor: CurrentUser = Depends(require_role("team_admin")),
+) -> Response:
+    """Configured or not, and for which provider. Never the secret.
+
+    Split from the issue route so the question a screen asks has an answer
+    that carries no credential bytes. There is no route that returns the
+    secret after issuance, and this is the one somebody would be tempted to
+    add it to.
+    """
+    try:
+        project = await get_project(session, project_id=project_id, actor=actor)
+    except ProjectError as exc:
+        return _problem_for_project_error(request, exc)
+
+    body = WebhookStatusOut(
+        project_id=project.id,
+        configured=project.webhook_secret_encrypted is not None,
+        provider=project.webhook_provider,  # type: ignore[arg-type]
+    )
+    return Response(
+        content=body.model_dump_json(),
+        status_code=status.HTTP_200_OK,
+        media_type="application/json",
+    )
+
+
+@router.post(
+    "/{project_id}/webhook-secret",
+    response_model=WebhookSecretIssueOut,
+    status_code=status.HTTP_201_CREATED,
+    summary="Issue this project's webhook shared secret (role >= team_admin)",
+    responses={
+        403: {"description": "Caller is not a team admin on the owning team."},
+        404: {"description": "No such project."},
+        503: {
+            "description": (
+                "The deployment's credential encryption key is unset or "
+                "malformed, so no secret can be stored."
+            )
+        },
+    },
+)
+async def issue_webhook_secret_endpoint(
+    request: Request,
+    project_id: uuid.UUID,
+    payload: WebhookSecretIssueIn,
+    session: AsyncSession = Depends(get_db),
+    actor: CurrentUser = Depends(require_role("team_admin")),
+) -> Response:
+    """Turn the webhook on, and hand back the secret once.
+
+    This replaced an operator running an UPDATE by hand. The column holds
+    ciphertext now and SQL cannot produce it, so the procedure had to move
+    into the product; having moved, it gets what the SQL never had, which is
+    a permission check, an audit row, and one path that sets both fields.
+
+    ``team_admin`` rather than ``developer``: this decides whether a repository
+    can make this deployment start scans, and it is the same level that edits
+    the project's other settings.
+
+    Calling it again replaces the secret. The response says so in
+    ``replaced_existing``, because the old value stops being accepted the
+    moment this returns and the deliveries that were working will fail until
+    the new one reaches the SCM. Somebody who meant to read the current value
+    and found there is no such route would otherwise learn this by breaking
+    their own integration.
+    """
+    from services.webhook_activation_service import (
+        WebhookSecretEncryptionUnavailable,
+        issue_webhook_secret,
+        webhook_issued_at,
+    )
+
+    try:
+        project = await get_project(session, project_id=project_id, actor=actor)
+    except ProjectError as exc:
+        return _problem_for_project_error(request, exc)
+
+    try:
+        secret, replaced_existing = await issue_webhook_secret(
+            session, project=project, provider=payload.provider
+        )
+    except WebhookSecretEncryptionUnavailable as exc:
+        return problem_response(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            title="Credential encryption unavailable",
+            detail=str(exc),
+            instance=str(request.url.path),
+        )
+    await session.commit()
+
+    body = WebhookSecretIssueOut(
+        project_id=project.id,
+        provider=payload.provider,
+        issued_at=webhook_issued_at(),
+        replaced_existing=replaced_existing,
+        secret=secret,
+    )
+    return Response(
+        content=body.model_dump_json(),
+        status_code=status.HTTP_201_CREATED,
         media_type="application/json",
     )
 

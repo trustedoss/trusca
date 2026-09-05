@@ -2,7 +2,7 @@
 Integration tests for POST /v1/webhooks/gitlab — Phase 5 PR #16.
 
 Public endpoint (no JWT). Authentication is the X-Gitlab-Token header
-constant-time-compared to the project's ``webhook_secret``. Idempotency
+constant-time-compared to the project's shared secret. Idempotency
 key resolution prefers ``X-Gitlab-Webhook-UUID`` and falls back to the
 payload's ``checkout_sha`` (push) or ``object_attributes.id`` (merge
 request) — matching ``services.webhook_service._extract_delivery_id``.
@@ -30,6 +30,7 @@ import pytest
 from httpx import ASGITransport, AsyncClient
 from sqlalchemy import select
 
+from core.crypto import encrypt_secret
 from models import Project, WebhookDelivery
 from tests._db_required import migrate_to_head
 from tests._helpers import (
@@ -112,7 +113,7 @@ async def _make_gitlab_project(
     See the matching docstring in test_webhooks_github.py for why
     ``git_url`` defaults to a per-call unique URL (DB rows persist across
     test sessions; ``_find_project_by_git_url`` would otherwise pick a stale
-    project with a different ``webhook_secret``).
+    project with a different shared secret).
     """
     factory = await _factory(client)
     async with factory() as session:
@@ -120,11 +121,12 @@ async def _make_gitlab_project(
         team = await make_team(session, organization=org)
         project = await make_project(session, team=team)
         project.git_url = git_url or f"https://gitlab.com/acme/widgets-{unique_suffix()}"
-        project.webhook_secret = secret or secrets.token_urlsafe(32)
+        raw = secret or secrets.token_urlsafe(32)
+        project.webhook_secret_encrypted = encrypt_secret(raw)
         project.webhook_provider = "gitlab"
         await session.commit()
         await session.refresh(project)
-        return project, project.webhook_secret
+        return project, raw
 
 
 def _push_payload(repo_url: str | None = "https://gitlab.com/acme/widgets") -> dict[str, object]:

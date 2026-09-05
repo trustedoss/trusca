@@ -393,17 +393,20 @@ async def _factory(client: AsyncClient):
 async def _make_github_project(client: AsyncClient) -> tuple[Project, str]:
     import secrets
 
+    from core.crypto import encrypt_secret
+
     factory = await _factory(client)
     async with factory() as session:
         org = await make_organization(session)
         team = await make_team(session, organization=org)
         project = await make_project(session, team=team)
         project.git_url = f"https://github.com/acme/widgets-{unique_suffix()}"
-        project.webhook_secret = secrets.token_urlsafe(32)
+        raw = secrets.token_urlsafe(32)
+        project.webhook_secret_encrypted = encrypt_secret(raw)
         project.webhook_provider = "github"
         await session.commit()
         await session.refresh(project)
-        return project, project.webhook_secret
+        return project, raw
 
 
 def _sign(body: bytes, secret: str) -> str:
