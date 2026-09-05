@@ -94,6 +94,21 @@ const SKIP_PREFIXES = [
   // narrowest blind spot available and the one every self-referential linter
   // in this repository accepts.
   "tools/em-dash/",
+  // Recorded scanner output. These are byte-for-byte what Trivy produced, and
+  // the em dashes are inside CVE descriptions written by the advisory authors.
+  // Editing them would make the file no longer a recording, which is the one
+  // property it exists to have (see the directory's PROVENANCE.md).
+  //
+  // The reports only. That directory's PROVENANCE.md is prose somebody here
+  // wrote, so it stays checked; skipping the whole directory would exempt it
+  // along with them.
+  "apps/backend/tests/fixtures/trivy/alpine-",
+  "apps/backend/tests/fixtures/trivy/centos7-",
+  "apps/backend/tests/fixtures/trivy/db-metadata-",
+  "apps/backend/tests/fixtures/trivy/debian-",
+  "apps/backend/tests/fixtures/trivy/npm-",
+  "apps/backend/tests/fixtures/trivy/pip-",
+  "apps/backend/tests/fixtures/trivy/rocky-",
 ];
 
 export function isWatched(file) {
