@@ -41,7 +41,13 @@ from core.config import (
 )
 from core.db import get_db
 from core.errors import problem_response
-from core.login_throttle import clear, record_failure, seconds_until_retry, spend_once
+from core.login_throttle import (
+    clear,
+    record_failure,
+    seconds_until_retry,
+    spend_attempt,
+    spend_once,
+)
 from core.ratelimit import LOGIN_RATE_LIMIT, limiter
 from core.security import (
     MFA_PENDING_EXPIRE_MINUTES,
@@ -272,7 +278,12 @@ async def login(
         return _mfa_required_response(user)
 
     try:
-        access_token, refresh_token, _ = await issue_token_pair(session, user=user)
+        # The account has no second factor, which is why the branch above did
+        # not return. Saying so rather than letting the minting function
+        # assume it: the assumption is what an added arrival path inherits.
+        access_token, refresh_token, _ = await issue_token_pair(
+            session, user=user, second_factor_satisfied=True
+        )
     except StaleCredential as exc:
         # A password change committed between the bcrypt check above and the
         # session being written. Refusing is the point: the reset's sweep has
@@ -403,11 +414,32 @@ async def mfa_verify(
     if user is None or not user.is_active:
         return _problem_for_auth_error(request, InvalidCredentials("invalid or expired"))
 
-    # One exchange per pending token. It reaches the browser in a redirect
-    # fragment on the OAuth path, so it lives in history for its five minutes;
-    # replaying it would still need the second factor, but there is no reason
-    # for a credential to keep working after it has done its job.
-    if not await spend_once(str(claims["jti"]), seconds=MFA_PENDING_EXPIRE_MINUTES * 60):
+    jti = str(claims["jti"])
+    window = MFA_PENDING_EXPIRE_MINUTES * 60
+
+    # A token is worth a few tries, not one and not unlimited.
+    #
+    # Spending it before the code is checked was the first shape of this, and
+    # it made a single mistyped digit end the sign-in: the step stays on screen
+    # asking for the next code, and no code can ever be right, because the
+    # token is gone. Six digits read off a phone get mistyped, so that is the
+    # common path rather than the rare one.
+    #
+    # Unlimited is the other end and is worse: five minutes of guessing at one
+    # in a million is not a wall on its own, and the per-address counter is
+    # shared with passwords rather than dedicated to this.
+    #
+    # ``None`` means the counter could not answer. There is then no cap, so the
+    # token is spent up front instead and the strict one-guess rule comes back.
+    # Degrading has to make this stricter, never looser: the code is six digits
+    # with no work factor behind it, and this is the whole of what stands in
+    # front of it.
+    attempts_left = await spend_attempt(jti, seconds=window)
+    if attempts_left is False:
+        log.warning("auth.mfa_token_attempts_exhausted", user_id=str(user.id))
+        await spend_once(jti, seconds=window)
+        return _problem_for_auth_error(request, InvalidCredentials("invalid or expired"))
+    if attempts_left is None and not await spend_once(jti, seconds=window):
         log.warning("auth.mfa_token_replayed", user_id=str(user.id))
         return _problem_for_auth_error(request, InvalidCredentials("invalid or expired"))
 
@@ -428,12 +460,24 @@ async def mfa_verify(
             return _throttled_response(request, wait)
         return _problem_for_auth_error(request, InvalidCredentials("invalid code"))
 
+    # The code was right, so now the token is finished. It reaches the browser
+    # in a redirect fragment on the OAuth path and lives in history for its
+    # five minutes; a credential that has done its job should stop working.
+    # Two requests racing here means the loser is refused rather than handed a
+    # second session.
+    if attempts_left is not None and not await spend_once(jti, seconds=window):
+        log.warning("auth.mfa_token_replayed", user_id=str(user.id))
+        return _problem_for_auth_error(request, InvalidCredentials("invalid or expired"))
+
     ctx = dict(audit_context.get() or {})
     ctx["user_id"] = str(user.id)
     audit_context.set(ctx)
 
     try:
-        access_token, refresh_token, _ = await issue_token_pair(session, user=user)
+        # ``verify_second_factor`` returned without raising, a few lines up.
+        access_token, refresh_token, _ = await issue_token_pair(
+            session, user=user, second_factor_satisfied=True
+        )
     except StaleCredential as exc:
         return _problem_for_auth_error(request, exc)
 

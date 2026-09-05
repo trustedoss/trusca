@@ -385,7 +385,13 @@ async def callback(
     # provider), which turned that from a rare case into the normal one.
     target = _absolute_redirect(redirect_after)
 
-    if user.mfa_enabled:
+    if refresh_token is None:
+        # ``complete_oauth`` withheld the session because the account needs a
+        # code. Branching on what it returned rather than re-reading
+        # ``user.mfa_enabled``: two places deciding the same thing is two
+        # places that can disagree, and the one that mints the session is the
+        # one that gets to decide.
+        #
         # No cookie. Setting one here and then sending the browser to a code
         # screen would leave a complete session behind that screen: a client
         # that ignores the screen and calls /auth/refresh is signed in without

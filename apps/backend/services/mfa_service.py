@@ -16,13 +16,13 @@ import uuid
 from datetime import UTC, datetime
 
 import structlog
-from sqlalchemy import select
+from sqlalchemy import or_, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from core import totp
 from core.crypto import decrypt_secret, encrypt_secret
 from core.recovery_codes import generate_codes, normalise
-from core.security import hash_password, verify_password_async
+from core.security import hash_password_async, verify_password_async
 from models import RefreshToken, User, UserRecoveryCode
 
 log = structlog.get_logger("auth.mfa")
@@ -123,11 +123,27 @@ async def verify_second_factor(session: AsyncSession, *, user: User, code: str) 
     if counter is not None:
         # A code is valid for its whole thirty-second step, so accepting one
         # from a step already spent lets somebody who saw it use it again.
-        if user.mfa_last_counter is not None and counter <= user.mfa_last_counter:
+        #
+        # The write decides, not the read. Comparing the loaded value and then
+        # assigning is two statements with a gap between them, and two requests
+        # carrying the same code on different workers both read the old value
+        # and both proceed. The condition rides along with the UPDATE instead,
+        # so exactly one of them changes a row and the other is told the code
+        # is spent. No lock: the database is already serialising the write.
+        moved = await session.execute(
+            update(User)
+            .where(
+                User.id == user.id,
+                or_(User.mfa_last_counter.is_(None), User.mfa_last_counter < counter),
+            )
+            .values(mfa_last_counter=counter)
+        )
+        await session.commit()
+        if moved.rowcount == 0:
             log.warning("auth.mfa_replayed", user_id=str(user.id), counter=counter)
             raise InvalidMfaCode("code already used")
-        user.mfa_last_counter = counter
-        await session.commit()
+        # The in-memory row is now behind the column this statement wrote.
+        await session.refresh(user, attribute_names=["mfa_last_counter"])
         return
 
     if await _spend_recovery_code(session, user=user, candidate=code):
@@ -206,11 +222,16 @@ async def _issue_recovery_codes(session: AsyncSession, *, user: User) -> list[st
 
     codes = generate_codes()
     for code in codes:
-        # bcrypt at cost 12, so issuing ten takes a couple of seconds. That is
-        # paid once by the person enrolling and cannot be provoked by anyone
-        # else; lowering the cost to make it quicker would weaken the codes.
+        # bcrypt at cost 12, so issuing ten costs about two seconds. Off the
+        # event loop, because the loop is shared: run inline, those two seconds
+        # stall every other request this worker is serving, and the endpoint
+        # that reissues codes is reachable by any authenticated user, so the
+        # cost is not "paid once by the person enrolling" as this comment used
+        # to claim. Lowering the cost to make it quicker would weaken the codes.
         session.add(
-            UserRecoveryCode(user_id=user.id, code_hash=hash_password(normalise(code)))
+            UserRecoveryCode(
+                user_id=user.id, code_hash=await hash_password_async(normalise(code))
+            )
         )
     return codes
 
@@ -236,11 +257,24 @@ async def _spend_recovery_code(
         return False
 
     for row in await _live_codes(session, user_id=user.id):
-        if await verify_password_async(typed, row.code_hash):
-            row.used_at = datetime.now(UTC)
-            await session.commit()
-            log.info("auth.mfa_recovery_code_used", user_id=str(user.id))
-            return True
+        if not await verify_password_async(typed, row.code_hash):
+            continue
+        # Same reasoning as the TOTP step above: the row was read as unused,
+        # and the claim has to survive until the write. ``used_at IS NULL`` in
+        # the statement means a second request holding the same code changes no
+        # row and is told the code is spent, rather than both being let in and
+        # ten codes being worth more than ten sign-ins.
+        spent = await session.execute(
+            update(UserRecoveryCode)
+            .where(UserRecoveryCode.id == row.id, UserRecoveryCode.used_at.is_(None))
+            .values(used_at=datetime.now(UTC))
+        )
+        await session.commit()
+        if spent.rowcount == 0:
+            log.warning("auth.mfa_recovery_code_replayed", user_id=str(user.id))
+            return False
+        log.info("auth.mfa_recovery_code_used", user_id=str(user.id))
+        return True
     return False
 
 

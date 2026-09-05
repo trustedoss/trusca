@@ -259,6 +259,18 @@ async def verify_password_async(plain: str, hashed: str) -> bool:
     return await asyncio.to_thread(verify_password, plain, hashed)
 
 
+async def hash_password_async(plain: str) -> str:
+    """Same as :func:`hash_password`, off the event loop.
+
+    The mirror of :func:`verify_password_async`, and needed for the same
+    reason: hashing costs what verifying costs, so a request that produces
+    several hashes stalls the worker for the sum of them. Issuing ten recovery
+    codes is ten hashes, about two seconds, and it is reachable by any
+    authenticated user.
+    """
+    return await asyncio.to_thread(hash_password, plain)
+
+
 # ---------------------------------------------------------------------------
 # API-key keyed hashing (A5, concurrency-scaling-plan-2026-08-22.md §3.3)
 # ---------------------------------------------------------------------------

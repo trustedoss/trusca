@@ -929,6 +929,12 @@ async def test_the_callback_stops_for_a_second_factor_and_leaves_no_session(
         user.mfa_secret_encrypted = "not-read-on-this-path"
         await session.commit()
 
+    async with db_factory() as session:
+        first_login_at = (
+            await session.execute(select(User).where(User.email == email))
+        ).scalar_one().last_login_at
+    assert first_login_at is not None, "the first sign-in recorded nothing to compare"
+
     client.cookies.clear()
     patch_async_client(_github_handler(user_id=user_id, email=email, name="Has MFA"))
     second = await client.get(
@@ -952,3 +958,39 @@ async def test_the_callback_stops_for_a_second_factor_and_leaves_no_session(
     assert claims["sub"] == str(user.id)
     with pytest.raises(JWTError):
         decode_token(token, expected_type="access")
+
+    # And no session was written on the way. Minting one and discarding the
+    # value leaves a live refresh row for an account that has not supplied its
+    # code, which is a session by every measure except the cookie. The count is
+    # taken against the row created by the first sign-in, so this is asking
+    # whether the second one added anything rather than whether any exist.
+    from models import RefreshToken
+
+    async with db_factory() as session:
+        live = (
+            (
+                await session.execute(
+                    select(RefreshToken).where(
+                        RefreshToken.user_id == user.id,
+                        RefreshToken.revoked_at.is_(None),
+                    )
+                )
+            )
+            .scalars()
+            .all()
+        )
+    assert len(live) == 1, (
+        f"{len(live)} live refresh tokens: the callback minted a session for "
+        "an account that still owes a second factor"
+    )
+
+    # Nor was it recorded as a sign-in. last_login_at feeds dormant-account
+    # reaping and the admin list, and an attempt that stopped at the code
+    # screen is not one.
+    async with db_factory() as session:
+        again = (
+            await session.execute(select(User).where(User.email == email))
+        ).scalar_one()
+        assert again.last_login_at == first_login_at, (
+            "last_login_at moved on a sign-in that never completed"
+        )

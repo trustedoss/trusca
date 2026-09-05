@@ -209,6 +209,38 @@ async def close_client() -> None:
         await client.aclose()
 
 
+#: How many wrong codes one pending token tolerates before it is finished.
+#: Three, because a person reading six digits off a phone mistypes, and the
+#: code changes every thirty seconds so the honest retry is the common case.
+#: Against guessing it is the number that matters: three tries at one in a
+#: million per token, on top of the per-address counter.
+MFA_ATTEMPTS_PER_TOKEN = 3
+
+
+async def spend_attempt(jti: str, *, seconds: int) -> bool | None:
+    """Count one wrong-code attempt against a pending token.
+
+    ``True`` while the token has attempts left, ``False`` once it is finished,
+    and ``None`` when Redis could not answer, which the caller must not read
+    as either: an unavailable counter means there is no cap, and the caller
+    switches to spending the token on the first attempt instead.
+
+    The TTL is set once, when the counter is created, and never refreshed, so
+    the window cannot be pushed forward by attempting again. That is the same
+    mistake the failure counter above made and had to be corrected for.
+    """
+    key = f"{_KEY_PREFIX}attempts:{jti}"
+    try:
+        client = _redis()
+        used = await client.incr(key)
+        if used == 1:
+            await client.expire(key, seconds)
+    except (RedisError, RuntimeError) as exc:
+        _degraded("spend_attempt", exc)
+        return None
+    return int(used) <= MFA_ATTEMPTS_PER_TOKEN
+
+
 def _keys(email: str) -> tuple[str, str, str]:
     subkey = hmac.new(secret_key().encode("utf-8"), _KEY_INFO, hashlib.sha256).digest()
     digest = hmac.new(subkey, normalize_email(email).encode("utf-8"), hashlib.sha256).hexdigest()
@@ -323,12 +355,22 @@ async def spend_once(jti: str, *, seconds: int) -> bool:
 
     ``SET NX`` is the whole mechanism: the first caller creates the key and
     gets True, everybody after gets False, and the key expires with the token
-    so nothing accumulates. Redis being unreachable degrades to allowing the
-    exchange, on the same reasoning as the rest of this module: this narrows a
-    window, it is not what stands between an attacker and the account.
+    so nothing accumulates.
+
+    Not gated on ``login_throttle_enabled``, unlike the counters above. Single
+    use is not a rate: an operator who turns the throttle off is asking for
+    failed passwords to stop being counted, and reading that as "and let a
+    pending token be exchanged repeatedly" is a decision they did not make.
+    That coupling was here first and is the kind that only shows up in an
+    incident, when the setting was changed for one reason and took a second
+    control with it.
+
+    Redis being unreachable degrades to allowing the exchange. What keeps that
+    from being an opening is the caller: ``/auth/mfa/verify`` falls back to
+    spending the token before it checks the code when the counter is
+    unavailable, so a degraded Redis makes the exchange stricter rather than
+    looser.
     """
-    if not login_throttle_enabled():
-        return True
     try:
         created = await _redis().set(f"{_KEY_PREFIX}spent:{jti}", "1", ex=seconds, nx=True)
     except (RedisError, RuntimeError) as exc:
@@ -380,10 +422,12 @@ def throttle_keys(email: str) -> tuple[str, str, str]:
 
 
 __all__: list[Any] = [
+    "MFA_ATTEMPTS_PER_TOKEN",
     "clear",
     "close_client",
     "record_failure",
     "seconds_until_retry",
+    "spend_attempt",
     "spend_once",
     "throttle_keys",
 ]

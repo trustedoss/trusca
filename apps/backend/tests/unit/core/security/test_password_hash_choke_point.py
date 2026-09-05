@@ -243,3 +243,84 @@ def test_the_websocket_resolver_calls_the_password_change_check() -> None:
         "both boundaries: the password change and the second factor being "
         "cleared."
     )
+
+
+#: Modules that hash on the loop today, found when this guard was written.
+#:
+#: Each is one hash rather than ten, on a path a person triggers by hand, so
+#: none is the two-second stall that prompted the guard. They are listed rather
+#: than fixed because they belong to registration and password reset, not to
+#: the change that added this file, and because a list that names them is what
+#: makes them get paid off; a guard narrowed to avoid them would report a clean
+#: tree that is not clean. This list only shrinks.
+ALREADY_BLOCKING = {
+    "services/admin_user_service.py",
+    "services/auth_service.py",
+    "services/oauth_service.py",
+    "services/password_reset_service.py",
+}
+
+
+def _sync_bcrypt_calls_inside_async(path: Path) -> list[tuple[int, str]]:
+    """Every synchronous bcrypt call made from inside an ``async def``.
+
+    Structural, not textual: a call is found as a call and its enclosing
+    function as a function, so a mention in a docstring or a comment is not
+    one, and neither is the same call made from a synchronous helper (which
+    blocks nothing but its own caller).
+    """
+    blocking = {"hash_password", "verify_password"}
+    found: list[tuple[int, str]] = []
+
+    for node in ast.walk(ast.parse(path.read_text(encoding="utf-8"))):
+        if not isinstance(node, ast.AsyncFunctionDef):
+            continue
+        for inner in ast.walk(node):
+            # A nested synchronous def inside the coroutine is usually the
+            # thing being handed to a thread, so it is not blocking the loop.
+            if isinstance(inner, ast.FunctionDef):
+                continue
+            if not isinstance(inner, ast.Call):
+                continue
+            name = getattr(inner.func, "id", None) or getattr(inner.func, "attr", None)
+            if name in blocking:
+                found.append((inner.lineno, f"{node.name} -> {name}"))
+    return found
+
+
+def test_no_coroutine_hashes_a_password_on_the_event_loop() -> None:
+    """Bcrypt costs ~213ms, and the loop is shared with every other request.
+
+    The async wrappers exist for this and the rule was written down when
+    verification moved off the loop; hashing then arrived on it anyway. Issuing
+    ten recovery codes is ten hashes, about two seconds of the worker doing
+    nothing else, on an endpoint any authenticated user can call in a loop.
+
+    Handlers and services only. A script or a Celery task has a loop of its
+    own or none at all, and blocking it stalls nothing that a person is
+    waiting on.
+    """
+    root = _backend_root()
+    # Scripts and one-shot commands are excluded: a command has a loop of its
+    # own or none at all, and blocking it stalls nothing a person is waiting on.
+    files = [p for p in _production_files(root) if p.parts[-2] != "scripts"]
+    assert files, "the walk found no files, so this test is checking nothing"
+
+    offenders = {
+        str(path.relative_to(root))
+        for path in files
+        if _sync_bcrypt_calls_inside_async(path)
+    }
+    assert offenders or not ALREADY_BLOCKING, (
+        "the walk found nothing at all, including the known cases below, so "
+        "it is not looking where it thinks it is"
+    )
+
+    added = offenders - ALREADY_BLOCKING
+    assert not added, (
+        f"these modules hash a password on the event loop: {sorted(added)}. "
+        "Use hash_password_async / verify_password_async so the ~213ms per "
+        "call runs in a thread instead of stalling every other request this "
+        "worker is serving. Do not add them to ALREADY_BLOCKING: that list is "
+        "debt being paid off, not a place to register new ones."
+    )
