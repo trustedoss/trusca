@@ -42,6 +42,52 @@ def _demo_env(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("APP_ENV", "demo")
 
 
+@pytest.fixture(autouse=True)
+async def _a_super_admin_outside_the_demo(db_factory: async_sessionmaker[Any]) -> None:
+    """Make this module's premise rather than inheriting it.
+
+    ``reset_demo`` deletes the demo super admin, and the database refuses to
+    remove the last active one ("last active super_admin cannot be removed").
+    In a full suite run some earlier module has always left super admins
+    behind - a used database here held 155 of them - so this file passed for
+    years without ever saying it needed one. On a clean database it fails on
+    the trigger, and the failure names a constraint rather than the missing
+    precondition, so it reads as a defect in ``reset_demo``.
+
+    One is enough: planting a single non-demo super admin turns the two
+    failures into passes. It is left in place afterwards, because deleting it
+    would run into the same trigger the moment the demo one has gone.
+    """
+    from sqlalchemy import func, select
+
+    from models import User
+    from scripts.seed_demo import _DEMO_SUPER_ADMIN_EMAIL
+
+    async with db_factory() as session:
+        others = await session.scalar(
+            select(func.count())
+            .select_from(User)
+            .where(
+                User.is_superuser.is_(True),
+                User.is_active.is_(True),
+                User.email != _DEMO_SUPER_ADMIN_EMAIL,
+            )
+        )
+        if others:
+            return
+        session.add(
+            User(
+                email=f"er69-keeper-{uuid.uuid4().hex[:8]}@example.com",
+                hashed_password="not-a-real-hash",
+                full_name="Kept so reset_demo can delete the demo super admin",
+                is_active=True,
+                is_superuser=True,
+                is_verified=True,
+            )
+        )
+        await session.commit()
+
+
 async def test_reset_preserves_cross_tenant_user_and_deletes_demo_only(
     db_factory: async_sessionmaker[Any],
 ) -> None:

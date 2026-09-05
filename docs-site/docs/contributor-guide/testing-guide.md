@@ -548,6 +548,17 @@ often enough to name:
   imports performed by other test modules were part of what the assertion
   depended on. Before drawing a conclusion from an isolated run, name what
   the isolation took away.
+
+  The direction reverses too, and the reversal is easy to miss because
+  accumulated state is usually discussed as what breaks a run. It can equally
+  be what makes one pass. A reset test failed on a freshly migrated database
+  and passed on one earlier runs had filled, because deleting the demo super
+  admin trips a "last active super admin cannot be removed" trigger unless
+  another exists - and the used database held 155 of them, left by unrelated
+  modules. Nothing declared that dependency; the suite had simply always
+  supplied it. Passing against accumulated state is not evidence of
+  correctness, so run both ways, and treat either side passing alone as the
+  question rather than the answer.
 - **A comparison was read past what it can answer.** Running the same test on
   your branch and on `main` says whether your change caused the result and
   nothing about what did: whatever both sides share, the invocation included,
