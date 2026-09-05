@@ -72,13 +72,27 @@ async def _only_this_test_s_ciphertext(session: AsyncSession) -> AsyncIterator[N
     rows encrypted under keys generated in other tests. Those are genuinely
     unreadable here, so without this the command is right to exit non-zero and
     the assertion below would be measuring the neighbours.
+
+    Rows are deleted rather than nulled. ``private_key_encrypted`` is NOT NULL,
+    so a credential row cannot be emptied of its ciphertext and still exist;
+    the first version of this nulled every column and passed locally only
+    because no such row had been created yet.
     """
     from core.encrypted_columns import ENCRYPTED_COLUMNS
 
-    for column in ENCRYPTED_COLUMNS:
-        await session.execute(
-            text(f"UPDATE {column.table} SET {column.column} = NULL")  # noqa: S608
+    tables = {c.table for c in ENCRYPTED_COLUMNS}
+    for table in ("github_app_credentials", "registry_credentials"):
+        if table in tables:
+            await session.execute(text(f"DELETE FROM {table}"))  # noqa: S608
+    # ``projects`` holds far more than ciphertext, so its columns are nulled
+    # rather than its rows removed. Both are nullable.
+    await session.execute(
+        text(
+            "UPDATE projects "
+            "   SET webhook_secret_encrypted = NULL, "
+            "       git_credential_encrypted = NULL"
         )
+    )
     await session.commit()
     yield
 
