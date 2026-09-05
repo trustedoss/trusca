@@ -79,6 +79,11 @@ ENCRYPTED_COLUMNS: tuple[EncryptedColumn, ...] = (
     EncryptedColumn("projects", "git_credential_encrypted"),
     EncryptedColumn("registry_credentials", "password_encrypted"),
     EncryptedColumn("projects", "webhook_secret_encrypted"),
+    # The first column that is not on the shared key. A stolen TOTP secret
+    # produces that person's second factor for ever, which is a different loss
+    # from a stolen forge credential, and the column is new so nothing was
+    # written under the shared key to migrate.
+    EncryptedColumn("users", "mfa_secret_encrypted", purpose="totp"),
 )
 
 
