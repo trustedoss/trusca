@@ -33,7 +33,7 @@ The 302 paths cannot use Problem Details by definition; the failure URL +
 from __future__ import annotations
 
 from typing import Any, Literal
-from urllib.parse import urlencode, urlsplit
+from urllib.parse import quote, urlencode, urlsplit
 
 import structlog
 from fastapi import APIRouter, Depends, Request, Response, status
@@ -50,6 +50,7 @@ from core.config import (
 from core.db import get_db
 from core.errors import problem_response
 from core.ratelimit import OAUTH_AUTHORIZE_RATE_LIMIT, limiter
+from core.security import TOKEN_TYPE_MFA_PENDING, create_mfa_pending_token
 from schemas.oauth import OAuthProvidersResponse, OAuthProviderStatusOut
 from services.auth_service import StaleCredential
 from services.oauth_service import (
@@ -383,6 +384,29 @@ async def callback(
     # sends paths exclusively (it stopped forwarding query strings to the
     # provider), which turned that from a rare case into the normal one.
     target = _absolute_redirect(redirect_after)
+
+    if user.mfa_enabled:
+        # No cookie. Setting one here and then sending the browser to a code
+        # screen would leave a complete session behind that screen: a client
+        # that ignores the screen and calls /auth/refresh is signed in without
+        # ever supplying a code, and the second factor becomes decoration.
+        #
+        # The pending token rides in the fragment rather than the query. Its
+        # reader is the SPA, not this server, and a fragment is not sent to
+        # servers at all -- so it stays out of Referer headers, proxy logs and
+        # access logs. Browser history still holds it, which is why it lives
+        # five minutes and is spent on first use.
+        pending = create_mfa_pending_token(
+            subject=str(user.id), token_type=TOKEN_TYPE_MFA_PENDING
+        )
+        separator = "&" if "#" in target else "#"
+        response = RedirectResponse(
+            f"{target}{separator}mfa_token={quote(pending, safe='')}",
+            status_code=status.HTTP_302_FOUND,
+        )
+        log.info("oauth_callback_mfa_required", provider=provider, user_id=str(user.id))
+        return response
+
     response = RedirectResponse(target, status_code=status.HTTP_302_FOUND)
     _set_refresh_cookie(response, refresh_token=refresh_token)
     log.info("oauth_callback_success", provider=provider, user_id=str(user.id))

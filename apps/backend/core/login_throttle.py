@@ -312,6 +312,31 @@ async def record_failure(email: str) -> int:
     return seconds
 
 
+async def spend_once(jti: str, *, seconds: int) -> bool:
+    """Record a token id as spent. False if it was already.
+
+    A pending credential is worth one exchange. Leaving it usable after that
+    is not exploitable on its own -- whoever holds it still has to supply a
+    second factor -- but a value that arrives in a redirect and lives in
+    browser history should stop working the moment it has done its job, rather
+    than merely stop being useful.
+
+    ``SET NX`` is the whole mechanism: the first caller creates the key and
+    gets True, everybody after gets False, and the key expires with the token
+    so nothing accumulates. Redis being unreachable degrades to allowing the
+    exchange, on the same reasoning as the rest of this module: this narrows a
+    window, it is not what stands between an attacker and the account.
+    """
+    if not login_throttle_enabled():
+        return True
+    try:
+        created = await _redis().set(f"{_KEY_PREFIX}spent:{jti}", "1", ex=seconds, nx=True)
+    except (RedisError, RuntimeError) as exc:
+        _degraded("spend_once", exc)
+        return True
+    return bool(created)
+
+
 async def clear(email: str) -> None:
     """Forget an address's failures.
 
@@ -348,5 +373,6 @@ __all__: list[Any] = [
     "close_client",
     "record_failure",
     "seconds_until_retry",
+    "spend_once",
     "throttle_keys",
 ]

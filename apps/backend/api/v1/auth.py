@@ -41,7 +41,7 @@ from core.config import (
 )
 from core.db import get_db
 from core.errors import problem_response
-from core.login_throttle import clear, record_failure, seconds_until_retry
+from core.login_throttle import clear, record_failure, seconds_until_retry, spend_once
 from core.ratelimit import LOGIN_RATE_LIMIT, limiter
 from core.security import (
     MFA_PENDING_EXPIRE_MINUTES,
@@ -401,6 +401,14 @@ async def mfa_verify(
 
     user = await session.get(User, uuid.UUID(str(claims["sub"])))
     if user is None or not user.is_active:
+        return _problem_for_auth_error(request, InvalidCredentials("invalid or expired"))
+
+    # One exchange per pending token. It reaches the browser in a redirect
+    # fragment on the OAuth path, so it lives in history for its five minutes;
+    # replaying it would still need the second factor, but there is no reason
+    # for a credential to keep working after it has done its job.
+    if not await spend_once(str(claims["jti"]), seconds=MFA_PENDING_EXPIRE_MINUTES * 60):
+        log.warning("auth.mfa_token_replayed", user_id=str(user.id))
         return _problem_for_auth_error(request, InvalidCredentials("invalid or expired"))
 
     # Same counter the password attempts went into, keyed by the same address.
