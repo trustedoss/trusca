@@ -269,6 +269,14 @@
     ],
     [
       "GET",
+      "/v1/projects/{project_id}/webhook"
+    ],
+    [
+      "POST",
+      "/v1/projects/{project_id}/webhook-secret"
+    ],
+    [
+      "GET",
       "/v1/api-keys"
     ],
     [
