@@ -38,6 +38,7 @@ from core.config import (
     password_reset_request_rate_limit,
     refresh_rate_limit,
     refresh_token_expire_days,
+    registration_rate_limit,
 )
 from core.db import get_db
 from core.errors import problem_response
@@ -186,8 +187,9 @@ def _clear_refresh_cookie(response: Response) -> None:
     "/register",
     response_model=UserPublic,
     status_code=status.HTTP_201_CREATED,
-    summary="Register a new user (public)",
+    summary="Register a new user (public, rate limited)",
 )
+@limiter.limit(registration_rate_limit())
 async def register(
     request: Request,
     payload: RegisterRequest,
@@ -195,6 +197,10 @@ async def register(
 ) -> Response:
     """
     Public, no authentication required.
+
+    Limited to ``REGISTRATION_RATE_LIMIT`` (5/min/IP by default): the bcrypt
+    password hash is CPU-bound, so an uncapped public endpoint could occupy
+    the worker's event loop with unauthenticated requests.
 
     Returns the new user (without password). 422 for validation errors, 409 if
     the email is already registered, and 404 when the deployment maintains its
@@ -217,6 +223,15 @@ async def register(
         status_code=status.HTTP_201_CREATED,
         media_type="application/json",
     )
+
+
+# Slowapi's wrapper uses its own globals dictionary. Populate the names that
+# FastAPI resolves from the postponed annotations, otherwise the request body
+# is misclassified as a query parameter and every registration returns 422.
+for _name in ("RegisterRequest", "AsyncSession", "Request", "Response", "Depends"):
+    if _name in globals():
+        register.__globals__.setdefault(_name, globals()[_name])
+del _name
 
 
 # ---------------------------------------------------------------------------

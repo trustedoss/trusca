@@ -15,6 +15,15 @@ def test_login_rate_limit_is_five_per_minute():
     assert LOGIN_RATE_LIMIT == "5/minute"
 
 
+def test_registration_rate_limit_defaults_and_can_be_overridden(monkeypatch):
+    from core.config import registration_rate_limit
+
+    assert registration_rate_limit() == "5/minute"
+
+    monkeypatch.setenv("REGISTRATION_RATE_LIMIT", "2/minute")
+    assert registration_rate_limit() == "2/minute"
+
+
 def test_rate_limit_handler_emits_problem_response():
     from unittest.mock import MagicMock
 

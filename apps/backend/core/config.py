@@ -2942,6 +2942,16 @@ def refresh_rate_limit() -> str:
     return os.getenv("REFRESH_RATE_LIMIT", "30/minute")
 
 
+def registration_rate_limit() -> str:
+    """Per-IP slowapi limit for ``POST /auth/register``.
+
+    Registration hashes a password with bcrypt, so the public endpoint needs
+    the same default budget as login to keep unauthenticated callers from
+    occupying a worker with unbounded CPU work.
+    """
+    return os.getenv("REGISTRATION_RATE_LIMIT", "5/minute")
+
+
 def password_reset_request_rate_limit() -> str:
     """Per-IP slowapi limit for ``POST /auth/forgot-password``.
 

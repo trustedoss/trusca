@@ -75,6 +75,7 @@ If any of the four `DB_*` keys is set, **all** of them must be set (or the compo
 | `SECRET_KEY` | — | `config.py` | See [Required keys](#required-keys). HS256 signing. |
 | `ACCESS_TOKEN_EXPIRE_MINUTES` | `30` | `config.py` | JWT access token lifetime. |
 | `REFRESH_TOKEN_EXPIRE_DAYS` | `7` | `config.py` | Refresh token lifetime. Rotation + reuse detection enabled. |
+| `REGISTRATION_RATE_LIMIT` | `5/minute` | `config.py` | Per-IP slowapi limit for `POST /auth/register`, which performs a bcrypt password hash. |
 | `REFRESH_TOKEN_RETENTION_GRACE_DAYS` | `1` | `tasks/auth_token_retention.py` | Days past a refresh token's own `expires_at` before the daily sweep deletes the row. A rotated / logged-out / reuse-revoked row keeps its original `expires_at`, so it is caught by this same predicate within one `REFRESH_TOKEN_EXPIRE_DAYS` window of being revoked; there is no separate revoked-at pass. |
 | `PASSWORD_RESET_TOKEN_RETENTION_GRACE_DAYS` | `1` | `tasks/auth_token_retention.py` | Days past a password-reset token's own `expires_at` before the daily sweep deletes the row. Same reasoning as the refresh-token grace above. |
 
