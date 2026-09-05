@@ -128,6 +128,15 @@ class UserMeResponse(UserPublic):
     """
 
     memberships: list[MembershipPublic] = Field(default_factory=list)
+    mfa_enabled: bool = Field(
+        default=False,
+        description=(
+            "Whether this account requires a second factor at sign-in. On the "
+            "authenticated shape only: it tells the profile page which of the "
+            "enrol and reissue actions to offer, and it is the account's own "
+            "state rather than anything about another user."
+        ),
+    )
 
 
 class TokenResponse(BaseModel):

@@ -521,7 +521,9 @@ async def me(
     # directly would make Pydantic read user.memberships (a lazy ORM
     # relationship) and trigger async IO outside the greenlet (MissingGreenlet).
     base = UserPublic.model_validate(user)
-    return UserMeResponse(**base.model_dump(), memberships=memberships)
+    return UserMeResponse(
+        **base.model_dump(), memberships=memberships, mfa_enabled=bool(user.mfa_enabled)
+    )
 
 
 # ---------------------------------------------------------------------------

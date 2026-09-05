@@ -214,6 +214,8 @@ export interface UserPublicWire {
   created_at: string;
   /** Present on /auth/me; absent on /auth/register. */
   memberships?: MembershipWire[];
+  /** Present on the authenticated /auth/me shape only. */
+  mfa_enabled?: boolean;
 }
 
 export interface TokenResponse {
@@ -259,6 +261,7 @@ function toAuthUser(u: UserPublicWire): AuthUser {
       u.is_superuser,
       memberships.map((m) => m.role),
     ),
+    mfaEnabled: u.mfa_enabled ?? false,
     isActive: u.is_active,
     isSuperuser: u.is_superuser,
     // memberships are ordered oldest-first by the backend; [0] is the stable
