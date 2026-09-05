@@ -195,9 +195,19 @@ class User(Base):
     # The TOTP step most recently accepted. A code is valid for its whole step,
     # so this is what stops one being presented twice.
     mfa_last_counter: Mapped[int | None] = mapped_column(BigInteger, nullable=True)
-    # Stamped when the second factor is turned on, off, or reset, so sessions
-    # opened before that end. Separate from password_changed_at rather than
-    # shared, so the two reasons stay distinguishable.
+    # Stamped when an administrator clears the second factor, so the sessions
+    # open at that moment end: ``credential_change_invalidates`` refuses every
+    # access token minted before it, and the clear revokes the refresh rows.
+    #
+    # NOT stamped when somebody finishes enrolling. The request that turns the
+    # factor on carries a token minted before it, so stamping there signs that
+    # person out on the recovery-code screen. Turning a factor on to evict a
+    # session you do not trust would need a fresh token pair handed back in
+    # the same response; until that exists the guide says to reset the
+    # password for that case.
+    #
+    # Separate from password_changed_at rather than shared, so the two reasons
+    # stay distinguishable.
     mfa_changed_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True
     )

@@ -16,10 +16,7 @@ advisory: a client that skips it is already signed in.
 from __future__ import annotations
 
 import base64
-import os
-import subprocess
 from collections.abc import AsyncIterator
-from pathlib import Path
 
 import pytest
 from httpx import ASGITransport, AsyncClient
@@ -27,26 +24,15 @@ from httpx import ASGITransport, AsyncClient
 from core import totp
 from core.crypto import encrypt_secret
 from services.mfa_service import ENCRYPTION_PURPOSE
+from tests._db_required import migrate_to_head
 from tests._helpers import make_user, unique_suffix
-
-BACKEND_ROOT = Path(__file__).resolve().parent.parent.parent
 
 pytestmark = pytest.mark.integration
 
 
 @pytest.fixture(scope="module", autouse=True)
 def _migrate_once() -> None:
-    if not os.getenv("DATABASE_URL") or not os.getenv("REDIS_URL"):
-        pytest.skip("DATABASE_URL / REDIS_URL not set")
-    result = subprocess.run(
-        ["alembic", "upgrade", "head"],
-        cwd=BACKEND_ROOT,
-        capture_output=True,
-        text=True,
-        timeout=180,
-    )
-    if result.returncode != 0:
-        pytest.skip(f"alembic upgrade head failed: {result.stderr}")
+    migrate_to_head()
 
 
 @pytest.fixture

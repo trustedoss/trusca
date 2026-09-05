@@ -200,6 +200,34 @@ def password_change_invalidates(
     return issued_at <= changed_at_second
 
 
+def credential_change_invalidates(
+    issued_at: int | None,
+    *,
+    password_changed_at: datetime | None,
+    mfa_changed_at: datetime | None,
+) -> bool:
+    """Whether a token predates either credential moving.
+
+    Two timestamps, one boundary. A token minted before the password changed
+    is refused, and so is one minted before the second factor was turned on,
+    turned off, or cleared by an administrator.
+
+    The second half is what makes the admin action mean what the guide says it
+    means. Clearing somebody's factor is what an operator reaches for when the
+    account is believed compromised, and without this the tokens the attacker
+    already holds keep working: the column was written and read by nothing,
+    which is the same as not having it.
+
+    Written as one call rather than two at each site because there are three
+    sites (the cached principal, the loaded row, and the WebSocket resolver)
+    and the one that gets forgotten is the one that matters. A guard test
+    pins each of them.
+    """
+    return password_change_invalidates(
+        issued_at, password_changed_at
+    ) or password_change_invalidates(issued_at, mfa_changed_at)
+
+
 def verify_password(plain: str, hashed: str) -> bool:
     """Constant-time bcrypt verification. Returns False on any error."""
     try:
@@ -465,6 +493,10 @@ class CurrentUser:
     # life rather than for the cache TTL. ``None`` for API-key principals,
     # which are a separate credential with their own revocation.
     password_changed_at: datetime | None = None
+    # When the second factor last moved, carried for the same reason and
+    # judged by the same boundary. ``None`` for API-key principals and for a
+    # user who has never enrolled.
+    mfa_changed_at: datetime | None = None
 
 
 def highest_role(roles: list[str], *, is_superuser: bool) -> str:
@@ -663,7 +695,11 @@ async def _load_current_user(
         # rebuilt entry carries the new timestamp, so a refill cannot hand the
         # stolen token back its access the way it would if the check lived
         # only on the miss path.
-        if password_change_invalidates(claims.get("iat"), cached.password_changed_at):
+        if credential_change_invalidates(
+            claims.get("iat"),
+            password_changed_at=cached.password_changed_at,
+            mfa_changed_at=cached.mfa_changed_at,
+        ):
             return None
         _bind_audit_actor(cached)
         return cached
@@ -693,7 +729,11 @@ async def _load_current_user(
     # principal: "populated only after this check" is not enough on its own,
     # because the entry is keyed by user and serves whichever token comes
     # next.
-    if password_change_invalidates(claims.get("iat"), user.password_changed_at):
+    if credential_change_invalidates(
+        claims.get("iat"),
+        password_changed_at=user.password_changed_at,
+        mfa_changed_at=user.mfa_changed_at,
+    ):
         return None
 
     memberships: list[Membership] = list(user.memberships)
@@ -715,6 +755,7 @@ async def _load_current_user(
         # Carried so the cached branch above can judge a later token without
         # re-reading the row.
         password_changed_at=user.password_changed_at,
+        mfa_changed_at=user.mfa_changed_at,
     )
 
     # Not cached: an inactive principal is one every caller refuses anyway,

@@ -23,7 +23,7 @@ from core import totp
 from core.crypto import decrypt_secret, encrypt_secret
 from core.recovery_codes import generate_codes, normalise
 from core.security import hash_password, verify_password_async
-from models import User, UserRecoveryCode
+from models import RefreshToken, User, UserRecoveryCode
 
 log = structlog.get_logger("auth.mfa")
 
@@ -90,7 +90,16 @@ async def complete_enrolment(
 
     user.mfa_enabled = True
     user.mfa_last_counter = counter
-    user.mfa_changed_at = datetime.now(UTC)
+    # Deliberately NOT stamping ``mfa_changed_at`` here.
+    #
+    # The stamp refuses every token minted before it, and the token making
+    # this request is one of them: stamping would sign the person out of the
+    # portal at the moment they finished setting the factor up, which reads as
+    # the feature breaking. There would be a case for it -- turning a factor on
+    # after suspecting somebody else is signed in as you ought to evict them --
+    # but that wants a fresh token pair handed back in this response, and until
+    # that exists the honest thing is to not claim the eviction. The user guide
+    # says so, and says to reset the password for that case instead.
     codes = await _issue_recovery_codes(session, user=user)
     await session.commit()
 
@@ -151,16 +160,43 @@ async def clear_for_user(session: AsyncSession, *, user: User) -> None:
     account re-enable with the same one, and the reason somebody asks for this
     is usually that the device or the secret is gone.
     """
+    now = datetime.now(UTC)
     user.mfa_enabled = False
     user.mfa_secret_encrypted = None
     user.mfa_last_counter = None
-    user.mfa_changed_at = datetime.now(UTC)
+    user.mfa_changed_at = now
 
     for row in await _live_codes(session, user_id=user.id):
         await session.delete(row)
 
+    # The sessions that are open have to end, and two things are needed for
+    # that rather than one. ``mfa_changed_at`` refuses access tokens minted
+    # before now, and this refuses the refresh tokens that would otherwise
+    # mint new ones for another seven days. Without the second, an operator
+    # who clears a factor because they believe the account is compromised has
+    # done nothing to the attacker holding the refresh cookie.
+    live_tokens = (
+        (
+            await session.execute(
+                select(RefreshToken).where(
+                    RefreshToken.user_id == user.id,
+                    RefreshToken.revoked_at.is_(None),
+                )
+            )
+        )
+        .scalars()
+        .all()
+    )
+    for token in live_tokens:
+        token.revoked_at = now
+        token.revoked_reason = "logout"
+
     await session.commit()
-    log.info("auth.mfa_cleared", user_id=str(user.id))
+    log.info(
+        "auth.mfa_cleared",
+        user_id=str(user.id),
+        refresh_tokens_revoked=len(live_tokens),
+    )
 
 
 async def _issue_recovery_codes(session: AsyncSession, *, user: User) -> list[str]:

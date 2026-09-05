@@ -18,7 +18,8 @@ Four columns on ``users`` and one table.
     valid for its whole thirty-second step, so without remembering the step,
     somebody who observes a code can present it again until the step ends.
   - ``mfa_changed_at`` invalidates sessions the way ``password_changed_at``
-    does, and is a second column rather than a rename of that one. Renaming a
+    does, on the administrator's clear only (enrolment would sign the enrolling
+    person out), and is a second column rather than a rename of that one. Renaming a
     column a just-shipped security check reads, with a guard test pinned to it,
     buys tidiness at the price of an expand-migrate-contract on the
     authentication path. Two columns also record *why* a session ended.

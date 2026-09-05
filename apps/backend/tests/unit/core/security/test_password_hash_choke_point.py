@@ -237,7 +237,9 @@ def test_the_websocket_resolver_calls_the_password_change_check() -> None:
     calls = _calls_within(tree, "_resolve_user")
 
     assert calls, "_resolve_user not found in api/v1/ws.py; the resolver was renamed"
-    assert "password_change_invalidates" in calls, (
-        "the WebSocket resolver does not call the password-change check, so a "
-        "token refused on every HTTP route still opens a socket"
+    assert "credential_change_invalidates" in calls, (
+        "the WebSocket resolver does not call the credential-change check, so "
+        "a token refused on every HTTP route still opens a socket. It covers "
+        "both boundaries: the password change and the second factor being "
+        "cleared."
     )

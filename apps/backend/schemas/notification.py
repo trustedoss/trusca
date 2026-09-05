@@ -53,6 +53,10 @@ NotificationKind = Literal[
     # a project goes clear -> flagged. No scan produces this finding, because
     # nobody re-scans an old release.
     "malicious_detected",
+    # ER19-3: emitted when an administrator clears somebody's second factor.
+    # Written in the request rather than dispatched, because being told is the
+    # whole control and a worker that is not running would swallow it.
+    "account_security",
 ]
 
 
