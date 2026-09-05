@@ -454,7 +454,8 @@
       "empty": {
         "title": "표시할 업그레이드가 없습니다",
         "subtitle": "미해결 취약점이 없거나 완료된 스캔이 아직 없습니다."
-      }
+      },
+      "summary_truncated": "업그레이드 {{clusters}}건 중 조치 우선순위가 높은 {{shown}}건을 보여 줍니다. 전체는 finding {{findings}}건을 해소합니다"
     },
     "remediation": {
       "heading": "보안 조치",

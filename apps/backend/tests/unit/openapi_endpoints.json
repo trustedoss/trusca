@@ -556,6 +556,7 @@
     "status"
   ],
   "GET /v1/projects/{project_id}/vulnerabilities/upgrade-clusters": [
+    "limit",
     "project_id",
     "release",
     "scan_id"

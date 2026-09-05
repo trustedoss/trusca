@@ -1596,6 +1596,8 @@ describe("VulnerabilitiesTab", () => {
     return {
       scan_id: "scan-1",
       total_findings: 3,
+      total_clusters: 3,
+      truncated: false,
       clusters: [
         {
           component_version_id: "cv-1",

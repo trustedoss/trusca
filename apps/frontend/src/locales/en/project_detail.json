@@ -454,7 +454,8 @@
       "empty": {
         "title": "No upgrades to show",
         "subtitle": "There are no open findings, or no scan has succeeded yet."
-      }
+      },
+      "summary_truncated": "Showing the {{shown}} most actionable of {{clusters}} upgrades, resolving {{findings}} findings"
     },
     "remediation": {
       "heading": "Remediation",

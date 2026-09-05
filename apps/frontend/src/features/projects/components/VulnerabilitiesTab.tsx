@@ -1081,6 +1081,8 @@ export function VulnerabilitiesTab({
           query={upgradeClusters}
           clusters={clusters}
           totalFindings={upgradeClusters.data?.total_findings ?? 0}
+          totalClusters={upgradeClusters.data?.total_clusters ?? 0}
+          truncated={upgradeClusters.data?.truncated ?? false}
           onOpenFinding={setDrawerVuln}
         />
       )}
@@ -1112,6 +1114,12 @@ interface UpgradeClustersSectionProps {
   query: { isLoading: boolean; isError: boolean; error: unknown };
   clusters: UpgradeCluster[];
   totalFindings: number;
+  /**
+   * Totals for the whole scan, which is not the same as the list once the
+   * list is a page. The summary counts these, never `clusters.length`.
+   */
+  totalClusters: number;
+  truncated: boolean;
   onOpenFinding: (findingId: string) => void;
 }
 
@@ -1126,6 +1134,8 @@ function UpgradeClustersSection({
   query,
   clusters,
   totalFindings,
+  totalClusters,
+  truncated,
   onOpenFinding,
 }: UpgradeClustersSectionProps) {
   const { t } = useTranslation("project_detail");
@@ -1174,14 +1184,22 @@ function UpgradeClustersSection({
       <div
         className="flex items-center justify-between border-b border-border/60 px-6 py-2 text-xs text-muted-foreground"
         data-testid="vulnerabilities-upgrade-summary"
-        data-clusters={clusters.length}
+        data-clusters={totalClusters}
         data-findings={totalFindings}
+        data-shown={clusters.length}
+        data-truncated={truncated ? "true" : "false"}
       >
         <span>
-          {t("vulnerabilities.upgrade_cluster.summary_count", {
-            clusters: clusters.length,
-            findings: totalFindings,
-          })}
+          {truncated
+            ? t("vulnerabilities.upgrade_cluster.summary_truncated", {
+                shown: clusters.length,
+                clusters: totalClusters,
+                findings: totalFindings,
+              })
+            : t("vulnerabilities.upgrade_cluster.summary_count", {
+                clusters: totalClusters,
+                findings: totalFindings,
+              })}
         </span>
       </div>
       <UpgradeClusterList clusters={clusters} onOpenFinding={onOpenFinding} />

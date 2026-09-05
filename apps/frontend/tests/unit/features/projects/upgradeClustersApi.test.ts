@@ -25,6 +25,8 @@ const mockedGet = api.get as unknown as ReturnType<typeof vi.fn>;
 const EMPTY: UpgradeClusterListResponse = {
   scan_id: null,
   total_findings: 0,
+  total_clusters: 0,
+  truncated: false,
   clusters: [],
 };
 

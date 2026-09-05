@@ -54,7 +54,11 @@ from schemas.vulnerability_detail import (
 from services.project_service import ProjectError
 from services.scan_resolution import SnapshotScanNotFound
 from services.table_export_service import stream_vulnerabilities_csv
-from services.upgrade_cluster_service import list_upgrade_clusters
+from services.upgrade_cluster_service import (
+    DEFAULT_CLUSTER_LIMIT,
+    MAX_CLUSTER_LIMIT,
+    list_upgrade_clusters,
+)
 from services.vulnerability_service import (
     VulnerabilityApprovalRequired,
     VulnerabilityBulkInputError,
@@ -348,6 +352,7 @@ async def list_upgrade_clusters_endpoint(
     request: Request,
     project_id: uuid.UUID,
     scan_id: uuid.UUID | None = Depends(snapshot_anchor),
+    limit: int = Query(default=DEFAULT_CLUSTER_LIMIT, ge=1, le=MAX_CLUSTER_LIMIT),
     session: AsyncSession = Depends(get_db),
     actor: CurrentUser = Depends(require_role("viewer")),
 ) -> Response:
@@ -364,6 +369,7 @@ async def list_upgrade_clusters_endpoint(
             project_id=project_id,
             actor=actor,
             snapshot_scan_id=scan_id,
+            limit=limit,
         )
     except SnapshotScanNotFound:
         return _problem_for_snapshot_not_found(request)
@@ -373,6 +379,8 @@ async def list_upgrade_clusters_endpoint(
     body = UpgradeClusterListResponse(
         scan_id=result.scan_id,
         total_findings=result.total_findings,
+        total_clusters=result.total_clusters,
+        truncated=result.truncated,
         clusters=[
             UpgradeCluster(
                 component_version_id=c["component_version_id"],

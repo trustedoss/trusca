@@ -397,3 +397,202 @@ async def test_project_without_succeeded_scan_returns_empty_200(client) -> None:
     assert body["scan_id"] is None
     assert body["total_findings"] == 0
     assert body["clusters"] == []
+
+
+# ---------------------------------------------------------------------------
+# E10: the read is bounded, and moving the ranking into SQL kept the order
+# ---------------------------------------------------------------------------
+
+
+async def test_a_component_with_no_epss_does_not_lead_the_list(
+    client: AsyncClient,
+) -> None:
+    """The NULL that reverses between Python and SQL.
+
+    Python's priority_rank substitutes 0.0 for a missing max EPSS, putting the
+    component last. SQL's ``max()`` over an all-NULL column returns NULL, and
+    Postgres sorts NULL FIRST on DESC, so the same component would lead.
+
+    Both are indirect and equally severe, so EPSS alone decides. Findings with
+    no EPSS at all are not an edge case: the recorded Trivy reports carry none.
+
+    What this covers today, and what it does not
+    -------------------------------------------
+    The tail is ordered in Python, whose key already reads the value as
+    ``or 0``, so removing the ``coalesce`` from the SQL changes nothing and this
+    test passes either way. It is asserting the ordering, not the coalesce.
+
+    That changes the moment the ordering moves into SQL. A ``DESC`` on that
+    column sorts NULL first, and the component with no EPSS would lead. Whoever
+    pushes the sort down needs a version of this case that runs against the SQL
+    path; this one will keep passing and say nothing about it.
+    """
+    _, team, user = await _seed_team_with_user(client)
+    project_id, scan_id = await _seed_scanned_project(client, team_id=team.id)
+
+    await _seed_component_cluster(
+        client,
+        scan_id=scan_id,
+        name="aaa-no-epss",
+        findings=[
+            {"severity": "high", "fixed_version": "2.0.0", "status": "new", "epss": None}
+        ],
+    )
+    await _seed_component_cluster(
+        client,
+        scan_id=scan_id,
+        name="bbb-has-epss",
+        findings=[
+            {"severity": "high", "fixed_version": "2.0.0", "status": "new", "epss": 0.5}
+        ],
+    )
+
+    response = await client.get(
+        f"/v1/projects/{project_id}/vulnerabilities/upgrade-clusters",
+        headers=_bearer_for(user),
+    )
+    assert response.status_code == 200, response.text
+    names = [c["component_name"] for c in response.json()["clusters"]]
+    assert names == ["bbb-has-epss", "aaa-no-epss"], (
+        f"order was {names}; the component with no EPSS should rank below one "
+        "with EPSS at the same severity, and it leads when the SQL aggregate's "
+        "NULL is not coalesced to 0"
+    )
+
+
+async def test_totals_count_everything_while_the_list_is_a_page(
+    client: AsyncClient,
+) -> None:
+    """The totals are aggregates, so a page still reports the real size.
+
+    Summing the returned clusters would report the page, and the screen shows
+    'N issues across M upgrades' from these numbers.
+    """
+    _, team, user = await _seed_team_with_user(client)
+    project_id, scan_id = await _seed_scanned_project(client, team_id=team.id)
+
+    for i in range(4):
+        await _seed_component_cluster(
+            client,
+            scan_id=scan_id,
+            name=f"pkg-{i}",
+            findings=[
+                {
+                    "severity": "high",
+                    "fixed_version": "2.0.0",
+                    "status": "new",
+                    "epss": 0.1 * (i + 1),
+                }
+            ],
+        )
+
+    response = await client.get(
+        f"/v1/projects/{project_id}/vulnerabilities/upgrade-clusters?limit=2",
+        headers=_bearer_for(user),
+    )
+    assert response.status_code == 200, response.text
+    body = response.json()
+
+    assert len(body["clusters"]) == 2
+    assert body["truncated"] is True
+    assert body["total_clusters"] == 4, body
+    assert body["total_findings"] == 4, body
+
+
+async def test_the_page_holds_the_ones_worth_acting_on(client: AsyncClient) -> None:
+    """Truncation keeps the head of the order, not an arbitrary slice.
+
+    A direct, actionable component outranks every indirect one whatever its
+    severity, which is the property the bounded read relies on: the leading
+    block can only come from the direct set.
+    """
+    _, team, user = await _seed_team_with_user(client)
+    project_id, scan_id = await _seed_scanned_project(client, team_id=team.id)
+
+    await _seed_component_cluster(
+        client,
+        scan_id=scan_id,
+        name="zzz-direct-low",
+        direct=True,
+        depth=1,
+        findings=[
+            {"severity": "low", "fixed_version": "2.0.0", "status": "new", "epss": 0.01}
+        ],
+    )
+    for i in range(3):
+        await _seed_component_cluster(
+            client,
+            scan_id=scan_id,
+            name=f"aaa-indirect-critical-{i}",
+            findings=[
+                {
+                    "severity": "critical",
+                    "fixed_version": "2.0.0",
+                    "status": "new",
+                    "epss": 0.9,
+                }
+            ],
+        )
+
+    response = await client.get(
+        f"/v1/projects/{project_id}/vulnerabilities/upgrade-clusters?limit=1",
+        headers=_bearer_for(user),
+    )
+    assert response.status_code == 200, response.text
+    names = [c["component_name"] for c in response.json()["clusters"]]
+    assert names == ["zzz-direct-low"], (
+        f"the single returned cluster was {names}; a direct actionable "
+        "component leads regardless of severity, so truncating to one must "
+        "keep it"
+    )
+
+
+async def test_a_direct_component_with_no_fix_does_not_hold_the_page(
+    client: AsyncClient,
+) -> None:
+    """The demotion that makes the leading block smaller than the direct set.
+
+    A direct component whose findings have no fixed version is not actionable,
+    so it drops out of the leading block and competes on severity like any
+    other. The bounded read must still consider it, and must not let it crowd
+    out a fixable one.
+    """
+    _, team, user = await _seed_team_with_user(client)
+    project_id, scan_id = await _seed_scanned_project(client, team_id=team.id)
+
+    await _seed_component_cluster(
+        client,
+        scan_id=scan_id,
+        name="aaa-direct-no-fix",
+        direct=True,
+        depth=1,
+        findings=[
+            {
+                "severity": "critical",
+                "fixed_version": None,
+                "status": "new",
+                "epss": 0.9,
+            }
+        ],
+    )
+    await _seed_component_cluster(
+        client,
+        scan_id=scan_id,
+        name="bbb-direct-fixable",
+        direct=True,
+        depth=1,
+        findings=[
+            {"severity": "low", "fixed_version": "2.0.0", "status": "new", "epss": 0.01}
+        ],
+    )
+
+    response = await client.get(
+        f"/v1/projects/{project_id}/vulnerabilities/upgrade-clusters",
+        headers=_bearer_for(user),
+    )
+    assert response.status_code == 200, response.text
+    names = [c["component_name"] for c in response.json()["clusters"]]
+    assert names == ["bbb-direct-fixable", "aaa-direct-no-fix"], (
+        f"order was {names}; a direct component with nothing to upgrade to is "
+        "demoted below a fixable one even when it is far more severe"
+    )

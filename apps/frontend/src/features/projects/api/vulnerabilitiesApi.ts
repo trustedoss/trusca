@@ -771,7 +771,15 @@ export interface UpgradeCluster {
  */
 export interface UpgradeClusterListResponse {
   scan_id: string | null;
+  /**
+   * Open findings in the resolved scan, and the components carrying them.
+   * Counted server-side rather than summed from `clusters`, so they stay the
+   * real totals when the list is a page.
+   */
   total_findings: number;
+  total_clusters: number;
+  /** True when more components exist than the list returned. */
+  truncated: boolean;
   clusters: UpgradeCluster[];
 }
 
