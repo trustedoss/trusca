@@ -28,8 +28,14 @@ import {
   FormMessage,
 } from "@/components/ui/form";
 import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import { useOAuthProviders } from "@/hooks/useOAuthProviders";
-import { fetchMe, postLogin } from "@/lib/api";
+import {
+  fetchMe,
+  isMfaRequired,
+  postLogin,
+  postMfaVerify,
+} from "@/lib/api";
 import { getApiBase } from "@/lib/apiBase";
 import { ProblemError } from "@/lib/problem";
 import { problemMessage } from "@/lib/problemMessage";
@@ -80,6 +86,10 @@ export function LoginPage() {
   const status = useAuthStore((s) => s.status);
   const [apiError, setApiError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
+  // Held in memory only. Putting it anywhere durable would leave a credential
+  // behind after a tab closes mid-sign-in, and it is worth five minutes.
+  const [pendingToken, setPendingToken] = useState<string | null>(null);
+  const [code, setCode] = useState("");
   // L-1 (PR #6 follow-up): RegisterPage redirects here with ?registered=1 when
   // auto-login after a successful POST /auth/register fails (e.g. /auth/login
   // rate-limited the same IP). We surface a non-destructive success alert so
@@ -109,6 +119,21 @@ export function LoginPage() {
   // Captured once, so the banner survives the history rewrite below that
   // stops it reappearing later.
   const [sessionExpired] = useState(() => navState?.expired === true);
+
+  // The OAuth callback cannot show a form, so when a second factor is owed it
+  // redirects here with the pending token in the fragment. A fragment rather
+  // than a query string because no server needs to read it, and what is never
+  // sent cannot appear in a Referer header or an access log.
+  useEffect(() => {
+    const hash = window.location?.hash ?? "";
+    if (!hash.includes("mfa_token=")) return;
+    const token = new URLSearchParams(hash.slice(1)).get("mfa_token");
+    if (!token) return;
+    setPendingToken(token);
+    // Out of the address bar immediately. The history entry keeps it either
+    // way, but this stops it travelling into a copied link or a bookmark.
+    window.history.replaceState(null, "", window.location.pathname + window.location.search);
+  }, []);
 
   // Show it once, then take the flag out of the history entry. `expired`
   // survives a reload and comes back with the Back button, so without this
@@ -186,8 +211,12 @@ export function LoginPage() {
     setApiError(null);
     setSubmitting(true);
     try {
-      const tokens = await postLogin(values);
-      setAccessToken(tokens.access_token);
+      const result = await postLogin(values);
+      if (isMfaRequired(result)) {
+        setPendingToken(result.mfa_token);
+        return;
+      }
+      setAccessToken(result.access_token);
       // Hydrate the canonical user record from /auth/me so the UI has the
       // real id / role / superuser flag — never trust client-side guesses.
       const me = await fetchMe();
@@ -221,6 +250,33 @@ export function LoginPage() {
       // `prefix` rather than `action`: the auth namespace already words these
       // classes for the sign-in context ("errors.network", "errors.unknown").
       setApiError(problemMessage(err, t, { prefix: "errors" }));
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
+  async function onSubmitCode(event: React.FormEvent) {
+    event.preventDefault();
+    if (!pendingToken) return;
+    setApiError(null);
+    setSubmitting(true);
+    try {
+      const tokens = await postMfaVerify({
+        mfa_token: pendingToken,
+        code: code.trim(),
+      });
+      setAccessToken(tokens.access_token);
+      const me = await fetchMe();
+      setUser(me);
+      setStatus("authenticated");
+      navigate(returnTo, { replace: true });
+    } catch (err) {
+      // The pending token is spent by a successful exchange and expires in
+      // minutes, so a failure here usually means the code was wrong rather
+      // than the token. Keep the step open so somebody can read the next code
+      // from their app rather than starting the whole sign-in again.
+      setApiError(problemMessage(err, t, { prefix: "errors" }));
+      setCode("");
     } finally {
       setSubmitting(false);
     }
@@ -307,6 +363,43 @@ export function LoginPage() {
         />
       ) : null}
 
+      {pendingToken ? (
+        /* The second step replaces the first rather than sitting beside it.
+           Leaving the password fields visible invites somebody to retype and
+           resubmit, which starts a new sign-in and throws away the pending
+           token they are being asked to spend. */
+        <form
+          noValidate
+          onSubmit={onSubmitCode}
+          className="space-y-4"
+          data-testid="login-mfa-form"
+        >
+          <p className="text-sm text-muted-foreground">{t("login.mfa.prompt")}</p>
+          <div className="space-y-2">
+            <Label htmlFor="login-mfa-code">{t("login.mfa.code_label")}</Label>
+            <Input
+              id="login-mfa-code"
+              value={code}
+              onChange={(event) => setCode(event.target.value)}
+              autoComplete="one-time-code"
+              inputMode="numeric"
+              autoFocus
+              data-testid="login-mfa-code"
+            />
+            <p className="text-xs text-muted-foreground">
+              {t("login.mfa.recovery_hint")}
+            </p>
+          </div>
+          <Button
+            type="submit"
+            className="w-full"
+            disabled={submitting || code.trim().length === 0}
+            data-testid="login-mfa-submit"
+          >
+            {submitting ? t("login.mfa.submitting") : t("login.mfa.submit")}
+          </Button>
+        </form>
+      ) : (
       <Form {...form}>
         <form
           noValidate
@@ -369,6 +462,7 @@ export function LoginPage() {
           </Button>
         </form>
       </Form>
+      )}
 
       {oauthProviders.length > 0 ? (
         <>

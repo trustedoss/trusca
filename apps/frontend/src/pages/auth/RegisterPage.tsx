@@ -27,7 +27,7 @@ import {
 import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useDemoMode } from "@/hooks/useDemoMode";
-import { fetchMe, postLogin, postRegister } from "@/lib/api";
+import { fetchMe, isMfaRequired, postLogin, postRegister } from "@/lib/api";
 import { isDemoReadOnlyError } from "@/lib/demoReadOnly";
 import { problemMessage } from "@/lib/problemMessage";
 import { useAuthStore } from "@/stores/authStore";
@@ -148,11 +148,20 @@ export function RegisterPage() {
     }
 
     try {
-      const tokens = await postLogin({
+      const result = await postLogin({
         email: values.email,
         password: values.password,
       });
-      setAccessToken(tokens.access_token);
+      if (isMfaRequired(result)) {
+        // Unreachable today: the account was created moments ago and cannot
+        // have a second factor. Handled rather than cast away because the type
+        // is what will point here if registration ever grows a path that
+        // returns an existing account, and silently treating this as a session
+        // would leave somebody signed in without their factor.
+        navigate("/login", { replace: true });
+        return;
+      }
+      setAccessToken(result.access_token);
       const me = await fetchMe();
       setUser(me);
       setStatus("authenticated");
