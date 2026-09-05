@@ -11,14 +11,15 @@ import { useAuthStore, type AuthUser } from "@/stores/authStore";
 // Mock the wire layer so the unit test never touches axios / network. The
 // integration coverage for the real interceptor is in api.test.ts; here we
 // only care about the page's behavioural contract.
-vi.mock("@/lib/api", () => ({
+vi.mock("@/lib/api", async (importOriginal) => ({
+  // The real module first, then the stubs over it. A whole-module factory
+  // replaces every export, so one added later arrives here as undefined and
+  // the page calls it: `isMfaRequired` did exactly that, and every response
+  // then looked like a completed sign-in, which is the branch this file
+  // exists to check.
+  ...(await importOriginal<typeof import("@/lib/api")>()),
   postLogin: vi.fn(),
   postMfaVerify: vi.fn(),
-  // Not a mock: the page uses it to tell the two login outcomes apart, and a
-  // stub returning undefined makes every response look like a completed
-  // sign-in, which is the branch this file exists to check.
-  isMfaRequired: (r: unknown) =>
-    typeof r === "object" && r !== null && "mfa_required" in r,
   fetchMe: vi.fn(),
   postRegister: vi.fn(),
   postLogout: vi.fn(),
