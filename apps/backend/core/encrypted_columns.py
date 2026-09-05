@@ -27,7 +27,16 @@ has already removed.
 
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass
+
+#: An unquoted SQL identifier. Table and column names reach a statement by
+#: interpolation, because a placeholder cannot stand where an identifier goes,
+#: so the values are constrained rather than trusted. Everything in the tuple
+#: below is a literal written in this file, and this makes that a checked
+#: property instead of a claim in a comment: a value that could carry a quote,
+#: a semicolon or whitespace never reaches the string.
+_IDENTIFIER = re.compile(r"\A[a-z_][a-z0-9_]*\Z")
 
 
 @dataclass(frozen=True)
@@ -43,6 +52,20 @@ class EncryptedColumn:
     column: str
     primary_key: str = "id"
     purpose: str | None = None
+
+    def __post_init__(self) -> None:
+        for field, value in (
+            ("table", self.table),
+            ("column", self.column),
+            ("primary_key", self.primary_key),
+        ):
+            if not _IDENTIFIER.match(value):
+                raise ValueError(
+                    f"EncryptedColumn.{field}={value!r} is not a plain SQL "
+                    "identifier. These are interpolated into statements, so "
+                    "anything else is refused at import rather than reaching "
+                    "the database."
+                )
 
     @property
     def label(self) -> str:

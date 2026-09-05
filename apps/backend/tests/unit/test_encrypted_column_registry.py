@@ -27,7 +27,14 @@ from __future__ import annotations
 import ast
 import pathlib
 
-from core.encrypted_columns import ENCRYPTED_COLUMNS, columns_for_purpose, purposes
+import pytest
+
+from core.encrypted_columns import (
+    ENCRYPTED_COLUMNS,
+    EncryptedColumn,
+    columns_for_purpose,
+    purposes,
+)
 
 BACKEND = pathlib.Path(__file__).resolve().parents[2]
 
@@ -171,3 +178,34 @@ def test_columns_for_purpose_covers_every_column() -> None:
     assert sorted(c.label for c in covered) == sorted(
         c.label for c in ENCRYPTED_COLUMNS
     )
+
+
+@pytest.mark.parametrize(
+    "bad",
+    [
+        "projects; DROP TABLE users",
+        'proj"ects',
+        "projects col",
+        "1projects",
+        "",
+        "projects--",
+    ],
+)
+def test_a_name_that_is_not_an_identifier_is_refused(bad: str) -> None:
+    """Table and column names are interpolated, so they are constrained.
+
+    A bind parameter cannot stand where an identifier goes, so these reach the
+    statement as text. Every value in the registry is a literal written in that
+    module, which is an argument and not a guarantee; this makes it checked.
+    Each case is a different way a name could stop being one identifier:
+    statement separator, quote, whitespace, leading digit, empty, comment.
+    """
+    with pytest.raises(ValueError, match="not a plain SQL identifier"):
+        EncryptedColumn(bad, "value")
+
+
+def test_the_names_in_use_pass_that_check() -> None:
+    """The negative control. Without it, a pattern matching nothing at all
+    would satisfy every case above and reject the real registry too."""
+    for column in ENCRYPTED_COLUMNS:
+        EncryptedColumn(column.table, column.column, column.primary_key, column.purpose)

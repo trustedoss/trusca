@@ -181,7 +181,14 @@ async def reencrypt(session: AsyncSession) -> RotationReport:
             # RETURNING rather than rowcount: the value comes back as rows,
             # which is typed, and an empty result says the same thing a zero
             # rowcount would without depending on the driver reporting it.
+            # The table and column names are interpolated because a bind
+            # parameter cannot stand where an identifier goes. They come from
+            # ``ENCRYPTED_COLUMNS``, which holds literals written in that
+            # module and rejects anything that is not a plain identifier when
+            # it is constructed, so no caller-supplied value reaches here. The
+            # ciphertext, the key and the old value are all bound.
             result = await session.execute(
+                # nosemgrep: avoid-sqlalchemy-text
                 text(
                     f"UPDATE {column.table} SET {column.column} = :new "  # noqa: S608
                     f" WHERE {column.primary_key} = :pk AND {column.column} = :old"
@@ -227,7 +234,11 @@ async def _read_rows(
     rows: list[tuple[object, str]] = []
     offset = 0
     while True:
+        # Identifiers interpolated, everything else bound. Same reasoning as
+        # the update above: ``EncryptedColumn`` refuses a name that is not a
+        # plain identifier at construction, and every instance is a literal.
         result = await session.execute(
+            # nosemgrep: avoid-sqlalchemy-text
             text(
                 f"SELECT {column.primary_key} AS pk, {column.column} AS value "  # noqa: S608
                 f"  FROM {column.table} "
