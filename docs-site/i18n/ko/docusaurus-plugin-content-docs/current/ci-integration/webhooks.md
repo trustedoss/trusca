@@ -28,7 +28,7 @@ Webhook은 Git 호스트가 포털로 이벤트를 푸시하게 합니다 — �
 포털에 요청해서 받습니다. 시크릿은 암호화해서 저장하므로 SQL로 직접 쓸 수 없고,
 발급 경로는 이것 하나입니다.
 
-<!-- docs-uat: id=webhooks-secret-issue kind=http tier=manual -->
+<!-- docs-uat: id=webhooks-secret-issue kind=manual tier=manual -->
 ```http
 POST /v1/projects/{project_id}/webhook-secret
 Authorization: Bearer <token>

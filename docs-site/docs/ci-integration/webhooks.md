@@ -28,7 +28,7 @@ Both endpoints are public (no JWT) but require the project's webhook secret. The
 Ask the portal for one. The secret is stored encrypted, so it cannot be written
 by hand in SQL, and this is the only way to produce it.
 
-<!-- docs-uat: id=webhooks-secret-issue kind=http tier=manual -->
+<!-- docs-uat: id=webhooks-secret-issue kind=manual tier=manual -->
 ```http
 POST /v1/projects/{project_id}/webhook-secret
 Authorization: Bearer <token>
