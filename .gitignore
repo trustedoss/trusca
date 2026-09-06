@@ -40,6 +40,16 @@ secrets/cosign/cosign.pub
 secrets/**/*.key
 secrets/**/*.pub
 
+# private-registry auth for source-scan dependency resolution (#400) - real
+# config files live under ./secrets/registry (default
+# REGISTRY_CONFIG_HOST_PATH) but must NEVER be committed. The directory
+# itself is kept via secrets/registry/.gitkeep so the docker-compose bind
+# mount resolves on a fresh checkout.
+secrets/registry/settings.xml
+secrets/registry/.npmrc
+secrets/registry/pip.conf
+secrets/registry/.netrc
+
 # Editor / OS
 .idea/
 .vscode/

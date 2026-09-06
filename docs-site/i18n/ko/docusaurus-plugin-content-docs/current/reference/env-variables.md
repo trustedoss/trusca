@@ -345,6 +345,10 @@ Compose 배포에는 오토스케일러 계층이 없습니다. 이 절의 키�
 | `NODE_EXTRA_CA_CERTS` | (비어있음) | 서브프로세스 env | `cdxgen`이 쓰는 사설 인증기관입니다. 기존 루트에 더해집니다. |
 | `REQUESTS_CA_BUNDLE` | (비어있음) | 서브프로세스 env | `scancode`와 `scanoss`가 쓰는 사설 인증기관입니다. 포털 자신의 호출은 이 변수를 보지 않습니다. |
 | `GIT_SSL_CAINFO` / `GIT_SSL_CAPATH` | (비어있음) | 서브프로세스 env | `git clone`이 쓰는 사설 인증기관입니다. git은 `SSL_CERT_FILE`도 `CURL_CA_BUNDLE`도 읽지 않으므로, 사내 저장소를 내려받으려면 이 둘 중 하나가 필요합니다. |
+| `REGISTRY_CONFIG_HOST_PATH` | `./secrets/registry` | docker-compose 전용 | 스캔 파이프라인 워커의 고정 컨테이너 경로 `/etc/trusca/registry`에 읽기 전용으로 마운트되는 호스트 디렉터리입니다. 사설 레지스트리에 필요한 `settings.xml`·`.npmrc`·`pip.conf`·`.netrc` 중 필요한 것을 둡니다. [의존성 해석용 사설 레지스트리](../admin-guide/private-registries.md)를 봅니다. |
+| `MVN_ARGS` | (비어있음) | cdxgen 자체의 Maven 호출 | cdxgen이 실행하는 모든 `mvn` 명령에 붙이는 추가 인자입니다. 사설 Maven 레지스트리를 쓰려면 `--settings /etc/trusca/registry/settings.xml`로 설정하세요. `MAVEN_SETTINGS`라는 변수는 없습니다. Maven 자체는 `~/.m2/settings.xml`이나 `-s`/`--settings` 플래그만 읽습니다. |
+| `NPM_CONFIG_USERCONFIG` | (비어있음) | 서브프로세스 env | 대체 `.npmrc` 경로를 가리키는 npm 자체의 환경변수입니다. cdxgen 기능이 아닙니다. |
+| `PIP_CONFIG_FILE` | (비어있음) | 서브프로세스 env | 대체 `pip.conf` 경로를 가리키는 pip 자체의 환경변수입니다. cdxgen 기능이 아닙니다. |
 
 ## 부트스트랩 / 스크립트
 

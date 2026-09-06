@@ -66,6 +66,7 @@ const sidebars: SidebarsConfig = {
         "admin-guide/scan-retention",
         "admin-guide/data-retention",
         "admin-guide/private-ca",
+        "admin-guide/private-registries",
         "admin-guide/user-anonymisation",
         "admin-guide/dynamic-scan-executor",
         "admin-guide/logs",

@@ -205,6 +205,7 @@ connections before alembic runs.
 | `worker.scan.autoscaling.enabled` | `false` | Optional autoscaler (off by default). |
 | `worker.scan.autoscaling.mode` | `cpu` | `cpu` (HorizontalPodAutoscaler) or `queue` (KEDA ScaledObject on the scan queue's depth). See "Queue-depth autoscaling (KEDA)" below. Scan-worker-only - the default worker has no `mode` key. |
 | `worker.scan.terminationGracePeriodSeconds` | `4200` (70 min) | S4: must clear the backend's scan hard time limit (`scan_hard_time_limit_seconds()`, default 3900s) with margin, so a scaled-down or evicted pod finishes an in-flight scan instead of losing it to a redelivery-from-zero. |
+| `worker.scan.extraEnv` / `extraVolumes` / `extraVolumeMounts` | `{}` / `[]` / `[]` | Issue #400: private package-registry auth for source-scan dependency resolution (Maven/npm/pip). Scoped to worker-scan alone, unlike the chart-wide `env.extraEnv`/`extraVolumes` above. See the worked example in `values.yaml`. |
 | `worker.default.replicaCount` | `1` | Notifications / backups / audit export / catalog refreshes / the scan-schedule poll. |
 | `worker.default.concurrency` | `4` | Higher than the scan worker's default - none of these tasks fork a full pipeline. |
 | `worker.default.autoscaling.enabled` | `false` | CPU-based only (no `mode` key - see S3's judgment call in `values.yaml`). |
