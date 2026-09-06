@@ -474,6 +474,17 @@ reads as evidence the assertion is weak. `--restore` puts the file back from a
 backup rather than through `git checkout`, which would also discard
 uncommitted work in that file.
 
+That restore checks the file first rather than overwriting it outright. If a
+real fix lands in the same file while a mutation is still live, an outright
+overwrite would erase that fix along with the mutation, with nothing to say
+so. `--restore` compares the file's current hash to a hash it took right
+after the mutation: unchanged, it restores from the backup as before; changed,
+it looks for the mutated text and reverses only that one substitution,
+leaving whatever else changed during the window in place. If the mutated text
+is gone or now appears more than once, which occurrence to reverse is not
+stated, so it refuses and points at the backup for a manual diff, rather than
+guess.
+
 The ways an assertion stops being able to fail repeat, and six have shown up
 often enough to name:
 
