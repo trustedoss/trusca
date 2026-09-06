@@ -313,6 +313,24 @@ and the project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.
   rolled back and the caller re-fetches the winner's row, so the rest of the
   scan's transaction survives intact (#398-A).
 
+- **A Redis outage could turn every rate-limited endpoint into a 500.**
+  `core/ratelimit.py` built slowapi's `Limiter` against plain `redis://`, and
+  left to its defaults slowapi re-raises whatever its storage raises;
+  `swallow_errors=True` does not save it either, since the header-injection
+  code that runs after a swallowed exception reads
+  `request.state.view_rate_limit` unconditionally, and that attribute is
+  only set once evaluation finishes without raising. Confirmed against a
+  real unreachable Redis rather than assumed from reading slowapi's source.
+  A new `FailOpenRedisStorage` answers "zero hits, resets now" instead of
+  raising when Redis cannot answer, which reads as "not limited" to the
+  strategy above it and lets the request through with a warning logged
+  instead of a 500. This makes the login rate limit and every other
+  `@limiter.limit(...)` endpoint fail open on a Redis outage, matching the
+  policy `login_throttle.py`'s per-address slowdown already documented and
+  followed. Both mechanisms are now proven independently, each with the
+  other's Redis path left healthy, so neither test's pass depends on the
+  other control also being down.
+
 - **The vulnerability drawer's response builder could drop a field silently.**
   `_detail_response` named all 41 fields of `VulnerabilityDetailResponse` as
   keyword arguments by hand, so a field the service already computed but
