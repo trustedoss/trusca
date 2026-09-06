@@ -74,6 +74,7 @@ sidebar_position: 2
 | `SECRET_KEY` | — | `config.py` | [필수 키](#required-keys) 참고. HS256 서명. |
 | `ACCESS_TOKEN_EXPIRE_MINUTES` | `30` | `config.py` | JWT access token 수명. |
 | `REFRESH_TOKEN_EXPIRE_DAYS` | `7` | `config.py` | Refresh token 수명. 회전 + 재사용 탐지 활성화. |
+| `REGISTRATION_RATE_LIMIT` | `5/minute` | `config.py` | bcrypt 비밀번호 해시를 수행하는 `POST /auth/register`의 IP별 slowapi 한도. |
 | `REFRESH_TOKEN_RETENTION_GRACE_DAYS` | `1` | `tasks/auth_token_retention.py` | refresh token 행이 자신의 `expires_at`을 지난 뒤 며칠까지 남아 있다가 매일 도는 정리 작업에서 삭제되는지. 회전·로그아웃·재사용 탐지로 폐기된 행도 `expires_at` 값 자체는 바뀌지 않으므로, `REFRESH_TOKEN_EXPIRE_DAYS` 한 주기 안에 같은 조건으로 함께 삭제됩니다. 폐기 시각을 따로 추적하는 경로는 두지 않았습니다. |
 | `PASSWORD_RESET_TOKEN_RETENTION_GRACE_DAYS` | `1` | `tasks/auth_token_retention.py` | 비밀번호 재설정 토큰 행이 자신의 `expires_at`을 지난 뒤 며칠까지 남아 있다가 삭제되는지. 위 refresh token 항목과 같은 방식입니다. |
 

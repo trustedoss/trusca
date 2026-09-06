@@ -254,18 +254,14 @@ def test_the_websocket_resolver_calls_the_password_change_check() -> None:
 #: narrowed to avoid them would report a clean tree that is not clean.
 #:
 #: They are not equally exposed, and whoever pays this down should start with
-#: the one that is. ``auth_service.register_user`` sits behind
-#: ``POST /auth/register``, which carries no ``@limiter.limit`` and needs no
-#: credential, so on a deployment with open registration it is an
-#: unauthenticated 213ms event-loop stall per request. The other three are
-#: bounded: the password-reset hash is behind a per-IP limit and a per-address
-#: cooldown, and the remaining two are admin-gated or behind a provider round
-#: trip.
+#: the ones that are reachable. Registration is no longer listed: its bcrypt
+#: call is off the event loop and the public route has a per-IP limit. The
+#: password-reset hash is behind a per-IP limit and a per-address cooldown,
+#: and the remaining two are admin-gated or behind a provider round trip.
 #:
 #: This list only shrinks.
 ALREADY_BLOCKING = {
     "services/admin_user_service.py",
-    "services/auth_service.py",
     "services/oauth_service.py",
     "services/password_reset_service.py",
 }

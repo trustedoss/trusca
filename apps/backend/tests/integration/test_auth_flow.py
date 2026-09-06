@@ -115,6 +115,39 @@ async def test_register_rejects_duplicate_email(client):
     assert second.headers["content-type"].startswith(PROBLEM_JSON)
 
 
+async def test_register_is_rate_limited_per_ip(client, monkeypatch):
+    """Public bcrypt work is capped before the sixth request reaches the route."""
+    from core.ratelimit import limiter
+
+    monkeypatch.setattr(limiter, "enabled", True)
+    headers = {"X-Forwarded-For": "203.0.113.130"}
+
+    for i in range(5):
+        response = await client.post(
+            "/auth/register",
+            json={
+                "email": _unique_email(f"limited-{i}"),
+                "password": _strong_password(),
+                "full_name": "Limited User",
+            },
+            headers=headers,
+        )
+        assert response.status_code == 201, response.text
+
+    sixth = await client.post(
+        "/auth/register",
+        json={
+            "email": _unique_email("limited-sixth"),
+            "password": _strong_password(),
+            "full_name": "Limited User",
+        },
+        headers=headers,
+    )
+    assert sixth.status_code == 429
+    assert sixth.headers.get("Retry-After"), "missing Retry-After header"
+    assert sixth.headers["content-type"].startswith(PROBLEM_JSON)
+
+
 # ---------------------------------------------------------------------------
 # Login + JWT
 # ---------------------------------------------------------------------------

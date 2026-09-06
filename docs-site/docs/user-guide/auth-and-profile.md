@@ -26,6 +26,7 @@ Any signed-in user. No special role required to manage your own identities. The 
 **What happens server-side**
 
 - The password is hashed with **bcrypt cost 12** at registration; the login compares the candidate against the stored hash in constant time.
+- Public registration is rate-limited to **5 attempts per minute per IP** because each request performs a bcrypt hash. Excess requests return HTTP 429 with a `Retry-After` header.
 - A successful login returns a JWT **access token (30 min)** and a refresh token (**7 days**, rotated on every use, with reuse-detection that revokes the entire chain).
 - Refresh tokens live in an `HttpOnly`, `Secure`, `SameSite=Lax` cookie. They are never visible to JavaScript.
 - The login endpoint is rate-limited to **5 attempts per minute per IP**. Excess requests return HTTP 429 with a `Retry-After` header.

@@ -37,6 +37,7 @@ from core.security import (
     create_refresh_token,
     decode_token,
     hash_password,
+    hash_password_async,
     hash_refresh_token,
     normalize_email,
     verify_password_async,
@@ -166,7 +167,10 @@ async def register_user(
 
     user = User(
         email=normalized_email,
-        hashed_password=hash_password(password),
+        # Bcrypt is CPU-bound and registration is public. Keep the request
+        # coroutine responsive while the route-level IP limiter bounds how
+        # many hashes an unauthenticated caller can make us perform.
+        hashed_password=await hash_password_async(password),
         full_name=full_name,
         is_active=True,
         is_superuser=False,
