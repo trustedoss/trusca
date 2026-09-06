@@ -237,22 +237,22 @@ def test_get_or_create_component_version_survives_concurrent_insert(
 
     session = session_factory()
     try:
-        component = session.get(Component, component_id)
-        assert component is not None
+        component_row = session.get(Component, component_id)
+        assert component_row is not None
         # A version staged BEFORE the race, same component: proves the
         # caller's earlier work in this transaction survives.
         staged = _get_or_create_component_version(
             session,
-            component=component,
+            component=component_row,
             version="0.9.0",
-            purl_with_version=f"{component.purl}@0.9.0",
+            purl_with_version=f"{component_row.purl}@0.9.0",
         )
         staged_id = staged.id
 
         with capture_logs() as logs:
             result = _get_or_create_component_version(
                 session,
-                component=component,
+                component=component_row,
                 version="1.0.0",
                 purl_with_version=purl_with_version,
             )
