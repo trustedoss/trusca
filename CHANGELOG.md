@@ -518,6 +518,20 @@ and the project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.
   which also gets it the reference sanitisation and the stale-row refresh
   the source path already had.
 
+- **The Vulnerabilities table's header rendered one fewer cell than a row.**
+  The Owner column was added to the row and to the column-visibility catalog
+  so a user could show or hide it, but the header itself was never given a
+  matching cell, so the header and the row disagreed on how many columns
+  existed. Every column after the gap sat under the wrong heading. The only
+  check that caught it runs on a nightly schedule, not on pull requests, so
+  it stood on `main` for as long as it took the schedule to run once. The
+  header now carries the Owner column in the same position as the row, the
+  table's declared minimum width is recalculated for it, and a unit test
+  renders the table with every column visible and asserts the header and row
+  report the same cell count, so a future column that lands in the catalog
+  and the row without a matching header cell fails in the pull request that
+  adds it.
+
 ## [0.22.4] - 2026-09-02
 
 ### Fixed

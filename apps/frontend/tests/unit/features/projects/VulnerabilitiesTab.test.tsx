@@ -18,7 +18,10 @@ import type {
   VulnerabilityListItem,
   VulnerabilityListResponse,
 } from "@/features/projects/api/vulnerabilitiesApi";
-import { VulnerabilitiesTab } from "@/features/projects/components/VulnerabilitiesTab";
+import {
+  getVulnColumnsCatalog,
+  VulnerabilitiesTab,
+} from "@/features/projects/components/VulnerabilitiesTab";
 import { ProblemError } from "@/lib/problem";
 
 vi.mock("@/features/projects/api/vulnerabilitiesApi", async () => {
@@ -1727,5 +1730,43 @@ describe("VulnerabilitiesTab", () => {
     await waitFor(() => {
       expect(mockedGet).toHaveBeenCalledWith("finding-xyz");
     });
+  });
+
+  it("renders the same number of header columns and row cells for every catalog column (#397)", async () => {
+    // Regression guard: PR #391 added an "assignee" entry to the column
+    // catalog and the row, but not the header, so the header rendered one
+    // fewer cell than a row. `tests/e2e/tableColumnAlignment.spec.ts`
+    // caught it only on the nightly schedule. This test imports the same
+    // catalog the component renders from (no separate hand-maintained id
+    // list) so a future column that lands in the catalog + row but not the
+    // header fails here, in the PR gate, instead of 24 hours later.
+    //
+    // No localStorage entry is set, so `loadInitialVisibility` defaults to
+    // "all columns visible" (the maximal case the width-floor comment
+    // above the table also assumes).
+    window.localStorage.clear();
+    const catalog = getVulnColumnsCatalog((key) => key);
+
+    mockedList.mockResolvedValueOnce(listResponse([vuln("CVE-2024-9999")]));
+    renderTab();
+
+    await waitFor(() => {
+      expect(screen.getAllByTestId("vulnerability-row")).toHaveLength(1);
+    });
+
+    const header = screen.getByTestId("vulnerabilities-header");
+    const row = screen.getByTestId("vulnerability-row");
+
+    const headerColumnCount =
+      within(header).getAllByRole("columnheader").length;
+    const rowCellCount = within(row).getAllByRole("cell").length;
+
+    // +1 for the leading select checkbox column, which sits outside the
+    // catalog but is present in both the header and every row.
+    const expectedCount = catalog.length + 1;
+
+    expect(headerColumnCount).toBe(expectedCount);
+    expect(rowCellCount).toBe(expectedCount);
+    expect(headerColumnCount).toBe(rowCellCount);
   });
 });
