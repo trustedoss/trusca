@@ -17,6 +17,14 @@
 #   docker-compose -f docker-compose.dev.yml up -d
 #   curl http://localhost:8000/health     → {"status":"ok"}
 
+x-logging: &logging
+  # Same bound as the production file. A developer's disk fills the same way,
+  # and DEBUG here is loud. Tunable through LOG_MAX_SIZE / LOG_MAX_FILE.
+  driver: json-file
+  options:
+    max-size: ${LOG_MAX_SIZE:-20m}
+    max-file: "${LOG_MAX_FILE:-5}"
+
 x-backend-build: &backend-build
   build:
     context: ./apps/backend
@@ -383,6 +391,7 @@ services:
   postgres:
     image: postgres:17.2-alpine
     restart: unless-stopped
+    logging: *logging
     environment:
       POSTGRES_USER: ${POSTGRES_USER:-trustedoss}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-trustedoss}
@@ -401,6 +410,7 @@ services:
   redis:
     image: redis:7.4-alpine
     restart: unless-stopped
+    logging: *logging
     ports:
       - "6379:6379"
     healthcheck:
@@ -414,6 +424,7 @@ services:
     <<: *backend-build
     image: trustedoss/backend:dev
     restart: unless-stopped
+    logging: *logging
     # `--reload-exclude` keeps watchfiles from triggering a reload when only
     # tests / venv / __pycache__ change — repeated user-test sessions edited
     # `tests/unit/*.py` and the reload loop hung graceful-shutdown until the
@@ -482,6 +493,7 @@ services:
     <<: *worker-build
     image: trustedoss/backend-worker:dev
     restart: unless-stopped
+    logging: *logging
     # `-Q` explicit since S3 (concurrency-scaling-plan-2026-08-22.md) split
     # scan-pipeline tasks onto a dedicated `trustedoss.scan` queue via
     # `task_routes` (tasks/celery_app.py) - a worker started with no `-Q`
@@ -556,6 +568,7 @@ services:
     <<: *worker-build
     image: trustedoss/backend-worker:dev
     restart: unless-stopped
+    logging: *logging
     command: celery -A tasks.celery_app beat --loglevel=info --schedule=/tmp/celerybeat-schedule
     environment:
       <<: *backend-env
@@ -580,6 +593,7 @@ services:
       dockerfile: Dockerfile
     image: trustedoss/frontend:dev
     restart: unless-stopped
+    logging: *logging
     environment:
       VITE_API_BASE_URL: ${VITE_API_BASE_URL:-http://localhost:8000}
     volumes:
@@ -615,6 +629,7 @@ services:
     image: ghcr.io/tecnativa/docker-socket-proxy:0.3.0
     profiles: ["local-docker"]
     restart: unless-stopped
+    logging: *logging
     environment:
       CONTAINERS: "1"   # GET /containers/* (list / inspect / logs)
       IMAGES: "1"       # GET /images/* + image pull

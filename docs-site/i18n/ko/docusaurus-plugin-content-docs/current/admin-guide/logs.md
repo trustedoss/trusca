@@ -81,25 +81,19 @@ docker-compose logs --no-color beat worker-default \
 
 ## 어딘가로 보내기
 
-Docker의 기본 `json-file` 드라이버는 로그를 호스트에 남기는데, 이 저장소의 compose 파일에는
-크기 제한이 설정돼 있지 않습니다. 바쁜 배포에서는 디스크가 감당하지 못할 때까지 자라고,
-디스크가 차면 스캔이 멈춥니다. 할 일이 둘이고 순서가 있습니다.
+Docker의 기본 `json-file` 드라이버는 모든 줄을 호스트에 영원히 남깁니다. 배포되는 compose
+파일은 그것을 제한합니다. 로그를 남기는 서비스마다 파일당 20 MB, 파일 다섯 개입니다. 서비스당
+100 MB이고 여덟 서비스를 합쳐 800 MB인데, `INFO` 수준이면 며칠치가 담기고 스캔 자체가 쓰는
+작업 공간 볼륨에 비하면 작은 크기입니다.
 
-먼저 호스트에 남는 양을 제한하십시오. 배포된 파일을 고치는 대신 여러분의 compose 오버라이드에
-`logging:` 블록을 더하면 업그레이드가 그것을 되돌리지 않습니다.
+`LOG_MAX_SIZE`와 `LOG_MAX_FILE`로 파일을 고치지 않고 두 값을 바꿀 수 있습니다. 진단할 때는
+올리십시오. `LOG_LEVEL=DEBUG`는 이 공간을 금방 채웁니다.
 
-```yaml
-services:
-  backend:
-    logging:
-      driver: json-file
-      options:
-        max-size: "50m"
-        max-file: "5"
-```
-
-`worker-scan`, `worker-default`, `beat`, `traefik`에도 같이 넣습니다. 양이 많은 쪽은
-worker입니다.
+:::note 링을 넘어선 이력은 사라집니다
+회전은 버리는 것입니다. 링이 담는 것보다 더 오래 거슬러 봐야 한다면, 그때가 오기 전에 답이
+다른 곳에 있어야 합니다. 이 절의 나머지가 그 이야기입니다. 작업 실행 이력은 영향을 받지
+않습니다. 데이터베이스에 있고 자체 보존 기간을 따릅니다.
+:::
 
 그다음, 보낼 중앙 수집처가 있다면 드라이버를 그쪽으로 바꾸십시오. 애플리케이션이 stdout에만
 쓰기 때문에 Docker의 어떤 로깅 드라이버든 씁니다. `syslog`, `gelf`, `awslogs`, `fluentd`,

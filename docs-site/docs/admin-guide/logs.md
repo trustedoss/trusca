@@ -91,27 +91,22 @@ what and when, and give them the retention and access controls that implies.
 
 ## Shipping them somewhere
 
-Docker's default `json-file` driver keeps logs on the host with **no size
-limit configured in this repository's compose files**. On a busy deployment
-that grows until the disk does not have room for it, and a full disk stops
-scans. Two things to do, in this order.
+Docker's default `json-file` driver keeps every line on the host forever. The
+shipped compose files bound it instead: 20 MB per file, five files, for every
+service that logs. That is 100 MB per service and 800 MB across the eight,
+which buys days of `INFO`-level history and stays small beside the workspace
+volume the scans themselves need.
 
-First, bound what stays on the host. Add a `logging:` block to the services in
-your own compose override rather than editing the shipped file, so an upgrade
-does not revert it:
+`LOG_MAX_SIZE` and `LOG_MAX_FILE` change both numbers without editing the
+file. Raise them for a noisy diagnosis; `LOG_LEVEL=DEBUG` fills the ring
+quickly.
 
-```yaml
-services:
-  backend:
-    logging:
-      driver: json-file
-      options:
-        max-size: "50m"
-        max-file: "5"
-```
-
-Repeat for `worker-scan`, `worker-default`, `beat` and `traefik`. The workers
-are the loud ones.
+:::note History older than the ring is gone
+Rotation discards. If you need to look further back than the ring holds, the
+answer has to be somewhere else by the time you need it, which is what the
+rest of this section is about. The task-run history is not affected: it lives
+in the database with its own retention.
+:::
 
 Second, if you have somewhere central to send them, point the driver there
 instead. Any Docker logging driver works because the application only writes

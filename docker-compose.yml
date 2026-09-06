@@ -47,6 +47,23 @@
 # postgres for first-boot role provisioning; the no-clone quick-install doc
 # tells the operator to fetch that one file too — see installation/docker-compose.md.)
 
+x-logging: &logging
+  # Docker's default json-file driver keeps every line forever. A scan
+  # appliance whose disk fills stops scanning, so the ring is bounded here
+  # rather than left to each operator to discover.
+  #
+  # 20 MB x 5 files is 100 MB per service and 800 MB across the eight that
+  # log, which buys days of INFO-level history on a busy deployment and is
+  # small beside the workspace volume the scans themselves need. Raise
+  # LOG_MAX_SIZE for a noisy diagnosis; LOG_LEVEL=DEBUG fills this quickly.
+  #
+  # Shipping logs somewhere central replaces the driver rather than tuning
+  # these numbers. See docs-site admin-guide/logs.md.
+  driver: json-file
+  options:
+    max-size: ${LOG_MAX_SIZE:-20m}
+    max-file: "${LOG_MAX_FILE:-5}"
+
 x-backend-env: &backend-env
   APP_ENV: ${APP_ENV:-prod}
   LOG_LEVEL: ${LOG_LEVEL:-INFO}
@@ -488,6 +505,7 @@ services:
     # for this exact incident. Do not drop below v3.6.1 while hosts run Docker 29+.
     image: traefik:v3.6.1
     restart: unless-stopped
+    logging: *logging
     command:
       - "--providers.docker=true"
       - "--providers.docker.exposedbydefault=false"
@@ -535,6 +553,7 @@ services:
   postgres:
     image: postgres:17.2-alpine
     restart: unless-stopped
+    logging: *logging
     environment:
       POSTGRES_USER: ${POSTGRES_USER}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
@@ -575,6 +594,7 @@ services:
   redis:
     image: redis:7.4-alpine
     restart: unless-stopped
+    logging: *logging
     command: ["redis-server", "--appendonly", "yes"]
     volumes:
       - redis-data:/data
@@ -598,6 +618,7 @@ services:
   backend:
     image: ${IMAGE_REGISTRY:-ghcr.io/trustedoss}/trusca-backend:${IMAGE_TAG:-0.12.0}
     restart: unless-stopped
+    logging: *logging
     environment:
       <<: *backend-env
     volumes:
@@ -753,6 +774,7 @@ services:
   worker-scan:
     image: ${IMAGE_REGISTRY:-ghcr.io/trustedoss}/trusca-backend-worker:${IMAGE_TAG:-0.12.0}
     restart: unless-stopped
+    logging: *logging
     command: celery -A tasks.celery_app worker --loglevel=info --concurrency=${CELERY_CONCURRENCY:-2} -Q ${WORKER_SCAN_QUEUES:-trustedoss.scan,trustedoss.default}
     # S4 (concurrency-scaling-plan-2026-08-22.md §3.2/§4): how long
     # `docker-compose stop` / `down` waits after sending SIGTERM before it
@@ -866,6 +888,7 @@ services:
   worker-default:
     image: ${IMAGE_REGISTRY:-ghcr.io/trustedoss}/trusca-backend-worker:${IMAGE_TAG:-0.12.0}
     restart: unless-stopped
+    logging: *logging
     command: celery -A tasks.celery_app worker --loglevel=info --concurrency=${CELERY_DEFAULT_CONCURRENCY:-4} -Q ${WORKER_DEFAULT_QUEUES:-trustedoss.default}
     # S3 judgment call: shorter than worker-scan's 4200s - this service never
     # runs a scan task. Sized off BACKUP_SUBPROCESS_TIMEOUT's default (3600s,
@@ -933,6 +956,7 @@ services:
   beat:
     image: ${IMAGE_REGISTRY:-ghcr.io/trustedoss}/trusca-backend-worker:${IMAGE_TAG:-0.12.0}
     restart: unless-stopped
+    logging: *logging
     command: celery -A tasks.celery_app beat --loglevel=info --schedule=/tmp/celerybeat-schedule
     environment:
       <<: *backend-env
@@ -994,6 +1018,7 @@ services:
   frontend:
     image: ${IMAGE_REGISTRY:-ghcr.io/trustedoss}/trusca-frontend:${IMAGE_TAG:-0.12.0}
     restart: unless-stopped
+    logging: *logging
     networks:
       - trustedoss
     healthcheck:
