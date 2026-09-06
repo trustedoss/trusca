@@ -298,6 +298,21 @@ and the project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.
 
 ### Fixed
 
+- **Two workers scanning at once could abort each other's scan over a shared
+  component or license.** `persist_sbom_components` upserts every
+  component, component version, and declared license inside one transaction
+  per scan, committed once at the end. When two scans hit the same purl or
+  SPDX id at the same time, both miss it in the initial lookup and both
+  insert it; the loser's flush trips the unique constraint on
+  `components.purl`, `component_versions.purl_with_version`, or
+  `licenses.spdx_id`. Nothing caught that, so the whole transaction aborted
+  and every component the loop had already staged for that scan was lost
+  with it, not just the one that collided. The three get-or-create helpers
+  now run their insert in a SAVEPOINT, the same shape #290 gave the
+  vulnerability catalog: on a unique violation, only the losing insert is
+  rolled back and the caller re-fetches the winner's row, so the rest of the
+  scan's transaction survives intact (#398-A).
+
 - **The vulnerability drawer's response builder could drop a field silently.**
   `_detail_response` named all 41 fields of `VulnerabilityDetailResponse` as
   keyword arguments by hand, so a field the service already computed but

@@ -33,6 +33,18 @@ class _Result:
         return self._row
 
 
+class _FakeNestedTransaction:
+    """Stands in for the SAVEPOINT `_get_or_create_license` opens around its
+    INSERT (#398-A). The fake session's ``flush`` never raises, so only
+    ``commit`` is exercised here; ``rollback`` exists for interface parity."""
+
+    def commit(self) -> None:
+        pass
+
+    def rollback(self) -> None:  # pragma: no cover - not exercised here
+        pass
+
+
 class _FakeSession:
     def __init__(self, existing):
         self._existing = existing
@@ -47,6 +59,9 @@ class _FakeSession:
 
     def flush(self):
         self.flushed += 1
+
+    def begin_nested(self):
+        return _FakeNestedTransaction()
 
 
 def test_existing_unknown_compound_is_healed_to_forbidden() -> None:
