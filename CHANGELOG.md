@@ -32,6 +32,30 @@ and the project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.
   focus-trap timing, or worker-level resource contention, rather than a stray
   request.
 
+- **A ratchet on full-module `vi.mock` calls in the frontend test suite**
+  (`npm run mock:lint`, wired into `npm run lint`). `vi.mock("@/lib/api", ()
+  => ({ ... }))` hand-writes the entire module's shape, so when the real
+  module gains an export, every test that already mocks it that way keeps
+  compiling and silently hands the new export `undefined`, and the test that
+  breaks is rarely the one whose PR added it. That is exactly what happened
+  when `postLogin`'s MFA union return type shipped: unrelated tests failed
+  for a reason nobody could see from their own diff.
+
+  The gate does not migrate the 51 mocks already written this way (30
+  `@/lib/api`, 21 `@/lib/projectsApi`); the sanctioned fix,
+  `importOriginal`/`vi.importActual`, already covers 63 call sites and is
+  documented at `tests/unit/features/exportClients.test.ts:40`, but rewriting
+  the rest means checking each one against what its component actually
+  renders. What ships now is the same frozen-baseline ratchet
+  `token-lint.mjs` and `problem-detail-lint.mjs` already use: the current
+  count of full-module mocks per file is recorded in
+  `apps/frontend/scripts/mock-audit-baseline.json` and can only go down; a
+  new full mock, or a file's count rising, fails the gate. Every full mock
+  the audit finds is also checked against the real module's declared exports
+  and reported with the missing names when they exist, which today is most
+  of them, so the next person reaching for this pattern sees the actual
+  bug shape before they add another one.
+
 - **A filter for work that looks owned and cannot move.** `?assignee=inactive`
   returns findings assigned to somebody whose account has been deactivated.
   Closing an account does not remove its assignments, because dropping them
