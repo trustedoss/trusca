@@ -9,6 +9,29 @@ and the project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.
 
 ### Added
 
+- **A network guard in the frontend unit test setup.** The suite flaked twice
+  under CI load with a different test failing each time and no repro locally:
+  once with `AggregateError`/`emitErrorEvent` noise that looked like a real
+  socket call escaping a mock, once with a `data-testid` the test could not
+  find. `tests/setup.ts` never touched `fetch` or `XMLHttpRequest`, so a
+  request that slipped past a mock went to the real network (or hung waiting
+  on a host that is not there in CI) instead of failing the test that made the
+  call, and whatever landed late surfaced as noise in whichever test happened
+  to be running at the time.
+
+  Both are now replaced with a stub that throws immediately, naming the
+  current test and the request URL, so a leak fails the test that caused it
+  instead of a random neighbor. A test that intentionally needs the real
+  implementation opts in with `allowNetworkInThisTest()`, which is re-armed
+  every `afterEach` so the opt-out cannot leak into the next test.
+
+  Running the full 235-file suite with the guard in place found no leaks;
+  every test was already mocking its network calls correctly. The `fetch`
+  symptom from the original report is explained by the guard's absence. The
+  `data-testid` symptom is left open, since it looks like Radix portal or
+  focus-trap timing, or worker-level resource contention, rather than a stray
+  request.
+
 - **A filter for work that looks owned and cannot move.** `?assignee=inactive`
   returns findings assigned to somebody whose account has been deactivated.
   Closing an account does not remove its assignments, because dropping them
