@@ -36,11 +36,9 @@ from core.errors import problem_response
 from core.ratelimit import _authenticated_user_key, limiter
 from core.security import CurrentUser, require_role
 from schemas.vulnerability_detail import (
-    AffectedComponent,
     UpgradeCluster,
     UpgradeClusterFinding,
     UpgradeClusterListResponse,
-    UpgradeRecommendation,
     VulnerabilityAssignmentUpdate,
     VulnerabilityBulkStatusResponse,
     VulnerabilityBulkStatusResult,
@@ -48,7 +46,6 @@ from schemas.vulnerability_detail import (
     VulnerabilityDetailResponse,
     VulnerabilityListItem,
     VulnerabilityListResponse,
-    VulnerabilityStatusHistoryEntry,
     VulnerabilityStatusUpdate,
 )
 from services.project_service import ProjectError
@@ -411,69 +408,24 @@ async def list_upgrade_clusters_endpoint(
 
 
 def _detail_response(payload: dict[str, Any]) -> Response:
-    """Shared serializer for the two endpoints that return a detail payload."""
-    body = VulnerabilityDetailResponse(
-        id=payload["id"],
-        project_id=payload["project_id"],
-        scan_id=payload["scan_id"],
-        cve_id=payload["cve_id"],
-        severity=payload["severity"],
-        cvss_score=payload["cvss_score"],
-        epss_score=payload["epss_score"],
-        epss_percentile=payload["epss_percentile"],
-        # Defect fix (found during X1): the detail payload has always carried
-        # kev / kev_due_date but this builder dropped them, so the drawer's
-        # KEV badge silently read the schema defaults (false / null).
-        kev=payload["kev"],
-        kev_due_date=payload["kev_due_date"],
-        cvss_vector=payload["cvss_vector"],
-        summary=payload["summary"],
-        details=payload["details"],
-        references=payload["references"],
-        matching_provenance=payload["matching_provenance"],
-        published_at=payload["published_at"],
-        status=payload["status"],
-        analysis_state=payload["analysis_state"],
-        analysis_justification=payload["analysis_justification"],
-        analysis_source=payload["analysis_source"],
-        vex_origin=payload["vex_origin"],
-        analyst_user_id=payload["analyst_user_id"],
-        analyzed_at=payload["analyzed_at"],
-        reachable=payload["reachable"],
-        reachability_source=payload["reachability_source"],
-        reachability_analyzed_at=payload["reachability_analyzed_at"],
-        affected_components=[
-            AffectedComponent.model_validate(c) for c in payload["affected_components"]
-        ],
-        status_history=[
-            VulnerabilityStatusHistoryEntry.model_validate(h) for h in payload["status_history"]
-        ],
-        upgrade_recommendation=(
-            UpgradeRecommendation.model_validate(payload["upgrade_recommendation"])
-            if payload.get("upgrade_recommendation") is not None
-            else None
-        ),
-        # X1 SLA — project-level first detection + due date / status (both SLA
-        # fields are None for severities with no window).
-        first_detected_at=payload["first_detected_at"],
-        sla_due_date=payload["sla_due_date"],
-        sla_status=payload["sla_status"],
-        # ER28a: ownership, deadline and ticket. Listed explicitly because
-        # this builder names every field, which is the same reason kev /
-        # kev_due_date went missing above: a payload key nobody adds here is
-        # dropped silently and reads as "the server does not have it".
-        # `test_the_detail_builder_drops_nothing` fails when that happens again.
-        due_on=payload["due_on"],
-        effective_due_date=payload["effective_due_date"],
-        due_source=payload["due_source"],
-        manual_due_ignored=payload["manual_due_ignored"],
-        assignee_user_id=payload["assignee_user_id"],
-        assignee_is_active=payload["assignee_is_active"],
-        ticket_url=payload["ticket_url"],
-        ticket_key=payload["ticket_key"],
-        created_at=payload["created_at"],
-        updated_at=payload["updated_at"],
-    )
+    """Shared serializer for the two endpoints that return a detail payload.
+
+    Issue #382: this used to name all 41 fields of ``VulnerabilityDetailResponse``
+    as keyword arguments by hand. A key the service payload already carried
+    but nobody added to that call was dropped silently (it happened twice:
+    kev / kev_due_date, then the ER28a ownership fields). ``model_validate``
+    removes the hand-listing entirely, so there is no per-field call site left
+    to fall behind the payload. The nested structures (affected_components,
+    status_history, upgrade_recommendation) do not need the per-item
+    ``model_validate`` calls the old code had either: Pydantic validates a
+    dict or a list of dicts against a nested model field on its own.
+
+    The response model declares ``extra="forbid"``, so a payload key this
+    schema does not know about raises (500) instead of being dropped, and a
+    field the payload fails to supply raises too, because most fields here
+    have no default.
+    """
+    body = VulnerabilityDetailResponse.model_validate(payload)
     return Response(
         content=body.model_dump_json(),
         status_code=status.HTTP_200_OK,

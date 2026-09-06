@@ -251,6 +251,29 @@ and the project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.
 
 ### Fixed
 
+- **The vulnerability drawer's response builder could drop a field silently.**
+  `_detail_response` named all 41 fields of `VulnerabilityDetailResponse` as
+  keyword arguments by hand, so a field the service already computed but
+  nobody added to that call was simply missing from the response: the model
+  field has a default, so it serialized as `null` and read as "the server has
+  no value" while the database had one. This happened twice (`kev` /
+  `kev_due_date`, then the ownership fields added for ticket tracking), and
+  each time the fix was to add the missing keyword rather than remove the
+  possibility of forgetting one.
+
+  The builder now calls `VulnerabilityDetailResponse.model_validate(payload)`
+  against the service's payload dict instead, so there is no per-field call
+  site left to fall behind. The response model also declares
+  `extra="forbid"`, so a payload key the schema does not know about now raises
+  instead of being dropped, and a required field the payload fails to supply
+  raises too.
+
+  The same hand-listed-keyword-argument shape appears at roughly forty other
+  call sites across the API layer, a dozen of them building comprehensive
+  detail responses with ten or more fields the same way this one did. Only
+  the vulnerability drawer is changed here; the rest are unaffected and
+  tracked separately.
+
 - **The nightly vendored-spec run failed on a column the product had
   intentionally dropped.** The plaintext-to-ciphertext migration for webhook
   secrets (0084-0086) removed `projects.webhook_secret` once its encrypted
