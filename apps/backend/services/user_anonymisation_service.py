@@ -34,6 +34,7 @@ import structlog
 from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import Session
 
 from models import AuditLog, User, UserAnonymisationRequest
 from models.user_anonymisation_request import (
@@ -262,30 +263,87 @@ async def list_awaiting_execution(
     return out
 
 
-async def _expire_stale_for(
-    session: AsyncSession, *, subject_user_id: uuid.UUID, now: datetime
-) -> int:
-    """Retire this subject's undecided requests that are past their window.
+def _select_and_expire_due(
+    session: Session,
+    *,
+    now: datetime,
+    subject_user_id: uuid.UUID | None = None,
+) -> list[UserAnonymisationRequest]:
+    """Sync core: select ``pending`` rows past their window and mark them
+    ``expired`` in the identity map. Neither flushes nor commits.
 
     Only ``pending`` rows. An approved request never expires: it is a
     commitment two people made, and quietly retiring it would erase the very
     backlog :func:`list_awaiting_execution` exists to show. Somebody has to
     cancel that one deliberately.
+
+    ``subject_user_id=None`` sweeps every subject - the global beat
+    (``tasks.anonymisation_expiry_sweep``) needs that shape, since a subject
+    nobody touches again after opening a request never triggers the
+    per-subject callers below.
+
+    Written sync-first, on purpose, and called from two directions rather
+    than written twice:
+
+      - the async API path (:func:`expire_due_requests`) drives it through
+        ``AsyncSession.run_sync``, which runs a plain callback against the
+        session's underlying sync ``Session`` inside the greenlet bridge -
+        the documented way to do ORM work that has no async form without
+        opening a second engine;
+      - the Celery beat (``tasks.anonymisation_expiry_sweep``) is a sync
+        worker with a plain sync ``Session`` from ``core.db.sync_session_scope``
+        and calls this directly.
+
+    One predicate, one place it is written (hardening rule #2): a future
+    change to what "due" means cannot update one path and miss the other.
     """
-    rows = (
-        (
-            await session.execute(
-                select(UserAnonymisationRequest)
-                .where(UserAnonymisationRequest.subject_user_id == subject_user_id)
-                .where(UserAnonymisationRequest.state == ANONYMISATION_PENDING)
-                .where(UserAnonymisationRequest.expires_at <= now)
-            )
-        )
-        .scalars()
-        .all()
+    stmt = select(UserAnonymisationRequest).where(
+        UserAnonymisationRequest.state == ANONYMISATION_PENDING,
+        UserAnonymisationRequest.expires_at <= now,
     )
+    if subject_user_id is not None:
+        stmt = stmt.where(UserAnonymisationRequest.subject_user_id == subject_user_id)
+    rows = session.execute(stmt).scalars().all()
     for row in rows:
         row.state = ANONYMISATION_EXPIRED
+    return list(rows)
+
+
+async def expire_due_requests(
+    session: AsyncSession,
+    *,
+    now: datetime,
+    subject_user_id: uuid.UUID | None = None,
+) -> list[UserAnonymisationRequest]:
+    """Async-session wrapper around :func:`_select_and_expire_due`.
+
+    Given a subject it does exactly what the old ``_expire_stale_for`` did,
+    and :func:`_expire_stale_for` still exists as that named, flush-and-log
+    wrapper so ``open_request`` / ``approve`` are unchanged.
+
+    Neither flushes nor commits - same contract as before: the per-subject
+    callers flush inline (see :func:`_expire_stale_for`) because they act on
+    the row in the same transaction, and the global sweep owns and commits
+    its own session.
+    """
+    return await session.run_sync(
+        lambda sync_session: _select_and_expire_due(
+            sync_session, now=now, subject_user_id=subject_user_id
+        )
+    )
+
+
+async def _expire_stale_for(
+    session: AsyncSession, *, subject_user_id: uuid.UUID, now: datetime
+) -> int:
+    """Retire this subject's undecided requests that are past their window.
+
+    Thin wrapper around :func:`expire_due_requests` scoped to one subject,
+    kept as its own name because ``open_request`` and ``approve`` call it at
+    the point where staleness would otherwise do damage (see their call
+    sites), not on a schedule.
+    """
+    rows = await expire_due_requests(session, now=now, subject_user_id=subject_user_id)
     if rows:
         await session.flush()
         log.info(
@@ -398,6 +456,7 @@ __all__ = [
     "approved_request_for",
     "cancel",
     "corroborating_audit_actions",
+    "expire_due_requests",
     "list_awaiting_execution",
     "mark_executed",
     "open_request",

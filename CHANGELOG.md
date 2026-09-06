@@ -313,6 +313,19 @@ and the project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.
   caught by the runtime one, and a plain dict literal is confirmed to still
   be caught by the AST guard on its own.
 
+- **An expired anonymisation request notified nobody.** A `pending`
+  two-person erasure request expires past its seven-day window, but the only
+  code that ever applied that expiry ran lazily, from inside opening a new
+  request or approving one, and only for the one subject that call was
+  already touching. A subject nobody revisited stayed `pending` forever, past
+  its window, with no queue empty and no alert to say a decision was needed.
+  A daily sweep now expires every stale `pending` request regardless of
+  subject and notifies the requester, the approver if one is on the row, and
+  every active super-admin, reusing the same query the lazy path uses so the
+  two never drift apart. The sweep owns and commits its own transaction
+  before enqueuing anything, so a broker hiccup can cost a notification but
+  never the state transition.
+
 - **The nightly vendored-spec run failed on a column the product had
   intentionally dropped.** The plaintext-to-ciphertext migration for webhook
   secrets (0084-0086) removed `projects.webhook_secret` once its encrypted
