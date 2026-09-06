@@ -297,6 +297,22 @@ and the project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.
   the vulnerability drawer is changed here; the rest are unaffected and
   tracked separately.
 
+- **The duplicate-role-map guard only recognised dictionary literals.** The
+  test protecting `core.security._ROLE_PRIORITY` from growing a second copy
+  walked the AST for `ast.Dict` nodes, so a copy written as a list of
+  `(role, grade)` pairs, a dict comprehension, `dict(zip(...))`, an
+  `enum.IntEnum`, or a dict assembled by a helper function at runtime was
+  invisible to it: none of those produce an `ast.Dict` node, only the value a
+  reader would call the same shape once the module finished importing. A
+  second guard now imports every module under `api`, `core`, `services`,
+  `tasks`, `integrations`, `notifications`, and `schemas`, and judges the
+  value each module-level name resolves to rather than the statement that
+  built it. The two guards are kept side by side rather than one replacing
+  the other, and each is verified independently: five synthetic copies, one
+  per evasion shape above, are confirmed to slip past the AST guard and be
+  caught by the runtime one, and a plain dict literal is confirmed to still
+  be caught by the AST guard on its own.
+
 - **The nightly vendored-spec run failed on a column the product had
   intentionally dropped.** The plaintext-to-ciphertext migration for webhook
   secrets (0084-0086) removed `projects.webhook_secret` once its encrypted
