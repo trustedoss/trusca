@@ -123,7 +123,7 @@ const PAGE_SIZE = 100;
  */
 const VULN_COLUMNS_STORAGE_KEY = "column-visibility:vulnerabilities";
 
-function getVulnColumnsCatalog(
+export function getVulnColumnsCatalog(
   t: (key: string) => string,
 ): ColumnsPickerColumn[] {
   return [
@@ -986,14 +986,15 @@ export function VulnerabilitiesTab({
         // committed 1440 px baseline, so it shipped.
         //
         // The floor below is the sum of the declared column widths, and it
-        // has to stay that: 48 (px-6) + 16 (w-4) + 1152 (the nine other
-        // fixed cells) + 120 (ten gap-3 gutters) + 260 (Component's floor)
-        // = 1596, rounded up. `tests/e2e/tableColumnAlignment.spec.ts` fails
-        // if a new column lands without this number moving with it — that
-        // check is the reason a stale floor cannot silently return.
+        // has to stay that: 48 (px-6) + 16 (w-4) + 1280 (the ten other
+        // fixed cells, now including Owner's w-32) + 132 (eleven gap-3
+        // gutters) + 260 (Component's floor) = 1736, rounded up.
+        // `tests/e2e/tableColumnAlignment.spec.ts` fails if a new column
+        // lands without this number moving with it; that check is the
+        // reason a stale floor cannot silently return.
         <div className="flex flex-1 flex-col overflow-x-auto">
           <div
-            className="min-w-[1600px] flex flex-1 flex-col"
+            className="min-w-[1740px] flex flex-1 flex-col"
             // G0-5 backlog — this is the table. Before it, the header and the
             // rows were flex `div`s with no relationship a screen reader could
             // use: no way to move by column, and nowhere valid to put
@@ -1393,6 +1394,20 @@ function VulnerabilitiesTableHeader({
             onSort={onSortChange}
             testId="vulnerabilities-sort-header-sla-due"
           />
+        </span>
+      ) : null}
+      {/* ER28b: Owner column (source: `assignee_user_id`). Display only,
+          not sortable: see the catalog entry above for why sorting this
+          column would move a correlated-subquery evaluation below the
+          LIMIT. Order matches the row: right after SLA due, before
+          Status. */}
+      {visibleColumns.has("assignee") ? (
+        <span
+          className="w-32"
+          data-testid="vulnerabilities-header-cell-assignee"
+          role="columnheader"
+        >
+          {t("vulnerabilities.column.assignee")}
         </span>
       ) : null}
       {visibleColumns.has("status") ? (
