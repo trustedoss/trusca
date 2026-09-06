@@ -168,6 +168,12 @@ _TASK_INCLUDES = [
     # happens. Not a beat entry - each delivery schedules its own chain of
     # attempts via apply_async(countdown=...).
     "tasks.webhook_capacity_retry",
+    # #383 - global sweep for user_anonymisation_requests rows whose
+    # approval window closed without anyone touching that subject again (the
+    # service's lazy expiry only fires from open_request/approve, both
+    # subject-scoped). Retires every stale pending row daily and notifies the
+    # requester, the approver if any, and every super-admin.
+    "tasks.anonymisation_expiry_sweep",
 ]
 
 # S3 (concurrency-scaling-plan-2026-08-22.md §3.2/§4, S3 row): the two queue
@@ -465,6 +471,19 @@ def _build_beat_schedule() -> dict[str, dict[str, object]]:
         "audit-log-retention-report-daily": {
             "task": "trustedoss.audit_log_retention_report",
             "schedule": crontab(minute=45, hour=3),
+        },
+        # #383 - daily global sweep for stale user_anonymisation_requests rows
+        # (see tasks.anonymisation_expiry_sweep's module docstring for why the
+        # service's lazy per-subject expiry is not enough on its own). Minute-
+        # lane check: :00/:15/:30/:45 are all owned by the retention trio above
+        # and the earlier daily/weekly beats (see their comments), so 04:00
+        # UTC - one hour after the last of the 03:xx maintenance-window
+        # beats - reuses the :00 lane at an hour nothing else occupies. The
+        # work is one bounded SELECT+UPDATE over a table sized in the tens of
+        # rows, so it does not need to fit inside anyone else's window.
+        "anonymisation-expiry-sweep-daily": {
+            "task": "trustedoss.anonymisation_expiry_sweep",
+            "schedule": crontab(minute=0, hour=4),
         },
     }
 
