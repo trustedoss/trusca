@@ -251,6 +251,18 @@ and the project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.
 
 ### Fixed
 
+- **The nightly vendored-spec run failed on a column the product had
+  intentionally dropped.** The plaintext-to-ciphertext migration for webhook
+  secrets (0084-0086) removed `projects.webhook_secret` once its encrypted
+  replacement was in place, but a vendored spec's precondition check still
+  read that column with raw SQL, so it started failing every night with
+  `column "webhook_secret" does not exist`. The product was correct; the spec
+  predates the migration and cannot be edited from this side. The check is now
+  excluded with a reason pending re-keying upstream, and a new integration
+  test decrypts both seeded fixtures' webhook secrets through the same code
+  path the gateway uses, so a regression here is caught here rather than only
+  as a dangling exclusion nobody is watching.
+
 - **The documented way to turn a webhook on did not turn it on.** Activation is
   operator-only in this release, so the guide's `UPDATE` is the procedure. It
   set `webhook_secret` and left `webhook_provider` NULL, and the gateway
