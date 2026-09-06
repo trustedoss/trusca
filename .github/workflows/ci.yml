@@ -122,6 +122,13 @@ jobs:
         if: matrix.target == 'backend'
         run: python tools/mutate/selftest.py
 
+      # Same reasoning, for the whole-diff reviewer that external-pr-review.yml
+      # calls. Its network hop is equally unverified until the same secret
+      # exists; everything else is checked here.
+      - name: Run external-pr-review selftest
+        if: matrix.target == 'backend'
+        run: python tools/ai-review/external_review_selftest.py
+
       - name: Setup Node
         if: matrix.target == 'frontend'
         uses: actions/setup-node@v4

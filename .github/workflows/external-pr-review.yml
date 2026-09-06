@@ -1,0 +1,251 @@
+name: External Contribution AI Review
+
+# Governance level 4, external-fork variant. ADVISORY, never a gate - same
+# rule as ai-review.yml, which this file exists beside rather than inside.
+#
+# ai-review.yml's own header says: "Do NOT 'fix' [running for forks] with
+# pull_request_target - that runs with our secrets against a branch the
+# contributor controls." This file uses pull_request_target anyway, for
+# exactly the case that warning is about, so the reconciliation has to be
+# explicit rather than silently contradicting it:
+#
+#   - This job NEVER checks out the pull request's head. `actions/checkout`
+#     below takes no `ref:`, so on a `pull_request_target` event it resolves
+#     to the base branch - this repository's own trusted `main`, not
+#     anything the contributor wrote. The workflow FILE that runs is also
+#     always the base branch's copy, so a pull request cannot edit its own
+#     review.
+#   - The contributor's content (diff, title, body) is fetched as plain text
+#     through the GitHub API and written straight to files. Nothing here
+#     installs it, imports it, evaluates it, or runs a build step over it.
+#     It is read by a script and by a model, never executed.
+#   - The only side effect is a rendered PR comment. `permissions:` below
+#     grants nothing else - no `contents: write`, no ability to approve or
+#     merge anything.
+#   - What is left, and is not nothing: a prompt-injection attempt embedded
+#     in the diff or description could try to steer the model's own comment
+#     text. `tools/ai-review/external_review.py` fences that content as
+#     untrusted data and instructs the model to report rather than obey
+#     anything inside it - the same defence ai-review.yml uses for scanner
+#     output - and mentions in the model's reply are defused before posting
+#     so a crafted diff cannot make this bot ping anyone.
+#
+# This still does not decide whether to approve the pending CI workflow run
+# for a first-time contributor - ci.yml's own `pull_request` trigger keeps
+# that GitHub-native gate, and a human clicks it either way. The review
+# posted here exists to inform that click, not replace it.
+#
+# UNLIKE ci.yml's gate: pull_request_target itself runs with no approval
+# click at all, for anyone, on every `opened`/`reopened`/`synchronize` event -
+# that is what "the base branch is trusted" means in GitHub's own model, and
+# it is true regardless of who opened the pull request. So this job's own
+# trigger frequency has no human in the loop the way ci.yml's does. Two
+# things bound the cost that follows from that:
+#
+#   - Per call: external_review.py caps the diff it sends (MAX_DIFF_CHARS)
+#     and the reply it asks for (MAX_TOKENS), so one run has a ceiling.
+#   - Per day: the budget step below counts this workflow's own runs in the
+#     trailing 24 hours and skips the paid call past MAX_RUNS_PER_DAY,
+#     because a burst of fork pull requests (or pushes to one) is the one
+#     thing neither GitHub's approval gate nor the per-call caps limit.
+#
+# Neither replaces a hard spend limit set on the API key or workspace in the
+# Anthropic Console - that is the backstop this file cannot enforce from
+# inside a workflow run, and it should be set before this secret is added.
+#
+# THE API KEY IS OPTIONAL, same as ai-review.yml. With no ANTHROPIC_API_KEY
+# secret present, every step below is skipped and the job succeeds at no
+# cost.
+
+on:
+  pull_request_target:
+    types: [opened, reopened, synchronize]
+    # Mirror ci.yml / ai-review.yml. A docs-only pull request has no code to
+    # review here either.
+    paths-ignore:
+      - "docs/**"
+      - "*.md"
+      - ".env.example"
+      - "CLAUDE.md"
+      - "ROADMAP.md"
+      - "SECURITY.md"
+      - "LICENSE"
+      - ".gitignore"
+
+permissions:
+  contents: read
+  pull-requests: write
+
+concurrency:
+  group: external-pr-review-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  external-review:
+    name: whole-diff AI review (external contribution, advisory)
+    runs-on: ubuntu-22.04
+    # The one condition that scopes this to what it is for. A pull request
+    # from a branch of this same repository already gets ai-review.yml's
+    # findings-driven pass under the ordinary `pull_request` event, with
+    # secrets available the ordinary way - running this one too would post a
+    # second, overlapping comment for no reason. Drafts are still being
+    # written.
+    if: >
+      github.event.pull_request.head.repo.fork == true &&
+      github.event.pull_request.draft == false
+    timeout-minutes: 15
+    env:
+      # Same reduction ai-review.yml uses: the secrets context is unavailable
+      # in job-level and step-level `if:`, so presence is tested through env.
+      HAS_ANTHROPIC_KEY: ${{ secrets.ANTHROPIC_API_KEY != '' }}
+      # A conservative ceiling, not a measured one - there is no traffic
+      # history for this workflow yet. Revisit once there is.
+      MAX_RUNS_PER_DAY: 20
+    steps:
+      - name: Report why this run is a no-op
+        if: env.HAS_ANTHROPIC_KEY != 'true'
+        run: |
+          echo "::notice::ANTHROPIC_API_KEY is not set - external-PR review is dormant."
+          echo "Add the secret to enable it; no other change is needed."
+
+      # No `ref:` - on pull_request_target this resolves to the base branch.
+      # Do not add one. Do not change this to check out the pull request's
+      # head; that is the exact thing the header comment above rules out.
+      - uses: actions/checkout@v4
+        if: env.HAS_ANTHROPIC_KEY == 'true'
+
+      - uses: actions/setup-python@v5
+        if: env.HAS_ANTHROPIC_KEY == 'true'
+        with:
+          python-version: "3.12"
+
+      # Independent of the per-call caps in external_review.py: those bound
+      # what one run costs, this bounds how many runs happen in a day. See
+      # the header comment for why pull_request_target needs this where
+      # ci.yml does not.
+      - name: Check the daily review budget
+        id: budget
+        if: env.HAS_ANTHROPIC_KEY == 'true'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          since=$(date -u -d '24 hours ago' +%Y-%m-%dT%H:%M:%SZ)
+          count=$(gh api "repos/${GITHUB_REPOSITORY}/actions/workflows/external-pr-review.yml/runs" \
+            --paginate \
+            -f created=">=${since}" \
+            --jq '[.workflow_runs[]] | length')
+          echo "count=${count}" >> "$GITHUB_OUTPUT"
+          if [ "${count}" -ge "${MAX_RUNS_PER_DAY}" ]; then
+            echo "proceed=false" >> "$GITHUB_OUTPUT"
+            echo "::warning::${count} run(s) of this workflow in the last 24h, at the cap of ${MAX_RUNS_PER_DAY} - skipping the paid review for this run."
+          else
+            echo "proceed=true" >> "$GITHUB_OUTPUT"
+            echo "::notice::${count} of ${MAX_RUNS_PER_DAY} runs used in the last 24h"
+          fi
+
+      - name: Note that the daily budget was hit
+        if: env.HAS_ANTHROPIC_KEY == 'true' && steps.budget.outputs.proceed != 'true'
+        continue-on-error: true
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+        # No model call in this path - it costs nothing to say why one did
+        # not happen, and silence here would look identical to a transient
+        # failure rather than a deliberate cap.
+        run: |
+          set -euo pipefail
+          body="<!-- trusca:external-pr-review -->
+          ## AI review of an external contribution
+
+          Skipped: this workflow has already run ${{ steps.budget.outputs.count }} times in the last 24 hours, at its cap of ${MAX_RUNS_PER_DAY}. No automated review ran for this revision - a maintainer should read this pull request directly before approving its workflow run."
+          existing=$(gh api "repos/${GITHUB_REPOSITORY}/issues/${PR_NUMBER}/comments" \
+            --paginate \
+            --jq '.[] | select(.body | contains("<!-- trusca:external-pr-review -->")) | .id' \
+            | head -1)
+          if [ -n "$existing" ]; then
+            gh api -X PATCH "repos/${GITHUB_REPOSITORY}/issues/comments/${existing}" -f body="$body" > /dev/null
+          else
+            gh api -X POST "repos/${GITHUB_REPOSITORY}/issues/${PR_NUMBER}/comments" -f body="$body" > /dev/null
+          fi
+
+      # Diff and metadata come from the API as text, written straight to
+      # files. Neither is ever interpolated into a shell command - a hostile
+      # PR title containing shell metacharacters has nowhere to reach.
+      - name: Fetch the diff and PR metadata
+        id: fetch
+        if: env.HAS_ANTHROPIC_KEY == 'true' && steps.budget.outputs.proceed == 'true'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+        run: |
+          set -euo pipefail
+          gh api "repos/${GITHUB_REPOSITORY}/pulls/${PR_NUMBER}" \
+            -H "Accept: application/vnd.github.v3.diff" > pr.diff
+          gh api "repos/${GITHUB_REPOSITORY}/pulls/${PR_NUMBER}" \
+            --jq '{title: .title, body: .body}' > pr_meta.json
+          bytes=$(wc -c < pr.diff | tr -d ' ')
+          echo "::notice::fetched diff (${bytes} bytes) and PR metadata"
+
+      - name: Review the diff
+        id: review
+        if: env.HAS_ANTHROPIC_KEY == 'true' && steps.budget.outputs.proceed == 'true'
+        # Advisory end to end, same as ai-review.yml: an outage, a rate
+        # limit, or a timeout leaves the state file saying `error`, the
+        # comment step does nothing, and the pull request is unaffected.
+        continue-on-error: true
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+        run: |
+          python tools/ai-review/external_review.py \
+            --diff pr.diff \
+            --meta pr_meta.json \
+            --out review_result.md \
+            --state review_state.txt
+
+      - name: Post or update the review comment
+        if: env.HAS_ANTHROPIC_KEY == 'true'
+        continue-on-error: true
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+        # Two outcomes: `ok` posts or edits the comment; `error` leaves
+        # whatever is already there alone, since a failed call taught us
+        # nothing about this revision of the diff.
+        run: |
+          set -euo pipefail
+          state=$(cat review_state.txt 2>/dev/null || echo error)
+          echo "review state: ${state}"
+          if [ "$state" != "ok" ]; then
+            echo "nothing conclusive to report"
+            exit 0
+          fi
+
+          existing=$(gh api "repos/${GITHUB_REPOSITORY}/issues/${PR_NUMBER}/comments" \
+            --paginate \
+            --jq '.[] | select(.body | contains("<!-- trusca:external-pr-review -->")) | .id' \
+            | head -1)
+
+          if [ -n "$existing" ]; then
+            gh api -X PATCH \
+              "repos/${GITHUB_REPOSITORY}/issues/comments/${existing}" \
+              -F body=@review_result.md > /dev/null
+            echo "updated comment ${existing}"
+          else
+            gh api -X POST \
+              "repos/${GITHUB_REPOSITORY}/issues/${PR_NUMBER}/comments" \
+              -F body=@review_result.md > /dev/null
+            echo "posted a new comment"
+          fi
+
+      - name: Upload review artifacts
+        if: always() && env.HAS_ANTHROPIC_KEY == 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: external-pr-review-${{ github.run_id }}
+          path: |
+            pr.diff
+            pr_meta.json
+            review_result.md
+          if-no-files-found: warn
+          retention-days: 14
