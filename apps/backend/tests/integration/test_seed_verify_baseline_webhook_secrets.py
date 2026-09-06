@@ -35,6 +35,14 @@ def _migrate_once() -> None:
     migrate_to_head()
 
 
+@pytest.fixture(autouse=True)
+def _demo_env(monkeypatch: pytest.MonkeyPatch) -> None:
+    # seed_demo._seed refuses to run unless APP_ENV is in its allow-list
+    # (dev/demo); CI does not set it for this job, only test_seed_demo's own
+    # suite does. dev avoids the non-dev SECRET_KEY requirement.
+    monkeypatch.setenv("APP_ENV", "dev")
+
+
 async def test_fx_appr_and_scan_pipeline_carry_a_readable_webhook_secret(
     db_factory: async_sessionmaker[Any],
 ) -> None:
