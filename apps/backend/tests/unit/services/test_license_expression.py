@@ -256,20 +256,28 @@ def test_adversarial_input_is_safe(
     name: str, expression: str, expected_warning: str
 ) -> None:
     """Every hostile shape resolves to the conservative posture, fast, no crash."""
-    start = time.perf_counter()
+    # CPU time, not wall-clock: this ran three times on a shared CI runner and
+    # failed all three, at 0.348s, then 0.392s, then 0.425s against this same
+    # 0.25s budget, on a call whose real cost is sub-millisecond. Increasing
+    # across independent retries does not fit an algorithm getting slower; it
+    # fits the process losing the CPU to another tenant on the same host
+    # between the two time.perf_counter() calls, which wall-clock time counts
+    # against this test and CPU time does not. The guard's job is to catch
+    # pathological CPU work in the parser, and CPU work is exactly what
+    # time.process_time() measures, without the noisy-neighbour gaps.
+    start = time.process_time()
     result = evaluate_expression(
         expression, resolve_id=_resolve, unknown_category="conditional"
     )
-    elapsed = time.perf_counter() - start
+    elapsed = time.process_time() - start
 
-    # 1. Conservative safe result — the policy's unknown posture.
+    # 1. Conservative safe result: the policy's unknown posture.
     assert result.category == "conditional", name
     # 2. A structured warning explaining the fallback.
     assert result.warning == expected_warning, (name, result.warning)
-    # 3. Bounded wall-clock — no hang / catastrophic backtracking. 250ms is
-    #    generously above the sub-millisecond real cost while staying robust on
-    #    a loaded CI box.
-    assert elapsed < 0.25, f"{name} took {elapsed:.3f}s — possible DoS"
+    # 3. Bounded CPU time: no catastrophic backtracking or quadratic blowup.
+    #    250ms is generously above the sub-millisecond real cost.
+    assert elapsed < 0.25, f"{name} took {elapsed:.3f}s of CPU time, possible DoS"
 
 
 def test_length_bound_triggers_before_parsing() -> None:
