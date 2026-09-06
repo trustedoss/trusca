@@ -138,6 +138,13 @@ with a different `--min-repos`/`--max-repos`/`--max-orgs` is instant, and picks 
 same subset deterministically on repeat runs (team/project slugs are stable given
 the same input).
 
+The default label is only as coarse as GitLab's own namespace hierarchy. If a site's
+real organizational units are coarser still (several distinct top-level GitLab groups
+that some other system already treats as one organization), override individual
+labels with `--org-label-map path/to/labels.json`, a `{path_with_namespace: label}`
+map. Producing that map means consulting whatever system holds the coarser grouping,
+which is inherently site-specific, so building it is left outside this script.
+
 ## How it works (run_bench.py, small fixture/real-world targets)
 1. Log in, holding the access token + refresh cookie (auto-renewed on 30-minute expiry)
 2. Zip the input directory (excluding `node_modules/`, `.git/`, `target/`, `build/`, `.gradle/`, `venv/`)

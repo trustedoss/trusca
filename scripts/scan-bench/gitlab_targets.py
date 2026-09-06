@@ -8,13 +8,19 @@ use as an organization axis directly.
 self-resource-validation-plan-2026-08-30.md S1.5: a large internal GitLab
 instance can have a namespace hierarchy sliced far more finely than the
 teams bulk_register.py needs (thousands of top-level namespaces, most far
-too small to be a useful cohort unit on their own). This instead labels
-each repository by the first segment of its ``name_with_namespace`` -- the
-top-level group's *display name* -- and groups by that label. Spot-checking
-this against a separately maintained project catalog that already assigns
-its own project names as ``{label} / {rest of the GitLab path}`` confirmed
-the two agree; no call to that catalog's own API is needed here, since the
-label falls straight out of GitLab's own listing.
+too small to be a useful cohort unit on their own). This labels each
+repository by the first segment of its ``name_with_namespace`` -- the
+top-level group's *display name* -- and groups by that label, which needs
+no external system: the label falls straight out of GitLab's own listing.
+
+That default is only as coarse as GitLab's own namespace hierarchy,
+though. A site whose real organizational units are coarser still (several
+distinct top-level GitLab groups belonging to one organization by some
+other system's record, e.g. a reorg) can override individual labels with
+``--org-label-map``, a JSON file of ``{path_with_namespace: label}``.
+Producing that map has to consult whatever system holds the coarser
+grouping, which is inherently site-specific, so building it is deliberately
+left outside this script.
 
 Two-stage, mirroring bulk_register.py's own register/poll split so a full
 list run (potentially hundreds of paginated requests against a large
@@ -149,22 +155,44 @@ def cmd_list(args: argparse.Namespace) -> int:
     return 0
 
 
-def _org_label(name_with_namespace: str) -> str:
-    return name_with_namespace.split(" / ", 1)[0].strip()
+def _org_label(project: dict, label_map: dict[str, str] | None = None) -> str:
+    """The default label is GitLab's own top-level namespace (the first
+    segment of ``name_with_namespace``). ``label_map`` overrides this per
+    project (keyed by ``path_with_namespace``) for sites whose real
+    organizational unit is coarser than GitLab's own namespace hierarchy
+    (e.g. several distinct top-level groups belong to one organization by
+    some other system's record) -- see ``--org-label-map`` below. Building
+    that map is necessarily site-specific (it has to consult whatever
+    system holds that grouping), so it stays external to this script.
+    """
+    if label_map:
+        override = label_map.get(project["path_with_namespace"])
+        if override:
+            return override.strip()
+    return project["name_with_namespace"].split(" / ", 1)[0].strip()
 
 
-def _group_by_org(projects: list[dict], *, include_empty: bool) -> dict[str, list[dict]]:
+def _load_label_map(path: str | None) -> dict[str, str] | None:
+    if not path:
+        return None
+    return json.loads(Path(path).read_text())
+
+
+def _group_by_org(
+    projects: list[dict], *, include_empty: bool, label_map: dict[str, str] | None = None
+) -> dict[str, list[dict]]:
     groups: dict[str, list[dict]] = {}
     for p in projects:
         if not include_empty and p.get("empty_repo"):
             continue
-        groups.setdefault(_org_label(p["name_with_namespace"]), []).append(p)
+        groups.setdefault(_org_label(p, label_map), []).append(p)
     return groups
 
 
 def cmd_stats(args: argparse.Namespace) -> int:
     projects = json.loads(Path(args.input).read_text())
-    groups = _group_by_org(projects, include_empty=False)
+    label_map = _load_label_map(args.org_label_map)
+    groups = _group_by_org(projects, include_empty=False, label_map=label_map)
     total_repos = sum(len(v) for v in groups.values())
     print(f"projects (non-empty): {total_repos} across {len(groups)} org label(s)")
 
@@ -179,7 +207,8 @@ def cmd_stats(args: argparse.Namespace) -> int:
 
 def cmd_build(args: argparse.Namespace) -> int:
     projects = json.loads(Path(args.input).read_text())
-    groups = _group_by_org(projects, include_empty=False)
+    label_map = _load_label_map(args.org_label_map)
+    groups = _group_by_org(projects, include_empty=False, label_map=label_map)
 
     selected = {
         label: repos
@@ -241,6 +270,11 @@ def main() -> int:
 
     p_stats = sub.add_parser("stats", help="print org-label size distribution from a list cache")
     p_stats.add_argument("--input", required=True)
+    p_stats.add_argument(
+        "--org-label-map",
+        default=None,
+        help="JSON {path_with_namespace: label} overriding the default GitLab-namespace label; see module docstring",
+    )
 
     p_build = sub.add_parser("build", help="build bulk_register.py's targets.json from a list cache")
     p_build.add_argument("--input", required=True)
@@ -249,6 +283,11 @@ def main() -> int:
     p_build.add_argument("--max-repos", type=int, default=30)
     p_build.add_argument(
         "--max-orgs", type=int, default=None, help="cap the number of orgs (alphabetical); omit for no cap"
+    )
+    p_build.add_argument(
+        "--org-label-map",
+        default=None,
+        help="JSON {path_with_namespace: label} overriding the default GitLab-namespace label; see module docstring",
     )
 
     args = parser.parse_args()
