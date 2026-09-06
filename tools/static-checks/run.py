@@ -99,6 +99,13 @@ CHECKS: list[Check] = [
         REPO_ROOT,
         "tools/mutate/selftest.py",
     ),
+    Check(
+        "Run external-pr-review selftest",
+        "backend",
+        [sys.executable, "tools/ai-review/external_review_selftest.py"],
+        REPO_ROOT,
+        "tools/ai-review/external_review_selftest.py",
+    ),
     Check("Run mypy", "backend", ["mypy", "."], BACKEND, "mypy .", ["mypy"]),
     Check(
         "Run tsc",
