@@ -99,7 +99,21 @@ ENV PYTHONUNBUFFERED=1 \
 #   python image is rebuilt. Repeated for the worker stage's apt run too,
 #   because that one installs unzip/git/mercurial which can carry their
 #   own transitive OS deps.
-RUN apt-get update \
+#
+# The upgrade only reaches the security channel when this layer is actually
+# rebuilt, and CI caches the worker image per ISO week
+# (`.github/workflows/ci.yml`, "Cache scope (rotates weekly)"). Debian
+# publishes into bookworm-security on its own schedule and Trivy's database
+# refreshes daily, so a fix that lands mid-week is invisible here until the
+# scope rotates: the gate goes red on a patch that is already available and
+# stays red until something invalidates the layer.
+#
+# Bumping this date is that something. It carries no meaning to the build
+# beyond changing the layer's input, and the value is the day the gate was
+# unblocked so the history says when each refresh was forced and why.
+ARG APT_SECURITY_REFRESH=2026-09-06
+RUN echo "apt security refresh: ${APT_SECURITY_REFRESH}" \
+    && apt-get update \
     && apt-get upgrade -y \
     && apt-get install -y --no-install-recommends \
         build-essential \
