@@ -182,6 +182,11 @@ _CDXGEN_EXTRA_ALLOWLIST: frozenset[str] = frozenset(
         "MAVEN_OPTS",
         "MAVEN_HOME",
         "M2_HOME",
+        # Maven has no env-var form of --settings; cdxgen reads MVN_ARGS
+        # itself and appends it to the mvn invocation it builds (verified
+        # against @cyclonedx/cdxgen's own source, not assumed -- see #400).
+        # There is no MAVEN_SETTINGS variable to forward.
+        "MVN_ARGS",
         "GRADLE_USER_HOME",
         "GRADLE_OPTS",
         # Go (cdxgen calls ``go list``)
@@ -193,6 +198,10 @@ _CDXGEN_EXTRA_ALLOWLIST: frozenset[str] = frozenset(
         # Python (cdxgen consults pip configuration)
         "PIP_INDEX_URL",
         "PIP_EXTRA_INDEX_URL",
+        # Points pip at an operator-mounted pip.conf (e.g. a private index's
+        # auth); the value is a file path, not a credential, so it is
+        # unaffected by _looks_like_credential (see #400).
+        "PIP_CONFIG_FILE",
         # The worker image sets PIP_NO_CACHE_DIR=1 precisely so resolving a
         # Python project does not leave a download cache behind. Without it in
         # this allowlist the image's setting stopped at the worker process and

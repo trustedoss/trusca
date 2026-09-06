@@ -222,6 +222,32 @@ def test_cdxgen_forwards_pip_cache_control(monkeypatch: pytest.MonkeyPatch) -> N
     assert env["PIP_CACHE_DIR"] == "/work/pip-cache"
 
 
+def test_cdxgen_forwards_private_registry_auth_config(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The #400 mount convention only helps if these three actually forward.
+
+    ``/etc/trusca/registry`` gives cdxgen's Maven/npm/pip subprocesses a
+    settings file to read; these three variables are how each ecosystem is
+    told where that file is. ``MVN_ARGS`` is Maven's real mechanism (there is
+    no ``MAVEN_SETTINGS`` -- verified against cdxgen's own source). npm's
+    ``NPM_CONFIG_USERCONFIG`` is covered by the existing ``npm_config_``
+    prefix band, asserted here so a future narrowing of that band doesn't
+    silently break it.
+    """
+    monkeypatch.setenv("MVN_ARGS", "--settings /etc/trusca/registry/settings.xml")
+    monkeypatch.setenv("PIP_CONFIG_FILE", "/etc/trusca/registry/pip.conf")
+    monkeypatch.setenv(
+        "NPM_CONFIG_USERCONFIG", "/etc/trusca/registry/.npmrc"
+    )
+
+    env = scrubbed_env_for_cdxgen()
+
+    assert env["MVN_ARGS"] == "--settings /etc/trusca/registry/settings.xml"
+    assert env["PIP_CONFIG_FILE"] == "/etc/trusca/registry/pip.conf"
+    assert env["NPM_CONFIG_USERCONFIG"] == "/etc/trusca/registry/.npmrc"
+
+
 def test_prep_forwards_pip_cache_control(monkeypatch: pytest.MonkeyPatch) -> None:
     """The prep step resolves Python projects too, so it needs the same key."""
     monkeypatch.setenv("PIP_NO_CACHE_DIR", "1")
