@@ -58,7 +58,20 @@ def test_dedupe_slug_collision_appends_suffix():
 
 
 def test_org_label_splits_on_first_separator():
-    assert tt._org_label("Team A / subgroup / repo") == "Team A"
+    project = _project(1, "Team A", "team-a/subgroup/repo", name="subgroup / repo")
+    assert tt._org_label(project) == "Team A"
+
+
+def test_org_label_map_overrides_default():
+    project = _project(1, "Team A", "team-a/repo1")
+    label_map = {"team-a/repo1": "Merged Org"}
+    assert tt._org_label(project, label_map) == "Merged Org"
+
+
+def test_org_label_map_falls_back_when_path_missing():
+    project = _project(1, "Team A", "team-a/repo1")
+    label_map = {"other/path": "Merged Org"}
+    assert tt._org_label(project, label_map) == "Team A"
 
 
 def test_group_by_org_excludes_empty_by_default():
@@ -86,7 +99,7 @@ def test_build_filters_by_repo_count_and_writes_expected_shape(tmp_path):
     input_path.write_text(json.dumps(projects))
 
     args = argparse.Namespace(
-        input=str(input_path), output=str(output_path), min_repos=10, max_repos=30, max_orgs=None
+        input=str(input_path), output=str(output_path), min_repos=10, max_repos=30, max_orgs=None, org_label_map=None
     )
     assert tt.cmd_build(args) == 0
 
@@ -107,8 +120,12 @@ def test_build_is_deterministic_across_runs(tmp_path):
 
     out_a = tmp_path / "a.json"
     out_b = tmp_path / "b.json"
-    args_a = argparse.Namespace(input=str(input_path), output=str(out_a), min_repos=1, max_repos=100, max_orgs=None)
-    args_b = argparse.Namespace(input=str(input_path), output=str(out_b), min_repos=1, max_repos=100, max_orgs=None)
+    args_a = argparse.Namespace(
+        input=str(input_path), output=str(out_a), min_repos=1, max_repos=100, max_orgs=None, org_label_map=None
+    )
+    args_b = argparse.Namespace(
+        input=str(input_path), output=str(out_b), min_repos=1, max_repos=100, max_orgs=None, org_label_map=None
+    )
     tt.cmd_build(args_a)
     tt.cmd_build(args_b)
 
@@ -124,7 +141,7 @@ def test_build_max_orgs_caps_alphabetically(tmp_path):
     input_path.write_text(json.dumps(projects))
 
     args = argparse.Namespace(
-        input=str(input_path), output=str(output_path), min_repos=1, max_repos=100, max_orgs=1
+        input=str(input_path), output=str(output_path), min_repos=1, max_repos=100, max_orgs=1, org_label_map=None
     )
     tt.cmd_build(args)
 
@@ -142,13 +159,41 @@ def test_build_dedupes_team_slug_collision(tmp_path):
     input_path.write_text(json.dumps(projects))
 
     args = argparse.Namespace(
-        input=str(input_path), output=str(output_path), min_repos=1, max_repos=100, max_orgs=None
+        input=str(input_path), output=str(output_path), min_repos=1, max_repos=100, max_orgs=None, org_label_map=None
     )
     tt.cmd_build(args)
 
     spec = json.loads(output_path.read_text())
     slugs = [t["slug"] for t in spec["teams"]]
     assert len(slugs) == len(set(slugs)) == 2
+
+
+def test_build_org_label_map_merges_distinct_namespaces(tmp_path):
+    # Two GitLab top-level namespaces that an external system considers one
+    # organization -- the exact scenario --org-label-map exists for.
+    projects = [_project(i, "Namespace A", f"ns-a/repo{i}") for i in range(6)] + [
+        _project(100 + i, "Namespace B", f"ns-b/repo{i}") for i in range(6)
+    ]
+    label_map = {p["path_with_namespace"]: "Merged Org" for p in projects}
+    input_path = tmp_path / "projects.json"
+    output_path = tmp_path / "targets.json"
+    map_path = tmp_path / "labels.json"
+    input_path.write_text(json.dumps(projects))
+    map_path.write_text(json.dumps(label_map))
+
+    args = argparse.Namespace(
+        input=str(input_path),
+        output=str(output_path),
+        min_repos=1,
+        max_repos=100,
+        max_orgs=None,
+        org_label_map=str(map_path),
+    )
+    tt.cmd_build(args)
+
+    spec = json.loads(output_path.read_text())
+    assert [t["name"] for t in spec["teams"]] == ["Merged Org"]
+    assert len(spec["teams"][0]["repos"]) == 12
 
 
 def test_stats_reports_bucket_counts(tmp_path, capsys):
@@ -158,7 +203,7 @@ def test_stats_reports_bucket_counts(tmp_path, capsys):
     input_path = tmp_path / "projects.json"
     input_path.write_text(json.dumps(projects))
 
-    args = argparse.Namespace(input=str(input_path))
+    args = argparse.Namespace(input=str(input_path), org_label_map=None)
     assert tt.cmd_stats(args) == 0
     out = capsys.readouterr().out
     assert "18 across 2 org label(s)" in out.replace("projects (non-empty): ", "")
