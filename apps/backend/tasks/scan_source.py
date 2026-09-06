@@ -69,7 +69,7 @@ from typing import Any
 import structlog
 from celery.exceptions import SoftTimeLimitExceeded
 from sqlalchemy import String, case, cast, delete, func, select
-from sqlalchemy.exc import SQLAlchemyError
+from sqlalchemy.exc import IntegrityError, SQLAlchemyError
 from sqlalchemy.orm import Session
 
 from core.config import (
@@ -3532,6 +3532,14 @@ def _get_or_create_license(
             existing.review_flag = review_flag
             session.flush()
         return existing
+    # Race handling (#398-A), same shape as the component upserts above: two
+    # scans persisting the same SPDX id concurrently can both miss the lookup
+    # and both INSERT, and the loser's flush raises a unique violation on
+    # ``licenses.spdx_id``. This function is called many times inside the
+    # caller's single per-scan transaction (once per component license, per
+    # detected finding, per vendored match), so recovering by rolling back
+    # that whole transaction would discard every row already staged ahead of
+    # this one license, so the INSERT runs inside a SAVEPOINT instead.
     lic = LicenseModel(
         spdx_id=spdx_id,
         name=spdx_id,
@@ -3539,8 +3547,20 @@ def _get_or_create_license(
         review_flag=classify_review_flag(spdx_id, spdx_id),
         reference_url=reference_url,
     )
-    session.add(lic)
-    session.flush()
+    nested = session.begin_nested()
+    try:
+        session.add(lic)
+        session.flush()
+        nested.commit()
+    except IntegrityError:
+        nested.rollback()
+        winner = session.execute(
+            select(LicenseModel).where(LicenseModel.spdx_id == spdx_id)
+        ).scalar_one_or_none()
+        if winner is None:
+            raise
+        log.warning("license_insert_race", spdx_id=spdx_id)
+        return winner
     return lic
 
 
@@ -4061,12 +4081,42 @@ def _get_or_create_first_party_component_version(
 def _get_or_create_component(
     session: Session, *, purl: str, name: str, package_type: str
 ) -> Component:
+    """Upsert a ``Component`` by its version-less purl.
+
+    Race handling (#398-A). ``persist_sbom_components`` walks an entire SBOM
+    (and ``_persist_vendored_components`` an entire SCANOSS match set) inside
+    ONE caller transaction, committed once at the end. A shared third-party
+    purl (e.g. a common npm/PyPI dependency) can be missed by this lookup on
+    two concurrent scans at once; the loser's flush then raises a unique
+    violation on ``components.purl``. Postgres leaves the transaction aborted
+    once that happens, so recovering means rolling something back before the
+    next statement runs, and rolling back the caller's whole transaction
+    would silently discard every ScanComponent / LicenseFinding already
+    staged ahead of this one purl in the loop (mirrors ER8, PR #290). The
+    INSERT therefore runs inside a SAVEPOINT: on a unique violation only this
+    statement is undone and the caller's transaction survives intact.
+    """
     existing = session.execute(select(Component).where(Component.purl == purl)).scalar_one_or_none()
     if existing is not None:
         return existing
     component = Component(purl=purl, name=name, package_type=package_type)
-    session.add(component)
-    session.flush()
+    nested = session.begin_nested()
+    try:
+        session.add(component)
+        session.flush()
+        nested.commit()
+    except IntegrityError:
+        # Only a constraint violation is a race worth swallowing; a
+        # deadlock, a broken connection or a size-guard rejection is not
+        # self-healing and must keep propagating.
+        nested.rollback()
+        winner = session.execute(
+            select(Component).where(Component.purl == purl)
+        ).scalar_one_or_none()
+        if winner is None:
+            raise
+        log.warning("component_insert_race", purl=purl)
+        return winner
     return component
 
 
@@ -4077,6 +4127,13 @@ def _get_or_create_component_version(
     version: str,
     purl_with_version: str,
 ) -> ComponentVersion:
+    """Upsert a ``ComponentVersion`` by its version-pinned purl.
+
+    Same race as ``_get_or_create_component`` above, on
+    ``component_versions.purl_with_version`` (see that docstring for why the
+    INSERT runs inside a SAVEPOINT rather than rolling back the caller's
+    transaction).
+    """
     existing = session.execute(
         select(ComponentVersion).where(ComponentVersion.purl_with_version == purl_with_version)
     ).scalar_one_or_none()
@@ -4087,8 +4144,20 @@ def _get_or_create_component_version(
         version=version,
         purl_with_version=purl_with_version,
     )
-    session.add(cv)
-    session.flush()
+    nested = session.begin_nested()
+    try:
+        session.add(cv)
+        session.flush()
+        nested.commit()
+    except IntegrityError:
+        nested.rollback()
+        winner = session.execute(
+            select(ComponentVersion).where(ComponentVersion.purl_with_version == purl_with_version)
+        ).scalar_one_or_none()
+        if winner is None:
+            raise
+        log.warning("component_version_insert_race", purl_with_version=purl_with_version)
+        return winner
     return cv
 
 
