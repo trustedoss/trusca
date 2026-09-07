@@ -322,8 +322,11 @@ closes.
    ```bash
    kubectl -n trustedoss exec deploy/trustedoss-backend -- \
      curl -fsS http://localhost:8000/health/ready
-   # → {"status":"ready"}
+   # → {"status":"ready","redis":"ok"}
    ```
+
+   The `redis` field is observational only: it never turns a 200 into a 503.
+   See the [on-call runbook](../admin-guide/oncall-runbook.md#redis-degraded) if it reads `"degraded"`.
 
 <!-- docs-uat: id=helm-verify-ingress-cert kind=manual tier=manual -->
 4. The Ingress has an address and a valid certificate, then open

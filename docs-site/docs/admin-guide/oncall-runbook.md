@@ -306,6 +306,64 @@ a number in the twenties or thirties. Zero, or a traceback, is the fault.
 Immediately if the second command shows a traceback on an official release
 image: every worker of that kind in every deployment on that tag is affected.
 
+## Scenario 7 - Redis readiness field reports `degraded` {#redis-degraded}
+
+### Symptom
+`GET /health/ready` keeps returning `200`, but its body carries
+`"redis": "degraded"` instead of `"ok"`. This is not itself a PagerDuty
+trigger, since nothing pages on it today, but it shows up while diagnosing
+something else (a support ticket about slow or missing rate limiting, or a
+sweep from Scenario 5's queue-backlog investigation that turns out to be
+Redis-shaped), or an operator adds their own monitor on the field and it
+fires.
+
+### Customer impact
+None of the request path's controls fail closed on Redis, so nothing stops
+working. What degrades silently:
+
+- **Rate limiting** (`core/ratelimit.py`) and the **login-guess throttle**
+  (`core/login_throttle.py`) both fail open: every request is allowed as if
+  it had never been rate-limited, for as long as Redis stays unreachable.
+- Anything else in the deployment that reads Redis (Celery's broker/result
+  backend) is a separate failure with its own symptoms. A queue backlog
+  alert (Scenario 5) is the more likely page for that, not this field.
+
+### Diagnose
+<!-- docs-uat: id=oncall-redis-degraded-check kind=shell ctx=host tier=nightly waiver=runbook-diagnostic-prod-compose-placeholder-creds -->
+```bash
+# 1. Confirm the field and read the schema-readiness side too (this endpoint
+#    is unauthenticated - no token needed).
+curl -fsS https://<your-host>/health/ready | jq
+
+# 2. Is Redis actually unreachable from the backend container?
+docker-compose -f docker-compose.yml exec backend python -c \
+  "from redis import Redis; from core.config import redis_url; print(Redis.from_url(redis_url(), socket_timeout=1).ping())"
+
+# 3. Is the Redis container itself up?
+docker-compose -f docker-compose.yml ps redis
+docker-compose -f docker-compose.yml logs --tail=100 redis
+```
+
+### Recover
+1. **Redis container down or restarting**: bring it back
+   (`docker-compose -f docker-compose.yml up -d redis`) and confirm step 2
+   above returns `True`. `/health/ready`'s `redis` field flips to `"ok"` on
+   the next poll: there is no cache to clear or service to restart on the
+   backend side, the field is read live on every request.
+2. **Redis up but unreachable from `backend`** (network policy, DNS, wrong
+   `REDIS_URL`): fix the network path or the URL and redeploy the backend
+   config; this is the same `REDIS_URL` the rate limiter and login throttle
+   use, so fixing it restores all three at once.
+3. **Redis up and reachable, field still `degraded`**: the probe uses a 1s
+   connect/socket timeout (`core/readiness.py`), so a Redis under enough load
+   to answer `PING` slower than that will also read as degraded. Check Redis's
+   own latency/CPU before assuming a network fault.
+
+### Escalate
+Only if `degraded` persists for an extended period (hours) with no
+corresponding Redis outage found in steps 2-3 above. That is a bug in the
+probe itself, not an infrastructure incident.
+
 ## Standard escalation form
 
 When paging the portal dev team, attach:

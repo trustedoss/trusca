@@ -163,7 +163,7 @@ backend는 인증이 필요 없는 health 엔드포인트를 **두 개** 노출�
 | `GET /health` | uvicorn **프로세스**가 떠서 요청을 받는가? (순수 liveness) | 아니오 | Kubernetes `livenessProbe`; liveness 전용 소비자 |
 | `GET /health/ready` | Postgres **스키마가 Alembic HEAD** 인가, 즉 트래픽을 처리하고 워커를 띄워도 안전한가? (readiness) | 예 (`alembic_version`에 대한 읽기 전용 `SELECT`) | Compose backend `healthcheck`; Kubernetes `readinessProbe` |
 
-`/health/ready`는 스키마가 HEAD와 일치할 때만 `200 {"status":"ready"}`를 반환합니다. 그렇지 않으면 RFC 7807 `application/problem+json` 본문으로 리비전 불일치를 요약한 `503`을 반환합니다(DSN 이나 자격 증명은 절대 노출하지 않습니다).
+`/health/ready`는 스키마가 HEAD와 일치할 때만 `200 {"status":"ready","redis":"ok"|"degraded"}`를 반환합니다. 그렇지 않으면 RFC 7807 `application/problem+json` 본문으로 리비전 불일치를 요약한 `503`을 반환하며(DSN 이나 자격 증명은 절대 노출하지 않습니다), 이때도 같은 `redis` 필드가 함께 들어 있습니다. 이 필드는 관측용일 뿐입니다. 로그인 시도 제한기와 요청 빈도 제한기 등 Redis를 사용하는 요청 경로 제어는 이미 Redis 장애 시 열어 두도록(fail open) 설계돼 있으므로, Redis 장애가 200 응답을 503으로 바꾸는 일은 없습니다. `degraded`로 표시될 때 무엇을 확인해야 하는지는 [온콜 런북](../admin-guide/oncall-runbook.md#redis-degraded)을 참고하십시오.
 
 (Track B)부터 `backend` 서비스의 Compose `healthcheck`가 **`/health/ready`**를 검사하므로, `depends_on: backend (condition: service_healthy)`를 선언한 `worker` / `beat` 서비스는 **스키마가 마이그레이션된 뒤에야** 기동합니다. 두 토글 모두에서:
 

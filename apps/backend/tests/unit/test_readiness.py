@@ -18,8 +18,14 @@ from __future__ import annotations
 
 import pytest
 from httpx import ASGITransport, AsyncClient
+from redis.exceptions import RedisError
 
-from core.readiness import ReadinessResult, check_schema_readiness, compute_expected_heads
+from core.readiness import (
+    ReadinessResult,
+    check_redis_status,
+    check_schema_readiness,
+    compute_expected_heads,
+)
 
 # ---------------------------------------------------------------------------
 # compute_expected_heads — runs against the real in-repo alembic script tree.
@@ -31,6 +37,137 @@ def test_compute_expected_heads_returns_nonempty_sorted() -> None:
     assert heads, "the repo's alembic tree must have at least one head"
     assert list(heads) == sorted(heads), "heads must be returned sorted"
     assert all(isinstance(h, str) and h for h in heads)
+
+
+# ---------------------------------------------------------------------------
+# check_redis_status - a fake `redis.asyncio.Redis` swapped in for the real
+# client so the branch is driven without a live Redis.
+# ---------------------------------------------------------------------------
+
+
+class _FakeRedisClient:
+    def __init__(self, *, ping_result: bool | Exception) -> None:
+        self.ping_result = ping_result
+        self.ping_calls = 0
+
+    async def ping(self) -> bool:
+        self.ping_calls += 1
+        if isinstance(self.ping_result, Exception):
+            raise self.ping_result
+        return self.ping_result
+
+
+def _fake_redis(ping_result: bool | Exception):
+    """A `core.readiness.Redis` stand-in that counts `from_url` calls.
+
+    Reused-client tests assert `from_url_calls == 1` after multiple
+    `check_redis_status()` calls in the same test (one event loop, per
+    `asyncio_default_fixture_loop_scope = "function"`), so a regression back
+    to opening a fresh connection per call fails loudly rather than merely
+    slowly.
+    """
+    client = _FakeRedisClient(ping_result=ping_result)
+
+    class _FakeRedis:
+        from_url_calls = 0
+
+        @staticmethod
+        def from_url(*_args: object, **_kwargs: object) -> _FakeRedisClient:
+            _FakeRedis.from_url_calls += 1
+            return client
+
+    return _FakeRedis, client
+
+
+@pytest.fixture(autouse=True)
+def _reset_readiness_redis_cache():
+    """Each test gets its own event loop, but clear the cache defensively.
+
+    `core.readiness._clients` is keyed by event loop and would naturally miss
+    on a fresh loop anyway; clearing `_loopless_client` too keeps a test that
+    happens to run outside a loop (none here do) from picking up a fake
+    client instance left behind by a previous test.
+    """
+    import core.readiness as readiness_mod
+
+    readiness_mod._clients.clear()
+    readiness_mod._loopless_client = None
+    yield
+    readiness_mod._clients.clear()
+    readiness_mod._loopless_client = None
+
+
+async def test_check_redis_status_ok_when_ping_succeeds(monkeypatch) -> None:
+    fake_redis, client = _fake_redis(ping_result=True)
+    monkeypatch.setattr("core.readiness.Redis", fake_redis)
+
+    status = await check_redis_status()
+
+    assert status == "ok"
+    assert client.ping_calls == 1
+
+
+async def test_check_redis_status_degraded_when_ping_returns_false(monkeypatch) -> None:
+    fake_redis, _client = _fake_redis(ping_result=False)
+    monkeypatch.setattr("core.readiness.Redis", fake_redis)
+
+    assert await check_redis_status() == "degraded"
+
+
+async def test_check_redis_status_degraded_when_ping_raises(monkeypatch) -> None:
+    fake_redis, client = _fake_redis(ping_result=RedisError("connection refused"))
+    monkeypatch.setattr("core.readiness.Redis", fake_redis)
+
+    assert await check_redis_status() == "degraded"
+    assert client.ping_calls == 1
+
+
+async def test_check_redis_status_degraded_when_connect_raises(monkeypatch) -> None:
+    class _FakeRedis:
+        @staticmethod
+        def from_url(*_args: object, **_kwargs: object) -> object:
+            raise OSError("name resolution failed")
+
+    monkeypatch.setattr("core.readiness.Redis", _FakeRedis)
+
+    assert await check_redis_status() == "degraded"
+
+
+async def test_check_redis_status_reuses_client_across_calls(monkeypatch) -> None:
+    """The High finding from the #442 security review: no per-call reconnect.
+
+    Two calls in the same running loop must hit `Redis.from_url` once, not
+    twice - the whole point of caching per loop rather than opening and
+    closing a connection on every `/health/ready` poll.
+    """
+    fake_redis, client = _fake_redis(ping_result=True)
+    monkeypatch.setattr("core.readiness.Redis", fake_redis)
+
+    assert await check_redis_status() == "ok"
+    assert await check_redis_status() == "ok"
+
+    assert fake_redis.from_url_calls == 1
+    assert client.ping_calls == 2
+
+
+async def test_check_redis_status_still_degrades_after_reused_client_fails(
+    monkeypatch,
+) -> None:
+    """A cached client that starts failing degrades on every subsequent call.
+
+    Guards against a fix for the reconnect-cost finding accidentally caching
+    the *result* instead of the *client* - degraded must not stick once
+    Redis recovers, and this test's fake never recovers, so it must keep
+    reporting degraded rather than freezing on the first answer.
+    """
+    fake_redis, client = _fake_redis(ping_result=RedisError("connection refused"))
+    monkeypatch.setattr("core.readiness.Redis", fake_redis)
+
+    assert await check_redis_status() == "degraded"
+    assert await check_redis_status() == "degraded"
+
+    assert fake_redis.from_url_calls == 1
+    assert client.ping_calls == 2
 
 
 # ---------------------------------------------------------------------------
@@ -160,10 +297,11 @@ async def test_route_ready_returns_200(monkeypatch, app, client) -> None:
     import api.v1.health as health_mod
 
     monkeypatch.setattr(health_mod, "check_schema_readiness", _ok)
+    monkeypatch.setattr(health_mod, "check_redis_status", _returns("ok"))
 
     resp = await client.get("/health/ready")
     assert resp.status_code == 200
-    assert resp.json() == {"status": "ready"}
+    assert resp.json() == {"status": "ready", "redis": "ok"}
 
 
 async def test_route_not_ready_returns_503_problem_json(monkeypatch, app, client) -> None:
@@ -173,6 +311,7 @@ async def test_route_not_ready_returns_503_problem_json(monkeypatch, app, client
     import api.v1.health as health_mod
 
     monkeypatch.setattr(health_mod, "check_schema_readiness", _behind)
+    monkeypatch.setattr(health_mod, "check_redis_status", _returns("ok"))
 
     resp = await client.get("/health/ready")
     assert resp.status_code == 503
@@ -197,7 +336,45 @@ async def test_route_is_unauthenticated(monkeypatch, app, client) -> None:
     import api.v1.health as health_mod
 
     monkeypatch.setattr(health_mod, "check_schema_readiness", _ok)
+    monkeypatch.setattr(health_mod, "check_redis_status", _returns("ok"))
 
     # No auth header supplied at all.
     resp = await client.get("/health/ready")
     assert resp.status_code == 200
+
+
+def _returns(value: str):
+    async def _fn() -> str:
+        return value
+
+    return _fn
+
+
+async def test_route_schema_ready_but_redis_degraded_stays_200(monkeypatch, app, client) -> None:
+    """A Redis outage is reported, not enforced (issue #399): status stays 200."""
+
+    async def _ok(_session, **_kw):
+        return ReadinessResult(ready=True, expected=("h",), current=("h",))
+
+    import api.v1.health as health_mod
+
+    monkeypatch.setattr(health_mod, "check_schema_readiness", _ok)
+    monkeypatch.setattr(health_mod, "check_redis_status", _returns("degraded"))
+
+    resp = await client.get("/health/ready")
+    assert resp.status_code == 200
+    assert resp.json() == {"status": "ready", "redis": "degraded"}
+
+
+async def test_route_not_ready_carries_redis_field_too(monkeypatch, app, client) -> None:
+    async def _behind(_session, **_kw):
+        return ReadinessResult(ready=False, expected=("0021",), current=("0020",))
+
+    import api.v1.health as health_mod
+
+    monkeypatch.setattr(health_mod, "check_schema_readiness", _behind)
+    monkeypatch.setattr(health_mod, "check_redis_status", _returns("degraded"))
+
+    resp = await client.get("/health/ready")
+    assert resp.status_code == 503
+    assert resp.json()["redis"] == "degraded"

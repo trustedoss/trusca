@@ -11,11 +11,14 @@ the liveness ``/health`` route in ``main.py``. It is grouped under the OpenAPI
 ``public`` tag so the unauthenticated surface is enumerable in the docs.
 
 Contract:
-  * 200 ``{"status": "ready"}`` — the Postgres schema is at the Alembic HEAD.
+  * 200 ``{"status": "ready", "redis": "ok" | "degraded"}``, once the Postgres
+    schema is at the Alembic HEAD. ``redis`` is observational only (issue
+    #399): a Redis outage never turns this into a 503, see ``core.readiness``.
   * 503 ``application/problem+json`` (RFC 7807) — schema behind HEAD, the
     ``alembic_version`` table is missing, or the DB is unreachable. The ``detail``
     summarises the revision mismatch with short revision ids only; no DSN /
     credential / driver traceback ever reaches the body (those are logged).
+    Also carries the same ``redis`` extension field as the 200 case.
 
 This is distinct from ``GET /v1/admin/health`` (super-admin, full system health)
 which stays unchanged — this route is the lightweight, unauthenticated
@@ -30,7 +33,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from core.db import get_db
 from core.errors import problem_response
-from core.readiness import check_schema_readiness
+from core.readiness import check_redis_status, check_schema_readiness
 
 # No prefix: the route declares the absolute path /health/ready so it sits
 # alongside the liveness /health in main.py rather than under /v1. The `public`
@@ -50,7 +53,11 @@ _NOT_READY_TYPE = "urn:trustedoss:problem:schema-not-ready"
     responses={
         200: {
             "description": "Schema is at the Alembic HEAD revision.",
-            "content": {"application/json": {"example": {"status": "ready"}}},
+            "content": {
+                "application/json": {
+                    "example": {"status": "ready", "redis": "ok"}
+                }
+            },
         },
         503: {
             "description": (
@@ -69,6 +76,7 @@ _NOT_READY_TYPE = "urn:trustedoss:problem:schema-not-ready"
                         ),
                         "instance": "/health/ready",
                         "ready": False,
+                        "redis": "ok",
                     }
                 }
             },
@@ -84,10 +92,19 @@ async def health_ready(
     PUBLIC: no auth dependency by design (probe endpoint — see module docstring
     and CLAUDE.md core rule #12). The check is read-only (a single SELECT on
     ``alembic_version`` plus an in-image read of the script tree).
+
+    The ``redis`` field is observational only (issue #399): it never changes
+    the status code, so a Redis outage does not pull the backend out of an
+    orchestrator's rotation for a dependency the request path already fails
+    open through. See ``core.readiness`` for the reasoning.
     """
     result = await check_schema_readiness(session)
+    redis_status = await check_redis_status()
     if result.ready:
-        return JSONResponse({"status": "ready"}, status_code=status.HTTP_200_OK)
+        return JSONResponse(
+            {"status": "ready", "redis": redis_status},
+            status_code=status.HTTP_200_OK,
+        )
     return problem_response(
         status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
         title="Service Not Ready",
@@ -95,6 +112,7 @@ async def health_ready(
         instance=request.url.path,
         type_=_NOT_READY_TYPE,
         ready=False,
+        redis=redis_status,
     )
 
 
