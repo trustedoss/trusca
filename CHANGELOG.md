@@ -7,6 +7,20 @@ and the project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.
 
 ## [Unreleased]
 
+## [0.22.5] - 2026-09-07
+
+### Fixed
+
+- **Scans left a pip download cache behind on every run.** The worker image
+  sets `PIP_NO_CACHE_DIR=1` so that resolving a Python project caches
+  nothing, but the subprocess env scrubber never forwarded that key: the
+  setting stopped at the worker process, and each scan's pip run cached
+  again under the worker's `HOME`. Measured on a 2,080-repository corpus,
+  3.1 GB accumulated within hours and took a 26 GB root partition to 100%
+  three times in one day. `PIP_NO_CACHE_DIR` and `PIP_CACHE_DIR` now reach
+  the cdxgen and prep subprocesses, so a deployment can either suppress the
+  cache or point it somewhere with room (#302).
+
 ### Added
 
 - **`GET /health/ready` now reports Redis reachability alongside schema
