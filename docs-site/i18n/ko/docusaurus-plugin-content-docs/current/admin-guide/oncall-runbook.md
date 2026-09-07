@@ -303,6 +303,64 @@ docker-compose -f docker-compose.yml run --rm --entrypoint python worker-scan \
 정식 릴리스 이미지에서 두 번째 명령이 트레이스백을 보이면 즉시 올립니다. 그 태그를
 쓰는 모든 배포의 해당 워커가 전부 같은 상태입니다.
 
+## 시나리오 7 - Redis readiness 필드가 `degraded`를 보고합니다 {#redis-degraded}
+
+### 증상
+`GET /health/ready`는 계속 `200`을 반환하지만, 응답 본문의 `redis` 필드가
+`"ok"`가 아니라 `"degraded"`로 나옵니다. 이 자체는 PagerDuty를 울리는
+알림이 아닙니다. 오늘 기준으로 이 필드만 따로 알림을 걸어 두지는
+않았습니다. 다른 문제를 진단하다가(시나리오 5 큐 적체 조사에서
+원인이 Redis로 밝혀지는 경우, 요청 빈도 제한이 느슨해졌다는 문의 등)
+보게 되거나, 운영자가 이 필드에 직접 모니터를 걸어 두었다면 그때
+알림이 울립니다.
+
+### 고객 영향
+요청 경로의 제어 중 Redis 장애로 닫히는(fail closed) 것은 하나도 없으므로,
+동작이 멈추는 기능은 없습니다. 다만 다음이 조용히 느슨해집니다.
+
+- 요청 빈도 제한(`core/ratelimit.py`)과 로그인 시도 제한(`core/login_throttle.py`)
+  모두 열어 두도록(fail open) 설계돼 있어, Redis에 닿지 않는 동안은 모든
+  요청이 제한 없이 통과합니다.
+- Redis를 쓰는 다른 구성 요소(Celery의 브로커/결과 저장소)는 이것과는
+  별개의 장애이고 증상도 다릅니다. 그쪽은 이 필드보다는 시나리오 5의
+  큐 적체 알림으로 먼저 드러날 가능성이 큽니다.
+
+### 진단
+<!-- docs-uat: id=oncall-redis-degraded-check kind=shell ctx=host tier=nightly waiver=runbook-diagnostic-prod-compose-placeholder-creds -->
+```bash
+# 1. 필드를 직접 확인합니다(이 엔드포인트는 인증이 필요 없습니다).
+curl -fsS https://<your-host>/health/ready | jq
+
+# 2. 백엔드 컨테이너에서 Redis에 실제로 닿는지 확인합니다.
+docker-compose -f docker-compose.yml exec backend python -c \
+  "from redis import Redis; from core.config import redis_url; print(Redis.from_url(redis_url(), socket_timeout=1).ping())"
+
+# 3. Redis 컨테이너 자체가 떠 있는지 확인합니다.
+docker-compose -f docker-compose.yml ps redis
+docker-compose -f docker-compose.yml logs --tail=100 redis
+```
+
+### 복구
+1. **Redis 컨테이너가 죽었거나 재시작 중인 경우**: 다시 올리고
+   (`docker-compose -f docker-compose.yml up -d redis`) 위 2번 명령이
+   `True`를 반환하는지 확인합니다. `/health/ready`의 `redis` 필드는 다음
+   요청에서 바로 `"ok"`로 바뀝니다. 백엔드 쪽에서 따로 지울 캐시나
+   재시작할 서비스는 없습니다. 이 필드는 요청마다 실시간으로 읽습니다.
+2. **Redis는 떠 있지만 backend에서 닿지 않는 경우**(네트워크 정책, DNS,
+   잘못된 `REDIS_URL`): 네트워크 경로나 URL을 고치고 backend 설정을
+   재배포합니다. 요청 빈도 제한과 로그인 시도 제한도 같은 `REDIS_URL`을
+   쓰므로, 이걸 고치면 셋 다 한 번에 복구됩니다.
+3. **Redis도 떠 있고 닿기도 하는데 여전히 `degraded`인 경우**: 이 점검은
+   연결/응답 제한 시간을 1초로 짧게 잡습니다(`core/readiness.py`). Redis가
+   부하로 `PING` 응답이 1초를 넘게 걸리면 이때도 degraded로 읽힙니다.
+   네트워크 장애로 단정하기 전에 Redis 자체의 지연이나 CPU 사용률부터
+   확인하십시오.
+
+### 에스컬레이션
+위 2~3단계에서 대응되는 Redis 장애를 찾지 못했는데도 `degraded`가
+몇 시간 넘게 이어질 때만 올립니다. 그럴 때는 인프라 장애가 아니라
+점검 로직 자체의 결함입니다.
+
 ## 표준 에스컬레이션 양식
 
 포털 개발팀에 호출 시 다음을 첨부:

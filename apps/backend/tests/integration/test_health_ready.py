@@ -37,12 +37,36 @@ async def client():
 
 @pytest.mark.integration
 async def test_health_ready_returns_200_when_schema_at_head(client) -> None:
-    """With the schema migrated to HEAD, the probe returns 200 ready."""
+    """With the schema migrated to HEAD, the probe returns 200 ready.
+
+    ``redis`` is observational (issue #399): the dev/CI stack has a real
+    reachable Redis, so this asserts "ok" rather than merely "present", since
+    a regression that always reported "degraded" would otherwise pass silently.
+    """
     migrate_to_head()
 
     resp = await client.get("/health/ready")
     assert resp.status_code == 200, resp.text
-    assert resp.json() == {"status": "ready"}
+    assert resp.json() == {"status": "ready", "redis": "ok"}
+
+
+@pytest.mark.integration
+async def test_health_ready_reports_degraded_redis_without_flipping_status(
+    monkeypatch, client
+) -> None:
+    """A real unreachable Redis flips only the ``redis`` field, not the status.
+
+    ``redis_url()`` reads ``REDIS_URL`` at call time (CLAUDE.md core rule #11),
+    so pointing it at a closed local port drives `check_redis_status`'s real
+    connect-timeout branch end-to-end rather than through a mock.
+    """
+    migrate_to_head()
+    monkeypatch.setenv("REDIS_URL", "redis://127.0.0.1:1/0")
+
+    resp = await client.get("/health/ready")
+
+    assert resp.status_code == 200, resp.text
+    assert resp.json() == {"status": "ready", "redis": "degraded"}
 
 
 @pytest.mark.integration
@@ -92,6 +116,7 @@ async def test_health_ready_503_when_db_revision_behind_head(client) -> None:
         assert body["status"] == 503
         assert body["instance"] == "/health/ready"
         assert body["ready"] is False
+        assert body["redis"] == "ok"
         # The bogus current revision is named in the (non-sensitive) detail.
         assert "0000_not_a_real_head" in body["detail"]
     finally:

@@ -316,8 +316,11 @@ Helm 설치에서 OAuth 로그인, SMTP·Slack·Teams 알림, 저장소에 포�
    ```bash
    kubectl -n trustedoss exec deploy/trustedoss-backend -- \
      curl -fsS http://localhost:8000/health/ready
-   # → {"status":"ready"}
+   # → {"status":"ready","redis":"ok"}
    ```
+
+   `redis` 필드는 관측용일 뿐이며 200 응답을 503으로 바꾸지 않습니다.
+   `"degraded"`로 나오면 [온콜 런북](../admin-guide/oncall-runbook.md#redis-degraded)을 참고하십시오.
 
 <!-- docs-uat: id=helm-verify-ingress-cert kind=manual tier=manual -->
 4. Ingress에 주소와 유효한 인증서가 있는지 확인한 뒤 브라우저에서

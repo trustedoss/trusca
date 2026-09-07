@@ -29,6 +29,14 @@ for both via keyword arguments.
 Security: the 503 detail summarises a revision *mismatch* (short revision ids
 only) and never echoes the DSN, credentials, or a raw driver traceback — those
 go to the structured log at WARNING/ERROR, not the HTTP body.
+
+Redis status (issue #399): the response also carries a ``redis`` field, either
+``"ok"`` or ``"degraded"``, from :func:`check_redis_status`. It never changes
+the HTTP status code: Redis being unreachable does not make the schema any
+less ready, and the two request-path controls that touch Redis (the login
+throttle, the rate limiter) are already designed to fail open through an
+outage. The field exists so an operator can see a Redis outage in the same
+probe an orchestrator is already polling, without the probe acting on it.
 """
 
 from __future__ import annotations
@@ -38,13 +46,22 @@ from dataclasses import dataclass
 from pathlib import Path
 
 import structlog
+from redis.asyncio import Redis
+from redis.exceptions import RedisError
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from alembic.config import Config
 from alembic.script import ScriptDirectory
+from core.config import redis_url
 
 log = structlog.get_logger("readiness")
+
+#: Mirrors the short leash `login_throttle.py` / `ratelimit.py` give their own
+#: Redis clients: this probe answers a public, unauthenticated endpoint, so a
+#: Redis that drops packets rather than refusing them must not hang the
+#: response.
+_REDIS_SOCKET_TIMEOUT_SECONDS = 1.0
 
 # Backend root holds alembic.ini + the alembic/ script tree. readiness.py lives
 # in apps/backend/core/, so the root is one directory up from this file's parent.
@@ -171,8 +188,38 @@ async def check_schema_readiness(
     return ReadinessResult(ready=ready, expected=expected, current=current)
 
 
+async def check_redis_status() -> str:
+    """Return ``"ok"`` or ``"degraded"`` for the ``redis`` field on ``/health/ready``.
+
+    Observational only (issue #399): a Redis outage never flips the readiness
+    probe's HTTP status, because the two controls the app fails open on when
+    Redis is unreachable (``login_throttle``, ``ratelimit``) are explicitly
+    designed to keep serving traffic through one. Reporting this as a 503
+    would tell an orchestrator to pull the backend out of rotation for the
+    sake of a signal those controls are built to survive without.
+
+    Never raises: any connection/ping failure is caught, logged at WARNING,
+    and reported as ``"degraded"``.
+    """
+    try:
+        client = Redis.from_url(
+            redis_url(),
+            socket_timeout=_REDIS_SOCKET_TIMEOUT_SECONDS,
+            socket_connect_timeout=_REDIS_SOCKET_TIMEOUT_SECONDS,
+        )
+        try:
+            ok = bool(await client.ping())
+        finally:
+            await client.aclose()
+    except (RedisError, OSError) as exc:
+        log.warning("readiness.redis_degraded", error=str(exc))
+        return "degraded"
+    return "ok" if ok else "degraded"
+
+
 __all__ = [
     "ReadinessResult",
+    "check_redis_status",
     "check_schema_readiness",
     "compute_expected_heads",
     "fetch_db_revisions",

@@ -171,7 +171,7 @@ The backend exposes **two** unauthenticated health endpoints. They answer differ
 | `GET /health` | Is the uvicorn **process** up and accepting requests? (pure liveness) | No | Kubernetes `livenessProbe`; liveness-only consumers |
 | `GET /health/ready` | Is the Postgres **schema at the Alembic HEAD** revision, i.e. is it safe to serve traffic and start workers? (readiness) | Yes (a read-only `SELECT` on `alembic_version`) | Compose backend `healthcheck`; Kubernetes `readinessProbe` |
 
-`/health/ready` returns `200 {"status":"ready"}` only when the schema matches HEAD. Otherwise it returns `503` with an RFC 7807 `application/problem+json` body summarising the revision mismatch (it never leaks the DSN or credentials).
+`/health/ready` returns `200 {"status":"ready","redis":"ok"|"degraded"}` only when the schema matches HEAD. Otherwise it returns `503` with an RFC 7807 `application/problem+json` body summarising the revision mismatch (it never leaks the DSN or credentials), also carrying the same `redis` field. That field is observational only: a Redis outage never turns a 200 into a 503, since the request-path controls that touch Redis (the login throttle, the rate limiter) are already designed to fail open through one. See the [on-call runbook](../admin-guide/oncall-runbook.md#redis-degraded) for what to do when it reads `degraded`.
 
 Since  (Track B), the `backend` service's Compose `healthcheck` probes **`/health/ready`**, so the `worker` and `beat` services — which declare `depends_on: backend (condition: service_healthy)` — start only **after the schema is migrated**, under both toggles:
 

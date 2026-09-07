@@ -9,6 +9,17 @@ and the project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.
 
 ### Added
 
+- **`GET /health/ready` now reports Redis reachability alongside schema
+  readiness.** The response gains a `redis: "ok" | "degraded"` field,
+  computed with a 1-second-bounded `PING` against `REDIS_URL`. The field is
+  observational only: a Redis outage never turns the 200 into a 503, since
+  the two request-path controls that touch Redis, `core/ratelimit.py`'s
+  limiter and `core/login_throttle.py`'s per-address slowdown, are already
+  designed to fail open through one (#418), and flipping readiness on top of
+  that would pull the backend out of an orchestrator's rotation for a
+  dependency the request path is built to survive without. Added an
+  on-call runbook scenario for a persistent `degraded` reading (#399).
+
 - **A mount convention and env passthrough for private-registry auth during
   source-scan dependency resolution** (#400). A source scan's `cdxgen` step
   shells into `mvn`/`npm`/`pip` the same way a build would, and until now
