@@ -740,6 +740,41 @@ worker:
     # (never derived from project/user input - an arbitrary-file-read
     # guard):
     #
+    # SECURITY - settings.xml: Maven matches a <server> credential to a
+    # repository lookup by <id>, not by <url>. A malicious pom.xml in the
+    # scanned project can declare its own <repository> with an <id> that
+    # happens to match yours and a <url> pointing anywhere it likes, and
+    # Maven will send your credential there. Do not rely on a bare <server>
+    # for this reason - pin resolution to one trusted URL with
+    # <mirror mirrorOf="*"> instead, so a project's own <repository>
+    # declarations are ignored:
+    #
+    #   <settings>
+    #     <mirrors>
+    #       <mirror>
+    #         <id>internal-mirror</id>
+    #         <mirrorOf>*</mirrorOf>
+    #         <url>https://nexus.internal.example.com/repository/maven-public/</url>
+    #       </mirror>
+    #     </mirrors>
+    #     <servers>
+    #       <server>
+    #         <id>internal-mirror</id>
+    #         <username>svc</username>
+    #         <password>S3cret</password>
+    #       </server>
+    #     </servers>
+    #   </settings>
+    #
+    # SECURITY - .npmrc: scope the token to the exact registry host with the
+    # //host/path/:_authToken= line form. An unscoped _auth / _authToken
+    # line applies to every registry npm resolves against for the install -
+    # including one the scanned project's own package.json names in a
+    # publishConfig.registry field - so never use the unscoped form here:
+    #
+    #   @myorg:registry=https://registry.internal.example.com/
+    #   //registry.internal.example.com/:_authToken=${NPM_TOKEN}
+    #
     #   kubectl create secret generic trustedoss-registry-config \
     #     --from-file=settings.xml=./settings.xml \
     #     --from-file=.npmrc=./.npmrc

