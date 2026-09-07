@@ -351,6 +351,19 @@ and the project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.
   other's Redis path left healthy, so neither test's pass depends on the
   other control also being down.
 
+- **A failed private-registry resolution could leak its credential into
+  `scan.error_message`.** cdxgen shells into `pip`/`npm`/`mvn` for dependency
+  resolution, and a rejected request against a `scheme://user:pass@host`
+  private-registry URL (a typo, an expired token, a transient 401/403) can
+  echo that URL, credential included, into the tool's stderr. `run_cdxgen`
+  copied that stderr verbatim into `CdxgenFailed`'s message, which the scan
+  pipeline's generic failure handler stores as-is in `scan.error_message`, a
+  field any team member can read via `GET /api/v1/scans/{id}`. The
+  credential-shaped-substring scrubber already used for the live scan-log
+  stream now also runs on this path (and on the equivalent `scancode` and
+  lockfile-prep failure paths), and moved to a shared module so both the
+  live-log publisher and the adapters use the same patterns.
+
 - **The vulnerability drawer's response builder could drop a field silently.**
   `_detail_response` named all 41 fields of `VulnerabilityDetailResponse` as
   keyword arguments by hand, so a field the service already computed but

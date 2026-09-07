@@ -28,7 +28,11 @@ Contract:
 - Failure modes:
     - cdxgen binary missing → ``CdxgenNotInstalled`` (so unit tests can pivot
       to mock mode without a real install).
-    - cdxgen exits non-zero → ``CdxgenFailed`` with stderr captured.
+    - cdxgen exits non-zero → ``CdxgenFailed`` with stderr captured, scrubbed
+      of credential-shaped substrings (``integrations._secret_scrub``) before
+      it reaches the exception message, which is persisted verbatim to
+      ``scan.error_message``, an API-exposed field (security review HIGH,
+      private-registry-auth-mount PR).
     - cdxgen runs longer than the per-stage timeout → ``CdxgenTimeout``.
 
 Phase 2 PR #8 only needs the SBOM to flow through to DT; downstream
@@ -61,6 +65,7 @@ import structlog
 
 from core.config import cdxgen_fetch_license, cdxgen_spec_version, scan_backend_mode
 from integrations._line_streamer import LineCallback, run_with_line_streaming
+from integrations._secret_scrub import scrub_secrets
 from integrations._subprocess_env import scrubbed_env_for_cdxgen
 
 log = structlog.get_logger("integrations.cdxgen")
@@ -239,14 +244,26 @@ def run_cdxgen(
         ) from exc
 
     if completed.returncode != 0:
+        # Security review HIGH (private-registry-auth-mount PR): a failed
+        # pip / npm / Maven resolution against a credential-bearing registry
+        # URL (e.g. PIP_CONFIG_FILE pointing at
+        # ``index-url = https://user:pass@host/simple``), including its
+        # userinfo, can echo that URL into cdxgen's stderr. This message
+        # flows into CdxgenFailed, which the generic exception handler in
+        # tasks/scan_source.py stores verbatim in ``scan.error_message``, an
+        # API-exposed field any team member can read via
+        # GET /api/v1/scans/{id}. Scrub BEFORE it reaches either the log line
+        # or the exception message; never persist / log the raw bytes.
+        safe_stderr = scrub_secrets(
+            completed.stderr.decode("utf-8", errors="replace")
+        )
         log.error(
             "cdxgen_failed",
             returncode=completed.returncode,
-            stderr=completed.stderr.decode("utf-8", errors="replace")[:4000],
+            stderr=safe_stderr[:4000],
         )
         raise CdxgenFailed(
-            f"cdxgen exited {completed.returncode}: "
-            f"{completed.stderr.decode('utf-8', errors='replace')[:1000]}",
+            f"cdxgen exited {completed.returncode}: {safe_stderr[:1000]}",
         )
 
     sbom = _load_sbom(sbom_path)

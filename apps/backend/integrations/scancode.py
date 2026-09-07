@@ -83,6 +83,7 @@ from core.config import (
     scancode_timeout_seconds,
 )
 from integrations._line_streamer import LineCallback, run_with_line_streaming
+from integrations._secret_scrub import scrub_secrets
 from integrations._subprocess_env import scrubbed_env_for_scancode
 
 log = structlog.get_logger("integrations.scancode")
@@ -294,14 +295,24 @@ def run_scancode(
         ) from exc
 
     if completed.returncode != 0:
+        # Same defence as integrations/cdxgen.py (security review HIGH,
+        # private-registry-auth-mount PR): scrub credential-shaped
+        # substrings before the raw stderr reaches a log line or an
+        # exception message. scancode scans first-party source only, so a
+        # private-registry credential is not expected here, but
+        # ScancodeFailed is best-effort and any adapter that echoes raw
+        # subprocess stderr into an exception message shares the same risk
+        # shape, so scrub defensively rather than trust the input.
+        safe_stderr = scrub_secrets(
+            completed.stderr.decode("utf-8", errors="replace")
+        )
         log.error(
             "scancode_failed",
             returncode=completed.returncode,
-            stderr=completed.stderr.decode("utf-8", errors="replace")[:4000],
+            stderr=safe_stderr[:4000],
         )
         raise ScancodeFailed(
-            f"scancode exited {completed.returncode}: "
-            f"{completed.stderr.decode('utf-8', errors='replace')[:1000]}",
+            f"scancode exited {completed.returncode}: {safe_stderr[:1000]}",
         )
 
     detections = _parse_detections(result_path, cap=cap)
