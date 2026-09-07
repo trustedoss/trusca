@@ -319,7 +319,7 @@ async def _lock_and_count_team_admins(session: AsyncSession, team_id: uuid.UUID)
         (
             await session.execute(
                 select(Membership)
-                .where(Membership.team_id == team_id, Membership.role == "team_admin")
+                .where(Membership.team_id == team_id, Membership.role == "group_admin")
                 .with_for_update()
             )
         )
@@ -702,7 +702,7 @@ async def add_team_member(
         # BEFORE the count check so two concurrent demotions cannot both
         # pass the ``admin_count > 1`` guard (CWE-367 TOCTOU; see
         # _lock_and_count_team_admins).
-        if existing.role == "team_admin" and payload.role != "team_admin":
+        if existing.role == "group_admin" and payload.role != "group_admin":
             admin_count = await _lock_and_count_team_admins(session, team_id)
             member_count = await _count_team_members(session, team_id)
             others = member_count - 1  # subtract this user
@@ -759,7 +759,7 @@ async def remove_team_member(
             f"user {user_id} is not a member of team {team_id}"
         )
 
-    if membership.role == "team_admin":
+    if membership.role == "group_admin":
         # Lock the team_admin membership row set inside this transaction
         # before the count check so two concurrent removals cannot both
         # pass the ``admin_count > 1`` guard (CWE-367 TOCTOU fix).

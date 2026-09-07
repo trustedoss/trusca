@@ -299,7 +299,7 @@ def _can_admin_team(actor: CurrentUser, team_id: uuid.UUID) -> bool:
     """True iff *actor* may write the policy of *team_id* (team_admin or super)."""
     if _is_super_admin(actor):
         return True
-    return actor.team_roles.get(team_id) == "team_admin"
+    return actor.team_roles.get(team_id) == "group_admin"
 
 
 def _is_team_member(actor: CurrentUser, team_id: uuid.UUID) -> bool:

@@ -60,7 +60,7 @@ async def _seed(session: AsyncSession):
     org = await make_organization(session)
     team = await make_team(session, organization=org)
     user = await make_user(session)
-    await make_membership(session, user=user, team=team, role="team_admin")
+    await make_membership(session, user=user, team=team, role="group_admin")
     project = await make_project(session, team=team)
     scan = await make_scan(session, project=project, status="succeeded")
     return org, team, user, project, scan
@@ -119,9 +119,9 @@ async def test_a_waiver_saved_through_the_service_reaches_the_gate(
     actor = CurrentUser(
         id=user.id,
         email=user.email,
-        role="team_admin",
+        role="group_admin",
         team_ids=[team.id],
-        team_roles={team.id: "team_admin"},
+        team_roles={team.id: "group_admin"},
         is_superuser=False,
     )
 
@@ -182,9 +182,9 @@ async def test_waiver_expiry_bounds_are_enforced(
     actor = CurrentUser(
         id=user.id,
         email=user.email,
-        role="team_admin",
+        role="group_admin",
         team_ids=[team.id],
-        team_roles={team.id: "team_admin"},
+        team_roles={team.id: "group_admin"},
         is_superuser=False,
     )
 
@@ -225,9 +225,9 @@ async def test_an_expired_waiver_is_pruned_rather_than_blocking_the_edit(
     actor = CurrentUser(
         id=user.id,
         email=user.email,
-        role="team_admin",
+        role="group_admin",
         team_ids=[team.id],
-        team_roles={team.id: "team_admin"},
+        team_roles={team.id: "group_admin"},
         is_superuser=False,
     )
 

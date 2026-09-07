@@ -82,7 +82,7 @@ def _can_write(actor: CurrentUser, team_id: uuid.UUID) -> bool:
     """
     if actor.is_superuser or actor.role == "super_admin":
         return True
-    return actor.team_roles.get(team_id) in {"developer", "team_admin", "super_admin"}
+    return actor.team_roles.get(team_id) in {"developer", "group_admin", "super_admin"}
 
 
 async def _load_project(session: AsyncSession, project_id: uuid.UUID) -> Project:

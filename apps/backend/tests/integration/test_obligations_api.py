@@ -998,7 +998,7 @@ async def test_a_developer_elsewhere_is_still_a_viewer_here(client) -> None:
 
 
 async def test_notice_template_write_requires_super_admin(client) -> None:
-    org, _team, user = await _seed_team_with_user(client, role="team_admin")
+    org, _team, user = await _seed_team_with_user(client, role="group_admin")
 
     response = await client.put(
         f"/v1/notice-templates/org/{org.id}/text",

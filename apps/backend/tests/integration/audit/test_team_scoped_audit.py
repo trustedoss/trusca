@@ -112,7 +112,7 @@ async def test_team_admin_sees_only_own_team(client: AsyncClient) -> None:
         team_a = await make_team(session, organization=org)
         team_b = await make_team(session, organization=org)
         admin = await make_user(session)
-        await make_membership(session, user=admin, team=team_a, role="team_admin")
+        await make_membership(session, user=admin, team=team_a, role="group_admin")
         # developer in team_b: must NOT widen the audit scope to team_b.
         await make_membership(session, user=admin, team=team_b, role="developer")
         team_a_id = team_a.id

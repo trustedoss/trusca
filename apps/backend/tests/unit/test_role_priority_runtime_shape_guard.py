@@ -239,7 +239,7 @@ _EVASION_MODULE_SOURCES: dict[str, str] = {
         _ROLE_ORDER_ITEMS = [
             ("viewer", 1),
             ("developer", 2),
-            ("team_admin", 3),
+            ("group_admin", 3),
             ("super_admin", 4),
         ]
         """
@@ -248,7 +248,7 @@ _EVASION_MODULE_SOURCES: dict[str, str] = {
         """
         # A comprehension, not a dict literal: ast.walk finds a
         # ast.DictComp node here, not an ast.Dict.
-        _grades = (("viewer", 1), ("developer", 2), ("team_admin", 3), ("super_admin", 4))
+        _grades = (("viewer", 1), ("developer", 2), ("group_admin", 3), ("super_admin", 4))
         _ROLE_ORDER = {name: grade for name, grade in _grades}
         """
     ),
@@ -256,7 +256,7 @@ _EVASION_MODULE_SOURCES: dict[str, str] = {
         """
         # dict(zip(...)) is a function call; the AST guard only recognises
         # ast.Dict nodes, so a call expression is invisible to it.
-        _ROLE_NAMES = ("viewer", "developer", "team_admin", "super_admin")
+        _ROLE_NAMES = ("viewer", "developer", "group_admin", "super_admin")
         _ROLE_GRADES = (1, 2, 3, 4)
         _ROLE_ORDER = dict(zip(_ROLE_NAMES, _ROLE_GRADES, strict=True))
         """
@@ -270,7 +270,7 @@ _EVASION_MODULE_SOURCES: dict[str, str] = {
         class RoleOrder(enum.IntEnum):
             viewer = 1
             developer = 2
-            team_admin = 3
+            group_admin = 3
             super_admin = 4
         """
     ),
@@ -283,7 +283,7 @@ _EVASION_MODULE_SOURCES: dict[str, str] = {
             order = {}
             order["viewer"] = 1
             order["developer"] = 2
-            order["team_admin"] = 3
+            order["group_admin"] = 3
             order["super_admin"] = 4
             return order
 
@@ -354,7 +354,7 @@ def test_runtime_guard_alone_is_not_needed_to_catch_a_plain_dict_literal() -> No
     roles = _role_names()
     source = textwrap.dedent(
         """
-        _ROLE_ORDER = {"viewer": 1, "developer": 2, "team_admin": 3, "super_admin": 4}
+        _ROLE_ORDER = {"viewer": 1, "developer": 2, "group_admin": 3, "super_admin": 4}
         """
     )
     tree = ast.parse(source)

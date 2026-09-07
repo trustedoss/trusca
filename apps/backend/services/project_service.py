@@ -122,7 +122,7 @@ def _can_write_project(actor: CurrentUser, project: Project) -> bool:
     if actor.is_superuser or actor.role == "super_admin":
         return True
     role_in_team = actor.team_roles.get(project.team_id)
-    return role_in_team == "team_admin"
+    return role_in_team == "group_admin"
 
 
 # ---------------------------------------------------------------------------

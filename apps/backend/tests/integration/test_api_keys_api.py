@@ -183,7 +183,7 @@ async def test_post_team_admin_org_scope_returns_403(client: AsyncClient) -> Non
         org = await make_organization(session)
         team = await make_team(session, organization=org)
         user = await make_user(session)
-        await make_membership(session, user=user, team=team, role="team_admin")
+        await make_membership(session, user=user, team=team, role="group_admin")
 
     response = await client.post(
         "/v1/api-keys",
@@ -200,7 +200,7 @@ async def test_post_team_admin_team_scope_returns_201(client: AsyncClient) -> No
         org = await make_organization(session)
         team = await make_team(session, organization=org)
         user = await make_user(session)
-        await make_membership(session, user=user, team=team, role="team_admin")
+        await make_membership(session, user=user, team=team, role="group_admin")
 
     response = await client.post(
         "/v1/api-keys",
@@ -218,7 +218,7 @@ async def test_post_team_admin_other_team_scope_returns_403(client: AsyncClient)
         team_a = await make_team(session, organization=org)
         team_b = await make_team(session, organization=org)
         user = await make_user(session)
-        await make_membership(session, user=user, team=team_a, role="team_admin")
+        await make_membership(session, user=user, team=team_a, role="group_admin")
 
     response = await client.post(
         "/v1/api-keys",

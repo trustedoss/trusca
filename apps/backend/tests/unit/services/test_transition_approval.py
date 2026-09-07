@@ -62,7 +62,7 @@ async def db_session() -> AsyncIterator[AsyncSession]:
 
 
 def _principal(user: User, team_id: uuid.UUID) -> CurrentUser:
-    return principal_for(user, team_ids=[team_id], role="team_admin")
+    return principal_for(user, team_ids=[team_id], role="group_admin")
 
 
 async def _seed_finding(session: AsyncSession):

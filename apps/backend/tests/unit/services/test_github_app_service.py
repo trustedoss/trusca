@@ -112,8 +112,8 @@ async def test_register_persists_and_encrypts(db_session: AsyncSession) -> None:
     org = await make_organization(db_session)
     team = await make_team(db_session, organization=org)
     user = await make_user(db_session)
-    await make_membership(db_session, user=user, team=team, role="team_admin")
-    actor = principal_for(user, team_ids=[team.id], role="team_admin")
+    await make_membership(db_session, user=user, team=team, role="group_admin")
+    actor = principal_for(user, team_ids=[team.id], role="group_admin")
 
     pem = _make_rsa_pem()
     row = await register_credential(
@@ -149,8 +149,8 @@ async def test_register_writes_masked_audit_row(db_session: AsyncSession) -> Non
     org = await make_organization(db_session)
     team = await make_team(db_session, organization=org)
     user = await make_user(db_session)
-    await make_membership(db_session, user=user, team=team, role="team_admin")
-    actor = principal_for(user, team_ids=[team.id], role="team_admin")
+    await make_membership(db_session, user=user, team=team, role="group_admin")
+    actor = principal_for(user, team_ids=[team.id], role="group_admin")
 
     pem = _make_rsa_pem()
     await register_credential(
@@ -186,7 +186,7 @@ async def test_register_writes_masked_audit_row(db_session: AsyncSession) -> Non
         (
             await db_session.execute(
                 text(
-                    "SELECT team_id FROM audit_logs "
+                    "SELECT group_id FROM audit_logs "
                     "WHERE target_table = 'github_app_credentials' AND action = 'create' "
                     "ORDER BY created_at DESC LIMIT 1"
                 )
@@ -226,8 +226,8 @@ async def test_register_rejected_for_non_member(db_session: AsyncSession) -> Non
     team_a = await make_team(db_session, organization=org)
     team_b = await make_team(db_session, organization=org)
     user = await make_user(db_session)
-    await make_membership(db_session, user=user, team=team_b, role="team_admin")
-    actor = principal_for(user, team_ids=[team_b.id], role="team_admin")
+    await make_membership(db_session, user=user, team=team_b, role="group_admin")
+    actor = principal_for(user, team_ids=[team_b.id], role="group_admin")
 
     with pytest.raises(GitHubAppForbidden):
         await register_credential(
@@ -247,8 +247,8 @@ async def test_register_duplicate_raises_conflict(db_session: AsyncSession) -> N
     org = await make_organization(db_session)
     team = await make_team(db_session, organization=org)
     user = await make_user(db_session)
-    await make_membership(db_session, user=user, team=team, role="team_admin")
-    actor = principal_for(user, team_ids=[team.id], role="team_admin")
+    await make_membership(db_session, user=user, team=team, role="group_admin")
+    actor = principal_for(user, team_ids=[team.id], role="group_admin")
 
     await register_credential(
         db_session,
@@ -287,8 +287,8 @@ async def test_reregister_after_revoke_succeeds(db_session: AsyncSession) -> Non
     org = await make_organization(db_session)
     team = await make_team(db_session, organization=org)
     user = await make_user(db_session)
-    await make_membership(db_session, user=user, team=team, role="team_admin")
-    actor = principal_for(user, team_ids=[team.id], role="team_admin")
+    await make_membership(db_session, user=user, team=team, role="group_admin")
+    actor = principal_for(user, team_ids=[team.id], role="group_admin")
 
     first = await register_credential(
         db_session,
@@ -368,8 +368,8 @@ async def test_get_existence_hide_for_outsider(db_session: AsyncSession) -> None
     team_a = await make_team(db_session, organization=org)
     team_b = await make_team(db_session, organization=org)
     owner = await make_user(db_session)
-    await make_membership(db_session, user=owner, team=team_a, role="team_admin")
-    owner_actor = principal_for(owner, team_ids=[team_a.id], role="team_admin")
+    await make_membership(db_session, user=owner, team=team_a, role="group_admin")
+    owner_actor = principal_for(owner, team_ids=[team_a.id], role="group_admin")
     row = await register_credential(
         db_session,
         owner_actor,
@@ -381,8 +381,8 @@ async def test_get_existence_hide_for_outsider(db_session: AsyncSession) -> None
     )
 
     outsider = await make_user(db_session)
-    await make_membership(db_session, user=outsider, team=team_b, role="team_admin")
-    outsider_actor = principal_for(outsider, team_ids=[team_b.id], role="team_admin")
+    await make_membership(db_session, user=outsider, team=team_b, role="group_admin")
+    outsider_actor = principal_for(outsider, team_ids=[team_b.id], role="group_admin")
 
     with pytest.raises(GitHubAppNotFound):
         await get_credential(db_session, outsider_actor, row.id)
@@ -453,8 +453,8 @@ async def test_revoke_soft_deletes(db_session: AsyncSession) -> None:
     org = await make_organization(db_session)
     team = await make_team(db_session, organization=org)
     user = await make_user(db_session)
-    await make_membership(db_session, user=user, team=team, role="team_admin")
-    actor = principal_for(user, team_ids=[team.id], role="team_admin")
+    await make_membership(db_session, user=user, team=team, role="group_admin")
+    actor = principal_for(user, team_ids=[team.id], role="group_admin")
     row = await register_credential(
         db_session,
         actor,
@@ -540,8 +540,8 @@ async def test_revoke_outsider_existence_hide(db_session: AsyncSession) -> None:
         webhook_secret=None,
     )
     outsider = await make_user(db_session)
-    await make_membership(db_session, user=outsider, team=team_b, role="team_admin")
-    outsider_actor = principal_for(outsider, team_ids=[team_b.id], role="team_admin")
+    await make_membership(db_session, user=outsider, team=team_b, role="group_admin")
+    outsider_actor = principal_for(outsider, team_ids=[team_b.id], role="group_admin")
     with pytest.raises(GitHubAppNotFound):
         await revoke_credential(db_session, outsider_actor, row.id)
 
@@ -554,13 +554,20 @@ async def test_revoke_outsider_existence_hide(db_session: AsyncSession) -> None:
 async def _make_credential(
     db_session: AsyncSession,
     *,
-    role: str = "team_admin",
+    role: str = "group_admin",
     app_id: str = "2000",
 ):
+    # `role` is both the RBAC label ``services.github_app_service._is_team_admin``
+    # (application code, unrenamed in this PR) checks against on the in-memory
+    # ``CurrentUser`` AND the DB enum's current label (migration 0089,
+    # group-hierarchy rollout PR 0-1, renamed `user_role`'s `team_admin` value
+    # to `group_admin`). The two are the same string again now that the
+    # application-side literal comparisons were updated to match.
+    db_role = role
     org = await make_organization(db_session)
     team = await make_team(db_session, organization=org)
     user = await make_user(db_session)
-    await make_membership(db_session, user=user, team=team, role=role)
+    await make_membership(db_session, user=user, team=team, role=db_role)
     actor = principal_for(user, team_ids=[team.id], role=role)
     from services.github_app_service import register_credential
 

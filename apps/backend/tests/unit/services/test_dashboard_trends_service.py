@@ -725,7 +725,7 @@ async def test_the_highest_role_is_not_a_membership_signal(
     team_a = await make_team(db_session, organization=org)
     team_b = await make_team(db_session, organization=org)
     admin_a = await make_user(db_session)
-    await make_membership(db_session, user=admin_a, team=team_a, role="team_admin")
+    await make_membership(db_session, user=admin_a, team=team_a, role="group_admin")
 
     project_b = await make_project(db_session, team=team_b)
     scan_b = await make_scan(
@@ -739,7 +739,7 @@ async def test_the_highest_role_is_not_a_membership_signal(
 
     trends = await get_dashboard_trends(
         db_session,
-        actor=principal_for(admin_a, team_ids=[team_a.id], role="team_admin"),
+        actor=principal_for(admin_a, team_ids=[team_a.id], role="group_admin"),
         days=7,
         now=NOW,
     )

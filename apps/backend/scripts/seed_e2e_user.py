@@ -1062,7 +1062,7 @@ async def _seed(  # noqa: PLR0915 — a single linear seed routine reads better 
                 hashed = hash_password(chosen_password)
                 for i in range(extra_members):
                     role = (
-                        "team_admin"
+                        "group_admin"
                         if extra_team_admin and i == 0
                         else "developer"
                     )

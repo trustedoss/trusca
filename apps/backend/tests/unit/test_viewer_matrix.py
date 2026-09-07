@@ -144,7 +144,7 @@ def _passes(gate: Any, principal: Any) -> bool:
     return True
 
 
-@pytest.mark.parametrize("role", ["team_admin", "super_admin"])
+@pytest.mark.parametrize("role", ["group_admin", "super_admin"])
 def test_the_grades_above_keep_everything_they_had(role: str) -> None:
     """Adding a grade below must not narrow the grades above.
 

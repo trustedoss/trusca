@@ -192,7 +192,7 @@ async def test_record_report_download_team_id_mirrored_from_project(
     org = await make_organization(db_session)
     other_team = await make_team(db_session, organization=org)
     other_user = await make_user(db_session)
-    await make_membership(db_session, user=other_user, team=other_team, role="team_admin")
+    await make_membership(db_session, user=other_user, team=other_team, role="group_admin")
 
     await record_report_download(
         db_session,

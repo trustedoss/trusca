@@ -141,13 +141,13 @@ async def test_team_admin_register_201_no_key_leak(client: AsyncClient) -> None:
         org = await make_organization(s)
         team = await make_team(s, organization=org)
         admin = await make_user(s)
-        await make_membership(s, user=admin, team=team, role="team_admin")
+        await make_membership(s, user=admin, team=team, role="group_admin")
 
     pem = _make_pem()
     response = await client.post(
         f"/v1/github-app-credentials?team_id={team.id}",
         json={"app_id": "11", "app_slug": "scanner", "private_key": pem, "webhook_secret": "ws"},
-        headers=_bearer_for(admin, role="team_admin"),
+        headers=_bearer_for(admin, role="group_admin"),
     )
     assert response.status_code == 201
     body = response.json()
@@ -168,9 +168,9 @@ async def test_register_duplicate_409(client: AsyncClient) -> None:
         org = await make_organization(s)
         team = await make_team(s, organization=org)
         admin = await make_user(s)
-        await make_membership(s, user=admin, team=team, role="team_admin")
+        await make_membership(s, user=admin, team=team, role="group_admin")
 
-    headers = _bearer_for(admin, role="team_admin")
+    headers = _bearer_for(admin, role="group_admin")
     first = await client.post(
         f"/v1/github-app-credentials?team_id={team.id}",
         json={"app_id": "12", "private_key": _make_pem()},
@@ -192,12 +192,12 @@ async def test_register_malformed_pem_422(client: AsyncClient) -> None:
         org = await make_organization(s)
         team = await make_team(s, organization=org)
         admin = await make_user(s)
-        await make_membership(s, user=admin, team=team, role="team_admin")
+        await make_membership(s, user=admin, team=team, role="group_admin")
 
     response = await client.post(
         f"/v1/github-app-credentials?team_id={team.id}",
         json={"app_id": "13", "private_key": "not-a-pem"},
-        headers=_bearer_for(admin, role="team_admin"),
+        headers=_bearer_for(admin, role="group_admin"),
     )
     assert response.status_code == 422
     assert response.headers["content-type"].startswith(PROBLEM_JSON)
@@ -215,21 +215,21 @@ async def test_get_cross_team_404(client: AsyncClient) -> None:
         team_a = await make_team(s, organization=org)
         team_b = await make_team(s, organization=org)
         admin = await make_user(s)
-        await make_membership(s, user=admin, team=team_a, role="team_admin")
+        await make_membership(s, user=admin, team=team_a, role="group_admin")
         outsider = await make_user(s)
-        await make_membership(s, user=outsider, team=team_b, role="team_admin")
+        await make_membership(s, user=outsider, team=team_b, role="group_admin")
 
     created = await client.post(
         f"/v1/github-app-credentials?team_id={team_a.id}",
         json={"app_id": "14", "private_key": _make_pem()},
-        headers=_bearer_for(admin, role="team_admin"),
+        headers=_bearer_for(admin, role="group_admin"),
     )
     assert created.status_code == 201
     cred_id = created.json()["id"]
 
     response = await client.get(
         f"/v1/github-app-credentials/{cred_id}",
-        headers=_bearer_for(outsider, role="team_admin"),
+        headers=_bearer_for(outsider, role="group_admin"),
     )
     assert response.status_code == 404
     assert response.headers["content-type"].startswith(PROBLEM_JSON)
@@ -241,9 +241,9 @@ async def test_list_does_not_leak_key(client: AsyncClient) -> None:
         org = await make_organization(s)
         team = await make_team(s, organization=org)
         admin = await make_user(s)
-        await make_membership(s, user=admin, team=team, role="team_admin")
+        await make_membership(s, user=admin, team=team, role="group_admin")
 
-    headers = _bearer_for(admin, role="team_admin")
+    headers = _bearer_for(admin, role="group_admin")
     await client.post(
         f"/v1/github-app-credentials?team_id={team.id}",
         json={"app_id": "15", "private_key": _make_pem()},
@@ -269,10 +269,10 @@ async def test_installation_link_list_unlink(client: AsyncClient) -> None:
         org = await make_organization(s)
         team = await make_team(s, organization=org)
         admin = await make_user(s)
-        await make_membership(s, user=admin, team=team, role="team_admin")
+        await make_membership(s, user=admin, team=team, role="group_admin")
         project = await make_project(s, team=team)
 
-    headers = _bearer_for(admin, role="team_admin")
+    headers = _bearer_for(admin, role="group_admin")
     created = await client.post(
         f"/v1/github-app-credentials?team_id={team.id}",
         json={"app_id": "16", "private_key": _make_pem()},
@@ -320,11 +320,11 @@ async def test_revoke_204_and_developer_403(client: AsyncClient) -> None:
         org = await make_organization(s)
         team = await make_team(s, organization=org)
         admin = await make_user(s)
-        await make_membership(s, user=admin, team=team, role="team_admin")
+        await make_membership(s, user=admin, team=team, role="group_admin")
         dev = await make_user(s)
         await make_membership(s, user=dev, team=team, role="developer")
 
-    admin_headers = _bearer_for(admin, role="team_admin")
+    admin_headers = _bearer_for(admin, role="group_admin")
     created = await client.post(
         f"/v1/github-app-credentials?team_id={team.id}",
         json={"app_id": "17", "private_key": _make_pem()},
@@ -356,12 +356,12 @@ async def test_audit_row_masks_key(client: AsyncClient) -> None:
         org = await make_organization(s)
         team = await make_team(s, organization=org)
         admin = await make_user(s)
-        await make_membership(s, user=admin, team=team, role="team_admin")
+        await make_membership(s, user=admin, team=team, role="group_admin")
 
     created = await client.post(
         f"/v1/github-app-credentials?team_id={team.id}",
         json={"app_id": "18", "private_key": _make_pem(), "webhook_secret": "ws"},
-        headers=_bearer_for(admin, role="team_admin"),
+        headers=_bearer_for(admin, role="group_admin"),
     )
     cred_id = created.json()["id"]
 

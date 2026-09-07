@@ -100,7 +100,7 @@ MFA_PENDING_EXPIRE_MINUTES = 5
 _ROLE_PRIORITY: dict[str, int] = {
     "viewer": 1,
     "developer": 2,
-    "team_admin": 3,
+    "group_admin": 3,
     "super_admin": 4,
 }
 

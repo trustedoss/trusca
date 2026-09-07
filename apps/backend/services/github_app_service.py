@@ -189,7 +189,7 @@ def _is_super_admin(actor: CurrentUser) -> bool:
 def _is_team_admin(actor: CurrentUser, team_id: uuid.UUID) -> bool:
     if _is_super_admin(actor):
         return True
-    return actor.team_roles.get(team_id) == "team_admin"
+    return actor.team_roles.get(team_id) == "group_admin"
 
 
 def _is_team_member(actor: CurrentUser, team_id: uuid.UUID) -> bool:

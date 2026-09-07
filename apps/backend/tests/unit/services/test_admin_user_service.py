@@ -112,7 +112,7 @@ async def test_list_users_rolls_up_effective_role_and_team_count(
     team_b = await make_team(db_session, organization=org)
 
     team_admin = await make_user(db_session)
-    await make_membership(db_session, user=team_admin, team=team_a, role="team_admin")
+    await make_membership(db_session, user=team_admin, team=team_a, role="group_admin")
     await make_membership(db_session, user=team_admin, team=team_b, role="developer")
 
     developer = await make_user(db_session)
@@ -126,7 +126,7 @@ async def test_list_users_rolls_up_effective_role_and_team_count(
     page = await list_users(db_session, actor=actor, page_size=200)
     by_id = {item.id: item for item in page.items}
 
-    assert by_id[team_admin.id].role == "team_admin"
+    assert by_id[team_admin.id].role == "group_admin"
     assert by_id[team_admin.id].team_count == 2
     assert by_id[developer.id].role == "developer"
     assert by_id[developer.id].team_count == 1
@@ -197,10 +197,10 @@ async def test_update_user_role_to_team_admin_creates_membership(
         db_session,
         actor=actor,
         user_id=user.id,
-        payload=AdminUserRoleUpdate(role="team_admin", team_id=team.id),
+        payload=AdminUserRoleUpdate(role="group_admin", team_id=team.id),
     )
     roles = {m.team_id: m.role for m in detail.memberships}
-    assert roles == {team.id: "team_admin"}
+    assert roles == {team.id: "group_admin"}
 
 
 async def test_update_user_role_to_super_admin_sets_is_superuser(
@@ -237,7 +237,7 @@ async def test_update_user_role_team_role_without_team_id_raises(
             db_session,
             actor=actor,
             user_id=user.id,
-            payload=AdminUserRoleUpdate(role="team_admin", team_id=None),
+            payload=AdminUserRoleUpdate(role="group_admin", team_id=None),
         )
 
 
@@ -273,7 +273,7 @@ async def test_update_user_role_unknown_team_id_raises_team_not_found(
             db_session,
             actor=actor,
             user_id=user.id,
-            payload=AdminUserRoleUpdate(role="team_admin", team_id=bogus_team_id),
+            payload=AdminUserRoleUpdate(role="group_admin", team_id=bogus_team_id),
         )
 
     # 422 + extension snake_case ``team_id`` (echoed verbatim into Problem

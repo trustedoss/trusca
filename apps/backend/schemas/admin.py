@@ -33,8 +33,8 @@ from schemas.auth import _reject_weak_password
 # ---------------------------------------------------------------------------
 
 # Closed role set — must match the user_role ENUM created in 0002_auth_schema.
-_ROLE_VALUES = ("super_admin", "team_admin", "developer", "viewer")
-_TEAM_ROLE_VALUES = ("team_admin", "developer", "viewer")
+_ROLE_VALUES = ("super_admin", "group_admin", "developer", "viewer")
+_TEAM_ROLE_VALUES = ("group_admin", "developer", "viewer")
 _SLUG_PATTERN = re.compile(r"^[a-z0-9][a-z0-9-]{0,63}$")
 
 
@@ -76,7 +76,7 @@ class AdminUserListItem(BaseModel):
     full_name: str | None = None
     is_active: bool
     is_superuser: bool
-    role: Literal["super_admin", "team_admin", "developer", "viewer"] = "developer"
+    role: Literal["super_admin", "group_admin", "developer", "viewer"] = "developer"
     team_count: int = 0
     last_login_at: datetime | None = None
     created_at: datetime
@@ -127,7 +127,7 @@ class AdminUserCreateIn(BaseModel):
             "adds them."
         ),
     )
-    role: Literal["team_admin", "developer", "viewer"] | None = Field(
+    role: Literal["group_admin", "developer", "viewer"] | None = Field(
         default=None,
         description=(
             "Their grade on that team. Omitted follows the deployment's "
@@ -241,10 +241,10 @@ class AdminUserListPage(BaseModel):
 class AdminUserRoleUpdate(BaseModel):
     """Body for ``PATCH /v1/admin/users/{id}/role``."""
 
-    role: str = Field(description="One of super_admin / team_admin / developer.")
+    role: str = Field(description="One of super_admin / group_admin / developer.")
     team_id: uuid.UUID | None = Field(
         default=None,
-        description="Required when role is team_admin or developer; ignored for super_admin.",
+        description="Required when role is group_admin or developer; ignored for super_admin.",
     )
 
     @field_validator("role")

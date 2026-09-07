@@ -108,7 +108,7 @@ async def test_list_teams_team_admin_returns_404(client: AsyncClient) -> None:
         org = await make_organization(session)
         team = await make_team(session, organization=org)
         user = await make_user(session)
-        await make_membership(session, user=user, team=team, role="team_admin")
+        await make_membership(session, user=user, team=team, role="group_admin")
 
     response = await client.get("/v1/admin/teams", headers=_bearer_for(user))
     assert response.status_code == 404
@@ -165,7 +165,7 @@ async def test_super_admin_create_team_returns_201_and_audits(
             await session.execute(
                 text(
                     "SELECT count(*) FROM audit_logs "
-                    "WHERE actor_user_id = :a AND target_table = 'teams' "
+                    "WHERE actor_user_id = :a AND target_table = 'groups' "
                     "  AND action = 'create'"
                 ),
                 {"a": str(admin.id)},
@@ -330,7 +330,7 @@ async def test_remove_last_team_admin_with_others_returns_422(
         team = await make_team(session, organization=org)
         admin_user = await make_user(session)
         dev_user = await make_user(session)
-        await make_membership(session, user=admin_user, team=team, role="team_admin")
+        await make_membership(session, user=admin_user, team=team, role="group_admin")
         await make_membership(session, user=dev_user, team=team, role="developer")
         admin = await make_user(session, is_superuser=True)
 
@@ -349,7 +349,7 @@ async def test_remove_member_when_alone_returns_200(client: AsyncClient) -> None
         org = await make_organization(session)
         team = await make_team(session, organization=org)
         admin_user = await make_user(session)
-        await make_membership(session, user=admin_user, team=team, role="team_admin")
+        await make_membership(session, user=admin_user, team=team, role="group_admin")
         admin = await make_user(session, is_superuser=True)
 
     response = await client.delete(

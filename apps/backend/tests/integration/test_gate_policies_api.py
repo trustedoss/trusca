@@ -71,7 +71,7 @@ def _bearer_for(user: User) -> dict[str, str]:
     return {"Authorization": f"Bearer {create_access_token(subject=str(user.id), role=role)}"}
 
 
-async def _seed(client: AsyncClient, *, role: str = "team_admin"):
+async def _seed(client: AsyncClient, *, role: str = "group_admin"):
     factory = await _factory(client)
     async with factory() as session:
         org = await make_organization(session)

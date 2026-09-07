@@ -117,7 +117,7 @@ async def _count_team_admin_memberships(
         (
             await session.execute(
                 select(Membership).where(
-                    Membership.team_id == team_id, Membership.role == "team_admin"
+                    Membership.team_id == team_id, Membership.role == "group_admin"
                 )
             )
         )
@@ -228,7 +228,7 @@ async def test_lock_and_count_team_admins_blocks_concurrent_update(
             setup, organization=org, name=f"lock-{unique_suffix()}"
         )
         admin = await make_user(setup)
-        await make_membership(setup, user=admin, team=team, role="team_admin")
+        await make_membership(setup, user=admin, team=team, role="group_admin")
 
     session_a = session_factory()
     holder = await session_a.__aenter__()
@@ -242,7 +242,7 @@ async def test_lock_and_count_team_admins_blocks_concurrent_update(
                 await competitor.execute(
                     text(
                         "UPDATE memberships SET role = role "
-                        "WHERE team_id = :tid AND user_id = :uid"
+                        "WHERE group_id = :tid AND user_id = :uid"
                     ),
                     {"tid": str(team.id), "uid": str(admin.id)},
                 )
@@ -451,8 +451,8 @@ async def test_concurrent_remove_last_team_admin_blocks_at_least_one(
         admin_a = await make_user(setup_session)
         admin_b = await make_user(setup_session)
         developer = await make_user(setup_session)
-        await make_membership(setup_session, user=admin_a, team=team, role="team_admin")
-        await make_membership(setup_session, user=admin_b, team=team, role="team_admin")
+        await make_membership(setup_session, user=admin_a, team=team, role="group_admin")
+        await make_membership(setup_session, user=admin_b, team=team, role="group_admin")
         await make_membership(
             setup_session, user=developer, team=team, role="developer"
         )
@@ -516,8 +516,8 @@ async def test_concurrent_demote_last_team_admin_blocks_at_least_one(
         admin_a = await make_user(setup_session)
         admin_b = await make_user(setup_session)
         developer = await make_user(setup_session)
-        await make_membership(setup_session, user=admin_a, team=team, role="team_admin")
-        await make_membership(setup_session, user=admin_b, team=team, role="team_admin")
+        await make_membership(setup_session, user=admin_a, team=team, role="group_admin")
+        await make_membership(setup_session, user=admin_b, team=team, role="group_admin")
         await make_membership(
             setup_session, user=developer, team=team, role="developer"
         )

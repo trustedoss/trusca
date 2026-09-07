@@ -118,7 +118,7 @@ async def test_team_admin_upsert_read_delete(client: AsyncClient) -> None:
         org = await make_organization(session)
         team = await make_team(session, organization=org)
         admin = await make_user(session)
-        await make_membership(session, user=admin, team=team, role="team_admin")
+        await make_membership(session, user=admin, team=team, role="group_admin")
 
     # Upsert.
     r = await client.put(
@@ -159,7 +159,7 @@ async def test_developer_can_read_but_not_write(client: AsyncClient) -> None:
         org = await make_organization(session)
         team = await make_team(session, organization=org)
         admin = await make_user(session)
-        await make_membership(session, user=admin, team=team, role="team_admin")
+        await make_membership(session, user=admin, team=team, role="group_admin")
         dev = await make_user(session)
         await make_membership(session, user=dev, team=team, role="developer")
 
@@ -200,7 +200,7 @@ async def test_non_member_read_forbidden(client: AsyncClient) -> None:
         org = await make_organization(session)
         team = await make_team(session, organization=org)
         admin = await make_user(session)
-        await make_membership(session, user=admin, team=team, role="team_admin")
+        await make_membership(session, user=admin, team=team, role="group_admin")
         outsider = await make_user(session)
 
     await client.put(
@@ -221,7 +221,7 @@ async def test_team_admin_other_team_upsert_forbidden(client: AsyncClient) -> No
         team_a = await make_team(session, organization=org)
         team_b = await make_team(session, organization=org)
         admin = await make_user(session)
-        await make_membership(session, user=admin, team=team_a, role="team_admin")
+        await make_membership(session, user=admin, team=team_a, role="group_admin")
 
     r = await client.put(
         f"/v1/license-policies/teams/{team_b.id}",
@@ -262,7 +262,7 @@ async def test_org_default_non_super_admin_404(client: AsyncClient) -> None:
         org = await make_organization(session)
         team = await make_team(session, organization=org)
         admin = await make_user(session)
-        await make_membership(session, user=admin, team=team, role="team_admin")
+        await make_membership(session, user=admin, team=team, role="group_admin")
 
     r = await client.put(
         f"/v1/license-policies/org/{org.id}",
@@ -284,7 +284,7 @@ async def test_malformed_payload_422(client: AsyncClient) -> None:
         org = await make_organization(session)
         team = await make_team(session, organization=org)
         admin = await make_user(session)
-        await make_membership(session, user=admin, team=team, role="team_admin")
+        await make_membership(session, user=admin, team=team, role="group_admin")
 
     r = await client.put(
         f"/v1/license-policies/teams/{team.id}",
@@ -301,7 +301,7 @@ async def test_oversized_override_map_422(client: AsyncClient) -> None:
         org = await make_organization(session)
         team = await make_team(session, organization=org)
         admin = await make_user(session)
-        await make_membership(session, user=admin, team=team, role="team_admin")
+        await make_membership(session, user=admin, team=team, role="group_admin")
 
     huge = {f"Lic-{i}": "allowed" for i in range(10_000)}
     r = await client.put(
@@ -324,7 +324,7 @@ async def test_list_returns_visible_policies(client: AsyncClient) -> None:
         org = await make_organization(session)
         team = await make_team(session, organization=org)
         admin = await make_user(session)
-        await make_membership(session, user=admin, team=team, role="team_admin")
+        await make_membership(session, user=admin, team=team, role="group_admin")
 
     await client.put(
         f"/v1/license-policies/teams/{team.id}",

@@ -275,7 +275,7 @@ async def _seed_many_projects(
         org = await make_organization(session)
         team = await make_team(session, organization=org)
         user = await make_user(session)
-        await make_membership(session, user=user, team=team, role="team_admin")
+        await make_membership(session, user=user, team=team, role="group_admin")
 
         for index in range(total):
             project = await make_project(session, team=team)
@@ -345,7 +345,7 @@ async def test_project_and_component_counts_answer_different_questions(
         org = await make_organization(session)
         team = await make_team(session, organization=org)
         user = await make_user(session)
-        await make_membership(session, user=user, team=team, role="team_admin")
+        await make_membership(session, user=user, team=team, role="group_admin")
         project = await make_project(session, team=team)
         scan = await make_scan(session, project=project, status="succeeded")
         await _critical_finding(session, scan_id=scan.id)

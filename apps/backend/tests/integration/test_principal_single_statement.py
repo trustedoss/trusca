@@ -39,7 +39,7 @@ pytestmark = pytest.mark.integration
 # Independent of ``core.security._ROLE_PRIORITY``: hardcoded here so this file
 # does not lean on the same table the code under test reads to decide what
 # "highest" means.
-_ROLE_RANK = {"viewer": 1, "developer": 2, "team_admin": 3, "super_admin": 4}
+_ROLE_RANK = {"viewer": 1, "developer": 2, "group_admin": 3, "super_admin": 4}
 
 
 class _BearerRequest:
@@ -95,8 +95,8 @@ async def _load(session: AsyncSession, user_id: uuid.UUID) -> tuple[CurrentUser 
     "roles",
     [
         pytest.param((), id="zero_memberships"),
-        pytest.param(("team_admin",), id="one_membership"),
-        pytest.param(("viewer", "developer", "team_admin"), id="many_memberships"),
+        pytest.param(("group_admin",), id="one_membership"),
+        pytest.param(("viewer", "developer", "group_admin"), id="many_memberships"),
     ],
 )
 async def test_principal_load_is_one_statement_and_survives_membership_count(

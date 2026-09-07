@@ -104,7 +104,7 @@ async def _seed_audit_rows(session: AsyncSession, *, target_id: str) -> uuid.UUI
     Rows matter: asked about a target nothing matches, Postgres picks the
     cheapest index that covers any predicate and the choice says nothing about
     the query this contract is for. A first version of this file passed a
-    random UUID and got ``ix_projects_team_id`` back, which is a correct plan
+    random UUID and got ``ix_projects_group_id`` back, which is a correct plan
     for zero rows and the wrong thing to assert.
     """
     actor = await make_user(session)
@@ -257,7 +257,7 @@ async def test_the_active_project_index_is_shaped_for_the_query_it_serves(
     Every index this file covers has a competitor by the standard above, so all
     three tests assert that SOME index serves the query plus a definition
     contract on the index the migration added, rather than naming the winner of
-    a cost decision. This one competes with ``ix_projects_team_archived``,
+    a cost decision. This one competes with ``ix_projects_group_archived``,
     which covers both predicates and differs only in the ordering, so which
     index wins is a genuine cost decision that moves with the data. On the
     handful of rows a PR-gate test can seed, preferring the plain index and
@@ -277,15 +277,15 @@ async def test_the_active_project_index_is_shaped_for_the_query_it_serves(
         await db_session.execute(
             text(
                 "SELECT indexdef FROM pg_indexes "
-                "WHERE indexname = 'ix_projects_team_updated_active'"
+                "WHERE indexname = 'ix_projects_group_updated_active'"
             )
         )
     ).scalar_one_or_none()
 
     assert row is not None, "the active-project index is missing entirely"
     definition = " ".join(row.split())
-    assert "(team_id, updated_at DESC)" in definition, (
-        "the active-project index no longer leads with team_id followed by a "
+    assert "(group_id, updated_at DESC)" in definition, (
+        "the active-project index no longer leads with group_id followed by a "
         f"descending updated_at, so it cannot serve the list's ORDER BY: {definition}"
     )
     assert "WHERE (archived_at IS NULL)" in definition, (

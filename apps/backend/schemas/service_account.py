@@ -42,7 +42,7 @@ class ServiceAccountCreateIn(BaseModel):
         default="developer",
         description=(
             "The account's role within the team, exactly as a person's would "
-            "be: 'viewer', 'developer' or 'team_admin'."
+            "be: 'viewer', 'developer' or 'group_admin'."
         ),
     )
 

@@ -90,7 +90,7 @@ async def test_lock_team_for_destructive_op_blocks_concurrent_update(
     Strategy:
       - Setup: create a team T.
       - Session A: open a transaction, call the locking helper. Hold open.
-      - Session B: ``UPDATE teams SET name = name WHERE id = T`` with
+      - Session B: ``UPDATE groups SET name = name WHERE id = T`` with
         ``SET LOCAL lock_timeout = '500ms'``. The UPDATE must fail with
         lock_timeout (Postgres SQLSTATE 55P03). If the helper failed to
         take the lock the UPDATE would succeed instantly.
@@ -111,7 +111,7 @@ async def test_lock_team_for_destructive_op_blocks_concurrent_update(
             await competitor.execute(text("SET LOCAL lock_timeout = '500ms'"))
             with pytest.raises(DBAPIError) as exc_info:
                 await competitor.execute(
-                    text("UPDATE teams SET name = name WHERE id = :tid"),
+                    text("UPDATE groups SET name = name WHERE id = :tid"),
                     {"tid": str(team.id)},
                 )
             err = str(exc_info.value).lower()

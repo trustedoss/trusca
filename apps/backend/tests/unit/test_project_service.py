@@ -471,8 +471,8 @@ async def test_update_project_team_admin_can_update(
     team = await make_team(db_session, organization=org)
     project = await make_project(db_session, team=team)
     admin = await make_user(db_session)
-    await make_membership(db_session, user=admin, team=team, role="team_admin")
-    actor = principal_for(admin, team_ids=[team.id], role="team_admin")
+    await make_membership(db_session, user=admin, team=team, role="group_admin")
+    actor = principal_for(admin, team_ids=[team.id], role="group_admin")
 
     updated = await update_project(
         db_session,
@@ -550,8 +550,8 @@ async def test_update_project_sets_git_credential_as_ciphertext(
     team = await make_team(db_session, organization=org)
     project = await make_project(db_session, team=team)
     admin = await make_user(db_session)
-    await make_membership(db_session, user=admin, team=team, role="team_admin")
-    actor = principal_for(admin, team_ids=[team.id], role="team_admin")
+    await make_membership(db_session, user=admin, team=team, role="group_admin")
+    actor = principal_for(admin, team_ids=[team.id], role="group_admin")
 
     plaintext = "ghp_super_secret_pat_value_123"
     updated = await update_project(
@@ -592,8 +592,8 @@ async def test_update_project_clears_git_credential(
     team = await make_team(db_session, organization=org)
     project = await make_project(db_session, team=team)
     admin = await make_user(db_session)
-    await make_membership(db_session, user=admin, team=team, role="team_admin")
-    actor = principal_for(admin, team_ids=[team.id], role="team_admin")
+    await make_membership(db_session, user=admin, team=team, role="group_admin")
+    actor = principal_for(admin, team_ids=[team.id], role="group_admin")
 
     # Arrange: a credential is set.
     await update_project(
@@ -624,8 +624,8 @@ async def test_update_project_blank_credential_is_a_noop(
     team = await make_team(db_session, organization=org)
     project = await make_project(db_session, team=team)
     admin = await make_user(db_session)
-    await make_membership(db_session, user=admin, team=team, role="team_admin")
-    actor = principal_for(admin, team_ids=[team.id], role="team_admin")
+    await make_membership(db_session, user=admin, team=team, role="group_admin")
+    actor = principal_for(admin, team_ids=[team.id], role="group_admin")
 
     # Set one first.
     await update_project(
@@ -686,12 +686,12 @@ async def test_update_project_credential_outsider_cannot_set_other_team(
     project = await make_project(db_session, team=target_team)
 
     user = await make_user(db_session)
-    await make_membership(db_session, user=user, team=other_team, role="team_admin")
+    await make_membership(db_session, user=user, team=other_team, role="group_admin")
     actor = principal_for(
         user,
         team_ids=[other_team.id],
-        role="team_admin",
-        team_roles={other_team.id: "team_admin"},
+        role="group_admin",
+        team_roles={other_team.id: "group_admin"},
     )
 
     with pytest.raises(ProjectForbidden):
@@ -716,8 +716,8 @@ async def test_update_project_credential_masked_in_audit_diff(
     team = await make_team(db_session, organization=org)
     project = await make_project(db_session, team=team)
     admin = await make_user(db_session)
-    await make_membership(db_session, user=admin, team=team, role="team_admin")
-    actor = principal_for(admin, team_ids=[team.id], role="team_admin")
+    await make_membership(db_session, user=admin, team=team, role="group_admin")
+    actor = principal_for(admin, team_ids=[team.id], role="group_admin")
 
     plaintext = "ghp_audit_secret_value"
     updated = await update_project(
@@ -807,8 +807,8 @@ async def test_archive_project_sets_archived_at_and_writes_audit_log(
     team = await make_team(db_session, organization=org)
     project = await make_project(db_session, team=team)
     admin = await make_user(db_session)
-    await make_membership(db_session, user=admin, team=team, role="team_admin")
-    actor = principal_for(admin, team_ids=[team.id], role="team_admin")
+    await make_membership(db_session, user=admin, team=team, role="group_admin")
+    actor = principal_for(admin, team_ids=[team.id], role="group_admin")
 
     archived = await archive_project(db_session, project_id=project.id, actor=actor)
     assert archived.archived_at is not None
@@ -887,7 +887,7 @@ async def test_archive_project_non_member_is_forbidden(
 # A user who is `team_admin` in team_a and `developer` in team_b must NOT be
 # able to mutate team_b projects. Before the fix, `CurrentUser.role` was the
 # highest role across memberships and `_can_write_project` only checked
-# `project.team_id in actor.team_ids` + `actor.role == 'team_admin'`, which
+# `project.team_id in actor.team_ids` + `actor.role == 'group_admin'`, which
 # silently allowed the escalation. The fix consults `actor.team_roles` keyed
 # by the project's own team_id.
 
@@ -906,16 +906,16 @@ async def test_team_admin_in_other_team_cannot_patch_this_team_project(
     project_b = await make_project(db_session, team=team_b)
 
     user = await make_user(db_session)
-    await make_membership(db_session, user=user, team=team_a, role="team_admin")
+    await make_membership(db_session, user=user, team=team_a, role="group_admin")
     await make_membership(db_session, user=user, team=team_b, role="developer")
 
     # Mirror what `_load_current_user` produces: per-team role mapping +
-    # `role` = highest across memberships (= "team_admin").
+    # `role` = highest across memberships (= "group_admin").
     actor = principal_for(
         user,
         team_ids=[team_a.id, team_b.id],
-        role="team_admin",
-        team_roles={team_a.id: "team_admin", team_b.id: "developer"},
+        role="group_admin",
+        team_roles={team_a.id: "group_admin", team_b.id: "developer"},
     )
 
     # Negative path: PATCH on team_b's project must be forbidden — the actor
@@ -957,14 +957,14 @@ async def test_split_membership_user_can_archive_either_team_project(
     project_b = await make_project(db_session, team=team_b)
 
     user = await make_user(db_session)
-    await make_membership(db_session, user=user, team=team_a, role="team_admin")
+    await make_membership(db_session, user=user, team=team_a, role="group_admin")
     await make_membership(db_session, user=user, team=team_b, role="developer")
 
     actor = principal_for(
         user,
         team_ids=[team_a.id, team_b.id],
-        role="team_admin",
-        team_roles={team_a.id: "team_admin", team_b.id: "developer"},
+        role="group_admin",
+        team_roles={team_a.id: "group_admin", team_b.id: "developer"},
     )
 
     # developer in team_b → can archive team_b's project (M-10).

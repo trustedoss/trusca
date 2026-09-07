@@ -529,7 +529,7 @@ async def update_project_endpoint(
     project_id: uuid.UUID,
     payload: ProjectUpdate,
     session: AsyncSession = Depends(get_db),
-    actor: CurrentUser = Depends(require_role("team_admin")),
+    actor: CurrentUser = Depends(require_role("group_admin")),
 ) -> Response:
     try:
         project = await update_project(
@@ -1352,7 +1352,7 @@ async def get_webhook_status_endpoint(
     request: Request,
     project_id: uuid.UUID,
     session: AsyncSession = Depends(get_db),
-    actor: CurrentUser = Depends(require_role("team_admin")),
+    actor: CurrentUser = Depends(require_role("group_admin")),
 ) -> Response:
     """Configured or not, and for which provider. Never the secret.
 
@@ -1399,7 +1399,7 @@ async def issue_webhook_secret_endpoint(
     project_id: uuid.UUID,
     payload: WebhookSecretIssueIn,
     session: AsyncSession = Depends(get_db),
-    actor: CurrentUser = Depends(require_role("team_admin")),
+    actor: CurrentUser = Depends(require_role("group_admin")),
 ) -> Response:
     """Turn the webhook on, and hand back the secret once.
 

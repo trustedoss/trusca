@@ -617,9 +617,9 @@ def _team_admin(team_id: uuid.UUID) -> CurrentUser:
     return CurrentUser(
         id=uuid.uuid4(),
         email="admin@example.com",
-        role="team_admin",
+        role="group_admin",
         team_ids=[team_id],
-        team_roles={team_id: "team_admin"},
+        team_roles={team_id: "group_admin"},
         is_active=True,
         is_superuser=False,
     )

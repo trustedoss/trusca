@@ -120,7 +120,7 @@ def _assert_enabled() -> None:
 def _has_team_admin(actor: CurrentUser, team_id: uuid.UUID) -> bool:
     if actor.is_superuser or actor.role == "super_admin":
         return True
-    return actor.team_roles.get(team_id) in {"team_admin", "super_admin"}
+    return actor.team_roles.get(team_id) in {"group_admin", "super_admin"}
 
 
 def _now() -> datetime:

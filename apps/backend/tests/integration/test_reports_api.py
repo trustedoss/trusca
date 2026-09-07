@@ -275,7 +275,7 @@ async def test_xlsx_super_admin_bypasses_team_check(client: AsyncClient) -> None
 
 
 async def test_report_format_template_write_requires_super_admin(client: AsyncClient) -> None:
-    team, user, _project = await _seed(client, role="team_admin")
+    team, user, _project = await _seed(client, role="group_admin")
 
     response = await client.put(
         f"/v1/report-format-templates/org/{team.organization_id}",

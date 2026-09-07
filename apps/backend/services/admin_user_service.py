@@ -331,7 +331,7 @@ async def list_users(
     if role == "super_admin":
         base = base.where(User.is_superuser.is_(True))
         count_base = count_base.where(User.is_superuser.is_(True))
-    elif role in ("team_admin", "developer", "viewer"):
+    elif role in ("group_admin", "developer", "viewer"):
         sub = select(Membership.user_id).where(Membership.role == role).scalar_subquery()
         base = base.where(User.id.in_(sub))
         count_base = count_base.where(User.id.in_(sub))
@@ -368,7 +368,7 @@ async def list_users(
             select(
                 Membership.user_id,
                 func.count(Membership.id),
-                func.bool_or(Membership.role == "team_admin"),
+                func.bool_or(Membership.role == "group_admin"),
             )
             .where(Membership.user_id.in_(user_ids))
             .group_by(Membership.user_id)
@@ -380,7 +380,7 @@ async def list_users(
         if u.is_superuser:
             return "super_admin"
         _, has_team_admin = rollup.get(u.id, (0, False))
-        return "team_admin" if has_team_admin else "developer"
+        return "group_admin" if has_team_admin else "developer"
 
     items = [
         AdminUserListItem(

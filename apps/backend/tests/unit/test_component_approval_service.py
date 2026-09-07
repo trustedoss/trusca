@@ -85,9 +85,9 @@ def _team_admin(team_id: uuid.UUID) -> CurrentUser:
     return CurrentUser(
         id=uuid.uuid4(),
         email=f"ta-{unique_suffix()}@example.com",
-        role="team_admin",
+        role="group_admin",
         team_ids=[team_id],
-        team_roles={team_id: "team_admin"},
+        team_roles={team_id: "group_admin"},
         is_active=True,
         is_superuser=False,
     )
@@ -246,8 +246,8 @@ async def developer_actor(session: AsyncSession, team_a):
 @pytest.fixture
 async def team_admin_actor(session: AsyncSession, team_a):
     user = await make_user(session)
-    await make_membership(session, user=user, team=team_a, role="team_admin")
-    return principal_for(user, team_ids=[team_a.id], role="team_admin")
+    await make_membership(session, user=user, team=team_a, role="group_admin")
+    return principal_for(user, team_ids=[team_a.id], role="group_admin")
 
 
 @pytest.fixture

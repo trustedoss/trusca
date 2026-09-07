@@ -16,7 +16,7 @@ import pytest
 from core.config import default_member_role
 
 
-@pytest.mark.parametrize("value", ["viewer", "developer", "team_admin"])
+@pytest.mark.parametrize("value", ["viewer", "developer", "group_admin"])
 def test_a_grade_is_taken_as_written(value: str, monkeypatch) -> None:
     monkeypatch.setenv("DEFAULT_MEMBER_ROLE", value)
 

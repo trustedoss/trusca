@@ -96,7 +96,7 @@ class ServiceAccountUnowned(ServiceAccountError):
 def _can_administer_team(actor: CurrentUser, team_id: uuid.UUID) -> bool:
     if actor.is_superuser or actor.role == "super_admin":
         return True
-    return actor.team_roles.get(team_id) in {"team_admin", "super_admin"}
+    return actor.team_roles.get(team_id) in {"group_admin", "super_admin"}
 
 
 def _unusable_password() -> str:
@@ -164,7 +164,7 @@ async def create_service_account(
             "name must be lowercase letters, digits and hyphens, 3 to 64 "
             "characters, starting and ending with a letter or digit"
         )
-    if role not in {"viewer", "developer", "team_admin"}:
+    if role not in {"viewer", "developer", "group_admin"}:
         raise ServiceAccountInvalid(f"unknown role: {role!r}")
 
     team = (

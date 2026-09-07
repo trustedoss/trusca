@@ -284,7 +284,7 @@ def _can_issue_at_scope(
     if scope == "team":
         if team_id is None:
             return False
-        return actor.team_roles.get(team_id) == "team_admin"
+        return actor.team_roles.get(team_id) == "group_admin"
     if scope == "project":
         if project_team_id is None:
             return False
@@ -323,7 +323,7 @@ def _can_revoke_key(actor: CurrentUser, key: APIKey) -> bool:
         return True
     if key.created_by_user_id == actor.id:
         return True
-    if key.team_id is not None and actor.team_roles.get(key.team_id) == "team_admin":
+    if key.team_id is not None and actor.team_roles.get(key.team_id) == "group_admin":
         return True
     return False
 

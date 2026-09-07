@@ -148,7 +148,7 @@ async def test_user_cancel_audit_row_has_owning_team_id(client: AsyncClient) -> 
         row = (
             await session.execute(
                 text(
-                    "SELECT team_id FROM audit_logs "
+                    "SELECT group_id FROM audit_logs "
                     "WHERE actor_user_id = :a "
                     "  AND target_table = 'scans' "
                     "  AND target_id = :t "

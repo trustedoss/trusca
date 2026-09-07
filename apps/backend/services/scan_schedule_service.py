@@ -57,7 +57,7 @@ def _may_administer_project(actor: CurrentUser, team_id: uuid.UUID) -> bool:
     grade = actor.team_roles.get(team_id)
     if grade is None:
         return False
-    return _ROLE_PRIORITY.get(grade, 0) >= _ROLE_PRIORITY["team_admin"]
+    return _ROLE_PRIORITY.get(grade, 0) >= _ROLE_PRIORITY["group_admin"]
 
 
 def _may_read_project(actor: CurrentUser, team_id: uuid.UUID) -> bool:

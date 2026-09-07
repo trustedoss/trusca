@@ -67,7 +67,7 @@ def test_require_super_admin_or_404_rejects_inactive_user_with_401() -> None:
     "role,is_superuser",
     [
         ("developer", False),
-        ("team_admin", False),
+        ("group_admin", False),
     ],
 )
 def test_require_super_admin_or_404_returns_404_for_non_super_admin(

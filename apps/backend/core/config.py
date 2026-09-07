@@ -3226,7 +3226,7 @@ def default_member_role() -> str | None:
     raw = os.getenv("DEFAULT_MEMBER_ROLE", "").strip().lower()
     if not raw:
         return None
-    if raw in {"viewer", "developer", "team_admin"}:
+    if raw in {"viewer", "developer", "group_admin"}:
         return raw
     # Set to something this does not recognise. Answering None here would send
     # both callers to their historical fallback, which is a higher grade than
@@ -3732,7 +3732,23 @@ def oidc_group_role_map() -> dict[str, str]:
         group, _, grade = pair.partition(":")
         group = group.strip()
         grade = grade.strip()
-        if not group or grade not in {"viewer", "developer", "team_admin"}:
+        if not group:
+            continue
+        if grade not in {"viewer", "developer", "group_admin"}:
+            # Same reasoning as default_member_role()'s unrecognised branch:
+            # dropping the pair silently would demote whoever is in this
+            # group to the floor on their next sign-in with nothing in the
+            # log to say why. A stale pre-rename value (e.g. "team_admin",
+            # from before the group_admin role rename) is exactly the case
+            # this is for.
+            import structlog
+
+            structlog.get_logger("config").warning(
+                "config.oidc_group_role_map_unrecognised",
+                env_var="OIDC_GROUP_ROLE_MAP",
+                group=group,
+                value=grade,
+            )
             continue
         mapping[group] = grade
     return mapping

@@ -211,7 +211,7 @@ def _role_in_team(actor: CurrentUser, team_id: uuid.UUID) -> str | None:
 
 def _has_team_admin(actor: CurrentUser, team_id: uuid.UUID) -> bool:
     role = _role_in_team(actor, team_id)
-    return role in {"team_admin", "super_admin"}
+    return role in {"group_admin", "super_admin"}
 
 
 # ---------------------------------------------------------------------------

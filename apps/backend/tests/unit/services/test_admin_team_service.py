@@ -194,7 +194,7 @@ async def test_create_team_persists_and_writes_audit(db_session: AsyncSession) -
         await db_session.execute(
             text(
                 "SELECT action FROM audit_logs "
-                "WHERE target_table = 'teams' "
+                "WHERE target_table = 'groups' "
                 "  AND diff @> CAST(:match AS jsonb)"
             ),
             {"match": f'{{"slug": "{detail.slug}"}}'},
@@ -516,7 +516,7 @@ async def test_delete_team_with_only_archived_projects_succeeds(
         await db_session.execute(
             text(
                 "SELECT action FROM audit_logs "
-                "WHERE target_table = 'teams' AND target_id = :tid"
+                "WHERE target_table = 'groups' AND target_id = :tid"
             ),
             {"tid": str(team.id)},
         )
@@ -581,7 +581,7 @@ async def test_add_team_member_demotion_blocked_when_last_admin(
     team = await make_team(db_session, organization=org)
     admin_member = await make_user(db_session)
     dev = await make_user(db_session)
-    await make_membership(db_session, user=admin_member, team=team, role="team_admin")
+    await make_membership(db_session, user=admin_member, team=team, role="group_admin")
     await make_membership(db_session, user=dev, team=team, role="developer")
 
     admin = await make_user(db_session, is_superuser=True)
@@ -633,7 +633,7 @@ async def test_remove_team_member_last_admin_with_others_blocked(
     team = await make_team(db_session, organization=org)
     admin_member = await make_user(db_session)
     dev = await make_user(db_session)
-    await make_membership(db_session, user=admin_member, team=team, role="team_admin")
+    await make_membership(db_session, user=admin_member, team=team, role="group_admin")
     await make_membership(db_session, user=dev, team=team, role="developer")
 
     admin = await make_user(db_session, is_superuser=True)
@@ -658,7 +658,7 @@ async def test_remove_team_member_last_admin_when_alone_is_allowed(
     org = await make_organization(db_session)
     team = await make_team(db_session, organization=org)
     admin_member = await make_user(db_session)
-    await make_membership(db_session, user=admin_member, team=team, role="team_admin")
+    await make_membership(db_session, user=admin_member, team=team, role="group_admin")
 
     admin = await make_user(db_session, is_superuser=True)
     actor = principal_for(admin, role="super_admin")

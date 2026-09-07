@@ -68,7 +68,7 @@ _ROLE_FACTORIES = {
 # user resolver is an admin route, not an "authed" one.
 _GATE_PRECEDENCE = ("super_admin_404", "role_or_key>=", "role>=", "authed")
 
-ALL_ROLES = ("developer", "team_admin", "super_admin")
+ALL_ROLES = ("developer", "group_admin", "super_admin")
 
 
 # ---------------------------------------------------------------------------
@@ -252,7 +252,7 @@ def test_role_gate_allows_and_denies_the_declared_roles(
             assert excinfo.value.status_code == 403
 
 
-@pytest.mark.parametrize("role", ["developer", "team_admin"])
+@pytest.mark.parametrize("role", ["developer", "group_admin"])
 def test_admin_gate_hides_its_existence_from_lower_roles(role: str) -> None:
     """The admin surface answers 404, not 403: a 403 would confirm the URL space."""
     from core.security import require_super_admin_or_404
@@ -265,7 +265,7 @@ def test_admin_gate_hides_its_existence_from_lower_roles(role: str) -> None:
     assert gate(current_user=_principal("super_admin")) is not None
 
 
-@pytest.mark.parametrize("gate_factory_arg", ["developer", "team_admin"])
+@pytest.mark.parametrize("gate_factory_arg", ["developer", "group_admin"])
 def test_anonymous_and_deactivated_callers_are_rejected_before_any_role_check(
     gate_factory_arg: str,
 ) -> None:
@@ -292,7 +292,7 @@ def test_role_priority_is_pinned() -> None:
     assert _ROLE_PRIORITY == {
         "viewer": 1,
         "developer": 2,
-        "team_admin": 3,
+        "group_admin": 3,
         "super_admin": 4,
     }
 

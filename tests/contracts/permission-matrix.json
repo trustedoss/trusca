@@ -337,7 +337,7 @@
     {
       "method": "GET",
       "path": "/v1/audit",
-      "gate": "role>=team_admin"
+      "gate": "role>=group_admin"
     },
     {
       "method": "GET",
@@ -552,7 +552,7 @@
     {
       "method": "DELETE",
       "path": "/v1/notification-rules/{rule_id}",
-      "gate": "role>=team_admin"
+      "gate": "role>=group_admin"
     },
     {
       "method": "GET",
@@ -562,7 +562,7 @@
     {
       "method": "POST",
       "path": "/v1/notification-rules/org/{organization_id}",
-      "gate": "role>=team_admin"
+      "gate": "role>=group_admin"
     },
     {
       "method": "GET",
@@ -572,7 +572,7 @@
     {
       "method": "POST",
       "path": "/v1/notification-rules/teams/{team_id}",
-      "gate": "role>=team_admin"
+      "gate": "role>=group_admin"
     },
     {
       "method": "GET",
@@ -647,7 +647,7 @@
     {
       "method": "PATCH",
       "path": "/v1/projects/{project_id}",
-      "gate": "role>=team_admin"
+      "gate": "role>=group_admin"
     },
     {
       "method": "GET",
@@ -1078,13 +1078,13 @@
     {
       "method": "GET",
       "path": "/v1/projects/{project_id}/webhook",
-      "gate": "role>=team_admin",
+      "gate": "role>=group_admin",
       "why": "Says whether the webhook is configured and for which provider, never the secret. Same gate as issuing it: knowing a repository can drive this deployment is part of the same setting."
     },
     {
       "method": "POST",
       "path": "/v1/projects/{project_id}/webhook-secret",
-      "gate": "role>=team_admin",
+      "gate": "role>=group_admin",
       "why": "Issues the shared secret that lets a repository start scans here, and re-issuing invalidates the current one. Same level that edits the project's other settings; scoped to the owning team by get_project."
     },
     {

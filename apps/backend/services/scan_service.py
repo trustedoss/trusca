@@ -1064,7 +1064,7 @@ def _can_admin_team(actor: CurrentUser, team_id: uuid.UUID) -> bool:
     """
     if actor.is_superuser or actor.role == "super_admin":
         return True
-    return actor.team_roles.get(team_id) == "team_admin"
+    return actor.team_roles.get(team_id) == "group_admin"
 
 
 def _has_release_label(scan_metadata: dict[str, object] | None) -> bool:

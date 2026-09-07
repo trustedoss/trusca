@@ -257,8 +257,8 @@ async def test_issue_team_scope_round_trips_for_team_admin(db_session: AsyncSess
     org = await make_organization(db_session)
     team = await make_team(db_session, organization=org)
     user = await make_user(db_session)
-    await make_membership(db_session, user=user, team=team, role="team_admin")
-    actor = principal_for(user, team_ids=[team.id], role="team_admin")
+    await make_membership(db_session, user=user, team=team, role="group_admin")
+    actor = principal_for(user, team_ids=[team.id], role="group_admin")
 
     row, plaintext = await issue_api_key(
         db_session,
@@ -391,8 +391,8 @@ async def test_issue_org_scope_rejected_for_team_admin(db_session: AsyncSession)
     org = await make_organization(db_session)
     team = await make_team(db_session, organization=org)
     user = await make_user(db_session)
-    await make_membership(db_session, user=user, team=team, role="team_admin")
-    actor = principal_for(user, team_ids=[team.id], role="team_admin")
+    await make_membership(db_session, user=user, team=team, role="group_admin")
+    actor = principal_for(user, team_ids=[team.id], role="group_admin")
 
     with pytest.raises(APIKeyForbidden):
         await issue_api_key(
@@ -746,12 +746,12 @@ async def test_list_team_admin_sees_team_scoped_keys(db_session: AsyncSession) -
     )
 
     admin_user = await make_user(db_session)
-    await make_membership(db_session, user=admin_user, team=team, role="team_admin")
+    await make_membership(db_session, user=admin_user, team=team, role="group_admin")
     admin_actor = principal_for(
         admin_user,
         team_ids=[team.id],
-        role="team_admin",
-        team_roles={team.id: "team_admin"},
+        role="group_admin",
+        team_roles={team.id: "group_admin"},
     )
 
     rows, _ = await list_api_keys(db_session, admin_actor, page_size=200)

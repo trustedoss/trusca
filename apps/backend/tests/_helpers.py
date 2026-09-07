@@ -245,7 +245,7 @@ async def principal_loaded_from_db(session: AsyncSession, *, user: User) -> Curr
     team_ids = [m.team_id for m in memberships]
     team_roles = {m.team_id: m.role for m in memberships}
 
-    role_priority = {"developer": 1, "team_admin": 2, "super_admin": 3}
+    role_priority = {"developer": 1, "group_admin": 2, "super_admin": 3}
     if fresh.is_superuser:
         role = "super_admin"
     elif memberships:

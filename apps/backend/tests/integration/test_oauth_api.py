@@ -371,7 +371,7 @@ async def test_callback_creates_new_user_and_personal_team(
                 select(Membership).where(Membership.user_id == user.id)
             )
         ).scalar_one()
-        assert membership.role == "team_admin"
+        assert membership.role == "group_admin"
         team = (
             await session.execute(select(Team).where(Team.id == membership.team_id))
         ).scalar_one()

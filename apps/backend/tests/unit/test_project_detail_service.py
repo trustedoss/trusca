@@ -463,20 +463,20 @@ async def test_overview_current_user_role_super_admin(
 async def test_overview_current_user_role_team_admin(
     db_session: AsyncSession,
 ) -> None:
-    """A team_admin of the project's team sees 'team_admin' (the BUG-005 case)."""
+    """A team_admin of the project's team sees 'group_admin' (the BUG-005 case)."""
     from services.project_detail_service import get_project_overview
 
     org = await make_organization(db_session)
     team = await make_team(db_session, organization=org)
     user = await make_user(db_session)
-    await make_membership(db_session, user=user, team=team, role="team_admin")
+    await make_membership(db_session, user=user, team=team, role="group_admin")
     project = await make_project(db_session, team=team)
     # The JWT/global role only ever yields developer for a non-superuser; the
     # service must resolve team_admin from the DB membership regardless.
-    actor = principal_for(user, team_ids=[team.id], role="team_admin")
+    actor = principal_for(user, team_ids=[team.id], role="group_admin")
 
     overview = await get_project_overview(db_session, project_id=project.id, actor=actor)
-    assert overview["current_user_role"] == "team_admin"
+    assert overview["current_user_role"] == "group_admin"
 
 
 async def test_overview_current_user_role_developer(
@@ -510,13 +510,13 @@ async def test_overview_current_user_role_resolved_from_db_not_jwt(
     org = await make_organization(db_session)
     team = await make_team(db_session, organization=org)
     user = await make_user(db_session)
-    await make_membership(db_session, user=user, team=team, role="team_admin")
+    await make_membership(db_session, user=user, team=team, role="group_admin")
     project = await make_project(db_session, team=team)
     # Stale claim: principal says developer, DB says team_admin.
     actor = principal_for(user, team_ids=[team.id], role="developer")
 
     overview = await get_project_overview(db_session, project_id=project.id, actor=actor)
-    assert overview["current_user_role"] == "team_admin"
+    assert overview["current_user_role"] == "group_admin"
 
 
 async def test_overview_current_user_role_org_wide_reader_defaults_developer(

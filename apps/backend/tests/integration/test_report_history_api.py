@@ -515,7 +515,7 @@ async def test_vex_import_does_not_emit_history_row(client: AsyncClient) -> None
                 )
             )
         ).scalar_one()
-        existing.role = "team_admin"
+        existing.role = "group_admin"
         await session.commit()
 
     headers = _bearer_for(user)

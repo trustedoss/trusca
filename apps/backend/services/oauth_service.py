@@ -548,7 +548,7 @@ def _grade_for(info: OAuthUserInfo) -> str:
     # Nothing said anywhere: the personal team this grade belongs to is
     # created for them and contains nothing else, so administering it is the
     # historical answer and stays the answer.
-    return "team_admin"
+    return "group_admin"
 
 
 def _refuse_unvouched_link(info: OAuthUserInfo) -> None:
