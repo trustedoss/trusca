@@ -34,7 +34,7 @@ GitLab CI/CD를 사용하는 GitLab 프로젝트를 운영하는 엔지니어. �
 ```yaml
 # .gitlab-ci.yml
 include:
-  - remote: 'https://raw.githubusercontent.com/trustedoss/trusca/v0.22.4/templates/gitlab-ci.yml'
+  - remote: 'https://raw.githubusercontent.com/trustedoss/trusca/v0.22.5/templates/gitlab-ci.yml'
 
 variables:
   TRUSTEDOSS_API_URL: 'https://trustedoss.example.com'
@@ -94,7 +94,7 @@ masked 플래그는 잡 로그에 Key가 그대로 노출되는 것을 막습니
 
 ```yaml
 include:
-  - remote: 'https://raw.githubusercontent.com/trustedoss/trusca/v0.22.4/templates/gitlab-ci.yml'
+  - remote: 'https://raw.githubusercontent.com/trustedoss/trusca/v0.22.5/templates/gitlab-ci.yml'
 
 variables:
   TRUSTEDOSS_API_URL: 'https://trustedoss.example.com'
@@ -110,7 +110,7 @@ include한 잡의 rules를 오버라이드:
 
 ```yaml
 include:
-  - remote: 'https://raw.githubusercontent.com/trustedoss/trusca/v0.22.4/templates/gitlab-ci.yml'
+  - remote: 'https://raw.githubusercontent.com/trustedoss/trusca/v0.22.5/templates/gitlab-ci.yml'
 
 .trustedoss-sca:
   rules:
@@ -122,7 +122,7 @@ include:
 
 ```yaml
 include:
-  - remote: 'https://raw.githubusercontent.com/trustedoss/trusca/v0.22.4/templates/gitlab-ci.yml'
+  - remote: 'https://raw.githubusercontent.com/trustedoss/trusca/v0.22.5/templates/gitlab-ci.yml'
 
 trustedoss:scan-container:
   extends: .trustedoss-sca
@@ -132,7 +132,7 @@ trustedoss:scan-container:
 
 ### 태그 핀
 
-재현 가능한 파이프라인을 위해 `include` URL을 `main`이 아닌 릴리스 태그(`v0.22.4`)에 고정하세요.
+재현 가능한 파이프라인을 위해 `include` URL을 `main`이 아닌 릴리스 태그(`v0.22.5`)에 고정하세요.
 
 ## 템플릿 해부 (고급)
 

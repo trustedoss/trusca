@@ -15,7 +15,7 @@ GitHub Actions를 사용하는 GitHub 저장소를 운영하는 엔지니어. �
 :::
 
 :::note 액션 출처
-모노레포의 `actions/scan/action.yml` 컴포지트 액션을 `uses: trustedoss/trusca/actions/scan@v0.22.4`로 직접 참조하세요. 독립된 Marketplace 게시는 로드맵에 있습니다.
+모노레포의 `actions/scan/action.yml` 컴포지트 액션을 `uses: trustedoss/trusca/actions/scan@v0.22.5`로 직접 참조하세요. 독립된 Marketplace 게시는 로드맵에 있습니다.
 :::
 
 ## 시작 전 준비
@@ -53,7 +53,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - name: TRUSCA SCA scan
-        uses: trustedoss/trusca/actions/scan@v0.22.4
+        uses: trustedoss/trusca/actions/scan@v0.22.5
         with:
           api-url: https://trustedoss.example.com
           api-key: ${{ secrets.TRUSTEDOSS_API_KEY }}
@@ -137,7 +137,7 @@ jobs:
 ```yaml
 - name: TRUSCA SCA scan
   id: sca
-  uses: trustedoss/trusca/actions/scan@v0.22.4
+  uses: trustedoss/trusca/actions/scan@v0.22.5
   with:
     api-url: https://trustedoss.example.com
     api-key: ${{ secrets.TRUSTEDOSS_API_KEY }}
@@ -158,7 +158,7 @@ jobs:
 정책을 시드하는 동안 PR을 차단하지 않으려는 경우에 유용합니다.
 
 ```yaml
-- uses: trustedoss/trusca/actions/scan@v0.22.4
+- uses: trustedoss/trusca/actions/scan@v0.22.5
   with:
     api-url: https://trustedoss.example.com
     api-key: ${{ secrets.TRUSTEDOSS_API_KEY }}
@@ -171,7 +171,7 @@ PR 코멘트는 그대로 게시되며 체크는 green으로 유지됩니다.
 ### 컨테이너 스캔
 
 ```yaml
-- uses: trustedoss/trusca/actions/scan@v0.22.4
+- uses: trustedoss/trusca/actions/scan@v0.22.5
   with:
     api-url: https://trustedoss.example.com
     api-key: ${{ secrets.TRUSTEDOSS_API_KEY }}
@@ -190,7 +190,7 @@ PR 코멘트는 그대로 게시되며 체크는 green으로 유지됩니다.
 
 ```yaml
 - name: SCA — source
-  uses: trustedoss/trusca/actions/scan@v0.22.4
+  uses: trustedoss/trusca/actions/scan@v0.22.5
   with:
     api-url: https://trustedoss.example.com
     api-key: ${{ secrets.TRUSTEDOSS_API_KEY }}
@@ -198,7 +198,7 @@ PR 코멘트는 그대로 게시되며 체크는 green으로 유지됩니다.
     scan-kind: source
 
 - name: SCA — container
-  uses: trustedoss/trusca/actions/scan@v0.22.4
+  uses: trustedoss/trusca/actions/scan@v0.22.5
   with:
     api-url: https://trustedoss.example.com
     api-key: ${{ secrets.TRUSTEDOSS_API_KEY }}
@@ -216,7 +216,7 @@ PR 코멘트는 그대로 게시되며 체크는 green으로 유지됩니다.
 `main`에서만 게이트를 적용하고 PR에서는 advisory:
 
 ```yaml
-- uses: trustedoss/trusca/actions/scan@v0.22.4
+- uses: trustedoss/trusca/actions/scan@v0.22.5
   with:
     api-url: https://trustedoss.example.com
     api-key: ${{ secrets.TRUSTEDOSS_API_KEY }}
@@ -355,7 +355,7 @@ EPSS는 모든 CVE에 점수를 매기지 않아 동기화가 정상이어도 �
 재현성이 필요하면 커밋 자체에 고정하세요.
 
 ```yaml
-- uses: trustedoss/trusca/actions/scan@176bc3f0632bf0cf209c443da308e3d863dfde44  # v0.22.4
+- uses: trustedoss/trusca/actions/scan@176bc3f0632bf0cf209c443da308e3d863dfde44  # v0.22.5
 ```
 
 ## ref가 하는 일 {#how-the-ref-becomes-a-retention-key}
