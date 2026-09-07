@@ -111,6 +111,30 @@ class TeamHasProjects(AdminTeamError):
         }
 
 
+class TeamHasChildren(AdminTeamError):
+    """409 -- the team still has child groups under it (group-hierarchy Phase 1).
+
+    ``parent_group_id`` is ``ON DELETE RESTRICT``, so the DB would already
+    refuse this delete -- but as a bare ``IntegrityError`` from the generic
+    handler (500, not a Problem Details response naming the blocker), the
+    same gap ``TeamHasProjects``/``TeamHasActiveScans`` close for their own
+    blocking conditions. No group can have children yet in Phase 1 (nothing
+    sets ``parent_group_id``), so this is unreachable today; it exists so the
+    day something does, deleting a parent fails the same legible way its
+    siblings already do rather than surfacing as an unexplained 500.
+    """
+
+    status_code = 409
+    title = "Team Has Children"
+
+    def __init__(self, message: str, *, child_count: int) -> None:
+        super().__init__(message)
+        self.extensions = {
+            "team_has_children": True,
+            "child_count": child_count,
+        }
+
+
 class LastTeamAdminProtected(AdminTeamError):
     status_code = 422
     title = "Last Team Admin Protected"
@@ -624,6 +648,24 @@ async def delete_team(
             f"team {team_id} still owns {len(live_projects)} non-archived "
             "project(s); archive them before deleting the team",
             project_count=len(live_projects),
+        )
+
+    # group-hierarchy Phase 1: refuse when the team still has child groups.
+    # parent_group_id is ON DELETE RESTRICT, so the DELETE below would fail
+    # at the DB either way -- this turns that into a legible 409 instead of
+    # an IntegrityError surfacing as a generic 500. Unreachable today (no
+    # code path sets parent_group_id yet); kept in step with its siblings
+    # above so the day one does, this doesn't regress to the opaque case.
+    child_count = (
+        await session.execute(
+            select(func.count()).select_from(Team).where(Team.parent_group_id == team_id)
+        )
+    ).scalar_one()
+    if child_count:
+        raise TeamHasChildren(
+            f"team {team_id} still has {child_count} child group(s); "
+            "move or delete them before deleting this group",
+            child_count=child_count,
         )
 
     # Read the members before the delete: the memberships go with the team on

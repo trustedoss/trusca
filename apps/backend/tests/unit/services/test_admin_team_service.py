@@ -496,6 +496,32 @@ async def test_delete_team_with_live_projects_is_refused(
     assert excinfo.value.extensions == {"team_has_projects": True, "project_count": 2}
 
 
+async def test_delete_team_with_child_group_is_refused(
+    db_session: AsyncSession,
+) -> None:
+    """group-hierarchy Phase 1: a team that still has a child group cannot be
+    deleted -- parent_group_id is ON DELETE RESTRICT, and this turns that
+    into a legible 409 (security review finding) instead of an unhandled
+    IntegrityError surfacing as a generic 500. Nothing sets parent_group_id
+    yet outside this test, so this pins down the behavior ahead of Phase 5
+    giving it a real caller."""
+    from services.admin_team_service import TeamHasChildren, delete_team
+
+    org = await make_organization(db_session)
+    parent = await make_team(db_session, organization=org)
+    child = await make_team(db_session, organization=org)
+    child.parent_group_id = parent.id
+    await db_session.commit()
+
+    admin = await make_user(db_session, is_superuser=True)
+    actor = principal_for(admin, role="super_admin")
+
+    with pytest.raises(TeamHasChildren) as excinfo:
+        await delete_team(db_session, actor=actor, team_id=parent.id)
+    assert excinfo.value.status_code == 409
+    assert excinfo.value.extensions == {"team_has_children": True, "child_count": 1}
+
+
 async def test_delete_team_with_only_archived_projects_succeeds(
     db_session: AsyncSession,
 ) -> None:
@@ -814,3 +840,43 @@ def test_admin_team_member_add_rejects_bad_user_id(bad_user_id: object) -> None:
 
     with pytest.raises(ValidationError):
         AdminTeamMemberAdd.model_validate({"user_id": bad_user_id, "role": "developer"})
+
+
+# ---------------------------------------------------------------------------
+# Group.parent / Group.children (viewonly)
+# ---------------------------------------------------------------------------
+
+
+async def test_group_parent_assignment_is_a_silent_no_op(
+    db_session: AsyncSession,
+) -> None:
+    """group-hierarchy Phase 1 (security review finding): ``Group.parent`` /
+    ``Group.children`` are ``viewonly=True`` on purpose -- nothing in this
+    Phase writes through them, only through the real column
+    ``parent_group_id``. SQLAlchemy raises no error and no warning on an
+    assignment through a viewonly relationship; it simply does not persist.
+
+    This pins that behavior down explicitly so that if a future PR (Phase 5's
+    reparent service is the obvious candidate) ever starts writing
+    ``child.parent = new_parent`` expecting it to move the group, this test
+    fails loudly instead of the reparent silently no-op'ing in production —
+    the same shape of defect this repo's hardening rules call ER32 out for
+    (a write that reports success and changes nothing).
+    """
+    org = await make_organization(db_session)
+    parent = await make_team(db_session, organization=org)
+    child = await make_team(db_session, organization=org)
+
+    child.parent = parent
+    await db_session.flush()
+    await db_session.refresh(child)
+
+    assert child.parent_group_id is None, (
+        "Group.parent accepted an assignment and it reached the database — "
+        "either viewonly was removed from the relationship (in which case "
+        "this test should be replaced with one that asserts the *correct* "
+        "cascading write, including the trigger and path re-derivation), or "
+        "something else now writes parent_group_id through this attribute "
+        "unexpectedly"
+    )
+    assert child.path == []

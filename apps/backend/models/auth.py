@@ -32,6 +32,13 @@ Group-hierarchy rollout, PR 0-1 (alembic/versions/0088, 0089):
     label. See 0089's docstring for the resulting behavioural risk this
     creates for the ~47 non-test files that still compare a role against the
     literal string ``"team_admin"``.
+
+Group-hierarchy rollout, Phase 1 (alembic/versions/0090, 0091):
+  - ``Group.parent_group_id`` / ``Group.path`` add unlimited nesting. See the
+    ``Group`` class docstring for the derivation rule, why ``path`` is never
+    written from application code, and why descendant lookups must use
+    ``path @> ARRAY[:id]::uuid[]`` rather than ``:id = ANY(path)``.
+  - No API or service-layer change in this phase — pure schema addition.
 """
 
 from __future__ import annotations
@@ -52,7 +59,7 @@ from sqlalchemy import (
     UniqueConstraint,
     text,
 )
-from sqlalchemy.dialects.postgresql import CITEXT, INET, JSONB, UUID
+from sqlalchemy.dialects.postgresql import ARRAY, CITEXT, INET, JSONB, UUID
 from sqlalchemy.dialects.postgresql import ENUM as PG_ENUM
 from sqlalchemy.orm import Mapped, mapped_column, relationship, synonym
 
@@ -162,10 +169,30 @@ class Group(Base):
     """A group under an organization. Tenant boundary for project visibility.
 
     Renamed from ``Team`` (table ``teams`` -> ``groups``) by migration 0088,
-    the first step of the group-hierarchy rollout: a future PR adds
-    ``parent_group_id`` / ``path`` here so a group can nest under another
-    without limit. ``Team = Group`` below keeps every existing
+    the first step of the group-hierarchy rollout. Migration 0090 (Phase 1)
+    adds ``parent_group_id`` / ``path`` below so a group can nest under
+    another without limit. ``Team = Group`` below keeps every existing
     ``from models.auth import Team`` import working.
+
+    Hierarchy columns (0090/0091):
+      - ``parent_group_id`` is the single source of truth for the tree shape.
+        ``ON DELETE RESTRICT`` — a group with children cannot be deleted
+        until they are reparented or removed first; there is no cascade that
+        makes sense for "delete this subtree's root" here.
+      - ``path`` is a materialised-path cache DERIVED from
+        ``parent_group_id`` by the DB trigger ``trg_groups_derive_path``
+        (0091). Application code must never assign it directly — any value
+        written to it on INSERT, or on an UPDATE that changes
+        ``parent_group_id``, is silently overwritten by the trigger. See
+        0091's docstring for why the trigger is gated to fire only when
+        ``parent_group_id`` itself changes (so a future subtree-move/reparent
+        migration can UPDATE descendants' ``path`` directly without the
+        trigger re-deriving and clobbering that write).
+      - Descendant queries must filter with ``path @> ARRAY[:id]::uuid[]``,
+        never ``:id = ANY(path)``. A plain array GIN index cannot use
+        ``= ANY()`` (a ``ScalarArrayOpExpr``, not one of the four operators
+        ``&&``, ``@>``, ``<@``, ``=`` the ``array_ops`` GIN opclass
+        supports), so that form falls back to a sequential scan.
     """
 
     __tablename__ = "groups"
@@ -179,6 +206,22 @@ class Group(Base):
     name: Mapped[str] = mapped_column(String(255), nullable=False)
     slug: Mapped[str] = mapped_column(String(64), nullable=False)
     description: Mapped[str | None] = mapped_column(Text, nullable=True)
+    # Single source of truth for tree shape (0090). NULL = root group.
+    # RESTRICT: a group with children cannot be deleted out from under them.
+    parent_group_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID_PK,
+        ForeignKey("groups.id", ondelete="RESTRICT"),
+        nullable=True,
+    )
+    # Materialised-path cache: the ordered list of ancestor ids from the root
+    # down to (but not including) this row, e.g. [root.id, parent.id].
+    # DERIVED by the DB trigger `trg_groups_derive_path` (0091) from
+    # `parent_group_id` — never set from application code. Any value an
+    # INSERT/UPDATE supplies here is overwritten by the trigger; the ORM
+    # column exists only so reads (`group.path`) see the trigger's result.
+    path: Mapped[list[uuid.UUID]] = mapped_column(
+        ARRAY(UUID_PK), nullable=False, server_default=text("'{}'::uuid[]")
+    )
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, server_default=NOW
     )
@@ -193,10 +236,81 @@ class Group(Base):
     memberships: Mapped[list[Membership]] = relationship(
         back_populates="team", cascade="all, delete-orphan", passive_deletes=True
     )
+    # Self-referential tree (0090). `remote_side=[id]` tells SQLAlchemy which
+    # side of the join is the "one" (parent) side, since both sides of a
+    # self-referential FK are the same column set otherwise.
+    #
+    # `viewonly=True` on both sides is load-bearing, not a style choice.
+    # Without it, giving Group a self-referential relationship() changes how
+    # SQLAlchemy's unit-of-work orders an unrelated flush: `delete_team`'s
+    # audit-log row (a plain `AuditLog(group_id=...)` insert with no
+    # relationship() to Group at all) is normally guaranteed to INSERT
+    # before the team's own DELETE in the same flush — see
+    # `core/audit.py::_before_flush`'s docstring, which states that
+    # invariant explicitly and depends on it (the FK is `ON DELETE SET
+    # NULL`, so the audit row is meant to survive with a NULL group_id, not
+    # get its INSERT rejected by a FK pointing at an already-deleted row).
+    # Measured on this database: a plain (non-viewonly) self-referential
+    # relationship() on Group flips that order for the concurrent-delete
+    # path specifically — `test_concurrent_delete_team_blocks_at_least_one`
+    # started failing with `ForeignKeyViolationError` on `audit_logs` the
+    # moment `parent`/`children` were added, with no other line changed,
+    # and passed again the moment they were reverted. `viewonly=True`
+    # removes `parent`/`children` from SQLAlchemy's flush-dependency
+    # processing entirely (a viewonly relationship never drives an
+    # INSERT/UPDATE/DELETE), which restores the original ordering. Nothing
+    # in this phase writes through `.parent`/`.children` — Phase 5's
+    # reparent service mutates `parent_group_id` directly — so read-only is
+    # also the correct semantics today, not just the fix that happened to
+    # work.
+    parent: Mapped[Group | None] = relationship(
+        "Group", remote_side=[id], back_populates="children", viewonly=True
+    )
+    children: Mapped[list[Group]] = relationship(
+        "Group", back_populates="parent", viewonly=True
+    )
 
     __table_args__ = (
+        # Pre-existing, org-wide slug uniqueness — unaffected by this PR.
+        # NOTE: this already enforces a slug is unique across every group in
+        # the org regardless of nesting depth, which is strictly stronger
+        # than (and makes currently redundant) the two constraints below.
+        # They are added anyway per the Phase 1 plan, so the intended
+        # sibling/root invariant is already in place in DDL form the day a
+        # later phase relaxes this constraint to allow the same slug under
+        # different parents.
         UniqueConstraint("organization_id", "slug", name="uq_groups_org_slug"),
+        # Sibling slug uniqueness (0090): no two children of the same parent
+        # share a slug. NULLs are distinct in Postgres, so this alone does
+        # NOT constrain root groups against each other — see the partial
+        # index below for that.
+        UniqueConstraint("parent_group_id", "slug", name="uq_groups_parent_slug"),
         Index("ix_groups_organization_id", "organization_id"),
+        Index("ix_groups_parent_group_id", "parent_group_id"),
+        # Supports `path @> ARRAY[:id]::uuid[]` (descendant lookups) and
+        # `path && ARRAY[...]` (subtree-union lookups). Does NOT support
+        # `:id = ANY(path)` — see the class docstring.
+        Index("ix_groups_path_gin", "path", postgresql_using="gin"),
+        # Root-slug uniqueness per org (0090): same reasoning
+        # license_policies/gate_policies use for their org-default row
+        # (`uq_license_policies_org_default`, `uq_gate_policies_org_default`)
+        # — a plain UniqueConstraint treats every NULL parent_group_id as
+        # distinct, so it would let two root groups in the same org share a
+        # slug. The partial index below constrains only the NULL-parent
+        # subset instead.
+        Index(
+            "uq_groups_root_slug",
+            "organization_id",
+            "slug",
+            unique=True,
+            postgresql_where=text("parent_group_id IS NULL"),
+        ),
+        # A group cannot be its own ancestor. `path` never contains this
+        # row's own id if the trigger derived it correctly; this CHECK is
+        # the DB-level backstop against a bypass (e.g. a bulk-loader that
+        # writes `path` directly instead of going through INSERT/UPDATE of
+        # `parent_group_id`).
+        CheckConstraint("NOT (id = ANY(path))", name="ck_groups_not_self_ancestor"),
     )
 
 
