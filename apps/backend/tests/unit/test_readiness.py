@@ -47,53 +47,79 @@ def test_compute_expected_heads_returns_nonempty_sorted() -> None:
 
 class _FakeRedisClient:
     def __init__(self, *, ping_result: bool | Exception) -> None:
-        self._ping_result = ping_result
-        self.closed = False
+        self.ping_result = ping_result
+        self.ping_calls = 0
 
     async def ping(self) -> bool:
-        if isinstance(self._ping_result, Exception):
-            raise self._ping_result
-        return self._ping_result
-
-    async def aclose(self) -> None:
-        self.closed = True
+        self.ping_calls += 1
+        if isinstance(self.ping_result, Exception):
+            raise self.ping_result
+        return self.ping_result
 
 
-def _fake_redis_from_url(ping_result: bool | Exception):
+def _fake_redis(ping_result: bool | Exception):
+    """A `core.readiness.Redis` stand-in that counts `from_url` calls.
+
+    Reused-client tests assert `from_url_calls == 1` after multiple
+    `check_redis_status()` calls in the same test (one event loop, per
+    `asyncio_default_fixture_loop_scope = "function"`), so a regression back
+    to opening a fresh connection per call fails loudly rather than merely
+    slowly.
+    """
     client = _FakeRedisClient(ping_result=ping_result)
 
     class _FakeRedis:
+        from_url_calls = 0
+
         @staticmethod
         def from_url(*_args: object, **_kwargs: object) -> _FakeRedisClient:
+            _FakeRedis.from_url_calls += 1
             return client
 
     return _FakeRedis, client
 
 
+@pytest.fixture(autouse=True)
+def _reset_readiness_redis_cache():
+    """Each test gets its own event loop, but clear the cache defensively.
+
+    `core.readiness._clients` is keyed by event loop and would naturally miss
+    on a fresh loop anyway; clearing `_loopless_client` too keeps a test that
+    happens to run outside a loop (none here do) from picking up a fake
+    client instance left behind by a previous test.
+    """
+    import core.readiness as readiness_mod
+
+    readiness_mod._clients.clear()
+    readiness_mod._loopless_client = None
+    yield
+    readiness_mod._clients.clear()
+    readiness_mod._loopless_client = None
+
+
 async def test_check_redis_status_ok_when_ping_succeeds(monkeypatch) -> None:
-    fake_redis, client = _fake_redis_from_url(ping_result=True)
+    fake_redis, client = _fake_redis(ping_result=True)
     monkeypatch.setattr("core.readiness.Redis", fake_redis)
 
     status = await check_redis_status()
 
     assert status == "ok"
-    assert client.closed is True
+    assert client.ping_calls == 1
 
 
 async def test_check_redis_status_degraded_when_ping_returns_false(monkeypatch) -> None:
-    fake_redis, _client = _fake_redis_from_url(ping_result=False)
+    fake_redis, _client = _fake_redis(ping_result=False)
     monkeypatch.setattr("core.readiness.Redis", fake_redis)
 
     assert await check_redis_status() == "degraded"
 
 
 async def test_check_redis_status_degraded_when_ping_raises(monkeypatch) -> None:
-    fake_redis, client = _fake_redis_from_url(ping_result=RedisError("connection refused"))
+    fake_redis, client = _fake_redis(ping_result=RedisError("connection refused"))
     monkeypatch.setattr("core.readiness.Redis", fake_redis)
 
     assert await check_redis_status() == "degraded"
-    # aclose() still runs on the way out of the `finally` block.
-    assert client.closed is True
+    assert client.ping_calls == 1
 
 
 async def test_check_redis_status_degraded_when_connect_raises(monkeypatch) -> None:
@@ -105,6 +131,43 @@ async def test_check_redis_status_degraded_when_connect_raises(monkeypatch) -> N
     monkeypatch.setattr("core.readiness.Redis", _FakeRedis)
 
     assert await check_redis_status() == "degraded"
+
+
+async def test_check_redis_status_reuses_client_across_calls(monkeypatch) -> None:
+    """The High finding from the #442 security review: no per-call reconnect.
+
+    Two calls in the same running loop must hit `Redis.from_url` once, not
+    twice - the whole point of caching per loop rather than opening and
+    closing a connection on every `/health/ready` poll.
+    """
+    fake_redis, client = _fake_redis(ping_result=True)
+    monkeypatch.setattr("core.readiness.Redis", fake_redis)
+
+    assert await check_redis_status() == "ok"
+    assert await check_redis_status() == "ok"
+
+    assert fake_redis.from_url_calls == 1
+    assert client.ping_calls == 2
+
+
+async def test_check_redis_status_still_degrades_after_reused_client_fails(
+    monkeypatch,
+) -> None:
+    """A cached client that starts failing degrades on every subsequent call.
+
+    Guards against a fix for the reconnect-cost finding accidentally caching
+    the *result* instead of the *client* - degraded must not stick once
+    Redis recovers, and this test's fake never recovers, so it must keep
+    reporting degraded rather than freezing on the first answer.
+    """
+    fake_redis, client = _fake_redis(ping_result=RedisError("connection refused"))
+    monkeypatch.setattr("core.readiness.Redis", fake_redis)
+
+    assert await check_redis_status() == "degraded"
+    assert await check_redis_status() == "degraded"
+
+    assert fake_redis.from_url_calls == 1
+    assert client.ping_calls == 2
 
 
 # ---------------------------------------------------------------------------

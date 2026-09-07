@@ -41,9 +41,12 @@ probe an orchestrator is already polling, without the probe acting on it.
 
 from __future__ import annotations
 
+import asyncio
+import threading
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
 from pathlib import Path
+from weakref import WeakKeyDictionary
 
 import structlog
 from redis.asyncio import Redis
@@ -62,6 +65,48 @@ log = structlog.get_logger("readiness")
 #: Redis that drops packets rather than refusing them must not hang the
 #: response.
 _REDIS_SOCKET_TIMEOUT_SECONDS = 1.0
+
+#: One client per running event loop, kept rather than opened-and-closed per
+#: call. `/health/ready` is public, unauthenticated, and unrate-limited (it is
+#: an orchestrator probe), so a fresh TCP handshake (and TLS handshake, on
+#: `rediss://`) per request would let poll traffic churn through sockets
+#: without the ceiling `check_schema_readiness` gets for free from its bounded
+#: Postgres connection pool (`core/db.py`). Same shape as
+#: `login_throttle._redis()`, including keying by loop: an asyncio `Redis`
+#: client holds futures bound to the loop it was built on, so reusing one
+#: across loops raises "attached to a different loop" instead of reconnecting.
+_clients: WeakKeyDictionary[asyncio.AbstractEventLoop, Redis] = WeakKeyDictionary()
+_clients_lock = threading.Lock()
+_loopless_client: Redis | None = None
+
+
+def _new_redis_client() -> Redis:
+    client: Redis = Redis.from_url(
+        redis_url(),
+        socket_timeout=_REDIS_SOCKET_TIMEOUT_SECONDS,
+        socket_connect_timeout=_REDIS_SOCKET_TIMEOUT_SECONDS,
+    )
+    return client
+
+
+def _redis_client() -> Redis:
+    """The client for the running loop, made once and kept. See module docstring."""
+    global _loopless_client
+    try:
+        loop = asyncio.get_running_loop()
+    except RuntimeError:  # pragma: no cover - only outside a loop
+        with _clients_lock:
+            if _loopless_client is None:
+                _loopless_client = _new_redis_client()
+            return _loopless_client
+
+    with _clients_lock:
+        client = _clients.get(loop)
+        if client is None:
+            client = _new_redis_client()
+            _clients[loop] = client
+        return client
+
 
 # Backend root holds alembic.ini + the alembic/ script tree. readiness.py lives
 # in apps/backend/core/, so the root is one directory up from this file's parent.
@@ -199,18 +244,13 @@ async def check_redis_status() -> str:
     sake of a signal those controls are built to survive without.
 
     Never raises: any connection/ping failure is caught, logged at WARNING,
-    and reported as ``"degraded"``.
+    and reported as ``"degraded"``. Uses the cached per-loop client from
+    :func:`_redis_client` rather than opening a fresh connection per call;
+    redis-py's own connection pool reconnects on the next call, so a failure
+    here needs no extra teardown.
     """
     try:
-        client = Redis.from_url(
-            redis_url(),
-            socket_timeout=_REDIS_SOCKET_TIMEOUT_SECONDS,
-            socket_connect_timeout=_REDIS_SOCKET_TIMEOUT_SECONDS,
-        )
-        try:
-            ok = bool(await client.ping())
-        finally:
-            await client.aclose()
+        ok = bool(await _redis_client().ping())
     except (RedisError, OSError) as exc:
         log.warning("readiness.redis_degraded", error=str(exc))
         return "degraded"
