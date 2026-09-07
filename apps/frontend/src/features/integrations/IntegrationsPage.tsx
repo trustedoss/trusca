@@ -381,7 +381,7 @@ export function IntegrationsPage() {
                       const isRevoked = row.revoked_at !== null;
                       // L-18: revoke is "issuer or admin" on the backend.
                       // Developers only ever see the button on keys they
-                      // issued themselves; team_admin+ see it on every row
+                      // issued themselves; group_admin+ see it on every row
                       // the list endpoint already deemed visible to them.
                       const canRevoke =
                         isTeamAdminOrAbove ||

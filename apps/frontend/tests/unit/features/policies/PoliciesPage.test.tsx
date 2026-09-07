@@ -7,7 +7,7 @@
  *     deep-linked URL (hard-reload survival).
  *   - PolicyEditorPanel + PolicyEditorForm: seeds from the server policy, adds /
  *     removes an override, adds an exception, toggles enabled, saves (PUT), the
- *     error path surfaces a toast, and read-only mode for a non-team_admin (403).
+ *     error path surfaces a toast, and read-only mode for a non-group_admin (403).
  *
  * The wire layer (`@/lib/licensePoliciesApi`) and the team-discovery sources
  * (`@/features/admin/api/adminTeamsApi`, `@/lib/projectsApi`) are mocked so no
@@ -446,7 +446,7 @@ describe("PoliciesPage + editor", () => {
     expect(toast).toHaveAttribute("data-toast-key", "reset");
   });
 
-  it("renders read-only for a member who is not a team_admin (403)", async () => {
+  it("renders read-only for a member who is not a group_admin (403)", async () => {
     mockedGetTeam.mockRejectedValue(problem(403));
     renderPage(`/policies?policy=team:${TEAM_ID}`);
 

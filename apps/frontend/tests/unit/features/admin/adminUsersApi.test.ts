@@ -98,7 +98,7 @@ describe("adminUsersApi", () => {
     await listAdminUsers({
       page: 2,
       page_size: 25,
-      role: "team_admin",
+      role: "group_admin",
       active: false,
       search: "alice",
     });
@@ -107,7 +107,7 @@ describe("adminUsersApi", () => {
     expect(calls[0].params).toMatchObject({
       page: 2,
       page_size: 25,
-      role: "team_admin",
+      role: "group_admin",
       active: false,
       search: "alice",
     });
@@ -144,10 +144,10 @@ describe("adminUsersApi", () => {
       { status: 200, data: { id: "u1" } },
     ]);
     restore = r;
-    await updateUserRole("u1", { role: "team_admin", team_id: "t1" });
+    await updateUserRole("u1", { role: "group_admin", team_id: "t1" });
     expect(calls[0].method).toBe("patch");
     expect(calls[0].url).toBe("/v1/admin/users/u1/role");
-    expect(calls[0].data).toEqual({ role: "team_admin", team_id: "t1" });
+    expect(calls[0].data).toEqual({ role: "group_admin", team_id: "t1" });
   });
 
   it("updateUserRole omits team_id for super_admin", async () => {

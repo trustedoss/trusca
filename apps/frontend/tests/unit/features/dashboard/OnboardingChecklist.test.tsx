@@ -109,11 +109,11 @@ const withTeam: AuthUser = {
   id: "u-1",
   email: "alice@example.com",
   displayName: "Alice",
-  role: "team_admin",
+  role: "group_admin",
   isActive: true,
   isSuperuser: false,
   teamId: "t-1",
-  teams: [{ id: "t-1", name: "Platform", role: "team_admin" }],
+  teams: [{ id: "t-1", name: "Platform", role: "group_admin" }],
 };
 
 function renderChecklist({

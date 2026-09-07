@@ -9,13 +9,13 @@
  *      package bumps (current → recommended), the `manifest_source` indicator,
  *      the warnings (esp. lockfile-regeneration-required), and the no-change /
  *      no-manifest empty states.
- *   2. Create PR — team_admin-only. When the project is NOT opted in (409) the
+ *   2. Create PR — group_admin-only. When the project is NOT opted in (409) the
  *      button is replaced with inline guidance rather than crashing. On success
  *      the created PR is shown with a SAFE external link (no
  *      dangerouslySetInnerHTML). Below it, the list of existing remediation PRs.
  *
  * Role gate: the *project-team-scoped* role (`current_user_role` on the
- * overview query) must be `team_admin` / `super_admin` to open a PR — mirrors
+ * overview query) must be `group_admin` / `super_admin` to open a PR — mirrors
  * the VEX import / suppression gate. The backend re-enforces it (403), so this
  * is a UX affordance, not the security boundary.
  *
@@ -69,7 +69,7 @@ export function RemediationTab({ projectId }: RemediationTabProps) {
   const overview = useProjectOverview(projectId);
   const projectRole = overview.data?.current_user_role ?? "developer";
   const canCreatePr =
-    projectRole === "team_admin" || projectRole === "super_admin";
+    projectRole === "group_admin" || projectRole === "super_admin";
 
   const dryRun = useNpmDryRun(projectId);
   const createPr = useCreateNpmPullRequest(projectId);

@@ -17,7 +17,7 @@
  * Hard rules (CLAUDE.md):
  *   - All 4xx/5xx responses are `application/problem+json` and surface as
  *     {@link ProblemError} via the shared `api` interceptor. The 403 (not
- *     team_admin), 404 (project hidden), 413 (too large), and 422 (malformed)
+ *     group_admin), 404 (project hidden), 413 (too large), and 422 (malformed)
  *     cases all arrive as ProblemError so call sites have one error type.
  */
 import { api } from "@/lib/api";

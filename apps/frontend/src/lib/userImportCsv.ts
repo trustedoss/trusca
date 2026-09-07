@@ -17,7 +17,7 @@ export interface ParsedImportRow {
   email: string;
   full_name?: string | null;
   team_id?: string | null;
-  role?: "team_admin" | "developer" | "viewer" | null;
+  role?: "group_admin" | "developer" | "viewer" | null;
   password?: string | null;
 }
 
@@ -32,7 +32,7 @@ export interface ImportParseResult {
   errors: ImportParseError[];
 }
 
-const ROLES = new Set(["team_admin", "developer", "viewer"]);
+const ROLES = new Set(["group_admin", "developer", "viewer"]);
 
 /** Split one CSV line, honouring double quotes around a field. */
 function splitLine(line: string): string[] {

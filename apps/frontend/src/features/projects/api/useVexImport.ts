@@ -11,7 +11,7 @@
  * the server-computed summary (`matched/applied/skipped`) is the source of
  * truth and a single re-fetch is cheaper than reconciling an N-finding fan-out.
  *
- * Errors (403 not team_admin / 404 hidden / 413 too large / 422 malformed)
+ * Errors (403 not group_admin / 404 hidden / 413 too large / 422 malformed)
  * surface as {@link ProblemError} via the shared interceptor; the caller reads
  * `error.detail` / `error.status` for an actionable message.
  */

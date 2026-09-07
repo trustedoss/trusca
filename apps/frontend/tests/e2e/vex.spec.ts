@@ -5,7 +5,7 @@
  * stack. Scenarios:
  *
  *   S1 — Permission gate: a developer sees the VEX import trigger disabled.
- *   S2 — team_admin (super_admin) imports an OpenVEX document; the summary
+ *   S2 — group_admin (super_admin) imports an OpenVEX document; the summary
  *        reports ≥ 1 applied, the affected row gains the VEX marker, the
  *        "VEX-suppressed only" filter narrows to it, and its drawer shows the
  *        VEX provenance (author) — rendered as inert text.
@@ -126,7 +126,7 @@ test.describe("@vex project VEX consume UI", () => {
     await portal.openProjectDetail("vex-dev");
     await portal.selectVulnerabilitiesTab();
 
-    // Export is always available (read); import is gated to team_admin↑.
+    // Export is always available (read); import is gated to group_admin↑.
     await expect(page.getByTestId("vex-export-openvex")).toBeVisible();
     await expect(page.getByTestId("vex-export-cyclonedx")).toBeVisible();
     expect(await portal.isVexImportEnabled()).toBe(false);
@@ -135,7 +135,7 @@ test.describe("@vex project VEX consume UI", () => {
   test("S2) team admin imports OpenVEX → marker + filter + drawer provenance", async ({
     page,
   }, testInfo) => {
-    // super_admin satisfies the team_admin import gate (and the SPA role gate).
+    // super_admin satisfies the group_admin import gate (and the SPA role gate).
     const seed = await bootstrap(testInfo, page, {
       projectName: "vex-admin",
       superAdmin: true,

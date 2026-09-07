@@ -32,7 +32,7 @@ import { cn } from "@/lib/utils";
  * dialog renders the returned summary (matched / applied / skipped + per-row
  * skip reasons) or a graceful RFC 7807 error (403 / 404 / 413 / 422).
  *
- * Permission gate: the *project-team-scoped* role must be `team_admin` (or
+ * Permission gate: the *project-team-scoped* role must be `group_admin` (or
  * `super_admin`). For a `developer` the trigger renders disabled with a
  * tooltip — instead of vanishing — so a collaborating member understands the
  * action exists but is gated (matches the suppression-button pattern in
@@ -85,7 +85,7 @@ export function VexImportDialog({
 
   const mutation = useVexImport(projectId);
   const roleAllowsImport =
-    projectRole === "team_admin" || projectRole === "super_admin";
+    projectRole === "group_admin" || projectRole === "super_admin";
   // Read-only historical snapshot disables the import entirely (a higher
   // precedence gate than the role check).
   const canImport = roleAllowsImport && !readOnly;

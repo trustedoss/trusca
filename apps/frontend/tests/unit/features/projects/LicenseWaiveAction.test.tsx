@@ -2,7 +2,7 @@
  * LicenseWaiveAction — unit tests.
  *
  * Per-component license waive control on the Compliance tab. Covers:
- *   1. team_admin sees an enabled "Waive" trigger; opening it shows the dialog
+ *   1. group_admin sees an enabled "Waive" trigger; opening it shows the dialog
  *      with reason (required) + optional expiry.
  *   2. Submit is blocked until a non-empty reason is entered, then POSTs the
  *      exception with the scoped purl + ISO-widened expiry.
@@ -76,7 +76,7 @@ function renderAction(
       <LicenseWaiveAction
         projectId="p1"
         teamId={TEAM_ID}
-        projectRole="team_admin"
+        projectRole="group_admin"
         spdxId="GPL-2.0-only"
         componentLabel="pyphen@0.14.0"
         componentPurl={PURL}
@@ -186,7 +186,7 @@ describe("LicenseWaiveAction", () => {
   });
 
   it("disables the trigger for a viewer, the grade below developer", () => {
-    // The check reads "is this grade team_admin or above", so a grade added
+    // The check reads "is this grade group_admin or above", so a grade added
     // below developer is refused without touching it. Pinned because the
     // opposite phrasing ("is this developer") is what broke elsewhere: it
     // treats every other grade as more privileged.

@@ -9,7 +9,7 @@
  *
  * Scenarios (``@critical`` tag — runs on every PR):
  *
- *   1. super_admin loads /admin/users, opens an extra team_admin's drawer,
+ *   1. super_admin loads /admin/users, opens an extra group_admin's drawer,
  *      changes role to developer, verifies the success toast and the
  *      reloaded row reflects the new role.
  *   2. A regular developer hits /admin/users + /admin/teams directly —
@@ -74,10 +74,10 @@ test.describe("@critical admin users & teams", () => {
     expect(seed.extra_members).toBeTruthy();
     expect(seed.extra_members?.length).toBe(2);
 
-    // The seeded primary user is super_admin; the first extra is team_admin
+    // The seeded primary user is super_admin; the first extra is group_admin
     // (the demotion target), the second is developer (left untouched).
     const target = seed.extra_members![0];
-    expect(target.role).toBe("team_admin");
+    expect(target.role).toBe("group_admin");
 
     const auth = new AuthHarness(page);
     await auth.gotoLogin();

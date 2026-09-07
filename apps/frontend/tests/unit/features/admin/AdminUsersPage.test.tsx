@@ -128,11 +128,11 @@ describe("AdminUsersPage", () => {
       expect(mockedList).toHaveBeenCalledTimes(1);
     });
     const roleSelect = screen.getByTestId("admin-users-role-filter");
-    await userEvent.selectOptions(roleSelect, "team_admin");
+    await userEvent.selectOptions(roleSelect, "group_admin");
     await waitFor(() => {
       // Second call carries the role param.
       const lastCall = mockedList.mock.calls.at(-1)?.[0];
-      expect(lastCall).toMatchObject({ role: "team_admin" });
+      expect(lastCall).toMatchObject({ role: "group_admin" });
     });
   });
 

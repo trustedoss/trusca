@@ -39,7 +39,7 @@ type PageSize = (typeof PAGE_SIZE_OPTIONS)[number];
 
 function deriveRole(item: { is_superuser: boolean; role?: UserRole }): UserRole {
   // H-2: the list payload now carries the membership rollup (`role` =
-  // highest-effective role), so team_admins render correctly in the column.
+  // highest-effective role), so group_admins render correctly in the column.
   // The is_superuser fallback only covers older fixtures without the field.
   return item.role ?? (item.is_superuser ? "super_admin" : "developer");
 }
@@ -48,7 +48,7 @@ function deriveRole(item: { is_superuser: boolean; role?: UserRole }): UserRole 
 const VALID_ROLE: (UserRole | "all")[] = [
   "all",
   "super_admin",
-  "team_admin",
+  "group_admin",
   "developer",
 ];
 const VALID_ACTIVE: UsersActiveFilter[] = ["all", "active", "inactive"];

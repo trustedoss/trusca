@@ -12,8 +12,8 @@ import type { AxiosRequestConfig } from "axios";
 
 import { api } from "@/lib/api";
 
-export type UserRole = "super_admin" | "team_admin" | "developer" | "viewer";
-export type TeamMembershipRole = "team_admin" | "developer";
+export type UserRole = "super_admin" | "group_admin" | "developer" | "viewer";
+export type TeamMembershipRole = "group_admin" | "developer";
 
 export interface TeamMembershipPublic {
   team_id: string;
@@ -58,7 +58,7 @@ export interface AdminUserListParams {
   page_size?: number;
   /**
    * Filter by canonical role. The backend matches "super_admin" against
-   * `is_superuser=true`, while "team_admin" / "developer" filter on the
+   * `is_superuser=true`, while "group_admin" / "developer" filter on the
    * highest-priority membership role.
    */
   role?: UserRole | null;
@@ -70,7 +70,7 @@ export interface AdminUserListParams {
 
 export interface RoleUpdatePayload {
   role: UserRole;
-  /** Required when role is team_admin or developer; ignored for super_admin. */
+  /** Required when role is group_admin or developer; ignored for super_admin. */
   team_id?: string | null;
 }
 

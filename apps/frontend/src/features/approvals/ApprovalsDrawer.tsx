@@ -11,7 +11,7 @@
  *       pending      → "Start Review"  + "Reject"
  *       under_review → "Approve"       + "Reject"
  *       approved / rejected → read-only (no buttons)
- *   - Permissions: action buttons only shown for super_admin or team_admin.
+ *   - Permissions: action buttons only shown for super_admin or group_admin.
  *   - Inline confirm strip before transition (no modal).
  *
  * ETag flow:
@@ -167,7 +167,7 @@ export function ApprovalsDrawer({
   notify,
 }: Props) {
   const { t, i18n } = useTranslation("approvals");
-  // H-2: team_admin authority comes from the promoted effective role —
+  // H-2: group_admin authority comes from the promoted effective role —
   // before the promotion this gate never opened for screen-only team admins.
   const { isTeamAdminOrAbove: canAct } = usePermissions();
 

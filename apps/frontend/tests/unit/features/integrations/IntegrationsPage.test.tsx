@@ -84,12 +84,12 @@ function key(name: string, overrides: Partial<APIKeyListItem> = {}): APIKeyListI
 }
 
 function authUser(overrides: Partial<AuthUser> = {}): AuthUser {
-  const role = overrides.role ?? "team_admin";
+  const role = overrides.role ?? "group_admin";
   // /auth/me always carries memberships and `toAuthUser` promotes the global
   // role out of them, so the fixture keeps the two consistent. A super_admin
   // draws its authority from the flag, not from a membership, which is why it
   // sits on the team as a plain developer here.
-  const membershipRole = role === "team_admin" ? "team_admin" : "developer";
+  const membershipRole = role === "group_admin" ? "group_admin" : "developer";
   return {
     id: "user-1",
     email: "owner@example.com",
@@ -154,7 +154,7 @@ describe("IntegrationsPage", () => {
     mockedListServiceAccounts.mockReset();
     mockedListServiceAccounts.mockResolvedValue({ items: [], total: 0 });
     // L-18 hides create/revoke from developers — the legacy tests exercise
-    // the full management flows, so they run as a team_admin by default.
+    // the full management flows, so they run as a group_admin by default.
     loginAs(authUser());
     // jsdom does not ship navigator.clipboard. Define it as a configurable
     // own property so the page's `void copyToClipboard()` calls don't crash.
@@ -688,8 +688,8 @@ describe("IntegrationsPage", () => {
   // L-16 — create-dialog scope options follow the caller's role
   // -------------------------------------------------------------------------
 
-  it("hides the org scope option from team_admin (L-16)", async () => {
-    loginAs(authUser({ role: "team_admin", isSuperuser: false }));
+  it("hides the org scope option from group_admin (L-16)", async () => {
+    loginAs(authUser({ role: "group_admin", isSuperuser: false }));
     mockedList.mockResolvedValue(page([]));
 
     const user = userEvent.setup();
@@ -728,7 +728,7 @@ describe("IntegrationsPage", () => {
 
   it("offers a developer the project scope only (#136)", async () => {
     // Backend rule (`_can_issue_at_scope`): any team member may issue a
-    // project-scoped key, team scope needs team_admin OF that team, org
+    // project-scoped key, team scope needs group_admin OF that team, org
     // scope needs super_admin. Offering team here would be a certain 403.
     loginAs(authUser({ id: "user-dev", role: "developer" }));
     mockedList.mockResolvedValue(page([]));
@@ -895,8 +895,8 @@ describe("IntegrationsPage", () => {
     expect(buttons[0]).toHaveAttribute("data-key-id", "key-mine");
   });
 
-  it("shows revoke to team_admin on rows issued by others (L-18)", async () => {
-    loginAs(authUser({ id: "user-admin", role: "team_admin" }));
+  it("shows revoke to group_admin on rows issued by others (L-18)", async () => {
+    loginAs(authUser({ id: "user-admin", role: "group_admin" }));
     mockedList.mockResolvedValue(
       page([key("someone-elses", { created_by_user_id: "user-other" })]),
     );

@@ -8,7 +8,7 @@
  * as RFC 7807 envelopes keyed mainly by HTTP status — it does NOT emit the
  * boolean extension flags the admin surface uses:
  *
- *   - 403 → caller is not a team_admin of the team (read-only fallback).
+ *   - 403 → caller is not a group_admin of the team (read-only fallback).
  *   - 404 → team / org policy not found, or existence-hide for a non-admin.
  *   - 409 → uniqueness race on the (org, team) scope.
  *   - 422 → malformed / oversized policy payload (the strict pydantic guards).

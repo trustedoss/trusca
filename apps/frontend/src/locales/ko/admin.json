@@ -33,7 +33,7 @@
       },
       "role": {
         "super_admin": "슈퍼 관리자",
-        "team_admin": "팀 관리자",
+        "group_admin": "팀 관리자",
         "developer": "개발자",
         "viewer": "열람자"
       },
@@ -102,7 +102,7 @@
         "summary": "{{succeeded}}명 추가, {{failed}}명 실패.",
         "parse_error": {
           "missing_email": "{{line}}번째 줄: email 열이 없거나 주소가 비어 있습니다.",
-          "unknown_role": "{{line}}번째 줄: role이 team_admin·developer·viewer 중 하나가 아닙니다.",
+          "unknown_role": "{{line}}번째 줄: role이 group_admin·developer·viewer 중 하나가 아닙니다.",
           "too_few_columns": "{{line}}번째 줄: 머리글이 지정한 열보다 값이 적습니다."
         },
         "errors": {

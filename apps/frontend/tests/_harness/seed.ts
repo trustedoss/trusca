@@ -81,7 +81,7 @@ export interface SeedSummary {
   extra_members?: Array<{
     user_id: string;
     email: string;
-    role: "team_admin" | "developer";
+    role: "group_admin" | "developer";
   }>;
   /**
    * Phase 5 D bundle. Populated when ``SeedOptions.withOAuthIdentity`` is

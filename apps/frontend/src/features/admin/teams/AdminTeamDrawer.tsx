@@ -336,8 +336,8 @@ export function AdminTeamDrawer({
                       }
                       className="flex h-9 w-full rounded-md border border-input bg-background px-3 py-1 text-sm"
                     >
-                      <option value="team_admin">
-                        {t("admin.users.role.team_admin")}
+                      <option value="group_admin">
+                        {t("admin.users.role.group_admin")}
                       </option>
                       <option value="developer">
                         {t("admin.users.role.developer")}

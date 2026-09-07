@@ -33,7 +33,7 @@
       },
       "role": {
         "super_admin": "Super Admin",
-        "team_admin": "Team Admin",
+        "group_admin": "Team Admin",
         "developer": "Developer",
         "viewer": "Viewer"
       },
@@ -59,7 +59,7 @@
       "form": {
         "role_label": "Role",
         "team_label": "Team",
-        "team_id_placeholder": "Team UUID (required for team_admin / developer)",
+        "team_id_placeholder": "Team UUID (required for group_admin / developer)",
         "save": "Save role"
       },
       "drawer": {
@@ -102,7 +102,7 @@
         "summary": "{{succeeded}} added, {{failed}} not added.",
         "parse_error": {
           "missing_email": "Line {{line}}: no email column, or the address is empty.",
-          "unknown_role": "Line {{line}}: that role is not one of team_admin, developer or viewer.",
+          "unknown_role": "Line {{line}}: that role is not one of group_admin, developer or viewer.",
           "too_few_columns": "Line {{line}}: fewer columns than the header names."
         },
         "errors": {

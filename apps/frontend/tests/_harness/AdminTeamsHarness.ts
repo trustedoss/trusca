@@ -10,7 +10,7 @@ import { expect, type Page } from "@playwright/test";
 const DEFAULT_BASE_URL = "http://localhost:5173";
 const DEFAULT_TIMEOUT_MS = 10_000;
 
-export type AdminTeamMemberRole = "team_admin" | "developer";
+export type AdminTeamMemberRole = "group_admin" | "developer";
 export type AdminTeamSuccessKey =
   | "created"
   | "updated"

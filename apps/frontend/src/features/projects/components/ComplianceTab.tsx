@@ -193,7 +193,7 @@ export interface ComplianceTabProps {
   teamId?: string | null;
   /**
    * The actor's effective role within the project's owning team. Gates the
-   * waive action (team_admin / super_admin only).
+   * waive action (group_admin / super_admin only).
    */
   projectRole?: TeamScopedRole;
   /**

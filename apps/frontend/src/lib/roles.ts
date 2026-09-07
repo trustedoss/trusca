@@ -6,7 +6,7 @@
  *
  * `/auth/me` carries no top-level role: `is_superuser` is a boolean and the
  * team-scoped roles live on `memberships[].role`. The effective (global) role
- * promotes the HIGHEST membership role, so a team_admin is no longer treated
+ * promotes the HIGHEST membership role, so a group_admin is no longer treated
  * as a developer across the app chrome (approvals drawer, admin nav, ⌘K).
  *
  * Project-scoped surfaces (vuln triage, waivers, VEX import) must keep using
@@ -24,7 +24,7 @@ import type { AuthRole } from "@/stores/authStore";
 export const ROLE_RANK: Record<AuthRole, number> = {
   viewer: 0,
   developer: 1,
-  team_admin: 2,
+  group_admin: 2,
   super_admin: 3,
 };
 

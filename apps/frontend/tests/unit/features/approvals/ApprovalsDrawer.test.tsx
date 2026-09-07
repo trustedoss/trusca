@@ -8,7 +8,7 @@
  *   4. Shows Approve + Reject buttons for "under_review" status.
  *   5. Shows no action buttons for "approved" / "rejected" status.
  *   6. Clicking Start Review shows confirm strip, confirming calls transition.
- *   7. Hides action buttons when user is not super_admin or team_admin.
+ *   7. Hides action buttons when user is not super_admin or group_admin.
  */
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { render, screen, waitFor } from "@testing-library/react";
@@ -62,7 +62,7 @@ function approval(overrides: Partial<ApprovalOut> = {}): ApprovalOut {
   };
 }
 
-function setUser(role: "super_admin" | "team_admin" | "developer") {
+function setUser(role: "super_admin" | "group_admin" | "developer") {
   useAuthStore.setState({
     user: {
       id: "test-user",

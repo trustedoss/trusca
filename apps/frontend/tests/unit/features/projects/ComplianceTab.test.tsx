@@ -190,7 +190,7 @@ function renderTabAsTeamAdmin(initialEntries: string[] = ["/projects/proj-1"]) {
           projectId="proj-1"
           projectName="Demo"
           teamId="00000000-0000-0000-0000-team00000001"
-          projectRole="team_admin"
+          projectRole="group_admin"
         />
       </MemoryRouter>
     </QueryClientProvider>,
@@ -400,7 +400,7 @@ describe("ComplianceTab unified grid", () => {
         screen.getByTestId("compliance-row-waive-strip"),
       ).toBeInTheDocument();
     });
-    // team_admin → the trigger is enabled (role-gated affordance present).
+    // group_admin → the trigger is enabled (role-gated affordance present).
     const trigger = await screen.findByTestId("license-waive-open");
     expect(trigger).toBeEnabled();
   });
