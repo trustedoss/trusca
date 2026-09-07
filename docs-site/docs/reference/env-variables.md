@@ -326,6 +326,10 @@ Three tables age out on their own occurrence-time clock; there is no export curs
 | `NODE_EXTRA_CA_CERTS` | (empty) | subprocess env | Private certificate authority for `cdxgen`. Additive. |
 | `REQUESTS_CA_BUNDLE` | (empty) | subprocess env | Private certificate authority for `scancode` and `scanoss`. The portal's own HTTPS calls ignore it. |
 | `GIT_SSL_CAINFO` / `GIT_SSL_CAPATH` | (empty) | subprocess env | Private certificate authority for `git clone`. git reads neither `SSL_CERT_FILE` nor `CURL_CA_BUNDLE`, so cloning from an internal host needs one of these. |
+| `REGISTRY_CONFIG_HOST_PATH` | `./secrets/registry` | docker-compose only | Host directory mounted read-only at the fixed container path `/etc/trusca/registry` on the scan-pipeline worker. Holds whichever of `settings.xml` / `.npmrc` / `pip.conf` / `.netrc` your private registries need. See [Private registries for dependency resolution](../admin-guide/private-registries.md). |
+| `MVN_ARGS` | (empty) | `cdxgen`'s own Maven invocation | Extra arguments cdxgen appends to every `mvn` command it runs. Set to `--settings /etc/trusca/registry/settings.xml` for a private Maven registry. There is no `MAVEN_SETTINGS` variable: Maven itself only reads `~/.m2/settings.xml` or a `-s`/`--settings` flag. |
+| `NPM_CONFIG_USERCONFIG` | (empty) | subprocess env | npm's own environment variable for an alternate `.npmrc` path, not a cdxgen feature. |
+| `PIP_CONFIG_FILE` | (empty) | subprocess env | pip's own environment variable for an alternate `pip.conf` path, not a cdxgen feature. |
 
 ## Bootstrap / scripts
 

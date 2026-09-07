@@ -258,6 +258,34 @@ x-backend-env: &backend-env
   COSIGN_KEY_PATH: ${COSIGN_KEY_PATH:-}
   COSIGN_KEY_PASSWORD_ENCRYPTED: ${COSIGN_KEY_PASSWORD_ENCRYPTED:-}
   COSIGN_TIMEOUT_SECONDS: ${COSIGN_TIMEOUT_SECONDS:-120}
+  # #400 - private package-registry auth for source-scan dependency
+  # resolution (Maven / npm / pip). Empty by default: a public registry
+  # needs none of this. Each variable only has an effect once BOTH (a) the
+  # matching config file exists under the /etc/trusca/registry mount (see
+  # worker-scan's volumes below, driven by REGISTRY_CONFIG_HOST_PATH) and
+  # (b) integrations/_subprocess_env.py's cdxgen allowlist forwards the
+  # variable name into the cdxgen subprocess env - setting it here alone
+  # does not make cdxgen see it. MVN_ARGS is cdxgen's OWN mechanism for
+  # extra `mvn` arguments (verified in @cyclonedx/cdxgen's
+  # lib/cli/index.js and lib/helpers/utils.js: cdxgen splits MVN_ARGS on
+  # spaces and appends it to the `mvn` invocation, and its own console
+  # guidance for a discovered settings.xml is literally
+  # `MVN_ARGS='--settings <path>'`). There is no such thing as a
+  # `MAVEN_SETTINGS` environment variable - Maven itself only reads
+  # `~/.m2/settings.xml` or a `-s`/`--settings` CLI flag, so a settings.xml
+  # under the mount has no effect unless MVN_ARGS points `mvn` at it.
+  # NPM_CONFIG_USERCONFIG and PIP_CONFIG_FILE are npm's / pip's own
+  # documented environment variables for an alternate config file path,
+  # cdxgen does nothing special for these beyond inheriting the env when it
+  # shells out to `npm install` / `pip install`, so this is standard
+  # npm/pip behaviour, not a cdxgen feature. `.netrc` (generic HTTP/Git
+  # basic-auth, e.g. private Go-module VCS hosts) has no such pointer
+  # variable - every tool that honours it reads `$HOME/.netrc`
+  # unconditionally, so see the commented-out volume line on worker-scan
+  # below to actually put it there.
+  MVN_ARGS: ${MVN_ARGS:-}
+  NPM_CONFIG_USERCONFIG: ${NPM_CONFIG_USERCONFIG:-}
+  PIP_CONFIG_FILE: ${PIP_CONFIG_FILE:-}
   # compose-env-var wiring audit: OAuth / OIDC social login + GitHub App PR
   # comments. Documented in .env.example but never listed in this anchor, so
   # setting any of them in .env had no effect on the running container
@@ -809,6 +837,28 @@ services:
       # cosign signing happens in tasks/scan_source.py, which only ever runs on
       # this service post-S3 - worker-default does not mount this.
       - ${COSIGN_KEYS_HOST_PATH:-./secrets/cosign}:/cosign:ro
+      # #400 - private package-registry auth for source-scan dependency
+      # resolution. REGISTRY_CONFIG_HOST_PATH points at an operator-provided
+      # directory (default ./secrets/registry) holding whichever of
+      # settings.xml / .npmrc / pip.conf / .netrc it needs - cdxgen tolerates
+      # the rest being absent. Mounted read-only at a FIXED container path
+      # (never derived from project/user input - an arbitrary-file-read
+      # guard); an empty/absent host dir is harmless, same as the cosign
+      # mount above. settings.xml / .npmrc / pip.conf only take effect once
+      # you ALSO set MVN_ARGS / NPM_CONFIG_USERCONFIG / PIP_CONFIG_FILE above
+      # to point at the file under this mount - nothing reads
+      # /etc/trusca/registry on its own. Scan-only, same reasoning as the
+      # cosign mount: worker-default never runs cdxgen.
+      - ${REGISTRY_CONFIG_HOST_PATH:-./secrets/registry}:/etc/trusca/registry:ro
+      # .netrc is the one file above with no pointer variable - every tool
+      # that honours it (git, go, curl-based fetchers) reads $HOME/.netrc
+      # unconditionally, and this image's HOME is /home/trustedoss, not
+      # /etc/trusca/registry. Uncomment ONLY if you created
+      # <REGISTRY_CONFIG_HOST_PATH>/.netrc: a bind mount whose host source is
+      # missing gets silently auto-created as an empty DIRECTORY at the
+      # container path (a well-known Docker bind-mount gotcha), which would
+      # shadow anything else expecting that path to be a file.
+      # - ${REGISTRY_CONFIG_HOST_PATH:-./secrets/registry}/.netrc:/home/trustedoss/.netrc:ro
       # W6-#44 — persistent Trivy DB cache. The worker downloads the DB
       # (~500 MiB) on boot via the worker_ready signal hook and refreshes it
       # weekly via the Celery beat. Without a persistent volume every

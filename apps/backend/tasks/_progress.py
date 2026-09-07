@@ -79,7 +79,6 @@ On-disk log persistence (this PR — scan log download):
 from __future__ import annotations
 
 import json
-import re
 import threading
 import uuid
 from collections.abc import Callable
@@ -98,6 +97,7 @@ from core.config import (
     scan_progress_channel,
     workspace_root,
 )
+from integrations._secret_scrub import scrub_secrets as _scrub_secrets
 
 log = structlog.get_logger("tasks.progress")
 
@@ -441,92 +441,18 @@ def _truncate_line(line: str, limit: int) -> str:
 #   - Verbose HTTP logs in any tool can emit ``Authorization: Bearer <token>``.
 #   - Any tool stderr can contain ``https://user:password@host/...`` URLs.
 #
-# We add a publisher-side scrubber that runs on every line AFTER truncation
-# (so the regex cannot be DoS'd by an unbounded input — see
-# but BEFORE both Redis publish
-# AND disk write. Pattern matches are intentionally conservative: we'd rather
-# false-positive a few innocuous tokens than miss a credential.
+# We run a scrubber on every line AFTER truncation (so the regex cannot be
+# DoS'd by an unbounded input) but BEFORE both Redis publish AND disk write.
+#
+# The scrubber itself (patterns + ``scrub_secrets``) now lives in
+# ``integrations._secret_scrub``: ``integrations/cdxgen.py`` needs the exact
+# same redaction on its ``CdxgenFailed`` exception message (security review
+# HIGH, private-registry-auth-mount PR), and ``tasks/`` may import
+# ``integrations/`` but not the reverse. The ``_scrub_secrets`` import at the
+# top of this module is a backward-compatible re-export for this module's
+# call site and its existing test suite
+# (``tests/unit/tasks/test_scan_log_persist.py``).
 # ---------------------------------------------------------------------------
-
-_SECRET_PATTERNS: tuple[tuple[re.Pattern[str], str], ...] = (
-    # HTTP Authorization schemes Bearer would miss. Verbose Trivy / cdxgen
-    # registry round-trips (``--debug``, ``CDXGEN_DEBUG_MODE=debug``) emit
-    # ``Authorization: Basic <b64(user:pass)>`` and ``Authorization: token
-    # <ghp_...>`` — neither is a Bearer token. We redact the credential value
-    # only (keeping the scheme keyword visible for debuggability), so a line
-    # carrying a second credential after it still gets matched by the later
-    # patterns. ``\S+`` is line-bounded (no re.MULTILINE). (security review
-    # HIGH on the scan-log-verbosity widening — see
-    # the durable log must go through the scrubber too.)
-    (re.compile(r"(?i)(Authorization\s*:\s*Basic\s+)\S+"), r"\1***"),
-    (re.compile(r"(?i)(Authorization\s*:\s*token\s+)\S+"), r"\1***"),
-    # HTTP Bearer tokens anywhere (incl. ``Authorization: Bearer <tok>``) —
-    # RFC 6750 syntax (token charset).
-    (re.compile(r"(?i)(Bearer\s+)[A-Za-z0-9._\-+/=]+"), r"\1***"),
-    # Registry / VCS / cloud auth headers Trivy + cdxgen emit in debug mode:
-    # ``X-Registry-Auth`` (Docker), ``PRIVATE-TOKEN`` (GitLab), ``X-Amz-Security-Token``
-    # (AWS ECR), ``X-Auth-Token`` (generic). Line-bounded ``\S+`` value.
-    (
-        re.compile(
-            r"(?i)((?:x-registry-auth|private-token|x-amz-security-token|x-auth-token)\s*[:=]\s*)\S+"
-        ),
-        r"\1***",
-    ),
-    # Set-Cookie / Cookie — session material. Redact to end-of-line so a
-    # multi-attribute cookie (``session=abc; Path=/``) is fully covered.
-    (re.compile(r"(?i)((?:set-)?cookie\s*:\s*)\S.*$"), r"\1***"),
-    # npm-style auth tokens: ``npm_config__authToken=``, ``_authToken:``,
-    # ``_auth =``. The trailing ``\S+`` is line-bounded (no re.MULTILINE) so
-    # it cannot run away across lines.
-    (re.compile(r"(?i)(_auth(?:Token)?\s*[:=]\s*)\S+"), r"\1***"),
-    # Generic ``password`` / ``secret`` / ``credential`` / ``access[_-]key`` /
-    # ``token`` assignments (``KEY=value`` or ``KEY: value``) that resolved
-    # config / env dumps surface in verbose mode (e.g. ``npm_config__password=``,
-    # ``GITHUB_TOKEN=ghp_...``, ``AWS_SECRET_ACCESS_KEY=...``). The leading
-    # alternation is unanchored so ``AWS_SECRET_ACCESS_KEY`` matches via its
-    # ``secret`` substring; over-redaction here is intentional (we'd rather mask
-    # a benign ``token=`` than leak a credential).
-    (
-        re.compile(
-            r"(?i)((?:password|passwd|passphrase|secret|credential|access[_-]?key|token)\w*\s*[:=]\s*)\S+"
-        ),
-        r"\1***",
-    ),
-    # URLs with userinfo: ``scheme://user:pass@host`` -> ``scheme://***@host``.
-    # The userinfo charset excludes ``/`` ``\s`` ``@`` so pathological inputs
-    # like ``://user:pass@@@host`` match the first ``user:pass@`` only — the
-    # trailing ``@@host`` becomes opaque path, not a userinfo passthrough.
-    (re.compile(r"([a-zA-Z][a-zA-Z0-9+.\-]*://)[^/\s@]+:[^/\s@]+@"), r"\1***@"),
-    # Generic API key headers: ``X-API-Key:``, ``api-key=``, ``api_key:``
-    (re.compile(r"(?i)(x-api-key\s*[:=]\s*)\S+"), r"\1***"),
-    (re.compile(r"(?i)(api[_-]?key\s*[:=]\s*)\S+"), r"\1***"),
-)
-
-
-def _scrub_secrets(line: str) -> str:
-    """Best-effort credential redaction on a log line.
-
-    Runs on every line BEFORE Redis publish and disk write. Pre-PR this was
-    Redis-only (ephemeral); the new disk persistence + download endpoint
-    elevates a transient leak into a durable, downloadable one. The caller
-    MUST truncate first (cf. ``_truncate_line``) so this function never scans
-    unbounded input — that ordering also satisfies
-    Parametrized for separator-only / oversized
-    inputs.
-
-    Fails CLOSED + observable: if any pattern raises (a future regression or a
-    pathological input that trips the engine), we drop the line to a hard
-    sentinel and emit a distinct ``scan_log_scrub_failed`` event (no line
-    content) so a redaction regression is alertable instead of silently
-    leaking the un-scrubbed line downstream (security review, low severity).
-    """
-    try:
-        for pattern, replacement in _SECRET_PATTERNS:
-            line = pattern.sub(replacement, line)
-        return line
-    except Exception as exc:  # noqa: BLE001 — fail closed, never leak the raw line
-        log.warning("scan_log_scrub_failed", error=str(exc))
-        return "***(redaction failed)***"
 
 
 _VALID_STREAMS: frozenset[str] = frozenset({"stdout", "stderr"})
@@ -662,4 +588,10 @@ __all__ = [
     "publish_progress",
     "reset_log_counter",
     "reset_publisher_for_tests",
+    # Re-exported from integrations._secret_scrub for the existing call site
+    # and test suite (tests/unit/tasks/test_scan_log_persist.py) -- kept
+    # here rather than moving the tests, per CLAUDE.md hardening rule #2
+    # (vocabulary shared across modules needs a single source of truth, not
+    # a fork).
+    "_scrub_secrets",
 ]

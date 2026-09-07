@@ -98,6 +98,7 @@ from integrations import cocoapods_lockfile, sbom_scope_filter, scan_executor
 from integrations import cosign as cosign_adapter
 from integrations import scancode as scancode_adapter
 from integrations import scanoss as scanoss_adapter
+from integrations._secret_scrub import scrub_secrets
 from integrations._size_guard import enforce_jsonb_row_size_limit
 from integrations._subprocess_env import scrubbed_env_for_prep
 from integrations.dependency_graph import (
@@ -2708,11 +2709,18 @@ def _run_prep(
             returncode=result.returncode,
         )
         if result.returncode != 0:
+            # Same defence as integrations/cdxgen.py's CdxgenFailed (security
+            # review HIGH, private-registry-auth-mount PR): `npm install
+            # --package-lock-only` / `dotnet restore` can hit a
+            # credential-bearing private-registry URL and echo it into
+            # stderr on failure. This step never raises (best-effort prep),
+            # so it does not reach scan.error_message, but the raw bytes
+            # still must not land in the structured log unscrubbed.
             log.warning(
                 "prep_failed",
                 step=name,
                 scan_id=str(scan_uuid),
-                stderr=(result.stderr or "")[:500],
+                stderr=scrub_secrets((result.stderr or "")[:500]),
             )
     except subprocess.TimeoutExpired:
         log.warning(

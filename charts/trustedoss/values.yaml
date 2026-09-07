@@ -133,6 +133,13 @@ env:
   extraVolumes: []
   extraVolumeMounts: []
 
+  # Private package-registry auth for source-scan dependency resolution
+  # (Maven / npm / pip - issue #400) is NOT set here. It is scoped to
+  # worker-scan only (the one workload that runs cdxgen) via
+  # worker.scan.extraEnv / extraVolumes / extraVolumeMounts below, rather
+  # than through the four-workload mechanism above - see that block's
+  # comment for the full walkthrough.
+
   # -------------------------------------------------------------------------
   # External datastore DSNs. Used ONLY when postgres.bundled / redis.bundled
   # are false. Leave blank when bundling. asyncpg driver for Postgres.
@@ -717,6 +724,98 @@ worker:
           # / Memorystore that requires auth.
           passwordSecretName: ""
           passwordSecretKey: password
+
+    # Private package-registry auth for source-scan dependency resolution
+    # (Maven / npm / pip - issue #400). Scoped to worker-scan ONLY (unlike
+    # the top-level env.extraVolumes/extraEnv, which land on backend / beat /
+    # both workers) - this is the one workload that runs cdxgen, so a
+    # credential file has no reason to be readable from the other three
+    # pods. This is the OTHER half of ER3's container-image registry
+    # credentials (RegistryCredential, admin UI, unrelated to this): ER3
+    # authenticates Trivy pulling an IMAGE; this authenticates cdxgen
+    # resolving a PROJECT's dependencies during a source scan.
+    #
+    # Put whichever of settings.xml / .npmrc / pip.conf / .netrc you need in
+    # a Secret and mount it read-only at the fixed path /etc/trusca/registry
+    # (never derived from project/user input - an arbitrary-file-read
+    # guard):
+    #
+    # SECURITY - settings.xml: Maven matches a <server> credential to a
+    # repository lookup by <id>, not by <url>. A malicious pom.xml in the
+    # scanned project can declare its own <repository> with an <id> that
+    # happens to match yours and a <url> pointing anywhere it likes, and
+    # Maven will send your credential there. Do not rely on a bare <server>
+    # for this reason - pin resolution to one trusted URL with
+    # <mirror mirrorOf="*"> instead, so a project's own <repository>
+    # declarations are ignored:
+    #
+    #   <settings>
+    #     <mirrors>
+    #       <mirror>
+    #         <id>internal-mirror</id>
+    #         <mirrorOf>*</mirrorOf>
+    #         <url>https://nexus.internal.example.com/repository/maven-public/</url>
+    #       </mirror>
+    #     </mirrors>
+    #     <servers>
+    #       <server>
+    #         <id>internal-mirror</id>
+    #         <username>svc</username>
+    #         <password>S3cret</password>
+    #       </server>
+    #     </servers>
+    #   </settings>
+    #
+    # SECURITY - .npmrc: scope the token to the exact registry host with the
+    # //host/path/:_authToken= line form. An unscoped _auth / _authToken
+    # line applies to every registry npm resolves against for the install -
+    # including one the scanned project's own package.json names in a
+    # publishConfig.registry field - so never use the unscoped form here:
+    #
+    #   @myorg:registry=https://registry.internal.example.com/
+    #   //registry.internal.example.com/:_authToken=${NPM_TOKEN}
+    #
+    #   kubectl create secret generic trustedoss-registry-config \
+    #     --from-file=settings.xml=./settings.xml \
+    #     --from-file=.npmrc=./.npmrc
+    #
+    #   worker:
+    #     scan:
+    #       extraVolumes:
+    #         - name: registry-config
+    #           secret:
+    #             secretName: trustedoss-registry-config
+    #       extraVolumeMounts:
+    #         - name: registry-config
+    #           mountPath: /etc/trusca/registry
+    #           readOnly: true
+    #       extraEnv:
+    #         MVN_ARGS: "--settings /etc/trusca/registry/settings.xml"
+    #         NPM_CONFIG_USERCONFIG: /etc/trusca/registry/.npmrc
+    #         PIP_CONFIG_FILE: /etc/trusca/registry/pip.conf
+    #
+    # settings.xml / .npmrc / pip.conf only take effect once you ALSO set
+    # the matching extraEnv key above - mounting the Secret alone changes
+    # nothing. MVN_ARGS is cdxgen's own mechanism (verified in
+    # @cyclonedx/cdxgen's lib/cli/index.js: it splits MVN_ARGS on spaces and
+    # appends it to the `mvn` invocation); there is no `MAVEN_SETTINGS`
+    # variable - Maven itself only reads `~/.m2/settings.xml` or a
+    # `-s`/`--settings` CLI flag. `.netrc` has no pointer variable at all
+    # (every tool that honours it reads `$HOME/.netrc` unconditionally, and
+    # this image's HOME is /home/trustedoss) - mount it with an explicit
+    # subPath at that exact path instead of under /etc/trusca/registry:
+    #
+    #   extraVolumeMounts:
+    #     - name: registry-config
+    #       mountPath: /home/trustedoss/.netrc
+    #       subPath: .netrc
+    #       readOnly: true
+    #
+    # The user guide's "Private registries for dependency resolution" page
+    # has the full walkthrough.
+    extraEnv: {}
+    extraVolumes: []
+    extraVolumeMounts: []
 
   # -------------------------------------------------------------------------
   # Default-queue worker. Notifications, backups, audit export, ticket

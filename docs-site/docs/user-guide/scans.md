@@ -94,6 +94,13 @@ Two details worth knowing when you write the list:
 
 #### Private registries {#private-registries}
 
+:::note This is about container images, not source dependencies
+This section covers Trivy pulling a **container image** for a **container**
+scan. For authenticating `cdxgen` against a private Maven / npm / pip
+registry during a **source** scan, see
+[Private registries for dependency resolution](../admin-guide/private-registries.md).
+:::
+
 Most enterprise images are not public. A super-admin stores one login per
 registry per organization:
 

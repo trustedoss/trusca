@@ -191,6 +191,38 @@ an extra volume would otherwise get a volume list with no key above it.
 {{- if .Values.env.extraVolumes }}true{{- end }}
 {{- end -}}
 
+{{/*
+Extra env / volumes / mounts scoped to worker-scan ONLY (issue #400 —
+private package-registry auth for source-scan dependency resolution).
+
+Unlike env.extraEnv / env.extraVolumes above, which land on all four
+workloads, worker.scan.* renders on this Deployment alone: a registry
+credential a source scan needs to authenticate Maven/npm/pip has no reason
+to be readable from backend, beat or the default-queue worker, none of
+which ever invoke cdxgen. See values.yaml's worker.scan.extraVolumes
+comment for the worked example.
+*/}}
+{{- define "trustedoss.workerScan.extraEnv" -}}
+{{- with .Values.worker.scan.extraEnv }}
+{{- range $key, $value := . }}
+- name: {{ $key }}
+  value: {{ $value | quote }}
+{{- end }}
+{{- end }}
+{{- end -}}
+
+{{- define "trustedoss.workerScan.extraVolumes" -}}
+{{- with .Values.worker.scan.extraVolumes }}
+{{- toYaml . }}
+{{- end }}
+{{- end -}}
+
+{{- define "trustedoss.workerScan.extraVolumeMounts" -}}
+{{- with .Values.worker.scan.extraVolumeMounts }}
+{{- toYaml . }}
+{{- end }}
+{{- end -}}
+
 {{- define "trustedoss.runtimeSecretEnv" -}}
 {{- $secretName := include "trustedoss.secretName" . -}}
 - name: DATABASE_URL_APP

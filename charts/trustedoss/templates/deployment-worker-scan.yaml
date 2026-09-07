@@ -115,6 +115,7 @@ spec:
           env:
             {{- include "trustedoss.runtimeSecretEnv" . | nindent 12 }}
             {{- include "trustedoss.extraEnv" . | nindent 12 }}
+            {{- include "trustedoss.workerScan.extraEnv" . | nindent 12 }}
           volumeMounts:
             {{- if (.Values.worker.containerSecurityContext).readOnlyRootFilesystem }}
             # The bundled toolchain caches under HOME: gradle, mvn, npm, dotnet
@@ -135,6 +136,7 @@ spec:
             - name: trivy-cache
               mountPath: {{ .Values.env.trivy.dbCacheDir }}
             {{- include "trustedoss.extraVolumeMounts" . | nindent 12 }}
+            {{- include "trustedoss.workerScan.extraVolumeMounts" . | nindent 12 }}
           livenessProbe:
             exec:
               command:
@@ -168,6 +170,7 @@ spec:
           emptyDir: {}
           {{- end }}
         {{- include "trustedoss.extraVolumes" . | nindent 8 }}
+        {{- include "trustedoss.workerScan.extraVolumes" . | nindent 8 }}
       {{- with .Values.nodeSelector }}
       nodeSelector:
         {{- toYaml . | nindent 8 }}

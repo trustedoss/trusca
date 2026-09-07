@@ -9,6 +9,26 @@ and the project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.
 
 ### Added
 
+- **A mount convention and env passthrough for private-registry auth during
+  source-scan dependency resolution** (#400). A source scan's `cdxgen` step
+  shells into `mvn`/`npm`/`pip` the same way a build would, and until now
+  there was no way to hand it a credential for a private Maven/npm/pip
+  registry, only container-image registry pulls (ER3) had one. An operator
+  now drops `settings.xml`/`.npmrc`/`pip.conf`/`.netrc` under a directory
+  (`REGISTRY_CONFIG_HOST_PATH`, default `./secrets/registry`) that
+  `docker-compose.yml`/`docker-compose.dev.yml` mount read-only at a fixed
+  path (`/etc/trusca/registry`, never derived from project or scan input) on
+  the scan-pipeline worker, and the Helm chart's new `worker.scan.extraEnv` /
+  `extraVolumes` / `extraVolumeMounts` do the same scoped to that Deployment
+  alone. Maven's mechanism turned out not to be the `MAVEN_SETTINGS`
+  variable the tracking issue assumed, that variable does not exist. Maven
+  itself only reads `~/.m2/settings.xml` or a `-s`/`--settings` flag, and
+  `cdxgen`'s actual passthrough is `MVN_ARGS` (confirmed in
+  `@cyclonedx/cdxgen`'s own source and console guidance). See the new
+  [Private registries for dependency resolution](docs-site/docs/admin-guide/private-registries.md)
+  guide. The offline install bundle tracked in the same issue is not part of
+  this change.
+
 - **A network guard in the frontend unit test setup.** The suite flaked twice
   under CI load with a different test failing each time and no repro locally:
   once with `AggregateError`/`emitErrorEvent` noise that looked like a real
@@ -330,6 +350,19 @@ and the project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.
   followed. Both mechanisms are now proven independently, each with the
   other's Redis path left healthy, so neither test's pass depends on the
   other control also being down.
+
+- **A failed private-registry resolution could leak its credential into
+  `scan.error_message`.** cdxgen shells into `pip`/`npm`/`mvn` for dependency
+  resolution, and a rejected request against a `scheme://user:pass@host`
+  private-registry URL (a typo, an expired token, a transient 401/403) can
+  echo that URL, credential included, into the tool's stderr. `run_cdxgen`
+  copied that stderr verbatim into `CdxgenFailed`'s message, which the scan
+  pipeline's generic failure handler stores as-is in `scan.error_message`, a
+  field any team member can read via `GET /api/v1/scans/{id}`. The
+  credential-shaped-substring scrubber already used for the live scan-log
+  stream now also runs on this path (and on the equivalent `scancode` and
+  lockfile-prep failure paths), and moved to a shared module so both the
+  live-log publisher and the adapters use the same patterns.
 
 - **The vulnerability drawer's response builder could drop a field silently.**
   `_detail_response` named all 41 fields of `VulnerabilityDetailResponse` as
