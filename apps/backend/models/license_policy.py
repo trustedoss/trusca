@@ -24,14 +24,21 @@ Why this exists:
   here.
 
 Scope semantics:
-  - ``team_id IS NULL``      → the ORGANIZATION-LEVEL DEFAULT policy. At most one
+  - ``group_id IS NULL``      → the ORGANIZATION-LEVEL DEFAULT policy. At most one
                                such row per organization (partial unique index
                                ``uq_license_policies_org_default``). Applies to
-                               every team in the org that has no team-level policy.
-  - ``team_id IS NOT NULL``  → that specific team's policy. When present + enabled
+                               every group in the org that has no group-level policy.
+  - ``group_id IS NOT NULL``  → that specific group's policy. When present + enabled
                                it takes precedence over the org default for that
-                               team. ``UniqueConstraint(organization_id, team_id)``
-                               keeps it one-per-team.
+                               group. ``UniqueConstraint(organization_id, group_id)``
+                               keeps it one-per-group.
+
+Group-hierarchy rollout, PR 0-1 (alembic/versions/0088):
+  - This table's ``team_id`` column is renamed to ``group_id`` (FK retargeted
+    to ``groups.id``, renamed from ``teams.id``). ``team_id =
+    synonym("group_id")`` below keeps every call site that reads/writes
+    ``.team_id`` — including class-level query expressions like
+    ``LicensePolicy.team_id == x`` — working against the same column.
 
   c2 effective-policy resolution (documented for the consumer):
       team policy (if present AND enabled)
@@ -124,7 +131,7 @@ from sqlalchemy import (
     text,
 )
 from sqlalchemy.dialects.postgresql import JSONB, UUID
-from sqlalchemy.orm import Mapped, mapped_column
+from sqlalchemy.orm import Mapped, mapped_column, synonym
 
 from . import Base
 
@@ -181,13 +188,16 @@ class LicensePolicy(Base):
         nullable=False,
     )
 
-    # NULL → org default; non-NULL → that team's policy. CASCADE so deleting a
-    # team reclaims its policy.
-    team_id: Mapped[uuid.UUID | None] = mapped_column(
+    # NULL → org default; non-NULL → that group's policy. CASCADE so deleting a
+    # group reclaims its policy.
+    group_id: Mapped[uuid.UUID | None] = mapped_column(
         UUID_PK,
-        ForeignKey("teams.id", ondelete="CASCADE"),
+        ForeignKey("groups.id", ondelete="CASCADE"),
         nullable=True,
     )
+    # Backward-compatible synonym — see module docstring (group-hierarchy
+    # rollout PR 0-1 / 0088).
+    team_id: Mapped[uuid.UUID | None] = synonym("group_id")
 
     # Caller-supplied label, e.g. "Engineering default". Optional — the scope
     # (org/team) is the identity; ``name`` is purely for the UI.
@@ -257,25 +267,25 @@ class LicensePolicy(Base):
     )
 
     __table_args__ = (
-        # One policy per (org, team) pair. For the org-default row team_id is
+        # One policy per (org, group) pair. For the org-default row group_id is
         # NULL — Postgres treats NULLs as distinct in a UniqueConstraint, so this
         # does NOT enforce single-org-default by itself; the partial unique index
         # below does. Both are intentional and complementary.
         UniqueConstraint(
             "organization_id",
-            "team_id",
-            name="uq_license_policies_org_team",
+            "group_id",
+            name="uq_license_policies_org_group",
         ),
         # Single org-default per org: enforce uniqueness of organization_id over
-        # the subset of rows where team_id IS NULL (the org-default rows).
+        # the subset of rows where group_id IS NULL (the org-default rows).
         Index(
             "uq_license_policies_org_default",
             "organization_id",
             unique=True,
-            postgresql_where=text("team_id IS NULL"),
+            postgresql_where=text("group_id IS NULL"),
         ),
         # FK lookup indexes (Postgres does not auto-create them).
-        Index("ix_license_policies_team_id", "team_id"),
+        Index("ix_license_policies_group_id", "group_id"),
         Index("ix_license_policies_created_by_user_id", "created_by_user_id"),
         # Closed posture set backstop at the DB layer.
         CheckConstraint(

@@ -3,7 +3,7 @@
 """
 Auth domain models — Phase 1 PR #5.
 
-Tables: organizations, teams, users, memberships, refresh_tokens, audit_logs.
+Tables: organizations, groups, users, memberships, refresh_tokens, audit_logs.
 
 Conventions (CLAUDE.md core rules):
   - PostgreSQL only. UUID PKs default to gen_random_uuid() (pgcrypto extension).
@@ -13,6 +13,25 @@ Conventions (CLAUDE.md core rules):
   - JSONB filter / containment columns get a GIN index.
   - User.email uses CITEXT for case-insensitive uniqueness.
   - No environment access at import time (CLAUDE.md core rule #11).
+
+Group-hierarchy rollout, PR 0-1 (alembic/versions/0088, 0089):
+  - ``teams`` was renamed to ``groups`` and the ``Team`` class below is
+    ``Group``. ``Team = Group`` is kept as a module-level alias so the ~596
+    files that still do ``from models.auth import Team`` / ``models.Team``
+    keep working unchanged until the follow-up PRs migrate those call sites.
+  - Every FK column this PR renamed (``Membership.group_id``,
+    ``AuditLog.group_id``) carries a ``team_id = synonym("group_id")`` so
+    ``.team_id`` reads and writes — including class-level query expressions
+    like ``Membership.team_id == x`` — keep working against the same
+    underlying column. Verified: SQLAlchemy's ``synonym`` delegates
+    class-level comparisons to the target column, not just instance access.
+  - ``ROLE_VALUES`` reflects the 0089 enum rename (``team_admin`` ->
+    ``group_admin``) because this tuple is what SQLAlchemy validates an
+    assigned role string against, independent of what the migration already
+    renamed in the database — there is no synonym equivalent for an enum
+    label. See 0089's docstring for the resulting behavioural risk this
+    creates for the ~47 non-test files that still compare a role against the
+    literal string ``"team_admin"``.
 """
 
 from __future__ import annotations
@@ -35,7 +54,7 @@ from sqlalchemy import (
 )
 from sqlalchemy.dialects.postgresql import CITEXT, INET, JSONB, UUID
 from sqlalchemy.dialects.postgresql import ENUM as PG_ENUM
-from sqlalchemy.orm import Mapped, mapped_column, relationship
+from sqlalchemy.orm import Mapped, mapped_column, relationship, synonym
 
 from . import Base
 
@@ -55,7 +74,12 @@ EMPTY_JSONB = text("'{}'::jsonb")
 # Order mirrors the Postgres type, which lists values in the order they were
 # added: `viewer` came last (migration 0055) even though it is the lowest
 # grade. Privilege order lives in ``core.security._ROLE_PRIORITY``, not here.
-ROLE_VALUES = ("super_admin", "team_admin", "developer", "viewer")
+# `group_admin` was `team_admin` until migration 0089 renamed the Postgres
+# enum label (group-hierarchy rollout PR 0-1) — see that migration's
+# docstring for why, unlike the column renames in this file, that rename has
+# no backward-compatible bridge for the ~47 non-test files that still spell
+# the literal string `"team_admin"`.
+ROLE_VALUES = ("super_admin", "group_admin", "developer", "viewer")
 
 
 def _role_enum() -> PG_ENUM:
@@ -115,7 +139,11 @@ class Organization(Base):
         DateTime(timezone=True), nullable=False, server_default=NOW
     )
 
-    teams: Mapped[list[Team]] = relationship(
+    # Attribute name kept as ``teams`` (unchanged by the group-hierarchy
+    # rollout's PR 0-1) — every call site that reads ``organization.teams``
+    # keeps working. Only the referenced class (``Team`` -> ``Group``) and the
+    # underlying table (``teams`` -> ``groups``) were renamed.
+    teams: Mapped[list[Group]] = relationship(
         back_populates="organization", cascade="all, delete-orphan", passive_deletes=True
     )
 
@@ -126,14 +154,21 @@ class Organization(Base):
 
 
 # ---------------------------------------------------------------------------
-# Team
+# Group (renamed from Team by the group-hierarchy rollout, PR 0-1 / 0088)
 # ---------------------------------------------------------------------------
 
 
-class Team(Base):
-    """A team under an organization. Tenant boundary for project visibility."""
+class Group(Base):
+    """A group under an organization. Tenant boundary for project visibility.
 
-    __tablename__ = "teams"
+    Renamed from ``Team`` (table ``teams`` -> ``groups``) by migration 0088,
+    the first step of the group-hierarchy rollout: a future PR adds
+    ``parent_group_id`` / ``path`` here so a group can nest under another
+    without limit. ``Team = Group`` below keeps every existing
+    ``from models.auth import Team`` import working.
+    """
+
+    __tablename__ = "groups"
 
     id: Mapped[uuid.UUID] = mapped_column(UUID_PK, primary_key=True, server_default=GEN_UUID)
     organization_id: Mapped[uuid.UUID] = mapped_column(
@@ -152,14 +187,22 @@ class Team(Base):
     )
 
     organization: Mapped[Organization] = relationship(back_populates="teams")
+    # Attribute name kept as ``memberships`` — unaffected by the class
+    # rename (it names an attribute on instances of this class, not a
+    # reference to the class's own old name).
     memberships: Mapped[list[Membership]] = relationship(
         back_populates="team", cascade="all, delete-orphan", passive_deletes=True
     )
 
     __table_args__ = (
-        UniqueConstraint("organization_id", "slug", name="uq_teams_org_slug"),
-        Index("ix_teams_organization_id", "organization_id"),
+        UniqueConstraint("organization_id", "slug", name="uq_groups_org_slug"),
+        Index("ix_groups_organization_id", "organization_id"),
     )
+
+
+# Backward-compatible alias: PR 0-1 renames the class but does not touch the
+# ~596 call sites that import ``Team`` — those PRs land separately (0-2..0-4).
+Team = Group
 
 
 # ---------------------------------------------------------------------------
@@ -220,7 +263,7 @@ class User(Base):
     # N13: this row is an automation identity rather than a person.
     #
     # It shares the table because the permission model stands on
-    # ``Membership(user_id, team_id, role)`` and twenty-six foreign keys point
+    # ``Membership(user_id, group_id, role)`` and twenty-six foreign keys point
     # here; a parallel identity would need a parallel everything. The payoff is
     # that the key-lifetime rule needs no branch: the auth path still asks only
     # whether the issuer is active, and for one of these the issuer is itself,
@@ -288,7 +331,7 @@ class User(Base):
 
 
 class Membership(Base):
-    """Maps a user into a team with a single role. One row per (user, team)."""
+    """Maps a user into a group with a single role. One row per (user, group)."""
 
     __tablename__ = "memberships"
 
@@ -298,11 +341,16 @@ class Membership(Base):
         ForeignKey("users.id", ondelete="CASCADE"),
         nullable=False,
     )
-    team_id: Mapped[uuid.UUID] = mapped_column(
+    group_id: Mapped[uuid.UUID] = mapped_column(
         UUID_PK,
-        ForeignKey("teams.id", ondelete="CASCADE"),
+        ForeignKey("groups.id", ondelete="CASCADE"),
         nullable=False,
     )
+    # Backward-compatible synonym (group-hierarchy rollout PR 0-1 / 0088):
+    # every call site that still reads/writes ``.team_id`` — including
+    # class-level query expressions such as ``Membership.team_id == x`` —
+    # keeps operating on the same ``group_id`` column underneath.
+    team_id: Mapped[uuid.UUID] = synonym("group_id")
     role: Mapped[str] = mapped_column(_role_enum(), nullable=False)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, server_default=NOW
@@ -312,14 +360,17 @@ class Membership(Base):
     )
 
     user: Mapped[User] = relationship(back_populates="memberships")
-    team: Mapped[Team] = relationship(back_populates="memberships")
+    # Attribute name kept as ``team`` — unaffected by the Team -> Group class
+    # rename; call sites reading ``membership.team`` see the same Group
+    # instance they saw as a Team instance before.
+    team: Mapped[Group] = relationship(back_populates="memberships")
 
     __table_args__ = (
-        UniqueConstraint("user_id", "team_id", name="uq_memberships_user_team"),
+        UniqueConstraint("user_id", "group_id", name="uq_memberships_user_group"),
         Index("ix_memberships_user_id", "user_id"),
-        Index("ix_memberships_team_id", "team_id"),
-        # Lookups: "give me all admins of team X", "give me all teams where user U is dev".
-        Index("ix_memberships_team_role", "team_id", "role"),
+        Index("ix_memberships_group_id", "group_id"),
+        # Lookups: "give me all admins of group X", "give me all groups where user U is dev".
+        Index("ix_memberships_group_role", "group_id", "role"),
         Index("ix_memberships_user_role", "user_id", "role"),
     )
 
@@ -482,11 +533,19 @@ class AuditLog(Base):
         ForeignKey("users.id", ondelete="SET NULL"),
         nullable=True,
     )
-    team_id: Mapped[uuid.UUID | None] = mapped_column(
+    group_id: Mapped[uuid.UUID | None] = mapped_column(
         UUID_PK,
-        ForeignKey("teams.id", ondelete="SET NULL"),
+        ForeignKey("groups.id", ondelete="SET NULL"),
         nullable=True,
     )
+    # Backward-compatible synonym — see Membership.team_id above for why
+    # (group-hierarchy rollout PR 0-1 / 0088). Also referenced by 0080/0088's
+    # ``audit_logs_prevent_mutation()`` trigger, which pins the FK column by
+    # its real DB name (``group_id``), not through this synonym — a synonym
+    # is a Python/ORM-layer construct only and has no bearing on the trigger
+    # body, which is why 0088 replaces that function's text directly instead
+    # of relying on this alias.
+    team_id: Mapped[uuid.UUID | None] = synonym("group_id")
     action: Mapped[str] = mapped_column(String(32), nullable=False)
     target_table: Mapped[str] = mapped_column(String(64), nullable=False)
     target_id: Mapped[str | None] = mapped_column(String(64), nullable=True)
@@ -499,10 +558,10 @@ class AuditLog(Base):
         # Time-range queries dominate (admin audit log views).
         Index("ix_audit_logs_created_at", "created_at"),
         Index("ix_audit_logs_actor_user_id", "actor_user_id"),
-        Index("ix_audit_logs_team_id", "team_id"),
+        Index("ix_audit_logs_group_id", "group_id"),
         Index("ix_audit_logs_request_id", "request_id"),
-        # Common compound: "show audit for this team in this window".
-        Index("ix_audit_logs_team_created_at", "team_id", "created_at"),
+        # Common compound: "show audit for this group in this window".
+        Index("ix_audit_logs_group_created_at", "group_id", "created_at"),
         # JSONB GIN for "find audits whose diff touched column X".
         Index("ix_audit_logs_diff_gin", "diff", postgresql_using="gin"),
         # Phase 4 PR #14 — admin Audit Log search filters by target_table /

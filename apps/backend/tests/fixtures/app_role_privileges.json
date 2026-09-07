@@ -1,6 +1,6 @@
 {
   "_generated_by": "tests/integration/test_app_role_grant_matrix.py (B1), captured from a real `alembic upgrade head` run against a throwaway database with the literal `trustedoss_app` role provisioned, then read back via has_table_privilege(). Not hand-written.",
-  "_captured_against_head_revision": "0087",
+  "_captured_against_head_revision": "0089",
   "tables": {
     "alembic_version": [
       "DELETE",
@@ -73,6 +73,12 @@
       "UPDATE"
     ],
     "github_app_installations": [
+      "DELETE",
+      "INSERT",
+      "SELECT",
+      "UPDATE"
+    ],
+    "groups": [
       "DELETE",
       "INSERT",
       "SELECT",
@@ -245,12 +251,6 @@
       "UPDATE"
     ],
     "task_runs": [
-      "DELETE",
-      "INSERT",
-      "SELECT",
-      "UPDATE"
-    ],
-    "teams": [
       "DELETE",
       "INSERT",
       "SELECT",

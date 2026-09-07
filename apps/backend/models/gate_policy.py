@@ -22,10 +22,17 @@ wire and in the CI output, so the name and the meaning have to move together.
 That is its own decision rather than a column added quietly here.
 
 Every column is nullable, and that is the contract. NULL means "not decided
-here", so resolution falls through team, then org, then the environment
+here", so resolution falls through group, then org, then the environment
 variable, then the built-in default. A deployment that writes no rows behaves
 exactly as it did before this table existed, which is what makes the table
 safe to add ahead of any UI for it.
+
+Group-hierarchy rollout, PR 0-1 (alembic/versions/0088):
+  ``team_id`` is renamed to ``group_id`` (FK retargeted to ``groups.id``,
+  renamed from ``teams.id``). ``team_id = synonym("group_id")`` below keeps
+  every call site that reads/writes ``.team_id`` — including class-level
+  query expressions like ``GatePolicy.team_id == x`` — working against the
+  same column.
 """
 
 from __future__ import annotations
@@ -44,7 +51,7 @@ from sqlalchemy import (
     text,
 )
 from sqlalchemy.dialects.postgresql import JSONB, UUID
-from sqlalchemy.orm import Mapped, mapped_column
+from sqlalchemy.orm import Mapped, mapped_column, synonym
 
 from . import Base
 
@@ -66,12 +73,15 @@ class GatePolicy(Base):
         nullable=False,
     )
 
-    # NULL → the organization default; non-NULL → that team's override.
-    team_id: Mapped[uuid.UUID | None] = mapped_column(
+    # NULL → the organization default; non-NULL → that group's override.
+    group_id: Mapped[uuid.UUID | None] = mapped_column(
         UUID_PK,
-        ForeignKey("teams.id", ondelete="CASCADE"),
+        ForeignKey("groups.id", ondelete="CASCADE"),
         nullable=True,
     )
+    # Backward-compatible synonym — see module docstring (group-hierarchy
+    # rollout PR 0-1 / 0088).
+    team_id: Mapped[uuid.UUID | None] = synonym("group_id")
 
     name: Mapped[str | None] = mapped_column(String(120), nullable=True)
 
@@ -113,7 +123,7 @@ class GatePolicy(Base):
     )
 
     __table_args__ = (
-        UniqueConstraint("organization_id", "team_id", name="uq_gate_policies_org_team"),
+        UniqueConstraint("organization_id", "group_id", name="uq_gate_policies_org_group"),
         # Postgres treats NULLs as distinct, so the constraint above does not
         # stop two org-default rows. This does, and the pair is the same
         # arrangement license_policies uses.
@@ -121,9 +131,9 @@ class GatePolicy(Base):
             "uq_gate_policies_org_default",
             "organization_id",
             unique=True,
-            postgresql_where=text("team_id IS NULL"),
+            postgresql_where=text("group_id IS NULL"),
         ),
-        Index("ix_gate_policies_team_id", "team_id"),
+        Index("ix_gate_policies_group_id", "group_id"),
         CheckConstraint(
             "epss_threshold IS NULL OR (epss_threshold >= 0 AND epss_threshold <= 1)",
             name="ck_gate_policies_epss_range",
