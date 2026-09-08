@@ -389,6 +389,21 @@ docker-compose "${COMPOSE_ARGS[@]}" pull
 ok "images pulled"
 
 # ---------------------------------------------------------------------------
+# 3.5 Check configuration against the NEW image, before touching containers
+# ---------------------------------------------------------------------------
+# Evaluates every core/config.py accessor with the new image's code and the
+# current .env. Catches an env var the new version now validates more
+# strictly (or reads for the first time) BEFORE "Recreating containers"
+# below takes the stack down, so a failure here leaves the old containers
+# running untouched, instead of a bad config surfacing mid-recreate with the
+# old fleet already stopped.
+title "Checking configuration against the new image"
+if ! docker-compose "${COMPOSE_ARGS[@]}" run --rm --no-deps backend python -m scripts.check_config; then
+  fail "configuration check failed against the new image; fix the value(s) above in .env before continuing (containers have not been touched)"
+fi
+ok "configuration OK"
+
+# ---------------------------------------------------------------------------
 # 4. Drain removed-task names from the broker
 # ---------------------------------------------------------------------------
 # v2.4.0 removes the four Dependency-Track Celery tasks (trustedoss.dt_*).

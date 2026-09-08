@@ -436,6 +436,33 @@ migrationJob:
       memory: 512Mi
 
 # ===========================================================================
+# Config preflight Job, a Helm pre-install + pre-upgrade hook.
+#
+# Runs `python -m scripts.check_config` against every core/config.py accessor,
+# using the same env the backend Deployment gets. Makes no DB/Redis
+# connection, so it is cheap and runs one hook-weight before migrationJob,
+# and a bad env var fails the release before alembic even connects.
+# ===========================================================================
+configCheckJob:
+  enabled: true
+  # A config accessor's own validation either passes or raises; retrying an
+  # unchanged env cannot fix that, but a low retry count absorbs a transient
+  # scheduling hiccup rather than failing the release on it.
+  backoffLimit: 1
+  # This makes no network call and evaluates ~180 in-process functions; a
+  # ceiling in seconds, not minutes, is deliberate: a hang here means the
+  # check itself is wedged, not that it needs more time.
+  activeDeadlineSeconds: 120
+  ttlSecondsAfterFinished: 600
+  resources:
+    requests:
+      cpu: 50m
+      memory: 128Mi
+    limits:
+      cpu: 250m
+      memory: 256Mi
+
+# ===========================================================================
 # Backend (FastAPI) workload.
 # ===========================================================================
 backend:

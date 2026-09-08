@@ -528,6 +528,20 @@ title "Bringing up the stack (staged: schema before the runtime fleet)"
 # shellcheck disable=SC2086  # $DC may be "docker compose" (two words) — intentional word-split.
 $DC -f docker-compose.yml pull
 
+# Preflight: evaluate every core/config.py accessor against the .env just
+# written, inside the backend image (its dependencies are not on this host).
+# Catches a bad value (a template SECRET_KEY, a malformed rate-limit string,
+# an out-of-range number) before a single container starts, rather than on
+# whichever request first exercises that one accessor lazily at runtime.
+# `--no-deps` because this needs nothing but the image + env; postgres/redis
+# are not up yet.
+title "Checking configuration"
+# shellcheck disable=SC2086
+if ! $DC -f docker-compose.yml run --rm --no-deps backend python -m scripts.check_config; then
+  fail "configuration check failed; fix the value(s) above in .env and re-run install.sh"
+fi
+ok "configuration OK"
+
 # Stage 1 — backend + its data deps ONLY. worker / beat / frontend are held
 # back until the schema is in place (Stage 3).
 # shellcheck disable=SC2086
