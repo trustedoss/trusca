@@ -267,6 +267,70 @@ def _now_counter() -> int:
     return int(time.time()) // totp.PERIOD_SECONDS
 
 
+async def test_signing_in_right_after_enrolling_is_not_told_its_own_code_was_replayed(
+    factory,
+) -> None:
+    """The code that proves enrolment must not spend the counter for login.
+
+    `complete_enrolment` and `verify_second_factor` both derive a step from
+    the same TOTP secret and clock, so a real sign-in attempted inside the
+    same thirty-second step as enrolment computes the IDENTICAL code: an
+    automated enrol-then-sign-in check does this on every run it happens to
+    land inside one step, and a person testing their own freshly-turned-on
+    factor can do it too. If enrolment recorded that step as `mfa_last_counter`,
+    the replay guard (`mfa_last_counter < counter`, strict) sees the login
+    code's step as not-after the enrolment step and refuses it as a replay,
+    of a code that was never presented at a login. Enrolment proves the app
+    works; it does not spend the login replay window.
+    """
+    from core.security import set_password
+    from models import User
+    from services.mfa_service import (
+        InvalidMfaCode,
+        complete_enrolment,
+        verify_second_factor,
+    )
+
+    secret = base64.b32encode(b"12345678901234567890").decode("ascii").rstrip("=")
+    async with factory() as session:
+        user = await make_user(session, email=f"mfa-{unique_suffix()}@example.com")
+        set_password(user, "a long enough password 7")
+        user.mfa_secret_encrypted = encrypt_secret(secret, purpose=ENCRYPTION_PURPOSE)
+        await session.commit()
+        user_id = user.id
+
+    counter = _now_counter()
+    code = totp.code_at(secret, counter=counter)
+
+    async with factory() as session:
+        user = await session.get(User, user_id)
+        await complete_enrolment(session, user=user, code=code)
+
+    # The very next sign-in, same step, same code: exactly what an
+    # automated check (or an impatient person) produces.
+    async with factory() as session:
+        user = await session.get(User, user_id)
+        await verify_second_factor(session, user=user, code=code)
+
+    # The login itself must still have spent the step, exactly like an
+    # ordinary first login would: this is not a free pass on replay
+    # protection going forward, only on the false positive against
+    # enrolment's own code.
+    async with factory() as reader:
+        stored = await reader.get(User, user_id)
+        assert stored.mfa_last_counter == counter, (
+            "the accepted login step was not persisted, so replay protection "
+            "never actually started"
+        )
+
+    # Presenting that same code again, a genuine replay this time, is
+    # still refused.
+    async with factory() as session:
+        user = await session.get(User, user_id)
+        with pytest.raises(InvalidMfaCode):
+            await verify_second_factor(session, user=user, code=code)
+
+
 async def test_the_service_commits_the_step_by_itself(factory) -> None:
     """Asserted in a second session, because the route hides the question.
 

@@ -93,7 +93,34 @@ async def complete_enrolment(
         raise InvalidMfaCode("code did not match")
 
     user.mfa_enabled = True
-    user.mfa_last_counter = counter
+    # Deliberately NOT seeding `mfa_last_counter` from this code.
+    #
+    # `verify_second_factor`'s replay guard rejects a login code whose step is
+    # not STRICTLY AFTER the last accepted one, which is right for two logins,
+    # since a code observed at a login is exactly the thing that guard exists
+    # to stop being replayed. But this code was never presented at a login; it
+    # proved the app works, for an action (turning the factor on) distinct
+    # from authenticating a session. A person who enrols and signs back in
+    # within the same 30-second step (plausible, and exactly what an
+    # automated check of a fresh enrolment does every time it runs) would
+    # have their following login's code compared against ITS OWN step, found
+    # not-strictly-greater, and be told a fresh code was a replay. Leaving
+    # this column at its default (None) starts the replay clock at the first
+    # real login instead, where it belongs.
+    #
+    # Accepted trade-off (security review, Phase 1 CI-gate track): the
+    # enrolment code itself stays usable for one further `verify_second_factor`
+    # call within its own TOTP window (its step plus one drift step either
+    # side, core/totp.py's `drift_steps`) rather than being burned immediately.
+    # Exploiting that requires already holding the account password (the
+    # login path) or an already-open session (the step-up reauthentication
+    # path), and an attacker in either position has already meaningfully
+    # compromised the account before this narrow window matters. No
+    # code-level check can tell "the legitimate owner signing in seconds
+    # after enrolling" apart from "an attacker replaying an intercepted
+    # enrolment code" using the code alone, since both submit the bit-identical
+    # value; closing this gap would mean reintroducing the false-positive this
+    # change fixes. Do not re-add a counter seed here to "close" it.
     # Deliberately NOT stamping ``mfa_changed_at`` here.
     #
     # The stamp refuses every token minted before it, and the token making
