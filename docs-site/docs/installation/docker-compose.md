@@ -105,7 +105,7 @@ Fetch the three files the compose stack needs (the compose file, the env templat
 
 ```bash
 mkdir -p trustedoss && cd trustedoss
-BASE=https://raw.githubusercontent.com/trustedoss/trusca/v0.22.5
+BASE=https://raw.githubusercontent.com/trustedoss/trusca/v0.22.6
 
 # 1. The self-contained production compose file (no `build:` section — pulls
 #    images from ghcr.io) and the env template.
@@ -196,7 +196,7 @@ cd trusca
 If you maintain a fork, clone the fork instead. Pin to a release tag for reproducible installs:
 
 ```bash
-git checkout v0.22.5
+git checkout v0.22.6
 ```
 
 ## Step 2 — Run the install wizard

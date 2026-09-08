@@ -7,6 +7,12 @@ and the project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.
 
 ## [Unreleased]
 
+## [0.22.6] - 2026-09-08
+
+### Fixed
+
+- **The demo dataset's CVE findings had no fix version.** `VulnerabilityFinding.fixed_version` is populated by the scan pipeline (Trivy) and the demo seed's findings never went through a scan, so the vulnerability detail drawer's "Fix version" / "Recommended upgrade" UI had nothing to show for any of the seeded demo projects. Seeded findings now carry a fix version.
+
 ## [0.22.5] - 2026-09-07
 
 ### Fixed

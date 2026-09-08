@@ -98,7 +98,7 @@ compose 스택에 필요한 세 파일(compose 파일, env 템플릿, 1회용 Po
 
 ```bash
 mkdir -p trustedoss && cd trustedoss
-BASE=https://raw.githubusercontent.com/trustedoss/trusca/v0.22.5
+BASE=https://raw.githubusercontent.com/trustedoss/trusca/v0.22.6
 
 # 1. 자기완결적 프로덕션 compose 파일(`build:` 섹션 없음 — ghcr.io에서 이미지 pull)
 #    과 env 템플릿.
@@ -188,7 +188,7 @@ cd trusca
 포크를 운영한다면 포크 레포를 클론하세요. 재현 가능한 설치를 위해 릴리스 태그로 체크아웃합니다.
 
 ```bash
-git checkout v0.22.5
+git checkout v0.22.6
 ```
 
 ## 2단계 — 설치 마법사 실행
