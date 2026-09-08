@@ -249,6 +249,11 @@ def _sanitize_member_path(raw: str) -> str:
     if ".." in parts:
         log.warning("source_tree_path_rejected", reason="traversal", raw_path=raw)
         raise SourcePathRejected("path selector rejected")
+    if ".git" in parts:
+        # Block direct reads of ``.git/...`` even from a
+        # tarball written before the preservation-side fix shipped.
+        log.warning("source_tree_path_rejected", reason="git_metadata", raw_path=raw)
+        raise SourcePathRejected("path selector rejected")
     clean = [p for p in parts if p not in ("", ".")]
     return "/".join(clean)
 
@@ -416,6 +421,12 @@ def _immediate_children(
             continue
         if name == SCANCODE_MEMBER_NAME or name.startswith(".trustedoss/"):
             # Reserved bookkeeping member — never part of the user's tree.
+            continue
+        if ".git" in name.split("/"):
+            # A pre-fix tarball may still carry ``.git/``
+            # at any depth (top-level clone, or a vendored/submodule tree), so
+            # match on path components, not a full-arcname prefix, or a nested
+            # ``vendor/lib/.git`` slips through. Never surface it in listings.
             continue
         if not name.startswith(prefix):
             continue

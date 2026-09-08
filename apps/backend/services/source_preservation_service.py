@@ -459,6 +459,12 @@ def _safe_arcname(source_dir: Path, path: Path) -> str | None:
     arcname = rel.as_posix()
     if not arcname or arcname == ".":
         return None
+    # A cloned source tree's ``.git/config`` can carry the
+    # HTTPS credential (PAT) used to clone a private repo. Exclude ``.git`` at
+    # any depth (top-level clone, or a vendored/submodule tree) so it never
+    # rides into a tarball a project member can later download.
+    if ".git" in rel.parts:
+        return None
     # Reject any arcname that would resolve outside the source root.
     candidate = (source_dir / rel).parent.resolve() / rel.name
     if not _is_within(source_dir, candidate):
