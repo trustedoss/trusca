@@ -169,7 +169,15 @@ If you add a feature with no harness, the PR is incomplete. See `apps/frontend/t
 3. **Self-review** — run lint, typecheck, tests locally. Fix all warnings, not just errors.
 4. **Open the PR** — fill out the [pull request template](.github/pull_request_template.md) completely. Empty checklists block review.
 5. **CI must pass** — all three jobs (lint, typecheck, test) on both backend and frontend matrices. We do not merge red.
-6. **Review** — at least one maintainer approval. Security-sensitive changes (auth, API keys, Trivy / external scanner integrations, OAuth, build gate) require additional review by a maintainer with the `security` role.
+6. **Review.** [`MAINTAINERS.md`](MAINTAINERS.md) lists one maintainer today, so "at least one other maintainer approves" is not a standing you can rely on: GitHub does not let an author approve their own PR, and there is no second person to ask. Until a second maintainer joins, a PR from the maintainer is merged on green CI plus the recurring self-review pass below; a PR from anyone else still gets a maintainer's own read before merge. A **PR from an external contributor** additionally needs the maintainer's review before merge, same as always. The gap this section closes is maintainer-authored PRs merging with no read at all, not contributor PRs. Security-sensitive changes (auth, API keys, Trivy / external scanner integrations, OAuth, build gate) route through the `security-reviewer` review before merge regardless of who authored them.
+
+   **Recurring self-review (until there is a second maintainer).** CI gates syntax, types, and coverage; it does not gate design decisions, default values, or doc/implementation drift, and merge-time review is not structurally happening here to catch those either. [`ai-review.yml`](.github/workflows/ai-review.yml)'s advisory semgrep pass is a backstop, not a substitute. Weekly (or before cutting a release, whichever comes first), the maintainer re-reads the week's merged diffs against this checklist:
+     - Does every new default value match what the docs say it is?
+     - Does every new write path (a route, a task, a service function) have a test that actually executes it, not just its helpers (hardening rule 6)?
+     - Did any PR silently narrow or widen scope from what its title/description claimed?
+     - Are there two places now holding the same fact (an enum, a constant, a doc example) that could drift apart unnoticed?
+
+   Findings from this pass become follow-up issues, not silent fixes. The point is a paper trail a second maintainer can later audit, not a cleaner diff.
 7. **Merge** — maintainers merge via "Squash and merge" to keep `main` linear. The squash message uses the PR title — write good titles.
 
 ### What gets a PR rejected
