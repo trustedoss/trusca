@@ -121,8 +121,17 @@ if [ "${RESEED:-0}" = "1" ]; then
   if [ -f .env ] && grep -qE '^COMPOSE_FILE=' .env; then
     compose_args=""   # docker-compose reads COMPOSE_FILE from .env itself
   fi
+  # < /dev/null: this whole script runs as `bash -s < remote-deploy.sh` over SSH,
+  # so its own stdin is the SSH channel still streaming the rest of THIS file.
+  # `docker-compose exec` keeps stdin open by default (-T only disables the
+  # pseudo-tty), so without the redirect it consumes the remaining script bytes
+  # (the echo below, "==> deploy of $TAG complete") as its own input: the
+  # reseed then runs but the script silently truncates right after, with no
+  # error and no visible sign the tail never ran. Confirmed 2026-09-08: a
+  # RESEED=1 deploy reported success with zero reset_demo output in the
+  # backend logs and stale (pre-reseed) row IDs still live.
   # shellcheck disable=SC2086  # compose_args is our own literal, word-splitting intended.
-  docker-compose $compose_args exec -T -e APP_ENV=demo backend python -m scripts.reset_demo
+  docker-compose $compose_args exec -T -e APP_ENV=demo backend python -m scripts.reset_demo < /dev/null
   echo "==> reseed complete"
 else
   echo "==> skipping demo reseed (set RESEED=1 to rebuild the demo dataset)"
