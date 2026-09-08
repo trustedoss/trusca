@@ -229,6 +229,27 @@ _COMPONENT_BANK: tuple[tuple[str, str, str], ...] = (
     ("pkg:golang/github.com/gin-gonic/gin", "golang", "gin"),
 )
 
+# Fix version per CVE (aligned to _CVE_BANK / _CVE_PLAN by index, since both
+# loops share the same enumerate(_CVE_PLAN) index when building findings
+# below). Real scans populate VulnerabilityFinding.fixed_version from the
+# scanner (services.vulnerability_matching._extract_fixed_version); the demo
+# seed has no scanner run, so it must supply believable values itself,
+# otherwise the "수정 버전" / "권장 업그레이드" UI has nothing to show. The
+# last entry is deliberately None (gin has no known fix yet) so the "no known
+# fix" empty state stays demonstrable too.
+_FIXED_VERSION_BANK: tuple[str | None, ...] = (
+    "4.17.21",  # CVE-2024-99001 lodash
+    "2.32.0",  # CVE-2024-99002 requests
+    "6.1.6",  # CVE-2024-99003 spring-core
+    "1.4.10",  # CVE-2024-99004 readline-sync
+    "6.0.2",  # CVE-2024-99005 PyYAML
+    "1.7.4",  # CVE-2024-99006 axios
+    "3.1.4",  # CVE-2024-99007 Jinja2
+    "2.17.1",  # CVE-2024-99008 jackson-databind
+    "1.2.8",  # CVE-2024-99009 minimist
+    None,  # CVE-2024-99010 gin, no known fix
+)
+
 # Per-license obligations so the Obligations tab and the NOTICE-file generator
 # have content in the demo. Obligations are a separate table keyed by license,
 # surfaced only when their license appears in a project's latest scan — every
@@ -403,6 +424,7 @@ async def _seed(demo_only: bool = False) -> dict[str, Any]:  # noqa: PLR0915 —
                 # gains it. Regardless of --demo-only — it is core demo surface,
                 # not a verify-baseline fixture.
                 sandbox_id = await _seed_demo_sandbox(session)
+                fixed_versions_updated = await _backfill_demo_fixed_versions(session)
                 await session.commit()
                 baseline = (
                     None if demo_only else await _seed_verify_baseline(session)
@@ -410,6 +432,7 @@ async def _seed(demo_only: bool = False) -> dict[str, Any]:  # noqa: PLR0915 —
                 existing_summary = await _collect_existing_summary(session, existing_org)
                 existing_summary["verify_baseline"] = baseline
                 existing_summary["demo_sandbox"] = sandbox_id
+                existing_summary["fixed_versions_updated"] = fixed_versions_updated
                 return existing_summary
 
             # ── Organization ───────────────────────────────────────────────
@@ -694,6 +717,7 @@ async def _seed(demo_only: bool = False) -> dict[str, Any]:  # noqa: PLR0915 —
                         component_version_id=cv.id,
                         vulnerability_id=vuln_by_id[ext_id].id,
                         status="new",
+                        fixed_version=_FIXED_VERSION_BANK[cve_idx],
                     )
                     session.add(finding)
 
@@ -853,6 +877,37 @@ async def _seed(demo_only: bool = False) -> dict[str, Any]:  # noqa: PLR0915 —
             }
     finally:
         await engine.dispose()
+
+
+async def _backfill_demo_fixed_versions(session: Any) -> int:
+    """Idempotently (re)apply ``_FIXED_VERSION_BANK`` to an already-seeded stack.
+
+    The main seed path (fresh DB) sets ``VulnerabilityFinding.fixed_version``
+    when it creates the findings. A stack seeded before that bank existed, or
+    before an entry in it changes, never re-runs that creation code
+    (the ``existing_org is not None`` short-circuit above skips it), so this
+    top-up matches findings by their vulnerability's ``external_id`` (stable,
+    shared-catalog key) and (re)writes the fix version. Safe to call on every
+    run: writes the same value it would already have.
+    """
+    from sqlalchemy import select, update
+
+    from models import Vulnerability, VulnerabilityFinding
+
+    updated = 0
+    for ext_id, fixed_version in zip(_CVE_PLAN, _FIXED_VERSION_BANK, strict=True):
+        vuln = (
+            await session.execute(select(Vulnerability).where(Vulnerability.external_id == ext_id))
+        ).scalar_one_or_none()
+        if vuln is None:
+            continue
+        result = await session.execute(
+            update(VulnerabilityFinding)
+            .where(VulnerabilityFinding.vulnerability_id == vuln.id)
+            .values(fixed_version=fixed_version)
+        )
+        updated += result.rowcount or 0
+    return updated
 
 
 async def _collect_existing_summary(session: Any, org: Any) -> dict[str, Any]:
