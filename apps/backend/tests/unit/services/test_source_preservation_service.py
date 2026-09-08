@@ -158,7 +158,7 @@ def test_symlink_member_is_skipped(tmp_path: Path) -> None:
 
 
 def test_git_directory_never_enters_tarball(tmp_path: Path) -> None:
-    """``.git/config`` can carry the clone PAT — must never
+    """``.git/config`` can carry the clone PAT, so it must never
     ride into a tarball a project member can later download."""
     src = _make_source_tree(tmp_path)
     git_dir = src / ".git"
@@ -189,7 +189,7 @@ def test_git_directory_never_enters_tarball(tmp_path: Path) -> None:
 
 def test_nested_git_directory_never_enters_tarball(tmp_path: Path) -> None:
     """A vendored/submodule tree's ``.git`` (not at the source root) must be
-    excluded too — the check is on path components, not a root-only match."""
+    excluded too, since the check is on path components, not a root-only match."""
     src = _make_source_tree(tmp_path)
     nested_git = src / "pkg" / "vendor" / "lib" / ".git"
     nested_git.mkdir(parents=True)

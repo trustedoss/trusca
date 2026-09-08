@@ -424,7 +424,7 @@ def _immediate_children(
             continue
         if ".git" in name.split("/"):
             # A pre-fix tarball may still carry ``.git/``
-            # at any depth (top-level clone, or a vendored/submodule tree) —
+            # at any depth (top-level clone, or a vendored/submodule tree), so
             # match on path components, not a full-arcname prefix, or a nested
             # ``vendor/lib/.git`` slips through. Never surface it in listings.
             continue

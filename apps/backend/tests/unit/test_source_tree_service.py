@@ -336,7 +336,7 @@ async def test_list_dir_excludes_reserved_scancode_member() -> None:
 
 
 async def test_list_dir_hides_git_metadata_from_a_legacy_tarball() -> None:
-    """A tarball written before the fix may still carry ``.git/*`` — the
+    """A tarball written before the fix may still carry ``.git/*``, so the
     listing must hide it exactly like the ``.trustedoss`` bookkeeping member."""
     team_id = uuid.uuid4()
     scan_id = uuid.uuid4()
@@ -365,8 +365,8 @@ async def test_list_dir_hides_git_metadata_from_a_legacy_tarball() -> None:
 
 async def test_list_dir_hides_nested_git_metadata_from_a_legacy_tarball() -> None:
     """A vendored/submodule ``.git`` nested under a subdirectory must be hidden
-    too — matching a full-arcname prefix (``.git`` or ``.git/...``) only catches
-    the root case and lets ``vendor/lib/.git`` slip through the listing."""
+    too, since matching a full-arcname prefix (``.git`` or ``.git/...``) only
+    catches the root case and lets ``vendor/lib/.git`` slip through the listing."""
     team_id = uuid.uuid4()
     scan_id = uuid.uuid4()
     project = _project(team_id, scan_id)
@@ -397,8 +397,8 @@ async def test_list_dir_hides_nested_git_metadata_from_a_legacy_tarball() -> Non
 
 
 async def test_read_file_rejects_git_metadata_path_even_when_member_exists() -> None:
-    """Hiding ``.git`` from the listing is not enough — a direct ``?path=`` must
-    also be rejected, or the credential is one guessed URL away."""
+    """Hiding ``.git`` from the listing is not enough, since a direct ``?path=``
+    must also be rejected, or the credential is one guessed URL away."""
     team_id = uuid.uuid4()
     scan_id = uuid.uuid4()
     project = _project(team_id, scan_id)
