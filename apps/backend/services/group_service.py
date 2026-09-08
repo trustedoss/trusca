@@ -151,15 +151,17 @@ def subtree_scope_filter(direct_group_ids: Sequence[uuid.UUID]) -> ColumnElement
 
 
 def group_scoped_subquery_predicate(
-    group_id_column: InstrumentedAttribute[uuid.UUID],
+    group_id_column: InstrumentedAttribute[uuid.UUID] | InstrumentedAttribute[uuid.UUID | None],
     direct_group_ids: Sequence[uuid.UUID],
 ) -> ColumnElement[bool]:
     """ "*group_id_column* points at a group in the accessible set", generic form.
 
     Any model with a column that is a foreign key into ``groups.id`` (today:
-    ``Project.group_id``; PR 2-C's stated intent is to reuse this for
-    ``Scan`` and others as they gain group-scoped reads) can filter through
-    this instead of re-deriving the subquery shape. The predicate is::
+    ``Project.group_id``; PR 2-C reuses this for ``ComponentApproval``,
+    ``GitHubAppCredential``, ``APIKey``, ``LicensePolicy``,
+    ``ComponentIntakeRequest`` and ``TransitionApproval`` as they gain
+    group-scoped list reads) can filter through this instead of re-deriving
+    the subquery shape. The predicate is::
 
         group_id_column IN (SELECT groups.id FROM groups WHERE <subtree_scope_filter>)
 
@@ -168,6 +170,12 @@ def group_scoped_subquery_predicate(
     table, so every caller of this helper gets the cascade's ON/OFF
     behaviour and its index usage for free without repeating the ``&&``
     predicate at each call site.
+
+    *group_id_column* also accepts a NULLABLE FK (``APIKey.team_id``,
+    ``LicensePolicy.team_id`` — org-default rows carry no team). SQL's
+    ``NULL IN (...)`` is ``NULL`` (falsy in a ``WHERE``), so a NULL-valued
+    row is correctly excluded without a caller needing an explicit
+    ``.is_not(None)`` guard first.
     """
     return group_id_column.in_(select(Group.id).where(subtree_scope_filter(direct_group_ids)))
 

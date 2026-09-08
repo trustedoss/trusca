@@ -35,6 +35,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import Session
 
+from core.authz import can_access_group
 from core.security import _ROLE_PRIORITY, CurrentUser
 from models import NotificationRoutingRule, Organization, Project, Team
 from schemas.notification_routing import NotificationRoutingRuleIn
@@ -414,7 +415,8 @@ async def list_rules(
     """
     if team_id is not None:
         resolved_org = await _organization_of(session, team_id)
-        if not _is_super_admin(actor) and team_id not in actor.team_ids:
+        # `can_access_group` already honours super_admin internally.
+        if not await can_access_group(session, actor, team_id):
             # Hidden rather than refused: somebody outside the team has no
             # business learning which teams exist from this endpoint.
             raise RoutingRuleScopeNotFound(f"team {team_id} not found")

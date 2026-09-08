@@ -38,6 +38,7 @@ from models import (
     Team,
 )
 from models.component_approval import APPROVAL_STATUS_VALUES, ApprovalStatus
+from services.group_service import subtree_scope_filter
 
 log = structlog.get_logger("services.organization_verdict")
 
@@ -199,10 +200,19 @@ async def _assert_member_of_organization(
         return
     if not actor.team_ids:
         raise VerdictNotFound(f"organization {organization_id} not found")
+    # Phase 2 PR 2-C: was `Team.id.in_(actor.team_ids)` (direct membership
+    # only). `subtree_scope_filter` applies directly here (not through the
+    # `Project`-specific subquery wrapper) because this query already starts
+    # from `Team` (== `Group` — a module-level alias), and is cascade-aware
+    # when the flag is on: a direct member of an ANCESTOR of a team in this
+    # org now also counts as belonging to the org.
     belongs = (
         await session.execute(
             select(Team.id)
-            .where(Team.organization_id == organization_id, Team.id.in_(actor.team_ids))
+            .where(
+                Team.organization_id == organization_id,
+                subtree_scope_filter(actor.team_ids),
+            )
             .limit(1)
         )
     ).scalar_one_or_none()

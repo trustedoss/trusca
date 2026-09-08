@@ -29,6 +29,7 @@ from core.authz import assert_team_access
 from core.security import CurrentUser
 from models import Project, Scan, TransitionApproval, VulnerabilityFinding
 from services.gate_policy_service import statuses_requiring_approval
+from services.group_service import group_scoped_subquery_predicate
 from services.vulnerability_service import (
     _assert_can_transition,
     _assert_justification_sufficient,
@@ -380,7 +381,13 @@ async def list_pending_for_teams(
     if not all_teams:
         if not team_ids:
             return []
-        stmt = stmt.where(TransitionApproval.team_id.in_(team_ids))
+        # Phase 2 PR 2-C: was `TransitionApproval.team_id.in_(team_ids)`.
+        # `team_ids` is the caller's DIRECT memberships (see
+        # `api.v1.transition_approvals.list_pending_endpoint`);
+        # `group_scoped_subquery_predicate` expands that to the group
+        # subtree when the cascade flag is on, and is byte-for-byte the same
+        # `IN` predicate (wrapped in a subquery) when it is off.
+        stmt = stmt.where(group_scoped_subquery_predicate(TransitionApproval.team_id, team_ids))
     rows = (
         await session.execute(stmt.order_by(TransitionApproval.created_at.asc()))
     ).scalars()

@@ -32,6 +32,7 @@ import structlog
 from sqlalchemy import or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from core.authz import can_access_group
 from core.security import _ROLE_PRIORITY, CurrentUser
 from models import GatePolicy, Organization, Project, Team
 from schemas.gate_policy import GatePolicyUpsertIn
@@ -68,11 +69,6 @@ def _may_administer_team(actor: CurrentUser, team_id: uuid.UUID) -> bool:
     if grade is None:
         return False
     return _ROLE_PRIORITY.get(grade, 0) >= _ROLE_PRIORITY["group_admin"]
-
-
-def _may_read_team(actor: CurrentUser, team_id: uuid.UUID) -> bool:
-    """Any member may read the policy that applies to their own team."""
-    return _is_super_admin(actor) or team_id in actor.team_ids
 
 
 @dataclass(frozen=True)
@@ -341,7 +337,7 @@ async def get_team_policy(
 ) -> GatePolicy | None:
     """The team's own row, or None when it has not written one."""
     organization_id = await _resolve_team_org(session, team_id)
-    if not _may_read_team(actor, team_id):
+    if not await can_access_group(session, actor, team_id):
         # Hidden rather than refused: a caller outside the team has no business
         # learning which teams exist from this endpoint.
         raise GatePolicyScopeNotFound(f"team {team_id} not found")

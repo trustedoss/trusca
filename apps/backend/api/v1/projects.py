@@ -1295,21 +1295,39 @@ async def list_assignable_members_endpoint(
     The set is exactly what ``services.assignee`` will accept, because both go
     through one predicate rather than two copies of three conditions.
 
-    A premise that holds today and will not always
-    ---------------------------------------------
-    Deriving the team from the project is safe because reaching a project means
-    being on its team. Only ``visibility='team'`` is honoured
-    (``services.project_service``), so there is no other way in.
+    A premise that held before the group-hierarchy cascade, and now needs a
+    second look
+    ------------------------------------------------------------------------
+    Deriving the team from the project used to be safe because reaching a
+    project meant being on its team, full stop — ``get_project`` above is
+    gated by ``core.authz.assert_team_access`` / ``can_access_team``, which
+    is deliberately left flat (see that module's docstring), so THAT premise
+    still holds for THIS route today: nobody reaches ``get_project`` without
+    being a direct member of ``project.team_id``.
 
-    Organization-wide visibility would end that. Somebody on another team could
-    then read the project, and this route would hand them its members, which is
-    the enumeration the tests here refuse. Whoever enables it has to decide what
-    this endpoint does: most likely keep it on team membership rather than on
-    project access, since being allowed to read a project's findings is not the
-    same as being allowed to list the people on it.
+    But ``services.assignee`` (the picker below, and the write-time
+    eligibility check the assignment PATCH uses) is no longer keyed on that
+    assumption alone — it independently widens to the project's team's
+    ancestors when :func:`core.config.group_cascade_enabled` is on, because
+    once ANY surface (``core.authz.team_scope_filter``, used by portfolio /
+    search / list_projects) starts letting an ancestor's direct member reach
+    this project, a picker keyed on `Membership.team_id == project.team_id`
+    alone would go stale the moment ``get_project`` itself is ever cascaded
+    later. Fixing ``services.assignee`` ahead of that means this route does
+    not need a second, coordinated change when it happens.
 
-    ``core.authz.team_scope_filter`` carries a pointer back here, because that
-    is the file the change lands in.
+    Organization-wide visibility (a *different* widening, not the group
+    cascade) would still end the "reaching a project means being on its
+    team" premise for ``get_project`` itself. Somebody on another team could
+    then read the project, and this route would hand them its members,
+    which is the enumeration the tests here refuse. Whoever enables it has
+    to decide what this endpoint does: most likely keep it on team
+    membership rather than on project access, since being allowed to read a
+    project's findings is not the same as being allowed to list the people
+    on it.
+
+    ``core.authz.team_scope_filter`` carries a pointer back here, because
+    that is the file the change lands in.
     """
     from services.assignee import list_assignable_members
 

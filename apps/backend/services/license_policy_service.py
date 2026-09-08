@@ -45,6 +45,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.sql.elements import ColumnElement
 
 from core.audit import bind_audit_team
+from core.authz import can_access_group
 from core.security import CurrentUser
 from models import LicensePolicy, Team
 from schemas.license_policy import (
@@ -52,6 +53,7 @@ from schemas.license_policy import (
     LicenseException,
     LicensePolicyUpsertIn,
 )
+from services.group_service import group_scoped_subquery_predicate, subtree_scope_filter
 
 log = structlog.get_logger("license_policy.service")
 
@@ -300,13 +302,6 @@ def _can_admin_team(actor: CurrentUser, team_id: uuid.UUID) -> bool:
     if _is_super_admin(actor):
         return True
     return actor.team_roles.get(team_id) == "group_admin"
-
-
-def _is_team_member(actor: CurrentUser, team_id: uuid.UUID) -> bool:
-    """True iff *actor* may READ the effective policy for *team_id*."""
-    if _is_super_admin(actor):
-        return True
-    return team_id in actor.team_ids
 
 
 def _apply_upsert(row: LicensePolicy, payload: LicensePolicyUpsertIn) -> None:
@@ -696,7 +691,7 @@ async def get_policy(
     """
     org_id = await _resolve_team_org(session, team_id)
 
-    if not _is_team_member(actor, team_id):
+    if not await can_access_group(session, actor, team_id):
         raise LicensePolicyForbidden(f"actor is not a member of team {team_id}")
 
     effective = await get_effective_policy(session, team_id=team_id, organization_id=org_id)
@@ -793,21 +788,32 @@ async def list_policies(
     count_base = select(func.count()).select_from(LicensePolicy)
 
     if not _is_super_admin(actor):
-        team_ids = list(actor.team_ids)
-        if not team_ids:
+        if not actor.team_ids:
             # No memberships → nothing visible.
             return [], 0
-        # Org ids the actor can see org-defaults for: orgs of the actor's teams.
+        # Org ids the actor can see org-defaults for: orgs of the actor's
+        # ACCESSIBLE teams. Phase 2 PR 2-C: this used to be
+        # `Team.id.in_(team_ids)` (direct membership only); `subtree_scope_filter`
+        # is the same query-time expansion `core.authz.team_scope_filter` uses,
+        # applied here directly against `Team.id` (== `Group.id` — `Team` is a
+        # module-level alias for `Group`) rather than through the
+        # `Project`-specific subquery wrapper, since this query already starts
+        # from `Team`.
         org_rows = (
             await session.execute(
-                select(Team.id, Team.organization_id).where(Team.id.in_(team_ids))
+                select(Team.id, Team.organization_id).where(
+                    subtree_scope_filter(actor.team_ids)
+                )
             )
         ).all()
         visible_org_ids = {r[1] for r in org_rows}
-        visibility: ColumnElement[bool] = LicensePolicy.team_id.in_(team_ids)
+        team_predicate = group_scoped_subquery_predicate(
+            LicensePolicy.team_id, actor.team_ids
+        )
+        visibility: ColumnElement[bool] = team_predicate
         if visible_org_ids:
             visibility = or_(
-                LicensePolicy.team_id.in_(team_ids),
+                team_predicate,
                 and_(
                     LicensePolicy.team_id.is_(None),
                     LicensePolicy.organization_id.in_(visible_org_ids),

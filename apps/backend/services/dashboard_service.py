@@ -54,6 +54,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import InstrumentedAttribute
 from sqlalchemy.sql.elements import ColumnElement
 
+from core.authz import team_scope_filter
 from core.security import CurrentUser
 from models import (
     ComponentApproval,
@@ -141,16 +142,6 @@ def _among(column: InstrumentedAttribute[uuid.UUID], ids: list[uuid.UUID]) -> Co
     return column == func.any(literal(ids, ARRAY(PG_UUID(as_uuid=True))))
 
 
-def _accessible_team_ids(actor: CurrentUser) -> list[uuid.UUID]:
-    """The team ids whose projects the actor may read (non-super-admin path).
-
-    Uses ``actor.team_roles`` keys — the actor's membership set — NOT
-    ``actor.role`` (which is only the highest role across teams and would leak
-    other teams' data if used as a membership signal).
-    """
-    return list(actor.team_roles.keys())
-
-
 def _severity_rank_case() -> Any:
     """CASE mapping a ``vuln_severity`` ENUM value to its integer rank.
 
@@ -204,10 +195,14 @@ async def _accessible_project_ids(
         stmt = stmt.where(Project.archived_at.is_(None))
 
     if not is_super:
-        team_ids = _accessible_team_ids(actor)
-        if not team_ids:
+        if not actor.team_ids:
             return []
-        stmt = stmt.where(Project.team_id.in_(team_ids))
+        # Phase 2 PR 2-C: was `Project.team_id.in_(_accessible_team_ids(actor))`
+        # (`actor.team_roles.keys()` — the same set as `actor.team_ids`, direct
+        # memberships only). `team_scope_filter` is the mandated choke-point
+        # for exactly this "portfolio dashboard" fan-out shape (see its own
+        # docstring) and is cascade-aware when the flag is on.
+        stmt = stmt.where(team_scope_filter(actor))
 
     result = await session.execute(stmt)
     return list(result.scalars().all())

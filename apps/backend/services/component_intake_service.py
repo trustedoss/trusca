@@ -35,6 +35,7 @@ from core.config import intake_requests_enabled
 from core.security import CurrentUser
 from models import ComponentIntakeRequest, Project
 from models.component_approval import APPROVAL_STATUS_VALUES, ApprovalStatus
+from services.group_service import group_scoped_subquery_predicate
 
 log = structlog.get_logger("services.component_intake")
 
@@ -283,11 +284,14 @@ def _scoped(
 ) -> Select[tuple[ComponentIntakeRequest]]:
     if actor.is_superuser or actor.role == "super_admin":
         return stmt
-    if not actor.team_ids:
-        # Fail closed: an actor with no teams sees nothing rather than
-        # everything, which an unfiltered query would give them.
-        return stmt.where(ComponentIntakeRequest.team_id.is_(None))
-    return stmt.where(ComponentIntakeRequest.team_id.in_(actor.team_ids))
+    # Phase 2 PR 2-C: `group_scoped_subquery_predicate` already returns an
+    # explicit false predicate for an empty membership set (fail-closed,
+    # same intent as the old `team_id.is_(None)` special case — this column
+    # is NOT NULL, so both forms match zero rows) and is cascade-aware when
+    # the flag is on.
+    return stmt.where(
+        group_scoped_subquery_predicate(ComponentIntakeRequest.team_id, actor.team_ids)
+    )
 
 
 async def list_requests(

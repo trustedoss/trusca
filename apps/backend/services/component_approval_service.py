@@ -57,6 +57,7 @@ from core.security import CurrentUser
 from models import ComponentApproval, Project, User
 from models.component_approval import APPROVAL_STATUS_VALUES, ApprovalStatus
 from models.scan import Component  # explicit import avoids implicit lazy load
+from services.group_service import group_scoped_subquery_predicate
 
 log = structlog.get_logger("component_approval.service")
 
@@ -249,10 +250,12 @@ async def list_approvals(
 
     # --- tenant gate ---
     if not (actor.is_superuser or actor.role == "super_admin"):
-        # Restrict to the actor's own teams; ignore any caller-supplied
-        # team_id that is outside this set.
-        base = base.where(ComponentApproval.team_id.in_(actor.team_ids))
-        count_base = count_base.where(ComponentApproval.team_id.in_(actor.team_ids))
+        # Restrict to the actor's own (cascade-expanded, when the flag is on)
+        # teams; ignore any caller-supplied team_id that is outside this set.
+        # Phase 2 PR 2-C: was `ComponentApproval.team_id.in_(actor.team_ids)`.
+        tenant = group_scoped_subquery_predicate(ComponentApproval.team_id, actor.team_ids)
+        base = base.where(tenant)
+        count_base = count_base.where(tenant)
 
     if team_id is not None:
         base = base.where(ComponentApproval.team_id == team_id)

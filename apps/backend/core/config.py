@@ -4018,10 +4018,23 @@ def group_cascade_enabled() -> bool:
 
     On: ``services.group_service`` walks ``path`` to resolve an inherited
     role and to widen the accessible set to a membership group's subtree.
-    Nothing reads this flag yet outside that module — PR 2-A defines the
-    cascade functions in isolation and does not wire them into
-    ``core/authz.py`` or any route; PR 2-C does that wiring. Until 2-C
-    lands, this flag has no observable effect no matter how it is set.
+    PR 2-C wired this into ``core/authz.py``'s ``team_scope_filter`` (every
+    list/fan-out read: dashboard, search, inventory, scan/project/
+    license-policy/component-approval lists, ...) and into
+    ``can_access_group`` (the 7 single-resource gates that used to
+    reimplement their own team check).
+
+    NOT YET wired in, as of PR 2-C: ``can_access_team`` / ``assert_team_access``
+    (~28 call sites across services/API routes not touched by 2-C) stay flat
+    regardless of this flag — deliberately, that conversion is out of PR
+    2-C's scope. Do not set this to true in any environment before PR 2-D
+    lands: a list surface would show an ancestor-group member a
+    descendant-group project/scan/etc. that the still-flat single-resource
+    gate then 403s on open. Fails closed (no data leak), but it is a
+    reproducible, visible break across most of the app's read surfaces at
+    once — see the PR 2-C security review's High finding for the exact
+    mechanism and the parity-test follow-up PR 2-D is expected to add before
+    this can safely default to (or be manually set to) true anywhere.
 
     Read at call time (CLAUDE.md core rule #11), not cached at import — an
     operator can flip it without a rebuild, and every accessor in this

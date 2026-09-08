@@ -71,6 +71,7 @@ from sqlalchemy import and_, func, or_, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from core.authz import can_access_group
 from core.config import (
     api_key_last_used_at_update_interval_seconds,
     api_key_verification_min_duration_seconds,
@@ -84,6 +85,7 @@ from core.security import (
     verify_password,
 )
 from models import APIKey, Project, User
+from services.group_service import group_scoped_subquery_predicate
 
 log = structlog.get_logger("api_key.service")
 
@@ -264,7 +266,8 @@ def _is_super_admin(actor: CurrentUser) -> bool:
     return actor.is_superuser or actor.role == "super_admin"
 
 
-def _can_issue_at_scope(
+async def _can_issue_at_scope(
+    session: AsyncSession,
     actor: CurrentUser,
     *,
     scope: str,
@@ -275,6 +278,13 @@ def _can_issue_at_scope(
 
     project_team_id is the team_id of the project's owning team (resolved by
     the caller for scope='project'); for other scopes it is unused.
+
+    The ``scope == "team"`` branch is a ROLE check (``team_admin`` writes a
+    team-scoped key) and stays exactly as flat as it was — Phase 2 PR 2-C
+    scopes the cascade to MEMBERSHIP checks, not role resolution (that is
+    ``_resolve_team_scoped_role`` territory, explicitly PR 2-D's). The
+    ``scope == "project"`` branch is a pure membership check (any team
+    member may issue a project-scoped key) and is the one PR 2-C converts.
     """
     if _is_super_admin(actor):
         return True
@@ -289,25 +299,32 @@ def _can_issue_at_scope(
         if project_team_id is None:
             return False
         # Any team member may issue a project-scoped key for that project.
-        return project_team_id in actor.team_ids
+        # Phase 2 PR 2-C: was `project_team_id in actor.team_ids`.
+        return await can_access_group(session, actor, project_team_id)
     return False
 
 
-def _can_view_key(actor: CurrentUser, key: APIKey) -> bool:
+async def _can_view_key(session: AsyncSession, actor: CurrentUser, key: APIKey) -> bool:
     """Return True iff *actor* is allowed to see this key in lists / GETs."""
     if _is_super_admin(actor):
         return True
     if key.created_by_user_id == actor.id:
         return True
     # Team-scoped key: any team member may see it (so a team_admin can audit
-    # keys issued by a former colleague).
-    if key.scope == "team" and key.team_id is not None and key.team_id in actor.team_ids:
+    # keys issued by a former colleague). Phase 2 PR 2-C: both branches below
+    # were `key.team_id in actor.team_ids`; now cascade-aware via
+    # `can_access_group`.
+    if (
+        key.scope == "team"
+        and key.team_id is not None
+        and await can_access_group(session, actor, key.team_id)
+    ):
         return True
     if key.scope == "project" and key.project_id is not None:
         # Project keys are visible to any member of the project's team. The
         # team_id was denormalized onto the key row at issuance for exactly
         # this lookup so we don't need a JOIN at read time.
-        if key.team_id is not None and key.team_id in actor.team_ids:
+        if key.team_id is not None and await can_access_group(session, actor, key.team_id):
             return True
     return False
 
@@ -392,7 +409,8 @@ async def issue_api_key(
         project_team_id = project_row[0]
 
     # ----- RBAC -----
-    if not _can_issue_at_scope(
+    if not await _can_issue_at_scope(
+        session,
         actor,
         scope=scope,
         team_id=team_id,
@@ -524,14 +542,15 @@ async def list_api_keys(
         # The actor sees: keys they created OR keys whose team_id is one of
         # their teams (covers team-scoped keys and project-scoped keys whose
         # team_id was denormalized at issuance).
-        team_filter = APIKey.team_id.in_(actor.team_ids) if actor.team_ids else None
-        if team_filter is not None:
-            visibility = or_(
-                APIKey.created_by_user_id == actor.id,
-                team_filter,
-            )
-        else:
-            visibility = APIKey.created_by_user_id == actor.id
+        # Phase 2 PR 2-C: was `APIKey.team_id.in_(actor.team_ids)` guarded by
+        # an explicit empty-list check. `group_scoped_subquery_predicate`
+        # already returns an explicit false predicate for an empty membership
+        # set, so the `if actor.team_ids` branch is no longer needed, and the
+        # predicate is cascade-aware when the flag is on.
+        visibility = or_(
+            APIKey.created_by_user_id == actor.id,
+            group_scoped_subquery_predicate(APIKey.team_id, actor.team_ids),
+        )
         base = base.where(visibility)
         count_base = count_base.where(visibility)
 
@@ -607,7 +626,7 @@ async def narrow_api_key_breadth(
     if row is None:
         raise APIKeyNotFound(f"api key {api_key_id} not found")
 
-    if not _can_view_key(actor, row):
+    if not await _can_view_key(session, actor, row):
         # Existence-hide, matching revoke: a non-viewer must not be able to
         # probe key ids by status code.
         log.warning(
@@ -656,7 +675,7 @@ async def revoke_api_key(
     if row is None:
         raise APIKeyNotFound(f"api key {api_key_id} not found")
 
-    if not _can_view_key(actor, row):
+    if not await _can_view_key(session, actor, row):
         # Existence-hide. The non-viewer should not be able to probe key ids.
         log.warning(
             "api_key.revoke.not_visible",
