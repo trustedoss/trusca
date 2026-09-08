@@ -3,7 +3,7 @@
 # Multi-stage build:
 #   1. `build`   — node:20.18.1-alpine, runs `npm ci && npm run build` to
 #                  produce the static Vite bundle in /app/dist.
-#   2. `runtime` — nginx:1.27.3-alpine, serves /app/dist on :8080 with
+#   2. `runtime` — nginx:1.29.4-alpine, serves /app/dist on :8080 with
 #                  SPA fallback (any unknown path → index.html).
 #
 # Why a separate Dockerfile and not a target in the dev one? The dev image
@@ -40,11 +40,19 @@ ENV VITE_API_BASE_URL=${VITE_API_BASE_URL}
 RUN npm run build
 
 # ---------- 2. runtime ----------
-FROM nginx:1.27.3-alpine AS runtime
+FROM nginx:1.29.4-alpine AS runtime
 
+# `apk upgrade` patches every installed OS package to whatever Alpine's
+# index resolves at build time, the same reasoning Dockerfile.worker uses
+# for its `apt-get upgrade -y` layers: the base image's own package
+# snapshot is only as fresh as the day it was published, and a release
+# built weeks later would otherwise ship packages Alpine has since patched.
+# release.yml's weekly cache-scope rotation bounds the resulting drift to
+# a week.
+#
 # tini gives us clean SIGTERM handling — without it nginx ignores the
 # Docker stop signal for 10s and the orchestrator force-kills.
-RUN apk add --no-cache tini curl
+RUN apk update && apk upgrade && apk add --no-cache tini curl
 
 # Drop the stock nginx default site; ship our SPA-aware config instead.
 RUN rm -f /etc/nginx/conf.d/default.conf

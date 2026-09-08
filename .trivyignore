@@ -17,8 +17,17 @@
 #       but never executed because we don't call any plugin).
 #
 # Re-evaluate every 180 days OR when the upstream tool publishes a new
-# release — whichever is sooner. Track via the latest session handoff's
-# "Open follow-ups" section.
+# release — whichever is sooner. The 180-day half of that is machine-checked:
+# every entry carries a trailing `exp:YYYY-MM-DD` (Trivy's built-in ignore
+# expiry — see https://trivy.dev), 180 days after the commit that added it
+# (`git blame`, not a flat reset date, so a long-standing entry does not
+# quietly get a fresh 180 days just because this line was added). Once an
+# entry expires, Trivy stops ignoring it and the finding reappears in the
+# gate — that is the point: it forces a look, not a silent extension. Bump
+# the date only after actually re-running the reach analysis above; a bare
+# date bump with no reach analysis review defeats the point of this file.
+# The "publishes a new release" half is not something `exp:` can express —
+# still tracked via the latest session handoff's "Open follow-ups" section.
 #
 # Tooling:
 #   aquasecurity/trivy-action@v0.36.0 auto-detects this file at the
@@ -81,7 +90,7 @@
 #   loaded. Reaching this parser requires feeding it MessagePack, and nothing
 #   in the scan path produces or consumes that format. UNREACHED.
 # Re-evaluate: 2026-11-09 or when cdxgen refreshes the atom plugin bundle.
-CVE-2026-21452
+CVE-2026-21452 exp:2027-01-30
 
 # ============================================================================
 # Gradle 8.14.3 distribution jars (opt/gradle/lib/**).
@@ -115,7 +124,7 @@ CVE-2026-21452
 #   primitive yields code exec inside the Gradle process — no delta over
 #   build-script execution (see section header). UNREACHED / NO-DELTA.
 # Re-evaluate: 2026-11-09 or on next Gradle distribution bump.
-CVE-2026-54512
+CVE-2026-54512 exp:2027-01-30
 
 # CVE-2026-54513 — com.fasterxml.jackson.core:jackson-databind 2.16.1 → 2.18.8
 # Target: opt/gradle/lib/jackson-databind-2.16.1.jar
@@ -126,7 +135,7 @@ CVE-2026-54512
 #   Gradle process a hostile build script already executes code, so there
 #   is no boundary left to bypass. UNREACHED / NO-DELTA.
 # Re-evaluate: 2026-11-09 or on next Gradle distribution bump.
-CVE-2026-54513
+CVE-2026-54513 exp:2027-01-30
 
 # CVE-2025-14813 — org.bouncycastle:bcprov-jdk18on 1.78.1 → 1.80.2
 # Target: opt/gradle/lib/plugins/bcprov-jdk18on-1.78.1.jar
@@ -142,7 +151,7 @@ CVE-2026-54513
 #   calling BC directly, which is code the attacker already runs — no
 #   delta (see section header). UNREACHED / NO-DELTA.
 # Re-evaluate: 2026-11-09 or on next Gradle distribution bump.
-CVE-2025-14813
+CVE-2025-14813 exp:2027-01-30
 
 # ============================================================================
 # cdxgen-plugins-bin Go binary CVEs (12 total, 11 HIGH + 1 CRITICAL).
@@ -173,72 +182,72 @@ CVE-2025-14813
 # might invoke act as gRPC servers; even if they did, the worker exposes
 # no listening sockets to the network (Celery is the only ingress, via
 # Redis). UNREACHED.
-CVE-2026-33186
+CVE-2026-33186 exp:2027-01-30
 
 # CVE-2025-15558 — github.com/docker/cli v29.0.3 → 29.2.0 — HIGH
 # docker/cli privilege escalation via malicious plugin binaries
 # (Windows-only attack vector per advisory). Worker runs Linux only,
 # never invokes docker CLI. UNREACHED.
-CVE-2025-15558
+CVE-2025-15558 exp:2027-01-30
 
 # CVE-2026-34040 — github.com/docker/docker v28.5.2 → 29.3.1 — HIGH
 # Moby authorization bypass. Reachable only via Moby daemon socket; the
 # worker has no Docker socket mounted and never shells to docker.
 # UNREACHED.
-CVE-2026-34040
+CVE-2026-34040 exp:2027-01-30
 
 # CVE-2026-34986 — github.com/go-jose/go-jose/v4 v4.1.2 → 4.1.4 — HIGH
 # DoS via crafted JSON Web Encryption. Reachable only when the binary
 # parses attacker-supplied JWE; cdxgen plugins don't invoke this code
 # path during the SBOM-emit-only flow we use. UNREACHED.
-CVE-2026-34986
+CVE-2026-34986 exp:2027-01-30
 
 # CVE-2026-4660 — github.com/hashicorp/go-getter v1.8.3 → 1.8.6 — HIGH
 # Arbitrary file reads via malicious URL. Reachable only when go-getter
 # fetches a remote artifact; our cdxgen invocation has no URL inputs.
 # UNREACHED.
-CVE-2026-4660
+CVE-2026-4660 exp:2027-01-30
 
 # CVE-2026-33747 — github.com/moby/buildkit v0.26.2 → 0.28.1 — HIGH
 # BuildKit arbitrary file write via untrusted frontend. Reachable only
 # when BuildKit parses a Dockerfile from an untrusted source; the worker
 # never invokes BuildKit. UNREACHED.
-CVE-2026-33747
+CVE-2026-33747 exp:2027-01-30
 
 # CVE-2026-33748 — github.com/moby/buildkit v0.26.2 → 0.28.1 — HIGH
 # BuildKit unauthorized file access via Git URL fragment. Same UNREACHED
 # rationale as CVE-2026-33747 (no BuildKit invocation).
-CVE-2026-33748
+CVE-2026-33748 exp:2027-01-30
 
 # CVE-2026-35469 — github.com/moby/spdystream v0.5.0 → 0.5.1 — HIGH
 # DoS via SPDY streaming (Kubelet / CRI-O / kube-apiserver). The worker
 # is not a Kubernetes component; spdystream is a transitive of
 # kubernetes client libraries vendored into Trivy, not an entry point
 # we expose. UNREACHED.
-CVE-2026-35469
+CVE-2026-35469 exp:2027-01-30
 
 # CVE-2025-66564 — github.com/sigstore/timestamp-authority v1.2.2 → 2.0.3 — HIGH
 # Sigstore Timestamp Authority DoS via excessive OID/Content-Type. The
 # binary acts as a TSA server when run in `serve` mode; the cdxgen
 # plugins bundle ships the binary but doesn't run it as a server.
 # UNREACHED.
-CVE-2025-66564
+CVE-2025-66564 exp:2027-01-30
 
 # CVE-2026-29181 — go.opentelemetry.io/otel v1.38.0 → 1.41.0 — HIGH
 # OpenTelemetry baggage header DoS amplification. Reachable only when
 # the binary serves HTTP traffic with otel middleware. UNREACHED.
-CVE-2026-29181
+CVE-2026-29181 exp:2027-01-30
 
 # CVE-2026-24051 — go.opentelemetry.io/otel/sdk v1.38.0 → 1.40.0 — HIGH
 # OpenTelemetry SDK arbitrary code execution via PATH hijacking. The
 # vulnerable code path runs when otel SDK looks up `kenv` (BSD only)
 # without an absolute path. Worker is Linux. UNREACHED.
-CVE-2026-24051
+CVE-2026-24051 exp:2027-01-30
 
 # CVE-2026-39883 — go.opentelemetry.io/otel/sdk v1.38.0 → 1.43.0 — HIGH
 # Same PATH-hijacking class as CVE-2026-24051, separate fix. UNREACHED
 # under the same rationale.
-CVE-2026-39883
+CVE-2026-39883 exp:2027-01-30
 
 # ----------------------------------------------------------------------------
 # cdxgen Node node-pkg dependency CVEs (lodash, minimist).
@@ -266,7 +275,7 @@ CVE-2026-39883
 #   compiles a template from scanned-repo input; the worker never calls
 #   lodash directly. UNREACHED.
 # Re-evaluate: 2026-12-14 or when cdxgen ships a lodash≥4.17.21 tree.
-CVE-2021-23337
+CVE-2021-23337 exp:2027-01-30
 
 # CVE-2026-4800 — lodash 4.17.19 → 4.18.0 — HIGH
 # Target: usr/lib/node_modules/@cyclonedx/cdxgen/.../node_modules/lodash
@@ -275,7 +284,7 @@ CVE-2021-23337
 # Reach: same as CVE-2021-23337 — no lodash.template call on untrusted input
 #   anywhere in cdxgen's enumeration path or the worker. UNREACHED.
 # Re-evaluate: 2026-12-14 or when cdxgen ships a lodash≥4.18.0 tree.
-CVE-2026-4800
+CVE-2026-4800 exp:2027-01-30
 
 # CVE-2021-44906 — minimist 1.2.5 → 1.2.6 — CRITICAL
 # Target: usr/lib/node_modules/@cyclonedx/cdxgen/.../node_modules/minimist
@@ -285,7 +294,7 @@ CVE-2026-4800
 #   fixed vector we pass above; a scanned repo cannot influence cdxgen's own
 #   argv, and the worker never invokes minimist. UNREACHED.
 # Re-evaluate: 2026-12-14 or when cdxgen ships a minimist≥1.2.6 tree.
-CVE-2021-44906
+CVE-2021-44906 exp:2027-01-30
 
 # ---------------------------------------------------------------------------
 # Maven 3.9.x bundle (chore PR #4 worker image): JARs vendored alongside
@@ -305,12 +314,12 @@ CVE-2021-44906
 # Wagon / aether-transport-http to fetch metadata, but only as a client
 # emitting outbound HTTPS to repo1.maven.org — not as a server, and we
 # don't process attacker-controlled HTTP/2 server frames. UNREACHED.
-CVE-2026-42583
+CVE-2026-42583 exp:2027-01-30
 
 # CVE-2026-42584 — io.netty:netty-codec-http 4.1.132.Final → 4.1.133.Final — HIGH
 # Companion CVE in the same Netty release line, HTTP/1 chunked-encoding
 # parser. Same client-only invocation rationale as CVE-2026-42583. UNREACHED.
-CVE-2026-42584
+CVE-2026-42584 exp:2027-01-30
 
 # CVE-2026-42587 — io.netty:netty-codec-http 4.1.132.Final → 4.1.133.Final — HIGH
 # Third companion CVE in the same Netty release line, HttpContentDecompressor
@@ -324,7 +333,7 @@ CVE-2026-42584
 # never reached by `ort evaluate --rules-file <kts> --ort-file <sbom>
 # --output-formats JSON`. ORT 86.x will likely refresh netty to ≥4.1.133
 # in its bundled fat-jar — re-evaluate then. UNREACHED.
-CVE-2026-42587
+CVE-2026-42587 exp:2027-01-30
 
 # CVE-2026-3505 — org.bouncycastle:bcpg-jdk18on 1.78.1 → 1.84 — HIGH
 # Bouncy Castle OpenPGP packet parser memory-amplification. Reachable
@@ -332,7 +341,7 @@ CVE-2026-42587
 # `mvn dependency:tree` does NOT verify PGP signatures (we don't pass
 # `-Dpgpverify=true`); the bundled bcpg jar is loaded by Maven's
 # classpath but never exercised. UNREACHED.
-CVE-2026-3505
+CVE-2026-3505 exp:2027-01-30
 
 # CVE-2025-67030 — org.codehaus.plexus:plexus-utils 3.5.1 → 4.0.3 / 3.6.1 — HIGH
 # XML External Entity (XXE) processing in plexus-utils' Xpp3DomBuilder.
@@ -342,7 +351,7 @@ CVE-2026-3505
 # build.gradle) and Maven's own central-index responses (TLS-served by
 # repo1.maven.org). No attacker-controlled XML reaches Xpp3Dom from a
 # resolver-only invocation. UNREACHED.
-CVE-2025-67030
+CVE-2025-67030 exp:2027-01-30
 
 # CVE-2025-68121 — REMOVED in Chore P (Phase 8 worker-image refresh).
 # Go SDK bumped from 1.22.7 → 1.25.10 in Dockerfile.worker; the
@@ -380,13 +389,13 @@ CVE-2025-67030
 # but does not invoke the spoofing-class APIs. Apt-bookworm dotnet-sdk-8.0
 # pins to a patch level below the upstream fix; re-evaluate when the
 # packages.microsoft.com debian/12 channel ships ≥17.11.36. UNREACHED.
-CVE-2025-26646
+CVE-2025-26646 exp:2027-01-30
 
 # CVE-2025-55247 — Microsoft.Build.Tasks.Core 17.11.31 → 17.11.48+ — HIGH
 # .NET denial-of-service via MSBuild task. Same reach class as
 # CVE-2025-26646 — restore-only invocation, no MSBuild task evaluation.
 # UNREACHED.
-CVE-2025-55247
+CVE-2025-55247 exp:2027-01-30
 
 # CVE-2026-26171 — System.Security.Cryptography.Xml 8.0.0 → 8.0.3+ — HIGH
 # .NET XML-DSig security bypass + DoS in the XmlDsig signature verifier.
@@ -396,13 +405,13 @@ CVE-2025-55247
 # X.509 / Authenticode chains, not XmlDsig. The vulnerable assembly is
 # present in the SDK shared framework but is not loaded by `restore`.
 # Re-evaluate when apt-bookworm ships dotnet-sdk-8.0 ≥8.0.3. UNREACHED.
-CVE-2026-26171
+CVE-2026-26171 exp:2027-01-30
 
 # CVE-2026-33116 — System.Security.Cryptography.Xml 8.0.0 → 8.0.3+ — HIGH
 # .NET DoS via infinite recursion in the XmlDsig parser. Same reach class
 # as CVE-2026-26171 — XmlDsig API never invoked from `dotnet restore`.
 # UNREACHED.
-CVE-2026-33116
+CVE-2026-33116 exp:2027-01-30
 
 # ---------------------------------------------------------------------------
 # Bundled Go-binary toolchain reach surface — cdxgen 12.3.3 + ORT 85.1.1
@@ -447,36 +456,36 @@ CVE-2026-33116
 # CVE-2024-45337 (CRITICAL) misuse of ServerConfig.PublicKeyCallback can
 # cause authorization bypass — Trivy/cdxgen never expose an SSH server.
 # CVE-2025-22869 SFTP server DoS — same, no SSH server entry point.
-CVE-2024-45337
-CVE-2025-22869
+CVE-2024-45337 exp:2027-01-30
+CVE-2025-22869 exp:2027-01-30
 
 # golang.org/x/oauth2 — token verification helper bundled but never
 # invoked in our entrypoints.
 # CVE-2025-22868 malicious malformed token DoS — UNREACHED, we never
 # call golang.org/x/oauth2.jws.Verify.
-CVE-2025-22868
+CVE-2025-22868 exp:2027-01-30
 
 # golang-jwt/jwt/v4 — bundled in cdxgen-plugins / sigstore. Vulnerable
 # to issuer audience confusion under specific JWT validation patterns
 # that our entrypoints never invoke.
 # CVE-2025-30204 jwt parse DoS — UNREACHED.
-CVE-2025-30204
+CVE-2025-30204 exp:2027-01-30
 
 # open-policy-agent/opa — bundled inside ORT plugin set. CVE in OPA
 # REGO compiler; we never run `ort scan` (which uses OPA evaluation).
 # CVE-2025-46569 — UNREACHED.
-CVE-2025-46569
+CVE-2025-46569 exp:2027-01-30
 
 # sigstore/fulcio — bundled inside ORT supply-chain attestation
 # helpers. We never run signature verification through ORT.
 # CVE-2025-66506 — UNREACHED.
-CVE-2025-66506
+CVE-2025-66506 exp:2027-01-30
 
 # containerd — bundled inside cdxgen-plugins-bin for container image
 # inspection. We never invoke container detection via cdxgen (worker
 # images are scanned by Trivy separately).
 # CVE-2026-46680 user ID handling bypass — UNREACHED.
-CVE-2026-46680
+CVE-2026-46680 exp:2027-01-30
 
 # go-git/go-billy + go-git/go-git — bundled inside ORT git analyzer
 # and cdxgen-plugins. We do not run `ort analyze` (the only ORT
@@ -484,8 +493,8 @@ CVE-2026-46680
 # pre-fetched workspace path, never cloning fresh.
 # CVE-2026-44973 go-billy path traversal — UNREACHED.
 # CVE-2026-45022 go-git extensible — UNREACHED.
-CVE-2026-44973
-CVE-2026-45022
+CVE-2026-44973 exp:2027-01-30
+CVE-2026-45022 exp:2027-01-30
 
 # Go stdlib CVEs — present in every statically-linked Go binary the
 # bundled toolchain ships (cdxgen-plugins-bin, ORT plugins, Trivy
@@ -494,34 +503,34 @@ CVE-2026-45022
 # block above). Listed individually to satisfy the per-CVE policy of
 # this file; collective justification: UNREACHED Go stdlib bundled
 # in non-invoked binaries.
-CVE-2025-22871
-CVE-2025-47906
-CVE-2025-47907
-CVE-2025-47912
-CVE-2025-58183
-CVE-2025-58185
-CVE-2025-58186
-CVE-2025-58187
-CVE-2025-58188
-CVE-2025-58189
-CVE-2025-61723
-CVE-2025-61724
-CVE-2025-61725
-CVE-2025-61726
-CVE-2025-61727
-CVE-2025-61729
-CVE-2026-25679
-CVE-2026-32280
-CVE-2026-32281
-CVE-2026-32283
-CVE-2026-33811
-CVE-2026-33814
-CVE-2026-39820
-CVE-2026-39823
-CVE-2026-39825
-CVE-2026-39826
-CVE-2026-39836
-CVE-2026-42499
+CVE-2025-22871 exp:2027-01-30
+CVE-2025-47906 exp:2027-01-30
+CVE-2025-47907 exp:2027-01-30
+CVE-2025-47912 exp:2027-01-30
+CVE-2025-58183 exp:2027-01-30
+CVE-2025-58185 exp:2027-01-30
+CVE-2025-58186 exp:2027-01-30
+CVE-2025-58187 exp:2027-01-30
+CVE-2025-58188 exp:2027-01-30
+CVE-2025-58189 exp:2027-01-30
+CVE-2025-61723 exp:2027-01-30
+CVE-2025-61724 exp:2027-01-30
+CVE-2025-61725 exp:2027-01-30
+CVE-2025-61726 exp:2027-01-30
+CVE-2025-61727 exp:2027-01-30
+CVE-2025-61729 exp:2027-01-30
+CVE-2026-25679 exp:2027-01-30
+CVE-2026-32280 exp:2027-01-30
+CVE-2026-32281 exp:2027-01-30
+CVE-2026-32283 exp:2027-01-30
+CVE-2026-33811 exp:2027-01-30
+CVE-2026-33814 exp:2027-01-30
+CVE-2026-39820 exp:2027-01-30
+CVE-2026-39823 exp:2027-01-30
+CVE-2026-39825 exp:2027-01-30
+CVE-2026-39826 exp:2027-01-30
+CVE-2026-39836 exp:2027-01-30
+CVE-2026-42499 exp:2027-01-30
 
 # Missed in initial triage — same Go stdlib UNREACHED category as above.
 # CVE-2025-68121 crypto/tls: Incorrect certificate validation during TLS
@@ -529,7 +538,7 @@ CVE-2026-42499
 # bundled Go binaries (cdxgen-plugins-bin, ORT plugins, Trivy CLI). The
 # vulnerable TLS resumption code path is reached only when those binaries
 # act as TLS clients/servers; our entrypoints never exercise that surface.
-CVE-2025-68121
+CVE-2025-68121 exp:2027-01-30
 
 # CVE-2026-42504 net/textproto (Go stdlib): decoding a maliciously-crafted
 # MIME header with many invalid encoded-words causes excessive CPU (DoS) —
@@ -546,7 +555,7 @@ CVE-2025-68121
 # below; see that entry for the cosign reach analysis). Do not drop this
 # entry until BOTH the vendored plugin binaries and cosign ship fixed-stdlib
 # rebuilds.
-CVE-2026-42504
+CVE-2026-42504 exp:2027-01-30
 
 # ============================================================================
 # Latest-upstream residuals after the 2026-07 toolchain bumps
@@ -574,7 +583,7 @@ CVE-2026-42504
 #   with our credentials. UNREACHED.
 # Re-evaluate: 2026-12-29 or on the next Trivy release — check with
 #   `go version -m /usr/bin/trivy | grep oras`.
-CVE-2026-50151
+CVE-2026-50151 exp:2027-01-30
 
 # CVE-2026-50163 — oras.land/oras-go/v2 v2.6.0 → NO FIX RELEASED — HIGH
 # Target: usr/bin/trivy (same embedded module as CVE-2026-50151 above;
@@ -596,7 +605,7 @@ CVE-2026-50151
 #   = operator-pinned DB registry over TLS).
 # Re-evaluate: 2026-12-29 or as soon as oras-go cuts a fixed release and
 #   Trivy re-bundles it — this entry must not outlive an available fix.
-CVE-2026-50163
+CVE-2026-50163 exp:2027-01-30
 
 # CVE-2026-27145 — Go stdlib crypto/x509 — 1.25.11 / 1.26.4 — HIGH
 # Target: usr/local/bin/cosign ONLY. cosign v3.1.1 (latest, 2026-06-09)
@@ -620,7 +629,7 @@ CVE-2026-50163
 # Re-evaluate: on the next cosign release built with Go ≥1.26.4 (check
 #   `go version -m /usr/local/bin/cosign | head -1`) or 2026-12-29,
 #   whichever is sooner.
-CVE-2026-27145
+CVE-2026-27145 exp:2027-01-30
 
 # CVE-2026-39822 — Go stdlib os.Root — 1.25.12 / 1.26.5 — HIGH
 # Target: usr/local/bin/cosign (go1.26.3) + usr/local/bin/docker (go1.26.4)
@@ -641,7 +650,7 @@ CVE-2026-27145
 # Re-evaluate: on the next cosign / docker CLI releases built with Go >=1.26.5
 #   (check `go version -m <binary> | head -1`) or 2026-11-16, whichever is
 #   sooner — this entry must not outlive an available upstream rebuild.
-CVE-2026-39822
+CVE-2026-39822 exp:2027-01-30
 
 # CVE-2026-47302 / CVE-2026-47304 / CVE-2026-50525 / CVE-2026-50527 /
 # CVE-2026-50648 — .NET System.Security.Cryptography.Xml 8.0.3 — HIGH (5x)
@@ -662,11 +671,11 @@ CVE-2026-39822
 #   finding automatically once the bundled assembly reaches >= 8.0.4) or
 #   2026-10-24, whichever is sooner — this entry must not outlive an
 #   available rebuild.
-CVE-2026-47302
-CVE-2026-47304
-CVE-2026-50525
-CVE-2026-50527
-CVE-2026-50648
+CVE-2026-47302 exp:2027-01-30
+CVE-2026-47304 exp:2027-01-30
+CVE-2026-50525 exp:2027-01-30
+CVE-2026-50527 exp:2027-01-30
+CVE-2026-50648 exp:2027-01-30
 
 # GHSA-r7wm-3cxj-wff9 — jackson-core 2.16.1 async-parser maxNumberLength
 #   bypass — HIGH
@@ -684,7 +693,7 @@ CVE-2026-50648
 #   jar. Category-3 UNREACHED.
 # Re-evaluate: on the next Gradle pin bump (check `ls opt/gradle/lib` for
 #   the bundled jackson version) or 2026-10-24, whichever is sooner.
-GHSA-r7wm-3cxj-wff9
+GHSA-r7wm-3cxj-wff9 exp:2027-01-30
 
 # GHSA-hrxh-6v49-42gf — google.golang.org/grpc v1.81.1 xDS RBAC / HTTP2 —
 #   HIGH
@@ -701,7 +710,7 @@ GHSA-r7wm-3cxj-wff9
 # Re-evaluate: on the next cosign release built with grpc >= 1.82.1
 #   (check `go version -m /usr/local/bin/cosign | grep grpc`) or
 #   2026-10-24, whichever is sooner.
-GHSA-hrxh-6v49-42gf
+GHSA-hrxh-6v49-42gf exp:2027-01-30
 
 # CVE-2026-56852 — golang.org/x/text v0.38.0 norm.Iter infinite loop — HIGH
 # Target: usr/local/bin/cosign (gobinary) ONLY. Fixed version is x/text
@@ -725,7 +734,7 @@ GHSA-hrxh-6v49-42gf
 # Re-evaluate: on the next cosign release built with x/text >= 0.39.0
 #   (check `go version -m /usr/local/bin/cosign | grep x/text`) or
 #   2026-10-29, whichever is sooner.
-CVE-2026-56852
+CVE-2026-56852 exp:2027-01-30
 
 # ----------------------------------------------------------------------------
 # pip's vendored dependencies (single source of truth for this class — both
@@ -764,7 +773,7 @@ CVE-2026-56852
 #   after a failure — the precondition the advisory describes. pip runs at
 #   build time only; no pip process is running when the worker serves a scan.
 #   Category-2 UNRELEASED-UPSTREAM: 1.2.1 exists, pip 26.2 still ships 1.1.2.
-GHSA-6v7p-g79w-8964
+GHSA-6v7p-g79w-8964 exp:2027-01-30
 
 # CVE-2025-47273 — setuptools 70.3.0 → 78.1.1, seen through pip's vendored
 #   `pkg_resources` (…/site-packages/pip/_vendor/pkg_resources). setuptools
@@ -776,7 +785,7 @@ GHSA-6v7p-g79w-8964
 #   pip keeps for entry-point and distribution metadata reading. There is no
 #   invocation of it anywhere in the image.
 #   Category-2 UNRELEASED-UPSTREAM, same reasoning as the msgpack entry.
-CVE-2025-47273
+CVE-2025-47273 exp:2027-01-30
 
 
 # ============================================================================
@@ -851,7 +860,7 @@ CVE-2025-47273
 #   also matches binaries that vendor x/net below that version, independently
 #   of the toolchain they were built with.
 # Target: usr/local/bin/cosign and usr/local/bin/docker (gobinary) ONLY.
-CVE-2026-39821
+CVE-2026-39821 exp:2027-02-11
 
 # CVE-2026-46600: Go stdlib golang.org/x/net/dns/dnsmessage, denial of
 #   service via invalid DNS record parsing. Fixed in 1.26.6 / 1.27.0-rc.3.
@@ -860,7 +869,7 @@ CVE-2026-39821
 #   the 0.55.0 that fixes CVE-2026-39821. A binary can be clear of the first
 #   and still carry the second.
 # Target: usr/local/bin/cosign and usr/local/bin/docker (gobinary) ONLY.
-CVE-2026-46600
+CVE-2026-46600 exp:2027-02-11
 
 # ============================================================================
 # Go stdlib 1.26.4, second wave
@@ -931,12 +940,12 @@ CVE-2026-46600
 # >= 1.25.13 / 1.26.6, or 2026-11-16, whichever is sooner. Check with
 # `go version -m /usr/local/bin/cosign` inside the image, and re-measure the
 # residual set at the same time.
-CVE-2026-33818
-CVE-2026-56853
-CVE-2026-56858
-CVE-2026-56859
-CVE-2026-56860
-CVE-2026-56862
+CVE-2026-33818 exp:2027-02-12
+CVE-2026-56853 exp:2027-02-12
+CVE-2026-56858 exp:2027-02-12
+CVE-2026-56859 exp:2027-02-12
+CVE-2026-56860 exp:2027-02-12
+CVE-2026-56862 exp:2027-02-12
 
 # ----------------------------------------------------------------------------
 # govulncheck v1.5.0 — golang.org/x/mod sumdb advisories
@@ -973,8 +982,8 @@ CVE-2026-56862
 # Re-evaluate: on the first x/vuln release requiring x/mod >= 0.40.0, or
 # 2026-11-20, whichever is sooner. Check with
 # `go version -m /usr/local/go-bin/govulncheck | grep x/mod` inside the image.
-CVE-2026-56864
-CVE-2026-56865
+CVE-2026-56864 exp:2027-02-16
+CVE-2026-56865 exp:2027-02-16
 
 # CVE-2026-56854 (GO-2026-6303) — golang.org/x/crypto/ssh unenforced
 #   source-address restriction on a certificate-restricted key — HIGH
@@ -1010,7 +1019,7 @@ CVE-2026-56865
 # Re-evaluate: on the first cosign release built against x/crypto >= 0.55.0
 #   (check `go version -m /usr/local/bin/cosign | grep x/crypto`) or
 #   2026-12-01, whichever is sooner.
-CVE-2026-56854
+CVE-2026-56854 exp:2027-02-28
 
 # CVE-2026-84304 (GHSA-vp52-pcj8-j9qc) — google.golang.org/grpc v1.82.0
 #   heap memory exhaustion via HTTP/2 DATA frame fragmentation — HIGH
@@ -1030,4 +1039,4 @@ CVE-2026-56854
 # Re-evaluate: on the first cosign release built with grpc >= 1.83.1
 #   (check `go version -m /usr/local/bin/cosign | grep grpc`) or
 #   2026-12-01, whichever is sooner.
-CVE-2026-84304
+CVE-2026-84304 exp:2027-03-01

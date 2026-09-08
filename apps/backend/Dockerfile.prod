@@ -11,7 +11,7 @@
 # CLAUDE.md core rule #9: pin tags + minor + patch, no `:latest`.
 
 # ---------- 1. build ----------
-FROM python:3.12.7-slim AS build
+FROM python:3.12.14-slim-bookworm AS build
 
 ENV PYTHONUNBUFFERED=1 \
     PYTHONDONTWRITEBYTECODE=1 \
@@ -31,7 +31,7 @@ RUN pip install --upgrade pip \
     && pip install --prefix=/install -r requirements.txt
 
 # ---------- 2. runtime ----------
-FROM python:3.12.7-slim AS runtime
+FROM python:3.12.14-slim-bookworm AS runtime
 
 # The release build passes the tag here so the running image can state its
 # own version — SLSA provenance, the About surface and every SBOM we emit
@@ -52,7 +52,14 @@ ENV PYTHONUNBUFFERED=1 \
 # rendering libs at runtime: pango (pulls cairo + harfbuzz), gdk-pixbuf and
 # a default font face. These belong in the runtime stage (weasyprint ships as
 # pure-Python wheels, so the build stage needs no extra packages).
-RUN apt-get update && apt-get install -y --no-install-recommends \
+# `apt-get upgrade -y` patches every installed OS package to whatever the
+# apt index resolves at build time (mirrors Dockerfile.worker's ci.yml
+# image-scan gate reasoning) — a release built weeks after this layer last
+# changed would otherwise still ship the packages `python:3.12.14-slim-
+# bookworm` was baked with on release day, not what Debian's security
+# channel has shipped since. release.yml's weekly cache-scope rotation
+# (mirroring ci.yml's image-scan job) bounds the resulting drift to a week.
+RUN apt-get update && apt-get upgrade -y && apt-get install -y --no-install-recommends \
         libpq5 \
         curl \
         tini \
