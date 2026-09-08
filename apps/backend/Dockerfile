@@ -1,4 +1,4 @@
-FROM python:3.12.7-slim
+FROM python:3.12.7-slim@sha256:60d9996b6a8a3689d36db740b49f4327be3be09a21122bd02fb8895abb38b50d
 
 ENV PYTHONUNBUFFERED=1 \
     PYTHONDONTWRITEBYTECODE=1 \
@@ -51,9 +51,13 @@ RUN curl -fsSL https://www.postgresql.org/media/keys/ACCC4CF8.asc -o /tmp/pgdg.a
 
 WORKDIR /app
 
-COPY requirements.txt requirements-dev.txt /app/
+# requirements-dev.lock (pip-compile --generate-hashes, from
+# requirements-dev.txt, which itself pulls in requirements.txt) pins every
+# direct AND transitive dependency to an exact version and hash, matching
+# Dockerfile.prod / Dockerfile.worker's reproducibility guarantee.
+COPY requirements-dev.lock /app/
 RUN pip install --upgrade pip \
-    && pip install -r requirements-dev.txt
+    && pip install --require-hashes -r requirements-dev.lock
 
 # Entrypoint applies Alembic migrations on container start (AUTO_MIGRATE=true,
 # the dev default) before exec'ing CMD. Copy it EXPLICITLY with an executable

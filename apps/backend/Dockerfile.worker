@@ -70,7 +70,7 @@
 # second pre-image resistance ... SHA1 is not considered secure since
 # 2026-02-01"). Stay on bookworm until both upstreams publish trixie-
 # compatible signing keys; revisit when bumping to Python 3.13.
-FROM python:3.12.14-slim-bookworm AS base
+FROM python:3.12.14-slim-bookworm@sha256:782412e85d0f0984994c290652577d4018aff08145c85b262bb63dc0c7522254 AS base
 
 # The release build passes the tag here so the running image can state its
 # own version — SLSA provenance, the About surface and every SBOM we emit
@@ -152,14 +152,14 @@ RUN curl -fsSL https://www.postgresql.org/media/keys/ACCC4CF8.asc -o /tmp/pgdg.a
 
 WORKDIR /app
 
-COPY requirements.txt requirements-dev.txt /app/
-# Install both files explicitly. requirements-dev.txt starts with
-# `-r requirements.txt`, so a single `pip install -r requirements-dev.txt`
-# is functionally equivalent — but listing both makes the dependency
-# surface visible to a build-cache miss diagnostic and forecloses a
-# pip behaviour change that would silently drop the transitive include.
+# requirements-dev.lock (pip-compile --generate-hashes) is a single flat
+# resolution covering requirements.txt AND requirements-dev.txt's deps
+# (requirements-dev.txt starts with `-r requirements.txt`), each pinned to an
+# exact version and hash. One file, one install, no `-r` chain for a pip
+# behaviour change to silently drop.
+COPY requirements-dev.lock /app/
 RUN pip install --upgrade pip \
-    && pip install -r requirements.txt -r requirements-dev.txt
+    && pip install --require-hashes -r requirements-dev.lock
 
 # ---------------------------------------------------------------------------
 # Stage 2: worker — base + JDK 21 + Node 20 LTS + cdxgen + scancode + Trivy.
