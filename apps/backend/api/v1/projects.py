@@ -1295,26 +1295,25 @@ async def list_assignable_members_endpoint(
     The set is exactly what ``services.assignee`` will accept, because both go
     through one predicate rather than two copies of three conditions.
 
-    A premise that held before the group-hierarchy cascade, and now needs a
-    second look
+    A premise the group-hierarchy cascade broke, and this PR closed
     ------------------------------------------------------------------------
     Deriving the team from the project used to be safe because reaching a
-    project meant being on its team, full stop — ``get_project`` above is
-    gated by ``core.authz.assert_team_access`` / ``can_access_team``, which
-    is deliberately left flat (see that module's docstring), so THAT premise
-    still holds for THIS route today: nobody reaches ``get_project`` without
-    being a direct member of ``project.team_id``.
+    project meant being on its team, full stop. A later change made
+    ``get_project`` above cascade-aware (it now runs its team gate through
+    ``core.authz.assert_team_access`` / ``can_access_group``, same as every
+    other single-resource surface), so that premise no longer holds
+    unconditionally: with the cascade flag on, an actor can reach
+    ``get_project`` through an ANCESTOR group's direct membership, without
+    being a direct member of ``project.team_id`` itself.
 
-    But ``services.assignee`` (the picker below, and the write-time
-    eligibility check the assignment PATCH uses) is no longer keyed on that
-    assumption alone — it independently widens to the project's team's
-    ancestors when :func:`core.config.group_cascade_enabled` is on, because
-    once ANY surface (``core.authz.team_scope_filter``, used by portfolio /
-    search / list_projects) starts letting an ancestor's direct member reach
-    this project, a picker keyed on `Membership.team_id == project.team_id`
-    alone would go stale the moment ``get_project`` itself is ever cascaded
-    later. Fixing ``services.assignee`` ahead of that means this route does
-    not need a second, coordinated change when it happens.
+    ``services.assignee`` (the picker below, and the write-time eligibility
+    check the assignment PATCH uses) already anticipated this — PR 2-C widened
+    it to the project's team's ancestors when
+    :func:`core.config.group_cascade_enabled` is on, specifically so this
+    route would not need a second, coordinated change once ``get_project``
+    itself was cascaded. It was. So this route's set stays exactly what
+    ``services.assignee`` accepts, in both flag states, with no change needed
+    here.
 
     Organization-wide visibility (a *different* widening, not the group
     cascade) would still end the "reaching a project means being on its

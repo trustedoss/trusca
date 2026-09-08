@@ -255,7 +255,8 @@ async def resolve_for_project(
         ).scalar_one_or_none()
         if team_id is None:
             raise VerdictNotFound(f"project {project_id} not found")
-        assert_team_access(
+        await assert_team_access(
+            session,
             actor,
             team_id,
             log=log,

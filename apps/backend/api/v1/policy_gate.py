@@ -191,7 +191,8 @@ async def _load_project_for_gate(
     if project is None:
         raise ProjectNotFound(f"project {project_id} not found")
 
-    assert_team_access(
+    await assert_team_access(
+        session,
         actor,
         project.team_id,
         log=log,

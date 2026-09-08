@@ -287,7 +287,8 @@ async def export_project_sbom_endpoint(
     # Re-assert team membership through the central audit helper so the
     # cross_team_attempt log entry is written for any unexpected gap. This
     # is belt-and-braces with `get_project`; cheap and consistent.
-    assert_team_access(
+    await assert_team_access(
+        session,
         actor,
         project.team_id,
         log=log,
@@ -394,7 +395,8 @@ async def _resolve_project_or_problem(
     except ProjectError as exc:  # pragma: no cover - defensive catch-all
         return _problem_for_project_error(request, exc)
 
-    assert_team_access(
+    await assert_team_access(
+        session,
         actor,
         project.team_id,
         log=log,

@@ -403,7 +403,8 @@ async def list_project_obligations(
     if project is None:
         raise ProjectNotFound(f"project {project_id} not found")
 
-    assert_team_access(
+    await assert_team_access(
+        session,
         actor,
         project.team_id,
         log=log,
@@ -676,7 +677,8 @@ async def get_obligation_detail(
             f"obligation {obligation_id} not found in project {project_id}"
         )
 
-    assert_team_access(
+    await assert_team_access(
+        session,
         actor,
         project.team_id,
         log=log,
@@ -1379,7 +1381,8 @@ async def generate_notice(
     if project is None:
         raise ProjectNotFound(f"project {project_id} not found")
 
-    assert_team_access(
+    await assert_team_access(
+        session,
         actor,
         project.team_id,
         log=log,

@@ -136,7 +136,8 @@ async def create_project(
     - 403 if the actor is not a member of the target team (and not super_admin).
     - 409 if (team_id, slug) already exists — caught from the unique constraint.
     """
-    assert_team_access(
+    await assert_team_access(
+        session,
         actor,
         payload.team_id,
         log=log,
@@ -336,7 +337,8 @@ async def get_project(
     # raise 403 because team membership is itself a privileged signal in
     # this product (collaborators know who is on which team). 404-on-
     # forbidden would be safer if existence were secret; it is not here.
-    assert_team_access(
+    await assert_team_access(
+        session,
         actor,
         project.team_id,
         log=log,

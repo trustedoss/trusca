@@ -250,7 +250,8 @@ async def request_transition(
 
     # Existence-hide, matching the transition endpoint: a caller outside the
     # team learns nothing about whether the finding exists.
-    assert_team_access(
+    await assert_team_access(
+        session,
         actor,
         project.team_id,
         log=log,
@@ -308,7 +309,8 @@ async def decide_and_apply(
     if row is None:
         raise ApprovalNotFound(f"approval {approval_id} not found")
 
-    assert_team_access(
+    await assert_team_access(
+        session,
         actor,
         row.team_id,
         log=log,

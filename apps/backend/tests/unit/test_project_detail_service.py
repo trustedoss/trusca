@@ -519,28 +519,56 @@ async def test_overview_current_user_role_resolved_from_db_not_jwt(
     assert overview["current_user_role"] == "group_admin"
 
 
-async def test_overview_current_user_role_org_wide_reader_defaults_developer(
+async def test_overview_current_user_role_no_membership_returns_none(
     db_session: AsyncSession,
 ) -> None:
-    """An org-wide reader with no membership fails closed to 'developer'.
+    """No membership at *team_id* or any of its ancestors -> ``None``.
 
-    A super-user (who can read every project) but who holds no team membership
-    is the cleanest way to exercise the "access granted, no membership row"
-    branch without depending on org-wide visibility plumbing. We assert the
-    *non-superuser* fallback by directly invoking the resolver with a plain
-    principal that has access but no membership.
+    Phase 2 PR 2-D rewrote this resolver: the previous version defaulted an
+    actor with no membership row at exactly `team_id` to `developer`,
+    documented as a "fail-closed" default for a hypothetical org-wide reader.
+    Under the group-hierarchy cascade that branch became reachable by an
+    actor who reached the project only through an ancestor's membership,
+    which the old code would silently PROMOTE to `developer` rather than
+    resolve correctly — the opposite of fail-closed. The resolver now walks
+    the actual ancestor chain (`services.group_service.effective_role_at`)
+    and returns `None` when no membership matches anywhere in it; the caller
+    (`get_project_overview`) treats `None` as access denied rather than
+    falling back to a manufactured role.
     """
     from services.project_detail_service import _resolve_team_scoped_role
     from tests._helpers import principal_for as _principal_for
 
     org = await make_organization(db_session)
     team = await make_team(db_session, organization=org)
-    # A user with NO membership on `team`.
+    # A user with NO membership on `team` (or anywhere in its ancestor chain
+    # — `team` is a root group here, so the chain is just itself).
     reader = await make_user(db_session)
     actor = _principal_for(reader, team_ids=[], role="developer")
 
     role = await _resolve_team_scoped_role(db_session, actor=actor, team_id=team.id)
-    assert role == "developer"
+    assert role is None
+
+
+async def test_overview_current_user_role_resolves_nearest_ancestor_membership(
+    db_session: AsyncSession,
+) -> None:
+    """A cascade-only reader (member of an ancestor, not `team_id` itself)
+    resolves to THAT ancestor's role — never promoted to a higher one."""
+    from services.project_detail_service import _resolve_team_scoped_role
+    from tests._helpers import make_membership as _make_membership
+    from tests._helpers import principal_for as _principal_for
+
+    org = await make_organization(db_session)
+    parent = await make_team(db_session, organization=org)
+    child = await make_team(db_session, organization=org, parent=parent)
+
+    reader = await make_user(db_session)
+    await _make_membership(db_session, user=reader, team=parent, role="viewer")
+    actor = _principal_for(reader, team_ids=[parent.id], role="viewer")
+
+    role = await _resolve_team_scoped_role(db_session, actor=actor, team_id=child.id)
+    assert role == "viewer"
 
 
 # ---------------------------------------------------------------------------

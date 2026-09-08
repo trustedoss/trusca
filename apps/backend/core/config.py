@@ -4024,17 +4024,19 @@ def group_cascade_enabled() -> bool:
     ``can_access_group`` (the 7 single-resource gates that used to
     reimplement their own team check).
 
-    NOT YET wired in, as of PR 2-C: ``can_access_team`` / ``assert_team_access``
-    (~28 call sites across services/API routes not touched by 2-C) stay flat
-    regardless of this flag — deliberately, that conversion is out of PR
-    2-C's scope. Do not set this to true in any environment before PR 2-D
-    lands: a list surface would show an ancestor-group member a
-    descendant-group project/scan/etc. that the still-flat single-resource
-    gate then 403s on open. Fails closed (no data leak), but it is a
-    reproducible, visible break across most of the app's read surfaces at
-    once — see the PR 2-C security review's High finding for the exact
-    mechanism and the parity-test follow-up PR 2-D is expected to add before
-    this can safely default to (or be manually set to) true anywhere.
+    As of PR 2-D: ``assert_team_access`` (the async wrapper around
+    ``can_access_group`` that ~22 service/API modules use for their
+    single-resource gate — the old, flat-only, session-less
+    ``can_access_team`` this replaced is gone) is wired in too, closing the
+    list/detail parity gap the PR 2-C security review flagged as High (a
+    cascade-visible list item that still 403'd on open). PR 2-D's own
+    integration suite (``tests/integration/test_group_cascade_wiring.py`` and
+    the list-vs-detail parity guard added alongside it) is what a future
+    change to this flag's rollout plan should re-run before flipping the
+    default.
+
+    This still defaults to ``false`` — PR 2-D does not change the default,
+    only closes the gap that made turning it on unsafe.
 
     Read at call time (CLAUDE.md core rule #11), not cached at import — an
     operator can flip it without a rebuild, and every accessor in this

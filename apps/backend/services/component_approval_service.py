@@ -52,7 +52,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import Session
 
-from core.authz import assert_team_access, can_access_team
+from core.authz import assert_team_access
 from core.security import CurrentUser
 from models import ComponentApproval, Project, User
 from models.component_approval import APPROVAL_STATUS_VALUES, ApprovalStatus
@@ -439,7 +439,8 @@ async def get_approval(
     if row is None:
         raise ApprovalNotFound(f"approval {approval_id} not found")
 
-    assert_team_access(
+    await assert_team_access(
+        session,
         actor,
         row.team_id,
         log=log,
@@ -478,7 +479,8 @@ async def create_approval(
     if project is None:
         raise ApprovalNotFound(f"project {project_id} not found")
 
-    assert_team_access(
+    await assert_team_access(
+        session,
         actor,
         project.team_id,
         log=log,
@@ -777,15 +779,15 @@ async def transition_approval(
         raise ApprovalNotFound(f"approval {approval_id} not found")
 
     # Existence-hide for non-members.
-    if not can_access_team(actor, row.team_id):
-        log.warning(
-            "authz.cross_team_attempt",
-            actor_id=str(actor.id),
-            target_team_id=str(row.team_id),
-            resource="component_approval",
-            resource_id=str(approval_id),
-        )
-        raise ApprovalNotFound(f"approval {approval_id} not found")
+    await assert_team_access(
+        session,
+        actor,
+        row.team_id,
+        log=log,
+        resource="component_approval",
+        resource_id=str(approval_id),
+        deny=lambda: ApprovalNotFound(f"approval {approval_id} not found"),
+    )
 
     # ETag check.
     if if_match != row.version:
@@ -900,15 +902,15 @@ async def delete_approval(
         raise ApprovalNotFound(f"approval {approval_id} not found")
 
     # Existence-hide: non-members see 404.
-    if not can_access_team(actor, row.team_id):
-        log.warning(
-            "authz.cross_team_attempt",
-            actor_id=str(actor.id),
-            target_team_id=str(row.team_id),
-            resource="component_approval",
-            resource_id=str(approval_id),
-        )
-        raise ApprovalNotFound(f"approval {approval_id} not found")
+    await assert_team_access(
+        session,
+        actor,
+        row.team_id,
+        log=log,
+        resource="component_approval",
+        resource_id=str(approval_id),
+        deny=lambda: ApprovalNotFound(f"approval {approval_id} not found"),
+    )
 
     # Terminal-state guard.
     if row.status in _TERMINAL_STATES:

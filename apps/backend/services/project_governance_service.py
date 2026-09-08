@@ -134,7 +134,8 @@ async def get_project_governance(
     # already raises ProjectNotFound for a missing row.
     project = await _load_project(session, project_id)
 
-    assert_team_access(
+    await assert_team_access(
+        session,
         actor,
         project.team_id,
         log=log,

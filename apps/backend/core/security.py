@@ -903,8 +903,8 @@ def require_team_member() -> Callable[..., CurrentUser]:
     callers, only this definition and its own test). Do not `Depends()` this
     onto a new route as-is: its super-admin bypass checks only
     ``role == "super_admin"``, not ``is_superuser`` too, which is narrower
-    than every gate PR 2-C touched (``core.authz.can_access_team`` /
-    ``can_access_group`` / ``team_scope_filter`` all check both) -- and it
+    than every gate `core.authz` exposes (``can_access_group`` /
+    ``assert_team_access`` / ``team_scope_filter`` all check both) -- and it
     has no cascade awareness at all, unlike ``can_access_group``. If you are
     about to wire this up, route through ``core.authz.can_access_group``
     instead, or bring this function's bypass and cascade behavior in line

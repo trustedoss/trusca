@@ -33,7 +33,7 @@ def _overview() -> dict:
 def _patch_reads(monkeypatch, render_spy) -> None:
     pid_team = SimpleNamespace(team_id=uuid.uuid4())
     monkeypatch.setattr(reports, "get_project", AsyncMock(return_value=pid_team))
-    monkeypatch.setattr(reports, "assert_team_access", lambda *a, **k: None)
+    monkeypatch.setattr(reports, "assert_team_access", AsyncMock(return_value=None))
     monkeypatch.setattr(reports, "get_project_overview", AsyncMock(return_value=_overview()))
     monkeypatch.setattr(reports, "list_components_for_project", AsyncMock(return_value=([], 0)))
     monkeypatch.setattr(

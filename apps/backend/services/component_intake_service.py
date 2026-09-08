@@ -154,7 +154,8 @@ async def open_request(
     """
     _assert_enabled()
     project = await _project_for(session, project_id)
-    assert_team_access(
+    await assert_team_access(
+        session,
         actor,
         project.team_id,
         log=log,
@@ -233,7 +234,8 @@ async def transition_request(
     if row is None:
         raise IntakeNotFound(f"intake request {request_id} not found")
 
-    assert_team_access(
+    await assert_team_access(
+        session,
         actor,
         row.team_id,
         log=log,

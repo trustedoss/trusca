@@ -247,7 +247,8 @@ async def get_vulnerability_report_pdf_endpoint(
 
     # Belt-and-braces: re-assert team membership through the central audit
     # helper so a cross_team_attempt is logged for any unexpected gap.
-    assert_team_access(
+    await assert_team_access(
+        session,
         actor,
         project.team_id,
         log=log,
@@ -424,7 +425,8 @@ async def get_vulnerability_report_xlsx_endpoint(
     except ProjectError as exc:  # pragma: no cover - defensive catch-all
         return _problem_for_project_error(request, exc)
 
-    assert_team_access(
+    await assert_team_access(
+        session,
         actor,
         project.team_id,
         log=log,

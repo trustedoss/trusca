@@ -300,7 +300,8 @@ async def _resolve_accessible_scan(
 
     # Existence-hide: a project in another team returns the same 404 as an
     # unknown project id. assert_team_access logs the cross-team attempt.
-    assert_team_access(
+    await assert_team_access(
+        session,
         actor,
         project.team_id,
         log=log,

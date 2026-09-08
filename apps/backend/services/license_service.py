@@ -326,7 +326,8 @@ async def list_project_licenses(
     if project is None:
         raise ProjectNotFound(f"project {project_id} not found")
 
-    assert_team_access(
+    await assert_team_access(
+        session,
         actor,
         project.team_id,
         log=log,
@@ -635,7 +636,8 @@ async def get_license_finding_detail(
 
     # Hide existence: 404 not 403 — we don't leak that the row exists in
     # another team.
-    assert_team_access(
+    await assert_team_access(
+        session,
         actor,
         project.team_id,
         log=log,

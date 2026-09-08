@@ -71,7 +71,8 @@ from models import (
 from models import (
     License as LicenseModel,
 )
-from services import risk_score, scan_outcome
+from models.auth import Group
+from services import group_service, risk_score, scan_outcome
 from services.project_service import (
     ProjectError,
     ProjectForbidden,
@@ -205,35 +206,65 @@ async def _resolve_team_scoped_role(
     *,
     actor: CurrentUser,
     team_id: uuid.UUID,
-) -> str:
+) -> str | None:
     """The actor's effective role *within the project's owning team* (BUG-005).
 
     The global ``CurrentUser.role`` / JWT role only distinguishes super_admin
-    from "everyone else" — a membership-based ``team_admin`` is invisible to
+    from "everyone else" — a membership-based ``group_admin`` is invisible to
     the frontend, which then wrongly disables team-scoped actions such as
     vulnerability suppression. The frontend needs the per-team role, so we
     resolve it here:
 
     - super-users are ``super_admin`` (they bypass team membership everywhere);
-    - otherwise we read the actor's membership row for *this* team and return
-      its role (``team_admin`` / ``developer``);
-    - a reader who reaches the project via org-wide visibility but holds no
-      membership defaults to the least-privileged ``developer`` (fail-closed).
+    - otherwise, the actor's EFFECTIVE role at *team_id* — the role of their
+      nearest direct membership walking from *team_id* up through its
+      ancestors (:func:`services.group_service.effective_role_at`), fresh
+      membership rows for *team_id* and its whole ancestor chain, not the
+      JWT-derived ``actor.team_roles`` (a token can predate a membership
+      change, and this value drives UI affordances a stale token should not
+      grant).
 
-    We query ``memberships`` directly (team_id + user_id, both covered by an
-    index) rather than trusting the JWT-derived ``actor.team_roles`` so the
-    value is authoritative even if the token predates a membership change.
+    Phase 2 PR 2-D rewrote this: the previous version queried only the
+    membership row for *team_id* itself and defaulted an actor with none to
+    ``developer``. That default was documented as "fail-closed" for a
+    hypothetical org-wide reader (a feature not yet wired into any access
+    path — see ``services.project_service`` module docstring), but the
+    group-hierarchy cascade made it a real, reachable branch: a caller who
+    reaches this function only via an ancestor group's membership (cascade
+    ON — this function is only reached once :func:`assert_team_access` /
+    :func:`core.authz.can_access_group` has already granted read access,
+    possibly through the cascade) has NO membership row at *team_id* itself,
+    so the old code silently PROMOTED a ``viewer`` at the ancestor to
+    ``developer`` here rather than denying them — the opposite of
+    fail-closed. Walking the actual ancestor chain and returning the nearest
+    membership's role (nearest-wins, so a closer demotion still beats a
+    farther promotion — see ``effective_role_at``) fixes that: the frontend
+    now sees the SAME role the cascade granted access under, never a
+    higher one manufactured by this function.
+
+    Returns ``None`` if no direct membership matches *team_id* or any of its
+    ancestors. Callers reach this having already passed the team gate, so
+    ``None`` here means the group hierarchy changed between that check and
+    this one within the same request (a reparent racing this read) rather
+    than a real "no role" case; the caller treats it as access denied
+    (fail-closed) rather than falling back to a manufactured role.
     """
     if actor.is_superuser:
         return "super_admin"
 
-    role = await session.scalar(
-        select(Membership.role).where(
-            (Membership.team_id == team_id) & (Membership.user_id == actor.id)
+    group_row = (
+        await session.execute(select(Group.id, Group.path).where(Group.id == team_id))
+    ).first()
+    group_path: list[uuid.UUID] = list(group_row.path) if group_row is not None else []
+    candidate_ids = {team_id, *group_path}
+
+    membership_rows = await session.execute(
+        select(Membership.team_id, Membership.role).where(
+            (Membership.user_id == actor.id) & (Membership.team_id.in_(candidate_ids))
         )
     )
-    # No membership row → org-wide reader. Fail closed to the minimum role.
-    return role or "developer"
+    direct_roles = {row.team_id: row.role for row in membership_rows}
+    return group_service.effective_role_at(direct_roles, group_path, team_id)
 
 
 def _severity_rank_case() -> Any:
@@ -382,7 +413,8 @@ async def get_project_overview(
     unchanged latest-succeeded default.
     """
     project = await _load_project(session, project_id)
-    assert_team_access(
+    await assert_team_access(
+        session,
         actor,
         project.team_id,
         log=log,
@@ -555,6 +587,16 @@ async def get_project_overview(
     current_user_role = await _resolve_team_scoped_role(
         session, actor=actor, team_id=project.team_id
     )
+    if current_user_role is None:
+        # Should be unreachable: `assert_team_access` above already granted
+        # read access to `project.team_id` (directly or via the cascade), so
+        # there must be a nearest-ancestor membership. A `None` here means
+        # the group hierarchy changed between that check and this one within
+        # the same request — fail closed rather than hand the frontend a
+        # manufactured role.
+        raise ProjectForbidden(
+            f"actor is not a member of team {project.team_id}",
+        )
 
     return {
         "project_id": project.id,
@@ -666,7 +708,8 @@ async def list_components_for_project(
     offset = max(int(offset), 0)
 
     project = await _load_project(session, project_id)
-    assert_team_access(
+    await assert_team_access(
+        session,
         actor,
         project.team_id,
         log=log,
@@ -1080,7 +1123,8 @@ async def get_component_detail(
 
     # Hide existence: 404 rather than 403. Components are global rows;
     # leaking that one exists across teams is undesirable.
-    assert_team_access(
+    await assert_team_access(
+        session,
         actor,
         row.team_id,
         log=log,
