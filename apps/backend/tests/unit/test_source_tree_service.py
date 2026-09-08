@@ -330,6 +330,119 @@ async def test_list_dir_excludes_reserved_scancode_member() -> None:
 
 
 # ===========================================================================
+# .git metadata must never surface, even from a tarball
+# written before the preservation-side fix shipped
+# ===========================================================================
+
+
+async def test_list_dir_hides_git_metadata_from_a_legacy_tarball() -> None:
+    """A tarball written before the fix may still carry ``.git/*`` — the
+    listing must hide it exactly like the ``.trustedoss`` bookkeeping member."""
+    team_id = uuid.uuid4()
+    scan_id = uuid.uuid4()
+    project = _project(team_id, scan_id)
+    _write_tarball(
+        project_id=project.id,
+        scan_id=scan_id,
+        files={"a.py": b"x\n", ".git/config": b"[credentials leaked]\n"},
+    )
+    session = _FakeSession(project=project)
+    actor = _principal(team_ids=[team_id])
+
+    page = await list_dir(
+        session,  # type: ignore[arg-type]
+        project_id=project.id,
+        raw_path="",
+        scan_id=None,
+        actor=actor,
+        page=1,
+        size=50,
+    )
+    names = [e.name for e in page.entries]
+    assert names == ["a.py"]
+    assert ".git" not in names
+
+
+async def test_list_dir_hides_nested_git_metadata_from_a_legacy_tarball() -> None:
+    """A vendored/submodule ``.git`` nested under a subdirectory must be hidden
+    too — matching a full-arcname prefix (``.git`` or ``.git/...``) only catches
+    the root case and lets ``vendor/lib/.git`` slip through the listing."""
+    team_id = uuid.uuid4()
+    scan_id = uuid.uuid4()
+    project = _project(team_id, scan_id)
+    _write_tarball(
+        project_id=project.id,
+        scan_id=scan_id,
+        files={
+            "vendor/lib/README.md": b"hi\n",
+            "vendor/lib/.git/config": b"[credentials leaked]\n",
+        },
+        dirs=["vendor/lib/.git"],
+    )
+    session = _FakeSession(project=project)
+    actor = _principal(team_ids=[team_id])
+
+    page = await list_dir(
+        session,  # type: ignore[arg-type]
+        project_id=project.id,
+        raw_path="vendor/lib",
+        scan_id=None,
+        actor=actor,
+        page=1,
+        size=50,
+    )
+    names = [e.name for e in page.entries]
+    assert names == ["README.md"]
+    assert ".git" not in names
+
+
+async def test_read_file_rejects_git_metadata_path_even_when_member_exists() -> None:
+    """Hiding ``.git`` from the listing is not enough — a direct ``?path=`` must
+    also be rejected, or the credential is one guessed URL away."""
+    team_id = uuid.uuid4()
+    scan_id = uuid.uuid4()
+    project = _project(team_id, scan_id)
+    _write_tarball(
+        project_id=project.id,
+        scan_id=scan_id,
+        files={".git/config": b"[credentials leaked]\n"},
+    )
+    session = _FakeSession(project=project)
+    actor = _principal(team_ids=[team_id])
+
+    with pytest.raises(SourcePathRejected):
+        await read_file(
+            session,  # type: ignore[arg-type]
+            project_id=project.id,
+            raw_path=".git/config",
+            scan_id=None,
+            actor=actor,
+        )
+
+
+async def test_read_file_raw_rejects_git_metadata_path_even_when_member_exists() -> None:
+    team_id = uuid.uuid4()
+    scan_id = uuid.uuid4()
+    project = _project(team_id, scan_id)
+    _write_tarball(
+        project_id=project.id,
+        scan_id=scan_id,
+        files={".git/config": b"[credentials leaked]\n"},
+    )
+    session = _FakeSession(project=project)
+    actor = _principal(team_ids=[team_id])
+
+    with pytest.raises(SourcePathRejected):
+        await read_file_raw(
+            session,  # type: ignore[arg-type]
+            project_id=project.id,
+            raw_path=".git/config",
+            scan_id=None,
+            actor=actor,
+        )
+
+
+# ===========================================================================
 # RBAC / existence-hide
 # ===========================================================================
 

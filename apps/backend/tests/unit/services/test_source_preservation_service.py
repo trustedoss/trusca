@@ -157,6 +157,62 @@ def test_symlink_member_is_skipped(tmp_path: Path) -> None:
         assert all(not m.issym() and not m.islnk() for m in tar.getmembers())
 
 
+def test_git_directory_never_enters_tarball(tmp_path: Path) -> None:
+    """``.git/config`` can carry the clone PAT — must never
+    ride into a tarball a project member can later download."""
+    src = _make_source_tree(tmp_path)
+    git_dir = src / ".git"
+    git_dir.mkdir()
+    (git_dir / "config").write_text(
+        '[remote "origin"]\n'
+        "\turl = https://x-access-token:ghp_secrettoken@github.com/acme/private.git\n"
+    )
+    (git_dir / "HEAD").write_text("ref: refs/heads/main\n")
+    (git_dir / "objects").mkdir()
+    (git_dir / "objects" / "pack").mkdir()
+    (git_dir / "objects" / "pack" / "pack-deadbeef.pack").write_bytes(b"\x00")
+
+    project_id, scan_id = uuid.uuid4(), uuid.uuid4()
+    result = preserve_scan_source(
+        scan_id=scan_id,
+        project_id=project_id,
+        source_dir=src,
+        scancode_json_path=None,
+    )
+
+    assert result is not None
+    names = _members(result)
+    assert not any(name == ".git" or name.startswith(".git/") for name in names)
+    # The rest of the tree is unaffected.
+    assert "LICENSE" in names
+
+
+def test_nested_git_directory_never_enters_tarball(tmp_path: Path) -> None:
+    """A vendored/submodule tree's ``.git`` (not at the source root) must be
+    excluded too — the check is on path components, not a root-only match."""
+    src = _make_source_tree(tmp_path)
+    nested_git = src / "pkg" / "vendor" / "lib" / ".git"
+    nested_git.mkdir(parents=True)
+    (nested_git / "config").write_text(
+        '[remote "origin"]\n'
+        "\turl = https://x-access-token:ghp_secrettoken@github.com/acme/private.git\n"
+    )
+
+    project_id, scan_id = uuid.uuid4(), uuid.uuid4()
+    result = preserve_scan_source(
+        scan_id=scan_id,
+        project_id=project_id,
+        source_dir=src,
+        scancode_json_path=None,
+    )
+
+    assert result is not None
+    names = _members(result)
+    assert not any(".git" in name.split("/") for name in names)
+    # The rest of the vendored tree is unaffected.
+    assert "pkg/vendor/lib" in names
+
+
 def test_source_tree_scancode_member_does_not_shadow_real_one(tmp_path: Path) -> None:
     """A repo carrying its own .trustedoss/scancode.json must not win the slot."""
     src = _make_source_tree(tmp_path)
