@@ -113,14 +113,22 @@ jobs:
       # own header comment (`pip-compile ... --output-file=requirements.lock
       # ...`) - regenerating to a differently-named path would make every run
       # "stale" on that one header line alone, for a reason that says nothing
-      # about whether the lockfile's actual pins drifted.
+      # about whether the lockfile's actual pins drifted. The diff below
+      # additionally skips the whole 6-line header (`tail -n +7`): pip-compile
+      # also records its own flags there, and this runner's environment adds
+      # `--no-index` to that recorded command line that a local run does not
+      # (observed in practice, cause not pinned down - a cache/index-availability
+      # difference in how pip-tools' resolver decided it could work offline).
+      # That is metadata about how the lock was produced, not a claim about
+      # what it locks, so it must not be able to fail this check on its own.
       - name: Check requirements.lock is up to date
         if: matrix.target == 'backend'
         working-directory: apps/backend
         run: |
-          cp requirements.lock /tmp/requirements.lock.committed
+          tail -n +7 requirements.lock > /tmp/requirements.lock.committed.body
           pip-compile --generate-hashes --output-file=requirements.lock requirements.txt
-          diff -u /tmp/requirements.lock.committed requirements.lock || {
+          tail -n +7 requirements.lock > /tmp/requirements.lock.regenerated.body
+          diff -u /tmp/requirements.lock.committed.body /tmp/requirements.lock.regenerated.body || {
             echo "::error::requirements.lock is stale - run 'pip-compile --generate-hashes --output-file=requirements.lock requirements.txt' in apps/backend and commit the result."
             exit 1
           }
@@ -128,9 +136,10 @@ jobs:
         if: matrix.target == 'backend'
         working-directory: apps/backend
         run: |
-          cp requirements-dev.lock /tmp/requirements-dev.lock.committed
+          tail -n +7 requirements-dev.lock > /tmp/requirements-dev.lock.committed.body
           pip-compile --generate-hashes --output-file=requirements-dev.lock requirements-dev.txt
-          diff -u /tmp/requirements-dev.lock.committed requirements-dev.lock || {
+          tail -n +7 requirements-dev.lock > /tmp/requirements-dev.lock.regenerated.body
+          diff -u /tmp/requirements-dev.lock.committed.body /tmp/requirements-dev.lock.regenerated.body || {
             echo "::error::requirements-dev.lock is stale - run 'pip-compile --generate-hashes --output-file=requirements-dev.lock requirements-dev.txt' in apps/backend and commit the result."
             exit 1
           }
