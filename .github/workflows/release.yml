@@ -401,6 +401,81 @@ jobs:
           push-to-registry: true
 
   # ===========================================================================
+  # image-scan-release, the same Trivy CRITICAL,HIGH hard-fail gate ci.yml's
+  # `image-scan` job runs against the worker image (PR time, local build),
+  # applied here to the PUBLISHED backend and frontend production images (the
+  # worker image is already covered there; scanning it again here would gate
+  # on the exact same Dockerfile.worker build with nothing new to catch).
+  #
+  # Runs against the manifest merge just pushed, not a local build; this is
+  # the artifact an installer actually pulls. Gates `release-gate` (see its
+  # `needs` below) rather than `merge`/`release`: the images stay published
+  # (an operator can still be told what shipped) but the Release stays a
+  # draft, matching the ordering the `release` job's own comment documents,
+  # published, THEN exercised, THEN revealed.
+  # ===========================================================================
+  image-scan-release:
+    name: image-scan (release, ${{ matrix.image.image }})
+    runs-on: ubuntu-22.04
+    needs: merge
+    timeout-minutes: 20
+    permissions:
+      contents: read
+      packages: read
+    strategy:
+      fail-fast: false
+      matrix:
+        image:
+          - image: trusca-backend
+          - image: trusca-frontend
+    steps:
+      - name: Checkout
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262  # v4.4.0
+
+      - name: Log in to GitHub Container Registry
+        uses: docker/login-action@c94ce9fb468520275223c153574b00df6fe4bcc9  # v3.7.0
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Resolve version
+        id: resolve
+        env:
+          INPUT_TAG: ${{ github.event.inputs.tag }}
+          REF_NAME: ${{ github.ref_name }}
+        run: |
+          set -euo pipefail
+          TAG="${INPUT_TAG:-$REF_NAME}"
+          echo "version=${TAG#v}" >> "$GITHUB_OUTPUT"
+
+      - name: Cache Trivy DB
+        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830  # v4.3.0
+        with:
+          path: ~/.cache/trivy
+          key: trivy-db-${{ runner.os }}-${{ github.run_id }}
+          restore-keys: |
+            trivy-db-${{ runner.os }}-
+
+      # Same flags as ci.yml's worker gate: `ignore-unfixed` keeps the gate
+      # from chasing CVEs upstream has not patched yet, `scanners: vuln`
+      # leaves secret/license detection to gitleaks and the runtime pipeline,
+      # and `.trivyignore` is the single source of truth for accepted
+      # findings across both gates.
+      - name: Trivy scan (HARD FAIL on CRITICAL,HIGH)
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25  # v0.36.0
+        with:
+          image-ref: ${{ env.REGISTRY_NAMESPACE }}/${{ matrix.image.image }}:${{ steps.resolve.outputs.version }}
+          format: table
+          severity: CRITICAL,HIGH
+          ignore-unfixed: true
+          exit-code: "1"
+          vuln-type: os,library
+          scanners: vuln
+          trivyignores: ./.trivyignore
+          timeout: 20m
+
+  # ===========================================================================
   # release — create the DRAFT GitHub Release (BomLens parity backlog Phase I /
   # P3-12, step I1). Runs only after all three per-image manifest lists are
   # published (needs: merge). We create the Release as a DRAFT here and only
@@ -585,7 +660,10 @@ jobs:
   release-gate:
     name: release-gate (published images first-scan smoke)
     runs-on: ubuntu-22.04
-    needs: release
+    # `image-scan-release` alongside `release` (not `merge`): the images are
+    # already published by the time either runs, so a failed scan leaves the
+    # Release a draft rather than blocking the publish itself.
+    needs: [release, image-scan-release]
     timeout-minutes: 40
     # contents:write to reveal the Release; packages:read to pull the images;
     # actions:write to hand the published tag to the demo deploy (see the last

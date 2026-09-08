@@ -78,6 +78,15 @@ source = ["."]
 # inside `async def` functions that touch the DB are reported as missed
 # even when the test passes through them.
 concurrency = ["greenlet", "thread"]
+# Line coverage alone lets a degraded-path or `except` branch that executes
+# once count as fully covered even when its alternate branch never runs,
+# exactly the shape hardening rules 7/8 warn about (an assertion, or here a
+# whole branch, that cannot fail because nothing exercises the other side).
+# `coverage report` folds branches into the SAME percentage once this is on,
+# so `fail_under` below stops meaning "80% of lines" the moment this lands.
+# Calibrated from `coverage-gate`'s own combined-report output on this PR,
+# not assumed to carry over from the line-only number.
+branch = true
 omit = [
     "alembic/versions/*",
     "tests/*",
