@@ -919,6 +919,57 @@ async def test_the_attributes_round_trip_through_create_and_read(client) -> None
     assert body["distribution_model"] == "saas"
 
 
+async def test_creating_a_project_hashes_owner_contact_in_the_audit_row(
+    client: AsyncClient,
+) -> None:
+    """#428 (security-reviewer follow-up on the email_recipients fix):
+    ``owner_contact`` is documented as "a name, a team alias or an address"
+    and this very test above exercises it with an email value. Same CWE-359
+    concern as email/full_name/email_recipients - the value must not land in
+    the immutable audit_logs.diff as plaintext."""
+    from sqlalchemy import select
+
+    from models import AuditLog
+
+    _, team, user = await _seed_team_with_user(client, role="team_admin")
+    contact = "platform-oncall@example.com"
+
+    created = await client.post(
+        "/v1/projects",
+        headers=_bearer_for(user),
+        json={
+            "team_id": str(team.id),
+            "name": "Payments",
+            "slug": f"payments-{unique_suffix()}",
+            "owner_contact": contact,
+        },
+    )
+    assert created.status_code == 201, created.text
+    project_id = created.json()["id"]
+
+    factory = await _factory(client)
+    async with factory() as session:
+        row = (
+            await session.execute(
+                select(AuditLog)
+                .where(
+                    AuditLog.target_table == "projects",
+                    AuditLog.target_id == str(project_id),
+                )
+                .order_by(AuditLog.created_at.desc())
+            )
+        ).scalars().first()
+
+    assert row is not None, "no audit row was written for the project creation"
+    diff = row.diff
+    assert diff is not None
+    assert contact not in str(diff), (
+        f"plaintext owner_contact {contact!r} found in audit_logs.diff: {diff!r}"
+    )
+    assert isinstance(diff.get("owner_contact"), dict)
+    assert set(diff["owner_contact"].keys()) == {"sha256"}
+
+
 async def test_a_project_that_says_nothing_reads_as_null(client) -> None:
     """The default, and the contract: saying nothing changes nothing."""
     _, team, user = await _seed_team_with_user(client, role="team_admin")

@@ -709,3 +709,49 @@ async def test_the_worker_sees_organization_rules_too(client, monkeypatch) -> No
     )
 
     assert seen["recipients"] == ["cso@example.com"]
+
+
+# ---------------------------------------------------------------------------
+# #428: creating a rule must not write plaintext addresses into audit_logs
+# ---------------------------------------------------------------------------
+
+
+async def test_creating_a_rule_hashes_email_recipients_in_the_audit_row(
+    client: AsyncClient,
+) -> None:
+    """End-to-end: the row this endpoint writes goes through the real
+    before_flush audit listener, not a synthetic call to the masking helper
+    directly. Confirms the fix is reachable through the actual code path a
+    team admin exercises, not only through core.audit's own unit tests."""
+    from sqlalchemy import select
+
+    from models import AuditLog
+
+    _org, team, user, _project = await _seed(client)
+    addresses = ["oncall@example.com", "security@example.com"]
+    rule = await _add_rule(
+        client, user=user, team_id=team.id, email_recipients=addresses
+    )
+
+    factory = await _factory(client)
+    async with factory() as session:
+        row = (
+            await session.execute(
+                select(AuditLog)
+                .where(
+                    AuditLog.target_table == "notification_routing_rules",
+                    AuditLog.target_id == str(rule["id"]),
+                )
+                .order_by(AuditLog.created_at.desc())
+            )
+        ).scalars().first()
+
+    assert row is not None, "no audit row was written for the rule creation"
+    diff = row.diff
+    assert diff is not None
+    for address in addresses:
+        assert address not in str(diff), (
+            f"plaintext address {address!r} found in audit_logs.diff: {diff!r}"
+        )
+    assert isinstance(diff.get("email_recipients"), dict)
+    assert set(diff["email_recipients"].keys()) == {"sha256"}

@@ -206,3 +206,72 @@ def test_changed_columns_through_listener_paths_are_pii_hashed(
     assert isinstance(diff["email"], dict)
     assert "sha256" in diff["email"]
     assert diff["id"] == "abc"
+
+
+# ---------------------------------------------------------------------------
+# #428: email_recipients (notification_routing_rules) - PII masking is keyed
+# on the exact column name, so a differently-named PII-shaped column is not
+# caught automatically unless it is added to _PII_COLUMNS explicitly.
+# ---------------------------------------------------------------------------
+
+
+def test_email_recipients_list_is_hashed_not_left_plaintext() -> None:
+    """A JSONB list of admin-entered alert-routing addresses must not land
+    in audit_logs.diff as plaintext, the same CWE-359 concern email/full_name
+    were fixed for."""
+    from core.audit import mask_sensitive_columns
+
+    recipients = ["oncall@example.com", "security@example.com"]
+    masked = mask_sensitive_columns({"email_recipients": recipients})
+
+    assert masked["email_recipients"] != recipients
+    assert isinstance(masked["email_recipients"], dict)
+    assert set(masked["email_recipients"].keys()) == {"sha256"}
+    for address in recipients:
+        assert address not in str(masked["email_recipients"])
+    expected = hashlib.sha256(str(recipients).encode("utf-8")).hexdigest()
+    assert masked["email_recipients"]["sha256"] == expected
+
+
+def test_email_recipients_empty_list_stays_a_deterministic_hash() -> None:
+    """The JSONB column's server_default (`'[]'::jsonb`) is an empty list,
+    not None, so it must not be confused with the column being unset."""
+    from core.audit import mask_sensitive_columns
+
+    masked = mask_sensitive_columns({"email_recipients": []})
+    assert masked["email_recipients"] == {
+        "sha256": hashlib.sha256(b"[]").hexdigest()
+    }
+
+
+def test_email_recipients_none_stays_none() -> None:
+    from core.audit import mask_sensitive_columns
+
+    masked = mask_sensitive_columns({"email_recipients": None})
+    assert masked["email_recipients"] is None
+
+
+# ---------------------------------------------------------------------------
+# #428 (security-reviewer follow-up) - projects.owner_contact: "a name, a
+# team alias or an address" (schema docstring), tested elsewhere with an
+# email value. Same defect shape as email_recipients: a PII-holding column
+# whose name does not match "email"/"full_name" passed through unmasked.
+# ---------------------------------------------------------------------------
+
+
+def test_owner_contact_value_replaced_with_sha256_hash() -> None:
+    from core.audit import mask_sensitive_columns
+
+    masked = mask_sensitive_columns({"owner_contact": "platform-oncall@example.com"})
+    assert masked["owner_contact"] != "platform-oncall@example.com"
+    assert isinstance(masked["owner_contact"], dict)
+    assert masked["owner_contact"]["sha256"] == hashlib.sha256(
+        b"platform-oncall@example.com"
+    ).hexdigest()
+
+
+def test_owner_contact_none_stays_none() -> None:
+    from core.audit import mask_sensitive_columns
+
+    masked = mask_sensitive_columns({"owner_contact": None})
+    assert masked["owner_contact"] is None

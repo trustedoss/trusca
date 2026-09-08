@@ -138,7 +138,24 @@ _SENSITIVE_COLUMNS = frozenset(
 #   - All emails would collapse to the same value, defeating the audit
 #     trail's "what changed" semantics. ``email`` and ``full_name`` aren't
 #     credentials — they're regulated data we just don't want lying around.
-_PII_COLUMNS = frozenset({"email", "full_name"})
+#
+# #428 (2026-09): masking is keyed on the exact column name, not a
+# substring or type match, so a differently-named PII-shaped column is not
+# caught automatically. ``notification_routing_rules.email_recipients``
+# (JSONB, a list of plaintext addresses an admin enters to route alerts) was
+# found this way: it holds the same class of data as ``email`` but the key
+# does not match ``"email"``, so it passed through
+# ``mask_sensitive_columns`` unmasked into every audit row for that table.
+# ``_hash_pii`` already coerces non-string values via ``str()``, so a list
+# hashes as one unit (correlates whole-list changes; does not correlate
+# individual addresses across rows), an acceptable trade against the
+# alternative of writing the plaintext list to an immutable table. A
+# security-reviewer sweep of every model for the same defect shape found a
+# second instance: ``projects.owner_contact`` (free-text "a name, a team
+# alias or an address", tested with an email value) - same fix, same reason.
+_PII_COLUMNS = frozenset(
+    {"email", "full_name", "email_recipients", "owner_contact"}
+)
 
 
 # URL columns whose userinfo segment may carry a credential (e.g. a PAT a user
