@@ -4000,3 +4000,31 @@ def validate_demo_sandbox_limits() -> None:
             "DEMO_ALLOW_SANDBOX_SCANS is on but safe limits are not applied — "
             "layer docker-compose.demo.yml / set the demo env. Violations: " + "; ".join(violations)
         )
+
+
+# ---------------------------------------------------------------------------
+# Group-hierarchy rollout, Phase 2 PR 2-A — cascade feature flag
+# ---------------------------------------------------------------------------
+
+
+def group_cascade_enabled() -> bool:
+    """The single switch for the whole group-hierarchy permission cascade.
+
+    Off (default): every permission check stays exactly as flat as it is
+    today — a group's effective role is its own direct membership only, and
+    the accessible set is direct memberships only. This is the behaviour
+    every existing deployment already has, before ``parent_group_id`` /
+    ``path`` (migrations 0090/0091) meant anything to authorization.
+
+    On: ``services.group_service`` walks ``path`` to resolve an inherited
+    role and to widen the accessible set to a membership group's subtree.
+    Nothing reads this flag yet outside that module — PR 2-A defines the
+    cascade functions in isolation and does not wire them into
+    ``core/authz.py`` or any route; PR 2-C does that wiring. Until 2-C
+    lands, this flag has no observable effect no matter how it is set.
+
+    Read at call time (CLAUDE.md core rule #11), not cached at import — an
+    operator can flip it without a rebuild, and every accessor in this
+    module already follows that rule.
+    """
+    return os.getenv("GROUP_CASCADE_ENABLED", "false").lower() == "true"

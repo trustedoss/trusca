@@ -71,12 +71,20 @@ async def make_team(
     organization: Organization,
     name: str | None = None,
     slug: str | None = None,
+    parent: Team | None = None,
 ) -> Team:
+    """Create a group. ``parent`` (group-hierarchy rollout, Phase 1+) nests it
+    under an existing group instead of creating a root group — the DB
+    trigger (migration 0091) derives ``path`` from ``parent_group_id`` on
+    INSERT, so the ``refresh`` below picks up the real, trigger-computed
+    value rather than the ORM's unpopulated default.
+    """
     suffix = unique_suffix()
     team = Team(
         organization_id=organization.id,
         name=name or f"Team {suffix}",
         slug=slug or f"team-{suffix}",
+        parent_group_id=parent.id if parent is not None else None,
     )
     session.add(team)
     await session.commit()
