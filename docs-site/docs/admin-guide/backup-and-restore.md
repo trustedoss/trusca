@@ -36,6 +36,27 @@ backups/2026-05-09-030000/
 
 The portal does **not** back up `.env` (it contains secrets — store it via your existing secret-management tooling) and does **not** back up Traefik's ACME state (Let's Encrypt re-issues certificates within minutes).
 
+## Recovery objectives (RPO/RTO) {#recovery-objectives}
+
+**RPO (Recovery Point Objective).** This release ships periodic logical backup only, with no WAL archiving and no point-in-time recovery (PITR), so RPO is bounded by backup cadence, not continuous replication:
+
+- Out of the box, the only backup that runs without extra configuration is the Celery Beat daily job (00:00 UTC). Worst case, that puts RPO at just under 24 hours: the moment right before the next scheduled backup.
+- Add the [cron recipe](#schedule-automated-backups) at whatever interval your write volume and `pg_dump` duration tolerate, and RPO tightens to that interval (e.g. hourly cron → RPO ≤ 1 hour).
+
+**Why not PITR.** Continuous WAL archiving would push RPO toward zero, but it is new infrastructure (an archive target, its own retention policy, a different restore procedure) beyond what a logical-dump backup needs, and CLAUDE.md's core rule 1 requires an explicit, documented case before adding a new datastore surface. Nothing on record calls for that yet: a `cron`-driven `backup.sh` at whatever interval an operator chooses already gets arbitrarily close to zero RPO for light write volumes, and no requirement tighter than that has come up. Treat this as the current, deliberate trade-off rather than a gap, to revisit if an actual deployment needs an RPO tighter than "however often `backup.sh` can run without eating too much of its window."
+
+**RTO (Recovery Time Objective).** Measured end to end on a docker-compose dev stack (12-core / 18 GB host), seeded with `python -m scripts.seed_demo` (10 projects, ~12 MB database):
+
+| Step | Measured |
+|---|---|
+| `scripts/backup.sh` (DB-only; this run had no workspace to tar) | 2s (36 KB compressed dump) |
+| `scripts/restore.sh --confirm` (stop app containers → restore DB → `up -d` full stack → health check) | 33s |
+| Backend healthy and serving again | +3s |
+
+Restoring this demo-scale database and bringing the full stack back up took **~38 seconds** end to end. That is a measured lower bound for the restore *procedure* itself: at this data size, container stop/start overhead dominates. `pg_dump`/`pg_restore` time grows with actual database size, so a production install with a multi-GB `postgres.sql.gz` will take proportionally longer to restore than this number suggests.
+
+The [disaster-recovery runbook](#disaster-recovery-runbook) below adds host provisioning, DNS, and off-host download time on top of this restore step. Those depend on the operator's own infrastructure, and are not something this repository can measure generically; size them against your own provisioning and network-transfer times rather than treating any single figure as a guarantee.
+
 ## Take a manual backup
 
 <!-- docs-uat: id=backup-manual kind=shell ctx=host tier=nightly waiver=backup-restore-roundtrip-executed-by-install-uat -->
@@ -64,7 +85,7 @@ For operators who prefer the browser, `/admin/backup` exposes the same backup an
 
 ![Admin backup page on a fresh install — toolbar mounted, the list body shows the empty-state card until the first backup row arrives](/img/screenshots/admin-backup-list.png)
 
-The list renders six columns: **NAME**, **KIND**, **CREATED**, **SIZE**, **DB REVISION**, **ACTIONS**. On a fresh install the body shows the inline empty card (*"No backups yet…"*) — populate it via the toolbar (**Run manual backup now** or **Upload and restore…**) or wait for the nightly auto job.
+The list renders six columns: `NAME`, `KIND`, `CREATED`, `SIZE`, `DB REVISION`, `ACTIONS`. On a fresh install the body shows the inline empty card (*"No backups yet…"*); populate it via the toolbar (**Run manual backup now** or **Upload and restore…**) or wait for the nightly auto job.
 
 ### Trigger a backup
 
@@ -75,7 +96,7 @@ The list renders six columns: **NAME**, **KIND**, **CREATED**, **SIZE**, **DB RE
 
 ![Admin backup — toast confirmation right after manual trigger](/img/screenshots/admin-backup-trigger-toast.png)
 
-The list table shows: timestamp, size, **auto** badge (set on backups created by Celery Beat), **Download**, and **Delete**. Auto-tagged backups display a lock icon — they are subject to the **7-day automatic retention** policy and are pruned in chronological order. Manual backups have no automatic retention and are deleted only when you click **Delete**.
+The list table shows: timestamp, size, an `auto` badge (set on backups created by Celery Beat), `Download`, and `Delete`. Auto-tagged backups display a lock icon, since they are subject to the **7-day automatic retention** policy and are pruned in chronological order. Manual backups have no automatic retention and are deleted only when you click `Delete`.
 
 ### Schedule via Celery Beat
 
@@ -195,7 +216,7 @@ If the host is lost entirely:
 
 6. **Sign in** as the original super-admin. Verify projects, scans, and audit log.
 
-Full DR (host loss → restored portal) runs in 30 minutes for a small install with backups in S3.
+Step 5 (the restore itself) is the only step measured directly; see [Recovery objectives (RPO/RTO)](#recovery-objectives) above (~35 seconds at demo scale, growing with database size). Steps 1-2 (provisioning a replacement host, installing the portal) and the download in step 4 depend on your own infrastructure and network, and this repository has no basis for putting a number on them: budget those against your actual provisioning and transfer times rather than a fixed total.
 
 ## Forward-only migrations and restore
 
