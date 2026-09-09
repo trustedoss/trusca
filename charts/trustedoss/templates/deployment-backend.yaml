@@ -10,7 +10,12 @@ metadata:
     {{- include "trustedoss.labels" . | nindent 4 }}
     app.kubernetes.io/component: backend
 spec:
+  {{- if not .Values.backend.autoscaling.enabled }}
+  # When the HPA is enabled (#431, backend.autoscaling) we omit replicas so
+  # the autoscaler owns the count; otherwise this static value applies.
+  # Same pattern as deployment-worker-default.yaml.
   replicas: {{ .Values.backend.replicaCount }}
+  {{- end }}
   selector:
     matchLabels:
       {{- include "trustedoss.selectorLabels" . | nindent 6 }}

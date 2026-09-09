@@ -1,0 +1,36 @@
+{{- /*
+SPDX-License-Identifier: Apache-2.0
+Copyright 2026 TRUSCA contributors
+*/ -}}
+{{- if .Values.backend.autoscaling.enabled -}}
+# #431 backend HPA, behind a feature flag, OFF by default (chart
+# convention). When enabled the backend Deployment omits its static
+# replicas so this HPA owns the count.
+#
+# CPU-only, same shape as worker.default's HPA (hpa-worker-default.yaml):
+# the backend is a stateless FastAPI HTTP tier whose CPU draw tracks its
+# actual request load reasonably well, unlike the scan worker's
+# cdxgen/Trivy pipelines (network/disk-wait heavy, needs queue-depth
+# scaling instead; see worker.scan.autoscaling.mode's comment).
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: {{ include "trustedoss.fullname" . }}-backend
+  labels:
+    {{- include "trustedoss.labels" . | nindent 4 }}
+    app.kubernetes.io/component: backend
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: {{ include "trustedoss.fullname" . }}-backend
+  minReplicas: {{ .Values.backend.autoscaling.minReplicas }}
+  maxReplicas: {{ .Values.backend.autoscaling.maxReplicas }}
+  metrics:
+    - type: Resource
+      resource:
+        name: cpu
+        target:
+          type: Utilization
+          averageUtilization: {{ .Values.backend.autoscaling.targetCPUUtilizationPercentage }}
+{{- end }}

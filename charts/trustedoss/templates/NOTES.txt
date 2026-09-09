@@ -6,7 +6,7 @@ line split into "worker-scan" and "worker-default". Each has its own
 autoscaler gate (worker.scan.autoscaling / worker.default.autoscaling).
 */}}
 Workloads:
-  backend        x {{ .Values.backend.replicaCount }}   (FastAPI, Service :{{ .Values.backend.port }}, AUTO_MIGRATE=false)
+  backend        x {{ if .Values.backend.autoscaling.enabled }}HPA {{ .Values.backend.autoscaling.minReplicas }}-{{ .Values.backend.autoscaling.maxReplicas }}{{ else }}{{ .Values.backend.replicaCount }}{{ end }}   (FastAPI, Service :{{ .Values.backend.port }}, AUTO_MIGRATE=false)
   worker-scan    x {{ if .Values.worker.scan.autoscaling.enabled }}{{ if eq .Values.worker.scan.autoscaling.mode "queue" }}KEDA{{ else }}HPA{{ end }} {{ .Values.worker.scan.autoscaling.minReplicas }}-{{ .Values.worker.scan.autoscaling.maxReplicas }}{{ else }}{{ .Values.worker.scan.replicaCount }}{{ end }}   (Celery, queue={{ .Values.worker.queues.scan }}, concurrency={{ .Values.worker.scan.concurrency }})
   worker-default x {{ if .Values.worker.default.autoscaling.enabled }}HPA {{ .Values.worker.default.autoscaling.minReplicas }}-{{ .Values.worker.default.autoscaling.maxReplicas }}{{ else }}{{ .Values.worker.default.replicaCount }}{{ end }}   (Celery, queue={{ .Values.worker.queues.default }}, concurrency={{ .Values.worker.default.concurrency }})
   beat           x 1   (Celery scheduler — singleton)
@@ -88,6 +88,14 @@ catalog refreshes):
   helm upgrade {{ .Release.Name }} . --set worker.default.replicaCount=2
   # or enable CPU-based autoscaling:
   helm upgrade {{ .Release.Name }} . --set worker.default.autoscaling.enabled=true
+
+Scale the backend out (#431):
+  helm upgrade {{ .Release.Name }} . --set backend.replicaCount=4
+  # or enable CPU-based autoscaling (leave backend.replicaCount set to your
+  # chosen ceiling too — the Deployment itself ignores it once autoscaling
+  # is on, but CONN_BUDGET_BACKEND_REPLICAS above still reads it, same as
+  # the worker HPAs already do):
+  helm upgrade {{ .Release.Name }} . --set backend.autoscaling.enabled=true --set backend.replicaCount=6
 
 {{ if .Values.ingress.enabled -}}
 Reach the portal:

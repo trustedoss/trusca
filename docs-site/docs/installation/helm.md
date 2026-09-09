@@ -202,6 +202,72 @@ release fails to render rather than deriving `API_KEY_HMAC_SECRET` from
 — no wildcard in production. List every scheme + host that browsers will use.
 :::
 
+### High availability without a managed cloud datastore {#self-hosted-ha}
+
+The example above assumes a managed Postgres/Redis (Cloud SQL, RDS,
+Memorystore, ElastiCache). If you self-host on your own cluster instead, this
+chart's bundled Postgres (a single Pod, no replication) and bundled Redis (a
+single Pod, no Sentinel/Cluster) are not an HA topology by themselves; they
+are meant for evaluation and small installs, matching the "Quick start"
+section above. This chart does not implement Postgres/Redis clustering
+itself. Leader election, WAL streaming, failover, and backup coordination
+are an entire operator's worth of scope, and re-implementing an
+orchestrator inside a Helm chart is out of bounds for this project.
+Instead, run each datastore under an existing, dedicated K8s operator and
+point this chart at the resulting Service, the exact same way the
+managed-cloud example does with `bundled: false`:
+
+- **Postgres**: [CloudNativePG](https://cloudnative-pg.io/) or the
+  [Zalando postgres-operator](https://github.com/zalando/postgres-operator)
+  both give you a primary + replica set with automatic failover behind one
+  Service name. Point `env.database.url` (and `env.database.ownerUrl`, for
+  role separation) at that Service instead of Cloud SQL/RDS; everything
+  else in the values file above is unchanged.
+- **Redis**: a Sentinel or Cluster-mode deployment (e.g. the
+  [Bitnami `redis` chart](https://github.com/bitnami/charts/tree/main/bitnami/redis)
+  with `sentinel.enabled: true`, or Redis Cluster) gives you failover behind
+  one client-visible address. Point `env.redis.url` at it the same way.
+
+Either way, set `postgres.bundled: false` / `redis.bundled: false` so this
+chart renders no datastore objects of its own and defers entirely to the
+operator-managed one.
+
+#### Is the shared Redis instance itself a single point of failure? {#redis-blast-radius}
+
+Redis here plays four roles at once: Celery broker, Celery result backend,
+the request-rate limiter, and the WebSocket connection registry
+(`core/ws_registry.py`), all through the one `env.redis.url`. Whether that
+is worth splitting into more than one Redis instance/index depends on what
+actually happens to each role during an outage, so here is the current
+answer rather than a guess:
+
+- The rate limiter and the login throttle already **fail open** on a Redis
+  error (`core/ratelimit.py`, `core/login_throttle.py`,
+  `core/redis_degradation.py`): a request that cannot reach Redis is let
+  through rather than rejected, and the degradation is logged (deduped) and
+  surfaced on `/health/ready`. An outage here costs you rate-limiting, not
+  availability.
+- Celery (scan/notification/backup tasks) genuinely needs its broker; an
+  outage stops task dispatch until Redis recovers. This is not something a
+  second Redis instance changes, since the broker's job IS Redis (or another
+  broker entirely, which this chart does not support).
+- The WebSocket connection registry has **no** such fallback today: it
+  raises straight through a Redis error, so an outage fails registration
+  **closed** rather than open. That means live scan-progress streaming stops
+  working during the outage, but nothing about the scan itself is affected;
+  scan state lives in Postgres, WebSocket is a read-only progress feed.
+
+Given that, splitting Redis into a second instance for the WS
+registry/rate-limiter roles is not something this chart takes on now: it is
+new infrastructure surface (a second datastore to provision, monitor, and
+fail over) for a gap whose actual impact today is "the live progress bar
+stops updating," not data loss or a stuck pipeline. The concrete, narrower
+gap, the WS registry's missing fail-open behavior, is tracked as its own
+follow-up ([issue #458](https://github.com/trustedoss/trusca/issues/458))
+rather than folded in here, since changing what a connection-count cap does
+under failure is a security-relevant decision on its own footing, not a
+drive-by fix.
+
 ## How migrations run
 
 A Helm `pre-install` + `pre-upgrade` hook Job runs `alembic upgrade head` **once**
