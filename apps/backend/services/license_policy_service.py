@@ -730,32 +730,76 @@ async def get_effective_policy(
     organization_id: uuid.UUID | None = None,
 ) -> LicensePolicy | None:
     """
-    Resolve the policy that applies to *team_id*, in precedence order:
+    Resolve the policy that applies to *team_id* (any group in the tree, a
+    project's owning group today, but the algorithm has no notion of
+    "project"), in precedence order:
 
-        team policy (present AND enabled)
-          else org-default policy (present AND enabled)
-            else None  → caller falls back to the static catalog.
+        the group's OWN policy (present AND enabled)
+          else its nearest ancestor's policy (present AND enabled)
+            else the next ancestor up, ... all the way to the root
+              else the org-default policy (present AND enabled)
+                else None  → caller falls back to the static catalog.
 
-    A DISABLED team policy is skipped (falls through to the org default); a
-    disabled org default yields None. This is the resolver c2 calls before
-    classifying a license. ``organization_id`` is resolved from the team when
-    not supplied.
+    Group-hierarchy generalisation (Phase 3): this used to be a fixed two-tier
+    fall-through (team, then org-default). Groups now nest without limit
+    (migrations 0090/0091), so "the org default" is really just the LAST
+    stop on a chain that can be arbitrarily deep. A disabled or absent policy
+    at *team_id* itself falls through to its parent group's policy, not
+    straight to the org default. The org-default row is not special-cased in
+    the walk below; it is exactly the ``group_id IS NULL`` entry appended
+    after every real ancestor, so one loop handles both.
+
+    This is unconditional on ``core.config.group_cascade_enabled``; that flag
+    gates the RBAC *access* cascade (who may read/write a group's resources),
+    a completely different axis from this one. A group's ``path`` already
+    reflects its real ancestry the moment it is created (Phase 0/1), so policy
+    inheritance follows the actual tree regardless of whether the permission
+    cascade is turned on.
+
+    Two round trips, not one per ancestor: *team_id*'s own ``path`` column
+    already IS its full ancestor-id chain (materialised by the DB trigger), so
+    one query gets the whole chain, and a second fetches every candidate
+    policy row (every ancestor's + the org default's) in one ``IN`` list.
+    ``organization_id``, when supplied, is IGNORED for the query itself (the
+    group's own ``organization_id`` is authoritative and comes back in the
+    same first query as the chain); it is accepted only so existing callers
+    that already resolved it do not need to change their call sites.
     """
-    team_row = await get_team_policy_row(session, team_id=team_id)
-    if team_row is not None and team_row.enabled:
-        return team_row
+    chain_row = (
+        await session.execute(
+            select(Team.id, Team.path, Team.organization_id).where(Team.id == team_id)
+        )
+    ).one_or_none()
+    if chain_row is None:
+        return None
+    group_id, ancestor_path, org_id = chain_row
 
-    org_id = organization_id
-    if org_id is None:
-        org_id = (
-            await session.execute(select(Team.organization_id).where(Team.id == team_id))
-        ).scalar_one_or_none()
-        if org_id is None:
-            return None
+    # Nearest first: the group itself, then its immediate parent, ... up to
+    # (but not including; that is the org-default row, handled separately
+    # below) the root. ``ancestor_path`` is root-first (the DB trigger's
+    # convention, see the ``Group`` model docstring), so nearest-first is the
+    # reverse.
+    chain: list[uuid.UUID] = [group_id, *reversed(list(ancestor_path))]
 
-    org_row = await get_org_default_policy_row(session, organization_id=org_id)
-    if org_row is not None and org_row.enabled:
-        return org_row
+    rows = (
+        await session.execute(
+            select(LicensePolicy).where(
+                LicensePolicy.organization_id == org_id,
+                or_(LicensePolicy.team_id.in_(chain), LicensePolicy.team_id.is_(None)),
+            )
+        )
+    ).scalars().all()
+
+    by_group_id = {row.team_id: row for row in rows if row.team_id is not None}
+    org_default = next((row for row in rows if row.team_id is None), None)
+
+    for ancestor_id in chain:
+        candidate = by_group_id.get(ancestor_id)
+        if candidate is not None and candidate.enabled:
+            return candidate
+
+    if org_default is not None and org_default.enabled:
+        return org_default
     return None
 
 
@@ -795,7 +839,7 @@ async def list_policies(
         # ACCESSIBLE teams. Phase 2 PR 2-C: this used to be
         # `Team.id.in_(team_ids)` (direct membership only); `subtree_scope_filter`
         # is the same query-time expansion `core.authz.team_scope_filter` uses,
-        # applied here directly against `Team.id` (== `Group.id` — `Team` is a
+        # applied here directly against `Team.id` (== `Group.id`; `Team` is a
         # module-level alias for `Group`) rather than through the
         # `Project`-specific subquery wrapper, since this query already starts
         # from `Team`.

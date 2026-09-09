@@ -3,17 +3,26 @@
 """
 Resolving a build-gate policy for a project.
 
-Four sources, most specific first: the project's team, the organization the
-team belongs to, the environment variable, and the built-in default. Each
-field falls through independently, so a team that pins one threshold does not
-inherit the rest from itself; it inherits them from the organization exactly
-as if it had written no row at all.
+Sources, most specific first: every group between the project and the root of
+its group tree (nearest first), then the organization default, then the
+environment variable, then the built-in default. Each field falls through
+independently, so a group that pins one threshold does not inherit the rest
+from itself; it inherits them from its parent group (or, with no ancestor
+row, the organization) exactly as if it had written no row at all.
+
+Group-hierarchy generalisation (Phase 3): groups nest without limit
+(migrations 0090/0091). What used to be a fixed two-tier fall-through (team,
+then organization) is now a walk of the group's own ancestor chain, with the
+organization default as the chain's fixed last stop rather than a
+special-cased second tier. A deployment that never nests a group below the
+root sees byte-for-byte the old two-tier behaviour, because a root group's
+chain has exactly one entry.
 
 The reason every field is nullable rather than defaulted lives here. A policy
-row with defaults filled in would mean "this team has decided everything",
-which is almost never true: a team writes a row to change one thing. Storing
-NULL for the rest keeps the organization's later change flowing through to
-them, which is what an organization-wide policy is for.
+row with defaults filled in would mean "this group has decided everything",
+which is almost never true: a group writes a row to change one thing. Storing
+NULL for the rest keeps an ancestor's later change flowing through to it,
+which is what inheritance is for.
 
 Nothing in this module fails a lookup. A deployment with no rows, an
 unreachable organization, a malformed value that the database somehow admitted
@@ -72,6 +81,33 @@ def _may_administer_team(actor: CurrentUser, team_id: uuid.UUID) -> bool:
 
 
 @dataclass(frozen=True)
+class GateFieldSource:
+    """Where one resolved field's value came from, service-layer / name-free.
+
+    ``group_ids`` lists the CONTRIBUTING groups, nearest-to-the-project first.
+    A fall-through field (``epss_threshold``, ``reachable_critical_only``,
+    ``malicious_blocks``) has at most one entry: the single nearest ancestor
+    whose row set it, exactly the group whose row an operator would edit to
+    change it. ``approval_required_statuses`` is a union, so it may have more
+    than one when several ancestors at different depths each added at least
+    one status name.
+
+    ``organization_contributed`` is meaningful only for the union field: True
+    when the org-default row ALSO added a status name beyond whatever
+    ``group_ids`` contributed. It is always False for a fall-through field,
+    because a fall-through field with any group contributor never consults
+    the organization at all (the nearest non-null wins outright); an
+    organization-only fall-through value is represented by this dataclass
+    being ABSENT from ``ResolvedGatePolicy.sources`` (see that field's own
+    docstring: "group" vs "organization" vs "deployment" is a presence/shape
+    test, not a stored enum, at this layer).
+    """
+
+    group_ids: tuple[uuid.UUID, ...] = ()
+    organization_contributed: bool = False
+
+
+@dataclass(frozen=True)
 class ResolvedGatePolicy:
     """What the gate should apply, after the fall-through.
 
@@ -88,11 +124,20 @@ class ResolvedGatePolicy:
     #: same thing to the caller, but the field stays optional so the fall
     #: through works the way the others do.
     approval_required_statuses: list[str] | None = None
-    #: Field name to the scope that supplied it, "team" or "organization".
-    #: Fields no policy decided are absent, and the caller reports those as
-    #: coming from the deployment. Without this an operator reading an
-    #: effective value cannot tell which row to edit to change it.
-    sources: Mapping[str, str] = field(default_factory=dict)
+    #: Field name -> where it came from. A field no policy decided (fell all
+    #: the way through to the environment answer) is ABSENT from this dict,
+    #: callers report that case as "deployment" themselves (see
+    #: ``api.v1.gate_policies.effective_policy_endpoint``), rather than this
+    #: dataclass inventing a group-less, org-less sentinel value for it.
+    sources: Mapping[str, GateFieldSource] = field(default_factory=dict)
+    #: The project's own group's ancestor chain, nearest first, AS RESOLVED
+    #: (i.e. exactly the ids ``pick()``/the union walked, not every group
+    #: that exists, just the ones between the project and the root). Absent
+    #: (empty) when the project itself could not be resolved. Exists so a
+    #: caller building a UI breadcrumb for ``sources`` (which only names the
+    #: groups that CONTRIBUTED a value) can still place them within the full
+    #: chain without a second lookup of "what is this project's group tree".
+    chain: tuple[uuid.UUID, ...] = ()
 
     @property
     def is_empty(self) -> bool:
@@ -112,13 +157,17 @@ async def resolve_for_project(
 ) -> ResolvedGatePolicy:
     """Return the policy that applies to ``project_id``.
 
-    One query for the team and organization, one for the two candidate rows.
-    The gate runs on every CI poll, so this stays at two round trips rather
-    than walking the chain a row at a time.
+    One query for the project's group chain (its own group's id + ancestor
+    ``path`` + organization), one for every candidate row (every ancestor's +
+    the organization default's, in one ``IN`` list). The gate runs on every CI
+    poll, so this stays at two round trips regardless of how deep the group
+    tree is. Walking the chain a row at a time would make one poll's cost
+    scale with nesting depth, which is exactly the regression a materialised
+    ``path`` column exists to avoid (see the ``Group`` model docstring).
     """
     scope = (
         await session.execute(
-            select(Team.id, Team.organization_id)
+            select(Team.id, Team.path, Team.organization_id)
             .join(Project, Project.team_id == Team.id)
             .where(Project.id == project_id)
         )
@@ -129,33 +178,47 @@ async def resolve_for_project(
         # environment answer stands.
         return _EMPTY
 
-    team_id, organization_id = scope
+    group_id, ancestor_path, organization_id = scope
+    # Nearest first: the project's own group, then its parent, ... up to (not
+    # including) the root. ``ancestor_path`` is root-first (the DB trigger's
+    # convention), so nearest-first is the reverse. The organization default
+    # is not in this list; it is the chain's fixed last stop, handled
+    # separately below (its ``group_id`` is NULL, never a member of a group
+    # chain).
+    chain: tuple[uuid.UUID, ...] = (group_id, *reversed(list(ancestor_path)))
+
     rows = (
         await session.execute(
             select(GatePolicy).where(
                 GatePolicy.organization_id == organization_id,
-                # Not ``in_([team_id, None])``: SQL never matches a NULL that
+                # Not ``in_([*chain, None])``: SQL never matches a NULL that
                 # way, so the organization default would be invisible and the
-                # fall-through would silently stop at the team row.
-                or_(GatePolicy.team_id == team_id, GatePolicy.team_id.is_(None)),
+                # fall-through would silently stop at the nearest ancestor row.
+                or_(GatePolicy.team_id.in_(chain), GatePolicy.team_id.is_(None)),
             )
         )
     ).scalars().all()
     if not rows:
-        return _EMPTY
+        return ResolvedGatePolicy(chain=chain)
 
-    team_row = next((row for row in rows if row.team_id == team_id), None)
+    by_group_id = {row.team_id: row for row in rows if row.team_id is not None}
     org_row = next((row for row in rows if row.team_id is None), None)
 
-    sources: dict[str, str] = {}
+    sources: dict[str, GateFieldSource] = {}
 
     def pick(name: str) -> object:
-        for row, scope in ((team_row, "team"), (org_row, "organization")):
+        for group_id_in_chain in chain:
+            row = by_group_id.get(group_id_in_chain)
             if row is None:
                 continue
             value = getattr(row, name)
             if value is not None:
-                sources[name] = scope
+                sources[name] = GateFieldSource(group_ids=(group_id_in_chain,))
+                return value
+        if org_row is not None:
+            value = getattr(org_row, name)
+            if value is not None:
+                sources[name] = GateFieldSource()
                 return value
         return None
 
@@ -163,40 +226,57 @@ async def resolve_for_project(
         epss_threshold=pick("epss_threshold"),  # type: ignore[arg-type]
         reachable_critical_only=pick("reachable_critical_only"),  # type: ignore[arg-type]
         malicious_blocks=pick("malicious_blocks"),  # type: ignore[arg-type]
-        approval_required_statuses=_union_approval_statuses(team_row, org_row, sources),
+        approval_required_statuses=_union_approval_statuses(chain, by_group_id, org_row, sources),
         sources=sources,
+        chain=chain,
     )
 
 
 def _union_approval_statuses(
-    team_row: GatePolicy | None,
+    chain: tuple[uuid.UUID, ...],
+    by_group_id: Mapping[uuid.UUID, GatePolicy],
     org_row: GatePolicy | None,
-    sources: dict[str, str],
+    sources: dict[str, GateFieldSource],
 ) -> list[str] | None:
-    """The organization's list plus whatever the team added, never less.
+    """Every ancestor's list plus the organization's, never less.
 
     This one field does not fall through the way the thresholds do, and the
-    difference is the point. The thresholds are settings a team tunes for its
-    own work; this is a control, and a control a team can switch off protects
-    nobody. Fall-through made it switchable: a team row storing an empty list
-    is not None, so it won the pick and erased the organization's list, and the
-    only grade that can reach a gated status is the same grade that can write
-    that row. Whoever the control was aimed at owned it.
+    difference is the point. The thresholds are settings a group tunes for its
+    own work; this is a control, and a control a descendant can switch off
+    protects nobody. Fall-through would make it switchable: a child group's
+    row storing an empty list is not None, so a plain ``pick()`` would let it
+    win and erase everything an ancestor named, the exact CWE-863-shaped gap
+    this table exists to close, sharpened rather than softened by unlimited
+    nesting, because the deeper the tree the more ancestors a single override
+    would silently erase.
 
-    A union lets a team be stricter than its organization and never looser,
-    which is the direction that is safe to delegate.
+    A union lets any group in the chain be stricter than its ancestors and
+    never looser, which is the direction that is safe to delegate, and it
+    generalises the old two-tier "team+organization" union to however many
+    ancestors the project's group actually has.
     """
-    team_named = set(team_row.approval_required_statuses or []) if team_row else set()
+    contributing_group_ids: list[uuid.UUID] = []
+    all_named: set[str] = set()
+    # Nearest first, matching ``chain`` / ``pick()``'s order: the order
+    # ``GateFieldSource.group_ids`` promises its callers.
+    for group_id_in_chain in chain:
+        row = by_group_id.get(group_id_in_chain)
+        named = set(row.approval_required_statuses or []) if row is not None else set()
+        if named:
+            contributing_group_ids.append(group_id_in_chain)
+            all_named |= named
+
     org_named = set(org_row.approval_required_statuses or []) if org_row else set()
-    if not team_named and not org_named:
+    all_named |= org_named
+
+    if not all_named:
         return None
-    if team_named and org_named:
-        sources["approval_required_statuses"] = "team+organization"
-    elif team_named:
-        sources["approval_required_statuses"] = "team"
-    else:
-        sources["approval_required_statuses"] = "organization"
-    return sorted(team_named | org_named)
+
+    sources["approval_required_statuses"] = GateFieldSource(
+        group_ids=tuple(contributing_group_ids),
+        organization_contributed=bool(org_named),
+    )
+    return sorted(all_named)
 
 
 # ---------------------------------------------------------------------------

@@ -18,24 +18,33 @@ second question and the first is only useful for editing.
 from __future__ import annotations
 
 import uuid
+from collections.abc import Mapping
 
 import structlog
 from fastapi import APIRouter, Depends, Request, Response, status
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from core.authz import can_access_group
 from core.db import get_db
 from core.errors import problem_response
 from core.security import CurrentUser, require_role
+from models import Team
 from schemas.gate_policy import (
     EffectiveGatePolicyOut,
     EpssAvailabilityOut,
+    GatePolicyGroupRef,
     GatePolicyOut,
+    GatePolicySource,
+    GatePolicySourceLegacy,
     GatePolicyUpsertIn,
 )
 from services.epss_availability import get_epss_availability
 from services.gate_policy_service import (
+    GateFieldSource,
     GatePolicyForbidden,
     GatePolicyScopeNotFound,
+    ResolvedGatePolicy,
     delete_team_policy,
     get_team_policy,
     resolve_for_project,
@@ -48,8 +57,72 @@ from services.policy_gate import (
     _resolve_reachable_critical_only,
 )
 
+#: The four ``ResolvedGatePolicy`` fields that carry a ``sources`` entry.
+_SOURCED_FIELDS = (
+    "epss_threshold",
+    "reachable_critical_only",
+    "malicious_blocks",
+    "approval_required_statuses",
+)
+
 router = APIRouter(prefix="/v1/gate-policies", tags=["gate-policies"])
 log = structlog.get_logger("gate_policies.api")
+
+
+async def _build_sources(
+    session: AsyncSession, resolved: ResolvedGatePolicy
+) -> tuple[dict[str, GatePolicySource], dict[str, GatePolicySourceLegacy]]:
+    """Turn the service layer's name-free ``GateFieldSource``s into the wire shape.
+
+    One extra query, fetching the display NAME for every group in
+    ``resolved.chain`` (that ``resolve_for_project`` deliberately does not
+    do itself (it stays at two round trips because ``policy_gate`` calls it
+    on every CI poll; this endpoint is the human-facing policy editor, not
+    that hot path, so the extra lookup lives here instead).
+    """
+    name_by_group_id: Mapping[uuid.UUID, str] = {}
+    if resolved.chain:
+        rows = (
+            await session.execute(
+                select(Team.id, Team.name).where(Team.id.in_(resolved.chain))
+            )
+        ).all()
+        name_by_group_id = {row.id: row.name for row in rows}
+
+    def group_ref(group_id: uuid.UUID) -> GatePolicyGroupRef:
+        # Ancestors of *group_id* are whatever comes AFTER it in the
+        # nearest-first chain; reversed to root-first for a breadcrumb.
+        try:
+            idx = resolved.chain.index(group_id)
+        except ValueError:  # pragma: no cover - defensive; chain always
+            # contains every id a GateFieldSource can name, since both come
+            # from the same resolution pass.
+            idx = -1
+        ancestor_ids = list(reversed(resolved.chain[idx + 1 :])) if idx >= 0 else []
+        return GatePolicyGroupRef(
+            id=group_id,
+            name=name_by_group_id.get(group_id, str(group_id)),
+            path=[name_by_group_id.get(a, str(a)) for a in ancestor_ids],
+        )
+
+    sources: dict[str, GatePolicySource] = {}
+    sources_legacy: dict[str, GatePolicySourceLegacy] = {}
+    for name in _SOURCED_FIELDS:
+        field_source: GateFieldSource | None = resolved.sources.get(name)
+        if field_source is None:
+            built = GatePolicySource(scope="deployment")
+        elif field_source.group_ids:
+            built = GatePolicySource(
+                scope="group",
+                group_ids=list(field_source.group_ids),
+                group_paths=[group_ref(gid) for gid in field_source.group_ids],
+                organization_contributed=field_source.organization_contributed,
+            )
+        else:
+            built = GatePolicySource(scope="organization")
+        sources[name] = built
+        sources_legacy[name] = built.legacy
+    return sources, sources_legacy
 
 
 def _problem_for(request: Request, exc: Exception) -> Response:
@@ -220,28 +293,39 @@ async def epss_availability_endpoint(
     summary="What this project's build gate actually applies",
 )
 async def effective_policy_endpoint(
+    request: Request,
     project_id: uuid.UUID,
     session: AsyncSession = Depends(get_db),
     actor: CurrentUser = Depends(require_role("viewer")),
-) -> EffectiveGatePolicyOut:
+) -> EffectiveGatePolicyOut | Response:
     """Resolve the policy, then fill the gaps the way the gate itself does.
 
     A value shown here without saying where it came from invites the wrong
-    edit: an operator who sees a threshold and assumes their team set it will
-    look for a team row that does not exist. ``sources`` names the scope that
-    supplied each value, with ``deployment`` for the ones no policy decided.
+    edit: an operator who sees a threshold and assumes their group set it will
+    look for a row that does not exist. ``sources`` names the group(s) or
+    organization that supplied each value, with ``deployment`` for the ones
+    no policy decided. ``sources_legacy`` is the deprecated pre-group-hierarchy
+    string form of the same information (see its own docstring).
+
+    Security review finding (Phase 3): this endpoint used to resolve and
+    return a project's policy with no team/group membership check at all --
+    ``require_role("viewer")`` is a coarse, route-level floor, not a
+    project-scoped one. Once ``sources`` started naming the actual
+    contributing groups (this Phase), that gap widened from leaking "a
+    threshold is team-set" to leaking real group names and the ancestor
+    chain to any authenticated stranger. Hidden rather than refused, same as
+    ``get_team_policy``'s own scope check below: existence of another
+    organization's project/group is not this caller's business either.
     """
     resolved = await resolve_for_project(session, project_id)
-
-    sources = {
-        name: resolved.sources.get(name, "deployment")
-        for name in (
-            "epss_threshold",
-            "reachable_critical_only",
-            "malicious_blocks",
-            "approval_required_statuses",
+    if resolved.chain and not await can_access_group(session, actor, resolved.chain[0]):
+        return problem_response(
+            status_code=status.HTTP_404_NOT_FOUND,
+            title="Not Found",
+            detail=f"project {project_id} not found",
+            instance=request.url.path,
         )
-    }
+    sources, sources_legacy = await _build_sources(session, resolved)
     epss = (
         resolved.epss_threshold
         if resolved.epss_threshold is not None
@@ -275,4 +359,5 @@ async def effective_policy_endpoint(
         malicious_blocks=malicious,
         approval_required_statuses=resolved.approval_required_statuses or [],
         sources=sources,
+        sources_legacy=sources_legacy,
     )

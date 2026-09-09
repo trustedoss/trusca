@@ -24,26 +24,41 @@ and [Dynamic gate evaluation](#dynamic-gate-evaluation) below.
 
 ## Scopes
 
-A policy exists at exactly one of two scopes:
+A policy exists at exactly one of two kinds of scope:
 
 | Scope | `team_id` | Applies to | Who can write |
 | --- | --- | --- | --- |
-| **Team** | set | that one team | `team_admin` of the team, or `super_admin` |
-| **Org default** | `null` | every team in the org with no team policy | `super_admin` only |
+| **Group** | set | that one group (team) | `team_admin` of the group, or `super_admin` |
+| **Org default** | `null` | every group in the org with no applicable group policy | `super_admin` only |
 
 At most one org-default policy exists per organization, and at most one policy
-per team. Re-`PUT`ting a scope **updates** the existing row (idempotent upsert).
+per group. Re-`PUT`ting a scope **updates** the existing row (idempotent upsert).
 
 ### Effective policy resolution
 
-When a team is evaluated, the effective policy is resolved in order:
+Groups nest without limit: a team can sit under a division, which sits under
+another division, and so on up to the organization's root. A team's
+**ancestor chain** is itself plus every group above it, nearest first, ending
+at the root. The effective policy for a team is resolved by walking that
+chain:
 
 1. the team's own policy, **if present and enabled**, else
-2. the org-default policy, **if present and enabled**, else
-3. nothing — the team falls back to the built-in static catalog.
+2. its nearest ancestor group's policy, **if present and enabled**, else
+3. the next ancestor up, and so on until the root, else
+4. the org-default policy, **if present and enabled**, else
+5. nothing (the team falls back to the built-in static catalog).
 
-Setting `enabled: false` disables a policy without deleting it, so a team can
-turn dynamic policy off and back on without re-authoring it.
+The deepest (nearest to the team) **enabled** policy in the chain wins
+**wholesale**; resolution does not merge fields from two different scopes.
+A disabled or absent policy at one level simply falls through to the next
+ancestor; it does not stop the walk or fall straight to the org default. For
+a deployment that never nests a group below the organization's root, this is
+exactly the old two-tier "team, then org" behaviour, because such a team's
+chain has only one entry before the org default.
+
+Setting `enabled: false` disables a policy without deleting it, so a group can
+turn dynamic policy off and back on without re-authoring it. The chain then
+simply continues to whichever ancestor (or the org default) is next.
 
 ## Policy fields
 
