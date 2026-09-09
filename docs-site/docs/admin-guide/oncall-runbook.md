@@ -17,6 +17,13 @@ alerts against a production TRUSCA stack. Each scenario lists:
 - **Recover** — ordered remediation steps
 - **Escalate** — when to wake the portal dev team
 
+The PagerDuty alert names below are examples, not something this repository
+wires up on its own: it publishes the underlying data (`/metrics`, Slack/Teams
+webhooks) but ships no Prometheus server, Alertmanager, or paging
+integration. See [Alerting](./alerting.md) for an example rule file that
+produces alerts with these same names from an already-running Prometheus, and
+for which scenarios below have no metric behind them yet.
+
 All commands assume `docker-compose` V1 (hyphen) and a `bash` host shell.
 
 :::tip Get a super-admin token (used by most curl examples)
@@ -34,7 +41,7 @@ ACCESS_TOKEN=$(curl -fsS -X POST "https://<your-host>/api/auth/login" \
 ## Scenario 1 — Trivy DB stale or missing
 
 ### Symptom
-PagerDuty: `TRUSCA Trivy DB last refresh > 14 days` or `TRUSCA Trivy DB missing on worker`. The upcoming `/admin/health → Vulnerability data` card drives this.
+PagerDuty: `TrustedOSSVulnDbStale` (example rule, see [Alerting](./alerting.md)) or `TRUSCA Trivy DB missing on worker`. The `/admin/health → Vulnerability data` card's Trivy DB panel shows the same freshness classification.
 
 ### Customer impact
 - New scans CAN still be queued — `cdxgen` + scancode still produce SBOMs and licence findings.
@@ -44,6 +51,10 @@ PagerDuty: `TRUSCA Trivy DB last refresh > 14 days` or `TRUSCA Trivy DB missing 
 ### Diagnose
 <!-- docs-uat: id=oncall-trivy-db-check kind=shell ctx=host tier=nightly waiver=runbook-diagnostic-prod-compose-worker -->
 ```bash
+# 0. If METRICS_ENABLED, this is what actually fired the alert - confirms the
+#    page before you go looking at the worker.
+curl -fsS "https://<your-host>/metrics" \
+  | grep -E 'trusca_vuln_db_(last_update_timestamp_seconds|refresh_interval_hours)'
 # 1. Is the DB on disk?
 docker-compose -f docker-compose.yml exec worker \
   ls -lh /var/lib/trivy/db/
@@ -88,7 +99,7 @@ Page the portal dev team with: worker logs (`docker-compose logs --tail=2000 wor
 ## Scenario 2 — Auto-backup failed for 3 days
 
 ### Symptom
-PagerDuty: `TRUSCA auto-backup task failure count = 3`.
+PagerDuty: `TrustedOSSAutoBackupNotSucceeding` (example rule, see [Alerting](./alerting.md)).
 
 ### Customer impact
 - All in-portal data is at risk if the host crashes (no recent backup to restore from). Plan downstream tasks (compliance freezes, etc.) accordingly until a fresh backup lands.
@@ -96,6 +107,9 @@ PagerDuty: `TRUSCA auto-backup task failure count = 3`.
 ### Diagnose
 <!-- docs-uat: id=oncall-backup-beat-check kind=shell ctx=host tier=nightly waiver=runbook-diagnostic-prod-compose-logs -->
 ```bash
+# 0. If METRICS_ENABLED, this is what actually fired the alert.
+curl -fsS "https://<your-host>/metrics" \
+  | grep -A2 '^trusca_task_runs_24h{outcome="success",task="trustedoss.backup.run"'
 # 1. Celery Beat schedule heartbeat
 docker-compose logs --tail=500 beat | grep daily-auto-backup
 # 2. Worker logs for backup task runs
@@ -136,7 +150,7 @@ docker-compose -f docker-compose.yml exec backend df -h /opt/trustedoss/backups
 ## Scenario 3 — Scan stuck in `running` for ≥ 4 hours
 
 ### Symptom
-PagerDuty: `TRUSCA scan running > 4h for project X`.
+PagerDuty: `TRUSCA scan running > 4h for project X`. No rule in [Alerting](./alerting.md#what-is-not-covered-here-and-why) produces this yet, since `/metrics` publishes a count of scans by status, not how long any one of them has been running, so this page currently has to come from your own query against the API or database rather than `/metrics`.
 
 ### Customer impact
 - That project: blocked from new scans (one-running-at-a-time).
@@ -173,7 +187,7 @@ docker-compose exec worker ps -ef | grep -E 'cdxgen|ort|trivy'
 ## Scenario 4 — Host disk ≥ 95%
 
 ### Symptom
-PagerDuty: `TRUSCA disk = 95%+`.
+PagerDuty: `TrustedOSSWorkspaceDiskCritical` (example rule, see [Alerting](./alerting.md); covers only the workspace mount; a host-wide disk alert needs a node-level exporter, since `/metrics` does not publish that).
 
 ### Customer impact
 - In-flight scans continue. New scans are **blocked** at the `DISK_HARD_LIMIT_PCT` threshold (default 95%) — `/admin/scans` shows them as queued indefinitely.
@@ -181,6 +195,8 @@ PagerDuty: `TRUSCA disk = 95%+`.
 ### Diagnose
 <!-- docs-uat: id=oncall-disk-check kind=shell ctx=host tier=nightly waiver=runbook-diagnostic-host-df -->
 ```bash
+# 0. If METRICS_ENABLED, this is the workspace-mount half of what fired.
+curl -fsS "https://<your-host>/metrics" | grep trusca_workspace_disk_used_ratio
 # 1. Host-wide
 df -h /opt/trustedoss
 docker system df
@@ -260,7 +276,10 @@ FATAL task_registry.empty: this worker registered none of the portal's tasks
 ```
 
 Under Compose the service restarts in a loop; under Kubernetes the pod reports
-CrashLoopBackOff.
+CrashLoopBackOff. This has to page from your orchestrator's own restart-count
+signal (Kubernetes, cAdvisor, `kube-state-metrics`), not from `/metrics`: a
+worker crash-looping on boot never reaches the code that endpoint lives in
+long enough to be scraped. See [Alerting](./alerting.md#what-is-not-covered-here-and-why).
 
 The container exits with **78**. If the log shows nothing at all, that number
 alone is the diagnosis: the worker stopped because it had none of the portal's
@@ -311,11 +330,12 @@ image: every worker of that kind in every deployment on that tag is affected.
 ### Symptom
 `GET /health/ready` keeps returning `200`, but its body carries
 `"redis": "degraded"` instead of `"ok"`. This is not itself a PagerDuty
-trigger, since nothing pages on it today, but it shows up while diagnosing
-something else (a support ticket about slow or missing rate limiting, or a
-sweep from Scenario 5's queue-backlog investigation that turns out to be
-Redis-shaped), or an operator adds their own monitor on the field and it
-fires.
+trigger, since nothing pages on it today - the field lives on `/health/ready`,
+not `/metrics`, so it is also not in [Alerting](./alerting.md)'s example rule
+file - but it shows up while diagnosing something else (a support ticket
+about slow or missing rate limiting, or a sweep from Scenario 5's
+queue-backlog investigation that turns out to be Redis-shaped), or an
+operator adds their own monitor on the field and it fires.
 
 ### Customer impact
 None of the request path's controls fail closed on Redis, so nothing stops
@@ -397,6 +417,7 @@ When paging the portal dev team, attach:
 
 ## See also
 
+- [Alerting](./alerting.md) - the example Prometheus rules behind the PagerDuty alert names above, and which scenarios have none yet.
 - [Vulnerability data (Trivy DB)](./vulnerability-data.md) — DB lifecycle and troubleshooting.
 - [Backup and restore](./backup-and-restore.md) — backup retention + restore flow.
 - [Disk and health](./disk-and-health.md) — disk threshold model + Health dashboard.

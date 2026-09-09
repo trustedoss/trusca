@@ -10,10 +10,10 @@ sidebar_position: 3
 
 The portal exposes two operator dashboards under `/admin`:
 
-- **/admin/health** — current state of every container service plus the Trivy DB freshness card (coming soon).
+- **/admin/health** - current state of every container service plus the Trivy DB freshness card.
 - **/admin/disk** — workspace and database storage usage with a configurable hard limit.
 
-![Admin System Health — overview of postgres, redis, celery, and the upcoming vulnerability data row](/img/screenshots/admin-health-cards.png)
+![Admin System Health - overview of postgres, redis, celery, and the vulnerability data row](/img/screenshots/admin-health-cards.png)
 
 ![Admin Disk usage — workspace + database cards with usage gauges](/img/screenshots/admin-disk-list.png)
 
