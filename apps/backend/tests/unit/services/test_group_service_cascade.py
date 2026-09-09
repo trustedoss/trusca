@@ -379,11 +379,14 @@ async def test_project_subtree_predicate_scopes_a_real_project(
 # ---------------------------------------------------------------------------
 
 
-def test_group_cascade_enabled_default_is_off(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_group_cascade_enabled_default_is_on(monkeypatch: pytest.MonkeyPatch) -> None:
+    # Phase 5: flipped from off to on now that reparent/create_subgroup (and
+    # their admin UI) close the gap that made turning this on unsafe -- see
+    # group_cascade_enabled's own docstring.
     from core.config import group_cascade_enabled
 
     monkeypatch.delenv("GROUP_CASCADE_ENABLED", raising=False)
-    assert group_cascade_enabled() is False
+    assert group_cascade_enabled() is True
 
 
 @pytest.mark.parametrize(

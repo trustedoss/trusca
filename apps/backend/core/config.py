@@ -4010,36 +4010,37 @@ def validate_demo_sandbox_limits() -> None:
 def group_cascade_enabled() -> bool:
     """The single switch for the whole group-hierarchy permission cascade.
 
-    Off (default): every permission check stays exactly as flat as it is
-    today — a group's effective role is its own direct membership only, and
-    the accessible set is direct memberships only. This is the behaviour
-    every existing deployment already has, before ``parent_group_id`` /
-    ``path`` (migrations 0090/0091) meant anything to authorization.
+    On (default as of Phase 5): a group's effective role inherits from its
+    nearest ancestor with a direct membership (a demotion at a child
+    overrides a promotion at a parent, sibling groups are never consulted),
+    and the accessible set widens to each membership group's whole subtree.
+    ``services.group_service`` walks ``path`` (migrations 0090/0091) to do
+    both. PR 2-C wired this into ``core/authz.py``'s ``team_scope_filter``
+    (every list/fan-out read: dashboard, search, inventory, scan/project/
+    license-policy/component-approval lists, and more) and into
+    ``can_access_group``. PR 2-D wired ``assert_team_access`` (the async
+    wrapper around ``can_access_group`` that roughly 22 service/API modules
+    use for their single-resource gate) in too, closing the list/detail
+    parity gap the PR 2-C security review flagged as High (a
+    cascade-visible list item that still 403'd on open).
 
-    On: ``services.group_service`` walks ``path`` to resolve an inherited
-    role and to widen the accessible set to a membership group's subtree.
-    PR 2-C wired this into ``core/authz.py``'s ``team_scope_filter`` (every
-    list/fan-out read: dashboard, search, inventory, scan/project/
-    license-policy/component-approval lists, ...) and into
-    ``can_access_group`` (the 7 single-resource gates that used to
-    reimplement their own team check).
+    Off: every permission check stays exactly as flat as it was before
+    ``parent_group_id`` / ``path`` existed. A group's effective role is its
+    own direct membership only, and the accessible set is direct
+    memberships only, regardless of any ``parent_group_id`` a group carries.
 
-    As of PR 2-D: ``assert_team_access`` (the async wrapper around
-    ``can_access_group`` that ~22 service/API modules use for their
-    single-resource gate — the old, flat-only, session-less
-    ``can_access_team`` this replaced is gone) is wired in too, closing the
-    list/detail parity gap the PR 2-C security review flagged as High (a
-    cascade-visible list item that still 403'd on open). PR 2-D's own
-    integration suite (``tests/integration/test_group_cascade_wiring.py`` and
-    the list-vs-detail parity guard added alongside it) is what a future
-    change to this flag's rollout plan should re-run before flipping the
-    default.
+    This defaulted to ``false`` through Phase 4: turning it on required a
+    way to fix a group placed under the wrong parent, and nothing could yet
+    move a group or create one nested under another. Phase 5's
+    ``reparent`` / ``create_subgroup`` and their admin UI close that gap, so
+    the default flips to ``true`` here. An operator who wants the flat,
+    pre-Phase-5 behaviour sets ``GROUP_CASCADE_ENABLED=false`` explicitly.
+    ``tests/integration/test_group_cascade_wiring.py`` and the list-vs-detail
+    parity guard alongside it are what a future change to this flag's
+    rollout plan should re-run first.
 
-    This still defaults to ``false`` — PR 2-D does not change the default,
-    only closes the gap that made turning it on unsafe.
-
-    Read at call time (CLAUDE.md core rule #11), not cached at import — an
+    Read at call time (CLAUDE.md core rule #11), not cached at import: an
     operator can flip it without a rebuild, and every accessor in this
     module already follows that rule.
     """
-    return os.getenv("GROUP_CASCADE_ENABLED", "false").lower() == "true"
+    return os.getenv("GROUP_CASCADE_ENABLED", "true").lower() == "true"

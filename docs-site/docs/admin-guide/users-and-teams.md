@@ -352,6 +352,79 @@ Deactivation is the only off-boarding action available in this release — there
 
 The first member of the team is whoever you assign on the next screen.
 
+## Nested groups {#nested-groups}
+
+A team can have other teams nested under it, to any depth: a group hierarchy, not just one extra level. "Team" and "group" name the same underlying object in this product; this page says **team** when talking about membership and roles, and **group** when talking about where something sits in that hierarchy (its parent, its children, the whole branch under it). A group with no parent sits at the root of the organization, exactly like every team did before nesting existed.
+
+Both actions below are `super_admin` only, from a group's detail drawer at **/admin/teams**.
+
+### Moving a group
+
+1. **/admin/teams** → open the group → **Move**.
+2. **New parent** → pick a group, or **Root of organization (no parent)** to detach it from any parent.
+3. **Move**.
+
+<!-- docs-uat: id=groups-move-atomic-subtree kind=manual tier=manual -->
+The whole subtree moves in one operation: every descendant of the moved group keeps its place under it, just with a new ancestor chain above the move point.
+
+The **New parent** list only offers groups that already satisfy both guardrails below, so the form itself refuses to construct an invalid move:
+
+- **Same organization only.** A group can only move under a group in its own organization.
+- **Not under its own subtree.** A group cannot move under itself or under any of its own descendants: that would make it its own ancestor.
+
+<!-- docs-uat: id=groups-move-cycle-409 kind=manual tier=manual -->
+If either guardrail is somehow bypassed and the request reaches the API directly anyway, the server still refuses it: moving a group under itself or under its own descendant returns `409` (`Group Cycle Detected`, extension `cycle_detected: true`).
+
+<!-- docs-uat: id=groups-move-cross-org-422 kind=manual tier=manual -->
+Moving a group under a group in a different organization returns `422` (`Cross-Organization Move Not Allowed`, extension `cross_organization_move: true`). A standard deployment has exactly one organization, so there is nowhere else for a target group to belong; this check is a structural safety net, not something a normal admin workflow can trigger.
+
+### Creating a subgroup
+
+1. **/admin/teams** → open the parent group → **Add subgroup**.
+2. Name, slug, optional description.
+3. **Create subgroup**.
+
+<!-- docs-uat: id=groups-subgroup-inherits-org kind=manual tier=manual -->
+The new group inherits its parent's organization automatically: there is no organization picker here, unlike creating a root team.
+
+<!-- docs-uat: id=groups-subgroup-slug-conflict-409 kind=manual tier=manual -->
+A slug already used by one of the parent's other direct children is refused with `409` (`Group Slug Conflict`) before anything is written.
+
+### The permission cascade
+
+Whether a group's contents are visible beyond its own direct-membership list is controlled by `GROUP_CASCADE_ENABLED`, on by default; the setting itself, including how to turn it off, is documented in [`.env.example`](https://github.com/trustedoss/trusca/blob/main/.env.example). What turning it on changes, day to day:
+
+<!-- docs-uat: id=groups-cascade-nearest-wins kind=manual tier=manual -->
+- **Nearest membership wins.** A user's effective role at a group is the role of their nearest direct membership, walking up from that group toward the root. A `developer` who also holds `team_admin` two levels up still gets `developer` at the group closer to them: a demotion at a child always overrides a promotion at a parent, never the other way round.
+<!-- docs-uat: id=groups-cascade-sibling-isolation kind=manual tier=manual -->
+- **Sibling branches stay isolated.** A membership in one group says nothing about a sibling branch, however deep. Access only ever flows down a single ancestor line, never sideways.
+<!-- docs-uat: id=groups-cascade-subtree-widening kind=manual tier=manual -->
+- **The accessible set widens to the subtree.** Someone with a direct membership in a group can see and reach everything under it: the dashboard, search, inventory, and every scan/project/license-policy/component-approval list widens to the whole subtree, not just that one group.
+<!-- docs-uat: id=groups-cascade-existence-hiding kind=manual tier=manual -->
+- **Existence-hiding still applies.** A group outside a user's accessible set 404s, not 403s, exactly like the flat model always has. The one visible exception is the ancestor breadcrumb on a group's detail page: it names every ancestor up to the root, even one the viewer cannot otherwise open, purely so they know where they are in the tree; it does not let them open that ancestor or learn anything else about it.
+<!-- docs-uat: id=groups-cascade-superadmin-bypass kind=manual tier=manual -->
+- **`super_admin` is unaffected either way.** It bypasses both the flat and the cascaded checks at the gate layer regardless of this setting.
+
+Turning `GROUP_CASCADE_ENABLED` off returns every check to exactly the flat behavior teams had before nesting existed: a user's role and accessible set are their direct memberships only, regardless of any parent a group carries.
+
+:::note A separate mechanism resolves license and gate policy
+A project's effective license/gate policy already walks up its group's ancestors to the nearest one with a policy set (the same nearest-wins shape as the cascade above), but that resolution is unconditional and does not depend on `GROUP_CASCADE_ENABLED`. Turning the flag off changes who can see a group's contents; it does not change which policy applies to a project. See [Policy design](../best-practices/policy-design.md).
+:::
+
+### Where /groups fits
+
+**/admin/teams** is the admin management surface: `super_admin` only, and the only place to move a group or create a subgroup. **/groups** is a separate, read-only surface any authenticated member reaches from the main navigation; it lists the groups their membership (direct or cascade-inherited) lets them see, with drill-down navigation and a flat, whole-tree name search.
+
+<!-- docs-uat: id=groups-list-api kind=api auth=user url=/v1/groups expect=status:200 tier=nightly -->
+A group's detail page on /groups shows its ancestor breadcrumb, its direct members and its cascade-inherited members in two separate sections, its subgroups, and its projects. There is no move or create action here: those stay `/admin/teams`-only.
+
+<!-- docs-uat: id=groups-detail-404-hidden kind=api auth=user url=/v1/groups/00000000-0000-0000-0000-000000000000 expect=status:404 tier=nightly -->
+A group that does not exist, or one the caller cannot reach, returns the same `404` either way.
+
+:::note "New project" from a group you only reach through the cascade
+A single active-team selector in the top bar decides which team a new project is created under. Clicking **New project** from a group's detail page on /groups can point that selector at a group you can see through the cascade but do not hold a direct membership in; the project-creation form cannot submit into a group you are not a direct member of, so it shows an explicit **Active team needs attention** control instead of silently guessing a different team for you. Use the team switcher to pick a team you belong to directly, then create the project. This is expected behavior, not a bug.
+:::
+
 ## Renaming a team
 
 `super_admin` and the team's `team_admin` can rename a team. The team's `name`, `slug`, and `description` are mutable via `PATCH /v1/admin/teams/{team_id}`.
@@ -427,3 +500,4 @@ The following capabilities are described elsewhere in early docs but are **not**
 - [API keys](./api-keys.md) — service-account credentials
 - [Audit log](./audit-log.md)
 - [Approvals](../user-guide/approvals.md)
+- [Team structure](../best-practices/team-structure.md) - when to split a team versus nest a subgroup
