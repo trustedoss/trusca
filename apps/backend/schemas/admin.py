@@ -336,6 +336,14 @@ class AdminTeamDetail(BaseModel):
     name: str
     slug: str
     description: str | None = None
+    parent_group_id: uuid.UUID | None = Field(
+        default=None,
+        description=(
+            "Null for a root group. group-hierarchy Phase 5: set via "
+            "POST /v1/admin/teams/{id}/reparent, or at creation via "
+            "POST /v1/admin/teams/{parent_id}/subgroups."
+        ),
+    )
     project_count: int = 0
     members: list[AdminTeamMember] = Field(default_factory=list)
     created_at: datetime
@@ -442,7 +450,63 @@ class AdminTeamMemberAdd(BaseModel):
         return value
 
 
+# ---------------------------------------------------------------------------
+# Group hierarchy — group-hierarchy Phase 5 PR 5-A
+# ---------------------------------------------------------------------------
+
+
+class AdminGroupReparentRequest(BaseModel):
+    """Body for ``POST /v1/admin/teams/{group_id}/reparent``."""
+
+    new_parent_id: uuid.UUID | None = Field(
+        default=None,
+        description=(
+            "The group to move this group (and its whole subtree) under. "
+            "Null moves the group to the root of its own organization."
+        ),
+    )
+
+
+class AdminGroupCreateSubgroup(BaseModel):
+    """Body for ``POST /v1/admin/teams/{parent_group_id}/subgroups``.
+
+    No ``organization_id`` field, unlike ``AdminTeamCreate``: a subgroup
+    always inherits its parent's organization (``services.group_service.
+    create_subgroup``) — there is nothing to disambiguate.
+    """
+
+    name: str = Field(min_length=1, max_length=255)
+    slug: str = Field(min_length=1, max_length=64)
+    description: str | None = Field(default=None, max_length=1024)
+
+    @field_validator("name")
+    @classmethod
+    def _strip_name(cls, value: str) -> str:
+        return _strip_or_raise(value, field="name")
+
+    @field_validator("slug")
+    @classmethod
+    def _validate_slug(cls, value: str) -> str:
+        normalized = value.strip().lower()
+        if not _SLUG_PATTERN.fullmatch(normalized):
+            raise ValueError(
+                "slug must start with [a-z0-9] and contain only lower-case letters, "
+                "digits, or '-' (max 64 chars)"
+            )
+        return normalized
+
+    @field_validator("description")
+    @classmethod
+    def _normalize_description(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
+        stripped = value.strip()
+        return stripped or None
+
+
 __all__ = [
+    "AdminGroupCreateSubgroup",
+    "AdminGroupReparentRequest",
     "AdminOrganizationListItem",
     "AdminOrganizationListPage",
     "AdminTeamCreate",

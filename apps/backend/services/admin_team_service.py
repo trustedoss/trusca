@@ -512,6 +512,7 @@ async def get_team_detail(
         name=team.name,
         slug=team.slug,
         description=team.description,
+        parent_group_id=team.parent_group_id,
         project_count=project_count,
         members=members,
         created_at=team.created_at,

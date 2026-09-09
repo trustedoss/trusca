@@ -571,3 +571,256 @@ async def test_list_organizations_exposes_is_personal_via_api(client: AsyncClien
 
     rows = await _organization_rows(client, admin, wanted={str(personal_org.id)})
     assert rows[str(personal_org.id)]["is_personal"] is True
+
+
+# ---------------------------------------------------------------------------
+# Group hierarchy — reparent / subgroups (group-hierarchy Phase 5 PR 5-A)
+# ---------------------------------------------------------------------------
+
+
+async def test_reparent_anonymous_returns_401(client: AsyncClient) -> None:
+    factory = await _factory(client)
+    async with factory() as session:
+        org = await make_organization(session)
+        group = await make_team(session, organization=org)
+        new_parent = await make_team(session, organization=org)
+
+    response = await client.post(
+        f"/v1/admin/teams/{group.id}/reparent",
+        json={"new_parent_id": str(new_parent.id)},
+    )
+    assert response.status_code == 401
+    assert response.headers["content-type"].startswith(PROBLEM_JSON)
+
+
+async def test_reparent_developer_returns_404(client: AsyncClient) -> None:
+    """Existence-hide (this route is super_admin-only): a non-admin gets the
+    same 404 the rest of the ``/v1/admin/teams`` surface gives, never a 403
+    that would confirm the route exists for them."""
+    factory = await _factory(client)
+    async with factory() as session:
+        org = await make_organization(session)
+        group = await make_team(session, organization=org)
+        new_parent = await make_team(session, organization=org)
+        user = await make_user(session)
+        await make_membership(session, user=user, team=group, role="developer")
+
+    response = await client.post(
+        f"/v1/admin/teams/{group.id}/reparent",
+        headers=_bearer_for(user),
+        json={"new_parent_id": str(new_parent.id)},
+    )
+    assert response.status_code == 404
+    assert response.headers["content-type"].startswith(PROBLEM_JSON)
+
+
+async def test_super_admin_reparent_returns_200_with_new_parent(client: AsyncClient) -> None:
+    factory = await _factory(client)
+    async with factory() as session:
+        org = await make_organization(session)
+        group = await make_team(session, organization=org)
+        new_parent = await make_team(session, organization=org)
+        admin = await make_user(session, is_superuser=True)
+
+    response = await client.post(
+        f"/v1/admin/teams/{group.id}/reparent",
+        headers=_bearer_for(admin),
+        json={"new_parent_id": str(new_parent.id)},
+    )
+    assert response.status_code == 200, response.text
+    body = response.json()
+    assert body["id"] == str(group.id)
+    assert body["parent_group_id"] == str(new_parent.id)
+
+
+async def test_reparent_to_null_moves_group_to_root(client: AsyncClient) -> None:
+    factory = await _factory(client)
+    async with factory() as session:
+        org = await make_organization(session)
+        parent = await make_team(session, organization=org)
+        child = await make_team(session, organization=org, parent=parent)
+        admin = await make_user(session, is_superuser=True)
+
+    response = await client.post(
+        f"/v1/admin/teams/{child.id}/reparent",
+        headers=_bearer_for(admin),
+        json={"new_parent_id": None},
+    )
+    assert response.status_code == 200, response.text
+    assert response.json()["parent_group_id"] is None
+
+
+async def test_reparent_self_as_parent_returns_409_with_cycle_extension(
+    client: AsyncClient,
+) -> None:
+    factory = await _factory(client)
+    async with factory() as session:
+        org = await make_organization(session)
+        group = await make_team(session, organization=org)
+        admin = await make_user(session, is_superuser=True)
+
+    response = await client.post(
+        f"/v1/admin/teams/{group.id}/reparent",
+        headers=_bearer_for(admin),
+        json={"new_parent_id": str(group.id)},
+    )
+    assert response.status_code == 409, response.text
+    assert response.headers["content-type"].startswith(PROBLEM_JSON)
+    body = response.json()
+    assert body["cycle_detected"] is True
+
+
+async def test_reparent_under_own_descendant_returns_409_with_cycle_extension(
+    client: AsyncClient,
+) -> None:
+    factory = await _factory(client)
+    async with factory() as session:
+        org = await make_organization(session)
+        a = await make_team(session, organization=org, name="a")
+        b = await make_team(session, organization=org, name="b", parent=a)
+        admin = await make_user(session, is_superuser=True)
+
+    response = await client.post(
+        f"/v1/admin/teams/{a.id}/reparent",
+        headers=_bearer_for(admin),
+        json={"new_parent_id": str(b.id)},
+    )
+    assert response.status_code == 409, response.text
+    assert response.json()["cycle_detected"] is True
+
+
+async def test_reparent_across_organizations_returns_422(client: AsyncClient) -> None:
+    factory = await _factory(client)
+    async with factory() as session:
+        org_1 = await make_organization(session)
+        org_2 = await make_organization(session)
+        group = await make_team(session, organization=org_1)
+        other_org_parent = await make_team(session, organization=org_2)
+        admin = await make_user(session, is_superuser=True)
+
+    response = await client.post(
+        f"/v1/admin/teams/{group.id}/reparent",
+        headers=_bearer_for(admin),
+        json={"new_parent_id": str(other_org_parent.id)},
+    )
+    assert response.status_code == 422, response.text
+    assert response.headers["content-type"].startswith(PROBLEM_JSON)
+    assert response.json()["cross_organization_move"] is True
+
+
+async def test_reparent_missing_new_parent_returns_404(client: AsyncClient) -> None:
+    factory = await _factory(client)
+    async with factory() as session:
+        org = await make_organization(session)
+        group = await make_team(session, organization=org)
+        admin = await make_user(session, is_superuser=True)
+
+    response = await client.post(
+        f"/v1/admin/teams/{group.id}/reparent",
+        headers=_bearer_for(admin),
+        json={"new_parent_id": str(uuid.uuid4())},
+    )
+    assert response.status_code == 404, response.text
+
+
+async def test_reparent_writes_audit_log_via_api(client: AsyncClient) -> None:
+    factory = await _factory(client)
+    async with factory() as session:
+        org = await make_organization(session)
+        group = await make_team(session, organization=org)
+        new_parent = await make_team(session, organization=org)
+        admin = await make_user(session, is_superuser=True)
+
+    response = await client.post(
+        f"/v1/admin/teams/{group.id}/reparent",
+        headers=_bearer_for(admin),
+        json={"new_parent_id": str(new_parent.id)},
+    )
+    assert response.status_code == 200, response.text
+
+    async with factory() as session:
+        rows = (
+            await session.execute(
+                text(
+                    "SELECT count(*) FROM audit_logs "
+                    "WHERE actor_user_id = :a AND target_table = 'groups' "
+                    "  AND action = 'update' AND target_id = :tid"
+                ),
+                {"a": str(admin.id), "tid": str(group.id)},
+            )
+        ).scalar_one()
+    assert rows >= 1
+
+
+async def test_super_admin_create_subgroup_returns_201(client: AsyncClient) -> None:
+    factory = await _factory(client)
+    async with factory() as session:
+        org = await make_organization(session)
+        parent = await make_team(session, organization=org)
+        admin = await make_user(session, is_superuser=True)
+
+    suffix = unique_suffix()
+    response = await client.post(
+        f"/v1/admin/teams/{parent.id}/subgroups",
+        headers=_bearer_for(admin),
+        json={"name": f"Sub {suffix}", "slug": f"sub-{suffix}"},
+    )
+    assert response.status_code == 201, response.text
+    body = response.json()
+    assert body["slug"] == f"sub-{suffix}"
+    assert body["parent_group_id"] == str(parent.id)
+
+
+async def test_create_subgroup_duplicate_sibling_slug_returns_409(client: AsyncClient) -> None:
+    factory = await _factory(client)
+    async with factory() as session:
+        org = await make_organization(session)
+        parent = await make_team(session, organization=org)
+        admin = await make_user(session, is_superuser=True)
+
+    slug = f"dupsub-{unique_suffix()}"
+    headers = _bearer_for(admin)
+    first = await client.post(
+        f"/v1/admin/teams/{parent.id}/subgroups",
+        headers=headers,
+        json={"name": "First", "slug": slug},
+    )
+    assert first.status_code == 201, first.text
+
+    second = await client.post(
+        f"/v1/admin/teams/{parent.id}/subgroups",
+        headers=headers,
+        json={"name": "Second", "slug": slug},
+    )
+    assert second.status_code == 409, second.text
+    assert second.headers["content-type"].startswith(PROBLEM_JSON)
+
+
+async def test_create_subgroup_missing_parent_returns_404(client: AsyncClient) -> None:
+    factory = await _factory(client)
+    async with factory() as session:
+        admin = await make_user(session, is_superuser=True)
+
+    response = await client.post(
+        f"/v1/admin/teams/{uuid.uuid4()}/subgroups",
+        headers=_bearer_for(admin),
+        json={"name": "Orphan", "slug": f"orphan-{unique_suffix()}"},
+    )
+    assert response.status_code == 404, response.text
+
+
+async def test_create_subgroup_developer_returns_404(client: AsyncClient) -> None:
+    factory = await _factory(client)
+    async with factory() as session:
+        org = await make_organization(session)
+        parent = await make_team(session, organization=org)
+        user = await make_user(session)
+        await make_membership(session, user=user, team=parent, role="developer")
+
+    response = await client.post(
+        f"/v1/admin/teams/{parent.id}/subgroups",
+        headers=_bearer_for(user),
+        json={"name": "Blocked", "slug": f"blocked-{unique_suffix()}"},
+    )
+    assert response.status_code == 404
+    assert response.headers["content-type"].startswith(PROBLEM_JSON)
