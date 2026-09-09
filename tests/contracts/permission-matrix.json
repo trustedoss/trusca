@@ -456,6 +456,23 @@
     },
     {
       "method": "GET",
+      "path": "/v1/groups",
+      "gate": "role>=viewer"
+    },
+    {
+      "method": "GET",
+      "path": "/v1/groups/{group_id}",
+      "gate": "role>=viewer",
+      "why": "404s (existence-hidden) for a group outside the caller's accessible set — see services.group_directory_service._load_accessible_group."
+    },
+    {
+      "method": "GET",
+      "path": "/v1/groups/{group_id}/members",
+      "gate": "role>=developer",
+      "why": "Returns member identities (email/full_name), not just counts — same floor as GET /v1/projects/{project_id}/assignable-members, the existing precedent for identity-bearing routes."
+    },
+    {
+      "method": "GET",
       "path": "/v1/inventory/components",
       "gate": "role>=viewer"
     },

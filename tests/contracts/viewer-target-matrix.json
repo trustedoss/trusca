@@ -35,6 +35,14 @@
     ],
     [
       "GET",
+      "/v1/groups"
+    ],
+    [
+      "GET",
+      "/v1/groups/{group_id}"
+    ],
+    [
+      "GET",
       "/v1/inventory/components"
     ],
     [
@@ -266,6 +274,10 @@
     [
       "GET",
       "/v1/projects/{project_id}/assignable-members"
+    ],
+    [
+      "GET",
+      "/v1/groups/{group_id}/members"
     ],
     [
       "GET",

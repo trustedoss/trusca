@@ -307,15 +307,15 @@ async def effective_policy_endpoint(
     no policy decided. ``sources_legacy`` is the deprecated pre-group-hierarchy
     string form of the same information (see its own docstring).
 
-    Security review finding (Phase 3): this endpoint used to resolve and
-    return a project's policy with no team/group membership check at all --
-    ``require_role("viewer")`` is a coarse, route-level floor, not a
-    project-scoped one. Once ``sources`` started naming the actual
-    contributing groups (this Phase), that gap widened from leaking "a
-    threshold is team-set" to leaking real group names and the ancestor
-    chain to any authenticated stranger. Hidden rather than refused, same as
-    ``get_team_policy``'s own scope check below: existence of another
-    organization's project/group is not this caller's business either.
+    This endpoint used to resolve and return a project's policy with no
+    team/group membership check at all -- ``require_role("viewer")`` is a
+    coarse, route-level floor, not a project-scoped one. Once ``sources``
+    started naming the actual contributing groups, that gap widened from
+    leaking "a threshold is team-set" to leaking real group names and the
+    ancestor chain to any authenticated stranger. Hidden rather than
+    refused, same as ``get_team_policy``'s own scope check below: existence
+    of another organization's project/group is not this caller's business
+    either.
     """
     resolved = await resolve_for_project(session, project_id)
     if resolved.chain and not await can_access_group(session, actor, resolved.chain[0]):

@@ -37,6 +37,7 @@ from pydantic import (
 
 from core.pii_mask import mask_git_url
 from core.url_guard import GitUrlValidationError, validate_git_url
+from schemas.group import GroupBreadcrumbEntry
 
 # Schemas normally sit BELOW services, and this is the one import that runs the
 # other way. It is safe because ``services.license_expression`` is a leaf: it
@@ -796,6 +797,24 @@ class ProjectPublic(BaseModel):
             "list row renders `{team_name} / {name}` so a cross-team view "
             "(no active-team filter, e.g. the super admin's) does not read "
             "as one flat list of identical-looking rows."
+        ),
+    )
+    # Group-hierarchy Phase 4 PR 4-A — the project's owning group's ancestor
+    # chain, root-first, INCLUDING the group itself as the last entry. `null`
+    # when the group row could not be resolved (should not happen — the FK is
+    # RESTRICT — kept nullable defensively rather than 500ing a list page over
+    # one row). Populated only on the list endpoint (one batched pass over the
+    # page's distinct owning-group ids — see
+    # `services.project_list_enrichment.group_path_map`); single-project
+    # responses default to null. Each entry is the narrow
+    # `GroupBreadcrumbEntry` (id/name/slug only — see `schemas.group`'s module
+    # docstring for why nothing wider is allowed to ride along here).
+    group_path: list[GroupBreadcrumbEntry] | None = Field(
+        default=None,
+        description=(
+            "The owning group's ancestor chain, root-first, including the "
+            "group itself as the last entry. `null` on single-project "
+            "responses and when the chain could not be resolved."
         ),
     )
     # W3 #30 — list-row discoverability aggregates. Populated ONLY on the list

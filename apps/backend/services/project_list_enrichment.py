@@ -86,6 +86,8 @@ from models import (
     Vulnerability,
     VulnerabilityFinding,
 )
+from models.auth import Group
+from schemas.group import GroupBreadcrumbEntry
 
 # Higher rank = "worse". Mirrors ``dashboard_service`` / ``project_detail_service``
 # so the list rows, the dashboard, and the project detail can never disagree on
@@ -481,6 +483,77 @@ async def _team_name_map(
     return {row.id: row.name for row in result.all()}
 
 
+async def _group_path_map(
+    session: AsyncSession,
+    *,
+    projects: list[Any],
+) -> dict[uuid.UUID, list[GroupBreadcrumbEntry]]:
+    """``{project_id: [GroupBreadcrumbEntry, ...]}`` — root-first, group itself last.
+
+    Group-hierarchy Phase 4 PR 4-A. Two batched ``IN`` queries over the WHOLE
+    page (never one per project, never one per project's ancestor):
+
+      1. one ``IN`` on the page's distinct owning-group ids — gets each
+         group's own ``id``/``name``/``slug``/``path`` (the ``path`` column
+         already carries the ordered ancestor-id chain, see the ``Group``
+         model docstring — no recursive query needed);
+      2. one ``IN`` on the UNION of every ancestor id found across every
+         group fetched in (1) — gets those ancestors' ``name``/``slug`` so
+         the chain can be rendered without a name-less id.
+
+    A project whose owning group id cannot be resolved (should not happen —
+    ``groups.id`` is ``ON DELETE RESTRICT`` from ``projects.group_id`` — kept
+    defensive rather than assumed) is simply absent from the returned map;
+    the caller leaves ``ProjectPublic.group_path`` at its ``None`` default
+    for that row rather than 500ing the whole list.
+    """
+    leaf_group_ids = {p.team_id for p in projects if getattr(p, "team_id", None) is not None}
+    if not leaf_group_ids:
+        return {}
+
+    leaf_rows = (
+        await session.execute(
+            select(Group.id, Group.name, Group.slug, Group.path).where(
+                Group.id.in_(leaf_group_ids)
+            )
+        )
+    ).all()
+    leaf_by_id = {r.id: r for r in leaf_rows}
+    if not leaf_by_id:
+        return {}
+
+    ancestor_ids: set[uuid.UUID] = set()
+    for r in leaf_rows:
+        ancestor_ids.update(r.path)
+
+    ancestor_by_id: dict[uuid.UUID, tuple[str, str]] = {}
+    if ancestor_ids:
+        ancestor_rows = (
+            await session.execute(
+                select(Group.id, Group.name, Group.slug).where(Group.id.in_(ancestor_ids))
+            )
+        ).all()
+        ancestor_by_id = {r.id: (r.name, r.slug) for r in ancestor_rows}
+
+    out: dict[uuid.UUID, list[GroupBreadcrumbEntry]] = {}
+    for p in projects:
+        leaf_id = getattr(p, "team_id", None)
+        if leaf_id is None:
+            continue
+        leaf = leaf_by_id.get(leaf_id)
+        if leaf is None:
+            continue
+        chain: list[GroupBreadcrumbEntry] = []
+        for ancestor_id in leaf.path:
+            info = ancestor_by_id.get(ancestor_id)
+            if info is None:
+                continue
+            chain.append(GroupBreadcrumbEntry(id=ancestor_id, name=info[0], slug=info[1]))
+        chain.append(GroupBreadcrumbEntry(id=leaf.id, name=leaf.name, slug=leaf.slug))
+        out[p.id] = chain
+    return out
+
+
 async def enrich_project_rows(
     session: AsyncSession,
     *,
@@ -492,8 +565,10 @@ async def enrich_project_rows(
     dict[uuid.UUID, dict[str, int]],
     dict[uuid.UUID, str],
     dict[uuid.UUID, str],
+    dict[uuid.UUID, list[GroupBreadcrumbEntry]],
 ]:
-    """Return ``(status, severity_summary, counts, license_summary, created_by_name, team_name)``.
+    """Return ``(status, severity_summary, counts, license_summary, created_by_name,
+    team_name, group_path)``.
 
     All three maps are computed in BATCHED queries over the page's project ids —
     never per row. The caller overlays them onto each ``ProjectPublic`` row:
@@ -508,12 +583,16 @@ async def enrich_project_rows(
       - ``team_name_by_team.get(p.team_id)`` → ``team_name``, keyed by
         **team_id**, not project id (a page's projects usually share teams,
         so this is the one map the caller indexes differently).
+      - ``group_path_by_project.get(p.id)`` → ``group_path`` (absent ⇒ null —
+        should not happen, see ``_group_path_map``'s own docstring). Two
+        batched ``IN`` queries over the whole page (group-hierarchy Phase 4
+        PR 4-A), not one per project.
 
     A pure read with NO auth check: the caller has already team-scoped ``projects``.
     Returns empty dicts for an empty page (no SQL issued).
     """
     if not projects:
-        return {}, {}, {}, {}, {}, {}
+        return {}, {}, {}, {}, {}, {}, {}
 
     project_ids = [p.id for p in projects]
 
@@ -532,6 +611,7 @@ async def enrich_project_rows(
         session, projects=projects
     )
     team_name_by_team = await _team_name_map(session, projects=projects)
+    group_path_by_project = await _group_path_map(session, projects=projects)
 
     return (
         status_by_project,
@@ -540,6 +620,7 @@ async def enrich_project_rows(
         license_summary_by_project,
         created_by_name_by_project,
         team_name_by_team,
+        group_path_by_project,
     )
 
 

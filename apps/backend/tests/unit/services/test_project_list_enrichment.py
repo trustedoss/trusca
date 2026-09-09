@@ -244,7 +244,7 @@ async def test_failed_latest_attempt_keeps_severity_from_earlier_succeeded_scan(
 
     _team, _user, project, _succeeded, _failed = await _ci_vulns_like_project(db_session)
 
-    status_map, sev_map, counts_map, _lic, _cb, _team = await enrich_project_rows(
+    status_map, sev_map, counts_map, _lic, _cb, _team, _group = await enrich_project_rows(
         db_session, projects=[project]
     )
 
@@ -270,7 +270,7 @@ async def test_never_scanned_project_both_null(db_session: AsyncSession) -> None
     team = await make_team(db_session, organization=org)
     project = await make_project(db_session, team=team)
 
-    status_map, sev_map, counts_map, _lic, _cb, _team = await enrich_project_rows(
+    status_map, sev_map, counts_map, _lic, _cb, _team, _group = await enrich_project_rows(
         db_session, projects=[project]
     )
 
@@ -299,7 +299,7 @@ async def test_succeeded_scan_with_no_cves_is_all_zero_not_null(
     await _attach_component(db_session, scan_id=succeeded.id, cv_id=cv.id)
     await _set_latest_scan(db_session, project=project, scan_id=succeeded.id)
 
-    status_map, sev_map, counts_map, _lic, _cb, _team = await enrich_project_rows(
+    status_map, sev_map, counts_map, _lic, _cb, _team, _group = await enrich_project_rows(
         db_session, projects=[project]
     )
 
@@ -342,7 +342,7 @@ async def test_info_severity_findings_excluded_from_summary_buckets(
     )
     await _set_latest_scan(db_session, project=project, scan_id=succeeded.id)
 
-    _status_map, sev_map, _counts_map, _lic, _cb, _team = await enrich_project_rows(
+    _status_map, sev_map, _counts_map, _lic, _cb, _team, _group = await enrich_project_rows(
         db_session, projects=[project]
     )
 
@@ -365,7 +365,7 @@ async def test_only_failed_scan_status_failed_but_no_severity(
     )
     await _set_latest_scan(db_session, project=project, scan_id=failed.id)
 
-    status_map, sev_map, counts_map, _lic, _cb, _team = await enrich_project_rows(
+    status_map, sev_map, counts_map, _lic, _cb, _team, _group = await enrich_project_rows(
         db_session, projects=[project]
     )
 
@@ -381,10 +381,17 @@ async def test_only_failed_scan_status_failed_but_no_severity(
 async def test_empty_page_issues_no_sql(db_session: AsyncSession) -> None:
     from services.project_list_enrichment import enrich_project_rows
 
-    status_map, sev_map, counts_map, lic_map, cb_map, team_map = await enrich_project_rows(
-        db_session, projects=[]
-    )
-    assert (status_map, sev_map, counts_map, lic_map, cb_map, team_map) == (
+    (
+        status_map,
+        sev_map,
+        counts_map,
+        lic_map,
+        cb_map,
+        team_map,
+        group_map,
+    ) = await enrich_project_rows(db_session, projects=[])
+    assert (status_map, sev_map, counts_map, lic_map, cb_map, team_map, group_map) == (
+        {},
         {},
         {},
         {},
@@ -448,11 +455,14 @@ async def test_enrichment_is_batched_not_per_row(db_session: AsyncSession) -> No
     # And it is a small constant: status map + succeeded-id map + severity agg
     # + count agg + license agg + created-by user batch + team name batch = up
     # to 7 queries (W3 #30 = 4; user-test cycle's by-project axis + Created-by
-    # column adds the 5th and 6th; the team breadcrumb adds the 7th).
-    assert five_row_stmts <= 7
+    # column adds the 5th and 6th; the team breadcrumb adds the 7th). The
+    # group-path breadcrumb (group-hierarchy Phase 4 PR 4-A) adds up to 2 more
+    # batched IN queries (leaf groups, then their ancestors' names) — see
+    # ``_group_path_map``'s own docstring for why 2, not 1.
+    assert five_row_stmts <= 9
 
     # Correctness over the 5-project page: each has 1 critical, 1 scan, 1 release.
-    _status_map, sev_map, counts_map, _lic, _cb, _team = await enrich_project_rows(
+    _status_map, sev_map, counts_map, _lic, _cb, _team, _group = await enrich_project_rows(
         db_session, projects=projects
     )
     for project in projects:
@@ -683,7 +693,7 @@ async def test_enrich_project_rows_team_name_reflects_each_projects_own_team(
     project_a = await make_project(db_session, team=team_a)
     project_b = await make_project(db_session, team=team_b)
 
-    *_rest, team_name_by_team = await enrich_project_rows(
+    *_rest, team_name_by_team, _group_path_by_project = await enrich_project_rows(
         db_session, projects=[project_a, project_b]
     )
 

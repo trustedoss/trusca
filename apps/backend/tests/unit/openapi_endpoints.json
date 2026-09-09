@@ -222,6 +222,18 @@
     "page",
     "page_size"
   ],
+  "GET /v1/groups": [
+    "page",
+    "page_size",
+    "parent_id",
+    "q"
+  ],
+  "GET /v1/groups/{group_id}": [
+    "group_id"
+  ],
+  "GET /v1/groups/{group_id}/members": [
+    "group_id"
+  ],
   "GET /v1/intake-requests": [
     "project_id",
     "status"
