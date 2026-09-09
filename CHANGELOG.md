@@ -22,6 +22,28 @@ and the project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.
   `PUT /v1/admin/organizations/{id}/ticket-credentials`, shared by every team
   the way container-registry credentials already are (#385).
 
+- **`SCAN_SOURCE_RETENTION` can now drop the preserved source tree while
+  keeping the SBOM.** A succeeded scan archives the scanned tree, the scancode
+  result and the cdxgen SBOM, one archive per project. The tree is essentially
+  all of the bytes: 13.8 MB per project measured across 559 of them, against
+  tens of KB for the SBOM, which puts a 60,000-project corpus at roughly 830 GB
+  of retained source. The setting existed but nothing read it, and only
+  `latest` was ever implemented. It now takes `latest` (unchanged default),
+  `sbom-only` and `none`.
+
+  `sbom-only` is the one to reach for. The file tree is what the source buys,
+  and it is not yet rendered anywhere; the SBOM is what the vulnerability
+  rematch beat reads to re-check an already-scanned project against newly
+  published advisories without re-running cdxgen. `none` drops that too, so a
+  new advisory then reaches an old scan only by scanning it again from source,
+  which on a large corpus is the difference between minutes and days. The
+  retention beat reclaims what an earlier setting wrote when the policy is
+  `none`, while still protecting a queued or running scan's archive.
+
+  An unrecognised value falls back to `latest` rather than raising: this is
+  read on the scan path, so a typo costs disk, never data. `all`, which
+  `.env.example` offered and no code implemented, is one such value.
+
 ## [0.22.6] - 2026-09-08
 
 ### Fixed

@@ -212,3 +212,77 @@ def test_no_sources_root_is_a_noop(
 ) -> None:
     result = _run(monkeypatch, exists=True, latest=None, active=set())
     assert result == {"scanned": 0, "deleted": 0, "reclaimed_bytes": 0}
+
+
+# ---------------------------------------------------------------------------
+# SCAN_SOURCE_RETENTION=none. This sweep is the only thing that reclaims what
+# an earlier policy wrote. Preservation stops on the next scan, but a corpus
+# already on disk stays there until something deletes it, and the reason to
+# turn the policy off is usually that the volume is full.
+# ---------------------------------------------------------------------------
+
+
+def test_retention_none_reclaims_even_the_latest(
+    _workspace: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The tarball ``latest`` would protect is swept too."""
+    monkeypatch.setenv("SCAN_SOURCE_RETENTION", "none")
+    pid = uuid.uuid4()
+    latest = uuid.uuid4()
+    older = uuid.uuid4()
+    latest_path = _write_tarball(pid, latest, age_seconds=10)
+    older_path = _write_tarball(pid, older, age_seconds=99999)
+
+    result = _run(monkeypatch, exists=True, latest=str(latest), active=set())
+
+    assert not latest_path.exists()
+    assert not older_path.exists()
+    assert result["deleted"] == 2
+
+
+def test_retention_none_still_protects_a_running_scan(
+    _workspace: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A queued or running scan's tarball survives the switch.
+
+    Its preservation stage may have published under the previous setting and
+    the scan may still be reading it. These drain within one scan, so the next
+    sweep takes them; deleting under a live scan buys six hours of disk at the
+    cost of a failure that looks like corruption.
+    """
+    monkeypatch.setenv("SCAN_SOURCE_RETENTION", "none")
+    pid = uuid.uuid4()
+    running = uuid.uuid4()
+    finished = uuid.uuid4()
+    running_path = _write_tarball(pid, running)
+    finished_path = _write_tarball(pid, finished)
+
+    result = _run(
+        monkeypatch, exists=True, latest=str(finished), active={str(running)}
+    )
+
+    assert running_path.exists()
+    assert not finished_path.exists()
+    assert result["deleted"] == 1
+
+
+def test_sbom_only_keeps_the_same_one_per_project_shape(
+    _workspace: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """``sbom-only`` changes what a tarball holds, not how many are kept.
+
+    Pinned because the sweep reads the policy and could plausibly be written to
+    treat every non-default value the same way.
+    """
+    monkeypatch.setenv("SCAN_SOURCE_RETENTION", "sbom-only")
+    pid = uuid.uuid4()
+    latest = uuid.uuid4()
+    old = uuid.uuid4()
+    latest_path = _write_tarball(pid, latest, age_seconds=10)
+    old_path = _write_tarball(pid, old, age_seconds=99999)
+
+    result = _run(monkeypatch, exists=True, latest=str(latest), active=set())
+
+    assert latest_path.exists()
+    assert not old_path.exists()
+    assert result["deleted"] == 1

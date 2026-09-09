@@ -1650,13 +1650,37 @@ def reachability_hard_time_limit_seconds() -> int:
 def scan_source_retention() -> str:
     """Retention policy for preserved scan-source tarballs.
 
-    Only ``"latest"`` is implemented today: a new succeeded scan supersedes the
-    project's prior tarball, and the retention beat keeps exactly the tarball
-    matching ``Project.latest_scan_id`` (plus any referenced by a non-terminal
-    scan). The accessor exists so a future ``"all"`` / ``"none"`` policy can be
-    wired without changing call sites. Read at call time (rule #11).
+    Three values, in decreasing order of what is kept:
+
+    ``latest`` (default)
+        A new succeeded scan supersedes the project's prior tarball, and the
+        retention beat keeps exactly the tarball matching
+        ``Project.latest_scan_id`` (plus any referenced by a non-terminal
+        scan). The tarball holds the source tree, the scancode result and the
+        cdxgen SBOM, so both the file-tree viewer and the vulnerability rematch
+        beat have what they read.
+
+    ``sbom-only``
+        The same one-per-project retention, but the tarball holds only the
+        cdxgen SBOM. Rematch still works; the file tree is not kept. The source
+        tree is essentially all of the bytes, so this is the setting for a
+        deployment whose corpus does not fit: measured at 13.8 MB per project
+        against tens of KB for the SBOM, which is the difference between 830 GB
+        and a few GB across 60,000 projects.
+
+    ``none``
+        Nothing is preserved and the beat reclaims what earlier policies left.
+        This also turns the rematch beat off in practice: with no preserved
+        SBOM every scan is ineligible, so newly published vulnerabilities reach
+        an already-scanned project only when it is scanned again from source.
+        Pick it only if that is the intent.
+
+    An unrecognised value falls back to ``latest`` rather than raising: this is
+    read on the scan path, and a typo in an env var must not fail scans. It
+    loses disk, never data. Read at call time (rule #11).
     """
-    return os.getenv("SCAN_SOURCE_RETENTION", "latest")
+    raw = os.getenv("SCAN_SOURCE_RETENTION", "latest").strip().lower()
+    return raw if raw in {"latest", "sbom-only", "none"} else "latest"
 
 
 def scan_source_project_quota_bytes() -> int:
