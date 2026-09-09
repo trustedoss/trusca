@@ -49,7 +49,7 @@ Lookups are constant-time across the prefix; secret comparison uses `bcrypt.chec
 Each key carries a single **resource scope** that determines the authorization boundary:
 
 - **`org`** — acts org-wide; can call any endpoint the issuing user could.
-- **`team`** — acts on behalf of a specific team; cross-team calls fail with 403.
+- **`team`**: acts on behalf of a specific team. With the permission cascade on (the default; see [Nested groups](./users-and-teams.md#nested-groups)), this also reaches every subgroup nested under that team, the same reach a direct membership there would have. Calls outside that reach fail with 403.
 - **`project`** — bound to a specific project; calls outside that project fail with 403.
 
 Who can issue each scope:
