@@ -37,7 +37,10 @@ _INTERPOLATION = re.compile(r"^\$\{[A-Za-z_][A-Za-z0-9_]*:-(?P<default>[^}]*)\}$
 
 
 def _document(filename: str) -> dict[str, Any]:
-    return yaml.safe_load((REPO_ROOT / filename).read_text(encoding="utf-8"))
+    document: dict[str, Any] = yaml.safe_load(
+        (REPO_ROOT / filename).read_text(encoding="utf-8")
+    )
+    return document
 
 
 def _resolved(value: str) -> str:
