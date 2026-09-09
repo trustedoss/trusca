@@ -53,22 +53,12 @@ command -v docker-compose >/dev/null 2>&1 || fail "docker-compose (V1) is requir
 # the base file alone rebuilt the stack WITHOUT the public read-only lock and
 # with the 4.0 CPU default — a deploy quietly turning off a safety boundary.
 #
-# COMPOSE_FILE is read from .env when the environment does not already carry
-# it, because that is where an operator declares it and where docker-compose
-# itself looks. Unset (the single-file default) keeps the previous behaviour.
-if [ -z "${COMPOSE_FILE:-}" ] && [ -f .env ]; then
-  COMPOSE_FILE="$(grep -E '^COMPOSE_FILE=' .env | tail -1 | cut -d= -f2- || true)"
-  [ -n "$COMPOSE_FILE" ] && export COMPOSE_FILE
-fi
-COMPOSE_ARGS=(-f docker-compose.yml)
-if [ -n "${COMPOSE_FILE:-}" ]; then
-  COMPOSE_ARGS=()
-  IFS=':' read -ra _compose_files <<< "$COMPOSE_FILE"
-  for _f in "${_compose_files[@]}"; do
-    [ -n "$_f" ] && COMPOSE_ARGS+=(-f "$_f")
-  done
-  [ ${#COMPOSE_ARGS[@]} -eq 0 ] && COMPOSE_ARGS=(-f docker-compose.yml)
-fi
+# The selection logic itself lives in scripts/lib/compose_args.sh (#441) so
+# deploy/hetzner/remote-deploy.sh's own docker-compose calls share it instead
+# of re-deriving it by hand.
+# shellcheck source=scripts/lib/compose_args.sh
+source "$ROOT_DIR/scripts/lib/compose_args.sh"
+compose_args_from_env
 note "compose files: ${COMPOSE_ARGS[*]}"
 
 # ---------------------------------------------------------------------------
