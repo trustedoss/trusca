@@ -10,12 +10,12 @@ sidebar_position: 3
 
 포털은 두 운영자 대시보드를 `/admin` 아래 노출합니다.
 
-- **/admin/health** — 모든 컨테이너 서비스와 Trivy DB 신선도 카드(roadmap)의 현재 상태.
+- **/admin/health** — 모든 컨테이너 서비스와 Trivy DB 신선도 카드의 현재 상태.
 - **/admin/disk** — workspace와 데이터베이스 저장소 사용량(설정 가능한 hard limit 포함).
 
 이 둘이 함께 사용자가 알아채기 전에 문제를 잡습니다.
 
-![Admin 시스템 Health — postgres·redis·celery 그리고 곧 도착할 vulnerability data 행 개요](/img/screenshots/admin-health-cards.png)
+![Admin 시스템 Health — postgres·redis·celery 그리고 vulnerability data 행 개요](/img/screenshots/admin-health-cards.png)
 
 ![Admin 디스크 사용량 — workspace·db 카드와 사용률 게이지](/img/screenshots/admin-disk-list.png)
 

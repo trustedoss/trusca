@@ -63,6 +63,7 @@ const sidebars: SidebarsConfig = {
         "admin-guide/users-and-teams",
         "admin-guide/vulnerability-data",
         "admin-guide/disk-and-health",
+        "admin-guide/alerting",
         "admin-guide/scan-retention",
         "admin-guide/data-retention",
         "admin-guide/private-ca",

@@ -1,0 +1,118 @@
+# TrustedOSS Portal - example Prometheus alerting rules (#438).
+#
+# Covers only series /metrics already publishes (METRICS_ENABLED=true; see
+# the admin guide's "Alerting" page for how to load this file and wire it to
+# your own Alertmanager / paging system - this repository ships neither).
+#
+# Every threshold below either matches a documented app default 1:1 (queue
+# backlog, workspace disk) or is a starting point the comment says how to
+# retune (vuln DB staleness, task-recorder stall). None of them is measured
+# against a real production fleet; treat them as a first cut; see the
+# admin guide page for exactly which oncall-runbook scenarios each one maps
+# to, and which scenarios have NO rule here because no metric covers them
+# yet.
+groups:
+  - name: trusca-vulnerability-database
+    rules:
+      - alert: TrustedOSSVulnDbStale
+        # trusca_vuln_db_last_update_timestamp_seconds is 0 when nothing has
+        # ever been downloaded, which makes (time() - 0) enormous and trips
+        # this same expression - no separate "never downloaded" case needed.
+        # 2x the configured refresh interval matches the on-call runbook's
+        # Scenario 1 wording ("last refresh > 14 days") at this app's default
+        # weekly (168h) cadence: 168 * 2 = 336h = 14 days.
+        expr: |
+          (time() - trusca_vuln_db_last_update_timestamp_seconds)
+            > (trusca_vuln_db_refresh_interval_hours * 3600 * 2)
+        for: 1h
+        labels:
+          severity: critical
+        annotations:
+          summary: "TRUSCA vulnerability database has not refreshed in over 2x its configured interval"
+          description: >-
+            Scans keep succeeding against a stale database with no error anywhere -
+            see oncall-runbook.md Scenario 1.
+          runbook_scenario: "1"
+
+  - name: trusca-background-tasks
+    rules:
+      - alert: TrustedOSSTaskRunRecorderStalled
+        # No universal threshold ships with this metric (see
+        # disk-and-health.md's own callout): schedules here run anywhere from
+        # every 5 minutes to weekly, and which ones a deployment enables is a
+        # local fact. 1800s (30 minutes, 6x this app's own busiest built-in
+        # beat cadence) is a starting point - retune to your busiest ENABLED
+        # schedule, not this repository's busiest possible one.
+        expr: (time() - trusca_task_runs_last_recorded_timestamp_seconds) > 1800
+        for: 15m
+        labels:
+          severity: warning
+        annotations:
+          summary: "TRUSCA background task recorder has stopped advancing"
+          description: >-
+            Recording history is designed never to fail a task, so a missing DB
+            grant or unrun migration produces no error anywhere - only that this
+            value stops moving while everything else looks healthy.
+
+      - alert: TrustedOSSAutoBackupNotSucceeding
+        # `for: 3d` IS the "3 days" in the runbook's Scenario 2 title - the
+        # expression only asks "zero successes in the trailing 24h window",
+        # and Prometheus's own `for:` re-evaluates that on every tick and
+        # only fires once it has held continuously for 3 days.
+        expr: trusca_task_runs_24h{task="trustedoss.backup.run", outcome="success"} == 0
+        for: 3d
+        labels:
+          severity: critical
+        annotations:
+          summary: "TRUSCA auto-backup has not succeeded in 3 days"
+          description: "See oncall-runbook.md Scenario 2."
+          runbook_scenario: "2"
+
+  - name: trusca-disk
+    rules:
+      - alert: TrustedOSSWorkspaceDiskCritical
+        # Matches DISK_HARD_LIMIT_PCT's own default (95%) - the app itself
+        # already refuses new scans at this threshold, so a page here is
+        # "the thing the app is already doing has kicked in", not a
+        # separately-chosen number.
+        expr: trusca_workspace_disk_used_ratio > 0.95
+        for: 10m
+        labels:
+          severity: critical
+        annotations:
+          summary: "TRUSCA workspace volume is at or above its hard limit"
+          description: >-
+            New scans are blocked at DISK_HARD_LIMIT_PCT. See oncall-runbook.md
+            Scenario 4 - this only covers the workspace mount, not the host disk
+            or the Postgres volume, neither of which /metrics publishes.
+          runbook_scenario: "4"
+
+  # Opt-in: only fires if this deployment has QUEUE_BACKLOG_METRICS_ENABLED=true
+  # (these series are absent otherwise, so the rule simply never matches).
+  # Mirrors the built-in Slack/Teams alert (QUEUE_BACKLOG_ALERT_ENABLED) at
+  # its own default thresholds and sustain window - NOT a second, independent
+  # alerting path. Enable this group only if you route paging through
+  # Prometheus/Alertmanager instead of (or in addition to) that webhook, and
+  # keep the thresholds/`for:` below in sync with whatever you actually set
+  # QUEUE_BACKLOG_ALERT_*_THRESHOLD / _SUSTAIN_SECONDS to.
+  - name: trusca-queue-backlog
+    rules:
+      - alert: TrustedOSSScanQueueBacklogHigh
+        expr: trusca_broker_queue_backlog{queue="trustedoss.scan"} > 10
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: "TRUSCA scan queue backlog is over threshold"
+          description: "See oncall-runbook.md Scenario 5."
+          runbook_scenario: "5"
+
+      - alert: TrustedOSSDefaultQueueBacklogHigh
+        expr: trusca_broker_queue_backlog{queue="trustedoss.default"} > 100
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: "TRUSCA default queue backlog is over threshold"
+          description: "See oncall-runbook.md Scenario 5."
+          runbook_scenario: "5"

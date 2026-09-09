@@ -24,9 +24,11 @@
 #   redis     — Redis 7.4-alpine, Celery broker + result backend.
 #   backend   — FastAPI image (ghcr.io/trustedoss/trusca-backend:${IMAGE_TAG}), 4
 #               uvicorn workers. Reachable only inside the compose network;
-#               Traefik routes `/v1`, `/auth`, `/ws`, `/health`. A backend
-#               `/metrics` endpoint (Prometheus exporter) is not implemented
-#               in this release, so it is intentionally NOT routed.
+#               Traefik routes `/v1`, `/auth`, `/ws`, `/health`. The backend
+#               `/metrics` endpoint (off unless METRICS_ENABLED, see
+#               docs-site/docs/admin-guide/disk-and-health.md#metrics) is
+#               deliberately NOT routed here, a monitoring system reaches it
+#               on the internal compose network instead.
 #   worker    — Celery worker on the heavier image
 #               (ghcr.io/trustedoss/trusca-backend-worker:${IMAGE_TAG}) which carries
 #               cdxgen / scancode / Trivy / JRE.
@@ -700,10 +702,12 @@ services:
       # `/health` PREFIX (v2.1 B1) routes BOTH /health (liveness) and
       # /health/ready (readiness) to the backend so external probes /
       # load balancers reach the readiness gate, not just the in-container
-      # Compose healthcheck. A backend `/metrics` endpoint (Prometheus
-      # exporter) is not implemented in this release, so `/metrics` is NOT
-      # routed here — routing it would only return 404s. It will be added
-      # alongside the exporter (post-GA roadmap).
+      # Compose healthcheck. The backend `/metrics` endpoint exists but is
+      # deliberately NOT routed here: it is off unless METRICS_ENABLED (404
+      # either way, same as a wrong METRICS_TOKEN, so a deployment that has
+      # not turned it on cannot be told apart from one without the feature),
+      # and the usual arrangement keeps it off the public ingress entirely,
+      # reached only from inside the compose network by whatever scrapes it.
       - "traefik.http.routers.backend.rule=Host(`${DOMAIN}`) && (PathPrefix(`/v1`) || PathPrefix(`/auth`) || PathPrefix(`/ws`) || PathPrefix(`/health`))"
       - "traefik.http.routers.backend.entrypoints=websecure"
       - "traefik.http.routers.backend.tls=true"

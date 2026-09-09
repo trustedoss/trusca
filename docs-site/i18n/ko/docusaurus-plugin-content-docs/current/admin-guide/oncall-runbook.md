@@ -16,6 +16,8 @@ sidebar_position: 99
 - **복구** — 순서대로 수행할 조치
 - **에스컬레이션** — 포털 개발팀을 깨워야 하는 시점
 
+아래 나오는 PagerDuty 알림 이름은 예시입니다. 이 저장소가 스스로 연결해 주는 것이 아닙니다. 근거 데이터(`/metrics`, Slack/Teams 웹훅)는 발행하지만 Prometheus 서버·Alertmanager·페이징 연동은 어디에도 포함돼 있지 않습니다. 지금 돌고 있는 Prometheus에서 같은 이름의 알림을 만들어 내는 예시 규칙 파일과, 아래 시나리오 중 아직 근거 지표가 없는 것이 무엇인지는 [알림](./alerting.md)을 봅니다.
+
 모든 명령은 `docker-compose` V1(하이픈)과 `bash` 호스트 셸을 가정합니다.
 
 :::tip Super-admin 토큰 발급(대부분 curl 예시에서 사용)
@@ -33,7 +35,7 @@ ACCESS_TOKEN=$(curl -fsS -X POST "https://<your-host>/api/auth/login" \
 ## 시나리오 1 — Trivy DB stale 또는 누락
 
 ### 증상
-PagerDuty: `TRUSCA Trivy DB last refresh > 14 days` 또는 `TRUSCA Trivy DB missing on worker`. 곧 도착하는 `/admin/health → Vulnerability data` 카드(roadmap)가 이를 구동합니다.
+PagerDuty: `TrustedOSSVulnDbStale`(예시 규칙, [알림](./alerting.md) 참고) 또는 `TRUSCA Trivy DB missing on worker`. `/admin/health → Vulnerability data`의 Trivy DB 패널이 같은 신선도 판정을 보여줍니다.
 
 ### 고객 영향
 - 신규 스캔 큐잉은 여전히 가능합니다 — `cdxgen` + scancode가 SBOM과 라이선스 finding을 계속 생성합니다.
@@ -43,6 +45,10 @@ PagerDuty: `TRUSCA Trivy DB last refresh > 14 days` 또는 `TRUSCA Trivy DB miss
 ### 진단
 <!-- docs-uat: id=oncall-trivy-db-check kind=shell ctx=host tier=nightly waiver=runbook-diagnostic-prod-compose-worker -->
 ```bash
+# 0. METRICS_ENABLED라면 이게 실제로 알림을 울린 값입니다. worker를 보러 가기 전에
+#    먼저 확인합니다.
+curl -fsS "https://<your-host>/metrics" \
+  | grep -E 'trusca_vuln_db_(last_update_timestamp_seconds|refresh_interval_hours)'
 # 1. DB가 디스크에 있는가?
 docker-compose -f docker-compose.yml exec worker \
   ls -lh /var/lib/trivy/db/
@@ -87,7 +93,7 @@ docker-compose -f docker-compose.yml exec worker \
 ## 시나리오 2 — 자동 백업 3일 연속 실패
 
 ### 증상
-PagerDuty: `TRUSCA auto-backup task failure count = 3`.
+PagerDuty: `TrustedOSSAutoBackupNotSucceeding`(예시 규칙, [알림](./alerting.md) 참고).
 
 ### 고객 영향
 - 호스트가 크래시하면 포털의 모든 데이터가 위험합니다(복원할 최근 백업 없음). 신선한 백업이 도착할 때까지 다운스트림 작업(컴플라이언스 동결 등)을 계획하세요.
@@ -95,6 +101,9 @@ PagerDuty: `TRUSCA auto-backup task failure count = 3`.
 ### 진단
 <!-- docs-uat: id=oncall-backup-beat-check kind=shell ctx=host tier=nightly waiver=runbook-diagnostic-prod-compose-logs -->
 ```bash
+# 0. METRICS_ENABLED라면 이게 실제로 알림을 울린 값입니다.
+curl -fsS "https://<your-host>/metrics" \
+  | grep -A2 '^trusca_task_runs_24h{outcome="success",task="trustedoss.backup.run"'
 # 1. Celery Beat 스케줄 하트비트
 docker-compose logs --tail=500 beat | grep daily-auto-backup
 # 2. 워커 로그에서 백업 태스크 실행
@@ -135,7 +144,7 @@ docker-compose -f docker-compose.yml exec backend df -h /opt/trustedoss/backups
 ## 시나리오 3 — 스캔이 `running`에서 4시간 이상 멈춤
 
 ### 증상
-PagerDuty: `TRUSCA scan running > 4h for project X`.
+PagerDuty: `TRUSCA scan running > 4h for project X`. [알림](./alerting.md#what-is-not-covered-here-and-why)에는 아직 이걸 만들어 내는 규칙이 없습니다. `/metrics`는 상태별 스캔 개수만 발행하고 개별 스캔이 얼마나 오래 실행 중인지는 발행하지 않아서, 이 페이지는 지금은 `/metrics`가 아니라 API나 DB에 직접 질의해서 확인해야 합니다.
 
 ### 고객 영향
 - 해당 프로젝트: 신규 스캔이 차단됩니다(한 번에 1건 실행 정책).
@@ -172,7 +181,7 @@ docker-compose exec worker ps -ef | grep -E 'cdxgen|ort|trivy'
 ## 시나리오 4 — 호스트 디스크 95% 이상
 
 ### 증상
-PagerDuty: `TRUSCA disk = 95%+`.
+PagerDuty: `TrustedOSSWorkspaceDiskCritical`(예시 규칙, [알림](./alerting.md) 참고. workspace 마운트만 다룹니다. 호스트 전체 디스크 알림은 노드 단위 exporter가 필요합니다 - `/metrics`는 그건 발행하지 않습니다).
 
 ### 고객 영향
 - 실행 중 스캔은 계속 진행됩니다. 신규 스캔은 `DISK_HARD_LIMIT_PCT` 임계(기본 95%)에서 **차단**됩니다 — `/admin/scans`에 무한 큐 상태로 표시됩니다.
@@ -180,6 +189,8 @@ PagerDuty: `TRUSCA disk = 95%+`.
 ### 진단
 <!-- docs-uat: id=oncall-disk-check kind=shell ctx=host tier=nightly waiver=runbook-diagnostic-host-df -->
 ```bash
+# 0. METRICS_ENABLED라면 이게 알림을 울린 값 중 workspace 마운트 쪽입니다.
+curl -fsS "https://<your-host>/metrics" | grep trusca_workspace_disk_used_ratio
 # 1. 호스트 전체
 df -h /opt/trustedoss
 docker system df
@@ -258,7 +269,7 @@ curl -fsS "https://<your-host>/v1/admin/scans?status=queued" \
 FATAL task_registry.empty: this worker registered none of the portal's tasks
 ```
 
-Compose에서는 재시작 반복으로, Kubernetes에서는 CrashLoopBackOff로 나타납니다.
+Compose에서는 재시작 반복으로, Kubernetes에서는 CrashLoopBackOff로 나타납니다. 이건 `/metrics`가 아니라 오케스트레이터 자체의 재시작 횟수 신호(Kubernetes 자체 값, cAdvisor, `kube-state-metrics`)로 알림을 걸어야 합니다. 부팅 중 크래시 루프에 빠진 워커는 `/metrics`가 사는 코드에 도달할 만큼 오래 살지 못해 스크레이핑조차 되지 않습니다. [알림](./alerting.md#what-is-not-covered-here-and-why)을 봅니다.
 
 컨테이너는 종료 코드 78로 끝납니다. 로그에 아무것도 없더라도 그 숫자만으로 진단이
 됩니다. 포털의 태스크가 하나도 없어서 워커가 멈춘 것입니다. 다른 이유로 죽을 때는
@@ -309,10 +320,11 @@ docker-compose -f docker-compose.yml run --rm --entrypoint python worker-scan \
 `GET /health/ready`는 계속 `200`을 반환하지만, 응답 본문의 `redis` 필드가
 `"ok"`가 아니라 `"degraded"`로 나옵니다. 이 자체는 PagerDuty를 울리는
 알림이 아닙니다. 오늘 기준으로 이 필드만 따로 알림을 걸어 두지는
-않았습니다. 다른 문제를 진단하다가(시나리오 5 큐 적체 조사에서
-원인이 Redis로 밝혀지는 경우, 요청 빈도 제한이 느슨해졌다는 문의 등)
-보게 되거나, 운영자가 이 필드에 직접 모니터를 걸어 두었다면 그때
-알림이 울립니다.
+않았습니다 - 이 필드는 `/metrics`가 아니라 `/health/ready`에 있는 값이라
+[알림](./alerting.md)의 예시 규칙 파일에도 들어 있지 않습니다. 다른 문제를
+진단하다가(시나리오 5 큐 적체 조사에서 원인이 Redis로 밝혀지는 경우,
+요청 빈도 제한이 느슨해졌다는 문의 등) 보게 되거나, 운영자가 이 필드에
+직접 모니터를 걸어 두었다면 그때 알림이 울립니다.
 
 ### 고객 영향
 요청 경로의 제어 중 Redis 장애로 닫히는(fail closed) 것은 하나도 없으므로,
@@ -393,6 +405,7 @@ docker-compose -f docker-compose.yml logs --tail=100 redis
 
 ## 함께 보기
 
+- [알림](./alerting.md) — 위 PagerDuty 알림 이름 뒤에 있는 예시 Prometheus 규칙, 그리고 아직 없는 시나리오.
 - [취약점 데이터 (Trivy DB)](./vulnerability-data.md) — DB 라이프사이클과 트러블슈팅.
 - [백업·복원](./backup-and-restore.md) — 백업 보존 + 복원 흐름.
 - [디스크·health](./disk-and-health.md) — 디스크 임계 모델 + Health 대시보드.
