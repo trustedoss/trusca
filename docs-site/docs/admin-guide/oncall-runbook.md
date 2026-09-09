@@ -328,6 +328,27 @@ working. What degrades silently:
   backend) is a separate failure with its own symptoms. A queue backlog
   alert (Scenario 5) is the more likely page for that, not this field.
 
+`redis` is a live ping and can read `"ok"` on a check that happens to land
+between failures. When present, the response also carries a
+`redis_fail_open` object (`{"ratelimit": {"count": N, "last_degraded_at":
+"<ISO 8601>", "worker_pid": P}, "login_throttle": {...}}`), one entry per
+control that has actually fallen back to fail-open on the request path,
+independent of this call's own ping. Its absence means neither control has
+degraded since the process started; a non-empty `last_degraded_at` older
+than the current `redis: "ok"` reading is the signature of an intermittent
+problem (a flaky network path, a misconfigured `REDIS_URL` password that
+some commands reject and others do not) rather than the outage having
+already ended.
+
+This state is per-process: with `UVICORN_WORKERS` greater than 1, each
+worker keeps its own copy, and one HTTP response only reflects whichever
+worker answered it. `worker_pid` names that worker, so polling the endpoint
+a few times and seeing the field appear, disappear, and reappear under
+different `worker_pid` values means several workers have each independently
+hit the outage, not that it started and stopped repeatedly. Nothing here
+aggregates counts across workers; add up `count` per `worker_pid` by hand if
+that total is needed.
+
 ### Diagnose
 <!-- docs-uat: id=oncall-redis-degraded-check kind=shell ctx=host tier=nightly waiver=runbook-diagnostic-prod-compose-placeholder-creds -->
 ```bash

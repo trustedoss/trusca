@@ -66,6 +66,7 @@ from slowapi import Limiter
 from slowapi.errors import RateLimitExceeded
 from slowapi.util import get_remote_address
 
+from core import redis_degradation
 from core.config import redis_url
 from core.errors import PROBLEM_CONTENT_TYPE
 
@@ -101,8 +102,18 @@ def _degraded(action: str, exc: Exception) -> None:
     Mirrors `login_throttle._degraded`: the warning exists so an outage is
     visible to somebody reading logs, since the outward behaviour is the same
     limiter quietly not counting anything until Redis answers again.
+
+    Routed through `core.redis_degradation` (#419/#420) rather than logging
+    directly: it dedupes this WARNING under sustained failures instead of
+    one line per request, and keeps a count + last-degraded timestamp
+    `/health/ready` can surface even between individual failures.
     """
-    log.warning("ratelimit.storage_unavailable", action=action, error=str(exc))
+    redis_degradation.record(
+        component="ratelimit",
+        event="ratelimit.storage_unavailable",
+        action=action,
+        exc=exc,
+    )
 
 
 class FailOpenRedisStorage(RedisStorage):

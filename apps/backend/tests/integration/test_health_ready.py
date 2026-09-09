@@ -70,6 +70,38 @@ async def test_health_ready_reports_degraded_redis_without_flipping_status(
 
 
 @pytest.mark.integration
+async def test_health_ready_surfaces_a_recorded_fail_open_event(client) -> None:
+    """#420: a fail-open event recorded on the request path (ratelimit /
+    login_throttle) must be visible on /health/ready even though this
+    endpoint's OWN Redis ping (the ``redis`` field above) is independent and
+    may well read "ok" at the exact moment this is checked - the point of
+    tracking degradation separately from a live ping."""
+    from core import redis_degradation
+
+    migrate_to_head()
+    redis_degradation.record(
+        component="login_throttle",
+        event="auth.throttle_unavailable",
+        action="gate",
+        exc=RuntimeError("wrong password for REDIS_URL"),
+    )
+
+    resp = await client.get("/health/ready")
+
+    assert resp.status_code == 200, resp.text
+    body = resp.json()
+    assert body["redis"] == "ok"
+    assert "login_throttle" in body["redis_fail_open"]
+    assert body["redis_fail_open"]["login_throttle"]["count"] == 1
+    assert "last_degraded_at" in body["redis_fail_open"]["login_throttle"]
+    # Behind UVICORN_WORKERS > 1 this response reflects one process's own
+    # state, not an aggregate across every worker (redis_degradation's own
+    # docstring). worker_pid lets a repeated poll tell "this worker has not
+    # seen it" apart from "no worker anywhere has".
+    assert "worker_pid" in body["redis_fail_open"]["login_throttle"]
+
+
+@pytest.mark.integration
 async def test_health_ready_is_unauthenticated(client) -> None:
     """The probe answers with NO Authorization header (CLAUDE.md #12 public)."""
     migrate_to_head()
