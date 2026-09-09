@@ -2,7 +2,8 @@
 #
 # Goals vs. the dev Dockerfile:
 #   - Multi-stage so the runtime image doesn't carry build-essential / gcc.
-#   - Production deps only (`requirements.txt`, no `requirements-dev.txt`).
+#   - Production deps only, hash-pinned (`requirements.lock`, generated from
+#     `requirements.txt`; no `requirements-dev.txt`).
 #   - No `--reload`, multiple uvicorn workers (`--workers`, default 4,
 #     runtime-configurable via `UVICORN_WORKERS`, see the CMD comment below).
 #   - `tini` as PID 1 so SIGTERM propagates cleanly when docker stops the container.
@@ -11,7 +12,7 @@
 # CLAUDE.md core rule #9: pin tags + minor + patch, no `:latest`.
 
 # ---------- 1. build ----------
-FROM python:3.12.14-slim-bookworm AS build
+FROM python:3.12.14-slim-bookworm@sha256:782412e85d0f0984994c290652577d4018aff08145c85b262bb63dc0c7522254 AS build
 
 ENV PYTHONUNBUFFERED=1 \
     PYTHONDONTWRITEBYTECODE=1 \
@@ -26,12 +27,17 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 
 WORKDIR /app
 
-COPY requirements.txt /app/
+# requirements.lock (pip-compile --generate-hashes, from requirements.txt)
+# is what actually gets installed: every direct AND transitive dependency
+# pinned to an exact version with its wheel/sdist hash, so a build cannot
+# silently pick up a newer transitive release, and `--require-hashes` makes
+# pip refuse to install anything this file does not cover.
+COPY requirements.lock /app/
 RUN pip install --upgrade pip \
-    && pip install --prefix=/install -r requirements.txt
+    && pip install --require-hashes --prefix=/install -r requirements.lock
 
 # ---------- 2. runtime ----------
-FROM python:3.12.14-slim-bookworm AS runtime
+FROM python:3.12.14-slim-bookworm@sha256:782412e85d0f0984994c290652577d4018aff08145c85b262bb63dc0c7522254 AS runtime
 
 # The release build passes the tag here so the running image can state its
 # own version — SLSA provenance, the About surface and every SBOM we emit

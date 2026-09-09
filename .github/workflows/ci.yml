@@ -97,6 +97,53 @@ jobs:
         working-directory: apps/backend
         run: ruff check .
 
+      # #435 - the lockfiles Dockerfile / Dockerfile.prod / Dockerfile.worker
+      # actually install from (`pip install --require-hashes -r
+      # requirements*.lock`) are generated artifacts, not hand-edited. A PR
+      # that changes requirements.txt / requirements-dev.txt without
+      # regenerating the matching .lock would otherwise merge silently: the
+      # lockfile still installs fine (it is still internally consistent), it
+      # just no longer reflects the source file's constraints. Regenerating
+      # here and diffing against the committed file catches that the same
+      # way scripts/dump_openapi.py --check catches a stale committed spec.
+      - name: Install pip-tools
+        if: matrix.target == 'backend'
+        run: pip install pip-tools
+      # Regenerated to the SAME --output-file name pip-compile stamps into its
+      # own header comment (`pip-compile ... --output-file=requirements.lock
+      # ...`) - regenerating to a differently-named path would make every run
+      # "stale" on that one header line alone, for a reason that says nothing
+      # about whether the lockfile's actual pins drifted. The diff below
+      # additionally skips the whole 6-line header (`tail -n +7`): pip-compile
+      # also records its own flags there, and this runner's environment adds
+      # `--no-index` to that recorded command line that a local run does not
+      # (observed in practice, cause not pinned down - a cache/index-availability
+      # difference in how pip-tools' resolver decided it could work offline).
+      # That is metadata about how the lock was produced, not a claim about
+      # what it locks, so it must not be able to fail this check on its own.
+      - name: Check requirements.lock is up to date
+        if: matrix.target == 'backend'
+        working-directory: apps/backend
+        run: |
+          tail -n +7 requirements.lock > /tmp/requirements.lock.committed.body
+          pip-compile --generate-hashes --output-file=requirements.lock requirements.txt
+          tail -n +7 requirements.lock > /tmp/requirements.lock.regenerated.body
+          diff -u /tmp/requirements.lock.committed.body /tmp/requirements.lock.regenerated.body || {
+            echo "::error::requirements.lock is stale - run 'pip-compile --generate-hashes --output-file=requirements.lock requirements.txt' in apps/backend and commit the result."
+            exit 1
+          }
+      - name: Check requirements-dev.lock is up to date
+        if: matrix.target == 'backend'
+        working-directory: apps/backend
+        run: |
+          tail -n +7 requirements-dev.lock > /tmp/requirements-dev.lock.committed.body
+          pip-compile --generate-hashes --output-file=requirements-dev.lock requirements-dev.txt
+          tail -n +7 requirements-dev.lock > /tmp/requirements-dev.lock.regenerated.body
+          diff -u /tmp/requirements-dev.lock.committed.body /tmp/requirements-dev.lock.regenerated.body || {
+            echo "::error::requirements-dev.lock is stale - run 'pip-compile --generate-hashes --output-file=requirements-dev.lock requirements-dev.txt' in apps/backend and commit the result."
+            exit 1
+          }
+
       # Level 4 triage tooling (tools/ai-review). Its workflow cannot run
       # end-to-end until an ANTHROPIC_API_KEY secret exists, so everything on
       # either side of the network call is checked here instead: report

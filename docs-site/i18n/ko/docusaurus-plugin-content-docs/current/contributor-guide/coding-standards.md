@@ -79,6 +79,47 @@ def downgrade() -> None:
 - **스키마와 데이터 마이그레이션은 별도 revision.** 스키마 revision에는 몇 행 이상의 `bulk_insert`를 넣지 않습니다. 더 큰 데이터 이동은 **멱등한** 일회성 Celery task로 작성하고 별도 `data_xxxx_*` revision에서 큐에 넣으세요.
 - **새 테이블을 추가할 때는 런타임 권한을 판단합니다.** 런타임 롤 `trustedoss_app`이 그 테이블에 `UPDATE`나 `DELETE`를 실행해야 한다면, 같은 마이그레이션의 `upgrade()`에 `GRANT UPDATE, DELETE ON <table> TO trustedoss_app`을 명시적으로 추가하세요. append-only 테이블(`INSERT`만 실행)이라면 GRANT는 필요 없지만 `apps/backend/tests/fixtures/app_role_privileges.json`에 등재해야 합니다. 등재하지 않으면 `test_app_role_grant_matrix.py`가 실패하며 둘 중 무엇을 해야 하는지 알려줍니다.
 
+### 대형 테이블에 인덱스 추가하기 - `CREATE INDEX CONCURRENTLY`
+
+`alembic/env.py`의 `run_migrations_online()`은 모든 마이그레이션을 `pg_advisory_xact_lock`으로 보호되는 트랜잭션 하나로 감쌉니다. 배포 중 `alembic upgrade head`가 여러 번 동시에 실행돼도 스키마가 깨지지 않고 순서대로 처리되게 하기 위해서입니다. 일반적인 `op.create_index(...)`는 이 트랜잭션을 그대로 물려받는데, 이는 대부분 문제가 되지 않습니다. Postgres가 인덱스를 만드는 동안 잠금을 유지하기는 하지만, "대형"이라 부를 만한 크기가 아니라면 그 DDL 자체가 빠르게 끝나기 때문입니다.
+
+`CREATE INDEX CONCURRENTLY`는 예외입니다. 이 명령은 트랜잭션 안에서 아예 실행할 수 없습니다(Postgres가 `CREATE INDEX CONCURRENTLY cannot run inside a transaction block` 오류로 거부합니다). 테이블이 커져서 일반적인 인덱스 생성이 잠그는 시간 동안 운영 트래픽이 멈출 정도가 되면(지금 기준으로는 `audit_logs`가 해당합니다), 인덱스 마이그레이션에 Alembic이 제공하는 탈출구를 써야 합니다.
+
+```python
+def upgrade() -> None:
+    with op.get_context().autocommit_block():
+        op.create_index(
+            "ix_audit_logs_actor_user_id",
+            "audit_logs",
+            ["actor_user_id"],
+            postgresql_concurrently=True,
+        )
+```
+
+`autocommit_block()`은 진행 중이던 트랜잭션을 커밋하고 그 안의 DDL을 Postgres의 autocommit 모드로 실행한 뒤, 같은 리비전에 이어지는 내용을 위해 새 트랜잭션을 엽니다. 여기서 신경 써야 할 결과가 하나 있습니다. 트랜잭션을 커밋하는 순간 `pg_advisory_xact_lock`이 쥐고 있던 잠금도 `CONCURRENTLY` 빌드가 시작되기 전에 풀립니다. K8s 롤아웃의 여러 레플리카가 서로 경합하지 않게 해주던 동시성 보호 장치가 이 블록에 도달한 뒤로는 이 마이그레이션에 더 이상 적용되지 않습니다. 같은 순간 시작된 두 번째 `alembic upgrade head`가 이 마이그레이션을 기다려주지 않는다는 뜻입니다.
+
+그래서 `autocommit_block()`이 들어간 리비전은 다른 마이그레이션과 똑같이 취급할 수 없습니다. 유지보수 시간대에 혼자, 손으로 실행합니다.
+
+1. 같은 시간에 다른 `alembic upgrade head`가 실행되지 않는지 확인합니다(배포 파이프라인을 잠시 멈추거나, 마이그레이션을 실행하는 레플리카를 하나로 줄입니다).
+2. `head`가 아니라 이 리비전을 정확히 지정해 `alembic upgrade <이 리비전>`을 실행합니다. 영향 범위가 명령어 자체에 드러나게 하기 위해서입니다.
+3. 실행 중에는 `pg_stat_progress_create_index`로 진행 상황을 지켜봅니다. `CONCURRENTLY` 빌드가 중간에 끊기면(연결 끊김, statement timeout) `INVALID` 상태의 인덱스가 남을 수 있습니다. Postgres는 이 인덱스를 쓰지도, 조용히 다시 만들어주지도 않으므로 `DROP INDEX CONCURRENTLY`로 지우고 다시 실행합니다.
+4. 그 다음에야 나머지 배포를 정상적으로 재개합니다.
+
+## Python 의존성 - `.txt`를 고치고 `.lock`을 다시 만듭니다
+
+`requirements.txt`와 `requirements-dev.txt`(직접 의존성, 각 pin마다 이유를 설명하는 주석이 붙어 있습니다)는 사람이 직접 고치는 파일입니다. Dockerfile들은 대신 `requirements.lock` / `requirements-dev.lock`에서 설치합니다(`pip install --require-hashes -r ...`). 직접 의존성과 전이(transitive) 의존성 전부를 정확한 버전과 wheel/sdist 해시로 고정한 파일이고, [pip-compile](https://pip-tools.readthedocs.io/)로 생성합니다. 이렇게 해야 빌드가 조용히 더 새로운 전이 의존성 릴리스를 집어가는 일이 없고, 이미지의 SBOM·SLSA provenance 주장이 실제로 소스에서 재현 가능해집니다.
+
+두 `.txt` 파일 중 하나를 고쳤다면 같은 커밋에서 해당 `.lock`을 다시 만드세요.
+
+```bash
+cd apps/backend
+pip install pip-tools
+pip-compile --generate-hashes --output-file=requirements.lock requirements.txt
+pip-compile --generate-hashes --output-file=requirements-dev.lock requirements-dev.txt
+```
+
+`lint (backend)`가 둘 다 다시 만들어 커밋된 것과 비교합니다. `.lock`이 낡았으면 고칠 명령까지 담아 PR을 실패시킵니다. 위와 같은 `--output-file` 이름으로 다시 만드세요. pip-compile은 자신을 호출한 명령 자체를 파일 헤더 주석에 남기는데, 출력 경로가 다르면 실제 pin이 안 바뀌었어도 그 헤더 줄 하나 때문에 "낡음"으로 잡힙니다.
+
 ## RFC 7807 — `application/problem+json`
 
 모든 4xx·5xx 응답은 `application/problem+json`을 사용합니다. 기본 형태:

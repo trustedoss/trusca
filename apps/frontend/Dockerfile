@@ -11,7 +11,7 @@
 
 # CLAUDE.md core rule #9: pin tags, no `:latest`. Match docker-compose dev
 # stack `node:20.18-alpine` plus a patch lock to avoid silent drift.
-FROM node:20.18.1-alpine AS dev
+FROM node:20.18.1-alpine@sha256:24fb6aa7020d9a20b00d6da6d1714187c45ed00d1eb4adb01395843c338b9372 AS dev
 
 WORKDIR /app
 

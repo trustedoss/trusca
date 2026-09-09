@@ -17,7 +17,7 @@
 # between the dev HMR build and the prod tsc emit.
 
 # ---------- 1. build ----------
-FROM node:20.18.1-alpine AS build
+FROM node:20.18.1-alpine@sha256:24fb6aa7020d9a20b00d6da6d1714187c45ed00d1eb4adb01395843c338b9372 AS build
 
 WORKDIR /app
 
@@ -40,7 +40,7 @@ ENV VITE_API_BASE_URL=${VITE_API_BASE_URL}
 RUN npm run build
 
 # ---------- 2. runtime ----------
-FROM nginx:1.29.4-alpine AS runtime
+FROM nginx:1.29.4-alpine@sha256:4870c12cd2ca986de501a804b4f506ad3875a0b1874940ba0a2c7f763f1855b2 AS runtime
 
 # `apk upgrade` patches every installed OS package to whatever Alpine's
 # index resolves at build time, the same reasoning Dockerfile.worker uses

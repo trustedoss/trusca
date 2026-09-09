@@ -44,6 +44,8 @@ REPO_ROOT = Path(__file__).resolve().parents[2]
 STEPS_NOT_RUN_LOCALLY: dict[str, str] = {
     "Install backend dev deps": "the local toolchain is the developer's, not "
     "something this should install over",
+    "Install pip-tools": "same; reported as a missing tool (pip-compile) "
+    "instead when it is absent, same as every other tool this runner needs",
     "Install frontend deps": "same; a missing node_modules is reported as a "
     "precondition with the npm ci remedy instead",
     "Install shellcheck": "installs an apt package; reported as a missing tool "
@@ -107,6 +109,41 @@ CHECKS: list[Check] = [
         "tools/ai-review/external_review_selftest.py",
     ),
     Check("Run mypy", "backend", ["mypy", "."], BACKEND, "mypy .", ["mypy"]),
+    # #435 - regenerates in place; a stale lock is left regenerated on disk
+    # (matching CI, which does not restore it either), ready to review and
+    # commit. The 6-line pip-compile header is stripped before diffing (its
+    # own comment records tool flags that vary by environment, not the
+    # dependency set) - see ci.yml's comment on the same step.
+    Check(
+        "Check requirements.lock is up to date",
+        "backend",
+        [
+            "bash",
+            "-c",
+            "tail -n +7 requirements.lock > /tmp/requirements.lock.before "
+            "&& pip-compile --generate-hashes --output-file=requirements.lock requirements.txt "
+            "&& tail -n +7 requirements.lock > /tmp/requirements.lock.after "
+            "&& diff -u /tmp/requirements.lock.before /tmp/requirements.lock.after",
+        ],
+        BACKEND,
+        "pip-compile --generate-hashes --output-file=requirements.lock requirements.txt",
+        ["pip-compile"],
+    ),
+    Check(
+        "Check requirements-dev.lock is up to date",
+        "backend",
+        [
+            "bash",
+            "-c",
+            "tail -n +7 requirements-dev.lock > /tmp/requirements-dev.lock.before "
+            "&& pip-compile --generate-hashes --output-file=requirements-dev.lock requirements-dev.txt "
+            "&& tail -n +7 requirements-dev.lock > /tmp/requirements-dev.lock.after "
+            "&& diff -u /tmp/requirements-dev.lock.before /tmp/requirements-dev.lock.after",
+        ],
+        BACKEND,
+        "pip-compile --generate-hashes --output-file=requirements-dev.lock requirements-dev.txt",
+        ["pip-compile"],
+    ),
     Check(
         "Run tsc",
         "frontend",
