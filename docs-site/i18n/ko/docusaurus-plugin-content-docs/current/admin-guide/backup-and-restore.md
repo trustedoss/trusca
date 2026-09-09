@@ -36,6 +36,27 @@ backups/2026-05-09-030000/
 
 포털은 `.env`(비밀값 포함 — 별도 비밀 관리 도구로 보관)와 Traefik의 ACME 상태(Let's Encrypt가 몇 분 내 재발급)는 백업하지 **않습니다**.
 
+## 복구 목표(RPO/RTO) {#recovery-objectives}
+
+**RPO(Recovery Point Objective)**는 이 릴리스가 주기적인 논리 백업만 제공하고 WAL 아카이빙이나 시점 복구(PITR)는 없어서, 지속적 복제가 아니라 백업 주기로 결정됩니다.
+
+- 추가 설정 없이 기본으로 도는 백업은 Celery Beat의 일일 잡(00:00 UTC)뿐입니다. 최악의 경우 다음 예정 백업 직전 시점까지, 즉 RPO는 최대 24시간에 조금 못 미칩니다.
+- [cron 레시피](#자동-백업-스케줄링)를 쓰기 부하와 `pg_dump` 소요 시간이 감당할 수 있는 간격으로 추가하면 RPO는 그 간격만큼 좁아집니다(예: 매시간 cron이면 RPO ≤ 1시간).
+
+**PITR을 도입하지 않은 이유.** WAL을 계속 아카이빙하면 RPO를 0에 가깝게 낮출 수 있지만, 이는 아카이브 대상·별도 보존 정책·다른 복원 절차가 필요한 새로운 인프라이고, CLAUDE.md 핵심 규칙 1은 새 데이터스토어 표면을 추가하기 전 명시적이고 문서화된 근거를 요구합니다. 지금까지 그런 필요는 기록된 적이 없습니다. 쓰기 부하가 낮은 배포라면 운영자가 원하는 간격으로 `cron`이 `backup.sh`를 돌리는 것만으로도 RPO를 0에 임의로 가깝게 만들 수 있고, 그보다 더 촘촘한 RPO가 필요하다는 요구도 아직 없었습니다. 이는 빠뜨린 것이 아니라 지금 시점에 의도적으로 선택한 트레이드오프입니다 — "`backup.sh`를 창구 시간을 너무 많이 잡아먹지 않는 선에서 얼마나 자주 돌릴 수 있는가"보다 더 촘촘한 RPO가 실제 배포에서 필요해지면 다시 검토합니다.
+
+**RTO(Recovery Time Objective).** docker-compose 개발 스택(12코어·18GB 호스트)에서 `python -m scripts.seed_demo`로 데모 데이터셋(프로젝트 10개, 데이터베이스 약 12MB)을 채운 뒤 처음부터 끝까지 직접 측정했습니다.
+
+| 단계 | 측정값 |
+|---|---|
+| `scripts/backup.sh`(DB만 — 이 실행에는 tar로 묶을 workspace가 없었음) | 2초(압축 덤프 36KB) |
+| `scripts/restore.sh --confirm`(앱 컨테이너 중지 → DB 복원 → 전체 스택 `up -d` → health 확인) | 33초 |
+| 백엔드가 정상 응답을 재개하기까지 | +3초 |
+
+이 데모 규모 데이터베이스를 복원하고 전체 스택을 다시 띄우는 데 처음부터 끝까지 **약 38초**가 걸렸습니다. 이 값은 복원 절차 자체의 실측 하한선입니다 — 이 데이터 크기에서는 컨테이너 중지·기동 오버헤드가 지배적이고, `pg_dump`/`pg_restore` 소요 시간은 실제 데이터베이스 크기에 비례해 늘어납니다. 그러므로 수 GB 규모 `postgres.sql.gz`를 복원해야 하는 운영 환경은 이 수치보다 비례해서 더 오래 걸립니다.
+
+아래 [재해 복구 런북](#재해-복구-런북)은 이 복원 단계 위에 호스트 프로비저닝, DNS, 호스트 외부 저장소 다운로드 시간을 더합니다. 이 부분은 운영자 자신의 인프라와 네트워크에 달려 있어 이 저장소가 일반적으로 잴 수 있는 값이 아닙니다 — 어떤 고정된 수치를 보장으로 받아들이기보다 자신의 실제 프로비저닝·전송 시간에 맞춰 예산을 잡으세요.
+
 ## 수동 백업 실행
 
 <!-- docs-uat: id=backup-manual kind=shell ctx=host tier=nightly waiver=backup-restore-roundtrip-executed-by-install-uat -->
@@ -64,7 +85,7 @@ Backup complete
 
 ![갓 설치된 환경의 Admin 백업 페이지 — 툴바는 마운트됐고, 첫 백업이 만들어지기 전까지 표 본문은 empty-state 카드를 표시](/img/screenshots/admin-backup-list.png)
 
-목록 표는 여섯 컬럼을 보여줍니다 — **NAME**, **KIND**, **CREATED**, **SIZE**, **DB REVISION**, **ACTIONS**. 갓 설치된 환경에서는 본문이 인라인 empty 카드(*"No backups yet…"*)로 시작합니다 — 툴바의 **Run manual backup now** 또는 **Upload and restore…**로 채우거나 야간 자동 잡을 기다립니다.
+목록 표는 여섯 컬럼을 보여줍니다 — `NAME`, `KIND`, `CREATED`, `SIZE`, `DB REVISION`, `ACTIONS`. 갓 설치된 환경에서는 본문이 인라인 empty 카드(*"No backups yet…"*)로 시작합니다 — 툴바의 **Run manual backup now** 또는 **Upload and restore…**로 채우거나 야간 자동 잡을 기다립니다.
 
 ### 백업 트리거
 
@@ -75,7 +96,7 @@ Backup complete
 
 ![Admin 백업 — 수동 트리거 직후 표시되는 toast 알림](/img/screenshots/admin-backup-trigger-toast.png)
 
-목록 표는 타임스탬프, 크기, **auto** 배지(Celery Beat가 만든 백업에 부여), **Download**, **Delete**를 보여줍니다. auto-tagged 백업은 자물쇠 아이콘으로 표시되며 — **7일 자동 보존** 정책의 대상이고 시간순으로 정리됩니다. 수동 백업은 자동 보존 대상이 아니며 **Delete**를 클릭해야만 삭제됩니다.
+목록 표는 타임스탬프, 크기, `auto` 배지(Celery Beat가 만든 백업에 부여), `Download`, `Delete`를 보여줍니다. auto-tagged 백업은 자물쇠 아이콘으로 표시되며 — **7일 자동 보존** 정책의 대상이고 시간순으로 정리됩니다. 수동 백업은 자동 보존 대상이 아니며 `Delete`를 클릭해야만 삭제됩니다.
 
 ### Celery Beat로 스케줄
 
@@ -195,7 +216,7 @@ Restore complete
 
 6. 원래 super-admin으로 **로그인**. 프로젝트·스캔·감사 로그 검증.
 
-S3에 백업이 있는 작은 설치라면 전체 DR(호스트 손실 → 복원된 포털)이 30분 내에 진행됩니다.
+5단계(복원 자체)만 직접 측정한 값이 있습니다 — 위 [복구 목표(RPO/RTO)](#recovery-objectives)를 참고하세요(데모 규모 기준 약 35초, 데이터베이스 크기가 커지면 비례해서 늘어남). 1~2단계(대체 호스트 프로비저닝, 포털 설치)와 4단계의 다운로드는 각 운영자의 인프라와 네트워크에 달려 있어 이 저장소가 근거를 가지고 수치를 매길 수 있는 부분이 아닙니다 — 고정된 합산치 대신 실제 프로비저닝·전송 시간에 맞춰 예산을 잡으세요.
 
 ## Forward-only 마이그레이션과 복원
 
