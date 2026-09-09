@@ -269,6 +269,113 @@ def test_the_schedule_is_not_empty() -> None:
     assert len(celery_app.conf.beat_schedule) >= 20
 
 
+# ---------------------------------------------------------------------------
+# #436: every default-queue task must have a Celery-level time limit.
+# ---------------------------------------------------------------------------
+
+
+def test_436_scan_tasks_keep_their_own_time_limit_pair() -> None:
+    """The four scan task names must read scan_hard/soft_time_limit_seconds()
+    (or scan_reachability's own reachability_* pair), not the #436 fallback -
+    tasks.enqueue_scan / enqueue_reachability_scan pass these same values
+    explicitly on every real dispatch, so this only matters as a fail-safe
+    for a call that forgets that kwarg, but it must still be the RIGHT
+    fail-safe rather than the much shorter generic one."""
+    from core.config import (
+        reachability_hard_time_limit_seconds,
+        reachability_soft_time_limit_seconds,
+        scan_hard_time_limit_seconds,
+        scan_soft_time_limit_seconds,
+    )
+
+    _register_tasks_the_way_a_worker_would()
+
+    for name in (
+        "trustedoss.scan_source",
+        "trustedoss.scan_container",
+        "trustedoss.ingest_sbom",
+    ):
+        cls = celery_app.tasks[name]
+        assert cls.time_limit == scan_hard_time_limit_seconds(), name
+        assert cls.soft_time_limit == scan_soft_time_limit_seconds(), name
+
+    reachability = celery_app.tasks["trustedoss.scan_reachability"]
+    assert reachability.time_limit == reachability_hard_time_limit_seconds()
+    assert reachability.soft_time_limit == reachability_soft_time_limit_seconds()
+
+
+def test_436_backup_tasks_get_a_larger_time_limit_than_every_other_task() -> None:
+    """trustedoss.backup.run / .restore have no per-dispatch time_limit
+    override anywhere (unlike the scan tasks), so task_annotations is the
+    ONLY limit they get - and it must be backup_task_time_limit_seconds(),
+    not the #436 fallback every other default-queue task gets. This is also
+    the regression guard for the wildcard-override bug: a naive
+    ``task_annotations={"*": {...}, "trustedoss.backup.run": {...}}`` dict
+    passes every other assertion in this file but makes backup collapse to
+    the fallback's value here, because Celery applies "*" AFTER (so it wins
+    over) a same-key, same-dict per-task-name entry.
+    """
+    from core.config import (
+        backup_task_soft_time_limit_seconds,
+        backup_task_time_limit_seconds,
+        default_task_time_limit_seconds,
+    )
+
+    _register_tasks_the_way_a_worker_would()
+
+    assert backup_task_time_limit_seconds() > default_task_time_limit_seconds()
+
+    for name in ("trustedoss.backup.run", "trustedoss.backup.restore"):
+        cls = celery_app.tasks[name]
+        assert cls.time_limit == backup_task_time_limit_seconds(), name
+        assert cls.soft_time_limit == backup_task_soft_time_limit_seconds(), name
+
+
+def test_436_trivy_db_refresh_gets_its_own_time_limit_not_the_fallback() -> None:
+    """Security review on #436: TRIVY_DB_REFRESH_TIMEOUT_SECONDS is operator-
+    configurable up to 3600s (core.config.trivy_db_refresh_timeout_seconds),
+    which already exceeds the fallback's soft limit (2400s) - falling
+    through to the fallback would let Celery kill this task before its own
+    graceful WARN-and-keep-the-prior-DB timeout gets a chance to fire."""
+    from core.config import (
+        default_task_time_limit_seconds,
+        trivy_db_refresh_task_soft_time_limit_seconds,
+        trivy_db_refresh_task_time_limit_seconds,
+    )
+
+    _register_tasks_the_way_a_worker_would()
+
+    assert trivy_db_refresh_task_time_limit_seconds() != default_task_time_limit_seconds()
+
+    cls = celery_app.tasks["trustedoss.trivy_db_refresh"]
+    assert cls.time_limit == trivy_db_refresh_task_time_limit_seconds()
+    assert cls.soft_time_limit == trivy_db_refresh_task_soft_time_limit_seconds()
+
+
+def test_436_every_other_default_queue_task_gets_the_fallback_time_limit() -> None:
+    """Every registered task outside the scan/backup/trivy-refresh exceptions
+    above must get exactly default_task_time_limit_seconds() / _soft_ - the
+    actual #436 fix: before it, every one of these had NO Celery-level limit
+    (``time_limit is None``), so a hang on any of them occupied a worker
+    slot forever."""
+    from core.config import (
+        default_task_soft_time_limit_seconds,
+        default_task_time_limit_seconds,
+    )
+    from tasks.celery_app import _BACKUP_TASK_NAMES, _SCAN_TASK_NAMES
+
+    _register_tasks_the_way_a_worker_would()
+
+    exceptions = set(_SCAN_TASK_NAMES) | set(_BACKUP_TASK_NAMES) | {"trustedoss.trivy_db_refresh"}
+    others = [n for n in celery_app.tasks if n.startswith("trustedoss.") and n not in exceptions]
+    assert len(others) >= 20, "sanity: this should cover most of the ~40 non-scan tasks"
+
+    for name in others:
+        cls = celery_app.tasks[name]
+        assert cls.time_limit == default_task_time_limit_seconds(), name
+        assert cls.soft_time_limit == default_task_soft_time_limit_seconds(), name
+
+
 def test_importing_celery_app_alone_registers_no_tasks() -> None:
     """Why the helper exists, stated as a fact rather than a comment.
 
