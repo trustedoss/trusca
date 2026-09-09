@@ -478,6 +478,25 @@ backend:
   # entirely (e.g. a bare `docker run`).
   uvicornWorkers: 4
   port: 8000
+  # #431: CPU-based HPA, off by default, mirroring worker.default.autoscaling
+  # below exactly (same rationale: a stateless HTTP tier whose CPU draw
+  # tracks its actual request load, unlike the scan worker's cdxgen/Trivy
+  # pipelines which are network/disk-wait heavy; see
+  # worker.scan.autoscaling.mode's comment for why THAT one needed
+  # queue-depth scaling instead of CPU). When enabled,
+  # deployment-backend.yaml omits its static `replicas:` so this HPA owns
+  # the count. NOTES.txt's connection-budget formula and
+  # CONN_BUDGET_BACKEND_REPLICAS (configmap-env.yaml) still read
+  # backend.replicaCount directly and unconditionally, and the Deployment
+  # ignores it once autoscaling is on, but nothing else does. Keep
+  # replicaCount set to your chosen ceiling (e.g. maxReplicas) so the
+  # connection-budget preview and hint stay accurate; the worker HPAs
+  # above have the exact same property.
+  autoscaling:
+    enabled: false
+    minReplicas: 2
+    maxReplicas: 6
+    targetCPUUtilizationPercentage: 75
   resources:
     requests:
       cpu: 250m

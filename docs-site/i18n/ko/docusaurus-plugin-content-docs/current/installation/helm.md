@@ -198,6 +198,68 @@ helm install trustedoss ./charts/trustedoss \
 프로덕션에서 와일드카드는 금지합니다. 브라우저가 사용할 모든 scheme + host를 나열하십시오.
 :::
 
+### 관리형 클라우드 데이터스토어 없이 고가용성 구성하기 {#self-hosted-ha}
+
+위 예시는 관리형 Postgres/Redis(Cloud SQL, RDS, Memorystore, ElastiCache)를
+전제합니다. 대신 자체 클러스터에 셀프호스팅한다면, 이 차트가 번들로 제공하는
+Postgres(단일 Pod, 복제 없음)와 Redis(단일 Pod, Sentinel/Cluster 없음)는 그
+자체로 고가용성 구성이 아닙니다. 위 "빠른 시작" 절과 마찬가지로 평가·소규모
+설치용입니다. 이 차트는 Postgres/Redis 클러스터링 자체를 구현하지 않습니다.
+리더 선출, WAL 스트리밍, 장애 조치, 백업 조율은 그 자체로 하나의 오퍼레이터가
+맡을 몫이고, Helm 차트 안에 오케스트레이터를 다시 만드는 것은 이 프로젝트의
+범위 밖입니다. 대신 각 데이터스토어를 이미 존재하는 전용 K8s 오퍼레이터
+아래에서 돌리고, 관리형 클라우드 예시와 똑같이 `bundled: false`로 이 차트가
+그 Service를 가리키게 하십시오.
+
+- **Postgres**: [CloudNativePG](https://cloudnative-pg.io/)나
+  [Zalando postgres-operator](https://github.com/zalando/postgres-operator)
+  모두 하나의 Service 이름 뒤에서 자동 장애 조치가 되는 primary + replica
+  구성을 제공합니다. `env.database.url`(권한 분리를 쓴다면
+  `env.database.ownerUrl`도)을 Cloud SQL/RDS 대신 그 Service로 가리키면
+  나머지 values 파일은 그대로입니다.
+- **Redis**: Sentinel이나 Cluster 모드 배포(예: `sentinel.enabled: true`를
+  쓴 [Bitnami `redis` 차트](https://github.com/bitnami/charts/tree/main/bitnami/redis)나
+  Redis Cluster)는 클라이언트에게 보이는 주소 하나 뒤에서 장애 조치를
+  제공합니다. `env.redis.url`을 같은 방식으로 그곳에 가리키십시오.
+
+어느 쪽이든 `postgres.bundled: false` / `redis.bundled: false`를 설정해
+이 차트가 자체 데이터스토어 오브젝트를 렌더링하지 않고 오퍼레이터가 관리하는
+쪽에 전적으로 맡기게 하십시오.
+
+#### 공유하는 Redis 인스턴스 자체가 단일 장애 지점 아닌가? {#redis-blast-radius}
+
+여기서 Redis는 한 번에 네 가지 역할을 맡습니다. Celery 브로커, Celery 결과
+백엔드, 요청 rate limiter, WebSocket 연결 레지스트리(`core/ws_registry.py`)가
+모두 하나의 `env.redis.url`을 거칩니다. 이걸 여러 Redis 인스턴스·인덱스로
+나눌 가치가 있는지는 장애 상황에서 각 역할이 실제로 어떻게 되는지에 달려
+있으므로, 추측 대신 현재 사실을 그대로 적습니다.
+
+- rate limiter와 로그인 스로틀은 이미 Redis 오류에서 **fail open** 합니다
+  (`core/ratelimit.py`, `core/login_throttle.py`,
+  `core/redis_degradation.py`). Redis에 닿지 못한 요청은 거부되지 않고
+  통과되며, 이 완화 상태는 로그로 남고(중복 제거) `/health/ready`에도
+  노출됩니다. 이 영역의 장애는 rate limiting을 잃을 뿐 가용성을 잃지
+  않습니다.
+- Celery(스캔·알림·백업 태스크)는 브로커가 실제로 필요합니다. 장애가 나면
+  Redis가 복구될 때까지 태스크 디스패치가 멈춥니다. 이는 Redis 인스턴스를
+  둘로 나눠도 달라지지 않습니다. 브로커의 역할 자체가 Redis이기 때문입니다
+  (이 차트는 다른 브로커를 지원하지 않습니다).
+- WebSocket 연결 레지스트리에는 이런 완화 장치가 **없습니다**. Redis
+  오류가 그대로 위로 올라가 등록이 **닫힌 채로** 실패합니다. 즉 장애가
+  나는 동안 실시간 스캔 진행률 스트리밍이 멈추지만, 스캔 자체에는 영향이
+  없습니다. 스캔 상태는 Postgres에 있고, WebSocket은 읽기 전용 진행률
+  피드일 뿐입니다.
+
+이런 사실을 바탕으로, WS 레지스트리·rate limiter 역할을 위해 Redis를 별도
+인스턴스로 나누는 일은 지금 이 차트가 떠안지 않습니다. 그건 새로운
+인프라 표면(프로비저닝·모니터링·장애 조치까지 챙겨야 할 두 번째
+데이터스토어)이고, 그 대가로 얻는 것은 "실시간 진행률 표시가 멈춘다"는
+정도이지 데이터 유실이나 파이프라인 정지가 아닙니다. 더 좁고 구체적인
+결함인 WS 레지스트리의 fail-open 부재는 여기에 끼워 넣지 않고 별도
+후속작업([이슈 #458](https://github.com/trustedoss/trusca/issues/458))으로
+추적합니다. 연결 수 상한이 장애 상황에서 어떻게 동작할지를 바꾸는 것은
+그 자체로 보안 관련 판단이라, 지나가며 고칠 일이 아니기 때문입니다.
+
 ## 마이그레이션 동작 방식
 
 Helm `pre-install` + `pre-upgrade` 훅 Job이 **owner** DB 역할
