@@ -37,6 +37,29 @@ IMG="${TAG#v}"   # image tags are published without the leading 'v' (see release
 
 cd "$REMOTE_PATH"
 
+# Compose file selection - follow the deploy's own overlay (#441). Shared
+# with scripts/upgrade.sh (scripts/lib/compose_args.sh's own docstring has
+# the full "why": a docker-compose call that drops the demo overlay silently
+# turns off the public read-only lock and the worker's CPU cap).
+#
+# Resolved TWICE, deliberately. .env (gitignored, untouched by the checkout
+# below) already holds the real COMPOSE_FILE before anything else in this
+# script runs, so waiting until after the checkout to resolve it at all would
+# leave restore_stack_on_failure's trap using the wrong overlay for the
+# entire fetch/checkout window - not just a first-deploy edge case, but every
+# ROLLBACK to a tag predating this file, where checkout would otherwise be
+# the only thing standing between the trap and a correct COMPOSE_ARGS
+# (security review on #441). Falling back to a bare default here only when
+# the shared helper genuinely does not exist yet on disk keeps that window
+# closed without hand-duplicating compose_args_from_env's own logic.
+if [ -f "$REMOTE_PATH/scripts/lib/compose_args.sh" ]; then
+  # shellcheck source=../../scripts/lib/compose_args.sh
+  source "$REMOTE_PATH/scripts/lib/compose_args.sh"
+  compose_args_from_env
+else
+  COMPOSE_ARGS=(-f docker-compose.yml)
+fi
+
 # Bring the stack back if any step below fails. upgrade.sh recreates services
 # one at a time, so a failure partway through leaves the earlier ones stopped —
 # a failed deploy became an outage that the next deploy could not clear on its
@@ -46,7 +69,7 @@ restore_stack_on_failure() {
   rc=$?
   [ "$rc" -eq 0 ] && exit 0
   echo "==> deploy failed (exit $rc) — attempting to restart the stack" >&2
-  if docker-compose -f docker-compose.yml up -d >&2; then
+  if docker-compose "${COMPOSE_ARGS[@]}" up -d >&2; then
     echo "==> stack is back up; the deploy itself still FAILED (exit $rc)" >&2
   else
     echo "==> could not restart the stack — it needs manual attention" >&2
@@ -66,6 +89,20 @@ git checkout -f "tags/$TAG"
 # Log the resolved commit so a re-pointed/moved tag is auditable in the deploy
 # logs (the fetch uses --force, so a moved upstream tag is accepted silently).
 echo "    $TAG resolves to commit $(git rev-parse --short HEAD)"
+
+# Re-resolve now that TAG's own copy of scripts/lib/compose_args.sh (or its
+# absence, on a rollback older than this file) is what is actually on disk.
+# If TAG predates this file, this deliberately lets `source` fail the script
+# via `set -e` rather than silently keeping a possibly-stale COMPOSE_ARGS:
+# restore_stack_on_failure still has the correct value from the resolution
+# above when that happens, since COMPOSE_ARGS is only overwritten once this
+# source succeeds.
+if [ -f "$REMOTE_PATH/scripts/lib/compose_args.sh" ]; then
+  # shellcheck source=../../scripts/lib/compose_args.sh
+  source "$REMOTE_PATH/scripts/lib/compose_args.sh"
+  compose_args_from_env
+fi
+echo "==> compose files: ${COMPOSE_ARGS[*]}"
 
 echo "==> pinning IMAGE_TAG=$IMG in .env"
 if [ ! -f .env ]; then
@@ -117,10 +154,6 @@ NO_PROMPT=1 UPGRADE_SKIP_DRAIN=1 bash scripts/upgrade.sh
 # transaction. Accounts outside it are untouched.
 if [ "${RESEED:-0}" = "1" ]; then
   echo "==> reseeding the demo dataset (RESEED=1)"
-  compose_args="-f docker-compose.yml"
-  if [ -f .env ] && grep -qE '^COMPOSE_FILE=' .env; then
-    compose_args=""   # docker-compose reads COMPOSE_FILE from .env itself
-  fi
   # < /dev/null: this whole script runs as `bash -s < remote-deploy.sh` over SSH,
   # so its own stdin is the SSH channel still streaming the rest of THIS file.
   # `docker-compose exec` keeps stdin open by default (-T only disables the
@@ -130,8 +163,7 @@ if [ "${RESEED:-0}" = "1" ]; then
   # error and no visible sign the tail never ran. Confirmed 2026-09-08: a
   # RESEED=1 deploy reported success with zero reset_demo output in the
   # backend logs and stale (pre-reseed) row IDs still live.
-  # shellcheck disable=SC2086  # compose_args is our own literal, word-splitting intended.
-  docker-compose $compose_args exec -T -e APP_ENV=demo backend python -m scripts.reset_demo < /dev/null
+  docker-compose "${COMPOSE_ARGS[@]}" exec -T -e APP_ENV=demo backend python -m scripts.reset_demo < /dev/null
   echo "==> reseed complete"
 else
   echo "==> skipping demo reseed (set RESEED=1 to rebuild the demo dataset)"
