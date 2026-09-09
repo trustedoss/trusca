@@ -112,6 +112,16 @@ x-backend-env: &backend-env
   # Workspace is mounted from a host directory (WORKSPACE_HOST_PATH) so
   # large source-trees stay outside the container layer.
   WORKSPACE_HOST_PATH: /workspace
+  # Backups land on the `backups-data` volume, for the same reason the
+  # workspace does not live in the container layer. Left unset,
+  # ``services.backup_service.backups_root`` resolves the relative default
+  # "backups" against the working directory, which in these images is /app:
+  # every nightly artifact then went to the container's writable layer, where
+  # recreating the container to deploy a new tag destroyed the whole backup
+  # history it had accumulated. docker-compose.dev.yml already mounted a
+  # volume here; the production file did not. The archive is the workspace
+  # plus a pg_dump, so it is sized like the workspace, not like the database.
+  BACKUPS_ROOT: /opt/trustedoss/backups
   # PR-A2: ORT_RULES_PATH removed — the backend no longer shells to ORT.
   # First-party license detection is done by scancode (bundled in the worker
   # image); third-party dependency licenses come declared from cdxgen. The
@@ -655,6 +665,10 @@ services:
       # Workspace is shared with the worker so cdxgen / scancode outputs are
       # readable across both processes.
       - workspace:/workspace
+      # The admin API lists, downloads and restores backups, so it needs the
+      # same store the worker writes them to. Read-write, not :ro, because
+      # restore and delete are admin endpoints on this service.
+      - backups-data:/opt/trustedoss/backups
       # H-6 — read-only view of the worker-maintained Trivy DB cache. The
       # admin/health Trivy panel and the admin/disk `trivy_db` card read
       # `$TRIVY_CACHE_DIR/db/metadata.json`; without this mount the backend
@@ -833,6 +847,9 @@ services:
       <<: *backend-env
     volumes:
       - workspace:/workspace
+      # This service consumes trustedoss.default as well as trustedoss.scan
+      # (see its -Q default above), so the nightly backup can land here.
+      - backups-data:/opt/trustedoss/backups
       # v2.3-s1 — cosign signing keys (read-only). COSIGN_KEYS_HOST_PATH points
       # at the host dir holding cosign.key/cosign.pub (default ./secrets/cosign,
       # created by scripts/cosign-keygen.sh). Mounted at /cosign so
@@ -961,6 +978,11 @@ services:
       # a scan-pipeline task) and both read/write the Trivy DB cache, so this
       # mount is required here too, not just on worker-scan.
       - trivy-cache:/var/lib/trivy
+      # trustedoss.backup.run routes to the default queue, so this service is
+      # one of the two that can write the nightly artifact. worker-scan is the
+      # other: its default -Q list includes trustedoss.default, so whichever
+      # worker picks the message up must be able to write to the same store.
+      - backups-data:/opt/trustedoss/backups
       # This service resolves dependency graphs too (the rematch task reads
       # preserved SBOMs through the same toolchain), so it fills the same
       # caches and needs the same mount. Measured: 2.0 GB of Maven and npm in
@@ -1012,6 +1034,14 @@ services:
     restart: unless-stopped
     logging: *logging
     command: celery -A tasks.celery_app beat --loglevel=info --schedule=/tmp/celerybeat-schedule
+    volumes:
+      # Beat schedules the nightly backup but never writes one, so this mount
+      # is not what makes the backup work. It is here because this service
+      # shares the environment anchor and therefore has BACKUPS_ROOT set: a
+      # configured path with nothing behind it resolves into the container
+      # layer, which is the state this whole arrangement exists to prevent.
+      # docker-compose.dev.yml mounts it on its beat for the same reason.
+      - backups-data:/opt/trustedoss/backups
     environment:
       <<: *backend-env
     # RUN EXACTLY ONE. Celery beat holds no lock: every beat process fires the
@@ -1136,3 +1166,16 @@ volumes:
   # caches their own disk can redirect these two to a bind mount.
   worker-scan-cache:
   worker-default-cache:
+  # Backup artifacts (BACKUPS_ROOT). Same reasoning as the toolchain caches,
+  # with a sharper failure: left unmounted the nightly artifact went to the
+  # writable layer of whichever worker ran it, so `docker compose up -d` for a
+  # new image tag deleted every backup the deployment had. Measured on a
+  # 2,089-project corpus, one night's archive was 7.6 GB on a 26 GB root
+  # partition, because the archive contains the scan workspace.
+  #
+  # Shared between backend and both workers, unlike the per-worker caches: a
+  # backup is one store that the writer and the admin API must both see, and
+  # the writes are one directory per run, so there is no concurrent-writer
+  # race to avoid. A deployment that wants backups on their own disk can
+  # redirect this to a bind mount.
+  backups-data:
