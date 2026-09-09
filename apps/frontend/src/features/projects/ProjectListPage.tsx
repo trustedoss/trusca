@@ -844,7 +844,7 @@ export function ProjectListPage() {
   );
 }
 
-interface ProjectRowProps {
+export interface ProjectRowProps {
   project: ProjectPublic;
   onScan: () => void;
   rowIndex: number;
@@ -858,7 +858,7 @@ interface ProjectRowProps {
   showTeamBreadcrumb?: boolean;
 }
 
-function ProjectRow({
+export function ProjectRow({
   project,
   onScan,
   rowIndex,
@@ -882,28 +882,35 @@ function ProjectRow({
       style={{ height: "var(--table-row)" }}
     >
       <div className="flex flex-1 items-center gap-3 truncate">
+        {/* Team + project were previously one <Link>, with the team name
+            nested inside it as a <span> — invalid HTML (no interactive
+            descendants inside an <a>) and a link that could only ever go to
+            the project. Split into two sibling links: the team segment now
+            goes to that team's group page, the project segment keeps going
+            to the project. */}
+        {showTeamBreadcrumb && project.team_name ? (
+          <>
+            <Link
+              to={`/groups/${project.team_id}`}
+              className="shrink-0 truncate font-normal text-muted-foreground hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+              title={project.team_name}
+              data-testid="project-row-team"
+              data-team-id={project.team_id}
+            >
+              {project.team_name}
+            </Link>
+            <span aria-hidden className="shrink-0 font-normal text-muted-foreground">
+              /
+            </span>
+          </>
+        ) : null}
         <Link
           to={`/projects/${project.id}`}
           className="truncate font-medium hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
-          title={
-            showTeamBreadcrumb && project.team_name
-              ? `${project.team_name} / ${project.name}`
-              : project.name
-          }
+          title={project.name}
           data-testid="project-row-link"
           data-project-id={project.id}
         >
-          {showTeamBreadcrumb && project.team_name ? (
-            <>
-              <span
-                className="font-normal text-muted-foreground"
-                data-testid="project-row-team"
-              >
-                {project.team_name}
-              </span>
-              <span className="font-normal text-muted-foreground"> / </span>
-            </>
-          ) : null}
           {project.name}
         </Link>
         <span

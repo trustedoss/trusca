@@ -40,6 +40,7 @@ import {
   ClipboardCheck,
   ClipboardList,
   FolderOpen,
+  FolderTree,
   HardDrive,
   KeyRound,
   ListChecks,
@@ -150,6 +151,7 @@ interface RouteEntry {
 
 const MAIN_ROUTES: RouteEntry[] = [
   { to: "/projects", labelKey: "common:nav.projects", icon: FolderOpen },
+  { to: "/groups", labelKey: "common:nav.groups", icon: FolderTree },
   { to: "/scans", labelKey: "common:nav.scans", icon: ScanLine },
   { to: "/approvals", labelKey: "common:nav.approvals", icon: ClipboardCheck },
   { to: "/policies", labelKey: "common:nav.policies", icon: Scale },

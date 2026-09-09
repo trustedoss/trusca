@@ -188,7 +188,13 @@ export function PortfolioGrid() {
              *  out of the row. Without both, a phone-width viewport gains a
              *  sideways scrollbar. */}
             <h3 className="mb-2 flex items-baseline gap-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-              <span className="min-w-0 truncate">{team.team_name}</span>
+              <Link
+                to={`/groups/${team.team_id}`}
+                className="min-w-0 truncate hover:text-foreground hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+                data-testid={`portfolio-team-link-${team.team_id}`}
+              >
+                {team.team_name}
+              </Link>
               <span className="shrink-0 tabular-nums font-normal">
                 {t("portfolio.team_projects", { count: team.project_count })}
               </span>

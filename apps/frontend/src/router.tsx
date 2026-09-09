@@ -16,6 +16,8 @@ import { AdminTeamsPage } from "@/features/admin/teams/AdminTeamsPage";
 import { AdminUsersPage } from "@/features/admin/users/AdminUsersPage";
 import { ApprovalsPage } from "@/features/approvals/ApprovalsPage";
 import { ExternalPackageLookupPage } from "@/features/external-package-lookup/ExternalPackageLookupPage";
+import { GroupDetailPage } from "@/features/groups/GroupDetailPage";
+import { GroupListPage } from "@/features/groups/GroupListPage";
 import { IntakeRequestsPage } from "@/features/intake/IntakeRequestsPage";
 import { IntegrationsPage } from "@/features/integrations/IntegrationsPage";
 import { InventoryPage } from "@/features/inventory/InventoryPage";
@@ -89,6 +91,12 @@ export function AppRoutes() {
         <Route path="search" element={<SearchPage />} />
         <Route path="projects" element={<ProjectListPage />} />
         <Route path="projects/new" element={<ProjectCreatePage />} />
+        {/* Group hierarchy Phase 4 PR 4-B — list (drill-down / flat search)
+            + detail (breadcrumb, 30-day subtree stats, subgroups / projects
+            / members). Nested under AppShell so the sidebar + header chrome
+            persist, matching every other list/detail pair below. */}
+        <Route path="groups" element={<GroupListPage />} />
+        <Route path="groups/:groupId" element={<GroupDetailPage />} />
         <Route path="projects/:id" element={<ProjectDetailPage />} />
         <Route path="projects/:id/compare" element={<ComparePage />} />
         {/*

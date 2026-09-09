@@ -129,6 +129,12 @@ const MAIN_NAV: NavGroup[] = [
         icon: FolderOpen,
         testId: "nav-projects",
       },
+      {
+        to: "/groups",
+        labelKey: "nav.groups",
+        icon: Building2,
+        testId: "nav-groups",
+      },
     ],
   },
   {

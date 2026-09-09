@@ -76,6 +76,20 @@ export const VISUAL_COVERAGE: Record<string, VisualCoverage> = {
       "Narrow centred form (max-w-lg); shell chrome around it is already " +
       "covered by every other authenticated entry.",
   },
+  GroupListPage: {
+    exempt:
+      "Compact table + inline search-and-drilldown template — the same " +
+      "shape AdminTeamsPage and ProjectListPage already guard. Nothing " +
+      "here (badge counts, a drill trail) is chrome those baselines have " +
+      "not seen.",
+  },
+  GroupDetailPage: {
+    exempt:
+      "Tabbed detail template with a breadcrumb + stat tiles above the " +
+      "strip — the same silhouette ProjectDetailPage's baselines already " +
+      "guard. The one new element, the ancestor breadcrumb, is plain text " +
+      "links with no layout risk of its own.",
+  },
   ProjectDetailPage: {
     snapshots: [
       "project-detail-overview.png",
