@@ -11,6 +11,8 @@ single live ping happens to see.
 
 from __future__ import annotations
 
+import time
+
 import pytest
 
 from core import redis_degradation
@@ -76,7 +78,7 @@ def test_the_next_call_after_the_interval_logs_again_with_the_suppressed_count(
         lambda event, **kw: logged.append({"event": event, **kw}),
     )
     fake_now = [1000.0]
-    monkeypatch.setattr(redis_degradation.time, "time", lambda: fake_now[0])
+    monkeypatch.setattr(time, "time", lambda: fake_now[0])
 
     redis_degradation.record(
         component="ratelimit", event="ev", action="incr", exc=RuntimeError("a")
@@ -157,7 +159,7 @@ def test_snapshot_reports_the_most_recent_degradation(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     fake_now = [500.0]
-    monkeypatch.setattr(redis_degradation.time, "time", lambda: fake_now[0])
+    monkeypatch.setattr(time, "time", lambda: fake_now[0])
 
     redis_degradation.record(
         component="ratelimit", event="ev", action="incr", exc=RuntimeError()
