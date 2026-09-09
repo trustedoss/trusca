@@ -77,12 +77,35 @@ describe("useActiveTeam", () => {
     expect(screen.getByTestId("active").textContent).toBe("Security");
   });
 
-  it("discards a stored team the user is no longer a member of", () => {
-    // A revoked membership must not keep scoping anything. The stored id
-    // outlives the session, so this is not hypothetical.
+  it("returns null (not a silent substitute) for a stored team the user is no longer a member of", () => {
+    // Group-hierarchy Phase 5 DoD: a revoked membership must not keep
+    // scoping anything, but it must ALSO not get silently REPLACED by an
+    // unrelated team the user happens to still have -- that used to be
+    // this test's own assertion (fell back to "Platform"), and it is
+    // exactly the shape of bug the cascade case below hits: a stored id
+    // that no longer resolves to a direct membership, for whatever reason
+    // (revoked here, cascade-only-reachable below), must surface as
+    // "unresolvable" so a write-path caller like ProjectCreatePage can
+    // block instead of guessing. The stored id outlives the session, so
+    // this is not hypothetical.
     useUIStore.setState({ activeTeamId: "team-gone" });
     renderProbe();
-    expect(screen.getByTestId("active").textContent).toBe("Platform");
+    expect(screen.getByTestId("active").textContent).toBe("none");
+  });
+
+  it("returns null for a stored group reachable only through the hierarchy cascade, not a direct membership", () => {
+    // Phase 5 DoD item tracked from the Phase 4 PR 4-B security review:
+    // GroupDetailPage's "New project" button calls setActiveTeamId(group.id)
+    // for ANY group it can show (cascade-reachable ones included), whether
+    // or not the user holds a direct membership row there. Before this fix,
+    // useActiveTeam's `.find` on such an id came back empty and fell all the
+    // way through to `teams[0]` -- indistinguishable, from the outside, from
+    // "no preference was ever stored". A group reachable only via cascade
+    // from an ancestor membership is exactly this shape: real, just not in
+    // `user.teams`.
+    useUIStore.setState({ activeTeamId: "group-c-cascade-only" });
+    renderProbe();
+    expect(screen.getByTestId("active").textContent).toBe("none");
   });
 
   it("returns nothing for a user with no memberships", () => {
@@ -127,6 +150,48 @@ describe("switching teams while the create form is open", () => {
     await waitFor(() => {
       expect((select as HTMLSelectElement).value).toBe("team-2");
     });
+  });
+
+  it("blocks submission instead of misattributing, when the active group is reachable only through the cascade", async () => {
+    // Phase 5 DoD lifecycle sequence (CLAUDE.md hardening rule 5): reach a
+    // group only through the cascade from an ancestor membership, then act
+    // on it. Simulates GroupDetailPage's "New project" button, which calls
+    // setActiveTeamId(group.id) unconditionally for any group it can show
+    // the user via the cascade -- group-c here has no entry in `TEAMS`,
+    // exactly like a group the user reaches only because they hold a direct
+    // membership somewhere ABOVE it in the tree, not in it.
+    const { ProjectCreatePage } = await import(
+      "@/features/projects/ProjectCreatePage"
+    );
+    useUIStore.getState().setActiveTeamId("group-c-cascade-only");
+
+    render(
+      <AppProviders>
+        <ProjectCreatePage />
+      </AppProviders>,
+    );
+
+    const alert = await screen.findByTestId("project-create-no-team");
+    expect(alert).toHaveAttribute("data-reason", "active_team_unresolved");
+
+    const submit = screen.getByTestId("project-create-submit");
+    expect(submit).toBeDisabled();
+
+    // The picker (teams.length > 1 here) must not silently pre-select
+    // team-1 for the unmatched "" value -- it shows an explicit,
+    // non-selectable placeholder instead, so nothing on screen suggests a
+    // team is already (wrongly) chosen.
+    const select = screen.getByTestId(
+      "project-team-select",
+    ) as HTMLSelectElement;
+    expect(select.value).toBe("");
+
+    // Picking a real team from the selector is still a valid way out: it
+    // clears the blocked state without ever having silently guessed.
+    await userEvent.selectOptions(select, "team-2");
+    expect(select.value).toBe("team-2");
+    expect(submit).not.toBeDisabled();
+    expect(screen.queryByTestId("project-create-no-team")).toBeNull();
   });
 
   it("still lets the form override the bar", async () => {

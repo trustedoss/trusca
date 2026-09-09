@@ -37,6 +37,13 @@ export interface SeedSummary {
    */
   is_super_admin?: boolean;
   team_id: string;
+  /**
+   * group-hierarchy Phase 5 PR 5-B. The primary seeded group's ``name``
+   * (``E2E Team <suffix>``), so a spec can address the seeded root group by
+   * name (e.g. ``AdminTeamsHarness.expectTeamRow`` /
+   * ``openTeamDrawer``) without a separate lookup.
+   */
+  team_name: string;
   project_names: string[];
   project_ids: string[];
   /** Populated when SeedOptions.withScan is true. Same length as project_ids. */
@@ -83,6 +90,19 @@ export interface SeedSummary {
     email: string;
     role: "group_admin" | "developer";
   }>;
+  /**
+   * group-hierarchy Phase 5 PR 5-B. Populated when ``SeedOptions.withSubgroup``
+   * is set: one child group seeded directly under the primary group
+   * (``parent_group_id = team_id``). ``null``/absent when the flag was off.
+   */
+  subgroup?: { id: string; name: string; slug: string } | null;
+  /**
+   * group-hierarchy Phase 5 PR 5-B. Populated when
+   * ``SeedOptions.extraRootGroup`` is set: a second, independent root
+   * group (``parent_group_id = null``) in the same organization as the
+   * primary group. ``null``/absent when the flag was off.
+   */
+  extra_root_group?: { id: string; name: string; slug: string } | null;
   /**
    * Phase 5 D bundle. Populated when ``SeedOptions.withOAuthIdentity`` is
    * set. Carries the seeded row's id + provider + the deterministic
@@ -250,6 +270,21 @@ export interface SeedOptions {
    */
   extraTeamAdmin?: boolean;
   /**
+   * group-hierarchy Phase 5 PR 5-B. Seed one child group directly under
+   * the primary group (``parent_group_id = team_id``) so a spec has a real
+   * parent->child pair to reparent/delete-guard/exclude-from-picker
+   * against without driving the create-subgroup UI first. Comes back as
+   * ``SeedSummary.subgroup``.
+   */
+  withSubgroup?: boolean;
+  /**
+   * group-hierarchy Phase 5 PR 5-B. Seed a second, independent root group
+   * in the same organization as the primary group, so a spec can move a
+   * group under a different root without a second seed run. Comes back as
+   * ``SeedSummary.extra_root_group``.
+   */
+  extraRootGroup?: boolean;
+  /**
    * Phase 5 D bundle. Insert one OAuthIdentity row for the primary user
    * pinned to the chosen provider. Used by `auth_and_profile.spec.ts` to
    * exercise the Unlink-with-fallback scenario without driving a real
@@ -398,6 +433,12 @@ export function seedE2eUser(opts: SeedOptions): SeedSummary {
   }
   if (opts.extraTeamAdmin) {
     scriptArgs.push("--extra-team-admin");
+  }
+  if (opts.withSubgroup) {
+    scriptArgs.push("--with-subgroup");
+  }
+  if (opts.extraRootGroup) {
+    scriptArgs.push("--extra-root-group");
   }
   if (opts.withOAuthIdentity) {
     scriptArgs.push("--with-oauth-identity", opts.withOAuthIdentity);

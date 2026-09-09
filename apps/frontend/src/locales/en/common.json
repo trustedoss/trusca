@@ -43,7 +43,8 @@
   "auth": {
     "logout": "Sign out",
     "profile": "Profile",
-    "active_team": "Active team: {{team}}"
+    "active_team": "Active team: {{team}}",
+    "active_team_unresolved": "Active team needs attention"
   },
   "risk": {
     "critical": "Critical",

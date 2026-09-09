@@ -304,6 +304,17 @@ class AdminTeamListItem(BaseModel):
     name: str
     slug: str
     description: str | None = None
+    organization_id: uuid.UUID = Field(
+        description=(
+            "The organization this group belongs to. A group can only be "
+            "moved under a new parent in the same organization; reparent "
+            "refuses a cross-organization move (422)."
+        ),
+    )
+    parent_group_id: uuid.UUID | None = Field(
+        default=None,
+        description="Null for a root group. See AdminTeamDetail.parent_group_id.",
+    )
     member_count: int = 0
     project_count: int = 0
     created_at: datetime
@@ -336,12 +347,14 @@ class AdminTeamDetail(BaseModel):
     name: str
     slug: str
     description: str | None = None
+    organization_id: uuid.UUID = Field(
+        description="See AdminTeamListItem.organization_id."
+    )
     parent_group_id: uuid.UUID | None = Field(
         default=None,
         description=(
-            "Null for a root group. group-hierarchy Phase 5: set via "
-            "POST /v1/admin/teams/{id}/reparent, or at creation via "
-            "POST /v1/admin/teams/{parent_id}/subgroups."
+            "Null for a root group. Set via POST /v1/admin/teams/{id}/reparent, "
+            "or at creation via POST /v1/admin/teams/{parent_id}/subgroups."
         ),
     )
     project_count: int = 0
@@ -451,7 +464,7 @@ class AdminTeamMemberAdd(BaseModel):
 
 
 # ---------------------------------------------------------------------------
-# Group hierarchy — group-hierarchy Phase 5 PR 5-A
+# Group hierarchy (reparent / create-subgroup)
 # ---------------------------------------------------------------------------
 
 
@@ -472,7 +485,7 @@ class AdminGroupCreateSubgroup(BaseModel):
 
     No ``organization_id`` field, unlike ``AdminTeamCreate``: a subgroup
     always inherits its parent's organization (``services.group_service.
-    create_subgroup``) — there is nothing to disambiguate.
+    create_subgroup``), so there is nothing to disambiguate.
     """
 
     name: str = Field(min_length=1, max_length=255)

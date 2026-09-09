@@ -136,6 +136,45 @@ async def test_super_admin_can_list_teams(client: AsyncClient) -> None:
     assert str(team.id) in ids
 
 
+async def test_list_teams_parent_group_id_matches_detail(client: AsyncClient) -> None:
+    """parent_group_id and organization_id now appear on both
+    AdminTeamListItem (this test) and AdminTeamDetail (elsewhere in this
+    file, e.g. test_super_admin_create_subgroup_returns_201), a genuine
+    two-place vocabulary (CLAUDE.md hardening rule 2), so this pins the list
+    row and the detail response agree for the same group rather than
+    trusting one schema's field to imply the other stays in sync with it.
+    organization_id matters beyond parity: the admin UI's move-target picker
+    (group-hierarchy Phase 5 PR 5-B) filters candidates by it, client-side,
+    to avoid offering a target the backend's cross-organization check would
+    always reject."""
+    factory = await _factory(client)
+    async with factory() as session:
+        org = await make_organization(session)
+        root = await make_team(session, organization=org)
+        child = await make_team(session, organization=org, parent=root)
+        admin = await make_user(session, is_superuser=True)
+
+    response = await client.get(
+        "/v1/admin/teams?page=1&page_size=200",
+        headers=_bearer_for(admin),
+    )
+    assert response.status_code == 200, response.text
+    items_by_id = {item["id"]: item for item in response.json()["items"]}
+
+    assert items_by_id[str(root.id)]["parent_group_id"] is None
+    assert items_by_id[str(child.id)]["parent_group_id"] == str(root.id)
+    assert items_by_id[str(root.id)]["organization_id"] == str(org.id)
+    assert items_by_id[str(child.id)]["organization_id"] == str(org.id)
+
+    detail_response = await client.get(
+        f"/v1/admin/teams/{child.id}", headers=_bearer_for(admin)
+    )
+    assert detail_response.status_code == 200, detail_response.text
+    detail_body = detail_response.json()
+    assert items_by_id[str(child.id)]["parent_group_id"] == detail_body["parent_group_id"]
+    assert items_by_id[str(child.id)]["organization_id"] == detail_body["organization_id"]
+
+
 async def test_super_admin_create_team_returns_201_and_audits(
     client: AsyncClient,
 ) -> None:
@@ -574,7 +613,7 @@ async def test_list_organizations_exposes_is_personal_via_api(client: AsyncClien
 
 
 # ---------------------------------------------------------------------------
-# Group hierarchy — reparent / subgroups (group-hierarchy Phase 5 PR 5-A)
+# Group hierarchy: reparent / subgroups (group-hierarchy Phase 5 PR 5-A)
 # ---------------------------------------------------------------------------
 
 

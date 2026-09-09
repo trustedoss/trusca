@@ -495,6 +495,8 @@ describe("PoliciesPage — super_admin org default", () => {
           member_count: 3,
           project_count: 2,
           created_at: "2026-05-24T00:00:00Z",
+          organization_id: "org-1",
+          parent_group_id: null,
         },
       ],
       total: 1,

@@ -12,10 +12,13 @@ import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { adminTeamQueryKey } from "@/features/admin/api/useAdminTeams";
 import {
   addTeamMember,
+  createSubgroup,
   createTeam,
   deleteTeam,
   removeTeamMember,
+  reparentTeam,
   updateTeam,
+  type AdminGroupCreateSubgroupPayload,
   type AdminTeamCreatePayload,
   type AdminTeamDetail,
   type AdminTeamMemberAddPayload,
@@ -98,6 +101,42 @@ export function useRemoveTeamMember() {
       queryClient.setQueryData(adminTeamQueryKey(data.id), data);
       invalidateAll(queryClient);
       void queryClient.invalidateQueries({ queryKey: ["admin", "users"] });
+    },
+  });
+}
+
+// group-hierarchy Phase 5 PR 5-B.
+
+export function useReparentTeam() {
+  const queryClient = useQueryClient();
+  return useMutation<
+    AdminTeamDetail,
+    Error,
+    { groupId: string; newParentId: string | null }
+  >({
+    mutationFn: ({ groupId, newParentId }) =>
+      reparentTeam(groupId, newParentId),
+    meta: { errorToast: false },
+    onSuccess: (data) => {
+      queryClient.setQueryData(adminTeamQueryKey(data.id), data);
+      invalidateAll(queryClient);
+    },
+  });
+}
+
+export function useCreateSubgroup() {
+  const queryClient = useQueryClient();
+  return useMutation<
+    AdminTeamDetail,
+    Error,
+    { parentGroupId: string; payload: AdminGroupCreateSubgroupPayload }
+  >({
+    mutationFn: ({ parentGroupId, payload }) =>
+      createSubgroup(parentGroupId, payload),
+    meta: { errorToast: false },
+    onSuccess: (data) => {
+      queryClient.setQueryData(adminTeamQueryKey(data.id), data);
+      invalidateAll(queryClient);
     },
   });
 }

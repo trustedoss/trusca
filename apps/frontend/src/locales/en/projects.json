@@ -80,6 +80,8 @@
     "default_branch_placeholder": "main (optional)",
     "team_label": "Team",
     "no_team": "You are not a member of any team yet, so you cannot create a project. Ask an administrator to add you to a team.",
+    "active_team_unresolved": "Your currently active group is not one you belong to directly, so a project cannot be created there from this form. Switch to a team you are a direct member of, then try again.",
+    "team_select_placeholder": "Select a team",
     "submit": "Create Project",
     "cancel": "Cancel",
     "error_name_required": "Project name is required",

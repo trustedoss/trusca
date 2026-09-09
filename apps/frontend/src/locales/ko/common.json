@@ -43,7 +43,8 @@
   "auth": {
     "logout": "로그아웃",
     "profile": "프로필",
-    "active_team": "활성 팀: {{team}}"
+    "active_team": "활성 팀: {{team}}",
+    "active_team_unresolved": "활성 팀 확인 필요"
   },
   "risk": {
     "critical": "치명",

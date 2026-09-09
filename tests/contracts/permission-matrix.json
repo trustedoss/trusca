@@ -225,6 +225,16 @@
       "gate": "super_admin_404"
     },
     {
+      "method": "POST",
+      "path": "/v1/admin/teams/{group_id}/reparent",
+      "gate": "super_admin_404"
+    },
+    {
+      "method": "POST",
+      "path": "/v1/admin/teams/{parent_group_id}/subgroups",
+      "gate": "super_admin_404"
+    },
+    {
       "method": "GET",
       "path": "/v1/admin/trivy/health",
       "gate": "super_admin_404"

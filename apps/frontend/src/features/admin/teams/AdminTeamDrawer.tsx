@@ -5,14 +5,20 @@
  *
  * Sections:
  *   - Header: name, slug (mono), member count, project count.
+ *   - Parent badge: always rendered, root label or parent group name
+ *     (group-hierarchy Phase 5 PR 5-B).
  *   - Edit form: name / slug / description (toggle).
  *   - Add-member form: user_id + role select (inline).
+ *   - Move form: reparent to another group (or to root) in the same
+ *     organization, excluding the group's own subtree (Phase 5 PR 5-B).
+ *   - Add-subgroup form: create a group nested under this one (Phase 5 PR 5-B).
  *   - Members table: per-row remove with inline confirm.
  *   - Delete team button: inline confirm + propagates Problem extension
  *     `team_has_active_scans` into the toast.
  */
+import { useQuery } from "@tanstack/react-query";
 import { Loader2 } from "lucide-react";
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 
 import { Alert, AlertDescription } from "@/components/ui/alert";
@@ -30,11 +36,14 @@ import {
 import { Skeleton } from "@/components/ui/skeleton";
 import {
   useAddTeamMember,
+  useCreateSubgroup,
   useDeleteTeam,
   useRemoveTeamMember,
+  useReparentTeam,
   useUpdateTeam,
 } from "@/features/admin/api/useAdminTeamMutations";
 import { useAdminTeam } from "@/features/admin/api/useAdminTeams";
+import { listAdminTeams } from "@/features/admin/api/adminTeamsApi";
 import type { TeamMembershipRole } from "@/features/admin/api/adminUsersApi";
 import {
   adminErrorExtension,
@@ -77,11 +86,30 @@ export function AdminTeamDrawer({
   const [memberUserId, setMemberUserId] = useState("");
   const [memberRole, setMemberRole] = useState<TeamMembershipRole>("developer");
   const [confirm, setConfirm] = useState<ConfirmKind>(null);
+  // group-hierarchy Phase 5 PR 5-B.
+  const [showMoveForm, setShowMoveForm] = useState(false);
+  const [moveTargetId, setMoveTargetId] = useState("");
+  const [showSubgroupForm, setShowSubgroupForm] = useState(false);
+  const [subgroupName, setSubgroupName] = useState("");
+  const [subgroupSlug, setSubgroupSlug] = useState("");
+  const [subgroupDescription, setSubgroupDescription] = useState("");
 
   const update = useUpdateTeam();
   const del = useDeleteTeam();
   const add = useAddTeamMember();
   const remove = useRemoveTeamMember();
+  const reparent = useReparentTeam();
+  const createSubgroupMutation = useCreateSubgroup();
+
+  // group-hierarchy Phase 5 PR 5-B: the flat team list, used both to resolve
+  // the parent badge's name and to build the move picker's candidates. A
+  // large page_size (200, the existing max) mirrors the convention already
+  // used by the backend's own list test.
+  const teamsList = useQuery({
+    queryKey: ["admin", "teams", "move-candidates"],
+    queryFn: () => listAdminTeams({ page: 1, page_size: 200 }),
+    enabled: open && Boolean(detail.data),
+  });
 
   // Re-seed form fields when the loaded team changes.
   const detailId = detail.data?.id;
@@ -91,12 +119,60 @@ export function AdminTeamDrawer({
     setConfirm(null);
     setMemberUserId("");
     setMemberRole("developer");
+    setShowMoveForm(false);
+    setMoveTargetId("");
+    setShowSubgroupForm(false);
+    setSubgroupName("");
+    setSubgroupSlug("");
+    setSubgroupDescription("");
     if (detail.data) {
       setEditName(detail.data.name);
       setEditSlug(detail.data.slug);
       setEditDescription(detail.data.description ?? "");
     }
   }, [detailId, detail.data]);
+
+  const teamsListItems = teamsList.data?.items;
+  const allTeams = useMemo(() => teamsListItems ?? [], [teamsListItems]);
+
+  // The parent's name isn't on `AdminTeamDetail` (only its id is), so it's
+  // resolved from the flat list above.
+  const parentGroupId = detail.data?.parent_group_id ?? null;
+  const parentName = useMemo(() => {
+    if (!parentGroupId) return "";
+    return allTeams.find((t) => t.id === parentGroupId)?.name ?? "";
+  }, [allTeams, parentGroupId]);
+
+  // Move-target candidates: same organization, excluding the open group's
+  // own subtree (itself + every descendant) so the picker never offers a
+  // move the backend would reject as a cycle.
+  const moveCandidates = useMemo(() => {
+    if (!detail.data) return [];
+    const childrenOf = new Map<string, string[]>();
+    for (const item of allTeams) {
+      if (item.parent_group_id) {
+        const siblings = childrenOf.get(item.parent_group_id) ?? [];
+        siblings.push(item.id);
+        childrenOf.set(item.parent_group_id, siblings);
+      }
+    }
+    const reachable = new Set<string>([detail.data.id]);
+    const stack = [detail.data.id];
+    while (stack.length > 0) {
+      const current = stack.pop() as string;
+      for (const child of childrenOf.get(current) ?? []) {
+        if (!reachable.has(child)) {
+          reachable.add(child);
+          stack.push(child);
+        }
+      }
+    }
+    return allTeams.filter(
+      (item) =>
+        item.organization_id === detail.data?.organization_id &&
+        !reachable.has(item.id),
+    );
+  }, [allTeams, detail.data]);
 
   async function handleSaveTeam() {
     if (!detail.data) return;
@@ -159,6 +235,46 @@ export function AdminTeamDrawer({
     }
   }
 
+  async function handleMove() {
+    if (!detail.data) return;
+    try {
+      await reparent.mutateAsync({
+        groupId: detail.data.id,
+        newParentId: moveTargetId === "" ? null : moveTargetId,
+      });
+      setShowMoveForm(false);
+      notify(t("admin.teams.toast.moved"), "success", "moved");
+    } catch (err) {
+      notify(t(adminErrorMessageKey(err)), "error", adminErrorExtension(err));
+    }
+  }
+
+  async function handleCreateSubgroup() {
+    if (!detail.data) return;
+    if (!subgroupName.trim() || !subgroupSlug.trim()) return;
+    try {
+      await createSubgroupMutation.mutateAsync({
+        parentGroupId: detail.data.id,
+        payload: {
+          name: subgroupName.trim(),
+          slug: subgroupSlug.trim(),
+          description: subgroupDescription.trim() || null,
+        },
+      });
+      setShowSubgroupForm(false);
+      setSubgroupName("");
+      setSubgroupSlug("");
+      setSubgroupDescription("");
+      notify(
+        t("admin.teams.toast.subgroup_created"),
+        "success",
+        "subgroup_created",
+      );
+    } catch (err) {
+      notify(t(adminErrorMessageKey(err)), "error", adminErrorExtension(err));
+    }
+  }
+
   return (
     <Sheet open={open} onOpenChange={onOpenChange}>
       <SheetContent
@@ -201,6 +317,17 @@ export function AdminTeamDrawer({
               />
             </section>
 
+            <Badge
+              variant="outline"
+              className="w-fit bg-muted text-muted-foreground"
+              data-testid="admin-team-drawer-parent"
+              data-parent-name={parentName}
+            >
+              {parentGroupId
+                ? t("admin.teams.drawer.parent_label", { name: parentName })
+                : t("admin.teams.drawer.parent_root")}
+            </Badge>
+
             {detail.data.description ? (
               <p className="text-sm text-muted-foreground">
                 {detail.data.description}
@@ -226,6 +353,22 @@ export function AdminTeamDrawer({
                 data-testid="admin-team-action-add-member"
               >
                 {t("admin.teams.action.add_member")}
+              </Button>
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={() => setShowMoveForm((s) => !s)}
+                data-testid="admin-team-action-move"
+              >
+                {t("admin.teams.action.move")}
+              </Button>
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={() => setShowSubgroupForm((s) => !s)}
+                data-testid="admin-team-action-add-subgroup"
+              >
+                {t("admin.teams.action.add_subgroup")}
               </Button>
               <Button
                 size="sm"
@@ -363,6 +506,136 @@ export function AdminTeamDrawer({
                       <Loader2 className="h-4 w-4 animate-spin" aria-hidden />
                     ) : null}
                     {t("admin.teams.form.add")}
+                  </Button>
+                </div>
+              </section>
+            ) : null}
+
+            {showMoveForm ? (
+              <section
+                className="space-y-2 rounded-md border bg-muted/20 p-3"
+                data-testid="admin-team-move-form"
+              >
+                <div>
+                  <Label htmlFor="admin-team-move-target" className="text-xs">
+                    {t("admin.teams.form.move_target_label")}
+                  </Label>
+                  <select
+                    id="admin-team-move-target"
+                    data-testid="admin-team-move-target"
+                    value={moveTargetId}
+                    onChange={(e) => setMoveTargetId(e.target.value)}
+                    className="flex h-9 w-full rounded-md border border-input bg-background px-3 py-1 text-sm"
+                  >
+                    <option
+                      value=""
+                      data-testid="admin-team-move-target-option-root"
+                    >
+                      {t("admin.teams.form.move_target_root")}
+                    </option>
+                    {moveCandidates.map((candidate) => (
+                      <option
+                        key={candidate.id}
+                        value={candidate.id}
+                        data-group-name={candidate.name}
+                      >
+                        {candidate.name}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+                <div className="flex justify-end gap-2">
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    onClick={() => setShowMoveForm(false)}
+                  >
+                    {t("admin.teams.form.cancel")}
+                  </Button>
+                  <Button
+                    size="sm"
+                    onClick={handleMove}
+                    disabled={reparent.isPending}
+                    data-testid="admin-team-move-save"
+                  >
+                    {reparent.isPending ? (
+                      <Loader2 className="h-4 w-4 animate-spin" aria-hidden />
+                    ) : null}
+                    {t("admin.teams.form.move")}
+                  </Button>
+                </div>
+              </section>
+            ) : null}
+
+            {showSubgroupForm ? (
+              <section
+                className="space-y-2 rounded-md border bg-muted/20 p-3"
+                data-testid="admin-team-subgroup-form"
+              >
+                <div>
+                  <Label htmlFor="admin-team-subgroup-name" className="text-xs">
+                    {t("admin.teams.form.name_label")}
+                  </Label>
+                  <Input
+                    id="admin-team-subgroup-name"
+                    data-testid="admin-team-subgroup-name"
+                    value={subgroupName}
+                    onChange={(e) => setSubgroupName(e.target.value)}
+                    className="h-9"
+                  />
+                </div>
+                <div>
+                  <Label htmlFor="admin-team-subgroup-slug" className="text-xs">
+                    {t("admin.teams.form.slug_label")}
+                  </Label>
+                  <Input
+                    id="admin-team-subgroup-slug"
+                    data-testid="admin-team-subgroup-slug"
+                    value={subgroupSlug}
+                    onChange={(e) => setSubgroupSlug(e.target.value)}
+                    className="h-9 font-mono text-xs"
+                  />
+                  <p className="mt-1 text-[11px] text-muted-foreground">
+                    {t("admin.teams.form.slug_help")}
+                  </p>
+                </div>
+                <div>
+                  <Label
+                    htmlFor="admin-team-subgroup-description"
+                    className="text-xs"
+                  >
+                    {t("admin.teams.form.description_label")}
+                  </Label>
+                  <Input
+                    id="admin-team-subgroup-description"
+                    data-testid="admin-team-subgroup-description"
+                    value={subgroupDescription}
+                    onChange={(e) => setSubgroupDescription(e.target.value)}
+                    className="h-9"
+                  />
+                </div>
+                <div className="flex justify-end gap-2">
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    onClick={() => setShowSubgroupForm(false)}
+                  >
+                    {t("admin.teams.form.cancel")}
+                  </Button>
+                  <Button
+                    size="sm"
+                    onClick={handleCreateSubgroup}
+                    disabled={
+                      createSubgroupMutation.isPending ||
+                      !subgroupName.trim() ||
+                      !subgroupSlug.trim()
+                    }
+                    data-testid="admin-team-subgroup-save"
+                  >
+                    {createSubgroupMutation.isPending ? (
+                      <Loader2 className="h-4 w-4 animate-spin" aria-hidden />
+                    ) : null}
+                    {t("admin.teams.form.create_subgroup")}
                   </Button>
                 </div>
               </section>

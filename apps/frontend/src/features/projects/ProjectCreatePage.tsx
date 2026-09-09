@@ -52,15 +52,30 @@ export function ProjectCreatePage() {
   // said one thing while submit POSTed another. `useActiveTeam` is the single
   // resolution, and the effect below re-syncs when the user changes it. An
   // explicit pick in this select still wins until the bar moves again.
+  //
+  // No separate `user?.teamId` fallback here (there used to be one): it
+  // duplicated `useActiveTeam`'s own no-stored-preference fallback, and
+  // duplicating it meant that when `useActiveTeam` returns `null` because
+  // the stored choice names a group the user has no direct membership in
+  // (group-hierarchy cascade case, see that hook's own docstring), this
+  // component quietly fell back to `user.teamId` anyway, reintroducing,
+  // one level down, the exact silent-team-substitution bug `useActiveTeam`
+  // exists to prevent. `teamId` now tracks `activeTeam?.id` exactly,
+  // including down to `""` when it goes null, so that case correctly hits
+  // the `!hasTeam` blocked state below instead of silently submitting under
+  // a different team than the one the user thinks is active.
   const activeTeam = useActiveTeam();
-  const [teamId, setTeamId] = useState<string>(
-    activeTeam?.id ?? user?.teamId ?? "",
-  );
-  const activeTeamId = activeTeam?.id;
+  const [teamId, setTeamId] = useState<string>(activeTeam?.id ?? "");
   useEffect(() => {
-    if (activeTeamId) setTeamId(activeTeamId);
-  }, [activeTeamId]);
+    setTeamId(activeTeam?.id ?? "");
+  }, [activeTeam?.id]);
   const hasTeam = teamId !== "";
+  // Distinguishes the two reasons `hasTeam` can be false: no membership at
+  // all (existing `create.no_team` copy is accurate) vs. a real membership
+  // that just isn't the currently active selection (the cascade case above).
+  // Reusing "you are not a member of any team" there would be wrong copy;
+  // the user IS a member of teams, just not the one currently active.
+  const activeTeamUnresolved = !hasTeam && teams.length > 0;
 
   const formSchema = z.object({
     name: z
@@ -172,7 +187,18 @@ export function ProjectCreatePage() {
           ) : null}
         </div>
 
-        {teams.length > 1 ? (
+        {teams.length > 1 || activeTeamUnresolved ? (
+          // The `teams.length > 1` branch is the original multi-team
+          // picker. `activeTeamUnresolved` is included even for a
+          // single-team user (group-hierarchy Phase 5 security review): the
+          // blocked state above has to have SOME way out, or a single-team
+          // user who reaches it (e.g. via GroupDetailPage's "New project"
+          // from a cascade-only group) is stuck with a permanently disabled
+          // submit button and nothing on this page that can clear it. This
+          // still requires an explicit click, same as the multi-team case,
+          // rather than auto-selecting the one available team -- an
+          // automatic selection here would be exactly the silent
+          // substitution `useActiveTeam` returning `null` exists to avoid.
           <div className="space-y-1.5">
             <Label htmlFor="project-team">{t("create.team_label")}</Label>
             <select
@@ -182,6 +208,17 @@ export function ProjectCreatePage() {
               data-testid="project-team-select"
               className="flex h-9 w-full rounded-md border border-input bg-background px-3 py-1 text-sm shadow-sm transition-colors duration-fast ease-out-soft focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
             >
+              {teamId === "" ? (
+                // An explicit, disabled placeholder so the browser doesn't
+                // fall back to silently pre-selecting `teams[0]` for an
+                // unmatched `value=""` -- that would visually contradict
+                // the "your active team could not be resolved" warning
+                // right below by showing what looks like a normal, valid
+                // selection.
+                <option value="" disabled>
+                  {t("create.team_select_placeholder")}
+                </option>
+              ) : null}
               {teams.map((tm) => (
                 <option key={tm.id} value={tm.id}>
                   {tm.name}
@@ -273,8 +310,16 @@ export function ProjectCreatePage() {
         </div>
 
         {!hasTeam ? (
-          <Alert variant="destructive" data-testid="project-create-no-team">
-            <AlertDescription>{t("create.no_team")}</AlertDescription>
+          <Alert
+            variant="destructive"
+            data-testid="project-create-no-team"
+            data-reason={activeTeamUnresolved ? "active_team_unresolved" : "no_team"}
+          >
+            <AlertDescription>
+              {activeTeamUnresolved
+                ? t("create.active_team_unresolved")
+                : t("create.no_team")}
+            </AlertDescription>
           </Alert>
         ) : null}
 

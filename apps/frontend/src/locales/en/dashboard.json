@@ -132,6 +132,7 @@
         "cta": "Open integrations"
       }
     },
-    "no_team": "You do not belong to a team yet, and all four of these belong to one. Ask an administrator to add you."
+    "no_team": "You do not belong to a team yet, and all four of these belong to one. Ask an administrator to add you.",
+    "active_team_unresolved": "Your active team needs attention before these steps can continue. Use the team switcher in the top bar to pick one you belong to."
   }
 }

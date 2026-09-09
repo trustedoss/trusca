@@ -27,13 +27,21 @@ const EXTENSION_KEY_MAP: Array<[string, string]> = [
   ["scan_already_cancelled", "admin.errors.scan_already_cancelled"],
   ["scan_not_found", "admin.errors.scan_not_found"],
   ["audit_export_too_large", "admin.errors.audit_export_too_large"],
+  // Group-hierarchy Phase 5 PR 5-A: reparent/create_subgroup extensions.
+  // cycle_detected is also a 409, and MUST be checked before the generic
+  // "status 409 -> slug_conflict" fallback below, or a cycle rejection would
+  // read as a slug collision to the admin.
+  ["cycle_detected", "admin.errors.cycle_detected"],
+  ["cross_organization_move", "admin.errors.cross_organization_move"],
 ];
 
 /**
- * Returns the i18n key best matching the problem details payload. Status 409
- * is a slug conflict (the only 409 in the admin surface). Validation
- * extensions are inspected first because they're more specific than the
- * generic 422/409 fallbacks.
+ * Returns the i18n key best matching the problem details payload. Extension
+ * fields are checked first because they're more specific than the generic
+ * status-code fallbacks below; this matters for 409 in particular, since
+ * `cycle_detected` (reparent) is ALSO a 409 alongside the plain slug
+ * conflict this fallback exists for; an unmapped extension there would
+ * silently read as a slug collision.
  */
 export function adminErrorMessageKey(err: unknown): string {
   // The read-only-demo 403 runs before auth and must win over the generic
@@ -66,8 +74,10 @@ export function adminErrorMessageKey(err: unknown): string {
  * payload — used by the toast/alert markup so e2e tests can assert on the
  * specific invariant without depending on translated copy.
  *
- * Returns ``"slug_conflict"`` for the only 409 case, ``"unknown"`` when no
- * known extension is present.
+ * Returns ``"slug_conflict"`` as the fallback for a 409 with no matching
+ * extension (not "the only 409 case" anymore: ``cycle_detected`` is also a
+ * 409, but has its own entry in ``EXTENSION_KEY_MAP`` checked first).
+ * ``"unknown"`` when no known extension is present and the status isn't 409.
  */
 export function adminErrorExtension(err: unknown): string {
   // Mirror adminErrorMessageKey: the demo guard is the most specific match

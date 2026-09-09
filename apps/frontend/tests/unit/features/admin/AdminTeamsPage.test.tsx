@@ -49,6 +49,11 @@ function team(
     member_count: overrides.member_count ?? 3,
     project_count: overrides.project_count ?? 1,
     created_at: overrides.created_at ?? "2026-04-01T00:00:00Z",
+    organization_id: overrides.organization_id ?? "org-1",
+    parent_group_id:
+      overrides.parent_group_id === undefined
+        ? null
+        : overrides.parent_group_id,
   };
 }
 
@@ -62,6 +67,8 @@ function detailFromItem(t: AdminTeamListItem): AdminTeamDetail {
     members: [],
     created_at: t.created_at,
     updated_at: t.created_at,
+    organization_id: t.organization_id,
+    parent_group_id: t.parent_group_id,
   };
 }
 
@@ -266,5 +273,23 @@ describe("AdminTeamsPage", () => {
     await waitFor(() => {
       expect(screen.getByTestId("admin-teams-error")).toBeInTheDocument();
     });
+  });
+
+  it("carries data-parent-group-id per row, empty string for a root group (group-hierarchy Phase 5 PR 5-B)", async () => {
+    const root = team("Core");
+    const child = team("Sub-core", { parent_group_id: root.id });
+    mockedList.mockResolvedValue(listResponse([root, child]));
+    renderPage();
+    await waitFor(() => {
+      expect(screen.getAllByTestId("admin-teams-row")).toHaveLength(2);
+    });
+    const rootRow = screen
+      .getAllByTestId("admin-teams-row")
+      .find((row) => row.getAttribute("data-team-name") === "Core");
+    const childRow = screen
+      .getAllByTestId("admin-teams-row")
+      .find((row) => row.getAttribute("data-team-name") === "Sub-core");
+    expect(rootRow).toHaveAttribute("data-parent-group-id", "");
+    expect(childRow).toHaveAttribute("data-parent-group-id", root.id);
   });
 });

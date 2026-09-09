@@ -149,7 +149,9 @@
         "edit": "수정",
         "delete": "팀 삭제",
         "add_member": "멤버 추가",
-        "remove_member": "제거"
+        "remove_member": "제거",
+        "move": "이동",
+        "add_subgroup": "하위 그룹 추가"
       },
       "confirm": {
         "delete": "이 팀을 삭제하시겠습니까? 팀이 소유한 프로젝트는 보관됩니다.",
@@ -165,20 +167,28 @@
         "save": "팀 저장",
         "create": "팀 생성",
         "add": "멤버 추가",
-        "cancel": "취소"
+        "cancel": "취소",
+        "move_target_label": "새 상위 그룹",
+        "move_target_root": "조직 최상위 (상위 그룹 없음)",
+        "move": "이동",
+        "create_subgroup": "하위 그룹 생성"
       },
       "drawer": {
         "members": "멤버",
         "no_members": "이 팀에는 아직 멤버가 없습니다.",
         "project_count": "프로젝트",
-        "created_at": "생성"
+        "created_at": "생성",
+        "parent_root": "조직 최상위 그룹",
+        "parent_label": "상위 그룹: {{name}}"
       },
       "toast": {
         "created": "팀이 생성되었습니다.",
         "updated": "팀이 업데이트되었습니다.",
         "deleted": "팀이 삭제되었습니다.",
         "member_added": "멤버가 추가되었습니다.",
-        "member_removed": "멤버가 제거되었습니다."
+        "member_removed": "멤버가 제거되었습니다.",
+        "moved": "팀이 이동되었습니다.",
+        "subgroup_created": "하위 그룹이 생성되었습니다."
       },
       "empty": "현재 필터에 해당하는 팀이 없습니다."
     },
@@ -485,6 +495,8 @@
       "scan_already_cancelled": "이미 종료된 스캔은 다시 취소할 수 없습니다.",
       "scan_not_found": "스캔을 찾을 수 없습니다.",
       "audit_export_too_large": "내보낼 행 수가 100,000 건을 초과합니다. 필터 범위를 좁힌 후 다시 시도하세요.",
+      "cycle_detected": "이동하면 그룹이 자기 자신의 상위 그룹이 됩니다. 다른 상위 그룹을 선택하세요.",
+      "cross_organization_move": "이 그룹과 선택한 상위 그룹이 서로 다른 조직에 속해 있습니다. 조직 간 이동은 허용되지 않습니다.",
       "demo_read_only": "읽기 전용 라이브 데모입니다. 생성·수정·삭제가 비활성화되어 있습니다.",
       "unknown": "오류가 발생했습니다. 다시 시도해 주세요."
     },

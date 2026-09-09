@@ -13,6 +13,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { ProjectCreatePage } from "@/features/projects/ProjectCreatePage";
 import { ProblemError } from "@/lib/problem";
 import { useAuthStore } from "@/stores/authStore";
+import { useUIStore } from "@/stores/uiStore";
 
 vi.mock("@/lib/projectsApi", () => ({
   createProject: vi.fn(),
@@ -41,7 +42,14 @@ const fakeUser = {
   isActive: true,
   isSuperuser: false,
   teamId: "team-1",
-  teams: [],
+  // A realistic membership list: `teamId` names one of these. It used to be
+  // `[]` here, which only "worked" because ProjectCreatePage carried its
+  // OWN `user?.teamId ?? ""` fallback alongside `useActiveTeam()`'s -- the
+  // exact double-fallback the group-hierarchy Phase 5 fix removes (see
+  // ProjectCreatePage.tsx's comment on `teamId`/`activeTeamUnresolved`), so
+  // an empty `teams` array here now correctly resolves to no active team at
+  // all rather than silently working anyway.
+  teams: [{ id: "team-1", name: "Team One", role: "developer" as const }],
 };
 
 function renderPage() {
@@ -65,6 +73,7 @@ describe("ProjectCreatePage", () => {
       status: "authenticated",
       isAuthenticated: true,
     });
+    useUIStore.setState({ activeTeamId: null });
   });
 
   it("renders name, description, and git URL fields", () => {
@@ -168,5 +177,35 @@ describe("ProjectCreatePage", () => {
     expect(screen.getByTestId("project-create-error")).toHaveTextContent(
       "A project with this name already exists in the team.",
     );
+  });
+
+  it("gives a single-team user a way out of the active-team-unresolved block, not a dead end", async () => {
+    // group-hierarchy Phase 5 security review (Medium finding): the team
+    // <select> used to only render for `teams.length > 1`, so a SINGLE-team
+    // user who hit the active-team-unresolved block (e.g. via
+    // GroupDetailPage's "New project" from a cascade-only group) saw a
+    // permanently disabled submit button with no control on this page that
+    // could clear it -- `fakeUser` here has exactly one membership, the
+    // shape that exposes the gap the `teams.length > 1` condition alone
+    // could not catch (a two-team fixture would pass even without the fix,
+    // since its select already renders for the OTHER reason).
+    useUIStore.setState({ activeTeamId: "group-c-cascade-only" });
+    const user = userEvent.setup();
+    renderPage();
+
+    const alert = await screen.findByTestId("project-create-no-team");
+    expect(alert).toHaveAttribute("data-reason", "active_team_unresolved");
+    expect(screen.getByTestId("project-create-submit")).toBeDisabled();
+
+    const select = screen.getByTestId(
+      "project-team-select",
+    ) as HTMLSelectElement;
+    expect(select.value).toBe("");
+
+    await user.selectOptions(select, "team-1");
+
+    expect(select.value).toBe("team-1");
+    expect(screen.getByTestId("project-create-submit")).not.toBeDisabled();
+    expect(screen.queryByTestId("project-create-no-team")).toBeNull();
   });
 });

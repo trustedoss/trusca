@@ -39,6 +39,7 @@ import { useLicensePolicies } from "@/features/policies/useLicensePolicies";
 import { useActiveTeam } from "@/hooks/useActiveTeam";
 import { useDemoMode } from "@/hooks/useDemoMode";
 import { cn } from "@/lib/utils";
+import { useAuthStore } from "@/stores/authStore";
 import { useUIStore } from "@/stores/uiStore";
 import type { ProjectPublic } from "@/lib/projectsApi";
 
@@ -167,6 +168,7 @@ export function OnboardingChecklist(props: OnboardingChecklistProps) {
   const { demoReadOnly } = useDemoMode();
   const dismiss = useUIStore((s) => s.dismissOnboarding);
   const activeTeam = useActiveTeam();
+  const teamCount = useAuthStore((s) => s.user?.teams?.length ?? 0);
   const { visible, steps, doneCount } = useOnboardingChecklist(props);
 
   if (!visible) return null;
@@ -177,6 +179,16 @@ export function OnboardingChecklist(props: OnboardingChecklistProps) {
   // step, and each CTA would be a door that does not open. They still see
   // what the four steps are; what they get instead of buttons is the reason.
   const hasTeam = activeTeam !== null;
+  // group-hierarchy Phase 5 security review: `activeTeam` can be `null` for
+  // two different reasons now (see `useActiveTeam`'s own docstring) -- no
+  // membership at all, or a real membership that just isn't the currently
+  // active selection (the stored preference names a group outside
+  // `user.teams`, most often reached only through the cascade). Reusing
+  // `onboarding.no_team`'s "you do not belong to a team, ask an admin" copy
+  // for the second case is factually wrong: this user IS on a team, they
+  // just need to switch to it (topbar `TeamSwitcher` now offers exactly
+  // that once it also hits this same null case).
+  const activeTeamUnresolved = !hasTeam && teamCount > 0;
 
   return (
     <Card data-testid="onboarding-checklist" className="mx-6 mt-6">
@@ -187,7 +199,11 @@ export function OnboardingChecklist(props: OnboardingChecklistProps) {
             {t("onboarding.title")}
           </CardTitle>
           <p className="mt-1 text-sm text-muted-foreground">
-            {hasTeam ? t("onboarding.description") : t("onboarding.no_team")}
+            {hasTeam
+              ? t("onboarding.description")
+              : activeTeamUnresolved
+                ? t("onboarding.active_team_unresolved")
+                : t("onboarding.no_team")}
           </p>
         </div>
         <div className="flex shrink-0 items-center gap-3">
