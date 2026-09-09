@@ -221,6 +221,21 @@ def _reset_rate_limiter() -> None:
 
 
 @pytest.fixture(autouse=True)
+def _reset_redis_degradation_tracking() -> None:
+    """Clear core.redis_degradation's module-level state between tests.
+
+    A test that induces a real fail-open event (e.g. test_rate_limit.py's
+    unreachable-Redis tests) writes into module-level state that otherwise
+    outlives the test. A later test asserting /health/ready's exact response
+    shape (no redis_fail_open key in the common case) would then fail
+    depending on test order alone, not on anything it changed itself.
+    """
+    from core import redis_degradation
+
+    redis_degradation._reset_for_tests()
+
+
+@pytest.fixture(autouse=True)
 async def _isolate_engine_per_test() -> AsyncIterator[None]:
     """
     Dispose the FastAPI app's async engine after every test.

@@ -56,6 +56,7 @@ import structlog
 from redis.asyncio import Redis
 from redis.exceptions import RedisError
 
+from core import redis_degradation
 from core.config import (
     login_throttle_enabled,
     login_throttle_failures,
@@ -350,8 +351,18 @@ def _degraded(action: str, exc: Exception) -> None:
     belongs fixed rather than logged. The warning exists so that the difference
     is visible to somebody reading logs, since the outward behaviour of both is
     the same throttle quietly not running.
+
+    Routed through `core.redis_degradation` (#419/#420) rather than logging
+    directly: it dedupes this WARNING under sustained failures instead of
+    one line per request, and keeps a count + last-degraded timestamp
+    `/health/ready` can surface even between individual failures.
     """
-    log.warning("auth.throttle_unavailable", action=action, error=str(exc))
+    redis_degradation.record(
+        component="login_throttle",
+        event="auth.throttle_unavailable",
+        action=action,
+        exc=exc,
+    )
 
 
 async def seconds_until_retry(email: str) -> int:
@@ -454,18 +465,24 @@ async def spend_once(jti: str, *, seconds: int) -> bool:
     try:
         created = await _redis().set(f"{_KEY_PREFIX}spent:{jti}", "1", ex=seconds, nx=True)
     except (RedisError, RuntimeError) as exc:
-        # Its own line, above the generic one. "Redis is unavailable" tells an
-        # operator that something is broken; it does not tell them that for the
-        # duration a pending credential can be exchanged more than once. Whoever
-        # investigates an incident afterwards needs to know that this specific
-        # protection was off during that window, and the generic message does
-        # not say which protection.
-        log.warning(
-            "auth.mfa_single_use_not_enforced",
-            reason="redis unavailable",
-            window_seconds=seconds,
+        # A specific event, not the generic `_degraded` one: "Redis is
+        # unavailable" tells an operator that something is broken; it does
+        # not tell them that for the duration a pending credential can be
+        # exchanged more than once. Whoever investigates an incident
+        # afterwards needs to know that this specific protection was off
+        # during that window, and the generic message does not say which
+        # protection. Still routed through `redis_degradation.record()`
+        # (not a bare `log.warning()`) so sustained traffic during an
+        # outage dedupes the same way the generic path does - an earlier
+        # version of this fix left this one call site un-deduped, which
+        # reproduced #419 under this event's own name.
+        redis_degradation.record(
+            component="login_throttle",
+            event="auth.mfa_single_use_not_enforced",
+            action="spend_once",
+            exc=exc,
+            extra={"reason": "redis unavailable", "window_seconds": seconds},
         )
-        _degraded("spend_once", exc)
         return True
     return bool(created)
 

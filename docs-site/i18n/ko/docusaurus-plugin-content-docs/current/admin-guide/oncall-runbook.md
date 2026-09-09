@@ -325,6 +325,26 @@ docker-compose -f docker-compose.yml run --rm --entrypoint python worker-scan \
   별개의 장애이고 증상도 다릅니다. 그쪽은 이 필드보다는 시나리오 5의
   큐 적체 알림으로 먼저 드러날 가능성이 큽니다.
 
+`redis` 필드는 그 순간의 핑 결과라, 장애 사이에 확인하면 `"ok"`로 보일 수
+있습니다. 값이 있을 때는 응답에 `redis_fail_open` 객체도 같이 실립니다
+(`{"ratelimit": {"count": N, "last_degraded_at": "<ISO 8601>", "worker_pid":
+P}, "login_throttle": {...}}`). 요청 경로에서 실제로 fail-open으로 넘어간
+적 있는 제어마다 한 항목씩 있고, 이번 호출 자체의 핑과는 별개로 쌓입니다.
+이 필드 자체가 없다면 프로세스가 시작된 뒤로 두 제어 중 어느 쪽도 아직
+한 번도 저하된 적이 없다는 뜻입니다. `redis: "ok"`로 보이는 시점보다
+`last_degraded_at`이 더 과거라면, 장애가 이미 끝난 게 아니라 간헐적으로
+반복되고 있다는 신호입니다(불안정한 네트워크 경로, 일부 명령만 거부하는
+`REDIS_URL` 비밀번호 설정 오류 등).
+
+이 상태는 프로세스마다 따로 있습니다. `UVICORN_WORKERS`가 2 이상이면
+워커마다 자기 몫의 상태를 따로 갖고 있고, HTTP 응답 하나는 그 요청을 받은
+워커의 상태만 보여줍니다. `worker_pid`가 그 워커를 가리키므로, 이
+엔드포인트를 여러 번 조회했을 때 필드가 나타났다 사라졌다 하면서
+`worker_pid` 값이 매번 다르다면, 장애가 반복해서 시작되고 끝난 것이 아니라
+워커 여럿이 각자 따로 그 장애를 겪었다는 뜻입니다. 워커 사이의 집계는 이
+필드가 대신해 주지 않으므로, 전체 합계가 필요하면 `worker_pid`별로
+`count`를 직접 더해야 합니다.
+
 ### 진단
 <!-- docs-uat: id=oncall-redis-degraded-check kind=shell ctx=host tier=nightly waiver=runbook-diagnostic-prod-compose-placeholder-creds -->
 ```bash

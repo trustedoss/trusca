@@ -478,10 +478,16 @@ async def test_a_redis_outage_leaves_sign_in_working(client: AsyncClient, monkey
     becomes a 500, for a control this module calls a slowdown rather than a
     last line. It degrades to the per-IP limit, which is still in force, and
     says so in the log.
+
+    Also the real call site for `core.redis_degradation.record()` under the
+    "login_throttle" component (#419/#420): `core.ratelimit` reports its own
+    outages under "ratelimit", and a copy-paste swap between the two modules
+    would pass every test in `test_redis_degradation.py`, which exercises
+    `record()` directly rather than through either real caller.
     """
     from redis.exceptions import ConnectionError as RedisConnectionError
 
-    from core import login_throttle
+    from core import login_throttle, redis_degradation
     from tests._helpers import unique_suffix
 
     email = f"outage-{unique_suffix()}@example.com"
@@ -498,6 +504,14 @@ async def test_a_redis_outage_leaves_sign_in_working(client: AsyncClient, monkey
 
     ok = await client.post("/auth/login", json={"email": email, "password": password})
     assert ok.status_code == 200, ok.text
+
+    # A successful sign-in also clears any prior throttle state (`clear()`),
+    # which hits the same unreachable `_redis()` and reports its own action -
+    # so this outage is counted twice under the one "login_throttle"
+    # component: once for the gate, once for the clear.
+    snapshot = redis_degradation.snapshot()
+    assert snapshot.keys() == {"login_throttle"}
+    assert snapshot["login_throttle"]["count"] == 2
 
 
 async def test_the_owner_can_still_reset_while_an_attacker_holds_the_address(

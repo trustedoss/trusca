@@ -126,9 +126,17 @@ def test_fail_open_storage_answers_not_limited_when_redis_is_unreachable():
     author remembered. Port 1 is not Redis and nothing will ever listen
     there, so this is a genuine, fast (sub-second, bounded by the socket
     timeouts below) connection failure.
+
+    Also the real call site for `core.redis_degradation.record()` under the
+    "ratelimit" component (#419/#420): a copy-paste of the wrong component
+    name between this module and `core.login_throttle` (which reports under
+    "login_throttle") would pass every test in `test_redis_degradation.py`,
+    since those exercise `record()` directly rather than through either real
+    caller.
     """
     import time
 
+    from core import redis_degradation
     from core.ratelimit import FailOpenRedisStorage
 
     storage = FailOpenRedisStorage(
@@ -140,6 +148,10 @@ def test_fail_open_storage_answers_not_limited_when_redis_is_unreachable():
     assert storage.incr("some-key", 60) == 0
     assert storage.get("some-key") == 0
     assert abs(storage.get_expiry("some-key") - time.time()) < 5
+
+    snapshot = redis_degradation.snapshot()
+    assert snapshot.keys() == {"ratelimit"}
+    assert snapshot["ratelimit"]["count"] == 3
 
 
 def test_fail_open_storage_still_enforces_the_limit_when_redis_answers(monkeypatch):

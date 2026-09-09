@@ -27,10 +27,14 @@ schema-at-HEAD gate only.
 
 from __future__ import annotations
 
+from datetime import UTC, datetime
+from typing import Any
+
 from fastapi import APIRouter, Depends, Request, status
 from fastapi.responses import JSONResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from core import redis_degradation
 from core.db import get_db
 from core.errors import problem_response
 from core.readiness import check_redis_status, check_schema_readiness
@@ -44,6 +48,41 @@ router = APIRouter()
 # default; a stable, dereferenceable-looking URN lets clients branch on the
 # specific failure class without parsing the human-readable title.
 _NOT_READY_TYPE = "urn:trustedoss:problem:schema-not-ready"
+
+
+def _redis_fail_open_field() -> dict[str, Any] | None:
+    """The ``redis_fail_open`` field (#420), or ``None`` to omit it.
+
+    ``redis_status`` above is a live ping: a check that happens to land
+    between failures reads ``"ok"`` even against a Redis whose credentials
+    are wrong (``AuthenticationError``, a ``RedisError`` subclass no
+    exception-type check here distinguishes from a transient outage) and
+    which every rate-limit / login-throttle call keeps failing against.
+    ``core.redis_degradation.snapshot()`` is the record of what actually
+    happened on the request path, independent of this call's own ping.
+    Omitted (not an empty dict) when nothing has ever degraded, so the
+    common-case response shape does not change for every deployment that
+    has never had a Redis hiccup.
+
+    ``worker_pid`` is carried through because this state is per-process
+    (``core.redis_degradation``'s own docstring has the full explanation):
+    behind ``UVICORN_WORKERS > 1`` a poll that lands on a different worker
+    each time can otherwise look like the signal is flapping when it is
+    really just sampling different processes, each with its own copy.
+    """
+    snapshot = redis_degradation.snapshot()
+    if not snapshot:
+        return None
+    return {
+        component: {
+            "count": entry["count"],
+            "last_degraded_at": datetime.fromtimestamp(
+                entry["last_degraded_at"], tz=UTC
+            ).isoformat(),
+            "worker_pid": entry["worker_pid"],
+        }
+        for component, entry in snapshot.items()
+    }
 
 
 @router.get(
@@ -100,11 +139,15 @@ async def health_ready(
     """
     result = await check_schema_readiness(session)
     redis_status = await check_redis_status()
+    fail_open = _redis_fail_open_field()
     if result.ready:
-        return JSONResponse(
-            {"status": "ready", "redis": redis_status},
-            status_code=status.HTTP_200_OK,
-        )
+        body: dict[str, Any] = {"status": "ready", "redis": redis_status}
+        if fail_open is not None:
+            body["redis_fail_open"] = fail_open
+        return JSONResponse(body, status_code=status.HTTP_200_OK)
+    extra: dict[str, Any] = {"redis": redis_status}
+    if fail_open is not None:
+        extra["redis_fail_open"] = fail_open
     return problem_response(
         status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
         title="Service Not Ready",
@@ -112,7 +155,7 @@ async def health_ready(
         instance=request.url.path,
         type_=_NOT_READY_TYPE,
         ready=False,
-        redis=redis_status,
+        **extra,
     )
 
 
