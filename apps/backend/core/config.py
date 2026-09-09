@@ -1984,18 +1984,127 @@ def broker_visibility_timeout_seconds() -> int:
     transport default is 3600s, but this deployment's scan hard time limit
     defaults to 3900s (``scan_hard_time_limit_seconds()``); the timeout was
     never set explicitly, so the shorter Redis default silently won.
-    Combined with ``task_acks_late=True`` (celery_app.py), a scan that runs
+    Combined with ``task_acks_late=True`` (celery_app.py), a task that runs
     past the visibility timeout gets redelivered to a second worker while the
-    first worker is still running it, and the same scan occupies two slots.
+    first worker is still running it. For a scan that means the same scan
+    occupies two slots; for ``trustedoss.backup.restore`` (#436) it is worse
+    than a wasted slot, since two workers would then run a second ``psql``
+    restore transaction against the same database while the first is still
+    live.
 
-    Derived from ``scan_hard_time_limit_seconds()`` plus a fixed margin
-    (never a hard-coded literal here) so retuning
-    ``SCAN_HARD_TIME_LIMIT_SECONDS`` moves this value automatically and the
-    invariant (visibility timeout > hard limit) cannot drift out of sync.
-    Read at call time (CLAUDE.md core rule #11); both this and the value it
-    derives from re-read the environment on every call.
+    Derived from the LARGER of the scan and backup hard limits plus a fixed
+    margin (never a hard-coded literal here), so retuning either
+    ``SCAN_HARD_TIME_LIMIT_SECONDS`` or ``BACKUP_SUBPROCESS_TIMEOUT`` moves
+    this value automatically and the invariant (visibility timeout exceeds
+    every task's own hard limit) cannot drift out of sync no matter which
+    side an operator raises. ``backup_task_time_limit_seconds()`` already
+    exceeds ``scan_hard_time_limit_seconds()`` at both defaults (8100s vs
+    3900s), but an operator who raises only ``SCAN_HARD_TIME_LIMIT_SECONDS``
+    high enough must not silently fall back to a smaller margin over the
+    backup ceiling than the one this function has always guaranteed scans.
+
+    Read at call time (CLAUDE.md core rule #11); every value this derives
+    from re-reads the environment on every call.
     """
-    return scan_hard_time_limit_seconds() + BROKER_VISIBILITY_TIMEOUT_MARGIN_SECONDS
+    return (
+        max(scan_hard_time_limit_seconds(), backup_task_time_limit_seconds())
+        + BROKER_VISIBILITY_TIMEOUT_MARGIN_SECONDS
+    )
+
+
+# Same purpose as SCAN_TIMEOUT_MIN_GRACE_SECONDS above, kept as a separate
+# constant so retuning the scan pair never silently moves this one: the
+# soft-limit handler for a default-queue task needs its own window to finish
+# whatever cleanup it does before the hard limit's SIGKILL lands.
+DEFAULT_TASK_TIMEOUT_MIN_GRACE_SECONDS = 300
+
+
+def default_task_soft_time_limit_seconds() -> int:
+    """Celery ``soft_time_limit`` for the ~40 non-scan tasks on the default
+    queue (#436): everything ``tasks/celery_app.py``'s ``task_annotations``
+    ``"*"`` entry covers, i.e. every task name without its own explicit
+    override there (the four scan task names, and ``trustedoss.backup.run`` /
+    ``.restore``, are the exceptions and read their own accessors instead).
+
+    Before this, none of these ~40 tasks had ANY Celery-level time limit: a
+    stuck notification delivery, a catalog refresh wedged on a slow feed, or
+    any other hang on this queue occupied a worker slot forever, with nothing
+    to reclaim it. ``tasks/vulnerability_catalog_refresh.py`` already assumed
+    a Celery soft limit existed as its own backstop (see its
+    ``_MAX_DURATION_SECONDS`` docstring, written against a 3600s figure that
+    was never actually wired to anything) - this accessor is what makes that
+    assumption true. 2400s (40 minutes) sits comfortably above that task's own
+    30-minute internal abort so the internal, resumable abort gets to run
+    first; the Celery signal is the backstop for a hang the internal check
+    itself cannot reach (e.g. stuck inside a single blocking call).
+
+    Read at call time per CLAUDE.md core rule #11.
+    """
+    return int(os.getenv("DEFAULT_TASK_SOFT_TIME_LIMIT_SECONDS", "2400"))
+
+
+def default_task_time_limit_seconds() -> int:
+    """Hard (SIGKILL) limit paired with :func:`default_task_soft_time_limit_seconds`.
+
+    Same clamp pattern as :func:`scan_hard_time_limit_seconds`: the effective
+    hard limit cannot land at or before the soft limit (which would SIGKILL a
+    task before its soft-limit handler, if any, gets a chance to run), so an
+    operator's misconfigured pair degrades to a safe default instead of a
+    worker crash-looping on the affected task.
+    """
+    soft = default_task_soft_time_limit_seconds()
+    raw_hard = int(os.getenv("DEFAULT_TASK_TIME_LIMIT_SECONDS", "2700"))
+    return max(raw_hard, soft + DEFAULT_TASK_TIMEOUT_MIN_GRACE_SECONDS)
+
+
+def backup_subprocess_timeout_seconds() -> int:
+    """Timeout for each ``pg_dump`` / ``psql`` / workspace-tar step inside a
+    backup or restore (``tasks/backup.py``).
+
+    Single accessor for a value three call sites in that module each used to
+    read via their own ``int(os.getenv(...))`` - kept in ``core.config``
+    (rather than only in ``tasks.backup``) so :func:`backup_task_time_limit_seconds`
+    below can derive from the same source without importing the task module.
+
+    Read at call time (rule #11). Default 3600s (1 hour); mirrored by the
+    Helm chart's ``worker.default.terminationGracePeriodSeconds`` (see that
+    value's own comment for why raising this must be paired with raising it).
+    """
+    return int(os.getenv("BACKUP_SUBPROCESS_TIMEOUT", "3600"))
+
+
+# Margin above 2x backup_subprocess_timeout_seconds() covering the
+# bookkeeping a backup/restore task also does (manifest write, checksum
+# verification, audit row) that is not itself subprocess-timed. Not
+# operator-configurable: raising BACKUP_SUBPROCESS_TIMEOUT already moves the
+# derived limit with it, the same derived-only pattern
+# broker_visibility_timeout_seconds() uses.
+BACKUP_TASK_TIME_LIMIT_MARGIN_SECONDS = 600
+
+# Same role as DEFAULT_TASK_TIMEOUT_MIN_GRACE_SECONDS, independent constant so
+# retuning either pair never silently moves the other.
+BACKUP_TASK_TIMEOUT_MIN_GRACE_SECONDS = 300
+
+
+def backup_task_soft_time_limit_seconds() -> int:
+    """Celery ``soft_time_limit`` for ``trustedoss.backup.run`` / ``.restore`` (#436).
+
+    A single backup (``pg_dump`` then the workspace tar) or restore (``psql``
+    restore then the workspace tar) runs up to TWO sequential steps each
+    independently bounded by :func:`backup_subprocess_timeout_seconds`, per
+    ``tasks.backup._create_workspace_archive``'s own docstring - so the
+    budget here covers both rather than one, which is why this is not simply
+    :func:`default_task_soft_time_limit_seconds`. Deliberately excluded from
+    that generic default for the same reason ``tasks/celery_app.py`` never
+    set a single global limit: a large database's dump legitimately needs
+    more time than a webhook delivery does.
+    """
+    return 2 * backup_subprocess_timeout_seconds() + BACKUP_TASK_TIME_LIMIT_MARGIN_SECONDS
+
+
+def backup_task_time_limit_seconds() -> int:
+    """Hard (SIGKILL) limit paired with :func:`backup_task_soft_time_limit_seconds`."""
+    return backup_task_soft_time_limit_seconds() + BACKUP_TASK_TIMEOUT_MIN_GRACE_SECONDS
 
 
 def workspace_orphan_max_age_seconds() -> int:
@@ -2347,6 +2456,37 @@ def trivy_db_refresh_timeout_seconds() -> int:
         default=15 * 60,
         minimum=30,
         maximum=60 * 60,
+    )
+
+
+# Margin above trivy_db_refresh_timeout_seconds() for the Celery soft limit
+# (#436, security review on that PR): TRIVY_DB_REFRESH_TIMEOUT_SECONDS is
+# operator-configurable up to 3600s, which already exceeds
+# default_task_soft_time_limit_seconds() (2400s) - the #436 fallback every
+# other default-queue task gets. Falling through to that fallback would let
+# the Celery soft limit fire BEFORE download_db_only()'s own timeout, so this
+# task gets its own accessor pair instead, the same way backup does.
+TRIVY_DB_REFRESH_TASK_TIME_LIMIT_MARGIN_SECONDS = 300
+
+
+def trivy_db_refresh_task_soft_time_limit_seconds() -> int:
+    """Celery ``soft_time_limit`` for ``trustedoss.trivy_db_refresh`` (#436).
+
+    Set above :func:`trivy_db_refresh_timeout_seconds` so that accessor's own
+    internal timeout (a bounded ``trivy --download-db-only`` call that
+    degrades to a WARNING + notification, per its own docstring) always gets
+    to run to completion first; this is the backstop for the case that
+    internal timeout itself cannot reach, not the primary mechanism.
+    """
+    return trivy_db_refresh_timeout_seconds() + TRIVY_DB_REFRESH_TASK_TIME_LIMIT_MARGIN_SECONDS
+
+
+def trivy_db_refresh_task_time_limit_seconds() -> int:
+    """Hard (SIGKILL) limit paired with
+    :func:`trivy_db_refresh_task_soft_time_limit_seconds`."""
+    return (
+        trivy_db_refresh_task_soft_time_limit_seconds()
+        + DEFAULT_TASK_TIMEOUT_MIN_GRACE_SECONDS
     )
 
 

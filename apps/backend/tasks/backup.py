@@ -73,7 +73,7 @@ from urllib.parse import unquote, urlparse
 
 import structlog
 
-from core.config import database_url
+from core.config import backup_subprocess_timeout_seconds, database_url
 from core.db import sync_session_scope
 from models import AuditLog
 from services.backup_service import (
@@ -599,7 +599,7 @@ def _run_pg_dump(target_gz: Path) -> None:
         *pg_args,
     ]
     env = {**os.environ, **pg_env}
-    timeout = int(os.getenv("BACKUP_SUBPROCESS_TIMEOUT", "3600"))
+    timeout = backup_subprocess_timeout_seconds()
     proc: subprocess.Popen[bytes] | None = None
     try:
         with target_gz.open("wb") as raw_out, gzip.GzipFile(fileobj=raw_out, mode="wb") as gz_out:
@@ -648,7 +648,7 @@ def _run_psql_restore(source_gz: Path) -> None:
     pg_args, pg_env = _pg_connection_args()
     cmd = ["psql", "--quiet", "--single-transaction", *pg_args]
     env = {**os.environ, **pg_env}
-    timeout = int(os.getenv("BACKUP_SUBPROCESS_TIMEOUT", "3600"))
+    timeout = backup_subprocess_timeout_seconds()
     proc: subprocess.Popen[bytes] | None = None
     try:
         with gzip.open(source_gz, "rb") as gz_in:
@@ -743,7 +743,7 @@ def _create_workspace_archive(
         log.warning("admin.backup.workspace_missing", path=str(workspace))
         return False
 
-    timeout = int(os.getenv("BACKUP_SUBPROCESS_TIMEOUT", "3600"))
+    timeout = backup_subprocess_timeout_seconds()
     deadline = clock() + timeout
 
     def _stop_when_out_of_time(info: tarfile.TarInfo) -> tarfile.TarInfo:

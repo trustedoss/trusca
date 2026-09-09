@@ -22,12 +22,26 @@ Task module loading:
 from __future__ import annotations
 
 from datetime import timedelta
+from typing import Any
 
 from celery import Celery
 from celery.schedules import crontab
 from celery.schedules import schedule as _schedule
 
-from core.config import broker_visibility_timeout_seconds, redis_url
+from core.config import (
+    backup_task_soft_time_limit_seconds,
+    backup_task_time_limit_seconds,
+    broker_visibility_timeout_seconds,
+    default_task_soft_time_limit_seconds,
+    default_task_time_limit_seconds,
+    reachability_hard_time_limit_seconds,
+    reachability_soft_time_limit_seconds,
+    redis_url,
+    scan_hard_time_limit_seconds,
+    scan_soft_time_limit_seconds,
+    trivy_db_refresh_task_soft_time_limit_seconds,
+    trivy_db_refresh_task_time_limit_seconds,
+)
 from core.logging import configure_logging
 
 # Importing for the side effect: the module connects the three Celery signals
@@ -199,6 +213,95 @@ _SCAN_TASK_NAMES = (
     "trustedoss.ingest_sbom",
     "trustedoss.scan_reachability",
 )
+
+# #436: the two backup/restore task names, each given a larger explicit pair
+# below rather than the default every other task on this queue gets.
+_BACKUP_TASK_NAMES = (
+    "trustedoss.backup.run",
+    "trustedoss.backup.restore",
+)
+
+
+class _FallbackTaskTimeLimit:
+    """``task_annotations`` provider: the #436 default for any task with no
+    entry of its own in ``_TASK_ANNOTATIONS`` below.
+
+    Not implemented as the ``task_annotations`` "*" key. Celery's own
+    ``celery.app.annotations.resolve_all()`` looks up a per-task-name match
+    AND a "*" match independently, then applies BOTH to the task class in
+    that fixed order, meaning "*" is applied SECOND and unconditionally
+    overwrites any per-task-name entry that sets the same keys, regardless of
+    which one is declared first in ``task_annotations``. A "*" entry setting
+    ``time_limit`` / ``soft_time_limit`` here would therefore silently
+    clobber the scan and backup tasks' own, deliberately different pairs
+    below with this fallback's much shorter one (confirmed empirically
+    against celery 5.4: every task read back the "*" value even with a
+    same-name entry also present).
+
+    ``task_annotations`` accepts a list of providers, and ``firstmethod``
+    (what ``resolve_all`` calls) returns the first non-``None`` result across
+    the list in order without ever consulting later entries, see
+    ``kombu.utils.functional.firstmethod``. Placed AFTER the per-task-name
+    dict in ``_TASK_ANNOTATIONS`` so this class's ``annotate()`` only runs
+    for a task the dict did not already match, making this a genuine
+    fallback rather than an override.
+    """
+
+    def annotate(self, task: Any) -> dict[str, int]:
+        return {
+            "time_limit": default_task_time_limit_seconds(),
+            "soft_time_limit": default_task_soft_time_limit_seconds(),
+        }
+
+
+# #436: every task not named below (the ~29 remaining default-queue tasks -
+# notify, most catalog refreshes, retention sweeps, ...) previously had NO
+# Celery time limit at all and falls through to _FallbackTaskTimeLimit(). The
+# scan tasks' entries here match what tasks.enqueue_scan /
+# enqueue_reachability_scan already pass explicitly on every dispatch (which
+# always overrides a class-level default), so they exist only so a future
+# dispatch that forgets that kwarg fails safe onto the ceiling a scan
+# actually needs rather than the fallback's much shorter one. The backup
+# tasks have no such per-dispatch override anywhere, so their entries here
+# are the ONLY limit they get; see backup_task_soft_time_limit_seconds()'s
+# docstring for why that pair is larger than the fallback. Same reasoning for
+# trustedoss.trivy_db_refresh (security review on #436): its OWN configurable
+# ceiling (TRIVY_DB_REFRESH_TIMEOUT_SECONDS, up to 3600s) can already exceed
+# the fallback's soft limit, which would let Celery kill it before its own
+# graceful WARN-and-keep-the-prior-DB timeout gets a chance to fire.
+_TASK_ANNOTATIONS = [
+    {
+        "trustedoss.scan_source": {
+            "time_limit": scan_hard_time_limit_seconds(),
+            "soft_time_limit": scan_soft_time_limit_seconds(),
+        },
+        "trustedoss.scan_container": {
+            "time_limit": scan_hard_time_limit_seconds(),
+            "soft_time_limit": scan_soft_time_limit_seconds(),
+        },
+        "trustedoss.ingest_sbom": {
+            "time_limit": scan_hard_time_limit_seconds(),
+            "soft_time_limit": scan_soft_time_limit_seconds(),
+        },
+        "trustedoss.scan_reachability": {
+            "time_limit": reachability_hard_time_limit_seconds(),
+            "soft_time_limit": reachability_soft_time_limit_seconds(),
+        },
+        "trustedoss.backup.run": {
+            "time_limit": backup_task_time_limit_seconds(),
+            "soft_time_limit": backup_task_soft_time_limit_seconds(),
+        },
+        "trustedoss.backup.restore": {
+            "time_limit": backup_task_time_limit_seconds(),
+            "soft_time_limit": backup_task_soft_time_limit_seconds(),
+        },
+        "trustedoss.trivy_db_refresh": {
+            "time_limit": trivy_db_refresh_task_time_limit_seconds(),
+            "soft_time_limit": trivy_db_refresh_task_soft_time_limit_seconds(),
+        },
+    },
+    _FallbackTaskTimeLimit(),
+]
 
 # Beat-schedule key of the KEV catalog refresh entry. Shared with
 # ``services.kev_health_service``, which derives the admin panel's
@@ -514,16 +617,14 @@ def create_celery_app() -> Celery:
         broker_transport_options={
             "visibility_timeout": broker_visibility_timeout_seconds(),
         },
-        # PR-A1 (scan stability): do NOT set a GLOBAL task time limit here.
-        # A global ``task_soft_time_limit`` / ``task_time_limit`` would also
-        # cap notification / backup tasks, which is wrong — a 1-hour ceiling
-        # on a Slack webhook is meaningless and a backup of a large DB can
-        # legitimately run longer than a scan. Scan tasks instead receive
-        # their limits per-dispatch in ``tasks.enqueue_scan`` (read from env
-        # at call time per CLAUDE.md rule #11) so only the two scan tasks
-        # are time-boxed. S1's broker-level visibility_timeout above is a
-        # different mechanism (redelivery, not task cancellation) and does
-        # not reintroduce that global cap.
+        # PR-A1 (scan stability) established that a single GLOBAL
+        # ``task_soft_time_limit`` / ``task_time_limit`` is wrong: a 1-hour
+        # ceiling on a Slack webhook is meaningless, and a backup of a large
+        # DB can legitimately run longer than a scan. #436 fixes the gap that
+        # left, without reopening it: every task got NO limit at all rather
+        # than the RIGHT one. ``task_annotations`` (below, ``_TASK_ANNOTATIONS``)
+        # gives each task its own pair instead of one shared value.
+        task_annotations=_TASK_ANNOTATIONS,
         task_default_queue=_DEFAULT_QUEUE,
         # S3: route the scan-pipeline tasks onto their own queue so a
         # 65-minute scan no longer sits in front of a one-second notification
