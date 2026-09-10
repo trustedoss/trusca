@@ -47,12 +47,15 @@ async def _drain_capturing_logs(stream: Any, sink: list[dict[str, Any]]) -> str:
 
 
 def _pager(rows: list[dict[str, Any]], total: int | None = None):
-    """A stub list service that pages an in-memory list."""
+    """A stub list service that pages an in-memory list (OFFSET shape)."""
     calls: list[tuple[int, int]] = []
 
-    async def fetch_page(limit: int, offset: int) -> tuple[list[dict[str, Any]], int]:
+    async def fetch_page(
+        limit: int, offset: int
+    ) -> tuple[list[dict[str, Any]], int, int]:
         calls.append((limit, offset))
-        return rows[offset : offset + limit], total if total is not None else len(rows)
+        page = rows[offset : offset + limit]
+        return page, (total if total is not None else len(rows)), offset + len(page)
 
     return fetch_page, calls
 
@@ -127,11 +130,13 @@ async def test_stream_stops_when_the_result_set_shrinks_underneath_it() -> None:
     """
     calls: list[int] = []
 
-    async def fetch_page(limit: int, offset: int) -> tuple[list[dict[str, Any]], int]:
+    async def fetch_page(
+        limit: int, offset: int
+    ) -> tuple[list[dict[str, Any]], int, int]:
         calls.append(offset)
         if offset == 0:
-            return [{"a": 1}], 5000
-        return [], 5000
+            return [{"a": 1}], 5000, 1
+        return [], 5000, offset
 
     body = await _drain(
         svc._stream(
@@ -260,8 +265,8 @@ async def test_stream_says_so_when_it_stops_short() -> None:
 
     async def fetch_page(limit: int, offset: int):
         if offset == 0:
-            return [{"a": 1}], 5000
-        return [], 5000
+            return [{"a": 1}], 5000, 1
+        return [], 5000, offset
 
     body = await _drain_capturing_logs(
         svc._stream(
@@ -298,7 +303,9 @@ async def test_stream_notices_a_result_set_that_grew_underneath_it() -> None:
 
     async def fetch_page(limit: int, offset: int):
         # Two rows promised at the start, four by the time we get there.
-        return ([{"a": offset}] if offset < 2 else []), (2 if offset == 0 else 4)
+        if offset < 2:
+            return [{"a": offset}], (2 if offset == 0 else 4), offset + 1
+        return [], 4, offset
 
     await _drain_capturing_logs(
         svc._stream(

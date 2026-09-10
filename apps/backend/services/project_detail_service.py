@@ -686,6 +686,8 @@ async def list_components_for_project(
     sort: str = "name",
     order: str = "asc",
     scan_id: uuid.UUID | None = None,
+    keyset: bool = False,
+    after_id: uuid.UUID | None = None,
 ) -> tuple[list[dict[str, Any]], int]:
     """
     Page of components for the project's latest scan.
@@ -695,9 +697,15 @@ async def list_components_for_project(
     ORM rows) because the row is synthesized from a JOIN + per-cv aggregates
     that don't fit cleanly onto a single ORM mapping.
 
-    Pagination is offset-based for Phase 3 (DoD: 1万 row cap is comfortable
-    for OFFSET). Phase 3+ may swap to keyset; the response shape would not
-    change because frontends consume ``items`` opaquely.
+    Pagination is offset-based for the interactive list (1万 row cap is
+    comfortable for OFFSET at that depth). ``keyset=True`` (#463) is the
+    Phase 3+ swap this docstring anticipated, scoped to the CSV export path
+    only (``table_export_service.py``): it walks ``ComponentVersion.id``
+    instead of ``OFFSET`` and ignores ``sort``/``order``, so an export whose
+    row count actually reaches the depth OFFSET degrades at does not pay for
+    it. ``after_id=None`` starts from the beginning; the caller passes back
+    the last row's ``component_version_id`` from the previous page. The
+    response shape is unchanged either way, matching the note above.
     """
     if sort not in _VALID_SORT_KEYS:
         raise ProjectError(f"unsupported sort key: {sort!r}")
@@ -947,7 +955,11 @@ async def list_components_for_project(
     else:
         order_clauses = [primary_clause, Component.name, ComponentVersion.id]
 
-    items_stmt = base.order_by(*order_clauses).limit(limit).offset(offset)
+    if keyset:
+        keyset_base = base if after_id is None else base.where(ComponentVersion.id > after_id)
+        items_stmt = keyset_base.order_by(ComponentVersion.id.asc()).limit(limit)
+    else:
+        items_stmt = base.order_by(*order_clauses).limit(limit).offset(offset)
 
     # Count uses the same WHERE/JOIN graph; SQLAlchemy 2.0 lets us wrap the
     # statement and count over its rows.

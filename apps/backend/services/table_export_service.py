@@ -21,8 +21,30 @@ another's findings.
 
 So each export calls the list function it exports, one page at a time. The
 filters cannot drift because they are the same arguments; the access check
-cannot drift because it is the same call. The cost is a repeated COUNT and
-an OFFSET walk, which the row cap bounds.
+cannot drift because it is the same call. The cost was a repeated COUNT and
+an OFFSET walk, bounded by the row cap but still growing with depth (#386
+measured 820ms -> 1.6s across a 50k-row walk, 49s wall-clock end to end).
+
+#463 closed the OFFSET half of that cost for the three exports actually
+measured reaching that depth (vulnerabilities, components, inventory): each
+list function grew a ``keyset``/``after_id`` mode that walks its primary key
+via ``WHERE id > after_id`` instead of ``OFFSET``, called from here with
+``sort``/``order`` no longer honoured for THIS caller (the interactive list
+endpoints are untouched, same 8 sort modes, same OFFSET, because a
+100-row page a person is reading does not hit the depth an unbounded export
+walk does, and preserving the on-screen order is what that endpoint is
+for). The licenses and projects exports stay on OFFSET: one is bounded by
+the SPDX catalog size, the other by how many projects an organization
+manually sets up, neither reaches a scale where OFFSET's cost matters, so
+adding a second pagination mode for them would be complexity without a
+measured problem behind it. See ``_stream``'s docstring for the mechanics
+both shapes share, and each ``list_*`` function's "Keyset pagination" note
+for why its export walks the way it does. The COUNT stays as-is either way
+(both shapes still recompute the filtered total once per page): #463 traced
+this to the walk's shrink/grow detection (``_stream``'s trailing "# rows:"
+line and the ``export.csv_truncated`` log), which the fallback for a
+SHRUNK result set (``if not items: break``) does not cover for a GROWN one;
+dropping the per-page COUNT would silently lose that half of the check.
 
 WHAT IS AND IS NOT IN A ROW
 
@@ -261,15 +283,30 @@ async def _stream(
     # any caller passes.
     too_large: Callable[[str], ExportTooLarge],
     label: str,
+    start_position: Any = 0,
 ) -> AsyncIterator[str]:
     """
     Walk a list service one page at a time, yielding CSV.
 
-    ``fetch_page(limit, offset)`` returns ``(items, total)``. The first page
-    is fetched before anything is yielded so the row cap can be answered with
-    a 413 rather than a file that stops halfway with nothing to say it did.
+    ``fetch_page(limit, position)`` returns ``(items, total, next_position)``.
+    ``position`` is an opaque pagination token this function only ever
+    threads from one ``fetch_page`` call to the next; it never inspects or
+    computes it. Two shapes exist (#463):
+
+    - An integer ``OFFSET`` (the ``licenses``/``projects`` exports, whose
+      result sets are architecturally bounded small, the SPDX license
+      catalog, the project portfolio, so ``OFFSET``'s cost, which grows with
+      depth, never reaches a scale that matters).
+    - The last row's primary key (the ``vulnerabilities``/``components``/
+      ``inventory`` exports, the three actually measured reaching a depth
+      where ``OFFSET`` degrades: 820ms → 1.6s across a 50k-row walk, 49s
+      wall-clock end to end). ``start_position=None`` for these.
+
+    The first page is fetched before anything is yielded so the row cap can
+    be answered with a 413 rather than a file that stops halfway with
+    nothing to say it did.
     """
-    items, total = await fetch_page(CSV_STREAM_CHUNK_ROWS, 0)
+    items, total, position = await fetch_page(CSV_STREAM_CHUNK_ROWS, start_position)
     if total > EXPORT_HARD_LIMIT:
         raise too_large(
             f"{label} export would return {total} rows (limit {EXPORT_HARD_LIMIT}); "
@@ -280,10 +317,10 @@ async def _stream(
     for item in items:
         yield csv_line(_row(columns, item, remap=remap))
 
-    offset = len(items)
+    written = len(items)
     latest_total = total
-    while offset < total and items:
-        items, latest_total = await fetch_page(CSV_STREAM_CHUNK_ROWS, offset)
+    while written < total and items:
+        items, latest_total, position = await fetch_page(CSV_STREAM_CHUNK_ROWS, position)
         if not items:
             # The result set shrank under us (a rescan replaced the snapshot,
             # a finding was resolved). Stop rather than spin: what has been
@@ -291,7 +328,7 @@ async def _stream(
             break
         for item in items:
             yield csv_line(_row(columns, item, remap=remap))
-        offset += len(items)
+        written += len(items)
 
     # A trailer, so a short file can be told from a complete one.
     #
@@ -307,17 +344,17 @@ async def _stream(
     # cost of putting the count where the file itself carries it rather than
     # in a header a saved file forgets; the alternative is a file that cannot
     # say anything about its own completeness once it leaves the browser.
-    yield f"# rows: {offset}\n"
+    yield f"# rows: {written}\n"
 
     # Both directions count as short. The walk stops at the first page's
-    # `total`, so a result set that GREW mid-export ends with `offset ==
+    # `total`, so a result set that GREW mid-export ends with `written ==
     # total` and looks complete while leaving rows behind; comparing against
     # the last page's count is what catches that one.
-    if offset < max(total, latest_total):
+    if written < max(total, latest_total):
         log.warning(
             "export.csv_truncated",
             label=label,
-            written=offset,
+            written=written,
             expected_at_start=total,
             expected_at_end=latest_total,
         )
@@ -333,16 +370,23 @@ async def stream_vulnerabilities_csv(
     """CVE findings for a project, honouring the caller's active filters."""
     from services.vulnerability_service import list_project_vulnerabilities
 
-    async def fetch_page(limit: int, offset: int) -> tuple[list[dict[str, Any]], int]:
+    # #463: keyset on VulnerabilityFinding.id (the "id" key on every item),
+    # not the interactive list's OFFSET + 8 sort modes, see list_project_
+    # vulnerabilities's "Keyset pagination" docstring note.
+    async def fetch_page(
+        limit: int, after_id: uuid.UUID | None
+    ) -> tuple[list[dict[str, Any]], int, uuid.UUID | None]:
         items, total, _distribution = await list_project_vulnerabilities(
             session,
             project_id=project_id,
             actor=actor,
             limit=limit,
-            offset=offset,
+            keyset=True,
+            after_id=after_id,
             **filters,
         )
-        return items, total
+        next_position = items[-1]["id"] if items else after_id
+        return items, total, next_position
 
     log.info(
         "export.vulnerabilities.csv_started",
@@ -360,6 +404,7 @@ async def stream_vulnerabilities_csv(
         fetch_page=fetch_page,
         too_large=VulnerabilitiesExportTooLarge,
         label="vulnerability",
+        start_position=None,
     ):
         yield chunk
 
@@ -374,16 +419,23 @@ async def stream_components_csv(
     """The project's bill of materials, honouring the caller's active filters."""
     from services.project_detail_service import list_components_for_project
 
-    async def fetch_page(limit: int, offset: int) -> tuple[list[dict[str, Any]], int]:
+    # #463: keyset on ComponentVersion.id (the "id" key on every item), not
+    # the interactive list's OFFSET, see list_components_for_project's
+    # docstring note.
+    async def fetch_page(
+        limit: int, after_id: uuid.UUID | None
+    ) -> tuple[list[dict[str, Any]], int, uuid.UUID | None]:
         items, total = await list_components_for_project(
             session,
             project_id=project_id,
             actor=actor,
             limit=limit,
-            offset=offset,
+            keyset=True,
+            after_id=after_id,
             **filters,
         )
-        return items, total
+        next_position = items[-1]["id"] if items else after_id
+        return items, total, next_position
 
     log.info(
         "export.components.csv_started",
@@ -396,6 +448,7 @@ async def stream_components_csv(
         fetch_page=fetch_page,
         too_large=ComponentsExportTooLarge,
         label="component",
+        start_position=None,
     ):
         yield chunk
 
@@ -409,14 +462,21 @@ async def stream_inventory_csv(
     """Every component the caller's teams use, honouring the active filters."""
     from services.inventory_service import list_inventory_components
 
-    async def fetch_page(limit: int, offset: int) -> tuple[list[dict[str, Any]], int]:
+    # #463: keyset on Component.id (the "component_id" key on every item),
+    # not the interactive list's OFFSET, see list_inventory_components's
+    # docstring note. This is the org-wide rollup, the export most likely to
+    # reach the row depth OFFSET degrades at.
+    async def fetch_page(
+        limit: int, after_id: uuid.UUID | None
+    ) -> tuple[list[dict[str, Any]], int, uuid.UUID | None]:
         # This one answers with a response model rather than a tuple; the
         # rows are Pydantic, so dump them to reach them by column name.
         page = await list_inventory_components(
             session,
             actor=actor,
             limit=limit,
-            offset=offset,
+            keyset=True,
+            after_id=after_id,
             **filters,
         )
         rows: list[dict[str, Any]] = []
@@ -424,7 +484,8 @@ async def stream_inventory_csv(
             item = row.model_dump()
             item["versions"] = " ".join(item.get("versions") or [])
             rows.append(item)
-        return rows, page.total
+        next_position = rows[-1]["component_id"] if rows else after_id
+        return rows, page.total, next_position
 
     log.info("export.inventory.csv_started", actor_user_id=str(actor.id))
     async for chunk in _stream(
@@ -433,6 +494,7 @@ async def stream_inventory_csv(
         fetch_page=fetch_page,
         too_large=InventoryExportTooLarge,
         label="inventory",
+        start_position=None,
     ):
         yield chunk
 
@@ -447,7 +509,13 @@ async def stream_licenses_csv(
     """The project's Licenses-tab rows, honouring the caller's active filters."""
     from services.license_service import list_project_licenses
 
-    async def fetch_page(limit: int, offset: int) -> tuple[list[dict[str, Any]], int]:
+    # #463 looked at this one too: the row here is one per DISTINCT LICENSE
+    # in the scan (bounded by the SPDX catalog size), never near the depth
+    # OFFSET degrades at, so it stays on OFFSET, see table_export_service's
+    # module docstring / _stream's docstring for the two-shapes rationale.
+    async def fetch_page(
+        limit: int, offset: int
+    ) -> tuple[list[dict[str, Any]], int, int]:
         items, _distribution, total, _declared, _conflict_summary = await list_project_licenses(
             session,
             project_id=project_id,
@@ -462,7 +530,7 @@ async def stream_licenses_csv(
         for item in items:
             conflict = item.get("conflict")
             item["conflict_verdict"] = conflict.get("verdict") if conflict else None
-        return items, total
+        return items, total, offset + len(items)
 
     log.info(
         "export.licenses.csv_started",
@@ -492,13 +560,20 @@ async def stream_projects_csv(
     ``CSV_STREAM_CHUNK_ROWS`` (1000): page numbers only stay exact across
     calls when every call derives them from the SAME per-page size the
     service actually uses.
+
+    #463 looked at this one too: the portfolio is organically small (every
+    project is manually set up), never near the depth OFFSET degrades at,
+    so it stays on OFFSET, see table_export_service's module docstring /
+    _stream's docstring for the two-shapes rationale.
     """
     from services.project_list_enrichment import enrich_project_rows
     from services.project_service import list_projects
 
     page_size = 100
 
-    async def fetch_page(limit: int, offset: int) -> tuple[list[dict[str, Any]], int]:
+    async def fetch_page(
+        limit: int, offset: int
+    ) -> tuple[list[dict[str, Any]], int, int]:
         page_number = offset // page_size + 1
         rows, total = await list_projects(
             session,
@@ -545,7 +620,7 @@ async def stream_projects_csv(
                     "project_id": str(p.id),
                 }
             )
-        return items, total
+        return items, total, offset + len(items)
 
     log.info("export.projects.csv_started", actor_user_id=str(actor.id))
     async for chunk in _stream(
