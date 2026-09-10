@@ -251,22 +251,23 @@ answer rather than a guess:
   outage stops task dispatch until Redis recovers. This is not something a
   second Redis instance changes, since the broker's job IS Redis (or another
   broker entirely, which this chart does not support).
-- The WebSocket connection registry has **no** such fallback today: it
-  raises straight through a Redis error, so an outage fails registration
-  **closed** rather than open. That means live scan-progress streaming stops
-  working during the outage, but nothing about the scan itself is affected;
-  scan state lives in Postgres, WebSocket is a read-only progress feed.
+- The WebSocket connection registry (`core/ws_registry.py`) also **fails
+  open** ([issue #458](https://github.com/trustedoss/trusca/issues/458)): a
+  new connection is admitted rather than refused, so live scan-progress
+  streaming keeps working through the outage the same as everything else
+  reading Redis here. The trade-off is narrower than the other two: the
+  per-user and global connection-count caps go unenforced for the outage's
+  duration, so a client could open unbounded sockets while Redis stays
+  unreachable. That is accepted deliberately (an operator-visible, self
+  healing outage, over a hard-closed real-time feature for every user for
+  the same duration) rather than copied mechanically from the rate-limiter
+  case; see the module's own docstring for the full reasoning.
 
-Given that, splitting Redis into a second instance for the WS
-registry/rate-limiter roles is not something this chart takes on now: it is
-new infrastructure surface (a second datastore to provision, monitor, and
-fail over) for a gap whose actual impact today is "the live progress bar
-stops updating," not data loss or a stuck pipeline. The concrete, narrower
-gap, the WS registry's missing fail-open behavior, is tracked as its own
-follow-up ([issue #458](https://github.com/trustedoss/trusca/issues/458))
-rather than folded in here, since changing what a connection-count cap does
-under failure is a security-relevant decision on its own footing, not a
-drive-by fix.
+Given that, splitting Redis into a second instance for these three roles is
+not something this chart takes on now: it is new infrastructure surface (a
+second datastore to provision, monitor, and fail over) for an outage whose
+actual impact today is a temporarily unenforced abuse guard, not data loss,
+a stuck pipeline, or a broken feature.
 
 ## How migrations run
 

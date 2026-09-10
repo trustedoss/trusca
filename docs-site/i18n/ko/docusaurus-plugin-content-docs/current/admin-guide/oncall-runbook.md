@@ -333,6 +333,11 @@ docker-compose -f docker-compose.yml run --rm --entrypoint python worker-scan \
 - 요청 빈도 제한(`core/ratelimit.py`)과 로그인 시도 제한(`core/login_throttle.py`)
   모두 열어 두도록(fail open) 설계돼 있어, Redis에 닿지 않는 동안은 모든
   요청이 제한 없이 통과합니다.
+- WebSocket 연결 레지스트리(`core/ws_registry.py`)도 열어 두도록 설계돼
+  있습니다: 새 연결은 거부되지 않고 그대로 받아들여지며, Redis에 닿지 않는
+  동안은 사용자당/전체 연결 수 상한이 적용되지 않습니다. 스캔 실시간 진행률
+  스트리밍 자체는 이 상황에서도 계속 동작합니다(스캔 상태는 Postgres에
+  있습니다).
 - Redis를 쓰는 다른 구성 요소(Celery의 브로커/결과 저장소)는 이것과는
   별개의 장애이고 증상도 다릅니다. 그쪽은 이 필드보다는 시나리오 5의
   큐 적체 알림으로 먼저 드러날 가능성이 큽니다.
@@ -340,10 +345,11 @@ docker-compose -f docker-compose.yml run --rm --entrypoint python worker-scan \
 `redis` 필드는 그 순간의 핑 결과라, 장애 사이에 확인하면 `"ok"`로 보일 수
 있습니다. 값이 있을 때는 응답에 `redis_fail_open` 객체도 같이 실립니다
 (`{"ratelimit": {"count": N, "last_degraded_at": "<ISO 8601>", "worker_pid":
-P}, "login_throttle": {...}}`). 요청 경로에서 실제로 fail-open으로 넘어간
-적 있는 제어마다 한 항목씩 있고, 이번 호출 자체의 핑과는 별개로 쌓입니다.
-이 필드 자체가 없다면 프로세스가 시작된 뒤로 두 제어 중 어느 쪽도 아직
-한 번도 저하된 적이 없다는 뜻입니다. `redis: "ok"`로 보이는 시점보다
+P}, "login_throttle": {...}, "ws_registry": {...}}`). 요청 경로에서 실제로
+fail-open으로 넘어간 적 있는 제어마다 한 항목씩 있고, 이번 호출 자체의
+핑과는 별개로 쌓입니다. 이 필드 자체가 없다면 프로세스가 시작된 뒤로 세
+제어 중 어느 것도 아직 한 번도 저하된 적이 없다는 뜻입니다. `redis: "ok"`로
+보이는 시점보다
 `last_degraded_at`이 더 과거라면, 장애가 이미 끝난 게 아니라 간헐적으로
 반복되고 있다는 신호입니다(불안정한 네트워크 경로, 일부 명령만 거부하는
 `REDIS_URL` 비밀번호 설정 오류 등).

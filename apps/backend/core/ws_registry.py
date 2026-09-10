@@ -72,6 +72,27 @@ not a security boundary (CLAUDE.md quality standard §3 draws that line at
 authn/authz and rate limits, and this is neither). Reaching for a scripting
 pattern with no precedent elsewhere in this codebase to close a rare
 off-by-one is not worth the added surface.
+
+Fail-open on a Redis outage (#458): every function below that talks to
+`client` catches `RedisError` and degrades rather than raising. Without
+this, a Redis outage reached the generic handler in `api/v1/ws.py`, which
+closes the socket with 1011 (`ws_internal_error`): every open WebSocket
+tab, and every new connection attempt, is refused for the outage's whole
+duration, even though scan state itself lives in Postgres and is completely
+unaffected. `core.ratelimit` and `core.login_throttle` already accept this
+trade for their own Redis dependency; this module follows the same
+precedent via the same `core.redis_degradation.record()` call.
+
+`register_connection` is the one call here that is not a mechanical copy of
+that pattern: unlike a rate limiter (where fail-open just means more
+requests get through temporarily), it also enforces the per-user and global
+connection-count caps. Degrading it means an outage temporarily admits
+every connection unconditionally, caps included: a client could open
+unbounded WebSocket sockets for as long as Redis stays unreachable. That
+trade is accepted deliberately here (an operator-visible outage that self
+heals, over a hard-closed real-time feature for every user for the same
+duration) rather than mechanically inherited from the rate-limiter case,
+per the security review this PR went through.
 """
 
 from __future__ import annotations
@@ -80,6 +101,10 @@ import time
 import uuid
 from dataclasses import dataclass
 from typing import Any, Protocol
+
+from redis.exceptions import RedisError
+
+from core import redis_degradation
 
 GLOBAL_KEY = "ws:conns:global"
 USER_KEY_PREFIX = "ws:conns:user:"
@@ -142,6 +167,24 @@ def _decode(member: Any) -> str:
     return member.decode() if isinstance(member, bytes) else str(member)
 
 
+def _degraded(action: str, exc: Exception) -> None:
+    """Redis could not answer a registry call. Say so, then degrade.
+
+    Mirrors `core.ratelimit._degraded` / `core.login_throttle._degraded`:
+    routed through `core.redis_degradation` so a sustained outage logs one
+    deduped WARNING instead of one line per connection attempt, and so
+    `/health/ready` can surface the degradation between individual
+    failures. `component="ws_registry"` keeps this grouped separately from
+    the other two controls in `redis_degradation.snapshot()`.
+    """
+    redis_degradation.record(
+        component="ws_registry",
+        event="ws_registry.storage_unavailable",
+        action=action,
+        exc=exc,
+    )
+
+
 @dataclass(frozen=True)
 class RegisterResult:
     """Outcome of `register_connection`.
@@ -196,33 +239,42 @@ async def register_connection(
     immediately after ZADD, so `ZRANGE ukey 0 0` (the lowest score) can only
     ever pick a *different* connection to evict, never the one that just
     registered.
+
+    On a Redis outage: admits the connection uncapped (`accepted=True`,
+    `evicted_connection_id=None`) rather than raising. See the module
+    docstring for why this specific fail-open is a deliberate, reviewed
+    trade-off rather than a mechanical copy of the rate-limiter's.
     """
     ts = now if now is not None else time.time()
     ukey = user_key(user_id)
 
-    await _prune_dead(client, GLOBAL_KEY)
-    await _prune_dead(client, ukey)
+    try:
+        await _prune_dead(client, GLOBAL_KEY)
+        await _prune_dead(client, ukey)
 
-    global_count = await client.zcard(GLOBAL_KEY)
-    if global_count >= max_global:
-        return RegisterResult(accepted=False, evicted_connection_id=None)
+        global_count = await client.zcard(GLOBAL_KEY)
+        if global_count >= max_global:
+            return RegisterResult(accepted=False, evicted_connection_id=None)
 
-    await client.zadd(GLOBAL_KEY, {connection_id: ts})
-    await client.zadd(ukey, {connection_id: ts})
-    await client.set(alive_key(connection_id), "1", ex=presence_ttl_seconds)
+        await client.zadd(GLOBAL_KEY, {connection_id: ts})
+        await client.zadd(ukey, {connection_id: ts})
+        await client.set(alive_key(connection_id), "1", ex=presence_ttl_seconds)
 
-    evicted: str | None = None
-    user_count = await client.zcard(ukey)
-    if user_count > max_per_user:
-        oldest = await client.zrange(ukey, 0, 0)
-        if oldest:
-            candidate = _decode(oldest[0])
-            if candidate != connection_id:
-                await client.zrem(ukey, candidate)
-                await client.zrem(GLOBAL_KEY, candidate)
-                evicted = candidate
+        evicted: str | None = None
+        user_count = await client.zcard(ukey)
+        if user_count > max_per_user:
+            oldest = await client.zrange(ukey, 0, 0)
+            if oldest:
+                candidate = _decode(oldest[0])
+                if candidate != connection_id:
+                    await client.zrem(ukey, candidate)
+                    await client.zrem(GLOBAL_KEY, candidate)
+                    evicted = candidate
 
-    return RegisterResult(accepted=True, evicted_connection_id=evicted)
+        return RegisterResult(accepted=True, evicted_connection_id=evicted)
+    except RedisError as exc:
+        _degraded("register", exc)
+        return RegisterResult(accepted=True, evicted_connection_id=None)
 
 
 async def touch_connection(
@@ -234,8 +286,16 @@ async def touch_connection(
     time, fixed at registration, and stays that way for the connection's
     whole life (see module docstring for why an earlier version that also
     bumped the score here picked the wrong connection to evict).
+
+    On a Redis outage: degrades and returns rather than raising. A missed
+    heartbeat only risks this connection later being pruned as dead by
+    someone else's cap check, the same "undercount rather than close a live
+    socket" direction the module docstring already commits to.
     """
-    await client.set(alive_key(connection_id), "1", ex=presence_ttl_seconds)
+    try:
+        await client.set(alive_key(connection_id), "1", ex=presence_ttl_seconds)
+    except RedisError as exc:
+        _degraded("touch", exc)
 
 
 async def unregister_connection(
@@ -246,13 +306,31 @@ async def unregister_connection(
     Idempotent: `ZREM`/`DELETE` on an absent member is a no-op, so calling
     this twice (or after the entry was already pruned as dead, or already
     evicted by someone else) is always safe.
+
+    On a Redis outage: degrades and returns rather than raising. The
+    connection is closing either way; a cleanup that could not run leaves
+    at most a stale ZSET entry for a later cap check's own prune pass to
+    catch (already how a crashed worker's abandoned connection is handled).
     """
     ukey = user_key(user_id)
-    await client.zrem(ukey, connection_id)
-    await client.zrem(GLOBAL_KEY, connection_id)
-    await client.delete(alive_key(connection_id))
+    try:
+        await client.zrem(ukey, connection_id)
+        await client.zrem(GLOBAL_KEY, connection_id)
+        await client.delete(alive_key(connection_id))
+    except RedisError as exc:
+        _degraded("unregister", exc)
 
 
 async def publish_eviction(client: RegistryRedis, connection_id: str, *, reason: str) -> None:
-    """Notify whichever process holds `connection_id` that it lost its cap."""
-    await client.publish(evict_channel(connection_id), reason)
+    """Notify whichever process holds `connection_id` that it lost its cap.
+
+    On a Redis outage: degrades and returns rather than raising. The
+    evicted connection simply never hears about it, already the same
+    best-effort delivery this module accepts when the evicted connection
+    lives on a process that happens to be down (see module docstring: no
+    process ever forces another one's socket closed).
+    """
+    try:
+        await client.publish(evict_channel(connection_id), reason)
+    except RedisError as exc:
+        _degraded("publish_eviction", exc)
