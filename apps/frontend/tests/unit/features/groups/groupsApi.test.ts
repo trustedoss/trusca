@@ -1,15 +1,16 @@
 /**
  * groupsApi, unit tests, group-hierarchy Phase 4 PR 4-B.
  *
- * Mirrors the module-mock pattern used for other thin API wrappers
- * (`adminTeamsApi.test.ts`): stub `@/lib/api`'s `get`, assert the URL +
+ * Stubs `@/lib/api`'s `get` via `importOriginal` (issue #390's full-module
+ * mock ratchet) rather than hand-writing the whole module: assert the URL +
  * params each function sends and the shape it hands back untouched.
  */
 import { describe, expect, it, vi } from "vitest";
 
-vi.mock("@/lib/api", () => ({
-  api: { get: vi.fn() },
-}));
+vi.mock("@/lib/api", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@/lib/api")>();
+  return { ...actual, api: { ...actual.api, get: vi.fn() } };
+});
 
 import { api } from "@/lib/api";
 import {

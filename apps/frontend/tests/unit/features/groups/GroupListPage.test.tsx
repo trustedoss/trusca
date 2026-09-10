@@ -15,9 +15,10 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { GroupListItem, GroupListPage as GroupListPageEnvelope } from "@/features/groups/api/groupsApi";
 
-vi.mock("@/features/groups/api/groupsApi", () => ({
-  listGroups: vi.fn(),
-}));
+vi.mock("@/features/groups/api/groupsApi", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@/features/groups/api/groupsApi")>();
+  return { ...actual, listGroups: vi.fn() };
+});
 
 import { listGroups } from "@/features/groups/api/groupsApi";
 import { GroupListPage } from "@/features/groups/GroupListPage";

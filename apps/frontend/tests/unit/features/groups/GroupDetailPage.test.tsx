@@ -16,11 +16,10 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { GroupDetail } from "@/features/groups/api/groupsApi";
 
-vi.mock("@/features/groups/api/groupsApi", () => ({
-  getGroup: vi.fn(),
-  listGroups: vi.fn(),
-  getGroupMembers: vi.fn(),
-}));
+vi.mock("@/features/groups/api/groupsApi", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@/features/groups/api/groupsApi")>();
+  return { ...actual, getGroup: vi.fn(), listGroups: vi.fn(), getGroupMembers: vi.fn() };
+});
 
 vi.mock("@/lib/projectsApi", async () => {
   const actual = await vi.importActual<typeof import("@/lib/projectsApi")>(

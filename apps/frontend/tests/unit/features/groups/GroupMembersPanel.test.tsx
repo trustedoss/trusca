@@ -10,9 +10,10 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { render, screen, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-vi.mock("@/features/groups/api/groupsApi", () => ({
-  getGroupMembers: vi.fn(),
-}));
+vi.mock("@/features/groups/api/groupsApi", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@/features/groups/api/groupsApi")>();
+  return { ...actual, getGroupMembers: vi.fn() };
+});
 
 import { getGroupMembers } from "@/features/groups/api/groupsApi";
 import { GroupMembersPanel } from "@/features/groups/components/GroupMembersPanel";

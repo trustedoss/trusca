@@ -19,14 +19,15 @@ import { ProblemError } from "@/lib/problem";
 import { useAuthStore } from "@/stores/authStore";
 import { useUIStore } from "@/stores/uiStore";
 
-vi.mock("@/lib/projectsApi", () => ({
-  createProject: vi.fn(),
-  listProjects: vi.fn(),
-}));
+vi.mock("@/lib/projectsApi", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@/lib/projectsApi")>();
+  return { ...actual, createProject: vi.fn(), listProjects: vi.fn() };
+});
 
-vi.mock("@/features/groups/api/groupsApi", () => ({
-  listGroups: vi.fn(),
-}));
+vi.mock("@/features/groups/api/groupsApi", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@/features/groups/api/groupsApi")>();
+  return { ...actual, listGroups: vi.fn() };
+});
 
 // useNavigate is wired through MemoryRouter — we spy on it via the mock so we
 // can assert the target path without mounting the full App routing tree.
