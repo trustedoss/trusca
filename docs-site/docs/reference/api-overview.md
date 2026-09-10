@@ -80,6 +80,8 @@ All 4xx and 5xx responses carry `Content-Type: application/problem+json` with th
 }
 ```
 
+`title` and `detail` are always English, regardless of the caller's `Accept-Language` or the signed-in user's UI language preference. The backend has no i18n framework (no gettext/babel, no `Accept-Language` handling anywhere in the request path); only `apps/frontend`'s UI strings are translated. See [Server-generated output is English-only](../contributor-guide/coding-standards.md#server-generated-output-is-english-only).
+
 Domain extensions are `snake_case` and modelled in the OpenAPI schema. Two well-known examples:
 
 | Type URI | Status | Triggered by |

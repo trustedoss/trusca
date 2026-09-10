@@ -207,6 +207,12 @@ notifications.preferences.toggle-email-tooltip
 
 컴포넌트에서 키를 제거하면 parser 드리프트 게이트가 EN/KO의 고아 키도 잡아냅니다 — 양쪽에서 제거하세요.
 
+## 서버가 생성하는 산출물은 영어 전용
+
+위 규칙은 `apps/frontend`의 UI 문자열을 다루며, 이것이 지역화 대상의 전부입니다. 백엔드가 스스로 생성하는 것들, 즉 알림 제목·본문(`notifications/email.py`, `notifications/slack.py`, `notifications/teams.py`), Excel 리포트 헤더(`services/report_xlsx_service.py`), PDF 리포트 텍스트, 모든 에러 응답의 RFC 7807 `title`/`detail` 텍스트는 전부 영어로 고정되어 있고 앞으로도 그렇습니다. 백엔드에는 i18n 프레임워크가 없습니다: gettext·babel도 없고, 요청 경로 어디에서도 `Accept-Language`를 읽지 않습니다.
+
+이는 놓친 빈틈이 아니라 내린 결정입니다. 생성 문서와 발신 메시지를 번역하려면 독자적인 추출 도구·검토 절차·드리프트 게이트를 갖춘 두 번째 번역 표면을 새로 만들고 유지해야 하는데, 그 산출물 대부분(감사 로그 export, 웹훅 페이로드, 관리자가 트리거하는 리포트)은 UI 언어를 한국어로 설정한 당사자가 아니라 운영자가 읽습니다. 지역화된 리포트나 알림에 대한 실제 수요가 생기면 그때 다시 검토하되, 임기응변으로 일부만 번역하지는 않습니다. 일부 시트는 영어고 일부는 한국어이며 숫자·날짜 형식은 코드가 우연히 고정한 로케일 그대로인 리포트는, 일관되게 영어인 리포트보다 못합니다.
+
 ## `# nosec`과 `# nosemgrep` — 라인 안에서 정당화
 
 CI는 `bandit`(Python)과 `semgrep`(다언어) 정적 분석을 돌립니다. SAST는 High+에서 **hard-fail**입니다. 정당하게 false positive로 입증된 경우에만 suppress하고 라인에서 정당화하세요.
