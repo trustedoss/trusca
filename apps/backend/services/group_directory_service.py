@@ -90,6 +90,18 @@ _MAX_PAGE_SIZE = 200
 #: The trailing window every GroupSummaryStats aggregate covers.
 _SUMMARY_WINDOW_DAYS = 30
 
+#: group-hierarchy Phase 6 security review: a query shorter than this yields
+#: an empty result rather than running the ILIKE scan below, mirroring
+#: services.search_service.MIN_QUERY_LEN's soft-fail shape (empty results,
+#: not a 422) so the project-creation combobox's live-typing UX stays
+#: identical to the ⌘K search box's -- no validation error flashing mid-type.
+#: Unlike that constant, this isn't tied to a trigram index floor (`groups`
+#: has none, and does not need one at this table's realistic scale); it
+#: exists to bound the cost of the shortest, least-selective possible scans
+#: now that a per-keystroke caller (TeamCombobox.tsx) hits this endpoint,
+#: alongside the new per-actor rate limit (core.config.group_search_rate_limit).
+_MIN_SEARCH_QUERY_LEN = 2
+
 
 # ---------------------------------------------------------------------------
 # Domain exceptions
@@ -205,16 +217,23 @@ async def list_groups(
     row, no count contribution, no distinguishing signal from "does not
     exist". Both search and drill-down filter through
     ``_actor_visibility_predicate`` before anything else runs.
+
+    A non-empty ``q`` shorter than :data:`_MIN_SEARCH_QUERY_LEN` yields an
+    empty page with no query at all -- see that constant's own docstring.
     """
     page = max(page, 1)
     page_size = max(min(page_size, _MAX_PAGE_SIZE), 1)
+
+    stripped_q = q.strip() if q else ""
+    if stripped_q and len(stripped_q) < _MIN_SEARCH_QUERY_LEN:
+        return GroupListPage(items=[], total=0, page=page, page_size=page_size)
 
     visibility = _actor_visibility_predicate(actor)
     base = select(Group).where(visibility)
     count_base = select(func.count()).select_from(Group).where(visibility)
 
-    if q and q.strip():
-        like = f"%{escape_like(q.strip())}%"
+    if stripped_q:
+        like = f"%{escape_like(stripped_q)}%"
         base = base.where(Group.name.ilike(like, escape="\\"))
         count_base = count_base.where(Group.name.ilike(like, escape="\\"))
     elif parent_id is None:

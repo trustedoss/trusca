@@ -48,9 +48,11 @@ import structlog
 from fastapi import APIRouter, Depends, Query, Request, Response, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from core.config import group_search_rate_limit
 from core.db import get_db
 from core.errors import problem_response
 from core.pagination import PAGE_MAX
+from core.ratelimit import _authenticated_user_key, limiter
 from core.security import CurrentUser, require_role
 from schemas.group import GroupDetail, GroupListPage, GroupMembersResponse
 from services.group_directory_service import (
@@ -83,6 +85,13 @@ def _problem_for_group_error(request: Request, exc: GroupError) -> Response:
     response_model=GroupListPage,
     summary="List groups visible to the caller (flat search or one-level drill-down)",
 )
+# group-hierarchy Phase 6 security review: this had no rate limit at all
+# before the project-creation combobox turned the `q` mode into a
+# per-keystroke live search (see group_search_rate_limit's own docstring).
+# Applies to the whole endpoint, drill-down included -- see that docstring
+# for why splitting the two modes across separate routes isn't worth it
+# for one cost difference.
+@limiter.limit(group_search_rate_limit, key_func=_authenticated_user_key)
 async def list_groups_endpoint(
     request: Request,  # noqa: ARG001
     q: str | None = Query(

@@ -142,13 +142,16 @@ describe("switching teams while the create form is open", () => {
       </AppProviders>,
     );
 
-    const select = await screen.findByTestId("project-team-select");
-    expect((select as HTMLSelectElement).value).toBe("team-1");
+    // group-hierarchy Phase 6: the flat `<select>` is now a searchable
+    // combobox (`TeamCombobox`); the trigger's displayed text is the
+    // equivalent of the old `<select>`'s `.value` for "which team is live".
+    const trigger = await screen.findByTestId("project-team-combobox-trigger");
+    expect(trigger).toHaveTextContent("Platform");
 
     useUIStore.getState().setActiveTeamId("team-2");
 
     await waitFor(() => {
-      expect((select as HTMLSelectElement).value).toBe("team-2");
+      expect(trigger).toHaveTextContent("Security");
     });
   });
 
@@ -177,19 +180,28 @@ describe("switching teams while the create form is open", () => {
     const submit = screen.getByTestId("project-create-submit");
     expect(submit).toBeDisabled();
 
-    // The picker (teams.length > 1 here) must not silently pre-select
-    // team-1 for the unmatched "" value -- it shows an explicit,
-    // non-selectable placeholder instead, so nothing on screen suggests a
-    // team is already (wrongly) chosen.
-    const select = screen.getByTestId(
-      "project-team-select",
-    ) as HTMLSelectElement;
-    expect(select.value).toBe("");
+    // The combobox trigger must not silently pre-select Platform for the
+    // unresolved state -- it shows the placeholder text instead, so nothing
+    // on screen suggests a team is already (wrongly) chosen. This is the
+    // combobox's equivalent of the old `<select>`'s disabled placeholder
+    // option.
+    const trigger = screen.getByTestId("project-team-combobox-trigger");
+    expect(trigger).toHaveTextContent("Select a team");
 
-    // Picking a real team from the selector is still a valid way out: it
-    // clears the blocked state without ever having silently guessed.
-    await userEvent.selectOptions(select, "team-2");
-    expect(select.value).toBe("team-2");
+    // Picking a real team from the picker is still a valid way out: it
+    // clears the blocked state without ever having silently guessed. `TEAMS`
+    // has two entries (Platform, Security), so the default list shows both;
+    // pick Security specifically by its group id.
+    await userEvent.click(trigger);
+    const options = await screen.findAllByTestId("project-team-combobox-option");
+    const securityOption = options.find(
+      (el) => el.getAttribute("data-group-id") === "team-2",
+    )!;
+    await userEvent.click(securityOption);
+
+    expect(screen.getByTestId("project-team-combobox-trigger")).toHaveTextContent(
+      "Security",
+    );
     expect(submit).not.toBeDisabled();
     expect(screen.queryByTestId("project-create-no-team")).toBeNull();
   });
@@ -205,12 +217,20 @@ describe("switching teams while the create form is open", () => {
       </AppProviders>,
     );
 
-    const select = (await screen.findByTestId(
-      "project-team-select",
-    )) as HTMLSelectElement;
+    const trigger = await screen.findByTestId("project-team-combobox-trigger");
+    await userEvent.click(trigger);
+    // `TEAMS` has two entries (Platform, Security); pick Security explicitly
+    // by its group id, mirroring the old test's `selectOptions(select,
+    // "team-2")`.
+    const options = await screen.findAllByTestId("project-team-combobox-option");
+    const securityOption = options.find(
+      (el) => el.getAttribute("data-group-id") === "team-2",
+    )!;
+    await userEvent.click(securityOption);
 
-    await userEvent.selectOptions(select, "team-2");
-    expect(select.value).toBe("team-2");
+    expect(screen.getByTestId("project-team-combobox-trigger")).toHaveTextContent(
+      "Security",
+    );
     // The bar has not moved, so the explicit pick stands.
     expect(useUIStore.getState().activeTeamId).toBeNull();
   });

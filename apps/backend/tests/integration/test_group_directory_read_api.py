@@ -147,6 +147,106 @@ async def test_list_omits_inaccessible_groups(db_session: AsyncSession, cascade_
 
 
 # ---------------------------------------------------------------------------
+# Flat search (`q` set): group-hierarchy Phase 6 security review.
+#
+# Nothing in this file exercised the search branch at all before this PR;
+# it went straight from the drill-down mode's own tests above to the
+# breadcrumb ones below, even though `q`-set is the OTHER of the two
+# documented, mutually-exclusive modes `list_groups` supports. That gap
+# mattered once the project-creation combobox turned this into a
+# per-keystroke live-search caller.
+# ---------------------------------------------------------------------------
+
+
+async def test_search_matches_by_name_across_the_whole_tree(
+    db_session: AsyncSession, cascade_on: None
+) -> None:
+    """A flat search finds a match regardless of nesting depth, for an actor
+    whose accessible set covers it via cascade from a root membership --
+    the search term never has to name the branch it lives under."""
+    from services.group_directory_service import list_groups
+
+    suffix = unique_suffix()
+    org = await make_organization(db_session)
+    root = await make_team(db_session, organization=org, name=f"root-{suffix}")
+    child = await make_team(db_session, organization=org, name=f"child-{suffix}", parent=root)
+    grandchild = await make_team(
+        db_session, organization=org, name=f"deepmatch-{suffix}", parent=child
+    )
+    user = await make_user(db_session)
+    await make_membership(db_session, user=user, team=_TeamRef(root.id), role="developer")
+    actor = principal_for(user, team_ids=[root.id], role="developer")
+
+    page = await list_groups(db_session, actor=actor, q=f"deepmatch-{suffix}", parent_id=None)
+    ids = {item.id for item in page.items}
+    assert grandchild.id in ids
+    assert root.id not in ids
+    assert child.id not in ids
+
+
+async def test_search_below_the_floor_returns_empty_with_no_query(
+    db_session: AsyncSession, cascade_on: None
+) -> None:
+    """A 1-character term short-circuits to an empty page before the
+    visibility predicate or the ILIKE scan ever runs -- mirrors
+    ``test_search_api.py``'s ``test_query_too_short_returns_empty_200`` for
+    the same floor-vs-error shape (200/empty, never a 422): the
+    project-creation combobox fires this on every keystroke, so a
+    validation error mid-type would be wrong UX, not just wrong status."""
+    from services.group_directory_service import list_groups
+
+    tree = await _make_tree(db_session)
+    user = await make_user(db_session)
+    await make_membership(db_session, user=user, team=_TeamRef(tree.p), role="developer")
+    actor = principal_for(user, team_ids=[tree.p], role="developer")
+
+    page = await list_groups(db_session, actor=actor, q="a", parent_id=None)
+    assert page.items == []
+    assert page.total == 0
+
+
+async def test_search_at_the_floor_matches_normally(
+    db_session: AsyncSession, cascade_on: None
+) -> None:
+    """The other half of the floor contract: exactly
+    ``_MIN_SEARCH_QUERY_LEN`` characters still searches for real."""
+    from services.group_directory_service import _MIN_SEARCH_QUERY_LEN, list_groups
+
+    suffix = unique_suffix()
+    org = await make_organization(db_session)
+    target = await make_team(db_session, organization=org, name=f"findme-{suffix}")
+    user = await make_user(db_session)
+    await make_membership(db_session, user=user, team=_TeamRef(target.id), role="developer")
+    actor = principal_for(user, team_ids=[target.id], role="developer")
+
+    query = f"findme-{suffix}"[:_MIN_SEARCH_QUERY_LEN]
+    assert len(query) == _MIN_SEARCH_QUERY_LEN
+
+    page = await list_groups(db_session, actor=actor, q=query, parent_id=None)
+    ids = {item.id for item in page.items}
+    assert target.id in ids
+
+
+async def test_search_still_excludes_inaccessible_groups(
+    db_session: AsyncSession, cascade_off: None
+) -> None:
+    """Search doesn't bypass the same existence-hide/exclusion the
+    drill-down mode already enforces (test_list_omits_inaccessible_groups
+    above) -- it filters through the identical visibility predicate."""
+    from services.group_directory_service import list_groups
+
+    suffix = unique_suffix()
+    org = await make_organization(db_session)
+    hidden = await make_team(db_session, organization=org, name=f"hidden-{suffix}")
+    outsider = await make_user(db_session)
+    actor = principal_for(outsider, team_ids=[], role="developer")
+
+    page = await list_groups(db_session, actor=actor, q=f"hidden-{suffix}", parent_id=None)
+    assert page.items == []
+    assert hidden.id not in {item.id for item in page.items}
+
+
+# ---------------------------------------------------------------------------
 # Breadcrumb — narrow response shape
 # ---------------------------------------------------------------------------
 

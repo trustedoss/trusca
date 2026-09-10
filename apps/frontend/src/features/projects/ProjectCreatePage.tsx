@@ -19,6 +19,10 @@ import { problemMessage } from "@/lib/problemMessage";
 import { useActiveTeam } from "@/hooks/useActiveTeam";
 import { useDocumentTitle } from "@/hooks/useDocumentTitle";
 import { useAuthStore } from "@/stores/authStore";
+import {
+  TeamCombobox,
+  type TeamComboboxSelection,
+} from "@/features/projects/components/TeamCombobox";
 
 type FormValues = {
   name: string;
@@ -51,7 +55,7 @@ export function ProjectCreatePage() {
   // it mounted: switch teams in the bar while this page is open and the bar
   // said one thing while submit POSTed another. `useActiveTeam` is the single
   // resolution, and the effect below re-syncs when the user changes it. An
-  // explicit pick in this select still wins until the bar moves again.
+  // explicit pick in the combobox still wins until the bar moves again.
   //
   // No separate `user?.teamId` fallback here (there used to be one): it
   // duplicated `useActiveTeam`'s own no-stored-preference fallback, and
@@ -60,15 +64,22 @@ export function ProjectCreatePage() {
   // (group-hierarchy cascade case, see that hook's own docstring), this
   // component quietly fell back to `user.teamId` anyway, reintroducing,
   // one level down, the exact silent-team-substitution bug `useActiveTeam`
-  // exists to prevent. `teamId` now tracks `activeTeam?.id` exactly,
-  // including down to `""` when it goes null, so that case correctly hits
-  // the `!hasTeam` blocked state below instead of silently submitting under
-  // a different team than the one the user thinks is active.
+  // exists to prevent.
+  //
+  // group-hierarchy Phase 6: `teamId` alone is no longer enough to drive the
+  // picker: a cascade-reached group picked via the combobox's search has no
+  // entry in `teams`, so there is nowhere to look its name back up once the
+  // popover closes. `selectedTeam` carries the id AND the display name
+  // together, still resolving all the way down to `null` (not a silent
+  // substitute) exactly when `activeTeam` does.
   const activeTeam = useActiveTeam();
-  const [teamId, setTeamId] = useState<string>(activeTeam?.id ?? "");
+  const [selectedTeam, setSelectedTeam] = useState<TeamComboboxSelection | null>(
+    activeTeam ? { id: activeTeam.id, name: activeTeam.name } : null,
+  );
   useEffect(() => {
-    setTeamId(activeTeam?.id ?? "");
-  }, [activeTeam?.id]);
+    setSelectedTeam(activeTeam ? { id: activeTeam.id, name: activeTeam.name } : null);
+  }, [activeTeam]);
+  const teamId = selectedTeam?.id ?? "";
   const hasTeam = teamId !== "";
   // Distinguishes the two reasons `hasTeam` can be false: no membership at
   // all (existing `create.no_team` copy is accurate) vs. a real membership
@@ -187,46 +198,26 @@ export function ProjectCreatePage() {
           ) : null}
         </div>
 
-        {teams.length > 1 || activeTeamUnresolved ? (
-          // The `teams.length > 1` branch is the original multi-team
-          // picker. `activeTeamUnresolved` is included even for a
-          // single-team user (group-hierarchy Phase 5 security review): the
-          // blocked state above has to have SOME way out, or a single-team
-          // user who reaches it (e.g. via GroupDetailPage's "New project"
-          // from a cascade-only group) is stuck with a permanently disabled
-          // submit button and nothing on this page that can clear it. This
-          // still requires an explicit click, same as the multi-team case,
-          // rather than auto-selecting the one available team -- an
-          // automatic selection here would be exactly the silent
-          // substitution `useActiveTeam` returning `null` exists to avoid.
-          <div className="space-y-1.5">
-            <Label htmlFor="project-team">{t("create.team_label")}</Label>
-            <select
-              id="project-team"
-              value={teamId}
-              onChange={(e) => setTeamId(e.target.value)}
-              data-testid="project-team-select"
-              className="flex h-9 w-full rounded-md border border-input bg-background px-3 py-1 text-sm shadow-sm transition-colors duration-fast ease-out-soft focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
-            >
-              {teamId === "" ? (
-                // An explicit, disabled placeholder so the browser doesn't
-                // fall back to silently pre-selecting `teams[0]` for an
-                // unmatched `value=""` -- that would visually contradict
-                // the "your active team could not be resolved" warning
-                // right below by showing what looks like a normal, valid
-                // selection.
-                <option value="" disabled>
-                  {t("create.team_select_placeholder")}
-                </option>
-              ) : null}
-              {teams.map((tm) => (
-                <option key={tm.id} value={tm.id}>
-                  {tm.name}
-                </option>
-              ))}
-            </select>
-          </div>
-        ) : null}
+        {/*
+          group-hierarchy Phase 6: the combobox is always shown, unlike the
+          old `<select>` (gated on `teams.length > 1 || activeTeamUnresolved`).
+          Search reaches groups outside `teams` (the cascade case this task
+          exists for), so even a single-team user benefits, and the blocked
+          `!hasTeam` alert below still needs SOME way out for the
+          active-team-unresolved case (group-hierarchy Phase 5 security
+          review) -- the trigger shows the placeholder, never a silently
+          pre-selected name, whenever `selectedTeam` is `null`.
+        */}
+        <div className="space-y-1.5">
+          <Label htmlFor="project-team">{t("create.team_label")}</Label>
+          <TeamCombobox
+            triggerId="project-team"
+            teams={teams}
+            selected={selectedTeam}
+            onSelect={setSelectedTeam}
+            placeholder={t("create.team_select_placeholder")}
+          />
+        </div>
 
         <div className="space-y-1.5">
           <Label htmlFor="project-description">

@@ -609,6 +609,30 @@ def external_advisory_lookup_rate_limit() -> str:
     return os.getenv("EXTERNAL_ADVISORY_LOOKUP_RATE_LIMIT", "20/minute")
 
 
+def group_search_rate_limit() -> str:
+    """slowapi limit string for ``GET /v1/groups``'s flat-search mode (per actor).
+
+    group-hierarchy Phase 6 security review: this endpoint (Phase 4 PR 4-A)
+    had no rate limit at all before its search mode gained a new caller --
+    the project-creation form's live-typing combobox (``TeamCombobox.tsx``),
+    which fires the same per-keystroke pattern ``search_rate_limit`` exists to
+    bound. Unlike global search, this endpoint's ``q`` match
+    (``Group.name.ilike('%...%')``, ``services.group_directory_service.
+    list_groups``) has no trigram index behind it -- the ``groups`` table is
+    small enough at realistic scale that this is a bounded-request-rate
+    concern, not a missing-index one, so this reuses ``search_rate_limit``'s
+    exact budget (20/minute) rather than inventing a separate figure with no
+    evidence behind it. Keyed per actor via ``_authenticated_user_key``.
+
+    Only the search branch is expensive to bound this way -- the drill-down
+    branch (``q`` unset) is a plain indexed ``parent_group_id`` lookup, the
+    same cost shape ``GET /v1/admin/teams`` already runs unthrottled, so
+    this limit applies to the whole endpoint rather than trying to split
+    the two modes across two routes for one cost difference.
+    """
+    return os.getenv("GROUP_SEARCH_RATE_LIMIT", "20/minute")
+
+
 def csv_export_rate_limit() -> str:
     """slowapi limit string for the table CSV exports (per actor).
 
