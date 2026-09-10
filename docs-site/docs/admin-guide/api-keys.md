@@ -225,3 +225,4 @@ The following capabilities are referenced in early docs but are **not** shipped 
 - [GitLab CI](../ci-integration/gitlab-ci.md)
 - [Webhooks](../ci-integration/webhooks.md)
 - [Audit log](./audit-log.md)
+- [Hardening](./hardening.md) - where API key issuance fits into a broader production checklist.

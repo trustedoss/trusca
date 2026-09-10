@@ -411,6 +411,8 @@ docker-compose -f docker-compose.yml logs --tail=100 redis
 
 ## 함께 보기
 
+- [하드닝](./hardening.md) - 실제 트래픽을 받기 전, 이 런북이 필요해지지 않도록 미리 훑어보는 체크리스트.
+- [Postgres 크기 산정과 커넥션 튜닝](./postgres-tuning.md) - `connection_budget.over_max_connections` 경고 뒤에 있는 커넥션 예산 모델.
 - [알림](./alerting.md) — 위 PagerDuty 알림 이름 뒤에 있는 예시 Prometheus 규칙, 그리고 아직 없는 시나리오.
 - [취약점 데이터 (Trivy DB)](./vulnerability-data.md) — DB 라이프사이클과 트러블슈팅.
 - [백업·복원](./backup-and-restore.md) — 백업 보존 + 복원 흐름.

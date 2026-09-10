@@ -440,3 +440,5 @@ sudo rm -rf /opt/trustedoss/workspace
 - [기존 설치 업그레이드](./upgrade.md)
 - [환경변수 참고](../reference/env-variables.md)
 - [아키텍처 개요](../reference/architecture.md)
+- [하드닝](../admin-guide/hardening.md)
+- [Postgres 크기 산정과 커넥션 튜닝](../admin-guide/postgres-tuning.md) - 이 페이지의 용량 계산식에 나오는 `worker-scan` 레플리카 수를 기준으로 `max_connections`를 산정합니다.

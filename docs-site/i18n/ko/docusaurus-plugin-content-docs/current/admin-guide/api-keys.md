@@ -225,3 +225,4 @@ docker-compose -f docker-compose.yml logs --tail=2000 backend \
 - [GitLab CI](../ci-integration/gitlab-ci.md)
 - [Webhooks](../ci-integration/webhooks.md)
 - [감사 로그](./audit-log.md)
+- [하드닝](./hardening.md) - API 키 발급이 더 넓은 프로덕션 체크리스트의 어디에 들어가는지.

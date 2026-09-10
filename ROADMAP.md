@@ -49,10 +49,6 @@ minor may change the HTTP API, which is a warning rather than an invitation.
 
 - ☐ **One pagination shape across the API.** Three are in use today: `limit` / `offset` on 8 endpoints, `page` / `page_size` on 15, and `page` / `size` on 6, with page-size defaults and maxima varying inside each group. A client library needs a branch per shape. New endpoints already use one shared schema, so the count stops growing; converging the existing 29 is the breaking half. See [pagination](https://trustedoss.github.io/trusca/docs/reference/api-overview#pagination).
 
-## Documentation
-
-- ☐ **Hardening guide**: one page collecting the settings an operator should change before exposing a deployment, instead of the short list in [`SECURITY.md`](SECURITY.md) pointing at scattered references.
-
 ## Threat Detection & Deeper Prioritization
 
 Close the biggest remaining gaps vs commercial SCA, reusing best-of-breed open source rather than building from scratch.

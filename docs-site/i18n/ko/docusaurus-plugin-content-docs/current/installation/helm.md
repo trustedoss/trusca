@@ -433,4 +433,6 @@ Helm 설치에서 OAuth 로그인, SMTP·Slack·Teams 알림, 저장소에 포�
 - [환경 변수](../reference/env-variables.md): 차트가 매핑하는 모든 설정
 - [아키텍처](../reference/architecture.md): 서비스, Trivy DB 라이프사이클, 마이그레이션 모델
 - [취약점 데이터 (Trivy DB)](../admin-guide/vulnerability-data.md): air-gapped 운영과 DB refresh
+- [하드닝](../admin-guide/hardening.md): 이 차트의 `env.database.*` 분리가 구현하는 L1 데이터베이스 역할 분리 모델
+- [Postgres 크기 산정과 커넥션 튜닝](../admin-guide/postgres-tuning.md): 이 차트의 레플리카 수, 번들형/외부형 각각에 맞춘 `max_connections` 산정
 - [v0.10.0 릴리스 노트](../release-notes/v0.10.0.md): 차트 0.10.0 breaking changes

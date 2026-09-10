@@ -356,3 +356,5 @@ docker-compose -f docker-compose.yml start worker
 - [설치](../installation/docker-compose.md)
 - [업그레이드](../installation/upgrade.md)
 - [디스크·시스템 health](./disk-and-health.md)
+- [하드닝](./hardening.md) - 백업 암호화는 더 긴 프로덕션 체크리스트의 한 항목일 뿐입니다.
+- [Postgres 크기 산정과 커넥션 튜닝](./postgres-tuning.md)
