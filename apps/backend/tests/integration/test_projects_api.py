@@ -931,7 +931,7 @@ async def test_creating_a_project_hashes_owner_contact_in_the_audit_row(
 
     from models import AuditLog
 
-    _, team, user = await _seed_team_with_user(client, role="team_admin")
+    _, team, user = await _seed_team_with_user(client, role="group_admin")
     contact = "platform-oncall@example.com"
 
     created = await client.post(
