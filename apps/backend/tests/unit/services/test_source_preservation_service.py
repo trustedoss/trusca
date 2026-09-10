@@ -361,8 +361,19 @@ def test_limits_read_at_call_time(monkeypatch: pytest.MonkeyPatch) -> None:
 
     monkeypatch.delenv("SCAN_SOURCE_RETENTION", raising=False)
     assert scan_source_retention() == "latest"
+    monkeypatch.setenv("SCAN_SOURCE_RETENTION", "sbom-only")
+    assert scan_source_retention() == "sbom-only"
+    monkeypatch.setenv("SCAN_SOURCE_RETENTION", "none")
+    assert scan_source_retention() == "none"
+    # Case and surrounding space are an operator's, not a policy.
+    monkeypatch.setenv("SCAN_SOURCE_RETENTION", "  SBOM-Only ")
+    assert scan_source_retention() == "sbom-only"
+    # A value with no implementation behind it keeps the source rather than
+    # discarding it: this is read on the scan path, so the fallback has to be
+    # the one that cannot lose anything. "all" is the specific case that used
+    # to be accepted here and never did anything.
     monkeypatch.setenv("SCAN_SOURCE_RETENTION", "all")
-    assert scan_source_retention() == "all"
+    assert scan_source_retention() == "latest"
 
     monkeypatch.delenv("SCAN_SOURCE_PROJECT_QUOTA_BYTES", raising=False)
     assert scan_source_project_quota_bytes() == 1024**3
@@ -622,3 +633,131 @@ def test_extract_preserved_sbom_rejects_symlink_member(tmp_path: Path) -> None:
             project_id=project_id,
             dest_dir=tmp_path / "extract",
         )
+
+
+# ---------------------------------------------------------------------------
+# SCAN_SOURCE_RETENTION: what each policy keeps
+#
+# The source tree is essentially all of the bytes: measured at 13.8 MB per
+# project against tens of KB for the SBOM. A corpus large enough for that
+# difference to matter is also one where the SBOM is the member that has to
+# survive, because the rematch beat reads it to re-check an already-scanned
+# project against newly published vulnerabilities without re-running cdxgen.
+# So the middle policy is the interesting one, and what it drops and what it
+# keeps are asserted separately.
+# ---------------------------------------------------------------------------
+
+
+def test_retention_none_preserves_nothing(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """``none`` writes no tarball at all, not an empty one."""
+    monkeypatch.setenv("SCAN_SOURCE_RETENTION", "none")
+    project_id, scan_id = uuid.uuid4(), uuid.uuid4()
+
+    result = preserve_scan_source(
+        scan_id=scan_id,
+        project_id=project_id,
+        source_dir=_make_source_tree(tmp_path),
+        scancode_json_path=_make_scancode_json(tmp_path),
+        sbom_path=_make_cdxgen_sbom(tmp_path),
+    )
+
+    assert result is None
+    # Nothing on disk either: a caller that ignores the return value and globs
+    # the directory must not find a stub to mistake for a preserved source.
+    assert not scan_source_tarball_path(project_id, scan_id).exists()
+
+
+def test_retention_sbom_only_drops_the_source_tree(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """``sbom-only`` keeps the SBOM member and nothing from the tree."""
+    monkeypatch.setenv("SCAN_SOURCE_RETENTION", "sbom-only")
+    project_id, scan_id = uuid.uuid4(), uuid.uuid4()
+
+    result = preserve_scan_source(
+        scan_id=scan_id,
+        project_id=project_id,
+        source_dir=_make_source_tree(tmp_path),
+        scancode_json_path=_make_scancode_json(tmp_path),
+        sbom_path=_make_cdxgen_sbom(tmp_path),
+    )
+
+    assert result is not None and result.is_file()
+    assert _members(result) == {SBOM_MEMBER_NAME}
+
+
+def test_retention_sbom_only_still_feeds_the_rematch_beat(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The point of keeping the SBOM is that rematch can still read it.
+
+    Asserted through the same two functions the beat calls rather than by
+    inspecting the archive, since a tarball that merely contains the member is
+    not the same as one the extractor accepts.
+    """
+    monkeypatch.setenv("SCAN_SOURCE_RETENTION", "sbom-only")
+    payload = b'{"bomFormat": "CycloneDX", "specVersion": "1.5", "components": []}'
+    project_id, scan_id = uuid.uuid4(), uuid.uuid4()
+
+    preserve_scan_source(
+        scan_id=scan_id,
+        project_id=project_id,
+        source_dir=_make_source_tree(tmp_path),
+        scancode_json_path=None,
+        sbom_path=_make_cdxgen_sbom(tmp_path, content=payload),
+    )
+
+    assert preserved_tarball_has_sbom(scan_id=scan_id, project_id=project_id)
+    extracted = extract_preserved_sbom(
+        scan_id=scan_id,
+        project_id=project_id,
+        dest_dir=tmp_path / "extract",
+    )
+    assert extracted.read_bytes() == payload
+
+
+def test_retention_sbom_only_writes_nothing_without_an_sbom(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """No SBOM under ``sbom-only`` leaves nothing worth archiving.
+
+    The alternative would be a tarball holding zero members, which every reader
+    would have to special-case and which the sweep would then retain as the
+    project's one kept artifact.
+    """
+    monkeypatch.setenv("SCAN_SOURCE_RETENTION", "sbom-only")
+    project_id, scan_id = uuid.uuid4(), uuid.uuid4()
+
+    result = preserve_scan_source(
+        scan_id=scan_id,
+        project_id=project_id,
+        source_dir=_make_source_tree(tmp_path),
+        scancode_json_path=_make_scancode_json(tmp_path),
+        sbom_path=None,
+    )
+
+    assert result is None
+    assert not scan_source_tarball_path(project_id, scan_id).exists()
+
+
+def test_default_policy_still_keeps_the_source_tree(tmp_path: Path) -> None:
+    """The three policies are a choice, and the unset one is unchanged.
+
+    Guards the direction of the change: a deployment that never sets the
+    variable must keep behaving exactly as it did.
+    """
+    project_id, scan_id = uuid.uuid4(), uuid.uuid4()
+
+    result = preserve_scan_source(
+        scan_id=scan_id,
+        project_id=project_id,
+        source_dir=_make_source_tree(tmp_path),
+        scancode_json_path=_make_scancode_json(tmp_path),
+        sbom_path=_make_cdxgen_sbom(tmp_path),
+    )
+
+    assert result is not None
+    names = _members(result)
+    assert {"LICENSE", "pkg/app.py", SCANCODE_MEMBER_NAME, SBOM_MEMBER_NAME} <= names

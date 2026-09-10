@@ -81,6 +81,7 @@ import structlog
 from core.config import (
     scan_source_max_tarball_bytes,
     scan_source_project_quota_bytes,
+    scan_source_retention,
     workspace_root,
 )
 
@@ -243,6 +244,26 @@ def preserve_scan_source(
         skipped for any reason.
     """
     try:
+        policy = scan_source_retention()
+        if policy == "none":
+            log.info(
+                "scan_source_preserve_disabled",
+                scan_id=str(scan_id),
+                project_id=str(project_id),
+            )
+            return None
+
+        # Under sbom-only there is no source tree in the archive, so a missing
+        # SBOM leaves nothing worth writing. Checked before the source-dir probe
+        # below because that probe is about the tree this policy does not read.
+        if policy == "sbom-only" and (sbom_path is None or not sbom_path.is_file()):
+            log.info(
+                "scan_source_preserve_sbom_only_no_sbom",
+                scan_id=str(scan_id),
+                project_id=str(project_id),
+            )
+            return None
+
         source_dir = source_dir.resolve()
         if not source_dir.is_dir():
             log.warning(
@@ -278,9 +299,15 @@ def preserve_scan_source(
             files_added, scancode_added, sbom_added = _write_tarball(
                 tmp_path=tmp,
                 source_dir=source_dir,
-                scancode_json_path=scancode_json_path,
+                # Both of these serve the file tree, which sbom-only does not
+                # keep. Passing None rather than filtering inside the writer
+                # keeps one meaning for "not present" whatever the reason.
+                scancode_json_path=(
+                    None if policy == "sbom-only" else scancode_json_path
+                ),
                 sbom_path=sbom_path,
                 max_bytes=max_bytes,
+                include_source_tree=policy != "sbom-only",
             )
         except (PreservationTooLarge, PreservationQuotaExceeded) as exc:
             _unlink_quietly(tmp)
@@ -354,10 +381,17 @@ def _write_tarball(
     scancode_json_path: Path | None,
     sbom_path: Path | None,
     max_bytes: int,
+    include_source_tree: bool = True,
 ) -> tuple[int, bool, bool]:
     """Write the gzip tarball at ``tmp_path``.
 
     Returns ``(files_added, scancode_added, sbom_added)``.
+
+    ``include_source_tree=False`` writes the ``.trustedoss/`` members alone.
+    The walk is skipped rather than filtered, so the cost of the policy is not
+    paid: the source tree is what makes this function slow and what makes the
+    archive large, and reading it to throw it away would keep the first of
+    those while removing only the second.
 
     Raises:
         PreservationTooLarge: the written gzip stream crossed ``max_bytes`` — the
@@ -370,7 +404,7 @@ def _write_tarball(
 
     with tarfile.open(tmp_path, mode="w:gz") as tar:
         # Deterministic walk for stable archives + a predictable size profile.
-        for path in sorted(source_dir.rglob("*")):
+        for path in sorted(source_dir.rglob("*")) if include_source_tree else ():
             arcname = _safe_arcname(source_dir, path)
             if arcname is None:
                 continue

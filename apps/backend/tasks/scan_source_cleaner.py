@@ -48,7 +48,7 @@ import structlog
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from core.config import workspace_root
+from core.config import scan_source_retention, workspace_root
 from core.db import sync_session_scope
 from models import Project, Scan
 from services.source_preservation_service import (
@@ -73,6 +73,10 @@ def scan_source_cleaner_task() -> dict[str, Any]:
     """
     structlog.contextvars.bind_contextvars(task_name="scan_source_cleaner")
     sources_root = Path(workspace_root()) / "scan-sources"
+    # Read once per sweep rather than per project: a change mid-sweep would
+    # otherwise apply to some projects and not others, and the next run is
+    # six hours away, so the inconsistency would be visible for that long.
+    retention = scan_source_retention()
 
     scanned = 0
     deleted = 0
@@ -105,6 +109,7 @@ def scan_source_cleaner_task() -> dict[str, Any]:
                 project_exists=project_exists,
                 latest_scan_id=latest_scan_id,
                 active_scan_ids=active_scan_ids,
+                retention=retention,
             )
 
             for tar_path in project_dir.glob("*.tar.gz"):
@@ -180,6 +185,7 @@ def _ids_to_keep(
     project_exists: bool,
     latest_scan_id: str | None,
     active_scan_ids: set[str],
+    retention: str = "latest",
 ) -> set[str]:
     """Compute the set of scan-id stems whose tarball must be retained.
 
@@ -188,9 +194,21 @@ def _ids_to_keep(
     ``latest_scan_id`` tarball is absent on disk (latest scan failed / running /
     never preserved) we keep the newest-mtime tarball as a fallback so the last
     good preserved source is never the one we delete.
+
+    Under ``retention="none"`` nothing new is written, so this sweep is what
+    reclaims whatever an earlier policy left. Active scans are still protected:
+    a queued or running scan whose preservation stage started under the old
+    setting would otherwise have its temp-published tarball deleted from under
+    it. They drain within one scan, and the next sweep takes them.
+
+    ``sbom-only`` keeps the same one-per-project shape as ``latest``, since
+    only the contents of each tarball differ, so it is not named here.
     """
     if not project_exists:
         return set()
+
+    if retention == "none":
+        return set(active_scan_ids)
 
     keep: set[str] = set(active_scan_ids)
 
