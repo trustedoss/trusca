@@ -30,6 +30,24 @@ and the project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.
   `trusca_build_info` / `trusca_build_time_seconds` metric pair for
   deployments that scrape `/metrics` (#441).
 
+### Fixed
+
+- **A compose deployment stored its backups inside the containers, so
+  upgrading deleted them.** `BACKUPS_ROOT` was set nowhere in
+  `docker-compose.yml`, and with no value `backups_root()` resolves the
+  relative default `"backups"` against the working directory, which in the
+  published images is `/app`. Every nightly artifact therefore went to the
+  writable layer of whichever container ran the task: invisible to `docker
+  system df`, unreachable from the backend that lists them, and destroyed by
+  the `docker compose up -d` that deploys a new tag, which is the moment a
+  backup is worth the most. It also filled the host disk, since the artifact
+  tars the scan workspace and is sized like it rather than like the database
+  (7.6 GB in one night on a 2,089-project corpus, on a 26 GB root partition).
+  The file now sets the path and mounts a shared `backups-data` volume there
+  on the backend, both workers and beat, which is what `docker-compose.dev.yml`
+  has done since the non-root switch. `.env.example` claimed the production
+  file already mounted it; that is corrected too.
+
 ## [0.22.6] - 2026-09-08
 
 ### Fixed
