@@ -36,6 +36,25 @@ strings those publishers actually declare. They exercise dataset dependency
 edges and the license-verdict families; the identifiers and licenses are real,
 the document scaffolding is not.
 
+## `real_cyclonedx_large_js_2544.cdx.json`
+
+`cdxgen 12.2.0` run against a real, unrelated local JavaScript monorepo's
+already-`npm install`ed dependency tree (a Docusaurus site plus a few remark
+lint plugins, nothing to do with this product). Unmodified except
+`metadata.component` (name/purl/bom-ref), renamed to
+`unrelated-third-party-js-monorepo` so the fixture cannot be mistaken for data
+about this product; every one of its 2,544 `components[]` entries and the
+`dependencies[]` graph are byte-identical to cdxgen's own output.
+
+It exists for #398 (bulk catalog upsert): the repository's hardening rule
+against synthetic density-hiding fixtures asks for a real large SBOM, and no
+project on the machine that produced this fixture had a real, already-resolved
+dependency tree at true enterprise scale (5,000-20,000 components per #398).
+2,544 is the largest that was available without a fresh multi-package
+`npm install` (blocked behind this repo's supply-chain-review gate for new
+packages) or downloading a third-party SBOM; true 10k+-scale verification is
+tracked as a follow-up rather than pretended away with a hand-built fixture.
+
 ## The rest
 
 `realistic.cdx.json`, `realistic-trivy-sbom.json`, `centos7-rpm-no-os.cdx.json`,
