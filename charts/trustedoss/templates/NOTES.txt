@@ -117,3 +117,27 @@ WARNING: postgres.bundled=false but env.database.url is empty — the backend
 cannot reach a database. Set env.database.url (and env.database.ownerUrl for
 role separation).
 {{- end }}
+
+{{- /*
+#429: workspace + trivyCache both default to accessMode=ReadWriteMany with
+storageClassName left empty (cluster default). Most default StorageClasses
+(AWS gp2/gp3, GCP pd-standard/pd-ssd, Azure managed-csi) are ReadWriteOnce
+only, so the PVC stays Pending and the install hangs with no indication of
+why unless the operator already read the docs. This can't be validated
+against the cluster's actual StorageClass objects from inside a chart
+template (no API access at render time) — it can only warn on the shape
+that is known to fail. existingClaim skips the chart's own provisioning, so
+it carries no risk here regardless of accessMode.
+*/}}
+{{- $workspaceRWXRisk := and .Values.workspace.persistence.enabled (eq .Values.workspace.persistence.accessMode "ReadWriteMany") (not .Values.workspace.persistence.storageClassName) (not .Values.workspace.persistence.existingClaim) }}
+{{- $trivyCacheRWXRisk := and .Values.trivyCache.persistence.enabled (eq .Values.trivyCache.persistence.accessMode "ReadWriteMany") (not .Values.trivyCache.persistence.storageClassName) (not .Values.trivyCache.persistence.existingClaim) }}
+{{- if or $workspaceRWXRisk $trivyCacheRWXRisk }}
+
+WARNING: {{ if and $workspaceRWXRisk $trivyCacheRWXRisk }}workspace.persistence and trivyCache.persistence request{{ else if $workspaceRWXRisk }}workspace.persistence requests{{ else }}trivyCache.persistence requests{{ end }} ReadWriteMany with no storageClassName set, so provisioning falls to the
+cluster's DEFAULT StorageClass. Most default StorageClasses do NOT support
+ReadWriteMany; if yours doesn't, the PVC stays Pending and this install
+hangs. Set {{ if $workspaceRWXRisk }}workspace.persistence.storageClassName{{ end }}{{ if and $workspaceRWXRisk $trivyCacheRWXRisk }} and {{ end }}{{ if $trivyCacheRWXRisk }}trivyCache.persistence.storageClassName{{ end }} to an RWX-capable class
+(nfs / efs / filestore / longhorn) unless every backend and worker pod is
+pinned to one node. See docs-site/docs/installation/helm.md "Scans fail on
+multi-node clusters".
+{{- end }}
