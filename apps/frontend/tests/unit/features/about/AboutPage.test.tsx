@@ -53,6 +53,8 @@ function about(overrides: Partial<About> = {}): About {
   return {
     product: "TRUSCA",
     version: "2.3.0-dev",
+    commit: "a0d2bab",
+    built_at: "2026-09-06T02:11:00Z",
     license_spdx_id: "Apache-2.0",
     license_name: "Apache License, Version 2.0",
     license_url: "https://www.apache.org/licenses/LICENSE-2.0",
@@ -97,6 +99,13 @@ describe("AboutPage", () => {
 
     expect(await screen.findByTestId("about-product")).toHaveTextContent("TRUSCA");
     expect(screen.getByTestId("about-version")).toHaveTextContent("2.3.0-dev");
+    expect(screen.getByTestId("about-commit")).toHaveTextContent("a0d2bab");
+    // formatAbsoluteTime renders in the reader's locale/zone, so this asserts
+    // the raw ISO string is NOT shown verbatim rather than pinning an exact
+    // rendered string that would vary with the test runner's locale.
+    expect(screen.getByTestId("about-built-at")).not.toHaveTextContent(
+      "2026-09-06T02:11:00Z",
+    );
     expect(screen.getByTestId("about-license")).toHaveTextContent("Apache-2.0");
     expect(screen.getByTestId("about-copyright")).toHaveTextContent(
       "Copyright 2026 TRUSCA contributors",
@@ -169,6 +178,20 @@ describe("AboutPage", () => {
     );
     // No point requesting a body the API already said is absent.
     expect(mockedGetNotice).not.toHaveBeenCalledWith("third-party-notices");
+  });
+
+  it("shows the literal 'unknown' for a local/dev build with no build-arg stamp", async () => {
+    mockedGetAbout.mockResolvedValue(
+      about({ commit: "unknown", built_at: "unknown" }),
+    );
+    renderPage();
+
+    expect(await screen.findByTestId("about-commit")).toHaveTextContent("unknown");
+    // Deliberately NOT run through formatAbsoluteTime: "unknown" is a real
+    // value the backend returns (not absence), distinct from the ABSENT
+    // placeholder glyph formatAbsoluteTime would otherwise print for an
+    // unparseable date.
+    expect(screen.getByTestId("about-built-at")).toHaveTextContent("unknown");
   });
 
   it("surfaces an identity load failure instead of a blank page", async () => {

@@ -71,6 +71,8 @@ class AboutResponse(BaseModel):
             "example": {
                 "product": "TRUSCA",
                 "version": "2.3.0-dev",
+                "commit": "a0d2bab",
+                "built_at": "2026-09-06T02:11:00Z",
                 "license_spdx_id": "Apache-2.0",
                 "license_name": "Apache License, Version 2.0",
                 "license_url": "https://www.apache.org/licenses/LICENSE-2.0",
@@ -86,6 +88,18 @@ class AboutResponse(BaseModel):
         description=(
             "Released version, from ``TRUSTEDOSS_VERSION``; a development "
             "default when unset."
+        )
+    )
+    commit: str = Field(
+        description=(
+            "Short git commit this image was built from, from "
+            "``TRUSTEDOSS_COMMIT``; \"unknown\" for a local/dev build."
+        )
+    )
+    built_at: str = Field(
+        description=(
+            "UTC build timestamp (ISO 8601), from ``TRUSTEDOSS_BUILT_AT``; "
+            "\"unknown\" for a local/dev build."
         )
     )
     license_spdx_id: str = Field(description="SPDX identifier of TRUSCA's license.")

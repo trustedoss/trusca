@@ -41,7 +41,13 @@ import structlog
 from sqlalchemy import Select, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from core.config import queue_backlog_metrics_enabled, redis_url
+from core.config import (
+    queue_backlog_metrics_enabled,
+    redis_url,
+    slsa_builder_version,
+    trustedoss_built_at,
+    trustedoss_commit,
+)
 from models import (
     ComponentApproval,
     Project,
@@ -208,6 +214,27 @@ def _vuln_db_freshness() -> tuple[float, float]:
     return last_update, float(status.refresh_interval_hours)
 
 
+def _build_time_seconds() -> float:
+    """``TRUSTEDOSS_BUILT_AT`` as Unix seconds, or ``0.0`` when unset/unparseable.
+
+    O11: the label on ``trusca_build_info`` carries the human-readable ISO
+    string; this is the same value as a number, published separately so a
+    collector can compute "image age" (``time() - this``) without parsing a
+    label, the convention ``trusca_vuln_db_last_update_timestamp_seconds``
+    below already uses for the same reason. Zero rather than omitting the
+    series: a missing series draws nothing on a dashboard and reads as
+    nothing being wrong, and "no build timestamp at all" is a state worth
+    seeing.
+    """
+    raw = trustedoss_built_at()
+    if raw == "unknown":
+        return 0.0
+    try:
+        return datetime.fromisoformat(raw.replace("Z", "+00:00")).timestamp()
+    except ValueError:
+        return 0.0
+
+
 async def render_metrics(session: AsyncSession) -> str:
     """The whole document, in the order the contract file lists it.
 
@@ -315,6 +342,33 @@ async def render_metrics(session: AsyncSession) -> str:
             "Workspace volume in use, 0 to 1. The scan guard refuses above its own threshold.",
             "gauge",
             [({}, await _workspace_used_ratio(session))],
+        ),
+        # O11: which image is running, and when it was built. The Prometheus
+        # build_info idiom, constant value 1, information carried entirely in
+        # the labels (a gauge cannot carry a string as its value).
+        _block(
+            "trusca_build_info",
+            "Which image is running. Always 1; the version/commit/built_at "
+            "labels are the payload.",
+            "gauge",
+            [
+                (
+                    {
+                        "version": slsa_builder_version(),
+                        "commit": trustedoss_commit(),
+                        "built_at": trustedoss_built_at(),
+                    },
+                    1,
+                )
+            ],
+        ),
+        _block(
+            "trusca_build_time_seconds",
+            "Unix time the running image was built; 0 when unknown. "
+            "Published separately from trusca_build_info's built_at label so "
+            "a collector can derive image age without parsing a label.",
+            "gauge",
+            [({}, _build_time_seconds())],
         ),
     ]
 

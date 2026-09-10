@@ -26,6 +26,10 @@ export interface NoticeDocument {
 export interface About {
   product: string;
   version: string;
+  /** Short git commit this image was built from; "unknown" for a local/dev build. */
+  commit: string;
+  /** UTC build timestamp (ISO 8601); "unknown" for a local/dev build. */
+  built_at: string;
   license_spdx_id: string;
   license_name: string;
   license_url: string;

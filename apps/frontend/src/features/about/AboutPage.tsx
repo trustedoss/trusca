@@ -28,6 +28,7 @@ import { Card } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useAbout, useNotice } from "@/features/about/api/useAbout";
+import { formatAbsoluteTime } from "@/lib/absoluteTime";
 import type { NoticeDocument } from "@/features/about/api/aboutApi";
 
 /** Translate a document's title/description by id, falling back to the API. */
@@ -93,7 +94,7 @@ function MissingDocument({ filename }: { filename: string }) {
 }
 
 export default function AboutPage() {
-  const { t } = useTranslation("about");
+  const { t, i18n } = useTranslation("about");
   const { data, isLoading, isError, error } = useAbout();
   const [activeTab, setActiveTab] = useState<string | null>(null);
 
@@ -142,6 +143,24 @@ export default function AboutPage() {
             </dt>
             <dd className="mt-1 font-mono text-sm" data-testid="about-version">
               {data.version}
+            </dd>
+          </div>
+          <div>
+            <dt className="text-xs font-medium text-muted-foreground">
+              {t("field.commit")}
+            </dt>
+            <dd className="mt-1 font-mono text-sm" data-testid="about-commit">
+              {data.commit}
+            </dd>
+          </div>
+          <div>
+            <dt className="text-xs font-medium text-muted-foreground">
+              {t("field.built_at")}
+            </dt>
+            <dd className="mt-1 font-mono text-sm" data-testid="about-built-at">
+              {data.built_at === "unknown"
+                ? data.built_at
+                : formatAbsoluteTime(data.built_at, i18n.resolvedLanguage ?? "en")}
             </dd>
           </div>
           <div>

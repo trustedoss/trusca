@@ -43,7 +43,7 @@ from pathlib import Path
 
 import structlog
 
-from core.config import slsa_builder_version
+from core.config import slsa_builder_version, trustedoss_built_at, trustedoss_commit
 
 log = structlog.get_logger("services.about")
 
@@ -192,10 +192,12 @@ def read_document(document_id: str) -> tuple[NoticeDocument, str]:
 
 
 def product_identity() -> dict[str, str]:
-    """Name, version, license and source URL for the About surface."""
+    """Name, version, build info, license and source URL for the About surface."""
     return {
         "product": PRODUCT_NAME,
         "version": slsa_builder_version(),
+        "commit": trustedoss_commit(),
+        "built_at": trustedoss_built_at(),
         "license_spdx_id": LICENSE_SPDX_ID,
         "license_name": LICENSE_NAME,
         "license_url": LICENSE_URL,

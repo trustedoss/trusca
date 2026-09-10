@@ -64,6 +64,22 @@
       "help": "Workspace volume in use, 0 to 1. The scan guard refuses above its own threshold."
     },
     {
+      "name": "trusca_build_info",
+      "type": "gauge",
+      "labels": [
+        "version",
+        "commit",
+        "built_at"
+      ],
+      "help": "Which image is running. Always 1; the version/commit/built_at labels are the payload."
+    },
+    {
+      "name": "trusca_build_time_seconds",
+      "type": "gauge",
+      "labels": [],
+      "help": "Unix time the running image was built; 0 when unknown."
+    },
+    {
       "name": "trusca_task_runs_24h",
       "type": "gauge",
       "labels": [

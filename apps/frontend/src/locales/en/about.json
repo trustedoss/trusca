@@ -5,6 +5,8 @@
   "field": {
     "product": "Product",
     "version": "Version",
+    "commit": "Commit",
+    "built_at": "Built",
     "license": "License",
     "copyright": "Copyright",
     "source": "Source"
