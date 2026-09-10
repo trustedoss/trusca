@@ -8,7 +8,7 @@
  *   - Create-PR mutation calls the API and shows the created PR as a SAFE
  *     external link (target=_blank, rel=noopener).
  *   - Not-opted-in (409) path shows inline guidance — no crash.
- *   - Non-team_admin is read-only (no create button; guidance shown).
+ *   - Non-group_admin is read-only (no create button; guidance shown).
  *   - PR list renders with status badges.
  *   - Preview API error surfaces the RFC 7807 detail.
  *
@@ -45,7 +45,7 @@ vi.mock("@/lib/remediationApi", async () => {
 
 // --- Mock the overview hook so we can drive the project-scoped role. --------
 const overviewData: { current_user_role: string } = {
-  current_user_role: "team_admin",
+  current_user_role: "group_admin",
 };
 vi.mock("@/features/projects/api/useProjectOverview", () => ({
   useProjectOverview: () => ({ data: overviewData }),
@@ -62,7 +62,7 @@ const mockedDryRun = vi.mocked(npmDryRun);
 const mockedCreatePr = vi.mocked(createNpmPullRequest);
 const mockedListPrs = vi.mocked(listRemediationPullRequests);
 
-function setRole(role: "developer" | "team_admin" | "super_admin") {
+function setRole(role: "developer" | "group_admin" | "super_admin") {
   overviewData.current_user_role = role;
 }
 
@@ -147,7 +147,7 @@ describe("RemediationTab", () => {
     mockedDryRun.mockReset();
     mockedCreatePr.mockReset();
     mockedListPrs.mockReset();
-    setRole("team_admin");
+    setRole("group_admin");
     mockedListPrs.mockResolvedValue(listPage());
   });
 
@@ -280,7 +280,7 @@ describe("RemediationTab", () => {
     ).not.toBeInTheDocument();
   });
 
-  it("is read-only for a non-team_admin (no create button, guidance shown)", () => {
+  it("is read-only for a non-group_admin (no create button, guidance shown)", () => {
     setRole("developer");
     renderTab();
     expect(

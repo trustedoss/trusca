@@ -33,8 +33,8 @@ from schemas.auth import _reject_weak_password
 # ---------------------------------------------------------------------------
 
 # Closed role set — must match the user_role ENUM created in 0002_auth_schema.
-_ROLE_VALUES = ("super_admin", "team_admin", "developer", "viewer")
-_TEAM_ROLE_VALUES = ("team_admin", "developer", "viewer")
+_ROLE_VALUES = ("super_admin", "group_admin", "developer", "viewer")
+_TEAM_ROLE_VALUES = ("group_admin", "developer", "viewer")
 _SLUG_PATTERN = re.compile(r"^[a-z0-9][a-z0-9-]{0,63}$")
 
 
@@ -76,7 +76,7 @@ class AdminUserListItem(BaseModel):
     full_name: str | None = None
     is_active: bool
     is_superuser: bool
-    role: Literal["super_admin", "team_admin", "developer", "viewer"] = "developer"
+    role: Literal["super_admin", "group_admin", "developer", "viewer"] = "developer"
     team_count: int = 0
     last_login_at: datetime | None = None
     created_at: datetime
@@ -127,7 +127,7 @@ class AdminUserCreateIn(BaseModel):
             "adds them."
         ),
     )
-    role: Literal["team_admin", "developer", "viewer"] | None = Field(
+    role: Literal["group_admin", "developer", "viewer"] | None = Field(
         default=None,
         description=(
             "Their grade on that team. Omitted follows the deployment's "
@@ -241,10 +241,10 @@ class AdminUserListPage(BaseModel):
 class AdminUserRoleUpdate(BaseModel):
     """Body for ``PATCH /v1/admin/users/{id}/role``."""
 
-    role: str = Field(description="One of super_admin / team_admin / developer.")
+    role: str = Field(description="One of super_admin / group_admin / developer.")
     team_id: uuid.UUID | None = Field(
         default=None,
-        description="Required when role is team_admin or developer; ignored for super_admin.",
+        description="Required when role is group_admin or developer; ignored for super_admin.",
     )
 
     @field_validator("role")
@@ -304,6 +304,17 @@ class AdminTeamListItem(BaseModel):
     name: str
     slug: str
     description: str | None = None
+    organization_id: uuid.UUID = Field(
+        description=(
+            "The organization this group belongs to. A group can only be "
+            "moved under a new parent in the same organization; reparent "
+            "refuses a cross-organization move (422)."
+        ),
+    )
+    parent_group_id: uuid.UUID | None = Field(
+        default=None,
+        description="Null for a root group. See AdminTeamDetail.parent_group_id.",
+    )
     member_count: int = 0
     project_count: int = 0
     created_at: datetime
@@ -336,6 +347,16 @@ class AdminTeamDetail(BaseModel):
     name: str
     slug: str
     description: str | None = None
+    organization_id: uuid.UUID = Field(
+        description="See AdminTeamListItem.organization_id."
+    )
+    parent_group_id: uuid.UUID | None = Field(
+        default=None,
+        description=(
+            "Null for a root group. Set via POST /v1/admin/teams/{id}/reparent, "
+            "or at creation via POST /v1/admin/teams/{parent_id}/subgroups."
+        ),
+    )
     project_count: int = 0
     members: list[AdminTeamMember] = Field(default_factory=list)
     created_at: datetime
@@ -442,7 +463,63 @@ class AdminTeamMemberAdd(BaseModel):
         return value
 
 
+# ---------------------------------------------------------------------------
+# Group hierarchy (reparent / create-subgroup)
+# ---------------------------------------------------------------------------
+
+
+class AdminGroupReparentRequest(BaseModel):
+    """Body for ``POST /v1/admin/teams/{group_id}/reparent``."""
+
+    new_parent_id: uuid.UUID | None = Field(
+        default=None,
+        description=(
+            "The group to move this group (and its whole subtree) under. "
+            "Null moves the group to the root of its own organization."
+        ),
+    )
+
+
+class AdminGroupCreateSubgroup(BaseModel):
+    """Body for ``POST /v1/admin/teams/{parent_group_id}/subgroups``.
+
+    No ``organization_id`` field, unlike ``AdminTeamCreate``: a subgroup
+    always inherits its parent's organization (``services.group_service.
+    create_subgroup``), so there is nothing to disambiguate.
+    """
+
+    name: str = Field(min_length=1, max_length=255)
+    slug: str = Field(min_length=1, max_length=64)
+    description: str | None = Field(default=None, max_length=1024)
+
+    @field_validator("name")
+    @classmethod
+    def _strip_name(cls, value: str) -> str:
+        return _strip_or_raise(value, field="name")
+
+    @field_validator("slug")
+    @classmethod
+    def _validate_slug(cls, value: str) -> str:
+        normalized = value.strip().lower()
+        if not _SLUG_PATTERN.fullmatch(normalized):
+            raise ValueError(
+                "slug must start with [a-z0-9] and contain only lower-case letters, "
+                "digits, or '-' (max 64 chars)"
+            )
+        return normalized
+
+    @field_validator("description")
+    @classmethod
+    def _normalize_description(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
+        stripped = value.strip()
+        return stripped or None
+
+
 __all__ = [
+    "AdminGroupCreateSubgroup",
+    "AdminGroupReparentRequest",
     "AdminOrganizationListItem",
     "AdminOrganizationListPage",
     "AdminTeamCreate",

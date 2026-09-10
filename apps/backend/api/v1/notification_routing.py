@@ -123,7 +123,7 @@ async def create_org_rule_endpoint(
     organization_id: uuid.UUID,
     payload: NotificationRoutingRuleIn,
     session: AsyncSession = Depends(get_db),
-    actor: CurrentUser = Depends(require_role("team_admin")),
+    actor: CurrentUser = Depends(require_role("group_admin")),
 ) -> Response:
     try:
         rule = await create_rule(
@@ -153,7 +153,7 @@ async def create_team_rule_endpoint(
     team_id: uuid.UUID,
     payload: NotificationRoutingRuleIn,
     session: AsyncSession = Depends(get_db),
-    actor: CurrentUser = Depends(require_role("team_admin")),
+    actor: CurrentUser = Depends(require_role("group_admin")),
 ) -> Response:
     try:
         rule = await create_rule(
@@ -178,7 +178,7 @@ async def delete_rule_endpoint(
     request: Request,
     rule_id: uuid.UUID,
     session: AsyncSession = Depends(get_db),
-    actor: CurrentUser = Depends(require_role("team_admin")),
+    actor: CurrentUser = Depends(require_role("group_admin")),
 ) -> Response:
     try:
         await delete_rule(session, actor, rule_id=rule_id)

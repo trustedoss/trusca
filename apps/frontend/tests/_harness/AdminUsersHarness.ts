@@ -17,7 +17,7 @@ import { expect, type Page } from "@playwright/test";
 const DEFAULT_BASE_URL = "http://localhost:5173";
 const DEFAULT_TIMEOUT_MS = 10_000;
 
-export type AdminUserRole = "super_admin" | "team_admin" | "developer";
+export type AdminUserRole = "super_admin" | "group_admin" | "developer";
 export type AdminUsersRoleFilter = "all" | AdminUserRole;
 export type AdminUsersActiveFilter =
   | "all"

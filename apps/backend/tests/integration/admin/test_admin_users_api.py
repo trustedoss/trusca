@@ -113,7 +113,7 @@ async def test_list_users_team_admin_returns_404_existence_hide(
         org = await make_organization(session)
         team = await make_team(session, organization=org)
         user = await make_user(session)
-        await make_membership(session, user=user, team=team, role="team_admin")
+        await make_membership(session, user=user, team=team, role="group_admin")
 
     response = await client.get("/v1/admin/users", headers=_bearer_for(user))
     assert response.status_code == 404
@@ -126,7 +126,7 @@ async def test_list_users_team_admin_returns_404_existence_hide(
 # The ``role`` query parameter was a free-form ``str`` until security review
 # F3 — values outside the canonical 3-role set were silently dropped (fail
 # open), so a typo like ``role=admin`` returned the entire user list. The fix
-# pins the parameter to ``Literal["super_admin", "team_admin", "developer"]``
+# pins the parameter to ``Literal["super_admin", "group_admin", "developer"]``
 # so anything else fails with a 422 + Problem Details (fail closed) BEFORE
 # the service runs.
 #
@@ -137,7 +137,7 @@ async def test_list_users_team_admin_returns_404_existence_hide(
 
 @pytest.mark.parametrize(
     "role",
-    ["super_admin", "team_admin", "developer", "viewer"],
+    ["super_admin", "group_admin", "developer", "viewer"],
 )
 async def test_list_users_role_query_accepts_valid_enum(
     client: AsyncClient, role: str
@@ -310,12 +310,12 @@ async def test_update_user_role_writes_audit(client: AsyncClient) -> None:
     response = await client.patch(
         f"/v1/admin/users/{target.id}/role",
         headers=_bearer_for(admin),
-        json={"role": "team_admin", "team_id": str(team.id)},
+        json={"role": "group_admin", "team_id": str(team.id)},
     )
     assert response.status_code == 200, response.text
     body = response.json()
     assert any(
-        m["role"] == "team_admin" and m["team_id"] == str(team.id) for m in body["memberships"]
+        m["role"] == "group_admin" and m["team_id"] == str(team.id) for m in body["memberships"]
     )
 
     factory = await _factory(client)

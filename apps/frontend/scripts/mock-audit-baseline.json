@@ -52,7 +52,6 @@
   "tests/unit/features/projects/ObligationFulfilmentEditor.test.tsx": 1,
   "tests/unit/features/projects/ObligationsTab.test.tsx": 2,
   "tests/unit/features/projects/OverviewTab.test.tsx": 1,
-  "tests/unit/features/projects/ProjectCreatePage.test.tsx": 1,
   "tests/unit/features/projects/projectDetailApi.test.ts": 1,
   "tests/unit/features/projects/ProjectDetailPage.test.tsx": 4,
   "tests/unit/features/projects/ProjectDetailSandbox.test.tsx": 9,

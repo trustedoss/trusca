@@ -33,14 +33,14 @@ def test_a_deployment_that_maps_nothing_keeps_the_historical_grade(
     """Nothing changes for the flow this path was written for."""
     monkeypatch.delenv("OIDC_GROUP_ROLE_MAP", raising=False)
 
-    assert _grade_for(_info("anything")) == "team_admin"
+    assert _grade_for(_info("anything")) == "group_admin"
 
 
 def test_an_unmatched_person_gets_the_floor_once_mapping_is_configured(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """On a deployment that mapped its groups, carrying none of them is an answer."""
-    monkeypatch.setenv("OIDC_GROUP_ROLE_MAP", "platform:team_admin")
+    monkeypatch.setenv("OIDC_GROUP_ROLE_MAP", "platform:group_admin")
 
     assert _grade_for(_info("finance")) == "viewer"
     assert _grade_for(_info()) == "viewer"
@@ -48,10 +48,10 @@ def test_an_unmatched_person_gets_the_floor_once_mapping_is_configured(
 
 def test_the_highest_mapped_grade_wins(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv(
-        "OIDC_GROUP_ROLE_MAP", "readers:viewer,engineers:developer,platform:team_admin"
+        "OIDC_GROUP_ROLE_MAP", "readers:viewer,engineers:developer,platform:group_admin"
     )
 
-    assert _grade_for(_info("readers", "platform", "engineers")) == "team_admin"
+    assert _grade_for(_info("readers", "platform", "engineers")) == "group_admin"
     assert _grade_for(_info("readers", "engineers")) == "developer"
     assert _grade_for(_info("readers")) == "viewer"
 

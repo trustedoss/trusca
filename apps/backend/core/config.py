@@ -609,6 +609,30 @@ def external_advisory_lookup_rate_limit() -> str:
     return os.getenv("EXTERNAL_ADVISORY_LOOKUP_RATE_LIMIT", "20/minute")
 
 
+def group_search_rate_limit() -> str:
+    """slowapi limit string for ``GET /v1/groups``'s flat-search mode (per actor).
+
+    group-hierarchy Phase 6 security review: this endpoint (Phase 4 PR 4-A)
+    had no rate limit at all before its search mode gained a new caller --
+    the project-creation form's live-typing combobox (``TeamCombobox.tsx``),
+    which fires the same per-keystroke pattern ``search_rate_limit`` exists to
+    bound. Unlike global search, this endpoint's ``q`` match
+    (``Group.name.ilike('%...%')``, ``services.group_directory_service.
+    list_groups``) has no trigram index behind it -- the ``groups`` table is
+    small enough at realistic scale that this is a bounded-request-rate
+    concern, not a missing-index one, so this reuses ``search_rate_limit``'s
+    exact budget (20/minute) rather than inventing a separate figure with no
+    evidence behind it. Keyed per actor via ``_authenticated_user_key``.
+
+    Only the search branch is expensive to bound this way -- the drill-down
+    branch (``q`` unset) is a plain indexed ``parent_group_id`` lookup, the
+    same cost shape ``GET /v1/admin/teams`` already runs unthrottled, so
+    this limit applies to the whole endpoint rather than trying to split
+    the two modes across two routes for one cost difference.
+    """
+    return os.getenv("GROUP_SEARCH_RATE_LIMIT", "20/minute")
+
+
 def csv_export_rate_limit() -> str:
     """slowapi limit string for the table CSV exports (per actor).
 
@@ -3226,7 +3250,7 @@ def default_member_role() -> str | None:
     raw = os.getenv("DEFAULT_MEMBER_ROLE", "").strip().lower()
     if not raw:
         return None
-    if raw in {"viewer", "developer", "team_admin"}:
+    if raw in {"viewer", "developer", "group_admin"}:
         return raw
     # Set to something this does not recognise. Answering None here would send
     # both callers to their historical fallback, which is a higher grade than
@@ -3732,7 +3756,23 @@ def oidc_group_role_map() -> dict[str, str]:
         group, _, grade = pair.partition(":")
         group = group.strip()
         grade = grade.strip()
-        if not group or grade not in {"viewer", "developer", "team_admin"}:
+        if not group:
+            continue
+        if grade not in {"viewer", "developer", "group_admin"}:
+            # Same reasoning as default_member_role()'s unrecognised branch:
+            # dropping the pair silently would demote whoever is in this
+            # group to the floor on their next sign-in with nothing in the
+            # log to say why. A stale pre-rename value (e.g. "team_admin",
+            # from before the group_admin role rename) is exactly the case
+            # this is for.
+            import structlog
+
+            structlog.get_logger("config").warning(
+                "config.oidc_group_role_map_unrecognised",
+                env_var="OIDC_GROUP_ROLE_MAP",
+                group=group,
+                value=grade,
+            )
             continue
         mapping[group] = grade
     return mapping
@@ -3984,3 +4024,47 @@ def validate_demo_sandbox_limits() -> None:
             "DEMO_ALLOW_SANDBOX_SCANS is on but safe limits are not applied — "
             "layer docker-compose.demo.yml / set the demo env. Violations: " + "; ".join(violations)
         )
+
+
+# ---------------------------------------------------------------------------
+# Group-hierarchy rollout, Phase 2 PR 2-A: cascade feature flag
+# ---------------------------------------------------------------------------
+
+
+def group_cascade_enabled() -> bool:
+    """The single switch for the whole group-hierarchy permission cascade.
+
+    On (default as of Phase 5): a group's effective role inherits from its
+    nearest ancestor with a direct membership (a demotion at a child
+    overrides a promotion at a parent, sibling groups are never consulted),
+    and the accessible set widens to each membership group's whole subtree.
+    ``services.group_service`` walks ``path`` (migrations 0090/0091) to do
+    both. PR 2-C wired this into ``core/authz.py``'s ``team_scope_filter``
+    (every list/fan-out read: dashboard, search, inventory, scan/project/
+    license-policy/component-approval lists, and more) and into
+    ``can_access_group``. PR 2-D wired ``assert_team_access`` (the async
+    wrapper around ``can_access_group`` that roughly 22 service/API modules
+    use for their single-resource gate) in too, closing the list/detail
+    parity gap the PR 2-C security review flagged as High (a
+    cascade-visible list item that still 403'd on open).
+
+    Off: every permission check stays exactly as flat as it was before
+    ``parent_group_id`` / ``path`` existed. A group's effective role is its
+    own direct membership only, and the accessible set is direct
+    memberships only, regardless of any ``parent_group_id`` a group carries.
+
+    This defaulted to ``false`` through Phase 4: turning it on required a
+    way to fix a group placed under the wrong parent, and nothing could yet
+    move a group or create one nested under another. Phase 5's
+    ``reparent`` / ``create_subgroup`` and their admin UI close that gap, so
+    the default flips to ``true`` here. An operator who wants the flat,
+    pre-Phase-5 behaviour sets ``GROUP_CASCADE_ENABLED=false`` explicitly.
+    ``tests/integration/test_group_cascade_wiring.py`` and the list-vs-detail
+    parity guard alongside it are what a future change to this flag's
+    rollout plan should re-run first.
+
+    Read at call time (CLAUDE.md core rule #11), not cached at import: an
+    operator can flip it without a rebuild, and every accessor in this
+    module already follows that rule.
+    """
+    return os.getenv("GROUP_CASCADE_ENABLED", "true").lower() == "true"

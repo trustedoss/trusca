@@ -48,8 +48,8 @@ def test_require_role_super_admin_rejects_developer():
 def test_require_role_team_admin_allows_team_admin_and_super_admin():
     from core.security import require_role
 
-    dep = require_role("team_admin")
-    assert dep(current_user=_FakeUser(role="team_admin"))
+    dep = require_role("group_admin")
+    assert dep(current_user=_FakeUser(role="group_admin"))
     assert dep(current_user=_FakeUser(role="super_admin"))
 
 

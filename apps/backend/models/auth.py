@@ -3,7 +3,7 @@
 """
 Auth domain models — Phase 1 PR #5.
 
-Tables: organizations, teams, users, memberships, refresh_tokens, audit_logs.
+Tables: organizations, groups, users, memberships, refresh_tokens, audit_logs.
 
 Conventions (CLAUDE.md core rules):
   - PostgreSQL only. UUID PKs default to gen_random_uuid() (pgcrypto extension).
@@ -13,6 +13,32 @@ Conventions (CLAUDE.md core rules):
   - JSONB filter / containment columns get a GIN index.
   - User.email uses CITEXT for case-insensitive uniqueness.
   - No environment access at import time (CLAUDE.md core rule #11).
+
+Group-hierarchy rollout, PR 0-1 (alembic/versions/0088, 0089):
+  - ``teams`` was renamed to ``groups`` and the ``Team`` class below is
+    ``Group``. ``Team = Group`` is kept as a module-level alias so the ~596
+    files that still do ``from models.auth import Team`` / ``models.Team``
+    keep working unchanged until the follow-up PRs migrate those call sites.
+  - Every FK column this PR renamed (``Membership.group_id``,
+    ``AuditLog.group_id``) carries a ``team_id = synonym("group_id")`` so
+    ``.team_id`` reads and writes (including class-level query expressions
+    like ``Membership.team_id == x``) keep working against the same
+    underlying column. Verified: SQLAlchemy's ``synonym`` delegates
+    class-level comparisons to the target column, not just instance access.
+  - ``ROLE_VALUES`` reflects the 0089 enum rename (``team_admin`` ->
+    ``group_admin``) because this tuple is what SQLAlchemy validates an
+    assigned role string against, independent of what the migration already
+    renamed in the database, and there is no synonym equivalent for an enum
+    label. See 0089's docstring for the resulting behavioural risk this
+    creates for the ~47 non-test files that still compare a role against the
+    literal string ``"team_admin"``.
+
+Group-hierarchy rollout, Phase 1 (alembic/versions/0090, 0091):
+  - ``Group.parent_group_id`` / ``Group.path`` add unlimited nesting. See the
+    ``Group`` class docstring for the derivation rule, why ``path`` is never
+    written from application code, and why descendant lookups must use
+    ``path @> ARRAY[:id]::uuid[]`` rather than ``:id = ANY(path)``.
+  - No API or service-layer change in this phase, pure schema addition.
 """
 
 from __future__ import annotations
@@ -33,9 +59,9 @@ from sqlalchemy import (
     UniqueConstraint,
     text,
 )
-from sqlalchemy.dialects.postgresql import CITEXT, INET, JSONB, UUID
+from sqlalchemy.dialects.postgresql import ARRAY, CITEXT, INET, JSONB, UUID
 from sqlalchemy.dialects.postgresql import ENUM as PG_ENUM
-from sqlalchemy.orm import Mapped, mapped_column, relationship
+from sqlalchemy.orm import Mapped, mapped_column, relationship, synonym
 
 from . import Base
 
@@ -55,7 +81,12 @@ EMPTY_JSONB = text("'{}'::jsonb")
 # Order mirrors the Postgres type, which lists values in the order they were
 # added: `viewer` came last (migration 0055) even though it is the lowest
 # grade. Privilege order lives in ``core.security._ROLE_PRIORITY``, not here.
-ROLE_VALUES = ("super_admin", "team_admin", "developer", "viewer")
+# `group_admin` was `team_admin` until migration 0089 renamed the Postgres
+# enum label (group-hierarchy rollout PR 0-1); see that migration's
+# docstring for why, unlike the column renames in this file, that rename has
+# no backward-compatible bridge for the ~47 non-test files that still spell
+# the literal string `"team_admin"`.
+ROLE_VALUES = ("super_admin", "group_admin", "developer", "viewer")
 
 
 def _role_enum() -> PG_ENUM:
@@ -115,7 +146,11 @@ class Organization(Base):
         DateTime(timezone=True), nullable=False, server_default=NOW
     )
 
-    teams: Mapped[list[Team]] = relationship(
+    # Attribute name kept as ``teams`` (unchanged by the group-hierarchy
+    # rollout's PR 0-1), so every call site that reads ``organization.teams``
+    # keeps working. Only the referenced class (``Team`` -> ``Group``) and the
+    # underlying table (``teams`` -> ``groups``) were renamed.
+    teams: Mapped[list[Group]] = relationship(
         back_populates="organization", cascade="all, delete-orphan", passive_deletes=True
     )
 
@@ -126,14 +161,41 @@ class Organization(Base):
 
 
 # ---------------------------------------------------------------------------
-# Team
+# Group (renamed from Team by the group-hierarchy rollout, PR 0-1 / 0088)
 # ---------------------------------------------------------------------------
 
 
-class Team(Base):
-    """A team under an organization. Tenant boundary for project visibility."""
+class Group(Base):
+    """A group under an organization. Tenant boundary for project visibility.
 
-    __tablename__ = "teams"
+    Renamed from ``Team`` (table ``teams`` -> ``groups``) by migration 0088,
+    the first step of the group-hierarchy rollout. Migration 0090 (Phase 1)
+    adds ``parent_group_id`` / ``path`` below so a group can nest under
+    another without limit. ``Team = Group`` below keeps every existing
+    ``from models.auth import Team`` import working.
+
+    Hierarchy columns (0090/0091):
+      - ``parent_group_id`` is the single source of truth for the tree shape.
+        ``ON DELETE RESTRICT``: a group with children cannot be deleted
+        until they are reparented or removed first; there is no cascade that
+        makes sense for "delete this subtree's root" here.
+      - ``path`` is a materialised-path cache DERIVED from
+        ``parent_group_id`` by the DB trigger ``trg_groups_derive_path``
+        (0091). Application code must never assign it directly: any value
+        written to it on INSERT, or on an UPDATE that changes
+        ``parent_group_id``, is silently overwritten by the trigger. See
+        0091's docstring for why the trigger is gated to fire only when
+        ``parent_group_id`` itself changes (so a future subtree-move/reparent
+        migration can UPDATE descendants' ``path`` directly without the
+        trigger re-deriving and clobbering that write).
+      - Descendant queries must filter with ``path @> ARRAY[:id]::uuid[]``,
+        never ``:id = ANY(path)``. A plain array GIN index cannot use
+        ``= ANY()`` (a ``ScalarArrayOpExpr``, not one of the four operators
+        ``&&``, ``@>``, ``<@``, ``=`` the ``array_ops`` GIN opclass
+        supports), so that form falls back to a sequential scan.
+    """
+
+    __tablename__ = "groups"
 
     id: Mapped[uuid.UUID] = mapped_column(UUID_PK, primary_key=True, server_default=GEN_UUID)
     organization_id: Mapped[uuid.UUID] = mapped_column(
@@ -144,6 +206,22 @@ class Team(Base):
     name: Mapped[str] = mapped_column(String(255), nullable=False)
     slug: Mapped[str] = mapped_column(String(64), nullable=False)
     description: Mapped[str | None] = mapped_column(Text, nullable=True)
+    # Single source of truth for tree shape (0090). NULL = root group.
+    # RESTRICT: a group with children cannot be deleted out from under them.
+    parent_group_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID_PK,
+        ForeignKey("groups.id", ondelete="RESTRICT"),
+        nullable=True,
+    )
+    # Materialised-path cache: the ordered list of ancestor ids from the root
+    # down to (but not including) this row, e.g. [root.id, parent.id].
+    # DERIVED by the DB trigger `trg_groups_derive_path` (0091) from
+    # `parent_group_id`, never set from application code. Any value an
+    # INSERT/UPDATE supplies here is overwritten by the trigger; the ORM
+    # column exists only so reads (`group.path`) see the trigger's result.
+    path: Mapped[list[uuid.UUID]] = mapped_column(
+        ARRAY(UUID_PK), nullable=False, server_default=text("'{}'::uuid[]")
+    )
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, server_default=NOW
     )
@@ -152,14 +230,93 @@ class Team(Base):
     )
 
     organization: Mapped[Organization] = relationship(back_populates="teams")
+    # Attribute name kept as ``memberships``, unaffected by the class
+    # rename (it names an attribute on instances of this class, not a
+    # reference to the class's own old name).
     memberships: Mapped[list[Membership]] = relationship(
         back_populates="team", cascade="all, delete-orphan", passive_deletes=True
     )
+    # Self-referential tree (0090). `remote_side=[id]` tells SQLAlchemy which
+    # side of the join is the "one" (parent) side, since both sides of a
+    # self-referential FK are the same column set otherwise.
+    #
+    # `viewonly=True` on both sides is load-bearing, not a style choice.
+    # Without it, giving Group a self-referential relationship() changes how
+    # SQLAlchemy's unit-of-work orders an unrelated flush: `delete_team`'s
+    # audit-log row (a plain `AuditLog(group_id=...)` insert with no
+    # relationship() to Group at all) is normally guaranteed to INSERT
+    # before the team's own DELETE in the same flush, see
+    # `core/audit.py::_before_flush`'s docstring, which states that
+    # invariant explicitly and depends on it (the FK is `ON DELETE SET
+    # NULL`, so the audit row is meant to survive with a NULL group_id, not
+    # get its INSERT rejected by a FK pointing at an already-deleted row).
+    # Measured on this database: a plain (non-viewonly) self-referential
+    # relationship() on Group flips that order for the concurrent-delete
+    # path specifically: `test_concurrent_delete_team_blocks_at_least_one`
+    # started failing with `ForeignKeyViolationError` on `audit_logs` the
+    # moment `parent`/`children` were added, with no other line changed,
+    # and passed again the moment they were reverted. `viewonly=True`
+    # removes `parent`/`children` from SQLAlchemy's flush-dependency
+    # processing entirely (a viewonly relationship never drives an
+    # INSERT/UPDATE/DELETE), which restores the original ordering. Nothing
+    # in this phase writes through `.parent`/`.children`. Phase 5's
+    # reparent service mutates `parent_group_id` directly, so read-only is
+    # also the correct semantics today, not just the fix that happened to
+    # work.
+    parent: Mapped[Group | None] = relationship(
+        "Group", remote_side=[id], back_populates="children", viewonly=True
+    )
+    children: Mapped[list[Group]] = relationship(
+        "Group", back_populates="parent", viewonly=True
+    )
 
     __table_args__ = (
-        UniqueConstraint("organization_id", "slug", name="uq_teams_org_slug"),
-        Index("ix_teams_organization_id", "organization_id"),
+        # Pre-existing, org-wide slug uniqueness, unaffected by this PR.
+        # NOTE: this already enforces a slug is unique across every group in
+        # the org regardless of nesting depth, which is strictly stronger
+        # than (and makes currently redundant) the two constraints below.
+        # They are added anyway per the Phase 1 plan, so the intended
+        # sibling/root invariant is already in place in DDL form the day a
+        # later phase relaxes this constraint to allow the same slug under
+        # different parents.
+        UniqueConstraint("organization_id", "slug", name="uq_groups_org_slug"),
+        # Sibling slug uniqueness (0090): no two children of the same parent
+        # share a slug. NULLs are distinct in Postgres, so this alone does
+        # NOT constrain root groups against each other, see the partial
+        # index below for that.
+        UniqueConstraint("parent_group_id", "slug", name="uq_groups_parent_slug"),
+        Index("ix_groups_organization_id", "organization_id"),
+        Index("ix_groups_parent_group_id", "parent_group_id"),
+        # Supports `path @> ARRAY[:id]::uuid[]` (descendant lookups) and
+        # `path && ARRAY[...]` (subtree-union lookups). Does NOT support
+        # `:id = ANY(path)`, see the class docstring.
+        Index("ix_groups_path_gin", "path", postgresql_using="gin"),
+        # Root-slug uniqueness per org (0090): same reasoning
+        # license_policies/gate_policies use for their org-default row
+        # (`uq_license_policies_org_default`, `uq_gate_policies_org_default`)
+        # (a plain UniqueConstraint treats every NULL parent_group_id as
+        # distinct, so it would let two root groups in the same org share a
+        # slug). The partial index below constrains only the NULL-parent
+        # subset instead.
+        Index(
+            "uq_groups_root_slug",
+            "organization_id",
+            "slug",
+            unique=True,
+            postgresql_where=text("parent_group_id IS NULL"),
+        ),
+        # A group cannot be its own ancestor. `path` never contains this
+        # row's own id if the trigger derived it correctly; this CHECK is
+        # the DB-level backstop against a bypass (e.g. a bulk-loader that
+        # writes `path` directly instead of going through INSERT/UPDATE of
+        # `parent_group_id`).
+        CheckConstraint("NOT (id = ANY(path))", name="ck_groups_not_self_ancestor"),
     )
+
+
+# Backward-compatible alias: PR 0-1 renames the class but does not touch the
+# ~596 call sites that import ``Team``, those PRs land separately (0-2..0-4).
+Team = Group
 
 
 # ---------------------------------------------------------------------------
@@ -220,7 +377,7 @@ class User(Base):
     # N13: this row is an automation identity rather than a person.
     #
     # It shares the table because the permission model stands on
-    # ``Membership(user_id, team_id, role)`` and twenty-six foreign keys point
+    # ``Membership(user_id, group_id, role)`` and twenty-six foreign keys point
     # here; a parallel identity would need a parallel everything. The payoff is
     # that the key-lifetime rule needs no branch: the auth path still asks only
     # whether the issuer is active, and for one of these the issuer is itself,
@@ -288,7 +445,7 @@ class User(Base):
 
 
 class Membership(Base):
-    """Maps a user into a team with a single role. One row per (user, team)."""
+    """Maps a user into a group with a single role. One row per (user, group)."""
 
     __tablename__ = "memberships"
 
@@ -298,11 +455,16 @@ class Membership(Base):
         ForeignKey("users.id", ondelete="CASCADE"),
         nullable=False,
     )
-    team_id: Mapped[uuid.UUID] = mapped_column(
+    group_id: Mapped[uuid.UUID] = mapped_column(
         UUID_PK,
-        ForeignKey("teams.id", ondelete="CASCADE"),
+        ForeignKey("groups.id", ondelete="CASCADE"),
         nullable=False,
     )
+    # Backward-compatible synonym (group-hierarchy rollout PR 0-1 / 0088):
+    # every call site that still reads/writes ``.team_id`` (including
+    # class-level query expressions such as ``Membership.team_id == x``)
+    # keeps operating on the same ``group_id`` column underneath.
+    team_id: Mapped[uuid.UUID] = synonym("group_id")
     role: Mapped[str] = mapped_column(_role_enum(), nullable=False)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, server_default=NOW
@@ -312,14 +474,17 @@ class Membership(Base):
     )
 
     user: Mapped[User] = relationship(back_populates="memberships")
-    team: Mapped[Team] = relationship(back_populates="memberships")
+    # Attribute name kept as ``team``, unaffected by the Team -> Group class
+    # rename; call sites reading ``membership.team`` see the same Group
+    # instance they saw as a Team instance before.
+    team: Mapped[Group] = relationship(back_populates="memberships")
 
     __table_args__ = (
-        UniqueConstraint("user_id", "team_id", name="uq_memberships_user_team"),
+        UniqueConstraint("user_id", "group_id", name="uq_memberships_user_group"),
         Index("ix_memberships_user_id", "user_id"),
-        Index("ix_memberships_team_id", "team_id"),
-        # Lookups: "give me all admins of team X", "give me all teams where user U is dev".
-        Index("ix_memberships_team_role", "team_id", "role"),
+        Index("ix_memberships_group_id", "group_id"),
+        # Lookups: "give me all admins of group X", "give me all groups where user U is dev".
+        Index("ix_memberships_group_role", "group_id", "role"),
         Index("ix_memberships_user_role", "user_id", "role"),
     )
 
@@ -482,11 +647,19 @@ class AuditLog(Base):
         ForeignKey("users.id", ondelete="SET NULL"),
         nullable=True,
     )
-    team_id: Mapped[uuid.UUID | None] = mapped_column(
+    group_id: Mapped[uuid.UUID | None] = mapped_column(
         UUID_PK,
-        ForeignKey("teams.id", ondelete="SET NULL"),
+        ForeignKey("groups.id", ondelete="SET NULL"),
         nullable=True,
     )
+    # Backward-compatible synonym, see Membership.team_id above for why
+    # (group-hierarchy rollout PR 0-1 / 0088). Also referenced by 0080/0088's
+    # ``audit_logs_prevent_mutation()`` trigger, which pins the FK column by
+    # its real DB name (``group_id``), not through this synonym: a synonym
+    # is a Python/ORM-layer construct only and has no bearing on the trigger
+    # body, which is why 0088 replaces that function's text directly instead
+    # of relying on this alias.
+    team_id: Mapped[uuid.UUID | None] = synonym("group_id")
     action: Mapped[str] = mapped_column(String(32), nullable=False)
     target_table: Mapped[str] = mapped_column(String(64), nullable=False)
     target_id: Mapped[str | None] = mapped_column(String(64), nullable=True)
@@ -499,10 +672,10 @@ class AuditLog(Base):
         # Time-range queries dominate (admin audit log views).
         Index("ix_audit_logs_created_at", "created_at"),
         Index("ix_audit_logs_actor_user_id", "actor_user_id"),
-        Index("ix_audit_logs_team_id", "team_id"),
+        Index("ix_audit_logs_group_id", "group_id"),
         Index("ix_audit_logs_request_id", "request_id"),
-        # Common compound: "show audit for this team in this window".
-        Index("ix_audit_logs_team_created_at", "team_id", "created_at"),
+        # Common compound: "show audit for this group in this window".
+        Index("ix_audit_logs_group_created_at", "group_id", "created_at"),
         # JSONB GIN for "find audits whose diff touched column X".
         Index("ix_audit_logs_diff_gin", "diff", postgresql_using="gin"),
         # Phase 4 PR #14 — admin Audit Log search filters by target_table /

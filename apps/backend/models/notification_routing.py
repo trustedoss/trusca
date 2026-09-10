@@ -51,8 +51,12 @@ class NotificationRoutingRule(Base):
         UUID_PK, ForeignKey("organizations.id", ondelete="CASCADE"), nullable=False
     )
     #: None means the whole organization.
+    # Target table renamed teams -> groups by migration 0088 (group-hierarchy
+    # rollout PR 0-1), see models/component_approval.py for why this FK
+    # target must track the rename even though the column name itself is out
+    # of this PR's scope.
     team_id: Mapped[uuid.UUID | None] = mapped_column(
-        UUID_PK, ForeignKey("teams.id", ondelete="CASCADE"), nullable=True
+        UUID_PK, ForeignKey("groups.id", ondelete="CASCADE"), nullable=True
     )
     name: Mapped[str] = mapped_column(String(200), nullable=False)
     #: Empty means every kind. JSONB rather than an enum array so adding a

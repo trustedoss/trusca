@@ -157,7 +157,7 @@ async def test_reset_preserves_cross_tenant_user_and_deletes_demo_only(
         )
         session.add(
             Membership(
-                user_id=cross_user.id, team_id=other_team.id, role="team_admin"
+                user_id=cross_user.id, team_id=other_team.id, role="group_admin"
             )
         )
         # demo_only_user: membership ONLY in the demo team.

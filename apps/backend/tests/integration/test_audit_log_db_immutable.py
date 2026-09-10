@@ -193,11 +193,11 @@ async def test_team_id_rotate_to_other_id_blocked(session) -> None:
 
     with pytest.raises(IntegrityError) as excinfo:
         await session.execute(
-            text("UPDATE audit_logs SET team_id = :v WHERE id = :id"),
+            text("UPDATE audit_logs SET group_id = :v WHERE id = :id"),
             {"v": "00000000-0000-0000-0000-000000000000", "id": row_id},
         )
         await session.commit()
-    assert "team_id pin" in str(excinfo.value)
+    assert "group_id pin" in str(excinfo.value)
     await session.rollback()
 
 
@@ -205,7 +205,7 @@ async def test_team_id_set_null_via_cascade_allowed(session) -> None:
     """Legitimate FK cascade for team_id (mirror of the actor_user_id case)."""
     row_id = await _insert_one(session)
     await session.execute(
-        text("UPDATE audit_logs SET team_id = NULL WHERE id = :id"),
+        text("UPDATE audit_logs SET group_id = NULL WHERE id = :id"),
         {"id": row_id},
     )
     await session.commit()

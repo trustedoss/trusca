@@ -42,7 +42,7 @@ async def _seed_team_of_two(db_session):
     dev = await make_user(db_session)
     admin = await make_user(db_session)
     await make_membership(db_session, user=dev, team=team, role="developer")
-    await make_membership(db_session, user=admin, team=team, role="team_admin")
+    await make_membership(db_session, user=admin, team=team, role="group_admin")
     return project, {dev.id, admin.id}
 
 

@@ -342,6 +342,79 @@ UI에서 *마지막* 관리자를 재활성화하면 부트스트랩 역설이 �
 
 팀의 첫 멤버는 다음 화면에서 배정합니다.
 
+## 중첩 그룹 {#중첩-그룹}
+
+한 팀은 그 아래에 다른 팀을 얼마든지 중첩할 수 있습니다. 한 단계가 더 있는 정도가 아니라 그룹 계층 구조입니다. 이 제품에서 "팀"과 "그룹"은 같은 대상을 가리킵니다. 이 문서는 멤버십과 역할을 이야기할 때는 **팀**이라고 쓰고, 계층 구조에서의 위치, 즉 부모·자식·그 아래 전체 가지를 이야기할 때는 **그룹**이라고 씁니다. 부모가 없는 그룹은 조직의 루트에 있으며, 중첩이 생기기 전 모든 팀이 있던 자리와 같습니다.
+
+아래 두 동작 모두 `super_admin` 전용이며, **/admin/teams**의 그룹 상세 드로어에서 실행합니다.
+
+### 그룹 이동
+
+1. **/admin/teams** → 그룹 열기 → **Move**.
+2. **New parent** → 그룹을 선택하거나, 부모에서 떼어내려면 **Root of organization (no parent)**를 선택합니다.
+3. **Move**.
+
+<!-- docs-uat: id=groups-move-atomic-subtree kind=manual tier=manual -->
+전체 하위 트리가 한 번의 작업으로 이동합니다. 이동한 그룹의 모든 하위 그룹은 그 자리를 그대로 유지하고, 이동 지점 위쪽의 조상 체인만 바뀝니다.
+
+**New parent** 목록은 아래 두 가드레일을 이미 만족하는 그룹만 보여 주므로, 화면 자체가 잘못된 이동을 구성하지 못하게 막습니다.
+
+- **같은 조직만.** 그룹은 자신이 속한 조직 안의 그룹으로만 이동할 수 있습니다.
+- **자기 하위 트리 밑으로는 이동 불가.** 그룹은 자기 자신이나 자신의 하위 그룹 밑으로 이동할 수 없습니다. 그렇게 하면 그 그룹이 자기 자신의 조상이 됩니다.
+
+<!-- docs-uat: id=groups-move-cycle-409 kind=manual tier=manual -->
+두 가드레일을 어떻게든 건너뛰고 요청이 API에 직접 도달해도 서버는 여전히 거부합니다. 그룹을 자기 자신이나 자신의 하위 그룹 밑으로 이동하면 `409`(`Group Cycle Detected`, 확장 필드 `cycle_detected: true`)가 반환됩니다.
+
+<!-- docs-uat: id=groups-move-cross-org-422 kind=manual tier=manual -->
+다른 조직에 속한 그룹 밑으로 이동하면 `422`(`Cross-Organization Move Not Allowed`, 확장 필드 `cross_organization_move: true`)가 반환됩니다. 일반적인 배포에는 조직이 정확히 하나뿐이므로 대상 그룹이 속할 다른 조직 자체가 없습니다. 이 검사는 일반적인 관리 작업으로는 걸릴 일이 없는 구조적 안전장치입니다.
+
+### 하위 그룹 만들기
+
+1. **/admin/teams** → 부모 그룹 열기 → **Add subgroup**.
+2. 이름, `slug`, 설명(선택).
+3. **Create subgroup**.
+
+<!-- docs-uat: id=groups-subgroup-inherits-org kind=manual tier=manual -->
+새 그룹은 부모의 조직을 자동으로 물려받습니다. 루트 팀을 만들 때와 달리 여기에는 조직 선택 항목이 없습니다.
+
+<!-- docs-uat: id=groups-subgroup-slug-conflict-409 kind=manual tier=manual -->
+부모의 다른 직계 자식이 이미 쓰는 `slug`는 아무것도 쓰기 전에 `409`(`Group Slug Conflict`)로 거부됩니다.
+
+### 권한 상속
+
+그룹의 내용을 자신의 직접 멤버십 목록 밖에서도 볼 수 있는지는 `GROUP_CASCADE_ENABLED` 설정이 결정하며, 기본값은 켜짐입니다. 설정 자체와 끄는 방법은 [`.env.example`](https://github.com/trustedoss/trusca/blob/main/.env.example)에 있습니다. 켜면 실무에서 바뀌는 점은 다음과 같습니다.
+
+<!-- docs-uat: id=groups-cascade-nearest-wins kind=manual tier=manual -->
+- **가장 가까운 멤버십이 우선합니다.** 어떤 그룹에서 사용자의 유효 역할은 그 그룹에서 루트 쪽으로 올라가며 만나는 가장 가까운 직접 멤버십의 역할입니다. 두 단계 위에서 `team_admin`을 겸하는 `developer`도 자신에게 더 가까운 그룹에서는 여전히 `developer`입니다. 자식 그룹의 강등은 항상 부모의 승격을 덮어쓰고, 그 반대는 성립하지 않습니다.
+<!-- docs-uat: id=groups-cascade-sibling-isolation kind=manual tier=manual -->
+- **형제 그룹은 서로 격리됩니다.** 한 그룹의 멤버십은 형제 그룹에 대해 아무리 깊어도 아무것도 말해 주지 않습니다. 접근은 하나의 조상 라인을 따라서만 아래로 흐르고, 옆으로는 전혀 흐르지 않습니다.
+<!-- docs-uat: id=groups-cascade-subtree-widening kind=manual tier=manual -->
+- **접근 가능 범위가 하위 트리 전체로 넓어집니다.** 어떤 그룹에 직접 멤버십이 있는 사람은 그 아래 전체에 접근할 수 있습니다. 대시보드, 검색, 인벤토리, 스캔 목록, 프로젝트 목록, 라이선스 정책 목록, 컴포넌트 승인 목록까지 모두 그 그룹 하나가 아니라 하위 트리 전체로 넓어집니다.
+<!-- docs-uat: id=groups-cascade-existence-hiding kind=manual tier=manual -->
+- **존재를 숨기는 처리는 그대로 적용됩니다.** 사용자의 접근 가능 범위 밖에 있는 그룹은 지금의 플랫 모델과 똑같이 403이 아니라 404를 반환합니다. 눈에 보이는 예외 하나는 그룹 상세 페이지의 조상 브레드크럼입니다. 뷰어가 열 수 없는 조상이라도 이름은 루트까지 전부 표시되는데, 이는 자신이 트리 어디에 있는지 알려 주기 위한 것일 뿐 그 조상을 열게 해 주거나 그 밖의 다른 정보를 알려 주지는 않습니다.
+<!-- docs-uat: id=groups-cascade-superadmin-bypass kind=manual tier=manual -->
+- **`super_admin`은 이 설정과 무관합니다.** 켜든 끄든 게이트 계층에서 플랫 검사와 캐스케이드 검사를 모두 건너뜁니다.
+
+`GROUP_CASCADE_ENABLED`를 끄면 모든 검사가 중첩이 생기기 전 팀이 가졌던 플랫 동작으로 정확히 돌아갑니다. 사용자의 역할과 접근 가능 범위는 그룹이 어떤 부모에 속해 있든 상관없이 오직 직접 멤버십만으로 결정됩니다.
+
+:::note 라이선스·게이트 정책은 별도 방식으로 해석됩니다
+프로젝트의 유효 라이선스·게이트 정책은 이미 그룹의 조상을 거슬러 올라가 정책이 설정된 가장 가까운 조상까지 걸어가서 정해집니다. 위의 상속과 같은 최근접 우선 구조이지만, 이 해석은 무조건 실행되며 `GROUP_CASCADE_ENABLED`와 무관합니다. 이 설정을 끄면 그룹의 내용을 누가 볼 수 있는지가 바뀔 뿐, 프로젝트에 어떤 정책이 적용되는지는 바뀌지 않습니다. [정책 설계](../best-practices/policy-design.md) 참고.
+:::
+
+### /groups 화면의 위치
+
+**/admin/teams**는 관리 화면입니다. `super_admin` 전용이며 그룹을 이동하거나 하위 그룹을 만들 수 있는 유일한 곳입니다. **/groups**는 별도의 읽기 전용 화면으로, 인증된 구성원이라면 누구나 메인 내비게이션에서 들어갈 수 있습니다. 이 화면은 그 사람의 멤버십(직접 또는 캐스케이드로 상속받은)이 허용하는 그룹만 보여 주며, 드릴다운 탐색과 전체 트리를 대상으로 한 평면 이름 검색을 제공합니다.
+
+<!-- docs-uat: id=groups-list-api kind=api auth=user url=/v1/groups expect=status:200 tier=nightly -->
+/groups의 그룹 상세 페이지는 조상 브레드크럼, 직접 멤버와 캐스케이드로 상속받은 멤버를 나눈 두 섹션, 하위 그룹, 프로젝트를 보여 줍니다. 여기에는 이동이나 생성 동작이 없습니다. 그런 동작은 `/admin/teams`에만 있습니다.
+
+<!-- docs-uat: id=groups-detail-404-hidden kind=api auth=user url=/v1/groups/00000000-0000-0000-0000-000000000000 expect=status:404 tier=nightly -->
+존재하지 않는 그룹이든 호출자가 접근할 수 없는 그룹이든 똑같이 `404`를 반환합니다.
+
+:::note 캐스케이드로만 닿는 그룹에서 새 프로젝트를 만들 때
+상단 바의 활성 팀 선택기 하나가 새 프로젝트가 어느 팀 소속으로 만들어질지를 결정합니다. /groups의 그룹 상세 페이지에서 **New project**를 클릭하면 이 선택기가 캐스케이드로는 보이지만 직접 멤버십은 없는 그룹을 가리키게 될 수 있습니다. 프로젝트 생성 폼은 직접 멤버가 아닌 그룹으로는 제출할 수 없으므로, 다른 팀을 조용히 대신 골라 주는 대신 **Active team needs attention**이라는 명시적 안내를 보여 줍니다. 상단 바의 팀 전환기로 직접 소속된 팀을 고른 뒤 프로젝트를 만드십시오. 이는 예상된 동작이며 버그가 아닙니다.
+:::
+
 ## 팀 이름 변경
 
 `super_admin`과 팀의 `team_admin`은 팀 이름을 변경할 수 있습니다. 팀의 `name`, `slug`, `description`은 `PATCH /v1/admin/teams/{team_id}`로 변경 가능합니다.
@@ -417,3 +490,4 @@ docker-compose -f docker-compose.yml logs --tail=200 backend | grep -i register
 - [API Key](./api-keys.md) — 서비스 계정 자격증명
 - [감사 로그](./audit-log.md)
 - [승인](../user-guide/approvals.md)
+- [팀 구조](../best-practices/team-structure.md) — 팀을 나눌 때와 하위 그룹을 중첩할 때의 차이

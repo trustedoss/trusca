@@ -75,7 +75,7 @@ export function AdminUsersToolbar({
         >
           <option value="all">{t("admin.users.filter.role_all")}</option>
           <option value="super_admin">{t("admin.users.role.super_admin")}</option>
-          <option value="team_admin">{t("admin.users.role.team_admin")}</option>
+          <option value="group_admin">{t("admin.users.role.group_admin")}</option>
           <option value="developer">{t("admin.users.role.developer")}</option>
           <option value="viewer">{t("admin.users.role.viewer")}</option>
         </select>

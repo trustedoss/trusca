@@ -32,6 +32,7 @@ from sqlalchemy.orm import Session, selectinload
 
 from core.audit import bind_audit_team as _bind_audit_team
 from core.audit import get_audit_context
+from core.authz import can_access_group, team_scope_filter
 from core.pii_mask import mask_pii
 from core.security import CurrentUser
 from models import (
@@ -332,12 +333,6 @@ class ScanSourceUnavailable(ScanError):
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
-
-
-def _can_access_team(actor: CurrentUser, team_id: uuid.UUID) -> bool:
-    if actor.is_superuser or actor.role == "super_admin":
-        return True
-    return team_id in actor.team_ids
 
 
 async def _load_project(session: AsyncSession, project_id: uuid.UUID) -> Project:
@@ -773,7 +768,7 @@ async def prepare_scan_target(
     to keep its established ordering byte-for-byte.
     """
     project = await _load_project(session, project_id)
-    if not _can_access_team(actor, project.team_id):
+    if not await can_access_group(session, actor, project.team_id):
         raise ScanForbidden(
             f"actor is not a member of team {project.team_id}",
         )
@@ -1033,7 +1028,7 @@ async def get_scan(
         raise ScanNotFound(f"scan {scan_id} not found")
 
     project = await _load_project(session, scan.project_id)
-    if not _can_access_team(actor, project.team_id):
+    if not await can_access_group(session, actor, project.team_id):
         raise ScanForbidden(
             f"actor is not a member of team {project.team_id}",
         )
@@ -1064,7 +1059,7 @@ def _can_admin_team(actor: CurrentUser, team_id: uuid.UUID) -> bool:
     """
     if actor.is_superuser or actor.role == "super_admin":
         return True
-    return actor.team_roles.get(team_id) == "team_admin"
+    return actor.team_roles.get(team_id) == "group_admin"
 
 
 def _has_release_label(scan_metadata: dict[str, object] | None) -> bool:
@@ -1140,7 +1135,7 @@ async def delete_scan(
         raise ScanNotFound(f"scan {scan_id} not found")
 
     project = await _load_project(session, scan.project_id)
-    if not _can_access_team(actor, project.team_id):
+    if not await can_access_group(session, actor, project.team_id):
         # Existence-hide: a scan in another team reads as "not found".
         raise ScanNotFound(f"scan {scan_id} not found")
 
@@ -1226,7 +1221,7 @@ async def list_scans_for_project(
     size = max(min(size, 100), 1)
 
     project = await _load_project(session, project_id)
-    if not _can_access_team(actor, project.team_id):
+    if not await can_access_group(session, actor, project.team_id):
         raise ScanForbidden(
             f"actor is not a member of team {project.team_id}",
         )
@@ -1274,10 +1269,12 @@ async def list_scans_for_actor(
 
     Scope:
       - super_admin: all scans, regardless of team.
-      - everyone else: scans whose project's team is in ``actor.team_ids``.
-        An actor with no team memberships sees an empty page (not 403); the
-        endpoint is read-only and "I am authenticated but my account has no
-        teams yet" is a legitimate visible state for the SPA.
+      - everyone else: scans whose project passes ``core.authz.
+        team_scope_filter``, direct team membership, or (Phase 2 PR 2-C,
+        cascade flag on) a descendant of a directly-membered group. An actor
+        with no team memberships sees an empty page (not 403); the endpoint
+        is read-only and "I am authenticated but my account has no teams
+        yet" is a legitimate visible state for the SPA.
 
     ``status_filter`` is an optional value from ``SCAN_STATUS_VALUES``
     (queued/running/succeeded/failed/cancelled). Validation lives in the
@@ -1291,18 +1288,24 @@ async def list_scans_for_actor(
 
     # Build the base query. We JOIN on Project so the WHERE clause can clamp
     # by team_id. ix_scans_project_created_at + ix_projects_team_id keep the
-    # plan cheap for typical actor team-list sizes (≤ 50 teams).
+    # plan cheap for typical actor team-list sizes (≤ 50 teams); the cascade
+    # branch (flag on) additionally rides ix_groups_path_gin, see
+    # `services.group_service.subtree_scope_filter`'s own EXPLAIN note.
     base = select(Scan).join(Project, Project.id == Scan.project_id)
     count_base = select(func.count()).select_from(Scan).join(
         Project, Project.id == Scan.project_id
     )
 
     if not is_super:
-        team_ids = list(actor.team_ids)
-        if not team_ids:
+        if not actor.team_ids:
             return [], 0
-        base = base.where(Project.team_id.in_(team_ids))
-        count_base = count_base.where(Project.team_id.in_(team_ids))
+        # Phase 2 PR 2-C: was `Project.team_id.in_(list(actor.team_ids))`,
+        # a direct-membership-only clamp. `team_scope_filter` is the mandated
+        # choke-point for this exact "fan out across every project the actor
+        # can see" shape and is cascade-aware when the flag is on.
+        scope = team_scope_filter(actor)
+        base = base.where(scope)
+        count_base = count_base.where(scope)
 
     if status_filter is not None:
         base = base.where(Scan.status == status_filter)

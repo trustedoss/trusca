@@ -93,11 +93,11 @@ async def _team_admin_of(session: AsyncSession, team) -> dict[str, str]:  # noqa
     team_admin for somebody with no membership does not reach the route.
     """
     user = await make_user(session, full_name="Tara Admin")
-    await make_membership(session, user=user, team=team, role="team_admin")
+    await make_membership(session, user=user, team=team, role="group_admin")
     await session.commit()
     return {
         "Authorization": (
-            f"Bearer {create_access_token(subject=str(user.id), role='team_admin')}"
+            f"Bearer {create_access_token(subject=str(user.id), role='group_admin')}"
         )
     }
 

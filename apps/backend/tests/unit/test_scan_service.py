@@ -995,8 +995,8 @@ async def test_delete_active_scan_conflict_carries_scan_active_extension(
     team = await make_team(db_session, organization=org)
     project = await make_project(db_session, team=team)
     admin = await make_user(db_session)
-    await make_membership(db_session, user=admin, team=team, role="team_admin")
-    actor = principal_for(admin, team_ids=[team.id], role="team_admin")
+    await make_membership(db_session, user=admin, team=team, role="group_admin")
+    actor = principal_for(admin, team_ids=[team.id], role="group_admin")
 
     scan = await make_scan(db_session, project=project, status="running")
 
@@ -1020,8 +1020,8 @@ async def test_delete_release_scan_conflict_carries_release_protected_extension(
     team = await make_team(db_session, organization=org)
     project = await make_project(db_session, team=team)
     admin = await make_user(db_session)
-    await make_membership(db_session, user=admin, team=team, role="team_admin")
-    actor = principal_for(admin, team_ids=[team.id], role="team_admin")
+    await make_membership(db_session, user=admin, team=team, role="group_admin")
+    actor = principal_for(admin, team_ids=[team.id], role="group_admin")
 
     scan = await make_scan(
         db_session,

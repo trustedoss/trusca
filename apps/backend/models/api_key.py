@@ -56,7 +56,7 @@ from sqlalchemy import (
     text,
 )
 from sqlalchemy.dialects.postgresql import UUID
-from sqlalchemy.orm import Mapped, mapped_column
+from sqlalchemy.orm import Mapped, mapped_column, synonym
 
 from . import Base
 
@@ -90,15 +90,24 @@ class APIKey(Base):
     against ``key_hash``.
 
     Scope semantics:
-      - ``scope='org'``     → ``team_id`` and ``project_id`` are NULL (issuer
+      - ``scope='org'``     → ``group_id`` and ``project_id`` are NULL (issuer
                               must be super_admin).
-      - ``scope='team'``    → ``team_id`` is NOT NULL, ``project_id`` is NULL.
-      - ``scope='project'`` → ``project_id`` is NOT NULL; ``team_id`` mirrors
-                              the project's team.
+      - ``scope='team'``    → ``group_id`` is NOT NULL, ``project_id`` is NULL.
+      - ``scope='project'`` → ``project_id`` is NOT NULL; ``group_id`` mirrors
+                              the project's group.
 
     The CHECK constraint ``ck_api_keys_scope_consistency`` enforces this at
     the DB layer so a malformed INSERT cannot smuggle a project-scoped key
-    that secretly grants org-wide access.
+    that secretly grants org-wide access. Its body references ``group_id``
+    automatically since migration 0088 renamed the column: PostgreSQL
+    rewrites a stored CHECK expression on ``ALTER TABLE ... RENAME COLUMN``,
+    it does not need to be recreated. The scope value ``'team'`` itself is
+    untouched by that migration (group-hierarchy rollout PR 0-1 renames the
+    ``team_id`` column only, not the ``scope`` vocabulary).
+
+    ``team_id = synonym("group_id")`` below keeps every call site that reads
+    or writes ``.team_id`` (including class-level query expressions like
+    ``APIKey.team_id == x``) working against the same underlying column.
     """
 
     __tablename__ = "api_keys"
@@ -132,11 +141,14 @@ class APIKey(Base):
     # quietly produce a key that can change things.
     permission_breadth: Mapped[str] = mapped_column(String(16), nullable=False)
 
-    team_id: Mapped[uuid.UUID | None] = mapped_column(
+    group_id: Mapped[uuid.UUID | None] = mapped_column(
         UUID_PK,
-        ForeignKey("teams.id", ondelete="CASCADE"),
+        ForeignKey("groups.id", ondelete="CASCADE"),
         nullable=True,
     )
+    # Backward-compatible synonym, see class docstring (group-hierarchy
+    # rollout PR 0-1 / 0088).
+    team_id: Mapped[uuid.UUID | None] = synonym("group_id")
     project_id: Mapped[uuid.UUID | None] = mapped_column(
         UUID_PK,
         ForeignKey("projects.id", ondelete="CASCADE"),
@@ -183,18 +195,18 @@ class APIKey(Base):
             name="ck_api_keys_permission_breadth",
         ),
         # Scope ↔ id consistency.
-        # org     : team_id IS NULL AND project_id IS NULL
-        # team    : team_id IS NOT NULL AND project_id IS NULL
-        # project : project_id IS NOT NULL  (team_id may be set to mirror parent)
+        # org     : group_id IS NULL AND project_id IS NULL
+        # team    : group_id IS NOT NULL AND project_id IS NULL
+        # project : project_id IS NOT NULL  (group_id may be set to mirror parent)
         CheckConstraint(
             "("
-            "  (scope = 'org'     AND team_id IS NULL AND project_id IS NULL)"
-            "  OR (scope = 'team'    AND team_id IS NOT NULL AND project_id IS NULL)"
+            "  (scope = 'org'     AND group_id IS NULL AND project_id IS NULL)"
+            "  OR (scope = 'team'    AND group_id IS NOT NULL AND project_id IS NULL)"
             "  OR (scope = 'project' AND project_id IS NOT NULL)"
             ")",
             name="ck_api_keys_scope_consistency",
         ),
-        Index("ix_api_keys_team_id", "team_id"),
+        Index("ix_api_keys_group_id", "group_id"),
         Index("ix_api_keys_project_id", "project_id"),
         Index("ix_api_keys_created_by_user_id", "created_by_user_id"),
         # Hot path: "list all live keys" — partial index dodges the soft-deleted

@@ -330,7 +330,7 @@ async def test_a_team_admin_cannot_read_credentials(client, monkeypatch) -> None
         team = await make_team(session, organization=org)
         team_admin = await make_user(session)
         await make_membership(
-            session, user=team_admin, team=team, role="team_admin"
+            session, user=team_admin, team=team, role="group_admin"
         )
 
     response = await client.get(_url(org.id), headers=_bearer(team_admin))

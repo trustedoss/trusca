@@ -7,7 +7,7 @@
  * per-scope, not one global floor:
  *
  *   org      super_admin only.
- *   team     team_admin OF THAT TEAM.
+ *   team     group_admin OF THAT TEAM.
  *   project  ANY member of the project's owning team.
  *
  * The page used to gate the whole entry point on `isTeamAdminOrAbove`, which
@@ -16,7 +16,7 @@
  * and had no way to ask for one.
  *
  * What the client can and cannot decide: membership comes from `/auth/me`, so
- * "belongs to at least one team" and "is team_admin of at least one team" are
+ * "belongs to at least one team" and "is group_admin of at least one team" are
  * answers we already hold. Whether a particular project or team id is one of
  * them is the server's call, and a wrong id still returns 403. These flags
  * only decide what to offer, never what to allow.
@@ -47,13 +47,13 @@ export function useApiKeyScopes(): ApiKeyScopePermissions {
 
   const allowedScopes: APIKeyScope[] = [];
   if (isSuperAdmin || teams.length > 0) allowedScopes.push("project");
-  if (isSuperAdmin || teams.some((team) => team.role === "team_admin")) {
+  if (isSuperAdmin || teams.some((team) => team.role === "group_admin")) {
     allowedScopes.push("team");
   }
   if (isSuperAdmin) allowedScopes.push("org");
 
   const canManageServiceAccounts =
-    isSuperAdmin || teams.some((team) => team.role === "team_admin");
+    isSuperAdmin || teams.some((team) => team.role === "group_admin");
 
   return {
     allowedScopes,

@@ -649,6 +649,33 @@ def _parse_args() -> argparse.Namespace:
             "``developer``. Used by the role-management scenarios."
         ),
     )
+    # ── group-hierarchy Phase 5 PR 5-B, admin_teams_hierarchy.spec.ts ──────
+    parser.add_argument(
+        "--with-subgroup",
+        action="store_true",
+        default=False,
+        help=(
+            "group-hierarchy Phase 5 PR 5-B. Seed ONE child group directly "
+            "under the primary group (``parent_group_id = team.id``), so a "
+            "spec has a real parent->child pair without driving the "
+            "reparent/create-subgroup UI first. Name/slug are deterministic "
+            "from the run suffix. Output JSON gains a ``subgroup`` object "
+            "(``id``/``name``/``slug``); ``null`` when the flag is off."
+        ),
+    )
+    parser.add_argument(
+        "--extra-root-group",
+        action="store_true",
+        default=False,
+        help=(
+            "group-hierarchy Phase 5 PR 5-B. Seed a SECOND root group "
+            "(``parent_group_id = NULL``) in the same organization as the "
+            "primary group, so a spec can exercise 'move under a different "
+            "root' without a second seed run. Output JSON gains an "
+            "``extra_root_group`` object (``id``/``name``/``slug``); "
+            "``null`` when the flag is off."
+        ),
+    )
     # ── Phase 5 D bundle — Connected Accounts e2e fixtures ──────────────────
     parser.add_argument(
         "--with-oauth-identity",
@@ -881,6 +908,8 @@ async def _seed(  # noqa: PLR0915 — a single linear seed routine reads better 
     super_admin: bool = False,
     extra_members: int = 0,
     extra_team_admin: bool = False,
+    with_subgroup: bool = False,
+    extra_root_group: bool = False,
     with_oauth_identity: str | None = None,
     no_password: bool = False,
     with_refresh_token: bool = False,
@@ -1062,7 +1091,7 @@ async def _seed(  # noqa: PLR0915 — a single linear seed routine reads better 
                 hashed = hash_password(chosen_password)
                 for i in range(extra_members):
                     role = (
-                        "team_admin"
+                        "group_admin"
                         if extra_team_admin and i == 0
                         else "developer"
                     )
@@ -1092,6 +1121,44 @@ async def _seed(  # noqa: PLR0915 — a single linear seed routine reads better 
                         }
                     )
                 await session.commit()
+
+            # group-hierarchy Phase 5 PR 5-B: a real parent/child pair (and,
+            # optionally, a second independent root group) for
+            # admin_teams_hierarchy.spec.ts. `Team` is `Group` (models.auth
+            # aliases the renamed class), so these are plain rows on the same
+            # `groups` table the primary team above lives on.
+            subgroup_summary: dict[str, str] | None = None
+            if with_subgroup:
+                subgroup = Team(
+                    organization_id=org.id,
+                    name=f"E2E Subgroup {suffix}",
+                    slug=f"e2e-subgroup-{suffix}",
+                    parent_group_id=team.id,
+                )
+                session.add(subgroup)
+                await session.commit()
+                await session.refresh(subgroup)
+                subgroup_summary = {
+                    "id": str(subgroup.id),
+                    "name": subgroup.name,
+                    "slug": subgroup.slug,
+                }
+
+            extra_root_group_summary: dict[str, str] | None = None
+            if extra_root_group:
+                root2 = Team(
+                    organization_id=org.id,
+                    name=f"E2E Root Group {suffix}",
+                    slug=f"e2e-root-group-{suffix}",
+                )
+                session.add(root2)
+                await session.commit()
+                await session.refresh(root2)
+                extra_root_group_summary = {
+                    "id": str(root2.id),
+                    "name": root2.name,
+                    "slug": root2.slug,
+                }
 
             # Phase 5 D bundle — seed an OAuthIdentity row when requested so
             # the auth_and_profile e2e can exercise the Unlink flow without
@@ -1994,6 +2061,7 @@ async def _seed(  # noqa: PLR0915 — a single linear seed routine reads better 
                 "user_id": str(user.id),
                 "is_super_admin": bool(super_admin),
                 "team_id": str(team.id),
+                "team_name": team.name,
                 "project_names": project_names,
                 "project_ids": project_ids,
                 "scan_ids": scan_ids,
@@ -2006,6 +2074,8 @@ async def _seed(  # noqa: PLR0915 — a single linear seed routine reads better 
                 "obligation_count": seeded_obligations_count,
                 "source_tarball": source_tarball_path,
                 "extra_members": extra_members_summary,
+                "subgroup": subgroup_summary,
+                "extra_root_group": extra_root_group_summary,
                 "oauth_identity": oauth_identity_summary,
                 "refresh_token": refresh_token_summary,
                 "notification_count": seeded_notifications,
@@ -2092,6 +2162,8 @@ def main() -> int:
                 super_admin=args.super_admin,
                 extra_members=args.extra_members,
                 extra_team_admin=args.extra_team_admin,
+                with_subgroup=args.with_subgroup,
+                extra_root_group=args.extra_root_group,
                 with_oauth_identity=args.with_oauth_identity,
                 no_password=args.no_password,
                 with_refresh_token=args.with_refresh_token,

@@ -87,7 +87,7 @@ async def _factory(client: AsyncClient):
 async def _seed_project(
     client: AsyncClient,
     *,
-    role: str = "team_admin",
+    role: str = "group_admin",
     is_superuser: bool = False,
 ):
     """A team + user(role) + project with a succeeded latest scan."""
@@ -211,8 +211,8 @@ async def test_import_developer_member_forbidden_403(client: AsyncClient) -> Non
 
 
 async def test_import_outsider_returns_404_existence_hide(client: AsyncClient) -> None:
-    _, _, target_project, _ = await _seed_project(client, role="team_admin")
-    _, outsider, _, _ = await _seed_project(client, role="team_admin")
+    _, _, target_project, _ = await _seed_project(client, role="group_admin")
+    _, outsider, _, _ = await _seed_project(client, role="group_admin")
     headers = _bearer_for(outsider)
     response = await client.post(
         f"/v1/projects/{target_project.id}/vex/import",
@@ -235,7 +235,7 @@ async def test_import_unknown_project_returns_404(client: AsyncClient) -> None:
 
 
 async def test_import_super_admin_allowed(client: AsyncClient) -> None:
-    _, _, project, scan = await _seed_project(client, role="team_admin")
+    _, _, project, scan = await _seed_project(client, role="group_admin")
     _, admin, _, _ = await _seed_project(client, is_superuser=True)
     headers = _bearer_for(admin)
     response = await client.post(
@@ -252,7 +252,7 @@ async def test_import_super_admin_allowed(client: AsyncClient) -> None:
 
 
 async def test_import_broken_json_returns_422(client: AsyncClient) -> None:
-    _, user, project, _ = await _seed_project(client, role="team_admin")
+    _, user, project, _ = await _seed_project(client, role="group_admin")
     headers = _bearer_for(user)
     response = await client.post(
         f"/v1/projects/{project.id}/vex/import",
@@ -265,7 +265,7 @@ async def test_import_broken_json_returns_422(client: AsyncClient) -> None:
 
 
 async def test_import_unknown_format_returns_422(client: AsyncClient) -> None:
-    _, user, project, _ = await _seed_project(client, role="team_admin")
+    _, user, project, _ = await _seed_project(client, role="group_admin")
     headers = _bearer_for(user)
     response = await client.post(
         f"/v1/projects/{project.id}/vex/import",
@@ -282,7 +282,7 @@ async def test_import_unknown_format_returns_422(client: AsyncClient) -> None:
 
 
 async def test_import_transitions_matching_finding(client: AsyncClient) -> None:
-    _, user, project, scan = await _seed_project(client, role="team_admin")
+    _, user, project, scan = await _seed_project(client, role="group_admin")
     headers = _bearer_for(user)
     cve = f"CVE-2099-{unique_suffix()}"
     finding_id, purl, _ = await _seed_finding(
@@ -337,7 +337,7 @@ async def test_import_provenance_control_chars_does_not_500(
     broken). With ``_clean_provenance`` it must be a clean 200, the stored
     provenance must be free of control bytes, and the matching finding must
     still transition."""
-    _, user, project, scan = await _seed_project(client, role="team_admin")
+    _, user, project, scan = await _seed_project(client, role="group_admin")
     headers = _bearer_for(user)
     cve = f"CVE-2099-{unique_suffix()}"
     finding_id, purl, _ = await _seed_finding(
@@ -389,7 +389,7 @@ async def test_import_new_to_not_affected_uses_legal_multistep(
     audit hops recorded."""
     from models import AuditLog
 
-    _, user, project, scan = await _seed_project(client, role="team_admin")
+    _, user, project, scan = await _seed_project(client, role="group_admin")
     headers = _bearer_for(user)
     cve = f"CVE-2099-{unique_suffix()}"
     finding_id, purl, _ = await _seed_finding(
@@ -442,7 +442,7 @@ async def test_import_new_to_not_affected_uses_legal_multistep(
 
 
 async def test_import_is_idempotent(client: AsyncClient) -> None:
-    _, user, project, scan = await _seed_project(client, role="team_admin")
+    _, user, project, scan = await _seed_project(client, role="group_admin")
     headers = _bearer_for(user)
     cve = f"CVE-2099-{unique_suffix()}"
     finding_id, purl, _ = await _seed_finding(
@@ -477,7 +477,7 @@ async def test_export_then_import_is_status_stable(client: AsyncClient) -> None:
     The exporter emits each finding's current status; re-importing must be a
     pure no-op (already_at_target) for every statement, proving round-trip
     stability."""
-    _, user, project, scan = await _seed_project(client, role="team_admin")
+    _, user, project, scan = await _seed_project(client, role="group_admin")
     headers = _bearer_for(user)
 
     # Seed findings in three already-terminal-ish states that the export maps
@@ -522,7 +522,7 @@ async def test_export_then_import_is_status_stable(client: AsyncClient) -> None:
 
 
 async def test_import_unknown_vulnerability_skipped(client: AsyncClient) -> None:
-    _, user, project, scan = await _seed_project(client, role="team_admin")
+    _, user, project, scan = await _seed_project(client, role="group_admin")
     headers = _bearer_for(user)
     raw = _openvex_bytes(
         [
@@ -544,7 +544,7 @@ async def test_import_unknown_vulnerability_skipped(client: AsyncClient) -> None
 
 
 async def test_import_known_cve_wrong_purl_skipped(client: AsyncClient) -> None:
-    _, user, project, scan = await _seed_project(client, role="team_admin")
+    _, user, project, scan = await _seed_project(client, role="group_admin")
     headers = _bearer_for(user)
     cve = f"CVE-2099-{unique_suffix()}"
     await _seed_finding(client, scan_id=scan.id, status="analyzing", cve_id=cve)
@@ -570,7 +570,7 @@ async def test_import_reopen_terminal_via_legal_path(client: AsyncClient) -> Non
     """fixed → exploitable is reachable only by routing through analyzing
     (fixed → analyzing → exploitable). The importer must apply that legal
     multi-step path rather than rejecting the reopen."""
-    _, user, project, scan = await _seed_project(client, role="team_admin")
+    _, user, project, scan = await _seed_project(client, role="group_admin")
     headers = _bearer_for(user)
     cve = f"CVE-2099-{unique_suffix()}"
     finding_id, purl, _ = await _seed_finding(
@@ -598,7 +598,7 @@ async def test_import_reopen_terminal_via_legal_path(client: AsyncClient) -> Non
 
 
 async def test_import_cyclonedx_document(client: AsyncClient) -> None:
-    _, user, project, scan = await _seed_project(client, role="team_admin")
+    _, user, project, scan = await _seed_project(client, role="group_admin")
     headers = _bearer_for(user)
     cve = f"CVE-2099-{unique_suffix()}"
     finding_id, purl, _ = await _seed_finding(
@@ -638,7 +638,7 @@ async def test_import_cyclonedx_document(client: AsyncClient) -> None:
 async def test_import_unmapped_status_skipped(client: AsyncClient) -> None:
     """A VEX status with no internal reverse-mapping is skipped as
     unmapped_status, leaving the finding untouched."""
-    _, user, project, scan = await _seed_project(client, role="team_admin")
+    _, user, project, scan = await _seed_project(client, role="group_admin")
     headers = _bearer_for(user)
     cve = f"CVE-2099-{unique_suffix()}"
     finding_id, purl, _ = await _seed_finding(
@@ -667,7 +667,7 @@ async def test_import_unmapped_status_skipped(client: AsyncClient) -> None:
 
 
 async def test_import_statement_missing_status_skipped(client: AsyncClient) -> None:
-    _, user, project, scan = await _seed_project(client, role="team_admin")
+    _, user, project, scan = await _seed_project(client, role="group_admin")
     headers = _bearer_for(user)
     cve = f"CVE-2099-{unique_suffix()}"
     await _seed_finding(client, scan_id=scan.id, status="analyzing", cve_id=cve)
@@ -683,7 +683,7 @@ async def test_import_statement_missing_status_skipped(client: AsyncClient) -> N
 
 
 async def test_import_statement_no_products_skipped(client: AsyncClient) -> None:
-    _, user, project, scan = await _seed_project(client, role="team_admin")
+    _, user, project, scan = await _seed_project(client, role="group_admin")
     headers = _bearer_for(user)
     cve = f"CVE-2099-{unique_suffix()}"
     await _seed_finding(client, scan_id=scan.id, status="analyzing", cve_id=cve)
@@ -701,7 +701,7 @@ async def test_import_statement_no_products_skipped(client: AsyncClient) -> None
 async def test_import_partial_match_multi_purl(client: AsyncClient) -> None:
     """A statement listing two purls — one matching, one not — applies to the
     match and records a skip for the miss."""
-    _, user, project, scan = await _seed_project(client, role="team_admin")
+    _, user, project, scan = await _seed_project(client, role="group_admin")
     headers = _bearer_for(user)
     cve = f"CVE-2099-{unique_suffix()}"
     finding_id, purl, _ = await _seed_finding(
@@ -733,7 +733,7 @@ async def test_import_partial_match_multi_purl(client: AsyncClient) -> None:
 async def test_import_oversized_returns_413(client: AsyncClient) -> None:
     """An over-cap body is rejected 413 via the service's decoded-size guard
     (which the router's declared-content-length fast-fail mirrors)."""
-    _, user, project, _ = await _seed_project(client, role="team_admin")
+    _, user, project, _ = await _seed_project(client, role="group_admin")
 
     os.environ["VEX_IMPORT_MAX_BYTES"] = "100"
     try:
@@ -767,7 +767,7 @@ async def test_import_oversized_without_content_length_returns_413(
     removed the router's declared-length fast-fail cannot fire, so a 413 here
     proves the in-router bounded read (``_read_bounded``) is the backstop — not
     just the service's post-decode size guard."""
-    _, user, project, _ = await _seed_project(client, role="team_admin")
+    _, user, project, _ = await _seed_project(client, role="group_admin")
 
     os.environ["VEX_IMPORT_MAX_BYTES"] = "100"
     try:
@@ -807,7 +807,7 @@ async def test_import_empty_project_no_scan_all_skipped(client: AsyncClient) -> 
         org = await make_organization(session)
         team = await make_team(session, organization=org)
         user = await make_user(session)
-        await make_membership(session, user=user, team=team, role="team_admin")
+        await make_membership(session, user=user, team=team, role="group_admin")
         project = await make_project(session, team=team)  # no latest_scan_id
         await session.commit()
         await session.refresh(project)

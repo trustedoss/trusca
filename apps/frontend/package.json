@@ -2,7 +2,7 @@
   "name": "trustedoss-frontend",
   "version": "0.0.1",
   "private": true,
-  "description": "TrustedOSS Portal frontend \u2014 React 18 + Vite + shadcn/ui.",
+  "description": "TrustedOSS Portal frontend - React 18 + Vite + shadcn/ui.",
   "license": "Apache-2.0",
   "type": "module",
   "scripts": {
@@ -34,6 +34,7 @@
     "@radix-ui/react-dialog": "1.1.2",
     "@radix-ui/react-dropdown-menu": "2.1.2",
     "@radix-ui/react-label": "2.1.8",
+    "@radix-ui/react-popover": "1.1.2",
     "@radix-ui/react-progress": "1.1.0",
     "@radix-ui/react-slot": "1.1.0",
     "@radix-ui/react-tabs": "1.1.0",

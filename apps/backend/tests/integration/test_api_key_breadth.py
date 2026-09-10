@@ -196,7 +196,7 @@ async def test_an_insert_that_forgets_the_breadth_fails(client) -> None:
             await session.execute(
                 text(
                     "INSERT INTO api_keys "
-                    "(key_prefix, key_hash, name, scope, team_id, "
+                    "(key_prefix, key_hash, name, scope, group_id, "
                     " created_by_user_id) "
                     "VALUES ('tos_nodefault', 'x', 'n', 'team', :team, :user)"
                 ),

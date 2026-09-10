@@ -71,12 +71,20 @@ async def make_team(
     organization: Organization,
     name: str | None = None,
     slug: str | None = None,
+    parent: Team | None = None,
 ) -> Team:
+    """Create a group. ``parent`` (group-hierarchy rollout, Phase 1+) nests it
+    under an existing group instead of creating a root group. The DB
+    trigger (migration 0091) derives ``path`` from ``parent_group_id`` on
+    INSERT, so the ``refresh`` below picks up the real, trigger-computed
+    value rather than the ORM's unpopulated default.
+    """
     suffix = unique_suffix()
     team = Team(
         organization_id=organization.id,
         name=name or f"Team {suffix}",
         slug=slug or f"team-{suffix}",
+        parent_group_id=parent.id if parent is not None else None,
     )
     session.add(team)
     await session.commit()
@@ -245,7 +253,7 @@ async def principal_loaded_from_db(session: AsyncSession, *, user: User) -> Curr
     team_ids = [m.team_id for m in memberships]
     team_roles = {m.team_id: m.role for m in memberships}
 
-    role_priority = {"developer": 1, "team_admin": 2, "super_admin": 3}
+    role_priority = {"developer": 1, "group_admin": 2, "super_admin": 3}
     if fresh.is_superuser:
         role = "super_admin"
     elif memberships:

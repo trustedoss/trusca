@@ -83,7 +83,11 @@ def test_scope_member_filters_by_team_in() -> None:
     tid = uuid.uuid4()
     expr = team_scope_filter(_member([tid]))
     compiled = str(expr.compile()).lower()
-    assert "team_id in" in compiled or "team_id in (" in compiled
+    # Project.team_id is a Python-level synonym for the real column
+    # ``group_id`` (migration 0089 / group-hierarchy PR 0-1); SQLAlchemy
+    # compiles through the synonym to the actual column name, so the SQL
+    # text says "group_id", not "team_id".
+    assert "group_id in" in compiled or "group_id in (" in compiled
 
 
 # --- MIN_QUERY_LEN floor (concurrency-scaling plan Q1) ----------------------

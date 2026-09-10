@@ -109,7 +109,7 @@ async def resolve_release_label(
     mandated chokepoint for query-level isolation, which needs ``Project`` in
     the FROM, hence the join. It is very slightly STRICTER than the team check
     the endpoints run afterwards: it grants the cross-tenant bypass on
-    ``is_superuser`` alone, where ``can_access_team`` also honours a derived
+    ``is_superuser`` alone, where ``can_access_group`` also honours a derived
     ``role == "super_admin"``. No write path produces that role without the
     flag, and where the two could disagree this one fails closed.
 

@@ -176,7 +176,7 @@ async def _seed_opted_in_project(
     session: AsyncSession,
     *,
     repository_full_name: str | None = "acme/widget",
-    admin_role: str = "team_admin",
+    admin_role: str = "group_admin",
 ):
     """Seed org/team/admin/project + a vulnerable npm dep + an opt-in installation.
 
@@ -310,7 +310,7 @@ async def test_not_opted_in_is_blocked_409(db_session: AsyncSession) -> None:
     team, admin, project, _scan, pkg = await _seed_opted_in_project(
         db_session, repository_full_name=None  # credential exists, but NO link
     )
-    actor = principal_for(admin, team_ids=[team.id], role="team_admin")
+    actor = principal_for(admin, team_ids=[team.id], role="group_admin")
 
     # A handler that would FAIL the test if any GitHub call were made.
     transport = httpx.MockTransport(
@@ -347,7 +347,7 @@ async def test_revoked_credential_blocks(db_session: AsyncSession) -> None:
     )
 
     team, admin, project, _scan, pkg = await _seed_opted_in_project(db_session)
-    actor = principal_for(admin, team_ids=[team.id], role="team_admin")
+    actor = principal_for(admin, team_ids=[team.id], role="group_admin")
 
     # Revoke the credential out-of-band.
     cred = (
@@ -381,7 +381,7 @@ async def test_happy_path_creates_branch_commit_pr(db_session: AsyncSession) -> 
     from services.remediation_pr_service import create_npm_remediation_pr
 
     team, admin, project, _scan, pkg = await _seed_opted_in_project(db_session)
-    actor = principal_for(admin, team_ids=[team.id], role="team_admin")
+    actor = principal_for(admin, team_ids=[team.id], role="group_admin")
 
     seen: list[tuple[str, str]] = []
 
@@ -453,7 +453,7 @@ async def test_happy_path_creates_branch_commit_pr(db_session: AsyncSession) -> 
             text(
                 "SELECT count(*) FROM audit_logs "
                 "WHERE target_table = 'remediation_pull_requests' "
-                "AND team_id = :t"
+                "AND group_id = :t"
             ),
             {"t": str(team.id)},
         )
@@ -474,7 +474,7 @@ async def test_token_never_logged(
     )
 
     team, admin, project, _scan, pkg = await _seed_opted_in_project(db_session)
-    actor = principal_for(admin, team_ids=[team.id], role="team_admin")
+    actor = principal_for(admin, team_ids=[team.id], role="group_admin")
 
     transport = httpx.MockTransport(_github_handler())
     with caplog.at_level("INFO"):
@@ -498,7 +498,7 @@ async def test_no_changes_no_pr(db_session: AsyncSession) -> None:
     from services.remediation_pr_service import create_npm_remediation_pr
 
     team, admin, project, _scan, pkg = await _seed_opted_in_project(db_session)
-    actor = principal_for(admin, team_ids=[team.id], role="team_admin")
+    actor = principal_for(admin, team_ids=[team.id], role="group_admin")
 
     transport = httpx.MockTransport(
         lambda _r: (_ for _ in ()).throw(AssertionError("no GitHub call expected"))
@@ -522,7 +522,7 @@ async def test_idempotent_same_fingerprint_returns_existing(
     from services.remediation_pr_service import create_npm_remediation_pr
 
     team, admin, project, _scan, pkg = await _seed_opted_in_project(db_session)
-    actor = principal_for(admin, team_ids=[team.id], role="team_admin")
+    actor = principal_for(admin, team_ids=[team.id], role="group_admin")
     manifest = _manifest_for(pkg)
 
     call_count = {"pulls": 0}
@@ -579,7 +579,7 @@ async def test_github_failure_flips_row_to_failed(
     )
 
     team, admin, project, _scan, pkg = await _seed_opted_in_project(db_session)
-    actor = principal_for(admin, team_ids=[team.id], role="team_admin")
+    actor = principal_for(admin, team_ids=[team.id], role="group_admin")
 
     overrides = {fail_step: httpx.Response(status_code, json={"message": "nope"})}
     transport = httpx.MockTransport(_github_handler(overrides=overrides))
@@ -610,7 +610,7 @@ async def test_github_redirect_not_followed(db_session: AsyncSession) -> None:
     )
 
     team, admin, project, _scan, pkg = await _seed_opted_in_project(db_session)
-    actor = principal_for(admin, team_ids=[team.id], role="team_admin")
+    actor = principal_for(admin, team_ids=[team.id], role="group_admin")
 
     redirect = httpx.Response(302, headers={"Location": "https://evil.example/steal"})
     overrides = {"get_base_ref": redirect}
@@ -631,7 +631,7 @@ async def test_token_mint_failure_surfaces_write_error(db_session: AsyncSession)
     )
 
     team, admin, project, _scan, pkg = await _seed_opted_in_project(db_session)
-    actor = principal_for(admin, team_ids=[team.id], role="team_admin")
+    actor = principal_for(admin, team_ids=[team.id], role="group_admin")
 
     overrides = {"token": httpx.Response(401, json={"message": "Bad credentials"})}
     transport = httpx.MockTransport(_github_handler(overrides=overrides))
@@ -723,7 +723,7 @@ async def test_malformed_stored_repo_rejected(
     )
 
     team, admin, project, _scan, pkg = await _seed_opted_in_project(db_session)
-    actor = principal_for(admin, team_ids=[team.id], role="team_admin")
+    actor = principal_for(admin, team_ids=[team.id], role="group_admin")
 
     inst = (
         await db_session.execute(
@@ -750,7 +750,7 @@ async def test_oversized_manifest_rejected(db_session: AsyncSession) -> None:
     from services.remediation_service import ManifestRejected
 
     team, admin, project, _scan, pkg = await _seed_opted_in_project(db_session)
-    actor = principal_for(admin, team_ids=[team.id], role="team_admin")
+    actor = principal_for(admin, team_ids=[team.id], role="group_admin")
 
     # Over the 1 MiB default cap.
     huge = '{"dependencies": {"x": "' + ("9" * (1_100_000)) + '"}}'
@@ -770,7 +770,7 @@ async def test_branch_name_is_hex_derived(db_session: AsyncSession) -> None:
     from services.remediation_pr_service import create_npm_remediation_pr
 
     team, admin, project, _scan, pkg = await _seed_opted_in_project(db_session)
-    actor = principal_for(admin, team_ids=[team.id], role="team_admin")
+    actor = principal_for(admin, team_ids=[team.id], role="group_admin")
 
     transport = httpx.MockTransport(_github_handler())
     async with httpx.AsyncClient(transport=transport) as client:
@@ -818,7 +818,7 @@ async def test_malicious_base_branch_rejected_before_github(
     )
 
     team, admin, project, _scan, pkg = await _seed_opted_in_project(db_session)
-    actor = principal_for(admin, team_ids=[team.id], role="team_admin")
+    actor = principal_for(admin, team_ids=[team.id], role="group_admin")
 
     # Bypass the schema validator by writing straight to the column.
     project.default_branch = bad_branch
@@ -852,7 +852,7 @@ async def test_valid_base_branch_proceeds(
     from services.remediation_pr_service import create_npm_remediation_pr
 
     team, admin, project, _scan, pkg = await _seed_opted_in_project(db_session)
-    actor = principal_for(admin, team_ids=[team.id], role="team_admin")
+    actor = principal_for(admin, team_ids=[team.id], role="group_admin")
     project.default_branch = good_branch
     await db_session.commit()
 
@@ -897,7 +897,7 @@ async def _seed_creating_row(
         principal_for(
             (await _owner_of(session, project)),
             team_ids=[project.team_id],
-            role="team_admin",
+            role="group_admin",
         ),
         project.id,
         manifest_override=_manifest_for(pkg),
@@ -948,7 +948,7 @@ async def test_stale_creating_row_is_reclaimed_and_pr_opened(
     from services.remediation_pr_service import create_npm_remediation_pr
 
     team, admin, project, _scan, pkg = await _seed_opted_in_project(db_session)
-    actor = principal_for(admin, team_ids=[team.id], role="team_admin")
+    actor = principal_for(admin, team_ids=[team.id], role="group_admin")
 
     stale, fp = await _seed_creating_row(
         db_session, project=project, pkg=pkg, age_minutes=20
@@ -1001,7 +1001,7 @@ async def test_fresh_creating_row_returns_in_progress_no_second_pr(
     from services.remediation_pr_service import create_npm_remediation_pr
 
     team, admin, project, _scan, pkg = await _seed_opted_in_project(db_session)
-    actor = principal_for(admin, team_ids=[team.id], role="team_admin")
+    actor = principal_for(admin, team_ids=[team.id], role="group_admin")
 
     fresh, fp = await _seed_creating_row(
         db_session, project=project, pkg=pkg, age_minutes=1  # well within the TTL
@@ -1097,7 +1097,7 @@ async def test_non_conforming_package_name_dropped_from_render(
     from services.remediation_service import compute_npm_dry_run
 
     team, admin, project, scan, _pkg = await _seed_opted_in_project(db_session)
-    actor = principal_for(admin, team_ids=[team.id], role="team_admin")
+    actor = principal_for(admin, team_ids=[team.id], role="group_admin")
 
     # A second, vulnerable dep whose decoded npm name carries a backtick.
     suffix = unique_suffix()
@@ -1180,7 +1180,7 @@ async def test_corrupted_installation_id_rejected_before_mint(
     )
 
     team, admin, project, _scan, pkg = await _seed_opted_in_project(db_session)
-    actor = principal_for(admin, team_ids=[team.id], role="team_admin")
+    actor = principal_for(admin, team_ids=[team.id], role="group_admin")
 
     inst = (
         await db_session.execute(
@@ -1215,7 +1215,7 @@ async def test_list_returns_records_for_member(db_session: AsyncSession) -> None
     )
 
     team, admin, project, _scan, pkg = await _seed_opted_in_project(db_session)
-    actor = principal_for(admin, team_ids=[team.id], role="team_admin")
+    actor = principal_for(admin, team_ids=[team.id], role="group_admin")
     transport = httpx.MockTransport(_github_handler())
     async with httpx.AsyncClient(transport=transport) as client:
         await create_npm_remediation_pr(
@@ -1314,7 +1314,7 @@ async def test_endpoint_list_returns_seeded_record(db_session: AsyncSession) -> 
     from services.remediation_pr_service import create_npm_remediation_pr
 
     team, admin, project, _scan, pkg = await _seed_opted_in_project(db_session)
-    actor = principal_for(admin, team_ids=[team.id], role="team_admin")
+    actor = principal_for(admin, team_ids=[team.id], role="group_admin")
     transport = httpx.MockTransport(_github_handler(pr_number=99))
     async with httpx.AsyncClient(transport=transport) as gh:
         await create_npm_remediation_pr(

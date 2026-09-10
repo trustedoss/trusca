@@ -71,7 +71,7 @@ def _bearer_for(user: User) -> dict[str, str]:
     return {"Authorization": f"Bearer {create_access_token(subject=str(user.id), role=role)}"}
 
 
-async def _seed(client: AsyncClient, *, role: str = "team_admin"):
+async def _seed(client: AsyncClient, *, role: str = "group_admin"):
     factory = await _factory(client)
     async with factory() as session:
         org = await make_organization(session)
@@ -333,7 +333,7 @@ async def test_a_service_account_cannot_be_added_from_the_team_members_surface(
     response = await client.post(
         f"/v1/admin/teams/{other_team_id}/members",
         headers=_bearer_for(admin),
-        json={"user_id": account["id"], "role": "team_admin"},
+        json={"user_id": account["id"], "role": "group_admin"},
     )
 
     assert response.status_code == 404, response.text
@@ -412,7 +412,7 @@ async def test_an_unowned_account_may_not_be_given_more_keys(client) -> None:
         team_row = await session.get(Team, team.id)
         assert team_row is not None
         await make_membership(
-            session, user=other_admin, team=team_row, role="team_admin"
+            session, user=other_admin, team=team_row, role="group_admin"
         )
     raw_key = await _issue_key(
         client, user=creator, project_id=project.id, service_account_id=account["id"]
@@ -448,7 +448,7 @@ async def test_assigning_a_steward_lets_it_issue_again(client) -> None:
 
         team_row = await session.get(Team, team.id)
         assert team_row is not None
-        await make_membership(session, user=successor, team=team_row, role="team_admin")
+        await make_membership(session, user=successor, team=team_row, role="group_admin")
     await _deactivate(client, creator.id)
 
     assigned = await client.put(
@@ -512,7 +512,7 @@ async def test_a_steward_who_leaves_the_team_stops_counting(client) -> None:
         assert team_row is not None
         successor = await make_user(session)
         await make_membership(
-            session, user=successor, team=team_row, role="team_admin"
+            session, user=successor, team=team_row, role="group_admin"
         )
 
     removed = await client.delete(

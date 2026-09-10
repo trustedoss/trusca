@@ -202,7 +202,7 @@ async def register_user(
         )
         session.add(team)
         await session.flush()
-        session.add(Membership(user_id=user.id, team_id=team.id, role="team_admin"))
+        session.add(Membership(user_id=user.id, team_id=team.id, role="group_admin"))
 
     try:
         await session.commit()

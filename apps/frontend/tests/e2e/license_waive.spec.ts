@@ -23,10 +23,10 @@
  *
  * Auth / RBAC
  * -----------
- * The waive affordance is gated to `team_admin` / `super_admin`. The seed's
+ * The waive affordance is gated to `group_admin` / `super_admin`. The seed's
  * primary user is a plain `developer`, so scenarios A–C seed one extra
- * `team_admin` member (`extraMembers: 1, extraTeamAdmin: true`) and log in as
- * them; the project's `current_user_role` then resolves to `team_admin`.
+ * `group_admin` member (`extraMembers: 1, extraTeamAdmin: true`) and log in as
+ * them; the project's `current_user_role` then resolves to `group_admin`.
  * Scenario D logs in as the primary developer to assert the disabled gate.
  *
  * Pre-requisites (auto-skip otherwise):
@@ -56,7 +56,7 @@ const DEFAULT_COMPONENT_COUNT = 16;
 const EXPIRES_AT = "2099-01-01";
 
 interface SeedOpts {
-  /** Add one extra `team_admin` member so the waive gate is satisfied. */
+  /** Add one extra `group_admin` member so the waive gate is satisfied. */
   asTeamAdmin: boolean;
 }
 
@@ -78,7 +78,7 @@ function tryAcquireSeed(
 
 /**
  * Seed a project with forbidden components and authenticate. When
- * `asTeamAdmin` is set we log in as the seeded `team_admin` extra member (so
+ * `asTeamAdmin` is set we log in as the seeded `group_admin` extra member (so
  * the waive gate opens); otherwise we log in as the primary `developer`.
  *
  * The extra member shares the primary user's password — see seed_e2e_user.py.
@@ -105,9 +105,9 @@ async function bootstrap(
 
   let email = seed.email;
   if (asTeamAdmin) {
-    const admin = seed.extra_members?.find((m) => m.role === "team_admin");
+    const admin = seed.extra_members?.find((m) => m.role === "group_admin");
     if (admin == null) {
-      testInfo.skip(true, "seed did not return a team_admin extra member");
+      testInfo.skip(true, "seed did not return a group_admin extra member");
       return null;
     }
     email = admin.email;

@@ -81,8 +81,8 @@ async def _team_admin_graph(session: AsyncSession):
     org = await make_organization(session)
     team = await make_team(session, organization=org)
     admin = await make_user(session)
-    await make_membership(session, user=admin, team=team, role="team_admin")
-    actor = principal_for(admin, team_ids=[team.id], role="team_admin")
+    await make_membership(session, user=admin, team=team, role="group_admin")
+    actor = principal_for(admin, team_ids=[team.id], role="group_admin")
     return org, team, admin, actor
 
 
@@ -162,8 +162,8 @@ async def test_upsert_team_policy_cross_team_blocked(db_session: AsyncSession) -
     team_a = await make_team(db_session, organization=org)
     team_b = await make_team(db_session, organization=org)
     admin = await make_user(db_session)
-    await make_membership(db_session, user=admin, team=team_a, role="team_admin")
-    actor = principal_for(admin, team_ids=[team_a.id], role="team_admin")
+    await make_membership(db_session, user=admin, team=team_a, role="group_admin")
+    actor = principal_for(admin, team_ids=[team_a.id], role="group_admin")
     with pytest.raises(LicensePolicyForbidden):
         await upsert_team_policy(db_session, actor, team_id=team_b.id, payload=_payload())
 
@@ -193,8 +193,8 @@ async def test_upsert_org_policy_non_super_forbidden(db_session: AsyncSession) -
     org = await make_organization(db_session)
     team = await make_team(db_session, organization=org)
     admin = await make_user(db_session)
-    await make_membership(db_session, user=admin, team=team, role="team_admin")
-    actor = principal_for(admin, team_ids=[team.id], role="team_admin")
+    await make_membership(db_session, user=admin, team=team, role="group_admin")
+    actor = principal_for(admin, team_ids=[team.id], role="group_admin")
     with pytest.raises(LicensePolicyForbidden):
         await upsert_org_policy(db_session, actor, organization_id=org.id, payload=_payload())
 
@@ -403,8 +403,8 @@ async def test_delete_team_policy_developer_forbidden(db_session: AsyncSession) 
     org = await make_organization(db_session)
     team = await make_team(db_session, organization=org)
     admin = await make_user(db_session)
-    await make_membership(db_session, user=admin, team=team, role="team_admin")
-    admin_actor = principal_for(admin, team_ids=[team.id], role="team_admin")
+    await make_membership(db_session, user=admin, team=team, role="group_admin")
+    admin_actor = principal_for(admin, team_ids=[team.id], role="group_admin")
     await upsert_team_policy(db_session, admin_actor, team_id=team.id, payload=_payload())
 
     dev = await make_user(db_session)

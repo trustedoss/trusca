@@ -71,7 +71,7 @@ def _bearer_for(user: User) -> dict[str, str]:
     return {"Authorization": f"Bearer {create_access_token(subject=str(user.id), role=role)}"}
 
 
-async def _seed(client: AsyncClient, *, role: str = "team_admin"):
+async def _seed(client: AsyncClient, *, role: str = "group_admin"):
     factory = await _factory(client)
     async with factory() as session:
         org = await make_organization(session)
@@ -212,10 +212,15 @@ async def test_a_viewer_reads_the_effective_policy_and_where_it_came_from(client
     assert response.status_code == 200, response.text
     body = response.json()
     assert body["epss_threshold"] == 0.4
-    assert body["sources"]["epss_threshold"] == "organization"
+    assert body["sources"]["epss_threshold"]["scope"] == "organization"
+    assert body["sources"]["epss_threshold"]["group_ids"] == []
+    # The deprecated flat-string alias must agree with the structured field
+    # (Phase 3, group-hierarchy generalisation).
+    assert body["sources_legacy"]["epss_threshold"] == "organization"
     # Nothing decided reachability, so the deployment's answer stands and the
     # source says so rather than implying someone chose it.
-    assert body["sources"]["reachable_critical_only"] == "deployment"
+    assert body["sources"]["reachable_critical_only"]["scope"] == "deployment"
+    assert body["sources_legacy"]["reachable_critical_only"] == "deployment"
 
 
 async def test_a_team_row_is_reported_as_the_team_source(client) -> None:
@@ -236,8 +241,11 @@ async def test_a_team_row_is_reported_as_the_team_source(client) -> None:
         f"/v1/gate-policies/effective/{project_id}", headers=_bearer_for(user)
     )
 
-    assert response.json()["epss_threshold"] == 0.9
-    assert response.json()["sources"]["epss_threshold"] == "team"
+    body = response.json()
+    assert body["epss_threshold"] == 0.9
+    assert body["sources"]["epss_threshold"]["scope"] == "group"
+    assert body["sources"]["epss_threshold"]["group_ids"] == [str(team_id)]
+    assert body["sources_legacy"]["epss_threshold"] == "team"
 
 
 async def test_a_stranger_cannot_learn_that_a_team_exists(client) -> None:
@@ -261,6 +269,37 @@ async def test_a_stranger_cannot_learn_that_a_team_exists(client) -> None:
     )
 
     assert response.status_code == 404, response.text
+
+
+async def test_a_stranger_cannot_read_another_orgs_effective_policy(client) -> None:
+    """Security review finding (Phase 3): the effective-policy endpoint had no
+    project/group membership check at all, only the coarse ``viewer`` role
+    floor -- any authenticated user could resolve any project's gate policy,
+    and once ``sources`` started naming real groups, that leaked another
+    organization's group names and ancestor chain, not just a threshold
+    value. Existence-hidden (404), matching ``get_team_policy``'s own gate.
+    """
+    org_id, team_id, owner, project_id = await _seed(client)
+    super_admin = await _seed_super_admin(client)
+    await client.put(
+        f"/v1/gate-policies/org/{org_id}",
+        headers=_bearer_for(super_admin),
+        json={"epss_threshold": 0.4},
+    )
+    await client.put(
+        f"/v1/gate-policies/teams/{team_id}",
+        headers=_bearer_for(owner),
+        json={"epss_threshold": 0.9},
+    )
+    _, _, stranger, _ = await _seed(client)
+
+    response = await client.get(
+        f"/v1/gate-policies/effective/{project_id}", headers=_bearer_for(stranger)
+    )
+
+    assert response.status_code == 404, response.text
+    # The project's team name/id must not leak into the error body either.
+    assert str(team_id) not in response.text
 
 
 async def test_a_team_without_a_row_reads_as_absent_not_empty(client) -> None:
@@ -300,8 +339,10 @@ async def test_deleting_a_team_row_returns_it_to_the_organization(client) -> Non
     )
 
     assert removed.status_code == 204, removed.text
-    assert effective.json()["epss_threshold"] == 0.4
-    assert effective.json()["sources"]["epss_threshold"] == "organization"
+    effective_body = effective.json()
+    assert effective_body["epss_threshold"] == 0.4
+    assert effective_body["sources"]["epss_threshold"]["scope"] == "organization"
+    assert effective_body["sources_legacy"]["epss_threshold"] == "organization"
 
 
 async def test_deleting_what_was_never_written_is_a_404(client) -> None:

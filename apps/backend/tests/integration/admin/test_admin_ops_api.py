@@ -137,7 +137,7 @@ async def test_team_admin_returns_404_existence_hide(
         org = await make_organization(session)
         team = await make_team(session, organization=org)
         user = await make_user(session)
-        await make_membership(session, user=user, team=team, role="team_admin")
+        await make_membership(session, user=user, team=team, role="group_admin")
 
     response = await client.request(method, path, headers=_bearer_for(user))
     assert response.status_code == 404, response.text

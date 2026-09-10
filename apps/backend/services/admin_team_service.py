@@ -111,6 +111,30 @@ class TeamHasProjects(AdminTeamError):
         }
 
 
+class TeamHasChildren(AdminTeamError):
+    """409 -- the team still has child groups under it (group-hierarchy Phase 1).
+
+    ``parent_group_id`` is ``ON DELETE RESTRICT``, so the DB would already
+    refuse this delete -- but as a bare ``IntegrityError`` from the generic
+    handler (500, not a Problem Details response naming the blocker), the
+    same gap ``TeamHasProjects``/``TeamHasActiveScans`` close for their own
+    blocking conditions. No group can have children yet in Phase 1 (nothing
+    sets ``parent_group_id``), so this is unreachable today; it exists so the
+    day something does, deleting a parent fails the same legible way its
+    siblings already do rather than surfacing as an unexplained 500.
+    """
+
+    status_code = 409
+    title = "Team Has Children"
+
+    def __init__(self, message: str, *, child_count: int) -> None:
+        super().__init__(message)
+        self.extensions = {
+            "team_has_children": True,
+            "child_count": child_count,
+        }
+
+
 class LastTeamAdminProtected(AdminTeamError):
     status_code = 422
     title = "Last Team Admin Protected"
@@ -319,7 +343,7 @@ async def _lock_and_count_team_admins(session: AsyncSession, team_id: uuid.UUID)
         (
             await session.execute(
                 select(Membership)
-                .where(Membership.team_id == team_id, Membership.role == "team_admin")
+                .where(Membership.team_id == team_id, Membership.role == "group_admin")
                 .with_for_update()
             )
         )
@@ -436,6 +460,8 @@ async def list_teams(
                 name=team.name,
                 slug=team.slug,
                 description=team.description,
+                organization_id=team.organization_id,
+                parent_group_id=team.parent_group_id,
                 member_count=member_count,
                 project_count=project_count,
                 created_at=team.created_at,
@@ -488,6 +514,8 @@ async def get_team_detail(
         name=team.name,
         slug=team.slug,
         description=team.description,
+        organization_id=team.organization_id,
+        parent_group_id=team.parent_group_id,
         project_count=project_count,
         members=members,
         created_at=team.created_at,
@@ -626,6 +654,24 @@ async def delete_team(
             project_count=len(live_projects),
         )
 
+    # group-hierarchy Phase 1: refuse when the team still has child groups.
+    # parent_group_id is ON DELETE RESTRICT, so the DELETE below would fail
+    # at the DB either way -- this turns that into a legible 409 instead of
+    # an IntegrityError surfacing as a generic 500. Unreachable today (no
+    # code path sets parent_group_id yet); kept in step with its siblings
+    # above so the day one does, this doesn't regress to the opaque case.
+    child_count = (
+        await session.execute(
+            select(func.count()).select_from(Team).where(Team.parent_group_id == team_id)
+        )
+    ).scalar_one()
+    if child_count:
+        raise TeamHasChildren(
+            f"team {team_id} still has {child_count} child group(s); "
+            "move or delete them before deleting this group",
+            child_count=child_count,
+        )
+
     # Read the members before the delete: the memberships go with the team on
     # CASCADE, and a membership is where somebody's grade comes from. Somebody
     # whose only team_admin row was here drops to the floor, and the rule the
@@ -702,7 +748,7 @@ async def add_team_member(
         # BEFORE the count check so two concurrent demotions cannot both
         # pass the ``admin_count > 1`` guard (CWE-367 TOCTOU; see
         # _lock_and_count_team_admins).
-        if existing.role == "team_admin" and payload.role != "team_admin":
+        if existing.role == "group_admin" and payload.role != "group_admin":
             admin_count = await _lock_and_count_team_admins(session, team_id)
             member_count = await _count_team_members(session, team_id)
             others = member_count - 1  # subtract this user
@@ -759,7 +805,7 @@ async def remove_team_member(
             f"user {user_id} is not a member of team {team_id}"
         )
 
-    if membership.role == "team_admin":
+    if membership.role == "group_admin":
         # Lock the team_admin membership row set inside this transaction
         # before the count check so two concurrent removals cannot both
         # pass the ``admin_count > 1`` guard (CWE-367 TOCTOU fix).

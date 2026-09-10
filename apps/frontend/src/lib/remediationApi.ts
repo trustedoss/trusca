@@ -146,7 +146,7 @@ export async function npmDryRun(
 /**
  * Open (or return the idempotent existing) automated npm remediation PR.
  *
- * team_admin + opt-in gated on the backend:
+ * group_admin + opt-in gated on the backend:
  *   - `403` → the caller is a member but not a team admin.
  *   - `409` → the project is not opted in (no linked GitHub App installation).
  *   - `204` → nothing to remediate (no manifest change) — returned as `null`.

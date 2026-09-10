@@ -33,7 +33,7 @@
       },
       "role": {
         "super_admin": "Super Admin",
-        "team_admin": "Team Admin",
+        "group_admin": "Team Admin",
         "developer": "Developer",
         "viewer": "Viewer"
       },
@@ -59,7 +59,7 @@
       "form": {
         "role_label": "Role",
         "team_label": "Team",
-        "team_id_placeholder": "Team UUID (required for team_admin / developer)",
+        "team_id_placeholder": "Team UUID (required for group_admin / developer)",
         "save": "Save role"
       },
       "drawer": {
@@ -102,7 +102,7 @@
         "summary": "{{succeeded}} added, {{failed}} not added.",
         "parse_error": {
           "missing_email": "Line {{line}}: no email column, or the address is empty.",
-          "unknown_role": "Line {{line}}: that role is not one of team_admin, developer or viewer.",
+          "unknown_role": "Line {{line}}: that role is not one of group_admin, developer or viewer.",
           "too_few_columns": "Line {{line}}: fewer columns than the header names."
         },
         "errors": {
@@ -149,7 +149,9 @@
         "edit": "Edit",
         "delete": "Delete team",
         "add_member": "Add member",
-        "remove_member": "Remove"
+        "remove_member": "Remove",
+        "move": "Move",
+        "add_subgroup": "Add subgroup"
       },
       "confirm": {
         "delete": "Delete this team? Projects owned by the team will be archived.",
@@ -165,20 +167,28 @@
         "save": "Save team",
         "create": "Create team",
         "add": "Add member",
-        "cancel": "Cancel"
+        "cancel": "Cancel",
+        "move_target_label": "New parent",
+        "move_target_root": "Root of organization (no parent)",
+        "move": "Move",
+        "create_subgroup": "Create subgroup"
       },
       "drawer": {
         "members": "Members",
         "no_members": "This team has no members yet.",
         "project_count": "Projects",
-        "created_at": "Created"
+        "created_at": "Created",
+        "parent_root": "Root of organization",
+        "parent_label": "Parent: {{name}}"
       },
       "toast": {
         "created": "Team created.",
         "updated": "Team updated.",
         "deleted": "Team deleted.",
         "member_added": "Member added.",
-        "member_removed": "Member removed."
+        "member_removed": "Member removed.",
+        "moved": "Team moved.",
+        "subgroup_created": "Subgroup created."
       },
       "empty": "No teams match the current filters."
     },
@@ -485,6 +495,8 @@
       "scan_already_cancelled": "This scan is already terminated and cannot be cancelled again.",
       "scan_not_found": "Scan not found.",
       "audit_export_too_large": "The export exceeds 100,000 rows. Narrow the filter window before retrying.",
+      "cycle_detected": "This move would make the group its own ancestor. Choose a different parent.",
+      "cross_organization_move": "This group and the selected parent belong to different organizations. Cross-organization moves are not allowed.",
       "demo_read_only": "This is a read-only live demo — creating, editing, and deleting are disabled.",
       "unknown": "Something went wrong. Please try again."
     },

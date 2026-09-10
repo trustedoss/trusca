@@ -45,6 +45,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.sql.elements import ColumnElement
 
 from core.audit import bind_audit_team
+from core.authz import can_access_group
 from core.security import CurrentUser
 from models import LicensePolicy, Team
 from schemas.license_policy import (
@@ -52,6 +53,7 @@ from schemas.license_policy import (
     LicenseException,
     LicensePolicyUpsertIn,
 )
+from services.group_service import group_scoped_subquery_predicate, subtree_scope_filter
 
 log = structlog.get_logger("license_policy.service")
 
@@ -299,14 +301,7 @@ def _can_admin_team(actor: CurrentUser, team_id: uuid.UUID) -> bool:
     """True iff *actor* may write the policy of *team_id* (team_admin or super)."""
     if _is_super_admin(actor):
         return True
-    return actor.team_roles.get(team_id) == "team_admin"
-
-
-def _is_team_member(actor: CurrentUser, team_id: uuid.UUID) -> bool:
-    """True iff *actor* may READ the effective policy for *team_id*."""
-    if _is_super_admin(actor):
-        return True
-    return team_id in actor.team_ids
+    return actor.team_roles.get(team_id) == "group_admin"
 
 
 def _apply_upsert(row: LicensePolicy, payload: LicensePolicyUpsertIn) -> None:
@@ -696,7 +691,7 @@ async def get_policy(
     """
     org_id = await _resolve_team_org(session, team_id)
 
-    if not _is_team_member(actor, team_id):
+    if not await can_access_group(session, actor, team_id):
         raise LicensePolicyForbidden(f"actor is not a member of team {team_id}")
 
     effective = await get_effective_policy(session, team_id=team_id, organization_id=org_id)
@@ -735,32 +730,76 @@ async def get_effective_policy(
     organization_id: uuid.UUID | None = None,
 ) -> LicensePolicy | None:
     """
-    Resolve the policy that applies to *team_id*, in precedence order:
+    Resolve the policy that applies to *team_id* (any group in the tree, a
+    project's owning group today, but the algorithm has no notion of
+    "project"), in precedence order:
 
-        team policy (present AND enabled)
-          else org-default policy (present AND enabled)
-            else None  → caller falls back to the static catalog.
+        the group's OWN policy (present AND enabled)
+          else its nearest ancestor's policy (present AND enabled)
+            else the next ancestor up, ... all the way to the root
+              else the org-default policy (present AND enabled)
+                else None  → caller falls back to the static catalog.
 
-    A DISABLED team policy is skipped (falls through to the org default); a
-    disabled org default yields None. This is the resolver c2 calls before
-    classifying a license. ``organization_id`` is resolved from the team when
-    not supplied.
+    Group-hierarchy generalisation (Phase 3): this used to be a fixed two-tier
+    fall-through (team, then org-default). Groups now nest without limit
+    (migrations 0090/0091), so "the org default" is really just the LAST
+    stop on a chain that can be arbitrarily deep. A disabled or absent policy
+    at *team_id* itself falls through to its parent group's policy, not
+    straight to the org default. The org-default row is not special-cased in
+    the walk below; it is exactly the ``group_id IS NULL`` entry appended
+    after every real ancestor, so one loop handles both.
+
+    This is unconditional on ``core.config.group_cascade_enabled``; that flag
+    gates the RBAC *access* cascade (who may read/write a group's resources),
+    a completely different axis from this one. A group's ``path`` already
+    reflects its real ancestry the moment it is created (Phase 0/1), so policy
+    inheritance follows the actual tree regardless of whether the permission
+    cascade is turned on.
+
+    Two round trips, not one per ancestor: *team_id*'s own ``path`` column
+    already IS its full ancestor-id chain (materialised by the DB trigger), so
+    one query gets the whole chain, and a second fetches every candidate
+    policy row (every ancestor's + the org default's) in one ``IN`` list.
+    ``organization_id``, when supplied, is IGNORED for the query itself (the
+    group's own ``organization_id`` is authoritative and comes back in the
+    same first query as the chain); it is accepted only so existing callers
+    that already resolved it do not need to change their call sites.
     """
-    team_row = await get_team_policy_row(session, team_id=team_id)
-    if team_row is not None and team_row.enabled:
-        return team_row
+    chain_row = (
+        await session.execute(
+            select(Team.id, Team.path, Team.organization_id).where(Team.id == team_id)
+        )
+    ).one_or_none()
+    if chain_row is None:
+        return None
+    group_id, ancestor_path, org_id = chain_row
 
-    org_id = organization_id
-    if org_id is None:
-        org_id = (
-            await session.execute(select(Team.organization_id).where(Team.id == team_id))
-        ).scalar_one_or_none()
-        if org_id is None:
-            return None
+    # Nearest first: the group itself, then its immediate parent, ... up to
+    # (but not including; that is the org-default row, handled separately
+    # below) the root. ``ancestor_path`` is root-first (the DB trigger's
+    # convention, see the ``Group`` model docstring), so nearest-first is the
+    # reverse.
+    chain: list[uuid.UUID] = [group_id, *reversed(list(ancestor_path))]
 
-    org_row = await get_org_default_policy_row(session, organization_id=org_id)
-    if org_row is not None and org_row.enabled:
-        return org_row
+    rows = (
+        await session.execute(
+            select(LicensePolicy).where(
+                LicensePolicy.organization_id == org_id,
+                or_(LicensePolicy.team_id.in_(chain), LicensePolicy.team_id.is_(None)),
+            )
+        )
+    ).scalars().all()
+
+    by_group_id = {row.team_id: row for row in rows if row.team_id is not None}
+    org_default = next((row for row in rows if row.team_id is None), None)
+
+    for ancestor_id in chain:
+        candidate = by_group_id.get(ancestor_id)
+        if candidate is not None and candidate.enabled:
+            return candidate
+
+    if org_default is not None and org_default.enabled:
+        return org_default
     return None
 
 
@@ -793,21 +832,32 @@ async def list_policies(
     count_base = select(func.count()).select_from(LicensePolicy)
 
     if not _is_super_admin(actor):
-        team_ids = list(actor.team_ids)
-        if not team_ids:
+        if not actor.team_ids:
             # No memberships → nothing visible.
             return [], 0
-        # Org ids the actor can see org-defaults for: orgs of the actor's teams.
+        # Org ids the actor can see org-defaults for: orgs of the actor's
+        # ACCESSIBLE teams. Phase 2 PR 2-C: this used to be
+        # `Team.id.in_(team_ids)` (direct membership only); `subtree_scope_filter`
+        # is the same query-time expansion `core.authz.team_scope_filter` uses,
+        # applied here directly against `Team.id` (== `Group.id`; `Team` is a
+        # module-level alias for `Group`) rather than through the
+        # `Project`-specific subquery wrapper, since this query already starts
+        # from `Team`.
         org_rows = (
             await session.execute(
-                select(Team.id, Team.organization_id).where(Team.id.in_(team_ids))
+                select(Team.id, Team.organization_id).where(
+                    subtree_scope_filter(actor.team_ids)
+                )
             )
         ).all()
         visible_org_ids = {r[1] for r in org_rows}
-        visibility: ColumnElement[bool] = LicensePolicy.team_id.in_(team_ids)
+        team_predicate = group_scoped_subquery_predicate(
+            LicensePolicy.team_id, actor.team_ids
+        )
+        visibility: ColumnElement[bool] = team_predicate
         if visible_org_ids:
             visibility = or_(
-                LicensePolicy.team_id.in_(team_ids),
+                team_predicate,
                 and_(
                     LicensePolicy.team_id.is_(None),
                     LicensePolicy.organization_id.in_(visible_org_ids),

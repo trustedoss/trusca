@@ -71,6 +71,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from core.audit import bind_audit_team
+from core.authz import can_access_group
 from core.config import (
     github_api_url,
     github_app_token_http_timeout_seconds,
@@ -222,13 +223,7 @@ def _is_super_admin(actor: CurrentUser) -> bool:
 def _is_team_admin(actor: CurrentUser, team_id: uuid.UUID) -> bool:
     if _is_super_admin(actor):
         return True
-    return actor.team_roles.get(team_id) == "team_admin"
-
-
-def _is_team_member(actor: CurrentUser, team_id: uuid.UUID) -> bool:
-    if _is_super_admin(actor):
-        return True
-    return team_id in actor.team_ids
+    return actor.team_roles.get(team_id) == "group_admin"
 
 
 def _applied_bumps(result: DryRunResult) -> list[tuple[str, str | None, str]]:
@@ -409,7 +404,7 @@ async def _resolve_project_team_admin(
     project = (
         await session.execute(select(Project).where(Project.id == project_id))
     ).scalar_one_or_none()
-    if project is None or not _is_team_member(actor, project.team_id):
+    if project is None or not await can_access_group(session, actor, project.team_id):
         raise ProjectNotAccessible(f"project {project_id} not found")
     if not _is_team_admin(actor, project.team_id):
         raise RemediationForbidden(
@@ -1125,7 +1120,7 @@ async def list_remediation_prs(
     project = (
         await session.execute(select(Project).where(Project.id == project_id))
     ).scalar_one_or_none()
-    if project is None or not _is_team_member(actor, project.team_id):
+    if project is None or not await can_access_group(session, actor, project.team_id):
         raise ProjectNotAccessible(f"project {project_id} not found")
 
     page = max(page, 1)

@@ -37,6 +37,7 @@ from api.v1 import (
     external_packages_router,
     gate_policies_router,
     github_app_router,
+    groups_router,
     health_router,
     inventory_router,
     license_policies_router,
@@ -377,6 +378,10 @@ app.include_router(auth_router)
 app.include_router(oauth_router)
 app.include_router(admin_router)
 app.include_router(projects_router)
+# Group-hierarchy Phase 4 PR 4-A: the first non-admin read surface over
+# groups (list / detail / members). Existence-hide + accessible-set
+# filtering live in services.group_directory_service, not here.
+app.include_router(groups_router)
 # Portfolio overview aggregate for the app-root Dashboard page. Read-only,
 # JWT-required; every aggregate is scoped to the caller's accessible projects
 # inside services.dashboard_service (super-admin → all; otherwise → own teams).

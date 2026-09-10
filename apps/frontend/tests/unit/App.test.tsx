@@ -279,6 +279,50 @@ describe("App smoke (authenticated)", () => {
     expect(screen.queryByTestId("topbar-team-switcher")).toBeNull();
   });
 
+  it("offers a recovery picker, not a vanished switcher, when the active team can't be resolved", async () => {
+    // group-hierarchy Phase 5 security review (Medium finding): before this,
+    // TeamSwitcher unmounted entirely (`if (!active) return null`) once
+    // `useActiveTeam()` returned null for a real member whose stored
+    // preference names a group outside `user.teams` (e.g. reached only
+    // through the cascade) -- leaving a single-team user with NO control
+    // anywhere that could write a valid choice back to the store, a
+    // permanent dead end. This pins the fix: a recovery affordance stays
+    // visible and, picking a real team from it, clears the stuck state.
+    useAuthStore.setState({
+      user: {
+        ...fakeUser,
+        teamId: "team-1",
+        teams: [{ id: "team-1", name: "Platform", role: "developer" }],
+      },
+      accessToken: "tok-app",
+      status: "authenticated",
+      isAuthenticated: true,
+    });
+    useUIStore.setState({ activeTeamId: "group-c-cascade-only" });
+    renderAppAt("/projects");
+
+    const recovery = await screen.findByTestId("topbar-team-unresolved");
+    expect(screen.queryByTestId("topbar-team")).not.toBeInTheDocument();
+    expect(screen.queryByTestId("topbar-team-switcher")).not.toBeInTheDocument();
+
+    await userEvent.click(recovery);
+    await userEvent.click(
+      await screen.findByTestId("topbar-team-option-team-1"),
+    );
+
+    await waitFor(() => {
+      expect(useUIStore.getState().activeTeamId).toBe("team-1");
+    });
+    expect((await screen.findByTestId("topbar-team")).textContent).toBe(
+      "Platform",
+    );
+    // This describe block has no uiStore-wide afterEach reset (only
+    // useAuthStore's), so leaving a real, valid activeTeamId behind here is
+    // harmless to later tests either way -- reset anyway, for the same
+    // reason the test starts by overwriting rather than assuming null.
+    useUIStore.setState({ activeTeamId: null });
+  });
+
   it("omits the team label entirely when the user has no memberships", async () => {
     // fakeUser ships teamId: null / teams: [] — e.g. the seeded super admin.
     renderAppAt("/projects");

@@ -214,9 +214,9 @@ def test_a_mapped_group_still_beats_the_setting(monkeypatch) -> None:
     about everybody else.
     """
     monkeypatch.setenv("DEFAULT_MEMBER_ROLE", "viewer")
-    monkeypatch.setenv("OIDC_GROUP_ROLE_MAP", "platform:team_admin")
+    monkeypatch.setenv("OIDC_GROUP_ROLE_MAP", "platform:group_admin")
 
-    assert _grade_for(_info("oidc", groups=("platform",))) == "team_admin"
+    assert _grade_for(_info("oidc", groups=("platform",))) == "group_admin"
 
 
 def test_the_floor_still_wins_over_the_setting_for_an_unmapped_person(
@@ -228,8 +228,8 @@ def test_the_floor_still_wins_over_the_setting_for_an_unmapped_person(
     answer, and the answer is the floor. Letting the default override it would
     quietly raise the grade of everybody the mapping does not name.
     """
-    monkeypatch.setenv("DEFAULT_MEMBER_ROLE", "team_admin")
-    monkeypatch.setenv("OIDC_GROUP_ROLE_MAP", "platform:team_admin")
+    monkeypatch.setenv("DEFAULT_MEMBER_ROLE", "group_admin")
+    monkeypatch.setenv("OIDC_GROUP_ROLE_MAP", "platform:group_admin")
 
     assert _grade_for(_info("oidc", groups=("finance",))) == "viewer"
 
@@ -244,7 +244,7 @@ def test_the_hosted_signup_grade_is_untouched_by_the_setting(monkeypatch) -> Non
     monkeypatch.setenv("DEFAULT_MEMBER_ROLE", "viewer")
     monkeypatch.delenv("OIDC_GROUP_ROLE_MAP", raising=False)
 
-    assert _grade_for(_info("github")) == "team_admin"
+    assert _grade_for(_info("github")) == "group_admin"
 
 
 # ---------------------------------------------------------------------------

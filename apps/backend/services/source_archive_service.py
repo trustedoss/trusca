@@ -68,6 +68,7 @@ from fastapi import UploadFile
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from core.authz import can_access_group
 from core.config import workspace_root
 from core.security import CurrentUser
 from models import Project
@@ -311,12 +312,6 @@ def delete_archive(project_id: uuid.UUID, archive_id: str) -> bool:
 # ---------------------------------------------------------------------------
 
 
-def _can_access_team(actor: CurrentUser, team_id: uuid.UUID) -> bool:
-    if actor.is_superuser or actor.role == "super_admin":
-        return True
-    return team_id in actor.team_ids
-
-
 async def _load_accessible_project(
     session: AsyncSession,
     *,
@@ -326,7 +321,7 @@ async def _load_accessible_project(
     """Load the project, hiding existence from non-members (404 not 403)."""
     result = await session.execute(select(Project).where(Project.id == project_id))
     project = result.scalar_one_or_none()
-    if project is None or not _can_access_team(actor, project.team_id):
+    if project is None or not await can_access_group(session, actor, project.team_id):
         # Existence-hide: identical 404 whether the project is missing or in
         # another team. Cross-team enumeration is a P0 leak.
         raise ArchiveProjectNotFound(f"project {project_id} not found")

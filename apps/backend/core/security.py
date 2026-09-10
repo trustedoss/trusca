@@ -100,7 +100,7 @@ MFA_PENDING_EXPIRE_MINUTES = 5
 _ROLE_PRIORITY: dict[str, int] = {
     "viewer": 1,
     "developer": 2,
-    "team_admin": 3,
+    "group_admin": 3,
     "super_admin": 4,
 }
 
@@ -898,6 +898,17 @@ def require_team_member() -> Callable[..., CurrentUser]:
     Returns a callable that accepts `team_id` (UUID) and `current_user` as
     kwargs. super_admin bypasses the team check entirely; everyone else must
     have `team_id in current_user.team_ids`.
+
+    DEAD CODE as of Group-hierarchy Phase 2 PR 2-C (confirmed: zero route
+    callers, only this definition and its own test). Do not `Depends()` this
+    onto a new route as-is: its super-admin bypass checks only
+    ``role == "super_admin"``, not ``is_superuser`` too, which is narrower
+    than every gate `core.authz` exposes (``can_access_group`` /
+    ``assert_team_access`` / ``team_scope_filter`` all check both) -- and it
+    has no cascade awareness at all, unlike ``can_access_group``. If you are
+    about to wire this up, route through ``core.authz.can_access_group``
+    instead, or bring this function's bypass and cascade behavior in line
+    with it first.
     """
 
     def _check(

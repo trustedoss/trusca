@@ -14,7 +14,7 @@
  *   - category_overrides         add / edit / remove rows (SPDX id → category)
  *   - license_exceptions         add / remove waivers (spdx_id, reason, …)
  *
- * Read-only mode (`readOnly`) disables every control so a non-team_admin can
+ * Read-only mode (`readOnly`) disables every control so a non-group_admin can
  * view the effective policy without mutating it. Design follows the compact,
  * inline enterprise density (no modal dialogs; SPDX ids in mono font).
  *

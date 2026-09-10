@@ -5,7 +5,7 @@
  *
  * cdxgen sometimes mis-classifies a disjunctive license (e.g. pyphen's
  * ``GPL-2.0-or-later OR MPL-1.1``) as a single forbidden GPL, which then fails
- * the build gate. A team_admin can waive that *single component* with a reason
+ * the build gate. A group_admin can waive that *single component* with a reason
  * so the gate passes for it alone — every other component keeps the strict
  * classification.
  *

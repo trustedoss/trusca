@@ -82,7 +82,7 @@ def _can_write(actor: CurrentUser, team_id: uuid.UUID) -> bool:
     """
     if actor.is_superuser or actor.role == "super_admin":
         return True
-    return actor.team_roles.get(team_id) in {"developer", "team_admin", "super_admin"}
+    return actor.team_roles.get(team_id) in {"developer", "group_admin", "super_admin"}
 
 
 async def _load_project(session: AsyncSession, project_id: uuid.UUID) -> Project:
@@ -136,7 +136,8 @@ async def record_fulfilment(
         )
 
     project = await _load_project(session, project_id)
-    assert_team_access(
+    await assert_team_access(
+        session,
         actor,
         project.team_id,
         log=log,
@@ -248,7 +249,8 @@ async def list_fulfilments(
 ) -> list[ObligationFulfilment]:
     """Everything recorded for one project."""
     project = await _load_project(session, project_id)
-    assert_team_access(
+    await assert_team_access(
+        session,
         actor,
         project.team_id,
         log=log,
@@ -280,7 +282,8 @@ async def clear_fulfilment(
     the obligation to visibly waiting rather than answered.
     """
     project = await _load_project(session, project_id)
-    assert_team_access(
+    await assert_team_access(
+        session,
         actor,
         project.team_id,
         log=log,

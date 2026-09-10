@@ -18,13 +18,21 @@ Conventions (CLAUDE.md core rules):
   - No environment access at import time (CLAUDE.md core rule #11).
 
 Cross-domain relationships:
-  - This module has FK columns referencing `teams.id` and `users.id` (auth
+  - This module has FK columns referencing `groups.id` and `users.id` (auth
     domain), but does NOT add ORM `relationship()` edges back into auth. We
     keep the dependency one-way (scan → auth) to avoid having to mutate
     `apps/backend/models/auth.py` (which would ripple through mypy + the auth
-    integration test contract). Project / Scan therefore expose `team_id` /
+    integration test contract). Project / Scan therefore expose `group_id` /
     `requested_by_user_id` etc. as plain `Mapped[uuid.UUID]` columns; callers
-    that need the Team/User row issue an explicit query.
+    that need the Group/User row issue an explicit query.
+
+Group-hierarchy rollout, PR 0-1 (alembic/versions/0088):
+  - `Project.team_id` is renamed to `group_id` (the FK now targets
+    `groups.id`, renamed from `teams.id`). `team_id = synonym("group_id")`
+    keeps every call site that reads/writes `.team_id` (including
+    class-level query expressions like `Project.team_id == x`) working
+    against the same underlying column until the follow-up PRs migrate those
+    call sites.
 
 Latest-scan denormalization:
   - `Project.latest_scan_id` is a deliberate denormalization so listing pages
@@ -63,7 +71,7 @@ from sqlalchemy import (
 )
 from sqlalchemy.dialects.postgresql import ENUM as PG_ENUM
 from sqlalchemy.dialects.postgresql import JSONB, UUID
-from sqlalchemy.orm import Mapped, mapped_column, relationship
+from sqlalchemy.orm import Mapped, mapped_column, relationship, synonym
 
 from . import Base
 
@@ -163,11 +171,14 @@ class Project(Base):
     __tablename__ = "projects"
 
     id: Mapped[uuid.UUID] = mapped_column(UUID_PK, primary_key=True, server_default=GEN_UUID)
-    team_id: Mapped[uuid.UUID] = mapped_column(
+    group_id: Mapped[uuid.UUID] = mapped_column(
         UUID_PK,
-        ForeignKey("teams.id", ondelete="CASCADE"),
+        ForeignKey("groups.id", ondelete="CASCADE"),
         nullable=False,
     )
+    # Backward-compatible synonym, see module docstring (group-hierarchy
+    # rollout PR 0-1 / 0088).
+    team_id: Mapped[uuid.UUID] = synonym("group_id")
     name: Mapped[str] = mapped_column(String(255), nullable=False)
     slug: Mapped[str] = mapped_column(String(64), nullable=False)
     description: Mapped[str | None] = mapped_column(Text, nullable=True)
@@ -286,19 +297,19 @@ class Project(Base):
         return self.git_credential_encrypted is not None
 
     __table_args__ = (
-        UniqueConstraint("team_id", "slug", name="uq_projects_team_slug"),
-        Index("ix_projects_team_id", "team_id"),
-        # Active-projects list page: WHERE team_id = ? AND archived_at IS NULL
+        UniqueConstraint("group_id", "slug", name="uq_projects_group_slug"),
+        Index("ix_projects_group_id", "group_id"),
+        # Active-projects list page: WHERE group_id = ? AND archived_at IS NULL
         # ORDER BY updated_at DESC.
-        Index("ix_projects_team_archived", "team_id", "archived_at"),
+        Index("ix_projects_group_archived", "group_id", "archived_at"),
         # ER12 (0078) - the same query, with the ordering. The index above
         # covers both predicates and carries no ``updated_at``, so the sort ran
-        # over every project the team owns. Partial because the list only ever
+        # over every project the group owns. Partial because the list only ever
         # reads the unarchived half, and archived rows should not pay upkeep
         # for an index nothing reads them through.
         Index(
-            "ix_projects_team_updated_active",
-            "team_id",
+            "ix_projects_group_updated_active",
+            "group_id",
             text("updated_at DESC"),
             postgresql_where=text("archived_at IS NULL"),
         ),
@@ -320,7 +331,7 @@ class Project(Base):
         ),
         Index("ix_projects_latest_scan_id", "latest_scan_id"),
         # S1-1 — the project list and the global palette both match the name
-        # with a leading wildcard; ix_projects_team_archived narrows by team
+        # with a leading wildcard; ix_projects_group_archived narrows by group
         # first but cannot serve the ILIKE itself. Migration 0043.
         Index(
             "ix_projects_name_trgm",

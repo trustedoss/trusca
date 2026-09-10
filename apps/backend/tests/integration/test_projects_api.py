@@ -712,7 +712,7 @@ async def test_developer_cannot_patch_project(client) -> None:
 
 
 async def test_team_admin_can_patch_project(client) -> None:
-    _, team, admin = await _seed_team_with_user(client, role="team_admin")
+    _, team, admin = await _seed_team_with_user(client, role="group_admin")
     pid, _ = await _seed_project(client, team_id=team.id)
     headers = _bearer_for(admin)
 
@@ -744,7 +744,7 @@ async def test_super_admin_can_patch_any_team(client) -> None:
 
 
 async def test_patch_project_rejects_unknown_field_with_422(client) -> None:
-    _, team, admin = await _seed_team_with_user(client, role="team_admin")
+    _, team, admin = await _seed_team_with_user(client, role="group_admin")
     pid, _ = await _seed_project(client, team_id=team.id)
     headers = _bearer_for(admin)
 
@@ -765,7 +765,7 @@ async def test_patch_project_rejects_unknown_field_with_422(client) -> None:
 async def test_archive_project_returns_204_and_hides_from_default_list(
     client,
 ) -> None:
-    _, team, admin = await _seed_team_with_user(client, role="team_admin")
+    _, team, admin = await _seed_team_with_user(client, role="group_admin")
     pid, _ = await _seed_project(client, team_id=team.id)
     headers = _bearer_for(admin)
 
@@ -819,7 +819,7 @@ async def test_split_membership_user_cannot_patch_developer_team_project(
     """
     A user who is team_admin in team_a and developer in team_b must NOT be
     able to PATCH a project in team_b. The token-derived `CurrentUser` carries
-    `role='team_admin'` (highest across memberships), so this exercises the
+    `role='group_admin'` (highest across memberships), so this exercises the
     full _load_current_user -> service path, not just the unit-level check.
     """
     factory = await _factory(client)
@@ -828,7 +828,7 @@ async def test_split_membership_user_cannot_patch_developer_team_project(
         team_a = await make_team(session, organization=org)
         team_b = await make_team(session, organization=org)
         user = await make_user(session)
-        await make_membership(session, user=user, team=team_a, role="team_admin")
+        await make_membership(session, user=user, team=team_a, role="group_admin")
         await make_membership(session, user=user, team=team_b, role="developer")
         project_a = await make_project(session, team=team_a)
         project_b = await make_project(session, team=team_b)
@@ -897,7 +897,7 @@ async def test_a_granted_viewer_cannot_create_a_project(client) -> None:
 
 
 async def test_the_attributes_round_trip_through_create_and_read(client) -> None:
-    _, team, user = await _seed_team_with_user(client, role="team_admin")
+    _, team, user = await _seed_team_with_user(client, role="group_admin")
 
     created = await client.post(
         "/v1/projects",
@@ -931,7 +931,7 @@ async def test_creating_a_project_hashes_owner_contact_in_the_audit_row(
 
     from models import AuditLog
 
-    _, team, user = await _seed_team_with_user(client, role="team_admin")
+    _, team, user = await _seed_team_with_user(client, role="group_admin")
     contact = "platform-oncall@example.com"
 
     created = await client.post(
@@ -972,7 +972,7 @@ async def test_creating_a_project_hashes_owner_contact_in_the_audit_row(
 
 async def test_a_project_that_says_nothing_reads_as_null(client) -> None:
     """The default, and the contract: saying nothing changes nothing."""
-    _, team, user = await _seed_team_with_user(client, role="team_admin")
+    _, team, user = await _seed_team_with_user(client, role="group_admin")
 
     created = await client.post(
         "/v1/projects",
@@ -996,7 +996,7 @@ async def test_a_misspelt_distribution_model_is_refused(client) -> None:
     at a screen saying they had narrowed nothing, with no way to tell that
     their setting never took. Same reasoning as the AI usage context beside it.
     """
-    _, team, user = await _seed_team_with_user(client, role="team_admin")
+    _, team, user = await _seed_team_with_user(client, role="group_admin")
 
     response = await client.post(
         "/v1/projects",
@@ -1014,7 +1014,7 @@ async def test_a_misspelt_distribution_model_is_refused(client) -> None:
 
 async def test_whitespace_is_trimmed_so_one_bucket_stays_one(client) -> None:
     """"Platform" and "Platform " would otherwise be two filters that look alike."""
-    _, team, user = await _seed_team_with_user(client, role="team_admin")
+    _, team, user = await _seed_team_with_user(client, role="group_admin")
 
     created = await client.post(
         "/v1/projects",
@@ -1032,7 +1032,7 @@ async def test_whitespace_is_trimmed_so_one_bucket_stays_one(client) -> None:
 
 
 async def test_an_empty_string_clears_an_attribute(client) -> None:
-    _, team, user = await _seed_team_with_user(client, role="team_admin")
+    _, team, user = await _seed_team_with_user(client, role="group_admin")
     created = await client.post(
         "/v1/projects",
         headers=_bearer_for(user),
@@ -1090,7 +1090,7 @@ async def test_no_filter_leaves_every_project_in(client) -> None:
     applied by default would drop them from the portfolio, and the list would
     read as projects having gone missing rather than as a filter being on.
     """
-    _, team, user = await _seed_team_with_user(client, role="team_admin")
+    _, team, user = await _seed_team_with_user(client, role="group_admin")
     await _seed_attributed_projects(client, team.id, user)
 
     response = await client.get(
@@ -1104,7 +1104,7 @@ async def test_no_filter_leaves_every_project_in(client) -> None:
 
 async def test_a_blank_filter_is_the_same_as_no_filter(client) -> None:
     """A form that submits an empty select must not narrow anything."""
-    _, team, user = await _seed_team_with_user(client, role="team_admin")
+    _, team, user = await _seed_team_with_user(client, role="group_admin")
     await _seed_attributed_projects(client, team.id, user)
 
     response = await client.get(
@@ -1117,7 +1117,7 @@ async def test_a_blank_filter_is_the_same_as_no_filter(client) -> None:
 
 
 async def test_filtering_by_distribution_model_narrows_to_it(client) -> None:
-    _, team, user = await _seed_team_with_user(client, role="team_admin")
+    _, team, user = await _seed_team_with_user(client, role="group_admin")
     await _seed_attributed_projects(client, team.id, user)
 
     response = await client.get(
@@ -1137,7 +1137,7 @@ async def test_filtering_for_unset_finds_the_ones_still_to_be_filled_in(
     It is also the question an operator asks while they are trying to finish
     the exercise, which makes it the filter most worth having.
     """
-    _, team, user = await _seed_team_with_user(client, role="team_admin")
+    _, team, user = await _seed_team_with_user(client, role="group_admin")
     await _seed_attributed_projects(client, team.id, user)
 
     response = await client.get(
@@ -1150,7 +1150,7 @@ async def test_filtering_for_unset_finds_the_ones_still_to_be_filled_in(
 
 
 async def test_filtering_by_business_unit_narrows_to_it(client) -> None:
-    _, team, user = await _seed_team_with_user(client, role="team_admin")
+    _, team, user = await _seed_team_with_user(client, role="group_admin")
     await _seed_attributed_projects(client, team.id, user)
 
     response = await client.get(
@@ -1164,7 +1164,7 @@ async def test_filtering_by_business_unit_narrows_to_it(client) -> None:
 
 async def test_the_total_matches_the_filtered_rows(client) -> None:
     """A count taken before the filter would page over rows nobody can reach."""
-    _, team, user = await _seed_team_with_user(client, role="team_admin")
+    _, team, user = await _seed_team_with_user(client, role="group_admin")
     await _seed_attributed_projects(client, team.id, user)
 
     response = await client.get(

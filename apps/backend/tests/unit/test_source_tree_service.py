@@ -59,6 +59,9 @@ class _ScalarResult:
     def scalar_one_or_none(self) -> Any:
         return self._value
 
+    def first(self) -> Any:
+        return self._value
+
 
 class _RowsResult:
     def __init__(self, rows: list[tuple[Any, ...]]) -> None:
@@ -71,7 +74,7 @@ class _RowsResult:
 class _FakeSession:
     """Dispatches ``execute`` by inspecting the compiled statement text.
 
-    Four shapes the service issues:
+    Five shapes the service issues:
       - ``SELECT projects...``                    → project row (scalar_one_or_none)
       - latest-succeeded resolver (``FROM scans``
         with a ``status`` clause + ``LIMIT 1``)   → the project's ``latest_scan_id``
@@ -82,6 +85,17 @@ class _FakeSession:
       - explicit-scan-belongs check (``FROM scans``
         with ``scans.id =``)                      → scan id or None
       - ``SELECT ... license_findings``           → (source_path, spdx_id) rows (.all)
+      - Phase 2 PR 2-D: ``_resolve_accessible_scan`` now runs its team gate
+        through ``core.authz.assert_team_access`` (async, session-carrying),
+        which calls ``can_access_group`` -> ``services.group_service.
+        can_access_group``, issuing a SECOND query (``SELECT groups.id,
+        groups.path ... .first()``) the old flat, session-less
+        ``can_access_team`` never made. Answered as a ROOT group
+        (``path=[]``) whose id is the project's own ``team_id``, so the RBAC
+        check's answer still reduces to exactly "is *group_id* one of the
+        actor's direct memberships" (cascade OFF and ON agree once ``path``
+        is empty). These tests were never about the group hierarchy, only
+        about source-tree read behaviour, and this keeps them that way.
     """
 
     def __init__(
@@ -99,6 +113,9 @@ class _FakeSession:
         text = str(stmt).lower()
         if "license_findings" in text:
             return _RowsResult(list(self._badge_rows))
+        if "from groups" in text:
+            team_id = getattr(self._project, "team_id", None)
+            return _ScalarResult(SimpleNamespace(id=team_id, path=[]))
         if "from scans" in text:
             # The latest-succeeded resolver carries a status filter; map it to the
             # project's own preserved scan id so the default-scan path reads the

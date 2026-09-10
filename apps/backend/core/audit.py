@@ -420,7 +420,17 @@ def _build_audit_row(*, op: str, instance: object, ctx: dict[str, Any]) -> dict[
 
     return {
         "actor_user_id": _coerce_uuid(ctx.get("user_id")),
-        "team_id": _coerce_uuid(ctx.get("team_id")),
+        # Keyed as "group_id" (the AuditLog model's real mapped column since
+        # migration 0089 / group-hierarchy PR 0-1), not "team_id" the
+        # ContextVar happens to use. AuditLog.team_id is only a
+        # ``synonym("group_id")``, an ORM-layer alias that resolves when an
+        # AuditLog *instance* is constructed (``AuditLog(**row)``, the
+        # update/delete path in ``_before_flush``), but has no effect on a
+        # Core ``insert(AuditLog)`` executed with a plain param dict (the
+        # CREATE path in ``_after_flush``): Core binds params straight to
+        # real column names, so a "team_id" key there matched no column and
+        # silently left every CREATE-action audit row's group_id NULL.
+        "group_id": _coerce_uuid(ctx.get("team_id")),
         "action": action,
         "target_table": table,
         "target_id": target_id,

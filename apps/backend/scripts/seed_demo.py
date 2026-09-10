@@ -519,7 +519,7 @@ async def _seed(demo_only: bool = False) -> dict[str, Any]:  # noqa: PLR0915 —
                     Membership(
                         user_id=admin_user.id,
                         team_id=teams[tslug].id,
-                        role="team_admin",
+                        role="group_admin",
                     )
                 )
             session.add(
@@ -535,7 +535,7 @@ async def _seed(demo_only: bool = False) -> dict[str, Any]:  # noqa: PLR0915 —
                 Membership(
                     user_id=explorer.id,
                     team_id=teams["frontend"].id,
-                    role="team_admin",
+                    role="group_admin",
                 )
             )
             # Super admin gets a developer membership in Frontend so team-scoped
@@ -841,7 +841,7 @@ async def _seed(demo_only: bool = False) -> dict[str, Any]:  # noqa: PLR0915 —
                     {
                         "id": str(admin_user.id),
                         "email": admin_user.email,
-                        "role": f"team_admin:{tslug}",
+                        "role": f"group_admin:{tslug}",
                     }
                 )
             users_summary.append(
@@ -855,7 +855,7 @@ async def _seed(demo_only: bool = False) -> dict[str, Any]:  # noqa: PLR0915 —
                 {
                     "id": str(explorer.id),
                     "email": explorer.email,
-                    "role": "team_admin:frontend",
+                    "role": "group_admin:frontend",
                 }
             )
 
@@ -968,8 +968,8 @@ async def _collect_existing_summary(session: Any, org: Any) -> dict[str, Any]:
                 "id": str(user.id),
                 "email": user.email,
                 "role": (
-                    f"team_admin:{team_id_to_slug.get(membership.team_id, '')}"
-                    if membership.role == "team_admin"
+                    f"group_admin:{team_id_to_slug.get(membership.team_id, '')}"
+                    if membership.role == "group_admin"
                     else membership.role
                 ),
             }

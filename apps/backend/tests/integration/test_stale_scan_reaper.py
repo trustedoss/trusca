@@ -62,7 +62,7 @@ def _make_project(session: Session) -> uuid.UUID:
     )
     session.execute(
         text(
-            "INSERT INTO teams (id, organization_id, name, slug, created_at, "
+            "INSERT INTO groups (id, organization_id, name, slug, created_at, "
             "updated_at) VALUES (:id, :org, :name, :slug, now(), now())"
         ),
         {
@@ -74,7 +74,7 @@ def _make_project(session: Session) -> uuid.UUID:
     )
     session.execute(
         text(
-            "INSERT INTO projects (id, team_id, name, slug, visibility, "
+            "INSERT INTO projects (id, group_id, name, slug, visibility, "
             "created_at, updated_at) VALUES (:id, :team, :name, :slug, 'team', "
             "now(), now())"
         ),

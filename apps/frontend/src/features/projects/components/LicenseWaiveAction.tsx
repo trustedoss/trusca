@@ -39,7 +39,7 @@ import { cn } from "@/lib/utils";
  *     colour alone) whose tooltip shows the reason, plus an "Un-waive" action
  *     that DELETEs the exception.
  *
- * Permission gate (CLAUDE.md §RBAC): only ``team_admin`` / ``super_admin`` may
+ * Permission gate (CLAUDE.md §RBAC): only ``group_admin`` / ``super_admin`` may
  * waive. A ``developer`` sees the trigger disabled with a tooltip rather than
  * having it vanish — mirrors the VexImportDialog / suppression pattern. The
  * backend re-enforces the gate (403), so this is a UX affordance, not the
@@ -108,7 +108,7 @@ export function LicenseWaiveAction({
   const unwaive = useUnwaiveLicense(projectId);
 
   const roleAllows =
-    projectRole === "team_admin" || projectRole === "super_admin";
+    projectRole === "group_admin" || projectRole === "super_admin";
   // A waiver needs a concrete team + purl to scope to. Without either we cannot
   // build a valid request, so the action is disabled regardless of role.
   const canWaive =

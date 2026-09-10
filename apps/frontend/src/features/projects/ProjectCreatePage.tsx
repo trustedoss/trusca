@@ -19,6 +19,10 @@ import { problemMessage } from "@/lib/problemMessage";
 import { useActiveTeam } from "@/hooks/useActiveTeam";
 import { useDocumentTitle } from "@/hooks/useDocumentTitle";
 import { useAuthStore } from "@/stores/authStore";
+import {
+  TeamCombobox,
+  type TeamComboboxSelection,
+} from "@/features/projects/components/TeamCombobox";
 
 type FormValues = {
   name: string;
@@ -51,16 +55,38 @@ export function ProjectCreatePage() {
   // it mounted: switch teams in the bar while this page is open and the bar
   // said one thing while submit POSTed another. `useActiveTeam` is the single
   // resolution, and the effect below re-syncs when the user changes it. An
-  // explicit pick in this select still wins until the bar moves again.
+  // explicit pick in the combobox still wins until the bar moves again.
+  //
+  // No separate `user?.teamId` fallback here (there used to be one): it
+  // duplicated `useActiveTeam`'s own no-stored-preference fallback, and
+  // duplicating it meant that when `useActiveTeam` returns `null` because
+  // the stored choice names a group the user has no direct membership in
+  // (group-hierarchy cascade case, see that hook's own docstring), this
+  // component quietly fell back to `user.teamId` anyway, reintroducing,
+  // one level down, the exact silent-team-substitution bug `useActiveTeam`
+  // exists to prevent.
+  //
+  // group-hierarchy Phase 6: `teamId` alone is no longer enough to drive the
+  // picker: a cascade-reached group picked via the combobox's search has no
+  // entry in `teams`, so there is nowhere to look its name back up once the
+  // popover closes. `selectedTeam` carries the id AND the display name
+  // together, still resolving all the way down to `null` (not a silent
+  // substitute) exactly when `activeTeam` does.
   const activeTeam = useActiveTeam();
-  const [teamId, setTeamId] = useState<string>(
-    activeTeam?.id ?? user?.teamId ?? "",
+  const [selectedTeam, setSelectedTeam] = useState<TeamComboboxSelection | null>(
+    activeTeam ? { id: activeTeam.id, name: activeTeam.name } : null,
   );
-  const activeTeamId = activeTeam?.id;
   useEffect(() => {
-    if (activeTeamId) setTeamId(activeTeamId);
-  }, [activeTeamId]);
+    setSelectedTeam(activeTeam ? { id: activeTeam.id, name: activeTeam.name } : null);
+  }, [activeTeam]);
+  const teamId = selectedTeam?.id ?? "";
   const hasTeam = teamId !== "";
+  // Distinguishes the two reasons `hasTeam` can be false: no membership at
+  // all (existing `create.no_team` copy is accurate) vs. a real membership
+  // that just isn't the currently active selection (the cascade case above).
+  // Reusing "you are not a member of any team" there would be wrong copy;
+  // the user IS a member of teams, just not the one currently active.
+  const activeTeamUnresolved = !hasTeam && teams.length > 0;
 
   const formSchema = z.object({
     name: z
@@ -172,24 +198,26 @@ export function ProjectCreatePage() {
           ) : null}
         </div>
 
-        {teams.length > 1 ? (
-          <div className="space-y-1.5">
-            <Label htmlFor="project-team">{t("create.team_label")}</Label>
-            <select
-              id="project-team"
-              value={teamId}
-              onChange={(e) => setTeamId(e.target.value)}
-              data-testid="project-team-select"
-              className="flex h-9 w-full rounded-md border border-input bg-background px-3 py-1 text-sm shadow-sm transition-colors duration-fast ease-out-soft focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
-            >
-              {teams.map((tm) => (
-                <option key={tm.id} value={tm.id}>
-                  {tm.name}
-                </option>
-              ))}
-            </select>
-          </div>
-        ) : null}
+        {/*
+          group-hierarchy Phase 6: the combobox is always shown, unlike the
+          old `<select>` (gated on `teams.length > 1 || activeTeamUnresolved`).
+          Search reaches groups outside `teams` (the cascade case this task
+          exists for), so even a single-team user benefits, and the blocked
+          `!hasTeam` alert below still needs SOME way out for the
+          active-team-unresolved case (group-hierarchy Phase 5 security
+          review) -- the trigger shows the placeholder, never a silently
+          pre-selected name, whenever `selectedTeam` is `null`.
+        */}
+        <div className="space-y-1.5">
+          <Label htmlFor="project-team">{t("create.team_label")}</Label>
+          <TeamCombobox
+            triggerId="project-team"
+            teams={teams}
+            selected={selectedTeam}
+            onSelect={setSelectedTeam}
+            placeholder={t("create.team_select_placeholder")}
+          />
+        </div>
 
         <div className="space-y-1.5">
           <Label htmlFor="project-description">
@@ -273,8 +301,16 @@ export function ProjectCreatePage() {
         </div>
 
         {!hasTeam ? (
-          <Alert variant="destructive" data-testid="project-create-no-team">
-            <AlertDescription>{t("create.no_team")}</AlertDescription>
+          <Alert
+            variant="destructive"
+            data-testid="project-create-no-team"
+            data-reason={activeTeamUnresolved ? "active_team_unresolved" : "no_team"}
+          >
+            <AlertDescription>
+              {activeTeamUnresolved
+                ? t("create.active_team_unresolved")
+                : t("create.no_team")}
+            </AlertDescription>
           </Alert>
         ) : null}
 

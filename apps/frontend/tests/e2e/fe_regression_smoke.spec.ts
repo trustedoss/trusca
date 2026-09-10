@@ -18,7 +18,7 @@
  * Auth strategy: every test seeds a fresh user with a pre-minted refresh
  * token and enters via `AuthHarness.loginViaRefreshCookie` — NOT the
  * `/auth/login` form (rate-limited 5/min/IP; a multi-test single-IP run
- * trips it). The single `apiLogin` call in M-13 (the seeded team_admin, who
+ * trips it). The single `apiLogin` call in M-13 (the seeded group_admin, who
  * must drive the under_review/approved transitions) stays well under the
  * limit.
  *
@@ -85,8 +85,8 @@ test.describe("@fe-regression verified FE exposures (M-13 / M-20 / M-21)", () =>
 
     const approvals = new ApprovalsHarness(page);
 
-    // Shape the queue over REST as the seeded team_admin (transitions to
-    // under_review / approved require team_admin; create only needs
+    // Shape the queue over REST as the seeded group_admin (transitions to
+    // under_review / approved require group_admin; create only needs
     // developer, so one token covers all three rows):
     //   row A — pending          (open)
     //   row B — under_review     (open)

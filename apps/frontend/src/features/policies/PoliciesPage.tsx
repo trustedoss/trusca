@@ -3,7 +3,7 @@
 /**
  * PoliciesPage — license policy editor (v2.2 c3, UI for the c1 API).
  *
- * The `/policies` screen lets a team_admin edit their team's license policy and
+ * The `/policies` screen lets a group_admin edit their team's license policy and
  * a super_admin edit any team policy or the org default. It follows the compact
  * enterprise density (40px rows, inline filters, skeleton loading) and opens the
  * editor in a right-side drawer whose state is URL-encoded
@@ -14,7 +14,7 @@
  *     the org-default entry. Every scope is editable.
  *   - everyone else: the membership-filtered policy list + the user's projects
  *     provide the team ids the caller can reach. The editor read returns 403 →
- *     read-only when the caller is a member but not a team_admin.
+ *     read-only when the caller is a member but not a group_admin.
  *
  * No hardcoded English strings (every string via `t()`) and no hex literals
  * (Tailwind tokens / CSS vars only) — CLAUDE.md design system + i18n rules.
@@ -397,7 +397,7 @@ export function PoliciesPage() {
                     teamId={drawerTarget.id}
                     canEdit={
                       isSuperAdmin ||
-                      roleForTeam(drawerTarget.id) === "team_admin"
+                      roleForTeam(drawerTarget.id) === "group_admin"
                     }
                   />
                 ) : null}

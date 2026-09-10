@@ -222,6 +222,18 @@
     "page",
     "page_size"
   ],
+  "GET /v1/groups": [
+    "page",
+    "page_size",
+    "parent_id",
+    "q"
+  ],
+  "GET /v1/groups/{group_id}": [
+    "group_id"
+  ],
+  "GET /v1/groups/{group_id}/members": [
+    "group_id"
+  ],
   "GET /v1/intake-requests": [
     "project_id",
     "status"
@@ -679,6 +691,12 @@
     "scan_id"
   ],
   "POST /v1/admin/teams": [],
+  "POST /v1/admin/teams/{group_id}/reparent": [
+    "group_id"
+  ],
+  "POST /v1/admin/teams/{parent_group_id}/subgroups": [
+    "parent_group_id"
+  ],
   "POST /v1/admin/teams/{team_id}/members": [
     "team_id"
   ],

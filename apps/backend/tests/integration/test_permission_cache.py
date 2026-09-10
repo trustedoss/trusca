@@ -426,7 +426,7 @@ async def test_deleting_a_team_forgets_the_people_who_were_in_it(
     monkeypatch.setenv("PERMISSION_CACHE_TTL_SECONDS", "60")
     from core import security
 
-    team, user = await _seed_member(client, role="team_admin")
+    team, user = await _seed_member(client, role="group_admin")
     await client.get("/v1/projects", headers=_bearer_for(user))
     assert user.id in security._principal_cache
 
@@ -591,7 +591,7 @@ async def test_a_stored_principal_cannot_be_altered_through_the_copy_handed_out(
     handed_out = security._cached_principal(principal.id, 60)
     assert handed_out is not None
     handed_out.team_ids.append(uuid.uuid4())
-    handed_out.team_roles[team_id] = "team_admin"
+    handed_out.team_roles[team_id] = "group_admin"
 
     again = security._cached_principal(principal.id, 60)
     assert again is not None

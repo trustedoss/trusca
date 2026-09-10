@@ -256,7 +256,7 @@ function toAuthUser(u: UserPublicWire): AuthUser {
     email: u.email,
     displayName: u.full_name ?? u.email,
     // H-2: /auth/me has no top-level role — promote the HIGHEST membership
-    // role so a team_admin is not treated as a developer across the app.
+    // role so a group_admin is not treated as a developer across the app.
     role: effectiveRole(
       u.is_superuser,
       memberships.map((m) => m.role),

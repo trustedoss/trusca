@@ -541,7 +541,7 @@ async def test_request_transition_other_team_already_open_is_404_not_409(
     insider = await make_user(db_session)
     await open_request(
         db_session,
-        principal_for(insider, team_ids=[team.id], role="team_admin"),
+        principal_for(insider, team_ids=[team.id], role="group_admin"),
         finding_id=finding.id,
         team_id=team.id,
         target_status="suppressed",
@@ -574,7 +574,7 @@ async def test_decide_other_team_decided_request_is_404_not_409(
     insider = await make_user(db_session)
     row = await open_request(
         db_session,
-        principal_for(insider, team_ids=[team.id], role="team_admin"),
+        principal_for(insider, team_ids=[team.id], role="group_admin"),
         finding_id=finding.id,
         team_id=team.id,
         target_status="suppressed",
@@ -677,7 +677,7 @@ async def test_an_outsider_asking_about_an_unowned_account_gets_404(
     actor, owning_team = await _outsider_and_resource_team(db_session)
     owner = await make_user(db_session)
     await make_membership(
-        db_session, user=owner, team=owning_team, role="team_admin"
+        db_session, user=owner, team=owning_team, role="group_admin"
     )
     owner_principal = await principal_loaded_from_db(db_session, user=owner)
     account = await create_service_account(

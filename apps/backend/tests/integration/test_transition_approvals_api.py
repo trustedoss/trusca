@@ -91,8 +91,8 @@ async def _seed(client: AsyncClient, *, approval_statuses: list[str] | None = No
         team = await make_team(session, organization=org)
         requester = await make_user(session)
         approver = await make_user(session)
-        await make_membership(session, user=requester, team=team, role="team_admin")
-        await make_membership(session, user=approver, team=team, role="team_admin")
+        await make_membership(session, user=requester, team=team, role="group_admin")
+        await make_membership(session, user=approver, team=team, role="group_admin")
         project = await make_project(session, team=team)
         scan = await make_scan(session, project=project, status="succeeded")
 
@@ -378,9 +378,9 @@ async def test_an_approval_is_spent_once_and_not_reusable(client) -> None:
         actor = CurrentUser(
             id=seed["approver"].id,
             email=seed["approver"].email,
-            role="team_admin",
+            role="group_admin",
             team_ids=[seed["team_id"]],
-            team_roles={seed["team_id"]: "team_admin"},
+            team_roles={seed["team_id"]: "group_admin"},
             is_active=True,
             is_superuser=False,
         )
@@ -438,9 +438,9 @@ async def test_an_approval_is_spent_on_the_finding_it_was_granted_for(
         actor = CurrentUser(
             id=other["approver"].id,
             email=other["approver"].email,
-            role="team_admin",
+            role="group_admin",
             team_ids=[other["team_id"]],
-            team_roles={other["team_id"]: "team_admin"},
+            team_roles={other["team_id"]: "group_admin"},
             is_active=True,
             is_superuser=False,
         )

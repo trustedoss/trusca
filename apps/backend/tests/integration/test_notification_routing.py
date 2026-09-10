@@ -71,7 +71,7 @@ async def _factory(client: AsyncClient):
     return factory
 
 
-async def _seed(client: AsyncClient, *, role: str = "team_admin"):
+async def _seed(client: AsyncClient, *, role: str = "group_admin"):
     factory = await _factory(client)
     async with factory() as session:
         org = await make_organization(session)

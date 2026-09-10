@@ -89,14 +89,14 @@ def test_non_pii_columns_pass_through_unchanged() -> None:
     masked = mask_sensitive_columns(
         {
             "id": "abc",
-            "role": "team_admin",
+            "role": "group_admin",
             "is_active": True,
             "created_at": "2026-05-07T00:00:00+00:00",
         }
     )
     assert masked == {
         "id": "abc",
-        "role": "team_admin",
+        "role": "group_admin",
         "is_active": True,
         "created_at": "2026-05-07T00:00:00+00:00",
     }

@@ -8,7 +8,7 @@
  *
  *   1. Reads the current effective policy (TanStack Query). A 404 means "no
  *      policy yet — start from a blank draft" (not an error). A 403 on the team
- *      read drops the panel into read-only mode (member, not team_admin).
+ *      read drops the panel into read-only mode (member, not group_admin).
  *   2. Seeds a local draft from the server policy (or a blank draft) and lets
  *      `PolicyEditorForm` mutate it.
  *   3. Saves via PUT (invalidate on success) and resets via DELETE (team only),

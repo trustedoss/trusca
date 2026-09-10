@@ -59,7 +59,7 @@ def _scope_for(actor: CurrentUser) -> set[uuid.UUID] | None:
     return {
         team_id
         for team_id, role in actor.team_roles.items()
-        if role == "team_admin"
+        if role == "group_admin"
     }
 
 
@@ -79,7 +79,7 @@ async def search_team_audit_endpoint(
     page: int = Query(default=1, ge=1, le=PAGE_MAX),
     page_size: int = Query(default=50, ge=1, le=200),
     session: AsyncSession = Depends(get_db),
-    actor: CurrentUser = Depends(require_role("team_admin")),
+    actor: CurrentUser = Depends(require_role("group_admin")),
 ) -> Response:
     query = AuditSearchQuery.model_validate(
         {

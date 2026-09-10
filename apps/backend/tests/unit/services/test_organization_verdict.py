@@ -381,7 +381,7 @@ async def test_only_a_deployment_administrator_may_rule(
     """A ruling reaches every team, so it is not a team administrator's to make."""
     org, team, _, component = await _scene(db_session)
     team_admin = principal_for(
-        await make_user(db_session), team_ids=[team.id], role="team_admin"
+        await make_user(db_session), team_ids=[team.id], role="group_admin"
     )
 
     with pytest.raises(VerdictForbidden):

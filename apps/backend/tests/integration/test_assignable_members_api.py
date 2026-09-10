@@ -374,7 +374,7 @@ def test_the_query_carries_its_own_join() -> None:
     from models import User
     from services.assignee import assignable_members_select
 
-    statement = assignable_members_select(uuid.uuid4())
+    statement = assignable_members_select([uuid.uuid4()])
     froms = statement.get_final_froms()
     assert len(froms) == 1, (
         f"the query has {len(froms)} FROM entries, so it is a cross join and "
@@ -404,7 +404,7 @@ def test_narrowing_the_query_keeps_the_join() -> None:
     from models import User
     from services.assignee import assignable_members_select
 
-    narrowed = assignable_members_select(uuid.uuid4()).where(
+    narrowed = assignable_members_select([uuid.uuid4()]).where(
         User.id == uuid.uuid4()
     ).limit(1)
 

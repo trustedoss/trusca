@@ -625,7 +625,7 @@ async def test_patch_developer_to_suppressed_returns_403(client) -> None:
 
 
 async def test_patch_team_admin_can_suppress(client) -> None:
-    _, team, admin_user = await _seed_team_with_user(client, role="team_admin")
+    _, team, admin_user = await _seed_team_with_user(client, role="group_admin")
     _, scan_id = await _seed_scanned_project(client, team_id=team.id)
     finding_id = await _seed_finding(client, scan_id=scan_id)
     headers = _bearer_for(admin_user)
@@ -1387,7 +1387,7 @@ async def test_bulk_transition_developer_to_suppressed_is_per_row_403(client) ->
 
 
 async def test_bulk_transition_team_admin_can_suppress_via_bulk(client) -> None:
-    _, team, admin = await _seed_team_with_user(client, role="team_admin")
+    _, team, admin = await _seed_team_with_user(client, role="group_admin")
     project_id, scan_id = await _seed_scanned_project(client, team_id=team.id)
     fid = await _seed_finding(client, scan_id=scan_id)
     headers = _bearer_for(admin)

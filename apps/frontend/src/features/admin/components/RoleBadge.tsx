@@ -27,7 +27,7 @@ export function RoleBadge({ role, className }: RoleBadgeProps) {
   const Icon =
     role === "super_admin"
       ? ShieldCheck
-      : role === "team_admin"
+      : role === "group_admin"
         ? UsersIcon
         : role === "viewer"
           ? Eye
@@ -35,7 +35,7 @@ export function RoleBadge({ role, className }: RoleBadgeProps) {
   const variantClass =
     role === "super_admin"
       ? "bg-primary/10 text-primary border-transparent"
-      : role === "team_admin"
+      : role === "group_admin"
         ? "bg-risk-low/10 text-risk-low-foreground border-transparent"
         : "bg-muted text-muted-foreground border-transparent";
 

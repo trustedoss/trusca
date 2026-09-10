@@ -129,6 +129,12 @@ const MAIN_NAV: NavGroup[] = [
         icon: FolderOpen,
         testId: "nav-projects",
       },
+      {
+        to: "/groups",
+        labelKey: "nav.groups",
+        icon: Building2,
+        testId: "nav-groups",
+      },
     ],
   },
   {
@@ -478,7 +484,54 @@ function TeamSwitcher() {
   const setActiveTeamId = useUIStore((s) => s.setActiveTeamId);
   const active = useActiveTeam();
 
-  if (!active) return null;
+  // A user with no memberships at all has nothing to switch between.
+  if (teams.length === 0) return null;
+
+  if (!active) {
+    // group-hierarchy Phase 5 security review: `active` is null here NOT
+    // because `teams` is empty (handled above), but because the stored
+    // active-team preference names something outside it -- most often a
+    // group reached only through the cascade (see `useActiveTeam`'s own
+    // docstring). Before this branch existed, this component just vanished
+    // (`if (!active) return null`), which left a real, multi-team-capable
+    // user with NO control anywhere that could write a fresh, valid choice
+    // back to the store: `ProjectCreatePage` correctly blocks in this same
+    // state, but blocking with no recovery path is a dead end, not a fix.
+    // This picks explicitly, on click -- never auto-corrects on its own --
+    // because a silent correction here would reintroduce the exact
+    // silent-substitution failure `useActiveTeam` returning `null` exists
+    // to stop.
+    return (
+      <DropdownMenu>
+        <DropdownMenuTrigger asChild>
+          <Button
+            variant="ghost"
+            size="sm"
+            className="hidden max-w-[16rem] gap-1 border border-dashed border-topbar-accent bg-topbar-accent text-xs text-topbar-muted-foreground hover:bg-topbar-accent hover:text-topbar-foreground sm:inline-flex"
+            data-testid="topbar-team-unresolved"
+          >
+            <span className="truncate">
+              {t("auth.active_team_unresolved")}
+            </span>
+            <ChevronDown className="h-3 w-3 shrink-0" aria-hidden />
+          </Button>
+        </DropdownMenuTrigger>
+        <DropdownMenuContent align="start" className="min-w-[12rem]">
+          <DropdownMenuLabel>{t("nav.switchTeam")}</DropdownMenuLabel>
+          <DropdownMenuSeparator />
+          {teams.map((team) => (
+            <DropdownMenuItem
+              key={team.id}
+              data-testid={`topbar-team-option-${team.id}`}
+              onSelect={() => setActiveTeamId(team.id)}
+            >
+              <span className="truncate">{team.name}</span>
+            </DropdownMenuItem>
+          ))}
+        </DropdownMenuContent>
+      </DropdownMenu>
+    );
+  }
 
   if (teams.length < 2) {
     return (

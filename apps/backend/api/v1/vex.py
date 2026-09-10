@@ -203,7 +203,8 @@ async def export_project_vex_endpoint(
     # Re-assert team membership through the central audit helper so the
     # cross_team_attempt log entry is written for any unexpected gap. This is
     # belt-and-braces with `get_project`; cheap and consistent.
-    assert_team_access(
+    await assert_team_access(
+        session,
         actor,
         project.team_id,
         log=log,

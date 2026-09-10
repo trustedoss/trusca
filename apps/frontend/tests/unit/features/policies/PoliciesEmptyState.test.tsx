@@ -69,7 +69,7 @@ describe("PoliciesPage empty state", () => {
 
   it("tells a team administrator where to write one", async () => {
     useAuthStore.setState({
-      user: user("team_admin"),
+      user: user("group_admin"),
       accessToken: "tok",
       status: "authenticated",
       isAuthenticated: true,

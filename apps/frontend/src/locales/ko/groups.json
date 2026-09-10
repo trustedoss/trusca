@@ -1,0 +1,77 @@
+{
+  "page": {
+    "title": "그룹"
+  },
+  "list": {
+    "search_placeholder": "그룹 검색",
+    "search_aria": "이름으로 그룹 검색",
+    "drilldown": {
+      "root": "전체 그룹"
+    },
+    "row": {
+      "subgroups": "하위 그룹 {{count}}개",
+      "projects": "프로젝트 {{count}}개",
+      "members": "멤버 {{count}}명",
+      "open_detail": "상세 보기",
+      "open_detail_aria": "{{name}} 상세 보기",
+      "drill_aria": "{{name}}의 하위 그룹 열기"
+    },
+    "empty": {
+      "title_root": "아직 그룹이 없습니다",
+      "description_root": "관리자가 그룹을 만들면 여기에 표시됩니다.",
+      "title_search": "일치하는 항목이 없습니다",
+      "description_search": "\"{{query}}\"와(과) 일치하는 그룹이 없습니다."
+    },
+    "errors": {
+      "load_failed": "그룹을 불러오지 못했습니다."
+    }
+  },
+  "detail": {
+    "not_found": {
+      "title": "그룹을 찾을 수 없습니다",
+      "description": "존재하지 않거나 접근 권한이 없는 그룹입니다.",
+      "back": "그룹 목록으로"
+    },
+    "errors": {
+      "load_failed": "이 그룹을 불러오지 못했습니다.",
+      "back": "그룹 목록으로"
+    },
+    "breadcrumb_nav_aria": "그룹 탐색 경로",
+    "breadcrumb_root_label": "전체 그룹",
+    "new_project": "새 프로젝트",
+    "stats": {
+      "heading": "최근 {{days}}일, 하위 그룹 포함",
+      "scans": "시작된 스캔",
+      "approvals": "처리된 승인",
+      "new_members": "신규 멤버"
+    },
+    "tabs": {
+      "subgroups": "하위 그룹",
+      "projects": "프로젝트",
+      "members": "멤버"
+    },
+    "subgroups": {
+      "empty": "하위 그룹이 없습니다.",
+      "errors": {
+        "load_failed": "하위 그룹을 불러오지 못했습니다."
+      }
+    },
+    "projects": {
+      "include_archived": "보관된 프로젝트 포함",
+      "empty": "이 그룹에 프로젝트가 없습니다.",
+      "errors": {
+        "load_failed": "이 그룹의 프로젝트를 불러오지 못했습니다."
+      }
+    },
+    "members": {
+      "direct_heading": "직접 멤버",
+      "inherited_heading": "상속된 멤버",
+      "inherited_source": "{{group}}에서 상속",
+      "direct_empty": "직접 등록된 멤버가 없습니다.",
+      "inherited_empty": "상속된 멤버가 없습니다. 이 그룹에 접근 권한을 물려주는 상위 그룹이 없거나, 이 배포에서 상속 접근이 꺼져 있습니다.",
+      "errors": {
+        "load_failed": "멤버를 불러오지 못했습니다."
+      }
+    }
+  }
+}

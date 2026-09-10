@@ -296,6 +296,7 @@ export function AdminTeamsPage() {
                     data-team-id={team.id}
                     data-team-name={team.name}
                     data-team-slug={team.slug}
+                    data-parent-group-id={team.parent_group_id ?? ""}
                     className={cn(
                       "cursor-pointer border-b transition-colors duration-fast ease-out-soft hover:bg-accent/40 focus-within:bg-accent/40",
                     )}

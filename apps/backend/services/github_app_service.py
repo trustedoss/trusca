@@ -59,10 +59,12 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from core.audit import bind_audit_team
+from core.authz import can_access_group
 from core.config import github_api_url, github_app_token_http_timeout_seconds
 from core.crypto import SecretDecryptionError, decrypt_secret, encrypt_secret
 from core.security import CurrentUser
 from models import GitHubAppCredential, GitHubAppInstallation
+from services.group_service import group_scoped_subquery_predicate
 
 log = structlog.get_logger("github_app.service")
 
@@ -189,13 +191,7 @@ def _is_super_admin(actor: CurrentUser) -> bool:
 def _is_team_admin(actor: CurrentUser, team_id: uuid.UUID) -> bool:
     if _is_super_admin(actor):
         return True
-    return actor.team_roles.get(team_id) == "team_admin"
-
-
-def _is_team_member(actor: CurrentUser, team_id: uuid.UUID) -> bool:
-    if _is_super_admin(actor):
-        return True
-    return team_id in actor.team_ids
+    return actor.team_roles.get(team_id) == "group_admin"
 
 
 def _credential_out_fields(row: GitHubAppCredential) -> dict[str, Any]:
@@ -329,12 +325,13 @@ async def list_credentials(
     count_base = select(func.count()).select_from(GitHubAppCredential)
 
     if not _is_super_admin(actor):
-        if actor.team_ids:
-            tenant = GitHubAppCredential.team_id.in_(actor.team_ids)
-        else:
-            # No memberships → can see nothing. A false predicate keeps the
-            # query shape uniform.
-            tenant = GitHubAppCredential.team_id.in_([uuid.UUID(int=0)])
+        # Phase 2 PR 2-C: was a hand-rolled `team_id.in_(actor.team_ids)` /
+        # sentinel-uuid-false-predicate pair. `group_scoped_subquery_predicate`
+        # already returns an explicit false predicate for an empty membership
+        # set (no sentinel id needed) and is cascade-aware when the flag is on.
+        tenant = group_scoped_subquery_predicate(
+            GitHubAppCredential.team_id, actor.team_ids
+        )
         base = base.where(tenant)
         count_base = count_base.where(tenant)
 
@@ -374,7 +371,7 @@ async def get_credential(
             select(GitHubAppCredential).where(GitHubAppCredential.id == credential_id)
         )
     ).scalar_one_or_none()
-    if row is None or not _is_team_member(actor, row.team_id):
+    if row is None or not await can_access_group(session, actor, row.team_id):
         # Existence-hide: a non-member must not be able to probe credential ids.
         raise GitHubAppNotFound(f"github app credential {credential_id} not found")
     return row
@@ -400,7 +397,7 @@ async def revoke_credential(
             select(GitHubAppCredential).where(GitHubAppCredential.id == credential_id)
         )
     ).scalar_one_or_none()
-    if row is None or not _is_team_member(actor, row.team_id):
+    if row is None or not await can_access_group(session, actor, row.team_id):
         raise GitHubAppNotFound(f"github app credential {credential_id} not found")
 
     if not _is_team_admin(actor, row.team_id):

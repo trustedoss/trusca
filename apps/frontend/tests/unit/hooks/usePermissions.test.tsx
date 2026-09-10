@@ -44,7 +44,7 @@ afterEach(() => {
 describe("usePermissions", () => {
   it.each([
     ["super_admin", true, true],
-    ["team_admin", false, true],
+    ["group_admin", false, true],
     ["developer", false, false],
   ] as const)("%s → isSuperAdmin=%s isTeamAdminOrAbove=%s", (
     role,
@@ -70,26 +70,26 @@ describe("usePermissions", () => {
     expect(result.current.roleForTeam("team-1")).toBe("viewer");
   });
 
-  it("promotes a team_admin membership even when user.role is stale (H-2)", () => {
+  it("promotes a group_admin membership even when user.role is stale (H-2)", () => {
     // Mirrors the pre-fix wire shape: top-level role flattened to developer
-    // while memberships carry team_admin.
+    // while memberships carry group_admin.
     setUser(
-      makeUser("developer", [{ id: "team-1", name: "A", role: "team_admin" }]),
+      makeUser("developer", [{ id: "team-1", name: "A", role: "group_admin" }]),
     );
     const { result } = renderHook(() => usePermissions());
-    expect(result.current.role).toBe("team_admin");
+    expect(result.current.role).toBe("group_admin");
     expect(result.current.isTeamAdminOrAbove).toBe(true);
   });
 
   it("roleForTeam is team-scoped; super_admin overrides everywhere", () => {
     setUser(
       makeUser("developer", [
-        { id: "team-1", name: "A", role: "team_admin" },
+        { id: "team-1", name: "A", role: "group_admin" },
         { id: "team-2", name: "B", role: "developer" },
       ]),
     );
     const { result } = renderHook(() => usePermissions());
-    expect(result.current.roleForTeam("team-1")).toBe("team_admin");
+    expect(result.current.roleForTeam("team-1")).toBe("group_admin");
     expect(result.current.roleForTeam("team-2")).toBe("developer");
     // A team the user is not in is not theirs to act on, so the grade for it
     // is the floor rather than the one their other memberships happen to give.

@@ -11,11 +11,13 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
 import {
   addTeamMember,
+  createSubgroup,
   createTeam,
   deleteTeam,
   getAdminTeam,
   listAdminTeams,
   removeTeamMember,
+  reparentTeam,
   updateTeam,
 } from "@/features/admin/api/adminTeamsApi";
 import { api } from "@/lib/api";
@@ -170,5 +172,44 @@ describe("adminTeamsApi", () => {
     await removeTeamMember("t1", "u1");
     expect(calls[0].method).toBe("delete");
     expect(calls[0].url).toBe("/v1/admin/teams/t1/members/u1");
+  });
+
+  it("reparentTeam posts new_parent_id, root move as null", async () => {
+    const { calls, restore: r } = installAdapter([
+      { status: 200, data: { id: "t1" } },
+    ]);
+    restore = r;
+    await reparentTeam("t1", null);
+    expect(calls[0].method).toBe("post");
+    expect(calls[0].url).toBe("/v1/admin/teams/t1/reparent");
+    expect(calls[0].data).toEqual({ new_parent_id: null });
+  });
+
+  it("reparentTeam posts the new parent id when moving under a group", async () => {
+    const { calls, restore: r } = installAdapter([
+      { status: 200, data: { id: "t1" } },
+    ]);
+    restore = r;
+    await reparentTeam("t1", "t-parent");
+    expect(calls[0].data).toEqual({ new_parent_id: "t-parent" });
+  });
+
+  it("createSubgroup posts name/slug/description under the parent route", async () => {
+    const { calls, restore: r } = installAdapter([
+      { status: 201, data: { id: "t2" } },
+    ]);
+    restore = r;
+    const result = await createSubgroup("t1", {
+      name: "Child",
+      slug: "child",
+    });
+    expect(result.id).toBe("t2");
+    expect(calls[0].method).toBe("post");
+    expect(calls[0].url).toBe("/v1/admin/teams/t1/subgroups");
+    expect(calls[0].data).toEqual({
+      name: "Child",
+      slug: "child",
+      description: null,
+    });
   });
 });

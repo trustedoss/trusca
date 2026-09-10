@@ -814,7 +814,7 @@ describe("role vocabularies inside the frontend", () => {
   it("the admin user role union matches the shared fixture", () => {
     const adminRoles: Record<UserRole, true> = {
       super_admin: true,
-      team_admin: true,
+      group_admin: true,
       developer: true,
       viewer: true,
     };
@@ -824,7 +824,7 @@ describe("role vocabularies inside the frontend", () => {
   it("the team-scoped role union matches the shared fixture", () => {
     const teamRoles: Record<TeamScopedRole, true> = {
       super_admin: true,
-      team_admin: true,
+      group_admin: true,
       developer: true,
       viewer: true,
     };
@@ -834,7 +834,7 @@ describe("role vocabularies inside the frontend", () => {
   it("the triage role union matches the shared fixture", () => {
     const triageRoles: Record<TriageRole, true> = {
       super_admin: true,
-      team_admin: true,
+      group_admin: true,
       developer: true,
       viewer: true,
     };

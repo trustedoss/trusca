@@ -28,6 +28,8 @@ Organization (one per deployment)
 
 There is exactly one Organization per deployment. A user can hold a **different role in each team** — `team_admin` in one, `developer` in another — because roles are additive across teams and evaluated per project by the project's owning team. See the full [role capabilities table](../admin-guide/users-and-teams.md#roles).
 
+A team can also nest other teams under it, to any depth; see [Nested groups](../admin-guide/users-and-teams.md#nested-groups) for how to move one or create a subgroup, and how the permission cascade and the always-on license/gate policy walk each carry a role or a policy down from a parent. The guidance below (roles, visibility, and when to split) applies the same way whether a team sits at the root of the organization or several levels deep.
+
 ## Choosing roles {#roles}
 
 Grant the least role that lets someone do their job:
@@ -60,11 +62,11 @@ Visibility governs **read** exposure, not write. Editing, scanning, and disposin
 A team is the unit of ownership, visibility, and policy. Split when those three want to diverge — not merely because the headcount grew:
 
 - **Different policy needs.** One group ships a redistributed binary (copyleft is a real risk) and another ships a closed SaaS (copyleft is often fine). A per-team [license policy](../reference/license-policies.md) only helps if they are separate teams.
-- **Different approval authority.** Approvals are disposed by a `team_admin` of the *owning* team. If group A must not sign off on group B's conditional-license usage, they need separate teams.
+- **Different approval authority.** Approvals are disposed by a `team_admin` of the *owning* team. If team A must not sign off on team B's conditional-license usage, they need separate teams.
 - **Visibility boundaries.** A confidential project should not be readable by unrelated engineers. Separate teams keep `team_only` meaningful.
 - **Independent membership churn.** Contractors or a partner team you on/off-board on a different cadence belong in their own team, so a membership change never touches your core team.
 
-Reasons **not** to split: a shared component that several teams consume (make its project `org_wide` instead), or a temporary sub-group (a role grant is lighter than a team). Every extra team is another membership list and policy to keep current — split for a boundary, not for tidiness.
+Reasons **not** to split: a shared component that several teams consume (make its project `org_wide` instead), or a need that is really about position in the hierarchy rather than policy, visibility, or approval authority (nest a subgroup under the existing team instead of standing up an unrelated one; see [Nested groups](../admin-guide/users-and-teams.md#nested-groups)). Every extra team is another membership list and policy to keep current; split for a boundary, not for tidiness.
 
 :::note One person, many teams
 Because roles are per team, a platform engineer can be `team_admin` on the shared-infra team and `developer` on a product team without a second account. Splitting teams does not fragment a person's access — add the membership at the right role instead.
@@ -94,5 +96,6 @@ Review the layout you chose:
 
 - [Users & teams](../admin-guide/users-and-teams.md) — roles, membership, last-super-admin protection, team creation
 - [Users & teams — roles](../admin-guide/users-and-teams.md#roles) — the full capability table
+- [Users & teams: nested groups](../admin-guide/users-and-teams.md#nested-groups) - moving a team, creating a subgroup, the permission cascade
 - [Approvals — cross-project approvals](../user-guide/approvals.md#cross-project-approvals) — why verdicts do not propagate
 - [Policy design](./policy-design.md) — org-default vs per-team policy

@@ -66,7 +66,7 @@ async def _seed_project(session: AsyncSession):
     org = await make_organization(session)
     team = await make_team(session, organization=org)
     user = await make_user(session)
-    await make_membership(session, user=user, team=team, role="team_admin")
+    await make_membership(session, user=user, team=team, role="group_admin")
     project = await make_project(session, team=team)
     return org, team, project
 

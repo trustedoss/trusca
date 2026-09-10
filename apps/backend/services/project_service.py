@@ -91,22 +91,16 @@ class ProjectCredentialEncryptionError(ProjectError):
 # ---------------------------------------------------------------------------
 
 
-from core.authz import assert_team_access  # noqa: E402
+from core.authz import assert_team_access, can_access_group, team_scope_filter  # noqa: E402
 
 # All cross-team guards in this module flow through `assert_team_access`
 # so the `authz.cross_team_attempt` log shape is centralized.
-
-
-def _can_access_team(actor: CurrentUser, team_id: uuid.UUID) -> bool:
-    """Team membership (any role) — super_admin bypasses.
-
-    The create / archive gate (M-10): both are developer-level actions, so we
-    check membership, not the ``team_admin`` write role. Mirrors
-    ``scan_service._can_access_team`` (kept local to avoid a service import).
-    """
-    if actor.is_superuser or actor.role == "super_admin":
-        return True
-    return team_id in actor.team_ids
+#
+# Phase 2 PR 2-C: the local `_can_access_team` reimplementation this module
+# used to carry (mirroring `scan_service._can_access_team`) is gone; the
+# create / archive gate (M-10) now calls `core.authz.can_access_group`
+# directly, which is cascade-aware when `group_cascade_enabled()` is on and
+# reduces to the same flat membership check when it is off.
 
 
 def _can_write_project(actor: CurrentUser, project: Project) -> bool:
@@ -122,7 +116,7 @@ def _can_write_project(actor: CurrentUser, project: Project) -> bool:
     if actor.is_superuser or actor.role == "super_admin":
         return True
     role_in_team = actor.team_roles.get(project.team_id)
-    return role_in_team == "team_admin"
+    return role_in_team == "group_admin"
 
 
 # ---------------------------------------------------------------------------
@@ -142,7 +136,8 @@ async def create_project(
     - 403 if the actor is not a member of the target team (and not super_admin).
     - 409 if (team_id, slug) already exists — caught from the unique constraint.
     """
-    assert_team_access(
+    await assert_team_access(
+        session,
         actor,
         payload.team_id,
         log=log,
@@ -228,26 +223,33 @@ async def list_projects(
 
     is_super = actor.is_superuser or actor.role == "super_admin"
 
-    # Build the WHERE clause for team scoping.
-    if team_id is not None:
-        if not is_super and team_id not in actor.team_ids:
-            raise ProjectForbidden(
-                f"actor is not a member of team {team_id}",
-            )
-        scoped_team_ids: list[uuid.UUID] = [team_id]
-    elif is_super:
-        scoped_team_ids = []  # no team filter — super_admin sees all
-    else:
-        scoped_team_ids = list(actor.team_ids)
-        if not scoped_team_ids:
-            return [], 0
-
     base = select(Project)
     count_base = select(func.count()).select_from(Project)
 
-    if scoped_team_ids:
-        base = base.where(Project.team_id.in_(scoped_team_ids))
-        count_base = count_base.where(Project.team_id.in_(scoped_team_ids))
+    # Build the WHERE clause for team scoping.
+    #
+    # Phase 2 PR 2-C: an explicit `team_id` filter is checked through
+    # `can_access_group` (cascade-aware: a caller reaching a descendant
+    # group only via inherited membership may now pass here when the flag is
+    # on) but still filters the result set to EXACTLY that one team, matching
+    # the pre-PR-2-C behaviour of "which team's projects", not "which teams
+    # can I see". The no-`team_id` fan-out branch goes through
+    # `team_scope_filter`, the mandated choke-point for exactly this shape of
+    # query (see that function's docstring) instead of hand-rolling
+    # `Project.team_id.in_(actor.team_ids)` locally.
+    if team_id is not None:
+        if not is_super and not await can_access_group(session, actor, team_id):
+            raise ProjectForbidden(
+                f"actor is not a member of team {team_id}",
+            )
+        base = base.where(Project.team_id == team_id)
+        count_base = count_base.where(Project.team_id == team_id)
+    elif not is_super:
+        if not actor.team_ids:
+            return [], 0
+        scope = team_scope_filter(actor)
+        base = base.where(scope)
+        count_base = count_base.where(scope)
 
     if not include_archived:
         base = base.where(Project.archived_at.is_(None))
@@ -335,7 +337,8 @@ async def get_project(
     # raise 403 because team membership is itself a privileged signal in
     # this product (collaborators know who is on which team). 404-on-
     # forbidden would be safer if existence were secret; it is not here.
-    assert_team_access(
+    await assert_team_access(
+        session,
         actor,
         project.team_id,
         log=log,
@@ -458,12 +461,12 @@ async def archive_project(
 
     M-10: archiving is a *developer*-level action, mirroring create — the
     user guide states "developer and above can create and archive projects".
-    It uses team membership (``_can_access_team``), NOT the ``team_admin``
-    write gate that update/settings use. Cross-team escalation is still
-    blocked: a non-member (and non-super_admin) cannot archive.
+    It uses team membership (``core.authz.can_access_group``), NOT the
+    ``team_admin`` write gate that update/settings use. Cross-team escalation
+    is still blocked: a non-member (and non-super_admin) cannot archive.
     """
     project = await _load_project(session, project_id)
-    if not _can_access_team(actor, project.team_id):
+    if not await can_access_group(session, actor, project.team_id):
         raise ProjectForbidden("requires membership of the project's team")
 
     _bind_audit_team(project.team_id)

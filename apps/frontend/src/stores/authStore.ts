@@ -21,7 +21,7 @@ import { create } from "zustand";
  *     subscribing.
  */
 
-export type AuthRole = "super_admin" | "team_admin" | "developer" | "viewer";
+export type AuthRole = "super_admin" | "group_admin" | "developer" | "viewer";
 
 export interface AuthUser {
   id: string;

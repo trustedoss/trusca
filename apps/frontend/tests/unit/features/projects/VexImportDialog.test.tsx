@@ -3,7 +3,7 @@
  *
  * Covers:
  *   - Permission gating: the trigger is disabled for a developer, enabled for a
- *     team_admin (the suppression/import privilege boundary).
+ *     group_admin (the suppression/import privilege boundary).
  *   - Successful import renders the matched/applied/skipped summary + per-row
  *     skip reasons.
  *   - RFC 7807 errors (403 / 413 / 422) surface a graceful, localized message.
@@ -33,7 +33,7 @@ const mockedImport = vi.mocked(importVex);
 
 const PROJECT_ID = "00000000-0000-0000-0000-projectid111";
 
-function renderDialog(role: "developer" | "team_admin" | "super_admin") {
+function renderDialog(role: "developer" | "group_admin" | "super_admin") {
   const client = new QueryClient({
     defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
   });
@@ -76,8 +76,8 @@ describe("VexImportDialog", () => {
     expect(trigger).toHaveAttribute("data-role-gated", "true");
   });
 
-  it("enables the import trigger for a team_admin", () => {
-    renderDialog("team_admin");
+  it("enables the import trigger for a group_admin", () => {
+    renderDialog("group_admin");
     const trigger = screen.getByTestId("vex-import-open");
     expect(trigger).toBeEnabled();
     expect(trigger).not.toHaveAttribute("data-role-gated");
@@ -88,7 +88,7 @@ describe("VexImportDialog", () => {
     mockedImport.mockResolvedValueOnce(
       summary({ matched: 7, applied: 4, skipped: 3 }),
     );
-    renderDialog("team_admin");
+    renderDialog("group_admin");
     await attachAndSubmit(user);
 
     const panel = await screen.findByTestId("vex-import-summary");
@@ -115,7 +115,7 @@ describe("VexImportDialog", () => {
         ],
       }),
     );
-    renderDialog("team_admin");
+    renderDialog("group_admin");
     await attachAndSubmit(user);
 
     const rows = await screen.findAllByTestId("vex-import-summary-error-row");
@@ -134,7 +134,7 @@ describe("VexImportDialog", () => {
         problem: null,
       }),
     );
-    renderDialog("team_admin");
+    renderDialog("group_admin");
     await attachAndSubmit(user);
 
     const err = await screen.findByTestId("vex-import-error");
@@ -152,7 +152,7 @@ describe("VexImportDialog", () => {
         problem: null,
       }),
     );
-    renderDialog("team_admin");
+    renderDialog("group_admin");
     await attachAndSubmit(user);
 
     const err = await screen.findByTestId("vex-import-error");
@@ -175,7 +175,7 @@ describe("VexImportDialog", () => {
         problem: null,
       }),
     );
-    renderDialog("team_admin");
+    renderDialog("group_admin");
     await attachAndSubmit(user);
 
     const err = await screen.findByTestId("vex-import-error");
@@ -204,7 +204,7 @@ describe("VexImportDialog", () => {
         ],
       }),
     );
-    renderDialog("team_admin");
+    renderDialog("group_admin");
     await attachAndSubmit(user);
 
     const rows = await screen.findAllByTestId("vex-import-summary-error-row");
@@ -219,14 +219,14 @@ describe("VexImportDialog", () => {
 
   it("keeps the submit button disabled until a file is chosen", async () => {
     const user = userEvent.setup();
-    renderDialog("team_admin");
+    renderDialog("group_admin");
     await user.click(screen.getByTestId("vex-import-open"));
     expect(screen.getByTestId("vex-import-submit")).toBeDisabled();
   });
 
   it("does not call importVex when no file is attached", async () => {
     const user = userEvent.setup();
-    renderDialog("team_admin");
+    renderDialog("group_admin");
     await user.click(screen.getByTestId("vex-import-open"));
     // submit is disabled, but force the handler path defensively
     expect(mockedImport).not.toHaveBeenCalled();

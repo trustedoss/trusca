@@ -198,7 +198,8 @@ async def _resolve_accessible_project(
     ).scalar_one_or_none()
     if project is None:
         raise ProjectNotAccessible(f"project {project_id} not found")
-    assert_team_access(
+    await assert_team_access(
+        session,
         actor,
         project.team_id,
         log=log,

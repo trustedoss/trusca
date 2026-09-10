@@ -124,7 +124,7 @@ async def _approved_subject(session: AsyncSession) -> tuple[uuid.UUID, str, uuid
     )
     session.add(team)
     await session.flush()
-    session.add(Membership(user_id=subject_id, team_id=team.id, role="team_admin"))
+    session.add(Membership(user_id=subject_id, team_id=team.id, role="group_admin"))
     await session.execute(
         text(
             "INSERT INTO audit_logs (actor_user_id, action, target_table, target_id, "
@@ -664,7 +664,7 @@ async def test_a_guest_in_someone_elses_personal_team_does_not_rename_it(
     )
     session.add(team)
     await session.flush()
-    session.add(Membership(user_id=host_id, team_id=team.id, role="team_admin"))
+    session.add(Membership(user_id=host_id, team_id=team.id, role="group_admin"))
     session.add(Membership(user_id=guest_id, team_id=team.id, role="developer"))
     await session.commit()
     team_id = team.id

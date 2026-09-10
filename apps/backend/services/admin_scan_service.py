@@ -29,6 +29,7 @@ from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from core.audit import bind_audit_team
+from core.authz import can_access_group
 from core.security import CurrentUser
 from core.sql_safety import escape_like
 from models import Project, Scan, Team
@@ -324,7 +325,22 @@ async def cancel_scan_for_actor(
             select(Project.team_id).where(Project.id == scan.project_id)
         )
     ).scalar_one_or_none()
-    if not _actor_can_access_team(actor, team_id):
+    # Low #3 (policy note, preserved from the removed `_actor_can_access_team`):
+    # scan cancellation is intentionally *membership*-gated (any team member,
+    # i.e. developer), NOT team_admin-gated like project writes
+    # (`project_service._can_write_project`). `can_access_group` is the
+    # membership/cascade check, not a role check, so that policy is unchanged.
+    #
+    # team_id is None only when the parent project vanished underfoot; a
+    # None group_id can't be passed to `can_access_group` (it always exists
+    # for a real group), so this branch is super_admin-only, matching
+    # `_actor_can_access_team`'s old behaviour byte-for-byte: super_admin
+    # passes regardless, everyone else is denied.
+    is_super = actor.is_superuser or actor.role == "super_admin"
+    if team_id is None:
+        if not is_super:
+            raise AdminScanNotFound(f"scan {scan_id} not found")
+    elif not await can_access_group(session, actor, team_id):
         # Existence-hide: same shape as a non-existent scan.
         raise AdminScanNotFound(f"scan {scan_id} not found")
 
@@ -351,28 +367,6 @@ async def cancel_scan_for_actor(
         celery_app_override=celery_app_override,
         log_event="scan.user_cancelled",
     )
-
-
-def _actor_can_access_team(actor: CurrentUser, team_id: uuid.UUID | None) -> bool:
-    """True when ``actor`` may act on resources owned by ``team_id``.
-
-    super_admin / superuser always pass. Everyone else must have the team in
-    their membership list. A ``None`` team_id (project vanished underfoot)
-    is treated as no-access for non-admins.
-
-    Low #3 (policy note): scan cancellation is intentionally *membership*-gated
-    (any team member, i.e. developer) — NOT team_admin-gated like project
-    writes (``project_service._can_write_project``). A developer may cancel
-    their own team's scan by confirmed policy; this is deliberately a weaker
-    gate than mutating project settings. Hence we check ``team_id in
-    actor.team_ids`` (membership) rather than ``actor.team_roles[...] ==
-    "team_admin"`` (role).
-    """
-    if actor.is_superuser or actor.role == "super_admin":
-        return True
-    if team_id is None:
-        return False
-    return team_id in actor.team_ids
 
 
 async def _lock_scan(session: AsyncSession, scan_id: uuid.UUID) -> Scan:

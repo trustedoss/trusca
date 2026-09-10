@@ -52,11 +52,12 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import Session
 
-from core.authz import assert_team_access, can_access_team
+from core.authz import assert_team_access
 from core.security import CurrentUser
 from models import ComponentApproval, Project, User
 from models.component_approval import APPROVAL_STATUS_VALUES, ApprovalStatus
 from models.scan import Component  # explicit import avoids implicit lazy load
+from services.group_service import group_scoped_subquery_predicate
 
 log = structlog.get_logger("component_approval.service")
 
@@ -211,7 +212,7 @@ def _role_in_team(actor: CurrentUser, team_id: uuid.UUID) -> str | None:
 
 def _has_team_admin(actor: CurrentUser, team_id: uuid.UUID) -> bool:
     role = _role_in_team(actor, team_id)
-    return role in {"team_admin", "super_admin"}
+    return role in {"group_admin", "super_admin"}
 
 
 # ---------------------------------------------------------------------------
@@ -249,10 +250,12 @@ async def list_approvals(
 
     # --- tenant gate ---
     if not (actor.is_superuser or actor.role == "super_admin"):
-        # Restrict to the actor's own teams; ignore any caller-supplied
-        # team_id that is outside this set.
-        base = base.where(ComponentApproval.team_id.in_(actor.team_ids))
-        count_base = count_base.where(ComponentApproval.team_id.in_(actor.team_ids))
+        # Restrict to the actor's own (cascade-expanded, when the flag is on)
+        # teams; ignore any caller-supplied team_id that is outside this set.
+        # Phase 2 PR 2-C: was `ComponentApproval.team_id.in_(actor.team_ids)`.
+        tenant = group_scoped_subquery_predicate(ComponentApproval.team_id, actor.team_ids)
+        base = base.where(tenant)
+        count_base = count_base.where(tenant)
 
     if team_id is not None:
         base = base.where(ComponentApproval.team_id == team_id)
@@ -436,7 +439,8 @@ async def get_approval(
     if row is None:
         raise ApprovalNotFound(f"approval {approval_id} not found")
 
-    assert_team_access(
+    await assert_team_access(
+        session,
         actor,
         row.team_id,
         log=log,
@@ -475,7 +479,8 @@ async def create_approval(
     if project is None:
         raise ApprovalNotFound(f"project {project_id} not found")
 
-    assert_team_access(
+    await assert_team_access(
+        session,
         actor,
         project.team_id,
         log=log,
@@ -774,15 +779,15 @@ async def transition_approval(
         raise ApprovalNotFound(f"approval {approval_id} not found")
 
     # Existence-hide for non-members.
-    if not can_access_team(actor, row.team_id):
-        log.warning(
-            "authz.cross_team_attempt",
-            actor_id=str(actor.id),
-            target_team_id=str(row.team_id),
-            resource="component_approval",
-            resource_id=str(approval_id),
-        )
-        raise ApprovalNotFound(f"approval {approval_id} not found")
+    await assert_team_access(
+        session,
+        actor,
+        row.team_id,
+        log=log,
+        resource="component_approval",
+        resource_id=str(approval_id),
+        deny=lambda: ApprovalNotFound(f"approval {approval_id} not found"),
+    )
 
     # ETag check.
     if if_match != row.version:
@@ -897,15 +902,15 @@ async def delete_approval(
         raise ApprovalNotFound(f"approval {approval_id} not found")
 
     # Existence-hide: non-members see 404.
-    if not can_access_team(actor, row.team_id):
-        log.warning(
-            "authz.cross_team_attempt",
-            actor_id=str(actor.id),
-            target_team_id=str(row.team_id),
-            resource="component_approval",
-            resource_id=str(approval_id),
-        )
-        raise ApprovalNotFound(f"approval {approval_id} not found")
+    await assert_team_access(
+        session,
+        actor,
+        row.team_id,
+        log=log,
+        resource="component_approval",
+        resource_id=str(approval_id),
+        deny=lambda: ApprovalNotFound(f"approval {approval_id} not found"),
+    )
 
     # Terminal-state guard.
     if row.status in _TERMINAL_STATES:

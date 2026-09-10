@@ -23,6 +23,7 @@ import structlog
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from core.authz import can_access_group
 from core.security import _ROLE_PRIORITY, CurrentUser
 from models import Organization, Project, ScanSchedule
 from schemas.scan_schedule import ScanScheduleUpsertIn
@@ -57,11 +58,7 @@ def _may_administer_project(actor: CurrentUser, team_id: uuid.UUID) -> bool:
     grade = actor.team_roles.get(team_id)
     if grade is None:
         return False
-    return _ROLE_PRIORITY.get(grade, 0) >= _ROLE_PRIORITY["team_admin"]
-
-
-def _may_read_project(actor: CurrentUser, team_id: uuid.UUID) -> bool:
-    return _is_super_admin(actor) or team_id in actor.team_ids
+    return _ROLE_PRIORITY.get(grade, 0) >= _ROLE_PRIORITY["group_admin"]
 
 
 @dataclass(frozen=True)
@@ -258,7 +255,7 @@ async def get_project_schedule(
 ) -> ScanSchedule | None:
     """The project's own row, or None when it has not written one."""
     team_id, organization_id = await _resolve_project_scope(session, project_id)
-    if not _may_read_project(actor, team_id):
+    if not await can_access_group(session, actor, team_id):
         raise ScanScheduleScopeNotFound(f"project {project_id} not found")
 
     return (

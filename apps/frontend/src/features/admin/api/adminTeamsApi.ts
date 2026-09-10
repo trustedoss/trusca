@@ -19,6 +19,9 @@ export interface AdminTeamListItem {
   member_count: number;
   project_count: number;
   created_at: string;
+  // group-hierarchy Phase 5 PR 5-B.
+  organization_id: string;
+  parent_group_id: string | null;
 }
 
 export interface AdminTeamMember {
@@ -37,6 +40,9 @@ export interface AdminTeamDetail {
   members: AdminTeamMember[];
   created_at: string;
   updated_at: string;
+  // group-hierarchy Phase 5 PR 5-B.
+  organization_id: string;
+  parent_group_id: string | null;
 }
 
 export interface AdminTeamListResponse {
@@ -67,6 +73,13 @@ export interface AdminTeamUpdatePayload {
 export interface AdminTeamMemberAddPayload {
   user_id: string;
   role: TeamMembershipRole;
+}
+
+// group-hierarchy Phase 5 PR 5-B.
+export interface AdminGroupCreateSubgroupPayload {
+  name: string;
+  slug: string;
+  description?: string | null;
 }
 
 // ---------------------------------------------------------------------------
@@ -144,6 +157,38 @@ export async function removeTeamMember(
 ): Promise<AdminTeamDetail> {
   const { data } = await api.delete<AdminTeamDetail>(
     `/v1/admin/teams/${teamId}/members/${userId}`,
+  );
+  return data;
+}
+
+// ---------------------------------------------------------------------------
+// group-hierarchy Phase 5 PR 5-B
+// ---------------------------------------------------------------------------
+
+/** Moves `groupId` (and its subtree) under `newParentId`, or to root when null. */
+export async function reparentTeam(
+  groupId: string,
+  newParentId: string | null,
+): Promise<AdminTeamDetail> {
+  const { data } = await api.post<AdminTeamDetail>(
+    `/v1/admin/teams/${groupId}/reparent`,
+    { new_parent_id: newParentId },
+  );
+  return data;
+}
+
+/** Creates a group nested directly under `parentGroupId`. */
+export async function createSubgroup(
+  parentGroupId: string,
+  payload: AdminGroupCreateSubgroupPayload,
+): Promise<AdminTeamDetail> {
+  const { data } = await api.post<AdminTeamDetail>(
+    `/v1/admin/teams/${parentGroupId}/subgroups`,
+    {
+      name: payload.name,
+      slug: payload.slug,
+      description: payload.description ?? null,
+    },
   );
   return data;
 }

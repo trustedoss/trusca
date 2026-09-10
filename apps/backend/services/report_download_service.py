@@ -290,7 +290,8 @@ async def list_report_history(
     # Existence-hide: cross-team surfaces the same 404 the unknown-project
     # branch returns. The helper emits ``authz.cross_team_attempt`` before
     # raising, so SOC tooling sees the rejection regardless of the HTTP shape.
-    assert_team_access(
+    await assert_team_access(
+        session,
         viewer,
         project.team_id,
         log=log,

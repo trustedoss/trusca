@@ -400,6 +400,7 @@ async def list_projects_endpoint(
         license_by_project,
         created_by_name,
         team_name_by_team,
+        group_path_by_project,
     ) = await enrich_project_rows(session, projects=rows)
 
     items: list[ProjectPublic] = []
@@ -415,6 +416,7 @@ async def list_projects_endpoint(
         item.license_category_summary = LicenseCategorySummary(**lic) if lic is not None else None
         item.created_by_user_name = created_by_name.get(p.id)
         item.team_name = team_name_by_team.get(p.team_id)
+        item.group_path = group_path_by_project.get(p.id)
         # W3 #30 — absent ⇒ project has no scans at all; keep schema defaults
         # (0 / 0 / null) instead of overwriting with explicit zeros.
         counts = counts_by_project.get(p.id)
@@ -529,7 +531,7 @@ async def update_project_endpoint(
     project_id: uuid.UUID,
     payload: ProjectUpdate,
     session: AsyncSession = Depends(get_db),
-    actor: CurrentUser = Depends(require_role("team_admin")),
+    actor: CurrentUser = Depends(require_role("group_admin")),
 ) -> Response:
     try:
         project = await update_project(
@@ -1295,21 +1297,38 @@ async def list_assignable_members_endpoint(
     The set is exactly what ``services.assignee`` will accept, because both go
     through one predicate rather than two copies of three conditions.
 
-    A premise that holds today and will not always
-    ---------------------------------------------
-    Deriving the team from the project is safe because reaching a project means
-    being on its team. Only ``visibility='team'`` is honoured
-    (``services.project_service``), so there is no other way in.
+    A premise the group-hierarchy cascade broke, and this PR closed
+    ------------------------------------------------------------------------
+    Deriving the team from the project used to be safe because reaching a
+    project meant being on its team, full stop. A later change made
+    ``get_project`` above cascade-aware (it now runs its team gate through
+    ``core.authz.assert_team_access`` / ``can_access_group``, same as every
+    other single-resource surface), so that premise no longer holds
+    unconditionally: with the cascade flag on, an actor can reach
+    ``get_project`` through an ANCESTOR group's direct membership, without
+    being a direct member of ``project.team_id`` itself.
 
-    Organization-wide visibility would end that. Somebody on another team could
-    then read the project, and this route would hand them its members, which is
-    the enumeration the tests here refuse. Whoever enables it has to decide what
-    this endpoint does: most likely keep it on team membership rather than on
-    project access, since being allowed to read a project's findings is not the
-    same as being allowed to list the people on it.
+    ``services.assignee`` (the picker below, and the write-time eligibility
+    check the assignment PATCH uses) already anticipated this: PR 2-C widened
+    it to the project's team's ancestors when
+    :func:`core.config.group_cascade_enabled` is on, specifically so this
+    route would not need a second, coordinated change once ``get_project``
+    itself was cascaded. It was. So this route's set stays exactly what
+    ``services.assignee`` accepts, in both flag states, with no change needed
+    here.
 
-    ``core.authz.team_scope_filter`` carries a pointer back here, because that
-    is the file the change lands in.
+    Organization-wide visibility (a *different* widening, not the group
+    cascade) would still end the "reaching a project means being on its
+    team" premise for ``get_project`` itself. Somebody on another team could
+    then read the project, and this route would hand them its members,
+    which is the enumeration the tests here refuse. Whoever enables it has
+    to decide what this endpoint does: most likely keep it on team
+    membership rather than on project access, since being allowed to read a
+    project's findings is not the same as being allowed to list the people
+    on it.
+
+    ``core.authz.team_scope_filter`` carries a pointer back here, because
+    that is the file the change lands in.
     """
     from services.assignee import list_assignable_members
 
@@ -1352,7 +1371,7 @@ async def get_webhook_status_endpoint(
     request: Request,
     project_id: uuid.UUID,
     session: AsyncSession = Depends(get_db),
-    actor: CurrentUser = Depends(require_role("team_admin")),
+    actor: CurrentUser = Depends(require_role("group_admin")),
 ) -> Response:
     """Configured or not, and for which provider. Never the secret.
 
@@ -1399,7 +1418,7 @@ async def issue_webhook_secret_endpoint(
     project_id: uuid.UUID,
     payload: WebhookSecretIssueIn,
     session: AsyncSession = Depends(get_db),
-    actor: CurrentUser = Depends(require_role("team_admin")),
+    actor: CurrentUser = Depends(require_role("group_admin")),
 ) -> Response:
     """Turn the webhook on, and hand back the secret once.
 

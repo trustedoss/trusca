@@ -1,0 +1,77 @@
+{
+  "page": {
+    "title": "Groups"
+  },
+  "list": {
+    "search_placeholder": "Search groups",
+    "search_aria": "Search groups by name",
+    "drilldown": {
+      "root": "All groups"
+    },
+    "row": {
+      "subgroups": "{{count}} subgroups",
+      "projects": "{{count}} projects",
+      "members": "{{count}} members",
+      "open_detail": "View details",
+      "open_detail_aria": "View details for {{name}}",
+      "drill_aria": "Open {{name}}'s subgroups"
+    },
+    "empty": {
+      "title_root": "No groups yet",
+      "description_root": "Groups appear here once an administrator creates them.",
+      "title_search": "No matches",
+      "description_search": "No groups match \"{{query}}\"."
+    },
+    "errors": {
+      "load_failed": "Couldn't load groups."
+    }
+  },
+  "detail": {
+    "not_found": {
+      "title": "Group not found",
+      "description": "It may not exist, or you may not have access to it.",
+      "back": "Back to groups"
+    },
+    "errors": {
+      "load_failed": "Couldn't load this group.",
+      "back": "Back to groups"
+    },
+    "breadcrumb_nav_aria": "Group breadcrumb",
+    "breadcrumb_root_label": "All groups",
+    "new_project": "New project",
+    "stats": {
+      "heading": "Last {{days}} days, including subgroups",
+      "scans": "Scans started",
+      "approvals": "Approvals processed",
+      "new_members": "New members"
+    },
+    "tabs": {
+      "subgroups": "Subgroups",
+      "projects": "Projects",
+      "members": "Members"
+    },
+    "subgroups": {
+      "empty": "No subgroups.",
+      "errors": {
+        "load_failed": "Couldn't load subgroups."
+      }
+    },
+    "projects": {
+      "include_archived": "Include archived",
+      "empty": "No projects in this group.",
+      "errors": {
+        "load_failed": "Couldn't load this group's projects."
+      }
+    },
+    "members": {
+      "direct_heading": "Direct members",
+      "inherited_heading": "Inherited members",
+      "inherited_source": "via {{group}}",
+      "direct_empty": "No direct members.",
+      "inherited_empty": "No inherited members. This group has no ancestor whose membership reaches it, or inherited access is off for this deployment.",
+      "errors": {
+        "load_failed": "Couldn't load members."
+      }
+    }
+  }
+}

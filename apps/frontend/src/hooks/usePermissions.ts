@@ -22,7 +22,7 @@ export interface Permissions {
   /** Effective global role (memberships promoted; `developer` fallback). */
   role: AuthRole;
   isSuperAdmin: boolean;
-  /** team_admin of ANY team, or super_admin. */
+  /** group_admin of ANY team, or super_admin. */
   isTeamAdminOrAbove: boolean;
   /** Team-scoped role for one team id (super_admin overrides everywhere). */
   roleForTeam: (teamId: string | null | undefined) => AuthRole;
@@ -45,7 +45,7 @@ export function usePermissions(): Permissions {
   return {
     role,
     isSuperAdmin: role === "super_admin",
-    isTeamAdminOrAbove: roleAtLeast(role, "team_admin"),
+    isTeamAdminOrAbove: roleAtLeast(role, "group_admin"),
     roleForTeam: (teamId) => {
       if (role === "super_admin") return "super_admin";
       // Not a member of this team, so nothing about it is theirs to do. The

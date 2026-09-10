@@ -109,11 +109,11 @@ const withTeam: AuthUser = {
   id: "u-1",
   email: "alice@example.com",
   displayName: "Alice",
-  role: "team_admin",
+  role: "group_admin",
   isActive: true,
   isSuperuser: false,
   teamId: "t-1",
-  teams: [{ id: "t-1", name: "Platform", role: "team_admin" }],
+  teams: [{ id: "t-1", name: "Platform", role: "group_admin" }],
 };
 
 function renderChecklist({
@@ -422,5 +422,32 @@ describe("OnboardingChecklist", () => {
     expect(within(card).getAllByTestId(/^onboarding-step-/)).toHaveLength(4);
     expect(screen.queryAllByTestId(/^onboarding-cta-/)).toHaveLength(0);
     expect(card.textContent).toContain("do not belong to a team");
+  });
+
+  it("tells a real team member to switch teams, not that they have none, when the active team can't be resolved", async () => {
+    // group-hierarchy Phase 5 security review (Low finding): `activeTeam`
+    // going null now covers two different situations (see useActiveTeam's
+    // own docstring) -- genuinely no membership (test above, `no_team` copy
+    // is accurate there) vs. a real membership that just isn't the current
+    // selection (stored preference names a group outside `user.teams`, the
+    // group-hierarchy cascade case). `withTeam` here has a real membership,
+    // so the "you do not belong to a team, ask an administrator" copy would
+    // be factually wrong; this pins the distinct copy instead.
+    useAuthStore.setState({
+      user: withTeam,
+      accessToken: "tok",
+      status: "authenticated",
+      isAuthenticated: true,
+    });
+    useUIStore.setState({ activeTeamId: "group-c-cascade-only" });
+    apiGet.mockImplementation(respond());
+
+    renderChecklist();
+
+    const card = await screen.findByTestId("onboarding-checklist");
+    expect(within(card).getAllByTestId(/^onboarding-step-/)).toHaveLength(4);
+    expect(screen.queryAllByTestId(/^onboarding-cta-/)).toHaveLength(0);
+    expect(card.textContent).not.toContain("do not belong to a team");
+    expect(card.textContent).toContain("team switcher");
   });
 });

@@ -410,8 +410,8 @@ export function AdminUserDrawer({
                       <option value="super_admin">
                         {t("admin.users.role.super_admin")}
                       </option>
-                      <option value="team_admin">
-                        {t("admin.users.role.team_admin")}
+                      <option value="group_admin">
+                        {t("admin.users.role.group_admin")}
                       </option>
                       <option value="developer">
                         {t("admin.users.role.developer")}
