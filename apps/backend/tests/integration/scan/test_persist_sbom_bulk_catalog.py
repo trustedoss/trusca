@@ -41,7 +41,7 @@ from sqlalchemy import create_engine, event, func, select
 from sqlalchemy.orm import Session, sessionmaker
 from structlog.testing import capture_logs
 
-from models import Component, ComponentVersion, ScanComponent
+from models import Component, ComponentDependencyEdge, ComponentVersion, ScanComponent
 from tests._db_required import migrate_to_head
 
 pytestmark = pytest.mark.integration
@@ -144,21 +144,13 @@ def test_catalog_lookup_stays_flat_regardless_of_component_count(
     """2,544 real components must not cost 2,544 catalog round trips.
 
     Scoped to statements against ``components`` / ``component_versions`` /
-    ``licenses`` specifically, NOT total statement count. #398 fixes the
-    catalog lookup (was: one SELECT, and occasionally one SAVEPOINT INSERT,
-    PER raw component, for both catalogs). It does not touch
-    ``scan_components`` / ``license_findings`` / ``component_dependency_
-    edges``, which stay at one INSERT per row exactly as before (a SEPARATE,
-    pre-existing cost this fix neither caused nor worsened; see the
-    ``persist_sbom_components`` module docstring's #398 note for why: their
-    server-generated, non-PK columns disable SQLAlchemy's insertmanyvalues
-    batching, and fixing THAT would mean either giving ``created_at`` a
-    client-side default, which trades away the DB's own clock, a tradeoff
-    this repository has previously decided against elsewhere, or replacing
-    every fake-session unit test's ``session.add()``-based capture, both out
-    of scope here). A total-statement bound would conflate the two and stay
-    green even if the fix regressed, as long as the total is dwarfed by the
-    unfixed tables' row count; this test would not have caught that.
+    ``licenses`` specifically, NOT total statement count, so this test stays
+    meaningful regardless of what ``scan_components`` / ``license_findings``
+    / ``component_dependency_edges`` cost (#461 later batched those too; see
+    ``test_scan_component_and_edge_inserts_batch_too`` below for that half).
+    A total-statement bound would have conflated the two fixes and stayed
+    green even if this one regressed, as long as the total was dwarfed by
+    the other tables' row count; this test would not have caught that.
 
     Disables the registry license fetcher: this fixture has real packages
     cdxgen left unlicensed, and that fallback is a genuine per-purl network
@@ -197,6 +189,107 @@ def test_catalog_lookup_stays_flat_regardless_of_component_count(
         f"statements for {component_count} components, looks like the "
         "per-row catalog path fired instead of the #398 prefetch"
     )
+
+
+def test_scan_component_and_edge_inserts_batch_too(
+    sync_session: Session, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """#461: ``scan_components`` / ``license_findings`` / ``component_
+    dependency_edges`` batch now too, the gap #398 explicitly left open
+    (their ``created_at`` had only a server_default, which blocks
+    insertmanyvalues the same way an id-only server_default blocked the
+    catalog tables it fixed).
+
+    Unlike the catalog fix, the call shape here is UNCHANGED: still plain
+    ``session.add()`` inside the same per-component loop, not a Core
+    ``pg_insert``. The three models simply gained a client-side
+    ``created_at`` default alongside their existing server_default (see
+    ``models/scan.py``), which is enough on its own for SQLAlchemy's
+    unit-of-work to coalesce the pending inserts at flush time.
+
+    The commit has to be INSIDE the measured call, not after it like the
+    catalog test above: the catalog's own inserts are eager Core statements
+    (``session.execute(pg_insert(...))``), so they fire the moment
+    ``persist_sbom_components`` runs. ``scan_components`` / ``license_
+    findings`` / ``component_dependency_edges`` go through plain
+    ``session.add()``, which SQLAlchemy defers until the next flush; measuring
+    only up to the point ``persist_sbom_components`` returns (commit called
+    after, as the catalog test does) captures zero of these three tables'
+    statements regardless of whether they batch. A first draft of this test
+    made exactly that mistake and passed unchanged with the fix reverted;
+    caught by mutation-testing the assertions, not by review.
+    """
+    monkeypatch.setenv("LICENSE_FETCH_ENABLED", "false")
+    from tasks.scan_source import persist_sbom_components
+
+    scan_id = _seed_queued_scan()
+    sbom = _large_sbom()
+
+    def _persist_and_commit() -> None:
+        persist_sbom_components(sync_session, scan_uuid=scan_id, sbom=sbom)
+        sync_session.commit()
+
+    _, statements = _record_statements(sync_session, _persist_and_commit)
+
+    component_count = sync_session.execute(
+        select(func.count()).select_from(ScanComponent).where(ScanComponent.scan_id == scan_id)
+    ).scalar_one()
+    assert component_count == 2544
+    edge_count = sync_session.execute(
+        select(func.count())
+        .select_from(ComponentDependencyEdge)
+        .where(ComponentDependencyEdge.scan_id == scan_id)
+    ).scalar_one()
+    assert edge_count > 0
+
+    # Each bound is well under its own row count but generous enough for
+    # SQLAlchemy's internal insertmanyvalues page size (batches of roughly
+    # 1,000 rows per statement by default) to vary across versions without
+    # making this test flaky. What it rules out is the one-statement-per-row
+    # regression: a fixed floor near the true batch count, not near the
+    # unbatched worst case, is what actually catches the fast path silently
+    # falling back to the slow one.
+    scan_component_statements = _touching(statements, "scan_components")
+    assert len(scan_component_statements) < 50, (
+        f"{len(scan_component_statements)} scan_components statements for "
+        f"{component_count} rows, looks like insertmanyvalues did not batch"
+    )
+    edge_statements = _touching(statements, "component_dependency_edges")
+    assert len(edge_statements) < 50, (
+        f"{len(edge_statements)} component_dependency_edges statements for "
+        f"{edge_count} rows, looks like insertmanyvalues did not batch"
+    )
+    license_finding_statements = _touching(statements, "license_findings")
+    assert len(license_finding_statements) < 50, (
+        f"{len(license_finding_statements)} license_findings statements, "
+        "looks like insertmanyvalues did not batch"
+    )
+
+
+def test_scan_component_created_at_is_populated_without_a_round_trip(
+    sync_session: Session, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The client-side default actually lands a real, distinct timestamp
+    per row (not e.g. a shared import-time constant, and not left NULL
+    because the server_default alone never fires when a client value is
+    present)."""
+    monkeypatch.setenv("LICENSE_FETCH_ENABLED", "false")
+    from tasks.scan_source import persist_sbom_components
+
+    before = sync_session.execute(select(func.now())).scalar_one()
+    scan_id = _seed_queued_scan()
+    persist_sbom_components(sync_session, scan_uuid=scan_id, sbom=_large_sbom())
+    sync_session.commit()
+    after = sync_session.execute(select(func.now())).scalar_one()
+
+    rows = sync_session.execute(
+        select(ScanComponent.created_at)
+        .where(ScanComponent.scan_id == scan_id)
+        .limit(10)
+    ).scalars().all()
+    assert len(rows) == 10
+    for created_at in rows:
+        assert before <= created_at <= after
 
 
 # ---------------------------------------------------------------------------
