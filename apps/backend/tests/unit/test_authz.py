@@ -9,7 +9,7 @@ around it. These tests still run without a real database: a ``_FakeSession``
 stands in for the one query ``services.group_service.can_access_group``
 issues (``SELECT groups.id, groups.path WHERE groups.id = :group_id``),
 answering it as a ROOT group (``path=()``) whose id is the requested
-``group_id`` — with an empty ``path`` the cascade-on and cascade-off answers
+``group_id``. With an empty ``path`` the cascade-on and cascade-off answers
 agree, so these tests pin exactly the same "direct membership only" contract
 the old ``can_access_team`` had, without needing Postgres or the
 ``GROUP_CASCADE_ENABLED`` flag. Cascade-specific behaviour (ancestor walks,
@@ -55,7 +55,7 @@ def _team() -> uuid.UUID:
 
 class _FakeGroupRow:
     """Shaped like the ``(Group.id, Group.path)`` row ``group_service.can_access_group``
-    reads — a root group (empty ``path``) whose id is the group being checked."""
+    reads: a root group (empty ``path``) whose id is the group being checked."""
 
     def __init__(self, group_id: uuid.UUID) -> None:
         self.id = group_id

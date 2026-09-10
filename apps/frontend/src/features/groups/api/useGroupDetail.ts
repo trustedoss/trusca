@@ -5,10 +5,10 @@ import { useQuery } from "@tanstack/react-query";
 import { getGroup } from "@/features/groups/api/groupsApi";
 
 /**
- * `GET /v1/groups/{id}` — detail + ancestors + 30-day subtree summary.
+ * `GET /v1/groups/{id}`: detail + ancestors + 30-day subtree summary.
  *
  * A 404 (existence-hide: nonexistent or inaccessible, indistinguishable) is
- * NOT retried — the default retry would turn a legitimate "not found" into a
+ * NOT retried; the default retry would turn a legitimate "not found" into a
  * multi-second spinner before the not-found state finally renders.
  */
 export function useGroupDetail(groupId: string | undefined) {

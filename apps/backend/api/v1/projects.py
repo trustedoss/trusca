@@ -1309,7 +1309,7 @@ async def list_assignable_members_endpoint(
     being a direct member of ``project.team_id`` itself.
 
     ``services.assignee`` (the picker below, and the write-time eligibility
-    check the assignment PATCH uses) already anticipated this — PR 2-C widened
+    check the assignment PATCH uses) already anticipated this: PR 2-C widened
     it to the project's team's ancestors when
     :func:`core.config.group_cascade_enabled` is on, specifically so this
     route would not need a second, coordinated change once ``get_project``

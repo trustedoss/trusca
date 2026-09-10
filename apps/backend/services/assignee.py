@@ -11,7 +11,7 @@ decide what a caller does with the answer.
 
 Phase 2 PR 2-C: this module's docstrings warned (before this PR) that
 ``GET /v1/projects/{project_id}/assignable-members`` derives its team from a
-project and assumes "reaching a project == being on its team" — a premise
+project and assumes "reaching a project == being on its team", a premise
 ``core.authz.team_scope_filter``'s docstring pointed back here about, because
 turning the group-hierarchy cascade on breaks it: a person reading a project
 only through an ANCESTOR group's membership (cascade ON) is not a *direct*
@@ -23,17 +23,17 @@ them read the project's findings and obligations.
 The fix widens the *scope* this module's shared predicate accepts, not the
 number of copies of it: every function below still funnels through
 :func:`assignable_members_select`, now parameterized on the set of group ids
-whose direct members are eligible (the project's own group, plus — cascade
-ON only — every ancestor in its ``path``), so ``is_assignable_to_team`` (the
+whose direct members are eligible (the project's own group, plus, cascade
+ON only, every ancestor in its ``path``), so ``is_assignable_to_team`` (the
 WRITE-time check) and ``list_assignable_members`` (the picker) can never
 drift apart again: a name the picker offers is, by construction, a name the
 write will accept, in both flag states.
 
-With :func:`core.config.group_cascade_enabled` OFF (the default — this PR
-does not flip it), :func:`_cascade_scope_ids` returns ``[team_id]`` alone and
-every query below is byte-for-byte the pre-PR-2-C predicate
-(``Membership.team_id == team_id`` vs. ``Membership.team_id IN
-([team_id])`` — the same set).
+With :func:`core.config.group_cascade_enabled` OFF, :func:`_cascade_scope_ids`
+returns ``[team_id]`` alone and every query below is byte-for-byte the
+pre-PR-2-C predicate (``Membership.team_id == team_id`` vs.
+``Membership.team_id IN ([team_id])``, the same set). ON (the default since
+PR 5-C), it returns the project's group plus every ancestor in its ``path``.
 """
 
 from __future__ import annotations
@@ -54,18 +54,18 @@ async def _cascade_scope_ids(session: AsyncSession, team_id: uuid.UUID) -> list[
 
     A direct member of an ancestor group can, once the cascade flag is on,
     already reach *team_id*'s projects for READ through
-    ``core.authz.team_scope_filter`` / ``can_access_group`` — the union of
+    ``core.authz.team_scope_filter`` / ``can_access_group``; the union of
     subtrees rooted at their direct memberships includes *team_id*. This
     widens the assignable set to match: an ancestor's direct member is
     exactly as "on the team" as a direct member of *team_id* itself, by the
     same cascade logic, so they may also be named as an owner of its work.
 
-    Descendants of *team_id* are deliberately NOT included — cascade access
+    Descendants of *team_id* are deliberately NOT included: cascade access
     flows down from an ancestor's membership, never up from a descendant's;
     a member of a child team has no standing over the parent's work.
 
     A non-existent *team_id* resolves to ``[team_id]`` with no ancestors
-    (the ``Group`` lookup returns nothing) — callers already 404 on an
+    (the ``Group`` lookup returns nothing), callers already 404 on an
     unknown team/project before reaching this, so this is defense-in-depth,
     not a path any real caller takes.
     """
@@ -88,7 +88,7 @@ def assignable_members_select(
     caller, and writing the conditions again there would have made a list
     that offers people the write refuses, or hides people it would accept.
 
-    *scope_ids* is one or more group ids whose DIRECT members are eligible —
+    *scope_ids* is one or more group ids whose DIRECT members are eligible,
     normally the output of :func:`_cascade_scope_ids`, i.e. ``[team_id]``
     (cascade off) or ``[team_id, *ancestors]`` (cascade on). A caller passing
     a single-element list gets exactly the pre-cascade query shape.
@@ -133,7 +133,7 @@ async def is_assignable_to_team(
     looks owned while nobody has been asked.
 
     - a member of the team that owns the work (or, cascade ON, of an
-      ancestor of it — see :func:`_cascade_scope_ids`),
+      ancestor of it, see :func:`_cascade_scope_ids`),
     - active: a deactivated account cannot sign in to do it,
     - not a service account: an API key is not a person who can be asked.
 

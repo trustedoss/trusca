@@ -167,7 +167,7 @@ export function ApprovalsDrawer({
   notify,
 }: Props) {
   const { t, i18n } = useTranslation("approvals");
-  // H-2: group_admin authority comes from the promoted effective role —
+  // H-2: group_admin authority comes from the promoted effective role;
   // before the promotion this gate never opened for screen-only team admins.
   const { isTeamAdminOrAbove: canAct } = usePermissions();
 

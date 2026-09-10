@@ -5,29 +5,29 @@ Authorization helpers shared across services.
 
 Pieces in this module:
 
-- :func:`can_access_group` — the canonical, cascade-aware "can this actor
+- :func:`can_access_group`, the canonical, cascade-aware "can this actor
   read team/group-scoped resources for this group?" predicate: async, takes
-  a session (the cascade check needs to read the target group's ``path`` —
+  a session (the cascade check needs to read the target group's ``path``,
   see :func:`services.group_service.can_access_group`), super-admin bypass
-  handled here. With :func:`core.config.group_cascade_enabled` OFF (the
-  default), this is exactly the pre-Phase-2 flat "is *group_id* literally
-  one of the actor's direct memberships" check — see that function's own
-  docstring for the byte-for-byte equivalence argument. ON, it also admits
-  any DESCENDANT of a group the actor directly belongs to.
+  handled here. With :func:`core.config.group_cascade_enabled` ON (the
+  default since PR 5-C), it also admits any DESCENDANT of a group the actor
+  directly belongs to. OFF, this is exactly the pre-Phase-2 flat "is
+  *group_id* literally one of the actor's direct memberships" check, see
+  that function's own docstring for the byte-for-byte equivalence argument.
 
   Phase 2 PR 2-D folded the older, flat-only ``can_access_team`` into this
   function (it used to be a separate sync predicate with no session, kept
   deliberately un-cascaded because converting it meant every caller had to
-  become ``async`` + session-carrying). That migration is now done — every
+  become ``async`` + session-carrying). That migration is now done: every
   caller in this module's docstring history (project / project_detail /
-  vulnerability / license / obligation / component_approval / ... — ~40 call
+  vulnerability / license / obligation / component_approval / ..., ~40 call
   sites across ~22 files, all of them already ``async def`` service
   functions with a session in scope) now awaits ``can_access_group``
   directly or through :func:`assert_team_access` below. There is exactly one
   "can this actor reach this group" primitive in the codebase now, not two
   that can drift out of sync.
 
-- :func:`assert_team_access` — convenience wrapper that does the
+- :func:`assert_team_access`, convenience wrapper that does the
   ``if not await can_access_group(...): log + raise`` dance every
   single-resource cross-team gate performs. Centralizing it pins the
   structure of the ``authz.cross_team_attempt`` log event across modules so
@@ -35,16 +35,16 @@ Pieces in this module:
   Async since Phase 2 PR 2-D, for the same reason ``can_access_group`` is:
   it needs a session to resolve the cascade.
 
-- :func:`team_scope_filter` — the single choke-point for *list / fan-out*
+- :func:`team_scope_filter`, the single choke-point for *list / fan-out*
   reads (global search, portfolio dashboards, project listings). Phase 2
   PR 2-C made this cascade-aware by delegating its member branch to
   :func:`services.group_service.project_subtree_predicate`; the flag
-  :func:`core.config.group_cascade_enabled` lives inside that call, not here
-  — this function's own shape (superuser bypass, empty-membership handling)
+  :func:`core.config.group_cascade_enabled` lives inside that call, not here;
+  this function's own shape (superuser bypass, empty-membership handling)
   is unchanged.
 
 The helpers are deliberately small and side-effect-free apart from the log
-line in ``assert_team_access`` — services keep their own raise sites for the
+line in ``assert_team_access``; services keep their own raise sites for the
 domain-specific exceptions (``ProjectForbidden``, ``VulnerabilityNotFound``,
 ``LicenseFindingNotFound``, ``ObligationNotFound``). The ``deny`` callable
 returns the exception so the caller controls the visible message.
@@ -78,27 +78,28 @@ async def can_access_group(
     local reimplementations that used to redo ``team_id in actor.team_ids``
     inline; Phase 2 PR 2-D finished the job by folding the module-level
     ``can_access_team`` (the older, flat-only, session-less sibling this
-    function used to have) into this one too, so every caller — the original
+    function used to have) into this one too, so every caller (the original
     seven local reimplementations AND the ~22 files that used to call
-    ``can_access_team`` / ``assert_team_access`` directly — now goes through
+    ``can_access_team`` / ``assert_team_access`` directly) now goes through
     exactly this primitive (or the :func:`assert_team_access` wrapper below,
     which now just calls this).
 
     Super-admin bypass is handled HERE, not in
-    :func:`services.group_service.can_access_group` — that function is pure
+    :func:`services.group_service.can_access_group`, that function is pure
     cascade logic with no notion of a super-admin, by design (PR 2-A). This
     is the gate layer that layers organization-wide policy (super-admin
     bypass today; a future "read-only org viewer" role tomorrow) on top of
     the pure membership/cascade primitive, so this is also the fix for the
     security-review finding that ``subtree_scope_filter`` alone has no
-    super-admin escape hatch: it was never supposed to have one — the escape
+    super-admin escape hatch: it was never supposed to have one, the escape
     hatch belongs at this layer, and now it exists here.
 
-    With :func:`core.config.group_cascade_enabled` OFF (the default — PR 2-D
-    does not flip it), this reduces to exactly the old ``can_access_team``'s
-    flat membership check: :func:`services.group_service.can_access_group`
-    itself branches on the flag and returns the same "is *group_id* literally
-    in *direct_group_ids*" answer when the cascade is off.
+    With :func:`core.config.group_cascade_enabled` ON (the default since
+    PR 5-C), this also admits any descendant of a group in
+    *direct_group_ids*: :func:`services.group_service.can_access_group`
+    branches on the flag and walks the group's ``path`` for the cascade
+    check. OFF, it reduces to exactly the old ``can_access_team``'s flat
+    membership check, "is *group_id* literally in *direct_group_ids*".
     """
     if actor.is_superuser or actor.role == "super_admin":
         return True
@@ -120,7 +121,7 @@ async def assert_team_access(
 
     Phase 2 PR 2-D: this is now a thin wrapper around
     :func:`can_access_group` (previously it wrapped the flat, session-less
-    ``can_access_team`` — removed in this PR). It is ``async`` and takes a
+    ``can_access_team``, removed in this PR). It is ``async`` and takes a
     *session* for exactly the reason ``can_access_group`` does: the cascade
     check needs to read the target group's ``path``. Every existing caller
     already had a session in scope (they are all ``async def`` service /
@@ -131,7 +132,7 @@ async def assert_team_access(
     Parameters
     ----------
     session:
-        The caller's active :class:`AsyncSession` — passed through to
+        The caller's active :class:`AsyncSession`, passed through to
         :func:`can_access_group`, which needs it to resolve the cascade.
     actor:
         The authenticated caller.
@@ -190,31 +191,32 @@ def team_scope_filter(actor: CurrentUser) -> ColumnElement[bool]:
     visibility makes project access a weaker statement than team membership, so
     read that route before turning it on. (Phase 2 PR 2-C: that route has been
     rewritten to compute its own "effective member set" rather than assume
-    project-access == team-membership — see ``services.assignee.
-    list_assignable_members`` — precisely because the cascade this function
+    project-access == team-membership (see ``services.assignee.
+    list_assignable_members``), precisely because the cascade this function
     now honours breaks that old assumption.)
 
     Contract:
 
     - super-admin (``actor.is_superuser`` OR ``actor.role == "super_admin"``)
-      → :func:`sqlalchemy.true` (no restriction; sees every team's rows).
-    - a member, cascade OFF (default) → result-equivalent to the pre-PR-2-C
+      -> :func:`sqlalchemy.true` (no restriction; sees every team's rows).
+    - a member, cascade ON (the default since PR 5-C) -> also sees projects
+      owned by any DESCENDANT group of a group in ``actor.team_ids``
+      (:func:`services.group_service.project_subtree_predicate`;
+      :func:`core.config.group_cascade_enabled` is consulted there, not in
+      this function).
+    - a member, cascade OFF -> result-equivalent to the pre-PR-2-C
       ``Project.team_id IN (actor.team_ids)`` predicate, though not the same
       compiled SQL text: the cascade-aware path routes through a subquery
       against ``groups`` (``Project.team_id IN (SELECT groups.id FROM groups
       WHERE groups.id IN (actor.team_ids))``) rather than a literal IN-list.
       The two are provably equivalent given ``Membership.group_id``'s
       ``ON DELETE CASCADE`` FK to ``groups.id`` and that ``actor.team_ids`` is
-      always built from live ``Membership`` rows — every id in it already
+      always built from live ``Membership`` rows: every id in it already
       resolves to an existing ``Group`` row, so the extra join never drops or
       adds anything. Security review confirmed this with a passing
       cascade-off matrix test rather than by inspection alone.
-    - a member, cascade ON → also sees projects owned by any DESCENDANT group
-      of a group in ``actor.team_ids`` (:func:`services.group_service.
-      project_subtree_predicate`; :func:`core.config.group_cascade_enabled`
-      is consulted there, not in this function).
-    - a member with NO memberships → matches nothing (an empty-set ``IN``
-      subquery — see ``project_subtree_predicate`` / ``subtree_scope_filter``
+    - a member with NO memberships -> matches nothing (an empty-set ``IN``
+      subquery, see ``project_subtree_predicate`` / ``subtree_scope_filter``
       for why that is an explicit ``sqlalchemy.false()`` inside the subquery
       rather than relying on empty-set ``IN ()`` behaviour).
 

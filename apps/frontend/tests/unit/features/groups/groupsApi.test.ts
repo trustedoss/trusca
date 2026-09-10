@@ -1,5 +1,5 @@
 /**
- * groupsApi — unit tests, group-hierarchy Phase 4 PR 4-B.
+ * groupsApi, unit tests, group-hierarchy Phase 4 PR 4-B.
  *
  * Mirrors the module-mock pattern used for other thin API wrappers
  * (`adminTeamsApi.test.ts`): stub `@/lib/api`'s `get`, assert the URL +

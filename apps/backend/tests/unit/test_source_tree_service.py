@@ -94,7 +94,7 @@ class _FakeSession:
         (``path=[]``) whose id is the project's own ``team_id``, so the RBAC
         check's answer still reduces to exactly "is *group_id* one of the
         actor's direct memberships" (cascade OFF and ON agree once ``path``
-        is empty) — these tests were never about the group hierarchy, only
+        is empty). These tests were never about the group hierarchy, only
         about source-tree read behaviour, and this keeps them that way.
     """
 

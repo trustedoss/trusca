@@ -1,30 +1,30 @@
 # SPDX-License-Identifier: Apache-2.0
 # Copyright 2026 TRUSCA contributors
 """
-Group-hierarchy permission cascade — Phase 2 PR 2-A.
+Group-hierarchy permission cascade, Phase 2 PR 2-A.
 
 Covers ``services.group_service`` in isolation: nothing here goes through
-``core/authz.py`` or any route (this PR does not wire the cascade in —
+``core/authz.py`` or any route (this PR does not wire the cascade in,
 that is PR 2-C). Every test builds a real group tree against Postgres via
 ``parent_group_id`` (Phase 1, migrations 0090/0091) and reads back the
 DB-trigger-derived ``path``, rather than hand-constructing an ancestor list
-in Python — the point is to prove the algorithm against what the trigger
+in Python, the point is to prove the algorithm against what the trigger
 actually produces, not against a stand-in.
 
 Five depth x permission combinations (the task's original four, plus a 5th
 added after security review found none of the four exercised an ancestor
 walk deeper than one level):
 
-  1. sibling  — admin at C, target is C's sibling S. No access, no role.
+  1. sibling: admin at C, target is C's sibling S. No access, no role.
      This is the CWE-863 invariant: a sibling branch is never consulted.
-  2. inherit  — admin at parent P, target is child C with no membership of
+  2. inherit: admin at parent P, target is child C with no membership of
      its own. Role inherited from P; access granted.
-  3. override — admin at P AND viewer at C directly, target is C. C's own
-     (lower) role wins over P's (higher) one — a demotion is inherited
+  3. override: admin at P AND viewer at C directly, target is C. C's own
+     (lower) role wins over P's (higher) one, a demotion is inherited
      exactly like a promotion is, because both are just "nearest wins".
-  4. no-upward — admin at grandchild G, target is grandparent P (G's own
-     ancestor). No access, no role — inheritance runs one direction only.
-  5. deep-inherit — admin at P only, target is grandchild G (P -> C -> G,
+  4. no-upward: admin at grandchild G, target is grandparent P (G's own
+     ancestor). No access, no role, inheritance runs one direction only.
+  5. deep-inherit: admin at P only, target is grandchild G (P -> C -> G,
      neither C nor G has a membership of its own). Role/access must still
      reach through both intervening levels. Combos 1-4 above all use a
      target whose ancestor path has length <= 1, so a bug that only
@@ -38,7 +38,7 @@ Each combination runs under both ``GROUP_CASCADE_ENABLED`` states:
   - ``can_access_group`` reads the flag itself (see its docstring), so the
     off-state assertion below exercises that branch directly: only a group
     with a genuine direct membership is accessible, nothing wider.
-  - ``effective_role_at`` does NOT read the flag (by design — see its
+  - ``effective_role_at`` does NOT read the flag (by design, see its
     docstring: unconditional algorithm, so turning the cascade on is a pure
     configuration change and not a second code path). What differs between
     "on" and "off" for that function is what its caller would populate
@@ -120,7 +120,7 @@ async def _group_path(session: AsyncSession, group_id: uuid.UUID) -> list[uuid.U
 
 
 # ---------------------------------------------------------------------------
-# can_access_group — flag-gated at the function itself
+# can_access_group: flag-gated at the function itself
 # ---------------------------------------------------------------------------
 
 
@@ -171,7 +171,7 @@ async def test_can_access_group_nonexistent_group_is_false(
 
 
 # ---------------------------------------------------------------------------
-# effective_role_at — unconditional algorithm; the flag lives in what the
+# effective_role_at: unconditional algorithm; the flag lives in what the
 # (future) caller passes as `direct_roles`, simulated explicitly below.
 # ---------------------------------------------------------------------------
 
@@ -188,7 +188,7 @@ async def _direct_roles_for(
     would pass, for a given flag state.
 
     ``memberships`` maps a tree attribute name ("p", "c", "g", "s") to a
-    role — the actor's real direct memberships, unconditionally on the flag
+    role, the actor's real direct memberships, unconditionally on the flag
     (the flag does not change what rows exist in ``memberships`` in
     production either). What differs is which of those rows a flag-aware
     caller bothers to look up before calling this pure function: cascade ON
@@ -219,7 +219,7 @@ async def _direct_roles_for(
         # depth-2: P's membership reaches grandchild G through two intervening
         # levels (P -> C -> G), neither of which has a membership of its own.
         # This is the combo a "only consult the immediate parent" bug would
-        # still pass at depth 1 but fail here — see the security review that
+        # still pass at depth 1 but fail here, see the security review that
         # flagged combos 1-4 as insufficient to distinguish that mutation.
         ("5_deep_inherit", {"p": "group_admin"}, "g", "group_admin", None),
     ],
@@ -253,7 +253,7 @@ async def test_effective_role_at_matrix(
 
 
 # ---------------------------------------------------------------------------
-# subtree_roots — identity in both flag states (see its docstring: it never
+# subtree_roots: identity in both flag states (see its docstring: it never
 # expands; that happens in subtree_scope_filter's predicate instead).
 # ---------------------------------------------------------------------------
 
@@ -274,7 +274,7 @@ def test_subtree_roots_identity_on_empty_input(cascade_enabled: bool) -> None:
 
 
 # ---------------------------------------------------------------------------
-# subtree_scope_filter / group_scoped_subquery_predicate — predicate shape
+# subtree_scope_filter / group_scoped_subquery_predicate: predicate shape
 # and the actual DB behaviour it produces (queried through Group directly,
 # so this exercises the real predicate against the real tree).
 # ---------------------------------------------------------------------------
@@ -315,7 +315,7 @@ async def test_subtree_scope_filter_on_covers_whole_subtree(
     rows = (
         await db_session.execute(select(Group.id).where(subtree_scope_filter([tree.p])))
     ).scalars().all()
-    # P itself, plus every descendant (C, G, S) — but never a group outside
+    # P itself, plus every descendant (C, G, S), but never a group outside
     # this tree (implicitly proven by the exact-set comparison, not a subset
     # check).
     assert set(rows) == {tree.p, tree.c, tree.g, tree.s}
@@ -324,7 +324,7 @@ async def test_subtree_scope_filter_on_covers_whole_subtree(
 async def test_subtree_scope_filter_on_does_not_leak_a_sibling_subtree(
     db_session: AsyncSession, tree: _Tree, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """Membership at C's subtree must not also surface S's subtree — the
+    """Membership at C's subtree must not also surface S's subtree, the
     same sibling-isolation invariant as combo 1, expressed at the predicate
     level rather than through ``can_access_group``.
     """
@@ -375,7 +375,7 @@ async def test_project_subtree_predicate_scopes_a_real_project(
 
 
 # ---------------------------------------------------------------------------
-# group_cascade_enabled — the flag accessor itself (core/config.py)
+# group_cascade_enabled: the flag accessor itself (core/config.py)
 # ---------------------------------------------------------------------------
 
 

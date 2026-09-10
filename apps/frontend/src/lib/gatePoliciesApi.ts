@@ -65,7 +65,7 @@ export interface GatePolicyGroupRef {
  * Where one resolved field's value came from (group-hierarchy Phase 3).
  *
  * `scope` names the KIND of contributor. `group_ids` names WHICH groups,
- * nearest-to-the-project first — 0-1 entries for a fall-through field
+ * nearest-to-the-project first: 0-1 entries for a fall-through field
  * (`epss_threshold`, `reachable_critical_only`, `malicious_blocks`), 1+ for
  * the `approval_required_statuses` union, where several ancestors at
  * different depths may each have contributed at least one status name.
@@ -82,7 +82,7 @@ export interface GatePolicySource {
 /**
  * The pre-Phase-3 two-tier vocabulary `GatePolicySource.scope` collapses to.
  * `"team"` stands in for `scope: "group"` even when `group_ids` names more
- * than one ancestor — the old vocabulary has no word for "three ancestors
+ * than one ancestor; the old vocabulary has no word for "three ancestors
  * deep". Deprecated: kept for one minor version so a caller still reading
  * `sources_legacy` gets an answer that agrees with the structured `sources`
  * rather than drifting from it. Prefer `sources` in new code.
@@ -101,7 +101,7 @@ export interface EffectiveGatePolicyOut {
   /** What this project actually requires a second person for. */
   approval_required_statuses: string[];
   sources: Record<string, GatePolicySource>;
-  /** @deprecated Use `sources` — kept for one minor version, see `GatePolicySourceLegacy`. */
+  /** @deprecated Use `sources`; kept for one minor version, see `GatePolicySourceLegacy`. */
   sources_legacy: Record<string, GatePolicySourceLegacy>;
 }
 

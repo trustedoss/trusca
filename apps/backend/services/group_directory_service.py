@@ -1,18 +1,18 @@
 # SPDX-License-Identifier: Apache-2.0
 # Copyright 2026 TRUSCA contributors
 """
-Group read-API service — group-hierarchy Phase 4 PR 4-A.
+Group read-API service (group-hierarchy Phase 4 PR 4-A).
 
 The first user-facing (non-admin) read surface over ``groups``. Everything
 that reached a group before this PR went through ``/v1/admin/teams``
 (super_admin only). This module answers three questions for an ordinary,
 group-scoped caller:
 
-  - ``list_groups``       — which groups can I see, flat-searched or
+  - ``list_groups``: which groups can I see, flat-searched or
     drilled-down one level at a time?
-  - ``get_group_detail``  — one group's own info + its ancestor breadcrumb +
+  - ``get_group_detail``: one group's own info + its ancestor breadcrumb +
     a 30-day subtree activity summary.
-  - ``get_group_members`` — who is on this group directly, and who reaches
+  - ``get_group_members``: who is on this group directly, and who reaches
     it only through the cascade (with which ancestor granted it)?
 
 Two design points carried over from the rest of the group-hierarchy work,
@@ -20,7 +20,7 @@ worth restating here because this is the first read surface built ON TOP of
 it rather than inside it:
 
   - Existence-hide (404, never 403), for PROBING. Unlike
-    ``project_service.get_project`` (which 403s — team membership is itself
+    ``project_service.get_project`` (which 403s, team membership is itself
     a signal there, see that function's own comment), this module 404s
     uniformly whether a group id is nonexistent or simply not in the
     caller's accessible set. Climbing 403s vs 404s across ``parent_id``
@@ -34,8 +34,8 @@ it rather than inside it:
     a project's ``group_path`` both show the name/slug of every ancestor up
     to the root, even one the caller's own accessible set excludes (no
     membership on that ancestor, cascade off, or an ancestor outside the
-    subtree the cascade widens into). That is a position indicator — "this
-    is what I am nested under" — not an enumeration primitive: it reveals
+    subtree the cascade widens into). That is a position indicator, "this
+    is what I am nested under", not an enumeration primitive: it reveals
     nothing about that ancestor's siblings, members, projects or stats, and
     it does not help a probe on an id the caller did not already learn this
     way. ``GET /{that_ancestor_id}`` still 404s for the caller; the UI's
@@ -83,7 +83,7 @@ from services import group_service
 
 log = structlog.get_logger("groups.directory.service")
 
-#: Mirrors core.pagination.MAX_PAGE_SIZE — kept local so this module has no
+#: Mirrors core.pagination.MAX_PAGE_SIZE, kept local so this module has no
 #: dependency on a caller picking the right constant.
 _MAX_PAGE_SIZE = 200
 
@@ -131,11 +131,11 @@ def _actor_visibility_predicate(actor: CurrentUser) -> ColumnElement[bool]:
 
     Mirrors ``core.authz.team_scope_filter``'s shape and its super-admin
     bypass rationale (gated on ``is_superuser`` alone, not the derived
-    ``role == "super_admin"`` string — see that function's docstring for
+    ``role == "super_admin"`` string, see that function's docstring for
     the security-review finding this avoids re-opening). The member branch
     delegates to ``group_service.subtree_scope_filter``, which already
     targets ``Group.id`` (unlike ``project_subtree_predicate``, there is no
-    extra join needed here — a group query IS the ``groups`` table).
+    extra join needed here, a group query IS the ``groups`` table).
     """
     if actor.is_superuser:
         return sa.true()
@@ -143,7 +143,7 @@ def _actor_visibility_predicate(actor: CurrentUser) -> ColumnElement[bool]:
 
 
 def _subtree_predicate(group_id: uuid.UUID) -> ColumnElement[bool]:
-    """"Group.id is group_id itself, or a descendant of it" — unconditional.
+    """"Group.id is group_id itself, or a descendant of it", unconditional.
 
     Deliberately does NOT consult ``core.config.group_cascade_enabled``,
     unlike every predicate in ``services.group_service``. Those predicates
@@ -151,11 +151,11 @@ def _subtree_predicate(group_id: uuid.UUID) -> ColumnElement[bool]:
     group?") that the flag is the whole point of gating. This predicate
     answers a structural question about the tree itself ("which groups sit
     under this one, that the caller is already looking at?") that has
-    nothing to do with how memberships cascade — the 30-day summary always
+    nothing to do with how memberships cascade, the 30-day summary always
     means "this group's whole branch", flag on or off.
 
     Same operator ``subtree_scope_filter``'s cascade-ON branch uses
-    (``path && ARRAY[...]``, GIN-index-backed — see that function's
+    (``path && ARRAY[...]``, GIN-index-backed, see that function's
     docstring for the measured query plan and why ``= ANY(path)`` is the
     wrong shape here), applied to a single id.
     """
@@ -175,7 +175,7 @@ async def _batched_count_map(
 ) -> dict[uuid.UUID, int]:
     """``{id: COUNT(*)}`` grouping whatever table owns *column* by *group_ids*.
 
-    One ``GROUP BY`` query for the whole page — never one COUNT per row.
+    One ``GROUP BY`` query for the whole page, never one COUNT per row.
     Used for all three list-row badges (child groups / projects / members).
     The FROM clause is inferred from *column* itself (it is always a mapped
     class's own column), so no separate ``select_from`` is needed.
@@ -204,16 +204,16 @@ async def list_groups(
 
     - ``q`` set (flat search): every accessible group whose name matches,
       regardless of nesting depth or ``parent_id``. ``parent_id`` is
-      ignored in this mode — a search result must not force the caller to
+      ignored in this mode, a search result must not force the caller to
       already know which branch a match lives under.
     - ``q`` unset (drill-down): ``parent_id is None`` returns accessible
       root groups; a concrete ``parent_id`` returns that group's accessible
       DIRECT children only. An inaccessible or nonexistent ``parent_id``
-      yields an empty page rather than a 404 — the caller cannot query this
+      yields an empty page rather than a 404, the caller cannot query this
       way and learn a parent id exists (existence-hide by omission, same as
       the row-level exclusion below).
 
-    Enumeration: an inaccessible group is simply absent from ``items`` — no
+    Enumeration: an inaccessible group is simply absent from ``items``, no
     row, no count contribution, no distinguishing signal from "does not
     exist". Both search and drill-down filter through
     ``_actor_visibility_predicate`` before anything else runs.
@@ -252,7 +252,7 @@ async def list_groups(
     groups = list((await session.execute(rows_stmt)).scalars().all())
 
     group_ids = [g.id for g in groups]
-    # Three batched GROUP BY queries over the page's ids — no per-row query.
+    # Three batched GROUP BY queries over the page's ids, no per-row query.
     child_counts = await _batched_count_map(
         session, column=Group.parent_group_id, group_ids=group_ids
     )
@@ -288,10 +288,10 @@ async def list_groups(
 async def _load_accessible_group(
     session: AsyncSession, *, actor: CurrentUser, group_id: uuid.UUID
 ) -> Group:
-    """The group, if it exists AND *actor* can reach it — else GroupNotFound.
+    """The group, if it exists AND *actor* can reach it, else GroupNotFound.
 
     Same message for "does not exist" and "exists but not reachable"
-    (existence-hide, per the module docstring) — the caller never learns
+    (existence-hide, per the module docstring), the caller never learns
     which case it was.
     """
     group = (
@@ -308,7 +308,7 @@ async def _ancestor_breadcrumbs(
     """Root-first ``[{id, name, slug}, ...]`` for *group*'s own ``path``.
 
     One batched IN query for the whole ancestor chain (never one query per
-    hop) — ``group.path`` already carries the ordered ids, this only needs
+    hop), ``group.path`` already carries the ordered ids, this only needs
     their names/slugs.
     """
     if not group.path:
@@ -324,8 +324,8 @@ async def _ancestor_breadcrumbs(
         row = by_id.get(ancestor_id)
         if row is None:
             # An ancestor row vanished between the trigger deriving `path`
-            # and this read (should not happen — parent_group_id is
-            # ON DELETE RESTRICT — but a torn read must not 500 a detail
+            # and this read (should not happen, parent_group_id is
+            # ON DELETE RESTRICT, but a torn read must not 500 a detail
             # page over one missing breadcrumb hop).
             continue
         out.append(GroupBreadcrumbEntry(id=row.id, name=row.name, slug=row.slug))
@@ -333,7 +333,7 @@ async def _ancestor_breadcrumbs(
 
 
 async def _own_counts(session: AsyncSession, *, group_id: uuid.UUID) -> tuple[int, int, int]:
-    """``(child_group_count, project_count, member_count)`` for one group — direct only."""
+    """``(child_group_count, project_count, member_count)`` for one group, direct only."""
     child_count = (
         await session.execute(
             select(func.count())
@@ -372,12 +372,12 @@ async def _group_summary_stats(
 ) -> GroupSummaryStats:
     """30-day subtree activity summary. See the module docstring's two
     pitfalls this specifically avoids (the Scan join and the audit-log
-    under-count) — restated at each query below.
+    under-count), restated at each query below.
     """
     cutoff = datetime.now(tz=UTC) - timedelta(days=_SUMMARY_WINDOW_DAYS)
     subtree_ids = await _subtree_group_ids(session, group_id=group_id)
 
-    # Scan carries no group column — it only has project_id. Reaching "every
+    # Scan carries no group column. It only has project_id. Reaching "every
     # scan in this group's SUBTREE" needs the two-step join
     # groups -> projects -> scans, not a direct filter on Scan.
     scan_count = int(
@@ -463,7 +463,7 @@ async def _inherited_members(
     """Ancestor memberships that reach *group* through the cascade.
 
     Empty whenever ``group_cascade_enabled()`` is off, or *group* has no
-    ancestors — see the module docstring for why this does not itself
+    ancestors, see the module docstring for why this does not itself
     re-derive that from ``can_access_group`` per row: with the cascade off,
     no ancestor membership grants access to a descendant at all, so this
     list must be empty exactly then, unconditionally, not "empty unless
@@ -472,7 +472,7 @@ async def _inherited_members(
     Nearest-ancestor-wins (mirrors ``services.group_service.
     effective_role_at``): a user with direct memberships at more than one
     ancestor is attributed to the NEAREST one only, and a user who is
-    already a DIRECT member of *group* itself is excluded entirely — a
+    already a DIRECT member of *group* itself is excluded entirely, a
     direct membership at the group always wins over any inherited one,
     never both.
     """

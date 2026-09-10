@@ -457,7 +457,7 @@ async def test_enrichment_is_batched_not_per_row(db_session: AsyncSession) -> No
     # to 7 queries (W3 #30 = 4; user-test cycle's by-project axis + Created-by
     # column adds the 5th and 6th; the team breadcrumb adds the 7th). The
     # group-path breadcrumb (group-hierarchy Phase 4 PR 4-A) adds up to 2 more
-    # batched IN queries (leaf groups, then their ancestors' names) — see
+    # batched IN queries (leaf groups, then their ancestors' names), see
     # ``_group_path_map``'s own docstring for why 2, not 1.
     assert five_row_stmts <= 9
 

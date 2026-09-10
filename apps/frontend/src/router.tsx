@@ -91,7 +91,7 @@ export function AppRoutes() {
         <Route path="search" element={<SearchPage />} />
         <Route path="projects" element={<ProjectListPage />} />
         <Route path="projects/new" element={<ProjectCreatePage />} />
-        {/* Group hierarchy Phase 4 PR 4-B — list (drill-down / flat search)
+        {/* Group hierarchy Phase 4 PR 4-B: list (drill-down / flat search)
             + detail (breadcrumb, 30-day subtree stats, subgroups / projects
             / members). Nested under AppShell so the sidebar + header chrome
             persist, matching every other list/detail pair below. */}

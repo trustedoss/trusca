@@ -97,7 +97,7 @@ from core.authz import assert_team_access, can_access_group, team_scope_filter  
 # so the `authz.cross_team_attempt` log shape is centralized.
 #
 # Phase 2 PR 2-C: the local `_can_access_team` reimplementation this module
-# used to carry (mirroring `scan_service._can_access_team`) is gone — the
+# used to carry (mirroring `scan_service._can_access_team`) is gone; the
 # create / archive gate (M-10) now calls `core.authz.can_access_group`
 # directly, which is cascade-aware when `group_cascade_enabled()` is on and
 # reduces to the same flat membership check when it is off.
@@ -229,7 +229,7 @@ async def list_projects(
     # Build the WHERE clause for team scoping.
     #
     # Phase 2 PR 2-C: an explicit `team_id` filter is checked through
-    # `can_access_group` (cascade-aware — a caller reaching a descendant
+    # `can_access_group` (cascade-aware: a caller reaching a descendant
     # group only via inherited membership may now pass here when the flag is
     # on) but still filters the result set to EXACTLY that one team, matching
     # the pre-PR-2-C behaviour of "which team's projects", not "which teams

@@ -5,12 +5,12 @@ import { useQuery } from "@tanstack/react-query";
 import { getGroupMembers } from "@/features/groups/api/groupsApi";
 
 /**
- * `GET /v1/groups/{id}/members` — direct vs. cascade-inherited members.
+ * `GET /v1/groups/{id}/members`: direct vs. cascade-inherited members.
  *
  * `enabled` also gates on `active` so the Members tab's query only fires once
  * the tab is actually opened (this route is developer-role, one grade above
- * list/detail, and returns member identities — no reason to fetch it before
- * the reader asks to see it).
+ * list/detail, and returns member identities, so there is no reason to fetch
+ * it before the reader asks to see it).
  */
 export function useGroupMembers(groupId: string | undefined, active: boolean) {
   return useQuery({

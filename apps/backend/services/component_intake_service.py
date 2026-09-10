@@ -288,7 +288,7 @@ def _scoped(
         return stmt
     # Phase 2 PR 2-C: `group_scoped_subquery_predicate` already returns an
     # explicit false predicate for an empty membership set (fail-closed,
-    # same intent as the old `team_id.is_(None)` special case — this column
+    # same intent as the old `team_id.is_(None)` special case, this column
     # is NOT NULL, so both forms match zero rows) and is cascade-aware when
     # the flag is on.
     return stmt.where(

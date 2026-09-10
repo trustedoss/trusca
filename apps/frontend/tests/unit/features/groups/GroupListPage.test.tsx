@@ -1,5 +1,5 @@
 /**
- * GroupListPage — unit tests, group-hierarchy Phase 4 PR 4-B.
+ * GroupListPage, unit tests, group-hierarchy Phase 4 PR 4-B.
  *
  * Covers: root rows render, drill-into a child level re-queries by
  * `parent_id` and grows the trail, the trail's root control clears it back,

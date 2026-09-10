@@ -799,15 +799,15 @@ class ProjectPublic(BaseModel):
             "as one flat list of identical-looking rows."
         ),
     )
-    # Group-hierarchy Phase 4 PR 4-A — the project's owning group's ancestor
+    # Group-hierarchy Phase 4 PR 4-A: the project's owning group's ancestor
     # chain, root-first, INCLUDING the group itself as the last entry. `null`
-    # when the group row could not be resolved (should not happen — the FK is
-    # RESTRICT — kept nullable defensively rather than 500ing a list page over
+    # when the group row could not be resolved (should not happen, the FK is
+    # RESTRICT, kept nullable defensively rather than 500ing a list page over
     # one row). Populated only on the list endpoint (one batched pass over the
-    # page's distinct owning-group ids — see
+    # page's distinct owning-group ids, see
     # `services.project_list_enrichment.group_path_map`); single-project
     # responses default to null. Each entry is the narrow
-    # `GroupBreadcrumbEntry` (id/name/slug only — see `schemas.group`'s module
+    # `GroupBreadcrumbEntry` (id/name/slug only, see `schemas.group`'s module
     # docstring for why nothing wider is allowed to ride along here).
     group_path: list[GroupBreadcrumbEntry] | None = Field(
         default=None,

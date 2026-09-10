@@ -19,7 +19,7 @@ We resolve the accessible *project ids* once, up front, and every subsequent
 aggregate query is filtered by ``project_id IN (<accessible>)``. A caller with
 no memberships (and not a super-admin) gets an all-zero summary without touching
 the heavier tables. The per-team check uses ``actor.team_roles`` keys (the same
-membership set ``core.authz.can_access_group`` consults), NOT ``actor.role`` —
+membership set ``core.authz.can_access_group`` consults), NOT ``actor.role``,
 ``actor.role`` is the *highest* role across all memberships and says nothing
 about which teams the actor belongs to (CWE-863 cross-team escalation).
 
@@ -198,7 +198,7 @@ async def _accessible_project_ids(
         if not actor.team_ids:
             return []
         # Phase 2 PR 2-C: was `Project.team_id.in_(_accessible_team_ids(actor))`
-        # (`actor.team_roles.keys()` — the same set as `actor.team_ids`, direct
+        # (`actor.team_roles.keys()`, the same set as `actor.team_ids`, direct
         # memberships only). `team_scope_filter` is the mandated choke-point
         # for exactly this "portfolio dashboard" fan-out shape (see its own
         # docstring) and is cascade-aware when the flag is on.

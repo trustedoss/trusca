@@ -6,14 +6,14 @@ and the ``verify_group_paths()`` diagnostic function.
 
 Why this file exists rather than relying on the service-layer suite:
 ``admin_team_service`` (and its group-hierarchy successor) only ever creates
-ROOT groups as of this Phase — nothing in the running application sets
+ROOT groups as of this Phase; nothing in the running application sets
 ``parent_group_id`` yet (no API/service change this phase; Phase 5 adds the
 reparent service). That means the trigger's non-trivial branch (a row with a
 parent) is untested by every existing production code path today, and would
 stay untested until Phase 5 landed if this file didn't exercise it directly.
 
 Every mutation below goes through raw SQL (``session.execute(text(...))``)
-against ``groups``, never through an ORM model write or a service call —
+against ``groups``, never through an ORM model write or a service call,
 the point is to pin what the trigger itself does when a caller writes the
 columns directly, independent of whatever validation a future service adds
 on top.
@@ -70,7 +70,7 @@ async def _factory(client: AsyncClient):
 
 
 # ---------------------------------------------------------------------------
-# Raw-SQL helpers — deliberately bypass the ORM model and every service.
+# Raw-SQL helpers: deliberately bypass the ORM model and every service.
 # ---------------------------------------------------------------------------
 
 
@@ -248,7 +248,7 @@ async def test_update_parent_group_id_rederives_path(client: AsyncClient) -> Non
 # ---------------------------------------------------------------------------
 # 5. UPDATE that does NOT touch parent_group_id -> trigger does not fire,
 #    path is unchanged. This is the case the WHEN gate (and the `OF
-#    parent_group_id` column list) exists for — see 0091's docstring.
+#    parent_group_id` column list) exists for, see 0091's docstring.
 # ---------------------------------------------------------------------------
 
 
@@ -302,7 +302,7 @@ async def test_move_under_own_descendant_is_rejected(client: AsyncClient) -> Non
         await _insert_group(
             session, group_id=c_id, organization_id=org.id, slug="c", parent_group_id=b_id
         )
-        # c's path is [a, b] at this point — a is c's grandparent.
+        # c's path is [a, b] at this point, a is c's grandparent.
 
         with pytest.raises(IntegrityError) as excinfo:
             await session.execute(
@@ -326,7 +326,7 @@ async def test_move_under_own_descendant_is_rejected(client: AsyncClient) -> Non
 # ---------------------------------------------------------------------------
 # 7. A depth-3 chain (A -> B -> C) has the correct path at every level, and
 #    verify_group_paths() reports zero mismatches. Phase 5 (reparent) is not
-#    built yet — this only checks the chain built via INSERT, never moved.
+#    built yet, this only checks the chain built via INSERT, never moved.
 # ---------------------------------------------------------------------------
 
 
@@ -357,7 +357,7 @@ async def test_depth_three_chain_matches_verify_group_paths(
         ).fetchall()
         assert mismatches == [], (
             f"verify_group_paths() reported {len(mismatches)} mismatch(es) "
-            "after a plain 3-level INSERT chain — the trigger's derivation "
+            "after a plain 3-level INSERT chain, the trigger's derivation "
             "and the recursive-CTE cross-check disagree"
         )
 
@@ -366,7 +366,7 @@ async def test_depth_three_chain_matches_verify_group_paths(
 # 8. A raw UPDATE that sets ONLY `path` (never mentions parent_group_id in
 #    its SET list) is exactly the shape Phase 5's descendant propagation
 #    step will use, and must land untouched. This is the direct proof of
-#    the claim in 0091's docstring — not the name-only-column proxy in test
+#    the claim in 0091's docstring, not the name-only-column proxy in test
 #    5 above, which passes for a different reason (the column simply isn't
 #    `parent_group_id`) and would pass even if this exact mechanism were
 #    broken in a way that only affects a `path`-setting statement.
@@ -400,7 +400,7 @@ async def test_direct_path_write_without_touching_parent_group_id_is_not_clobber
         # (`UPDATE OF parent_group_id`) or its WHEN gate regressed to fire
         # unconditionally, this write would be silently discarded and
         # replaced with a fresh derivation from the (here, unchanged)
-        # parent — this asserts the caller's literal value survives.
+        # parent, this asserts the caller's literal value survives.
         forged_path = [_uuid(), _uuid(), _uuid()]
         await session.execute(
             text("UPDATE groups SET path = :path WHERE id = :id"),
@@ -420,6 +420,6 @@ async def test_direct_path_write_without_touching_parent_group_id_is_not_clobber
         # write, not to leave a genuinely inconsistent row behind for every
         # later test/run to trip over `verify_group_paths()` on. `org` and
         # both groups' legitimate rows (inserted above) were already
-        # committed by `_insert_group` and are unaffected — only this
+        # committed by `_insert_group` and are unaffected; only this
         # uncommitted UPDATE is discarded.
         await session.rollback()

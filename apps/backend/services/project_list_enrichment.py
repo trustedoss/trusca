@@ -488,21 +488,21 @@ async def _group_path_map(
     *,
     projects: list[Any],
 ) -> dict[uuid.UUID, list[GroupBreadcrumbEntry]]:
-    """``{project_id: [GroupBreadcrumbEntry, ...]}`` — root-first, group itself last.
+    """``{project_id: [GroupBreadcrumbEntry, ...]}``, root-first, group itself last.
 
     Group-hierarchy Phase 4 PR 4-A. Two batched ``IN`` queries over the WHOLE
     page (never one per project, never one per project's ancestor):
 
-      1. one ``IN`` on the page's distinct owning-group ids — gets each
+      1. one ``IN`` on the page's distinct owning-group ids, gets each
          group's own ``id``/``name``/``slug``/``path`` (the ``path`` column
          already carries the ordered ancestor-id chain, see the ``Group``
-         model docstring — no recursive query needed);
+         model docstring, no recursive query needed);
       2. one ``IN`` on the UNION of every ancestor id found across every
-         group fetched in (1) — gets those ancestors' ``name``/``slug`` so
+         group fetched in (1), gets those ancestors' ``name``/``slug`` so
          the chain can be rendered without a name-less id.
 
-    A project whose owning group id cannot be resolved (should not happen —
-    ``groups.id`` is ``ON DELETE RESTRICT`` from ``projects.group_id`` — kept
+    A project whose owning group id cannot be resolved (should not happen,
+    ``groups.id`` is ``ON DELETE RESTRICT`` from ``projects.group_id``, kept
     defensive rather than assumed) is simply absent from the returned map;
     the caller leaves ``ProjectPublic.group_path`` at its ``None`` default
     for that row rather than 500ing the whole list.
@@ -583,7 +583,7 @@ async def enrich_project_rows(
       - ``team_name_by_team.get(p.team_id)`` → ``team_name``, keyed by
         **team_id**, not project id (a page's projects usually share teams,
         so this is the one map the caller indexes differently).
-      - ``group_path_by_project.get(p.id)`` → ``group_path`` (absent ⇒ null —
+      - ``group_path_by_project.get(p.id)`` → ``group_path`` (absent ⇒ null,
         should not happen, see ``_group_path_map``'s own docstring). Two
         batched ``IN`` queries over the whole page (group-hierarchy Phase 4
         PR 4-A), not one per project.

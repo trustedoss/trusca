@@ -68,17 +68,17 @@ class _FakeSession:
     """Minimal stand-in for AsyncSession.execute(...).
 
     Phase 2 PR 2-C: `_load_accessible_project` now issues a SECOND query
-    after the project load — `core.authz.can_access_group` (wired in to
+    after the project load. `core.authz.can_access_group` (wired in to
     replace the old, pure-Python `_can_access_team`) calls
     `services.group_service.can_access_group`, which does
     ``session.execute(select(Group.id, Group.path)...).first()`` to read the
     target group's ancestor path. This fake answers both queries, in the
     fixed order production code issues them: call #1 is the project load
-    (unchanged), call #2+ is the group lookup — answered as a ROOT group
+    (unchanged), call #2+ is the group lookup, answered as a ROOT group
     (``path=[]``) whose id is the project's own ``team_id``, so the RBAC
     check's answer still reduces to exactly "is *group_id* one of the
     actor's direct memberships" (cascade OFF and ON agree once ``path`` is
-    empty) — these tests were never about the group hierarchy, only about
+    empty). These tests were never about the group hierarchy, only about
     upload validation, and this keeps them that way.
     """
 

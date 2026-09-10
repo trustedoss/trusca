@@ -203,7 +203,7 @@ async def _assert_member_of_organization(
     # Phase 2 PR 2-C: was `Team.id.in_(actor.team_ids)` (direct membership
     # only). `subtree_scope_filter` applies directly here (not through the
     # `Project`-specific subquery wrapper) because this query already starts
-    # from `Team` (== `Group` — a module-level alias), and is cascade-aware
+    # from `Team` (== `Group`, a module-level alias), and is cascade-aware
     # when the flag is on: a direct member of an ANCESTOR of a team in this
     # org now also counts as belonging to the org.
     belongs = (

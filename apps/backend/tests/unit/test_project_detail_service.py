@@ -530,7 +530,7 @@ async def test_overview_current_user_role_no_membership_returns_none(
     Under the group-hierarchy cascade that branch became reachable by an
     actor who reached the project only through an ancestor's membership,
     which the old code would silently PROMOTE to `developer` rather than
-    resolve correctly — the opposite of fail-closed. The resolver now walks
+    resolve correctly, the opposite of fail-closed. The resolver now walks
     the actual ancestor chain (`services.group_service.effective_role_at`)
     and returns `None` when no membership matches anywhere in it; the caller
     (`get_project_overview`) treats `None` as access denied rather than
@@ -541,8 +541,8 @@ async def test_overview_current_user_role_no_membership_returns_none(
 
     org = await make_organization(db_session)
     team = await make_team(db_session, organization=org)
-    # A user with NO membership on `team` (or anywhere in its ancestor chain
-    # — `team` is a root group here, so the chain is just itself).
+    # A user with NO membership on `team` (or anywhere in its ancestor chain;
+    # `team` is a root group here, so the chain is just itself).
     reader = await make_user(db_session)
     actor = _principal_for(reader, team_ids=[], role="developer")
 
@@ -554,7 +554,7 @@ async def test_overview_current_user_role_resolves_nearest_ancestor_membership(
     db_session: AsyncSession,
 ) -> None:
     """A cascade-only reader (member of an ancestor, not `team_id` itself)
-    resolves to THAT ancestor's role — never promoted to a higher one."""
+    resolves to THAT ancestor's role, never promoted to a higher one."""
     from services.project_detail_service import _resolve_team_scoped_role
     from tests._helpers import make_membership as _make_membership
     from tests._helpers import principal_for as _principal_for

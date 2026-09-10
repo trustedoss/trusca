@@ -423,7 +423,7 @@ def _build_audit_row(*, op: str, instance: object, ctx: dict[str, Any]) -> dict[
         # Keyed as "group_id" (the AuditLog model's real mapped column since
         # migration 0089 / group-hierarchy PR 0-1), not "team_id" the
         # ContextVar happens to use. AuditLog.team_id is only a
-        # ``synonym("group_id")`` — an ORM-layer alias that resolves when an
+        # ``synonym("group_id")``, an ORM-layer alias that resolves when an
         # AuditLog *instance* is constructed (``AuditLog(**row)``, the
         # update/delete path in ``_before_flush``), but has no effect on a
         # Core ``insert(AuditLog)`` executed with a plain param dict (the

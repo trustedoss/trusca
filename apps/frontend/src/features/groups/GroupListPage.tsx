@@ -18,7 +18,7 @@ import RelativeTime from "@/components/RelativeTime";
 import { cn } from "@/lib/utils";
 
 /**
- * GroupListPage — group-hierarchy Phase 4 PR 4-B.
+ * GroupListPage, group-hierarchy Phase 4 PR 4-B.
  *
  * Two independent modes, matching `GET /v1/groups`'s own two read shapes
  * (see `GroupsHarness`'s module docstring):
@@ -28,11 +28,11 @@ import { cn } from "@/lib/utils";
  *     name descends into ITS children, staying on this page. A trail above
  *     the table shows the path back to root.
  *   - Flat search: typing a term switches to a whole-tree, depth-independent
- *     match list (`?q=`) — drill state stops mattering for what is SHOWN
+ *     match list (`?q=`); drill state stops mattering for what is SHOWN
  *     (the harness's own wording), though it is not cleared, so clearing the
  *     search returns to the level the reader was browsing.
  *
- * A row carries two independent click targets — the harness is explicit
+ * A row carries two independent click targets, and the harness is explicit
  * that these must stay separate: the name text drills into the row's own
  * children (stays on `/groups`); a dedicated button opens the row's own
  * detail page (`/groups/:id`, leaves this list).
@@ -67,8 +67,8 @@ export function GroupListPage() {
   const isSearching = trimmedQuery.length > 0;
   const currentParentId = path.length > 0 ? path[path.length - 1].id : undefined;
 
-  // Narrowing (a new search term, or a new drill level) starts back on page 1
-  // — otherwise a reader four pages into "everything" could land on an empty
+  // Narrowing (a new search term, or a new drill level) starts back on page 1,
+  // otherwise a reader four pages into "everything" could land on an empty
   // page 4 of a two-row search result.
   useEffect(() => {
     setPage(1);
@@ -137,7 +137,7 @@ export function GroupListPage() {
 
       {/* Drill trail. The root control is always present and is a SEPARATE
           affordance from the per-level segments (harness: `...-root` vs.
-          `...-segment`) — clicking it clears the whole path in one step
+          `...-segment`); clicking it clears the whole path in one step
           rather than requiring N clicks back through N segments. */}
       <div
         className="flex flex-wrap items-center gap-1 border-b bg-muted/20 px-6 py-2 text-sm"

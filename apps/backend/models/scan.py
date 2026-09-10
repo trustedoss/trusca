@@ -29,8 +29,8 @@ Cross-domain relationships:
 Group-hierarchy rollout, PR 0-1 (alembic/versions/0088):
   - `Project.team_id` is renamed to `group_id` (the FK now targets
     `groups.id`, renamed from `teams.id`). `team_id = synonym("group_id")`
-    keeps every call site that reads/writes `.team_id` — including
-    class-level query expressions like `Project.team_id == x` — working
+    keeps every call site that reads/writes `.team_id` (including
+    class-level query expressions like `Project.team_id == x`) working
     against the same underlying column until the follow-up PRs migrate those
     call sites.
 
@@ -176,7 +176,7 @@ class Project(Base):
         ForeignKey("groups.id", ondelete="CASCADE"),
         nullable=False,
     )
-    # Backward-compatible synonym — see module docstring (group-hierarchy
+    # Backward-compatible synonym, see module docstring (group-hierarchy
     # rollout PR 0-1 / 0088).
     team_id: Mapped[uuid.UUID] = synonym("group_id")
     name: Mapped[str] = mapped_column(String(255), nullable=False)

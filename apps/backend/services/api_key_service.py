@@ -280,7 +280,7 @@ async def _can_issue_at_scope(
     the caller for scope='project'); for other scopes it is unused.
 
     The ``scope == "team"`` branch is a ROLE check (``team_admin`` writes a
-    team-scoped key) and stays exactly as flat as it was — Phase 2 PR 2-C
+    team-scoped key) and stays exactly as flat as it was: Phase 2 PR 2-C
     scopes the cascade to MEMBERSHIP checks, not role resolution (that is
     ``_resolve_team_scoped_role`` territory, explicitly PR 2-D's). The
     ``scope == "project"`` branch is a pure membership check (any team

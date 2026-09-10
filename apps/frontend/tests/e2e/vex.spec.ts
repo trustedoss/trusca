@@ -5,7 +5,7 @@
  * stack. Scenarios:
  *
  *   S1 — Permission gate: a developer sees the VEX import trigger disabled.
- *   S2 — group_admin (super_admin) imports an OpenVEX document; the summary
+ *   S2: group_admin (super_admin) imports an OpenVEX document; the summary
  *        reports ≥ 1 applied, the affected row gains the VEX marker, the
  *        "VEX-suppressed only" filter narrows to it, and its drawer shows the
  *        VEX provenance (author) — rendered as inert text.

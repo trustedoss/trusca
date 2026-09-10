@@ -30,8 +30,8 @@ safe to add ahead of any UI for it.
 Group-hierarchy rollout, PR 0-1 (alembic/versions/0088):
   ``team_id`` is renamed to ``group_id`` (FK retargeted to ``groups.id``,
   renamed from ``teams.id``). ``team_id = synonym("group_id")`` below keeps
-  every call site that reads/writes ``.team_id`` — including class-level
-  query expressions like ``GatePolicy.team_id == x`` — working against the
+  every call site that reads/writes ``.team_id`` (including class-level
+  query expressions like ``GatePolicy.team_id == x``) working against the
   same column.
 """
 
@@ -79,7 +79,7 @@ class GatePolicy(Base):
         ForeignKey("groups.id", ondelete="CASCADE"),
         nullable=True,
     )
-    # Backward-compatible synonym — see module docstring (group-hierarchy
+    # Backward-compatible synonym, see module docstring (group-hierarchy
     # rollout PR 0-1 / 0088).
     team_id: Mapped[uuid.UUID | None] = synonym("group_id")
 

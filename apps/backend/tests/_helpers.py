@@ -74,7 +74,7 @@ async def make_team(
     parent: Team | None = None,
 ) -> Team:
     """Create a group. ``parent`` (group-hierarchy rollout, Phase 1+) nests it
-    under an existing group instead of creating a root group — the DB
+    under an existing group instead of creating a root group. The DB
     trigger (migration 0091) derives ``path`` from ``parent_group_id`` on
     INSERT, so the ``refresh`` below picks up the real, trigger-computed
     value rather than the ORM's unpopulated default.

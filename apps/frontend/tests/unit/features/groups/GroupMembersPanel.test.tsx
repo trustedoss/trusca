@@ -1,5 +1,5 @@
 /**
- * GroupMembersPanel — unit tests, group-hierarchy Phase 4 PR 4-B.
+ * GroupMembersPanel, unit tests, group-hierarchy Phase 4 PR 4-B.
  *
  * Covers the direct/inherited split the harness pins: a direct row carries
  * `data-email`/`data-role`, an inherited row additionally carries

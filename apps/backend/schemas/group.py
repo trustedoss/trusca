@@ -1,7 +1,7 @@
 # SPDX-License-Identifier: Apache-2.0
 # Copyright 2026 TRUSCA contributors
 """
-Group read-API schemas — group-hierarchy Phase 4 PR 4-A.
+Group read-API schemas (group-hierarchy Phase 4 PR 4-A).
 
 Pydantic v2. Every ORM-derived shape uses ``model_config =
 ConfigDict(from_attributes=True)``.
@@ -10,8 +10,8 @@ ConfigDict(from_attributes=True)``.
 shared by two call sites that must never widen it into the fuller group
 shape:
 
-  - :attr:`GroupDetail.ancestors` — a group's own chain of ancestors.
-  - ``schemas.scan.ProjectPublic.group_path`` — a project's owning group's
+  - :attr:`GroupDetail.ancestors`: a group's own chain of ancestors.
+  - ``schemas.scan.ProjectPublic.group_path``: a project's owning group's
     chain, root to leaf (see ``services.project_list_enrichment``).
 
 Reusing ONE narrow model for both, rather than each call site building its
@@ -29,7 +29,7 @@ from datetime import datetime
 from pydantic import BaseModel, ConfigDict, Field
 
 # ---------------------------------------------------------------------------
-# Breadcrumb — the narrow, shared shape (see module docstring)
+# Breadcrumb: the narrow, shared shape (see module docstring)
 # ---------------------------------------------------------------------------
 
 
@@ -38,7 +38,7 @@ class GroupBreadcrumbEntry(BaseModel):
 
     Security-review note: this model's field set is the enforcement
     mechanism for "breadcrumb responses do not leak member/project/stat
-    data" — do not add fields here without re-reading the module docstring.
+    data", do not add fields here without re-reading the module docstring.
     """
 
     model_config = ConfigDict(from_attributes=True)
@@ -54,7 +54,7 @@ class GroupBreadcrumbEntry(BaseModel):
 
 
 class GroupListItem(BaseModel):
-    """Row in ``GET /v1/groups`` — either a flat search hit or one child in
+    """Row in ``GET /v1/groups``: either a flat search hit or one child in
     the drill-down view, per the endpoint's ``q`` / ``parent_id`` modes."""
 
     model_config = ConfigDict(from_attributes=True)
@@ -102,7 +102,7 @@ class GroupListPage(BaseModel):
 class GroupSummaryStats(BaseModel):
     """30-day activity summary for a group, ALWAYS covering its full subtree.
 
-    Every count here is a subtree aggregate, not a "this group only" count —
+    Every count here is a subtree aggregate, not a "this group only" count,
     the field names say so explicitly because the two read very differently
     (a leaf group's own count vs. its whole branch's). See
     ``services.group_directory_service`` for the aggregation queries and the
@@ -175,11 +175,11 @@ class GroupMemberEntry(BaseModel):
 class GroupInheritedMemberEntry(BaseModel):
     """A membership the group's cascade grants access through, from an ancestor.
 
-    Only ever non-empty when :func:`core.config.group_cascade_enabled` is on
-    — with the cascade off an ancestor's membership confers no access to a
+    Only ever non-empty when :func:`core.config.group_cascade_enabled` is on:
+    with the cascade off an ancestor's membership confers no access to a
     descendant group at all, so listing one here would claim a reach the
     person does not actually have. ``role`` is the role that membership row
-    itself carries (nearest-ancestor-wins already applied — see
+    itself carries (nearest-ancestor-wins already applied, see
     ``services.group_directory_service._inherited_members``), not
     necessarily the group's own vocabulary.
     """
@@ -200,7 +200,7 @@ class GroupInheritedMemberEntry(BaseModel):
 
 
 class GroupMembersResponse(BaseModel):
-    """``GET /v1/groups/{group_id}/members`` response — direct vs inherited."""
+    """``GET /v1/groups/{group_id}/members`` response: direct vs inherited."""
 
     direct: list[GroupMemberEntry] = Field(default_factory=list)
     inherited: list[GroupInheritedMemberEntry] = Field(default_factory=list)

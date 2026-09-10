@@ -134,6 +134,15 @@ The CI build gate fails a build on Critical CVEs and forbidden licenses out of t
 
 See [build gate](./glossary.md#build-gates) for the gate model and [Gate the build on EPSS](../ci-integration/github-actions.md#gate-the-build-on-epss-optional) for the CI walkthrough.
 
+## Groups
+
+| Key | Default | Read by | Description |
+|---|---|---|---|
+| `GROUP_CASCADE_ENABLED` | `true` | `config.py` | Whether a membership or API key scoped to a group also reaches that group's subgroups. On by default: a group only reaches its descendants once an administrator has moved it into the hierarchy on purpose, so turning this on changes nothing for a deployment that has not yet nested any groups. `false` restores the pre-hierarchy behavior of a flat, single-group scope. |
+| `GROUP_SEARCH_RATE_LIMIT` | `20/minute` | `config.py` | slowapi limit for `GET /v1/groups` in search mode (`?q=`), keyed per authenticated user. This is the endpoint behind the project-creation group picker's live-typing search, so it is sized for keystroke-rate calls rather than the occasional read the drill-down mode gets. |
+
+See [Nested groups](../admin-guide/users-and-teams.md) for the cascade's user-facing behavior.
+
 ## Scan pipeline
 
 | Key | Default | Read by | Description |

@@ -1270,7 +1270,7 @@ async def list_scans_for_actor(
     Scope:
       - super_admin: all scans, regardless of team.
       - everyone else: scans whose project passes ``core.authz.
-        team_scope_filter`` — direct team membership, or (Phase 2 PR 2-C,
+        team_scope_filter``, direct team membership, or (Phase 2 PR 2-C,
         cascade flag on) a descendant of a directly-membered group. An actor
         with no team memberships sees an empty page (not 403); the endpoint
         is read-only and "I am authenticated but my account has no teams
@@ -1289,7 +1289,7 @@ async def list_scans_for_actor(
     # Build the base query. We JOIN on Project so the WHERE clause can clamp
     # by team_id. ix_scans_project_created_at + ix_projects_team_id keep the
     # plan cheap for typical actor team-list sizes (≤ 50 teams); the cascade
-    # branch (flag on) additionally rides ix_groups_path_gin — see
+    # branch (flag on) additionally rides ix_groups_path_gin, see
     # `services.group_service.subtree_scope_filter`'s own EXPLAIN note.
     base = select(Scan).join(Project, Project.id == Scan.project_id)
     count_base = select(func.count()).select_from(Scan).join(
@@ -1299,7 +1299,7 @@ async def list_scans_for_actor(
     if not is_super:
         if not actor.team_ids:
             return [], 0
-        # Phase 2 PR 2-C: was `Project.team_id.in_(list(actor.team_ids))` —
+        # Phase 2 PR 2-C: was `Project.team_id.in_(list(actor.team_ids))`,
         # a direct-membership-only clamp. `team_scope_filter` is the mandated
         # choke-point for this exact "fan out across every project the actor
         # can see" shape and is cascade-aware when the flag is on.

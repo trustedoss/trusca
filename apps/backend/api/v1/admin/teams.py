@@ -11,8 +11,8 @@ Endpoints under ``/v1/admin/teams``:
   - DELETE /v1/admin/teams/{team_id}               — delete (archives projects first)
   - POST   /v1/admin/teams/{team_id}/members       — add or update membership
   - DELETE /v1/admin/teams/{team_id}/members/{uid} — remove membership
-  - POST   /v1/admin/teams/{group_id}/reparent     — move a group (+ subtree) — Phase 5
-  - POST   /v1/admin/teams/{parent_id}/subgroups   — create a nested group — Phase 5
+  - POST   /v1/admin/teams/{group_id}/reparent     : move a group (+ subtree, Phase 5)
+  - POST   /v1/admin/teams/{parent_id}/subgroups   : create a nested group (Phase 5)
 
 Auth: gated by the parent ``admin_router`` super-admin dependency.
 Service-layer 4xx (last-team-admin, team-has-active-scans, slug conflict,
@@ -65,14 +65,14 @@ def _problem_for_admin_team_error(
     # Shared between AdminTeamError (admin_team_service) and
     # GroupHierarchyError (group_service, Phase 5 reparent/create_subgroup):
     # both carry the same status_code/title/extensions shape by convention,
-    # not by a common base class — group_service deliberately has no
+    # not by a common base class: group_service deliberately has no
     # dependency on admin_team_service (see group_service's Phase 5 section
     # banner), so this router is where the two vocabularies meet.
     #
     # M3 — PII echo caution: exc.extensions carries structural hints for the
     # admin UI (conflicting_slug, team_id, cycle_detected, etc.). Do NOT add
     # email addresses, full names, or other PII to *.extensions at the call
-    # sites in services/admin_team_service.py or services/group_service.py —
+    # sites in services/admin_team_service.py or services/group_service.py,
     # those values would be reflected here verbatim in the response body and
     # audit log.
     extensions: dict[str, object] = dict(exc.extensions)
@@ -286,7 +286,7 @@ async def remove_member_endpoint(
 
 
 # ---------------------------------------------------------------------------
-# POST /v1/admin/teams/{group_id}/reparent — group-hierarchy Phase 5
+# POST /v1/admin/teams/{group_id}/reparent (group-hierarchy Phase 5)
 # ---------------------------------------------------------------------------
 
 
@@ -321,7 +321,7 @@ async def reparent_group_endpoint(
 
 
 # ---------------------------------------------------------------------------
-# POST /v1/admin/teams/{parent_group_id}/subgroups — group-hierarchy Phase 5
+# POST /v1/admin/teams/{parent_group_id}/subgroups (group-hierarchy Phase 5)
 # ---------------------------------------------------------------------------
 
 

@@ -12,12 +12,12 @@ import type {
 } from "@/features/groups/api/groupsApi";
 
 /**
- * GroupMembersPanel — group-hierarchy Phase 4 PR 4-B.
+ * GroupMembersPanel, group-hierarchy Phase 4 PR 4-B.
  *
  * Direct memberships and cascade-inherited ones are two visually separate
  * lists (harness: `group-members-direct-row` vs. `group-members-inherited-
- * row`), not one list with a "source" column — the harness's own docstring
- * on `GroupInheritedMemberEntry` puts it directly: the split is what lets a
+ * row`), not one list with a "source" column: the harness's own docstring
+ * on `GroupInheritedMemberEntry` puts it directly; the split is what lets a
  * reader tell WHERE access came from, not just that it exists. An inherited
  * row always carries `data-source-group-name` (which ancestor granted it).
  *

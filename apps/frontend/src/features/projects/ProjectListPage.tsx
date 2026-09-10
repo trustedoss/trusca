@@ -883,7 +883,7 @@ export function ProjectRow({
     >
       <div className="flex flex-1 items-center gap-3 truncate">
         {/* Team + project were previously one <Link>, with the team name
-            nested inside it as a <span> — invalid HTML (no interactive
+            nested inside it as a <span>: invalid HTML (no interactive
             descendants inside an <a>) and a link that could only ever go to
             the project. Split into two sibling links: the team segment now
             goes to that team's group page, the project segment keeps going

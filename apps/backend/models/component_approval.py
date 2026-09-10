@@ -136,7 +136,7 @@ class ComponentApproval(Base):
         UUID_PK,
         # Target table renamed teams -> groups by migration 0088
         # (group-hierarchy rollout PR 0-1). The column itself keeps its
-        # ``team_id`` name here — that rename is out of this PR's scope — but
+        # ``team_id`` name here (that rename is out of this PR's scope), but
         # the FK's *target table* string must track the rename or every
         # SQLAlchemy operation that resolves the full metadata graph
         # (``alembic check``, autogenerate, ``create_all``) raises

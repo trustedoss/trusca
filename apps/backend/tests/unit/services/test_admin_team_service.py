@@ -859,7 +859,7 @@ async def test_group_parent_assignment_is_a_silent_no_op(
     This pins that behavior down explicitly so that if a future PR (Phase 5's
     reparent service is the obvious candidate) ever starts writing
     ``child.parent = new_parent`` expecting it to move the group, this test
-    fails loudly instead of the reparent silently no-op'ing in production —
+    fails loudly instead of the reparent silently no-op'ing in production,
     the same shape of defect this repo's hardening rules call ER32 out for
     (a write that reports success and changes nothing).
     """
@@ -872,7 +872,7 @@ async def test_group_parent_assignment_is_a_silent_no_op(
     await db_session.refresh(child)
 
     assert child.parent_group_id is None, (
-        "Group.parent accepted an assignment and it reached the database — "
+        "Group.parent accepted an assignment and it reached the database, "
         "either viewonly was removed from the relationship (in which case "
         "this test should be replaced with one that asserts the *correct* "
         "cascading write, including the trigger and path re-derivation), or "

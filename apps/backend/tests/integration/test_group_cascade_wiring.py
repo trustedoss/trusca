@@ -1,7 +1,7 @@
 # SPDX-License-Identifier: Apache-2.0
 # Copyright 2026 TRUSCA contributors
 """
-Group-hierarchy permission cascade — Phase 2 PR 2-C (wiring).
+Group-hierarchy permission cascade, Phase 2 PR 2-C (wiring).
 
 PR 2-A proved the cascade's pure functions (``services.group_service``)
 against a real group tree, in isolation from every caller
@@ -10,15 +10,15 @@ against a real group tree, in isolation from every caller
 those functions expect. This file is PR 2-C's own contribution to that
 verification chain: the same tree, the same four(+one) destructive
 combinations, but driven through the ACTUAL wired call sites this PR
-converted, on three different surfaces —
+converted, on three different surfaces:
 
-  1. ``services.project_service.list_projects`` — a *fan-out* choke-point
+  1. ``services.project_service.list_projects``, a *fan-out* choke-point
      (``core.authz.team_scope_filter``), one of the "6 direct clamp" sites.
-  2. ``services.scan_service.list_scans_for_actor`` — a second, independent
+  2. ``services.scan_service.list_scans_for_actor``, a second, independent
      fan-out surface (same choke-point, different model/join shape), proving
      the choke-point's cascade behaviour is not an accident of one query
      shape.
-  3. ``services.project_service.archive_project`` — a *single-resource* gate
+  3. ``services.project_service.archive_project``, a *single-resource* gate
      (``core.authz.can_access_group``), one of the "7 local reimplementation"
      sites this PR deleted (``_can_access_team``) and rewired.
 
@@ -79,7 +79,7 @@ def cascade_enabled(request: pytest.FixtureRequest, monkeypatch: pytest.MonkeyPa
 #              \-> S (sibling of C, also a child of P)
 #
 # One project per group, so "which projects are visible" pins exactly onto
-# "which groups are accessible" — mirrors PR 2-A's tree shape/vocabulary.
+# "which groups are accessible", mirrors PR 2-A's tree shape/vocabulary.
 # ---------------------------------------------------------------------------
 
 
@@ -132,7 +132,7 @@ async def fixture(db_session: AsyncSession) -> _Fixture:
 
 
 # ---------------------------------------------------------------------------
-# Surface 1 — fan-out list: services.project_service.list_projects
+# Surface 1: fan-out list, services.project_service.list_projects
 # ---------------------------------------------------------------------------
 
 
@@ -154,7 +154,7 @@ async def test_list_projects_cascade_matrix(
     target_project_attr: str,
     cascade_on_visible: bool,
 ) -> None:
-    """``list_projects`` (no explicit ``team_id`` filter — the fan-out branch).
+    """``list_projects`` (no explicit ``team_id`` filter, the fan-out branch).
 
     Reproduces PR 2-A's sibling / inherit / no-upward / deep-inherit combos
     through the actual `core.authz.team_scope_filter` choke-point this PR
@@ -182,7 +182,7 @@ async def test_list_projects_cascade_matrix(
 async def test_list_projects_super_admin_bypasses_both_flag_states(
     db_session: AsyncSession, fixture: _Fixture, cascade_enabled: bool
 ) -> None:
-    """super_admin sees every project regardless of the cascade flag —
+    """super_admin sees every project regardless of the cascade flag,
     the bypass lives in `team_scope_filter` itself (`actor.is_superuser`),
     untouched by whether `project_subtree_predicate` is consulted at all."""
     from services.project_service import list_projects
@@ -203,7 +203,7 @@ async def test_list_projects_super_admin_bypasses_both_flag_states(
 async def test_list_projects_no_membership_sees_nothing(
     db_session: AsyncSession, fixture: _Fixture, cascade_enabled: bool
 ) -> None:
-    """An actor with zero memberships gets an empty page, not every project —
+    """An actor with zero memberships gets an empty page, not every project,
     pins the `sa.false()` / empty-subquery branch in both flag states."""
     from services.project_service import list_projects
 
@@ -216,7 +216,7 @@ async def test_list_projects_no_membership_sees_nothing(
 
 
 # ---------------------------------------------------------------------------
-# Surface 2 — fan-out list: services.scan_service.list_scans_for_actor
+# Surface 2: fan-out list, services.scan_service.list_scans_for_actor
 # ---------------------------------------------------------------------------
 
 
@@ -238,7 +238,7 @@ async def test_list_scans_for_actor_cascade_matrix(
     target_project_attr: str,
     cascade_on_visible: bool,
 ) -> None:
-    """A second, independently-implemented fan-out surface — same
+    """A second, independently-implemented fan-out surface, same
     `team_scope_filter` choke-point, different join shape (`Scan` joined to
     `Project`), proving the cascade behaviour is the choke-point's, not an
     artifact of one particular query."""
@@ -270,8 +270,8 @@ async def test_list_scans_for_actor_cascade_matrix(
 
 
 # ---------------------------------------------------------------------------
-# Surface 3 — single-resource gate: services.project_service.archive_project
-# (a converted "local reimplementation" site — was `_can_access_team`, now
+# Surface 3: single-resource gate, services.project_service.archive_project
+# (a converted "local reimplementation" site, was `_can_access_team`, now
 # `core.authz.can_access_group`)
 # ---------------------------------------------------------------------------
 
@@ -294,12 +294,12 @@ async def test_archive_project_cascade_matrix(
     target_project_attr: str,
     cascade_on_access: bool,
 ) -> None:
-    """``archive_project`` — single-resource gate via `can_access_group`.
+    """``archive_project``, single-resource gate via `can_access_group`.
 
     Unlike the two fan-out surfaces above, this exercises the async,
     session-carrying primitive PR 2-C ADDS (`core.authz.can_access_group`),
     not `team_scope_filter`. A denial raises `ProjectForbidden`; the
-    project's `archived_at` must stay `None` either way — the outcome under
+    project's `archived_at` must stay `None` either way, the outcome under
     test is authorization, not idempotency.
     """
     from models import Project
@@ -328,7 +328,7 @@ async def test_archive_project_cascade_matrix(
 async def test_archive_project_super_admin_bypasses_both_flag_states(
     db_session: AsyncSession, fixture: _Fixture, cascade_enabled: bool
 ) -> None:
-    """super_admin may archive any project regardless of the cascade flag —
+    """super_admin may archive any project regardless of the cascade flag,
     `can_access_group`'s own bypass (`core/authz.py`), not
     `group_service.can_access_group`'s (which has none by design)."""
     from services.project_service import archive_project
@@ -342,7 +342,7 @@ async def test_archive_project_super_admin_bypasses_both_flag_states(
 
 # ---------------------------------------------------------------------------
 # Explicit team_id filter branch of list_projects (single-resource-shaped
-# access check feeding a still-single-team query) — the other half of the
+# access check feeding a still-single-team query), the other half of the
 # "6 direct clamp" conversion in `project_service.list_projects`.
 # ---------------------------------------------------------------------------
 
@@ -369,10 +369,10 @@ async def test_list_projects_explicit_team_id_cascade(
 
 
 # ---------------------------------------------------------------------------
-# services.assignee — the "special-cased" surface (task's dedicated verification).
+# services.assignee, the "special-cased" surface (task's dedicated verification).
 #
 # `list_assignable_members` / `is_assignable_to_team` widen to the target
-# group's ANCESTORS (never its descendants) when the cascade flag is on — see
+# group's ANCESTORS (never its descendants) when the cascade flag is on, see
 # `services.assignee._cascade_scope_ids`'s docstring for why the direction is
 # one-way. Built directly against the tree fixture's own groups (P -> C -> G,
 # S a sibling of C) rather than its projects, since these two functions take
@@ -410,22 +410,22 @@ async def test_assignable_members_widens_to_ancestors_only(
     # C's own direct member is always assignable, in both flag states.
     assert team_members["c"] in visible_user_ids
 
-    # G is a DESCENDANT of C — its member must never appear, regardless of
+    # G is a DESCENDANT of C, its member must never appear, regardless of
     # the flag (cascade access flows down from an ancestor's membership, an
     # inherited assignee-eligibility never flows up from a descendant's).
     assert team_members["g"] not in visible_user_ids
 
-    # S is a SIBLING of C (not an ancestor) — its member must never appear.
+    # S is a SIBLING of C (not an ancestor), its member must never appear.
     assert team_members["s"] not in visible_user_ids
 
     if cascade_enabled:
-        # P is C's ANCESTOR — cascade ON widens the picker to P's direct
+        # P is C's ANCESTOR, cascade ON widens the picker to P's direct
         # member, because that member can already cascade-READ C's project
         # through `core.authz.team_scope_filter` once a later phase turns
         # this on for `get_project` too.
         assert team_members["p"] in visible_user_ids
     else:
-        # Flag off: byte-for-byte today's behaviour — exactly C's own
+        # Flag off: byte-for-byte today's behaviour, exactly C's own
         # direct members, nobody else.
         assert visible_user_ids == {team_members["c"]}
 
@@ -436,7 +436,7 @@ async def test_is_assignable_to_team_matches_the_list(
     team_members: dict[str, uuid.UUID],
     cascade_enabled: bool,
 ) -> None:
-    """The write-time check and the picker never drift — a name the list
+    """The write-time check and the picker never drift, a name the list
     offers is a name the write accepts, and vice versa, in both flag states."""
     from services.assignee import is_assignable_to_team
 

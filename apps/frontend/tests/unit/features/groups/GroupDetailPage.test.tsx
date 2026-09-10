@@ -1,5 +1,5 @@
 /**
- * GroupDetailPage — unit tests, group-hierarchy Phase 4 PR 4-B.
+ * GroupDetailPage, unit tests, group-hierarchy Phase 4 PR 4-B.
  *
  * Covers: the existence-hide 404 branch renders no page frame at all, a
  * successful load renders the name/breadcrumb/stats, ancestor breadcrumb

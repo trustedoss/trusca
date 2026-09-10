@@ -1,7 +1,7 @@
 # SPDX-License-Identifier: Apache-2.0
 # Copyright 2026 TRUSCA contributors
 """
-Concurrency for ``services.group_service.reparent`` — group-hierarchy Phase 5
+Concurrency for ``services.group_service.reparent``, group-hierarchy Phase 5
 PR 5-A.
 
 Mirrors ``tests/unit/services/test_admin_team_delete_concurrency.py``'s two
@@ -14,13 +14,13 @@ complementary shapes:
      for delete.
 
   2. End-to-end race: two ``reparent`` calls that try to make EACH OTHER's
-     group their own parent — A's parent becomes B, B's parent becomes A, at
+     group their own parent, A's parent becomes B, B's parent becomes A, at
      the same time. With an inconsistent lock order this pair is the classic
      deadlock shape (each transaction holds the lock the other one wants
      next). ``reparent`` avoids it by locking both rows in ascending-id
      order regardless of which one is "the group" and which is "the new
      parent" in a given call (see ``_lock_groups_in_id_order``'s own
-     docstring) — so the two transactions always contend on the SAME first
+     docstring), so the two transactions always contend on the SAME first
      lock, never in opposite orders. The task's own framing ("non-deferrable
      FK 락") describes what Postgres's foreign-key check would additionally
      serialise on if the app-level lock did not already; the app-level
@@ -30,7 +30,7 @@ complementary shapes:
 
   Both tests build A -> B as a chain first (A is B's parent), then race
   "move B under A" (a no-op re-affirmation... no: A is ALREADY B's parent in
-  this file's fixture is avoided on purpose — see the fixture comment) against
+  this file's fixture is avoided on purpose, see the fixture comment) against
   its mirror, so the race is genuinely a cycle attempt, not a no-op.
 """
 
@@ -59,7 +59,7 @@ def _migrate_once() -> None:
 
 @pytest.fixture
 async def session_factory() -> AsyncIterator[async_sessionmaker[AsyncSession]]:
-    """Independent session factory — see test_admin_team_delete_concurrency.py
+    """Independent session factory, see test_admin_team_delete_concurrency.py
     for rationale (each concurrent task needs its own session/connection,
     not a shared one)."""
     from core.audit import install_audit_listeners
@@ -84,7 +84,7 @@ async def test_lock_groups_in_id_order_blocks_concurrent_update(
 ) -> None:
     """``_lock_groups_in_id_order`` must take a row-level lock a concurrent
     UPDATE blocks on. If it is ever "simplified" back to a plain SELECT
-    (dropping ``with_for_update()``), this test fires — same shape as
+    (dropping ``with_for_update()``), this test fires, same shape as
     ``test_lock_team_for_destructive_op_blocks_concurrent_update``."""
     from services.group_service import _lock_groups_in_id_order
 
@@ -119,7 +119,7 @@ async def test_lock_groups_in_id_order_locks_ascending_regardless_of_input_order
     session_factory: async_sessionmaker[AsyncSession],
 ) -> None:
     """Two calls to ``_lock_groups_in_id_order`` with the SAME two ids but
-    OPPOSITE argument order must still lock in the same (ascending) order —
+    OPPOSITE argument order must still lock in the same (ascending) order,
     that is the whole deadlock-avoidance property. Pinned indirectly: the
     second call, racing the first (which holds both locks), must block on
     whichever id is numerically smaller FIRST, not on the order it was
@@ -166,14 +166,14 @@ async def test_concurrent_mutual_reparent_serialises_without_deadlock(
     """Two unrelated root groups A and B. Two concurrent ``reparent`` calls:
     one tries to make A a child of B; the other, at the same time, tries to
     make B a child of A. Whichever commits first wins outright (a plain
-    "move under a root" — nothing to reject); the SECOND one, once
+    "move under a root", nothing to reject); the SECOND one, once
     unblocked, re-reads the now-current tree and finds a cycle (the winner's
     move made the loser's target a descendant of the group it's trying to
-    move) — it must raise GroupCycleDetected, not deadlock and not silently
+    move), it must raise GroupCycleDetected, not deadlock and not silently
     corrupt the tree.
 
     Both must complete (``asyncio.gather`` with no ``return_exceptions``
-    swallowing) within the test's own timeout — a real deadlock would hang
+    swallowing) within the test's own timeout, a real deadlock would hang
     until Postgres's own ``deadlock_timeout`` (1s by default) fired a
     DeadlockDetected error on ONE side while the other still succeeds; that
     is also an acceptable-but-worse outcome this test would still catch

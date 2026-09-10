@@ -3,18 +3,18 @@
 """Group-hierarchy PR 2-B: the three principal-construction paths agree.
 
 PR 2-A's cascade functions (``services/group_service.py``) take a "direct
-membership role map" — ``direct_roles: Mapping[uuid.UUID, str]`` — as input.
+membership role map" (``direct_roles: Mapping[uuid.UUID, str]``) as input.
 The design note that motivated PR 2-A called this ``group_roles_direct`` as
 if it were a field the codebase still needed to grow. Reading the three
 places that build a :class:`core.security.CurrentUser` shows it already
 exists: it is ``CurrentUser.team_roles``, built the same way in all three
-places —
+places, straight off ``user.memberships``, with no cascade expansion
+anywhere in sight:
 
     team_ids = [m.team_id for m in memberships]
     team_roles = {m.team_id: m.role for m in memberships}
 
-— straight off ``user.memberships``, with no cascade expansion anywhere in
-sight. (``Membership.team_id`` is a synonym for the ``group_id`` column per
+(``Membership.team_id`` is a synonym for the ``group_id`` column per
 migration 0088, so this is already exactly the group-hierarchy vocabulary
 under an old name.) There is no separate ``group_roles_direct`` field to add;
 PR 2-C's cascade wiring can hand ``team_roles`` straight to
@@ -30,11 +30,11 @@ sites build a ``CurrentUser`` from the same ``memberships`` table:
 ``ws._resolve_user``'s own docstring says it is a hand-copied mirror of
 ``_load_current_user`` because a WebSocket scope carries no ``Request`` for
 the shared dependency to accept, and that copy has drifted before (it once
-omitted the ``viewer`` role from the priority map — see
+omitted the ``viewer`` role from the priority map, see
 ``core.security.highest_role``'s docstring). ``get_api_key_principal``
 additionally narrows ``team_roles``/``team_ids`` to the key's declared scope
 for team- and project-scoped keys, which is a deliberate authorization
-boundary, not construction drift — so this file compares against an
+boundary, not construction drift, so this file compares against an
 ORG-scoped key, the one scope where nothing is narrowed and the three paths
 must produce byte-for-byte the same ``team_ids``/``team_roles``/``role``.
 

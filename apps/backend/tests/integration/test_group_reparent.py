@@ -1,7 +1,7 @@
 # SPDX-License-Identifier: Apache-2.0
 # Copyright 2026 TRUSCA contributors
 """
-``services.group_service.reparent`` / ``create_subgroup`` — group-hierarchy
+``services.group_service.reparent`` / ``create_subgroup``, group-hierarchy
 Phase 5 PR 5-A.
 
 Phase 1 (migrations 0090/0091) built the schema, the ``path``-deriving DB
@@ -15,20 +15,20 @@ lifecycle sequence (CLAUDE.md hardening rule 5), not just isolated calls:
   - cycle detection: self-parent, and moving a group under its own
     descendant.
   - cross-organization moves are refused outright (tenant-isolation
-    boundary — see ``GroupCrossOrganizationNotAllowed``'s docstring).
+    boundary, see ``GroupCrossOrganizationNotAllowed``'s docstring).
   - sibling slug conflict on ``create_subgroup`` surfaces as a legible 409,
     not a raw ``IntegrityError``.
   - a moved subtree's ``path`` values, cross-checked against
     ``verify_group_paths()`` (Phase 1's own diagnostic), have zero
-    mismatches after the move — the direct proof the descendant
+    mismatches after the move, the direct proof the descendant
     propagation SQL is correct, not just "the moved row itself looks right".
   - a move actually recomputes the permission cascade (Phase 2) and policy
     resolution (Phase 3) for the moved subtree, live, with no separate
-    "recompute" step — both walk ``path`` fresh on every call.
+    "recompute" step, both walk ``path`` fresh on every call.
   - a move writes an audit_logs row naming the change.
 
 Concurrency (two transactions racing to make each other's group their own
-parent) lives in ``test_group_reparent_concurrency.py`` — it needs raw
+parent) lives in ``test_group_reparent_concurrency.py``, it needs raw
 per-transaction control this file's single-session fixture does not give it.
 """
 
@@ -249,7 +249,7 @@ async def test_reparent_across_organizations_is_refused(db_session: AsyncSession
 async def test_create_subgroup_across_organizations_is_not_possible(
     db_session: AsyncSession,
 ) -> None:
-    """create_subgroup has no organization_id override at all — the child
+    """create_subgroup has no organization_id override at all, the child
     always inherits its parent's organization, so there is no cross-org
     input to reject; this pins that inheritance happens even when the
     caller's own organization differs from the parent's (the actor here is
@@ -311,7 +311,7 @@ async def test_move_of_a_deep_subtree_matches_verify_group_paths(
     """root_a -> b -> c -> d (depth 4), plus an unrelated root_p. Moving b
     (with its whole subtree c, d) under root_p must leave EVERY row's path
     self-consistent with parent_group_id, per Phase 1's own
-    recursive-CTE cross-check — not just "b's own path looks right"."""
+    recursive-CTE cross-check, not just "b's own path looks right"."""
     org = await make_organization(db_session)
     actor = await _super_actor(db_session)
     root_a = await make_team(db_session, organization=org, name="root-a")
@@ -337,7 +337,7 @@ async def test_move_of_a_deep_subtree_matches_verify_group_paths(
 
 
 # ---------------------------------------------------------------------------
-# Permission cascade recompute (Phase 2) — live, no separate step
+# Permission cascade recompute (Phase 2), live, no separate step
 # ---------------------------------------------------------------------------
 
 
@@ -346,7 +346,7 @@ async def test_move_recomputes_cascade_access_live(
 ) -> None:
     """P and Q are two unrelated roots. C starts under P. p_admin (direct
     member of P only) can reach C while it is under P; after moving C to Q,
-    p_admin must LOSE access and q_admin must GAIN it — both re-derived from
+    p_admin must LOSE access and q_admin must GAIN it, both re-derived from
     C's ``path`` on every ``can_access_group`` call, with no cache to
     invalidate (services.group_service module docstring)."""
     monkeypatch.setenv("GROUP_CASCADE_ENABLED", "true")
@@ -376,7 +376,7 @@ async def test_move_recomputes_cascade_access_live(
 
 
 # ---------------------------------------------------------------------------
-# Policy recompute (Phase 3) — live, no separate step
+# Policy recompute (Phase 3), live, no separate step
 # ---------------------------------------------------------------------------
 
 
@@ -395,7 +395,7 @@ def _license_payload(**overrides) -> LicensePolicyUpsertIn:
 async def test_move_recomputes_effective_license_policy(db_session: AsyncSession) -> None:
     """p has an enabled license policy named "p-policy"; q has none. c starts
     under p and resolves to p's policy. After moving c under q, c must
-    resolve to... nothing at this org (no org default either) — the point
+    resolve to... nothing at this org (no org default either), the point
     being the SAME get_effective_policy call now returns a DIFFERENT answer
     for the same group id, with no policy recompute step of its own."""
     org = await make_organization(db_session)
@@ -433,7 +433,7 @@ def _gate_payload(**overrides) -> GatePolicyUpsertIn:
 
 async def test_move_recomputes_effective_gate_policy(db_session: AsyncSession) -> None:
     """Same shape as the license-policy test, for the gate-policy resolver
-    (a different fall-through implementation — Phase 3 generalised both).
+    (a different fall-through implementation, Phase 3 generalised both).
     p sets ``reachable_critical_only``; q has no policy at all. c starts
     under p and resolves the field from p; after moving c under q, the SAME
     resolve call must stop finding it (None, not "stuck at the old value")."""

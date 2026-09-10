@@ -7,7 +7,7 @@ Revises: 0087
 Create Date: 2026-09-07
 
 Phase: 0 (group-hierarchy rollout, PR 0-1)
-Kind: schema (pure rename — no new column, no data migration)
+Kind: schema (pure rename, no new column, no data migration)
 Forward-only: yes
 
 What:
@@ -28,7 +28,7 @@ What:
     ``ALTER TABLE ... RENAME COLUMN``, unlike a CHECK constraint or a partial
     index predicate (both verified below to auto-update). The replacement
     keeps 0080's exact logic and its pinned
-    ``SET search_path = pg_catalog, public, pg_temp`` — see "If you are
+    ``SET search_path = pg_catalog, public, pg_temp``, see "If you are
     writing a database function" in 0080/0082's docstrings.
 
 What this migration deliberately does NOT do (see the PR description for the
@@ -37,19 +37,19 @@ full rollout plan):
     to ``teams``/``groups`` (``component_approvals``, ``component_intake_requests``,
     ``github_app_credentials``, ``notification_routing_rules``,
     ``obligation_fulfilments``, ``report_downloads``, ``transition_approvals``).
-    Those columns keep the name ``team_id`` and keep working exactly as before
-    — PostgreSQL updates a foreign key's target by object identity, not by
+    Those columns keep the name ``team_id`` and keep working exactly as before:
+    PostgreSQL updates a foreign key's target by object identity, not by
     name, so a column named ``team_id`` referencing ``groups.id`` after this
     migration is not a defect, it is simply out of this PR's scope. Follow-up
     PRs cover them together with their model files.
-  - Add ``parent_group_id`` / ``path`` or any other hierarchy column — Phase 1.
+  - Add ``parent_group_id`` / ``path`` or any other hierarchy column (Phase 1).
   - Touch anything under ``services/``, ``api/``, ``core/`` or ``schemas/``.
 
 Why:
   Group-hierarchy rollout PR 0-1: renaming ``teams`` to ``groups`` is the first
   of four PRs that together let a group nest under another group without
   limit. This PR changes only names (table, columns, the trigger body that
-  spelled one of them out) — no new column, no behavioural change, no value
+  spelled one of them out): no new column, no behavioural change, no value
   ever written differs from what would have been written before. PRs 0-2
   through 0-4 migrate the ~596 call sites that read ``.team_id`` / import
   ``Team`` off of a SQLAlchemy ``synonym`` compatibility layer (see
@@ -68,7 +68,7 @@ plan that motivated this PR assumed the opposite in two places:
     is likewise a stored expression, not text, and updates automatically on
     column rename. Dropping and recreating either index is unnecessary; doing
     so would just cost an extra table scan for no behavioural difference. This
-    contradicts the plan's assumption — see the PR description for the
+    contradicts the plan's assumption, see the PR description for the
     verification transcript.
   - What does NOT auto-update: PL/pgSQL function bodies. ``ALTER TABLE ...
     RENAME COLUMN`` does not touch ``pg_proc.prosrc`` for any function that
@@ -260,8 +260,8 @@ def upgrade() -> None:
     # "team" substring so no rename is needed. Its predicate
     # (``WHERE team_id IS NULL``) is a stored expression, not text, and
     # PostgreSQL rewrites it to ``group_id IS NULL`` as a side effect of the
-    # RENAME COLUMN above — verified against this database before relying on
-    # it (see module docstring).
+    # RENAME COLUMN above (verified against this database before relying on
+    # it, see module docstring).
 
     # ------------------------------------------------------------------
     # gate_policies.team_id -> group_id
@@ -290,7 +290,7 @@ def upgrade() -> None:
     )
     op.execute("ALTER INDEX ix_api_keys_team_id RENAME TO ix_api_keys_group_id")
     # ck_api_keys_scope_consistency references team_id in its body (not its
-    # name) and is a stored expression like the partial indexes above — it
+    # name) and is a stored expression like the partial indexes above, so it
     # updates automatically to group_id. ck_api_keys_scope_values (the CHECK
     # on the *string* 'org'|'team'|'project') is untouched: this PR does not
     # rename the scope value 'team' itself.

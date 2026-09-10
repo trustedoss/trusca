@@ -99,15 +99,15 @@ class APIKey(Base):
     The CHECK constraint ``ck_api_keys_scope_consistency`` enforces this at
     the DB layer so a malformed INSERT cannot smuggle a project-scoped key
     that secretly grants org-wide access. Its body references ``group_id``
-    automatically since migration 0088 renamed the column — PostgreSQL
+    automatically since migration 0088 renamed the column: PostgreSQL
     rewrites a stored CHECK expression on ``ALTER TABLE ... RENAME COLUMN``,
     it does not need to be recreated. The scope value ``'team'`` itself is
     untouched by that migration (group-hierarchy rollout PR 0-1 renames the
     ``team_id`` column only, not the ``scope`` vocabulary).
 
     ``team_id = synonym("group_id")`` below keeps every call site that reads
-    or writes ``.team_id`` — including class-level query expressions like
-    ``APIKey.team_id == x`` — working against the same underlying column.
+    or writes ``.team_id`` (including class-level query expressions like
+    ``APIKey.team_id == x``) working against the same underlying column.
     """
 
     __tablename__ = "api_keys"
@@ -146,7 +146,7 @@ class APIKey(Base):
         ForeignKey("groups.id", ondelete="CASCADE"),
         nullable=True,
     )
-    # Backward-compatible synonym — see class docstring (group-hierarchy
+    # Backward-compatible synonym, see class docstring (group-hierarchy
     # rollout PR 0-1 / 0088).
     team_id: Mapped[uuid.UUID | None] = synonym("group_id")
     project_id: Mapped[uuid.UUID | None] = mapped_column(

@@ -1,7 +1,7 @@
 # SPDX-License-Identifier: Apache-2.0
 # Copyright 2026 TRUSCA contributors
 """
-Group-hierarchy permission cascade — Phase 2 PR 2-A (definitions only).
+Group-hierarchy permission cascade (Phase 2 PR 2-A, definitions only).
 
 This module defines the pure functions and SQL predicates a permission
 cascade needs to resolve "what role does this actor have at this group" and
@@ -18,7 +18,7 @@ Vocabulary, matching the task's design note:
 - **Direct membership**: a row in ``memberships`` exactly as it is today.
 - **Effective role at group G**: walk from G itself up to the root,
   ancestor by ancestor, and take the role of the FIRST direct membership
-  found. The nearest ancestor wins — including a *demotion*: a
+  found. The nearest ancestor wins, including a *demotion*: a
   ``group_admin`` at a parent does not survive at a child that has its own,
   lower-role, direct membership. Sibling branches are never consulted; a
   membership at group X says nothing about a sibling of X, however deep.
@@ -31,10 +31,10 @@ Vocabulary, matching the task's design note:
 Why the accessible set is computed as a query-time predicate, not a cached
 list of ids: caching an expanded id list means invalidating that cache
 correctly on every membership or hierarchy change (a demotion three levels
-up, a reparent, a group deleted out from under a cached entry) — exactly the
+up, a reparent, a group deleted out from under a cached entry), exactly the
 kind of cache-invalidation bug class this design avoids by construction.
 :func:`subtree_scope_filter` re-derives the accessible set from
-``direct_group_ids`` (which the caller already has — it is the set of
+``direct_group_ids`` (which the caller already has; it is the set of
 groups the actor holds a ``memberships`` row in, no caching problem there
 because it changes only when the actor's own memberships change) on every
 call, using an index-backed SQL predicate instead of an expanded id list.
@@ -83,7 +83,7 @@ def subtree_roots(direct_group_ids: Sequence[uuid.UUID]) -> Sequence[uuid.UUID]:
     """Return *direct_group_ids* unchanged, regardless of the cascade flag.
 
     The name suggests this expands direct memberships into subtree roots or
-    resolves them into some canonical form. It deliberately does neither —
+    resolves them into some canonical form. It deliberately does neither:
     this function is pure identity, on or off. Read that twice, because it
     is the one surprising thing in this module: turning
     :func:`core.config.group_cascade_enabled` ON does not change what this
@@ -91,7 +91,7 @@ def subtree_roots(direct_group_ids: Sequence[uuid.UUID]) -> Sequence[uuid.UUID]:
 
     "Expand a set of direct group ids into the subtree they cover" is real
     work this design needs, and it happens in :func:`subtree_scope_filter`
-    below — as a SQL predicate evaluated at query time, not as a Python-side
+    below, as a SQL predicate evaluated at query time, not as a Python-side
     transformation of an id list. That split is the design's central
     decision: the moment a caller materializes "all ids in the accessible
     set" as a concrete list (in Python, in a cache, in a session claim), that
@@ -104,13 +104,13 @@ def subtree_roots(direct_group_ids: Sequence[uuid.UUID]) -> Sequence[uuid.UUID]:
 
     So what does this function do, if not that? It exists as the named seam
     a caller reaches for when it wants "the roots of my accessible subtrees"
-    as a value rather than as a predicate — for example, to log which groups
+    as a value rather than as a predicate, for example, to log which groups
     an actor's access is rooted at, or to pass into a future function that
     needs concrete ids rather than a filter. Today, with the cascade
     unwired, that value is exactly the direct membership ids, so identity is
     the correct answer in both flag states. If a later phase ever gives this
     function real expansion work to do, that is a deliberate, reviewed
-    change to this docstring and this function — not a change hidden behind
+    change to this docstring and this function, not a change hidden behind
     the flag it does not currently consult.
     """
     return direct_group_ids
@@ -121,14 +121,14 @@ def subtree_scope_filter(direct_group_ids: Sequence[uuid.UUID]) -> ColumnElement
 
     Mirrors ``core.authz.team_scope_filter``'s shape (a boolean expression
     to drop into ``.where(...)``) but is scoped to ``Group.id`` rather than
-    ``Project.team_id`` — callers reach a specific model's rows through
+    ``Project.team_id``, callers reach a specific model's rows through
     :func:`group_scoped_subquery_predicate` / :func:`project_subtree_predicate`
     below, both of which delegate here for the actual group-membership test.
 
     Contract:
 
     - empty ``direct_group_ids`` -> :func:`sqlalchemy.false` (explicit,
-      matching ``team_scope_filter``'s empty-membership case — not relying
+      matching ``team_scope_filter``'s empty-membership case, not relying
       on ``IN ()`` empty-set behaviour).
     - :func:`core.config.group_cascade_enabled` OFF -> ``Group.id IN
       (direct_group_ids)`` and nothing else. This is exactly
@@ -136,7 +136,7 @@ def subtree_scope_filter(direct_group_ids: Sequence[uuid.UUID]) -> ColumnElement
       off must reproduce today's flat behaviour bit-for-bit.
     - ON -> ``Group.id IN (direct_group_ids) OR Group.path && ARRAY[direct_group_ids]``.
       The ``IN`` half catches a direct membership group itself (whose own
-      ``path`` does not contain its own id — see the ``Group`` model
+      ``path`` does not contain its own id, see the ``Group`` model
       docstring's ``ck_groups_not_self_ancestor`` note); the ``&&`` half
       catches every descendant, in one indexed lookup, because a
       descendant's ``path`` contains every one of its ancestors and ``&&``
@@ -148,11 +148,11 @@ def subtree_scope_filter(direct_group_ids: Sequence[uuid.UUID]) -> ColumnElement
     planner has a reason to prefer an index, shows a ``Bitmap Index Scan`` /
     ``Index Scan`` on ``ix_groups_path_gin`` for the ``&&`` half and a
     ``Bitmap Index Scan`` on the primary key for the ``IN`` half, combined
-    under a ``BitmapOr`` — no ``Seq Scan on groups`` in that plan. See this
+    under a ``BitmapOr``, no ``Seq Scan on groups`` in that plan. See this
     PR's test-report for the exact captured plan; if a future change to this
     predicate's shape turns that into a sequential scan, the fix is a
     ``UNION ALL`` of the two branches as separate subqueries rather than the
-    single ``OR`` here (per the task's own note — this codebase has hit a
+    single ``OR`` here (per the task's own note, this codebase has hit a
     GIN-index-shaped operator silently falling back to a sequential scan
     before, see the ``Group`` model docstring's ``= ANY(path)`` warning).
     """
@@ -179,14 +179,14 @@ def group_scoped_subquery_predicate(
 
         group_id_column IN (SELECT groups.id FROM groups WHERE <subtree_scope_filter>)
 
-    i.e. a correlated-free ``IN (subquery)`` — the inner query is exactly
+    i.e. a correlated-free ``IN (subquery)``, the inner query is exactly
     ``subtree_scope_filter``'s predicate applied to the whole ``groups``
     table, so every caller of this helper gets the cascade's ON/OFF
     behaviour and its index usage for free without repeating the ``&&``
     predicate at each call site.
 
     *group_id_column* also accepts a NULLABLE FK (``APIKey.team_id``,
-    ``LicensePolicy.team_id`` — org-default rows carry no team). SQL's
+    ``LicensePolicy.team_id``, org-default rows carry no team). SQL's
     ``NULL IN (...)`` is ``NULL`` (falsy in a ``WHERE``), so a NULL-valued
     row is correctly excluded without a caller needing an explicit
     ``.is_not(None)`` guard first.
@@ -211,19 +211,19 @@ async def can_access_group(
     """Is *group_id* in the accessible set implied by *direct_group_ids*?
 
     One query: fetch *group_id*'s own ``id`` and ``path``, then decide in
-    Python. A non-existent ``group_id`` is ``False`` — turning that into a
+    Python. A non-existent ``group_id`` is ``False``, turning that into a
     404 (vs. a 403 for a real-but-inaccessible group) is the caller's job;
     this function only answers the access question, and answers it the same
     way (``False``) for "does not exist" and "not reachable" so a caller
     that wants existence-hiding gets it by doing nothing extra.
 
     With the cascade OFF this checks only "is *group_id* itself one of
-    *direct_group_ids*" — a promoted ancestor's ``path`` overlap is never
+    *direct_group_ids*", a promoted ancestor's ``path`` overlap is never
     consulted, matching today's flat behaviour.
 
     With the cascade ON, *group_id* is accessible if it IS a direct
     membership group, OR if one of its ancestors (any id in its own
-    ``path``) is a direct membership group — i.e. *group_id* sits inside
+    ``path``) is a direct membership group, i.e. *group_id* sits inside
     the subtree of something the actor directly belongs to.
     """
     row = (
@@ -246,7 +246,7 @@ def effective_role_at(
 ) -> str | None:
     """The role a caller with *direct_roles* holds, evaluated AT *group_id*.
 
-    *group_path* is *group_id*'s own ``path`` column — the ordered ancestor
+    *group_path* is *group_id*'s own ``path`` column, the ordered ancestor
     list from root down to (not including) *group_id* itself, exactly as
     the DB trigger derives it (0091). *direct_roles* maps a group id to the
     role of a direct membership row in that group (typically: every
@@ -256,17 +256,17 @@ def effective_role_at(
     itself is checked first, then its immediate parent, then its
     grandparent, ... up to the root last) and return the role of the first
     id found in *direct_roles*. ``None`` if none of them are direct
-    membership groups — the caller denies access on ``None``, it is not a
+    membership groups. The caller denies access on ``None``, it is not a
     "fall back to some default role" signal.
 
-    This one algorithm runs UNCONDITIONALLY — it does not itself branch on
+    This one algorithm runs UNCONDITIONALLY. It does not itself branch on
     :func:`core.config.group_cascade_enabled`. That is deliberate: turning
     the cascade on is meant to be a pure configuration change, not a switch
     between two different pieces of logic. With the cascade OFF, no caller
     populates *direct_roles* with anything beyond the actor's own direct
     memberships anyway (there is nothing upstream yet that would put an
     ancestor's role in that mapping speculatively), so the walk finds either
-    *group_id* itself or nothing — the same flat answer today's code gives,
+    *group_id* itself or nothing, the same flat answer today's code gives,
     reached by the same code path a cascade-enabled deployment uses. There
     is exactly one implementation of "what role applies here" in this
     codebase once PR 2-C wires this in, not two that have to be kept in
@@ -274,7 +274,7 @@ def effective_role_at(
 
     Nearest-ancestor-wins is exactly why a demotion at *group_id* itself (or
     at any of its ancestors, checked before an ancestor further up) beats a
-    promotion further up ``group_path`` — the walk returns on the FIRST
+    promotion further up ``group_path``, the walk returns on the FIRST
     match from the *group_id* end, so a closer, lower-role membership is
     found and returned before a farther, higher-role one is ever looked at.
     """
@@ -286,12 +286,12 @@ def effective_role_at(
 
 
 # ---------------------------------------------------------------------------
-# Subtree move / create — group-hierarchy Phase 5 PR 5-A
+# Subtree move / create (group-hierarchy Phase 5 PR 5-A)
 #
 # Everything below is the first code path that actually WRITES
 # ``parent_group_id`` after it has been created. Migrations 0090/0091
 # (Phase 1) built the schema, the trigger and ``verify_group_paths()``
-# specifically so this moment would have somewhere safe to land — see
+# specifically so this moment would have somewhere safe to land, see
 # 0091's docstring, "Why two triggers, not one gated trigger", for the
 # derivation this section depends on:
 #
@@ -300,13 +300,13 @@ def effective_role_at(
 #     ``path`` from its (new) parent.
 #   - Every descendant of the moved group keeps its OWN ``parent_group_id``
 #     unchanged (a descendant's parent is still its immediate parent, wherever
-#     that parent now lives) — only its ``path`` cache needs to shift to
+#     that parent now lives), only its ``path`` cache needs to shift to
 #     reflect the new ancestor chain above the moved group. That UPDATE names
 #     only ``path`` in its SET list, so it does not fire either trigger (the
 #     INSERT trigger only fires on INSERT; the UPDATE trigger is scoped to
 #     ``UPDATE OF parent_group_id`` and gated by ``WHEN (NEW.parent_group_id
 #     IS DISTINCT FROM OLD.parent_group_id)``, neither of which this
-#     statement satisfies) — see 0091's docstring for why an unconditional
+#     statement satisfies), see 0091's docstring for why an unconditional
 #     trigger would have clobbered exactly this write.
 # ---------------------------------------------------------------------------
 
@@ -318,10 +318,10 @@ class GroupHierarchyError(Exception):
 
 
 class GroupHierarchyNotFound(GroupHierarchyError):
-    """404 — the moved group or the requested new parent does not exist.
+    """404: the moved group or the requested new parent does not exist.
 
     Same status for both cases (no distinguishing message field beyond the
-    detail text) — this is an admin-only, super_admin-gated surface (unlike
+    detail text), this is an admin-only, super_admin-gated surface (unlike
     ``group_directory_service``'s existence-hide, which defends against a
     non-member PROBING for a group's existence), so there is no adversarial
     reason to collapse the two further; 404 here is simply "the id you gave
@@ -333,13 +333,13 @@ class GroupHierarchyNotFound(GroupHierarchyError):
 
 
 class GroupCycleDetected(GroupHierarchyError):
-    """409 — moving *group_id* under *new_parent_id* would make a group its
+    """409: moving *group_id* under *new_parent_id* would make a group its
     own ancestor (including the degenerate case ``new_parent_id ==
     group_id``).
 
     ``ck_groups_not_self_ancestor`` (migration 0090) is the DB-level
-    backstop for this — a bug here would surface as a raw
-    ``IntegrityError``/500, not silent corruption — but this check exists so
+    backstop for this (a bug here would surface as a raw
+    ``IntegrityError``/500, not silent corruption), but this check exists so
     the caller gets a legible, RFC 7807 ``cycle_detected`` extension instead
     of an opaque constraint-violation 500.
     """
@@ -353,7 +353,7 @@ class GroupCycleDetected(GroupHierarchyError):
 
 
 class GroupCrossOrganizationNotAllowed(GroupHierarchyError):
-    """422 — *group_id* and *new_parent_id* belong to different organizations.
+    """422: *group_id* and *new_parent_id* belong to different organizations.
 
     The tree is organization-bounded end to end today: every group carries
     its own ``organization_id`` (not derived from its parent at read time),
@@ -366,7 +366,7 @@ class GroupCrossOrganizationNotAllowed(GroupHierarchyError):
     tenant's projects, policies and memberships (unaffected by the move, so
     now stale relative to their new ancestor chain) to another tenant's
     org-scoped catalogs the moment a policy lookup or a cascade check walks
-    the new ``path`` — refusing outright is safer than trying to define what
+    the new ``path``, refusing outright is safer than trying to define what
     "moved cross-org" should mean for those axes. A future PR that wants
     cross-org moves needs its own design for what happens to org-scoped data
     the subtree carries, not a silent default here.
@@ -381,7 +381,7 @@ class GroupCrossOrganizationNotAllowed(GroupHierarchyError):
 
 
 class GroupSlugConflict(GroupHierarchyError):
-    """409 — a sibling of the target parent already uses this slug.
+    """409: a sibling of the target parent already uses this slug.
 
     ``uq_groups_parent_slug`` (migration 0090) is the DB-level backstop;
     this exists so a slug collision surfaces as a legible 409 rather than a
@@ -403,13 +403,13 @@ async def _parent_group_still_exists(session: AsyncSession, parent_group_id: uui
     concurrent parent deletion does not actually surface as an FK violation
     here. ``groups_derive_path()`` (migration 0091, ``BEFORE INSERT``) looks
     up the parent's ``path`` to compute the child's, and a vanished parent
-    makes that lookup return no row — so ``NEW.path`` comes out NULL, and
+    makes that lookup return no row, so ``NEW.path`` comes out NULL, and
     Postgres rejects the row on the ``path NOT NULL`` constraint (23502)
     *before* the INSERT's own FK check ever runs, not on the FK constraint
     at all. Reproduced live: this is the actual error a concurrent-deletion
     race raises, not a hypothetical. A SQLSTATE-based classifier would have
     to hardcode that one trigger's specific failure mode instead of asking
-    the question this function actually needs answered — re-querying
+    the question this function actually needs answered, re-querying
     *parent_group_id* directly answers it regardless of which constraint
     Postgres happened to reject the row on.
     """
@@ -419,7 +419,7 @@ async def _parent_group_still_exists(session: AsyncSession, parent_group_id: uui
 
 
 def _bind_audit_group(group_id: uuid.UUID) -> None:
-    """Bind ``team_id`` (the audit listener's key for ``groups.id`` — see
+    """Bind ``team_id`` (the audit listener's key for ``groups.id``, see
     ``core.audit``'s ``AuditLog.group_id`` note) into the request-scoped
     audit context before a mutating commit, mirroring
     ``admin_team_service._bind_audit_team``. Both modules keep their own
@@ -436,16 +436,16 @@ def _bind_audit_group(group_id: uuid.UUID) -> None:
 # above for why this is a ``path``-only UPDATE that deliberately never
 # touches ``parent_group_id``).
 #
-# ``d.path @> ARRAY[:moved]`` (GIN-index-backed — index ``ix_groups_path_gin``,
+# ``d.path @> ARRAY[:moved]`` (GIN-index-backed, index ``ix_groups_path_gin``,
 # migration 0090) selects every strict descendant of the moved group; the
 # moved row itself never matches (a group's own ``path`` never contains its
-# own id — ``ck_groups_not_self_ancestor``), so this UPDATE never touches the
+# own id, ``ck_groups_not_self_ancestor``), so this UPDATE never touches the
 # row the ``parent_group_id`` UPDATE above it already re-parented.
 #
 # The SET expression replaces the OLD prefix of each descendant's path (every
 # element up to and including the moved group's own id) with the moved
 # group's NEW full path (root..moved), then keeps everything AFTER the moved
-# group's id unchanged — i.e. "splice in the new ancestor chain above the
+# group's id unchanged, i.e. "splice in the new ancestor chain above the
 # move point, keep the chain below it." ``array_position(d.path, :moved)``
 # finds where the moved group sits in each descendant's path; the slice
 # ``d.path[pos+1 : array_length(d.path, 1)]`` is empty (not an error) for a
@@ -454,11 +454,11 @@ def _bind_audit_group(group_id: uuid.UUID) -> None:
 # Bind param type is set explicitly to ``uuid`` (:moved) rather than an
 # inline ``::uuid`` cast in the SQL text: SQLAlchemy's ``text()`` bind-param
 # regex (``(?<![:\w\\]):(\w+)(?!:)``) requires the character AFTER the
-# parameter name not be a colon, and ``:moved::uuid`` fails that — the
+# parameter name not be a colon, and ``:moved::uuid`` fails that, the
 # greedy match backtracks to ``:move`` (dropping the final ``d``), leaving a
 # literal ``d::uuid`` in the compiled SQL, which is a syntax error at the
 # database. Measured on this database (PostgreSQL 17.2, SQLAlchemy 2.0.36):
-# confirmed by inspecting the compiled ``TextClause._bindparams`` directly —
+# confirmed by inspecting the compiled ``TextClause._bindparams`` directly;
 # see this PR's own dev notes for the reproduction. Binding the type on the
 # ``bindparam()`` instead removes every inline ``::uuid`` cast from the SQL
 # text, so this failure mode cannot recur here regardless of what the
@@ -478,24 +478,24 @@ async def _lock_groups_in_id_order(
     session: AsyncSession, group_ids: Sequence[uuid.UUID]
 ) -> dict[uuid.UUID, Group]:
     """``SELECT ... FOR UPDATE`` every id in *group_ids*, ONE ROW PER ROUND
-    TRIP, in ascending-id order — never a single ``WHERE id IN (...)``.
+    TRIP, in ascending-id order, never a single ``WHERE id IN (...)``.
 
     Why not one query: Postgres's ``FOR UPDATE`` locks rows as the underlying
     scan visits them, and an ``IN (...)`` list combined with ``ORDER BY`` does
-    not guarantee the lock is acquired in that order — only the OUTPUT order
+    not guarantee the lock is acquired in that order, only the OUTPUT order
     is guaranteed, and a bitmap/index scan is free to visit the matching heap
     pages in physical order regardless of the ids' numeric order. Two
     concurrent ``reparent`` calls trying to swap roles (A becomes B's parent;
     B becomes A's parent, the same pair of rows either way) would then race
     to lock the SAME TWO ROWS in whatever order each transaction's own scan
-    happened to pick — a classic deadlock, not a clean serialise.
+    happened to pick, a classic deadlock, not a clean serialise.
 
     Issuing one ``SELECT ... WHERE id = :id FOR UPDATE`` per id, in id-sorted
     order, fixes the lock ACQUISITION order at the application level: for any
     two group ids X < Y, every caller that needs both always requests X
     first. Two calls that only ever pass this function the SAME set of ids
     (regardless of which one is "moved" and which is "new parent" in each
-    call) then contend on the FIRST lock only — whichever wins proceeds to
+    call) then contend on the FIRST lock only, whichever wins proceeds to
     completion and commits or raises; the other blocks until it does, then
     re-reads a fresh, post-commit row. See this PR's concurrency test
     (``test_group_reparent_concurrency.py``) for the two-transaction swap
@@ -503,13 +503,13 @@ async def _lock_groups_in_id_order(
 
     This function's own ordering guarantee does NOT, by itself, cover a
     caller that locks a small id set here and separately mutates a LARGER,
-    not-fully-pre-locked set afterward (security review, Phase 5 PR 5-A) —
+    not-fully-pre-locked set afterward (security review, Phase 5 PR 5-A),
     see :func:`reparent`'s own docstring for why it passes this function the
     FULL set of ids a transaction will touch, descendants included, rather
     than just *group_id* and *new_parent_id*.
 
     A missing id is simply absent from the returned dict (no row = nothing
-    to lock) — the caller turns that into ``GroupHierarchyNotFound``.
+    to lock), the caller turns that into ``GroupHierarchyNotFound``.
     """
     ordered_ids = sorted(set(group_ids))
     locked: dict[uuid.UUID, Group] = {}
@@ -531,27 +531,27 @@ async def reparent(
 ) -> Group:
     """Move *group_id* (and its whole subtree) to sit under *new_parent_id*.
 
-    ``new_parent_id`` may be ``None`` — moves *group_id* to the root of its
+    ``new_parent_id`` may be ``None``: moves *group_id* to the root of its
     own organization.
 
     One transaction, four steps (see the section banner above for the
     trigger mechanics this depends on):
 
       1. Lock *group_id*, *new_parent_id*, AND every current descendant of
-         *group_id* — all in one ascending-id-ordered pass (see
+         *group_id*, all in one ascending-id-ordered pass (see
          :func:`_lock_groups_in_id_order`). The descendant ids come from an
          unlocked read taken first (``path @> ARRAY[group_id]``); a group
          that stops being a descendant between that read and the lock pass
-         is locked anyway (harmless — locking a row this call turns out not
+         is locked anyway (harmless, locking a row this call turns out not
          to need is not a correctness problem, only a slightly wider lock
          set). Locking the descendants explicitly, in the SAME
          globally-ordered pass as *group_id*/*new_parent_id*, is what makes
          step 4's bulk descendant UPDATE below touch ONLY rows this
-         transaction already holds — that bulk UPDATE's own implicit
+         transaction already holds, that bulk UPDATE's own implicit
          row-locking (in whatever order Postgres's GIN scan visits matching
          rows, not id order) is exactly what let a concurrent reparent of
          one of those descendants deadlock against this call before this
-         fix (security review, Phase 5 PR 5-A — reproduced live: moving A
+         fix (security review, Phase 5 PR 5-A, reproduced live: moving A
          to B while concurrently moving A's grandchild Z to A, with
          Z.id < A.id, deadlocked when only {A, B} were pre-locked). A
          narrower residual window remains -- a concurrent reparent that
@@ -564,36 +564,36 @@ async def reparent(
          deep-subtree-move test both pin the cases this fix closes.
       2. Validate against the LOCKED, up-to-date rows: existence, the
          organization boundary (:class:`GroupCrossOrganizationNotAllowed`),
-         and the cycle check (:class:`GroupCycleDetected`) — *group_id*
+         and the cycle check (:class:`GroupCycleDetected`), *group_id*
          would become its own ancestor if *new_parent_id* IS *group_id*, or
          if *group_id* already appears in *new_parent_id*'s own ``path``
-         (i.e. *new_parent_id* is itself a descendant of *group_id* — moving
+         (i.e. *new_parent_id* is itself a descendant of *group_id*, moving
          a group under its own descendant).
-      3. UPDATE *group_id*'s row's ``parent_group_id`` — fires the DB
+      3. UPDATE *group_id*'s row's ``parent_group_id``, fires the DB
          trigger, which re-derives *group_id*'s own ``path`` from its new
          parent.
       4. In the SAME transaction, run the one-statement descendant ``path``
-         propagation (:data:`_DESCENDANT_PATH_PROPAGATION_SQL`) — every
+         propagation (:data:`_DESCENDANT_PATH_PROPAGATION_SQL`), every
          group in *group_id*'s OLD subtree gets its ``path`` spliced to
          reflect the new ancestor chain above the move point, without
          touching any descendant's own ``parent_group_id``.
 
     A move to *group_id*'s current parent (no-op, including ``None`` ->
     ``None`` for an already-root group) short-circuits after step 2 and
-    returns the group unchanged — no UPDATE, no audit row, no trigger fire.
+    returns the group unchanged: no UPDATE, no audit row, no trigger fire.
 
     Concurrency-sensitive downstream effects that read the tree AFTER this
     commits, without this function doing anything special for them:
 
       - ``core.authz.can_access_group`` / ``services.group_service.
         subtree_scope_filter`` (Phase 2) re-derive the accessible set from
-        ``path`` on every call — no cache to invalidate, so an ancestor's
+        ``path`` on every call, no cache to invalidate, so an ancestor's
         admin loses (and the new ancestor's admin gains) access to
         *group_id*'s subtree the instant this commits, with
         ``GROUP_CASCADE_ENABLED=true``.
       - ``services.license_policy_service.get_effective_policy`` /
         ``services.gate_policy_service`` (Phase 3) walk ``path`` fresh on
-        every resolution too — a move under a different-policy ancestor
+        every resolution too, a move under a different-policy ancestor
         changes what applies to every project in the subtree immediately,
         with no explicit recompute step.
 
@@ -603,7 +603,7 @@ async def reparent(
     is bound (:func:`_bind_audit_group`, called before the mutation per
     ``core/audit.py``'s contract). The descendant ``path`` propagation
     (step 4) is a Core bulk UPDATE, not an ORM row mutation, so it produces
-    NO per-descendant audit rows — deliberately: ``path`` is a derived
+    NO per-descendant audit rows, deliberately: ``path`` is a derived
     cache, not a fact an operator changed, and one audit row naming the
     move (*group_id* -> *new_parent_id*) already says what happened; an
     audit trail entry per incidentally-repathed descendant would be noise
@@ -691,7 +691,7 @@ async def create_subgroup(
 ) -> Group:
     """Create a new group directly under *parent_group_id*.
 
-    Inherits the parent's ``organization_id`` unconditionally — a child
+    Inherits the parent's ``organization_id`` unconditionally, a child
     cannot belong to a different organization than its parent, for the same
     tenant-isolation reason :class:`GroupCrossOrganizationNotAllowed` refuses
     a cross-org :func:`reparent`. There is no "create with an explicit
@@ -703,13 +703,13 @@ async def create_subgroup(
     a legible 409 (:class:`GroupSlugConflict`) rather than a raw
     ``IntegrityError``, and still catches the constraint at commit time as a
     safety net against a concurrent sibling insert racing the same slug in
-    the gap between the pre-check and the commit — the DB constraint, not
+    the gap between the pre-check and the commit, the DB constraint, not
     the pre-check, is what actually makes this TOCTOU-safe.
 
     The other pre-check, *parent_group_id* existing, has the same gap: the
     parent can be deleted between this function's own SELECT and its
     commit. There, the failing INSERT's error at commit is NOT a
-    foreign-key violation — ``groups_derive_path()``'s ``BEFORE INSERT``
+    foreign-key violation, ``groups_derive_path()``'s ``BEFORE INSERT``
     trigger (migration 0091) tries to look up the vanished parent's
     ``path`` first and gets no row, so Postgres rejects the row for a NULL
     ``path`` (23502) before the FK constraint is ever reached. On any

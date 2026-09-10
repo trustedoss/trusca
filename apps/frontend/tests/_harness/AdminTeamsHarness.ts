@@ -22,14 +22,14 @@
  *         carries ``data-group-name="<name>"`` (the harness reads this
  *         attribute, never the option's visible/translated text). The
  *         non-root options MUST be filtered to exactly the groups that (a)
- *         are NOT in the open group's own subtree (itself + descendants —
+ *         are NOT in the open group's own subtree (itself + descendants;
  *         offering one would let the UI propose a cycle the backend only
  *         rejects after a round trip) AND (b) share the open group's
  *         ``organization_id`` (``AdminTeamDetail.organization_id`` /
  *         ``AdminTeamListItem.organization_id``, both added alongside this
- *         PR — reparent refuses a cross-organization move server-side
+ *         PR). Reparent refuses a cross-organization move server-side
  *         regardless, but the picker should not offer a target that always
- *         422s). Both filters apply together, not one or the other.
+ *         422s. Both filters apply together, not one or the other.
  *       - ``admin-team-move-save``: submits the reparent. On success emits
  *         the existing ``admin-toast`` success pattern with
  *         ``data-toast-key="moved"`` (see ``AdminTeamSuccessKey``).

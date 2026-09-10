@@ -327,7 +327,7 @@ async def cancel_scan_for_actor(
     ).scalar_one_or_none()
     # Low #3 (policy note, preserved from the removed `_actor_can_access_team`):
     # scan cancellation is intentionally *membership*-gated (any team member,
-    # i.e. developer) — NOT team_admin-gated like project writes
+    # i.e. developer), NOT team_admin-gated like project writes
     # (`project_service._can_write_project`). `can_access_group` is the
     # membership/cascade check, not a role check, so that policy is unchanged.
     #

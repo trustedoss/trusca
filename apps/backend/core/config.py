@@ -4027,7 +4027,7 @@ def validate_demo_sandbox_limits() -> None:
 
 
 # ---------------------------------------------------------------------------
-# Group-hierarchy rollout, Phase 2 PR 2-A — cascade feature flag
+# Group-hierarchy rollout, Phase 2 PR 2-A: cascade feature flag
 # ---------------------------------------------------------------------------
 
 

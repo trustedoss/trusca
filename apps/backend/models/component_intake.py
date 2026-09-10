@@ -58,7 +58,7 @@ class ComponentIntakeRequest(Base):
     # Denormalised from the project so the review queue can be scoped without
     # a join on every poll, the same way the transition approvals carry it.
     # Target table renamed teams -> groups by migration 0088 (group-hierarchy
-    # rollout PR 0-1) — see models/component_approval.py for why this FK
+    # rollout PR 0-1), see models/component_approval.py for why this FK
     # target must track the rename even though the column name itself is out
     # of this PR's scope.
     team_id: Mapped[uuid.UUID] = mapped_column(

@@ -1,42 +1,42 @@
 # SPDX-License-Identifier: Apache-2.0
 # Copyright 2026 TRUSCA contributors
 """
-Group-hierarchy permission cascade — Phase 2 PR 2-D.
+Group-hierarchy permission cascade, Phase 2 PR 2-D.
 
 PR 2-C wired the cascade into every *fan-out* read (``core.authz.
 team_scope_filter``) and into the seven local single-resource
 reimplementations it replaced with ``core.authz.can_access_group``. It left
-``core.authz.can_access_team`` / ``assert_team_access`` — the single-resource
-gate ~22 other service modules use — deliberately flat, because converting
+``core.authz.can_access_team`` / ``assert_team_access`` (the single-resource
+gate ~22 other service modules use) deliberately flat, because converting
 those meant every caller becoming ``async`` + session-carrying. That asymmetry
 was a real, reachable defect once the flag was on: a fan-out list (Overview's
 sibling tabs, the project list, a project's Vulnerabilities/Licenses tab list)
 would show an item reached only through an ancestor group's membership, and
-opening that same item (the single-resource gate) would 403 — the exact High
+opening that same item (the single-resource gate) would 403, the exact High
 finding the PR 2-C security review raised.
 
 PR 2-D closed the asymmetry: ``assert_team_access`` is now ``async``, takes a
-session, and delegates to ``can_access_group`` — the SAME cascade-aware
+session, and delegates to ``can_access_group``, the SAME cascade-aware
 primitive the fan-out lists already used. This file is PR 2-D's own
 verification that the gap is actually closed, on three domains:
 
-  1. Project — ``services.project_service.list_projects`` (fan-out) against
+  1. Project, ``services.project_service.list_projects`` (fan-out) against
      ``services.project_service.get_project`` (single-resource).
-  2. Vulnerability — ``services.vulnerability_service.list_project_vulnerabilities``
+  2. Vulnerability, ``services.vulnerability_service.list_project_vulnerabilities``
      against ``get_vulnerability_detail``.
-  3. License — ``services.license_service.list_project_licenses`` against
+  3. License, ``services.license_service.list_project_licenses`` against
      ``get_license_finding_detail``.
 
 For (2) and (3) the "list" is itself a single-resource-gated call (one
 project's tab), so the property under test is literally the task's own
 phrasing: every id the list returns must also open through the matching
-single-resource read. For (1) the list is the fan-out surface proper — the
+single-resource read. For (1) the list is the fan-out surface proper, the
 same shape as the Overview-tab bug report that started this PR.
 
 The second half of this file reproduces PR 2-A / PR 2-C's four destructive
 sibling / inherit / no-upward / deep-inherit combos directly against two of
 the surfaces PR 2-D newly made cascade-aware (``get_project`` and
-``get_vulnerability_detail``) — the same tree, the same vocabulary, on the
+``get_vulnerability_detail``), the same tree, the same vocabulary, on the
 gate this PR actually changed.
 """
 
@@ -94,7 +94,7 @@ def cascade_on(monkeypatch: pytest.MonkeyPatch) -> None:
 # Tree: P (root) -> C (child of P) -> G (grandchild of P via C)
 #              \-> S (sibling of C, also a child of P)
 #
-# One project per group — mirrors PR 2-A / PR 2-C's tree shape/vocabulary so
+# One project per group, mirrors PR 2-A / PR 2-C's tree shape/vocabulary so
 # the same combo names carry across every file in this series.
 # ---------------------------------------------------------------------------
 
@@ -148,7 +148,7 @@ async def fixture(db_session: AsyncSession) -> _Fixture:
 
 
 # ---------------------------------------------------------------------------
-# Finding seed helpers — a minimal succeeded scan with one finding, so
+# Finding seed helpers: a minimal succeeded scan with one finding, so
 # `resolve_snapshot_scan_id` (which every list/detail pair below anchors on)
 # has something to resolve.
 # ---------------------------------------------------------------------------
@@ -251,11 +251,11 @@ async def _seed_license_finding(
 
 
 # ---------------------------------------------------------------------------
-# List-detail parity guard (cascade ON) — three domains.
+# List-detail parity guard (cascade ON), three domains.
 #
 # Actor is a direct member of P ONLY. project_c (P's child) is reachable for
 # READ solely through the cascade. Each domain's list against project_c must
-# succeed (proving the fan-out / project-scoped list is cascade-aware — that
+# succeed (proving the fan-out / project-scoped list is cascade-aware, that
 # much PR 2-C already guaranteed), AND every id the list returns must also
 # open through the matching single-resource detail read (the property PR 2-D
 # adds).
@@ -269,7 +269,7 @@ async def test_project_list_detail_parity(
 
     This is the literal shape of the originally reported bug: an ancestor
     (`p`) member sees `project_c` / `project_g` in the portfolio list, and
-    must be able to open each one — not 403 on some of them.
+    must be able to open each one, not 403 on some of them.
     """
     from services.project_service import get_project, list_projects
 
@@ -331,7 +331,7 @@ async def test_license_list_detail_parity(
     page = await list_project_licenses(db_session, project_id=fixture.project_c, actor=actor)
     assert page.total == 1
     # `id` in the raw list-item dict is whatever the SQL layer produced for
-    # `sample_finding_id` (a string, not a `uuid.UUID` instance) — normalize
+    # `sample_finding_id` (a string, not a `uuid.UUID` instance), normalize
     # before comparing/round-tripping through `get_license_finding_detail`,
     # which takes a real `uuid.UUID`.
     returned_ids = {uuid.UUID(str(item["id"])) for item in page.items}
@@ -345,10 +345,10 @@ async def test_license_list_detail_parity(
 
 
 # ---------------------------------------------------------------------------
-# Destructive combo reproduction — surfaces PR 2-D newly made cascade-aware.
+# Destructive combo reproduction, surfaces PR 2-D newly made cascade-aware.
 #
 # Surface A: services.project_service.get_project (single-resource gate via
-# assert_team_access — flat before this PR).
+# assert_team_access, flat before this PR).
 # Surface B: services.vulnerability_service.get_vulnerability_detail (same).
 # ---------------------------------------------------------------------------
 
@@ -374,7 +374,7 @@ async def test_get_project_cascade_matrix(
     target_project_attr: str,
     cascade_on_access: bool,
 ) -> None:
-    """`get_project` — was flat regardless of the flag before PR 2-D."""
+    """`get_project`, was flat regardless of the flag before PR 2-D."""
     from services.project_service import ProjectForbidden, get_project
 
     user = await make_user(db_session)
@@ -407,7 +407,7 @@ async def test_get_vulnerability_detail_cascade_matrix(
     target_project_attr: str,
     cascade_on_access: bool,
 ) -> None:
-    """`get_vulnerability_detail` — resolves finding -> scan -> project ->
+    """`get_vulnerability_detail`, resolves finding -> scan -> project ->
     team, then the same `assert_team_access` gate `get_project` uses."""
     from services.vulnerability_service import VulnerabilityNotFound, get_vulnerability_detail
 

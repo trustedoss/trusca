@@ -1,7 +1,7 @@
 # SPDX-License-Identifier: Apache-2.0
 # Copyright 2026 TRUSCA contributors
 """
-Group read API — group-hierarchy Phase 4 PR 4-A.
+Group read API, group-hierarchy Phase 4 PR 4-A.
 
 Covers ``services.group_directory_service`` end to end against the real
 Postgres (CLAUDE.md core rule #1): enumeration (existence-hide + list
@@ -75,7 +75,7 @@ class _TeamRef:
     """Minimal stand-in carrying only the ``.id`` `make_project` /
     `make_membership` read.
 
-    Avoids re-fetching a full `Team`/`Group` ORM row per call in this file —
+    Avoids re-fetching a full `Team`/`Group` ORM row per call in this file,
     every helper here already has the id from `_make_tree`.
     """
 
@@ -101,7 +101,7 @@ async def _make_tree(session: AsyncSession) -> _Tree:
 
 
 # ---------------------------------------------------------------------------
-# Enumeration — existence-hide on detail, exclusion on list
+# Enumeration: existence-hide on detail, exclusion on list
 # ---------------------------------------------------------------------------
 
 
@@ -118,7 +118,7 @@ async def test_detail_404s_for_nonexistent_group(
 async def test_detail_404s_uniformly_for_inaccessible_existing_group(
     db_session: AsyncSession, cascade_off: None
 ) -> None:
-    """A real group the actor has no membership in 404s — same exception type
+    """A real group the actor has no membership in 404s, same exception type
     (and, at the router, the same body) as a nonexistent id."""
     tree = await _make_tree(db_session)
     user = await make_user(db_session)
@@ -129,7 +129,7 @@ async def test_detail_404s_uniformly_for_inaccessible_existing_group(
 
 
 async def test_list_omits_inaccessible_groups(db_session: AsyncSession, cascade_off: None) -> None:
-    """A group outside the accessible set never appears in the list page —
+    """A group outside the accessible set never appears in the list page,
     not even as a placeholder row."""
     from services.group_directory_service import list_groups
 
@@ -247,13 +247,13 @@ async def test_search_still_excludes_inaccessible_groups(
 
 
 # ---------------------------------------------------------------------------
-# Breadcrumb — narrow response shape
+# Breadcrumb: narrow response shape
 # ---------------------------------------------------------------------------
 
 
 def test_breadcrumb_entry_field_set_is_exactly_id_name_slug() -> None:
     """Schema-level enforcement: adding a field here is a deliberate,
-    reviewed change — not something a call site can smuggle in."""
+    reviewed change, not something a call site can smuggle in."""
     assert set(GroupBreadcrumbEntry.model_fields) == {"id", "name", "slug"}
 
 
@@ -267,7 +267,7 @@ async def test_detail_ancestors_carry_no_extra_fields_on_the_wire(
 
     detail = await get_group_detail(db_session, actor=actor, group_id=tree.g)
     payload = detail.model_dump(mode="json")
-    assert len(payload["ancestors"]) == 2  # [P, C] — not including G itself
+    assert len(payload["ancestors"]) == 2  # [P, C], not including G itself
     for entry in payload["ancestors"]:
         assert set(entry.keys()) == {"id", "name", "slug"}
     assert payload["ancestors"][0]["id"] == str(tree.p)
@@ -282,7 +282,7 @@ async def test_ancestor_breadcrumb_names_an_inaccessible_ancestor_but_its_own_de
     enumeration primitive.
 
     The actor's only membership is C, not its parent P. C's own detail is
-    reachable (direct membership) and its breadcrumb names P — an ancestor
+    reachable (direct membership) and its breadcrumb names P, an ancestor
     the actor cannot otherwise reach at all (cascade never grants upward
     access; this holds with the cascade off here and would hold on too).
     P's own detail still 404s for this actor: seeing P's name in a
@@ -304,7 +304,7 @@ async def test_ancestor_breadcrumb_names_an_inaccessible_ancestor_but_its_own_de
 
 
 # ---------------------------------------------------------------------------
-# Cascade on/off — accessible-set parity for list AND detail
+# Cascade on/off: accessible-set parity for list AND detail
 # ---------------------------------------------------------------------------
 
 
@@ -321,13 +321,13 @@ async def test_cascade_on_widens_both_list_and_detail_to_the_subtree(
     # Detail: C and G (descendants of P) are reachable purely through the cascade.
     for gid in (tree.p, tree.c, tree.g):
         await get_group_detail(db_session, actor=actor, group_id=gid)
-    # A group in a completely unrelated tree must stay unreachable — the
+    # A group in a completely unrelated tree must stay unreachable, the
     # cascade widens to P's own subtree, not to every group in the org.
     other_root_tree = await _make_tree(db_session)
     with pytest.raises(GroupNotFound):
         await get_group_detail(db_session, actor=actor, group_id=other_root_tree.c)
 
-    # List (drill-down): P's direct children are C and S — both accessible
+    # List (drill-down): P's direct children are C and S, both accessible
     # purely through the cascade (the actor's only direct membership is P).
     page = await list_groups(db_session, actor=actor, q=None, parent_id=tree.p)
     child_ids = {item.id for item in page.items}
@@ -361,7 +361,7 @@ async def test_cascade_off_restricts_both_list_and_detail_to_direct_membership(
 
 
 # ---------------------------------------------------------------------------
-# Members — direct vs inherited, with source attribution
+# Members: direct vs inherited, with source attribution
 # ---------------------------------------------------------------------------
 
 
@@ -401,7 +401,7 @@ async def test_members_direct_and_inherited_split_with_nearest_ancestor_wins(
 async def test_members_inherited_is_empty_when_cascade_off(
     db_session: AsyncSession, cascade_off: None
 ) -> None:
-    """No ancestor membership confers any reach when the cascade is off —
+    """No ancestor membership confers any reach when the cascade is off,
     the inherited list must be empty, not merely filtered."""
     from services.group_directory_service import get_group_members
 
@@ -418,7 +418,7 @@ async def test_members_inherited_is_empty_when_cascade_off(
 
 
 # ---------------------------------------------------------------------------
-# 30-day summary — the two documented pitfalls
+# 30-day summary: the two documented pitfalls
 # ---------------------------------------------------------------------------
 
 
@@ -434,7 +434,7 @@ async def test_summary_scan_count_covers_the_whole_subtree_not_just_this_group(
     project_g = await make_project(db_session, team=_TeamRef(tree.g))
     await make_scan(db_session, project=project_p)
     await make_scan(db_session, project=project_g)
-    # Outside the subtree entirely — must not be counted.
+    # Outside the subtree entirely, must not be counted.
     other_tree = await _make_tree(db_session)
     project_other = await make_project(db_session, team=_TeamRef(other_tree.p))
     await make_scan(db_session, project=project_other)
@@ -526,12 +526,12 @@ async def test_summary_new_member_count_is_a_subtree_aggregate(
     assert detail.stats.subtree_new_member_count == 2
 
     child_detail = await get_group_detail(db_session, actor=actor, group_id=tree.c)
-    # C's own subtree is {C, G} — root_member's membership (on P) is outside it.
+    # C's own subtree is {C, G}, root_member's membership (on P) is outside it.
     assert child_detail.stats.subtree_new_member_count == 1
 
 
 # ---------------------------------------------------------------------------
-# N+1 guard — project list group_path enrichment
+# N+1 guard: project list group_path enrichment
 # ---------------------------------------------------------------------------
 
 
@@ -539,7 +539,7 @@ async def test_project_group_path_enrichment_is_batched_not_per_row(
     db_session: AsyncSession, cascade_off: None
 ) -> None:
     """Statement count for `_group_path_map` must not grow with the number of
-    distinct owning groups on the page — two batched IN queries, always."""
+    distinct owning groups on the page, two batched IN queries, always."""
     from services.project_list_enrichment import _group_path_map
 
     tree = await _make_tree(db_session)

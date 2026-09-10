@@ -1,17 +1,17 @@
 /**
- * Groups E2E — group-hierarchy Phase 4 PR 4-B.
+ * Groups E2E, group-hierarchy Phase 4 PR 4-B.
  *
  * Drives `/groups` and `/groups/:id` against the live docker-compose dev
- * stack, through `GroupsHarness` (PR 4-A) exclusively — no ad-hoc selectors.
+ * stack, through `GroupsHarness` (PR 4-A) exclusively, no ad-hoc selectors.
  *
  * Scope note: `tests/_harness/seed.ts` (PR 4-A's own prerequisite, owned by
- * `test-writer`) seeds one FLAT team per run — it has no option to seed a
+ * `test-writer`) seeds one FLAT team per run; it has no option to seed a
  * parent/child group pair or a cascade-inherited membership. That leaves two
  * harness verbs this spec cannot exercise against real data:
  *   - `clickBreadcrumbSegment` / `clickDrilldownBreadcrumbSegment` on an
- *     actual ANCESTOR (the seeded team has none — this spec asserts the
+ *     actual ANCESTOR (the seeded team has none, so this spec asserts the
  *     empty-ancestor case instead, via `expectBreadcrumb([])`).
- *   - `expectInheritedMemberRow` (needs a two-level hierarchy + cascade —
+ *   - `expectInheritedMemberRow` (needs a two-level hierarchy + cascade;
  *     this spec asserts `expectInheritedSectionEmpty()` instead, which is
  *     the correct behavior for a root team and equally real coverage).
  * A nested-group seed fixture is a `test-writer` follow-up, not something
@@ -41,7 +41,7 @@ function tryAcquireSeed(
   } catch (err) {
     testInfo.skip(
       true,
-      `seed precondition failed — bring docker-compose dev up + ensure ` +
+      `seed precondition failed, bring docker-compose dev up + ensure ` +
         `python3 is on PATH: ${err instanceof Error ? err.message : String(err)}`,
     );
     return null;
@@ -72,7 +72,7 @@ test.describe("groups", () => {
     const groups = new GroupsHarness(page);
 
     // Detail, reached directly by the seeded team's id (the flat seed fixture
-    // gives us no name to search by yet — this page is where we learn it).
+    // gives us no name to search by yet, this page is where we learn it).
     await groups.gotoDetail(seed.team_id);
     await groups.expectDetailMounted();
 

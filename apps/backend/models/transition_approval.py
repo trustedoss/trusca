@@ -61,7 +61,7 @@ class TransitionApproval(Base):
     team_id: Mapped[uuid.UUID] = mapped_column(
         UUID_PK,
         # Target table renamed teams -> groups by migration 0088
-        # (group-hierarchy rollout PR 0-1) — see models/component_approval.py
+        # (group-hierarchy rollout PR 0-1), see models/component_approval.py
         # for why this FK target must track the rename even though the
         # column name itself is out of this PR's scope.
         ForeignKey("groups.id", ondelete="CASCADE"),

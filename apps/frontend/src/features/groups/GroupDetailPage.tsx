@@ -37,16 +37,16 @@ type DetailTab = (typeof DETAIL_TABS)[number];
 const PROJECTS_PAGE_SIZE = 100;
 
 /**
- * GroupDetailPage — group-hierarchy Phase 4 PR 4-B.
+ * GroupDetailPage, group-hierarchy Phase 4 PR 4-B.
  *
  * `GET /v1/groups/{id}` 404s uniformly for "does not exist" and "exists,
- * not accessible" (existence-hide — see `GroupsHarness.expectNotFound`'s own
+ * not accessible" (existence-hide, see `GroupsHarness.expectNotFound`'s own
  * docstring). The two render branches below are mutually exclusive on
  * purpose: a 404 renders NO `group-detail-page` node at all, not a page
- * frame wrapped around an error message — the frame itself would be a signal
- * the backend goes out of its way not to give.
+ * frame wrapped around an error message (the frame itself would be a signal
+ * the backend goes out of its way not to give).
  *
- * Policy and Activity sections are deliberately absent — PR 4-A did not ship
+ * Policy and Activity sections are deliberately absent: PR 4-A did not ship
  * a group-scoped effective-policy summary or a group-scoped audit log read,
  * so a tab for either here would be a real-looking, permanently-empty
  * surface. Follow-up phase.
@@ -75,7 +75,7 @@ export function GroupDetailPage() {
     if (!group) return;
     // ProjectCreatePage resolves its team exclusively through
     // `useActiveTeam()` (which itself reads this store) and overwrites any
-    // URL prefill on mount, so a `?team=` query param does not survive —
+    // URL prefill on mount, so a `?team=` query param does not survive;
     // this is the one channel that does. The global bar's team switcher
     // reads the same store, so it visibly follows along.
     setActiveTeamId(group.id);
@@ -125,7 +125,7 @@ export function GroupDetailPage() {
         <>
           <header className="border-b bg-background px-6 py-4">
             {/* Root-first ancestor chain, NOT including this group itself
-                (GroupDetail.ancestors). Every segment is clickable — even one
+                (GroupDetail.ancestors). Every segment is clickable, even one
                 the caller can no longer reach on its own (see the service's
                 own note on why a position indicator does not weaken
                 existence-hide): the link may itself 404, which is expected. */}

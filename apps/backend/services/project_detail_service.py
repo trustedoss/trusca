@@ -210,13 +210,13 @@ async def _resolve_team_scoped_role(
     """The actor's effective role *within the project's owning team* (BUG-005).
 
     The global ``CurrentUser.role`` / JWT role only distinguishes super_admin
-    from "everyone else" — a membership-based ``group_admin`` is invisible to
+    from "everyone else": a membership-based ``group_admin`` is invisible to
     the frontend, which then wrongly disables team-scoped actions such as
     vulnerability suppression. The frontend needs the per-team role, so we
     resolve it here:
 
     - super-users are ``super_admin`` (they bypass team membership everywhere);
-    - otherwise, the actor's EFFECTIVE role at *team_id* — the role of their
+    - otherwise, the actor's EFFECTIVE role at *team_id*: the role of their
       nearest direct membership walking from *team_id* up through its
       ancestors (:func:`services.group_service.effective_role_at`), fresh
       membership rows for *team_id* and its whole ancestor chain, not the
@@ -228,17 +228,17 @@ async def _resolve_team_scoped_role(
     membership row for *team_id* itself and defaulted an actor with none to
     ``developer``. That default was documented as "fail-closed" for a
     hypothetical org-wide reader (a feature not yet wired into any access
-    path — see ``services.project_service`` module docstring), but the
+    path, see ``services.project_service`` module docstring), but the
     group-hierarchy cascade made it a real, reachable branch: a caller who
     reaches this function only via an ancestor group's membership (cascade
-    ON — this function is only reached once :func:`assert_team_access` /
+    ON: this function is only reached once :func:`assert_team_access` /
     :func:`core.authz.can_access_group` has already granted read access,
     possibly through the cascade) has NO membership row at *team_id* itself,
     so the old code silently PROMOTED a ``viewer`` at the ancestor to
-    ``developer`` here rather than denying them — the opposite of
+    ``developer`` here rather than denying them, the opposite of
     fail-closed. Walking the actual ancestor chain and returning the nearest
     membership's role (nearest-wins, so a closer demotion still beats a
-    farther promotion — see ``effective_role_at``) fixes that: the frontend
+    farther promotion, see ``effective_role_at``) fixes that: the frontend
     now sees the SAME role the cascade granted access under, never a
     higher one manufactured by this function.
 
@@ -592,7 +592,7 @@ async def get_project_overview(
         # read access to `project.team_id` (directly or via the cascade), so
         # there must be a nearest-ancestor membership. A `None` here means
         # the group hierarchy changed between that check and this one within
-        # the same request — fail closed rather than hand the frontend a
+        # the same request, fail closed rather than hand the frontend a
         # manufactured role.
         raise ProjectForbidden(
             f"actor is not a member of team {project.team_id}",
