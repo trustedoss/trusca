@@ -51,7 +51,7 @@ Concurrency gate (PR #7 contract):
 from __future__ import annotations
 
 import uuid
-from datetime import date, datetime
+from datetime import UTC, date, datetime
 from decimal import Decimal
 from typing import Any
 
@@ -822,8 +822,21 @@ class ScanComponent(Base):
     raw_data: Mapped[dict[str, Any]] = mapped_column(
         JSONB, nullable=False, server_default=EMPTY_JSONB_OBJ
     )
+    # #461: a client-side default alongside the existing server_default, same
+    # move #398 made for id above. Without one on EVERY RETURNING-needed
+    # column, SQLAlchemy's insertmanyvalues batching falls back to one INSERT
+    # per row regardless of how many objects are staged (measured: 500
+    # objects, 500 statements), and this table stages the most rows of any in
+    # a single persist call. Nothing reads scan_components.created_at anywhere
+    # in the codebase today (grepped services/ and api/), so the client-vs-
+    # server clock skew this repo has cared about elsewhere does not apply
+    # here: there is no comparison against func.now() or another row's
+    # server-written timestamp for this column to disagree with.
     created_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), nullable=False, server_default=NOW
+        DateTime(timezone=True),
+        nullable=False,
+        default=lambda: datetime.now(UTC),
+        server_default=NOW,
     )
 
     scan: Mapped[Scan] = relationship(back_populates="scan_components")
@@ -902,8 +915,15 @@ class ComponentDependencyEdge(Base):
         ForeignKey("component_versions.id", ondelete="CASCADE"),
         nullable=False,
     )
+    # #461: see the identical note on ScanComponent.created_at above. This
+    # table has the highest row count relative to component count of the
+    # three (a real 2,544-component fixture produced 7,452 edges), so it is
+    # the biggest beneficiary.
     created_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), nullable=False, server_default=NOW
+        DateTime(timezone=True),
+        nullable=False,
+        default=lambda: datetime.now(UTC),
+        server_default=NOW,
     )
 
     __table_args__ = (
@@ -1318,8 +1338,12 @@ class LicenseFinding(Base):
     raw_data: Mapped[dict[str, Any]] = mapped_column(
         JSONB, nullable=False, server_default=EMPTY_JSONB_OBJ
     )
+    # #461: see the identical note on ScanComponent.created_at above.
     created_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), nullable=False, server_default=NOW
+        DateTime(timezone=True),
+        nullable=False,
+        default=lambda: datetime.now(UTC),
+        server_default=NOW,
     )
 
     scan: Mapped[Scan] = relationship(back_populates="license_findings")

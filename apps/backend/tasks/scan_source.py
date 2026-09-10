@@ -2871,28 +2871,32 @@ def _component_text_field(value: Any, fallback: str) -> str:
 # (integrations/license_fetcher's docstring notes the same constraint), and a
 # plain global would let one scan's cache answer another scan's lookups.
 #
-# Scope boundary: this fixes the CATALOG tables (components / component_
+# Scope boundary: this fixed the CATALOG tables (components / component_
 # versions / licenses, shared, org-wide, looked up by a non-PK unique
 # column). ``scan_components`` / ``license_findings`` / ``component_
-# dependency_edges`` are unaffected: they were, and still are, one INSERT
-# per row via plain ``session.add()``. That is not something this change
-# regresses: those three tables' ``id`` is a server-generated UUID PK
-# alongside a server-generated, non-PK ``created_at`` (no client-side
-# fallback for either), and SQLAlchemy's insertmanyvalues batching needs
-# every RETURNING-needed column to have one; with only a server default on
-# BOTH, it silently falls back to one INSERT per row no matter how many
-# objects are staged before the flush (measured directly: 500 objects, 500
-# statements). Component / ComponentVersion / License sidestep this by
-# going through Core (an explicit ``pg_insert`` batch, or a client-side
-# ``default=uuid.uuid4`` added to their id columns alongside the existing
-# server_default) rather than the ORM's per-object insert path. Giving the
-# other three tables' ``created_at`` the same treatment would mean a
-# client-side default replacing the DB's own clock for that column, which
-# elsewhere in this codebase has mattered (a local process clock can read
-# meaningfully behind Postgres's). Doing it here, for these three tables
-# specifically, is a reasonable follow-up; it is out of scope for this
-# change, which is about the catalog lookup the 60-minute soft limit
-# actually traces to.
+# dependency_edges`` were, at the time, still one INSERT per row via plain
+# ``session.add()``: those three tables' ``id`` is a server-generated UUID PK
+# alongside a server-generated, non-PK ``created_at``, and SQLAlchemy's
+# insertmanyvalues batching needs every RETURNING-needed column to have a
+# client-known value; with only a server default on both, it silently fell
+# back to one INSERT per row no matter how many objects were staged before
+# the flush (measured directly: 500 objects, 500 statements).
+#
+# #461 closed that gap the same way #398 closed it for ``id`` above: a
+# client-side ``default=lambda: datetime.now(UTC)`` on ``created_at``,
+# alongside the existing ``server_default`` (see the three models in
+# models/scan.py). Nothing in this codebase reads ``created_at`` on any of
+# these three tables, so there is no ``func.now()`` comparison or
+# cross-process-clock-skew concern here the way there was elsewhere. The
+# call shape below is UNCHANGED: still plain ``session.add()`` in the loops
+# that follow, never Core ``pg_insert``, because, unlike the catalog
+# lookups above, this code needs live ORM instances back: ``ScanComponent``
+# rows are mutated a second time after the loop (``.depth`` / ``.direct``
+# stamped in ``_persist_dependency_graph``), which a discarded Core insert
+# result would not support. Giving both RETURNING-needed columns a
+# client-side default is what lets ``insertmanyvalues`` batch, whether the
+# rows came from ``session.add()`` or Core; changing the call shape was
+# never the fix.
 # ---------------------------------------------------------------------------
 
 
