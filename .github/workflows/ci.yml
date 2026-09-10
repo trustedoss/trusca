@@ -1101,6 +1101,16 @@ jobs:
             exit 1
           fi
 
+      # #421: the entry chunk shipped every route statically (~1.49 MB / 502
+      # KB gzip) with nothing here checking size despite the job's name. Now
+      # every route except the four auth pages and the dashboard is
+      # React.lazy(); this holds the entry chunk to a budget so that
+      # regresses back toward "everything in one chunk" one import at a
+      # time.
+      - name: Audit dist - entry chunk size budget
+        working-directory: apps/frontend
+        run: npm run bundle:budget
+
   # -------------------------------------------------------------------------
   # 6) Docs build — compile the Docusaurus site (EN + KO).
   #
