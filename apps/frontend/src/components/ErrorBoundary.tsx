@@ -2,6 +2,7 @@
 // Copyright 2026 TRUSCA contributors
 import { Component, type ErrorInfo, type ReactNode } from "react";
 
+import { reportClientError } from "@/lib/clientErrorApi";
 import i18n from "@/lib/i18n";
 
 interface Props {
@@ -25,7 +26,9 @@ interface State {
  * We intentionally do NOT auto-recover — a stale render path that throws
  * once will throw again on every render until the user navigates / reloads.
  * The fallback shows the error name + stack-frame snippet so the operator
- * can report it; full stack traces are sent to the browser console only.
+ * can report it; full stack traces go to the browser console AND to
+ * `POST /v1/client-errors` (#423), so a crash nobody is watching a console
+ * for still lands somewhere an operator can find it.
  */
 export class ErrorBoundary extends Component<Props, State> {
   state: State = { hasError: false, error: null };
@@ -35,9 +38,12 @@ export class ErrorBoundary extends Component<Props, State> {
   }
 
   componentDidCatch(error: Error, errorInfo: ErrorInfo): void {
-    // Best-effort console reporting. In production we'd ship this to a
-    // crash reporter (Sentry et al.) — that hook lives in Phase 8 PR #24.
     console.error("[ErrorBoundary] caught:", error, errorInfo.componentStack);
+    reportClientError({
+      message: error.message,
+      stack: error.stack,
+      componentStack: errorInfo.componentStack ?? undefined,
+    });
   }
 
   handleReload = (): void => {

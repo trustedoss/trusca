@@ -721,6 +721,7 @@
   ],
   "POST /v1/api-keys": [],
   "POST /v1/approvals": [],
+  "POST /v1/client-errors": [],
   "POST /v1/github-app-credentials": [
     "team_id"
   ],

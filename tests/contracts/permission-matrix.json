@@ -365,6 +365,12 @@
       "gate": "role>=group_admin"
     },
     {
+      "method": "POST",
+      "path": "/v1/client-errors",
+      "gate": "public",
+      "why": "A frontend render crash can happen before there is a token to attach (#423)."
+    },
+    {
       "method": "GET",
       "path": "/v1/components/{component_id}",
       "gate": "role>=viewer"

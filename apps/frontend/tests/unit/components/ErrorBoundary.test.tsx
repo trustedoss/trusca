@@ -3,6 +3,16 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { ErrorBoundary } from "@/components/ErrorBoundary";
 
+import * as clientErrorApi from "@/lib/clientErrorApi";
+import { reportClientError } from "@/lib/clientErrorApi";
+
+vi.mock("@/lib/clientErrorApi", async (importOriginal) => {
+  const actual = await importOriginal<typeof clientErrorApi>();
+  return { ...actual, reportClientError: vi.fn() };
+});
+
+const mockedReport = vi.mocked(reportClientError);
+
 function Boom(): JSX.Element {
   throw new Error("kaboom");
 }
@@ -14,6 +24,7 @@ describe("ErrorBoundary", () => {
     // React logs caught errors via console.error — silence to keep test
     // output readable.
     consoleSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+    mockedReport.mockClear();
   });
   afterEach(() => {
     consoleSpy.mockRestore();
@@ -55,6 +66,19 @@ describe("ErrorBoundary", () => {
     expect(screen.getByTestId("error-boundary-reload")).toHaveTextContent(
       "Reload page",
     );
+  });
+
+  it("reports the crash to the backend (#423)", () => {
+    render(
+      <ErrorBoundary>
+        <Boom />
+      </ErrorBoundary>,
+    );
+    expect(mockedReport).toHaveBeenCalledTimes(1);
+    const [report] = mockedReport.mock.calls[0]!;
+    expect(report.message).toBe("kaboom");
+    expect(report.stack).toContain("kaboom");
+    expect(report.componentStack).toContain("Boom");
   });
 
   it("renders the provided custom fallback instead of the default", () => {

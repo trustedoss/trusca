@@ -3160,6 +3160,18 @@ def registration_rate_limit() -> str:
     return os.getenv("REGISTRATION_RATE_LIMIT", "5/minute")
 
 
+def client_error_report_rate_limit() -> str:
+    """Per-IP slowapi limit for ``POST /v1/client-errors`` (#423).
+
+    Unauthenticated (a crash can happen on the login screen, before there is
+    a token to attach), so IP is the only key available. Looser than the
+    auth endpoints above: a broken render path can legitimately re-throw on
+    every re-render for one visitor, and the cost per call here is a single
+    log line, not a bcrypt hash.
+    """
+    return os.getenv("CLIENT_ERROR_REPORT_RATE_LIMIT", "30/minute")
+
+
 def password_reset_request_rate_limit() -> str:
     """Per-IP slowapi limit for ``POST /auth/forgot-password``.
 
