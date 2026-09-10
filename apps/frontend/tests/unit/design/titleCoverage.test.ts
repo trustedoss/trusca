@@ -55,17 +55,26 @@ function routedComponents(): string[] {
   return [...names].sort();
 }
 
-/** Map a routed component name to the file the router imports it from. */
+/** Map a routed component name to the file the router imports it from.
+ *
+ * #421: most routes are `const X = lazy(() => import("@/path")...)` now, not
+ * a static `import { X } from "@/path"`; both shapes are matched, since a
+ * screen does not stop needing a document title for being lazy-loaded.
+ */
 function importedPaths(): Map<string, string> {
   const source = fs.readFileSync(ROUTER_PATH, "utf8");
   const paths = new Map<string, string>();
-  const pattern =
+  const staticPattern =
     /import\s+(?:\{\s*([A-Za-z0-9_,\s]+?)\s*\}|([A-Za-z0-9_]+))\s+from\s+"@\/([^"]+)"/g;
-  for (const match of source.matchAll(pattern)) {
+  for (const match of source.matchAll(staticPattern)) {
     const names = (match[1] ?? match[2]).split(",").map((n) => n.trim());
     for (const name of names) {
       if (name) paths.set(name, match[3]);
     }
+  }
+  const lazyPattern = /const\s+([A-Za-z0-9_]+)\s*=\s*lazy\(\(\)\s*=>\s*\n?\s*import\("@\/([^"]+)"\)/g;
+  for (const match of source.matchAll(lazyPattern)) {
+    paths.set(match[1], match[2]);
   }
   return paths;
 }

@@ -84,6 +84,16 @@ export default defineConfig({
         // Pure type-only modules (no runtime exports). v8 coverage reports
         // them at 0% even though tsc strips them at build time.
         "src/types/**",
+        // #421: route table wiring, same category as main.tsx above. Every
+        // route now goes through React.lazy(() => import(...).then(...)),
+        // and each of those two callbacks only runs when a test actually
+        // navigates to that specific route, so the file's own function
+        // coverage tracks how many of ~26 routes a test visited rather than
+        // whether the route table itself is correct. The route table's
+        // correctness is covered by titleCoverage.test.ts and
+        // visualCoverage.test.ts, which parse this file's source directly;
+        // the screens it wires up carry their own coverage.
+        "src/router.tsx",
       ],
       // CLAUDE.md 품질·보안·운영 표준 §2: PR 머지 게이트는 신규/변경 코드
       // line coverage ≥ 80%. 부트스트랩 단계에서는 전역 라인 임계로 근사.
