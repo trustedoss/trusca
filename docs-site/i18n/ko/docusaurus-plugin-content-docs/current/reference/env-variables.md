@@ -155,6 +155,8 @@ CI 빌드 게이트는 기본적으로 Critical CVE와 금지 라이선스에서
 | `SCANOSS_API_KEY` | *(빈 값)* | `config.py` | `SCANOSS_API_URL`용 선택 API 키(유료/자체 호스팅 엔드포인트). 비우면 무료 `api.osskb.org` 등급 사용. |
 | `SCANOSS_TIMEOUT_SECONDS` | `300` | `config.py` | SCANOSS 단계의 하드 wall-clock 제한. 타임아웃 시 vendored-OSS 결과 없이 스캔 계속(best-effort). |
 | `TRUSTEDOSS_VERSION` | `unknown` | `config.py` | 이 배포가 자기 버전으로 밝히는 값입니다. SLSA 프로버넌스, About 화면, 그리고 TRUSCA가 만드는 모든 SBOM의 생성 도구 버전에 쓰입니다. 릴리스 이미지는 빌드 시 태그를 주입합니다(`ARG TRUSTEDOSS_VERSION`). 기본값을 그럴듯한 버전 번호로 두지 않은 것은 의도입니다. 자리표시자를 넣으면 세 곳 모두 존재하지 않는 릴리스를 주장하게 되고, 식별자가 없을 때 `unknown`으로 적는 것이 2026 SBOM 최소 요소가 요구하는 방식입니다. |
+| `TRUSTEDOSS_COMMIT` | `unknown` | `config.py` | 이 이미지를 빌드한 커밋입니다. `TRUSTEDOSS_VERSION`과 같은 방식으로 빌드 시 주입됩니다. About 화면과 `trusca_build_info` 지표에 실려, 운영자가 지금 실제로 돌고 있는 빌드가 무엇인지 확인할 수 있게 합니다. |
+| `TRUSTEDOSS_BUILT_AT` | `unknown` | `config.py` | UTC 빌드 시각(ISO 8601)입니다. `TRUSTEDOSS_COMMIT`과 같은 방식으로 주입됩니다. `trusca_build_time_seconds`로도 함께 발행되어, 수집기가 지표 레이블을 파싱하지 않고도 이미지 나이를 계산할 수 있습니다. |
 | `SBOM_AUTHOR` | *(미설정)* | `config.py` | SBOM 데이터를 만든 주체입니다. 내보내는 모든 SBOM에 작성자로 기록합니다. 2026 SBOM 최소 요소가 요구하는 항목인데 스캔으로는 알아낼 수 없습니다. 포털을 운영하는 조직이기 때문입니다. 설정하지 않으면 자리표시자를 넣지 않고 필드를 생략합니다. 자리표시자는 항목만 채울 뿐 받는 쪽에 아무것도 알려 주지 않습니다. |
 | `SCAN_SCOPE_FILTER_ENABLED` | `true` | `config.py` | 런타임 스코프 필터의 마스터 스위치: 소스 스캔이 저장·서명·Trivy 매칭 전에 배포되지 않는 의존성(Maven `test`/`provided`, npm `devDependencies`)을 SBOM에서 제거합니다. 외부 전송 없는 순수 로컬 변환입니다. 정확히 `false` / `0` / `no` 토큰만 끕니다. [컴포넌트·라이선스 → 런타임 스코프 필터링](../user-guide/components-and-licenses.md#runtime-scope-filtering) 참고. |
 | `SCAN_SCOPE_FILTER_MAVEN_ENABLED` | `true` | `config.py` | 스코프 필터의 Maven 부분(cdxgen scope `optional`/`excluded` 노드 제거). 프로젝트가 Maven `<optional>true</optional>` **런타임** 의존성을 쓰면 끄십시오 — cdxgen이 test scope와 똑같이 `optional`로 태깅해 함께 제거됩니다. |
@@ -398,3 +400,5 @@ docker-compose -f docker-compose.yml logs --tail=50 backend | grep backend_start
 - [`/.env.example`](https://github.com/trustedoss/trusca/blob/main/.env.example) — 표준 레퍼런스, 항상 최신.
 - [아키텍처](./architecture.md)
 - [Docker Compose 설치](../installation/docker-compose.md)
+- [하드닝](../admin-guide/hardening.md) - 위 키 중 보안과 관련된 것만 추려 작업 순서대로 훑는 가이드.
+- [Postgres 크기 산정과 커넥션 튜닝](../admin-guide/postgres-tuning.md) - `DB_POOL_SIZE` / `DB_MAX_OVERFLOW` / `DB_SYNC_*` 뒤에 있는 커넥션 예산 공식.

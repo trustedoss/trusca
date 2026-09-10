@@ -47,6 +47,15 @@ FROM python:3.12.14-slim-bookworm@sha256:782412e85d0f0984994c290652577d4018aff08
 ARG TRUSTEDOSS_VERSION=unknown
 ENV TRUSTEDOSS_VERSION=${TRUSTEDOSS_VERSION}
 
+# O11 (observability gap plan): the commit and build timestamp, same
+# mechanism and same "unknown" default reasoning as TRUSTEDOSS_VERSION
+# above. There is no other way for a running container to learn either
+# value; both feed the trusca_build_info metric and the About screen.
+ARG TRUSTEDOSS_COMMIT=unknown
+ENV TRUSTEDOSS_COMMIT=${TRUSTEDOSS_COMMIT}
+ARG TRUSTEDOSS_BUILT_AT=unknown
+ENV TRUSTEDOSS_BUILT_AT=${TRUSTEDOSS_BUILT_AT}
+
 ENV PYTHONUNBUFFERED=1 \
     PYTHONDONTWRITEBYTECODE=1 \
     PIP_NO_CACHE_DIR=1

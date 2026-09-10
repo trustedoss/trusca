@@ -1842,6 +1842,39 @@ def slsa_builder_version() -> str:
     return raw.strip()
 
 
+def trustedoss_commit() -> str:
+    """Short git commit this image was built from, for the build-info surface.
+
+    O11 (observability gap plan): the release build injects it via
+    ``--build-arg TRUSTEDOSS_COMMIT`` (see Dockerfile.prod), same mechanism as
+    ``slsa_builder_version()`` above. "unknown" for a local/dev build with no
+    build-arg, not a guessed value: this is read on the About screen and the
+    ``trusca_build_info`` metric, and a plausible-looking default would state
+    a commit the running image was not actually built from.
+    """
+    raw = os.getenv("TRUSTEDOSS_COMMIT")
+    if raw is None or raw.strip() == "":
+        return "unknown"
+    return raw.strip()
+
+
+def trustedoss_built_at() -> str:
+    """UTC build timestamp (ISO 8601) this image was built at, for the
+    build-info surface.
+
+    Same O11 mechanism as ``trustedoss_commit()`` above: injected via
+    ``--build-arg TRUSTEDOSS_BUILT_AT`` at image build time, since there is no
+    other way for a running container to learn when its own image was built.
+    "unknown" when unset, not the process start time or the current clock,
+    either of which would silently answer a different question than the one
+    this exists to answer.
+    """
+    raw = os.getenv("TRUSTEDOSS_BUILT_AT")
+    if raw is None or raw.strip() == "":
+        return "unknown"
+    return raw.strip()
+
+
 def cosign_public_key_path() -> str | None:
     """Filesystem path to the cosign PUBLIC key (key-based verification).
 

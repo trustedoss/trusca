@@ -423,6 +423,8 @@ When paging the portal dev team, attach:
 
 ## See also
 
+- [Hardening](./hardening.md) - the checklist to work through before this runbook is needed for real traffic.
+- [Postgres sizing and connection tuning](./postgres-tuning.md) - the connection-budget model behind the `connection_budget.over_max_connections` warning.
 - [Alerting](./alerting.md) - the example Prometheus rules behind the PagerDuty alert names above, and which scenarios have none yet.
 - [Vulnerability data (Trivy DB)](./vulnerability-data.md) — DB lifecycle and troubleshooting.
 - [Backup and restore](./backup-and-restore.md) — backup retention + restore flow.

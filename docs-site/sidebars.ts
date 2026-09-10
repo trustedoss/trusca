@@ -61,11 +61,13 @@ const sidebars: SidebarsConfig = {
       collapsed: false,
       items: [
         "admin-guide/users-and-teams",
+        "admin-guide/hardening",
         "admin-guide/vulnerability-data",
         "admin-guide/disk-and-health",
         "admin-guide/alerting",
         "admin-guide/scan-retention",
         "admin-guide/data-retention",
+        "admin-guide/postgres-tuning",
         "admin-guide/private-ca",
         "admin-guide/private-registries",
         "admin-guide/user-anonymisation",

@@ -5,6 +5,8 @@
   "field": {
     "product": "제품",
     "version": "버전",
+    "commit": "커밋",
+    "built_at": "빌드 시각",
     "license": "라이선스",
     "copyright": "저작권",
     "source": "소스 코드"

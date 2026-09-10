@@ -119,7 +119,7 @@ If you operate a TRUSCA deployment, we recommend reviewing:
 - Setting `DISK_HARD_LIMIT_PCT` so scans abort before disk exhaustion.
 - Subscribing to release notifications on the GitHub repo so you are alerted when patches ship.
 
-A dedicated hardening guide is on the [roadmap](ROADMAP.md). Until it ships, the [admin guide](https://trustedoss.github.io/trusca/docs/admin-guide/oncall-runbook) and the [environment variable reference](https://trustedoss.github.io/trusca/docs/reference/env-variables) cover the settings above.
+A dedicated [hardening guide](https://trustedoss.github.io/trusca/docs/admin-guide/hardening) covers the settings above in depth, alongside the [admin guide](https://trustedoss.github.io/trusca/docs/admin-guide/oncall-runbook) and the [environment variable reference](https://trustedoss.github.io/trusca/docs/reference/env-variables).
 
 ---
 

@@ -356,3 +356,5 @@ The following affordances are referenced in early docs but are **not** shipped i
 - [Install](../installation/docker-compose.md)
 - [Upgrade](../installation/upgrade.md)
 - [Disk & system health](./disk-and-health.md)
+- [Hardening](./hardening.md) - encrypting backups is one line item on a longer production checklist.
+- [Postgres sizing and connection tuning](./postgres-tuning.md)

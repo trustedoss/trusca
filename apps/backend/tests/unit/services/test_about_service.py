@@ -271,3 +271,22 @@ def test_product_identity_matches_the_repository_notices() -> None:
     assert identity["copyright"] in (base / "LICENSE").read_text(encoding="utf-8")
     assert identity["source_url"] in (base / "NOTICE").read_text(encoding="utf-8")
     assert identity["version"]
+    # O11: unset in this test environment, so both read "unknown" rather than
+    # being absent from the dict entirely (a KeyError here would mean the
+    # About endpoint silently drops the fields for every deployment that
+    # never set the build-args in the first place).
+    assert identity["commit"] == "unknown"
+    assert identity["built_at"] == "unknown"
+
+
+def test_product_identity_carries_the_build_args_when_set(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """O11: a release image's --build-arg values reach the About surface."""
+    monkeypatch.setenv("TRUSTEDOSS_COMMIT", "a0d2bab")
+    monkeypatch.setenv("TRUSTEDOSS_BUILT_AT", "2026-09-06T02:11:00Z")
+
+    identity = product_identity()
+
+    assert identity["commit"] == "a0d2bab"
+    assert identity["built_at"] == "2026-09-06T02:11:00Z"

@@ -199,6 +199,62 @@ async def test_the_values_are_counts_and_nothing_else(client, monkeypatch) -> No
         float(value)  # raises if anything but a number reached the output
 
 
+async def test_build_info_carries_the_build_args_and_a_matching_timestamp(
+    client, monkeypatch
+) -> None:
+    """O11: the build_info gauge's labels and the separate timestamp series
+    both reflect the same --build-arg-injected values, not two independent
+    reads that could drift apart."""
+    monkeypatch.setenv("METRICS_ENABLED", "true")
+    monkeypatch.delenv("METRICS_TOKEN", raising=False)
+    monkeypatch.setenv("TRUSTEDOSS_VERSION", "2.3.0-rc1")
+    monkeypatch.setenv("TRUSTEDOSS_COMMIT", "a0d2bab")
+    monkeypatch.setenv("TRUSTEDOSS_BUILT_AT", "2026-09-06T02:11:00Z")
+
+    response = await client.get("/metrics")
+
+    assert response.status_code == 200, response.text
+    info_match = re.search(
+        r'^trusca_build_info\{built_at="([^"]*)",commit="([^"]*)",version="([^"]*)"\} 1$',
+        response.text,
+        flags=re.MULTILINE,
+    )
+    assert info_match, response.text
+    assert info_match.group(1) == "2026-09-06T02:11:00Z"
+    assert info_match.group(2) == "a0d2bab"
+    assert info_match.group(3) == "2.3.0-rc1"
+
+    time_match = re.search(
+        r"^trusca_build_time_seconds (\S+)$", response.text, flags=re.MULTILINE
+    )
+    assert time_match, response.text
+    from datetime import UTC, datetime
+
+    expected = datetime(2026, 9, 6, 2, 11, 0, tzinfo=UTC).timestamp()
+    assert float(time_match.group(1)) == expected
+
+
+async def test_build_info_reports_unknown_and_zero_when_no_build_args_were_set(
+    client, monkeypatch
+) -> None:
+    monkeypatch.setenv("METRICS_ENABLED", "true")
+    monkeypatch.delenv("METRICS_TOKEN", raising=False)
+    monkeypatch.delenv("TRUSTEDOSS_VERSION", raising=False)
+    monkeypatch.delenv("TRUSTEDOSS_COMMIT", raising=False)
+    monkeypatch.delenv("TRUSTEDOSS_BUILT_AT", raising=False)
+
+    response = await client.get("/metrics")
+
+    assert response.status_code == 200, response.text
+    assert 'commit="unknown"' in response.text
+    assert 'built_at="unknown"' in response.text
+    time_match = re.search(
+        r"^trusca_build_time_seconds (\S+)$", response.text, flags=re.MULTILINE
+    )
+    assert time_match, response.text
+    assert float(time_match.group(1)) == 0.0
+
+
 async def test_a_scraper_with_the_token_is_served(client, monkeypatch) -> None:
     monkeypatch.setenv("METRICS_ENABLED", "true")
     monkeypatch.setenv("METRICS_TOKEN", "the-real-one")

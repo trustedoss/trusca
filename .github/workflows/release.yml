@@ -207,6 +207,16 @@ jobs:
         id: cache-scope
         run: echo "week=$(date -u +%G-W%V)" >> "$GITHUB_OUTPUT"
 
+      # O11: the commit and the moment this build actually runs. Computed
+      # here rather than from a GHA expression, GHA has no built-in
+      # substring function for the short SHA, and neither value should be
+      # cached across a re-run the way the buildx cache scope above is.
+      - name: Build metadata (commit + timestamp)
+        id: build-meta
+        run: |
+          echo "commit=${GITHUB_SHA:0:7}" >> "$GITHUB_OUTPUT"
+          echo "built_at=$(date -u +%Y-%m-%dT%H:%M:%SZ)" >> "$GITHUB_OUTPUT"
+
       - name: Build & push by digest (${{ matrix.platform.platform }})
         id: build
         uses: docker/build-push-action@10e90e3645eae34f1e60eeb005ba3a3d33f178e8  # v6.19.2
@@ -216,8 +226,15 @@ jobs:
           platforms: ${{ matrix.platform.platform }}
           labels: ${{ steps.meta.outputs.labels }}
           # So the image can state its own version rather than a placeholder.
+          # The commit and built_at args only apply to the backend image
+          # (see Dockerfile.prod's ARGs); the worker and frontend Dockerfiles
+          # do not declare them, so buildx warns them as unconsumed rather
+          # than failing, same as TRUSTEDOSS_VERSION already does for the
+          # frontend image today.
           build-args: |
             TRUSTEDOSS_VERSION=${{ steps.meta.outputs.version }}
+            TRUSTEDOSS_COMMIT=${{ steps.build-meta.outputs.commit }}
+            TRUSTEDOSS_BUILT_AT=${{ steps.build-meta.outputs.built_at }}
           # Push the single-platform image keyed only by its content digest —
           # no tag yet. The merge job stitches the digests into a manifest
           # list and applies the version tags.

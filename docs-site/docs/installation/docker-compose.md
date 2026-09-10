@@ -447,3 +447,5 @@ That constraint is internal. For **end-user installs**, the `install.sh` wizard 
 - [Upgrade an existing install](./upgrade.md)
 - [Environment variables reference](../reference/env-variables.md)
 - [Architecture overview](../reference/architecture.md)
+- [Hardening](../admin-guide/hardening.md)
+- [Postgres sizing and connection tuning](../admin-guide/postgres-tuning.md) - sizing `max_connections` against the `worker-scan` replica count from this page's capacity formula.

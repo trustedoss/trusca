@@ -443,4 +443,6 @@ If you hit a chart bug, open an issue using the
 - [Environment variables](../reference/env-variables.md) — every setting the chart maps
 - [Architecture](../reference/architecture.md) — services, Trivy DB lifecycle, and the migration model
 - [Vulnerability data (Trivy DB)](../admin-guide/vulnerability-data.md) — air-gapped operation and DB refresh
+- [Hardening](../admin-guide/hardening.md) - the L1 database role-separation model this chart's `env.database.*` split implements
+- [Postgres sizing and connection tuning](../admin-guide/postgres-tuning.md) - sizing `max_connections` against this chart's replica counts, bundled vs. external
 - [v0.10.0 release notes](../release-notes/v0.10.0.md) — chart 0.10.0 breaking changes

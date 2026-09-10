@@ -21,6 +21,14 @@ and the project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.
   tracker host per organization via
   `PUT /v1/admin/organizations/{id}/ticket-credentials`, shared by every team
   the way container-registry credentials already are (#385).
+- **The About screen and `/metrics` now show which image is actually
+  running.** Nothing published a build's commit or build timestamp
+  before, so an operator had no way to tell how old a running image's
+  security patches were beyond the release tag alone. Release images now
+  carry `TRUSTEDOSS_COMMIT` and `TRUSTEDOSS_BUILT_AT` alongside the
+  existing `TRUSTEDOSS_VERSION`, surfaced on the About screen and as a
+  `trusca_build_info` / `trusca_build_time_seconds` metric pair for
+  deployments that scrape `/metrics` (#441).
 
 ## [0.22.6] - 2026-09-08
 
