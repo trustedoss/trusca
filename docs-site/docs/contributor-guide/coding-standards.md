@@ -244,6 +244,12 @@ Rules:
 
 When you remove a key from a component, the parser drift gate also catches the orphan in EN/KO files; remove it from both.
 
+## Server-generated output is English-only
+
+The rule above covers `apps/frontend`'s UI strings, which is the ENTIRE localization surface. Everything the backend generates on its own, notification titles/bodies (`notifications/email.py`, `notifications/slack.py`, `notifications/teams.py`), Excel report headers (`services/report_xlsx_service.py`), PDF report text, and RFC 7807 `title`/`detail` text on every error response, is hardcoded English and stays that way. There is no backend i18n framework: no gettext/babel, and nothing in the request path reads `Accept-Language`.
+
+This is a decision, not a gap someone forgot to close: translating generated documents and outbound messages means shipping and maintaining a second translation surface with its own extraction tooling, review process, and drift gate, for output most of it (audit exports, webhook payloads, admin-triggered reports) is read by an operator rather than the person who set their UI language to Korean in the first place. If a real demand for localized reports or notifications shows up, revisit this rather than translating ad hoc; a half-translated report (some sheets EN, some KO, numbers and dates still formatted for whichever locale the code happened to hardcode) is worse than a consistently English one.
+
 ## `# nosec` and `# nosemgrep` — justify in line
 
 Static analysis runs `bandit` (Python) and `semgrep` (multi-language) in CI. SAST is **hard-fail** on High+. Suppress only when the finding is provably a false positive, and justify on the line:

@@ -80,6 +80,8 @@ Authorization: Bearer tos_<prefix>_<secret>
 }
 ```
 
+`title`과 `detail`은 호출자의 `Accept-Language`나 로그인한 사용자의 UI 언어 설정과 무관하게 항상 영어입니다. 백엔드에는 i18n 프레임워크가 없습니다(gettext·babel도 없고, 요청 경로 어디에서도 `Accept-Language`를 읽지 않습니다). 번역 대상은 `apps/frontend`의 UI 문자열뿐입니다. [서버가 생성하는 산출물은 영어 전용](../contributor-guide/coding-standards.md#서버가-생성하는-산출물은-영어-전용) 참고.
+
 도메인 확장은 `snake_case`이며 OpenAPI 스키마에 모델링됩니다. 잘 알려진 예시 두 가지:
 
 | Type URI | Status | 발생 조건 |
