@@ -163,6 +163,11 @@ async def export_inventory_components_csv_endpoint(
     The scope is the caller's own: the list service resolves which teams the
     actor can read and the export calls that same service, so a member of one
     team never receives another team's packages.
+
+    ``sort``/``order`` are still accepted and validated but no longer decide
+    the exported rows' order (#463): the export walks a fixed key (the
+    component id) instead, since this is the org-wide rollup, the export
+    most likely to reach a depth where ``OFFSET``'s cost matters.
     """
     stream = stream_inventory_csv(
         session,

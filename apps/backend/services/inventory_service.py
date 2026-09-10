@@ -371,12 +371,21 @@ async def list_inventory_components(
     outdated: bool | None = None,
     sort: str = "project_count",
     order: str = "desc",
+    keyset: bool = False,
+    after_id: uuid.UUID | None = None,
 ) -> InventoryComponentListResponse:
     """One page of the organization-wide component inventory.
 
     An actor with no team memberships gets an empty page rather than an error:
     the scope predicate resolves to ``false``, the current-scan subquery is
     empty, and the aggregate returns nothing. No special case needed.
+
+    ``keyset=True`` (#463) walks ``Component.id`` instead of ``OFFSET`` and
+    ignores ``sort``/``order``, for the CSV export path only
+    (``table_export_service.py``): this is the org-wide rollup, the export
+    most likely to reach the row depth OFFSET degrades at. ``after_id=None``
+    starts from the beginning; the caller passes back the last row's
+    ``component_id`` from the previous page.
     """
     limit = max(1, min(limit, LIMIT_MAX))
     offset = max(0, offset)
@@ -476,20 +485,26 @@ async def list_inventory_components(
     if outdated is not None:
         base = base.having(any_outdated.is_(outdated))
 
-    direction = "asc" if str(order).lower() == "asc" else "desc"
-    sort_key = sort if sort in VALID_SORT_KEYS else "project_count"
-    sort_column = {
-        "name": Component.name,
-        "project_count": project_count,
-        "severity": sev_rank,
-        "license": lic_rank,
-    }[sort_key]
-    ordered = base.order_by(
-        sort_column.asc() if direction == "asc" else sort_column.desc(),
-        # Stable tie-break so paging can neither repeat nor skip a row.
-        Component.name.asc(),
-        Component.id.asc(),
-    )
+    if keyset:
+        keyset_base = base if after_id is None else base.where(Component.id > after_id)
+        ordered = keyset_base.order_by(Component.id.asc())
+        items_exec_stmt = ordered.limit(limit)
+    else:
+        direction = "asc" if str(order).lower() == "asc" else "desc"
+        sort_key = sort if sort in VALID_SORT_KEYS else "project_count"
+        sort_column = {
+            "name": Component.name,
+            "project_count": project_count,
+            "severity": sev_rank,
+            "license": lic_rank,
+        }[sort_key]
+        ordered = base.order_by(
+            sort_column.asc() if direction == "asc" else sort_column.desc(),
+            # Stable tie-break so paging can neither repeat nor skip a row.
+            Component.name.asc(),
+            Component.id.asc(),
+        )
+        items_exec_stmt = ordered.limit(limit).offset(offset)
 
     count_stmt = select(func.count()).select_from(base.subquery())
     # Sequential, not asyncio.gather: an AsyncSession holds ONE asyncpg
@@ -497,7 +512,7 @@ async def list_inventory_components(
     # calls raise "another operation is in progress". There was no parallelism
     # to win — the two statements share the connection either way.
     total_result = await session.execute(count_stmt)
-    rows_result = await session.execute(ordered.limit(limit).offset(offset))
+    rows_result = await session.execute(items_exec_stmt)
     total = int(total_result.scalar_one())
     rows = rows_result.mappings().all()
 

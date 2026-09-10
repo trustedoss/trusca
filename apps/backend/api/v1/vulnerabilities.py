@@ -311,6 +311,14 @@ async def export_project_vulnerabilities_csv_endpoint(
     ``limit`` and ``offset`` are deliberately absent. Exporting "page 3 of
     what I am looking at" is not a thing anyone wants, and accepting them
     would invite a caller to walk the table with a script.
+
+    ``sort``/``order`` are still accepted and still validated (an invalid
+    value still 422s), but no longer decide the exported rows' order (#463):
+    the export walks a fixed key (the finding id) instead of the screen's 8
+    sort modes, so a filtered export that reaches real depth does not pay
+    for ``OFFSET``'s cost growing with it. Kept on the signature rather than
+    dropped so an existing caller's `?sort=...&order=...` keeps 200ing
+    instead of 422ing on an unknown parameter.
     """
     stream = stream_vulnerabilities_csv(
         session,
