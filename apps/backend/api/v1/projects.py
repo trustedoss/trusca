@@ -827,6 +827,11 @@ async def export_project_components_csv_endpoint(
     Filters are applied by the list service itself rather than by a second
     query, so the file and the screen cannot disagree, and the cross-team
     check the list performs is the one this performs.
+
+    ``sort``/``order`` are still accepted and validated but no longer decide
+    the exported rows' order (#463): the export walks a fixed key (the
+    component_version id) instead, so a bill of materials that reaches real
+    depth does not pay for ``OFFSET``'s cost growing with it.
     """
     stream = stream_components_csv(
         session,
