@@ -348,9 +348,8 @@ Compose 배포에는 오토스케일러 계층이 없습니다. 이 절의 키�
 
 | 키 | 기본값 | 읽는 위치 | 설명 |
 |---|---|---|---|
-| `JIRA_ENABLED` | `false` | (없음) | **스텁 — 현재 릴리스의 어떤 코드 경로에서도 소비되지 않음.** Phase B Jira 통합용 예약. 기능 도착 시 기존 배포가 깨지지 않도록 `.env.example`에 포함. |
-| `JIRA_URL` | (비어있음) | (없음) | 스텁. 위 참고. |
-| `JIRA_TOKEN` | (비어있음) | (없음) | 스텁. 위 참고. |
+| `TICKET_STATUS_REFRESH_RATE_LIMIT` | `10/minute` | `config.py` | `POST /vulnerability_findings/{id}/ticket-status/refresh`에 대한 slowapi 한도이며, 인증된 사용자별로 셉니다. Jira 자격증명 자체는 환경변수가 아닙니다 - 조직 관리자가 `PUT /v1/admin/organizations/{id}/ticket-credentials`로 Jira Cloud 호스트마다 로그인 정보 하나를 저장합니다(#385). [티켓 상태](../user-guide/vulnerabilities.md#ticket-status) 참고. |
+| `CLIENT_ERROR_REPORT_RATE_LIMIT` | `30/minute` | `config.py` | `POST /v1/client-errors`(프런트엔드 `ErrorBoundary`의 크래시 리포트 수신, #423)에 대한 slowapi 한도이며, 이 엔드포인트는 인증이 없어 IP별로 셉니다(렌더링 크래시는 토큰을 붙일 수 있기 전에도 일어날 수 있습니다). 위 인증 엔드포인트들보다 여유 있게 잡았습니다 - 깨진 렌더링 경로는 한 방문자에게 재렌더링마다 정당하게 다시 던져질 수 있고, 호출 하나의 비용은 bcrypt 해시가 아니라 로그 한 줄입니다. |
 | `HTTP_PROXY` / `HTTPS_PROXY` / `NO_PROXY` | (비어있음) | 서브프로세스 env | `git clone`, `cdxgen`, `trivy --download-db-only` 부팅 / refresh 경로가 존중. |
 | `SSL_CERT_FILE` / `SSL_CERT_DIR` | (비어있음) | 서브프로세스 env, 포털 HTTPS | Trivy와 cosign과 govulncheck, 그리고 포털 자신의 외부 호출이 쓰는 사설 인증기관입니다. 포털 쪽에서는 신뢰 집합을 갈아치우므로 공용 루트 인증서도 같은 파일에 담아야 합니다. [사설 인증기관](../admin-guide/private-ca.md)을 봅니다. |
 | `NODE_EXTRA_CA_CERTS` | (비어있음) | 서브프로세스 env | `cdxgen`이 쓰는 사설 인증기관입니다. 기존 루트에 더해집니다. |

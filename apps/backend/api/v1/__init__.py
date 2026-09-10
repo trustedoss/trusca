@@ -11,6 +11,7 @@ from .api_keys import router as api_keys_router
 from .approvals import router as approvals_router
 from .audit import router as audit_router
 from .auth import router as auth_router
+from .client_errors import router as client_errors_router
 from .compliance import router as compliance_router
 from .component_intake import router as component_intake_router
 from .components import router as components_router
@@ -59,6 +60,7 @@ __all__ = [
     "approvals_router",
     "audit_router",
     "auth_router",
+    "client_errors_router",
     "compliance_router",
     "component_intake_router",
     "components_router",

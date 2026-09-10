@@ -48,12 +48,22 @@ from fastapi import HTTPException
 REPO_ROOT = Path(__file__).resolve().parents[4]
 MATRIX_PATH = REPO_ROOT / "tests" / "contracts" / "permission-matrix.json"
 
-# Callables that establish a principal. A route whose dependency tree contains
-# none of these reaches its handler with no identity, which is only correct for
-# the routes the fixture marks `public` (each with a stated reason).
+# Callables that establish a principal AND enforce it (raise/401 when none is
+# found). A route whose dependency tree contains none of these reaches its
+# handler with no identity, which is only correct for the routes the fixture
+# marks `public` (each with a stated reason).
+#
+# `get_optional_current_user` is deliberately NOT in this set even though it
+# also resolves a principal: unlike the two below, it never raises on a
+# missing/invalid token, so a route depending on it directly is not "authed"
+# by that alone (#423's client-error intake is the first such route; a
+# render crash must still be reportable when auth is broken or absent).
+# `_principal_from_jwt_or_api_key` calls it internally as one of two
+# resolution attempts and DOES raise if both come up empty, so it stays
+# classified here; `get_optional_current_user` piggybacks on that route's
+# entry rather than needing its own.
 PRINCIPAL_RESOLVERS = {
     "get_current_user",
-    "get_optional_current_user",
     "_principal_from_jwt_or_api_key",
 }
 

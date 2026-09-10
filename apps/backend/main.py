@@ -30,6 +30,7 @@ from api.v1 import (
     approvals_router,
     audit_router,
     auth_router,
+    client_errors_router,
     compliance_router,
     component_intake_router,
     components_router,
@@ -372,6 +373,9 @@ install_openapi(app)
 app.add_exception_handler(RateLimitExceeded, rate_limit_exceeded_handler)  # type: ignore[arg-type]
 
 app.include_router(auth_router)
+# #423: frontend ErrorBoundary crash reports. PUBLIC (no JWT); a render
+# crash can happen before there is a token to attach; see api/v1/client_errors.py.
+app.include_router(client_errors_router)
 # Phase 8 PR #23: OAuth (GitHub + Google) demo SaaS sign-in. Endpoints live
 # under /auth/oauth/{provider}/* and are PUBLIC (no JWT) — the whole point
 # of OAuth is that the caller is anonymous.
