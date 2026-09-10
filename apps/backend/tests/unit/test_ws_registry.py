@@ -24,6 +24,9 @@ import uuid
 from typing import Any
 
 import pytest
+from redis.exceptions import RedisError
+
+from core.ws_registry import GLOBAL_KEY
 
 
 class _Clock:
@@ -80,6 +83,35 @@ class _FakeRedis:
 
     async def publish(self, channel: str, message: str) -> None:
         self.published.append((channel, message))
+
+
+class _BoomRedis:
+    """A `RegistryRedis` whose every call raises `RedisError`, simulating an
+    outage (#458) rather than a real client's data."""
+
+    async def zadd(self, name: str, mapping: dict[str, float]) -> None:
+        raise RedisError("boom")
+
+    async def zcard(self, name: str) -> int:
+        raise RedisError("boom")
+
+    async def zrange(self, name: str, start: int, end: int) -> list[str]:
+        raise RedisError("boom")
+
+    async def zrem(self, name: str, *values: str) -> None:
+        raise RedisError("boom")
+
+    async def set(self, name: str, value: str, *, ex: int) -> None:
+        raise RedisError("boom")
+
+    async def mget(self, names: list[str]) -> list[str | None]:
+        raise RedisError("boom")
+
+    async def delete(self, *names: str) -> None:
+        raise RedisError("boom")
+
+    async def publish(self, channel: str, message: str) -> None:
+        raise RedisError("boom")
 
 
 def _run(coro: Any) -> Any:
@@ -520,3 +552,170 @@ def test_register_connection_never_evicts_the_connection_that_just_registered(
     result = _run(_exercise())
     assert result.accepted is True
     assert result.evicted_connection_id is None
+
+
+# ---------------------------------------------------------------------------
+# Fail-open on a Redis outage (#458). Every function that talks to `client`
+# must degrade instead of raising, and record the degradation under its own
+# `action` name so `core.redis_degradation.snapshot()` can surface it.
+# ---------------------------------------------------------------------------
+
+
+class _PartialFailureRedis(_FakeRedis):
+    """A real `_FakeRedis` that raises on one named method only.
+
+    Simulates Redis dying *mid-sequence* rather than being unreachable from
+    the first call, the scenario a security review of #458 traced by hand
+    rather than by an automated test: does a failure landing after some
+    writes already succeeded (e.g. both `zadd`s, before the per-user cap
+    check) leave anything inconsistent? Pinning it here turns that manual
+    trace into a regression test.
+    """
+
+    def __init__(self, clock: _Clock, *, fail_on: str) -> None:
+        super().__init__(clock)
+        self._fail_on = fail_on
+
+    async def zcard(self, name: str) -> int:
+        # `register_connection` calls zcard twice: once on GLOBAL_KEY
+        # (before either zadd), once on the per-user key (after both
+        # zadds). Only the second call is "mid-sequence" for this test;
+        # failing on the first would never reach the zadds at all.
+        if self._fail_on == "zcard" and name != GLOBAL_KEY:
+            raise RedisError("boom")
+        return await super().zcard(name)
+
+
+def test_register_connection_leaves_partial_writes_in_place_on_a_mid_sequence_failure() -> None:
+    """Redis dies between the two `zadd`s succeeding and the per-user cap
+    check. The connection is admitted (fail-open) AND its already-written
+    ZSET entries stay (nothing rolls them back); no eviction is attempted.
+    This is the module's pre-existing "undercount, never wrongly evict"
+    direction, not a new inconsistency #458 introduced."""
+    from core.ws_registry import register_connection, user_key
+
+    clock = _Clock()
+    client = _PartialFailureRedis(clock, fail_on="zcard")
+    uid = uuid.uuid4()
+
+    async def _exercise() -> Any:
+        return await register_connection(
+            client,
+            user_id=uid,
+            connection_id="conn-1",
+            max_per_user=1,
+            max_global=500,
+            presence_ttl_seconds=90,
+            now=1.0,
+        )
+
+    result = _run(_exercise())
+    assert result.accepted is True
+    assert result.evicted_connection_id is None
+    # The zadds that ran before the failure are not rolled back.
+    assert "conn-1" in client.zsets[GLOBAL_KEY]
+    assert "conn-1" in client.zsets[user_key(uid)]
+
+
+def test_register_connection_admits_uncapped_when_redis_is_unreachable() -> None:
+    """The one deliberately-reviewed trade-off (see module docstring): an
+    outage temporarily removes both caps rather than refusing every new
+    connection for the outage's whole duration."""
+    from core.ws_registry import register_connection
+
+    uid = uuid.uuid4()
+
+    async def _exercise() -> Any:
+        return await register_connection(
+            _BoomRedis(),
+            user_id=uid,
+            connection_id="conn-1",
+            max_per_user=0,
+            max_global=0,
+            presence_ttl_seconds=90,
+            now=1.0,
+        )
+
+    result = _run(_exercise())
+    assert result.accepted is True
+    assert result.evicted_connection_id is None
+
+
+def test_register_connection_records_the_degradation_under_its_own_action() -> None:
+    from core import redis_degradation
+    from core.ws_registry import register_connection
+
+    uid = uuid.uuid4()
+
+    async def _exercise() -> None:
+        await register_connection(
+            _BoomRedis(),
+            user_id=uid,
+            connection_id="conn-1",
+            max_per_user=8,
+            max_global=500,
+            presence_ttl_seconds=90,
+            now=1.0,
+        )
+
+    _run(_exercise())
+    snapshot = redis_degradation.snapshot()
+    assert snapshot["ws_registry"]["count"] == 1
+
+
+def test_touch_connection_does_not_raise_when_redis_is_unreachable() -> None:
+    from core.ws_registry import touch_connection
+
+    _run(touch_connection(_BoomRedis(), connection_id="conn-1", presence_ttl_seconds=90))
+
+
+def test_unregister_connection_does_not_raise_when_redis_is_unreachable() -> None:
+    from core.ws_registry import unregister_connection
+
+    _run(unregister_connection(_BoomRedis(), user_id=uuid.uuid4(), connection_id="conn-1"))
+
+
+def test_publish_eviction_does_not_raise_when_redis_is_unreachable() -> None:
+    from core.ws_registry import publish_eviction
+
+    _run(publish_eviction(_BoomRedis(), "conn-1", reason="newer_connection"))
+
+
+def test_each_fail_open_call_site_records_its_own_distinct_action() -> None:
+    """Pins the exact `action=` string each call site passes to
+    `redis_degradation.record`, so a mutation that mixed up which function's
+    failure is which (or dropped the call entirely) fails a test rather than
+    only showing up as an ambiguous log line in production."""
+    from core import redis_degradation, ws_registry
+
+    calls: list[dict[str, Any]] = []
+
+    def _capture(**kwargs: Any) -> bool:
+        calls.append(kwargs)
+        return True
+
+    async def _exercise(monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setattr(redis_degradation, "record", _capture)
+        await ws_registry.register_connection(
+            _BoomRedis(),
+            user_id=uuid.uuid4(),
+            connection_id="c",
+            max_per_user=8,
+            max_global=500,
+            presence_ttl_seconds=90,
+            now=1.0,
+        )
+        await ws_registry.touch_connection(
+            _BoomRedis(), connection_id="c", presence_ttl_seconds=90
+        )
+        await ws_registry.unregister_connection(
+            _BoomRedis(), user_id=uuid.uuid4(), connection_id="c"
+        )
+        await ws_registry.publish_eviction(_BoomRedis(), "c", reason="newer_connection")
+
+    with pytest.MonkeyPatch.context() as mp:
+        _run(_exercise(mp))
+
+    actions = {call["action"] for call in calls}
+    assert actions == {"register", "touch", "unregister", "publish_eviction"}
+    assert all(call["component"] == "ws_registry" for call in calls)
