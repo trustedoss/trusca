@@ -601,7 +601,17 @@ class Component(Base):
 
     __tablename__ = "components"
 
-    id: Mapped[uuid.UUID] = mapped_column(UUID_PK, primary_key=True, server_default=GEN_UUID)
+    # #398: a Python-side default alongside the server default lets
+    # SQLAlchemy's insertmanyvalues batch a multi-row INSERT into one round
+    # trip. With ONLY server_default, a server-generated (i.e. unordered)
+    # PK stops that optimization from ever kicking in, so a scan that hits
+    # ``_bulk_resolve_component_versions``'s new-row path for many rows at
+    # once falls back to one INSERT per row (measured: 500 rows, 500
+    # statements, vs. 1 with this default present). server_default stays as
+    # the fallback for anything that inserts outside the ORM.
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID_PK, primary_key=True, default=uuid.uuid4, server_default=GEN_UUID
+    )
     purl: Mapped[str] = mapped_column(Text, nullable=False, unique=True)
     package_type: Mapped[str] = mapped_column(String(32), nullable=False)
     name: Mapped[str] = mapped_column(String(512), nullable=False)
@@ -649,7 +659,10 @@ class ComponentVersion(Base):
 
     __tablename__ = "component_versions"
 
-    id: Mapped[uuid.UUID] = mapped_column(UUID_PK, primary_key=True, server_default=GEN_UUID)
+    # #398: see the identical note on Component.id above.
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID_PK, primary_key=True, default=uuid.uuid4, server_default=GEN_UUID
+    )
     component_id: Mapped[uuid.UUID] = mapped_column(
         UUID_PK,
         ForeignKey("components.id", ondelete="CASCADE"),
@@ -768,7 +781,11 @@ class ScanComponent(Base):
 
     __tablename__ = "scan_components"
 
-    id: Mapped[uuid.UUID] = mapped_column(UUID_PK, primary_key=True, server_default=GEN_UUID)
+    # #398: see the identical note on Component.id above, and note this is
+    # the table a large SBOM stages the most rows into in one persist call.
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID_PK, primary_key=True, default=uuid.uuid4, server_default=GEN_UUID
+    )
     scan_id: Mapped[uuid.UUID] = mapped_column(
         UUID_PK,
         ForeignKey("scans.id", ondelete="CASCADE"),
@@ -855,7 +872,10 @@ class ComponentDependencyEdge(Base):
 
     __tablename__ = "component_dependency_edges"
 
-    id: Mapped[uuid.UUID] = mapped_column(UUID_PK, primary_key=True, server_default=GEN_UUID)
+    # #398: see the identical note on Component.id above.
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID_PK, primary_key=True, default=uuid.uuid4, server_default=GEN_UUID
+    )
     scan_id: Mapped[uuid.UUID] = mapped_column(
         UUID_PK,
         ForeignKey("scans.id", ondelete="CASCADE"),
@@ -1180,7 +1200,10 @@ class License(Base):
 
     __tablename__ = "licenses"
 
-    id: Mapped[uuid.UUID] = mapped_column(UUID_PK, primary_key=True, server_default=GEN_UUID)
+    # #398: see the identical note on Component.id above.
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID_PK, primary_key=True, default=uuid.uuid4, server_default=GEN_UUID
+    )
     spdx_id: Mapped[str | None] = mapped_column(String(64), nullable=True, unique=True)
     name: Mapped[str] = mapped_column(String(255), nullable=False)
     category: Mapped[str] = mapped_column(_license_category_enum(), nullable=False)
@@ -1232,7 +1255,10 @@ class LicenseFinding(Base):
 
     __tablename__ = "license_findings"
 
-    id: Mapped[uuid.UUID] = mapped_column(UUID_PK, primary_key=True, server_default=GEN_UUID)
+    # #398: see the identical note on Component.id above.
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID_PK, primary_key=True, default=uuid.uuid4, server_default=GEN_UUID
+    )
     scan_id: Mapped[uuid.UUID] = mapped_column(
         UUID_PK,
         ForeignKey("scans.id", ondelete="CASCADE"),

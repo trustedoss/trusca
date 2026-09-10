@@ -57,6 +57,7 @@ import json
 import re
 import shutil
 import subprocess
+import threading
 import time
 import tomllib
 import uuid
@@ -69,6 +70,7 @@ from typing import Any
 import structlog
 from celery.exceptions import SoftTimeLimitExceeded
 from sqlalchemy import String, case, cast, delete, func, select
+from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.exc import IntegrityError, SQLAlchemyError
 from sqlalchemy.orm import Session
 
@@ -2844,6 +2846,308 @@ def _component_text_field(value: Any, fallback: str) -> str:
     return fallback
 
 
+# ---------------------------------------------------------------------------
+# #398, per-scan catalog prefetch
+#
+# ``_get_or_create_component`` / ``_get_or_create_component_version`` /
+# ``_get_or_create_license`` each do one SELECT (and, on a cache miss, one
+# SAVEPOINT-guarded INSERT) per call, and ``persist_sbom_components`` used to
+# call them once per raw SBOM component: up to tens of thousands of DB round
+# trips for a large Java/Node project, the bottleneck that set the 60-minute
+# scan soft limit.
+#
+# The fix is a per-thread cache the three functions consult BEFORE their
+# original per-row body: a miss falls through unchanged (so every existing
+# caller / test of those three functions, including the concurrent-insert
+# race tests in ``test_component_license_insert_race.py`` (which never
+# activate this cache), keeps working against the untouched fallback path),
+# while a hit skips the DB entirely. ``persist_sbom_components`` warms the
+# cache in O(few) queries (one prefetch SELECT + one batch
+# ``INSERT ... ON CONFLICT DO NOTHING RETURNING`` per catalog table) before
+# its main loop runs, so the common, uncontended case never falls through.
+#
+# threading.local rather than a plain module global: Celery can run scans for
+# different projects on different worker threads of the same process
+# (integrations/license_fetcher's docstring notes the same constraint), and a
+# plain global would let one scan's cache answer another scan's lookups.
+#
+# Scope boundary: this fixes the CATALOG tables (components / component_
+# versions / licenses, shared, org-wide, looked up by a non-PK unique
+# column). ``scan_components`` / ``license_findings`` / ``component_
+# dependency_edges`` are unaffected: they were, and still are, one INSERT
+# per row via plain ``session.add()``. That is not something this change
+# regresses: those three tables' ``id`` is a server-generated UUID PK
+# alongside a server-generated, non-PK ``created_at`` (no client-side
+# fallback for either), and SQLAlchemy's insertmanyvalues batching needs
+# every RETURNING-needed column to have one; with only a server default on
+# BOTH, it silently falls back to one INSERT per row no matter how many
+# objects are staged before the flush (measured directly: 500 objects, 500
+# statements). Component / ComponentVersion / License sidestep this by
+# going through Core (an explicit ``pg_insert`` batch, or a client-side
+# ``default=uuid.uuid4`` added to their id columns alongside the existing
+# server_default) rather than the ORM's per-object insert path. Giving the
+# other three tables' ``created_at`` the same treatment would mean a
+# client-side default replacing the DB's own clock for that column, which
+# elsewhere in this codebase has mattered (a local process clock can read
+# meaningfully behind Postgres's). Doing it here, for these three tables
+# specifically, is a reasonable follow-up; it is out of scope for this
+# change, which is about the catalog lookup the 60-minute soft limit
+# actually traces to.
+# ---------------------------------------------------------------------------
+
+
+class _CatalogPrefetch:
+    """One scan's warmed Component / ComponentVersion / License cache."""
+
+    __slots__ = ("components", "component_versions", "licenses")
+
+    def __init__(self) -> None:
+        self.components: dict[str, Component] = {}
+        self.component_versions: dict[str, ComponentVersion] = {}
+        self.licenses: dict[str, Any] = {}
+
+
+_prefetch_local = threading.local()
+
+
+def _active_prefetch() -> _CatalogPrefetch | None:
+    return getattr(_prefetch_local, "value", None)
+
+
+def _bulk_resolve_components(
+    session: Session, requested: dict[str, tuple[str, str]]
+) -> dict[str, uuid.UUID]:
+    """Batch sibling of ``_get_or_create_component`` (#398).
+
+    ``requested`` maps a version-less purl to the ``(name, package_type)`` of
+    the FIRST raw SBOM row that declared it, matching
+    ``_get_or_create_component``'s own existing-row semantics (a second row
+    for an already-persisted purl never overwrites its name/package_type).
+    """
+    if not requested:
+        return {}
+    purls = list(requested)
+    resolved: dict[str, uuid.UUID] = {
+        row.purl: row.id
+        for row in session.execute(
+            select(Component.id, Component.purl).where(Component.purl.in_(purls))
+        )
+    }
+    missing = [p for p in purls if p not in resolved]
+    if not missing:
+        return resolved
+    values = [
+        {"purl": p, "name": requested[p][0], "package_type": requested[p][1]} for p in missing
+    ]
+    stmt = (
+        pg_insert(Component)
+        .values(values)
+        .on_conflict_do_nothing(index_elements=["purl"])
+        .returning(Component.id, Component.purl)
+    )
+    for row in session.execute(stmt):
+        resolved[row.purl] = row.id
+    still_missing = [p for p in missing if p not in resolved]
+    if still_missing:
+        # Lost the race to a concurrent scan inserting the same purl between
+        # our prefetch SELECT and this INSERT: the same defect #398-A's
+        # SAVEPOINT dance absorbs, just observed at batch scale. ON CONFLICT
+        # DO NOTHING never raises, it just omits the row from RETURNING.
+        for row in session.execute(
+            select(Component.id, Component.purl).where(Component.purl.in_(still_missing))
+        ):
+            resolved[row.purl] = row.id
+        log.warning("component_insert_race_batch", purls=len(still_missing))
+    return resolved
+
+
+def _bulk_resolve_component_versions(
+    session: Session, requested: dict[str, tuple[uuid.UUID, str]]
+) -> dict[str, ComponentVersion]:
+    """Batch sibling of ``_get_or_create_component_version`` (#398).
+
+    ``requested`` maps a version-pinned purl to the ``(component_id,
+    version)`` of the first raw SBOM row that declared it. Returns real,
+    session-tracked ``ComponentVersion`` instances, both the rows an
+    existing-row SELECT found and the ones this call creates, so the
+    caller's EOL / malicious stamping (unchanged; still one ORM attribute
+    mutation per component_version) keeps working exactly as it did against
+    ``_get_or_create_component_version``'s single-row return value.
+
+    The INSERT goes through Core (``pg_insert`` + ``ON CONFLICT DO
+    NOTHING``), not ``session.add()`` + flush like ``_bulk_resolve_
+    components``' first cut of this function used to: ``component_versions``
+    has THREE server-generated, non-PK columns (``created_at`` /
+    ``updated_at`` / ``last_seen_at``) beyond its server-generated UUID PK,
+    and SQLAlchemy's ``insertmanyvalues`` batching only fires when every
+    RETURNING-needed column has a value it can supply without asking
+    Postgres to generate one. With server-only defaults on the table, it
+    silently falls back to one INSERT per row (measured: 300 new rows, 300
+    statements). The Core statement sidesteps that: a single multi-VALUES
+    INSERT, no RETURNING requested. The one SELECT right after recovers
+    real, session-tracked instances for both the rows this call just
+    inserted AND, on the rare cross-scan race, since ``ON CONFLICT DO
+    NOTHING`` never raises, it just omits that row from a competing
+    session's write, whichever row the other scan committed instead.
+    """
+    if not requested:
+        return {}
+    pwvs = list(requested)
+    resolved: dict[str, ComponentVersion] = {
+        cv.purl_with_version: cv
+        for cv in session.execute(
+            select(ComponentVersion).where(ComponentVersion.purl_with_version.in_(pwvs))
+        ).scalars()
+    }
+    missing = [p for p in pwvs if p not in resolved]
+    if not missing:
+        return resolved
+
+    values = [
+        {
+            "component_id": requested[pwv][0],
+            "version": requested[pwv][1],
+            "purl_with_version": pwv,
+        }
+        for pwv in missing
+    ]
+    session.execute(
+        pg_insert(ComponentVersion)
+        .values(values)
+        .on_conflict_do_nothing(index_elements=["purl_with_version"])
+    )
+    for cv in session.execute(
+        select(ComponentVersion).where(ComponentVersion.purl_with_version.in_(missing))
+    ).scalars():
+        resolved[cv.purl_with_version] = cv
+    still_missing = [p for p in missing if p not in resolved]
+    if still_missing:
+        # Every purl was either inserted by us or already exists, so a
+        # genuine miss here means a same-batch caller error (an unresolved
+        # ``component_id``), not a race, so it stays loud rather than
+        # silently degrading like the two logged races above.
+        raise RuntimeError(
+            f"component_version prefetch could not resolve: {still_missing[:5]}"
+        )
+    return resolved
+
+
+def _bulk_resolve_licenses(session: Session, requested: dict[str, str | None]) -> dict[str, Any]:
+    """Batch sibling of ``_get_or_create_license`` (#398).
+
+    ``requested`` maps a SPDX id to the ``reference_url`` of the first raw
+    SBOM row that declared it. The self-heal reconciliation (stale
+    ``unknown`` category, review-flag drift) still runs, just once per
+    EXISTING row inside this batch rather than once per one of a scan's
+    (typically many) per-component calls: its outcome does not depend on
+    how many times a purl repeats a license, only on the license row itself.
+    """
+    from models import License as LicenseModel
+    from services.license_flags import classify_review_flag
+
+    if not requested:
+        return {}
+    spdx_ids = list(requested)
+    resolved: dict[str, Any] = {}
+    for row in session.execute(
+        select(LicenseModel).where(LicenseModel.spdx_id.in_(spdx_ids))
+    ).scalars():
+        # The WHERE clause above only ever matches non-NULL spdx_id values.
+        assert row.spdx_id is not None
+        resolved[row.spdx_id] = row
+    for lic in resolved.values():
+        if lic.category == "unknown":
+            reclassified = _classify_license_category(lic.spdx_id)
+            if reclassified != "unknown":
+                lic.category = reclassified
+        review_flag = classify_review_flag(lic.spdx_id, lic.name)
+        if lic.review_flag != review_flag:
+            lic.review_flag = review_flag
+
+    missing = [s for s in spdx_ids if s not in resolved]
+    if not missing:
+        return resolved
+
+    nested = session.begin_nested()
+    try:
+        new_rows = {
+            spdx_id: LicenseModel(
+                spdx_id=spdx_id,
+                name=spdx_id,
+                category=_classify_license_category(spdx_id),
+                review_flag=classify_review_flag(spdx_id, spdx_id),
+                reference_url=requested[spdx_id],
+            )
+            for spdx_id in missing
+        }
+        for lic in new_rows.values():
+            session.add(lic)
+        session.flush()
+        nested.commit()
+    except IntegrityError:
+        nested.rollback()
+        log.warning("license_insert_race_batch", spdx_ids=len(missing))
+        for spdx_id in missing:
+            resolved[spdx_id] = _get_or_create_license(
+                session, spdx_id=spdx_id, reference_url=requested[spdx_id]
+            )
+        return resolved
+
+    resolved.update(new_rows)
+    return resolved
+
+
+def _prefetch_component_catalog(session: Session, sbom: dict[str, Any]) -> _CatalogPrefetch:
+    """Warm this scan's Component / ComponentVersion / License cache (#398).
+
+    A lightweight walk of ``sbom.components`` (the same walk
+    ``persist_sbom_components`` is about to do in full), just to collect the
+    distinct purls / SPDX ids it will ask for, so they can be resolved in
+    O(few) queries instead of one SELECT(+INSERT) pair per raw component.
+    """
+    cache = _CatalogPrefetch()
+    purl_requests: dict[str, tuple[str, str]] = {}
+    version_requests: dict[str, tuple[str, str]] = {}
+    license_requests: dict[str, str | None] = {}
+
+    for raw in sbom_component_walk.iter_components(sbom.get("components")):
+        if not isinstance(raw, dict):
+            continue
+        raw_ref = raw.get("purl") or raw.get("bom-ref")
+        if not isinstance(raw_ref, str) or not raw_ref:
+            continue
+        purl = sanitize_jsonb_text(raw_ref)
+        if not purl:
+            continue
+        name = _component_text_field(raw.get("name"), "unknown")
+        version = _component_text_field(raw.get("version"), "0.0.0")
+        component_purl = _purl_without_version(purl)
+        package_type = _purl_package_type(purl)
+        purl_requests.setdefault(component_purl, (name, package_type))
+        version_requests.setdefault(purl, (component_purl, version))
+        for spdx_id, ref_url in _extract_spdx_ids(raw):
+            license_requests.setdefault(spdx_id, ref_url)
+
+    if not purl_requests:
+        return cache
+
+    component_ids = _bulk_resolve_components(session, purl_requests)
+    for purl, comp_id in component_ids.items():
+        name, package_type = purl_requests[purl]
+        cache.components[purl] = Component(
+            id=comp_id, purl=purl, name=name, package_type=package_type
+        )
+
+    version_requests_resolved = {
+        pwv: (component_ids[cpurl], version)
+        for pwv, (cpurl, version) in version_requests.items()
+        if cpurl in component_ids
+    }
+    cache.component_versions = _bulk_resolve_component_versions(session, version_requests_resolved)
+    cache.licenses = _bulk_resolve_licenses(session, license_requests)
+    return cache
+
+
 def persist_sbom_components(
     session: Session,
     *,
@@ -2852,7 +3156,39 @@ def persist_sbom_components(
     source_dir: Path | None = None,
 ) -> None:
     """Upsert components / component versions / scan components / license
-    findings from a cdxgen CycloneDX SBOM.
+    findings from a cdxgen CycloneDX SBOM. See ``_persist_sbom_components_impl``
+    for the actual walk; this wrapper only warms and tears down the #398
+    per-scan catalog cache the three ``_get_or_create_*`` helpers consult.
+
+    Prefetch is a pure accelerator, never a correctness dependency: every
+    call site that consults it falls through to its original, fully-correct
+    per-row path on a miss. So a prefetch failure of ANY kind (a genuinely
+    broken connection, or, in a unit test, a fake session with no
+    ``execute()``) degrades to "no cache" rather than aborting the scan;
+    the ``AttributeError`` arm exists FOR that second case.
+    """
+    try:
+        prefetch = _prefetch_component_catalog(session, sbom)
+    except (AttributeError, SQLAlchemyError):
+        prefetch = _CatalogPrefetch()
+        log.warning("catalog_prefetch_failed", scan_id=str(scan_uuid), exc_info=True)
+    _prefetch_local.value = prefetch
+    try:
+        _persist_sbom_components_impl(
+            session, scan_uuid=scan_uuid, sbom=sbom, source_dir=source_dir
+        )
+    finally:
+        _prefetch_local.value = None
+
+
+def _persist_sbom_components_impl(
+    session: Session,
+    *,
+    scan_uuid: uuid.UUID,
+    sbom: dict[str, Any],
+    source_dir: Path | None = None,
+) -> None:
+    """The original per-component walk (#398 prefetch note above).
 
     UAT patch (2026-05-07): the original design relied on ORT's evaluator
     output for ``license_findings``, but the ORT integration was broken (it fed
@@ -2861,7 +3197,16 @@ def persist_sbom_components(
     ``components[].licenses``, so we upsert ``licenses`` + ``license_findings``
     rows here. License kind is fixed to ``"declared"`` because cdxgen's data is
     package-metadata-derived (npm `license`, maven `<licenses>`, gradle
-    resolved POM) — these are THIRD-PARTY dependency licenses.
+    resolved POM); these are THIRD-PARTY dependency licenses.
+
+    UAT patch (2026-05-07): the original design relied on ORT's evaluator
+    output for ``license_findings``, but the ORT integration was broken (it fed
+    a CycloneDX SBOM to ``ort evaluate --ort-file``, which aborted every scan).
+    cdxgen does emit each component's declared SPDX license inside
+    ``components[].licenses``, so we upsert ``licenses`` + ``license_findings``
+    rows here. License kind is fixed to ``"declared"`` because cdxgen's data is
+    package-metadata-derived (npm `license`, maven `<licenses>`, gradle
+    resolved POM); these are THIRD-PARTY dependency licenses.
 
     PR-A2: ORT was removed entirely. Detected (first-party) licenses now come
     from scancode and are persisted separately by ``_persist_detected_licenses``
@@ -3516,6 +3861,14 @@ def _get_or_create_license(
     from models import License as LicenseModel
     from services.license_flags import classify_review_flag
 
+    # #398: a warmed per-scan cache (``_prefetch_component_catalog``) already
+    # ran this same self-heal once for every EXISTING row it found, so a hit
+    # here just returns that reconciled object. A miss (no active cache, or
+    # an id the prefetch did not warm, e.g. the registry-fallback path) falls
+    # through to the SELECT below, unchanged.
+    prefetch = _active_prefetch()
+    if prefetch is not None and spdx_id in prefetch.licenses:
+        return prefetch.licenses[spdx_id]
     existing = session.execute(
         select(LicenseModel).where(LicenseModel.spdx_id == spdx_id)
     ).scalar_one_or_none()
@@ -4103,7 +4456,15 @@ def _get_or_create_component(
     staged ahead of this one purl in the loop (mirrors ER8, PR #290). The
     INSERT therefore runs inside a SAVEPOINT: on a unique violation only this
     statement is undone and the caller's transaction survives intact.
+
+    #398: a warmed per-scan cache (``_prefetch_component_catalog``) answers
+    most calls without touching the DB at all; a miss (no active cache, or
+    a purl the prefetch did not warm) falls through to the SELECT below
+    unchanged.
     """
+    prefetch = _active_prefetch()
+    if prefetch is not None and purl in prefetch.components:
+        return prefetch.components[purl]
     existing = session.execute(select(Component).where(Component.purl == purl)).scalar_one_or_none()
     if existing is not None:
         return existing
@@ -4141,7 +4502,12 @@ def _get_or_create_component_version(
     ``component_versions.purl_with_version`` (see that docstring for why the
     INSERT runs inside a SAVEPOINT rather than rolling back the caller's
     transaction).
+
+    #398: same warmed-cache fast path as ``_get_or_create_component``.
     """
+    prefetch = _active_prefetch()
+    if prefetch is not None and purl_with_version in prefetch.component_versions:
+        return prefetch.component_versions[purl_with_version]
     existing = session.execute(
         select(ComponentVersion).where(ComponentVersion.purl_with_version == purl_with_version)
     ).scalar_one_or_none()
