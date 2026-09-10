@@ -660,7 +660,8 @@
     },
     "errors": {
       "assignment_save": "save the assignment",
-      "load_failed": "Could not load vulnerabilities."
+      "load_failed": "Could not load vulnerabilities.",
+      "ticket_status_refresh": "refresh the ticket status"
     },
     "detail_page": {
       "breadcrumb_aria": "Breadcrumb",
@@ -779,6 +780,14 @@
       "take_over": "Take over from the deactivated owner",
       "ticket_key_label": "Ticket ID",
       "ticket_url_label": "Ticket link",
+      "ticket_status_heading": "Ticket status",
+      "ticket_status_value": "{{status}} ({{state}})",
+      "ticket_status_resolved": "resolved",
+      "ticket_status_open": "open",
+      "ticket_status_never_checked": "Not checked yet.",
+      "ticket_status_checked_at": "Checked {{when}}",
+      "ticket_status_refresh": "Refresh ticket status",
+      "ticket_status_refreshing": "Checking…",
       "unassign": "Unassign",
       "unassigned": "Unassigned"
     }

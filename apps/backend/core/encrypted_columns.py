@@ -84,6 +84,10 @@ ENCRYPTED_COLUMNS: tuple[EncryptedColumn, ...] = (
     # from a stolen forge credential, and the column is new so nothing was
     # written under the shared key to migrate.
     EncryptedColumn("users", "mfa_secret_encrypted", purpose="totp"),
+    # Same sensitivity class as registry_credentials.password_encrypted
+    # above (a forge/service credential, not a personal second factor), so
+    # it stays on the shared key rather than a derived subkey.
+    EncryptedColumn("ticket_credentials", "api_token_encrypted"),
 )
 
 

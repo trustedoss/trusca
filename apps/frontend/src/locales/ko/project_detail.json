@@ -660,7 +660,8 @@
     },
     "errors": {
       "assignment_save": "배정 저장",
-      "load_failed": "취약점을 불러오지 못했습니다."
+      "load_failed": "취약점을 불러오지 못했습니다.",
+      "ticket_status_refresh": "티켓 상태 새로 가져오기"
     },
     "detail_page": {
       "breadcrumb_aria": "탐색 경로",
@@ -779,6 +780,14 @@
       "take_over": "비활성 담당자에게서 인계받기",
       "ticket_key_label": "티켓 번호",
       "ticket_url_label": "티켓 링크",
+      "ticket_status_heading": "티켓 상태",
+      "ticket_status_value": "{{status}} ({{state}})",
+      "ticket_status_resolved": "해결됨",
+      "ticket_status_open": "미해결",
+      "ticket_status_never_checked": "아직 확인한 적이 없습니다.",
+      "ticket_status_checked_at": "확인 시각: {{when}}",
+      "ticket_status_refresh": "티켓 상태 새로 가져오기",
+      "ticket_status_refreshing": "확인 중",
       "unassign": "배정 해제",
       "unassigned": "미배정"
     }

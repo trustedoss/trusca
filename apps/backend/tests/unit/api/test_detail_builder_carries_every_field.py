@@ -188,6 +188,10 @@ def _full_detail_payload() -> dict[str, object]:
         "assignee_is_active": True,
         "ticket_url": "https://example.invalid/ticket/1",
         "ticket_key": "SEC-1",
+        "ticket_status": "In Progress",
+        "ticket_resolved": False,
+        "ticket_checked_at": now,
+        "ticket_check_error": None,
         "created_at": now,
         "updated_at": now,
     }

@@ -392,6 +392,57 @@ finding은 현지 7일 오후에 초과로 바뀌고, 동쪽이라면 그만큼 
 빠진 뒤에 훑어볼 목록이 이것이고, 나온 행마다 무엇을 할지는
 [화면이 제공하는 것](#assignment-on-screen)에 있습니다.
 
+#### 티켓 상태 다시 가져오기 {#ticket-status}
+
+티켓 링크는 작업을 어디서 추적하는지만 알려줄 뿐, 포털이 그 티켓을 지켜보지는 않습니다.
+추적 시스템에서 티켓을 닫아도 finding은 직접 확인을 요청하기 전까지 이전 상태를 그대로
+보여줍니다.
+
+드로어의 "티켓 상태 새로 가져오기" 버튼을 누르면 finding의 티켓 링크가 가리키는 추적
+시스템에 한 번 요청을 보내고 그 응답을 기록합니다. `ticket_status`(추적 시스템이 쓰는
+상태 이름을 그대로 보여줌), 포털이 이를 해결된 것으로 볼지, 마지막으로 확인한 시각이 그
+대상입니다. 자동으로 도는 백그라운드 확인은 없습니다. 누군가 버튼을 눌러야 확인이 일어나고,
+그 결과는 그 한 번의 클릭만을 반영합니다.
+
+확인이 실패해도 오류가 아니라 답입니다. 왜 알 수 없었는지를 알려줍니다. 그 호스트에 등록된
+추적 시스템 자격증명이 없거나, 링크의 호스트가 아웃바운드 요청 안전 검사를 통과하지
+못했거나, 추적 시스템이 저장된 자격증명을 거부했거나, 그 티켓이 그곳에 없는 경우입니다.
+마지막으로 성공한 답은 다음 확인이 그 자리를 대체하기 전까지 그대로 남고, 실패한 확인이
+이미 알고 있던 상태를 지우는 일은 없습니다.
+
+현재는 Jira Cloud만 지원합니다. 티켓 링크의 호스트가 조직 관리자가 등록해 둔 추적 시스템
+자격증명(아래 참고)과 일치해야 합니다. 다른 추적 시스템은 아직 연동 어댑터가 없어서, 링크에
+무엇을 붙여 넣든 "자격증명이 등록되지 않음"으로 나옵니다.
+
+##### Jira 자격증명 등록하기 (관리자) {#ticket-status-credential}
+
+조직 관리자는 조직마다 Jira Cloud 사이트 하나당 로그인 정보 하나를 등록합니다. 계정
+이메일과
+[API 토큰](https://id.atlassian.com/manage-profile/security/api-tokens)이며,
+비밀번호가 아닙니다.
+
+<!-- docs-uat: id=vuln-ticket-credential-put kind=shell ctx=host tier=manual waiver=example-curl-placeholder-host-and-token -->
+```bash
+curl -X PUT \
+  -H "Authorization: Bearer $TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{"host":"mycompany.atlassian.net","username":"bot@example.com","api_token":"'"$JIRA_API_TOKEN"'"}' \
+  "https://trustedoss.example.com/v1/admin/organizations/$ORG_ID/ticket-credentials"
+```
+
+`host`는 붙여 넣은 티켓 링크에 그대로 나오는 추적 시스템의 호스트입니다
+(`mycompany.atlassian.net`). `https://mycompany.atlassian.net/`처럼 붙여 넣어도
+알아서 정리됩니다. 토큰은 쓰기 전용입니다. 암호화해서 저장하고, 등록한 요청을 포함해 어떤
+엔드포인트도 다시 돌려주지 않습니다. 조회하면 호스트와 사용자 이름만 보입니다.
+
+같은 Jira 사이트로 링크를 붙여 넣는 조직 안의 모든 팀이 자격증명 하나를 함께 씁니다. 위의
+[컨테이너 레지스트리 자격증명](./scans.md#private-registries)과 같은 구조이고 이유도
+같습니다. Jira 사이트는 팀별 비밀이 아니라 조직 전체의 인프라이기 때문입니다. 자신이 수정할
+수 있는 finding에 티켓 링크를 넣을 수 있는 사람은 누구든 그 링크가 가리키는 이슈에 대해
+확인을 걸 수 있습니다. 포털은 이슈 키를 항상 링크 자체에서 읽으므로, 확인이 공유 사이트의
+관련 없는 이슈로 향하는 일은 없습니다. 저장된 토큰이 속한 계정에 Jira 자체의 이슈별 권한은
+그대로 적용되며, 이는 그 계정을 쓰는 다른 누구에게나 마찬가지입니다.
+
 ### 심각도별 조치 기간
 
 기한은 *최초 탐지 + 심각도별 기간*입니다.

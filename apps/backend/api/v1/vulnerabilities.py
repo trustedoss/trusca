@@ -30,12 +30,13 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from api.v1._csv_export_response import csv_stream_response
 from api.v1._snapshot_anchor import snapshot_anchor
-from core.config import csv_export_rate_limit
+from core.config import csv_export_rate_limit, ticket_status_refresh_rate_limit
 from core.db import get_db
 from core.errors import problem_response
 from core.ratelimit import _authenticated_user_key, limiter
 from core.security import CurrentUser, require_role
 from schemas.vulnerability_detail import (
+    TicketStatusRefreshOut,
     UpgradeCluster,
     UpgradeClusterFinding,
     UpgradeClusterListResponse,
@@ -51,6 +52,12 @@ from schemas.vulnerability_detail import (
 from services.project_service import ProjectError
 from services.scan_resolution import SnapshotScanNotFound
 from services.table_export_service import stream_vulnerabilities_csv
+from services.ticket_status_service import (
+    FindingNotFound,
+    NoTicketConfigured,
+    TicketStatusServiceError,
+    refresh_ticket_status,
+)
 from services.upgrade_cluster_service import (
     DEFAULT_CLUSTER_LIMIT,
     MAX_CLUSTER_LIMIT,
@@ -580,6 +587,67 @@ async def update_vulnerability_assignment_endpoint(
     except (VulnerabilityError, ProjectError) as exc:
         return _problem_for_vulnerability_error(request, exc)
     return _detail_response(result)
+
+
+# ---------------------------------------------------------------------------
+# POST /v1/vulnerability_findings/{finding_id}/ticket-status/refresh  (#385)
+# ---------------------------------------------------------------------------
+
+
+@router.post(
+    "/vulnerability_findings/{finding_id}/ticket-status/refresh",
+    response_model=TicketStatusRefreshOut,
+    summary="Read the finding's external ticket back and record its state",
+    responses={
+        200: {
+            "description": (
+                "The attempt completed; check `ticket_check_error` for whether "
+                "it actually reached an answer. A failed OUTBOUND call to the "
+                "tracker (no credential configured, the URL failed the SSRF "
+                "guard, the tracker rejected the token, the issue does not "
+                "exist) is reported here, not as a non-200 status."
+            ),
+        },
+        404: {
+            "description": (
+                "Finding does not exist, or exists in a team the caller cannot "
+                "access. Returned in lieu of 403 to avoid leaking existence."
+            ),
+        },
+        422: {"description": "The finding has no ticket_url set, so there is nothing to check."},
+    },
+)
+# One call spends the org's shared tracker credential against a third-party
+# host, so it is rate-limited the same as the other submit-triggered
+# external lookups even though it is a deliberate button click.
+@limiter.limit(ticket_status_refresh_rate_limit, key_func=_authenticated_user_key)
+async def refresh_ticket_status_endpoint(
+    request: Request,
+    finding_id: uuid.UUID,
+    session: AsyncSession = Depends(get_db),
+    actor: CurrentUser = Depends(require_role("developer")),
+) -> Response:
+    try:
+        result = await refresh_ticket_status(session, finding_id=finding_id, actor=actor)
+    except (FindingNotFound, NoTicketConfigured, TicketStatusServiceError) as exc:
+        return problem_response(
+            status_code=exc.status_code,
+            title=exc.title,
+            detail=str(exc) or exc.title,
+            instance=request.url.path,
+        )
+    out = TicketStatusRefreshOut(
+        finding_id=result.finding_id,
+        ticket_status=result.ticket_status,
+        ticket_resolved=result.ticket_resolved,
+        ticket_checked_at=result.ticket_checked_at,
+        ticket_check_error=result.ticket_check_error,
+    )
+    return Response(
+        content=out.model_dump_json(),
+        status_code=status.HTTP_200_OK,
+        media_type="application/json",
+    )
 
 
 # ---------------------------------------------------------------------------

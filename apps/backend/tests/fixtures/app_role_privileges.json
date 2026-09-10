@@ -256,6 +256,12 @@
       "SELECT",
       "UPDATE"
     ],
+    "ticket_credentials": [
+      "DELETE",
+      "INSERT",
+      "SELECT",
+      "UPDATE"
+    ],
     "transition_approvals": [
       "INSERT",
       "SELECT",

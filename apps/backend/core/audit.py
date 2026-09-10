@@ -115,6 +115,12 @@ _SENSITIVE_COLUMNS = frozenset(
         # copy stays readable under a key the operator has retired.
         "mfa_secret_encrypted",
         "code_hash",
+        # #385 - per-organization ticket-tracker login (Jira Cloud API token
+        # today). Fernet ciphertext; masking it out of the audit diff is
+        # defence-in-depth so an add / rotate / delete on
+        # ``ticket_credentials`` never copies the ciphertext into
+        # ``audit_logs.diff``.
+        "api_token_encrypted",
     }
 )
 
