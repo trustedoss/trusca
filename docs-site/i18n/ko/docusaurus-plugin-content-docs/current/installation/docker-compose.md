@@ -71,7 +71,7 @@ air-gapped 평가(`ghcr.io` egress 없음)는 [취약점 데이터 — Air-gappe
 다 사용한 뒤의 정리는 [Quickstart — 스택 종료](../quickstart.md#스택-종료)를
 참고하세요.
 
-## HTTPS 배포의 사전 요구사항
+## HTTPS 배포의 사전 요구사항 {#prerequisites-for-https-deployments}
 
 마법사를 실행하기 전에 호스트가 다음 세 가지 조건을 만족하는지 확인하세요.
 마법사는 이를 검증하지 않으며, 하나라도 누락되면 Traefik이 조용히 실패합니다.

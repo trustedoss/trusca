@@ -44,7 +44,7 @@ sidebar_position: 2
 | `IMAGE_TAG` | `0.11.0` | `docker-compose.yml` | `ghcr.io/trustedoss/trusca-backend`, `…/trusca-backend-worker`, `…/trusca-frontend`의 핀 태그. |
 | `UVICORN_WORKERS` | `4` | `Dockerfile.prod`(uvicorn CLI), `config.py` | 백엔드 컨테이너가 띄우는 uvicorn 워커 프로세스 수. 값을 올리면 컨테이너를 늘리는 대신 컨테이너 하나가 쓰는 CPU 코어 수가 늘어나며, 값을 올리기 전에 아래 커넥션 예산 계산식에도 반영해야 한다. |
 
-## 데이터베이스
+## 데이터베이스 {#database}
 
 `DATABASE_URL`(위 표)이 표준 설정입니다. 아래 합성 대안은 GCP Cloud Run 모듈이 Secret Manager에서 `DB_PASSWORD`를 마운트할 때 DSN을 Terraform state에 굽지 않도록 제공됩니다. **`DATABASE_URL`** 또는 **네 개의 `DB_*` 키 중 하나만** 설정하세요 — 둘 다 설정 금지.
 
@@ -59,6 +59,10 @@ sidebar_position: 2
 | `POSTGRES_USER` | `trustedoss` | `docker-compose.yml` | postgres 컨테이너 init이 사용. `DATABASE_URL`과 일치해야 함. |
 | `POSTGRES_PASSWORD` | — | `docker-compose.yml` | 마법사가 생성. |
 | `POSTGRES_DB` | `trustedoss` | `docker-compose.yml` | 데이터베이스명. |
+| `DATABASE_URL_OWNER` | 미설정 시 `DATABASE_URL`로 폴백 | `config.py` | L1 역할 분리: DDL 권한을 가진 슈퍼유저 DSN. `alembic upgrade head`와 시작 시 역할 점검에만 쓰임. |
+| `DATABASE_URL_APP` | 미설정 시 `DATABASE_URL`로 폴백 | `config.py` | L1 역할 분리: 백엔드와 Celery 워커가 평상시 연결에 쓰는 DML 전용 런타임 DSN. |
+| `POSTGRES_APP_PASSWORD` | — | `docker-compose.yml` | 설정하면 Compose가 첫 부팅 시 `trustedoss_app` 역할을 만들 때 쓰는 비밀번호. 위 두 DSN을 선언하는 것만으로는 부족하고, Compose에서 L1을 실제로 돌리려면 이 값도 필요. |
+| `REQUIRE_DB_ROLE_SEPARATION` | `false` | `core/db_role.py` | `true`면 연결된 역할에 여전히 DDL 권한이 있을 때 경고 대신 시작을 거부. L1 역할 분리 전체 설정은 [하드닝](../admin-guide/hardening.md) 참고. |
 
 `DB_*` 네 키 중 하나라도 설정되면 **모두** 설정해야 합니다 (그렇지 않으면 합성 분기에서 부팅 시 raise). 포털은 async SQLAlchemy + `asyncpg`를 사용합니다. 커넥션 풀 크기(`DB_POOL_SIZE`, `DB_MAX_OVERFLOW`, `DB_SYNC_POOL_SIZE`, `DB_SYNC_MAX_OVERFLOW`)는 `.env.example`의 "Postgres connection budget" 절에 정리되어 있습니다. FastAPI 풀 값에 uvicorn 워커 수와 백엔드 레플리카 수를 곱하고 Celery 워커·beat 풀을 더한 값이 Postgres `max_connections` 이내여야 하며, 배포 형태가 이 예산을 넘으면 백엔드가 부팅 시 경고를 남깁니다.
 
@@ -69,7 +73,7 @@ sidebar_position: 2
 | `REDIS_URL` | `redis://redis:6379/0` | `config.py` | 브로커 + 결과 백엔드. |
 | `CELERY_CONCURRENCY` | `2` | `docker-compose.yml` | worker 프로세스 수. 슬롯당 피크 시 ~2 GB RAM 필요. |
 
-## 인증
+## 인증 {#authentication}
 
 | 키 | 기본값 | 읽는 위치 | 설명 |
 |---|---|---|---|
@@ -80,7 +84,7 @@ sidebar_position: 2
 | `REFRESH_TOKEN_RETENTION_GRACE_DAYS` | `1` | `tasks/auth_token_retention.py` | refresh token 행이 자신의 `expires_at`을 지난 뒤 며칠까지 남아 있다가 매일 도는 정리 작업에서 삭제되는지. 회전·로그아웃·재사용 탐지로 폐기된 행도 `expires_at` 값 자체는 바뀌지 않으므로, `REFRESH_TOKEN_EXPIRE_DAYS` 한 주기 안에 같은 조건으로 함께 삭제됩니다. 폐기 시각을 따로 추적하는 경로는 두지 않았습니다. |
 | `PASSWORD_RESET_TOKEN_RETENTION_GRACE_DAYS` | `1` | `tasks/auth_token_retention.py` | 비밀번호 재설정 토큰 행이 자신의 `expires_at`을 지난 뒤 며칠까지 남아 있다가 삭제되는지. 위 refresh token 항목과 같은 방식입니다. |
 
-## 취약점 데이터
+## 취약점 데이터 {#vulnerability-data}
 
 포털은 SBOM을 로컬 **Trivy DB**(NVD + OSV + GHSA + EPSS + KEV 통합 번들)에 대조합니다. 라이프사이클은 [취약점 데이터 (Trivy DB)](../admin-guide/vulnerability-data.md) 참조.
 
@@ -121,7 +125,7 @@ sidebar_position: 2
 :::
 | `VULN_SLA_ALERTS_ENABLED` | `true` | `config.py` | 일일 SLA 초과 sweep(Celery beat `trustedoss.vuln_sla_sweep`, 02:45 UTC) 토글. sweep은 외부 송신이 없는 순수 내부 계산이며, 정확히 `false` / `0` / `no` 토큰만 비활성화합니다. |
 
-## 빌드 게이트 {#빌드--정책-게이트}
+## 빌드 게이트 {#build--policy-gate}
 
 CI 빌드 게이트는 기본적으로 Critical CVE와 금지 라이선스에서 빌드를 실패시키며, 이 조건들은 env로 구동되지 않습니다. 아래 단일 env 노브는 **선택적** EPSS 차원을 더합니다.
 
@@ -218,7 +222,7 @@ superseded·노후 스캔 스냅샷을 회수하는 자동 보존 sweep을 조�
 | `TEAMS_WEBHOOK_URL` | (비어있음) | `config.py` | 조직 단위 MS Teams Webhook. |
 | `NOTIFICATION_HTTP_TIMEOUT_SECONDS` | `10` | `config.py` | Slack / Teams Webhook 아웃바운드 HTTP 타임아웃. |
 
-## 비밀번호 재설정
+## 비밀번호 재설정 {#password-reset}
 
 | 키 | 기본값 | 읽는 위치 | 설명 |
 |---|---|---|---|
@@ -246,7 +250,7 @@ superseded·노후 스캔 스냅샷을 회수하는 자동 보존 sweep을 조�
 | `OAUTH_LOGIN_REDIRECT_DEFAULT` | `http://localhost:5173/` | `config.py` | OAuth 콜백 성공 후 SPA가 도착하는 곳. |
 | `OAUTH_LOGIN_REDIRECT_FAILURE` | `http://localhost:5173/login` | `config.py` | 콜백 실패 시 SPA가 도착하는 곳. `?error=oauth_failed` 수신. |
 
-## 통합 인증 (일반 OpenID Connect)
+## 통합 인증 (일반 OpenID Connect) {#single-sign-on-generic-openid-connect}
 
 배포처 자체의 인증 제공자입니다. 목록이 아니라 하나입니다. 조직에는 인증 제공자가 하나 있고, 모든 엔드포인트를 발급자의 탐색 문서에서 읽으므로 발급자를 적는 것이 설정의 대부분입니다. `OIDC_ISSUER`를 비워 두면 SSO 버튼이 나타나지 않습니다.
 
@@ -300,7 +304,7 @@ Compose 배포에는 오토스케일러 계층이 없습니다. 이 절의 키�
 | `SCAN_AVERAGE_DURATION_SECONDS` | `1200` | `config.py` | 스캔 슬롯 하나의 평균 점유 시간(20분). 설치 가이드의 용량 계산식이 쓰는 `M` 값과 같고, `SCAN_QUEUE_SLOT_COUNT`와 함께 위 예상 대기 시간을 구하는 데 쓰입니다. 최악값인 하드 상한 3900초와는 일부러 다른 값입니다 — 하드 상한은 전형적인 소요 시간이 아니라 상한선입니다. |
 | `WEBHOOK_CAPACITY_RETRY_ENABLED` | `true` | `config.py` | 팀 동시 스캔 캡이나 디스크 가드에 걸려 밀려난 웹훅 스캔을 지수 백오프를 두고 자동으로 재시도할지. 운영자가 배달을 다시 보내야만 복구되던 기존 동작 대신입니다. 이 계획에서 기본값이 켬인 유일한 토글입니다 — 끈 상태가 이전 동작을 보존하는 것이 아니라 이 단위가 고치려는 결함 그 자체이기 때문입니다. 꺼도 운영자가 배달을 수동으로 다시 보내는 경로는 그대로 남습니다. |
 
-## 운영 데이터 보존
+## 운영 데이터 보존 {#operational-data-retention}
 
 세 테이블은 반출 커서나 사용 여부 같은 외부 신호를 기다리지 않고, 발생
 시각만 기준으로 오래된 행을 정리합니다. 매일 도는 beat 하나가 아래 기간을
@@ -372,7 +376,7 @@ Compose 배포에는 오토스케일러 계층이 없습니다. 이 절의 키�
 | `SUBJECT_USER_ID` | - | `apps/backend/scripts/anonymise_user.py` | 익명화 명령이 개인정보를 지울 대상 사용자입니다. UUID 여야 하며 그 밖의 값이면 명령이 중단됩니다. [사용자 익명화](../admin-guide/user-anonymisation.md)를 참고하십시오. |
 | `CONFIRM` | - | `apps/backend/scripts/anonymise_user.py` | 익명화를 실행하려면 `yes` 여야 합니다. 최고 관리자 두 명의 승인은 대상자에 대한 결정이고, 이 값은 운영자가 지금 이 배포에서 이 식별자를 대상으로 실행할 뜻이 있음을 확인하는 것입니다. 되돌릴 수 없습니다. |
 
-## 검증
+## 검증 {#validation}
 
 백엔드는 시작 시 설정을 검증합니다(`apps/backend/main.py` lifespan).
 

@@ -32,7 +32,7 @@ ACCESS_TOKEN=$(curl -fsS -X POST "https://<your-host>/api/auth/login" \
 ```
 :::
 
-## 시나리오 1 — Trivy DB stale 또는 누락
+## 시나리오 1 — Trivy DB stale 또는 누락 {#scenario-1--trivy-db-stale-or-missing}
 
 ### 증상
 PagerDuty: `TrustedOSSVulnDbStale`(예시 규칙, [알림](./alerting.md) 참고) 또는 `TRUSCA Trivy DB missing on worker`. `/admin/health → Vulnerability data`의 Trivy DB 패널이 같은 신선도 판정을 보여줍니다.
@@ -141,7 +141,7 @@ docker-compose -f docker-compose.yml exec backend df -h /opt/trustedoss/backups
 - `bash scripts/backup.sh`가 디스크·권한 외 사유로 실패하거나,
 - 가장 최근 성공 백업이 7일 이상 지난 경우(자동 정리 윈도 — 복원 옵션이 좁아짐).
 
-## 시나리오 3 — 스캔이 `running`에서 4시간 이상 멈춤
+## 시나리오 3 — 스캔이 `running`에서 4시간 이상 멈춤 {#scenario-3--scan-stuck-in-running-for--4-hours}
 
 ### 증상
 PagerDuty: `TRUSCA scan running > 4h for project X`. [알림](./alerting.md#what-is-not-covered-here-and-why)에는 아직 이걸 만들어 내는 규칙이 없습니다. `/metrics`는 상태별 스캔 개수만 발행하고 개별 스캔이 얼마나 오래 실행 중인지는 발행하지 않아서, 이 페이지는 지금은 `/metrics`가 아니라 API나 DB에 직접 질의해서 확인해야 합니다.
