@@ -1,12 +1,45 @@
 {
+  "about": {
+    "color-contrast": 2,
+    "scrollable-region-focusable": 1
+  },
+  "about-dark": {
+    "scrollable-region-focusable": 1
+  },
+  "admin-audit": {},
+  "admin-audit-dark": {},
+  "admin-scans": {
+    "aria-required-children": 1
+  },
+  "admin-scans-dark": {
+    "aria-required-children": 1
+  },
+  "admin-teams": {},
+  "admin-teams-dark": {},
   "admin-users": {},
   "admin-users-dark": {},
   "approvals": {},
   "approvals-dark": {},
   "dashboard": {},
   "dashboard-dark": {},
+  "external-package-lookup": {},
+  "external-package-lookup-dark": {},
+  "group-detail": {},
+  "group-detail-dark": {},
+  "groups": {},
+  "groups-dark": {},
+  "integrations": {},
+  "integrations-dark": {},
+  "inventory": {},
+  "inventory-dark": {},
   "login": {},
   "login-dark": {},
+  "policies": {},
+  "policies-dark": {},
+  "profile": {},
+  "profile-dark": {},
+  "project-create": {},
+  "project-create-dark": {},
   "project-detail-overview": {},
   "project-detail-overview-dark": {},
   "project-detail-vulnerabilities": {},
@@ -14,5 +47,11 @@
   "projects-list": {},
   "projects-list-dark": {},
   "scans": {},
-  "scans-dark": {}
+  "scans-dark": {},
+  "search": {
+    "aria-valid-attr-value": 1
+  },
+  "search-dark": {
+    "aria-valid-attr-value": 1
+  }
 }

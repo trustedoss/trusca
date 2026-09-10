@@ -8,8 +8,11 @@
  * says so in its own header and works around it by computing ratios by
  * hand for one component. That workaround does not scale to a dark theme
  * landing across every surface, which is what W15 does. So this runs
- * against the real stack, on the same representative screens the visual
- * baselines cover (`tests/_harness/representativeScreens.ts`).
+ * against the real stack, on the representative screens the visual
+ * baselines cover (`AUTHENTICATED_SCREENS`) plus a wider set this gate
+ * alone walks (`A11Y_ONLY_SCREENS`, #425); see
+ * `tests/_harness/representativeScreens.ts` for why the two registers are
+ * allowed to diverge.
  *
  * Why a ratchet and not zero
  * --------------------------
@@ -47,7 +50,10 @@ import * as path from "node:path";
 import { fileURLToPath } from "node:url";
 
 import { AuthHarness } from "../_harness/auth";
-import { AUTHENTICATED_SCREENS } from "../_harness/representativeScreens";
+import {
+  A11Y_ONLY_SCREENS,
+  AUTHENTICATED_SCREENS,
+} from "../_harness/representativeScreens";
 import {
   expectThemeApplied,
   pinTheme,
@@ -264,9 +270,16 @@ test.describe("@a11y", () => {
           await pinTheme(page, theme);
         });
 
-        for (const screen of AUTHENTICATED_SCREENS) {
+        // #425: AUTHENTICATED_SCREENS carries the visual baseline's set;
+        // A11Y_ONLY_SCREENS is the wider set this gate alone walks. Both
+        // land in the same `assertScreen`/baseline keyed by id, so a screen
+        // moving between the two registers needs no change here.
+        for (const screen of [...AUTHENTICATED_SCREENS, ...A11Y_ONLY_SCREENS]) {
           test(`${screen.id}${suffix}`, async ({ page }) => {
-            await screen.visit(page, { projectId: readPrimaryProjectId() });
+            await screen.visit(page, {
+              projectId: readPrimaryProjectId(),
+              groupId: readPrimaryGroupId(),
+            });
             await expectThemeApplied(page, theme);
             assertScreen(`${screen.id}${suffix}`, await scan(page));
           });
@@ -317,5 +330,16 @@ function readPrimaryProjectId(): string {
   };
   const id = raw.project_ids?.[0];
   if (!id) throw new Error("seed missing project_ids[0]");
+  return id;
+}
+
+/** #425: the seeded root group, for the `group-detail` a11y-only screen. */
+function readPrimaryGroupId(): string {
+  const seedPath = path.join(__dirname, "..", "screenshots", ".seed.json");
+  const raw = JSON.parse(fs.readFileSync(seedPath, "utf8")) as {
+    team_id?: string;
+  };
+  const id = raw.team_id;
+  if (!id) throw new Error("seed missing team_id");
   return id;
 }
