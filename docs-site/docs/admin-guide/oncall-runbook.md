@@ -355,12 +355,12 @@ working. What degrades silently:
 
 `redis` is a live ping and can read `"ok"` on a check that happens to land
 between failures. When present, the response also carries a
-`redis_fail_open` object (`{"ratelimit": {"count": N, "last_degraded_at":
-"<ISO 8601>", "worker_pid": P}, "login_throttle": {...}, "ws_registry":
-{...}}`), one entry per control that has actually fallen back to fail-open
-on the request path, independent of this call's own ping. Its absence means
-none of the three controls has degraded since the process started; a
-non-empty `last_degraded_at` older
+`redis_fail_open` object (`{"ratelimit": {...}, "login_throttle": {...},
+"ws_registry": {...}}`, each entry shaped `{"count": N, "last_degraded_at":
+"<ISO 8601>", "worker_pid": P}`), one entry per control that has actually
+fallen back to fail-open on the request path, independent of this call's
+own ping. Its absence means none of the three controls has degraded since
+the process started; a non-empty `last_degraded_at` older
 than the current `redis: "ok"` reading is the signature of an intermittent
 problem (a flaky network path, a misconfigured `REDIS_URL` password that
 some commands reject and others do not) rather than the outage having
