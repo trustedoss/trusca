@@ -51,7 +51,13 @@ DYNAMIC_KEY_PREFIXES = {
 # "Read by: (none)" and says why, which is the review this list defers to.
 # Shipping them in the template keeps a deployment's .env valid when the
 # feature lands, so they are declarations rather than drift.
-DECLARED_UNREAD = {"JIRA_ENABLED", "JIRA_URL", "JIRA_TOKEN"}
+#
+# JIRA_ENABLED / JIRA_URL / JIRA_TOKEN lived here as Phase B placeholders
+# until #385 shipped ticket-status reads through a different mechanism
+# (per-organization credentials stored via the admin API, not env vars), so
+# they were removed from .env.example and the reference page rather than
+# kept reserved for a shape the feature never took.
+DECLARED_UNREAD: set[str] = set()
 
 
 # ---------------------------------------------------------------------------

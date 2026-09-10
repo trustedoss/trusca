@@ -138,6 +138,10 @@ from .task_run import (  # noqa: E402,F401  (imported for metadata side effects)
     TASK_RUN_OUTCOME_VALUES,
     TaskRun,
 )
+from .ticket_credential import (  # noqa: E402,F401  (imported for metadata side effects)
+    DEFAULT_AUTH_SCHEME,
+    TicketCredential,
+)
 from .transition_approval import (  # noqa: E402,F401  (imported for metadata side effects)
     TRANSITION_APPROVAL_STATES,
     TransitionApproval,
@@ -164,6 +168,8 @@ __all__ = [
     "RegistryCredential",
     "TaskRun",
     "TASK_RUN_OUTCOME_VALUES",
+    "TicketCredential",
+    "DEFAULT_AUTH_SCHEME",
     "License",
     "LicenseFetchCache",
     "LicenseFinding",

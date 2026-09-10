@@ -191,6 +191,21 @@
     },
     {
       "method": "GET",
+      "path": "/v1/admin/organizations/{organization_id}/ticket-credentials",
+      "gate": "super_admin_404"
+    },
+    {
+      "method": "PUT",
+      "path": "/v1/admin/organizations/{organization_id}/ticket-credentials",
+      "gate": "super_admin_404"
+    },
+    {
+      "method": "DELETE",
+      "path": "/v1/admin/organizations/{organization_id}/ticket-credentials/{credential_id}",
+      "gate": "super_admin_404"
+    },
+    {
+      "method": "GET",
       "path": "/v1/admin/teams",
       "gate": "super_admin_404"
     },
@@ -1094,6 +1109,11 @@
     {
       "method": "PATCH",
       "path": "/v1/vulnerability_findings/{finding_id}/assignment",
+      "gate": "role>=developer"
+    },
+    {
+      "method": "POST",
+      "path": "/v1/vulnerability_findings/{finding_id}/ticket-status/refresh",
       "gate": "role>=developer"
     },
     {

@@ -1126,6 +1126,33 @@ class VulnerabilityFinding(Base):
     # a key format beyond length.
     ticket_url: Mapped[str | None] = mapped_column(String(2048), nullable=True)
     ticket_key: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    # #385: the ticket's state, read back from `ticket_url` on demand (a
+    # button, not a poller: see services/ticket_status_service.py). Same
+    # shape as the EOL / malicious verdict columns on ComponentVersion: a
+    # raw display value plus a normalized boolean plus when it was last
+    # checked, all NULL until the first check.
+    #
+    # `ticket_status` is the ISSUE TRACKER's own status name verbatim (e.g.
+    # Jira's "In Progress", "Done", or a customer's renamed workflow state)
+    # Free text, because workflows are configured per Jira project and
+    # this repository does not get to assume one vocabulary.
+    # `ticket_resolved` is the derived, closed-vocabulary reading: Jira
+    # exposes a `statusCategory.key` of `new` / `indeterminate` / `done`
+    # UNDERNEATH any custom status name, and that category, not the name,
+    # is what this column stores as a bool, so a renamed "Done" column in
+    # somebody's board still reads as resolved.
+    ticket_status: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    ticket_resolved: Mapped[bool | None] = mapped_column(Boolean, nullable=True)
+    ticket_checked_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    # Why the check did not produce a status: no credential configured for
+    # the ticket's host, the ticket URL itself failing the SSRF guard, a 404
+    # from the tracker, or a network failure. Surfaced to the caller instead
+    # of leaving `ticket_status` NULL with no explanation, which reads to an
+    # operator as "nobody has checked yet" when the real story is "checking
+    # failed and here is why".
+    ticket_check_error: Mapped[str | None] = mapped_column(Text, nullable=True)
     # Project-level first-detection timestamp for this (component_version ×
     # vulnerability) pairing (X1 SLA/aging, migration 0041). Carried forward
     # across re-scans / re-matches by persist_trivy_findings — per-scan

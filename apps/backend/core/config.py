@@ -652,6 +652,17 @@ def csv_export_rate_limit() -> str:
     return os.getenv("CSV_EXPORT_RATE_LIMIT", "5/minute")
 
 
+def ticket_status_refresh_rate_limit() -> str:
+    """slowapi limit string for the ticket-status refresh button (per actor).
+
+    A deliberate button click, like the package lookup, but each call also
+    spends the organization's one shared tracker credential against a
+    third-party host, so it gets the package lookup's conservative budget
+    rather than a looser one. Keyed per actor via ``_authenticated_user_key``.
+    """
+    return os.getenv("TICKET_STATUS_REFRESH_RATE_LIMIT", "10/minute")
+
+
 def scan_concurrency_cap_per_team() -> int:
     """Max concurrent (queued+running) scans allowed per team.
 

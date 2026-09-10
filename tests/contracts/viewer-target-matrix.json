@@ -505,6 +505,10 @@
     ],
     [
       "POST",
+      "/v1/vulnerability_findings/{finding_id}/ticket-status/refresh"
+    ],
+    [
+      "POST",
       "/v1/transition-approvals"
     ],
     [

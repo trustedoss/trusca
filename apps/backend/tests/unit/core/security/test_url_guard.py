@@ -305,3 +305,107 @@ def test_validate_git_url_unchanged_signature() -> None:
     # Return annotation is a string after `from __future__ import annotations`
     # — verify it is the same as before (str) so schemas/scan.py still type-checks.
     assert sig.return_annotation in (str, "str")
+
+
+# ---------------------------------------------------------------------------
+# validate_http_url: the ticket-URL guard (#385)
+#
+# Shares _validate_and_resolve with validate_git_url (same IP-safety core,
+# proven above), so these pin only what actually differs: the narrower
+# scheme allow-list, the distinct exception type, and that the two guards
+# do not answer for each other's field.
+# ---------------------------------------------------------------------------
+
+
+def test_http_url_public_host_is_accepted(monkeypatch: pytest.MonkeyPatch) -> None:
+    from core.url_guard import validate_http_url
+
+    monkeypatch.setattr(
+        "core.url_guard.socket.getaddrinfo",
+        lambda host, port: [(socket.AF_INET, 0, 0, "", ("140.82.121.4", 0))],
+    )
+    assert validate_http_url("https://example.atlassian.net/browse/PROJ-1") == (
+        "https://example.atlassian.net/browse/PROJ-1"
+    )
+
+
+@pytest.mark.parametrize(
+    "url",
+    [
+        "http://127.0.0.1/browse/PROJ-1",
+        "http://169.254.169.254/latest/meta-data/",
+        "https://metadata.google.internal/computeMetadata/v1/",
+        "http://10.0.0.5/browse/PROJ-1",
+    ],
+)
+def test_http_url_rejects_non_routable_and_metadata(url: str) -> None:
+    from core.url_guard import TicketUrlValidationError, validate_http_url
+
+    with pytest.raises(TicketUrlValidationError):
+        validate_http_url(url)
+
+
+@pytest.mark.parametrize(
+    "url",
+    [
+        "ssh://example.atlassian.net/browse/PROJ-1",
+        "git://example.atlassian.net/browse/PROJ-1",
+        "file:///etc/passwd",
+        "javascript:alert(1)",
+    ],
+)
+def test_http_url_rejects_non_http_schemes(url: str) -> None:
+    """`ssh` / `git` pass validate_git_url but must not pass this one."""
+    from core.url_guard import TicketUrlValidationError, validate_http_url
+
+    with pytest.raises(TicketUrlValidationError):
+        validate_http_url(url)
+
+
+def test_http_url_rejects_scp_form_as_missing_scheme() -> None:
+    """git@host:path is git-only shorthand; validate_http_url must not translate it."""
+    from core.url_guard import TicketUrlValidationError, validate_http_url
+
+    with pytest.raises(TicketUrlValidationError):
+        validate_http_url("git@example.atlassian.net:PROJ-1")
+
+
+def test_http_url_rejects_url_longer_than_2048_chars() -> None:
+    from core.url_guard import TicketUrlValidationError, validate_http_url
+
+    with pytest.raises(TicketUrlValidationError):
+        validate_http_url("https://example.atlassian.net/" + "a" * 2048)
+
+
+def test_http_url_rejects_unresolvable_hostname(monkeypatch: pytest.MonkeyPatch) -> None:
+    from core.url_guard import TicketUrlValidationError, validate_http_url
+
+    def _raise(host: str, port: object) -> list[object]:
+        raise OSError("Name or service not known")
+
+    monkeypatch.setattr("core.url_guard.socket.getaddrinfo", _raise)
+    with pytest.raises(TicketUrlValidationError):
+        validate_http_url("https://nonexistent.invalid/browse/PROJ-1")
+
+
+def test_http_url_error_is_not_a_git_url_error() -> None:
+    """The two guards' exceptions must not be interchangeable at a catch site.
+
+    A caller that means to catch a ticket-URL failure and instead writes
+    `except GitUrlValidationError` (or vice versa) must see the exception
+    propagate, not be silently swallowed by the wrong handler.
+    """
+    from core.url_guard import GitUrlValidationError, TicketUrlValidationError, validate_http_url
+
+    with pytest.raises(TicketUrlValidationError) as exc_info:
+        validate_http_url("javascript:alert(1)")
+    assert not isinstance(exc_info.value, GitUrlValidationError)
+
+
+def test_http_url_error_is_value_error_subclass() -> None:
+    from core.url_guard import TicketUrlValidationError, validate_http_url
+
+    with pytest.raises(ValueError):
+        validate_http_url("")
+    with pytest.raises(TicketUrlValidationError):
+        validate_http_url("")

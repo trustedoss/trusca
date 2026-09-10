@@ -327,9 +327,7 @@ Three tables age out on their own occurrence-time clock; there is no export curs
 
 | Key | Default | Read by | Description |
 |---|---|---|---|
-| `JIRA_ENABLED` | `false` | (none) | **Stub only — not consumed by any code path in this release.** Reserved for the Phase B Jira integration; included in `.env.example` so existing deployments do not break when the feature lands. |
-| `JIRA_URL` | (empty) | (none) | Stub. See above. |
-| `JIRA_TOKEN` | (empty) | (none) | Stub. See above. |
+| `TICKET_STATUS_REFRESH_RATE_LIMIT` | `10/minute` | `config.py` | slowapi limit for `POST /vulnerability_findings/{id}/ticket-status/refresh`, keyed per authenticated user. Jira credentials themselves are not an env var: a super-admin stores one login per Jira Cloud host per organization via `PUT /v1/admin/organizations/{id}/ticket-credentials` (#385). See [Ticket status](../user-guide/vulnerabilities.md#ticket-status). |
 | `HTTP_PROXY` / `HTTPS_PROXY` / `NO_PROXY` | (empty) | subprocess env | Honored by `git clone`, `cdxgen`, and the `trivy --download-db-only` boot / refresh path. |
 | `SSL_CERT_FILE` / `SSL_CERT_DIR` | (empty) | subprocess env, portal HTTPS | Private certificate authority for Trivy, cosign, govulncheck and the portal's own outbound calls. **Replaces** the trust set for the portal, so the file must also carry the public roots. See [Private certificate authorities](../admin-guide/private-ca.md). |
 | `NODE_EXTRA_CA_CERTS` | (empty) | subprocess env | Private certificate authority for `cdxgen`. Additive. |

@@ -476,6 +476,17 @@ export interface VulnerabilityDetail {
   /** Ticket identifier in that tracker, e.g. `SEC-1234`. */
   ticket_key: string | null;
   /**
+   * The tracker's own status name, from the last "refresh ticket status"
+   * click (#385). `null` if nobody ever has.
+   */
+  ticket_status: string | null;
+  /** Closed-vocabulary reading of `ticket_status`, from that same check. */
+  ticket_resolved: boolean | null;
+  /** When the last refresh attempt ran; `null` if nobody ever has. */
+  ticket_checked_at: string | null;
+  /** Why the last refresh attempt failed to read a status, if it did. */
+  ticket_check_error: string | null;
+  /**
    * True when `due_on` names a LATER calendar day than the policy's, so the
    * policy still governs. Read from the server rather than recomputed here:
    * the comparison is on calendar days while the verdict is on instants, and
@@ -673,6 +684,30 @@ export async function updateFindingAssignment(
   const { data } = await api.patch<VulnerabilityDetail>(
     `/v1/vulnerability_findings/${findingId}/assignment`,
     body,
+  );
+  return data;
+}
+
+/**
+ * Response of POST .../ticket-status/refresh (#385).
+ *
+ * Always 200: an OUTBOUND failure (no credential, the link failed the
+ * safety check, the tracker rejected the stored credential, the ticket
+ * does not exist) is data in `ticket_check_error`, not a non-200 status.
+ */
+export interface TicketStatusRefreshResult {
+  finding_id: string;
+  ticket_status: string | null;
+  ticket_resolved: boolean | null;
+  ticket_checked_at: string;
+  ticket_check_error: string | null;
+}
+
+export async function refreshTicketStatus(
+  findingId: string,
+): Promise<TicketStatusRefreshResult> {
+  const { data } = await api.post<TicketStatusRefreshResult>(
+    `/v1/vulnerability_findings/${findingId}/ticket-status/refresh`,
   );
   return data;
 }

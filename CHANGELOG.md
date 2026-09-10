@@ -7,6 +7,21 @@ and the project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.
 
 ## [Unreleased]
 
+### Added
+
+- **A vulnerability finding's ticket link can now be read back on demand.** A
+  finding whose `ticket_url` points at a Jira Cloud issue previously showed
+  whatever status it was given at assignment time forever, even after the
+  ticket closed. The drawer now has a "Refresh ticket status" button that
+  makes one on-demand call to the tracker and records the answer
+  (`ticket_status`, `ticket_resolved`, `ticket_checked_at`); a failed check
+  (no credential configured, the tracker rejected the token, the issue does
+  not exist) is recorded as `ticket_check_error` rather than clearing a
+  previously-known status. A super-admin configures one Jira Cloud login per
+  tracker host per organization via
+  `PUT /v1/admin/organizations/{id}/ticket-credentials`, shared by every team
+  the way container-registry credentials already are (#385).
+
 ## [0.22.6] - 2026-09-08
 
 ### Fixed

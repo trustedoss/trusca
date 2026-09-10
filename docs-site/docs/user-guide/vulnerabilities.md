@@ -429,6 +429,64 @@ this is how you find those. The list is the sweep worth running after somebody
 leaves the team, and [what the screen offers](#assignment-on-screen) is what to
 do with each row it returns.
 
+#### Reading a ticket's status back {#ticket-status}
+
+A ticket link tells you where the work is tracked, but the portal does not
+watch it. If the ticket closes in your tracker, the finding still shows
+whatever it showed before, until you ask it to check.
+
+The **Refresh ticket status** control in the drawer makes ONE call to the
+tracker named in the finding's ticket link and records the answer:
+`ticket_status` (the tracker's own status name, shown verbatim), whether the
+portal reads that as resolved, and when the check last ran. There is no
+background poller: nothing checks a ticket unless somebody clicks the
+button, and the answer only ever reflects that one click.
+
+A failed check is not an error; it is an answer that says why it could not
+find out: no tracker credential configured for that host, the link's host
+failed the outbound-request safety check, the tracker rejected the stored
+credential, or the ticket does not exist there. The LAST successful answer
+stays on the finding until a later check replaces it; a failed check never
+clears a status that was already known.
+
+**Jira Cloud only, today.** The ticket link's host has to match a tracker
+credential a super-admin has stored for your organization (see below); other
+trackers have no adapter yet and read as "no credential configured"
+regardless of what you paste as a link.
+
+##### Storing a Jira credential (admin) {#ticket-status-credential}
+
+A super-admin stores one login per Jira Cloud site per organization: the
+account's email and an
+[API token](https://id.atlassian.com/manage-profile/security/api-tokens),
+not a password:
+
+<!-- docs-uat: id=vuln-ticket-credential-put kind=shell ctx=host tier=manual waiver=example-curl-placeholder-host-and-token -->
+```bash
+curl -X PUT \
+  -H "Authorization: Bearer $TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{"host":"mycompany.atlassian.net","username":"bot@example.com","api_token":"'"$JIRA_API_TOKEN"'"}' \
+  "https://trustedoss.example.com/v1/admin/organizations/$ORG_ID/ticket-credentials"
+```
+
+`host` is the tracker's host exactly as it appears in a pasted ticket link
+(`mycompany.atlassian.net`); a pasted `https://mycompany.atlassian.net/` is
+normalised for you. The token is write-only: it is stored encrypted and
+never returned by any endpoint, including the one that created it, so `GET`
+shows the host and username and nothing else.
+
+One credential is shared by every team in the organization that pastes a
+link to the same Jira site, the same shape as the
+[container registry credentials](./scans.md#private-registries) above, and
+for the same reason: a Jira site is organization infrastructure, not a
+per-team secret. Anyone who can set a ticket link on a finding they can edit
+can trigger a check against the issue that link names; the portal always
+reads the issue key from the link itself, so a check can never be pointed at
+an unrelated issue on the shared site. Jira's own per-issue permissions on
+the account behind the stored token still apply, the same as they would for
+anyone else using that account.
+
 ### Per-severity windows
 
 The due date is *first detected + the severity's window*:

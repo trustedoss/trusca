@@ -6,6 +6,10 @@
     "credential_id",
     "organization_id"
   ],
+  "DELETE /v1/admin/organizations/{organization_id}/ticket-credentials/{credential_id}": [
+    "credential_id",
+    "organization_id"
+  ],
   "DELETE /v1/admin/teams/{team_id}": [
     "team_id"
   ],
@@ -125,6 +129,9 @@
     "page_size"
   ],
   "GET /v1/admin/organizations/{organization_id}/registry-credentials": [
+    "organization_id"
+  ],
+  "GET /v1/admin/organizations/{organization_id}/ticket-credentials": [
     "organization_id"
   ],
   "GET /v1/admin/scans": [
@@ -779,6 +786,9 @@
   "POST /v1/users/me/mfa/enrol": [],
   "POST /v1/users/me/mfa/enrol/confirm": [],
   "POST /v1/users/me/mfa/recovery-codes": [],
+  "POST /v1/vulnerability_findings/{finding_id}/ticket-status/refresh": [
+    "finding_id"
+  ],
   "POST /v1/webhooks/github": [
     "X-GitHub-Delivery",
     "X-GitHub-Event",
@@ -790,6 +800,9 @@
     "X-Gitlab-Webhook-UUID"
   ],
   "PUT /v1/admin/organizations/{organization_id}/registry-credentials": [
+    "organization_id"
+  ],
+  "PUT /v1/admin/organizations/{organization_id}/ticket-credentials": [
     "organization_id"
   ],
   "PUT /v1/gate-policies/org/{organization_id}": [

@@ -51,6 +51,7 @@ EXPECTED_PURPOSES: dict[str, str | None] = {
     "registry_credentials.password_encrypted": None,
     "projects.webhook_secret_encrypted": None,
     "users.mfa_secret_encrypted": "totp",
+    "ticket_credentials.api_token_encrypted": None,
 }
 
 

@@ -23,6 +23,8 @@ Sub-routers:
   - ``eol``    — ``/v1/admin/eol/*``     (Phase M: endoflife.date snapshot status panel)
   - ``malicious`` — ``/v1/admin/malicious/*`` (#26: malicious-snapshot status panel)
   - ``api_keys`` (``/v1/admin/api-keys/*``, A5: bcrypt-to-HMAC hash migration status)
+  - ``ticket_credentials`` (``/v1/admin/organizations/{id}/ticket-credentials/*``,
+    #385: per-organization ticket-tracker logins for the ticket-status read-back)
 
 W6-#43a (ADR-0001): the ``dt`` sub-router was removed when DT was replaced
 by Trivy; previously-issued DT audit-log rows are preserved as
@@ -51,6 +53,7 @@ from . import (
     registry_credentials,
     scans,
     teams,
+    ticket_credentials,
     trivy,
     users,
 )
@@ -74,6 +77,7 @@ router.include_router(disk.router)
 router.include_router(audit.router)
 router.include_router(health.router)
 router.include_router(registry_credentials.router)
+router.include_router(ticket_credentials.router)
 router.include_router(backup.router)
 router.include_router(trivy.router)
 router.include_router(kev.router)
