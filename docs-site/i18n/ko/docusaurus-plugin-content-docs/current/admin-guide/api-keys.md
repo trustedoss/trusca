@@ -132,7 +132,7 @@ curl -sS -H "Authorization: Bearer ${TRUSTEDOSS_API_KEY}" \
 
 폐기는 즉시이며 되돌릴 수 없습니다. Key를 되살리려면 새로 발급하세요.
 
-## Key 목록
+## Key 목록 {#listing-keys}
 
 UI는 라벨, prefix, scope(`org` / `team` / `project`), 권한 범위(읽기 전용 / 읽기 및 쓰기), 발급자, 생성 시각, 마지막 사용 시각, 만료(`expires_at`, 만료 없으면 null), 폐기 상태를 표시합니다. 기존 Key의 secret을 복구할 방법은 없습니다. 의도된 설계입니다. 마지막 사용 IP 컬럼과 위에서 말한 더 세분화된 `allowed_actions` taxonomy는 로드맵입니다.
 

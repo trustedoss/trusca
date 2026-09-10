@@ -18,7 +18,7 @@ sidebar_position: 4
 조직 단위 읽기는 `super_admin`; 팀 단위 읽기는 `team_admin`.
 :::
 
-## 스키마
+## 스키마 {#schema}
 
 각 항목 필드:
 
@@ -208,7 +208,7 @@ docker-compose -f docker-compose.yml logs backend \
 있게 만드는 성질에 예외를 파는 일이 됩니다. 위치는 별도 테이블에 둡니다.
 :::
 
-## 보존 정책
+## 보존 정책 {#retention}
 
 감사 로그는 **자동 정리되지 않습니다**. 컴플라이언스 가치 대비 저장소 비용이 저렴합니다(전형적 설치는 활성 사용자당 연 ~50 MB 증가). 테이블 크기를 줄여야 한다면 **archive then truncate**(운영자 확인 포함) 권장:
 
