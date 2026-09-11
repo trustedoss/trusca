@@ -70,6 +70,7 @@ const sidebars: SidebarsConfig = {
         "admin-guide/postgres-tuning",
         "admin-guide/private-ca",
         "admin-guide/private-registries",
+        "admin-guide/offline-install",
         "admin-guide/user-anonymisation",
         "admin-guide/dynamic-scan-executor",
         "admin-guide/logs",
