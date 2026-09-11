@@ -8,8 +8,10 @@
 # first super_admin user.
 #
 # Usage:
-#   bash scripts/install.sh             # interactive wizard
-#   bash scripts/install.sh --no-prompt # non-interactive (CI / automation)
+#   bash scripts/install.sh                              # interactive wizard
+#   bash scripts/install.sh --no-prompt                  # non-interactive (CI / automation)
+#   bash scripts/install.sh --offline <bundle.tar>        # air-gapped install
+#   bash scripts/install.sh --no-prompt --offline <bundle.tar>  # unattended + air-gapped
 #
 # In `--no-prompt` mode every interactive question is replaced by an env-var
 # read with a sane default. The fresh-Linux UAT workflow
@@ -26,6 +28,22 @@
 #                           stored API-key secrets. (default: openssl rand -hex 32)
 #   INSTALL_REUSE_ENV       "1" reuses an existing .env, else it is rotated to
 #                           .env.backup-<utc>. Default: 0 (rotate).
+#
+# `--offline <bundle.tar>` (#400 - offline install bundle) points at a tar
+# built by scripts/bundle-offline.sh on a connected host. It carries the six
+# images docker-compose.yml pulls (traefik, postgres, redis,
+# trusca-backend, trusca-backend-worker, trusca-frontend) plus an optional
+# Trivy DB snapshot. Requires the sidecar checksum file bundle-offline.sh
+# writes alongside it (<bundle.tar>.sha256) - this script verifies it before
+# touching the bundle's contents and refuses to proceed without one; a
+# tampered or corrupted bundle must never reach `docker load` (security
+# review finding on this feature). When set, this script `docker load`s the
+# images instead of `$DC pull`-ing them, confirms every image the bundle's
+# own MANIFEST.txt lists actually loaded, seeds the trivy-cache volume from
+# the bundle (before the stack starts), and disables the worker's own
+# network DB bootstrap (TRIVY_DB_BOOTSTRAP_ON_START=false) so an air-gapped
+# host does not repeatedly retry an unreachable ghcr.io. See
+# docs-site/docs/admin-guide/offline-install.md.
 #
 # CLAUDE.md compliance:
 #   - core rule #10: our DEV/CI environment is docker-compose V1 (hyphen). This
@@ -46,22 +64,43 @@ cd "$ROOT_DIR"
 # 0. CLI flag parsing
 # ---------------------------------------------------------------------------
 NO_PROMPT=0
-for arg in "$@"; do
-  case "$arg" in
-    --no-prompt) NO_PROMPT=1 ;;
+OFFLINE_BUNDLE=""
+# `while` + `shift` (not `for arg in "$@"`) because --offline takes a
+# following value argument that a simple for-loop cannot consume.
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --no-prompt)
+      NO_PROMPT=1
+      shift
+      ;;
+    --offline)
+      [[ $# -ge 2 ]] || { printf '✗ --offline requires a <bundle.tar> argument\n' >&2; exit 2; }
+      OFFLINE_BUNDLE="$2"
+      shift 2
+      ;;
+    --offline=*)
+      OFFLINE_BUNDLE="${1#--offline=}"
+      shift
+      ;;
     -h|--help)
       cat <<USAGE
-Usage: bash scripts/install.sh [--no-prompt]
+Usage: bash scripts/install.sh [--no-prompt] [--offline <bundle.tar>]
 
-  --no-prompt   Run non-interactively. Reads INSTALL_HOST,
-                INSTALL_ADMIN_EMAIL, INSTALL_ADMIN_PASSWORD,
-                INSTALL_SECRET_KEY, INSTALL_API_KEY_HMAC_SECRET,
-                INSTALL_REUSE_ENV from the environment.
+  --no-prompt         Run non-interactively. Reads INSTALL_HOST,
+                       INSTALL_ADMIN_EMAIL, INSTALL_ADMIN_PASSWORD,
+                       INSTALL_SECRET_KEY, INSTALL_API_KEY_HMAC_SECRET,
+                       INSTALL_REUSE_ENV from the environment.
+  --offline <bundle>  Air-gapped install. Loads container images (and, if
+                       present, a Trivy DB snapshot) from a tar built by
+                       scripts/bundle-offline.sh instead of pulling from a
+                       registry. Requires the matching <bundle>.sha256
+                       sidecar file next to it. Combine with --no-prompt
+                       for a fully unattended air-gapped install.
 USAGE
       exit 0
       ;;
     *)
-      printf '✗ unknown argument: %s (try --help)\n' "$arg" >&2
+      printf '✗ unknown argument: %s (try --help)\n' "$1" >&2
       exit 2
       ;;
   esac
@@ -76,6 +115,72 @@ ok()    { printf "${GREEN}✓${RESET} %s\n" "$1"; }
 fail()  { printf "${RED}✗${RESET} %s\n" "$1" >&2; exit 1; }
 note()  { printf "  %s\n" "$1"; }
 title() { printf "\n${BOLD}%s${RESET}\n" "$1"; }
+
+# ---------------------------------------------------------------------------
+# 0b. Offline bundle, part A - checksum + extract (#400, security review
+# finding #400-S1/S3). Deliberately BEFORE "Pre-flight checks" below: this
+# part needs only sha256sum/shasum, tar, and find/realpath (always present),
+# never docker, so a corrupt or tampered bundle is rejected before spending
+# any time on Docker/Compose checks. `docker load` itself (part B) runs
+# after Pre-flight confirms docker is present - see the matching comment
+# further down.
+# ---------------------------------------------------------------------------
+OFFLINE_EXTRACT_DIR=""
+if [[ -n "$OFFLINE_BUNDLE" ]]; then
+  title "Offline bundle - verifying"
+  [[ -f "$OFFLINE_BUNDLE" ]] || fail "offline bundle not found: $OFFLINE_BUNDLE"
+
+  # --- checksum (#400-S1) ---------------------------------------------
+  # A bundle this script has not verified is a bundle it should not
+  # `docker load` - the whole point of an air-gapped install is that
+  # nothing gets a free pass just because it arrived on the right USB
+  # stick. No --skip-checksum escape hatch: scripts/bundle-offline.sh
+  # always writes the sidecar, so a missing one means the bundle was not
+  # built by that script (or the sidecar was dropped in transit), either
+  # of which is exactly the case this check exists to catch.
+  checksum_file="${OFFLINE_BUNDLE}.sha256"
+  [[ -f "$checksum_file" ]] \
+    || fail "missing checksum file: $checksum_file (every bundle built by scripts/bundle-offline.sh carries one - do not bypass this)"
+  if command -v sha256sum >/dev/null 2>&1; then
+    actual_sha256="$(sha256sum "$OFFLINE_BUNDLE" | cut -d' ' -f1)"
+  elif command -v shasum >/dev/null 2>&1; then
+    actual_sha256="$(shasum -a 256 "$OFFLINE_BUNDLE" | cut -d' ' -f1)"
+  else
+    fail "neither sha256sum nor shasum is available - cannot verify the bundle's checksum."
+  fi
+  expected_sha256="$(cut -d' ' -f1 <"$checksum_file")"
+  [[ "$actual_sha256" == "$expected_sha256" ]] \
+    || fail "checksum mismatch for $OFFLINE_BUNDLE - expected $expected_sha256, got $actual_sha256. The bundle may be corrupted or tampered with; rebuild or re-transfer it."
+  ok "checksum verified"
+
+  # --- member-path check, BEFORE extraction (#400-S3) -------------------
+  # Modern GNU tar / bsdtar both already refuse '..' members at extract
+  # time by default (verified against both during security review), but
+  # that protection is an unpinned property of whichever `tar` binary
+  # happens to be installed, not something this script asserts - a
+  # minimal/old tar on some install target might not have it. Has to run
+  # BEFORE `tar -xf`: a member that escaped would land outside the
+  # extraction directory, where a check that only looks INSIDE it
+  # afterward could never see it (tried that first; it does not work).
+  # shellcheck source=scripts/lib/tar_containment_check.sh
+  source "$ROOT_DIR/scripts/lib/tar_containment_check.sh"
+  verify_bundle_members_are_contained "$OFFLINE_BUNDLE" \
+    || fail "bundle contains an unsafe member path (see above) - refusing to extract it"
+  ok "bundle member paths are all contained"
+
+  OFFLINE_EXTRACT_DIR="$(mktemp -d "${TMPDIR:-/tmp}/trusca-offline-install.XXXXXX")"
+  # Scratch extraction space, not the bundle itself - clean it up on exit
+  # (success OR failure) so a re-run does not accumulate temp directories.
+  trap '[[ -n "$OFFLINE_EXTRACT_DIR" ]] && rm -rf "$OFFLINE_EXTRACT_DIR"' EXIT
+
+  note "extracting $OFFLINE_BUNDLE"
+  tar -xf "$OFFLINE_BUNDLE" -C "$OFFLINE_EXTRACT_DIR"
+
+  [[ -f "$OFFLINE_EXTRACT_DIR/images/images.tar" ]] \
+    || fail "bundle is missing images/images.tar - was it built by scripts/bundle-offline.sh?"
+  [[ -f "$OFFLINE_EXTRACT_DIR/MANIFEST.txt" ]] \
+    || fail "bundle is missing MANIFEST.txt - was it built by scripts/bundle-offline.sh?"
+fi
 
 # ---------------------------------------------------------------------------
 # 1. Pre-flight: Docker Compose (V1 preferred, V2 fallback), openssl, curl
@@ -103,6 +208,60 @@ ok "openssl found"
 
 command -v curl >/dev/null 2>&1 || fail "curl is required for the post-install health probe."
 ok "curl found"
+
+# ---------------------------------------------------------------------------
+# 1b. Offline bundle, part B - docker load + post-load verification (#400,
+# security review finding #400-S2). Part A above (checksum + extract) ran
+# BEFORE Pre-flight; this half needs `docker` itself, which Pre-flight just
+# confirmed is present (docker-compose implies it). Seeding the trivy-cache
+# volume happens later (step 4, "Bringing up the stack") because it needs
+# docker-compose.yml + .env resolved first (`$DC run` against the
+# worker-scan service, so the mount matches whatever COMPOSE_PROJECT_NAME /
+# volume driver this deployment actually uses - see
+# docs-site/docs/admin-guide/vulnerability-data.md §"Air-gapped operation"
+# for why hand-computing the project-prefixed volume name is fragile).
+if [[ -n "$OFFLINE_BUNDLE" ]]; then
+  title "Offline bundle - loading"
+  command -v docker >/dev/null 2>&1 || fail "docker is required to 'docker load' the offline bundle's images."
+
+  note "docker load'ing images from the bundle (replaces '$DC pull' below)"
+  docker load -i "$OFFLINE_EXTRACT_DIR/images/images.tar"
+  ok "images loaded from bundle"
+
+  # Post-load verification (#400-S2): `docker load` succeeding only means the
+  # tar was readable, not that every image docker-compose.yml expects is now
+  # present under the exact ref it expects - a bundle built for a different
+  # IMAGE_TAG, or a truncated images.tar missing an entry, loads "fine" and
+  # then Compose SILENTLY falls back to pulling the missing ref from the
+  # network later, defeating the entire point of --offline. Ground truth for
+  # "what SHOULD be loaded" is the bundle's own MANIFEST.txt (written by
+  # bundle-offline.sh from the exact IMAGES array it saved), not a second,
+  # independently-hardcoded list here that could drift from that one.
+  while IFS= read -r image_ref; do
+    docker image inspect "$image_ref" >/dev/null 2>&1 \
+      || fail "bundle claims to include $image_ref (per MANIFEST.txt) but it is not present after docker load - the bundle is incomplete or corrupted. Rebuild it with scripts/bundle-offline.sh."
+  done < <(sed -n 's/^  - //p' "$OFFLINE_EXTRACT_DIR/MANIFEST.txt")
+  ok "all images from MANIFEST.txt confirmed present"
+
+  # Remembered for step 2 below (#400-S2 follow-up, found by actually running
+  # this end-to-end, not just reviewing the diff): the images that were just
+  # loaded carry whatever IMAGE_REGISTRY/IMAGE_TAG the BUNDLE was built with,
+  # which has no reason to match .env.example's own IMAGE_TAG default (or
+  # whatever an operator/INSTALL_* override would otherwise set). Left alone,
+  # step 2 writes a `.env` pointing docker-compose.yml at a DIFFERENT tag than
+  # what is actually sitting in the local Docker daemon, and step 4's `up -d`
+  # then silently falls back to pulling that (unreachable, on an air-gapped
+  # host) tag - the post-load check above only confirms the bundle's OWN
+  # claims are satisfied, not that .env agrees with them.
+  OFFLINE_IMAGE_REGISTRY="$(sed -n 's/^IMAGE_REGISTRY=//p' "$OFFLINE_EXTRACT_DIR/MANIFEST.txt")"
+  OFFLINE_IMAGE_TAG="$(sed -n 's/^IMAGE_TAG=//p' "$OFFLINE_EXTRACT_DIR/MANIFEST.txt")"
+
+  if [[ -d "$OFFLINE_EXTRACT_DIR/trivy-db" ]]; then
+    ok "bundle carries a Trivy DB snapshot - will seed the trivy-cache volume in step 4"
+  else
+    note "bundle has no trivy-db/ - the worker's normal online bootstrap will run instead (fine if this host can reach ghcr.io)"
+  fi
+fi
 
 # ---------------------------------------------------------------------------
 # 2. .env file — copy template + auto-generate secrets
@@ -141,6 +300,45 @@ else
   # shellcheck source=scripts/lib/env_sync.sh
   source "$ROOT_DIR/scripts/lib/env_sync.sh"
   env_append_only_sync .env.example .env
+fi
+
+# ---------------------------------------------------------------------------
+# 2a. Offline bundle - pin .env to the bundle's own image tag (#400-S2
+# follow-up). Whatever `.env` just got (the .env.example default, or an
+# operator-provided one from the reuse path above) has no reason to name the
+# same IMAGE_REGISTRY/IMAGE_TAG the loaded images actually carry - without
+# this, step 4's `up -d` resolves docker-compose.yml's `${IMAGE_REGISTRY}/
+# ...:${IMAGE_TAG}` against the WRONG tag and falls back to pulling it,
+# defeating --offline. The bundle is ground truth here, so this OVERWRITES
+# rather than only filling a missing key - unlike the secrets in 2b below,
+# there is no "operator already made a real choice" case to preserve.
+# ---------------------------------------------------------------------------
+if [[ -n "$OFFLINE_BUNDLE" ]]; then
+  title "Offline bundle - pinning .env to the bundle's image tag"
+  [[ -n "$OFFLINE_IMAGE_REGISTRY" && -n "$OFFLINE_IMAGE_TAG" ]] \
+    || fail "MANIFEST.txt did not record IMAGE_REGISTRY/IMAGE_TAG - was the bundle built by scripts/bundle-offline.sh?"
+  python3 - "$OFFLINE_IMAGE_REGISTRY" "$OFFLINE_IMAGE_TAG" <<'PYTHON'
+import re
+import sys
+from pathlib import Path
+
+registry, tag = sys.argv[1], sys.argv[2]
+env = Path(".env")
+text = env.read_text()
+
+
+def upsert(text: str, key: str, value: str) -> str:
+    pattern = rf"^{key}=.*$"
+    if re.search(pattern, text, flags=re.M):
+        return re.sub(pattern, f"{key}={value}", text, flags=re.M)
+    return text.rstrip() + f"\n{key}={value}\n"
+
+
+text = upsert(text, "IMAGE_REGISTRY", registry)
+text = upsert(text, "IMAGE_TAG", tag)
+env.write_text(text)
+PYTHON
+  ok "set IMAGE_REGISTRY=$OFFLINE_IMAGE_REGISTRY, IMAGE_TAG=$OFFLINE_IMAGE_TAG in .env (from the bundle's MANIFEST.txt)"
 fi
 
 # ---------------------------------------------------------------------------
@@ -525,8 +723,50 @@ fi
 # .github/workflows/install-uat.yml (install-uat-l1 job).
 title "Bringing up the stack (staged: schema before the runtime fleet)"
 
-# shellcheck disable=SC2086  # $DC may be "docker compose" (two words) — intentional word-split.
-$DC -f docker-compose.yml pull
+if [[ -n "$OFFLINE_BUNDLE" ]]; then
+  note "offline install (--offline) - skipping '$DC pull' (images were docker-loaded from the bundle in step 1b)"
+
+  if [[ -n "$OFFLINE_EXTRACT_DIR" && -d "$OFFLINE_EXTRACT_DIR/trivy-db" ]]; then
+    title "Seeding the Trivy DB cache volume from the bundle"
+    # `run --rm --no-deps` on worker-scan (not a raw `docker run -v
+    # <project>_trivy-cache:...`) so this lands on the SAME named volume the
+    # stack itself declares, whatever this deployment's COMPOSE_PROJECT_NAME
+    # happens to be - hand-computing the project-prefixed volume name is the
+    # fragile alternative (see vulnerability-data.md's "Volume name" tip).
+    # worker-scan has no custom ENTRYPOINT (Dockerfile.worker), so the `sh
+    # -c` command below fully replaces its CMD; /var/lib/trivy is
+    # pre-chowned to uid 1000 in the image (Dockerfile.worker), which is
+    # also the account this command runs as.
+    # shellcheck disable=SC2086
+    $DC -f docker-compose.yml run --rm --no-deps \
+      -v "$OFFLINE_EXTRACT_DIR/trivy-db:/mnt/offline-trivy-db:ro" \
+      worker-scan sh -c "mkdir -p /var/lib/trivy && cp -a /mnt/offline-trivy-db/. /var/lib/trivy/" \
+      || fail "failed to seed the trivy-cache volume from the bundle's trivy-db/. Retry manually: $DC -f docker-compose.yml run --rm --no-deps -v \"$OFFLINE_EXTRACT_DIR/trivy-db:/mnt/offline-trivy-db:ro\" worker-scan sh -c 'mkdir -p /var/lib/trivy && cp -a /mnt/offline-trivy-db/. /var/lib/trivy/'"
+    ok "trivy-cache volume seeded from bundle"
+
+    # The bundle already carries a DB snapshot - disable the worker's own
+    # network download so an air-gapped host does not repeatedly retry (and
+    # fail) against an unreachable ghcr.io on every restart. Mirrors
+    # docs-site/docs/admin-guide/vulnerability-data.md Path B, step 1.
+    python3 - <<'PYTHON'
+import re
+from pathlib import Path
+env = Path(".env")
+text = env.read_text()
+def upsert(text: str, key: str, value: str) -> str:
+    pattern = rf"^{key}=.*$"
+    if re.search(pattern, text, flags=re.M):
+        return re.sub(pattern, f"{key}={value}", text, flags=re.M)
+    return text.rstrip() + f"\n{key}={value}\n"
+text = upsert(text, "TRIVY_DB_BOOTSTRAP_ON_START", "false")
+env.write_text(text)
+PYTHON
+    note "set TRIVY_DB_BOOTSTRAP_ON_START=false in .env (bundle already seeded the cache)"
+  fi
+else
+  # shellcheck disable=SC2086  # $DC may be "docker compose" (two words) - intentional word-split.
+  $DC -f docker-compose.yml pull
+fi
 
 # Preflight: evaluate every core/config.py accessor against the .env just
 # written, inside the backend image (its dependencies are not on this host).

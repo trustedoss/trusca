@@ -230,8 +230,9 @@ an environment variable.
 - **Read-only, and never derived from scan input.** The mount path is fixed
   at deployment time by the operator. No project setting, API field, or
   scan-trigger parameter can change what gets mounted or read.
-- **Air-gapped installs still need this page.** An offline bundle of the
-  worker images and the Trivy vulnerability database (tracked separately) is
-  a different concern from authenticating to an internal mirror that is
-  reachable but requires a credential - you may need both, or only this one,
-  depending on your network.
+- **Air-gapped installs still need this page.** [The offline install
+  bundle](./offline-install.md) covers packaging the worker images and the
+  Trivy vulnerability database for a host with no network access at all,
+  which is a different concern from authenticating to an internal mirror
+  that is reachable but requires a credential - you may need both, or only
+  one, depending on your network.
