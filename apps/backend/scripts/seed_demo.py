@@ -234,11 +234,17 @@ _COMPONENT_BANK: tuple[tuple[str, str, str], ...] = (
 # below). Real scans populate VulnerabilityFinding.fixed_version from the
 # scanner (services.vulnerability_matching._extract_fixed_version); the demo
 # seed has no scanner run, so it must supply believable values itself,
-# otherwise the "수정 버전" / "권장 업그레이드" UI has nothing to show. The
-# last entry is deliberately None (gin has no known fix yet) so the "no known
-# fix" empty state stays demonstrable too.
+# otherwise the "수정 버전" / "권장 업그레이드" UI has nothing to show.
+#
+# CVE-2024-99001 (lodash) is deliberately None, not gin: the verify-specs
+# oracle's F_NEW fixture (tests/verify-specs/specs/vulnerabilities.json) keys
+# on this exact CVE id as its "fix version unknown" case
+# (TC-VULN-06-005/009/011). Assigning it a version here (as an earlier
+# revision of this bank did) makes those three checks fail nightly with a
+# real fixed_version where the oracle expects null - the "no known fix"
+# empty state still needs a demonstrable case, so gin gets a version instead.
 _FIXED_VERSION_BANK: tuple[str | None, ...] = (
-    "4.17.21",  # CVE-2024-99001 lodash
+    None,  # CVE-2024-99001 lodash - kept null, see note above
     "2.32.0",  # CVE-2024-99002 requests
     "6.1.6",  # CVE-2024-99003 spring-core
     "1.4.10",  # CVE-2024-99004 readline-sync
@@ -247,7 +253,7 @@ _FIXED_VERSION_BANK: tuple[str | None, ...] = (
     "3.1.4",  # CVE-2024-99007 Jinja2
     "2.17.1",  # CVE-2024-99008 jackson-databind
     "1.2.8",  # CVE-2024-99009 minimist
-    None,  # CVE-2024-99010 gin, no known fix
+    "1.9.1",  # CVE-2024-99010 gin
 )
 
 # Per-license obligations so the Obligations tab and the NOTICE-file generator
