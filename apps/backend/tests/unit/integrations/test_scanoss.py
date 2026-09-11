@@ -416,8 +416,10 @@ def test_command_always_skips_snippets(monkeypatch: pytest.MonkeyPatch, tmp_path
     ones by default and sends both to the API for matching - the module's
     stated precision rule (full-file matches only) only filtered the
     RESULT, so snippet fingerprints were leaving the worker regardless of
-    it. --skip-snippets stops them being generated at all, and this must
-    hold whether or not an API key is configured."""
+    it. --skip-snippets stops them being generated at all. This test covers
+    the no-key path; test_command_includes_key_when_set below pins the
+    same assertion on the key-configured path, since --skip-snippets sits
+    before the conditional --key append and both must carry it."""
     from integrations import scanoss
 
     _enable_and_install(monkeypatch)
@@ -461,6 +463,9 @@ def test_command_includes_key_when_set(monkeypatch: pytest.MonkeyPatch, tmp_path
     cmd = captured["cmd"]
     assert "--key" in cmd
     assert cmd[cmd.index("--key") + 1] == "sk-secret-123"
+    # --skip-snippets must still be present on the key-configured path too -
+    # see test_command_always_skips_snippets above.
+    assert "--skip-snippets" in cmd
 
 
 # ---------------------------------------------------------------------------

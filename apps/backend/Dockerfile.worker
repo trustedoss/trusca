@@ -910,7 +910,17 @@ RUN set -eux; \
     "${SCANOSS_VENV}/bin/pip" install --no-cache-dir --upgrade pip; \
     "${SCANOSS_VENV}/bin/pip" install --no-cache-dir "scanoss==${SCANOSS_VERSION}"; \
     ln -s "${SCANOSS_VENV}/bin/scanoss-py" /usr/local/bin/scanoss-py; \
-    scanoss-py --version
+    scanoss-py --version; \
+    # integrations/scanoss.py's _build_command always passes --skip-snippets
+    # (closes a fingerprint-egress gap: without it, scanoss-py generates
+    # AND SENDS snippet-level fingerprints alongside the full-file ones on
+    # every enabled scan, regardless of the app's own file-only precision
+    # rule). Nothing in the test suite runs the real binary, so a future
+    # scanoss-py release renaming or dropping the flag would only surface as
+    # a silent "best-effort" degrade (non-zero exit -> empty result) at scan
+    # time, not a build failure. Fail the BUILD instead, here, where it is
+    # loud and where the pinned version above is already being reviewed.
+    scanoss-py scan --help | grep -q -- '--skip-snippets'
 
 # ---- Drop kernel headers (linux-libc-dev) after all native builds. ---------
 # DURABLE image-scan fix (CVE triage 2026-07): Trivy's DB refresh surfaced 76
