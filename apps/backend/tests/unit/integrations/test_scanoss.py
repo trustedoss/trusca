@@ -148,18 +148,14 @@ def test_disabled_by_default_returns_empty_and_never_spawns(
     monkeypatch.delenv("SCANOSS_ENABLED", raising=False)
     # Pretend the binary IS installed, to prove the guard is the ENABLED flag
     # and not merely a missing binary.
-    monkeypatch.setattr(
-        "integrations.scanoss.shutil.which", lambda _: "/usr/local/bin/scanoss-py"
-    )
+    monkeypatch.setattr("integrations.scanoss.shutil.which", lambda _: "/usr/local/bin/scanoss-py")
 
     def _must_not_run(*_a: Any, **_k: Any) -> Any:  # pragma: no cover
         raise AssertionError("scanoss subprocess must not run when disabled")
 
     monkeypatch.setattr("integrations.scanoss.run_with_line_streaming", _must_not_run)
 
-    result = scanoss.run_scanoss(
-        source_dir=tmp_path / "src", output_dir=tmp_path / "out"
-    )
+    result = scanoss.run_scanoss(source_dir=tmp_path / "src", output_dir=tmp_path / "out")
 
     assert result.vendored == []
     assert result.result_path is None
@@ -177,14 +173,10 @@ def test_non_truthy_values_stay_disabled(
     monkeypatch.setenv("SCANOSS_ENABLED", value)
     monkeypatch.setattr(
         "integrations.scanoss.run_with_line_streaming",
-        lambda *_a, **_k: (_ for _ in ()).throw(
-            AssertionError("must not run")
-        ),  # pragma: no cover
+        lambda *_a, **_k: (_ for _ in ()).throw(AssertionError("must not run")),  # pragma: no cover
     )
 
-    result = scanoss.run_scanoss(
-        source_dir=tmp_path / "src", output_dir=tmp_path / "out"
-    )
+    result = scanoss.run_scanoss(source_dir=tmp_path / "src", output_dir=tmp_path / "out")
     assert result.vendored == []
 
 
@@ -206,9 +198,7 @@ def test_enabled_but_binary_missing_returns_empty(
 
     monkeypatch.setattr("integrations.scanoss.run_with_line_streaming", _must_not_run)
 
-    result = scanoss.run_scanoss(
-        source_dir=tmp_path / "src", output_dir=tmp_path / "out"
-    )
+    result = scanoss.run_scanoss(source_dir=tmp_path / "src", output_dir=tmp_path / "out")
     assert result.vendored == []
     assert result.result_path is None
 
@@ -229,9 +219,7 @@ def test_full_file_matches_promoted_snippets_skipped(
         _fake_stream_writing(_SCANOSS_FIXTURE),
     )
 
-    result = scanoss.run_scanoss(
-        source_dir=tmp_path / "src", output_dir=tmp_path / "out"
-    )
+    result = scanoss.run_scanoss(source_dir=tmp_path / "src", output_dir=tmp_path / "out")
 
     purls = {vc.purl for vc in result.vendored}
     # Three full-file matches promoted.
@@ -246,9 +234,7 @@ def test_full_file_matches_promoted_snippets_skipped(
     assert result.result_path is not None and result.result_path.exists()
 
 
-def test_parsed_fields_and_license_dedup(
-    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
-) -> None:
+def test_parsed_fields_and_license_dedup(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     from integrations import scanoss
 
     _enable_and_install(monkeypatch)
@@ -257,9 +243,7 @@ def test_parsed_fields_and_license_dedup(
         _fake_stream_writing(_SCANOSS_FIXTURE),
     )
 
-    result = scanoss.run_scanoss(
-        source_dir=tmp_path / "src", output_dir=tmp_path / "out"
-    )
+    result = scanoss.run_scanoss(source_dir=tmp_path / "src", output_dir=tmp_path / "out")
     by_purl = {vc.purl: vc for vc in result.vendored}
 
     parson = by_purl["pkg:github/kgabis/parson"]
@@ -273,9 +257,7 @@ def test_parsed_fields_and_license_dedup(
     assert inih.licenses == ["BSD-3-Clause"]  # duplicate name de-duped
 
 
-def test_nonzero_exit_degrades_to_empty(
-    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
-) -> None:
+def test_nonzero_exit_degrades_to_empty(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     from integrations import scanoss
 
     _enable_and_install(monkeypatch)
@@ -284,16 +266,12 @@ def test_nonzero_exit_degrades_to_empty(
         _fake_stream_writing(_SCANOSS_FIXTURE, returncode=2),
     )
 
-    result = scanoss.run_scanoss(
-        source_dir=tmp_path / "src", output_dir=tmp_path / "out"
-    )
+    result = scanoss.run_scanoss(source_dir=tmp_path / "src", output_dir=tmp_path / "out")
     # Non-zero exit → empty, non-fatal.
     assert result.vendored == []
 
 
-def test_timeout_degrades_to_empty(
-    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
-) -> None:
+def test_timeout_degrades_to_empty(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     from integrations import scanoss
 
     _enable_and_install(monkeypatch)
@@ -303,9 +281,7 @@ def test_timeout_degrades_to_empty(
 
     monkeypatch.setattr("integrations.scanoss.run_with_line_streaming", _timeout)
 
-    result = scanoss.run_scanoss(
-        source_dir=tmp_path / "src", output_dir=tmp_path / "out"
-    )
+    result = scanoss.run_scanoss(source_dir=tmp_path / "src", output_dir=tmp_path / "out")
     assert result.vendored == []
 
 
@@ -324,9 +300,7 @@ def test_unparseable_json_degrades_to_empty(
 
     monkeypatch.setattr("integrations.scanoss.run_with_line_streaming", _write_garbage)
 
-    result = scanoss.run_scanoss(
-        source_dir=tmp_path / "src", output_dir=tmp_path / "out"
-    )
+    result = scanoss.run_scanoss(source_dir=tmp_path / "src", output_dir=tmp_path / "out")
     assert result.vendored == []
 
 
@@ -365,9 +339,7 @@ def test_lenient_shapes_bare_purl_string_and_name_fallback(
         _fake_stream_writing(payload),
     )
 
-    result = scanoss.run_scanoss(
-        source_dir=tmp_path / "src", output_dir=tmp_path / "out"
-    )
+    result = scanoss.run_scanoss(source_dir=tmp_path / "src", output_dir=tmp_path / "out")
 
     assert len(result.vendored) == 1
     widget = result.vendored[0]
@@ -377,9 +349,7 @@ def test_lenient_shapes_bare_purl_string_and_name_fallback(
     assert widget.licenses == ["Apache-2.0"]  # string-form + de-duped
 
 
-def test_missing_result_file_returns_empty(
-    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
-) -> None:
+def test_missing_result_file_returns_empty(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     """Exit 0 but no output file written → empty (degraded, non-fatal)."""
     from integrations import scanoss
 
@@ -390,15 +360,11 @@ def test_missing_result_file_returns_empty(
 
     monkeypatch.setattr("integrations.scanoss.run_with_line_streaming", _no_write)
 
-    result = scanoss.run_scanoss(
-        source_dir=tmp_path / "src", output_dir=tmp_path / "out"
-    )
+    result = scanoss.run_scanoss(source_dir=tmp_path / "src", output_dir=tmp_path / "out")
     assert result.vendored == []
 
 
-def test_result_too_large_is_skipped(
-    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
-) -> None:
+def test_result_too_large_is_skipped(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     """A result over the size ceiling is not deserialized (OOM guard)."""
     from integrations import scanoss
 
@@ -409,9 +375,7 @@ def test_result_too_large_is_skipped(
         _fake_stream_writing(_SCANOSS_FIXTURE),  # far bigger than 8 bytes
     )
 
-    result = scanoss.run_scanoss(
-        source_dir=tmp_path / "src", output_dir=tmp_path / "out"
-    )
+    result = scanoss.run_scanoss(source_dir=tmp_path / "src", output_dir=tmp_path / "out")
     assert result.vendored == []
 
 
@@ -420,9 +384,7 @@ def test_result_too_large_is_skipped(
 # ---------------------------------------------------------------------------
 
 
-def test_command_omits_key_when_unset(
-    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
-) -> None:
+def test_command_omits_key_when_unset(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     from integrations import scanoss
 
     _enable_and_install(monkeypatch)
@@ -449,9 +411,35 @@ def test_command_omits_key_when_unset(
     assert "--key" not in cmd  # no key configured → flag absent
 
 
-def test_command_includes_key_when_set(
-    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
-) -> None:
+def test_command_always_skips_snippets(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    """scanoss-py generates snippet-level fingerprints ALONGSIDE full-file
+    ones by default and sends both to the API for matching - the module's
+    stated precision rule (full-file matches only) only filtered the
+    RESULT, so snippet fingerprints were leaving the worker regardless of
+    it. --skip-snippets stops them being generated at all, and this must
+    hold whether or not an API key is configured."""
+    from integrations import scanoss
+
+    _enable_and_install(monkeypatch)
+    monkeypatch.delenv("SCANOSS_API_KEY", raising=False)
+
+    captured: dict[str, Any] = {}
+
+    def _capture(cmd: list[str], **_k: Any) -> subprocess.CompletedProcess[bytes]:
+        captured["cmd"] = list(cmd)
+        out_path = Path(cmd[cmd.index("--output") + 1])
+        out_path.parent.mkdir(parents=True, exist_ok=True)
+        out_path.write_text("{}", encoding="utf-8")
+        return subprocess.CompletedProcess(cmd, 0, b"", b"")
+
+    monkeypatch.setattr("integrations.scanoss.run_with_line_streaming", _capture)
+
+    scanoss.run_scanoss(source_dir=tmp_path / "src", output_dir=tmp_path / "out")
+
+    assert "--skip-snippets" in captured["cmd"]
+
+
+def test_command_includes_key_when_set(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     from integrations import scanoss
 
     _enable_and_install(monkeypatch)
@@ -519,9 +507,7 @@ def test_api_key_redacted_from_streamed_lines(
         if cb is not None:
             cb("auth: Bearer sk-secret-123 -> api.osskb.org", "scanoss")
         # Non-zero exit whose stderr also echoes the key (server-log path).
-        return subprocess.CompletedProcess(
-            cmd, 1, b"", b"error: key sk-secret-123 rejected\n"
-        )
+        return subprocess.CompletedProcess(cmd, 1, b"", b"error: key sk-secret-123 rejected\n")
 
     monkeypatch.setattr("integrations.scanoss.run_with_line_streaming", _fake)
 
@@ -547,10 +533,7 @@ def test_api_key_redacted_from_streamed_lines(
 # tests/fixtures/scanoss/PROVENANCE.md.
 # ---------------------------------------------------------------------------
 _RECORDED = (
-    Path(__file__).resolve().parents[2]
-    / "fixtures"
-    / "scanoss"
-    / "vendored-tree-osskb.json"
+    Path(__file__).resolve().parents[2] / "fixtures" / "scanoss" / "vendored-tree-osskb.json"
 )
 
 
@@ -604,7 +587,5 @@ def test_consensus_is_stable_across_runs() -> None:
     """
     from integrations.scanoss import _parse_vendored
 
-    runs = [
-        {vc.purl: vc.version for vc in _parse_vendored(_RECORDED)} for _ in range(5)
-    ]
+    runs = [{vc.purl: vc.version for vc in _parse_vendored(_RECORDED)} for _ in range(5)]
     assert all(r == runs[0] for r in runs)

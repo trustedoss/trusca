@@ -33,6 +33,15 @@ known OSS file) and ``"snippet"`` (some lines matched). We promote ONLY
 are noisy and low-confidence for a component inventory, so they are skipped.
 This mirrors BomLens's ``docker/lib/identify-vendored.sh`` precision rule.
 
+This precision rule is enforced at BOTH ends: ``_build_command`` passes
+``--skip-snippets`` so scanoss-py never generates snippet-level fingerprints
+in the first place (they used to be generated and sent to the API regardless
+of the rule above, which only filtered the RESULT after the fact; the
+PRIVACY WARNING below describes egress that this closes), and
+``_parse_vendored`` still drops any ``"snippet"`` entry that reaches it
+anyway, as defence in depth against a scanoss-py version that ignores the
+flag or reintroduces snippet matches by another name.
+
 Best-effort, never fatal
 ------------------------
 Consistent with scancode / cosign: a missing ``scanoss-py`` binary, the feature
@@ -272,6 +281,18 @@ def _build_command(*, source_dir: Path, result_path: Path) -> list[str]:
     is appended ONLY when a key is configured (the public endpoint needs none),
     and it is the ONLY place the key touches the command line — never logged.
 
+    ``--skip-snippets`` is required, not optional: without it scanoss-py's own
+    default (verified against its CLI source, scanoss==1.53.1, this image's
+    pinned version) generates snippet-level Winnowing fingerprints ALONGSIDE
+    the full-file ones and includes both in the WFP it sends to the API for
+    matching. ``_parse_vendored`` above only PROMOTES ``id == "file"`` matches
+    to components (the precision rule in the module docstring), but that is a
+    result-side filter: it does nothing about what already left the worker.
+    Without this flag, snippet fingerprints (finer-grained than a whole-file
+    hash, and the thing the module docstring's PRIVACY WARNING describes this
+    adapter as NOT doing) were leaving the worker on every enabled scan
+    regardless of the precision rule.
+
     scanoss-py skips common package-manager / build directories by default
     (its built-in ignore set), so we rely on that rather than re-deriving an
     exclude list here.
@@ -284,6 +305,7 @@ def _build_command(*, source_dir: Path, result_path: Path) -> list[str]:
         str(result_path),
         "--apiurl",
         scanoss_api_url(),
+        "--skip-snippets",
     ]
     key = scanoss_api_key()
     if key:
@@ -425,12 +447,8 @@ def _parse_match(match: dict[str, Any]) -> VendoredComponent | None:
     # Truncate to the destination column widths so an over-long field from the
     # external API cannot raise StringDataRightTruncation and roll back the
     # whole vendored batch (security-review Low-1).
-    name = (_as_text(match.get("component")) or _name_from_purl(purl))[
-        :COMPONENT_NAME_MAX_LENGTH
-    ]
-    version = (_as_text(match.get("version")) or "unknown")[
-        :COMPONENT_VERSION_MAX_LENGTH
-    ]
+    name = (_as_text(match.get("component")) or _name_from_purl(purl))[:COMPONENT_NAME_MAX_LENGTH]
+    version = (_as_text(match.get("version")) or "unknown")[:COMPONENT_VERSION_MAX_LENGTH]
     licenses = _parse_licenses(match.get("licenses"))
     return VendoredComponent(purl=purl, name=name, version=version, licenses=licenses)
 
