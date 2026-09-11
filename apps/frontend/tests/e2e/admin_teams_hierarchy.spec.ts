@@ -32,11 +32,12 @@
  *   3. Move the seeded subgroup to root (``newParentName: null``); its
  *      parent badge clears, and the list row's ``data-parent-group-id``
  *      clears after reload.
- *   4. Cycle rejection: attempt to move the seeded parent under its own
- *      seeded child, asserts ``expectErrorAlert("cycle_detected")``.
  *   5. The move-target picker excludes the group's own subtree: opening the
  *      seeded parent's drawer, its picker offers the unrelated seeded root
- *      but never the seeded child.
+ *      but never the seeded child. (A scenario 4 attempting the same cycle
+ *      by selecting the child in the picker used to live here; removed as
+ *      unreachable through this guard, see the comment above scenario 5's
+ *      definition.)
  *
  * Pre-requisites (auto-skip otherwise):
  *   - docker-compose -f docker-compose.dev.yml up -d
@@ -164,30 +165,24 @@ test.describe("@critical admin teams: group hierarchy", () => {
     await teams.expectRowParent(child.name, null);
   });
 
-  test("4) moving the seeded parent under its own seeded child is rejected as a cycle", async ({
-    page,
-  }, testInfo) => {
-    const seed = tryAcquireSeed(testInfo, {
-      projectNames: ["admin-e2e-hierarchy-cycle"],
-      superAdmin: true,
-      withSubgroup: true,
-    });
-    if (seed === null) return;
-    expect(seed.subgroup).toBeTruthy();
-    const child = seed.subgroup!;
-
-    const auth = new AuthHarness(page);
-    await auth.gotoLogin();
-    await auth.login(seed.email, seed.password);
-
-    const portal = new PortalPage(page);
-    const teams = await portal.gotoAdminTeams();
-
-    await teams.expectTeamRow(seed.team_name);
-    await teams.openTeamDrawer(seed.team_name);
-    await teams.moveGroup(child.name);
-    await teams.expectErrorAlert("cycle_detected");
-  });
+  // Scenario 4 (this same PR's own picker-exclusion guard, scenario 5 below)
+  // used to live here: open the parent's drawer, select the seeded child as
+  // the move target, and assert the server's `cycle_detected` rejection.
+  // Both landed in PR #464, and the picker guard makes the scenario
+  // unreachable through the harness it was written against:
+  // `AdminTeamsHarness.moveGroup` requires the target option to exist
+  // (`toHaveCount(1)`) before it can select it, and scenario 5 below proves
+  // the excluded child is never one of those options. The nightly e2e run
+  // caught this the day after #464 merged (#392); PR-blocking checks don't
+  // run this suite (CONTRIBUTING.md), so it went out unnoticed.
+  //
+  // Removed rather than rewritten: the server-side rejection this asserted
+  // is covered independently at the API layer
+  // (apps/backend/tests/integration/test_group_reparent.py,
+  // test_admin_teams_api.py), and the client-side guard that makes this
+  // scenario unreachable is exactly scenario 5's own assertion. Keeping both
+  // would mean asserting the same guarantee twice through two different
+  // paths for no additional coverage.
 
   test("5) move-target picker excludes the group's own subtree", async ({
     page,
