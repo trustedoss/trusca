@@ -129,6 +129,12 @@ jobs:
       # so both `up` invocations agree and docker-compose reports the
       # container "up-to-date" instead of recreating it.
       TRUSTEDOSS_SCAN_BACKEND: mock
+      # apps/backend/Dockerfile uses `COPY --chmod`, which the legacy
+      # builder rejects. docker-compose V1 builds with it unless it is told
+      # to delegate to the docker CLI with BuildKit (same pair the other
+      # V1 workflows set).
+      COMPOSE_DOCKER_CLI_BUILD: "1"
+      DOCKER_BUILDKIT: "1"
     steps:
       - uses: actions/checkout@v4
 
