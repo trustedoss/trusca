@@ -1,30 +1,33 @@
-# In-repo golden fixtures (self-contained BUG-008 guard)
+# In-repo golden fixtures
 
-These are a **small, self-contained subset** of the external `baseline-scan` fixture
-corpus, committed into the repo so the golden-fixture drift gate
-(`../test_golden_fixtures.py`) can guard the most important regression —
-**"scan reports `succeeded` but detects 0 components"** (the BUG-008 silent-
-failure class) — **without** requiring the `BASELINE_CORPUS_REPO_URL` secret / external
-clone.
+One directory per baseline in `../baselines/`. `test_golden_fixtures.py` scans
+each fixture through the real pipeline and asserts the normalised output equals
+the committed baseline. `PROVENANCE.md` says how each fixture was made and where
+its baseline differs from the original recording.
 
-How it works: `test_golden_fixtures.py` resolves each baseline's fixture from
-`GOLDEN_FIXTURES` (the external baseline-scan corpus) first, and falls back to this
-directory. So `node` and `python-pip` always run in the golden-nightly workflow
-(real cdxgen, live stack); the full language matrix still runs when the
-external corpus is present.
+The nightly (`.github/workflows/golden-nightly.yml`) reads this directory
+only. A fixture that does not resolve to the same components on every run makes
+the gate flaky, so pin every dependency, transitive ones included. The first
+nightly run failed on `python-pip` because only `requests` was pinned and
+`certifi` and `idna` resolved to whatever was newest that day.
 
-The committed `../baselines/<name>.json` was generated from the fixture, and the
-gate asserts full equality. A fixture must therefore resolve to the same
-components on every run: pin every dependency, transitive ones included. The
-first nightly run failed on `python-pip` because only `requests` was pinned and
-`certifi` and `idna` resolved to whatever was newest that day. If you change a
-fixture, regenerate its baseline deliberately:
+To change a fixture, regenerate its baseline in CI (dispatch the workflow with
+`update_baselines=true`, download the artifact, review the diff). Do not
+regenerate on a laptop.
 
-    python run_golden.py --api ... --fixtures ... --update --names <name>
+Fixtures whose baseline is held out of the nightly are listed in `HELD_OUT` in
+`tests/unit/test_golden_gate_contract.py`, with the issue that blocks them.
 
-Current self-contained fixtures:
-
-| fixture      | detector | expected components |
-|--------------|----------|---------------------|
-| `node`       | npm      | 1 (`lodash`)        |
-| `python-pip` | pip      | 5 (`requests` + transitive) |
+| fixture | detector | components |
+|---|---|---|
+| `node` | npm | 1 |
+| `node-yarn` | yarn | 1 |
+| `python-pip` | pip | 5 |
+| `python-poetry` | poetry manifest only | 1 |
+| `maven` | maven | 8 |
+| `gradle`, `gradle-kts` | gradle | 7 |
+| `go` | go modules | 1 |
+| `rust` | cargo | 8 |
+| `ruby` | bundler | 6 |
+| `multi-component` | npm + maven | 69 |
+| `scancode-*` | license text and headers only | 0 (`scancode-mixed-policy`: 1) |

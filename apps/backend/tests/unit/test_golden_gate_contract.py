@@ -22,23 +22,18 @@ WORKFLOW = REPO / ".github/workflows/golden-nightly.yml"
 sys.path.insert(0, str(GOLDEN))
 import run_golden as rg  # noqa: E402
 
-# Baselines whose fixture is not in the repository yet. The baselines were
-# recorded from a corpus repository that no longer exists, so nothing can
-# reproduce them. Each fixture that lands must leave this set and join a shard.
-PENDING_FIXTURES = {
-    "go",
-    "gradle",
-    "gradle-kts",
-    "maven",
-    "multi-component",
-    "node-yarn",
-    "python-poetry",
-    "ruby",
-    "rust",
-    "scancode-license-files",
-    "scancode-license-headers",
-    "scancode-mixed-policy",
-    "scancode-spdx-tags",
+# Baselines held out of every shard because the product cannot produce them
+# yet: their fixtures exist, but the stage they assert on never runs. The
+# scancode baselines describe detected licenses and a failing gate; the worker
+# image's scancode exits 2 on every call (issue 487), so a nightly run would
+# either fail forever or, worse, be regenerated to "no licenses, gate passes".
+# When the issue is fixed, regenerate them in CI, move each name into a shard
+# and delete its entry here.
+HELD_OUT = {
+    "scancode-license-files": 487,
+    "scancode-license-headers": 487,
+    "scancode-mixed-policy": 487,
+    "scancode-spdx-tags": 487,
 }
 
 
@@ -73,10 +68,13 @@ def test_no_name_is_owned_by_two_shards() -> None:
     assert len(names) == len(set(names)), sorted(n for n in set(names) if names.count(n) > 1)
 
 
-def test_baselines_not_in_a_shard_are_exactly_the_pending_ones() -> None:
-    # A new baseline must join a shard or be listed as pending; a fixture that
-    # lands must leave PENDING_FIXTURES. Either drift fails here, not in CI.
-    assert _baselines() - set(_shard_names()) == PENDING_FIXTURES
+def test_every_baseline_belongs_to_a_shard_or_is_held_out_with_a_reason() -> None:
+    # A baseline outside every shard is never compared, and the nightly stays
+    # green. Either side drifting fails here, not in CI.
+    shard_names = set(_shard_names())
+    assert not shard_names & set(HELD_OUT), sorted(shard_names & set(HELD_OUT))
+    assert _baselines() == shard_names | set(HELD_OUT)
+    assert set(HELD_OUT) <= _fixtures(), "a held-out baseline still needs its fixture"
 
 
 def test_the_nightly_is_strict_and_scheduled() -> None:
@@ -87,6 +85,28 @@ def test_the_nightly_is_strict_and_scheduled() -> None:
     steps = workflow["jobs"]["golden"]["steps"]
     gate_step = next(s for s in steps if s.get("name", "").startswith("Golden drift gate"))
     assert gate_step["env"]["GOLDEN_STRICT"] == "1"
+
+
+def test_the_stack_the_nightly_boots_runs_scancode() -> None:
+    # docker-compose.dev.yml gives celery-worker SCANCODE_MAX_FILES "0", which
+    # makes every scan skip licence detection. The nightly layers an override
+    # over it; if the override, the service name or the COMPOSE_FILE wiring
+    # drifts, baselines silently lose their detected licences.
+    workflow = yaml.safe_load(WORKFLOW.read_text())
+    compose_files = workflow["jobs"]["golden"]["env"]["COMPOSE_FILE"].split(":")
+    assert compose_files[0] == "docker-compose.dev.yml"
+    override_path = REPO / compose_files[1]
+    assert override_path == GOLDEN / "compose.scancode.yml"
+
+    dev = yaml.safe_load((REPO / "docker-compose.dev.yml").read_text())
+    override = yaml.safe_load(override_path.read_text())
+    assert set(override["services"]) <= set(dev["services"])
+    value = override["services"]["celery-worker"]["environment"]["SCANCODE_MAX_FILES"]
+    assert value.endswith(":-20000}"), value
+
+    # The override is only needed while the dev file still zeroes the ceiling.
+    # If that line goes away, delete the override and this test with it.
+    assert dev["services"]["celery-worker"]["environment"]["SCANCODE_MAX_FILES"] == "0"
 
 
 class TestParseNames:

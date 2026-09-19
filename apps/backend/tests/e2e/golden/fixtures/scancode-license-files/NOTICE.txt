@@ -1,0 +1,1 @@
+Example project. Third-party terms are in the license files.

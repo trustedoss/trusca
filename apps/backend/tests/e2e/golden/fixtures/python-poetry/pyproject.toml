@@ -1,0 +1,13 @@
+[tool.poetry]
+name = "baseline-python-poetry-fixture"
+version = "1.0.0"
+description = "Golden fixture"
+authors = ["TRUSCA contributors"]
+
+[tool.poetry.dependencies]
+python = "^3.9"
+requests = "2.31.0"
+
+[build-system]
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"

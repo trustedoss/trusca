@@ -44,14 +44,24 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          # `names` is the set of baselines each shard owns. Every name needs a
-          # baseline and an in-repo fixture; tests/unit/test_golden_gate_contract.py
-          # enforces that and lists the baselines still waiting for a fixture.
+          # `names` is the set of baselines each shard owns. Every baseline
+          # belongs to exactly one shard and has an in-repo fixture;
+          # tests/unit/test_golden_gate_contract.py enforces both.
           - shard: node
-            names: "node"
+            names: "node node-yarn"
           - shard: python
-            names: "python-pip"
+            names: "python-pip python-poetry"
+          - shard: jvm
+            names: "maven gradle gradle-kts"
+          - shard: native
+            names: "go rust ruby"
+          - shard: multi
+            names: "multi-component"
+          # The four scancode-* baselines are held out until the worker image's
+          # scancode runs again (issue 487); see HELD_OUT in the contract test.
     env:
+      # Dev stack plus the scancode override (see that file for why).
+      COMPOSE_FILE: docker-compose.dev.yml:apps/backend/tests/e2e/golden/compose.scancode.yml
       TRUSTEDOSS_SCAN_BACKEND: real
       # Pin so the api and worker sign and verify the same JWTs.
       SECRET_KEY: golden-nightly-fixture-secret-key-for-workflow-runs
@@ -94,15 +104,15 @@ jobs:
           COMPOSE_DOCKER_CLI_BUILD: "1"
           DOCKER_BUILDKIT: "1"
         run: |
-          docker-compose -f docker-compose.dev.yml up -d postgres redis
-          docker-compose -f docker-compose.dev.yml run --rm --no-deps backend alembic upgrade head
+          docker-compose up -d postgres redis
+          docker-compose run --rm --no-deps backend alembic upgrade head
 
       - name: Bring up backend + worker
         env:
           COMPOSE_DOCKER_CLI_BUILD: "1"
           DOCKER_BUILDKIT: "1"
         run: |
-          docker-compose -f docker-compose.dev.yml up -d backend celery-worker
+          docker-compose up -d backend celery-worker
           for i in $(seq 1 60); do
             code=$(curl -s -o /dev/null -w '%{http_code}' http://localhost:8000/health || echo 000)
             [ "$code" = "200" ] && break
@@ -112,7 +122,7 @@ jobs:
 
       # seed_demo creates the super-admin and the team the harness scans into.
       - name: Seed the admin and team
-        run: docker-compose -f docker-compose.dev.yml exec -T backend python scripts/seed_demo.py
+        run: docker-compose exec -T backend python scripts/seed_demo.py
 
       - name: Install the test runner
         run: python -m pip install -r apps/backend/requirements-dev.txt
@@ -150,15 +160,25 @@ jobs:
           path: apps/backend/tests/e2e/golden/baselines/
           if-no-files-found: error
 
+      # scancode is best-effort in the pipeline: a failure or timeout is logged
+      # as "skipped" and the scan still succeeds with declared licences only. A
+      # baseline recorded that way silently loses its detected licences, so the
+      # stage outcome is kept with every run, green or not.
+      - name: Scan stage outcomes (worker log)
+        if: always()
+        run: |
+          docker-compose logs --no-color celery-worker \
+            | grep -E "scancode_stage|_stage_skipped|degraded" | tail -60 || true
+
       - name: Dump compose logs on failure
         if: failure()
         run: |
-          docker-compose -f docker-compose.dev.yml ps || true
-          docker-compose -f docker-compose.dev.yml logs --tail=300 backend celery-worker || true
+          docker-compose ps || true
+          docker-compose logs --tail=300 backend celery-worker || true
 
       - name: Tear down
         if: always()
-        run: docker-compose -f docker-compose.dev.yml down -v || true
+        run: docker-compose down -v || true
 
   nightly-alert:
     name: nightly-alert

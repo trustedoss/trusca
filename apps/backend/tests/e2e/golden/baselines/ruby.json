@@ -1,13 +1,14 @@
 {
   "components": {
-    "count": 5,
+    "count": 6,
     "nix_spurious": 0,
     "purls": [
-      "pkg:gem/mustermann@3.1.1",
+      "pkg:gem/mustermann@3.0.4",
       "pkg:gem/rack-protection@3.1.0",
-      "pkg:gem/rack@2.2.23",
+      "pkg:gem/rack@2.2.24",
+      "pkg:gem/ruby2_keywords@0.0.5",
       "pkg:gem/sinatra@3.1.0",
-      "pkg:gem/tilt@2.7.0"
+      "pkg:gem/tilt@2.9.0"
     ]
   },
   "gate": {
@@ -15,7 +16,10 @@
     "forbidden_license": 0,
     "gate": "pass"
   },
-  "licenses": [],
+  "licenses": [
+    "BSD-2-Clause|allowed|concluded",
+    "MIT|allowed|concluded"
+  ],
   "notice": {
     "csp": true,
     "html_ok": true,
