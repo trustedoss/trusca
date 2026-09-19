@@ -15,8 +15,10 @@ To change a fixture, regenerate its baseline in CI (dispatch the workflow with
 `update_baselines=true`, download the artifact, review the diff). Do not
 regenerate on a laptop.
 
-Fixtures whose baseline is held out of the nightly are listed in `HELD_OUT` in
-`tests/unit/test_golden_gate_contract.py`, with the issue that blocks them.
+The `scancode-*` baselines and `multi-component` record detected licenses, so
+they are only valid when the worker image's scancode runs. Check the nightly's
+"Scan stage outcomes" step before regenerating any of them: a
+`scancode_stage_skipped` line means the baseline would be recorded without them.
 
 | fixture | detector | components |
 |---|---|---|
