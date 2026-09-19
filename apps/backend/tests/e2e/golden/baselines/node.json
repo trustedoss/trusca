@@ -1,6 +1,6 @@
 {
   "components": {
-    "count": 1,
+    "count": 2,
     "nix_spurious": 0,
     "purls": [
       "pkg:npm/lodash@4.17.21"
