@@ -1,7 +1,7 @@
 """Golden-fixture drift gate (Tier 1) — pytest wrapper around ``run_golden``.
 
-Runs against a LIVE stack (real cdxgen/scancode/DT). Marked ``golden`` so it is
-excluded from the default + PR test runs and executed only in the nightly e2e
+Runs against a LIVE stack (real cdxgen/scancode/Trivy). Marked ``golden`` so it is
+excluded from the default + PR test runs and executed only in the golden-nightly
 workflow:
 
     pytest -m golden apps/backend/tests/e2e/golden/
@@ -41,7 +41,17 @@ FIXTURES = os.getenv(
 # back here, so `node` / `python-pip` always run while the full language matrix
 # still needs the external clone.
 IN_REPO_FIXTURES = Path(__file__).resolve().parent / "fixtures"
-BASELINES = sorted(p.stem for p in rg.BASELINE_DIR.glob("*.json"))
+BASELINES = rg.parse_names(
+    os.getenv("GOLDEN_NAMES", ""), sorted(p.stem for p in rg.BASELINE_DIR.glob("*.json"))
+)
+STRICT = rg.strict_from_env()
+
+
+def _unavailable(reason: str) -> None:
+    """Skip for a developer; fail in the nightly, where a skip compares nothing."""
+    if STRICT:
+        pytest.fail(reason)
+    pytest.skip(reason)
 
 
 def _resolve_fixture(name: str) -> Path | None:
@@ -69,7 +79,7 @@ def _auth():
     # (external corpus or the in-repo fallback), so a missing external corpus no
     # longer skips the whole suite; it just narrows it to the in-repo subset.
     if not _api_up():
-        pytest.skip(f"golden stack not reachable at {API}")
+        _unavailable(f"golden stack not reachable at {API}")
     token = rg.login(API)
     team = rg._team(API, token)
     return token, team
@@ -81,7 +91,7 @@ def test_fixture_matches_baseline(name: str, _auth) -> None:
     token, team = _auth
     src = _resolve_fixture(name)
     if src is None:
-        pytest.skip(f"fixture {name} not present (external corpus or in-repo)")
+        _unavailable(f"fixture {name} not present (external corpus or in-repo)")
     got = rg.scan_fixture(API, token, team, name, src)
     want = json.loads((rg.BASELINE_DIR / f"{name}.json").read_text())
     # vulnerabilities_count is NVD-mirror-dependent → asserted in the Tier 5

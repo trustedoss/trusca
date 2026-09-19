@@ -9,7 +9,7 @@ clone.
 
 How it works: `test_golden_fixtures.py` resolves each baseline's fixture from
 `GOLDEN_FIXTURES` (the external baseline-scan corpus) first, and falls back to this
-directory. So `node` and `python-pip` always run in the nightly e2e workflow
+directory. So `node` and `python-pip` always run in the golden-nightly workflow
 (real cdxgen, live stack); the full language matrix still runs when the
 external corpus is present.
 
