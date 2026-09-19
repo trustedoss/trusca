@@ -767,7 +767,18 @@ RUN curl -fsSL -o /tmp/dotnet-install.sh "https://dot.net/v1/dotnet-install.sh" 
 # time so the first scan does not pay the (multi-minute) index build at
 # runtime. It is wrapped in ``|| true`` because a non-fatal index warning must
 # not fail the build — the index also self-builds lazily on first scan.
+# click is pinned because scancode-toolkit leaves it unbounded. An image built
+# with click 8.5.0 made EVERY scancode call exit 2 ("--strip-root cannot be used
+# together with --full-root"), the pipeline logged "scancode_stage_skipped", and
+# scans succeeded with no detected licenses. 8.1.8 is the newest release checked
+# against 32.4.0 (a detection run in the worker image; 8.0.4 also works). Move it
+# only together with a passing smoke run below.
+#
+# ``scancode --version`` does not read command-line options, so it cannot catch
+# that failure. The smoke run below scans one file and requires the detection,
+# which fails the build instead of shipping an image that detects nothing.
 ENV SCANCODE_VERSION=32.4.0 \
+    SCANCODE_CLICK_VERSION=8.1.8 \
     SCANCODE_VENV=/opt/scancode-venv
 RUN set -eux; \
     arch="$(dpkg --print-architecture)"; \
@@ -779,7 +790,8 @@ RUN set -eux; \
     python3 -m venv "${SCANCODE_VENV}"; \
     "${SCANCODE_VENV}/bin/pip" install --no-cache-dir --upgrade pip; \
     "${SCANCODE_VENV}/bin/pip" install --no-cache-dir \
-        "scancode-toolkit==${SCANCODE_VERSION}"; \
+        "scancode-toolkit==${SCANCODE_VERSION}" \
+        "click==${SCANCODE_CLICK_VERSION}"; \
     ln -s "${SCANCODE_VENV}/bin/scancode" /usr/local/bin/scancode; \
     ln -sfn "/usr/lib/${triplet}/libarchive.so.13" /usr/local/lib/scancode-libarchive.so; \
     ln -sfn "/usr/lib/${triplet}/libmagic.so.1" /usr/local/lib/scancode-libmagic.so; \
@@ -788,7 +800,15 @@ RUN set -eux; \
         "${SCANCODE_VENV}/bin/scancode-reindex-licenses" || true; \
     EXTRACTCODE_LIBARCHIVE_PATH=/usr/local/lib/scancode-libarchive.so \
     TYPECODE_LIBMAGIC_PATH=/usr/local/lib/scancode-libmagic.so \
-        scancode --version
+        scancode --version; \
+    mkdir -p /tmp/scancode-smoke; \
+    printf 'Licensed under the MIT license\n' > /tmp/scancode-smoke/a.txt; \
+    EXTRACTCODE_LIBARCHIVE_PATH=/usr/local/lib/scancode-libarchive.so \
+    TYPECODE_LIBMAGIC_PATH=/usr/local/lib/scancode-libmagic.so \
+        scancode --license --quiet --strip-root \
+            --json /tmp/scancode-smoke.json /tmp/scancode-smoke; \
+    grep -q '"license_expression": "mit"' /tmp/scancode-smoke.json; \
+    rm -rf /tmp/scancode-smoke /tmp/scancode-smoke.json
 
 # scancode's ctypes loader reads these at runtime to find a COMPLETE system
 # libarchive/libmagic (the bundled aarch64 wheels are empty stubs). The

@@ -57,8 +57,8 @@ jobs:
             names: "go rust ruby"
           - shard: multi
             names: "multi-component"
-          # The four scancode-* baselines are held out until the worker image's
-          # scancode runs again (issue 487); see HELD_OUT in the contract test.
+          - shard: scancode
+            names: "scancode-license-files scancode-license-headers scancode-mixed-policy scancode-spdx-tags"
     env:
       # Dev stack plus the scancode override (see that file for why).
       COMPOSE_FILE: docker-compose.dev.yml:apps/backend/tests/e2e/golden/compose.scancode.yml
@@ -123,26 +123,6 @@ jobs:
       # seed_demo creates the super-admin and the team the harness scans into.
       - name: Seed the admin and team
         run: docker-compose exec -T backend python scripts/seed_demo.py
-
-      - name: Diagnose scancode (issue 487) # TEMP-DIAG: remove before merge
-        if: matrix.shard == 'node'
-        run: |
-          docker-compose exec -T celery-worker sh -c '
-            V=/opt/scancode-venv/bin
-            echo "uid=$(id -u)"
-            $V/pip freeze | grep -iE "^(click|scancode|commoncode|plugincode|typecode|extractcode|licensedcode|cluecode|packagedcode|summarycode|saneyaml|attrs)"
-            mkdir -p /tmp/t && printf "Licensed under the MIT license\n" > /tmp/t/a.txt
-            scancode --license --quiet --strip-root --json /tmp/o0.json /tmp/t >/dev/null 2>&1; echo "as installed: rc=$?"
-            n=0
-            for spec in "click<8.2" "click<8.1" "click==8.1.8"; do
-              n=$((n+1))
-              rm -rf /tmp/c$n
-              $V/pip install --quiet --target /tmp/c$n "$spec" >/dev/null 2>&1
-              echo "== $spec -> $(ls /tmp/c$n | grep -i "^click-" | head -1)"
-              PYTHONPATH=/tmp/c$n scancode --license --quiet --strip-root --json /tmp/o$n.json /tmp/t >/dev/null 2>&1; echo "   rc=$?"
-              [ -f /tmp/o$n.json ] && grep -o "\"license_expression\": \"[^\"]*\"" /tmp/o$n.json | head -2
-            done
-          ' 2>&1 | tail -40
 
       - name: Install the test runner
         run: python -m pip install -r apps/backend/requirements-dev.txt
