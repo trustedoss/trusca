@@ -28,6 +28,7 @@ the correctness-only tests elsewhere (``test_ingest_sbom_pipeline.py``,
 
 from __future__ import annotations
 
+import gzip
 import json
 import threading
 import time
@@ -61,8 +62,19 @@ def _migrate_once() -> None:
     migrate_to_head()
 
 
+# #462: a fixture past 10,000 components, built from real lockfiles (see
+# tests/fixtures/sbom_ingest/PROVENANCE.md). Stored gzipped: it is ~10 MB raw.
+FIXTURE_10K = FIXTURE.with_name("real_cyclonedx_large_multi_10198.cdx.json.gz")
+COMPONENTS_10K = 10198
+
+
 def _large_sbom() -> dict[str, Any]:
     return cast(dict[str, Any], json.loads(FIXTURE.read_text(encoding="utf-8")))
+
+
+def _ten_thousand_sbom() -> dict[str, Any]:
+    with gzip.open(FIXTURE_10K, "rt", encoding="utf-8") as handle:
+        return cast(dict[str, Any], json.load(handle))
 
 
 def _seed_queued_scan() -> uuid.UUID:
@@ -189,6 +201,51 @@ def test_catalog_lookup_stays_flat_regardless_of_component_count(
         f"statements for {component_count} components, looks like the "
         "per-row catalog path fired instead of the #398 prefetch"
     )
+
+
+def test_batching_holds_past_ten_thousand_real_components(
+    sync_session: Session, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """#462: the bound that held at 2,544 components still holds at 10,198.
+
+    Every table's statement count is checked against the row count it wrote,
+    so a fallback to one statement per row fails by two orders of magnitude
+    rather than by a margin CI variance could hide.
+    """
+    monkeypatch.setenv("LICENSE_FETCH_ENABLED", "false")
+    from tasks.scan_source import persist_sbom_components
+
+    scan_id = _seed_queued_scan()
+    sbom = _ten_thousand_sbom()
+    assert len(sbom["components"]) == COMPONENTS_10K
+
+    def _persist_and_commit() -> None:
+        persist_sbom_components(sync_session, scan_uuid=scan_id, sbom=sbom)
+        sync_session.commit()
+
+    _, statements = _record_statements(sync_session, _persist_and_commit)
+
+    component_count = sync_session.execute(
+        select(func.count()).select_from(ScanComponent).where(ScanComponent.scan_id == scan_id)
+    ).scalar_one()
+    assert component_count == COMPONENTS_10K
+    edge_count = sync_session.execute(
+        select(func.count())
+        .select_from(ComponentDependencyEdge)
+        .where(ComponentDependencyEdge.scan_id == scan_id)
+    ).scalar_one()
+    assert edge_count > COMPONENTS_10K // 2
+
+    for tables, rows in (
+        (("components", "component_versions", "licenses"), component_count),
+        (("scan_components",), component_count),
+        (("component_dependency_edges",), edge_count),
+    ):
+        touched = _touching(statements, *tables)
+        assert len(touched) < rows // 50, (
+            f"{len(touched)} statements touching {tables} for {rows} rows, "
+            "looks like a per-row path fired at 10k scale"
+        )
 
 
 def test_scan_component_and_edge_inserts_batch_too(
