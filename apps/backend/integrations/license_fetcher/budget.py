@@ -57,11 +57,18 @@ class EnrichmentBudget:
     skipped_breaker: int = 0
     _tripped: bool = field(default=False, repr=False)
 
-    def refusal(self) -> str | None:
-        """Why the next lookup must not run, or ``None`` when it may."""
+    def refusal(self, in_flight_seconds: float = 0.0) -> str | None:
+        """Why the next lookup must not run, or ``None`` when it may.
+
+        ``in_flight_seconds`` is the time the calling lookup has already used
+        and has not yet reported through :meth:`add_elapsed`. A lookup that
+        makes several requests (a Maven parent chain) passes it before each
+        further request, so the budget can end it part-way instead of only
+        between lookups.
+        """
         if self._tripped:
             return REASON_BREAKER
-        if self.spent_seconds >= self.budget_seconds:
+        if self.spent_seconds + max(in_flight_seconds, 0.0) >= self.budget_seconds:
             return REASON_BUDGET
         return None
 

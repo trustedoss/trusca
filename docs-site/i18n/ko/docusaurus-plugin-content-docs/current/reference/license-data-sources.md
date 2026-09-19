@@ -23,7 +23,7 @@ sidebar_position: 8
 
 ## 레지스트리가 빈자리를 채웁니다
 
-SBOM에 라이선스가 없으면 해당 패키지를 소유한 레지스트리에 묻습니다. Maven Central, PyPI, crates.io, pkg.go.dev, RubyGems, NuGet입니다. 응답은 24시간 캐시하며 "찾지 못함"도 함께 캐시합니다. 미공개 패키지가 많은 저장소가 같은 조회를 반복하지 않게 하기 위해서입니다.
+SBOM에 라이선스가 없으면 해당 패키지를 소유한 레지스트리에 묻습니다. Maven Central, PyPI, crates.io, pkg.go.dev, RubyGems, NuGet입니다. 응답은 24시간 캐시하며 "찾지 못함"도 함께 캐시합니다. 미공개 패키지가 많은 저장소가 같은 조회를 반복하지 않게 하기 위해서입니다. Maven 컴포넌트의 POM이 라이선스를 직접 선언하지 않으면 Maven이 유효 모델을 만들 때와 같이 상위 POM에서 가져옵니다. 올라가는 단계는 `LICENSE_FETCH_MAVEN_PARENT_MAX_DEPTH`까지입니다. 이렇게 얻은 라이선스는 concluded 판정으로 저장하고 `raw_data.inherited_from`에 출처 상위 POM의 `groupId:artifactId:version`을 남기므로, 컴포넌트가 직접 선언한 라이선스와 구별됩니다.
 
 `LICENSE_FETCH_ENABLED`(기본 켜짐)로 제어합니다. 폐쇄망 설치에서는 꺼 두면 되고, 그 경우 SBOM이 담아 온 내용만 표시합니다.
 
