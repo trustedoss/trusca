@@ -67,7 +67,11 @@ test.describe("@abandonment client resilience", () => {
     await portal.reload();
 
     // The app must recover: the project list renders again, no stuck state.
-    await portal.gotoProjects();
+    // Wait on the reloaded page itself. A second navigation here would abort
+    // the boot-time POST /auth/refresh after the server already rotated the
+    // token, so the next boot presents a used token and reuse detection
+    // signs the user out (nightly #392, 2026-09-11 and 2026-09-15).
+    await portal.expectProjectListVisible();
     await portal.expectProjectRowVisible("alpha");
   });
 
