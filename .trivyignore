@@ -107,7 +107,7 @@ CVE-2026-21452 exp:2027-01-30
 # container boundary IS the containment); opt-in `local_docker` runs it in a
 # cap-drop=ALL, pids-limited sidecar with a named-volume workspace, and
 # egress is restricted only when SCAN_SIDECAR_NETWORK is configured (default
-# bridge is unrestricted with a WARNING — local_docker.py:358). In either
+# bridge is unrestricted with a WARNING, local_docker.py:417-428). In either
 # mode a library CVE inside the Gradle process adds no privilege beyond what
 # a hostile build script already has ("no delta"); the executor boundary,
 # not the jar version, is the containment.
@@ -152,6 +152,42 @@ CVE-2026-54513 exp:2027-01-30
 #   delta (see section header). UNREACHED / NO-DELTA.
 # Re-evaluate: 2026-11-09 or on next Gradle distribution bump.
 CVE-2025-14813 exp:2027-01-30
+
+# CVE-2026-8763 - org.bouncycastle:bcprov-jdk18on 1.78.1 -> 1.85
+# Target: opt/gradle/lib/plugins/bcprov-jdk18on-1.78.1.jar (GHSA-9pwp-9qqc-pr26)
+# CVSS: CRITICAL (X.509 Name Constraints bypass via a trailing dot in an
+#   rfc822Name or URI name).
+# Reach: the flaw is in X.509 certificate path validation. One documented
+#   way a scanned repo can make Gradle load this jar (per the CVE-2025-14813
+#   entry above, not re-verified against Gradle's source) is dependency
+#   verification via a shipped gradle/verification-metadata.xml, and that
+#   path checks OpenPGP signatures, which carry no X.509 chain and no name
+#   constraints. We know of no path in the Gradle invocations made by
+#   build_prep_source.sh and cdxgen (cdxgen.py, Gradle 8 compatibility
+#   note) that validates an X.509 chain through BC, and we found nothing
+#   suggesting Gradle uses BC for its registry TLS. Where a build script
+#   calls BC's path validator directly, it is code the attacker already
+#   runs, so there is no delta (see section header). UNREACHED / NO-DELTA.
+# Re-evaluate: 2026-11-09 or on next Gradle distribution bump. If a Gradle
+#   release ships bcprov >= 1.85, delete this entry.
+CVE-2026-8763 exp:2027-01-30
+
+# CVE-2026-13506 - org.bouncycastle:bcprov-jdk18on 1.78.1 -> 1.85
+# Target: opt/gradle/lib/plugins/bcprov-jdk18on-1.78.1.jar (GHSA-qp49-qgx5-5m26)
+# CVSS: HIGH (lazy ASN.1 sequence forcing resets the nesting-depth guard, so
+#   crafted deeply nested ASN.1 can exhaust the stack: denial of service).
+# Reach: needs BC to parse attacker-supplied ASN.1. Signature verification
+#   reads OpenPGP packets, not nested ASN.1 sequences, and we found no other
+#   place in the Gradle invocations made by build_prep_source.sh and cdxgen
+#   that hands scanned-repo bytes to BC's ASN.1 parser (same basis as the
+#   entry above, same caveat; an absence we did not test). The worst case is
+#   a crash or hang of the Gradle subprocess, which a hostile build script
+#   can already cause; the scan task's soft and hard time limits
+#   (_TASK_ANNOTATIONS in tasks/celery_app.py) bound the wall time.
+#   UNREACHED / NO-DELTA.
+# Re-evaluate: 2026-11-09 or on next Gradle distribution bump. If a Gradle
+#   release ships bcprov >= 1.85, delete this entry.
+CVE-2026-13506 exp:2027-01-30
 
 # ============================================================================
 # cdxgen-plugins-bin Go binary CVEs (12 total, 11 HIGH + 1 CRITICAL).
