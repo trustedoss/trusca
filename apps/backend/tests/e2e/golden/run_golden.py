@@ -2,7 +2,7 @@
 """Golden-fixture scan harness — Tier 1 of the test-hardening plan.
 
 Drives each baseline-scan fixture through the REAL portal pipeline (cdxgen → scancode
-→ DT → preserve) over the live HTTP API, captures a *normalised* snapshot of
+→ Trivy → preserve) over the live HTTP API, captures a *normalised* snapshot of
 the scan output (components incl. transitive, license categories, source-tree,
 NOTICE/SBOM/PDF availability), and diffs it against a committed baseline.
 
@@ -41,6 +41,31 @@ DEFAULT_PASSWORD = os.getenv("GOLDEN_PASSWORD", "E2eAdminPass2026")
 DEFAULT_TEAM = os.getenv("GOLDEN_TEAM", "")
 BASELINE_DIR = Path(__file__).resolve().parent / "baselines"
 POLL_TIMEOUT_S = int(os.getenv("GOLDEN_POLL_TIMEOUT", "240"))
+
+
+def parse_names(raw: str, available: list[str]) -> list[str]:
+    """Resolve ``GOLDEN_NAMES`` (space or comma separated) against the baselines.
+
+    Empty means every baseline. A name with no baseline is an error rather than
+    a silently smaller run: a typo in a workflow shard would otherwise shrink
+    the gate to nothing and still report green.
+    """
+    wanted = [n for n in raw.replace(",", " ").split() if n]
+    if not wanted:
+        return list(available)
+    unknown = sorted(set(wanted) - set(available))
+    if unknown:
+        raise ValueError(f"GOLDEN_NAMES has no baseline for: {', '.join(unknown)}")
+    return wanted
+
+
+def strict_from_env() -> bool:
+    """``GOLDEN_STRICT=1``: an unreachable stack or missing fixture fails the case.
+
+    The default (skip) suits a developer without the stack. In the nightly
+    workflow a skip is a hole: the run is green and nothing was compared.
+    """
+    return os.getenv("GOLDEN_STRICT", "") not in ("", "0", "false")
 
 
 # ---------------------------------------------------------------------------

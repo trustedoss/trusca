@@ -1,7 +1,7 @@
 # Golden-fixture drift gate (Tier 1)
 
 Scans every baseline-scan fixture through the **real** pipeline (cdxgen → scancode →
-DT → preserve) and diffs the normalised output against a committed baseline.
+Trivy → preserve) and diffs the normalised output against a committed baseline.
 Catches the class of bug that mocked unit/integration tests miss: spurious
 components (`pkg:nix`), compound-SPDX mis-classification, vanished transitive
 deps, broken NOTICE/SBOM/PDF.
@@ -16,7 +16,7 @@ output content vs a baseline** is what surfaces that drift.
 - `test_golden_fixtures.py` — pytest wrapper, marker `golden` (nightly only).
 - `baselines/<fixture>.json` — committed normalised snapshots.
 
-## Run (needs a live stack with real cdxgen/scancode/DT)
+## Run (needs a live stack with real cdxgen/scancode/Trivy)
 ```bash
 # diff against baselines (CI nightly)
 pytest -m golden apps/backend/tests/e2e/golden/
@@ -33,11 +33,21 @@ python apps/backend/tests/e2e/golden/run_golden.py \
 python run_golden.py --api ... --fixtures ... --update --names <fixture> ...
 ```
 Env: `GOLDEN_API`, `GOLDEN_EMAIL`, `GOLDEN_PASSWORD`, `GOLDEN_TEAM`,
-`GOLDEN_FIXTURES`, `GOLDEN_POLL_TIMEOUT`.
+`GOLDEN_FIXTURES`, `GOLDEN_POLL_TIMEOUT`, `GOLDEN_NAMES` (space or comma
+separated subset of baselines; an unknown name is an error), `GOLDEN_STRICT`
+(`1`: an unreachable stack or a missing fixture fails instead of skipping).
+
+## Nightly
+`.github/workflows/golden-nightly.yml` runs one ephemeral stack per shard, with
+`GOLDEN_STRICT=1`. The shard list in that file is the set of baselines the
+nightly compares; `tests/unit/test_golden_gate_contract.py` keeps it in step
+with `baselines/` and `fixtures/`, and names the baselines still waiting for a
+fixture. Regenerate baselines only there: dispatch with `update_baselines=true`
+and download the artifact.
 
 ## Notes
 - **Not in the PR gate.** CI runs `pytest tests/unit tests/integration`; this
-  lives under `tests/e2e/` and runs only in the nightly e2e workflow.
+  lives under `tests/e2e/` and runs only in the golden-nightly workflow.
 - `vulnerabilities_count` is **excluded** from the diff (NVD-mirror-dependent);
   vuln detection is asserted deterministically in the Tier 5 suite.
 - Skips cleanly when the stack / fixtures aren't reachable.

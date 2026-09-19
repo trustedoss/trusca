@@ -1,0 +1,189 @@
+name: golden-nightly
+
+# Real-tool regression gate. Each shard brings up its own ephemeral stack with
+# the real cdxgen / scancode / Trivy worker, scans the in-repo golden fixtures
+# (apps/backend/tests/e2e/golden/fixtures/) and diffs the normalised output
+# against the committed baselines.
+#
+# NOT a PR gate: a real scan plus the worker's Trivy-DB bootstrap is minutes per
+# shard. Validate changes by dispatching this workflow on the branch first.
+#
+# History: the previous nightly was deleted in 7c98b8a. Its cron had been
+# commented out since it was written, it composed a compose file that did not
+# exist, and it never ran once, so the `golden` marker and its baselines had no
+# caller. GOLDEN_STRICT=1 below keeps that failure mode closed: an unreachable
+# stack or a missing fixture fails the case instead of skipping it.
+#
+# Baselines are regenerated here, never on a laptop (local seed data and tool
+# versions differ). Dispatch with update_baselines=true, download the artifact,
+# and review the diff in the PR.
+
+on:
+  schedule:
+    - cron: "0 18 * * *" # 03:00 KST, clear of verify-specs-nightly (17:30 UTC)
+  workflow_dispatch:
+    inputs:
+      update_baselines:
+        description: "Rewrite the shard's baselines and upload them as an artifact instead of diffing"
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+  # The dev images are pulled from ghcr rather than rebuilt: see
+  # .github/actions/dev-images.
+  packages: read
+
+jobs:
+  golden:
+    name: golden (${{ matrix.shard }})
+    runs-on: ubuntu-22.04
+    timeout-minutes: 40
+    strategy:
+      # One ecosystem drifting must not hide another, so shards run to the end.
+      fail-fast: false
+      matrix:
+        include:
+          # `names` is the set of baselines each shard owns. Every name needs a
+          # baseline and an in-repo fixture; tests/unit/test_golden_gate_contract.py
+          # enforces that and lists the baselines still waiting for a fixture.
+          - shard: node
+            names: "node"
+          - shard: python
+            names: "python-pip"
+    env:
+      TRUSTEDOSS_SCAN_BACKEND: real
+      # Pin so the api and worker sign and verify the same JWTs.
+      SECRET_KEY: golden-nightly-fixture-secret-key-for-workflow-runs
+      RATELIMIT_DISABLED: "1"
+      LOGIN_THROTTLE_ENABLED: "false"
+      # Matrix and dispatch values pass through env, never inline in run:.
+      GOLDEN_NAMES: ${{ matrix.names }}
+      UPDATE_BASELINES: ${{ github.event.inputs.update_baselines || 'false' }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      # Project standard (CLAUDE.md rule #10): docker-compose V1. Ubuntu
+      # runners ship V2 only.
+      - name: Install docker-compose V1
+        run: |
+          sudo curl -L "https://github.com/docker/compose/releases/download/1.29.2/docker-compose-$(uname -s)-$(uname -m)" \
+            -o /usr/local/bin/docker-compose
+          sudo chmod +x /usr/local/bin/docker-compose
+          docker-compose --version
+
+      - name: Bootstrap env
+        run: |
+          cp .env.example .env
+          mkdir -p workspace
+
+      - name: Pre-build dev images
+        uses: ./.github/actions/dev-images
+        with:
+          services: backend celery-worker
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      # The dev image has no AUTO_MIGRATE entrypoint and the backend
+      # healthcheck needs the schema, so migrate before bringing it up.
+      - name: Start db + migrate
+        env:
+          COMPOSE_DOCKER_CLI_BUILD: "1"
+          DOCKER_BUILDKIT: "1"
+        run: |
+          docker-compose -f docker-compose.dev.yml up -d postgres redis
+          docker-compose -f docker-compose.dev.yml run --rm --no-deps backend alembic upgrade head
+
+      - name: Bring up backend + worker
+        env:
+          COMPOSE_DOCKER_CLI_BUILD: "1"
+          DOCKER_BUILDKIT: "1"
+        run: |
+          docker-compose -f docker-compose.dev.yml up -d backend celery-worker
+          for i in $(seq 1 60); do
+            code=$(curl -s -o /dev/null -w '%{http_code}' http://localhost:8000/health || echo 000)
+            [ "$code" = "200" ] && break
+            sleep 5
+          done
+          curl -fsS http://localhost:8000/health
+
+      # seed_demo creates the super-admin and the team the harness scans into.
+      - name: Seed the admin and team
+        run: docker-compose -f docker-compose.dev.yml exec -T backend python scripts/seed_demo.py
+
+      - name: Install the test runner
+        run: python -m pip install -r apps/backend/requirements-dev.txt
+
+      - name: Golden drift gate (real cdxgen / scancode / Trivy)
+        if: env.UPDATE_BASELINES != 'true'
+        env:
+          GOLDEN_API: http://localhost:8000
+          GOLDEN_EMAIL: admin@demo.trustedoss.dev
+          GOLDEN_PASSWORD: DemoTest2026!
+          GOLDEN_STRICT: "1"
+        # Runs on the runner, not in the container: run_golden is stdlib-only and
+        # drives the published API at localhost:8000.
+        run: cd apps/backend && python -m pytest -m golden tests/e2e/golden -q -rs
+
+      - name: Regenerate baselines (review the diff before committing)
+        if: env.UPDATE_BASELINES == 'true'
+        env:
+          GOLDEN_API: http://localhost:8000
+          GOLDEN_EMAIL: admin@demo.trustedoss.dev
+          GOLDEN_PASSWORD: DemoTest2026!
+        run: |
+          # GOLDEN_NAMES is one space-separated list; $GOLDEN_NAMES must split.
+          # shellcheck disable=SC2086
+          python apps/backend/tests/e2e/golden/run_golden.py \
+            --api "$GOLDEN_API" \
+            --fixtures apps/backend/tests/e2e/golden/fixtures \
+            --update --names $GOLDEN_NAMES
+
+      - name: Upload regenerated baselines
+        if: env.UPDATE_BASELINES == 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: golden-baselines-${{ matrix.shard }}
+          path: apps/backend/tests/e2e/golden/baselines/
+          if-no-files-found: error
+
+      - name: Dump compose logs on failure
+        if: failure()
+        run: |
+          docker-compose -f docker-compose.dev.yml ps || true
+          docker-compose -f docker-compose.dev.yml logs --tail=300 backend celery-worker || true
+
+      - name: Tear down
+        if: always()
+        run: docker-compose -f docker-compose.dev.yml down -v || true
+
+  nightly-alert:
+    name: nightly-alert
+    if: ${{ always() && github.event_name == 'schedule' }}
+    needs: golden
+    runs-on: ubuntu-22.04
+    timeout-minutes: 5
+    permissions:
+      contents: read
+      issues: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          sparse-checkout: .github/actions/nightly-failure-issue
+      - uses: ./.github/actions/nightly-failure-issue
+        with:
+          label: nightly-golden
+          title: "Nightly golden-fixture gate is failing"
+          failed: ${{ needs.golden.result == 'failure' && 'true' || 'false' }}
+          details: |
+            A golden shard failed. The run log names the shard and the baseline
+            that drifted, with a field-level diff.
+
+            Drift is either a product regression or an intended change. For an
+            intended change, dispatch this workflow with update_baselines=true,
+            download the artifact and review the diff in a PR. Never regenerate
+            a baseline locally.
+          token: ${{ secrets.GITHUB_TOKEN }}
