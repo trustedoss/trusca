@@ -44,6 +44,8 @@ from typing import Protocol
 import httpx
 import structlog
 
+from .budget import active_budget
+
 # SPDX 3.x licence-id token shape — ASCII letters/digits + ``-`` ``.``
 # ``+``. Anchored so partial matches do not slip through. Used inside
 # ``normalize_spdx_id`` to gate the "verbatim SPDX id" passthrough.
@@ -147,6 +149,52 @@ def request_with_retry(
     accept_404: bool = True,
     max_body_bytes: int = DEFAULT_MAX_BODY_BYTES,
 ) -> httpx.Response | None:
+    """Run :func:`_request_with_retry` and report its outcome to the scan budget.
+
+    Every non-answer collapses to ``None`` below, so "the registry said no"
+    and "the registry never answered" look identical to the caller. The budget
+    (see :mod:`.budget`) needs them apart: only the second one counts toward
+    the circuit breaker, and only the second one must stay out of the cache.
+    """
+    answered = [False]
+    response = _request_with_retry(
+        client=client,
+        method=method,
+        url=url,
+        host=host,
+        min_interval_seconds=min_interval_seconds,
+        max_retries=max_retries,
+        backoff_seconds=backoff_seconds,
+        sleep=sleep,
+        clock=clock,
+        accept_404=accept_404,
+        max_body_bytes=max_body_bytes,
+        answered=answered,
+    )
+    budget = active_budget()
+    if budget is not None:
+        if answered[0]:
+            budget.record_answer()
+        else:
+            budget.record_transport_failure()
+    return response
+
+
+def _request_with_retry(
+    *,
+    client: httpx.Client,
+    method: str,
+    url: str,
+    host: str,
+    min_interval_seconds: float,
+    max_retries: int,
+    backoff_seconds: float,
+    sleep: Callable[[float], None],
+    clock: Callable[[], float],
+    accept_404: bool,
+    max_body_bytes: int,
+    answered: list[bool],
+) -> httpx.Response | None:
     """Issue an HTTP request through the per-host gate with retry.
 
     Returns:
@@ -187,6 +235,8 @@ def request_with_retry(
                 # size check could run.
                 with client.stream(method, url) as response:
                     status = response.status_code
+                    if status != 429 and not 500 <= status < 600:
+                        answered[0] = True
                     if 200 <= status < 300:
                         chunks: list[bytes] = []
                         size = 0

@@ -56,6 +56,12 @@ EMPTY_WITH_MANIFESTS: Final = "empty_with_manifests"
 #: The key this verdict is stored under in ``scans.scan_metadata``.
 METADATA_KEY: Final = "component_outcome"
 
+#: Where a scan records licence lookups it did not make (time budget spent or
+#: circuit breaker open). Absent when every lookup was made. Kept beside the
+#: component outcome because it answers the same question, "is this result
+#: complete", for a different part of the result.
+LICENSE_ENRICHMENT_KEY: Final = "license_enrichment"
+
 COMPONENT_OUTCOME_VALUES: Final = (
     COMPONENTS_FOUND,
     EMPTY_NO_MANIFESTS,
@@ -105,6 +111,7 @@ __all__ = [
     "COMPONENT_OUTCOME_VALUES",
     "EMPTY_NO_MANIFESTS",
     "EMPTY_WITH_MANIFESTS",
+    "LICENSE_ENRICHMENT_KEY",
     "METADATA_KEY",
     "classify_component_outcome",
     "is_empty",

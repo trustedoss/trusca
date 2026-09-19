@@ -1283,6 +1283,52 @@ def license_fetch_enabled() -> bool:
     }
 
 
+def license_fetch_scan_budget_seconds() -> float:
+    """Seconds of registry lookups one scan may spend on licence enrichment.
+
+    Read at call time (rule #11). Each lookup that misses the cache costs a
+    network round trip (~0.34 s measured against the public gem and pypi
+    registries), and there was no bound on how many a scan made: a document
+    with ~10,000 unlicensed gem/pypi components used its whole 3,600 s scan
+    limit here. Once the budget is spent the remaining components are left
+    licence-unknown and the scan records how many, instead of failing.
+
+    The default of 300 s is 8% of the default scan soft limit and pays for
+    roughly 880 uncached lookups, which covers an ordinary first scan of a
+    real project. The lookups a scan skips are not cached, so the next scan
+    of the same components picks up where this one stopped. A non-numeric or
+    non-positive value falls back to the default.
+    """
+    raw = os.getenv("LICENSE_FETCH_SCAN_BUDGET_SECONDS")
+    if raw is None or not raw.strip():
+        return 300.0
+    try:
+        value = float(raw)
+    except ValueError:
+        return 300.0
+    return value if value > 0 else 300.0
+
+
+def license_fetch_consecutive_failure_limit() -> int:
+    """Consecutive unanswered lookups after which a scan stops looking up.
+
+    Read at call time (rule #11). Counts only lookups whose request never got
+    an answer (connection error, timeout, 429/5xx after every retry). A
+    registry replying "not found" is answering and resets the count. The
+    default of 30 rides out a short registry blip while ending a scan's
+    dependence on a registry that is down after about 30 lookups. A
+    non-integer or non-positive value falls back to the default.
+    """
+    raw = os.getenv("LICENSE_FETCH_CONSECUTIVE_FAILURE_LIMIT")
+    if raw is None or not raw.strip():
+        return 30
+    try:
+        value = int(raw)
+    except ValueError:
+        return 30
+    return value if value > 0 else 30
+
+
 def external_package_lookup_enabled() -> bool:
     """Whether the deps.dev package/advisory lookup makes outbound calls.
 
