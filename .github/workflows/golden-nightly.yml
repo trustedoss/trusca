@@ -19,8 +19,6 @@ name: golden-nightly
 # and review the diff in the PR.
 
 on:
-  pull_request: # TEMP-VALIDATION: remove before merge
-    paths: [".github/workflows/golden-nightly.yml"]
   schedule:
     - cron: "0 18 * * *" # 03:00 KST, clear of verify-specs-nightly (17:30 UTC)
   workflow_dispatch:
