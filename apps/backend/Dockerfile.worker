@@ -767,18 +767,19 @@ RUN curl -fsSL -o /tmp/dotnet-install.sh "https://dot.net/v1/dotnet-install.sh" 
 # time so the first scan does not pay the (multi-minute) index build at
 # runtime. It is wrapped in ``|| true`` because a non-fatal index warning must
 # not fail the build — the index also self-builds lazily on first scan.
-# click is pinned because scancode-toolkit leaves it unbounded. An image built
-# with click 8.5.0 made EVERY scancode call exit 2 ("--strip-root cannot be used
-# together with --full-root"), the pipeline logged "scancode_stage_skipped", and
-# scans succeeded with no detected licenses. 8.1.8 is the newest release checked
-# against 32.4.0 (a detection run in the worker image; 8.0.4 also works). Move it
-# only together with a passing smoke run below.
+# click is pinned because scancode-toolkit 32.4.0 declares only ``click>=8.2.0``,
+# with no upper bound. An image built with click 8.5.0 made EVERY scancode call
+# exit 2 ("--strip-root cannot be used together with --full-root"), the pipeline
+# logged "scancode_stage_skipped", and scans succeeded with no detected licenses.
+# A detection run in the worker image passed on every release from 8.2.0 to 8.4.2
+# and failed only on 8.5.0. 8.4.2 is the newest that passed. Move it only together
+# with a passing smoke run below; a pin under 8.2.0 is refused by pip.
 #
 # ``scancode --version`` does not read command-line options, so it cannot catch
 # that failure. The smoke run below scans one file and requires the detection,
 # which fails the build instead of shipping an image that detects nothing.
 ENV SCANCODE_VERSION=32.4.0 \
-    SCANCODE_CLICK_VERSION=8.1.8 \
+    SCANCODE_CLICK_VERSION=8.4.2 \
     SCANCODE_VENV=/opt/scancode-venv
 RUN set -eux; \
     arch="$(dpkg --print-architecture)"; \
