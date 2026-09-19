@@ -111,6 +111,24 @@ python3 tests/load/scan_queue_wait.py --slots 2 --multiplier 5   # N = 5x slots
 
 `--slots` is the worker slot count of the stack under test (`CELERY_CONCURRENCY` × worker replica count, 2 on dev compose by default). Record what you observe, including divergence from the prediction, in `concurrency-scaling-tracker.md` §3, not just whether it "passed": this script has no pass/fail gate.
 
+## Timing one SBOM ingest, stage by stage
+
+`ingest_stage_timing.py` uploads one CycloneDX SBOM to a new project, polls the scan and prints how long each stage took (queue wait, conformance, components, trivy). The components stage is the persist stage, where the license fetcher runs, so this is the measurement for what a large SBOM costs and for what `LICENSE_FETCH_ENABLED` changes. It needs no seeded projects and works against any stack, including one you do not own, because it uses only the public API and the standard library.
+
+```bash
+FIXTURES=apps/backend/tests/fixtures/sbom_ingest
+LOAD_TEST_PASSWORD=... python3 tests/load/ingest_stage_timing.py \
+  --api http://localhost:8000 --email you@example.com --team <team-id> \
+  --sbom $FIXTURES/real_cyclonedx_large_multi_10198.cdx.json.gz \
+  --sample 1000 --label fetch-on-1000 --json out/fetch-on-1000.json
+```
+
+- `--sample N` keeps N components at a fixed stride, so the ecosystem mix of the whole document is preserved. A prefix would not: the first 1,000 components of the fixture are all npm, and by default (ClearlyDefined off) the fetcher makes no request at all for npm.
+- The worker's `LICENSE_FETCH_ENABLED` is set where the worker runs; the script cannot toggle it. `--label` only names the run.
+- The license fetch cache lives 24 hours. Clear `license_fetch_cache` between runs that should each hit the registries, or a later run measures the cache.
+- Spans come from poll timestamps, so each is good to about `--poll-interval` and a stage shorter than that can be missed. Run-to-run noise in the trivy stage was several seconds on a laptop; repeat a run before reading a small difference.
+- On a shared machine the absolute times are indicative only. The ratios and the scaling with component count carry over; the capacity figures do not.
+
 ## Reports
 
 Generate an HTML report from a headless run:
