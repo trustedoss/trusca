@@ -99,6 +99,7 @@ recommended for production data.
 git clone https://github.com/trustedoss/trusca.git && cd trusca
 helm install trustedoss ./charts/trustedoss \
   --namespace trustedoss --create-namespace \
+  --set fullnameOverride=trusca \
   --set env.secret.secretKey="$(openssl rand -hex 32)" \
   --set env.secret.apiKeyHmacSecret="$(openssl rand -hex 32)" \
   --set postgres.auth.password="$(openssl rand -hex 24)" \
@@ -114,6 +115,10 @@ The in-cluster PostgreSQL and Redis have modest defaults and a single replica.
 For anything beyond a trial, use external managed datastores (below).
 :::
 
+:::note Resource names
+The chart is still named `trustedoss`, so without `fullnameOverride` every object is named `<release>-trustedoss-<component>` (for example `trusca-trustedoss-backend`). Setting `fullnameOverride=trusca` gives `trusca-backend`, `trusca-worker-scan` and so on. Choose it at first install and keep it on every upgrade: changing it later renames the objects, and Deployment selectors are immutable, so an upgrade would fail.
+:::
+
 ## Production (external managed datastores — recommended)
 
 Prefer Cloud SQL / RDS for PostgreSQL and Memorystore / ElastiCache for Redis
@@ -121,6 +126,7 @@ over the in-cluster bundles. Provide a values file:
 
 ```yaml
 # values.prod.yaml
+fullnameOverride: trusca
 postgres:
   bundled: false
 redis:
@@ -387,7 +393,7 @@ closes.
 3. The readiness probe passes from inside the cluster:
 
    ```bash
-   kubectl -n trustedoss exec deploy/trustedoss-backend -- \
+   kubectl -n trustedoss exec deploy/trusca-backend -- \
      curl -fsS http://localhost:8000/health/ready
    # → {"status":"ready","redis":"ok"}
    ```
@@ -405,7 +411,7 @@ closes.
   schema is at HEAD. Check the migration Job logs:
 
   ```bash
-  kubectl -n trustedoss logs job/trustedoss-migrate
+  kubectl -n trustedoss logs job/trusca-migrate
   ```
 
   A failed Job usually means the owner DSN (`DATABASE_URL_OWNER`) lacks DDL
