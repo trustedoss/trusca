@@ -98,6 +98,7 @@ PostgreSQL과 Redis를 클러스터 내부에서 실행합니다. 빠르게 띄�
 git clone https://github.com/trustedoss/trusca.git && cd trusca
 helm install trustedoss ./charts/trustedoss \
   --namespace trustedoss --create-namespace \
+  --set fullnameOverride=trusca \
   --set env.secret.secretKey="$(openssl rand -hex 32)" \
   --set env.secret.apiKeyHmacSecret="$(openssl rand -hex 32)" \
   --set postgres.auth.password="$(openssl rand -hex 24)" \
@@ -113,6 +114,10 @@ helm install trustedoss ./charts/trustedoss \
 이상의 용도라면 외부 관리형 데이터스토어(아래)를 사용하십시오.
 :::
 
+:::note 리소스 이름
+차트 이름이 아직 `trustedoss`라서 `fullnameOverride`를 지정하지 않으면 모든 오브젝트 이름이 `<릴리스>-trustedoss-<구성요소>` 형태가 됩니다(예: `trusca-trustedoss-backend`). `fullnameOverride=trusca`를 지정하면 `trusca-backend`, `trusca-worker-scan`처럼 짧아집니다. 최초 설치 때 정하고 업그레이드 때도 같은 값을 유지하십시오. 나중에 바꾸면 오브젝트 이름이 바뀌고 Deployment 셀렉터는 변경할 수 없어 업그레이드가 실패합니다.
+:::
+
 ## 프로덕션(외부 관리형 데이터스토어 권장)
 
 클러스터 내부 번들 대신 PostgreSQL은 Cloud SQL / RDS, Redis는 Memorystore /
@@ -120,6 +125,7 @@ ElastiCache를 권장합니다. values 파일을 제공하십시오.
 
 ```yaml
 # values.prod.yaml
+fullnameOverride: trusca
 postgres:
   bundled: false
 redis:
@@ -378,7 +384,7 @@ Helm 설치에서 OAuth 로그인, SMTP·Slack·Teams 알림, 저장소에 포�
 3. 클러스터 내부에서 readiness 프로브가 통과하는지 확인합니다.
 
    ```bash
-   kubectl -n trustedoss exec deploy/trustedoss-backend -- \
+   kubectl -n trustedoss exec deploy/trusca-backend -- \
      curl -fsS http://localhost:8000/health/ready
    # → {"status":"ready","redis":"ok"}
    ```
@@ -396,7 +402,7 @@ Helm 설치에서 OAuth 로그인, SMTP·Slack·Teams 알림, 저장소에 포�
   `/health/ready`는 `503`을 반환합니다. 마이그레이션 Job 로그를 확인하십시오.
 
   ```bash
-  kubectl -n trustedoss logs job/trustedoss-migrate
+  kubectl -n trustedoss logs job/trusca-migrate
   ```
 
   Job 실패는 보통 owner DSN(`DATABASE_URL_OWNER`)에 DDL 권한이 없거나
