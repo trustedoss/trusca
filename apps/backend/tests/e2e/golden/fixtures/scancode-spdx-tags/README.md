@@ -1,1 +1,1 @@
-Golden fixture: SPDX-License-Identifier tags.
+Golden fixture: source files with SPDX license tags.
