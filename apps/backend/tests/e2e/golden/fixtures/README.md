@@ -13,9 +13,12 @@ directory. So `node` and `python-pip` always run in the golden-nightly workflow
 (real cdxgen, live stack); the full language matrix still runs when the
 external corpus is present.
 
-Keep each fixture **byte-identical** to its baseline-scan counterpart — the committed
-`../baselines/<name>.json` was generated from it, and the gate asserts full
-equality. If you change a fixture, regenerate its baseline deliberately:
+The committed `../baselines/<name>.json` was generated from the fixture, and the
+gate asserts full equality. A fixture must therefore resolve to the same
+components on every run: pin every dependency, transitive ones included. The
+first nightly run failed on `python-pip` because only `requests` was pinned and
+`certifi` and `idna` resolved to whatever was newest that day. If you change a
+fixture, regenerate its baseline deliberately:
 
     python run_golden.py --api ... --fixtures ... --update --names <name>
 
