@@ -57,8 +57,8 @@ jobs:
             names: "go rust ruby"
           - shard: multi
             names: "multi-component"
-          # The four scancode-* baselines are held out until the worker image's
-          # scancode runs again (issue 487); see HELD_OUT in the contract test.
+          - shard: scancode
+            names: "scancode-license-files scancode-license-headers scancode-mixed-policy scancode-spdx-tags"
     env:
       # Dev stack plus the scancode override (see that file for why).
       COMPOSE_FILE: docker-compose.dev.yml:apps/backend/tests/e2e/golden/compose.scancode.yml

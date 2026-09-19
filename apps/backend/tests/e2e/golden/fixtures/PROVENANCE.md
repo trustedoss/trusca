@@ -51,7 +51,13 @@ Product changes since the old recording, not investigated:
 `source_tree_root_entries` is one higher for `maven`, `gradle`, `gradle-kts`
 and `python-poetry`, and two higher for `multi-component`.
 
-Recorded while scancode was not running (issue 487): `multi-component` lacks
-its old detected license `MIT AND ISC AND BSD-3-Clause`. The four `scancode-*`
-baselines are unchanged from the old recording and are held out of the nightly
-until the issue is fixed.
+The four `scancode-*` baselines and `multi-component` were regenerated after
+the worker image's scancode was repaired (issue 487). The four `scancode-*`
+baselines are identical to the old recording, so those fixtures produce the same
+detections. `multi-component` gained its old detected license
+`MIT AND ISC AND BSD-3-Clause`.
+
+Two of the scancode fixtures needed a second pass to match the old recording:
+the notice wording has to be standard FSF text for scancode to name
+`GPL-3.0-only`, and a README that mentions `SPDX-License-Identifier` is itself
+read as an unknown SPDX tag.

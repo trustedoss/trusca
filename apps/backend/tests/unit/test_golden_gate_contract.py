@@ -22,20 +22,6 @@ WORKFLOW = REPO / ".github/workflows/golden-nightly.yml"
 sys.path.insert(0, str(GOLDEN))
 import run_golden as rg  # noqa: E402
 
-# Baselines held out of every shard because the product cannot produce them
-# yet: their fixtures exist, but the stage they assert on never runs. The
-# scancode baselines describe detected licenses and a failing gate; the worker
-# image's scancode exits 2 on every call (issue 487), so a nightly run would
-# either fail forever or, worse, be regenerated to "no licenses, gate passes".
-# When the issue is fixed, regenerate them in CI, move each name into a shard
-# and delete its entry here.
-HELD_OUT = {
-    "scancode-license-files": 487,
-    "scancode-license-headers": 487,
-    "scancode-mixed-policy": 487,
-    "scancode-spdx-tags": 487,
-}
-
 
 def _shards() -> list[dict]:
     workflow = yaml.safe_load(WORKFLOW.read_text())
@@ -68,13 +54,10 @@ def test_no_name_is_owned_by_two_shards() -> None:
     assert len(names) == len(set(names)), sorted(n for n in set(names) if names.count(n) > 1)
 
 
-def test_every_baseline_belongs_to_a_shard_or_is_held_out_with_a_reason() -> None:
+def test_every_baseline_belongs_to_a_shard() -> None:
     # A baseline outside every shard is never compared, and the nightly stays
     # green. Either side drifting fails here, not in CI.
-    shard_names = set(_shard_names())
-    assert not shard_names & set(HELD_OUT), sorted(shard_names & set(HELD_OUT))
-    assert _baselines() == shard_names | set(HELD_OUT)
-    assert set(HELD_OUT) <= _fixtures(), "a held-out baseline still needs its fixture"
+    assert _baselines() == set(_shard_names())
 
 
 def test_the_nightly_is_strict_and_scheduled() -> None:

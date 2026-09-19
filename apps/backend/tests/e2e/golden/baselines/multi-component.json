@@ -63,6 +63,7 @@
   "licenses": [
     "BSD-3-Clause|allowed|declared",
     "ISC|allowed|declared",
+    "MIT AND ISC AND BSD-3-Clause|allowed|detected",
     "MIT|allowed|declared"
   ],
   "notice": {
