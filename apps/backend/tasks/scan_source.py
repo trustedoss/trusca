@@ -79,7 +79,9 @@ from core.config import (
     cdxgen_scanner_version,
     cdxgen_spec_version,
     eol_enabled,
+    license_fetch_consecutive_failure_limit,
     license_fetch_enabled,
+    license_fetch_scan_budget_seconds,
     malicious_enabled,
     scan_load_test_delay_seconds,
     scan_scope_filter_enabled,
@@ -108,6 +110,7 @@ from integrations.dependency_graph import (
     graph_depths_from_sbom,
     parse_dependency_graph,
 )
+from integrations.license_fetcher.budget import EnrichmentBudget, enrichment_budget
 from integrations.npm_lockfile import NpmLockfileData, read_lockfile
 from integrations.trivy import (
     TrivyError,
@@ -3177,12 +3180,45 @@ def persist_sbom_components(
         prefetch = _CatalogPrefetch()
         log.warning("catalog_prefetch_failed", scan_id=str(scan_uuid), exc_info=True)
     _prefetch_local.value = prefetch
+    budget = EnrichmentBudget(
+        budget_seconds=license_fetch_scan_budget_seconds(),
+        breaker_threshold=license_fetch_consecutive_failure_limit(),
+    )
     try:
-        _persist_sbom_components_impl(
-            session, scan_uuid=scan_uuid, sbom=sbom, source_dir=source_dir
-        )
+        with enrichment_budget(budget):
+            _persist_sbom_components_impl(
+                session, scan_uuid=scan_uuid, sbom=sbom, source_dir=source_dir
+            )
     finally:
         _prefetch_local.value = None
+    _record_license_enrichment(session, scan_uuid, budget)
+
+
+def _record_license_enrichment(
+    session: Session, scan_uuid: uuid.UUID, budget: EnrichmentBudget
+) -> None:
+    """Stamp ``scan_metadata['license_enrichment']`` when lookups were skipped.
+
+    Written only when the budget or the circuit breaker actually skipped
+    something, so a scan that stayed within budget keeps the metadata it had
+    before this existed. The row is updated on the caller's session and
+    commits with the components it describes. Best-effort like the other
+    scan_metadata stamps: a scan must not fail describing itself.
+    """
+    if not budget.skipped:
+        return
+    summary = budget.summary()
+    log.warning("license_enrichment_skipped", scan_id=str(scan_uuid), **summary)
+    try:
+        scan = session.get(Scan, scan_uuid)
+        if scan is not None:
+            merged = dict(scan.scan_metadata or {})
+            merged[scan_outcome.LICENSE_ENRICHMENT_KEY] = summary
+            scan.scan_metadata = merged
+    except Exception:  # noqa: BLE001 - best-effort, never fatal
+        log.warning(
+            "license_enrichment_persist_failed", scan_id=str(scan_uuid), exc_info=True
+        )
 
 
 def _persist_sbom_components_impl(

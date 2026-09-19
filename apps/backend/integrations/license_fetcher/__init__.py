@@ -27,6 +27,7 @@ parallel HTTP requests to the same registry.
 from __future__ import annotations
 
 import os
+import time
 from collections.abc import Callable
 from datetime import UTC, datetime, timedelta
 from typing import TYPE_CHECKING
@@ -37,6 +38,7 @@ from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.orm import Session
 
 from .base import LicenseFetchResult
+from .budget import EnrichmentBudget, active_budget
 from .clearlydefined import ClearlyDefinedLicenseFetcher
 from .crates import CratesLicenseFetcher
 from .maven import MavenLicenseFetcher
@@ -276,6 +278,43 @@ def fetch_license(
         return result
 
     fetcher = _fetcher_for(purl)
+    # A purl no adapter claims, with ClearlyDefined off, is answered without
+    # touching the network, so the budget has nothing to say about it.
+    budget = active_budget() if (fetcher is not None or clearlydefined_enabled()) else None
+    if budget is not None:
+        # Cache hits above were served for free. Only a lookup that would go
+        # out on the network is refused, and it is refused BEFORE anything is
+        # written: a skipped lookup must not be cached as a confirmed miss.
+        reason = budget.refusal()
+        if reason is not None:
+            budget.note_skipped(reason)
+            return None
+
+    started = time.monotonic()
+    failures_before = budget.transport_failures if budget is not None else 0
+    try:
+        return _dispatch_and_cache(
+            purl,
+            session=session,
+            fetcher=fetcher,
+            now=effective_now,
+            budget=budget,
+            failures_before=failures_before,
+        )
+    finally:
+        if budget is not None:
+            budget.add_elapsed(time.monotonic() - started)
+
+
+def _dispatch_and_cache(
+    purl: str,
+    *,
+    session: Session,
+    fetcher: LicenseFetcher | None,
+    now: datetime,
+    budget: EnrichmentBudget | None,
+    failures_before: int,
+) -> LicenseFetchResult | None:
     new_result: LicenseFetchResult | None = None
     fallback_source = "unsupported_ecosystem"
 
@@ -309,12 +348,17 @@ def fetch_license(
         if new_result is not None:
             fallback_source = cd_fetcher.source
 
+    if new_result is None and budget is not None and budget.transport_failures > failures_before:
+        # The registry never answered, so this is not a confirmed miss. Caching
+        # it would report "looked up, nothing there" for the next 24 hours.
+        return None
+
     _cache_write(
         session,
         purl=purl,
         result=new_result,
         fallback_source=fallback_source,
-        now=effective_now,
+        now=now,
     )
     return new_result
 
