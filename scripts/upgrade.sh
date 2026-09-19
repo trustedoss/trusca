@@ -388,7 +388,7 @@ ok "images pulled"
 # running untouched, instead of a bad config surfacing mid-recreate with the
 # old fleet already stopped.
 title "Checking configuration against the new image"
-if ! docker-compose "${COMPOSE_ARGS[@]}" run --rm --no-deps backend python -m scripts.check_config; then
+if ! docker-compose "${COMPOSE_ARGS[@]}" run --rm --no-deps -e AUTO_MIGRATE=false backend python -m scripts.check_config; then
   fail "configuration check failed against the new image; fix the value(s) above in .env before continuing (containers have not been touched)"
 fi
 ok "configuration OK"

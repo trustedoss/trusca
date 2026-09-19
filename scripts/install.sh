@@ -774,10 +774,12 @@ fi
 # an out-of-range number) before a single container starts, rather than on
 # whichever request first exercises that one accessor lazily at runtime.
 # `--no-deps` because this needs nothing but the image + env; postgres/redis
-# are not up yet.
+# are not up yet. AUTO_MIGRATE=false for the same reason: the entrypoint would
+# otherwise wait for a database that is not running and exit 1 before
+# check_config ever runs.
 title "Checking configuration"
 # shellcheck disable=SC2086
-if ! $DC -f docker-compose.yml run --rm --no-deps backend python -m scripts.check_config; then
+if ! $DC -f docker-compose.yml run --rm --no-deps -e AUTO_MIGRATE=false backend python -m scripts.check_config; then
   fail "configuration check failed; fix the value(s) above in .env and re-run install.sh"
 fi
 ok "configuration OK"
