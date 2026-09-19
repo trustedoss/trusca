@@ -11,9 +11,7 @@
     "forbidden_license": 0,
     "gate": "pass"
   },
-  "licenses": [
-    "MIT|allowed|declared"
-  ],
+  "licenses": [],
   "notice": {
     "csp": true,
     "html_ok": true,

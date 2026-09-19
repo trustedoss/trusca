@@ -4,13 +4,13 @@
     "nix_spurious": 0,
     "purls": [
       "pkg:cargo/baseline-rust-fixture@1.0.0",
-      "pkg:cargo/proc-macro2@1.0.106",
-      "pkg:cargo/quote@1.0.45",
-      "pkg:cargo/serde@1.0.228",
-      "pkg:cargo/serde_core@1.0.228",
-      "pkg:cargo/serde_derive@1.0.228",
-      "pkg:cargo/syn@2.0.117",
-      "pkg:cargo/unicode-ident@1.0.24"
+      "pkg:cargo/proc-macro2@1.0.107",
+      "pkg:cargo/quote@1.0.47",
+      "pkg:cargo/serde@1.0.229",
+      "pkg:cargo/serde_core@1.0.229",
+      "pkg:cargo/serde_derive@1.0.229",
+      "pkg:cargo/syn@3.0.6",
+      "pkg:cargo/unicode-ident@1.0.26"
     ]
   },
   "gate": {

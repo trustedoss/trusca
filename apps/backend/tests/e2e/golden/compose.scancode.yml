@@ -1,0 +1,16 @@
+# SPDX-License-Identifier: Apache-2.0
+# Copyright 2026 TRUSCA contributors
+#
+# Layered over docker-compose.dev.yml by golden-nightly.yml (COMPOSE_FILE).
+#
+# docker-compose.dev.yml gives celery-worker `SCANCODE_MAX_FILES: "0"`, a
+# leftover verification shortcut that makes every scan skip first-party
+# licence detection ("first-party tree has >0 eligible files"). The golden
+# baselines record detected licences and the forbidden-licence gate outcome, so
+# a stack that skips scancode would freeze a baseline with both missing.
+# Scoped to this gate on purpose: other workflows compose the same file and
+# were tuned around the fast path.
+services:
+  celery-worker:
+    environment:
+      SCANCODE_MAX_FILES: ${SCANCODE_MAX_FILES:-20000}
