@@ -52,6 +52,7 @@ from models import (
     Team,
     VulnerabilityFinding,
 )
+from services import scan_outcome
 from services.registry_allowlist import (
     allowed_registries,
     is_registry_allowed,
@@ -319,6 +320,7 @@ def _mark_running(session: Session, scan: Scan) -> None:
     scan.error_message = None
     scan.current_step = "bootstrap"
     scan.progress_percent = 0
+    scan.scan_metadata = scan_outcome.reset_stage_records(scan.scan_metadata)
     session.commit()
 
 
@@ -326,6 +328,7 @@ def _mark_failed(session: Session, scan: Scan, message: str) -> None:
     scan.status = "failed"
     scan.error_message = message
     scan.completed_at = datetime.now(UTC)
+    scan.scan_metadata = scan_outcome.close_stage_timings(scan.scan_metadata, now=scan.completed_at)
     session.commit()
     last_percent = scan.progress_percent or 0
     publish_progress(scan.id, step="failed", percent=last_percent)
@@ -348,6 +351,9 @@ def _mark_succeeded(scan_uuid: uuid.UUID) -> None:
         scan.progress_percent = 100
         scan.current_step = "finalize"
         scan.completed_at = datetime.now(UTC)
+        scan.scan_metadata = scan_outcome.close_stage_timings(
+            scan.scan_metadata, now=scan.completed_at
+        )
         session.commit()
     publish_progress(scan_uuid, step="succeeded", percent=100)
 
@@ -359,6 +365,9 @@ def _set_stage(scan_uuid: uuid.UUID, stage: str) -> None:
             return
         scan.current_step = stage
         scan.progress_percent = _STAGE_PROGRESS.get(stage, scan.progress_percent)
+        scan.scan_metadata = scan_outcome.advance_stage_timings(
+            scan.scan_metadata, stage=stage, now=datetime.now(UTC)
+        )
         session.commit()
         committed_percent = scan.progress_percent or 0
     log.info("scan_stage", stage=stage, percent=_STAGE_PROGRESS.get(stage))

@@ -290,6 +290,31 @@ export function OverviewTab({
         </Alert>
       ) : null}
 
+      {data.degraded_stages.length > 0 ? (
+        <Alert
+          className="border-status-warning-border bg-status-warning-subtle text-status-warning-foreground md:col-span-2"
+          data-testid="overview-degraded-stages"
+        >
+          <AlertTriangle className="h-4 w-4" aria-hidden />
+          <AlertDescription>
+            <span className="font-semibold">
+              {t("overview.scan_gaps.stages_title")}
+            </span>
+            <span className="mt-1 block">
+              {t("overview.scan_gaps.stages_intro")}
+            </span>
+            <ul className="mt-1 list-disc pl-5">
+              {data.degraded_stages.map((entry) => (
+                <li key={entry.stage} data-stage={entry.stage}>
+                  {t(`overview.scan_gaps.stage_${entry.stage}`)} (
+                  {t(`overview.scan_gaps.reason_${entry.reason}`)})
+                </li>
+              ))}
+            </ul>
+          </AlertDescription>
+        </Alert>
+      ) : null}
+
       {/* #26 — known-malicious KPI. First among the attention chips, ahead
           of critical CVEs: a CVE is a defect to schedule a fix for, a
           malicious package is an attack already running inside the build.

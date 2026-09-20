@@ -178,7 +178,24 @@
       "scancode_reason_failed": "The scanner exited with an error.",
       "scancode_reason_timeout": "The scanner ran past its time limit.",
       "scancode_reason_too_large": "The source tree has more files than the scanner limit allows.",
-      "scancode_effect": "Licenses declared by dependencies are still listed, but license headers in the project's own files were not detected, so a copyleft license there would not reach the license gate."
+      "scancode_effect": "Licenses declared by dependencies are still listed, but license headers in the project's own files were not detected, so a copyleft license there would not reach the license gate.",
+      "stages_title": "Some scan steps did not complete",
+      "stages_intro": "The scan finished, but these optional steps did not do all of their work:",
+      "stage_prep": "Build preparation: transitive dependencies of some ecosystems may be missing.",
+      "stage_cocoapods": "CocoaPods fill-in: pods from Podfile.lock may be missing.",
+      "stage_scope_filter": "Runtime scope filter: test and build-only dependencies may still be listed.",
+      "stage_document_metadata": "SBOM document metadata: the exported document may lack some required statements.",
+      "stage_sign": "SBOM signing: the SBOM has no signature.",
+      "stage_attest": "Build attestation: no attestation was produced.",
+      "stage_detected_licenses": "Detected licenses: licenses found in your own source files were not saved.",
+      "stage_approvals": "Approval queue: conditional-license components were not added to the review queue.",
+      "stage_scanoss": "Vendored code identification: copied open-source files may be unidentified.",
+      "stage_preserve": "Source preservation: the scanned source was not kept for the file viewer.",
+      "stage_reachability": "Reachability analysis: it was not started.",
+      "reason_failed": "failed",
+      "reason_timeout": "timed out",
+      "reason_not_installed": "tool not installed",
+      "reason_too_large": "input too large"
     },
     "risk_gauge": {
       "aria": "Project risk score: {{score}} of 100"

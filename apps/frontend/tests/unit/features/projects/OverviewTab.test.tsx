@@ -49,6 +49,7 @@ function overview(
     component_outcome: "components_found" as const,
     license_lookup_gap: null,
     scancode_skipped_reason: null,
+    degraded_stages: [],
     current_user_role: "developer",
     has_git_credential: false,
     ...overrides,
@@ -222,6 +223,26 @@ describe("OverviewTab", () => {
     expect(alert.textContent).toContain("would not reach the license gate");
   });
 
+  it("lists each degraded scan step with its cause", async () => {
+    mockedGet.mockResolvedValueOnce(
+      overview({
+        degraded_stages: [
+          { stage: "prep", reason: "timeout" },
+          { stage: "sign", reason: "failed" },
+        ],
+      }),
+    );
+    renderTab();
+    const alert = await screen.findByTestId("overview-degraded-stages");
+    const items = alert.querySelectorAll("li");
+    expect(items).toHaveLength(2);
+    expect(items[0]).toHaveAttribute("data-stage", "prep");
+    expect(items[0].textContent).toContain("transitive dependencies");
+    expect(items[0].textContent).toContain("timed out");
+    expect(items[1]).toHaveAttribute("data-stage", "sign");
+    expect(items[1].textContent).toContain("no signature");
+  });
+
   it("draws neither scan-gap notice when nothing was skipped", async () => {
     // The empty-scan notice is the marker that the data has rendered: absence is
     // only asserted after something that comes from the same response appears.
@@ -232,6 +253,7 @@ describe("OverviewTab", () => {
     await screen.findByTestId("overview-empty-sbom");
     expect(screen.queryByTestId("overview-license-lookup-gap")).toBeNull();
     expect(screen.queryByTestId("overview-scancode-skipped")).toBeNull();
+    expect(screen.queryByTestId("overview-degraded-stages")).toBeNull();
   });
 
   it("shows NO caveat when the scan found components", async () => {

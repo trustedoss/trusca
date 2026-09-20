@@ -178,7 +178,24 @@
       "scancode_reason_failed": "스캐너가 오류로 종료되었습니다.",
       "scancode_reason_timeout": "스캐너가 제한 시간을 넘겼습니다.",
       "scancode_reason_too_large": "소스 트리의 파일 수가 스캐너 제한을 넘습니다.",
-      "scancode_effect": "의존성이 선언한 라이선스는 그대로 표시되지만, 프로젝트 자체 파일의 라이선스 헤더는 탐지하지 못했습니다. 그 파일에 카피레프트 라이선스가 있어도 라이선스 게이트에 반영되지 않습니다."
+      "scancode_effect": "의존성이 선언한 라이선스는 그대로 표시되지만, 프로젝트 자체 파일의 라이선스 헤더는 탐지하지 못했습니다. 그 파일에 카피레프트 라이선스가 있어도 라이선스 게이트에 반영되지 않습니다.",
+      "stages_title": "스캔 단계 일부가 끝까지 실행되지 않았습니다",
+      "stages_intro": "스캔은 끝났지만, 다음 선택 단계는 작업을 모두 마치지 못했습니다.",
+      "stage_prep": "빌드 준비: 일부 생태계의 전이 의존성이 빠졌을 수 있습니다.",
+      "stage_cocoapods": "CocoaPods 보완: Podfile.lock의 pod가 빠졌을 수 있습니다.",
+      "stage_scope_filter": "런타임 범위 필터: 테스트·빌드 전용 의존성이 그대로 표시될 수 있습니다.",
+      "stage_document_metadata": "SBOM 문서 메타데이터: 내보낸 문서에 필수 항목 일부가 없을 수 있습니다.",
+      "stage_sign": "SBOM 서명: SBOM에 서명이 없습니다.",
+      "stage_attest": "빌드 증명: 증명이 만들어지지 않았습니다.",
+      "stage_detected_licenses": "탐지된 라이선스: 프로젝트 자체 소스 파일에서 찾은 라이선스가 저장되지 않았습니다.",
+      "stage_approvals": "승인 대기열: 조건부 라이선스 컴포넌트가 검토 대기열에 들어가지 않았습니다.",
+      "stage_scanoss": "복사된 코드 식별: 복사해 넣은 오픈소스 파일이 식별되지 않았을 수 있습니다.",
+      "stage_preserve": "소스 보존: 스캔한 소스가 파일 보기용으로 보관되지 않았습니다.",
+      "stage_reachability": "도달 가능성 분석: 시작되지 않았습니다.",
+      "reason_failed": "실패",
+      "reason_timeout": "시간 초과",
+      "reason_not_installed": "도구 미설치",
+      "reason_too_large": "입력이 너무 큼"
     },
     "risk_gauge": {
       "aria": "프로젝트 리스크 점수: 100점 만점에 {{score}}점"

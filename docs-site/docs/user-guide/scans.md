@@ -298,6 +298,8 @@ This is separate from under-reporting. A project with a `package.json` and no co
 
 Two stages are best-effort: looking up licenses for components the SBOM did not describe, and detecting licenses in the project's own source files with `scancode`. When either does not finish, the scan still succeeds, and the project's Overview tab shows a warning saying what was skipped. Nothing is shown when both ran, or when an administrator turned `scancode` off on purpose.
 
+Other optional steps are reported the same way, in one warning titled **Some scan steps did not complete** that lists each step with its cause (failed, timed out, tool not installed, or input too large): build preparation, the CocoaPods fill-in, the runtime scope filter, SBOM document metadata, signing, attestation, saving detected licenses, the approval queue, vendored code identification, source preservation, and reachability analysis. A step that ran normally leaves nothing, so the list is never drawn on a clean scan. The scan record also keeps when each step that actually ran started and ended (`stage_timings` in the scan metadata); a step announced without doing any work, as when an unchanged dependency set reuses the previous SBOM, has no entry.
+
 | Warning | What it means | What to do |
 |---|---|---|
 | License lookups were skipped | The per-scan time budget ran out, or the license registry stopped answering. The warning gives the number of components not looked up. They show as license unknown, so license conflicts and obligations can be understated. | Scan again later. Components already looked up are cached, so a later scan fills in the rest. |

@@ -50,6 +50,7 @@ from sqlalchemy.orm import Session
 
 from core.db import sync_session_scope
 from models import Membership, Project, Scan, User
+from services import scan_outcome
 from tasks._progress import publish_progress
 from tasks.scan_retention import (
     supersede_prior_ref_scans,
@@ -128,6 +129,7 @@ def mark_failed(session: Session, scan: Scan, message: str) -> None:
     scan.status = "failed"
     scan.error_message = message
     scan.completed_at = datetime.now(UTC)
+    scan.scan_metadata = scan_outcome.close_stage_timings(scan.scan_metadata, now=scan.completed_at)
     session.commit()
     _notify_schedule_completion(session, scan, kind="scan_failed")
     # Snapshot the percent under the row (defaults to 0 when None — protects
@@ -153,6 +155,9 @@ def mark_succeeded(scan_uuid: uuid.UUID) -> None:
         scan.progress_percent = 100
         scan.current_step = "finalize"
         scan.completed_at = datetime.now(UTC)
+        scan.scan_metadata = scan_outcome.close_stage_timings(
+            scan.scan_metadata, now=scan.completed_at
+        )
         # scan-retention Layer 1: this scan is now the live snapshot for its
         # ref, so prior succeeded same-ref scans (without an explicit release
         # label) are superseded in the same transaction. No-op when the scan
@@ -182,7 +187,9 @@ def mark_succeeded(scan_uuid: uuid.UUID) -> None:
     publish_progress(scan_uuid, step="succeeded", percent=100)
 
 
-def set_stage(scan_uuid: uuid.UUID, stage: str, percent: int | None) -> None:
+def set_stage(
+    scan_uuid: uuid.UUID, stage: str, percent: int | None, *, timed: bool = True
+) -> None:
     """Advance a scan to ``stage`` and fan out the progress frame.
 
     ``percent`` is the stage's progress percent, supplied explicitly by the
@@ -191,7 +198,8 @@ def set_stage(scan_uuid: uuid.UUID, stage: str, percent: int | None) -> None:
     — this preserves the original ``_set_stage`` fallback for an unmapped
     stage. The log line carries the raw ``percent`` value (``None`` for an
     unmapped stage, mirroring the original ``_STAGE_PROGRESS.get(stage)`` log
-    value). The publish happens AFTER the DB commit so a subscriber that reads
+    value). ``timed=False`` skips the timing record for a stage that did no
+    work. The publish happens AFTER the DB commit so a subscriber that reads
     the row on receipt sees the same state as the published payload.
     """
     with sync_session_scope() as session:
@@ -200,6 +208,12 @@ def set_stage(scan_uuid: uuid.UUID, stage: str, percent: int | None) -> None:
             return
         scan.current_step = stage
         scan.progress_percent = percent if percent is not None else scan.progress_percent
+        # NF-1: one write path for every pipeline, so the timing record cannot
+        # drift between source, container and ingest. ``timed=False`` announces a
+        # stage that did no work (the reuse path's "prep") without timing it.
+        scan.scan_metadata = scan_outcome.advance_stage_timings(
+            scan.scan_metadata, stage=stage, now=datetime.now(UTC), timed=timed
+        )
         session.commit()
         committed_percent = scan.progress_percent or 0
     log.info("scan_stage", stage=stage, percent=percent)
@@ -208,8 +222,31 @@ def set_stage(scan_uuid: uuid.UUID, stage: str, percent: int | None) -> None:
     publish_progress(scan_uuid, step=stage, percent=committed_percent)
 
 
+def record_stage_outcome(scan_uuid: uuid.UUID, stage: str, reason: str = "failed") -> None:
+    """Record that an optional ``stage`` finished degraded (U3-B).
+
+    Its own transaction and best-effort: it is called from the ``except`` blocks
+    that keep a scan alive, and a failure to write the note must not turn that
+    survival into a failure.
+    """
+    try:
+        with sync_session_scope() as session:
+            scan = session.get(Scan, scan_uuid)
+            if scan is None:
+                return
+            scan.scan_metadata = scan_outcome.add_stage_outcome(
+                scan.scan_metadata, stage=stage, reason=reason
+            )
+            session.commit()
+    except Exception:  # noqa: BLE001 - best-effort, never fatal
+        log.warning(
+            "stage_outcome_persist_failed", scan_id=str(scan_uuid), stage=stage, exc_info=True
+        )
+
+
 __all__ = [
     "mark_failed",
+    "record_stage_outcome",
     "mark_succeeded",
     "record_terminal_failure",
     "set_stage",

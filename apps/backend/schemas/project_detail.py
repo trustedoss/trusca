@@ -78,6 +78,26 @@ class LicenseLookupGap(BaseModel):
     )
 
 
+class DegradedStage(BaseModel):
+    """An optional pipeline stage that finished worse than a normal run."""
+
+    stage: Literal[
+        "prep",
+        "cocoapods",
+        "scope_filter",
+        "document_metadata",
+        "sign",
+        "attest",
+        "scancode",
+        "detected_licenses",
+        "approvals",
+        "scanoss",
+        "preserve",
+        "reachability",
+    ]
+    reason: Literal["failed", "timeout", "not_installed", "too_large"]
+
+
 class ScanSummary(BaseModel):
     """Compact scan record used by the project overview's recent-scans list."""
 
@@ -270,6 +290,16 @@ class ProjectOverviewResponse(BaseModel):
             "registry circuit breaker open). Those components stay licence-unknown, "
             "so licence conflicts and obligations are understated for them. `null` "
             "when every lookup was made, or for a scan predating the record."
+        ),
+    )
+    degraded_stages: list[DegradedStage] = Field(
+        default_factory=list,
+        description=(
+            "Optional pipeline stages of the anchored scan that finished degraded "
+            "(the scan still succeeded, but that stage's output is missing or "
+            "partial). Scancode is reported by `scancode_skipped_reason` and is not "
+            "repeated here. Empty when every stage did its work, or for a scan "
+            "predating the record; a stage turned off on purpose is never listed."
         ),
     )
     scancode_skipped_reason: Literal["not_installed", "failed", "timeout", "too_large"] | None = (
