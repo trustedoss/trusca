@@ -47,6 +47,8 @@ function overview(
     last_scan_at: null,
     last_succeeded_scan_at: null,
     component_outcome: "components_found" as const,
+    license_lookup_gap: null,
+    scancode_skipped_reason: null,
     current_user_role: "developer",
     has_git_credential: false,
     ...overrides,
@@ -185,6 +187,51 @@ describe("OverviewTab", () => {
     const alert = await screen.findByTestId("overview-empty-sbom");
     expect(alert).toHaveAttribute("data-outcome", "empty_with_manifests");
     expect(alert.textContent).toContain("points at a failure during the scan");
+  });
+
+  it.each([
+    ["budget_exhausted", "used up its time budget"],
+    ["breaker_open", "stopped answering during the scan"],
+    ["both", "used up its time budget and the license registry"],
+  ] as const)(
+    "says licence lookups were skipped, worded for %s",
+    async (reason, wording) => {
+      mockedGet.mockResolvedValueOnce(
+        overview({ license_lookup_gap: { not_looked_up: 7, reason } }),
+      );
+      renderTab();
+      const alert = await screen.findByTestId("overview-license-lookup-gap");
+      expect(alert).toHaveAttribute("data-reason", reason);
+      expect(alert.textContent).toContain(wording);
+      expect(alert.textContent).toContain("Components not looked up: 7");
+    },
+  );
+
+  it.each([
+    ["not_installed", "is not installed on the worker"],
+    ["failed", "exited with an error"],
+    ["timeout", "ran past its time limit"],
+    ["too_large", "more files than the scanner limit"],
+  ] as const)("says scancode did not run, worded for %s", async (reason, wording) => {
+    mockedGet.mockResolvedValueOnce(overview({ scancode_skipped_reason: reason }));
+    renderTab();
+    const alert = await screen.findByTestId("overview-scancode-skipped");
+    expect(alert).toHaveAttribute("data-reason", reason);
+    expect(alert.textContent).toContain(wording);
+    // The consequence is stated, not just the cause.
+    expect(alert.textContent).toContain("would not reach the license gate");
+  });
+
+  it("draws neither scan-gap notice when nothing was skipped", async () => {
+    // The empty-scan notice is the marker that the data has rendered: absence is
+    // only asserted after something that comes from the same response appears.
+    mockedGet.mockResolvedValueOnce(
+      overview({ component_outcome: "empty_no_manifests" }),
+    );
+    renderTab();
+    await screen.findByTestId("overview-empty-sbom");
+    expect(screen.queryByTestId("overview-license-lookup-gap")).toBeNull();
+    expect(screen.queryByTestId("overview-scancode-skipped")).toBeNull();
   });
 
   it("shows NO caveat when the scan found components", async () => {

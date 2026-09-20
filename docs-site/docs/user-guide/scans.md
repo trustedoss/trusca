@@ -292,6 +292,15 @@ A build gate on an empty scan passes, because every count it reads is 0 and ther
 
 This is separate from under-reporting. A project with a `package.json` and no committed `package-lock.json` produces its direct dependencies and drops the transitive ones: that is a populated SBOM that is quietly incomplete, it has a different cause, and committing the lockfile is what fixes it.
 
+## When a scan skips part of its work {#scan-gaps}
+
+Two stages are best-effort: looking up licenses for components the SBOM did not describe, and detecting licenses in the project's own source files with `scancode`. When either does not finish, the scan still succeeds, and the project's Overview tab shows a warning saying what was skipped. Nothing is shown when both ran, or when an administrator turned `scancode` off on purpose.
+
+| Warning | What it means | What to do |
+|---|---|---|
+| License lookups were skipped | The per-scan time budget ran out, or the license registry stopped answering. The warning gives the number of components not looked up. They show as license unknown, so license conflicts and obligations can be understated. | Scan again later. Components already looked up are cached, so a later scan fills in the rest. |
+| License detection in your source files did not run | `scancode` is not installed on the worker, exited with an error, ran past its time limit, or the tree has more files than the limit allows. Licenses declared by dependencies are still listed, but license headers in the project's own files were not detected, so a copyleft license there would not reach the license gate. | Ask an administrator to check the worker's `scancode` stage. |
+
 ## Average duration
 
 | Project size | Source scan | Container scan |

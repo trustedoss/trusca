@@ -643,6 +643,7 @@ def _run_pipeline(
         # ScancodeNotInstalled / Failed / Timeout / TooLarge all land here —
         # all are "detected-license enrichment unavailable", not "abort scan".
         log.warning("scancode_stage_skipped", error=str(exc)[:300])
+        _record_scancode_skipped(scan_uuid, exc)
 
     # Persist the SBOM components + declared (cdxgen) licenses, then attach the
     # scancode-detected first-party licenses to the project's own component.
@@ -1594,6 +1595,39 @@ def _record_component_outcome(
             exc_info=True,
         )
     return outcome
+
+
+_SCANCODE_SKIP_REASON_BY_ERROR: tuple[tuple[type[Exception], str], ...] = (
+    (scancode_adapter.ScancodeNotInstalled, "not_installed"),
+    (scancode_adapter.ScancodeTimeout, "timeout"),
+    (scancode_adapter.ScancodeTooLarge, "too_large"),
+    (scancode_adapter.ScancodeFailed, "failed"),
+)
+
+
+def _record_scancode_skipped(scan_uuid: uuid.UUID, exc: Exception) -> None:
+    """Stamp ``scan_metadata['scancode_skipped']`` when detection did not run.
+
+    A stage turned off on purpose (``ScancodeDisabled``) is not recorded: the
+    operator chose it, and a notice on every scan would be noise. Best-effort
+    like the other scan_metadata stamps.
+    """
+    if isinstance(exc, scancode_adapter.ScancodeDisabled):
+        return
+    reason = next(
+        (name for cls, name in _SCANCODE_SKIP_REASON_BY_ERROR if isinstance(exc, cls)),
+        "failed",
+    )
+    try:
+        with sync_session_scope() as session:
+            scan = session.get(Scan, scan_uuid)
+            if scan is not None:
+                merged = dict(scan.scan_metadata or {})
+                merged[scan_outcome.SCANCODE_SKIP_KEY] = reason
+                scan.scan_metadata = merged
+                session.commit()
+    except Exception:  # noqa: BLE001 - best-effort, never fatal
+        log.warning("scancode_skip_persist_failed", scan_id=str(scan_uuid), exc_info=True)
 
 
 def _record_input_manifests(scan_uuid: uuid.UUID, project_root: Path) -> dict[str, Any] | None:
