@@ -4338,6 +4338,60 @@ def _run_scanoss_stage(
 _SCANOSS_SOURCE = "scanoss"
 
 
+def _identity_key(purl: str) -> str:
+    """A purl reduced to what identifies the package: no version, qualifiers or case."""
+    return purl.split("?", 1)[0].split("#", 1)[0].split("@", 1)[0].strip().lower()
+
+
+def _version_key(version: str) -> str:
+    """A version reduced for comparison: case and a leading ``v`` do not make a new one."""
+    text = version.strip().lower()
+    return text[1:] if text.startswith("v") and text[1:2].isdigit() else text
+
+
+def _declared_component_index(
+    session: Session, *, scan_uuid: uuid.UUID
+) -> dict[tuple[str, str], ScanComponent]:
+    """This scan's package-manager components, keyed by ``(identity, version)``.
+
+    Rows a fingerprint match wrote earlier in the scan are left out, so two
+    fingerprint components are never merged into one another here. Loaded once
+    for the whole batch.
+    """
+    rows = session.execute(
+        select(ScanComponent, Component.purl, ComponentVersion.version)
+        .join(ComponentVersion, ComponentVersion.id == ScanComponent.component_version_id)
+        .join(Component, Component.id == ComponentVersion.component_id)
+        .where(ScanComponent.scan_id == scan_uuid)
+    ).all()
+    index: dict[tuple[str, str], ScanComponent] = {}
+    for scan_component, purl, version in rows:
+        raw = scan_component.raw_data
+        if isinstance(raw, dict) and raw.get("source") == _SCANOSS_SOURCE:
+            continue
+        index.setdefault((_identity_key(purl), _version_key(version)), scan_component)
+    return index
+
+
+def _declared_match(
+    index: dict[tuple[str, str], ScanComponent], vc: scanoss_adapter.VendoredComponent
+) -> ScanComponent | None:
+    """The package-manager row that is the same library as this fingerprint match.
+
+    Evidence, not a guess: one of the identities SCANOSS listed for the library
+    has to be the identity the package manager recorded, AND the versions have
+    to agree. A shared name is not enough (two libraries can share one), and a
+    matching identity with a different version is a second copy in the tree,
+    which stays a second row.
+    """
+    version = _version_key(vc.version)
+    for candidate in (vc.purl, *vc.alternative_purls):
+        found = index.get((_identity_key(candidate), version))
+        if found is not None:
+            return found
+    return None
+
+
 def _persist_vendored_components(
     session: Session,
     *,
@@ -4366,9 +4420,30 @@ def _persist_vendored_components(
     control-char safe) because they originate from an external API.
     """
     created = 0
+    merged = 0
+    declared = _declared_component_index(session, scan_uuid=scan_uuid)
     for vc in vendored:
         purl = sanitize_jsonb_text(vc.purl)
         if not purl:
+            continue
+        # The package manager already recorded this library, under another
+        # identity. One row, and the fingerprint's agreement goes on it, so the
+        # merge is visible and a person can undo it. Checked before the catalog
+        # upserts below, which would otherwise create a vendored Component and
+        # ComponentVersion for a library that already has one.
+        twin = _declared_match(declared, vc)
+        if twin is not None:
+            twin.raw_data = {
+                **(twin.raw_data if isinstance(twin.raw_data, dict) else {}),
+                "fingerprint_match": {
+                    "purl": purl,
+                    "version": sanitize_jsonb_text(vc.version),
+                    "matched_files": vc.matched_files,
+                    "licenses": [sanitize_jsonb_text(name) for name in vc.licenses],
+                },
+            }
+            session.flush()
+            merged += 1
             continue
         # Defensive length caps at the persist boundary (column widths:
         # components.name String(512), component_versions.version String(255),
@@ -4435,6 +4510,13 @@ def _persist_vendored_components(
             licenses=vc.licenses,
         )
 
+    if merged:
+        log.info(
+            "scanoss_components_merged_into_declared",
+            scan_id=str(scan_uuid),
+            merged=merged,
+            created=created,
+        )
     return created
 
 

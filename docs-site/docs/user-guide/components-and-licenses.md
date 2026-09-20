@@ -422,6 +422,12 @@ A single-file match is still reported. Single-file libraries — `stb_image.h`, 
 
 When the matching files disagree about the version — which happens, since a library's files are not all touched in every release — the entry carries the version most of them claimed, and `raw_data.version_candidates` lists the alternatives. Previously each version became its own entry, so one vendored library was inventoried as several.
 
+### When the package manager already found the library {#vendored-declared-merge}
+
+A library can be reported twice: the package manager lists it by its registry name, and the fingerprint match names it by its source repository. When both describe the same library, TRUSCA keeps one row, the package manager's, and records the fingerprint match on it as `raw_data.fingerprint_match` (the identity the match reported, its version, how many files backed it, and the licenses it saw). Nothing is discarded, and the extra evidence sits on the row where you can read it.
+
+Two things have to hold for the rows to be merged. The fingerprint service lists several identities for one library (its repository, distribution packages, the Go module), and one of them must be the identity the package manager recorded. The versions must also agree; a leading `v` is ignored. A shared name alone never merges rows, and neither does the same identity at a different version, because that means the tree holds a second copy of the library, which is worth seeing as a second entry.
+
 :::warning Off by default — sends fingerprints to an external service
 SCANOSS is **disabled unless an operator sets `SCANOSS_ENABLED=true`**. When enabled, it sends file **fingerprints** (hashes, never your source code) to `SCANOSS_API_URL` — the free `api.osskb.org` by default. Because a self-hosted portal shouldn't quietly egress data about your code, this is opt-in: turn it on only if that external match is acceptable, or point `SCANOSS_API_URL` at a **self-hosted SCANOSS** instance to keep everything inside your network. See [Environment variables → Scan pipeline](../reference/env-variables.md#scan-pipeline).
 :::
