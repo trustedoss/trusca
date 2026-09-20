@@ -21,3 +21,24 @@ second child of the slf4j project.
 
 The children come from the components of `tests/fixtures/sbom/real_cyclonedx_maven_scoped.json`
 that carry no license in the SBOM.
+
+## License name spellings
+
+Seven more POMs, downloaded the same way on 2026-09-20, each declaring a license name
+that `normalize_spdx_id` did not map before the alias additions. They come from the
+same SBOM's components without a license, either as the component's own POM or as the
+ancestor it inherits from (`tests/unit/integrations/license_fetcher/test_license_names_real_poms.py`
+asserts the name against each file).
+
+| POM | Declared name | Maps to |
+|---|---|---|
+| `org.hamcrest:hamcrest:2.2` | `BSD License 3` | BSD-3-Clause |
+| `org.eclipse.angus:angus-activation-project:2.0.0` | `EDL 1.0` | BSD-3-Clause |
+| `com.sun.xml.bind.mvn:jaxb-parent:4.0.2` | `Eclipse Distribution License - v 1.0` | BSD-3-Clause |
+| `jakarta.persistence:jakarta.persistence-api:3.1.0` | `Eclipse Public License v. 2.0` | EPL-2.0 |
+| `org.junit.jupiter:junit-jupiter:5.10.1` | `Eclipse Public License v2.0` | EPL-2.0 |
+| `org.opentest4j:opentest4j:1.3.0` | `The Apache License, Version 2.0` | Apache-2.0 |
+| `org.antlr:antlr4-master:4.10.1` | `The BSD License` | left unknown |
+
+`The BSD License` is not mapped: the name does not say whether it is the 2-clause or
+the 3-clause text.

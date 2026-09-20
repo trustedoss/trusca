@@ -372,6 +372,7 @@ _SPDX_ALIASES: dict[str, str] = {
     "apache license, version 2.0": "Apache-2.0",
     "apache software license, version 2.0": "Apache-2.0",
     "the apache software license, version 2.0": "Apache-2.0",
+    "the apache license, version 2.0": "Apache-2.0",
     "apache 1.1": "Apache-1.1",
     "apache license 1.1": "Apache-1.1",
     # MIT
@@ -388,6 +389,12 @@ _SPDX_ALIASES: dict[str, str] = {
     "new bsd license": "BSD-3-Clause",
     "the new bsd license": "BSD-3-Clause",
     "revised bsd license": "BSD-3-Clause",
+    # "BSD License 3" names the clause count. Bare "The BSD License" is
+    # deliberately absent: the name alone does not say 2- or 3-clause.
+    "bsd license 3": "BSD-3-Clause",
+    # The Eclipse Distribution License 1.0 is the BSD-3-Clause text.
+    "eclipse distribution license - v 1.0": "BSD-3-Clause",
+    "edl 1.0": "BSD-3-Clause",
     # GPL family — these are the *family* spellings registries emit;
     # the SPDX-only-or-later distinction is preserved by our existing
     # _SPDX_ALIASES enumeration in the scan_source classifier.
@@ -417,6 +424,8 @@ _SPDX_ALIASES: dict[str, str] = {
     "the eclipse public license version 2.0": "EPL-2.0",
     "the eclipse public license, version 2.0": "EPL-2.0",
     "epl-2.0 or later": "EPL-2.0",
+    "eclipse public license v2.0": "EPL-2.0",
+    "eclipse public license v. 2.0": "EPL-2.0",
     # Other commons
     "isc": "ISC",
     "isc license": "ISC",
