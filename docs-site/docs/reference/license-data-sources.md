@@ -23,7 +23,7 @@ Four sources contribute to what you see on a license. They are listed in the ord
 
 ## Package registries fill the gaps
 
-When the SBOM has no license for a component, the portal asks the registry that owns it: Maven Central, PyPI, crates.io, pkg.go.dev, RubyGems, or NuGet. Answers are cached for 24 hours, including "no license found", so a repository full of unpublished packages cannot drive repeated lookups.
+When the SBOM has no license for a component, the portal asks the registry that owns it: Maven Central, PyPI, crates.io, pkg.go.dev, RubyGems, or NuGet. Answers are cached for 24 hours, including "no license found", so a repository full of unpublished packages cannot drive repeated lookups. A Maven component whose own POM declares no license takes it from its parent POM, up to `LICENSE_FETCH_MAVEN_PARENT_MAX_DEPTH` levels up, the same way Maven builds its effective model. The row is a concluded finding whose `raw_data.inherited_from` names the ancestor `groupId:artifactId:version`, so it can be told apart from a license the component declared itself.
 
 Controlled by `LICENSE_FETCH_ENABLED` (default on). Turn it off for an air-gapped install; the portal then reports only what the SBOM carried.
 

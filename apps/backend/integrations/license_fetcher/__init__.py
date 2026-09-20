@@ -151,10 +151,15 @@ def _row_to_result(
     """Materialise a cache row back into a public ``LicenseFetchResult``."""
     if is_negative or spdx_id is None:
         return None
+    # A licence taken from a parent POM carries the ancestor it came from in
+    # the ``source`` column ("maven_central_parent|group:artifact:version"), so
+    # a cache hit reports the same provenance as the lookup that filled it.
+    base_source, _, inherited_from = source.partition("|")
     return LicenseFetchResult(
         spdx_id=spdx_id,
         reference_url=reference_url,
-        source=source,
+        source=base_source,
+        inherited_from=inherited_from or None,
     )
 
 
@@ -220,7 +225,11 @@ def _cache_write(
             "purl": purl,
             "spdx_id": result.spdx_id,
             "reference_url": result.reference_url,
-            "source": result.source,
+            "source": (
+                f"{result.source}|{result.inherited_from}"
+                if result.inherited_from
+                else result.source
+            ),
             "is_negative": False,
             "fetched_at": now,
         }
@@ -236,6 +245,34 @@ def _cache_write(
         },
     )
     session.execute(stmt)
+
+
+class _SessionAncestorCache:
+    """The dispatcher's cache, lent to a fetcher that follows a parent chain.
+
+    Parent POMs are shared between children (a dozen artifacts of one project
+    all name the same parent), so the answer for a parent is stored under the
+    parent's own purl and every later child reads it back for free.
+    """
+
+    def __init__(self, session: Session, *, now: datetime, ttl_seconds: int) -> None:
+        self._session = session
+        self._now = now
+        self._ttl_seconds = ttl_seconds
+
+    def lookup(self, purl: str) -> tuple[bool, LicenseFetchResult | None]:
+        return _cache_lookup(
+            self._session, purl=purl, now=self._now, ttl_seconds=self._ttl_seconds
+        )
+
+    def store(self, purl: str, result: LicenseFetchResult) -> None:
+        _cache_write(
+            self._session,
+            purl=purl,
+            result=result,
+            fallback_source=result.source,
+            now=self._now,
+        )
 
 
 # ---------------------------------------------------------------------------
@@ -300,6 +337,7 @@ def fetch_license(
             now=effective_now,
             budget=budget,
             failures_before=failures_before,
+            ttl_seconds=effective_ttl,
         )
     finally:
         if budget is not None:
@@ -314,11 +352,16 @@ def _dispatch_and_cache(
     now: datetime,
     budget: EnrichmentBudget | None,
     failures_before: int,
+    ttl_seconds: int,
 ) -> LicenseFetchResult | None:
     new_result: LicenseFetchResult | None = None
     fallback_source = "unsupported_ecosystem"
 
     if fetcher is not None:
+        if isinstance(fetcher, MavenLicenseFetcher):
+            fetcher.ancestor_cache = _SessionAncestorCache(
+                session, now=now, ttl_seconds=ttl_seconds
+            )
         try:
             new_result = fetcher.fetch(purl)
         finally:
@@ -348,7 +391,12 @@ def _dispatch_and_cache(
         if new_result is not None:
             fallback_source = cd_fetcher.source
 
-    if new_result is None and budget is not None and budget.transport_failures > failures_before:
+    if new_result is None and (
+        (budget is not None and budget.transport_failures > failures_before)
+        # A parent lookup the budget refused is the same: the chain was cut
+        # short, not found empty.
+        or getattr(fetcher, "lookup_incomplete", False)
+    ):
         # The registry never answered, so this is not a confirmed miss. Caching
         # it would report "looked up, nothing there" for the next 24 hours.
         return None

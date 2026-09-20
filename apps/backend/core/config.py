@@ -1329,6 +1329,28 @@ def license_fetch_consecutive_failure_limit() -> int:
     return value if value > 0 else 30
 
 
+def license_fetch_maven_parent_max_depth() -> int:
+    """How many ``<parent>`` links a Maven licence lookup follows.
+
+    Read at call time (rule #11). A POM that declares no ``<licenses>`` takes
+    them from its parent, and the parent's from its own, so a component can
+    need several POM reads for one answer. Real chains are short (a component,
+    its project parent, sometimes a vendor parent above that), so the default
+    of 3 reaches the ancestor that declares the licence for the common cases.
+    Reaching the limit leaves the component licence-unknown; it is not an
+    error. ``0`` turns inheritance off and reads only the component's own POM.
+    A non-integer or negative value falls back to the default.
+    """
+    raw = os.getenv("LICENSE_FETCH_MAVEN_PARENT_MAX_DEPTH")
+    if raw is None or not raw.strip():
+        return 3
+    try:
+        value = int(raw)
+    except ValueError:
+        return 3
+    return value if value >= 0 else 3
+
+
 def external_package_lookup_enabled() -> bool:
     """Whether the deps.dev package/advisory lookup makes outbound calls.
 

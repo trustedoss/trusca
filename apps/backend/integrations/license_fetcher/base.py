@@ -91,11 +91,16 @@ class LicenseFetchResult:
             result — used in the ``raw_data`` of the persisted
             ``LicenseFinding`` so downstream auditors can tell a
             cdxgen-emitted licence from a fetcher-emitted one.
+        inherited_from: For a licence the component did not declare itself but
+            took from an ancestor (a Maven parent POM), that ancestor's
+            ``groupId:artifactId:version``. ``None`` for a licence read from
+            the component's own metadata.
     """
 
     spdx_id: str
     reference_url: str | None
     source: str
+    inherited_from: str | None = None
 
 
 class LicenseFetcher(Protocol):

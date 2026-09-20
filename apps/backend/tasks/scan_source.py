@@ -4083,6 +4083,10 @@ def _persist_component_licenses(
         session, spdx_id=result.spdx_id, reference_url=result.reference_url
     )
     raw_data: dict[str, Any] = {"source": result.source}
+    if result.inherited_from:
+        # Not the component's own declaration: the licence was read from this
+        # ancestor POM, and the row has to say so to be told apart from one.
+        raw_data["inherited_from"] = result.inherited_from
     if superseded is not None:
         raw_data["superseded_sbom_license"] = superseded
     finding = LicenseFinding(
