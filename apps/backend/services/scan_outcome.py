@@ -42,6 +42,7 @@ half of them to take an action that does not apply.
 
 from __future__ import annotations
 
+from datetime import UTC, datetime
 from typing import Any, Final
 
 #: Ordinary result: the SBOM carries components.
@@ -162,3 +163,117 @@ __all__ = [
     "manifest_count",
     "scancode_skip_reason",
 ]
+
+
+# ---------------------------------------------------------------------------
+# Stage timings and degraded stages (U3-B, NF-1)
+# ---------------------------------------------------------------------------
+
+#: Per-stage wall-clock window, ``{stage: {"started_at", "ended_at"}}``. JSONB does
+#: not keep key order, so order stages by ``started_at``. Only a
+#: stage that actually ran is present: the fingerprint-reuse path walks through
+#: "prep" and "cdxgen" without doing either, and a zero-second entry there
+#: would pull every average toward zero.
+STAGE_TIMINGS_KEY: Final = "stage_timings"
+
+#: Stages that finished worse than a normal run, ``{stage: {"reason": ...}}``.
+#: A stage that succeeded leaves nothing here, so an empty or absent value means
+#: "nothing degraded", not "not recorded". A stage the operator turned off is
+#: not a degradation and is not recorded either.
+STAGE_OUTCOMES_KEY: Final = "stage_outcomes"
+
+#: Stages allowed to appear in ``stage_outcomes``. The mirror on the frontend
+#: (locale keys) and the API schema are checked against this tuple.
+DEGRADABLE_STAGES: Final = (
+    "prep",
+    "cocoapods",
+    "scope_filter",
+    "document_metadata",
+    "sign",
+    "attest",
+    "scancode",
+    "detected_licenses",
+    "approvals",
+    "scanoss",
+    "preserve",
+    "reachability",
+)
+
+#: Why a stage degraded. ``failed`` is the catch-all; the rest are the reasons
+#: scancode already reported through ``scancode_skipped``.
+STAGE_REASONS: Final = ("failed", "timeout", "not_installed", "too_large")
+
+
+def _iso(moment: datetime) -> str:
+    return moment.astimezone(UTC).isoformat().replace("+00:00", "Z")
+
+
+def advance_stage_timings(
+    metadata: dict[str, Any] | None,
+    *,
+    stage: str,
+    now: datetime,
+    timed: bool = True,
+) -> dict[str, Any]:
+    """Close the stage that is open and, when ``timed``, open ``stage``.
+
+    Returns a new ``scan_metadata`` dict (the JSONB column only flushes on
+    reassignment). ``timed=False`` is for a transition that is announced to
+    watchers but does no work.
+    """
+    merged = dict(metadata or {})
+    raw = merged.get(STAGE_TIMINGS_KEY)
+    timings: dict[str, Any] = {k: dict(v) for k, v in raw.items()} if isinstance(raw, dict) else {}
+    for entry in timings.values():
+        if isinstance(entry, dict) and "ended_at" not in entry:
+            entry["ended_at"] = _iso(now)
+    if timed and stage not in timings:
+        timings[stage] = {"started_at": _iso(now)}
+    merged[STAGE_TIMINGS_KEY] = timings
+    return merged
+
+
+def close_stage_timings(metadata: dict[str, Any] | None, *, now: datetime) -> dict[str, Any]:
+    """Close the open stage at a terminal transition (succeeded or failed)."""
+    return advance_stage_timings(metadata, stage="", now=now, timed=False)
+
+
+def reset_stage_records(metadata: dict[str, Any] | None) -> dict[str, Any]:
+    """Drop timings and outcomes so a re-run does not inherit the last run's."""
+    merged = dict(metadata or {})
+    merged.pop(STAGE_TIMINGS_KEY, None)
+    merged.pop(STAGE_OUTCOMES_KEY, None)
+    return merged
+
+
+def add_stage_outcome(
+    metadata: dict[str, Any] | None, *, stage: str, reason: str
+) -> dict[str, Any]:
+    """Record that ``stage`` degraded. Unknown stages and reasons are refused.
+
+    Refusing rather than storing keeps the vocabulary closed: a value outside
+    the tuples above would have no label on the screen and no meaning to a
+    consumer.
+    """
+    if stage not in DEGRADABLE_STAGES or reason not in STAGE_REASONS:
+        raise ValueError(f"unknown stage outcome: {stage!r} / {reason!r}")
+    merged = dict(metadata or {})
+    raw = merged.get(STAGE_OUTCOMES_KEY)
+    outcomes = dict(raw) if isinstance(raw, dict) else {}
+    outcomes[stage] = {"reason": reason}
+    merged[STAGE_OUTCOMES_KEY] = outcomes
+    return merged
+
+
+def degraded_stages(metadata: dict[str, Any] | None) -> list[dict[str, str]]:
+    """The recorded degradations in a stable order, unrecognised entries dropped."""
+    raw = (metadata or {}).get(STAGE_OUTCOMES_KEY)
+    if not isinstance(raw, dict):
+        return []
+    found: list[dict[str, str]] = []
+    for stage in DEGRADABLE_STAGES:
+        entry = raw.get(stage)
+        reason = entry.get("reason") if isinstance(entry, dict) else None
+        if reason in STAGE_REASONS:
+            found.append({"stage": stage, "reason": reason})
+    return found

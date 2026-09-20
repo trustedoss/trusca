@@ -179,6 +179,46 @@ async def test_overview_carries_skipped_scan_work_to_the_wire(client) -> None:
     assert body["scancode_skipped_reason"] == "timeout"
 
 
+async def test_overview_lists_degraded_stages_but_not_scancode(client) -> None:
+    """The route builds its response by hand, so the new field must survive it.
+
+    Scancode is reported by its own field and is left out of this list, and an
+    entry outside the recorded vocabulary is dropped rather than sent.
+    """
+    _, team, user = await _seed_team_with_user(client)
+    project_id, scan_id = await _seed_scanned_project(client, team_id=team.id)
+    headers = _bearer_for(user)
+
+    clean = await client.get(f"/v1/projects/{project_id}/overview", headers=headers)
+    assert clean.json()["degraded_stages"] == []
+
+    from models import Scan
+
+    factory = await _factory(client)
+    async with factory() as session:
+        scan = await session.get(Scan, scan_id)
+        assert scan is not None
+        scan.scan_metadata = {
+            "stage_outcomes": {
+                "sign": {"reason": "failed"},
+                "prep": {"reason": "timeout"},
+                "scancode": {"reason": "timeout"},
+                "made_up": {"reason": "failed"},
+            },
+            "scancode_skipped": "timeout",
+        }
+        await session.commit()
+
+    response = await client.get(f"/v1/projects/{project_id}/overview", headers=headers)
+    assert response.status_code == 200, response.text
+    body = response.json()
+    assert body["degraded_stages"] == [
+        {"stage": "prep", "reason": "timeout"},
+        {"stage": "sign", "reason": "failed"},
+    ]
+    assert body["scancode_skipped_reason"] == "timeout"
+
+
 async def test_overview_exposes_current_user_role_team_admin(client) -> None:
     """The overview payload surfaces the actor's team-scoped role (BUG-005)."""
     _, team, user = await _seed_team_with_user(client, role="group_admin")

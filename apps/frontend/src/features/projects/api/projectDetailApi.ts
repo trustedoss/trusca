@@ -136,6 +136,27 @@ export interface ProjectOverviewResponse {
     | "too_large"
     | null;
   /**
+   * Optional scan steps that finished degraded (scancode is reported by
+   * `scancode_skipped_reason` and is not repeated here). Empty when every step
+   * did its work, or for a scan predating the record.
+   */
+  degraded_stages: {
+    stage:
+      | "prep"
+      | "cocoapods"
+      | "scope_filter"
+      | "document_metadata"
+      | "sign"
+      | "attest"
+      | "scancode"
+      | "detected_licenses"
+      | "approvals"
+      | "scanoss"
+      | "preserve"
+      | "reachability";
+    reason: "failed" | "timeout" | "not_installed" | "too_large";
+  }[];
+  /**
    * The requesting user's effective role within this project's owning team.
    * Used (not the global JWT role) to gate team-scoped actions such as
    * vulnerability suppression (BUG-005).

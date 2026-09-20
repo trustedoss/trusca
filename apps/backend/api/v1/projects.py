@@ -633,6 +633,7 @@ async def get_project_overview_endpoint(
         component_outcome=payload["component_outcome"],
         license_lookup_gap=payload["license_lookup_gap"],
         scancode_skipped_reason=payload["scancode_skipped_reason"],
+        degraded_stages=payload["degraded_stages"],
         has_git_credential=payload["has_git_credential"],
         current_user_role=payload["current_user_role"],
     )

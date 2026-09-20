@@ -443,6 +443,9 @@ async def get_project_overview(
     # run. Both stay ``None`` unless something was skipped.
     license_lookup_gap: tuple[int, str] | None = None
     scancode_skipped_reason: str | None = None
+    # Optional stages that finished degraded (U3-B), minus scancode, which has
+    # its own record above. Empty means nothing degraded or a scan predating it.
+    degraded_stages: list[dict[str, str]] = []
     recent: list[Scan] = []
 
     # Anchor the current-state aggregation on the resolved snapshot scan: the
@@ -574,6 +577,11 @@ async def get_project_overview(
             scancode_skipped_reason = scan_outcome.scancode_skip_reason(
                 succeeded_row.scan_metadata
             )
+            degraded_stages = [
+                entry
+                for entry in scan_outcome.degraded_stages(succeeded_row.scan_metadata)
+                if entry["stage"] != "scancode"
+            ]
 
         severity_distribution, license_distribution, total_components = distributions
 
@@ -629,6 +637,7 @@ async def get_project_overview(
             else None
         ),
         "scancode_skipped_reason": scancode_skipped_reason,
+        "degraded_stages": degraded_stages,
         # Feature #18 Part B — read-only "credential configured?" flag. Never the
         # plaintext / ciphertext, only the boolean derived from the model property.
         "has_git_credential": project.has_git_credential,

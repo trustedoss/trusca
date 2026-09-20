@@ -156,6 +156,7 @@ function overview(
     component_outcome: "components_found" as const,
     license_lookup_gap: null,
     scancode_skipped_reason: null,
+    degraded_stages: [],
     current_user_role: "developer",
     has_git_credential: false,
     ...overrides,

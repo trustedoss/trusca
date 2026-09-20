@@ -172,6 +172,7 @@ from tasks._progress import (
 from tasks._scan_pipeline import (
     mark_failed,
     mark_succeeded,
+    record_stage_outcome,
     record_terminal_failure,
     set_stage,
 )
@@ -476,8 +477,10 @@ def _run_pipeline(
         # own ``stage=`` callback (see InProcessExecutor.generate_sbom). The
         # regression contract requires the reuse and full paths to be
         # indistinguishable from the outside.
-        _set_stage(scan_uuid, "prep")
-        _set_stage(scan_uuid, "cdxgen")
+        # Neither ran, so neither is timed (a zero-second "cdxgen" would pull
+        # the stage averages toward zero).
+        _set_stage(scan_uuid, "prep", timed=False)
+        _set_stage(scan_uuid, "cdxgen", timed=False)
         log.info(
             "scan_dependency_fingerprint_reused",
             scan_id=str(scan_uuid),
@@ -657,6 +660,7 @@ def _run_pipeline(
     # SPDX token that slipped the adapter caps) rolls back ONLY the detected
     # findings — the declared findings and component graph still commit. A
     # detected-license failure is degraded, never fatal.
+    detected_licenses_failed = False
     with sync_session_scope() as session:
         persist_sbom_components(
             session,
@@ -667,22 +671,15 @@ def _run_pipeline(
             source_dir=project_root,
         )
         if scancode_detections:
-            try:
-                with session.begin_nested():
-                    _persist_detected_licenses(
-                        session,
-                        scan_uuid=scan_uuid,
-                        sbom=cdxgen_result.sbom,
-                        detections=scancode_detections,
-                    )
-            except SQLAlchemyError as exc:
-                # SAVEPOINT rolled back; declared findings + components survive.
-                log.warning(
-                    "detected_license_persist_skipped",
-                    error=str(exc)[:300],
-                    detections=len(scancode_detections),
-                )
+            detected_licenses_failed = _persist_detected_licenses_or_skip(
+                session,
+                scan_uuid=scan_uuid,
+                sbom=cdxgen_result.sbom,
+                detections=scancode_detections,
+            )
         session.commit()
+    if detected_licenses_failed:
+        record_stage_outcome(scan_uuid, "detected_licenses")
 
     # Stage 4.5 — auto-enrol conditional-license components into the legal
     # review queue (BUG-010). MUST run AFTER the component + license findings
@@ -819,6 +816,36 @@ def _run_pipeline(
     _dispatch_reachability(scan_uuid)
 
 
+def _persist_detected_licenses_or_skip(
+    session: Session,
+    *,
+    scan_uuid: uuid.UUID,
+    sbom: dict[str, Any],
+    detections: list[scancode_adapter.DetectedLicense],
+) -> bool:
+    """Write the scancode-detected licenses in a SAVEPOINT; True when that failed.
+
+    Blast-radius isolation: the detected licenses derive from attacker-controlled
+    file content, so a failure here (an unexpected constraint violation from a
+    hostile path or SPDX token that slipped the adapter caps) rolls back ONLY
+    them. The declared findings and the component graph still commit. A
+    detected-license failure is degraded, never fatal.
+    """
+    try:
+        with session.begin_nested():
+            _persist_detected_licenses(
+                session, scan_uuid=scan_uuid, sbom=sbom, detections=detections
+            )
+    except SQLAlchemyError as exc:
+        log.warning(
+            "detected_license_persist_skipped",
+            error=str(exc)[:300],
+            detections=len(detections),
+        )
+        return True
+    return False
+
+
 def _run_load_test_delay(*, scan_uuid: uuid.UUID, delay_seconds: float) -> None:
     """M1 (concurrency-scaling plan) queue-wait / processing-time load test mode.
 
@@ -865,6 +892,7 @@ def _dispatch_reachability(scan_uuid: uuid.UUID) -> None:
             log.info("reachability_enqueued", scan_id=str(scan_uuid), task_id=task_id)
     except Exception as exc:  # noqa: BLE001 — dispatch must never fail the scan
         log.warning("reachability_enqueue_failed", scan_id=str(scan_uuid), error=str(exc)[:300])
+        record_stage_outcome(scan_uuid, "reachability")
 
 
 # ---------------------------------------------------------------------------
@@ -1485,6 +1513,8 @@ def _mark_running(session: Session, scan: Scan) -> None:
     scan.error_message = None
     scan.current_step = "bootstrap"
     scan.progress_percent = 0
+    # A re-run must not inherit the last run's degradations or timings.
+    scan.scan_metadata = scan_outcome.reset_stage_records(scan.scan_metadata)
     session.commit()
 
 
@@ -1501,7 +1531,7 @@ _record_terminal_failure = record_terminal_failure
 _mark_succeeded = mark_succeeded
 
 
-def _set_stage(scan_uuid: uuid.UUID, stage: str) -> None:
+def _set_stage(scan_uuid: uuid.UUID, stage: str, *, timed: bool = True) -> None:
     """Advance a scan to ``stage`` using this pipeline's percent mapping.
 
     Delegates to :func:`tasks._scan_pipeline.set_stage` with the percent
@@ -1509,7 +1539,7 @@ def _set_stage(scan_uuid: uuid.UUID, stage: str) -> None:
     the shared writer treats as "keep the row's prior percent" (preserving the
     original ``_set_stage`` fallback exactly).
     """
-    set_stage(scan_uuid, stage, _STAGE_PROGRESS.get(stage))
+    set_stage(scan_uuid, stage, _STAGE_PROGRESS.get(stage), timed=timed)
 
 
 def _detect_and_record_env(scan_uuid: uuid.UUID, source_dir: Path) -> str:
@@ -1618,6 +1648,7 @@ def _record_scancode_skipped(scan_uuid: uuid.UUID, exc: Exception) -> None:
         (name for cls, name in _SCANCODE_SKIP_REASON_BY_ERROR if isinstance(exc, cls)),
         "failed",
     )
+    record_stage_outcome(scan_uuid, "scancode", reason)
     try:
         with sync_session_scope() as session:
             scan = session.get(Scan, scan_uuid)
@@ -1853,6 +1884,7 @@ def _merge_cocoapods_components(
             )
     except Exception:  # noqa: BLE001 — the fill-in must never fail the scan
         log.warning("cocoapods_merge_stage_failed", scan_id=str(scan_uuid), exc_info=True)
+        record_stage_outcome(scan_uuid, "cocoapods")
 
 
 def _resolve_project_root(source_dir: Path) -> Path:
@@ -1896,6 +1928,7 @@ def _stamp_document_metadata(
         cdxgen_result.sbom.update(working)
     except Exception:
         log.warning("sbom_document_metadata_failed", scan_id=str(scan_uuid), exc_info=True)
+        record_stage_outcome(scan_uuid, "document_metadata")
 
 
 def _apply_scope_filter(
@@ -1941,6 +1974,7 @@ def _apply_scope_filter(
         _record_scope_filter(scan_uuid, result)
     except Exception:  # noqa: BLE001 — the filter must never fail the scan
         log.warning("scope_filter_stage_failed", scan_id=str(scan_uuid), exc_info=True)
+        record_stage_outcome(scan_uuid, "scope_filter")
 
 
 def _record_scope_filter(scan_uuid: uuid.UUID, result: sbom_scope_filter.ScopeFilterResult) -> None:
@@ -2060,6 +2094,7 @@ def _sign_sbom(*, scan_uuid: uuid.UUID, sbom_path: Path, workspace: Path) -> boo
         # message that happened to interpolate a secret-shaped value is redacted —
         # consistent with the cosign adapter's stderr scrub (CLAUDE.md §5).
         log.warning("sbom_sign_unexpected_error", error=str(mask_pii(str(exc)))[:300])
+        record_stage_outcome(scan_uuid, "sign")
         return False
 
 
@@ -2135,6 +2170,7 @@ def _attest_sbom(
         # happened to interpolate a secret-shaped value is redacted — consistent
         # with the cosign adapter's stderr scrub (CLAUDE.md §5).
         log.warning("sbom_attest_unexpected_error", error=str(mask_pii(str(exc)))[:300])
+        record_stage_outcome(scan_uuid, "attest")
 
 
 # ---------------------------------------------------------------------------
@@ -2339,6 +2375,7 @@ def _auto_create_conditional_approvals(*, scan_uuid: uuid.UUID, project_id: uuid
             project_id=str(project_id),
             error=str(exc)[:300],
         )
+        record_stage_outcome(scan_uuid, "approvals")
 
 
 # ---------------------------------------------------------------------------
@@ -2445,6 +2482,7 @@ def _preserve_source_tree(
             scan_id=str(scan_uuid),
             error=str(exc)[:300],
         )
+        record_stage_outcome(scan_uuid, "preserve")
 
 
 # ---------------------------------------------------------------------------
@@ -2761,6 +2799,7 @@ def _run_prep(
                 scan_id=str(scan_uuid),
                 stderr=scrub_secrets((result.stderr or "")[:500]),
             )
+            record_stage_outcome(scan_uuid, "prep")
     except subprocess.TimeoutExpired:
         log.warning(
             "prep_timeout",
@@ -2768,6 +2807,7 @@ def _run_prep(
             scan_id=str(scan_uuid),
             timeout=timeout,
         )
+        record_stage_outcome(scan_uuid, "prep", "timeout")
     except OSError as exc:
         # FileNotFoundError (no language layer in the worker image) +
         # PermissionError (workspace mounted noexec) + the wider OSError
@@ -2782,6 +2822,9 @@ def _run_prep(
             scan_id=str(scan_uuid),
             cmd=cmd[0],
             error=str(exc),
+        )
+        record_stage_outcome(
+            scan_uuid, "prep", "not_installed" if isinstance(exc, FileNotFoundError) else "failed"
         )
 
 
@@ -4300,6 +4343,7 @@ def _run_scanoss_stage(
         )
     except Exception as exc:  # noqa: BLE001 — the stage must never fail the scan
         log.warning("scanoss_stage_skipped", error=str(exc)[:300])
+        record_stage_outcome(scan_uuid, "scanoss")
         return
 
     if result.result_path is not None:
@@ -4330,6 +4374,7 @@ def _run_scanoss_stage(
             error=str(exc)[:300],
             matches=len(result.vendored),
         )
+        record_stage_outcome(scan_uuid, "scanoss")
 
 
 # Provenance marker recorded in ``scan_components.raw_data`` (the table has no
