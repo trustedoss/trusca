@@ -275,7 +275,7 @@ them.
 | Go toolchain | 1.25.12 | BSD-3-Clause |
 | Node.js | 20.18.1 | MIT |
 | npm | 11.18.0 | Artistic-2.0 |
-| Gradle | 8.14.3 | Apache-2.0 |
+| Gradle | 8.14.5 | Apache-2.0 |
 | Apache Maven | Debian `maven` (3.8.x) | Apache-2.0 |
 | Composer | Debian `composer` | MIT |
 | PHP CLI | Debian `php-cli` (8.2) | PHP-3.01 |

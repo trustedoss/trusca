@@ -585,7 +585,7 @@ RUN apt-get update \
     && rm -rf /var/lib/apt/lists/* \
     && cargo --version
 
-# ---- Gradle 8.14.3 (Apache-2.0). -------------------------------------------
+# ---- Gradle 8.14.5 (Apache-2.0). -------------------------------------------
 # Debian's gradle is 4.4.x — too old for any modern Java project. Install
 # the upstream zip into /opt/gradle-${GRADLE_VERSION} and symlink the
 # launcher onto PATH. SHA-256 pinned as a build-time constant (the same
@@ -601,9 +601,12 @@ RUN apt-get update \
 # can fail on older lockfiles. cdxgen calls `gradle dependencies` only as
 # an ENUMERATION command, so 8.x covers every modern build (Gradle 8 line
 # released through 2026 still receives security patches).
-# Hash from https://services.gradle.org/distributions/gradle-8.14.3-bin.zip.sha256
-ENV GRADLE_VERSION=8.14.3 \
-    GRADLE_SHA256=bd71102213493060956ec229d946beee57158dbd89d0e62b91bca0fa2c5f3531 \
+# 8.14.3 → 8.14.5: 8.14.3 bundled bcprov 1.78.1 and jackson 2.16.1, which
+# the image scan flagged; 8.14.5 bundles bcprov 1.84 and jackson 2.18.6 and
+# is clean.
+# Hash from https://services.gradle.org/distributions/gradle-8.14.5-bin.zip.sha256
+ENV GRADLE_VERSION=8.14.5 \
+    GRADLE_SHA256=6f74b601422d6d6fc4e1f9a1ab6522f642c2fdcbc15ae33ebd30ba3d7198e854 \
     GRADLE_HOME=/opt/gradle
 RUN set -eux; \
     curl -fsSL -o /tmp/gradle.zip \
