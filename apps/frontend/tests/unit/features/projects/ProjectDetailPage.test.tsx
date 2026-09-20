@@ -154,6 +154,8 @@ function overview(
     last_scan_at: null,
     last_succeeded_scan_at: null,
     component_outcome: "components_found" as const,
+    license_lookup_gap: null,
+    scancode_skipped_reason: null,
     current_user_role: "developer",
     has_git_credential: false,
     ...overrides,
