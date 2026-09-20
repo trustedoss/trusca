@@ -168,6 +168,18 @@
       "empty_sbom_manifests_title": "This scan found no components, but the source declares dependencies",
       "empty_sbom_manifests_body": "The scan succeeded and produced nothing even though the source carries dependency manifests. That points at a failure during the scan rather than an empty project. Open the scan log to see which stage came up empty, then re-run it."
     },
+    "scan_gaps": {
+      "license_lookup_title": "License lookups were skipped",
+      "license_lookup_body_budget_exhausted": "The scan used up its time budget for looking up licenses. Components not looked up: {{count}}. They show as license unknown, so license conflicts and obligations may be understated. A later scan fills them in.",
+      "license_lookup_body_breaker_open": "The license registry stopped answering during the scan, so lookups were paused. Components not looked up: {{count}}. They show as license unknown, so license conflicts and obligations may be understated. A later scan fills them in.",
+      "license_lookup_body_both": "The scan used up its time budget and the license registry stopped answering. Components not looked up: {{count}}. They show as license unknown, so license conflicts and obligations may be understated. A later scan fills them in.",
+      "scancode_title": "License detection in your source files did not run",
+      "scancode_reason_not_installed": "The scanner (scancode) is not installed on the worker.",
+      "scancode_reason_failed": "The scanner exited with an error.",
+      "scancode_reason_timeout": "The scanner ran past its time limit.",
+      "scancode_reason_too_large": "The source tree has more files than the scanner limit allows.",
+      "scancode_effect": "Licenses declared by dependencies are still listed, but license headers in the project's own files were not detected, so a copyleft license there would not reach the license gate."
+    },
     "risk_gauge": {
       "aria": "Project risk score: {{score}} of 100"
     },

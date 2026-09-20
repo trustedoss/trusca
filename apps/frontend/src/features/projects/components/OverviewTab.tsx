@@ -245,6 +245,51 @@ export function OverviewTab({
         </Alert>
       ) : null}
 
+      {/* Two records of a scan that finished but did not do all of its work.
+          Both are drawn only when something was skipped: absent means the work
+          was done (or the scan predates the record), and a notice on every
+          scan would teach people to ignore it. */}
+      {data.license_lookup_gap ? (
+        <Alert
+          className="border-status-warning-border bg-status-warning-subtle text-status-warning-foreground md:col-span-2"
+          data-testid="overview-license-lookup-gap"
+          data-reason={data.license_lookup_gap.reason}
+        >
+          <AlertTriangle className="h-4 w-4" aria-hidden />
+          <AlertDescription>
+            <span className="font-semibold">
+              {t("overview.scan_gaps.license_lookup_title")}
+            </span>
+            <span className="mt-1 block">
+              {t(
+                `overview.scan_gaps.license_lookup_body_${data.license_lookup_gap.reason}`,
+                { count: data.license_lookup_gap.not_looked_up },
+              )}
+            </span>
+          </AlertDescription>
+        </Alert>
+      ) : null}
+      {data.scancode_skipped_reason ? (
+        <Alert
+          className="border-status-warning-border bg-status-warning-subtle text-status-warning-foreground md:col-span-2"
+          data-testid="overview-scancode-skipped"
+          data-reason={data.scancode_skipped_reason}
+        >
+          <AlertTriangle className="h-4 w-4" aria-hidden />
+          <AlertDescription>
+            <span className="font-semibold">
+              {t("overview.scan_gaps.scancode_title")}
+            </span>
+            <span className="mt-1 block">
+              {t(
+                `overview.scan_gaps.scancode_reason_${data.scancode_skipped_reason}`,
+              )}{" "}
+              {t("overview.scan_gaps.scancode_effect")}
+            </span>
+          </AlertDescription>
+        </Alert>
+      ) : null}
+
       {/* #26 — known-malicious KPI. First among the attention chips, ahead
           of critical CVEs: a CVE is a defect to schedule a fix for, a
           malicious package is an attack already running inside the build.

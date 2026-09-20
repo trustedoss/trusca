@@ -438,6 +438,11 @@ async def get_project_overview(
     # for a scan predating the capture, which means "no caveat": we never cry
     # wolf on missing data. See ``services.scan_outcome``.
     component_outcome: str | None = None
+    # Two more "is this result complete" records from the same scan: licence
+    # lookups the budget or breaker skipped, and a scancode stage that did not
+    # run. Both stay ``None`` unless something was skipped.
+    license_lookup_gap: tuple[int, str] | None = None
+    scancode_skipped_reason: str | None = None
     recent: list[Scan] = []
 
     # Anchor the current-state aggregation on the resolved snapshot scan: the
@@ -565,6 +570,10 @@ async def get_project_overview(
             # Absent key (scan predates the capture) → leave None (no caveat).
             if recorded_outcome in scan_outcome.COMPONENT_OUTCOME_VALUES:
                 component_outcome = str(recorded_outcome)
+            license_lookup_gap = scan_outcome.license_lookup_gap(succeeded_row.scan_metadata)
+            scancode_skipped_reason = scan_outcome.scancode_skip_reason(
+                succeeded_row.scan_metadata
+            )
 
         severity_distribution, license_distribution, total_components = distributions
 
@@ -614,6 +623,12 @@ async def get_project_overview(
         "last_scan_at": last_scan_at,
         "last_succeeded_scan_at": last_succeeded_scan_at,
         "component_outcome": component_outcome,
+        "license_lookup_gap": (
+            {"not_looked_up": license_lookup_gap[0], "reason": license_lookup_gap[1]}
+            if license_lookup_gap is not None
+            else None
+        ),
+        "scancode_skipped_reason": scancode_skipped_reason,
         # Feature #18 Part B — read-only "credential configured?" flag. Never the
         # plaintext / ciphertext, only the boolean derived from the model property.
         "has_git_credential": project.has_git_credential,

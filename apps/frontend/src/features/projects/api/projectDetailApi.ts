@@ -117,6 +117,25 @@ export interface ProjectOverviewResponse {
     | "empty_with_manifests"
     | null;
   /**
+   * Licence lookups the scan skipped (time budget spent or registry breaker
+   * open). Those components stay licence-unknown. `null` when none were
+   * skipped, or for a scan predating the record.
+   */
+  license_lookup_gap: {
+    not_looked_up: number;
+    reason: "budget_exhausted" | "breaker_open" | "both";
+  } | null;
+  /**
+   * Why first-party licence detection (scancode) did not run. `null` when it
+   * ran, was turned off on purpose, or the scan predates the record.
+   */
+  scancode_skipped_reason:
+    | "not_installed"
+    | "failed"
+    | "timeout"
+    | "too_large"
+    | null;
+  /**
    * The requesting user's effective role within this project's owning team.
    * Used (not the global JWT role) to gate team-scoped actions such as
    * vulnerability suppression (BUG-005).

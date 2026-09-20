@@ -66,6 +66,18 @@ TeamScopedRole = Literal["super_admin", "group_admin", "developer", "viewer"]
 # ---------------------------------------------------------------------------
 
 
+class LicenseLookupGap(BaseModel):
+    """Licence lookups a scan did not make, and why."""
+
+    not_looked_up: int = Field(ge=1, description="Components whose licence was not looked up.")
+    reason: Literal["budget_exhausted", "breaker_open", "both"] = Field(
+        description=(
+            "`budget_exhausted`: the per-scan time budget ran out. `breaker_open`: "
+            "the registry circuit breaker was open. `both`: each applied."
+        ),
+    )
+
+
 class ScanSummary(BaseModel):
     """Compact scan record used by the project overview's recent-scans list."""
 
@@ -250,6 +262,26 @@ class ProjectOverviewResponse(BaseModel):
             "direct dependencies and drops the transitive ones, is a populated "
             "SBOM and is deliberately NOT one of these values."
         ),
+    )
+    license_lookup_gap: LicenseLookupGap | None = Field(
+        default=None,
+        description=(
+            "Licence lookups the anchored scan skipped (time budget spent or "
+            "registry circuit breaker open). Those components stay licence-unknown, "
+            "so licence conflicts and obligations are understated for them. `null` "
+            "when every lookup was made, or for a scan predating the record."
+        ),
+    )
+    scancode_skipped_reason: Literal["not_installed", "failed", "timeout", "too_large"] | None = (
+        Field(
+            default=None,
+            description=(
+                "Why first-party licence detection (scancode) did not run on the "
+                "anchored scan, so licences in the project's own source files are "
+                "absent from the result. `null` when it ran, was turned off on "
+                "purpose, or the scan predates the record."
+            ),
+        )
     )
     has_git_credential: bool = Field(
         default=False,

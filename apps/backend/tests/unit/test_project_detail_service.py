@@ -337,6 +337,75 @@ async def test_overview_component_outcome_from_scan_metadata(
     assert overview["component_outcome"] == expected
 
 
+@pytest.mark.parametrize(
+    ("metadata", "gap", "scancode"),
+    [
+        ({}, None, None),
+        (
+            {
+                "license_enrichment": {
+                    "not_looked_up": 12,
+                    "not_looked_up_reason": "budget_exhausted",
+                }
+            },
+            {"not_looked_up": 12, "reason": "budget_exhausted"},
+            None,
+        ),
+        (
+            {"license_enrichment": {"not_looked_up": 3, "not_looked_up_reason": "both"}},
+            {"not_looked_up": 3, "reason": "both"},
+            None,
+        ),
+        # A zero count, a reason we do not publish, or a non-record are not drawn.
+        # Zero with a valid reason: only the count check can reject it.
+        (
+            {
+                "license_enrichment": {
+                    "not_looked_up": 0,
+                    "not_looked_up_reason": "budget_exhausted",
+                }
+            },
+            None,
+            None,
+        ),
+        ({"license_enrichment": {"not_looked_up": 2, "not_looked_up_reason": "other"}}, None, None),
+        ({"license_enrichment": "garbage"}, None, None),
+        ({"scancode_skipped": "failed"}, None, "failed"),
+        ({"scancode_skipped": "timeout"}, None, "timeout"),
+        ({"scancode_skipped": "something_else"}, None, None),
+        (
+            {
+                "license_enrichment": {"not_looked_up": 5, "not_looked_up_reason": "breaker_open"},
+                "scancode_skipped": "too_large",
+            },
+            {"not_looked_up": 5, "reason": "breaker_open"},
+            "too_large",
+        ),
+    ],
+)
+async def test_overview_surfaces_skipped_licence_lookups_and_scancode(
+    db_session: AsyncSession,
+    metadata: dict[str, object],
+    gap: dict[str, object] | None,
+    scancode: str | None,
+) -> None:
+    from services.project_detail_service import get_project_overview
+
+    org = await make_organization(db_session)
+    team = await make_team(db_session, organization=org)
+    user = await make_user(db_session)
+    await make_membership(db_session, user=user, team=team, role="developer")
+    project = await make_project(db_session, team=team)
+    scan = await make_scan(db_session, project=project, status="succeeded")
+    scan.scan_metadata = metadata
+    await db_session.commit()
+
+    actor = principal_for(user, team_ids=[team.id], role="developer")
+    overview = await get_project_overview(db_session, project_id=project.id, actor=actor)
+    assert overview["license_lookup_gap"] == gap
+    assert overview["scancode_skipped_reason"] == scancode
+
+
 async def test_overview_aggregates_severity_and_license_distributions(
     db_session: AsyncSession,
 ) -> None:

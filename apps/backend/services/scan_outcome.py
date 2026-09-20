@@ -62,6 +62,15 @@ METADATA_KEY: Final = "component_outcome"
 #: complete", for a different part of the result.
 LICENSE_ENRICHMENT_KEY: Final = "license_enrichment"
 
+#: Where a scan records that first-party licence detection (scancode) did not
+#: run for a reason the operator did not choose. Absent when the stage ran, and
+#: also absent when it was turned off on purpose (``SCANCODE_ENABLED=false``).
+SCANCODE_SKIP_KEY: Final = "scancode_skipped"
+
+SCANCODE_SKIP_REASONS: Final = ("not_installed", "failed", "timeout", "too_large")
+
+LICENSE_LOOKUP_REASONS: Final = ("budget_exhausted", "breaker_open", "both")
+
 COMPONENT_OUTCOME_VALUES: Final = (
     COMPONENTS_FOUND,
     EMPTY_NO_MANIFESTS,
@@ -101,6 +110,37 @@ def classify_component_outcome(
     return EMPTY_NO_MANIFESTS
 
 
+def scancode_skip_reason(metadata: dict[str, Any] | None) -> str | None:
+    """The recorded reason scancode was skipped, or ``None`` when it was not.
+
+    An unrecognised stored value reads as ``None``: the notice is only drawn
+    for a reason we can describe.
+    """
+    reason = (metadata or {}).get(SCANCODE_SKIP_KEY)
+    return reason if reason in SCANCODE_SKIP_REASONS else None
+
+
+def license_lookup_gap(metadata: dict[str, Any] | None) -> tuple[int, str] | None:
+    """``(not_looked_up, reason)`` from the licence enrichment record, or ``None``.
+
+    ``None`` when the record is absent (every lookup was made) or malformed.
+    A zero count is also ``None``: nothing was skipped, so nothing to show.
+    """
+    record = (metadata or {}).get(LICENSE_ENRICHMENT_KEY)
+    if not isinstance(record, dict):
+        return None
+    skipped = record.get("not_looked_up")
+    reason = record.get("not_looked_up_reason")
+    if (
+        not isinstance(skipped, int)
+        or isinstance(skipped, bool)
+        or skipped <= 0
+        or reason not in LICENSE_LOOKUP_REASONS
+    ):
+        return None
+    return skipped, str(reason)
+
+
 def is_empty(outcome: str | None) -> bool:
     """True when the outcome says the scan produced no components."""
     return outcome in (EMPTY_NO_MANIFESTS, EMPTY_WITH_MANIFESTS)
@@ -112,8 +152,13 @@ __all__ = [
     "EMPTY_NO_MANIFESTS",
     "EMPTY_WITH_MANIFESTS",
     "LICENSE_ENRICHMENT_KEY",
+    "LICENSE_LOOKUP_REASONS",
     "METADATA_KEY",
+    "SCANCODE_SKIP_KEY",
+    "SCANCODE_SKIP_REASONS",
     "classify_component_outcome",
     "is_empty",
+    "license_lookup_gap",
     "manifest_count",
+    "scancode_skip_reason",
 ]
