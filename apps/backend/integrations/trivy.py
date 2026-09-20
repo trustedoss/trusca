@@ -226,6 +226,11 @@ def run_trivy_image(
         # secret scanning land in Phase 4.
         "--scanners",
         "vuln",
+        # Emit every installed package (with its declared licenses, PURL and
+        # DependsOn), not only the ones that carry a CVE. Without this the
+        # report is a list of vulnerable packages and the image has no
+        # inventory to export or to run obligations against.
+        "--list-all-pkgs",
     ]
     # Scan-log verbosity (feat/scan-log-verbosity): the report goes to
     # ``--output <file>`` regardless, so Trivy's stdout/stderr carry ONLY

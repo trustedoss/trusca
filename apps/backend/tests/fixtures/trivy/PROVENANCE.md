@@ -38,6 +38,15 @@ fix released.
 `rockylinux:9-minimal`, recorded 2026-08-10. Eighteen vulnerabilities, all with
 `DataSource` naming Rocky Linux updateinfo.
 
+### `node-22-bookworm-slim-list-all-pkgs-report.json`
+
+`node:22-bookworm-slim` from a local image tarball, recorded 2026-09-20 with
+Trivy 0.71.2, `trivy image --scanners vuln --list-all-pkgs --format json`. This
+is the only image report here captured with `--list-all-pkgs`: the three above
+list vulnerable packages only. It carries 286 packages (88 Debian, 198 npm) and
+240 vulnerability rows, with `Licenses` on 282 of the packages, and a
+`DependsOn` list per package.
+
 ## SBOM scan
 
 ### `centos7-rpm-sbom-report.json`
