@@ -93,9 +93,9 @@
 CVE-2026-21452 exp:2027-01-30
 
 # ============================================================================
-# Gradle 8.14.3 distribution jars (opt/gradle/lib/**).
+# Gradle 8.14.5 distribution jars (opt/gradle/lib/**).
 #
-# The worker pins Gradle 8.14.3 (Dockerfile.worker GRADLE_VERSION) solely to
+# The worker pins Gradle 8.14.5 (Dockerfile.worker GRADLE_VERSION) solely to
 # run `gradle dependencies` for cdxgen's dependency ENUMERATION
 # (build_prep_source.sh invokes no other task; when the scanned repo ships an
 # executable ./gradlew, the repo's OWN distribution runs and these pinned
@@ -113,8 +113,8 @@ CVE-2026-21452 exp:2027-01-30
 # not the jar version, is the containment.
 # ============================================================================
 
-# CVE-2026-54512 — com.fasterxml.jackson.core:jackson-databind 2.16.1 → 2.18.8
-# Target: opt/gradle/lib/jackson-databind-2.16.1.jar
+# CVE-2026-54512 — com.fasterxml.jackson.core:jackson-databind 2.18.6 → 2.18.8
+# Target: opt/gradle/lib/jackson-databind-2.18.6.jar
 # CVSS: HIGH (arbitrary code execution via polymorphic deserialisation).
 # Reach: the gadget class requires an application that enables default
 #   typing / polymorphic deserialisation on an attacker-controlled JSON
@@ -126,8 +126,8 @@ CVE-2026-21452 exp:2027-01-30
 # Re-evaluate: 2026-11-09 or on next Gradle distribution bump.
 CVE-2026-54512 exp:2027-01-30
 
-# CVE-2026-54513 — com.fasterxml.jackson.core:jackson-databind 2.16.1 → 2.18.8
-# Target: opt/gradle/lib/jackson-databind-2.16.1.jar
+# CVE-2026-54513 — com.fasterxml.jackson.core:jackson-databind 2.18.6 → 2.18.8
+# Target: opt/gradle/lib/jackson-databind-2.18.6.jar
 # CVSS: HIGH (security bypass in deserialisation gadget block-list).
 # Reach: same surface and same no-delta argument as CVE-2026-54512 above —
 #   the bypass only matters for applications that expose jackson
@@ -137,24 +137,8 @@ CVE-2026-54512 exp:2027-01-30
 # Re-evaluate: 2026-11-09 or on next Gradle distribution bump.
 CVE-2026-54513 exp:2027-01-30
 
-# CVE-2025-14813 — org.bouncycastle:bcprov-jdk18on 1.78.1 → 1.80.2
-# Target: opt/gradle/lib/plugins/bcprov-jdk18on-1.78.1.jar
-# CVSS: CRITICAL (GOST-CTR cipher nonce handling defect).
-# Reach: exploiting a GOST block-cipher CTR defect requires the process to
-#   PERFORM GOST encryption with attacker-influenced parameters and a
-#   victim that relies on the resulting ciphertext. A scanned repo CAN
-#   cause BC to load (shipping gradle/verification-metadata.xml
-#   auto-enables dependency verification), but that path performs PGP
-#   signature verification — asymmetric signature + hash operations, not
-#   GOST-CTR symmetric encryption — and the worker consumes no BC
-#   ciphertext anywhere. The only way to reach GOST-CTR is a build script
-#   calling BC directly, which is code the attacker already runs — no
-#   delta (see section header). UNREACHED / NO-DELTA.
-# Re-evaluate: 2026-11-09 or on next Gradle distribution bump.
-CVE-2025-14813 exp:2027-01-30
-
-# CVE-2026-8763 - org.bouncycastle:bcprov-jdk18on 1.78.1 -> 1.85
-# Target: opt/gradle/lib/plugins/bcprov-jdk18on-1.78.1.jar (GHSA-9pwp-9qqc-pr26)
+# CVE-2026-8763 - org.bouncycastle:bcprov-jdk18on 1.84 -> 1.85
+# Target: opt/gradle/lib/plugins/bcprov-jdk18on-1.84.jar (GHSA-9pwp-9qqc-pr26)
 # CVSS: CRITICAL (X.509 Name Constraints bypass via a trailing dot in an
 #   rfc822Name or URI name).
 # Reach: the flaw is in X.509 certificate path validation. One documented
@@ -172,8 +156,8 @@ CVE-2025-14813 exp:2027-01-30
 #   release ships bcprov >= 1.85, delete this entry.
 CVE-2026-8763 exp:2027-01-30
 
-# CVE-2026-13506 - org.bouncycastle:bcprov-jdk18on 1.78.1 -> 1.85
-# Target: opt/gradle/lib/plugins/bcprov-jdk18on-1.78.1.jar (GHSA-qp49-qgx5-5m26)
+# CVE-2026-13506 - org.bouncycastle:bcprov-jdk18on 1.84 -> 1.85
+# Target: opt/gradle/lib/plugins/bcprov-jdk18on-1.84.jar (GHSA-qp49-qgx5-5m26)
 # CVSS: HIGH (lazy ASN.1 sequence forcing resets the nesting-depth guard, so
 #   crafted deeply nested ASN.1 can exhaust the stack: denial of service).
 # Reach: needs BC to parse attacker-supplied ASN.1. Signature verification
@@ -713,10 +697,10 @@ CVE-2026-50525 exp:2027-01-30
 CVE-2026-50527 exp:2027-01-30
 CVE-2026-50648 exp:2027-01-30
 
-# GHSA-r7wm-3cxj-wff9 — jackson-core 2.16.1 async-parser maxNumberLength
+# GHSA-r7wm-3cxj-wff9 — jackson-core 2.18.6 async-parser maxNumberLength
 #   bypass — HIGH
-# Target: opt/gradle/lib/jackson-core-2.16.1.jar ONLY — the jar Gradle
-#   8.14.3 bundles for its OWN internal metadata handling. Gradle 8.14.3 is
+# Target: opt/gradle/lib/jackson-core-2.18.6.jar ONLY — the jar Gradle
+#   8.14.5 bundles for its OWN internal metadata handling. Gradle 8.14.5 is
 #   the pinned toolchain release (Dockerfile.worker); no shipped Gradle
 #   bundles a fixed jackson-core (2.18.8+) yet, and we do not unpack or
 #   repack Gradle's lib dir.
