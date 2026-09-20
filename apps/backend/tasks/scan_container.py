@@ -19,12 +19,13 @@ Idempotency rules match :mod:`tasks.scan_source` — see that module's docstring
 
 from __future__ import annotations
 
+import re
 import shutil
 import time
 import uuid
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import Any
+from typing import Any, NamedTuple
 
 import structlog
 from celery.exceptions import SoftTimeLimitExceeded
@@ -41,6 +42,7 @@ from integrations import trivy as trivy_adapter
 from integrations._size_guard import enforce_jsonb_row_size_limit
 from models import (
     Component,
+    ComponentDependencyEdge,
     ComponentVersion,
     LicenseFinding,
     Project,
@@ -67,6 +69,7 @@ from services.vulnerability_matching import (
 from tasks._progress import make_line_callback, publish_progress
 from tasks._registry_auth import registry_auth_dir, sweep_stale_auth_dirs
 from tasks.celery_app import celery_app
+from tasks.scan_source import _extract_spdx_ids, _get_or_create_license
 
 log = structlog.get_logger("tasks.scan_container")
 
@@ -83,6 +86,9 @@ _STAGE_PROGRESS: dict[str, int] = {
 # attacker-influenced; a real OS family/version is a few chars, so these caps
 # keep the write far under the API's 16 KiB scan_metadata invariant regardless
 # of image contents (worker-side writes bypass the inbound validator).
+# A Trivy license that is one SPDX-style token (``MIT``, ``GPL-2.0-only``).
+_SINGLE_LICENSE_TOKEN = re.compile(r"[A-Za-z0-9][A-Za-z0-9.+_\-]*")
+
 _OS_FAMILY_MAX = 64
 _OS_NAME_MAX = 128
 
@@ -300,6 +306,9 @@ def _resolve_image_ref(metadata: dict[str, Any]) -> str:
 def _reset_for_rerun(session: Session, scan: Scan) -> None:
     session.execute(delete(VulnerabilityFinding).where(VulnerabilityFinding.scan_id == scan.id))
     session.execute(delete(LicenseFinding).where(LicenseFinding.scan_id == scan.id))
+    session.execute(
+        delete(ComponentDependencyEdge).where(ComponentDependencyEdge.scan_id == scan.id)
+    )
     session.execute(delete(ScanComponent).where(ScanComponent.scan_id == scan.id))
     session.execute(delete(ScanArtifact).where(ScanArtifact.scan_id == scan.id))
 
@@ -531,6 +540,10 @@ def _persist_trivy_report(
             session.add(finding)
             created_findings.append(finding)
 
+    inventory = _persist_package_inventory(
+        session, scan_uuid=scan_uuid, results=results, seen_components=seen_components
+    )
+
     # M-6: per-finding create audit rows (same transaction as the findings).
     emitted = emit_finding_create_audits(
         session, scan_uuid=scan_uuid, findings=created_findings
@@ -548,7 +561,156 @@ def _persist_trivy_report(
         inserted=len(created_findings),
         catalog_races=catalog_races,
         audits_emitted=emitted,
+        inventory_components=inventory.components,
+        inventory_license_findings=inventory.license_findings,
+        inventory_edges=inventory.edges,
     )
+
+
+class _InventoryCounts(NamedTuple):
+    components: int
+    license_findings: int
+    edges: int
+
+
+def _license_ids(pkg: dict[str, Any]) -> list[str]:
+    """Trivy's ``Licenses`` strings as separate ids, one per license.
+
+    Not joined with ``OR`` the way the source pipeline joins a cdxgen list. A
+    Debian package lists every license found in its copyright file, which is
+    routinely a dozen entries; the joined string overflows the 64-character
+    ``licenses.spdx_id`` column and ``_extract_spdx_ids`` then drops all of it
+    (51 of 282 licensed packages in the recorded image), and those are the
+    packages with the most copyleft. Separate findings keep each license, and a
+    forbidden one among them still shows.
+
+    A single-token id is kept as declared; anything else goes through the alias
+    table and is dropped when it is not recognised.
+    """
+    raw = pkg.get("Licenses")
+    if not isinstance(raw, list):
+        return []
+    ids: list[str] = []
+    for value in raw:
+        if not isinstance(value, str) or not value.strip():
+            continue
+        text = value.strip()
+        key = "id" if _SINGLE_LICENSE_TOKEN.fullmatch(text) else "name"
+        for spdx_id, _url in _extract_spdx_ids({"licenses": [{"license": {key: text}}]}):
+            if spdx_id not in ids:
+                ids.append(spdx_id)
+    return ids
+
+
+def _persist_package_inventory(
+    session: Session,
+    *,
+    scan_uuid: uuid.UUID,
+    results: list[Any],
+    seen_components: set[tuple[uuid.UUID, str]],
+) -> _InventoryCounts:
+    """Store every package Trivy listed, not only the vulnerable ones (U3-F).
+
+    Runs after the finding loop, so a package that carries a CVE already has
+    its ScanComponent (``seen_components``) and gets no second row; the rest get one,
+    their declared licenses, and the ``DependsOn`` edges between them. Licenses
+    are stored for every package, vulnerable or not.
+    """
+    components = license_findings = 0
+    licensed: set[uuid.UUID] = set()
+    # (target, Trivy package ID) -> component version, for the edge pass.
+    by_package_id: dict[tuple[str, str], uuid.UUID] = {}
+    package_lists: list[tuple[str, dict[str, Any], list[dict[str, Any]]]] = []
+    for result in results:
+        if not isinstance(result, dict):
+            continue
+        target = result.get("Target", "")
+        packages = [p for p in result.get("Packages", []) or [] if isinstance(p, dict)]
+        package_lists.append((target, result, packages))
+        for pkg in packages:
+            pkg_name = pkg.get("Name")
+            installed = pkg.get("Version")
+            if not pkg_name or not installed:
+                continue
+            identity = _component_identity(
+                {"PkgIdentifier": pkg.get("Identifier")},
+                ecosystem=result.get("Type"),
+                pkg_name=pkg_name,
+                installed=installed,
+            )
+            if identity is None:
+                continue
+            purl, component_purl, package_type = identity
+            component = _get_or_create_component(
+                session, purl=component_purl, name=pkg_name, package_type=package_type
+            )
+            cv = _get_or_create_component_version(
+                session, component=component, version=installed, purl_with_version=purl
+            )
+            if isinstance(pkg.get("ID"), str):
+                by_package_id[(target, pkg["ID"])] = cv.id
+            key = (cv.id, target)
+            if key not in seen_components:
+                seen_components.add(key)
+                session.add(
+                    ScanComponent(
+                        scan_id=scan_uuid,
+                        component_version_id=cv.id,
+                        dependency_scope="runtime",
+                        dependency_path=target,
+                        direct=True,
+                        raw_data=enforce_jsonb_row_size_limit(
+                            {k: v for k, v in pkg.items() if k != "DependsOn"},
+                            context={
+                                "scan_id": str(scan_uuid),
+                                "column": "scan_components.raw_data",
+                                "target": target,
+                            },
+                        ),
+                    )
+                )
+                components += 1
+            # Licenses are per component version, and a vulnerable package
+            # already has its row from the finding loop but no license yet.
+            if cv.id in licensed:
+                continue
+            licensed.add(cv.id)
+            for spdx_id in _license_ids(pkg):
+                license_row = _get_or_create_license(session, spdx_id=spdx_id, reference_url=None)
+                session.add(
+                    LicenseFinding(
+                        scan_id=scan_uuid,
+                        component_version_id=cv.id,
+                        license_id=license_row.id,
+                        kind="declared",
+                        source_path=None,
+                        raw_data={"source": "trivy"},
+                    )
+                )
+                license_findings += 1
+
+    edges = 0
+    seen_edges: set[tuple[uuid.UUID, uuid.UUID]] = set()
+    for target, _result, packages in package_lists:
+        for pkg in packages:
+            parent = by_package_id.get((target, pkg.get("ID", "")))
+            depends_on = pkg.get("DependsOn")
+            if parent is None or not isinstance(depends_on, list):
+                continue
+            for child_id in depends_on:
+                child = by_package_id.get((target, child_id)) if isinstance(child_id, str) else None
+                if child is None or child == parent or (parent, child) in seen_edges:
+                    continue
+                seen_edges.add((parent, child))
+                session.add(
+                    ComponentDependencyEdge(
+                        scan_id=scan_uuid,
+                        parent_component_version_id=parent,
+                        child_component_version_id=child,
+                    )
+                )
+                edges += 1
+    return _InventoryCounts(components, license_findings, edges)
 
 
 def extract_os_metadata(report: dict[str, Any]) -> dict[str, Any] | None:

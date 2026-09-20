@@ -626,6 +626,13 @@ def _namespace_image_report(report: dict[str, Any], suffix: str) -> dict[str, An
             )
             vuln["PkgName"] = f"{name}-{suffix}"
             vuln["VulnerabilityID"] = f"{vuln['VulnerabilityID']}-{suffix}"
+        # The package list names the same packages, so it takes the same suffix.
+        for pkg in result.get("Packages") or []:
+            name = pkg["Name"]
+            pkg["Identifier"]["PURL"] = pkg["Identifier"]["PURL"].replace(
+                f"/{name}@", f"/{name}-{suffix}@"
+            )
+            pkg["Name"] = f"{name}-{suffix}"
     return report
 
 
@@ -709,5 +716,8 @@ def test_a_catalog_race_does_not_fail_a_container_scan(
         verify.close()
 
     assert stored == CONTAINER_TOTAL_FINDINGS
-    assert components == 5, "one ScanComponent per package, not per CVE (H-1)"
+    # 15 packages in the report, 5 of them vulnerable (10 CVEs among them): one
+    # ScanComponent per package, not per CVE (H-1), and not only the vulnerable
+    # packages (U3-F).
+    assert components == 15
     assert audit_targets == finding_ids

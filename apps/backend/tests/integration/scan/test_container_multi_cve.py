@@ -201,7 +201,14 @@ def test_real_alpine_report_persists_without_unique_violation(
         .where(VulnerabilityFinding.scan_id == scan_id)
     ).scalar_one()
 
-    assert component_count == len(expected_components)
+    # U3-F: every listed package is a component, vulnerable or not.
+    listed = {
+        (pkg["Name"], pkg["Version"])
+        for result in report.get("Results", [])
+        for pkg in result.get("Packages") or []
+    }
+    assert listed >= expected_components
+    assert component_count == len(listed)
     assert finding_count == expected_findings
 
 

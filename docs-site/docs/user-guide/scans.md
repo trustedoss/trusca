@@ -19,7 +19,7 @@ Engineers with `developer` or higher on the project's team. Triggering scans aga
 | Kind | Pipeline | What it detects |
 |---|---|---|
 | **`source`** | `cdxgen` (CycloneDX generator) → scancode (first-party license detection) → Trivy (`trivy sbom`) | Components and their **declared** licenses (from dependency metadata) plus **detected** licenses (scancode reading your own first-party source), and CVEs (Common Vulnerabilities and Exposures) matched by the local Trivy DB against NVD + OSV + GHSA + EPSS + KEV. |
-| **`container`** | Trivy (Aqua Security container scanner) | OS-package vulnerabilities and (limited) language-package CVEs in a container image. |
+| **`container`** | Trivy (Aqua Security container scanner) | The full package inventory of a container image with declared licenses, plus OS-package vulnerabilities and (limited) language-package CVEs. |
 | **`sbom`** | conformance scoring → component persistence → Trivy (`trivy sbom`) | An SBOM your own tooling already produced (CycloneDX-JSON or SPDX). TRUSCA does not clone or build your source — it scores the SBOM's quality, persists its components, and matches CVEs. See [SBOM upload](#received-sboms-uploaded) below. |
 
 **Source** and **Container** are selectable from the UI scan dialog — pick one when you trigger a scan (see [Trigger a scan → From the UI](#from-the-ui)). An **`sbom`** scan is created differently: you upload an existing SBOM to the ingest endpoint rather than picking it in the dialog (see [SBOM upload](#received-sboms-uploaded)). The API accepts all three kinds.
@@ -63,6 +63,8 @@ roadmap.
 ### Scan a container image
 
 Pick **Container** in the scan dialog to scan a built image instead of source. Trivy (the Aqua Security container scanner) inspects the image's **OS packages** for known vulnerabilities — complementary to a source scan, which covers your application's dependency tree.
+
+The scan stores every package Trivy lists in the image, not only the ones with a CVE. Each package appears as a component with its declared licenses (one finding per license) and the dependency links between packages, so the project's SBOM export and license views cover the whole image. A package that lists many licenses keeps all of them. Scans recorded before this change hold only the vulnerable packages; scan the image again to get the full inventory.
 
 1. Open the scan dialog from the project row's **Scan** button.
 2. At the top of the dialog, select **Container**.

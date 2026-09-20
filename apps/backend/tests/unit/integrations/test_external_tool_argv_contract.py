@@ -345,7 +345,16 @@ _CASES: list[ArgvCase] = [
         key="trivy_image",
         invoke=_invoke_trivy_image,
         required=frozenset(
-            {"trivy", "image", "--format", "json", "--output", "--scanners", "vuln"}
+            {
+                "trivy",
+                "image",
+                "--format",
+                "json",
+                "--output",
+                "--scanners",
+                "vuln",
+                "--list-all-pkgs",
+            }
         ),
         # --skip-db-update: only added in offline mode
         # (TRIVY_DB_BOOTSTRAP_ON_START=false); the base case here is the
