@@ -594,3 +594,55 @@ def test_consensus_is_stable_across_runs() -> None:
 
     runs = [{vc.purl: vc.version for vc in _parse_vendored(_RECORDED)} for _ in range(5)]
     assert all(r == runs[0] for r in runs)
+
+
+# ---------------------------------------------------------------------------
+# Alternative identities (U3-J). The recorded response lists several purls per
+# match; the component keeps the first as its own and the rest as evidence that
+# a package manager's row for the same library is the same library.
+# ---------------------------------------------------------------------------
+
+
+def test_recorded_alternatives_are_kept_beside_the_first_purl() -> None:
+    cjson = _recorded_by_purl()["pkg:github/davegamble/cjson"]
+    assert "pkg:conan/cjson" in cjson.alternative_purls
+    assert "pkg:apk/cjson" in cjson.alternative_purls
+    # The component's own purl is not repeated among its alternatives.
+    assert cjson.purl not in cjson.alternative_purls
+
+
+def test_alternatives_are_the_union_across_every_file_of_the_component() -> None:
+    """cJSON.c and cJSON.h answer with the same list; a file that lists one more
+    identity adds it rather than replacing the others."""
+    from integrations.scanoss import VendoredComponent, _consense
+
+    a = VendoredComponent("pkg:github/x/y", "y", "1", [], alternative_purls=("pkg:npm/y",))
+    b = VendoredComponent(
+        "pkg:github/x/y", "y", "1", [], alternative_purls=("pkg:npm/y", "pkg:pypi/y")
+    )
+    assert _consense([a, b]).alternative_purls == ("pkg:npm/y", "pkg:pypi/y")
+
+
+def test_alternatives_drop_anything_that_is_not_a_plain_purl() -> None:
+    from integrations.scanoss import (
+        MAX_ALTERNATIVE_PURL_LENGTH,
+        MAX_ALTERNATIVE_PURLS,
+        _alternative_purls,
+    )
+
+    first = "pkg:github/x/y"
+    raw = [
+        first,  # the component's own purl
+        "pkg:npm/y",
+        "pkg:npm/y",  # repeated
+        "https://example.com/y",  # not a purl
+        "pkg:npm/evil\r\ny",  # control characters
+        "pkg:npm/" + "a" * MAX_ALTERNATIVE_PURL_LENGTH,  # over-long
+        42,
+        None,
+        {"purl": "pkg:npm/z"},
+    ]
+    assert _alternative_purls(raw, first=first) == ("pkg:npm/y",)
+    assert _alternative_purls("pkg:npm/y", first=first) == ()
+    many = [f"pkg:npm/p{i}" for i in range(MAX_ALTERNATIVE_PURLS + 5)]
+    assert len(_alternative_purls(many, first=first)) == MAX_ALTERNATIVE_PURLS

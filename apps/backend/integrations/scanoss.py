@@ -119,6 +119,9 @@ COMPONENT_VERSION_MAX_LENGTH = 255
 # pathological response cannot balloon ``scan_components``. Excess is dropped
 # with a WARNING; the scan still succeeds.
 MAX_VENDORED_COMPONENTS = 5000
+# Caps on the alternative identities kept per component (external input).
+MAX_ALTERNATIVE_PURLS = 16
+MAX_ALTERNATIVE_PURL_LENGTH = 512
 
 # Result-size ceiling before ``json.load`` materialises the whole document — an
 # unbounded API response is an OOM vector. 128 MiB is ample for a fingerprint
@@ -146,6 +149,12 @@ class VendoredComponent:
     licenses: list[str]
     matched_files: int = 1
     version_candidates: tuple[str, ...] = ()
+    # The other identities SCANOSS listed for the same library (its ``purl``
+    # field is a list: the GitHub repository, the distro packages, the Go
+    # module). ``purl`` is only the first of them. A package manager that also
+    # found the library names it under one of these, and that agreement is the
+    # evidence that two rows are one library; a shared *name* is not.
+    alternative_purls: tuple[str, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -425,6 +434,12 @@ def _consense(members: list[VendoredComponent]) -> VendoredComponent:
             if name not in licenses:
                 licenses.append(name)
 
+    alternatives: list[str] = []
+    for m in members:
+        for alt in m.alternative_purls:
+            if alt != members[0].purl and alt not in alternatives:
+                alternatives.append(alt)
+
     return VendoredComponent(
         purl=members[0].purl,
         name=members[0].name,
@@ -432,6 +447,7 @@ def _consense(members: list[VendoredComponent]) -> VendoredComponent:
         licenses=licenses,
         matched_files=len(members),
         version_candidates=distinct if len(distinct) > 1 else (),
+        alternative_purls=tuple(alternatives[:MAX_ALTERNATIVE_PURLS]),
     )
 
 
@@ -450,7 +466,38 @@ def _parse_match(match: dict[str, Any]) -> VendoredComponent | None:
     name = (_as_text(match.get("component")) or _name_from_purl(purl))[:COMPONENT_NAME_MAX_LENGTH]
     version = (_as_text(match.get("version")) or "unknown")[:COMPONENT_VERSION_MAX_LENGTH]
     licenses = _parse_licenses(match.get("licenses"))
-    return VendoredComponent(purl=purl, name=name, version=version, licenses=licenses)
+    return VendoredComponent(
+        purl=purl,
+        name=name,
+        version=version,
+        licenses=licenses,
+        alternative_purls=_alternative_purls(match.get("purl"), first=purl),
+    )
+
+
+def _alternative_purls(raw: Any, *, first: str) -> tuple[str, ...]:
+    """Every purl SCANOSS listed besides the one chosen as the component's own.
+
+    Only well-formed ``pkg:`` strings of sane length survive; the list comes
+    from an external API and ends up in comparisons and a JSON column.
+    """
+    if not isinstance(raw, list):
+        return ()
+    out: list[str] = []
+    for item in raw:
+        if not isinstance(item, str):
+            continue
+        candidate = item.strip()
+        if (
+            candidate == first
+            or candidate in out
+            or not candidate.startswith("pkg:")
+            or len(candidate) > MAX_ALTERNATIVE_PURL_LENGTH
+            or any(ord(ch) < 0x20 or ord(ch) == 0x7F for ch in candidate)
+        ):
+            continue
+        out.append(candidate)
+    return tuple(out[:MAX_ALTERNATIVE_PURLS])
 
 
 def _first_purl(raw: Any) -> str:
