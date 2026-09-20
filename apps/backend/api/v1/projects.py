@@ -631,6 +631,8 @@ async def get_project_overview_endpoint(
         last_scan_at=payload["last_scan_at"],
         last_succeeded_scan_at=payload["last_succeeded_scan_at"],
         component_outcome=payload["component_outcome"],
+        license_lookup_gap=payload["license_lookup_gap"],
+        scancode_skipped_reason=payload["scancode_skipped_reason"],
         has_git_credential=payload["has_git_credential"],
         current_user_role=payload["current_user_role"],
     )

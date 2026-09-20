@@ -149,6 +149,36 @@ async def test_overview_happy_path_returns_well_formed_payload(client) -> None:
     assert body["risk_score"] == 0.0
 
 
+async def test_overview_carries_skipped_scan_work_to_the_wire(client) -> None:
+    """The route builds its response by hand, so a field the service returns is
+    only real once it survives that construction."""
+    _, team, user = await _seed_team_with_user(client)
+    project_id, scan_id = await _seed_scanned_project(client, team_id=team.id)
+    headers = _bearer_for(user)
+
+    clean = await client.get(f"/v1/projects/{project_id}/overview", headers=headers)
+    assert clean.json()["license_lookup_gap"] is None
+    assert clean.json()["scancode_skipped_reason"] is None
+
+    from models import Scan
+
+    factory = await _factory(client)
+    async with factory() as session:
+        scan = await session.get(Scan, scan_id)
+        assert scan is not None
+        scan.scan_metadata = {
+            "license_enrichment": {"not_looked_up": 9, "not_looked_up_reason": "both"},
+            "scancode_skipped": "timeout",
+        }
+        await session.commit()
+
+    response = await client.get(f"/v1/projects/{project_id}/overview", headers=headers)
+    assert response.status_code == 200, response.text
+    body = response.json()
+    assert body["license_lookup_gap"] == {"not_looked_up": 9, "reason": "both"}
+    assert body["scancode_skipped_reason"] == "timeout"
+
+
 async def test_overview_exposes_current_user_role_team_admin(client) -> None:
     """The overview payload surfaces the actor's team-scoped role (BUG-005)."""
     _, team, user = await _seed_team_with_user(client, role="group_admin")
