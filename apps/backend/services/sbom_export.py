@@ -104,6 +104,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from core.config import sbom_author
 from models import (
     Component,
+    ComponentDependencyEdge,
     ComponentVersion,
     License,
     LicenseFinding,
@@ -113,6 +114,7 @@ from models import (
     Vulnerability,
     VulnerabilityFinding,
 )
+from services import sbom_completeness
 from services.license_policy_service import get_effective_policy
 from services.policy_gate import (
     CATEGORY_RANK,
@@ -247,6 +249,19 @@ async def _load_scan_by_id(session: AsyncSession, *, scan_id: uuid.UUID) -> Scan
     return result.scalar_one_or_none()
 
 
+async def _load_scan_edges(
+    session: AsyncSession, *, scan_id: uuid.UUID
+) -> list[tuple[uuid.UUID, uuid.UUID]]:
+    """The scan's dependency edges as ``(parent, child)`` component-version ids."""
+    result = await session.execute(
+        select(
+            ComponentDependencyEdge.parent_component_version_id,
+            ComponentDependencyEdge.child_component_version_id,
+        ).where(ComponentDependencyEdge.scan_id == scan_id)
+    )
+    return [(parent, child) for parent, child in result.all()]
+
+
 async def _load_scan_components(
     session: AsyncSession, *, scan_id: uuid.UUID
 ) -> list[dict[str, Any]]:
@@ -259,6 +274,7 @@ async def _load_scan_components(
     stmt = (
         select(
             ScanComponent.id.label("scan_component_id"),
+            ScanComponent.direct.label("direct"),
             ComponentVersion.id.label("component_version_id"),
             ComponentVersion.version.label("version"),
             ComponentVersion.purl_with_version.label("purl"),
@@ -631,6 +647,44 @@ def _cyclonedx_vulnerabilities(vuln_rows: list[dict[str, Any]]) -> list[dict[str
     return out
 
 
+def _cyclonedx_dependencies(
+    project_ref: str,
+    rows: list[dict[str, Any]],
+    edges: list[tuple[uuid.UUID, uuid.UUID]],
+) -> list[dict[str, Any]]:
+    """The ``dependencies`` graph: the project, then every component.
+
+    Every listed component gets an entry, with an empty ``dependsOn`` when it
+    has none, because CycloneDX reads a missing entry as "not stated" and an
+    empty one as "depends on nothing". An edge whose end is not in ``rows`` (a
+    component the export profile removed) is dropped, so no ref dangles.
+    """
+    refs = [str(r["component_version_id"]) for r in rows]
+    known = set(refs)
+    children: dict[str, set[str]] = {ref: set() for ref in refs}
+    for parent, child in edges:
+        p, c = str(parent), str(child)
+        if p in known and c in known and p != c:
+            children[p].add(c)
+    direct = sorted(str(r["component_version_id"]) for r in rows if r.get("direct"))
+    return [{"ref": project_ref, "dependsOn": direct}] + [
+        {"ref": ref, "dependsOn": sorted(children[ref])} for ref in refs
+    ]
+
+
+def _cyclonedx_compositions(
+    project_ref: str,
+    rows: list[dict[str, Any]],
+    completeness: sbom_completeness.Completeness,
+) -> list[dict[str, Any]]:
+    """Completeness statements for the component set and for the graph."""
+    refs = [str(r["component_version_id"]) for r in rows]
+    return [
+        {"aggregate": completeness.assemblies, "assemblies": refs},
+        {"aggregate": completeness.dependencies, "dependencies": [project_ref, *refs]},
+    ]
+
+
 def _build_cyclonedx_doc(
     *,
     project: Project,
@@ -640,6 +694,7 @@ def _build_cyclonedx_doc(
     vuln_rows: list[dict[str, Any]],
     now: datetime,
     profile: _ProfileMarker | None = None,
+    edges: list[tuple[uuid.UUID, uuid.UUID]] | None = None,
 ) -> dict[str, Any]:
     """Build the CycloneDX 1.6 dict (used both for the JSON and XML serializers)."""
     metadata: dict[str, Any] = {
@@ -673,6 +728,22 @@ def _build_cyclonedx_doc(
             {"name": _PROP_PROFILE, "value": profile.profile},
             {"name": _PROP_EXCLUDED, "value": str(profile.excluded_count)},
         ]
+    project_ref = str(metadata["component"]["bom-ref"])
+    graph: dict[str, Any] = {}
+    if scan is not None:
+        graph["dependencies"] = _cyclonedx_dependencies(project_ref, rows, edges or [])
+        if rows:
+            completeness = sbom_completeness.assess(
+                scan_kind=scan.kind,
+                metadata=scan.scan_metadata,
+                component_count=len(rows),
+                edge_count=len(edges or []),
+                excluded_count=profile.excluded_count if profile else 0,
+            )
+            graph["compositions"] = _cyclonedx_compositions(project_ref, rows, completeness)
+            properties.append(
+                {"name": sbom_completeness.BASIS_PROPERTY, "value": completeness.basis}
+            )
     metadata["properties"] = properties
     return {
         "bomFormat": "CycloneDX",
@@ -686,6 +757,9 @@ def _build_cyclonedx_doc(
         "components": _cyclonedx_components(
             rows, licenses_by_cv, profile.annotations if profile else None
         ),
+        # ``dependencies`` and ``compositions`` sit between the components and
+        # the vulnerabilities, the CycloneDX field order.
+        **graph,
         # H-4: the SBOM alone carries the VEX triage. Always present (empty
         # list when the scan has no findings) so consumers can rely on the key.
         "vulnerabilities": _cyclonedx_vulnerabilities(vuln_rows),
@@ -786,6 +860,31 @@ def _serialize_cyclonedx_xml(doc: dict[str, Any]) -> str:
                     props_el, f"{{{_CDX_NS}}}property", attrib={"name": prop["name"]}
                 )
                 p.text = prop["value"]
+
+    # U3-C: dependency graph and completeness statements, mirroring the JSON
+    # arrays. Schema order: components, dependencies, compositions, properties,
+    # vulnerabilities.
+    if "dependencies" in doc:
+        deps_el = ET.SubElement(bom, f"{{{_CDX_NS}}}dependencies")
+        for entry in doc["dependencies"]:
+            dep_el = ET.SubElement(
+                deps_el, f"{{{_CDX_NS}}}dependency", attrib={"ref": entry["ref"]}
+            )
+            for child_ref in entry["dependsOn"]:
+                ET.SubElement(dep_el, f"{{{_CDX_NS}}}dependency", attrib={"ref": child_ref})
+    if "compositions" in doc:
+        comps_el = ET.SubElement(bom, f"{{{_CDX_NS}}}compositions")
+        for composition in doc["compositions"]:
+            comp_el = ET.SubElement(comps_el, f"{{{_CDX_NS}}}composition")
+            ET.SubElement(comp_el, f"{{{_CDX_NS}}}aggregate").text = composition["aggregate"]
+            if "assemblies" in composition:
+                asm_el = ET.SubElement(comp_el, f"{{{_CDX_NS}}}assemblies")
+                for ref in composition["assemblies"]:
+                    ET.SubElement(asm_el, f"{{{_CDX_NS}}}assembly", attrib={"ref": ref})
+            if "dependencies" in composition:
+                cdeps_el = ET.SubElement(comp_el, f"{{{_CDX_NS}}}dependencies")
+                for ref in composition["dependencies"]:
+                    ET.SubElement(cdeps_el, f"{{{_CDX_NS}}}dependency", attrib={"ref": ref})
 
     # H-4: VEX triage — mirrors the JSON ``vulnerabilities[]`` array. In the
     # XML schema each affected component ref nests as affects > target > ref.
@@ -1169,6 +1268,7 @@ async def export_sbom(
     rows: list[dict[str, Any]] = []
     licenses_by_cv: dict[uuid.UUID, ComponentLicenses] = {}
     vuln_rows: list[dict[str, Any]] = []
+    edges: list[tuple[uuid.UUID, uuid.UUID]] = []
     if scan is not None:
         rows = await _load_scan_components(session, scan_id=scan.id)
         licenses_by_cv = await _load_scan_licenses(session, scan_id=scan.id)
@@ -1176,6 +1276,7 @@ async def export_sbom(
         # so skip the findings query for SPDX exports.
         if fmt.startswith("cyclonedx"):
             vuln_rows = await _load_scan_vulnerabilities(session, scan_id=scan.id)
+            edges = await _load_scan_edges(session, scan_id=scan.id)
 
     # BUG-006: default to the scan's persisted completion time so re-exports
     # are byte-stable. `now` stays an explicit override for callers that need
@@ -1251,6 +1352,7 @@ async def export_sbom(
                     vuln_rows=vuln_rows,
                     now=timestamp,
                     profile=profile_marker,
+                    edges=edges,
                 )
             )
         if fmt == "cyclonedx-xml":
@@ -1263,6 +1365,7 @@ async def export_sbom(
                     vuln_rows=vuln_rows,
                     now=timestamp,
                     profile=profile_marker,
+                    edges=edges,
                 )
             )
         if fmt == "spdx-json":

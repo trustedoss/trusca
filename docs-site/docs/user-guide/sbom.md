@@ -60,6 +60,20 @@ detected for it:
   version could not be established carries that marking instead of a version
   string, so a reader is not shown a placeholder as if it were an answer.
 
+## Dependency graph and completeness {#completeness}
+
+The CycloneDX exports (JSON and XML) carry a `dependencies` section with the scan's dependency graph: the project first, then one entry for every listed component, with an empty `dependsOn` when it depends on nothing. SPDX exports do not carry it.
+
+They also state how complete the document is, with CycloneDX `compositions`: one statement for the component list (`assemblies`) and one for the graph (`dependencies`), each `complete`, `incomplete` or `unknown`. `complete` means no failure the scan recorded could have dropped a component or an edge. It does not mean the SBOM lists everything the software contains: a manifest without its lockfile still yields direct dependencies only, and the record cannot see that. The document property `trusca:composition-basis` says why the verdict is what it is.
+
+| Verdict | When | `trusca:composition-basis` |
+|---|---|---|
+| `complete` | The scan recorded its stages, none that can lose dependencies failed, and a graph came with the components. | `no_known_gap` |
+| `incomplete` | Build preparation or the CocoaPods fill-in degraded, the scan found nothing although manifests were present, or the `policy-filtered` profile removed components. | `stage_degraded:<stage>`, `empty_with_manifests`, `profile_filter` |
+| `unknown` | The scan predates the stage record (rescan to get a verdict), the source declared no manifest, the document was uploaded rather than generated, or components were listed with no graph (the graph statement only). | `not_recorded`, `no_manifests`, `ingested_document`, `no_graph` |
+
+The stages behind `incomplete` are the ones the Overview tab lists under [When a scan skips part of its work](./scans.md#scan-gaps).
+
 ## Byte-stable output
 
 All four exports are **byte-stable**: re-exporting the same scan produces identical bytes. This makes diffing, signing, and caching trivial.
