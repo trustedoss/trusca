@@ -127,6 +127,19 @@ _WEAK_FAMILY_RE: Final[re.Pattern[str]] = re.compile(
     r"\b(MPL|EPL|CDDL|CPL|OSL|EUPL|CeCILL|Sleepycat|OFL|Open Font License)\b",
     re.IGNORECASE,
 )
+# Creative Commons ShareAlike. Content licences (documentation, images, data,
+# fonts) whose share-alike applies to adaptations, the same modified-work
+# reach as OFL and MPL, so the same ``weak-copyleft`` label. Only the ``SA``
+# variants: ``CC-BY``, ``CC-BY-NC`` and ``CC-BY-ND`` carry no share-alike, and
+# NonCommercial / NoDerivatives are use restrictions, which is a different
+# axis from strength. ``CC-BY-NC-SA`` matches because of its ``SA`` term; its
+# NonCommercial restriction is not represented by this label. Both
+# boundaries anchored so ``CC-BY-SAX`` and ``ABCC-BY-SA`` do not match.
+_CC_SHARE_ALIKE_RE: Final[re.Pattern[str]] = re.compile(
+    r"\bCC[- ]BY(?:[- ]NC)?[- ]SA\b"
+    r"|\bAttribution[- ]?(?:NonCommercial[- ]?)?ShareAlike\b",
+    re.IGNORECASE,
+)
 _GPL_RE: Final[re.Pattern[str]] = re.compile(r"\bGPL", re.IGNORECASE)
 
 # A license id is a short token; a name is a sentence at worst. Anything past
@@ -160,6 +173,8 @@ def classify_license_class(value: str | None) -> str:
     if _LGPL_RE.search(identifier):
         return WEAK_COPYLEFT
     if _WEAK_FAMILY_RE.search(identifier):
+        return WEAK_COPYLEFT
+    if _CC_SHARE_ALIKE_RE.search(identifier):
         return WEAK_COPYLEFT
     if _GPL_RE.search(identifier):
         return STRONG_COPYLEFT

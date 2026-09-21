@@ -62,6 +62,15 @@ def test_every_allowlisted_id_is_permissive(spdx_id: str) -> None:
         ("OFL-1.1", WEAK_COPYLEFT),
         ("OFL-1.1-RFN", WEAK_COPYLEFT),
         ("SIL Open Font License 1.1", WEAK_COPYLEFT),
+        # Creative Commons ShareAlike: share-alike on adaptations, like the OFL.
+        ("CC-BY-SA-4.0", WEAK_COPYLEFT),
+        ("CC-BY-SA-3.0", WEAK_COPYLEFT),
+        ("CC-BY-SA-3.0-DE", WEAK_COPYLEFT),
+        ("cc-by-sa-2.5", WEAK_COPYLEFT),
+        ("CC-BY-NC-SA-4.0", WEAK_COPYLEFT),
+        ("CC BY-SA 4.0", WEAK_COPYLEFT),
+        ("Creative Commons Attribution-ShareAlike 4.0 International", WEAK_COPYLEFT),
+        ("Creative Commons Attribution-NonCommercial-ShareAlike 4.0", WEAK_COPYLEFT),
     ],
 )
 def test_pattern_classification(value: str, expected: str) -> None:
@@ -80,6 +89,15 @@ def test_pattern_classification(value: str, expected: str) -> None:
         # inside other identifiers unanchored. UFL is a different font licence.
         "UFL-1.0",
         "TOFLE-1.0",
+        # Creative Commons variants with no share-alike term, and near-misses of
+        # the SA token.
+        "CC-BY-4.0",
+        "CC-BY-NC-4.0",
+        "CC-BY-ND-4.0",
+        "CC-BY-NC-ND-4.0",
+        "CC-BY-SAX-1.0",
+        "ABCC-BY-SA-4.0",
+        "CC-BY-SOFTWARE",
         "SEE LICENSE IN COPYING",
         "NOASSERTION",
     ],
