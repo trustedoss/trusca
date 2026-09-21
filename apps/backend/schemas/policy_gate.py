@@ -211,6 +211,40 @@ class GateResultResponse(BaseModel):
             "EPSS equivalents."
         ),
     )
+    incomplete_scan_gate_enabled: bool = Field(
+        default=False,
+        description=(
+            "Whether the incomplete-scan axis was switched on for this evaluation "
+            "(`GATE_INCOMPLETE_SCAN_ENABLED`, off by default)."
+        ),
+    )
+    incomplete_scan_outcome: str = Field(
+        default="not_configured",
+        description=(
+            "What the scan said about its own completeness, by the same rules the "
+            "SBOM export uses for its component list. `not_configured`: the axis is "
+            "off. `complete`: no recorded failure could have dropped a component. "
+            "`incomplete`: build preparation or the CocoaPods fill-in degraded, the "
+            "scan found nothing although manifests were present. `unknown`: the scan "
+            "cannot vouch for itself (a scan from before the stage record, an "
+            "uploaded SBOM, a source with no manifests)."
+        ),
+    )
+    incomplete_scan_basis: str | None = Field(
+        default=None,
+        description=(
+            "Why the outcome is what it is, for example `stage_degraded:prep` or "
+            "`empty_with_manifests`. `null` when the axis is off."
+        ),
+    )
+    incomplete_scan_on_unknown: str = Field(
+        default="allow",
+        description=(
+            "What `GATE_INCOMPLETE_SCAN_ON_UNKNOWN` told the gate to do with an "
+            "`unknown` outcome: `allow` (default) or `block`. An `incomplete` "
+            "outcome fails the build whenever the axis is on."
+        ),
+    )
     malicious_gate_enforced: bool = Field(
         default=True,
         description="Whether the known-malicious axis was active for this "

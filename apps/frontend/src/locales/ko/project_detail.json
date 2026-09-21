@@ -244,6 +244,8 @@
       "run_scan": "스캔 실행"
     },
     "gate_card": {
+      "incomplete_scan_incomplete": "이 스캔은 완전하지 않습니다. 컴포넌트나 의존성이 빠졌을 수 있어 위의 수치가 실제 위험보다 작을 수 있습니다.",
+      "incomplete_scan_unknown": "이 스캔은 스스로 완전성을 보증하지 못합니다. 위의 수치가 실제보다 작을 수 있습니다.",
       "critical_cves": "Critical CVE",
       "epss_findings": "EPSS ≥ {{threshold}}",
       "epss_no_data": "EPSS ≥ {{threshold}} 조건은 평가되지 않았습니다. 이 스캔의 어떤 항목에도 EPSS 점수가 없습니다.",
@@ -270,6 +272,8 @@
       "pass": "통과",
       "pass_detail": "이 빌드를 차단하는 Critical CVE나 금지 라이선스가 없습니다.",
       "reason": {
+        "incomplete_scan_incomplete": "스캔이 완전하지 않아 컴포넌트나 의존성이 빠졌을 수 있고, 수치가 위험을 실제보다 작게 보여 줍니다",
+        "incomplete_scan_unknown": "스캔의 완전성을 확인할 수 없고, 게이트가 이 경우 차단하도록 설정되어 있습니다",
         "intro": "다음 사유로 이 빌드가 차단되었습니다:",
         "critical_cve": "미해결 Critical CVE {{count}}건",
         "forbidden_license": "금지 라이선스 {{count}}건",

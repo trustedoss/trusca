@@ -35,6 +35,15 @@ export interface GovernanceGate {
   eol_gate_count?: number;
   eol_gate_enabled?: boolean;
   eol_outcome?: "not_configured" | "evaluated" | "partial" | "no_data";
+  /** U3-D incomplete-scan axis: what the scan said about its own completeness. */
+  incomplete_scan_gate_enabled?: boolean;
+  incomplete_scan_outcome?:
+    | "not_configured"
+    | "complete"
+    | "incomplete"
+    | "unknown";
+  incomplete_scan_basis?: string | null;
+  incomplete_scan_on_unknown?: "allow" | "block";
   malicious_component_count: number;
   scan_id: string | null;
 }
