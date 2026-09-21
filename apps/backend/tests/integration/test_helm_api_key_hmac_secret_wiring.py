@@ -63,6 +63,8 @@ _BASE_SET_NO_HMAC_SECRET = [
     "--set",
     "env.secret.secretKey=ci-golden-secret-key-0123456789abcdef",
     "--set",
+    "env.secret.githubAppEncryptionKey=ci-golden-github-app-key-YWJjZGVmMDEyMzQ1Njc4OQ==",
+    "--set",
     "postgres.auth.password=ci-golden-pw",
     "--set",
     "ingress.host=trustedoss.ci-golden.example.com",

@@ -14,6 +14,7 @@ env:
   secret:
     secretKey: scan-only-placeholder-not-a-real-secret-key
     apiKeyHmacSecret: scan-only-placeholder-not-a-real-hmac-key
+    githubAppEncryptionKey: scan-only-placeholder-not-a-real-encryption-key
 ingress:
   host: scan.invalid
 postgres:
