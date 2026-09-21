@@ -1083,10 +1083,13 @@ async def test_default_export_carries_no_profile_marker(
     # Document metadata always states why an empty field is empty (the 2026
     # minimum elements ask for it); what a profile adds on top is the profile
     # markers, and without a profile there are none.
+    from services.sbom_completeness import BASIS_PROPERTY
     from services.sbom_document_metadata import UNDECLARED_FIELDS_PROPERTY
 
+    # The completeness basis (U3-C) is a document statement, not a profile marker.
     assert [p["name"] for p in doc["metadata"]["properties"]] == [
-        UNDECLARED_FIELDS_PROPERTY
+        UNDECLARED_FIELDS_PROPERTY,
+        BASIS_PROPERTY,
     ]
     assert all("properties" not in c for c in doc["components"])
     assert filename.endswith(".cdx.json") and "policy" not in filename
