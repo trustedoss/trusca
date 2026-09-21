@@ -1423,6 +1423,19 @@ def scan_scope_filter_node_enabled() -> bool:
     )
 
 
+def scan_scope_filter_non_deployable_enabled() -> bool:
+    """Path filter (drop components found only in test/example/benchmark trees).
+
+    Default ``true``. Disable when a repository keeps shipping code under a
+    directory the filter treats as non-deployable. Read at call time
+    (rule #11).
+    """
+    return (
+        os.getenv("SCAN_SCOPE_FILTER_NON_DEPLOYABLE_ENABLED", "true").strip().lower()
+        not in _SCOPE_FILTER_FALSY
+    )
+
+
 def scan_executor_mode() -> str:
     """How the SBOM-generation stage (build-prep + cdxgen) is executed.
 

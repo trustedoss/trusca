@@ -32,6 +32,16 @@ BomLens ``build-prep.sh`` (#331/#335/#337/#341):
     not covered by the root lockfile, and the filter must only remove
     components it has positive dev evidence for).
 
+  * **Non-deployable paths** (all ecosystems) - a component whose every
+    recorded manifest (cdxgen's ``SrcFile`` property) sits under a
+    test / example / benchmark directory is dropped. Guards: the path must be
+    a clean relative path (absolute, drive-lettered or ``..`` paths are
+    *unknown* and keep the component), the component needs at least one
+    recorded path, and the document must also hold at least one component
+    with a manifest **outside** those directories (*hasDeployable* - a
+    repository made only of examples is left alone). A component that also
+    appears in any other manifest is kept.
+
 Shared tail (all ecosystems): kept refs = ``bom-ref``∥``purl`` of every kept
 component **plus the ``metadata.component`` root ref**, then the
 ``dependencies[]`` graph is pruned to kept refs (entries dropped, each
@@ -52,6 +62,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import tempfile
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -67,6 +78,42 @@ log = structlog.get_logger("integrations.sbom_scope_filter")
 # *unscoped* components are kept (an unscoped node carries no evidence it is
 # test-only — keep-if-unknown, same philosophy as the Node predicate).
 _MAVEN_DROP_SCOPES = frozenset({"optional", "excluded"})
+
+# Directory names that mark a manifest as not shipping with the product. Whole
+# path segments only, compared case-insensitively after ``\\`` -> ``/``
+# normalisation, so ``Tests/``, ``src/test/`` and ``EXAMPLES\\`` match while
+# ``contest/`` and ``latest/`` do not. Deliberately short: a name that is
+# also a real product directory somewhere (``docs``, ``tools``, ``scripts``)
+# stays out - a wrongly kept component is a visible over-count, a wrongly
+# dropped one is a silent loss.
+NON_DEPLOYABLE_DIR_NAMES = frozenset(
+    {
+        "test",
+        "tests",
+        "__tests__",
+        "testdata",
+        "fixtures",
+        "e2e",
+        "example",
+        "examples",
+        "sample",
+        "samples",
+        "demo",
+        "demos",
+        "benchmark",
+        "benchmarks",
+        "bench",
+    }
+)
+
+# Key under ``ScopeFilterResult.dropped`` / ``scan_metadata.scope_filter.dropped``.
+NON_DEPLOYABLE_KEY = "non_deployable_path"
+
+_SRC_FILE_PROPERTY = "SrcFile"
+# cdxgen joins the manifests of a component seen in several files with a
+# newline; some producers leave that as the two characters ``\n``.
+_SRC_FILE_SPLIT = re.compile(r"\n|\\n")
+_DRIVE_PREFIX = re.compile(r"^[a-z]:")
 
 # SBOM metadata property stamped onto a filtered document so the signed /
 # downloadable artifact self-documents what was removed (mirrors the
@@ -115,17 +162,24 @@ def filter_sbom_to_runtime_scope(
     npm_lock: NpmLockfileData | None,
     maven: bool = True,
     node: bool = True,
+    non_deployable: bool = True,
 ) -> ScopeFilterResult:
     """Filter ``sbom`` (in place) down to the deployable runtime set.
 
-    ``maven`` / ``node`` are the per-ecosystem toggles (resolved from config
+    ``maven`` / ``node`` / ``non_deployable`` are the per-ecosystem toggles (resolved from config
     by the caller). Never raises — on any error the document is left in its
     pre-call state only if the error happened before the first mutation;
     callers that need transactional semantics must pass a working copy (see
     module docstring).
     """
     try:
-        return _filter(sbom, npm_lock=npm_lock, maven=maven, node=node)
+        return _filter(
+            sbom,
+            npm_lock=npm_lock,
+            maven=maven,
+            node=node,
+            non_deployable=non_deployable,
+        )
     except Exception:  # noqa: BLE001 — the filter must never break a scan
         log.warning("scope_filter_failed", exc_info=True)
         components = sbom.get("components")
@@ -171,6 +225,7 @@ def _filter(
     npm_lock: NpmLockfileData | None,
     maven: bool,
     node: bool,
+    non_deployable: bool,
 ) -> ScopeFilterResult:
     components = sbom.get("components")
     if not isinstance(components, list):
@@ -180,8 +235,9 @@ def _filter(
     # filter *safely* is present (BomLens hasScopes parity + hasDev).
     maven_active = maven and _has_maven_scopes(components)
     node_active = node and _has_dev_entries(npm_lock)
+    path_active = non_deployable and _has_deployable_manifest(components)
 
-    if not maven_active and not node_active:
+    if not maven_active and not node_active and not path_active:
         return ScopeFilterResult(applied=False, kept_components=len(components))
 
     kept: list[Any] = []
@@ -212,6 +268,9 @@ def _filter(
             if npm_lock.scope_for_purl(purl) == "dev":
                 _record_drop("npm", purl)
                 continue
+        if path_active and _only_in_non_deployable_paths(component):
+            _record_drop(NON_DEPLOYABLE_KEY, purl)
+            continue
         kept.append(component)
 
     if not dropped:
@@ -242,6 +301,54 @@ def _has_maven_scopes(components: list[Any]) -> bool:
         ):
             return True
     return False
+
+
+def _manifest_paths(component: dict[str, Any]) -> list[str]:
+    """Every manifest path cdxgen recorded for ``component`` (may be empty)."""
+    properties = component.get("properties")
+    if not isinstance(properties, list):
+        return []
+    paths: list[str] = []
+    for prop in properties:
+        if not isinstance(prop, dict) or prop.get("name") != _SRC_FILE_PROPERTY:
+            continue
+        value = prop.get("value")
+        if not isinstance(value, str):
+            continue
+        paths.extend(part for part in _SRC_FILE_SPLIT.split(value) if part.strip())
+    return paths
+
+
+def _classify_path(raw: str) -> bool | None:
+    """``True`` non-deployable, ``False`` deployable, ``None`` cannot tell."""
+    path = raw.strip().replace("\\", "/").lower()
+    if not path or path.startswith("/") or _DRIVE_PREFIX.match(path):
+        return None
+    segments = [seg for seg in path.split("/") if seg and seg != "."]
+    if len(segments) < 2:
+        # A bare file name sits at the scan root - deployable by definition.
+        return False if segments else None
+    if ".." in segments:
+        return None
+    return any(seg in NON_DEPLOYABLE_DIR_NAMES for seg in segments[:-1])
+
+
+def _has_deployable_manifest(components: list[Any]) -> bool:
+    """hasDeployable guard - some component has a manifest outside the set."""
+    for component in components:
+        if not isinstance(component, dict):
+            continue
+        if any(_classify_path(path) is False for path in _manifest_paths(component)):
+            return True
+    return False
+
+
+def _only_in_non_deployable_paths(component: dict[str, Any]) -> bool:
+    """Positive evidence only: every recorded manifest is non-deployable."""
+    paths = _manifest_paths(component)
+    if not paths:
+        return False
+    return all(_classify_path(path) is True for path in paths)
 
 
 def _has_dev_entries(npm_lock: NpmLockfileData | None) -> bool:
@@ -313,6 +420,8 @@ def _stamp_filter_property(sbom: dict[str, Any], dropped: dict[str, int]) -> Non
 
 __all__ = [
     "FILTER_PROPERTY_NAME",
+    "NON_DEPLOYABLE_DIR_NAMES",
+    "NON_DEPLOYABLE_KEY",
     "ScopeFilterResult",
     "filter_sbom_to_runtime_scope",
     "rewrite_sbom_file",

@@ -245,6 +245,7 @@ def test_run_pipeline_falls_back_to_full_cdxgen_when_reuse_extraction_fails(
     monkeypatch.setattr(mod, "scan_scope_filter_enabled", lambda: True)
     monkeypatch.setattr(mod, "scan_scope_filter_maven_enabled", lambda: True)
     monkeypatch.setattr(mod, "scan_scope_filter_node_enabled", lambda: True)
+    monkeypatch.setattr(mod, "scan_scope_filter_non_deployable_enabled", lambda: True)
 
     # A reuse candidate exists...
     monkeypatch.setattr(mod, "_find_reusable_prior_scan", lambda **k: uuid.uuid4())

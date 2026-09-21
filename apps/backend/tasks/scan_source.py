@@ -87,6 +87,7 @@ from core.config import (
     scan_scope_filter_enabled,
     scan_scope_filter_maven_enabled,
     scan_scope_filter_node_enabled,
+    scan_scope_filter_non_deployable_enabled,
     scan_soft_time_limit_seconds,
     scanoss_enabled,
     slsa_builder_id,
@@ -441,6 +442,9 @@ def _run_pipeline(
             "scan_scope_filter_enabled": scan_scope_filter_enabled(),
             "scan_scope_filter_maven_enabled": scan_scope_filter_maven_enabled(),
             "scan_scope_filter_node_enabled": scan_scope_filter_node_enabled(),
+            "scan_scope_filter_non_deployable_enabled": (
+                scan_scope_filter_non_deployable_enabled()
+            ),
         },
     )
     reuse_source_scan_id = _find_reusable_prior_scan(
@@ -1956,6 +1960,7 @@ def _apply_scope_filter(
             npm_lock=npm_lock,
             maven=scan_scope_filter_maven_enabled(),
             node=scan_scope_filter_node_enabled(),
+            non_deployable=scan_scope_filter_non_deployable_enabled(),
         )
         if not result.applied:
             return

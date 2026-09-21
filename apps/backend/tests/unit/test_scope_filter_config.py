@@ -20,18 +20,21 @@ from core.config import (
     scan_scope_filter_enabled,
     scan_scope_filter_maven_enabled,
     scan_scope_filter_node_enabled,
+    scan_scope_filter_non_deployable_enabled,
 )
 
 _ENV_KEYS = (
     "SCAN_SCOPE_FILTER_ENABLED",
     "SCAN_SCOPE_FILTER_MAVEN_ENABLED",
     "SCAN_SCOPE_FILTER_NODE_ENABLED",
+    "SCAN_SCOPE_FILTER_NON_DEPLOYABLE_ENABLED",
 )
 
 _ACCESSOR_BY_KEY = {
     "SCAN_SCOPE_FILTER_ENABLED": scan_scope_filter_enabled,
     "SCAN_SCOPE_FILTER_MAVEN_ENABLED": scan_scope_filter_maven_enabled,
     "SCAN_SCOPE_FILTER_NODE_ENABLED": scan_scope_filter_node_enabled,
+    "SCAN_SCOPE_FILTER_NON_DEPLOYABLE_ENABLED": scan_scope_filter_non_deployable_enabled,
 }
 
 

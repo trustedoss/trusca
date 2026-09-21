@@ -257,6 +257,59 @@ def test_apply_scope_filter_rewrites_disk_and_memory_consistently(
     assert recorded and recorded[0].dropped
 
 
+def _non_deployable_run(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> tuple[list[Any], int, int]:
+    from tasks import scan_source
+
+    recorded: list[Any] = []
+    monkeypatch.setattr(
+        scan_source, "_record_scope_filter", lambda scan_uuid, result: recorded.append(result)
+    )
+    sbom = _load(FIXTURES / "sbom" / "real_cyclonedx.json")
+    cdxgen_result = _make_cdxgen_result(tmp_path, sbom)
+    scan_source._apply_scope_filter(
+        scan_uuid=uuid.uuid4(), cdxgen_result=cdxgen_result, source_dir=tmp_path
+    )
+    return recorded, len(sbom["components"]), len(cdxgen_result.sbom["components"])
+
+
+def test_apply_scope_filter_drops_non_deployable_paths_by_default(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.delenv("SCAN_SCOPE_FILTER_NON_DEPLOYABLE_ENABLED", raising=False)
+    recorded, before, after = _non_deployable_run(tmp_path, monkeypatch)
+    assert recorded[0].dropped == {"non_deployable_path": 1}
+    assert after == before - 1
+
+
+def test_apply_scope_filter_non_deployable_switch_off_drops_nothing(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setenv("SCAN_SCOPE_FILTER_NON_DEPLOYABLE_ENABLED", "false")
+    recorded, before, after = _non_deployable_run(tmp_path, monkeypatch)
+    assert after == before
+    assert not any(r.dropped for r in recorded)
+
+
+def test_dependency_fingerprint_scan_config_carries_the_non_deployable_toggle() -> None:
+    tree = ast.parse((Path(__file__).resolve().parents[3] / "tasks" / "scan_source.py").read_text())
+    found = False
+    for node in ast.walk(tree):
+        if not isinstance(node, ast.Dict):
+            continue
+        for key, value in zip(node.keys, node.values, strict=True):
+            if (
+                isinstance(key, ast.Constant)
+                and key.value == "scan_scope_filter_non_deployable_enabled"
+            ):
+                assert isinstance(value, ast.Call)
+                assert isinstance(value.func, ast.Name)
+                assert value.func.id == "scan_scope_filter_non_deployable_enabled"
+                found = True
+    assert found
+
+
 def test_apply_scope_filter_master_switch_off_is_a_full_noop(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
