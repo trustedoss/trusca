@@ -244,6 +244,8 @@
       "run_scan": "Run a scan"
     },
     "gate_card": {
+      "incomplete_scan_incomplete": "This scan is incomplete: components or dependencies may be missing, so the counts above can understate the risk.",
+      "incomplete_scan_unknown": "This scan could not vouch for its own completeness, so the counts above may be smaller than the real ones.",
       "critical_cves": "Critical CVEs",
       "epss_findings": "EPSS ≥ {{threshold}}",
       "epss_no_data": "EPSS ≥ {{threshold}} was not evaluated: no finding on this scan has an EPSS score.",
@@ -270,6 +272,8 @@
       "pass": "Pass",
       "pass_detail": "No critical CVEs or forbidden licenses block this build.",
       "reason": {
+        "incomplete_scan_incomplete": "The scan is incomplete, so components or dependencies may be missing and the counts understate the risk",
+        "incomplete_scan_unknown": "The scan's completeness could not be established, and the gate is set to block in that case",
         "intro": "This build is blocked because:",
         "critical_cve": "{{count}} open critical CVE(s)",
         "forbidden_license": "{{count}} forbidden license(s)",

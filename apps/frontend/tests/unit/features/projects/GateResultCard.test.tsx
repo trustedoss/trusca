@@ -364,4 +364,47 @@ describe("GateResultCard", () => {
     });
     expect(screen.getByTestId("gate-eol-partial")).toBeInTheDocument();
   });
+
+  it("says the scan is incomplete when that axis is on and the scan is", async () => {
+    mockedGet.mockResolvedValueOnce(
+      gate({
+        gate: "fail",
+        critical_cve_count: 0,
+        incomplete_scan_gate_enabled: true,
+        incomplete_scan_outcome: "incomplete",
+        incomplete_scan_basis: "stage_degraded:prep",
+      }),
+    );
+    renderCard();
+    const note = await screen.findByTestId("gate-incomplete-scan");
+    expect(note).toHaveAttribute("data-outcome", "incomplete");
+    expect(note.textContent).toContain("components or dependencies may be missing");
+    // The failure reason names it too, rather than the generic fallback.
+    expect(screen.getByTestId("gate-reason")).toHaveAttribute("data-reason-clauses", "1");
+  });
+
+  it("does not fail the reason for an unknown scan unless the gate blocks on it", async () => {
+    mockedGet.mockResolvedValueOnce(
+      gate({
+        incomplete_scan_gate_enabled: true,
+        incomplete_scan_outcome: "unknown",
+        incomplete_scan_on_unknown: "allow",
+      }),
+    );
+    renderCard();
+    expect(await screen.findByTestId("gate-incomplete-scan")).toHaveAttribute(
+      "data-outcome",
+      "unknown",
+    );
+    expect(screen.queryByTestId("gate-reason")).not.toBeInTheDocument();
+  });
+
+  it("draws nothing for a complete scan or when the axis is off", async () => {
+    mockedGet.mockResolvedValueOnce(
+      gate({ incomplete_scan_gate_enabled: false, incomplete_scan_outcome: "incomplete" }),
+    );
+    renderCard();
+    await screen.findByTestId("gate-card");
+    expect(screen.queryByTestId("gate-incomplete-scan")).not.toBeInTheDocument();
+  });
 });

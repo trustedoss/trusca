@@ -226,7 +226,7 @@ Apply the gate only on `main`, advisory on PRs:
 
 ### Gate on known-exploited CVEs and end-of-life components (optional)
 
-Severity says how bad a flaw could be. Two other signals say something
+Severity says how bad a flaw could be. Three other signals say something
 severity cannot, and each is its own opt-in axis on the portal (`.env`, then
 restart the backend):
 
@@ -234,8 +234,11 @@ restart the backend):
 |---|---|
 | `GATE_KEV_ENABLED=true` | Any open finding whose CVE is in the [CISA KEV](https://www.cisa.gov/known-exploited-vulnerabilities-catalog) catalog: somebody is exploiting it right now, whatever it scores. |
 | `GATE_EOL_ENABLED=true` | Any component past end of life. Its CVE count understates the risk, because the flaws that will never be patched are the ones not yet found. |
+| `GATE_INCOMPLETE_SCAN_ENABLED=true` | A scan that is known to be incomplete: build preparation or the CocoaPods fill-in degraded, or the scan found nothing although the source declared dependency manifests. Every other count on such a scan is smaller for the same reason, so it passes the other axes. The verdict is the one the [SBOM export states](../user-guide/sbom.md#completeness). |
 
-Both are off by default, and switching one on changes which builds fail.
+All three are off by default, and switching one on changes which builds fail.
+
+The incomplete-scan axis reports `incomplete_scan_outcome` (`complete`, `incomplete` or `unknown`) and `incomplete_scan_basis` in the gate result. `incomplete` fails the build whenever the axis is on. `unknown` (a scan from before the stage record, an uploaded SBOM, a source with no manifests) passes unless you set `GATE_INCOMPLETE_SCAN_ON_UNKNOWN=block`, which suits deployments that generate every SBOM themselves.
 
 **When the axis cannot judge.** Each reports a `*-outcome` alongside its count,
 because a count of `0` has two very different meanings: nothing was found, or

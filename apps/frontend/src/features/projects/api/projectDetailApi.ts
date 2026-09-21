@@ -583,6 +583,15 @@ export interface GateResultResponse {
   eol_gate_count?: number;
   eol_gate_enabled?: boolean;
   eol_outcome?: "not_configured" | "evaluated" | "partial" | "no_data";
+  /** U3-D incomplete-scan axis: what the scan said about its own completeness. */
+  incomplete_scan_gate_enabled?: boolean;
+  incomplete_scan_outcome?:
+    | "not_configured"
+    | "complete"
+    | "incomplete"
+    | "unknown";
+  incomplete_scan_basis?: string | null;
+  incomplete_scan_on_unknown?: "allow" | "block";
   /** #26 — components the malicious snapshot flags on the evaluated scan. */
   malicious_component_count: number;
   /** Whether the malicious axis ran at all (false → the count means "not checked"). */

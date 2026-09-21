@@ -82,6 +82,7 @@ from sqlalchemy import String, case, cast, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from models import (
+    ComponentDependencyEdge,
     ComponentVersion,
     KevSyncState,
     LicenseFinding,
@@ -97,7 +98,7 @@ from models import (
 from models import (
     Vulnerability as VulnerabilityModel,
 )
-from services import scan_outcome
+from services import sbom_completeness, scan_outcome
 from services.epss_gate_outcome import (
     EPSS_MISSING_ALLOW,
     EPSS_NO_DATA,
@@ -209,6 +210,14 @@ class GateResult:
     eol_outcome: str = AXIS_NOT_CONFIGURED
     eol_on_missing_data: str = ON_MISSING_ALLOW
 
+    # U3-D incomplete-scan axis. Off unless ``GATE_INCOMPLETE_SCAN_ENABLED``. A scan
+    # that quietly lost part of its result reads as a clean pass, because every
+    # count the gate reads is smaller for the same reason.
+    incomplete_scan_gate_enabled: bool = False
+    incomplete_scan_outcome: str = AXIS_NOT_CONFIGURED
+    incomplete_scan_basis: str | None = None
+    incomplete_scan_on_unknown: str = ON_MISSING_ALLOW
+
 
 # The latest-succeeded-scan resolver was PROMOTED to ``services.scan_resolution``
 # so the build gate and every current-state display reader (overview / vuln list
@@ -228,6 +237,52 @@ async def _resolve_component_outcome(session: AsyncSession, *, scan_id: uuid.UUI
     metadata = row.scalar_one_or_none() or {}
     recorded = metadata.get(scan_outcome.METADATA_KEY)
     return str(recorded) if recorded in scan_outcome.COMPONENT_OUTCOME_VALUES else None
+
+
+async def _resolve_incomplete_scan(
+    session: AsyncSession, *, scan_id: uuid.UUID, excluded_count: int = 0
+) -> sbom_completeness.Completeness:
+    """The completeness verdict for the evaluated scan, by the same rules the SBOM export uses.
+
+    One place decides what "incomplete" means, so the gate cannot disagree with the
+    document the same scan exports. Only queried when the axis is switched on.
+    """
+    row = (
+        await session.execute(select(Scan.kind, Scan.scan_metadata).where(Scan.id == scan_id))
+    ).one_or_none()
+    kind, metadata = (row[0], row[1]) if row is not None else (None, None)
+    components = (
+        await session.execute(
+            select(func.count()).select_from(ScanComponent).where(ScanComponent.scan_id == scan_id)
+        )
+    ).scalar_one()
+    edges = (
+        await session.execute(
+            select(func.count())
+            .select_from(ComponentDependencyEdge)
+            .where(ComponentDependencyEdge.scan_id == scan_id)
+        )
+    ).scalar_one()
+    return sbom_completeness.assess(
+        scan_kind=kind,
+        metadata=metadata,
+        component_count=int(components),
+        edge_count=int(edges),
+        excluded_count=excluded_count,
+    )
+
+
+def incomplete_scan_blocks(outcome: str, on_unknown: str) -> bool:
+    """Whether an incomplete-scan verdict fails the build.
+
+    ``incomplete`` always does when the axis is on. ``unknown`` does only when the
+    operator asked (``GATE_INCOMPLETE_SCAN_ON_UNKNOWN=block``): a scan that cannot
+    vouch for itself is the ordinary state for an uploaded SBOM or a scan from before
+    the stage record, and failing those by default would break builds that are fine.
+    """
+    if outcome == sbom_completeness.INCOMPLETE:
+        return True
+    return outcome == sbom_completeness.UNKNOWN and on_unknown != ON_MISSING_ALLOW
 
 
 @dataclass(frozen=True)
@@ -1168,6 +1223,9 @@ def _build_reason(
     kev_blocked: bool = False,
     eol_gate_count: int = 0,
     eol_blocked: bool = False,
+    incomplete_scan_blocked: bool = False,
+    incomplete_scan_outcome: str = AXIS_NOT_CONFIGURED,
+    incomplete_scan_basis: str | None = None,
 ) -> str | None:
     """Compose the human-readable ``reason`` field. ``None`` on pass.
 
@@ -1228,6 +1286,18 @@ def _build_reason(
             "the end-of-life gate could not be evaluated because no component "
             "on this scan has been checked against the lifecycle catalog"
         )
+    if incomplete_scan_blocked:
+        detail = f" ({incomplete_scan_basis})" if incomplete_scan_basis else ""
+        if incomplete_scan_outcome == sbom_completeness.INCOMPLETE:
+            parts.append(
+                f"the scan is incomplete{detail}: components or dependencies may be "
+                "missing, so the counts above understate the risk"
+            )
+        else:
+            parts.append(
+                f"the scan's completeness could not be established{detail}, and "
+                "GATE_INCOMPLETE_SCAN_ON_UNKNOWN is set to block"
+            )
     if malicious_component_count > 0:
         # Worded as an instruction, not a count: an upgrade is the wrong move
         # here and the reason line is often all a CI reader sees.
@@ -1427,6 +1497,25 @@ async def evaluate_gate(
                 on_missing_data=eol_on_missing_data,
             )
 
+    # U3-D incomplete-scan axis, same opt-in shape.
+    incomplete_scan_gate_enabled = _resolve_axis_enabled("GATE_INCOMPLETE_SCAN_ENABLED")
+    incomplete_scan_on_unknown = _resolve_axis_on_missing_data("GATE_INCOMPLETE_SCAN_ON_UNKNOWN")
+    incomplete_scan_outcome = AXIS_NOT_CONFIGURED
+    incomplete_scan_basis: str | None = None
+    if incomplete_scan_gate_enabled:
+        completeness = await _resolve_incomplete_scan(session, scan_id=scan_id)
+        incomplete_scan_outcome = completeness.assemblies
+        incomplete_scan_basis = completeness.basis
+        if incomplete_scan_outcome != sbom_completeness.COMPLETE:
+            log.warning(
+                "policy_gate.incomplete_scan",
+                project_id=str(project_id),
+                scan_id=str(scan_id),
+                outcome=incomplete_scan_outcome,
+                basis=incomplete_scan_basis,
+                on_unknown=incomplete_scan_on_unknown,
+            )
+
     if malicious_gate_enabled:
         malicious_component_count, malicious_counts = await _resolve_malicious_count(
             session, project_id=project_id, scan_id=scan_id, now=evaluated_at
@@ -1498,6 +1587,10 @@ async def evaluate_gate(
         kev_blocked=axis_blocks(kev_outcome, kev_on_missing_data),
         eol_gate_count=eol_gate_count,
         eol_blocked=axis_blocks(eol_outcome, eol_on_missing_data),
+        incomplete_scan_blocked=incomplete_scan_gate_enabled
+        and incomplete_scan_blocks(incomplete_scan_outcome, incomplete_scan_on_unknown),
+        incomplete_scan_outcome=incomplete_scan_outcome,
+        incomplete_scan_basis=incomplete_scan_basis,
     )
     gate: GateOutcome = "fail" if reason is not None else "pass"
 
@@ -1528,6 +1621,10 @@ async def evaluate_gate(
         eol_gate_enabled=eol_gate_enabled,
         eol_outcome=eol_outcome,
         eol_on_missing_data=eol_on_missing_data,
+        incomplete_scan_gate_enabled=incomplete_scan_gate_enabled,
+        incomplete_scan_outcome=incomplete_scan_outcome,
+        incomplete_scan_basis=incomplete_scan_basis,
+        incomplete_scan_on_unknown=incomplete_scan_on_unknown,
         epss_threshold=epss_threshold,
         reachable_critical_cve_count=reachable_critical_cve_count,
         reachable_gate_enforced=reachable_critical_only,

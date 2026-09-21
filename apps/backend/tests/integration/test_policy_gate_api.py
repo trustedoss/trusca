@@ -1273,3 +1273,192 @@ async def test_unevaluated_eol_blocks_when_the_operator_asks(
     assert body["eol_outcome"] == "no_data"
     assert body["gate"] == "fail"
     assert "end-of-life gate could not be evaluated" in body["reason"]
+
+
+# ---------------------------------------------------------------------------
+# U3-D: incomplete-scan axis
+# ---------------------------------------------------------------------------
+
+
+async def _seed_scan_with_metadata(
+    client, *, project_id: uuid.UUID, metadata: dict, kind: str = "source"
+) -> uuid.UUID:
+    """A succeeded scan whose ``scan_metadata`` is set as the pipeline would set it."""
+    factory = await _factory(client)
+    async with factory() as session:
+        from sqlalchemy import select
+
+        from models import Project
+
+        project = (
+            await session.execute(select(Project).where(Project.id == project_id))
+        ).scalar_one()
+        scan = await make_scan(
+            session, project=project, status="succeeded", kind=kind, scan_metadata=metadata
+        )
+        return scan.id
+
+
+def _recorded(**extra):
+    """Metadata of a scan recorded by U3-B: it has a stage_timings entry."""
+    return {"stage_timings": {"fetch": {"started_at": "x", "ended_at": "y"}}, **extra}
+
+
+async def _gate(client, user, project_id):
+    response = await client.get(
+        f"/v1/projects/{project_id}/gate-result", headers=_bearer_for(user)
+    )
+    assert response.status_code == 200, response.text
+    return response.json()
+
+
+async def _project_with_scan(client, metadata: dict, *, kind: str = "source"):
+    _, team, user = await _seed_team_and_user(client)
+    project_id = await _seed_project(client, team_id=team.id)
+    await _seed_scan_with_metadata(client, project_id=project_id, metadata=metadata, kind=kind)
+    return user, project_id
+
+
+async def test_incomplete_scan_axis_is_off_by_default(client, monkeypatch) -> None:
+    monkeypatch.delenv("GATE_INCOMPLETE_SCAN_ENABLED", raising=False)
+    degraded = {"stage_outcomes": {"prep": {"reason": "failed"}}}
+    user, project_id = await _project_with_scan(client, _recorded(**degraded))
+
+    body = await _gate(client, user, project_id)
+    assert body["incomplete_scan_gate_enabled"] is False
+    assert body["incomplete_scan_outcome"] == "not_configured"
+    assert body["incomplete_scan_basis"] is None
+    assert body["gate"] == "pass"
+
+
+async def test_a_degraded_build_prep_fails_the_build_when_the_axis_is_on(
+    client, monkeypatch
+) -> None:
+    monkeypatch.setenv("GATE_INCOMPLETE_SCAN_ENABLED", "true")
+    degraded = {"stage_outcomes": {"prep": {"reason": "timeout"}}}
+    user, project_id = await _project_with_scan(client, _recorded(**degraded))
+
+    body = await _gate(client, user, project_id)
+    assert body["gate"] == "fail"
+    assert body["incomplete_scan_outcome"] == "incomplete"
+    assert body["incomplete_scan_basis"] == "stage_degraded:prep"
+    assert "the scan is incomplete" in body["reason"]
+    assert "stage_degraded:prep" in body["reason"]
+
+
+async def test_an_empty_result_despite_manifests_fails_the_build(client, monkeypatch) -> None:
+    monkeypatch.setenv("GATE_INCOMPLETE_SCAN_ENABLED", "true")
+    user, project_id = await _project_with_scan(
+        client, _recorded(component_outcome="empty_with_manifests")
+    )
+    body = await _gate(client, user, project_id)
+    assert body["gate"] == "fail"
+    assert body["incomplete_scan_basis"] == "empty_with_manifests"
+
+
+async def test_a_recorded_scan_with_no_known_gap_passes(client, monkeypatch) -> None:
+    monkeypatch.setenv("GATE_INCOMPLETE_SCAN_ENABLED", "true")
+    user, project_id = await _project_with_scan(client, _recorded())
+    body = await _gate(client, user, project_id)
+    assert body["gate"] == "pass"
+    assert body["incomplete_scan_outcome"] == "complete"
+    assert body["incomplete_scan_gate_enabled"] is True
+
+
+async def test_a_stage_that_cannot_drop_components_does_not_fail_the_build(
+    client, monkeypatch
+) -> None:
+    monkeypatch.setenv("GATE_INCOMPLETE_SCAN_ENABLED", "true")
+    user, project_id = await _project_with_scan(
+        client, _recorded(stage_outcomes={"sign": {"reason": "failed"}})
+    )
+    assert (await _gate(client, user, project_id))["gate"] == "pass"
+
+
+async def test_a_scan_that_cannot_vouch_for_itself_passes_unless_told_to_block(
+    client, monkeypatch
+) -> None:
+    """A scan from before the stage record: unknown, and unknown is allowed by default."""
+    monkeypatch.setenv("GATE_INCOMPLETE_SCAN_ENABLED", "true")
+    monkeypatch.delenv("GATE_INCOMPLETE_SCAN_ON_UNKNOWN", raising=False)
+    user, project_id = await _project_with_scan(client, {"detected_env": "node"})
+
+    body = await _gate(client, user, project_id)
+    assert body["gate"] == "pass"
+    assert body["incomplete_scan_outcome"] == "unknown"
+    assert body["incomplete_scan_basis"] == "not_recorded"
+    assert body["incomplete_scan_on_unknown"] == "allow"
+
+
+async def test_unknown_fails_when_the_operator_asks(client, monkeypatch) -> None:
+    monkeypatch.setenv("GATE_INCOMPLETE_SCAN_ENABLED", "true")
+    monkeypatch.setenv("GATE_INCOMPLETE_SCAN_ON_UNKNOWN", "block")
+    user, project_id = await _project_with_scan(client, {"detected_env": "node"})
+
+    body = await _gate(client, user, project_id)
+    assert body["gate"] == "fail"
+    assert body["incomplete_scan_on_unknown"] == "block"
+    assert "could not be established" in body["reason"]
+    assert "not_recorded" in body["reason"]
+
+
+async def test_an_uploaded_sbom_is_unknown_not_incomplete(client, monkeypatch) -> None:
+    monkeypatch.setenv("GATE_INCOMPLETE_SCAN_ENABLED", "true")
+    user, project_id = await _project_with_scan(client, _recorded(), kind="sbom")
+    body = await _gate(client, user, project_id)
+    assert body["incomplete_scan_outcome"] == "unknown"
+    assert body["incomplete_scan_basis"] == "ingested_document"
+    assert body["gate"] == "pass"
+
+
+async def test_an_unrecognised_on_unknown_value_falls_back_to_allow(
+    client, monkeypatch
+) -> None:
+    """A typo must neither start failing builds nor be silently taken as block."""
+    monkeypatch.setenv("GATE_INCOMPLETE_SCAN_ENABLED", "true")
+    monkeypatch.setenv("GATE_INCOMPLETE_SCAN_ON_UNKNOWN", "blok")
+    user, project_id = await _project_with_scan(client, {"detected_env": "node"})
+    body = await _gate(client, user, project_id)
+    assert body["incomplete_scan_on_unknown"] == "allow"
+    assert body["gate"] == "pass"
+
+
+async def test_the_axis_adds_to_other_failures_instead_of_replacing_them(
+    client, monkeypatch
+) -> None:
+    monkeypatch.setenv("GATE_INCOMPLETE_SCAN_ENABLED", "true")
+    _, team, user = await _seed_team_and_user(client)
+    project_id = await _seed_project(client, team_id=team.id)
+    scan_id = await _seed_scan_with_metadata(
+        client,
+        project_id=project_id,
+        metadata=_recorded(stage_outcomes={"prep": {"reason": "failed"}}),
+    )
+    factory = await _factory(client)
+    async with factory() as session:
+        await _seed_critical_finding(session, scan_id=scan_id)
+
+    body = await _gate(client, user, project_id)
+    assert body["gate"] == "fail"
+    assert "critical" in body["reason"] and "the scan is incomplete" in body["reason"]
+
+
+async def test_components_with_no_graph_do_not_fail_the_gate(client, monkeypatch) -> None:
+    """The gate judges the component list. A missing graph makes only the SBOM's
+    graph statement unknown, and failing builds for that would fire on every scan
+    whose generator produced no dependency section."""
+    monkeypatch.setenv("GATE_INCOMPLETE_SCAN_ENABLED", "true")
+    monkeypatch.setenv("GATE_INCOMPLETE_SCAN_ON_UNKNOWN", "block")
+    _, team, user = await _seed_team_and_user(client)
+    project_id = await _seed_project(client, team_id=team.id)
+    scan_id = await _seed_scan_with_metadata(client, project_id=project_id, metadata=_recorded())
+    factory = await _factory(client)
+    async with factory() as session:
+        for _ in range(2):
+            await _seed_component_with_eol(
+                session, scan_id=scan_id, eol_state=None, evaluated=False
+            )
+
+    body = await _gate(client, user, project_id)
+    assert body["incomplete_scan_outcome"] == "complete"
+    assert body["gate"] == "pass"

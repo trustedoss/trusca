@@ -328,6 +328,19 @@ export function GateResultCard({ projectId, scanId }: GateResultCardProps) {
                   })}
                 </div>
               ) : null}
+              {data.incomplete_scan_gate_enabled &&
+              (data.incomplete_scan_outcome === "incomplete" ||
+                data.incomplete_scan_outcome === "unknown") ? (
+                <div
+                  className="text-xs text-muted-foreground"
+                  data-testid="gate-incomplete-scan"
+                  data-outcome={data.incomplete_scan_outcome}
+                >
+                  {t(
+                    `overview.gate_card.incomplete_scan_${data.incomplete_scan_outcome}`,
+                  )}
+                </div>
+              ) : null}
             </dl>
           </>
         )}
@@ -381,6 +394,17 @@ function GateFailReason({ data }: { data: GateResultResponse }) {
         count: data.epss_gate_count,
         threshold: data.epss_threshold,
       }),
+    );
+  }
+
+  if (
+    data.incomplete_scan_gate_enabled &&
+    (data.incomplete_scan_outcome === "incomplete" ||
+      (data.incomplete_scan_outcome === "unknown" &&
+        data.incomplete_scan_on_unknown === "block"))
+  ) {
+    clauses.push(
+      t(`overview.gate_card.reason.incomplete_scan_${data.incomplete_scan_outcome}`),
     );
   }
 
