@@ -110,6 +110,7 @@ jobs:
           helm template trustedoss "${CHART_DIR}" \
             --set env.secret.secretKey=ci-smoke-secret-key-0123456789abcdef \
             --set env.secret.apiKeyHmacSecret=ci-smoke-hmac-key-abcdef0123456789 \
+            --set env.secret.githubAppEncryptionKey=ci-smoke-github-app-key-YWJjZGVmMDEyMzQ1Njc4OQ== \
             --set postgres.auth.password=ci-smoke-pw \
             --set ingress.host=trustedoss.ci.example.com > /dev/null
           helm template trustedoss "${CHART_DIR}" \
@@ -119,6 +120,7 @@ jobs:
             --set env.redis.url='redis://r:6379/0' \
             --set env.secret.secretKey=ci-smoke-secret-key-0123456789abcdef \
             --set env.secret.apiKeyHmacSecret=ci-smoke-hmac-key-abcdef0123456789 \
+            --set env.secret.githubAppEncryptionKey=ci-smoke-github-app-key-YWJjZGVmMDEyMzQ1Njc4OQ== \
             --set ingress.host=trustedoss.ci.example.com > /dev/null
 
       - name: Log in to GitHub Container Registry
