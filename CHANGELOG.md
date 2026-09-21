@@ -9,6 +9,12 @@ and the project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.
 
 ### Added
 
+- **Creative Commons ShareAlike licenses are now classified as weak copyleft.**
+  `CC-BY-SA-*` and `CC-BY-NC-SA-*` previously showed as "uncategorized". They
+  now read as `weak-copyleft`, the same class as OFL and MPL, and a dependency
+  under one gets a `conditional` license-compatibility verdict instead of
+  `unknown`. `CC-BY`, `CC-BY-NC` and `CC-BY-ND` are unchanged.
+
 - **Components found only under test, example or benchmark directories are
   no longer counted as shipped dependencies.** A component is dropped when
   every manifest it was read from sits under a directory such as `tests/`,

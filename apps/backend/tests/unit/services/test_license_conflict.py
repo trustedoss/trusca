@@ -129,6 +129,18 @@ def test_verdict_carries_the_dependency_class() -> None:
     assert verdict.dependency_class == "network-copyleft"
 
 
+def test_share_alike_content_licence_is_conditional_not_unknown() -> None:
+    """A CC-BY-SA dependency used to fall through the matrix as ``unknown``."""
+    for outbound in ("MIT", "Apache-2.0"):
+        verdict = term_verdict("CC-BY-SA-4.0", outbound)
+        assert verdict.dependency_class == "weak-copyleft"
+        assert verdict.verdict == "conditional"
+
+
+def test_attribution_only_cc_licence_stays_unknown() -> None:
+    assert term_verdict("CC-BY-4.0", "MIT").verdict == "unknown"
+
+
 # ---------------------------------------------------------------------------
 # Operators fold in opposite directions
 # ---------------------------------------------------------------------------
