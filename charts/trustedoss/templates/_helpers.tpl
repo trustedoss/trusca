@@ -258,6 +258,15 @@ comment for the worked example.
     secretKeyRef:
       name: {{ $secretName }}
       key: API_KEY_HMAC_SECRET
+# core/crypto.py — encrypts every stored credential (GitHub App installs,
+# project git_credential). Mirrors SECRET_KEY/API_KEY_HMAC_SECRET's wiring
+# and fail-closed render policy (secret.yaml requires
+# env.secret.githubAppEncryptionKey explicitly).
+- name: GITHUB_APP_ENCRYPTION_KEY
+  valueFrom:
+    secretKeyRef:
+      name: {{ $secretName }}
+      key: GITHUB_APP_ENCRYPTION_KEY
 {{- /* Chart 0.3.0 (W6 / ADR-0001) — DT_API_KEY removed. Trivy DB is local to
        the worker (no external engine), so no secret material is injected for
        vulnerability matching. */ -}}

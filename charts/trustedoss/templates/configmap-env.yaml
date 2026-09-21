@@ -16,6 +16,18 @@ metadata:
   name: {{ include "trustedoss.fullname" . }}-env
   labels:
     {{- include "trustedoss.labels" . | nindent 4 }}
+  annotations:
+    # Same reasoning as secret.yaml: also a pre-install/pre-upgrade hook so the
+    # check-config (weight -6) and migrate (weight -5) hook Jobs can envFrom
+    # this ConfigMap before it would otherwise exist as a plain resource.
+    # Weight -20 matches secret.yaml so both are created in the same early
+    # batch. before-hook-creation (not hook-succeeded) so it persists for the
+    # runtime Deployments after the hook phase. Missing here caused a fresh
+    # `helm install` to fail with "configmap ... not found" even after the
+    # ServiceAccount ordering fix (observed on k8s-stg-incheon, 2026-09-16).
+    "helm.sh/hook": pre-install,pre-upgrade
+    "helm.sh/hook-weight": "-20"
+    "helm.sh/hook-delete-policy": before-hook-creation
 data:
   APP_ENV: {{ .Values.env.appEnv | quote }}
   LOG_LEVEL: {{ .Values.env.logLevel | quote }}

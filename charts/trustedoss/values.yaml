@@ -206,6 +206,17 @@ env:
     # above if you are upgrading from a chart version that derived this
     # value automatically).
     apiKeyHmacSecret: ""
+    # GITHUB_APP_ENCRYPTION_KEY (core/crypto.py), the Fernet key that encrypts
+    # every stored credential (GitHub App installs, project git_credential
+    # for private repos). REQUIRED unless existingSecret is set: with
+    # env.appEnv=prod (the default), core/crypto.py refuses to derive this
+    # from secretKey and every credential write 503s
+    # ("Credential Encryption Unavailable") until it is set — observed on a
+    # fresh install, 2026-09-16. Generate a urlsafe-base64 32-byte value:
+    # `python3 -c "import secrets,base64; print(base64.urlsafe_b64encode(secrets.token_bytes(32)).decode())"`.
+    # Comma-separate multiple values to rotate (first = active, see
+    # core/crypto.py); never commit a real value.
+    githubAppEncryptionKey: ""
 
   # -------------------------------------------------------------------------
   # Trivy DB — vulnerability data path (v2.4.0+, ADR-0001).
