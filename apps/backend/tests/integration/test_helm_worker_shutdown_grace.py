@@ -52,6 +52,8 @@ _REQUIRED_SET = [
     "--set",
     "env.secret.apiKeyHmacSecret=ci-golden-hmac-key-abcdef0123456789",
     "--set",
+    "env.secret.githubAppEncryptionKey=ci-golden-github-app-key-YWJjZGVmMDEyMzQ1Njc4OQ==",
+    "--set",
     "postgres.auth.password=ci-golden-pw",
     "--set",
     "ingress.host=trustedoss.ci-golden.example.com",
