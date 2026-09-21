@@ -211,8 +211,8 @@ env:
     # for private repos). REQUIRED unless existingSecret is set: with
     # env.appEnv=prod (the default), core/crypto.py refuses to derive this
     # from secretKey and every credential write 503s
-    # ("Credential Encryption Unavailable") until it is set — observed on a
-    # fresh install, 2026-09-16. Generate a urlsafe-base64 32-byte value:
+    # ("Credential Encryption Unavailable") until it is set (observed on a
+    # fresh install, 2026-09-16). Generate a urlsafe-base64 32-byte value:
     # `python3 -c "import secrets,base64; print(base64.urlsafe_b64encode(secrets.token_bytes(32)).decode())"`.
     # Comma-separate multiple values to rotate (first = active, see
     # core/crypto.py); never commit a real value.
