@@ -9,6 +9,14 @@ and the project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.
 
 ### Added
 
+- **Components found only under test, example or benchmark directories are
+  no longer counted as shipped dependencies.** A component is dropped when
+  every manifest it was read from sits under a directory such as `tests/`,
+  `examples/` or `__fixtures__/`, matched as whole path segments regardless of
+  case. The dropped package URLs are recorded on the scan and the Components
+  summary shows them in its excluded count. Set
+  `SCAN_SCOPE_FILTER_NON_DEPLOYABLE_ENABLED=false` to turn it off.
+
 - **A vulnerability finding's ticket link can now be read back on demand.** A
   finding whose `ticket_url` points at a Jira Cloud issue previously showed
   whatever status it was given at assignment time forever, even after the

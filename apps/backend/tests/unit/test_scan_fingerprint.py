@@ -57,6 +57,7 @@ _BASE_SCAN_CONFIG: dict[str, object] = {
     "scan_scope_filter_enabled": True,
     "scan_scope_filter_maven_enabled": True,
     "scan_scope_filter_node_enabled": True,
+    "scan_scope_filter_non_deployable_enabled": True,
 }
 
 
@@ -168,6 +169,7 @@ def test_each_scope_filter_toggle_independently_changes_the_fingerprint() -> Non
         "scan_scope_filter_enabled",
         "scan_scope_filter_maven_enabled",
         "scan_scope_filter_node_enabled",
+        "scan_scope_filter_non_deployable_enabled",
     ):
         flipped = dict(_BASE_SCAN_CONFIG)
         flipped[key] = not flipped[key]

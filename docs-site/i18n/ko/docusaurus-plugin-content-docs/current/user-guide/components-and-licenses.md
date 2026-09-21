@@ -65,6 +65,16 @@ cdxgen은 해석된 모든 노드를 기록하므로, 산출물과 함께 배포
   제거합니다. lockfile이 다루지 않는 패키지는 항상 유지합니다(모노레포의 중첩
   manifest는 루트 lockfile에 없습니다). 즉 dev 의존성이라는 명확한 근거가 있는
   컴포넌트만 제거합니다.
+- **테스트·예제·벤치마크 디렉터리**(모든 생태계) - cdxgen이 컴포넌트를 읽은
+  manifest가 모두 `test`, `tests`, `__tests__`, `testdata`, `fixtures`, `e2e`,
+  `example(s)`, `sample(s)`, `demo(s)`, `benchmark(s)`, `bench` 중 하나라는
+  이름의 디렉터리 아래에 있으면 그 컴포넌트를 제거합니다. 이름은 경로의 한
+  구간 전체가 같을 때만 일치로 보며, 대소문자와 경로 구분자는 무시합니다.
+  그래서 `Tests/`, `src/test/`는 일치하고 `contest/`, `lint-examples/`는
+  일치하지 않습니다. 다른 manifest에도 선언된 컴포넌트, manifest 경로를 단순한
+  상대 경로로 읽을 수 없는 컴포넌트는 유지합니다. 예제만 모아 둔 저장소처럼
+  모든 manifest가 이런 디렉터리 아래에 있으면 이 규칙은 동작하지 않습니다. 제거한 개수는 `non_deployable_path`로 집계되고, 제거된 패키지 URL은
+  `scan_metadata.scope_filter.dropped_refs`에 남습니다.
 
 제외된 컴포넌트 수는 스캔에 기록되고, SBOM의 `metadata.properties` 에는
 생태계별 개수를 담은 `trusca:scope_filter` 항목이 남아 필터된 문서가 제거 내역을
@@ -77,8 +87,11 @@ cdxgen은 해석된 모든 노드를 기록하므로, 산출물과 함께 배포
   방식으로 태깅하므로, 드물게 *런타임* optional 의존성도 함께 제거됩니다. 그런
   프로젝트에서는 `SCAN_SCOPE_FILTER_MAVEN_ENABLED=false`로 끄십시오.
 - 필터를 끄면(`SCAN_SCOPE_FILTER_ENABLED=false`) 다음 스캔부터 전체 해석
-  그래프가 복원됩니다. 토글 3종은 [환경변수](../reference/env-variables.md)를
+  그래프가 복원됩니다. 토글 4종은 [환경변수](../reference/env-variables.md)를
   참고하십시오.
+- 위 디렉터리 이름 아래에 배포 대상 코드를 두는 저장소(예를 들어 `examples/`가
+  제품에 포함되는 SDK)는 `SCAN_SCOPE_FILTER_NON_DEPLOYABLE_ENABLED=false`로
+  설정하십시오.
 
 ### 알려진 악성 패키지 {#known-malicious-packages}
 

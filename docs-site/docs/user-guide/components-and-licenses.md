@@ -65,6 +65,18 @@ signed and matched against the vulnerability DB:
   `dev` are removed. A package the lockfile does not cover is always kept
   (nested manifests in a monorepo are not covered by the root lockfile), so
   the filter only removes components with positive dev-dependency evidence.
+- **Test, example and benchmark directories** (all ecosystems) - a component
+  is removed when every manifest cdxgen read it from sits under a directory
+  named `test`, `tests`, `__tests__`, `testdata`, `fixtures`, `e2e`,
+  `example(s)`, `sample(s)`, `demo(s)`, `benchmark(s)` or `bench`. Names are
+  matched as whole path segments, ignoring case and the path separator, so
+  `Tests/` and `src/test/` match while `contest/` and `lint-examples/` do
+  not. A component that is also declared in any other manifest is kept, and
+  so is one whose manifest path cannot be read as a plain relative path. The
+  rule does nothing when every manifest in the repository is under such a
+  directory (a repository made only of examples). It is counted under
+  `non_deployable_path`, and the removed package URLs are listed in
+  `scan_metadata.scope_filter.dropped_refs`.
 
 The number of excluded components is recorded on the scan, and the SBOM's
 `metadata.properties` carries a `trusca:scope_filter` entry with per-ecosystem
@@ -79,7 +91,10 @@ Two caveats worth knowing:
   Set `SCAN_SCOPE_FILTER_MAVEN_ENABLED=false` for such projects.
 - Turning the filter off (`SCAN_SCOPE_FILTER_ENABLED=false`) restores the full
   resolved graph on the next scan. See
-  [Environment variables](../reference/env-variables.md) for all three toggles.
+  [Environment variables](../reference/env-variables.md) for all four toggles.
+- A repository that ships code from one of the directory names above (for
+  example an SDK whose `examples/` are part of the product) should set
+  `SCAN_SCOPE_FILTER_NON_DEPLOYABLE_ENABLED=false`.
 
 ### Known-malicious packages {#known-malicious-packages}
 
