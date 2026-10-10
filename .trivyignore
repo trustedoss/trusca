@@ -92,86 +92,35 @@
 # Re-evaluate: 2026-11-09 or when cdxgen refreshes the atom plugin bundle.
 CVE-2026-21452 exp:2027-01-30
 
-# ============================================================================
-# Gradle 8.14.5 distribution jars (opt/gradle/lib/**).
-#
-# The worker pins Gradle 8.14.5 (Dockerfile.worker GRADLE_VERSION) solely to
-# run `gradle dependencies` for cdxgen's dependency ENUMERATION
-# (build_prep_source.sh invokes no other task; when the scanned repo ships an
-# executable ./gradlew, the repo's OWN distribution runs and these pinned
-# jars are not executed at all). Threat-model context shared by every entry
-# below: running Gradle on a scanned repository ALREADY grants that
-# repository arbitrary code execution inside the scan environment by design
-# (build scripts are code). The containment boundary depends on the executor
-# mode — default `inprocess` runs Gradle inside the worker container (the
-# container boundary IS the containment); opt-in `local_docker` runs it in a
-# cap-drop=ALL, pids-limited sidecar with a named-volume workspace, and
-# egress is restricted only when SCAN_SIDECAR_NETWORK is configured (default
-# bridge is unrestricted with a WARNING, local_docker.py:417-428). In either
-# mode a library CVE inside the Gradle process adds no privilege beyond what
-# a hostile build script already has ("no delta"); the executor boundary,
-# not the jar version, is the containment.
-# ============================================================================
+# CVE-2026-59990 / CVE-2026-61814 - org.typelevel:jawn-parser_3 1.6.0 -> 1.7.0
+# Target: usr/lib/node_modules/@cyclonedx/cdxgen/node_modules/@appthreat/
+#   atom/plugins/lib/org.typelevel.jawn-parser_3-1.6.0.jar (same atom plugin
+#   bundle as the msgpack entry above).
+# Upstream fix status: cdxgen 12.3.3 pins @appthreat/atom 2.5.2. The newest
+#   2.x atom (2.5.6) still ships jawn-parser 1.6.0, and so does the newest
+#   cdxgen (12.8.5, which pins atom 2.5.6). Only atom 3.x carries 1.7.0, and
+#   no cdxgen release depends on it. Category (2): no release of the
+#   bundling tool includes the fix.
+# CVSS: HIGH x2 (CVE-2026-59990: unbounded nesting depth exhausts the heap;
+#   CVE-2026-61814: quadratic work in AsyncParser on a token split across
+#   many chunks). Both are denial of service on untrusted JSON.
+# Reach: same as the msgpack entry above. atom runs only for cdxgen's
+#   `--evidence` / research profiles, and our invocation
+#   (integrations/cdxgen.py, build_prep_source.sh) passes neither, so the
+#   atom jars are never loaded and no JSON reaches jawn. UNREACHED.
+# Re-evaluate: when a cdxgen release moves to atom >= 3.x (check
+#   `ls …/@appthreat/atom/plugins/lib | grep jawn`) or 2027-04-09,
+#   whichever is sooner.
+CVE-2026-59990 exp:2027-04-09
+CVE-2026-61814 exp:2027-04-09
 
-# CVE-2026-54512 — com.fasterxml.jackson.core:jackson-databind 2.18.6 → 2.18.8
-# Target: opt/gradle/lib/jackson-databind-2.18.6.jar
-# CVSS: HIGH (arbitrary code execution via polymorphic deserialisation).
-# Reach: the gadget class requires an application that enables default
-#   typing / polymorphic deserialisation on an attacker-controlled JSON
-#   stream. Gradle bundles jackson for internal tooling metadata; it does
-#   not deserialise scanned-repo JSON through jackson default typing in the
-#   `gradle dependencies` path we invoke. Even under attacker control the
-#   primitive yields code exec inside the Gradle process — no delta over
-#   build-script execution (see section header). UNREACHED / NO-DELTA.
-# Re-evaluate: 2026-11-09 or on next Gradle distribution bump.
-CVE-2026-54512 exp:2027-01-30
-
-# CVE-2026-54513 — com.fasterxml.jackson.core:jackson-databind 2.18.6 → 2.18.8
-# Target: opt/gradle/lib/jackson-databind-2.18.6.jar
-# CVSS: HIGH (security bypass in deserialisation gadget block-list).
-# Reach: same surface and same no-delta argument as CVE-2026-54512 above —
-#   the bypass only matters for applications that expose jackson
-#   deserialisation of untrusted streams as a TRUST BOUNDARY; inside the
-#   Gradle process a hostile build script already executes code, so there
-#   is no boundary left to bypass. UNREACHED / NO-DELTA.
-# Re-evaluate: 2026-11-09 or on next Gradle distribution bump.
-CVE-2026-54513 exp:2027-01-30
-
-# CVE-2026-8763 - org.bouncycastle:bcprov-jdk18on 1.84 -> 1.85
-# Target: opt/gradle/lib/plugins/bcprov-jdk18on-1.84.jar (GHSA-9pwp-9qqc-pr26)
-# CVSS: CRITICAL (X.509 Name Constraints bypass via a trailing dot in an
-#   rfc822Name or URI name).
-# Reach: the flaw is in X.509 certificate path validation. One documented
-#   way a scanned repo can make Gradle load this jar (per the CVE-2025-14813
-#   entry above, not re-verified against Gradle's source) is dependency
-#   verification via a shipped gradle/verification-metadata.xml, and that
-#   path checks OpenPGP signatures, which carry no X.509 chain and no name
-#   constraints. We know of no path in the Gradle invocations made by
-#   build_prep_source.sh and cdxgen (cdxgen.py, Gradle 8 compatibility
-#   note) that validates an X.509 chain through BC, and we found nothing
-#   suggesting Gradle uses BC for its registry TLS. Where a build script
-#   calls BC's path validator directly, it is code the attacker already
-#   runs, so there is no delta (see section header). UNREACHED / NO-DELTA.
-# Re-evaluate: 2026-11-09 or on next Gradle distribution bump. If a Gradle
-#   release ships bcprov >= 1.85, delete this entry.
-CVE-2026-8763 exp:2027-01-30
-
-# CVE-2026-13506 - org.bouncycastle:bcprov-jdk18on 1.84 -> 1.85
-# Target: opt/gradle/lib/plugins/bcprov-jdk18on-1.84.jar (GHSA-qp49-qgx5-5m26)
-# CVSS: HIGH (lazy ASN.1 sequence forcing resets the nesting-depth guard, so
-#   crafted deeply nested ASN.1 can exhaust the stack: denial of service).
-# Reach: needs BC to parse attacker-supplied ASN.1. Signature verification
-#   reads OpenPGP packets, not nested ASN.1 sequences, and we found no other
-#   place in the Gradle invocations made by build_prep_source.sh and cdxgen
-#   that hands scanned-repo bytes to BC's ASN.1 parser (same basis as the
-#   entry above, same caveat; an absence we did not test). The worst case is
-#   a crash or hang of the Gradle subprocess, which a hostile build script
-#   can already cause; the scan task's soft and hard time limits
-#   (_TASK_ANNOTATIONS in tasks/celery_app.py) bound the wall time.
-#   UNREACHED / NO-DELTA.
-# Re-evaluate: 2026-11-09 or on next Gradle distribution bump. If a Gradle
-#   release ships bcprov >= 1.85, delete this entry.
-CVE-2026-13506 exp:2027-01-30
+# Four entries stood here for jars in the Gradle 8.14.5 distribution
+# (opt/gradle/lib/**): jackson-databind 2.18.6 (CVE-2026-54512,
+# CVE-2026-54513) and bcprov-jdk18on 1.84 (CVE-2026-8763, CVE-2026-13506).
+# Gradle 8.14.6 (2026-10-08) bundles jackson 2.18.11, jsoup 1.23.2 and
+# bcprov / bcpg 1.85, checked by listing the release zip, and the worker now
+# pins it, so those jars are gone and the entries were removed with the bump.
+# The jackson-core entry further down (GHSA-r7wm-3cxj-wff9) went the same way.
 
 # ============================================================================
 # cdxgen-plugins-bin Go binary CVEs (12 total, 11 HIGH + 1 CRITICAL).
@@ -697,24 +646,6 @@ CVE-2026-50525 exp:2027-01-30
 CVE-2026-50527 exp:2027-01-30
 CVE-2026-50648 exp:2027-01-30
 
-# GHSA-r7wm-3cxj-wff9 — jackson-core 2.18.6 async-parser maxNumberLength
-#   bypass — HIGH
-# Target: opt/gradle/lib/jackson-core-2.18.6.jar ONLY — the jar Gradle
-#   8.14.5 bundles for its OWN internal metadata handling. Gradle 8.14.5 is
-#   the pinned toolchain release (Dockerfile.worker); no shipped Gradle
-#   bundles a fixed jackson-core (2.18.8+) yet, and we do not unpack or
-#   repack Gradle's lib dir.
-# CVSS: HIGH (async JSON number-parsing limit bypass — needs an application
-#   feeding attacker JSON through jackson's ASYNC parser).
-# Reach: the worker invokes Gradle non-interactively to enumerate
-#   dependencies for cdxgen (sidecar-scoped, team-authorized repos). Gradle's
-#   embedded jackson parses Gradle's own module metadata, not
-#   scan-controlled JSON via the async API. Portal code never loads this
-#   jar. Category-3 UNREACHED.
-# Re-evaluate: on the next Gradle pin bump (check `ls opt/gradle/lib` for
-#   the bundled jackson version) or 2026-10-24, whichever is sooner.
-GHSA-r7wm-3cxj-wff9 exp:2027-01-30
-
 # GHSA-hrxh-6v49-42gf — google.golang.org/grpc v1.81.1 xDS RBAC / HTTP2 —
 #   HIGH
 # Target: usr/local/bin/cosign (gobinary) ONLY. cosign v3.1.1 is the LATEST
@@ -806,6 +737,32 @@ GHSA-6v7p-g79w-8964 exp:2027-01-30
 #   invocation of it anywhere in the image.
 #   Category-2 UNRELEASED-UPSTREAM, same reasoning as the msgpack entry.
 CVE-2025-47273 exp:2027-01-30
+
+# CVE-2026-97687 / CVE-2026-97689 - urllib3 2.7.0 -> 2.8.0, vendored by pip
+#   26.2.1 (…/site-packages/pip/_vendor/urllib3; pip's vendor.txt pins
+#   urllib3==2.7.0, on main as well as in 26.2.1). The standalone urllib3 in
+#   /opt/scancode-venv and /opt/scanoss-venv is already 2.8.0, and the
+#   backend environment does not install urllib3 at all.
+# CVSS: HIGH x2 (CVE-2026-97687: the TLS settings for an HTTPS proxy can be
+#   replaced by the target server's, including `cert_reqs=CERT_NONE`;
+#   CVE-2026-97689: an unbounded chunk-size line is buffered into memory).
+# Reach: unlike the two entries above, pip does run at scan time:
+#   build_prep_source.sh runs `pip3 install -r requirements.txt` for a
+#   scanned Python repository, and cdxgen can do the same. A requirements
+#   file can name its own index and `--trusted-host`, so the server pip
+#   talks to and the target TLS policy are chosen by the scanned repository.
+#   That repository can already execute arbitrary code in the same process
+#   tree through any sdist's build backend, so neither flaw adds anything:
+#   the memory exhaustion is a crash the repository can cause directly, and
+#   the proxy case needs an `https://` proxy URL (pip uses `CONNECT` for
+#   HTTPS targets, where the end-to-end TLS session is unaffected). The scan
+#   task's time limits bound a hung pip. NO-DELTA.
+#   Category-2 UNRELEASED-UPSTREAM: urllib3 2.8.0 exists, pip has not
+#   re-vendored it.
+# Re-evaluate: on a pip release whose vendor.txt moves urllib3 past 2.7.0,
+#   or 2027-04-09, whichever is sooner.
+CVE-2026-97687 exp:2027-04-09
+CVE-2026-97689 exp:2027-04-09
 
 
 # ============================================================================
