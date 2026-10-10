@@ -66,6 +66,7 @@ from contextlib import contextmanager
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
+from urllib.parse import quote
 
 import structlog
 from celery.exceptions import SoftTimeLimitExceeded
@@ -4452,7 +4453,8 @@ def _persist_vendored_components(
 
     Each :class:`~integrations.scanoss.VendoredComponent` becomes:
       * a ``Component`` (by version-less purl) + ``ComponentVersion`` (by
-        purl-with-version) — reusing the SAME upsert helpers cdxgen uses, so a
+        the purl pinned to the matched version, see
+        :func:`_purl_pinned_to_version`), reusing the SAME upsert helpers cdxgen uses, so a
         purl SCANOSS reports that cdxgen ALSO found resolves to the identical
         component_version row (no duplicate Component);
       * a ``ScanComponent`` with ``direct=False`` and
@@ -4511,11 +4513,14 @@ def _persist_vendored_components(
             name=name,
             package_type=package_type,
         )
+        # The service's purl carries no version, and this key is what tells one
+        # version row from another (#500). The Component above keeps the
+        # unpinned purl, so its identity is what it was before.
         component_version = _get_or_create_component_version(
             session,
             component=component,
             version=version,
-            purl_with_version=purl,
+            purl_with_version=_purl_pinned_to_version(purl, version),
         )
 
         # Skip if cdxgen (or a prior vendored match this scan) already recorded
@@ -4761,6 +4766,31 @@ def _purl_without_version(purl: str) -> str:
     if at > 0:
         return purl[:at]
     return purl
+
+
+def _purl_pinned_to_version(purl: str, version: str) -> str:
+    """``purl`` with ``@version`` in the purl's version slot (before ``?`` and ``#``).
+
+    A fingerprint match names a library without a version and reports the
+    version beside it. ``component_versions`` is keyed on the versioned purl, so
+    that key has to carry the version the way a package-manager purl does, or
+    every version of the library resolves to whichever row was written first
+    (issue #500).
+
+    Left unchanged when there is no version to pin (empty or ``"unknown"``,
+    the persist fallback), and when the purl already carries one, which then is
+    its identity. The version is percent-encoded, so a ``#``, ``?`` or ``@`` in
+    it cannot end the segment early.
+    """
+    text = version.strip()
+    if not text or text == "unknown":
+        return purl
+    base, hash_sign, subpath = purl.partition("#")
+    base, question, qualifiers = base.partition("?")
+    if "@" in base.rsplit("/", 1)[-1]:
+        return purl
+    pinned = quote(text, safe=":")
+    return f"{base}@{pinned}{question}{qualifiers}{hash_sign}{subpath}"
 
 
 @contextmanager
