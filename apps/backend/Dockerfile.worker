@@ -841,8 +841,21 @@ RUN curl -fsSL -o /tmp/dotnet-install.sh "https://dot.net/v1/dotnet-install.sh" 
 # ``scancode --version`` does not read command-line options, so it cannot catch
 # that failure. The smoke run below scans one file and requires the detection,
 # which fails the build instead of shipping an image that detects nothing.
+#
+# chardet is pinned below 7. scancode-toolkit 32.4.0 declares ``chardet>=3.0.0``
+# and every other package in the venv accepts 5.x (the tightest bound is
+# requests' optional ``chardet<8,>=3.0.2``), so pip resolved the newest, 7.6.0.
+# The 7.x line is a rewrite published under 0BSD. 5.2.0 (2023) comes from the
+# LGPL-2.1-or-later line before it and is pure Python, so the installed modules
+# are its source. THIRD_PARTY_NOTICES.md §2 lists the version pinned here.
+#
+# intbitset (LGPL-3.0-or-later, a C extension) is pinned to the exact version
+# whose sdist the source layer below bundles. Without the pin a scancode bump
+# could move it and leave the bundled source describing a different build.
 ENV SCANCODE_VERSION=32.4.0 \
     SCANCODE_CLICK_VERSION=8.4.2 \
+    SCANCODE_CHARDET_VERSION=5.2.0 \
+    SCANCODE_INTBITSET_VERSION=4.1.2 \
     SCANCODE_VENV=/opt/scancode-venv
 RUN set -eux; \
     arch="$(dpkg --print-architecture)"; \
@@ -855,7 +868,9 @@ RUN set -eux; \
     "${SCANCODE_VENV}/bin/pip" install --no-cache-dir --upgrade pip; \
     "${SCANCODE_VENV}/bin/pip" install --no-cache-dir \
         "scancode-toolkit==${SCANCODE_VERSION}" \
-        "click==${SCANCODE_CLICK_VERSION}"; \
+        "click==${SCANCODE_CLICK_VERSION}" \
+        "chardet==${SCANCODE_CHARDET_VERSION}" \
+        "intbitset==${SCANCODE_INTBITSET_VERSION}"; \
     ln -s "${SCANCODE_VENV}/bin/scancode" /usr/local/bin/scancode; \
     ln -sfn "/usr/lib/${triplet}/libarchive.so.13" /usr/local/lib/scancode-libarchive.so; \
     ln -sfn "/usr/lib/${triplet}/libmagic.so.1" /usr/local/lib/scancode-libmagic.so; \
@@ -880,6 +895,104 @@ RUN set -eux; \
 # Debian multiarch triplet.
 ENV EXTRACTCODE_LIBARCHIVE_PATH=/usr/local/lib/scancode-libarchive.so \
     TYPECODE_LIBMAGIC_PATH=/usr/local/lib/scancode-libmagic.so
+
+# ---- Corresponding source for LGPL object code in the scancode venv. -------
+# Two packages in the venv above ship compiled LGPL code:
+#
+#   1. extractcode-7z (pulled in by ``extractcode[full]``). On amd64 its wheel
+#      carries a prebuilt p7zip 16.02 ``7z`` binary and ``7z.so`` plugin
+#      (LGPL-2.1-or-later, plus the unRAR restriction its wheel metadata
+#      names). On aarch64 the wheel is an empty stub with no binary, the same
+#      as the libarchive / libmagic wheels described above.
+#   2. intbitset (LGPL-3.0-or-later), a C extension, pinned above.
+#
+# The p7zip binaries were not built by us. The wheel's INSTALL_RECEIPT.json
+# names the Homebrew formula p7zip, stable 16.02, and the closest public
+# record of that build is the formula at revision 2 (Homebrew/homebrew-core
+# commit 80dcd3648433f2cd9956871b3b393953ff3d54c2, Formula/p7zip.rb). We
+# bundle what that formula builds from: the upstream release tarball, the
+# Debian 16.02+dfsg-6 packaging whose CVE-2016-9296 and CVE-2017-17969
+# patches it applies, and the AES patch it applies with -p4. All three hashes
+# are the ones that formula pins. The README copied below records this.
+#
+# Everything lands under TRUSCA_SOURCES_DIR on both arches, so the image
+# layout does not depend on the arch, and THIRD_PARTY_NOTICES.md §2 names
+# each file; tests/unit/test_license_distribution.py keeps the two in sync.
+# Hashes are pinned here rather than fetched, the same as the cosign block
+# below.
+#
+# The checks fail the build when an upgrade changes what this block
+# describes: an intbitset or venv chardet other than the pin, a system-Python
+# chardet from the 7.x line (requirements-dev.txt holds diff-cover's chardet
+# below 7), a 7z that reports another version, or an amd64 image with no 7z
+# at all (meaning the wheel layout changed and the notice needs a second
+# look).
+ENV TRUSCA_SOURCES_DIR=/usr/share/trusca/sources \
+    P7ZIP_VERSION=16.02 \
+    P7ZIP_SOURCE_SHA256=5eb20ac0e2944f6cb9c2d51dd6c4518941c185347d4089ea89087ffdd6e2341f \
+    P7ZIP_DEBIAN_SHA256=fab0be1764efdbde1804072f1daa833de4e11ea65f718ad141a592404162643c \
+    P7ZIP_AES_PATCH_SHA256=838dd2175c3112dc34193e99b8414d1dc1b2b20b861bdde0df2b32dbf59d1ce4 \
+    INTBITSET_SOURCE_SHA256=f82fafe0bcb4fe7a010d942099b5a84d721d37c897538ed632f788962c1411f8
+RUN set -eux; \
+    fetch() { \
+        curl -fsSL --retry 5 --retry-all-errors -o "$3" "$1"; \
+        echo "$2  $3" | sha256sum -c -; \
+    }; \
+    mkdir -p "${TRUSCA_SOURCES_DIR}/p7zip-${P7ZIP_VERSION}" \
+             "${TRUSCA_SOURCES_DIR}/intbitset-${SCANCODE_INTBITSET_VERSION}"; \
+    fetch "https://downloads.sourceforge.net/project/p7zip/p7zip/${P7ZIP_VERSION}/p7zip_${P7ZIP_VERSION}_src_all.tar.bz2" \
+        "${P7ZIP_SOURCE_SHA256}" \
+        "${TRUSCA_SOURCES_DIR}/p7zip-${P7ZIP_VERSION}/p7zip_${P7ZIP_VERSION}_src_all.tar.bz2"; \
+    fetch "https://snapshot.debian.org/archive/debian/20180601T000000Z/pool/main/p/p7zip/p7zip_16.02%2Bdfsg-6.debian.tar.xz" \
+        "${P7ZIP_DEBIAN_SHA256}" \
+        "${TRUSCA_SOURCES_DIR}/p7zip-${P7ZIP_VERSION}/p7zip_16.02+dfsg-6.debian.tar.xz"; \
+    fetch "https://github.com/aonez/Keka/files/2940620/15-Enhanced-encryption-strength.patch.zip" \
+        "${P7ZIP_AES_PATCH_SHA256}" \
+        "${TRUSCA_SOURCES_DIR}/p7zip-${P7ZIP_VERSION}/15-Enhanced-encryption-strength.patch.zip"; \
+    fetch "https://files.pythonhosted.org/packages/source/i/intbitset/intbitset-${SCANCODE_INTBITSET_VERSION}.tar.gz" \
+        "${INTBITSET_SOURCE_SHA256}" \
+        "${TRUSCA_SOURCES_DIR}/intbitset-${SCANCODE_INTBITSET_VERSION}/intbitset-${SCANCODE_INTBITSET_VERSION}.tar.gz"; \
+    py="${SCANCODE_VENV}/bin/python"; \
+    test "$("$py" -c 'from importlib.metadata import version; print(version("intbitset"))')" = "${SCANCODE_INTBITSET_VERSION}"; \
+    test "$("$py" -c 'from importlib.metadata import version; print(version("chardet"))')" = "${SCANCODE_CHARDET_VERSION}"; \
+    python3 -c 'import sys; from importlib.metadata import version; v = version("chardet"); sys.exit(0 if int(v.split(".")[0]) < 7 else "system-Python chardet " + v + " is from the 7.x line; requirements-dev.txt pins chardet<7")'; \
+    sevenzip="$("$py" -c 'import os, extractcode_7z; print(os.path.join(os.path.dirname(extractcode_7z.__file__), "bin", "7z"))')"; \
+    if [ "$(dpkg --print-architecture)" = "amd64" ] && [ ! -x "${sevenzip}" ]; then \
+        echo "extractcode-7z ships no 7z binary on amd64; re-check THIRD_PARTY_NOTICES.md §2" >&2; exit 1; \
+    fi; \
+    if [ -e "${sevenzip}" ]; then \
+        sevenzip_info="$("${sevenzip}" i 2>&1 || true)"; \
+        case "${sevenzip_info}" in \
+            *"p7zip Version ${P7ZIP_VERSION}"*) ;; \
+            *) echo "bundled 7z is not p7zip ${P7ZIP_VERSION}; update the bundled source and THIRD_PARTY_NOTICES.md §2" >&2; \
+               echo "${sevenzip_info}" | head -n 5 >&2; exit 1 ;; \
+        esac; \
+    fi; \
+    ls -lR "${TRUSCA_SOURCES_DIR}"
+COPY <<'EOF' /usr/share/trusca/sources/p7zip-16.02/README
+p7zip 16.02: the 7z and 7z.so files in the extractcode-7z package
+(/opt/scancode-venv/lib/python3.12/site-packages/extractcode_7z/bin/),
+linux/amd64 image only.
+
+Build record: the package's licenses/p7zip/INSTALL_RECEIPT.json names the
+Homebrew formula p7zip, stable version 16.02. The closest public record of
+that build is the formula at revision 2, Homebrew/homebrew-core commit
+80dcd3648433f2cd9956871b3b393953ff3d54c2 (Formula/p7zip.rb). The files here
+are what that formula builds from:
+
+  p7zip_16.02_src_all.tar.bz2                upstream source (sourceforge.net/projects/p7zip)
+  p7zip_16.02+dfsg-6.debian.tar.xz           Debian packaging; the formula applies
+                                             patches/12-CVE-2016-9296.patch and
+                                             patches/13-CVE-2017-17969.patch
+  15-Enhanced-encryption-strength.patch.zip  AES patch, applied with -p4
+
+Build on Linux: unpack the source, apply the patches above, then
+  cp makefile.linux_any_cpu makefile.machine && make all3
+
+License: GNU LGPL 2.1 or later; the RAR decompression code is under the
+GNU LGPL with the unRAR restriction (see DOC/License.txt and
+DOC/unRarLicense.txt in the source).
+EOF
 
 # ===========================================================================
 # >>> v2.3-s1 (s-track) cosign — BEGIN. Self-contained block. r-track
