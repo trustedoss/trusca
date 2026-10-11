@@ -81,6 +81,8 @@ DOCKER_HOST=tcp://docker-socket-proxy:2375
 
 The proxy allows `containers/*` and `images/*` only; it blocks `exec`, `swarm`, `networks`, and `volumes`.
 
+With `DOCKER_HOST` set, the worker no longer runs build preparation or cdxgen in process: a scan of an environment that is not routed to a sidecar fails instead of running the build next to the Docker API. Route every environment (`SCAN_LOCAL_DOCKER_ENVS=all`) on such a worker.
+
 :::caution The proxy does not inspect create payloads
 docker-socket-proxy gates which API *verbs* the worker may call, but it does not inspect the body of a container-create request — it cannot reject a `privileged: true` or an extra bind mount. The sidecar hardening above (cap-drop, no-new-privileges, named volume) is what actually constrains the launched container, so it stays essential even behind the proxy.
 :::
@@ -154,38 +156,77 @@ The worker then checks the result manifest against the BomLens engine contract (
 
 The plan is output of a container that read the scanned source, so the worker treats it as untrusted input and decides how every container runs:
 
-- **Images pinned by digest.** The BomLens images are pinned in the TRUSCA release. A stage 1 image must come from a repository in `SCAN_BOMLENS_STAGE1_REPOSITORIES` and carry a digest; `:latest` is refused everywhere.
-- **Mounts from the scan's workspace only.** A plan names a mount by role (source, output, helper file, restore state), never by host path. The worker maps each role to a folder under the scan's own workspace and refuses a path that leaves it or passes through a symbolic link. A mount over a system path or the Docker socket is refused.
+- **Images pinned by digest.** The BomLens images are pinned in the TRUSCA release. A stage 1 image must come from a repository in `SCAN_BOMLENS_STAGE1_REPOSITORIES` and carry a digest; `:latest` is refused everywhere. Stage 2 takes only its image and its two mount paths from the plan; its user, entrypoint, arguments, working directory and network are fixed by TRUSCA.
+- **Mounts from the scan's workspace only.** A plan names a mount by role (source, output, helper file, restore state), never by host path. The worker maps each role to a folder under the scan's own workspace and refuses a path that leaves it or passes through a symbolic link. A mount over a system path, the Docker socket, or the paths TRUSCA mounts itself (`/tmp`, `/trivy-db`) is refused. Each container is created first and started only when the mounts the daemon recorded are exactly the ones asked for.
 - **Read-only root filesystem**, with a scratch `/tmp` from the workspace. Stage 1 can be given a writable root with `SCAN_BOMLENS_STAGE1_READ_ONLY_ROOT=false` (see the table below).
 - **The sidecar hardening above**: `--cap-drop ALL` with the minimal set added back, `no-new-privileges`, and the `SCAN_SIDECAR_PIDS_LIMIT`, `SCAN_SIDECAR_MEMORY` and `SCAN_SIDECAR_CPUS` limits, with no swap.
-- **No network**, except stage 1, which joins `SCAN_BOMLENS_NETWORK`. The worker refuses `host`, and refuses the network the worker itself is on, which is the one that reaches PostgreSQL and Redis. Stage 2 reads the worker's Trivy database read-only instead of downloading one, so the vulnerability data matches what the rest of TRUSCA uses.
-- **Only allow-listed environment variables**, never the worker's environment.
+- **No network**, except stage 1, which joins `SCAN_BOMLENS_NETWORK`. The worker refuses `host`, the compose networks `trustedoss` and `trustedoss-docker-api`, any network the worker itself is on (by name or ID), and refuses to run stage 1 at all when it cannot read its own networks. Stage 2 reads the worker's Trivy database read-only instead of downloading one, so the vulnerability data matches what the rest of TRUSCA uses.
+- **Only allow-listed environment variables**, never the worker's environment. Pass-through names such as `GOPROXY` and `GOSUMDB` are copied from the engine worker's environment when set; a proxy URL with credentials in it reaches the build that runs the scanned project's code, so give the build credentials that are scoped to reading packages.
+- **A deadline.** Every engine container carries labels with its scan and the time it must be gone. The engine worker removes it when its scan is no longer running or the deadline has passed: every five minutes, and right away when a scan is cancelled. A container left behind by a worker that was killed is therefore removed within minutes.
+
+### Which worker runs what {#engine-workers}
+
+The Docker API can start a privileged container, so only one worker can reach it, and that worker never runs code from a scanned repository:
+
+| Worker | Queues | Docker API | Runs |
+|---|---|---|---|
+| `worker-engine` (profile `bomlens-engine`) | `trustedoss.engine` only | through `docker-socket-proxy` | the BomLens scan task and the engine-container reaper |
+| `worker-scan` | `trustedoss.scan`, `trustedoss.default` | none | in-process scans (build preparation, cdxgen, scancode, Trivy), container and SBOM scans, reachability (govulncheck) |
+| `worker-default` | `trustedoss.default` | none | notifications, backups, retention, catalog refreshes |
+
+The engine worker does not run the in-process pipeline: a source scan goes to it only when `SCAN_ENGINE=bomlens` was set when the scan was queued, and the task it receives can only run the engine. In the other direction, build preparation, cdxgen and govulncheck refuse to start on any worker where `DOCKER_HOST` is set or the name `docker-socket-proxy` resolves; the scan fails with that reason instead of running the build.
 
 ### Turn on the engine (compose) {#engine-turn-on}
 
-The worker reaches Docker through the filtered proxy in `docker-compose.yml`, never through the raw socket. The proxy answers container and image calls only and refuses `exec`, volumes, networks, swarm, system and build calls. It does not inspect the body of a container-create request; the limits in the previous section are applied by the worker. The engine mounts parts of the workspace volume with `volume-subpath`, which needs Docker Engine 26 or later.
+`worker-engine` reaches Docker through the filtered proxy in `docker-compose.yml`, never through the raw socket. The proxy answers container and image calls only and refuses `exec`, volumes, networks, swarm, system and build calls. It does not inspect the body of a container-create request; the limits in the previous sections are applied by the worker. The engine mounts parts of the workspace volume with `volume-subpath` and refuses to run on a Docker API older than 1.45 (Docker Engine 26).
 
 <!-- docs-uat: id=dynamic-scan-executor-engine-proxy kind=shell ctx=host tier=manual waiver=env-config-snippet-not-a-command -->
 ```bash
-# Start the Docker API proxy for the scan worker
-docker-compose --profile bomlens-engine up -d
+# Once: the network stage 1 reaches the package registries on, with
+# containers on it unable to reach each other
+docker network create --opt com.docker.network.bridge.enable_icc=false \
+  trustedoss-scan-egress
 
 # In the portal's .env (<project> is the compose project name)
 SCAN_ENGINE=bomlens
 SCAN_WORKSPACE_VOLUME=<project>_workspace
 SCAN_TRIVY_CACHE_VOLUME=<project>_trivy-cache
+
+# Start the engine worker and its Docker API proxy, and let the API, beat and
+# workers read the new values
+docker-compose --profile bomlens-engine up -d
 ```
 
-Then recreate the scan worker so it reads the new values (`docker-compose up -d worker-scan`). Compose already sets `SCAN_BOMLENS_NETWORK=bridge`: Docker's default bridge reaches the package registries and is not attached to the `trustedoss` network. To limit stage 1 to the registries you use, create your own network with an egress firewall and name it there.
+`SCAN_BOMLENS_NETWORK` defaults to `trustedoss-scan-egress` in compose. To limit stage 1 to the registries you use, add an egress firewall to that network.
 
 When `SCANCODE_ENABLED` is on, stage 2 uses the published BomLens variant with scancode (`bomlens-deep-license`), so first-party licence detection still runs.
 
 The scope filter settings carry over: with `SCAN_SCOPE_FILTER_NON_DEPLOYABLE_ENABLED=false` (or `SCAN_SCOPE_FILTER_ENABLED=false`) BomLens keeps the test, example and benchmark trees it otherwise leaves out of the SBOM.
 
+:::tip Run the Docker daemon with user namespaces
+The engine's containers run as root inside the container. With the daemon's `userns-remap` setting, or a rootless Docker daemon, that root is an unprivileged user on the host, which limits what a container escape could reach. Both are daemon settings outside TRUSCA; turn one on where the host allows it.
+:::
+
+### Turn the engine off {#engine-turn-off}
+
+Both services have `restart: unless-stopped`, so a later `docker-compose up -d` without the profile leaves them running, and the proxy keeps the Docker API open. Stop and remove them explicitly:
+
+<!-- docs-uat: id=dynamic-scan-executor-engine-off kind=shell ctx=host tier=manual waiver=env-config-snippet-not-a-command -->
+```bash
+# In the portal's .env
+SCAN_ENGINE=inprocess
+
+docker-compose --profile bomlens-engine stop worker-engine docker-socket-proxy
+docker-compose --profile bomlens-engine rm -f worker-engine docker-socket-proxy
+docker-compose up -d
+```
+
+Scans already queued for the engine stay queued until the engine worker runs again; cancel them, or start the profile once more to let them finish.
+
 ### Check that it ran {#engine-verify}
 
 <!-- docs-uat: id=dynamic-scan-executor-engine-verify-log kind=manual tier=manual -->
-- The worker log shows `bomlens_plan` with the detected ecosystem, then one `bomlens_container_exit` per container with its exit code.
+- The `worker-engine` log shows `bomlens_plan` with the detected ecosystem, then one `bomlens_container_exit` per container with its exit code.
 
 <!-- docs-uat: id=dynamic-scan-executor-engine-verify-metadata kind=manual tier=manual -->
 - The scan's metadata carries `scan_engine` (the BomLens version, image digest and each step's status) and `scan_engine_run` (the plan status, stage 1's exit code, whether it was killed and whether the source was restored).
@@ -195,6 +236,7 @@ The scope filter settings carry over: with `SCAN_SCOPE_FILTER_NON_DEPLOYABLE_ENA
 - The Helm chart (a Kubernetes Job runner is a later step).
 - Reusing the SBOM of an earlier scan with an unchanged dependency set: a BomLens scan always runs the engine.
 - Private package-registry credentials for stage 1 (the `/etc/trusca/registry` files the in-process pipeline reads), and the SCANOSS step.
+- A proxy that inspects container-create requests, and running the engine's containers under a separate runtime.
 
 ## Environment variable reference
 
@@ -206,7 +248,7 @@ These mirror the **Dynamic scan executor** section of `.env.example`. All are re
 | `SCAN_ENGINE` | `inprocess` | Preview. `bomlens` runs source scans on the BomLens engine (see [Scan engine](#scan-engine)). |
 | `SCAN_BOMLENS_IMAGE` | pinned in the release | BomLens image for the plan and stage 2. An override must be `repo:tag@sha256:...` with a tag other than `latest`. |
 | `SCAN_BOMLENS_DEEP_LICENSE_IMAGE` | pinned in the release | BomLens variant with scancode, used for stage 2 when `SCANCODE_ENABLED` is on. Same pinning rule. |
-| `SCAN_BOMLENS_NETWORK` | empty (compose: `bridge`) | Network for stage 1, which resolves dependencies from the package registries. Empty refuses stage 1; `host` and the worker's own network are refused. |
+| `SCAN_BOMLENS_NETWORK` | empty (compose: `trustedoss-scan-egress`) | Network for stage 1, which resolves dependencies from the package registries. Empty refuses stage 1, as do `host`, the compose networks `trustedoss` and `trustedoss-docker-api`, and any network the worker itself is on. |
 | `SCAN_BOMLENS_STAGE1_REPOSITORIES` | `ghcr.io/cdxgen/` | Comma-separated repository prefixes, each ending in `/`, that a plan's stage 1 image must start with. |
 | `SCAN_BOMLENS_STAGE1_READ_ONLY_ROOT` | `true` | `false` gives stage 1 a writable root filesystem, which Python's `pip install` build preparation needs; the build then runs with a writable image. |
 | `SCAN_BOMLENS_STAGE1_TIMEOUT_SECONDS` | `1800` | Time limit of stage 1 before it is killed and the source is restored. |

@@ -56,6 +56,10 @@ from sqlalchemy import select, update
 from core.config import workspace_root
 from core.db import sync_session_scope
 from integrations import govulncheck as gv
+from integrations.scan_executor.docker_guard import (
+    DockerApiReachable,
+    refuse_build_with_docker_access,
+)
 from models import (
     Component,
     ComponentVersion,
@@ -157,6 +161,13 @@ def _run(*, scan_uuid: uuid.UUID, workspace: Path) -> None:
         return
 
     # 4. Run govulncheck (the adapter never raises — empty result on any skip).
+    #    It loads the scanned module's code, so not where the Docker API is
+    #    reachable (security review on #522, H1): refused, findings left NULL.
+    try:
+        refuse_build_with_docker_access("govulncheck")
+    except DockerApiReachable as exc:
+        log.error("reachability_refused_docker_reachable", error=str(exc))
+        return
     result = gv.run_govulncheck(module_dir=module_dir)
     if not result.analysed:
         log.info("reachability_not_analysed", scan_id=str(scan_uuid))

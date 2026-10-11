@@ -84,7 +84,6 @@ from core.config import (
     license_fetch_enabled,
     license_fetch_scan_budget_seconds,
     malicious_enabled,
-    scan_engine,
     scan_load_test_delay_seconds,
     scan_scope_filter_enabled,
     scan_scope_filter_maven_enabled,
@@ -240,11 +239,29 @@ _STAGE_PROGRESS: dict[str, int] = {
 )
 def scan_source_task(self: Any, scan_id: str) -> None:
     """
-    Run a source scan to completion.
+    Run a source scan to completion with the in-process engine.
 
     Args:
         scan_id: UUID **string** (Celery JSON serialization compatibility).
     """
+    _run_source_task(self, scan_id, engine="inprocess")
+
+
+# The BomLens engine runs on its own worker (compose service worker-engine,
+# queue trustedoss.engine), the only one that can reach the Docker API. The
+# engine is decided by which task was dispatched, not by the worker's
+# SCAN_ENGINE: this task never falls back to the in-process pipeline, and the
+# task above never runs the engine (security review on #522, H1).
+@celery_app.task(  # type: ignore[misc]
+    name="trustedoss.scan_source_engine",
+    bind=True,
+)
+def scan_source_engine_task(self: Any, scan_id: str) -> None:
+    """Run a source scan to completion on the BomLens engine."""
+    _run_source_task(self, scan_id, engine="bomlens")
+
+
+def _run_source_task(self: Any, scan_id: str, *, engine: str) -> None:
     structlog.contextvars.bind_contextvars(
         scan_id=scan_id, task_id=self.request.id, task_kind="source"
     )
@@ -313,6 +330,7 @@ def scan_source_task(self: Any, scan_id: str) -> None:
                 git_url=project_git_url,
                 scan_metadata=scan_metadata,
                 ref=scan_ref,
+                engine=engine,
             )
     except _FetchAborted as exc:
         # SSRF guard / fetch refused the project URL — terminal, not a
@@ -386,8 +404,13 @@ def _run_pipeline(
     git_url: str | None,
     scan_metadata: dict[str, Any] | None = None,
     ref: str | None = None,
+    engine: str = "inprocess",
 ) -> None:
-    """Execute the scan stages, each with its own commit."""
+    """Execute the scan stages, each with its own commit.
+
+    ``engine`` comes from the task that was dispatched (``bomlens`` only for
+    :func:`scan_source_engine_task`), never from this worker's environment.
+    """
     # Scan-log verbosity (feat/scan-log-verbosity): a per-scan
     # ``metadata.verbosity == "verbose"`` flips every tool into its debug /
     # verbose mode so the scan-log drawer renders a full diagnostic trace. The
@@ -435,11 +458,12 @@ def _run_pipeline(
     # than a second directory walk.
     manifest_inventory = _record_input_manifests(scan_uuid, project_root)
 
-    # SCAN_ENGINE=bomlens (preview): the BomLens image produces the SBOM and
-    # the vulnerability report from here on, and TRUSCA persists, signs and
-    # finishes the scan (tasks.scan_source_bomlens). Imported here because that
-    # module imports this one.
-    if scan_engine() == "bomlens":
+    # The BomLens engine task: the BomLens image produces the SBOM and the
+    # vulnerability report from here on, and TRUSCA persists, signs and
+    # finishes the scan (tasks.scan_source_bomlens). Nothing before this point
+    # runs code from the scanned tree. Imported here because that module
+    # imports this one.
+    if engine == "bomlens":
         from tasks.scan_source_bomlens import run_bomlens_pipeline
 
         run_bomlens_pipeline(
@@ -4830,5 +4854,6 @@ def _noop_workspace(path: Path) -> Iterator[Path]:
 
 
 __all__ = [
+    "scan_source_engine_task",
     "scan_source_task",
 ]

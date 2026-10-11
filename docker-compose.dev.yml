@@ -251,10 +251,10 @@ x-backend-env: &backend-env
   SCAN_WORKER_CONTAINER: ${SCAN_WORKER_CONTAINER:-}
   SCAN_WORKSPACE_MOUNT: ${SCAN_WORKSPACE_MOUNT:-/tmp/trustedoss}
   SCAN_WORKSPACE_VOLUME: ${SCAN_WORKSPACE_VOLUME:-}
-  # BomLens scan engine (preview). The dev worker already has the Docker
-  # socket (celery-worker below); set SCAN_WORKSPACE_VOLUME and
-  # SCAN_TRIVY_CACHE_VOLUME to this project's scan-workspace / trivy-cache
-  # volume names. See docker-compose.yml for the production wiring.
+  # BomLens scan engine (preview). Engine scans run only on an engine worker
+  # that consumes trustedoss.engine and nothing else (docker-compose.yml's
+  # worker-engine); this file defines none, so do not set SCAN_ENGINE=bomlens
+  # here. The keys are listed so a value in .env reaches the containers.
   SCAN_ENGINE: ${SCAN_ENGINE:-inprocess}
   SCAN_BOMLENS_IMAGE: ${SCAN_BOMLENS_IMAGE:-}
   SCAN_BOMLENS_DEEP_LICENSE_IMAGE: ${SCAN_BOMLENS_DEEP_LICENSE_IMAGE:-}

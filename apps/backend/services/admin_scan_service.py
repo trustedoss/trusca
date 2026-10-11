@@ -30,6 +30,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from core.audit import bind_audit_team
 from core.authz import can_access_group
+from core.config import scan_engine
 from core.security import CurrentUser
 from core.sql_safety import escape_like
 from models import Project, Scan, Team
@@ -459,6 +460,15 @@ async def _revoke_and_mark_cancelled(
 
     await session.commit()
     await session.refresh(scan)
+
+    # SCAN_ENGINE=bomlens: a terminate=True revoke kills the engine task before
+    # its ``finally`` removes the engine container, so ask the engine worker to
+    # reap now instead of within its five-minute beat (security review on
+    # #522, M1).
+    if scan.kind == "source" and scan_engine() == "bomlens":
+        from tasks.bomlens_engine_reaper import enqueue_reap
+
+        enqueue_reap(celery_app_override)
 
     log.warning(
         log_event,

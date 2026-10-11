@@ -16,6 +16,7 @@ from __future__ import annotations
 
 import os
 import shutil
+import subprocess
 import uuid
 from pathlib import Path
 from typing import Any
@@ -160,18 +161,19 @@ def _clean_docker() -> FakeDocker:
     )
 
 
-def test_the_source_task_runs_the_engine_when_selected(
+def test_the_engine_task_runs_the_engine(
     monkeypatch: pytest.MonkeyPatch, sync_session: Session
 ) -> None:
-    from tasks.scan_source import scan_source_task
+    """The engine task decides the engine, whatever this worker's SCAN_ENGINE."""
+    from tasks.scan_source import scan_source_engine_task
 
     docker = _clean_docker()
     _install(monkeypatch, docker)
-    monkeypatch.setenv("SCAN_ENGINE", "bomlens")
+    monkeypatch.setenv("SCAN_ENGINE", "inprocess")
     monkeypatch.setenv("TRUSTEDOSS_SCAN_BACKEND", "mock")
     scan_id = _seed_running_source_scan()
 
-    result = scan_source_task.apply(args=[str(scan_id)])
+    result = scan_source_engine_task.apply(args=[str(scan_id)])
     assert result.successful(), result.traceback
 
     scan = _scan(sync_session, scan_id)
@@ -188,15 +190,17 @@ def test_the_source_task_runs_the_engine_when_selected(
     assert not (Path(os.environ["WORKSPACE_HOST_PATH"]) / str(scan_id)).exists()
 
 
-def test_the_in_process_engine_never_touches_docker(
+def test_the_in_process_task_never_touches_docker(
     monkeypatch: pytest.MonkeyPatch, sync_session: Session
 ) -> None:
+    """Even on a worker whose SCAN_ENGINE says bomlens: the in-process task
+    never runs the engine (only the engine worker may reach the Docker API)."""
     from tasks.scan_source import scan_source_task
     from tests.integration.scan.test_scan_source_pipeline_mock import _stub_trivy_empty
 
     docker = _clean_docker()
     _install(monkeypatch, docker)
-    monkeypatch.setenv("SCAN_ENGINE", "inprocess")
+    monkeypatch.setenv("SCAN_ENGINE", "bomlens")
     monkeypatch.setenv("TRUSTEDOSS_SCAN_BACKEND", "mock")
     _stub_trivy_empty(monkeypatch)
     scan_id = _seed_running_source_scan()
@@ -234,14 +238,13 @@ def test_an_engine_failure_fails_the_scan_with_a_message_and_no_path(
     docker: FakeDocker,
     fragment: str,
 ) -> None:
-    from tasks.scan_source import scan_source_task
+    from tasks.scan_source import scan_source_engine_task
 
     _install(monkeypatch, docker)
-    monkeypatch.setenv("SCAN_ENGINE", "bomlens")
     monkeypatch.setenv("TRUSTEDOSS_SCAN_BACKEND", "mock")
     scan_id = _seed_running_source_scan()
 
-    scan_source_task.apply(args=[str(scan_id)])
+    scan_source_engine_task.apply(args=[str(scan_id)])
 
     scan = _scan(sync_session, scan_id)
     assert scan.status == "failed"
@@ -315,6 +318,10 @@ def test_the_published_images_scan_an_npm_project(
         os.getenv("BOMLENS_ENGINE_TRIVY_CACHE", str(Path.home() / ".cache" / "trivy")),
     )
     monkeypatch.delenv("SCAN_BOMLENS_IMAGE")
+    monkeypatch.setenv("SCAN_BOMLENS_NETWORK", os.getenv("BOMLENS_ENGINE_NETWORK", "bridge"))
+    # This test process is not a container, so it has no networks of its own
+    # for the runner to compare; in compose it is worker-engine and does.
+    monkeypatch.setattr(runner_mod.DockerCli, "own_networks", lambda self: frozenset())
     scan_id = _seed_running_source_scan()
 
     _run_pipeline(host_dir, scan_id)
@@ -326,6 +333,112 @@ def test_the_published_images_scan_an_npm_project(
     meta = _metadata(sync_session, scan_id)
     assert meta["scan_engine"]["run_status"] == "succeeded"
     assert meta["scan_engine_run"]["stage1_exit_code"] == 0
+
+
+def _docker(*argv: str, check: bool = True) -> subprocess.CompletedProcess[str]:
+    return subprocess.run(["docker", *argv], capture_output=True, text=True, check=check)
+
+
+@pytest.mark.skipif(
+    os.getenv("BOMLENS_ENGINE_DOCKER_TEST") != "1",
+    reason="needs a local Docker daemon (set BOMLENS_ENGINE_DOCKER_TEST=1)",
+)
+def test_root_owned_engine_files_become_deletable_by_the_worker(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """The ownership reset on a named volume, where ownership is the daemon's own.
+
+    A root container leaves a 0700 folder with a file in the engine scratch
+    space and in the source tree, as stage 1 does. After the reset nothing
+    under the scan is owned by anyone but the worker's user, and that user
+    can delete the lot (security review on #522). A bind mount cannot show
+    this on a Mac: its file sharing reports every file as root's.
+    """
+    uid, gid = os.getuid(), os.getgid()
+    volume = f"trusca-chown-test-{uuid.uuid4().hex[:12]}"
+    root = tmp_path / "ws"
+    scan_dir = root / "scan"
+    for folder in ("bomlens/tmp-stage1/sbomhome", "source/repo"):
+        (scan_dir / folder).mkdir(parents=True)
+    monkeypatch.setenv("WORKSPACE_HOST_PATH", str(root))
+    monkeypatch.setenv("SCAN_DOCKER_VOLUME_STRATEGY", "named")
+    monkeypatch.setenv("SCAN_WORKSPACE_VOLUME", volume)
+    monkeypatch.setenv("SCAN_WORKSPACE_MOUNT", str(root))
+    monkeypatch.delenv("SCAN_BOMLENS_IMAGE", raising=False)
+    _docker("volume", "create", volume)
+    try:
+        _docker(
+            "run",
+            "--rm",
+            "--network",
+            "none",
+            "-v",
+            f"{volume}:/v",
+            "alpine:3.19.0",
+            "sh",
+            "-c",
+            "mkdir -p /v/scan/bomlens/tmp-stage1/sbomhome /v/scan/source/repo"
+            " && touch /v/scan/bomlens/tmp-stage1/sbomhome/cache /v/scan/source/repo/Gemfile.lock"
+            " && chmod 700 /v/scan/bomlens/tmp-stage1/sbomhome"
+            # The folders the worker itself created are the worker's.
+            f" && chown {uid}:{gid} /v/scan /v/scan/source /v/scan/source/repo"
+            " /v/scan/bomlens /v/scan/bomlens/tmp-stage1",
+        )
+        before = _docker(
+            "run",
+            "--rm",
+            "-v",
+            f"{volume}:/v:ro",
+            "alpine:3.19.0",
+            "find",
+            "/v/scan",
+            "!",
+            "-user",
+            str(uid),
+        ).stdout.split()
+        assert "/v/scan/bomlens/tmp-stage1/sbomhome/cache" in before
+
+        runner = runner_mod.BomLensRunner(
+            scan_uuid=uuid.uuid4(),
+            layout=runner_mod.EngineLayout(scan_dir=scan_dir, source=scan_dir / "source" / "repo"),
+            images=runner_mod.resolve_images(deep_license=False),
+            project_name="chown-test",
+            project_version="1",
+            fetch_license=False,
+        )
+        runner.reclaim_ownership()
+
+        after = _docker(
+            "run",
+            "--rm",
+            "-v",
+            f"{volume}:/v:ro",
+            "alpine:3.19.0",
+            "find",
+            "/v/scan/bomlens",
+            "/v/scan/source/repo",
+            "!",
+            "-user",
+            str(uid),
+        ).stdout.split()
+        assert after == []
+        removed = _docker(
+            "run",
+            "--rm",
+            "--user",
+            f"{uid}:{gid}",
+            "-v",
+            f"{volume}:/v",
+            "alpine:3.19.0",
+            "rm",
+            "-rf",
+            "/v/scan/bomlens",
+            "/v/scan/source/repo",
+            check=False,
+        )
+        assert removed.returncode == 0, removed.stderr
+    finally:
+        _docker("volume", "rm", "-f", volume, check=False)
 
 
 @pytest.mark.parametrize(
