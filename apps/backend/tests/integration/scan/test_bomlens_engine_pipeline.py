@@ -512,3 +512,41 @@ def test_the_engine_s_empty_finding_decides_the_component_outcome(
 
     meta = _metadata(sync_session, scan_id)
     assert meta[so.METADATA_KEY] == so.EMPTY_WITH_MANIFESTS
+
+
+def test_a_scan_cancelled_mid_run_stops_without_writing_over_it(
+    monkeypatch: pytest.MonkeyPatch, sync_session: Session
+) -> None:
+    """worker-engine takes no revoke; the pipeline sees the cancellation at
+    its next stage and leaves the row as the cancel left it."""
+    from tasks.scan_source import scan_source_engine_task
+
+    scan_id = _seed_running_source_scan()
+
+    def cancel_during_stage1(run: Any) -> None:
+        write_sbom("app_1.0_bom.json")(run)
+        from core.db import sync_session_scope
+
+        with sync_session_scope() as session:
+            scan = session.get(Scan, scan_id)
+            assert scan is not None
+            scan.status = "cancelled"
+            scan.error_message = "cancelled by admin"
+            session.commit()
+
+    docker = (
+        FakeDocker()
+        .behave("plan", Behaviour(effect=write_plan("node-ok")))
+        .behave("stage1", Behaviour(effect=cancel_during_stage1))
+        .behave("stage2", Behaviour(effect=write_result("source-ok")))
+    )
+    _install(monkeypatch, docker)
+    monkeypatch.setenv("TRUSTEDOSS_SCAN_BACKEND", "mock")
+
+    result = scan_source_engine_task.apply(args=[str(scan_id)])
+    assert result.successful(), result.traceback
+
+    scan = _scan(sync_session, scan_id)
+    assert (scan.status, scan.error_message) == ("cancelled", "cancelled by admin")
+    assert not docker.runs_of("stage2")
+    assert _component_count(sync_session, scan_id) == 0

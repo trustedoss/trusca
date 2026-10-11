@@ -304,6 +304,20 @@ def test_every_container_carries_a_deadline_past_its_time_limit(workspace: Path)
         deadline = int(labels["trusca.deadline"])
         assert deadline > before + runner_mod.EXIT_GRACE_SECONDS, run.label
         assert labels["trusca.scan"] == uuid.UUID(int=9).hex
+        assert labels["trusca.instance"] == "default", run.label
+
+
+def test_the_instance_label_follows_the_setting_and_refuses_odd_values(
+    workspace: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setenv("TRUSCA_INSTANCE_ID", "site-b")
+    docker = _docker()
+    _runner(workspace, docker).run()
+    for run in docker.runs:
+        assert "trusca.instance=site-b" in run.option_values("--label"), run.label
+    monkeypatch.setenv("TRUSCA_INSTANCE_ID", "a,b=c")
+    with pytest.raises(BomLensEngineError, match="TRUSCA_INSTANCE_ID"):
+        runner_mod.instance_id()
 
 
 def test_the_cli_reports_the_worker_networks_by_name_and_id(

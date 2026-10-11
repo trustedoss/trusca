@@ -24,7 +24,7 @@ from __future__ import annotations
 from datetime import timedelta
 from typing import Any
 
-from celery import Celery
+from celery import Celery, Task
 from celery.schedules import crontab
 from celery.schedules import schedule as _schedule
 
@@ -32,6 +32,7 @@ from core.config import (
     backup_task_soft_time_limit_seconds,
     backup_task_time_limit_seconds,
     broker_visibility_timeout_seconds,
+    celery_worker_remote_control,
     default_task_soft_time_limit_seconds,
     default_task_time_limit_seconds,
     reachability_hard_time_limit_seconds,
@@ -235,6 +236,23 @@ _BACKUP_TASK_NAMES = (
     "trustedoss.backup.run",
     "trustedoss.backup.restore",
 )
+
+
+class _EngineIsolatedTask(Task):  # type: ignore[misc]
+    """Every task's base class: on a worker that can reach the Docker API, only
+    the BomLens engine's own tasks run (security review on #522, N-L1).
+
+    The queue split already keeps other tasks off the engine worker; this is
+    the check on the worker itself, for a message that reaches it anyway (a
+    mis-set ``-Q``, a hand-sent task). A refused task raises before its body
+    runs.
+    """
+
+    def __call__(self, *args: Any, **kwargs: Any) -> Any:
+        from integrations.scan_executor.docker_guard import refuse_task_with_docker_access
+
+        refuse_task_with_docker_access(self.name, _ENGINE_TASK_NAMES)
+        return super().__call__(*args, **kwargs)
 
 
 class _FallbackTaskTimeLimit:
@@ -633,9 +651,12 @@ def create_celery_app() -> Celery:
         broker=broker,
         backend=broker,
         include=list(_TASK_INCLUDES),
+        task_cls=_EngineIsolatedTask,
     )
     app.conf.update(
         task_acks_late=True,
+        # Off on worker-engine (docker-compose.yml), on everywhere else.
+        worker_enable_remote_control=celery_worker_remote_control(),
         task_reject_on_worker_lost=True,
         worker_prefetch_multiplier=1,
         # S1 (concurrency-scaling-plan-2026-08-22.md §3.2): the Redis

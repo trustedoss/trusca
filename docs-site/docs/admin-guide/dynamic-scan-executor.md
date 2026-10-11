@@ -14,6 +14,10 @@ Some projects cannot be analysed by reading their manifests alone — an Android
 `super_admin` operating an **on-prem, single-tenant** portal, comfortable editing `.env` and running `docker-compose`. The default executor needs no setup — read this only if you are turning on `SCAN_EXECUTOR=local_docker`. For the per-scan lifecycle, see [Scans](../user-guide/scans.md).
 :::
 
+:::danger `local_docker` no longer runs scans
+A worker that can reach the Docker API now refuses every task but the BomLens engine's, so `SCAN_EXECUTOR=local_docker` cannot be used on a scan worker. See [step 1](#give-the-worker-docker-access) below; the rest of this page describes the executor for reference.
+:::
+
 ## Two executors
 
 | Executor | What runs the build | When to use |
@@ -64,28 +68,14 @@ These defaults are applied by the executor in code — you do not have to set th
 
 The worker image already ships with the Docker CLI, so the only decisions are how the worker reaches Docker and how the sidecar's network is isolated.
 
-### 1. Give the worker Docker access — through the proxy
+### 1. Give the worker Docker access {#give-the-worker-docker-access}
 
-You can mount the raw `/var/run/docker.sock` into the worker, but the recommended path routes the worker through **docker-socket-proxy** instead, so the worker can only call the Docker API verbs it actually needs.
+This step can no longer be taken on a worker that runs scans. The worker that runs `local_docker` sidecars needs the Docker API, and that same worker also runs the scanned project's build whenever an environment is not routed, plus every other scan and default-queue task. Code from a scanned repository on a worker with the Docker API can start a privileged container and take the host, so TRUSCA now refuses it:
 
-Start the proxy with the `local-docker` compose profile (it is defined in `docker-compose.dev.yml`), set the worker's `DOCKER_HOST` to the proxy, and **remove** the raw socket mount from the worker:
+- A worker where `DOCKER_HOST` is set, a Docker socket is mounted at `/var/run/docker.sock` or `/run/docker.sock`, or the name `docker-socket-proxy` resolves runs the BomLens engine's tasks only. Every other task, the source scan task included, fails with that reason.
+- Build preparation, cdxgen and govulncheck refuse to start on such a worker.
 
-<!-- docs-uat: id=dynamic-scan-executor-proxy kind=shell ctx=host tier=manual waiver=env-config-snippet-not-a-command -->
-```bash
-# Bring up the proxy alongside the stack
-docker-compose --profile local-docker up -d
-
-# In the portal's .env — point the worker at the proxy
-DOCKER_HOST=tcp://docker-socket-proxy:2375
-```
-
-The proxy allows `containers/*` and `images/*` only; it blocks `exec`, `swarm`, `networks`, and `volumes`.
-
-With `DOCKER_HOST` set, the worker no longer runs build preparation or cdxgen in process: a scan of an environment that is not routed to a sidecar fails instead of running the build next to the Docker API. Route every environment (`SCAN_LOCAL_DOCKER_ENVS=all`) on such a worker.
-
-:::caution The proxy does not inspect create payloads
-docker-socket-proxy gates which API *verbs* the worker may call, but it does not inspect the body of a container-create request — it cannot reject a `privileged: true` or an extra bind mount. The sidecar hardening above (cap-drop, no-new-privileges, named volume) is what actually constrains the launched container, so it stays essential even behind the proxy.
-:::
+A deployment that mounted the socket or set `DOCKER_HOST` on its scan worker for `local_docker` therefore stops scanning until that access is removed; `docker-compose.dev.yml` no longer mounts the socket. For builds isolated in their own containers, use the BomLens engine, which keeps the Docker API on a worker of its own ([Scan engine](#scan-engine)). `local_docker` is not recommended for any deployment and will be removed.
 
 ### 2. Isolate sidecar egress
 
@@ -174,7 +164,7 @@ The Docker API can start a privileged container, so only one worker can reach it
 | `worker-scan` | `trustedoss.scan`, `trustedoss.default` | none | in-process scans (build preparation, cdxgen, scancode, Trivy), container and SBOM scans, reachability (govulncheck) |
 | `worker-default` | `trustedoss.default` | none | notifications, backups, retention, catalog refreshes |
 
-The engine worker does not run the in-process pipeline: a source scan goes to it only when `SCAN_ENGINE=bomlens` was set when the scan was queued, and the task it receives can only run the engine. In the other direction, build preparation, cdxgen and govulncheck refuse to start on any worker where `DOCKER_HOST` is set or the name `docker-socket-proxy` resolves; the scan fails with that reason instead of running the build.
+The engine worker does not run the in-process pipeline: a source scan goes to it only when `SCAN_ENGINE=bomlens` was set when the scan was queued, and the task it receives can only run the engine. Both directions are also checked on the worker itself. A worker that can reach the Docker API (`DOCKER_HOST` set, a Docker socket at `/var/run/docker.sock` or `/run/docker.sock`, or the name `docker-socket-proxy` resolving) runs the engine's tasks only and refuses any other, and build preparation, cdxgen and govulncheck refuse to start on such a worker; the task fails with that reason instead of running. `worker-engine` also takes no Celery remote control (`CELERY_WORKER_REMOTE_CONTROL=false`), so a broadcast on the broker cannot drive it: a cancelled engine scan stops at its next stage, and the reaper removes its containers.
 
 ### Turn on the engine (compose) {#engine-turn-on}
 
@@ -199,6 +189,12 @@ docker-compose --profile bomlens-engine up -d
 
 `SCAN_BOMLENS_NETWORK` defaults to `trustedoss-scan-egress` in compose. To limit stage 1 to the registries you use, add an egress firewall to that network.
 
+:::warning Set `SCAN_ENGINE=bomlens` only with the engine worker running
+Source scans queued with `SCAN_ENGINE=bomlens` go to `trustedoss.engine`, which only `worker-engine` consumes. Without it they stay queued, and a project with a queued scan does not start another, so the project's scans stop until the engine worker runs or the queued scans are cancelled. Start the profile before setting `SCAN_ENGINE=bomlens`, and set `SCAN_ENGINE=inprocess` before stopping it.
+:::
+
+When several TRUSCA installations share one Docker daemon, give each its own `TRUSCA_INSTANCE_ID`. Engine containers carry it as a label, and each installation's reaper removes only its own.
+
 When `SCANCODE_ENABLED` is on, stage 2 uses the published BomLens variant with scancode (`bomlens-deep-license`), so first-party licence detection still runs.
 
 The scope filter settings carry over: with `SCAN_SCOPE_FILTER_NON_DEPLOYABLE_ENABLED=false` (or `SCAN_SCOPE_FILTER_ENABLED=false`) BomLens keeps the test, example and benchmark trees it otherwise leaves out of the SBOM.
@@ -216,9 +212,16 @@ Both services have `restart: unless-stopped`, so a later `docker-compose up -d` 
 # In the portal's .env
 SCAN_ENGINE=inprocess
 
+docker-compose up -d    # the API, beat and workers read SCAN_ENGINE again
+
+# Once the engine worker is idle: remove engine containers still left (a scan
+# in flight when the worker stops leaves its container behind). <instance> is
+# TRUSCA_INSTANCE_ID, "default" unless you set it.
+docker ps -aq --filter label=trusca.role=bomlens-engine \
+  --filter label=trusca.instance=<instance> | xargs -r docker rm -f
+
 docker-compose --profile bomlens-engine stop worker-engine docker-socket-proxy
 docker-compose --profile bomlens-engine rm -f worker-engine docker-socket-proxy
-docker-compose up -d
 ```
 
 Scans already queued for the engine stay queued until the engine worker runs again; cancel them, or start the profile once more to let them finish.

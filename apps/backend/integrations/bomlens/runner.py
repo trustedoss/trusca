@@ -73,6 +73,7 @@ from core.config import (
     bomlens_stage1_timeout_seconds,
     bomlens_stage2_timeout_seconds,
     bomlens_trivy_cache_volume,
+    trusca_instance_id,
     workspace_root,
 )
 from integrations._line_streamer import LineCallback
@@ -98,6 +99,20 @@ LABEL_ROLE: Final = "trusca.role=bomlens-engine"
 
 #: Label holding the epoch second after which a container may be reaped.
 DEADLINE_LABEL: Final = "trusca.deadline"
+
+#: Label naming the TRUSCA installation that started the container.
+INSTANCE_LABEL: Final = "trusca.instance"
+
+_INSTANCE_RE: Final = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.-]{0,62}$")
+
+
+def instance_id() -> str:
+    """``TRUSCA_INSTANCE_ID``, checked; refused when it is not a plain token."""
+    value = trusca_instance_id()
+    if not _INSTANCE_RE.match(value):
+        raise BomLensEngineError(f"TRUSCA_INSTANCE_ID={clip(value)!r} is not a plain name")
+    return value
+
 
 #: Seconds a container may outlive its own time limit before the reaper takes
 #: it (the kill-and-wait the runner itself does, plus slack).
@@ -154,6 +169,15 @@ class BomLensEngineError(BomLensError):
     """The engine could not be run as configured, or a container misbehaved.
 
     The message names stages, images and settings, never a workspace path.
+    """
+
+
+class EngineScanCancelled(Exception):  # noqa: N818 - reads as the event it reports
+    """The scan stopped being ``running`` (cancelled) while the engine ran.
+
+    worker-engine does not take Celery's remote control, so a revoke never
+    reaches it; the pipeline checks the scan's status between stages instead
+    and stops without writing over the cancellation.
     """
 
 
@@ -393,6 +417,7 @@ class EngineContainer:
     id: str
     scan_hex: str
     deadline: int | None
+    instance: str = ""
 
 
 #: Longest line of container output handed to the scan log. A longer line is
@@ -628,6 +653,8 @@ class DockerCli:
                 "--filter",
                 f"label={LABEL_ROLE}",
                 "--filter",
+                f"label={INSTANCE_LABEL}={instance_id()}",
+                "--filter",
                 f"label=trusca.scan={scan_hex}",
             ],
             60,
@@ -637,7 +664,12 @@ class DockerCli:
         return [line for line in done.stdout.decode("utf-8", "replace").split() if line]
 
     def engine_containers(self) -> list[EngineContainer]:
-        """Every engine container on this daemon, with its scan and deadline."""
+        """This installation's engine containers, with their scan and deadline.
+
+        Filtered by ``trusca.instance``: another installation sharing the
+        daemon has scans this database does not know, and its containers are
+        not this installation's to judge.
+        """
         done = self._run(
             [
                 "ps",
@@ -645,8 +677,11 @@ class DockerCli:
                 "--no-trunc",
                 "--filter",
                 f"label={LABEL_ROLE}",
+                "--filter",
+                f"label={INSTANCE_LABEL}={instance_id()}",
                 "--format",
-                '{{.ID}}\t{{.Label "trusca.scan"}}\t{{.Label "trusca.deadline"}}',
+                '{{.ID}}\t{{.Label "trusca.scan"}}\t{{.Label "trusca.deadline"}}'
+                '\t{{.Label "trusca.instance"}}',
             ],
             60,
         )
@@ -655,10 +690,14 @@ class DockerCli:
         found: list[EngineContainer] = []
         for line in done.stdout.decode("utf-8", "replace").splitlines():
             parts = line.split("\t")
-            if len(parts) != 3 or not parts[0]:
+            if len(parts) != 4 or not parts[0]:
                 continue
             deadline = int(parts[2]) if parts[2].isdigit() else None
-            found.append(EngineContainer(id=parts[0], scan_hex=parts[1], deadline=deadline))
+            found.append(
+                EngineContainer(
+                    id=parts[0], scan_hex=parts[1], deadline=deadline, instance=parts[3]
+                )
+            )
         return found
 
     def own_networks(self) -> frozenset[str] | None:
@@ -755,6 +794,8 @@ def docker_run_argv(
         spec.name,
         "--label",
         LABEL_ROLE,
+        "--label",
+        f"{INSTANCE_LABEL}={instance_id()}",
         "--label",
         f"trusca.scan={scan_hex}",
         "--label",
@@ -1533,6 +1574,7 @@ def _project_token(value: str, default: str) -> str:
 
 
 __all__ = [
+    "INSTANCE_LABEL",
     "LABEL_ROLE",
     "STAGE1_LOG_NAME",
     "BindMounts",
@@ -1545,6 +1587,7 @@ __all__ = [
     "DockerCli",
     "EngineContainer",
     "EngineContainerStillRunning",
+    "EngineScanCancelled",
     "EngineImages",
     "EngineLayout",
     "MountStyle",
@@ -1554,6 +1597,7 @@ __all__ = [
     "check_requested_mounts",
     "confined_path",
     "docker_run_argv",
+    "instance_id",
     "mount_style",
     "pinned_image",
     "resolve_images",

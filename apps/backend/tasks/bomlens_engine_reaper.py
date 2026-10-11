@@ -12,9 +12,14 @@ waiting for it (security review on #522, M1).
 This task removes an engine container (label ``trusca.role=bomlens-engine``)
 when any of these holds:
 
-* its scan is not ``running`` (cancelled, failed, finished, or gone);
-* it is past its ``trusca.deadline`` label (its own time limit plus margin);
+* its scan is in this database and not ``running`` (cancelled, failed,
+  finished);
+* it is past its ``trusca.deadline`` label (its own time limit plus margin),
+  which also covers a scan this database does not know;
 * it has no readable scan id or deadline label.
+
+Only containers labelled with this installation's ``trusca.instance``
+(``TRUSCA_INSTANCE_ID``) are listed at all.
 
 It runs on the engine queue, on the only worker that can reach the Docker
 API: every five minutes from beat when ``SCAN_ENGINE=bomlens``, and right
@@ -36,6 +41,8 @@ from integrations.bomlens.runner import (
     BomLensEngineError,
     Docker,
     DockerCli,
+    EngineContainer,
+    instance_id,
 )
 from models import Scan
 from tasks.celery_app import celery_app
@@ -43,7 +50,8 @@ from tasks.celery_app import celery_app
 log = structlog.get_logger("tasks.bomlens_engine_reaper")
 
 
-def _running_scans(scan_hexes: set[str]) -> set[str]:
+def _scan_statuses(scan_hexes: set[str]) -> dict[str, str]:
+    """``{scan hex: status}`` for the scans this database knows."""
     ids: list[uuid.UUID] = []
     for value in scan_hexes:
         try:
@@ -51,12 +59,28 @@ def _running_scans(scan_hexes: set[str]) -> set[str]:
         except ValueError:
             continue
     if not ids:
-        return set()
+        return {}
     with sync_session_scope() as session:
-        rows = session.execute(
-            select(Scan.id).where(Scan.id.in_(ids), Scan.status == "running")
-        ).scalars()
-        return {row.hex for row in rows}
+        rows = session.execute(select(Scan.id, Scan.status).where(Scan.id.in_(ids))).all()
+        return {scan_id.hex: str(status) for scan_id, status in rows}
+
+
+def _reap_reason(container: EngineContainer, statuses: dict[str, str], now: float) -> str | None:
+    """Why ``container`` should go, or ``None`` to keep it.
+
+    A scan this database does not know keeps its container until the deadline:
+    the row may be gone, but the container may also belong to a database this
+    worker does not see (a restore, a second installation with the same
+    instance id), and the deadline bounds it either way.
+    """
+    if not container.scan_hex or container.deadline is None:
+        return "unlabelled"
+    if container.deadline < now:
+        return "past_deadline"
+    status = statuses.get(container.scan_hex)
+    if status is None:
+        return None
+    return None if status == "running" else "scan_not_running"
 
 
 def reap_engine_containers(
@@ -70,15 +94,16 @@ def reap_engine_containers(
     except BomLensEngineError:
         log.warning("bomlens_reaper_list_failed", exc_info=True)
         return {"seen": 0, "removed": 0}
-    running = _running_scans({c.scan_hex for c in containers if c.scan_hex})
+    # The listing is already filtered by instance; a container that still
+    # carries another installation's label is left alone all the same.
+    own = instance_id()
+    containers = [c for c in containers if c.instance == own]
+    statuses = _scan_statuses({c.scan_hex for c in containers if c.scan_hex})
     removed = 0
     for container in containers:
-        if container.scan_hex and container.deadline is not None:
-            if container.scan_hex in running and container.deadline >= moment:
-                continue
-            reason = "past_deadline" if container.deadline < moment else "scan_not_running"
-        else:
-            reason = "unlabelled"
+        reason = _reap_reason(container, statuses, moment)
+        if reason is None:
+            continue
         client.remove(container.id)
         removed += 1
         log.warning(

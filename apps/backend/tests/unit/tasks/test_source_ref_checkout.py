@@ -112,6 +112,8 @@ def test_without_a_ref_the_command_is_the_previous_clone() -> None:
         [
             "git",
             "-c",
+            "http.followRedirects=false",
+            "-c",
             PIN,
             "clone",
             "--depth",
@@ -145,6 +147,8 @@ def test_a_ref_is_fetched_and_checked_out() -> None:
             "git",
             "-C",
             str(TARGET),
+            "-c",
+            "http.followRedirects=false",
             "-c",
             PIN,
             "fetch",
@@ -198,4 +202,18 @@ def test_ssh_remotes_get_no_curl_pin() -> None:
     )
 
     for cmd in commands:
-        assert "-c" not in cmd
+        assert not any(arg.startswith("http.curloptResolve") for arg in cmd)
+
+
+@pytest.mark.parametrize("ref", [None, "refs/heads/main"])
+def test_every_networked_command_refuses_redirects(ref: str | None) -> None:
+    """A redirect would leave the host the SSRF guard validated and pinned."""
+    commands = build_git_fetch_commands(
+        clone_url="https://github.com/acme/widgets.git", target=TARGET, ref=ref, resolve_option=PIN
+    )
+    networked = [c for c in commands if "clone" in c or "fetch" in c]
+    assert networked
+    for cmd in networked:
+        at = cmd.index("http.followRedirects=false")
+        assert cmd[at - 1] == "-c"
+        assert at < cmd.index("clone" if "clone" in cmd else "fetch")

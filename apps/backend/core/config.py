@@ -1564,6 +1564,32 @@ def bomlens_stage1_read_only_root() -> bool:
     return raw not in {"false", "0", "no"}
 
 
+def celery_worker_remote_control() -> bool:
+    """Whether this Celery worker answers broadcast control commands (default on).
+
+    ``docker-compose.yml`` turns it off on worker-engine, the worker that can
+    reach the Docker API, so a broadcast on the broker cannot drive it
+    (security review on #522, N-L1). A revoke then does not reach an engine
+    scan; the engine pipeline checks the scan's status between stages and the
+    engine-container reaper removes its containers instead. Only the exact
+    falsy tokens ``false`` / ``0`` / ``no`` turn it off.
+    """
+    raw = os.getenv("CELERY_WORKER_REMOTE_CONTROL", "true").strip().lower()
+    return raw not in {"false", "0", "no"}
+
+
+def trusca_instance_id() -> str:
+    """Which TRUSCA installation this is, on a Docker host several may share.
+
+    Engine containers carry it as the ``trusca.instance`` label, and the
+    engine-container reaper only ever looks at containers with its own value,
+    so one installation never removes another's running scan. Empty reads as
+    ``default``; set it to something unique per installation when two share a
+    Docker daemon.
+    """
+    return os.getenv("TRUSCA_INSTANCE_ID", "").strip() or "default"
+
+
 def bomlens_trivy_cache_volume() -> str:
     """Named volume holding the worker's Trivy database (``named`` strategy).
 

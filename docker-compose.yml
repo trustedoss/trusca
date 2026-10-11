@@ -400,6 +400,13 @@ x-backend-env: &backend-env
   SCAN_BOMLENS_STAGE1_TIMEOUT_SECONDS: ${SCAN_BOMLENS_STAGE1_TIMEOUT_SECONDS:-1800}
   SCAN_BOMLENS_STAGE2_TIMEOUT_SECONDS: ${SCAN_BOMLENS_STAGE2_TIMEOUT_SECONDS:-1800}
   SCAN_TRIVY_CACHE_VOLUME: ${SCAN_TRIVY_CACHE_VOLUME:-}
+  # Labels this installation's engine containers; the engine-container reaper
+  # only touches its own. Set a unique value when several installations share
+  # one Docker daemon.
+  TRUSCA_INSTANCE_ID: ${TRUSCA_INSTANCE_ID:-default}
+  # Celery remote control (revoke, inspect). On for every worker but
+  # worker-engine, which overrides it below.
+  CELERY_WORKER_REMOTE_CONTROL: ${CELERY_WORKER_REMOTE_CONTROL:-true}
   STALE_RUNNING_SCAN_GRACE_SECONDS: ${STALE_RUNNING_SCAN_GRACE_SECONDS:-900}
   # compose-env-var wiring audit: source/SBOM ingest and download size
   # limits (raw upload tarballs, source archives, SBOM upload/download,
@@ -1170,6 +1177,10 @@ services:
     environment:
       <<: *backend-env
       DOCKER_HOST: tcp://docker-socket-proxy:2375
+      # No broadcast control commands: a message on the broker cannot drive
+      # the one worker that reaches the Docker API. A cancelled engine scan
+      # stops at its next stage and the reaper removes its containers.
+      CELERY_WORKER_REMOTE_CONTROL: "false"
     volumes:
       - workspace:/workspace
       # BACKUPS_ROOT comes with the shared env anchor; mounted so nothing this
@@ -1192,9 +1203,13 @@ services:
       # Only this worker and docker-socket-proxy are on it (see networks).
       - docker-api
     healthcheck:
+      # `celery inspect ping` needs remote control, which is off here: check
+      # that the worker process is alive instead.
       test:
-        - "CMD-SHELL"
-        - "celery -A tasks.celery_app inspect ping --timeout=5 -d celery@$$HOSTNAME > /dev/null 2>&1 || exit 1"
+        - "CMD"
+        - "python"
+        - "-c"
+        - "import os,sys; sys.exit(0 if any(b'celery' in open('/proc/'+p+'/cmdline','rb').read() for p in os.listdir('/proc') if p.isdigit() and p != str(os.getpid())) else 1)"
       interval: 30s
       timeout: 15s
       retries: 5

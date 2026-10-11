@@ -80,6 +80,27 @@ def _record_engine_run(scan_uuid: uuid.UUID, report: bomlens_runner.RunReport) -
         log.warning("bomlens_run_record_failed", exc_info=True)
 
 
+def _require_running(scan_uuid: uuid.UUID) -> None:
+    """Stop when the scan is no longer ``running`` (it was cancelled).
+
+    worker-engine runs without Celery's remote control (security review on
+    #522, N-L1), so a revoke does not reach this task. The engine-container
+    reaper removes the containers of a cancelled scan; this check makes the
+    task itself stop at the next stage instead of persisting over the
+    cancellation.
+    """
+    with sync_session_scope() as session:
+        scan = session.get(Scan, scan_uuid)
+        status = scan.status if scan is not None else None
+    if status != "running":
+        raise bomlens_runner.EngineScanCancelled(f"scan is {status}")
+
+
+def _advance(scan_uuid: uuid.UUID, stage: str) -> None:
+    _require_running(scan_uuid)
+    pipeline._set_stage(scan_uuid, stage)
+
+
 def _record_component_outcome(scan_uuid: uuid.UUID, outcome: str) -> None:
     """Stamp ``scan_metadata['component_outcome']``; best-effort, like the in-process one."""
     log.info("scan_component_outcome", outcome=outcome)
@@ -136,10 +157,11 @@ def run_bomlens_pipeline(
         deep_license=images.deep_license,
     )
     try:
-        output_dir = runner.run(stage=lambda stage: pipeline._set_stage(scan_uuid, stage))
+        output_dir = runner.run(stage=lambda stage: _advance(scan_uuid, stage))
     finally:
         _record_engine_run(scan_uuid, runner.report)
 
+    _require_running(scan_uuid)
     # Every engine container has exited (runner.run guarantees it), so nothing
     # writes to output_dir while the adapter reads it. The verified copies go
     # to a folder only the worker writes: outside every folder an engine
@@ -178,6 +200,7 @@ def run_bomlens_pipeline(
         scan_uuid,
         bomlens_component_outcome(applied, manifest_inventory=manifest_inventory),
     )
+    _require_running(scan_uuid)
     pipeline._set_stage(scan_uuid, "finalize")
     pipeline._mark_succeeded(scan_uuid)
     pipeline._dispatch_reachability(scan_uuid)

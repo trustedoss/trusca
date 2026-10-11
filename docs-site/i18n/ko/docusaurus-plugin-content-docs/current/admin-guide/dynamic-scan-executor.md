@@ -14,6 +14,10 @@ manifest만 읽어서는 분석할 수 없는 프로젝트가 있습니다. 예�
 **온프레·단일 테넌트** 포털을 운영하며 `.env` 편집과 `docker-compose` 실행에 익숙한 `super_admin`. 기본 실행기는 설정이 필요 없습니다 — `SCAN_EXECUTOR=local_docker`를 켤 때만 이 문서를 읽으십시오. 스캔 단위 라이프사이클은 [스캔](../user-guide/scans.md)을 참고하십시오.
 :::
 
+:::danger `local_docker`로는 더 이상 스캔하지 않습니다
+Docker API에 접근할 수 있는 워커는 이제 BomLens 엔진 작업 외에는 모두 거부하므로, 스캔 워커에서 `SCAN_EXECUTOR=local_docker`를 쓸 수 없습니다. 아래 [1단계](#give-the-worker-docker-access)를 참고하십시오. 이 문서의 나머지는 참고용으로 실행기를 설명합니다.
+:::
+
 ## 두 가지 실행기 {#two-executors}
 
 | 실행기 | 빌드를 실행하는 주체 | 사용 시점 |
@@ -64,28 +68,14 @@ SCAN_LOCAL_DOCKER_ENVS=all
 
 워커 이미지에는 Docker CLI가 이미 포함되어 있으므로, 결정할 것은 워커가 Docker에 도달하는 방식과 사이드카 네트워크를 격리하는 방식뿐입니다.
 
-### 1. 워커에 Docker 접근 부여 — 프록시 경유 {#give-the-worker-docker-access}
+### 1. 워커에 Docker 접근 부여 {#give-the-worker-docker-access}
 
-워커에 원시 `/var/run/docker.sock`을 마운트할 수도 있지만, 권장 경로는 워커를 **docker-socket-proxy**로 우회시켜 워커가 실제로 필요한 Docker API verb만 호출하도록 하는 것입니다.
+스캔을 실행하는 워커에서는 이 단계를 더 이상 적용할 수 없습니다. `local_docker` 사이드카를 실행하는 워커에는 Docker API가 필요한데, 같은 워커가 라우팅되지 않은 환경에서는 스캔 대상 프로젝트의 빌드를 실행하고, 다른 스캔 작업과 기본 큐 작업도 모두 실행합니다. Docker API에 접근할 수 있는 워커에서 스캔 대상 저장소의 코드가 실행되면 권한 있는 컨테이너를 만들어 호스트를 장악할 수 있으므로, TRUSCA는 이를 거부합니다.
 
-`local-docker` compose 프로파일로 프록시를 기동하고(`docker-compose.dev.yml`에 정의되어 있습니다), 워커의 `DOCKER_HOST`를 프록시로 지정한 뒤, 워커에서 원시 소켓 마운트를 **제거**하십시오.
+- `DOCKER_HOST`가 설정되어 있거나, `/var/run/docker.sock` 또는 `/run/docker.sock`에 Docker 소켓이 마운트되어 있거나, `docker-socket-proxy` 이름이 해석되는 워커는 BomLens 엔진 작업만 실행합니다. 소스 스캔 작업을 포함한 다른 모든 작업은 그 이유와 함께 실패합니다.
+- 이런 워커에서는 빌드 준비, cdxgen, govulncheck가 시작하지 않습니다.
 
-<!-- docs-uat: id=dynamic-scan-executor-proxy kind=shell ctx=host tier=manual waiver=env-config-snippet-not-a-command -->
-```bash
-# 스택과 함께 프록시 기동
-docker-compose --profile local-docker up -d
-
-# 포털의 .env — 워커를 프록시로 지정
-DOCKER_HOST=tcp://docker-socket-proxy:2375
-```
-
-프록시는 `containers/*`와 `images/*`만 허용하며 `exec`, `swarm`, `networks`, `volumes`는 차단합니다.
-
-`DOCKER_HOST`가 설정된 워커는 빌드 준비와 cdxgen을 워커 안에서 실행하지 않습니다. 사이드카로 라우팅되지 않은 환경의 스캔은 Docker API 옆에서 빌드를 실행하는 대신 실패합니다. 이런 워커에서는 모든 환경을 라우팅하십시오(`SCAN_LOCAL_DOCKER_ENVS=all`).
-
-:::caution 프록시는 create payload를 검사하지 못합니다
-docker-socket-proxy는 워커가 호출할 수 있는 API *verb*를 통제하지만, 컨테이너 생성 요청의 본문은 검사하지 않습니다 — `privileged: true`나 추가 bind 마운트를 거부하지 못합니다. 띄워진 컨테이너를 실제로 제약하는 것은 위의 사이드카 하드닝(cap-drop, no-new-privileges, named 볼륨)이므로, 프록시 뒤에서도 이 하드닝은 필수입니다.
-:::
+따라서 `local_docker`를 위해 스캔 워커에 소켓을 마운트했거나 `DOCKER_HOST`를 설정한 배포는 그 접근을 제거할 때까지 스캔이 멈춥니다. `docker-compose.dev.yml`도 더 이상 소켓을 마운트하지 않습니다. 빌드를 별도 컨테이너에서 격리해 실행하려면 Docker API를 전용 워커에만 두는 BomLens 엔진을 쓰십시오([스캔 엔진](#scan-engine)). `local_docker`는 어떤 배포에도 권장하지 않으며 이후 제거됩니다.
 
 ### 2. 사이드카 egress 격리 {#isolate-sidecar-egress}
 
@@ -174,7 +164,7 @@ Docker API로는 권한 있는(privileged) 컨테이너를 만들 수 있습니�
 | `worker-scan` | `trustedoss.scan`, `trustedoss.default` | 없음 | 기존 방식 스캔(빌드 준비, cdxgen, scancode, Trivy), 컨테이너·SBOM 스캔, 도달 가능성 분석(govulncheck) |
 | `worker-default` | `trustedoss.default` | 없음 | 알림, 백업, 보존 기간 정리, 카탈로그 갱신 |
 
-엔진 워커는 기존 방식(in-process) 파이프라인을 실행하지 않습니다. 소스 스캔은 큐에 들어갈 때 `SCAN_ENGINE=bomlens`였던 경우에만 엔진 워커로 가고, 엔진 워커가 받는 작업은 엔진만 실행할 수 있습니다. 반대 방향도 막습니다. 빌드 준비, cdxgen, govulncheck는 `DOCKER_HOST`가 설정되어 있거나 `docker-socket-proxy` 이름이 해석되는 워커에서는 시작하지 않습니다. 이때 스캔은 빌드를 실행하지 않고 그 이유와 함께 실패합니다.
+엔진 워커는 기존 방식(in-process) 파이프라인을 실행하지 않습니다. 소스 스캔은 큐에 들어갈 때 `SCAN_ENGINE=bomlens`였던 경우에만 엔진 워커로 가고, 엔진 워커가 받는 작업은 엔진만 실행할 수 있습니다. 워커 자체에서도 양방향을 확인합니다. Docker API에 접근할 수 있는 워커(`DOCKER_HOST` 설정, `/var/run/docker.sock` 또는 `/run/docker.sock`의 Docker 소켓, `docker-socket-proxy` 이름 해석 중 하나)는 엔진 작업만 실행하고 다른 작업은 거부합니다. 이런 워커에서는 빌드 준비, cdxgen, govulncheck도 시작하지 않습니다. 이때 작업은 실행하지 않고 그 이유와 함께 실패합니다. `worker-engine`은 Celery 원격 제어도 받지 않으므로(`CELERY_WORKER_REMOTE_CONTROL=false`) 브로커에 보낸 브로드캐스트로 이 워커를 조작할 수 없습니다. 취소된 엔진 스캔은 다음 단계에서 멈추고, 정리 작업이 그 컨테이너를 제거합니다.
 
 ### 엔진 켜기(compose) {#engine-turn-on}
 
@@ -198,6 +188,12 @@ docker-compose --profile bomlens-engine up -d
 
 compose에서 `SCAN_BOMLENS_NETWORK` 기본값은 `trustedoss-scan-egress`입니다. 1단계가 쓰는 레지스트리로만 나가게 하려면 이 네트워크에 송신 방화벽을 적용하십시오.
 
+:::warning `SCAN_ENGINE=bomlens`는 엔진 워커를 실행한 상태에서만 설정하십시오
+`SCAN_ENGINE=bomlens`일 때 큐에 들어간 소스 스캔은 `trustedoss.engine`으로 가며, 이 큐는 `worker-engine`만 처리합니다. 엔진 워커가 없으면 스캔이 대기 상태로 남고, 대기 중인 스캔이 있는 프로젝트는 새 스캔을 시작하지 않으므로 엔진 워커를 실행하거나 대기 중인 스캔을 취소할 때까지 그 프로젝트의 스캔이 멈춥니다. `SCAN_ENGINE=bomlens`를 설정하기 전에 프로필을 시작하고, 프로필을 내리기 전에 `SCAN_ENGINE=inprocess`로 되돌리십시오.
+:::
+
+여러 TRUSCA 설치본이 Docker 데몬 하나를 함께 쓰면 설치본마다 다른 `TRUSCA_INSTANCE_ID`를 지정하십시오. 엔진 컨테이너에 이 값이 레이블로 붙고, 각 설치본의 정리 작업은 자기 컨테이너만 제거합니다.
+
 `SCANCODE_ENABLED`를 켠 설치에서는 2단계가 scancode를 포함한 BomLens 공개 변형 이미지(`bomlens-deep-license`)를 쓰므로 자체 소스 라이선스 탐지도 그대로 실행됩니다.
 
 범위 필터 설정도 그대로 적용됩니다. `SCAN_SCOPE_FILTER_NON_DEPLOYABLE_ENABLED=false`(또는 `SCAN_SCOPE_FILTER_ENABLED=false`)로 설정하면 BomLens가 평소 SBOM에서 빼는 테스트, 예제, 벤치마크 폴더도 포함합니다.
@@ -215,9 +211,16 @@ compose에서 `SCAN_BOMLENS_NETWORK` 기본값은 `trustedoss-scan-egress`입니
 # 포털의 .env
 SCAN_ENGINE=inprocess
 
+docker-compose up -d    # API, beat, 워커가 SCAN_ENGINE을 다시 읽음
+
+# 엔진 워커가 작업을 마친 뒤: 남은 엔진 컨테이너 제거(워커가 멈출 때 처리 중이던
+# 스캔의 컨테이너가 남을 수 있음). <instance>는 TRUSCA_INSTANCE_ID이며,
+# 지정하지 않았다면 default
+docker ps -aq --filter label=trusca.role=bomlens-engine \
+  --filter label=trusca.instance=<instance> | xargs -r docker rm -f
+
 docker-compose --profile bomlens-engine stop worker-engine docker-socket-proxy
 docker-compose --profile bomlens-engine rm -f worker-engine docker-socket-proxy
-docker-compose up -d
 ```
 
 이미 엔진 큐에 들어간 스캔은 엔진 워커가 다시 실행될 때까지 대기 상태로 남습니다. 취소하거나, 프로필을 한 번 더 시작해 끝까지 처리하십시오.

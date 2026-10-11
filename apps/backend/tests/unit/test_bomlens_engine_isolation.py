@@ -27,6 +27,7 @@ from typing import Any
 import pytest
 import yaml
 
+from integrations.scan_executor import docker_guard
 from integrations.scan_executor.docker_guard import (
     DockerApiReachable,
     docker_api_reachable,
@@ -250,3 +251,109 @@ def test_the_engine_scan_task_has_the_scan_time_limits() -> None:
 
     assert scan_source_engine_task.time_limit == scan_hard_time_limit_seconds()
     assert scan_source_engine_task.soft_time_limit == scan_soft_time_limit_seconds()
+
+
+# ---------------------------------------------------------------------------
+# Second review (N-L1, N-L3): the raw socket, and the guard's other direction
+# ---------------------------------------------------------------------------
+
+
+def _unix_socket(path: Path) -> socket.socket:
+    sock = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+    sock.bind(str(path))
+    return sock
+
+
+def test_a_mounted_docker_socket_is_refused(
+    no_docker: None, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    # A short path: AF_UNIX names are limited to about a hundred bytes.
+    import tempfile
+
+    folder = Path(tempfile.mkdtemp(prefix="ds", dir="/tmp"))  # noqa: S108
+    path = folder / "d.sock"
+    sock = _unix_socket(path)
+    try:
+        monkeypatch.setattr(
+            docker_guard, "DOCKER_SOCKET_PATHS", (str(tmp_path / "none"), str(path))
+        )
+        with pytest.raises(DockerApiReachable, match="Docker socket is mounted"):
+            refuse_build_with_docker_access("x")
+    finally:
+        sock.close()
+        path.unlink()
+        folder.rmdir()
+
+
+def test_a_regular_file_at_the_socket_path_is_not_a_socket(
+    no_docker: None, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    fake = tmp_path / "docker.sock"
+    fake.write_text("")
+    monkeypatch.setattr(docker_guard, "DOCKER_SOCKET_PATHS", (str(fake),))
+    assert docker_api_reachable() is None
+
+
+def test_a_unix_docker_host_is_refused(no_docker: None, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("DOCKER_HOST", "unix:///var/run/docker.sock")
+    with pytest.raises(DockerApiReachable, match="DOCKER_HOST"):
+        refuse_build_with_docker_access("x")
+
+
+def test_where_docker_is_reachable_only_engine_tasks_run(
+    no_docker: None, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The task base class refuses any other task before its body runs."""
+    from tasks import bomlens_engine_reaper
+    from tasks.scan_source import scan_source_task
+
+    ran: list[str] = []
+    monkeypatch.setattr("tasks.scan_source._run_source_task", lambda *a, **k: ran.append("scan"))
+    monkeypatch.setattr(
+        bomlens_engine_reaper, "reap_engine_containers", lambda *a, **k: ran.append("reap")
+    )
+    monkeypatch.setenv("DOCKER_HOST", "tcp://docker-socket-proxy:2375")
+
+    with pytest.raises(DockerApiReachable, match="trustedoss.scan_source"):
+        scan_source_task.apply(args=["x"], throw=True)
+    bomlens_engine_reaper.bomlens_engine_reaper_task.apply(throw=True)
+    assert ran == ["reap"]
+
+    monkeypatch.delenv("DOCKER_HOST")
+    scan_source_task.apply(args=["x"], throw=True)
+    assert ran == ["reap", "scan"]
+
+
+def test_every_task_uses_the_guarded_base_class() -> None:
+    from tasks.celery_app import _EngineIsolatedTask, celery_app
+    from tests.unit.test_celery_app import _register_tasks_the_way_a_worker_would
+
+    _register_tasks_the_way_a_worker_would()
+    ours = [t for n, t in celery_app.tasks.items() if n.startswith("trustedoss.")]
+    assert len(ours) > 20
+    assert all(isinstance(t, _EngineIsolatedTask) for t in ours)
+
+
+@pytest.mark.parametrize(("raw", "expected"), [(None, True), ("false", False), ("true", True)])
+def test_remote_control_follows_the_setting(
+    monkeypatch: pytest.MonkeyPatch, raw: str | None, expected: bool
+) -> None:
+    from tasks.celery_app import create_celery_app
+
+    if raw is None:
+        monkeypatch.delenv("CELERY_WORKER_REMOTE_CONTROL", raising=False)
+    else:
+        monkeypatch.setenv("CELERY_WORKER_REMOTE_CONTROL", raw)
+    assert create_celery_app().conf.worker_enable_remote_control is expected
+
+
+def test_worker_engine_takes_no_remote_control_and_checks_health_without_it() -> None:
+    engine = _compose()["services"]["worker-engine"]
+    assert engine["environment"]["CELERY_WORKER_REMOTE_CONTROL"] == "false"
+    assert "inspect" not in " ".join(engine["healthcheck"]["test"])
+    for name in ("worker-scan", "worker-default"):
+        env = _compose()["services"][name]["environment"]
+        assert (
+            "CELERY_WORKER_REMOTE_CONTROL" not in {k for k in env if k != "<<"}
+            or env["CELERY_WORKER_REMOTE_CONTROL"] != "false"
+        ), name
