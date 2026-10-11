@@ -99,7 +99,12 @@ aiosmtplib==5.1.1
 # render_report_pdf runs in the API endpoint api/v1/reports.py, not a Celery
 # task) and rendering a real PDF -- services.report_service.render_report_pdf
 # returns `b'%PDF'`. Re-verify the render on every future bump of either pin.
-weasyprint==69.0
+#
+# 70.0 (2026-09-08) fixes CVE-2026-106443 (code execution through EPS image
+# rendering; 70.0 stops rendering EPS). It still declares `pydyf>=0.11.0`, and
+# the only API we call (HTML(string=..., base_url=...).write_pdf()) is
+# unchanged, so pydyf stays at 0.12.1.
+weasyprint==70.0
 pydyf==0.12.1
 
 # openpyxl — XLSX vulnerability-report export (Phase G, api/v1/reports.py
