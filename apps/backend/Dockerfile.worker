@@ -841,8 +841,21 @@ RUN curl -fsSL -o /tmp/dotnet-install.sh "https://dot.net/v1/dotnet-install.sh" 
 # ``scancode --version`` does not read command-line options, so it cannot catch
 # that failure. The smoke run below scans one file and requires the detection,
 # which fails the build instead of shipping an image that detects nothing.
+#
+# chardet is pinned below 7. scancode-toolkit 32.4.0 declares ``chardet>=3.0.0``
+# and every other package in the venv accepts 5.x (the tightest bound is
+# requests' optional ``chardet<8,>=3.0.2``), so pip resolved the newest, 7.6.0.
+# The 7.x line is a rewrite published under 0BSD. 5.2.0 (2023) comes from the
+# LGPL-2.1-or-later line before it and is pure Python, so the installed modules
+# are its source. THIRD_PARTY_NOTICES.md §2 lists the version pinned here.
+#
+# intbitset (LGPL-3.0-or-later, a C extension) is pinned to the exact version
+# whose sdist the source layer below bundles. Without the pin a scancode bump
+# could move it and leave the bundled source describing a different build.
 ENV SCANCODE_VERSION=32.4.0 \
     SCANCODE_CLICK_VERSION=8.4.2 \
+    SCANCODE_CHARDET_VERSION=5.2.0 \
+    SCANCODE_INTBITSET_VERSION=4.1.2 \
     SCANCODE_VENV=/opt/scancode-venv
 RUN set -eux; \
     arch="$(dpkg --print-architecture)"; \
@@ -855,7 +868,9 @@ RUN set -eux; \
     "${SCANCODE_VENV}/bin/pip" install --no-cache-dir --upgrade pip; \
     "${SCANCODE_VENV}/bin/pip" install --no-cache-dir \
         "scancode-toolkit==${SCANCODE_VERSION}" \
-        "click==${SCANCODE_CLICK_VERSION}"; \
+        "click==${SCANCODE_CLICK_VERSION}" \
+        "chardet==${SCANCODE_CHARDET_VERSION}" \
+        "intbitset==${SCANCODE_INTBITSET_VERSION}"; \
     ln -s "${SCANCODE_VENV}/bin/scancode" /usr/local/bin/scancode; \
     ln -sfn "/usr/lib/${triplet}/libarchive.so.13" /usr/local/lib/scancode-libarchive.so; \
     ln -sfn "/usr/lib/${triplet}/libmagic.so.1" /usr/local/lib/scancode-libmagic.so; \
@@ -880,6 +895,60 @@ RUN set -eux; \
 # Debian multiarch triplet.
 ENV EXTRACTCODE_LIBARCHIVE_PATH=/usr/local/lib/scancode-libarchive.so \
     TYPECODE_LIBMAGIC_PATH=/usr/local/lib/scancode-libmagic.so
+
+# ---- Corresponding source for LGPL object code in the scancode venv. -------
+# Two packages in the venv above ship compiled LGPL code:
+#
+#   1. extractcode-7z (pulled in by ``extractcode[full]``). On amd64 its wheel
+#      carries a prebuilt p7zip 16.02 ``7z`` binary and ``7z.so`` plugin
+#      (LGPL-2.1-or-later, plus the unRAR restriction its wheel metadata
+#      names). The wheel's own INSTALL_RECEIPT.json records a build from the
+#      p7zip 16.02 release. On aarch64 the wheel is an empty stub with no
+#      binary, the same as the libarchive / libmagic wheels described above.
+#   2. intbitset (LGPL-3.0-or-later), a C extension, pinned above.
+#
+# The upstream source archives for both are bundled under TRUSCA_SOURCES_DIR
+# and named in THIRD_PARTY_NOTICES.md §2, which
+# tests/unit/test_license_distribution.py keeps in sync with this block. The
+# archives are bundled on both arches so the image layout does not depend on
+# the arch. Hashes are pinned here rather than fetched, the same as the cosign
+# block below: the p7zip hash matches the one Homebrew's p7zip 16.02 formula
+# pinned, the intbitset hash is PyPI's for the sdist.
+#
+# The checks fail the build when a scancode or extractcode upgrade changes
+# what this block describes: an intbitset or chardet other than the pin, a
+# 7z that reports another version, or an amd64 image with no 7z at all
+# (meaning the wheel layout changed and the notice needs a second look).
+ENV TRUSCA_SOURCES_DIR=/usr/share/trusca/sources \
+    P7ZIP_VERSION=16.02 \
+    P7ZIP_SOURCE_SHA256=5eb20ac0e2944f6cb9c2d51dd6c4518941c185347d4089ea89087ffdd6e2341f \
+    INTBITSET_SOURCE_SHA256=f82fafe0bcb4fe7a010d942099b5a84d721d37c897538ed632f788962c1411f8
+RUN set -eux; \
+    mkdir -p "${TRUSCA_SOURCES_DIR}"; \
+    p7zip_src="${TRUSCA_SOURCES_DIR}/p7zip_${P7ZIP_VERSION}_src_all.tar.bz2"; \
+    curl -fsSL --retry 5 --retry-all-errors -o "${p7zip_src}" \
+        "https://downloads.sourceforge.net/project/p7zip/p7zip/${P7ZIP_VERSION}/p7zip_${P7ZIP_VERSION}_src_all.tar.bz2"; \
+    echo "${P7ZIP_SOURCE_SHA256}  ${p7zip_src}" | sha256sum -c -; \
+    intbitset_src="${TRUSCA_SOURCES_DIR}/intbitset-${SCANCODE_INTBITSET_VERSION}.tar.gz"; \
+    curl -fsSL --retry 5 --retry-all-errors -o "${intbitset_src}" \
+        "https://files.pythonhosted.org/packages/source/i/intbitset/intbitset-${SCANCODE_INTBITSET_VERSION}.tar.gz"; \
+    echo "${INTBITSET_SOURCE_SHA256}  ${intbitset_src}" | sha256sum -c -; \
+    py="${SCANCODE_VENV}/bin/python"; \
+    test "$("$py" -c 'from importlib.metadata import version; print(version("intbitset"))')" = "${SCANCODE_INTBITSET_VERSION}"; \
+    test "$("$py" -c 'from importlib.metadata import version; print(version("chardet"))')" = "${SCANCODE_CHARDET_VERSION}"; \
+    sevenzip="$("$py" -c 'import os, extractcode_7z; print(os.path.join(os.path.dirname(extractcode_7z.__file__), "bin", "7z"))')"; \
+    if [ "$(dpkg --print-architecture)" = "amd64" ] && [ ! -x "${sevenzip}" ]; then \
+        echo "extractcode-7z ships no 7z binary on amd64; re-check THIRD_PARTY_NOTICES.md §2" >&2; exit 1; \
+    fi; \
+    if [ -e "${sevenzip}" ]; then \
+        sevenzip_info="$("${sevenzip}" i 2>&1 || true)"; \
+        case "${sevenzip_info}" in \
+            *"p7zip Version ${P7ZIP_VERSION}"*) ;; \
+            *) echo "bundled 7z is not p7zip ${P7ZIP_VERSION}; update the bundled source and THIRD_PARTY_NOTICES.md §2" >&2; \
+               echo "${sevenzip_info}" | head -n 5 >&2; exit 1 ;; \
+        esac; \
+    fi; \
+    ls -l "${TRUSCA_SOURCES_DIR}"
 
 # ===========================================================================
 # >>> v2.3-s1 (s-track) cosign — BEGIN. Self-contained block. r-track

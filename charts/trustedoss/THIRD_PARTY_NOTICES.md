@@ -258,7 +258,7 @@ nothing else: TRUSCA remains Apache-2.0.
 
 ## 2. Tools bundled in the TRUSCA worker image
 
-The Celery worker image (`ghcr.io/trustedoss/trusca-worker`) ships the SCA
+The Celery worker image (`ghcr.io/trustedoss/trusca-backend-worker`) ships the SCA
 toolchain. These are **separate programs**, invoked at arm's length as separate
 processes, and each remains under its own license. TRUSCA does not link against
 them.
@@ -269,13 +269,13 @@ them.
 | scancode-toolkit | 32.4.0 | Apache-2.0 |
 | scanoss.py | 1.53.1 | MIT |
 | Trivy | 0.72.0 | Apache-2.0 |
-| cosign | 3.1.1 | Apache-2.0 |
+| cosign | 3.1.2 | Apache-2.0 |
 | govulncheck (`golang.org/x/vuln`) | v1.5.0 | BSD-3-Clause |
-| Docker CLI (client only) | 29.6.1 | Apache-2.0 |
-| Go toolchain | 1.25.12 | BSD-3-Clause |
-| Node.js | 20.18.1 | MIT |
+| Docker CLI (client only) | 29.9.0 | Apache-2.0 |
+| Go toolchain | 1.26.9 | BSD-3-Clause |
+| Node.js | 20.x (NodeSource `nodejs`) | MIT |
 | npm | 11.18.0 | Artistic-2.0 |
-| Gradle | 8.14.5 | Apache-2.0 |
+| Gradle | 8.14.6 | Apache-2.0 |
 | Apache Maven | Debian `maven` (3.8.x) | Apache-2.0 |
 | Composer | Debian `composer` | MIT |
 | PHP CLI | Debian `php-cli` (8.2) | PHP-3.01 |
@@ -284,8 +284,49 @@ them.
 | Cargo / Rust | Debian `cargo` | MIT OR Apache-2.0 |
 | .NET SDK | 8.0 | MIT |
 | PostgreSQL client | 17 | PostgreSQL |
-| Python | 3.12.13 | PSF-2.0 |
+| Python | 3.12.14 | PSF-2.0 |
 | **Eclipse Temurin JDK** | **21** | **GPL-2.0 WITH Classpath-exception-2.0** |
+
+scancode-toolkit runs from its own virtualenv (`/opt/scancode-venv`), and some
+of the Python packages installed there with it carry LGPL or GPL-family terms.
+They are dependencies of scancode-toolkit, not of TRUSCA, and TRUSCA reaches
+them only by running `scancode` as a separate process.
+
+| Component (in `/opt/scancode-venv`) | Version | License | Form |
+|---|---|---|---|
+| **p7zip** (`7z`, `7z.so`, from the `extractcode-7z` wheel) | **16.02** (wheel 16.5.210531) | **LGPL-2.1-or-later, with the unRAR restriction** | prebuilt binaries, amd64 image only |
+| **intbitset** | **4.1.2** | **LGPL-3.0-or-later** | C extension |
+| **chardet** | **5.2.0** | **LGPL-2.1-or-later** | pure Python |
+| gemfileparser2 | 0.9.4 | GPL-3.0-or-later OR MIT | pure Python |
+| text-unidecode | 1.3 | Artistic License OR GPL (per its package metadata) | pure Python |
+
+The `extractcode-7z` wheel declares its license as `apache-2.0 AND lgpl-2.1
+and unrar and brian-gladman-3-clause`: Apache-2.0 for its Python wrapper, the
+rest for the p7zip binaries. The p7zip license texts (`License.txt`,
+`copying.txt`, `unRarLicense.txt`) ship inside the wheel at
+`/opt/scancode-venv/lib/python3.12/site-packages/extractcode_7z/licenses/p7zip/`.
+On arm64 the `extractcode-7z` wheel (16.5.210525) contains no binary, and the
+arm64 image has no `7z`.
+
+### LGPL corresponding source (worker image)
+
+The source for the LGPL object code listed above is inside the worker image, on
+both architectures, in `/usr/share/trusca/sources/`:
+
+| File | Covers | Upstream |
+|---|---|---|
+| `p7zip_16.02_src_all.tar.bz2` | `7z`, `7z.so` | https://downloads.sourceforge.net/project/p7zip/p7zip/16.02/p7zip_16.02_src_all.tar.bz2 (project page https://sourceforge.net/projects/p7zip/) |
+| `intbitset-4.1.2.tar.gz` | intbitset C extension | https://pypi.org/project/intbitset/4.1.2/ (repository https://github.com/inveniosoftware-contrib/intbitset) |
+
+The p7zip binaries were built by the `extractcode-7z` maintainers, not by
+TRUSCA. The `INSTALL_RECEIPT.json` in the wheel's license directory records a
+Homebrew build of the p7zip 16.02 release, and the image build checks that the
+shipped `7z` reports p7zip 16.02. The wheel's build recipe is in
+https://github.com/aboutcode-org/scancode-plugins (`builtins/extractcode_7z-linux`).
+
+chardet is pure Python: the installed modules in
+`/opt/scancode-venv/lib/python3.12/site-packages/chardet/` are its source.
+Upstream is https://pypi.org/project/chardet/5.2.0/.
 
 ### GPL source offer (worker image)
 
@@ -299,8 +340,14 @@ under the GPL. The JDK's own source remains available under the GPL:
   https://github.com/openjdk/jdk21u
 
 The JDK is present only so cdxgen can shell into Maven and Gradle for Java
-dependency enumeration. No other GPL-licensed program is bundled in any TRUSCA
-image.
+dependency enumeration.
+
+Apart from the JDK and the scancode dependencies listed above, the GPL-family
+software in TRUSCA images is the operating system of the base images: Debian
+bookworm packages in the backend and worker images, and Alpine Linux packages
+in the frontend image. On Debian each package's license is at
+`/usr/share/doc/<package>/copyright`, and the distributions publish the
+source: https://sources.debian.org and https://gitlab.alpinelinux.org/alpine/aports.
 
 ---
 

@@ -116,9 +116,7 @@ def test_every_dockerfile_ships_the_license_files() -> None:
     for dockerfile in dockerfiles:
         body = _read(dockerfile)
         copy_lines = [
-            line
-            for line in body.splitlines()
-            if line.startswith("COPY") and "/licenses/" in line
+            line for line in body.splitlines() if line.startswith("COPY") and "/licenses/" in line
         ]
         if not copy_lines:
             missing.append(dockerfile.relative_to(REPO_ROOT))
@@ -126,9 +124,7 @@ def test_every_dockerfile_ships_the_license_files() -> None:
         shipped = " ".join(copy_lines)
         absent = [name for name in LICENSE_FILES if name not in shipped]
         if absent:
-            missing.append(
-                f"{dockerfile.relative_to(REPO_ROOT)} (omits {', '.join(absent)})"
-            )
+            missing.append(f"{dockerfile.relative_to(REPO_ROOT)} (omits {', '.join(absent)})")
 
     assert not missing, (
         "these Dockerfiles do not COPY the license files to /licenses/: "
@@ -334,9 +330,7 @@ def test_every_vendored_font_is_registered() -> None:
     """A font cannot be added without deciding what it owes upstream."""
     fonts_dir = REPO_ROOT / "apps" / "frontend" / "public" / "fonts"
     discovered = {
-        path.relative_to(REPO_ROOT)
-        for path in fonts_dir.glob("**/*.woff2")
-        if path.is_file()
+        path.relative_to(REPO_ROOT) for path in fonts_dir.glob("**/*.woff2") if path.is_file()
     }
     assert discovered, (
         "the font scan found nothing, so either the directory moved or the "
@@ -381,9 +375,9 @@ def test_each_font_family_ships_its_licence_text() -> None:
         path = REPO_ROOT / rel
         assert path.is_file(), f"{family}: missing licence text at {rel.as_posix()}"
         text = path.read_text(encoding="utf-8")
-        assert "SIL OPEN FONT LICENSE" in text.upper(), (
-            f"{family}: {rel.as_posix()} does not look like the OFL"
-        )
+        assert (
+            "SIL OPEN FONT LICENSE" in text.upper()
+        ), f"{family}: {rel.as_posix()} does not look like the OFL"
         # The copyright line is the half section 2 asks for beyond the licence
         # body, and the copy under services/license_texts/ carries none, which
         # is why it must not be reused here.
@@ -391,3 +385,84 @@ def test_each_font_family_ships_its_licence_text() -> None:
             f"{family}: {rel.as_posix()} carries no copyright line, so it does "
             "not satisfy OFL-1.1 section 2 on its own"
         )
+
+
+# ---------------------------------------------------------------------------
+# Corresponding source bundled in the worker image
+# ---------------------------------------------------------------------------
+
+WORKER_DOCKERFILE = BACKEND / "Dockerfile.worker"
+
+#: How the worker Dockerfile names a file it places in the source directory.
+#: Every archive there is the corresponding source for object code in the
+#: image, so a reader of THIRD_PARTY_NOTICES.md must be able to find it.
+_BUNDLED_SOURCE_RE = re.compile(r'"\$\{TRUSCA_SOURCES_DIR\}/([^"]+)"')
+_DOCKER_VAR_RE = re.compile(r"\$\{([A-Z0-9_]+)\}")
+
+
+def _dockerfile_env(text: str) -> dict[str, str]:
+    """Collect ``ENV KEY=VALUE`` assignments, continuation lines joined."""
+    env: dict[str, str] = {}
+    for line in text.replace("\\\n", " ").splitlines():
+        stripped = line.strip()
+        if not stripped.startswith("ENV "):
+            continue
+        for token in stripped[4:].split():
+            key, sep, value = token.partition("=")
+            if sep:
+                env[key] = value
+    return env
+
+
+def _expand(value: str, env: dict[str, str]) -> str:
+    def lookup(match: re.Match[str]) -> str:
+        name = match.group(1)
+        assert name in env, f"{value!r} uses ${{{name}}}, which no ENV line sets"
+        return env[name]
+
+    return _DOCKER_VAR_RE.sub(lookup, value)
+
+
+def test_bundled_sources_are_listed_in_the_notices(notices_text: str) -> None:
+    """Each source archive the worker image bundles is named in the notice.
+
+    The archives are there so that the LGPL object code in scancode's venv has
+    its source in the same image. If the Dockerfile adds or renames one and
+    THIRD_PARTY_NOTICES.md is not updated, a reader cannot find it.
+    """
+    text = _read(WORKER_DOCKERFILE)
+    env = _dockerfile_env(text)
+    sources_dir = env.get("TRUSCA_SOURCES_DIR")
+    assert sources_dir, "Dockerfile.worker no longer sets TRUSCA_SOURCES_DIR"
+    bundled = sorted({_expand(m, env) for m in _BUNDLED_SOURCE_RE.findall(text)})
+    assert bundled, (
+        "found no file placed under ${TRUSCA_SOURCES_DIR} in Dockerfile.worker, "
+        "so either the block moved or the pattern stopped matching, and a gate "
+        "that examines nothing reports success"
+    )
+    assert (
+        sources_dir in notices_text
+    ), f"THIRD_PARTY_NOTICES.md does not say the sources are in {sources_dir}"
+    missing = [name for name in bundled if name not in notices_text]
+    assert not missing, (
+        f"Dockerfile.worker bundles {missing} under {sources_dir}, but "
+        "THIRD_PARTY_NOTICES.md does not name them"
+    )
+
+
+def test_pinned_lgpl_versions_match_the_notices(notices_text: str) -> None:
+    """The LGPL rows in the notice carry the versions the Dockerfile pins."""
+    env = _dockerfile_env(_read(WORKER_DOCKERFILE))
+    rows = {
+        "p7zip": env["P7ZIP_VERSION"],
+        "intbitset": env["SCANCODE_INTBITSET_VERSION"],
+        "chardet": env["SCANCODE_CHARDET_VERSION"],
+    }
+    problems = []
+    for name, version in rows.items():
+        row = re.search(rf"^\| \*\*{name}\*\*.*$", notices_text, re.MULTILINE)
+        if row is None:
+            problems.append(f"no §2 row for {name}")
+        elif f"**{version}**" not in row.group(0):
+            problems.append(f"§2 row for {name} does not say {version}: {row.group(0)}")
+    assert not problems, problems
