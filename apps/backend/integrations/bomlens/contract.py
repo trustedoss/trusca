@@ -52,6 +52,8 @@ RUN_STATUSES: Final = ("succeeded", "succeeded_degraded", "failed", "cancelled")
 STEP_STATUSES: Final = ("ok", "degraded", "failed", "skipped", "disabled")
 
 #: ``steps[].reason`` values of contract 1.x (minor versions may add more).
+#: ``no_components`` (BomLens #194) is recorded on ``generate`` when the source
+#: declares dependencies but the SBOM has no component.
 STEP_REASONS: Final = (
     "failed",
     "timeout",
@@ -61,6 +63,7 @@ STEP_REASONS: Final = (
     "unavailable",
     "budget_exhausted",
     "no_input",
+    "no_components",
 )
 
 #: ``outputs[].role`` values this reader uses.

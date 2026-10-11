@@ -55,7 +55,9 @@ def _with_steps(*steps: dict[str, Any]) -> contract.EngineResult:
 def test_the_fixture_set_is_the_documented_one() -> None:
     assert CASES == [
         "image-ok",
+        "source-deep-license",
         "source-degraded",
+        "source-no-components",
         "source-ok",
         "source-ok-results-stripped",
         "source-run-failed",
@@ -66,7 +68,8 @@ def test_the_fixture_set_is_the_documented_one() -> None:
 @pytest.mark.parametrize("case", CASES)
 def test_every_captured_manifest_parses(case: str) -> None:
     result = contract.parse_manifest(_manifest(case))
-    assert result.contract_version == "1.0.0-dev"
+    # sha-b826d43 wrote 1.0.0-dev, sha-5a93586 writes 1.0.0 (PROVENANCE.md).
+    assert result.contract_version in ("1.0.0-dev", "1.0.0")
     assert result.image_digest is not None and result.image_digest.startswith("sha256:")
 
 
@@ -352,8 +355,8 @@ def test_an_unknown_step_is_left_out_and_an_unknown_reason_reads_as_failed() -> 
 @pytest.mark.parametrize(
     ("status", "degraded"),
     [
-        # BomLens #191: generate degraded with no_components (a manifest was
-        # found but nothing came out of it), a reason contract 1.0 lacks.
+        # A reason a later contract minor adds, as BomLens #194 added
+        # no_components before this reader knew it.
         ("degraded", True),
         # A later minor reason on a step whose status still says ok or skipped
         # is not read as clean: the reader cannot know what the word means.
@@ -365,9 +368,21 @@ def test_an_unknown_step_is_left_out_and_an_unknown_reason_reads_as_failed() -> 
     ],
 )
 def test_a_reason_from_a_later_minor_is_never_read_as_success(status: str, degraded: bool) -> None:
-    result = _with_steps(_step("generate", status, "no_components"))
+    result = _with_steps(_step("generate", status, "no_dependencies_resolved"))
     outcomes = [(o.stage, o.reason, o.engine_reason) for o in stages.stage_outcomes(result)]
-    assert outcomes == ([("generate", "failed", "no_components")] if degraded else [])
+    assert outcomes == ([("generate", "failed", "no_dependencies_resolved")] if degraded else [])
+
+
+def test_no_components_is_a_known_generate_degradation() -> None:
+    """BomLens #194: the source declares dependencies and the SBOM has none.
+    Recorded under its own reason, not the catch-all with the word kept aside."""
+    result = _with_steps(_step("generate", "degraded", "no_components"))
+    [outcome] = stages.stage_outcomes(result)
+    assert (outcome.stage, outcome.reason, outcome.engine_reason) == (
+        "generate",
+        "no_components",
+        None,
+    )
 
 
 def test_a_known_reason_is_not_repeated_as_an_engine_reason() -> None:

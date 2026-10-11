@@ -1,0 +1,96 @@
+{
+  "annotations": [
+    {
+      "annotator": {
+        "component": {
+          "authors": [
+            {
+              "name": "OWASP Foundation"
+            }
+          ],
+          "bom-ref": "pkg:npm/@cdxgen/cdxgen@13.2.0",
+          "group": "@cdxgen",
+          "name": "cdxgen",
+          "publisher": "OWASP Foundation",
+          "purl": "pkg:npm/%40cdxgen/cdxgen@13.2.0",
+          "type": "application",
+          "version": "13.2.0"
+        }
+      },
+      "bom-ref": "metadata-annotations",
+      "subjects": [
+        "urn:uuid:72a230af-86ba-4333-8efc-e6d0a0f5a989"
+      ],
+      "text": "This Software Bill-of-Materials (SBOM) document was created on Sunday, October 11, 2026 with cdxgen. The data was captured during the build lifecycle phase. BOM file is empty without components.",
+      "timestamp": "2026-10-11T13:12:35Z"
+    }
+  ],
+  "bomFormat": "CycloneDX",
+  "components": [],
+  "dependencies": [],
+  "metadata": {
+    "component": {
+      "name": "poetry",
+      "version": "1.0.0",
+      "properties": [
+        {
+          "name": "bomlens:source:versionPinning",
+          "value": "unpinned"
+        }
+      ]
+    },
+    "lifecycles": [
+      {
+        "phase": "pre-build"
+      }
+    ],
+    "properties": [
+      {
+        "name": "bomlens:excluded-paths",
+        "value": "**/test/**, **/tests/**, **/spec/**, **/fixtures/**, **/testdata/**, **/__tests__/**, **/e2e/**, **/example/**, **/examples/**, **/sample/**, **/samples/**, **/bench/**, **/benches/**, **/benchmark/**, **/benchmarks/**, **/demo/**, **/demos/**, **/playground/**, **/.github/workflows/**"
+      },
+      {
+        "name": "bomlens:sbom-empty-with-manifests",
+        "value": "pyproject.toml"
+      },
+      {
+        "name": "bomlens:undeclared-fields",
+        "value": "unknown-to-author"
+      }
+    ],
+    "timestamp": "2026-10-11T13:12:35Z",
+    "tools": {
+      "components": [
+        {
+          "authors": [
+            {
+              "name": "OWASP Foundation"
+            }
+          ],
+          "bom-ref": "pkg:npm/@cdxgen/cdxgen@13.2.0",
+          "group": "@cdxgen",
+          "name": "cdxgen",
+          "publisher": "OWASP Foundation",
+          "purl": "pkg:npm/%40cdxgen/cdxgen@13.2.0",
+          "type": "application",
+          "version": "13.2.0"
+        },
+        {
+          "name": "BomLens",
+          "publisher": "SK Telecom",
+          "type": "application",
+          "version": "latest-5a93586"
+        }
+      ]
+    }
+  },
+  "serialNumber": "urn:uuid:72a230af-86ba-4333-8efc-e6d0a0f5a989",
+  "services": [],
+  "specVersion": "1.6",
+  "version": 1,
+  "compositions": [
+    {
+      "aggregate": "unknown"
+    }
+  ]
+}

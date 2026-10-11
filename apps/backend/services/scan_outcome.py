@@ -212,8 +212,10 @@ DEGRADABLE_STAGES: Final = (
 #: through ``scancode_skipped``. ``fallback`` (a simpler method was used, as when
 #: the SBOM came from a manifest-only reader), ``unavailable`` (the data the step
 #: reads was missing) and ``budget_exhausted`` (the step stopped at its work
-#: limit) come from the BomLens engine contract, whose reason vocabulary this
-#: tuple covers except ``no_input``: a step with nothing to read did not degrade.
+#: limit) and ``no_components`` (the source declares dependencies but the SBOM
+#: has none, recorded on ``generate``) come from the BomLens engine contract,
+#: whose reason vocabulary this tuple covers except ``no_input``: a step with
+#: nothing to read did not degrade.
 STAGE_REASONS: Final = (
     "failed",
     "timeout",
@@ -222,6 +224,7 @@ STAGE_REASONS: Final = (
     "fallback",
     "unavailable",
     "budget_exhausted",
+    "no_components",
 )
 
 

@@ -164,7 +164,8 @@ export interface ProjectOverviewResponse {
       | "too_large"
       | "fallback"
       | "unavailable"
-      | "budget_exhausted";
+      | "budget_exhausted"
+      | "no_components";
   }[];
   /**
    * The requesting user's effective role within this project's owning team.

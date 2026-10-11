@@ -1,0 +1,11 @@
+{
+  "SchemaVersion": 2,
+  "Trivy": {
+    "Version": "0.74.0"
+  },
+  "ReportID": "01a12b1c-35b5-704f-ac1e-d248b7f1a017",
+  "CreatedAt": "2026-10-11T13:17:11.477020973Z",
+  "ArtifactName": "/tmp/tmp.lxmnzLVk7k",
+  "ArtifactType": "cyclonedx",
+  "Results": []
+}

@@ -201,7 +201,8 @@
       "reason_too_large": "input too large",
       "reason_fallback": "simpler method used",
       "reason_unavailable": "data unavailable",
-      "reason_budget_exhausted": "work limit reached"
+      "reason_budget_exhausted": "work limit reached",
+      "reason_no_components": "dependencies declared but none found"
     },
     "risk_gauge": {
       "aria": "Project risk score: {{score}} of 100"
