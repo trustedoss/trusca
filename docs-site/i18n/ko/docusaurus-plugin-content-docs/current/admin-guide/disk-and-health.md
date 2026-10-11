@@ -202,6 +202,10 @@ docker-compose -f docker-compose.yml exec backend \
 | `trusca_vuln_db_last_update_timestamp_seconds` | | 취약점 데이터베이스가 업스트림에서 마지막으로 갱신된 유닉스 시각. 내려받은 적이 없으면 `0` |
 | `trusca_vuln_db_refresh_interval_hours` | | 설정된 갱신 시도 간격(시간) |
 | `trusca_task_runs_last_recorded_timestamp_seconds` | | 가장 최근 작업 이력 행의 유닉스 시각. 테이블이 비어 있으면 `0` |
+| `trusca_scans_finished_24h` | `status` | 최근 하루 동안 `succeeded`, `failed`, `cancelled`로 끝난 스캔 수. 아래 세 계열의 분모 |
+| `trusca_scan_stages_degraded_24h` | `stage`, `reason` | 최근 하루 동안 끝난 스캔 가운데 선택 단계가 열화된 스캔 수. 프로젝트 개요 탭에 나오는 목록과 같습니다. 단계와 사유 조합은 창 안의 스캔이 기록해야 나타납니다 |
+| `trusca_scan_scancode_skipped_24h` | `reason` | 최근 하루 동안 끝난 스캔 가운데 프로젝트 자체 파일의 라이선스 탐지가 실행되지 않은 스캔 수. 관리자가 일부러 끈 경우는 세지 않습니다 |
+| `trusca_scan_license_lookups_skipped_24h` | `reason` | 최근 하루 동안 끝난 스캔이 하지 못한 라이선스 조회 수의 합. 조회 300건을 건너뛴 스캔 하나는 300으로 셉니다 |
 
 프로젝트·패키지·저장소·사람 이름은 출력 어디에도 나오지 않습니다. 목록은
 저장소의 픽스처로 고정돼 있어, 누군가 공개해도 되는지 판단하지 않으면 계열을
@@ -228,6 +232,15 @@ docker-compose -f docker-compose.yml exec backend \
 않고, 다른 모든 것이 정상으로 보이는 채 이 값만 멈춥니다. 기본 임계는 제공하지 않습니다.
 이 저장소의 주기 작업은 5분에서 주 단위까지 걸쳐 있고 어느 것을 켜 두는지는 배포마다
 다르므로, 각 배포에서 가장 촘촘한 주기와 견주어 정하십시오.
+
+스캔 계열 넷은 프로젝트 하나의 개요 탭으로는 알 수 없는 것, 곧 어떤 단계가 모든
+스캔에서 실패하고 있는지를 보여 줍니다. 워커 이미지에서 scancode가 빠지면 프로젝트마다
+안내가 따로 뜨지만, 하나의 문제로 보이는 것은 `trusca_scans_finished_24h` 대비
+`trusca_scan_scancode_skipped_24h`가 오를 때뿐입니다. 작업 이력 계열과 같은 이유로
+`completed_at` 기준 하루 창의 게이지입니다. 스캔도 보존 주기에 따라 정리되기 때문입니다.
+이 릴리스가 모르는 단계나 사유(다른 버전이 남긴 기록이나 형식이 깨진 기록)는 버리지 않고
+`unknown`으로 셉니다. 기본 임계는 제공하지 않습니다. 건너뛴 단계의 비율이 어느 배포에서는
+평소 수준이어도 다른 배포에서는 장애일 수 있기 때문입니다.
 
 `METRICS_TOKEN`은 수집기가 제시해야 하는 토큰입니다. `/metrics`가 외부에
 노출되지 않고 모니터링 시스템이 내부 망에서 접근하는 일반적인 구성이라면

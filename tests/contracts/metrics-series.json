@@ -123,6 +123,39 @@
       "help": "Unix time of the newest task-run row; 0 when the table is empty. Watches the recorder itself, which fails silently by design."
     },
     {
+      "name": "trusca_scans_finished_24h",
+      "type": "gauge",
+      "labels": [
+        "status"
+      ],
+      "help": "Scans that reached a terminal status in the last 24h, by status. The denominator for the scan stage series."
+    },
+    {
+      "name": "trusca_scan_stages_degraded_24h",
+      "type": "gauge",
+      "labels": [
+        "stage",
+        "reason"
+      ],
+      "help": "Scans finished in the last 24h on which an optional stage degraded, by stage and reason. A pair appears once a scan in the window records it; unknown counts values outside this release's vocabulary."
+    },
+    {
+      "name": "trusca_scan_scancode_skipped_24h",
+      "type": "gauge",
+      "labels": [
+        "reason"
+      ],
+      "help": "Scans finished in the last 24h on which license detection in the project's own files (scancode) did not run, by reason. Turned off on purpose is not counted."
+    },
+    {
+      "name": "trusca_scan_license_lookups_skipped_24h",
+      "type": "gauge",
+      "labels": [
+        "reason"
+      ],
+      "help": "License lookups not made by scans finished in the last 24h, summed, by reason. Those components stay license-unknown."
+    },
+    {
       "name": "trusca_broker_queue_backlog",
       "type": "gauge",
       "labels": [

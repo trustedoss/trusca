@@ -109,6 +109,11 @@ const SKIP_PREFIXES = [
   "apps/backend/tests/fixtures/trivy/npm-",
   "apps/backend/tests/fixtures/trivy/pip-",
   "apps/backend/tests/fixtures/trivy/rocky-",
+  // Recorded BomLens engine output, same reasoning: the SBOMs repeat the
+  // scanned fixture's own package.json description verbatim. The case
+  // directories only; the PROVENANCE.md beside them stays checked.
+  "apps/backend/tests/fixtures/bomlens/image-",
+  "apps/backend/tests/fixtures/bomlens/source-",
 ];
 
 export function isWatched(file) {

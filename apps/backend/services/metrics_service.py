@@ -38,7 +38,7 @@ from datetime import UTC, datetime, timedelta
 
 import redis as _redis
 import structlog
-from sqlalchemy import Select, func, select
+from sqlalchemy import Select, func, select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from core.config import (
@@ -58,6 +58,7 @@ from models import (
 )
 from models.scan import SCAN_STATUS_VALUES, VULN_SEVERITY_VALUES
 from models.task_run import TaskRun
+from services import scan_outcome
 from services.policy_gate import _CLOSED_FINDING_STATUSES
 from services.trivy_health_service import get_trivy_db_status_cached
 
@@ -183,6 +184,132 @@ async def _task_run_last_recorded(session: AsyncSession) -> float:
     ).scalar_one_or_none()
     return newest.timestamp() if newest else 0.0
 
+
+
+#: Window the scan-outcome aggregates (#496) cover, by ``scans.completed_at``.
+#: Scans have retention sweeps, so a count over all rows would fall when the
+#: sweep runs and read to a collector as a reset; a fixed window does not. The
+#: constant is in the series names (``_24h``) for the same reason as
+#: ``_TASK_RUN_WINDOW``: a series whose window moved cannot be compared with
+#: its own past. Compared against the database clock (``now()``), the clock
+#: that wrote ``completed_at``.
+_SCAN_OUTCOME_WINDOW_HOURS = 24
+
+#: Label for a recorded value outside the vocabulary this code owns (a stage
+#: or reason written by a newer or older release, or a malformed record). Kept
+#: rather than dropped: a series that skipped it would show the gap as nothing
+#: having happened.
+_UNKNOWN_LABEL = "unknown"
+
+_TERMINAL_SCAN_STATUSES = tuple(
+    status for status in SCAN_STATUS_VALUES if status not in ("queued", "running")
+)
+
+
+def _known(value: object, vocabulary: tuple[str, ...]) -> str:
+    return value if isinstance(value, str) and value in vocabulary else _UNKNOWN_LABEL
+
+
+async def _scans_finished(session: AsyncSession) -> dict[str, int]:
+    """Scans that reached a terminal status inside the window, by status.
+
+    The denominator for the stage series below: "scancode was skipped on 40
+    scans" means something different on a day with 40 scans than on a day
+    with 4,000.
+    """
+    counts = dict.fromkeys(_TERMINAL_SCAN_STATUSES, 0)
+    rows = (
+        await session.execute(
+            text(
+                "SELECT status::text, count(*) FROM scans "
+                "WHERE completed_at >= now() - make_interval(hours => :hours) "
+                "GROUP BY 1"
+            ),
+            {"hours": _SCAN_OUTCOME_WINDOW_HOURS},
+        )
+    ).all()
+    for status, count in rows:
+        key = _known(status, _TERMINAL_SCAN_STATUSES)
+        counts[key] = counts.get(key, 0) + int(count)
+    return counts
+
+
+async def _scan_stages_degraded(session: AsyncSession) -> dict[tuple[str, str], int]:
+    """Scans per (stage, reason) whose ``stage_outcomes`` recorded a degradation.
+
+    Read in the database with ``jsonb_each`` so a scrape does not pull the
+    window's metadata into Python. A record that is not an object counts as
+    no degradation, the reading ``scan_outcome.degraded_stages`` applies; a
+    stage or reason outside the vocabulary is counted under ``unknown``.
+    """
+    rows = (
+        await session.execute(
+            text(
+                "SELECT o.key, o.value ->> 'reason', count(*) FROM scans s "
+                "CROSS JOIN LATERAL jsonb_each(CASE "
+                "WHEN jsonb_typeof(s.metadata -> 'stage_outcomes') = 'object' "
+                "THEN s.metadata -> 'stage_outcomes' ELSE '{}'::jsonb END) AS o "
+                "WHERE s.completed_at >= now() - make_interval(hours => :hours) "
+                "GROUP BY 1, 2"
+            ),
+            {"hours": _SCAN_OUTCOME_WINDOW_HOURS},
+        )
+    ).all()
+    out: dict[tuple[str, str], int] = {}
+    for stage, reason, count in rows:
+        key = (
+            _known(stage, scan_outcome.DEGRADABLE_STAGES),
+            _known(reason, scan_outcome.STAGE_REASONS),
+        )
+        out[key] = out.get(key, 0) + int(count)
+    return out
+
+
+async def _scancode_skipped(session: AsyncSession) -> dict[str, int]:
+    """Scans per reason whose first-party licence detection did not run (#496)."""
+    counts = dict.fromkeys(scan_outcome.SCANCODE_SKIP_REASONS, 0)
+    rows = (
+        await session.execute(
+            text(
+                "SELECT s.metadata ->> 'scancode_skipped', count(*) FROM scans s "
+                "WHERE s.completed_at >= now() - make_interval(hours => :hours) "
+                "AND s.metadata -> 'scancode_skipped' IS NOT NULL "
+                "GROUP BY 1"
+            ),
+            {"hours": _SCAN_OUTCOME_WINDOW_HOURS},
+        )
+    ).all()
+    for reason, count in rows:
+        key = _known(reason, scan_outcome.SCANCODE_SKIP_REASONS)
+        counts[key] = counts.get(key, 0) + int(count)
+    return counts
+
+
+async def _license_lookups_skipped(session: AsyncSession) -> dict[str, int]:
+    """Licence lookups not made, summed per reason over the window (#496).
+
+    The count is ``not_looked_up`` from each scan's ``license_enrichment``
+    record, so one scan that skipped 300 lookups weighs 300. A record whose
+    count is not a number adds 0 but still puts its reason on the output.
+    """
+    counts = dict.fromkeys(scan_outcome.LICENSE_LOOKUP_REASONS, 0)
+    rows = (
+        await session.execute(
+            text(
+                "SELECT le ->> 'not_looked_up_reason', "
+                "sum(CASE WHEN jsonb_typeof(le -> 'not_looked_up') = 'number' "
+                "THEN (le ->> 'not_looked_up')::numeric ELSE 0 END) "
+                "FROM (SELECT s.metadata -> 'license_enrichment' AS le FROM scans s "
+                "WHERE s.completed_at >= now() - make_interval(hours => :hours)) AS x "
+                "WHERE le IS NOT NULL GROUP BY 1"
+            ),
+            {"hours": _SCAN_OUTCOME_WINDOW_HOURS},
+        )
+    ).all()
+    for reason, total in rows:
+        key = _known(reason, scan_outcome.LICENSE_LOOKUP_REASONS)
+        counts[key] = counts.get(key, 0) + int(total or 0)
+    return counts
 
 
 def _vuln_db_freshness() -> tuple[float, float]:
@@ -435,6 +562,56 @@ async def render_metrics(session: AsyncSession) -> str:
             "Watches the recorder itself, which fails silently by design.",
             "gauge",
             [({}, await _task_run_last_recorded(session))],
+        )
+    )
+
+    # #496: what the scan pipeline skipped or degraded, by stage and reason,
+    # over the same kind of fixed window as the task-run series above. Gauges,
+    # not counters: scan rows have retention sweeps. No threshold here; how many
+    # skipped stages are too many is the collector's call.
+    finished = await _scans_finished(session)
+    document.append(
+        _block(
+            "trusca_scans_finished_24h",
+            "Scans that reached a terminal status in the last 24h, by status. "
+            "The denominator for the scan stage series.",
+            "gauge",
+            [({"status": status}, float(count)) for status, count in finished.items()],
+        )
+    )
+    degraded = await _scan_stages_degraded(session)
+    document.append(
+        _block(
+            "trusca_scan_stages_degraded_24h",
+            "Scans finished in the last 24h on which an optional stage degraded, by "
+            "stage and reason. A pair appears once a scan in the window records it; "
+            "unknown counts values outside this release's vocabulary.",
+            "gauge",
+            [
+                ({"stage": stage, "reason": reason}, float(count))
+                for (stage, reason), count in sorted(degraded.items())
+            ],
+        )
+    )
+    scancode = await _scancode_skipped(session)
+    document.append(
+        _block(
+            "trusca_scan_scancode_skipped_24h",
+            "Scans finished in the last 24h on which license detection in the "
+            "project's own files (scancode) did not run, by reason. Turned off on "
+            "purpose is not counted.",
+            "gauge",
+            [({"reason": reason}, float(count)) for reason, count in scancode.items()],
+        )
+    )
+    lookups = await _license_lookups_skipped(session)
+    document.append(
+        _block(
+            "trusca_scan_license_lookups_skipped_24h",
+            "License lookups not made by scans finished in the last 24h, summed, by "
+            "reason. Those components stay license-unknown.",
+            "gauge",
+            [({"reason": reason}, float(count)) for reason, count in lookups.items()],
         )
     )
 

@@ -142,9 +142,12 @@ export interface ProjectOverviewResponse {
    */
   degraded_stages: {
     stage:
+      | "generate"
       | "prep"
       | "cocoapods"
       | "scope_filter"
+      | "normalize"
+      | "enrich"
       | "document_metadata"
       | "sign"
       | "attest"
@@ -154,7 +157,14 @@ export interface ProjectOverviewResponse {
       | "scanoss"
       | "preserve"
       | "reachability";
-    reason: "failed" | "timeout" | "not_installed" | "too_large";
+    reason:
+      | "failed"
+      | "timeout"
+      | "not_installed"
+      | "too_large"
+      | "fallback"
+      | "unavailable"
+      | "budget_exhausted";
   }[];
   /**
    * The requesting user's effective role within this project's owning team.

@@ -1,0 +1,330 @@
+{
+  "contract": {
+    "name": "bomlens-engine",
+    "version": "1.0.0-dev"
+  },
+  "engine": {
+    "version": "latest-b826d43",
+    "image": "ghcr.io/haksungjang/bomlens:sha-b826d43",
+    "image_digest": "sha256:1de6f4d0c8969116347af5d55d69a61b38f3670eda819a63e09a197a53f1ad57"
+  },
+  "input": {
+    "kind": "source",
+    "mode": "POSTPROCESS",
+    "target": null
+  },
+  "run": {
+    "status": "succeeded",
+    "reason": null,
+    "started_at": "2026-10-11T09:37:07Z",
+    "ended_at": "2026-10-11T09:37:08Z",
+    "exit_code": 0
+  },
+  "steps": [
+    {
+      "id": "generate",
+      "status": "ok",
+      "reason": null,
+      "detail": null,
+      "started_at": "2026-10-11T09:37:07Z",
+      "ended_at": "2026-10-11T09:37:07Z",
+      "counts": {
+        "components": 1
+      },
+      "stage": 1
+    },
+    {
+      "id": "vendored",
+      "status": "disabled",
+      "reason": null,
+      "detail": null,
+      "started_at": "2026-10-11T09:37:07Z",
+      "ended_at": "2026-10-11T09:37:07Z",
+      "stage": 2
+    },
+    {
+      "id": "suggest-vendored",
+      "status": "ok",
+      "reason": null,
+      "detail": null,
+      "started_at": "2026-10-11T09:37:07Z",
+      "ended_at": "2026-10-11T09:37:07Z",
+      "stage": 2
+    },
+    {
+      "id": "stamp-metadata",
+      "status": "ok",
+      "reason": null,
+      "detail": null,
+      "started_at": "2026-10-11T09:37:07Z",
+      "ended_at": "2026-10-11T09:37:07Z",
+      "stage": 2
+    },
+    {
+      "id": "docmeta",
+      "status": "ok",
+      "reason": null,
+      "detail": null,
+      "started_at": "2026-10-11T09:37:07Z",
+      "ended_at": "2026-10-11T09:37:07Z",
+      "stage": 2
+    },
+    {
+      "id": "normalize",
+      "status": "ok",
+      "reason": null,
+      "detail": null,
+      "started_at": "2026-10-11T09:37:07Z",
+      "ended_at": "2026-10-11T09:37:07Z",
+      "stage": 2
+    },
+    {
+      "id": "license-registry",
+      "status": "disabled",
+      "reason": null,
+      "detail": null,
+      "started_at": "2026-10-11T09:37:07Z",
+      "ended_at": "2026-10-11T09:37:07Z",
+      "stage": 2
+    },
+    {
+      "id": "enrich-cpe",
+      "status": "ok",
+      "reason": null,
+      "detail": null,
+      "started_at": "2026-10-11T09:37:08Z",
+      "ended_at": "2026-10-11T09:37:08Z",
+      "stage": 2
+    },
+    {
+      "id": "enrich-os-context",
+      "status": "ok",
+      "reason": null,
+      "detail": null,
+      "started_at": "2026-10-11T09:37:08Z",
+      "ended_at": "2026-10-11T09:37:08Z",
+      "stage": 2
+    },
+    {
+      "id": "enrich-distro-supplier",
+      "status": "ok",
+      "reason": null,
+      "detail": null,
+      "started_at": "2026-10-11T09:37:08Z",
+      "ended_at": "2026-10-11T09:37:08Z",
+      "stage": 2
+    },
+    {
+      "id": "enrich-maven-cpe",
+      "status": "ok",
+      "reason": null,
+      "detail": null,
+      "started_at": "2026-10-11T09:37:08Z",
+      "ended_at": "2026-10-11T09:37:08Z",
+      "stage": 2
+    },
+    {
+      "id": "enrich-github-cpe",
+      "status": "ok",
+      "reason": null,
+      "detail": null,
+      "started_at": "2026-10-11T09:37:08Z",
+      "ended_at": "2026-10-11T09:37:08Z",
+      "stage": 2
+    },
+    {
+      "id": "enrich-interpreter-cpe",
+      "status": "ok",
+      "reason": null,
+      "detail": null,
+      "started_at": "2026-10-11T09:37:08Z",
+      "ended_at": "2026-10-11T09:37:08Z",
+      "stage": 2
+    },
+    {
+      "id": "enrich-eol",
+      "status": "ok",
+      "reason": null,
+      "detail": null,
+      "started_at": "2026-10-11T09:37:08Z",
+      "ended_at": "2026-10-11T09:37:08Z",
+      "stage": 2
+    },
+    {
+      "id": "enrich-malicious",
+      "status": "ok",
+      "reason": null,
+      "detail": null,
+      "started_at": "2026-10-11T09:37:08Z",
+      "ended_at": "2026-10-11T09:37:08Z",
+      "stage": 2
+    },
+    {
+      "id": "enrich-staleness",
+      "status": "disabled",
+      "reason": null,
+      "detail": null,
+      "started_at": "2026-10-11T09:37:08Z",
+      "ended_at": "2026-10-11T09:37:08Z",
+      "stage": 2
+    },
+    {
+      "id": "conformance",
+      "status": "ok",
+      "reason": null,
+      "detail": null,
+      "started_at": "2026-10-11T09:37:08Z",
+      "ended_at": "2026-10-11T09:37:08Z",
+      "stage": 2
+    },
+    {
+      "id": "deep-license",
+      "status": "disabled",
+      "reason": null,
+      "detail": null,
+      "started_at": "2026-10-11T09:37:08Z",
+      "ended_at": "2026-10-11T09:37:08Z",
+      "stage": 2
+    },
+    {
+      "id": "source-file-tree",
+      "status": "ok",
+      "reason": null,
+      "detail": null,
+      "started_at": "2026-10-11T09:37:08Z",
+      "ended_at": "2026-10-11T09:37:08Z",
+      "stage": 2
+    },
+    {
+      "id": "source-snapshot",
+      "status": "ok",
+      "reason": null,
+      "detail": null,
+      "started_at": "2026-10-11T09:37:08Z",
+      "ended_at": "2026-10-11T09:37:08Z",
+      "stage": 2
+    },
+    {
+      "id": "generate-notice",
+      "status": "disabled",
+      "reason": null,
+      "detail": null,
+      "started_at": "2026-10-11T09:37:08Z",
+      "ended_at": "2026-10-11T09:37:08Z",
+      "stage": 2
+    },
+    {
+      "id": "scan-security",
+      "status": "ok",
+      "reason": null,
+      "detail": null,
+      "started_at": "2026-10-11T09:37:08Z",
+      "ended_at": "2026-10-11T09:37:08Z",
+      "stage": 2
+    },
+    {
+      "id": "sign",
+      "status": "disabled",
+      "reason": null,
+      "detail": null,
+      "started_at": "2026-10-11T09:37:08Z",
+      "ended_at": "2026-10-11T09:37:08Z",
+      "stage": 2
+    }
+  ],
+  "tools": {
+    "cdxgen": "13.2.0",
+    "syft": "1.52.0",
+    "trivy": "0.74.0"
+  },
+  "engines": [
+    "trivy"
+  ],
+  "data_sources": {
+    "trivy_db": {
+      "schema_version": 2,
+      "updated_at": "2026-10-11T07:05:14.103977313Z",
+      "downloaded_at": "2026-10-11T09:33:57.880516231Z"
+    }
+  },
+  "outputs": [
+    {
+      "role": "sbom.cyclonedx",
+      "path": "node_1.0.0_bom.json",
+      "sha256": "cac1aa262b2fb111bcaa2fc08a4f117531ea228ca243942e27e486ba836013d1",
+      "bytes": 7910
+    },
+    {
+      "role": "other",
+      "path": "node_1.0.0_summary.result",
+      "sha256": "17e33679d13ab260b5a666f95b20257372d3a8934f15ec79c067b17131a3780e",
+      "bytes": 59
+    },
+    {
+      "role": "other",
+      "path": "node_1.0.0_files.json",
+      "sha256": "c18e9ffdd2d1a200ae678644382d4df204603fd3c503d819ff104b97cdc98855",
+      "bytes": 153
+    },
+    {
+      "role": "other",
+      "path": "node_1.0.0_source.json",
+      "sha256": "3adb02c9ab7d3c987706cd13421760ca1403304e9915c4b2f25aa47e7fba7a3f",
+      "bytes": 1512
+    },
+    {
+      "role": "vulnerabilities.all",
+      "path": "node_1.0.0_security.json",
+      "sha256": "06c84a11424af5718068b9900d9af32c27920f23d3342e517674f73e7c061502",
+      "bytes": 22567
+    },
+    {
+      "role": "other",
+      "path": "node_1.0.0_security.md",
+      "sha256": "28f042bc3a18396c90c05883531bc6f6686cb207d397e9c3efc44715663cb0ec",
+      "bytes": 567
+    },
+    {
+      "role": "other",
+      "path": "node_1.0.0_security.html",
+      "sha256": "f6efa4d318917694f8043b472f597f8dde07c693b51d7ee8d1f4076e96f68810",
+      "bytes": 5883
+    },
+    {
+      "role": "conformance",
+      "path": "node_1.0.0_conformance.json",
+      "sha256": "28be28464601cd9ad22a2c8081e68abe394fb43260bd21b3e2cb7610fc8529d5",
+      "bytes": 46152
+    },
+    {
+      "role": "other",
+      "path": "node_1.0.0_conformance.md",
+      "sha256": "549796573d05c40ba048e2189793e4a1ece4e99d5076797598a59c870649beb1",
+      "bytes": 9234
+    },
+    {
+      "role": "other",
+      "path": "node_1.0.0_conformance.html",
+      "sha256": "5e478f355b4d694c76a7adadedefa77cf907d6c0ea3893e83719db5f0e1e8063",
+      "bytes": 20237
+    },
+    {
+      "role": "other",
+      "path": "node_1.0.0_conformance.result",
+      "sha256": "d74ff0ee8da3b9806b18c877dbf29bbde50b5bd8e4dad7a3a725000feb82e8f1",
+      "bytes": 4
+    },
+    {
+      "role": "other",
+      "path": "node_1.0.0_security_epss.json",
+      "sha256": "97f6155b1c08093382b57a0f639a6cc3f107c695d33107db5a763d865ac3172c",
+      "bytes": 187
+    },
+    {
+      "role": "vulnerabilities.trivy",
+      "path": "node_1.0.0_security.json",
+      "sha256": "06c84a11424af5718068b9900d9af32c27920f23d3342e517674f73e7c061502",
+      "bytes": 22567
+    }
+  ]
+}

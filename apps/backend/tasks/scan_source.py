@@ -84,6 +84,7 @@ from core.config import (
     license_fetch_enabled,
     license_fetch_scan_budget_seconds,
     malicious_enabled,
+    scan_engine,
     scan_load_test_delay_seconds,
     scan_scope_filter_enabled,
     scan_scope_filter_maven_enabled,
@@ -107,6 +108,7 @@ from integrations import scanoss as scanoss_adapter
 from integrations._secret_scrub import scrub_secrets
 from integrations._size_guard import enforce_jsonb_row_size_limit
 from integrations._subprocess_env import scrubbed_env_for_prep
+from integrations.bomlens import contract as bomlens_contract
 from integrations.dependency_graph import (
     compute_depths,
     graph_depths_from_sbom,
@@ -334,6 +336,13 @@ def scan_source_task(self: Any, scan_id: str) -> None:
         # Catch-all for any other Trivy adapter error subclass added later.
         log.error("scan_source_trivy_error", error=str(exc))
         _record_terminal_failure(scan_uuid, f"Trivy error: {exc}")
+    except bomlens_contract.BomLensError as exc:
+        # SCAN_ENGINE=bomlens (preview): the engine's result could not become a
+        # succeeded scan. A failed or missing vulnerability result lands here
+        # too, terminal like TrivyFailed above. The message names roles, steps
+        # and versions only (integrations.bomlens.contract.BomLensError).
+        log.error("scan_source_engine_failed", engine="bomlens", error=str(exc)[:300])
+        _record_terminal_failure(scan_uuid, f"scan engine: {exc}")
     except SoftTimeLimitExceeded:
         # PR-A1: the scan exceeded SCAN_SOFT_TIME_LIMIT_SECONDS. Celery raised
         # this inside the worker thread; we mark the scan failed with a clear
@@ -385,6 +394,13 @@ def _run_pipeline(
     # schema validator already constrains the value to {"normal","verbose"};
     # any other value (or absence) falls back to the quiet "normal" trace.
     verbose = str((scan_metadata or {}).get("verbosity", "normal")) == "verbose"
+
+    # SCAN_ENGINE=bomlens is a preview: the adapter that persists a BomLens
+    # result exists (tasks.bomlens_result), the executor that runs the image
+    # does not yet. Say so and keep the in-process engine, the same fallback
+    # an unavailable SCAN_EXECUTOR gets.
+    if scan_engine() == "bomlens":
+        log.warning("scan_engine_unavailable_fallback_inprocess", requested="bomlens")
 
     # Stage 1 — bootstrap workspace.
     _set_stage(scan_uuid, "bootstrap")

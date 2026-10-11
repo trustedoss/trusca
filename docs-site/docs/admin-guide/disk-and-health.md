@@ -207,6 +207,10 @@ What it publishes is a fixed list of aggregate counts:
 | `trusca_vuln_db_last_update_timestamp_seconds` | | Unix time the vulnerability database was last updated upstream, `0` when none has been downloaded |
 | `trusca_vuln_db_refresh_interval_hours` | | Configured hours between refresh attempts |
 | `trusca_task_runs_last_recorded_timestamp_seconds` | | Unix time of the newest task-run row, `0` when the table is empty |
+| `trusca_scans_finished_24h` | `status` | Scans that reached `succeeded`, `failed` or `cancelled` in the last day. The denominator for the three series below |
+| `trusca_scan_stages_degraded_24h` | `stage`, `reason` | Scans finished in the last day on which an optional stage degraded, the same list the project Overview shows. A stage and reason pair appears once a scan in the window records it |
+| `trusca_scan_scancode_skipped_24h` | `reason` | Scans finished in the last day on which license detection in the project's own files did not run. Turned off on purpose is not counted |
+| `trusca_scan_license_lookups_skipped_24h` | `reason` | License lookups not made by scans finished in the last day, summed, so one scan that skipped 300 lookups counts 300 |
 
 No project, package, repository or person's name appears anywhere in the
 output, and the list is held to a fixture in the repository, so a series
@@ -239,6 +243,17 @@ stops moving while everything else looks healthy. No threshold ships with it,
 because schedules here run anywhere from every five minutes to weekly and
 which ones a deployment enables is a local fact. Compare it against your own
 busiest schedule.
+
+The four scan series answer what a single project's Overview cannot: whether
+a stage is failing everywhere. A worker image that lost scancode shows as a
+notice on each project, and only `trusca_scan_scancode_skipped_24h` rising
+against `trusca_scans_finished_24h` shows it as one problem. They are gauges
+over a one-day window of `completed_at`, for the same reason as the task-run
+series: scans are swept by retention. A stage or reason this release does not
+know (a record left by another version, or a malformed one) is counted under
+`unknown` rather than dropped. No threshold ships with them; a share of
+skipped stages that is normal for one deployment's projects is an incident for
+another's.
 
 `METRICS_TOKEN` sets a bearer token the scraper must present. Leave it empty
 when `/metrics` is off your public ingress and the monitoring system reaches

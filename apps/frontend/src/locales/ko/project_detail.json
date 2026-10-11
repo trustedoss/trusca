@@ -181,9 +181,12 @@
       "scancode_effect": "의존성이 선언한 라이선스는 그대로 표시되지만, 프로젝트 자체 파일의 라이선스 헤더는 탐지하지 못했습니다. 그 파일에 카피레프트 라이선스가 있어도 라이선스 게이트에 반영되지 않습니다.",
       "stages_title": "스캔 단계 일부가 끝까지 실행되지 않았습니다",
       "stages_intro": "스캔은 끝났지만, 다음 선택 단계는 작업을 모두 마치지 못했습니다.",
+      "stage_generate": "SBOM 생성: 의존성 목록이 불완전할 수 있습니다(예: 직접 의존성만 포함).",
       "stage_prep": "빌드 준비: 일부 생태계의 전이 의존성이 빠졌을 수 있습니다.",
       "stage_cocoapods": "CocoaPods 보완: Podfile.lock의 pod가 빠졌을 수 있습니다.",
       "stage_scope_filter": "런타임 범위 필터: 테스트·빌드 전용 의존성이 그대로 표시될 수 있습니다.",
+      "stage_normalize": "라이선스·식별자 정규화: 라이선스와 패키지 식별자가 생성 도구가 쓴 그대로 남아 있을 수 있습니다.",
+      "stage_enrich": "식별자·라이선스 보강: 일부 컴포넌트의 취약점 식별자(CPE)나 레지스트리 라이선스가 빠졌을 수 있습니다.",
       "stage_document_metadata": "SBOM 문서 메타데이터: 내보낸 문서에 필수 항목 일부가 없을 수 있습니다.",
       "stage_sign": "SBOM 서명: SBOM에 서명이 없습니다.",
       "stage_attest": "빌드 증명: 증명이 만들어지지 않았습니다.",
@@ -195,7 +198,10 @@
       "reason_failed": "실패",
       "reason_timeout": "시간 초과",
       "reason_not_installed": "도구 미설치",
-      "reason_too_large": "입력이 너무 큼"
+      "reason_too_large": "입력이 너무 큼",
+      "reason_fallback": "대체 방식 사용",
+      "reason_unavailable": "데이터 없음",
+      "reason_budget_exhausted": "작업 한도 도달"
     },
     "risk_gauge": {
       "aria": "프로젝트 리스크 점수: 100점 만점에 {{score}}점"
