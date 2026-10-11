@@ -39,6 +39,7 @@ helm install trustedoss ./charts/trustedoss \
   --namespace trustedoss --create-namespace \
   --set env.secret.secretKey="$(openssl rand -hex 32)" \
   --set env.secret.apiKeyHmacSecret="$(openssl rand -hex 32)" \
+  --set env.secret.githubAppEncryptionKey="$(openssl rand -base64 32 | tr '+/' '-_')" \
   --set postgres.auth.password="$(openssl rand -hex 24)" \
   --set ingress.host=trustedoss.example.com \
   --set env.corsAllowedOrigins=https://trustedoss.example.com
@@ -65,21 +66,24 @@ env:
   redis:
     url: redis://memorystore:6379/0
   secret:
-    existingSecret: trustedoss-prod-secrets   # carries DATABASE_URL_APP, DATABASE_URL_OWNER, REDIS_URL, SECRET_KEY, API_KEY_HMAC_SECRET
+    existingSecret: trustedoss-prod-secrets   # carries DATABASE_URL_APP, DATABASE_URL_OWNER, REDIS_URL, SECRET_KEY, API_KEY_HMAC_SECRET, GITHUB_APP_ENCRYPTION_KEY
   corsAllowedOrigins: https://trustedoss.example.com
 ingress:
   host: trustedoss.example.com
 ```
 
 When `env.secret.existingSecret` is set, the chart renders **no** Secret; the
-referenced Secret **must** carry all five keys: `DATABASE_URL_APP`,
-`DATABASE_URL_OWNER`, `REDIS_URL`, `SECRET_KEY`, `API_KEY_HMAC_SECRET`.
+referenced Secret **must** carry all six keys: `DATABASE_URL_APP`,
+`DATABASE_URL_OWNER`, `REDIS_URL`, `SECRET_KEY`, `API_KEY_HMAC_SECRET`,
+`GITHUB_APP_ENCRYPTION_KEY`.
 
-When it is unset (the chart renders its own Secret), both `env.secret.secretKey`
-and `env.secret.apiKeyHmacSecret` are required: the release fails to render
-rather than silently deriving `API_KEY_HMAC_SECRET` from `secretKey`. Generate
-each independently with `openssl rand -hex 32`; never reuse `secretKey` for
-both, and never commit real values to a values file.
+When it is unset (the chart renders its own Secret), `env.secret.secretKey`,
+`env.secret.apiKeyHmacSecret` and `env.secret.githubAppEncryptionKey` are all
+required: the release fails to render rather than silently deriving either of
+the last two from `secretKey`. Generate the first two independently with
+`openssl rand -hex 32` and `githubAppEncryptionKey` (URL-safe base64 of 32
+bytes) with `openssl rand -base64 32 | tr '+/' '-_'`; never reuse `secretKey` for
+another key, and never commit real values to a values file.
 
 **Upgrade note (A5 follow-up).** Chart versions before this fix accepted a
 blank `env.secret.apiKeyHmacSecret` and derived a value from `secretKey`
@@ -128,7 +132,8 @@ connections before alembic runs.
 | `env.database.url` | `""` | External runtime (app) DSN. Used when `postgres.bundled=false`. |
 | `env.database.ownerUrl` | `""` | External owner/DDL DSN (migration Job). Falls back to `url`. |
 | `env.redis.url` | `""` | External `REDIS_URL`. Used when `redis.bundled=false`. |
-| `env.secret.existingSecret` | `""` | Pre-created Secret with all five keys; disables the chart Secret. |
+| `env.secret.githubAppEncryptionKey` | `""` | `GITHUB_APP_ENCRYPTION_KEY`, URL-safe base64 of 32 bytes. Required unless `existingSecret`; never the same value as `secretKey`. |
+| `env.secret.existingSecret` | `""` | Pre-created Secret with all six keys; disables the chart Secret. |
 | `env.secret.secretKey` | `""` | `SECRET_KEY` (>=32 chars). Required unless `existingSecret`. |
 | `env.secret.apiKeyHmacSecret` | `""` | `API_KEY_HMAC_SECRET` (A5, >=32 chars), a dedicated key for hashing stored API-key secrets. Required unless `existingSecret` (the render fails rather than deriving one from `secretKey`; see the upgrade note above). Never the same value as `secretKey`. |
 | `env.trivy.dbRepository` | `ghcr.io/aquasecurity/trivy-db` | `TRIVY_DB_REPOSITORY` — OCI registry the worker pulls the cached DB from. Override for an air-gapped mirror. |
