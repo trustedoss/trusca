@@ -242,3 +242,11 @@ def test_govulncheck_is_refused_where_docker_is_reachable(
     sr._run(scan_uuid=scan_id, workspace=tmp_path / "ws")
 
     assert called == []
+
+
+def test_the_engine_scan_task_has_the_scan_time_limits() -> None:
+    from core.config import scan_hard_time_limit_seconds, scan_soft_time_limit_seconds
+    from tasks.scan_source import scan_source_engine_task
+
+    assert scan_source_engine_task.time_limit == scan_hard_time_limit_seconds()
+    assert scan_source_engine_task.soft_time_limit == scan_soft_time_limit_seconds()

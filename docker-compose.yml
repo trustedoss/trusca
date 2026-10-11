@@ -1172,6 +1172,10 @@ services:
       DOCKER_HOST: tcp://docker-socket-proxy:2375
     volumes:
       - workspace:/workspace
+      # BACKUPS_ROOT comes with the shared env anchor; mounted so nothing this
+      # worker might write there lands in its writable layer. It runs no
+      # backup task (its only queue is trustedoss.engine).
+      - backups-data:/opt/trustedoss/backups
       # The engine path signs and attests the SBOM, as worker-scan does.
       - ${COSIGN_KEYS_HOST_PATH:-./secrets/cosign}:/cosign:ro
     depends_on:

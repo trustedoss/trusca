@@ -578,6 +578,8 @@ class DockerCli:
             ) from None
         except BaseException:
             proc.kill()
+            with contextlib.suppress(Exception):
+                proc.wait(timeout=5)
             raise
         for thread in threads:
             thread.join(timeout=30)
