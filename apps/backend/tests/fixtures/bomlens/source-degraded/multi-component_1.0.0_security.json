@@ -1,0 +1,2017 @@
+{
+  "SchemaVersion": 2,
+  "Trivy": {
+    "Version": "0.74.0"
+  },
+  "ReportID": "01a12a50-13f3-79b0-adda-5e2eb3208696",
+  "CreatedAt": "2026-10-11T09:34:13.491637261Z",
+  "ArtifactName": "multi-component_1.0.0_bom.json",
+  "ArtifactType": "cyclonedx",
+  "Results": [
+    {
+      "Target": "Java",
+      "Class": "lang-pkgs",
+      "Type": "jar",
+      "Packages": [
+        {
+          "ID": "dev.trustedoss.fixture:baseline-multi-component-fixture:1.0.0",
+          "Name": "dev.trustedoss.fixture:baseline-multi-component-fixture",
+          "Identifier": {
+            "PURL": "pkg:maven/dev.trustedoss.fixture/baseline-multi-component-fixture@1.0.0",
+            "UID": "589dffd1427f0cf6",
+            "BOMRef": "pkg:maven/dev.trustedoss.fixture/baseline-multi-component-fixture@1.0.0?package-id=3a8378bcd278832e"
+          },
+          "Version": "1.0.0",
+          "DependsOn": [
+            "org.apache.commons:commons-lang3:3.12.0"
+          ]
+        },
+        {
+          "ID": "org.apache.commons:commons-lang3:3.12.0",
+          "Name": "org.apache.commons:commons-lang3",
+          "Identifier": {
+            "PURL": "pkg:maven/org.apache.commons/commons-lang3@3.12.0",
+            "UID": "75c78af88d6f0c61",
+            "BOMRef": "pkg:maven/org.apache.commons/commons-lang3@3.12.0?package-id=f654cc835b055dc3"
+          },
+          "Version": "3.12.0"
+        }
+      ],
+      "Vulnerabilities": [
+        {
+          "VulnerabilityID": "CVE-2025-48924",
+          "VendorIDs": [
+            "GHSA-j288-q9x7-2f5v"
+          ],
+          "PkgID": "org.apache.commons:commons-lang3:3.12.0",
+          "PkgName": "org.apache.commons:commons-lang3",
+          "PkgIdentifier": {
+            "PURL": "pkg:maven/org.apache.commons/commons-lang3@3.12.0",
+            "UID": "75c78af88d6f0c61",
+            "BOMRef": "pkg:maven/org.apache.commons/commons-lang3@3.12.0?package-id=f654cc835b055dc3"
+          },
+          "InstalledVersion": "3.12.0",
+          "FixedVersion": "3.18.0",
+          "Status": "fixed",
+          "SeveritySource": "ghsa",
+          "PrimaryURL": "https://avd.aquasec.com/nvd/cve-2025-48924",
+          "DataSource": {
+            "ID": "ghsa",
+            "Name": "GitHub Security Advisory Maven",
+            "URL": "https://github.com/advisories?query=type%3Areviewed+ecosystem%3Amaven"
+          },
+          "Fingerprint": "sha256:14a96022cb22d0c8778d4f50ab8ad262ac1f256698d3fe4767fa51d23d5c908d",
+          "Title": "commons-lang/commons-lang: org.apache.commons/commons-lang3: Uncontrolled Recursion vulnerability in Apache Commons Lang",
+          "Description": "Uncontrolled Recursion vulnerability in Apache Commons Lang.\n\nThis issue affects Apache Commons Lang: Starting with commons-lang:commons-lang 2.0 to 2.6, and, from org.apache.commons:commons-lang3 3.0 before 3.18.0.\n\nThe methods ClassUtils.getClass(...) can throw StackOverflowError on very long inputs. Because an Error is usually not handled by applications and libraries, a \nStackOverflowError could cause an application to stop.\n\nUsers are recommended to upgrade to version 3.18.0, which fixes the issue.",
+          "Severity": "MEDIUM",
+          "CweIDs": [
+            "CWE-674"
+          ],
+          "VendorSeverity": {
+            "amazon": 1,
+            "azure": 2,
+            "cbl-mariner": 2,
+            "ghsa": 2,
+            "redhat": 1,
+            "ubuntu": 2
+          },
+          "CVSS": {
+            "ghsa": {
+              "V3Vector": "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:L/I:L/A:N",
+              "V3Score": 6.5
+            },
+            "redhat": {
+              "V3Vector": "CVSS:3.1/AV:N/AC:H/PR:N/UI:N/S:U/C:N/I:N/A:L",
+              "V3Score": 3.7
+            }
+          },
+          "References": [
+            "http://www.openwall.com/lists/oss-security/2025/07/11/1",
+            "https://access.redhat.com/security/cve/CVE-2025-48924",
+            "https://advisory.echohq.com/cve/CVE-2025-48924",
+            "https://github.com/apache/commons-lang",
+            "https://github.com/apache/commons-lang/commit/b424803abdb2bec818e4fbcb251ce031c22aca53",
+            "https://lists.apache.org/thread/bgv0lpswokgol11tloxnjfzdl7yrc1g1",
+            "https://lists.debian.org/debian-lts-announce/2025/08/msg00000.html",
+            "https://lists.debian.org/debian-lts-announce/2025/08/msg00026.html",
+            "https://lists.debian.org/debian-lts-announce/2025/09/msg00032.html",
+            "https://lists.debian.org/debian-lts-announce/2025/09/msg00036.html",
+            "https://nvd.nist.gov/vuln/detail/CVE-2025-48924",
+            "https://ubuntu.com/security/notices/USN-8364-1",
+            "https://www.cve.org/CVERecord?id=CVE-2025-48924",
+            "https://www.openwall.com/lists/oss-security/2025/07/11/1"
+          ],
+          "PublishedDate": "2025-07-11T15:15:24.347Z",
+          "LastModifiedDate": "2026-06-17T09:30:29.473Z"
+        }
+      ]
+    },
+    {
+      "Target": "Node.js",
+      "Class": "lang-pkgs",
+      "Type": "node-pkg",
+      "Packages": [
+        {
+          "ID": "accepts@1.3.8",
+          "Name": "accepts",
+          "Identifier": {
+            "PURL": "pkg:npm/accepts@1.3.8",
+            "UID": "a9f9b74fd0f3386c",
+            "BOMRef": "pkg:npm/accepts@1.3.8?package-id=e96668e505272792"
+          },
+          "Version": "1.3.8",
+          "Licenses": [
+            "MIT"
+          ],
+          "DependsOn": [
+            "mime-types@2.1.35",
+            "negotiator@0.6.3"
+          ]
+        },
+        {
+          "ID": "array-flatten@1.1.1",
+          "Name": "array-flatten",
+          "Identifier": {
+            "PURL": "pkg:npm/array-flatten@1.1.1",
+            "UID": "d14e45219e56ded3",
+            "BOMRef": "pkg:npm/array-flatten@1.1.1?package-id=f61b69e470287928"
+          },
+          "Version": "1.1.1",
+          "Licenses": [
+            "MIT"
+          ]
+        },
+        {
+          "ID": "baseline-multi-component-fixture@1.0.0",
+          "Name": "baseline-multi-component-fixture",
+          "Identifier": {
+            "PURL": "pkg:npm/baseline-multi-component-fixture@1.0.0",
+            "UID": "1672c83b3073ef67",
+            "BOMRef": "pkg:npm/baseline-multi-component-fixture@1.0.0?package-id=c19df2b3fe776501"
+          },
+          "Version": "1.0.0",
+          "DependsOn": [
+            "express@4.18.2"
+          ]
+        },
+        {
+          "ID": "body-parser@1.20.1",
+          "Name": "body-parser",
+          "Identifier": {
+            "PURL": "pkg:npm/body-parser@1.20.1",
+            "UID": "6150ce7e510945b",
+            "BOMRef": "pkg:npm/body-parser@1.20.1?package-id=c6f9328252ea06b2"
+          },
+          "Version": "1.20.1",
+          "Licenses": [
+            "MIT"
+          ],
+          "DependsOn": [
+            "bytes@3.1.2",
+            "content-type@1.0.5",
+            "debug@2.6.9",
+            "depd@2.0.0",
+            "destroy@1.2.0",
+            "http-errors@2.0.0",
+            "iconv-lite@0.4.24",
+            "on-finished@2.4.1",
+            "qs@6.11.0",
+            "raw-body@2.5.1",
+            "type-is@1.6.18",
+            "unpipe@1.0.0"
+          ]
+        },
+        {
+          "ID": "bytes@3.1.2",
+          "Name": "bytes",
+          "Identifier": {
+            "PURL": "pkg:npm/bytes@3.1.2",
+            "UID": "da6d062cf67ef881",
+            "BOMRef": "pkg:npm/bytes@3.1.2?package-id=f9a24c0655f5cc44"
+          },
+          "Version": "3.1.2",
+          "Licenses": [
+            "MIT"
+          ]
+        },
+        {
+          "ID": "call-bind-apply-helpers@1.0.2",
+          "Name": "call-bind-apply-helpers",
+          "Identifier": {
+            "PURL": "pkg:npm/call-bind-apply-helpers@1.0.2",
+            "UID": "25eb432af8fba783",
+            "BOMRef": "pkg:npm/call-bind-apply-helpers@1.0.2?package-id=2303cf02934afa6a"
+          },
+          "Version": "1.0.2",
+          "Licenses": [
+            "MIT"
+          ],
+          "DependsOn": [
+            "es-errors@1.3.0",
+            "function-bind@1.1.2"
+          ]
+        },
+        {
+          "ID": "call-bound@1.0.4",
+          "Name": "call-bound",
+          "Identifier": {
+            "PURL": "pkg:npm/call-bound@1.0.4",
+            "UID": "426a18119d18a678",
+            "BOMRef": "pkg:npm/call-bound@1.0.4?package-id=23c8e695a4ffce79"
+          },
+          "Version": "1.0.4",
+          "Licenses": [
+            "MIT"
+          ],
+          "DependsOn": [
+            "call-bind-apply-helpers@1.0.2",
+            "get-intrinsic@1.3.0"
+          ]
+        },
+        {
+          "ID": "content-disposition@0.5.4",
+          "Name": "content-disposition",
+          "Identifier": {
+            "PURL": "pkg:npm/content-disposition@0.5.4",
+            "UID": "80bb5f001821b0b6",
+            "BOMRef": "pkg:npm/content-disposition@0.5.4?package-id=5a8a76bf321e2afc"
+          },
+          "Version": "0.5.4",
+          "Licenses": [
+            "MIT"
+          ],
+          "DependsOn": [
+            "safe-buffer@5.2.1"
+          ]
+        },
+        {
+          "ID": "content-type@1.0.5",
+          "Name": "content-type",
+          "Identifier": {
+            "PURL": "pkg:npm/content-type@1.0.5",
+            "UID": "be56cb1f91f04f68",
+            "BOMRef": "pkg:npm/content-type@1.0.5?package-id=e6774efb67a1cd80"
+          },
+          "Version": "1.0.5",
+          "Licenses": [
+            "MIT"
+          ]
+        },
+        {
+          "ID": "cookie@0.5.0",
+          "Name": "cookie",
+          "Identifier": {
+            "PURL": "pkg:npm/cookie@0.5.0",
+            "UID": "14641494caa28ff7",
+            "BOMRef": "pkg:npm/cookie@0.5.0?package-id=6b97233f349ee0a0"
+          },
+          "Version": "0.5.0",
+          "Licenses": [
+            "MIT"
+          ]
+        },
+        {
+          "ID": "cookie-signature@1.0.6",
+          "Name": "cookie-signature",
+          "Identifier": {
+            "PURL": "pkg:npm/cookie-signature@1.0.6",
+            "UID": "b022d88567b6f53f",
+            "BOMRef": "pkg:npm/cookie-signature@1.0.6?package-id=3b82cd87358f391c"
+          },
+          "Version": "1.0.6",
+          "Licenses": [
+            "MIT"
+          ]
+        },
+        {
+          "ID": "debug@2.6.9",
+          "Name": "debug",
+          "Identifier": {
+            "PURL": "pkg:npm/debug@2.6.9",
+            "UID": "58d1b5b8b490ef8b",
+            "BOMRef": "pkg:npm/debug@2.6.9?package-id=791d0c8d38a3b042"
+          },
+          "Version": "2.6.9",
+          "Licenses": [
+            "MIT"
+          ],
+          "DependsOn": [
+            "ms@2.0.0",
+            "ms@2.1.3"
+          ]
+        },
+        {
+          "ID": "depd@2.0.0",
+          "Name": "depd",
+          "Identifier": {
+            "PURL": "pkg:npm/depd@2.0.0",
+            "UID": "839c40ad1a2efcc3",
+            "BOMRef": "pkg:npm/depd@2.0.0?package-id=82a407fce3facea3"
+          },
+          "Version": "2.0.0",
+          "Licenses": [
+            "MIT"
+          ]
+        },
+        {
+          "ID": "destroy@1.2.0",
+          "Name": "destroy",
+          "Identifier": {
+            "PURL": "pkg:npm/destroy@1.2.0",
+            "UID": "d8744e5791f3f69",
+            "BOMRef": "pkg:npm/destroy@1.2.0?package-id=916ee50fe6c61deb"
+          },
+          "Version": "1.2.0",
+          "Licenses": [
+            "MIT"
+          ]
+        },
+        {
+          "ID": "dunder-proto@1.0.1",
+          "Name": "dunder-proto",
+          "Identifier": {
+            "PURL": "pkg:npm/dunder-proto@1.0.1",
+            "UID": "17745a228b4b41f3",
+            "BOMRef": "pkg:npm/dunder-proto@1.0.1?package-id=23d9641db70f3051"
+          },
+          "Version": "1.0.1",
+          "Licenses": [
+            "MIT"
+          ],
+          "DependsOn": [
+            "call-bind-apply-helpers@1.0.2",
+            "es-errors@1.3.0",
+            "gopd@1.2.0"
+          ]
+        },
+        {
+          "ID": "ee-first@1.1.1",
+          "Name": "ee-first",
+          "Identifier": {
+            "PURL": "pkg:npm/ee-first@1.1.1",
+            "UID": "ac0068d9a96e07a0",
+            "BOMRef": "pkg:npm/ee-first@1.1.1?package-id=e40c9e2062507e8a"
+          },
+          "Version": "1.1.1",
+          "Licenses": [
+            "MIT"
+          ]
+        },
+        {
+          "ID": "encodeurl@1.0.2",
+          "Name": "encodeurl",
+          "Identifier": {
+            "PURL": "pkg:npm/encodeurl@1.0.2",
+            "UID": "f37252ae27911932",
+            "BOMRef": "pkg:npm/encodeurl@1.0.2?package-id=16d50ef0b6c45004"
+          },
+          "Version": "1.0.2",
+          "Licenses": [
+            "MIT"
+          ]
+        },
+        {
+          "ID": "es-define-property@1.0.1",
+          "Name": "es-define-property",
+          "Identifier": {
+            "PURL": "pkg:npm/es-define-property@1.0.1",
+            "UID": "980014d5c64da414",
+            "BOMRef": "pkg:npm/es-define-property@1.0.1?package-id=198a07fe3b41a7bb"
+          },
+          "Version": "1.0.1",
+          "Licenses": [
+            "MIT"
+          ]
+        },
+        {
+          "ID": "es-errors@1.3.0",
+          "Name": "es-errors",
+          "Identifier": {
+            "PURL": "pkg:npm/es-errors@1.3.0",
+            "UID": "2190233a89c98d3c",
+            "BOMRef": "pkg:npm/es-errors@1.3.0?package-id=524e10cb2d7467ea"
+          },
+          "Version": "1.3.0",
+          "Licenses": [
+            "MIT"
+          ]
+        },
+        {
+          "ID": "es-object-atoms@1.1.2",
+          "Name": "es-object-atoms",
+          "Identifier": {
+            "PURL": "pkg:npm/es-object-atoms@1.1.2",
+            "UID": "c69ebe4e05d2e101",
+            "BOMRef": "pkg:npm/es-object-atoms@1.1.2?package-id=d98c6075944b50e7"
+          },
+          "Version": "1.1.2",
+          "Licenses": [
+            "MIT"
+          ],
+          "DependsOn": [
+            "es-errors@1.3.0"
+          ]
+        },
+        {
+          "ID": "escape-html@1.0.3",
+          "Name": "escape-html",
+          "Identifier": {
+            "PURL": "pkg:npm/escape-html@1.0.3",
+            "UID": "5ef3811505948940",
+            "BOMRef": "pkg:npm/escape-html@1.0.3?package-id=94fc6050cdb348bc"
+          },
+          "Version": "1.0.3",
+          "Licenses": [
+            "MIT"
+          ]
+        },
+        {
+          "ID": "etag@1.8.1",
+          "Name": "etag",
+          "Identifier": {
+            "PURL": "pkg:npm/etag@1.8.1",
+            "UID": "78bcea3d3bf9f35e",
+            "BOMRef": "pkg:npm/etag@1.8.1?package-id=4ddb33d9fc7b6ece"
+          },
+          "Version": "1.8.1",
+          "Licenses": [
+            "MIT"
+          ]
+        },
+        {
+          "ID": "express@4.18.2",
+          "Name": "express",
+          "Identifier": {
+            "PURL": "pkg:npm/express@4.18.2",
+            "UID": "51f6e538aefe96b2",
+            "BOMRef": "pkg:npm/express@4.18.2?package-id=8039f4e7e37669fe"
+          },
+          "Version": "4.18.2",
+          "Licenses": [
+            "MIT"
+          ],
+          "DependsOn": [
+            "accepts@1.3.8",
+            "array-flatten@1.1.1",
+            "body-parser@1.20.1",
+            "content-disposition@0.5.4",
+            "content-type@1.0.5",
+            "cookie-signature@1.0.6",
+            "cookie@0.5.0",
+            "debug@2.6.9",
+            "depd@2.0.0",
+            "encodeurl@1.0.2",
+            "escape-html@1.0.3",
+            "etag@1.8.1",
+            "finalhandler@1.2.0",
+            "fresh@0.5.2",
+            "http-errors@2.0.0",
+            "merge-descriptors@1.0.1",
+            "methods@1.1.2",
+            "on-finished@2.4.1",
+            "parseurl@1.3.3",
+            "path-to-regexp@0.1.7",
+            "proxy-addr@2.0.8",
+            "qs@6.11.0",
+            "range-parser@1.2.1",
+            "safe-buffer@5.2.1",
+            "send@0.18.0",
+            "serve-static@1.15.0",
+            "setprototypeof@1.2.0",
+            "statuses@2.0.1",
+            "type-is@1.6.18",
+            "utils-merge@1.0.1",
+            "vary@1.1.2"
+          ]
+        },
+        {
+          "ID": "finalhandler@1.2.0",
+          "Name": "finalhandler",
+          "Identifier": {
+            "PURL": "pkg:npm/finalhandler@1.2.0",
+            "UID": "c3ca83cc7d00ec0a",
+            "BOMRef": "pkg:npm/finalhandler@1.2.0?package-id=16f395d4e7eac5be"
+          },
+          "Version": "1.2.0",
+          "Licenses": [
+            "MIT"
+          ],
+          "DependsOn": [
+            "debug@2.6.9",
+            "encodeurl@1.0.2",
+            "escape-html@1.0.3",
+            "on-finished@2.4.1",
+            "parseurl@1.3.3",
+            "statuses@2.0.1",
+            "unpipe@1.0.0"
+          ]
+        },
+        {
+          "ID": "forwarded@0.2.0",
+          "Name": "forwarded",
+          "Identifier": {
+            "PURL": "pkg:npm/forwarded@0.2.0",
+            "UID": "8b755fe4d7ce93c6",
+            "BOMRef": "pkg:npm/forwarded@0.2.0?package-id=e972502f7a8ea944"
+          },
+          "Version": "0.2.0",
+          "Licenses": [
+            "MIT"
+          ]
+        },
+        {
+          "ID": "fresh@0.5.2",
+          "Name": "fresh",
+          "Identifier": {
+            "PURL": "pkg:npm/fresh@0.5.2",
+            "UID": "e8ff4b3c9c76eacc",
+            "BOMRef": "pkg:npm/fresh@0.5.2?package-id=7908a3419570e85d"
+          },
+          "Version": "0.5.2",
+          "Licenses": [
+            "MIT"
+          ]
+        },
+        {
+          "ID": "function-bind@1.1.2",
+          "Name": "function-bind",
+          "Identifier": {
+            "PURL": "pkg:npm/function-bind@1.1.2",
+            "UID": "86df85705bebfc41",
+            "BOMRef": "pkg:npm/function-bind@1.1.2?package-id=a9db1e71931f56ac"
+          },
+          "Version": "1.1.2",
+          "Licenses": [
+            "MIT"
+          ]
+        },
+        {
+          "ID": "get-intrinsic@1.3.0",
+          "Name": "get-intrinsic",
+          "Identifier": {
+            "PURL": "pkg:npm/get-intrinsic@1.3.0",
+            "UID": "b9c271dee7a2b326",
+            "BOMRef": "pkg:npm/get-intrinsic@1.3.0?package-id=338eac46e71d483e"
+          },
+          "Version": "1.3.0",
+          "Licenses": [
+            "MIT"
+          ],
+          "DependsOn": [
+            "call-bind-apply-helpers@1.0.2",
+            "es-define-property@1.0.1",
+            "es-errors@1.3.0",
+            "es-object-atoms@1.1.2",
+            "function-bind@1.1.2",
+            "get-proto@1.0.1",
+            "gopd@1.2.0",
+            "has-symbols@1.1.0",
+            "hasown@2.0.4",
+            "math-intrinsics@1.1.0"
+          ]
+        },
+        {
+          "ID": "get-proto@1.0.1",
+          "Name": "get-proto",
+          "Identifier": {
+            "PURL": "pkg:npm/get-proto@1.0.1",
+            "UID": "aa5b77cd1ee02ced",
+            "BOMRef": "pkg:npm/get-proto@1.0.1?package-id=64572c87855a75b1"
+          },
+          "Version": "1.0.1",
+          "Licenses": [
+            "MIT"
+          ],
+          "DependsOn": [
+            "dunder-proto@1.0.1",
+            "es-object-atoms@1.1.2"
+          ]
+        },
+        {
+          "ID": "gopd@1.2.0",
+          "Name": "gopd",
+          "Identifier": {
+            "PURL": "pkg:npm/gopd@1.2.0",
+            "UID": "6e93e93eeabbba9b",
+            "BOMRef": "pkg:npm/gopd@1.2.0?package-id=2f2433574e565258"
+          },
+          "Version": "1.2.0",
+          "Licenses": [
+            "MIT"
+          ]
+        },
+        {
+          "ID": "has-symbols@1.1.0",
+          "Name": "has-symbols",
+          "Identifier": {
+            "PURL": "pkg:npm/has-symbols@1.1.0",
+            "UID": "f73483e64680e721",
+            "BOMRef": "pkg:npm/has-symbols@1.1.0?package-id=fcd80b2c54be3c8f"
+          },
+          "Version": "1.1.0",
+          "Licenses": [
+            "MIT"
+          ]
+        },
+        {
+          "ID": "hasown@2.0.4",
+          "Name": "hasown",
+          "Identifier": {
+            "PURL": "pkg:npm/hasown@2.0.4",
+            "UID": "f4f3e084d6136743",
+            "BOMRef": "pkg:npm/hasown@2.0.4?package-id=ad3baa160b5a466b"
+          },
+          "Version": "2.0.4",
+          "Licenses": [
+            "MIT"
+          ],
+          "DependsOn": [
+            "function-bind@1.1.2"
+          ]
+        },
+        {
+          "ID": "http-errors@2.0.0",
+          "Name": "http-errors",
+          "Identifier": {
+            "PURL": "pkg:npm/http-errors@2.0.0",
+            "UID": "f15878ddfe8f0e26",
+            "BOMRef": "pkg:npm/http-errors@2.0.0?package-id=b0e31eeba17f8f13"
+          },
+          "Version": "2.0.0",
+          "Licenses": [
+            "MIT"
+          ],
+          "DependsOn": [
+            "depd@2.0.0",
+            "inherits@2.0.4",
+            "setprototypeof@1.2.0",
+            "statuses@2.0.1",
+            "toidentifier@1.0.1"
+          ]
+        },
+        {
+          "ID": "iconv-lite@0.4.24",
+          "Name": "iconv-lite",
+          "Identifier": {
+            "PURL": "pkg:npm/iconv-lite@0.4.24",
+            "UID": "56806ef06b647c3d",
+            "BOMRef": "pkg:npm/iconv-lite@0.4.24?package-id=3ce09826a837d25b"
+          },
+          "Version": "0.4.24",
+          "Licenses": [
+            "MIT"
+          ],
+          "DependsOn": [
+            "safer-buffer@2.1.2"
+          ]
+        },
+        {
+          "ID": "inherits@2.0.4",
+          "Name": "inherits",
+          "Identifier": {
+            "PURL": "pkg:npm/inherits@2.0.4",
+            "UID": "b965b5d77cfff040",
+            "BOMRef": "pkg:npm/inherits@2.0.4?package-id=911374ff7f37ba7f"
+          },
+          "Version": "2.0.4",
+          "Licenses": [
+            "ISC"
+          ]
+        },
+        {
+          "ID": "ipaddr.js@1.9.1",
+          "Name": "ipaddr.js",
+          "Identifier": {
+            "PURL": "pkg:npm/ipaddr.js@1.9.1",
+            "UID": "75d32203f4aea47",
+            "BOMRef": "pkg:npm/ipaddr.js@1.9.1?package-id=c7a7f0ed243b0857"
+          },
+          "Version": "1.9.1",
+          "Licenses": [
+            "MIT"
+          ]
+        },
+        {
+          "ID": "math-intrinsics@1.1.0",
+          "Name": "math-intrinsics",
+          "Identifier": {
+            "PURL": "pkg:npm/math-intrinsics@1.1.0",
+            "UID": "ad8dd521f9034ab3",
+            "BOMRef": "pkg:npm/math-intrinsics@1.1.0?package-id=87a83232f7674dbc"
+          },
+          "Version": "1.1.0",
+          "Licenses": [
+            "MIT"
+          ]
+        },
+        {
+          "ID": "media-typer@0.3.0",
+          "Name": "media-typer",
+          "Identifier": {
+            "PURL": "pkg:npm/media-typer@0.3.0",
+            "UID": "2e5f743f393e7ba5",
+            "BOMRef": "pkg:npm/media-typer@0.3.0?package-id=d88fe6586764efc9"
+          },
+          "Version": "0.3.0",
+          "Licenses": [
+            "MIT"
+          ]
+        },
+        {
+          "ID": "merge-descriptors@1.0.1",
+          "Name": "merge-descriptors",
+          "Identifier": {
+            "PURL": "pkg:npm/merge-descriptors@1.0.1",
+            "UID": "a58d9b342a9f85d5",
+            "BOMRef": "pkg:npm/merge-descriptors@1.0.1?package-id=14651c10446ef720"
+          },
+          "Version": "1.0.1",
+          "Licenses": [
+            "MIT"
+          ]
+        },
+        {
+          "ID": "methods@1.1.2",
+          "Name": "methods",
+          "Identifier": {
+            "PURL": "pkg:npm/methods@1.1.2",
+            "UID": "7ab25f4ebb4326b1",
+            "BOMRef": "pkg:npm/methods@1.1.2?package-id=a17abee1ae67ac79"
+          },
+          "Version": "1.1.2",
+          "Licenses": [
+            "MIT"
+          ]
+        },
+        {
+          "ID": "mime@1.6.0",
+          "Name": "mime",
+          "Identifier": {
+            "PURL": "pkg:npm/mime@1.6.0",
+            "UID": "b05551949d53fe7c",
+            "BOMRef": "pkg:npm/mime@1.6.0?package-id=10b23cab35239c6d"
+          },
+          "Version": "1.6.0",
+          "Licenses": [
+            "MIT"
+          ]
+        },
+        {
+          "ID": "mime-db@1.52.0",
+          "Name": "mime-db",
+          "Identifier": {
+            "PURL": "pkg:npm/mime-db@1.52.0",
+            "UID": "d189c7f575ff57cf",
+            "BOMRef": "pkg:npm/mime-db@1.52.0?package-id=e010d1b3c9ab0c02"
+          },
+          "Version": "1.52.0",
+          "Licenses": [
+            "MIT"
+          ]
+        },
+        {
+          "ID": "mime-types@2.1.35",
+          "Name": "mime-types",
+          "Identifier": {
+            "PURL": "pkg:npm/mime-types@2.1.35",
+            "UID": "1d36cc58b697de19",
+            "BOMRef": "pkg:npm/mime-types@2.1.35?package-id=d035c2d2cba76761"
+          },
+          "Version": "2.1.35",
+          "Licenses": [
+            "MIT"
+          ],
+          "DependsOn": [
+            "mime-db@1.52.0"
+          ]
+        },
+        {
+          "ID": "ms@2.0.0",
+          "Name": "ms",
+          "Identifier": {
+            "PURL": "pkg:npm/ms@2.0.0",
+            "UID": "152c6bf1fdebad15",
+            "BOMRef": "pkg:npm/ms@2.0.0?package-id=46f1aa86e531772d"
+          },
+          "Version": "2.0.0",
+          "Licenses": [
+            "MIT"
+          ]
+        },
+        {
+          "ID": "ms@2.1.3",
+          "Name": "ms",
+          "Identifier": {
+            "PURL": "pkg:npm/ms@2.1.3",
+            "UID": "447f788956baace1",
+            "BOMRef": "pkg:npm/ms@2.1.3?package-id=bb1077662b3cb7e0"
+          },
+          "Version": "2.1.3",
+          "Licenses": [
+            "MIT"
+          ]
+        },
+        {
+          "ID": "negotiator@0.6.3",
+          "Name": "negotiator",
+          "Identifier": {
+            "PURL": "pkg:npm/negotiator@0.6.3",
+            "UID": "820b1612837dac48",
+            "BOMRef": "pkg:npm/negotiator@0.6.3?package-id=312bd96694b2eb5b"
+          },
+          "Version": "0.6.3",
+          "Licenses": [
+            "MIT"
+          ]
+        },
+        {
+          "ID": "object-inspect@1.13.4",
+          "Name": "object-inspect",
+          "Identifier": {
+            "PURL": "pkg:npm/object-inspect@1.13.4",
+            "UID": "16b754dc9ce0577d",
+            "BOMRef": "pkg:npm/object-inspect@1.13.4?package-id=67701f4036faa68d"
+          },
+          "Version": "1.13.4",
+          "Licenses": [
+            "MIT"
+          ]
+        },
+        {
+          "ID": "on-finished@2.4.1",
+          "Name": "on-finished",
+          "Identifier": {
+            "PURL": "pkg:npm/on-finished@2.4.1",
+            "UID": "962820566bfec136",
+            "BOMRef": "pkg:npm/on-finished@2.4.1?package-id=9c42ff2fa50e9c68"
+          },
+          "Version": "2.4.1",
+          "Licenses": [
+            "MIT"
+          ],
+          "DependsOn": [
+            "ee-first@1.1.1"
+          ]
+        },
+        {
+          "ID": "parseurl@1.3.3",
+          "Name": "parseurl",
+          "Identifier": {
+            "PURL": "pkg:npm/parseurl@1.3.3",
+            "UID": "687c91f8cc87a1c",
+            "BOMRef": "pkg:npm/parseurl@1.3.3?package-id=484c0b9a6084b4bb"
+          },
+          "Version": "1.3.3",
+          "Licenses": [
+            "MIT"
+          ]
+        },
+        {
+          "ID": "path-to-regexp@0.1.7",
+          "Name": "path-to-regexp",
+          "Identifier": {
+            "PURL": "pkg:npm/path-to-regexp@0.1.7",
+            "UID": "bde0f20a898bd098",
+            "BOMRef": "pkg:npm/path-to-regexp@0.1.7?package-id=9110a1a14191b5d7"
+          },
+          "Version": "0.1.7",
+          "Licenses": [
+            "MIT"
+          ]
+        },
+        {
+          "ID": "proxy-addr@2.0.8",
+          "Name": "proxy-addr",
+          "Identifier": {
+            "PURL": "pkg:npm/proxy-addr@2.0.8",
+            "UID": "256b59eb81991baa",
+            "BOMRef": "pkg:npm/proxy-addr@2.0.8?package-id=29d7dd07f41a1efd"
+          },
+          "Version": "2.0.8",
+          "Licenses": [
+            "MIT"
+          ],
+          "DependsOn": [
+            "forwarded@0.2.0",
+            "ipaddr.js@1.9.1"
+          ]
+        },
+        {
+          "ID": "qs@6.11.0",
+          "Name": "qs",
+          "Identifier": {
+            "PURL": "pkg:npm/qs@6.11.0",
+            "UID": "28e5eea2af659a2b",
+            "BOMRef": "pkg:npm/qs@6.11.0?package-id=29a7a7bdc22c4f70"
+          },
+          "Version": "6.11.0",
+          "Licenses": [
+            "BSD-3-Clause"
+          ],
+          "DependsOn": [
+            "side-channel@1.1.1"
+          ]
+        },
+        {
+          "ID": "range-parser@1.2.1",
+          "Name": "range-parser",
+          "Identifier": {
+            "PURL": "pkg:npm/range-parser@1.2.1",
+            "UID": "f34acbc7827a42f0",
+            "BOMRef": "pkg:npm/range-parser@1.2.1?package-id=4bcca27d3d8ccfdd"
+          },
+          "Version": "1.2.1",
+          "Licenses": [
+            "MIT"
+          ]
+        },
+        {
+          "ID": "raw-body@2.5.1",
+          "Name": "raw-body",
+          "Identifier": {
+            "PURL": "pkg:npm/raw-body@2.5.1",
+            "UID": "34bca731e09a8ab2",
+            "BOMRef": "pkg:npm/raw-body@2.5.1?package-id=c5011110b5d92af8"
+          },
+          "Version": "2.5.1",
+          "Licenses": [
+            "MIT"
+          ],
+          "DependsOn": [
+            "bytes@3.1.2",
+            "http-errors@2.0.0",
+            "iconv-lite@0.4.24",
+            "unpipe@1.0.0"
+          ]
+        },
+        {
+          "ID": "safe-buffer@5.2.1",
+          "Name": "safe-buffer",
+          "Identifier": {
+            "PURL": "pkg:npm/safe-buffer@5.2.1",
+            "UID": "ea081197d87fc394",
+            "BOMRef": "pkg:npm/safe-buffer@5.2.1?package-id=28135efb01cb74b9"
+          },
+          "Version": "5.2.1",
+          "Licenses": [
+            "MIT"
+          ]
+        },
+        {
+          "ID": "safer-buffer@2.1.2",
+          "Name": "safer-buffer",
+          "Identifier": {
+            "PURL": "pkg:npm/safer-buffer@2.1.2",
+            "UID": "43878940613bc8b",
+            "BOMRef": "pkg:npm/safer-buffer@2.1.2?package-id=bc8acb243e9d9464"
+          },
+          "Version": "2.1.2",
+          "Licenses": [
+            "MIT"
+          ]
+        },
+        {
+          "ID": "send@0.18.0",
+          "Name": "send",
+          "Identifier": {
+            "PURL": "pkg:npm/send@0.18.0",
+            "UID": "5bfe70519f3f005a",
+            "BOMRef": "pkg:npm/send@0.18.0?package-id=e0d6cac53ccf6f39"
+          },
+          "Version": "0.18.0",
+          "Licenses": [
+            "MIT"
+          ],
+          "DependsOn": [
+            "debug@2.6.9",
+            "depd@2.0.0",
+            "destroy@1.2.0",
+            "encodeurl@1.0.2",
+            "escape-html@1.0.3",
+            "etag@1.8.1",
+            "fresh@0.5.2",
+            "http-errors@2.0.0",
+            "mime@1.6.0",
+            "ms@2.0.0",
+            "ms@2.1.3",
+            "on-finished@2.4.1",
+            "range-parser@1.2.1",
+            "statuses@2.0.1"
+          ]
+        },
+        {
+          "ID": "serve-static@1.15.0",
+          "Name": "serve-static",
+          "Identifier": {
+            "PURL": "pkg:npm/serve-static@1.15.0",
+            "UID": "27befa20df78b3c7",
+            "BOMRef": "pkg:npm/serve-static@1.15.0?package-id=0479aca2c64c3a0b"
+          },
+          "Version": "1.15.0",
+          "Licenses": [
+            "MIT"
+          ],
+          "DependsOn": [
+            "encodeurl@1.0.2",
+            "escape-html@1.0.3",
+            "parseurl@1.3.3",
+            "send@0.18.0"
+          ]
+        },
+        {
+          "ID": "setprototypeof@1.2.0",
+          "Name": "setprototypeof",
+          "Identifier": {
+            "PURL": "pkg:npm/setprototypeof@1.2.0",
+            "UID": "5a71238359d19fd6",
+            "BOMRef": "pkg:npm/setprototypeof@1.2.0?package-id=fc983ad918ad063a"
+          },
+          "Version": "1.2.0",
+          "Licenses": [
+            "ISC"
+          ]
+        },
+        {
+          "ID": "side-channel@1.1.1",
+          "Name": "side-channel",
+          "Identifier": {
+            "PURL": "pkg:npm/side-channel@1.1.1",
+            "UID": "1547cb6a139fd226",
+            "BOMRef": "pkg:npm/side-channel@1.1.1?package-id=b290d7c1b93f6f12"
+          },
+          "Version": "1.1.1",
+          "Licenses": [
+            "MIT"
+          ],
+          "DependsOn": [
+            "es-errors@1.3.0",
+            "object-inspect@1.13.4",
+            "side-channel-list@1.0.1",
+            "side-channel-map@1.0.1",
+            "side-channel-weakmap@1.0.2"
+          ]
+        },
+        {
+          "ID": "side-channel-list@1.0.1",
+          "Name": "side-channel-list",
+          "Identifier": {
+            "PURL": "pkg:npm/side-channel-list@1.0.1",
+            "UID": "6a2a6ac09f4bf4ad",
+            "BOMRef": "pkg:npm/side-channel-list@1.0.1?package-id=2e4a230ff21329f1"
+          },
+          "Version": "1.0.1",
+          "Licenses": [
+            "MIT"
+          ],
+          "DependsOn": [
+            "es-errors@1.3.0",
+            "object-inspect@1.13.4"
+          ]
+        },
+        {
+          "ID": "side-channel-map@1.0.1",
+          "Name": "side-channel-map",
+          "Identifier": {
+            "PURL": "pkg:npm/side-channel-map@1.0.1",
+            "UID": "b5411b9762953fe7",
+            "BOMRef": "pkg:npm/side-channel-map@1.0.1?package-id=36c9d18daa63eabd"
+          },
+          "Version": "1.0.1",
+          "Licenses": [
+            "MIT"
+          ],
+          "DependsOn": [
+            "call-bound@1.0.4",
+            "es-errors@1.3.0",
+            "get-intrinsic@1.3.0",
+            "object-inspect@1.13.4"
+          ]
+        },
+        {
+          "ID": "side-channel-weakmap@1.0.2",
+          "Name": "side-channel-weakmap",
+          "Identifier": {
+            "PURL": "pkg:npm/side-channel-weakmap@1.0.2",
+            "UID": "b529d929ea2f6512",
+            "BOMRef": "pkg:npm/side-channel-weakmap@1.0.2?package-id=3a35b0f8b53bc97a"
+          },
+          "Version": "1.0.2",
+          "Licenses": [
+            "MIT"
+          ],
+          "DependsOn": [
+            "call-bound@1.0.4",
+            "es-errors@1.3.0",
+            "get-intrinsic@1.3.0",
+            "object-inspect@1.13.4",
+            "side-channel-map@1.0.1"
+          ]
+        },
+        {
+          "ID": "statuses@2.0.1",
+          "Name": "statuses",
+          "Identifier": {
+            "PURL": "pkg:npm/statuses@2.0.1",
+            "UID": "e44a56860b41a27e",
+            "BOMRef": "pkg:npm/statuses@2.0.1?package-id=0897b48092cc19ad"
+          },
+          "Version": "2.0.1",
+          "Licenses": [
+            "MIT"
+          ]
+        },
+        {
+          "ID": "toidentifier@1.0.1",
+          "Name": "toidentifier",
+          "Identifier": {
+            "PURL": "pkg:npm/toidentifier@1.0.1",
+            "UID": "cf6119ef2f94b29c",
+            "BOMRef": "pkg:npm/toidentifier@1.0.1?package-id=ce376bb248c7ffa1"
+          },
+          "Version": "1.0.1",
+          "Licenses": [
+            "MIT"
+          ]
+        },
+        {
+          "ID": "type-is@1.6.18",
+          "Name": "type-is",
+          "Identifier": {
+            "PURL": "pkg:npm/type-is@1.6.18",
+            "UID": "41f769dbd0bd2631",
+            "BOMRef": "pkg:npm/type-is@1.6.18?package-id=a8ca97010550105a"
+          },
+          "Version": "1.6.18",
+          "Licenses": [
+            "MIT"
+          ],
+          "DependsOn": [
+            "media-typer@0.3.0",
+            "mime-types@2.1.35"
+          ]
+        },
+        {
+          "ID": "unpipe@1.0.0",
+          "Name": "unpipe",
+          "Identifier": {
+            "PURL": "pkg:npm/unpipe@1.0.0",
+            "UID": "3685f8d97d8b1b64",
+            "BOMRef": "pkg:npm/unpipe@1.0.0?package-id=294cc6dab10e14ff"
+          },
+          "Version": "1.0.0",
+          "Licenses": [
+            "MIT"
+          ]
+        },
+        {
+          "ID": "utils-merge@1.0.1",
+          "Name": "utils-merge",
+          "Identifier": {
+            "PURL": "pkg:npm/utils-merge@1.0.1",
+            "UID": "29f99b0b96a7ec60",
+            "BOMRef": "pkg:npm/utils-merge@1.0.1?package-id=4f715b1e9b38109a"
+          },
+          "Version": "1.0.1",
+          "Licenses": [
+            "MIT"
+          ]
+        },
+        {
+          "ID": "vary@1.1.2",
+          "Name": "vary",
+          "Identifier": {
+            "PURL": "pkg:npm/vary@1.1.2",
+            "UID": "f0df8d705f0238c6",
+            "BOMRef": "pkg:npm/vary@1.1.2?package-id=2fc27b955ce3ef5d"
+          },
+          "Version": "1.1.2",
+          "Licenses": [
+            "MIT"
+          ]
+        }
+      ],
+      "Vulnerabilities": [
+        {
+          "VulnerabilityID": "CVE-2024-45590",
+          "VendorIDs": [
+            "GHSA-qwcr-r2fm-qrc7"
+          ],
+          "PkgID": "body-parser@1.20.1",
+          "PkgName": "body-parser",
+          "PkgIdentifier": {
+            "PURL": "pkg:npm/body-parser@1.20.1",
+            "UID": "6150ce7e510945b",
+            "BOMRef": "pkg:npm/body-parser@1.20.1?package-id=c6f9328252ea06b2"
+          },
+          "InstalledVersion": "1.20.1",
+          "FixedVersion": "1.20.3",
+          "Status": "fixed",
+          "SeveritySource": "ghsa",
+          "PrimaryURL": "https://avd.aquasec.com/nvd/cve-2024-45590",
+          "DataSource": {
+            "ID": "ghsa",
+            "Name": "GitHub Security Advisory npm",
+            "URL": "https://github.com/advisories?query=type%3Areviewed+ecosystem%3Anpm"
+          },
+          "Fingerprint": "sha256:e8ca632e15413f9177ea472b733a13642c230320606bed35f6ada8d58eec7847",
+          "Title": "body-parser: Denial of Service Vulnerability in body-parser",
+          "Description": "body-parser is Node.js body parsing middleware. body-parser \u003c1.20.3 is vulnerable to denial of service when url encoding is enabled. A malicious actor using a specially crafted payload could flood the server with a large number of requests, resulting in denial of service. This issue is patched in 1.20.3.",
+          "Severity": "HIGH",
+          "CweIDs": [
+            "CWE-405"
+          ],
+          "VendorSeverity": {
+            "azure": 3,
+            "cbl-mariner": 3,
+            "ghsa": 3,
+            "nvd": 3,
+            "redhat": 3
+          },
+          "CVSS": {
+            "ghsa": {
+              "V3Vector": "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:N/I:N/A:H",
+              "V40Vector": "CVSS:4.0/AV:N/AC:L/AT:N/PR:N/UI:N/VC:N/VI:N/VA:H/SC:N/SI:N/SA:N",
+              "V3Score": 7.5,
+              "V40Score": 8.7
+            },
+            "nvd": {
+              "V3Vector": "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:N/I:N/A:H",
+              "V3Score": 7.5
+            },
+            "redhat": {
+              "V3Vector": "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:N/I:N/A:H",
+              "V3Score": 7.5
+            }
+          },
+          "References": [
+            "https://access.redhat.com/security/cve/CVE-2024-45590",
+            "https://github.com/expressjs/body-parser",
+            "https://github.com/expressjs/body-parser/commit/b2695c4450f06ba3b0ccf48d872a229bb41c9bce",
+            "https://github.com/expressjs/body-parser/security/advisories/GHSA-qwcr-r2fm-qrc7",
+            "https://nvd.nist.gov/vuln/detail/CVE-2024-45590",
+            "https://www.cve.org/CVERecord?id=CVE-2024-45590"
+          ],
+          "PublishedDate": "2024-09-10T16:15:21.083Z",
+          "LastModifiedDate": "2026-06-17T07:54:31.697Z"
+        },
+        {
+          "VulnerabilityID": "CVE-2026-12590",
+          "VendorIDs": [
+            "GHSA-v422-hmwv-36x6"
+          ],
+          "PkgID": "body-parser@1.20.1",
+          "PkgName": "body-parser",
+          "PkgIdentifier": {
+            "PURL": "pkg:npm/body-parser@1.20.1",
+            "UID": "6150ce7e510945b",
+            "BOMRef": "pkg:npm/body-parser@1.20.1?package-id=c6f9328252ea06b2"
+          },
+          "InstalledVersion": "1.20.1",
+          "FixedVersion": "1.20.6, 2.3.0",
+          "Status": "fixed",
+          "SeveritySource": "ghsa",
+          "PrimaryURL": "https://avd.aquasec.com/nvd/cve-2026-12590",
+          "DataSource": {
+            "ID": "ghsa",
+            "Name": "GitHub Security Advisory npm",
+            "URL": "https://github.com/advisories?query=type%3Areviewed+ecosystem%3Anpm"
+          },
+          "Fingerprint": "sha256:ce280d6bdc676fe4437daec5f440dd7505cd28bf545cc9180b17204d5adb2534",
+          "Title": "body-parser: body-parser: Denial of Service via invalid limit option",
+          "Description": "Impact: In body-parser versions prior to 1.20.6 (1.x line) and 2.3.0 (2.x line), when the parser is configured with an invalid limit option value such as an unparseable string or NaN, bytes.parse returns null and the request body size check is silently skipped. Applications that rely on limit as their primary safeguard against oversized request bodies will accept arbitrarily large payloads, leading to excessive memory and CPU usage and denial of service. Patches: This issue is fixed in body-parser 1.20.6 and 2.3.0. After the fix, invalid limit values throw a clear error at parser construction time instead of silently disabling enforcement, while null and undefined continue to fall back to the default limit of 100kb. Workarounds: Validate the limit value before passing it to body-parser. For example, parse the value at startup and reject any configuration where the result is null or a non-finite number.",
+          "Severity": "LOW",
+          "CweIDs": [
+            "CWE-770"
+          ],
+          "VendorSeverity": {
+            "ghsa": 1,
+            "nvd": 2,
+            "redhat": 2
+          },
+          "CVSS": {
+            "ghsa": {
+              "V3Vector": "CVSS:3.1/AV:N/AC:H/PR:N/UI:N/S:U/C:N/I:N/A:L",
+              "V3Score": 3.7
+            },
+            "nvd": {
+              "V3Vector": "CVSS:3.1/AV:N/AC:H/PR:N/UI:N/S:U/C:N/I:N/A:H",
+              "V3Score": 5.9
+            },
+            "redhat": {
+              "V3Vector": "CVSS:3.1/AV:N/AC:H/PR:N/UI:N/S:U/C:N/I:N/A:H",
+              "V3Score": 5.9
+            }
+          },
+          "References": [
+            "https://access.redhat.com/security/cve/CVE-2026-12590",
+            "https://advisory.echohq.com/cve/CVE-2026-12590",
+            "https://cna.openjsf.org/security-advisories.html",
+            "https://github.com/expressjs/body-parser",
+            "https://github.com/expressjs/body-parser/commit/2322e111cc321413ec2b7b76d01be533d3de9d7d",
+            "https://github.com/expressjs/body-parser/commit/3492672eee593d5c158f239b6e9115498a5dbeac",
+            "https://github.com/expressjs/body-parser/pull/698",
+            "https://github.com/expressjs/body-parser/pull/741",
+            "https://github.com/expressjs/body-parser/releases/tag/1.20.6",
+            "https://github.com/expressjs/body-parser/releases/tag/v2.3.0",
+            "https://github.com/expressjs/body-parser/security/advisories/GHSA-v422-hmwv-36x6",
+            "https://nvd.nist.gov/vuln/detail/CVE-2026-12590",
+            "https://www.cve.org/CVERecord?id=CVE-2026-12590"
+          ],
+          "PublishedDate": "2026-07-09T11:16:24.67Z",
+          "LastModifiedDate": "2026-07-10T02:45:02.8Z"
+        },
+        {
+          "VulnerabilityID": "CVE-2024-47764",
+          "VendorIDs": [
+            "GHSA-pxg6-pf52-xh8x"
+          ],
+          "PkgID": "cookie@0.5.0",
+          "PkgName": "cookie",
+          "PkgIdentifier": {
+            "PURL": "pkg:npm/cookie@0.5.0",
+            "UID": "14641494caa28ff7",
+            "BOMRef": "pkg:npm/cookie@0.5.0?package-id=6b97233f349ee0a0"
+          },
+          "InstalledVersion": "0.5.0",
+          "FixedVersion": "0.7.0",
+          "Status": "fixed",
+          "SeveritySource": "ghsa",
+          "PrimaryURL": "https://avd.aquasec.com/nvd/cve-2024-47764",
+          "DataSource": {
+            "ID": "ghsa",
+            "Name": "GitHub Security Advisory npm",
+            "URL": "https://github.com/advisories?query=type%3Areviewed+ecosystem%3Anpm"
+          },
+          "Fingerprint": "sha256:608285732f0abccb55a91e7e5fc94eb35ee0d10e5fe244c93411e2f02e1098f6",
+          "Title": "cookie: cookie accepts cookie name, path, and domain with out of bounds characters",
+          "Description": "cookie is a basic HTTP cookie parser and serializer for HTTP servers. The cookie name could be used to set other fields of the cookie, resulting in an unexpected cookie value. A similar escape can be used for path and domain, which could be abused to alter other fields of the cookie. Upgrade to 0.7.0, which updates the validation for name, path, and domain.",
+          "Severity": "LOW",
+          "CweIDs": [
+            "CWE-74"
+          ],
+          "VendorSeverity": {
+            "cbl-mariner": 2,
+            "ghsa": 1,
+            "redhat": 1
+          },
+          "CVSS": {
+            "redhat": {
+              "V3Vector": "CVSS:3.1/AV:N/AC:H/PR:N/UI:N/S:U/C:N/I:L/A:N",
+              "V3Score": 3.7
+            }
+          },
+          "References": [
+            "https://access.redhat.com/security/cve/CVE-2024-47764",
+            "https://github.com/jshttp/cookie",
+            "https://github.com/jshttp/cookie/commit/e10042845354fea83bd8f34af72475eed1dadf5c",
+            "https://github.com/jshttp/cookie/pull/167",
+            "https://github.com/jshttp/cookie/security/advisories/GHSA-pxg6-pf52-xh8x",
+            "https://nvd.nist.gov/vuln/detail/CVE-2024-47764",
+            "https://www.cve.org/CVERecord?id=CVE-2024-47764"
+          ],
+          "PublishedDate": "2024-10-04T20:15:07.31Z",
+          "LastModifiedDate": "2026-06-17T07:57:42.753Z"
+        },
+        {
+          "VulnerabilityID": "CVE-2024-29041",
+          "VendorIDs": [
+            "GHSA-rv95-896h-c2vc"
+          ],
+          "PkgID": "express@4.18.2",
+          "PkgName": "express",
+          "PkgIdentifier": {
+            "PURL": "pkg:npm/express@4.18.2",
+            "UID": "51f6e538aefe96b2",
+            "BOMRef": "pkg:npm/express@4.18.2?package-id=8039f4e7e37669fe"
+          },
+          "InstalledVersion": "4.18.2",
+          "FixedVersion": "4.19.2, 5.0.0-beta.3",
+          "Status": "fixed",
+          "SeveritySource": "ghsa",
+          "PrimaryURL": "https://avd.aquasec.com/nvd/cve-2024-29041",
+          "DataSource": {
+            "ID": "ghsa",
+            "Name": "GitHub Security Advisory npm",
+            "URL": "https://github.com/advisories?query=type%3Areviewed+ecosystem%3Anpm"
+          },
+          "Fingerprint": "sha256:600446f3ea588b92d03369d45176687f4dea4409f8a9bf463531a1948cffde3a",
+          "Title": "express: cause malformed URLs to be evaluated",
+          "Description": "Express.js minimalist web framework for node. Versions of Express.js prior to 4.19.0 and all pre-release alpha and beta versions of 5.0 are affected by an open redirect vulnerability using malformed URLs. When a user of Express performs a redirect using a user-provided URL Express performs an encode [using `encodeurl`](https://github.com/pillarjs/encodeurl) on the contents before passing it to the `location` header. This can cause malformed URLs to be evaluated in unexpected ways by common redirect allow list implementations in Express applications, leading to an Open Redirect via bypass of a properly implemented allow list. The main method impacted is `res.location()` but this is also called from within `res.redirect()`. The vulnerability is fixed in 4.19.2 and 5.0.0-beta.3.",
+          "Severity": "MEDIUM",
+          "CweIDs": [
+            "CWE-601",
+            "CWE-1286"
+          ],
+          "VendorSeverity": {
+            "cbl-mariner": 2,
+            "ghsa": 2,
+            "redhat": 3,
+            "ubuntu": 2
+          },
+          "CVSS": {
+            "ghsa": {
+              "V3Vector": "CVSS:3.1/AV:N/AC:L/PR:N/UI:R/S:C/C:L/I:L/A:N",
+              "V3Score": 6.1
+            },
+            "redhat": {
+              "V3Vector": "CVSS:3.1/AV:N/AC:L/PR:N/UI:R/S:C/C:L/I:L/A:N",
+              "V3Score": 6.1
+            }
+          },
+          "References": [
+            "https://access.redhat.com/security/cve/CVE-2024-29041",
+            "https://expressjs.com/en/4x/api.html#res.location",
+            "https://github.com/expressjs/express",
+            "https://github.com/expressjs/express/commit/0867302ddbde0e9463d0564fea5861feb708c2dd",
+            "https://github.com/expressjs/express/commit/0b746953c4bd8e377123527db11f9cd866e39f94",
+            "https://github.com/expressjs/express/pull/5539",
+            "https://github.com/expressjs/express/security/advisories/GHSA-rv95-896h-c2vc",
+            "https://github.com/koajs/koa/issues/1800",
+            "https://nvd.nist.gov/vuln/detail/CVE-2024-29041",
+            "https://ubuntu.com/security/notices/USN-7581-1",
+            "https://www.cve.org/CVERecord?id=CVE-2024-29041"
+          ],
+          "PublishedDate": "2024-03-25T21:15:46.847Z",
+          "LastModifiedDate": "2026-06-17T07:22:18.493Z"
+        },
+        {
+          "VulnerabilityID": "CVE-2024-43796",
+          "VendorIDs": [
+            "GHSA-qw6h-vgh9-j6wx"
+          ],
+          "PkgID": "express@4.18.2",
+          "PkgName": "express",
+          "PkgIdentifier": {
+            "PURL": "pkg:npm/express@4.18.2",
+            "UID": "51f6e538aefe96b2",
+            "BOMRef": "pkg:npm/express@4.18.2?package-id=8039f4e7e37669fe"
+          },
+          "InstalledVersion": "4.18.2",
+          "FixedVersion": "4.20.0, 5.0.0",
+          "Status": "fixed",
+          "SeveritySource": "ghsa",
+          "PrimaryURL": "https://avd.aquasec.com/nvd/cve-2024-43796",
+          "DataSource": {
+            "ID": "ghsa",
+            "Name": "GitHub Security Advisory npm",
+            "URL": "https://github.com/advisories?query=type%3Areviewed+ecosystem%3Anpm"
+          },
+          "Fingerprint": "sha256:8eb3f246ac6c4a78a2696cc60160819bbf6f27dc94fc9511430758948e96e25f",
+          "Title": "express: Improper Input Handling in Express Redirects",
+          "Description": "Express.js minimalist web framework for node. In express \u003c 4.20.0, passing untrusted user input - even after sanitizing it - to response.redirect() may execute untrusted code. This issue is patched in express 4.20.0.",
+          "Severity": "LOW",
+          "CweIDs": [
+            "CWE-79"
+          ],
+          "VendorSeverity": {
+            "azure": 2,
+            "cbl-mariner": 2,
+            "ghsa": 1,
+            "nvd": 2,
+            "redhat": 2,
+            "ubuntu": 2
+          },
+          "CVSS": {
+            "ghsa": {
+              "V3Vector": "CVSS:3.1/AV:N/AC:H/PR:N/UI:R/S:U/C:L/I:L/A:L",
+              "V40Vector": "CVSS:4.0/AV:N/AC:L/AT:P/PR:N/UI:P/VC:N/VI:N/VA:N/SC:L/SI:L/SA:L",
+              "V3Score": 5,
+              "V40Score": 2.3
+            },
+            "nvd": {
+              "V3Vector": "CVSS:3.1/AV:N/AC:H/PR:N/UI:R/S:C/C:L/I:L/A:N",
+              "V3Score": 4.7
+            },
+            "redhat": {
+              "V3Vector": "CVSS:3.1/AV:N/AC:H/PR:N/UI:R/S:U/C:L/I:L/A:L",
+              "V3Score": 5
+            }
+          },
+          "References": [
+            "https://access.redhat.com/security/cve/CVE-2024-43796",
+            "https://github.com/expressjs/express",
+            "https://github.com/expressjs/express/commit/54271f69b511fea198471e6ff3400ab805d6b553",
+            "https://github.com/expressjs/express/security/advisories/GHSA-qw6h-vgh9-j6wx",
+            "https://nvd.nist.gov/vuln/detail/CVE-2024-43796",
+            "https://ubuntu.com/security/notices/USN-7581-1",
+            "https://www.cve.org/CVERecord?id=CVE-2024-43796"
+          ],
+          "PublishedDate": "2024-09-10T15:15:17.51Z",
+          "LastModifiedDate": "2026-06-17T07:51:43.847Z"
+        },
+        {
+          "VulnerabilityID": "CVE-2024-45296",
+          "VendorIDs": [
+            "GHSA-9wv6-86v2-598j"
+          ],
+          "PkgID": "path-to-regexp@0.1.7",
+          "PkgName": "path-to-regexp",
+          "PkgIdentifier": {
+            "PURL": "pkg:npm/path-to-regexp@0.1.7",
+            "UID": "bde0f20a898bd098",
+            "BOMRef": "pkg:npm/path-to-regexp@0.1.7?package-id=9110a1a14191b5d7"
+          },
+          "InstalledVersion": "0.1.7",
+          "FixedVersion": "1.9.0, 0.1.10, 8.0.0, 3.3.0, 6.3.0",
+          "Status": "fixed",
+          "SeveritySource": "ghsa",
+          "PrimaryURL": "https://avd.aquasec.com/nvd/cve-2024-45296",
+          "DataSource": {
+            "ID": "ghsa",
+            "Name": "GitHub Security Advisory npm",
+            "URL": "https://github.com/advisories?query=type%3Areviewed+ecosystem%3Anpm"
+          },
+          "Fingerprint": "sha256:9f040f6c2e62d6d3891c088ef053c830bdf15fd187235f9d973e7a1b2c21d5c9",
+          "Title": "path-to-regexp: Backtracking regular expressions cause ReDoS",
+          "Description": "path-to-regexp turns path strings into a regular expressions. In certain cases, path-to-regexp will output a regular expression that can be exploited to cause poor performance. Because JavaScript is single threaded and regex matching runs on the main thread, poor performance will block the event loop and lead to a DoS. The bad regular expression is generated any time you have two parameters within a single segment, separated by something that is not a period (.). For users of 0.1, upgrade to 0.1.10. All other users should upgrade to 8.0.0.",
+          "Severity": "HIGH",
+          "CweIDs": [
+            "CWE-1333"
+          ],
+          "VendorSeverity": {
+            "cbl-mariner": 3,
+            "ghsa": 3,
+            "redhat": 2,
+            "ubuntu": 2
+          },
+          "CVSS": {
+            "ghsa": {
+              "V3Vector": "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:N/I:N/A:H",
+              "V40Vector": "CVSS:4.0/AV:N/AC:L/AT:N/PR:N/UI:N/VC:N/VI:N/VA:H/SC:N/SI:N/SA:N/E:P",
+              "V3Score": 7.5,
+              "V40Score": 7.7
+            },
+            "redhat": {
+              "V3Vector": "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:N/I:N/A:L",
+              "V3Score": 5.3
+            }
+          },
+          "References": [
+            "https://access.redhat.com/security/cve/CVE-2024-45296",
+            "https://advisory.echohq.com/cve/CVE-2024-45296",
+            "https://github.com/advisories/GHSA-9wv6-86v2-598j",
+            "https://github.com/pillarjs/path-to-regexp",
+            "https://github.com/pillarjs/path-to-regexp/commit/29b96b4a1de52824e1ca0f49a701183cc4ed476f",
+            "https://github.com/pillarjs/path-to-regexp/commit/60f2121e9b66b7b622cc01080df0aabda9eedee6",
+            "https://github.com/pillarjs/path-to-regexp/commit/925ac8e3c5780b02f58cbd4e52f95da8ad2ac485",
+            "https://github.com/pillarjs/path-to-regexp/commit/d31670ae8f6e69cbfd56e835742195b7d10942ef",
+            "https://github.com/pillarjs/path-to-regexp/commit/f1253b47b347dcb909e3e80b0eb2649109e59894",
+            "https://github.com/pillarjs/path-to-regexp/releases/tag/v6.3.0",
+            "https://github.com/pillarjs/path-to-regexp/security/advisories/GHSA-9wv6-86v2-598j",
+            "https://nvd.nist.gov/vuln/detail/CVE-2024-45296",
+            "https://security.netapp.com/advisory/ntap-20250124-0001",
+            "https://security.netapp.com/advisory/ntap-20250124-0001/",
+            "https://www.cve.org/CVERecord?id=CVE-2024-45296"
+          ],
+          "PublishedDate": "2024-09-09T19:15:13.33Z",
+          "LastModifiedDate": "2026-06-17T07:53:58.263Z"
+        },
+        {
+          "VulnerabilityID": "CVE-2024-52798",
+          "VendorIDs": [
+            "GHSA-rhx6-c78j-4q9w"
+          ],
+          "PkgID": "path-to-regexp@0.1.7",
+          "PkgName": "path-to-regexp",
+          "PkgIdentifier": {
+            "PURL": "pkg:npm/path-to-regexp@0.1.7",
+            "UID": "bde0f20a898bd098",
+            "BOMRef": "pkg:npm/path-to-regexp@0.1.7?package-id=9110a1a14191b5d7"
+          },
+          "InstalledVersion": "0.1.7",
+          "FixedVersion": "0.1.12",
+          "Status": "fixed",
+          "SeveritySource": "ghsa",
+          "PrimaryURL": "https://avd.aquasec.com/nvd/cve-2024-52798",
+          "DataSource": {
+            "ID": "ghsa",
+            "Name": "GitHub Security Advisory npm",
+            "URL": "https://github.com/advisories?query=type%3Areviewed+ecosystem%3Anpm"
+          },
+          "Fingerprint": "sha256:6a4963812397cb75c28c9f3bb2af8bc3e8676afc8d3d7d9df67d51b8b313ad66",
+          "Title": "path-to-regexp: path-to-regexp Unpatched `path-to-regexp` ReDoS in 0.1.x",
+          "Description": "path-to-regexp turns path strings into a regular expressions. In certain cases, path-to-regexp will output a regular expression that can be exploited to cause poor performance. The regular expression that is vulnerable to backtracking can be generated in the 0.1.x release of path-to-regexp. Upgrade to 0.1.12. This vulnerability exists because of an incomplete fix for CVE-2024-45296.",
+          "Severity": "HIGH",
+          "CweIDs": [
+            "CWE-1333"
+          ],
+          "VendorSeverity": {
+            "cbl-mariner": 2,
+            "ghsa": 3,
+            "redhat": 2
+          },
+          "CVSS": {
+            "ghsa": {
+              "V3Vector": "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:N/I:N/A:H",
+              "V40Vector": "CVSS:4.0/AV:N/AC:L/AT:N/PR:N/UI:N/VC:N/VI:N/VA:H/SC:N/SI:N/SA:N/E:P",
+              "V3Score": 7.5,
+              "V40Score": 7.7
+            },
+            "redhat": {
+              "V3Vector": "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:N/I:N/A:L",
+              "V3Score": 5.3
+            }
+          },
+          "References": [
+            "https://access.redhat.com/security/cve/CVE-2024-52798",
+            "https://blakeembrey.com/posts/2024-09-web-redos",
+            "https://github.com/pillarjs/path-to-regexp",
+            "https://github.com/pillarjs/path-to-regexp/commit/f01c26a013b1889f0c217c643964513acf17f6a4",
+            "https://github.com/pillarjs/path-to-regexp/security/advisories/GHSA-rhx6-c78j-4q9w",
+            "https://nvd.nist.gov/vuln/detail/CVE-2024-52798",
+            "https://security.netapp.com/advisory/ntap-20250124-0002",
+            "https://security.netapp.com/advisory/ntap-20250124-0002/",
+            "https://www.cve.org/CVERecord?id=CVE-2024-52798"
+          ],
+          "PublishedDate": "2024-12-05T23:15:06.31Z",
+          "LastModifiedDate": "2026-06-17T08:07:38.863Z"
+        },
+        {
+          "VulnerabilityID": "CVE-2026-4867",
+          "VendorIDs": [
+            "GHSA-37ch-88jc-xwx2"
+          ],
+          "PkgID": "path-to-regexp@0.1.7",
+          "PkgName": "path-to-regexp",
+          "PkgIdentifier": {
+            "PURL": "pkg:npm/path-to-regexp@0.1.7",
+            "UID": "bde0f20a898bd098",
+            "BOMRef": "pkg:npm/path-to-regexp@0.1.7?package-id=9110a1a14191b5d7"
+          },
+          "InstalledVersion": "0.1.7",
+          "FixedVersion": "0.1.13",
+          "Status": "fixed",
+          "SeveritySource": "ghsa",
+          "PrimaryURL": "https://avd.aquasec.com/nvd/cve-2026-4867",
+          "DataSource": {
+            "ID": "ghsa",
+            "Name": "GitHub Security Advisory npm",
+            "URL": "https://github.com/advisories?query=type%3Areviewed+ecosystem%3Anpm"
+          },
+          "Fingerprint": "sha256:b22e2713ea1ba48a8a146ea035de68e0f06392ccdcf8a821fc5b2d87ded608b0",
+          "Title": "path-to-regexp: path-to-regexp: Denial of Service via catastrophic backtracking from malformed URL parameters",
+          "Description": "Impact:\n\nA bad regular expression is generated any time you have three or more parameters within a single segment, separated by something that is not a period (.). For example, /:a-:b-:c or /:a-:b-:c-:d. The backtrack protection added in path-to-regexp@0.1.12 only prevents ambiguity for two parameters. With three or more, the generated lookahead does not block single separator characters, so capture groups overlap and cause catastrophic backtracking.\n\nPatches:\n\nUpgrade to path-to-regexp@0.1.13\n\nCustom regex patterns in route definitions (e.g., /:a-:b([^-/]+)-:c([^-/]+)) are not affected because they override the default capture group.\n\nWorkarounds:\n\nAll versions can be patched by providing a custom regular expression for parameters after the first in a single segment. As long as the custom regular expression does not match the text before the parameter, you will be safe. For example, change /:a-:b-:c to /:a-:b([^-/]+)-:c([^-/]+).\n\nIf paths cannot be rewritten and versions cannot be upgraded, another alternative is to limit the URL length.",
+          "Severity": "HIGH",
+          "CweIDs": [
+            "CWE-1333"
+          ],
+          "VendorSeverity": {
+            "ghsa": 3,
+            "redhat": 2
+          },
+          "CVSS": {
+            "ghsa": {
+              "V3Vector": "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:N/I:N/A:H",
+              "V3Score": 7.5
+            },
+            "redhat": {
+              "V3Vector": "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:N/I:N/A:L",
+              "V3Score": 5.3
+            }
+          },
+          "References": [
+            "https://access.redhat.com/security/cve/CVE-2026-4867",
+            "https://blakeembrey.com/posts/2024-09-web-redos",
+            "https://cna.openjsf.org/security-advisories.html",
+            "https://github.com/advisories/GHSA-9wv6-86v2-598j",
+            "https://github.com/pillarjs/path-to-regexp",
+            "https://github.com/pillarjs/path-to-regexp/releases/tag/v.0.1.13",
+            "https://github.com/pillarjs/path-to-regexp/security/advisories/GHSA-37ch-88jc-xwx2",
+            "https://nvd.nist.gov/vuln/detail/CVE-2026-4867",
+            "https://www.cve.org/CVERecord?id=CVE-2026-4867"
+          ],
+          "PublishedDate": "2026-03-26T17:16:42.983Z",
+          "LastModifiedDate": "2026-06-17T10:57:21.827Z"
+        },
+        {
+          "VulnerabilityID": "CVE-2025-15284",
+          "VendorIDs": [
+            "GHSA-6rw7-vpxm-498p"
+          ],
+          "PkgID": "qs@6.11.0",
+          "PkgName": "qs",
+          "PkgIdentifier": {
+            "PURL": "pkg:npm/qs@6.11.0",
+            "UID": "28e5eea2af659a2b",
+            "BOMRef": "pkg:npm/qs@6.11.0?package-id=29a7a7bdc22c4f70"
+          },
+          "InstalledVersion": "6.11.0",
+          "FixedVersion": "6.14.1",
+          "Status": "fixed",
+          "SeveritySource": "ghsa",
+          "PrimaryURL": "https://avd.aquasec.com/nvd/cve-2025-15284",
+          "DataSource": {
+            "ID": "ghsa",
+            "Name": "GitHub Security Advisory npm",
+            "URL": "https://github.com/advisories?query=type%3Areviewed+ecosystem%3Anpm"
+          },
+          "Fingerprint": "sha256:551109aac08c871cf9b6dd73f44a312559728e8b9cacc0f2342681ba021660b7",
+          "Title": "qs: qs: Denial of Service via improper input validation in array parsing",
+          "Description": "Improper Input Validation vulnerability in qs (parse modules) allows HTTP DoS.This issue affects qs: \u003c 6.14.1.\n\n\nSummary\n\nThe arrayLimit option in qs did not enforce limits for bracket notation (a[]=1\u0026a[]=2), only for indexed notation (a[0]=1). This is a consistency bug; arrayLimit should apply uniformly across all array notations.\n\nNote: The default parameterLimit of 1000 effectively mitigates the DoS scenario originally described. With default options, bracket notation cannot produce arrays larger than parameterLimit regardless of arrayLimit, because each a[]=valueconsumes one parameter slot. The severity has been reduced accordingly.\n\nDetails\n\nThe arrayLimit option only checked limits for indexed notation (a[0]=1\u0026a[1]=2) but did not enforce it for bracket notation (a[]=1\u0026a[]=2).\n\nVulnerable code (lib/parse.js:159-162):\n\nif (root === '[]' \u0026\u0026 options.parseArrays) {\n    obj = utils.combine([], leaf);  // No arrayLimit check\n}\n\n\n\n\n\nWorking code (lib/parse.js:175):\n\nelse if (index \u003c= options.arrayLimit) {  // Limit checked here\n    obj = [];\n    obj[index] = leaf;\n}\n\n\n\n\n\nThe bracket notation handler at line 159 uses utils.combine([], leaf) without validating against options.arrayLimit, while indexed notation at line 175 checks index \u003c= options.arrayLimit before creating arrays.\n\n\n\nPoC\n\nconst qs = require('qs');\nconst result = qs.parse('a[]=1\u0026a[]=2\u0026a[]=3\u0026a[]=4\u0026a[]=5\u0026a[]=6', { arrayLimit: 5 });\nconsole.log(result.a.length);  // Output: 6 (should be max 5)\n\n\n\n\n\nNote on parameterLimit interaction: The original advisory's \"DoS demonstration\" claimed a length of 10,000, but parameterLimit (default: 1000) caps parsing to 1,000 parameters. With default options, the actual output is 1,000, not 10,000.\n\nImpact\n\nConsistency bug in arrayLimit enforcement. With default parameterLimit, the practical DoS risk is negligible since parameterLimit already caps the total number of parsed parameters (and thus array elements from bracket notation). The risk increases only when parameterLimit is explicitly set to a very high value.",
+          "Severity": "MEDIUM",
+          "CweIDs": [
+            "CWE-20"
+          ],
+          "VendorSeverity": {
+            "alma": 3,
+            "ghsa": 2,
+            "oracle-oval": 3,
+            "redhat": 3,
+            "rocky": 3
+          },
+          "CVSS": {
+            "ghsa": {
+              "V3Vector": "CVSS:3.1/AV:N/AC:H/PR:N/UI:N/S:U/C:N/I:N/A:L",
+              "V40Vector": "CVSS:4.0/AV:N/AC:L/AT:P/PR:N/UI:N/VC:N/VI:N/VA:L/SC:N/SI:N/SA:L",
+              "V3Score": 3.7,
+              "V40Score": 6.3
+            },
+            "redhat": {
+              "V3Vector": "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:N/I:N/A:H",
+              "V3Score": 7.5
+            }
+          },
+          "References": [
+            "https://access.redhat.com/errata/RHSA-2026:18480",
+            "https://access.redhat.com/errata/RHSA-2026:18868",
+            "https://access.redhat.com/security/cve/CVE-2025-15284",
+            "https://advisory.echohq.com/cve/CVE-2025-15284",
+            "https://bugzilla.redhat.com/2425946",
+            "https://bugzilla.redhat.com/2430538",
+            "https://bugzilla.redhat.com/2431036",
+            "https://bugzilla.redhat.com/2431740",
+            "https://bugzilla.redhat.com/2433645",
+            "https://bugzilla.redhat.com/show_bug.cgi?id=2425946",
+            "https://bugzilla.redhat.com/show_bug.cgi?id=2430538",
+            "https://bugzilla.redhat.com/show_bug.cgi?id=2431036",
+            "https://bugzilla.redhat.com/show_bug.cgi?id=2431740",
+            "https://bugzilla.redhat.com/show_bug.cgi?id=2433645",
+            "https://creativecommons.org/licenses/by/4.0/",
+            "https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2025-13465",
+            "https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2025-15284",
+            "https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2026-23745",
+            "https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2026-23950",
+            "https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2026-24842",
+            "https://errata.almalinux.org/10/ALSA-2026-18480.html",
+            "https://errata.rockylinux.org/RLSA-2026:18868",
+            "https://github.com/advisories/GHSA-6rw7-vpxm-498p",
+            "https://github.com/ljharb/qs",
+            "https://github.com/ljharb/qs/commit/3086902ecf7f088d0d1803887643ac6c03d415b9",
+            "https://github.com/ljharb/qs/security/advisories/GHSA-6rw7-vpxm-498p",
+            "https://linux.oracle.com/cve/CVE-2025-15284.html",
+            "https://linux.oracle.com/errata/ELSA-2026-18868.html",
+            "https://nvd.nist.gov/vuln/detail/CVE-2025-15284",
+            "https://www.cve.org/CVERecord?id=CVE-2025-15284"
+          ],
+          "PublishedDate": "2025-12-29T23:15:42.703Z",
+          "LastModifiedDate": "2026-06-17T08:37:31.79Z"
+        },
+        {
+          "VulnerabilityID": "CVE-2026-82417",
+          "VendorIDs": [
+            "GHSA-4mjr-xmp4-gh2g"
+          ],
+          "PkgID": "qs@6.11.0",
+          "PkgName": "qs",
+          "PkgIdentifier": {
+            "PURL": "pkg:npm/qs@6.11.0",
+            "UID": "28e5eea2af659a2b",
+            "BOMRef": "pkg:npm/qs@6.11.0?package-id=29a7a7bdc22c4f70"
+          },
+          "InstalledVersion": "6.11.0",
+          "FixedVersion": "6.16.0",
+          "Status": "fixed",
+          "SeveritySource": "ghsa",
+          "PrimaryURL": "https://avd.aquasec.com/nvd/cve-2026-82417",
+          "DataSource": {
+            "ID": "ghsa",
+            "Name": "GitHub Security Advisory npm",
+            "URL": "https://github.com/advisories?query=type%3Areviewed+ecosystem%3Anpm"
+          },
+          "Fingerprint": "sha256:83a83976d198c9a7aab77e675a29dea5c8aae04db8364b234f89d3aed32ff9ea",
+          "Title": "qs: qs: Denial of Service via improper validation in stringify function",
+          "Description": "### Summary\n\n\n\n`qs.stringify` throws a `TypeError` when it serializes an object whose own `constructor` property has a truthy, non-callable `isBuffer` member. `utils.isBuffer` duck-types buffers by calling `obj.constructor.isBuffer(obj)` after checking only that the property is truthy, so a value such as `{ constructor: { isBuffer: \"x\" } }` makes the call throw `TypeError: obj.constructor.isBuffer is not a function`.\n\n\n\n### Details\n\n\n\n`lib/stringify.js:127` calls `utils.isBuffer` on every non-primitive value it serializes. `utils.isBuffer` (`lib/utils.js:332`) reads `obj.constructor.isBuffer` and invokes it without verifying that it is a function. `constructor` and `isBuffer` are ordinary property names, so any object carrying them as own properties reaches the unchecked call.\n\n\n\nSuch an object can be built from untrusted input. `qs.parse(\"x[constructor][isBuffer]=y\", { plainObjects: true })` or `{ allowPrototypes: true }` keeps the `constructor` key as an own property (the default parse options drop it), and `JSON.parse(\"{\\\"a\\\":{\\\"constructor\\\":{\\\"isBuffer\\\":\\\"x\\\"}}}\")` produces the same shape with no qs option involved. Express 4 with its default `query parser` setting and body-parser with `extended: true` both call `qs.parse` with `allowPrototypes: true`, so on those stacks `req.query` and `req.body` can carry the shape directly.\n\n\n\n#### PoC\n\n\n\n```js\n\n\n\nvar qs = require(\"qs\");\n\n\n\nqs.stringify(qs.parse(\"x[constructor][isBuffer]=y\", { plainObjects: true }));\n\n\n\nqs.stringify(JSON.parse(\"{\\\"a\\\":{\\\"constructor\\\":{\\\"isBuffer\\\":\\\"x\\\"}}}\"));\n\n\n\n// TypeError: obj.constructor.isBuffer is not a function\n\n\n\n//     at Object.isBuffer (lib/utils.js:332:78)\n\n\n\n//     at stringify (lib/stringify.js:127:45)\n\n\n\n```\n\n\n\n#### Fix\n\n\n\n`lib/utils.js`, applied in e83d321 on `main` and released as v6.16.0:\n\n\n\n```diff\n\n\n\n- return !!(obj.constructor \u0026\u0026 obj.constructor.isBuffer \u0026\u0026 obj.constructor.isBuffer(obj));\n\n\n\n+ return !!(obj.constructor \u0026\u0026 typeof obj.constructor.isBuffer === \"function\" \u0026\u0026 obj.constructor.isBuffer(obj));\n\n\n\n```\n\n\n\nReal `Buffer`, `safer-buffer`, and browserify `buffer` polyfill instances serialize exactly as before; only the throw is removed.\n\n\n\n### Affected versions\n\n\n\n`\u003e=2.2.5 \u003c6.16.0`, fixed in v6.16.0.\n\n\n\nThe unguarded duck-type was introduced in 3768a75 and first shipped in v2.2.5 (September 2014). v2.2.4 and earlier used `Buffer.isBuffer` and are not affected. Every release from v2.2.5 through v6.15.3 contains the unguarded call.\n\n\n\n### Impact\n\n\n\nAn unauthenticated request can make any code path that re-serializes attacker-influenced data with `qs.stringify` (for example, rebuilding a query string from `req.query` for a redirect or an upstream request, or serializing a parsed JSON body) throw synchronously. In a typical Node.js HTTP framework the throw is caught by the framework error boundary and the affected request returns a 500; the process survives and other requests are unaffected. Where the call runs outside an error boundary, such as an `async` Express 4 handler (where the throw becomes an unhandled promise rejection) or a background job, the process exits, so the impact in that case depends on the application error handling rather than on qs.",
+          "Severity": "MEDIUM",
+          "CweIDs": [
+            "CWE-248",
+            "CWE-703"
+          ],
+          "VendorSeverity": {
+            "ghsa": 2,
+            "redhat": 3
+          },
+          "CVSS": {
+            "ghsa": {
+              "V3Vector": "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:N/I:N/A:L",
+              "V40Vector": "CVSS:4.0/AV:N/AC:L/AT:P/PR:N/UI:N/VC:N/VI:N/VA:L/SC:N/SI:N/SA:N",
+              "V3Score": 5.3,
+              "V40Score": 6.3
+            },
+            "redhat": {
+              "V3Vector": "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:N/I:N/A:H",
+              "V3Score": 7.5
+            }
+          },
+          "References": [
+            "https://access.redhat.com/security/cve/CVE-2026-82417",
+            "https://advisory.echohq.com/cve/CVE-2026-82417",
+            "https://github.com/ljharb/qs",
+            "https://github.com/ljharb/qs/commit/e83d321ffafb38cf210683ac31714fce6ce1c6c6",
+            "https://github.com/ljharb/qs/security/advisories/GHSA-4mjr-xmp4-gh2g",
+            "https://nvd.nist.gov/vuln/detail/CVE-2026-82417",
+            "https://www.cve.org/CVERecord?id=CVE-2026-82417"
+          ],
+          "PublishedDate": "2026-08-30T00:16:34.657Z",
+          "LastModifiedDate": "2026-09-03T18:00:36.97Z"
+        },
+        {
+          "VulnerabilityID": "CVE-2026-2391",
+          "VendorIDs": [
+            "GHSA-w7fw-mjwx-w883"
+          ],
+          "PkgID": "qs@6.11.0",
+          "PkgName": "qs",
+          "PkgIdentifier": {
+            "PURL": "pkg:npm/qs@6.11.0",
+            "UID": "28e5eea2af659a2b",
+            "BOMRef": "pkg:npm/qs@6.11.0?package-id=29a7a7bdc22c4f70"
+          },
+          "InstalledVersion": "6.11.0",
+          "FixedVersion": "6.14.2",
+          "Status": "fixed",
+          "SeveritySource": "ghsa",
+          "PrimaryURL": "https://avd.aquasec.com/nvd/cve-2026-2391",
+          "DataSource": {
+            "ID": "ghsa",
+            "Name": "GitHub Security Advisory npm",
+            "URL": "https://github.com/advisories?query=type%3Areviewed+ecosystem%3Anpm"
+          },
+          "Fingerprint": "sha256:5c3b1cd1b47116feb2e518dfe1e62bb48d38af6e3329748b7a12d7472a2d3193",
+          "Title": "qs: qs's arrayLimit bypass in comma parsing allows denial of service",
+          "Description": "### Summary\nThe `arrayLimit` option in qs does not enforce limits for comma-separated values when `comma: true` is enabled, allowing attackers to cause denial-of-service via memory exhaustion. This is a bypass of the array limit enforcement, similar to the bracket notation bypass addressed in GHSA-6rw7-vpxm-498p (CVE-2025-15284).\n\n### Details\nWhen the `comma` option is set to `true` (not the default, but configurable in applications), qs allows parsing comma-separated strings as arrays (e.g., `?param=a,b,c` becomes `['a', 'b', 'c']`). However, the limit check for `arrayLimit` (default: 20) and the optional throwOnLimitExceeded occur after the comma-handling logic in `parseArrayValue`, enabling a bypass. This permits creation of arbitrarily large arrays from a single parameter, leading to excessive memory allocation.\n\n**Vulnerable code** (lib/parse.js: lines ~40-50):\n```js\nif (val \u0026\u0026 typeof val === 'string' \u0026\u0026 options.comma \u0026\u0026 val.indexOf(',') \u003e -1) {\n    return val.split(',');\n}\n\nif (options.throwOnLimitExceeded \u0026\u0026 currentArrayLength \u003e= options.arrayLimit) {\n    throw new RangeError('Array limit exceeded. Only ' + options.arrayLimit + ' element' + (options.arrayLimit === 1 ? '' : 's') + ' allowed in an array.');\n}\n\nreturn val;\n```\nThe `split(',')` returns the array immediately, skipping the subsequent limit check. Downstream merging via `utils.combine` does not prevent allocation, even if it marks overflows for sparse arrays.This discrepancy allows attackers to send a single parameter with millions of commas (e.g., `?param=,,,,,,,,...`), allocating massive arrays in memory without triggering limits. It bypasses the intent of `arrayLimit`, which is enforced correctly for indexed (`a[0]=`) and bracket (`a[]=`) notations (the latter fixed in v6.14.1 per GHSA-6rw7-vpxm-498p).\n\n### PoC\n**Test 1 - Basic bypass:**\n```\nnpm install qs\n```\n\n```js\nconst qs = require('qs');\n\nconst payload = 'a=' + ','.repeat(25);  // 26 elements after split (bypasses arrayLimit: 5)\nconst options = { comma: true, arrayLimit: 5, throwOnLimitExceeded: true };\n\ntry {\n  const result = qs.parse(payload, options);\n  console.log(result.a.length);  // Outputs: 26 (bypass successful)\n} catch (e) {\n  console.log('Limit enforced:', e.message);  // Not thrown\n}\n```\n**Configuration:**\n- `comma: true`\n- `arrayLimit: 5`\n- `throwOnLimitExceeded: true`\n\nExpected: Throws \"Array limit exceeded\" error.\nActual: Parses successfully, creating an array of length 26.\n\n\n### Impact\nDenial of Service (DoS) via memory exhaustion.",
+          "Severity": "LOW",
+          "CweIDs": [
+            "CWE-20"
+          ],
+          "VendorSeverity": {
+            "ghsa": 1,
+            "nvd": 3,
+            "redhat": 2
+          },
+          "CVSS": {
+            "ghsa": {
+              "V3Vector": "CVSS:3.1/AV:N/AC:H/PR:N/UI:N/S:U/C:N/I:N/A:L",
+              "V3Score": 3.7
+            },
+            "nvd": {
+              "V3Vector": "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:N/I:N/A:H",
+              "V3Score": 7.5
+            },
+            "redhat": {
+              "V3Vector": "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:N/I:N/A:L",
+              "V3Score": 5.3
+            }
+          },
+          "References": [
+            "https://access.redhat.com/security/cve/CVE-2026-2391",
+            "https://advisory.echohq.com/cve/CVE-2026-2391",
+            "https://github.com/advisories/GHSA-w7fw-mjwx-w883",
+            "https://github.com/ljharb/qs",
+            "https://github.com/ljharb/qs/commit/f6a7abff1f13d644db9b05fe4f2c98ada6bf8482",
+            "https://github.com/ljharb/qs/security/advisories/GHSA-w7fw-mjwx-w883",
+            "https://nvd.nist.gov/vuln/detail/CVE-2026-2391",
+            "https://www.cve.org/CVERecord?id=CVE-2026-2391"
+          ],
+          "PublishedDate": "2026-02-12T05:17:11.187Z",
+          "LastModifiedDate": "2026-06-17T10:30:53.183Z"
+        },
+        {
+          "VulnerabilityID": "CVE-2024-43799",
+          "VendorIDs": [
+            "GHSA-m6fv-jmcg-4jfg"
+          ],
+          "PkgID": "send@0.18.0",
+          "PkgName": "send",
+          "PkgIdentifier": {
+            "PURL": "pkg:npm/send@0.18.0",
+            "UID": "5bfe70519f3f005a",
+            "BOMRef": "pkg:npm/send@0.18.0?package-id=e0d6cac53ccf6f39"
+          },
+          "InstalledVersion": "0.18.0",
+          "FixedVersion": "0.19.0",
+          "Status": "fixed",
+          "SeveritySource": "ghsa",
+          "PrimaryURL": "https://avd.aquasec.com/nvd/cve-2024-43799",
+          "DataSource": {
+            "ID": "ghsa",
+            "Name": "GitHub Security Advisory npm",
+            "URL": "https://github.com/advisories?query=type%3Areviewed+ecosystem%3Anpm"
+          },
+          "Fingerprint": "sha256:8d00e8a979a8a085e41ca5b4dbb4c8e677f29d631a315220905f000c5526bb5c",
+          "Title": "send: Code Execution Vulnerability in Send Library",
+          "Description": "Send is a library for streaming files from the file system as a http response. Send passes untrusted user input to SendStream.redirect() which executes untrusted code. This issue is patched in send 0.19.0.",
+          "Severity": "LOW",
+          "CweIDs": [
+            "CWE-79"
+          ],
+          "VendorSeverity": {
+            "cbl-mariner": 2,
+            "ghsa": 1,
+            "nvd": 2,
+            "redhat": 2
+          },
+          "CVSS": {
+            "ghsa": {
+              "V3Vector": "CVSS:3.1/AV:N/AC:H/PR:N/UI:R/S:U/C:L/I:L/A:L",
+              "V40Vector": "CVSS:4.0/AV:N/AC:L/AT:P/PR:N/UI:P/VC:N/VI:N/VA:N/SC:L/SI:L/SA:L",
+              "V3Score": 5,
+              "V40Score": 2.3
+            },
+            "nvd": {
+              "V3Vector": "CVSS:3.1/AV:N/AC:H/PR:N/UI:R/S:C/C:L/I:L/A:N",
+              "V3Score": 4.7
+            },
+            "redhat": {
+              "V3Vector": "CVSS:3.1/AV:N/AC:H/PR:N/UI:R/S:U/C:L/I:L/A:L",
+              "V3Score": 5
+            }
+          },
+          "References": [
+            "https://access.redhat.com/security/cve/CVE-2024-43799",
+            "https://github.com/pillarjs/send",
+            "https://github.com/pillarjs/send/commit/ae4f2989491b392ae2ef3b0015a019770ae65d35",
+            "https://github.com/pillarjs/send/security/advisories/GHSA-m6fv-jmcg-4jfg",
+            "https://lists.debian.org/debian-lts-announce/2025/06/msg00022.html",
+            "https://nvd.nist.gov/vuln/detail/CVE-2024-43799",
+            "https://www.cve.org/CVERecord?id=CVE-2024-43799"
+          ],
+          "PublishedDate": "2024-09-10T15:15:17.727Z",
+          "LastModifiedDate": "2026-06-17T07:51:44.173Z"
+        },
+        {
+          "VulnerabilityID": "CVE-2024-43800",
+          "VendorIDs": [
+            "GHSA-cm22-4g7w-348p"
+          ],
+          "PkgID": "serve-static@1.15.0",
+          "PkgName": "serve-static",
+          "PkgIdentifier": {
+            "PURL": "pkg:npm/serve-static@1.15.0",
+            "UID": "27befa20df78b3c7",
+            "BOMRef": "pkg:npm/serve-static@1.15.0?package-id=0479aca2c64c3a0b"
+          },
+          "InstalledVersion": "1.15.0",
+          "FixedVersion": "1.16.0, 2.1.0",
+          "Status": "fixed",
+          "SeveritySource": "ghsa",
+          "PrimaryURL": "https://avd.aquasec.com/nvd/cve-2024-43800",
+          "DataSource": {
+            "ID": "ghsa",
+            "Name": "GitHub Security Advisory npm",
+            "URL": "https://github.com/advisories?query=type%3Areviewed+ecosystem%3Anpm"
+          },
+          "Fingerprint": "sha256:6d154f257f260b488a445e1bdefc3227566d3e14d23daea9e134b8fe319d5838",
+          "Title": "serve-static: Improper Sanitization in serve-static",
+          "Description": "serve-static serves static files. serve-static passes untrusted user input - even after sanitizing it - to redirect() may execute untrusted code. This issue is patched in serve-static 1.16.0.",
+          "Severity": "LOW",
+          "CweIDs": [
+            "CWE-79"
+          ],
+          "VendorSeverity": {
+            "cbl-mariner": 2,
+            "ghsa": 1,
+            "nvd": 2,
+            "redhat": 2
+          },
+          "CVSS": {
+            "ghsa": {
+              "V3Vector": "CVSS:3.1/AV:N/AC:H/PR:N/UI:R/S:U/C:L/I:L/A:L",
+              "V40Vector": "CVSS:4.0/AV:N/AC:L/AT:P/PR:N/UI:P/VC:N/VI:N/VA:N/SC:L/SI:L/SA:L",
+              "V3Score": 5,
+              "V40Score": 2.3
+            },
+            "nvd": {
+              "V3Vector": "CVSS:3.1/AV:N/AC:H/PR:N/UI:R/S:C/C:L/I:L/A:N",
+              "V3Score": 4.7
+            },
+            "redhat": {
+              "V3Vector": "CVSS:3.1/AV:N/AC:H/PR:N/UI:R/S:U/C:L/I:L/A:L",
+              "V3Score": 5
+            }
+          },
+          "References": [
+            "https://access.redhat.com/security/cve/CVE-2024-43800",
+            "https://github.com/expressjs/serve-static",
+            "https://github.com/expressjs/serve-static/commit/0c11fad159898cdc69fd9ab63269b72468ecaf6b",
+            "https://github.com/expressjs/serve-static/commit/ce730896fddce1588111d9ef6fdf20896de5c6fa",
+            "https://github.com/expressjs/serve-static/security/advisories/GHSA-cm22-4g7w-348p",
+            "https://nvd.nist.gov/vuln/detail/CVE-2024-43800",
+            "https://www.cve.org/CVERecord?id=CVE-2024-43800"
+          ],
+          "PublishedDate": "2024-09-10T15:15:17.937Z",
+          "LastModifiedDate": "2026-06-17T07:51:44.28Z"
+        }
+      ]
+    }
+  ]
+}

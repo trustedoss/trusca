@@ -129,6 +129,18 @@ On a graceful scan finish the executor removes its sidecar. On a hard `SIGKILL` 
 - **Multi-tenant SaaS is out of scope.** This model trusts the host boundary, which a single tenant controls. The SaaS path uses a Kubernetes Job per scan with a gVisor sandbox instead — a separate follow-up increment, not this executor.
 - **Only the Android environment is routed today.** Every other environment still runs `inprocess`; `local_docker` adds environments incrementally.
 
+## Scan engine (preview) {#scan-engine}
+
+:::info Preview, off by default
+`SCAN_ENGINE` is a preview setting. Leave it unset. In this release it changes nothing about how scans run.
+:::
+
+`SCAN_EXECUTOR` above decides where cdxgen runs. `SCAN_ENGINE` decides which engine produces the scan result at all: `inprocess` (the default) is the worker's own pipeline of build preparation, cdxgen, scancode and Trivy; `bomlens` hands SBOM generation and vulnerability matching to the BomLens image, and TRUSCA keeps everything it does with the result (licence policy, approvals, the build gate, notifications).
+
+This release contains the part that reads a BomLens result: the result manifest is checked against the BomLens engine contract (major version 1 only; any other major is refused with the version in the scan error), each output file must match the size and SHA-256 the manifest recorded, and the SBOM and Trivy report go through the same persistence as an in-process scan. A BomLens step that degraded is listed on the project Overview like any other step, and a vulnerability scan that did not produce a result fails the scan rather than reading as zero findings.
+
+The executor that runs the BomLens image is not in this release. With `SCAN_ENGINE=bomlens` the worker logs `scan_engine_unavailable_fallback_inprocess` at warning level and runs the scan in process, so a deployment that sets it early keeps scanning. Any value other than `inprocess` or `bomlens` reads as `inprocess`.
+
 ## Environment variable reference
 
 These mirror the **Dynamic scan executor** section of `.env.example`. All are read at runtime via `os.getenv` — edit `.env` and restart the worker. See [Environment variables → Scan pipeline](../reference/env-variables.md#scan-pipeline) for the canonical reference.
@@ -136,6 +148,7 @@ These mirror the **Dynamic scan executor** section of `.env.example`. All are re
 | Key | Default | Description |
 |---|---|---|
 | `SCAN_EXECUTOR` | `inprocess` | `inprocess` runs cdxgen as a worker subprocess; `local_docker` launches a per-environment sidecar over the Docker socket (on-prem only). |
+| `SCAN_ENGINE` | `inprocess` | Preview. `bomlens` selects the BomLens engine; until its executor ships, scans fall back to `inprocess` with a warning (see [Scan engine](#scan-engine)). |
 | `SCAN_LOCAL_DOCKER_ENVS` | `android` | Comma-separated environments routed to a sidecar, or `all` to route every one. Only `android` is a detection gap; widen for per-build isolation (see below). |
 | `SCAN_DOCKER_VOLUME_STRATEGY` | `named` | `named` mounts only the workspace volume into the sidecar; `volumes_from` re-mounts every worker volume (refused without the ack below). |
 | `SCAN_WORKSPACE_VOLUME` | — | Required for `named`: the compose-prefixed workspace volume name (e.g. `trustedoss-portal_scan-workspace`). Unset falls back to in-process. |

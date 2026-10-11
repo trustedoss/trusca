@@ -184,10 +184,18 @@ STAGE_OUTCOMES_KEY: Final = "stage_outcomes"
 
 #: Stages allowed to appear in ``stage_outcomes``. The mirror on the frontend
 #: (locale keys) and the API schema are checked against this tuple.
+#:
+#: ``generate``, ``normalize`` and ``enrich`` are recorded only by the BomLens
+#: scan engine adapter (``integrations.bomlens``): the in-process pipeline has
+#: no step that falls back to a simpler generator, normalises the document or
+#: adds identifiers, so it never writes them.
 DEGRADABLE_STAGES: Final = (
+    "generate",
     "prep",
     "cocoapods",
     "scope_filter",
+    "normalize",
+    "enrich",
     "document_metadata",
     "sign",
     "attest",
@@ -199,9 +207,22 @@ DEGRADABLE_STAGES: Final = (
     "reachability",
 )
 
-#: Why a stage degraded. ``failed`` is the catch-all; the rest are the reasons
-#: scancode already reported through ``scancode_skipped``.
-STAGE_REASONS: Final = ("failed", "timeout", "not_installed", "too_large")
+#: Why a stage degraded. ``failed`` is the catch-all. ``timeout``,
+#: ``not_installed`` and ``too_large`` are the reasons scancode already reported
+#: through ``scancode_skipped``. ``fallback`` (a simpler method was used, as when
+#: the SBOM came from a manifest-only reader), ``unavailable`` (the data the step
+#: reads was missing) and ``budget_exhausted`` (the step stopped at its work
+#: limit) come from the BomLens engine contract, whose reason vocabulary this
+#: tuple covers except ``no_input``: a step with nothing to read did not degrade.
+STAGE_REASONS: Final = (
+    "failed",
+    "timeout",
+    "not_installed",
+    "too_large",
+    "fallback",
+    "unavailable",
+    "budget_exhausted",
+)
 
 
 def _iso(moment: datetime) -> str:
@@ -233,6 +254,26 @@ def advance_stage_timings(
     return merged
 
 
+def add_stage_windows(
+    metadata: dict[str, Any] | None,
+    windows: dict[str, tuple[datetime, datetime]],
+) -> dict[str, Any]:
+    """Record finished ``{stage: (started, ended)}`` windows a caller measured elsewhere.
+
+    For a scan engine that reports its own step times after the fact. A stage
+    already present keeps the window it has: the live record written while the
+    scan ran is the one watchers saw, and an engine's report must not rewrite it.
+    """
+    merged = dict(metadata or {})
+    raw = merged.get(STAGE_TIMINGS_KEY)
+    timings: dict[str, Any] = {k: dict(v) for k, v in raw.items()} if isinstance(raw, dict) else {}
+    for stage, (started, ended) in windows.items():
+        if stage and stage not in timings:
+            timings[stage] = {"started_at": _iso(started), "ended_at": _iso(ended)}
+    merged[STAGE_TIMINGS_KEY] = timings
+    return merged
+
+
 def close_stage_timings(metadata: dict[str, Any] | None, *, now: datetime) -> dict[str, Any]:
     """Close the open stage at a terminal transition (succeeded or failed)."""
     return advance_stage_timings(metadata, stage="", now=now, timed=False)
@@ -246,21 +287,37 @@ def reset_stage_records(metadata: dict[str, Any] | None) -> dict[str, Any]:
     return merged
 
 
+#: Bound on an engine's own reason word kept beside the TRUSCA reason.
+_ENGINE_REASON_MAX: Final = 64
+
+
 def add_stage_outcome(
-    metadata: dict[str, Any] | None, *, stage: str, reason: str
+    metadata: dict[str, Any] | None,
+    *,
+    stage: str,
+    reason: str,
+    engine_reason: str | None = None,
 ) -> dict[str, Any]:
     """Record that ``stage`` degraded. Unknown stages and reasons are refused.
 
     Refusing rather than storing keeps the vocabulary closed: a value outside
     the tuples above would have no label on the screen and no meaning to a
     consumer.
+
+    ``engine_reason`` is for a scan engine that reported a reason this release
+    does not know (a newer BomLens contract minor). ``reason`` is then the
+    catch-all ``failed``, so the stage is labelled and counted, and the
+    engine's word is kept verbatim beside it so nothing it said is lost.
     """
     if stage not in DEGRADABLE_STAGES or reason not in STAGE_REASONS:
         raise ValueError(f"unknown stage outcome: {stage!r} / {reason!r}")
     merged = dict(metadata or {})
     raw = merged.get(STAGE_OUTCOMES_KEY)
     outcomes = dict(raw) if isinstance(raw, dict) else {}
-    outcomes[stage] = {"reason": reason}
+    entry: dict[str, str] = {"reason": reason}
+    if engine_reason:
+        entry["engine_reason"] = engine_reason[:_ENGINE_REASON_MAX]
+    outcomes[stage] = entry
     merged[STAGE_OUTCOMES_KEY] = outcomes
     return merged
 

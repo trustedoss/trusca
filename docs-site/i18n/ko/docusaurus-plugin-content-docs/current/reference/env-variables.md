@@ -150,6 +150,7 @@ CI 빌드 게이트는 기본적으로 Critical CVE와 금지 라이선스에서
 | 키 | 기본값 | 읽는 위치 | 설명 |
 |---|---|---|---|
 | `TRUSTEDOSS_SCAN_BACKEND` | `real` | `config.py` | `real`(서브프로세스 `cdxgen` / scancode / Trivy) 또는 `mock`(픽스쳐 JSON). `mock`은 테스트 하네스의 dev / CI 기본값입니다. 프로덕션은 `real` 유지. |
+| `SCAN_ENGINE` | `inprocess` | `config.py` | **미리 보기 기능이며 기본값은 꺼짐입니다.** 소스 스캔의 SBOM과 취약점 보고서를 만드는 엔진을 고릅니다. `inprocess`는 워커가 직접 빌드 준비, cdxgen, scancode, Trivy를 실행하고, `bomlens`는 BomLens 이미지가 만든 결과를 TRUSCA가 엔진 계약에 따라 읽습니다. 이번 릴리스에는 BomLens 결과를 읽는 부분만 있고 이미지를 실행하는 실행기는 없습니다. 그래서 `bomlens`로 설정하면 `scan_engine_unavailable_fallback_inprocess` 경고를 남기고 기존처럼 워커에서 스캔합니다. 그 밖의 값은 `inprocess`로 읽습니다. [동적 스캔 실행기 → 스캔 엔진(미리 보기)](../admin-guide/dynamic-scan-executor.md#scan-engine)을 참고하십시오. |
 | `SCANCODE_TIMEOUT_SECONDS` | `600` | `config.py` | scancode first-party 라이선스 단계의 hard wall-clock 한도. 타임아웃 시 declared 라이선스만으로 스캔을 계속합니다(best-effort). |
 | `SCANCODE_MAX_FILES` | `20000` | `config.py` | 적격 first-party 파일(제외 필터 적용 후) 상한. 초과 시 scancode를 건너뛰고 declared 라이선스만 유지합니다. |
 | `SCANCODE_MAX_DETECTIONS` | `5000` | `config.py` | 스캔당 저장되는 detected 라이선스 결과 수 상한. |

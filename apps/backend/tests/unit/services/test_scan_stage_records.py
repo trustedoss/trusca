@@ -58,6 +58,42 @@ def test_entering_a_stage_twice_keeps_the_first_start() -> None:
     assert meta[so.STAGE_TIMINGS_KEY]["trivy"]["started_at"] == "2026-09-21T12:00:00Z"
 
 
+def test_an_engine_reason_is_kept_beside_the_catch_all() -> None:
+    meta = so.add_stage_outcome(
+        {}, stage="generate", reason="failed", engine_reason="no_components"
+    )
+    assert meta[so.STAGE_OUTCOMES_KEY]["generate"] == {
+        "reason": "failed",
+        "engine_reason": "no_components",
+    }
+    # The screen and the metrics read the closed reason only.
+    assert so.degraded_stages(meta) == [{"stage": "generate", "reason": "failed"}]
+    plain = so.add_stage_outcome({}, stage="sign", reason="failed")
+    assert plain[so.STAGE_OUTCOMES_KEY]["sign"] == {"reason": "failed"}
+
+
+def test_reported_windows_are_added_without_rewriting_a_live_one() -> None:
+    """A scan engine's own step times (BomLens) fill stages the live record does
+    not have; the window watchers already saw is kept."""
+    live = so.advance_stage_timings({}, stage="cdxgen", now=_at(0))
+    live = so.close_stage_timings(live, now=_at(30))
+
+    merged = so.add_stage_windows(
+        live, {"cdxgen": (_at(5), _at(10)), "postprocess": (_at(30), _at(42))}
+    )
+
+    timings = merged[so.STAGE_TIMINGS_KEY]
+    assert timings["cdxgen"] == {
+        "started_at": "2026-09-21T12:00:00Z",
+        "ended_at": "2026-09-21T12:00:30Z",
+    }
+    assert timings["postprocess"] == {
+        "started_at": "2026-09-21T12:00:30Z",
+        "ended_at": "2026-09-21T12:00:42Z",
+    }
+    assert "postprocess" not in live[so.STAGE_TIMINGS_KEY]
+
+
 def test_other_metadata_survives_and_the_input_is_not_mutated() -> None:
     original: dict[str, Any] = {
         "detected_env": "node",

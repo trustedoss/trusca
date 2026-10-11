@@ -129,6 +129,18 @@ SCAN_ANDROID_IMAGE_TAG=v1.0.0                            # semver 또는 sha256:
 - **멀티 테넌트 SaaS는 범위 밖입니다.**이 모델은 단일 테넌트가 통제하는 호스트 경계를 신뢰합니다. SaaS 경로는 대신 스캔마다 gVisor 샌드박스를 적용한 Kubernetes Job을 사용합니다 — 이 실행기가 아니라 별도의 후속 증분입니다.
 - **현재 라우팅되는 환경은 Android뿐입니다.** 그 외 환경은 모두 `inprocess`로 실행되며, `local_docker`는 환경을 점진적으로 추가합니다.
 
+## 스캔 엔진(미리 보기) {#scan-engine}
+
+:::info 미리 보기 기능이며 기본값은 꺼짐입니다
+`SCAN_ENGINE`은 미리 보기 설정입니다. 설정하지 않은 채로 두십시오. 이번 릴리스에서는 설정해도 스캔 실행 방식이 바뀌지 않습니다.
+:::
+
+위의 `SCAN_EXECUTOR`는 cdxgen을 어디에서 실행할지를 정합니다. `SCAN_ENGINE`은 스캔 결과를 어느 엔진이 만들지를 정합니다. 기본값 `inprocess`는 워커가 빌드 준비, cdxgen, scancode, Trivy를 직접 실행하는 기존 방식입니다. `bomlens`는 SBOM 생성과 취약점 매칭을 BomLens 이미지에 맡기고, 그 결과로 하는 일(라이선스 정책, 승인, 빌드 게이트, 알림)은 TRUSCA가 그대로 맡습니다.
+
+이번 릴리스에는 BomLens 결과를 읽는 부분이 들어 있습니다. 결과 매니페스트를 BomLens 엔진 계약에 맞춰 검사하고(계약 메이저 버전 1만 받으며, 다른 메이저 버전이면 그 버전을 스캔 오류에 적고 거부합니다), 출력 파일마다 매니페스트에 기록된 크기와 SHA-256이 맞는지 확인한 뒤, SBOM과 Trivy 보고서를 기존 스캔과 같은 저장 경로로 저장합니다. BomLens 단계가 열화되면 다른 단계와 마찬가지로 프로젝트 개요 탭에 표시됩니다. 취약점 스캔이 결과를 내지 못하면 취약점 0건으로 처리하지 않고 스캔을 실패로 처리합니다.
+
+BomLens 이미지를 실행하는 실행기는 이번 릴리스에 없습니다. `SCAN_ENGINE=bomlens`로 설정하면 워커가 `scan_engine_unavailable_fallback_inprocess` 경고를 남기고 기존처럼 워커에서 스캔합니다. 미리 설정해 둔 배포도 스캔이 멈추지 않습니다. `inprocess`와 `bomlens`가 아닌 값은 `inprocess`로 읽습니다.
+
 ## 환경변수 레퍼런스 {#environment-variable-reference}
 
 다음은 `.env.example`의 **Dynamic scan executor** 섹션을 반영합니다. 모두 런타임에 `os.getenv`로 읽힙니다 — `.env`를 편집하고 워커를 재시작하십시오. 정식 레퍼런스는 [환경변수 → 스캔 파이프라인](../reference/env-variables.md#scan-pipeline)을 참고하십시오.
@@ -136,6 +148,7 @@ SCAN_ANDROID_IMAGE_TAG=v1.0.0                            # semver 또는 sha256:
 | 키 | 기본값 | 설명 |
 |---|---|---|
 | `SCAN_EXECUTOR` | `inprocess` | `inprocess`는 cdxgen을 워커 서브프로세스로 실행하고, `local_docker`는 Docker 소켓으로 환경별 사이드카를 띄웁니다(온프레 전용). |
+| `SCAN_ENGINE` | `inprocess` | 미리 보기. `bomlens`는 BomLens 엔진을 고릅니다. 실행기가 나오기 전까지는 경고를 남기고 `inprocess`로 스캔합니다([스캔 엔진](#scan-engine) 참고). |
 | `SCAN_LOCAL_DOCKER_ENVS` | `android` | 사이드카로 라우팅할 환경(쉼표 구분). 검출 공백은 `android`뿐이며, 언어별 격리가 필요하면 넓힙니다(위 참고). |
 | `SCAN_DOCKER_VOLUME_STRATEGY` | `named` | `named`는 워크스페이스 볼륨만 사이드카에 마운트하고, `volumes_from`은 모든 워커 볼륨을 다시 마운트합니다(아래 ack 없이는 거부). |
 | `SCAN_WORKSPACE_VOLUME` | — | `named`에 필요: compose-prefixed 워크스페이스 볼륨명(예: `trustedoss-portal_scan-workspace`). 미설정 시 in-process로 폴백합니다. |

@@ -69,7 +69,7 @@ They also state how complete the document is, with CycloneDX `compositions`: one
 | Verdict | When | `trusca:composition-basis` |
 |---|---|---|
 | `complete` | The scan recorded its stages, none that can lose dependencies failed, and a graph came with the components. | `no_known_gap` |
-| `incomplete` | Build preparation or the CocoaPods fill-in degraded, the scan found nothing although manifests were present, or the `policy-filtered` profile removed components. | `stage_degraded:<stage>`, `empty_with_manifests`, `profile_filter` |
+| `incomplete` | SBOM generation fell back to a simpler method, build preparation or the CocoaPods fill-in degraded, the scan found nothing although manifests were present, or the `policy-filtered` profile removed components. | `stage_degraded:<stage>`, `empty_with_manifests`, `profile_filter` |
 | `unknown` | The scan predates the stage record (rescan to get a verdict), the source declared no manifest, the document was uploaded rather than generated, or components were listed with no graph (the graph statement only). | `not_recorded`, `no_manifests`, `ingested_document`, `no_graph` |
 
 The stages behind `incomplete` are the ones the Overview tab lists under [When a scan skips part of its work](./scans.md#scan-gaps).

@@ -181,9 +181,12 @@
       "scancode_effect": "Licenses declared by dependencies are still listed, but license headers in the project's own files were not detected, so a copyleft license there would not reach the license gate.",
       "stages_title": "Some scan steps did not complete",
       "stages_intro": "The scan finished, but these optional steps did not do all of their work:",
+      "stage_generate": "SBOM generation: the dependency list may be incomplete, for example direct dependencies only.",
       "stage_prep": "Build preparation: transitive dependencies of some ecosystems may be missing.",
       "stage_cocoapods": "CocoaPods fill-in: pods from Podfile.lock may be missing.",
       "stage_scope_filter": "Runtime scope filter: test and build-only dependencies may still be listed.",
+      "stage_normalize": "License and identifier normalization: licenses and package identifiers may be left as the generator wrote them.",
+      "stage_enrich": "Identifier and license enrichment: vulnerability identifiers (CPE) or registry licenses may be missing for some components.",
       "stage_document_metadata": "SBOM document metadata: the exported document may lack some required statements.",
       "stage_sign": "SBOM signing: the SBOM has no signature.",
       "stage_attest": "Build attestation: no attestation was produced.",
@@ -195,7 +198,10 @@
       "reason_failed": "failed",
       "reason_timeout": "timed out",
       "reason_not_installed": "tool not installed",
-      "reason_too_large": "input too large"
+      "reason_too_large": "input too large",
+      "reason_fallback": "simpler method used",
+      "reason_unavailable": "data unavailable",
+      "reason_budget_exhausted": "work limit reached"
     },
     "risk_gauge": {
       "aria": "Project risk score: {{score}} of 100"

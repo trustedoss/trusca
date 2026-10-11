@@ -41,7 +41,9 @@ INCOMPLETE: Final = "incomplete"
 UNKNOWN: Final = "unknown"
 
 #: Stages whose failure can leave a component or a dependency edge out.
-INVENTORY_STAGES: Final = ("prep", "cocoapods")
+#: ``generate`` is the BomLens engine's SBOM generation, which degrades when it
+#: falls back to a manifest-only reader that lists direct dependencies only.
+INVENTORY_STAGES: Final = ("generate", "prep", "cocoapods")
 
 #: Document property naming why the verdict is what it is.
 BASIS_PROPERTY: Final = "trusca:composition-basis"

@@ -1,0 +1,295 @@
+{
+  "contract": {
+    "name": "bomlens-engine",
+    "version": "1.0.0-dev"
+  },
+  "engine": {
+    "version": "latest-b826d43",
+    "image": "ghcr.io/haksungjang/bomlens:sha-b826d43",
+    "image_digest": "sha256:1de6f4d0c8969116347af5d55d69a61b38f3670eda819a63e09a197a53f1ad57"
+  },
+  "input": {
+    "kind": "source",
+    "mode": "SOURCE",
+    "target": null
+  },
+  "run": {
+    "status": "succeeded_degraded",
+    "reason": "step_failed_or_degraded",
+    "started_at": "2026-10-11T09:34:44Z",
+    "ended_at": "2026-10-11T09:34:51Z",
+    "exit_code": 0
+  },
+  "steps": [
+    {
+      "id": "generate",
+      "status": "degraded",
+      "reason": "fallback",
+      "detail": "cdxgen-unavailable",
+      "started_at": "2026-10-11T09:34:44Z",
+      "ended_at": "2026-10-11T09:34:45Z",
+      "counts": {
+        "components": 73
+      },
+      "stage": 2
+    },
+    {
+      "id": "vendored",
+      "status": "disabled",
+      "reason": null,
+      "detail": null,
+      "started_at": "2026-10-11T09:34:45Z",
+      "ended_at": "2026-10-11T09:34:45Z",
+      "stage": 2
+    },
+    {
+      "id": "suggest-vendored",
+      "status": "ok",
+      "reason": null,
+      "detail": null,
+      "started_at": "2026-10-11T09:34:45Z",
+      "ended_at": "2026-10-11T09:34:45Z",
+      "stage": 2
+    },
+    {
+      "id": "stamp-metadata",
+      "status": "ok",
+      "reason": null,
+      "detail": null,
+      "started_at": "2026-10-11T09:34:45Z",
+      "ended_at": "2026-10-11T09:34:45Z",
+      "stage": 2
+    },
+    {
+      "id": "docmeta",
+      "status": "ok",
+      "reason": null,
+      "detail": null,
+      "started_at": "2026-10-11T09:34:45Z",
+      "ended_at": "2026-10-11T09:34:45Z",
+      "stage": 2
+    },
+    {
+      "id": "normalize",
+      "status": "ok",
+      "reason": null,
+      "detail": null,
+      "started_at": "2026-10-11T09:34:45Z",
+      "ended_at": "2026-10-11T09:34:45Z",
+      "stage": 2
+    },
+    {
+      "id": "license-registry",
+      "status": "disabled",
+      "reason": null,
+      "detail": null,
+      "started_at": "2026-10-11T09:34:45Z",
+      "ended_at": "2026-10-11T09:34:45Z",
+      "stage": 2
+    },
+    {
+      "id": "enrich-cpe",
+      "status": "ok",
+      "reason": null,
+      "detail": null,
+      "started_at": "2026-10-11T09:34:46Z",
+      "ended_at": "2026-10-11T09:34:46Z",
+      "stage": 2
+    },
+    {
+      "id": "enrich-os-context",
+      "status": "ok",
+      "reason": null,
+      "detail": null,
+      "started_at": "2026-10-11T09:34:46Z",
+      "ended_at": "2026-10-11T09:34:46Z",
+      "stage": 2
+    },
+    {
+      "id": "enrich-distro-supplier",
+      "status": "ok",
+      "reason": null,
+      "detail": null,
+      "started_at": "2026-10-11T09:34:46Z",
+      "ended_at": "2026-10-11T09:34:46Z",
+      "stage": 2
+    },
+    {
+      "id": "enrich-maven-cpe",
+      "status": "ok",
+      "reason": null,
+      "detail": null,
+      "started_at": "2026-10-11T09:34:46Z",
+      "ended_at": "2026-10-11T09:34:46Z",
+      "stage": 2
+    },
+    {
+      "id": "enrich-github-cpe",
+      "status": "ok",
+      "reason": null,
+      "detail": null,
+      "started_at": "2026-10-11T09:34:46Z",
+      "ended_at": "2026-10-11T09:34:46Z",
+      "stage": 2
+    },
+    {
+      "id": "enrich-interpreter-cpe",
+      "status": "ok",
+      "reason": null,
+      "detail": null,
+      "started_at": "2026-10-11T09:34:46Z",
+      "ended_at": "2026-10-11T09:34:46Z",
+      "stage": 2
+    },
+    {
+      "id": "enrich-eol",
+      "status": "ok",
+      "reason": null,
+      "detail": null,
+      "started_at": "2026-10-11T09:34:46Z",
+      "ended_at": "2026-10-11T09:34:46Z",
+      "stage": 2
+    },
+    {
+      "id": "enrich-malicious",
+      "status": "ok",
+      "reason": null,
+      "detail": null,
+      "started_at": "2026-10-11T09:34:46Z",
+      "ended_at": "2026-10-11T09:34:46Z",
+      "stage": 2
+    },
+    {
+      "id": "enrich-staleness",
+      "status": "disabled",
+      "reason": null,
+      "detail": null,
+      "started_at": "2026-10-11T09:34:46Z",
+      "ended_at": "2026-10-11T09:34:46Z",
+      "stage": 2
+    },
+    {
+      "id": "conformance",
+      "status": "ok",
+      "reason": null,
+      "detail": null,
+      "started_at": "2026-10-11T09:34:46Z",
+      "ended_at": "2026-10-11T09:34:46Z",
+      "stage": 2
+    },
+    {
+      "id": "deep-license",
+      "status": "disabled",
+      "reason": null,
+      "detail": null,
+      "started_at": "2026-10-11T09:34:46Z",
+      "ended_at": "2026-10-11T09:34:46Z",
+      "stage": 2
+    },
+    {
+      "id": "source-file-tree",
+      "status": "ok",
+      "reason": null,
+      "detail": null,
+      "started_at": "2026-10-11T09:34:46Z",
+      "ended_at": "2026-10-11T09:34:46Z",
+      "stage": 2
+    },
+    {
+      "id": "source-snapshot",
+      "status": "ok",
+      "reason": null,
+      "detail": null,
+      "started_at": "2026-10-11T09:34:46Z",
+      "ended_at": "2026-10-11T09:34:46Z",
+      "stage": 2
+    },
+    {
+      "id": "generate-notice",
+      "status": "disabled",
+      "reason": null,
+      "detail": null,
+      "started_at": "2026-10-11T09:34:46Z",
+      "ended_at": "2026-10-11T09:34:46Z",
+      "stage": 2
+    },
+    {
+      "id": "scan-security",
+      "status": "failed",
+      "reason": "failed",
+      "detail": "\t* Get \"https://mirror.gcr.io/v2/\": dial tcp: lookup mirror.gcr.io on 192.168.5.1:53: dial udp 192.168.5.1:53: connect: network is unreachable",
+      "started_at": "2026-10-11T09:34:46Z",
+      "ended_at": "2026-10-11T09:34:51Z",
+      "stage": 2
+    },
+    {
+      "id": "sign",
+      "status": "disabled",
+      "reason": null,
+      "detail": null,
+      "started_at": "2026-10-11T09:34:51Z",
+      "ended_at": "2026-10-11T09:34:51Z",
+      "stage": 2
+    }
+  ],
+  "tools": {
+    "syft": "1.52.0",
+    "trivy": "0.74.0"
+  },
+  "engines": [
+    "trivy"
+  ],
+  "data_sources": {
+    "trivy_db": null
+  },
+  "outputs": [
+    {
+      "role": "sbom.cyclonedx",
+      "path": "multi-component_1.0.0_bom.json",
+      "sha256": "ad13145362fd0f0be289f42fea5c982b8a4466cd4498b5d37afc0c76da2bc47c",
+      "bytes": 119107
+    },
+    {
+      "role": "other",
+      "path": "multi-component_1.0.0_summary.result",
+      "sha256": "75a2315ecf10331085eb38a95c754f226d18f851196939b1be7ad781e53dfea4",
+      "bytes": 87
+    },
+    {
+      "role": "other",
+      "path": "multi-component_1.0.0_files.json",
+      "sha256": "cd784d650283f5fd1ad36ff125ab518b220e6150384869e71e7f679628bf92f9",
+      "bytes": 742
+    },
+    {
+      "role": "other",
+      "path": "multi-component_1.0.0_source.json",
+      "sha256": "9617dbda94df96687adf0ac79a67fbc57a602d5e38ea9b0c367ca7f7870785da",
+      "bytes": 259050
+    },
+    {
+      "role": "vulnerabilities.all",
+      "path": "multi-component_1.0.0_security.json",
+      "sha256": "79da898ee840e26bb0261a97ae6a23b0e3a338473e29bf695b9d5b5d98f83c72",
+      "bytes": 228
+    },
+    {
+      "role": "other",
+      "path": "multi-component_1.0.0_security.md",
+      "sha256": "b7dfa0aec4183a747283fda1e4d9303331949fe9b42a825d2f523e10700afc58",
+      "bytes": 532
+    },
+    {
+      "role": "other",
+      "path": "multi-component_1.0.0_security.html",
+      "sha256": "6fe2f5df3560bd8429815ceff47974d43f206c58abf4b583ad096b28326caab8",
+      "bytes": 5321
+    },
+    {
+      "role": "vulnerabilities.trivy",
+      "path": "multi-component_1.0.0_security.json",
+      "sha256": "79da898ee840e26bb0261a97ae6a23b0e3a338473e29bf695b9d5b5d98f83c72",
+      "bytes": 228
+    }
+  ]
+}

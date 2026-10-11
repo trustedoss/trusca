@@ -82,9 +82,12 @@ class DegradedStage(BaseModel):
     """An optional pipeline stage that finished worse than a normal run."""
 
     stage: Literal[
+        "generate",
         "prep",
         "cocoapods",
         "scope_filter",
+        "normalize",
+        "enrich",
         "document_metadata",
         "sign",
         "attest",
@@ -95,7 +98,15 @@ class DegradedStage(BaseModel):
         "preserve",
         "reachability",
     ]
-    reason: Literal["failed", "timeout", "not_installed", "too_large"]
+    reason: Literal[
+        "failed",
+        "timeout",
+        "not_installed",
+        "too_large",
+        "fallback",
+        "unavailable",
+        "budget_exhausted",
+    ]
 
 
 class ScanSummary(BaseModel):

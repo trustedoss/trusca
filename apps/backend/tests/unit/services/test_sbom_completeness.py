@@ -38,7 +38,7 @@ def test_a_recorded_scan_with_no_failure_and_a_graph_is_complete() -> None:
 
 # Spelled out, not read from the module: a test that iterates the constant under
 # test agrees with any value the constant is changed to.
-@pytest.mark.parametrize("stage", ["prep", "cocoapods"])
+@pytest.mark.parametrize("stage", ["generate", "prep", "cocoapods"])
 def test_a_degraded_inventory_stage_makes_both_incomplete(stage: str) -> None:
     meta = so.add_stage_outcome(_meta(), stage=stage, reason="failed")
     result = _assess(metadata=meta)
@@ -50,6 +50,8 @@ def test_a_degraded_inventory_stage_makes_both_incomplete(stage: str) -> None:
     "stage",
     [
         "scope_filter",
+        "normalize",
+        "enrich",
         "document_metadata",
         "sign",
         "attest",
@@ -121,7 +123,7 @@ def test_a_single_component_needs_no_edges() -> None:
 def test_the_inventory_stages_are_recorded_stages() -> None:
     """The set this module reads must exist in the vocabulary U3-B writes, and the
     two lists above must between them cover every recorded stage."""
-    assert set(sc.INVENTORY_STAGES) == {"prep", "cocoapods"}
+    assert set(sc.INVENTORY_STAGES) == {"generate", "prep", "cocoapods"}
     assert set(sc.INVENTORY_STAGES) <= set(so.DEGRADABLE_STAGES)
 
 

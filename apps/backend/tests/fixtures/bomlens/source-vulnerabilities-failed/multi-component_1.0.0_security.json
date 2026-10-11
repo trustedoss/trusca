@@ -1,0 +1,7 @@
+{
+  "Results": [],
+  "ScanError": {
+    "Engine": "Trivy",
+    "Message": "\t* Get \"https://mirror.gcr.io/v2/\": dial tcp: lookup mirror.gcr.io on 192.168.5.1:53: dial udp 192.168.5.1:53: connect: network is unreachable"
+  }
+}

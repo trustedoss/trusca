@@ -66,7 +66,7 @@ CycloneDX 내보내기(JSON, XML)에는 스캔의 의존성 그래프를 담은 
 | 판정 | 조건 | `trusca:composition-basis` |
 |---|---|---|
 | `complete` | 스캔이 단계를 기록했고, 의존성을 잃을 수 있는 단계가 실패하지 않았으며, 컴포넌트와 함께 그래프가 나왔습니다. | `no_known_gap` |
-| `incomplete` | 빌드 준비나 CocoaPods 보완이 열화됐거나, 매니페스트가 있는데 아무것도 찾지 못했거나, `policy-filtered` 프로파일이 컴포넌트를 제거했습니다. | `stage_degraded:<단계>`, `empty_with_manifests`, `profile_filter` |
+| `incomplete` | SBOM 생성이 대체 방식으로 진행됐거나, 빌드 준비나 CocoaPods 보완이 열화됐거나, 매니페스트가 있는데 아무것도 찾지 못했거나, `policy-filtered` 프로파일이 컴포넌트를 제거했습니다. | `stage_degraded:<단계>`, `empty_with_manifests`, `profile_filter` |
 | `unknown` | 스캔이 단계 기록보다 먼저 만들어졌거나(다시 스캔하면 판정이 나옵니다), 소스에 매니페스트가 없거나, 생성이 아니라 업로드한 문서이거나, 컴포넌트만 있고 그래프가 없습니다(그래프 문장에 한함). | `not_recorded`, `no_manifests`, `ingested_document`, `no_graph` |
 
 `incomplete`의 근거가 되는 단계는 개요 탭의 [스캔이 작업 일부를 건너뛰었을 때](./scans.md#scan-gaps)에 나오는 것들입니다.

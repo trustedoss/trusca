@@ -1453,6 +1453,29 @@ def scan_executor_mode() -> str:
     return os.getenv("SCAN_EXECUTOR", "inprocess").lower()
 
 
+#: Values ``SCAN_ENGINE`` accepts. ``inprocess`` is the pipeline TRUSCA runs
+#: itself; ``bomlens`` is the BomLens image used as the scan engine (preview).
+SCAN_ENGINE_VALUES: tuple[str, ...] = ("inprocess", "bomlens")
+
+
+def scan_engine() -> str:
+    """Which engine produces a source scan's SBOM and vulnerability report.
+
+    - ``inprocess`` (default): the worker's own pipeline (build-prep, cdxgen,
+      scancode, Trivy), as before.
+    - ``bomlens`` (preview): the BomLens image produces the SBOM and the Trivy
+      report and TRUSCA reads its result manifest
+      (``integrations.bomlens``). The executor that runs the image is not part
+      of this release, so the source pipeline logs a warning and keeps using
+      ``inprocess``.
+
+    Resolved at call time (CLAUDE.md core rule #11). An unknown value reads as
+    ``inprocess``, the same safe fallback ``SCAN_EXECUTOR`` uses.
+    """
+    value = os.getenv("SCAN_ENGINE", "inprocess").strip().lower()
+    return value if value in SCAN_ENGINE_VALUES else "inprocess"
+
+
 # ---------------------------------------------------------------------------
 # scancode first-party license detection (PR-A2 — replaces ORT).
 #
