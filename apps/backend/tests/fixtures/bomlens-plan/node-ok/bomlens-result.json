@@ -1,0 +1,49 @@
+{
+  "contract": {
+    "name": "bomlens-engine",
+    "version": "1.0.0"
+  },
+  "engine": {
+    "version": "latest-d8d3323",
+    "image": "ghcr.io/haksungjang/bomlens:sha-d8d3323",
+    "image_digest": "sha256:8b44d05a0baf66e11dcbabb52d7d9842cb11a5d0a4ec419b80de7f51233e05c5"
+  },
+  "input": {
+    "kind": "source",
+    "mode": "PLAN",
+    "target": null
+  },
+  "run": {
+    "status": "succeeded",
+    "reason": null,
+    "started_at": "2026-10-11T13:46:15Z",
+    "ended_at": "2026-10-11T13:46:15Z",
+    "exit_code": 0
+  },
+  "steps": [
+    {
+      "id": "plan",
+      "status": "ok",
+      "reason": null,
+      "detail": null,
+      "started_at": "2026-10-11T13:46:15Z",
+      "ended_at": "2026-10-11T13:46:15Z",
+      "stage": 2
+    }
+  ],
+  "tools": {
+    "syft": "1.52.0"
+  },
+  "engines": [],
+  "data_sources": {
+    "trivy_db": null
+  },
+  "outputs": [
+    {
+      "role": "plan",
+      "path": "bomlens-plan.json",
+      "sha256": "963a0194166680ec02117f62391a5b12f8ad8d4733fe5ae64f4397aa8c5c0111",
+      "bytes": 4656
+    }
+  ]
+}

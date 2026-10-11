@@ -395,13 +395,6 @@ def _run_pipeline(
     # any other value (or absence) falls back to the quiet "normal" trace.
     verbose = str((scan_metadata or {}).get("verbosity", "normal")) == "verbose"
 
-    # SCAN_ENGINE=bomlens is a preview: the adapter that persists a BomLens
-    # result exists (tasks.bomlens_result), the executor that runs the image
-    # does not yet. Say so and keep the in-process engine, the same fallback
-    # an unavailable SCAN_EXECUTOR gets.
-    if scan_engine() == "bomlens":
-        log.warning("scan_engine_unavailable_fallback_inprocess", requested="bomlens")
-
     # Stage 1 — bootstrap workspace.
     _set_stage(scan_uuid, "bootstrap")
     workspace.mkdir(parents=True, exist_ok=True)
@@ -441,6 +434,23 @@ def _run_pipeline(
     # S8 fingerprint's manifest input (below): read once, used twice, rather
     # than a second directory walk.
     manifest_inventory = _record_input_manifests(scan_uuid, project_root)
+
+    # SCAN_ENGINE=bomlens (preview): the BomLens image produces the SBOM and
+    # the vulnerability report from here on, and TRUSCA persists, signs and
+    # finishes the scan (tasks.scan_source_bomlens). Imported here because that
+    # module imports this one.
+    if scan_engine() == "bomlens":
+        from tasks.scan_source_bomlens import run_bomlens_pipeline
+
+        run_bomlens_pipeline(
+            scan_uuid=scan_uuid,
+            project_id=project_id,
+            workspace=workspace,
+            source_dir=source_dir,
+            project_root=project_root,
+            manifest_inventory=manifest_inventory,
+        )
+        return
 
     # S8 (concurrency-scaling-plan-2026-08-22.md §3.2): decide, BEFORE cdxgen
     # runs, whether this commit's dependency set is unchanged from the prior

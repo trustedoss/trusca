@@ -132,14 +132,69 @@ SCAN_ANDROID_IMAGE_TAG=v1.0.0                            # semver 또는 sha256:
 ## 스캔 엔진(미리 보기) {#scan-engine}
 
 :::info 미리 보기 기능이며 기본값은 꺼짐입니다
-`SCAN_ENGINE`은 미리 보기 설정입니다. 설정하지 않은 채로 두십시오. 이번 릴리스에서는 설정해도 스캔 실행 방식이 바뀌지 않습니다.
+`SCAN_ENGINE`은 미리 보기 설정입니다. compose 배포에서 BomLens 엔진을 시험해 볼 때가 아니면 설정하지 않은 채로 두십시오. Helm 차트에서는 아직 실행되지 않습니다.
 :::
 
-위의 `SCAN_EXECUTOR`는 cdxgen을 어디에서 실행할지를 정합니다. `SCAN_ENGINE`은 스캔 결과를 어느 엔진이 만들지를 정합니다. 기본값 `inprocess`는 워커가 빌드 준비, cdxgen, scancode, Trivy를 직접 실행하는 기존 방식입니다. `bomlens`는 SBOM 생성과 취약점 매칭을 BomLens 이미지에 맡기고, 그 결과로 하는 일(라이선스 정책, 승인, 빌드 게이트, 알림)은 TRUSCA가 그대로 맡습니다.
+위의 `SCAN_EXECUTOR`는 cdxgen을 어디에서 실행할지를 정합니다. `SCAN_ENGINE`은 스캔 결과를 어느 엔진이 만들지를 정합니다. 기본값 `inprocess`는 워커가 빌드 준비, cdxgen, scancode, Trivy를 직접 실행하는 기존 방식입니다. `bomlens`는 SBOM 생성, 라이선스 탐지, 취약점 매칭을 BomLens 이미지에 맡기고, 그 결과로 하는 일(저장, 서명, 라이선스 정책, 승인, 빌드 게이트, 알림)은 TRUSCA가 그대로 맡습니다. BomLens 스캔에는 `SCAN_EXECUTOR`가 적용되지 않습니다.
 
-이번 릴리스에는 BomLens 결과를 읽는 부분이 들어 있습니다. 결과 매니페스트를 BomLens 엔진 계약에 맞춰 검사하고(계약 메이저 버전 1만 받으며, 다른 메이저 버전이면 그 버전을 스캔 오류에 적고 거부합니다), 출력 파일마다 매니페스트에 기록된 크기와 SHA-256이 맞는지 확인한 뒤, SBOM과 Trivy 보고서를 기존 스캔과 같은 저장 경로로 저장합니다. 프로젝트 자체 파일에서 scancode가 탐지한 라이선스(BomLens `--deep-license`, `bomlens-deep-license` 이미지)는 기존 scancode 단계와 같은 방식으로 탐지된 라이선스로 저장합니다. 다른 점이 하나 있습니다. 이 scancode 결과가 기록된 SHA-256과 맞지 않거나 올바른 JSON이 아니면 스캔 전체가 실패합니다. 엔진 출력은 무결성을 먼저 확인하기 때문입니다. 기존 방식에서는 scancode 문제가 단계 열화로만 기록됩니다. 결과가 `SCANCODE_MAX_RESULT_BYTES`보다 크면 두 방식 모두 읽지 않고 단계 열화로 기록합니다. 엔진이 시간 예산 안에 하지 못한 레지스트리 라이선스 조회는 기존 조회와 같은 개요 탭 알림에 표시되고, BomLens가 배포되지 않는 폴더(테스트, 예제, 벤치마크)로 보고 제외한 내용은 스캔 메타데이터의 `scope_filter`에 제외 패턴과 건너뛴 매니페스트 파일로 남습니다. BomLens 단계가 열화되면 다른 단계와 마찬가지로 프로젝트 개요 탭에 표시됩니다. 취약점 스캔이 결과를 내지 못하면 취약점 0건으로 처리하지 않고 스캔을 실패로 처리합니다.
+### BomLens 스캔이 실행되는 순서 {#engine-how-it-runs}
 
-BomLens 이미지를 실행하는 실행기는 이번 릴리스에 없습니다. `SCAN_ENGINE=bomlens`로 설정하면 워커가 `scan_engine_unavailable_fallback_inprocess` 경고를 남기고 기존처럼 워커에서 스캔합니다. 미리 설정해 둔 배포도 스캔이 멈추지 않습니다. `inprocess`와 `bomlens`가 아닌 값은 `inprocess`로 읽습니다.
+워커는 소스를 가져온 뒤 컨테이너를 최대 네 개까지 하나씩 실행하고, 각 컨테이너가 끝날 때까지 기다립니다.
+
+1. **실행 계획.** BomLens 이미지가 `MODE=PLAN`으로 소스를 읽기 전용으로 읽고 실행 계획을 씁니다. 계획에는 의존성을 해석할 cdxgen 언어 이미지(다이제스트로 고정)와 그 인자가 들어 있습니다. 진행 화면에는 준비 단계로 표시됩니다.
+2. **1단계.** 계획이 지정한 언어 이미지가 의존성을 해석하고 첫 SBOM을 씁니다. 스캔 대상 프로젝트의 빌드 도구를 실행하는 컨테이너는 이것 하나뿐이고, 네트워크에 접근하는 컨테이너도 이것 하나뿐입니다.
+3. **1단계가 강제 종료된 경우의 복원.** 메모리가 부족하거나 시간 한도를 넘겨 종료된 1단계는 소스 트리를 원래대로 되돌리지 못합니다. 그래서 워커가 같은 1단계를 복원 전용 모드로, 네트워크 없이 한 번 더 실행합니다.
+4. **2단계.** BomLens 이미지가 SBOM을 후처리하고 라이선스를 탐지하고 Trivy를 실행합니다. 1단계의 종료 코드와 관계없이 실행합니다. 1단계가 SBOM을 남기지 못했으면 BomLens가 매니페스트를 직접 읽어 직접 의존성만 나열하고 SBOM 생성을 열화로 기록합니다. 이때 스캔은 실패하지 않고 성공으로 끝나며, 프로젝트 개요 탭에 경고가 나타납니다.
+
+계획이 지원하지 않는 프로젝트라고 판정하면(BomLens가 SDK 이미지를 배포하지 않는 Android 프로젝트) 1단계와 복원을 건너뛰고 2단계만 실행하며, 결과는 위와 같이 열화로 기록됩니다.
+
+그다음 워커는 결과 매니페스트를 BomLens 엔진 계약에 맞춰 검사하고(계약 메이저 버전 1만 받으며, 다른 메이저 버전이면 그 버전을 스캔 오류에 적고 거부합니다), 출력 파일마다 매니페스트에 기록된 크기와 SHA-256이 맞는지 확인한 뒤, SBOM과 Trivy 보고서를 기존 스캔과 같은 코드로 저장합니다. 프로젝트 자체 파일에서 scancode가 탐지한 라이선스(`bomlens-deep-license` 이미지)는 기존 scancode 단계와 같은 방식으로 탐지된 라이선스로 저장합니다. 다른 점이 하나 있습니다. 이 scancode 결과가 기록된 SHA-256과 맞지 않거나 올바른 JSON이 아니면 스캔 전체가 실패합니다. 엔진 출력은 무결성을 먼저 확인하기 때문입니다. 기존 방식에서는 scancode 문제가 단계 열화로만 기록됩니다. 결과가 `SCANCODE_MAX_RESULT_BYTES`보다 크면 두 방식 모두 읽지 않고 단계 열화로 기록합니다. 엔진이 시간 예산 안에 하지 못한 레지스트리 라이선스 조회는 기존 조회와 같은 개요 탭 알림에 표시되고, BomLens가 배포되지 않는 폴더(테스트, 예제, 벤치마크)로 보고 제외한 내용은 스캔 메타데이터의 `scope_filter`에 제외 패턴과 건너뛴 매니페스트 파일로 남습니다. BomLens 단계가 열화되면 다른 단계와 마찬가지로 프로젝트 개요 탭에 표시됩니다. 취약점 스캔이 결과를 내지 못하면 취약점 0건으로 처리하지 않고 스캔을 실패로 처리합니다.
+
+### 엔진 컨테이너에 적용되는 제한 {#engine-containers}
+
+실행 계획은 스캔 대상 소스를 읽은 컨테이너가 만든 출력입니다. 그래서 워커는 계획을 신뢰하지 않는 입력으로 다루고, 각 컨테이너를 어떻게 실행할지는 워커가 정합니다.
+
+- **다이제스트로 고정한 이미지.** BomLens 이미지는 TRUSCA 릴리스에 고정되어 있습니다. 1단계 이미지는 `SCAN_BOMLENS_STAGE1_REPOSITORIES`에 있는 저장소에서 와야 하고 다이제스트가 있어야 합니다. `:latest`는 어디에서든 거부합니다.
+- **스캔 워크스페이스 안의 마운트만 허용.** 계획은 마운트를 역할(소스, 출력, 보조 파일, 복원 상태)로만 지정하고 호스트 경로는 지정하지 못합니다. 워커가 역할마다 해당 스캔의 워크스페이스 아래 폴더를 연결하고, 워크스페이스를 벗어나거나 심볼릭 링크를 거치는 경로는 거부합니다. 시스템 경로나 Docker 소켓 위에 마운트하려는 계획도 거부합니다.
+- **읽기 전용 루트 파일시스템.** `/tmp`만 워크스페이스의 임시 폴더로 씁니다. 1단계는 `SCAN_BOMLENS_STAGE1_READ_ONLY_ROOT=false`로 쓰기 가능한 루트를 줄 수 있습니다(아래 표 참고).
+- **위의 사이드카와 같은 격리.** `--cap-drop ALL` 뒤에 최소한의 권한만 다시 추가하고, `no-new-privileges`를 켜고, `SCAN_SIDECAR_PIDS_LIMIT`, `SCAN_SIDECAR_MEMORY`, `SCAN_SIDECAR_CPUS` 제한을 적용하며 스왑은 쓰지 않습니다.
+- **네트워크 없음.** 1단계만 `SCAN_BOMLENS_NETWORK`에 연결합니다. 워커는 `host`와, 워커 자신이 연결된 네트워크(PostgreSQL과 Redis에 닿는 네트워크)를 거부합니다. 2단계는 Trivy 데이터베이스를 내려받지 않고 워커의 데이터베이스를 읽기 전용으로 읽으므로, TRUSCA의 다른 기능과 같은 취약점 데이터를 씁니다.
+- **허용 목록에 있는 환경변수만 전달.** 워커의 환경변수는 넘기지 않습니다.
+
+### 엔진 켜기(compose) {#engine-turn-on}
+
+워커는 `docker-compose.yml`의 필터링 프록시를 거쳐 Docker에 접근하며, 원시 소켓은 받지 않습니다. 프록시는 컨테이너와 이미지 호출에만 응답하고 `exec`, 볼륨, 네트워크, swarm, 시스템, 빌드 호출은 거부합니다. 컨테이너 생성 요청의 본문은 검사하지 않으며, 앞 절의 제한은 워커가 적용합니다. 엔진은 워크스페이스 볼륨의 일부를 `volume-subpath`로 마운트하므로 Docker Engine 26 이상이 필요합니다.
+
+<!-- docs-uat: id=dynamic-scan-executor-engine-proxy kind=shell ctx=host tier=manual waiver=env-config-snippet-not-a-command -->
+```bash
+# 스캔 워커용 Docker API 프록시 시작
+docker-compose --profile bomlens-engine up -d
+
+# 포털의 .env (<project>는 compose 프로젝트 이름)
+SCAN_ENGINE=bomlens
+SCAN_WORKSPACE_VOLUME=<project>_workspace
+SCAN_TRIVY_CACHE_VOLUME=<project>_trivy-cache
+```
+
+그다음 스캔 워커를 다시 만들어 새 값을 읽게 합니다(`docker-compose up -d worker-scan`). compose는 `SCAN_BOMLENS_NETWORK=bridge`를 이미 설정합니다. Docker 기본 브리지는 패키지 레지스트리에 닿고 `trustedoss` 네트워크에는 연결되어 있지 않습니다. 1단계가 쓰는 레지스트리로만 나가게 하려면 송신 방화벽을 적용한 네트워크를 따로 만들고 그 이름을 지정하십시오.
+
+`SCANCODE_ENABLED`를 켠 설치에서는 2단계가 scancode를 포함한 BomLens 공개 변형 이미지(`bomlens-deep-license`)를 쓰므로 자체 소스 라이선스 탐지도 그대로 실행됩니다.
+
+범위 필터 설정도 그대로 적용됩니다. `SCAN_SCOPE_FILTER_NON_DEPLOYABLE_ENABLED=false`(또는 `SCAN_SCOPE_FILTER_ENABLED=false`)로 설정하면 BomLens가 평소 SBOM에서 빼는 테스트, 예제, 벤치마크 폴더도 포함합니다.
+
+### 실행 확인 {#engine-verify}
+
+<!-- docs-uat: id=dynamic-scan-executor-engine-verify-log kind=manual tier=manual -->
+- 워커 로그에 감지한 생태계와 함께 `bomlens_plan`이 남고, 이어서 컨테이너마다 종료 코드와 함께 `bomlens_container_exit`가 남습니다.
+
+<!-- docs-uat: id=dynamic-scan-executor-engine-verify-metadata kind=manual tier=manual -->
+- 스캔 메타데이터에 `scan_engine`(BomLens 버전, 이미지 다이제스트, 단계별 상태)과 `scan_engine_run`(계획 상태, 1단계 종료 코드, 강제 종료 여부, 소스 복원 여부)이 기록됩니다.
+
+### 이번 미리 보기에 없는 것 {#engine-not-yet}
+
+- Helm 차트(Kubernetes Job 실행기는 이후 단계입니다).
+- 의존성이 바뀌지 않은 경우 이전 스캔의 SBOM을 재사용하는 기능. BomLens 스캔은 항상 엔진을 실행합니다.
+- 1단계의 사설 패키지 레지스트리 인증 정보(기존 파이프라인이 읽는 `/etc/trusca/registry` 파일)와 SCANOSS 단계.
 
 ## 환경변수 레퍼런스 {#environment-variable-reference}
 
@@ -148,9 +203,17 @@ BomLens 이미지를 실행하는 실행기는 이번 릴리스에 없습니다.
 | 키 | 기본값 | 설명 |
 |---|---|---|
 | `SCAN_EXECUTOR` | `inprocess` | `inprocess`는 cdxgen을 워커 서브프로세스로 실행하고, `local_docker`는 Docker 소켓으로 환경별 사이드카를 띄웁니다(온프레 전용). |
-| `SCAN_ENGINE` | `inprocess` | 미리 보기. `bomlens`는 BomLens 엔진을 고릅니다. 실행기가 나오기 전까지는 경고를 남기고 `inprocess`로 스캔합니다([스캔 엔진](#scan-engine) 참고). |
+| `SCAN_ENGINE` | `inprocess` | 미리 보기. `bomlens`로 설정하면 소스 스캔을 BomLens 엔진으로 실행합니다([스캔 엔진](#scan-engine) 참고). |
+| `SCAN_BOMLENS_IMAGE` | 릴리스에 고정된 이미지 | 실행 계획과 2단계에 쓰는 BomLens 이미지입니다. 바꿀 때는 `latest`가 아닌 태그와 다이제스트를 함께 적어 `repo:tag@sha256:...` 형식으로 지정해야 합니다. |
+| `SCAN_BOMLENS_DEEP_LICENSE_IMAGE` | 릴리스에 고정된 이미지 | scancode를 포함한 BomLens 변형 이미지로, `SCANCODE_ENABLED`가 켜져 있으면 2단계에 씁니다. 고정 규칙은 위와 같습니다. |
+| `SCAN_BOMLENS_NETWORK` | 비어 있음(compose: `bridge`) | 패키지 레지스트리에서 의존성을 해석하는 1단계가 연결할 네트워크입니다. 비어 있으면 1단계를 거부하고, `host`와 워커 자신의 네트워크도 거부합니다. |
+| `SCAN_BOMLENS_STAGE1_REPOSITORIES` | `ghcr.io/cdxgen/` | 계획의 1단계 이미지가 시작해야 하는 저장소 접두사 목록(쉼표 구분, 각각 `/`로 끝남)입니다. |
+| `SCAN_BOMLENS_STAGE1_READ_ONLY_ROOT` | `true` | `false`로 바꾸면 1단계 루트 파일시스템에 쓸 수 있습니다. Python의 `pip install` 빌드 준비에 필요하지만, 그 대신 빌드가 쓰기 가능한 이미지에서 실행됩니다. |
+| `SCAN_BOMLENS_STAGE1_TIMEOUT_SECONDS` | `1800` | 1단계 시간 한도입니다. 넘기면 강제 종료하고 소스를 복원합니다. |
+| `SCAN_BOMLENS_STAGE2_TIMEOUT_SECONDS` | `1800` | 2단계 시간 한도입니다. 2단계가 강제 종료되면 스캔이 실패합니다. |
+| `SCAN_TRIVY_CACHE_VOLUME` | 비어 있음 | 워커의 Trivy 데이터베이스가 있는 명명 볼륨으로, 2단계에 읽기 전용으로 마운트합니다(compose: `<project>_trivy-cache`). |
 | `SCAN_LOCAL_DOCKER_ENVS` | `android` | 사이드카로 라우팅할 환경(쉼표 구분). 검출 공백은 `android`뿐이며, 언어별 격리가 필요하면 넓힙니다(위 참고). |
-| `SCAN_DOCKER_VOLUME_STRATEGY` | `named` | `named`는 워크스페이스 볼륨만 사이드카에 마운트하고, `volumes_from`은 모든 워커 볼륨을 다시 마운트합니다(아래 ack 없이는 거부). |
+| `SCAN_DOCKER_VOLUME_STRATEGY` | `named` | `named`는 워크스페이스 볼륨만 사이드카에 마운트하고, `volumes_from`은 모든 워커 볼륨을 다시 마운트합니다(아래 ack 없이는 거부하고, BomLens 엔진은 항상 거부). `bind`는 Docker 호스트에서 직접 실행되는 워커용으로, BomLens 엔진만 읽습니다. |
 | `SCAN_WORKSPACE_VOLUME` | — | `named`에 필요: compose-prefixed 워크스페이스 볼륨명(예: `trustedoss-portal_scan-workspace`). 미설정 시 in-process로 폴백합니다. |
 | `SCAN_WORKSPACE_MOUNT` | `/tmp/trustedoss` | 사이드카 내부의 워크스페이스 볼륨 마운트 지점(프로덕션: `/workspace`). |
 | `SCAN_WORKER_CONTAINER` | — | `volumes_from`에 필요: 워커 컨테이너에 대한 명시적 참조. |

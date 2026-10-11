@@ -384,6 +384,24 @@ x-backend-env: &backend-env
   # source_dir resolution breaks.
   SCAN_WORKSPACE_MOUNT: ${SCAN_WORKSPACE_MOUNT:-/workspace}
   SCAN_WORKSPACE_VOLUME: ${SCAN_WORKSPACE_VOLUME:-}
+  # BomLens scan engine (preview, off by default). SCAN_ENGINE=bomlens also
+  # needs the docker-socket-proxy service (`--profile bomlens-engine`),
+  # SCAN_WORKSPACE_VOLUME and SCAN_TRIVY_CACHE_VOLUME (the compose project's
+  # `workspace` and `trivy-cache` volume names). The image pins live in
+  # core/config.py; leave SCAN_BOMLENS_IMAGE / _DEEP_LICENSE_IMAGE empty to
+  # use them. Engine containers that resolve dependencies join
+  # SCAN_BOMLENS_NETWORK: Docker's default `bridge` reaches the package
+  # registries and not the `trustedoss` network, where PostgreSQL and Redis
+  # are. See docs-site admin-guide/dynamic-scan-executor.md#scan-engine.
+  SCAN_ENGINE: ${SCAN_ENGINE:-inprocess}
+  SCAN_BOMLENS_IMAGE: ${SCAN_BOMLENS_IMAGE:-}
+  SCAN_BOMLENS_DEEP_LICENSE_IMAGE: ${SCAN_BOMLENS_DEEP_LICENSE_IMAGE:-}
+  SCAN_BOMLENS_NETWORK: ${SCAN_BOMLENS_NETWORK:-bridge}
+  SCAN_BOMLENS_STAGE1_REPOSITORIES: ${SCAN_BOMLENS_STAGE1_REPOSITORIES:-ghcr.io/cdxgen/}
+  SCAN_BOMLENS_STAGE1_READ_ONLY_ROOT: ${SCAN_BOMLENS_STAGE1_READ_ONLY_ROOT:-true}
+  SCAN_BOMLENS_STAGE1_TIMEOUT_SECONDS: ${SCAN_BOMLENS_STAGE1_TIMEOUT_SECONDS:-1800}
+  SCAN_BOMLENS_STAGE2_TIMEOUT_SECONDS: ${SCAN_BOMLENS_STAGE2_TIMEOUT_SECONDS:-1800}
+  SCAN_TRIVY_CACHE_VOLUME: ${SCAN_TRIVY_CACHE_VOLUME:-}
   STALE_RUNNING_SCAN_GRACE_SECONDS: ${STALE_RUNNING_SCAN_GRACE_SECONDS:-900}
   # compose-env-var wiring audit: source/SBOM ingest and download size
   # limits (raw upload tarballs, source archives, SBOM upload/download,
@@ -848,6 +866,11 @@ services:
     stop_grace_period: 4200s
     environment:
       <<: *backend-env
+      # The Docker API for the BomLens engine (SCAN_ENGINE=bomlens) and the
+      # local_docker executor: the filtered proxy below, never the raw
+      # socket. Unused, and unreachable, unless the bomlens-engine profile
+      # is up.
+      DOCKER_HOST: tcp://docker-socket-proxy:2375
     volumes:
       - workspace:/workspace
       # This service consumes trustedoss.default as well as trustedoss.scan
@@ -919,6 +942,8 @@ services:
         condition: service_healthy
     networks:
       - trustedoss
+      # Only this worker and docker-socket-proxy are on it (see networks).
+      - docker-api
     healthcheck:
       test:
         - "CMD-SHELL"
@@ -1131,10 +1156,74 @@ services:
           cpus: "0.5"
           memory: 256M
 
+  # ---------------------------------------------------------------------------
+  # Docker API for the BomLens scan engine (SCAN_ENGINE=bomlens, preview).
+  # Off unless started with `docker-compose --profile bomlens-engine up -d`.
+  #
+  # The scan worker runs the engine's containers itself (integrations/bomlens/
+  # runner.py), so it needs the Docker API; it never gets the raw socket. This
+  # proxy holds the socket read-only and answers only container and image
+  # calls (create, start, logs, wait, inspect, kill, remove, pull). exec,
+  # volumes, networks, swarm, system, build and auth are refused with 403.
+  #
+  # What it does not do: look inside a container-create request. The limits
+  # every engine container runs with (read-only root, no capabilities beyond
+  # a minimal set, no network or an egress-only one, mounts only from the
+  # scan's workspace) are applied by the worker, so this proxy narrows what a
+  # compromised worker could reach; it is not the boundary itself.
+  #
+  # Reachable only on `docker-api`, an internal network shared with
+  # worker-scan alone: the backend, the frontend and the database cannot
+  # reach it, and it has no route out.
+  # ---------------------------------------------------------------------------
+  docker-socket-proxy:
+    image: ghcr.io/tecnativa/docker-socket-proxy:0.3.0
+    profiles: ["bomlens-engine"]
+    restart: unless-stopped
+    logging: *logging
+    environment:
+      CONTAINERS: "1"
+      IMAGES: "1"
+      POST: "1"
+      DELETE: "1"
+      EXEC: "0"
+      VOLUMES: "0"
+      NETWORKS: "0"
+      SWARM: "0"
+      SYSTEM: "0"
+      INFO: "0"
+      AUTH: "0"
+      BUILD: "0"
+      COMMIT: "0"
+      SECRETS: "0"
+      CONFIGS: "0"
+      PLUGINS: "0"
+    # haproxy renders its configuration into the image at start, so the root
+    # filesystem stays writable; it needs no capability to read the socket.
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    networks:
+      - docker-api
+    deploy:
+      resources:
+        limits:
+          cpus: "0.25"
+          memory: 64M
+
 networks:
   trustedoss:
     name: trustedoss
     driver: bridge
+  # The scan worker's private line to docker-socket-proxy. `internal` keeps it
+  # off the host's outbound routes; nothing else joins it.
+  docker-api:
+    name: trustedoss-docker-api
+    driver: bridge
+    internal: true
 
 volumes:
   postgres-data:

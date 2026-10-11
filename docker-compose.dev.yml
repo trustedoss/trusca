@@ -251,6 +251,19 @@ x-backend-env: &backend-env
   SCAN_WORKER_CONTAINER: ${SCAN_WORKER_CONTAINER:-}
   SCAN_WORKSPACE_MOUNT: ${SCAN_WORKSPACE_MOUNT:-/tmp/trustedoss}
   SCAN_WORKSPACE_VOLUME: ${SCAN_WORKSPACE_VOLUME:-}
+  # BomLens scan engine (preview). The dev worker already has the Docker
+  # socket (celery-worker below); set SCAN_WORKSPACE_VOLUME and
+  # SCAN_TRIVY_CACHE_VOLUME to this project's scan-workspace / trivy-cache
+  # volume names. See docker-compose.yml for the production wiring.
+  SCAN_ENGINE: ${SCAN_ENGINE:-inprocess}
+  SCAN_BOMLENS_IMAGE: ${SCAN_BOMLENS_IMAGE:-}
+  SCAN_BOMLENS_DEEP_LICENSE_IMAGE: ${SCAN_BOMLENS_DEEP_LICENSE_IMAGE:-}
+  SCAN_BOMLENS_NETWORK: ${SCAN_BOMLENS_NETWORK:-bridge}
+  SCAN_BOMLENS_STAGE1_REPOSITORIES: ${SCAN_BOMLENS_STAGE1_REPOSITORIES:-ghcr.io/cdxgen/}
+  SCAN_BOMLENS_STAGE1_READ_ONLY_ROOT: ${SCAN_BOMLENS_STAGE1_READ_ONLY_ROOT:-true}
+  SCAN_BOMLENS_STAGE1_TIMEOUT_SECONDS: ${SCAN_BOMLENS_STAGE1_TIMEOUT_SECONDS:-1800}
+  SCAN_BOMLENS_STAGE2_TIMEOUT_SECONDS: ${SCAN_BOMLENS_STAGE2_TIMEOUT_SECONDS:-1800}
+  SCAN_TRIVY_CACHE_VOLUME: ${SCAN_TRIVY_CACHE_VOLUME:-}
   STALE_RUNNING_SCAN_GRACE_SECONDS: ${STALE_RUNNING_SCAN_GRACE_SECONDS:-900}
   # compose-env-var wiring audit: source/SBOM ingest and download size
   # limits (raw upload tarballs, source archives, SBOM upload/download,

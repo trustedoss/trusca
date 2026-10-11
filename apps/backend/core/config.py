@@ -1465,15 +1465,113 @@ def scan_engine() -> str:
       scancode, Trivy), as before.
     - ``bomlens`` (preview): the BomLens image produces the SBOM and the Trivy
       report and TRUSCA reads its result manifest
-      (``integrations.bomlens``). The executor that runs the image is not part
-      of this release, so the source pipeline logs a warning and keeps using
-      ``inprocess``.
+      (``integrations.bomlens``). The worker runs the image's execution plan
+      through the Docker API (``integrations.bomlens.runner``), so it needs a
+      Docker endpoint (the socket proxy in the compose files).
 
     Resolved at call time (CLAUDE.md core rule #11). An unknown value reads as
     ``inprocess``, the same safe fallback ``SCAN_EXECUTOR`` uses.
     """
     value = os.getenv("SCAN_ENGINE", "inprocess").strip().lower()
     return value if value in SCAN_ENGINE_VALUES else "inprocess"
+
+
+# ---------------------------------------------------------------------------
+# BomLens engine images and container limits (SCAN_ENGINE=bomlens).
+#
+# The two images are pinned here and nowhere else: a tag for people and a
+# digest for Docker. Upgrading BomLens is a pull request that changes these two
+# lines (scan-engine-bomlens-replacement-plan-2026-10.md, stage 5). An operator
+# override must be pinned the same way; integrations.bomlens.runner refuses one
+# without a digest or tagged ``latest``.
+# ---------------------------------------------------------------------------
+
+#: The BomLens image: execution plan (MODE=PLAN) and stage 2 (POSTPROCESS).
+BOMLENS_IMAGE_DEFAULT: str = (
+    "ghcr.io/haksungjang/bomlens:sha-d8d3323"
+    "@sha256:8b44d05a0baf66e11dcbabb52d7d9842cb11a5d0a4ec419b80de7f51233e05c5"
+)
+
+#: The published variant with scancode, used for stage 2 when the installation
+#: turns on first-party licence detection (SCANCODE_ENABLED).
+BOMLENS_DEEP_LICENSE_IMAGE_DEFAULT: str = (
+    "ghcr.io/haksungjang/bomlens-deep-license:sha-d8d3323"
+    "@sha256:f29a247c6110a67d141cdcec6123c30d8db73d4e2ce99c1b4a68d411e6b86c57"
+)
+
+#: Registries and repositories a plan's stage 1 image may come from.
+BOMLENS_STAGE1_REPOSITORIES_DEFAULT: str = "ghcr.io/cdxgen/"
+
+
+def bomlens_image() -> str:
+    """The BomLens image reference (``repo:tag@sha256:...``), read per call."""
+    return os.getenv("SCAN_BOMLENS_IMAGE", "").strip() or BOMLENS_IMAGE_DEFAULT
+
+
+def bomlens_deep_license_image() -> str:
+    """The scancode variant of the BomLens image, read per call."""
+    return (
+        os.getenv("SCAN_BOMLENS_DEEP_LICENSE_IMAGE", "").strip()
+        or BOMLENS_DEEP_LICENSE_IMAGE_DEFAULT
+    )
+
+
+def bomlens_stage1_repositories() -> tuple[str, ...]:
+    """Repository prefixes a plan's stage 1 image must start with.
+
+    A prefix is matched against the image name before its tag, so
+    ``ghcr.io/cdxgen/`` admits ``ghcr.io/cdxgen/cdxgen-alpine-node24:13.2.0``
+    and nothing outside that namespace. A prefix that does not end in ``/`` is
+    ignored: ``ghcr.io/cdxgen`` would also admit ``ghcr.io/cdxgen-evil/...``.
+    """
+    raw = os.getenv("SCAN_BOMLENS_STAGE1_REPOSITORIES", "").strip()
+    raw = raw or BOMLENS_STAGE1_REPOSITORIES_DEFAULT
+    return tuple(p.strip() for p in raw.split(",") if p.strip().endswith("/"))
+
+
+def bomlens_network() -> str:
+    """Docker network for an engine stage that needs the package registries.
+
+    Empty (the default) means none is configured, and a stage that needs the
+    network is refused rather than put on a network TRUSCA did not choose.
+    The compose files set it; see the BomLens engine section of the
+    administrator guide.
+    """
+    return os.getenv("SCAN_BOMLENS_NETWORK", "").strip()
+
+
+def bomlens_stage1_timeout_seconds() -> int:
+    """How long stage 1 (dependency resolution) may run before it is killed."""
+    return _int_env("SCAN_BOMLENS_STAGE1_TIMEOUT_SECONDS", 1800, minimum=60, maximum=6 * 3600)
+
+
+def bomlens_stage2_timeout_seconds() -> int:
+    """How long stage 2 (BomLens post-processing) may run before it is killed."""
+    return _int_env("SCAN_BOMLENS_STAGE2_TIMEOUT_SECONDS", 1800, minimum=60, maximum=6 * 3600)
+
+
+def bomlens_stage1_read_only_root() -> bool:
+    """Whether stage 1 runs with a read-only root filesystem (default ``true``).
+
+    Stage 1 writes only to the source tree, its output folder and a scratch
+    ``/tmp`` from the workspace. A build-prep step that installs packages into
+    the language image itself (Python's ``pip install`` into the system
+    site-packages) cannot run then and the SBOM loses those transitive
+    dependencies; an operator who needs them sets this to ``false``. Only the
+    exact falsy tokens ``false`` / ``0`` / ``no`` turn it off.
+    """
+    raw = os.getenv("SCAN_BOMLENS_STAGE1_READ_ONLY_ROOT", "true").strip().lower()
+    return raw not in {"false", "0", "no"}
+
+
+def bomlens_trivy_cache_volume() -> str:
+    """Named volume holding the worker's Trivy database (``named`` strategy).
+
+    Stage 2 runs without network, so it reads the database the worker already
+    keeps fresh, mounted read-only. Under the ``bind`` strategy the worker's
+    ``TRIVY_CACHE_DIR`` path is mounted instead.
+    """
+    return os.getenv("SCAN_TRIVY_CACHE_VOLUME", "").strip()
 
 
 # ---------------------------------------------------------------------------
