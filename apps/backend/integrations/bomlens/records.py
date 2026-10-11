@@ -88,7 +88,14 @@ ENGINE_NAME: Final = "bomlens"
 MAX_LISTED: Final = 50
 MAX_ENTRY_CHARS: Final = 200
 
-_MORE_SUFFIX: Final = re.compile(r"\s*\(\+(\d+) more\)\s*$")
+#: Longest value read from one property: the most a BomLens list can hold,
+#: with room for its separators and its "(+N more)" suffix. The value comes from
+#: the scanned tree; nothing past this is looked at.
+MAX_VALUE_CHARS: Final = MAX_LISTED * (MAX_ENTRY_CHARS + 2) + 64
+
+#: The suffix BomLens appends when it cut its own list. Anchored, applied to a
+#: right-stripped value, and bounded to nine digits so ``int()`` cannot refuse it.
+_MORE_SUFFIX: Final = re.compile(r"\(\+(\d{1,9}) more\)$")
 
 
 def _non_negative(counts: dict[str, int], key: str) -> int:
@@ -186,6 +193,7 @@ def _document_properties(sbom: dict[str, Any]) -> dict[str, str]:
 def _listed(value: str) -> tuple[list[str], int]:
     """``"a, b (+3 more)"`` -> ``(["a", "b"], 3)``, bounded."""
     more = 0
+    value = value[:MAX_VALUE_CHARS].rstrip()
     match = _MORE_SUFFIX.search(value)
     if match:
         more = int(match.group(1))

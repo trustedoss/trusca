@@ -37,8 +37,10 @@ terminal scan failure; ``tasks.scan_source`` already does.
 from __future__ import annotations
 
 import copy
+import errno
+import os
 import uuid
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from pathlib import Path
 from typing import Any, Final
 
@@ -57,6 +59,7 @@ from integrations.bomlens.contract import (
     BomLensRunFailed,
     BomLensVulnerabilityScanFailed,
     EngineResult,
+    OutputTooLarge,
     VerifiedOutput,
     clip,
     load_manifest,
@@ -292,10 +295,22 @@ def _keep_verified(artifact_dir: Path, verified: VerifiedOutput) -> Path:
 
     The artifact row then points at exactly what was hashed and parsed, never
     at the engine's folder, where a file could change after it was read.
+
+    A file already at that path that is a symbolic link is refused, never
+    followed: the copy must land where the artifact row says it is.
     """
     artifact_dir.mkdir(parents=True, exist_ok=True)
     path = artifact_dir / verified.name
-    path.write_bytes(verified.data)
+    try:
+        fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_TRUNC | os.O_NOFOLLOW, 0o644)
+    except OSError as exc:
+        if exc.errno == errno.ELOOP:
+            raise BomLensContractError(
+                f"the kept copy of {clip(verified.role)} is a symbolic link"
+            ) from exc
+        raise
+    with os.fdopen(fd, "wb") as fh:
+        fh.write(verified.data)
     return path
 
 
@@ -314,10 +329,15 @@ def _read_license_scan(result: EngineResult, output_dir: Path) -> _LicenseScan:
     """Read the scancode result of a ``deep-license`` step that ran.
 
     A step that did not run has nothing to read; ``_record_engine_run`` has
-    already recorded why. A result that does not match its digest raises like
-    any other output. A result larger than the in-process ceiling
-    (``SCANCODE_MAX_RESULT_BYTES``) is not opened, as the in-process adapter
-    does not open one, and the stage is recorded as ``too_large``.
+    already recorded why. A result that does not match its digest, or is not
+    JSON, raises like any other output and fails the scan: integrity comes
+    first here, where the in-process stage would only degrade. A result larger
+    than the in-process ceiling (``SCANCODE_MAX_RESULT_BYTES``) is not read
+    past that ceiling, whatever size the manifest declared, and the stage is
+    recorded as ``too_large``.
+
+    Only the detections and the checked bytes are kept; the decoded document
+    is dropped once they are taken from it.
     """
     step = result.step(stages.DEEP_LICENSE_STEP)
     if step is None or step.status not in ("ok", "degraded"):
@@ -327,19 +347,24 @@ def _read_license_scan(result: EngineResult, output_dir: Path) -> _LicenseScan:
         log.warning("bomlens_license_scan_missing", stage="persist", status=step.status)
         return _LicenseScan(problem="failed")
     limit = scancode_max_result_bytes()
-    if output.bytes > limit:
+    verified: VerifiedOutput | None = None
+    if output.bytes <= limit:
+        try:
+            verified = read_output(output_dir, output, limit=limit)
+        except OutputTooLarge:
+            verified = None
+    if verified is None:
         log.warning(
             "bomlens_license_scan_too_large",
             stage="persist",
-            size_bytes=output.bytes,
+            declared_bytes=output.bytes,
             limit_bytes=limit,
         )
         return _LicenseScan(problem="too_large")
-    verified = read_output(output_dir, output)
     detections = scancode_adapter.parse_detections_document(
         verified.document, cap=scancode_max_detections()
     )
-    return _LicenseScan(verified=verified, detections=tuple(detections))
+    return _LicenseScan(verified=replace(verified, document={}), detections=tuple(detections))
 
 
 def _record_result_completeness(

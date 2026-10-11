@@ -426,6 +426,107 @@ def test_a_licence_scan_over_the_ceiling_is_not_opened(
     )
 
 
+def test_a_licence_scan_larger_than_declared_is_not_read_past_the_ceiling(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, sync_session: Session
+) -> None:
+    """The manifest says 1000 bytes; the file is 9231. Read up to the scancode
+    ceiling and stopped there: a degraded licence scan, not the whole file in
+    memory and then a contract error that fails the scan."""
+    from tasks.bomlens_result import apply_bomlens_result
+
+    monkeypatch.setenv("SCANCODE_MAX_RESULT_BYTES", "4096")
+    scan_id = _seed_running_source_scan()
+    folder = _copy_fixture("source-deep-license", tmp_path)
+
+    def _declare_small(manifest: dict[str, Any]) -> None:
+        for output in manifest["outputs"]:
+            if output["role"] == "license-scan.scancode":
+                output["bytes"] = 1000
+
+    _rewrite_manifest(folder, _declare_small)
+
+    apply_bomlens_result(scan_uuid=scan_id, output_dir=folder)
+
+    assert _detected(sync_session, scan_id) == []
+    assert _component_count(sync_session, scan_id) == 1
+    assert {"stage": "scancode", "reason": "too_large"} in so.degraded_stages(
+        _metadata(sync_session, scan_id)
+    )
+
+
+def test_a_scancode_ceiling_above_the_engine_ceiling_still_degrades(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, sync_session: Session
+) -> None:
+    """SCANCODE_MAX_RESULT_BYTES set above MAX_OUTPUT_BYTES (here the engine
+    ceiling is lowered to stand for a file over 256 MiB): the licence scan
+    degrades as too_large instead of failing the scan.
+
+    The captured licence scan is smaller than the Trivy report, so this copy
+    pads it with trailing whitespace (still the same JSON) and records the new
+    size and digest, putting it alone over the lowered ceiling."""
+    import hashlib
+
+    from integrations.bomlens import contract
+    from tasks.bomlens_result import apply_bomlens_result
+
+    folder = _copy_fixture("source-deep-license", tmp_path)
+    path = folder / "mixed_1.0.0_scancode.json"
+    padded = path.read_bytes() + b" " * 40_000
+    path.write_bytes(padded)
+
+    def _record_padding(manifest: dict[str, Any]) -> None:
+        for output in manifest["outputs"]:
+            if output["role"] == "license-scan.scancode":
+                output.update(bytes=len(padded), sha256=hashlib.sha256(padded).hexdigest())
+
+    _rewrite_manifest(folder, _record_padding)
+    monkeypatch.setenv("SCANCODE_MAX_RESULT_BYTES", str(2**30))
+    monkeypatch.setattr(contract, "MAX_OUTPUT_BYTES", 30_000)
+    scan_id = _seed_running_source_scan()
+
+    apply_bomlens_result(scan_uuid=scan_id, output_dir=folder)
+
+    assert _detected(sync_session, scan_id) == []
+    assert {"stage": "scancode", "reason": "too_large"} in so.degraded_stages(
+        _metadata(sync_session, scan_id)
+    )
+
+
+def test_only_the_checked_bytes_of_the_licence_scan_are_kept(tmp_path: Path) -> None:
+    from integrations.bomlens.contract import load_manifest
+    from tasks.bomlens_result import _read_license_scan
+
+    folder = _copy_fixture("source-deep-license", tmp_path)
+    scan = _read_license_scan(load_manifest(folder), folder)
+
+    assert scan.verified is not None
+    assert scan.verified.document == {}
+    assert scan.verified.data == (folder / "mixed_1.0.0_scancode.json").read_bytes()
+    assert len(scan.detections) == 3
+
+
+def test_a_symlink_planted_where_the_copy_goes_is_refused(
+    tmp_path: Path, sync_session: Session
+) -> None:
+    """The kept copy is written without following a link, so a link planted at
+    its path cannot redirect the bytes to another file."""
+    from tasks.bomlens_result import apply_bomlens_result
+
+    scan_id = _seed_running_source_scan()
+    folder = _copy_fixture("source-ok", tmp_path)
+    keep = tmp_path / "kept"
+    keep.mkdir()
+    victim = tmp_path / "victim.txt"
+    victim.write_text("untouched", encoding="utf-8")
+    (keep / "node_1.0.0_bom.json").symlink_to(victim)
+
+    with pytest.raises(BomLensContractError, match="symbolic link"):
+        apply_bomlens_result(scan_uuid=scan_id, output_dir=folder, artifact_dir=keep)
+
+    assert victim.read_text(encoding="utf-8") == "untouched"
+    assert "sbom_cyclonedx" not in _artifact_kinds(sync_session, scan_id)
+
+
 def test_a_licence_scan_that_ran_but_wrote_nothing_is_a_failed_stage(
     tmp_path: Path, sync_session: Session
 ) -> None:

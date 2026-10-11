@@ -207,6 +207,41 @@ def test_the_captured_exclusion_is_recorded_beside_the_in_process_keys() -> None
     assert record["excluded_manifests_more"] == 0
 
 
+def test_a_long_whitespace_run_is_read_in_linear_time() -> None:
+    """The value comes from the scanned tree. A suffix pattern that starts with
+    ``\\s*`` and is searched over the whole value takes quadratic time on a long
+    whitespace run (40,000 spaces took 2.65 s); the value is cut first."""
+    import time
+
+    sbom = _sbom(
+        **{
+            records.EXCLUDED_PATHS_PROPERTY: "**/test/**",
+            records.EXCLUDED_MANIFESTS_PROPERTY: "a" + " " * 1_000_000 + "b",
+        }
+    )
+    started = time.monotonic()
+    record = records.scope_filter_record(sbom, kept=0)
+    assert time.monotonic() - started < 1.0
+    assert record is not None
+    assert record["excluded_manifests"] == ["a"]
+
+
+def test_a_more_count_too_long_for_int_is_not_an_error() -> None:
+    """``int()`` refuses more than 4300 digits with ValueError. Such a suffix is
+    not BomLens' and is left as text, bounded like any entry."""
+    sbom = _sbom(
+        **{
+            records.EXCLUDED_PATHS_PROPERTY: "**/test/**",
+            records.EXCLUDED_MANIFESTS_PROPERTY: "test/package.json (+" + "9" * 5000 + " more)",
+        }
+    )
+    record = records.scope_filter_record(sbom, kept=0)
+    assert record is not None
+    assert record["excluded_manifests_more"] == 0
+    assert record["excluded_manifests"][0].startswith("test/package.json (+999")
+    assert len(record["excluded_manifests"][0]) == records.MAX_ENTRY_CHARS
+
+
 def test_the_more_suffix_is_a_count_and_the_lists_are_bounded() -> None:
     names = ", ".join(f"pkg{i}/test/package.json" for i in range(60))
     sbom = _sbom(

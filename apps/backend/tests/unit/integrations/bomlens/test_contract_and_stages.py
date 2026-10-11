@@ -263,6 +263,42 @@ def test_json_nested_past_the_parser_stack_is_a_refused_result(tmp_path: Path, t
             contract.read_output(tmp_path, _output("bom.json", deep))
 
 
+@pytest.mark.parametrize("target", ["manifest", "output"])
+def test_a_number_past_the_integer_digit_limit_is_a_refused_result(
+    tmp_path: Path, target: str
+) -> None:
+    """Python refuses to read an integer of more than 4300 digits with a
+    ValueError; that is a refused result, not an unexpected error."""
+    data = b'{"n": ' + b"9" * 5000 + b"}"
+    if target == "manifest":
+        (tmp_path / contract.MANIFEST_NAME).write_bytes(data)
+        with pytest.raises(contract.BomLensContractError, match="too large to read"):
+            contract.load_manifest(tmp_path)
+    else:
+        (tmp_path / "bom.json").write_bytes(data)
+        with pytest.raises(contract.BomLensContractError, match="too large to read"):
+            contract.read_output(tmp_path, _output("bom.json", data))
+
+
+def test_a_lower_read_limit_is_never_read_past(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """The ceiling holds whatever size the manifest declared, and a caller's
+    limit can lower it but not raise it above MAX_OUTPUT_BYTES."""
+    data = b'{"a": "' + b"x" * 5000 + b'"}'
+    (tmp_path / "bom.json").write_bytes(data)
+    declared_small = contract.Output(
+        role="license-scan.scancode", path="bom.json", sha256="0" * 64, bytes=1000
+    )
+    with pytest.raises(contract.OutputTooLarge):
+        contract.read_output(tmp_path, declared_small, limit=4096)
+    # Within both ceilings the same file reads.
+    assert contract.read_output(tmp_path, _output("bom.json", data), limit=8192).data == data
+    monkeypatch.setattr(contract, "MAX_OUTPUT_BYTES", 4096)
+    with pytest.raises(contract.OutputTooLarge):
+        contract.read_output(tmp_path, _output("bom.json", data), limit=2**40)
+
+
 # ---------------------------------------------------------------------------
 # Error messages stay short (L2) and the run's own fields agree (L3)
 # ---------------------------------------------------------------------------
