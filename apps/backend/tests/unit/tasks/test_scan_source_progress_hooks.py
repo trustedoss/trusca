@@ -64,6 +64,20 @@ class _FakeSession:
     def commit(self) -> None:
         self.commits += 1
 
+    def execute(self, _statement: Any) -> Any:
+        """``mark_failed``'s conditional UPDATE: applies while queued/running."""
+        changed = self._scan.status in ("queued", "running")
+        if changed:
+            self._scan.status = "failed"
+
+        class _Result:
+            rowcount = 1 if changed else 0
+
+        return _Result()
+
+    def refresh(self, _obj: Any) -> None:
+        return None
+
 
 @pytest.fixture
 def patch_session(monkeypatch: pytest.MonkeyPatch) -> Any:

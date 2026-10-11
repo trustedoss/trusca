@@ -550,3 +550,107 @@ def test_a_scan_cancelled_mid_run_stops_without_writing_over_it(
     assert (scan.status, scan.error_message) == ("cancelled", "cancelled by admin")
     assert not docker.runs_of("stage2")
     assert _component_count(sync_session, scan_id) == 0
+
+
+# ---------------------------------------------------------------------------
+# Third review (N-M2, N-L4): an ended scan stays ended
+# ---------------------------------------------------------------------------
+
+
+def _set(scan_id: uuid.UUID, **values: Any) -> None:
+    from core.db import sync_session_scope
+
+    with sync_session_scope() as session:
+        scan = session.get(Scan, scan_id)
+        assert scan is not None
+        for key, value in values.items():
+            setattr(scan, key, value)
+        session.commit()
+
+
+@pytest.mark.parametrize("task_name", ["scan_source_engine_task", "scan_source_task"])
+@pytest.mark.parametrize("ended", ["cancelled", "failed", "succeeded"])
+def test_a_scan_that_ended_while_queued_is_not_run(
+    monkeypatch: pytest.MonkeyPatch, sync_session: Session, task_name: str, ended: str
+) -> None:
+    """Cancelled while it waited in the queue: worker-engine never got the
+    revoke, so the task arrives anyway. It must not restart the scan, and no
+    engine container may start. Same rule for the in-process task."""
+    import tasks.scan_source as scan_source
+
+    docker = _clean_docker()
+    _install(monkeypatch, docker)
+    monkeypatch.setenv("TRUSTEDOSS_SCAN_BACKEND", "mock")
+    scan_id = _seed_running_source_scan()
+    _set(scan_id, status=ended, error_message="ended before the task ran")
+
+    result = getattr(scan_source, task_name).apply(args=[str(scan_id)])
+    assert result.successful(), result.traceback
+
+    scan = _scan(sync_session, scan_id)
+    assert (scan.status, scan.error_message) == (ended, "ended before the task ran")
+    assert docker.runs == []
+
+
+def test_a_queued_scan_still_runs(monkeypatch: pytest.MonkeyPatch, sync_session: Session) -> None:
+    from tasks.scan_source import scan_source_engine_task
+
+    docker = _clean_docker()
+    _install(monkeypatch, docker)
+    monkeypatch.setenv("TRUSTEDOSS_SCAN_BACKEND", "mock")
+    scan_id = _seed_running_source_scan()
+    _set(scan_id, status="queued")
+
+    scan_source_engine_task.apply(args=[str(scan_id)])
+
+    assert _scan(sync_session, scan_id).status == "succeeded"
+    assert docker.runs_of("stage2")
+
+
+def test_an_engine_error_after_a_cancel_does_not_overwrite_it(
+    monkeypatch: pytest.MonkeyPatch, sync_session: Session
+) -> None:
+    """The reaper removed the containers of a cancelled scan mid-stage and the
+    runner raised; the failure is not recorded over the cancellation."""
+    from tasks.scan_source import scan_source_engine_task
+
+    scan_id = _seed_running_source_scan()
+
+    def cancel(run: Any) -> None:
+        del run
+        _set(scan_id, status="cancelled", error_message="cancelled by admin")
+
+    docker = FakeDocker().behave("plan", Behaviour(exit_code=137, effect=cancel))
+    _install(monkeypatch, docker)
+    monkeypatch.setenv("TRUSTEDOSS_SCAN_BACKEND", "mock")
+
+    result = scan_source_engine_task.apply(args=[str(scan_id)])
+    assert result.successful(), result.traceback
+
+    scan = _scan(sync_session, scan_id)
+    assert (scan.status, scan.error_message) == ("cancelled", "cancelled by admin")
+
+
+@pytest.mark.parametrize(
+    ("before", "after"),
+    [
+        ("running", "failed"),
+        ("queued", "failed"),
+        ("cancelled", "cancelled"),
+        ("succeeded", "succeeded"),
+    ],
+)
+def test_a_failure_is_recorded_only_over_queued_or_running(
+    sync_session: Session, before: str, after: str
+) -> None:
+    """The shared writer every pipeline uses, in-process ones included."""
+    from tasks._scan_pipeline import record_terminal_failure
+
+    scan_id = _seed_running_source_scan()
+    _set(scan_id, status=before, error_message=None)
+
+    record_terminal_failure(scan_id, "boom")
+
+    scan = _scan(sync_session, scan_id)
+    assert scan.status == after
+    assert scan.error_message == ("boom" if after == "failed" else None)

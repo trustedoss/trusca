@@ -287,8 +287,15 @@ def _run_source_task(self: Any, scan_id: str, *, engine: str) -> None:
             if scan is None:
                 log.warning("scan_source_missing_scan_row")
                 return
-            if scan.status == "succeeded":
-                log.info("scan_source_already_succeeded")
+            # Only a queued scan, or a running one Celery redelivered after a
+            # worker died, is (re)started. A scan that already ended keeps its
+            # ending: in particular a scan cancelled while it waited in the
+            # queue, whose revoke never reached worker-engine (no remote
+            # control there), must not be flipped back to running (security
+            # review on #522, N-M2). Every enqueue path creates a new queued
+            # row, so no retry depends on restarting an ended one.
+            if scan.status not in ("queued", "running"):
+                log.info("scan_source_not_restartable", status=scan.status)
                 return
 
             project = session.get(Project, scan.project_id)
