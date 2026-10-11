@@ -18,6 +18,7 @@ Usage:
   python run_golden.py --api http://localhost:8000 --fixtures <dir> \
       --names scancode-mixed-policy gradle maven ...
   python run_golden.py ... --update      # (re)write baselines instead of diffing
+  python run_golden.py ... --shadow-out <dir>   # record for shadow_report.py
 
 Exit code 0 = all match (or baselines written); 1 = drift / error.
 """
@@ -135,7 +136,7 @@ def _team(api, token):
     raise RuntimeError("no team available (set GOLDEN_TEAM)")
 
 
-def scan_fixture(api, token, team, name, src: Path) -> dict:
+def scan_fixture(api, token, team, name, src: Path, *, shadow: bool = False) -> dict:
     slug = f"golden-{name}-{uuid.uuid4().hex[:8]}"
     s, b, _ = _req("POST", f"{api}/v1/projects", token=token,
                    json_body={"team_id": team, "name": f"golden:{name}",
@@ -155,15 +156,22 @@ def scan_fixture(api, token, team, name, src: Path) -> dict:
     if s not in (200, 201, 202):
         raise RuntimeError(f"trigger failed {s}: {b[:160]!r}")
     sid = json.loads(b)["id"]
-    deadline = time.time() + POLL_TIMEOUT_S
+    started = time.time()
+    deadline = started + POLL_TIMEOUT_S
     status = "?"
+    scan: dict = {}
     while time.time() < deadline:
         s, b, _ = _req("GET", f"{api}/v1/scans/{sid}", token=token)
-        status = json.loads(b).get("status", "?")
+        scan = json.loads(b)
+        status = scan.get("status", "?")
         if status in ("succeeded", "failed", "cancelled", "completed"):
             break
         time.sleep(5)
-    return _capture(api, token, pid, sid, status)
+    got = _capture(api, token, pid, sid, status)
+    if shadow:
+        # Shadow runs only: the baseline diff never sees this key.
+        got["shadow"] = _shadow_capture(api, token, pid, scan, time.time() - started)
+    return got
 
 
 def _capture(api, token, pid, sid, status) -> dict:
@@ -217,13 +225,102 @@ def _capture(api, token, pid, sid, status) -> dict:
     }
 
 
+#: Longest error message kept in a shadow capture.
+_SHADOW_TEXT_MAX = 300
+
+
+def _vulnerability_rows(api, token, pid) -> list[dict] | None:
+    """Every vulnerability row of the project's latest scan, page by page."""
+    rows: list[dict] = []
+    offset = 0
+    while True:
+        s, b, _ = _req("GET", f"{api}/v1/projects/{pid}/vulnerabilities"
+                       f"?limit=500&offset={offset}", token=token)
+        if s != 200:
+            return None
+        page = json.loads(b)
+        items = page.get("items") or []
+        rows.extend(items)
+        offset += len(items)
+        if not items or offset >= int(page.get("total") or 0):
+            return rows
+
+
+def _as_dict(value: object) -> dict:
+    return value if isinstance(value, dict) else {}
+
+
+def shadow_fields(scan: dict, rows: list[dict] | None, wall_seconds: float) -> dict:
+    """What a shadow run records beyond the baseline capture.
+
+    Both engines read the same Trivy database in a shadow run, so the
+    vulnerability identifiers are comparable there (the baseline diff leaves
+    the count out because the database moves between nights). The scan row
+    adds the engine that ran, the stages that degraded and the time it took.
+    """
+    if rows is None:
+        ids = findings = None
+    else:
+        ids = sorted({str(r.get("cve_id") or "") for r in rows})
+        findings = sorted(
+            f"{r.get('cve_id')}|{r.get('affected_component_name')}"
+            f"@{r.get('affected_component_version')}"
+            for r in rows
+        )
+    meta = _as_dict(scan.get("metadata"))
+    engine = _as_dict(meta.get("scan_engine"))
+    outcomes = _as_dict(meta.get("stage_outcomes"))
+    error = scan.get("error_message")
+    return {
+        "vulnerability_ids": ids,
+        "vulnerability_findings": findings,
+        "scan": {
+            "status": scan.get("status"),
+            # The in-process pipeline writes no engine record.
+            "engine": engine.get("name") or "inprocess",
+            "engine_run_status": engine.get("run_status"),
+            "engine_image_digest": engine.get("image_digest"),
+            "started_at": scan.get("started_at"),
+            "completed_at": scan.get("completed_at"),
+            "stage_outcomes": {
+                str(k): (v.get("reason") if isinstance(v, dict) else v)
+                for k, v in sorted(outcomes.items())
+            },
+            "scancode_skipped": meta.get("scancode_skipped"),
+            "error_message": error[:_SHADOW_TEXT_MAX] if isinstance(error, str) else None,
+        },
+        "wall_seconds": round(wall_seconds, 1),
+    }
+
+
+def _shadow_capture(api, token, pid, scan: dict, wall_seconds: float) -> dict:
+    return shadow_fields(scan, _vulnerability_rows(api, token, pid), wall_seconds)
+
+
+def write_shadow(out_dir: Path, name: str, record: dict) -> Path:
+    """Write one shadow capture as ``<out_dir>/<name>.json``."""
+    out_dir.mkdir(parents=True, exist_ok=True)
+    path = out_dir / f"{name}.json"
+    path.write_text(json.dumps(record, indent=2, sort_keys=True) + "\n")
+    return path
+
+
 def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--api", default=DEFAULT_API)
     ap.add_argument("--fixtures", required=True)
     ap.add_argument("--names", nargs="+", required=True)
     ap.add_argument("--update", action="store_true")
+    ap.add_argument(
+        "--shadow-out",
+        help="shadow run: write each capture, with vulnerability ids and the scan "
+        "row, to this folder instead of diffing; a difference never fails it",
+    )
     args = ap.parse_args()
+    if args.shadow_out and args.update:
+        ap.error("--shadow-out and --update are exclusive")
+    if args.shadow_out:
+        return shadow_main(args.api, Path(args.fixtures), args.names, Path(args.shadow_out))
 
     BASELINE_DIR.mkdir(parents=True, exist_ok=True)
     token = login(args.api)
@@ -266,6 +363,30 @@ def main() -> int:
     print(f"=== golden: {'updated' if args.update else 'checked'} "
           f"{len(args.names)} fixtures, drift={drift} ===")
     return 1 if (drift and not args.update) else 0
+
+
+def shadow_main(api: str, fixtures: Path, names: list[str], out_dir: Path) -> int:
+    """Scan each fixture once and record it for the shadow comparison.
+
+    A failed scan or a missing fixture is recorded, not raised: the report
+    shows it beside the other engine's result. Only a stack that cannot be
+    logged into stops the run, since then nothing was measured at all.
+    """
+    token = login(api)
+    team = _team(api, token)
+    for name in names:
+        src = fixtures / name
+        record: dict
+        if not src.is_dir():
+            record = {"error": "fixture missing"}
+        else:
+            try:
+                record = scan_fixture(api, token, team, name, src, shadow=True)
+            except Exception as exc:  # noqa: BLE001
+                record = {"error": f"{type(exc).__name__}: {str(exc)[:_SHADOW_TEXT_MAX]}"}
+        write_shadow(out_dir, name, record)
+        print(f"SHADOW {name}: {record.get('scan_status') or record.get('error')}")
+    return 0
 
 
 if __name__ == "__main__":
