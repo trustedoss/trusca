@@ -110,6 +110,20 @@ def parse_run(argv: list[str]) -> Run:
     )
 
 
+def docker_mount_record(fields: dict[str, str]) -> dict[str, Any]:
+    """One ``--mount`` as Docker records it in ``HostConfig.Mounts``."""
+    record: dict[str, Any] = {
+        "Type": fields.get("type", ""),
+        "Source": fields.get("src", ""),
+        "Target": fields.get("dst", ""),
+    }
+    if fields.get("readonly") == "true":
+        record["ReadOnly"] = True
+    if fields.get("volume-subpath"):
+        record["VolumeOptions"] = {"Subpath": fields["volume-subpath"]}
+    return record
+
+
 Effect = Callable[[Run], None]
 
 
@@ -139,8 +153,15 @@ class FakeDocker:
     """A :class:`integrations.bomlens.runner.Docker` that plays scripted containers."""
 
     behaviours: dict[str, list[Behaviour]] = field(default_factory=dict)
-    networks: frozenset[str] | None = None
+    #: The worker's own networks (names and IDs), as ``own_networks`` reports.
+    networks: frozenset[str] | None = frozenset({"trustedoss", "0f3c9a2b7d1e"})
     leftovers: list[str] = field(default_factory=list)
+    api_version: str | None = "1.53"
+    #: What ``requested_mounts`` reports per container; by default exactly what
+    #: was asked (a daemon that honours every option).
+    record_mounts: Any = None
+    started: list[str] = field(default_factory=list)
+    engine_list: list[Any] = field(default_factory=list)
     runs: list[Run] = field(default_factory=list)
     pulled: list[str] = field(default_factory=list)
     killed: list[str] = field(default_factory=list)
@@ -159,7 +180,10 @@ class FakeDocker:
     def ensure_image(self, image: str, timeout: int) -> None:  # noqa: ARG002
         self.pulled.append(image)
 
-    def run_detached(self, argv: list[str]) -> str:
+    def server_api_version(self) -> str | None:
+        return self.api_version
+
+    def create(self, argv: list[str]) -> str:
         run = parse_run(argv)
         self.runs.append(run)
         queue = self.behaviours.get(run.label) or [Behaviour()]
@@ -169,10 +193,24 @@ class FakeDocker:
         if behaviour.fail_start:
             from integrations.bomlens.runner import BomLensEngineError
 
-            raise BomLensEngineError("an engine container did not start")
-        if behaviour.effect is not None:
-            behaviour.effect(run)
+            raise BomLensEngineError("an engine container could not be created")
         return container_id
+
+    def requested_mounts(self, container: str) -> list[dict[str, Any]]:
+        run = self.containers[container].run
+        recorded = [docker_mount_record(fields) for fields in run.mounts.values()]
+        if self.record_mounts is not None:
+            return list(self.record_mounts(recorded))
+        return recorded
+
+    def start(self, container: str) -> None:
+        self.started.append(container)
+        entry = self.containers[container]
+        if entry.behaviour.effect is not None:
+            entry.behaviour.effect(entry.run)
+
+    def engine_containers(self) -> list[Any]:
+        return list(self.engine_list)
 
     def stream_logs(
         self,
@@ -292,6 +330,7 @@ __all__ = [
     "FakeDocker",
     "Run",
     "captured_images",
+    "docker_mount_record",
     "parse_run",
     "write_plan",
     "write_result",

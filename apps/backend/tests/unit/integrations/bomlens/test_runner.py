@@ -390,13 +390,13 @@ def test_an_interrupted_wait_still_removes_the_container(workspace: Path) -> Non
     assert stage1_id in docker.removed
 
 
-def test_a_container_that_failed_to_start_is_removed_by_name(workspace: Path) -> None:
+def test_a_container_that_failed_to_be_created_is_removed_by_name(workspace: Path) -> None:
     docker = (
         FakeDocker()
         .behave("plan", Behaviour(effect=write_plan("node-ok")))
         .behave("stage1", Behaviour(fail_start=True))
     )
-    with pytest.raises(BomLensEngineError, match="did not start"):
+    with pytest.raises(BomLensEngineError, match="could not be created"):
         _runner(workspace, docker).run()
     (stage1,) = docker.runs_of("stage1")
     name = stage1.option_values("--name")[0]

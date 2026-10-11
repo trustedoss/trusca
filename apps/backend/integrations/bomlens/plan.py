@@ -112,6 +112,11 @@ _FORBIDDEN_TARGET_ROOTS: Final = (
     "/var",
 )
 
+#: Container paths TRUSCA mounts itself (scratch space, the Trivy database).
+#: A plan mount may not be one of them or sit below one, except a stage 1
+#: helper file below ``/tmp``, which is where the plan puts build-prep.sh.
+RESERVED_TARGETS: Final = ("/tmp", "/trivy-db")  # noqa: S108 - container paths
+
 #: Container path: absolute, plain characters, no ``..`` (checked separately).
 _TARGET_RE: Final = re.compile(r"^/[A-Za-z0-9._/-]{1,200}$")
 
@@ -334,6 +339,13 @@ def _parse_mount(raw: Any, stage: int, where: str) -> Mount:
     if role not in _STAGE_ROLES[stage]:
         raise _reject(f"{where}.role {role!r} is not allowed in stage {stage}")
     target = _check_target(_str(_get(entry, "target", where), f"{where}.target"), where)
+    for reserved in RESERVED_TARGETS:
+        below = target.startswith(reserved + "/")
+        allowed = below and reserved == "/tmp" and role == "plan-file" and stage == 1  # noqa: S108
+        if (target == reserved or below) and not allowed:
+            raise _reject(
+                f"{where} target {clip(target)!r} is under {reserved}, which TRUSCA mounts"
+            )
     mode = _str(_get(entry, "mode", where), f"{where}.mode")
     if mode not in MOUNT_MODES:
         raise _reject(f"{where}.mode {clip(mode)!r} is not ro or rw")
@@ -587,6 +599,7 @@ __all__ = [
     "PLAN_REASONS",
     "PLAN_STATUSES",
     "PROVIDED_ROLES",
+    "RESERVED_TARGETS",
     "STAGE_ENV_ALLOWED",
     "STAGE_IDS",
     "STAGE_PASSTHROUGH_ALLOWED",

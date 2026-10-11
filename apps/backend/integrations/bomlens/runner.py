@@ -45,6 +45,7 @@ What every container gets, whatever the plan says (security review
 
 from __future__ import annotations
 
+import contextlib
 import json
 import os
 import re
@@ -52,11 +53,14 @@ import shutil
 import socket
 import stat
 import subprocess
+import threading
+import time
 import uuid
+from collections import deque
 from collections.abc import Callable
 from dataclasses import dataclass, field, replace
 from pathlib import Path
-from typing import Final, Protocol
+from typing import IO, Any, Final, Protocol
 
 import structlog
 
@@ -71,7 +75,7 @@ from core.config import (
     bomlens_trivy_cache_volume,
     workspace_root,
 )
-from integrations._line_streamer import LineCallback, run_with_line_streaming
+from integrations._line_streamer import LineCallback
 from integrations.bomlens.contract import (
     BomLensError,
     clip,
@@ -91,6 +95,18 @@ log = structlog.get_logger("integrations.bomlens.runner")
 
 #: Label on every engine container, so an operator (or a reaper) finds them.
 LABEL_ROLE: Final = "trusca.role=bomlens-engine"
+
+#: Label holding the epoch second after which a container may be reaped.
+DEADLINE_LABEL: Final = "trusca.deadline"
+
+#: Seconds a container may outlive its own time limit before the reaper takes
+#: it (the kill-and-wait the runner itself does, plus slack).
+REAP_MARGIN_SECONDS: Final = 300
+
+#: Lowest Docker API version the engine runs on: ``volume-subpath`` mounts
+#: (Docker Engine 26). An older daemon would drop the sub-path and mount the
+#: whole workspace volume.
+MIN_DOCKER_API: Final = (1, 45)
 
 #: Container paths TRUSCA mounts itself. A plan mount may not use them.
 SCRATCH_TARGET: Final = "/tmp"  # noqa: S108 - a container path, not a host temp file
@@ -124,7 +140,10 @@ _MOUNT_PATH_RE: Final = re.compile(r"^[A-Za-z0-9._/-]+$")
 
 #: A Docker network name (no ``container:<id>`` form, no ``host``).
 _NETWORK_RE: Final = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.-]{0,127}$")
-_FORBIDDEN_NETWORKS: Final = frozenset({"host", "none"})
+#: ``none`` is not a registry network; the last two are the compose files' own
+#: networks (database, Docker API), refused by name before the worker's own
+#: networks are even compared.
+_FORBIDDEN_NETWORKS: Final = frozenset({"host", "none", "trustedoss", "trustedoss-docker-api"})
 
 #: ``PROJECT_NAME`` / ``PROJECT_VERSION`` handed to BomLens: it names the SBOM
 #: file after them, so they are reduced to plain characters here.
@@ -338,9 +357,15 @@ class ContainerState:
 class Docker(Protocol):
     """The Docker operations the runner uses (the CLI, or a test double)."""
 
+    def server_api_version(self) -> str | None: ...
+
     def ensure_image(self, image: str, timeout: int) -> None: ...
 
-    def run_detached(self, argv: list[str]) -> str: ...
+    def create(self, argv: list[str]) -> str: ...
+
+    def requested_mounts(self, container: str) -> list[dict[str, Any]]: ...
+
+    def start(self, container: str) -> None: ...
 
     def stream_logs(
         self, container: str, timeout: int, line_callback: LineCallback | None, stage: str
@@ -358,6 +383,93 @@ class Docker(Protocol):
 
     def scan_containers(self, scan_hex: str) -> list[str]: ...
 
+    def engine_containers(self) -> list[EngineContainer]: ...
+
+
+@dataclass(frozen=True)
+class EngineContainer:
+    """An engine container as the reaper sees it (from its labels)."""
+
+    id: str
+    scan_hex: str
+    deadline: int | None
+
+
+#: Longest line of container output handed to the scan log. A longer line is
+#: cut there (the rest of it is read and dropped, never held).
+LOG_LINE_MAX_BYTES: Final = 64 * 1024
+
+#: Container output handed to the scan log per container. Past it the output
+#: is still read (the container must not block on a full pipe) and dropped.
+LOG_STREAM_MAX_BYTES: Final = 16 * 1024 * 1024
+
+#: How much of the end of a container's output is kept (stage 1's log).
+LOG_TAIL_MAX_BYTES: Final = 2 * 1024 * 1024
+
+
+class _LogTail:
+    """The last :data:`LOG_TAIL_MAX_BYTES` of a stream, in a bounded deque."""
+
+    def __init__(self, limit: int = LOG_TAIL_MAX_BYTES) -> None:
+        self._chunks: deque[bytes] = deque()
+        self._size = 0
+        self._limit = limit
+        self._lock = threading.Lock()
+
+    def add(self, chunk: bytes) -> None:
+        with self._lock:
+            self._chunks.append(chunk)
+            self._size += len(chunk)
+            while self._size > self._limit and self._chunks:
+                dropped = self._chunks.popleft()
+                self._size -= len(dropped)
+
+    def value(self) -> bytes:
+        with self._lock:
+            return b"".join(self._chunks)[-self._limit :]
+
+
+def drain_log_stream(
+    stream: IO[bytes],
+    *,
+    stream_name: str,
+    tail: _LogTail,
+    budget: list[int],
+    budget_lock: threading.Lock,
+    callback: LineCallback | None,
+) -> None:
+    """Read ``stream`` in lines of at most :data:`LOG_LINE_MAX_BYTES`.
+
+    Every chunk goes to ``tail``. Lines go to ``callback`` until the shared
+    ``budget`` (bytes, both streams) is spent; after that the stream is still
+    read to its end and dropped, so the container never blocks writing.
+    A line longer than the cap reaches the callback once, cut, and its
+    remainder is dropped.
+    """
+    continuing = False
+    try:
+        while True:
+            chunk = stream.readline(LOG_LINE_MAX_BYTES)
+            if not chunk:
+                return
+            tail.add(chunk)
+            complete = chunk.endswith(b"\n")
+            if callback is not None and not continuing:
+                with budget_lock:
+                    allowed = budget[0] > 0
+                    budget[0] -= len(chunk)
+                if allowed:
+                    text = chunk.decode("utf-8", errors="replace").rstrip("\r\n")
+                    if text:
+                        try:
+                            callback(stream_name, text)
+                        except Exception:  # noqa: BLE001 - the drain must keep reading
+                            log.warning("bomlens_log_callback_failed", stream=stream_name)
+            continuing = not complete
+    finally:
+        with contextlib.suppress(Exception):
+            stream.close()
+
 
 class DockerCli:
     """:class:`Docker` through the ``docker`` CLI (``DOCKER_HOST`` from the worker)."""
@@ -369,6 +481,15 @@ class DockerCli:
             check=False,
             timeout=timeout,
         )
+
+    def server_api_version(self) -> str | None:
+        try:
+            done = self._run(["version", "--format", "{{.Server.APIVersion}}"], 30)
+        except subprocess.TimeoutExpired:
+            return None
+        if done.returncode != 0:
+            return None
+        return done.stdout.decode("utf-8", "replace").strip() or None
 
     def ensure_image(self, image: str, timeout: int) -> None:
         if self._run(["image", "inspect", "--format", "{{.Id}}", image], 60).returncode == 0:
@@ -383,27 +504,84 @@ class DockerCli:
                 f"{done.stderr.decode('utf-8', 'replace').strip()[:200]}"
             )
 
-    def run_detached(self, argv: list[str]) -> str:
-        done = self._run(["run", "--detach", *argv], 120)
+    def create(self, argv: list[str]) -> str:
+        done = self._run(["create", *argv], 120)
+        if done.returncode != 0:
+            raise BomLensEngineError(
+                "an engine container could not be created: "
+                f"{done.stderr.decode('utf-8', 'replace').strip()[:200]}"
+            )
+        return done.stdout.decode("utf-8", "replace").strip()
+
+    def requested_mounts(self, container: str) -> list[dict[str, Any]]:
+        done = self._run(["inspect", "--format", "{{json .HostConfig.Mounts}}", container], 60)
+        if done.returncode != 0:
+            raise BomLensEngineError("an engine container could not be inspected")
+        try:
+            mounts = json.loads(done.stdout.decode("utf-8", "replace") or "null")
+        except json.JSONDecodeError as exc:
+            raise BomLensEngineError("an engine container could not be inspected") from exc
+        return [m for m in mounts or [] if isinstance(m, dict)]
+
+    def start(self, container: str) -> None:
+        done = self._run(["start", container], 120)
         if done.returncode != 0:
             raise BomLensEngineError(
                 "an engine container did not start: "
                 f"{done.stderr.decode('utf-8', 'replace').strip()[:200]}"
             )
-        return done.stdout.decode("utf-8", "replace").strip()
 
     def stream_logs(
         self, container: str, timeout: int, line_callback: LineCallback | None, stage: str
     ) -> bytes:
-        done = run_with_line_streaming(
-            ["docker", "logs", "--follow", container],
-            timeout_seconds=timeout,
-            cwd=None,
-            env=None,
-            line_callback=line_callback,
-            stage=stage,
+        """Follow the container's output until it exits; return its tail.
+
+        Raises :class:`subprocess.TimeoutExpired` (with the tail as
+        ``output``) when the container is still writing after ``timeout``.
+        """
+        proc = subprocess.Popen(  # noqa: S603 - fixed argv, no shell
+            ["docker", "logs", "--follow", container],  # noqa: S607 - the docker CLI
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
         )
-        return done.stdout + done.stderr
+        assert proc.stdout is not None and proc.stderr is not None  # noqa: S101
+        tail = _LogTail()
+        budget = [LOG_STREAM_MAX_BYTES]
+        budget_lock = threading.Lock()
+        threads = [
+            threading.Thread(
+                target=drain_log_stream,
+                kwargs={
+                    "stream": stream,
+                    "stream_name": name,
+                    "tail": tail,
+                    "budget": budget,
+                    "budget_lock": budget_lock,
+                    "callback": line_callback,
+                },
+                name=f"{stage}-{name}-drain",
+                daemon=True,
+            )
+            for stream, name in ((proc.stdout, "stdout"), (proc.stderr, "stderr"))
+        ]
+        for thread in threads:
+            thread.start()
+        try:
+            proc.wait(timeout=timeout)
+        except subprocess.TimeoutExpired:
+            proc.kill()
+            proc.wait()
+            for thread in threads:
+                thread.join(timeout=5)
+            raise subprocess.TimeoutExpired(
+                cmd="docker logs", timeout=float(timeout), output=tail.value()
+            ) from None
+        except BaseException:
+            proc.kill()
+            raise
+        for thread in threads:
+            thread.join(timeout=30)
+        return tail.value()
 
     def wait(self, container: str, timeout: int) -> int | None:
         try:
@@ -456,13 +634,51 @@ class DockerCli:
             return []
         return [line for line in done.stdout.decode("utf-8", "replace").split() if line]
 
+    def engine_containers(self) -> list[EngineContainer]:
+        """Every engine container on this daemon, with its scan and deadline."""
+        done = self._run(
+            [
+                "ps",
+                "--all",
+                "--no-trunc",
+                "--filter",
+                f"label={LABEL_ROLE}",
+                "--format",
+                '{{.ID}}\t{{.Label "trusca.scan"}}\t{{.Label "trusca.deadline"}}',
+            ],
+            60,
+        )
+        if done.returncode != 0:
+            raise BomLensEngineError("the engine containers could not be listed")
+        found: list[EngineContainer] = []
+        for line in done.stdout.decode("utf-8", "replace").splitlines():
+            parts = line.split("\t")
+            if len(parts) != 3 or not parts[0]:
+                continue
+            deadline = int(parts[2]) if parts[2].isdigit() else None
+            found.append(EngineContainer(id=parts[0], scan_hex=parts[1], deadline=deadline))
+        return found
+
     def own_networks(self) -> frozenset[str] | None:
-        """Networks of the container this worker runs in, or ``None`` if unknown."""
+        """Names and IDs of the networks of the container this worker runs in.
+
+        ``None`` when the worker is not a container this daemon knows (or the
+        answer cannot be read); the caller refuses then.
+        """
         me = socket.gethostname().strip()
         if not me or not _NETWORK_RE.match(me):
             return None
         try:
-            done = self._run(["inspect", "--format", "{{json .NetworkSettings.Networks}}", me], 30)
+            done = self._run(
+                [
+                    "container",
+                    "inspect",
+                    "--format",
+                    "{{json .NetworkSettings.Networks}}",
+                    me,
+                ],
+                30,
+            )
         except subprocess.TimeoutExpired:
             return None
         if done.returncode != 0:
@@ -471,7 +687,14 @@ class DockerCli:
             networks = json.loads(done.stdout.decode("utf-8", "replace") or "{}")
         except json.JSONDecodeError:
             return None
-        return frozenset(networks) if isinstance(networks, dict) else None
+        if not isinstance(networks, dict):
+            return None
+        names: set[str] = set()
+        for name, detail in networks.items():
+            names.add(str(name))
+            if isinstance(detail, dict) and detail.get("NetworkID"):
+                names.add(str(detail["NetworkID"]))
+        return frozenset(names)
 
 
 # --------------------------------------------------------------------------
@@ -516,9 +739,25 @@ def _resource_args() -> list[str]:
     return ["--memory", memory, "--memory-swap", memory, "--cpus", cpus]
 
 
-def docker_run_argv(spec: ContainerSpec, mounts: MountStyle, scan_hex: str) -> list[str]:
-    """The ``docker run`` arguments (after ``run --detach``) for ``spec``."""
-    argv = ["--name", spec.name, "--label", LABEL_ROLE, "--label", f"trusca.scan={scan_hex}"]
+def docker_run_argv(
+    spec: ContainerSpec, mounts: MountStyle, scan_hex: str, deadline: int
+) -> list[str]:
+    """The ``docker create`` arguments for ``spec``.
+
+    ``deadline`` (epoch seconds) is when the container must be gone; the
+    reaper (``tasks.bomlens_engine_reaper``) removes it after that even when
+    the task that started it never got to (a hard time limit, a revoke).
+    """
+    argv = [
+        "--name",
+        spec.name,
+        "--label",
+        LABEL_ROLE,
+        "--label",
+        f"trusca.scan={scan_hex}",
+        "--label",
+        f"{DEADLINE_LABEL}={deadline}",
+    ]
     argv += sidecar_security_args()
     argv += _resource_args()
     if spec.read_only:
@@ -674,7 +913,14 @@ class BomLensRunner:
         if not _NETWORK_RE.match(name) or name.lower() in _FORBIDDEN_NETWORKS:
             raise BomLensEngineError(f"SCAN_BOMLENS_NETWORK={clip(name)!r} is not allowed")
         own = self.docker.own_networks()
-        if own is not None and name in own:
+        if own is None:
+            # Fail closed: without the worker's own networks there is no way
+            # to tell the configured one is not the database's.
+            raise BomLensEngineError(
+                "the worker's own networks could not be read, so SCAN_BOMLENS_NETWORK "
+                "cannot be checked against them"
+            )
+        if name in own:
             raise BomLensEngineError(
                 f"SCAN_BOMLENS_NETWORK={clip(name)!r} is the worker's own network; "
                 "engine containers must not reach TRUSCA's database"
@@ -725,7 +971,8 @@ class BomLensRunner:
         log_stage: str,
     ) -> ContainerOutcome:
         """Run ``spec`` to its end; the container is gone when this returns."""
-        argv = docker_run_argv(spec, self.mounts, self.scan_uuid.hex)
+        deadline = int(time.time()) + timeout + 2 * EXIT_GRACE_SECONDS + REAP_MARGIN_SECONDS
+        argv = docker_run_argv(spec, self.mounts, self.scan_uuid.hex, deadline)
         log.info(
             "bomlens_container_start",
             stage=log_stage,
@@ -734,14 +981,19 @@ class BomLensRunner:
             container=spec.name,
         )
         try:
-            container = self.docker.run_detached(argv)
+            container = self.docker.create(argv)
         except BaseException:
-            # A container can be created and then fail to start; it must not
-            # hold the name or linger.
+            # A failed create can still leave a container holding the name.
             self.docker.remove(spec.name)
             raise
         self.report.containers.append(spec.name)
         try:
+            # Created, not started: what the daemon recorded is checked
+            # against what was asked before anything runs (security review on
+            # #522, L3). A daemon that dropped a sub-path would mount the whole
+            # workspace volume.
+            check_requested_mounts(argv, self.docker.requested_mounts(container))
+            self.docker.start(container)
             timed_out = False
             output = b""
             try:
@@ -863,12 +1115,6 @@ class BomLensRunner:
                 f"the plan's stage 2 image {clip(stage2.image)!r} is not the configured "
                 "BomLens image"
             )
-        for stage in plan.stages:
-            for mount in stage.mounts:
-                if mount.target in (SCRATCH_TARGET, TRIVY_DB_TARGET):
-                    raise BomLensEngineError(
-                        f"the plan mounts {mount.target!r}, which TRUSCA mounts itself"
-                    )
 
     def _copy_plan_files(self, stage: Stage) -> dict[str, Path]:
         """Copy stage 1's helper files out of the plan folder.
@@ -936,6 +1182,9 @@ class BomLensRunner:
             + self._owner_env()
             + self._trusca_env(stage)
         )
+        # The project name and version are TRUSCA's, whatever the plan wrote.
+        env = [(k, v) for k, v in env if k not in ("PROJECT_NAME", "PROJECT_VERSION")]
+        env += [("PROJECT_NAME", self.project_name), ("PROJECT_VERSION", self.project_version)]
         if stage.mount("guard-state") is not None:
             env.append(("BOMLENS_GUARD_ID", f"trusca-{self.scan_uuid.hex}"))
         return ContainerSpec(
@@ -999,14 +1248,24 @@ class BomLensRunner:
 
     @staticmethod
     def _write_stage1_log(output: Path, outcome: ContainerOutcome) -> None:
-        path = output / STAGE1_LOG_NAME
-        if path.is_symlink():
-            path.unlink()
-        data = outcome.output[-_STAGE1_LOG_MAX_BYTES:]
-        path.write_bytes(data)
+        write_new_file(output / STAGE1_LOG_NAME, outcome.output[-_STAGE1_LOG_MAX_BYTES:])
 
-    def unsupported_stage2(self, plan: ExecutionPlan) -> Stage:
-        """Stage 2 for a plan without stages (same values the plan would give)."""
+    def stage2_for(self, plan: ExecutionPlan) -> Stage:
+        """Stage 2 as TRUSCA runs it.
+
+        From the plan only the two mount targets are taken (its image was
+        checked against the configuration in :meth:`_check_plan_images`).
+        Everything else is fixed here: no user or entrypoint override, no
+        arguments, the output folder as working directory, no network, and
+        TRUSCA's own environment (security review on #522, L2). A plan with no
+        stages gets the targets the contract documents.
+        """
+        source_target, output_target = PLAN_SOURCE_TARGET, PLAN_OUTPUT_TARGET
+        if plan.supported:
+            planned = plan.postprocess
+            source_mount, output_mount = planned.mount("source"), planned.mount("output")
+            assert source_mount is not None and output_mount is not None  # noqa: S101
+            source_target, output_target = source_mount.target, output_mount.target
         return Stage(
             id="postprocess",
             stage=2,
@@ -1015,15 +1274,15 @@ class BomLensRunner:
             user=None,
             entrypoint=None,
             args=(),
-            workdir=PLAN_OUTPUT_TARGET,
+            workdir=output_target,
             mounts=(
-                Mount(role="source", target=PLAN_SOURCE_TARGET, mode="ro"),
-                Mount(role="output", target=PLAN_OUTPUT_TARGET, mode="rw"),
+                Mount(role="source", target=source_target, mode="ro"),
+                Mount(role="output", target=output_target, mode="rw"),
             ),
             env={
                 "MODE": "POSTPROCESS",
                 "BOMLENS_RUN_INPUT": plan.output_file,
-                "HOST_OUTPUT_DIR": PLAN_OUTPUT_TARGET,
+                "HOST_OUTPUT_DIR": output_target,
                 "PROJECT_NAME": self.project_name,
                 "PROJECT_VERSION": self.project_version,
                 "UPLOAD_ENABLED": "false",
@@ -1034,17 +1293,16 @@ class BomLensRunner:
 
     def run_stage2(self, plan: ExecutionPlan, stage1: ContainerOutcome | None) -> ContainerOutcome:
         """Stage 2 (POSTPROCESS), whatever stage 1 did."""
+        stage = self.stage2_for(plan)
         if plan.supported:
-            stage = plan.postprocess
             output = self._host(self.layout.output)
         else:
-            stage = self.unsupported_stage2(plan)
             output = self._fresh_dir(self.layout.output)
             note = (
                 f"stage 1 did not run: the execution plan is unsupported "
                 f"({plan.reason or 'no reason given'})\n"
             )
-            (output / STAGE1_LOG_NAME).write_text(note, encoding="utf-8")
+            write_new_file(output / STAGE1_LOG_NAME, note.encode("utf-8"))
         scratch = self._fresh_dir(self.layout.scratch("stage2"))
         image = self.images.stage2
         exit_code = stage1.exit_code if stage1 is not None else 127
@@ -1102,6 +1360,16 @@ class BomLensRunner:
         """
         return self._fresh_dir(self.layout.verified)
 
+    def check_docker_api(self) -> None:
+        """Refuse a daemon older than :data:`MIN_DOCKER_API` (security review, L3)."""
+        version = self.docker.server_api_version()
+        parsed = _api_version(version)
+        if parsed is None or parsed < MIN_DOCKER_API:
+            raise BomLensEngineError(
+                f"the Docker API is {clip(version) if version else 'unknown'}; the BomLens "
+                f"engine needs {MIN_DOCKER_API[0]}.{MIN_DOCKER_API[1]} or later (Docker Engine 26)"
+            )
+
     def remove_leftovers(self) -> None:
         """Remove containers an earlier attempt at this scan left (a killed worker)."""
         for container in self.docker.scan_containers(self.scan_uuid.hex):
@@ -1156,6 +1424,7 @@ class BomLensRunner:
         folder is for :func:`tasks.bomlens_result.apply_bomlens_result`.
         """
         announce = stage or (lambda _name: None)
+        self.check_docker_api()
         self.remove_leftovers()
         try:
             announce("prep")
@@ -1169,6 +1438,84 @@ class BomLensRunner:
         finally:
             self.reclaim_ownership()
         return self._host(self.layout.output)
+
+
+def _api_version(value: str | None) -> tuple[int, int] | None:
+    if not value:
+        return None
+    parts = value.strip().split(".")
+    if len(parts) != 2 or not all(p.isdigit() for p in parts):
+        return None
+    return int(parts[0]), int(parts[1])
+
+
+MountKey = tuple[str, str, str, bool, str]
+
+
+def _requested_from_argv(argv: list[str]) -> set[MountKey]:
+    """The mounts ``argv`` asks for, as (type, source, target, read-only, sub-path)."""
+    wanted: set[MountKey] = set()
+    for flag, value in zip(argv, argv[1:], strict=False):
+        if flag != "--mount":
+            continue
+        fields: dict[str, str] = {}
+        for part in value.split(","):
+            key, _, val = part.partition("=")
+            fields[key] = val if val else "true"
+        wanted.add(
+            (
+                fields.get("type", ""),
+                fields.get("src", ""),
+                fields.get("dst", ""),
+                fields.get("readonly") == "true",
+                fields.get("volume-subpath", ""),
+            )
+        )
+    return wanted
+
+
+def check_requested_mounts(argv: list[str], recorded: list[dict[str, Any]]) -> None:
+    """Refuse a container whose recorded mounts differ from the ones asked for."""
+    actual: set[MountKey] = set()
+    for mount in recorded:
+        options = mount.get("VolumeOptions") or {}
+        subpath = options.get("Subpath", "") if isinstance(options, dict) else ""
+        actual.add(
+            (
+                str(mount.get("Type", "")),
+                str(mount.get("Source", "")),
+                str(mount.get("Target", "")),
+                bool(mount.get("ReadOnly", False)),
+                str(subpath or ""),
+            )
+        )
+    if actual != _requested_from_argv(argv):
+        raise BomLensEngineError(
+            "the Docker daemon recorded different mounts than the engine asked for; "
+            "the container was not started"
+        )
+
+
+def write_new_file(path: Path, data: bytes) -> None:
+    """Write ``data`` to ``path`` as a new regular file, never through what is there.
+
+    A container wrote the folder: whatever sits at ``path`` (a link, a FIFO
+    that would block the worker, a directory) is removed first, then the file
+    is created with ``O_EXCL | O_NOFOLLOW`` (security review on #522, L1).
+    """
+    try:
+        mode: int | None = os.lstat(path).st_mode
+    except FileNotFoundError:
+        mode = None
+    if mode is not None:
+        if stat.S_ISDIR(mode):
+            shutil.rmtree(path)
+        else:
+            path.unlink()
+    flags = os.O_WRONLY | os.O_CREAT | os.O_EXCL | getattr(os, "O_NOFOLLOW", 0)
+    fd = os.open(path, flags, 0o644)
+    with os.fdopen(fd, "wb") as fh:
+        fh.write(data)
 
 
 #: Root component names BomLens refuses as placeholders that collide across
@@ -1194,6 +1541,7 @@ __all__ = [
     "ContainerState",
     "Docker",
     "DockerCli",
+    "EngineContainer",
     "EngineContainerStillRunning",
     "EngineImages",
     "EngineLayout",
@@ -1201,9 +1549,11 @@ __all__ = [
     "NamedVolumeMounts",
     "PinnedImage",
     "RunReport",
+    "check_requested_mounts",
     "confined_path",
     "docker_run_argv",
     "mount_style",
     "pinned_image",
     "resolve_images",
+    "write_new_file",
 ]
