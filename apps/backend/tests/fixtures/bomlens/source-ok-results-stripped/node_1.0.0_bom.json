@@ -1,0 +1,291 @@
+{
+  "annotations": [
+    {
+      "annotator": {
+        "component": {
+          "authors": [
+            {
+              "name": "OWASP Foundation"
+            }
+          ],
+          "bom-ref": "pkg:npm/@cdxgen/cdxgen@13.2.0",
+          "group": "@cdxgen",
+          "name": "cdxgen",
+          "publisher": "OWASP Foundation",
+          "purl": "pkg:npm/%40cdxgen/cdxgen@13.2.0",
+          "type": "application",
+          "version": "13.2.0"
+        }
+      },
+      "bom-ref": "metadata-annotations",
+      "subjects": [
+        "pkg:npm/baseline-e2e-fixture@1.0.0"
+      ],
+      "text": "This Software Bill-of-Materials (SBOM) document was created on Sunday, October 11, 2026 with cdxgen. The data was captured during the build lifecycle phase. The document describes an application named 'baseline-e2e-fixture' with version '1.0.0'.",
+      "timestamp": "2026-10-11T09:37:07Z"
+    }
+  ],
+  "bomFormat": "CycloneDX",
+  "components": [
+    {
+      "bom-ref": "pkg:npm/lodash@4.17.21",
+      "description": "Lodash modular utilities.",
+      "evidence": {
+        "identity": [
+          {
+            "concludedValue": "package-lock.json",
+            "confidence": 1,
+            "field": "purl",
+            "methods": [
+              {
+                "confidence": 1,
+                "technique": "manifest-analysis",
+                "value": "package-lock.json"
+              }
+            ]
+          }
+        ]
+      },
+      "externalReferences": [
+        {
+          "type": "distribution",
+          "url": "https://registry.npmjs.org/lodash/-/lodash-4.17.21.tgz"
+        }
+      ],
+      "group": "",
+      "licenses": [
+        {
+          "license": {
+            "id": "MIT",
+            "properties": [
+              {
+                "name": "cdx:license:category",
+                "value": "Permissive"
+              },
+              {
+                "name": "cdx:license:foss",
+                "value": "true"
+              },
+              {
+                "name": "cdx:license:osiApproved",
+                "value": "true"
+              },
+              {
+                "name": "cdx:license:fsfLibre",
+                "value": "true"
+              },
+              {
+                "name": "cdx:license:deprecated",
+                "value": "false"
+              }
+            ],
+            "url": "https://opensource.org/licenses/MIT"
+          }
+        }
+      ],
+      "name": "lodash",
+      "properties": [
+        {
+          "name": "cdx:license:category",
+          "value": "Permissive"
+        },
+        {
+          "name": "cdx:npm:artifactIntegrity",
+          "value": "sha512-v2kDEe57lecTulaDIuNTPy3Ry4gLGJ6Z1O3vE1krgXZNrsQ+LFTGHVxVjcXPs17LhbZVGedAJv8XZ1tvj5FvSg=="
+        },
+        {
+          "name": "cdx:npm:artifactShasum",
+          "value": "679591c564c3bffaae8454cf0b3df370c3d6911c"
+        },
+        {
+          "name": "cdx:npm:lastModifiedTime",
+          "value": "2026-10-11T01:08:21.975Z"
+        },
+        {
+          "name": "cdx:npm:maintainerOverlapCount",
+          "value": "5"
+        },
+        {
+          "name": "cdx:npm:maintainerOverlapRatio",
+          "value": "0.71"
+        },
+        {
+          "name": "cdx:npm:maintainerSet",
+          "value": "mathias, mathias@qiwi.be, jdalton, john.david.dalton@gmail.com, bnjmnt4n, benjamin@dev.ofcr.se"
+        },
+        {
+          "name": "cdx:npm:maintainerSetCount",
+          "value": "6"
+        },
+        {
+          "name": "cdx:npm:maintainerSetPartialDrift",
+          "value": "true"
+        },
+        {
+          "name": "cdx:npm:packageCreatedTime",
+          "value": "2012-04-23T16:37:11.912Z"
+        },
+        {
+          "name": "cdx:npm:priorMaintainerSet",
+          "value": "bnjmnt4n, demoneaux@gmail.com, jdalton, john.david.dalton@gmail.com, mathias, mathias@qiwi.be"
+        },
+        {
+          "name": "cdx:npm:priorMaintainerSetCount",
+          "value": "6"
+        },
+        {
+          "name": "cdx:npm:priorPublishTime",
+          "value": "2020-08-13T16:53:54.152Z"
+        },
+        {
+          "name": "cdx:npm:priorPublisher",
+          "value": "bnjmnt4n"
+        },
+        {
+          "name": "cdx:npm:priorVersion",
+          "value": "4.17.20"
+        },
+        {
+          "name": "cdx:npm:publishTime",
+          "value": "2021-02-20T15:42:16.891Z"
+        },
+        {
+          "name": "cdx:npm:publisher",
+          "value": "bnjmnt4n"
+        },
+        {
+          "name": "cdx:npm:publisherEmail",
+          "value": "benjamin@dev.ofcr.se"
+        },
+        {
+          "name": "cdx:npm:releaseCadenceCompressionRatio",
+          "value": "40.26"
+        },
+        {
+          "name": "cdx:npm:releaseGapBaselineDays",
+          "value": "4.74"
+        },
+        {
+          "name": "cdx:npm:releaseGapDays",
+          "value": "190.95"
+        },
+        {
+          "name": "cdx:npm:releaseGapSampleSize",
+          "value": "112"
+        },
+        {
+          "name": "cdx:npm:versionCount",
+          "value": "117"
+        },
+        {
+          "name": "internal:LocalNodeModulesPath",
+          "value": "node_modules/lodash"
+        },
+        {
+          "name": "internal:ResolvedUrl",
+          "value": "https://registry.npmjs.org/lodash/-/lodash-4.17.21.tgz"
+        },
+        {
+          "name": "internal:SrcFile",
+          "value": "package-lock.json"
+        },
+        {
+          "name": "bomlens:licenseClass",
+          "value": "permissive"
+        }
+      ],
+      "purl": "pkg:npm/lodash@4.17.21",
+      "type": "library",
+      "version": "4.17.21"
+    }
+  ],
+  "dependencies": [
+    {
+      "dependsOn": [],
+      "ref": "pkg:npm/lodash@4.17.21"
+    },
+    {
+      "dependsOn": [
+        "pkg:npm/lodash@4.17.21"
+      ],
+      "ref": "pkg:npm/baseline-e2e-fixture@1.0.0"
+    }
+  ],
+  "metadata": {
+    "component": {
+      "bom-ref": "pkg:npm/baseline-e2e-fixture@1.0.0",
+      "description": "E2E 테스트 fixture — npm 프로젝트 (외부 도구 스캔 검증용)",
+      "group": "",
+      "name": "node",
+      "properties": [
+        {
+          "name": "bomlens:source:versionPinning",
+          "value": "pinned"
+        }
+      ],
+      "type": "application",
+      "version": "1.0.0"
+    },
+    "lifecycles": [
+      {
+        "phase": "pre-build"
+      }
+    ],
+    "properties": [
+      {
+        "name": "cdx:bom:componentSrcFiles",
+        "value": "package-lock.json"
+      },
+      {
+        "name": "cdx:bom:componentTypes",
+        "value": "npm"
+      },
+      {
+        "name": "bomlens:prep-step-applied",
+        "value": "npm-production-set"
+      },
+      {
+        "name": "bomlens:excluded-paths",
+        "value": "**/test/**, **/tests/**, **/spec/**, **/fixtures/**, **/testdata/**, **/__tests__/**, **/e2e/**, **/example/**, **/examples/**, **/sample/**, **/samples/**, **/bench/**, **/benches/**, **/benchmark/**, **/benchmarks/**, **/demo/**, **/demos/**, **/playground/**, **/.github/workflows/**"
+      },
+      {
+        "name": "bomlens:undeclared-fields",
+        "value": "unknown-to-author"
+      }
+    ],
+    "timestamp": "2026-10-11T09:37:07Z",
+    "tools": {
+      "components": [
+        {
+          "authors": [
+            {
+              "name": "OWASP Foundation"
+            }
+          ],
+          "bom-ref": "pkg:npm/@cdxgen/cdxgen@13.2.0",
+          "group": "@cdxgen",
+          "name": "cdxgen",
+          "publisher": "OWASP Foundation",
+          "purl": "pkg:npm/%40cdxgen/cdxgen@13.2.0",
+          "type": "application",
+          "version": "13.2.0"
+        },
+        {
+          "name": "BomLens",
+          "publisher": "SK Telecom",
+          "type": "application",
+          "version": "latest-b826d43"
+        }
+      ]
+    }
+  },
+  "serialNumber": "urn:uuid:88644e94-07e4-48e2-ab8c-b5498b66e6c1",
+  "services": [],
+  "specVersion": "1.6",
+  "version": 1,
+  "compositions": [
+    {
+      "aggregate": "unknown"
+    }
+  ]
+}

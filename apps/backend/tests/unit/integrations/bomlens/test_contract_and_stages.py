@@ -57,6 +57,7 @@ def test_the_fixture_set_is_the_documented_one() -> None:
         "image-ok",
         "source-degraded",
         "source-ok",
+        "source-ok-results-stripped",
         "source-run-failed",
         "source-vulnerabilities-failed",
     ]
@@ -186,7 +187,7 @@ def _output(path: str, data: bytes) -> contract.Output:
 @pytest.mark.parametrize("name", ["../bom.json", "sub/bom.json", "..", ".", "", "a\\b", "a\x00b"])
 def test_an_output_path_that_is_not_a_bare_file_name_is_refused(tmp_path: Path, name: str) -> None:
     with pytest.raises(contract.BomLensContractError, match="not a file name"):
-        contract.resolve_output(tmp_path, _output(name, b"{}"))
+        contract.read_output(tmp_path, _output(name, b"{}"))
 
 
 def test_a_symlink_out_of_the_folder_is_refused(tmp_path: Path) -> None:
@@ -196,20 +197,96 @@ def test_a_symlink_out_of_the_folder_is_refused(tmp_path: Path) -> None:
     folder.mkdir()
     os.symlink(outside, folder / "bom.json")
     with pytest.raises(contract.BomLensContractError, match="not in the output folder"):
-        contract.resolve_output(folder, _output("bom.json", b"{}"))
+        contract.read_output(folder, _output("bom.json", b"{}"))
 
 
 def test_a_size_mismatch_is_refused(tmp_path: Path) -> None:
     (tmp_path / "bom.json").write_bytes(b"{} ")
     with pytest.raises(contract.BomLensContractError, match="bytes"):
-        contract.resolve_output(tmp_path, _output("bom.json", b"{}"))
+        contract.read_output(tmp_path, _output("bom.json", b"{}"))
 
 
-def test_a_matching_file_resolves(tmp_path: Path) -> None:
+def test_a_matching_file_is_read(tmp_path: Path) -> None:
     (tmp_path / "bom.json").write_bytes(b'{"a": 1}')
-    path, data = contract.read_json_output(tmp_path, _output("bom.json", b'{"a": 1}'))
-    assert path == (tmp_path / "bom.json").resolve()
-    assert data == {"a": 1}
+    verified = contract.read_output(tmp_path, _output("bom.json", b'{"a": 1}'))
+    assert (verified.name, verified.data, verified.document) == ("bom.json", b'{"a": 1}', {"a": 1})
+
+
+def test_an_output_is_opened_once_and_parsed_from_the_hashed_bytes(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """M2: one read. A second open would let a file that changed between the
+    hash and the parse be persisted as if it had been checked."""
+    (tmp_path / "bom.json").write_bytes(b'{"a": 1}')
+    opened: list[str] = []
+    real_open = Path.open
+
+    def counting_open(self: Path, *args: Any, **kwargs: Any) -> Any:
+        opened.append(self.name)
+        return real_open(self, *args, **kwargs)
+
+    monkeypatch.setattr(Path, "open", counting_open)
+    monkeypatch.setattr(Path, "read_text", lambda *_a, **_k: pytest.fail("read_text"))
+    monkeypatch.setattr(Path, "read_bytes", lambda *_a, **_k: pytest.fail("read_bytes"))
+
+    contract.read_output(tmp_path, _output("bom.json", b'{"a": 1}'))
+
+    assert opened == ["bom.json"]
+
+
+def test_a_manifest_symlinked_out_of_the_folder_is_refused(tmp_path: Path) -> None:
+    """L1: the manifest gets the same containment as the outputs it names."""
+    outside = tmp_path / "elsewhere.json"
+    outside.write_text(json.dumps(_manifest("source-ok")), encoding="utf-8")
+    folder = tmp_path / "out"
+    folder.mkdir()
+    os.symlink(outside, folder / contract.MANIFEST_NAME)
+    with pytest.raises(contract.BomLensContractError, match="not in the output folder"):
+        contract.load_manifest(folder)
+
+
+@pytest.mark.parametrize("target", ["manifest", "output"])
+def test_json_nested_past_the_parser_stack_is_a_refused_result(tmp_path: Path, target: str) -> None:
+    """Info: RecursionError becomes a BomLensError, so the scan fails with a
+    message rather than an unexpected-error traceback."""
+    deep = b"[" * 200_000 + b"]" * 200_000
+    if target == "manifest":
+        (tmp_path / contract.MANIFEST_NAME).write_bytes(deep)
+        with pytest.raises(contract.BomLensContractError, match="nested too deeply"):
+            contract.load_manifest(tmp_path)
+    else:
+        (tmp_path / "bom.json").write_bytes(deep)
+        with pytest.raises(contract.BomLensContractError, match="nested too deeply"):
+            contract.read_output(tmp_path, _output("bom.json", deep))
+
+
+# ---------------------------------------------------------------------------
+# Error messages stay short (L2) and the run's own fields agree (L3)
+# ---------------------------------------------------------------------------
+
+
+def test_a_huge_manifest_value_cannot_fill_the_error_message() -> None:
+    document = _manifest("source-ok")
+    document["contract"]["version"] = "9." + "9" * 10_000 + ".0"
+    with pytest.raises(contract.UnsupportedContractVersion) as caught:
+        contract.parse_manifest(document)
+    message = str(caught.value)
+    assert len(message) <= contract.MESSAGE_MAX_CHARS
+    assert "9" * (contract.CLIP_CHARS + 1) not in message
+
+
+def test_every_bomlens_error_caps_its_message() -> None:
+    assert len(str(contract.BomLensError("x" * 10_000))) == contract.MESSAGE_MAX_CHARS
+    failed = contract.BomLensRunFailed("failed", "s" * 10_000)
+    assert len(str(failed)) < contract.CLIP_CHARS * 2
+
+
+@pytest.mark.parametrize("status", ["succeeded", "succeeded_degraded"])
+def test_a_succeeded_run_with_a_nonzero_exit_code_is_malformed(status: str) -> None:
+    document = _manifest("source-ok")
+    document["run"].update(status=status, exit_code=1)
+    with pytest.raises(contract.BomLensContractError, match="exit code"):
+        contract.parse_manifest(document)
 
 
 # ---------------------------------------------------------------------------
@@ -319,6 +396,14 @@ def test_steps_trusca_does_its_own_way_never_become_stages() -> None:
             "the vulnerability scan skipped (not_installed)",
         ),
         ([_step("scan-security", "failed", "failed")], "the vulnerability scan failed (failed)"),
+        # L4: the step is not degradable, so a qualified ok is not clean.
+        ([_step("scan-security", "ok", "unavailable")], "the vulnerability scan ok (unavailable)"),
+        # L3: listed twice, both entries count.
+        (
+            [_step("scan-security", "ok"), _step("scan-security", "failed", "timeout")],
+            "the vulnerability scan failed (timeout)",
+        ),
+        ([_step("scan-security", "ok"), _step("scan-security", "ok")], None),
     ],
 )
 def test_only_an_ok_vulnerability_step_is_a_result(
@@ -399,3 +484,50 @@ def test_the_engine_record_leaves_tool_messages_out() -> None:
     record = engine_record(contract.parse_manifest(_manifest("source-vulnerabilities-failed")))
     assert "network is unreachable" not in json.dumps(record)
     assert {"id": "scan-security", "status": "failed", "reason": "failed"} in record["steps"]
+
+
+# ---------------------------------------------------------------------------
+# What counts as a Trivy result (M1)
+# ---------------------------------------------------------------------------
+
+
+def _real_report() -> dict[str, Any]:
+    data: dict[str, Any] = json.loads(
+        (FIXTURES / "source-ok" / "node_1.0.0_security.json").read_text(encoding="utf-8")
+    )
+    return data
+
+
+@pytest.mark.parametrize(
+    ("change", "expected"),
+    [
+        (lambda r: r.clear(), "not schema version 2"),
+        (lambda r: [r.clear(), r.update(SchemaVersion=2)], "no Results list"),
+        (lambda r: r.pop("Results"), "no Results list"),
+        (lambda r: r.update(Results={"Target": "x"}), "no Results list"),
+        (lambda r: r.update(Results=["x"]), "no Results list"),
+        (lambda r: r.update(SchemaVersion=1), "not schema version 2"),
+        (lambda r: r.update(ArtifactType="container_image"), "not about the CycloneDX SBOM"),
+        (lambda r: r.pop("ArtifactType"), "not about the CycloneDX SBOM"),
+        (lambda r: r.update(ScanError={"Message": "db"}), "carries a scan error"),
+    ],
+)
+def test_a_report_that_is_not_a_trivy_result_is_refused(change: Any, expected: str) -> None:
+    from tasks.bomlens_result import trivy_report_problem
+
+    report = _real_report()
+    change(report)
+    problem = trivy_report_problem(report, sbom_has_components=True)
+    assert problem is not None and expected in problem
+
+
+def test_a_well_formed_report_with_no_findings_is_a_result() -> None:
+    from tasks.bomlens_result import trivy_report_problem
+
+    report = _real_report()
+    report["Results"] = []
+    assert trivy_report_problem(report, sbom_has_components=True) is None
+    assert trivy_report_problem(_real_report(), sbom_has_components=True) is None
+    # Nothing to match: the artifact type cannot be required of an empty SBOM.
+    report.pop("ArtifactType")
+    assert trivy_report_problem(report, sbom_has_components=False) is None

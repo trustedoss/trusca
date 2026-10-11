@@ -78,12 +78,34 @@ MAX_MANIFEST_BYTES: Final = 4 * 1024 * 1024
 MAX_OUTPUT_BYTES: Final = 256 * 1024 * 1024
 
 
+#: Longest manifest-derived value echoed into an error message.
+CLIP_CHARS: Final = 64
+
+#: Longest message a BomLens error carries. It lands in ``scans.error_message``
+#: and in logs; a manifest is engine output, and a value the engine copied from
+#: the scanned input must not be able to fill either.
+MESSAGE_MAX_CHARS: Final = 300
+
+
+def clip(value: object) -> str:
+    """``repr`` of a manifest-derived value, cut to :data:`CLIP_CHARS`."""
+    text = repr(value) if not isinstance(value, str) else value
+    return text if len(text) <= CLIP_CHARS else text[: CLIP_CHARS - 3] + "..."
+
+
 class BomLensError(Exception):
     """Base for every reason a BomLens result cannot become a succeeded scan.
 
     The message is shown to users as the scan's error, so it names roles,
-    steps and versions and never a workspace path.
+    steps and versions and never a workspace path. Values that came from the
+    manifest are clipped where they are formatted (:func:`clip`), and the whole
+    message is capped here as well, so no call site can forget.
     """
+
+    def __init__(self, message: str = "") -> None:
+        if len(message) > MESSAGE_MAX_CHARS:
+            message = message[: MESSAGE_MAX_CHARS - 3] + "..."
+        super().__init__(message)
 
 
 class BomLensContractError(BomLensError, ValueError):
@@ -96,8 +118,8 @@ class BomLensRunFailed(BomLensError):
     def __init__(self, status: str, step: str | None) -> None:
         self.status = status
         self.step = step
-        where = f" in step {step!r}" if step else ""
-        super().__init__(f"the BomLens run {status}{where}")
+        where = f" in step {clip(step)!r}" if step else ""
+        super().__init__(f"the BomLens run {clip(status)}{where}")
 
 
 class BomLensVulnerabilityScanFailed(BomLensError):
@@ -114,7 +136,7 @@ class UnsupportedContractVersion(BomLensContractError):
     def __init__(self, version: str) -> None:
         self.version = version
         super().__init__(
-            f"BomLens result manifest uses contract version {version!r}; this "
+            f"BomLens result manifest uses contract version {clip(version)!r}; this "
             f"TRUSCA release reads contract {SUPPORTED_MAJOR}.x only"
         )
 
@@ -216,7 +238,8 @@ def _parse_step(raw: Any, index: int) -> Step:
     status = _str(_require(raw, "status", where), f"{where}.status")
     if status not in STEP_STATUSES:
         raise BomLensContractError(
-            f"BomLens result manifest step {step_id!r} has unknown status {status!r}"
+            f"BomLens result manifest step {clip(step_id)!r} has unknown status "
+            f"{clip(status)!r}"
         )
     reason = _opt_str(_require(raw, "reason", where), f"{where}.reason")
     stage = _require(raw, "stage", where)
@@ -267,7 +290,7 @@ def parse_manifest(document: Any) -> EngineResult:
     name = _require(contract, "name", "contract")
     if name != CONTRACT_NAME:
         raise BomLensContractError(
-            f"not a BomLens engine result manifest (contract.name is {name!r})"
+            f"not a BomLens engine result manifest (contract.name is {clip(name)!r})"
         )
     version = _str(_require(contract, "version", "contract"), "contract.version")
     if contract_major(version) != SUPPORTED_MAJOR:
@@ -280,10 +303,16 @@ def parse_manifest(document: Any) -> EngineResult:
     run = _require(document, "run", "manifest")
     run_status = _str(_require(run, "status", "run"), "run.status")
     if run_status not in RUN_STATUSES:
-        raise BomLensContractError(f"BomLens result manifest has unknown run status {run_status!r}")
+        raise BomLensContractError(
+            f"BomLens result manifest has unknown run status {clip(run_status)!r}"
+        )
     exit_code = _require(run, "exit_code", "run")
     if not isinstance(exit_code, int) or isinstance(exit_code, bool):
         raise BomLensContractError("BomLens result manifest field run.exit_code is not an integer")
+    if run_status in ("succeeded", "succeeded_degraded") and exit_code != 0:
+        raise BomLensContractError(
+            f"BomLens result manifest says {run_status} with exit code {clip(exit_code)}"
+        )
 
     raw_steps = _require(document, "steps", "manifest")
     raw_outputs = _require(document, "outputs", "manifest")
@@ -317,65 +346,105 @@ def parse_manifest(document: Any) -> EngineResult:
     )
 
 
-def load_manifest(output_dir: Path) -> EngineResult:
-    """Read and validate ``bomlens-result.json`` from ``output_dir``."""
-    path = output_dir / MANIFEST_NAME
-    if not path.is_file():
-        raise ManifestMissing(
-            "BomLens wrote no result manifest; the engine was stopped before it finished"
-        )
-    if path.stat().st_size > MAX_MANIFEST_BYTES:
-        raise BomLensContractError("BomLens result manifest is larger than any run writes")
-    try:
-        document = json.loads(path.read_text(encoding="utf-8"))
-    except (UnicodeDecodeError, json.JSONDecodeError) as exc:
-        raise BomLensContractError("BomLens result manifest is not valid JSON") from exc
-    return parse_manifest(document)
+def _decode_json(data: bytes, what: str) -> Any:
+    """Parse ``data``; every way it can fail is a :class:`BomLensContractError`.
 
-
-def resolve_output(output_dir: Path, output: Output) -> Path:
-    """The file ``output`` names, checked against what the manifest recorded.
-
-    The path must be a bare file name (the contract's ``^[^/]+$``, plus no
-    backslash, NUL or dot-only name), resolve inside ``output_dir`` after
-    symlinks, and match the recorded size and SHA-256.
+    ``RecursionError`` included: a deeply nested document exhausts the parser's
+    stack, and that must end the scan as a refused result, not as an unexpected
+    error with a traceback.
     """
-    name = output.path
-    if not name or name in (".", "..") or "/" in name or "\\" in name or "\x00" in name:
-        raise BomLensContractError(f"BomLens output path for {output.role} is not a file name")
+    try:
+        return json.loads(data.decode("utf-8"))
+    except (UnicodeDecodeError, json.JSONDecodeError) as exc:
+        raise BomLensContractError(f"{what} is not valid JSON") from exc
+    except RecursionError as exc:
+        raise BomLensContractError(f"{what} is nested too deeply to read") from exc
+
+
+def _contained(output_dir: Path, name: str, what: str) -> Path:
+    """``output_dir / name`` after symlinks, refused unless it stays in the folder."""
     root = output_dir.resolve()
     candidate = (output_dir / name).resolve()
-    if candidate.parent != root or not candidate.is_file():
-        raise BomLensContractError(f"BomLens output for {output.role} is not in the output folder")
-    size = candidate.stat().st_size
-    if size != output.bytes:
-        raise BomLensContractError(
-            f"BomLens output for {output.role} is {size} bytes; the manifest recorded "
-            f"{output.bytes}"
-        )
-    if size > MAX_OUTPUT_BYTES:
-        raise BomLensContractError(f"BomLens output for {output.role} is too large to read")
-    digest = hashlib.sha256()
-    with candidate.open("rb") as fh:
-        for chunk in iter(lambda: fh.read(1024 * 1024), b""):
-            digest.update(chunk)
-    if digest.hexdigest() != output.sha256:
-        raise BomLensContractError(
-            f"BomLens output for {output.role} does not match the SHA-256 the manifest recorded"
-        )
+    if candidate.parent != root:
+        raise BomLensContractError(f"{what} is not in the output folder")
     return candidate
 
 
-def read_json_output(output_dir: Path, output: Output) -> tuple[Path, dict[str, Any]]:
-    """Resolve ``output`` and load it as a JSON object."""
-    path = resolve_output(output_dir, output)
-    try:
-        data = json.loads(path.read_text(encoding="utf-8"))
-    except (UnicodeDecodeError, json.JSONDecodeError) as exc:
-        raise BomLensContractError(f"BomLens output for {output.role} is not valid JSON") from exc
-    if not isinstance(data, dict):
-        raise BomLensContractError(f"BomLens output for {output.role} is not a JSON object")
-    return path, data
+def _read_capped(path: Path, limit: int, what: str) -> bytes:
+    """The file's bytes, read once, refused when larger than ``limit``."""
+    with path.open("rb") as fh:
+        data = fh.read(limit + 1)
+    if len(data) > limit:
+        raise BomLensContractError(f"{what} is larger than any run writes")
+    return data
+
+
+def load_manifest(output_dir: Path) -> EngineResult:
+    """Read and validate ``bomlens-result.json`` from ``output_dir``.
+
+    The manifest must be a regular file inside ``output_dir`` after symlinks,
+    the same containment every output gets (:func:`read_output`).
+    """
+    what = "BomLens result manifest"
+    if not (output_dir / MANIFEST_NAME).exists():
+        raise ManifestMissing(
+            "BomLens wrote no result manifest; the engine was stopped before it finished"
+        )
+    path = _contained(output_dir, MANIFEST_NAME, what)
+    if not path.is_file():
+        raise BomLensContractError(f"{what} is not a regular file")
+    return parse_manifest(_decode_json(_read_capped(path, MAX_MANIFEST_BYTES, what), what))
+
+
+@dataclass(frozen=True)
+class VerifiedOutput:
+    """An output's bytes as read once, and the document parsed from those bytes.
+
+    ``data`` is what was hashed and what was parsed, so a file rewritten after
+    the read cannot be persisted in place of what was checked: callers store
+    ``data``, never the path again.
+    """
+
+    role: str
+    name: str
+    sha256: str
+    data: bytes
+    document: dict[str, Any]
+
+
+def read_output(output_dir: Path, output: Output) -> VerifiedOutput:
+    """Read ``output`` once and check it against what the manifest recorded.
+
+    The path must be a bare file name (the contract's ``^[^/]+$``, plus no
+    backslash, NUL or dot-only name) and resolve inside ``output_dir`` after
+    symlinks. The bytes are read once; that one buffer is size-checked,
+    hashed against the recorded SHA-256 and parsed.
+
+    The caller must run this only after the engine container has exited. While
+    it runs, it still owns the folder and could write a file after it was read;
+    reading once makes what TRUSCA checked and what it keeps the same bytes,
+    but cannot make a still-running writer's later output part of the check.
+    """
+    role = clip(output.role)
+    what = f"BomLens output for {role}"
+    name = output.path
+    if not name or name in (".", "..") or "/" in name or "\\" in name or "\x00" in name:
+        raise BomLensContractError(f"BomLens output path for {role} is not a file name")
+    path = _contained(output_dir, name, what)
+    if not path.is_file():
+        raise BomLensContractError(f"{what} is not in the output folder")
+    data = _read_capped(path, MAX_OUTPUT_BYTES, what)
+    if len(data) != output.bytes:
+        raise BomLensContractError(
+            f"{what} is {len(data)} bytes; the manifest recorded {clip(output.bytes)}"
+        )
+    digest = hashlib.sha256(data).hexdigest()
+    if digest != output.sha256:
+        raise BomLensContractError(f"{what} does not match the SHA-256 the manifest recorded")
+    document = _decode_json(data, what)
+    if not isinstance(document, dict):
+        raise BomLensContractError(f"{what} is not a JSON object")
+    return VerifiedOutput(role=output.role, name=name, sha256=digest, data=data, document=document)
 
 
 __all__ = [
@@ -402,6 +471,7 @@ __all__ = [
     "contract_major",
     "load_manifest",
     "parse_manifest",
-    "read_json_output",
-    "resolve_output",
+    "VerifiedOutput",
+    "clip",
+    "read_output",
 ]

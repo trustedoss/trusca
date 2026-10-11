@@ -42,7 +42,7 @@ from typing import Final
 
 import structlog
 
-from integrations.bomlens.contract import STEP_REASONS, EngineResult, Step
+from integrations.bomlens.contract import STEP_REASONS, EngineResult, Step, clip
 from services import scan_outcome
 
 log = structlog.get_logger("integrations.bomlens.stages")
@@ -144,7 +144,7 @@ def _trusca_reason(step: Step) -> str:
     if reason in scan_outcome.STAGE_REASONS:
         return str(reason)
     if reason is not None:
-        log.warning("bomlens_step_reason_unknown", step=step.id, reason=reason)
+        log.warning("bomlens_step_reason_unknown", step=clip(step.id), reason=clip(reason))
     return "failed"
 
 
@@ -158,7 +158,7 @@ def stage_outcomes(result: EngineResult) -> list[StageOutcome]:
     chosen: dict[str, tuple[int, StageOutcome]] = {}
     for step in result.steps:
         if step.id not in STEP_STAGE:
-            log.warning("bomlens_step_unknown", step=step.id, status=step.status)
+            log.warning("bomlens_step_unknown", step=clip(step.id), status=step.status)
             continue
         stage = STEP_STAGE[step.id]
         if stage is None or not is_degradation(step):
@@ -206,18 +206,25 @@ def stage_windows(result: EngineResult) -> dict[str, tuple[datetime, datetime]]:
 def vulnerability_failure(result: EngineResult) -> str | None:
     """Why the vulnerability scan cannot be trusted, or ``None`` when it ran.
 
-    ``scan-security`` must be recorded as ``ok``. Anything else (failed,
-    skipped because Trivy was missing, turned off, or not recorded at all)
-    means the run has no vulnerability result, and "no vulnerabilities" must
-    not be persisted in its place.
+    ``scan-security`` must be recorded as ``ok`` with no reason. Anything else
+    (failed, skipped because Trivy was missing, turned off, or not recorded at
+    all) means the run has no vulnerability result, and "no vulnerabilities"
+    must not be persisted in its place.
+
+    Every entry counts: a manifest that lists the step twice passes only when
+    both are clean. And ``ok`` with a reason attached is not clean; the step is
+    not degradable, so a qualified ok is read as a failure rather than guessed
+    at.
     """
-    step = result.step(VULNERABILITY_STEP)
-    if step is None:
+    entries = [s for s in result.steps if s.id == VULNERABILITY_STEP]
+    if not entries:
         return "the vulnerability scan was not recorded"
-    if step.status == "ok":
-        return None
-    reason = f" ({step.reason})" if step.reason else ""
-    return f"the vulnerability scan {step.status}{reason}"
+    for step in entries:
+        if step.status == "ok" and step.reason is None:
+            continue
+        reason = f" ({clip(step.reason)})" if step.reason else ""
+        return f"the vulnerability scan {step.status}{reason}"
+    return None
 
 
 __all__ = [

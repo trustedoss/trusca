@@ -139,6 +139,19 @@ def _artifact_kinds(session: Session, scan_id: uuid.UUID) -> dict[str, str | Non
     return {kind: sha for kind, sha in rows}
 
 
+def _artifact_files(session: Session, scan_id: uuid.UUID) -> dict[str, Path]:
+    rows = session.execute(
+        select(ScanArtifact.kind, ScanArtifact.storage_path).where(ScanArtifact.scan_id == scan_id)
+    ).all()
+    return {kind: Path(path) for kind, path in rows}
+
+
+def _sha256(path: Path) -> str:
+    import hashlib
+
+    return hashlib.sha256(path.read_bytes()).hexdigest()
+
+
 # ---------------------------------------------------------------------------
 # A clean run
 # ---------------------------------------------------------------------------
@@ -183,6 +196,11 @@ def test_a_clean_run_persists_components_findings_and_its_records(
         "sbom_cyclonedx": recorded["sbom.cyclonedx"],
         "trivy_sbom_report": recorded["vulnerabilities.trivy"],
     }
+    # The rows point at TRUSCA's copy of the verified bytes, outside the
+    # engine's folder, and the copy is byte-identical to what was checked.
+    for kind, path in _artifact_files(sync_session, scan_id).items():
+        assert folder.resolve() not in path.resolve().parents, kind
+        assert _sha256(path) == _artifact_kinds(sync_session, scan_id)[kind]
 
 
 def test_an_image_run_keeps_every_cve_on_every_package(
@@ -296,6 +314,52 @@ def test_a_failed_vulnerability_scan_fails_and_keeps_the_inventory(
     meta = _metadata(sync_session, scan_id)
     # scan-security is not a degradable stage: it fails the scan instead.
     assert so.degraded_stages(meta) == [{"stage": "generate", "reason": "fallback"}]
+
+
+def test_a_report_without_results_fails_instead_of_reading_as_zero_cves(
+    tmp_path: Path, sync_session: Session
+) -> None:
+    """M1, on the derived fixture: the real report of source-ok with Results
+    removed. Schema 2, the right artifact type, scan-security ok, and still not
+    a result; persisted, it would read as zero CVEs and pass the gate."""
+    from tasks.bomlens_result import apply_bomlens_result
+
+    scan_id = _seed_running_source_scan()
+    folder = _copy_fixture("source-ok-results-stripped", tmp_path)
+
+    with pytest.raises(BomLensVulnerabilityScanFailed, match="no Results list"):
+        apply_bomlens_result(scan_uuid=scan_id, output_dir=folder)
+
+    assert _component_count(sync_session, scan_id) == 1
+    assert _finding_ids(sync_session, scan_id) == []
+    assert set(_artifact_kinds(sync_session, scan_id)) == {"sbom_cyclonedx"}
+
+
+def test_a_file_rewritten_after_it_was_read_is_not_what_gets_kept(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, sync_session: Session
+) -> None:
+    """M2: the SBOM in the engine's folder is replaced after the adapter read
+    it (while components are being persisted). The artifact kept for the scan
+    is still the checked bytes, not the replacement."""
+    import tasks.bomlens_result as adapter
+
+    scan_id = _seed_running_source_scan()
+    folder = _copy_fixture("source-ok", tmp_path)
+    bom = folder / "node_1.0.0_bom.json"
+    checked = _sha256(bom)
+    from tasks.scan_source import persist_sbom_components as real_persist
+
+    def persist_then_swap(*args: Any, **kwargs: Any) -> None:
+        real_persist(*args, **kwargs)
+        bom.write_text('{"bomFormat": "CycloneDX", "components": []}', encoding="utf-8")
+
+    monkeypatch.setattr(adapter, "persist_sbom_components", persist_then_swap)
+
+    adapter.apply_bomlens_result(scan_uuid=scan_id, output_dir=folder)
+
+    kept = _artifact_files(sync_session, scan_id)["sbom_cyclonedx"]
+    assert _sha256(bom) != checked
+    assert _sha256(kept) == checked
 
 
 def test_a_scan_error_in_the_report_fails_even_when_the_step_says_ok(

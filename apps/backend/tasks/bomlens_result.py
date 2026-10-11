@@ -49,8 +49,10 @@ from integrations.bomlens.contract import (
     BomLensRunFailed,
     BomLensVulnerabilityScanFailed,
     EngineResult,
+    VerifiedOutput,
+    clip,
     load_manifest,
-    read_json_output,
+    read_output,
 )
 from models import Scan
 from services import scan_outcome
@@ -83,6 +85,9 @@ _UNKNOWN_VERSION: Final = "UNKNOWN"
 #: same thing (``tasks.scan_source._SCANOSS_SOURCE``).
 _IDENTIFIED_BY: Final = "bomlens:identifiedBy"
 _SCANOSS: Final = "scanoss"
+
+#: The only Trivy JSON report schema this reader accepts.
+_TRIVY_SCHEMA_VERSION: Final = 2
 
 #: Bound on any manifest string copied into ``scan_metadata``.
 _TEXT_MAX: Final = 200
@@ -174,8 +179,8 @@ def _record_engine_run(scan_uuid: uuid.UUID, result: EngineResult) -> None:
             "bomlens_stage_degraded",
             stage=outcome.stage,
             reason=outcome.reason,
-            engine_reason=outcome.engine_reason,
-            step=outcome.step,
+            engine_reason=clip(outcome.engine_reason) if outcome.engine_reason else None,
+            step=clip(outcome.step),
             status=outcome.status,
         )
 
@@ -235,6 +240,43 @@ def sbom_for_persistence(sbom: dict[str, Any]) -> tuple[dict[str, Any], int]:
     return document, dropped
 
 
+def trivy_report_problem(report: dict[str, Any], *, sbom_has_components: bool) -> str | None:
+    """Why ``report`` is not a vulnerability result, or ``None`` when it is one.
+
+    An empty ``Results`` list is a real answer ("Trivy matched nothing") only
+    when the rest of the report says Trivy ran over this SBOM: schema 2, a
+    ``Results`` list of objects, and ``ArtifactType`` ``cyclonedx`` whenever
+    there were components to match. ``{}``, ``{"SchemaVersion": 2}`` or a
+    report about some other artifact would otherwise persist as zero CVEs and
+    pass the build gate.
+    """
+    # The engine reports a Trivy ScanError as a failed step; this is the same
+    # check on the report itself, so a manifest that missed it still cannot
+    # turn "the scan did not run" into "no findings".
+    if report.get("ScanError"):
+        return "the Trivy report carries a scan error"
+    if report.get("SchemaVersion") != _TRIVY_SCHEMA_VERSION:
+        return "the Trivy report is not schema version 2"
+    results = report.get("Results")
+    if not isinstance(results, list) or not all(isinstance(r, dict) for r in results):
+        return "the Trivy report has no Results list"
+    if sbom_has_components and report.get("ArtifactType") != "cyclonedx":
+        return "the Trivy report is not about the CycloneDX SBOM"
+    return None
+
+
+def _keep_verified(artifact_dir: Path, verified: VerifiedOutput) -> Path:
+    """Write the bytes that were checked to a file TRUSCA owns, and return it.
+
+    The artifact row then points at exactly what was hashed and parsed, never
+    at the engine's folder, where a file could change after it was read.
+    """
+    artifact_dir.mkdir(parents=True, exist_ok=True)
+    path = artifact_dir / verified.name
+    path.write_bytes(verified.data)
+    return path
+
+
 def _first_failed_step(result: EngineResult) -> str | None:
     return next((s.id for s in result.steps if s.status == "failed"), None)
 
@@ -244,12 +286,19 @@ def apply_bomlens_result(
     scan_uuid: uuid.UUID,
     output_dir: Path,
     source_dir: Path | None = None,
+    artifact_dir: Path | None = None,
 ) -> AppliedBomLensResult:
     """Persist the BomLens run in ``output_dir`` as scan ``scan_uuid``.
 
+    The caller must call this only after the engine container has exited, so
+    nothing is still writing to ``output_dir`` (see
+    ``integrations.bomlens.contract.read_output``).
+
     ``source_dir`` is the scanned project root, passed through to
     ``persist_sbom_components`` for its npm lockfile scope enrichment; ``None``
-    for an input with no source tree.
+    for an input with no source tree. ``artifact_dir`` is where the verified
+    bytes are kept for the scan's artifact rows; by default a sibling of
+    ``output_dir`` (``<name>.verified``), outside the engine's folder.
 
     Raises a :class:`~integrations.bomlens.contract.BomLensError` subclass when
     the result cannot become a succeeded scan (see the module docstring for
@@ -272,39 +321,38 @@ def apply_bomlens_result(
     sbom_output = result.output(ROLE_SBOM_CYCLONEDX)
     if sbom_output is None:
         raise BomLensContractError("the BomLens run recorded no CycloneDX SBOM")
-    sbom_path, sbom_document = read_json_output(output_dir, sbom_output)
+    keep_dir = artifact_dir or output_dir.with_name(f"{output_dir.name}.verified")
+    sbom = read_output(output_dir, sbom_output)
+    sbom_components = sbom.document.get("components")
+    sbom_has_components = isinstance(sbom_components, list) and bool(sbom_components)
 
     # Read the vulnerability result before writing anything else, so a report
     # that does not match its digest fails the scan before half of it lands.
     problem = stages.vulnerability_failure(result)
-    trivy_path: Path | None = None
-    trivy_report: dict[str, Any] | None = None
-    trivy_sha256: str | None = None
+    trivy: VerifiedOutput | None = None
     if problem is None:
         trivy_output = result.output(ROLE_VULNERABILITIES_TRIVY)
         if trivy_output is None:
             problem = "the run recorded no Trivy report"
         else:
-            trivy_path, trivy_report = read_json_output(output_dir, trivy_output)
-            trivy_sha256 = trivy_output.sha256
-            # The engine reports a Trivy ScanError as a failed step; this is the
-            # same check on the report itself, so a manifest that missed it
-            # still cannot turn "the scan did not run" into "no findings".
-            if trivy_report.get("ScanError"):
-                problem = "the Trivy report carries a scan error"
+            trivy = read_output(output_dir, trivy_output)
+            problem = trivy_report_problem(trivy.document, sbom_has_components=sbom_has_components)
 
-    persisted, left_out = sbom_for_persistence(sbom_document)
+    persisted, left_out = sbom_for_persistence(sbom.document)
     with sync_session_scope() as session:
         persist_sbom_components(session, scan_uuid=scan_uuid, sbom=persisted, source_dir=source_dir)
         session.commit()
-    _persist_artifact(scan_uuid, kind="sbom_cyclonedx", path=sbom_path, sha256=sbom_output.sha256)
+    sbom_path = _keep_verified(keep_dir, sbom)
+    _persist_artifact(scan_uuid, kind="sbom_cyclonedx", path=sbom_path, sha256=sbom.sha256)
     log.info("bomlens_components_persisted", stage="persist", left_out=left_out)
 
-    if problem is not None or trivy_report is None or trivy_path is None:
+    if problem is not None or trivy is None:
         log.error("bomlens_vulnerability_scan_failed", stage="persist", problem=problem)
         raise BomLensVulnerabilityScanFailed(problem or "the run recorded no Trivy report")
 
-    _persist_artifact(scan_uuid, kind="trivy_sbom_report", path=trivy_path, sha256=trivy_sha256)
+    trivy_report = trivy.document
+    trivy_path = _keep_verified(keep_dir, trivy)
+    _persist_artifact(scan_uuid, kind="trivy_sbom_report", path=trivy_path, sha256=trivy.sha256)
     with sync_session_scope() as session:
         inserted = persist_trivy_findings(session, scan_uuid=scan_uuid, trivy_report=trivy_report)
         os_meta = extract_os_metadata(trivy_report)
@@ -332,4 +380,5 @@ __all__ = [
     "apply_bomlens_result",
     "engine_record",
     "sbom_for_persistence",
+    "trivy_report_problem",
 ]

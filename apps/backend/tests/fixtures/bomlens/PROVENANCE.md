@@ -1,7 +1,7 @@
 # Provenance of the BomLens engine fixtures
 
 Every file here is unedited output of the published BomLens image, captured on
-2026-10-11. Nothing was written or changed by hand. Tests that need a variant
+2026-10-11, except the one derived case listed at the end. Tests that need a variant
 (an unknown contract major, a step status rewritten to test one defence on its
 own, a tampered SBOM) copy a case into a temporary directory and change the
 copy.
@@ -43,6 +43,16 @@ Every run used `-e UPLOAD_ENABLED=false -e GENERATE_SECURITY=true
 
 `source-run-failed` contains the manifest only, because the run wrote nothing
 else.
+
+## Derived case
+
+`source-ok-results-stripped` is `source-ok` with one change: the `Results`
+key was removed from `node_1.0.0_security.json` (re-serialised with two-space
+indent) and the two manifest entries for that file got the new `sha256` and
+`bytes`. Everything else, including the SBOM and every other manifest field,
+is the captured run. It stands for a report that is well-formed JSON from
+Trivy's schema but carries no result list, which must fail the scan rather
+than persist as zero vulnerabilities.
 
 ## When to recapture
 
