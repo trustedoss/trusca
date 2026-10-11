@@ -147,6 +147,21 @@ def _redis_index_is_not_shared() -> None:
     )
 
 @pytest.fixture(autouse=True)
+def _no_docker_socket_on_the_test_host(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Hide the test host's own Docker socket from the Docker-access guard.
+
+    ``integrations.scan_executor.docker_guard`` refuses in-process builds and
+    every non-engine task where a Docker socket is mounted. A CI runner has
+    one at /var/run/docker.sock for its own use, and the tests run on it as
+    plain processes, not as a TRUSCA worker. The guard's own tests set the
+    paths they need (tests/unit/test_bomlens_engine_isolation.py).
+    """
+    from integrations.scan_executor import docker_guard
+
+    monkeypatch.setattr(docker_guard, "DOCKER_SOCKET_PATHS", ())
+
+
+@pytest.fixture(autouse=True)
 def _stub_enqueue_scan(monkeypatch: pytest.MonkeyPatch) -> None:
     """Replace `tasks.enqueue_scan` with a deterministic stub by default.
 

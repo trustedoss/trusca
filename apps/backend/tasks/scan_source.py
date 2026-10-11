@@ -66,7 +66,7 @@ from contextlib import contextmanager
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
-from urllib.parse import quote
+from urllib.parse import quote, urlsplit, urlunsplit
 
 import structlog
 from celery.exceptions import SoftTimeLimitExceeded
@@ -84,7 +84,6 @@ from core.config import (
     license_fetch_enabled,
     license_fetch_scan_budget_seconds,
     malicious_enabled,
-    scan_engine,
     scan_load_test_delay_seconds,
     scan_scope_filter_enabled,
     scan_scope_filter_maven_enabled,
@@ -109,6 +108,7 @@ from integrations._secret_scrub import scrub_secrets
 from integrations._size_guard import enforce_jsonb_row_size_limit
 from integrations._subprocess_env import scrubbed_env_for_prep
 from integrations.bomlens import contract as bomlens_contract
+from integrations.bomlens import runner as bomlens_runner
 from integrations.dependency_graph import (
     compute_depths,
     graph_depths_from_sbom,
@@ -240,11 +240,29 @@ _STAGE_PROGRESS: dict[str, int] = {
 )
 def scan_source_task(self: Any, scan_id: str) -> None:
     """
-    Run a source scan to completion.
+    Run a source scan to completion with the in-process engine.
 
     Args:
         scan_id: UUID **string** (Celery JSON serialization compatibility).
     """
+    _run_source_task(self, scan_id, engine="inprocess")
+
+
+# The BomLens engine runs on its own worker (compose service worker-engine,
+# queue trustedoss.engine), the only one that can reach the Docker API. The
+# engine is decided by which task was dispatched, not by the worker's
+# SCAN_ENGINE: this task never falls back to the in-process pipeline, and the
+# task above never runs the engine (security review on #522, H1).
+@celery_app.task(  # type: ignore[misc]
+    name="trustedoss.scan_source_engine",
+    bind=True,
+)
+def scan_source_engine_task(self: Any, scan_id: str) -> None:
+    """Run a source scan to completion on the BomLens engine."""
+    _run_source_task(self, scan_id, engine="bomlens")
+
+
+def _run_source_task(self: Any, scan_id: str, *, engine: str) -> None:
     structlog.contextvars.bind_contextvars(
         scan_id=scan_id, task_id=self.request.id, task_kind="source"
     )
@@ -269,8 +287,15 @@ def scan_source_task(self: Any, scan_id: str) -> None:
             if scan is None:
                 log.warning("scan_source_missing_scan_row")
                 return
-            if scan.status == "succeeded":
-                log.info("scan_source_already_succeeded")
+            # Only a queued scan, or a running one Celery redelivered after a
+            # worker died, is (re)started. A scan that already ended keeps its
+            # ending: in particular a scan cancelled while it waited in the
+            # queue, whose revoke never reached worker-engine (no remote
+            # control there), must not be flipped back to running (security
+            # review on #522, N-M2). Every enqueue path creates a new queued
+            # row, so no retry depends on restarting an ended one.
+            if scan.status not in ("queued", "running"):
+                log.info("scan_source_not_restartable", status=scan.status)
                 return
 
             project = session.get(Project, scan.project_id)
@@ -313,7 +338,12 @@ def scan_source_task(self: Any, scan_id: str) -> None:
                 git_url=project_git_url,
                 scan_metadata=scan_metadata,
                 ref=scan_ref,
+                engine=engine,
             )
+    except bomlens_runner.EngineScanCancelled as exc:
+        # The BomLens engine noticed the scan was cancelled: the row already
+        # says so, and nothing is written over it.
+        log.info("scan_source_engine_stopped", reason=str(exc)[:100])
     except _FetchAborted as exc:
         # SSRF guard / fetch refused the project URL — terminal, not a
         # transient. Mark failed with the validator's human-readable reason
@@ -386,21 +416,19 @@ def _run_pipeline(
     git_url: str | None,
     scan_metadata: dict[str, Any] | None = None,
     ref: str | None = None,
+    engine: str = "inprocess",
 ) -> None:
-    """Execute the scan stages, each with its own commit."""
+    """Execute the scan stages, each with its own commit.
+
+    ``engine`` comes from the task that was dispatched (``bomlens`` only for
+    :func:`scan_source_engine_task`), never from this worker's environment.
+    """
     # Scan-log verbosity (feat/scan-log-verbosity): a per-scan
     # ``metadata.verbosity == "verbose"`` flips every tool into its debug /
     # verbose mode so the scan-log drawer renders a full diagnostic trace. The
     # schema validator already constrains the value to {"normal","verbose"};
     # any other value (or absence) falls back to the quiet "normal" trace.
     verbose = str((scan_metadata or {}).get("verbosity", "normal")) == "verbose"
-
-    # SCAN_ENGINE=bomlens is a preview: the adapter that persists a BomLens
-    # result exists (tasks.bomlens_result), the executor that runs the image
-    # does not yet. Say so and keep the in-process engine, the same fallback
-    # an unavailable SCAN_EXECUTOR gets.
-    if scan_engine() == "bomlens":
-        log.warning("scan_engine_unavailable_fallback_inprocess", requested="bomlens")
 
     # Stage 1 — bootstrap workspace.
     _set_stage(scan_uuid, "bootstrap")
@@ -441,6 +469,24 @@ def _run_pipeline(
     # S8 fingerprint's manifest input (below): read once, used twice, rather
     # than a second directory walk.
     manifest_inventory = _record_input_manifests(scan_uuid, project_root)
+
+    # The BomLens engine task: the BomLens image produces the SBOM and the
+    # vulnerability report from here on, and TRUSCA persists, signs and
+    # finishes the scan (tasks.scan_source_bomlens). Nothing before this point
+    # runs code from the scanned tree. Imported here because that module
+    # imports this one.
+    if engine == "bomlens":
+        from tasks.scan_source_bomlens import run_bomlens_pipeline
+
+        run_bomlens_pipeline(
+            scan_uuid=scan_uuid,
+            project_id=project_id,
+            workspace=workspace,
+            source_dir=source_dir,
+            project_root=project_root,
+            manifest_inventory=manifest_inventory,
+        )
+        return
 
     # S8 (concurrency-scaling-plan-2026-08-22.md §3.2): decide, BEFORE cdxgen
     # runs, whether this commit's dependency set is unchanged from the prior
@@ -1228,16 +1274,59 @@ def _fetch_source(
         credential_injected=credential_injected,
         ref=ref,
     )
-    return run_git_fetch_commands(  # pragma: no cover
-        commands,
-        scan_uuid=scan_uuid,
-        clone_url=clone_url,
-        target=target,
-        ref=ref,
-        resolve_option=resolve_option,
-        credential=credential,
-        source_dir=source_dir,
-    )
+    try:  # pragma: no cover
+        return run_git_fetch_commands(
+            commands,
+            scan_uuid=scan_uuid,
+            clone_url=clone_url,
+            target=target,
+            ref=ref,
+            resolve_option=resolve_option,
+            credential=credential,
+            source_dir=source_dir,
+        )
+    except _FetchAborted as exc:  # pragma: no cover
+        # Redirects are refused (NO_REDIRECTS). The one redirect a forge
+        # routinely answers with is "add .git" (GitLab answers 301 to a project
+        # URL without it); retry that once, on the same validated host.
+        retry_url = redirect_retry_url(clone_url, str(exc))
+        if retry_url is None:
+            raise
+        log.info("scan_source_fetch_retry_with_git_suffix", host=host)
+        shutil.rmtree(target, ignore_errors=True)
+        return run_git_fetch_commands(
+            build_git_fetch_commands(
+                clone_url=retry_url, target=target, ref=ref, resolve_option=resolve_option
+            ),
+            scan_uuid=scan_uuid,
+            clone_url=retry_url,
+            target=target,
+            ref=ref,
+            resolve_option=resolve_option,
+            credential=credential,
+            source_dir=source_dir,
+        )
+
+
+_REDIRECT_ERROR_RE = re.compile(r"returned error: 30[1278]\b")
+
+
+def redirect_retry_url(clone_url: str, error: str) -> str | None:
+    """The clone URL with ``.git`` appended, when a redirect refused the original.
+
+    ``None`` unless the clone failed on an HTTP redirect, the URL is http(s),
+    and its path does not already end in ``.git``. Only the path changes: the
+    host (validated and pinned) and any credential stay as they were.
+    """
+    if not _REDIRECT_ERROR_RE.search(error):
+        return None
+    parts = urlsplit(clone_url)
+    if parts.scheme not in ("http", "https"):
+        return None
+    path = parts.path.rstrip("/")
+    if not path or path.endswith(".git"):
+        return None
+    return urlunsplit(parts._replace(path=path + ".git"))
 
 
 def run_git_fetch_commands(
@@ -1375,7 +1464,12 @@ def build_git_fetch_commands(
     only to the first would leave the fetch — the one that actually transfers
     the repository — free to follow a rotated DNS answer.
     """
-    pin = ["-c", resolve_option] if resolve_option else []
+    # http.followRedirects=false: the SSRF guard validated this URL's host and
+    # pinned its address; a redirect (git's default follows the first one)
+    # would send the clone to a host nobody validated (security review on
+    # #522, N-L2). A renamed repository whose old URL only redirects now fails
+    # to fetch and has to be updated to its new URL.
+    pin = [*NO_REDIRECTS, *(["-c", resolve_option] if resolve_option else [])]
     if ref is None:
         return [["git", *pin, "clone", "--depth", "1", clone_url, str(target)]]
     return [
@@ -1387,6 +1481,10 @@ def build_git_fetch_commands(
         # Detached: FETCH_HEAD is a commit, and the scan only reads the tree.
         ["git", "-C", str(target), "checkout", "--quiet", "--detach", "FETCH_HEAD"],
     ]
+
+
+#: Git config that refuses HTTP redirects on every networked git command.
+NO_REDIRECTS: tuple[str, ...] = ("-c", "http.followRedirects=false")
 
 
 def _record_ref_fallback(*, scan_uuid: uuid.UUID, ref: str, reason: str) -> None:
@@ -4820,5 +4918,6 @@ def _noop_workspace(path: Path) -> Iterator[Path]:
 
 
 __all__ = [
+    "scan_source_engine_task",
     "scan_source_task",
 ]

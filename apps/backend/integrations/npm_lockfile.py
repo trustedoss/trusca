@@ -63,6 +63,8 @@ Limitations (documented; out of scope for this fix)
 from __future__ import annotations
 
 import json
+import os
+import stat
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
@@ -122,6 +124,40 @@ class NpmLockfileData:
         return out
 
 
+#: Largest ``package-lock.json`` / ``package.json`` read. Real lockfiles of
+#: large monorepos are tens of MiB; anything far past that is not one.
+MAX_LOCKFILE_BYTES = 64 * 1024 * 1024
+
+
+def _read_regular_file(path: Path, limit: int) -> bytes | None:
+    """The bytes of ``path`` if it is a regular file of at most ``limit`` bytes.
+
+    The source tree may have been written by a build that ran in the scan (the
+    BomLens engine's stage 1 has it writable), so the file is opened without
+    following a final symbolic link and without blocking on a FIFO, and its
+    type and size are checked on the open descriptor (security review on
+    #522, L5). ``None`` for anything else; never raises.
+    """
+    flags = os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0) | getattr(os, "O_NONBLOCK", 0)
+    try:
+        fd = os.open(path, flags)
+    except OSError:
+        return None
+    try:
+        info = os.fstat(fd)
+        if not stat.S_ISREG(info.st_mode) or info.st_size > limit:
+            log.warning("npm_lockfile_not_read", path=path.name, size=info.st_size)
+            return None
+        with os.fdopen(fd, "rb", closefd=False) as fh:
+            data = fh.read(limit + 1)
+    except OSError as exc:
+        log.warning("npm_lockfile_read_failed", path=str(path), error=str(exc))
+        return None
+    finally:
+        os.close(fd)
+    return data if len(data) <= limit else None
+
+
 # ---------------------------------------------------------------------------
 # Public API
 # ---------------------------------------------------------------------------
@@ -135,16 +171,8 @@ def read_lockfile(source_dir: Path) -> NpmLockfileData | None:
     caller treats absence as "no enrichment available".
     """
     lockfile_path = source_dir / "package-lock.json"
-    if not lockfile_path.is_file():
-        return None
-    try:
-        raw_bytes = lockfile_path.read_bytes()
-    except OSError as exc:
-        log.warning(
-            "npm_lockfile_read_failed",
-            path=str(lockfile_path),
-            error=str(exc),
-        )
+    raw_bytes = _read_regular_file(lockfile_path, MAX_LOCKFILE_BYTES)
+    if raw_bytes is None:
         return None
     try:
         data = json.loads(raw_bytes.decode("utf-8", errors="replace"))
@@ -578,12 +606,12 @@ def _as_str_str_map(value: Any) -> dict[str, str]:
 
 def _read_manifest(source_dir: Path) -> dict[str, Any] | None:
     """Read ``<source_dir>/package.json`` defensively; returns ``None`` on any error."""
-    manifest_path = source_dir / "package.json"
-    if not manifest_path.is_file():
+    raw = _read_regular_file(source_dir / "package.json", MAX_LOCKFILE_BYTES)
+    if raw is None:
         return None
     try:
-        data = json.loads(manifest_path.read_text(encoding="utf-8", errors="replace"))
-    except (json.JSONDecodeError, OSError, ValueError):
+        data = json.loads(raw.decode("utf-8", errors="replace"))
+    except (json.JSONDecodeError, ValueError, RecursionError):
         return None
     return data if isinstance(data, dict) else None
 

@@ -1,0 +1,20 @@
+{
+  "contract": {
+    "name": "bomlens-engine-plan",
+    "version": "1.0.0"
+  },
+  "engine": {
+    "version": "latest-d8d3323",
+    "image": "ghcr.io/haksungjang/bomlens:sha-d8d3323",
+    "image_digest": "sha256:8b44d05a0baf66e11dcbabb52d7d9842cb11a5d0a4ec419b80de7f51233e05c5"
+  },
+  "input": {
+    "kind": "source",
+    "detected_ecosystem": "android"
+  },
+  "status": "unsupported",
+  "reason": "android-sdk-image",
+  "detail": "Android needs a locally built SDK image (bomlens-android-sdk34); it is not published",
+  "output_file": "app_1.0_bom.json",
+  "stages": []
+}

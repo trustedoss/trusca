@@ -24,7 +24,7 @@ from __future__ import annotations
 from datetime import timedelta
 from typing import Any
 
-from celery import Celery
+from celery import Celery, Task
 from celery.schedules import crontab
 from celery.schedules import schedule as _schedule
 
@@ -32,11 +32,13 @@ from core.config import (
     backup_task_soft_time_limit_seconds,
     backup_task_time_limit_seconds,
     broker_visibility_timeout_seconds,
+    celery_worker_remote_control,
     default_task_soft_time_limit_seconds,
     default_task_time_limit_seconds,
     reachability_hard_time_limit_seconds,
     reachability_soft_time_limit_seconds,
     redis_url,
+    scan_engine,
     scan_hard_time_limit_seconds,
     scan_soft_time_limit_seconds,
     trivy_db_refresh_task_soft_time_limit_seconds,
@@ -53,6 +55,8 @@ from tasks import log_context as _log_context  # noqa: F401
 # them. Beat schedule entries below reference these by their ``name=`` kwargs.
 _TASK_INCLUDES = [
     "tasks.scan_source",
+    # The BomLens engine's container reaper (engine queue, see _ENGINE_QUEUE).
+    "tasks.bomlens_engine_reaper",
     "tasks.scan_container",
     # External CycloneDX SBOM ingest — reuses the source pipeline's back half
     # (components → Trivy SBOM matching → findings → finalize) against an
@@ -214,12 +218,41 @@ _SCAN_TASK_NAMES = (
     "trustedoss.scan_reachability",
 )
 
+# The BomLens scan engine (SCAN_ENGINE=bomlens) gets a queue of its own,
+# consumed only by the engine worker (compose service worker-engine, the only
+# one that can reach the Docker API). No other task is routed there, and the
+# engine worker subscribes to nothing else: it never runs build preparation,
+# cdxgen, reachability or a default-queue task, all of which execute code from
+# a scanned repository (security review on #522, H1).
+_ENGINE_QUEUE = "trustedoss.engine"
+_ENGINE_TASK_NAMES = (
+    "trustedoss.scan_source_engine",
+    "trustedoss.bomlens_engine_reaper",
+)
+
 # #436: the two backup/restore task names, each given a larger explicit pair
 # below rather than the default every other task on this queue gets.
 _BACKUP_TASK_NAMES = (
     "trustedoss.backup.run",
     "trustedoss.backup.restore",
 )
+
+
+class _EngineIsolatedTask(Task):  # type: ignore[misc]
+    """Every task's base class: on a worker that can reach the Docker API, only
+    the BomLens engine's own tasks run (security review on #522, N-L1).
+
+    The queue split already keeps other tasks off the engine worker; this is
+    the check on the worker itself, for a message that reaches it anyway (a
+    mis-set ``-Q``, a hand-sent task). A refused task raises before its body
+    runs.
+    """
+
+    def __call__(self, *args: Any, **kwargs: Any) -> Any:
+        from integrations.scan_executor.docker_guard import refuse_task_with_docker_access
+
+        refuse_task_with_docker_access(self.name, _ENGINE_TASK_NAMES)
+        return super().__call__(*args, **kwargs)
 
 
 class _FallbackTaskTimeLimit:
@@ -280,6 +313,10 @@ _TASK_ANNOTATIONS = [
             "soft_time_limit": scan_soft_time_limit_seconds(),
         },
         "trustedoss.ingest_sbom": {
+            "time_limit": scan_hard_time_limit_seconds(),
+            "soft_time_limit": scan_soft_time_limit_seconds(),
+        },
+        "trustedoss.scan_source_engine": {
             "time_limit": scan_hard_time_limit_seconds(),
             "soft_time_limit": scan_soft_time_limit_seconds(),
         },
@@ -350,7 +387,23 @@ def _build_beat_schedule() -> dict[str, dict[str, object]]:
 
     chore PR #4 wires a `celery-beat` sidecar in
     ``docker-compose.dev.yml`` so these schedules actually fire.
+
+    ``trustedoss.bomlens_engine_reaper`` (every 5 minutes) is scheduled only
+    when ``SCAN_ENGINE=bomlens``: it goes to the engine queue, which nothing
+    consumes on a deployment without the engine worker, so scheduling it
+    there would only pile messages up in Redis.
     """
+    schedule = _base_beat_schedule()
+    if scan_engine() == "bomlens":
+        schedule["bomlens-engine-reaper-five-minutely"] = {
+            "task": "trustedoss.bomlens_engine_reaper",
+            "schedule": _schedule(timedelta(minutes=5)),
+        }
+    return schedule
+
+
+def _base_beat_schedule() -> dict[str, dict[str, object]]:
+    """Every schedule entry that does not depend on the scan engine."""
     return {
         # feat/zip-upload (security H-fix) — reclaim abandoned / orphaned
         # uploaded archives every 6h so a looped-upload DoS or a
@@ -598,9 +651,12 @@ def create_celery_app() -> Celery:
         broker=broker,
         backend=broker,
         include=list(_TASK_INCLUDES),
+        task_cls=_EngineIsolatedTask,
     )
     app.conf.update(
         task_acks_late=True,
+        # Off on worker-engine (docker-compose.yml), on everywhere else.
+        worker_enable_remote_control=celery_worker_remote_control(),
         task_reject_on_worker_lost=True,
         worker_prefetch_multiplier=1,
         # S1 (concurrency-scaling-plan-2026-08-22.md §3.2): the Redis
@@ -633,7 +689,10 @@ def create_celery_app() -> Celery:
         # deployment-worker-{scan,default}.yaml templates, devops-owned) is
         # the other half of this split; task_routes is the half that
         # actually decides which queue a task lands on when dispatched.
-        task_routes={name: {"queue": _SCAN_QUEUE} for name in _SCAN_TASK_NAMES},
+        task_routes={
+            **{name: {"queue": _SCAN_QUEUE} for name in _SCAN_TASK_NAMES},
+            **{name: {"queue": _ENGINE_QUEUE} for name in _ENGINE_TASK_NAMES},
+        },
         timezone="UTC",
         enable_utc=True,
         beat_schedule=_build_beat_schedule(),

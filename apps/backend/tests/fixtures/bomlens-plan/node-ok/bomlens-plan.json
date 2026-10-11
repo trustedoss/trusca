@@ -1,0 +1,159 @@
+{
+  "contract": {
+    "name": "bomlens-engine-plan",
+    "version": "1.0.0"
+  },
+  "engine": {
+    "version": "latest-d8d3323",
+    "image": "ghcr.io/haksungjang/bomlens:sha-d8d3323",
+    "image_digest": "sha256:8b44d05a0baf66e11dcbabb52d7d9842cb11a5d0a4ec419b80de7f51233e05c5"
+  },
+  "input": {
+    "kind": "source",
+    "detected_ecosystem": "node"
+  },
+  "status": "ok",
+  "reason": null,
+  "detail": null,
+  "output_file": "app_1.0_bom.json",
+  "stages": [
+    {
+      "id": "generate",
+      "stage": 1,
+      "image": "ghcr.io/cdxgen/cdxgen-alpine-node24:13.2.0",
+      "image_digest": "sha256:1e46a41c801bfdb572a8226c49143831af4ee5ed954b2bd9cf55e58eda71a957",
+      "user": "0:0",
+      "entrypoint": [
+        "sh"
+      ],
+      "args": [
+        "/tmp/build-prep.sh",
+        "/app",
+        "/out/app_1.0_bom.json",
+        "1.6"
+      ],
+      "workdir": null,
+      "mounts": [
+        {
+          "role": "source",
+          "target": "/app",
+          "mode": "rw"
+        },
+        {
+          "role": "output",
+          "target": "/out",
+          "mode": "rw"
+        },
+        {
+          "role": "plan-file",
+          "source": "bomlens-plan/build-prep.sh",
+          "target": "/tmp/build-prep.sh",
+          "mode": "ro"
+        },
+        {
+          "role": "plan-file",
+          "source": "bomlens-plan/identify-conda.py",
+          "target": "/tmp/identify-conda.py",
+          "mode": "ro"
+        },
+        {
+          "role": "guard-state",
+          "target": "/bomlens-state",
+          "mode": "rw",
+          "optional": true
+        },
+        {
+          "role": "cache-maven",
+          "target": "/root/.m2",
+          "mode": "rw",
+          "optional": true
+        },
+        {
+          "role": "cache-gradle",
+          "target": "/root/.gradle",
+          "mode": "rw",
+          "optional": true
+        }
+      ],
+      "on_kill": "If stage 1 is killed before it finishes, it cannot put the source back. With the guard-state mount and BOMLENS_GUARD_ID, run the same image and arguments again with BOMLENS_GUARD_RESTORE_ONLY=1 to restore it",
+      "env": {
+        "HOME": "/tmp/sbomhome",
+        "MAVEN_OPTS": "-Dmaven.repo.local=/tmp/sbomhome/.m2",
+        "FETCH_LICENSE": "false",
+        "PROJECT_NAME": "app",
+        "PROJECT_VERSION": "1.0"
+      },
+      "env_passthrough": [
+        "BOMLENS_KEEP_BUILD_OUTPUT",
+        "BOMLENS_MAVEN_FULL_GRAPH",
+        "BOMLENS_ANDROID_FULL_GRAPH",
+        "BOMLENS_NODE_FULL_GRAPH",
+        "BOMLENS_PHP_FULL_GRAPH",
+        "BOMLENS_INCLUDE_NON_SHIPPED",
+        "BOMLENS_NO_COPYRIGHT",
+        "BOMLENS_NO_CARGO_LICENSE",
+        "BOMLENS_PREP_TIMEOUT",
+        "GOPROXY",
+        "GOSUMDB",
+        "HOST_UID",
+        "HOST_GID"
+      ],
+      "env_from_caller": {
+        "BOMLENS_GUARD_ID": "a unique id for this scan, used with the guard-state mount"
+      },
+      "network": {
+        "required": true,
+        "purpose": "package registries the project resolves from (npm, PyPI, Maven Central, crates.io, the Go module proxy, ...)"
+      },
+      "resources": {
+        "memory_min": "4g"
+      },
+      "on_exit": "Run stage 2 whatever the exit code; pass it as BOMLENS_STAGE1_EXIT, and the container log as bomlens-stage1.log in the output folder"
+    },
+    {
+      "id": "postprocess",
+      "stage": 2,
+      "image": "ghcr.io/haksungjang/bomlens:sha-d8d3323",
+      "image_digest": "sha256:8b44d05a0baf66e11dcbabb52d7d9842cb11a5d0a4ec419b80de7f51233e05c5",
+      "user": null,
+      "entrypoint": null,
+      "args": [],
+      "workdir": "/host-output",
+      "mounts": [
+        {
+          "role": "source",
+          "target": "/src",
+          "mode": "ro"
+        },
+        {
+          "role": "output",
+          "target": "/host-output",
+          "mode": "rw"
+        }
+      ],
+      "env": {
+        "MODE": "POSTPROCESS",
+        "BOMLENS_RUN_INPUT": "app_1.0_bom.json",
+        "HOST_OUTPUT_DIR": "/host-output",
+        "PROJECT_NAME": "app",
+        "PROJECT_VERSION": "1.0",
+        "UPLOAD_ENABLED": "false"
+      },
+      "env_passthrough": [
+        "HOST_UID",
+        "HOST_GID",
+        "BOMLENS_INCLUDE_NON_SHIPPED",
+        "SRC_TREE_EXCLUDE"
+      ],
+      "env_from_stage1": {
+        "BOMLENS_STAGE1_EXIT": "the stage 1 exit code",
+        "BOMLENS_STAGE1_OOM": "true when the stage 1 container was killed for memory",
+        "BOMLENS_STAGE1_LOG": "bomlens-stage1.log (stage 1 output, saved in the output folder)"
+      },
+      "network": {
+        "required": false,
+        "purpose": "only for options that look things up online (--license-registry, --resolve-purl, EPSS/KEV, staleness)"
+      }
+    }
+  ]
+}

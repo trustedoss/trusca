@@ -66,18 +66,29 @@ def enqueue_scan(scan: Scan) -> str:
     # Local imports avoid pulling Celery (and Redis) into modules that only
     # need the type hint, e.g. schemas / pure unit tests of the service layer.
     from core.config import (
+        scan_engine,
         scan_hard_time_limit_seconds,
         scan_soft_time_limit_seconds,
     )
     from tasks.ingest_sbom import ingest_sbom_task
     from tasks.scan_container import scan_container_task
-    from tasks.scan_source import scan_source_task
+    from tasks.scan_source import scan_source_engine_task, scan_source_task
 
     scan_id = str(scan.id)
     # Read both env-driven limits at dispatch time (rule #11).
     soft_limit = scan_soft_time_limit_seconds()
     hard_limit = scan_hard_time_limit_seconds()
-    if scan.kind == "source":
+    if scan.kind == "source" and scan_engine() == "bomlens":
+        # SCAN_ENGINE is read here, at dispatch: the task chosen decides the
+        # engine, and the engine task only runs on the engine worker (its own
+        # queue, tasks.celery_app). A scan queued before the setting changed
+        # keeps the engine it was queued with.
+        async_result = scan_source_engine_task.apply_async(
+            args=(scan_id,),
+            soft_time_limit=soft_limit,
+            time_limit=hard_limit,
+        )
+    elif scan.kind == "source":
         async_result = scan_source_task.apply_async(
             args=(scan_id,),
             soft_time_limit=soft_limit,

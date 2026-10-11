@@ -70,6 +70,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from models import Scan
+from tests._celery_worker import celery_command
 from tests._db_required import migrate_to_head
 from tests._helpers import make_membership, make_organization, make_project, make_team, make_user
 
@@ -187,8 +188,7 @@ def test_worker_sigterm_lets_the_in_flight_scan_finish_instead_of_losing_it(
     }
 
     proc = subprocess.Popen(
-        [
-            "celery",
+        celery_command(
             "-A",
             "tasks.celery_app",
             "worker",
@@ -203,7 +203,7 @@ def test_worker_sigterm_lets_the_in_flight_scan_finish_instead_of_losing_it(
             # scan_source task task_routes now sends to trustedoss.scan.
             "-Q",
             "trustedoss.scan,trustedoss.default",
-        ],
+        ),
         cwd=BACKEND_ROOT,
         env=env,
         stdout=subprocess.PIPE,

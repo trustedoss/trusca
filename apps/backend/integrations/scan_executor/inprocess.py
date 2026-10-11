@@ -23,6 +23,7 @@ from integrations.scan_executor.base import (
     ScanExecutor,
     StageHook,
 )
+from integrations.scan_executor.docker_guard import refuse_build_with_docker_access
 
 log = structlog.get_logger("integrations.scan_executor.inprocess")
 
@@ -41,6 +42,10 @@ class InProcessExecutor(ScanExecutor):
         line_callback: LineCallback | None = None,
         cancel_check: CancelCheck | None = None,
     ) -> SbomGenResult:
+        # Build preparation and cdxgen run the scanned project's code; never
+        # where the Docker API is reachable (security review on #522, H1).
+        refuse_build_with_docker_access("build preparation and cdxgen")
+
         # Reproduce the exact inline order: advance to "prep", run the
         # language-specific lockfile prep, advance to "cdxgen", then cdxgen.
         if stage is not None:

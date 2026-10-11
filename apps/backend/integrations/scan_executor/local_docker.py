@@ -213,6 +213,12 @@ def _security_run_args() -> list[str]:
     return args
 
 
+#: Public names for the BomLens engine runner (integrations.bomlens.runner),
+#: which applies the same container hardening to every engine container.
+safe_token = _safe_token
+sidecar_security_args = _security_run_args
+
+
 class LocalDockerExecutor(ScanExecutor):
     """Run the SBOM-generation stage in a per-environment Docker sidecar."""
 
@@ -478,4 +484,4 @@ def _load_sbom(path: Path) -> dict[str, Any]:
     return data
 
 
-__all__ = ["LocalDockerExecutor"]
+__all__ = ["LocalDockerExecutor", "safe_token", "sidecar_security_args"]

@@ -45,7 +45,7 @@ import uuid
 from datetime import UTC, datetime
 
 import structlog
-from sqlalchemy import select
+from sqlalchemy import select, update
 from sqlalchemy.orm import Session
 
 from core.db import sync_session_scope
@@ -125,12 +125,34 @@ def _notify_schedule_completion(session: Session, scan: Scan, *, kind: str) -> N
         )
 
 
+#: The states a failure may be recorded over. A scan that already ended
+#: (cancelled, succeeded, failed) keeps its own ending: a task that notices a
+#: problem after an operator cancelled the scan must not report the scan as
+#: failed instead (security review on #522, N-L4).
+_FAILABLE_STATUSES = ("queued", "running")
+
+
 def mark_failed(session: Session, scan: Scan, message: str) -> None:
-    scan.status = "failed"
-    scan.error_message = message
-    scan.completed_at = datetime.now(UTC)
-    scan.scan_metadata = scan_outcome.close_stage_timings(scan.scan_metadata, now=scan.completed_at)
+    completed_at = datetime.now(UTC)
+    closed = scan_outcome.close_stage_timings(scan.scan_metadata, now=completed_at)
+    # Conditional UPDATE, not a read-then-write: the cancel commits from the
+    # API process, so the row this session loaded may already be stale.
+    changed = session.execute(
+        update(Scan)
+        .where(Scan.id == scan.id, Scan.status.in_(_FAILABLE_STATUSES))
+        .values(
+            status="failed",
+            error_message=message,
+            completed_at=completed_at,
+            scan_metadata=closed,
+        )
+        .execution_options(synchronize_session=False)
+    ).rowcount
     session.commit()
+    if not changed:
+        log.info("scan_failure_not_recorded_over_terminal_state", scan_id=str(scan.id))
+        return
+    session.refresh(scan)
     _notify_schedule_completion(session, scan, kind="scan_failed")
     # Snapshot the percent under the row (defaults to 0 when None — protects
     # against an early-failure path where progress was never initialised).

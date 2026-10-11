@@ -384,6 +384,29 @@ x-backend-env: &backend-env
   # source_dir resolution breaks.
   SCAN_WORKSPACE_MOUNT: ${SCAN_WORKSPACE_MOUNT:-/workspace}
   SCAN_WORKSPACE_VOLUME: ${SCAN_WORKSPACE_VOLUME:-}
+  # BomLens scan engine (preview, off by default). SCAN_ENGINE=bomlens also
+  # needs the bomlens-engine profile (worker-engine + docker-socket-proxy),
+  # SCAN_WORKSPACE_VOLUME and SCAN_TRIVY_CACHE_VOLUME (the compose project's
+  # `workspace` and `trivy-cache` volume names), and the egress network
+  # below created once with `docker network create`. The image pins live in
+  # core/config.py; leave SCAN_BOMLENS_IMAGE / _DEEP_LICENSE_IMAGE empty to
+  # use them. See docs-site admin-guide/dynamic-scan-executor.md#scan-engine.
+  SCAN_ENGINE: ${SCAN_ENGINE:-inprocess}
+  SCAN_BOMLENS_IMAGE: ${SCAN_BOMLENS_IMAGE:-}
+  SCAN_BOMLENS_DEEP_LICENSE_IMAGE: ${SCAN_BOMLENS_DEEP_LICENSE_IMAGE:-}
+  SCAN_BOMLENS_NETWORK: ${SCAN_BOMLENS_NETWORK:-trustedoss-scan-egress}
+  SCAN_BOMLENS_STAGE1_REPOSITORIES: ${SCAN_BOMLENS_STAGE1_REPOSITORIES:-ghcr.io/cdxgen/}
+  SCAN_BOMLENS_STAGE1_READ_ONLY_ROOT: ${SCAN_BOMLENS_STAGE1_READ_ONLY_ROOT:-true}
+  SCAN_BOMLENS_STAGE1_TIMEOUT_SECONDS: ${SCAN_BOMLENS_STAGE1_TIMEOUT_SECONDS:-1800}
+  SCAN_BOMLENS_STAGE2_TIMEOUT_SECONDS: ${SCAN_BOMLENS_STAGE2_TIMEOUT_SECONDS:-1800}
+  SCAN_TRIVY_CACHE_VOLUME: ${SCAN_TRIVY_CACHE_VOLUME:-}
+  # Labels this installation's engine containers; the engine-container reaper
+  # only touches its own. Set a unique value when several installations share
+  # one Docker daemon.
+  TRUSCA_INSTANCE_ID: ${TRUSCA_INSTANCE_ID:-default}
+  # Celery remote control (revoke, inspect). On for every worker but
+  # worker-engine, which overrides it below.
+  CELERY_WORKER_REMOTE_CONTROL: ${CELERY_WORKER_REMOTE_CONTROL:-true}
   STALE_RUNNING_SCAN_GRACE_SECONDS: ${STALE_RUNNING_SCAN_GRACE_SECONDS:-900}
   # compose-env-var wiring audit: source/SBOM ingest and download size
   # limits (raw upload tarballs, source archives, SBOM upload/download,
@@ -1131,10 +1154,150 @@ services:
           cpus: "0.5"
           memory: 256M
 
+  # ---------------------------------------------------------------------------
+  # BomLens scan engine worker (SCAN_ENGINE=bomlens, preview). Off unless
+  # started with `docker-compose --profile bomlens-engine up -d`.
+  #
+  # The only service that can reach the Docker API (docker-socket-proxy
+  # below), and so the only one that never runs code from a scanned
+  # repository: it consumes trustedoss.engine alone, where only the BomLens
+  # scan task and the engine-container reaper are routed. Build preparation,
+  # cdxgen, govulncheck and every default-queue task stay on worker-scan and
+  # worker-default, which have no Docker access; the in-process pipeline also
+  # refuses to start where the Docker API is reachable.
+  # ---------------------------------------------------------------------------
+  worker-engine:
+    image: ${IMAGE_REGISTRY:-ghcr.io/trustedoss}/trusca-backend-worker:${IMAGE_TAG:-0.12.0}
+    profiles: ["bomlens-engine"]
+    restart: unless-stopped
+    logging: *logging
+    command: celery -A tasks.celery_app worker --loglevel=info --concurrency=${ENGINE_CONCURRENCY:-2} -Q ${WORKER_ENGINE_QUEUES:-trustedoss.engine}
+    # Same grace as worker-scan: a scan in flight finishes before shutdown.
+    stop_grace_period: 4200s
+    environment:
+      <<: *backend-env
+      DOCKER_HOST: tcp://docker-socket-proxy:2375
+      # No broadcast control commands: a message on the broker cannot drive
+      # the one worker that reaches the Docker API. A cancelled engine scan
+      # stops at its next stage and the reaper removes its containers.
+      CELERY_WORKER_REMOTE_CONTROL: "false"
+    volumes:
+      - workspace:/workspace
+      # BACKUPS_ROOT comes with the shared env anchor; mounted so nothing this
+      # worker might write there lands in its writable layer. It runs no
+      # backup task (its only queue is trustedoss.engine).
+      - backups-data:/opt/trustedoss/backups
+      # The engine path signs and attests the SBOM, as worker-scan does.
+      - ${COSIGN_KEYS_HOST_PATH:-./secrets/cosign}:/cosign:ro
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      backend:
+        condition: service_healthy
+      docker-socket-proxy:
+        condition: service_started
+    networks:
+      - trustedoss
+      # Only this worker and docker-socket-proxy are on it (see networks).
+      - docker-api
+    healthcheck:
+      # `celery inspect ping` needs remote control, which is off here: check
+      # that the worker process is alive instead.
+      test:
+        - "CMD"
+        - "python"
+        - "-c"
+        - "import os,sys; sys.exit(0 if any(b'celery' in open('/proc/'+p+'/cmdline','rb').read() for p in os.listdir('/proc') if p.isdigit() and p != str(os.getpid())) else 1)"
+      interval: 30s
+      timeout: 15s
+      retries: 5
+      start_period: 60s
+    deploy:
+      resources:
+        limits:
+          # The engine's containers carry the scan's load; this process only
+          # drives them and persists the result.
+          cpus: "1.0"
+          memory: 1G
+
+  # ---------------------------------------------------------------------------
+  # Docker API for worker-engine (profile bomlens-engine, as above).
+  #
+  # The socket is mounted into this proxy alone. `:ro` on a socket does not
+  # make the API read-only (writing to a socket is not a file write); what
+  # limits the API is the proxy's own rules: container and image calls
+  # (create, start, logs, wait, inspect, kill, remove, pull) are answered,
+  # exec, volumes, networks, swarm, system, build and auth get 403.
+  #
+  # What it does not do: look inside a container-create request. The limits
+  # every engine container runs with (read-only root, no capabilities beyond
+  # a minimal set, no network or an egress-only one, mounts only from the
+  # scan's workspace) are applied by worker-engine, so this proxy narrows
+  # what a compromised worker-engine could reach; it is not the boundary.
+  #
+  # Reachable only on `docker-api`, an internal network shared with
+  # worker-engine alone. `restart: unless-stopped` keeps it running after an
+  # `up` without the profile; see the guide for how to switch it off.
+  # ---------------------------------------------------------------------------
+  docker-socket-proxy:
+    image: ghcr.io/tecnativa/docker-socket-proxy:0.3.0@sha256:9e4b9e7517a6b660f2cc903a19b257b1852d5b3344794e3ea334ff00ae677ac2
+    profiles: ["bomlens-engine"]
+    restart: unless-stopped
+    logging: *logging
+    environment:
+      CONTAINERS: "1"
+      IMAGES: "1"
+      POST: "1"
+      DELETE: "1"
+      EXEC: "0"
+      VOLUMES: "0"
+      NETWORKS: "0"
+      SWARM: "0"
+      SYSTEM: "0"
+      INFO: "0"
+      AUTH: "0"
+      BUILD: "0"
+      COMMIT: "0"
+      SECRETS: "0"
+      CONFIGS: "0"
+      PLUGINS: "0"
+    # haproxy renders its configuration into the image at start, so the root
+    # filesystem stays writable; it needs no capability to use the socket.
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    networks:
+      - docker-api
+    deploy:
+      resources:
+        limits:
+          cpus: "0.25"
+          memory: 64M
+
 networks:
   trustedoss:
     name: trustedoss
     driver: bridge
+  # worker-engine's private line to docker-socket-proxy. `internal` keeps it
+  # off the host's outbound routes; nothing else joins it.
+  docker-api:
+    name: trustedoss-docker-api
+    driver: bridge
+    internal: true
+  # Where the engine's dependency-resolution containers reach the package
+  # registries (SCAN_BOMLENS_NETWORK). No service joins it, so compose does not
+  # create it; create it once, with containers on it unable to reach each
+  # other:
+  #   docker network create --opt com.docker.network.bridge.enable_icc=false \
+  #     trustedoss-scan-egress
+  scan-egress:
+    name: trustedoss-scan-egress
+    external: true
 
 volumes:
   postgres-data:
