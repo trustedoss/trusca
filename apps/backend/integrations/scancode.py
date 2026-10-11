@@ -303,9 +303,7 @@ def run_scancode(
         # ScancodeFailed is best-effort and any adapter that echoes raw
         # subprocess stderr into an exception message shares the same risk
         # shape, so scrub defensively rather than trust the input.
-        safe_stderr = scrub_secrets(
-            completed.stderr.decode("utf-8", errors="replace")
-        )
+        safe_stderr = scrub_secrets(completed.stderr.decode("utf-8", errors="replace"))
         log.error(
             "scancode_failed",
             returncode=completed.returncode,
@@ -329,9 +327,7 @@ def run_scancode(
 # ---------------------------------------------------------------------------
 
 
-def _build_command(
-    *, source_dir: Path, result_path: Path, verbose: bool = False
-) -> list[str]:
+def _build_command(*, source_dir: Path, result_path: Path, verbose: bool = False) -> list[str]:
     """Build the scancode argv.
 
     ``--license`` enables license detection; we deliberately omit copyright /
@@ -472,7 +468,20 @@ def _parse_detections(result_path: Path, *, cap: int) -> list[DetectedLicense]:
     except (json.JSONDecodeError, OSError) as exc:
         log.warning("scancode_result_unparseable", error=str(exc)[:300])
         return []
+    if not isinstance(data, dict):
+        return []
+    return parse_detections_document(data, cap=cap)
 
+
+def parse_detections_document(data: dict[str, Any], *, cap: int) -> list[DetectedLicense]:
+    """Extract (spdx_id, source_path) tuples from a decoded scancode document.
+
+    The walk :func:`_parse_detections` runs once it has read the file, kept
+    separate for a caller that already holds the decoded document (the BomLens
+    adapter reads the engine's ``_scancode.json`` through its digest check).
+    Paths are taken as scancode wrote them; both callers run scancode with the
+    scan root stripped, so they are relative to the scanned tree.
+    """
     files = data.get("files")
     if not isinstance(files, list):
         return []
@@ -586,9 +595,7 @@ def _load_json(path: Path) -> dict[str, Any]:
     return data
 
 
-def _write_mock_result(
-    path: Path, *, source_dir: Path, cap: int
-) -> ScancodeResult:
+def _write_mock_result(path: Path, *, source_dir: Path, cap: int) -> ScancodeResult:
     """
     Emit a deterministic mock scancode result.
 
@@ -654,5 +661,6 @@ __all__ = [
     "ScancodeResult",
     "ScancodeTimeout",
     "ScancodeTooLarge",
+    "parse_detections_document",
     "run_scancode",
 ]

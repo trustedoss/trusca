@@ -28,7 +28,7 @@ Rules, each one a decision rather than a translation:
 * A step id this reader does not know is left out with a warning: contract
   minor versions add step ids and a reader ignores what it does not know.
 * A reason this reader does not know (a contract minor version adds reasons,
-  such as ``no_components``) is never read as success. The step counts as a
+  as BomLens #194 added ``no_components``, now known) is never read as success. The step counts as a
   degradation whatever its status says, except ``disabled``; TRUSCA records it
   under the catch-all ``failed`` so it is labelled and counted, and keeps the
   engine's reason verbatim beside it (``engine_reason``).

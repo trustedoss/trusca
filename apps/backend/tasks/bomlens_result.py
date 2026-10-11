@@ -21,7 +21,11 @@ Order matters, and follows the in-process pipeline:
 3. A run the engine itself reports as failed or cancelled stops here.
 4. Components are persisted and committed before the vulnerability verdict,
    as the in-process pipeline commits them before ``trivy sbom`` runs: a scan
-   whose matching failed still shows its inventory.
+   whose matching failed still shows its inventory. The licences scancode
+   detected in the project's own files (``deep-license``) commit with them,
+   through the in-process ``_persist_detected_licenses`` and its savepoint, and
+   so do the records that say how complete the result is
+   (:mod:`integrations.bomlens.records`).
 5. A vulnerability scan that did not produce a trusted result fails the scan
    (:class:`~integrations.bomlens.contract.BomLensVulnerabilityScanFailed`).
    An empty report is never persisted as "no vulnerabilities" in its place.
@@ -33,32 +37,44 @@ terminal scan failure; ``tasks.scan_source`` already does.
 from __future__ import annotations
 
 import copy
+import errno
+import os
 import uuid
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from pathlib import Path
 from typing import Any, Final
 
 import structlog
+from sqlalchemy.orm import Session
 
+from core.config import scancode_max_detections, scancode_max_result_bytes
 from core.db import sync_session_scope
-from integrations.bomlens import stages
+from integrations import scancode as scancode_adapter
+from integrations.bomlens import records, stages
 from integrations.bomlens.contract import (
+    ROLE_LICENSE_SCAN_SCANCODE,
     ROLE_SBOM_CYCLONEDX,
     ROLE_VULNERABILITIES_TRIVY,
     BomLensContractError,
     BomLensRunFailed,
     BomLensVulnerabilityScanFailed,
     EngineResult,
+    OutputTooLarge,
     VerifiedOutput,
     clip,
     load_manifest,
     read_output,
 )
 from models import Scan
-from services import scan_outcome
+from services import sbom_component_walk, scan_outcome
 from services.vulnerability_matching import persist_trivy_findings
+from tasks._scan_pipeline import record_stage_outcome
 from tasks.scan_container import extract_os_metadata
-from tasks.scan_source import _persist_artifact, persist_sbom_components
+from tasks.scan_source import (
+    _persist_artifact,
+    _persist_detected_licenses_or_skip,
+    persist_sbom_components,
+)
 
 log = structlog.get_logger("tasks.bomlens_result")
 
@@ -102,6 +118,11 @@ class AppliedBomLensResult:
     sbom: dict[str, Any]
     components_left_out: int
     findings_persisted: int
+    #: Licences scancode detected in the project's own files and persisted.
+    detections_persisted: int = 0
+    #: BomLens found manifests that declare dependencies and no component
+    #: came of them (``generate`` / ``no_components``).
+    declared_but_empty: bool = False
 
 
 def _clip(value: str | None) -> str | None:
@@ -171,6 +192,10 @@ def _record_engine_run(scan_uuid: uuid.UUID, result: EngineResult) -> None:
             metadata[scan_outcome.SCANCODE_SKIP_KEY] = skip_reason
         else:
             metadata.pop(scan_outcome.SCANCODE_SKIP_KEY, None)
+        # Written again with the components (_record_result_completeness);
+        # an earlier run's record must not survive a run that has none.
+        metadata.pop(scan_outcome.LICENSE_ENRICHMENT_KEY, None)
+        metadata.pop(records.SCOPE_FILTER_KEY, None)
         metadata[ENGINE_METADATA_KEY] = engine_record(result)
         scan.scan_metadata = metadata
         session.commit()
@@ -270,11 +295,114 @@ def _keep_verified(artifact_dir: Path, verified: VerifiedOutput) -> Path:
 
     The artifact row then points at exactly what was hashed and parsed, never
     at the engine's folder, where a file could change after it was read.
+
+    A file already at that path that is a symbolic link is refused, never
+    followed: the copy must land where the artifact row says it is.
     """
     artifact_dir.mkdir(parents=True, exist_ok=True)
     path = artifact_dir / verified.name
-    path.write_bytes(verified.data)
+    try:
+        fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_TRUNC | os.O_NOFOLLOW, 0o644)
+    except OSError as exc:
+        if exc.errno == errno.ELOOP:
+            raise BomLensContractError(
+                f"the kept copy of {clip(verified.role)} is a symbolic link"
+            ) from exc
+        raise
+    with os.fdopen(fd, "wb") as fh:
+        fh.write(verified.data)
     return path
+
+
+@dataclass(frozen=True)
+class _LicenseScan:
+    """What the ``deep-license`` step left for persistence."""
+
+    verified: VerifiedOutput | None = None
+    detections: tuple[scancode_adapter.DetectedLicense, ...] = ()
+    #: Set when the step ran but its result cannot be used; recorded as the
+    #: ``scancode`` stage's reason.
+    problem: str | None = None
+
+
+def _read_license_scan(result: EngineResult, output_dir: Path) -> _LicenseScan:
+    """Read the scancode result of a ``deep-license`` step that ran.
+
+    A step that did not run has nothing to read; ``_record_engine_run`` has
+    already recorded why. A result that does not match its digest, or is not
+    JSON, raises like any other output and fails the scan: integrity comes
+    first here, where the in-process stage would only degrade. A result larger
+    than the in-process ceiling (``SCANCODE_MAX_RESULT_BYTES``) is not read
+    past that ceiling, whatever size the manifest declared, and the stage is
+    recorded as ``too_large``.
+
+    Only the detections and the checked bytes are kept; the decoded document
+    is dropped once they are taken from it.
+    """
+    step = result.step(stages.DEEP_LICENSE_STEP)
+    if step is None or step.status not in ("ok", "degraded"):
+        return _LicenseScan()
+    output = result.output(ROLE_LICENSE_SCAN_SCANCODE)
+    if output is None:
+        log.warning("bomlens_license_scan_missing", stage="persist", status=step.status)
+        return _LicenseScan(problem="failed")
+    limit = scancode_max_result_bytes()
+    verified: VerifiedOutput | None = None
+    if output.bytes <= limit:
+        try:
+            verified = read_output(output_dir, output, limit=limit)
+        except OutputTooLarge:
+            verified = None
+    if verified is None:
+        log.warning(
+            "bomlens_license_scan_too_large",
+            stage="persist",
+            declared_bytes=output.bytes,
+            limit_bytes=limit,
+        )
+        return _LicenseScan(problem="too_large")
+    detections = scancode_adapter.parse_detections_document(
+        verified.document, cap=scancode_max_detections()
+    )
+    return _LicenseScan(verified=replace(verified, document={}), detections=tuple(detections))
+
+
+def _record_result_completeness(
+    session: Session,
+    *,
+    scan_uuid: uuid.UUID,
+    result: EngineResult,
+    sbom: dict[str, Any],
+    license_scan: _LicenseScan,
+) -> None:
+    """Licence lookups not made, folders left out, and an unusable licence scan.
+
+    On the caller's session, so the records commit with the components they
+    describe. The persist path may have written its own ``license_enrichment``
+    a moment ago (TRUSCA's registry lookups for what is still unlicensed);
+    the engine's is merged into it rather than replacing it.
+    """
+    scan = session.get(Scan, scan_uuid)
+    if scan is None:
+        return
+    metadata = dict(scan.scan_metadata or {})
+    enrichment = records.merge_license_enrichment(
+        metadata.get(scan_outcome.LICENSE_ENRICHMENT_KEY),
+        records.license_enrichment_record(result),
+    )
+    if enrichment is not None:
+        metadata[scan_outcome.LICENSE_ENRICHMENT_KEY] = enrichment
+    components = sbom.get("components")
+    scope = records.scope_filter_record(
+        sbom, kept=len(components) if isinstance(components, list) else 0
+    )
+    if scope is not None:
+        metadata[records.SCOPE_FILTER_KEY] = scope
+    if license_scan.problem is not None:
+        metadata = scan_outcome.add_stage_outcome(
+            metadata, stage="scancode", reason=license_scan.problem
+        )
+    scan.scan_metadata = metadata
 
 
 def _first_failed_step(result: EngineResult) -> str | None:
@@ -337,14 +465,47 @@ def apply_bomlens_result(
         else:
             trivy = read_output(output_dir, trivy_output)
             problem = trivy_report_problem(trivy.document, sbom_has_components=sbom_has_components)
+    license_scan = _read_license_scan(result, output_dir)
 
     persisted, left_out = sbom_for_persistence(sbom.document)
+    detected_failed = False
     with sync_session_scope() as session:
         persist_sbom_components(session, scan_uuid=scan_uuid, sbom=persisted, source_dir=source_dir)
+        if license_scan.detections:
+            detected_failed = _persist_detected_licenses_or_skip(
+                session,
+                scan_uuid=scan_uuid,
+                sbom=persisted,
+                detections=list(license_scan.detections),
+            )
+        _record_result_completeness(
+            session,
+            scan_uuid=scan_uuid,
+            result=result,
+            sbom=persisted,
+            license_scan=license_scan,
+        )
         session.commit()
+    if detected_failed:
+        record_stage_outcome(scan_uuid, "detected_licenses")
     sbom_path = _keep_verified(keep_dir, sbom)
     _persist_artifact(scan_uuid, kind="sbom_cyclonedx", path=sbom_path, sha256=sbom.sha256)
-    log.info("bomlens_components_persisted", stage="persist", left_out=left_out)
+    if license_scan.verified is not None:
+        scancode_path = _keep_verified(keep_dir, license_scan.verified)
+        _persist_artifact(
+            scan_uuid,
+            kind="scancode_result",
+            path=scancode_path,
+            sha256=license_scan.verified.sha256,
+        )
+    detections_persisted = 0 if detected_failed else len(license_scan.detections)
+    log.info(
+        "bomlens_components_persisted",
+        stage="persist",
+        left_out=left_out,
+        detections=detections_persisted,
+    )
+    declared_but_empty = records.declared_but_empty(result, sbom.document)
 
     if problem is not None or trivy is None:
         log.error("bomlens_vulnerability_scan_failed", stage="persist", problem=problem)
@@ -370,6 +531,26 @@ def apply_bomlens_result(
         sbom=persisted,
         components_left_out=left_out,
         findings_persisted=inserted,
+        detections_persisted=detections_persisted,
+        declared_but_empty=declared_but_empty,
+    )
+
+
+def bomlens_component_outcome(
+    applied: AppliedBomLensResult, *, manifest_inventory: dict[str, Any] | None
+) -> str:
+    """``component_outcome`` for an applied run, for the executor's finalize step.
+
+    Counts components the way the in-process ``_record_component_outcome``
+    does (nested ones included) and lets the engine's ``no_components``
+    finding decide an empty result
+    (:func:`integrations.bomlens.records.component_outcome`).
+    """
+    count = sum(1 for _ in sbom_component_walk.iter_components(applied.sbom.get("components")))
+    return records.component_outcome(
+        component_count=count,
+        manifest_inventory=manifest_inventory,
+        engine_declared_but_empty=applied.declared_but_empty,
     )
 
 
@@ -378,6 +559,7 @@ __all__ = [
     "OS_CONTEXT_BOM_REF",
     "AppliedBomLensResult",
     "apply_bomlens_result",
+    "bomlens_component_outcome",
     "engine_record",
     "sbom_for_persistence",
     "trivy_report_problem",

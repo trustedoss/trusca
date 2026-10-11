@@ -1,0 +1,279 @@
+{
+  "headers": [
+    {
+      "tool_name": "scancode-toolkit",
+      "tool_version": "32.5.0",
+      "options": {
+        "input": [
+          "/src"
+        ],
+        "--ignore": [
+          "node_modules",
+          "vendor",
+          "bower_components",
+          ".venv",
+          "venv",
+          "virtualenv",
+          "site-packages",
+          "dist",
+          "build",
+          "target",
+          "out",
+          ".next",
+          ".nuxt",
+          "__pycache__",
+          ".gradle",
+          ".git",
+          ".hg",
+          ".svn",
+          ".tox",
+          ".mypy_cache",
+          ".pytest_cache",
+          ".ruff_cache",
+          ".idea",
+          ".vscode",
+          "mixed_1.0.0"
+        ],
+        "--json-pp": "/tmp/bomlens-scancode.tiOh6I",
+        "--license": true,
+        "--only-findings": false,
+        "--strip-root": true
+      },
+      "notice": "Generated with ScanCode and provided on an \"AS IS\" BASIS, WITHOUT WARRANTIES\nOR CONDITIONS OF ANY KIND, either express or implied. No content created from\nScanCode should be considered or used as legal advice. Consult an Attorney\nfor any legal advice.\nScanCode is a free software code scanning tool from nexB Inc. and others.\nVisit https://github.com/nexB/scancode-toolkit/ for support and download.",
+      "start_timestamp": "2026-10-11T131628.274264",
+      "end_timestamp": "2026-10-11T131630.788818",
+      "output_format_version": "4.1.0",
+      "duration": 2.5145628452301025,
+      "message": null,
+      "errors": [],
+      "warnings": [],
+      "extra_data": {
+        "system_environment": {
+          "operating_system": "linux",
+          "cpu_architecture": "64",
+          "platform": "Linux-6.8.0-100-generic-aarch64-with-glibc2.41",
+          "platform_version": "#100-Ubuntu SMP PREEMPT_DYNAMIC Tue Jan 13 16:39:21 UTC 2026",
+          "python_version": "3.12.14 (main, Sep 19 2026, 01:11:14) [GCC 14.2.0]"
+        },
+        "spdx_license_list_version": "3.27",
+        "files_count": 7
+      }
+    }
+  ],
+  "license_detections": [
+    {
+      "identifier": "apache_2_0-c4e30bcd-ccfd-bbc3-d2f1-196ab911e47d",
+      "license_expression": "apache-2.0",
+      "license_expression_spdx": "Apache-2.0",
+      "detection_count": 1,
+      "reference_matches": [
+        {
+          "license_expression": "apache-2.0",
+          "license_expression_spdx": "Apache-2.0",
+          "from_file": "src/apache-header.js",
+          "start_line": 4,
+          "end_line": 14,
+          "matcher": "2-aho",
+          "score": 100.0,
+          "matched_length": 85,
+          "match_coverage": 100.0,
+          "rule_relevance": 100,
+          "rule_identifier": "apache-2.0_7.RULE",
+          "rule_url": "https://github.com/nexB/scancode-toolkit/tree/develop/src/licensedcode/data/rules/apache-2.0_7.RULE"
+        }
+      ]
+    },
+    {
+      "identifier": "gpl_3_0_plus-c07595af-3cea-8c65-c6fc-d8a3300f35b5",
+      "license_expression": "gpl-3.0-plus",
+      "license_expression_spdx": "GPL-3.0-or-later",
+      "detection_count": 1,
+      "reference_matches": [
+        {
+          "license_expression": "gpl-3.0-plus",
+          "license_expression_spdx": "GPL-3.0-or-later",
+          "from_file": "src/gpl-header.js",
+          "start_line": 4,
+          "end_line": 15,
+          "matcher": "2-aho",
+          "score": 100.0,
+          "matched_length": 102,
+          "match_coverage": 100.0,
+          "rule_relevance": 100,
+          "rule_identifier": "gpl-3.0-plus_60.RULE",
+          "rule_url": "https://github.com/nexB/scancode-toolkit/tree/develop/src/licensedcode/data/rules/gpl-3.0-plus_60.RULE"
+        }
+      ]
+    },
+    {
+      "identifier": "mpl_2_0-d0113b18-ff50-a2fd-17f7-9227082156a7",
+      "license_expression": "mpl-2.0",
+      "license_expression_spdx": "MPL-2.0",
+      "detection_count": 1,
+      "reference_matches": [
+        {
+          "license_expression": "mpl-2.0",
+          "license_expression_spdx": "MPL-2.0",
+          "from_file": "src/mpl-header.js",
+          "start_line": 1,
+          "end_line": 3,
+          "matcher": "2-aho",
+          "score": 100.0,
+          "matched_length": 39,
+          "match_coverage": 100.0,
+          "rule_relevance": 100,
+          "rule_identifier": "mpl-2.0_3.RULE",
+          "rule_url": "https://github.com/nexB/scancode-toolkit/tree/develop/src/licensedcode/data/rules/mpl-2.0_3.RULE"
+        }
+      ]
+    }
+  ],
+  "files": [
+    {
+      "path": "apache-header.js",
+      "type": "file",
+      "detected_license_expression": "apache-2.0",
+      "detected_license_expression_spdx": "Apache-2.0",
+      "license_detections": [
+        {
+          "license_expression": "apache-2.0",
+          "license_expression_spdx": "Apache-2.0",
+          "matches": [
+            {
+              "license_expression": "apache-2.0",
+              "license_expression_spdx": "Apache-2.0",
+              "from_file": "src/apache-header.js",
+              "start_line": 4,
+              "end_line": 14,
+              "matcher": "2-aho",
+              "score": 100.0,
+              "matched_length": 85,
+              "match_coverage": 100.0,
+              "rule_relevance": 100,
+              "rule_identifier": "apache-2.0_7.RULE",
+              "rule_url": "https://github.com/nexB/scancode-toolkit/tree/develop/src/licensedcode/data/rules/apache-2.0_7.RULE"
+            }
+          ],
+          "identifier": "apache_2_0-c4e30bcd-ccfd-bbc3-d2f1-196ab911e47d"
+        }
+      ],
+      "license_clues": [],
+      "percentage_of_license_text": 93.41,
+      "scan_errors": []
+    },
+    {
+      "path": "gpl-header.js",
+      "type": "file",
+      "detected_license_expression": "gpl-3.0-plus",
+      "detected_license_expression_spdx": "GPL-3.0-or-later",
+      "license_detections": [
+        {
+          "license_expression": "gpl-3.0-plus",
+          "license_expression_spdx": "GPL-3.0-or-later",
+          "matches": [
+            {
+              "license_expression": "gpl-3.0-plus",
+              "license_expression_spdx": "GPL-3.0-or-later",
+              "from_file": "src/gpl-header.js",
+              "start_line": 4,
+              "end_line": 15,
+              "matcher": "2-aho",
+              "score": 100.0,
+              "matched_length": 102,
+              "match_coverage": 100.0,
+              "rule_relevance": 100,
+              "rule_identifier": "gpl-3.0-plus_60.RULE",
+              "rule_url": "https://github.com/nexB/scancode-toolkit/tree/develop/src/licensedcode/data/rules/gpl-3.0-plus_60.RULE"
+            }
+          ],
+          "identifier": "gpl_3_0_plus-c07595af-3cea-8c65-c6fc-d8a3300f35b5"
+        }
+      ],
+      "license_clues": [],
+      "percentage_of_license_text": 93.58,
+      "scan_errors": []
+    },
+    {
+      "path": "mpl-header.js",
+      "type": "file",
+      "detected_license_expression": "mpl-2.0",
+      "detected_license_expression_spdx": "MPL-2.0",
+      "license_detections": [
+        {
+          "license_expression": "mpl-2.0",
+          "license_expression_spdx": "MPL-2.0",
+          "matches": [
+            {
+              "license_expression": "mpl-2.0",
+              "license_expression_spdx": "MPL-2.0",
+              "from_file": "src/mpl-header.js",
+              "start_line": 1,
+              "end_line": 3,
+              "matcher": "2-aho",
+              "score": 100.0,
+              "matched_length": 39,
+              "match_coverage": 100.0,
+              "rule_relevance": 100,
+              "rule_identifier": "mpl-2.0_3.RULE",
+              "rule_url": "https://github.com/nexB/scancode-toolkit/tree/develop/src/licensedcode/data/rules/mpl-2.0_3.RULE"
+            }
+          ],
+          "identifier": "mpl_2_0-d0113b18-ff50-a2fd-17f7-9227082156a7"
+        }
+      ],
+      "license_clues": [],
+      "percentage_of_license_text": 95.12,
+      "scan_errors": []
+    },
+    {
+      "path": "package-lock.json",
+      "type": "file",
+      "detected_license_expression": null,
+      "detected_license_expression_spdx": null,
+      "license_detections": [],
+      "license_clues": [],
+      "percentage_of_license_text": 0,
+      "scan_errors": []
+    },
+    {
+      "path": "package.json",
+      "type": "file",
+      "detected_license_expression": null,
+      "detected_license_expression_spdx": null,
+      "license_detections": [],
+      "license_clues": [],
+      "percentage_of_license_text": 0,
+      "scan_errors": []
+    },
+    {
+      "path": "README.md",
+      "type": "file",
+      "detected_license_expression": null,
+      "detected_license_expression_spdx": null,
+      "license_detections": [],
+      "license_clues": [],
+      "percentage_of_license_text": 0,
+      "scan_errors": []
+    },
+    {
+      "path": "test",
+      "type": "directory",
+      "detected_license_expression": null,
+      "detected_license_expression_spdx": null,
+      "license_detections": [],
+      "license_clues": [],
+      "percentage_of_license_text": 0,
+      "scan_errors": []
+    },
+    {
+      "path": "test/package.json",
+      "type": "file",
+      "detected_license_expression": null,
+      "detected_license_expression_spdx": null,
+      "license_detections": [],
+      "license_clues": [],
+      "percentage_of_license_text": 0,
+      "scan_errors": []
+    }
+  ]
+}

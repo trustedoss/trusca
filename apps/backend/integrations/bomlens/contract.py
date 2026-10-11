@@ -52,6 +52,8 @@ RUN_STATUSES: Final = ("succeeded", "succeeded_degraded", "failed", "cancelled")
 STEP_STATUSES: Final = ("ok", "degraded", "failed", "skipped", "disabled")
 
 #: ``steps[].reason`` values of contract 1.x (minor versions may add more).
+#: ``no_components`` (BomLens #194) is recorded on ``generate`` when the source
+#: declares dependencies but the SBOM has no component.
 STEP_REASONS: Final = (
     "failed",
     "timeout",
@@ -61,6 +63,7 @@ STEP_REASONS: Final = (
     "unavailable",
     "budget_exhausted",
     "no_input",
+    "no_components",
 )
 
 #: ``outputs[].role`` values this reader uses.
@@ -128,6 +131,14 @@ class BomLensVulnerabilityScanFailed(BomLensError):
 
 class ManifestMissing(BomLensContractError):
     """No manifest: the engine was stopped before it could write one."""
+
+
+class OutputTooLarge(BomLensContractError):
+    """A file is larger than the limit its reader allows.
+
+    A contract error for the outputs a scan cannot do without. A caller with
+    a degradable output (the licence scan) catches it and degrades instead.
+    """
 
 
 class UnsupportedContractVersion(BomLensContractError):
@@ -359,6 +370,9 @@ def _decode_json(data: bytes, what: str) -> Any:
         raise BomLensContractError(f"{what} is not valid JSON") from exc
     except RecursionError as exc:
         raise BomLensContractError(f"{what} is nested too deeply to read") from exc
+    except ValueError as exc:
+        # A number longer than Python's integer digit limit.
+        raise BomLensContractError(f"{what} holds a value too large to read") from exc
 
 
 def _contained(output_dir: Path, name: str, what: str) -> Path:
@@ -375,7 +389,7 @@ def _read_capped(path: Path, limit: int, what: str) -> bytes:
     with path.open("rb") as fh:
         data = fh.read(limit + 1)
     if len(data) > limit:
-        raise BomLensContractError(f"{what} is larger than any run writes")
+        raise OutputTooLarge(f"{what} is larger than this reader allows")
     return data
 
 
@@ -412,7 +426,7 @@ class VerifiedOutput:
     document: dict[str, Any]
 
 
-def read_output(output_dir: Path, output: Output) -> VerifiedOutput:
+def read_output(output_dir: Path, output: Output, *, limit: int | None = None) -> VerifiedOutput:
     """Read ``output`` once and check it against what the manifest recorded.
 
     The path must be a bare file name (the contract's ``^[^/]+$``, plus no
@@ -424,6 +438,10 @@ def read_output(output_dir: Path, output: Output) -> VerifiedOutput:
     it runs, it still owns the folder and could write a file after it was read;
     reading once makes what TRUSCA checked and what it keeps the same bytes,
     but cannot make a still-running writer's later output part of the check.
+
+    ``limit`` lowers the read ceiling below :data:`MAX_OUTPUT_BYTES` (never
+    above it). The file is never read past the ceiling, whatever size the
+    manifest declared; a larger file raises :class:`OutputTooLarge`.
     """
     role = clip(output.role)
     what = f"BomLens output for {role}"
@@ -433,7 +451,8 @@ def read_output(output_dir: Path, output: Output) -> VerifiedOutput:
     path = _contained(output_dir, name, what)
     if not path.is_file():
         raise BomLensContractError(f"{what} is not in the output folder")
-    data = _read_capped(path, MAX_OUTPUT_BYTES, what)
+    ceiling = MAX_OUTPUT_BYTES if limit is None else min(limit, MAX_OUTPUT_BYTES)
+    data = _read_capped(path, ceiling, what)
     if len(data) != output.bytes:
         raise BomLensContractError(
             f"{what} is {len(data)} bytes; the manifest recorded {clip(output.bytes)}"
@@ -465,6 +484,7 @@ __all__ = [
     "BomLensVulnerabilityScanFailed",
     "EngineResult",
     "ManifestMissing",
+    "OutputTooLarge",
     "Output",
     "Step",
     "UnsupportedContractVersion",

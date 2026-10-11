@@ -30,7 +30,15 @@ from integrations.bomlens.contract import (
     BomLensVulnerabilityScanFailed,
     UnsupportedContractVersion,
 )
-from models import Scan, ScanArtifact, ScanComponent, Vulnerability, VulnerabilityFinding
+from models import (
+    License,
+    LicenseFinding,
+    Scan,
+    ScanArtifact,
+    ScanComponent,
+    Vulnerability,
+    VulnerabilityFinding,
+)
 from services import scan_outcome as so
 from tests._db_required import migrate_to_head
 from tests._helpers import (
@@ -182,6 +190,11 @@ def test_a_clean_run_persists_components_findings_and_its_records(
     # teach people to ignore it.
     assert so.degraded_stages(meta) == []
     assert so.SCANCODE_SKIP_KEY not in meta
+    assert so.LICENSE_ENRICHMENT_KEY not in meta
+    # The exclusion was on (it is by default) and left no manifest out.
+    scope = meta["scope_filter"]
+    assert (scope["dropped"], scope["kept"], scope["excluded_manifests"]) == ({}, 1, [])
+    assert "**/benchmark/**" in scope["excluded_paths"]
     # Timings only for what ran: deep-license was turned off, so no scancode.
     assert set(meta[so.STAGE_TIMINGS_KEY]) == {"cdxgen", "postprocess", "trivy"}
     engine = meta[ENGINE_METADATA_KEY]
@@ -262,31 +275,348 @@ def test_a_degraded_run_records_each_degradation_and_still_persists(
 def test_a_reason_from_a_later_contract_minor_is_stored_degraded_and_verbatim(
     tmp_path: Path, sync_session: Session
 ) -> None:
-    """BomLens #191 adds ``no_components`` on ``generate`` in a minor version.
-    This release does not know it; the run still persists, and the stage is
-    recorded as degraded (catch-all ``failed``) with the engine's word kept."""
+    """A later minor adds a reason on ``generate`` (as BomLens #194 added
+    ``no_components`` before this reader knew it). The run still persists, and
+    the stage is recorded as degraded (catch-all ``failed``) with the engine's
+    word kept."""
     from tasks.bomlens_result import apply_bomlens_result
 
     scan_id = _seed_running_source_scan()
     folder = _copy_fixture("source-ok", tmp_path)
 
-    def _no_components(manifest: dict[str, Any]) -> None:
+    def _new_reason(manifest: dict[str, Any]) -> None:
         manifest["contract"]["version"] = "1.1.0"
         for step in manifest["steps"]:
             if step["id"] == "generate":
-                step.update(status="degraded", reason="no_components")
+                step.update(status="degraded", reason="no_dependencies_resolved")
         manifest["run"].update(status="succeeded_degraded", reason="step_failed_or_degraded")
 
-    _rewrite_manifest(folder, _no_components)
+    _rewrite_manifest(folder, _new_reason)
 
     apply_bomlens_result(scan_uuid=scan_id, output_dir=folder)
 
     meta = _metadata(sync_session, scan_id)
     assert meta[so.STAGE_OUTCOMES_KEY] == {
-        "generate": {"reason": "failed", "engine_reason": "no_components"}
+        "generate": {"reason": "failed", "engine_reason": "no_dependencies_resolved"}
     }
     assert so.degraded_stages(meta) == [{"stage": "generate", "reason": "failed"}]
     assert _component_count(sync_session, scan_id) == 1
+
+
+# ---------------------------------------------------------------------------
+# What the deep-license image adds: detected licences, registry lookups, the
+# non-shipped exclusion, and a source that declared what it did not yield
+# ---------------------------------------------------------------------------
+
+
+def _detected(session: Session, scan_id: uuid.UUID) -> list[tuple[str | None, str | None]]:
+    rows = session.execute(
+        select(License.spdx_id, LicenseFinding.source_path)
+        .join(LicenseFinding, LicenseFinding.license_id == License.id)
+        .where(LicenseFinding.scan_id == scan_id, LicenseFinding.kind == "detected")
+    ).all()
+    return sorted((spdx, path) for spdx, path in rows)
+
+
+#: What scancode found in the captured run's own files (PROVENANCE.md).
+CAPTURED_DETECTIONS = [
+    ("Apache-2.0", "apache-header.js"),
+    ("GPL-3.0-or-later", "gpl-header.js"),
+    ("MPL-2.0", "mpl-header.js"),
+]
+
+
+def test_a_deep_license_run_persists_detections_and_its_completeness_records(
+    tmp_path: Path, sync_session: Session
+) -> None:
+    from tasks.bomlens_result import apply_bomlens_result
+
+    scan_id = _seed_running_source_scan()
+    folder = _copy_fixture("source-deep-license", tmp_path)
+
+    applied = apply_bomlens_result(scan_uuid=scan_id, output_dir=folder)
+
+    # Detected licences, on the project's own files, through the in-process
+    # persist path (kind detected, a path per file, scancode as the source).
+    assert _detected(sync_session, scan_id) == CAPTURED_DETECTIONS
+    assert applied.detections_persisted == 3
+    sources = sync_session.execute(
+        select(LicenseFinding.raw_data).where(
+            LicenseFinding.scan_id == scan_id, LicenseFinding.kind == "detected"
+        )
+    ).scalars()
+    assert {(raw or {}).get("source") for raw in sources} == {"scancode"}
+
+    manifest = json.loads((folder / "bomlens-result.json").read_text(encoding="utf-8"))
+    recorded = {o["role"]: o["sha256"] for o in manifest["outputs"]}
+    assert (
+        _artifact_kinds(sync_session, scan_id)["scancode_result"]
+        == (recorded["license-scan.scancode"])
+    )
+
+    meta = _metadata(sync_session, scan_id)
+    # The registry ran out of time before its one answer: the Overview notice
+    # and the metric read it from the same record as an in-process scan.
+    assert so.license_lookup_gap(meta) == (1, "budget_exhausted")
+    assert meta[so.LICENSE_ENRICHMENT_KEY]["engines"] == ["bomlens"]
+    assert so.degraded_stages(meta) == [{"stage": "enrich", "reason": "budget_exhausted"}]
+    # The test folder's manifest was left out before generation.
+    assert meta["scope_filter"]["excluded_manifests"] == ["test/package.json"]
+    assert meta["scope_filter"]["kept"] == 1
+    # scancode ran: a window, no skip notice.
+    assert "scancode" in meta[so.STAGE_TIMINGS_KEY]
+    assert so.SCANCODE_SKIP_KEY not in meta
+
+
+def test_the_engine_record_is_merged_with_the_persist_paths_own(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, sync_session: Session
+) -> None:
+    """The persist path's own registry lookups (still on for what BomLens left
+    unlicensed) skipped some too: one record that counts both."""
+    import tasks.bomlens_result as adapter
+    from tasks.scan_source import persist_sbom_components as real_persist
+
+    def persist_and_skip(session: Session, *, scan_uuid: uuid.UUID, **kwargs: Any) -> None:
+        real_persist(session, scan_uuid=scan_uuid, **kwargs)
+        scan = session.get(Scan, scan_uuid)
+        assert scan is not None
+        scan.scan_metadata = {
+            **(scan.scan_metadata or {}),
+            so.LICENSE_ENRICHMENT_KEY: {
+                "budget_seconds": 60.0,
+                "spent_seconds": 1.0,
+                "lookups": 2,
+                "lookup_failures": 2,
+                "not_looked_up": 4,
+                "not_looked_up_reason": "breaker_open",
+            },
+        }
+
+    monkeypatch.setattr(adapter, "persist_sbom_components", persist_and_skip)
+    scan_id = _seed_running_source_scan()
+
+    adapter.apply_bomlens_result(
+        scan_uuid=scan_id, output_dir=_copy_fixture("source-deep-license", tmp_path)
+    )
+
+    meta = _metadata(sync_session, scan_id)
+    assert so.license_lookup_gap(meta) == (5, "both")
+    assert meta[so.LICENSE_ENRICHMENT_KEY]["engines"] == ["inprocess", "bomlens"]
+
+
+def test_a_licence_scan_over_the_ceiling_is_not_opened(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, sync_session: Session
+) -> None:
+    """Same ceiling as in process (SCANCODE_MAX_RESULT_BYTES): the scan keeps
+    its inventory and says the licence scan was too large."""
+    from tasks.bomlens_result import apply_bomlens_result
+
+    monkeypatch.setenv("SCANCODE_MAX_RESULT_BYTES", "1024")
+    scan_id = _seed_running_source_scan()
+
+    apply_bomlens_result(
+        scan_uuid=scan_id, output_dir=_copy_fixture("source-deep-license", tmp_path)
+    )
+
+    assert _detected(sync_session, scan_id) == []
+    assert "scancode_result" not in _artifact_kinds(sync_session, scan_id)
+    assert _component_count(sync_session, scan_id) == 1
+    assert {"stage": "scancode", "reason": "too_large"} in so.degraded_stages(
+        _metadata(sync_session, scan_id)
+    )
+
+
+def test_a_licence_scan_larger_than_declared_is_not_read_past_the_ceiling(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, sync_session: Session
+) -> None:
+    """The manifest says 1000 bytes; the file is 9231. Read up to the scancode
+    ceiling and stopped there: a degraded licence scan, not the whole file in
+    memory and then a contract error that fails the scan."""
+    from tasks.bomlens_result import apply_bomlens_result
+
+    monkeypatch.setenv("SCANCODE_MAX_RESULT_BYTES", "4096")
+    scan_id = _seed_running_source_scan()
+    folder = _copy_fixture("source-deep-license", tmp_path)
+
+    def _declare_small(manifest: dict[str, Any]) -> None:
+        for output in manifest["outputs"]:
+            if output["role"] == "license-scan.scancode":
+                output["bytes"] = 1000
+
+    _rewrite_manifest(folder, _declare_small)
+
+    apply_bomlens_result(scan_uuid=scan_id, output_dir=folder)
+
+    assert _detected(sync_session, scan_id) == []
+    assert _component_count(sync_session, scan_id) == 1
+    assert {"stage": "scancode", "reason": "too_large"} in so.degraded_stages(
+        _metadata(sync_session, scan_id)
+    )
+
+
+def test_a_scancode_ceiling_above_the_engine_ceiling_still_degrades(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, sync_session: Session
+) -> None:
+    """SCANCODE_MAX_RESULT_BYTES set above MAX_OUTPUT_BYTES (here the engine
+    ceiling is lowered to stand for a file over 256 MiB): the licence scan
+    degrades as too_large instead of failing the scan.
+
+    The captured licence scan is smaller than the Trivy report, so this copy
+    pads it with trailing whitespace (still the same JSON) and records the new
+    size and digest, putting it alone over the lowered ceiling."""
+    import hashlib
+
+    from integrations.bomlens import contract
+    from tasks.bomlens_result import apply_bomlens_result
+
+    folder = _copy_fixture("source-deep-license", tmp_path)
+    path = folder / "mixed_1.0.0_scancode.json"
+    padded = path.read_bytes() + b" " * 40_000
+    path.write_bytes(padded)
+
+    def _record_padding(manifest: dict[str, Any]) -> None:
+        for output in manifest["outputs"]:
+            if output["role"] == "license-scan.scancode":
+                output.update(bytes=len(padded), sha256=hashlib.sha256(padded).hexdigest())
+
+    _rewrite_manifest(folder, _record_padding)
+    monkeypatch.setenv("SCANCODE_MAX_RESULT_BYTES", str(2**30))
+    monkeypatch.setattr(contract, "MAX_OUTPUT_BYTES", 30_000)
+    scan_id = _seed_running_source_scan()
+
+    apply_bomlens_result(scan_uuid=scan_id, output_dir=folder)
+
+    assert _detected(sync_session, scan_id) == []
+    assert {"stage": "scancode", "reason": "too_large"} in so.degraded_stages(
+        _metadata(sync_session, scan_id)
+    )
+
+
+def test_only_the_checked_bytes_of_the_licence_scan_are_kept(tmp_path: Path) -> None:
+    from integrations.bomlens.contract import load_manifest
+    from tasks.bomlens_result import _read_license_scan
+
+    folder = _copy_fixture("source-deep-license", tmp_path)
+    scan = _read_license_scan(load_manifest(folder), folder)
+
+    assert scan.verified is not None
+    assert scan.verified.document == {}
+    assert scan.verified.data == (folder / "mixed_1.0.0_scancode.json").read_bytes()
+    assert len(scan.detections) == 3
+
+
+def test_a_symlink_planted_where_the_copy_goes_is_refused(
+    tmp_path: Path, sync_session: Session
+) -> None:
+    """The kept copy is written without following a link, so a link planted at
+    its path cannot redirect the bytes to another file."""
+    from tasks.bomlens_result import apply_bomlens_result
+
+    scan_id = _seed_running_source_scan()
+    folder = _copy_fixture("source-ok", tmp_path)
+    keep = tmp_path / "kept"
+    keep.mkdir()
+    victim = tmp_path / "victim.txt"
+    victim.write_text("untouched", encoding="utf-8")
+    (keep / "node_1.0.0_bom.json").symlink_to(victim)
+
+    with pytest.raises(BomLensContractError, match="symbolic link"):
+        apply_bomlens_result(scan_uuid=scan_id, output_dir=folder, artifact_dir=keep)
+
+    assert victim.read_text(encoding="utf-8") == "untouched"
+    assert "sbom_cyclonedx" not in _artifact_kinds(sync_session, scan_id)
+
+
+def test_a_licence_scan_that_ran_but_wrote_nothing_is_a_failed_stage(
+    tmp_path: Path, sync_session: Session
+) -> None:
+    from tasks.bomlens_result import apply_bomlens_result
+
+    scan_id = _seed_running_source_scan()
+    folder = _copy_fixture("source-deep-license", tmp_path)
+    _rewrite_manifest(
+        folder,
+        lambda m: m.update(
+            outputs=[o for o in m["outputs"] if o["role"] != "license-scan.scancode"]
+        ),
+    )
+
+    apply_bomlens_result(scan_uuid=scan_id, output_dir=folder)
+
+    assert _detected(sync_session, scan_id) == []
+    assert {"stage": "scancode", "reason": "failed"} in so.degraded_stages(
+        _metadata(sync_session, scan_id)
+    )
+
+
+def test_a_tampered_licence_scan_is_refused_before_anything_is_written(
+    tmp_path: Path, sync_session: Session
+) -> None:
+    """The licence scan is engine output like the SBOM: a file that does not
+    match its recorded digest ends the scan, and nothing lands."""
+    from tasks.bomlens_result import apply_bomlens_result
+
+    scan_id = _seed_running_source_scan()
+    folder = _copy_fixture("source-deep-license", tmp_path)
+    path = folder / "mixed_1.0.0_scancode.json"
+    content = path.read_text(encoding="utf-8")
+    path.write_text(content.replace("MPL-2.0", "MIT-0.0", 1), encoding="utf-8")
+
+    with pytest.raises(BomLensContractError, match="license-scan.scancode"):
+        apply_bomlens_result(scan_uuid=scan_id, output_dir=folder)
+    assert _component_count(sync_session, scan_id) == 0
+    assert _detected(sync_session, scan_id) == []
+
+
+def test_a_detection_that_cannot_be_written_degrades_only_that_stage(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, sync_session: Session
+) -> None:
+    """The in-process savepoint: a failure writing detected licences rolls back
+    only them. The inventory and findings stay and the stage says so."""
+    from sqlalchemy.exc import IntegrityError
+
+    import tasks.scan_source as scan_source
+    from tasks.bomlens_result import apply_bomlens_result
+
+    def _boom(*_args: Any, **_kwargs: Any) -> None:
+        raise IntegrityError("insert", {}, Exception("constraint"))
+
+    monkeypatch.setattr(scan_source, "_persist_detected_licenses", _boom)
+    scan_id = _seed_running_source_scan()
+
+    applied = apply_bomlens_result(
+        scan_uuid=scan_id, output_dir=_copy_fixture("source-deep-license", tmp_path)
+    )
+
+    assert applied.detections_persisted == 0
+    assert _detected(sync_session, scan_id) == []
+    assert _component_count(sync_session, scan_id) == 1
+    assert len(_finding_ids(sync_session, scan_id)) == 3
+    meta = _metadata(sync_session, scan_id)
+    assert {"stage": "detected_licenses", "reason": "failed"} in so.degraded_stages(meta)
+    # The records written in the same transaction as the components survive.
+    assert so.license_lookup_gap(meta) == (1, "budget_exhausted")
+
+
+def test_a_source_that_declared_dependencies_and_yielded_none(
+    tmp_path: Path, sync_session: Session
+) -> None:
+    """Lock-less Poetry project with only a ranged pin: BomLens says generate
+    degraded (no_components), and TRUSCA records it under that reason and
+    reads the empty result as empty_with_manifests even with no inventory."""
+    from tasks.bomlens_result import apply_bomlens_result, bomlens_component_outcome
+
+    scan_id = _seed_running_source_scan()
+
+    applied = apply_bomlens_result(
+        scan_uuid=scan_id, output_dir=_copy_fixture("source-no-components", tmp_path)
+    )
+
+    meta = _metadata(sync_session, scan_id)
+    assert meta[so.STAGE_OUTCOMES_KEY] == {"generate": {"reason": "no_components"}}
+    assert _component_count(sync_session, scan_id) == 0
+    assert applied.declared_but_empty
+    assert bomlens_component_outcome(applied, manifest_inventory=None) == (so.EMPTY_WITH_MANIFESTS)
 
 
 # ---------------------------------------------------------------------------
@@ -499,6 +829,37 @@ def test_a_rerun_of_the_same_scan_neither_duplicates_nor_inherits(
     # Only the second run's rows remain.
     assert _component_count(sync_session, scan_id) == 1
     assert len(_finding_ids(sync_session, scan_id)) == 3
+
+
+def test_a_rerun_does_not_inherit_the_completeness_records(
+    tmp_path: Path, sync_session: Session
+) -> None:
+    """The first run skipped a registry lookup and left a manifest out; the
+    re-run did neither. Neither record may survive into the second answer."""
+    from tasks.bomlens_result import apply_bomlens_result
+    from tasks.scan_source import _mark_running, _reset_scan_for_rerun
+
+    scan_id = _seed_running_source_scan()
+    apply_bomlens_result(
+        scan_uuid=scan_id, output_dir=_copy_fixture("source-deep-license", tmp_path)
+    )
+    first = _metadata(sync_session, scan_id)
+    assert so.license_lookup_gap(first) is not None
+    assert first["scope_filter"]["excluded_manifests"] == ["test/package.json"]
+
+    scan = sync_session.get(Scan, scan_id)
+    assert scan is not None
+    _reset_scan_for_rerun(sync_session, scan)
+    _mark_running(sync_session, scan)
+
+    apply_bomlens_result(
+        scan_uuid=scan_id, output_dir=_copy_fixture("source-no-components", tmp_path)
+    )
+
+    second = _metadata(sync_session, scan_id)
+    assert so.LICENSE_ENRICHMENT_KEY not in second
+    assert second["scope_filter"]["excluded_manifests"] == []
+    assert _detected(sync_session, scan_id) == []
 
 
 # ---------------------------------------------------------------------------

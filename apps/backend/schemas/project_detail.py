@@ -106,6 +106,7 @@ class DegradedStage(BaseModel):
         "fallback",
         "unavailable",
         "budget_exhausted",
+        "no_components",
     ]
 
 

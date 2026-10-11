@@ -243,6 +243,19 @@ describe("OverviewTab", () => {
     expect(items[1].textContent).toContain("no signature");
   });
 
+  it("names the cause when declared dependencies produced no component", async () => {
+    mockedGet.mockResolvedValueOnce(
+      overview({
+        degraded_stages: [{ stage: "generate", reason: "no_components" }],
+      }),
+    );
+    renderTab();
+    const alert = await screen.findByTestId("overview-degraded-stages");
+    const [item] = Array.from(alert.querySelectorAll("li"));
+    expect(item).toHaveAttribute("data-stage", "generate");
+    expect(item.textContent).toContain("dependencies declared but none found");
+  });
+
   it("draws neither scan-gap notice when nothing was skipped", async () => {
     // The empty-scan notice is the marker that the data has rendered: absence is
     // only asserted after something that comes from the same response appears.
