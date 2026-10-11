@@ -315,18 +315,29 @@ both architectures, in `/usr/share/trusca/sources/`:
 
 | File | Covers | Upstream |
 |---|---|---|
-| `p7zip_16.02_src_all.tar.bz2` | `7z`, `7z.so` | https://downloads.sourceforge.net/project/p7zip/p7zip/16.02/p7zip_16.02_src_all.tar.bz2 (project page https://sourceforge.net/projects/p7zip/) |
-| `intbitset-4.1.2.tar.gz` | intbitset C extension | https://pypi.org/project/intbitset/4.1.2/ (repository https://github.com/inveniosoftware-contrib/intbitset) |
+| `p7zip-16.02/p7zip_16.02_src_all.tar.bz2` | `7z`, `7z.so` (release source) | https://downloads.sourceforge.net/project/p7zip/p7zip/16.02/p7zip_16.02_src_all.tar.bz2 (project page https://sourceforge.net/projects/p7zip/) |
+| `p7zip-16.02/p7zip_16.02+dfsg-6.debian.tar.xz` | `7z`, `7z.so` (patches `12-CVE-2016-9296.patch`, `13-CVE-2017-17969.patch`) | https://snapshot.debian.org/archive/debian/20180601T000000Z/pool/main/p/p7zip/p7zip_16.02%2Bdfsg-6.debian.tar.xz |
+| `p7zip-16.02/15-Enhanced-encryption-strength.patch.zip` | `7z`, `7z.so` (AES patch, applied with `-p4`) | https://github.com/aonez/Keka/files/2940620/15-Enhanced-encryption-strength.patch.zip |
+| `p7zip-16.02/README` | how the files above fit together | written for the image |
+| `intbitset-4.1.2/intbitset-4.1.2.tar.gz` | intbitset C extension | https://pypi.org/project/intbitset/4.1.2/ (repository https://github.com/inveniosoftware-contrib/intbitset) |
 
 The p7zip binaries were built by the `extractcode-7z` maintainers, not by
-TRUSCA. The `INSTALL_RECEIPT.json` in the wheel's license directory records a
-Homebrew build of the p7zip 16.02 release, and the image build checks that the
-shipped `7z` reports p7zip 16.02. The wheel's build recipe is in
-https://github.com/aboutcode-org/scancode-plugins (`builtins/extractcode_7z-linux`).
+TRUSCA. The `INSTALL_RECEIPT.json` in the wheel's license directory names the
+Homebrew formula `p7zip`, stable version 16.02. The closest public record of
+that build is the formula at revision 2, Homebrew/homebrew-core commit
+`80dcd3648433f2cd9956871b3b393953ff3d54c2` (`Formula/p7zip.rb`). It builds from
+the release tarball and applies the two Debian patches and the AES patch
+listed above; the bundled files carry the sha256 values that formula pins. The
+image build checks that the shipped `7z` reports p7zip 16.02. The wheel's
+packaging is in https://github.com/aboutcode-org/scancode-plugins
+(`builtins/extractcode_7z-linux`).
 
 chardet is pure Python: the installed modules in
 `/opt/scancode-venv/lib/python3.12/site-packages/chardet/` are its source.
-Upstream is https://pypi.org/project/chardet/5.2.0/.
+Upstream is https://pypi.org/project/chardet/5.2.0/. The worker image's system
+Python also has chardet 6.0.0.post1 (LGPL-2.1-or-later, pure Python, in
+`/usr/local/lib/python3.12/site-packages/chardet/`), installed as a dependency
+of the test tool diff-cover; upstream is https://pypi.org/project/chardet/6.0.0.post1/.
 
 ### GPL source offer (worker image)
 

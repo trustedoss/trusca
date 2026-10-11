@@ -902,40 +902,60 @@ ENV EXTRACTCODE_LIBARCHIVE_PATH=/usr/local/lib/scancode-libarchive.so \
 #   1. extractcode-7z (pulled in by ``extractcode[full]``). On amd64 its wheel
 #      carries a prebuilt p7zip 16.02 ``7z`` binary and ``7z.so`` plugin
 #      (LGPL-2.1-or-later, plus the unRAR restriction its wheel metadata
-#      names). The wheel's own INSTALL_RECEIPT.json records a build from the
-#      p7zip 16.02 release. On aarch64 the wheel is an empty stub with no
-#      binary, the same as the libarchive / libmagic wheels described above.
+#      names). On aarch64 the wheel is an empty stub with no binary, the same
+#      as the libarchive / libmagic wheels described above.
 #   2. intbitset (LGPL-3.0-or-later), a C extension, pinned above.
 #
-# The upstream source archives for both are bundled under TRUSCA_SOURCES_DIR
-# and named in THIRD_PARTY_NOTICES.md §2, which
-# tests/unit/test_license_distribution.py keeps in sync with this block. The
-# archives are bundled on both arches so the image layout does not depend on
-# the arch. Hashes are pinned here rather than fetched, the same as the cosign
-# block below: the p7zip hash matches the one Homebrew's p7zip 16.02 formula
-# pinned, the intbitset hash is PyPI's for the sdist.
+# The p7zip binaries were not built by us. The wheel's INSTALL_RECEIPT.json
+# names the Homebrew formula p7zip, stable 16.02, and the closest public
+# record of that build is the formula at revision 2 (Homebrew/homebrew-core
+# commit 80dcd3648433f2cd9956871b3b393953ff3d54c2, Formula/p7zip.rb). We
+# bundle what that formula builds from: the upstream release tarball, the
+# Debian 16.02+dfsg-6 packaging whose CVE-2016-9296 and CVE-2017-17969
+# patches it applies, and the AES patch it applies with -p4. All three hashes
+# are the ones that formula pins. The README copied below records this.
 #
-# The checks fail the build when a scancode or extractcode upgrade changes
-# what this block describes: an intbitset or chardet other than the pin, a
-# 7z that reports another version, or an amd64 image with no 7z at all
-# (meaning the wheel layout changed and the notice needs a second look).
+# Everything lands under TRUSCA_SOURCES_DIR on both arches, so the image
+# layout does not depend on the arch, and THIRD_PARTY_NOTICES.md §2 names
+# each file; tests/unit/test_license_distribution.py keeps the two in sync.
+# Hashes are pinned here rather than fetched, the same as the cosign block
+# below.
+#
+# The checks fail the build when an upgrade changes what this block
+# describes: an intbitset or venv chardet other than the pin, a system-Python
+# chardet from the 7.x line (requirements-dev.txt holds diff-cover's chardet
+# below 7), a 7z that reports another version, or an amd64 image with no 7z
+# at all (meaning the wheel layout changed and the notice needs a second
+# look).
 ENV TRUSCA_SOURCES_DIR=/usr/share/trusca/sources \
     P7ZIP_VERSION=16.02 \
     P7ZIP_SOURCE_SHA256=5eb20ac0e2944f6cb9c2d51dd6c4518941c185347d4089ea89087ffdd6e2341f \
+    P7ZIP_DEBIAN_SHA256=fab0be1764efdbde1804072f1daa833de4e11ea65f718ad141a592404162643c \
+    P7ZIP_AES_PATCH_SHA256=838dd2175c3112dc34193e99b8414d1dc1b2b20b861bdde0df2b32dbf59d1ce4 \
     INTBITSET_SOURCE_SHA256=f82fafe0bcb4fe7a010d942099b5a84d721d37c897538ed632f788962c1411f8
 RUN set -eux; \
-    mkdir -p "${TRUSCA_SOURCES_DIR}"; \
-    p7zip_src="${TRUSCA_SOURCES_DIR}/p7zip_${P7ZIP_VERSION}_src_all.tar.bz2"; \
-    curl -fsSL --retry 5 --retry-all-errors -o "${p7zip_src}" \
-        "https://downloads.sourceforge.net/project/p7zip/p7zip/${P7ZIP_VERSION}/p7zip_${P7ZIP_VERSION}_src_all.tar.bz2"; \
-    echo "${P7ZIP_SOURCE_SHA256}  ${p7zip_src}" | sha256sum -c -; \
-    intbitset_src="${TRUSCA_SOURCES_DIR}/intbitset-${SCANCODE_INTBITSET_VERSION}.tar.gz"; \
-    curl -fsSL --retry 5 --retry-all-errors -o "${intbitset_src}" \
-        "https://files.pythonhosted.org/packages/source/i/intbitset/intbitset-${SCANCODE_INTBITSET_VERSION}.tar.gz"; \
-    echo "${INTBITSET_SOURCE_SHA256}  ${intbitset_src}" | sha256sum -c -; \
+    fetch() { \
+        curl -fsSL --retry 5 --retry-all-errors -o "$3" "$1"; \
+        echo "$2  $3" | sha256sum -c -; \
+    }; \
+    mkdir -p "${TRUSCA_SOURCES_DIR}/p7zip-${P7ZIP_VERSION}" \
+             "${TRUSCA_SOURCES_DIR}/intbitset-${SCANCODE_INTBITSET_VERSION}"; \
+    fetch "https://downloads.sourceforge.net/project/p7zip/p7zip/${P7ZIP_VERSION}/p7zip_${P7ZIP_VERSION}_src_all.tar.bz2" \
+        "${P7ZIP_SOURCE_SHA256}" \
+        "${TRUSCA_SOURCES_DIR}/p7zip-${P7ZIP_VERSION}/p7zip_${P7ZIP_VERSION}_src_all.tar.bz2"; \
+    fetch "https://snapshot.debian.org/archive/debian/20180601T000000Z/pool/main/p/p7zip/p7zip_16.02%2Bdfsg-6.debian.tar.xz" \
+        "${P7ZIP_DEBIAN_SHA256}" \
+        "${TRUSCA_SOURCES_DIR}/p7zip-${P7ZIP_VERSION}/p7zip_16.02+dfsg-6.debian.tar.xz"; \
+    fetch "https://github.com/aonez/Keka/files/2940620/15-Enhanced-encryption-strength.patch.zip" \
+        "${P7ZIP_AES_PATCH_SHA256}" \
+        "${TRUSCA_SOURCES_DIR}/p7zip-${P7ZIP_VERSION}/15-Enhanced-encryption-strength.patch.zip"; \
+    fetch "https://files.pythonhosted.org/packages/source/i/intbitset/intbitset-${SCANCODE_INTBITSET_VERSION}.tar.gz" \
+        "${INTBITSET_SOURCE_SHA256}" \
+        "${TRUSCA_SOURCES_DIR}/intbitset-${SCANCODE_INTBITSET_VERSION}/intbitset-${SCANCODE_INTBITSET_VERSION}.tar.gz"; \
     py="${SCANCODE_VENV}/bin/python"; \
     test "$("$py" -c 'from importlib.metadata import version; print(version("intbitset"))')" = "${SCANCODE_INTBITSET_VERSION}"; \
     test "$("$py" -c 'from importlib.metadata import version; print(version("chardet"))')" = "${SCANCODE_CHARDET_VERSION}"; \
+    python3 -c 'import sys; from importlib.metadata import version; v = version("chardet"); sys.exit(0 if int(v.split(".")[0]) < 7 else "system-Python chardet " + v + " is from the 7.x line; requirements-dev.txt pins chardet<7")'; \
     sevenzip="$("$py" -c 'import os, extractcode_7z; print(os.path.join(os.path.dirname(extractcode_7z.__file__), "bin", "7z"))')"; \
     if [ "$(dpkg --print-architecture)" = "amd64" ] && [ ! -x "${sevenzip}" ]; then \
         echo "extractcode-7z ships no 7z binary on amd64; re-check THIRD_PARTY_NOTICES.md §2" >&2; exit 1; \
@@ -948,7 +968,31 @@ RUN set -eux; \
                echo "${sevenzip_info}" | head -n 5 >&2; exit 1 ;; \
         esac; \
     fi; \
-    ls -l "${TRUSCA_SOURCES_DIR}"
+    ls -lR "${TRUSCA_SOURCES_DIR}"
+COPY <<'EOF' /usr/share/trusca/sources/p7zip-16.02/README
+p7zip 16.02: the 7z and 7z.so files in the extractcode-7z package
+(/opt/scancode-venv/lib/python3.12/site-packages/extractcode_7z/bin/),
+linux/amd64 image only.
+
+Build record: the package's licenses/p7zip/INSTALL_RECEIPT.json names the
+Homebrew formula p7zip, stable version 16.02. The closest public record of
+that build is the formula at revision 2, Homebrew/homebrew-core commit
+80dcd3648433f2cd9956871b3b393953ff3d54c2 (Formula/p7zip.rb). The files here
+are what that formula builds from:
+
+  p7zip_16.02_src_all.tar.bz2                upstream source (sourceforge.net/projects/p7zip)
+  p7zip_16.02+dfsg-6.debian.tar.xz           Debian packaging; the formula applies
+                                             patches/12-CVE-2016-9296.patch and
+                                             patches/13-CVE-2017-17969.patch
+  15-Enhanced-encryption-strength.patch.zip  AES patch, applied with -p4
+
+Build on Linux: unpack the source, apply the patches above, then
+  cp makefile.linux_any_cpu makefile.machine && make all3
+
+License: GNU LGPL 2.1 or later; the RAR decompression code is under the
+GNU LGPL with the unRAR restriction (see DOC/License.txt and
+DOC/unRarLicense.txt in the source).
+EOF
 
 # ===========================================================================
 # >>> v2.3-s1 (s-track) cosign — BEGIN. Self-contained block. r-track

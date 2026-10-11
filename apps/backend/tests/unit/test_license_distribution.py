@@ -466,3 +466,25 @@ def test_pinned_lgpl_versions_match_the_notices(notices_text: str) -> None:
         elif f"**{version}**" not in row.group(0):
             problems.append(f"§2 row for {name} does not say {version}: {row.group(0)}")
     assert not problems, problems
+
+
+def test_system_python_chardet_is_below_7_and_in_the_notices(
+    notices_text: str,
+) -> None:
+    """The worker's system Python installs requirements-dev.lock, chardet too.
+
+    diff-cover pulls chardet in there. requirements-dev.txt holds it below 7,
+    the line before the relicensed rewrite, and the notice names the version
+    the lock resolved.
+    """
+    lock = _read(BACKEND / "requirements-dev.lock")
+    match = re.search(r"^chardet==(\S+)", lock, re.MULTILINE)
+    assert match, "requirements-dev.lock no longer pins chardet; re-check §2"
+    version = match.group(1)
+    assert int(version.split(".")[0]) < 7, (
+        f"requirements-dev.lock resolves chardet {version}; requirements-dev.txt "
+        "is meant to hold it below 7"
+    )
+    assert (
+        f"chardet {version}" in notices_text
+    ), f"THIRD_PARTY_NOTICES.md does not name the system-Python chardet {version}"
