@@ -4,9 +4,9 @@
     "version": "1.2.0"
   },
   "engine": {
-    "version": "latest-34010b6",
-    "image": "ghcr.io/haksungjang/bomlens:sha-34010b6",
-    "image_digest": "sha256:019d7126b96f851fd18c1ece54a196691d778dee2493eb22e5a2fb6cc96cc3e0"
+    "version": "1.13.2",
+    "image": "ghcr.io/sktelecom/bomlens:1.13.2",
+    "image_digest": "sha256:e357e634ef6447ed44b57a4aed3090af12b77c1fe29cbc0e567a3f65414f738b"
   },
   "input": {
     "kind": "source",
@@ -119,8 +119,8 @@
     {
       "id": "postprocess",
       "stage": 2,
-      "image": "ghcr.io/haksungjang/bomlens:sha-34010b6",
-      "image_digest": "sha256:019d7126b96f851fd18c1ece54a196691d778dee2493eb22e5a2fb6cc96cc3e0",
+      "image": "ghcr.io/sktelecom/bomlens:1.13.2",
+      "image_digest": "sha256:e357e634ef6447ed44b57a4aed3090af12b77c1fe29cbc0e567a3f65414f738b",
       "user": null,
       "entrypoint": null,
       "args": [],

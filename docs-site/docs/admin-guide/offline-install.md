@@ -163,8 +163,8 @@ The bundle does not contain the [BomLens scan engine](./dynamic-scan-executor.md
 scan needs them, so to use the engine in an air-gapped install, copy them
 into a registry that the target host's Docker daemon can reach:
 
-- the BomLens image `ghcr.io/haksungjang/bomlens`
-- the BomLens image `ghcr.io/haksungjang/bomlens-deep-license`
+- the BomLens image `ghcr.io/sktelecom/bomlens`
+- the BomLens image `ghcr.io/sktelecom/bomlens-deep-license`
 - the cdxgen language images under `ghcr.io/cdxgen/` that the execution plan
   chooses (see the limit below)
 
@@ -187,11 +187,11 @@ registry the target host pulls from:
 
 ```bash
 skopeo copy --all --preserve-digests \
-  docker://ghcr.io/haksungjang/bomlens@sha256:<digest> \
+  docker://ghcr.io/sktelecom/bomlens@sha256:<digest> \
   docker://<your-registry>/bomlens:<tag>
 
 skopeo copy --all --preserve-digests \
-  docker://ghcr.io/haksungjang/bomlens-deep-license@sha256:<digest> \
+  docker://ghcr.io/sktelecom/bomlens-deep-license@sha256:<digest> \
   docker://<your-registry>/bomlens-deep-license:<tag>
 ```
 

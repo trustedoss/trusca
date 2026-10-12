@@ -156,8 +156,8 @@ bash scripts/install.sh --no-prompt --offline /path/to/trusca-offline-bundle-0.2
 이미지를 대상 호스트의 Docker 데몬이 접근할 수 있는 레지스트리로 복사해야
 합니다.
 
-- BomLens 이미지 `ghcr.io/haksungjang/bomlens`
-- BomLens 이미지 `ghcr.io/haksungjang/bomlens-deep-license`
+- BomLens 이미지 `ghcr.io/sktelecom/bomlens`
+- BomLens 이미지 `ghcr.io/sktelecom/bomlens-deep-license`
 - 실행 계획이 고르는 `ghcr.io/cdxgen/` 아래의 cdxgen 언어 이미지(아래
   제한 사항 참고)
 
@@ -180,11 +180,11 @@ grep -A2 -E '^BOMLENS_(DEEP_LICENSE_)?IMAGE_DEFAULT' apps/backend/core/config.py
 
 ```bash
 skopeo copy --all --preserve-digests \
-  docker://ghcr.io/haksungjang/bomlens@sha256:<digest> \
+  docker://ghcr.io/sktelecom/bomlens@sha256:<digest> \
   docker://<your-registry>/bomlens:<tag>
 
 skopeo copy --all --preserve-digests \
-  docker://ghcr.io/haksungjang/bomlens-deep-license@sha256:<digest> \
+  docker://ghcr.io/sktelecom/bomlens-deep-license@sha256:<digest> \
   docker://<your-registry>/bomlens-deep-license:<tag>
 ```
 

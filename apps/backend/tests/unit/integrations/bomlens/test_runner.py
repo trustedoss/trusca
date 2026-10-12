@@ -269,7 +269,7 @@ def test_the_plan_is_told_which_stage_2_image_trusca_runs(
     monkeypatch.setenv("SCAN_BOMLENS_DEEP_LICENSE_IMAGE", captured_images())
     monkeypatch.setenv(
         "SCAN_BOMLENS_IMAGE",
-        "ghcr.io/haksungjang/bomlens:sha-0000000@sha256:" + "1" * 64,
+        "ghcr.io/sktelecom/bomlens:sha-0000000@sha256:" + "1" * 64,
     )
     docker = _happy_docker()
     runner = BomLensRunner(
@@ -565,10 +565,10 @@ def test_a_source_outside_the_workspace_is_refused(tmp_path: Path, workspace: Pa
 @pytest.mark.parametrize(
     ("value", "fragment"),
     [
-        ("ghcr.io/haksungjang/bomlens:sha-d8d3323", "is not pinned by a digest"),
-        ("ghcr.io/haksungjang/bomlens@sha256:" + "a" * 64, "has no tag"),
-        ("ghcr.io/haksungjang/bomlens:latest@sha256:" + "a" * 64, "is not a pinned image"),
-        ("ghcr.io/haksungjang/bomlens:1.0@sha256:abc", "is not a pinned image"),
+        ("ghcr.io/sktelecom/bomlens:sha-d8d3323", "is not pinned by a digest"),
+        ("ghcr.io/sktelecom/bomlens@sha256:" + "a" * 64, "has no tag"),
+        ("ghcr.io/sktelecom/bomlens:latest@sha256:" + "a" * 64, "is not a pinned image"),
+        ("ghcr.io/sktelecom/bomlens:1.0@sha256:abc", "is not a pinned image"),
     ],
 )
 def test_an_engine_image_that_is_not_pinned_is_refused(value: str, fragment: str) -> None:

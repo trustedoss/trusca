@@ -2,7 +2,7 @@
 
 Every file here is unedited output of a published BomLens image, captured on
 2026-10-11 and 2026-10-12, except the two derived cases listed at the end.
-Three images were used; each case says which. Tests that need a variant
+Four images were used; each case says which. Tests that need a variant
 (an unknown contract major, a step status rewritten to test one defence on its
 own, a tampered SBOM) copy a case into a temporary directory and change the
 copy.
@@ -33,27 +33,39 @@ Used for `source-deep-license` and `source-no-components`, both run with
 above. The image was pulled by digest (`docker pull
 ghcr.io/haksungjang/bomlens-deep-license@sha256:df45...`) and run by digest.
 
-### Contract 1.2.0 image
+### Contract 1.2.0 images
+
+The BomLens v1.13.2 release, both images built from the same commit:
 
 | | |
 |---|---|
-| Image | `ghcr.io/haksungjang/bomlens:sha-34010b6` |
-| Digest | `sha256:019d7126b96f851fd18c1ece54a196691d778dee2493eb22e5a2fb6cc96cc3e0` (index; linux/arm64 manifest `sha256:cf741505ec2650ffd04f58bd65f93f0fc452781b64c9931c89a726fa4aff2792` ran) |
-| Source commit | `34010b6b` on the fork's `main` (engine contract `1.2.0`, BomLens #186 to #209) |
+| Image | `ghcr.io/sktelecom/bomlens:1.13.2` |
+| Digest | `sha256:e357e634ef6447ed44b57a4aed3090af12b77c1fe29cbc0e567a3f65414f738b` (index; linux/arm64 manifest `sha256:f2950452b8675d7bdd8a8390b93b9f6f4bfbe2d8443a5a1c83457821f8fa32f3` ran) |
+| Deep-license image | `ghcr.io/sktelecom/bomlens-deep-license:1.13.2` |
+| Deep-license digest | `sha256:516f41c93ceeb568368bddacbdbab862c6c85dab36e8cc187af5c3bb51bc7928` (index) |
+| Source commit | image label `org.opencontainers.image.revision=53bbd521` (engine contract `1.2.0`, BomLens #186 to #214); the `v1.13.2` tag in `sktelecom/bomlens` has the same tree |
 | Trivy in the image | 0.74.0 |
+| scancode in the deep-license image | 32.5.0 |
 | Trivy database | schema 2, `UpdatedAt` 2026-10-11T19:06Z, mounted read-only at `/trivy-db` (the plan's `trivy-db` role) |
 
-Used for `image-os-licenses`, `source-trivy-db` and
-`source-trivy-db-stale`, captured 2026-10-12 04:19 to 04:21 UTC, each run
-with `BOMLENS_IMAGE_REF` and `BOMLENS_IMAGE_DIGEST` set to the tag and index
-digest above and `HOST_UID`/`HOST_GID` set to the capturing user. They replace
-captures of the same three cases from `sha-1e5ef6b`
-(`sha256:eeb851f7...`, database `UpdatedAt` 2026-10-11T07:05Z) and match them
-in everything the tests read: the same steps, statuses, reasons and details
-("the Trivy database is 11 days old (over 9)"), 955 SBOM entries and one
-advisory (`DLA-4792-1`) for the image, one component and the same three CVEs
-for `node`. Stage 1 of the source cases ran `build-prep.sh` from the
-`sha-34010b6` `node-ok` plan capture.
+Used for `image-os-licenses`, `source-trivy-db`, `source-trivy-db-stale`
+(the base image) and `source-deep-license-trivy-db` (the deep-license image),
+captured 2026-10-12 07:33 to 07:35 UTC, each run with `BOMLENS_IMAGE_REF` and
+`BOMLENS_IMAGE_DIGEST` set to the tag and index digest of the image that ran
+and `HOST_UID`/`HOST_GID` set to the capturing user. Stage 1 of the source
+cases ran `build-prep.sh` from the `1.13.2` `node-ok` plan capture.
+
+The first three replace captures of the same cases from `sha-34010b6`
+(`sha256:019d7126...`, the same database, captured 04:19 to 04:21 UTC). The
+only differences are the image fields, the run times, the SBOM serial numbers
+and timestamps, the Trivy report IDs and with them the output digests in the
+manifests, and one detail: the stale database is now "12 days old (over 9)"
+where it was "11 days old", because the capture ran past 07:05 UTC. The
+steps, statuses, reasons, 955 SBOM entries and one advisory (`DLA-4792-1`)
+for the image, and one component with the same three CVEs for `node` are
+the same. Those `sha-34010b6` captures had in turn replaced ones from
+`sha-1e5ef6b` (`sha256:eeb851f7...`, database `UpdatedAt` 2026-10-11T07:05Z)
+with the same result.
 
 ## What is kept from each run
 
@@ -115,9 +127,19 @@ output folder at `/host-output` and a Trivy cache folder at `/trivy-db`
 | `source-trivy-db` | `node` | Stage 1 as for `source-ok`, but running `build-prep.sh` from the `node-ok` plan capture (`tests/fixtures/bomlens-plan/`): `docker run --rm -v <src>:/app -v <out>:/out -v build-prep.sh:/tmp/build-prep.sh:ro -e HOME=/tmp/sbomhome -e FETCH_LICENSE=false -e PROJECT_NAME=node -e PROJECT_VERSION=1.0.0 --entrypoint sh ghcr.io/cdxgen/cdxgen-alpine-node24:13.2.0@sha256:1e46a41c... /tmp/build-prep.sh /app /out/node_1.0.0_bom.json 1.6`, its output saved as `bomlens-stage1.log`. Then stage 2 with `--network none`, the source read-only at `/src`, `-e MODE=POSTPROCESS -e BOMLENS_RUN_INPUT=node_1.0.0_bom.json -e PROJECT_NAME=node -e PROJECT_VERSION=1.0.0 -e BOMLENS_STAGE1_EXIT=0 -e BOMLENS_STAGE1_OOM=false -e BOMLENS_STAGE1_LOG=bomlens-stage1.log -e BOMLENS_TRIVY_DB_MAX_AGE_DAYS=9` | `succeeded`; 1 component, 3 CVEs; `scan-security` ok |
 | `source-trivy-db-stale` | `node` | The same stage 1 output and stage 2 command, with a different folder at `/trivy-db`: the same `trivy.db` (a hard link) beside a `db/metadata.json` whose `UpdatedAt` is 2026-09-30T07:05Z | `succeeded_degraded`; the same 3 CVEs in the report, but `scan-security` degraded (`unavailable`, "the Trivy database is 11 days old (over 9)") |
 
+| `source-deep-license-trivy-db` | `scancode-mixed-policy` with the two input changes described for `source-deep-license` (`"license": "MIT"` removed from lodash in `package-lock.json`, a `test/package.json` declaring `mocha` 10.2.0 as a dev dependency) | Stage 1 as for `source-trivy-db`, with `PROJECT_NAME=mixed` and `/out/mixed_1.0.0_bom.json`. Stage 2 as for `source-trivy-db` (`--network none`, the fresh database at `/trivy-db`, `PROJECT_NAME=mixed`, `BOMLENS_RUN_INPUT=mixed_1.0.0_bom.json`), run on the deep-license image with `-e DEEP_LICENSE=true -e LICENSE_REGISTRY=true -e LICENSE_REGISTRY_BUDGET=0` | `succeeded_degraded`; 1 component, 3 CVEs; `deep-license` ok with the same three detections as `source-deep-license`; `license-registry` degraded `budget_exhausted` with `budget_reached` 1; `bomlens:excluded-manifests` names `test/package.json` |
+
 The input of `source-trivy-db-stale` was changed on purpose: the database
 date is the one thing that differs between the two source cases. The output
 is the engine's, unedited.
+
+`source-deep-license-trivy-db` is the contract 1.2.0 counterpart of
+`source-deep-license`: the same input and settings, run on the pinned
+deep-license image, without a network and with the database mounted as the
+runner mounts it. The steps, statuses, reasons and counts in its manifest
+are the same as in `source-deep-license`, and so are the SBOM's component and
+properties, the scancode detections and the three CVEs. It keeps the scancode
+result as well as the SBOM and the Trivy report.
 
 ## Derived cases
 
@@ -133,7 +155,7 @@ asserts in that commit, verbatim. The manifest is not hashed, so no other
 field changes; the contract version and image fields still name the image
 that wrote the rest of the run.
 
-It stays derived after the move to `sha-34010b6` because no unmodified input
+It stayed derived after the move to `sha-34010b6` because no unmodified input
 was found that makes that image write the detail. The detail needs a source
 that declares dependencies, an SBOM with no component, and a resolver step
 build-prep marked as failed. The case that motivated #209 no longer gives

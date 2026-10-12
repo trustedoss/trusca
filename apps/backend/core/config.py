@@ -1488,15 +1488,15 @@ def scan_engine() -> str:
 
 #: The BomLens image: execution plan (MODE=PLAN) and stage 2 (POSTPROCESS).
 BOMLENS_IMAGE_DEFAULT: str = (
-    "ghcr.io/haksungjang/bomlens:sha-34010b6"
-    "@sha256:019d7126b96f851fd18c1ece54a196691d778dee2493eb22e5a2fb6cc96cc3e0"
+    "ghcr.io/sktelecom/bomlens:1.13.2"
+    "@sha256:e357e634ef6447ed44b57a4aed3090af12b77c1fe29cbc0e567a3f65414f738b"
 )
 
 #: The published variant with scancode, used for stage 2 when the installation
 #: turns on first-party licence detection (SCANCODE_ENABLED).
 BOMLENS_DEEP_LICENSE_IMAGE_DEFAULT: str = (
-    "ghcr.io/haksungjang/bomlens-deep-license:sha-34010b6"
-    "@sha256:53963a47d0417844ab192fda3390f8c943e7ad0140cee09d359192ba3ff9a7b0"
+    "ghcr.io/sktelecom/bomlens-deep-license:1.13.2"
+    "@sha256:516f41c93ceeb568368bddacbdbab862c6c85dab36e8cc187af5c3bb51bc7928"
 )
 
 #: Registries and repositories a plan's stage 1 image may come from.
