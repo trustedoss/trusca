@@ -264,6 +264,11 @@ def test_a_degraded_run_records_each_degradation_and_still_persists(
         {"stage": "generate", "reason": "fallback"},
         {"stage": "scancode", "reason": "not_installed"},
     ]
+    # Each degradation carries the engine's own words on why.
+    assert meta[so.STAGE_OUTCOMES_KEY] == {
+        "generate": {"reason": "fallback", "engine_detail": "cdxgen-unavailable"},
+        "scancode": {"reason": "not_installed", "engine_detail": "scancode is not in this image"},
+    }
     # The Overview's own scancode notice reads this key, not the list.
     assert so.scancode_skip_reason(meta) == "not_installed"
     # A skipped step did no work and has no window.
@@ -613,10 +618,69 @@ def test_a_source_that_declared_dependencies_and_yielded_none(
     )
 
     meta = _metadata(sync_session, scan_id)
-    assert meta[so.STAGE_OUTCOMES_KEY] == {"generate": {"reason": "no_components"}}
+    assert meta[so.STAGE_OUTCOMES_KEY] == {
+        "generate": {
+            "reason": "no_components",
+            "engine_detail": "manifests found: pyproject.toml",
+        }
+    }
     assert _component_count(sync_session, scan_id) == 0
     assert applied.declared_but_empty
     assert bomlens_component_outcome(applied, manifest_inventory=None) == (so.EMPTY_WITH_MANIFESTS)
+
+
+def test_the_resolver_steps_that_failed_are_stored_and_logged(
+    tmp_path: Path, sync_session: Session
+) -> None:
+    """BomLens #209 names the resolver steps that failed when a source that
+    declares dependencies yields none (the Gradle project under a read-only
+    root). The reason word alone left the cause blank; the detail is what says
+    it, so it is kept with the outcome and carried by the warning."""
+    from structlog.testing import capture_logs
+
+    from tasks.bomlens_result import apply_bomlens_result
+
+    scan_id = _seed_running_source_scan()
+    detail = "manifests found: pyproject.toml; steps that failed: gradle-dependencies"
+
+    with capture_logs() as logs:
+        apply_bomlens_result(
+            scan_uuid=scan_id,
+            output_dir=_copy_fixture("source-no-components-failed-step", tmp_path),
+        )
+
+    meta = _metadata(sync_session, scan_id)
+    assert meta[so.STAGE_OUTCOMES_KEY] == {
+        "generate": {"reason": "no_components", "engine_detail": detail}
+    }
+    degraded = [e for e in logs if e["event"] == "bomlens_stage_degraded"]
+    assert [(e["stage"], e["reason"], e["engine_detail"]) for e in degraded] == [
+        ("generate", "no_components", detail)
+    ]
+
+
+def test_a_detail_with_a_nul_is_stored_without_it(tmp_path: Path, sync_session: Session) -> None:
+    """Postgres refuses NUL in JSONB, so a detail carrying one, stored as read,
+    would fail the commit and with it the scan. The engine output is not
+    trusted to be free of it."""
+    from tasks.bomlens_result import apply_bomlens_result
+
+    scan_id = _seed_running_source_scan()
+    folder = _copy_fixture("source-no-components-failed-step", tmp_path)
+
+    def _nul(manifest: dict[str, Any]) -> None:
+        for step in manifest["steps"]:
+            if step["id"] == "generate":
+                step["detail"] = "manifests found: build.gradle\x00\nsteps that failed: gradle"
+
+    _rewrite_manifest(folder, _nul)
+
+    apply_bomlens_result(scan_uuid=scan_id, output_dir=folder)
+
+    meta = _metadata(sync_session, scan_id)
+    assert meta[so.STAGE_OUTCOMES_KEY]["generate"]["engine_detail"] == (
+        "manifests found: build.gradle steps that failed: gradle"
+    )
 
 
 # ---------------------------------------------------------------------------

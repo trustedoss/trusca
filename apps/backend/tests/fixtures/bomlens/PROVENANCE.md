@@ -1,7 +1,7 @@
 # Provenance of the BomLens engine fixtures
 
 Every file here is unedited output of a published BomLens image, captured on
-2026-10-11 and 2026-10-12, except the one derived case listed at the end.
+2026-10-11 and 2026-10-12, except the two derived cases listed at the end.
 Three images were used; each case says which. Tests that need a variant
 (an unknown contract major, a step status rewritten to test one defence on its
 own, a tampered SBOM) copy a case into a temporary directory and change the
@@ -112,7 +112,21 @@ The input of `source-trivy-db-stale` was changed on purpose: the database
 date is the one thing that differs between the two source cases. The output
 is the engine's, unedited.
 
-## Derived case
+## Derived cases
+
+`source-no-components-failed-step` is `source-no-components` with one change:
+the `generate` step's `detail` reads "manifests found: pyproject.toml; steps
+that failed: gradle-dependencies" instead of "manifests found:
+pyproject.toml". That is the format BomLens #209 (commit `34010b6b`) writes
+when a source that declares dependencies yields none and build-prep stamped a
+failed resolver step on the SBOM: `docker/entrypoint.sh` records `generate
+degraded no_components "manifests found: <manifests>; steps that failed:
+<steps>"`, and the string here is the one `tests/test-engine-contract.sh`
+asserts in that commit, verbatim. The manifest is not hashed, so no other
+field changes; the contract version and image fields still name the image
+that wrote the rest of the run. No published image wrote this detail yet;
+replace the case with a capture once an image built from `34010b6b` or later
+is pinned.
 
 `source-ok-results-stripped` is `source-ok` with one change: the `Results`
 key was removed from `node_1.0.0_security.json` (re-serialised with two-space

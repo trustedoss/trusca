@@ -72,6 +72,18 @@ def test_an_engine_reason_is_kept_beside_the_catch_all() -> None:
     assert plain[so.STAGE_OUTCOMES_KEY]["sign"] == {"reason": "failed"}
 
 
+def test_an_engine_detail_is_kept_bounded_and_off_the_screen_list() -> None:
+    detail = "manifests found: build.gradle; steps that failed: gradle-dependencies"
+    meta = so.add_stage_outcome({}, stage="generate", reason="no_components", engine_detail=detail)
+    assert meta[so.STAGE_OUTCOMES_KEY]["generate"] == {
+        "reason": "no_components",
+        "engine_detail": detail,
+    }
+    assert so.degraded_stages(meta) == [{"stage": "generate", "reason": "no_components"}]
+    long = so.add_stage_outcome({}, stage="sign", reason="failed", engine_detail="d" * 900)
+    assert long[so.STAGE_OUTCOMES_KEY]["sign"]["engine_detail"] == "d" * 300
+
+
 def test_reported_windows_are_added_without_rewriting_a_live_one() -> None:
     """A scan engine's own step times (BomLens) fill stages the live record does
     not have; the window watchers already saw is kept."""

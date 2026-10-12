@@ -30,11 +30,14 @@ def _manifest(case: str) -> dict[str, Any]:
     return data
 
 
-def _step(step_id: str, status: str, reason: str | None = None) -> dict[str, Any]:
+def _step(
+    step_id: str, status: str, reason: str | None = None, detail: str | None = None
+) -> dict[str, Any]:
     return {
         "id": step_id,
         "status": status,
         "reason": reason,
+        "detail": detail,
         "stage": 2,
         "started_at": "2026-10-11T09:00:00Z",
         "ended_at": "2026-10-11T09:00:05Z",
@@ -60,6 +63,8 @@ CONTRACT_VERSIONS = {
     "source-deep-license": "1.0.0",
     "source-degraded": "1.0.0-dev",
     "source-no-components": "1.0.0",
+    # Derived from source-no-components (PROVENANCE.md): only the detail moved.
+    "source-no-components-failed-step": "1.0.0",
     "source-ok": "1.0.0-dev",
     "source-ok-results-stripped": "1.0.0-dev",
     "source-run-failed": "1.0.0-dev",
@@ -480,6 +485,101 @@ def test_no_components_is_a_known_generate_degradation() -> None:
 def test_a_known_reason_is_not_repeated_as_an_engine_reason() -> None:
     [outcome] = stages.stage_outcomes(_with_steps(_step("generate", "degraded", "fallback")))
     assert (outcome.reason, outcome.engine_reason) == ("fallback", None)
+
+
+# ---------------------------------------------------------------------------
+# The step's detail kept with its degradation
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize(
+    ("case", "expected"),
+    [
+        # BomLens #209: the resolver steps that failed are named after the manifests.
+        (
+            "source-no-components-failed-step",
+            {"generate": "manifests found: pyproject.toml; steps that failed: gradle-dependencies"},
+        ),
+        ("source-no-components", {"generate": "manifests found: pyproject.toml"}),
+        (
+            "source-degraded",
+            {"generate": "cdxgen-unavailable", "scancode": "scancode is not in this image"},
+        ),
+    ],
+)
+def test_a_degradation_keeps_the_engine_detail(case: str, expected: dict[str, str]) -> None:
+    outcomes = stages.stage_outcomes(contract.parse_manifest(_manifest(case)))
+    assert {o.stage: o.engine_detail for o in outcomes} == expected
+
+
+def test_the_detail_kept_is_the_step_that_won_the_stage() -> None:
+    """Several enrich steps fold into one stage; the detail travels with the
+    step whose status was reported, not with the first or last one read."""
+    result = _with_steps(
+        _step("license-registry", "degraded", "budget_exhausted", "budget reached"),
+        _step("enrich-os-context", "failed", "failed", "os-release unreadable"),
+        _step("enrich-maven-cpe", "degraded", "unavailable", "maven central 503"),
+    )
+    [outcome] = stages.stage_outcomes(result)
+    assert (outcome.step, outcome.engine_detail) == ("enrich-os-context", "os-release unreadable")
+
+
+def test_a_clean_step_with_a_detail_is_not_an_outcome() -> None:
+    assert stages.stage_outcomes(_with_steps(_step("generate", "ok", None, "1 component"))) == []
+
+
+def _detail(text: str) -> str | None:
+    return stages.step_detail(_with_steps(_step("generate", "degraded", "failed", text)).steps[0])
+
+
+@pytest.mark.parametrize(
+    ("raw", "kept"),
+    [
+        # The real Trivy message (source-vulnerabilities-failed) starts with a tab.
+        ("\t* Get x: dial tcp", "* Get x: dial tcp"),
+        ("line one\nline two\r\nthree", "line one line two three"),
+        # NUL is refused by Postgres JSONB; other C0 controls, DEL and a lone
+        # surrogate are dropped without leaving a gap.
+        ("a\x00b\x1bc\x7fd\ud800e", "abcde"),
+        ("  padded   out  ", "padded out"),
+    ],
+)
+def test_the_detail_loses_its_control_characters(raw: str, kept: str) -> None:
+    assert _detail(raw) == kept
+
+
+def test_the_detail_is_scrubbed_of_credentials() -> None:
+    kept = _detail(
+        "steps that failed: pip-install (https://build:s3cr3t@pypi.internal/simple, token=abc123)"
+    )
+    assert kept is not None
+    assert "s3cr3t" not in kept and "abc123" not in kept
+    assert "https://***@pypi.internal/simple" in kept
+
+
+def test_the_detail_is_cut_to_its_ceiling() -> None:
+    kept = _detail("m" * 600)
+    assert kept == "m" * (stages.DETAIL_MAX_CHARS - 3) + "..."
+    assert _detail("m" * stages.DETAIL_MAX_CHARS) == "m" * stages.DETAIL_MAX_CHARS
+
+
+def test_a_detail_of_nothing_but_control_characters_is_none() -> None:
+    assert _detail("\x00\x01\n\t ") is None
+    assert stages.step_detail(_with_steps(_step("generate", "degraded", "failed")).steps[0]) is None
+
+
+def test_an_oversized_detail_is_cut_before_the_credential_patterns_run(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    seen: list[int] = []
+
+    def _scrub(text: str) -> str:
+        seen.append(len(text))
+        return text
+
+    monkeypatch.setattr(stages, "scrub_secrets", _scrub)
+    _detail("x" * 100_000)
+    assert seen == [stages._DETAIL_READ_MAX]
 
 
 def test_steps_trusca_does_its_own_way_never_become_stages() -> None:
