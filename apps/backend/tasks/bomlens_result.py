@@ -68,6 +68,7 @@ from integrations.bomlens.contract import (
 )
 from models import Scan
 from services import sbom_component_walk, scan_outcome
+from services.purl_build import purl_without_qualifiers
 from services.vulnerability_matching import persist_trivy_findings
 from tasks._scan_pipeline import record_stage_outcome
 from tasks.scan_container import extract_os_metadata
@@ -241,17 +242,27 @@ def _record_engine_run(scan_uuid: uuid.UUID, result: EngineResult) -> None:
         )
 
 
-def _component_for_persistence(component: dict[str, Any]) -> dict[str, Any] | None:
+def _component_for_persistence(
+    component: dict[str, Any], *, container_image: bool
+) -> dict[str, Any] | None:
     """A copy of ``component`` in the shape the persist path expects, or ``None``.
 
     ``None`` drops it: the BomLens OS-context component and PURL-less file or
     operating-system entries. Nested ``components`` are filtered the same way.
+
+    For a container image the PURL loses its qualifiers
+    (:func:`services.purl_build.purl_without_qualifiers`), the identity the
+    in-process container path stores. The ``bom-ref`` is left as it is, so
+    the SBOM's dependency graph still resolves.
     """
     if component.get("bom-ref") == OS_CONTEXT_BOM_REF:
         return None
     if component.get("type") in _NON_PACKAGE_TYPES and not component.get("purl"):
         return None
     out = dict(component)
+    purl = out.get("purl")
+    if container_image and isinstance(purl, str):
+        out["purl"] = purl_without_qualifiers(purl)
     if out.get("version") == _UNKNOWN_VERSION:
         out.pop("version")
     properties = out.get("properties")
@@ -262,18 +273,20 @@ def _component_for_persistence(component: dict[str, Any]) -> dict[str, Any] | No
         out.setdefault("source", _SCANOSS)
     nested = out.get("components")
     if isinstance(nested, list):
-        out["components"] = _filter_components(nested)[0]
+        out["components"] = _filter_components(nested, container_image=container_image)[0]
     return out
 
 
-def _filter_components(components: list[Any]) -> tuple[list[Any], int]:
+def _filter_components(
+    components: list[Any], *, container_image: bool
+) -> tuple[list[Any], int]:
     kept: list[Any] = []
     dropped = 0
     for item in components:
         if not isinstance(item, dict):
             kept.append(item)
             continue
-        converted = _component_for_persistence(item)
+        converted = _component_for_persistence(item, container_image=container_image)
         if converted is None:
             dropped += 1
         else:
@@ -281,17 +294,21 @@ def _filter_components(components: list[Any]) -> tuple[list[Any], int]:
     return kept, dropped
 
 
-def sbom_for_persistence(sbom: dict[str, Any]) -> tuple[dict[str, Any], int]:
+def sbom_for_persistence(
+    sbom: dict[str, Any], *, container_image: bool = False
+) -> tuple[dict[str, Any], int]:
     """The BomLens SBOM as the persist path should see it, and how many were left out.
 
     The file on disk is not changed; it stays the artifact exactly as BomLens
-    wrote and hashed it.
+    wrote and hashed it. ``container_image`` stores the packages of an image
+    without PURL qualifiers, as the in-process container path does; a source
+    scan keeps them, as the in-process source path does.
     """
     document = copy.copy(sbom)
     components = sbom.get("components")
     if not isinstance(components, list):
         return document, 0
-    kept, dropped = _filter_components(components)
+    kept, dropped = _filter_components(components, container_image=container_image)
     document["components"] = kept
     return document, dropped
 
@@ -446,6 +463,7 @@ def apply_bomlens_result(
     output_dir: Path,
     source_dir: Path | None = None,
     artifact_dir: Path | None = None,
+    container_image: bool = False,
 ) -> AppliedBomLensResult:
     """Persist the BomLens run in ``output_dir`` as scan ``scan_uuid``.
 
@@ -458,6 +476,10 @@ def apply_bomlens_result(
     for an input with no source tree. ``artifact_dir`` is where the verified
     bytes are kept for the scan's artifact rows; by default a sibling of
     ``output_dir`` (``<name>.verified``), outside the engine's folder.
+    ``container_image`` is set by the container pipeline: the image's packages
+    are stored without PURL qualifiers, the identity the in-process container
+    path gives them (see :func:`sbom_for_persistence`). Findings still attach,
+    because they are matched on the same qualifier-free form.
 
     Raises a :class:`~integrations.bomlens.contract.BomLensError` subclass when
     the result cannot become a succeeded scan (see the module docstring for
@@ -498,7 +520,7 @@ def apply_bomlens_result(
             problem = trivy_report_problem(trivy.document, sbom_has_components=sbom_has_components)
     license_scan = _read_license_scan(result, output_dir)
 
-    persisted, left_out = sbom_for_persistence(sbom.document)
+    persisted, left_out = sbom_for_persistence(sbom.document, container_image=container_image)
     detected_failed = False
     with sync_session_scope() as session:
         persist_sbom_components(session, scan_uuid=scan_uuid, sbom=persisted, source_dir=source_dir)

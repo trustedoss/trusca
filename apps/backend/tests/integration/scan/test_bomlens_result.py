@@ -242,6 +242,44 @@ def test_an_image_run_keeps_every_cve_on_every_package(
     }
 
 
+def test_purl_qualifiers_are_dropped_only_when_the_caller_scanned_an_image(
+    tmp_path: Path, sync_session: Session
+) -> None:
+    """The source pipeline's call keeps the SBOM's PURL as written, as the
+    in-process source path stores cdxgen's (``?type=jar`` stays). Only the
+    container pipeline's call (``container_image=True``) drops the qualifiers.
+    Findings attach either way, because matching ignores qualifiers."""
+    from models import ComponentVersion
+    from tasks.bomlens_result import apply_bomlens_result
+
+    def stored(scan_id: uuid.UUID) -> set[str]:
+        return set(
+            sync_session.execute(
+                select(ComponentVersion.purl_with_version)
+                .join(ScanComponent, ScanComponent.component_version_id == ComponentVersion.id)
+                .where(ScanComponent.scan_id == scan_id)
+            ).scalars()
+        )
+
+    as_written = _seed_running_source_scan()
+    apply_bomlens_result(
+        scan_uuid=as_written, output_dir=_copy_fixture("image-registry-alpine", tmp_path / "a")
+    )
+    image = _seed_running_source_scan()
+    apply_bomlens_result(
+        scan_uuid=image,
+        output_dir=_copy_fixture("image-registry-alpine", tmp_path / "b"),
+        container_image=True,
+    )
+
+    kept = stored(as_written)
+    assert len(kept) == 15
+    assert all("?arch=aarch64&distro=3.19.0" in purl for purl in kept)
+    assert stored(image) == {purl.split("?", 1)[0] for purl in kept}
+    assert len(_finding_ids(sync_session, as_written)) == 48
+    assert len(_finding_ids(sync_session, image)) == 48
+
+
 # ---------------------------------------------------------------------------
 # Degraded
 # ---------------------------------------------------------------------------

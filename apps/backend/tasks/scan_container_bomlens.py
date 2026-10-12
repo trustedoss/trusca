@@ -261,6 +261,7 @@ def run_bomlens_container_pipeline(
         output_dir=output_dir,
         source_dir=None,
         artifact_dir=runner.verified_dir(),
+        container_image=True,
     )
 
     require_running(scan_uuid)

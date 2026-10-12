@@ -191,6 +191,21 @@ is the captured run. It stands for a report that is well-formed JSON from
 Trivy's schema but carries no result list, which must fail the scan rather
 than persist as zero vulnerabilities.
 
+## Container PURLs from the engine comparison run
+
+`engine-comparison-container-purls.json` is not a BomLens output folder. It
+holds the component PURLs the portal API returned for the same three images
+scanned once by each container engine, in the engine comparison run of
+`.github/workflows/golden-nightly.yml` (dispatch run 38290325193, 2026-10-12,
+BomLens `1.13.2`). For each image the file keeps the image reference, the
+component count and the PURL list each capture recorded: the first page of
+the project's component list (50 entries), sorted, as
+`tests/e2e/golden/run_golden.py` writes it. Both pages hold the same 50
+packages, with or without qualifiers. The BomLens lists are what that
+engine stored before qualifiers were dropped for container images
+(`?arch=...&distro=debian-12.7`, `&epoch=1`); the in-process lists have none.
+Nothing else from the run was kept; it did not include either engine's SBOM.
+
 ## When to recapture
 
 When the pinned BomLens image changes. A new image can rename steps or change
