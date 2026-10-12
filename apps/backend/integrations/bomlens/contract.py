@@ -90,6 +90,27 @@ CLIP_CHARS: Final = 64
 MESSAGE_MAX_CHARS: Final = 300
 
 
+def storable_text(value: str) -> str:
+    """``value`` without the characters a stored or logged copy must not hold.
+
+    Manifest strings are engine output and may carry anything. Postgres
+    refuses NUL inside JSONB, so one NUL in a value written to
+    ``scan_metadata`` fails the commit and the scan with it; a line break
+    would split a log line. A tab or line break becomes a space; every other
+    C0 control character, DEL and a lone surrogate (not encodable as UTF-8)
+    is dropped; runs of whitespace are folded and the ends trimmed. Cutting to
+    length is left to the caller, which knows its own ceiling.
+    """
+    kept: list[str] = []
+    for ch in value:
+        code = ord(ch)
+        if ch in "\t\n\r":
+            kept.append(" ")
+        elif code >= 0x20 and code != 0x7F and not 0xD800 <= code <= 0xDFFF:
+            kept.append(ch)
+    return " ".join("".join(kept).split())
+
+
 def clip(value: object) -> str:
     """``repr`` of a manifest-derived value, cut to :data:`CLIP_CHARS`."""
     text = repr(value) if not isinstance(value, str) else value
@@ -494,4 +515,5 @@ __all__ = [
     "VerifiedOutput",
     "clip",
     "read_output",
+    "storable_text",
 ]

@@ -50,7 +50,13 @@ from typing import Final
 import structlog
 
 from integrations._secret_scrub import scrub_secrets
-from integrations.bomlens.contract import STEP_REASONS, EngineResult, Step, clip
+from integrations.bomlens.contract import (
+    STEP_REASONS,
+    EngineResult,
+    Step,
+    clip,
+    storable_text,
+)
 from services import scan_outcome
 
 log = structlog.get_logger("integrations.bomlens.stages")
@@ -153,22 +159,12 @@ def step_detail(step: Step) -> str | None:
     resolver's message), and it lands in ``scan_metadata``, which the scan API
     returns to every member of the team. So it is cut before the credential
     patterns run (:func:`scrub_secrets` asks for that), scrubbed, and stripped
-    of control characters: a tab or line break becomes a space, anything else
-    in C0, DEL and lone surrogates is dropped (Postgres refuses NUL in JSONB,
-    and a line break would split a log line). Runs of spaces are folded, and
-    the result is cut to :data:`DETAIL_MAX_CHARS` with an ellipsis.
+    of control characters (:func:`storable_text`), then cut to
+    :data:`DETAIL_MAX_CHARS` with an ellipsis.
     """
     if not step.detail:
         return None
-    text = scrub_secrets(step.detail[:_DETAIL_READ_MAX])
-    kept: list[str] = []
-    for ch in text:
-        code = ord(ch)
-        if ch in "\t\n\r":
-            kept.append(" ")
-        elif code >= 0x20 and code != 0x7F and not 0xD800 <= code <= 0xDFFF:
-            kept.append(ch)
-    text = " ".join("".join(kept).split())
+    text = storable_text(scrub_secrets(step.detail[:_DETAIL_READ_MAX]))
     if not text:
         return None
     if len(text) > DETAIL_MAX_CHARS:
@@ -227,7 +223,7 @@ def stage_outcomes(result: EngineResult) -> list[StageOutcome]:
                     step=step.id,
                     status=step.status,
                     engine_reason=(
-                        step.reason
+                        storable_text(step.reason) or None
                         if step.reason is not None and step.reason not in scan_outcome.STAGE_REASONS
                         else None
                     ),

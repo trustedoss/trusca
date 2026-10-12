@@ -683,6 +683,67 @@ def test_a_detail_with_a_nul_is_stored_without_it(tmp_path: Path, sync_session: 
     )
 
 
+def _nul_in_contract_version(manifest: dict[str, Any]) -> None:
+    # A pre-release suffix is free text; the major is still read as 1.
+    manifest["contract"]["version"] = "1.0.0-dev\x00x"
+
+
+def _nul_in_a_tool(manifest: dict[str, Any]) -> None:
+    manifest["tools"]["cdx\x00gen"] = manifest["tools"].pop("cdxgen") + "\x00"
+
+
+def _nul_in_a_step_id(manifest: dict[str, Any]) -> None:
+    manifest["steps"].append(dict(manifest["steps"][0], id="brand-new\x00step", status="ok"))
+
+
+def _nul_in_a_reason(manifest: dict[str, Any]) -> None:
+    for step in manifest["steps"]:
+        if step["id"] == "generate":
+            step.update(status="degraded", reason="no_deps\x00resolved")
+    manifest["run"].update(status="succeeded_degraded", reason="step_failed_or_degraded")
+
+
+@pytest.mark.parametrize(
+    ("change", "expect"),
+    [
+        (_nul_in_contract_version, lambda m: m["scan_engine"]["contract_version"] == "1.0.0-devx"),
+        (_nul_in_a_tool, lambda m: m["scan_engine"]["tools"]["cdxgen"] == "13.2.0"),
+        (
+            _nul_in_a_step_id,
+            lambda m: {"id": "brand-newstep", "status": "ok", "reason": None}
+            in m["scan_engine"]["steps"],
+        ),
+        (
+            _nul_in_a_reason,
+            lambda m: (
+                {"id": "generate", "status": "degraded", "reason": "no_depsresolved"}
+                in m["scan_engine"]["steps"]
+                and m[so.STAGE_OUTCOMES_KEY]["generate"]
+                == {"reason": "failed", "engine_reason": "no_depsresolved"}
+            ),
+        ),
+    ],
+    ids=["contract-version", "tool", "step-id", "reason"],
+)
+def test_a_nul_in_a_recorded_manifest_value_is_stored_without_it(
+    tmp_path: Path, sync_session: Session, change: Any, expect: Any
+) -> None:
+    """Every manifest string written to ``scan_metadata`` (the engine record
+    and an unknown reason kept beside its stage) goes into JSONB, which
+    refuses NUL. Stored as read, one would fail the commit and the scan."""
+    from tasks.bomlens_result import apply_bomlens_result
+
+    scan_id = _seed_running_source_scan()
+    folder = _copy_fixture("source-ok", tmp_path)
+    _rewrite_manifest(folder, change)
+
+    apply_bomlens_result(scan_uuid=scan_id, output_dir=folder)
+
+    meta = _metadata(sync_session, scan_id)
+    assert "\x00" not in json.dumps(meta).replace("\\u0000", "\x00")
+    assert expect(meta), meta.get("scan_engine")
+
+
 # ---------------------------------------------------------------------------
 # Failures
 # ---------------------------------------------------------------------------

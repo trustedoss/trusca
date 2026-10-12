@@ -64,6 +64,7 @@ from integrations.bomlens.contract import (
     clip,
     load_manifest,
     read_output,
+    storable_text,
 )
 from models import Scan
 from services import sbom_component_walk, scan_outcome
@@ -126,7 +127,13 @@ class AppliedBomLensResult:
 
 
 def _clip(value: str | None) -> str | None:
-    return value[:_TEXT_MAX] if isinstance(value, str) else None
+    """A manifest string as stored in ``scan_metadata``: no control characters
+    (:func:`storable_text`; a NUL would fail the JSONB write and the scan),
+    at most :data:`_TEXT_MAX` characters. Cut once before cleaning so an
+    oversized value is never walked whole, and again after."""
+    if not isinstance(value, str):
+        return None
+    return storable_text(value[: _TEXT_MAX * 4])[:_TEXT_MAX]
 
 
 def engine_record(result: EngineResult) -> dict[str, Any]:
