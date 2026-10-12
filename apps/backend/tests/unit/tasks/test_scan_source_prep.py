@@ -782,6 +782,41 @@ def test_extract_spdx_ids_joins_multiple_licenses_with_or() -> None:
     assert _classify_license_category(extracted[0][0]) == "conditional"
 
 
+@pytest.mark.parametrize("purl_type", ["deb", "rpm", "apk"])
+def test_extract_spdx_ids_keeps_each_os_package_license_separate(purl_type: str) -> None:
+    """An OS package's list is its copyright data: every entry applies, so a
+    GPL entry still classifies forbidden instead of losing to MPL under OR."""
+    from tasks.scan_source import _classify_license_category, _extract_spdx_ids
+
+    component = {
+        "purl": f"pkg:{purl_type}/debian/ca-certificates@20250419",
+        "licenses": [
+            {"license": {"id": "GPL-2.0-or-later"}},
+            {"license": {"id": "MPL-2.0", "url": "https://mozilla.org/MPL/2.0/"}},
+            {"license": {"id": "GPL-2.0-or-later"}},
+            {"license": {"name": "Apache License, Version 2.0"}},
+            {"expression": " AND ".join(["GPL-3.0-or-later"] * 5)},
+        ],
+    }
+    extracted = _extract_spdx_ids(component)
+    assert extracted == [
+        ("GPL-2.0-or-later", None),
+        ("MPL-2.0", "https://mozilla.org/MPL/2.0/"),
+        ("Apache-2.0", None),
+    ]
+    assert _classify_license_category(extracted[0][0]) == "forbidden"
+
+
+def test_extract_spdx_ids_still_joins_a_language_package_list_with_or() -> None:
+    from tasks.scan_source import _extract_spdx_ids
+
+    component = {
+        "purl": "pkg:pypi/example@1.0",
+        "licenses": [{"license": {"id": "GPL-2.0-or-later"}}, {"license": {"id": "MPL-2.0"}}],
+    }
+    assert _extract_spdx_ids(component) == [("GPL-2.0-or-later OR MPL-2.0", None)]
+
+
 def test_extract_spdx_ids_keeps_first_reference_url() -> None:
     """When joining multiple licenses, the first available url is kept."""
     from tasks.scan_source import _extract_spdx_ids
