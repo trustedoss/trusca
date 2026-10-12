@@ -368,17 +368,16 @@ def degraded_stage_details(metadata: dict[str, Any] | None) -> list[dict[str, st
     :func:`degraded_stages` so the metrics and the completeness verdict go on
     reading only the closed vocabulary.
     """
+    # The writers already made the detail safe; stripping again on the way out
+    # keeps a row written by an older release, or by hand, from reaching the
+    # screen with control or format characters in it.
+    from integrations.bomlens.contract import storable_text
+
     raw = (metadata or {}).get(STAGE_OUTCOMES_KEY)
     found: list[dict[str, str | None]] = []
     for entry in degraded_stages(metadata):
         stored = raw.get(entry["stage"]) if isinstance(raw, dict) else None
         detail = stored.get("engine_detail") if isinstance(stored, dict) else None
-        found.append(
-            {
-                **entry,
-                "engine_detail": (
-                    detail[:_ENGINE_DETAIL_MAX] if isinstance(detail, str) and detail else None
-                ),
-            }
-        )
+        text = storable_text(detail)[:_ENGINE_DETAIL_MAX] if isinstance(detail, str) else ""
+        found.append({**entry, "engine_detail": text or None})
     return found

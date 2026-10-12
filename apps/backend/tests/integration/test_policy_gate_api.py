@@ -1411,6 +1411,39 @@ async def test_the_pr_comment_on_a_declared_but_empty_scan_carries_the_warning(
     assert "Warning: no components found." in body["body_preview"]
 
 
+async def test_a_failed_detail_still_records_the_empty_scan_and_fails_the_gate(
+    client, monkeypatch
+) -> None:
+    """The in-process recorder writes on its own session. When building the
+    manifest sentence fails, the outcome and the stage are still committed, so
+    the axis still fails the build instead of the scan reading as complete."""
+    import asyncio
+
+    import tasks.scan_source as scan_source
+
+    def _broken(_inventory):
+        raise RuntimeError("detail could not be built")
+
+    monkeypatch.setattr(scan_source, "_no_components_detail", _broken)
+    monkeypatch.setenv("GATE_INCOMPLETE_SCAN_ENABLED", "true")
+    _, team, user = await _seed_team_and_user(client)
+    project_id = await _seed_project(client, team_id=team.id)
+    scan_id = await _seed_scan_with_metadata(client, project_id=project_id, metadata=_recorded())
+
+    outcome = await asyncio.to_thread(
+        scan_source._record_component_outcome,
+        scan_id,
+        sbom={"components": []},
+        manifest_inventory={"files": [{"path": "build.gradle"}], "count": 1},
+    )
+    assert outcome == "empty_with_manifests"
+
+    body = await _gate(client, user, project_id)
+    assert body["component_outcome"] == "empty_with_manifests"
+    assert body["gate"] == "fail"
+    assert body["incomplete_scan_basis"] == "empty_with_manifests"
+
+
 async def test_a_declared_but_empty_scan_fails_the_build_when_the_axis_is_on(
     client, monkeypatch
 ) -> None:

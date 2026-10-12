@@ -262,6 +262,16 @@
       critical=$(echo "$json_body" | jq -r '.critical_cve_count // 0')
       forbidden=$(echo "$json_body" | jq -r '.forbidden_license_count // 0')
       outcome=$(echo "$json_body" | jq -r '.component_outcome // ""')
+      # Only known words reach trustedoss.env, which later steps source as
+      # shell: anything else is written as an empty value.
+      case "$gate" in
+        pass|fail) ;;
+        *) gate="" ;;
+      esac
+      case "$outcome" in
+        components_found|empty_no_manifests|empty_with_manifests) ;;
+        *) outcome="" ;;
+      esac
       echo "TrustedOSS gate=$gate critical=$critical forbidden=$forbidden components=${outcome:-unknown}"
       # A warning, not a failure: whether an empty scan fails the build is the
       # portal's GATE_INCOMPLETE_SCAN_ENABLED decision, already in `gate`.

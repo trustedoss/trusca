@@ -309,25 +309,48 @@ def test_the_gate_schema_and_the_classifier_agree() -> None:
     assert not missing, f"the gate response describes component_outcome without naming {missing}"
 
 
-def _shell_case_labels(script: str, *, subject: str) -> set[str]:
-    """Branch labels of every ``case "$subject" in ... esac`` block in ``script``."""
-    labels: set[str] = set()
-    inside = False
-    for line in script.splitlines():
+def _shell_case_blocks(script: str, *, subject: str) -> list[tuple[int, set[str], str]]:
+    """``(offset, labels, body)`` of each ``case "$subject" in ... esac`` block.
+
+    ``labels`` holds the literal branch words; a ``*)`` branch is kept as ``*``
+    so a sanitising block can be told apart from a reporting one.
+    """
+    blocks: list[tuple[int, set[str], str]] = []
+    offset = 0
+    current: tuple[int, set[str], list[str]] | None = None
+    for line in script.splitlines(keepends=True):
         stripped = line.strip()
         if stripped.startswith("case "):
-            inside = stripped == f'case "${subject}" in'
-            continue
-        if stripped == "esac":
-            inside = False
-            continue
-        if inside and stripped.endswith(")"):
-            labels.update(
-                label.strip()
-                for label in stripped[:-1].split("|")
-                if re.fullmatch(r"[a-z_]+", label.strip())
-            )
-    return labels
+            current = (offset, set(), []) if stripped == f'case "${subject}" in' else None
+        elif stripped == "esac":
+            if current is not None:
+                blocks.append((current[0], current[1], "".join(current[2])))
+            current = None
+        elif current is not None:
+            current[2].append(line)
+            # A branch head: `a|b)` alone on its line, or `a|b) cmd ;;`.
+            head = re.match(r"^([a-z_*|\s]+)\)", stripped)
+            if head:
+                for raw in head.group(1).split("|"):
+                    label = raw.strip()
+                    if re.fullmatch(r"[a-z_]+|\*", label):
+                        current[1].add(label)
+        offset += len(line)
+    return blocks
+
+
+def _assert_sanitised_before(script: str, *, subject: str, allowed: set[str], write: str) -> None:
+    """A ``case`` on ``subject`` keeps only ``allowed`` and blanks the rest,
+    before the line that writes the value to the dotenv file."""
+    sanitisers = [
+        (offset, body)
+        for offset, labels, body in _shell_case_blocks(script, subject=subject)
+        if labels == allowed | {"*"}
+    ]
+    assert len(sanitisers) == 1, f"no single allow-list case for ${subject}"
+    offset, body = sanitisers[0]
+    assert f'*) {subject}="" ;;' in body, f"${subject} is not blanked on an unknown value"
+    assert offset < script.index(write), f"${subject} is written before it is checked"
 
 
 def _groovy_switch_labels(script: str, *, subject: str) -> set[str]:
@@ -351,7 +374,18 @@ def test_every_ci_template_and_the_pr_comment_warn_on_both_empty_outcomes() -> N
     if root is None:
         pytest.skip("repository root not reachable: backend-only checkout")
     gitlab = (root / "templates" / "gitlab-ci.yml").read_text(encoding="utf-8")
-    assert _shell_case_labels(gitlab, subject="outcome") == empty_values
+    outcome_blocks = _shell_case_blocks(gitlab, subject="outcome")
+    reporting = [labels for _, labels, _ in outcome_blocks if "*" not in labels]
+    assert reporting == [empty_values]
+    _assert_sanitised_before(
+        gitlab,
+        subject="outcome",
+        allowed=set(COMPONENT_OUTCOME_VALUES),
+        write='echo "TRUSTEDOSS_COMPONENT_OUTCOME=$outcome"',
+    )
+    _assert_sanitised_before(
+        gitlab, subject="gate", allowed={"pass", "fail"}, write='echo "TRUSTEDOSS_GATE=$gate"'
+    )
     assert "jq -r '.component_outcome" in gitlab
 
     jenkins = (root / "templates" / "Jenkinsfile.example").read_text(encoding="utf-8")

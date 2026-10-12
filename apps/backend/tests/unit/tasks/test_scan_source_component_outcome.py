@@ -215,6 +215,26 @@ def test_an_empty_result_despite_manifests_records_generate_no_components(
     assert scan_session.committed == 1
 
 
+def test_a_failed_detail_keeps_the_outcome_and_the_stage(
+    scan_session: _FakeSession, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    def _broken(_inventory: Any) -> str:
+        raise RuntimeError("detail could not be built")
+
+    monkeypatch.setattr(mod, "_no_components_detail", _broken)
+
+    mod._record_component_outcome(
+        uuid.uuid4(), sbom={"components": []}, manifest_inventory=_inventory("pom.xml")
+    )
+
+    assert scan_session._scan is not None
+    meta = scan_session._scan.scan_metadata
+    assert meta is not None
+    assert meta[METADATA_KEY] == EMPTY_WITH_MANIFESTS
+    assert meta[STAGE_OUTCOMES_KEY] == {"generate": {"reason": "no_components"}}
+    assert scan_session.committed == 1
+
+
 @pytest.mark.parametrize(
     ("sbom", "inventory"),
     [

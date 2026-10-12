@@ -1771,12 +1771,22 @@ def _record_component_outcome(
                     # The same record the BomLens engine leaves for this case
                     # (``generate`` degraded ``no_components``), so the stage
                     # list, the metrics and the completeness verdict read one
-                    # vocabulary whichever engine ran.
+                    # vocabulary whichever engine ran. The sentence is a
+                    # courtesy: failing to build it must not cost the record.
+                    detail: str | None = None
+                    try:
+                        detail = _no_components_detail(manifest_inventory)
+                    except Exception:  # noqa: BLE001 - the detail is optional
+                        log.warning(
+                            "scan_no_components_detail_failed",
+                            scan_id=str(scan_uuid),
+                            exc_info=True,
+                        )
                     merged = scan_outcome.add_stage_outcome(
                         merged,
                         stage="generate",
                         reason=scan_outcome.NO_COMPONENTS_REASON,
-                        engine_detail=_no_components_detail(manifest_inventory),
+                        engine_detail=detail,
                     )
                 scan.scan_metadata = merged
                 session.commit()

@@ -108,6 +108,28 @@ def test_the_screen_reads_each_stage_with_its_engine_detail() -> None:
     assert so.degraded_stage_details(None) == []
 
 
+def test_the_screen_never_gets_control_or_format_characters() -> None:
+    """A stored detail that skipped the writers' cleaning (an older row, a hand
+    edit) is cleaned again on the way out; one left empty by it reads as none."""
+    meta = {
+        so.STAGE_OUTCOMES_KEY: {
+            "generate": {
+                "reason": "no_components",
+                "engine_detail": "manifests\x00 found:‮ build.gradle\nx",
+            },
+            "sign": {"reason": "failed", "engine_detail": "\x00​"},
+        }
+    }
+    assert so.degraded_stage_details(meta) == [
+        {
+            "stage": "generate",
+            "reason": "no_components",
+            "engine_detail": "manifests found: build.gradle x",
+        },
+        {"stage": "sign", "reason": "failed", "engine_detail": None},
+    ]
+
+
 def test_both_engines_name_the_empty_generation_with_one_word() -> None:
     """The in-process pipeline writes TRUSCA's word, the BomLens adapter reads the
     engine's; they must be the same word or one engine's empty scans go unlabelled."""
