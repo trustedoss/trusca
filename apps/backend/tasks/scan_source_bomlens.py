@@ -154,6 +154,7 @@ def run_bomlens_pipeline(
         stage="prep",
         image=images.plan.run_ref,
         stage2_image=images.stage2.run_ref,
+        stage1_image_prefix=images.stage1_prefix,
         deep_license=images.deep_license,
     )
     try:

@@ -166,7 +166,7 @@ into a registry that the target host's Docker daemon can reach:
 - the BomLens image `ghcr.io/sktelecom/bomlens`
 - the BomLens image `ghcr.io/sktelecom/bomlens-deep-license`
 - the cdxgen language images under `ghcr.io/cdxgen/` that the execution plan
-  chooses (see the limit below)
+  chooses for stage 1 (see [Stage 1 images](#bomlens-stage1-images))
 
 The `docker-socket-proxy` image that the `bomlens-engine` compose profile
 starts is not in the bundle either.
@@ -209,16 +209,71 @@ SCAN_BOMLENS_DEEP_LICENSE_IMAGE=<your-registry>/bomlens-deep-license:<tag>@sha25
 
 The engine refuses a reference without a digest or tagged `latest`.
 
-:::caution No mirror setting for the stage 1 images
-TRUSCA currently has no setting that points the cdxgen language images at a
-mirror. The execution plan names them under `ghcr.io/cdxgen/`, and the worker
-pulls them by that name when the Docker host does not already hold them.
-`SCAN_BOMLENS_STAGE1_REPOSITORIES` only limits which repositories a plan may
-name; it does not change where images are pulled from. When the pull fails,
-the scan fails with `pulling <image> failed`. The images and digests a BomLens
-release can choose are listed in `/usr/local/lib/sbom/cdxgen-images.json`
-inside the BomLens image.
-:::
+### Stage 1 images {#bomlens-stage1-images}
+
+The execution plan picks one cdxgen language image per scan for stage 1 and
+names it by the published digest. The images and digests a BomLens release
+can choose are listed in `/usr/local/lib/sbom/cdxgen-images.json` inside the
+BomLens image. On the connected host, read the list from the BomLens image
+you pinned above, and print each image as `<repository>:<tag>@<digest>`:
+
+```bash
+docker run --rm --entrypoint cat \
+  ghcr.io/sktelecom/bomlens:<tag>@sha256:<digest> \
+  /usr/local/lib/sbom/cdxgen-images.json > cdxgen-images.json
+
+jq -r '.tag as $t | .digests | to_entries[] | "\(.key):\($t)@\(.value)"' cdxgen-images.json
+```
+
+Copy every image the same way as the BomLens images, with every platform and
+the digest kept, under one path in your registry. The image names and the tag
+stay the same:
+
+```bash
+jq -r '.tag as $t | .digests | to_entries[] | "\(.key) \($t) \(.value)"' cdxgen-images.json |
+while read -r repo tag digest; do
+  skopeo copy --all --preserve-digests \
+    "docker://$repo@$digest" \
+    "docker://<your-registry>/cdxgen/${repo#ghcr.io/cdxgen/}:$tag"
+done
+```
+
+The list has one image per language and the all-in-one `cdxgen` image, several
+gigabytes in total. If you scan only some languages, you can copy only their
+images; a scan whose plan names an image the registry does not hold fails
+with `pulling <image> failed`.
+
+Then point stage 1 at that path:
+
+```bash
+# In the portal's .env
+SCAN_BOMLENS_STAGE1_IMAGE_PREFIX=<your-registry>/cdxgen/
+```
+
+TRUSCA passes the value to the execution plan as BomLens's
+`CDXGEN_IMAGE_PREFIX`, and the plan then names each image under it, for
+example `<your-registry>/cdxgen/cdxgen-alpine-node24:13.2.0@sha256:...`, with
+the published digest. A final `/` is added when missing. The value must be a
+registry host (with a dot, a port or `localhost`) followed by a path of at
+least one part; a host alone such as `reg.example:5000`, a scheme such as
+`https://`, credentials, a tag, a digest, spaces or shell characters are
+refused, and the scan fails before any container starts. The error names the
+rule, not the value. Every image under the prefix is allowed for stage 1, so
+point it at a path that holds only the cdxgen images, not at a whole
+registry.
+
+The prefix is allowed as a stage 1 repository without adding it to
+`SCAN_BOMLENS_STAGE1_REPOSITORIES`. With that list left empty, the prefix
+takes the place of the default `ghcr.io/cdxgen/`, so a plan that still names
+an image outside the prefix is refused. Repositories you do list stay allowed
+next to the prefix.
+
+A mirror filled with `docker pull`, `docker tag` and `docker push` holds one
+platform under a different digest, and pulling the plan's image by its
+digest then fails. A pull-through cache of `ghcr.io` works too, since it
+serves the published digests. Its prefix then runs down to the `cdxgen`
+namespace, for example `<your-registry>/<proxy-project>/cdxgen/`, not just to
+the cache project, which would allow every image the cache can fetch.
 
 Whoever mirrors these images and makes them available to others takes on the
 license obligations of each image. Their licenses, and where each image keeps

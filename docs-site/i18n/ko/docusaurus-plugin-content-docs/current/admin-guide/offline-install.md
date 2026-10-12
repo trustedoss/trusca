@@ -158,8 +158,8 @@ bash scripts/install.sh --no-prompt --offline /path/to/trusca-offline-bundle-0.2
 
 - BomLens 이미지 `ghcr.io/sktelecom/bomlens`
 - BomLens 이미지 `ghcr.io/sktelecom/bomlens-deep-license`
-- 실행 계획이 고르는 `ghcr.io/cdxgen/` 아래의 cdxgen 언어 이미지(아래
-  제한 사항 참고)
+- 실행 계획이 1단계용으로 고르는 `ghcr.io/cdxgen/` 아래의 cdxgen 언어
+  이미지([1단계 이미지](#bomlens-stage1-images) 참고)
 
 `bomlens-engine` compose 프로필이 시작하는 `docker-socket-proxy` 이미지도
 번들에 들어 있지 않습니다.
@@ -202,16 +202,69 @@ SCAN_BOMLENS_DEEP_LICENSE_IMAGE=<your-registry>/bomlens-deep-license:<tag>@sha25
 
 다이제스트가 없거나 태그가 `latest`인 참조는 엔진이 거부합니다.
 
-:::caution 1단계 이미지에는 미러 설정이 없습니다
-현재 TRUSCA에는 cdxgen 언어 이미지를 미러에서 받도록 지정하는 설정이
-없습니다. 실행 계획은 이 이미지들을 `ghcr.io/cdxgen/` 아래 이름으로 지정하고,
-Docker 호스트에 해당 이미지가 없으면 워커가 그 이름으로 받습니다.
-`SCAN_BOMLENS_STAGE1_REPOSITORIES`는 실행 계획이 지정할 수 있는 저장소를
-제한할 뿐, 이미지를 받는 위치를 바꾸지 않습니다. 받기에 실패하면 스캔은
-`pulling <image> failed`로 실패합니다. BomLens 릴리스가 고를 수 있는
-이미지와 다이제스트는 BomLens 이미지 안의 `/usr/local/lib/sbom/cdxgen-images.json`에
-있습니다.
-:::
+### 1단계 이미지 {#bomlens-stage1-images}
+
+실행 계획은 스캔마다 1단계에 쓸 cdxgen 언어 이미지를 하나 고르고, 공개된
+다이제스트로 지정합니다. BomLens 릴리스가 고를 수 있는 이미지와 다이제스트는
+BomLens 이미지 안의 `/usr/local/lib/sbom/cdxgen-images.json`에 있습니다.
+연결된 호스트에서 위에서 고정한 BomLens 이미지로 이 목록을 읽고, 각 이미지를
+`<repository>:<tag>@<digest>` 형식으로 출력합니다.
+
+```bash
+docker run --rm --entrypoint cat \
+  ghcr.io/sktelecom/bomlens:<tag>@sha256:<digest> \
+  /usr/local/lib/sbom/cdxgen-images.json > cdxgen-images.json
+
+jq -r '.tag as $t | .digests | to_entries[] | "\(.key):\($t)@\(.value)"' cdxgen-images.json
+```
+
+모든 이미지를 BomLens 이미지와 같은 방식으로, 모든 플랫폼과 함께 다이제스트를
+유지한 채 레지스트리의 한 경로 아래로 복사합니다. 이미지 이름과 태그는 그대로
+둡니다.
+
+```bash
+jq -r '.tag as $t | .digests | to_entries[] | "\(.key) \($t) \(.value)"' cdxgen-images.json |
+while read -r repo tag digest; do
+  skopeo copy --all --preserve-digests \
+    "docker://$repo@$digest" \
+    "docker://<your-registry>/cdxgen/${repo#ghcr.io/cdxgen/}:$tag"
+done
+```
+
+목록에는 언어별 이미지와 올인원 이미지 `cdxgen`이 있으며, 합치면 수 GB입니다.
+일부 언어만 스캔한다면 그 언어의 이미지만 복사해도 됩니다. 실행 계획이
+레지스트리에 없는 이미지를 지정하면 그 스캔은 `pulling <image> failed`로
+실패합니다.
+
+그다음 1단계가 그 경로에서 이미지를 받도록 설정합니다.
+
+```bash
+# 포털의 .env
+SCAN_BOMLENS_STAGE1_IMAGE_PREFIX=<your-registry>/cdxgen/
+```
+
+TRUSCA는 이 값을 BomLens의 `CDXGEN_IMAGE_PREFIX`로 실행 계획에 넘기고,
+실행 계획은 각 이미지를 그 아래 이름과 공개된 다이제스트로 지정합니다(예:
+`<your-registry>/cdxgen/cdxgen-alpine-node24:13.2.0@sha256:...`). 끝에 `/`가
+없으면 붙입니다. 값은 레지스트리 호스트(점이나 포트가 있거나 `localhost`)와
+그 뒤의 한 단계 이상인 경로여야 합니다. `reg.example:5000`처럼 호스트만 적은
+값, `https://` 같은 스킴, 인증 정보, 태그, 다이제스트, 공백, 셸 문자가 들어
+있으면 거부하고, 스캔은 컨테이너를 시작하기 전에 실패합니다. 오류 메시지에는
+입력값 대신 규칙만 적습니다. 접두사 아래의 이미지는 모두 1단계에 허용되므로,
+레지스트리 전체가 아니라 cdxgen 이미지만 담은 경로로 지정하십시오.
+
+이 접두사는 `SCAN_BOMLENS_STAGE1_REPOSITORIES`에 추가하지 않아도 1단계
+저장소로 허용됩니다. 그 목록이 비어 있으면 접두사가 기본값 `ghcr.io/cdxgen/`을
+대신하므로, 실행 계획이 접두사 밖의 이미지를 지정하면 거부합니다. 목록에 적은
+저장소는 접두사와 함께 계속 허용됩니다.
+
+`docker pull`, `docker tag`, `docker push`로 채운 미러는 한 플랫폼만 다른
+다이제스트로 담으므로, 실행 계획의 이미지를 다이제스트로 받는 단계에서
+실패합니다. `ghcr.io`의 pull-through 캐시도 공개된 다이제스트를 그대로
+제공하므로 쓸 수 있습니다. 이때 접두사는 캐시 프로젝트에서 멈추지 말고
+`<your-registry>/<proxy-project>/cdxgen/`처럼 `cdxgen` 네임스페이스까지
+적으십시오. 캐시 프로젝트까지만 적으면 캐시가 가져올 수 있는 모든 이미지가
+허용됩니다.
 
 이 이미지들을 미러링해 다른 사람이 받을 수 있게 하면, 각 이미지의 라이선스
 의무를 미러링한 사람이 집니다. 이미지별 라이선스와, 각 이미지가 고지 파일과

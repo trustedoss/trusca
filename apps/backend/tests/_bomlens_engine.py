@@ -282,26 +282,50 @@ class FakeDocker:
 # -- effects that copy real BomLens output ------------------------------------
 
 
-def write_plan(case: str, *, image: str | None = None, digest: str | None = None) -> Effect:
+#: What a value of ``CDXGEN_IMAGE_PREFIX`` makes the published image plan,
+#: by capture (``fixtures/bomlens-plan/PROVENANCE.md``). No entry: the plan
+#: the image writes without the variable.
+PREFIX_CAPTURES: dict[str, str] = {"registry.example/mirror/cdxgen/": "node-mirror-prefix"}
+
+#: Marks a stage 1 digest a test wants removed from the plan copy.
+NO_DIGEST: str = "-"
+
+
+def write_plan(
+    case: str,
+    *,
+    image: str | None = None,
+    digest: str | None = None,
+    stage1_image: str | None = None,
+    stage1_digest: str | None = None,
+) -> Effect:
     """PLAN effect: copy a captured plan (and its manifest) into ``/host-output``.
 
     The plan is copied byte for byte. ``image`` / ``digest``, when given,
-    replace stage 2's image in the copy (a test of the runner's own check);
-    tests that run a plan as captured configure the image it names
-    (:func:`captured_images`).
+    replace stage 2's image in the copy, and ``stage1_image`` /
+    ``stage1_digest`` stage 1's (a test of the runner's own check;
+    ``stage1_digest=NO_DIGEST`` removes it); tests that run a plan as
+    captured configure the image it names (:func:`captured_images`).
     """
+    changes = {
+        "postprocess": (image, digest),
+        "generate": (stage1_image, stage1_digest),
+    }
 
     def effect(run: Run) -> None:
         out = run.host("/host-output")
         source = PLAN_FIXTURES / case / "bomlens-plan.json"
-        if image is None and digest is None:
+        if all(v is None for pair in changes.values() for v in pair):
             shutil.copyfile(source, out / "bomlens-plan.json")
         else:
             document = json.loads(source.read_text())
             for stage in document.get("stages", []):
-                if stage["id"] == "postprocess":
-                    stage["image"] = image or stage["image"]
-                    stage["image_digest"] = digest or stage["image_digest"]
+                new_image, new_digest = changes.get(stage["id"], (None, None))
+                stage["image"] = new_image or stage["image"]
+                if new_digest == NO_DIGEST:
+                    stage["image_digest"] = None
+                else:
+                    stage["image_digest"] = new_digest or stage["image_digest"]
             (out / "bomlens-plan.json").write_text(json.dumps(document))
         manifest = PLAN_FIXTURES / case / "bomlens-result.json"
         if manifest.exists():
@@ -310,6 +334,26 @@ def write_plan(case: str, *, image: str | None = None, digest: str | None = None
         files.mkdir(exist_ok=True)
         for name in ("build-prep.sh", "identify-conda.py"):
             (files / name).write_text(f"# placeholder for {name}\n")
+
+    return effect
+
+
+def plan_as_published(default_case: str = "node-ok") -> Effect:
+    """PLAN effect: the capture the published image writes for the run's env.
+
+    Picks the plan by the ``CDXGEN_IMAGE_PREFIX`` the runner gave the PLAN
+    container (:data:`PREFIX_CAPTURES`), so a test sees the stage 1 image the
+    real image would name for that setting. A prefix with no capture fails
+    the test rather than falling back to the plain plan.
+    """
+
+    def effect(run: Run) -> None:
+        prefix = run.env.get("CDXGEN_IMAGE_PREFIX")
+        if prefix is None:
+            write_plan(default_case)(run)
+            return
+        assert prefix in PREFIX_CAPTURES, f"no PLAN capture for CDXGEN_IMAGE_PREFIX={prefix!r}"
+        write_plan(PREFIX_CAPTURES[prefix])(run)
 
     return effect
 
@@ -347,7 +391,10 @@ __all__ = [
     "Behaviour",
     "FakeDocker",
     "Run",
+    "NO_DIGEST",
+    "PREFIX_CAPTURES",
     "captured_images",
+    "plan_as_published",
     "docker_mount_record",
     "parse_run",
     "write_plan",

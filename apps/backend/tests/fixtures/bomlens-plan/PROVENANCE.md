@@ -49,6 +49,21 @@ docker run --rm --read-only --network none --cap-drop ALL \
 |---|---|---|---|
 | `node-ok` | `tests/e2e/golden/fixtures/node` (npm, `lodash` 4.17.21) | 0 | `ok`; stage 1 `ghcr.io/cdxgen/cdxgen-alpine-node24:13.2.0@sha256:1e46a41c...`, stage 2 the image above with the `trivy-db` mount (`/trivy-db`, read-only, optional), `SECURITY_ENRICH=false` in its `env`, and the proxy, `TRIVY_*`, `BOMLENS_TRIVY_DB_MAX_AGE_DAYS`, `EPSS_API` and `KEV_URL` names in its `env_passthrough` |
 | `android-unsupported` | BomLens `tests/fixtures/android-kotlin-dsl` at the `v1.13.2` tag (unchanged since `34010b6b`) | 0 | `unsupported`, reason `android-sdk-image`, no stages; the manifest records the `plan` step `skipped` (`not_installed`) and the run `succeeded_degraded` |
+| `node-mirror-prefix` | the same `node` source, with `-e CDXGEN_IMAGE_PREFIX=registry.example/mirror/cdxgen/` added (2026-10-12 09:05 UTC) | 0 | `ok`; stage 1 `registry.example/mirror/cdxgen/cdxgen-alpine-node24:13.2.0` with the same digest as `node-ok` (`sha256:1e46a41c...`) |
+
+`node-mirror-prefix` differs from `node-ok` in the stage 1 `image` only; in
+its result manifest, the run times and the size and digest of the plan file.
+A second run with the value without its final `/`
+(`registry.example/mirror/cdxgen`) wrote a byte-identical plan: BomLens adds
+the `/` (`docker/lib/source-detect.sh`). The runner gives the same value as
+`SCAN_BOMLENS_STAGE1_IMAGE_PREFIX` (`tests/unit/integrations/bomlens/test_stage1_image_prefix.py`).
+
+`cdxgen-images.json` is `/usr/local/lib/sbom/cdxgen-images.json` from the
+same image, copied byte for byte with
+`docker run --rm --network none --entrypoint cat <image above> /usr/local/lib/sbom/cdxgen-images.json`.
+It is the list the offline-install guide tells an operator to read and copy;
+`tests/unit/test_bomlens_stage1_prefix_doc_contract.py` runs the guide's
+commands on it.
 
 Against the `sha-34010b6` captures these replaced (2026-10-12 04:19 UTC),
 the only differences are the image fields (`image`, `image_digest`, and
@@ -101,3 +116,19 @@ settings, and with stage 1 limited to 8 MiB of memory: the kernel killed it
 (exit 137, `OOMKilled`), the restore run exited 0, and stage 2 fell back to
 the manifest-only reader (`generate` `degraded` (`fallback`), run
 `succeeded_degraded`). Those two runs were not repeated with later images.
+
+## Stage 1 from a registry mirror
+
+On 2026-10-12, `ghcr.io/cdxgen/cdxgen-alpine-node24` was copied into a local
+`registry:2.8.3` (`localhost:55055`) with the offline-install guide's loop
+(`skopeo copy --all --preserve-digests`, limited to that one image); the copy's
+index digest read back as `sha256:1e46a41c...`, the published one.
+`test_the_published_images_take_stage_1_from_a_mirror` then passed with
+`BOMLENS_ENGINE_STAGE1_MIRROR=localhost:55055/cdxgen` (no final `/`): stage 1
+ran `localhost:55055/cdxgen/cdxgen-alpine-node24:13.2.0@sha256:1e46a41c...`,
+pulled from that registry, exited 0, and the scan succeeded with one
+component. `test_the_published_images_scan_an_npm_project` passed in the same
+run. Both used a Trivy database downloaded that day (`UpdatedAt`
+2026-10-12T07:12Z) through `BOMLENS_ENGINE_TRIVY_CACHE`. Without it the
+default `~/.cache/trivy` held no database on that machine, and both tests
+failed the same way with "the vulnerability scan failed".
