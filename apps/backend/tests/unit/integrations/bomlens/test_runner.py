@@ -12,6 +12,7 @@ import os
 import subprocess
 import uuid
 from pathlib import Path
+from typing import Any
 
 import pytest
 
@@ -805,17 +806,46 @@ def test_stage_2_reads_the_worker_trivy_database_through_the_role(
 
 @pytest.mark.parametrize(
     ("hours", "days"),
-    [(None, 9), ("168", 9), ("24", 3), ("25", 4), ("1", 3), ("0", 3), ("junk", 9), ("720", 32)],
+    [
+        (None, 16),
+        ("168", 16),
+        ("24", 4),
+        ("25", 6),
+        ("1", 4),
+        ("0", 4),
+        ("-48", 4),
+        ("junk", 16),
+        ("336", 30),
+        ("337", 30),
+        ("720", 30),
+        # Past a float's range: integer arithmetic, no OverflowError.
+        ("9" * 400, 30),
+        # Past Python's int() digit limit: read as junk, the default.
+        ("9" * 5000, 16),
+    ],
 )
 def test_the_database_age_follows_the_refresh_interval(
     monkeypatch: pytest.MonkeyPatch, hours: str | None, days: int
 ) -> None:
-    """ceil(TRIVY_DB_REFRESH_HOURS / 24) + 2, read per call."""
+    """ceil(TRIVY_DB_REFRESH_HOURS / 24) * 2 + 2, at most 30, read per call."""
     if hours is None:
         monkeypatch.delenv("TRIVY_DB_REFRESH_HOURS", raising=False)
     else:
         monkeypatch.setenv("TRIVY_DB_REFRESH_HOURS", hours)
     assert trivy_db_max_age_days() == days
+
+
+@pytest.mark.parametrize(("hours", "capped"), [("336", False), ("337", True), ("9" * 400, True)])
+def test_a_capped_database_age_is_logged(
+    monkeypatch: pytest.MonkeyPatch, hours: str, capped: bool
+) -> None:
+    import structlog
+
+    monkeypatch.setenv("TRIVY_DB_REFRESH_HOURS", hours)
+    with structlog.testing.capture_logs() as captured:
+        assert trivy_db_max_age_days() == runner_mod.TRIVY_DB_MAX_AGE_LIMIT_DAYS
+    events = [e for e in captured if e["event"] == "bomlens_trivy_db_max_age_capped"]
+    assert [e["log_level"] for e in events] == (["warning"] if capped else [])
 
 
 def test_stage_2_is_told_the_database_age_trusca_allows(
@@ -827,16 +857,25 @@ def test_stage_2_is_told_the_database_age_trusca_allows(
     docker = _happy_docker()
     _runner(workspace, docker).run()
     (stage2,) = docker.runs_of("stage2")
-    assert stage2.env["BOMLENS_TRIVY_DB_MAX_AGE_DAYS"] == "9"
-    assert [a for a in stage2.argv if a.startswith("BOMLENS_TRIVY_DB_MAX_AGE_DAYS=")] == [
-        "BOMLENS_TRIVY_DB_MAX_AGE_DAYS=9"
+    assert stage2.env["BOMLENS_TRIVY_DB_MAX_AGE_DAYS"] == "16"
+    assert [a for a in stage2.argv if a.startswith("BOMLENS_TRIVY_DB_MAX_AGE_DAYS")] == [
+        "BOMLENS_TRIVY_DB_MAX_AGE_DAYS=16"
     ]
 
     monkeypatch.setenv("TRIVY_DB_REFRESH_HOURS", "24")
     docker = _happy_docker()
     _runner(workspace, docker).run()
     (stage2,) = docker.runs_of("stage2")
-    assert stage2.env["BOMLENS_TRIVY_DB_MAX_AGE_DAYS"] == "3"
+    assert stage2.env["BOMLENS_TRIVY_DB_MAX_AGE_DAYS"] == "4"
+    # Not even offered by name: the de-duplication in docker_run_argv would
+    # hide a worker value here, so the pass-through is checked on its own.
+    from integrations.bomlens.plan import load_plan
+    from tests._bomlens_engine import PLAN_FIXTURES
+
+    runner = _runner(workspace, _happy_docker())
+    stage = runner.stage2_for(load_plan(PLAN_FIXTURES / "node-ok"))
+    assert "BOMLENS_TRIVY_DB_MAX_AGE_DAYS" in stage.env_passthrough
+    assert "BOMLENS_TRIVY_DB_MAX_AGE_DAYS" not in dict(runner._passthrough(stage))
     for label in ("plan", "stage1"):
         (run,) = docker.runs_of(label)
         assert "BOMLENS_TRIVY_DB_MAX_AGE_DAYS" not in run.env, label
@@ -864,6 +903,100 @@ def test_stage_1_gets_the_proxy_and_stage_2_does_not(
         assert not {n for n in run.env if n.lower().endswith("_proxy")}, label
 
 
+def test_values_from_the_worker_environment_never_reach_a_command_line(
+    workspace: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A proxy URL can carry credentials, and a command line is visible to
+    every process on the host. Values that come from the worker's environment
+    go to the docker CLI's own environment and are named only (``--env
+    NAME``); the container still gets them."""
+    secret = "http://scan-user:s3cr3t-pa55@proxy.corp.example:8080"
+    goproxy = "https://goproxy-user:t0ken@goproxy.corp.example"
+    monkeypatch.setenv("HTTPS_PROXY", secret)
+    monkeypatch.setenv("GOPROXY", goproxy)
+    docker = _happy_docker()
+    _runner(workspace, docker).run()
+    for run in docker.runs:
+        joined = "\n".join(run.argv)
+        assert "s3cr3t-pa55" not in joined, run.label
+        assert "t0ken" not in joined, run.label
+    (stage1,) = docker.runs_of("stage1")
+    assert stage1.by_name == {"HTTPS_PROXY", "GOPROXY"}
+    assert stage1.option_values("--env").count("HTTPS_PROXY") == 1
+    assert stage1.env["HTTPS_PROXY"] == secret
+    assert docker.process_envs[docker.runs.index(stage1)] == {
+        "HTTPS_PROXY": secret,
+        "GOPROXY": goproxy,
+    }
+    # Containers that take nothing from the worker's environment give the
+    # CLI no extra environment either.
+    for run, extra in zip(docker.runs, docker.process_envs, strict=True):
+        if run.label != "stage1":
+            assert extra == {}, run.label
+
+
+def test_the_docker_cli_gets_the_named_values_in_its_own_environment(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    captured: dict[str, Any] = {}
+
+    def fake_run(argv: list[str], **kwargs: Any) -> subprocess.CompletedProcess[bytes]:
+        captured["argv"], captured["env"] = argv, kwargs.get("env")
+        return subprocess.CompletedProcess(argv, 0, b"c1\n", b"")
+
+    monkeypatch.setattr(subprocess, "run", fake_run)
+    monkeypatch.setenv("PATH", "/usr/bin:/bin")
+    cli = runner_mod.DockerCli()
+    secret = {"HTTPS_PROXY": "http://u:p@h:1"}
+    assert cli.create(["--env", "HTTPS_PROXY", "img"], env=secret) == "c1"
+    assert captured["argv"] == ["docker", "create", "--env", "HTTPS_PROXY", "img"]
+    assert captured["env"]["HTTPS_PROXY"] == "http://u:p@h:1"
+    assert captured["env"]["PATH"] == "/usr/bin:/bin"
+    cli.create(["img"])
+    assert captured["env"] is None
+
+
+def test_stage_2_sets_each_trusca_value_exactly_once(workspace: Path) -> None:
+    docker = _happy_docker()
+    _runner(workspace, docker).run()
+    (stage2,) = docker.runs_of("stage2")
+    names = [v.split("=", 1)[0] for v in stage2.option_values("--env")]
+    for name, value in (
+        ("SECURITY_ENRICH", "false"),
+        ("GENERATE_SECURITY", "true"),
+        ("TRIVY_OFFLINE_SCAN", "true"),
+        ("BOMLENS_TRIVY_DB_MAX_AGE_DAYS", "16"),
+    ):
+        assert names.count(name) == 1, name
+        assert stage2.env[name] == value, name
+    assert len(names) == len(set(names))
+
+
+def test_a_name_set_twice_keeps_the_last_value_and_trusca_wins_over_a_named_one(
+    tmp_path: Path,
+) -> None:
+    from integrations.bomlens.runner import ContainerSpec, docker_run_argv
+
+    spec = ContainerSpec(
+        name="trusca-x-stage2",
+        image="img@sha256:" + "a" * 64,
+        user=None,
+        entrypoint=None,
+        args=(),
+        workdir=None,
+        mounts=(),
+        extra_mount_args=(),
+        env=(("SECURITY_ENRICH", "true"), ("MODE", "POSTPROCESS"), ("SECURITY_ENRICH", "false")),
+        secret_env=(("SECURITY_ENRICH", "from-worker"), ("HTTPS_PROXY", "http://p:1")),
+        network="none",
+        read_only=True,
+    )
+    argv = docker_run_argv(spec, BindMounts(trivy_cache=tmp_path), "ab", 0)
+    envs = [argv[i + 1] for i, a in enumerate(argv) if a == "--env"]
+    assert envs == ["MODE=POSTPROCESS", "SECURITY_ENRICH=false", "HTTPS_PROXY"]
+    assert spec.container_env()[1] == {"HTTPS_PROXY": "http://p:1"}
+
+
 @pytest.mark.parametrize(
     ("value", "loopback"),
     [
@@ -883,7 +1016,39 @@ def test_stage_1_gets_the_proxy_and_stage_2_does_not(
         ("http://[::ffff:10.0.0.1]:3128", False),
         ("http://[bad", False),
         ("", False),
+        # A trailing dot, the legacy IPv4 spellings, the unspecified address.
+        ("http://localhost.:3128", True),
+        ("http://127.0.0.1.:3128", True),
+        ("http://127.1:3128", True),
+        ("http://2130706433:3128", True),
+        ("http://0x7f000001:3128", True),
+        ("http://0177.0.0.1:3128", True),
+        ("http://0.0.0.0:3128", True),
+        ("http://[::]:3128", True),
+        ("http://[::ffff:127.0.0.1]:3128", True),
+        ("http://0x0a000001:3128", False),
+        ("http://167772161:3128", False),
+        ("http://deadbeef:3128", False),
+        ("http://proxy.corp.example.:3128", False),
     ],
 )
 def test_a_proxy_on_the_loopback_address_is_recognised(value: str, loopback: bool) -> None:
     assert is_loopback_proxy(value) is loopback
+
+
+def test_an_ipv4_mapped_loopback_is_recognised_on_an_older_python(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Before Python 3.13 (and some 3.12 patch releases), ``::ffff:127.0.0.1``
+    did not read as loopback. The runner unwraps the IPv4 address itself, so
+    the answer does not depend on the interpreter's patch level."""
+    import ipaddress
+
+    monkeypatch.setattr(
+        ipaddress.IPv6Address,
+        "is_loopback",
+        property(lambda self: int(self) == 1),
+    )
+    assert not ipaddress.ip_address("::ffff:127.0.0.1").is_loopback
+    assert is_loopback_proxy("http://[::ffff:127.0.0.1]:3128") is True
+    assert is_loopback_proxy("http://[::ffff:10.0.0.1]:3128") is False

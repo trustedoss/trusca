@@ -48,7 +48,6 @@ from __future__ import annotations
 import contextlib
 import ipaddress
 import json
-import math
 import os
 import re
 import shutil
@@ -59,7 +58,7 @@ import threading
 import time
 import uuid
 from collections import deque
-from collections.abc import Callable
+from collections.abc import Callable, Mapping
 from dataclasses import dataclass, field, replace
 from pathlib import Path
 from typing import IO, Any, Final, Protocol
@@ -151,17 +150,38 @@ _TRUSCA_SET_ENV: Final = frozenset({NON_SHIPPED_ENV, TRIVY_DB_MAX_AGE_ENV})
 _PROXY_ADDRESS_ENV: Final = frozenset(n for n in PROXY_ENV_NAMES if n.lower() != "no_proxy")
 
 
+#: Upper limit of :func:`trivy_db_max_age_days`. A database older than a month
+#: is not one a scan should report from, whatever the refresh interval says.
+TRIVY_DB_MAX_AGE_LIMIT_DAYS: Final = 30
+
+
 def trivy_db_max_age_days() -> int:
     """How old the worker's Trivy database may be before stage 2 degrades it.
 
-    One refresh interval (``TRIVY_DB_REFRESH_HOURS``, in whole days, rounded
-    up) plus two days, so a refresh that lands late does not fail scans. Past
-    it BomLens records ``scan-security`` as degraded and the adapter fails
-    the scan (``stages.vulnerability_failure``). Read per call.
+    Two refresh intervals (``TRIVY_DB_REFRESH_HOURS`` in whole days, rounded
+    up) plus two days: 16 days with the weekly refresh. One failed refresh
+    leaves the database one interval older and scans go on; a second failure
+    in a row fails them. Past the limit BomLens records ``scan-security`` as
+    degraded and the adapter fails the scan (``stages.vulnerability_failure``).
+    Capped at :data:`TRIVY_DB_MAX_AGE_LIMIT_DAYS`. Read per call.
     """
     from integrations.trivy import trivy_db_refresh_interval_hours
 
-    return math.ceil(trivy_db_refresh_interval_hours() / 24) + 2
+    hours = trivy_db_refresh_interval_hours()
+    # Integer arithmetic: a huge setting must not overflow a float division.
+    days = -(-hours // 24) * 2 + 2
+    if days > TRIVY_DB_MAX_AGE_LIMIT_DAYS:
+        log.warning(
+            "bomlens_trivy_db_max_age_capped",
+            refresh_hours=clip(hours),
+            days=TRIVY_DB_MAX_AGE_LIMIT_DAYS,
+        )
+        return TRIVY_DB_MAX_AGE_LIMIT_DAYS
+    return days
+
+
+#: Characters of an IPv4 address in any of its legacy spellings.
+_LEGACY_IPV4_RE: Final = re.compile(r"^[0-9a-fA-FxX.]{1,64}$")
 
 
 def is_loopback_proxy(value: str) -> bool:
@@ -177,14 +197,28 @@ def is_loopback_proxy(value: str) -> bool:
         host = urlsplit(text).hostname
     except ValueError:
         return False
+    # A fully qualified name may end in a dot ("localhost.", "127.0.0.1.").
+    host = (host or "").rstrip(".")
     if not host:
         return False
     if host == "localhost" or host.endswith(".localhost"):
         return True
+    address: ipaddress.IPv4Address | ipaddress.IPv6Address
     try:
-        return ipaddress.ip_address(host).is_loopback
+        address = ipaddress.ip_address(host)
     except ValueError:
-        return False
+        # The legacy IPv4 spellings resolvers still accept: 127.1,
+        # 2130706433, 0x7f000001, 0177.0.0.1.
+        if not _LEGACY_IPV4_RE.match(host):
+            return False
+        try:
+            address = ipaddress.IPv4Address(socket.inet_aton(host))
+        except OSError:
+            return False
+    if isinstance(address, ipaddress.IPv6Address) and address.ipv4_mapped is not None:
+        address = address.ipv4_mapped
+    # 0.0.0.0 and :: reach the local machine as well.
+    return address.is_loopback or address.is_unspecified
 
 
 #: The stage 1 log stage 2 reads (a file name in the output folder).
@@ -332,7 +366,7 @@ class MountStyle(Protocol):
 
     def mount_args(self, host_path: Path, target: str, *, read_only: bool) -> list[str]: ...
 
-    def trivy_db_args(self, target: str = TRIVY_DB_TARGET) -> list[str]: ...
+    def trivy_db_args(self) -> list[str]: ...
 
 
 def _mount_value(**fields: str) -> str:
@@ -365,12 +399,12 @@ class NamedVolumeMounts:
         value = _mount_value(type="volume", src=self.volume, dst=target, volume_subpath=str(sub))
         return ["--mount", value + (",readonly" if read_only else "")]
 
-    def trivy_db_args(self, target: str = TRIVY_DB_TARGET) -> list[str]:
+    def trivy_db_args(self) -> list[str]:
         if not self.trivy_volume:
             raise BomLensEngineError(
                 "SCAN_TRIVY_CACHE_VOLUME is not set; stage 2 has no Trivy database to read"
             )
-        value = _mount_value(type="volume", src=self.trivy_volume, dst=target)
+        value = _mount_value(type="volume", src=self.trivy_volume, dst=TRIVY_DB_TARGET)
         return ["--mount", value + ",readonly"]
 
 
@@ -384,11 +418,11 @@ class BindMounts:
         value = _mount_value(type="bind", src=str(host_path), dst=target)
         return ["--mount", value + (",readonly" if read_only else "")]
 
-    def trivy_db_args(self, target: str = TRIVY_DB_TARGET) -> list[str]:
+    def trivy_db_args(self) -> list[str]:
         if not (self.trivy_cache / "db").is_dir():
             raise BomLensEngineError("the worker's Trivy database has not been downloaded yet")
         real = Path(os.path.realpath(self.trivy_cache))
-        value = _mount_value(type="bind", src=str(real), dst=target)
+        value = _mount_value(type="bind", src=str(real), dst=TRIVY_DB_TARGET)
         return ["--mount", value + ",readonly"]
 
 
@@ -438,7 +472,7 @@ class Docker(Protocol):
 
     def ensure_image(self, image: str, timeout: int) -> None: ...
 
-    def create(self, argv: list[str]) -> str: ...
+    def create(self, argv: list[str], env: Mapping[str, str] | None = None) -> str: ...
 
     def requested_mounts(self, container: str) -> list[dict[str, Any]]: ...
 
@@ -552,12 +586,17 @@ def drain_log_stream(
 class DockerCli:
     """:class:`Docker` through the ``docker`` CLI (``DOCKER_HOST`` from the worker)."""
 
-    def _run(self, argv: list[str], timeout: int) -> subprocess.CompletedProcess[bytes]:
+    def _run(
+        self, argv: list[str], timeout: int, env: Mapping[str, str] | None = None
+    ) -> subprocess.CompletedProcess[bytes]:
+        """``docker <argv>``. ``env`` adds variables to the CLI's own
+        environment, for the ``--env NAME`` arguments that carry no value."""
         return subprocess.run(  # noqa: S603 - argv built from checked tokens, no shell
             ["docker", *argv],  # noqa: S607 - the docker CLI from PATH
             capture_output=True,
             check=False,
             timeout=timeout,
+            env={**os.environ, **env} if env else None,
         )
 
     def server_api_version(self) -> str | None:
@@ -582,8 +621,8 @@ class DockerCli:
                 f"{done.stderr.decode('utf-8', 'replace').strip()[:200]}"
             )
 
-    def create(self, argv: list[str]) -> str:
-        done = self._run(["create", *argv], 120)
+    def create(self, argv: list[str], env: Mapping[str, str] | None = None) -> str:
+        done = self._run(["create", *argv], 120, env)
         if done.returncode != 0:
             raise BomLensEngineError(
                 "an engine container could not be created: "
@@ -811,6 +850,27 @@ class ContainerSpec:
     env: tuple[tuple[str, str], ...]
     network: str
     read_only: bool
+    #: Variables whose value comes from the worker's environment (a proxy URL
+    #: can carry credentials). ``docker create`` gets only their names
+    #: (``--env NAME``); the values reach the docker CLI through its own
+    #: process environment, so they never appear on a command line.
+    secret_env: tuple[tuple[str, str], ...] = ()
+
+    def container_env(self) -> tuple[list[tuple[str, str]], dict[str, str]]:
+        """``(values on the command line, values by name only)``, one per name.
+
+        A name set twice keeps its last value, so TRUSCA's own settings, added
+        after the plan's, win. A name TRUSCA sets is never also passed by name.
+        """
+        plain: dict[str, str] = {}
+        for name, value in self.env:
+            plain.pop(name, None)
+            plain[name] = value
+        secret: dict[str, str] = {}
+        for name, value in self.secret_env:
+            if name not in plain:
+                secret[name] = value
+        return list(plain.items()), secret
 
 
 @dataclass(frozen=True)
@@ -868,8 +928,11 @@ def docker_run_argv(
     for host_path, target, read_only in spec.mounts:
         argv += mounts.mount_args(host_path, target, read_only=read_only)
     argv += list(spec.extra_mount_args)
-    for name, value in spec.env:
+    plain, secret = spec.container_env()
+    for name, value in plain:
         argv += ["--env", f"{name}={value}"]
+    for name in secret:
+        argv += ["--env", name]
     argv.append(spec.image)
     argv += list(spec.args)
     return argv
@@ -1086,7 +1149,7 @@ class BomLensRunner:
             container=spec.name,
         )
         try:
-            container = self.docker.create(argv)
+            container = self.docker.create(argv, env=spec.container_env()[1])
         except BaseException:
             # A failed create can still leave a container holding the name.
             self.docker.remove(spec.name)
@@ -1283,12 +1346,7 @@ class BomLensRunner:
     def _stage1_spec(
         self, stage: Stage, *, output: Path, plan_files: dict[str, Path], guard: Path, scratch: Path
     ) -> ContainerSpec:
-        env = (
-            list(stage.env.items())
-            + self._passthrough(stage)
-            + self._owner_env()
-            + self._trusca_env(stage)
-        )
+        env = list(stage.env.items()) + self._owner_env() + self._trusca_env(stage)
         # The project name and version are TRUSCA's, whatever the plan wrote.
         env = [(k, v) for k, v in env if k not in ("PROJECT_NAME", "PROJECT_VERSION")]
         env += [("PROJECT_NAME", self.project_name), ("PROJECT_VERSION", self.project_version)]
@@ -1305,6 +1363,7 @@ class BomLensRunner:
             + ((scratch, SCRATCH_TARGET, False),),
             extra_mount_args=(),
             env=tuple(env),
+            secret_env=tuple(self._passthrough(stage)),
             network=self._network(stage.network_required),
             read_only=bomlens_stage1_read_only_root(),
         )
@@ -1368,21 +1427,18 @@ class BomLensRunner:
         stages gets the targets the contract documents.
 
         The worker's Trivy database is always mounted read-only as the
-        ``trivy-db`` role, at ``/trivy-db``. A plan from BomLens #203 on lists
-        that role (plan.py accepts it only there, read-only); an earlier plan
-        does not, and stage 2 still needs the database, which TRUSCA's
-        ``TRIVY_CACHE_DIR`` points an earlier image at.
+        ``trivy-db`` role, at the constant ``/trivy-db``, never at a path read
+        from the plan. A plan from BomLens #203 on lists that role (plan.py
+        accepts it only there, read-only); an earlier plan does not, and stage
+        2 still needs the database, which TRUSCA's ``TRIVY_CACHE_DIR`` points
+        an earlier image at.
         """
         source_target, output_target = PLAN_SOURCE_TARGET, PLAN_OUTPUT_TARGET
-        trivy_target = TRIVY_DB_TARGET
         if plan.supported:
             planned = plan.postprocess
             source_mount, output_mount = planned.mount("source"), planned.mount("output")
             assert source_mount is not None and output_mount is not None  # noqa: S101
             source_target, output_target = source_mount.target, output_mount.target
-            trivy_mount = planned.mount(TRIVY_DB_ROLE)
-            if trivy_mount is not None:
-                trivy_target = trivy_mount.target
         return Stage(
             id="postprocess",
             stage=2,
@@ -1395,7 +1451,7 @@ class BomLensRunner:
             mounts=(
                 Mount(role="source", target=source_target, mode="ro"),
                 Mount(role="output", target=output_target, mode="rw"),
-                Mount(role=TRIVY_DB_ROLE, target=trivy_target, mode="ro", optional=True),
+                Mount(role=TRIVY_DB_ROLE, target=TRIVY_DB_TARGET, mode="ro", optional=True),
             ),
             env={
                 "MODE": "POSTPROCESS",
@@ -1423,15 +1479,8 @@ class BomLensRunner:
             write_new_file(output / STAGE1_LOG_NAME, note.encode("utf-8"))
         scratch = self._fresh_dir(self.layout.scratch("stage2"))
         image = self.images.stage2
-        trivy_db = stage.mount(TRIVY_DB_ROLE)
-        assert trivy_db is not None  # noqa: S101 - stage2_for always adds it
         exit_code = stage1.exit_code if stage1 is not None else 127
-        env = (
-            list(stage.env.items())
-            + self._passthrough(stage)
-            + self._owner_env()
-            + self._trusca_env(stage)
-        )
+        env = list(stage.env.items()) + self._owner_env() + self._trusca_env(stage)
         env += [
             ("BOMLENS_STAGE1_EXIT", str(exit_code)),
             ("BOMLENS_STAGE1_OOM", "true" if stage1 is not None and stage1.oom_killed else "false"),
@@ -1447,7 +1496,7 @@ class BomLensRunner:
             ("GENERATE_SECURITY", "true"),
             ("SECURITY_ENRICH", "false"),
             ("DEEP_LICENSE", "true" if self.images.deep_license else "false"),
-            ("TRIVY_CACHE_DIR", trivy_db.target),
+            ("TRIVY_CACHE_DIR", TRIVY_DB_TARGET),
             ("TRIVY_SKIP_DB_UPDATE", "true"),
             ("TRIVY_SKIP_JAVA_DB_UPDATE", "true"),
             ("TRIVY_OFFLINE_SCAN", "true"),
@@ -1462,8 +1511,9 @@ class BomLensRunner:
             workdir=stage.workdir,
             mounts=self._stage_mounts(stage, output=output, plan_files={}, guard=None)
             + ((scratch, SCRATCH_TARGET, False),),
-            extra_mount_args=tuple(self.mounts.trivy_db_args(trivy_db.target)),
+            extra_mount_args=tuple(self.mounts.trivy_db_args()),
             env=tuple(env),
+            secret_env=tuple(self._passthrough(stage)),
             network=self._network(stage.network_required),
             read_only=True,
         )

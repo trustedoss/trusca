@@ -60,9 +60,10 @@ mount, the manifest read `succeeded`, and the scan persisted one component
 with three CVEs (`tests/integration/scan/test_bomlens_engine_pipeline.py`,
 `test_the_published_images_scan_an_npm_project`, run with
 `BOMLENS_ENGINE_DOCKER_TEST=1` and `BOMLENS_ENGINE_TRIVY_CACHE` naming a
-database one day old). With a database 11 days old the same test failed as it
-should: `scan-security` was degraded and the scan failed with "the
-vulnerability scan degraded (unavailable)".
+database one day old). With a database 11 days old the same test passed under
+the 16-day limit the runner derives from the weekly refresh, and failed as it
+should when the limit was 9 days: `scan-security` was degraded and the scan
+failed with "the vulnerability scan degraded (unavailable)".
 
 The earlier image `sha-d8d3323` was also run through
 `ghcr.io/tecnativa/docker-socket-proxy:0.3.0` with the compose file's
