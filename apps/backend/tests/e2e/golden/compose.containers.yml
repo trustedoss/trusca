@@ -1,0 +1,24 @@
+# SPDX-License-Identifier: Apache-2.0
+# Copyright 2026 TRUSCA contributors
+#
+# Container image scans in the engine comparison run. Layered over
+# docker-compose.dev.yml and compose.scancode.yml by golden-nightly.yml, job
+# golden-containers, only; the baseline gate never loads it.
+#
+# docker-compose.dev.yml passes neither key below to its containers, so a
+# value in the job's environment would not reach them without this file.
+services:
+  backend:
+    environment:
+      # The API checks a container scan's image against the allow-list
+      # before it queues the scan.
+      CONTAINER_SCAN_ALLOWED_REGISTRIES: ${CONTAINER_SCAN_ALLOWED_REGISTRIES:?set by golden-nightly.yml}
+      # Read when the backend dispatches a container scan. The workflow
+      # recreates the backend with `bomlens` for the second pass.
+      SCAN_CONTAINER_ENGINE: ${SCAN_CONTAINER_ENGINE:-inprocess}
+  celery-worker:
+    environment:
+      # The in-process task checks the allow-list again before it reads the
+      # image. worker-engine receives this worker's environment as a file
+      # (compose.bomlens.yml), so the engine task sees the same list.
+      CONTAINER_SCAN_ALLOWED_REGISTRIES: ${CONTAINER_SCAN_ALLOWED_REGISTRIES:?set by golden-nightly.yml}

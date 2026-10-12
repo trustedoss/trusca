@@ -19,6 +19,8 @@ Usage:
       --names scancode-mixed-policy gradle maven ...
   python run_golden.py ... --update      # (re)write baselines instead of diffing
   python run_golden.py ... --shadow-out <dir>   # record for shadow_report.py
+  python run_golden.py --api ... --images container_images.json --shadow-out <dir>
+      # engine comparison run only: scan the listed container images
 
 Exit code 0 = all match (or baselines written); 1 = drift / error.
 """
@@ -28,6 +30,7 @@ import argparse
 import io
 import json
 import os
+import re
 import sys
 import time
 import urllib.error
@@ -136,23 +139,22 @@ def _team(api, token):
     raise RuntimeError("no team available (set GOLDEN_TEAM)")
 
 
-def scan_fixture(api, token, team, name, src: Path, *, shadow: bool = False) -> dict:
+def _create_project(api, token, team, name) -> str:
     slug = f"golden-{name}-{uuid.uuid4().hex[:8]}"
     s, b, _ = _req("POST", f"{api}/v1/projects", token=token,
                    json_body={"team_id": team, "name": f"golden:{name}",
                               "slug": slug, "visibility": "team"})
     if s != 201 and s != 200:
         raise RuntimeError(f"create project failed {s}: {b[:160]!r}")
-    pid = json.loads(b)["id"]
-    body, ctype = _multipart_zip("upload", f"{name}.zip", _zip_dir(src))
-    s, b, _ = _req("POST", f"{api}/v1/projects/{pid}/source-archive",
-                   token=token, raw_body=body, ctype=ctype)
-    if s != 200 and s != 201:
-        raise RuntimeError(f"upload failed {s}: {b[:160]!r}")
-    aid = json.loads(b)["archive_id"]
-    s, b, _ = _req("POST", f"{api}/v1/projects/{pid}/scans", token=token,
-                   json_body={"kind": "source",
-                              "metadata": {"source_type": "upload", "archive_id": aid}})
+    return str(json.loads(b)["id"])
+
+
+def _run_scan(api, token, pid, body: dict) -> tuple[str, str, dict, float]:
+    """Trigger one scan and poll it to an end.
+
+    Returns ``(scan id, status, scan row, start time)``.
+    """
+    s, b, _ = _req("POST", f"{api}/v1/projects/{pid}/scans", token=token, json_body=body)
     if s not in (200, 201, 202):
         raise RuntimeError(f"trigger failed {s}: {b[:160]!r}")
     sid = json.loads(b)["id"]
@@ -167,10 +169,42 @@ def scan_fixture(api, token, team, name, src: Path, *, shadow: bool = False) -> 
         if status in ("succeeded", "failed", "cancelled", "completed"):
             break
         time.sleep(5)
+    return sid, status, scan, started
+
+
+def scan_fixture(api, token, team, name, src: Path, *, shadow: bool = False) -> dict:
+    pid = _create_project(api, token, team, name)
+    body, ctype = _multipart_zip("upload", f"{name}.zip", _zip_dir(src))
+    s, b, _ = _req("POST", f"{api}/v1/projects/{pid}/source-archive",
+                   token=token, raw_body=body, ctype=ctype)
+    if s != 200 and s != 201:
+        raise RuntimeError(f"upload failed {s}: {b[:160]!r}")
+    aid = json.loads(b)["archive_id"]
+    sid, status, scan, started = _run_scan(
+        api, token, pid,
+        {"kind": "source", "metadata": {"source_type": "upload", "archive_id": aid}},
+    )
     got = _capture(api, token, pid, sid, status)
     if shadow:
         # Shadow runs only: the baseline diff never sees this key.
         got["shadow"] = _shadow_capture(api, token, pid, scan, time.time() - started)
+    return got
+
+
+def scan_image(api, token, team, name, image_ref: str) -> dict:
+    """Scan one container image through the API, for the engine comparison run.
+
+    The same capture as a source fixture: a container scan is triggered with
+    ``kind: container`` and ``metadata.image_ref``, polled to an end and read
+    back through the same endpoints. There is no baseline for an image; this
+    is called by :func:`shadow_main` only.
+    """
+    pid = _create_project(api, token, team, name)
+    sid, status, scan, started = _run_scan(
+        api, token, pid, {"kind": "container", "metadata": {"image_ref": image_ref}},
+    )
+    got = _capture(api, token, pid, sid, status)
+    got["shadow"] = _shadow_capture(api, token, pid, scan, time.time() - started)
     return got
 
 
@@ -280,6 +314,7 @@ def shadow_fields(scan: dict, rows: list[dict] | None, wall_seconds: float) -> d
         "vulnerability_findings": findings,
         "scan": {
             "id": scan.get("id"),
+            "kind": scan.get("kind"),
             "status": scan.get("status"),
             # The in-process pipeline writes no engine record.
             "engine": engine.get("name") or "inprocess",
@@ -315,17 +350,30 @@ def write_shadow(out_dir: Path, name: str, record: dict) -> Path:
 def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--api", default=DEFAULT_API)
-    ap.add_argument("--fixtures", required=True)
-    ap.add_argument("--names", nargs="+", required=True)
+    ap.add_argument("--fixtures")
+    ap.add_argument("--names", nargs="+")
     ap.add_argument("--update", action="store_true")
     ap.add_argument(
         "--shadow-out",
         help="shadow run: write each capture, with vulnerability ids and the scan "
         "row, to this folder instead of diffing; a difference never fails it",
     )
+    ap.add_argument(
+        "--images",
+        help="with --shadow-out: scan the container images in this list file "
+        "(container_images.json) instead of source fixtures; --names picks a subset",
+    )
     args = ap.parse_args()
     if args.shadow_out and args.update:
         ap.error("--shadow-out and --update are exclusive")
+    if args.images:
+        # Images have no baseline: the gate and --update never see them.
+        if not args.shadow_out or args.fixtures:
+            ap.error("--images needs --shadow-out and takes no --fixtures")
+        images = select_images(load_images(Path(args.images)), args.names or [])
+        return image_main(args.api, images, Path(args.shadow_out))
+    if not args.fixtures or not args.names:
+        ap.error("--fixtures and --names are required")
     if args.shadow_out:
         return shadow_main(args.api, Path(args.fixtures), args.names, Path(args.shadow_out))
 
@@ -391,8 +439,59 @@ def shadow_main(api: str, fixtures: Path, names: list[str], out_dir: Path) -> in
                 record = scan_fixture(api, token, team, name, src, shadow=True)
             except Exception as exc:  # noqa: BLE001
                 record = {"error": f"{type(exc).__name__}: {str(exc)[:_SHADOW_TEXT_MAX]}"}
+        record["input"] = {"kind": "source"}
         write_shadow(out_dir, name, record)
         print(f"SHADOW {name}: {record.get('scan_status') or record.get('error')}")
+    return 0
+
+
+#: The container image list of the engine comparison run.
+IMAGE_LIST = Path(__file__).resolve().parent / "container_images.json"
+
+_DIGEST_SUFFIX = re.compile(r"@sha256:[0-9a-f]{64}$")
+
+
+def load_images(path: Path = IMAGE_LIST) -> list[dict]:
+    """The ``images`` of a list file, each with a unique ``name`` and a pinned ``ref``.
+
+    A reference without a digest is refused: a tag can move between the two
+    passes of one run, and then the engines scan different images.
+    """
+    images = json.loads(path.read_text()).get("images")
+    if not isinstance(images, list) or not images:
+        raise ValueError(f"{path.name} lists no images")
+    names: set[str] = set()
+    for image in images:
+        name, ref = image.get("name"), image.get("ref")
+        if not isinstance(name, str) or not name or name in names:
+            raise ValueError(f"{path.name}: missing or repeated name {name!r}")
+        if not isinstance(ref, str) or not _DIGEST_SUFFIX.search(ref):
+            raise ValueError(f"{path.name}: {name} is not pinned to a sha256 digest")
+        names.add(name)
+    return images
+
+
+def select_images(images: list[dict], names: list[str]) -> list[dict]:
+    """``names`` from ``images`` (every image when empty); an unknown name is an error."""
+    wanted = parse_names(" ".join(names), [i["name"] for i in images])
+    by_name = {i["name"]: i for i in images}
+    return [by_name[n] for n in wanted]
+
+
+def image_main(api: str, images: list[dict], out_dir: Path) -> int:
+    """Scan each container image once and record it, as :func:`shadow_main` does."""
+    token = login(api)
+    team = _team(api, token)
+    for image in images:
+        name, ref = image["name"], image["ref"]
+        record: dict
+        try:
+            record = scan_image(api, token, team, name, ref)
+        except Exception as exc:  # noqa: BLE001
+            record = {"error": f"{type(exc).__name__}: {str(exc)[:_SHADOW_TEXT_MAX]}"}
+        record["input"] = {"kind": "container", "image_ref": ref}
+        write_shadow(out_dir, name, record)
+        print(f"IMAGE {name}: {record.get('scan_status') or record.get('error')}")
     return 0
 
 
