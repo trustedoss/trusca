@@ -202,7 +202,8 @@
       "reason_fallback": "대체 방식 사용",
       "reason_unavailable": "데이터 없음",
       "reason_budget_exhausted": "작업 한도 도달",
-      "reason_no_components": "선언된 의존성을 찾지 못함"
+      "reason_no_components": "선언된 의존성을 찾지 못함",
+      "engine_detail_label": "스캔 엔진이 남긴 설명:"
     },
     "risk_gauge": {
       "aria": "프로젝트 리스크 점수: 100점 만점에 {{score}}점"
@@ -253,6 +254,8 @@
     "gate_card": {
       "incomplete_scan_incomplete": "이 스캔은 완전하지 않습니다. 컴포넌트나 의존성이 빠졌을 수 있어 위의 수치가 실제 위험보다 작을 수 있습니다.",
       "incomplete_scan_unknown": "이 스캔은 스스로 완전성을 보증하지 못합니다. 위의 수치가 실제보다 작을 수 있습니다.",
+      "empty_scan_empty_with_manifests": "소스에 의존성이 선언돼 있는데 컴포넌트를 하나도 찾지 못했습니다. 여기 수치가 모두 0인 것은 그 때문이므로, 이 판정을 이상 없다는 뜻으로 보면 안 됩니다. 스캔 로그를 확인하세요.",
+      "empty_scan_empty_no_manifests": "TRUSCA가 읽는 의존성 매니페스트가 소스에 없어 컴포넌트를 찾지 못했습니다. 이 판정을 이상 없다는 뜻으로 보기 전에 이 빌드 시스템을 지원하는지 확인하세요.",
       "critical_cves": "Critical CVE",
       "epss_findings": "EPSS ≥ {{threshold}}",
       "epss_no_data": "EPSS ≥ {{threshold}} 조건은 평가되지 않았습니다. 이 스캔의 어떤 항목에도 EPSS 점수가 없습니다.",

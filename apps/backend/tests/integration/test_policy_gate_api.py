@@ -1356,6 +1356,88 @@ async def test_an_empty_result_despite_manifests_fails_the_build(client, monkeyp
     assert body["incomplete_scan_basis"] == "empty_with_manifests"
 
 
+#: What either scan engine leaves on a source that declared dependencies and
+#: yielded none: the component outcome and ``generate`` degraded
+#: ``no_components`` with the engine's sentence beside it.
+_DECLARED_BUT_EMPTY = {
+    "component_outcome": "empty_with_manifests",
+    "stage_outcomes": {
+        "generate": {
+            "reason": "no_components",
+            "engine_detail": "manifests found: build.gradle",
+        }
+    },
+}
+
+
+@pytest.mark.parametrize("enabled", [None, "false"])
+async def test_a_declared_but_empty_scan_passes_with_a_warning_when_the_axis_is_off(
+    client, monkeypatch, enabled
+) -> None:
+    """The decision of 10-12: the scan stays a success and the gate passes, but the
+    result says it judged nothing, so no consumer reads it as an all-clear."""
+    if enabled is None:
+        monkeypatch.delenv("GATE_INCOMPLETE_SCAN_ENABLED", raising=False)
+    else:
+        monkeypatch.setenv("GATE_INCOMPLETE_SCAN_ENABLED", enabled)
+    user, project_id = await _project_with_scan(client, _recorded(**_DECLARED_BUT_EMPTY))
+
+    body = await _gate(client, user, project_id)
+    assert body["gate"] == "pass"
+    assert body["reason"] is None
+    assert body["component_outcome"] == "empty_with_manifests"
+    assert body["incomplete_scan_gate_enabled"] is False
+
+
+async def test_the_pr_comment_on_a_declared_but_empty_scan_carries_the_warning(
+    client, monkeypatch
+) -> None:
+    monkeypatch.delenv("GATE_INCOMPLETE_SCAN_ENABLED", raising=False)
+    _, team, user = await _seed_team_and_user(client)
+    project_id = await _seed_project(client, team_id=team.id)
+    scan_id = await _seed_scan_with_metadata(
+        client, project_id=project_id, metadata=_recorded(**_DECLARED_BUT_EMPTY)
+    )
+
+    response = await client.post(
+        f"/v1/scans/{scan_id}/post-pr-comment",
+        headers=_bearer_for(user),
+        json={"repo_full_name": "trustedoss/portal", "pr_number": 42, "dry_run": True},
+    )
+    assert response.status_code == 200, response.text
+    body = response.json()
+    assert body["gate"] == "pass"
+    assert "**PASS**" in body["body_preview"]
+    assert "Warning: no components found." in body["body_preview"]
+
+
+async def test_a_declared_but_empty_scan_fails_the_build_when_the_axis_is_on(
+    client, monkeypatch
+) -> None:
+    monkeypatch.setenv("GATE_INCOMPLETE_SCAN_ENABLED", "true")
+    user, project_id = await _project_with_scan(client, _recorded(**_DECLARED_BUT_EMPTY))
+
+    body = await _gate(client, user, project_id)
+    assert body["gate"] == "fail"
+    assert body["incomplete_scan_outcome"] == "incomplete"
+    assert body["incomplete_scan_basis"] == "empty_with_manifests"
+    assert body["component_outcome"] == "empty_with_manifests"
+
+
+async def test_the_engine_s_no_components_record_alone_fails_the_build_when_the_axis_is_on(
+    client, monkeypatch
+) -> None:
+    """The stage record decides on its own, so a scan whose component outcome was
+    lost (the recorder is best-effort) still does not pass as complete."""
+    monkeypatch.setenv("GATE_INCOMPLETE_SCAN_ENABLED", "true")
+    stage_only = {"stage_outcomes": _DECLARED_BUT_EMPTY["stage_outcomes"]}
+    user, project_id = await _project_with_scan(client, _recorded(**stage_only))
+
+    body = await _gate(client, user, project_id)
+    assert body["gate"] == "fail"
+    assert body["incomplete_scan_basis"] == "stage_degraded:generate"
+
+
 async def test_a_recorded_scan_with_no_known_gap_passes(client, monkeypatch) -> None:
     monkeypatch.setenv("GATE_INCOMPLETE_SCAN_ENABLED", "true")
     user, project_id = await _project_with_scan(client, _recorded())

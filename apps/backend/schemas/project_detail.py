@@ -108,6 +108,17 @@ class DegradedStage(BaseModel):
         "budget_exhausted",
         "no_components",
     ]
+    engine_detail: str | None = Field(
+        default=None,
+        max_length=300,
+        description=(
+            "The scan engine's own sentence on why the stage degraded, for "
+            "example `manifests found: build.gradle` on `generate` / "
+            "`no_components`. Plain text, at most 300 characters, already "
+            "stripped of control characters and credential patterns; render it "
+            "as text, never as markup. `null` when the engine left none."
+        ),
+    )
 
 
 class ScanSummary(BaseModel):

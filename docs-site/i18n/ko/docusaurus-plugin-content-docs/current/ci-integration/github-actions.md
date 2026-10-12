@@ -224,7 +224,7 @@ PR 코멘트는 그대로 게시되며 체크는 green으로 유지됩니다.
     fail-on-gate: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' && 'true' || 'false' }}
 ```
 
-### 악용 중인 CVE와 지원 종료 컴포넌트로 게이팅 (선택)
+### 악용 중인 CVE와 지원 종료 컴포넌트로 게이팅 (선택) {#gate-axes}
 
 심각도는 결함이 얼마나 나쁠 수 있는지를 말합니다. 심각도가 말하지 못하는 신호가
 셋 있고, 각각 포털에서 따로 켜는 축입니다(`.env` 수정 후 백엔드 재시작).

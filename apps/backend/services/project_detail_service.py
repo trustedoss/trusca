@@ -445,7 +445,7 @@ async def get_project_overview(
     scancode_skipped_reason: str | None = None
     # Optional stages that finished degraded (U3-B), minus scancode, which has
     # its own record above. Empty means nothing degraded or a scan predating it.
-    degraded_stages: list[dict[str, str]] = []
+    degraded_stages: list[dict[str, str | None]] = []
     recent: list[Scan] = []
 
     # Anchor the current-state aggregation on the resolved snapshot scan: the
@@ -579,7 +579,7 @@ async def get_project_overview(
             )
             degraded_stages = [
                 entry
-                for entry in scan_outcome.degraded_stages(succeeded_row.scan_metadata)
+                for entry in scan_outcome.degraded_stage_details(succeeded_row.scan_metadata)
                 if entry["stage"] != "scancode"
             ]
 

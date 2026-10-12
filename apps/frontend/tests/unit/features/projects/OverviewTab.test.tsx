@@ -254,6 +254,39 @@ describe("OverviewTab", () => {
     const [item] = Array.from(alert.querySelectorAll("li"));
     expect(item).toHaveAttribute("data-stage", "generate");
     expect(item.textContent).toContain("dependencies declared but none found");
+    // No engine sentence recorded: nothing extra under the step.
+    expect(
+      item.querySelector('[data-testid="overview-degraded-stage-detail"]'),
+    ).toBeNull();
+  });
+
+  it("shows the engine's own sentence under the step, as text only", async () => {
+    const detail =
+      'manifests found: build.gradle; <img src=x onerror="alert(1)"><b>bold</b>';
+    mockedGet.mockResolvedValueOnce(
+      overview({
+        component_outcome: "empty_with_manifests",
+        degraded_stages: [
+          { stage: "generate", reason: "no_components", engine_detail: detail },
+          { stage: "sign", reason: "failed", engine_detail: null },
+        ],
+      }),
+    );
+    renderTab();
+    const alert = await screen.findByTestId("overview-degraded-stages");
+    const [generate, sign] = Array.from(alert.querySelectorAll("li"));
+    const shown = generate.querySelector(
+      '[data-testid="overview-degraded-stage-detail"]',
+    );
+    expect(shown).not.toBeNull();
+    expect(shown?.textContent).toContain("Scan engine says:");
+    // Verbatim, angle brackets and all: the markup was not interpreted.
+    expect(shown?.textContent).toContain(detail);
+    expect(alert.querySelector("img")).toBeNull();
+    expect(alert.querySelector("b")).toBeNull();
+    expect(
+      sign.querySelector('[data-testid="overview-degraded-stage-detail"]'),
+    ).toBeNull();
   });
 
   it("draws neither scan-gap notice when nothing was skipped", async () => {

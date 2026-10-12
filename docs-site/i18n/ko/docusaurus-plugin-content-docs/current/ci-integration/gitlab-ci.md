@@ -176,6 +176,17 @@ trustedoss:scan-container:
 
 설정할 것은 없습니다 — 브랜치·MR에서 템플릿을 실행하면 브랜치별·MR별 그룹화가 올바르게 동작합니다. 스캔을 영구 보존하려면(태그 릴리스용) `metadata.release` 라벨과 함께 트리거하십시오. 전체 모델과 release 면제는 [스캔 보존](../admin-guide/scan-retention.md) 페이지에서 다룹니다.
 
+## 스캔이 컴포넌트를 찾지 못했을 때 {#empty-scan}
+
+게이트 결과에는 `component_outcome`이 들어 있고, 템플릿은 판정 줄에 이 값을 `components=<값>`으로 출력합니다. 다음 두 값은 스캔 결과에 컴포넌트가 하나도 없다는 뜻입니다. 이때는 모든 수치가 그 때문에 0이고, `pass`는 판단할 대상이 없었다는 뜻일 뿐입니다.
+
+- `empty_with_manifests`: 소스가 의존성을 선언했는데(의존성 매니페스트가 있는데) 스캔 결과에 컴포넌트가 없습니다. 의존성 해석 같은 스캔 단계에서 문제가 생긴 것입니다. 스캔 로그를 확인하세요.
+- `empty_no_manifests`: 소스에 TRUSCA가 읽는 의존성 매니페스트가 없습니다. TRUSCA가 그 빌드 시스템을 지원하는지 확인하세요.
+
+두 값 모두 템플릿은 판정 다음 줄에 `WARNING:` 줄을 출력하고 종료 코드는 그대로 두므로 작업은 통과합니다. 이 값은 뒤따르는 작업이 쓸 수 있도록 `trustedoss.env`에 `TRUSTEDOSS_COMPONENT_OUTCOME`으로도 기록됩니다.
+
+`empty_with_manifests`일 때 빌드를 실패시키려면 관리자가 포털에 `GATE_INCOMPLETE_SCAN_ENABLED=true`를 설정합니다([선택 게이트 축](./github-actions.md#gate-axes) 참고). 그러면 게이트가 `fail`을 반환하고 `incomplete_scan_basis`는 `empty_with_manifests`가 되며, 템플릿은 다른 게이트 실패와 똑같이 1로 종료합니다. 각 경우의 뜻은 [스캔이 아무것도 찾지 못했을 때](../user-guide/scans.md#empty-scan)를 보세요.
+
 ## 브랜치 / 머지 보호
 
 모든 MR에 SCA를 강제하려면:

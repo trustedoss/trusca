@@ -20,6 +20,7 @@ import pytest
 from services.policy_gate import GateResult
 from services.sca_comment import (
     COMMENT_MARKER,
+    COMPONENT_OUTCOME_ADVISORIES,
     CommentSummary,
     RecommendedUpgrade,
     SCACommentBadGateway,
@@ -122,6 +123,41 @@ def test_markdown_pass_omits_reason_line() -> None:
 
     assert "**PASS**" in body
     assert "Reason" not in body
+
+
+@pytest.mark.parametrize(
+    ("outcome", "expected"),
+    [
+        ("empty_with_manifests", "**Warning: no components found.**"),
+        ("empty_no_manifests", "**Note: no components found.**"),
+    ],
+)
+def test_markdown_warns_on_a_scan_that_found_no_components(outcome: str, expected: str) -> None:
+    """A pass on an empty scan judged nothing; the comment must say so beside the verdict."""
+    import dataclasses
+
+    gate_result = dataclasses.replace(
+        _make_gate_result(gate="pass", reason=None, critical_cve_count=0),
+        component_outcome=outcome,
+    )
+    body = build_pr_comment_markdown(gate_result=gate_result, summary=_make_summary())
+
+    lines = body.splitlines()
+    advisory = next(i for i, line in enumerate(lines) if expected in line)
+    verdict = next(i for i, line in enumerate(lines) if line.startswith("**Gate**"))
+    # Next to the verdict, ahead of the counts it explains.
+    assert verdict < advisory < lines.index("### Vulnerabilities")
+    other = {"empty_with_manifests", "empty_no_manifests"} - {outcome}
+    assert COMPONENT_OUTCOME_ADVISORIES[other.pop()] not in body
+
+
+@pytest.mark.parametrize("outcome", ["components_found", None])
+def test_markdown_has_no_empty_scan_warning_on_an_ordinary_scan(outcome: str | None) -> None:
+    import dataclasses
+
+    gate_result = dataclasses.replace(_make_gate_result(), component_outcome=outcome)
+    body = build_pr_comment_markdown(gate_result=gate_result, summary=_make_summary())
+    assert "no components found" not in body
 
 
 def test_markdown_skips_view_link_when_project_url_missing() -> None:

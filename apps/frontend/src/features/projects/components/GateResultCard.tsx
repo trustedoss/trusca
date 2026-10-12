@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2026 TRUSCA contributors
-import { ShieldCheck, ShieldX } from "lucide-react";
+import { AlertTriangle, ShieldCheck, ShieldX } from "lucide-react";
 import { useTranslation } from "react-i18next";
 
 import { Alert, AlertDescription } from "@/components/ui/alert";
@@ -111,6 +111,13 @@ export function GateResultCard({ projectId, scanId }: GateResultCardProps) {
   // Render a neutral "nothing to gate on" state so we never imply a real pass.
   const noScan = data.scan_id == null;
   const passed = data.gate === "pass";
+  // Only the two empty outcomes draw anything; an ordinary scan, an unknown
+  // outcome (null) and a portal too old to send the field draw nothing.
+  const emptyOutcome =
+    data.component_outcome === "empty_with_manifests" ||
+    data.component_outcome === "empty_no_manifests"
+      ? data.component_outcome
+      : null;
 
   return (
     <Card
@@ -172,7 +179,22 @@ export function GateResultCard({ projectId, scanId }: GateResultCardProps) {
             {!passed ? (
               <GateFailReason data={data} />
             ) : null}
-            {passed ? (
+            {emptyOutcome ? (
+              /* The scan produced no components, so every count below is 0
+                 for that reason. Display only: whether this fails the build
+                 is the incomplete-scan axis's call, already in the verdict. */
+              <Alert
+                className="border-status-warning-border bg-status-warning-subtle text-status-warning-foreground"
+                data-testid="gate-empty-scan"
+                data-outcome={emptyOutcome}
+              >
+                <AlertTriangle className="h-4 w-4" aria-hidden />
+                <AlertDescription className="text-sm">
+                  {t(`overview.gate_card.empty_scan_${emptyOutcome}`)}
+                </AlertDescription>
+              </Alert>
+            ) : null}
+            {passed && !emptyOutcome ? (
               <p
                 className="text-sm text-muted-foreground"
                 data-testid="gate-pass-detail"

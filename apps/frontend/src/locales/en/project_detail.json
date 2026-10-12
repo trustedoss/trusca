@@ -202,7 +202,8 @@
       "reason_fallback": "simpler method used",
       "reason_unavailable": "data unavailable",
       "reason_budget_exhausted": "work limit reached",
-      "reason_no_components": "dependencies declared but none found"
+      "reason_no_components": "dependencies declared but none found",
+      "engine_detail_label": "Scan engine says:"
     },
     "risk_gauge": {
       "aria": "Project risk score: {{score}} of 100"
@@ -253,6 +254,8 @@
     "gate_card": {
       "incomplete_scan_incomplete": "This scan is incomplete: components or dependencies may be missing, so the counts above can understate the risk.",
       "incomplete_scan_unknown": "This scan could not vouch for its own completeness, so the counts above may be smaller than the real ones.",
+      "empty_scan_empty_with_manifests": "No components were found, although the source declares dependencies. Every count here is 0 for that reason, so this verdict is not a clean result. Check the scan log.",
+      "empty_scan_empty_no_manifests": "No components were found: the source has no dependency manifest TRUSCA reads. Check that this build system is supported before treating this verdict as a clean result.",
       "critical_cves": "Critical CVEs",
       "epss_findings": "EPSS ≥ {{threshold}}",
       "epss_no_data": "EPSS ≥ {{threshold}} was not evaluated: no finding on this scan has an EPSS score.",

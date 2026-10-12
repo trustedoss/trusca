@@ -308,6 +308,21 @@ export function OverviewTab({
                 <li key={entry.stage} data-stage={entry.stage}>
                   {t(`overview.scan_gaps.stage_${entry.stage}`)} (
                   {t(`overview.scan_gaps.reason_${entry.reason}`)})
+                  {/* The engine's own sentence (for an empty generation, the
+                      manifests it found). It quotes file names from the
+                      scanned tree, so it is a text node and nothing else:
+                      never markup, never an i18n interpolation. */}
+                  {entry.engine_detail ? (
+                    <span
+                      className="mt-0.5 block text-xs"
+                      data-testid="overview-degraded-stage-detail"
+                    >
+                      {t("overview.scan_gaps.engine_detail_label")}{" "}
+                      <span className="break-all font-mono">
+                        {entry.engine_detail}
+                      </span>
+                    </span>
+                  ) : null}
                 </li>
               ))}
             </ul>

@@ -261,9 +261,21 @@
       reason=$(echo "$json_body" | jq -r '.reason // ""')
       critical=$(echo "$json_body" | jq -r '.critical_cve_count // 0')
       forbidden=$(echo "$json_body" | jq -r '.forbidden_license_count // 0')
-      echo "TrustedOSS gate=$gate critical=$critical forbidden=$forbidden"
+      outcome=$(echo "$json_body" | jq -r '.component_outcome // ""')
+      echo "TrustedOSS gate=$gate critical=$critical forbidden=$forbidden components=${outcome:-unknown}"
+      # A warning, not a failure: whether an empty scan fails the build is the
+      # portal's GATE_INCOMPLETE_SCAN_ENABLED decision, already in `gate`.
+      case "$outcome" in
+        empty_with_manifests)
+          echo "WARNING: TRUSCA found no components although the source declares dependencies (empty_with_manifests). Every count is 0 for that reason, so gate=$gate is not a clean result. Check the scan log."
+          ;;
+        empty_no_manifests)
+          echo "WARNING: TRUSCA found no components and no dependency manifest it reads (empty_no_manifests). Check that TRUSCA supports this build system before treating gate=$gate as a pass."
+          ;;
+      esac
       {
         echo "TRUSTEDOSS_GATE=$gate"
+        echo "TRUSTEDOSS_COMPONENT_OUTCOME=$outcome"
         echo "TRUSTEDOSS_GATE_CRITICAL=$critical"
         echo "TRUSTEDOSS_GATE_FORBIDDEN=$forbidden"
         # Newlines in `reason` are stripped — the contract is single-line.

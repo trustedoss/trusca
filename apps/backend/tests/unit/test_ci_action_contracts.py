@@ -309,6 +309,68 @@ def test_the_gate_schema_and_the_classifier_agree() -> None:
     assert not missing, f"the gate response describes component_outcome without naming {missing}"
 
 
+def _shell_case_labels(script: str, *, subject: str) -> set[str]:
+    """Branch labels of every ``case "$subject" in ... esac`` block in ``script``."""
+    labels: set[str] = set()
+    inside = False
+    for line in script.splitlines():
+        stripped = line.strip()
+        if stripped.startswith("case "):
+            inside = stripped == f'case "${subject}" in'
+            continue
+        if stripped == "esac":
+            inside = False
+            continue
+        if inside and stripped.endswith(")"):
+            labels.update(
+                label.strip()
+                for label in stripped[:-1].split("|")
+                if re.fullmatch(r"[a-z_]+", label.strip())
+            )
+    return labels
+
+
+def _groovy_switch_labels(script: str, *, subject: str) -> set[str]:
+    """``case '<label>':`` labels inside ``switch (subject) { ... }``."""
+    start = script.index(f"switch ({subject})")
+    body = script[start : script.index("\n                    }", start)]
+    return set(re.findall(r"case '([a-z_]+)':", body))
+
+
+def test_every_ci_template_and_the_pr_comment_warn_on_both_empty_outcomes() -> None:
+    """The GitLab and Jenkins templates and the PR/MR comment each spell the two
+    empty outcomes again. One that stops matching prints a clean pass on a scan
+    that judged nothing, so each is held to the backend's vocabulary."""
+    from services.sca_comment import COMPONENT_OUTCOME_ADVISORIES
+    from services.scan_outcome import COMPONENT_OUTCOME_VALUES
+
+    empty_values = set(COMPONENT_OUTCOME_VALUES) - {"components_found"}
+    assert set(COMPONENT_OUTCOME_ADVISORIES) == empty_values
+
+    root = _repo_root()
+    if root is None:
+        pytest.skip("repository root not reachable: backend-only checkout")
+    gitlab = (root / "templates" / "gitlab-ci.yml").read_text(encoding="utf-8")
+    assert _shell_case_labels(gitlab, subject="outcome") == empty_values
+    assert "jq -r '.component_outcome" in gitlab
+
+    jenkins = (root / "templates" / "Jenkinsfile.example").read_text(encoding="utf-8")
+    labels = _groovy_switch_labels(jenkins, subject="env.TRUSTEDOSS_COMPONENT_OUTCOME")
+    assert labels == empty_values
+    assert "gate.component_outcome" in jenkins
+
+    ko = root / "docs-site/i18n/ko/docusaurus-plugin-content-docs/current"
+    for base in (root / "docs-site" / "docs", ko):
+        for rel in ("gitlab-ci.md", "jenkins.md"):
+            doc = (base / "ci-integration" / rel).read_text(encoding="utf-8")
+            missing = sorted(value for value in empty_values if f"`{value}`" not in doc)
+            assert not missing, f"{base / "ci-integration" / rel} does not describe {missing}"
+            # The guide promises the variable a later job reads.
+            assert "TRUSTEDOSS_COMPONENT_OUTCOME" in doc
+    assert "TRUSTEDOSS_COMPONENT_OUTCOME=$outcome" in gitlab
+    assert "env.TRUSTEDOSS_COMPONENT_OUTCOME = gate.component_outcome" in jenkins
+
+
 # ---------------------------------------------------------------------------
 # The EPSS gate-outcome vocabulary, across the same four places
 # ---------------------------------------------------------------------------

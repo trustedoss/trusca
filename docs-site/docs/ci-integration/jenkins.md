@@ -198,6 +198,15 @@ archiveArtifacts artifacts: 'sbom-*.cdx.json', fingerprint: true
 `sbom-<project-slug>.cdx.json` — match that pattern when archiving, not
 `*.cyclonedx.json`.
 
+## When the scan found no components {#empty-scan}
+
+The gate result carries `component_outcome`, and the `Evaluate gate` stage prints it on the verdict line as `components=<value>` and keeps it in `env.TRUSTEDOSS_COMPONENT_OUTCOME`. Two values mean the scan produced no components, so every count is 0 for that reason and a `pass` means nothing was judged:
+
+- `empty_with_manifests`: the source declares dependencies (dependency manifests are present), but the scan produced no components. Something failed during the scan, for example dependency resolution. Check the scan log.
+- `empty_no_manifests`: the source has no dependency manifest TRUSCA reads. Check that TRUSCA supports the build system.
+
+For either value the stage prints a `WARNING:` line and leaves the build result alone, so the build still passes. To fail the build on `empty_with_manifests` instead, an administrator sets `GATE_INCOMPLETE_SCAN_ENABLED=true` on the portal (see [the optional gate axes](./github-actions.md#gate-axes)). The gate then returns `fail` with `incomplete_scan_basis` set to `empty_with_manifests`, and `Apply gate verdict` fails the build as it does for any failed gate. See [When a scan finds nothing](../user-guide/scans.md#empty-scan) for what each case means.
+
 ## Branch protection (without GitHub / GitLab)
 
 Native Jenkins does not enforce check status on a Git host's PR / MR — that is the host's job. If you use:

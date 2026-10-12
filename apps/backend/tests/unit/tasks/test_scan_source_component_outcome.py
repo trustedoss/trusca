@@ -23,6 +23,8 @@ from services.scan_outcome import (
     EMPTY_NO_MANIFESTS,
     EMPTY_WITH_MANIFESTS,
     METADATA_KEY,
+    STAGE_OUTCOMES_KEY,
+    degraded_stages,
 )
 
 
@@ -178,3 +180,79 @@ def test_a_vanished_scan_row_is_not_an_error(
         == EMPTY_NO_MANIFESTS
     )
     assert session.committed == 0
+
+
+# ---------------------------------------------------------------------------
+# The ``generate`` / ``no_components`` record, the same one BomLens leaves
+# ---------------------------------------------------------------------------
+
+
+def _inventory(*paths: str, count: int | None = None) -> dict[str, Any]:
+    files = [{"path": path, "size": 1, "sha256": "0" * 64} for path in paths]
+    return {"files": files, "count": len(files) if count is None else count, "truncated": False}
+
+
+def test_an_empty_result_despite_manifests_records_generate_no_components(
+    scan_session: _FakeSession,
+) -> None:
+    mod._record_component_outcome(
+        uuid.uuid4(),
+        sbom={"components": []},
+        manifest_inventory=_inventory("app/build.gradle", "settings.gradle"),
+    )
+
+    assert scan_session._scan is not None
+    meta = scan_session._scan.scan_metadata
+    assert meta is not None
+    assert meta[STAGE_OUTCOMES_KEY] == {
+        "generate": {
+            "reason": "no_components",
+            "engine_detail": "manifests found: app/build.gradle, settings.gradle",
+        }
+    }
+    assert degraded_stages(meta) == [{"stage": "generate", "reason": "no_components"}]
+    assert meta["detected_env"] == "node"
+    assert scan_session.committed == 1
+
+
+@pytest.mark.parametrize(
+    ("sbom", "inventory"),
+    [
+        ({"components": [{"purl": "pkg:npm/a@1"}]}, _inventory("package.json")),
+        ({"components": []}, None),
+    ],
+    ids=["components_found", "empty_no_manifests"],
+)
+def test_no_stage_is_recorded_for_the_other_outcomes(
+    scan_session: _FakeSession, sbom: dict[str, Any], inventory: dict[str, Any] | None
+) -> None:
+    mod._record_component_outcome(uuid.uuid4(), sbom=sbom, manifest_inventory=inventory)
+
+    assert scan_session._scan is not None
+    assert STAGE_OUTCOMES_KEY not in (scan_session._scan.scan_metadata or {})
+
+
+def test_the_detail_names_five_manifests_and_counts_the_rest() -> None:
+    inventory = _inventory(*(f"m{i}/pom.xml" for i in range(7)), count=9)
+
+    detail = mod._no_components_detail(inventory)
+
+    assert detail == (
+        "manifests found: m0/pom.xml, m1/pom.xml, m2/pom.xml, m3/pom.xml, m4/pom.xml and 4 more"
+    )
+
+
+def test_the_detail_drops_control_characters_from_a_path() -> None:
+    """The paths come from the scanned tree, so they get the engine-output treatment:
+    a NUL would fail the JSONB commit, a line break would split a log line."""
+    detail = mod._no_components_detail(_inventory("a\x00b/​package.json\nx"))
+
+    assert detail == "manifests found: ab/package.json x"
+
+
+@pytest.mark.parametrize(
+    "inventory",
+    [None, {"count": 2}, {"files": "nope", "count": 1}, {"files": [{}], "count": 1}],
+)
+def test_no_detail_without_usable_paths(inventory: dict[str, Any] | None) -> None:
+    assert mod._no_components_detail(inventory) is None
