@@ -45,6 +45,26 @@ with `baselines/` and `fixtures/`, and names the baselines still waiting for a
 fixture. Regenerate baselines only there: dispatch with `update_baselines=true`
 and download the artifact.
 
+## Shadow run (in-process vs BomLens engine)
+Dispatch `golden-nightly` with `shadow=true` (`gh workflow run golden-nightly.yml
+-f shadow=true --ref <branch>`). Instead of diffing baselines, each shard scans
+its fixtures with the in-process engine, then recreates the backend with
+`SCAN_ENGINE=bomlens`, starts the engine worker and socket proxy from
+`compose.bomlens.yml` on the same stack, and scans them again. Both passes read
+celery-worker's Trivy database volume, so the report also compares
+vulnerability ids; the database metadata before and after is recorded per
+shard. The `shadow-report` job runs `shadow_report.py` over every shard's
+captures and puts the difference table in the job summary and the
+`golden-shadow-report` artifact. A difference never fails the run.
+
+To rebuild the table from downloaded artifacts:
+```bash
+python shadow_report.py --inprocess golden-shadow/inprocess \
+  --bomlens golden-shadow/bomlens --trivy-db golden-shadow/trivy-db
+```
+The first scan per language includes pulling its cdxgen image; the two
+BomLens images are pulled before the pass.
+
 ## Notes
 - **Not in the PR gate.** CI runs `pytest tests/unit tests/integration`; this
   lives under `tests/e2e/` and runs only in the golden-nightly workflow.

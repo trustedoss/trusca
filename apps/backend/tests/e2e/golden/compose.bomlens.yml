@@ -1,0 +1,148 @@
+# SPDX-License-Identifier: Apache-2.0
+# Copyright 2026 TRUSCA contributors
+#
+# BomLens engine services for the golden shadow run. Layered over
+# docker-compose.dev.yml and compose.scancode.yml by golden-nightly.yml
+# (dispatch input `shadow`), only for the BomLens pass.
+#
+# docker-compose.dev.yml defines no engine worker. These two services follow
+# docker-compose.yml's worker-engine and docker-socket-proxy; every place this
+# file departs from them says why. tests/unit/test_golden_shadow.py
+# holds the security settings equal to the production file.
+#
+# Needs three values from the environment (the workflow sets them; see
+# golden-nightly.yml, step "Switch the stack to the BomLens engine"):
+#   GOLDEN_ENGINE_ENV_FILE   the in-process worker's environment, dumped from
+#                            its running container (see worker-engine below)
+#   SCAN_WORKSPACE_VOLUME    the Docker volume behind the scan workspace
+#   SCAN_TRIVY_CACHE_VOLUME  the Docker volume behind celery-worker's Trivy DB
+# and the egress network, created once with containers on it unable to reach
+# each other:
+#   docker network create --opt com.docker.network.bridge.enable_icc=false \
+#     trustedoss-scan-egress
+# The engine images are core/config.py's pins; nothing here overrides them.
+services:
+  worker-engine:
+    # The dev worker image (the production file uses the published one): the
+    # shadow run measures the branch under test, like the rest of this stack.
+    build:
+      context: ./apps/backend
+      dockerfile: Dockerfile.worker
+    image: trustedoss/backend-worker:dev
+    profiles: ["bomlens-engine"]
+    restart: unless-stopped
+    command: celery -A tasks.celery_app worker --loglevel=info --concurrency=2 -Q trustedoss.engine
+    stop_grace_period: 4200s
+    # The production file gives worker-engine the shared environment anchor,
+    # the same one every other worker gets. An anchor cannot cross files and
+    # docker-compose V1 cannot `extends` a service with depends_on, so the
+    # dev anchor reaches this worker as a file: the workflow dumps the running
+    # in-process worker's environment. Both engines then persist under the
+    # same settings, and only the keys below differ.
+    env_file:
+      - ${GOLDEN_ENGINE_ENV_FILE:?set by golden-nightly.yml; see the header of this file}
+    environment:
+      DOCKER_HOST: tcp://docker-socket-proxy:2375
+      # As in the production file: no broadcast control commands on the one
+      # worker that reaches the Docker API.
+      CELERY_WORKER_REMOTE_CONTROL: "false"
+      SCAN_ENGINE: bomlens
+      # The dev anchor defaults this to `bridge`, Docker's default network,
+      # where containers can reach each other. The production default is the
+      # dedicated egress network with inter-container traffic off.
+      SCAN_BOMLENS_NETWORK: trustedoss-scan-egress
+      SCAN_WORKSPACE_VOLUME: ${SCAN_WORKSPACE_VOLUME:?set by golden-nightly.yml}
+      SCAN_TRIVY_CACHE_VOLUME: ${SCAN_TRIVY_CACHE_VOLUME:?set by golden-nightly.yml}
+      # This worker has no Trivy cache of its own (neither has the production
+      # one); stage 2 mounts celery-worker's volume read-only by name. Without
+      # this the worker downloads a second database into its writable layer
+      # on every start, which the run never reads.
+      TRIVY_DB_BOOTSTRAP_ON_START: "false"
+    volumes:
+      # The branch's code, as on celery-worker, read-only here: this worker
+      # can reach the Docker API and has no reason to write its own code.
+      - ./apps/backend:/app:ro
+      # The dev file mounts the workspace at /tmp/trustedoss (the production
+      # file at /workspace); the engine worker must see it where the
+      # in-process worker and the backend do.
+      - scan-workspace:/tmp/trustedoss
+      - backups-data:/opt/trustedoss/backups
+      - ${COSIGN_KEYS_HOST_PATH:-./secrets/cosign}:/cosign:ro
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      backend:
+        condition: service_healthy
+      docker-socket-proxy:
+        condition: service_started
+    networks:
+      # The dev services share compose's default network (the production
+      # file's `trustedoss`).
+      - default
+      - docker-api
+    healthcheck:
+      test:
+        - "CMD"
+        - "python"
+        - "-c"
+        - "import os,sys; sys.exit(0 if any(b'celery' in open('/proc/'+p+'/cmdline','rb').read() for p in os.listdir('/proc') if p.isdigit() and p != str(os.getpid())) else 1)"
+      interval: 30s
+      timeout: 15s
+      retries: 5
+      start_period: 60s
+    deploy:
+      resources:
+        limits:
+          cpus: "1.0"
+          memory: 1G
+
+  docker-socket-proxy:
+    image: ghcr.io/tecnativa/docker-socket-proxy:0.3.0@sha256:9e4b9e7517a6b660f2cc903a19b257b1852d5b3344794e3ea334ff00ae677ac2
+    profiles: ["bomlens-engine"]
+    restart: unless-stopped
+    environment:
+      CONTAINERS: "1"
+      IMAGES: "1"
+      POST: "1"
+      DELETE: "1"
+      EXEC: "0"
+      VOLUMES: "0"
+      NETWORKS: "0"
+      SWARM: "0"
+      SYSTEM: "0"
+      INFO: "0"
+      AUTH: "0"
+      BUILD: "0"
+      COMMIT: "0"
+      SECRETS: "0"
+      CONFIGS: "0"
+      PLUGINS: "0"
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    networks:
+      - docker-api
+    deploy:
+      resources:
+        limits:
+          cpus: "0.25"
+          memory: 64M
+
+networks:
+  # worker-engine's private line to docker-socket-proxy, as in the production
+  # file. No fixed `name:` here: compose prefixes it with the project, so a
+  # developer's second stack on the same Docker host does not share it.
+  docker-api:
+    driver: bridge
+    internal: true
+  # The engine's egress network (SCAN_BOMLENS_NETWORK above). No service joins
+  # it; the workflow creates it before the BomLens pass. Not the dev file's
+  # `scan-egress`, which compose creates with inter-container traffic on.
+  bomlens-egress:
+    name: trustedoss-scan-egress
+    external: true
