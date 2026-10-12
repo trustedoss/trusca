@@ -16,7 +16,7 @@ from pathlib import Path
 import pytest
 
 from integrations.bomlens import runner as runner_mod
-from integrations.bomlens.plan import BomLensPlanRejected
+from integrations.bomlens.plan import PROXY_ENV_NAMES, BomLensPlanRejected
 from integrations.bomlens.runner import (
     BindMounts,
     BomLensEngineError,
@@ -25,8 +25,10 @@ from integrations.bomlens.runner import (
     EngineLayout,
     NamedVolumeMounts,
     confined_path,
+    is_loopback_proxy,
     pinned_image,
     resolve_images,
+    trivy_db_max_age_days,
 )
 from tests._bomlens_engine import (
     Behaviour,
@@ -56,6 +58,14 @@ def workspace(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
     monkeypatch.setenv("SECRET_KEY", "worker-secret-that-must-not-leak-0123456789")
     monkeypatch.setenv("DATABASE_URL", "postgresql+asyncpg://u:p@db:5432/x")
     monkeypatch.setenv("GOPROXY", "https://proxy.golang.org")
+    # A developer's or runner's own proxy and refresh settings must not leak
+    # into the exact environments the tests below assert.
+    for name in (
+        *PROXY_ENV_NAMES,
+        "TRIVY_DB_REFRESH_HOURS",
+        "BOMLENS_TRIVY_DB_MAX_AGE_DAYS",
+    ):
+        monkeypatch.delenv(name, raising=False)
     return scan_dir
 
 
@@ -743,3 +753,137 @@ def test_the_verified_folder_is_fresh_and_never_a_link(workspace: Path) -> None:
     (workspace / "bomlens-verified" / "stale.json").write_text("{}")
     fresh = runner.verified_dir()
     assert list(fresh.iterdir()) == []
+
+
+# ---------------------------------------------------------------------------
+# Contract 1.2.0: the trivy-db role, the database age, the proxy
+# ---------------------------------------------------------------------------
+
+
+def _plan_without_trivy_role(run: Run) -> None:
+    """A plan from an image before BomLens #203: no ``trivy-db`` mount."""
+    import json
+
+    write_plan("node-ok")(run)
+    path = run.host("/host-output") / "bomlens-plan.json"
+    document = json.loads(path.read_text())
+    stage = next(s for s in document["stages"] if s["id"] == "postprocess")
+    before = len(stage["mounts"])
+    stage["mounts"] = [m for m in stage["mounts"] if m["role"] != "trivy-db"]
+    assert len(stage["mounts"]) == before - 1
+    path.write_text(json.dumps(document))
+
+
+def _trivy_mounts(run: Run) -> dict[str, dict[str, str]]:
+    return {t: f for t, f in run.mounts.items() if t.startswith(runner_mod.TRIVY_DB_TARGET)}
+
+
+@pytest.mark.parametrize("plan_has_role", [True, False], ids=["role-in-plan", "earlier-plan"])
+def test_stage_2_reads_the_worker_trivy_database_through_the_role(
+    workspace: Path, plan_has_role: bool
+) -> None:
+    """The plan's ``trivy-db`` role is connected to the worker's database,
+    read-only; a plan without the role (an earlier image) gets the same
+    mount, since stage 2 cannot scan without a database."""
+    effect = write_plan("node-ok") if plan_has_role else _plan_without_trivy_role
+    docker = (
+        FakeDocker()
+        .behave("plan", Behaviour(effect=effect))
+        .behave("stage1", Behaviour(effect=write_sbom(_output_file())))
+    )
+    _runner(workspace, docker).run()
+    (stage2,) = docker.runs_of("stage2")
+    trivy = os.path.realpath(os.environ["TRIVY_CACHE_DIR"])
+    assert _trivy_mounts(stage2) == {
+        "/trivy-db": {"type": "bind", "src": trivy, "dst": "/trivy-db", "readonly": "true"}
+    }
+    assert stage2.env["TRIVY_CACHE_DIR"] == "/trivy-db"
+    for label in ("plan", "stage1"):
+        (run,) = docker.runs_of(label)
+        assert _trivy_mounts(run) == {}, label
+
+
+@pytest.mark.parametrize(
+    ("hours", "days"),
+    [(None, 9), ("168", 9), ("24", 3), ("25", 4), ("1", 3), ("0", 3), ("junk", 9), ("720", 32)],
+)
+def test_the_database_age_follows_the_refresh_interval(
+    monkeypatch: pytest.MonkeyPatch, hours: str | None, days: int
+) -> None:
+    """ceil(TRIVY_DB_REFRESH_HOURS / 24) + 2, read per call."""
+    if hours is None:
+        monkeypatch.delenv("TRIVY_DB_REFRESH_HOURS", raising=False)
+    else:
+        monkeypatch.setenv("TRIVY_DB_REFRESH_HOURS", hours)
+    assert trivy_db_max_age_days() == days
+
+
+def test_stage_2_is_told_the_database_age_trusca_allows(
+    workspace: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The value comes from TRUSCA's refresh interval, read at run time, and
+    never from a variable of the same name in the worker's environment."""
+    monkeypatch.setenv("BOMLENS_TRIVY_DB_MAX_AGE_DAYS", "365")
+    docker = _happy_docker()
+    _runner(workspace, docker).run()
+    (stage2,) = docker.runs_of("stage2")
+    assert stage2.env["BOMLENS_TRIVY_DB_MAX_AGE_DAYS"] == "9"
+    assert [a for a in stage2.argv if a.startswith("BOMLENS_TRIVY_DB_MAX_AGE_DAYS=")] == [
+        "BOMLENS_TRIVY_DB_MAX_AGE_DAYS=9"
+    ]
+
+    monkeypatch.setenv("TRIVY_DB_REFRESH_HOURS", "24")
+    docker = _happy_docker()
+    _runner(workspace, docker).run()
+    (stage2,) = docker.runs_of("stage2")
+    assert stage2.env["BOMLENS_TRIVY_DB_MAX_AGE_DAYS"] == "3"
+    for label in ("plan", "stage1"):
+        (run,) = docker.runs_of(label)
+        assert "BOMLENS_TRIVY_DB_MAX_AGE_DAYS" not in run.env, label
+
+
+def test_stage_1_gets_the_proxy_and_stage_2_does_not(
+    workspace: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setenv("HTTPS_PROXY", "http://proxy.corp.example:8080")
+    monkeypatch.setenv("https_proxy", "http://proxy.corp.example:8080")
+    monkeypatch.setenv("NO_PROXY", "localhost,127.0.0.1,.corp.example")
+    # A local authenticating proxy on the worker's own loopback address.
+    monkeypatch.setenv("HTTP_PROXY", "http://127.0.0.1:3128")
+    monkeypatch.setenv("http_proxy", "localhost:3128")
+    docker = _happy_docker()
+    _runner(workspace, docker).run()
+    (stage1,) = docker.runs_of("stage1")
+    assert {n: v for n, v in stage1.env.items() if n.lower().endswith("_proxy")} == {
+        "HTTPS_PROXY": "http://proxy.corp.example:8080",
+        "https_proxy": "http://proxy.corp.example:8080",
+        "NO_PROXY": "localhost,127.0.0.1,.corp.example",
+    }
+    for label in ("plan", "stage2"):
+        (run,) = docker.runs_of(label)
+        assert not {n for n in run.env if n.lower().endswith("_proxy")}, label
+
+
+@pytest.mark.parametrize(
+    ("value", "loopback"),
+    [
+        ("http://127.0.0.1:3128", True),
+        ("127.0.0.1:3128", True),
+        ("http://127.8.9.10", True),
+        ("http://user:secret@127.0.0.1:3128", True),
+        ("http://localhost:3128", True),
+        ("localhost", True),
+        ("socks5://proxy.localhost:1080", True),
+        ("http://[::1]:3128", True),
+        (" http://LOCALHOST:3128 ", True),
+        ("http://proxy.corp.example:8080", False),
+        ("http://10.0.0.5:3128", False),
+        ("http://localhost.corp.example:3128", False),
+        ("http://127.0.0.1.nip.io:3128", False),
+        ("http://[::ffff:10.0.0.1]:3128", False),
+        ("http://[bad", False),
+        ("", False),
+    ],
+)
+def test_a_proxy_on_the_loopback_address_is_recognised(value: str, loopback: bool) -> None:
+    assert is_loopback_proxy(value) is loopback

@@ -646,6 +646,60 @@ def test_a_failed_vulnerability_scan_fails_and_keeps_the_inventory(
     assert so.degraded_stages(meta) == [{"stage": "generate", "reason": "fallback"}]
 
 
+def test_a_trivy_database_past_its_age_fails_the_scan_without_findings(
+    tmp_path: Path, sync_session: Session
+) -> None:
+    """Contract 1.2.0 with the worker's database mounted as ``trivy-db``.
+
+    Stage 2 ran on the same SBOM twice: once with a database inside
+    BOMLENS_TRIVY_DB_MAX_AGE_DAYS, once with one 11 days old against a limit
+    of 9. Trivy found the same CVEs both times, but the old run is recorded
+    as scan-security degraded, and the scan fails rather than persisting
+    findings from stale data (the user's decision, 2026-10-12).
+    """
+    from tasks.bomlens_result import apply_bomlens_result
+
+    fresh_id = _seed_running_source_scan()
+    apply_bomlens_result(scan_uuid=fresh_id, output_dir=_copy_fixture("source-trivy-db", tmp_path))
+    assert _component_count(sync_session, fresh_id) == 1
+    assert len(_finding_ids(sync_session, fresh_id)) == 3
+
+    stale_id = _seed_running_source_scan()
+    folder = _copy_fixture("source-trivy-db-stale", tmp_path)
+    with pytest.raises(
+        BomLensVulnerabilityScanFailed, match=r"vulnerability scan degraded \(unavailable\)"
+    ):
+        apply_bomlens_result(scan_uuid=stale_id, output_dir=folder)
+    assert _component_count(sync_session, stale_id) == 1
+    assert _finding_ids(sync_session, stale_id) == []
+    assert set(_artifact_kinds(sync_session, stale_id)) == {"sbom_cyclonedx"}
+
+
+def test_an_image_run_with_debian_licences_from_trivy_persists_them(
+    tmp_path: Path, sync_session: Session
+) -> None:
+    """Contract 1.2.0's os-licenses step on a distroless Debian image: the
+    five deb packages carry Trivy's licences, none a file hash."""
+    from tasks.bomlens_result import apply_bomlens_result
+
+    scan_id = _seed_running_source_scan()
+    folder = _copy_fixture("image-os-licenses", tmp_path)
+
+    apply_bomlens_result(scan_uuid=scan_id, output_dir=folder)
+
+    assert _component_count(sync_session, scan_id) == 5
+    meta = _metadata(sync_session, scan_id)
+    assert so.degraded_stages(meta) == []
+    rows = sync_session.execute(
+        select(License.spdx_id, License.name)
+        .join(LicenseFinding, LicenseFinding.license_id == License.id)
+        .where(LicenseFinding.scan_id == scan_id)
+    ).all()
+    spdx_ids = {spdx for spdx, _ in rows if spdx}
+    assert {"GPL-2.0-only", "GPL-2.0-or-later"} <= spdx_ids
+    assert not any("sha256:" in (name or "") for _, name in rows)
+
+
 def test_a_report_without_results_fails_instead_of_reading_as_zero_cves(
     tmp_path: Path, sync_session: Session
 ) -> None:

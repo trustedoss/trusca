@@ -1,12 +1,12 @@
 {
   "contract": {
     "name": "bomlens-engine",
-    "version": "1.0.0"
+    "version": "1.2.0"
   },
   "engine": {
-    "version": "latest-d8d3323",
-    "image": "ghcr.io/haksungjang/bomlens:sha-d8d3323",
-    "image_digest": "sha256:8b44d05a0baf66e11dcbabb52d7d9842cb11a5d0a4ec419b80de7f51233e05c5"
+    "version": "latest-1e5ef6b",
+    "image": "ghcr.io/haksungjang/bomlens:sha-1e5ef6b",
+    "image_digest": "sha256:eeb851f7cb4e3bc1cd7c81151e0f9a1bd129dfd755bfb92e110d17653b8f9a36"
   },
   "input": {
     "kind": "source",
@@ -16,8 +16,8 @@
   "run": {
     "status": "succeeded",
     "reason": null,
-    "started_at": "2026-10-11T13:46:15Z",
-    "ended_at": "2026-10-11T13:46:15Z",
+    "started_at": "2026-10-11T23:47:40Z",
+    "ended_at": "2026-10-11T23:47:40Z",
     "exit_code": 0
   },
   "steps": [
@@ -26,8 +26,8 @@
       "status": "ok",
       "reason": null,
       "detail": null,
-      "started_at": "2026-10-11T13:46:15Z",
-      "ended_at": "2026-10-11T13:46:15Z",
+      "started_at": "2026-10-11T23:47:40Z",
+      "ended_at": "2026-10-11T23:47:40Z",
       "stage": 2
     }
   ],
@@ -42,8 +42,8 @@
     {
       "role": "plan",
       "path": "bomlens-plan.json",
-      "sha256": "963a0194166680ec02117f62391a5b12f8ad8d4733fe5ae64f4397aa8c5c0111",
-      "bytes": 4656
+      "sha256": "4268043fdfa8f6d5165a8387dd7b4bbb0fdb442c2ef91bcd7fd220fed4285d37",
+      "bytes": 5500
     }
   ]
 }

@@ -52,25 +52,81 @@ def _with_steps(*steps: dict[str, Any]) -> contract.EngineResult:
 # ---------------------------------------------------------------------------
 
 
+#: The contract version each capture was written with (PROVENANCE.md):
+#: sha-b826d43 wrote 1.0.0-dev, sha-5a93586 1.0.0, sha-1e5ef6b 1.2.0.
+CONTRACT_VERSIONS = {
+    "image-ok": "1.0.0-dev",
+    "image-os-licenses": "1.2.0",
+    "source-deep-license": "1.0.0",
+    "source-degraded": "1.0.0-dev",
+    "source-no-components": "1.0.0",
+    "source-ok": "1.0.0-dev",
+    "source-ok-results-stripped": "1.0.0-dev",
+    "source-run-failed": "1.0.0-dev",
+    "source-trivy-db": "1.2.0",
+    "source-trivy-db-stale": "1.2.0",
+    "source-vulnerabilities-failed": "1.0.0-dev",
+}
+
+
 def test_the_fixture_set_is_the_documented_one() -> None:
-    assert CASES == [
-        "image-ok",
-        "source-deep-license",
-        "source-degraded",
-        "source-no-components",
-        "source-ok",
-        "source-ok-results-stripped",
-        "source-run-failed",
-        "source-vulnerabilities-failed",
-    ]
+    assert CASES == sorted(CONTRACT_VERSIONS)
 
 
 @pytest.mark.parametrize("case", CASES)
 def test_every_captured_manifest_parses(case: str) -> None:
+    """Every 1.x minor the pinned images wrote reads with the same reader."""
     result = contract.parse_manifest(_manifest(case))
-    # sha-b826d43 wrote 1.0.0-dev, sha-5a93586 writes 1.0.0 (PROVENANCE.md).
-    assert result.contract_version in ("1.0.0-dev", "1.0.0")
+    assert result.contract_version == CONTRACT_VERSIONS[case]
+    assert contract.contract_major(result.contract_version) == contract.SUPPORTED_MAJOR
     assert result.image_digest is not None and result.image_digest.startswith("sha256:")
+
+
+def test_the_newest_captures_come_from_the_pinned_image() -> None:
+    """The 1.2.0 captures are the image config.py pins, so a version bump
+    that forgets to recapture shows up here."""
+    from core.config import BOMLENS_IMAGE_DEFAULT
+
+    pinned_digest = BOMLENS_IMAGE_DEFAULT.split("@", 1)[1]
+    for case, version in CONTRACT_VERSIONS.items():
+        if version == "1.2.0":
+            assert contract.parse_manifest(_manifest(case)).image_digest == pinned_digest, case
+
+
+def test_a_real_image_run_records_the_os_licenses_step() -> None:
+    """Contract 1.2.0 (BomLens #206): the step is in real output, so the
+    reader test above checks a real ``os-licenses`` entry, not an imagined one."""
+    result = contract.parse_manifest(_manifest("image-os-licenses"))
+    step = result.step("os-licenses")
+    assert step is not None
+    assert (step.status, step.reason) == ("ok", None)
+    assert step.counts == {"replaced": 5, "hashes_dropped": 0}
+    assert stages.STEP_STAGE["os-licenses"] == "enrich"
+    assert stages.stage_outcomes(result) == []
+
+
+@pytest.mark.parametrize("status", ["degraded", "failed"])
+def test_an_os_licenses_problem_is_an_enrich_degradation(status: str) -> None:
+    document = copy.deepcopy(_manifest("image-os-licenses"))
+    step = next(s for s in document["steps"] if s["id"] == "os-licenses")
+    assert step["status"] == "ok"
+    step.update(status=status, reason="unavailable" if status == "degraded" else "failed")
+    outcomes = stages.stage_outcomes(contract.parse_manifest(document))
+    assert [(o.stage, o.step, o.status) for o in outcomes] == [("enrich", "os-licenses", status)]
+
+
+def test_a_trivy_database_past_its_age_fails_the_vulnerability_scan() -> None:
+    """The user's decision (2026-10-12): a database older than
+    BOMLENS_TRIVY_DB_MAX_AGE_DAYS degrades scan-security, and the adapter
+    fails the scan rather than persisting a result from stale data. Real
+    output with the age check on; the same run with a fresh database is ok."""
+    stale = contract.parse_manifest(_manifest("source-trivy-db-stale"))
+    entries = [s for s in stale.steps if s.id == stages.VULNERABILITY_STEP]
+    assert [(s.status, s.reason) for s in entries] == [("degraded", "unavailable")]
+    assert entries[0].detail is not None and "days old" in entries[0].detail
+    assert stages.vulnerability_failure(stale) == "the vulnerability scan degraded (unavailable)"
+    fresh = contract.parse_manifest(_manifest("source-trivy-db"))
+    assert stages.vulnerability_failure(fresh) is None
 
 
 # ---------------------------------------------------------------------------

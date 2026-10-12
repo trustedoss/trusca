@@ -1,0 +1,168 @@
+{
+  "annotations": [
+    {
+      "annotator": {
+        "component": {
+          "authors": [
+            {
+              "name": "OWASP Foundation"
+            }
+          ],
+          "bom-ref": "pkg:npm/@cdxgen/cdxgen@13.2.0",
+          "group": "@cdxgen",
+          "name": "cdxgen",
+          "publisher": "OWASP Foundation",
+          "purl": "pkg:npm/%40cdxgen/cdxgen@13.2.0",
+          "type": "application",
+          "version": "13.2.0"
+        }
+      },
+      "bom-ref": "metadata-annotations",
+      "subjects": [
+        "pkg:npm/baseline-e2e-fixture@1.0.0"
+      ],
+      "text": "This Software Bill-of-Materials (SBOM) document was created on Sunday, October 11, 2026 with cdxgen. The data was captured during the build lifecycle phase. The document describes an application named 'baseline-e2e-fixture' with version '1.0.0'.",
+      "timestamp": "2026-10-11T23:48:06Z"
+    }
+  ],
+  "bomFormat": "CycloneDX",
+  "components": [
+    {
+      "bom-ref": "pkg:npm/lodash@4.17.21",
+      "evidence": {
+        "identity": [
+          {
+            "concludedValue": "package-lock.json",
+            "confidence": 1,
+            "field": "purl",
+            "methods": [
+              {
+                "confidence": 1,
+                "technique": "manifest-analysis",
+                "value": "package-lock.json"
+              }
+            ]
+          }
+        ]
+      },
+      "externalReferences": [
+        {
+          "type": "distribution",
+          "url": "https://registry.npmjs.org/lodash/-/lodash-4.17.21.tgz"
+        }
+      ],
+      "group": "",
+      "name": "lodash",
+      "properties": [
+        {
+          "name": "internal:LocalNodeModulesPath",
+          "value": "node_modules/lodash"
+        },
+        {
+          "name": "internal:ResolvedUrl",
+          "value": "https://registry.npmjs.org/lodash/-/lodash-4.17.21.tgz"
+        },
+        {
+          "name": "internal:SrcFile",
+          "value": "package-lock.json"
+        },
+        {
+          "name": "bomlens:licenseClass",
+          "value": "uncategorized"
+        }
+      ],
+      "purl": "pkg:npm/lodash@4.17.21",
+      "type": "library",
+      "version": "4.17.21"
+    }
+  ],
+  "dependencies": [
+    {
+      "dependsOn": [],
+      "ref": "pkg:npm/lodash@4.17.21"
+    },
+    {
+      "dependsOn": [
+        "pkg:npm/lodash@4.17.21"
+      ],
+      "ref": "pkg:npm/baseline-e2e-fixture@1.0.0"
+    }
+  ],
+  "metadata": {
+    "component": {
+      "bom-ref": "pkg:npm/baseline-e2e-fixture@1.0.0",
+      "description": "E2E 테스트 fixture — npm 프로젝트 (외부 도구 스캔 검증용)",
+      "group": "",
+      "name": "node",
+      "properties": [
+        {
+          "name": "bomlens:source:versionPinning",
+          "value": "pinned"
+        }
+      ],
+      "type": "application",
+      "version": "1.0.0"
+    },
+    "lifecycles": [
+      {
+        "phase": "pre-build"
+      }
+    ],
+    "properties": [
+      {
+        "name": "cdx:bom:componentSrcFiles",
+        "value": "package-lock.json"
+      },
+      {
+        "name": "cdx:bom:componentTypes",
+        "value": "npm"
+      },
+      {
+        "name": "bomlens:prep-step-applied",
+        "value": "npm-production-set"
+      },
+      {
+        "name": "bomlens:excluded-paths",
+        "value": "**/test/**, **/tests/**, **/spec/**, **/fixtures/**, **/testdata/**, **/__tests__/**, **/e2e/**, **/example/**, **/examples/**, **/sample/**, **/samples/**, **/bench/**, **/benches/**, **/benchmark/**, **/benchmarks/**, **/demo/**, **/demos/**, **/playground/**, **/.github/workflows/**"
+      },
+      {
+        "name": "bomlens:undeclared-fields",
+        "value": "unknown-to-author"
+      }
+    ],
+    "timestamp": "2026-10-11T23:48:06Z",
+    "tools": {
+      "components": [
+        {
+          "authors": [
+            {
+              "name": "OWASP Foundation"
+            }
+          ],
+          "bom-ref": "pkg:npm/@cdxgen/cdxgen@13.2.0",
+          "group": "@cdxgen",
+          "name": "cdxgen",
+          "publisher": "OWASP Foundation",
+          "purl": "pkg:npm/%40cdxgen/cdxgen@13.2.0",
+          "type": "application",
+          "version": "13.2.0"
+        },
+        {
+          "name": "BomLens",
+          "publisher": "SK Telecom",
+          "type": "application",
+          "version": "latest-1e5ef6b"
+        }
+      ]
+    }
+  },
+  "serialNumber": "urn:uuid:89765bbd-6755-4af2-bc84-593c8e83bca9",
+  "services": [],
+  "specVersion": "1.6",
+  "version": 1,
+  "compositions": [
+    {
+      "aggregate": "unknown"
+    }
+  ]
+}

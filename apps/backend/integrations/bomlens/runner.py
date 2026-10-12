@@ -46,7 +46,9 @@ What every container gets, whatever the plan says (security review
 from __future__ import annotations
 
 import contextlib
+import ipaddress
 import json
+import math
 import os
 import re
 import shutil
@@ -61,6 +63,7 @@ from collections.abc import Callable
 from dataclasses import dataclass, field, replace
 from pathlib import Path
 from typing import IO, Any, Final, Protocol
+from urllib.parse import urlsplit
 
 import structlog
 
@@ -83,6 +86,10 @@ from integrations.bomlens.contract import (
 )
 from integrations.bomlens.plan import (
     PLAN_FILES_DIR,
+    PROXY_ENV_NAMES,
+    TRIVY_DB_MAX_AGE_ENV,
+    TRIVY_DB_ROLE,
+    TRIVY_DB_TARGET,
     ExecutionPlan,
     Mount,
     Stage,
@@ -123,9 +130,11 @@ REAP_MARGIN_SECONDS: Final = 300
 #: whole workspace volume.
 MIN_DOCKER_API: Final = (1, 45)
 
-#: Container paths TRUSCA mounts itself. A plan mount may not use them.
+#: Container path TRUSCA mounts itself. A plan mount may not use it. The Trivy
+#: database's path (``TRIVY_DB_TARGET``) is the plan's ``trivy-db`` role, which
+#: TRUSCA connects to the worker's own database (plan.py allows that role
+#: there and nothing else).
 SCRATCH_TARGET: Final = "/tmp"  # noqa: S108 - a container path, not a host temp file
-TRIVY_DB_TARGET: Final = "/trivy-db"
 
 #: Contract-defined container paths of the PLAN run.
 PLAN_SOURCE_TARGET: Final = "/src"
@@ -133,6 +142,50 @@ PLAN_OUTPUT_TARGET: Final = "/host-output"
 
 #: BomLens' switch that keeps non-shipped trees (tests, examples, benchmarks).
 NON_SHIPPED_ENV: Final = "BOMLENS_INCLUDE_NON_SHIPPED"
+
+#: Pass-through names whose value TRUSCA sets from its own configuration
+#: (:meth:`BomLensRunner._trusca_env`), never from the worker's environment.
+_TRUSCA_SET_ENV: Final = frozenset({NON_SHIPPED_ENV, TRIVY_DB_MAX_AGE_ENV})
+
+#: Proxy names whose value is a proxy address (``NO_PROXY`` is a host list).
+_PROXY_ADDRESS_ENV: Final = frozenset(n for n in PROXY_ENV_NAMES if n.lower() != "no_proxy")
+
+
+def trivy_db_max_age_days() -> int:
+    """How old the worker's Trivy database may be before stage 2 degrades it.
+
+    One refresh interval (``TRIVY_DB_REFRESH_HOURS``, in whole days, rounded
+    up) plus two days, so a refresh that lands late does not fail scans. Past
+    it BomLens records ``scan-security`` as degraded and the adapter fails
+    the scan (``stages.vulnerability_failure``). Read per call.
+    """
+    from integrations.trivy import trivy_db_refresh_interval_hours
+
+    return math.ceil(trivy_db_refresh_interval_hours() / 24) + 2
+
+
+def is_loopback_proxy(value: str) -> bool:
+    """Whether a proxy address names the machine's own loopback interface.
+
+    Inside a container that address is the container itself, so such a proxy
+    is not passed on (BomLens' own CLI leaves it out the same way).
+    """
+    text = value.strip()
+    if "://" not in text:
+        text = "http://" + text
+    try:
+        host = urlsplit(text).hostname
+    except ValueError:
+        return False
+    if not host:
+        return False
+    if host == "localhost" or host.endswith(".localhost"):
+        return True
+    try:
+        return ipaddress.ip_address(host).is_loopback
+    except ValueError:
+        return False
+
 
 #: The stage 1 log stage 2 reads (a file name in the output folder).
 STAGE1_LOG_NAME: Final = "bomlens-stage1.log"
@@ -279,7 +332,7 @@ class MountStyle(Protocol):
 
     def mount_args(self, host_path: Path, target: str, *, read_only: bool) -> list[str]: ...
 
-    def trivy_db_args(self) -> list[str]: ...
+    def trivy_db_args(self, target: str = TRIVY_DB_TARGET) -> list[str]: ...
 
 
 def _mount_value(**fields: str) -> str:
@@ -312,12 +365,12 @@ class NamedVolumeMounts:
         value = _mount_value(type="volume", src=self.volume, dst=target, volume_subpath=str(sub))
         return ["--mount", value + (",readonly" if read_only else "")]
 
-    def trivy_db_args(self) -> list[str]:
+    def trivy_db_args(self, target: str = TRIVY_DB_TARGET) -> list[str]:
         if not self.trivy_volume:
             raise BomLensEngineError(
                 "SCAN_TRIVY_CACHE_VOLUME is not set; stage 2 has no Trivy database to read"
             )
-        value = _mount_value(type="volume", src=self.trivy_volume, dst=TRIVY_DB_TARGET)
+        value = _mount_value(type="volume", src=self.trivy_volume, dst=target)
         return ["--mount", value + ",readonly"]
 
 
@@ -331,11 +384,11 @@ class BindMounts:
         value = _mount_value(type="bind", src=str(host_path), dst=target)
         return ["--mount", value + (",readonly" if read_only else "")]
 
-    def trivy_db_args(self) -> list[str]:
+    def trivy_db_args(self, target: str = TRIVY_DB_TARGET) -> list[str]:
         if not (self.trivy_cache / "db").is_dir():
             raise BomLensEngineError("the worker's Trivy database has not been downloaded yet")
         real = Path(os.path.realpath(self.trivy_cache))
-        value = _mount_value(type="bind", src=str(real), dst=TRIVY_DB_TARGET)
+        value = _mount_value(type="bind", src=str(real), dst=target)
         return ["--mount", value + ",readonly"]
 
 
@@ -981,15 +1034,18 @@ class BomLensRunner:
     def _passthrough(self, stage: Stage) -> list[tuple[str, str]]:
         env: list[tuple[str, str]] = []
         for name in stage.env_passthrough:
-            if name == NON_SHIPPED_ENV:
-                # TRUSCA's own setting decides this one (_trusca_env), never
-                # a variable that happens to be in the worker's environment.
+            if name in _TRUSCA_SET_ENV:
+                # TRUSCA's own setting decides these (_trusca_env), never a
+                # variable that happens to be in the worker's environment.
                 continue
             value = os.getenv(name)
             if value is None or value == "":
                 continue
             if len(value) > 1024 or any(c in value for c in "\x00\n\r"):
                 log.warning("bomlens_env_passthrough_dropped", name=name)
+                continue
+            if name in _PROXY_ADDRESS_ENV and is_loopback_proxy(value):
+                log.info("bomlens_loopback_proxy_not_passed", name=name)
                 continue
             env.append((name, value))
         return env
@@ -1001,10 +1057,16 @@ class BomLensRunner:
         trees in the SBOM; it follows SCAN_SCOPE_FILTER_NON_DEPLOYABLE_ENABLED
         (and the scope filter's master switch), so turning that filter off
         means the same thing under either engine.
+
+        ``BOMLENS_TRIVY_DB_MAX_AGE_DAYS`` follows TRUSCA's Trivy database
+        refresh interval (:func:`trivy_db_max_age_days`).
         """
+        env: list[tuple[str, str]] = []
         if self.include_non_shipped and NON_SHIPPED_ENV in stage.env_passthrough:
-            return [(NON_SHIPPED_ENV, "true")]
-        return []
+            env.append((NON_SHIPPED_ENV, "true"))
+        if TRIVY_DB_MAX_AGE_ENV in stage.env_passthrough:
+            env.append((TRIVY_DB_MAX_AGE_ENV, str(trivy_db_max_age_days())))
+        return env
 
     def _execute(
         self,
@@ -1213,7 +1275,9 @@ class BomLensRunner:
             return plan_files[mount.source]
         if mount.role == "guard-state":
             return guard
-        # A cache TRUSCA does not provide; plan.py refused it unless optional.
+        # The Trivy database is not in the workspace; run_stage2 mounts it
+        # (MountStyle.trivy_db_args). Anything else is a cache TRUSCA does not
+        # provide; plan.py refused it unless optional.
         return None
 
     def _stage1_spec(
@@ -1302,13 +1366,23 @@ class BomLensRunner:
         arguments, the output folder as working directory, no network, and
         TRUSCA's own environment (security review on #522, L2). A plan with no
         stages gets the targets the contract documents.
+
+        The worker's Trivy database is always mounted read-only as the
+        ``trivy-db`` role, at ``/trivy-db``. A plan from BomLens #203 on lists
+        that role (plan.py accepts it only there, read-only); an earlier plan
+        does not, and stage 2 still needs the database, which TRUSCA's
+        ``TRIVY_CACHE_DIR`` points an earlier image at.
         """
         source_target, output_target = PLAN_SOURCE_TARGET, PLAN_OUTPUT_TARGET
+        trivy_target = TRIVY_DB_TARGET
         if plan.supported:
             planned = plan.postprocess
             source_mount, output_mount = planned.mount("source"), planned.mount("output")
             assert source_mount is not None and output_mount is not None  # noqa: S101
             source_target, output_target = source_mount.target, output_mount.target
+            trivy_mount = planned.mount(TRIVY_DB_ROLE)
+            if trivy_mount is not None:
+                trivy_target = trivy_mount.target
         return Stage(
             id="postprocess",
             stage=2,
@@ -1321,6 +1395,7 @@ class BomLensRunner:
             mounts=(
                 Mount(role="source", target=source_target, mode="ro"),
                 Mount(role="output", target=output_target, mode="rw"),
+                Mount(role=TRIVY_DB_ROLE, target=trivy_target, mode="ro", optional=True),
             ),
             env={
                 "MODE": "POSTPROCESS",
@@ -1330,7 +1405,7 @@ class BomLensRunner:
                 "PROJECT_VERSION": self.project_version,
                 "UPLOAD_ENABLED": "false",
             },
-            env_passthrough=("BOMLENS_INCLUDE_NON_SHIPPED", "SRC_TREE_EXCLUDE"),
+            env_passthrough=(NON_SHIPPED_ENV, "SRC_TREE_EXCLUDE", TRIVY_DB_MAX_AGE_ENV),
             network_required=False,
         )
 
@@ -1348,6 +1423,8 @@ class BomLensRunner:
             write_new_file(output / STAGE1_LOG_NAME, note.encode("utf-8"))
         scratch = self._fresh_dir(self.layout.scratch("stage2"))
         image = self.images.stage2
+        trivy_db = stage.mount(TRIVY_DB_ROLE)
+        assert trivy_db is not None  # noqa: S101 - stage2_for always adds it
         exit_code = stage1.exit_code if stage1 is not None else 127
         env = (
             list(stage.env.items())
@@ -1363,11 +1440,14 @@ class BomLensRunner:
             ("BOMLENS_IMAGE_DIGEST", image.digest),
             # TRUSCA's own settings for the run: the vulnerability report is
             # required, nothing is looked up online, and Trivy reads the
-            # worker's database read-only instead of downloading one.
+            # worker's database read-only instead of downloading one. An image
+            # from BomLens #203 on finds the database at the trivy-db mount
+            # itself (and only with GENERATE_SECURITY=true); the TRIVY_*
+            # values are for an earlier image and say the same thing.
             ("GENERATE_SECURITY", "true"),
             ("SECURITY_ENRICH", "false"),
             ("DEEP_LICENSE", "true" if self.images.deep_license else "false"),
-            ("TRIVY_CACHE_DIR", TRIVY_DB_TARGET),
+            ("TRIVY_CACHE_DIR", trivy_db.target),
             ("TRIVY_SKIP_DB_UPDATE", "true"),
             ("TRIVY_SKIP_JAVA_DB_UPDATE", "true"),
             ("TRIVY_OFFLINE_SCAN", "true"),
@@ -1382,7 +1462,7 @@ class BomLensRunner:
             workdir=stage.workdir,
             mounts=self._stage_mounts(stage, output=output, plan_files={}, guard=None)
             + ((scratch, SCRATCH_TARGET, False),),
-            extra_mount_args=tuple(self.mounts.trivy_db_args()),
+            extra_mount_args=tuple(self.mounts.trivy_db_args(trivy_db.target)),
             env=tuple(env),
             network=self._network(stage.network_required),
             read_only=True,
@@ -1577,6 +1657,7 @@ __all__ = [
     "INSTANCE_LABEL",
     "LABEL_ROLE",
     "STAGE1_LOG_NAME",
+    "TRIVY_DB_TARGET",
     "BindMounts",
     "BomLensEngineError",
     "BomLensRunner",
@@ -1598,8 +1679,10 @@ __all__ = [
     "confined_path",
     "docker_run_argv",
     "instance_id",
+    "is_loopback_proxy",
     "mount_style",
     "pinned_image",
     "resolve_images",
+    "trivy_db_max_age_days",
     "write_new_file",
 ]

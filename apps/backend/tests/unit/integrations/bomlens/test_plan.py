@@ -336,3 +336,163 @@ def test_an_oversized_plan_is_refused(tmp_path: Path) -> None:
     (tmp_path / "bomlens-plan.json").write_text(" " * (plan_mod.MAX_PLAN_BYTES + 1) + "{}")
     with pytest.raises(BomLensPlanRejected, match="larger than any plan"):
         load_plan(tmp_path)
+
+
+# ---------------------------------------------------------------------------
+# The Trivy database role (BomLens #203) and the 1.2.0 allow lists
+# ---------------------------------------------------------------------------
+
+
+def test_the_captured_plan_asks_for_the_trivy_database_read_only() -> None:
+    plan = load_plan(PLAN_DIR / "node-ok")
+    mount = plan.postprocess.mount("trivy-db")
+    assert mount == plan_mod.Mount(role="trivy-db", target="/trivy-db", mode="ro", optional=True)
+    assert plan.generate.mount("trivy-db") is None
+
+
+def test_a_required_trivy_database_mount_is_accepted() -> None:
+    """TRUSCA always provides the database, so a plan that requires it is fine."""
+
+    def mutate(d: dict[str, Any]) -> None:
+        _mount(_stage(d, "postprocess"), "trivy-db")["optional"] = False
+
+    mount = parse_plan(_mutated(mutate)).postprocess.mount("trivy-db")
+    assert mount is not None and not mount.optional
+
+
+def _set_trivy_mount(**fields: Any) -> Any:
+    def mutate(d: dict[str, Any]) -> None:
+        _mount(_stage(d, "postprocess"), "trivy-db").update(fields)
+
+    return mutate
+
+
+def _add_mount(stage_id: str, entry: dict[str, Any]) -> Any:
+    def mutate(d: dict[str, Any]) -> None:
+        _stage(d, stage_id)["mounts"].append(entry)
+
+    return mutate
+
+
+def _set_stage_1_cache(**fields: Any) -> Any:
+    def mutate(d: dict[str, Any]) -> None:
+        _mount(_stage(d, "generate"), "cache-maven").update(fields)
+
+    return mutate
+
+
+def _replace_trivy_mount(entry: dict[str, Any]) -> Any:
+    def mutate(d: dict[str, Any]) -> None:
+        stage = _stage(d, "postprocess")
+        stage["mounts"] = [m for m in stage["mounts"] if m["role"] != "trivy-db"] + [entry]
+
+    return mutate
+
+
+@pytest.mark.parametrize(
+    ("mutate", "fragment"),
+    [
+        # The role, writable.
+        (_set_trivy_mount(mode="rw"), "mounts the Trivy database writable"),
+        # The role at another path, below it, or beside it.
+        (_set_trivy_mount(target="/trivy"), "mounts the Trivy database at '/trivy'"),
+        (_set_trivy_mount(target="/trivy-db/db"), "mounts the Trivy database at '/trivy-db/db'"),
+        (_set_trivy_mount(target="/data/trivy-db"), "mounts the Trivy database at"),
+        (_set_trivy_mount(target="/trivy-dbx"), "mounts the Trivy database at"),
+        # The role with a host path of the plan's choosing.
+        (_set_trivy_mount(source="bomlens-plan/build-prep.sh"), "names a source path"),
+        # The role forged: a near spelling, or in stage 1.
+        (
+            _replace_trivy_mount({"role": "trivy_db", "target": "/trivy-db", "mode": "ro"}),
+            "is not a mount role",
+        ),
+        (
+            _replace_trivy_mount({"role": "Trivy-DB", "target": "/trivy-db", "mode": "ro"}),
+            "is not a mount role",
+        ),
+        (
+            _add_mount("generate", {"role": "trivy-db", "target": "/trivy-db", "mode": "ro"}),
+            "'trivy-db' is not allowed in stage 1",
+        ),
+        # Another role at the database path, or below it.
+        (
+            _replace_trivy_mount({"role": "output", "target": "/trivy-db", "mode": "rw"}),
+            "which TRUSCA mounts",
+        ),
+        (
+            _add_mount("postprocess", {"role": "cache-maven", "target": "/trivy-db", "mode": "rw"}),
+            "'cache-maven' is not allowed in stage 2",
+        ),
+        (
+            _add_mount("generate", {"role": "cache-maven", "target": "/trivy-db/m2", "mode": "rw"}),
+            "which TRUSCA mounts",
+        ),
+        # Exactly at the path, by an optional role nothing else checks: only
+        # the reserved-path rule stands between it and the database's place.
+        (_set_stage_1_cache(target="/trivy-db"), "which TRUSCA mounts"),
+        # Two of them.
+        (
+            _add_mount("postprocess", {"role": "trivy-db", "target": "/trivy-db", "mode": "ro"}),
+            "mounts two things at one container path",
+        ),
+    ],
+    ids=[
+        "rw",
+        "other-path",
+        "sub-path",
+        "nested-elsewhere",
+        "prefix-lookalike",
+        "host-source",
+        "underscore-role",
+        "case-role",
+        "stage-1",
+        "output-at-path",
+        "cache-at-path",
+        "stage-1-below-path",
+        "stage-1-cache-at-path",
+        "twice",
+    ],
+)
+def test_only_the_trivy_database_role_read_only_at_its_path_is_accepted(
+    mutate: Any, fragment: str
+) -> None:
+    _refused(_mutated(mutate), fragment)
+
+
+def test_the_captured_stage_2_env_and_passthrough_are_what_trusca_keeps() -> None:
+    """The 1.2.0 plan lists the proxy, TRIVY_*, EPSS and KEV names for stage 2.
+    Stage 2 runs offline on the worker's database, so of those only the
+    database age is kept (TRUSCA sets its value). Stage 1 keeps the proxy."""
+    plan = load_plan(PLAN_DIR / "node-ok")
+    document = _captured()
+    assert plan.postprocess.dropped_env == ()
+    assert plan.postprocess.env["SECURITY_ENRICH"] == "false"
+    assert set(plan.postprocess.env_passthrough) == {
+        "BOMLENS_INCLUDE_NON_SHIPPED",
+        "SRC_TREE_EXCLUDE",
+        "BOMLENS_TRIVY_DB_MAX_AGE_DAYS",
+    }
+    left_out = set(_stage(document, "postprocess")["env_passthrough"]) - set(
+        plan.postprocess.env_passthrough
+    )
+    assert left_out == {
+        "HOST_UID",
+        "HOST_GID",
+        *plan_mod.PROXY_ENV_NAMES,
+        "TRIVY_DB_REPOSITORY",
+        "TRIVY_JAVA_DB_REPOSITORY",
+        "TRIVY_SKIP_DB_UPDATE",
+        "TRIVY_SKIP_JAVA_DB_UPDATE",
+        "TRIVY_OFFLINE_SCAN",
+        "TRIVY_USERNAME",
+        "TRIVY_PASSWORD",
+        "TRIVY_REGISTRY_TOKEN",
+        "TRIVY_INSECURE",
+        "KEV_URL",
+        "EPSS_API",
+    }
+    assert set(plan_mod.PROXY_ENV_NAMES) <= set(plan.generate.env_passthrough)
+    stage1_left_out = set(_stage(document, "generate")["env_passthrough"]) - set(
+        plan.generate.env_passthrough
+    )
+    assert stage1_left_out == {"HOST_UID", "HOST_GID"}
