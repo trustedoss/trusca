@@ -397,8 +397,8 @@ def test_every_ci_template_and_the_pr_comment_warn_on_both_empty_outcomes() -> N
     assert "exit 1" in unknown
     assert 'gate=""' not in body
     assert offset < gitlab.index('echo "TRUSTEDOSS_GATE=$gate"')
-    for base in ("docs-site/docs", "docs-site/i18n/ko/docusaurus-plugin-content-docs/current"):
-        guide = root / base / "ci-integration" / "gitlab-ci.md"
+    for doc_root in ("docs-site/docs", "docs-site/i18n/ko/docusaurus-plugin-content-docs/current"):
+        guide = root / doc_root / "ci-integration" / "gitlab-ci.md"
         text = guide.read_text(encoding="utf-8")
         assert "`FATAL:`" in text, f"{guide} omits the fail-closed gate"
     assert "jq -r '.component_outcome" in gitlab
