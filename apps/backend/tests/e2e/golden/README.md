@@ -57,10 +57,21 @@ shard. The `shadow-report` job runs `shadow_report.py` over every shard's
 captures and puts the difference table in the job summary and the
 `golden-shadow-report` artifact. A difference never fails the run.
 
+The report's "Stage timings" section shows, per fixture, the seconds each
+engine spent per stage and each stage's share of the scan, from the scan row's
+`stage_timings`. Stages the BomLens engine reports from its own step times
+(`trivy`, `postprocess`) sit inside the stage 2 window and are marked `(in
+scancode)`, not added. A second table lists each engine container of the
+BomLens scan (plan, stage 1, stage 2, ownership reset) from the engine
+worker's log, which the run keeps in `golden-shadow/engine-log/`. The wait
+before a container includes checking for its image and pulling it when it is
+missing; neither the log nor the scan row says whether a pull happened.
+
 To rebuild the table from downloaded artifacts:
 ```bash
 python shadow_report.py --inprocess golden-shadow/inprocess \
-  --bomlens golden-shadow/bomlens --trivy-db golden-shadow/trivy-db
+  --bomlens golden-shadow/bomlens --trivy-db golden-shadow/trivy-db \
+  --engine-log golden-shadow/engine-log
 ```
 The first scan per language includes pulling its cdxgen image; the two
 BomLens images are pulled before the pass.

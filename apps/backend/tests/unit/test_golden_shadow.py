@@ -15,10 +15,13 @@ import copy
 import json
 import re
 import sys
+from datetime import datetime
 from pathlib import Path
 
 import pytest
 import yaml
+
+from services import scan_outcome
 
 REPO = Path(__file__).resolve().parents[4]
 GOLDEN = REPO / "apps/backend/tests/e2e/golden"
@@ -458,3 +461,248 @@ class TestShadowReport:
 
     def test_main_with_nothing_to_compare_fails(self, tmp_path: Path) -> None:
         assert sr.main(["--inprocess", str(tmp_path / "a"), "--bomlens", str(tmp_path / "b")]) == 1
+
+
+# ---------------------------------------------------------------------------
+# Stage timings
+# ---------------------------------------------------------------------------
+
+#: Captures and engine log of run 38223776971 (see PROVENANCE.md there).
+RUN = REPO / "apps/backend/tests/fixtures/engine_comparison/run-38223776971"
+NODE_SCAN = "77e851f2-c602-4efd-ad9d-96c66a9eea77"
+LICENSE_FILES_SCAN = "987b3e90-cc45-4d6e-83bf-aaaf92516168"
+#: Not in the engine log: the in-process pass runs no engine container.
+INPROCESS_SCAN = "00000000-0000-4000-8000-000000000001"
+
+
+def _real(side: str, name: str) -> dict:
+    data: dict = json.loads((RUN / side / f"{name}.json").read_text())
+    return data
+
+
+def _at(clock: str) -> datetime:
+    return datetime.fromisoformat(f"2026-10-12T{clock}+00:00")
+
+
+def _timed(capture: dict, scan_id: str, stages: list[tuple[str, str]], close: str,
+           engine_windows: dict[str, tuple[str, str]] | None = None) -> dict:
+    """A copy of a real capture with the fields the run predates.
+
+    ``stage_timings`` is written the way the scan task writes it: one
+    ``advance_stage_timings`` per stage, ``close_stage_timings`` at the end and,
+    for BomLens, ``add_stage_windows`` with the engine's step windows.
+    """
+    meta: dict = {}
+    for stage, clock in stages:
+        meta = scan_outcome.advance_stage_timings(meta, stage=stage, now=_at(clock))
+    meta = scan_outcome.close_stage_timings(meta, now=_at(close))
+    if engine_windows:
+        meta = scan_outcome.add_stage_windows(
+            meta, {k: (_at(a), _at(b)) for k, (a, b) in engine_windows.items()}
+        )
+    out = copy.deepcopy(capture)
+    out["shadow"]["scan"]["id"] = scan_id
+    out["shadow"]["scan"]["stage_timings"] = meta["stage_timings"]
+    return out
+
+
+def _license_files_inprocess() -> dict:
+    # Scan row: 08:31:43.700323 to 08:31:57.920695.
+    return _timed(
+        _real("inprocess", "scancode-license-files"),
+        INPROCESS_SCAN,
+        [("bootstrap", "08:31:43.700323"), ("fetch", "08:31:43.760"), ("prep", "08:31:43.900"),
+         ("cdxgen", "08:31:44.000"), ("sign", "08:31:47.000"), ("scancode", "08:31:47.100"),
+         ("approvals", "08:31:53.100"), ("trivy", "08:31:53.200"), ("finalize", "08:31:57.500")],
+        "08:31:57.920695",
+    )
+
+
+def _license_files_bomlens() -> dict:
+    # Scan row: 08:33:44.213023 to 08:36:54.133700. prep, cdxgen and scancode
+    # open where the runner announces them around the containers in the log.
+    return _timed(
+        _real("bomlens", "scancode-license-files"),
+        LICENSE_FILES_SCAN,
+        [("bootstrap", "08:33:44.213023"), ("fetch", "08:33:44.260"), ("prep", "08:33:44.300"),
+         ("cdxgen", "08:33:44.733"), ("scancode", "08:36:43.770"), ("sign", "08:36:53.950"),
+         ("approvals", "08:36:54.020"), ("finalize", "08:36:54.080")],
+        "08:36:54.133700",
+        # The live cdxgen and scancode windows stay; trivy and postprocess are
+        # the engine's own, inside stage 2.
+        engine_windows={
+            "cdxgen": ("08:36:42.500", "08:36:43.500"),
+            "scancode": ("08:36:44.000", "08:36:46.000"),
+            "postprocess": ("08:36:45.000", "08:36:53.400"),
+            "trivy": ("08:36:50.000", "08:36:53.000"),
+        },
+    )
+
+
+def _table(report: str, first_cell: str) -> list[str]:
+    """The table whose header row starts with ``first_cell``."""
+    lines = report.splitlines()
+    start = lines.index(next(ln for ln in lines if ln.startswith(f"| {first_cell} |")))
+    end = start
+    while end < len(lines) and lines[end].startswith("|"):
+        end += 1
+    return lines[start + 2:end]
+
+
+def _rows(report: str, first_cell: str) -> list[list[str]]:
+    return [[c.strip() for c in ln.strip("|").split(" | ")] for ln in _table(report, first_cell)]
+
+
+class TestStageTimingCapture:
+    def test_the_scan_id_and_stage_timings_are_kept_as_stored(self) -> None:
+        timings = {"cdxgen": {"started_at": "2026-10-12T10:00:00Z",
+                              "ended_at": "2026-10-12T10:00:09Z"}}
+        row: dict = copy.deepcopy(SCAN_ROW)
+        row["metadata"]["stage_timings"] = timings
+        got = rg.shadow_fields(row, [], 1.0)["scan"]
+        assert got["id"] == "s1"
+        assert got["stage_timings"] == timings
+
+    def test_no_stage_timings_is_none(self) -> None:
+        assert rg.shadow_fields(SCAN_ROW, [], 1.0)["scan"]["stage_timings"] is None
+        row: dict = copy.deepcopy(SCAN_ROW)
+        row["metadata"]["stage_timings"] = ["not", "a", "dict"]
+        assert rg.shadow_fields(row, [], 1.0)["scan"]["stage_timings"] is None
+
+
+class TestStageTimingReport:
+    def test_engine_log_pairs_each_container_with_its_exit(self) -> None:
+        log = sr.load_engine_log(RUN / "engine-log")
+        assert len(log) == 6
+        node = log[NODE_SCAN]
+        assert [c.label for c in node] == ["plan", "stage1", "stage2", "chown"]
+        assert all(c.exit_code == 0 for c in node)
+        assert node[1].started == _at("08:36:04.267003")
+        assert node[1].ended == _at("08:36:06.933548")
+        assert [c.label for c in log[LICENSE_FILES_SCAN]] == ["plan", "stage1", "stage2", "chown"]
+
+    def test_engine_log_skips_other_lines(self, tmp_path: Path) -> None:
+        (tmp_path / "x.log").write_text(
+            "no json here\n"
+            '[t] {"event": "bomlens_plan", "scan_id": "a", "timestamp": "2026-10-12T00:00:00Z"}\n'
+            '[t] {"event": "bomlens_container_start", "scan_id": "a", '
+            '"container": "trusca-bomlens-aa-1-plan", "timestamp": "2026-10-12T00:00:01Z"}\n'
+            '[t] {broken\n'
+            '[t] {"event": "bomlens_container_exit", "scan_id": "a", "exit_code": 3, '
+            '"timestamp": "2026-10-12T00:00:04Z"}\n'
+        )
+        (only,) = sr.load_engine_log(tmp_path)["a"]
+        assert (only.label, only.exit_code) == ("plan", 3)
+        assert sr._seconds(only.started, only.ended) == 3.0
+
+    def test_a_window_inside_another_is_labelled_with_the_outermost(self) -> None:
+        def w(a: int, b: int) -> tuple[datetime, datetime]:
+            return (_at(f"10:00:{a:02d}"), _at(f"10:00:{b:02d}"))
+
+        windows: dict[str, sr.Window] = {
+            "cdxgen": w(0, 10), "scancode": w(10, 40), "postprocess": w(12, 38),
+            "trivy": w(20, 30), "open": (_at("10:00:05"), None),
+        }
+        # Back-to-back stages share an instant and are not inside each other.
+        assert sr.enclosing(windows) == {"postprocess": "scancode", "trivy": "scancode"}
+        # A zero-length window at another's end is not inside it.
+        assert sr.enclosing({"a": w(0, 10), "b": w(10, 10)}) == {}
+
+    def test_uncovered_seconds_counts_overlaps_once(self) -> None:
+        span = (_at("10:00:00"), _at("10:01:00"))
+        windows: dict[str, sr.Window] = {
+            "a": (_at("10:00:00"), _at("10:00:20")),
+            "b": (_at("10:00:10"), _at("10:00:15")),
+            "c": (_at("10:00:30"), _at("10:00:40")),
+            "d": (_at("10:00:50"), None),
+        }
+        assert sr.uncovered_seconds(windows, span) == 30.0
+
+    def test_stage_table_for_a_real_capture_pair(self) -> None:
+        log = sr.load_engine_log(RUN / "engine-log")
+        row = sr.compare("scancode-license-files", _license_files_inprocess(),
+                         _license_files_bomlens())
+        report = sr.render([row], {}, log)
+        assert _rows(report, "Stage") == [
+            ["bootstrap", "0.1", "0%", "0.0", "0%"],
+            ["fetch", "0.1", "1%", "0.0", "0%"],
+            ["prep", "0.1", "1%", "0.4", "0%"],
+            ["cdxgen", "3.0", "21%", "179.0", "94%"],
+            ["sign", "0.1", "1%", "0.1", "0%"],
+            ["scancode", "6.0", "42%", "10.2", "5%"],
+            ["approvals", "0.1", "1%", "0.1", "0%"],
+            ["trivy", "4.3", "30%", "3.0 (in scancode)", "2%"],
+            ["finalize", "0.4", "3%", "0.1", "0%"],
+            ["postprocess", "-", "-", "8.4 (in scancode)", "4%"],
+            ["other", "0.0", "0%", "0.0", "0%"],
+            ["scan", "14.2", "100%", "189.9", "100%"],
+        ]
+
+    def test_container_table_shows_the_wait_before_stage_one(self) -> None:
+        # The first scan of the shard waited 177 s between the plan container
+        # and stage 1: the cdxgen image check and pull.
+        log = sr.load_engine_log(RUN / "engine-log")
+        row = sr.compare("scancode-license-files", _license_files_inprocess(),
+                         _license_files_bomlens())
+        report = sr.render([row], {}, log)
+        assert "BomLens engine containers (worker log):" in report
+        assert "In-process engine containers" not in report
+        assert _rows(report, "Container") == [
+            ["plan", "0.4", "0%", "0.0"],
+            ["stage1", "1.6", "1%", "177.4"],
+            ["stage2", "9.8", "5%", "0.0"],
+            ["chown", "0.3", "0%", "0.0"],
+        ]
+
+    def test_the_section_sits_between_the_summary_and_the_differences(self) -> None:
+        bl = _license_files_bomlens()
+        bl["components"]["purls"].append("pkg:pypi/extra@1")
+        row = sr.compare("scancode-license-files", _license_files_inprocess(), bl)
+        report = sr.render([row], {}, {})
+        assert report.index("## Summary") < report.index("## Stage timings")
+        assert report.index("## Stage timings") < report.index("### scancode-license-files")
+        assert report.index("## Stage timings") < report.index("## Differences")
+        # No log: no container table.
+        assert "| Container |" not in report
+
+    def test_captures_from_before_the_field_have_no_block(self) -> None:
+        row = sr.compare("node", _real("inprocess", "node"), _real("bomlens", "node"))
+        report = sr.render([row], {}, sr.load_engine_log(RUN / "engine-log"))
+        assert "No capture recorded stage timings." in report
+        assert "### node" not in report
+
+    def test_main_reads_the_engine_log(self, tmp_path: Path) -> None:
+        # The node capture has its scan id and no stage timings: the container
+        # table alone, and no `prep` start to measure the first wait from.
+        ip, bl = tmp_path / "ip", tmp_path / "bl"
+        ip.mkdir()
+        bl.mkdir()
+        (ip / "node.json").write_text(json.dumps(_real("inprocess", "node")))
+        node = _real("bomlens", "node")
+        node["shadow"]["scan"]["id"] = NODE_SCAN
+        (bl / "node.json").write_text(json.dumps(node))
+        out = tmp_path / "report.md"
+        code = sr.main(["--inprocess", str(ip), "--bomlens", str(bl),
+                        "--engine-log", str(RUN / "engine-log"), "--out", str(out)])
+        assert code == 0
+        report = out.read_text()
+        assert "| Stage |" not in report
+        assert _rows(report, "Container") == [
+            ["plan", "0.6", "1%", "-"],
+            ["stage1", "2.7", "5%", "38.6"],
+            ["stage2", "8.0", "16%", "0.0"],
+            ["chown", "1.3", "3%", "0.0"],
+        ]
+
+    def test_the_workflow_keeps_the_container_lines_and_passes_them(self) -> None:
+        run = _step("Shadow: engine worker log")["run"]
+        assert "mkdir -p golden-shadow/engine-log" in run
+        assert """grep -E '"event": "bomlens_container_(start|exit)"'""" in run
+        assert '>> "golden-shadow/engine-log/${GOLDEN_SHARD}.log"' in run
+        # The step runs before the upload, which takes the whole folder.
+        names = [s.get("name") for s in _steps()]
+        assert names.index("Shadow: engine worker log") < names.index("Upload shadow captures")
+        report_job = _workflow()["jobs"]["shadow-report"]
+        build = next(s["run"] for s in report_job["steps"]
+                     if s.get("name") == "Build the difference table")
+        assert "--engine-log golden-shadow/engine-log" in build

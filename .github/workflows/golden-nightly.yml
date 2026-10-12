@@ -334,9 +334,15 @@ jobs:
         if: always() && env.SHADOW == 'true'
         run: |
           df -h / || true
+          # Each engine container's start and exit, for the report's stage
+          # timings (shadow_report.py --engine-log).
+          mkdir -p golden-shadow/engine-log
           for c in $(docker ps -aq --filter label=com.docker.compose.service=worker-engine); do
             docker logs --tail=400 "$c" 2>&1 \
               | grep -E "bomlens|degraded|ERROR" | tail -120 || true
+            docker logs "$c" 2>&1 \
+              | grep -E '"event": "bomlens_container_(start|exit)"' \
+              >> "golden-shadow/engine-log/${GOLDEN_SHARD}.log" || true
           done
 
       - name: Upload shadow captures
@@ -404,6 +410,7 @@ jobs:
             --inprocess golden-shadow/inprocess \
             --bomlens golden-shadow/bomlens \
             --trivy-db golden-shadow/trivy-db \
+            --engine-log golden-shadow/engine-log \
             --out golden-shadow-report/report.md
           cat golden-shadow-report/report.md >> "$GITHUB_STEP_SUMMARY"
 
