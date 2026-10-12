@@ -369,8 +369,10 @@ def _run_source_task(self: Any, scan_id: str, *, engine: str) -> None:
     except bomlens_contract.BomLensError as exc:
         # SCAN_ENGINE=bomlens (preview): the engine's result could not become a
         # succeeded scan. A failed or missing vulnerability result lands here
-        # too, terminal like TrivyFailed above. The message names roles, steps
-        # and versions only (integrations.bomlens.contract.BomLensError).
+        # too, terminal like TrivyFailed above. The message may end with the
+        # engine container's last output lines, credentials removed on a best
+        # effort only (integrations.bomlens.contract.BomLensError): not a value
+        # to send outside TRUSCA as it is.
         log.error("scan_source_engine_failed", engine="bomlens", error=str(exc)[:300])
         _record_terminal_failure(scan_uuid, f"scan engine: {exc}")
     except SoftTimeLimitExceeded:

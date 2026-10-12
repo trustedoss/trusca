@@ -309,8 +309,21 @@ def test_a_malformed_mirror_prefix_fails_the_scan_before_any_container(
             "the BomLens run failed",
         ),
         (FakeDocker().behave("plan", Behaviour(exit_code=2)), "MODE=PLAN exited 2"),
+        (
+            FakeDocker()
+            .behave("plan", Behaviour(effect=write_plan("node-ok")))
+            .behave("stage1", Behaviour(effect=write_sbom("app_1.0_bom.json")))
+            .behave(
+                "stage2",
+                Behaviour(
+                    exit_code=1, output=b"engine-result.sh: line 255: out: Permission denied\n"
+                ),
+            ),
+            "stage 2 exited 1 without writing a result manifest; "
+            "last output: engine-result.sh: line 255: out: Permission denied",
+        ),
     ],
-    ids=["container-will-not-stop", "engine-run-failed", "plan-failed"],
+    ids=["container-will-not-stop", "engine-run-failed", "plan-failed", "no-manifest"],
 )
 def test_an_engine_failure_fails_the_scan_with_a_message_and_no_path(
     monkeypatch: pytest.MonkeyPatch,
@@ -334,6 +347,46 @@ def test_an_engine_failure_fails_the_scan_with_a_message_and_no_path(
     assert fragment in scan.error_message
     assert str(_engine_env) not in scan.error_message
     assert _component_count(sync_session, scan_id) == 0
+
+
+def test_a_run_that_left_no_result_still_records_which_engine_ran(
+    monkeypatch: pytest.MonkeyPatch, sync_session: Session, _engine_env: Path
+) -> None:
+    """Lifecycle: an earlier run's full engine record on the same row is
+    replaced, so a failed run never reads as the one before it."""
+    from tasks.scan_source import scan_source_engine_task
+
+    docker = (
+        FakeDocker()
+        .behave("plan", Behaviour(effect=write_plan("node-ok")))
+        .behave("stage1", Behaviour(effect=write_sbom("app_1.0_bom.json")))
+        .behave("stage2", Behaviour(exit_code=1))
+    )
+    _install(monkeypatch, docker)
+    monkeypatch.setenv("TRUSTEDOSS_SCAN_BACKEND", "mock")
+    scan_id = _seed_running_source_scan()
+    from core.db import sync_session_scope
+
+    with sync_session_scope() as session:
+        row = session.get(Scan, scan_id)
+        assert row is not None
+        row.scan_metadata = {"scan_engine": {"name": "bomlens", "run_status": "succeeded"}}
+        session.commit()
+
+    scan_source_engine_task.apply(args=[str(scan_id)])
+
+    scan = _scan(sync_session, scan_id)
+    assert scan.status == "failed"
+    assert "stage 2 exited 1 without writing a result manifest" in (scan.error_message or "")
+    meta = _metadata(sync_session, scan_id)
+    image = runner_mod.pinned_image(captured_images(), "image")
+    assert meta["scan_engine"] == {
+        "name": "bomlens",
+        "image": image.ref,
+        "image_digest": image.digest,
+        "run_status": None,
+    }
+    assert meta["scan_engine_run"]["stage2_exit_code"] == 1
 
 
 def test_an_unsupported_plan_still_ends_in_a_degraded_success(

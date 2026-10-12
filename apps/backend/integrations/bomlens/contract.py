@@ -131,10 +131,15 @@ def clip(value: object) -> str:
 class BomLensError(Exception):
     """Base for every reason a BomLens result cannot become a succeeded scan.
 
-    The message is shown to users as the scan's error, so it names roles,
-    steps and versions and never a workspace path. Values that came from the
+    The message is shown to users as the scan's error. It names roles, steps
+    and versions and never a workspace path; values that came from the
     manifest are clipped where they are formatted (:func:`clip`), and the whole
-    message is capped here as well, so no call site can forget.
+    message is capped here as well, so no call site can forget. One kind also
+    carries the last lines a container wrote (``runner.EngineWroteNoResult``):
+    engine output, cleaned by ``scrub_secrets`` and ``storable_text`` but not
+    proven free of secrets or of text the scanned input put there. Do not treat
+    a message as safe to send outside TRUSCA (a notification, a webhook, a
+    ticket) on the strength of this class.
     """
 
     def __init__(self, message: str = "") -> None:

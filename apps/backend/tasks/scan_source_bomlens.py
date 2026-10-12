@@ -43,7 +43,12 @@ from services import scan_outcome
 from tasks import scan_source as pipeline
 from tasks._progress import make_line_callback
 from tasks._scan_pipeline import set_stage
-from tasks.bomlens_result import apply_bomlens_result, bomlens_component_outcome
+from tasks.bomlens_result import (
+    ENGINE_METADATA_KEY,
+    apply_bomlens_result,
+    bomlens_component_outcome,
+    engine_record_without_result,
+)
 
 log = structlog.get_logger("tasks.scan_source_bomlens")
 
@@ -61,7 +66,11 @@ def _project_identity(scan_uuid: uuid.UUID, project_id: uuid.UUID) -> tuple[str,
     return name, version
 
 
-def _record_engine_run(scan_uuid: uuid.UUID, report: bomlens_runner.RunReport) -> None:
+def _record_engine_run(
+    scan_uuid: uuid.UUID,
+    report: bomlens_runner.RunReport,
+    engine_image: bomlens_runner.PinnedImage,
+) -> None:
     """Keep what the runner did (plan status, stage 1 exit, restore) on the scan.
 
     Its own transaction and best-effort: it runs in a ``finally`` and must not
@@ -74,6 +83,11 @@ def _record_engine_run(scan_uuid: uuid.UUID, report: bomlens_runner.RunReport) -
                 return
             metadata: dict[str, Any] = dict(scan.scan_metadata or {})
             metadata[ENGINE_RUN_METADATA_KEY] = report.as_metadata()
+            # Which engine and image ran, even when no result is read:
+            # the manifest's own record replaces this one when there is.
+            metadata[ENGINE_METADATA_KEY] = engine_record_without_result(
+                engine_image.ref, engine_image.digest
+            )
             scan.scan_metadata = metadata
             session.commit()
     except Exception:  # noqa: BLE001 - a record of the run must not fail it
@@ -160,9 +174,11 @@ def run_bomlens_pipeline(
     try:
         output_dir = runner.run(stage=lambda stage: _advance(scan_uuid, stage))
     finally:
-        _record_engine_run(scan_uuid, runner.report)
-
+        _record_engine_run(scan_uuid, runner.report, images.stage2)
     _require_running(scan_uuid)
+    # A run that left no result says why (its exit and last output lines);
+    # checked after the cancellation, so a cancelled scan stays cancelled.
+    runner.require_result(output_dir)
     # Every engine container has exited (runner.run guarantees it), so nothing
     # writes to output_dir while the adapter reads it. The verified copies go
     # to a folder only the worker writes: outside every folder an engine

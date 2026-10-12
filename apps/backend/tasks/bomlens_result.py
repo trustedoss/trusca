@@ -165,6 +165,22 @@ def engine_record(result: EngineResult) -> dict[str, Any]:
     }
 
 
+def engine_record_without_result(image_ref: str, image_digest: str) -> dict[str, Any]:
+    """The engine record of a run whose result has not been read (yet).
+
+    Written when the engine containers are done and before the manifest is
+    read, so a scan whose engine wrote no result still says which engine and
+    image ran it; :func:`engine_record` replaces it once a manifest is read.
+    ``run_status`` stays ``None``: the engine reported none.
+    """
+    return {
+        "name": "bomlens",
+        "image": _clip(image_ref),
+        "image_digest": _clip(image_digest),
+        "run_status": None,
+    }
+
+
 def _scancode_skip_reason(result: EngineResult) -> str | None:
     """The ``scancode_skipped`` value for a licence scan that did not run.
 
@@ -576,6 +592,7 @@ __all__ = [
     "apply_bomlens_result",
     "bomlens_component_outcome",
     "engine_record",
+    "engine_record_without_result",
     "sbom_for_persistence",
     "trivy_report_problem",
 ]

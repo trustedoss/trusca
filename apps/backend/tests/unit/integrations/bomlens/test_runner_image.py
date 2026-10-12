@@ -11,22 +11,31 @@ from __future__ import annotations
 import os
 import uuid
 from pathlib import Path
+from typing import Any
 
 import pytest
+import structlog
 
 from integrations.bomlens import runner as runner_mod
+from integrations.bomlens.contract import MESSAGE_MAX_CHARS
 from integrations.bomlens.plan import PROXY_ENV_NAMES
 from integrations.bomlens.runner import (
     BomLensEngineError,
     BomLensRunner,
+    ContainerOutcome,
     ContainerSpec,
     EngineLayout,
+    EngineWroteNoResult,
+    NamedVolumeMounts,
     RunReport,
     docker_run_argv,
     image_target,
+    output_tail,
     resolve_images,
 )
 from tests._bomlens_engine import Behaviour, FakeDocker, captured_images, write_result
+
+CASE = "image-registry-alpine"
 
 
 @pytest.fixture
@@ -315,6 +324,228 @@ def test_a_source_run_report_is_unchanged() -> None:
 
 
 # ---------------------------------------------------------------------------
+# A named workspace volume (the compose files)
+# ---------------------------------------------------------------------------
+
+
+def _named_runner(workspace: Path, docker: FakeDocker) -> BomLensRunner:
+    style = NamedVolumeMounts(
+        volume="trusca_workspace",
+        volume_mount=workspace.parent,
+        trivy_volume="trusca_trivy-cache",
+    )
+    return BomLensRunner(
+        scan_uuid=uuid.UUID(int=9),
+        layout=EngineLayout(scan_dir=workspace, source=workspace / "source"),
+        images=resolve_images(deep_license=False),
+        project_name="image",
+        project_version="1.0.0",
+        fetch_license=False,
+        docker=docker,
+        mounts=style,
+    )
+
+
+def test_on_a_named_volume_no_mount_takes_the_image_s_content(workspace: Path) -> None:
+    """Docker copies the image's content, owner and mode into an empty volume
+    sub-path unless the mount says volume-nocopy. ``/host-output`` is not in
+    the image, so the daemon creates it as root's 0755 and the worker's empty
+    output folder became root's: the container, running as the worker's
+    non-root user, exited 1 at its first write (Permission denied), with no
+    result manifest. Reproduced on Docker 29 with the published image; the
+    real-daemon test in tests/integration/scan/test_bomlens_container_engine.py
+    runs it."""
+    docker = FakeDocker()
+    _named_runner(workspace, docker).run_image("registry:alpine")
+
+    (run,) = docker.runs
+    assert set(run.mounts) == {"/host-output", "/tmp", "/trivy-db"}
+    for target, fields in run.mounts.items():
+        assert fields.get("volume-nocopy") == "true", target
+        assert fields["type"] == "volume"
+    assert run.mounts["/host-output"]["volume-subpath"] == "scan/bomlens/out"
+    assert run.mounts["/tmp"]["volume-subpath"] == "scan/bomlens/tmp-image"
+    assert run.mounts["/trivy-db"]["src"] == "trusca_trivy-cache"
+    assert run.option_values("--user") == [f"{os.getuid()}:{os.getgid()}"]
+
+
+def test_a_daemon_that_drops_volume_nocopy_is_refused_before_the_container_starts(
+    workspace: Path,
+) -> None:
+    def drop_nocopy(recorded: list[dict[str, Any]]) -> list[dict[str, Any]]:
+        for mount in recorded:
+            (mount.get("VolumeOptions") or {}).pop("NoCopy", None)
+        return recorded
+
+    docker = FakeDocker(record_mounts=drop_nocopy)
+
+    with pytest.raises(BomLensEngineError, match="recorded different mounts"):
+        _named_runner(workspace, docker).run_image("registry:alpine")
+    assert docker.started == []
+    assert docker.removed == list(docker.containers)
+
+
+# ---------------------------------------------------------------------------
+# A run that left no result manifest says why
+# ---------------------------------------------------------------------------
+
+_SECRET_URL_PASSWORD = "url-pass-5b9e"
+_SECRET_TOKEN = "ghp_" + "Q" * 36
+_SECRET_HIDDEN = "zero-width-secret-71c2"
+
+#: The published image's output when its output folder was not writable
+#: (the compose reproduction), with credential-shaped lines around it.
+_FAILED_OUTPUT = (
+    b"==========================================\n"
+    b" Mode: IMAGE\n"
+    b"[1/2] syft: image registry:docker.io/library/alpine:3.20 (no Docker socket)\n"
+    b"GET https://bot:" + _SECRET_URL_PASSWORD.encode() + b"@registry.example/v2/ 401\n"
+    b"using " + _SECRET_TOKEN.encode() + b"\x00 for the registry\n"
+    # A zero-width space inside the key word would hide it from the patterns.
+    b"pass\xe2\x80\x8bword=" + _SECRET_HIDDEN.encode() + b"\n"
+    b"/usr/local/bin/run-scan: line 733: image_1_bom.json: Permission denied\n"
+    b"[ERROR] syft could not read the image registry:docker.io/library/alpine:3.20: "
+    b"it does not exist, or the registry needs credentials\n"
+    b"/usr/local/lib/sbom/engine-result.sh: line 255: "
+    b"/host-output/.bomlens-result.json.tmp.1: Permission denied\n"
+    b"\n"
+)
+
+
+def _assert_no_secret(text: str) -> None:
+    for secret in (_SECRET_URL_PASSWORD, _SECRET_TOKEN, _SECRET_HIDDEN):
+        assert secret not in text
+
+
+def test_an_image_run_without_a_manifest_reports_its_exit_and_last_lines(
+    workspace: Path,
+) -> None:
+    docker = FakeDocker().behave("image", Behaviour(exit_code=1, output=_FAILED_OUTPUT))
+    runner = _runner(workspace, docker)
+    output = runner.run_image("registry:alpine")
+
+    with structlog.testing.capture_logs() as logs:
+        with pytest.raises(EngineWroteNoResult) as caught:
+            runner.require_result(output)
+
+    message = str(caught.value)
+    assert message.startswith(
+        "BomLens MODE=IMAGE exited 1 without writing a result manifest; last output: "
+    )
+    # The last three lines, each cut short, in order.
+    assert "run-scan: line 733: image_1_bom.json: Permission denied | [ERROR] syft" in message
+    assert message.endswith("...")  # capped at the error's length limit
+    assert len(message) <= MESSAGE_MAX_CHARS
+    _assert_no_secret(message)
+    assert "\x00" not in message
+
+    (event,) = [e for e in logs if e["event"] == "bomlens_engine_no_result"]
+    assert (event["log_level"], event["stage"], event["exit_code"]) == ("error", "trivy", 1)
+    tail = event["output_tail"]
+    assert tail[-1] == (
+        "/usr/local/lib/sbom/engine-result.sh: line 255: "
+        "/host-output/.bomlens-result.json.tmp.1: Permission denied"
+    )
+    assert "Mode: IMAGE" in tail
+    assert "" not in tail
+    joined = "\n".join(tail)
+    _assert_no_secret(joined)
+    assert "GET https://***@registry.example/v2/ 401" in tail
+    assert "using ghp_*** for the registry" in tail
+    assert "password=***" in tail
+    assert "\x00" not in joined and "​" not in joined
+
+
+def test_an_image_run_with_a_manifest_is_left_to_the_reader(workspace: Path) -> None:
+    docker = FakeDocker().behave(
+        "image", Behaviour(exit_code=1, output=b"x\n", effect=write_result(CASE))
+    )
+    runner = _runner(workspace, docker)
+    output = runner.run_image("registry:alpine")
+
+    runner.require_result(output)  # the manifest reader decides
+
+
+def test_a_run_whose_result_container_never_exited_is_not_judged(workspace: Path) -> None:
+    runner = _runner(workspace, FakeDocker())
+    runner.require_result(workspace / "bomlens" / "out")
+
+
+def test_the_reason_names_a_time_limit_and_a_memory_kill(workspace: Path) -> None:
+    runner = _runner(workspace, FakeDocker())
+    output = workspace / "out"
+    output.mkdir()
+    for outcome, ended in (
+        (ContainerOutcome(137, True, False, b""), "BomLens stage 2 ran out of memory"),
+        (ContainerOutcome(137, False, True, b""), "BomLens stage 2 was stopped at its time limit"),
+        (ContainerOutcome(2, False, False, b""), "BomLens stage 2 exited 2"),
+    ):
+        runner._result_run = (outcome, "stage 2", "postprocess")
+        with pytest.raises(EngineWroteNoResult) as caught:
+            runner.require_result(output)
+        # No output: no "last output" part.
+        assert str(caught.value) == f"{ended} without writing a result manifest"
+
+
+def test_the_tail_keeps_the_last_lines_and_cuts_each_one() -> None:
+    output = b"".join(f"line {n}\n".encode() for n in range(50))
+    assert output_tail(output, lines=3) == ["line 47", "line 48", "line 49"]
+    # Under the pre-cut (4 x line_chars), cut to line_chars after cleaning.
+    assert output_tail(b"a" * 30 + b" b\n", line_chars=10) == ["a" * 10]
+
+
+def test_a_line_cut_before_cleaning_loses_the_word_the_cut_fell_in() -> None:
+    """A credential split by the cut no longer matches a pattern, so the word
+    goes with the cut instead of reaching the log half-redacted."""
+    secret = "https://bot:" + "p" * 40 + "@registry.example"
+    line = ("word " * 7 + secret).encode()
+    # line_chars=10: the cut is at 40 characters, inside the credential.
+    assert output_tail(line + b"\n", line_chars=10) == ["word word "]
+    # One word longer than the cut: nothing of it is kept.
+    assert output_tail(b"z" * 100 + b"\n", line_chars=10) == []
+
+
+def test_the_first_line_of_a_longer_output_is_dropped_its_start_is_missing() -> None:
+    window = runner_mod.OUTPUT_TAIL_WINDOW_BYTES
+    head = b"bot:hidden-start-of-a-credential@registry.example\n"
+    body = b"x" * (window - len(head) + 10)
+    tail = output_tail(b"https://" + head + body + b"\nlast\n")
+    assert tail == ["last"]
+
+
+@pytest.mark.parametrize(
+    ("assignment", "kept"),
+    [
+        ('err "password": "', 'err "password":'),
+        # Gradle's credentials block: no "=" or ":", only the quotes.
+        ('password "', "password"),
+    ],
+    ids=["json", "gradle-dsl"],
+)
+def test_a_quoted_value_the_cut_fell_in_is_dropped_from_its_opening_quote(
+    assignment: str, kept: str
+) -> None:
+    """The default cut is at 1200 characters. Spaces before it fold away when
+    the line is cleaned, so what was near the cut lands inside the stored 300."""
+    limit = runner_mod.OUTPUT_TAIL_LINE_CHARS * 4
+    pad = "pad" + " " * (limit - 40 - 3)
+    secret = "hunter2-6f0d"
+    line = pad + assignment + secret + " more " + "y" * 100 + '"'
+    assert len(pad + assignment + secret) < limit < len(line)
+
+    (cleaned,) = output_tail(line.encode() + b"\n")
+
+    assert secret not in cleaned
+    assert cleaned == f"pad {kept}"
+
+
+def test_a_vertical_tab_does_not_part_a_key_from_its_value() -> None:
+    """Lines are split on line feeds only, as the log readers split them."""
+    tail = output_tail(b"password=\x0bsecret-vt-3a9e\nnext\x0cline\n")
+    assert tail == ["password=***", "nextline"]
+
+
+# ---------------------------------------------------------------------------
 # The administrator guide says what the code does (hardening rule 4)
 # ---------------------------------------------------------------------------
 
@@ -359,3 +590,37 @@ def test_the_guide_gives_the_image_scan_settings_their_code_defaults(
     assert rows["`SCAN_BOMLENS_IMAGE_TIMEOUT_SECONDS`"] == (
         f"`{bomlens_image_scan_timeout_seconds()}`"
     )
+
+
+#: How each guide states the two output-tail limits.
+_TAIL_LIMITS = {
+    "en": (
+        "up to {lines} lines of {chars} characters each",
+        "up to {lines} lines of {chars} characters",
+    ),
+    "ko": ("최대 {lines}줄(줄마다 {chars}자)", "최대 {lines}줄(줄마다 {chars}자)"),
+}
+
+
+@pytest.mark.parametrize("guide", _GUIDES, ids=["en", "ko"])
+def test_the_guide_describes_a_run_without_a_result_as_the_scan_reports_it(
+    guide: Path, workspace: Path
+) -> None:
+    runner = _runner(workspace, FakeDocker())
+    runner._result_run = (ContainerOutcome(1, False, False, b"x\n"), "MODE=IMAGE", "trivy")
+    output = workspace / "out"
+    output.mkdir()
+    with pytest.raises(EngineWroteNoResult) as caught:
+        runner.require_result(output)
+    # The scan's error as the task stores it, up to the output lines.
+    prefix = "scan engine: " + str(caught.value).removesuffix("x")
+
+    text = guide.read_text(encoding="utf-8")
+    assert f"`{prefix}... Permission denied`" in text
+    assert "`bomlens_engine_no_result`" in text
+    assert "`volume-nocopy`" in text
+    short, full = _TAIL_LIMITS["ko" if "/i18n/ko/" in str(guide) else "en"]
+    lines, chars = runner_mod.ERROR_TAIL_LINES, runner_mod.ERROR_TAIL_LINE_CHARS
+    assert short.format(lines=lines, chars=chars) in text
+    lines, chars = runner_mod.OUTPUT_TAIL_LINES, runner_mod.OUTPUT_TAIL_LINE_CHARS
+    assert full.format(lines=lines, chars=chars) in text

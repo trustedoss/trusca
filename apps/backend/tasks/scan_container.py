@@ -220,7 +220,9 @@ def _run_container_task(self: Any, scan_id: str, *, engine: str) -> None:
         # SCAN_CONTAINER_ENGINE=bomlens: the image could not be scanned, or
         # the result could not become a succeeded scan (a vulnerability scan
         # that did not end ok included). The message names roles, steps,
-        # settings and the registry host, never a path or a credential.
+        # settings and the registry host, never a workspace path; it may end
+        # with the engine container's last output lines, credentials removed on
+        # a best effort only (integrations.bomlens.contract.BomLensError).
         log.error("scan_container_engine_failed", engine="bomlens", error=str(exc)[:300])
         _record_terminal_failure(scan_uuid, f"scan engine: {exc}")
     except SoftTimeLimitExceeded:

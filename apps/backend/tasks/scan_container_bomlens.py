@@ -46,7 +46,11 @@ from integrations.bomlens import runner as bomlens_runner
 from models import Project, RegistryCredential, Scan, Team
 from services.registry_allowlist import allowed_registries, split_registry_host
 from tasks._progress import make_line_callback
-from tasks.bomlens_result import apply_bomlens_result
+from tasks.bomlens_result import (
+    ENGINE_METADATA_KEY,
+    apply_bomlens_result,
+    engine_record_without_result,
+)
 
 log = structlog.get_logger("tasks.scan_container_bomlens")
 
@@ -156,7 +160,11 @@ def _project_identity(scan_uuid: uuid.UUID) -> tuple[str, str]:
     return name, version
 
 
-def _record_engine_run(scan_uuid: uuid.UUID, report: bomlens_runner.RunReport) -> None:
+def _record_engine_run(
+    scan_uuid: uuid.UUID,
+    report: bomlens_runner.RunReport,
+    engine_image: bomlens_runner.PinnedImage,
+) -> None:
     """Keep what the runner did on the scan; best-effort, in its own transaction."""
     try:
         with sync_session_scope() as session:
@@ -165,6 +173,11 @@ def _record_engine_run(scan_uuid: uuid.UUID, report: bomlens_runner.RunReport) -
                 return
             metadata: dict[str, Any] = dict(scan.scan_metadata or {})
             metadata[ENGINE_RUN_METADATA_KEY] = report.as_metadata()
+            # Which engine and image ran, even when no result is read:
+            # the manifest's own record replaces this one when there is.
+            metadata[ENGINE_METADATA_KEY] = engine_record_without_result(
+                engine_image.ref, engine_image.digest
+            )
             scan.scan_metadata = metadata
             session.commit()
     except Exception:  # noqa: BLE001 - a record of the run must not fail it
@@ -235,9 +248,11 @@ def run_bomlens_container_pipeline(
     try:
         output_dir = runner.run_image(target)
     finally:
-        _record_engine_run(scan_uuid, runner.report)
-
+        _record_engine_run(scan_uuid, runner.report, images.plan)
     require_running(scan_uuid)
+    # A run that left no result says why (its exit and last output lines);
+    # checked after the cancellation, so a cancelled scan stays cancelled.
+    runner.require_result(output_dir)
     set_stage(scan_uuid, "persist")
     # The container has exited (run_image guarantees it); the verified copies
     # go to a folder no container ever mounted.

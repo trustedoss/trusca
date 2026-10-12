@@ -13,6 +13,7 @@ only (``BOMLENS_ENGINE_DOCKER_TEST=1``), like the source engine's.
 
 from __future__ import annotations
 
+import contextlib
 import json
 import os
 import uuid
@@ -582,7 +583,10 @@ def test_a_worker_running_as_root_does_not_lend_root_to_the_container(
             Behaviour(effect=write_result("source-vulnerabilities-failed")),
             "vulnerability scan failed",
         ),
-        (Behaviour(exit_code=1), "BomLens wrote no result manifest"),
+        (
+            Behaviour(exit_code=1),
+            "BomLens MODE=IMAGE exited 1 without writing a result manifest",
+        ),
         (Behaviour(hang=True), "stopped at its time limit"),
         (Behaviour(stuck=True), "still running after it was killed"),
     ],
@@ -609,6 +613,42 @@ def test_an_engine_failure_fails_the_scan_with_a_message_and_no_path(
     assert str(_engine_env) not in message
     assert _count(sync_session, VulnerabilityFinding, scan_id) == 0
     # The container was removed on the failure path too.
+    assert sorted(docker.removed) == sorted(docker.containers)
+
+
+def test_an_image_run_that_left_no_result_says_why_and_which_engine_ran(
+    monkeypatch: pytest.MonkeyPatch, sync_session: Session, _engine_env: Path
+) -> None:
+    """The compose failure: the container could not write its output folder
+    and exited 1 at once. The scan's error carries the exit and the last
+    lines, without the credential one of them held; the record names the
+    engine and its image although no manifest was read."""
+    output = (
+        b"GET https://bot:" + PROXY_SECRET.encode() + b"@registry.example/v2/ 401\n"
+        b"/usr/local/bin/run-scan: line 733: image_1_bom.json: Permission denied\n"
+    )
+    docker = FakeDocker().behave("image", Behaviour(exit_code=1, output=output))
+    _install(monkeypatch, docker)
+    scan_id = _seed()
+
+    _run_task(scan_id)
+
+    scan = _scan(sync_session, scan_id)
+    assert scan.status == "failed"
+    assert scan.error_message == (
+        "scan engine: BomLens MODE=IMAGE exited 1 without writing a result manifest; "
+        "last output: GET https://***@registry.example/v2/ 401 | "
+        "/usr/local/bin/run-scan: line 733: image_1_bom.json: Permission denied"
+    )
+    meta = dict(scan.scan_metadata or {})
+    image = runner_mod.pinned_image(captured_images(), "image")
+    assert meta["scan_engine"] == {
+        "name": "bomlens",
+        "image": image.ref,
+        "image_digest": image.digest,
+        "run_status": None,
+    }
+    assert meta["scan_engine_run"]["exit_code"] == 1
     assert sorted(docker.removed) == sorted(docker.containers)
 
 
@@ -920,3 +960,152 @@ def test_the_published_image_scans_a_registry_image_without_a_docker_socket(
     assert meta["os"]["family"] == "alpine"
     # Nothing of the scan's workspace is left (the container ran as this user).
     assert not (host_dir / str(scan_id)).exists()
+
+
+def _docker(*args: str, stdout: bool = False) -> bytes:
+    import subprocess
+
+    done = subprocess.run(  # noqa: S603 - fixed argv, test only
+        ["docker", *args],  # noqa: S607 - the docker CLI from PATH
+        capture_output=True,
+        check=True,
+        timeout=300,
+    )
+    return done.stdout if stdout else b""
+
+
+class _NamedVolumeWorkspaceDocker(runner_mod.DockerCli):
+    """The real Docker CLI, with this process standing in for worker-engine.
+
+    In compose, worker-engine has the workspace volume mounted and creates the
+    scan's folders in it as its own non-root user. This test process cannot
+    mount a volume, so it creates its folders in a local mirror (the runner
+    does that) and, before each container is created, the same folders are
+    made in the volume, empty and owned by this process's user, by a helper
+    container. After the container exits, its output folder is copied back
+    into the mirror for the adapter to read. What the engine container gets
+    is what worker-engine would give it: the volume and its sub-paths, the
+    user, the hardening.
+    """
+
+    def __init__(self, volume: str, mirror: Path, helper_image: str) -> None:
+        self.volume = volume
+        self.mirror = mirror
+        self.helper_image = helper_image
+        self.outputs: dict[str, str] = {}
+
+    def _helper(self, script: str) -> bytes:
+        return _docker(
+            "run",
+            "--rm",
+            "--network",
+            "none",
+            "--user",
+            "0:0",
+            "--mount",
+            f"type=volume,src={self.volume},dst=/v",
+            "--entrypoint",
+            "sh",
+            self.helper_image,
+            "-c",
+            script,
+            stdout=True,
+        )
+
+    def _subpaths(self, argv: list[str]) -> dict[str, str]:
+        found: dict[str, str] = {}
+        for flag, value in zip(argv, argv[1:], strict=False):
+            if flag != "--mount":
+                continue
+            fields = dict(part.partition("=")[::2] for part in value.split(","))
+            if fields.get("src") == self.volume and fields.get("volume-subpath"):
+                found[fields["dst"]] = fields["volume-subpath"]
+        return found
+
+    def create(self, argv: list[str], env: Any = None) -> str:
+        subpaths = self._subpaths(argv)
+        if subpaths:
+            # The worker's own folders: made by its user with umask 022.
+            made = " ".join(f"'/v/{sub}'" for sub in subpaths.values())
+            self._helper(
+                f"rm -rf {made} && mkdir -p {made} && chmod 755 {made} "
+                f"&& chown -R {os.getuid()}:{os.getgid()} /v"
+            )
+        container = super().create(argv, env)
+        if "/host-output" in subpaths:
+            self.outputs[container] = subpaths["/host-output"]
+        return container
+
+    def state(self, container: str) -> runner_mod.ContainerState:
+        import io
+        import tarfile
+
+        state = super().state(container)
+        sub = self.outputs.pop(container, None)
+        if sub is not None and not state.running:
+            data = self._helper(f"tar -C '/v/{sub}' -cf - .")
+            with tarfile.open(fileobj=io.BytesIO(data)) as archive:
+                archive.extractall(self.mirror / sub, filter="data")
+        return state
+
+
+@pytest.mark.skipif(
+    os.getenv("BOMLENS_ENGINE_DOCKER_TEST") != "1",
+    reason="runs the published BomLens image on a local Docker daemon "
+    "(set BOMLENS_ENGINE_DOCKER_TEST=1)",
+)
+def test_the_published_image_scans_through_a_named_workspace_volume(
+    monkeypatch: pytest.MonkeyPatch, sync_session: Session, tmp_path: Path
+) -> None:
+    """The compose setup (SCAN_DOCKER_VOLUME_STRATEGY=named): the workspace is a
+    named volume mounted by sub-path, and the container runs as the worker's
+    non-root user. Without volume-nocopy, Docker handed the empty output
+    folder to root and the image exited 1 at its first write."""
+    from core.config import bomlens_image
+
+    name = uuid.uuid4().hex[:12]
+    volume, trivy_volume = f"trusca-test-ws-{name}", f"trusca-test-trivy-{name}"
+    trivy_cache = os.getenv("BOMLENS_ENGINE_TRIVY_CACHE", str(Path.home() / ".cache" / "trivy"))
+    mirror = tmp_path / "workspace"
+    mirror.mkdir()
+    _docker("volume", "create", volume)
+    # The worker's Trivy database as a volume (compose's trivy-cache).
+    _docker(
+        "volume",
+        "create",
+        "--driver",
+        "local",
+        "--opt",
+        "type=none",
+        "--opt",
+        "o=bind",
+        "--opt",
+        f"device={trivy_cache}",
+        trivy_volume,
+    )
+    try:
+        monkeypatch.delenv("SCAN_BOMLENS_IMAGE")
+        docker = _NamedVolumeWorkspaceDocker(volume, mirror, bomlens_image())
+        monkeypatch.setattr(runner_mod, "DockerCli", lambda: docker)
+        monkeypatch.setattr(_NamedVolumeWorkspaceDocker, "own_networks", lambda _self: frozenset())
+        monkeypatch.setenv("SCAN_DOCKER_VOLUME_STRATEGY", "named")
+        monkeypatch.setenv("SCAN_WORKSPACE_VOLUME", volume)
+        monkeypatch.setenv("SCAN_WORKSPACE_MOUNT", str(mirror))
+        monkeypatch.setenv("WORKSPACE_HOST_PATH", str(mirror))
+        monkeypatch.setenv("SCAN_TRIVY_CACHE_VOLUME", trivy_volume)
+        monkeypatch.setenv("SCAN_BOMLENS_NETWORK", os.getenv("BOMLENS_ENGINE_NETWORK", "bridge"))
+        scan_id = _seed()
+
+        _run_task(scan_id)
+
+        scan = _scan(sync_session, scan_id)
+        assert scan.status == "succeeded", scan.error_message
+        assert _count(sync_session, ScanComponent, scan_id) == 15
+        assert "CVE-2024-0727" in _cve_ids(sync_session, scan_id)
+        meta = dict(scan.scan_metadata or {})
+        assert meta["scan_engine"]["run_status"] == "succeeded"
+        assert meta["scan_engine_run"]["exit_code"] == 0
+    finally:
+        for created in (volume, trivy_volume):
+            with contextlib.suppress(Exception):
+                _docker("volume", "rm", "--force", created)

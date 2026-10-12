@@ -88,3 +88,65 @@ def test_a_token_known_by_its_prefix_is_redacted(prefix: str, body: str) -> None
 )
 def test_ordinary_text_is_left_alone(clean: str) -> None:
     assert scrub_secrets(clean) == clean
+
+
+@pytest.mark.parametrize(
+    ("raw", "expected", "secret"),
+    [
+        # A Docker config file's auth entry (base64 of user:password).
+        (
+            '{"auths": {"registry.example": {"auth": "Ym90Omh1bnRlcjI="}}}',
+            '{"auths": {"registry.example": {"auth": "***"}}}',
+            "Ym90Omh1bnRlcjI=",
+        ),
+        # JSON quoted inside a string: the quotes are escaped.
+        ('{\\"password\\":\\"hunter2\\"}', '{\\"password\\":\\"***\\"}', "hunter2"),
+        ("body={\\'token\\': \\'tok-91c2\\'}", "body={\\'token\\': \\'***\\'}", "tok-91c2"),
+        # A percent-encoded URL with credentials, hidden in the decoded copy.
+        (
+            "GET https%3A%2F%2Fbot%3Ahunter2%40registry.example%2Fv2%2F failed",
+            "GET https://***@registry.example/v2/ failed",
+            "hunter2",
+        ),
+        # A proxy written with no scheme.
+        (
+            "proxy user:pw-77a1@10.0.0.1:3128 refused",
+            "proxy ***@10.0.0.1:3128 refused",
+            "pw-77a1",
+        ),
+        (
+            "HTTPS_PROXY=user:pw-77a1@proxy.example:3128",
+            "HTTPS_PROXY=***@proxy.example:3128",
+            "pw-77a1",
+        ),
+    ],
+    ids=[
+        "docker-config-auth",
+        "escaped-json",
+        "escaped-single",
+        "percent-encoded",
+        "proxy",
+        "proxy-env",
+    ],
+)
+def test_a_credential_in_another_spelling_is_redacted(raw: str, expected: str, secret: str) -> None:
+    out = scrub_secrets(raw)
+    assert out == expected
+    assert secret not in out
+
+
+@pytest.mark.parametrize(
+    "clean",
+    [
+        '"author": "Jane Doe"',
+        '"authors": ["a", "b"]',
+        "authority: registry.example",
+        "alpine:3.19@sha256:4bcff63911fcb4448bd4fdacec207030997caf25e9bea4045fa6c8c44de311d1",
+        "at 12:30 on host-1",
+        "contact: ops@example.com",
+        "coverage 100% of 40%",
+        "path a%2Fb has no URL in it",
+    ],
+)
+def test_lookalikes_of_the_new_spellings_are_left_alone(clean: str) -> None:
+    assert scrub_secrets(clean) == clean
