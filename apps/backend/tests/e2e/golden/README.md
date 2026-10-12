@@ -15,6 +15,8 @@ output content vs a baseline** is what surfaces that drift.
   baseline diff/update). Runnable anywhere (host / container / CI).
 - `test_golden_fixtures.py` — pytest wrapper, marker `golden` (nightly only).
 - `baselines/<fixture>.json` — committed normalised snapshots.
+- `container_images.json` - the container images of the engine comparison
+  run, pinned by digest (no baselines).
 
 ## Run (needs a live stack with real cdxgen/scancode/Trivy)
 ```bash
@@ -75,6 +77,37 @@ python shadow_report.py --inprocess golden-shadow/inprocess \
 ```
 The first scan per language includes pulling its cdxgen image; the two
 BomLens images are pulled before the pass.
+
+### Container images in the engine comparison run
+The same dispatch starts a `golden (containers)` job, which scans the images
+listed in `container_images.json` (each pinned to its index digest, with the
+reason it was chosen) through the container scan API (`kind: container`,
+`metadata.image_ref`). The first pass dispatches with
+`SCAN_CONTAINER_ENGINE=inprocess`; the job then recreates the backend with
+`SCAN_CONTAINER_ENGINE=bomlens` and starts the engine worker, as the source
+shards do, and scans them again. `compose.containers.yml` passes the registry
+allow-list (`CONTAINER_SCAN_ALLOWED_REGISTRIES=docker.io/library`) and the
+engine setting to the containers; the engine worker gets the allow-list with
+the in-process worker's environment. Both passes read celery-worker's Trivy
+database, and its metadata is kept as `containers-before.json` and
+`containers-after.json`.
+
+The images are not pulled into the runner's Docker before either pass,
+because neither engine would read them there: celery-worker has no Docker
+socket, so `trivy image` reads each image from its registry, and the BomLens
+engine reads it from the registry with syft. Each scan's time therefore
+includes downloading the image, on both sides. The BomLens image itself is
+pulled before the second pass.
+
+The captures land in the same folders as the source fixtures' and the report
+shows them in the same summary table, with `container` in its `Input` column,
+after a `Container images` section that lists each reference. The images have
+no baseline: `run_golden.py --images` runs only with `--shadow-out`.
+
+```bash
+python run_golden.py --api http://localhost:8000 --images container_images.json \
+  --shadow-out golden-shadow/inprocess
+```
 
 ## Notes
 - **Not in the PR gate.** CI runs `pytest tests/unit tests/integration`; this

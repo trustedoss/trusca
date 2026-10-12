@@ -127,7 +127,7 @@ class TestWorkflow:
 
     def test_the_report_job_runs_only_for_a_shadow_dispatch(self) -> None:
         job = _workflow()["jobs"]["shadow-report"]
-        assert job["needs"] == "golden"
+        assert job["needs"] == ["golden", "golden-containers"]
         assert "github.event_name == 'workflow_dispatch'" in job["if"]
         assert "github.event.inputs.shadow == 'true'" in job["if"]
         run = next(s["run"] for s in job["steps"] if s.get("name") == "Build the difference table")
@@ -304,7 +304,10 @@ class TestShadowCapture:
         monkeypatch.setattr(rg, "_team", lambda api, token: "team")
         out = tmp_path / "out"
         assert rg.shadow_main("http://api", tmp_path / "none", ["node"], out) == 0
-        assert json.loads((out / "node.json").read_text()) == {"error": "fixture missing"}
+        assert json.loads((out / "node.json").read_text()) == {
+            "error": "fixture missing",
+            "input": {"kind": "source"},
+        }
 
 
 # ---------------------------------------------------------------------------
@@ -387,7 +390,7 @@ class TestShadowReport:
         row = next(line for line in report.splitlines() if line.startswith("| maven |"))
         cells = [c.strip() for c in row.strip("|").split(" | ")]
         assert cells == [
-            "maven", "8 / 8", "1", "1", "1 / 0", "1 / 2", "1 / 0",
+            "maven", "source", "8 / 8", "1", "1", "1 / 0", "1 / 2", "1 / 0",
             "succeeded / succeeded", "scancode:timeout / generate:fallback",
             "30.0 / 42.0", "pass / pass",
         ]
@@ -417,7 +420,7 @@ class TestShadowReport:
         row = sr.compare("node", _baseline("node"), None)
         assert row.differs is True
         report = sr.render([row], {})
-        assert "| node | 1 / missing |" in report
+        assert "| node | source | 1 / missing |" in report
         assert "- No BomLens capture." in report
 
     def test_long_lists_are_cut(self) -> None:

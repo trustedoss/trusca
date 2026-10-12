@@ -60,6 +60,18 @@ def test_every_baseline_belongs_to_a_shard() -> None:
     assert _baselines() == set(_shard_names())
 
 
+def test_container_images_stay_out_of_the_gate_and_its_names() -> None:
+    # The engine comparison run's images (job golden-containers) have no
+    # baseline and no shard; their captures land in the same folders as the
+    # source fixtures', so a shared name would overwrite one with the other.
+    images = {i["name"] for i in rg.load_images()}
+    assert images
+    assert not images & (_baselines() | _fixtures() | set(_shard_names()))
+    workflow = yaml.safe_load(WORKFLOW.read_text())
+    assert "containers" not in {s["shard"] for s in _shards()}
+    assert workflow["jobs"]["golden-containers"]["env"]["GOLDEN_SHARD"] == "containers"
+
+
 def test_the_nightly_is_strict_and_scheduled() -> None:
     workflow = yaml.safe_load(WORKFLOW.read_text())
     # PyYAML reads the bare key `on` as the boolean True.

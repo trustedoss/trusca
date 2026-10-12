@@ -1,0 +1,23 @@
+{
+  "about": "Container images the engine comparison run scans with both engines (golden-nightly.yml, job golden-containers). Each reference is pinned to the image index digest, which lists every platform; the runner (linux/amd64) reads its own platform from it. Digests were read with `docker buildx imagetools inspect <name>:<tag>` on 2026-10-13. Not part of the baseline gate.",
+  "images": [
+    {
+      "name": "container-nginx-alpine",
+      "ref": "docker.io/library/nginx:1.24-alpine@sha256:77e5d4a6ad906c5d3793764085706577fa705b1dc6f244ea0241c4b5e2155385",
+      "platforms": ["linux/386", "linux/amd64", "linux/arm/v6", "linux/arm/v7", "linux/arm64/v8", "linux/ppc64le", "linux/s390x"],
+      "why": "Alpine (apk) packages on an end-of-life base (Alpine 3.17.7): many known vulnerabilities, and licences from the apk database. Trivy 0.71.2 listed 62 packages and 66 findings on linux/amd64."
+    },
+    {
+      "name": "container-debian-slim",
+      "ref": "docker.io/library/debian:12.7-slim@sha256:36e591f228bb9b99348f584e83f16e012c33ba5cad44ef5981a1d7c0a93eca22",
+      "platforms": ["linux/386", "linux/amd64", "linux/arm/v5", "linux/arm/v7", "linux/arm64/v8", "linux/mips64le", "linux/ppc64le", "linux/s390x"],
+      "why": "Debian (deb) packages only. Their licences come from the copyright files, the case the BomLens os-licenses step handles. Trivy 0.71.2 listed 88 packages (85 with a licence) and 326 findings on linux/amd64."
+    },
+    {
+      "name": "container-node-slim",
+      "ref": "docker.io/library/node:20.18.1-bookworm-slim@sha256:b2c8e0eb8a6aeeae33b2711f8f516003e27ee45804e270468d937b3214f2f0cc",
+      "platforms": ["linux/amd64", "linux/arm/v7", "linux/arm64/v8", "linux/ppc64le", "linux/s390x"],
+      "why": "Language packages in an image: the npm bundled with Node.js 20.18.1 carries its own node_modules (Trivy 0.71.2 listed 204 npm packages and 38 findings on them), on top of 88 Debian 12.9 packages."
+    }
+  ]
+}

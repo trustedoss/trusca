@@ -6,10 +6,11 @@
 A shadow run (``golden-nightly.yml`` dispatched with ``shadow=true``) scans
 every golden fixture twice on one stack: once with the in-process engine and
 once with the BomLens engine, both reading the same Trivy database. Each pass
-writes one ``run_golden.py --shadow-out`` capture per fixture. This script
-reads the two folders and writes a Markdown report: one summary row per
-fixture, the time each scan spent per stage, then the items behind every
-difference.
+writes one ``run_golden.py --shadow-out`` capture per fixture. The
+``golden-containers`` job does the same for the container images in
+``container_images.json``, into the same folders. This script reads the two
+folders and writes a Markdown report: one summary row per fixture or image,
+the time each scan spent per stage, then the items behind every difference.
 
 It measures; it does not gate. The exit code is 1 only when there is nothing
 to compare (no capture on either side), so a run that measured nothing does
@@ -122,6 +123,22 @@ def scan_seconds(capture: dict) -> float | None:
     return float(wall) if isinstance(wall, int | float) else None
 
 
+def input_kind(capture: dict) -> str:
+    """``source`` or ``container``: what the harness scanned.
+
+    Recorded by ``run_golden.py`` with every capture, a failed one included.
+    A capture from before the field is a source fixture: images were added
+    to the run later.
+    """
+    kind = _as_dict(capture.get("input")).get("kind")
+    return str(kind) if kind else "source"
+
+
+def image_ref(capture: dict) -> str | None:
+    ref = _as_dict(capture.get("input")).get("image_ref")
+    return ref if isinstance(ref, str) and ref else None
+
+
 def gate(capture: dict) -> str:
     value = capture.get("gate")
     if isinstance(value, dict) and value.get("gate"):
@@ -149,6 +166,17 @@ class Row:
     only_ip_licenses: list[str] | None = field(default=None)
     only_bl_vulns: list[str] | None = field(default=None)
     only_ip_vulns: list[str] | None = field(default=None)
+
+    @property
+    def kind(self) -> str:
+        """The input kind; both sides when they disagree (they never should)."""
+        kinds = sorted({input_kind(c) for c in (self.ip, self.bl) if c is not None})
+        return " / ".join(kinds) or "source"
+
+    @property
+    def image(self) -> str | None:
+        refs = sorted({r for c in (self.ip, self.bl) if c is not None if (r := image_ref(c))})
+        return " / ".join(refs) or None
 
     @property
     def differs(self) -> bool:
@@ -184,8 +212,10 @@ def compare(name: str, ip: dict | None, bl: dict | None) -> Row:
 
 
 def compare_all(inprocess: dict[str, dict], bomlens: dict[str, dict]) -> list[Row]:
+    """One row per name on either side: source fixtures first, then images."""
     names = sorted(set(inprocess) | set(bomlens))
-    return [compare(n, inprocess.get(n), bomlens.get(n)) for n in names]
+    rows = [compare(n, inprocess.get(n), bomlens.get(n)) for n in names]
+    return sorted(rows, key=lambda r: (r.kind != "source", r.name))
 
 
 # ---------------------------------------------------------------------------
@@ -474,6 +504,16 @@ def timing_section(rows: list[Row], log: dict[str, list[Container]]) -> list[str
         "it is missing; the log does not say whether a pull happened.",
         "",
     ]
+    if any(r.kind == "container" for r in rows):
+        out += [
+            "A container scan has the stages `bootstrap`, `trivy`, `persist` and "
+            "`finalize` on both engines. On the BomLens side `trivy` is the window "
+            "around the one engine container, which reads the image from its "
+            "registry, generates the SBOM and matches it; the engine reports "
+            "`cdxgen` and `postprocess` from its own step times inside it. The "
+            "container is labelled `image` in the container table.",
+            "",
+        ]
     for block in blocks:
         out += block
     return out
@@ -505,6 +545,7 @@ def _summary_line(row: Row) -> list[str]:
     ip, bl = row.ip, row.bl
     return [
         _cell(row.name),
+        _cell(row.kind),
         _pair(_side(ip, component_count), _side(bl, component_count)),
         _count(row.only_bl_purls),
         _count(row.only_ip_purls),
@@ -523,6 +564,7 @@ def _summary_line(row: Row) -> list[str]:
 
 _HEADER = [
     "Fixture",
+    "Input",
     "Components (in-process / BomLens)",
     "PURLs only in BomLens",
     "PURLs only in in-process",
@@ -566,6 +608,27 @@ def _details(row: Row) -> list[str]:
     return lines
 
 
+def _image_section(rows: list[Row]) -> list[str]:
+    images = [r for r in rows if r.kind == "container"]
+    if not images:
+        return []
+    out = [
+        "## Container images",
+        "",
+        "Both engines read each image from its registry: the in-process worker "
+        "has no Docker socket, so `trivy image` reads the registry, and the "
+        "BomLens engine reads it with syft. Nothing is pulled into the runner's "
+        "Docker beforehand, because neither engine would read it there; each "
+        "scan's time includes downloading the image. Every reference is pinned "
+        "to a digest, so both passes read the same image.",
+        "",
+        "| Image | Reference |",
+        "| --- | --- |",
+    ]
+    out += [f"| {_cell(r.name)} | `{_cell(r.image)}` |" for r in images]
+    return [*out, ""]
+
+
 def render(
     rows: list[Row],
     trivy: dict[str, dict[str, dict | None]],
@@ -597,6 +660,7 @@ def render(
                 f"{'yes' if same_db(before, after) else 'NO'} |"
             )
         out.append("")
+    out += _image_section(rows)
     out += [
         "## Summary",
         "",
