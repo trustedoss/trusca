@@ -640,7 +640,9 @@ jobs:
   test:
     name: test (${{ matrix.target }})
     runs-on: ubuntu-22.04
-    timeout-minutes: 30
+    # backend-integration alone takes 28 to 30 minutes on main, so 30 left no
+    # headroom and a slow runner cancelled a green run at 95%.
+    timeout-minutes: 45
     strategy:
       fail-fast: false
       matrix:
