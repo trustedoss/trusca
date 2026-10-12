@@ -664,24 +664,48 @@ def test_a_scan_cancelled_while_the_container_ran_is_left_cancelled(
     assert _count(sync_session, VulnerabilityFinding, scan_id) == 0
 
 
+@pytest.mark.parametrize(
+    ("behaviour", "writer_reached"),
+    [
+        # The reaper removed the container (exit 137, no manifest): the status
+        # check after the run sees the cancellation first.
+        (Behaviour(exit_code=137), False),
+        # The container would not stop: the runner raises before that check,
+        # so only the conditional failure writer keeps the cancellation.
+        (Behaviour(stuck=True), True),
+    ],
+    ids=["removed", "will-not-stop"],
+)
 def test_an_engine_error_after_a_cancel_does_not_overwrite_it(
-    monkeypatch: pytest.MonkeyPatch, sync_session: Session
+    monkeypatch: pytest.MonkeyPatch,
+    sync_session: Session,
+    behaviour: Behaviour,
+    writer_reached: bool,
 ) -> None:
-    """The reaper removed the container of a cancelled scan mid-run (exit 137,
-    no manifest); the failure is not recorded over the cancellation."""
+    from tasks._scan_pipeline import mark_failed as real
+
     scan_id = _seed()
 
     def cancel(run: Any) -> None:
         del run
         _set(scan_id, status="cancelled", error_message="cancelled by admin")
 
-    docker = FakeDocker().behave("image", Behaviour(exit_code=137, effect=cancel))
+    behaviour.effect = cancel
+    docker = FakeDocker().behave("image", behaviour)
     _install(monkeypatch, docker)
+    calls: list[str] = []
+
+    def spy(session: Any, scan: Any, message: str) -> None:
+        calls.append(message)
+        real(session, scan, message)
+
+    monkeypatch.setattr("tasks.scan_container.mark_failed", spy)
 
     _run_task(scan_id)
 
     scan = _scan(sync_session, scan_id)
     assert (scan.status, scan.error_message) == ("cancelled", "cancelled by admin")
+    assert bool(calls) is writer_reached, calls
 
 
 @pytest.mark.parametrize("task_name", ["scan_container_engine_task", "scan_container_task"])
