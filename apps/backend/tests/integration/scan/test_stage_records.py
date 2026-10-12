@@ -36,6 +36,24 @@ def _metadata(session: Session, scan_id: uuid.UUID) -> dict[str, Any]:
     return dict(scan.scan_metadata or {})
 
 
+def _seed_running_scan() -> uuid.UUID:
+    """A scan as the pipeline has it when it records success: running.
+
+    The success writers record success only over ``running`` (a scan
+    cancelled meanwhile stays cancelled), so a test of what success records
+    starts from the state every pipeline puts the row in first.
+    """
+    from core.db import sync_session_scope
+
+    scan_id = _seed_queued_container_scan()
+    with sync_session_scope() as session:
+        scan = session.get(Scan, scan_id)
+        assert scan is not None
+        scan.status = "running"
+        session.commit()
+    return scan_id
+
+
 def _run_stages(scan_id: uuid.UUID, stages: list[str], *, untimed: tuple[str, ...] = ()) -> None:
     from tasks._scan_pipeline import set_stage
 
@@ -51,7 +69,7 @@ def _run_stages(scan_id: uuid.UUID, stages: list[str], *, untimed: tuple[str, ..
 def test_every_stage_that_ran_has_a_closed_window(sync_session: Session) -> None:
     from tasks._scan_pipeline import mark_succeeded
 
-    scan_id = _seed_queued_container_scan()
+    scan_id = _seed_running_scan()
     _run_stages(scan_id, ["bootstrap", "fetch", "cdxgen", "finalize"])
     mark_succeeded(scan_id)
 
@@ -72,7 +90,7 @@ def test_a_stage_that_did_no_work_is_not_timed(sync_session: Session) -> None:
     """The fingerprint-reuse path announces prep and cdxgen without running them."""
     from tasks._scan_pipeline import mark_succeeded
 
-    scan_id = _seed_queued_container_scan()
+    scan_id = _seed_running_scan()
     _run_stages(scan_id, ["fetch", "prep", "cdxgen", "sign"], untimed=("prep", "cdxgen"))
     mark_succeeded(scan_id)
 
@@ -117,7 +135,7 @@ def test_a_rerun_starts_from_empty_records(sync_session: Session) -> None:
 def test_the_container_pipeline_records_timings_too(sync_session: Session) -> None:
     from tasks.scan_container import _mark_succeeded, _set_stage
 
-    scan_id = _seed_queued_container_scan()
+    scan_id = _seed_running_scan()
     _set_stage(scan_id, "bootstrap")
     _set_stage(scan_id, "trivy")
     _mark_succeeded(scan_id)
@@ -135,7 +153,7 @@ def test_the_container_pipeline_records_timings_too(sync_session: Session) -> No
 def test_a_clean_scan_records_no_degraded_stage(sync_session: Session) -> None:
     from tasks._scan_pipeline import mark_succeeded
 
-    scan_id = _seed_queued_container_scan()
+    scan_id = _seed_running_scan()
     _run_stages(scan_id, ["fetch", "cdxgen", "trivy"])
     mark_succeeded(scan_id)
 
