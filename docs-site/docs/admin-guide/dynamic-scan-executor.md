@@ -158,6 +158,7 @@ The result goes through the same reader as a BomLens source scan: the image's pa
 Two differences from the default engine to know before you switch:
 
 - **Private registries are refused.** The default engine hands Trivy a stored registry credential as a file outside the scan workspace and keeps it out of the scanner's environment (see [Private registries](../user-guide/scans.md#private-registries)). The engine container can be given neither: its mounts come only from the scan workspace, which backups archive, and an environment variable would put the credential in the environment of the tools that parse the image. So when the image's registry has a stored credential in the scan's organization, the scan fails before any container starts with `registry '<host>' has a stored registry credential, and the BomLens engine does not pass registry credentials to its container; scan this image with SCAN_CONTAINER_ENGINE=inprocess`. The credential is not read. A registry with no stored credential is read anonymously, as the default engine reads it.
+- **Addresses are refused unless you list them.** With `CONTAINER_SCAN_ALLOWED_REGISTRIES` empty, an image whose registry is an IP address (any address, in any spelling) or the local machine (`localhost`, `*.localhost`) fails before any container starts with `registry '<host>' is an IP address or the local machine, and CONTAINER_SCAN_ALLOWED_REGISTRIES is empty; the BomLens engine reads such a registry only when the list names it`. Name it in the list to allow it. A registry name that resolves to a private address is not caught by this check; block that on the egress network (below).
 - **The tag is resolved by the engine.** A reference with a tag is read as the registry serves it when the container starts; pass a digest (`name@sha256:...`) to fix the exact image. The engine records the reference it received, not a digest it resolved.
 
 ### Trivy database age {#engine-trivy-db-age}
@@ -213,6 +214,23 @@ docker-compose --profile bomlens-engine up -d
 ```
 
 `SCAN_BOMLENS_NETWORK` defaults to `trustedoss-scan-egress` in compose. To limit stage 1 and the image scans to the registries you use, add an egress firewall to that network.
+
+The image reference, and with it the host an image scan connects to, is chosen by whoever starts the scan. Even with the address check above, a registry name can resolve to an address inside your network, so block private, loopback and link-local destinations for containers on the egress network. On a Linux Docker host, the `DOCKER-USER` chain filters container traffic before Docker's own rules:
+
+<!-- docs-uat: id=dynamic-scan-executor-engine-egress-firewall kind=shell ctx=host tier=manual waiver=host-firewall-change -->
+```bash
+# The egress network's bridge interface
+BR=br-$(docker network inspect -f '{{.Id}}' trustedoss-scan-egress | cut -c1-12)
+
+# Refuse private, loopback, link-local (cloud metadata) and shared-address
+# destinations from it
+for net in 10.0.0.0/8 172.16.0.0/12 192.168.0.0/16 127.0.0.0/8 \
+           169.254.0.0/16 100.64.0.0/10; do
+  sudo iptables -I DOCKER-USER -i "$BR" -d "$net" -j REJECT
+done
+```
+
+Rules added with `iptables` are lost on reboot unless you save them (for example with `iptables-save` and your distribution's persistence service). If a registry or proxy you need is in one of these ranges, add an `ACCEPT` rule for it above the `REJECT` rules and name it in `CONTAINER_SCAN_ALLOWED_REGISTRIES`.
 
 :::warning Set `SCAN_ENGINE=bomlens` only with the engine worker running
 Source scans queued with `SCAN_ENGINE=bomlens`, and container scans queued with `SCAN_CONTAINER_ENGINE=bomlens`, go to `trustedoss.engine`, which only `worker-engine` consumes. Without it they stay queued, and a project with a queued scan does not start another, so the project's scans stop until the engine worker runs or the queued scans are cancelled. Start the profile before setting either to `bomlens`, and set both to `inprocess` before stopping it.

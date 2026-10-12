@@ -126,6 +126,38 @@ def test_anything_else_is_refused_without_echoing_it(reference: str) -> None:
         assert reference not in str(raised.value)
 
 
+@pytest.mark.parametrize(
+    ("host", "internal"),
+    [
+        ("localhost", True),
+        ("localhost:5000", True),
+        ("LOCALHOST", True),
+        ("registry.localhost", True),
+        ("127.0.0.1", True),
+        ("127.1:5000", True),
+        ("0x7f000001", True),
+        ("10.1.2.3:443", True),
+        ("169.254.169.254", True),
+        ("[::1]:5000", True),
+        ("[fe80::1]", True),
+        ("8.8.8.8", True),
+        ("docker.io", False),
+        ("ghcr.io", False),
+        ("registry.example:5000", False),
+        ("localhost.example.com", False),
+        ("deadbeef.example", False),
+        ("abc", False),
+        ("", False),
+    ],
+)
+def test_an_address_or_the_local_machine_is_an_internal_registry(
+    host: str, internal: bool
+) -> None:
+    from tasks.scan_container_bomlens import is_internal_registry
+
+    assert is_internal_registry(host) is internal
+
+
 def test_surrounding_space_is_dropped_not_passed_on() -> None:
     assert image_target(" alpine:3.19 ") == "registry:alpine:3.19"
 
@@ -303,9 +335,11 @@ _GUIDES = (
 def test_the_guide_quotes_the_private_registry_refusal_as_the_scan_reports_it(
     guide: Path,
 ) -> None:
-    from tasks.scan_container_bomlens import credential_refusal
+    from tasks.scan_container_bomlens import credential_refusal, internal_registry_refusal
 
-    assert credential_refusal("<host>") in guide.read_text(encoding="utf-8")
+    text = guide.read_text(encoding="utf-8")
+    assert credential_refusal("<host>") in text
+    assert internal_registry_refusal("<host>") in text
 
 
 @pytest.mark.parametrize("guide", _GUIDES, ids=["en", "ko"])

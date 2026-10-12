@@ -112,6 +112,18 @@ def split_registry_host(image_ref: str) -> str:
     return DEFAULT_REGISTRY
 
 
+def shown_registry(image_ref: str) -> str | None:
+    """The registry host as a message may quote it, or ``None`` when it must not be.
+
+    A reference such as ``user:token@registry.example/app`` parses to a "host"
+    that carries the credential. Quoting it would put the token in the scan's
+    error message (readable by the whole team) and in the API's 422 response,
+    so such a host is never shown; the caller states the rule instead.
+    """
+    host = split_registry_host(image_ref)
+    return None if "@" in host else host
+
+
 def _split_entry(entry: str) -> tuple[str, str]:
     """An allow-list entry as ``(host, path prefix)``. Prefix may be empty."""
     host, sep, path = entry.strip().partition("/")
@@ -205,5 +217,6 @@ __all__ = [
     "is_registry_host_allowed",
     "parse_allowed_registries",
     "registry_auth_key",
+    "shown_registry",
     "split_registry_host",
 ]

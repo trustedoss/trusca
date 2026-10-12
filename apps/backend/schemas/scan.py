@@ -1001,13 +1001,22 @@ class ScanCreate(BaseModel):
         from services.registry_allowlist import (
             allowed_registries,
             is_registry_allowed,
-            split_registry_host,
+            shown_registry,
         )
 
         allowed = allowed_registries()
         if not is_registry_allowed(image_ref, allowed):
+            shown = shown_registry(image_ref)
+            if shown is None:
+                # user:token@host: the "host" carries the credential, and this
+                # message is returned to the caller; state the rule instead.
+                raise ValueError(
+                    "the registry part of metadata.image_ref carries credentials "
+                    "(user@host); remove them, and ask an operator to add the "
+                    "registry to CONTAINER_SCAN_ALLOWED_REGISTRIES if it is not allowed",
+                )
             raise ValueError(
-                f"registry {split_registry_host(image_ref)!r} is not allowed for "
+                f"registry {shown!r} is not allowed for "
                 "container scans on this deployment; ask an operator to add it "
                 "to CONTAINER_SCAN_ALLOWED_REGISTRIES",
             )

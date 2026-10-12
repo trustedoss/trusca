@@ -53,6 +53,21 @@ def test_a_disallowed_registry_is_rejected_at_trigger_time(
     assert "CONTAINER_SCAN_ALLOWED_REGISTRIES" in message
 
 
+def test_a_refused_registry_carrying_credentials_is_not_quoted(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """``user:token@host`` parses to a "host" with the token in it: the
+    message states the rule rather than quoting it."""
+    monkeypatch.setenv("CONTAINER_SCAN_ALLOWED_REGISTRIES", "ghcr.io")
+    with pytest.raises(ValidationError) as excinfo:
+        _container_scan("bot:tok-secret-77@registry.example/app:1")
+    (error,) = excinfo.value.errors()
+    message = str(error["msg"])
+    assert "tok-secret-77" not in message
+    assert "carries credentials (user@host)" in message
+    assert "CONTAINER_SCAN_ALLOWED_REGISTRIES" in message
+
+
 def test_the_path_bypass_is_rejected_at_trigger_time(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

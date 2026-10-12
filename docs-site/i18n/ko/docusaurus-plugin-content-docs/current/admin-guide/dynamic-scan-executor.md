@@ -158,6 +158,7 @@ SCAN_ANDROID_IMAGE_TAG=v1.0.0                            # semver 또는 sha256:
 전환하기 전에 알아 둘 차이가 두 가지 있습니다.
 
 - **사설 레지스트리는 거부합니다.** 기본 엔진은 저장된 레지스트리 인증 정보를 스캔 워크스페이스 밖의 파일로 Trivy에 넘기고, 스캐너의 환경변수에는 넣지 않습니다([사설 레지스트리](../user-guide/scans.md#사설-레지스트리) 참고). 엔진 컨테이너에는 두 방법 모두 쓸 수 없습니다. 마운트는 백업 대상인 스캔 워크스페이스에서만 가져오고, 환경변수로 넘기면 이미지를 분석하는 도구의 환경에 인증 정보가 들어가기 때문입니다. 그래서 스캔의 조직에 이미지 레지스트리의 인증 정보가 저장되어 있으면 컨테이너를 시작하기 전에 `registry '<host>' has a stored registry credential, and the BomLens engine does not pass registry credentials to its container; scan this image with SCAN_CONTAINER_ENGINE=inprocess` 오류로 스캔이 실패합니다. 인증 정보는 읽지 않습니다. 인증 정보가 저장되지 않은 레지스트리는 기본 엔진과 같이 익명으로 읽습니다.
+- **주소로 지정한 레지스트리는 목록에 넣어야 허용합니다.** `CONTAINER_SCAN_ALLOWED_REGISTRIES`가 비어 있으면, 레지스트리가 IP 주소(어떤 주소든, 어떤 표기든)이거나 로컬 머신(`localhost`, `*.localhost`)인 이미지는 컨테이너를 시작하기 전에 `registry '<host>' is an IP address or the local machine, and CONTAINER_SCAN_ALLOWED_REGISTRIES is empty; the BomLens engine reads such a registry only when the list names it` 오류로 실패합니다. 허용하려면 목록에 적으십시오. 이름이 사설 주소로 해석되는 레지스트리는 이 확인으로 막지 못하므로, 아래처럼 송신 네트워크에서 막으십시오.
 - **태그는 엔진이 해석합니다.** 태그로 지정한 참조는 컨테이너가 시작될 때 레지스트리가 주는 이미지를 읽습니다. 정확한 이미지로 고정하려면 다이제스트(`name@sha256:...`)를 지정하십시오. 엔진은 해석한 다이제스트가 아니라 받은 참조를 기록합니다.
 
 ### Trivy 데이터베이스의 나이 {#engine-trivy-db-age}
@@ -211,6 +212,23 @@ docker-compose --profile bomlens-engine up -d
 ```
 
 compose에서 `SCAN_BOMLENS_NETWORK` 기본값은 `trustedoss-scan-egress`입니다. 1단계와 이미지 스캔이 쓰는 레지스트리로만 나가게 하려면 이 네트워크에 송신 방화벽을 적용하십시오.
+
+이미지 참조, 곧 이미지 스캔이 접속할 호스트는 스캔을 시작하는 사용자가 정합니다. 위의 주소 확인이 있어도 레지스트리 이름이 내부 네트워크의 주소로 해석될 수 있으므로, 송신 네트워크의 컨테이너가 사설, 루프백, 링크 로컬 대역으로 나가지 못하게 막으십시오. Linux Docker 호스트에서는 `DOCKER-USER` 체인이 Docker 자체 규칙보다 먼저 컨테이너 트래픽을 거릅니다.
+
+<!-- docs-uat: id=dynamic-scan-executor-engine-egress-firewall kind=shell ctx=host tier=manual waiver=host-firewall-change -->
+```bash
+# 송신 네트워크의 브리지 인터페이스
+BR=br-$(docker network inspect -f '{{.Id}}' trustedoss-scan-egress | cut -c1-12)
+
+# 사설, 루프백, 링크 로컬(클라우드 메타데이터), 공유 주소 대역으로 나가는
+# 트래픽을 거부
+for net in 10.0.0.0/8 172.16.0.0/12 192.168.0.0/16 127.0.0.0/8 \
+           169.254.0.0/16 100.64.0.0/10; do
+  sudo iptables -I DOCKER-USER -i "$BR" -d "$net" -j REJECT
+done
+```
+
+`iptables`로 추가한 규칙은 저장하지 않으면 재부팅할 때 사라집니다(예: `iptables-save`와 배포판의 규칙 유지 서비스로 저장합니다). 필요한 레지스트리나 프록시가 이 대역에 있으면 `REJECT` 규칙보다 위에 그 주소의 `ACCEPT` 규칙을 넣고, `CONTAINER_SCAN_ALLOWED_REGISTRIES`에도 적으십시오.
 
 :::warning `SCAN_ENGINE=bomlens`는 엔진 워커를 실행한 상태에서만 설정하십시오
 `SCAN_ENGINE=bomlens`일 때 큐에 들어간 소스 스캔과 `SCAN_CONTAINER_ENGINE=bomlens`일 때 큐에 들어간 컨테이너 스캔은 `trustedoss.engine`으로 가며, 이 큐는 `worker-engine`만 처리합니다. 엔진 워커가 없으면 스캔이 대기 상태로 남고, 대기 중인 스캔이 있는 프로젝트는 새 스캔을 시작하지 않으므로 엔진 워커를 실행하거나 대기 중인 스캔을 취소할 때까지 그 프로젝트의 스캔이 멈춥니다. 두 설정 중 하나라도 `bomlens`로 바꾸기 전에 프로필을 시작하고, 프로필을 내리기 전에 둘 다 `inprocess`로 되돌리십시오.

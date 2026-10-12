@@ -708,6 +708,119 @@ def test_an_engine_error_after_a_cancel_does_not_overwrite_it(
     assert bool(calls) is writer_reached, calls
 
 
+def test_a_cancel_after_the_last_status_check_is_not_reported_as_success(
+    monkeypatch: pytest.MonkeyPatch, sync_session: Session
+) -> None:
+    """The cancel lands between the last running check and the success write
+    (the finalize stage). The scan stays cancelled and no success is
+    published."""
+    import tasks.scan_container as scan_container
+
+    _install(monkeypatch, _clean_docker())
+    scan_id = _seed()
+    real_set_stage = scan_container._set_stage
+    published: list[str] = []
+    monkeypatch.setattr(
+        scan_container,
+        "publish_progress",
+        lambda _id, *, step, percent: published.append(step),
+    )
+
+    def set_stage_then_cancel(scan_uuid: uuid.UUID, stage: str) -> None:
+        real_set_stage(scan_uuid, stage)
+        if stage == "finalize":
+            _set(scan_id, status="cancelled", error_message="cancelled by user")
+
+    monkeypatch.setattr(scan_container, "_set_stage", set_stage_then_cancel)
+
+    _run_task(scan_id)
+
+    scan = _scan(sync_session, scan_id)
+    assert (scan.status, scan.error_message) == ("cancelled", "cancelled by user")
+    assert scan.current_step == "finalize"
+    assert "succeeded" not in published
+    assert "finalize" in published
+
+
+@pytest.mark.parametrize(
+    "image_ref",
+    [
+        "127.0.0.1:5000/app:1",
+        "10.0.0.5/app:1",
+        "169.254.169.254/latest:1",
+        "192.168.1.10:5000/team/app",
+        "8.8.8.8/app",
+        "0x7f000001:5000/app",
+        "localhost:5000/app",
+        "localhost/app",
+        "registry.localhost/app",
+    ],
+)
+def test_an_address_or_local_registry_is_refused_without_an_allowlist(
+    monkeypatch: pytest.MonkeyPatch, sync_session: Session, image_ref: str
+) -> None:
+    from tasks.scan_container_bomlens import internal_registry_refusal
+
+    docker = _clean_docker()
+    _install(monkeypatch, docker)
+    scan_id = _seed(image_ref=image_ref)
+
+    _run_task(scan_id)
+
+    scan = _scan(sync_session, scan_id)
+    assert scan.status == "failed"
+    host = image_ref.split("/", 1)[0]
+    assert scan.error_message == f"scan engine: {internal_registry_refusal(host)}"
+    assert docker.runs == []
+
+
+def test_an_address_registry_named_in_the_allowlist_runs(
+    monkeypatch: pytest.MonkeyPatch, sync_session: Session
+) -> None:
+    docker = _clean_docker()
+    _install(monkeypatch, docker)
+    monkeypatch.setenv("CONTAINER_SCAN_ALLOWED_REGISTRIES", "localhost:5000,10.0.0.5")
+    scan_ids = [_seed(image_ref="localhost:5000/app:1"), _seed(image_ref="10.0.0.5/app:1")]
+
+    for scan_id in scan_ids:
+        _run_task(scan_id)
+
+    assert [_scan(sync_session, s).status for s in scan_ids] == ["succeeded", "succeeded"]
+    assert [r.env["TARGET_IMAGE"] for r in docker.runs_of("image")] == [
+        "registry:localhost:5000/app:1",
+        "registry:10.0.0.5/app:1",
+    ]
+
+
+@pytest.mark.parametrize("task_name", ["scan_container_engine_task", "scan_container_task"])
+def test_an_allowlist_refusal_does_not_repeat_credentials_in_the_reference(
+    monkeypatch: pytest.MonkeyPatch, sync_session: Session, task_name: str
+) -> None:
+    """``user:token@host`` parses to a "host" carrying the token; the error
+    states the rule instead of quoting it, on both engines."""
+    import tasks.scan_container as scan_container
+
+    docker = _clean_docker()
+    _install(monkeypatch, docker)
+    monkeypatch.setenv("CONTAINER_SCAN_ALLOWED_REGISTRIES", "ghcr.io")
+    scan_id = _seed(image_ref="bot:tok-secret-77@registry.example/app:1")
+
+    result = getattr(scan_container, task_name).apply(args=[str(scan_id)])
+    assert result.successful(), result.traceback
+
+    scan = _scan(sync_session, scan_id)
+    assert scan.status == "failed"
+    message = scan.error_message or ""
+    assert "tok-secret-77" not in message
+    assert "bot:" not in message
+    assert message == (
+        "the registry part of this image reference carries credentials (user@host), "
+        "and that registry is not in CONTAINER_SCAN_ALLOWED_REGISTRIES, "
+        "so this image was not pulled"
+    )
+    assert docker.runs == []
+
+
 @pytest.mark.parametrize("task_name", ["scan_container_engine_task", "scan_container_task"])
 @pytest.mark.parametrize("ended", ["cancelled", "failed", "succeeded"])
 def test_a_scan_that_ended_while_queued_is_not_run(
