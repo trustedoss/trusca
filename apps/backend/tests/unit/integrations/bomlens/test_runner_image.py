@@ -513,6 +513,38 @@ def test_the_first_line_of_a_longer_output_is_dropped_its_start_is_missing() -> 
     assert tail == ["last"]
 
 
+@pytest.mark.parametrize(
+    ("assignment", "kept"),
+    [
+        ('err "password": "', 'err "password":'),
+        # Gradle's credentials block: no "=" or ":", only the quotes.
+        ('password "', "password"),
+    ],
+    ids=["json", "gradle-dsl"],
+)
+def test_a_quoted_value_the_cut_fell_in_is_dropped_from_its_opening_quote(
+    assignment: str, kept: str
+) -> None:
+    """The default cut is at 1200 characters. Spaces before it fold away when
+    the line is cleaned, so what was near the cut lands inside the stored 300."""
+    limit = runner_mod.OUTPUT_TAIL_LINE_CHARS * 4
+    pad = "pad" + " " * (limit - 40 - 3)
+    secret = "hunter2-6f0d"
+    line = pad + assignment + secret + " more " + "y" * 100 + '"'
+    assert len(pad + assignment + secret) < limit < len(line)
+
+    (cleaned,) = output_tail(line.encode() + b"\n")
+
+    assert secret not in cleaned
+    assert cleaned == f"pad {kept}"
+
+
+def test_a_vertical_tab_does_not_part_a_key_from_its_value() -> None:
+    """Lines are split on line feeds only, as the log readers split them."""
+    tail = output_tail(b"password=\x0bsecret-vt-3a9e\nnext\x0cline\n")
+    assert tail == ["password=***", "nextline"]
+
+
 # ---------------------------------------------------------------------------
 # The administrator guide says what the code does (hardening rule 4)
 # ---------------------------------------------------------------------------

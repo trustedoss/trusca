@@ -775,12 +775,17 @@ def output_tail(
     credential-shaped values (:func:`~integrations._secret_scrub.scrub_secrets`),
     and is cut to ``line_chars``. A line is cut before it is cleaned, so a
     runaway one is never walked whole; the word the cut fell in is dropped
-    with it, since a cut credential no longer matches a pattern. For the same
+    with it, since a cut credential no longer matches a pattern, and so is a
+    quoted value the cut left without its closing quote. For the same
     reason the first line of the window is dropped when the output is longer
     than the window: its start is missing.
     """
     window = output[-OUTPUT_TAIL_WINDOW_BYTES:]
-    raw_lines = window.decode("utf-8", errors="replace").splitlines()
+    # Split on line feeds only, as the log readers do (``readline``). Every
+    # other separator ``splitlines`` knows (a vertical tab, a form feed) stays
+    # in the line, where ``storable_text`` removes it, so it cannot part a key
+    # from its value (``password=\\x0bvalue``).
+    raw_lines = window.decode("utf-8", errors="replace").split("\n")
     if len(output) > len(window) and raw_lines:
         raw_lines = raw_lines[1:]
     limit = line_chars * 4
@@ -792,6 +797,12 @@ def output_tail(
             # Up to the last whitespace: the word the cut fell in goes too.
             cut_at = max(head.rfind(c) for c in " \t")
             piece = head[:cut_at] if cut_at > 0 else ""
+            # A quoted value the cut fell in (``"password": "hunter2 ...``,
+            # Gradle's ``password "x y"``) has no closing quote left for the
+            # patterns to stop at: it goes from its opening quote on.
+            for quote in "\"'":
+                if piece.count(quote) % 2:
+                    piece = piece[: piece.rfind(quote)]
         line = scrub_secrets(storable_text(piece))[:line_chars]
         if line:
             kept.append(line)

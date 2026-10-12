@@ -25,6 +25,7 @@ publish-path call site and test suite.
 from __future__ import annotations
 
 import re
+from urllib.parse import unquote
 
 import structlog
 
@@ -46,8 +47,9 @@ _CREDENTIAL_KEYS = r"(?:password|passwd|passphrase|secret|credential|access[_-]?
 
 #: Between a key and its value: ``=`` or ``:`` with optional spaces, and an
 #: optional closing quote on the key, so ``KEY=v``, ``KEY: v`` and the JSON
-#: ``"KEY": "v"`` all match.
-_ASSIGN = r"[\"']?\s*[:=]\s*"
+#: ``"KEY": "v"`` all match. The quote may be escaped, as in JSON quoted
+#: inside a string (``{\\"KEY\\":\\"v\\"}``).
+_ASSIGN = r"(?:\\?[\"'])?\s*[:=]\s*"
 
 
 def _key_patterns(key: str) -> tuple[tuple[re.Pattern[str], str], ...]:
@@ -61,13 +63,22 @@ def _key_patterns(key: str) -> tuple[tuple[re.Pattern[str], str], ...]:
     assignment. An unquoted value runs to the next whitespace, as before.
     """
     return (
+        # An escaped quoted value (JSON inside a string): up to the escaped
+        # closing quote, which is kept.
+        (
+            re.compile(rf"(?i)({key}{_ASSIGN})(\\[\"'])[^\"'\n\\]*\2"),
+            r"\1\2***\2",
+        ),
         (
             re.compile(rf"(?i)({key}(?:{_ASSIGN}|\s+))([\"'])[^\"'\n]*\2"),
             r"\1\2***\2",
         ),
-        (re.compile(rf"(?i)({key}{_ASSIGN})(?![\"'])\S+"), r"\1***"),
+        # Not over a quote, nor over an escaped value the first pattern hid.
+        (re.compile(rf"(?i)({key}{_ASSIGN})(?![\"']|\\[\"']\*\*\*\\[\"'])\S+"), r"\1***"),
     )
 
+
+_SECRET_PATTERNS_URL = re.compile(r"([a-zA-Z][a-zA-Z0-9+.\-]*://)[^/\s@]+@(?!sha\d+:)")
 
 _SECRET_PATTERNS: tuple[tuple[re.Pattern[str], str], ...] = (
     # HTTP Authorization schemes Bearer would miss. Verbose Trivy / cdxgen
@@ -98,6 +109,12 @@ _SECRET_PATTERNS: tuple[tuple[re.Pattern[str], str], ...] = (
     # ``_auth =``. The trailing ``\S+`` is line-bounded (no re.MULTILINE) so
     # it cannot run away across lines.
     *_key_patterns(r"_auth(?:Token)?"),
+    # A Docker config file's ``"auth": "<base64 user:password>"``. Only the
+    # exact key in quotes, so ``author`` or ``authors`` is left alone.
+    (
+        re.compile(r"(?i)([\"']auth[\"']\s*:\s*)([\"'])[^\"'\n]*\2"),
+        r"\1\2***\2",
+    ),
     # Generic ``password`` / ``secret`` / ``credential`` / ``access[_-]key`` /
     # ``token`` assignments that resolved config / env dumps surface in
     # verbose mode (e.g. ``npm_config__password=``, ``GITHUB_TOKEN=ghp_...``,
@@ -114,6 +131,14 @@ _SECRET_PATTERNS: tuple[tuple[re.Pattern[str], str], ...] = (
     # ``npm`` / ``mvn`` resolution against a private-registry URL echoed in
     # stderr.
     (re.compile(r"([a-zA-Z][a-zA-Z0-9+.\-]*://)[^/\s@]+@(?!sha\d+:)"), r"\1***@"),
+    # The same userinfo with no scheme, as a proxy is often written
+    # (``user:pw@10.0.0.1:3128``): a word that starts a token (after a space,
+    # ``=``, a quote or a parenthesis), a colon, and an ``@`` before a host.
+    # An image reference with a digest (``alpine:3.19@sha256:...``) is not one.
+    (
+        re.compile(r"(?:(?<=[\s=\"'(])|^)[^\s/@:=\"'(]+:[^\s/@]+@(?!sha\d+:)(?=[A-Za-z0-9\[])"),
+        "***@",
+    ),
     # Generic API key headers: ``X-API-Key:``, ``api-key=``, ``api_key:``
     *_key_patterns(r"x-api-key"),
     *_key_patterns(r"api[_-]?key"),
@@ -133,6 +158,29 @@ _SECRET_PATTERNS: tuple[tuple[re.Pattern[str], str], ...] = (
 )
 
 
+#: A URL with userinfo, as :data:`_SECRET_PATTERNS` matches it, for the
+#: decoded copy of a percent-encoded token.
+_DECODED_USERINFO = re.compile(r"[a-zA-Z][a-zA-Z0-9+.\-]*://[^/\s@]+@(?!sha\d+:)")
+
+
+def _scrub_encoded_tokens(line: str) -> str:
+    """Hide a percent-encoded URL with credentials (``https%3A%2F%2Fu%3Ap%40h``).
+
+    Each whitespace-separated token with a ``%`` in it is decoded; when the
+    decoded copy holds a URL with userinfo, the token is replaced by that
+    copy with the userinfo hidden. A token that decodes to nothing of the
+    kind is left as it was.
+    """
+    parts = re.split(r"(\s+)", line)
+    for index, part in enumerate(parts):
+        if "%" not in part:
+            continue
+        decoded = unquote(part)
+        if decoded != part and _DECODED_USERINFO.search(decoded):
+            parts[index] = _SECRET_PATTERNS_URL.sub(r"\1***@", decoded)
+    return "".join(parts)
+
+
 def scrub_secrets(line: str) -> str:
     """Best-effort credential redaction on a line of subprocess output.
 
@@ -150,6 +198,8 @@ def scrub_secrets(line: str) -> str:
     try:
         for pattern, replacement in _SECRET_PATTERNS:
             line = pattern.sub(replacement, line)
+        if "%" in line:
+            line = _scrub_encoded_tokens(line)
         return line
     except Exception as exc:  # noqa: BLE001 - fail closed, never leak the raw line
         log.warning("secret_scrub_failed", error=str(exc))
