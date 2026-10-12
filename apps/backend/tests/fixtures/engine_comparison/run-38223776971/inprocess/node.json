@@ -1,0 +1,54 @@
+{
+  "components": {
+    "count": 1,
+    "nix_spurious": 0,
+    "purls": [
+      "pkg:npm/lodash@4.17.21"
+    ]
+  },
+  "gate": {
+    "critical_cve": 0,
+    "forbidden_license": 0,
+    "gate": "pass"
+  },
+  "licenses": [],
+  "notice": {
+    "csp": true,
+    "html_ok": true,
+    "text_ok": true
+  },
+  "report_pdf_ok": true,
+  "sbom": {
+    "cyclonedx-json": true,
+    "cyclonedx-xml": true,
+    "spdx-json": true,
+    "spdx-tv": true
+  },
+  "scan_status": "succeeded",
+  "shadow": {
+    "scan": {
+      "completed_at": "2026-10-12T08:34:15.220239Z",
+      "engine": "inprocess",
+      "engine_image_digest": null,
+      "engine_run_status": null,
+      "error_message": null,
+      "scancode_skipped": null,
+      "stage_outcomes": {},
+      "started_at": "2026-10-12T08:34:06.974076Z",
+      "status": "succeeded"
+    },
+    "vulnerability_findings": [
+      "CVE-2025-13465|lodash@4.17.21",
+      "CVE-2026-2950|lodash@4.17.21",
+      "CVE-2026-4800|lodash@4.17.21"
+    ],
+    "vulnerability_ids": [
+      "CVE-2025-13465",
+      "CVE-2026-2950",
+      "CVE-2026-4800"
+    ],
+    "wall_seconds": 10.9
+  },
+  "source_tree_root_entries": 2,
+  "vulnerabilities_count": 3
+}

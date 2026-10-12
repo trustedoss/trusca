@@ -256,7 +256,10 @@ def shadow_fields(scan: dict, rows: list[dict] | None, wall_seconds: float) -> d
     Both engines read the same Trivy database in a shadow run, so the
     vulnerability identifiers are comparable there (the baseline diff leaves
     the count out because the database moves between nights). The scan row
-    adds the engine that ran, the stages that degraded and the time it took.
+    adds the engine that ran, the stages that degraded and the time it took,
+    with the per-stage windows as the scan row stores them
+    (``scan_metadata.stage_timings``, written by both engines) and the scan id
+    that the engine worker's log lines carry.
     """
     if rows is None:
         ids = findings = None
@@ -271,10 +274,12 @@ def shadow_fields(scan: dict, rows: list[dict] | None, wall_seconds: float) -> d
     engine = _as_dict(meta.get("scan_engine"))
     outcomes = _as_dict(meta.get("stage_outcomes"))
     error = scan.get("error_message")
+    timings = meta.get("stage_timings")
     return {
         "vulnerability_ids": ids,
         "vulnerability_findings": findings,
         "scan": {
+            "id": scan.get("id"),
             "status": scan.get("status"),
             # The in-process pipeline writes no engine record.
             "engine": engine.get("name") or "inprocess",
@@ -287,6 +292,8 @@ def shadow_fields(scan: dict, rows: list[dict] | None, wall_seconds: float) -> d
                 for k, v in sorted(outcomes.items())
             },
             "scancode_skipped": meta.get("scancode_skipped"),
+            # As stored: {stage: {"started_at", "ended_at"}}.
+            "stage_timings": timings if isinstance(timings, dict) else None,
             "error_message": error[:_SHADOW_TEXT_MAX] if isinstance(error, str) else None,
         },
         "wall_seconds": round(wall_seconds, 1),
