@@ -26,7 +26,9 @@ from sqlalchemy.orm import Session
 
 from integrations.bomlens import runner as runner_mod
 from models import (
+    Component,
     ComponentDependencyEdge,
+    ComponentVersion,
     License,
     LicenseFinding,
     Scan,
@@ -35,6 +37,7 @@ from models import (
     Vulnerability,
     VulnerabilityFinding,
 )
+from services.purl_build import purl_without_qualifiers
 from tests._bomlens_engine import FIXTURES, Behaviour, FakeDocker, captured_images, write_result
 
 pytestmark = pytest.mark.integration
@@ -357,6 +360,90 @@ def test_a_redelivered_running_scan_starts_over_without_duplicates(
     )
     assert second == first
     assert first[0] == 15
+
+
+# ---------------------------------------------------------------------------
+# The identity a package is stored under
+# ---------------------------------------------------------------------------
+
+
+def _stored_purls(session: Session, scan_id: uuid.UUID) -> dict[uuid.UUID, tuple[str, str]]:
+    """component version id -> (component PURL, version PURL) for the scan."""
+    rows = session.execute(
+        select(ComponentVersion.id, Component.purl, ComponentVersion.purl_with_version)
+        .join(Component, Component.id == ComponentVersion.component_id)
+        .join(ScanComponent, ScanComponent.component_version_id == ComponentVersion.id)
+        .where(ScanComponent.scan_id == scan_id)
+    ).all()
+    return {cv_id: (component, version) for cv_id, component, version in rows}
+
+
+def _finding_pairs(session: Session, scan_id: uuid.UUID) -> set[tuple[str, str]]:
+    """(version PURL, vulnerability id) of every finding of the scan."""
+    rows = session.execute(
+        select(ComponentVersion.purl_with_version, Vulnerability.external_id)
+        .join(
+            VulnerabilityFinding,
+            VulnerabilityFinding.component_version_id == ComponentVersion.id,
+        )
+        .join(Vulnerability, Vulnerability.id == VulnerabilityFinding.vulnerability_id)
+        .where(VulnerabilityFinding.scan_id == scan_id)
+    ).all()
+    return {(purl, external_id) for purl, external_id in rows}
+
+
+def test_image_packages_are_stored_without_qualifiers_and_keep_their_findings(
+    monkeypatch: pytest.MonkeyPatch, sync_session: Session
+) -> None:
+    """syft writes ``?arch=aarch64&distro=3.19.0`` on every package of the
+    image; the in-process container path stores none of it, and neither does
+    this one. Each finding still lands on its own package."""
+    _install(monkeypatch, _clean_docker())
+    scan_id = _seed()
+
+    _run_task(scan_id)
+
+    stored = _stored_purls(sync_session, scan_id)
+    assert len(stored) == 15
+    for component_purl, version_purl in stored.values():
+        assert "?" not in version_purl, version_purl
+        assert "?" not in component_purl, component_purl
+        assert version_purl.startswith(f"{component_purl}@")
+
+    report = _fixture_report()
+    expected = {
+        (purl_without_qualifiers(v["PkgIdentifier"]["PURL"]), v["VulnerabilityID"])
+        for r in report["Results"]
+        for v in r.get("Vulnerabilities") or []
+    }
+    assert len(expected) == 48
+    assert _finding_pairs(sync_session, scan_id) == expected
+
+
+def test_both_container_engines_store_the_image_under_the_same_component_versions(
+    monkeypatch: pytest.MonkeyPatch, sync_session: Session
+) -> None:
+    """The in-process persist of the engine's own Trivy report and the BomLens
+    path end on the same catalog rows, so switching engines carries the
+    first-detected clock, triage and approvals over."""
+    from core.db import sync_session_scope
+    from tasks.scan_container import _persist_trivy_report
+
+    in_process_id = _seed(status="running")
+    with sync_session_scope() as session:
+        _persist_trivy_report(session, scan_uuid=in_process_id, report=_fixture_report())
+        session.commit()
+
+    _install(monkeypatch, _clean_docker())
+    bomlens_id = _seed()
+    _run_task(bomlens_id)
+
+    in_process = _stored_purls(sync_session, in_process_id)
+    bomlens = _stored_purls(sync_session, bomlens_id)
+    assert len(in_process) == 15
+    assert set(bomlens) == set(in_process)
+    assert set(bomlens.values()) == set(in_process.values())
+    assert _finding_pairs(sync_session, bomlens_id) == _finding_pairs(sync_session, in_process_id)
 
 
 # ---------------------------------------------------------------------------

@@ -99,3 +99,34 @@ def build_purl(
         encoded_ns = quote(namespace, safe="/")
         return f"pkg:{purl_type}/{encoded_ns}/{encoded_name}{suffix}"
     return f"pkg:{purl_type}/{encoded_name}{suffix}"
+
+
+def purl_without_qualifiers(purl: str) -> str:
+    """``purl`` with its ``?qualifiers`` (and anything after them) cut off.
+
+    One rule for two jobs, kept in one place so they cannot drift apart:
+
+    * A container image package is stored under this form by both container
+      engines: the in-process path in ``tasks.scan_container``
+      (``_component_identity`` through ``_purl_from_identifier``) and the
+      BomLens path in ``tasks.bomlens_result``. Trivy and syft write
+      ``?arch=...&distro=debian-12.7`` on every OS package, and a stored
+      ``distro`` qualifier would make the same package version a new component
+      on every point release of the base image. The first-detected clock, the
+      carried triage and component approvals are keyed on the component
+      version, so all of them would restart after a rebuild. Source scans keep
+      their qualifiers (``?type=jar``); this is not applied to them.
+    * A Trivy finding is matched to a scan's component on this form on both
+      sides (``services.vulnerability_matching``), because Trivy and the SBOM
+      do not always write the same qualifiers.
+
+    Dropping the qualifiers loses information. ``epoch=1`` on a Debian package
+    is part of its version ordering, and two packages that differ only in a
+    qualifier become one identity. The in-process container path has always
+    done this, and the BomLens path does the same so that both engines store
+    the same identity.
+
+    A ``#subpath`` after the qualifiers goes with them; one without qualifiers
+    stays. That is the in-process behaviour this rule was taken from.
+    """
+    return purl.split("?", 1)[0]

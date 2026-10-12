@@ -878,7 +878,11 @@ def _component_identity(
     the same package version a NEW component on every point release of the base
     image, and the first-detected clock and carried triage are keyed on the
     component version — so the whole image's findings would read as new after a
-    9.3 → 9.4 rebuild.
+    9.3 → 9.4 rebuild. The rule is ``services.purl_build.purl_without_qualifiers``,
+    and the BomLens container path stores its packages through the same
+    function, so a project can switch engines without every package becoming a
+    new component. It drops ``epoch=1`` on Debian packages as well; that is
+    lost information, accepted so the stored identity stays what it has been.
 
     Returns None when no identity can be established, and the caller skips the
     finding. Calling it apk would not make it apk.
