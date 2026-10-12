@@ -45,6 +45,7 @@ from tests.integration.scan.test_bomlens_result import (
 pytestmark = pytest.mark.integration
 
 GOLDEN_NODE = Path(__file__).resolve().parents[2] / "e2e" / "golden" / "fixtures" / "node"
+GOLDEN_GRADLE = GOLDEN_NODE.parent / "gradle"
 
 
 @pytest.fixture(scope="module", autouse=True)
@@ -75,17 +76,17 @@ def _install(monkeypatch: pytest.MonkeyPatch, docker: FakeDocker) -> None:
     monkeypatch.setattr("tasks.scan_source_bomlens.shutil.which", lambda _name: "/usr/bin/docker")
 
 
-def _workspace(root: Path, scan_id: uuid.UUID) -> tuple[Path, Path]:
+def _workspace(root: Path, scan_id: uuid.UUID, source: Path = GOLDEN_NODE) -> tuple[Path, Path]:
     workspace = root / str(scan_id)
     project_root = workspace / "source" / "repo"
-    shutil.copytree(GOLDEN_NODE, project_root)
+    shutil.copytree(source, project_root)
     return workspace, project_root
 
 
-def _run_pipeline(root: Path, scan_id: uuid.UUID) -> None:
+def _run_pipeline(root: Path, scan_id: uuid.UUID, source: Path = GOLDEN_NODE) -> None:
     from tasks.scan_source_bomlens import run_bomlens_pipeline
 
-    workspace, project_root = _workspace(root, scan_id)
+    workspace, project_root = _workspace(root, scan_id, source)
     run_bomlens_pipeline(
         scan_uuid=scan_id,
         project_id=_project_id(scan_id),
@@ -333,6 +334,41 @@ def test_the_published_images_scan_an_npm_project(
     meta = _metadata(sync_session, scan_id)
     assert meta["scan_engine"]["run_status"] == "succeeded"
     assert meta["scan_engine_run"]["stage1_exit_code"] == 0
+
+
+@pytest.mark.skipif(
+    os.getenv("BOMLENS_ENGINE_DOCKER_TEST") != "1",
+    reason="runs the published BomLens images on a local Docker daemon "
+    "(set BOMLENS_ENGINE_DOCKER_TEST=1 and BOMLENS_ENGINE_DOCKER_DIR to a folder the daemon sees)",
+)
+def test_the_published_images_resolve_a_gradle_project_under_a_read_only_root(
+    monkeypatch: pytest.MonkeyPatch, sync_session: Session
+) -> None:
+    """The runner gives stage 1 a read-only root. Before BomLens #209 Gradle
+    failed there at once (it could not write the account's ~/.gradle) and a
+    Gradle project came back with no component, ``generate`` degraded
+    (``no_components``)."""
+    host_dir = Path(os.environ["BOMLENS_ENGINE_DOCKER_DIR"]) / uuid.uuid4().hex
+    host_dir.mkdir(parents=True)
+    monkeypatch.setenv("WORKSPACE_HOST_PATH", str(host_dir))
+    monkeypatch.setenv(
+        "TRIVY_CACHE_DIR",
+        os.getenv("BOMLENS_ENGINE_TRIVY_CACHE", str(Path.home() / ".cache" / "trivy")),
+    )
+    monkeypatch.delenv("SCAN_BOMLENS_IMAGE")
+    monkeypatch.delenv("SCAN_BOMLENS_STAGE1_READ_ONLY_ROOT", raising=False)
+    monkeypatch.setenv("SCAN_BOMLENS_NETWORK", os.getenv("BOMLENS_ENGINE_NETWORK", "bridge"))
+    monkeypatch.setattr(runner_mod.DockerCli, "own_networks", lambda self: frozenset())
+    scan_id = _seed_running_source_scan()
+
+    _run_pipeline(host_dir, scan_id, GOLDEN_GRADLE)
+
+    scan = _scan(sync_session, scan_id)
+    assert scan.status == "succeeded", scan.error_message
+    meta = _metadata(sync_session, scan_id)
+    assert meta["scan_engine_run"]["stage1_exit_code"] == 0
+    assert so.STAGE_OUTCOMES_KEY not in meta or "generate" not in meta[so.STAGE_OUTCOMES_KEY]
+    assert _component_count(sync_session, scan_id) > 0
 
 
 def _docker(*argv: str, check: bool = True) -> subprocess.CompletedProcess[str]:

@@ -56,7 +56,7 @@ def _with_steps(*steps: dict[str, Any]) -> contract.EngineResult:
 
 
 #: The contract version each capture was written with (PROVENANCE.md):
-#: sha-b826d43 wrote 1.0.0-dev, sha-5a93586 1.0.0, sha-1e5ef6b 1.2.0.
+#: sha-b826d43 wrote 1.0.0-dev, sha-5a93586 1.0.0, sha-34010b6 1.2.0.
 CONTRACT_VERSIONS = {
     "image-ok": "1.0.0-dev",
     "image-os-licenses": "1.2.0",

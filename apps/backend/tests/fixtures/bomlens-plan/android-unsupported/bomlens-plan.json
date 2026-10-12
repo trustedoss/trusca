@@ -1,12 +1,12 @@
 {
   "contract": {
     "name": "bomlens-engine-plan",
-    "version": "1.0.0"
+    "version": "1.2.0"
   },
   "engine": {
-    "version": "latest-1e5ef6b",
-    "image": "ghcr.io/haksungjang/bomlens:sha-1e5ef6b",
-    "image_digest": "sha256:eeb851f7cb4e3bc1cd7c81151e0f9a1bd129dfd755bfb92e110d17653b8f9a36"
+    "version": "latest-34010b6",
+    "image": "ghcr.io/haksungjang/bomlens:sha-34010b6",
+    "image_digest": "sha256:019d7126b96f851fd18c1ece54a196691d778dee2493eb22e5a2fb6cc96cc3e0"
   },
   "input": {
     "kind": "source",

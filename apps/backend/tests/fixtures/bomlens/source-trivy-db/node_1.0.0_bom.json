@@ -21,8 +21,8 @@
       "subjects": [
         "pkg:npm/baseline-e2e-fixture@1.0.0"
       ],
-      "text": "This Software Bill-of-Materials (SBOM) document was created on Sunday, October 11, 2026 with cdxgen. The data was captured during the build lifecycle phase. The document describes an application named 'baseline-e2e-fixture' with version '1.0.0'.",
-      "timestamp": "2026-10-11T23:48:06Z"
+      "text": "This Software Bill-of-Materials (SBOM) document was created on Monday, October 12, 2026 with cdxgen. The data was captured during the build lifecycle phase. The document describes an application named 'baseline-e2e-fixture' with version '1.0.0'.",
+      "timestamp": "2026-10-12T04:20:19Z"
     }
   ],
   "bomFormat": "CycloneDX",
@@ -130,7 +130,7 @@
         "value": "unknown-to-author"
       }
     ],
-    "timestamp": "2026-10-11T23:48:06Z",
+    "timestamp": "2026-10-12T04:20:19Z",
     "tools": {
       "components": [
         {
@@ -151,12 +151,12 @@
           "name": "BomLens",
           "publisher": "SK Telecom",
           "type": "application",
-          "version": "latest-1e5ef6b"
+          "version": "latest-34010b6"
         }
       ]
     }
   },
-  "serialNumber": "urn:uuid:89765bbd-6755-4af2-bc84-593c8e83bca9",
+  "serialNumber": "urn:uuid:be96c09d-bbd8-4802-a8f8-f451c1297fa4",
   "services": [],
   "specVersion": "1.6",
   "version": 1,

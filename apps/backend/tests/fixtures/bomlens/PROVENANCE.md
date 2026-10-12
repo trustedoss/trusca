@@ -37,16 +37,23 @@ ghcr.io/haksungjang/bomlens-deep-license@sha256:df45...`) and run by digest.
 
 | | |
 |---|---|
-| Image | `ghcr.io/haksungjang/bomlens:sha-1e5ef6b` |
-| Digest | `sha256:eeb851f7cb4e3bc1cd7c81151e0f9a1bd129dfd755bfb92e110d17653b8f9a36` (index; linux/arm64 manifest `sha256:5ce76bab7cf602f1babc7589d464d672a38434a70b4045003774967b4a92ee99` ran) |
-| Source commit | `1e5ef6b7` on the fork's `main` (engine contract `1.2.0`, BomLens #186 to #207) |
+| Image | `ghcr.io/haksungjang/bomlens:sha-34010b6` |
+| Digest | `sha256:019d7126b96f851fd18c1ece54a196691d778dee2493eb22e5a2fb6cc96cc3e0` (index; linux/arm64 manifest `sha256:cf741505ec2650ffd04f58bd65f93f0fc452781b64c9931c89a726fa4aff2792` ran) |
+| Source commit | `34010b6b` on the fork's `main` (engine contract `1.2.0`, BomLens #186 to #209) |
 | Trivy in the image | 0.74.0 |
-| Trivy database | schema 2, `UpdatedAt` 2026-10-11T07:05Z, mounted read-only at `/trivy-db` (the plan's `trivy-db` role) |
+| Trivy database | schema 2, `UpdatedAt` 2026-10-11T19:06Z, mounted read-only at `/trivy-db` (the plan's `trivy-db` role) |
 
 Used for `image-os-licenses`, `source-trivy-db` and
-`source-trivy-db-stale`, captured 2026-10-12 (2026-10-11 23:00 UTC), each run
+`source-trivy-db-stale`, captured 2026-10-12 04:19 to 04:21 UTC, each run
 with `BOMLENS_IMAGE_REF` and `BOMLENS_IMAGE_DIGEST` set to the tag and index
-digest above and `HOST_UID`/`HOST_GID` set to the capturing user.
+digest above and `HOST_UID`/`HOST_GID` set to the capturing user. They replace
+captures of the same three cases from `sha-1e5ef6b`
+(`sha256:eeb851f7...`, database `UpdatedAt` 2026-10-11T07:05Z) and match them
+in everything the tests read: the same steps, statuses, reasons and details
+("the Trivy database is 11 days old (over 9)"), 955 SBOM entries and one
+advisory (`DLA-4792-1`) for the image, one component and the same three CVEs
+for `node`. Stage 1 of the source cases ran `build-prep.sh` from the
+`sha-34010b6` `node-ok` plan capture.
 
 ## What is kept from each run
 
@@ -124,9 +131,20 @@ degraded no_components "manifests found: <manifests>; steps that failed:
 <steps>"`, and the string here is the one `tests/test-engine-contract.sh`
 asserts in that commit, verbatim. The manifest is not hashed, so no other
 field changes; the contract version and image fields still name the image
-that wrote the rest of the run. No published image wrote this detail yet;
-replace the case with a capture once an image built from `34010b6b` or later
-is pinned.
+that wrote the rest of the run.
+
+It stays derived after the move to `sha-34010b6` because no unmodified input
+was found that makes that image write the detail. The detail needs a source
+that declares dependencies, an SBOM with no component, and a resolver step
+build-prep marked as failed. The case that motivated #209 no longer gives
+one: under the runner's read-only root the Gradle golden fixture now
+resolves (see `tests/fixtures/bomlens-plan/PROVENANCE.md`). The same fixture
+with stage 1 run without a network did not give one either: build-prep
+recorded `gradle-dependencies` as applied and cdxgen still found guava. The
+two ways left were running the older image's stage 1 before this image's
+stage 2, or writing a build file made to fail; both would make the capture
+something other than a run of the pinned images on a real input, so neither
+was used.
 
 `source-ok-results-stripped` is `source-ok` with one change: the `Results`
 key was removed from `node_1.0.0_security.json` (re-serialised with two-space
