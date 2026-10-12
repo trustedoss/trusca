@@ -31,6 +31,7 @@ from celery.schedules import schedule as _schedule
 from core.config import (
     backup_task_soft_time_limit_seconds,
     backup_task_time_limit_seconds,
+    bomlens_engine_in_use,
     broker_visibility_timeout_seconds,
     celery_worker_remote_control,
     default_task_soft_time_limit_seconds,
@@ -38,7 +39,6 @@ from core.config import (
     reachability_hard_time_limit_seconds,
     reachability_soft_time_limit_seconds,
     redis_url,
-    scan_engine,
     scan_hard_time_limit_seconds,
     scan_soft_time_limit_seconds,
     trivy_db_refresh_task_soft_time_limit_seconds,
@@ -227,6 +227,7 @@ _SCAN_TASK_NAMES = (
 _ENGINE_QUEUE = "trustedoss.engine"
 _ENGINE_TASK_NAMES = (
     "trustedoss.scan_source_engine",
+    "trustedoss.scan_container_engine",
     "trustedoss.bomlens_engine_reaper",
 )
 
@@ -320,6 +321,10 @@ _TASK_ANNOTATIONS = [
             "time_limit": scan_hard_time_limit_seconds(),
             "soft_time_limit": scan_soft_time_limit_seconds(),
         },
+        "trustedoss.scan_container_engine": {
+            "time_limit": scan_hard_time_limit_seconds(),
+            "soft_time_limit": scan_soft_time_limit_seconds(),
+        },
         "trustedoss.scan_reachability": {
             "time_limit": reachability_hard_time_limit_seconds(),
             "soft_time_limit": reachability_soft_time_limit_seconds(),
@@ -389,12 +394,12 @@ def _build_beat_schedule() -> dict[str, dict[str, object]]:
     ``docker-compose.dev.yml`` so these schedules actually fire.
 
     ``trustedoss.bomlens_engine_reaper`` (every 5 minutes) is scheduled only
-    when ``SCAN_ENGINE=bomlens``: it goes to the engine queue, which nothing
-    consumes on a deployment without the engine worker, so scheduling it
-    there would only pile messages up in Redis.
+    when ``SCAN_ENGINE=bomlens`` or ``SCAN_CONTAINER_ENGINE=bomlens``: it goes
+    to the engine queue, which nothing consumes on a deployment without the
+    engine worker, so scheduling it there would only pile messages up in Redis.
     """
     schedule = _base_beat_schedule()
-    if scan_engine() == "bomlens":
+    if bomlens_engine_in_use():
         schedule["bomlens-engine-reaper-five-minutely"] = {
             "task": "trustedoss.bomlens_engine_reaper",
             "schedule": _schedule(timedelta(minutes=5)),

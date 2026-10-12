@@ -366,12 +366,16 @@ def test_436_every_other_default_queue_task_gets_the_fallback_time_limit() -> No
 
     _register_tasks_the_way_a_worker_would()
 
-    # The BomLens engine's scan task (engine queue) carries the scan limits, as
+    # The BomLens engine's scan tasks (engine queue) carry the scan limits, as
     # the scan tasks above do; asserted in test_bomlens_engine_isolation.py.
     exceptions = (
         set(_SCAN_TASK_NAMES)
         | set(_BACKUP_TASK_NAMES)
-        | {"trustedoss.trivy_db_refresh", "trustedoss.scan_source_engine"}
+        | {
+            "trustedoss.trivy_db_refresh",
+            "trustedoss.scan_source_engine",
+            "trustedoss.scan_container_engine",
+        }
     )
     others = [n for n in celery_app.tasks if n.startswith("trustedoss.") and n not in exceptions]
     assert len(others) >= 20, "sanity: this should cover most of the ~40 non-scan tasks"

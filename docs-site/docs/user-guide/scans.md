@@ -73,6 +73,10 @@ The scan stores every package Trivy lists in the image, not only the ones with a
 
 The same progress drawer opens. When the scan reaches `succeeded`, the OS-package vulnerabilities appear under the project's **Vulnerabilities** tab.
 
+:::note Container scans on the BomLens engine (preview)
+An administrator can run container scans on the BomLens scan engine (`SCAN_CONTAINER_ENGINE=bomlens`, see [Dynamic scan executor](../admin-guide/dynamic-scan-executor.md#engine-container-scans)). The dialog and the results look the same. Two things differ: the image reference must be a plain registry reference (`[registry/]name[:tag][@sha256:digest]`), and an image from a registry with a stored credential (a [private registry](#private-registries)) fails with a message that names the registry and asks for the default engine. To scan exactly the image you built, give its digest.
+:::
+
 #### Allowed registries {#allowed-registries}
 
 A container scan makes the worker pull an image, which is an outbound request

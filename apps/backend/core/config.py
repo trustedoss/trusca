@@ -1476,6 +1476,28 @@ def scan_engine() -> str:
     return value if value in SCAN_ENGINE_VALUES else "inprocess"
 
 
+def scan_container_engine() -> str:
+    """Which engine runs a container image scan; the same values as ``SCAN_ENGINE``.
+
+    - ``inprocess`` (default): the worker runs ``trivy image`` itself, as before.
+    - ``bomlens`` (preview): the BomLens image in ``MODE=IMAGE`` reads the
+      image from its registry (syft), matches it with Trivy and TRUSCA reads
+      its result manifest (``tasks.scan_container_bomlens``). It runs on the
+      engine worker, like a BomLens source scan.
+
+    Separate from ``SCAN_ENGINE`` so the two scan kinds can be switched and
+    compared one at a time. Resolved at call time (CLAUDE.md core rule #11);
+    an unknown value reads as ``inprocess``.
+    """
+    value = os.getenv("SCAN_CONTAINER_ENGINE", "inprocess").strip().lower()
+    return value if value in SCAN_ENGINE_VALUES else "inprocess"
+
+
+def bomlens_engine_in_use() -> bool:
+    """Whether either scan kind is set to the BomLens engine (the reaper's schedule)."""
+    return scan_engine() == "bomlens" or scan_container_engine() == "bomlens"
+
+
 # ---------------------------------------------------------------------------
 # BomLens engine images and container limits (SCAN_ENGINE=bomlens).
 #
@@ -1572,6 +1594,11 @@ def bomlens_stage1_timeout_seconds() -> int:
 def bomlens_stage2_timeout_seconds() -> int:
     """How long stage 2 (BomLens post-processing) may run before it is killed."""
     return _int_env("SCAN_BOMLENS_STAGE2_TIMEOUT_SECONDS", 1800, minimum=60, maximum=6 * 3600)
+
+
+def bomlens_image_scan_timeout_seconds() -> int:
+    """How long a BomLens container image scan (``MODE=IMAGE``) may run."""
+    return _int_env("SCAN_BOMLENS_IMAGE_TIMEOUT_SECONDS", 1800, minimum=60, maximum=6 * 3600)
 
 
 def bomlens_stage1_read_only_root() -> bool:

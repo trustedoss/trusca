@@ -77,11 +77,14 @@ def test_engine_tasks_are_routed_to_the_engine_queue_only() -> None:
 
 def test_the_engine_task_names_are_the_real_tasks() -> None:
     from tasks.bomlens_engine_reaper import bomlens_engine_reaper_task
+    from tasks.scan_container import scan_container_engine_task
     from tasks.scan_source import scan_source_engine_task
 
-    assert {scan_source_engine_task.name, bomlens_engine_reaper_task.name} == set(
-        CONTRACT["engine_task_names"]
-    )
+    assert {
+        scan_source_engine_task.name,
+        scan_container_engine_task.name,
+        bomlens_engine_reaper_task.name,
+    } == set(CONTRACT["engine_task_names"])
 
 
 def test_only_worker_engine_takes_the_engine_queue_and_it_takes_nothing_else() -> None:
@@ -143,13 +146,64 @@ def test_a_bomlens_source_scan_is_dispatched_as_the_engine_task(
     assert sent == ["engine", "inprocess"]
 
 
-@pytest.mark.parametrize(("engine", "scheduled"), [("bomlens", True), ("inprocess", False)])
+@pytest.mark.parametrize(
+    ("source_engine", "container_engine", "expected"),
+    [
+        ("inprocess", "bomlens", "engine"),
+        ("inprocess", "inprocess", "inprocess"),
+        # Each setting decides its own kind only.
+        ("bomlens", "inprocess", "inprocess"),
+        ("bomlens", "unknown", "inprocess"),
+    ],
+)
+def test_a_container_scan_follows_its_own_engine_setting(
+    monkeypatch: pytest.MonkeyPatch, source_engine: str, container_engine: str, expected: str
+) -> None:
+    from tasks import enqueue_scan
+
+    sent: list[str] = []
+
+    class _Result:
+        id = "x"
+
+    def record(name: str) -> Any:
+        def apply_async(**_kw: Any) -> _Result:
+            sent.append(name)
+            return _Result()
+
+        return apply_async
+
+    monkeypatch.setattr("tasks.scan_container.scan_container_task.apply_async", record("inprocess"))
+    monkeypatch.setattr(
+        "tasks.scan_container.scan_container_engine_task.apply_async", record("engine")
+    )
+
+    class _Scan:
+        id = uuid.uuid4()
+        kind = "container"
+
+    monkeypatch.setenv("SCAN_ENGINE", source_engine)
+    monkeypatch.setenv("SCAN_CONTAINER_ENGINE", container_engine)
+    enqueue_scan(_Scan())  # type: ignore[arg-type]
+    assert sent == [expected]
+
+
+@pytest.mark.parametrize(
+    ("source_engine", "container_engine", "scheduled"),
+    [
+        ("bomlens", "inprocess", True),
+        ("inprocess", "bomlens", True),
+        ("bomlens", "bomlens", True),
+        ("inprocess", "inprocess", False),
+    ],
+)
 def test_the_reaper_is_scheduled_only_with_the_engine(
-    monkeypatch: pytest.MonkeyPatch, engine: str, scheduled: bool
+    monkeypatch: pytest.MonkeyPatch, source_engine: str, container_engine: str, scheduled: bool
 ) -> None:
     from tasks.celery_app import _build_beat_schedule
 
-    monkeypatch.setenv("SCAN_ENGINE", engine)
+    monkeypatch.setenv("SCAN_ENGINE", source_engine)
+    monkeypatch.setenv("SCAN_CONTAINER_ENGINE", container_engine)
     tasks = {entry["task"] for entry in _build_beat_schedule().values()}
     assert ("trustedoss.bomlens_engine_reaper" in tasks) is scheduled
 
@@ -245,12 +299,14 @@ def test_govulncheck_is_refused_where_docker_is_reachable(
     assert called == []
 
 
-def test_the_engine_scan_task_has_the_scan_time_limits() -> None:
+def test_the_engine_scan_tasks_have_the_scan_time_limits() -> None:
     from core.config import scan_hard_time_limit_seconds, scan_soft_time_limit_seconds
+    from tasks.scan_container import scan_container_engine_task
     from tasks.scan_source import scan_source_engine_task
 
-    assert scan_source_engine_task.time_limit == scan_hard_time_limit_seconds()
-    assert scan_source_engine_task.soft_time_limit == scan_soft_time_limit_seconds()
+    for task in (scan_source_engine_task, scan_container_engine_task):
+        assert task.time_limit == scan_hard_time_limit_seconds(), task.name
+        assert task.soft_time_limit == scan_soft_time_limit_seconds(), task.name
 
 
 # ---------------------------------------------------------------------------
@@ -305,10 +361,15 @@ def test_where_docker_is_reachable_only_engine_tasks_run(
 ) -> None:
     """The task base class refuses any other task before its body runs."""
     from tasks import bomlens_engine_reaper
+    from tasks.scan_container import scan_container_engine_task, scan_container_task
     from tasks.scan_source import scan_source_task
 
     ran: list[str] = []
     monkeypatch.setattr("tasks.scan_source._run_source_task", lambda *a, **k: ran.append("scan"))
+    monkeypatch.setattr(
+        "tasks.scan_container._run_container_task",
+        lambda *a, **k: ran.append(f"container-{k['engine']}"),
+    )
     monkeypatch.setattr(
         bomlens_engine_reaper, "reap_engine_containers", lambda *a, **k: ran.append("reap")
     )
@@ -316,12 +377,18 @@ def test_where_docker_is_reachable_only_engine_tasks_run(
 
     with pytest.raises(DockerApiReachable, match="trustedoss.scan_source"):
         scan_source_task.apply(args=["x"], throw=True)
+    # The in-process container scan runs Trivy on the image in the worker
+    # itself: refused where Docker is reachable, as the source scan is.
+    with pytest.raises(DockerApiReachable, match="trustedoss.scan_container"):
+        scan_container_task.apply(args=["x"], throw=True)
     bomlens_engine_reaper.bomlens_engine_reaper_task.apply(throw=True)
-    assert ran == ["reap"]
+    scan_container_engine_task.apply(args=["x"], throw=True)
+    assert ran == ["reap", "container-bomlens"]
 
     monkeypatch.delenv("DOCKER_HOST")
     scan_source_task.apply(args=["x"], throw=True)
-    assert ran == ["reap", "scan"]
+    scan_container_task.apply(args=["x"], throw=True)
+    assert ran == ["reap", "container-bomlens", "scan", "container-inprocess"]
 
 
 def test_every_task_uses_the_guarded_base_class() -> None:

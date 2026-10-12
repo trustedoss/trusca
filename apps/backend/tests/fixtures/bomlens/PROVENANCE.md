@@ -141,6 +141,21 @@ are the same as in `source-deep-license`, and so are the SBOM's component and
 properties, the scancode detections and the three CVEs. It keeps the scancode
 result as well as the SBOM and the Trivy report.
 
+### Container image scan as the runner runs it
+
+`image-registry-alpine` was captured on 2026-10-12 at 14:52 UTC with the
+contract 1.2.0 image above (its linux/arm64 manifest ran), run the way
+`BomLensRunner.run_image` runs it for `SCAN_CONTAINER_ENGINE=bomlens`: no
+Docker socket, the capturing user rather than root, a read-only root and no
+capability.
+
+| Case | Input | How it was run | Result |
+|---|---|---|---|
+| `image-registry-alpine` | `alpine:3.19.0@sha256:51b67269f354137895d43f3b3d810bfacd3945438e94dc5ac55fdac340352f48` (the index digest; syft read the linux/arm64 image) | `docker run --rm --read-only --user <uid>:<gid> --cap-drop ALL --security-opt no-new-privileges --pids-limit 4096 --memory 4g --memory-swap 4g --cpus 2 --network bridge --mount type=bind,src=<out>,dst=/host-output --mount type=bind,src=<tmp>,dst=/tmp --mount type=bind,src=<trivy cache>,dst=/trivy-db,readonly --workdir /host-output -e MODE=IMAGE -e TARGET_IMAGE=registry:<the image above> -e PROJECT_NAME=image -e PROJECT_VERSION=1.0.0 -e HOST_OUTPUT_DIR=/host-output -e UPLOAD_ENABLED=false -e BOMLENS_IMAGE_REF=ghcr.io/sktelecom/bomlens:1.13.2 -e BOMLENS_IMAGE_DIGEST=sha256:e357e634... -e GENERATE_SECURITY=true -e SECURITY_ENRICH=false -e DEEP_LICENSE=false -e TRIVY_CACHE_DIR=/trivy-db -e TRIVY_SKIP_DB_UPDATE=true -e TRIVY_SKIP_JAVA_DB_UPDATE=true -e TRIVY_OFFLINE_SCAN=true -e TRIVY_NO_PROGRESS=true -e BOMLENS_TRIVY_DB_MAX_AGE_DAYS=16 -e HOST_UID=<uid> -e HOST_GID=<gid> ghcr.io/sktelecom/bomlens:1.13.2@sha256:e357e634...`. The Trivy database at `/trivy-db` was downloaded with Trivy 0.71.2 (`trivy image --download-db-only`) the same day: schema 2, `UpdatedAt` 2026-10-12T13:18Z | `succeeded`; 15 packages with their licences, 80 file entries and the distribution in the SBOM; 48 findings of 21 CVEs on 7 packages; the Trivy report's `Metadata.OS` is Alpine 3.19.0 with `EOSL` true; `os-licenses` ok with nothing to replace (no Debian package); the file view was skipped ("no reachable Docker daemon") |
+
+The input appears as `input.target` in the manifest, with the `registry:`
+scheme the runner adds. Only the three files the adapter reads were kept.
+
 ## Derived cases
 
 `source-no-components-failed-step` is `source-no-components` with one change:

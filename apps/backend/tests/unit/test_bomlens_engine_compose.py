@@ -19,12 +19,14 @@ from typing import Any
 import yaml
 
 from core.config import (
+    bomlens_image_scan_timeout_seconds,
     bomlens_network,
     bomlens_stage1_image_prefix,
     bomlens_stage1_read_only_root,
     bomlens_stage1_repositories,
     bomlens_stage1_timeout_seconds,
     bomlens_stage2_timeout_seconds,
+    scan_container_engine,
 )
 
 REPO_ROOT = Path(__file__).resolve().parents[4]
@@ -103,6 +105,8 @@ def test_the_engine_settings_reach_the_worker_with_the_code_defaults(monkeypatch
     env = _compose()["x-backend-env"]
     for key in (
         "SCAN_ENGINE",
+        "SCAN_CONTAINER_ENGINE",
+        "SCAN_BOMLENS_IMAGE_TIMEOUT_SECONDS",
         "SCAN_BOMLENS_IMAGE",
         "SCAN_BOMLENS_DEEP_LICENSE_IMAGE",
         "SCAN_BOMLENS_NETWORK",
@@ -144,4 +148,12 @@ def test_the_engine_settings_reach_the_worker_with_the_code_defaults(monkeypatch
     )
     assert env["SCAN_BOMLENS_STAGE2_TIMEOUT_SECONDS"] == (
         "${SCAN_BOMLENS_STAGE2_TIMEOUT_SECONDS:-" + str(bomlens_stage2_timeout_seconds()) + "}"
+    )
+    monkeypatch.delenv("SCAN_BOMLENS_IMAGE_TIMEOUT_SECONDS", raising=False)
+    monkeypatch.delenv("SCAN_CONTAINER_ENGINE", raising=False)
+    assert env["SCAN_BOMLENS_IMAGE_TIMEOUT_SECONDS"] == (
+        "${SCAN_BOMLENS_IMAGE_TIMEOUT_SECONDS:-" + str(bomlens_image_scan_timeout_seconds()) + "}"
+    )
+    assert env["SCAN_CONTAINER_ENGINE"] == (
+        "${SCAN_CONTAINER_ENGINE:-" + scan_container_engine() + "}"
     )

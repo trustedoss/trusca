@@ -168,18 +168,44 @@ def record_terminal_failure(scan_uuid: uuid.UUID, message: str) -> None:
         mark_failed(session, scan, message)
 
 
+def claim_success(session: Session, scan: Scan) -> bool:
+    """Flip ``scan`` from ``running`` to ``succeeded``; ``False`` when it was not running.
+
+    A conditional UPDATE, not a read-then-write, for the same reason as
+    :func:`mark_failed`: a cancel commits from the API process, and a scan
+    cancelled after the pipeline's last status check must stay cancelled rather
+    than be reported as succeeded. Nothing is written when the row is no longer
+    ``running``; the session is left clean. On success the row is refreshed.
+    """
+    completed_at = datetime.now(UTC)
+    closed = scan_outcome.close_stage_timings(scan.scan_metadata, now=completed_at)
+    changed = session.execute(
+        update(Scan)
+        .where(Scan.id == scan.id, Scan.status == "running")
+        .values(
+            status="succeeded",
+            progress_percent=100,
+            current_step="finalize",
+            completed_at=completed_at,
+            scan_metadata=closed,
+        )
+        .execution_options(synchronize_session=False)
+    ).rowcount
+    if not changed:
+        session.rollback()
+        log.info("scan_success_not_recorded_over_other_state", scan_id=str(scan.id))
+        return False
+    session.refresh(scan)
+    return True
+
+
 def mark_succeeded(scan_uuid: uuid.UUID) -> None:
     with sync_session_scope() as session:
         scan = session.get(Scan, scan_uuid)
         if scan is None:
             return
-        scan.status = "succeeded"
-        scan.progress_percent = 100
-        scan.current_step = "finalize"
-        scan.completed_at = datetime.now(UTC)
-        scan.scan_metadata = scan_outcome.close_stage_timings(
-            scan.scan_metadata, now=scan.completed_at
-        )
+        if not claim_success(session, scan):
+            return
         # scan-retention Layer 1: this scan is now the live snapshot for its
         # ref, so prior succeeded same-ref scans (without an explicit release
         # label) are superseded in the same transaction. No-op when the scan
@@ -267,6 +293,7 @@ def record_stage_outcome(scan_uuid: uuid.UUID, stage: str, reason: str = "failed
 
 
 __all__ = [
+    "claim_success",
     "mark_failed",
     "record_stage_outcome",
     "mark_succeeded",

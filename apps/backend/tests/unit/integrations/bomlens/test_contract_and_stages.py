@@ -60,6 +60,7 @@ def _with_steps(*steps: dict[str, Any]) -> contract.EngineResult:
 CONTRACT_VERSIONS = {
     "image-ok": "1.0.0-dev",
     "image-os-licenses": "1.2.0",
+    "image-registry-alpine": "1.2.0",
     "source-deep-license": "1.0.0",
     "source-deep-license-trivy-db": "1.2.0",
     "source-degraded": "1.0.0-dev",
