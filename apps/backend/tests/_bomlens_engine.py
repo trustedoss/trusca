@@ -134,8 +134,14 @@ def docker_mount_record(fields: dict[str, str]) -> dict[str, Any]:
     }
     if fields.get("readonly") == "true":
         record["ReadOnly"] = True
+    options: dict[str, Any] = {}
+    if fields.get("volume-nocopy") == "true":
+        options["NoCopy"] = True
     if fields.get("volume-subpath"):
-        record["VolumeOptions"] = {"Subpath": fields["volume-subpath"]}
+        options["Subpath"] = fields["volume-subpath"]
+    if options:
+        # As a real daemon records it (Docker 29: {"NoCopy": true, "Subpath": ...}).
+        record["VolumeOptions"] = options
     return record
 
 

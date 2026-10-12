@@ -99,9 +99,12 @@ from core.config import (
     workspace_root,
 )
 from integrations._line_streamer import LineCallback
+from integrations._secret_scrub import scrub_secrets
 from integrations.bomlens.contract import (
+    MANIFEST_NAME,
     BomLensError,
     clip,
+    storable_text,
 )
 from integrations.bomlens.plan import (
     PLAN_FILES_DIR,
@@ -307,6 +310,10 @@ class EngineContainerStillRunning(BomLensEngineError):
     """A container did not stop when told to; its output is not read."""
 
 
+class EngineWroteNoResult(BomLensEngineError):
+    """The container that writes the result manifest exited without one."""
+
+
 @dataclass(frozen=True)
 class PinnedImage:
     """An image reference with its tag and its digest."""
@@ -497,9 +504,15 @@ def confined_path(path: Path, root: Path) -> Path:
 
 
 class MountStyle(Protocol):
-    """How a host path in the workspace becomes a ``--mount`` argument."""
+    """How a host path in the workspace becomes a ``--mount`` argument.
 
-    def mount_args(self, host_path: Path, target: str, *, read_only: bool) -> list[str]: ...
+    ``no_copy`` asks that nothing of the image be copied into the folder
+    (:class:`NamedVolumeMounts`); a bind mount never copies.
+    """
+
+    def mount_args(
+        self, host_path: Path, target: str, *, read_only: bool, no_copy: bool = False
+    ) -> list[str]: ...
 
     def trivy_db_args(self) -> list[str]: ...
 
@@ -517,13 +530,26 @@ class NamedVolumeMounts:
 
     ``volume-subpath`` (Docker Engine 26 and later) mounts one folder or file
     of the volume, and the daemon refuses a sub-path that leaves the volume.
+
+    When a volume (or a sub-path of it) is empty, Docker copies what the image
+    holds at the mount target into it, ownership and mode included, unless
+    the mount says ``volume-nocopy``. A target the image does not have is
+    created as root's ``0755`` first, so an empty output folder the worker
+    created becomes root's, and a container that runs as the worker's
+    non-root user cannot write to it (the ``MODE=IMAGE`` run, which exited 1
+    at its first write). A bind mount never copies, which is why the same run
+    works with ``SCAN_DOCKER_VOLUME_STRATEGY=bind``. ``no_copy`` turns the
+    copy off; the Trivy database mount always has it off, since nothing of an
+    image belongs in the worker's database volume.
     """
 
     volume: str
     volume_mount: Path
     trivy_volume: str
 
-    def mount_args(self, host_path: Path, target: str, *, read_only: bool) -> list[str]:
+    def mount_args(
+        self, host_path: Path, target: str, *, read_only: bool, no_copy: bool = False
+    ) -> list[str]:
         real_mount = Path(os.path.realpath(self.volume_mount))
         try:
             sub = host_path.relative_to(real_mount)
@@ -532,7 +558,10 @@ class NamedVolumeMounts:
                 "the scan workspace is not inside SCAN_WORKSPACE_MOUNT"
             ) from exc
         value = _mount_value(type="volume", src=self.volume, dst=target, volume_subpath=str(sub))
-        return ["--mount", value + (",readonly" if read_only else "")]
+        return [
+            "--mount",
+            value + (",readonly" if read_only else "") + (",volume-nocopy" if no_copy else ""),
+        ]
 
     def trivy_db_args(self) -> list[str]:
         if not self.trivy_volume:
@@ -540,7 +569,7 @@ class NamedVolumeMounts:
                 "SCAN_TRIVY_CACHE_VOLUME is not set; stage 2 has no Trivy database to read"
             )
         value = _mount_value(type="volume", src=self.trivy_volume, dst=TRIVY_DB_TARGET)
-        return ["--mount", value + ",readonly"]
+        return ["--mount", value + ",readonly,volume-nocopy"]
 
 
 @dataclass(frozen=True)
@@ -549,7 +578,14 @@ class BindMounts:
 
     trivy_cache: Path
 
-    def mount_args(self, host_path: Path, target: str, *, read_only: bool) -> list[str]:
+    def mount_args(
+        self,
+        host_path: Path,
+        target: str,
+        *,
+        read_only: bool,
+        no_copy: bool = False,  # noqa: ARG002 - a bind mount never copies
+    ) -> list[str]:
         value = _mount_value(type="bind", src=str(host_path), dst=target)
         return ["--mount", value + (",readonly" if read_only else "")]
 
@@ -716,6 +752,53 @@ def drain_log_stream(
     finally:
         with contextlib.suppress(Exception):
             stream.close()
+
+
+#: How much of the end of a container's output :func:`output_tail` looks at.
+OUTPUT_TAIL_WINDOW_BYTES: Final = 64 * 1024
+#: Lines :func:`output_tail` keeps (the worker log gets them all) and their length.
+OUTPUT_TAIL_LINES: Final = 20
+OUTPUT_TAIL_LINE_CHARS: Final = 300
+#: Of those, the last lines a scan's error carries, each cut shorter.
+ERROR_TAIL_LINES: Final = 3
+ERROR_TAIL_LINE_CHARS: Final = 100
+
+
+def output_tail(
+    output: bytes, *, lines: int = OUTPUT_TAIL_LINES, line_chars: int = OUTPUT_TAIL_LINE_CHARS
+) -> list[str]:
+    """The last non-empty lines of a container's output, safe to log and store.
+
+    Each line loses its control and invisible format characters
+    (:func:`~integrations.bomlens.contract.storable_text`, first, so a
+    zero-width character cannot hide a credential from the patterns), then
+    credential-shaped values (:func:`~integrations._secret_scrub.scrub_secrets`),
+    and is cut to ``line_chars``. A line is cut before it is cleaned, so a
+    runaway one is never walked whole; the word the cut fell in is dropped
+    with it, since a cut credential no longer matches a pattern. For the same
+    reason the first line of the window is dropped when the output is longer
+    than the window: its start is missing.
+    """
+    window = output[-OUTPUT_TAIL_WINDOW_BYTES:]
+    raw_lines = window.decode("utf-8", errors="replace").splitlines()
+    if len(output) > len(window) and raw_lines:
+        raw_lines = raw_lines[1:]
+    limit = line_chars * 4
+    kept: list[str] = []
+    for raw in reversed(raw_lines):
+        piece = raw
+        if len(piece) > limit:
+            head = piece[:limit]
+            # Up to the last whitespace: the word the cut fell in goes too.
+            cut_at = max(head.rfind(c) for c in " \t")
+            piece = head[:cut_at] if cut_at > 0 else ""
+        line = scrub_secrets(storable_text(piece))[:line_chars]
+        if line:
+            kept.append(line)
+            if len(kept) == lines:
+                break
+    kept.reverse()
+    return kept
 
 
 class DockerCli:
@@ -993,6 +1076,10 @@ class ContainerSpec:
     #: Drop every capability and add none back, instead of the sidecar's
     #: minimal set: for a container that runs as a non-root user.
     drop_all_caps: bool = False
+    #: Mount the workspace folders with ``volume-nocopy`` (named volumes), so
+    #: the folders keep the worker's ownership: for a container that runs as
+    #: the worker's non-root user (:class:`NamedVolumeMounts`).
+    no_copy: bool = False
 
     def container_env(self) -> tuple[list[tuple[str, str]], dict[str, str]]:
         """``(values on the command line, values by name only)``, one per name.
@@ -1081,7 +1168,7 @@ def docker_run_argv(
     if spec.workdir is not None:
         argv += ["--workdir", spec.workdir]
     for host_path, target, read_only in spec.mounts:
-        argv += mounts.mount_args(host_path, target, read_only=read_only)
+        argv += mounts.mount_args(host_path, target, read_only=read_only, no_copy=spec.no_copy)
     argv += list(spec.extra_mount_args)
     plain, secret = spec.container_env()
     for name, value in plain:
@@ -1213,6 +1300,9 @@ class BomLensRunner:
         self.mounts: MountStyle = mounts or mount_style()
         self._line_callback = line_callback or (lambda _stage: None)
         self.report = RunReport()
+        #: The run of the container that writes the result manifest (stage 2,
+        #: or the MODE=IMAGE run), with its name and log stage, once it exited.
+        self._result_run: tuple[ContainerOutcome, str, str] | None = None
         self._count = 0
         self._root = Path(workspace_root())
 
@@ -1379,6 +1469,43 @@ class BomLensRunner:
                 "its output is not read"
             )
         return state
+
+    def require_result(self, output: Path) -> None:
+        """Refuse a run whose result container left no manifest, saying why.
+
+        Called with :meth:`run`'s or :meth:`run_image`'s folder before the
+        result is read. Without it the scan only learns that the manifest is
+        missing. The container's exit, and the last lines it wrote
+        (credentials and control characters removed, :func:`output_tail`), go
+        to the worker log in full and to the scan's error in short, so the
+        cause is visible where the failure is. Anything at the manifest's
+        name, even a link, is left to the manifest reader
+        (``contract.load_manifest``); so is a run whose result container never
+        exited (the run raised before).
+        """
+        if self._result_run is None or os.path.lexists(output / MANIFEST_NAME):
+            return
+        outcome, what, log_stage = self._result_run
+        tail = output_tail(outcome.output)
+        log.error(
+            "bomlens_engine_no_result",
+            stage=log_stage,
+            exit_code=outcome.exit_code,
+            oom_killed=outcome.oom_killed,
+            timed_out=outcome.timed_out,
+            output_tail=tail,
+        )
+        if outcome.timed_out:
+            ended = f"BomLens {what} was stopped at its time limit"
+        elif outcome.oom_killed:
+            ended = f"BomLens {what} ran out of memory"
+        else:
+            ended = f"BomLens {what} exited {outcome.exit_code}"
+        short = " | ".join(line[:ERROR_TAIL_LINE_CHARS] for line in tail[-ERROR_TAIL_LINES:])
+        raise EngineWroteNoResult(
+            f"{ended} without writing a result manifest"
+            + (f"; last output: {short}" if short else "")
+        )
 
     # ------------------------------------------------------------- stages
 
@@ -1704,6 +1831,7 @@ class BomLensRunner:
             spec, timeout=bomlens_stage2_timeout_seconds(), log_stage="postprocess"
         )
         self.report.stage2_exit_code = outcome.exit_code
+        self._result_run = (outcome, "stage 2", "postprocess")
         return outcome
 
     def verified_dir(self) -> Path:
@@ -1854,6 +1982,9 @@ class BomLensRunner:
             network=self._network(True),
             read_only=True,
             drop_all_caps=True,
+            # The output and scratch folders keep the worker's ownership, so
+            # the worker's user can write them (NamedVolumeMounts).
+            no_copy=True,
         )
 
     def run_image(self, target: str) -> Path:
@@ -1879,6 +2010,7 @@ class BomLensRunner:
         self.report.image_timed_out = outcome.timed_out
         if outcome.timed_out:
             raise BomLensEngineError("the BomLens image scan was stopped at its time limit")
+        self._result_run = (outcome, "MODE=IMAGE", "trivy")
         return self._host(self.layout.output)
 
 
@@ -1891,11 +2023,11 @@ def _api_version(value: str | None) -> tuple[int, int] | None:
     return int(parts[0]), int(parts[1])
 
 
-MountKey = tuple[str, str, str, bool, str]
+MountKey = tuple[str, str, str, bool, str, bool]
 
 
 def _requested_from_argv(argv: list[str]) -> set[MountKey]:
-    """The mounts ``argv`` asks for, as (type, source, target, read-only, sub-path)."""
+    """The mounts ``argv`` asks for, as (type, source, target, read-only, sub-path, no-copy)."""
     wanted: set[MountKey] = set()
     for flag, value in zip(argv, argv[1:], strict=False):
         if flag != "--mount":
@@ -1911,6 +2043,7 @@ def _requested_from_argv(argv: list[str]) -> set[MountKey]:
                 fields.get("dst", ""),
                 fields.get("readonly") == "true",
                 fields.get("volume-subpath", ""),
+                fields.get("volume-nocopy") == "true",
             )
         )
     return wanted
@@ -1921,14 +2054,18 @@ def check_requested_mounts(argv: list[str], recorded: list[dict[str, Any]]) -> N
     actual: set[MountKey] = set()
     for mount in recorded:
         options = mount.get("VolumeOptions") or {}
-        subpath = options.get("Subpath", "") if isinstance(options, dict) else ""
+        if not isinstance(options, dict):
+            options = {}
         actual.add(
             (
                 str(mount.get("Type", "")),
                 str(mount.get("Source", "")),
                 str(mount.get("Target", "")),
                 bool(mount.get("ReadOnly", False)),
-                str(subpath or ""),
+                str(options.get("Subpath", "") or ""),
+                # A daemon that dropped volume-nocopy would hand the folder
+                # to root again (NamedVolumeMounts).
+                bool(options.get("NoCopy", False)),
             )
         )
     if actual != _requested_from_argv(argv):
@@ -1989,6 +2126,7 @@ __all__ = [
     "EngineContainer",
     "EngineContainerStillRunning",
     "EngineScanCancelled",
+    "EngineWroteNoResult",
     "EngineImages",
     "EngineLayout",
     "MountStyle",
@@ -2002,6 +2140,7 @@ __all__ = [
     "instance_id",
     "is_loopback_proxy",
     "mount_style",
+    "output_tail",
     "pinned_image",
     "resolve_images",
     "stage1_image_prefix",

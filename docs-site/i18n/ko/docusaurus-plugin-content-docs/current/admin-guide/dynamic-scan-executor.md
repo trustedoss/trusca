@@ -150,10 +150,12 @@ SCAN_ANDROID_IMAGE_TAG=v1.0.0                            # semver 또는 sha256:
 
 - **Docker 소켓 없음.** syft가 레지스트리에서 이미지를 직접 읽으며, Docker 데몬에 이미지를 받으라고 요청하지 않습니다. Trivy는 같은 레지스트리에서 Debian 패키지의 라이선스를 읽고, 소스 스캔의 2단계처럼 읽기 전용으로 마운트한 워커의 Trivy 데이터베이스로 SBOM을 매칭합니다. [데이터베이스 나이 규칙](#engine-trivy-db-age)도 똑같이 적용됩니다.
 - **레지스트리 이미지 참조만 허용.** 참조는 Docker 형식인 `[registry/]name[:tag][@sha256:digest]`를 따라야 하고, 엔진에는 `registry:<참조>`로 넘깁니다. 그래서 엔진은 레지스트리만 읽습니다. 아카이브 경로(`docker-archive:`, `oci-archive:`), 폴더(`oci-dir:`, `dir:`), `https://` 같은 스킴은 컨테이너를 시작하기 전에 스캔을 실패로 처리합니다. TRUSCA 컨테이너 스캔은 이미지 참조만 받으므로, 엔진에 넘길 업로드 이미지 아카이브는 없습니다.
-- **워커 자신의 비 root 사용자로 실행.** capability를 모두 제거하고, 루트 파일시스템을 읽기 전용으로 두고, `/tmp`만 워크스페이스의 임시 폴더로 쓰며, `SCAN_SIDECAR_PIDS_LIMIT`, `SCAN_SIDECAR_MEMORY`, `SCAN_SIDECAR_CPUS` 제한을 적용합니다. 워커가 root로 실행 중이면 컨테이너를 root로 실행하지 않고 스캔을 거부합니다. 마운트는 스캔의 출력 폴더, 임시 폴더, Trivy 데이터베이스뿐입니다.
+- **워커 자신의 비 root 사용자로 실행.** capability를 모두 제거하고, 루트 파일시스템을 읽기 전용으로 두고, `/tmp`만 워크스페이스의 임시 폴더로 쓰며, `SCAN_SIDECAR_PIDS_LIMIT`, `SCAN_SIDECAR_MEMORY`, `SCAN_SIDECAR_CPUS` 제한을 적용합니다. 워커가 root로 실행 중이면 컨테이너를 root로 실행하지 않고 스캔을 거부합니다. 마운트는 스캔의 출력 폴더, 임시 폴더, Trivy 데이터베이스뿐입니다. 워크스페이스 볼륨(`SCAN_DOCKER_VOLUME_STRATEGY=named`, compose 기본값)에서는 이 폴더들을 `volume-nocopy`로 마운트해 워커 소유를 유지합니다. 이 옵션이 없으면 Docker가 빈 폴더의 소유자를 이미지 안 마운트 지점의 소유자인 root로 바꾸고, 컨테이너는 결과를 쓰지 못합니다.
 - **레지스트리 접근은 `SCAN_BOMLENS_NETWORK`로.** 1단계와 같은 확인을 거치고, 프록시 변수(`HTTP_PROXY`, `HTTPS_PROXY`, `NO_PROXY`)도 이름만 넘깁니다. 실행 시간은 `SCAN_BOMLENS_IMAGE_TIMEOUT_SECONDS`로 제한합니다. 컨테이너에는 스캔 ID와 종료 기한 레이블이 붙으므로, 스캔이 취소되거나 기한이 지나면 정리 작업이 컨테이너를 제거합니다.
 
 결과는 BomLens 소스 스캔과 같은 코드로 읽습니다. 이미지의 패키지와 선언된 라이선스, 패키지 사이의 의존 관계, 취약점, 기반 OS와 지원 종료 여부, 엔진의 단계 기록이 저장됩니다. 취약점 스캔이 `ok`로 끝나지 않으면 스캔이 실패합니다. 스캔 기록에는 `scan_engine`(`input_kind`가 `image`)과 `scan_engine_run`(`mode`가 `image`, 엔진이 받은 참조, 종료 코드)이 남습니다. 진행 화면에는 기본 엔진과 같은 단계가 표시됩니다.
+
+컨테이너가 결과 매니페스트를 쓰지 않고 끝나면, 스캔은 컨테이너가 끝난 방식과 마지막 출력 줄을 담아 실패합니다. 예를 들면 `scan engine: BomLens MODE=IMAGE exited 1 without writing a result manifest; last output: ... Permission denied`입니다. 스캔 오류에는 최대 3줄(줄마다 100자)이, 워커 로그의 `bomlens_engine_no_result` 오류에는 최대 20줄(줄마다 300자)이 남으며, 둘 다 자격 증명과 제어 문자를 지운 뒤 기록합니다. 소스 스캔의 2단계도 같은 방식으로 알립니다(`BomLens stage 2 exited ...`). 이때 `scan_engine`에는 엔진 이름, 이미지, 다이제스트만 남고 `run_status`는 비어 있으므로, 실패한 실행이 같은 스캔의 이전 실행으로 읽히지 않습니다.
 
 전환하기 전에 알아 둘 차이가 두 가지 있습니다.
 

@@ -595,9 +595,14 @@ def test_named_volume_mounts_use_a_subpath_of_the_workspace_volume(tmp_path: Pat
     host = Path(os.path.realpath(mount_root / "scan" / "out"))
     args = style.mount_args(host, "/out", read_only=False)
     assert args == ["--mount", "type=volume,src=trusca_workspace,dst=/out,volume-subpath=scan/out"]
+    assert style.mount_args(host, "/out", read_only=True, no_copy=True) == [
+        "--mount",
+        "type=volume,src=trusca_workspace,dst=/out,volume-subpath=scan/out,readonly,volume-nocopy",
+    ]
+    # Nothing of an image belongs in the worker's database volume, whoever runs.
     assert style.trivy_db_args() == [
         "--mount",
-        "type=volume,src=trusca_trivy-cache,dst=/trivy-db,readonly",
+        "type=volume,src=trusca_trivy-cache,dst=/trivy-db,readonly,volume-nocopy",
     ]
     with pytest.raises(BomLensEngineError, match="SCAN_WORKSPACE_MOUNT"):
         style.mount_args(Path(os.path.realpath(tmp_path)), "/out", read_only=False)
