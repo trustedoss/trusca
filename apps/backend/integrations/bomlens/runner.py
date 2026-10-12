@@ -1,6 +1,11 @@
 # SPDX-License-Identifier: Apache-2.0
 # Copyright 2026 TRUSCA contributors
-"""Run a BomLens source scan from its execution plan (``SCAN_ENGINE=bomlens``).
+"""Run BomLens scans through the Docker API.
+
+A source scan runs from its execution plan (``SCAN_ENGINE=bomlens``,
+:meth:`BomLensRunner.run`); a container image scan is one ``MODE=IMAGE`` run
+(``SCAN_CONTAINER_ENGINE=bomlens``, :meth:`BomLensRunner.run_image`, described
+at the end of this docstring).
 
 The worker runs every container itself, through the Docker API (the socket
 proxy in the compose files). BomLens decides what to run; TRUSCA decides how:
@@ -41,6 +46,19 @@ What every container gets, whatever the plan says (security review
   and the ones TRUSCA sets itself; never the worker's environment.
 * The worker waits for each container to exit, kills it when its time is up,
   and checks it is no longer running before anything reads its output.
+
+A container image scan is one container: the BomLens image in ``MODE=IMAGE``.
+syft reads the image straight from its registry (BomLens #200; no Docker
+socket is mounted, so the daemon is never asked to pull it), Trivy reads the
+Debian packages' licences from the same registry (#206) and matches the SBOM
+against the worker's database, mounted read-only. It gets the rules above,
+and more: it runs as the worker's own non-root user with every capability
+dropped, and the reference it receives is checked here
+(:func:`image_target`) and handed over as ``registry:<reference>``, so syft
+reads nothing but a registry (no archive, folder or daemon source). It needs
+the registries, so it joins ``SCAN_BOMLENS_NETWORK`` under the same checks as
+stage 1. No registry credential is passed: see
+``tasks.scan_container_bomlens``.
 """
 
 from __future__ import annotations
@@ -69,6 +87,7 @@ import structlog
 from core.config import (
     bomlens_deep_license_image,
     bomlens_image,
+    bomlens_image_scan_timeout_seconds,
     bomlens_network,
     bomlens_stage1_image_prefix,
     bomlens_stage1_read_only_root,
@@ -349,6 +368,63 @@ def stage1_image_prefix(value: str) -> str | None:
             "registry.example/mirror/cdxgen/, with no scheme, credentials, tag or digest"
         )
     return value if value.endswith("/") else f"{value}/"
+
+
+#: An image reference as Docker's grammar spells it: an optional registry host
+#: (with a port), lower-case path components, an optional tag and an optional
+#: sha256 digest. Nothing else: no scheme (``docker-archive:``, ``dir:``,
+#: ``oci-dir:``), no space, no ``://``.
+_REF_HOST: Final = (
+    r"(?:[A-Za-z0-9](?:[A-Za-z0-9-]*[A-Za-z0-9])?"
+    r"(?:\.[A-Za-z0-9](?:[A-Za-z0-9-]*[A-Za-z0-9])?)*(?::[0-9]{1,5})?)"
+)
+_REF_COMPONENT: Final = r"[a-z0-9]+(?:(?:[._]|__|-+)[a-z0-9]+)*"
+_IMAGE_REF_RE: Final = re.compile(
+    rf"(?:(?P<host>{_REF_HOST})/)?(?P<path>{_REF_COMPONENT}(?:/{_REF_COMPONENT})*)"
+    r"(?::(?P<tag>[A-Za-z0-9_][A-Za-z0-9_.-]{0,127}))?"
+    r"(?:@(?P<digest>sha256:[0-9a-f]{64}))?"
+)
+_IMAGE_REF_MAX_CHARS: Final = 512
+
+#: The syft source scheme TRUSCA hands every image reference with.
+REGISTRY_SCHEME: Final = "registry:"
+
+
+def image_target(reference: str) -> str:
+    """``registry:<reference>`` for ``MODE=IMAGE``, or refused.
+
+    syft reads a scheme in front of the reference as the kind of source:
+    ``docker-archive:``, ``oci-dir:``, ``dir:`` and ``file:`` read a path
+    inside the container, ``docker:`` asks a Docker daemon. A container scan
+    reference names a registry image, nothing else, so the reference must
+    follow Docker's grammar and is passed with the ``registry:`` scheme, which
+    makes syft (and Trivy's licence read, ``--image-src remote``) read it from
+    the registry and nowhere else, whatever the name looks like (``dir:x`` is
+    a valid image name and tag).
+
+    The error names the rule, not the value: it reaches the scan's error
+    message, and a malformed value may carry credentials
+    (``user:token@registry...``).
+    """
+    value = reference.strip() if isinstance(reference, str) else ""
+    match = _IMAGE_REF_RE.fullmatch(value) if len(value) <= _IMAGE_REF_MAX_CHARS else None
+    host = match.group("host") if match else None
+    # Docker's rule: the first part is a registry only with a dot, a port or
+    # "localhost"; otherwise it is a lower-case path component.
+    if (
+        match is not None
+        and host is not None
+        and not ("." in host or ":" in host or host == "localhost")
+    ):
+        if not re.fullmatch(_REF_COMPONENT, host):
+            match = None
+    if match is None:
+        raise BomLensEngineError(
+            "the image reference is not a registry image reference "
+            "([registry/]name[:tag][@sha256:digest]); the BomLens engine reads images "
+            "from a registry only"
+        )
+    return f"{REGISTRY_SCHEME}{value}"
 
 
 @dataclass(frozen=True)
@@ -914,6 +990,9 @@ class ContainerSpec:
     #: (``--env NAME``); the values reach the docker CLI through its own
     #: process environment, so they never appear on a command line.
     secret_env: tuple[tuple[str, str], ...] = ()
+    #: Drop every capability and add none back, instead of the sidecar's
+    #: minimal set: for a container that runs as a non-root user.
+    drop_all_caps: bool = False
 
     def container_env(self) -> tuple[list[tuple[str, str]], dict[str, str]]:
         """``(values on the command line, values by name only)``, one per name.
@@ -952,6 +1031,22 @@ def _resource_args() -> list[str]:
     return ["--memory", memory, "--memory-swap", memory, "--cpus", cpus]
 
 
+def _without_added_caps(args: list[str]) -> list[str]:
+    """``args`` without its ``--cap-add`` pairs, and with ``--cap-drop ALL``."""
+    kept: list[str] = []
+    index = 0
+    while index < len(args):
+        if args[index] == "--cap-add":
+            index += 2
+            continue
+        kept.append(args[index])
+        index += 1
+    pairs = zip(kept, kept[1:], strict=False)
+    if not any(flag == "--cap-drop" and value.upper() == "ALL" for flag, value in pairs):
+        kept += ["--cap-drop", "ALL"]
+    return kept
+
+
 def docker_run_argv(
     spec: ContainerSpec, mounts: MountStyle, scan_hex: str, deadline: int
 ) -> list[str]:
@@ -973,7 +1068,8 @@ def docker_run_argv(
         "--label",
         f"{DEADLINE_LABEL}={deadline}",
     ]
-    argv += sidecar_security_args()
+    security = sidecar_security_args()
+    argv += _without_added_caps(security) if spec.drop_all_caps else security
     argv += _resource_args()
     if spec.read_only:
         argv.append("--read-only")
@@ -1012,8 +1108,24 @@ class RunReport:
     stage2_image: str | None = None
     stage2_exit_code: int | None = None
     containers: list[str] = field(default_factory=list)
+    #: ``source`` (PLAN, stage 1, stage 2) or ``image`` (one ``MODE=IMAGE`` run,
+    #: recorded in the ``stage2_*`` fields: it is the BomLens image's run).
+    mode: str = "source"
+    #: The reference handed to ``MODE=IMAGE`` (:func:`image_target`).
+    image_target: str | None = None
+    image_timed_out: bool = False
 
     def as_metadata(self) -> dict[str, object]:
+        if self.mode == "image":
+            return {
+                "mode": "image",
+                # Whole: image_target() checked it against the reference
+                # grammar and its length, and a cut digest names no image.
+                "image_target": self.image_target,
+                "engine_image": self.stage2_image,
+                "exit_code": self.stage2_exit_code,
+                "timed_out": self.image_timed_out,
+            }
         return {
             "plan_status": self.plan_status,
             "plan_reason": clip(self.plan_reason) if self.plan_reason else None,
@@ -1154,8 +1266,11 @@ class BomLensRunner:
         return self._host(path)
 
     def _passthrough(self, stage: Stage) -> list[tuple[str, str]]:
+        return self._passthrough_names(stage.env_passthrough)
+
+    def _passthrough_names(self, names: tuple[str, ...]) -> list[tuple[str, str]]:
         env: list[tuple[str, str]] = []
-        for name in stage.env_passthrough:
+        for name in names:
             if name in _TRUSCA_SET_ENV:
                 # TRUSCA's own setting decides these (_trusca_env), never a
                 # variable that happens to be in the worker's environment.
@@ -1678,6 +1793,94 @@ class BomLensRunner:
             self.reclaim_ownership()
         return self._host(self.layout.output)
 
+    # ------------------------------------------------------- image scan
+
+    def _non_root_user(self) -> str:
+        """``uid:gid`` of the worker, the user the image scan container runs as.
+
+        The container writes only the output and scratch folders, which the
+        worker created, so running as the worker's own user needs no
+        capability and leaves no file the worker cannot delete. A worker that
+        runs as root has no such user to lend; it is refused rather than
+        running the container as root.
+        """
+        owner = self._owner_env()
+        if not owner or owner[0][1] == "0":
+            raise BomLensEngineError(
+                "the BomLens image scan runs as the worker's own non-root user, "
+                "and this worker runs as root"
+            )
+        return f"{owner[0][1]}:{owner[1][1]}"
+
+    def image_spec(self, target: str, *, output: Path, scratch: Path) -> ContainerSpec:
+        """The ``MODE=IMAGE`` container for ``target`` (from :func:`image_target`)."""
+        image = self.images.plan
+        env = [
+            ("MODE", "IMAGE"),
+            ("TARGET_IMAGE", target),
+            ("PROJECT_NAME", self.project_name),
+            ("PROJECT_VERSION", self.project_version),
+            ("HOST_OUTPUT_DIR", PLAN_OUTPUT_TARGET),
+            ("UPLOAD_ENABLED", "false"),
+            ("BOMLENS_IMAGE_REF", image.ref),
+            ("BOMLENS_IMAGE_DIGEST", image.digest),
+            # The same report settings as stage 2 of a source scan: the
+            # vulnerability report is required, nothing is looked up online
+            # beyond the image itself, and Trivy matches against the worker's
+            # database, read-only, instead of downloading one.
+            ("GENERATE_SECURITY", "true"),
+            ("SECURITY_ENRICH", "false"),
+            ("DEEP_LICENSE", "false"),
+            ("TRIVY_CACHE_DIR", TRIVY_DB_TARGET),
+            ("TRIVY_SKIP_DB_UPDATE", "true"),
+            ("TRIVY_SKIP_JAVA_DB_UPDATE", "true"),
+            ("TRIVY_OFFLINE_SCAN", "true"),
+            ("TRIVY_NO_PROGRESS", "true"),
+            (TRIVY_DB_MAX_AGE_ENV, str(trivy_db_max_age_days())),
+            *self._owner_env(),
+        ]
+        return ContainerSpec(
+            name=self._container_name("image"),
+            image=image.run_ref,
+            user=self._non_root_user(),
+            entrypoint=None,
+            args=(),
+            workdir=PLAN_OUTPUT_TARGET,
+            mounts=((output, PLAN_OUTPUT_TARGET, False), (scratch, SCRATCH_TARGET, False)),
+            extra_mount_args=tuple(self.mounts.trivy_db_args()),
+            env=tuple(env),
+            # A proxy for the registry, when the worker has one: by name only.
+            secret_env=tuple(self._passthrough_names(PROXY_ENV_NAMES)),
+            network=self._network(True),
+            read_only=True,
+            drop_all_caps=True,
+        )
+
+    def run_image(self, target: str) -> Path:
+        """One ``MODE=IMAGE`` run of the BomLens image. Returns the output folder.
+
+        ``target`` is :func:`image_target`'s value. The container has exited
+        when this returns or raises; its output is for
+        :func:`tasks.bomlens_result.apply_bomlens_result`.
+        """
+        self.report.mode = "image"
+        self.report.image_target = target
+        self.check_docker_api()
+        self.remove_leftovers()
+        output = self._fresh_dir(self.layout.output)
+        scratch = self._fresh_dir(self.layout.scratch("image"))
+        spec = self.image_spec(target, output=output, scratch=scratch)
+        self.report.stage2_image = spec.image
+        self.docker.ensure_image(spec.image, PULL_TIMEOUT_SECONDS)
+        outcome = self._execute(
+            spec, timeout=bomlens_image_scan_timeout_seconds(), log_stage="trivy"
+        )
+        self.report.stage2_exit_code = outcome.exit_code
+        self.report.image_timed_out = outcome.timed_out
+        if outcome.timed_out:
+            raise BomLensEngineError("the BomLens image scan was stopped at its time limit")
+        return self._host(self.layout.output)
+
 
 def _api_version(value: str | None) -> tuple[int, int] | None:
     if not value:
@@ -1772,6 +1975,7 @@ def _project_token(value: str, default: str) -> str:
 __all__ = [
     "INSTANCE_LABEL",
     "LABEL_ROLE",
+    "REGISTRY_SCHEME",
     "STAGE1_LOG_NAME",
     "TRIVY_DB_TARGET",
     "BindMounts",
@@ -1794,6 +1998,7 @@ __all__ = [
     "check_requested_mounts",
     "confined_path",
     "docker_run_argv",
+    "image_target",
     "instance_id",
     "is_loopback_proxy",
     "mount_style",

@@ -13,6 +13,7 @@ test harness can monkey-patch one symbol to short-circuit the pipeline.
 The dispatcher branches on ``scan.kind``:
     - ``"source"``    → :func:`tasks.scan_source.scan_source_task`
     - ``"container"`` → :func:`tasks.scan_container.scan_container_task`
+      (``scan_container_engine_task`` with ``SCAN_CONTAINER_ENGINE=bomlens``)
     - ``"sbom"``      → :func:`tasks.ingest_sbom.ingest_sbom_task`
 
 All tasks accept ``scan_id`` as a UUID string (Celery serialization is JSON;
@@ -66,12 +67,13 @@ def enqueue_scan(scan: Scan) -> str:
     # Local imports avoid pulling Celery (and Redis) into modules that only
     # need the type hint, e.g. schemas / pure unit tests of the service layer.
     from core.config import (
+        scan_container_engine,
         scan_engine,
         scan_hard_time_limit_seconds,
         scan_soft_time_limit_seconds,
     )
     from tasks.ingest_sbom import ingest_sbom_task
-    from tasks.scan_container import scan_container_task
+    from tasks.scan_container import scan_container_engine_task, scan_container_task
     from tasks.scan_source import scan_source_engine_task, scan_source_task
 
     scan_id = str(scan.id)
@@ -90,6 +92,14 @@ def enqueue_scan(scan: Scan) -> str:
         )
     elif scan.kind == "source":
         async_result = scan_source_task.apply_async(
+            args=(scan_id,),
+            soft_time_limit=soft_limit,
+            time_limit=hard_limit,
+        )
+    elif scan.kind == "container" and scan_container_engine() == "bomlens":
+        # SCAN_CONTAINER_ENGINE, read at dispatch like SCAN_ENGINE above: the
+        # engine task runs only on the engine worker.
+        async_result = scan_container_engine_task.apply_async(
             args=(scan_id,),
             soft_time_limit=soft_limit,
             time_limit=hard_limit,

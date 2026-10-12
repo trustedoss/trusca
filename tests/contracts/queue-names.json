@@ -20,10 +20,11 @@
       "trustedoss.engine"
     ]
   },
-  "$comment_engine": "The BomLens engine (SCAN_ENGINE=bomlens) has its own queue, 'engine_queue', carrying only 'engine_task_names'. Its only consumer is the engine worker (docker-compose.yml worker-engine, profile bomlens-engine), the one worker that can reach the Docker API; it subscribes to nothing else and no other worker subscribes to it, so code from a scanned repository never runs where the Docker API is reachable (security review on #522). 'worker_subscriptions.engine' is that worker's -Q default. The Helm chart has no engine worker.",
+  "$comment_engine": "The BomLens engine (SCAN_ENGINE=bomlens, SCAN_CONTAINER_ENGINE=bomlens) has its own queue, 'engine_queue', carrying only 'engine_task_names'. Its only consumer is the engine worker (docker-compose.yml worker-engine, profile bomlens-engine), the one worker that can reach the Docker API; it subscribes to nothing else and no other worker subscribes to it, so code from a scanned repository never runs where the Docker API is reachable (security review on #522). 'worker_subscriptions.engine' is that worker's -Q default. The Helm chart has no engine worker.",
   "engine_queue": "trustedoss.engine",
   "engine_task_names": [
     "trustedoss.scan_source_engine",
+    "trustedoss.scan_container_engine",
     "trustedoss.bomlens_engine_reaper"
   ]
 }

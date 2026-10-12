@@ -254,8 +254,11 @@ x-backend-env: &backend-env
   # BomLens scan engine (preview). Engine scans run only on an engine worker
   # that consumes trustedoss.engine and nothing else (docker-compose.yml's
   # worker-engine); this file defines none, so do not set SCAN_ENGINE=bomlens
-  # here. The keys are listed so a value in .env reaches the containers.
+  # or SCAN_CONTAINER_ENGINE=bomlens here. The keys are listed so a value in
+  # .env reaches the containers.
   SCAN_ENGINE: ${SCAN_ENGINE:-inprocess}
+  SCAN_CONTAINER_ENGINE: ${SCAN_CONTAINER_ENGINE:-inprocess}
+  SCAN_BOMLENS_IMAGE_TIMEOUT_SECONDS: ${SCAN_BOMLENS_IMAGE_TIMEOUT_SECONDS:-1800}
   SCAN_BOMLENS_IMAGE: ${SCAN_BOMLENS_IMAGE:-}
   SCAN_BOMLENS_DEEP_LICENSE_IMAGE: ${SCAN_BOMLENS_DEEP_LICENSE_IMAGE:-}
   SCAN_BOMLENS_NETWORK: ${SCAN_BOMLENS_NETWORK:-bridge}

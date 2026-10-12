@@ -15,6 +15,11 @@ optionally cross-reference DT for license metadata on container components,
 which is when the breaker becomes relevant here too.
 
 Idempotency rules match :mod:`tasks.scan_source` — see that module's docstring.
+
+``SCAN_CONTAINER_ENGINE=bomlens`` (preview) dispatches
+:func:`scan_container_engine_task` instead, which runs on the engine worker:
+the same row checks and registry allow-list as here, then
+:mod:`tasks.scan_container_bomlens` in place of the Trivy stage.
 """
 
 from __future__ import annotations
@@ -40,6 +45,8 @@ from core.config import (
 from core.db import sync_session_scope
 from integrations import trivy as trivy_adapter
 from integrations._size_guard import enforce_jsonb_row_size_limit
+from integrations.bomlens import contract as bomlens_contract
+from integrations.bomlens import runner as bomlens_runner
 from models import (
     Component,
     ComponentDependencyEdge,
@@ -69,6 +76,7 @@ from services.vulnerability_matching import (
 )
 from tasks._progress import make_line_callback, publish_progress
 from tasks._registry_auth import registry_auth_dir, sweep_stale_auth_dirs
+from tasks._scan_pipeline import mark_failed
 from tasks.celery_app import celery_app
 from tasks.scan_source import _extract_spdx_ids, _get_or_create_license
 
@@ -103,7 +111,23 @@ _OS_NAME_MAX = 128
     bind=True,
 )
 def scan_container_task(self: Any, scan_id: str) -> None:
-    """Run a Trivy-based container scan to completion."""
+    """Run a Trivy-based container scan to completion (in-process engine)."""
+    _run_container_task(self, scan_id, engine="inprocess")
+
+
+# SCAN_CONTAINER_ENGINE=bomlens: the same rule as the BomLens source task. It
+# runs on worker-engine only (queue trustedoss.engine), the engine is decided
+# by which task was dispatched, and neither task falls back to the other.
+@celery_app.task(  # type: ignore[misc]
+    name="trustedoss.scan_container_engine",
+    bind=True,
+)
+def scan_container_engine_task(self: Any, scan_id: str) -> None:
+    """Run a container scan to completion on the BomLens engine."""
+    _run_container_task(self, scan_id, engine="bomlens")
+
+
+def _run_container_task(self: Any, scan_id: str, *, engine: str) -> None:
     structlog.contextvars.bind_contextvars(
         scan_id=scan_id, task_id=self.request.id, task_kind="container"
     )
@@ -121,8 +145,13 @@ def scan_container_task(self: Any, scan_id: str) -> None:
             if scan is None:
                 log.warning("scan_container_missing_scan_row")
                 return
-            if scan.status == "succeeded":
-                log.info("scan_container_already_succeeded")
+            # Only a queued scan, or a running one Celery redelivered after a
+            # worker died, is (re)started. A scan that already ended keeps its
+            # ending: a scan cancelled while it waited in the queue, whose
+            # revoke never reached worker-engine, must not be flipped back to
+            # running (security review on #522, N-M2, as for source scans).
+            if scan.status not in ("queued", "running"):
+                log.info("scan_container_not_restartable", status=scan.status)
                 return
             project = session.get(Project, scan.project_id)
             if project is None:
@@ -173,7 +202,18 @@ def scan_container_task(self: Any, scan_id: str) -> None:
                 image_ref=image_ref,
                 workspace=workspace,
                 verbose=verbose,
+                engine=engine,
             )
+    except bomlens_runner.EngineScanCancelled as exc:
+        # The engine noticed the scan was cancelled: the row already says so.
+        log.info("scan_container_engine_stopped", reason=str(exc)[:100])
+    except bomlens_contract.BomLensError as exc:
+        # SCAN_CONTAINER_ENGINE=bomlens: the image could not be scanned, or
+        # the result could not become a succeeded scan (a vulnerability scan
+        # that did not end ok included). The message names roles, steps,
+        # settings and the registry host, never a path or a credential.
+        log.error("scan_container_engine_failed", engine="bomlens", error=str(exc)[:300])
+        _record_terminal_failure(scan_uuid, f"scan engine: {exc}")
     except SoftTimeLimitExceeded:
         # PR-A1: Trivy (or a future container stage) exceeded
         # SCAN_SOFT_TIME_LIMIT_SECONDS. Mark failed with a clear message; the
@@ -226,10 +266,29 @@ def _resolve_registry_credentials(
 
 
 def _run_pipeline(
-    *, scan_uuid: uuid.UUID, image_ref: str, workspace: Path, verbose: bool = False
+    *,
+    scan_uuid: uuid.UUID,
+    image_ref: str,
+    workspace: Path,
+    verbose: bool = False,
+    engine: str = "inprocess",
 ) -> None:
+    """The container stages. ``engine`` comes from the task that was
+    dispatched, never from this worker's environment."""
     _set_stage(scan_uuid, "bootstrap")
     workspace.mkdir(parents=True, exist_ok=True)
+
+    if engine == "bomlens":
+        from tasks.scan_container_bomlens import run_bomlens_container_pipeline
+
+        run_bomlens_container_pipeline(
+            scan_uuid=scan_uuid,
+            image_ref=image_ref,
+            workspace=workspace,
+            set_stage=_set_stage,
+            mark_succeeded=_mark_succeeded,
+        )
+        return
 
     # Clear anything a SIGKILLed run left behind before writing our own. The
     # `finally` below cannot run when the process is killed outright, so this
@@ -325,13 +384,9 @@ def _mark_running(session: Session, scan: Scan) -> None:
 
 
 def _mark_failed(session: Session, scan: Scan, message: str) -> None:
-    scan.status = "failed"
-    scan.error_message = message
-    scan.completed_at = datetime.now(UTC)
-    scan.scan_metadata = scan_outcome.close_stage_timings(scan.scan_metadata, now=scan.completed_at)
-    session.commit()
-    last_percent = scan.progress_percent or 0
-    publish_progress(scan.id, step="failed", percent=last_percent)
+    """The shared failure writer: a scan that already ended (cancelled while
+    the engine ran, say) keeps its ending (security review on #522, N-L4)."""
+    mark_failed(session, scan, message)
 
 
 def _record_terminal_failure(scan_uuid: uuid.UUID, message: str) -> None:
@@ -876,4 +931,4 @@ def _get_or_create_component_version(
     return cv
 
 
-__all__ = ["scan_container_task"]
+__all__ = ["scan_container_engine_task", "scan_container_task"]

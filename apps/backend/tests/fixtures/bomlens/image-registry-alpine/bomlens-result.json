@@ -1,0 +1,246 @@
+{
+  "contract": {
+    "name": "bomlens-engine",
+    "version": "1.2.0"
+  },
+  "engine": {
+    "version": "1.13.2",
+    "image": "ghcr.io/sktelecom/bomlens:1.13.2",
+    "image_digest": "sha256:e357e634ef6447ed44b57a4aed3090af12b77c1fe29cbc0e567a3f65414f738b"
+  },
+  "input": {
+    "kind": "image",
+    "mode": "IMAGE",
+    "target": "registry:alpine:3.19.0@sha256:51b67269f354137895d43f3b3d810bfacd3945438e94dc5ac55fdac340352f48"
+  },
+  "run": {
+    "status": "succeeded",
+    "reason": null,
+    "started_at": "2026-10-12T14:52:13Z",
+    "ended_at": "2026-10-12T14:52:19Z",
+    "exit_code": 0
+  },
+  "steps": [
+    {
+      "id": "generate",
+      "status": "ok",
+      "reason": null,
+      "detail": null,
+      "started_at": "2026-10-12T14:52:13Z",
+      "ended_at": "2026-10-12T14:52:17Z",
+      "counts": {
+        "components": 96
+      },
+      "stage": 2
+    },
+    {
+      "id": "os-licenses",
+      "status": "ok",
+      "reason": null,
+      "detail": null,
+      "started_at": "2026-10-12T14:52:17Z",
+      "ended_at": "2026-10-12T14:52:17Z",
+      "counts": {
+        "replaced": 0,
+        "hashes_dropped": 0
+      },
+      "stage": 2
+    },
+    {
+      "id": "docmeta",
+      "status": "ok",
+      "reason": null,
+      "detail": null,
+      "started_at": "2026-10-12T14:52:17Z",
+      "ended_at": "2026-10-12T14:52:17Z",
+      "stage": 2
+    },
+    {
+      "id": "normalize",
+      "status": "ok",
+      "reason": null,
+      "detail": null,
+      "started_at": "2026-10-12T14:52:17Z",
+      "ended_at": "2026-10-12T14:52:17Z",
+      "stage": 2
+    },
+    {
+      "id": "license-registry",
+      "status": "disabled",
+      "reason": null,
+      "detail": null,
+      "started_at": "2026-10-12T14:52:17Z",
+      "ended_at": "2026-10-12T14:52:17Z",
+      "stage": 2
+    },
+    {
+      "id": "enrich-cpe",
+      "status": "ok",
+      "reason": null,
+      "detail": null,
+      "started_at": "2026-10-12T14:52:17Z",
+      "ended_at": "2026-10-12T14:52:17Z",
+      "stage": 2
+    },
+    {
+      "id": "enrich-os-context",
+      "status": "ok",
+      "reason": null,
+      "detail": null,
+      "started_at": "2026-10-12T14:52:17Z",
+      "ended_at": "2026-10-12T14:52:17Z",
+      "stage": 2
+    },
+    {
+      "id": "enrich-distro-supplier",
+      "status": "ok",
+      "reason": null,
+      "detail": null,
+      "started_at": "2026-10-12T14:52:17Z",
+      "ended_at": "2026-10-12T14:52:17Z",
+      "stage": 2
+    },
+    {
+      "id": "enrich-maven-cpe",
+      "status": "ok",
+      "reason": null,
+      "detail": null,
+      "started_at": "2026-10-12T14:52:17Z",
+      "ended_at": "2026-10-12T14:52:17Z",
+      "stage": 2
+    },
+    {
+      "id": "enrich-github-cpe",
+      "status": "ok",
+      "reason": null,
+      "detail": null,
+      "started_at": "2026-10-12T14:52:17Z",
+      "ended_at": "2026-10-12T14:52:17Z",
+      "stage": 2
+    },
+    {
+      "id": "enrich-interpreter-cpe",
+      "status": "ok",
+      "reason": null,
+      "detail": null,
+      "started_at": "2026-10-12T14:52:17Z",
+      "ended_at": "2026-10-12T14:52:18Z",
+      "stage": 2
+    },
+    {
+      "id": "enrich-eol",
+      "status": "ok",
+      "reason": null,
+      "detail": null,
+      "started_at": "2026-10-12T14:52:18Z",
+      "ended_at": "2026-10-12T14:52:18Z",
+      "stage": 2
+    },
+    {
+      "id": "enrich-malicious",
+      "status": "ok",
+      "reason": null,
+      "detail": null,
+      "started_at": "2026-10-12T14:52:18Z",
+      "ended_at": "2026-10-12T14:52:18Z",
+      "stage": 2
+    },
+    {
+      "id": "enrich-staleness",
+      "status": "disabled",
+      "reason": null,
+      "detail": null,
+      "started_at": "2026-10-12T14:52:18Z",
+      "ended_at": "2026-10-12T14:52:18Z",
+      "stage": 2
+    },
+    {
+      "id": "conformance",
+      "status": "ok",
+      "reason": null,
+      "detail": null,
+      "started_at": "2026-10-12T14:52:18Z",
+      "ended_at": "2026-10-12T14:52:18Z",
+      "stage": 2
+    },
+    {
+      "id": "generate-notice",
+      "status": "disabled",
+      "reason": null,
+      "detail": null,
+      "started_at": "2026-10-12T14:52:18Z",
+      "ended_at": "2026-10-12T14:52:18Z",
+      "stage": 2
+    },
+    {
+      "id": "scan-security",
+      "status": "ok",
+      "reason": null,
+      "detail": null,
+      "started_at": "2026-10-12T14:52:18Z",
+      "ended_at": "2026-10-12T14:52:19Z",
+      "stage": 2
+    },
+    {
+      "id": "sign",
+      "status": "disabled",
+      "reason": null,
+      "detail": null,
+      "started_at": "2026-10-12T14:52:19Z",
+      "ended_at": "2026-10-12T14:52:19Z",
+      "stage": 2
+    }
+  ],
+  "tools": {
+    "syft": "1.52.0",
+    "trivy": "0.74.0"
+  },
+  "engines": [
+    "trivy"
+  ],
+  "data_sources": {
+    "trivy_db": {
+      "schema_version": 2,
+      "updated_at": "2026-10-12T13:18:23.1639207Z",
+      "downloaded_at": "2026-10-12T14:43:43.727476Z"
+    }
+  },
+  "outputs": [
+    {
+      "role": "sbom.cyclonedx",
+      "path": "image_1.0.0_bom.json",
+      "sha256": "87d7e90d45a6226ae92567217f68ab2c264cd10d8d7f5e0d4064707af4580950",
+      "bytes": 96711
+    },
+    {
+      "role": "other",
+      "path": "image_1.0.0_summary.result",
+      "sha256": "1f4bef014dd9a54d7f924cada9a4b6b991b1eb0a869ab84311af137561ac4f05",
+      "bytes": 61
+    },
+    {
+      "role": "vulnerabilities.all",
+      "path": "image_1.0.0_security.json",
+      "sha256": "e2edc4c7a1acae395fbd4609a2c5fc0af8959224a1b2f0f78daa126ea2ed99c2",
+      "bytes": 234908
+    },
+    {
+      "role": "other",
+      "path": "image_1.0.0_security.md",
+      "sha256": "06a531c6dbbfe5c9ec7ac8799a17fb732c99a815b4179d5a6c9091d4f2e46ce8",
+      "bytes": 4026
+    },
+    {
+      "role": "other",
+      "path": "image_1.0.0_security.html",
+      "sha256": "6f6d60c25149cbd3b37c3a85366093a51a3d2ae7f4c932ed4c611821b6269b51",
+      "bytes": 16653
+    },
+    {
+      "role": "vulnerabilities.trivy",
+      "path": "image_1.0.0_security.json",
+      "sha256": "e2edc4c7a1acae395fbd4609a2c5fc0af8959224a1b2f0f78daa126ea2ed99c2",
+      "bytes": 234908
+    }
+  ]
+}

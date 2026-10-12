@@ -391,8 +391,9 @@ dependencies pinned in `apps/frontend/package-lock.json`.
 
 ## 4. Images TRUSCA runs but does not distribute
 
-With `SCAN_ENGINE=bomlens`, the engine worker pulls the images below when a
-scan needs them and runs each as a separate container through the Docker API.
+With `SCAN_ENGINE=bomlens` or `SCAN_CONTAINER_ENGINE=bomlens`, the engine
+worker pulls the images below when a scan needs them and runs each as a
+separate container through the Docker API.
 TRUSCA does not link against them, and they are not part of any TRUSCA image,
 the Helm chart, or the offline install bundle. Each image carries its own
 license terms. Anyone who mirrors these images and passes them on to others

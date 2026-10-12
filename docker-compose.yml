@@ -392,6 +392,10 @@ x-backend-env: &backend-env
   # core/config.py; leave SCAN_BOMLENS_IMAGE / _DEEP_LICENSE_IMAGE empty to
   # use them. See docs-site admin-guide/dynamic-scan-executor.md#scan-engine.
   SCAN_ENGINE: ${SCAN_ENGINE:-inprocess}
+  # The same choice for container image scans (MODE=IMAGE), with the same
+  # profile and volumes; it also needs the egress network below.
+  SCAN_CONTAINER_ENGINE: ${SCAN_CONTAINER_ENGINE:-inprocess}
+  SCAN_BOMLENS_IMAGE_TIMEOUT_SECONDS: ${SCAN_BOMLENS_IMAGE_TIMEOUT_SECONDS:-1800}
   SCAN_BOMLENS_IMAGE: ${SCAN_BOMLENS_IMAGE:-}
   SCAN_BOMLENS_DEEP_LICENSE_IMAGE: ${SCAN_BOMLENS_DEEP_LICENSE_IMAGE:-}
   SCAN_BOMLENS_NETWORK: ${SCAN_BOMLENS_NETWORK:-trustedoss-scan-egress}
@@ -1292,7 +1296,8 @@ networks:
     driver: bridge
     internal: true
   # Where the engine's dependency-resolution containers reach the package
-  # registries (SCAN_BOMLENS_NETWORK). No service joins it, so compose does not
+  # registries, and its image scans the image registries
+  # (SCAN_BOMLENS_NETWORK). No service joins it, so compose does not
   # create it; create it once, with containers on it unable to reach each
   # other:
   #   docker network create --opt com.docker.network.bridge.enable_icc=false \
