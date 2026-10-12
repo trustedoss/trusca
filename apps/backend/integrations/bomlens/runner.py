@@ -70,6 +70,7 @@ from core.config import (
     bomlens_deep_license_image,
     bomlens_image,
     bomlens_network,
+    bomlens_stage1_image_prefix,
     bomlens_stage1_read_only_root,
     bomlens_stage1_repositories,
     bomlens_stage1_timeout_seconds,
@@ -251,6 +252,18 @@ _FORBIDDEN_NETWORKS: Final = frozenset({"host", "none", "trustedoss", "trustedos
 #: file after them, so they are reduced to plain characters here.
 _PROJECT_TOKEN_RE: Final = re.compile(r"[^A-Za-z0-9._-]+")
 
+#: ``SCAN_BOMLENS_STAGE1_IMAGE_PREFIX``: a registry host, then an optional
+#: repository path, with or without the final ``/``. The host and the path
+#: follow the same rules as an image name in a plan (plan.py ``_IMAGE_RE``),
+#: so a prefix the plan reader would refuse is refused here first, before any
+#: container starts. Nothing else gets through: no scheme, tag, digest, space,
+#: upper case or shell character.
+_STAGE1_PREFIX_RE: Final = re.compile(
+    r"(?P<host>[a-z0-9]+(?:[.-][a-z0-9]+)*(?::[0-9]{1,5})?)"
+    r"(?:/[a-z0-9]+(?:(?:[._]|__|-+)[a-z0-9]+)*)*/?"
+)
+_STAGE1_PREFIX_MAX_CHARS: Final = 200
+
 
 class BomLensEngineError(BomLensError):
     """The engine could not be run as configured, or a container misbehaved.
@@ -302,13 +315,46 @@ def pinned_image(value: str, what: str) -> PinnedImage:
     return PinnedImage(ref=ref, digest=digest)
 
 
+def stage1_image_prefix(value: str) -> str | None:
+    """Check ``SCAN_BOMLENS_STAGE1_IMAGE_PREFIX`` and give it its final ``/``.
+
+    Empty means not set (``None``): PLAN then gets no ``CDXGEN_IMAGE_PREFIX``
+    and names the images under BomLens's own default, ``ghcr.io/cdxgen/``.
+    BomLens adds a missing final ``/`` itself (``source-detect.sh``); it is
+    added here too, so the allowed-repository check compares the same prefix
+    the plan uses. The first part must name a registry (a dot, a port or
+    ``localhost``): Docker would read ``mirror/cdxgen/`` as a Docker Hub
+    account, not as a mirror.
+    """
+    if not value:
+        return None
+    # fullmatch: ``$`` would let a final newline through.
+    match = _STAGE1_PREFIX_RE.fullmatch(value)
+    host = match.group("host") if match else ""
+    if (
+        match is None
+        or len(value) > _STAGE1_PREFIX_MAX_CHARS
+        or not ("." in host or ":" in host or host == "localhost")
+    ):
+        raise BomLensEngineError(
+            f"SCAN_BOMLENS_STAGE1_IMAGE_PREFIX={clip(value)!r} is not a registry path "
+            "such as registry.example/mirror/cdxgen/"
+        )
+    return value if value.endswith("/") else f"{value}/"
+
+
 @dataclass(frozen=True)
 class EngineImages:
-    """The images of one run: PLAN always uses ``plan``; stage 2 uses ``stage2``."""
+    """The images of one run: PLAN always uses ``plan``; stage 2 uses ``stage2``.
+
+    ``stage1_prefix`` is the checked ``SCAN_BOMLENS_STAGE1_IMAGE_PREFIX``, or
+    ``None`` when it is not set.
+    """
 
     plan: PinnedImage
     stage2: PinnedImage
     deep_license: bool
+    stage1_prefix: str | None = None
 
 
 def resolve_images(*, deep_license: bool) -> EngineImages:
@@ -319,7 +365,12 @@ def resolve_images(*, deep_license: bool) -> EngineImages:
         if deep_license
         else base
     )
-    return EngineImages(plan=base, stage2=stage2, deep_license=deep_license)
+    return EngineImages(
+        plan=base,
+        stage2=stage2,
+        deep_license=deep_license,
+        stage1_prefix=stage1_image_prefix(bomlens_stage1_image_prefix()),
+    )
 
 
 # --------------------------------------------------------------------------
@@ -1226,6 +1277,10 @@ class BomLensRunner:
             ("BOMLENS_IMAGE_DIGEST", self.images.stage2.digest),
             *self._owner_env(),
         ]
+        if self.images.stage1_prefix is not None:
+            # Where the plan names stage 1's cdxgen image from: a registry
+            # mirror. The digest stays the published one (BomLens #205).
+            env.append(("CDXGEN_IMAGE_PREFIX", self.images.stage1_prefix))
         spec = ContainerSpec(
             name=self._container_name("plan"),
             image=self.images.plan.run_ref,
@@ -1268,11 +1323,12 @@ class BomLensRunner:
             return
         stage1 = plan.generate
         repo = image_repository(stage1.image) + "/"
-        allowed = bomlens_stage1_repositories()
+        allowed = bomlens_stage1_repositories(self.images.stage1_prefix)
         if not any(repo.startswith(prefix) for prefix in allowed):
             raise BomLensEngineError(
                 f"the plan's stage 1 image {clip(stage1.image)!r} is not from an allowed "
-                "repository (SCAN_BOMLENS_STAGE1_REPOSITORIES)"
+                "repository (SCAN_BOMLENS_STAGE1_REPOSITORIES, "
+                "SCAN_BOMLENS_STAGE1_IMAGE_PREFIX)"
             )
         stage2 = plan.postprocess
         if (stage2.image, stage2.image_digest) != (
@@ -1733,6 +1789,7 @@ __all__ = [
     "mount_style",
     "pinned_image",
     "resolve_images",
+    "stage1_image_prefix",
     "trivy_db_max_age_days",
     "write_new_file",
 ]

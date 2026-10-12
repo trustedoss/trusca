@@ -1516,17 +1516,41 @@ def bomlens_deep_license_image() -> str:
     )
 
 
-def bomlens_stage1_repositories() -> tuple[str, ...]:
+def _repository_prefixes(raw: str) -> tuple[str, ...]:
+    return tuple(p.strip() for p in raw.split(",") if p.strip().endswith("/"))
+
+
+def bomlens_stage1_repositories(image_prefix: str | None = None) -> tuple[str, ...]:
     """Repository prefixes a plan's stage 1 image must start with.
 
     A prefix is matched against the image name before its tag, so
     ``ghcr.io/cdxgen/`` admits ``ghcr.io/cdxgen/cdxgen-alpine-node24:13.2.0``
     and nothing outside that namespace. A prefix that does not end in ``/`` is
     ignored: ``ghcr.io/cdxgen`` would also admit ``ghcr.io/cdxgen-evil/...``.
+
+    ``image_prefix`` is the checked ``SCAN_BOMLENS_STAGE1_IMAGE_PREFIX``
+    (``integrations.bomlens.runner.stage1_image_prefix``), ending in ``/``.
+    The plan then names its stage 1 image under that prefix, so the prefix is
+    allowed without being listed here. With the list left empty it replaces
+    the default instead of joining it: a plan that names ``ghcr.io/cdxgen/``
+    while a mirror is configured is refused.
     """
     raw = os.getenv("SCAN_BOMLENS_STAGE1_REPOSITORIES", "").strip()
-    raw = raw or BOMLENS_STAGE1_REPOSITORIES_DEFAULT
-    return tuple(p.strip() for p in raw.split(",") if p.strip().endswith("/"))
+    if not image_prefix:
+        return _repository_prefixes(raw or BOMLENS_STAGE1_REPOSITORIES_DEFAULT)
+    listed = _repository_prefixes(raw)
+    return listed if image_prefix in listed else (*listed, image_prefix)
+
+
+def bomlens_stage1_image_prefix() -> str:
+    """Where the stage 1 cdxgen images are pulled from (raw, read per call).
+
+    Passed to ``MODE=PLAN`` as BomLens's ``CDXGEN_IMAGE_PREFIX``: everything
+    before the image name, for example ``registry.example/mirror/cdxgen/`` in
+    place of ``ghcr.io/cdxgen/``. Empty (the default) leaves BomLens's own
+    default. The runner checks the value before any container starts.
+    """
+    return os.getenv("SCAN_BOMLENS_STAGE1_IMAGE_PREFIX", "").strip()
 
 
 def bomlens_network() -> str:

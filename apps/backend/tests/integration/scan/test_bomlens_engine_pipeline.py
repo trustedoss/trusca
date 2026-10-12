@@ -31,6 +31,7 @@ from tests._bomlens_engine import (
     Behaviour,
     FakeDocker,
     captured_images,
+    plan_as_published,
     write_plan,
     write_result,
     write_sbom,
@@ -212,6 +213,67 @@ def test_the_in_process_task_never_touches_docker(
     assert docker.runs == []
 
 
+# ---------------------------------------------------------------------------
+# SCAN_BOMLENS_STAGE1_IMAGE_PREFIX: stage 1 from a registry mirror
+# ---------------------------------------------------------------------------
+
+MIRROR = "registry.example/mirror/cdxgen/"
+
+
+def test_the_engine_task_runs_stage_1_from_the_configured_mirror(
+    monkeypatch: pytest.MonkeyPatch, sync_session: Session
+) -> None:
+    """The task reads the setting, PLAN gets it, and stage 1 runs the image the
+    published image names for it (``fixtures/bomlens-plan/node-mirror-prefix``)."""
+    from tasks.scan_source import scan_source_engine_task
+
+    docker = (
+        FakeDocker()
+        .behave("plan", Behaviour(effect=plan_as_published()))
+        .behave("stage1", Behaviour(effect=write_sbom("app_1.0_bom.json")))
+        .behave("stage2", Behaviour(effect=write_result("source-ok")))
+    )
+    _install(monkeypatch, docker)
+    monkeypatch.setenv("TRUSTEDOSS_SCAN_BACKEND", "mock")
+    monkeypatch.setenv("SCAN_BOMLENS_STAGE1_IMAGE_PREFIX", MIRROR.rstrip("/"))
+    monkeypatch.delenv("SCAN_BOMLENS_STAGE1_REPOSITORIES", raising=False)
+    scan_id = _seed_running_source_scan()
+
+    result = scan_source_engine_task.apply(args=[str(scan_id)])
+    assert result.successful(), result.traceback
+
+    scan = _scan(sync_session, scan_id)
+    assert scan.status == "succeeded", scan.error_message
+    (plan,) = docker.runs_of("plan")
+    assert plan.env["CDXGEN_IMAGE_PREFIX"] == MIRROR
+    (stage1,) = docker.runs_of("stage1")
+    assert stage1.image.startswith(MIRROR + "cdxgen-alpine-node24:13.2.0@sha256:")
+    meta = _metadata(sync_session, scan_id)
+    assert meta["scan_engine_run"]["stage1_image"] == stage1.image
+
+
+def test_a_malformed_mirror_prefix_fails_the_scan_before_any_container(
+    monkeypatch: pytest.MonkeyPatch, sync_session: Session
+) -> None:
+    from tasks.scan_source import scan_source_engine_task
+
+    docker = _clean_docker()
+    _install(monkeypatch, docker)
+    monkeypatch.setenv("TRUSTEDOSS_SCAN_BACKEND", "mock")
+    monkeypatch.setenv("SCAN_BOMLENS_STAGE1_IMAGE_PREFIX", "https://registry.example/mirror/")
+    scan_id = _seed_running_source_scan()
+
+    scan_source_engine_task.apply(args=[str(scan_id)])
+
+    scan = _scan(sync_session, scan_id)
+    assert scan.status == "failed"
+    assert scan.error_message is not None
+    assert "SCAN_BOMLENS_STAGE1_IMAGE_PREFIX" in scan.error_message
+    assert "is not a registry path" in scan.error_message
+    assert docker.runs == []
+    assert _component_count(sync_session, scan_id) == 0
+
+
 @pytest.mark.parametrize(
     ("docker", "fragment"),
     [
@@ -334,6 +396,42 @@ def test_the_published_images_scan_an_npm_project(
     meta = _metadata(sync_session, scan_id)
     assert meta["scan_engine"]["run_status"] == "succeeded"
     assert meta["scan_engine_run"]["stage1_exit_code"] == 0
+
+
+@pytest.mark.skipif(
+    os.getenv("BOMLENS_ENGINE_DOCKER_TEST") != "1" or not os.getenv("BOMLENS_ENGINE_STAGE1_MIRROR"),
+    reason="runs the published BomLens images with stage 1 from a registry mirror "
+    "(BOMLENS_ENGINE_STAGE1_MIRROR, holding cdxgen-alpine-node24 copied as the "
+    "offline-install guide says)",
+)
+def test_the_published_images_take_stage_1_from_a_mirror(
+    monkeypatch: pytest.MonkeyPatch, sync_session: Session
+) -> None:
+    mirror = os.environ["BOMLENS_ENGINE_STAGE1_MIRROR"]
+    host_dir = Path(os.environ["BOMLENS_ENGINE_DOCKER_DIR"]) / uuid.uuid4().hex
+    host_dir.mkdir(parents=True)
+    monkeypatch.setenv("WORKSPACE_HOST_PATH", str(host_dir))
+    monkeypatch.setenv(
+        "TRIVY_CACHE_DIR",
+        os.getenv("BOMLENS_ENGINE_TRIVY_CACHE", str(Path.home() / ".cache" / "trivy")),
+    )
+    monkeypatch.delenv("SCAN_BOMLENS_IMAGE")
+    monkeypatch.delenv("SCAN_BOMLENS_STAGE1_REPOSITORIES", raising=False)
+    monkeypatch.setenv("SCAN_BOMLENS_STAGE1_IMAGE_PREFIX", mirror)
+    monkeypatch.setenv("SCAN_BOMLENS_NETWORK", os.getenv("BOMLENS_ENGINE_NETWORK", "bridge"))
+    monkeypatch.setattr(runner_mod.DockerCli, "own_networks", lambda self: frozenset())
+    scan_id = _seed_running_source_scan()
+
+    _run_pipeline(host_dir, scan_id)
+
+    scan = _scan(sync_session, scan_id)
+    assert scan.status == "succeeded", scan.error_message
+    meta = _metadata(sync_session, scan_id)
+    assert meta["scan_engine_run"]["stage1_image"].startswith(
+        mirror.rstrip("/") + "/cdxgen-alpine-node24:13.2.0@sha256:"
+    )
+    assert meta["scan_engine_run"]["stage1_exit_code"] == 0
+    assert _component_count(sync_session, scan_id) == 1
 
 
 @pytest.mark.skipif(

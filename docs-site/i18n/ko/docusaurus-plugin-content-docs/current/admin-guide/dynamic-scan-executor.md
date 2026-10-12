@@ -150,7 +150,7 @@ SCAN_ANDROID_IMAGE_TAG=v1.0.0                            # semver 또는 sha256:
 
 실행 계획은 스캔 대상 소스를 읽은 컨테이너가 만든 출력입니다. 그래서 워커는 계획을 신뢰하지 않는 입력으로 다루고, 각 컨테이너를 어떻게 실행할지는 워커가 정합니다.
 
-- **다이제스트로 고정한 이미지.** BomLens 이미지는 TRUSCA 릴리스에 고정되어 있습니다. 1단계 이미지는 `SCAN_BOMLENS_STAGE1_REPOSITORIES`에 있는 저장소에서 와야 하고 다이제스트가 있어야 합니다. `:latest`는 어디에서든 거부합니다. 2단계는 계획에서 이미지와 마운트 경로 두 개만 받고, 사용자, 진입점, 인자, 작업 디렉터리, 네트워크는 TRUSCA가 정합니다.
+- **다이제스트로 고정한 이미지.** BomLens 이미지는 TRUSCA 릴리스에 고정되어 있습니다. 1단계 이미지는 `SCAN_BOMLENS_STAGE1_REPOSITORIES`에 있는 저장소에서, `SCAN_BOMLENS_STAGE1_IMAGE_PREFIX`를 설정했으면 그 접두사 아래에서 와야 하고 다이제스트가 있어야 합니다. `:latest`는 어디에서든 거부합니다. 2단계는 계획에서 이미지와 마운트 경로 두 개만 받고, 사용자, 진입점, 인자, 작업 디렉터리, 네트워크는 TRUSCA가 정합니다.
 - **스캔 워크스페이스 안의 마운트만 허용.** 계획은 마운트를 역할(소스, 출력, 보조 파일, 복원 상태)로만 지정하고 호스트 경로는 지정하지 못합니다. 워커가 역할마다 해당 스캔의 워크스페이스 아래 폴더를 연결하고, 워크스페이스를 벗어나거나 심볼릭 링크를 거치는 경로는 거부합니다. 시스템 경로, Docker 소켓, TRUSCA가 직접 마운트하는 경로(`/tmp`, `/trivy-db`) 위에 마운트하려는 계획도 거부합니다. 예외는 2단계의 Trivy 데이터베이스 역할 하나뿐이며, 정확히 `/trivy-db`에 읽기 전용일 때만 받습니다. 워커는 그 자리에 자기 Trivy 데이터베이스를 연결합니다. 컨테이너는 먼저 생성만 하고, Docker 데몬이 기록한 마운트가 요청한 것과 정확히 같을 때만 시작합니다.
 - **읽기 전용 루트 파일시스템.** `/tmp`만 워크스페이스의 임시 폴더로 씁니다. 1단계는 `SCAN_BOMLENS_STAGE1_READ_ONLY_ROOT=false`로 쓰기 가능한 루트를 줄 수 있습니다(아래 표 참고).
 - **위의 사이드카와 같은 격리.** `--cap-drop ALL` 뒤에 최소한의 권한만 다시 추가하고, `no-new-privileges`를 켜고, `SCAN_SIDECAR_PIDS_LIMIT`, `SCAN_SIDECAR_MEMORY`, `SCAN_SIDECAR_CPUS` 제한을 적용하며 스왑은 쓰지 않습니다.
@@ -277,7 +277,8 @@ docker-compose --profile bomlens-engine rm -f worker-engine docker-socket-proxy
 | `SCAN_BOMLENS_IMAGE` | 릴리스에 고정된 이미지 | 실행 계획과 2단계에 쓰는 BomLens 이미지입니다. 바꿀 때는 `latest`가 아닌 태그와 다이제스트를 함께 적어 `repo:tag@sha256:...` 형식으로 지정해야 합니다. |
 | `SCAN_BOMLENS_DEEP_LICENSE_IMAGE` | 릴리스에 고정된 이미지 | scancode를 포함한 BomLens 변형 이미지로, `SCANCODE_ENABLED`가 켜져 있으면 2단계에 씁니다. 고정 규칙은 위와 같습니다. |
 | `SCAN_BOMLENS_NETWORK` | 비어 있음(compose: `trustedoss-scan-egress`) | 패키지 레지스트리에서 의존성을 해석하는 1단계가 연결할 네트워크입니다. 비어 있으면 1단계를 거부하고, `host`, compose 네트워크 `trustedoss`와 `trustedoss-docker-api`, 워커 자신이 연결된 네트워크도 거부합니다. |
-| `SCAN_BOMLENS_STAGE1_REPOSITORIES` | `ghcr.io/cdxgen/` | 계획의 1단계 이미지가 시작해야 하는 저장소 접두사 목록(쉼표 구분, 각각 `/`로 끝남)입니다. |
+| `SCAN_BOMLENS_STAGE1_IMAGE_PREFIX` | 비어 있음 | 1단계 cdxgen 언어 이미지를 받는 위치로, 이미지 이름 앞부분 전체입니다(예: `registry.example/mirror/cdxgen/`). 비어 있으면 `ghcr.io/cdxgen/`에서 받습니다. 실행 계획에 BomLens의 `CDXGEN_IMAGE_PREFIX`로 넘기며, 다이제스트는 공개된 것을 그대로 쓰므로 미러에는 모든 플랫폼이 같은 다이제스트로 있어야 합니다. [오프라인 설치 → 1단계 이미지](./offline-install.md#bomlens-stage1-images)를 참고하십시오. |
+| `SCAN_BOMLENS_STAGE1_REPOSITORIES` | 비어 있음(`ghcr.io/cdxgen/`) | 계획의 1단계 이미지가 시작해야 하는 저장소 접두사 목록(쉼표 구분, 각각 `/`로 끝남)입니다. 비어 있으면 `ghcr.io/cdxgen/`을 허용하고, `SCAN_BOMLENS_STAGE1_IMAGE_PREFIX`를 설정했으면 그 접두사만 허용합니다. 이미지 접두사는 항상 허용합니다. |
 | `SCAN_BOMLENS_STAGE1_READ_ONLY_ROOT` | `true` | `false`로 바꾸면 1단계 루트 파일시스템에 쓸 수 있습니다. Python의 `pip install` 빌드 준비에 필요하지만, 그 대신 빌드가 쓰기 가능한 이미지에서 실행됩니다. |
 | `SCAN_BOMLENS_STAGE1_TIMEOUT_SECONDS` | `1800` | 1단계 시간 한도입니다. 넘기면 강제 종료하고 소스를 복원합니다. |
 | `SCAN_BOMLENS_STAGE2_TIMEOUT_SECONDS` | `1800` | 2단계 시간 한도입니다. 2단계가 강제 종료되면 스캔이 실패합니다. |

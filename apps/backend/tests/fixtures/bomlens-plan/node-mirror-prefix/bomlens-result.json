@@ -1,0 +1,49 @@
+{
+  "contract": {
+    "name": "bomlens-engine",
+    "version": "1.2.0"
+  },
+  "engine": {
+    "version": "1.13.2",
+    "image": "ghcr.io/sktelecom/bomlens:1.13.2",
+    "image_digest": "sha256:e357e634ef6447ed44b57a4aed3090af12b77c1fe29cbc0e567a3f65414f738b"
+  },
+  "input": {
+    "kind": "source",
+    "mode": "PLAN",
+    "target": null
+  },
+  "run": {
+    "status": "succeeded",
+    "reason": null,
+    "started_at": "2026-10-12T09:05:54Z",
+    "ended_at": "2026-10-12T09:05:55Z",
+    "exit_code": 0
+  },
+  "steps": [
+    {
+      "id": "plan",
+      "status": "ok",
+      "reason": null,
+      "detail": null,
+      "started_at": "2026-10-12T09:05:54Z",
+      "ended_at": "2026-10-12T09:05:54Z",
+      "stage": 2
+    }
+  ],
+  "tools": {
+    "syft": "1.52.0"
+  },
+  "engines": [],
+  "data_sources": {
+    "trivy_db": null
+  },
+  "outputs": [
+    {
+      "role": "plan",
+      "path": "bomlens-plan.json",
+      "sha256": "686a00f6ca42c8bd253c1e368b556443f03ac738890da7234abbd6c10f385dfc",
+      "bytes": 5494
+    }
+  ]
+}

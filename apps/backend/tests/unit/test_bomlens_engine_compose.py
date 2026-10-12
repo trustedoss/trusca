@@ -20,6 +20,7 @@ import yaml
 
 from core.config import (
     bomlens_network,
+    bomlens_stage1_image_prefix,
     bomlens_stage1_read_only_root,
     bomlens_stage1_repositories,
     bomlens_stage1_timeout_seconds,
@@ -106,6 +107,7 @@ def test_the_engine_settings_reach_the_worker_with_the_code_defaults(monkeypatch
         "SCAN_BOMLENS_DEEP_LICENSE_IMAGE",
         "SCAN_BOMLENS_NETWORK",
         "SCAN_BOMLENS_STAGE1_REPOSITORIES",
+        "SCAN_BOMLENS_STAGE1_IMAGE_PREFIX",
         "SCAN_BOMLENS_STAGE1_READ_ONLY_ROOT",
         "SCAN_BOMLENS_STAGE1_TIMEOUT_SECONDS",
         "SCAN_BOMLENS_STAGE2_TIMEOUT_SECONDS",
@@ -115,15 +117,23 @@ def test_the_engine_settings_reach_the_worker_with_the_code_defaults(monkeypatch
     for key in (
         "SCAN_BOMLENS_NETWORK",
         "SCAN_BOMLENS_STAGE1_REPOSITORIES",
+        "SCAN_BOMLENS_STAGE1_IMAGE_PREFIX",
         "SCAN_BOMLENS_STAGE1_READ_ONLY_ROOT",
         "SCAN_BOMLENS_STAGE1_TIMEOUT_SECONDS",
         "SCAN_BOMLENS_STAGE2_TIMEOUT_SECONDS",
     ):
         monkeypatch.delenv(key, raising=False)
     assert bomlens_network() == ""
-    assert env["SCAN_BOMLENS_STAGE1_REPOSITORIES"] == (
-        "${SCAN_BOMLENS_STAGE1_REPOSITORIES:-" + ",".join(bomlens_stage1_repositories()) + "}"
-    )
+    # Empty in compose, so the code decides: ghcr.io/cdxgen/, or the image
+    # prefix alone when one is set. A compose default would keep ghcr.io
+    # allowed next to a mirror.
+    assert env["SCAN_BOMLENS_STAGE1_REPOSITORIES"] == "${SCAN_BOMLENS_STAGE1_REPOSITORIES:-}"
+    monkeypatch.setenv("SCAN_BOMLENS_STAGE1_REPOSITORIES", "")
+    assert bomlens_stage1_repositories() == ("ghcr.io/cdxgen/",)
+    assert bomlens_stage1_repositories("registry.example/m/") == ("registry.example/m/",)
+    monkeypatch.delenv("SCAN_BOMLENS_STAGE1_REPOSITORIES")
+    assert env["SCAN_BOMLENS_STAGE1_IMAGE_PREFIX"] == "${SCAN_BOMLENS_STAGE1_IMAGE_PREFIX:-}"
+    assert bomlens_stage1_image_prefix() == ""
     assert env["SCAN_BOMLENS_STAGE1_READ_ONLY_ROOT"] == (
         "${SCAN_BOMLENS_STAGE1_READ_ONLY_ROOT:-"
         + str(bomlens_stage1_read_only_root()).lower()
