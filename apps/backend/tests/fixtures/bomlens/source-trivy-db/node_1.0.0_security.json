@@ -3,8 +3,8 @@
   "Trivy": {
     "Version": "0.74.0"
   },
-  "ReportID": "01a12d5d-de8e-74c2-96d7-74e46a59fc2a",
-  "CreatedAt": "2026-10-11T23:48:08.974315012Z",
+  "ReportID": "01a12e57-1257-7787-8af8-785f07d1f7c2",
+  "CreatedAt": "2026-10-12T04:20:20.695494567Z",
   "ArtifactName": "node_1.0.0_bom.json",
   "ArtifactType": "cyclonedx",
   "Results": [
@@ -162,7 +162,7 @@
             "https://creativecommons.org/licenses/by/4.0/",
             "https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2025-13465",
             "https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2026-4800",
-            "https://errata.almalinux.org/10/ALSA-2026-10713.html",
+            "https://errata.almalinux.org/9/ALSA-2026-19167.html",
             "https://errata.rockylinux.org/RLSA-2026:24331",
             "https://github.com/advisories/GHSA-35jh-r3h4-6jhm",
             "https://github.com/advisories/GHSA-r5fr-rjxr-66jc",
@@ -332,7 +332,7 @@
             "https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2026-23745",
             "https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2026-23950",
             "https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2026-24842",
-            "https://errata.almalinux.org/10/ALSA-2026-2438.html",
+            "https://errata.almalinux.org/9/ALSA-2026-2452.html",
             "https://errata.rockylinux.org/RLSA-2026:18868",
             "https://github.com/advisories/GHSA-xxjr-mmjv-4gpg",
             "https://github.com/lodash/lodash",

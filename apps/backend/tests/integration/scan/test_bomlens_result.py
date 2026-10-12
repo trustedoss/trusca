@@ -264,6 +264,11 @@ def test_a_degraded_run_records_each_degradation_and_still_persists(
         {"stage": "generate", "reason": "fallback"},
         {"stage": "scancode", "reason": "not_installed"},
     ]
+    # Each degradation carries the engine's own words on why.
+    assert meta[so.STAGE_OUTCOMES_KEY] == {
+        "generate": {"reason": "fallback", "engine_detail": "cdxgen-unavailable"},
+        "scancode": {"reason": "not_installed", "engine_detail": "scancode is not in this image"},
+    }
     # The Overview's own scancode notice reads this key, not the list.
     assert so.scancode_skip_reason(meta) == "not_installed"
     # A skipped step did no work and has no window.
@@ -613,10 +618,130 @@ def test_a_source_that_declared_dependencies_and_yielded_none(
     )
 
     meta = _metadata(sync_session, scan_id)
-    assert meta[so.STAGE_OUTCOMES_KEY] == {"generate": {"reason": "no_components"}}
+    assert meta[so.STAGE_OUTCOMES_KEY] == {
+        "generate": {
+            "reason": "no_components",
+            "engine_detail": "manifests found: pyproject.toml",
+        }
+    }
     assert _component_count(sync_session, scan_id) == 0
     assert applied.declared_but_empty
     assert bomlens_component_outcome(applied, manifest_inventory=None) == (so.EMPTY_WITH_MANIFESTS)
+
+
+def test_the_resolver_steps_that_failed_are_stored_and_logged(
+    tmp_path: Path, sync_session: Session
+) -> None:
+    """BomLens #209 names the resolver steps that failed when a source that
+    declares dependencies yields none (the Gradle project under a read-only
+    root). The reason word alone left the cause blank; the detail is what says
+    it, so it is kept with the outcome and carried by the warning."""
+    from structlog.testing import capture_logs
+
+    from tasks.bomlens_result import apply_bomlens_result
+
+    scan_id = _seed_running_source_scan()
+    detail = "manifests found: pyproject.toml; steps that failed: gradle-dependencies"
+
+    with capture_logs() as logs:
+        apply_bomlens_result(
+            scan_uuid=scan_id,
+            output_dir=_copy_fixture("source-no-components-failed-step", tmp_path),
+        )
+
+    meta = _metadata(sync_session, scan_id)
+    assert meta[so.STAGE_OUTCOMES_KEY] == {
+        "generate": {"reason": "no_components", "engine_detail": detail}
+    }
+    degraded = [e for e in logs if e["event"] == "bomlens_stage_degraded"]
+    assert [(e["stage"], e["reason"], e["engine_detail"]) for e in degraded] == [
+        ("generate", "no_components", detail)
+    ]
+
+
+def test_a_detail_with_a_nul_is_stored_without_it(tmp_path: Path, sync_session: Session) -> None:
+    """Postgres refuses NUL in JSONB, so a detail carrying one, stored as read,
+    would fail the commit and with it the scan. The engine output is not
+    trusted to be free of it."""
+    from tasks.bomlens_result import apply_bomlens_result
+
+    scan_id = _seed_running_source_scan()
+    folder = _copy_fixture("source-no-components-failed-step", tmp_path)
+
+    def _nul(manifest: dict[str, Any]) -> None:
+        for step in manifest["steps"]:
+            if step["id"] == "generate":
+                step["detail"] = "manifests found: build.gradle\x00\nsteps that failed: gradle"
+
+    _rewrite_manifest(folder, _nul)
+
+    apply_bomlens_result(scan_uuid=scan_id, output_dir=folder)
+
+    meta = _metadata(sync_session, scan_id)
+    assert meta[so.STAGE_OUTCOMES_KEY]["generate"]["engine_detail"] == (
+        "manifests found: build.gradle steps that failed: gradle"
+    )
+
+
+def _nul_in_contract_version(manifest: dict[str, Any]) -> None:
+    # A pre-release suffix is free text; the major is still read as 1.
+    manifest["contract"]["version"] = "1.0.0-dev\x00x"
+
+
+def _nul_in_a_tool(manifest: dict[str, Any]) -> None:
+    manifest["tools"]["cdx\x00gen"] = manifest["tools"].pop("cdxgen") + "\x00"
+
+
+def _nul_in_a_step_id(manifest: dict[str, Any]) -> None:
+    manifest["steps"].append(dict(manifest["steps"][0], id="brand-new\x00step", status="ok"))
+
+
+def _nul_in_a_reason(manifest: dict[str, Any]) -> None:
+    for step in manifest["steps"]:
+        if step["id"] == "generate":
+            step.update(status="degraded", reason="no_deps\x00resolved")
+    manifest["run"].update(status="succeeded_degraded", reason="step_failed_or_degraded")
+
+
+@pytest.mark.parametrize(
+    ("change", "expect"),
+    [
+        (_nul_in_contract_version, lambda m: m["scan_engine"]["contract_version"] == "1.0.0-devx"),
+        (_nul_in_a_tool, lambda m: m["scan_engine"]["tools"]["cdxgen"] == "13.2.0"),
+        (
+            _nul_in_a_step_id,
+            lambda m: {"id": "brand-newstep", "status": "ok", "reason": None}
+            in m["scan_engine"]["steps"],
+        ),
+        (
+            _nul_in_a_reason,
+            lambda m: (
+                {"id": "generate", "status": "degraded", "reason": "no_depsresolved"}
+                in m["scan_engine"]["steps"]
+                and m[so.STAGE_OUTCOMES_KEY]["generate"]
+                == {"reason": "failed", "engine_reason": "no_depsresolved"}
+            ),
+        ),
+    ],
+    ids=["contract-version", "tool", "step-id", "reason"],
+)
+def test_a_nul_in_a_recorded_manifest_value_is_stored_without_it(
+    tmp_path: Path, sync_session: Session, change: Any, expect: Any
+) -> None:
+    """Every manifest string written to ``scan_metadata`` (the engine record
+    and an unknown reason kept beside its stage) goes into JSONB, which
+    refuses NUL. Stored as read, one would fail the commit and the scan."""
+    from tasks.bomlens_result import apply_bomlens_result
+
+    scan_id = _seed_running_source_scan()
+    folder = _copy_fixture("source-ok", tmp_path)
+    _rewrite_manifest(folder, change)
+
+    apply_bomlens_result(scan_uuid=scan_id, output_dir=folder)
+
+    meta = _metadata(sync_session, scan_id)
+    assert "\x00" not in json.dumps(meta).replace("\\u0000", "\x00")
+    assert expect(meta), meta.get("scan_engine")
 
 
 # ---------------------------------------------------------------------------

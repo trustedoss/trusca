@@ -64,6 +64,7 @@ from integrations.bomlens.contract import (
     clip,
     load_manifest,
     read_output,
+    storable_text,
 )
 from models import Scan
 from services import sbom_component_walk, scan_outcome
@@ -126,7 +127,13 @@ class AppliedBomLensResult:
 
 
 def _clip(value: str | None) -> str | None:
-    return value[:_TEXT_MAX] if isinstance(value, str) else None
+    """A manifest string as stored in ``scan_metadata``: no control characters
+    (:func:`storable_text`; a NUL would fail the JSONB write and the scan),
+    at most :data:`_TEXT_MAX` characters. Cut once before cleaning so an
+    oversized value is never walked whole, and again after."""
+    if not isinstance(value, str):
+        return None
+    return storable_text(value[: _TEXT_MAX * 4])[:_TEXT_MAX]
 
 
 def engine_record(result: EngineResult) -> dict[str, Any]:
@@ -135,7 +142,12 @@ def engine_record(result: EngineResult) -> dict[str, Any]:
     Every step is listed with its status and reason, including the ones that
     map to no TRUSCA stage, so nothing the engine reported is lost in the
     translation. ``detail`` is left out: it carries tool messages (network
-    addresses, file names) that do not belong in a row users can read.
+    addresses, file names) that do not belong in a row users can read. The
+    detail of a step that became a TRUSCA stage degradation is the exception,
+    kept with that outcome once cut and scrubbed
+    (``integrations.bomlens.stages.step_detail``), because without it a
+    degraded ``generate`` does not say why. ``scan-security`` is never one, so
+    Trivy's network messages stay out.
     """
     return {
         "name": "bomlens",
@@ -185,6 +197,7 @@ def _record_engine_run(scan_uuid: uuid.UUID, result: EngineResult) -> None:
                 stage=outcome.stage,
                 reason=outcome.reason,
                 engine_reason=outcome.engine_reason,
+                engine_detail=outcome.engine_detail,
             )
         # This run's answer replaces whatever an earlier run of the same scan
         # row left, in both directions.
@@ -205,6 +218,8 @@ def _record_engine_run(scan_uuid: uuid.UUID, result: EngineResult) -> None:
             stage=outcome.stage,
             reason=outcome.reason,
             engine_reason=clip(outcome.engine_reason) if outcome.engine_reason else None,
+            # Already cut, scrubbed and free of control characters (step_detail).
+            engine_detail=outcome.engine_detail,
             step=clip(outcome.step),
             status=outcome.status,
         )

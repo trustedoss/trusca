@@ -32,6 +32,13 @@ Rules, each one a decision rather than a translation:
   degradation whatever its status says, except ``disabled``; TRUSCA records it
   under the catch-all ``failed`` so it is labelled and counted, and keeps the
   engine's reason verbatim beside it (``engine_reason``).
+* A degradation keeps the step's ``detail`` beside it (``engine_detail``): the
+  reason word alone does not say why. ``generate`` / ``no_components`` names
+  the manifests found and, from BomLens #209, the resolver steps that failed
+  ("manifests found: build.gradle; steps that failed: gradle-dependencies").
+  The detail is engine output and can quote a tool's message, so it is cut,
+  scrubbed of credentials and stripped of control characters before anything
+  stores or logs it (:func:`step_detail`).
 """
 
 from __future__ import annotations
@@ -42,7 +49,14 @@ from typing import Final
 
 import structlog
 
-from integrations.bomlens.contract import STEP_REASONS, EngineResult, Step, clip
+from integrations._secret_scrub import scrub_secrets
+from integrations.bomlens.contract import (
+    STEP_REASONS,
+    EngineResult,
+    Step,
+    clip,
+    storable_text,
+)
 from services import scan_outcome
 
 log = structlog.get_logger("integrations.bomlens.stages")
@@ -114,6 +128,15 @@ POSTPROCESS_TIMING_STAGE: Final = "postprocess"
 #: steps fold into the same TRUSCA stage (the six ``enrich-*`` steps).
 _SEVERITY: Final = {"failed": 3, "degraded": 2, "skipped": 1}
 
+#: Longest step ``detail`` kept with a stage outcome or logged. The contract
+#: allows 500 characters; this is the cap ``BomLensError`` puts on a message a
+#: user reads, and it keeps five manifest names and the failed steps whole.
+DETAIL_MAX_CHARS: Final = 300
+
+#: How much of a ``detail`` reaches the credential patterns. The contract caps
+#: it at 500; a manifest that ignores the cap is cut before any regex runs.
+_DETAIL_READ_MAX: Final = 1000
+
 
 @dataclass(frozen=True)
 class StageOutcome:
@@ -125,6 +148,31 @@ class StageOutcome:
     status: str
     #: The engine's own reason, kept when it is not one TRUSCA knows.
     engine_reason: str | None = None
+    #: The step's ``detail``, made safe to store and log (:func:`step_detail`).
+    engine_detail: str | None = None
+
+
+def step_detail(step: Step) -> str | None:
+    """``step.detail`` as TRUSCA stores and logs it, or ``None`` when empty.
+
+    The detail is engine output that can quote a tool (a registry URL, a
+    resolver's message), and it lands in ``scan_metadata``, which the scan API
+    returns to every member of the team. So it is cut before the credential
+    patterns run (:func:`scrub_secrets` asks for that), stripped of control
+    and format characters (:func:`storable_text`), scrubbed, and cut to
+    :data:`DETAIL_MAX_CHARS` with an ellipsis. Stripping comes before
+    scrubbing: a control character inside a credential
+    (``https://us\\x0ber:pass@host``) ends the patterns' match, and dropping
+    it afterwards would join the credential back together unmasked.
+    """
+    if not step.detail:
+        return None
+    text = scrub_secrets(storable_text(step.detail[:_DETAIL_READ_MAX]))
+    if not text:
+        return None
+    if len(text) > DETAIL_MAX_CHARS:
+        text = text[: DETAIL_MAX_CHARS - 3] + "..."
+    return text
 
 
 def _reason_known(step: Step) -> bool:
@@ -178,10 +226,11 @@ def stage_outcomes(result: EngineResult) -> list[StageOutcome]:
                     step=step.id,
                     status=step.status,
                     engine_reason=(
-                        step.reason
+                        storable_text(step.reason) or None
                         if step.reason is not None and step.reason not in scan_outcome.STAGE_REASONS
                         else None
                     ),
+                    engine_detail=step_detail(step),
                 ),
             )
     return [entry for _, entry in chosen.values()]
@@ -233,6 +282,7 @@ def vulnerability_failure(result: EngineResult) -> str | None:
 
 __all__ = [
     "DEEP_LICENSE_STEP",
+    "DETAIL_MAX_CHARS",
     "POSTPROCESS_TIMING_STAGE",
     "STEP_STAGE",
     "TIMING_STAGE",
@@ -241,5 +291,6 @@ __all__ = [
     "is_degradation",
     "stage_outcomes",
     "stage_windows",
+    "step_detail",
     "vulnerability_failure",
 ]

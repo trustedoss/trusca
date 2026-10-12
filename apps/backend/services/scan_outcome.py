@@ -293,6 +293,9 @@ def reset_stage_records(metadata: dict[str, Any] | None) -> dict[str, Any]:
 #: Bound on an engine's own reason word kept beside the TRUSCA reason.
 _ENGINE_REASON_MAX: Final = 64
 
+#: Bound on an engine's own account of why the stage degraded.
+_ENGINE_DETAIL_MAX: Final = 300
+
 
 def add_stage_outcome(
     metadata: dict[str, Any] | None,
@@ -300,6 +303,7 @@ def add_stage_outcome(
     stage: str,
     reason: str,
     engine_reason: str | None = None,
+    engine_detail: str | None = None,
 ) -> dict[str, Any]:
     """Record that ``stage`` degraded. Unknown stages and reasons are refused.
 
@@ -311,6 +315,13 @@ def add_stage_outcome(
     does not know (a newer BomLens contract minor). ``reason`` is then the
     catch-all ``failed``, so the stage is labelled and counted, and the
     engine's word is kept verbatim beside it so nothing it said is lost.
+
+    ``engine_detail`` is the engine's sentence on why (BomLens' step
+    ``detail``: the manifests it found, the resolver steps that failed). The
+    caller has already made it safe to store
+    (``integrations.bomlens.stages.step_detail``); it is only bounded here.
+    Neither engine field reaches :func:`degraded_stages`, so the screen and
+    the metrics keep reading the closed vocabulary.
     """
     if stage not in DEGRADABLE_STAGES or reason not in STAGE_REASONS:
         raise ValueError(f"unknown stage outcome: {stage!r} / {reason!r}")
@@ -320,6 +331,8 @@ def add_stage_outcome(
     entry: dict[str, str] = {"reason": reason}
     if engine_reason:
         entry["engine_reason"] = engine_reason[:_ENGINE_REASON_MAX]
+    if engine_detail:
+        entry["engine_detail"] = engine_detail[:_ENGINE_DETAIL_MAX]
     outcomes[stage] = entry
     merged[STAGE_OUTCOMES_KEY] = outcomes
     return merged

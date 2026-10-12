@@ -39,6 +39,36 @@ log = structlog.get_logger("integrations._secret_scrub")
 # no ``re.MULTILINE``) so a pathological single-line input cannot make a
 # pattern's match span runaway across the whole payload.
 
+#: Key words whose value is a credential. Unanchored on purpose, so
+#: ``AWS_SECRET_ACCESS_KEY`` matches via ``secret`` and ``GITHUB_TOKEN`` via
+#: ``token``; over-redaction is the accepted cost.
+_CREDENTIAL_KEYS = r"(?:password|passwd|passphrase|secret|credential|access[_-]?key|token)\w*"
+
+#: Between a key and its value: ``=`` or ``:`` with optional spaces, and an
+#: optional closing quote on the key, so ``KEY=v``, ``KEY: v`` and the JSON
+#: ``"KEY": "v"`` all match.
+_ASSIGN = r"[\"']?\s*[:=]\s*"
+
+
+def _key_patterns(key: str) -> tuple[tuple[re.Pattern[str], str], ...]:
+    """Patterns that redact the value assigned to ``key``.
+
+    A quoted value is redacted up to its closing quote, which is kept, so a
+    JSON or DSL line keeps its shape (``"password": "***"``). A quoted value
+    may also follow the key after plain whitespace, as in a Gradle
+    ``credentials { password "..." }`` block; an unquoted value only after
+    ``=`` or ``:``, because ``password reset failed`` is prose, not an
+    assignment. An unquoted value runs to the next whitespace, as before.
+    """
+    return (
+        (
+            re.compile(rf"(?i)({key}(?:{_ASSIGN}|\s+))([\"'])[^\"'\n]*\2"),
+            r"\1\2***\2",
+        ),
+        (re.compile(rf"(?i)({key}{_ASSIGN})(?![\"'])\S+"), r"\1***"),
+    )
+
+
 _SECRET_PATTERNS: tuple[tuple[re.Pattern[str], str], ...] = (
     # HTTP Authorization schemes Bearer would miss. Verbose Trivy / cdxgen
     # registry round-trips (``--debug``, ``CDXGEN_DEBUG_MODE=debug``) emit
@@ -67,31 +97,39 @@ _SECRET_PATTERNS: tuple[tuple[re.Pattern[str], str], ...] = (
     # npm-style auth tokens: ``npm_config__authToken=``, ``_authToken:``,
     # ``_auth =``. The trailing ``\S+`` is line-bounded (no re.MULTILINE) so
     # it cannot run away across lines.
-    (re.compile(r"(?i)(_auth(?:Token)?\s*[:=]\s*)\S+"), r"\1***"),
+    *_key_patterns(r"_auth(?:Token)?"),
     # Generic ``password`` / ``secret`` / ``credential`` / ``access[_-]key`` /
-    # ``token`` assignments (``KEY=value`` or ``KEY: value``) that resolved
-    # config / env dumps surface in verbose mode (e.g. ``npm_config__password=``,
-    # ``GITHUB_TOKEN=ghp_...``, ``AWS_SECRET_ACCESS_KEY=...``). The leading
-    # alternation is unanchored so ``AWS_SECRET_ACCESS_KEY`` matches via its
-    # ``secret`` substring; over-redaction here is intentional (we'd rather mask
-    # a benign ``token=`` than leak a credential).
+    # ``token`` assignments that resolved config / env dumps surface in
+    # verbose mode (e.g. ``npm_config__password=``, ``GITHUB_TOKEN=ghp_...``,
+    # ``AWS_SECRET_ACCESS_KEY=...``), JSON (``{"password": "..."}``) and build
+    # DSLs (``password "..."``). See :data:`_CREDENTIAL_KEYS`.
+    *_key_patterns(_CREDENTIAL_KEYS),
+    # URLs with userinfo: ``scheme://user:pass@host`` and the token-only
+    # ``scheme://<token>@host`` (a GitHub or GitLab token in a clone URL) ->
+    # ``scheme://***@host``. The userinfo charset excludes ``/`` ``\s`` ``@``
+    # so pathological inputs like ``://user:pass@@@host`` match the first
+    # ``user:pass@`` only (the trailing ``@@host`` becomes opaque path, not a
+    # userinfo passthrough). An image digest (``docker://alpine@sha256:...``)
+    # is not userinfo and is left alone. This covers a failed ``pip`` /
+    # ``npm`` / ``mvn`` resolution against a private-registry URL echoed in
+    # stderr.
+    (re.compile(r"([a-zA-Z][a-zA-Z0-9+.\-]*://)[^/\s@]+@(?!sha\d+:)"), r"\1***@"),
+    # Generic API key headers: ``X-API-Key:``, ``api-key=``, ``api_key:``
+    *_key_patterns(r"x-api-key"),
+    *_key_patterns(r"api[_-]?key"),
+    # Tokens recognisable by their own prefix, with no key next to them:
+    # GitHub (classic ``ghp_``/``gho_``/``ghu_``/``ghs_``/``ghr_`` and
+    # fine-grained ``github_pat_``), GitLab (``glpat-``), Slack (``xoxb-``,
+    # ``xoxp-``, ``xoxa-``, ``xoxs-``), npm (``npm_`` and 36 characters) and
+    # AWS access key ids (``AKIA`` and 16 characters). The prefix is kept so
+    # the kind of credential stays visible; minimum lengths keep ordinary
+    # words such as ``npm_config_...`` out.
     (
-        re.compile(
-            r"(?i)((?:password|passwd|passphrase|secret|credential|access[_-]?key|token)\w*\s*[:=]\s*)\S+"
-        ),
+        re.compile(r"\b(gh[pousr]_|github_pat_|glpat-|xox[bpas]-)[A-Za-z0-9_\-]{16,}"),
         r"\1***",
     ),
-    # URLs with userinfo: ``scheme://user:pass@host`` -> ``scheme://***@host``.
-    # The userinfo charset excludes ``/`` ``\s`` ``@`` so pathological inputs
-    # like ``://user:pass@@@host`` match the first ``user:pass@`` only (the
-    # trailing ``@@host`` becomes opaque path, not a userinfo passthrough).
-    # This is the pattern that covers a failed ``pip`` / ``npm`` / ``mvn``
-    # resolution against a ``scheme://user:pass@host`` private-registry URL
-    # echoed in stderr.
-    (re.compile(r"([a-zA-Z][a-zA-Z0-9+.\-]*://)[^/\s@]+:[^/\s@]+@"), r"\1***@"),
-    # Generic API key headers: ``X-API-Key:``, ``api-key=``, ``api_key:``
-    (re.compile(r"(?i)(x-api-key\s*[:=]\s*)\S+"), r"\1***"),
-    (re.compile(r"(?i)(api[_-]?key\s*[:=]\s*)\S+"), r"\1***"),
+    (re.compile(r"\b(npm_)[A-Za-z0-9]{36}\b"), r"\1***"),
+    (re.compile(r"\b(AKIA)[0-9A-Z]{16}\b"), r"\1***"),
 )
 
 
