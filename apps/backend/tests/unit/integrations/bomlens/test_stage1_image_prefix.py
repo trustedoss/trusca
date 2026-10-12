@@ -153,9 +153,8 @@ def test_without_a_prefix_the_plan_gets_no_variable_and_stage_1_is_the_published
     [
         ("registry.example/mirror/cdxgen/", "registry.example/mirror/cdxgen/"),
         ("registry.example/mirror/cdxgen", "registry.example/mirror/cdxgen/"),
-        ("registry.example/", "registry.example/"),
-        ("registry.example", "registry.example/"),
         ("localhost:5000/cdxgen/", "localhost:5000/cdxgen/"),
+        ("proxy.example/ghcr-proxy/cdxgen", "proxy.example/ghcr-proxy/cdxgen/"),
         ("localhost/cdxgen", "localhost/cdxgen/"),
         ("10.0.0.5:5000/a_b/c-d/e.f/", "10.0.0.5:5000/a_b/c-d/e.f/"),
         ("ghcr.io/cdxgen/", "ghcr.io/cdxgen/"),
@@ -200,6 +199,13 @@ def test_an_empty_prefix_is_not_set() -> None:
         "registry.example:123456/mirror/",
         "mirror/cdxgen/",
         "cdxgen",
+        # A host alone would admit every image in the registry.
+        "localhost",
+        "localhost/",
+        "docker.io",
+        "reg.example:5000",
+        "reg.example:5000/",
+        "registry.example/",
         "user:pass@registry.example/mirror/",
         "registry.example/" + "a" * 200 + "/",
     ],
@@ -207,7 +213,24 @@ def test_an_empty_prefix_is_not_set() -> None:
 def test_anything_but_a_registry_path_is_refused(value: str) -> None:
     with pytest.raises(BomLensEngineError, match="SCAN_BOMLENS_STAGE1_IMAGE_PREFIX") as caught:
         stage1_image_prefix(value)
-    assert "is not a registry path" in str(caught.value)
+    message = str(caught.value)
+    assert "is not in the right form" in message
+    # The rule, never the value (it may carry credentials): every bad value
+    # gets the same message.
+    with pytest.raises(BomLensEngineError) as other:
+        stage1_image_prefix("zz-distinct-bad-value")
+    assert message == str(other.value)
+    assert "zz-distinct" not in message
+
+
+@pytest.mark.parametrize(
+    "value", ["u:p@reg.example/x", "https://u:secret-token@reg.example/mirror/cdxgen/"]
+)
+def test_credentials_in_a_bad_prefix_stay_out_of_the_error(value: str) -> None:
+    with pytest.raises(BomLensEngineError) as caught:
+        stage1_image_prefix(value)
+    for part in ("u:p", "secret-token", "@reg.example"):
+        assert part not in str(caught.value)
 
 
 def test_a_bad_prefix_refuses_the_run_before_any_container(
@@ -273,6 +296,8 @@ _NAME = PUBLISHED["image"].removeprefix("ghcr.io/cdxgen/")
         f"evil.example/registry.example/mirror/cdxgen/{_NAME}",
         f"registry.example:5000/mirror/cdxgen/{_NAME}",
         f"ghcr.io/cdxgen/{_NAME}",
+        # The prefix path itself is not under the prefix.
+        "registry.example/mirror/cdxgen:13.2.0",
     ],
 )
 def test_a_plan_image_outside_the_prefix_is_refused(
@@ -284,6 +309,13 @@ def test_a_plan_image_outside_the_prefix_is_refused(
         _runner(workspace, docker).run()
     assert not docker.runs_of("stage1")
     assert docker.pulled == [captured_images()]
+
+
+def test_without_a_prefix_the_default_path_itself_is_not_under_it(workspace: Path) -> None:
+    docker = _docker(write_plan("node-ok", stage1_image="ghcr.io/cdxgen:13.2.0"))
+    with pytest.raises(BomLensEngineError, match="not from an allowed repository"):
+        _runner(workspace, docker).run()
+    assert not docker.runs_of("stage1")
 
 
 def test_a_mirrored_image_without_its_digest_is_refused(

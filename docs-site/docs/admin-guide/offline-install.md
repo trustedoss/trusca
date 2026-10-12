@@ -254,9 +254,13 @@ TRUSCA passes the value to the execution plan as BomLens's
 `CDXGEN_IMAGE_PREFIX`, and the plan then names each image under it, for
 example `<your-registry>/cdxgen/cdxgen-alpine-node24:13.2.0@sha256:...`, with
 the published digest. A final `/` is added when missing. The value must be a
-registry host (with a dot, a port or `localhost`) followed by an optional
-path; a scheme such as `https://`, a tag, a digest, spaces or shell
-characters are refused, and the scan fails before any container starts.
+registry host (with a dot, a port or `localhost`) followed by a path of at
+least one part; a host alone such as `reg.example:5000`, a scheme such as
+`https://`, credentials, a tag, a digest, spaces or shell characters are
+refused, and the scan fails before any container starts. The error names the
+rule, not the value. Every image under the prefix is allowed for stage 1, so
+point it at a path that holds only the cdxgen images, not at a whole
+registry.
 
 The prefix is allowed as a stage 1 repository without adding it to
 `SCAN_BOMLENS_STAGE1_REPOSITORIES`. With that list left empty, the prefix
@@ -267,7 +271,9 @@ next to the prefix.
 A mirror filled with `docker pull`, `docker tag` and `docker push` holds one
 platform under a different digest, and pulling the plan's image by its
 digest then fails. A pull-through cache of `ghcr.io` works too, since it
-serves the published digests.
+serves the published digests. Its prefix then runs down to the `cdxgen`
+namespace, for example `<your-registry>/<proxy-project>/cdxgen/`, not just to
+the cache project, which would allow every image the cache can fetch.
 
 Whoever mirrors these images and makes them available to others takes on the
 license obligations of each image. Their licenses, and where each image keeps

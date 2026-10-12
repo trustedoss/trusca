@@ -342,11 +342,12 @@ def image_tag(image: str) -> str | None:
 
 def check_image(image: str, digest: str | None, where: str) -> None:
     """Refuse an image that is not a plain, tagged-not-latest, digest-pinned name."""
-    if not _IMAGE_RE.match(image):
+    # fullmatch: ``$`` would let a final newline through.
+    if not _IMAGE_RE.fullmatch(image):
         raise _reject(f"{where} image {clip(image)!r} is not an image name")
     if image_tag(image) == "latest":
         raise _reject(f"{where} image {clip(image)!r} is tagged latest")
-    if digest is None or not DIGEST_RE.match(digest):
+    if digest is None or not DIGEST_RE.fullmatch(digest):
         raise _reject(f"{where} image {clip(image)!r} is not pinned by a sha256 digest")
 
 

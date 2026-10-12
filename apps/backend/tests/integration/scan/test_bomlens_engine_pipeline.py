@@ -252,15 +252,22 @@ def test_the_engine_task_runs_stage_1_from_the_configured_mirror(
     assert meta["scan_engine_run"]["stage1_image"] == stage1.image
 
 
+@pytest.mark.parametrize(
+    "value", ["https://registry.example/mirror/", "u:p@reg.example/x", "localhost:5000"]
+)
 def test_a_malformed_mirror_prefix_fails_the_scan_before_any_container(
-    monkeypatch: pytest.MonkeyPatch, sync_session: Session
+    monkeypatch: pytest.MonkeyPatch,
+    sync_session: Session,
+    capsys: pytest.CaptureFixture[str],
+    caplog: pytest.LogCaptureFixture,
+    value: str,
 ) -> None:
     from tasks.scan_source import scan_source_engine_task
 
     docker = _clean_docker()
     _install(monkeypatch, docker)
     monkeypatch.setenv("TRUSTEDOSS_SCAN_BACKEND", "mock")
-    monkeypatch.setenv("SCAN_BOMLENS_STAGE1_IMAGE_PREFIX", "https://registry.example/mirror/")
+    monkeypatch.setenv("SCAN_BOMLENS_STAGE1_IMAGE_PREFIX", value)
     scan_id = _seed_running_source_scan()
 
     scan_source_engine_task.apply(args=[str(scan_id)])
@@ -269,7 +276,18 @@ def test_a_malformed_mirror_prefix_fails_the_scan_before_any_container(
     assert scan.status == "failed"
     assert scan.error_message is not None
     assert "SCAN_BOMLENS_STAGE1_IMAGE_PREFIX" in scan.error_message
-    assert "is not a registry path" in scan.error_message
+    assert "is not in the right form" in scan.error_message
+    # The value (credentials, in the second case) is in neither the scan's
+    # error nor the worker's log.
+    logged = capsys.readouterr()
+    for text in (scan.error_message, logged.out, logged.err, caplog.text):
+        assert value not in text
+        assert "u:p" not in text
+    # The capture did see the failure being logged, with its message.
+    failure = next(
+        line for line in logged.out.splitlines() if "scan_source_engine_failed" in line
+    )
+    assert "SCAN_BOMLENS_STAGE1_IMAGE_PREFIX is not in the right form" in failure
     assert docker.runs == []
     assert _component_count(sync_session, scan_id) == 0
 

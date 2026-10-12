@@ -223,6 +223,9 @@ def test_nested_folder_mounts_are_refused() -> None:
         ("image", "ghcr.io/cdxgen/cdxgen-alpine-node24:latest", "tagged latest"),
         ("image", "ghcr.io/cdxgen/x:1 --privileged", "is not an image name"),
         ("image", "ghcr.io/cdxgen/x@sha256:" + "0" * 64, "is not an image name"),
+        # A final newline: ``$`` alone would let these through.
+        ("image", "ghcr.io/cdxgen/cdxgen-alpine-node24:13.2.0\n", "is not an image name"),
+        ("image_digest", "sha256:" + "0" * 64 + "\n", "not pinned by a sha256 digest"),
     ],
 )
 def test_an_unpinned_or_malformed_stage_image_is_refused(

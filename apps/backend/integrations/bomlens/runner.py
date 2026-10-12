@@ -252,15 +252,18 @@ _FORBIDDEN_NETWORKS: Final = frozenset({"host", "none", "trustedoss", "trustedos
 #: file after them, so they are reduced to plain characters here.
 _PROJECT_TOKEN_RE: Final = re.compile(r"[^A-Za-z0-9._-]+")
 
-#: ``SCAN_BOMLENS_STAGE1_IMAGE_PREFIX``: a registry host, then an optional
-#: repository path, with or without the final ``/``. The host and the path
+#: ``SCAN_BOMLENS_STAGE1_IMAGE_PREFIX``: a registry host, then a repository
+#: path of at least one part, with or without the final ``/``. A host alone
+#: (``localhost``, ``reg.example:5000``) is refused: the allowed-repository
+#: check admits everything under the prefix, so it must name a path that holds
+#: only the cdxgen images, not a whole registry. The host and the path
 #: follow the same rules as an image name in a plan (plan.py ``_IMAGE_RE``),
 #: so a prefix the plan reader would refuse is refused here first, before any
 #: container starts. Nothing else gets through: no scheme, tag, digest, space,
 #: upper case or shell character.
 _STAGE1_PREFIX_RE: Final = re.compile(
     r"(?P<host>[a-z0-9]+(?:[.-][a-z0-9]+)*(?::[0-9]{1,5})?)"
-    r"(?:/[a-z0-9]+(?:(?:[._]|__|-+)[a-z0-9]+)*)*/?"
+    r"(?:/[a-z0-9]+(?:(?:[._]|__|-+)[a-z0-9]+)*)+/?"
 )
 _STAGE1_PREFIX_MAX_CHARS: Final = 200
 
@@ -325,6 +328,10 @@ def stage1_image_prefix(value: str) -> str | None:
     the plan uses. The first part must name a registry (a dot, a port or
     ``localhost``): Docker would read ``mirror/cdxgen/`` as a Docker Hub
     account, not as a mirror.
+
+    The error names the rule, never the value: a value with credentials in it
+    (``user:token@registry...``) would otherwise reach the scan's error
+    message and the worker log.
     """
     if not value:
         return None
@@ -337,8 +344,9 @@ def stage1_image_prefix(value: str) -> str | None:
         or not ("." in host or ":" in host or host == "localhost")
     ):
         raise BomLensEngineError(
-            f"SCAN_BOMLENS_STAGE1_IMAGE_PREFIX={clip(value)!r} is not a registry path "
-            "such as registry.example/mirror/cdxgen/"
+            "SCAN_BOMLENS_STAGE1_IMAGE_PREFIX is not in the right form: a registry host "
+            "(with a dot, a port or localhost) and a path of lower-case parts, such as "
+            "registry.example/mirror/cdxgen/, with no scheme, credentials, tag or digest"
         )
     return value if value.endswith("/") else f"{value}/"
 
@@ -1324,7 +1332,9 @@ class BomLensRunner:
         stage1 = plan.generate
         repo = image_repository(stage1.image) + "/"
         allowed = bomlens_stage1_repositories(self.images.stage1_prefix)
-        if not any(repo.startswith(prefix) for prefix in allowed):
+        # Strictly under a prefix: an image named by the prefix path itself
+        # (``ghcr.io/cdxgen:13.2.0`` for ``ghcr.io/cdxgen/``) is not in it.
+        if not any(repo.startswith(prefix) and len(repo) > len(prefix) for prefix in allowed):
             raise BomLensEngineError(
                 f"the plan's stage 1 image {clip(stage1.image)!r} is not from an allowed "
                 "repository (SCAN_BOMLENS_STAGE1_REPOSITORIES, "

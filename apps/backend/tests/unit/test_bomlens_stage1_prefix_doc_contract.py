@@ -23,7 +23,7 @@ from pathlib import Path
 
 import pytest
 
-from integrations.bomlens.runner import stage1_image_prefix
+from integrations.bomlens.runner import BomLensEngineError, stage1_image_prefix
 
 REPO_ROOT = Path(__file__).resolve().parents[4]
 PLAN_FIXTURES = REPO_ROOT / "apps" / "backend" / "tests" / "fixtures" / "bomlens-plan"
@@ -175,3 +175,19 @@ def test_the_mirror_capture_is_the_published_list_under_the_prefix() -> None:
     assert repo.startswith("registry.example/mirror/cdxgen/")
     assert listing["digests"][published] == generate["image_digest"]  # type: ignore[index]
     assert listing["tag"] == tag
+
+
+@pytest.mark.parametrize("path", [*OFFLINE, *REFERENCES], ids=str)
+def test_the_guides_send_a_pull_through_cache_down_to_the_cdxgen_path(path: Path) -> None:
+    """Every image under the prefix is allowed, so the guides say how far down a
+    pull-through cache's prefix must go; that value is one the runner takes."""
+    assert "<proxy-project>/cdxgen/" in _read(path)
+    concrete = "cache.example/ghcr-proxy/cdxgen/"
+    assert stage1_image_prefix(concrete) == concrete
+
+
+@pytest.mark.parametrize("path", OFFLINE, ids=str)
+def test_the_host_only_example_the_guide_refuses_is_refused(path: Path) -> None:
+    assert "`reg.example:5000`" in _section(_read(path))
+    with pytest.raises(BomLensEngineError, match="is not in the right form"):
+        stage1_image_prefix("reg.example:5000")
