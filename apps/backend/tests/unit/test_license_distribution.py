@@ -488,3 +488,81 @@ def test_system_python_chardet_is_below_7_and_in_the_notices(
     assert (
         f"chardet {version}" in notices_text
     ), f"THIRD_PARTY_NOTICES.md does not name the system-Python chardet {version}"
+
+
+# The BomLens images TRUSCA runs (SCAN_ENGINE=bomlens) are pinned in
+# core/config.py and named again in prose: the notices file's section 4 and
+# the administrator guide's licence and air-gap sections, EN and KO. A pull
+# request that moves the images to another repository changes config.py; this
+# fails until the documents name the new repository and drop the old one.
+ENGINE_IMAGE_DOC_SECTIONS = (
+    (Path("THIRD_PARTY_NOTICES.md"), "## 4. Images TRUSCA runs but does not distribute"),
+    (Path("docs-site/docs/admin-guide/dynamic-scan-executor.md"), "{#engine-image-licences}"),
+    (
+        Path(
+            "docs-site/i18n/ko/docusaurus-plugin-content-docs/current/"
+            "admin-guide/dynamic-scan-executor.md"
+        ),
+        "{#engine-image-licences}",
+    ),
+    (Path("docs-site/docs/admin-guide/offline-install.md"), "{#bomlens-engine-images}"),
+    (
+        Path(
+            "docs-site/i18n/ko/docusaurus-plugin-content-docs/current/"
+            "admin-guide/offline-install.md"
+        ),
+        "{#bomlens-engine-images}",
+    ),
+)
+
+#: A BomLens image repository as the documents write it: a registry host with
+#: a dot, then the path. ``/usr/share/bomlens/`` and ``<your-registry>/bomlens``
+#: have no such host and are not matched; ``github.com/...`` is, and is skipped.
+_BOMLENS_REPO_RE = re.compile(
+    r"[a-z0-9-]+(?:\.[a-z0-9-]+)+(?::[0-9]+)?/(?:[a-z0-9._-]+/)*bomlens[a-z0-9-]*"
+)
+
+
+def _repository(reference: str) -> str:
+    """``registry/path:tag@sha256:...`` without its tag and digest."""
+    name = reference.split("@", 1)[0]
+    head, _, last = name.rpartition("/")
+    return f"{head}/{last.split(':', 1)[0]}"
+
+
+def _section(text: str, marker: str) -> str:
+    """From the heading that holds ``marker`` to the next heading of its level or above."""
+    start = text.rfind("\n", 0, text.index(marker)) + 1
+    level = len(text[start:].split(" ", 1)[0])
+    body_start = text.index("\n", start)
+    following = re.search(rf"^#{{1,{level}}} ", text[body_start:], re.MULTILINE)
+    return text[start : body_start + following.start()] if following else text[start:]
+
+
+def test_engine_image_documents_name_the_configured_repositories() -> None:
+    """Section 4 of the notices and the admin guide name the pinned BomLens repositories."""
+    from core.config import BOMLENS_DEEP_LICENSE_IMAGE_DEFAULT, BOMLENS_IMAGE_DEFAULT
+
+    configured = {
+        _repository(BOMLENS_IMAGE_DEFAULT),
+        _repository(BOMLENS_DEEP_LICENSE_IMAGE_DEFAULT),
+    }
+    # The pattern below must be able to see the configured names, or a renamed
+    # image would pass as "nothing stale, nothing found".
+    unseen = [r for r in configured if not _BOMLENS_REPO_RE.fullmatch(r)]
+    assert not unseen, f"_BOMLENS_REPO_RE does not match the configured {unseen}"
+
+    problems = []
+    for path, marker in ENGINE_IMAGE_DOC_SECTIONS:
+        text = _read(REPO_ROOT / path)
+        assert marker in text, f"{path} has no section marked {marker!r}"
+        named = {
+            m.group(0)
+            for m in _BOMLENS_REPO_RE.finditer(_section(text, marker))
+            if not m.group(0).startswith("github.com/")
+        }
+        if missing := configured - named:
+            problems.append(f"{path} does not name {sorted(missing)}")
+        if stale := named - configured:
+            problems.append(f"{path} names {sorted(stale)}, which config.py does not pin")
+    assert not problems, problems

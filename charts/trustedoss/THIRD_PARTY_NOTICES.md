@@ -6,7 +6,8 @@ Its own copyright notice is in [`NOTICE`](NOTICE).
 This file carries the attribution notices for third-party material that TRUSCA
 either **includes in its source tree** or **bundles in its container images**.
 It is distributed with every TRUSCA artifact — source tree, container images
-(`/licenses/`), and the Helm chart.
+(`/licenses/`), and the Helm chart. Section 4 also lists images that TRUSCA
+can run but does not distribute.
 
 Naming both parties plainly: the components listed here are **not** owned by the
 TRUSCA project, and TRUSCA is **not** owned by any of the copyright holders
@@ -27,8 +28,9 @@ Attribution notice reproduced from the upstream `NOTICE` file, per Apache-2.0
 from; the project has since been renamed BomLens and its NOTICE now opens with
 that name. Only the portion pertaining to the material TRUSCA derives is
 reproduced. Two kinds of upstream notice are omitted: those covering tools
-bundled in *BomLens's own* Docker images, which pertain to no part of TRUSCA,
-and those covering datasets that TRUSCA does not receive from BomLens but
+bundled in *BomLens's own* Docker images, which TRUSCA does not include in
+any artifact it distributes (it can run those images as separate containers;
+see section 4), and those covering datasets that TRUSCA does not receive from BomLens but
 fetches from the origin itself and attributes independently below
 (endoflife.date, OSV).
 
@@ -266,7 +268,7 @@ them.
 | Tool | Version | License |
 |---|---|---|
 | cdxgen | 12.3.3 | Apache-2.0 |
-| scancode-toolkit | 32.4.0 | Apache-2.0 |
+| scancode-toolkit | 32.4.0 | Apache-2.0 AND CC-BY-4.0 |
 | scanoss.py | 1.53.1 | MIT |
 | Trivy | 0.72.0 | Apache-2.0 |
 | cosign | 3.1.2 | Apache-2.0 |
@@ -286,6 +288,19 @@ them.
 | PostgreSQL client | 17 | PostgreSQL |
 | Python | 3.12.14 | PSF-2.0 |
 | **Eclipse Temurin JDK** | **21** | **GPL-2.0 WITH Classpath-exception-2.0** |
+
+scancode-toolkit's code is licensed under Apache-2.0 and its license and
+copyright detection data under CC-BY-4.0
+(https://creativecommons.org/licenses/by/4.0/legalcode). Attribution, as the
+upstream `NOTICE` and `README.rst` give it:
+
+```
+Copyright (c) nexB Inc. and others. All rights reserved.
+ScanCode is a trademark of nexB Inc.
+SPDX-License-Identifier: Apache-2.0 AND CC-BY-4.0
+See https://github.com/nexB/scancode-toolkit for support or download.
+See https://aboutcode.org for more information about nexB OSS projects.
+```
 
 scancode-toolkit runs from its own virtualenv (`/opt/scancode-venv`), and some
 of the Python packages installed there with it carry LGPL or GPL-family terms.
@@ -374,7 +389,46 @@ dependencies pinned in `apps/frontend/package-lock.json`.
 
 ---
 
-## 4. Application dependencies
+## 4. Images TRUSCA runs but does not distribute
+
+With `SCAN_ENGINE=bomlens`, the engine worker pulls the images below when a
+scan needs them and runs each as a separate container through the Docker API.
+TRUSCA does not link against them, and they are not part of any TRUSCA image,
+the Helm chart, or the offline install bundle. Each image carries its own
+license terms. Anyone who mirrors these images and passes them on to others
+takes on the license obligations of each image.
+
+**BomLens**: `ghcr.io/haksungjang/bomlens` (the execution plan and stage 2)
+and `ghcr.io/haksungjang/bomlens-deep-license` (stage 2 when scancode
+detection is on). The tag and digest TRUSCA runs by default are
+`BOMLENS_IMAGE_DEFAULT` and `BOMLENS_DEEP_LICENSE_IMAGE_DEFAULT` in
+`apps/backend/core/config.py`.
+
+- Source: https://github.com/haksungjang/bomlens
+- License: Apache-2.0
+- BomLens's `LICENSE`, `NOTICE` and `THIRD_PARTY_LICENSES.md` are inside both
+  images at `/usr/local/lib/sbom/notices/`. `THIRD_PARTY_LICENSES.md` lists the
+  tools each image bundles and their licenses.
+- The deep-license image adds scancode-toolkit (Apache-2.0 AND CC-BY-4.0) and
+  LGPL components (7-Zip on linux/amd64, intbitset, chardet). The source for
+  7-Zip and intbitset is inside that image at `/usr/share/bomlens/sources/`;
+  chardet is installed as Python source.
+- TRUSCA does not run the BomLens firmware image.
+
+**cdxgen language images**: stage 1 runs one image from `ghcr.io/cdxgen/`,
+chosen by the execution plan and pinned by digest. The images and digests a
+BomLens release can choose are listed in `/usr/local/lib/sbom/cdxgen-images.json`
+inside the BomLens image.
+
+- Source: https://github.com/CycloneDX/cdxgen
+- License: Apache-2.0 for cdxgen. Each image is built on a different base
+  image, and the base image's terms apply to its contents. For example,
+  `cdxgen-python312` is built on a SUSE BCI image and carries the SUSE BCI
+  license (its `com.suse.eula` label is `sle-bci`).
+
+---
+
+## 5. Application dependencies
 
 TRUSCA's own Python and npm dependency trees run to several hundred packages
 and are not enumerated here — a hand-maintained list would drift from the
