@@ -129,6 +129,8 @@ On a graceful scan finish the executor removes its sidecar. On a hard `SIGKILL` 
 
 `SCAN_EXECUTOR` above decides where cdxgen runs. `SCAN_ENGINE` decides which engine produces the scan result at all: `inprocess` (the default) is the worker's own pipeline of build preparation, cdxgen, scancode and Trivy; `bomlens` hands SBOM generation, licence detection and vulnerability matching to the BomLens image, and TRUSCA keeps everything it does with the result (persistence, signing, licence policy, approvals, the build gate, notifications). `SCAN_EXECUTOR` has no effect on a BomLens scan.
 
+`SCAN_ENGINE` covers source scans. Container image scans have their own setting, `SCAN_CONTAINER_ENGINE`, with the same two values, so you can move one scan kind to the engine, compare the results, and move the other later. See [Container image scans on the engine](#engine-container-scans).
+
 ### How a BomLens scan runs {#engine-how-it-runs}
 
 After the worker fetches the source, it runs up to four containers, one after another, and waits for each to exit:
@@ -141,6 +143,22 @@ After the worker fetches the source, it runs up to four containers, one after an
 When the plan says the project is not supported (an Android project, whose SDK image BomLens does not publish), stages 1 and 3 are skipped and stage 2 runs on its own, with the same degraded result.
 
 The worker then checks the result manifest against the BomLens engine contract (major version 1 only; any other major is refused with the version in the scan error), checks each output file against the size and SHA-256 the manifest recorded, and persists the SBOM and the Trivy report through the same code as an in-process scan. The licenses scancode detected in the project's own files (the `bomlens-deep-license` image) are saved as detected licenses, as the in-process scancode stage saves them. One difference: when that scancode result does not match its recorded SHA-256 or is not valid JSON, the whole scan fails, because the engine's output is checked for integrity first; in process, a scancode problem only marks the step as degraded. A result over `SCANCODE_MAX_RESULT_BYTES` is not read and marks the step as degraded on both paths. Registry license lookups the engine did not make within its time budget appear in the same Overview notice as in-process lookups, and the folders BomLens left out as not shipped (tests, examples, benchmarks) are recorded in the scan metadata under `scope_filter`, with the patterns and the manifest files it skipped. A BomLens step that degraded is listed on the project Overview like any other step. The Overview shows the step and its reason; the engine's own explanation (for SBOM generation that found manifests but no components, the manifests and the resolver steps that failed, such as `gradle-dependencies`) is kept in the scan metadata under `stage_outcomes.<stage>.engine_detail`, up to 300 characters with credentials and control characters removed, and in the worker's `bomlens_stage_degraded` warning. A vulnerability scan that did not produce a result fails the scan rather than reading as zero findings.
+
+### Container image scans on the engine {#engine-container-scans}
+
+With `SCAN_CONTAINER_ENGINE=bomlens`, a container scan goes to the engine worker instead of `trivy image` in the scan worker. The worker first applies the same checks as the default engine: the scan must still be queued (a scan cancelled while it waited is not started), and the image's registry must be in `CONTAINER_SCAN_ALLOWED_REGISTRIES` when that list is set. It then runs one container, the BomLens image in `MODE=IMAGE`:
+
+- **No Docker socket.** syft reads the image straight from its registry; the Docker daemon is never asked to pull it. Trivy reads the licences of Debian packages from the same registry and matches the SBOM against the worker's Trivy database, mounted read-only, as stage 2 of a source scan does. The same [database age rule](#engine-trivy-db-age) applies.
+- **A registry image reference only.** The reference must follow Docker's form, `[registry/]name[:tag][@sha256:digest]`, and is handed to the engine as `registry:<reference>`, so the engine reads a registry and nothing else: an archive path (`docker-archive:`, `oci-archive:`), a folder (`oci-dir:`, `dir:`) or a scheme such as `https://` fails the scan before any container starts. TRUSCA container scans take an image reference only, so there is no uploaded image archive to pass on.
+- **The worker's own non-root user**, with every capability dropped, a read-only root filesystem, a scratch `/tmp` from the workspace, and the `SCAN_SIDECAR_PIDS_LIMIT`, `SCAN_SIDECAR_MEMORY` and `SCAN_SIDECAR_CPUS` limits. A worker that runs as root is refused rather than running the container as root. Its mounts are the scan's output and scratch folders and the Trivy database, nothing else.
+- **`SCAN_BOMLENS_NETWORK`** for the registry, under the same checks as stage 1, and the same proxy variables (`HTTP_PROXY`, `HTTPS_PROXY`, `NO_PROXY`), passed by name only. `SCAN_BOMLENS_IMAGE_TIMEOUT_SECONDS` limits the run; the container carries the scan and deadline labels, so the reaper removes it when the scan is cancelled or the deadline passes.
+
+The result goes through the same reader as a BomLens source scan: the image's packages with their declared licences and dependency links, its vulnerabilities, the base OS and its end-of-life flag, and the engine's step records. A vulnerability scan that did not end `ok` fails the scan. The scan record keeps `scan_engine` (with `input_kind` `image`) and `scan_engine_run` (with `mode` `image`, the reference the engine received and its exit code). The progress view shows the same steps as the default engine.
+
+Two differences from the default engine to know before you switch:
+
+- **Private registries are refused.** The default engine hands Trivy a stored registry credential as a file outside the scan workspace and keeps it out of the scanner's environment (see [Private registries](../user-guide/scans.md#private-registries)). The engine container can be given neither: its mounts come only from the scan workspace, which backups archive, and an environment variable would put the credential in the environment of the tools that parse the image. So when the image's registry has a stored credential in the scan's organization, the scan fails before any container starts with `registry '<host>' has a stored registry credential, and the BomLens engine does not pass registry credentials to its container; scan this image with SCAN_CONTAINER_ENGINE=inprocess`. The credential is not read. A registry with no stored credential is read anonymously, as the default engine reads it.
+- **The tag is resolved by the engine.** A reference with a tag is read as the registry serves it when the container starts; pass a digest (`name@sha256:...`) to fix the exact image. The engine records the reference it received, not a digest it resolved.
 
 ### Trivy database age {#engine-trivy-db-age}
 
@@ -164,11 +182,11 @@ The Docker API can start a privileged container, so only one worker can reach it
 
 | Worker | Queues | Docker API | Runs |
 |---|---|---|---|
-| `worker-engine` (profile `bomlens-engine`) | `trustedoss.engine` only | through `docker-socket-proxy` | the BomLens scan task and the engine-container reaper |
-| `worker-scan` | `trustedoss.scan`, `trustedoss.default` | none | in-process scans (build preparation, cdxgen, scancode, Trivy), container and SBOM scans, reachability (govulncheck) |
+| `worker-engine` (profile `bomlens-engine`) | `trustedoss.engine` only | through `docker-socket-proxy` | the BomLens source and container scan tasks and the engine-container reaper |
+| `worker-scan` | `trustedoss.scan`, `trustedoss.default` | none | in-process scans (build preparation, cdxgen, scancode, Trivy), in-process container scans, SBOM scans, reachability (govulncheck) |
 | `worker-default` | `trustedoss.default` | none | notifications, backups, retention, catalog refreshes |
 
-The engine worker does not run the in-process pipeline: a source scan goes to it only when `SCAN_ENGINE=bomlens` was set when the scan was queued, and the task it receives can only run the engine. Both directions are also checked on the worker itself. A worker that can reach the Docker API (`DOCKER_HOST` set, a Docker socket at `/var/run/docker.sock` or `/run/docker.sock`, or the name `docker-socket-proxy` resolving) runs the engine's tasks only and refuses any other, and build preparation, cdxgen and govulncheck refuse to start on such a worker; the task fails with that reason instead of running. `worker-engine` also takes no Celery remote control (`CELERY_WORKER_REMOTE_CONTROL=false`), so a broadcast on the broker cannot drive it: a cancelled engine scan stops at its next stage, and the reaper removes its containers.
+The engine worker does not run the in-process pipeline: a source scan goes to it only when `SCAN_ENGINE=bomlens` was set when the scan was queued (a container scan, `SCAN_CONTAINER_ENGINE=bomlens`), and the task it receives can only run the engine. Both directions are also checked on the worker itself. A worker that can reach the Docker API (`DOCKER_HOST` set, a Docker socket at `/var/run/docker.sock` or `/run/docker.sock`, or the name `docker-socket-proxy` resolving) runs the engine's tasks only and refuses any other, and build preparation, cdxgen and govulncheck refuse to start on such a worker; the task fails with that reason instead of running. `worker-engine` also takes no Celery remote control (`CELERY_WORKER_REMOTE_CONTROL=false`), so a broadcast on the broker cannot drive it: a cancelled engine scan stops at its next stage, and the reaper removes its containers.
 
 ### Turn on the engine (compose) {#engine-turn-on}
 
@@ -181,8 +199,11 @@ The engine worker does not run the in-process pipeline: a source scan goes to it
 docker network create --opt com.docker.network.bridge.enable_icc=false \
   trustedoss-scan-egress
 
-# In the portal's .env (<project> is the compose project name)
+# In the portal's .env (<project> is the compose project name). Set either
+# or both: SCAN_ENGINE for source scans, SCAN_CONTAINER_ENGINE for container
+# image scans
 SCAN_ENGINE=bomlens
+SCAN_CONTAINER_ENGINE=bomlens
 SCAN_WORKSPACE_VOLUME=<project>_workspace
 SCAN_TRIVY_CACHE_VOLUME=<project>_trivy-cache
 
@@ -191,10 +212,10 @@ SCAN_TRIVY_CACHE_VOLUME=<project>_trivy-cache
 docker-compose --profile bomlens-engine up -d
 ```
 
-`SCAN_BOMLENS_NETWORK` defaults to `trustedoss-scan-egress` in compose. To limit stage 1 to the registries you use, add an egress firewall to that network.
+`SCAN_BOMLENS_NETWORK` defaults to `trustedoss-scan-egress` in compose. To limit stage 1 and the image scans to the registries you use, add an egress firewall to that network.
 
 :::warning Set `SCAN_ENGINE=bomlens` only with the engine worker running
-Source scans queued with `SCAN_ENGINE=bomlens` go to `trustedoss.engine`, which only `worker-engine` consumes. Without it they stay queued, and a project with a queued scan does not start another, so the project's scans stop until the engine worker runs or the queued scans are cancelled. Start the profile before setting `SCAN_ENGINE=bomlens`, and set `SCAN_ENGINE=inprocess` before stopping it.
+Source scans queued with `SCAN_ENGINE=bomlens`, and container scans queued with `SCAN_CONTAINER_ENGINE=bomlens`, go to `trustedoss.engine`, which only `worker-engine` consumes. Without it they stay queued, and a project with a queued scan does not start another, so the project's scans stop until the engine worker runs or the queued scans are cancelled. Start the profile before setting either to `bomlens`, and set both to `inprocess` before stopping it.
 :::
 
 When several TRUSCA installations share one Docker daemon, give each its own `TRUSCA_INSTANCE_ID`. Engine containers carry it as a label, and each installation's reaper removes only its own.
@@ -237,8 +258,9 @@ Both services have `restart: unless-stopped`, so a later `docker-compose up -d` 
 ```bash
 # In the portal's .env
 SCAN_ENGINE=inprocess
+SCAN_CONTAINER_ENGINE=inprocess
 
-docker-compose up -d    # the API, beat and workers read SCAN_ENGINE again
+docker-compose up -d    # the API, beat and workers read both settings again
 
 # Once the engine worker is idle: remove engine containers still left (a scan
 # in flight when the worker stops leaves its container behind). <instance> is
@@ -258,13 +280,14 @@ Scans already queued for the engine stay queued until the engine worker runs aga
 - The `worker-engine` log shows `bomlens_plan` with the detected ecosystem, then one `bomlens_container_exit` per container with its exit code.
 
 <!-- docs-uat: id=dynamic-scan-executor-engine-verify-metadata kind=manual tier=manual -->
-- The scan's metadata carries `scan_engine` (the BomLens version, image digest and each step's status) and `scan_engine_run` (the plan status, stage 1's exit code, whether it was killed and whether the source was restored).
+- The scan's metadata carries `scan_engine` (the BomLens version, image digest and each step's status) and `scan_engine_run` (the plan status, stage 1's exit code, whether it was killed and whether the source was restored). For a container scan, `scan_engine.input_kind` is `image` and `scan_engine_run` holds `mode` `image`, the reference the engine received and its exit code.
 
 ### Not in this preview {#engine-not-yet}
 
 - The Helm chart (a Kubernetes Job runner is a later step).
 - Reusing the SBOM of an earlier scan with an unchanged dependency set: a BomLens scan always runs the engine.
 - Private package-registry credentials for stage 1 (the `/etc/trusca/registry` files the in-process pipeline reads), and the SCANOSS step.
+- Private container registries for image scans: an image whose registry has a stored credential is refused (see [Container image scans on the engine](#engine-container-scans)).
 - A proxy that inspects container-create requests, and running the engine's containers under a separate runtime.
 
 ## Environment variable reference
@@ -275,9 +298,11 @@ These mirror the **Dynamic scan executor** section of `.env.example`. All are re
 |---|---|---|
 | `SCAN_EXECUTOR` | `inprocess` | `inprocess` runs cdxgen as a worker subprocess; `local_docker` launches a per-environment sidecar over the Docker socket (on-prem only). |
 | `SCAN_ENGINE` | `inprocess` | Preview. `bomlens` runs source scans on the BomLens engine (see [Scan engine](#scan-engine)). |
+| `SCAN_CONTAINER_ENGINE` | `inprocess` | Preview. `bomlens` runs container image scans on the BomLens engine (see [Container image scans on the engine](#engine-container-scans)). Any other value reads as `inprocess`. |
+| `SCAN_BOMLENS_IMAGE_TIMEOUT_SECONDS` | `1800` | Time limit of one BomLens image scan. A scan past it is stopped and fails. |
 | `SCAN_BOMLENS_IMAGE` | pinned in the release | BomLens image for the plan and stage 2. An override must be `repo:tag@sha256:...` with a tag other than `latest`. |
 | `SCAN_BOMLENS_DEEP_LICENSE_IMAGE` | pinned in the release | BomLens variant with scancode, used for stage 2 when `SCANCODE_ENABLED` is on. Same pinning rule. |
-| `SCAN_BOMLENS_NETWORK` | empty (compose: `trustedoss-scan-egress`) | Network for stage 1, which resolves dependencies from the package registries. Empty refuses stage 1, as do `host`, the compose networks `trustedoss` and `trustedoss-docker-api`, and any network the worker itself is on. |
+| `SCAN_BOMLENS_NETWORK` | empty (compose: `trustedoss-scan-egress`) | Network for stage 1, which resolves dependencies from the package registries, and for the image scans, which read images from their registries. Empty refuses both, as do `host`, the compose networks `trustedoss` and `trustedoss-docker-api`, and any network the worker itself is on. |
 | `SCAN_BOMLENS_STAGE1_IMAGE_PREFIX` | empty | Where stage 1's cdxgen language images are pulled from: everything before the image name, for example `registry.example/mirror/cdxgen/`. Empty pulls them from `ghcr.io/cdxgen/`. Passed to the execution plan as BomLens's `CDXGEN_IMAGE_PREFIX`; the digests stay the published ones, so the mirror must hold every platform under the same digest. It needs a path after the registry host, and should name a path that holds only the cdxgen images (for a pull-through cache, down to `/<proxy-project>/cdxgen/`). See [Offline install → Stage 1 images](./offline-install.md#bomlens-stage1-images). |
 | `SCAN_BOMLENS_STAGE1_REPOSITORIES` | empty (`ghcr.io/cdxgen/`) | Comma-separated repository prefixes, each ending in `/`, that a plan's stage 1 image must start with. Empty allows `ghcr.io/cdxgen/`, or only `SCAN_BOMLENS_STAGE1_IMAGE_PREFIX` when that is set; the image prefix is always allowed. |
 | `SCAN_BOMLENS_STAGE1_READ_ONLY_ROOT` | `true` | `false` gives stage 1 a writable root filesystem, which Python's `pip install` build preparation needs; the build then runs with a writable image. |

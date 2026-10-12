@@ -162,6 +162,8 @@ CI 빌드 게이트는 기본적으로 Critical CVE와 금지 라이선스에서
 | `SCAN_BOMLENS_STAGE1_READ_ONLY_ROOT` | `true` | `config.py` | 1단계를 읽기 전용 루트 파일시스템으로 실행합니다. `false`로 바꾸면 빌드 준비가 언어 이미지 안에 설치할 수 있습니다(Python의 `pip install`). 켜 두면 이 설치가 실패해 해당 전이 의존성이 빠집니다. |
 | `SCAN_BOMLENS_STAGE1_TIMEOUT_SECONDS` | `1800` | `config.py` | 1단계가 실행될 수 있는 시간(초)입니다. 넘기면 강제 종료하고 소스 트리를 복원하며, 2단계는 매니페스트를 직접 읽는 방식으로 대체합니다. 60..21600 범위로 제한합니다. |
 | `SCAN_BOMLENS_STAGE2_TIMEOUT_SECONDS` | `1800` | `config.py` | 2단계가 실행될 수 있는 시간(초)입니다. 2단계가 강제 종료되면 스캔이 실패합니다. 60..21600 범위로 제한합니다. |
+| `SCAN_CONTAINER_ENGINE` | `inprocess` | `config.py` | **미리 보기 기능이며 기본값은 꺼짐입니다.** 컨테이너 이미지 스캔을 실행할 엔진을 `SCAN_ENGINE`과 따로 고릅니다. `inprocess`는 워커가 `trivy image`를 실행하고, `bomlens`는 엔진 워커에서 BomLens 이미지를 `MODE=IMAGE`로 실행해 Docker 소켓 없이 레지스트리에서 이미지를 읽습니다. 스캔이 큐에 들어갈 때 읽습니다. `bomlens`에는 `SCAN_ENGINE=bomlens`와 같은 준비가 필요하고, 레지스트리 인증 정보가 저장된 레지스트리의 이미지는 거부합니다. 그 밖의 값은 `inprocess`로 읽습니다. [동적 스캔 실행기 → 엔진으로 실행하는 컨테이너 이미지 스캔](../admin-guide/dynamic-scan-executor.md#engine-container-scans)을 참고하십시오. |
+| `SCAN_BOMLENS_IMAGE_TIMEOUT_SECONDS` | `1800` | `config.py` | BomLens 이미지 스캔 한 번이 실행될 수 있는 시간(초)입니다. 넘기면 중지하고 스캔이 실패합니다. 60..21600 범위로 제한합니다. |
 | `SCAN_TRIVY_CACHE_VOLUME` | *(비어 있음)* | `config.py` | 워커의 Trivy 데이터베이스가 있는 명명 볼륨입니다. 네트워크가 없는 2단계에 읽기 전용으로 마운트합니다. `SCAN_DOCKER_VOLUME_STRATEGY=named`에서는 필수입니다(compose: `<project>_trivy-cache`). |
 | `SCANCODE_TIMEOUT_SECONDS` | `600` | `config.py` | scancode first-party 라이선스 단계의 hard wall-clock 한도. 타임아웃 시 declared 라이선스만으로 스캔을 계속합니다(best-effort). |
 | `SCANCODE_MAX_FILES` | `20000` | `config.py` | 적격 first-party 파일(제외 필터 적용 후) 상한. 초과 시 scancode를 건너뛰고 declared 라이선스만 유지합니다. |

@@ -129,6 +129,8 @@ SCAN_ANDROID_IMAGE_TAG=v1.0.0                            # semver 또는 sha256:
 
 위의 `SCAN_EXECUTOR`는 cdxgen을 어디에서 실행할지를 정합니다. `SCAN_ENGINE`은 스캔 결과를 어느 엔진이 만들지를 정합니다. 기본값 `inprocess`는 워커가 빌드 준비, cdxgen, scancode, Trivy를 직접 실행하는 기존 방식입니다. `bomlens`는 SBOM 생성, 라이선스 탐지, 취약점 매칭을 BomLens 이미지에 맡기고, 그 결과로 하는 일(저장, 서명, 라이선스 정책, 승인, 빌드 게이트, 알림)은 TRUSCA가 그대로 맡습니다. BomLens 스캔에는 `SCAN_EXECUTOR`가 적용되지 않습니다.
 
+`SCAN_ENGINE`은 소스 스캔에만 적용됩니다. 컨테이너 이미지 스캔은 같은 두 값을 받는 별도 설정 `SCAN_CONTAINER_ENGINE`으로 정합니다. 그래서 한 종류의 스캔만 먼저 엔진으로 옮겨 결과를 비교한 뒤 나머지를 옮길 수 있습니다. [엔진으로 실행하는 컨테이너 이미지 스캔](#engine-container-scans)을 참고하십시오.
+
 ### BomLens 스캔이 실행되는 순서 {#engine-how-it-runs}
 
 워커는 소스를 가져온 뒤 컨테이너를 최대 네 개까지 하나씩 실행하고, 각 컨테이너가 끝날 때까지 기다립니다.
@@ -141,6 +143,22 @@ SCAN_ANDROID_IMAGE_TAG=v1.0.0                            # semver 또는 sha256:
 계획이 지원하지 않는 프로젝트라고 판정하면(BomLens가 SDK 이미지를 배포하지 않는 Android 프로젝트) 1단계와 복원을 건너뛰고 2단계만 실행하며, 결과는 위와 같이 열화로 기록됩니다.
 
 그다음 워커는 결과 매니페스트를 BomLens 엔진 계약에 맞춰 검사하고(계약 메이저 버전 1만 받으며, 다른 메이저 버전이면 그 버전을 스캔 오류에 적고 거부합니다), 출력 파일마다 매니페스트에 기록된 크기와 SHA-256이 맞는지 확인한 뒤, SBOM과 Trivy 보고서를 기존 스캔과 같은 코드로 저장합니다. 프로젝트 자체 파일에서 scancode가 탐지한 라이선스(`bomlens-deep-license` 이미지)는 기존 scancode 단계와 같은 방식으로 탐지된 라이선스로 저장합니다. 다른 점이 하나 있습니다. 이 scancode 결과가 기록된 SHA-256과 맞지 않거나 올바른 JSON이 아니면 스캔 전체가 실패합니다. 엔진 출력은 무결성을 먼저 확인하기 때문입니다. 기존 방식에서는 scancode 문제가 단계 열화로만 기록됩니다. 결과가 `SCANCODE_MAX_RESULT_BYTES`보다 크면 두 방식 모두 읽지 않고 단계 열화로 기록합니다. 엔진이 시간 예산 안에 하지 못한 레지스트리 라이선스 조회는 기존 조회와 같은 개요 탭 알림에 표시되고, BomLens가 배포되지 않는 폴더(테스트, 예제, 벤치마크)로 보고 제외한 내용은 스캔 메타데이터의 `scope_filter`에 제외 패턴과 건너뛴 매니페스트 파일로 남습니다. BomLens 단계가 열화되면 다른 단계와 마찬가지로 프로젝트 개요 탭에 표시됩니다. 개요 탭에는 단계와 사유만 나옵니다. 엔진이 남긴 설명은 스캔 메타데이터의 `stage_outcomes.<단계>.engine_detail`과 워커의 `bomlens_stage_degraded` 경고 로그에 남습니다. 예를 들어 매니페스트는 있는데 컴포넌트가 나오지 않은 SBOM 생성 단계라면 찾은 매니페스트와 실패한 의존성 해석 단계(`gradle-dependencies` 등)가 적힙니다. 설명은 최대 300자까지 저장하고, 자격 증명과 제어 문자는 지웁니다. 취약점 스캔이 결과를 내지 못하면 취약점 0건으로 처리하지 않고 스캔을 실패로 처리합니다.
+
+### 엔진으로 실행하는 컨테이너 이미지 스캔 {#engine-container-scans}
+
+`SCAN_CONTAINER_ENGINE=bomlens`로 설정하면 컨테이너 스캔은 스캔 워커의 `trivy image` 대신 엔진 워커로 갑니다. 워커는 먼저 기본 엔진과 같은 확인을 합니다. 스캔이 아직 대기 상태여야 하고(대기 중에 취소된 스캔은 시작하지 않습니다), `CONTAINER_SCAN_ALLOWED_REGISTRIES`를 설정했다면 이미지의 레지스트리가 그 목록에 있어야 합니다. 그다음 `MODE=IMAGE`로 BomLens 이미지 컨테이너 하나를 실행합니다.
+
+- **Docker 소켓 없음.** syft가 레지스트리에서 이미지를 직접 읽으며, Docker 데몬에 이미지를 받으라고 요청하지 않습니다. Trivy는 같은 레지스트리에서 Debian 패키지의 라이선스를 읽고, 소스 스캔의 2단계처럼 읽기 전용으로 마운트한 워커의 Trivy 데이터베이스로 SBOM을 매칭합니다. [데이터베이스 나이 규칙](#engine-trivy-db-age)도 똑같이 적용됩니다.
+- **레지스트리 이미지 참조만 허용.** 참조는 Docker 형식인 `[registry/]name[:tag][@sha256:digest]`를 따라야 하고, 엔진에는 `registry:<참조>`로 넘깁니다. 그래서 엔진은 레지스트리만 읽습니다. 아카이브 경로(`docker-archive:`, `oci-archive:`), 폴더(`oci-dir:`, `dir:`), `https://` 같은 스킴은 컨테이너를 시작하기 전에 스캔을 실패로 처리합니다. TRUSCA 컨테이너 스캔은 이미지 참조만 받으므로, 엔진에 넘길 업로드 이미지 아카이브는 없습니다.
+- **워커 자신의 비 root 사용자로 실행.** capability를 모두 제거하고, 루트 파일시스템을 읽기 전용으로 두고, `/tmp`만 워크스페이스의 임시 폴더로 쓰며, `SCAN_SIDECAR_PIDS_LIMIT`, `SCAN_SIDECAR_MEMORY`, `SCAN_SIDECAR_CPUS` 제한을 적용합니다. 워커가 root로 실행 중이면 컨테이너를 root로 실행하지 않고 스캔을 거부합니다. 마운트는 스캔의 출력 폴더, 임시 폴더, Trivy 데이터베이스뿐입니다.
+- **레지스트리 접근은 `SCAN_BOMLENS_NETWORK`로.** 1단계와 같은 확인을 거치고, 프록시 변수(`HTTP_PROXY`, `HTTPS_PROXY`, `NO_PROXY`)도 이름만 넘깁니다. 실행 시간은 `SCAN_BOMLENS_IMAGE_TIMEOUT_SECONDS`로 제한합니다. 컨테이너에는 스캔 ID와 종료 기한 레이블이 붙으므로, 스캔이 취소되거나 기한이 지나면 정리 작업이 컨테이너를 제거합니다.
+
+결과는 BomLens 소스 스캔과 같은 코드로 읽습니다. 이미지의 패키지와 선언된 라이선스, 패키지 사이의 의존 관계, 취약점, 기반 OS와 지원 종료 여부, 엔진의 단계 기록이 저장됩니다. 취약점 스캔이 `ok`로 끝나지 않으면 스캔이 실패합니다. 스캔 기록에는 `scan_engine`(`input_kind`가 `image`)과 `scan_engine_run`(`mode`가 `image`, 엔진이 받은 참조, 종료 코드)이 남습니다. 진행 화면에는 기본 엔진과 같은 단계가 표시됩니다.
+
+전환하기 전에 알아 둘 차이가 두 가지 있습니다.
+
+- **사설 레지스트리는 거부합니다.** 기본 엔진은 저장된 레지스트리 인증 정보를 스캔 워크스페이스 밖의 파일로 Trivy에 넘기고, 스캐너의 환경변수에는 넣지 않습니다([사설 레지스트리](../user-guide/scans.md#사설-레지스트리) 참고). 엔진 컨테이너에는 두 방법 모두 쓸 수 없습니다. 마운트는 백업 대상인 스캔 워크스페이스에서만 가져오고, 환경변수로 넘기면 이미지를 분석하는 도구의 환경에 인증 정보가 들어가기 때문입니다. 그래서 스캔의 조직에 이미지 레지스트리의 인증 정보가 저장되어 있으면 컨테이너를 시작하기 전에 `registry '<host>' has a stored registry credential, and the BomLens engine does not pass registry credentials to its container; scan this image with SCAN_CONTAINER_ENGINE=inprocess` 오류로 스캔이 실패합니다. 인증 정보는 읽지 않습니다. 인증 정보가 저장되지 않은 레지스트리는 기본 엔진과 같이 익명으로 읽습니다.
+- **태그는 엔진이 해석합니다.** 태그로 지정한 참조는 컨테이너가 시작될 때 레지스트리가 주는 이미지를 읽습니다. 정확한 이미지로 고정하려면 다이제스트(`name@sha256:...`)를 지정하십시오. 엔진은 해석한 다이제스트가 아니라 받은 참조를 기록합니다.
 
 ### Trivy 데이터베이스의 나이 {#engine-trivy-db-age}
 
@@ -164,11 +182,11 @@ Docker API로는 권한 있는(privileged) 컨테이너를 만들 수 있습니�
 
 | 워커 | 큐 | Docker API | 실행하는 작업 |
 |---|---|---|---|
-| `worker-engine`(프로필 `bomlens-engine`) | `trustedoss.engine`만 | `docker-socket-proxy` 경유 | BomLens 스캔 작업, 엔진 컨테이너 정리 작업 |
-| `worker-scan` | `trustedoss.scan`, `trustedoss.default` | 없음 | 기존 방식 스캔(빌드 준비, cdxgen, scancode, Trivy), 컨테이너·SBOM 스캔, 도달 가능성 분석(govulncheck) |
+| `worker-engine`(프로필 `bomlens-engine`) | `trustedoss.engine`만 | `docker-socket-proxy` 경유 | BomLens 소스·컨테이너 스캔 작업, 엔진 컨테이너 정리 작업 |
+| `worker-scan` | `trustedoss.scan`, `trustedoss.default` | 없음 | 기존 방식 스캔(빌드 준비, cdxgen, scancode, Trivy), 기존 방식 컨테이너 스캔, SBOM 스캔, 도달 가능성 분석(govulncheck) |
 | `worker-default` | `trustedoss.default` | 없음 | 알림, 백업, 보존 기간 정리, 카탈로그 갱신 |
 
-엔진 워커는 기존 방식(in-process) 파이프라인을 실행하지 않습니다. 소스 스캔은 큐에 들어갈 때 `SCAN_ENGINE=bomlens`였던 경우에만 엔진 워커로 가고, 엔진 워커가 받는 작업은 엔진만 실행할 수 있습니다. 워커 자체에서도 양방향을 확인합니다. Docker API에 접근할 수 있는 워커(`DOCKER_HOST` 설정, `/var/run/docker.sock` 또는 `/run/docker.sock`의 Docker 소켓, `docker-socket-proxy` 이름 해석 중 하나)는 엔진 작업만 실행하고 다른 작업은 거부합니다. 이런 워커에서는 빌드 준비, cdxgen, govulncheck도 시작하지 않습니다. 이때 작업은 실행하지 않고 그 이유와 함께 실패합니다. `worker-engine`은 Celery 원격 제어도 받지 않으므로(`CELERY_WORKER_REMOTE_CONTROL=false`) 브로커에 보낸 브로드캐스트로 이 워커를 조작할 수 없습니다. 취소된 엔진 스캔은 다음 단계에서 멈추고, 정리 작업이 그 컨테이너를 제거합니다.
+엔진 워커는 기존 방식(in-process) 파이프라인을 실행하지 않습니다. 소스 스캔은 큐에 들어갈 때 `SCAN_ENGINE=bomlens`였던 경우에만(컨테이너 스캔은 `SCAN_CONTAINER_ENGINE=bomlens`) 엔진 워커로 가고, 엔진 워커가 받는 작업은 엔진만 실행할 수 있습니다. 워커 자체에서도 양방향을 확인합니다. Docker API에 접근할 수 있는 워커(`DOCKER_HOST` 설정, `/var/run/docker.sock` 또는 `/run/docker.sock`의 Docker 소켓, `docker-socket-proxy` 이름 해석 중 하나)는 엔진 작업만 실행하고 다른 작업은 거부합니다. 이런 워커에서는 빌드 준비, cdxgen, govulncheck도 시작하지 않습니다. 이때 작업은 실행하지 않고 그 이유와 함께 실패합니다. `worker-engine`은 Celery 원격 제어도 받지 않으므로(`CELERY_WORKER_REMOTE_CONTROL=false`) 브로커에 보낸 브로드캐스트로 이 워커를 조작할 수 없습니다. 취소된 엔진 스캔은 다음 단계에서 멈추고, 정리 작업이 그 컨테이너를 제거합니다.
 
 ### 엔진 켜기(compose) {#engine-turn-on}
 
@@ -181,8 +199,10 @@ Docker API로는 권한 있는(privileged) 컨테이너를 만들 수 있습니�
 docker network create --opt com.docker.network.bridge.enable_icc=false \
   trustedoss-scan-egress
 
-# 포털의 .env (<project>는 compose 프로젝트 이름)
+# 포털의 .env (<project>는 compose 프로젝트 이름). 소스 스캔은 SCAN_ENGINE,
+# 컨테이너 이미지 스캔은 SCAN_CONTAINER_ENGINE이며 하나만 켜도 됨
 SCAN_ENGINE=bomlens
+SCAN_CONTAINER_ENGINE=bomlens
 SCAN_WORKSPACE_VOLUME=<project>_workspace
 SCAN_TRIVY_CACHE_VOLUME=<project>_trivy-cache
 
@@ -190,10 +210,10 @@ SCAN_TRIVY_CACHE_VOLUME=<project>_trivy-cache
 docker-compose --profile bomlens-engine up -d
 ```
 
-compose에서 `SCAN_BOMLENS_NETWORK` 기본값은 `trustedoss-scan-egress`입니다. 1단계가 쓰는 레지스트리로만 나가게 하려면 이 네트워크에 송신 방화벽을 적용하십시오.
+compose에서 `SCAN_BOMLENS_NETWORK` 기본값은 `trustedoss-scan-egress`입니다. 1단계와 이미지 스캔이 쓰는 레지스트리로만 나가게 하려면 이 네트워크에 송신 방화벽을 적용하십시오.
 
 :::warning `SCAN_ENGINE=bomlens`는 엔진 워커를 실행한 상태에서만 설정하십시오
-`SCAN_ENGINE=bomlens`일 때 큐에 들어간 소스 스캔은 `trustedoss.engine`으로 가며, 이 큐는 `worker-engine`만 처리합니다. 엔진 워커가 없으면 스캔이 대기 상태로 남고, 대기 중인 스캔이 있는 프로젝트는 새 스캔을 시작하지 않으므로 엔진 워커를 실행하거나 대기 중인 스캔을 취소할 때까지 그 프로젝트의 스캔이 멈춥니다. `SCAN_ENGINE=bomlens`를 설정하기 전에 프로필을 시작하고, 프로필을 내리기 전에 `SCAN_ENGINE=inprocess`로 되돌리십시오.
+`SCAN_ENGINE=bomlens`일 때 큐에 들어간 소스 스캔과 `SCAN_CONTAINER_ENGINE=bomlens`일 때 큐에 들어간 컨테이너 스캔은 `trustedoss.engine`으로 가며, 이 큐는 `worker-engine`만 처리합니다. 엔진 워커가 없으면 스캔이 대기 상태로 남고, 대기 중인 스캔이 있는 프로젝트는 새 스캔을 시작하지 않으므로 엔진 워커를 실행하거나 대기 중인 스캔을 취소할 때까지 그 프로젝트의 스캔이 멈춥니다. 두 설정 중 하나라도 `bomlens`로 바꾸기 전에 프로필을 시작하고, 프로필을 내리기 전에 둘 다 `inprocess`로 되돌리십시오.
 :::
 
 여러 TRUSCA 설치본이 Docker 데몬 하나를 함께 쓰면 설치본마다 다른 `TRUSCA_INSTANCE_ID`를 지정하십시오. 엔진 컨테이너에 이 값이 레이블로 붙고, 각 설치본의 정리 작업은 자기 컨테이너만 제거합니다.
@@ -236,8 +256,9 @@ skopeo inspect --override-os linux --override-arch amd64 \
 ```bash
 # 포털의 .env
 SCAN_ENGINE=inprocess
+SCAN_CONTAINER_ENGINE=inprocess
 
-docker-compose up -d    # API, beat, 워커가 SCAN_ENGINE을 다시 읽음
+docker-compose up -d    # API, beat, 워커가 두 설정을 다시 읽음
 
 # 엔진 워커가 작업을 마친 뒤: 남은 엔진 컨테이너 제거(워커가 멈출 때 처리 중이던
 # 스캔의 컨테이너가 남을 수 있음). <instance>는 TRUSCA_INSTANCE_ID이며,
@@ -257,13 +278,14 @@ docker-compose --profile bomlens-engine rm -f worker-engine docker-socket-proxy
 - `worker-engine` 로그에 감지한 생태계와 함께 `bomlens_plan`이 남고, 이어서 컨테이너마다 종료 코드와 함께 `bomlens_container_exit`가 남습니다.
 
 <!-- docs-uat: id=dynamic-scan-executor-engine-verify-metadata kind=manual tier=manual -->
-- 스캔 메타데이터에 `scan_engine`(BomLens 버전, 이미지 다이제스트, 단계별 상태)과 `scan_engine_run`(계획 상태, 1단계 종료 코드, 강제 종료 여부, 소스 복원 여부)이 기록됩니다.
+- 스캔 메타데이터에 `scan_engine`(BomLens 버전, 이미지 다이제스트, 단계별 상태)과 `scan_engine_run`(계획 상태, 1단계 종료 코드, 강제 종료 여부, 소스 복원 여부)이 기록됩니다. 컨테이너 스캔이면 `scan_engine.input_kind`가 `image`이고, `scan_engine_run`에는 `mode` `image`, 엔진이 받은 참조, 종료 코드가 기록됩니다.
 
 ### 이번 미리 보기에 없는 것 {#engine-not-yet}
 
 - Helm 차트(Kubernetes Job 실행기는 이후 단계입니다).
 - 의존성이 바뀌지 않은 경우 이전 스캔의 SBOM을 재사용하는 기능. BomLens 스캔은 항상 엔진을 실행합니다.
 - 1단계의 사설 패키지 레지스트리 인증 정보(기존 파이프라인이 읽는 `/etc/trusca/registry` 파일)와 SCANOSS 단계.
+- 이미지 스캔의 사설 컨테이너 레지스트리. 인증 정보가 저장된 레지스트리의 이미지는 거부합니다([엔진으로 실행하는 컨테이너 이미지 스캔](#engine-container-scans) 참고).
 - 컨테이너 생성 요청을 검사하는 프록시, 엔진 컨테이너를 별도 런타임으로 격리하는 기능.
 
 ## 환경변수 레퍼런스 {#environment-variable-reference}
@@ -274,9 +296,11 @@ docker-compose --profile bomlens-engine rm -f worker-engine docker-socket-proxy
 |---|---|---|
 | `SCAN_EXECUTOR` | `inprocess` | `inprocess`는 cdxgen을 워커 서브프로세스로 실행하고, `local_docker`는 Docker 소켓으로 환경별 사이드카를 띄웁니다(온프레 전용). |
 | `SCAN_ENGINE` | `inprocess` | 미리 보기. `bomlens`로 설정하면 소스 스캔을 BomLens 엔진으로 실행합니다([스캔 엔진](#scan-engine) 참고). |
+| `SCAN_CONTAINER_ENGINE` | `inprocess` | 미리 보기. `bomlens`로 설정하면 컨테이너 이미지 스캔을 BomLens 엔진으로 실행합니다([엔진으로 실행하는 컨테이너 이미지 스캔](#engine-container-scans) 참고). 그 밖의 값은 `inprocess`로 읽습니다. |
+| `SCAN_BOMLENS_IMAGE_TIMEOUT_SECONDS` | `1800` | BomLens 이미지 스캔 한 번의 시간 한도입니다. 넘기면 중지하고 스캔이 실패합니다. |
 | `SCAN_BOMLENS_IMAGE` | 릴리스에 고정된 이미지 | 실행 계획과 2단계에 쓰는 BomLens 이미지입니다. 바꿀 때는 `latest`가 아닌 태그와 다이제스트를 함께 적어 `repo:tag@sha256:...` 형식으로 지정해야 합니다. |
 | `SCAN_BOMLENS_DEEP_LICENSE_IMAGE` | 릴리스에 고정된 이미지 | scancode를 포함한 BomLens 변형 이미지로, `SCANCODE_ENABLED`가 켜져 있으면 2단계에 씁니다. 고정 규칙은 위와 같습니다. |
-| `SCAN_BOMLENS_NETWORK` | 비어 있음(compose: `trustedoss-scan-egress`) | 패키지 레지스트리에서 의존성을 해석하는 1단계가 연결할 네트워크입니다. 비어 있으면 1단계를 거부하고, `host`, compose 네트워크 `trustedoss`와 `trustedoss-docker-api`, 워커 자신이 연결된 네트워크도 거부합니다. |
+| `SCAN_BOMLENS_NETWORK` | 비어 있음(compose: `trustedoss-scan-egress`) | 패키지 레지스트리에서 의존성을 해석하는 1단계와, 레지스트리에서 이미지를 읽는 이미지 스캔이 연결할 네트워크입니다. 비어 있으면 둘 다 거부하고, `host`, compose 네트워크 `trustedoss`와 `trustedoss-docker-api`, 워커 자신이 연결된 네트워크도 거부합니다. |
 | `SCAN_BOMLENS_STAGE1_IMAGE_PREFIX` | 비어 있음 | 1단계 cdxgen 언어 이미지를 받는 위치로, 이미지 이름 앞부분 전체입니다(예: `registry.example/mirror/cdxgen/`). 비어 있으면 `ghcr.io/cdxgen/`에서 받습니다. 실행 계획에 BomLens의 `CDXGEN_IMAGE_PREFIX`로 넘기며, 다이제스트는 공개된 것을 그대로 쓰므로 미러에는 모든 플랫폼이 같은 다이제스트로 있어야 합니다. 레지스트리 호스트 뒤에 경로가 있어야 하며, cdxgen 이미지만 담은 경로로 한정하십시오(pull-through 캐시라면 `/<proxy-project>/cdxgen/`까지). [오프라인 설치 → 1단계 이미지](./offline-install.md#bomlens-stage1-images)를 참고하십시오. |
 | `SCAN_BOMLENS_STAGE1_REPOSITORIES` | 비어 있음(`ghcr.io/cdxgen/`) | 계획의 1단계 이미지가 시작해야 하는 저장소 접두사 목록(쉼표 구분, 각각 `/`로 끝남)입니다. 비어 있으면 `ghcr.io/cdxgen/`을 허용하고, `SCAN_BOMLENS_STAGE1_IMAGE_PREFIX`를 설정했으면 그 접두사만 허용합니다. 이미지 접두사는 항상 허용합니다. |
 | `SCAN_BOMLENS_STAGE1_READ_ONLY_ROOT` | `true` | `false`로 바꾸면 1단계 루트 파일시스템에 쓸 수 있습니다. Python의 `pip install` 빌드 준비에 필요하지만, 그 대신 빌드가 쓰기 가능한 이미지에서 실행됩니다. |
