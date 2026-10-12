@@ -309,6 +309,117 @@ def test_the_gate_schema_and_the_classifier_agree() -> None:
     assert not missing, f"the gate response describes component_outcome without naming {missing}"
 
 
+def _shell_case_blocks(script: str, *, subject: str) -> list[tuple[int, set[str], str]]:
+    """``(offset, labels, body)`` of each ``case "$subject" in ... esac`` block.
+
+    ``labels`` holds the literal branch words; a ``*)`` branch is kept as ``*``
+    so a sanitising block can be told apart from a reporting one.
+    """
+    blocks: list[tuple[int, set[str], str]] = []
+    offset = 0
+    current: tuple[int, set[str], list[str]] | None = None
+    for line in script.splitlines(keepends=True):
+        stripped = line.strip()
+        if stripped.startswith("case "):
+            current = (offset, set(), []) if stripped == f'case "${subject}" in' else None
+        elif stripped == "esac":
+            if current is not None:
+                blocks.append((current[0], current[1], "".join(current[2])))
+            current = None
+        elif current is not None:
+            current[2].append(line)
+            # A branch head: `a|b)` alone on its line, or `a|b) cmd ;;`.
+            head = re.match(r"^([a-z_*|\s]+)\)", stripped)
+            if head:
+                for raw in head.group(1).split("|"):
+                    label = raw.strip()
+                    if re.fullmatch(r"[a-z_]+|\*", label):
+                        current[1].add(label)
+        offset += len(line)
+    return blocks
+
+
+def _assert_sanitised_before(script: str, *, subject: str, allowed: set[str], write: str) -> None:
+    """A ``case`` on ``subject`` keeps only ``allowed`` and blanks the rest,
+    before the line that writes the value to the dotenv file."""
+    sanitisers = [
+        (offset, body)
+        for offset, labels, body in _shell_case_blocks(script, subject=subject)
+        if labels == allowed | {"*"}
+    ]
+    assert len(sanitisers) == 1, f"no single allow-list case for ${subject}"
+    offset, body = sanitisers[0]
+    assert f'*) {subject}="" ;;' in body, f"${subject} is not blanked on an unknown value"
+    assert offset < script.index(write), f"${subject} is written before it is checked"
+
+
+def _groovy_switch_labels(script: str, *, subject: str) -> set[str]:
+    """``case '<label>':`` labels inside ``switch (subject) { ... }``."""
+    start = script.index(f"switch ({subject})")
+    body = script[start : script.index("\n                    }", start)]
+    return set(re.findall(r"case '([a-z_]+)':", body))
+
+
+def test_every_ci_template_and_the_pr_comment_warn_on_both_empty_outcomes() -> None:
+    """The GitLab and Jenkins templates and the PR/MR comment each spell the two
+    empty outcomes again. One that stops matching prints a clean pass on a scan
+    that judged nothing, so each is held to the backend's vocabulary."""
+    from services.sca_comment import COMPONENT_OUTCOME_ADVISORIES
+    from services.scan_outcome import COMPONENT_OUTCOME_VALUES
+
+    empty_values = set(COMPONENT_OUTCOME_VALUES) - {"components_found"}
+    assert set(COMPONENT_OUTCOME_ADVISORIES) == empty_values
+
+    root = _repo_root()
+    if root is None:
+        pytest.skip("repository root not reachable: backend-only checkout")
+    gitlab = (root / "templates" / "gitlab-ci.yml").read_text(encoding="utf-8")
+    outcome_blocks = _shell_case_blocks(gitlab, subject="outcome")
+    reporting = [labels for _, labels, _ in outcome_blocks if "*" not in labels]
+    assert reporting == [empty_values]
+    _assert_sanitised_before(
+        gitlab,
+        subject="outcome",
+        allowed=set(COMPONENT_OUTCOME_VALUES),
+        write='echo "TRUSTEDOSS_COMPONENT_OUTCOME=$outcome"',
+    )
+    # The verdict fails closed: anything but pass or fail stops the job with
+    # exit 1 before it is written, instead of being read as a pass in step 5.
+    gate_blocks = [
+        (offset, body)
+        for offset, labels, body in _shell_case_blocks(gitlab, subject="gate")
+        if labels == {"pass", "fail", "*"}
+    ]
+    assert len(gate_blocks) == 1, "no single allow-list case for $gate"
+    offset, body = gate_blocks[0]
+    unknown = body[body.index("*)") :]
+    assert "FATAL:" in unknown
+    assert "exit 1" in unknown
+    assert 'gate=""' not in body
+    assert offset < gitlab.index('echo "TRUSTEDOSS_GATE=$gate"')
+    for doc_root in ("docs-site/docs", "docs-site/i18n/ko/docusaurus-plugin-content-docs/current"):
+        guide = root / doc_root / "ci-integration" / "gitlab-ci.md"
+        text = guide.read_text(encoding="utf-8")
+        assert "`FATAL:`" in text, f"{guide} omits the fail-closed gate"
+    assert "jq -r '.component_outcome" in gitlab
+
+    jenkins = (root / "templates" / "Jenkinsfile.example").read_text(encoding="utf-8")
+    labels = _groovy_switch_labels(jenkins, subject="env.TRUSTEDOSS_COMPONENT_OUTCOME")
+    assert labels == empty_values
+    assert "gate.component_outcome" in jenkins
+
+    ko = root / "docs-site/i18n/ko/docusaurus-plugin-content-docs/current"
+    for base in (root / "docs-site" / "docs", ko):
+        for rel in ("gitlab-ci.md", "jenkins.md"):
+            doc = (base / "ci-integration" / rel).read_text(encoding="utf-8")
+            missing = sorted(value for value in empty_values if f"`{value}`" not in doc)
+            assert not missing, f"{base / "ci-integration" / rel} does not describe {missing}"
+            # The guide promises the variable a later job reads.
+            assert "TRUSTEDOSS_COMPONENT_OUTCOME" in doc
+    assert "TRUSTEDOSS_COMPONENT_OUTCOME=$outcome" in gitlab
+    assert "env.TRUSTEDOSS_COMPONENT_OUTCOME = gate.component_outcome" in jenkins
+
+
 # ---------------------------------------------------------------------------
 # The EPSS gate-outcome vocabulary, across the same four places
 # ---------------------------------------------------------------------------

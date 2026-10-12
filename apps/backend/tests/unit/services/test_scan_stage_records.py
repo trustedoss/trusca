@@ -84,6 +84,63 @@ def test_an_engine_detail_is_kept_bounded_and_off_the_screen_list() -> None:
     assert long[so.STAGE_OUTCOMES_KEY]["sign"]["engine_detail"] == "d" * 300
 
 
+def test_the_screen_reads_each_stage_with_its_engine_detail() -> None:
+    meta = so.add_stage_outcome(
+        {}, stage="generate", reason="no_components", engine_detail="manifests found: a"
+    )
+    meta = so.add_stage_outcome(meta, stage="sign", reason="failed")
+    raw = meta[so.STAGE_OUTCOMES_KEY]
+    raw["prep"] = {"reason": "timeout", "engine_detail": 7}
+    raw["attest"] = {"reason": "failed", "engine_detail": "x" * 900}
+    raw["made_up"] = {"reason": "failed", "engine_detail": "dropped"}
+
+    assert so.degraded_stage_details(meta) == [
+        {"stage": "generate", "reason": "no_components", "engine_detail": "manifests found: a"},
+        {"stage": "prep", "reason": "timeout", "engine_detail": None},
+        {"stage": "sign", "reason": "failed", "engine_detail": None},
+        {"stage": "attest", "reason": "failed", "engine_detail": "x" * 300},
+    ]
+    # Same stages, same order as the closed-vocabulary reading.
+    assert [
+        {k: v for k, v in entry.items() if k != "engine_detail"}
+        for entry in so.degraded_stage_details(meta)
+    ] == so.degraded_stages(meta)
+    assert so.degraded_stage_details(None) == []
+
+
+def test_the_screen_never_gets_control_or_format_characters() -> None:
+    """A stored detail that skipped the writers' cleaning (an older row, a hand
+    edit) is cleaned again on the way out; one left empty by it reads as none."""
+    meta = {
+        so.STAGE_OUTCOMES_KEY: {
+            "generate": {
+                "reason": "no_components",
+                "engine_detail": "manifests\x00 found:‮ build.gradle\nx",
+            },
+            "sign": {"reason": "failed", "engine_detail": "\x00​"},
+        }
+    }
+    assert so.degraded_stage_details(meta) == [
+        {
+            "stage": "generate",
+            "reason": "no_components",
+            "engine_detail": "manifests found: build.gradle x",
+        },
+        {"stage": "sign", "reason": "failed", "engine_detail": None},
+    ]
+
+
+def test_both_engines_name_the_empty_generation_with_one_word() -> None:
+    """The in-process pipeline writes TRUSCA's word, the BomLens adapter reads the
+    engine's; they must be the same word or one engine's empty scans go unlabelled."""
+    from integrations.bomlens import contract, records
+
+    assert records.NO_COMPONENTS_REASON == so.NO_COMPONENTS_REASON
+    assert so.NO_COMPONENTS_REASON in so.STAGE_REASONS
+    assert so.NO_COMPONENTS_REASON in contract.STEP_REASONS
+    assert so.NO_COMPONENTS_REASON in get_args(DegradedStage.model_fields["reason"].annotation)
+
+
 def test_reported_windows_are_added_without_rewriting_a_live_one() -> None:
     """A scan engine's own step times (BomLens) fill stages the live record does
     not have; the window watchers already saw is kept."""
@@ -210,3 +267,19 @@ def test_the_frontend_type_lists_exactly_the_recorded_stages() -> None:
 
     assert set(re.findall(r'"([a-z_]+)"', stage_part)) == set(so.DEGRADABLE_STAGES)
     assert set(re.findall(r'"([a-z_]+)"', reason_part)) == set(so.STAGE_REASONS)
+
+
+def test_the_frontend_names_the_same_component_outcomes() -> None:
+    import re
+
+    frontend = Path(__file__).resolve().parents[4] / "frontend" / "src"
+    source = (frontend / "features/projects/api/projectDetailApi.ts").read_text(encoding="utf-8")
+    block = source.split("export const COMPONENT_OUTCOMES = [", 1)[1].split("] as const", 1)[0]
+    assert set(re.findall(r'"([a-z_]+)"', block)) == set(so.COMPONENT_OUTCOME_VALUES)
+
+    # The build-gate card words each empty outcome in both languages.
+    empty = set(so.COMPONENT_OUTCOME_VALUES) - {so.COMPONENTS_FOUND}
+    for lang in ("en", "ko"):
+        data = json.loads((frontend / f"locales/{lang}/project_detail.json").read_text("utf-8"))
+        card = data["overview"]["gate_card"]
+        assert {k[len("empty_scan_") :] for k in card if k.startswith("empty_scan_")} == empty, lang

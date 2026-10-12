@@ -210,6 +210,36 @@ def _reachable_mode_advisory(gate_result: GateResult) -> str | None:
     )
 
 
+#: What the comment says when the evaluated scan produced no components. The
+#: keys are ``services.scan_outcome``'s two empty outcomes; a contract test
+#: holds them to that vocabulary.
+COMPONENT_OUTCOME_ADVISORIES: dict[str, str] = {
+    "empty_with_manifests": (
+        "> **Warning: no components found.** The source declares dependencies "
+        "(dependency manifests are present), but this scan produced no "
+        "components, so every count below is 0 for that reason and a pass "
+        "here is not a clean result. Check the scan log before relying on "
+        "this verdict."
+    ),
+    "empty_no_manifests": (
+        "> **Note: no components found.** The source has no dependency "
+        "manifest TRUSCA reads, so nothing was scanned. Check that TRUSCA "
+        "supports this build system before treating the verdict as a pass."
+    ),
+}
+
+
+def _component_outcome_advisory(gate_result: GateResult) -> str | None:
+    """The warning for a scan that found nothing, or ``None`` for an ordinary scan.
+
+    Display only: whether an empty scan fails the build is the
+    incomplete-scan axis's decision (``GATE_INCOMPLETE_SCAN_ENABLED``), already
+    made by the time this runs. ``None`` also for a scan predating the
+    capture, which is unknown rather than either answer.
+    """
+    return COMPONENT_OUTCOME_ADVISORIES.get(gate_result.component_outcome or "")
+
+
 def build_pr_comment_markdown(
     *,
     gate_result: GateResult,
@@ -234,6 +264,10 @@ def build_pr_comment_markdown(
     advisory = _reachable_mode_advisory(gate_result)
     if advisory:
         lines.append(advisory)
+    empty_advisory = _component_outcome_advisory(gate_result)
+    if empty_advisory:
+        lines.append("")
+        lines.append(empty_advisory)
     lines.append("")
 
     lines.append(f"**Components scanned**: {summary.components_count}")
@@ -773,6 +807,7 @@ async def post_pr_comment(
 
 __all__ = [
     "COMMENT_MARKER",
+    "COMPONENT_OUTCOME_ADVISORIES",
     "CommentSummary",
     "PostedComment",
     "RecommendedUpgrade",

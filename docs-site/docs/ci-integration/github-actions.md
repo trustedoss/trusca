@@ -224,7 +224,7 @@ Apply the gate only on `main`, advisory on PRs:
     fail-on-gate: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' && 'true' || 'false' }}
 ```
 
-### Gate on known-exploited CVEs and end-of-life components (optional)
+### Gate on known-exploited CVEs and end-of-life components (optional) {#gate-axes}
 
 Severity says how bad a flaw could be. Three other signals say something
 severity cannot, and each is its own opt-in axis on the portal (`.env`, then

@@ -1700,6 +1700,38 @@ def _detect_and_record_env(scan_uuid: uuid.UUID, source_dir: Path) -> str:
     return detected_env
 
 
+#: How many manifest paths the ``no_components`` detail names before it
+#: summarises the rest as a count.
+_NO_COMPONENTS_DETAIL_NAMES = 5
+
+
+def _no_components_detail(manifest_inventory: dict[str, Any] | None) -> str | None:
+    """``manifests found: <paths>`` for an empty scan, in the BomLens engine's wording.
+
+    The paths come from the scanned tree, so they are treated like engine
+    output: control and format characters dropped, credential patterns
+    scrubbed, and the whole sentence bounded by ``add_stage_outcome``.
+    """
+    files = (manifest_inventory or {}).get("files")
+    if not isinstance(files, list):
+        return None
+    paths = [
+        bomlens_contract.storable_text(str(entry["path"]))[:200]
+        for entry in files
+        if isinstance(entry, dict) and isinstance(entry.get("path"), str)
+    ]
+    paths = [path for path in paths if path]
+    if not paths:
+        return None
+    named = ", ".join(paths[:_NO_COMPONENTS_DETAIL_NAMES])
+    rest = scan_outcome.manifest_count(manifest_inventory) - min(
+        len(paths), _NO_COMPONENTS_DETAIL_NAMES
+    )
+    if rest > 0:
+        named = f"{named} and {rest} more"
+    return scrub_secrets(f"manifests found: {named}")
+
+
 def _record_component_outcome(
     scan_uuid: uuid.UUID,
     *,
@@ -1735,6 +1767,27 @@ def _record_component_outcome(
             if scan is not None:
                 merged = dict(scan.scan_metadata or {})
                 merged[scan_outcome.METADATA_KEY] = outcome
+                if outcome == scan_outcome.EMPTY_WITH_MANIFESTS:
+                    # The same record the BomLens engine leaves for this case
+                    # (``generate`` degraded ``no_components``), so the stage
+                    # list, the metrics and the completeness verdict read one
+                    # vocabulary whichever engine ran. The sentence is a
+                    # courtesy: failing to build it must not cost the record.
+                    detail: str | None = None
+                    try:
+                        detail = _no_components_detail(manifest_inventory)
+                    except Exception:  # noqa: BLE001 - the detail is optional
+                        log.warning(
+                            "scan_no_components_detail_failed",
+                            scan_id=str(scan_uuid),
+                            exc_info=True,
+                        )
+                    merged = scan_outcome.add_stage_outcome(
+                        merged,
+                        stage="generate",
+                        reason=scan_outcome.NO_COMPONENTS_REASON,
+                        engine_detail=detail,
+                    )
                 scan.scan_metadata = merged
                 session.commit()
     except Exception:  # noqa: BLE001 - persistence is best-effort, never fatal

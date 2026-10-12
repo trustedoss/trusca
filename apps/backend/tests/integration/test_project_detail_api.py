@@ -213,10 +213,41 @@ async def test_overview_lists_degraded_stages_but_not_scancode(client) -> None:
     assert response.status_code == 200, response.text
     body = response.json()
     assert body["degraded_stages"] == [
-        {"stage": "prep", "reason": "timeout"},
-        {"stage": "sign", "reason": "failed"},
+        {"stage": "prep", "reason": "timeout", "engine_detail": None},
+        {"stage": "sign", "reason": "failed", "engine_detail": None},
     ]
     assert body["scancode_skipped_reason"] == "timeout"
+
+
+async def test_overview_carries_the_engine_detail_of_an_empty_generation(client) -> None:
+    """A source that declared dependencies but yielded none reaches the screen with
+    the engine's own sentence, verbatim (the client renders it as text)."""
+    _, team, user = await _seed_team_with_user(client)
+    project_id, scan_id = await _seed_scanned_project(client, team_id=team.id)
+    headers = _bearer_for(user)
+
+    from models import Scan
+
+    detail = "manifests found: build.gradle; steps that failed: gradle <b>x</b>"
+    factory = await _factory(client)
+    async with factory() as session:
+        scan = await session.get(Scan, scan_id)
+        assert scan is not None
+        scan.scan_metadata = {
+            "component_outcome": "empty_with_manifests",
+            "stage_outcomes": {
+                "generate": {"reason": "no_components", "engine_detail": detail},
+            },
+        }
+        await session.commit()
+
+    response = await client.get(f"/v1/projects/{project_id}/overview", headers=headers)
+    assert response.status_code == 200, response.text
+    body = response.json()
+    assert body["component_outcome"] == "empty_with_manifests"
+    assert body["degraded_stages"] == [
+        {"stage": "generate", "reason": "no_components", "engine_detail": detail}
+    ]
 
 
 async def test_overview_exposes_current_user_role_team_admin(client) -> None:

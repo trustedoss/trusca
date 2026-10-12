@@ -89,6 +89,8 @@ Either way, only `TRUSTEDOSS_API_KEY` must be masked.
 | `TRUSTEDOSS_POLL_INTERVAL` | no | `30` | Seconds between polls. |
 | `TRUSTEDOSS_POST_MR_COMMENT` | no | `true` | Reserved for the upcoming GitLab Notes API integration. In this release the request stages but the backend cannot deliver — see the warning above. |
 
+The gate result's `gate` is `pass` or `fail`. Any other value stops the job with a `FATAL:` line and exit code 1 before the verdict is recorded, even when `TRUSTEDOSS_FAIL_ON_GATE` is `false`, the same as an unexpected HTTP status from the gate endpoint: a verdict the template cannot read is never treated as a pass.
+
 ## Recipes
 
 ### Advisory mode
@@ -176,6 +178,17 @@ The template sends the MR IID too, as `metadata.merge_request_iid`, but that is 
 The same ref goes to the gate query, and that is what keeps an MR's verdict its own. Without it the portal answers with the newest succeeded scan of the project's **main line**, so an MR pipeline that just waited out its own scan would be judged by `main`.
 
 No configuration is needed — running the template on branches and MRs gives correct per-branch and per-MR grouping. To keep a scan permanently (for a tagged release), trigger it with a `metadata.release` label; the [Scan retention](../admin-guide/scan-retention.md) page covers the full model and the release exemption.
+
+## When the scan found no components {#empty-scan}
+
+The gate result carries `component_outcome`, and the template prints it on the verdict line as `components=<value>`. Two values mean the scan produced no components, so every count is 0 for that reason and a `pass` means nothing was judged:
+
+- `empty_with_manifests`: the source declares dependencies (dependency manifests are present), but the scan produced no components. Something failed during the scan, for example dependency resolution. Check the scan log.
+- `empty_no_manifests`: the source has no dependency manifest TRUSCA reads. Check that TRUSCA supports the build system.
+
+For either value the template prints a `WARNING:` line after the verdict and leaves the exit code alone, so the job still passes. The value is also written to `trustedoss.env` as `TRUSTEDOSS_COMPONENT_OUTCOME` for later jobs.
+
+To fail the build on `empty_with_manifests` instead, an administrator sets `GATE_INCOMPLETE_SCAN_ENABLED=true` on the portal (see [the optional gate axes](./github-actions.md#gate-axes)). The gate then returns `fail` with `incomplete_scan_basis` set to `empty_with_manifests`, and the template exits 1 as it does for any failed gate. See [When a scan finds nothing](../user-guide/scans.md#empty-scan) for what each case means.
 
 ## Branch / merge protection
 

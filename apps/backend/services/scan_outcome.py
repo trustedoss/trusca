@@ -185,10 +185,12 @@ STAGE_OUTCOMES_KEY: Final = "stage_outcomes"
 #: Stages allowed to appear in ``stage_outcomes``. The mirror on the frontend
 #: (locale keys) and the API schema are checked against this tuple.
 #:
-#: ``generate``, ``normalize`` and ``enrich`` are recorded only by the BomLens
-#: scan engine adapter (``integrations.bomlens``): the in-process pipeline has
-#: no step that falls back to a simpler generator, normalises the document or
-#: adds identifiers, so it never writes them.
+#: ``normalize`` and ``enrich`` are recorded only by the BomLens scan engine
+#: adapter (``integrations.bomlens``): the in-process pipeline has no step that
+#: normalises the document or adds identifiers, so it never writes them.
+#: ``generate`` is written by BomLens for any degraded generation and by the
+#: in-process pipeline for one case only, ``no_components``, so an empty result
+#: despite manifests reads the same whichever engine ran.
 DEGRADABLE_STAGES: Final = (
     "generate",
     "prep",
@@ -216,6 +218,11 @@ DEGRADABLE_STAGES: Final = (
 #: has none, recorded on ``generate``) come from the BomLens engine contract,
 #: whose reason vocabulary this tuple covers except ``no_input``: a step with
 #: nothing to read did not degrade.
+#: The ``generate`` reason both scan engines record for a source that declares
+#: dependencies but yielded no component (``component_outcome`` is then
+#: ``empty_with_manifests``).
+NO_COMPONENTS_REASON: Final = "no_components"
+
 STAGE_REASONS: Final = (
     "failed",
     "timeout",
@@ -349,4 +356,28 @@ def degraded_stages(metadata: dict[str, Any] | None) -> list[dict[str, str]]:
         reason = entry.get("reason") if isinstance(entry, dict) else None
         if reason in STAGE_REASONS:
             found.append({"stage": stage, "reason": reason})
+    return found
+
+
+def degraded_stage_details(metadata: dict[str, Any] | None) -> list[dict[str, str | None]]:
+    """:func:`degraded_stages` with each stage's ``engine_detail`` beside it, for the screen.
+
+    The detail is the engine's sentence on why the stage degraded (for
+    ``no_components``, the manifests it found). ``None`` when none was recorded
+    or the stored value is not a non-empty string. Kept apart from
+    :func:`degraded_stages` so the metrics and the completeness verdict go on
+    reading only the closed vocabulary.
+    """
+    # The writers already made the detail safe; stripping again on the way out
+    # keeps a row written by an older release, or by hand, from reaching the
+    # screen with control or format characters in it.
+    from integrations.bomlens.contract import storable_text
+
+    raw = (metadata or {}).get(STAGE_OUTCOMES_KEY)
+    found: list[dict[str, str | None]] = []
+    for entry in degraded_stages(metadata):
+        stored = raw.get(entry["stage"]) if isinstance(raw, dict) else None
+        detail = stored.get("engine_detail") if isinstance(stored, dict) else None
+        text = storable_text(detail)[:_ENGINE_DETAIL_MAX] if isinstance(detail, str) else ""
+        found.append({**entry, "engine_detail": text or None})
     return found

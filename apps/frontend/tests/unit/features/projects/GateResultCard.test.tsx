@@ -407,4 +407,58 @@ describe("GateResultCard", () => {
     await screen.findByTestId("gate-card");
     expect(screen.queryByTestId("gate-incomplete-scan")).not.toBeInTheDocument();
   });
+
+  it("warns on a pass when the source declared dependencies but none were found", async () => {
+    mockedGet.mockResolvedValueOnce(
+      gate({ component_outcome: "empty_with_manifests" }),
+    );
+    renderCard();
+    const warning = await screen.findByTestId("gate-empty-scan");
+    expect(warning).toHaveAttribute("data-outcome", "empty_with_manifests");
+    expect(warning.textContent).toContain(
+      "although the source declares dependencies",
+    );
+    // The verdict itself is unchanged: still a pass badge, but no all-clear line.
+    expect(screen.getByTestId("gate-badge-pass")).toBeInTheDocument();
+    expect(screen.queryByTestId("gate-pass-detail")).not.toBeInTheDocument();
+  });
+
+  it("words a source with no manifests differently", async () => {
+    mockedGet.mockResolvedValueOnce(
+      gate({ component_outcome: "empty_no_manifests" }),
+    );
+    renderCard();
+    const warning = await screen.findByTestId("gate-empty-scan");
+    expect(warning).toHaveAttribute("data-outcome", "empty_no_manifests");
+    expect(warning.textContent).toContain("no dependency manifest TRUSCA reads");
+  });
+
+  it("keeps the warning beside a failure from the incomplete-scan axis", async () => {
+    mockedGet.mockResolvedValueOnce(
+      gate({
+        gate: "fail",
+        component_outcome: "empty_with_manifests",
+        incomplete_scan_gate_enabled: true,
+        incomplete_scan_outcome: "incomplete",
+        incomplete_scan_basis: "empty_with_manifests",
+      }),
+    );
+    renderCard();
+    expect(await screen.findByTestId("gate-badge-fail")).toBeInTheDocument();
+    expect(screen.getByTestId("gate-empty-scan")).toBeInTheDocument();
+    expect(screen.getByTestId("gate-reason")).toHaveAttribute(
+      "data-reason-clauses",
+      "1",
+    );
+  });
+
+  it.each([["components_found"], [null], [undefined]] as const)(
+    "draws no empty-scan warning for outcome %s",
+    async (outcome) => {
+      mockedGet.mockResolvedValueOnce(gate({ component_outcome: outcome }));
+      renderCard();
+      expect(await screen.findByTestId("gate-pass-detail")).toBeInTheDocument();
+      expect(screen.queryByTestId("gate-empty-scan")).not.toBeInTheDocument();
+    },
+  );
 });

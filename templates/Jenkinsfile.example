@@ -261,9 +261,26 @@ pipeline {
                     env.TRUSTEDOSS_GATE_CRITICAL = "${gate.critical_cve_count ?: 0}"
                     env.TRUSTEDOSS_GATE_FORBIDDEN = "${gate.forbidden_license_count ?: 0}"
 
+                    env.TRUSTEDOSS_COMPONENT_OUTCOME = gate.component_outcome ?: ''
+
                     echo "TrustedOSS gate=${env.TRUSTEDOSS_GATE} " +
                          "critical=${env.TRUSTEDOSS_GATE_CRITICAL} " +
-                         "forbidden=${env.TRUSTEDOSS_GATE_FORBIDDEN}"
+                         "forbidden=${env.TRUSTEDOSS_GATE_FORBIDDEN} " +
+                         "components=${env.TRUSTEDOSS_COMPONENT_OUTCOME ?: 'unknown'}"
+
+                    // A warning, not a failure: whether an empty scan fails the
+                    // build is the portal's GATE_INCOMPLETE_SCAN_ENABLED
+                    // decision, already in `gate`. The build result is left as is.
+                    switch (env.TRUSTEDOSS_COMPONENT_OUTCOME) {
+                        case 'empty_with_manifests':
+                            echo "WARNING: TRUSCA found no components although the source declares dependencies (empty_with_manifests). " +
+                                 "Every count is 0 for that reason, so gate=${env.TRUSTEDOSS_GATE} is not a clean result. Check the scan log."
+                            break
+                        case 'empty_no_manifests':
+                            echo "WARNING: TRUSCA found no components and no dependency manifest it reads (empty_no_manifests). " +
+                                 "Check that TRUSCA supports this build system before treating gate=${env.TRUSTEDOSS_GATE} as a pass."
+                            break
+                    }
                 }
             }
         }

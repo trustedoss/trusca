@@ -46,7 +46,18 @@ export type LicenseCategoryName =
  * here so the frontend can gate team-scoped actions like vulnerability
  * suppression (BUG-005). Mirrors `schemas/project_detail.py::TeamScopedRole`.
  */
-export type TeamScopedRole = "super_admin" | "group_admin" | "developer" | "viewer";
+/**
+ * What a scan's SBOM ended up containing (backend `services.scan_outcome`).
+ * A backend contract test holds this list to the backend's vocabulary.
+ */
+export const COMPONENT_OUTCOMES = [
+  "components_found",
+  "empty_no_manifests",
+  "empty_with_manifests",
+] as const;
+export type ComponentOutcome = (typeof COMPONENT_OUTCOMES)[number];
+
+export type TeamScopedRole ="super_admin" | "group_admin" | "developer" | "viewer";
 
 export interface ScanSummary {
   id: string;
@@ -111,11 +122,7 @@ export interface ProjectOverviewResponse {
    * (no succeeded scan or a scan predating the capture) → show no caveat.
    */
   /** See `schemas/project_detail.py`; null means unknown, not clean. */
-  component_outcome:
-    | "components_found"
-    | "empty_no_manifests"
-    | "empty_with_manifests"
-    | null;
+  component_outcome: ComponentOutcome | null;
   /**
    * Licence lookups the scan skipped (time budget spent or registry breaker
    * open). Those components stay licence-unknown. `null` when none were
@@ -166,6 +173,13 @@ export interface ProjectOverviewResponse {
       | "unavailable"
       | "budget_exhausted"
       | "no_components";
+    /**
+     * The scan engine's own sentence on why the step degraded (for example
+     * `manifests found: build.gradle`). Plain text from the scanned tree:
+     * render as a text node only. Optional: a portal older than the field
+     * omits it.
+     */
+    engine_detail?: string | null;
   }[];
   /**
    * The requesting user's effective role within this project's owning team.
@@ -594,6 +608,12 @@ export interface GateResultResponse {
   eol_gate_count?: number;
   eol_gate_enabled?: boolean;
   eol_outcome?: "not_configured" | "evaluated" | "partial" | "no_data";
+  /**
+   * What the evaluated scan's SBOM contained. The two `empty_*` values mean
+   * the scan produced no components, so a pass judged nothing. `null` on a
+   * scan predating the capture; optional on a portal older than the field.
+   */
+  component_outcome?: ComponentOutcome | null;
   /** U3-D incomplete-scan axis: what the scan said about its own completeness. */
   incomplete_scan_gate_enabled?: boolean;
   incomplete_scan_outcome?:
