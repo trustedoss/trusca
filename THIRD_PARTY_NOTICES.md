@@ -398,13 +398,13 @@ the Helm chart, or the offline install bundle. Each image carries its own
 license terms. Anyone who mirrors these images and passes them on to others
 takes on the license obligations of each image.
 
-**BomLens**: `ghcr.io/haksungjang/bomlens` (the execution plan and stage 2)
-and `ghcr.io/haksungjang/bomlens-deep-license` (stage 2 when scancode
+**BomLens**: `ghcr.io/sktelecom/bomlens` (the execution plan and stage 2)
+and `ghcr.io/sktelecom/bomlens-deep-license` (stage 2 when scancode
 detection is on). The tag and digest TRUSCA runs by default are
 `BOMLENS_IMAGE_DEFAULT` and `BOMLENS_DEEP_LICENSE_IMAGE_DEFAULT` in
 `apps/backend/core/config.py`.
 
-- Source: https://github.com/haksungjang/bomlens
+- Source: https://github.com/sktelecom/bomlens
 - License: Apache-2.0
 - BomLens's `LICENSE`, `NOTICE` and `THIRD_PARTY_LICENSES.md` are inside both
   images at `/usr/local/lib/sbom/notices/`. `THIRD_PARTY_LICENSES.md` lists the

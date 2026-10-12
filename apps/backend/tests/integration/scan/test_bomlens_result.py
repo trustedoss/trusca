@@ -331,13 +331,18 @@ CAPTURED_DETECTIONS = [
 ]
 
 
+@pytest.mark.parametrize(
+    "case",
+    # Contract 1.0.0 (sha-5a93586) and 1.2.0 (the pinned 1.13.2 release).
+    ["source-deep-license", "source-deep-license-trivy-db"],
+)
 def test_a_deep_license_run_persists_detections_and_its_completeness_records(
-    tmp_path: Path, sync_session: Session
+    case: str, tmp_path: Path, sync_session: Session
 ) -> None:
     from tasks.bomlens_result import apply_bomlens_result
 
     scan_id = _seed_running_source_scan()
-    folder = _copy_fixture("source-deep-license", tmp_path)
+    folder = _copy_fixture(case, tmp_path)
 
     applied = apply_bomlens_result(scan_uuid=scan_id, output_dir=folder)
 
@@ -777,7 +782,7 @@ def test_a_trivy_database_past_its_age_fails_the_scan_without_findings(
     """Contract 1.2.0 with the worker's database mounted as ``trivy-db``.
 
     Stage 2 ran on the same SBOM twice: once with a database inside
-    BOMLENS_TRIVY_DB_MAX_AGE_DAYS, once with one 11 days old against a limit
+    BOMLENS_TRIVY_DB_MAX_AGE_DAYS, once with one 12 days old against a limit
     of 9. Trivy found the same CVEs both times, but the old run is recorded
     as scan-security degraded, and the scan fails rather than persisting
     findings from stale data (the user's decision, 2026-10-12).

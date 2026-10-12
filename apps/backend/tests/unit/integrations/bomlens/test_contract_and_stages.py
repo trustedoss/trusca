@@ -56,11 +56,12 @@ def _with_steps(*steps: dict[str, Any]) -> contract.EngineResult:
 
 
 #: The contract version each capture was written with (PROVENANCE.md):
-#: sha-b826d43 wrote 1.0.0-dev, sha-5a93586 1.0.0, sha-34010b6 1.2.0.
+#: sha-b826d43 wrote 1.0.0-dev, sha-5a93586 1.0.0, the 1.13.2 release 1.2.0.
 CONTRACT_VERSIONS = {
     "image-ok": "1.0.0-dev",
     "image-os-licenses": "1.2.0",
     "source-deep-license": "1.0.0",
+    "source-deep-license-trivy-db": "1.2.0",
     "source-degraded": "1.0.0-dev",
     "source-no-components": "1.0.0",
     # Derived from source-no-components (PROVENANCE.md): only the detail moved.
@@ -87,15 +88,26 @@ def test_every_captured_manifest_parses(case: str) -> None:
     assert result.image_digest is not None and result.image_digest.startswith("sha256:")
 
 
-def test_the_newest_captures_come_from_the_pinned_image() -> None:
-    """The 1.2.0 captures are the image config.py pins, so a version bump
-    that forgets to recapture shows up here."""
-    from core.config import BOMLENS_IMAGE_DEFAULT
+def test_the_newest_captures_come_from_the_pinned_images() -> None:
+    """The 1.2.0 captures are the images config.py pins, the base image and
+    the deep-license one, so a version bump that forgets to recapture shows
+    up here."""
+    from core.config import BOMLENS_DEEP_LICENSE_IMAGE_DEFAULT, BOMLENS_IMAGE_DEFAULT
 
-    pinned_digest = BOMLENS_IMAGE_DEFAULT.split("@", 1)[1]
+    pinned = {
+        ref.split("@", 1)[0].rsplit(":", 1)[0]: ref.split("@", 1)[1]
+        for ref in (BOMLENS_IMAGE_DEFAULT, BOMLENS_DEEP_LICENSE_IMAGE_DEFAULT)
+    }
+    seen = set()
     for case, version in CONTRACT_VERSIONS.items():
         if version == "1.2.0":
-            assert contract.parse_manifest(_manifest(case)).image_digest == pinned_digest, case
+            engine = _manifest(case)["engine"]
+            repository = engine["image"].rsplit(":", 1)[0]
+            assert repository in pinned, (case, engine["image"])
+            assert engine["image_digest"] == pinned[repository], case
+            seen.add(repository)
+    # Both pinned images have a capture, so neither digest goes unchecked.
+    assert seen == set(pinned)
 
 
 def test_a_real_image_run_records_the_os_licenses_step() -> None:

@@ -212,8 +212,8 @@ compose에서 `SCAN_BOMLENS_NETWORK` 기본값은 `trustedoss-scan-egress`입니
 
 | 이미지 | 소스 | 라이선스 | 이미지 안의 고지와 소스 |
 |---|---|---|---|
-| `ghcr.io/haksungjang/bomlens` | https://github.com/haksungjang/bomlens | Apache-2.0 | `/usr/local/lib/sbom/notices/`의 `LICENSE`, `NOTICE`, `THIRD_PARTY_LICENSES.md` |
-| `ghcr.io/haksungjang/bomlens-deep-license` | https://github.com/haksungjang/bomlens | Apache-2.0. scancode-toolkit(Apache-2.0 AND CC-BY-4.0)와 LGPL 구성요소(linux/amd64의 7-Zip, intbitset, chardet)가 추가됩니다 | 같은 고지 파일과, `/usr/share/bomlens/sources/`의 7-Zip·intbitset 소스 |
+| `ghcr.io/sktelecom/bomlens` | https://github.com/sktelecom/bomlens | Apache-2.0 | `/usr/local/lib/sbom/notices/`의 `LICENSE`, `NOTICE`, `THIRD_PARTY_LICENSES.md` |
+| `ghcr.io/sktelecom/bomlens-deep-license` | https://github.com/sktelecom/bomlens | Apache-2.0. scancode-toolkit(Apache-2.0 AND CC-BY-4.0)와 LGPL 구성요소(linux/amd64의 7-Zip, intbitset, chardet)가 추가됩니다 | 같은 고지 파일과, `/usr/share/bomlens/sources/`의 7-Zip·intbitset 소스 |
 | `ghcr.io/cdxgen/*` (1단계, 실행 계획이 고름) | https://github.com/CycloneDX/cdxgen | cdxgen은 Apache-2.0이고, 나머지는 기반 이미지의 조건을 따릅니다 | 기반 이미지마다 다릅니다. 예를 들어 `cdxgen-python312`는 SUSE BCI 기반이며 SUSE BCI 라이선스가 적용됩니다 |
 
 두 BomLens 이미지의 태그와 다이제스트는 `apps/backend/core/config.py`의 `BOMLENS_IMAGE_DEFAULT`, `BOMLENS_DEEP_LICENSE_IMAGE_DEFAULT`에 있습니다. BomLens 릴리스가 고를 수 있는 cdxgen 이미지와 다이제스트는 BomLens 이미지 안의 `/usr/local/lib/sbom/cdxgen-images.json`에 있습니다. TRUSCA는 BomLens 펌웨어 이미지를 실행하지 않습니다.
