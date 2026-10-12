@@ -4,9 +4,9 @@
     "version": "1.0.0"
   },
   "engine": {
-    "version": "latest-d8d3323",
-    "image": "ghcr.io/haksungjang/bomlens:sha-d8d3323",
-    "image_digest": "sha256:8b44d05a0baf66e11dcbabb52d7d9842cb11a5d0a4ec419b80de7f51233e05c5"
+    "version": "latest-1e5ef6b",
+    "image": "ghcr.io/haksungjang/bomlens:sha-1e5ef6b",
+    "image_digest": "sha256:eeb851f7cb4e3bc1cd7c81151e0f9a1bd129dfd755bfb92e110d17653b8f9a36"
   },
   "input": {
     "kind": "source",
@@ -93,6 +93,12 @@
         "BOMLENS_NO_COPYRIGHT",
         "BOMLENS_NO_CARGO_LICENSE",
         "BOMLENS_PREP_TIMEOUT",
+        "HTTP_PROXY",
+        "HTTPS_PROXY",
+        "NO_PROXY",
+        "http_proxy",
+        "https_proxy",
+        "no_proxy",
         "GOPROXY",
         "GOSUMDB",
         "HOST_UID",
@@ -113,8 +119,8 @@
     {
       "id": "postprocess",
       "stage": 2,
-      "image": "ghcr.io/haksungjang/bomlens:sha-d8d3323",
-      "image_digest": "sha256:8b44d05a0baf66e11dcbabb52d7d9842cb11a5d0a4ec419b80de7f51233e05c5",
+      "image": "ghcr.io/haksungjang/bomlens:sha-1e5ef6b",
+      "image_digest": "sha256:eeb851f7cb4e3bc1cd7c81151e0f9a1bd129dfd755bfb92e110d17653b8f9a36",
       "user": null,
       "entrypoint": null,
       "args": [],
@@ -129,10 +135,17 @@
           "role": "output",
           "target": "/host-output",
           "mode": "rw"
+        },
+        {
+          "role": "trivy-db",
+          "target": "/trivy-db",
+          "mode": "ro",
+          "optional": true
         }
       ],
       "env": {
         "MODE": "POSTPROCESS",
+        "SECURITY_ENRICH": "false",
         "BOMLENS_RUN_INPUT": "app_1.0_bom.json",
         "HOST_OUTPUT_DIR": "/host-output",
         "PROJECT_NAME": "app",
@@ -143,7 +156,25 @@
         "HOST_UID",
         "HOST_GID",
         "BOMLENS_INCLUDE_NON_SHIPPED",
-        "SRC_TREE_EXCLUDE"
+        "SRC_TREE_EXCLUDE",
+        "HTTP_PROXY",
+        "HTTPS_PROXY",
+        "NO_PROXY",
+        "http_proxy",
+        "https_proxy",
+        "no_proxy",
+        "TRIVY_DB_REPOSITORY",
+        "TRIVY_JAVA_DB_REPOSITORY",
+        "TRIVY_SKIP_DB_UPDATE",
+        "TRIVY_SKIP_JAVA_DB_UPDATE",
+        "TRIVY_OFFLINE_SCAN",
+        "TRIVY_USERNAME",
+        "TRIVY_PASSWORD",
+        "TRIVY_REGISTRY_TOKEN",
+        "TRIVY_INSECURE",
+        "BOMLENS_TRIVY_DB_MAX_AGE_DAYS",
+        "KEV_URL",
+        "EPSS_API"
       ],
       "env_from_stage1": {
         "BOMLENS_STAGE1_EXIT": "the stage 1 exit code",
@@ -152,7 +183,7 @@
       },
       "network": {
         "required": false,
-        "purpose": "only for options that look things up online (--license-registry, --resolve-purl, EPSS/KEV, staleness)"
+        "purpose": "the Trivy database download when no trivy-db mount holds one, and options that look things up online (--license-registry, --resolve-purl, EPSS/KEV, staleness)"
       }
     }
   ]

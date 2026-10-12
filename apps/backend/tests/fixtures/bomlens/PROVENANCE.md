@@ -1,8 +1,8 @@
 # Provenance of the BomLens engine fixtures
 
 Every file here is unedited output of a published BomLens image, captured on
-2026-10-11, except the one derived case listed at the end. Two images were
-used; each case says which. Tests that need a variant
+2026-10-11 and 2026-10-12, except the one derived case listed at the end.
+Three images were used; each case says which. Tests that need a variant
 (an unknown contract major, a step status rewritten to test one defence on its
 own, a tampered SBOM) copy a case into a temporary directory and change the
 copy.
@@ -32,6 +32,21 @@ Used for `source-deep-license` and `source-no-components`, both run with
 `BOMLENS_IMAGE_REF` and `BOMLENS_IMAGE_DIGEST` set to the tag and index digest
 above. The image was pulled by digest (`docker pull
 ghcr.io/haksungjang/bomlens-deep-license@sha256:df45...`) and run by digest.
+
+### Contract 1.2.0 image
+
+| | |
+|---|---|
+| Image | `ghcr.io/haksungjang/bomlens:sha-1e5ef6b` |
+| Digest | `sha256:eeb851f7cb4e3bc1cd7c81151e0f9a1bd129dfd755bfb92e110d17653b8f9a36` (index; linux/arm64 manifest `sha256:5ce76bab7cf602f1babc7589d464d672a38434a70b4045003774967b4a92ee99` ran) |
+| Source commit | `1e5ef6b7` on the fork's `main` (engine contract `1.2.0`, BomLens #186 to #207) |
+| Trivy in the image | 0.74.0 |
+| Trivy database | schema 2, `UpdatedAt` 2026-10-11T07:05Z, mounted read-only at `/trivy-db` (the plan's `trivy-db` role) |
+
+Used for `image-os-licenses`, `source-trivy-db` and
+`source-trivy-db-stale`, captured 2026-10-12 (2026-10-11 23:00 UTC), each run
+with `BOMLENS_IMAGE_REF` and `BOMLENS_IMAGE_DIGEST` set to the tag and index
+digest above and `HOST_UID`/`HOST_GID` set to the capturing user.
 
 ## What is kept from each run
 
@@ -79,6 +94,23 @@ registry step ran with a zero-second budget, so it waited for no answer.
 
 `source-deep-license` keeps the scancode result (`license-scan.scancode`) as
 well as the SBOM and the Trivy report.
+
+### Contract 1.2.0 cases
+
+Every run used `-e UPLOAD_ENABLED=false -e GENERATE_SECURITY=true
+-e SECURITY_ENRICH=false -e HOST_OUTPUT_DIR=/host-output -w /host-output`, the
+output folder at `/host-output` and a Trivy cache folder at `/trivy-db`
+(`--mount type=bind,src=<trivy cache>,dst=/trivy-db,readonly`).
+
+| Case | Input | How it was run | Result |
+|---|---|---|---|
+| `image-os-licenses` | `gcr.io/distroless/static-debian12:nonroot@sha256:afa5c872c891853ca7fcf1f12c3edb23f7eeef36189728842dd51042ff57f7ab` | `-e MODE=IMAGE -e TARGET_IMAGE=<the image above> -e PROJECT_NAME=image -e PROJECT_VERSION=1.0.0 -e BOMLENS_TRIVY_DB_MAX_AGE_DAYS=9`, no docker socket (syft and Trivy read the image from the registry), default network | `succeeded`; `os-licenses` ok with `replaced` 5, `hashes_dropped` 0: the five Debian packages carry Trivy's licences |
+| `source-trivy-db` | `node` | Stage 1 as for `source-ok`, but running `build-prep.sh` from the `node-ok` plan capture (`tests/fixtures/bomlens-plan/`): `docker run --rm -v <src>:/app -v <out>:/out -v build-prep.sh:/tmp/build-prep.sh:ro -e HOME=/tmp/sbomhome -e FETCH_LICENSE=false -e PROJECT_NAME=node -e PROJECT_VERSION=1.0.0 --entrypoint sh ghcr.io/cdxgen/cdxgen-alpine-node24:13.2.0@sha256:1e46a41c... /tmp/build-prep.sh /app /out/node_1.0.0_bom.json 1.6`, its output saved as `bomlens-stage1.log`. Then stage 2 with `--network none`, the source read-only at `/src`, `-e MODE=POSTPROCESS -e BOMLENS_RUN_INPUT=node_1.0.0_bom.json -e PROJECT_NAME=node -e PROJECT_VERSION=1.0.0 -e BOMLENS_STAGE1_EXIT=0 -e BOMLENS_STAGE1_OOM=false -e BOMLENS_STAGE1_LOG=bomlens-stage1.log -e BOMLENS_TRIVY_DB_MAX_AGE_DAYS=9` | `succeeded`; 1 component, 3 CVEs; `scan-security` ok |
+| `source-trivy-db-stale` | `node` | The same stage 1 output and stage 2 command, with a different folder at `/trivy-db`: the same `trivy.db` (a hard link) beside a `db/metadata.json` whose `UpdatedAt` is 2026-09-30T07:05Z | `succeeded_degraded`; the same 3 CVEs in the report, but `scan-security` degraded (`unavailable`, "the Trivy database is 11 days old (over 9)") |
+
+The input of `source-trivy-db-stale` was changed on purpose: the database
+date is the one thing that differs between the two source cases. The output
+is the engine's, unedited.
 
 ## Derived case
 

@@ -17,7 +17,7 @@ from __future__ import annotations
 import json
 import shutil
 import subprocess
-from collections.abc import Callable
+from collections.abc import Callable, Mapping
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
@@ -60,6 +60,9 @@ class Run:
     env: dict[str, str]
     image: str
     args: list[str]
+    #: Names passed as ``--env NAME`` with the value in the docker CLI's own
+    #: environment (``Docker.create(env=...)``), not on the command line.
+    by_name: frozenset[str] = frozenset()
 
     def option_values(self, name: str) -> list[str]:
         return [v for k, v in self.options if k == name and v is not None]
@@ -71,7 +74,10 @@ class Run:
         return Path(self.mounts[target]["src"])
 
 
-def parse_run(argv: list[str]) -> Run:
+def parse_run(argv: list[str], process_env: Mapping[str, str] | None = None) -> Run:
+    """Parse ``argv`` as Docker would. A value-less ``--env NAME`` takes its
+    value from ``process_env`` (the CLI's environment); one missing there is
+    an error, since the container would silently go without it."""
     options: list[tuple[str, str | None]] = []
     index = 0
     while index < len(argv) and argv[index].startswith("--"):
@@ -93,11 +99,19 @@ def parse_run(argv: list[str]) -> Run:
                 key, _, val = part.partition("=")
                 fields[key] = val if val else "true"
             mounts[fields["dst"]] = fields
-    env = dict(
-        (v.split("=", 1)[0], v.split("=", 1)[1])
-        for k, v in options
-        if k == "--env" and v is not None
-    )
+    env: dict[str, str] = {}
+    by_name: set[str] = set()
+    for k, v in options:
+        if k != "--env" or v is None:
+            continue
+        if "=" in v:
+            name, value = v.split("=", 1)
+        else:
+            name = v
+            assert process_env is not None and name in process_env, f"--env {name} has no value"
+            value = process_env[name]
+            by_name.add(name)
+        env[name] = value
     container_name = next(v for k, v in options if k == "--name" and v is not None)
     return Run(
         label=container_name.rsplit("-", 1)[-1],
@@ -107,6 +121,7 @@ def parse_run(argv: list[str]) -> Run:
         env=env,
         image=image,
         args=args,
+        by_name=frozenset(by_name),
     )
 
 
@@ -163,6 +178,8 @@ class FakeDocker:
     started: list[str] = field(default_factory=list)
     engine_list: list[Any] = field(default_factory=list)
     runs: list[Run] = field(default_factory=list)
+    #: The extra environment each ``create`` gave the docker CLI, in order.
+    process_envs: list[dict[str, str]] = field(default_factory=list)
     pulled: list[str] = field(default_factory=list)
     killed: list[str] = field(default_factory=list)
     removed: list[str] = field(default_factory=list)
@@ -183,8 +200,9 @@ class FakeDocker:
     def server_api_version(self) -> str | None:
         return self.api_version
 
-    def create(self, argv: list[str]) -> str:
-        run = parse_run(argv)
+    def create(self, argv: list[str], env: Mapping[str, str] | None = None) -> str:
+        run = parse_run(argv, env)
+        self.process_envs.append(dict(env or {}))
         self.runs.append(run)
         queue = self.behaviours.get(run.label) or [Behaviour()]
         behaviour = queue.pop(0) if len(queue) > 1 else queue[0]

@@ -13,10 +13,11 @@ treated as untrusted input. TRUSCA runs only what the plan may ask for:
   digest; a tag ``latest`` is refused. Stage 2 must repeat the BomLens image
   TRUSCA itself pinned (the runner checks this against its configuration).
 * Mounts: a plan names a mount by role (``source``, ``output``, ``plan-file``,
-  ``guard-state``, caches), never by host path. TRUSCA decides the host side of
-  every role. A container path that would cover a system directory, a mount
-  role in the wrong stage, a writable source in stage 2, a writable plan file
-  or a plan file outside ``bomlens-plan/`` is refused.
+  ``guard-state``, caches, ``trivy-db``), never by host path. TRUSCA decides the
+  host side of every role. A container path that would cover a system
+  directory, a mount role in the wrong stage, a writable source in stage 2, a
+  writable plan file, a plan file outside ``bomlens-plan/``, or a Trivy
+  database mount anywhere but read-only at ``/trivy-db`` is refused.
 * User and entrypoint: a numeric ``uid[:gid]`` only, and a shell entrypoint
   only. Nothing in the plan can ask for privileges, devices, capabilities or a
   different network; those flags are not read from the plan at all.
@@ -70,7 +71,7 @@ PLAN_REASONS: Final = ("android-sdk-image", "no-pinned-digest")
 #: ``stages[].id`` with its stage number, in the order a plan lists them.
 STAGE_IDS: Final = (("generate", 1), ("postprocess", 2))
 
-#: ``mounts[].role`` values of plan contract 1.x.
+#: ``mounts[].role`` values of plan contract 1.x (``trivy-db`` since BomLens #203).
 MOUNT_ROLES: Final = (
     "source",
     "output",
@@ -78,7 +79,13 @@ MOUNT_ROLES: Final = (
     "guard-state",
     "cache-maven",
     "cache-gradle",
+    "trivy-db",
 )
+
+#: The role stage 2 reads a Trivy database through, and the one container path
+#: it may have. TRUSCA connects the worker's own database to it, read-only.
+TRIVY_DB_ROLE: Final = "trivy-db"
+TRIVY_DB_TARGET: Final = "/trivy-db"
 
 #: ``mounts[].mode`` values.
 MOUNT_MODES: Final = ("ro", "rw")
@@ -87,11 +94,11 @@ MOUNT_MODES: Final = ("ro", "rw")
 #: them; a plan that requires one is refused (``_check_mounts``).
 _STAGE_ROLES: Final[dict[int, frozenset[str]]] = {
     1: frozenset({"source", "output", "plan-file", "guard-state", "cache-maven", "cache-gradle"}),
-    2: frozenset({"source", "output"}),
+    2: frozenset({"source", "output", TRIVY_DB_ROLE}),
 }
 
 #: Roles TRUSCA provides a host folder or file for.
-PROVIDED_ROLES: Final = frozenset({"source", "output", "plan-file", "guard-state"})
+PROVIDED_ROLES: Final = frozenset({"source", "output", "plan-file", "guard-state", TRIVY_DB_ROLE})
 
 #: Container paths a mount may not cover, or sit under. A mount on one of these
 #: would replace part of the image's own system (or reach the Docker socket,
@@ -114,8 +121,9 @@ _FORBIDDEN_TARGET_ROOTS: Final = (
 
 #: Container paths TRUSCA mounts itself (scratch space, the Trivy database).
 #: A plan mount may not be one of them or sit below one, except a stage 1
-#: helper file below ``/tmp``, which is where the plan puts build-prep.sh.
-RESERVED_TARGETS: Final = ("/tmp", "/trivy-db")  # noqa: S108 - container paths
+#: helper file below ``/tmp``, which is where the plan puts build-prep.sh, and
+#: the ``trivy-db`` role at exactly ``/trivy-db``.
+RESERVED_TARGETS: Final = ("/tmp", TRIVY_DB_TARGET)  # noqa: S108 - container paths
 
 #: Container path: absolute, plain characters, no ``..`` (checked separately).
 _TARGET_RE: Final = re.compile(r"^/[A-Za-z0-9._/-]{1,200}$")
@@ -163,6 +171,7 @@ STAGE_ENV_ALLOWED: Final[dict[int, frozenset[str]]] = {
     2: frozenset(
         {
             "MODE",
+            "SECURITY_ENRICH",
             "BOMLENS_RUN_INPUT",
             "HOST_OUTPUT_DIR",
             "PROJECT_NAME",
@@ -172,9 +181,31 @@ STAGE_ENV_ALLOWED: Final[dict[int, frozenset[str]]] = {
     ),
 }
 
+#: The proxy settings stage 1's package managers read, as the in-process
+#: pipeline passes them to cdxgen. A proxy on the worker's own loopback
+#: address is not passed on (the runner checks the value): inside the
+#: container that address is the container itself.
+PROXY_ENV_NAMES: Final = (
+    "HTTP_PROXY",
+    "HTTPS_PROXY",
+    "NO_PROXY",
+    "http_proxy",
+    "https_proxy",
+    "no_proxy",
+)
+
+#: How old (days) the mounted Trivy database may be before BomLens records
+#: ``scan-security`` as degraded. TRUSCA sets the value from its own refresh
+#: interval; it never comes from the worker's environment.
+TRIVY_DB_MAX_AGE_ENV: Final = "BOMLENS_TRIVY_DB_MAX_AGE_DAYS"
+
 #: ``env_passthrough`` names each stage may receive from the worker's own
 #: environment. ``HOST_UID`` and ``HOST_GID`` are not here: TRUSCA sets them
-#: itself from the worker's own user, never from a variable.
+#: itself from the worker's own user, never from a variable. Stage 2 runs
+#: with no network and reads the worker's Trivy database offline, so the
+#: proxy, ``TRIVY_*`` (a database mirror and its credentials), ``EPSS_API``
+#: and ``KEV_URL`` names a plan lists for it have nothing to do and are left
+#: out.
 STAGE_PASSTHROUGH_ALLOWED: Final[dict[int, frozenset[str]]] = {
     1: frozenset(
         {
@@ -189,9 +220,10 @@ STAGE_PASSTHROUGH_ALLOWED: Final[dict[int, frozenset[str]]] = {
             "BOMLENS_PREP_TIMEOUT",
             "GOPROXY",
             "GOSUMDB",
+            *PROXY_ENV_NAMES,
         }
     ),
-    2: frozenset({"BOMLENS_INCLUDE_NON_SHIPPED", "SRC_TREE_EXCLUDE"}),
+    2: frozenset({"BOMLENS_INCLUDE_NON_SHIPPED", "SRC_TREE_EXCLUDE", TRIVY_DB_MAX_AGE_ENV}),
 }
 
 
@@ -339,9 +371,15 @@ def _parse_mount(raw: Any, stage: int, where: str) -> Mount:
     if role not in _STAGE_ROLES[stage]:
         raise _reject(f"{where}.role {role!r} is not allowed in stage {stage}")
     target = _check_target(_str(_get(entry, "target", where), f"{where}.target"), where)
+    if role == TRIVY_DB_ROLE and target != TRIVY_DB_TARGET:
+        raise _reject(
+            f"{where} mounts the Trivy database at {clip(target)!r}, not {TRIVY_DB_TARGET}"
+        )
     for reserved in RESERVED_TARGETS:
         below = target.startswith(reserved + "/")
-        allowed = below and reserved == "/tmp" and role == "plan-file" and stage == 1  # noqa: S108
+        allowed = (
+            below and reserved == "/tmp" and role == "plan-file" and stage == 1  # noqa: S108
+        ) or (target == reserved == TRIVY_DB_TARGET and role == TRIVY_DB_ROLE)
         if (target == reserved or below) and not allowed:
             raise _reject(
                 f"{where} target {clip(target)!r} is under {reserved}, which TRUSCA mounts"
@@ -361,6 +399,8 @@ def _parse_mount(raw: Any, stage: int, where: str) -> Mount:
             raise _reject(f"{where} mounts a plan file writable")
     elif source is not None:
         raise _reject(f"{where} names a source path for role {role!r}")
+    if role == TRIVY_DB_ROLE and mode != "ro":
+        raise _reject(f"{where} mounts the Trivy database writable")
     if role == "source" and stage == 2 and mode != "ro":
         raise _reject(f"{where} mounts the source writable in stage 2")
     if role in ("output", "guard-state") and mode != "rw":
@@ -599,10 +639,14 @@ __all__ = [
     "PLAN_REASONS",
     "PLAN_STATUSES",
     "PROVIDED_ROLES",
+    "PROXY_ENV_NAMES",
     "RESERVED_TARGETS",
     "STAGE_ENV_ALLOWED",
     "STAGE_IDS",
     "STAGE_PASSTHROUGH_ALLOWED",
+    "TRIVY_DB_MAX_AGE_ENV",
+    "TRIVY_DB_ROLE",
+    "TRIVY_DB_TARGET",
     "BomLensPlanRejected",
     "ExecutionPlan",
     "Mount",

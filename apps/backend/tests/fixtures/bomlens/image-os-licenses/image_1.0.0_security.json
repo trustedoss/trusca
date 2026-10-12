@@ -1,0 +1,134 @@
+{
+  "SchemaVersion": 2,
+  "Trivy": {
+    "Version": "0.74.0"
+  },
+  "ReportID": "01a12d5d-c9e5-7dc0-b5c6-2a608155ea1f",
+  "CreatedAt": "2026-10-11T23:48:03.685902295Z",
+  "ArtifactName": "image_1.0.0_bom.json",
+  "ArtifactType": "cyclonedx",
+  "Metadata": {
+    "OS": {
+      "Family": "debian",
+      "Name": "12.15"
+    }
+  },
+  "Results": [
+    {
+      "Target": "image_1.0.0_bom.json (debian 12.15)",
+      "Class": "os-pkgs",
+      "Type": "debian",
+      "Packages": [
+        {
+          "ID": "base-files@12.4+deb12u15",
+          "Name": "base-files",
+          "Identifier": {
+            "PURL": "pkg:deb/debian/base-files@12.4%2Bdeb12u15?arch=arm64\u0026distro=debian-12.15",
+            "UID": "360aafc96843b16",
+            "BOMRef": "pkg:deb/debian/base-files@12.4%2Bdeb12u15?arch=arm64\u0026distro=debian-12.15\u0026package-id=136907f4c2555a0d"
+          },
+          "Version": "12.4+deb12u15",
+          "Arch": "arm64",
+          "SrcName": "base-files",
+          "SrcVersion": "12.4+deb12u15",
+          "Licenses": [
+            "GPL-2.0-or-later"
+          ]
+        },
+        {
+          "ID": "ca-certificates@20250419~deb12u1",
+          "Name": "ca-certificates",
+          "Identifier": {
+            "PURL": "pkg:deb/debian/ca-certificates@20250419~deb12u1?arch=all\u0026distro=debian-12.15",
+            "UID": "37fccb778aa185fc",
+            "BOMRef": "pkg:deb/debian/ca-certificates@20250419~deb12u1?arch=all\u0026distro=debian-12.15\u0026package-id=a043ad59b17829f8"
+          },
+          "Version": "20250419~deb12u1",
+          "Arch": "all",
+          "SrcName": "ca-certificates",
+          "SrcVersion": "20250419~deb12u1",
+          "Licenses": [
+            "GPL-2.0-or-later",
+            "GPL-2.0-only",
+            "MPL-2.0"
+          ]
+        },
+        {
+          "ID": "media-types@10.0.0",
+          "Name": "media-types",
+          "Identifier": {
+            "PURL": "pkg:deb/debian/media-types@10.0.0?arch=all\u0026distro=debian-12.15",
+            "UID": "d2b9763ca86d44b2",
+            "BOMRef": "pkg:deb/debian/media-types@10.0.0?arch=all\u0026distro=debian-12.15\u0026package-id=81fa76b13d51bb43"
+          },
+          "Version": "10.0.0",
+          "Arch": "all",
+          "SrcName": "media-types",
+          "SrcVersion": "10.0.0",
+          "Licenses": [
+            "ad-hoc"
+          ]
+        },
+        {
+          "ID": "netbase@6.4",
+          "Name": "netbase",
+          "Identifier": {
+            "PURL": "pkg:deb/debian/netbase@6.4?arch=all\u0026distro=debian-12.15",
+            "UID": "c1dfa674d88a68cc",
+            "BOMRef": "pkg:deb/debian/netbase@6.4?arch=all\u0026distro=debian-12.15\u0026package-id=f28ae05ddd844b33"
+          },
+          "Version": "6.4",
+          "Arch": "all",
+          "SrcName": "netbase",
+          "SrcVersion": "6.4",
+          "Licenses": [
+            "GPL-2.0-only"
+          ]
+        },
+        {
+          "ID": "tzdata@2026b-0+deb12u1",
+          "Name": "tzdata",
+          "Identifier": {
+            "PURL": "pkg:deb/debian/tzdata@2026b-0%2Bdeb12u1?arch=all\u0026distro=debian-12.15",
+            "UID": "4f640c97faa7eb9c",
+            "BOMRef": "pkg:deb/debian/tzdata@2026b-0%2Bdeb12u1?arch=all\u0026distro=debian-12.15\u0026package-id=3bd5299282473d43"
+          },
+          "Version": "2026b-0+deb12u1",
+          "Arch": "all",
+          "SrcName": "tzdata",
+          "SrcVersion": "2026b",
+          "SrcRelease": "0+deb12u1",
+          "Licenses": [
+            "public-domain"
+          ]
+        }
+      ],
+      "Vulnerabilities": [
+        {
+          "VulnerabilityID": "DLA-4792-1",
+          "VendorIDs": [
+            "DLA-4792-1"
+          ],
+          "PkgID": "tzdata@2026b-0+deb12u1",
+          "PkgName": "tzdata",
+          "PkgIdentifier": {
+            "PURL": "pkg:deb/debian/tzdata@2026b-0%2Bdeb12u1?arch=all\u0026distro=debian-12.15",
+            "UID": "4f640c97faa7eb9c",
+            "BOMRef": "pkg:deb/debian/tzdata@2026b-0%2Bdeb12u1?arch=all\u0026distro=debian-12.15\u0026package-id=3bd5299282473d43"
+          },
+          "InstalledVersion": "2026b-0+deb12u1",
+          "FixedVersion": "2026c-0+deb12u1",
+          "Status": "fixed",
+          "DataSource": {
+            "ID": "debian",
+            "Name": "Debian Security Tracker",
+            "URL": "https://salsa.debian.org/security-tracker-team/security-tracker"
+          },
+          "Fingerprint": "sha256:8725a9f8e0e732ea3d5c07c9f2197698b5627b91285b5e84baa7c0d16013beed",
+          "Title": "tzdata - new timezone database",
+          "Severity": "UNKNOWN"
+        }
+      ]
+    }
+  ]
+}

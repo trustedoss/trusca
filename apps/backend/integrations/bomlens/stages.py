@@ -54,10 +54,14 @@ VULNERABILITY_STEP: Final = "scan-security"
 DEEP_LICENSE_STEP: Final = "deep-license"
 
 #: BomLens step id -> TRUSCA degradable stage, or ``None`` for a step TRUSCA
-#: does not report as a stage of its own. Every BomLens step of contract 1.0
-#: is listed, so an unlisted id is one a later minor version added.
+#: does not report as a stage of its own. Every BomLens step up to contract
+#: 1.2.0 is listed, so an unlisted id is one a later minor version added.
 STEP_STAGE: Final[dict[str, str | None]] = {
     "generate": "generate",
+    # Contract 1.2.0 (BomLens #206): Debian package licences from Trivy in an
+    # image or root filesystem scan. A failure leaves syft's licences, so it
+    # is a gap in licence data, the same kind the enrich steps record.
+    "os-licenses": "enrich",
     "vendored": "scanoss",
     "suggest-vendored": None,
     "cocoapods": "cocoapods",

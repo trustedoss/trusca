@@ -756,10 +756,11 @@ def trivy_db_refresh_interval_hours() -> int:
     except ValueError:
         log.warning("trivy_db_refresh_hours_invalid", raw=raw)
         return _DEFAULT_DB_REFRESH_HOURS
-    # Lower bound 1h — anything below that is almost certainly a misconfig
-    # (Trivy itself caps to 24h cadence in production guidance). Upper bound
-    # 168h (1 week) — we still want the panel to surface "next refresh" even
-    # if the operator over-spaced the cadence.
+    # Lower bound 1h: anything below that is almost certainly a misconfig
+    # (Trivy itself caps to 24h cadence in production guidance). There is no
+    # upper bound here: the panel still surfaces "next refresh" for an
+    # over-spaced cadence. The BomLens engine caps the database age it derives
+    # from this value on its own (integrations.bomlens.runner).
     return max(1, value)
 
 

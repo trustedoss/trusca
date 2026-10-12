@@ -55,7 +55,7 @@
               "type": "object",
               "required": ["role", "target", "mode"],
               "properties": {
-                "role": { "enum": ["source", "output", "plan-file", "guard-state", "cache-maven", "cache-gradle"] },
+                "role": { "enum": ["source", "output", "plan-file", "guard-state", "cache-maven", "cache-gradle", "trivy-db"] },
                 "source": { "type": "string" },
                 "target": { "type": "string" },
                 "mode": { "enum": ["ro", "rw"] },
