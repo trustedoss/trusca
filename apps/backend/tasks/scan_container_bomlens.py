@@ -30,7 +30,10 @@ in-process path reads it.
 
 from __future__ import annotations
 
+import ipaddress
+import re
 import shutil
+import socket
 import uuid
 from pathlib import Path
 from typing import Any, Final
@@ -41,7 +44,7 @@ from sqlalchemy import select
 from core.db import sync_session_scope
 from integrations.bomlens import runner as bomlens_runner
 from models import Project, RegistryCredential, Scan, Team
-from services.registry_allowlist import split_registry_host
+from services.registry_allowlist import allowed_registries, split_registry_host
 from tasks._progress import make_line_callback
 from tasks.bomlens_result import apply_bomlens_result
 
@@ -54,6 +57,58 @@ ENGINE_RUN_METADATA_KEY: Final = "scan_engine_run"
 
 class RegistryCredentialNotPassed(bomlens_runner.BomLensEngineError):
     """The image's registry has a stored credential the engine does not take."""
+
+
+class InternalRegistryRefused(bomlens_runner.BomLensEngineError):
+    """The image's registry is an address on the local machine or network."""
+
+
+def _host_without_port(host: str) -> str:
+    if host.startswith("["):
+        return host[1:].split("]", 1)[0]
+    name, sep, port = host.rpartition(":")
+    return name if sep and port.isdigit() else host
+
+
+def is_internal_registry(host: str) -> bool:
+    """Whether ``host`` names this machine or an address rather than a registry name.
+
+    ``localhost`` (and ``*.localhost``) and every IP literal, in any spelling
+    a resolver accepts (``127.1``, ``0x7f000001``, ``[::1]``): the engine
+    container reaches the network from the egress network, and an image
+    reference is chosen by whoever starts the scan. A literal that is a
+    public address is refused as well: a registry is named, and a literal is
+    how a reference reaches a private, link-local or loopback address without
+    a DNS name. A DNS name that resolves to such an address is not caught
+    here; the egress network's firewall is the place for that (the
+    administrator guide gives the rule).
+    """
+    name = _host_without_port(host.strip().lower()).rstrip(".")
+    if not name:
+        return False
+    if name == "localhost" or name.endswith(".localhost"):
+        return True
+    try:
+        ipaddress.ip_address(name)
+        return True
+    except ValueError:
+        pass
+    if re.fullmatch(r"[0-9a-fx.]{1,64}", name):
+        try:
+            socket.inet_aton(name)
+            return True
+        except OSError:
+            return False
+    return False
+
+
+def internal_registry_refusal(host: str) -> str:
+    """The scan error for an IP-literal or local registry with an empty allow-list."""
+    return (
+        f"registry {host!r} is an IP address or the local machine, and "
+        "CONTAINER_SCAN_ALLOWED_REGISTRIES is empty; the BomLens engine reads such a "
+        "registry only when the list names it"
+    )
 
 
 def credential_refusal(host: str) -> str:
@@ -150,6 +205,11 @@ def run_bomlens_container_pipeline(
     """
     # Checked before anything else, the reference first: neither needs Docker.
     target = bomlens_runner.image_target(image_ref)
+    host = split_registry_host(image_ref)
+    # With an allow-list the operator chose the registries (the task checked
+    # it already); without one, an address is not a registry anyone chose.
+    if not allowed_registries() and is_internal_registry(host):
+        raise InternalRegistryRefused(internal_registry_refusal(host))
     if _stored_credential_exists(scan_uuid, image_ref):
         raise RegistryCredentialNotPassed(credential_refusal(split_registry_host(image_ref)))
     if shutil.which("docker") is None:
@@ -190,13 +250,18 @@ def run_bomlens_container_pipeline(
 
     require_running(scan_uuid)
     set_stage(scan_uuid, "finalize")
+    # A cancel can still land between that check and this write; the writer
+    # records success only over "running", so the cancellation stands.
     mark_succeeded(scan_uuid)
 
 
 __all__ = [
     "ENGINE_RUN_METADATA_KEY",
+    "InternalRegistryRefused",
     "RegistryCredentialNotPassed",
     "credential_refusal",
+    "internal_registry_refusal",
+    "is_internal_registry",
     "require_running",
     "run_bomlens_container_pipeline",
 ]

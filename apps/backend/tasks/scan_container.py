@@ -63,7 +63,7 @@ from services import scan_outcome
 from services.registry_allowlist import (
     allowed_registries,
     is_registry_allowed,
-    split_registry_host,
+    shown_registry,
 )
 from services.registry_credential_service import credentials_for_image
 from services.vulnerability_matching import (
@@ -76,7 +76,7 @@ from services.vulnerability_matching import (
 )
 from tasks._progress import make_line_callback, publish_progress
 from tasks._registry_auth import registry_auth_dir, sweep_stale_auth_dirs
-from tasks._scan_pipeline import mark_failed
+from tasks._scan_pipeline import claim_success, mark_failed
 from tasks.celery_app import celery_app
 from tasks.scan_source import _extract_spdx_ids, _get_or_create_license
 
@@ -172,10 +172,19 @@ def _run_container_task(self: Any, scan_id: str, *, engine: str) -> None:
             # is to add it to the list or correct the reference.
             allowed = allowed_registries()
             if not is_registry_allowed(image_ref, allowed):
+                # A host carrying credentials (user:token@host) is never
+                # quoted: the error message is readable by the whole team.
+                shown = shown_registry(image_ref)
+                named = (
+                    f"registry {shown!r}"
+                    if shown is not None
+                    else "the registry part of this image reference carries credentials "
+                    "(user@host), and that registry"
+                )
                 _mark_failed(
                     session,
                     scan,
-                    f"registry {split_registry_host(image_ref)!r} is not in "
+                    f"{named} is not in "
                     "CONTAINER_SCAN_ALLOWED_REGISTRIES, so this image was not pulled",
                 )
                 return
@@ -398,17 +407,14 @@ def _record_terminal_failure(scan_uuid: uuid.UUID, message: str) -> None:
 
 
 def _mark_succeeded(scan_uuid: uuid.UUID) -> None:
+    """Record success only over ``running``: a scan cancelled after the
+    pipeline's last status check stays cancelled (``claim_success``)."""
     with sync_session_scope() as session:
         scan = session.get(Scan, scan_uuid)
         if scan is None:
             return
-        scan.status = "succeeded"
-        scan.progress_percent = 100
-        scan.current_step = "finalize"
-        scan.completed_at = datetime.now(UTC)
-        scan.scan_metadata = scan_outcome.close_stage_timings(
-            scan.scan_metadata, now=scan.completed_at
-        )
+        if not claim_success(session, scan):
+            return
         session.commit()
     publish_progress(scan_uuid, step="succeeded", percent=100)
 

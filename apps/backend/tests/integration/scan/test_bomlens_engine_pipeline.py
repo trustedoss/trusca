@@ -806,3 +806,66 @@ def test_a_failure_is_recorded_only_over_queued_or_running(
     scan = _scan(sync_session, scan_id)
     assert scan.status == after
     assert scan.error_message == ("boom" if after == "failed" else None)
+
+
+@pytest.mark.parametrize("writer", ["shared", "container"])
+@pytest.mark.parametrize("before", ["running", "queued", "cancelled", "failed", "succeeded"])
+def test_success_is_recorded_only_over_running(
+    monkeypatch: pytest.MonkeyPatch, sync_session: Session, writer: str, before: str
+) -> None:
+    """Both success writers (the shared one every source and SBOM pipeline
+    uses, and the container pipeline's) against every state: only a running
+    scan becomes succeeded, and nothing is published for the others."""
+    import tasks._scan_pipeline as shared
+    import tasks.scan_container as container
+
+    published: list[str] = []
+    for module in (shared, container):
+        monkeypatch.setattr(
+            module, "publish_progress", lambda _id, *, step, percent: published.append(step)
+        )
+    scan_id = _seed_running_source_scan()
+    _set(scan_id, status=before, error_message=f"was {before}")
+
+    (shared.mark_succeeded if writer == "shared" else container._mark_succeeded)(scan_id)
+
+    scan = _scan(sync_session, scan_id)
+    if before == "running":
+        assert (scan.status, scan.progress_percent) == ("succeeded", 100)
+        assert scan.completed_at is not None
+        assert published == ["succeeded"]
+    else:
+        assert (scan.status, scan.error_message) == (before, f"was {before}")
+        assert published == []
+
+
+def test_a_cancel_after_the_last_status_check_is_not_reported_as_success(
+    monkeypatch: pytest.MonkeyPatch, sync_session: Session
+) -> None:
+    """The cancel lands between the pipeline's last running check and the
+    success write (the finalize stage). The scan stays cancelled."""
+    import tasks.scan_source as scan_source
+    from tasks.scan_source import scan_source_engine_task
+
+    docker = _clean_docker()
+    _install(monkeypatch, docker)
+    monkeypatch.setenv("TRUSTEDOSS_SCAN_BACKEND", "mock")
+    scan_id = _seed_running_source_scan()
+    real_set_stage = scan_source._set_stage
+
+    def set_stage_then_cancel(scan_uuid: uuid.UUID, stage: str, **kwargs: Any) -> None:
+        real_set_stage(scan_uuid, stage, **kwargs)
+        if stage == "finalize":
+            _set(scan_id, status="cancelled", error_message="cancelled by user")
+
+    monkeypatch.setattr(scan_source, "_set_stage", set_stage_then_cancel)
+
+    result = scan_source_engine_task.apply(args=[str(scan_id)])
+    assert result.successful(), result.traceback
+
+    scan = _scan(sync_session, scan_id)
+    assert (scan.status, scan.error_message) == ("cancelled", "cancelled by user")
+    # The run did reach the finalize stage, so the success writer was what
+    # had to refuse.
+    assert docker.runs_of("stage2")
+    assert scan.current_step == "finalize"
