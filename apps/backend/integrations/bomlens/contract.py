@@ -31,6 +31,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import unicodedata
 from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path
@@ -98,15 +99,25 @@ def storable_text(value: str) -> str:
     ``scan_metadata`` fails the commit and the scan with it; a line break
     would split a log line. A tab or line break becomes a space; every other
     C0 control character, DEL and a lone surrogate (not encodable as UTF-8)
-    is dropped; runs of whitespace are folded and the ends trimmed. Cutting to
-    length is left to the caller, which knows its own ceiling.
+    is dropped; runs of whitespace are folded and the ends trimmed. Format
+    characters (Unicode category ``Cf``: zero-width spaces and joiners,
+    bidirectional overrides and isolates, the byte order mark) are dropped
+    too: they are invisible, so ``pass\\u200bword=...`` would read as a
+    password assignment to a person and not to the credential patterns, and a
+    bidirectional override can make a stored value display as something else.
+    Cutting to length is left to the caller, which knows its own ceiling.
     """
     kept: list[str] = []
     for ch in value:
         code = ord(ch)
         if ch in "\t\n\r":
             kept.append(" ")
-        elif code >= 0x20 and code != 0x7F and not 0xD800 <= code <= 0xDFFF:
+        elif (
+            code >= 0x20
+            and code != 0x7F
+            and not 0xD800 <= code <= 0xDFFF
+            and unicodedata.category(ch) != "Cf"
+        ):
             kept.append(ch)
     return " ".join("".join(kept).split())
 

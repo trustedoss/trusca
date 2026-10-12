@@ -158,13 +158,16 @@ def step_detail(step: Step) -> str | None:
     The detail is engine output that can quote a tool (a registry URL, a
     resolver's message), and it lands in ``scan_metadata``, which the scan API
     returns to every member of the team. So it is cut before the credential
-    patterns run (:func:`scrub_secrets` asks for that), scrubbed, and stripped
-    of control characters (:func:`storable_text`), then cut to
-    :data:`DETAIL_MAX_CHARS` with an ellipsis.
+    patterns run (:func:`scrub_secrets` asks for that), stripped of control
+    and format characters (:func:`storable_text`), scrubbed, and cut to
+    :data:`DETAIL_MAX_CHARS` with an ellipsis. Stripping comes before
+    scrubbing: a control character inside a credential
+    (``https://us\\x0ber:pass@host``) ends the patterns' match, and dropping
+    it afterwards would join the credential back together unmasked.
     """
     if not step.detail:
         return None
-    text = storable_text(scrub_secrets(step.detail[:_DETAIL_READ_MAX]))
+    text = scrub_secrets(storable_text(step.detail[:_DETAIL_READ_MAX]))
     if not text:
         return None
     if len(text) > DETAIL_MAX_CHARS:

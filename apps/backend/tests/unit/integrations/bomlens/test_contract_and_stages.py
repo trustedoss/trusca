@@ -557,6 +557,35 @@ def test_the_detail_is_scrubbed_of_credentials() -> None:
     assert "https://***@pypi.internal/simple" in kept
 
 
+@pytest.mark.parametrize(
+    ("raw", "secret"),
+    [
+        # A control character inside the credential ends the patterns' match;
+        # dropped only after scrubbing, it would join the credential back.
+        ("https://us\x0ber:pass@host/x", "pass"),
+        ("https://user:pa\x1css@host", "pa"),
+        ("password=ab\x1fSECRETREST", "SECRETREST"),
+    ],
+)
+def test_control_characters_are_dropped_before_the_credential_patterns_run(
+    raw: str, secret: str
+) -> None:
+    kept = _detail(raw)
+    assert kept is not None and "***" in kept
+    assert secret not in kept
+
+
+@pytest.mark.parametrize(
+    "invisible",
+    ["​", "‌", "‍", "‎", "‏", "‪", "‮", "⁦", "⁩", "﻿"],
+)
+def test_format_characters_are_dropped(invisible: str) -> None:
+    assert contract.storable_text(f"a{invisible}b") == "ab"
+    # Once the invisible character is gone the key reads as one word again,
+    # so the credential pattern sees it.
+    assert _detail(f"pass{invisible}word=hunter2") == "password=***"
+
+
 def test_the_detail_is_cut_to_its_ceiling() -> None:
     kept = _detail("m" * 600)
     assert kept == "m" * (stages.DETAIL_MAX_CHARS - 3) + "..."
