@@ -206,6 +206,28 @@ compose에서 `SCAN_BOMLENS_NETWORK` 기본값은 `trustedoss-scan-egress`입니
 엔진 컨테이너는 컨테이너 안에서 root로 실행됩니다. 데몬의 `userns-remap` 설정이나 rootless Docker 데몬을 쓰면 그 root가 호스트에서는 권한 없는 사용자가 되어, 컨테이너를 탈출하더라도 접근할 수 있는 범위가 줄어듭니다. 둘 다 TRUSCA 밖의 데몬 설정이니, 호스트가 허용하면 둘 중 하나를 켜십시오.
 :::
 
+### 엔진 이미지의 라이선스 {#engine-image-licences}
+
+엔진 이미지는 TRUSCA 이미지, Helm 차트, 오프라인 번들 어디에도 들어 있지 않습니다. 엔진 워커가 스캔에 필요할 때 이미지를 받아 각각 별도 컨테이너로 실행합니다. 이미지마다 라이선스 조건이 따로 있으며, 요약은 `THIRD_PARTY_NOTICES.md` 4절에 있습니다.
+
+| 이미지 | 소스 | 라이선스 | 이미지 안의 고지와 소스 |
+|---|---|---|---|
+| `ghcr.io/haksungjang/bomlens` | https://github.com/haksungjang/bomlens | Apache-2.0 | `/usr/local/lib/sbom/notices/`의 `LICENSE`, `NOTICE`, `THIRD_PARTY_LICENSES.md` |
+| `ghcr.io/haksungjang/bomlens-deep-license` | https://github.com/haksungjang/bomlens | Apache-2.0. scancode-toolkit(Apache-2.0 AND CC-BY-4.0)와 LGPL 구성요소(linux/amd64의 7-Zip, intbitset, chardet)가 추가됩니다 | 같은 고지 파일과, `/usr/share/bomlens/sources/`의 7-Zip·intbitset 소스 |
+| `ghcr.io/cdxgen/*` (1단계, 실행 계획이 고름) | https://github.com/CycloneDX/cdxgen | cdxgen은 Apache-2.0이고, 나머지는 기반 이미지의 조건을 따릅니다 | 기반 이미지마다 다릅니다. 예를 들어 `cdxgen-python312`는 SUSE BCI 기반이며 SUSE BCI 라이선스가 적용됩니다 |
+
+두 BomLens 이미지의 태그와 다이제스트는 `apps/backend/core/config.py`의 `BOMLENS_IMAGE_DEFAULT`, `BOMLENS_DEEP_LICENSE_IMAGE_DEFAULT`에 있습니다. BomLens 릴리스가 고를 수 있는 cdxgen 이미지와 다이제스트는 BomLens 이미지 안의 `/usr/local/lib/sbom/cdxgen-images.json`에 있습니다. TRUSCA는 BomLens 펌웨어 이미지를 실행하지 않습니다.
+
+미러링하기 전에 이미지의 라이선스 레이블을 확인하려면 다음 명령을 실행하십시오.
+
+<!-- docs-uat: id=dynamic-scan-executor-engine-image-labels kind=shell ctx=host tier=manual waiver=needs-registry-access -->
+```bash
+skopeo inspect --override-os linux --override-arch amd64 \
+  docker://ghcr.io/cdxgen/cdxgen-python312@sha256:<digest> | grep -i -E 'licenses|eula'
+```
+
+이 이미지들을 자체 레지스트리로 미러링해 다른 사람이 받을 수 있게 하면, 각 이미지의 라이선스 의무를 미러링한 사람이 집니다. 고지 파일을 함께 전달하는 일과, 라이선스가 요구하는 경우 대응 소스를 제공하는 일이 여기에 포함됩니다.
+
 ### 엔진 끄기 {#engine-turn-off}
 
 두 서비스는 `restart: unless-stopped`이므로, 이후에 프로필 없이 `docker-compose up -d`를 실행해도 계속 실행되고 프록시도 Docker API를 계속 열어 둡니다. 명시적으로 중지하고 제거하십시오.

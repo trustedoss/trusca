@@ -207,6 +207,28 @@ The scope filter settings carry over: with `SCAN_SCOPE_FILTER_NON_DEPLOYABLE_ENA
 The engine's containers run as root inside the container. With the daemon's `userns-remap` setting, or a rootless Docker daemon, that root is an unprivileged user on the host, which limits what a container escape could reach. Both are daemon settings outside TRUSCA; turn one on where the host allows it.
 :::
 
+### Licences of the engine images {#engine-image-licences}
+
+The engine images are not part of TRUSCA's images, Helm chart or offline bundle. The engine worker pulls them when a scan needs them and runs each as a separate container. Each image carries its own licence terms, which are summarised in section 4 of `THIRD_PARTY_NOTICES.md`.
+
+| Image | Source | Licence | Notices and source inside the image |
+|---|---|---|---|
+| `ghcr.io/haksungjang/bomlens` | https://github.com/haksungjang/bomlens | Apache-2.0 | `LICENSE`, `NOTICE` and `THIRD_PARTY_LICENSES.md` in `/usr/local/lib/sbom/notices/` |
+| `ghcr.io/haksungjang/bomlens-deep-license` | https://github.com/haksungjang/bomlens | Apache-2.0; adds scancode-toolkit (Apache-2.0 AND CC-BY-4.0) and LGPL components (7-Zip on linux/amd64, intbitset, chardet) | The same notices, and the source for 7-Zip and intbitset in `/usr/share/bomlens/sources/` |
+| `ghcr.io/cdxgen/*` (stage 1, chosen by the plan) | https://github.com/CycloneDX/cdxgen | Apache-2.0 for cdxgen; the base image's terms for the rest | Differs by base image. `cdxgen-python312`, for example, is built on SUSE BCI and carries the SUSE BCI licence |
+
+The tag and digest of the two BomLens images are `BOMLENS_IMAGE_DEFAULT` and `BOMLENS_DEEP_LICENSE_IMAGE_DEFAULT` in `apps/backend/core/config.py`. The cdxgen images a BomLens release can choose, with their digests, are listed in `/usr/local/lib/sbom/cdxgen-images.json` inside the BomLens image. TRUSCA does not run the BomLens firmware image.
+
+To read an image's licence labels before you mirror it:
+
+<!-- docs-uat: id=dynamic-scan-executor-engine-image-labels kind=shell ctx=host tier=manual waiver=needs-registry-access -->
+```bash
+skopeo inspect --override-os linux --override-arch amd64 \
+  docker://ghcr.io/cdxgen/cdxgen-python312@sha256:<digest> | grep -i -E 'licenses|eula'
+```
+
+If you mirror these images into your own registry and make that registry available to others, you take on the licence obligations of each image, including passing on its notices and offering the corresponding source where its licence requires that.
+
 ### Turn the engine off {#engine-turn-off}
 
 Both services have `restart: unless-stopped`, so a later `docker-compose up -d` without the profile leaves them running, and the proxy keeps the Docker API open. Stop and remove them explicitly:

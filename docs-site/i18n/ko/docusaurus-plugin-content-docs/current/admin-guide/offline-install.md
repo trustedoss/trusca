@@ -148,6 +148,76 @@ bash scripts/install.sh --no-prompt --offline /path/to/trusca-offline-bundle-0.2
 [취약점 데이터의 Path B](./vulnerability-data.md#air-gapped)를 따라 캐시를
 따로 채우기 전까지는 취약점 매칭을 쓸 수 없습니다.
 
+## BomLens 엔진 이미지 {#bomlens-engine-images}
+
+번들에는 [BomLens 스캔 엔진](./dynamic-scan-executor.md#scan-engine)
+(`SCAN_ENGINE=bomlens`, 미리 보기 기능)이 들어 있지 않습니다. 엔진 워커는
+스캔에 필요할 때 이미지를 받으므로, 망 분리 설치에서 엔진을 쓰려면 다음
+이미지를 대상 호스트의 Docker 데몬이 접근할 수 있는 레지스트리로 복사해야
+합니다.
+
+- BomLens 이미지 `ghcr.io/haksungjang/bomlens`
+- BomLens 이미지 `ghcr.io/haksungjang/bomlens-deep-license`
+- 실행 계획이 고르는 `ghcr.io/cdxgen/` 아래의 cdxgen 언어 이미지(아래
+  제한 사항 참고)
+
+`bomlens-engine` compose 프로필이 시작하는 `docker-socket-proxy` 이미지도
+번들에 들어 있지 않습니다.
+
+TRUSCA는 BomLens 이미지를 다이제스트로 실행합니다. 각 이미지는 멀티 플랫폼
+인덱스이므로 인덱스 전체를 복사해야 합니다. 플랫폼 하나의 이미지만 복사하면
+다이제스트가 달라져, 고정된 다이제스트로 받는 단계에서 실패합니다. 연결된
+호스트에서, 설치할 릴리스의 저장소로 고정된 참조를 확인합니다.
+
+```bash
+grep -A2 -E '^BOMLENS_(DEEP_LICENSE_)?IMAGE_DEFAULT' apps/backend/core/config.py
+```
+
+참조는 따옴표로 묶인 문자열 두 개로 출력되며, 이어 붙이면
+`<repository>:<tag>@sha256:<digest>` 형식입니다. 각 이미지를 모든 플랫폼과
+함께, 다이제스트를 유지한 채 복사합니다. `<your-registry>`는 대상 호스트가
+이미지를 받는 레지스트리입니다.
+
+```bash
+skopeo copy --all --preserve-digests \
+  docker://ghcr.io/haksungjang/bomlens@sha256:<digest> \
+  docker://<your-registry>/bomlens:<tag>
+
+skopeo copy --all --preserve-digests \
+  docker://ghcr.io/haksungjang/bomlens-deep-license@sha256:<digest> \
+  docker://<your-registry>/bomlens-deep-license:<tag>
+```
+
+두 레지스트리에 모두 접근할 수 있는 호스트가 없으면, 먼저 OCI 레이아웃
+디렉터리로 복사하고(대상을 `oci:/path/to/bomlens:<tag>`로 지정) 그
+디렉터리를 망 분리 구간 너머로 옮긴 뒤, 같은 옵션으로 레지스트리에 복사합니다.
+
+그다음 TRUSCA가 복사본을 쓰도록, 같은 태그와 다이제스트로 설정합니다.
+
+```bash
+# 포털의 .env
+SCAN_BOMLENS_IMAGE=<your-registry>/bomlens:<tag>@sha256:<digest>
+SCAN_BOMLENS_DEEP_LICENSE_IMAGE=<your-registry>/bomlens-deep-license:<tag>@sha256:<digest>
+```
+
+다이제스트가 없거나 태그가 `latest`인 참조는 엔진이 거부합니다.
+
+:::caution 1단계 이미지에는 미러 설정이 없습니다
+현재 TRUSCA에는 cdxgen 언어 이미지를 미러에서 받도록 지정하는 설정이
+없습니다. 실행 계획은 이 이미지들을 `ghcr.io/cdxgen/` 아래 이름으로 지정하고,
+Docker 호스트에 해당 이미지가 없으면 워커가 그 이름으로 받습니다.
+`SCAN_BOMLENS_STAGE1_REPOSITORIES`는 실행 계획이 지정할 수 있는 저장소를
+제한할 뿐, 이미지를 받는 위치를 바꾸지 않습니다. 받기에 실패하면 스캔은
+`pulling <image> failed`로 실패합니다. BomLens 릴리스가 고를 수 있는
+이미지와 다이제스트는 BomLens 이미지 안의 `/usr/local/lib/sbom/cdxgen-images.json`에
+있습니다.
+:::
+
+이 이미지들을 미러링해 다른 사람이 받을 수 있게 하면, 각 이미지의 라이선스
+의무를 미러링한 사람이 집니다. 이미지별 라이선스와, 각 이미지가 고지 파일과
+소스를 두는 위치는 [엔진 이미지의 라이선스](./dynamic-scan-executor.md#engine-image-licences)에
+정리되어 있습니다.
+
 ## Helm/Kubernetes
 
 번들은 Helm 기반 배포를 위해 `charts/trustedoss/`를 담고 있지만,

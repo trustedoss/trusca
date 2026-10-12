@@ -156,6 +156,75 @@ that host regains network access, or until you follow
 [Vulnerability data's Path B](./vulnerability-data.md#air-gapped) to seed the
 cache separately.
 
+## BomLens engine images {#bomlens-engine-images}
+
+The bundle does not contain the [BomLens scan engine](./dynamic-scan-executor.md#scan-engine)
+(`SCAN_ENGINE=bomlens`, a preview). The engine worker pulls its images when a
+scan needs them, so to use the engine in an air-gapped install, copy them
+into a registry that the target host's Docker daemon can reach:
+
+- the BomLens image `ghcr.io/haksungjang/bomlens`
+- the BomLens image `ghcr.io/haksungjang/bomlens-deep-license`
+- the cdxgen language images under `ghcr.io/cdxgen/` that the execution plan
+  chooses (see the limit below)
+
+The `docker-socket-proxy` image that the `bomlens-engine` compose profile
+starts is not in the bundle either.
+
+TRUSCA runs the BomLens images by digest. Each is a multi-platform index, so
+copy the whole index; a copy of one platform's image has a different
+digest, and the pull by the pinned digest then fails. On the connected host, read the pinned
+references from the repository of the release you install:
+
+```bash
+grep -A2 -E '^BOMLENS_(DEEP_LICENSE_)?IMAGE_DEFAULT' apps/backend/core/config.py
+```
+
+Each reference is printed as two quoted strings; joined, they read
+`<repository>:<tag>@sha256:<digest>`. Copy each
+image with every platform, keeping the digest. `<your-registry>` is the
+registry the target host pulls from:
+
+```bash
+skopeo copy --all --preserve-digests \
+  docker://ghcr.io/haksungjang/bomlens@sha256:<digest> \
+  docker://<your-registry>/bomlens:<tag>
+
+skopeo copy --all --preserve-digests \
+  docker://ghcr.io/haksungjang/bomlens-deep-license@sha256:<digest> \
+  docker://<your-registry>/bomlens-deep-license:<tag>
+```
+
+If no single host reaches both registries, copy to an OCI layout directory
+first (`oci:/path/to/bomlens:<tag>` as the destination), carry the directory
+across, and copy it into your registry with the same flags.
+
+Then point TRUSCA at the copies, with the same tag and digest:
+
+```bash
+# In the portal's .env
+SCAN_BOMLENS_IMAGE=<your-registry>/bomlens:<tag>@sha256:<digest>
+SCAN_BOMLENS_DEEP_LICENSE_IMAGE=<your-registry>/bomlens-deep-license:<tag>@sha256:<digest>
+```
+
+The engine refuses a reference without a digest or tagged `latest`.
+
+:::caution No mirror setting for the stage 1 images
+TRUSCA currently has no setting that points the cdxgen language images at a
+mirror. The execution plan names them under `ghcr.io/cdxgen/`, and the worker
+pulls them by that name when the Docker host does not already hold them.
+`SCAN_BOMLENS_STAGE1_REPOSITORIES` only limits which repositories a plan may
+name; it does not change where images are pulled from. When the pull fails,
+the scan fails with `pulling <image> failed`. The images and digests a BomLens
+release can choose are listed in `/usr/local/lib/sbom/cdxgen-images.json`
+inside the BomLens image.
+:::
+
+Whoever mirrors these images and makes them available to others takes on the
+license obligations of each image. Their licenses, and where each image keeps
+its notices and source, are listed under
+[Licences of the engine images](./dynamic-scan-executor.md#engine-image-licences).
+
 ## Helm / Kubernetes
 
 The bundle carries `charts/trustedoss/` for a Helm-based deploy, but
