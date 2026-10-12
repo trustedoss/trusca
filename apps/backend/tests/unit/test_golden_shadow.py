@@ -108,8 +108,12 @@ class TestWorkflow:
         assert "--opt com.docker.network.bridge.enable_icc=false trustedoss-scan-egress" in run
         assert '[ "$icc" != "false" ]' in run
         # The backend is recreated (it reads SCAN_ENGINE at dispatch) and the
-        # engine it dispatches with is checked afterwards.
-        assert "up -d backend docker-socket-proxy worker-engine" in run
+        # engine it dispatches with is checked afterwards. It is removed first:
+        # docker-compose 1.29 fails to recreate on current Docker Engine.
+        lines = [line.strip() for line in run.splitlines()]
+        remove = lines.index("docker-compose rm -fs backend")
+        assert lines[remove + 1] == "docker-compose up -d --no-deps backend"
+        assert "docker-compose up -d --no-deps docker-socket-proxy worker-engine" in lines
         assert "printenv SCAN_ENGINE" in run
         # Trivy volume comes from the in-process worker's own mount.
         assert '.Destination "/var/lib/trivy"' in run

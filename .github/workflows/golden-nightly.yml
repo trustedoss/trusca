@@ -281,7 +281,12 @@ jobs:
             docker pull --quiet "$ref"
           done
 
-          docker-compose up -d backend docker-socket-proxy worker-engine
+          # docker-compose 1.29 cannot recreate a container on current Docker
+          # Engine (KeyError 'ContainerConfig'), so remove the backend first
+          # and let `up` create it fresh with SCAN_ENGINE=bomlens.
+          docker-compose rm -fs backend
+          docker-compose up -d --no-deps backend
+          docker-compose up -d --no-deps docker-socket-proxy worker-engine
           for _ in $(seq 1 60); do
             code=$(curl -s -o /dev/null -w '%{http_code}' http://localhost:8000/health || echo 000)
             [ "$code" = "200" ] && break
