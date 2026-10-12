@@ -31,6 +31,8 @@ from integrations.bomlens.contract import (
     UnsupportedContractVersion,
 )
 from models import (
+    Component,
+    ComponentVersion,
     License,
     LicenseFinding,
     Scan,
@@ -866,6 +868,32 @@ def test_an_image_run_with_debian_licences_from_trivy_persists_them(
     spdx_ids = {spdx for spdx, _ in rows if spdx}
     assert {"GPL-2.0-only", "GPL-2.0-or-later"} <= spdx_ids
     assert not any("sha256:" in (name or "") for _, name in rows)
+
+
+def test_every_licence_a_debian_package_lists_is_stored_as_applying(
+    tmp_path: Path, sync_session: Session
+) -> None:
+    """A deb package's licence list is its copyright data, all of it applies.
+    ca-certificates lists GPL-2.0-or-later, GPL-2.0-only and MPL-2.0; joined
+    with OR the most permissive one decided and the package read conditional."""
+    from tasks.bomlens_result import apply_bomlens_result
+    from tasks.scan_source import _classify_license_category
+
+    scan_id = _seed_running_source_scan()
+    folder = _copy_fixture("image-os-licenses", tmp_path)
+
+    apply_bomlens_result(scan_uuid=scan_id, output_dir=folder)
+
+    rows = sync_session.execute(
+        select(License.spdx_id)
+        .join(LicenseFinding, LicenseFinding.license_id == License.id)
+        .join(ComponentVersion, ComponentVersion.id == LicenseFinding.component_version_id)
+        .join(Component, Component.id == ComponentVersion.component_id)
+        .where(LicenseFinding.scan_id == scan_id, Component.name == "ca-certificates")
+    ).all()
+    spdx_ids = sorted(spdx for (spdx,) in rows)
+    assert spdx_ids == ["GPL-2.0-only", "GPL-2.0-or-later", "MPL-2.0"]
+    assert "forbidden" in {_classify_license_category(spdx) for spdx in spdx_ids}
 
 
 def test_a_report_without_results_fails_instead_of_reading_as_zero_cves(

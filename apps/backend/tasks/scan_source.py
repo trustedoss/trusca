@@ -65,7 +65,7 @@ from collections.abc import Iterator
 from contextlib import contextmanager
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import Any
+from typing import Any, Final
 from urllib.parse import quote, urlsplit, urlunsplit
 
 import structlog
@@ -4066,6 +4066,11 @@ def _classify_license_category(spdx_id: str | None) -> str:
     return result.category
 
 
+# purl types whose license list is the package's copyright data: every entry
+# applies. See ``_extract_spdx_ids``.
+_OS_PACKAGE_TYPES: Final[frozenset[str]] = frozenset({"deb", "rpm", "apk"})
+
+
 def _extract_spdx_ids(cdxgen_component: dict[str, Any]) -> list[tuple[str, str | None]]:
     """Pull (spdx_id, reference_url) tuples out of a cdxgen component entry.
 
@@ -4091,10 +4096,20 @@ def _extract_spdx_ids(cdxgen_component: dict[str, Any]) -> list[tuple[str, str |
     Returns ``[]`` or a single ``(combined, url)`` tuple. The combined string is
     bounded to the ``License.spdx_id`` column width (64); a longer one is
     skipped (rare).
+
+    OS packages (``pkg:deb``, ``pkg:rpm``, ``pkg:apk``) are the exception: the
+    list is every license found in the package's copyright data, all of which
+    apply, so each id comes back as its own tuple. Joining them with ``OR``
+    would let the most permissive one decide, and a Debian package carrying
+    GPL files would classify allowed. This matches how the in-process container
+    scan stores Trivy's license list (``scan_container._license_ids``).
     """
     licenses = cdxgen_component.get("licenses") or []
     if not isinstance(licenses, list):
         return []
+    purl = cdxgen_component.get("purl")
+    all_apply = isinstance(purl, str) and _purl_package_type(purl) in _OS_PACKAGE_TYPES
+    separate: list[tuple[str, str | None]] = []
     ids: list[str] = []
     ref_url: str | None = None
     for entry in licenses:
@@ -4113,8 +4128,10 @@ def _extract_spdx_ids(cdxgen_component: dict[str, Any]) -> list[tuple[str, str |
                 spdx = sanitize_jsonb_text(spdx)
                 if spdx:
                     ids.append(spdx)
-                    if ref_url is None and isinstance(lic.get("url"), str):
-                        ref_url = sanitize_jsonb_text(lic["url"]) or None
+                    url = sanitize_jsonb_text(lic["url"]) if isinstance(lic.get("url"), str) else ""
+                    separate.append((spdx, url or None))
+                    if ref_url is None:
+                        ref_url = url or None
                     continue
             # Phase E: no usable SPDX ``id`` — try to recover a canonical id
             # from a free-text ``name`` (e.g. "Apache License, Version 2.0").
@@ -4127,14 +4144,25 @@ def _extract_spdx_ids(cdxgen_component: dict[str, Any]) -> list[tuple[str, str |
                 normalized = normalize_license_name(name)
                 if normalized:
                     ids.append(normalized)
-                    if ref_url is None and isinstance(lic.get("url"), str):
-                        ref_url = sanitize_jsonb_text(lic["url"]) or None
+                    url = sanitize_jsonb_text(lic["url"]) if isinstance(lic.get("url"), str) else ""
+                    separate.append((normalized, url or None))
+                    if ref_url is None:
+                        ref_url = url or None
                     continue
         expression = entry.get("expression")
         if isinstance(expression, str):
             expression = sanitize_jsonb_text(expression)
             if expression:
                 ids.append(expression)
+                separate.append((expression, None))
+    if all_apply:
+        kept: list[tuple[str, str | None]] = []
+        seen: set[str] = set()
+        for spdx_id, entry_url in separate:
+            if spdx_id not in seen and len(spdx_id) <= 64:
+                seen.add(spdx_id)
+                kept.append((spdx_id, entry_url))
+        return kept
     if not ids:
         return []
     combined = ids[0] if len(ids) == 1 else " OR ".join(ids)
