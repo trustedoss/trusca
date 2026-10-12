@@ -383,9 +383,24 @@ def test_every_ci_template_and_the_pr_comment_warn_on_both_empty_outcomes() -> N
         allowed=set(COMPONENT_OUTCOME_VALUES),
         write='echo "TRUSTEDOSS_COMPONENT_OUTCOME=$outcome"',
     )
-    _assert_sanitised_before(
-        gitlab, subject="gate", allowed={"pass", "fail"}, write='echo "TRUSTEDOSS_GATE=$gate"'
-    )
+    # The verdict fails closed: anything but pass or fail stops the job with
+    # exit 1 before it is written, instead of being read as a pass in step 5.
+    gate_blocks = [
+        (offset, body)
+        for offset, labels, body in _shell_case_blocks(gitlab, subject="gate")
+        if labels == {"pass", "fail", "*"}
+    ]
+    assert len(gate_blocks) == 1, "no single allow-list case for $gate"
+    offset, body = gate_blocks[0]
+    unknown = body[body.index("*)") :]
+    assert "FATAL:" in unknown
+    assert "exit 1" in unknown
+    assert 'gate=""' not in body
+    assert offset < gitlab.index('echo "TRUSTEDOSS_GATE=$gate"')
+    for base in ("docs-site/docs", "docs-site/i18n/ko/docusaurus-plugin-content-docs/current"):
+        guide = root / base / "ci-integration" / "gitlab-ci.md"
+        text = guide.read_text(encoding="utf-8")
+        assert "`FATAL:`" in text, f"{guide} omits the fail-closed gate"
     assert "jq -r '.component_outcome" in gitlab
 
     jenkins = (root / "templates" / "Jenkinsfile.example").read_text(encoding="utf-8")

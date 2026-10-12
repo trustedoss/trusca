@@ -88,6 +88,8 @@ masked 플래그는 잡 로그에 Key가 그대로 노출되는 것을 막습니
 | `TRUSTEDOSS_POLL_INTERVAL` | no | `30` | 폴링 간격(초). |
 | `TRUSTEDOSS_POST_MR_COMMENT` | no | `true` | 향후 GitLab Notes API 통합용 예약. 현재 릴리스에서는 요청이 스테이징되지만 백엔드가 전송할 수 없습니다 — 위 경고 참고. |
 
+게이트 결과의 `gate` 값은 `pass` 또는 `fail`입니다. 그 밖의 값이 오면 판정을 기록하기 전에 `FATAL:` 줄을 남기고 종료 코드 1로 작업을 멈춥니다. 게이트 엔드포인트가 예상하지 못한 HTTP 상태를 돌려줄 때와 같은 처리이고, `TRUSTEDOSS_FAIL_ON_GATE`가 `false`여도 마찬가지입니다. 템플릿이 읽지 못한 판정을 통과로 다루지 않기 위해서입니다.
+
 ## 레시피
 
 ### Advisory 모드

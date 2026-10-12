@@ -89,6 +89,8 @@ Either way, only `TRUSTEDOSS_API_KEY` must be masked.
 | `TRUSTEDOSS_POLL_INTERVAL` | no | `30` | Seconds between polls. |
 | `TRUSTEDOSS_POST_MR_COMMENT` | no | `true` | Reserved for the upcoming GitLab Notes API integration. In this release the request stages but the backend cannot deliver — see the warning above. |
 
+The gate result's `gate` is `pass` or `fail`. Any other value stops the job with a `FATAL:` line and exit code 1 before the verdict is recorded, even when `TRUSTEDOSS_FAIL_ON_GATE` is `false`, the same as an unexpected HTTP status from the gate endpoint: a verdict the template cannot read is never treated as a pass.
+
 ## Recipes
 
 ### Advisory mode

@@ -263,10 +263,16 @@
       forbidden=$(echo "$json_body" | jq -r '.forbidden_license_count // 0')
       outcome=$(echo "$json_body" | jq -r '.component_outcome // ""')
       # Only known words reach trustedoss.env, which later steps source as
-      # shell: anything else is written as an empty value.
+      # shell. A verdict that is neither pass nor fail closes the gate: the
+      # job stops here rather than letting step 5 read it as a pass. An
+      # unknown component outcome is only informative and is written empty.
       case "$gate" in
         pass|fail) ;;
-        *) gate="" ;;
+        *)
+          echo "FATAL: unexpected gate value from gate-result (expected pass or fail):"
+          echo "$json_body"
+          exit 1
+          ;;
       esac
       case "$outcome" in
         components_found|empty_no_manifests|empty_with_manifests) ;;
