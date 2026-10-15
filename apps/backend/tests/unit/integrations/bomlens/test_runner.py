@@ -250,6 +250,9 @@ def test_stage_1_env_is_the_plan_env_plus_allowed_passthrough_and_trusca_values(
     assert _env_names(stage1) == {
         "HOME",
         "MAVEN_OPTS",
+        "GOPATH",
+        "GOMODCACHE",
+        "GOCACHE",
         "FETCH_LICENSE",
         "PROJECT_NAME",
         "PROJECT_VERSION",
@@ -258,6 +261,9 @@ def test_stage_1_env_is_the_plan_env_plus_allowed_passthrough_and_trusca_values(
         "HOST_GID",
         "BOMLENS_GUARD_ID",
     }
+    # BomLens 1.13.5 points the Go caches under the writable home, as it does Maven.
+    for name in ("GOPATH", "GOMODCACHE", "GOCACHE"):
+        assert stage1.env[name].startswith("/tmp/sbomhome/"), name
     assert stage1.env["GOPROXY"] == "https://proxy.golang.org"
     assert stage1.env["BOMLENS_GUARD_ID"] == f"trusca-{uuid.UUID(int=7).hex}"
     assert stage1.env["HOST_UID"] == str(os.getuid())

@@ -56,7 +56,7 @@ def _with_steps(*steps: dict[str, Any]) -> contract.EngineResult:
 
 
 #: The contract version each capture was written with (PROVENANCE.md):
-#: sha-b826d43 wrote 1.0.0-dev, sha-5a93586 1.0.0, the 1.13.4 release 1.3.0.
+#: sha-b826d43 wrote 1.0.0-dev, sha-5a93586 1.0.0, the 1.13.5 release 1.3.0.
 #: The contract version of the pinned release; its captures are checked against
 #: the digests in config.py.
 NEWEST = "1.3.0"

@@ -1,7 +1,7 @@
 # Provenance of the BomLens execution plan fixtures
 
 Every `bomlens-plan.json` and `bomlens-result.json` here is unedited output of
-the published BomLens image, captured on 2026-10-15 (05:00 UTC) with a plain
+the published BomLens image, captured on 2026-10-15 (18:00 UTC) with a plain
 `docker run` (no compose). Tests that need a hostile or broken plan copy a capture and
 change the copy (`tests/unit/integrations/bomlens/test_plan.py`).
 
@@ -9,10 +9,10 @@ change the copy (`tests/unit/integrations/bomlens/test_plan.py`).
 
 | | |
 |---|---|
-| Image | `ghcr.io/sktelecom/bomlens:1.13.4` (the BomLens v1.13.4 release) |
-| Index digest | `sha256:59d5a3363ad658a9b94787cd4c964209371b8f68a83e49adfd5b74b3220f2b47` |
-| Source commit | image label `org.opencontainers.image.revision=f098ff64`, the commit the `v1.13.4` tag in `sktelecom/bomlens` names. Image label `com.sktelecom.sbom.engine-contract=1.3.0` |
-| Platform pulled | `linux/arm64` (`sha256:b3574b69b246343934d3c9ee56e5fb0155c25fcc98df2ba77da1eec74b3d982b`) |
+| Image | `ghcr.io/sktelecom/bomlens:1.13.5` (the BomLens v1.13.5 release) |
+| Index digest | `sha256:d05b2f4f2542ba1bc98fd07712fd4308f40205dd9ad28b7a8d15ae614b4b4128` |
+| Source commit | image label `org.opencontainers.image.revision=21874a5f`, the commit the `v1.13.5` tag in `sktelecom/bomlens` names. Image label `com.sktelecom.sbom.engine-contract=1.3.0` |
+| Platform pulled | `linux/arm64` (`sha256:d0c74bf76a5e03a01605c2f06a29d336d5f5a7dbe7d8339a2c3aef8dc3a4ba53`) |
 
 The plans and the result manifests both say contract `1.3.0`. Until BomLens
 #208 a plan said `1.0.0` whatever the image (`PLAN_CONTRACT_VERSION` in
@@ -20,7 +20,7 @@ The plans and the result manifests both say contract `1.3.0`. Until BomLens
 role); #208 gives the plan the engine contract version. The reader still does
 not use the version to decide which mount roles to expect.
 
-`engine-plan-1.json` is `schemas/engine-plan-1.json` at the `v1.13.4` tag,
+`engine-plan-1.json` is `schemas/engine-plan-1.json` at the `v1.13.5` tag,
 copied byte for byte. Against the `v1.13.2` copy it replaced, it adds the
 `input_fingerprint` object (at the top level and on each stage) and the six
 settings mount roles. The vocabulary test compares the reader's enums to it.
@@ -39,16 +39,16 @@ docker run --rm --read-only --network none --cap-drop ALL \
   --workdir /host-output \
   -e MODE=PLAN -e PROJECT_NAME=app -e PROJECT_VERSION=1.0 -e HOST_OUTPUT_DIR=/host-output \
   -e FETCH_LICENSE=false \
-  -e BOMLENS_IMAGE_REF=ghcr.io/sktelecom/bomlens:1.13.4 \
-  -e BOMLENS_IMAGE_DIGEST=sha256:59d5a3363ad658a9b94787cd4c964209371b8f68a83e49adfd5b74b3220f2b47 \
+  -e BOMLENS_IMAGE_REF=ghcr.io/sktelecom/bomlens:1.13.5 \
+  -e BOMLENS_IMAGE_DIGEST=sha256:d05b2f4f2542ba1bc98fd07712fd4308f40205dd9ad28b7a8d15ae614b4b4128 \
   -e HOST_UID=<uid> -e HOST_GID=<gid> \
-  ghcr.io/sktelecom/bomlens:1.13.4@sha256:59d5a3363ad658a9b94787cd4c964209371b8f68a83e49adfd5b74b3220f2b47
+  ghcr.io/sktelecom/bomlens:1.13.5@sha256:d05b2f4f2542ba1bc98fd07712fd4308f40205dd9ad28b7a8d15ae614b4b4128
 ```
 
 | Case | Source | Exit | Result |
 |---|---|---|---|
 | `node-ok` | `tests/e2e/golden/fixtures/node` (npm, `lodash` 4.17.21) | 0 | `ok`; stage 1 `ghcr.io/cdxgen/cdxgen-alpine-node24:13.3.0@sha256:9e9cbff2...` with the two caches and six settings files as optional mounts, stage 2 the image above with the `trivy-db` mount (`/trivy-db`, read-only, optional), `SECURITY_ENRICH=false` in its `env`, and the proxy, `TRIVY_*`, `BOMLENS_TRIVY_DB_MAX_AGE_DAYS`, `EPSS_API` and `KEV_URL` names in its `env_passthrough` |
-| `android-unsupported` | BomLens `tests/fixtures/android-kotlin-dsl` at the `v1.13.4` tag | 0 | `unsupported`, reason `android-sdk-image`, no stages; the manifest records the `plan` step `skipped` (`not_installed`) and the run `succeeded_degraded` |
+| `android-unsupported` | BomLens `tests/fixtures/android-kotlin-dsl` at the `v1.13.5` tag | 0 | `unsupported`, reason `android-sdk-image`, no stages; the manifest records the `plan` step `skipped` (`not_installed`) and the run `succeeded_degraded` |
 | `node-mirror-prefix` | the same `node` source, with `-e CDXGEN_IMAGE_PREFIX=registry.example/mirror/cdxgen/` added | 0 | `ok`; stage 1 `registry.example/mirror/cdxgen/cdxgen-alpine-node24:13.3.0` with the same digest as `node-ok` (`sha256:9e9cbff2...`) |
 
 `node-mirror-prefix` differs from `node-ok` in the stage 1 `image` only; in
@@ -59,14 +59,20 @@ the `/` (`docker/lib/source-detect.sh`). The runner gives the same value as
 `SCAN_BOMLENS_STAGE1_IMAGE_PREFIX` (`tests/unit/integrations/bomlens/test_stage1_image_prefix.py`).
 
 `cdxgen-images.json` is `/usr/local/lib/sbom/cdxgen-images.json` from the
-same image, copied byte for byte with
+same image, copied byte for byte (identical to the `1.13.4` copy) with
 `docker run --rm --network none --entrypoint cat <image above> /usr/local/lib/sbom/cdxgen-images.json`.
 It is the list the offline-install guide tells an operator to read and copy;
 `tests/unit/test_bomlens_stage1_prefix_doc_contract.py` runs the guide's
 commands on it.
 
-Against the `1.13.2` captures these replaced (2026-10-12 07:32 UTC), the
-plans differ in more than the image fields and the contract version:
+Against the `1.13.4` captures (2026-10-15 05:00 UTC) these replaced, the plans
+differ only in the image fields, the run times, the digests of the plan, of
+`make-plan.sh` and of the image inside `input_fingerprint`, and stage 1's `env`, which adds `GOPATH`
+(`/tmp/sbomhome/go`), `GOMODCACHE` (`/tmp/sbomhome/go/pkg/mod`) and `GOCACHE`
+(`/tmp/sbomhome/go-build`). Nothing else in the plans or in the schema changed.
+
+Against the `1.13.2` captures that the `1.13.4` ones replaced (2026-10-12 07:32 UTC), the
+plans differed in more than the image fields and the contract version:
 
 - `input_fingerprint`, at the top level and on the `generate` stage (sha256
   values only; the unsupported plan has one with `sha256` null and the
@@ -99,8 +105,8 @@ and mounts those files, and the tests that need them write placeholders.
 
 ## The same image, end to end
 
-With the runner and `1.13.4` pinned in `core/config.py`, on a local Docker
-daemon (2026-10-15), `tests/integration/scan/test_bomlens_engine_pipeline.py`
+With the runner and `1.13.5` pinned in `core/config.py`, on a local Docker
+daemon (2026-10-15, evening UTC), `tests/integration/scan/test_bomlens_engine_pipeline.py`
 passed its three real-image tests (`BOMLENS_ENGINE_DOCKER_TEST=1`,
 `BOMLENS_ENGINE_TRIVY_CACHE` naming the database of the result fixture
 captures, `UpdatedAt` 2026-10-15T01:13Z):
@@ -113,7 +119,7 @@ captures, `UpdatedAt` 2026-10-15T01:13Z):
   components and no `generate` degradation.
 - `test_root_owned_engine_files_become_deletable_by_the_worker`.
 
-The same three passed with `1.13.2` on 2026-10-12, and with `sha-34010b6`
+The same three passed with `1.13.4` earlier on 2026-10-15, with `1.13.2` on 2026-10-12, and with `sha-34010b6`
 on that day, where the npm run
 also showed PLAN, stage 1, stage 2 and the ownership reset exiting 0, stage 2
 reading the worker's Trivy database through the `trivy-db` mount, and three
@@ -154,5 +160,5 @@ default `~/.cache/trivy` held no database on that machine, and both tests
 failed the same way with "the vulnerability scan failed".
 
 That was the `1.13.2` image, whose plan named `13.2.0`. The mirror test was
-not repeated with `1.13.4`; it now expects `cdxgen-alpine-node24:13.3.0`, the
+not repeated with `1.13.4` or `1.13.5`; it now expects `cdxgen-alpine-node24:13.3.0`, the
 image the `node-ok` plan names.
