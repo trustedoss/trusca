@@ -190,6 +190,9 @@ STAGE_ENV_ALLOWED: Final[dict[int, frozenset[str]]] = {
             "PROJECT_NAME",
             "PROJECT_VERSION",
             "HOST_GOTOOLCHAIN",
+            "GOPATH",
+            "GOMODCACHE",
+            "GOCACHE",
         }
     ),
     2: frozenset(
