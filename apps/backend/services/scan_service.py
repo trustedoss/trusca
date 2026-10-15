@@ -33,6 +33,7 @@ from sqlalchemy.orm import Session, selectinload
 from core.audit import bind_audit_team as _bind_audit_team
 from core.audit import get_audit_context
 from core.authz import can_access_group, team_scope_filter
+from core.config import demo_read_only
 from core.pii_mask import mask_pii
 from core.security import CurrentUser
 from models import (
@@ -1308,7 +1309,9 @@ async def list_scans_for_actor(
     page = max(page, 1)
     size = max(min(size, 100), 1)
 
-    is_super = actor.is_superuser or actor.role == "super_admin"
+    # Public read-only demo: no bypass here; team_scope_filter bounds a super
+    # admin to the demo organisation.
+    is_super = (actor.is_superuser or actor.role == "super_admin") and not demo_read_only()
 
     # Build the base query. We JOIN on Project so the WHERE clause can clamp
     # by team_id. ix_scans_project_created_at + ix_projects_team_id keep the
@@ -1321,7 +1324,7 @@ async def list_scans_for_actor(
     )
 
     if not is_super:
-        if not actor.team_ids:
+        if not actor.team_ids and not actor.is_superuser:
             return [], 0
         # Phase 2 PR 2-C: was `Project.team_id.in_(list(actor.team_ids))`,
         # a direct-membership-only clamp. `team_scope_filter` is the mandated

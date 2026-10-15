@@ -106,6 +106,7 @@ class _World:
     outsider_team_name: str
     outsider_project_id: uuid.UUID
     outsider_project_name: str
+    outsider_scan_id: uuid.UUID
     outsider_org_id: uuid.UUID
     marker: str
 
@@ -144,7 +145,10 @@ async def world(db_factory: async_sessionmaker[Any]) -> _World:
         w.outsider_team_name = team.name
         w.outsider_org_id = org.id
         project = await make_project(session, team=team, created_by=outsider)
-        await make_scan(session, project=project, requested_by=outsider, status="succeeded")
+        scan = await make_scan(
+            session, project=project, requested_by=outsider, status="succeeded"
+        )
+        w.outsider_scan_id = scan.id
         w.outsider_project_id = project.id
         w.outsider_project_name = project.name
 
@@ -495,12 +499,14 @@ async def test_admin_teams_orgs_scans_scope(
     orgs = await client.get("/v1/admin/organizations", params={"page_size": 200}, headers=headers)
     assert orgs.status_code == 200, orgs.text
     slugs = {o["slug"] for o in orgs.json()["items"]}
-    assert "demo-org" in slugs
     if demo:
         assert slugs == {"demo-org"}
         assert orgs.json()["total"] == 1
     else:
-        assert str(world.outsider_org_id) in {o["id"] for o in orgs.json()["items"]}
+        # Unscoped, every organisation counts (at least the demo and the
+        # outsider's). The page is oldest-first, so on a database other tests
+        # have filled the two need not be on it.
+        assert orgs.json()["total"] >= 2
 
     scans = await client.get(
         "/v1/admin/scans", params={"project": world.outsider_project_name}, headers=headers
@@ -675,3 +681,91 @@ async def test_backslash_param_does_not_reach_a_hidden_admin_route(
     resp = await client.get(raw, headers=_bearer(world.explore_id))
     assert resp.status_code == 403, resp.text
     assert resp.json().get("demo_admin_hidden") is True
+
+
+@pytest.mark.parametrize("demo", [True, False])
+async def test_scan_list_scope(
+    client: AsyncClient,
+    world: _World,
+    monkeypatch: pytest.MonkeyPatch,
+    demo: bool,
+) -> None:
+    _set_demo(monkeypatch, demo)
+    resp = await client.get(
+        "/v1/scans", params={"size": 100}, headers=_bearer(world.explore_id)
+    )
+    assert resp.status_code == 200, resp.text
+    ids = {item["id"] for item in resp.json()["items"]}
+    assert (str(world.outsider_scan_id) in ids) is (not demo)
+    # The demo's own scans stay visible to its super admin.
+    assert resp.json()["total"] >= 1
+
+
+@pytest.mark.parametrize(
+    ("path", "off_status"),
+    [
+        ("/v1/scans/{scan}", 200),
+        ("/v1/scans/{scan}/log", None),
+        ("/v1/projects/{project}/source-tree", None),
+    ],
+)
+@pytest.mark.parametrize("demo", [True, False])
+async def test_outsider_scan_reads_scope(
+    client: AsyncClient,
+    world: _World,
+    monkeypatch: pytest.MonkeyPatch,
+    demo: bool,
+    path: str,
+    off_status: int | None,
+) -> None:
+    _set_demo(monkeypatch, demo)
+    url = path.format(scan=world.outsider_scan_id, project=world.outsider_project_id)
+    resp = await client.get(url, headers=_bearer(world.explore_id))
+    if demo:
+        assert resp.status_code in (403, 404), resp.text
+    else:
+        # Off, the request reaches the resource. A route without data for this
+        # fixture may answer 404 for its own reasons, so only the authz
+        # refusal is ruled out where no exact status is pinned.
+        if off_status is not None:
+            assert resp.status_code == off_status, resp.text
+        else:
+            assert resp.status_code != 403, resp.text
+
+
+@pytest.mark.parametrize("demo", [True, False])
+async def test_outsider_scan_websocket_scope(
+    world: _World,
+    monkeypatch: pytest.MonkeyPatch,
+    demo: bool,
+) -> None:
+    import asyncio
+    import json
+
+    from fastapi.testclient import TestClient
+    from starlette.websockets import WebSocketDisconnect
+
+    from main import app
+
+    _set_demo(monkeypatch, demo)
+    monkeypatch.setenv("CORS_ALLOWED_ORIGINS", "http://localhost:5173")
+    monkeypatch.setenv("WEBSOCKET_AUTH_TIMEOUT_SECONDS", "2.0")
+    token = create_access_token(subject=str(world.explore_id), role=None)
+
+    ws_path = f"/ws/scans/{world.outsider_scan_id}"
+
+    def _connect() -> int | None:
+        with TestClient(app) as tc, tc.websocket_connect(ws_path) as ws:
+            ws.send_text(json.dumps({"type": "auth", "token": token}))
+            try:
+                ws.receive_text()
+            except WebSocketDisconnect as exc:
+                return int(exc.code)
+            return None
+
+    code = await asyncio.to_thread(_connect)
+    if demo:
+        assert code in (4403, 4404), code
+    else:
+        # Off, the initial progress frame arrives instead of a close.
+        assert code is None, code
