@@ -50,3 +50,15 @@ def test_the_image_build_scans_a_file_and_requires_the_detection() -> None:
     # `set -e` at the top of the block is what turns a failing step into a
     # failed build; a smoke run in a later RUN would not be tied to the install.
     assert "set -eux" in block.splitlines()[0]
+
+
+def test_plugin_loading_dependencies_are_pinned_in_the_same_install() -> None:
+    """pluggy 1.7.0 / commoncode 33.0.0 drift broke the v0.23.0 fresh build."""
+    text = DOCKERFILE.read_text()
+    block = _scancode_run_block()
+    for env, name in (
+        ("SCANCODE_PLUGGY_VERSION", "pluggy"),
+        ("SCANCODE_COMMONCODE_VERSION", "commoncode"),
+    ):
+        assert re.search(rf"^\s+{env}=\d+\.\d+\.\d+ \\$", text, re.MULTILINE), env
+        assert f'"{name}==${{{env}}}"' in block
