@@ -138,7 +138,12 @@ echo "==> running scripts/upgrade.sh (non-interactive)"
 # UPGRADE_SKIP_DRAIN=1 — the public demo runs no long scans; skip the queue-drain
 #                        wait. (On a fresh demo the v2.3→v2.4 DT prelude is skipped
 #                        entirely anyway — no DT artefacts exist.)
-NO_PROMPT=1 UPGRADE_SKIP_DRAIN=1 bash scripts/upgrade.sh
+# < /dev/null: same trap as the reseed below. This script runs as
+# `bash -s < remote-deploy.sh` over SSH, so any command here that reads stdin
+# eats the rest of this file. upgrade.sh runs docker-compose commands that do,
+# and a 0.23.0 deploy ended right after "Upgrade complete" with no reseed and
+# no completion line, yet the workflow reported success.
+NO_PROMPT=1 UPGRADE_SKIP_DRAIN=1 bash scripts/upgrade.sh < /dev/null
 
 # Optional demo reseed. OFF by default: reset_demo DROPS and rebuilds the demo
 # dataset, so it must never be something a routine deploy does silently.
