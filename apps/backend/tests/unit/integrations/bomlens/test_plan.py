@@ -116,6 +116,21 @@ def test_every_env_name_the_captured_plan_sets_is_on_the_allow_list() -> None:
         assert set(stage["env"]) <= allowed, stage["id"]
 
 
+def test_the_go_cache_variables_of_bomlens_1_13_5_are_kept_for_stage_1() -> None:
+    kept, dropped = plan_mod._parse_env(
+        {
+            "GOPATH": "/tmp/sbomhome/go",
+            "GOMODCACHE": "/tmp/sbomhome/go/pkg/mod",
+            "GOCACHE": "/tmp/sbomhome/go-build",
+            "LD_PRELOAD": "/x",
+        },
+        1,
+        "env",
+    )
+    assert set(kept) == {"GOPATH", "GOMODCACHE", "GOCACHE"}
+    assert dropped == ("LD_PRELOAD",)
+
+
 # ---------------------------------------------------------------------------
 # Hostile plans
 # ---------------------------------------------------------------------------

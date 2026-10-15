@@ -4,9 +4,9 @@
     "version": "1.3.0"
   },
   "engine": {
-    "version": "1.13.4",
-    "image": "ghcr.io/sktelecom/bomlens:1.13.4",
-    "image_digest": "sha256:59d5a3363ad658a9b94787cd4c964209371b8f68a83e49adfd5b74b3220f2b47"
+    "version": "1.13.5",
+    "image": "ghcr.io/sktelecom/bomlens:1.13.5",
+    "image_digest": "sha256:d05b2f4f2542ba1bc98fd07712fd4308f40205dd9ad28b7a8d15ae614b4b4128"
   },
   "input": {
     "kind": "source",
@@ -16,8 +16,8 @@
   "run": {
     "status": "succeeded_degraded",
     "reason": "step_failed_or_degraded",
-    "started_at": "2026-10-15T05:10:40Z",
-    "ended_at": "2026-10-15T05:10:43Z",
+    "started_at": "2026-10-15T18:02:47Z",
+    "ended_at": "2026-10-15T18:02:49Z",
     "exit_code": 0
   },
   "steps": [
@@ -26,8 +26,8 @@
       "status": "ok",
       "reason": null,
       "detail": null,
-      "started_at": "2026-10-15T05:10:40Z",
-      "ended_at": "2026-10-15T05:10:40Z",
+      "started_at": "2026-10-15T18:02:47Z",
+      "ended_at": "2026-10-15T18:02:47Z",
       "counts": {
         "components": 1
       },
@@ -67,7 +67,7 @@
           {
             "kind": "image",
             "name": "bomlens",
-            "sha256": "59d5a3363ad658a9b94787cd4c964209371b8f68a83e49adfd5b74b3220f2b47"
+            "sha256": "d05b2f4f2542ba1bc98fd07712fd4308f40205dd9ad28b7a8d15ae614b4b4128"
           },
           {
             "kind": "image",
@@ -162,8 +162,8 @@
       "status": "disabled",
       "reason": null,
       "detail": null,
-      "started_at": "2026-10-15T05:10:40Z",
-      "ended_at": "2026-10-15T05:10:40Z",
+      "started_at": "2026-10-15T18:02:47Z",
+      "ended_at": "2026-10-15T18:02:47Z",
       "stage": 2
     },
     {
@@ -171,8 +171,8 @@
       "status": "ok",
       "reason": null,
       "detail": null,
-      "started_at": "2026-10-15T05:10:40Z",
-      "ended_at": "2026-10-15T05:10:40Z",
+      "started_at": "2026-10-15T18:02:48Z",
+      "ended_at": "2026-10-15T18:02:48Z",
       "stage": 2
     },
     {
@@ -180,8 +180,8 @@
       "status": "ok",
       "reason": null,
       "detail": null,
-      "started_at": "2026-10-15T05:10:40Z",
-      "ended_at": "2026-10-15T05:10:40Z",
+      "started_at": "2026-10-15T18:02:48Z",
+      "ended_at": "2026-10-15T18:02:48Z",
       "stage": 2
     },
     {
@@ -189,8 +189,8 @@
       "status": "ok",
       "reason": null,
       "detail": null,
-      "started_at": "2026-10-15T05:10:40Z",
-      "ended_at": "2026-10-15T05:10:40Z",
+      "started_at": "2026-10-15T18:02:48Z",
+      "ended_at": "2026-10-15T18:02:48Z",
       "stage": 2
     },
     {
@@ -198,8 +198,8 @@
       "status": "ok",
       "reason": null,
       "detail": null,
-      "started_at": "2026-10-15T05:10:40Z",
-      "ended_at": "2026-10-15T05:10:40Z",
+      "started_at": "2026-10-15T18:02:48Z",
+      "ended_at": "2026-10-15T18:02:48Z",
       "stage": 2
     },
     {
@@ -207,8 +207,8 @@
       "status": "disabled",
       "reason": null,
       "detail": null,
-      "started_at": "2026-10-15T05:10:40Z",
-      "ended_at": "2026-10-15T05:10:40Z",
+      "started_at": "2026-10-15T18:02:48Z",
+      "ended_at": "2026-10-15T18:02:48Z",
       "stage": 2
     },
     {
@@ -216,8 +216,8 @@
       "status": "ok",
       "reason": null,
       "detail": null,
-      "started_at": "2026-10-15T05:10:40Z",
-      "ended_at": "2026-10-15T05:10:40Z",
+      "started_at": "2026-10-15T18:02:48Z",
+      "ended_at": "2026-10-15T18:02:48Z",
       "stage": 2
     },
     {
@@ -225,8 +225,8 @@
       "status": "ok",
       "reason": null,
       "detail": null,
-      "started_at": "2026-10-15T05:10:40Z",
-      "ended_at": "2026-10-15T05:10:40Z",
+      "started_at": "2026-10-15T18:02:48Z",
+      "ended_at": "2026-10-15T18:02:48Z",
       "stage": 2
     },
     {
@@ -234,8 +234,8 @@
       "status": "ok",
       "reason": null,
       "detail": null,
-      "started_at": "2026-10-15T05:10:40Z",
-      "ended_at": "2026-10-15T05:10:41Z",
+      "started_at": "2026-10-15T18:02:48Z",
+      "ended_at": "2026-10-15T18:02:48Z",
       "stage": 2
     },
     {
@@ -243,8 +243,8 @@
       "status": "ok",
       "reason": null,
       "detail": null,
-      "started_at": "2026-10-15T05:10:41Z",
-      "ended_at": "2026-10-15T05:10:41Z",
+      "started_at": "2026-10-15T18:02:48Z",
+      "ended_at": "2026-10-15T18:02:48Z",
       "stage": 2
     },
     {
@@ -252,8 +252,8 @@
       "status": "ok",
       "reason": null,
       "detail": null,
-      "started_at": "2026-10-15T05:10:41Z",
-      "ended_at": "2026-10-15T05:10:41Z",
+      "started_at": "2026-10-15T18:02:48Z",
+      "ended_at": "2026-10-15T18:02:48Z",
       "stage": 2
     },
     {
@@ -261,8 +261,8 @@
       "status": "ok",
       "reason": null,
       "detail": null,
-      "started_at": "2026-10-15T05:10:41Z",
-      "ended_at": "2026-10-15T05:10:41Z",
+      "started_at": "2026-10-15T18:02:48Z",
+      "ended_at": "2026-10-15T18:02:48Z",
       "stage": 2
     },
     {
@@ -270,8 +270,8 @@
       "status": "ok",
       "reason": null,
       "detail": null,
-      "started_at": "2026-10-15T05:10:41Z",
-      "ended_at": "2026-10-15T05:10:41Z",
+      "started_at": "2026-10-15T18:02:48Z",
+      "ended_at": "2026-10-15T18:02:48Z",
       "stage": 2
     },
     {
@@ -279,8 +279,8 @@
       "status": "ok",
       "reason": null,
       "detail": null,
-      "started_at": "2026-10-15T05:10:41Z",
-      "ended_at": "2026-10-15T05:10:41Z",
+      "started_at": "2026-10-15T18:02:48Z",
+      "ended_at": "2026-10-15T18:02:48Z",
       "stage": 2
     },
     {
@@ -288,8 +288,8 @@
       "status": "disabled",
       "reason": null,
       "detail": null,
-      "started_at": "2026-10-15T05:10:41Z",
-      "ended_at": "2026-10-15T05:10:41Z",
+      "started_at": "2026-10-15T18:02:48Z",
+      "ended_at": "2026-10-15T18:02:48Z",
       "stage": 2
     },
     {
@@ -297,8 +297,8 @@
       "status": "ok",
       "reason": null,
       "detail": null,
-      "started_at": "2026-10-15T05:10:41Z",
-      "ended_at": "2026-10-15T05:10:42Z",
+      "started_at": "2026-10-15T18:02:48Z",
+      "ended_at": "2026-10-15T18:02:48Z",
       "stage": 2
     },
     {
@@ -306,8 +306,8 @@
       "status": "disabled",
       "reason": null,
       "detail": null,
-      "started_at": "2026-10-15T05:10:42Z",
-      "ended_at": "2026-10-15T05:10:42Z",
+      "started_at": "2026-10-15T18:02:48Z",
+      "ended_at": "2026-10-15T18:02:48Z",
       "stage": 2
     },
     {
@@ -315,8 +315,8 @@
       "status": "ok",
       "reason": null,
       "detail": null,
-      "started_at": "2026-10-15T05:10:42Z",
-      "ended_at": "2026-10-15T05:10:42Z",
+      "started_at": "2026-10-15T18:02:48Z",
+      "ended_at": "2026-10-15T18:02:48Z",
       "stage": 2
     },
     {
@@ -324,8 +324,8 @@
       "status": "ok",
       "reason": null,
       "detail": null,
-      "started_at": "2026-10-15T05:10:42Z",
-      "ended_at": "2026-10-15T05:10:42Z",
+      "started_at": "2026-10-15T18:02:48Z",
+      "ended_at": "2026-10-15T18:02:48Z",
       "stage": 2
     },
     {
@@ -333,8 +333,8 @@
       "status": "disabled",
       "reason": null,
       "detail": null,
-      "started_at": "2026-10-15T05:10:42Z",
-      "ended_at": "2026-10-15T05:10:42Z",
+      "started_at": "2026-10-15T18:02:48Z",
+      "ended_at": "2026-10-15T18:02:48Z",
       "stage": 2
     },
     {
@@ -342,8 +342,8 @@
       "status": "disabled",
       "reason": null,
       "detail": null,
-      "started_at": "2026-10-15T05:10:42Z",
-      "ended_at": "2026-10-15T05:10:42Z",
+      "started_at": "2026-10-15T18:02:48Z",
+      "ended_at": "2026-10-15T18:02:48Z",
       "stage": 2
     },
     {
@@ -351,8 +351,8 @@
       "status": "degraded",
       "reason": "unavailable",
       "detail": "the Trivy database is 12 days old (over 9)",
-      "started_at": "2026-10-15T05:10:42Z",
-      "ended_at": "2026-10-15T05:10:42Z",
+      "started_at": "2026-10-15T18:02:48Z",
+      "ended_at": "2026-10-15T18:02:48Z",
       "stage": 2
     },
     {
@@ -360,8 +360,8 @@
       "status": "disabled",
       "reason": null,
       "detail": null,
-      "started_at": "2026-10-15T05:10:42Z",
-      "ended_at": "2026-10-15T05:10:42Z",
+      "started_at": "2026-10-15T18:02:48Z",
+      "ended_at": "2026-10-15T18:02:48Z",
       "stage": 2
     },
     {
@@ -369,8 +369,8 @@
       "status": "disabled",
       "reason": null,
       "detail": null,
-      "started_at": "2026-10-15T05:10:42Z",
-      "ended_at": "2026-10-15T05:10:42Z",
+      "started_at": "2026-10-15T18:02:48Z",
+      "ended_at": "2026-10-15T18:02:48Z",
       "stage": 2
     }
   ],
@@ -393,7 +393,7 @@
     {
       "role": "sbom.cyclonedx",
       "path": "node_1.0.0_bom.json",
-      "sha256": "5f22eac8ecdfe89aaa3efcf561ed891dd82830f70a5dc48169105086b0a8ea43",
+      "sha256": "435e7b35cd88a04e9367fd2439e50ae0c205265f1f093792e813889767fc5bfd",
       "bytes": 4524
     },
     {
@@ -417,37 +417,37 @@
     {
       "role": "vulnerabilities.all",
       "path": "node_1.0.0_security.json",
-      "sha256": "4817ecdace5dd1d31198c5028a74de13db2d804ee685c7e09ad39b2053a469e4",
+      "sha256": "e18217247e2d5cbead0d2909628b37f7db6e8c812cc6a86c0ec0924bcd1f166f",
       "bytes": 22579
     },
     {
       "role": "other",
       "path": "node_1.0.0_security.md",
-      "sha256": "c7b3ea0973b501033720cdc2dcdc75fc872a2d0bc1e3ef2ab064bf1032295b1f",
+      "sha256": "7835fa5fd884bdccbe1c2e04d47395f05790396ef761cea1d423927a7c2b88d6",
       "bytes": 567
     },
     {
       "role": "other",
       "path": "node_1.0.0_security.html",
-      "sha256": "03f0940ef45c0bdd82c97ddf604c46746509fff18da2af8cafb06afdae94f623",
+      "sha256": "d4adf6dfc09b9aace938be86e87eb0c0a3fcd2191531a4f7e0d886ee367c3574",
       "bytes": 5883
     },
     {
       "role": "conformance",
       "path": "node_1.0.0_conformance.json",
-      "sha256": "97f3cf5034fc3e3ecad8f03a6e8b11eb2f8543f2afe850ab09340cdcf309f3dd",
+      "sha256": "db633db88b30645392a0409f57ef252c77315417b684dbd5eb69bf0f6bbac003",
       "bytes": 46162
     },
     {
       "role": "other",
       "path": "node_1.0.0_conformance.md",
-      "sha256": "8262b3e27b6efdfbef3af0d52837c7ebcd0413d3d6877085688272dfa8423332",
+      "sha256": "fd4f6d3a1e7b900c6bbf82e64edf53e665b2cf03db7a58e3a08cd296e45cc253",
       "bytes": 9244
     },
     {
       "role": "other",
       "path": "node_1.0.0_conformance.html",
-      "sha256": "2a168232f956ea9b161a17ab95975f916a26e05011917fa504e2037872a1350b",
+      "sha256": "888cc15f7693241260a2f1f9f318c8cda813422f682824511f489b1e1485c42b",
       "bytes": 20251
     },
     {
@@ -465,7 +465,7 @@
     {
       "role": "vulnerabilities.trivy",
       "path": "node_1.0.0_security.json",
-      "sha256": "4817ecdace5dd1d31198c5028a74de13db2d804ee685c7e09ad39b2053a469e4",
+      "sha256": "e18217247e2d5cbead0d2909628b37f7db6e8c812cc6a86c0ec0924bcd1f166f",
       "bytes": 22579
     }
   ]
