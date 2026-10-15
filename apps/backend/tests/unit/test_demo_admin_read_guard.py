@@ -30,6 +30,7 @@ from fastapi.routing import APIRoute
 from core.middleware import (
     _DEMO_ADMIN_PREFIXES,
     DemoReadOnlyMiddleware,
+    _clean_raw_path,
     _is_demo_admin_read_allowed,
 )
 
@@ -208,7 +209,6 @@ def test_never_allowed_reads(method: str, path: str) -> None:
         "//v1/admin/backup",
         "/v1//admin/backup",
         "/v1/admin/backup/",
-        "\\v1\\admin\\backup",
         "/v1/admin/./backup",
         "/v1/admin/users/not-a-uuid",
         f"/v1/admin/users/{uuid.uuid4()}/extra",
@@ -223,18 +223,62 @@ def test_bypass_shapes_are_refused(path: str) -> None:
     assert status == 403
 
 
+def test_trailing_slash_on_an_allowed_path_passes() -> None:
+    reached, status, _body, _ = _drive("GET", "/v1/admin/health/")
+    assert reached
+    assert status == 200
+
+
+# Raw shapes the router dispatches on the RAW path while they normalize
+# somewhere else. Each is a path the app really routes (a back-slash or dot
+# inside a path parameter), so a guard that only looked at the normalized form
+# would hand it to the handler. '%5C' is decoded to '\' before ASGI sees it.
 @pytest.mark.parametrize(
     "path",
     [
-        "/v1/admin/health/",
-        "/v1/admin/./health",
+        # routes to GET /v1/admin/backup/{name}/download, normalizes outside
+        # /v1/admin entirely
+        "/v1/admin/backup/..\\..\\users/download",
+        "/v1/admin/backup/..\\..\\..\\health/download",
+        # normalizes onto an allowed screen
+        "/v1/admin/backup/..\\health/download",
+        "/v1/admin/backup/x\\..\\..\\..\\admin\\health/download",
+        # dot segments and empty segments in the raw path
+        "/v1/admin/backup/./download",
         "/v1/admin/backup/../health",
+        "/v1/admin/./health",
+        "/v1/admin//health",
     ],
 )
-def test_normalized_allowed_paths_pass(path: str) -> None:
-    reached, status, _body, _ = _drive("GET", path)
-    assert reached
-    assert status == 200
+@pytest.mark.parametrize("method", ["GET", "HEAD", "POST", "DELETE"])
+def test_raw_path_shapes_are_refused(method: str, path: str) -> None:
+    reached, status, _body, _ = _drive(method, path)
+    assert not reached, path
+    assert status == 403
+
+
+_TRAVERSAL_VALUES = ("..", ".", "..\\..\\health", "a\\b", "..\\..\\..\\auth\\login")
+
+
+def _param_matrix() -> list[tuple[str, str, str]]:
+    cases = []
+    for template in _guarded_templates():
+        if "{" not in template:
+            continue
+        for value in _TRAVERSAL_VALUES:
+            for method in ("GET", "POST"):
+                cases.append((method, template, value))
+    return cases
+
+
+@pytest.mark.parametrize(("method", "template", "value"), _param_matrix())
+def test_traversal_valued_params_are_refused(method: str, template: str, value: str) -> None:
+    """Every guarded route with a path parameter, the parameter filled with a
+    traversal-shaped value. Whatever the value normalizes to, it is refused."""
+    path = re.sub(r"\{[^}]+\}", lambda _m: value, template)
+    reached, status, _body, _ = _drive(method, path)
+    assert not reached, path
+    assert status == 403
 
 
 def test_lowercase_method_is_normalized() -> None:
@@ -281,3 +325,37 @@ def test_super_admin_reads_outside_prefixes_are_reviewed() -> None:
             if method in ("GET", "HEAD"):
                 found.add((method, route.path))
     assert found == REVIEWED_SUPER_ADMIN_READS_OUTSIDE_PREFIXES
+
+
+# The raw-path check is tested on its own. Through the middleware its effect
+# is partly masked: the allow-list regexes match UUIDs and fixed words only,
+# so a raw path with a back-slash would fail them anyway. Each refusal here
+# has to hold without that second layer.
+@pytest.mark.parametrize(
+    "raw",
+    [
+        "/v1/admin/backup/..\\..\\users/download",
+        "/v1/admin\\health",
+        "/v1/admin/./health",
+        "/v1/admin/../admin/health",
+        "/v1//admin/health",
+        "//v1/admin/health",
+        "/v1/admin/health//",
+        "v1/admin/health",
+    ],
+)
+def test_clean_raw_path_refuses_non_plain_paths(raw: str) -> None:
+    assert _clean_raw_path(raw) is None
+
+
+@pytest.mark.parametrize(
+    ("raw", "expected"),
+    [
+        ("/v1/admin/health", "/v1/admin/health"),
+        ("/v1/admin/health/", "/v1/admin/health"),
+        ("/", "/"),
+        ("/v1/admin/users/x.y", "/v1/admin/users/x.y"),
+    ],
+)
+def test_clean_raw_path_keeps_plain_paths(raw: str, expected: str) -> None:
+    assert _clean_raw_path(raw) == expected

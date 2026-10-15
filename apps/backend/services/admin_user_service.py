@@ -43,7 +43,7 @@ from starlette.concurrency import run_in_threadpool
 from core.config import default_member_role
 from core.security import CurrentUser, forget_principal, hash_password
 from core.sql_safety import escape_like
-from models import Membership, PasswordResetToken, RefreshToken, Scan, Team, User
+from models import Membership, PasswordResetToken, Project, RefreshToken, Scan, Team, User
 from schemas.admin import (
     AdminUserCreateIn,
     AdminUserDetail,
@@ -281,6 +281,10 @@ async def _team_name_map(session: AsyncSession, team_ids: list[uuid.UUID]) -> di
 
 async def _scan_count_for_user(session: AsyncSession, user_id: uuid.UUID) -> int:
     stmt = select(func.count()).select_from(Scan).where(Scan.requested_by_user_id == user_id)
+    # Public read-only demo: count only scans of the demo organisation.
+    demo_groups = demo_group_predicate(Project.team_id)
+    if demo_groups is not None:
+        stmt = stmt.join(Project, Project.id == Scan.project_id).where(demo_groups)
     return int((await session.execute(stmt)).scalar_one())
 
 
@@ -373,15 +377,16 @@ async def list_users(
     rollup: dict[uuid.UUID, tuple[int, bool]] = {}
     user_ids = [u.id for u in rows]
     if user_ids:
-        agg = await session.execute(
-            select(
-                Membership.user_id,
-                func.count(Membership.id),
-                func.bool_or(Membership.role == "group_admin"),
-            )
-            .where(Membership.user_id.in_(user_ids))
-            .group_by(Membership.user_id)
-        )
+        agg_stmt = select(
+            Membership.user_id,
+            func.count(Membership.id),
+            func.bool_or(Membership.role == "group_admin"),
+        ).where(Membership.user_id.in_(user_ids))
+        # Public read-only demo: count only demo-organisation seats.
+        demo_groups = demo_group_predicate(Membership.group_id)
+        if demo_groups is not None:
+            agg_stmt = agg_stmt.where(demo_groups)
+        agg = await session.execute(agg_stmt.group_by(Membership.user_id))
         for uid, member_count, has_team_admin in agg.all():
             rollup[uid] = (int(member_count), bool(has_team_admin))
 

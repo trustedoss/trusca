@@ -26,6 +26,7 @@ import uuid
 from typing import Any
 
 from sqlalchemy import Select, or_, select
+from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.sql.elements import ColumnElement
 
 from core.config import demo_read_only
@@ -49,6 +50,25 @@ def demo_group_ids() -> Select[tuple[uuid.UUID]]:
 def demo_user_ids() -> Select[tuple[uuid.UUID]]:
     """Subquery: ids of every user with a membership in a demo group."""
     return select(Membership.user_id).where(Membership.group_id.in_(demo_group_ids()))
+
+
+async def is_demo_group(session: AsyncSession, group_id: uuid.UUID) -> bool:
+    """True iff *group_id* is a group of the demo organisation."""
+    found = (
+        await session.execute(
+            select(Team.id)
+            .join(Organization, Organization.id == Team.organization_id)
+            .where(Team.id == group_id, Organization.slug == DEMO_ORG_SLUG)
+        )
+    ).scalar_one_or_none()
+    return found is not None
+
+
+def demo_org_predicate() -> ColumnElement[bool] | None:
+    """``WHERE`` clause limiting an ``Organization`` query to the demo, or ``None``."""
+    if not demo_read_only():
+        return None
+    return Organization.slug == DEMO_ORG_SLUG
 
 
 def demo_user_predicate() -> ColumnElement[bool] | None:
@@ -86,6 +106,8 @@ __all__ = [
     "demo_audit_predicate",
     "demo_group_ids",
     "demo_group_predicate",
+    "demo_org_predicate",
     "demo_user_ids",
     "demo_user_predicate",
+    "is_demo_group",
 ]

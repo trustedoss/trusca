@@ -26,6 +26,7 @@ from tests._helpers import (
     make_membership,
     make_organization,
     make_project,
+    make_scan,
     make_team,
     make_user,
 )
@@ -102,6 +103,10 @@ class _World:
     outsider_id: uuid.UUID
     outsider_email: str
     outsider_team_id: uuid.UUID
+    outsider_team_name: str
+    outsider_project_id: uuid.UUID
+    outsider_project_name: str
+    outsider_org_id: uuid.UUID
     marker: str
 
 
@@ -136,6 +141,12 @@ async def world(db_factory: async_sessionmaker[Any]) -> _World:
         await make_membership(session, user=outsider, team=team, role="group_admin")
         w.outsider_id = outsider.id
         w.outsider_team_id = team.id
+        w.outsider_team_name = team.name
+        w.outsider_org_id = org.id
+        project = await make_project(session, team=team, created_by=outsider)
+        await make_scan(session, project=project, requested_by=outsider, status="succeeded")
+        w.outsider_project_id = project.id
+        w.outsider_project_name = project.name
 
         rows = [
             # outsider actor, outsider team: hidden on the demo
@@ -146,6 +157,8 @@ async def world(db_factory: async_sessionmaker[Any]) -> _World:
             (w.dev_id, None, "demo-actor"),
             # no actor, demo team: shown
             (None, w.frontend_team_id, "demo-team"),
+            # outsider actor on a demo team: the row is shown, the actor is not
+            (outsider.id, w.frontend_team_id, "outsider-on-demo"),
             # neither: hidden
             (None, None, "system"),
         ]
@@ -333,9 +346,27 @@ async def test_audit_scope(
     assert resp.status_code == 200, resp.text
     labels = {row["target_id"] for row in resp.json()["items"]}
     if demo:
-        assert labels == {"demo-actor", "demo-team"}
+        assert labels == {"demo-actor", "demo-team", "outsider-on-demo"}
     else:
-        assert labels == {"outsider", "outsider-noteam", "demo-actor", "demo-team", "system"}
+        assert labels == {
+            "outsider",
+            "outsider-noteam",
+            "demo-actor",
+            "demo-team",
+            "system",
+            "outsider-on-demo",
+        }
+    by_label = {row["target_id"]: row for row in resp.json()["items"]}
+    outsider_row = by_label["outsider-on-demo"]
+    if demo:
+        assert outsider_row["actor_email"] is None
+        assert outsider_row["actor_user_id"] is None
+    else:
+        assert outsider_row["actor_email"] == world.outsider_email
+        assert outsider_row["actor_user_id"] == str(world.outsider_id)
+    # A demo actor keeps their identity either way.
+    assert by_label["demo-actor"]["actor_email"] == "dev@demo.trustedoss.dev"
+    assert by_label["demo-actor"]["actor_user_id"] == str(world.dev_id)
 
 
 # --------------------------------------------------------------------------- #
@@ -428,3 +459,219 @@ async def test_report_download_history_skipped_on_demo(
             )
         ).scalar_one()
     assert count == (0 if demo else 1)
+
+
+# --------------------------------------------------------------------------- #
+# Teams, organizations, scans, group directory, projects: the super-admin
+# bypass stops at the demo organisation.
+# --------------------------------------------------------------------------- #
+
+
+@pytest.mark.parametrize("demo", [True, False])
+async def test_admin_teams_orgs_scans_scope(
+    client: AsyncClient,
+    world: _World,
+    monkeypatch: pytest.MonkeyPatch,
+    demo: bool,
+) -> None:
+    _set_demo(monkeypatch, demo)
+    headers = _bearer(world.explore_id)
+
+    teams = await client.get(
+        "/v1/admin/teams", params={"search": world.outsider_team_name, "page_size": 200},
+        headers=headers,
+    )
+    assert teams.status_code == 200, teams.text
+    team_ids = {t["id"] for t in teams.json()["items"]}
+    assert (str(world.outsider_team_id) in team_ids) is (not demo)
+
+    detail = await client.get(f"/v1/admin/teams/{world.outsider_team_id}", headers=headers)
+    assert detail.status_code == (404 if demo else 200), detail.text
+    if not demo:
+        assert world.outsider_email in {m["email"] for m in detail.json()["members"]}
+    demo_detail = await client.get(f"/v1/admin/teams/{world.frontend_team_id}", headers=headers)
+    assert demo_detail.status_code == 200, demo_detail.text
+
+    orgs = await client.get("/v1/admin/organizations", params={"page_size": 200}, headers=headers)
+    assert orgs.status_code == 200, orgs.text
+    slugs = {o["slug"] for o in orgs.json()["items"]}
+    assert "demo-org" in slugs
+    if demo:
+        assert slugs == {"demo-org"}
+        assert orgs.json()["total"] == 1
+    else:
+        assert str(world.outsider_org_id) in {o["id"] for o in orgs.json()["items"]}
+
+    scans = await client.get(
+        "/v1/admin/scans", params={"project": world.outsider_project_name}, headers=headers
+    )
+    assert scans.status_code == 200, scans.text
+    assert (scans.json()["total"] >= 1) is (not demo)
+
+
+@pytest.mark.parametrize("demo", [True, False])
+async def test_group_directory_scope(
+    client: AsyncClient,
+    world: _World,
+    monkeypatch: pytest.MonkeyPatch,
+    demo: bool,
+) -> None:
+    _set_demo(monkeypatch, demo)
+    headers = _bearer(world.explore_id)
+
+    members = await client.get(f"/v1/groups/{world.outsider_team_id}/members", headers=headers)
+    assert members.status_code == (404 if demo else 200), members.text
+    if not demo:
+        assert world.outsider_email in members.text
+
+    listing = await client.get(
+        "/v1/groups", params={"q": world.outsider_team_name}, headers=headers
+    )
+    assert listing.status_code == 200, listing.text
+    assert (str(world.outsider_team_id) in listing.text) is (not demo)
+
+    demo_members = await client.get(f"/v1/groups/{world.frontend_team_id}/members", headers=headers)
+    assert demo_members.status_code == 200, demo_members.text
+
+
+@pytest.mark.parametrize(
+    "suffix", ["", "/assignable-members", "/scans", "/components"]
+)
+@pytest.mark.parametrize("demo", [True, False])
+async def test_project_reads_scope(
+    client: AsyncClient,
+    world: _World,
+    monkeypatch: pytest.MonkeyPatch,
+    demo: bool,
+    suffix: str,
+) -> None:
+    _set_demo(monkeypatch, demo)
+    resp = await client.get(
+        f"/v1/projects/{world.outsider_project_id}{suffix}", headers=_bearer(world.explore_id)
+    )
+    if demo:
+        assert resp.status_code in (403, 404), resp.text
+    else:
+        assert resp.status_code == 200, resp.text
+
+
+@pytest.mark.parametrize("demo", [True, False])
+async def test_project_list_scope(
+    client: AsyncClient,
+    world: _World,
+    monkeypatch: pytest.MonkeyPatch,
+    demo: bool,
+) -> None:
+    _set_demo(monkeypatch, demo)
+    headers = _bearer(world.explore_id)
+    resp = await client.get(
+        "/v1/projects", params={"q": world.outsider_project_name}, headers=headers
+    )
+    assert resp.status_code == 200, resp.text
+    assert (str(world.outsider_project_id) in resp.text) is (not demo)
+    # The demo's own projects stay visible to its super admin.
+    demo_list = await client.get("/v1/projects", params={"q": "portal-web"}, headers=headers)
+    assert demo_list.status_code == 200, demo_list.text
+    assert "portal-web" in demo_list.text
+
+
+
+@pytest.mark.parametrize("demo", [True, False])
+async def test_dashboard_scope(
+    world: _World,
+    db_factory: async_sessionmaker[Any],
+    monkeypatch: pytest.MonkeyPatch,
+    demo: bool,
+) -> None:
+    from core.security import CurrentUser
+    from services.dashboard_service import _accessible_project_ids
+
+    _set_demo(monkeypatch, demo)
+    actor = CurrentUser(
+        id=world.explore_id,
+        email=EXPLORE_EMAIL,
+        role="super_admin",
+        is_superuser=True,
+        team_ids=[world.frontend_team_id],
+        team_roles={world.frontend_team_id: "group_admin"},
+    )
+    async with db_factory() as session:
+        ids = set(await _accessible_project_ids(session, actor=actor))
+    assert (world.outsider_project_id in ids) is (not demo)
+    # More than the explorer's own Frontend team: the demo-wide view remains.
+    assert len(ids) >= 5
+
+
+@pytest.mark.parametrize("demo", [True, False])
+async def test_user_counts_scope(
+    client: AsyncClient,
+    world: _World,
+    db_factory: async_sessionmaker[Any],
+    monkeypatch: pytest.MonkeyPatch,
+    demo: bool,
+) -> None:
+    """team_count and scan_count count only the demo organisation in demo mode."""
+    from models import Project, Team
+
+    async with db_factory() as session:
+        outsider_team = (
+            await session.execute(select(Team).where(Team.id == world.outsider_team_id))
+        ).scalar_one()
+        frontend = (
+            await session.execute(select(Team).where(Team.id == world.frontend_team_id))
+        ).scalar_one()
+        dual = await make_user(session)
+        await make_membership(session, user=dual, team=outsider_team, role="developer")
+        await make_membership(session, user=dual, team=frontend, role="developer")
+        project = (
+            await session.execute(select(Project).where(Project.id == world.outsider_project_id))
+        ).scalar_one()
+        await make_scan(session, project=project, requested_by=dual)
+
+    _set_demo(monkeypatch, demo)
+    headers = _bearer(world.explore_id)
+    listing = await client.get(
+        "/v1/admin/users", params={"search": dual.email}, headers=headers
+    )
+    assert listing.status_code == 200, listing.text
+    [item] = listing.json()["items"]
+    assert item["team_count"] == (1 if demo else 2)
+
+    detail = await client.get(f"/v1/admin/users/{dual.id}", headers=headers)
+    assert detail.status_code == 200, detail.text
+    assert detail.json()["scan_count"] == (0 if demo else 1)
+
+
+@pytest.mark.parametrize("demo", [True, False])
+async def test_self_export_refused_on_demo(
+    client: AsyncClient,
+    world: _World,
+    monkeypatch: pytest.MonkeyPatch,
+    demo: bool,
+) -> None:
+    _set_demo(monkeypatch, demo)
+    resp = await client.get("/v1/users/me/export", headers=_bearer(world.explore_id))
+    if demo:
+        assert resp.status_code == 403, resp.text
+        assert resp.json()["type"] == "urn:trustedoss:problem:demo-read-only"
+    else:
+        assert resp.status_code == 200, resp.text
+
+
+@pytest.mark.parametrize(
+    "raw",
+    [
+        "/v1/admin/backup/..%5C..%5Cusers/download",
+        "/v1/admin/backup/..%5C..%5C..%5Chealth/download",
+    ],
+)
+async def test_backslash_param_does_not_reach_a_hidden_admin_route(
+    client: AsyncClient,
+    world: _World,
+    monkeypatch: pytest.MonkeyPatch,
+    raw: str,
+) -> None:
+    _set_demo(monkeypatch, True)
+    resp = await client.get(raw, headers=_bearer(world.explore_id))
+    assert resp.status_code == 403, resp.text
+    assert resp.json().get("demo_admin_hidden") is True

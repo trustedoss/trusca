@@ -40,6 +40,7 @@ from schemas.admin_ops import (
     ScanStatus,
 )
 from schemas.scan import ScanKind
+from services import demo_scope
 
 log = structlog.get_logger("admin.scan.service")
 
@@ -200,6 +201,12 @@ async def list_scans(
         .join(Project, Project.id == Scan.project_id)
         .join(Team, Team.id == Project.team_id)
     )
+
+    # Public read-only demo: only scans of the demo organisation's projects.
+    team_scope = demo_scope.demo_group_predicate(Project.team_id)
+    if team_scope is not None:
+        base = base.where(team_scope)
+        count_base = count_base.where(team_scope)
 
     if status is not None:
         base = base.where(Scan.status == status)

@@ -44,6 +44,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from core.audit import audit_context
+from core.config import demo_read_only
 from core.security import CurrentUser, forget_principal
 from core.sql_safety import escape_like
 from models import Membership, Organization, Project, Scan, Team, User
@@ -58,6 +59,7 @@ from schemas.admin import (
     AdminTeamMemberAdd,
     AdminTeamUpdate,
 )
+from services import demo_scope
 
 log = structlog.get_logger("admin.team.service")
 
@@ -215,6 +217,10 @@ async def _load_team(session: AsyncSession, team_id: uuid.UUID) -> Team:
     stmt = select(Team).where(Team.id == team_id)
     team = (await session.execute(stmt)).scalar_one_or_none()
     if team is None:
+        raise AdminTeamNotFound(f"team {team_id} not found")
+    # Public read-only demo: a team outside the demo organisation does not
+    # exist as far as the demo's (public) super admins can tell.
+    if demo_read_only() and not await demo_scope.is_demo_group(session, team_id):
         raise AdminTeamNotFound(f"team {team_id} not found")
     return team
 
@@ -392,9 +398,15 @@ async def list_organizations(
     page_size = max(min(page_size, 200), 1)
 
     count_stmt = select(func.count()).select_from(Organization)
+    rows_base = select(Organization)
+    # Public read-only demo: only the demo organisation.
+    org_scope = demo_scope.demo_org_predicate()
+    if org_scope is not None:
+        count_stmt = count_stmt.where(org_scope)
+        rows_base = rows_base.where(org_scope)
     total = int((await session.execute(count_stmt)).scalar_one())
     rows_stmt = (
-        select(Organization)
+        rows_base
         .order_by(Organization.created_at.asc(), Organization.id.asc())
         .limit(page_size)
         .offset((page - 1) * page_size)
@@ -434,6 +446,12 @@ async def list_teams(
 
     base = select(Team)
     count_base = select(func.count()).select_from(Team)
+
+    # Public read-only demo: only the demo organisation's teams.
+    team_scope = demo_scope.demo_group_predicate(Team.id)
+    if team_scope is not None:
+        base = base.where(team_scope)
+        count_base = count_base.where(team_scope)
 
     if search and search.strip():
         # Wildcards escaped so a literal '%' matches a percent sign rather

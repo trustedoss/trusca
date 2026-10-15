@@ -46,11 +46,13 @@ import uuid
 from collections.abc import AsyncIterator
 from typing import Any
 
+import sqlalchemy as sa
 import structlog
 from sqlalchemy import cast, func, select
 from sqlalchemy.dialects.postgresql import TEXT
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from core.config import demo_read_only
 from core.security import CurrentUser
 from models import AuditLog, User
 from schemas.admin_ops import (
@@ -59,7 +61,7 @@ from schemas.admin_ops import (
     AuditSearchQuery,
 )
 from services.csv_export import CSV_BOM, csv_cell, csv_line
-from services.demo_scope import demo_audit_predicate
+from services.demo_scope import demo_audit_predicate, demo_user_ids
 
 log = structlog.get_logger("admin.audit.service")
 
@@ -196,8 +198,17 @@ async def search_audit(
     )
     total = int((await session.execute(count_stmt)).scalar_one())
 
+    # Public read-only demo: a row about a demo group may still have been
+    # written by someone outside the demo (the host's own administrator).
+    # Their identity is not shown; the row itself is.
+    demo_on = demo_read_only()
+    actor_in_demo = (
+        AuditLog.actor_user_id.in_(demo_user_ids()) if demo_on else sa.true()
+    )
     base = _apply_filters(
-        select(AuditLog, User.email).outerjoin(User, User.id == AuditLog.actor_user_id),
+        select(AuditLog, User.email, actor_in_demo.label("actor_in_demo")).outerjoin(
+            User, User.id == AuditLog.actor_user_id
+        ),
         query=query,
         allowed_team_ids=allowed_team_ids,
     )
@@ -212,8 +223,8 @@ async def search_audit(
         AuditLogItem(
             id=row[0].id,
             created_at=row[0].created_at,
-            actor_user_id=row[0].actor_user_id,
-            actor_email=row[1],
+            actor_user_id=row[0].actor_user_id if row[2] else None,
+            actor_email=row[1] if row[2] else None,
             team_id=row[0].team_id,
             target_table=row[0].target_table,
             target_id=row[0].target_id,

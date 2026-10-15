@@ -60,8 +60,10 @@ import structlog
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.sql.elements import ColumnElement
 
+from core.config import demo_read_only
 from core.security import CurrentUser
-from services import group_service
+from models import Project
+from services import demo_scope, group_service
 
 
 async def can_access_group(
@@ -102,6 +104,10 @@ async def can_access_group(
     membership check, "is *group_id* literally in *direct_group_ids*".
     """
     if actor.is_superuser or actor.role == "super_admin":
+        # Public read-only demo: the published accounts include super admins,
+        # so the bypass stops at the demo organisation's groups.
+        if demo_read_only():
+            return await demo_scope.is_demo_group(session, group_id)
         return True
     return await group_service.can_access_group(session, actor.team_ids, group_id)
 
@@ -236,6 +242,10 @@ def team_scope_filter(actor: CurrentUser) -> ColumnElement[bool]:
     # that latent membership-role escalation path centrally (security-review H-2,
     # Low-2 defense-in-depth).
     if actor.is_superuser:
+        # Public read-only demo: bounded to the demo organisation's groups,
+        # the same boundary as can_access_group above.
+        if demo_read_only():
+            return Project.group_id.in_(demo_scope.demo_group_ids())
         return sa.true()
     # Phase 2 PR 2-C: the member branch used to inline
     # ``Project.team_id.in_(actor.team_ids)`` here. It now delegates to

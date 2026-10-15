@@ -31,6 +31,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from core.audit import bind_audit_team as _bind_audit_team
+from core.config import demo_read_only
 from core.crypto import SecretEncryptionError, encrypt_secret
 from core.pii_mask import url_userinfo_is_redacted
 from core.security import CurrentUser
@@ -221,7 +222,10 @@ async def list_projects(
     page = max(page, 1)
     size = max(min(size, 100), 1)
 
-    is_super = actor.is_superuser or actor.role == "super_admin"
+    # On the public read-only demo the super-admin bypass does not apply
+    # here: the scoped branches below go through can_access_group /
+    # team_scope_filter, which bound a super admin to the demo organisation.
+    is_super = (actor.is_superuser or actor.role == "super_admin") and not demo_read_only()
 
     base = select(Project)
     count_base = select(func.count()).select_from(Project)
@@ -245,7 +249,7 @@ async def list_projects(
         base = base.where(Project.team_id == team_id)
         count_base = count_base.where(Project.team_id == team_id)
     elif not is_super:
-        if not actor.team_ids:
+        if not actor.team_ids and not actor.is_superuser:
             return [], 0
         scope = team_scope_filter(actor)
         base = base.where(scope)

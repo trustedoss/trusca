@@ -99,8 +99,14 @@ administration screens. Reads there are narrowed as well:
 - The users and audit log screens only list the `demo-org` organization: users
   with a membership in one of its teams, and audit entries whose actor is such a
   user or whose team belongs to it. Accounts outside the demo, such as the
-  host's own administrator, do not appear.
-- Report and SBOM downloads do not add a row to the report download history.
+  host's own administrator, do not appear; an audit entry about a demo team
+  made by such an account shows no actor.
+- Teams, organizations, the scan queue, the group directory, projects and the
+  dashboard are limited to the `demo-org` organization as well. A team or
+  project outside it is refused.
+- Report and SBOM downloads do not add a row to the report download history,
+  and the personal data export (`GET /v1/users/me/export`) is refused: the
+  demo accounts are shared, so it would list other visitors' sign-ins.
 
 ### Bypass hardening
 
