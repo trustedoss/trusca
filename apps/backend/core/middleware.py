@@ -335,27 +335,144 @@ def _normalize_path(raw: str) -> str:
     return normalized
 
 
+# ---------------------------------------------------------------------------
+# Public-demo admin read surface (allow-list, fail-closed).
+#
+# The demo publishes its seeded accounts and their shared password, and two of
+# them are super admins so that visitors can see the admin screens. Blocking
+# writes is not enough for that: several admin READS hand out things no
+# visitor should have (the backup archive is a full database dump, the roster
+# and audit CSV exports, the registry and ticket credential lists, the
+# anonymisation queue). So under DEMO_READ_ONLY every request under the
+# super-admin-only prefixes below is refused UNLESS it is a GET/HEAD whose
+# normalized path is on the explicit allow-list. A new admin route is
+# therefore hidden on the demo until someone adds it here, and the route
+# matrix in tests/unit/test_demo_admin_read_guard.py fails if an allow-list
+# entry has no expected case there.
+#
+# The refusal is the same 403 + ``demo-read-only`` problem type the write
+# guard uses (with an extra ``demo_admin_hidden`` flag) rather than the 404 of
+# ``require_super_admin_or_404``. The admin screens already turn that problem
+# type into a demo message; a 404 would render as an unexplained failure.
+# Existence-hiding buys nothing here: the route list is public in the OpenAPI
+# document, and the guard runs before auth for every caller alike.
+#
+# Users and audit are on the list because their services narrow the result to
+# the demo organisation in demo mode (services.demo_scope). Ids in path
+# segments are matched as UUIDs, so '/v1/admin/users/export' cannot ride the
+# '/v1/admin/users/{user_id}' entry.
+# ---------------------------------------------------------------------------
+_DEMO_ADMIN_PREFIXES: tuple[str, ...] = ("/v1/admin", "/v1/user-anonymisation")
+
+_UUID_SEGMENT = r"[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}"
+
+_DEMO_ADMIN_READ_ALLOWLIST: tuple[re.Pattern[str], ...] = tuple(
+    re.compile(pattern)
+    for pattern in (
+        r"^/v1/admin/health$",
+        r"^/v1/admin/disk$",
+        r"^/v1/admin/trivy/health$",
+        r"^/v1/admin/kev/health$",
+        r"^/v1/admin/eol/health$",
+        r"^/v1/admin/malicious/health$",
+        r"^/v1/admin/scans$",
+        r"^/v1/admin/teams$",
+        rf"^/v1/admin/teams/{_UUID_SEGMENT}$",
+        r"^/v1/admin/organizations$",
+        r"^/v1/admin/users$",
+        rf"^/v1/admin/users/{_UUID_SEGMENT}$",
+        r"^/v1/admin/audit$",
+    )
+)
+
+_DEMO_ADMIN_READ_METHODS: frozenset[str] = frozenset({"GET", "HEAD"})
+
+
+def _clean_raw_path(raw: str) -> str | None:
+    """*raw* without one trailing slash, or None if it is not a plain path.
+
+    The router matches the RAW path, not a normalized one: a back-slash or a
+    '.'/'..' segment inside a path parameter reaches a handler under its raw
+    prefix while normalizing to somewhere else (for example
+    '/v1/admin/backup/..\\..\\users/download' normalizes to
+    '/v1/users/download'). So the allow-lists are matched against the raw
+    path, and a raw path carrying any of those shapes is not a candidate for
+    an allow-list at all. Empty segments ('//') are refused for the same
+    reason.
+    """
+    if "\\" in raw:
+        return None
+    candidate = raw[:-1] if len(raw) > 1 and raw.endswith("/") else raw
+    if not candidate.startswith("/"):
+        return None
+    if candidate == "/":
+        return candidate
+    segments = candidate.split("/")[1:]
+    if any(seg in ("", ".", "..") for seg in segments):
+        return None
+    return candidate
+
+
+def _under_prefix(path: str, prefixes: tuple[str, ...]) -> bool:
+    return any(path == p or path.startswith(p + "/") for p in prefixes)
+
+
+def _is_demo_admin_area(path: str) -> bool:
+    """Is *path* in the guarded admin area by ANY reading of it?
+
+    Raw, slash-collapsed and normalized forms are all checked: the router
+    reads the raw form, and the normalized form is what a traversal aims at.
+    If any of them lands under a guarded prefix, the request is this guard's.
+    """
+    collapsed = re.sub(r"/{2,}", "/", path.replace("\\", "/"))
+    return any(
+        _under_prefix(form, _DEMO_ADMIN_PREFIXES)
+        for form in (path, collapsed, _normalize_path(collapsed))
+    )
+
+
+def _is_demo_admin_read_allowed(method: str, path: str) -> bool:
+    """True unless the request is an admin-surface call the demo must refuse.
+
+    Paths outside the guarded area are not this guard's concern (True).
+    Inside it only GET/HEAD on an allow-listed, plain raw path passes.
+    """
+    if not _is_demo_admin_area(path):
+        return True
+    if method.upper() not in _DEMO_ADMIN_READ_METHODS:
+        return False
+    clean = _clean_raw_path(path)
+    if clean is None:
+        return False
+    return any(pattern.match(clean) for pattern in _DEMO_ADMIN_READ_ALLOWLIST)
+
+
 def _is_demo_write_allowed(method: str, path: str) -> bool:
     """True iff a mutating request should be permitted under DEMO_READ_ONLY.
 
     Order:
       1. safe methods (GET/HEAD/OPTIONS) always pass;
-      2. the exact (METHOD, normalized-path) auth allow-list;
-      3. the feat/demo-sandbox-scan carve-out — ONLY when
-         ``demo_allow_sandbox_scans()`` is also on — permits the two
-         scan-ingest POST path families. The regex is applied to the SAME
-         normalized path so traversal cannot smuggle a write past the guard.
+      2. a write whose raw path is not plain (back-slash, '.'/'..' or empty
+         segment, see :func:`_clean_raw_path`) is refused: the router acts on
+         the raw path, so only a raw path that is already canonical can be
+         compared with the allow-lists;
+      3. the exact (METHOD, path) auth allow-list;
+      4. the feat/demo-sandbox-scan carve-out (ONLY when
+         ``demo_allow_sandbox_scans()`` is also on) permits the two
+         scan-ingest POST path families.
     Everything else is denied by default.
     """
     upper = method.upper()
     if upper in _SAFE_METHODS:
         return True
-    normalized = _normalize_path(path)
-    if (upper, normalized) in _DEMO_WRITE_ALLOWLIST:
+    clean = _clean_raw_path(path)
+    if clean is None:
+        return False
+    if (upper, clean) in _DEMO_WRITE_ALLOWLIST:
         return True
     if demo_allow_sandbox_scans():
         for pattern_method, pattern in _DEMO_SANDBOX_WRITE_PATTERNS:
-            if upper == pattern_method and pattern.match(normalized):
+            if upper == pattern_method and pattern.match(clean):
                 return True
     return False
 
@@ -380,7 +497,8 @@ class DemoReadOnlyMiddleware:
         method = str(scope.get("method", "")).upper()
         path = str(scope.get("path", "/"))
 
-        if _is_demo_write_allowed(method, path):
+        write_allowed = _is_demo_write_allowed(method, path)
+        if write_allowed and _is_demo_admin_read_allowed(method, path):
             await self.app(scope, receive, send)
             return
 
@@ -389,6 +507,24 @@ class DemoReadOnlyMiddleware:
         # has no dependency on middleware, but keeping the import local matches
         # the "build the response only on the rejection path" intent).
         from core.errors import problem_response
+
+        if write_allowed:
+            # A read the write guard let through, on an admin screen the demo
+            # hides. Writes keep the plain write-guard response below.
+            structlog.get_logger("demo").warning(
+                "demo_admin_read_blocked", method=method, path=path
+            )
+            hidden = problem_response(
+                status_code=403,
+                title="Not available in the demo",
+                detail="This administration screen is not available in the public live demo.",
+                instance=path,
+                type_=_DEMO_READ_ONLY_TYPE,
+                demo_read_only=True,
+                demo_admin_hidden=True,
+            )
+            await hidden(scope, receive, send)
+            return
 
         structlog.get_logger("demo").warning(
             "demo_read_only_blocked", method=method, path=path

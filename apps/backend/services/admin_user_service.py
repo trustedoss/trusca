@@ -43,7 +43,7 @@ from starlette.concurrency import run_in_threadpool
 from core.config import default_member_role
 from core.security import CurrentUser, forget_principal, hash_password
 from core.sql_safety import escape_like
-from models import Membership, PasswordResetToken, RefreshToken, Scan, Team, User
+from models import Membership, PasswordResetToken, Project, RefreshToken, Scan, Team, User
 from schemas.admin import (
     AdminUserCreateIn,
     AdminUserDetail,
@@ -55,6 +55,7 @@ from schemas.admin import (
     TeamMembershipPublic,
 )
 from services.csv_export import CSV_BOM, csv_line
+from services.demo_scope import demo_group_predicate, demo_user_predicate
 
 log = structlog.get_logger("admin.user.service")
 
@@ -280,6 +281,10 @@ async def _team_name_map(session: AsyncSession, team_ids: list[uuid.UUID]) -> di
 
 async def _scan_count_for_user(session: AsyncSession, user_id: uuid.UUID) -> int:
     stmt = select(func.count()).select_from(Scan).where(Scan.requested_by_user_id == user_id)
+    # Public read-only demo: count only scans of the demo organisation.
+    demo_groups = demo_group_predicate(Project.team_id)
+    if demo_groups is not None:
+        stmt = stmt.join(Project, Project.id == Scan.project_id).where(demo_groups)
     return int((await session.execute(stmt)).scalar_one())
 
 
@@ -324,6 +329,14 @@ async def list_users(
         .where(User.is_service_account.is_(False))
     )
 
+    # Public read-only demo: only the people of the demo organisation. The
+    # demo's published accounts include super admins, and the host also
+    # carries accounts that are not part of the demo dataset.
+    demo_scope = demo_user_predicate()
+    if demo_scope is not None:
+        base = base.where(demo_scope)
+        count_base = count_base.where(demo_scope)
+
     if active is not None:
         base = base.where(User.is_active.is_(active))
         count_base = count_base.where(User.is_active.is_(active))
@@ -364,15 +377,16 @@ async def list_users(
     rollup: dict[uuid.UUID, tuple[int, bool]] = {}
     user_ids = [u.id for u in rows]
     if user_ids:
-        agg = await session.execute(
-            select(
-                Membership.user_id,
-                func.count(Membership.id),
-                func.bool_or(Membership.role == "group_admin"),
-            )
-            .where(Membership.user_id.in_(user_ids))
-            .group_by(Membership.user_id)
-        )
+        agg_stmt = select(
+            Membership.user_id,
+            func.count(Membership.id),
+            func.bool_or(Membership.role == "group_admin"),
+        ).where(Membership.user_id.in_(user_ids))
+        # Public read-only demo: count only demo-organisation seats.
+        demo_groups = demo_group_predicate(Membership.group_id)
+        if demo_groups is not None:
+            agg_stmt = agg_stmt.where(demo_groups)
+        agg = await session.execute(agg_stmt.group_by(Membership.user_id))
         for uid, member_count, has_team_admin in agg.all():
             rollup[uid] = (int(member_count), bool(has_team_admin))
 
@@ -416,9 +430,31 @@ async def get_user_detail(
     actor: CurrentUser,  # noqa: ARG001
     user_id: uuid.UUID,
 ) -> AdminUserDetail:
+    demo_scope = demo_user_predicate()
+    if demo_scope is not None:
+        # Same 404 as an unknown id: outside the demo organisation the account
+        # does not exist as far as a demo visitor can tell.
+        in_demo = (
+            await session.execute(select(User.id).where(User.id == user_id, demo_scope))
+        ).scalar_one_or_none()
+        if in_demo is None:
+            raise AdminUserNotFound(f"user {user_id} not found")
+
     user = await _load_user_with_memberships(session, user_id)
 
     memberships = list(user.memberships)
+    demo_groups = demo_group_predicate(Team.id)
+    if demo_groups is not None and memberships:
+        visible = set(
+            (
+                await session.execute(
+                    select(Team.id).where(
+                        Team.id.in_([m.team_id for m in memberships]), demo_groups
+                    )
+                )
+            ).scalars()
+        )
+        memberships = [m for m in memberships if m.team_id in visible]
     team_names = await _team_name_map(session, [m.team_id for m in memberships])
     scan_count = await _scan_count_for_user(session, user_id)
 

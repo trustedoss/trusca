@@ -76,14 +76,14 @@ Open **http://localhost:5173** and sign in:
 | Account | Email | Password |
 |---|---|---|
 | Super admin | `admin@demo.trustedoss.dev` | `DemoTest2026!` |
-| Team admin | `explore@demo.trustedoss.dev` | `DemoTest2026!` |
+| Super admin | `explore@demo.trustedoss.dev` | `DemoTest2026!` |
 | Developer | `dev@demo.trustedoss.dev` | `DemoTest2026!` |
 
 The seed also creates one admin per team — `frontend-admin@`, `backend-admin@`,
-`security-admin@` — named after the three seeded teams. `explore@` is an admin
-of the Frontend team as well, and it is the one the login page offers, because
-a team name in an address reads like a choice of screen when it is really a
-choice of whose data you see.
+`security-admin@`, named after the three seeded teams. `explore@` is a super
+admin that also holds an admin seat on the Frontend team, and it is the one the
+login page offers, because a team name in an address reads like a choice of
+screen when it is really a choice of whose data you see.
 
 The demo password is set in `.env.example` and is intentionally weak — never
 reuse it on a host that anyone else can reach.

@@ -17,7 +17,7 @@ sidebar_position: 4
 **[trusca-demo.duckdns.org](https://trusca-demo.duckdns.org)**에서 운영 중인 데모를
 바로 이용할 수 있습니다.
 
-- **로그인**: 시드된 데모 계정으로 접속합니다. 읽기 전용으로 둘러보려면
+- **로그인**: 시드된 데모 계정으로 접속합니다. 관리자 화면까지 둘러보려면
   `explore@demo.trustedoss.dev`, 라이브 스캔을 돌리려면 `dev@demo.trustedoss.dev`,
   팀별 관리자 시야가 필요하면 `*-admin@demo.trustedoss.dev` 계정을 씁니다.
   비밀번호는 모두 `DemoTest2026!`이고, 로그인 화면에는 자격 증명을 한 번에 채우는
@@ -28,7 +28,8 @@ sidebar_position: 4
 - **SBOM 업로드**: CycloneDX 파일(예: [BomLens](https://github.com/sktelecom/bomlens)로
   만든 SBOM)을 **Demo Sandbox** 프로젝트에 올리면 소스 없이도 TRUSCA가 라이선스와
   CVE를 매칭해 보여줍니다. 여기서 10MB 이하 소스 스캔도 직접 돌릴 수 있습니다.
-  Demo Sandbox는 `dev@demo.trustedoss.dev`로 로그인해야 보입니다.
+  Demo Sandbox는 `explore@demo.trustedoss.dev`나 `dev@demo.trustedoss.dev`로
+  로그인하면 보입니다.
 - **주의**: 데이터셋은 샌드박스를 포함해 매일 밤 지워지고 다시 시드됩니다. 올린
   내용은 임시로 남고 다른 방문자에게도 보이므로, 사내·기밀 SBOM은 올리지 마세요.
 
@@ -75,6 +76,28 @@ DEMO_READ_ONLY=true
   "demo_read_only": true
 }
 ```
+
+### 관리자 화면
+
+공개된 데모 계정 중에는 Super admin이 있어 방문자가 관리자 화면을 열 수 있습니다.
+그래서 이 화면들은 읽기도 좁혀 둡니다.
+
+- `/v1/admin`과 `/v1/user-anonymisation` 아래 요청은 보여 줘도 되는 화면의 `GET`만
+  통과합니다. 시스템 상태와 피드 패널(Trivy DB, KEV, 지원 종료, 악성 패키지), 디스크
+  사용량, 스캔 큐, 팀, 조직, 사용자, 감사 로그가 여기에 해당합니다.
+- 그 밖의 요청은 같은 `403` 문제 유형에 `"demo_admin_hidden": true`를 붙여
+  거부합니다. 백업, 사용자·감사 로그 CSV 내보내기, 레지스트리·티켓 자격 증명,
+  API 키 해시 마이그레이션, 익명화 대기열이 여기에 속합니다. 새 관리자
+  엔드포인트는 목록에 추가하기 전까지 거부됩니다.
+- 사용자 화면과 감사 로그 화면에는 `demo-org` 조직만 나옵니다. 이 조직의 팀에
+  멤버십이 있는 사용자, 그리고 그런 사용자가 행위자이거나 이 조직의 팀에 속한
+  감사 항목입니다. 호스트 운영자 계정처럼 데모 밖의 계정은 보이지 않고, 그런
+  계정이 데모 팀에 남긴 감사 항목에는 행위자가 표시되지 않습니다.
+- 팀, 조직, 스캔 큐, 그룹 디렉터리, 프로젝트, 대시보드도 `demo-org` 조직으로
+  한정됩니다. 이 조직 밖의 팀이나 프로젝트는 조회할 수 없습니다.
+- 보고서와 SBOM을 내려받아도 보고서 다운로드 이력에 행이 추가되지 않습니다.
+  개인 데이터 내보내기(`GET /v1/users/me/export`)도 거부합니다. 데모 계정은
+  여러 방문자가 함께 쓰므로 다른 방문자의 로그인 기록까지 담기기 때문입니다.
 
 ### 우회 방지
 

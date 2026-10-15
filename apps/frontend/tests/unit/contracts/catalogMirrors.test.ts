@@ -55,6 +55,7 @@ import {
 import { SLA_STATUS_VALUES } from "@/features/projects/api/vulnerabilitiesApi";
 import { ALL_VULNERABILITY_STATUSES } from "@/features/projects/lib/vulnerabilityTransitions";
 import { DEMO_LOGIN_EMAIL } from "@/pages/auth/DemoCredentialsHint";
+import { KNOWN_PROBLEM_EXTENSION_KEYS } from "@/lib/problem";
 import type { UserRole } from "@/features/admin/api/adminUsersApi";
 import type { TeamScopedRole } from "@/features/projects/api/projectDetailApi";
 import type { TriageRole } from "@/features/projects/lib/vulnerabilityTransitions";
@@ -648,6 +649,18 @@ describe("C1a advisory-translation affordances — EN + KO parity", () => {
       throw new Error("_DEMO_EXPLORE_EMAIL not found in seed_demo.py");
     }
     expect(DEMO_LOGIN_EMAIL).toBe(assignment[1]);
+  });
+
+  // The admin screens tell a hidden demo screen apart from a refused write by
+  // this flag. The backend middleware sets it; if the name drifts, the screen
+  // falls back to the write message and nothing fails.
+  it("the demo admin-hidden flag the middleware sets is a whitelisted extension", () => {
+    const src = readFileSync(
+      resolve(process.cwd(), "../backend/core/middleware.py"),
+      "utf-8",
+    );
+    expect(src).toMatch(/\bdemo_admin_hidden=True\b/);
+    expect(KNOWN_PROBLEM_EXTENSION_KEYS).toContain("demo_admin_hidden");
   });
 });
 

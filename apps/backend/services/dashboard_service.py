@@ -55,6 +55,7 @@ from sqlalchemy.orm import InstrumentedAttribute
 from sqlalchemy.sql.elements import ColumnElement
 
 from core.authz import team_scope_filter
+from core.config import demo_read_only
 from core.security import CurrentUser
 from models import (
     ComponentApproval,
@@ -188,14 +189,16 @@ async def _accessible_project_ids(
     excluded (the headline ``project_count`` is non-archived projects); finding
     aggregations also ride this list so an archived project never contributes.
     """
-    is_super = actor.is_superuser or actor.role == "super_admin"
+    # Public read-only demo: no bypass here; team_scope_filter bounds a super
+    # admin to the demo organisation.
+    is_super = (actor.is_superuser or actor.role == "super_admin") and not demo_read_only()
 
     stmt = select(Project.id)
     if not include_archived:
         stmt = stmt.where(Project.archived_at.is_(None))
 
     if not is_super:
-        if not actor.team_ids:
+        if not actor.team_ids and not actor.is_superuser:
             return []
         # Phase 2 PR 2-C: was `Project.team_id.in_(_accessible_team_ids(actor))`
         # (`actor.team_roles.keys()`, the same set as `actor.team_ids`, direct

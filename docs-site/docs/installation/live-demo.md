@@ -17,9 +17,9 @@ clean state every night.
 
 A hosted instance is live at **[trusca-demo.duckdns.org](https://trusca-demo.duckdns.org)**:
 
-- **Sign in** with a seeded demo account — `explore@demo.trustedoss.dev` for a
-  read-only look around, `dev@demo.trustedoss.dev` to run a live scan, or any of
-  the per-team `*-admin@demo.trustedoss.dev` accounts. The password is
+- **Sign in** with a seeded demo account: `explore@demo.trustedoss.dev` to look
+  around, including the administration screens, `dev@demo.trustedoss.dev` to run
+  a live scan, or any of the per-team `*-admin@demo.trustedoss.dev` accounts. The password is
   `DemoTest2026!` for all of them, and the login page has a one-click **Fill
   demo credentials** button. There is no self-service sign-up: creating an
   account is a write, so the demo offers the shared accounts instead.
@@ -30,7 +30,8 @@ A hosted instance is live at **[trusca-demo.duckdns.org](https://trusca-demo.duc
   [BomLens](https://github.com/sktelecom/bomlens) — to the **Demo Sandbox**
   project and watch TRUSCA match it against licenses and CVEs, no source needed.
   You can also run a small (≤ 10 MB) live source scan there. The Demo Sandbox is
-  only visible when you sign in as `dev@demo.trustedoss.dev`.
+  visible when you sign in as `explore@demo.trustedoss.dev` or
+  `dev@demo.trustedoss.dev`.
 - **Housekeeping** — the dataset, including the sandbox, is wiped and reseeded
   every night, so anything you upload is temporary and visible to other
   visitors. Do **not** upload proprietary or confidential SBOMs.
@@ -80,6 +81,32 @@ A blocked request gets an **RFC 7807** `403` with
   "demo_read_only": true
 }
 ```
+
+### Administration screens
+
+The demo's published accounts include super admins, so visitors can open the
+administration screens. Reads there are narrowed as well:
+
+- Every request under `/v1/admin` and `/v1/user-anonymisation` is refused unless
+  it is a `GET` on a screen that is safe to show: system health and the feed
+  panels (Trivy DB, KEV, end-of-life, malicious packages), disk usage, the scan
+  queue, teams, organizations, users, and the audit log.
+- Everything else there is refused with the same `403` problem type plus
+  `"demo_admin_hidden": true`, among them backups, the user and audit CSV
+  exports, registry and ticket credentials, API key hash migration, and the
+  anonymisation queue. A new admin endpoint is refused until it is added to the
+  list.
+- The users and audit log screens only list the `demo-org` organization: users
+  with a membership in one of its teams, and audit entries whose actor is such a
+  user or whose team belongs to it. Accounts outside the demo, such as the
+  host's own administrator, do not appear; an audit entry about a demo team
+  made by such an account shows no actor.
+- Teams, organizations, the scan queue, the group directory, projects and the
+  dashboard are limited to the `demo-org` organization as well. A team or
+  project outside it is refused.
+- Report and SBOM downloads do not add a row to the report download history,
+  and the personal data export (`GET /v1/users/me/export`) is refused: the
+  demo accounts are shared, so it would list other visitors' sign-ins.
 
 ### Bypass hardening
 

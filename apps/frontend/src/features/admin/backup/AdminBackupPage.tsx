@@ -337,7 +337,9 @@ export function AdminBackupPage() {
         {backupsQuery.isError ? (
           <div className="px-6 py-4">
             <Alert variant="destructive" data-testid="admin-backup-error">
-              <AlertDescription>{t("admin.errors.unknown")}</AlertDescription>
+              <AlertDescription>
+                {t(adminErrorMessageKey(backupsQuery.error))}
+              </AlertDescription>
             </Alert>
           </div>
         ) : null}

@@ -15,7 +15,7 @@
  *
  * Unknown errors fall back to `admin.errors.unknown`.
  */
-import { isDemoReadOnlyError } from "@/lib/demoReadOnly";
+import { isDemoAdminHiddenError, isDemoReadOnlyError } from "@/lib/demoReadOnly";
 import { ProblemError } from "@/lib/problem";
 
 const EXTENSION_KEY_MAP: Array<[string, string]> = [
@@ -44,6 +44,13 @@ const EXTENSION_KEY_MAP: Array<[string, string]> = [
  * silently read as a slug collision.
  */
 export function adminErrorMessageKey(err: unknown): string {
+  // An admin screen the public demo hides (backend demo middleware). It
+  // carries the demo-read-only problem type too, so it is checked first: it
+  // is a refused read, and "creating, editing, and deleting are disabled"
+  // would not explain an empty screen.
+  if (isDemoAdminHiddenError(err)) {
+    return "admin.errors.demo_admin_hidden";
+  }
   // The read-only-demo 403 runs before auth and must win over the generic
   // 403/forbidden mapping, so a demo write attempt reads as "demo is
   // read-only" rather than "you lack permission".
@@ -80,8 +87,11 @@ export function adminErrorMessageKey(err: unknown): string {
  * ``"unknown"`` when no known extension is present and the status isn't 409.
  */
 export function adminErrorExtension(err: unknown): string {
-  // Mirror adminErrorMessageKey: the demo guard is the most specific match
-  // and is surfaced as its own token for e2e assertions.
+  // Mirror adminErrorMessageKey: the demo guards are the most specific match
+  // and are surfaced as their own tokens for e2e assertions.
+  if (isDemoAdminHiddenError(err)) {
+    return "demo_admin_hidden";
+  }
   if (isDemoReadOnlyError(err)) {
     return "demo_read_only";
   }

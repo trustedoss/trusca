@@ -26,6 +26,7 @@ from fastapi.responses import JSONResponse
 from jose import JWTError
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from core.config import demo_read_only
 from core.db import get_db
 from core.errors import problem_response
 from core.login_throttle import record_failure, seconds_until_retry
@@ -279,7 +280,23 @@ async def export_self(
     There is no ``user_id`` anywhere in this route. An export endpoint that
     accepted one would be an endpoint for reading other people's personal
     data, guarded only by whatever check somebody remembered to write.
+
+    Refused on the public read-only demo. Its accounts are shared, so "your
+    own activity" there is every visitor's sign-ins, with their IP addresses
+    and user agents.
     """
+    if demo_read_only():
+        return problem_response(
+            status_code=status.HTTP_403_FORBIDDEN,
+            title="Read-only demo",
+            detail=(
+                "Personal data export is not available in the public live demo: "
+                "its accounts are shared by every visitor."
+            ),
+            instance="/v1/users/me/export",
+            type_="urn:trustedoss:problem:demo-read-only",
+            demo_read_only=True,
+        )
     payload = await build_self_export(session, user_id=actor.id)
     if payload is None:
         # The token authenticated against a row that no longer exists.

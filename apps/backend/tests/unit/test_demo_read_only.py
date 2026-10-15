@@ -251,6 +251,22 @@ def test_trailing_slash_matches_allowlist() -> None:
     assert _is_demo_write_allowed("POST", "/auth/login/") is True
 
 
+@pytest.mark.parametrize(
+    "path",
+    [
+        # The router dispatches on the raw path; these normalize onto the
+        # allow-list while routing somewhere else, so they are refused.
+        "/v1/projects/x\\..\\..\\..\\auth\\login",
+        "/v1/projects/x/..\\..\\..\\auth/login",
+        "/auth/./login",
+        "/auth//login",
+        "/v1/projects/x/../../auth/login",
+    ],
+)
+def test_non_plain_raw_write_paths_are_refused(path: str) -> None:
+    assert _is_demo_write_allowed("POST", path) is False
+
+
 def test_lowercase_verb_does_not_bypass() -> None:
     # Defensive: a lower-cased verb is still treated as a mutation.
     assert _is_demo_write_allowed("post", "/v1/projects") is False

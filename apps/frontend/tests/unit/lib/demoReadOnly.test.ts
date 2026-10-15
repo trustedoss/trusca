@@ -24,6 +24,7 @@ import {
 } from "@/features/projects/lib/projectErrorMessage";
 import {
   DEMO_READ_ONLY_PROBLEM_TYPE,
+  isDemoAdminHiddenError,
   isDemoReadOnlyError,
 } from "@/lib/demoReadOnly";
 import {
@@ -152,5 +153,57 @@ describe("projectErrorToken / projectErrorMessageKey — demo branch wins", () =
     expect(projectErrorMessageKey(forbiddenError(), "page.errors")).toBe(
       "page.errors.forbidden",
     );
+  });
+});
+
+/** The demo middleware's refusal of an admin READ (a hidden admin screen). */
+function demoAdminHiddenError(): ProblemError {
+  const { problem } = parseProblemBody(
+    {
+      type: DEMO_READ_ONLY_PROBLEM_TYPE,
+      title: "Not available in the demo",
+      status: 403,
+      detail: "This administration screen is not available in the public live demo.",
+      instance: "/v1/admin/backup",
+      demo_read_only: true,
+      demo_admin_hidden: true,
+    },
+    { status: 403, statusText: "Forbidden" },
+  );
+  return new ProblemError("Not available in the demo", {
+    status: 403,
+    title: "Not available in the demo",
+    detail: "hidden",
+    problem,
+  });
+}
+
+describe("demo admin-hidden refusal", () => {
+  it("parseProblemBody keeps the demo_admin_hidden flag", () => {
+    expect(KNOWN_PROBLEM_EXTENSION_KEYS).toContain("demo_admin_hidden");
+    const err = demoAdminHiddenError();
+    expect(
+      (err.problem as unknown as Record<string, unknown>).demo_admin_hidden,
+    ).toBe(true);
+  });
+
+  it("is classified as admin-hidden and still as a demo refusal", () => {
+    expect(isDemoAdminHiddenError(demoAdminHiddenError())).toBe(true);
+    expect(isDemoReadOnlyError(demoAdminHiddenError())).toBe(true);
+  });
+
+  it("a demo WRITE refusal is not admin-hidden", () => {
+    expect(isDemoAdminHiddenError(demoError())).toBe(false);
+    expect(isDemoAdminHiddenError(forbiddenError())).toBe(false);
+    expect(isDemoAdminHiddenError(new Error("x"))).toBe(false);
+  });
+
+  it("maps to its own admin message, not the write message", () => {
+    expect(adminErrorMessageKey(demoAdminHiddenError())).toBe(
+      "admin.errors.demo_admin_hidden",
+    );
+    expect(adminErrorExtension(demoAdminHiddenError())).toBe("demo_admin_hidden");
+    // The write refusal keeps its own key.
+    expect(adminErrorMessageKey(demoError())).toBe("admin.errors.demo_read_only");
   });
 });

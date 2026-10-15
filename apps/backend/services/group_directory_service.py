@@ -64,7 +64,7 @@ from sqlalchemy.orm import InstrumentedAttribute
 from sqlalchemy.sql.elements import ColumnElement
 
 from core.authz import can_access_group
-from core.config import group_cascade_enabled
+from core.config import demo_read_only, group_cascade_enabled
 from core.security import CurrentUser
 from core.sql_safety import escape_like
 from models import ComponentApproval, Membership, Project, Scan, User
@@ -79,7 +79,7 @@ from schemas.group import (
     GroupMembersResponse,
     GroupSummaryStats,
 )
-from services import group_service
+from services import demo_scope, group_service
 
 log = structlog.get_logger("groups.directory.service")
 
@@ -138,6 +138,10 @@ def _actor_visibility_predicate(actor: CurrentUser) -> ColumnElement[bool]:
     extra join needed here, a group query IS the ``groups`` table).
     """
     if actor.is_superuser:
+        # Public read-only demo: bounded to the demo organisation, like
+        # core.authz.team_scope_filter.
+        if demo_read_only():
+            return Group.id.in_(demo_scope.demo_group_ids())
         return sa.true()
     return group_service.subtree_scope_filter(actor.team_ids)
 

@@ -55,3 +55,15 @@ export function isDemoReadOnlyError(err: unknown): boolean {
   // lib/problem.ts, so reading it here is the typed boolean (or absent).
   return (problem as Record<string, unknown>).demo_read_only === true;
 }
+
+/**
+ * True when `err` is the demo refusal of an admin READ: the backend demo
+ * middleware hides some administration screens on the public demo (the
+ * backup archive, exports, credential lists) and answers them with the same
+ * demo problem type plus `demo_admin_hidden: true`.
+ */
+export function isDemoAdminHiddenError(err: unknown): boolean {
+  if (!isDemoReadOnlyError(err)) return false;
+  const problem = (err as ProblemError).problem;
+  return (problem as Record<string, unknown> | null)?.demo_admin_hidden === true;
+}

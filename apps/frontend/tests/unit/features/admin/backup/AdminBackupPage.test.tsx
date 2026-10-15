@@ -20,6 +20,7 @@ import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { AdminBackupPage } from "@/features/admin/backup/AdminBackupPage";
+import { ProblemError, type ProblemDetails } from "@/lib/problem";
 import type {
   BackupInfo,
   BackupListResponse,
@@ -273,5 +274,30 @@ describe("AdminBackupPage", () => {
     await waitFor(() => {
       expect(screen.getByTestId("admin-backup-error")).toBeInTheDocument();
     });
+  });
+
+  // The public demo hides this screen (backend demo middleware). The alert
+  // has to say so: the generic "something went wrong" read as a fault.
+  it("Explains a list refused by the public demo", async () => {
+    mockedList.mockRejectedValue(
+      new ProblemError("Not available in the demo", {
+        status: 403,
+        title: "Not available in the demo",
+        detail: "hidden",
+        problem: {
+          type: "urn:trustedoss:problem:demo-read-only",
+          title: "Not available in the demo",
+          status: 403,
+          detail: "hidden",
+          demo_read_only: true,
+          demo_admin_hidden: true,
+        } as ProblemDetails,
+      }),
+    );
+    renderPage();
+    const alert = await screen.findByTestId("admin-backup-error");
+    expect(alert).toHaveTextContent(
+      "This screen is not available in the public live demo.",
+    );
   });
 });
