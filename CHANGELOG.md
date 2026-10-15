@@ -7,6 +7,20 @@ and the project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.
 
 ## [Unreleased]
 
+## [0.23.0] - 2026-10-15
+
+### Highlights
+
+- **Teams are now an unlimited-depth group hierarchy.** Existing flat teams
+  become top-level groups; access, visibility and administration follow the
+  tree (#464).
+- **BomLens can run as the scan engine (preview).** With
+  `SCAN_ENGINE=bomlens` source scans, and with `SCAN_CONTAINER_ENGINE=bomlens`
+  container scans, run the pinned upstream BomLens 1.13.4 images through its
+  execution plan instead of the in-process pipeline. The default engine is
+  unchanged. See the administrator guide, "Dynamic scan executor".
+- **Offline install bundle for air-gapped deployments** (#477).
+
 ### Added
 
 - **Creative Commons ShareAlike licenses are now classified as weak copyleft.**
@@ -43,6 +57,26 @@ and the project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.
   existing `TRUSTEDOSS_VERSION`, surfaced on the About screen and as a
   `trusca_build_info` / `trusca_build_time_seconds` metric pair for
   deployments that scrape `/metrics` (#441).
+- An opt-in gate axis fails builds on incomplete scans (#506), and a scan that
+  finds no components despite declared dependencies now warns (#530).
+- CycloneDX exports carry the dependency graph and state its completeness
+  (#505).
+- Scans record which optional stages degraded and when each stage ran; the
+  project overview shows skipped license lookups and a skipped scancode stage
+  (#495, #503).
+- Container scans store the full package inventory (#501).
+- Maven components inherit licenses from parent POMs, and more Maven license
+  spellings map to SPDX ids (#493, #494).
+- Example Prometheus alerting rules, a backend HPA, measured backup RPO/RTO,
+  and hardening and PostgreSQL tuning guides (#453, #459, #455, #469).
+
+### Changed
+
+- **The public demo's shared account `explore@` is now a super admin.** In
+  demo mode (`DEMO_READ_ONLY`) the admin API answers only an allow-list of
+  read screens, scoped to the demo organization; backups, exports,
+  credentials and anonymisation are refused, and a super admin's access is
+  bounded to the demo organization.
 
 ### Fixed
 
@@ -83,6 +117,26 @@ and the project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.
   An unrecognised value falls back to `latest` rather than raising: this is
   read on the scan path, so a typo costs disk, never data. `all`, which
   `.env.example` offered and no code implemented, is one such value.
+- **The worker image detects first-party licenses again.** An unpinned
+  dependency of scancode made every scancode call fail while the scan still
+  reported success, so file-header licenses never reached the gate (#489).
+- **`helm install` works on a fresh cluster.** The pre-install Jobs ran
+  before the ServiceAccounts, Secret and ConfigMap they need, and the chart
+  never passed `GITHUB_APP_ENCRYPTION_KEY`, so stored-credential writes failed
+  on chart installs (#509, #513).
+- A package-manager match and a fingerprint match for the same library are
+  merged into one component (#499).
+- The license enrichment step is bounded per scan by a time budget and a
+  circuit breaker (#491).
+- The deploy crash-recovery restart respects `COMPOSE_FILE` (#452).
+
+### Security
+
+- The worker image is rebuilt on upgraded bundled tools (Gradle, Go, Docker
+  CLI, WeasyPrint, npm overrides) to clear newly reported fixable CVEs (#497,
+  #515).
+- `scanoss-py` runs with `--skip-snippets`, so snippet fingerprints are not
+  sent out (#478).
 
 ## [0.22.6] - 2026-09-08
 
