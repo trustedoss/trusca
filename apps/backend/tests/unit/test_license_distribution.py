@@ -579,7 +579,7 @@ def _sevenzip_probe_script() -> str:
 
 def _run_sevenzip_probe(
     tmp_path: Path, arch: str, *, module: str | None, version_line: str = ""
-) -> "subprocess.CompletedProcess[str]":
+) -> subprocess.CompletedProcess[str]:
     """Run the real probe with a stand-in venv python and a stand-in dpkg.
 
     ``module`` is the path the stand-in extractcode_7z reports for 7z, or None
@@ -597,13 +597,11 @@ def _run_sevenzip_probe(
     py.chmod(0o755)
     script = (
         "set -eu\n"
-        f'dpkg() {{ echo {arch}; }}\n'
+        f"dpkg() {{ echo {arch}; }}\n"
         f'py="{py}"\n'
         "P7ZIP_VERSION=16.02\n" + _sevenzip_probe_script() + "\necho PROBE_OK\n"
     )
-    return subprocess.run(
-        ["bash", "-c", script], capture_output=True, text=True, check=False
-    )
+    return subprocess.run(["bash", "-c", script], capture_output=True, text=True, check=False)
 
 
 def _fake_sevenzip(tmp_path: Path, banner: str) -> Path:
