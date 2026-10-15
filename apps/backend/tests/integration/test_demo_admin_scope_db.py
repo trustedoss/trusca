@@ -47,6 +47,29 @@ def _env(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.delenv("DEMO_ALLOW_SANDBOX_SCANS", raising=False)
 
 
+@pytest.fixture(autouse=True)
+async def _drop_demo_after(
+    db_factory: async_sessionmaker[Any], monkeypatch: pytest.MonkeyPatch
+) -> AsyncIterator[None]:
+    """Leave no demo dataset behind.
+
+    The tests here seed the demo early in the alphabetical run. Tests further
+    on call ``seed_demo._seed`` expecting a complete dataset, but ``_seed``
+    only tops up an existing one, so a demo seeded here and then thinned out
+    by unrelated tests in between would reach them incomplete. Dropping it
+    makes their own ``_seed`` call build it fresh.
+    """
+    monkeypatch.setenv("APP_ENV", "dev")
+    yield
+    from scripts import reset_demo
+
+    # The last-active-super-admin trigger refuses the drop when the demo's
+    # super admins are the only ones, so keep one outside the demo.
+    async with db_factory() as session:
+        await make_user(session, is_superuser=True)
+    await reset_demo._drop_demo()
+
+
 @pytest.fixture
 async def client() -> AsyncIterator[AsyncClient]:
     from main import app
