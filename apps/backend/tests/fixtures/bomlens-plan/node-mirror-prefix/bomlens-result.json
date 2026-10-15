@@ -1,12 +1,12 @@
 {
   "contract": {
     "name": "bomlens-engine",
-    "version": "1.2.0"
+    "version": "1.3.0"
   },
   "engine": {
-    "version": "1.13.2",
-    "image": "ghcr.io/sktelecom/bomlens:1.13.2",
-    "image_digest": "sha256:e357e634ef6447ed44b57a4aed3090af12b77c1fe29cbc0e567a3f65414f738b"
+    "version": "1.13.4",
+    "image": "ghcr.io/sktelecom/bomlens:1.13.4",
+    "image_digest": "sha256:59d5a3363ad658a9b94787cd4c964209371b8f68a83e49adfd5b74b3220f2b47"
   },
   "input": {
     "kind": "source",
@@ -16,8 +16,8 @@
   "run": {
     "status": "succeeded",
     "reason": null,
-    "started_at": "2026-10-12T09:05:54Z",
-    "ended_at": "2026-10-12T09:05:55Z",
+    "started_at": "2026-10-15T05:00:21Z",
+    "ended_at": "2026-10-15T05:00:21Z",
     "exit_code": 0
   },
   "steps": [
@@ -26,13 +26,13 @@
       "status": "ok",
       "reason": null,
       "detail": null,
-      "started_at": "2026-10-12T09:05:54Z",
-      "ended_at": "2026-10-12T09:05:54Z",
+      "started_at": "2026-10-15T05:00:21Z",
+      "ended_at": "2026-10-15T05:00:21Z",
       "stage": 2
     }
   ],
   "tools": {
-    "syft": "1.52.0"
+    "syft": "1.54.1"
   },
   "engines": [],
   "data_sources": {
@@ -42,8 +42,8 @@
     {
       "role": "plan",
       "path": "bomlens-plan.json",
-      "sha256": "686a00f6ca42c8bd253c1e368b556443f03ac738890da7234abbd6c10f385dfc",
-      "bytes": 5494
+      "sha256": "5b58f4d780ab00c2905f2ff36a6dd4807079a4780a2866c79318f5a870344b8b",
+      "bytes": 15432
     }
   ]
 }

@@ -1,10 +1,10 @@
 {
   "SchemaVersion": 2,
   "Trivy": {
-    "Version": "0.74.0"
+    "Version": "0.75.0"
   },
-  "ReportID": "01a13099-a911-722b-a059-ff9b9645b5db",
-  "CreatedAt": "2026-10-12T14:52:19.089145067Z",
+  "ReportID": "01a13df9-809a-7dc6-91e5-e08daa3abc02",
+  "CreatedAt": "2026-10-15T05:12:03.994906913Z",
   "ArtifactName": "image_1.0.0_bom.json",
   "ArtifactType": "cyclonedx",
   "Metadata": {
@@ -24,9 +24,9 @@
           "ID": "alpine-baselayout@3.4.3-r2",
           "Name": "alpine-baselayout",
           "Identifier": {
-            "PURL": "pkg:apk/alpine/alpine-baselayout@3.4.3-r2?arch=aarch64\u0026distro=3.19.0",
+            "PURL": "pkg:apk/alpine/alpine-baselayout@3.4.3-r2?arch=aarch64&distro=3.19.0",
             "UID": "ebaa9c0b72f7e159",
-            "BOMRef": "pkg:apk/alpine/alpine-baselayout@3.4.3-r2?arch=aarch64\u0026distro=alpine-3.19.0\u0026package-id=ae5da50cd31875e4"
+            "BOMRef": "pkg:apk/alpine/alpine-baselayout@3.4.3-r2?arch=aarch64&distro=alpine-3.19.0&package-id=ae5da50cd31875e4"
           },
           "Version": "3.4.3-r2",
           "Arch": "aarch64",
@@ -44,9 +44,9 @@
           "ID": "alpine-baselayout-data@3.4.3-r2",
           "Name": "alpine-baselayout-data",
           "Identifier": {
-            "PURL": "pkg:apk/alpine/alpine-baselayout-data@3.4.3-r2?arch=aarch64\u0026distro=3.19.0",
+            "PURL": "pkg:apk/alpine/alpine-baselayout-data@3.4.3-r2?arch=aarch64&distro=3.19.0",
             "UID": "e2bf6a6c0773b110",
-            "BOMRef": "pkg:apk/alpine/alpine-baselayout-data@3.4.3-r2?arch=aarch64\u0026distro=alpine-3.19.0\u0026package-id=88e54d10be37e2b7\u0026upstream=alpine-baselayout"
+            "BOMRef": "pkg:apk/alpine/alpine-baselayout-data@3.4.3-r2?arch=aarch64&distro=alpine-3.19.0&package-id=88e54d10be37e2b7&upstream=alpine-baselayout"
           },
           "Version": "3.4.3-r2",
           "Arch": "aarch64",
@@ -60,9 +60,9 @@
           "ID": "alpine-keys@2.4-r1",
           "Name": "alpine-keys",
           "Identifier": {
-            "PURL": "pkg:apk/alpine/alpine-keys@2.4-r1?arch=aarch64\u0026distro=3.19.0",
+            "PURL": "pkg:apk/alpine/alpine-keys@2.4-r1?arch=aarch64&distro=3.19.0",
             "UID": "781e52cee8b947e",
-            "BOMRef": "pkg:apk/alpine/alpine-keys@2.4-r1?arch=aarch64\u0026distro=alpine-3.19.0\u0026package-id=036fe7a39afd42ca"
+            "BOMRef": "pkg:apk/alpine/alpine-keys@2.4-r1?arch=aarch64&distro=alpine-3.19.0&package-id=036fe7a39afd42ca"
           },
           "Version": "2.4-r1",
           "Arch": "aarch64",
@@ -76,9 +76,9 @@
           "ID": "apk-tools@2.14.0-r5",
           "Name": "apk-tools",
           "Identifier": {
-            "PURL": "pkg:apk/alpine/apk-tools@2.14.0-r5?arch=aarch64\u0026distro=3.19.0",
+            "PURL": "pkg:apk/alpine/apk-tools@2.14.0-r5?arch=aarch64&distro=3.19.0",
             "UID": "96f75e9e95624142",
-            "BOMRef": "pkg:apk/alpine/apk-tools@2.14.0-r5?arch=aarch64\u0026distro=alpine-3.19.0\u0026package-id=4dcf969c92b2d7d5"
+            "BOMRef": "pkg:apk/alpine/apk-tools@2.14.0-r5?arch=aarch64&distro=alpine-3.19.0&package-id=4dcf969c92b2d7d5"
           },
           "Version": "2.14.0-r5",
           "Arch": "aarch64",
@@ -99,9 +99,9 @@
           "ID": "busybox@1.36.1-r15",
           "Name": "busybox",
           "Identifier": {
-            "PURL": "pkg:apk/alpine/busybox@1.36.1-r15?arch=aarch64\u0026distro=3.19.0",
+            "PURL": "pkg:apk/alpine/busybox@1.36.1-r15?arch=aarch64&distro=3.19.0",
             "UID": "9cf384377b76288d",
-            "BOMRef": "pkg:apk/alpine/busybox@1.36.1-r15?arch=aarch64\u0026distro=alpine-3.19.0\u0026package-id=283d06500e2b8644"
+            "BOMRef": "pkg:apk/alpine/busybox@1.36.1-r15?arch=aarch64&distro=alpine-3.19.0&package-id=283d06500e2b8644"
           },
           "Version": "1.36.1-r15",
           "Arch": "aarch64",
@@ -118,9 +118,9 @@
           "ID": "busybox-binsh@1.36.1-r15",
           "Name": "busybox-binsh",
           "Identifier": {
-            "PURL": "pkg:apk/alpine/busybox-binsh@1.36.1-r15?arch=aarch64\u0026distro=3.19.0",
+            "PURL": "pkg:apk/alpine/busybox-binsh@1.36.1-r15?arch=aarch64&distro=3.19.0",
             "UID": "34ec20a6126b1bba",
-            "BOMRef": "pkg:apk/alpine/busybox-binsh@1.36.1-r15?arch=aarch64\u0026distro=alpine-3.19.0\u0026package-id=c7043335a3b1bd75\u0026upstream=busybox"
+            "BOMRef": "pkg:apk/alpine/busybox-binsh@1.36.1-r15?arch=aarch64&distro=alpine-3.19.0&package-id=c7043335a3b1bd75&upstream=busybox"
           },
           "Version": "1.36.1-r15",
           "Arch": "aarch64",
@@ -137,9 +137,9 @@
           "ID": "ca-certificates-bundle@20230506-r0",
           "Name": "ca-certificates-bundle",
           "Identifier": {
-            "PURL": "pkg:apk/alpine/ca-certificates-bundle@20230506-r0?arch=aarch64\u0026distro=3.19.0",
+            "PURL": "pkg:apk/alpine/ca-certificates-bundle@20230506-r0?arch=aarch64&distro=3.19.0",
             "UID": "26b33ee994370b64",
-            "BOMRef": "pkg:apk/alpine/ca-certificates-bundle@20230506-r0?arch=aarch64\u0026distro=alpine-3.19.0\u0026package-id=1deef010307321d2\u0026upstream=ca-certificates"
+            "BOMRef": "pkg:apk/alpine/ca-certificates-bundle@20230506-r0?arch=aarch64&distro=alpine-3.19.0&package-id=1deef010307321d2&upstream=ca-certificates"
           },
           "Version": "20230506-r0",
           "Arch": "aarch64",
@@ -153,9 +153,9 @@
           "ID": "libc-utils@0.7.2-r5",
           "Name": "libc-utils",
           "Identifier": {
-            "PURL": "pkg:apk/alpine/libc-utils@0.7.2-r5?arch=aarch64\u0026distro=3.19.0",
+            "PURL": "pkg:apk/alpine/libc-utils@0.7.2-r5?arch=aarch64&distro=3.19.0",
             "UID": "787bcc098094efe5",
-            "BOMRef": "pkg:apk/alpine/libc-utils@0.7.2-r5?arch=aarch64\u0026distro=alpine-3.19.0\u0026package-id=e2645a41a2a74799\u0026upstream=libc-dev"
+            "BOMRef": "pkg:apk/alpine/libc-utils@0.7.2-r5?arch=aarch64&distro=alpine-3.19.0&package-id=e2645a41a2a74799&upstream=libc-dev"
           },
           "Version": "0.7.2-r5",
           "Arch": "aarch64",
@@ -172,9 +172,9 @@
           "ID": "libcrypto3@3.1.4-r2",
           "Name": "libcrypto3",
           "Identifier": {
-            "PURL": "pkg:apk/alpine/libcrypto3@3.1.4-r2?arch=aarch64\u0026distro=3.19.0",
+            "PURL": "pkg:apk/alpine/libcrypto3@3.1.4-r2?arch=aarch64&distro=3.19.0",
             "UID": "39fa19681491ffb0",
-            "BOMRef": "pkg:apk/alpine/libcrypto3@3.1.4-r2?arch=aarch64\u0026distro=alpine-3.19.0\u0026package-id=2078ce39f533c4c1\u0026upstream=openssl"
+            "BOMRef": "pkg:apk/alpine/libcrypto3@3.1.4-r2?arch=aarch64&distro=alpine-3.19.0&package-id=2078ce39f533c4c1&upstream=openssl"
           },
           "Version": "3.1.4-r2",
           "Arch": "aarch64",
@@ -191,9 +191,9 @@
           "ID": "libssl3@3.1.4-r2",
           "Name": "libssl3",
           "Identifier": {
-            "PURL": "pkg:apk/alpine/libssl3@3.1.4-r2?arch=aarch64\u0026distro=3.19.0",
+            "PURL": "pkg:apk/alpine/libssl3@3.1.4-r2?arch=aarch64&distro=3.19.0",
             "UID": "c725c79c9f55ad8b",
-            "BOMRef": "pkg:apk/alpine/libssl3@3.1.4-r2?arch=aarch64\u0026distro=alpine-3.19.0\u0026package-id=498f2ffa92de1315\u0026upstream=openssl"
+            "BOMRef": "pkg:apk/alpine/libssl3@3.1.4-r2?arch=aarch64&distro=alpine-3.19.0&package-id=498f2ffa92de1315&upstream=openssl"
           },
           "Version": "3.1.4-r2",
           "Arch": "aarch64",
@@ -211,9 +211,9 @@
           "ID": "musl@1.2.4_git20230717-r4",
           "Name": "musl",
           "Identifier": {
-            "PURL": "pkg:apk/alpine/musl@1.2.4_git20230717-r4?arch=aarch64\u0026distro=3.19.0",
+            "PURL": "pkg:apk/alpine/musl@1.2.4_git20230717-r4?arch=aarch64&distro=3.19.0",
             "UID": "e17b278bbc0607f8",
-            "BOMRef": "pkg:apk/alpine/musl@1.2.4_git20230717-r4?arch=aarch64\u0026distro=alpine-3.19.0\u0026package-id=26b0f2d72fde7ae8"
+            "BOMRef": "pkg:apk/alpine/musl@1.2.4_git20230717-r4?arch=aarch64&distro=alpine-3.19.0&package-id=26b0f2d72fde7ae8"
           },
           "Version": "1.2.4_git20230717-r4",
           "Arch": "aarch64",
@@ -227,9 +227,9 @@
           "ID": "musl-utils@1.2.4_git20230717-r4",
           "Name": "musl-utils",
           "Identifier": {
-            "PURL": "pkg:apk/alpine/musl-utils@1.2.4_git20230717-r4?arch=aarch64\u0026distro=3.19.0",
+            "PURL": "pkg:apk/alpine/musl-utils@1.2.4_git20230717-r4?arch=aarch64&distro=3.19.0",
             "UID": "4e90bb0fe08c0484",
-            "BOMRef": "pkg:apk/alpine/musl-utils@1.2.4_git20230717-r4?arch=aarch64\u0026distro=alpine-3.19.0\u0026package-id=f9214553d55f4e25\u0026upstream=musl"
+            "BOMRef": "pkg:apk/alpine/musl-utils@1.2.4_git20230717-r4?arch=aarch64&distro=alpine-3.19.0&package-id=f9214553d55f4e25&upstream=musl"
           },
           "Version": "1.2.4_git20230717-r4",
           "Arch": "aarch64",
@@ -247,9 +247,9 @@
           "ID": "scanelf@1.3.7-r2",
           "Name": "scanelf",
           "Identifier": {
-            "PURL": "pkg:apk/alpine/scanelf@1.3.7-r2?arch=aarch64\u0026distro=3.19.0",
+            "PURL": "pkg:apk/alpine/scanelf@1.3.7-r2?arch=aarch64&distro=3.19.0",
             "UID": "928f6c4a72223819",
-            "BOMRef": "pkg:apk/alpine/scanelf@1.3.7-r2?arch=aarch64\u0026distro=alpine-3.19.0\u0026package-id=b4f37b6b924b1648\u0026upstream=pax-utils"
+            "BOMRef": "pkg:apk/alpine/scanelf@1.3.7-r2?arch=aarch64&distro=alpine-3.19.0&package-id=b4f37b6b924b1648&upstream=pax-utils"
           },
           "Version": "1.3.7-r2",
           "Arch": "aarch64",
@@ -266,9 +266,9 @@
           "ID": "ssl_client@1.36.1-r15",
           "Name": "ssl_client",
           "Identifier": {
-            "PURL": "pkg:apk/alpine/ssl_client@1.36.1-r15?arch=aarch64\u0026distro=3.19.0",
+            "PURL": "pkg:apk/alpine/ssl_client@1.36.1-r15?arch=aarch64&distro=3.19.0",
             "UID": "c1070d34b552e88",
-            "BOMRef": "pkg:apk/alpine/ssl_client@1.36.1-r15?arch=aarch64\u0026distro=alpine-3.19.0\u0026package-id=4014a2f177b200c4\u0026upstream=busybox"
+            "BOMRef": "pkg:apk/alpine/ssl_client@1.36.1-r15?arch=aarch64&distro=alpine-3.19.0&package-id=4014a2f177b200c4&upstream=busybox"
           },
           "Version": "1.36.1-r15",
           "Arch": "aarch64",
@@ -287,9 +287,9 @@
           "ID": "zlib@1.3-r2",
           "Name": "zlib",
           "Identifier": {
-            "PURL": "pkg:apk/alpine/zlib@1.3-r2?arch=aarch64\u0026distro=3.19.0",
+            "PURL": "pkg:apk/alpine/zlib@1.3-r2?arch=aarch64&distro=3.19.0",
             "UID": "5af2394fadce96c2",
-            "BOMRef": "pkg:apk/alpine/zlib@1.3-r2?arch=aarch64\u0026distro=alpine-3.19.0\u0026package-id=d6bf4d65bbdb9561"
+            "BOMRef": "pkg:apk/alpine/zlib@1.3-r2?arch=aarch64&distro=alpine-3.19.0&package-id=d6bf4d65bbdb9561"
           },
           "Version": "1.3-r2",
           "Arch": "aarch64",
@@ -309,9 +309,9 @@
           "PkgID": "busybox@1.36.1-r15",
           "PkgName": "busybox",
           "PkgIdentifier": {
-            "PURL": "pkg:apk/alpine/busybox@1.36.1-r15?arch=aarch64\u0026distro=3.19.0",
+            "PURL": "pkg:apk/alpine/busybox@1.36.1-r15?arch=aarch64&distro=3.19.0",
             "UID": "9cf384377b76288d",
-            "BOMRef": "pkg:apk/alpine/busybox@1.36.1-r15?arch=aarch64\u0026distro=alpine-3.19.0\u0026package-id=283d06500e2b8644"
+            "BOMRef": "pkg:apk/alpine/busybox@1.36.1-r15?arch=aarch64&distro=alpine-3.19.0&package-id=283d06500e2b8644"
           },
           "InstalledVersion": "1.36.1-r15",
           "FixedVersion": "1.36.1-r17",
@@ -363,9 +363,9 @@
           "PkgID": "busybox@1.36.1-r15",
           "PkgName": "busybox",
           "PkgIdentifier": {
-            "PURL": "pkg:apk/alpine/busybox@1.36.1-r15?arch=aarch64\u0026distro=3.19.0",
+            "PURL": "pkg:apk/alpine/busybox@1.36.1-r15?arch=aarch64&distro=3.19.0",
             "UID": "9cf384377b76288d",
-            "BOMRef": "pkg:apk/alpine/busybox@1.36.1-r15?arch=aarch64\u0026distro=alpine-3.19.0\u0026package-id=283d06500e2b8644"
+            "BOMRef": "pkg:apk/alpine/busybox@1.36.1-r15?arch=aarch64&distro=alpine-3.19.0&package-id=283d06500e2b8644"
           },
           "InstalledVersion": "1.36.1-r15",
           "FixedVersion": "1.36.1-r19",
@@ -419,9 +419,9 @@
           "PkgID": "busybox@1.36.1-r15",
           "PkgName": "busybox",
           "PkgIdentifier": {
-            "PURL": "pkg:apk/alpine/busybox@1.36.1-r15?arch=aarch64\u0026distro=3.19.0",
+            "PURL": "pkg:apk/alpine/busybox@1.36.1-r15?arch=aarch64&distro=3.19.0",
             "UID": "9cf384377b76288d",
-            "BOMRef": "pkg:apk/alpine/busybox@1.36.1-r15?arch=aarch64\u0026distro=alpine-3.19.0\u0026package-id=283d06500e2b8644"
+            "BOMRef": "pkg:apk/alpine/busybox@1.36.1-r15?arch=aarch64&distro=alpine-3.19.0&package-id=283d06500e2b8644"
           },
           "InstalledVersion": "1.36.1-r15",
           "FixedVersion": "1.36.1-r19",
@@ -475,9 +475,9 @@
           "PkgID": "busybox@1.36.1-r15",
           "PkgName": "busybox",
           "PkgIdentifier": {
-            "PURL": "pkg:apk/alpine/busybox@1.36.1-r15?arch=aarch64\u0026distro=3.19.0",
+            "PURL": "pkg:apk/alpine/busybox@1.36.1-r15?arch=aarch64&distro=3.19.0",
             "UID": "9cf384377b76288d",
-            "BOMRef": "pkg:apk/alpine/busybox@1.36.1-r15?arch=aarch64\u0026distro=alpine-3.19.0\u0026package-id=283d06500e2b8644"
+            "BOMRef": "pkg:apk/alpine/busybox@1.36.1-r15?arch=aarch64&distro=alpine-3.19.0&package-id=283d06500e2b8644"
           },
           "InstalledVersion": "1.36.1-r15",
           "FixedVersion": "1.36.1-r16",
@@ -528,9 +528,9 @@
           "PkgID": "busybox@1.36.1-r15",
           "PkgName": "busybox",
           "PkgIdentifier": {
-            "PURL": "pkg:apk/alpine/busybox@1.36.1-r15?arch=aarch64\u0026distro=3.19.0",
+            "PURL": "pkg:apk/alpine/busybox@1.36.1-r15?arch=aarch64&distro=3.19.0",
             "UID": "9cf384377b76288d",
-            "BOMRef": "pkg:apk/alpine/busybox@1.36.1-r15?arch=aarch64\u0026distro=alpine-3.19.0\u0026package-id=283d06500e2b8644"
+            "BOMRef": "pkg:apk/alpine/busybox@1.36.1-r15?arch=aarch64&distro=alpine-3.19.0&package-id=283d06500e2b8644"
           },
           "InstalledVersion": "1.36.1-r15",
           "FixedVersion": "1.36.1-r21",
@@ -566,9 +566,9 @@
           "PkgID": "busybox@1.36.1-r15",
           "PkgName": "busybox",
           "PkgIdentifier": {
-            "PURL": "pkg:apk/alpine/busybox@1.36.1-r15?arch=aarch64\u0026distro=3.19.0",
+            "PURL": "pkg:apk/alpine/busybox@1.36.1-r15?arch=aarch64&distro=3.19.0",
             "UID": "9cf384377b76288d",
-            "BOMRef": "pkg:apk/alpine/busybox@1.36.1-r15?arch=aarch64\u0026distro=alpine-3.19.0\u0026package-id=283d06500e2b8644"
+            "BOMRef": "pkg:apk/alpine/busybox@1.36.1-r15?arch=aarch64&distro=alpine-3.19.0&package-id=283d06500e2b8644"
           },
           "InstalledVersion": "1.36.1-r15",
           "FixedVersion": "1.36.1-r21",
@@ -617,9 +617,9 @@
           "PkgID": "busybox-binsh@1.36.1-r15",
           "PkgName": "busybox-binsh",
           "PkgIdentifier": {
-            "PURL": "pkg:apk/alpine/busybox-binsh@1.36.1-r15?arch=aarch64\u0026distro=3.19.0",
+            "PURL": "pkg:apk/alpine/busybox-binsh@1.36.1-r15?arch=aarch64&distro=3.19.0",
             "UID": "34ec20a6126b1bba",
-            "BOMRef": "pkg:apk/alpine/busybox-binsh@1.36.1-r15?arch=aarch64\u0026distro=alpine-3.19.0\u0026package-id=c7043335a3b1bd75\u0026upstream=busybox"
+            "BOMRef": "pkg:apk/alpine/busybox-binsh@1.36.1-r15?arch=aarch64&distro=alpine-3.19.0&package-id=c7043335a3b1bd75&upstream=busybox"
           },
           "InstalledVersion": "1.36.1-r15",
           "FixedVersion": "1.36.1-r17",
@@ -671,9 +671,9 @@
           "PkgID": "busybox-binsh@1.36.1-r15",
           "PkgName": "busybox-binsh",
           "PkgIdentifier": {
-            "PURL": "pkg:apk/alpine/busybox-binsh@1.36.1-r15?arch=aarch64\u0026distro=3.19.0",
+            "PURL": "pkg:apk/alpine/busybox-binsh@1.36.1-r15?arch=aarch64&distro=3.19.0",
             "UID": "34ec20a6126b1bba",
-            "BOMRef": "pkg:apk/alpine/busybox-binsh@1.36.1-r15?arch=aarch64\u0026distro=alpine-3.19.0\u0026package-id=c7043335a3b1bd75\u0026upstream=busybox"
+            "BOMRef": "pkg:apk/alpine/busybox-binsh@1.36.1-r15?arch=aarch64&distro=alpine-3.19.0&package-id=c7043335a3b1bd75&upstream=busybox"
           },
           "InstalledVersion": "1.36.1-r15",
           "FixedVersion": "1.36.1-r19",
@@ -727,9 +727,9 @@
           "PkgID": "busybox-binsh@1.36.1-r15",
           "PkgName": "busybox-binsh",
           "PkgIdentifier": {
-            "PURL": "pkg:apk/alpine/busybox-binsh@1.36.1-r15?arch=aarch64\u0026distro=3.19.0",
+            "PURL": "pkg:apk/alpine/busybox-binsh@1.36.1-r15?arch=aarch64&distro=3.19.0",
             "UID": "34ec20a6126b1bba",
-            "BOMRef": "pkg:apk/alpine/busybox-binsh@1.36.1-r15?arch=aarch64\u0026distro=alpine-3.19.0\u0026package-id=c7043335a3b1bd75\u0026upstream=busybox"
+            "BOMRef": "pkg:apk/alpine/busybox-binsh@1.36.1-r15?arch=aarch64&distro=alpine-3.19.0&package-id=c7043335a3b1bd75&upstream=busybox"
           },
           "InstalledVersion": "1.36.1-r15",
           "FixedVersion": "1.36.1-r19",
@@ -783,9 +783,9 @@
           "PkgID": "busybox-binsh@1.36.1-r15",
           "PkgName": "busybox-binsh",
           "PkgIdentifier": {
-            "PURL": "pkg:apk/alpine/busybox-binsh@1.36.1-r15?arch=aarch64\u0026distro=3.19.0",
+            "PURL": "pkg:apk/alpine/busybox-binsh@1.36.1-r15?arch=aarch64&distro=3.19.0",
             "UID": "34ec20a6126b1bba",
-            "BOMRef": "pkg:apk/alpine/busybox-binsh@1.36.1-r15?arch=aarch64\u0026distro=alpine-3.19.0\u0026package-id=c7043335a3b1bd75\u0026upstream=busybox"
+            "BOMRef": "pkg:apk/alpine/busybox-binsh@1.36.1-r15?arch=aarch64&distro=alpine-3.19.0&package-id=c7043335a3b1bd75&upstream=busybox"
           },
           "InstalledVersion": "1.36.1-r15",
           "FixedVersion": "1.36.1-r16",
@@ -836,9 +836,9 @@
           "PkgID": "busybox-binsh@1.36.1-r15",
           "PkgName": "busybox-binsh",
           "PkgIdentifier": {
-            "PURL": "pkg:apk/alpine/busybox-binsh@1.36.1-r15?arch=aarch64\u0026distro=3.19.0",
+            "PURL": "pkg:apk/alpine/busybox-binsh@1.36.1-r15?arch=aarch64&distro=3.19.0",
             "UID": "34ec20a6126b1bba",
-            "BOMRef": "pkg:apk/alpine/busybox-binsh@1.36.1-r15?arch=aarch64\u0026distro=alpine-3.19.0\u0026package-id=c7043335a3b1bd75\u0026upstream=busybox"
+            "BOMRef": "pkg:apk/alpine/busybox-binsh@1.36.1-r15?arch=aarch64&distro=alpine-3.19.0&package-id=c7043335a3b1bd75&upstream=busybox"
           },
           "InstalledVersion": "1.36.1-r15",
           "FixedVersion": "1.36.1-r21",
@@ -874,9 +874,9 @@
           "PkgID": "busybox-binsh@1.36.1-r15",
           "PkgName": "busybox-binsh",
           "PkgIdentifier": {
-            "PURL": "pkg:apk/alpine/busybox-binsh@1.36.1-r15?arch=aarch64\u0026distro=3.19.0",
+            "PURL": "pkg:apk/alpine/busybox-binsh@1.36.1-r15?arch=aarch64&distro=3.19.0",
             "UID": "34ec20a6126b1bba",
-            "BOMRef": "pkg:apk/alpine/busybox-binsh@1.36.1-r15?arch=aarch64\u0026distro=alpine-3.19.0\u0026package-id=c7043335a3b1bd75\u0026upstream=busybox"
+            "BOMRef": "pkg:apk/alpine/busybox-binsh@1.36.1-r15?arch=aarch64&distro=alpine-3.19.0&package-id=c7043335a3b1bd75&upstream=busybox"
           },
           "InstalledVersion": "1.36.1-r15",
           "FixedVersion": "1.36.1-r21",
@@ -925,9 +925,9 @@
           "PkgID": "libcrypto3@3.1.4-r2",
           "PkgName": "libcrypto3",
           "PkgIdentifier": {
-            "PURL": "pkg:apk/alpine/libcrypto3@3.1.4-r2?arch=aarch64\u0026distro=3.19.0",
+            "PURL": "pkg:apk/alpine/libcrypto3@3.1.4-r2?arch=aarch64&distro=3.19.0",
             "UID": "39fa19681491ffb0",
-            "BOMRef": "pkg:apk/alpine/libcrypto3@3.1.4-r2?arch=aarch64\u0026distro=alpine-3.19.0\u0026package-id=2078ce39f533c4c1\u0026upstream=openssl"
+            "BOMRef": "pkg:apk/alpine/libcrypto3@3.1.4-r2?arch=aarch64&distro=alpine-3.19.0&package-id=2078ce39f533c4c1&upstream=openssl"
           },
           "InstalledVersion": "3.1.4-r2",
           "FixedVersion": "3.1.7-r0",
@@ -1012,9 +1012,9 @@
           "PkgID": "libcrypto3@3.1.4-r2",
           "PkgName": "libcrypto3",
           "PkgIdentifier": {
-            "PURL": "pkg:apk/alpine/libcrypto3@3.1.4-r2?arch=aarch64\u0026distro=3.19.0",
+            "PURL": "pkg:apk/alpine/libcrypto3@3.1.4-r2?arch=aarch64&distro=3.19.0",
             "UID": "39fa19681491ffb0",
-            "BOMRef": "pkg:apk/alpine/libcrypto3@3.1.4-r2?arch=aarch64\u0026distro=alpine-3.19.0\u0026package-id=2078ce39f533c4c1\u0026upstream=openssl"
+            "BOMRef": "pkg:apk/alpine/libcrypto3@3.1.4-r2?arch=aarch64&distro=alpine-3.19.0&package-id=2078ce39f533c4c1&upstream=openssl"
           },
           "InstalledVersion": "3.1.4-r2",
           "FixedVersion": "3.1.4-r3",
@@ -1105,16 +1105,16 @@
             "https://www.openwall.com/lists/oss-security/2024/01/09/1"
           ],
           "PublishedDate": "2024-01-09T17:15:12.147Z",
-          "LastModifiedDate": "2026-06-17T06:50:05.273Z"
+          "LastModifiedDate": "2026-10-14T23:17:18.96Z"
         },
         {
           "VulnerabilityID": "CVE-2024-0727",
           "PkgID": "libcrypto3@3.1.4-r2",
           "PkgName": "libcrypto3",
           "PkgIdentifier": {
-            "PURL": "pkg:apk/alpine/libcrypto3@3.1.4-r2?arch=aarch64\u0026distro=3.19.0",
+            "PURL": "pkg:apk/alpine/libcrypto3@3.1.4-r2?arch=aarch64&distro=3.19.0",
             "UID": "39fa19681491ffb0",
-            "BOMRef": "pkg:apk/alpine/libcrypto3@3.1.4-r2?arch=aarch64\u0026distro=alpine-3.19.0\u0026package-id=2078ce39f533c4c1\u0026upstream=openssl"
+            "BOMRef": "pkg:apk/alpine/libcrypto3@3.1.4-r2?arch=aarch64&distro=alpine-3.19.0&package-id=2078ce39f533c4c1&upstream=openssl"
           },
           "InstalledVersion": "3.1.4-r2",
           "FixedVersion": "3.1.4-r5",
@@ -1135,7 +1135,7 @@
           ],
           "VendorSeverity": {
             "alma": 2,
-            "amazon": 2,
+            "amazon": 3,
             "azure": 2,
             "cbl-mariner": 2,
             "ghsa": 2,
@@ -1223,9 +1223,9 @@
           "PkgID": "libcrypto3@3.1.4-r2",
           "PkgName": "libcrypto3",
           "PkgIdentifier": {
-            "PURL": "pkg:apk/alpine/libcrypto3@3.1.4-r2?arch=aarch64\u0026distro=3.19.0",
+            "PURL": "pkg:apk/alpine/libcrypto3@3.1.4-r2?arch=aarch64&distro=3.19.0",
             "UID": "39fa19681491ffb0",
-            "BOMRef": "pkg:apk/alpine/libcrypto3@3.1.4-r2?arch=aarch64\u0026distro=alpine-3.19.0\u0026package-id=2078ce39f533c4c1\u0026upstream=openssl"
+            "BOMRef": "pkg:apk/alpine/libcrypto3@3.1.4-r2?arch=aarch64&distro=alpine-3.19.0&package-id=2078ce39f533c4c1&upstream=openssl"
           },
           "InstalledVersion": "3.1.4-r2",
           "FixedVersion": "3.1.8-r1",
@@ -1237,7 +1237,7 @@
             "URL": "https://secdb.alpinelinux.org/"
           },
           "Fingerprint": "sha256:c0e56c10c01d92d05afb7e2c0b0d1eeb519504cabbfc92564e4b029701ba48cb",
-          "Title": "openssl: Out-of-bounds read \u0026 write in RFC 3211 KEK Unwrap",
+          "Title": "openssl: Out-of-bounds read & write in RFC 3211 KEK Unwrap",
           "Description": "Issue summary: An application trying to decrypt CMS messages encrypted using\npassword based encryption can trigger an out-of-bounds read and write.\n\nImpact summary: This out-of-bounds read may trigger a crash which leads to\nDenial of Service for an application. The out-of-bounds write can cause\na memory corruption which can have various consequences including\na Denial of Service or Execution of attacker-supplied code.\n\nAlthough the consequences of a successful exploit of this vulnerability\ncould be severe, the probability that the attacker would be able to\nperform it is low. Besides, password based (PWRI) encryption support in CMS\nmessages is very rarely used. For that reason the issue was assessed as\nModerate severity according to our Security Policy.\n\nThe FIPS modules in 3.5, 3.4, 3.3, 3.2, 3.1 and 3.0 are not affected by this\nissue, as the CMS implementation is outside the OpenSSL FIPS module\nboundary.",
           "Severity": "MEDIUM",
           "CweIDs": [
@@ -1307,9 +1307,9 @@
           "PkgID": "libcrypto3@3.1.4-r2",
           "PkgName": "libcrypto3",
           "PkgIdentifier": {
-            "PURL": "pkg:apk/alpine/libcrypto3@3.1.4-r2?arch=aarch64\u0026distro=3.19.0",
+            "PURL": "pkg:apk/alpine/libcrypto3@3.1.4-r2?arch=aarch64&distro=3.19.0",
             "UID": "39fa19681491ffb0",
-            "BOMRef": "pkg:apk/alpine/libcrypto3@3.1.4-r2?arch=aarch64\u0026distro=alpine-3.19.0\u0026package-id=2078ce39f533c4c1\u0026upstream=openssl"
+            "BOMRef": "pkg:apk/alpine/libcrypto3@3.1.4-r2?arch=aarch64&distro=alpine-3.19.0&package-id=2078ce39f533c4c1&upstream=openssl"
           },
           "InstalledVersion": "3.1.4-r2",
           "FixedVersion": "3.1.4-r4",
@@ -1388,16 +1388,16 @@
             "https://www.openwall.com/lists/oss-security/2024/01/15/2"
           ],
           "PublishedDate": "2024-04-25T07:15:45.27Z",
-          "LastModifiedDate": "2026-06-17T06:50:21.877Z"
+          "LastModifiedDate": "2026-10-14T23:17:19.22Z"
         },
         {
           "VulnerabilityID": "CVE-2024-13176",
           "PkgID": "libcrypto3@3.1.4-r2",
           "PkgName": "libcrypto3",
           "PkgIdentifier": {
-            "PURL": "pkg:apk/alpine/libcrypto3@3.1.4-r2?arch=aarch64\u0026distro=3.19.0",
+            "PURL": "pkg:apk/alpine/libcrypto3@3.1.4-r2?arch=aarch64&distro=3.19.0",
             "UID": "39fa19681491ffb0",
-            "BOMRef": "pkg:apk/alpine/libcrypto3@3.1.4-r2?arch=aarch64\u0026distro=alpine-3.19.0\u0026package-id=2078ce39f533c4c1\u0026upstream=openssl"
+            "BOMRef": "pkg:apk/alpine/libcrypto3@3.1.4-r2?arch=aarch64&distro=alpine-3.19.0&package-id=2078ce39f533c4c1&upstream=openssl"
           },
           "InstalledVersion": "3.1.4-r2",
           "FixedVersion": "3.1.8-r0",
@@ -1636,9 +1636,9 @@
           "PkgID": "libcrypto3@3.1.4-r2",
           "PkgName": "libcrypto3",
           "PkgIdentifier": {
-            "PURL": "pkg:apk/alpine/libcrypto3@3.1.4-r2?arch=aarch64\u0026distro=3.19.0",
+            "PURL": "pkg:apk/alpine/libcrypto3@3.1.4-r2?arch=aarch64&distro=3.19.0",
             "UID": "39fa19681491ffb0",
-            "BOMRef": "pkg:apk/alpine/libcrypto3@3.1.4-r2?arch=aarch64\u0026distro=alpine-3.19.0\u0026package-id=2078ce39f533c4c1\u0026upstream=openssl"
+            "BOMRef": "pkg:apk/alpine/libcrypto3@3.1.4-r2?arch=aarch64&distro=alpine-3.19.0&package-id=2078ce39f533c4c1&upstream=openssl"
           },
           "InstalledVersion": "3.1.4-r2",
           "FixedVersion": "3.1.4-r6",
@@ -1730,9 +1730,9 @@
           "PkgID": "libcrypto3@3.1.4-r2",
           "PkgName": "libcrypto3",
           "PkgIdentifier": {
-            "PURL": "pkg:apk/alpine/libcrypto3@3.1.4-r2?arch=aarch64\u0026distro=3.19.0",
+            "PURL": "pkg:apk/alpine/libcrypto3@3.1.4-r2?arch=aarch64&distro=3.19.0",
             "UID": "39fa19681491ffb0",
-            "BOMRef": "pkg:apk/alpine/libcrypto3@3.1.4-r2?arch=aarch64\u0026distro=alpine-3.19.0\u0026package-id=2078ce39f533c4c1\u0026upstream=openssl"
+            "BOMRef": "pkg:apk/alpine/libcrypto3@3.1.4-r2?arch=aarch64&distro=alpine-3.19.0&package-id=2078ce39f533c4c1&upstream=openssl"
           },
           "InstalledVersion": "3.1.4-r2",
           "FixedVersion": "3.1.5-r0",
@@ -1813,9 +1813,9 @@
           "PkgID": "libcrypto3@3.1.4-r2",
           "PkgName": "libcrypto3",
           "PkgIdentifier": {
-            "PURL": "pkg:apk/alpine/libcrypto3@3.1.4-r2?arch=aarch64\u0026distro=3.19.0",
+            "PURL": "pkg:apk/alpine/libcrypto3@3.1.4-r2?arch=aarch64&distro=3.19.0",
             "UID": "39fa19681491ffb0",
-            "BOMRef": "pkg:apk/alpine/libcrypto3@3.1.4-r2?arch=aarch64\u0026distro=alpine-3.19.0\u0026package-id=2078ce39f533c4c1\u0026upstream=openssl"
+            "BOMRef": "pkg:apk/alpine/libcrypto3@3.1.4-r2?arch=aarch64&distro=alpine-3.19.0&package-id=2078ce39f533c4c1&upstream=openssl"
           },
           "InstalledVersion": "3.1.4-r2",
           "FixedVersion": "3.1.6-r0",
@@ -1899,9 +1899,9 @@
           "PkgID": "libcrypto3@3.1.4-r2",
           "PkgName": "libcrypto3",
           "PkgIdentifier": {
-            "PURL": "pkg:apk/alpine/libcrypto3@3.1.4-r2?arch=aarch64\u0026distro=3.19.0",
+            "PURL": "pkg:apk/alpine/libcrypto3@3.1.4-r2?arch=aarch64&distro=3.19.0",
             "UID": "39fa19681491ffb0",
-            "BOMRef": "pkg:apk/alpine/libcrypto3@3.1.4-r2?arch=aarch64\u0026distro=alpine-3.19.0\u0026package-id=2078ce39f533c4c1\u0026upstream=openssl"
+            "BOMRef": "pkg:apk/alpine/libcrypto3@3.1.4-r2?arch=aarch64&distro=alpine-3.19.0&package-id=2078ce39f533c4c1&upstream=openssl"
           },
           "InstalledVersion": "3.1.4-r2",
           "FixedVersion": "3.1.6-r0",
@@ -2048,9 +2048,9 @@
           "PkgID": "libcrypto3@3.1.4-r2",
           "PkgName": "libcrypto3",
           "PkgIdentifier": {
-            "PURL": "pkg:apk/alpine/libcrypto3@3.1.4-r2?arch=aarch64\u0026distro=3.19.0",
+            "PURL": "pkg:apk/alpine/libcrypto3@3.1.4-r2?arch=aarch64&distro=3.19.0",
             "UID": "39fa19681491ffb0",
-            "BOMRef": "pkg:apk/alpine/libcrypto3@3.1.4-r2?arch=aarch64\u0026distro=alpine-3.19.0\u0026package-id=2078ce39f533c4c1\u0026upstream=openssl"
+            "BOMRef": "pkg:apk/alpine/libcrypto3@3.1.4-r2?arch=aarch64&distro=alpine-3.19.0&package-id=2078ce39f533c4c1&upstream=openssl"
           },
           "InstalledVersion": "3.1.4-r2",
           "FixedVersion": "3.1.7-r1",
@@ -2121,9 +2121,9 @@
           "PkgID": "libcrypto3@3.1.4-r2",
           "PkgName": "libcrypto3",
           "PkgIdentifier": {
-            "PURL": "pkg:apk/alpine/libcrypto3@3.1.4-r2?arch=aarch64\u0026distro=3.19.0",
+            "PURL": "pkg:apk/alpine/libcrypto3@3.1.4-r2?arch=aarch64&distro=3.19.0",
             "UID": "39fa19681491ffb0",
-            "BOMRef": "pkg:apk/alpine/libcrypto3@3.1.4-r2?arch=aarch64\u0026distro=alpine-3.19.0\u0026package-id=2078ce39f533c4c1\u0026upstream=openssl"
+            "BOMRef": "pkg:apk/alpine/libcrypto3@3.1.4-r2?arch=aarch64&distro=alpine-3.19.0&package-id=2078ce39f533c4c1&upstream=openssl"
           },
           "InstalledVersion": "3.1.4-r2",
           "FixedVersion": "3.1.8-r1",
@@ -2187,9 +2187,9 @@
           "PkgID": "libssl3@3.1.4-r2",
           "PkgName": "libssl3",
           "PkgIdentifier": {
-            "PURL": "pkg:apk/alpine/libssl3@3.1.4-r2?arch=aarch64\u0026distro=3.19.0",
+            "PURL": "pkg:apk/alpine/libssl3@3.1.4-r2?arch=aarch64&distro=3.19.0",
             "UID": "c725c79c9f55ad8b",
-            "BOMRef": "pkg:apk/alpine/libssl3@3.1.4-r2?arch=aarch64\u0026distro=alpine-3.19.0\u0026package-id=498f2ffa92de1315\u0026upstream=openssl"
+            "BOMRef": "pkg:apk/alpine/libssl3@3.1.4-r2?arch=aarch64&distro=alpine-3.19.0&package-id=498f2ffa92de1315&upstream=openssl"
           },
           "InstalledVersion": "3.1.4-r2",
           "FixedVersion": "3.1.7-r0",
@@ -2274,9 +2274,9 @@
           "PkgID": "libssl3@3.1.4-r2",
           "PkgName": "libssl3",
           "PkgIdentifier": {
-            "PURL": "pkg:apk/alpine/libssl3@3.1.4-r2?arch=aarch64\u0026distro=3.19.0",
+            "PURL": "pkg:apk/alpine/libssl3@3.1.4-r2?arch=aarch64&distro=3.19.0",
             "UID": "c725c79c9f55ad8b",
-            "BOMRef": "pkg:apk/alpine/libssl3@3.1.4-r2?arch=aarch64\u0026distro=alpine-3.19.0\u0026package-id=498f2ffa92de1315\u0026upstream=openssl"
+            "BOMRef": "pkg:apk/alpine/libssl3@3.1.4-r2?arch=aarch64&distro=alpine-3.19.0&package-id=498f2ffa92de1315&upstream=openssl"
           },
           "InstalledVersion": "3.1.4-r2",
           "FixedVersion": "3.1.4-r3",
@@ -2367,16 +2367,16 @@
             "https://www.openwall.com/lists/oss-security/2024/01/09/1"
           ],
           "PublishedDate": "2024-01-09T17:15:12.147Z",
-          "LastModifiedDate": "2026-06-17T06:50:05.273Z"
+          "LastModifiedDate": "2026-10-14T23:17:18.96Z"
         },
         {
           "VulnerabilityID": "CVE-2024-0727",
           "PkgID": "libssl3@3.1.4-r2",
           "PkgName": "libssl3",
           "PkgIdentifier": {
-            "PURL": "pkg:apk/alpine/libssl3@3.1.4-r2?arch=aarch64\u0026distro=3.19.0",
+            "PURL": "pkg:apk/alpine/libssl3@3.1.4-r2?arch=aarch64&distro=3.19.0",
             "UID": "c725c79c9f55ad8b",
-            "BOMRef": "pkg:apk/alpine/libssl3@3.1.4-r2?arch=aarch64\u0026distro=alpine-3.19.0\u0026package-id=498f2ffa92de1315\u0026upstream=openssl"
+            "BOMRef": "pkg:apk/alpine/libssl3@3.1.4-r2?arch=aarch64&distro=alpine-3.19.0&package-id=498f2ffa92de1315&upstream=openssl"
           },
           "InstalledVersion": "3.1.4-r2",
           "FixedVersion": "3.1.4-r5",
@@ -2397,7 +2397,7 @@
           ],
           "VendorSeverity": {
             "alma": 2,
-            "amazon": 2,
+            "amazon": 3,
             "azure": 2,
             "cbl-mariner": 2,
             "ghsa": 2,
@@ -2485,9 +2485,9 @@
           "PkgID": "libssl3@3.1.4-r2",
           "PkgName": "libssl3",
           "PkgIdentifier": {
-            "PURL": "pkg:apk/alpine/libssl3@3.1.4-r2?arch=aarch64\u0026distro=3.19.0",
+            "PURL": "pkg:apk/alpine/libssl3@3.1.4-r2?arch=aarch64&distro=3.19.0",
             "UID": "c725c79c9f55ad8b",
-            "BOMRef": "pkg:apk/alpine/libssl3@3.1.4-r2?arch=aarch64\u0026distro=alpine-3.19.0\u0026package-id=498f2ffa92de1315\u0026upstream=openssl"
+            "BOMRef": "pkg:apk/alpine/libssl3@3.1.4-r2?arch=aarch64&distro=alpine-3.19.0&package-id=498f2ffa92de1315&upstream=openssl"
           },
           "InstalledVersion": "3.1.4-r2",
           "FixedVersion": "3.1.8-r1",
@@ -2499,7 +2499,7 @@
             "URL": "https://secdb.alpinelinux.org/"
           },
           "Fingerprint": "sha256:43be4c6088c615fd34dc62c2344303a3ad9f469f4b7118b2fb5a931476d99e85",
-          "Title": "openssl: Out-of-bounds read \u0026 write in RFC 3211 KEK Unwrap",
+          "Title": "openssl: Out-of-bounds read & write in RFC 3211 KEK Unwrap",
           "Description": "Issue summary: An application trying to decrypt CMS messages encrypted using\npassword based encryption can trigger an out-of-bounds read and write.\n\nImpact summary: This out-of-bounds read may trigger a crash which leads to\nDenial of Service for an application. The out-of-bounds write can cause\na memory corruption which can have various consequences including\na Denial of Service or Execution of attacker-supplied code.\n\nAlthough the consequences of a successful exploit of this vulnerability\ncould be severe, the probability that the attacker would be able to\nperform it is low. Besides, password based (PWRI) encryption support in CMS\nmessages is very rarely used. For that reason the issue was assessed as\nModerate severity according to our Security Policy.\n\nThe FIPS modules in 3.5, 3.4, 3.3, 3.2, 3.1 and 3.0 are not affected by this\nissue, as the CMS implementation is outside the OpenSSL FIPS module\nboundary.",
           "Severity": "MEDIUM",
           "CweIDs": [
@@ -2569,9 +2569,9 @@
           "PkgID": "libssl3@3.1.4-r2",
           "PkgName": "libssl3",
           "PkgIdentifier": {
-            "PURL": "pkg:apk/alpine/libssl3@3.1.4-r2?arch=aarch64\u0026distro=3.19.0",
+            "PURL": "pkg:apk/alpine/libssl3@3.1.4-r2?arch=aarch64&distro=3.19.0",
             "UID": "c725c79c9f55ad8b",
-            "BOMRef": "pkg:apk/alpine/libssl3@3.1.4-r2?arch=aarch64\u0026distro=alpine-3.19.0\u0026package-id=498f2ffa92de1315\u0026upstream=openssl"
+            "BOMRef": "pkg:apk/alpine/libssl3@3.1.4-r2?arch=aarch64&distro=alpine-3.19.0&package-id=498f2ffa92de1315&upstream=openssl"
           },
           "InstalledVersion": "3.1.4-r2",
           "FixedVersion": "3.1.4-r4",
@@ -2650,16 +2650,16 @@
             "https://www.openwall.com/lists/oss-security/2024/01/15/2"
           ],
           "PublishedDate": "2024-04-25T07:15:45.27Z",
-          "LastModifiedDate": "2026-06-17T06:50:21.877Z"
+          "LastModifiedDate": "2026-10-14T23:17:19.22Z"
         },
         {
           "VulnerabilityID": "CVE-2024-13176",
           "PkgID": "libssl3@3.1.4-r2",
           "PkgName": "libssl3",
           "PkgIdentifier": {
-            "PURL": "pkg:apk/alpine/libssl3@3.1.4-r2?arch=aarch64\u0026distro=3.19.0",
+            "PURL": "pkg:apk/alpine/libssl3@3.1.4-r2?arch=aarch64&distro=3.19.0",
             "UID": "c725c79c9f55ad8b",
-            "BOMRef": "pkg:apk/alpine/libssl3@3.1.4-r2?arch=aarch64\u0026distro=alpine-3.19.0\u0026package-id=498f2ffa92de1315\u0026upstream=openssl"
+            "BOMRef": "pkg:apk/alpine/libssl3@3.1.4-r2?arch=aarch64&distro=alpine-3.19.0&package-id=498f2ffa92de1315&upstream=openssl"
           },
           "InstalledVersion": "3.1.4-r2",
           "FixedVersion": "3.1.8-r0",
@@ -2898,9 +2898,9 @@
           "PkgID": "libssl3@3.1.4-r2",
           "PkgName": "libssl3",
           "PkgIdentifier": {
-            "PURL": "pkg:apk/alpine/libssl3@3.1.4-r2?arch=aarch64\u0026distro=3.19.0",
+            "PURL": "pkg:apk/alpine/libssl3@3.1.4-r2?arch=aarch64&distro=3.19.0",
             "UID": "c725c79c9f55ad8b",
-            "BOMRef": "pkg:apk/alpine/libssl3@3.1.4-r2?arch=aarch64\u0026distro=alpine-3.19.0\u0026package-id=498f2ffa92de1315\u0026upstream=openssl"
+            "BOMRef": "pkg:apk/alpine/libssl3@3.1.4-r2?arch=aarch64&distro=alpine-3.19.0&package-id=498f2ffa92de1315&upstream=openssl"
           },
           "InstalledVersion": "3.1.4-r2",
           "FixedVersion": "3.1.4-r6",
@@ -2992,9 +2992,9 @@
           "PkgID": "libssl3@3.1.4-r2",
           "PkgName": "libssl3",
           "PkgIdentifier": {
-            "PURL": "pkg:apk/alpine/libssl3@3.1.4-r2?arch=aarch64\u0026distro=3.19.0",
+            "PURL": "pkg:apk/alpine/libssl3@3.1.4-r2?arch=aarch64&distro=3.19.0",
             "UID": "c725c79c9f55ad8b",
-            "BOMRef": "pkg:apk/alpine/libssl3@3.1.4-r2?arch=aarch64\u0026distro=alpine-3.19.0\u0026package-id=498f2ffa92de1315\u0026upstream=openssl"
+            "BOMRef": "pkg:apk/alpine/libssl3@3.1.4-r2?arch=aarch64&distro=alpine-3.19.0&package-id=498f2ffa92de1315&upstream=openssl"
           },
           "InstalledVersion": "3.1.4-r2",
           "FixedVersion": "3.1.5-r0",
@@ -3075,9 +3075,9 @@
           "PkgID": "libssl3@3.1.4-r2",
           "PkgName": "libssl3",
           "PkgIdentifier": {
-            "PURL": "pkg:apk/alpine/libssl3@3.1.4-r2?arch=aarch64\u0026distro=3.19.0",
+            "PURL": "pkg:apk/alpine/libssl3@3.1.4-r2?arch=aarch64&distro=3.19.0",
             "UID": "c725c79c9f55ad8b",
-            "BOMRef": "pkg:apk/alpine/libssl3@3.1.4-r2?arch=aarch64\u0026distro=alpine-3.19.0\u0026package-id=498f2ffa92de1315\u0026upstream=openssl"
+            "BOMRef": "pkg:apk/alpine/libssl3@3.1.4-r2?arch=aarch64&distro=alpine-3.19.0&package-id=498f2ffa92de1315&upstream=openssl"
           },
           "InstalledVersion": "3.1.4-r2",
           "FixedVersion": "3.1.6-r0",
@@ -3161,9 +3161,9 @@
           "PkgID": "libssl3@3.1.4-r2",
           "PkgName": "libssl3",
           "PkgIdentifier": {
-            "PURL": "pkg:apk/alpine/libssl3@3.1.4-r2?arch=aarch64\u0026distro=3.19.0",
+            "PURL": "pkg:apk/alpine/libssl3@3.1.4-r2?arch=aarch64&distro=3.19.0",
             "UID": "c725c79c9f55ad8b",
-            "BOMRef": "pkg:apk/alpine/libssl3@3.1.4-r2?arch=aarch64\u0026distro=alpine-3.19.0\u0026package-id=498f2ffa92de1315\u0026upstream=openssl"
+            "BOMRef": "pkg:apk/alpine/libssl3@3.1.4-r2?arch=aarch64&distro=alpine-3.19.0&package-id=498f2ffa92de1315&upstream=openssl"
           },
           "InstalledVersion": "3.1.4-r2",
           "FixedVersion": "3.1.6-r0",
@@ -3310,9 +3310,9 @@
           "PkgID": "libssl3@3.1.4-r2",
           "PkgName": "libssl3",
           "PkgIdentifier": {
-            "PURL": "pkg:apk/alpine/libssl3@3.1.4-r2?arch=aarch64\u0026distro=3.19.0",
+            "PURL": "pkg:apk/alpine/libssl3@3.1.4-r2?arch=aarch64&distro=3.19.0",
             "UID": "c725c79c9f55ad8b",
-            "BOMRef": "pkg:apk/alpine/libssl3@3.1.4-r2?arch=aarch64\u0026distro=alpine-3.19.0\u0026package-id=498f2ffa92de1315\u0026upstream=openssl"
+            "BOMRef": "pkg:apk/alpine/libssl3@3.1.4-r2?arch=aarch64&distro=alpine-3.19.0&package-id=498f2ffa92de1315&upstream=openssl"
           },
           "InstalledVersion": "3.1.4-r2",
           "FixedVersion": "3.1.7-r1",
@@ -3383,9 +3383,9 @@
           "PkgID": "libssl3@3.1.4-r2",
           "PkgName": "libssl3",
           "PkgIdentifier": {
-            "PURL": "pkg:apk/alpine/libssl3@3.1.4-r2?arch=aarch64\u0026distro=3.19.0",
+            "PURL": "pkg:apk/alpine/libssl3@3.1.4-r2?arch=aarch64&distro=3.19.0",
             "UID": "c725c79c9f55ad8b",
-            "BOMRef": "pkg:apk/alpine/libssl3@3.1.4-r2?arch=aarch64\u0026distro=alpine-3.19.0\u0026package-id=498f2ffa92de1315\u0026upstream=openssl"
+            "BOMRef": "pkg:apk/alpine/libssl3@3.1.4-r2?arch=aarch64&distro=alpine-3.19.0&package-id=498f2ffa92de1315&upstream=openssl"
           },
           "InstalledVersion": "3.1.4-r2",
           "FixedVersion": "3.1.8-r1",
@@ -3449,9 +3449,9 @@
           "PkgID": "musl@1.2.4_git20230717-r4",
           "PkgName": "musl",
           "PkgIdentifier": {
-            "PURL": "pkg:apk/alpine/musl@1.2.4_git20230717-r4?arch=aarch64\u0026distro=3.19.0",
+            "PURL": "pkg:apk/alpine/musl@1.2.4_git20230717-r4?arch=aarch64&distro=3.19.0",
             "UID": "e17b278bbc0607f8",
-            "BOMRef": "pkg:apk/alpine/musl@1.2.4_git20230717-r4?arch=aarch64\u0026distro=alpine-3.19.0\u0026package-id=26b0f2d72fde7ae8"
+            "BOMRef": "pkg:apk/alpine/musl@1.2.4_git20230717-r4?arch=aarch64&distro=alpine-3.19.0&package-id=26b0f2d72fde7ae8"
           },
           "InstalledVersion": "1.2.4_git20230717-r4",
           "FixedVersion": "1.2.4_git20230717-r5",
@@ -3498,9 +3498,9 @@
           "PkgID": "musl@1.2.4_git20230717-r4",
           "PkgName": "musl",
           "PkgIdentifier": {
-            "PURL": "pkg:apk/alpine/musl@1.2.4_git20230717-r4?arch=aarch64\u0026distro=3.19.0",
+            "PURL": "pkg:apk/alpine/musl@1.2.4_git20230717-r4?arch=aarch64&distro=3.19.0",
             "UID": "e17b278bbc0607f8",
-            "BOMRef": "pkg:apk/alpine/musl@1.2.4_git20230717-r4?arch=aarch64\u0026distro=alpine-3.19.0\u0026package-id=26b0f2d72fde7ae8"
+            "BOMRef": "pkg:apk/alpine/musl@1.2.4_git20230717-r4?arch=aarch64&distro=alpine-3.19.0&package-id=26b0f2d72fde7ae8"
           },
           "InstalledVersion": "1.2.4_git20230717-r4",
           "FixedVersion": "1.2.4_git20230717-r6",
@@ -3543,9 +3543,9 @@
           "PkgID": "musl@1.2.4_git20230717-r4",
           "PkgName": "musl",
           "PkgIdentifier": {
-            "PURL": "pkg:apk/alpine/musl@1.2.4_git20230717-r4?arch=aarch64\u0026distro=3.19.0",
+            "PURL": "pkg:apk/alpine/musl@1.2.4_git20230717-r4?arch=aarch64&distro=3.19.0",
             "UID": "e17b278bbc0607f8",
-            "BOMRef": "pkg:apk/alpine/musl@1.2.4_git20230717-r4?arch=aarch64\u0026distro=alpine-3.19.0\u0026package-id=26b0f2d72fde7ae8"
+            "BOMRef": "pkg:apk/alpine/musl@1.2.4_git20230717-r4?arch=aarch64&distro=alpine-3.19.0&package-id=26b0f2d72fde7ae8"
           },
           "InstalledVersion": "1.2.4_git20230717-r4",
           "FixedVersion": "1.2.4_git20230717-r6",
@@ -3592,9 +3592,9 @@
           "PkgID": "musl-utils@1.2.4_git20230717-r4",
           "PkgName": "musl-utils",
           "PkgIdentifier": {
-            "PURL": "pkg:apk/alpine/musl-utils@1.2.4_git20230717-r4?arch=aarch64\u0026distro=3.19.0",
+            "PURL": "pkg:apk/alpine/musl-utils@1.2.4_git20230717-r4?arch=aarch64&distro=3.19.0",
             "UID": "4e90bb0fe08c0484",
-            "BOMRef": "pkg:apk/alpine/musl-utils@1.2.4_git20230717-r4?arch=aarch64\u0026distro=alpine-3.19.0\u0026package-id=f9214553d55f4e25\u0026upstream=musl"
+            "BOMRef": "pkg:apk/alpine/musl-utils@1.2.4_git20230717-r4?arch=aarch64&distro=alpine-3.19.0&package-id=f9214553d55f4e25&upstream=musl"
           },
           "InstalledVersion": "1.2.4_git20230717-r4",
           "FixedVersion": "1.2.4_git20230717-r5",
@@ -3641,9 +3641,9 @@
           "PkgID": "musl-utils@1.2.4_git20230717-r4",
           "PkgName": "musl-utils",
           "PkgIdentifier": {
-            "PURL": "pkg:apk/alpine/musl-utils@1.2.4_git20230717-r4?arch=aarch64\u0026distro=3.19.0",
+            "PURL": "pkg:apk/alpine/musl-utils@1.2.4_git20230717-r4?arch=aarch64&distro=3.19.0",
             "UID": "4e90bb0fe08c0484",
-            "BOMRef": "pkg:apk/alpine/musl-utils@1.2.4_git20230717-r4?arch=aarch64\u0026distro=alpine-3.19.0\u0026package-id=f9214553d55f4e25\u0026upstream=musl"
+            "BOMRef": "pkg:apk/alpine/musl-utils@1.2.4_git20230717-r4?arch=aarch64&distro=alpine-3.19.0&package-id=f9214553d55f4e25&upstream=musl"
           },
           "InstalledVersion": "1.2.4_git20230717-r4",
           "FixedVersion": "1.2.4_git20230717-r6",
@@ -3686,9 +3686,9 @@
           "PkgID": "musl-utils@1.2.4_git20230717-r4",
           "PkgName": "musl-utils",
           "PkgIdentifier": {
-            "PURL": "pkg:apk/alpine/musl-utils@1.2.4_git20230717-r4?arch=aarch64\u0026distro=3.19.0",
+            "PURL": "pkg:apk/alpine/musl-utils@1.2.4_git20230717-r4?arch=aarch64&distro=3.19.0",
             "UID": "4e90bb0fe08c0484",
-            "BOMRef": "pkg:apk/alpine/musl-utils@1.2.4_git20230717-r4?arch=aarch64\u0026distro=alpine-3.19.0\u0026package-id=f9214553d55f4e25\u0026upstream=musl"
+            "BOMRef": "pkg:apk/alpine/musl-utils@1.2.4_git20230717-r4?arch=aarch64&distro=alpine-3.19.0&package-id=f9214553d55f4e25&upstream=musl"
           },
           "InstalledVersion": "1.2.4_git20230717-r4",
           "FixedVersion": "1.2.4_git20230717-r6",
@@ -3735,9 +3735,9 @@
           "PkgID": "ssl_client@1.36.1-r15",
           "PkgName": "ssl_client",
           "PkgIdentifier": {
-            "PURL": "pkg:apk/alpine/ssl_client@1.36.1-r15?arch=aarch64\u0026distro=3.19.0",
+            "PURL": "pkg:apk/alpine/ssl_client@1.36.1-r15?arch=aarch64&distro=3.19.0",
             "UID": "c1070d34b552e88",
-            "BOMRef": "pkg:apk/alpine/ssl_client@1.36.1-r15?arch=aarch64\u0026distro=alpine-3.19.0\u0026package-id=4014a2f177b200c4\u0026upstream=busybox"
+            "BOMRef": "pkg:apk/alpine/ssl_client@1.36.1-r15?arch=aarch64&distro=alpine-3.19.0&package-id=4014a2f177b200c4&upstream=busybox"
           },
           "InstalledVersion": "1.36.1-r15",
           "FixedVersion": "1.36.1-r17",
@@ -3789,9 +3789,9 @@
           "PkgID": "ssl_client@1.36.1-r15",
           "PkgName": "ssl_client",
           "PkgIdentifier": {
-            "PURL": "pkg:apk/alpine/ssl_client@1.36.1-r15?arch=aarch64\u0026distro=3.19.0",
+            "PURL": "pkg:apk/alpine/ssl_client@1.36.1-r15?arch=aarch64&distro=3.19.0",
             "UID": "c1070d34b552e88",
-            "BOMRef": "pkg:apk/alpine/ssl_client@1.36.1-r15?arch=aarch64\u0026distro=alpine-3.19.0\u0026package-id=4014a2f177b200c4\u0026upstream=busybox"
+            "BOMRef": "pkg:apk/alpine/ssl_client@1.36.1-r15?arch=aarch64&distro=alpine-3.19.0&package-id=4014a2f177b200c4&upstream=busybox"
           },
           "InstalledVersion": "1.36.1-r15",
           "FixedVersion": "1.36.1-r19",
@@ -3845,9 +3845,9 @@
           "PkgID": "ssl_client@1.36.1-r15",
           "PkgName": "ssl_client",
           "PkgIdentifier": {
-            "PURL": "pkg:apk/alpine/ssl_client@1.36.1-r15?arch=aarch64\u0026distro=3.19.0",
+            "PURL": "pkg:apk/alpine/ssl_client@1.36.1-r15?arch=aarch64&distro=3.19.0",
             "UID": "c1070d34b552e88",
-            "BOMRef": "pkg:apk/alpine/ssl_client@1.36.1-r15?arch=aarch64\u0026distro=alpine-3.19.0\u0026package-id=4014a2f177b200c4\u0026upstream=busybox"
+            "BOMRef": "pkg:apk/alpine/ssl_client@1.36.1-r15?arch=aarch64&distro=alpine-3.19.0&package-id=4014a2f177b200c4&upstream=busybox"
           },
           "InstalledVersion": "1.36.1-r15",
           "FixedVersion": "1.36.1-r19",
@@ -3901,9 +3901,9 @@
           "PkgID": "ssl_client@1.36.1-r15",
           "PkgName": "ssl_client",
           "PkgIdentifier": {
-            "PURL": "pkg:apk/alpine/ssl_client@1.36.1-r15?arch=aarch64\u0026distro=3.19.0",
+            "PURL": "pkg:apk/alpine/ssl_client@1.36.1-r15?arch=aarch64&distro=3.19.0",
             "UID": "c1070d34b552e88",
-            "BOMRef": "pkg:apk/alpine/ssl_client@1.36.1-r15?arch=aarch64\u0026distro=alpine-3.19.0\u0026package-id=4014a2f177b200c4\u0026upstream=busybox"
+            "BOMRef": "pkg:apk/alpine/ssl_client@1.36.1-r15?arch=aarch64&distro=alpine-3.19.0&package-id=4014a2f177b200c4&upstream=busybox"
           },
           "InstalledVersion": "1.36.1-r15",
           "FixedVersion": "1.36.1-r16",
@@ -3954,9 +3954,9 @@
           "PkgID": "ssl_client@1.36.1-r15",
           "PkgName": "ssl_client",
           "PkgIdentifier": {
-            "PURL": "pkg:apk/alpine/ssl_client@1.36.1-r15?arch=aarch64\u0026distro=3.19.0",
+            "PURL": "pkg:apk/alpine/ssl_client@1.36.1-r15?arch=aarch64&distro=3.19.0",
             "UID": "c1070d34b552e88",
-            "BOMRef": "pkg:apk/alpine/ssl_client@1.36.1-r15?arch=aarch64\u0026distro=alpine-3.19.0\u0026package-id=4014a2f177b200c4\u0026upstream=busybox"
+            "BOMRef": "pkg:apk/alpine/ssl_client@1.36.1-r15?arch=aarch64&distro=alpine-3.19.0&package-id=4014a2f177b200c4&upstream=busybox"
           },
           "InstalledVersion": "1.36.1-r15",
           "FixedVersion": "1.36.1-r21",
@@ -3992,9 +3992,9 @@
           "PkgID": "ssl_client@1.36.1-r15",
           "PkgName": "ssl_client",
           "PkgIdentifier": {
-            "PURL": "pkg:apk/alpine/ssl_client@1.36.1-r15?arch=aarch64\u0026distro=3.19.0",
+            "PURL": "pkg:apk/alpine/ssl_client@1.36.1-r15?arch=aarch64&distro=3.19.0",
             "UID": "c1070d34b552e88",
-            "BOMRef": "pkg:apk/alpine/ssl_client@1.36.1-r15?arch=aarch64\u0026distro=alpine-3.19.0\u0026package-id=4014a2f177b200c4\u0026upstream=busybox"
+            "BOMRef": "pkg:apk/alpine/ssl_client@1.36.1-r15?arch=aarch64&distro=alpine-3.19.0&package-id=4014a2f177b200c4&upstream=busybox"
           },
           "InstalledVersion": "1.36.1-r15",
           "FixedVersion": "1.36.1-r21",
@@ -4040,5 +4040,9 @@
         }
       ]
     }
-  ]
+  ],
+  "UncheckedComponents": {
+    "Count": 0,
+    "Components": []
+  }
 }

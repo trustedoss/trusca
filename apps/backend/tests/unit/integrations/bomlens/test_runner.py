@@ -214,6 +214,24 @@ def test_plan_files_are_mounted_from_a_copy_no_container_writes(workspace: Path)
     assert not any(src.startswith(str(Path(prep["src"]).parent)) for src in writable)
 
 
+def test_stage_1_mounts_only_the_roles_trusca_provides(workspace: Path) -> None:
+    """The captured plan lists two caches and six settings files (contract
+    1.3.0), all optional. TRUSCA provides none of them, so stage 1 gets the
+    source, output, plan files, guard state and its own scratch, and nothing at
+    ``/tmp/sbomhome/.m2`` or under ``/bomlens-settings``."""
+    docker = _happy_docker()
+    _runner(workspace, docker).run()
+    (stage1,) = docker.runs_of("stage1")
+    assert set(stage1.mounts) == {
+        "/app",
+        "/out",
+        "/tmp/build-prep.sh",
+        "/tmp/identify-conda.py",
+        "/bomlens-state",
+        runner_mod.SCRATCH_TARGET,
+    }
+
+
 def test_the_worker_environment_never_reaches_a_container(workspace: Path) -> None:
     docker = _happy_docker()
     _runner(workspace, docker).run()
@@ -1057,3 +1075,76 @@ def test_an_ipv4_mapped_loopback_is_recognised_on_an_older_python(
     assert not ipaddress.ip_address("::ffff:127.0.0.1").is_loopback
     assert is_loopback_proxy("http://[::ffff:127.0.0.1]:3128") is True
     assert is_loopback_proxy("http://[::ffff:10.0.0.1]:3128") is False
+
+
+# ---------------------------------------------------------------------------
+# Stage 2 runs with TRUSCA's environment, never the plan's
+# ---------------------------------------------------------------------------
+
+
+def _write_plan_with_stage_2_env(**env: str) -> Any:
+    """PLAN effect: the captured plan with stage 2's ``env`` changed. Every
+    name is on the stage 2 allow list, so the reader keeps the values."""
+    import json
+
+    from tests._bomlens_engine import PLAN_FIXTURES
+
+    def effect(run: Run) -> None:
+        write_plan("node-ok")(run)
+        document = json.loads((PLAN_FIXTURES / "node-ok" / "bomlens-plan.json").read_text())
+        stage = next(s for s in document["stages"] if s["id"] == "postprocess")
+        stage["env"].update(env)
+        (run.host("/host-output") / "bomlens-plan.json").write_text(json.dumps(document))
+
+    return effect
+
+
+def test_stage_2_never_takes_values_from_the_plan_env(workspace: Path) -> None:
+    """The plan is untrusted. Allow-listed stage 2 names only pass the
+    reader's checks; the container gets TRUSCA's own values (security review
+    of the 1.3.0 bump, L1)."""
+    hostile = {"CYCLONEDX_SPEC_VERSION": "1.2", "PROJECT_NAME": "evil", "SECURITY_ENRICH": "true"}
+    from integrations.bomlens.plan import STAGE_ENV_ALLOWED
+
+    # Allow-listed, so the reader keeps them and only the runner can drop them.
+    assert set(hostile) <= STAGE_ENV_ALLOWED[2]
+    docker = (
+        FakeDocker()
+        .behave("plan", Behaviour(effect=_write_plan_with_stage_2_env(**hostile)))
+        .behave("stage1", Behaviour(effect=write_sbom(_output_file())))
+    )
+    _runner(workspace, docker).run()
+    (stage2,) = docker.runs_of("stage2")
+    assert "CYCLONEDX_SPEC_VERSION" not in stage2.env
+    # TRUSCA's project name, the one stage 1 got too.
+    (stage1,) = docker.runs_of("stage1")
+    assert stage2.env["PROJECT_NAME"] == stage1.env["PROJECT_NAME"] != "evil"
+    assert stage2.env["SECURITY_ENRICH"] == "false"
+    assert not any(v in ("evil", "1.2") for v in stage2.env.values())
+
+
+def test_only_the_provided_roles_get_a_host_path(tmp_path: Path) -> None:
+    """``plan.py`` lets a role sit under TRUSCA's ``/tmp`` only when it is not
+    in ``PROVIDED_ROLES``, because the runner never mounts it. That holds only
+    while the two agree: a role the runner starts mounting must join the set."""
+    from integrations.bomlens.plan import MOUNT_ROLES, PROVIDED_ROLES, TRIVY_DB_ROLE, Mount
+
+    mounted = {
+        role
+        for role in MOUNT_ROLES
+        if BomLensRunner._mount_host(
+            Mount(
+                role=role,
+                target="/x",
+                mode="ro",
+                source="bomlens-plan/f" if role == "plan-file" else None,
+            ),
+            source=tmp_path / "src",
+            output=tmp_path / "out",
+            plan_files={"bomlens-plan/f": tmp_path / "f"},
+            guard=tmp_path / "guard",
+        )
+        is not None
+    }
+    # The Trivy database is mounted by run_stage2 itself, not through here.
+    assert mounted | {TRIVY_DB_ROLE} == PROVIDED_ROLES

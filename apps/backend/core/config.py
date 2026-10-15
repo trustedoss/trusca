@@ -1510,15 +1510,15 @@ def bomlens_engine_in_use() -> bool:
 
 #: The BomLens image: execution plan (MODE=PLAN) and stage 2 (POSTPROCESS).
 BOMLENS_IMAGE_DEFAULT: str = (
-    "ghcr.io/sktelecom/bomlens:1.13.2"
-    "@sha256:e357e634ef6447ed44b57a4aed3090af12b77c1fe29cbc0e567a3f65414f738b"
+    "ghcr.io/sktelecom/bomlens:1.13.4"
+    "@sha256:59d5a3363ad658a9b94787cd4c964209371b8f68a83e49adfd5b74b3220f2b47"
 )
 
 #: The published variant with scancode, used for stage 2 when the installation
 #: turns on first-party licence detection (SCANCODE_ENABLED).
 BOMLENS_DEEP_LICENSE_IMAGE_DEFAULT: str = (
-    "ghcr.io/sktelecom/bomlens-deep-license:1.13.2"
-    "@sha256:516f41c93ceeb568368bddacbdbab862c6c85dab36e8cc187af5c3bb51bc7928"
+    "ghcr.io/sktelecom/bomlens-deep-license:1.13.4"
+    "@sha256:182345b52d4e67b77e2b66232d86f78e2f8aa97d38aaf985163c861deccae97c"
 )
 
 #: Registries and repositories a plan's stage 1 image may come from.
@@ -1546,7 +1546,7 @@ def bomlens_stage1_repositories(image_prefix: str | None = None) -> tuple[str, .
     """Repository prefixes a plan's stage 1 image must start with.
 
     A prefix is matched against the image name before its tag, so
-    ``ghcr.io/cdxgen/`` admits ``ghcr.io/cdxgen/cdxgen-alpine-node24:13.2.0``
+    ``ghcr.io/cdxgen/`` admits ``ghcr.io/cdxgen/cdxgen-alpine-node24:13.3.0``
     and nothing outside that namespace. A prefix that does not end in ``/`` is
     ignored: ``ghcr.io/cdxgen`` would also admit ``ghcr.io/cdxgen-evil/...``.
 

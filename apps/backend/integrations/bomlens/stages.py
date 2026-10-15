@@ -69,7 +69,7 @@ DEEP_LICENSE_STEP: Final = "deep-license"
 
 #: BomLens step id -> TRUSCA degradable stage, or ``None`` for a step TRUSCA
 #: does not report as a stage of its own. Every BomLens step up to contract
-#: 1.2.0 is listed, so an unlisted id is one a later minor version added.
+#: 1.3.0 is listed, so an unlisted id is one a later minor version added.
 STEP_STAGE: Final[dict[str, str | None]] = {
     "generate": "generate",
     # Contract 1.2.0 (BomLens #206): Debian package licences from Trivy in an
@@ -106,6 +106,15 @@ STEP_STAGE: Final[dict[str, str | None]] = {
     "generate-notice": None,
     VULNERABILITY_STEP: None,
     "generate-risk-report": None,
+    # Contract 1.3.0 (BomLens v1.13.3). TRUSCA runs none of these: the CPE
+    # match, the upstream PURL table and supplier versions apply to firmware,
+    # root filesystem and binary scans; the grype match and Go reachability
+    # are options TRUSCA does not set, so they read ``disabled``.
+    "component-versions": None,
+    "upstream-purl": None,
+    "match-cpe": None,
+    "reachability": None,
+    "deep-cve": None,
     "model-security": None,
     "verify-weights": None,
     "enrich-aibom": None,

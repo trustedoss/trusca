@@ -13,8 +13,9 @@ treated as untrusted input. TRUSCA runs only what the plan may ask for:
   digest; a tag ``latest`` is refused. Stage 2 must repeat the BomLens image
   TRUSCA itself pinned (the runner checks this against its configuration).
 * Mounts: a plan names a mount by role (``source``, ``output``, ``plan-file``,
-  ``guard-state``, caches, ``trivy-db``), never by host path. TRUSCA decides the
-  host side of every role. A container path that would cover a system
+  ``guard-state``, caches, settings files, ``trivy-db``), never by host path.
+  TRUSCA decides the host side of every role, and leaves out the optional
+  roles it does not provide. A container path that would cover a system
   directory, a mount role in the wrong stage, a writable source in stage 2, a
   writable plan file, a plan file outside ``bomlens-plan/``, or a Trivy
   database mount anywhere but read-only at ``/trivy-db`` is refused.
@@ -71,7 +72,21 @@ PLAN_REASONS: Final = ("android-sdk-image", "no-pinned-digest")
 #: ``stages[].id`` with its stage number, in the order a plan lists them.
 STAGE_IDS: Final = (("generate", 1), ("postprocess", 2))
 
-#: ``mounts[].role`` values of plan contract 1.x (``trivy-db`` since BomLens #203).
+#: Read-only Maven and Gradle settings files stage 1 may mount (plan contract
+#: 1.3.0, BomLens v1.13.3): a user's ``settings.xml`` and ``init.d`` scripts,
+#: mounted beside the engine's own caches. TRUSCA provides none of them, so a
+#: plan may list them only as optional and the runner leaves them out.
+SETTINGS_ROLES: Final = (
+    "maven-settings",
+    "maven-settings-security",
+    "gradle-properties",
+    "gradle-init-script",
+    "gradle-init-script-kts",
+    "gradle-init",
+)
+
+#: ``mounts[].role`` values of plan contract 1.x (``trivy-db`` since BomLens
+#: #203, the settings roles since contract 1.3.0).
 MOUNT_ROLES: Final = (
     "source",
     "output",
@@ -80,6 +95,7 @@ MOUNT_ROLES: Final = (
     "cache-maven",
     "cache-gradle",
     "trivy-db",
+    *SETTINGS_ROLES,
 )
 
 #: The role stage 2 reads a Trivy database through, and the one container path
@@ -90,10 +106,14 @@ TRIVY_DB_TARGET: Final = "/trivy-db"
 #: ``mounts[].mode`` values.
 MOUNT_MODES: Final = ("ro", "rw")
 
-#: Roles each stage may mount. Caches are optional and TRUSCA does not provide
-#: them; a plan that requires one is refused (``_check_mounts``).
+#: Roles each stage may mount. Caches and settings files are optional and
+#: TRUSCA does not provide them; a plan that requires one is refused
+#: (``_parse_mount``).
 _STAGE_ROLES: Final[dict[int, frozenset[str]]] = {
-    1: frozenset({"source", "output", "plan-file", "guard-state", "cache-maven", "cache-gradle"}),
+    1: frozenset(
+        {"source", "output", "plan-file", "guard-state", "cache-maven", "cache-gradle"}
+        | set(SETTINGS_ROLES)
+    ),
     2: frozenset({"source", "output", TRIVY_DB_ROLE}),
 }
 
@@ -121,8 +141,12 @@ _FORBIDDEN_TARGET_ROOTS: Final = (
 
 #: Container paths TRUSCA mounts itself (scratch space, the Trivy database).
 #: A plan mount may not be one of them or sit below one, except a stage 1
-#: helper file below ``/tmp``, which is where the plan puts build-prep.sh, and
-#: the ``trivy-db`` role at exactly ``/trivy-db``.
+#: helper file below ``/tmp``, which is where the plan puts build-prep.sh, the
+#: ``trivy-db`` role at exactly ``/trivy-db``, and a mount below ``/tmp`` for a
+#: role TRUSCA does not provide (``cache-maven`` at ``/tmp/sbomhome/.m2`` since
+#: contract 1.3.0): the runner never creates that mount, so it cannot cover
+#: TRUSCA's scratch. Should TRUSCA come to provide such a role, it joins
+#: :data:`PROVIDED_ROLES` and the target is refused again.
 RESERVED_TARGETS: Final = ("/tmp", TRIVY_DB_TARGET)  # noqa: S108 - container paths
 
 #: Container path: absolute, plain characters, no ``..`` (checked separately).
@@ -176,6 +200,9 @@ STAGE_ENV_ALLOWED: Final[dict[int, frozenset[str]]] = {
             "HOST_OUTPUT_DIR",
             "PROJECT_NAME",
             "PROJECT_VERSION",
+            # Contract 1.3.0. Stage 2 runs with TRUSCA's own environment
+            # (runner.stage2_for), so this is read and not passed on.
+            "CYCLONEDX_SPEC_VERSION",
             "UPLOAD_ENABLED",
         }
     ),
@@ -379,7 +406,9 @@ def _parse_mount(raw: Any, stage: int, where: str) -> Mount:
     for reserved in RESERVED_TARGETS:
         below = target.startswith(reserved + "/")
         allowed = (
-            below and reserved == "/tmp" and role == "plan-file" and stage == 1  # noqa: S108
+            below
+            and reserved == "/tmp"  # noqa: S108 - a container path
+            and ((role == "plan-file" and stage == 1) or role not in PROVIDED_ROLES)
         ) or (target == reserved == TRIVY_DB_TARGET and role == TRIVY_DB_ROLE)
         if (target == reserved or below) and not allowed:
             raise _reject(
@@ -642,6 +671,7 @@ __all__ = [
     "PROVIDED_ROLES",
     "PROXY_ENV_NAMES",
     "RESERVED_TARGETS",
+    "SETTINGS_ROLES",
     "STAGE_ENV_ALLOWED",
     "STAGE_IDS",
     "STAGE_PASSTHROUGH_ALLOWED",

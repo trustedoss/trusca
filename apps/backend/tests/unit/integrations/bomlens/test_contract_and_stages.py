@@ -56,13 +56,17 @@ def _with_steps(*steps: dict[str, Any]) -> contract.EngineResult:
 
 
 #: The contract version each capture was written with (PROVENANCE.md):
-#: sha-b826d43 wrote 1.0.0-dev, sha-5a93586 1.0.0, the 1.13.2 release 1.2.0.
+#: sha-b826d43 wrote 1.0.0-dev, sha-5a93586 1.0.0, the 1.13.4 release 1.3.0.
+#: The contract version of the pinned release; its captures are checked against
+#: the digests in config.py.
+NEWEST = "1.3.0"
+
 CONTRACT_VERSIONS = {
     "image-ok": "1.0.0-dev",
-    "image-os-licenses": "1.2.0",
-    "image-registry-alpine": "1.2.0",
+    "image-os-licenses": NEWEST,
+    "image-registry-alpine": NEWEST,
     "source-deep-license": "1.0.0",
-    "source-deep-license-trivy-db": "1.2.0",
+    "source-deep-license-trivy-db": NEWEST,
     "source-degraded": "1.0.0-dev",
     "source-no-components": "1.0.0",
     # Derived from source-no-components (PROVENANCE.md): only the detail moved.
@@ -70,8 +74,8 @@ CONTRACT_VERSIONS = {
     "source-ok": "1.0.0-dev",
     "source-ok-results-stripped": "1.0.0-dev",
     "source-run-failed": "1.0.0-dev",
-    "source-trivy-db": "1.2.0",
-    "source-trivy-db-stale": "1.2.0",
+    "source-trivy-db": NEWEST,
+    "source-trivy-db-stale": NEWEST,
     "source-vulnerabilities-failed": "1.0.0-dev",
 }
 
@@ -90,7 +94,7 @@ def test_every_captured_manifest_parses(case: str) -> None:
 
 
 def test_the_newest_captures_come_from_the_pinned_images() -> None:
-    """The 1.2.0 captures are the images config.py pins, the base image and
+    """The newest captures are the images config.py pins, the base image and
     the deep-license one, so a version bump that forgets to recapture shows
     up here."""
     from core.config import BOMLENS_DEEP_LICENSE_IMAGE_DEFAULT, BOMLENS_IMAGE_DEFAULT
@@ -101,7 +105,7 @@ def test_the_newest_captures_come_from_the_pinned_images() -> None:
     }
     seen = set()
     for case, version in CONTRACT_VERSIONS.items():
-        if version == "1.2.0":
+        if version == NEWEST:
             engine = _manifest(case)["engine"]
             repository = engine["image"].rsplit(":", 1)[0]
             assert repository in pinned, (case, engine["image"])
@@ -131,6 +135,31 @@ def test_an_os_licenses_problem_is_an_enrich_degradation(status: str) -> None:
     step.update(status=status, reason="unavailable" if status == "degraded" else "failed")
     outcomes = stages.stage_outcomes(contract.parse_manifest(document))
     assert [(o.stage, o.step, o.status) for o in outcomes] == [("enrich", "os-licenses", status)]
+
+
+def test_the_trivy_report_is_found_by_role_when_it_is_not_the_combined_one() -> None:
+    """Contract 1.3.0 (BomLens v1.13.3): when the combined report lists a
+    distribution advisory under ``Advisories`` instead of as a finding,
+    ``vulnerabilities.trivy`` names Trivy's own report, a separate file. The
+    reader takes that role, so the image's one finding (``DLA-4792-1``) is
+    still read as Trivy wrote it."""
+
+    from tests._bomlens_engine import FIXTURES
+
+    result = contract.parse_manifest(_manifest("image-os-licenses"))
+    trivy = result.output(contract.ROLE_VULNERABILITIES_TRIVY)
+    combined = result.output("vulnerabilities.all")
+    assert trivy is not None and combined is not None
+    assert trivy.path == "image_1.0.0_security_trivy.json" != combined.path
+    verified = contract.read_output(FIXTURES / "image-os-licenses", trivy)
+    found = [
+        v["VulnerabilityID"]
+        for r in verified.document["Results"]
+        for v in r.get("Vulnerabilities") or []
+    ]
+    assert found == ["DLA-4792-1"]
+    # The combined report was not kept: the adapter never opens it.
+    assert not (FIXTURES / "image-os-licenses" / combined.path).exists()
 
 
 def test_a_trivy_database_past_its_age_fails_the_vulnerability_scan() -> None:

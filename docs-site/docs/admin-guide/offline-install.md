@@ -252,7 +252,7 @@ SCAN_BOMLENS_STAGE1_IMAGE_PREFIX=<your-registry>/cdxgen/
 
 TRUSCA passes the value to the execution plan as BomLens's
 `CDXGEN_IMAGE_PREFIX`, and the plan then names each image under it, for
-example `<your-registry>/cdxgen/cdxgen-alpine-node24:13.2.0@sha256:...`, with
+example `<your-registry>/cdxgen/cdxgen-alpine-node24:13.3.0@sha256:...`, with
 the published digest. A final `/` is added when missing. The value must be a
 registry host (with a dot, a port or `localhost`) followed by a path of at
 least one part; a host alone such as `reg.example:5000`, a scheme such as
