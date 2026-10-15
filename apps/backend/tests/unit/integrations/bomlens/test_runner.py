@@ -214,6 +214,24 @@ def test_plan_files_are_mounted_from_a_copy_no_container_writes(workspace: Path)
     assert not any(src.startswith(str(Path(prep["src"]).parent)) for src in writable)
 
 
+def test_stage_1_mounts_only_the_roles_trusca_provides(workspace: Path) -> None:
+    """The captured plan lists two caches and six settings files (contract
+    1.3.0), all optional. TRUSCA provides none of them, so stage 1 gets the
+    source, output, plan files, guard state and its own scratch, and nothing at
+    ``/tmp/sbomhome/.m2`` or under ``/bomlens-settings``."""
+    docker = _happy_docker()
+    _runner(workspace, docker).run()
+    (stage1,) = docker.runs_of("stage1")
+    assert set(stage1.mounts) == {
+        "/app",
+        "/out",
+        "/tmp/build-prep.sh",
+        "/tmp/identify-conda.py",
+        "/bomlens-state",
+        runner_mod.SCRATCH_TARGET,
+    }
+
+
 def test_the_worker_environment_never_reaches_a_container(workspace: Path) -> None:
     docker = _happy_docker()
     _runner(workspace, docker).run()

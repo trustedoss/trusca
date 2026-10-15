@@ -247,7 +247,7 @@ def test_the_engine_task_runs_stage_1_from_the_configured_mirror(
     (plan,) = docker.runs_of("plan")
     assert plan.env["CDXGEN_IMAGE_PREFIX"] == MIRROR
     (stage1,) = docker.runs_of("stage1")
-    assert stage1.image.startswith(MIRROR + "cdxgen-alpine-node24:13.2.0@sha256:")
+    assert stage1.image.startswith(MIRROR + "cdxgen-alpine-node24:13.3.0@sha256:")
     meta = _metadata(sync_session, scan_id)
     assert meta["scan_engine_run"]["stage1_image"] == stage1.image
 
@@ -499,7 +499,7 @@ def test_the_published_images_take_stage_1_from_a_mirror(
     assert scan.status == "succeeded", scan.error_message
     meta = _metadata(sync_session, scan_id)
     assert meta["scan_engine_run"]["stage1_image"].startswith(
-        mirror.rstrip("/") + "/cdxgen-alpine-node24:13.2.0@sha256:"
+        mirror.rstrip("/") + "/cdxgen-alpine-node24:13.3.0@sha256:"
     )
     assert meta["scan_engine_run"]["stage1_exit_code"] == 0
     assert _component_count(sync_session, scan_id) == 1

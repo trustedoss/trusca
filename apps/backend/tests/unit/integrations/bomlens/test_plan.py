@@ -58,6 +58,7 @@ def test_the_captured_npm_plan_reads_as_two_pinned_stages() -> None:
         "guard-state",
         "cache-maven",
         "cache-gradle",
+        *plan_mod.SETTINGS_ROLES,
     }
     assert generate.dropped_env == ()
     assert (postprocess.id, postprocess.stage) == ("postprocess", 2)
@@ -68,17 +69,17 @@ def test_the_captured_npm_plan_reads_as_two_pinned_stages() -> None:
     assert postprocess.mount("source").mode == "ro"  # type: ignore[union-attr]
 
 
-@pytest.mark.parametrize("case", ["node-ok", "android-unsupported"])
+@pytest.mark.parametrize("case", ["node-ok", "node-mirror-prefix", "android-unsupported"])
 def test_the_captured_plans_come_from_the_pinned_image(case: str) -> None:
     """A version bump that forgets to recapture the plans shows up here. Since
-    BomLens #208 a plan carries the engine contract version, 1.2.0 for the
+    BomLens #208 a plan carries the engine contract version, 1.3.0 for the
     pinned image (before it, plans said 1.0.0 whatever the image)."""
     from core.config import BOMLENS_IMAGE_DEFAULT
 
     pinned_ref, pinned_digest = BOMLENS_IMAGE_DEFAULT.split("@", 1)
     plan = load_plan(PLAN_DIR / case)
     assert (plan.engine_image, plan.engine_image_digest) == (pinned_ref, pinned_digest)
-    assert plan.contract_version == "1.2.0"
+    assert plan.contract_version == "1.3.0"
 
 
 def test_the_captured_unsupported_plan_has_no_stages() -> None:
@@ -476,7 +477,7 @@ def test_only_the_trivy_database_role_read_only_at_its_path_is_accepted(
 
 
 def test_the_captured_stage_2_env_and_passthrough_are_what_trusca_keeps() -> None:
-    """The 1.2.0 plan lists the proxy, TRIVY_*, EPSS and KEV names for stage 2.
+    """The plan lists the proxy, TRIVY_*, EPSS and KEV names for stage 2.
     Stage 2 runs offline on the worker's database, so of those only the
     database age is kept (TRUSCA sets its value). Stage 1 keeps the proxy."""
     plan = load_plan(PLAN_DIR / "node-ok")
@@ -495,6 +496,18 @@ def test_the_captured_stage_2_env_and_passthrough_are_what_trusca_keeps() -> Non
         "HOST_UID",
         "HOST_GID",
         *plan_mod.PROXY_ENV_NAMES,
+        # Contract 1.3.0 lists stage 1's settings for stage 2 as well, and the
+        # NVD key of the CPE match TRUSCA does not run.
+        "NVD_API_KEY",
+        "BOMLENS_KEEP_BUILD_OUTPUT",
+        "BOMLENS_MAVEN_FULL_GRAPH",
+        "BOMLENS_ANDROID_FULL_GRAPH",
+        "BOMLENS_NODE_FULL_GRAPH",
+        "BOMLENS_PHP_FULL_GRAPH",
+        "BOMLENS_INCLUDE_DEV_DEPENDENCIES",
+        "BOMLENS_NO_COPYRIGHT",
+        "BOMLENS_NO_CARGO_LICENSE",
+        "BOMLENS_PREP_TIMEOUT",
         "TRIVY_DB_REPOSITORY",
         "TRIVY_JAVA_DB_REPOSITORY",
         "TRIVY_SKIP_DB_UPDATE",
@@ -511,4 +524,88 @@ def test_the_captured_stage_2_env_and_passthrough_are_what_trusca_keeps() -> Non
     stage1_left_out = set(_stage(document, "generate")["env_passthrough"]) - set(
         plan.generate.env_passthrough
     )
-    assert stage1_left_out == {"HOST_UID", "HOST_GID"}
+    assert stage1_left_out == {"HOST_UID", "HOST_GID", "BOMLENS_INCLUDE_DEV_DEPENDENCIES"}
+
+
+# ---------------------------------------------------------------------------
+# Contract 1.3.0: the Maven and Gradle settings roles, and the cache under /tmp
+# ---------------------------------------------------------------------------
+
+
+def test_the_captured_plan_lists_every_settings_role_read_only_and_optional() -> None:
+    """BomLens v1.13.3 added six settings files to stage 1 and moved
+    ``cache-maven`` under ``/tmp``. Until this reader knew them, every plan
+    from that image was refused."""
+    plan = load_plan(PLAN_DIR / "node-ok")
+    settings = {m.role: m for m in plan.generate.mounts if m.role in plan_mod.SETTINGS_ROLES}
+    assert set(settings) == set(plan_mod.SETTINGS_ROLES)
+    for mount in settings.values():
+        assert mount.optional and mount.mode == "ro", mount
+        assert mount.target.startswith("/bomlens-settings/"), mount
+    assert plan.generate.mount("cache-maven") == plan_mod.Mount(
+        role="cache-maven", target="/tmp/sbomhome/.m2", mode="rw", optional=True
+    )
+    assert not set(plan_mod.SETTINGS_ROLES) & {m.role for m in plan.postprocess.mounts}
+    assert not set(plan_mod.SETTINGS_ROLES) & plan_mod.PROVIDED_ROLES
+
+
+@pytest.mark.parametrize("role", plan_mod.SETTINGS_ROLES)
+def test_a_required_settings_mount_is_refused(role: str) -> None:
+    def mutate(d: dict[str, Any]) -> None:
+        _mount(_stage(d, "generate"), role)["optional"] = False
+
+    _refused(_mutated(mutate), f"requires a {role!r} mount TRUSCA does not provide")
+
+
+@pytest.mark.parametrize("role", plan_mod.SETTINGS_ROLES)
+def test_a_settings_mount_in_stage_2_is_refused(role: str) -> None:
+    def mutate(d: dict[str, Any]) -> None:
+        mount = dict(_mount(_stage(d, "generate"), role))
+        _stage(d, "postprocess")["mounts"].append(mount)
+
+    _refused(_mutated(mutate), f"{role!r} is not allowed in stage 2")
+
+
+@pytest.mark.parametrize(
+    ("role", "target"),
+    [
+        ("cache-gradle", "/tmp/sbomhome/.gradle"),
+        ("maven-settings", "/tmp/settings/settings.xml"),
+        ("gradle-init", "/tmp/init.d"),
+    ],
+)
+def test_a_role_trusca_never_mounts_may_sit_under_its_scratch(role: str, target: str) -> None:
+    """The runner leaves these mounts out, so a target under ``/tmp`` covers
+    nothing of TRUSCA's."""
+
+    def mutate(d: dict[str, Any]) -> None:
+        _mount(_stage(d, "generate"), role)["target"] = target
+
+    mount = parse_plan(_mutated(mutate)).generate.mount(role)
+    assert mount is not None and mount.target == target
+
+
+@pytest.mark.parametrize(
+    ("stage_id", "role", "target"),
+    [
+        ("generate", "guard-state", "/tmp/bomlens-state"),
+        ("generate", "output", "/tmp/out"),
+        ("generate", "source", "/tmp/app"),
+        ("postprocess", "output", "/tmp/host-output"),
+        ("postprocess", "source", "/tmp/src"),
+    ],
+)
+def test_a_role_trusca_mounts_may_not_sit_under_its_scratch(
+    stage_id: str, role: str, target: str
+) -> None:
+    def mutate(d: dict[str, Any]) -> None:
+        stage = _stage(d, stage_id)
+        _mount(stage, role)["target"] = target
+        if stage["workdir"] is not None and role == "output":
+            stage["workdir"] = target
+
+    _refused(_mutated(mutate), "is under /tmp, which TRUSCA mounts")
+
+
+def test_a_role_trusca_never_mounts_may_not_be_its_scratch_itself() -> None:
+    _refused(_mutated(_set_stage_1_cache(target="/tmp")), "is under /tmp, which TRUSCA mounts")

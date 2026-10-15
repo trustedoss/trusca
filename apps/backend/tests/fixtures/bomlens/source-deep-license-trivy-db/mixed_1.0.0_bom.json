@@ -8,21 +8,21 @@
               "name": "OWASP Foundation"
             }
           ],
-          "bom-ref": "pkg:npm/@cdxgen/cdxgen@13.2.0",
+          "bom-ref": "pkg:npm/@cdxgen/cdxgen@13.3.0",
           "group": "@cdxgen",
           "name": "cdxgen",
           "publisher": "OWASP Foundation",
-          "purl": "pkg:npm/%40cdxgen/cdxgen@13.2.0",
+          "purl": "pkg:npm/%40cdxgen/cdxgen@13.3.0",
           "type": "application",
-          "version": "13.2.0"
+          "version": "13.3.0"
         }
       },
       "bom-ref": "metadata-annotations",
       "subjects": [
         "pkg:npm/baseline-mixed-policy-fixture@1.0.0"
       ],
-      "text": "This Software Bill-of-Materials (SBOM) document was created on Monday, October 12, 2026 with cdxgen. The data was captured during the build lifecycle phase. The document describes an application named 'baseline-mixed-policy-fixture' with version '1.0.0'.",
-      "timestamp": "2026-10-12T07:34:15Z"
+      "text": "This Software Bill-of-Materials (SBOM) document was created on Thursday, October 15, 2026 with cdxgen. The data was captured during the build lifecycle phase. The document describes an application named 'baseline-mixed-policy-fixture' with version '1.0.0'.",
+      "timestamp": "2026-10-15T05:10:34Z"
     }
   ],
   "bomFormat": "CycloneDX",
@@ -128,7 +128,7 @@
       },
       {
         "name": "bomlens:excluded-paths",
-        "value": "**/test/**, **/tests/**, **/spec/**, **/fixtures/**, **/testdata/**, **/__tests__/**, **/e2e/**, **/example/**, **/examples/**, **/sample/**, **/samples/**, **/bench/**, **/benches/**, **/benchmark/**, **/benchmarks/**, **/demo/**, **/demos/**, **/playground/**, **/.github/workflows/**"
+        "value": "**/test/**, **/tests/**, **/spec/**, **/fixtures/**, **/testdata/**, **/__tests__/**, **/e2e/**, **/example/**, **/examples/**, **/sample/**, **/samples/**, **/bench/**, **/benches/**, **/benchmark/**, **/benchmarks/**, **/demo/**, **/demos/**, **/playground/**, **/.github/workflows/**, **/gradle/wrapper/**"
       },
       {
         "name": "bomlens:excluded-manifests",
@@ -139,7 +139,7 @@
         "value": "unknown-to-author"
       }
     ],
-    "timestamp": "2026-10-12T07:34:15Z",
+    "timestamp": "2026-10-15T05:10:34Z",
     "tools": {
       "components": [
         {
@@ -148,24 +148,24 @@
               "name": "OWASP Foundation"
             }
           ],
-          "bom-ref": "pkg:npm/@cdxgen/cdxgen@13.2.0",
+          "bom-ref": "pkg:npm/@cdxgen/cdxgen@13.3.0",
           "group": "@cdxgen",
           "name": "cdxgen",
           "publisher": "OWASP Foundation",
-          "purl": "pkg:npm/%40cdxgen/cdxgen@13.2.0",
+          "purl": "pkg:npm/%40cdxgen/cdxgen@13.3.0",
           "type": "application",
-          "version": "13.2.0"
+          "version": "13.3.0"
         },
         {
           "name": "BomLens",
           "publisher": "SK Telecom",
           "type": "application",
-          "version": "1.13.2"
+          "version": "1.13.4"
         }
       ]
     }
   },
-  "serialNumber": "urn:uuid:759c2e37-57b1-4122-82b5-0c60c0bac2e7",
+  "serialNumber": "urn:uuid:8026213a-fc71-4f0c-89a5-781090eb77a7",
   "services": [],
   "specVersion": "1.6",
   "version": 1,

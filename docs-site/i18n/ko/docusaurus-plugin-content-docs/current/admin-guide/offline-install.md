@@ -245,7 +245,7 @@ SCAN_BOMLENS_STAGE1_IMAGE_PREFIX=<your-registry>/cdxgen/
 
 TRUSCA는 이 값을 BomLens의 `CDXGEN_IMAGE_PREFIX`로 실행 계획에 넘기고,
 실행 계획은 각 이미지를 그 아래 이름과 공개된 다이제스트로 지정합니다(예:
-`<your-registry>/cdxgen/cdxgen-alpine-node24:13.2.0@sha256:...`). 끝에 `/`가
+`<your-registry>/cdxgen/cdxgen-alpine-node24:13.3.0@sha256:...`). 끝에 `/`가
 없으면 붙입니다. 값은 레지스트리 호스트(점이나 포트가 있거나 `localhost`)와
 그 뒤의 한 단계 이상인 경로여야 합니다. `reg.example:5000`처럼 호스트만 적은
 값, `https://` 같은 스킴, 인증 정보, 태그, 다이제스트, 공백, 셸 문자가 들어

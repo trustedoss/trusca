@@ -1,10 +1,10 @@
 {
   "SchemaVersion": 2,
   "Trivy": {
-    "Version": "0.74.0"
+    "Version": "0.75.0"
   },
-  "ReportID": "01a12f08-a6ac-71b0-a22e-ea7541a878de",
-  "CreatedAt": "2026-10-12T07:34:18.540114834Z",
+  "ReportID": "01a13df8-3374-7014-9e53-535d45b28622",
+  "CreatedAt": "2026-10-15T05:10:38.708008458Z",
   "ArtifactName": "node_1.0.0_bom.json",
   "ArtifactType": "cyclonedx",
   "Results": [
@@ -413,5 +413,9 @@
         }
       ]
     }
-  ]
+  ],
+  "UncheckedComponents": {
+    "Count": 0,
+    "Components": []
+  }
 }

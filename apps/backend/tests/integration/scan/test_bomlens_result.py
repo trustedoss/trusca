@@ -373,7 +373,7 @@ CAPTURED_DETECTIONS = [
 
 @pytest.mark.parametrize(
     "case",
-    # Contract 1.0.0 (sha-5a93586) and 1.2.0 (the pinned 1.13.2 release).
+    # Contract 1.0.0 (sha-5a93586) and 1.3.0 (the pinned 1.13.4 release).
     ["source-deep-license", "source-deep-license-trivy-db"],
 )
 def test_a_deep_license_run_persists_detections_and_its_completeness_records(
