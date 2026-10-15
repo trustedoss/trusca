@@ -981,7 +981,7 @@ RUN set -eux; \
     test "$("$py" -c 'from importlib.metadata import version; print(version("intbitset"))')" = "${SCANCODE_INTBITSET_VERSION}"; \
     test "$("$py" -c 'from importlib.metadata import version; print(version("chardet"))')" = "${SCANCODE_CHARDET_VERSION}"; \
     python3 -c 'import sys; from importlib.metadata import version; v = version("chardet"); sys.exit(0 if int(v.split(".")[0]) < 7 else "system-Python chardet " + v + " is from the 7.x line; requirements-dev.txt pins chardet<7")'; \
-    sevenzip="$("$py" -c 'import os, extractcode_7z; print(os.path.join(os.path.dirname(extractcode_7z.__file__), "bin", "7z"))')"; \
+    sevenzip="$("$py" -c 'import os, extractcode_7z; print(os.path.join(os.path.dirname(extractcode_7z.__file__), "bin", "7z"))' 2>/dev/null || true)"; \
     if [ "$(dpkg --print-architecture)" = "amd64" ] && [ ! -x "${sevenzip}" ]; then \
         echo "extractcode-7z ships no 7z binary on amd64; re-check THIRD_PARTY_NOTICES.md §2" >&2; exit 1; \
     fi; \

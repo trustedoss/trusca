@@ -25,6 +25,7 @@ from __future__ import annotations
 
 import json
 import re
+import subprocess
 from pathlib import Path
 
 import pytest
@@ -566,3 +567,82 @@ def test_engine_image_documents_name_the_configured_repositories() -> None:
         if stale := named - configured:
             problems.append(f"{path} names {sorted(stale)}, which config.py does not pin")
     assert not problems, problems
+
+
+def _sevenzip_probe_script() -> str:
+    """The shell statements of the worker 7z check, cut out of the RUN step."""
+    text = _read(WORKER_DOCKERFILE)
+    start = text.index('    sevenzip="$(')
+    end = text.index("    ls -lR", start)
+    return text[start:end].replace("\\\n", " ")
+
+
+def _run_sevenzip_probe(
+    tmp_path: Path, arch: str, *, module: str | None, version_line: str = ""
+) -> "subprocess.CompletedProcess[str]":
+    """Run the real probe with a stand-in venv python and a stand-in dpkg.
+
+    ``module`` is the path the stand-in extractcode_7z reports for 7z, or None
+    for a venv without the module (the arm64 wheel layout).
+    """
+    py = tmp_path / "py"
+    if module is None:
+        py.write_text(
+            "#!/bin/sh\n"
+            "echo \"ModuleNotFoundError: No module named 'extractcode_7z'\" >&2\n"
+            "exit 1\n"
+        )
+    else:
+        py.write_text(f"#!/bin/sh\necho {module}\n")
+    py.chmod(0o755)
+    script = (
+        "set -eu\n"
+        f'dpkg() {{ echo {arch}; }}\n'
+        f'py="{py}"\n'
+        "P7ZIP_VERSION=16.02\n" + _sevenzip_probe_script() + "\necho PROBE_OK\n"
+    )
+    return subprocess.run(
+        ["bash", "-c", script], capture_output=True, text=True, check=False
+    )
+
+
+def _fake_sevenzip(tmp_path: Path, banner: str) -> Path:
+    exe = tmp_path / "7z"
+    exe.write_text(f"#!/bin/sh\necho '{banner}'\n")
+    exe.chmod(0o755)
+    return exe
+
+
+def test_worker_sevenzip_probe_tolerates_missing_module_on_arm64(
+    tmp_path: Path,
+) -> None:
+    """arm64 has no extractcode_7z (the wheel ships only for x86); the build goes on."""
+    result = _run_sevenzip_probe(tmp_path, "arm64", module=None)
+    assert result.returncode == 0, result.stderr
+    assert "PROBE_OK" in result.stdout
+
+
+def test_worker_sevenzip_probe_fails_on_amd64_without_module(tmp_path: Path) -> None:
+    """A missing module on amd64 means the wheel layout changed: fail, say why."""
+    result = _run_sevenzip_probe(tmp_path, "amd64", module=None)
+    assert result.returncode == 1
+    assert "ships no 7z binary on amd64" in result.stderr
+    assert "PROBE_OK" not in result.stdout
+
+
+def test_worker_sevenzip_probe_fails_on_amd64_without_binary(tmp_path: Path) -> None:
+    result = _run_sevenzip_probe(tmp_path, "amd64", module=str(tmp_path / "absent"))
+    assert result.returncode == 1
+    assert "ships no 7z binary on amd64" in result.stderr
+
+
+def test_worker_sevenzip_probe_checks_the_version_when_the_binary_exists(
+    tmp_path: Path,
+) -> None:
+    good = _fake_sevenzip(tmp_path, "p7zip Version 16.02 (locale=C)")
+    ok = _run_sevenzip_probe(tmp_path, "amd64", module=str(good))
+    assert ok.returncode == 0, ok.stderr
+    bad = _fake_sevenzip(tmp_path, "p7zip Version 17.05 (locale=C)")
+    wrong = _run_sevenzip_probe(tmp_path, "amd64", module=str(bad))
+    assert wrong.returncode == 1
+    assert "bundled 7z is not p7zip 16.02" in wrong.stderr
