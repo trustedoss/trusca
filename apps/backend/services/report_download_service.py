@@ -51,6 +51,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import aliased
 
 from core.authz import assert_team_access
+from core.config import demo_read_only
 from core.pii_mask import mask_pii
 from core.security import CurrentUser
 from models import Project, ReportDownload, User
@@ -161,7 +162,14 @@ async def record_report_download(
     No explicit ``await session.commit()`` — the caller's request-scoped
     session commits on dependency exit (FastAPI ``get_db`` contract). Calling
     commit here would clobber any in-progress transaction the endpoint owns.
+
+    Skipped on the public read-only demo. The downloads are GET requests, the
+    demo is meant to have no write side effects, and the history row stores
+    the visitor's IP address and user agent where the next visitor, signed in
+    to the same shared account, would read them.
     """
+    if demo_read_only():
+        return
     if report_type not in REPORT_TYPE_VALUES:
         # Programmer error in the call site, not a user-driven event. Log it
         # rather than raise so we still don't 5xx a successful download.

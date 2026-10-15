@@ -59,6 +59,7 @@ from schemas.admin_ops import (
     AuditSearchQuery,
 )
 from services.csv_export import CSV_BOM, csv_cell, csv_line
+from services.demo_scope import demo_audit_predicate
 
 log = structlog.get_logger("admin.audit.service")
 
@@ -117,7 +118,15 @@ def _apply_filters(
       set therefore matches nothing — a principal scoped to zero teams sees
       zero rows rather than the whole table (fail-closed; CWE-863).
     This is applied as a WHERE the caller cannot widen via query params.
+
+    On the public read-only demo a second scope applies on top: only rows
+    whose actor or group belongs to the demo organisation
+    (:func:`services.demo_scope.demo_audit_predicate`). It is applied here so
+    the search, the team-scoped search and the export all carry it.
     """
+    demo_scope = demo_audit_predicate()
+    if demo_scope is not None:
+        stmt = stmt.where(demo_scope)
     if allowed_team_ids is not None:
         stmt = stmt.where(AuditLog.team_id.in_(allowed_team_ids))
     if query.actor_user_id is not None:

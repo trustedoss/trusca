@@ -72,12 +72,12 @@ finding·의무사항 묶음이 약 10초 안에 생성됩니다. (`--demo-only`
 | 계정 | 이메일 | 비밀번호 |
 |---|---|---|
 | Super admin | `admin@demo.trustedoss.dev` | `DemoTest2026!` |
-| Team admin | `explore@demo.trustedoss.dev` | `DemoTest2026!` |
+| Super admin | `explore@demo.trustedoss.dev` | `DemoTest2026!` |
 | Developer | `dev@demo.trustedoss.dev` | `DemoTest2026!` |
 
 시드는 팀별 관리자 계정도 함께 만듭니다. `frontend-admin@`, `backend-admin@`,
-`security-admin@`이며 세 팀 이름을 그대로 딴 것입니다. `explore@`도 Frontend 팀의
-관리자이고, 로그인 화면이 안내하는 계정은 이쪽입니다. 주소에 팀 이름이 들어가면
+`security-admin@`이며 세 팀 이름을 그대로 딴 것입니다. `explore@`는 Super admin이면서
+Frontend 팀의 관리자 자리도 가지고 있고, 로그인 화면이 안내하는 계정은 이쪽입니다. 주소에 팀 이름이 들어가면
 어떤 화면을 볼지 고르는 것처럼 읽히지만, 실제로는 누구의 데이터를 볼지가 갈릴
 뿐이기 때문입니다.
 

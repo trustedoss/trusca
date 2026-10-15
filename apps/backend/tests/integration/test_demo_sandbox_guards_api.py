@@ -26,7 +26,8 @@ from httpx import ASGITransport, AsyncClient
 
 from core.security import create_access_token
 from models import User
-from services.scan_service import DEMO_SANDBOX_PROJECT_NAME
+from services.demo_scope import DEMO_ORG_SLUG
+from services.scan_service import DEMO_SANDBOX_PROJECT_NAME, DEMO_SANDBOX_PROJECT_SLUG
 from tests._db_required import migrate_to_head
 from tests._helpers import (
     make_membership,
@@ -88,18 +89,58 @@ async def _factory(client: AsyncClient):
 
 
 async def _seed_sandbox_and_other(client: AsyncClient):
-    """One developer in a team owning BOTH a "Demo Sandbox" and another project."""
+    """One developer in a demo-org team owning the sandbox and another project.
+
+    The guard matches the sandbox by its seeded identity (slug ``demo-sandbox``
+    in the demo organisation), so the fixture builds exactly that: the real
+    seed provides the demo organisation (idempotent), and a fresh team inside
+    it keeps each test's projects separate. The other project carries the
+    sandbox's display name, so a name-based match would wrongly admit it.
+    """
+    from sqlalchemy import select
+
+    from models import Organization
+    from scripts import seed_demo
+
+    await seed_demo._seed(demo_only=True)
+    factory = await _factory(client)
+    async with factory() as session:
+        org = (
+            await session.execute(
+                select(Organization).where(Organization.slug == DEMO_ORG_SLUG)
+            )
+        ).scalar_one()
+        team = await make_team(session, organization=org)
+        user = await make_user(session)
+        await make_membership(session, user=user, team=team, role="developer")
+        sandbox = await make_project(
+            session, team=team, name="Sandbox", slug=DEMO_SANDBOX_PROJECT_SLUG
+        )
+        other = await make_project(session, team=team, name=DEMO_SANDBOX_PROJECT_NAME)
+    return user, sandbox, other
+
+
+async def _sandbox_slug_outside_demo_org(client: AsyncClient):
+    """A project with the sandbox's slug and name in an organisation of its own."""
     factory = await _factory(client)
     async with factory() as session:
         org = await make_organization(session)
         team = await make_team(session, organization=org)
         user = await make_user(session)
         await make_membership(session, user=user, team=team, role="developer")
-        sandbox = await make_project(
-            session, team=team, name=DEMO_SANDBOX_PROJECT_NAME
+        lookalike = await make_project(
+            session,
+            team=team,
+            name=DEMO_SANDBOX_PROJECT_NAME,
+            slug=DEMO_SANDBOX_PROJECT_SLUG,
         )
-        other = await make_project(session, team=team, name="portal-api")
-    return user, sandbox, other
+    return user, lookalike
+
+
+@pytest.fixture(autouse=True)
+def _seed_env(monkeypatch: pytest.MonkeyPatch) -> None:
+    # seed_demo refuses outside APP_ENV dev/demo.
+    monkeypatch.setenv("APP_ENV", "dev")
 
 
 @pytest.fixture
@@ -155,6 +196,18 @@ async def test_non_sandbox_scan_blocked_h2(client, _demo_on, kind: str) -> None:
     resp = await client.post(
         f"/v1/projects/{other.id}/scans",
         json=_scan_body(kind),
+        headers=_bearer_for(user),
+    )
+    assert resp.status_code == 403, resp.text
+    assert resp.headers["content-type"].startswith(PROBLEM_JSON)
+
+
+async def test_sandbox_slug_outside_demo_org_blocked_h2(client, _demo_on) -> None:
+    """H-2: the sandbox slug and name in another organisation are not the sandbox."""
+    user, lookalike = await _sandbox_slug_outside_demo_org(client)
+    resp = await client.post(
+        f"/v1/projects/{lookalike.id}/scans",
+        json={"kind": "source"},
         headers=_bearer_for(user),
     )
     assert resp.status_code == 403, resp.text

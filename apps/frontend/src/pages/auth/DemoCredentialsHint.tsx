@@ -8,8 +8,12 @@
  * sign in and browse without guessing credentials. A "fill" button drops the
  * email + password straight into the login form for one-click discovery.
  *
- * The account is `explore@demo.trustedoss.dev`, seeded into the Frontend team
- * because that team carries the richest CVE / license data.
+ * The account is `explore@demo.trustedoss.dev`, a super admin (so visitors can
+ * open the admin screens) that is also seeded into the Frontend team, because
+ * that team carries the richest CVE / license data. On the public demo the
+ * backend keeps that safe: writes are refused, only an allow-list of admin
+ * screens can be read, and the people and audit screens list only the demo
+ * organisation (apps/backend/core/middleware.py, services/demo_scope.py).
  *
  * It is not one of the `<team>-admin@` accounts, and the reason is this screen.
  * A visitor sees one address and no other context, so `frontend-admin@` read as

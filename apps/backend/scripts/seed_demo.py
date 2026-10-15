@@ -30,7 +30,9 @@ Dataset shape
   * 1 organization        — "Demo Org"  (slug ``demo-org``)
   * 3 teams               — "Frontend" / "Backend" / "Security"
   * 6 users               — 1 super_admin + 3 team_admins + 1 developer
-                            + 1 explorer (the address the login page prints)
+                            + 1 explorer (the address the login page prints;
+                            a super_admin with a Frontend group_admin
+                            membership)
   * 5 projects            — assorted teams; each with 1 succeeded scan
   * 2 of 5 projects       — 10 fake CVEs each (2 critical / 3 high / 3 medium / 2 low)
                             + 5 license findings (mix of permissive / copyleft / forbidden)
@@ -77,9 +79,11 @@ if str(BACKEND_ROOT) not in sys.path:
 # Imported at module level (after the sys.path insertion above) and re-exported
 # here for the shared-vocabulary contract test. This pulls only ORM class
 # definitions — no DB connection — so ``seed_demo --help`` still works env-free.
+from services.demo_scope import DEMO_ORG_SLUG  # noqa: E402
 from services.scan_service import (  # noqa: E402
     DEMO_SANDBOX_PROJECT_NAME as DEMO_SANDBOX_PROJECT_NAME,
 )
+from services.scan_service import DEMO_SANDBOX_PROJECT_SLUG  # noqa: E402
 
 # Allowed APP_ENV values for running this script. Mirrors the
 # ``--super-admin`` guard in seed_e2e_user.py with ``demo`` added so the
@@ -89,7 +93,9 @@ _ALLOWED_ENVS = frozenset({"dev", "demo"})
 
 # Stable identifiers that we use to detect "already seeded" so the script
 # is idempotent. Changing any of these counts as a fresh demo dataset.
-_DEMO_ORG_SLUG = "demo-org"
+# Shared with services.demo_scope, which narrows the admin screens to this
+# organisation on the public read-only demo.
+_DEMO_ORG_SLUG = DEMO_ORG_SLUG
 _DEMO_SUPER_ADMIN_EMAIL = "admin@demo.trustedoss.dev"
 
 # The address the public login page prints for a first-time visitor. Kept as a
@@ -103,7 +109,9 @@ _DEMO_EXPLORE_EMAIL = "explore@demo.trustedoss.dev"
 # ingests into when the demo opts into sandbox writes (DEMO_READ_ONLY +
 # DEMO_ALLOW_SANDBOX_SCANS). Lives in the Backend team so the seeded developer
 # account (dev@demo.trustedoss.dev) can trigger scans (require_role developer).
-_DEMO_SANDBOX_SLUG = "demo-sandbox"
+# Shared with the write guard in services.scan_service, which matches the
+# sandbox by this slug inside the demo organisation.
+_DEMO_SANDBOX_SLUG = DEMO_SANDBOX_PROJECT_SLUG
 
 # W6-chore-seed (A) — fixed dev default for the demo super-admin password.
 # Mirrors the ``DemoTest2026!`` constant used across the in-app demo test
@@ -508,12 +516,18 @@ async def _seed(demo_only: bool = False) -> dict[str, Any]:  # noqa: PLR0915 —
             # `explore@` promises nothing about what you will see, which is the
             # point. It sits in Frontend because that team carries the richest
             # CVE and license data, so the demo looks like a portal in use.
+            #
+            # It is also a super admin, so a visitor can open the admin
+            # screens. On the public demo (DEMO_READ_ONLY) that is safe because
+            # writes are refused, the admin read surface is an allow-list of
+            # screens, and the people and audit screens only list the demo
+            # organisation (core.middleware, services.demo_scope).
             explorer = User(
                 email=_DEMO_EXPLORE_EMAIL,
                 hashed_password=hashed_password,
                 full_name="Demo Explorer",
                 is_active=True,
-                is_superuser=False,
+                is_superuser=True,
                 is_verified=True,
             )
             session.add(explorer)
@@ -535,8 +549,9 @@ async def _seed(demo_only: bool = False) -> dict[str, Any]:  # noqa: PLR0915 —
                     role="developer",
                 )
             )
-            # Same team and same role as frontend-admin: the visitor sees what
-            # that account sees, under a name that does not describe a screen.
+            # Same team and same role as frontend-admin, so the account still
+            # has a home team for team-scoped screens on top of the super-admin
+            # view.
             session.add(
                 Membership(
                     user_id=explorer.id,
@@ -861,7 +876,7 @@ async def _seed(demo_only: bool = False) -> dict[str, Any]:  # noqa: PLR0915 —
                 {
                     "id": str(explorer.id),
                     "email": explorer.email,
-                    "role": "group_admin:frontend",
+                    "role": "super_admin",
                 }
             )
 
@@ -969,17 +984,13 @@ async def _collect_existing_summary(session: Any, org: Any) -> dict[str, Any]:
     for membership, user in membership_rows:
         if user.email in seen_emails:
             continue
-        users_summary.append(
-            {
-                "id": str(user.id),
-                "email": user.email,
-                "role": (
-                    f"group_admin:{team_id_to_slug.get(membership.team_id, '')}"
-                    if membership.role == "group_admin"
-                    else membership.role
-                ),
-            }
-        )
+        if user.is_superuser:
+            role = "super_admin"
+        elif membership.role == "group_admin":
+            role = f"group_admin:{team_id_to_slug.get(membership.team_id, '')}"
+        else:
+            role = membership.role
+        users_summary.append({"id": str(user.id), "email": user.email, "role": role})
         seen_emails.add(user.email)
 
     return {

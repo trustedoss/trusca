@@ -498,6 +498,7 @@
       "cycle_detected": "This move would make the group its own ancestor. Choose a different parent.",
       "cross_organization_move": "This group and the selected parent belong to different organizations. Cross-organization moves are not allowed.",
       "demo_read_only": "This is a read-only live demo — creating, editing, and deleting are disabled.",
+      "demo_admin_hidden": "This screen is not available in the public live demo.",
       "unknown": "Something went wrong. Please try again."
     },
     "not_found": {

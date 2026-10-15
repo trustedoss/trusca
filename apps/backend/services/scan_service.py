@@ -66,6 +66,12 @@ log = structlog.get_logger("scan.service")
 # rule 2: the same vocabulary living in 2+ places demands a shared constant +
 # a contract test — see tests/unit/test_demo_sandbox_guard.py).
 DEMO_SANDBOX_PROJECT_NAME = "Demo Sandbox"
+# The guard matches the seeded identity, not the display name: the project
+# whose slug is this one, in a group of the demo organisation
+# (``services.demo_scope.DEMO_ORG_SLUG``). A name is free text any project can
+# carry; the slug is unique within its group and the organisation is fixed by
+# the seed.
+DEMO_SANDBOX_PROJECT_SLUG = "demo-sandbox"
 
 
 class ScanError(Exception):
@@ -360,21 +366,39 @@ def _enforce_demo_sandbox_scan_kind(kind: str) -> None:
         )
 
 
-def _enforce_demo_sandbox_project(project: Project) -> None:
+async def _is_demo_sandbox_project(session: AsyncSession, project: Project) -> bool:
+    """True iff *project* is the seeded sandbox: its slug, in the demo organisation."""
+    from models import Organization, Team
+    from services.demo_scope import DEMO_ORG_SLUG
+
+    if project.slug != DEMO_SANDBOX_PROJECT_SLUG:
+        return False
+    org_slug = (
+        await session.execute(
+            select(Organization.slug)
+            .join(Team, Team.organization_id == Organization.id)
+            .where(Team.id == project.team_id)
+        )
+    ).scalar_one_or_none()
+    return org_slug == DEMO_ORG_SLUG
+
+
+async def _enforce_demo_sandbox_project(session: AsyncSession, project: Project) -> None:
     """feat/demo-sandbox-scan (H-2): confine writes to the seeded sandbox project.
 
     No-op unless the public-demo carve-out (``demo_allow_sandbox_scans()``) is
-    on. When it is, the target project MUST be the seeded ``Demo Sandbox`` or
-    the request is 403'd. Without this, the middleware carve-out (which matches
-    ``/v1/projects/{id}/...`` for ANY id) would let a demo visitor whose seeded
-    account is a Backend-team member scan / ingest into that team's OTHER
-    projects, breaking the read-only invariant. Applies to BOTH the scan-trigger
-    and SBOM-ingest paths (both call ``prepare_scan_target``). Read at call time
-    (CLAUDE.md core rule #11).
+    on. When it is, the target project MUST be the seeded sandbox (slug
+    ``demo-sandbox`` in the demo organisation, see
+    :func:`_is_demo_sandbox_project`) or the request is 403'd. Without this,
+    the middleware carve-out (which matches ``/v1/projects/{id}/...`` for ANY
+    id) would let a demo visitor whose seeded account is a Backend-team member
+    scan / ingest into that team's OTHER projects, breaking the read-only
+    invariant. Applies to BOTH the scan-trigger and SBOM-ingest paths (both
+    call ``prepare_scan_target``). Read at call time (CLAUDE.md core rule #11).
     """
     from core.config import demo_allow_sandbox_scans
 
-    if demo_allow_sandbox_scans() and project.name != DEMO_SANDBOX_PROJECT_NAME:
+    if demo_allow_sandbox_scans() and not await _is_demo_sandbox_project(session, project):
         raise ScanForbidden(
             "the public demo sandbox only accepts scans and SBOM ingest for "
             "the 'Demo Sandbox' project",
@@ -778,7 +802,7 @@ async def prepare_scan_target(
     # Placed AFTER the team-access check so it is one of the 403 authz gates
     # (both are 403; ordering among them leaks nothing) and BEFORE the 409/429
     # state checks so a non-writable target can never surface as archived/at-cap.
-    _enforce_demo_sandbox_project(project)
+    await _enforce_demo_sandbox_project(session, project)
 
     # M-2 — a project-scoped API key is bounded to ITS project, not the whole
     # owning team. Without this gate a single-project CI key could trigger
@@ -1525,6 +1549,7 @@ def enqueue_system_triggered_scan_sync(
 
 __all__ = [
     "DEMO_SANDBOX_PROJECT_NAME",
+    "DEMO_SANDBOX_PROJECT_SLUG",
     "ConcurrentScanLimitExceeded",
     "DemoSandboxScanKindNotAllowed",
     "ProjectMissingForScan",

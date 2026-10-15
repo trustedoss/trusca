@@ -335,6 +335,86 @@ def _normalize_path(raw: str) -> str:
     return normalized
 
 
+# ---------------------------------------------------------------------------
+# Public-demo admin read surface (allow-list, fail-closed).
+#
+# The demo publishes its seeded accounts and their shared password, and two of
+# them are super admins so that visitors can see the admin screens. Blocking
+# writes is not enough for that: several admin READS hand out things no
+# visitor should have (the backup archive is a full database dump, the roster
+# and audit CSV exports, the registry and ticket credential lists, the
+# anonymisation queue). So under DEMO_READ_ONLY every request under the
+# super-admin-only prefixes below is refused UNLESS it is a GET/HEAD whose
+# normalized path is on the explicit allow-list. A new admin route is
+# therefore hidden on the demo until someone adds it here, and the route
+# matrix in tests/unit/test_demo_admin_read_guard.py fails if an allow-list
+# entry has no expected case there.
+#
+# The refusal is the same 403 + ``demo-read-only`` problem type the write
+# guard uses (with an extra ``demo_admin_hidden`` flag) rather than the 404 of
+# ``require_super_admin_or_404``. The admin screens already turn that problem
+# type into a demo message; a 404 would render as an unexplained failure.
+# Existence-hiding buys nothing here: the route list is public in the OpenAPI
+# document, and the guard runs before auth for every caller alike.
+#
+# Users and audit are on the list because their services narrow the result to
+# the demo organisation in demo mode (services.demo_scope). Ids in path
+# segments are matched as UUIDs, so '/v1/admin/users/export' cannot ride the
+# '/v1/admin/users/{user_id}' entry.
+# ---------------------------------------------------------------------------
+_DEMO_ADMIN_PREFIXES: tuple[str, ...] = ("/v1/admin", "/v1/user-anonymisation")
+
+_UUID_SEGMENT = r"[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}"
+
+_DEMO_ADMIN_READ_ALLOWLIST: tuple[re.Pattern[str], ...] = tuple(
+    re.compile(pattern)
+    for pattern in (
+        r"^/v1/admin/health$",
+        r"^/v1/admin/disk$",
+        r"^/v1/admin/trivy/health$",
+        r"^/v1/admin/kev/health$",
+        r"^/v1/admin/eol/health$",
+        r"^/v1/admin/malicious/health$",
+        r"^/v1/admin/scans$",
+        r"^/v1/admin/teams$",
+        rf"^/v1/admin/teams/{_UUID_SEGMENT}$",
+        r"^/v1/admin/organizations$",
+        r"^/v1/admin/users$",
+        rf"^/v1/admin/users/{_UUID_SEGMENT}$",
+        r"^/v1/admin/audit$",
+    )
+)
+
+_DEMO_ADMIN_READ_METHODS: frozenset[str] = frozenset({"GET", "HEAD"})
+
+
+def _demo_admin_path(path: str) -> str | None:
+    """The normalized *path* if it is under a demo-guarded admin prefix, else None.
+
+    Repeated slashes are collapsed first: posixpath.normpath keeps a leading
+    '//' (POSIX reserves it), and the prefix check must not be dodged by one.
+    """
+    normalized = _normalize_path(re.sub(r"/{2,}", "/", path.replace("\\", "/")))
+    for prefix in _DEMO_ADMIN_PREFIXES:
+        if normalized == prefix or normalized.startswith(prefix + "/"):
+            return normalized
+    return None
+
+
+def _is_demo_admin_read_allowed(method: str, path: str) -> bool:
+    """True unless the request is an admin-surface call the demo must refuse.
+
+    Paths outside the guarded prefixes are not this guard's concern (True).
+    Inside them only GET/HEAD on an allow-listed path passes.
+    """
+    normalized = _demo_admin_path(path)
+    if normalized is None:
+        return True
+    if method.upper() not in _DEMO_ADMIN_READ_METHODS:
+        return False
+    return any(pattern.match(normalized) for pattern in _DEMO_ADMIN_READ_ALLOWLIST)
+
+
 def _is_demo_write_allowed(method: str, path: str) -> bool:
     """True iff a mutating request should be permitted under DEMO_READ_ONLY.
 
@@ -380,7 +460,8 @@ class DemoReadOnlyMiddleware:
         method = str(scope.get("method", "")).upper()
         path = str(scope.get("path", "/"))
 
-        if _is_demo_write_allowed(method, path):
+        write_allowed = _is_demo_write_allowed(method, path)
+        if write_allowed and _is_demo_admin_read_allowed(method, path):
             await self.app(scope, receive, send)
             return
 
@@ -389,6 +470,24 @@ class DemoReadOnlyMiddleware:
         # has no dependency on middleware, but keeping the import local matches
         # the "build the response only on the rejection path" intent).
         from core.errors import problem_response
+
+        if write_allowed:
+            # A read the write guard let through, on an admin screen the demo
+            # hides. Writes keep the plain write-guard response below.
+            structlog.get_logger("demo").warning(
+                "demo_admin_read_blocked", method=method, path=path
+            )
+            hidden = problem_response(
+                status_code=403,
+                title="Not available in the demo",
+                detail="This administration screen is not available in the public live demo.",
+                instance=path,
+                type_=_DEMO_READ_ONLY_TYPE,
+                demo_read_only=True,
+                demo_admin_hidden=True,
+            )
+            await hidden(scope, receive, send)
+            return
 
         structlog.get_logger("demo").warning(
             "demo_read_only_blocked", method=method, path=path

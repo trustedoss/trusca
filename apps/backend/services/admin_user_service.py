@@ -55,6 +55,7 @@ from schemas.admin import (
     TeamMembershipPublic,
 )
 from services.csv_export import CSV_BOM, csv_line
+from services.demo_scope import demo_group_predicate, demo_user_predicate
 
 log = structlog.get_logger("admin.user.service")
 
@@ -324,6 +325,14 @@ async def list_users(
         .where(User.is_service_account.is_(False))
     )
 
+    # Public read-only demo: only the people of the demo organisation. The
+    # demo's published accounts include super admins, and the host also
+    # carries accounts that are not part of the demo dataset.
+    demo_scope = demo_user_predicate()
+    if demo_scope is not None:
+        base = base.where(demo_scope)
+        count_base = count_base.where(demo_scope)
+
     if active is not None:
         base = base.where(User.is_active.is_(active))
         count_base = count_base.where(User.is_active.is_(active))
@@ -416,9 +425,31 @@ async def get_user_detail(
     actor: CurrentUser,  # noqa: ARG001
     user_id: uuid.UUID,
 ) -> AdminUserDetail:
+    demo_scope = demo_user_predicate()
+    if demo_scope is not None:
+        # Same 404 as an unknown id: outside the demo organisation the account
+        # does not exist as far as a demo visitor can tell.
+        in_demo = (
+            await session.execute(select(User.id).where(User.id == user_id, demo_scope))
+        ).scalar_one_or_none()
+        if in_demo is None:
+            raise AdminUserNotFound(f"user {user_id} not found")
+
     user = await _load_user_with_memberships(session, user_id)
 
     memberships = list(user.memberships)
+    demo_groups = demo_group_predicate(Team.id)
+    if demo_groups is not None and memberships:
+        visible = set(
+            (
+                await session.execute(
+                    select(Team.id).where(
+                        Team.id.in_([m.team_id for m in memberships]), demo_groups
+                    )
+                )
+            ).scalars()
+        )
+        memberships = [m for m in memberships if m.team_id in visible]
     team_names = await _team_name_map(session, [m.team_id for m in memberships])
     scan_count = await _scan_count_for_user(session, user_id)
 
