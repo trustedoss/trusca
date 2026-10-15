@@ -640,11 +640,42 @@ CVE-2026-39822 exp:2027-01-30
 #   finding automatically once the bundled assembly reaches >= 8.0.4) or
 #   2026-10-24, whichever is sooner — this entry must not outlive an
 #   available rebuild.
+# 2026-10-15: SDK 8.0.426 moves every other deps.json to Xml 8.0.5. The only
+#   remaining 8.0.3 copy is sdk/8.0.426/DotnetTools/dotnet-format, which the
+#   entry below covers; the same reach argument applies here.
 CVE-2026-47302 exp:2027-01-30
 CVE-2026-47304 exp:2027-01-30
 CVE-2026-50525 exp:2027-01-30
 CVE-2026-50527 exp:2027-01-30
 CVE-2026-50648 exp:2027-01-30
+
+# CVE-2026-84008 - System.Security.Cryptography.Pkcs 8.0.1 -> 8.0.2 - HIGH
+# CVE-2026-96222 / CVE-2026-96958 / CVE-2026-96959 / CVE-2026-96960 -
+#   System.Security.Cryptography.Xml 8.0.3 -> 8.0.5 - HIGH (4x)
+# Target: usr/share/dotnet/sdk/8.0.426/DotnetTools/dotnet-format/
+#   dotnet-format.deps.json ONLY.
+# Upstream fix status: the worker pins SDK 8.0.426 (Dockerfile.worker
+#   DOTNET_SDK_VERSION), the newest 8.0 servicing release (2026-10-13). It
+#   clears these CVEs from the runtime, MSBuild, NuGet, FSharp, containers
+#   and dotnet-watch deps.json files (Pkcs 8.0.2, Xml 8.0.5), checked by
+#   listing the release tarball. Its bundled dotnet-format still references
+#   Pkcs 8.0.1 and Xml 8.0.3, and there is no later 8.0 SDK. Category (2): no
+#   release of the bundling tool includes the fix.
+# CVSS: HIGH (CVE-2026-84008: denial of service while decoding PKCS
+#   structures; the Xml four: spoofing and security-feature bypass in
+#   SignedXml processing).
+# Reach: dotnet-format runs only for the `dotnet format` command. The worker
+#   invokes `dotnet restore` and nothing else (integrations/scan_executor/
+#   build_prep_source.sh, see the .NET SDK reach-surface block above), so
+#   the dotnet-format assemblies are never loaded. UNREACHED.
+# Re-evaluate: on the next 8.0 SDK servicing release (bump
+#   DOTNET_SDK_VERSION and check dotnet-format.deps.json) or 2026-11-15,
+#   whichever is sooner.
+CVE-2026-84008 exp:2027-04-13
+CVE-2026-96222 exp:2027-04-13
+CVE-2026-96958 exp:2027-04-13
+CVE-2026-96959 exp:2027-04-13
+CVE-2026-96960 exp:2027-04-13
 
 # GHSA-hrxh-6v49-42gf — google.golang.org/grpc v1.81.1 xDS RBAC / HTTP2 —
 #   HIGH
