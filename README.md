@@ -27,6 +27,10 @@
 - **Enterprise-grade workflows.** Component approval, license obligations + auto-NOTICE generation, append-only audit log, RBAC.
 - **Internationalized from day one.** English and Korean UI — and this documentation — shipped together.
 
+## Scan engine
+
+TRUSCA scans with its own pipeline by default (build-prep, cdxgen, scancode, Trivy). It can also run [BomLens](https://github.com/sktelecom/bomlens) as the scan engine (preview, `SCAN_ENGINE=bomlens` for source scans and `SCAN_CONTAINER_ENGINE=bomlens` for container scans). BomLens is an open source SBOM generator and open-source risk assessor from SK Telecom's open source program office. It runs on a single machine and produces CycloneDX SBOMs, notices and security reports; TRUSCA adds what a whole organization needs on top of them: a project inventory, vulnerability triage, and license policy gates. See the administrator guide, "Dynamic scan executor", for how to turn it on.
+
 ![Project list](docs-site/static/img/screenshots/user-projects-list.png)
 *Project list — risk roll-up across every scanned project.*
 
