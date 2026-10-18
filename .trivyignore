@@ -1102,3 +1102,15 @@ CVE-2026-84304 exp:2027-03-01
 #   `go version -m /usr/local/bin/cosign | grep grpc`) or 2026-12-09,
 #   whichever is sooner.
 CVE-2026-84445 exp:2027-03-09
+
+# CVE-2026-56851 - golang.org/x/text v0.38.0 -> 0.41.0 (usr/local/bin/cosign)
+# CVSS: HIGH (the Nickname profile of secure/precis can panic with an
+#   out-of-bounds slice).
+# Reach: cosign v3.1.3 (latest) carries golang.org/x/text v0.38.0 as a
+#   dependency, but its binary links no symbol from
+#   golang.org/x/text/secure/precis (`go tool nm` lists none), so the
+#   vulnerable code is not in the executable. Category-3 UNREACHED.
+# Re-evaluate: on the first cosign release built with x/text >= 0.41.0
+#   (check `go version -m /usr/local/bin/cosign | grep x/text`) or 2026-11-01,
+#   whichever is sooner.
+CVE-2026-56851 exp:2026-11-01
