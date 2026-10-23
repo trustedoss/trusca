@@ -28,7 +28,7 @@ import asyncio
 import copy
 import json
 import uuid
-from collections.abc import Callable
+from collections.abc import Callable, Iterator
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
@@ -352,7 +352,10 @@ def test_rerun_of_the_same_scan_keeps_a_decided_approval(
 
 
 def test_a_vanished_pair_is_deleted_with_its_approval_and_nothing_else(
-    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, sync_session: Session
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    sync_session: Session,
+    generic_audit_listener: bool,
 ) -> None:
     """Intended: the approval goes with the finding it was about.
 
@@ -394,30 +397,91 @@ def test_a_vanished_pair_is_deleted_with_its_approval_and_nothing_else(
 
     # The deletion is on the record, by the system actor, naming the approval
     # the cascade took with it.
-    deletes = {
-        row.target_id: row
-        for row in _audits(sync_session, action="delete", ids=[before[k] for k in minimist])
-    }
-    assert set(deletes) == {str(before[k]) for k in minimist}
-    assert all(row.actor_user_id is None for row in deletes.values())
-    with_approval = deletes[str(before[minimist[0]])].diff or {}
-    without = deletes[str(before[minimist[1]])].diff or {}
-    assert with_approval.get("reason") == "no_longer_reported"
-    assert with_approval.get("transition_approval_ids") == [str(gone_approval)]
-    assert without.get("transition_approval_ids") == []
+    rows = _audits(sync_session, action="delete", ids=[before[k] for k in minimist])
+    recorded = sorted(
+        (
+            row.target_id or "",
+            row.actor_user_id,
+            (row.diff or {}).get("transition_approval_ids"),
+        )
+        for row in rows
+    )
+    expected_rows = sorted(
+        [
+            (str(before[minimist[0]]), None, [str(gone_approval)]),
+            (str(before[minimist[1]]), None, []),
+        ]
+    )
+    assert recorded == expected_rows, f"delete audit rows: {recorded!r}"
+    assert _has_generic_rows(
+        sync_session, action="delete", ids=[before[k] for k in minimist]
+    ) is generic_audit_listener
+
+
+# The reconciler's own rows carry ``diff.reason``. In a process where the API's
+# generic ``before_flush`` listener is installed (it registers on the global
+# Session class, so any earlier API test in the same pytest process installs
+# it), that listener writes its own row for the same flush, without a reason.
+# Production workers never install it. Both cases are exercised through the
+# ``generic_audit_listener`` parameter below.
+_RECONCILER_REASONS = {"no_longer_reported", "carried_forward"}
+
+
+@pytest.fixture(params=[False, True], ids=["worker-only", "with-api-listener"])
+def generic_audit_listener(request: pytest.FixtureRequest) -> Iterator[bool]:
+    from sqlalchemy import event
+
+    from core.audit import _after_flush, _after_soft_rollback, _before_flush
+
+    hooks = [
+        ("before_flush", _before_flush),
+        ("after_flush", _after_flush),
+        ("after_soft_rollback", _after_soft_rollback),
+    ]
+    was_installed = {name: event.contains(Session, name, fn) for name, fn in hooks}
+    for name, fn in hooks:
+        if request.param and not was_installed[name]:
+            event.listen(Session, name, fn)
+        if not request.param and was_installed[name]:
+            event.remove(Session, name, fn)
+    try:
+        yield bool(request.param)
+    finally:
+        for name, fn in hooks:
+            now = event.contains(Session, name, fn)
+            if was_installed[name] and not now:
+                event.listen(Session, name, fn)
+            if not was_installed[name] and now:
+                event.remove(Session, name, fn)
+
+
+def _has_generic_rows(session: Session, *, action: str, ids: list[uuid.UUID]) -> bool:
+    """Whether the API's generic listener also wrote rows (proves the mode applied)."""
+    session.expire_all()
+    rows = session.execute(
+        select(AuditLog).where(
+            AuditLog.target_table == "vulnerability_findings",
+            AuditLog.action == action,
+            AuditLog.target_id.in_([str(i) for i in ids]),
+        )
+    ).scalars()
+    return any((row.diff or {}).get("reason") not in _RECONCILER_REASONS for row in rows)
 
 
 def _audits(session: Session, *, action: str, ids: list[uuid.UUID]) -> list[AuditLog]:
+    """The reconciler's audit rows for these findings (see the note above)."""
     session.expire_all()
-    return list(
-        session.execute(
+    return [
+        row
+        for row in session.execute(
             select(AuditLog).where(
                 AuditLog.target_table == "vulnerability_findings",
                 AuditLog.action == action,
                 AuditLog.target_id.in_([str(i) for i in ids]),
             )
         ).scalars()
-    )
+        if (row.diff or {}).get("reason") in _RECONCILER_REASONS
+    ]
 
 
 # ---------------------------------------------------------------------------
@@ -494,7 +558,10 @@ def test_a_report_without_results_deletes_nothing_but_an_empty_list_does(
 
 
 def test_a_carried_status_on_a_kept_row_is_audited(
-    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, sync_session: Session
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    sync_session: Session,
+    generic_audit_listener: bool,
 ) -> None:
     """A kept ``new`` row that takes the project's verdict gets an update row.
 
@@ -539,11 +606,16 @@ def test_a_carried_status_on_a_kept_row_is_audited(
     kept = sync_session.get(VulnerabilityFinding, kept_id)
     assert kept is not None and kept.status == "not_affected"
     updates = _audits(sync_session, action="update", ids=[kept_id])
-    seen = [
-        (u.actor_user_id, (u.diff or {}).get("status"), (u.diff or {}).get("previous_status"))
+    seen = sorted(
+        (
+            str(u.actor_user_id),
+            str((u.diff or {}).get("status")),
+            str((u.diff or {}).get("previous_status")),
+        )
         for u in updates
-    ]
-    assert seen == [(None, "not_affected", "new")]
+    )
+    assert seen == [("None", "not_affected", "new")], f"carry audit rows: {seen!r}"
+    assert _has_generic_rows(sync_session, action="update", ids=[kept_id]) is generic_audit_listener
 
 
 def test_a_container_report_without_results_deletes_nothing(
