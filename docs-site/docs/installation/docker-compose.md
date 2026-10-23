@@ -121,7 +121,7 @@ chmod +x scripts/postgres-init.sh
 # 3. Edit .env — at minimum set SECRET_KEY (openssl rand -hex 32), strong
 #    POSTGRES_PASSWORD / POSTGRES_APP_PASSWORD, DOMAIN, TLS_EMAIL, and
 #    CORS_ALLOWED_ORIGINS=https://<your-domain>. Set IMAGE_TAG to the release
-#    you want to run.
+#    you want to run (defaults to 0.23.0).
 $EDITOR .env
 
 # 4. Pull and start.

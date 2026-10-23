@@ -26,7 +26,7 @@
 #
 # Usage:
 #   bash scripts/bundle-offline.sh
-#   bash scripts/bundle-offline.sh --tag 0.22.0 --registry ghcr.io/trustedoss
+#   bash scripts/bundle-offline.sh --tag 0.23.0 --registry ghcr.io/trustedoss
 #   bash scripts/bundle-offline.sh -o /path/to/trusca-offline-bundle.tar
 #
 # IMAGE_TAG / IMAGE_REGISTRY default from .env when present (same convention
@@ -96,7 +96,7 @@ while [[ $# -gt 0 ]]; do
       cat <<USAGE
 Usage: bash scripts/bundle-offline.sh [--tag <tag>] [--registry <registry>] [-o|--output <path>]
 
-  --tag <tag>          Override IMAGE_TAG (default: from .env, else 0.12.0).
+  --tag <tag>          Override IMAGE_TAG (default: from .env, else 0.23.0).
   --registry <reg>     Override IMAGE_REGISTRY (default: from .env, else
                         ghcr.io/trustedoss).
   -o, --output <path>  Output tar path (default:
@@ -140,7 +140,7 @@ if [[ -f .env ]]; then
   set -a; . ./.env; set +a
 fi
 IMAGE_REGISTRY="${CLI_REGISTRY:-${IMAGE_REGISTRY:-ghcr.io/trustedoss}}"
-IMAGE_TAG="${CLI_TAG:-${IMAGE_TAG:-0.12.0}}"
+IMAGE_TAG="${CLI_TAG:-${IMAGE_TAG:-0.23.0}}"
 
 # The six images docker-compose.yml actually pulls (measured, not the
 # issue's approximate "four images" - see the header comment). The worker

@@ -59,7 +59,7 @@ they fall back to `docker-compose.yml`'s own defaults. Override either
 explicitly:
 
 ```bash
-bash scripts/bundle-offline.sh --tag 0.22.0 --registry ghcr.io/trustedoss
+bash scripts/bundle-offline.sh --tag 0.23.0 --registry ghcr.io/trustedoss
 ```
 
 Pick a different output path with `-o`/`--output`:
@@ -112,7 +112,7 @@ Compose files as a convenience copy, but `scripts/install.sh` itself still
 needs to exist there), then run:
 
 ```bash
-bash scripts/install.sh --offline /path/to/trusca-offline-bundle-0.22.0.tar
+bash scripts/install.sh --offline /path/to/trusca-offline-bundle-0.23.0.tar
 ```
 
 Combine with `--no-prompt` for a fully unattended air-gapped install (see
@@ -120,7 +120,7 @@ Combine with `--no-prompt` for a fully unattended air-gapped install (see
 `INSTALL_*` non-interactive knobs `--no-prompt` reads):
 
 ```bash
-bash scripts/install.sh --no-prompt --offline /path/to/trusca-offline-bundle-0.22.0.tar
+bash scripts/install.sh --no-prompt --offline /path/to/trusca-offline-bundle-0.23.0.tar
 ```
 
 With `--offline` set, `install.sh`:

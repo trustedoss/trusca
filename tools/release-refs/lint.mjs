@@ -16,7 +16,7 @@
  * check exists instead: the version lives in one place, and every reference
  * to it is derived rather than remembered.
  *
- * Source of truth: the newest released section in CHANGELOG.md. Not a git tag
+ * Source of truth: the newest stable section in CHANGELOG.md. Not a git tag
  * (the tag is created after the release commit merges, so the check would be
  * unrunnable exactly when it matters) and not a constant of its own (a second
  * place to forget).
@@ -43,6 +43,16 @@
  *   node tools/release-refs/lint.mjs            # report drift, exit 1 if any
  *   node tools/release-refs/lint.mjs --fix      # rewrite to the current release
  *   node tools/release-refs/lint.mjs --version  # print the release it derived
+ *   node tools/release-refs/lint.mjs --release vX.Y.Z
+ *       # release gate: also fail unless the changelog's newest release is
+ *       # X.Y.Z and no pin is still parked in `pending`
+ *
+ * Why `--release` exists: on a PR the check can only ask "do all references
+ * agree with the changelog?". A tag pushed without the changelog bump leaves
+ * every reference agreeing on the previous release, and a pin parked in
+ * `pending` is not checked at all. v0.23.0 shipped through both gaps with a
+ * fresh install still pulling 0.22.0 (.env.example) or 0.12.0 (the compose
+ * fallback).
  */
 import { execFileSync } from "node:child_process";
 import * as fs from "node:fs";
@@ -124,10 +134,44 @@ export const REF_PATTERNS = [
  */
 export function releaseVersionFrom(changelog) {
   for (const line of changelog.split("\n")) {
-    const m = /^##\s+\[(\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?)\]/.exec(line);
-    if (m) return m[1];
+    const m = /^##\s+\[(\d+\.\d+\.\d+)(-[0-9A-Za-z.-]+)?\]/.exec(line);
+    // A pre-release heading is skipped: install defaults never move to a
+    // release candidate, and the pins only match a plain X.Y.Z, so --fix
+    // writing one would leave every pin matching nothing.
+    if (m && !m[2]) return m[1];
   }
   throw new Error("CHANGELOG.md has no released `## [X.Y.Z]` section");
+}
+
+/** True for a pre-release tag such as v0.24.0-rc.1. */
+export function isPrerelease(tag) {
+  return /^v?\d+\.\d+\.\d+-/.test(String(tag));
+}
+
+/**
+ * What stops a release tag from being published, beyond ordinary drift.
+ *
+ * `tag` is the tag being released, with or without the leading `v`.
+ * `changelogVersion` is releaseVersionFrom()'s answer, the newest stable
+ * entry. Returns one message per problem; empty means the release may
+ * proceed.
+ */
+export function releaseGateFindings(tag, changelogVersion, pending) {
+  const out = [];
+  const want = String(tag).replace(/^v/, "");
+  // A pre-release ships images for testing, not a new install default, so
+  // the defaults stay on the newest stable release and only the pending and
+  // drift checks apply.
+  if (!isPrerelease(want) && want !== changelogVersion) {
+    out.push(
+      `tag v${want} is not the newest CHANGELOG.md release (v${changelogVersion}); ` +
+        `every install default would still name v${changelogVersion}`,
+    );
+  }
+  for (const p of pending ?? []) {
+    out.push(`pin not enrolled, so nothing checks it: ${p.file} (${p.blocked_by})`);
+  }
+  return out;
 }
 
 function isExcluded(relPath, exclude) {
@@ -194,6 +238,15 @@ function applyFix(text, finding) {
 function main() {
   const args = process.argv.slice(2);
   const fix = args.includes("--fix");
+
+  // Parsed before anything else runs, so a malformed release call cannot
+  // fall through to --fix or a plain drift check and exit 0.
+  const releaseAt = args.indexOf("--release");
+  const releaseTag = releaseAt === -1 ? null : args[releaseAt + 1];
+  if (releaseAt !== -1 && (!releaseTag || releaseTag.startsWith("--"))) {
+    console.error("release-refs: --release needs the tag being released (vX.Y.Z)");
+    return 2;
+  }
 
   const config = JSON.parse(
     fs.readFileSync(path.join(__dirname, "pins.json"), "utf8"),
@@ -268,6 +321,19 @@ function main() {
     return 0;
   }
 
+  // Release gate. Checked before drift so a tag that skipped the changelog
+  // bump is named as such, not as a list of references that look correct.
+  let gate = [];
+  if (releaseTag) {
+    const tag = releaseTag;
+    gate = releaseGateFindings(tag, version, config.pending);
+    if (gate.length > 0) {
+      console.error(`release-refs: release ${tag} blocked`);
+      for (const g of gate) console.error(`  ${g}`);
+      console.error("");
+    }
+  }
+
   const total = [...byFile.values()].reduce((n, f) => n + f.length, 0);
   if (total > 0) {
     console.error(`release-refs: ${total} reference(s) do not name v${version}\n`);
@@ -281,6 +347,7 @@ function main() {
     console.error(`\nRun \`node tools/release-refs/lint.mjs --fix\` to update them.`);
     return 1;
   }
+  if (gate.length > 0) return 1;
 
   console.log(`release-refs: every reference names v${version}`);
   for (const p of config.pending ?? []) {

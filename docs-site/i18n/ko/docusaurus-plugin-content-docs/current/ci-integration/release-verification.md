@@ -31,7 +31,7 @@ TRUSCA는 릴리스마다 멀티아키텍처 이미지 세 개를 GitHub Contain
 
 ```bash
 IMAGE=ghcr.io/trustedoss/trusca-backend
-VERSION=0.22.5   # 검증하려는 릴리스
+VERSION=0.23.0   # 검증하려는 릴리스
 
 DIGEST=$(docker buildx imagetools inspect "${IMAGE}:${VERSION}" \
   --format '{{ json .Manifest }}' | jq -r '.digest')
@@ -137,7 +137,7 @@ allowed-signers 파일이 필요하므로, tarball이 아니라 저장소를 클
 git clone https://github.com/trustedoss/trusca.git
 cd trusca
 git config gpg.ssh.allowedSignersFile .github/allowed_signers
-git verify-tag v0.22.5
+git verify-tag v0.23.0
 ```
 
 정상이면 서명자가 함께 표시됩니다. 확인해야 할 것은 좋은 서명이라는 말이 아니라

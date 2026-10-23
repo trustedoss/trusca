@@ -116,9 +116,59 @@ jobs:
           TAG="${INPUT_TAG:-$REF_NAME}"
           scripts/verify-tag-signature.sh "$TAG"
 
+  # A fresh install pulls the tag .env.example and the docker-compose.yml
+  # fallback name. On a PR, release-refs can only check that every such
+  # default agrees with the newest CHANGELOG.md entry; a tag pushed without
+  # that bump leaves them all agreeing on the previous release. v0.23.0
+  # shipped with .env.example on 0.22.0 and the compose fallback on 0.12.0.
+  # This job ties the tag to the changelog and fails on any pin still parked
+  # in `pending`, before an image is built.
+  release-refs:
+    name: release-refs (install defaults name this tag)
+    runs-on: ubuntu-22.04
+    timeout-minutes: 5
+    steps:
+      # Check out the tag being released, not the dispatching branch: a
+      # workflow_dispatch republish of v0.22.6 must be judged against
+      # v0.22.6's CHANGELOG and defaults, not main's. `with:` is not shell, so
+      # the dispatch input cannot inject here.
+      - name: Checkout
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262  # v4.4.0
+        with:
+          ref: ${{ github.event.inputs.tag || github.ref }}
+
+      # A tag cut before this check existed carries a lint.mjs without
+      # --release (or no release-refs at all). Its defaults were never held to
+      # this rule, so a republish of it is reported and let through rather
+      # than blocked by a check it predates.
+      - name: Detect whether this tag carries the release gate
+        id: gate
+        run: |
+          set -euo pipefail
+          if grep -q -- '"--release"' tools/release-refs/lint.mjs 2>/dev/null; then
+            echo "present=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "present=false" >> "$GITHUB_OUTPUT"
+            echo "::notice::this tag predates the release-refs --release gate; skipping it"
+          fi
+
+      - name: Run release-refs selftest
+        if: steps.gate.outputs.present == 'true'
+        run: node tools/release-refs/selftest.mjs
+
+      - name: Check every install default names the release tag
+        if: steps.gate.outputs.present == 'true'
+        env:
+          INPUT_TAG: ${{ github.event.inputs.tag }}
+          REF_NAME: ${{ github.ref_name }}
+        run: |
+          set -euo pipefail
+          TAG="${INPUT_TAG:-$REF_NAME}"
+          node tools/release-refs/lint.mjs --release "$TAG"
+
   build:
     name: build ${{ matrix.image.image }} (${{ matrix.platform.arch }})
-    needs: tag-signature
+    needs: [tag-signature, release-refs]
     runs-on: ${{ matrix.platform.runner }}
     timeout-minutes: 60
     strategy:

@@ -22,7 +22,10 @@ it is derived.
 
 ## Source of truth
 
-The newest released section in `CHANGELOG.md`, skipping `[Unreleased]`.
+The newest released section in `CHANGELOG.md`, skipping `[Unreleased]` and
+any pre-release heading such as `[0.24.0-rc.1]`. Install defaults never move
+to a release candidate; `--release` on a pre-release tag skips the
+newest-entry comparison and still checks drift and `pending`.
 
 Not a git tag: the tag is created after the release commit merges, so a
 tag-derived check would be unrunnable exactly when it matters. Not a constant
@@ -55,6 +58,7 @@ the prose patterns are narrow.
 node tools/release-refs/lint.mjs           # report drift, exit 1 if any
 node tools/release-refs/lint.mjs --fix     # rewrite to the current release
 node tools/release-refs/lint.mjs --version # print the release it derived
+node tools/release-refs/lint.mjs --release vX.Y.Z  # release gate (below)
 node tools/release-refs/selftest.mjs       # the linter's own contract
 ```
 
@@ -65,8 +69,16 @@ would also rewrite the same digits where they mean something else.
 
 - `lint (frontend)` in `.github/workflows/ci.yml`, a required check, so a PR
   cannot merge with a reference that does not resolve.
-- `scripts/release.sh`, before the tag is created, so a release cannot be cut
-  while the guides still name the previous one.
+- `scripts/release.sh`, before the tag is created, and the `release-refs` job
+  in `.github/workflows/release.yml`, on the pushed tag before any image is
+  built. Both pass `--release <tag>`, which also fails when the newest
+  `CHANGELOG.md` entry is not that tag or when `pending` is not empty.
+
+On a PR the check can only ask whether every reference agrees with the
+changelog. A tag pushed without the changelog bump leaves them all agreeing on
+the previous release, and a `pending` entry is not checked at all. v0.23.0
+shipped through the second gap: `.env.example` still named 0.22.0 and the
+compose fallback 0.12.0, so a fresh install pulled an old release.
 
 ## Bumping the version
 
@@ -79,5 +91,7 @@ between that merge and `scripts/release.sh` pushing the tag.
 
 `pins.json` carries a `pending` list: entries that belong in `pins` but whose
 files were held by other work in flight when the check was added. The linter
-prints them as a notice and does not fail on them. Moving an entry up into
-`pins` is the whole of the follow-up.
+prints them as a notice on a PR and does not fail on them, but `--release`
+fails while any remain, so an entry cannot outlive a release unnoticed. Moving
+an entry up into `pins` is the whole of the follow-up. `selftest.mjs` also
+asserts that `.env.example` and `docker-compose.yml` are enrolled pins.
