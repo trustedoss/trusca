@@ -114,7 +114,7 @@ chmod +x scripts/postgres-init.sh
 # 3. .env 편집 — 최소한 SECRET_KEY(openssl rand -hex 32), 강력한
 #    POSTGRES_PASSWORD / POSTGRES_APP_PASSWORD, DOMAIN, TLS_EMAIL,
 #    CORS_ALLOWED_ORIGINS=https://<도메인> 을 설정. 실행할 릴리스를
-#    IMAGE_TAG 에 지정.
+#    IMAGE_TAG 에 지정(기본값 0.23.0).
 $EDITOR .env
 
 # 4. pull 후 기동.

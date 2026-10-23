@@ -60,29 +60,60 @@
       "file": "docs-site/i18n/ko/docusaurus-plugin-content-docs/current/ci-integration/gitlab-ci.md",
       "pattern": "릴리스 태그\\(`v(\\d+\\.\\d+\\.\\d+)`\\)",
       "note": "KO mirror of the prose naming the pin tag"
-    }
-  ],
-  "_pending_about": "Pins that belong in `pins` but whose files are held by other work in flight. The linter prints them as a notice and does not fail on them. Moving an entry up into `pins` is the whole of the follow-up.",
-  "pending": [
+    },
     {
       "file": ".env.example",
       "pattern": "^IMAGE_TAG=(\\d+\\.\\d+\\.\\d+)$",
-      "note": "image tag the production compose stack pulls",
-      "blocked_by": "held by PR #285; enroll once it lands"
+      "note": "image tag a fresh compose install pulls (install.sh copies this file to .env)"
     },
     {
       "file": "docker-compose.yml",
       "pattern": "\\$\\{IMAGE_TAG:-(\\d+\\.\\d+\\.\\d+)\\}",
-      "note": "fallback used when .env carries no IMAGE_TAG",
-      "blocked_by": "held by open worktrees on branches a2-uat-guard-continue and test/a2-install-uat-first-scan; enroll once they land"
+      "note": "fallback used when .env carries no IMAGE_TAG"
+    },
+    {
+      "file": "scripts/bundle-offline.sh",
+      "pattern": "\\$\\{IMAGE_TAG:-(\\d+\\.\\d+\\.\\d+)\\}",
+      "note": "offline bundle tag when neither --tag nor .env sets one"
+    },
+    {
+      "file": "scripts/bundle-offline.sh",
+      "pattern": "default: from \\.env, else (\\d+\\.\\d+\\.\\d+)\\)",
+      "note": "usage text stating that fallback"
     },
     {
       "file": "docs-site/docs/installation/docker-compose.md",
       "pattern": "defaults to (\\d+\\.\\d+\\.\\d+)\\)",
-      "note": "stated IMAGE_TAG default in the quick-install comment",
-      "blocked_by": "the sentence stated a default this change cannot make true; restore it, in EN and KO, in the same change that fixes the docker-compose.yml fallback"
+      "note": "stated IMAGE_TAG default in the quick-install comment"
+    },
+    {
+      "file": "docs-site/i18n/ko/docusaurus-plugin-content-docs/current/installation/docker-compose.md",
+      "pattern": "기본값 (\\d+\\.\\d+\\.\\d+)\\)",
+      "note": "KO mirror of the stated IMAGE_TAG default"
+    },
+    {
+      "file": "docs-site/docs/admin-guide/offline-install.md",
+      "pattern": "--tag (\\d+\\.\\d+\\.\\d+) --registry",
+      "note": "bundle command a reader copies"
+    },
+    {
+      "file": "docs-site/docs/admin-guide/offline-install.md",
+      "pattern": "trusca-offline-bundle-(\\d+\\.\\d+\\.\\d+)\\.tar",
+      "note": "bundle file name the install commands load"
+    },
+    {
+      "file": "docs-site/i18n/ko/docusaurus-plugin-content-docs/current/admin-guide/offline-install.md",
+      "pattern": "--tag (\\d+\\.\\d+\\.\\d+) --registry",
+      "note": "KO mirror of the bundle command"
+    },
+    {
+      "file": "docs-site/i18n/ko/docusaurus-plugin-content-docs/current/admin-guide/offline-install.md",
+      "pattern": "trusca-offline-bundle-(\\d+\\.\\d+\\.\\d+)\\.tar",
+      "note": "KO mirror of the bundle file name"
     }
   ],
+  "_pending_about": "Pins that belong in `pins` but whose files are held by other work in flight. On a PR the linter prints them as a notice and does not fail on them; `--release` fails while any remain. An entry parked here is a default nothing checks, which is how .env.example and docker-compose.yml still named 0.22.0 and 0.12.0 after v0.23.0 shipped.",
+  "pending": [],
   "_exclude_about": "Files whose tag-shaped refs are history, not instructions. A reader is not meant to run them against today's release.",
   "exclude": [
     "CHANGELOG.md",

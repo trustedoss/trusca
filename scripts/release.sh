@@ -57,10 +57,13 @@ ok "CHANGELOG entry found"
 # they still name the previous one, the tag this script is about to push is
 # born stale and every reader following the quickstart hits a ref that does
 # not resolve. The linter derives the expected value from the CHANGELOG entry
-# checked just above, so this runs before the tag exists.
+# checked just above, so this runs before the tag exists. --release also
+# requires that entry to be the NEWEST one and no pin to be parked in
+# pending, the two gaps that let v0.23.0 ship with stale install defaults.
+# release.yml runs the same check on the pushed tag.
 if command -v node >/dev/null 2>&1; then
-  node tools/release-refs/lint.mjs \
-    || fail "documented references do not name $version_no_v. Run 'node tools/release-refs/lint.mjs --fix', commit, then re-run."
+  node tools/release-refs/lint.mjs --release "$TAG" \
+    || fail "documented references or install defaults do not name $version_no_v. Run 'node tools/release-refs/lint.mjs --fix', commit, then re-run."
   ok "documented references name $version_no_v"
 else
   printf "! node not found; skipping the release-refs check\n" >&2

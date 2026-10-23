@@ -104,12 +104,19 @@ pull해서 실행해봐야만 설치 가능 여부를 증명할 수 있기 때�
      시점에 강제하는 장치입니다.
    - 새 UI 화면이 나갔다면 `make screenshots-capture`로 스크린샷을 캡처해
      가이드 섹션에서 참조합니다.
-3. `.env.example`의 `IMAGE_TAG`를 `X.Y.Z`로 올립니다.
-4. 차트도 함께 올립니다. `charts/trustedoss/Chart.yaml`의 `version`과 `appVersion`,
-   `charts/trustedoss/values.yaml`의 `image.tag` 세 곳을 같은 커밋에서 바꿉니다.
-   차트는 포털과 같은 주기로 릴리스한다고 적어 두었는데 한 번 아홉 마이너 버전이나
-   벌어졌고, 그 동안 기본 `helm install`은 운영자가 `image.tag`를 직접 지정하지 않으면
-   오래된 포털을 설치했습니다.
+3. `node tools/release-refs/lint.mjs --fix`를 실행하고 결과를 `CHANGELOG.md`
+   변경과 함께 커밋합니다. 이 명령은 새 `[X.Y.Z]` 제목을 읽어 설치 기본값을 모두
+   그 버전으로 바꿉니다. 대상은 `.env.example`의 `IMAGE_TAG`,
+   `docker-compose.yml`과 `scripts/bundle-offline.sh`의 `${IMAGE_TAG:-...}` 기본값,
+   차트의 `version`·`appVersion`·`image.tag`, 설치 가이드가 적어 둔 버전입니다.
+   목록은 `tools/release-refs/pins.json`에 있습니다.
+4. 릴리스 검사가 통과하는지 로컬에서 확인합니다.
+   `node tools/release-refs/lint.mjs --release vX.Y.Z`는 `CHANGELOG.md`의 가장
+   최근 항목이 `X.Y.Z`가 아니거나 `pins.json`의 `pending` 목록에 항목이 남아 있으면
+   실패합니다. `release.yml`의 `release-refs` 잡이 push된 태그에 같은 검사를 실행하고,
+   실패하면 이미지 빌드가 시작되지 않습니다. v0.23.0은 `.env.example`과 compose
+   기본값이 검사 대상이 아닌 `pending`에 남아 있어서, 새로 설치하면 0.22.0을
+   내려받는 상태로 릴리스됐습니다.
 5. 태그를 push합니다. `git tag -s vX.Y.Z -m "vX.Y.Z" && git push origin vX.Y.Z`.
    `-s`는 서명을 하고 `-a`를 함께 적용합니다. 옵션 없는 `git tag`는 커밋을 직접
    가리키는 ref만 만드는 경량 태그라 태그 객체가 없고, 그래서 서명을 담을 수

@@ -10,8 +10,10 @@ import {
   isVersionAgnosticRef,
   pinFindings,
   refFindings,
+  releaseGateFindings,
   releaseVersionFrom,
 } from "./lint.mjs";
+import * as fs from "node:fs";
 
 let failures = 0;
 
@@ -135,6 +137,45 @@ check(
   ).length,
   2,
 );
+
+// --- release gate (--release vX.Y.Z) ---------------------------------------
+
+check(
+  "a tag that matches the changelog with nothing pending may publish",
+  releaseGateFindings("v0.22.4", V, []),
+  [],
+);
+check(
+  "the leading v is optional on the tag",
+  releaseGateFindings("0.22.4", V, []),
+  [],
+);
+// The v0.23.0 failure: tag pushed, every default still named the old release.
+check(
+  "a tag ahead of the changelog is blocked",
+  releaseGateFindings("v0.23.0", V, []).length,
+  1,
+);
+check(
+  "a parked pending pin blocks the release",
+  releaseGateFindings("v0.22.4", V, [{ file: ".env.example", blocked_by: "PR #1" }]).map(
+    (m) => m.includes(".env.example"),
+  ),
+  [true],
+);
+
+// --- the install defaults are enrolled, not parked -------------------------
+
+// A fresh install pulls whatever these two name. They sat in `pending` for a
+// release cycle and shipped stale, so their enrollment is part of the contract.
+const config = JSON.parse(fs.readFileSync(new URL("./pins.json", import.meta.url), "utf8"));
+for (const file of [".env.example", "docker-compose.yml"]) {
+  check(
+    `${file} is an enrolled pin`,
+    config.pins.some((p) => p.file === file),
+    true,
+  );
+}
 
 if (failures > 0) {
   console.error(`\n${failures} check(s) failed`);

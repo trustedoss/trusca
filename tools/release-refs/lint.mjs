@@ -43,6 +43,16 @@
  *   node tools/release-refs/lint.mjs            # report drift, exit 1 if any
  *   node tools/release-refs/lint.mjs --fix      # rewrite to the current release
  *   node tools/release-refs/lint.mjs --version  # print the release it derived
+ *   node tools/release-refs/lint.mjs --release vX.Y.Z
+ *       # release gate: also fail unless the changelog's newest release is
+ *       # X.Y.Z and no pin is still parked in `pending`
+ *
+ * Why `--release` exists: on a PR the check can only ask "do all references
+ * agree with the changelog?". A tag pushed without the changelog bump leaves
+ * every reference agreeing on the previous release, and a pin parked in
+ * `pending` is not checked at all. v0.23.0 shipped through both gaps with a
+ * fresh install still pulling 0.22.0 (.env.example) or 0.12.0 (the compose
+ * fallback).
  */
 import { execFileSync } from "node:child_process";
 import * as fs from "node:fs";
@@ -128,6 +138,27 @@ export function releaseVersionFrom(changelog) {
     if (m) return m[1];
   }
   throw new Error("CHANGELOG.md has no released `## [X.Y.Z]` section");
+}
+
+/**
+ * What stops a release tag from being published, beyond ordinary drift.
+ *
+ * `tag` is the tag being released, with or without the leading `v`. Returns
+ * one message per problem; empty means the release may proceed.
+ */
+export function releaseGateFindings(tag, changelogVersion, pending) {
+  const out = [];
+  const want = String(tag).replace(/^v/, "");
+  if (want !== changelogVersion) {
+    out.push(
+      `tag v${want} is not the newest CHANGELOG.md release (v${changelogVersion}); ` +
+        `every install default would still name v${changelogVersion}`,
+    );
+  }
+  for (const p of pending ?? []) {
+    out.push(`pin not enrolled, so nothing checks it: ${p.file} (${p.blocked_by})`);
+  }
+  return out;
 }
 
 function isExcluded(relPath, exclude) {
@@ -268,6 +299,24 @@ function main() {
     return 0;
   }
 
+  // Release gate. Checked before drift so a tag that skipped the changelog
+  // bump is named as such, not as a list of references that look correct.
+  let gate = [];
+  const releaseAt = args.indexOf("--release");
+  if (releaseAt !== -1) {
+    const tag = args[releaseAt + 1];
+    if (!tag || tag.startsWith("--")) {
+      console.error("release-refs: --release needs the tag being released (vX.Y.Z)");
+      return 2;
+    }
+    gate = releaseGateFindings(tag, version, config.pending);
+    if (gate.length > 0) {
+      console.error(`release-refs: release ${tag} blocked`);
+      for (const g of gate) console.error(`  ${g}`);
+      console.error("");
+    }
+  }
+
   const total = [...byFile.values()].reduce((n, f) => n + f.length, 0);
   if (total > 0) {
     console.error(`release-refs: ${total} reference(s) do not name v${version}\n`);
@@ -281,6 +330,7 @@ function main() {
     console.error(`\nRun \`node tools/release-refs/lint.mjs --fix\` to update them.`);
     return 1;
   }
+  if (gate.length > 0) return 1;
 
   console.log(`release-refs: every reference names v${version}`);
   for (const p of config.pending ?? []) {
