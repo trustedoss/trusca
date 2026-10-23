@@ -342,6 +342,16 @@ gh workflow run golden-nightly.yml --ref main -f refresh_trivy_db=true
 
 캐시에 항목이 없으면 샤드는 없는 키를 알려 주며 실패하고, 최신 DB로 대신 실행하지 않습니다. GitHub은 7일 동안 복원되지 않은 항목을 지웁니다. nightly가 매일 복원하므로 이 일은 nightly가 일주일 넘게 멈췄을 때만 생깁니다. 같은 DB를 되살리려면 `main`에서 `-f reseed_trivy_db=true`로 실행합니다. lock에 적힌 상류 다이제스트를 다시 내려받아 sha256이 다르면 실패하고, 같으면 baseline은 바꾸지 않고 그 키로 저장합니다. 상류가 그 다이제스트를 더 이상 제공하지 않으면 대신 갱신(refresh)을 실행합니다.
 
+DB 고정을 도입한 변경이 머지되면 다음 nightly 전에 한 번 아래 명령을 실행합니다. 첫 lock과 캐시 항목은 기능 브랜치에서 만들었으므로 `main`에는 아직 항목이 없습니다.
+
+```bash
+gh workflow run golden-nightly.yml --ref main -f reseed_trivy_db=true
+```
+
+이 실행은 게이트도 함께 돌리므로, 성공하면 캐시 항목이 준비된 것입니다. 다른 브랜치에서 실행한 갱신의 lock이 `main`에 들어올 때도 같은 절차를 따릅니다.
+
+각 샤드는 마지막에 워커가 실제로 읽은 DB의 `UpdatedAt`을 lock의 `db_updated_at`과 비교하고, 다르면 실패합니다. 워커가 DB를 따로 내려받은 경우를 이 검사가 잡습니다.
+
 ## 디자인 게이트 — 색과 픽셀
 
 리뷰 코멘트로만 지켜지던 규칙 두 가지를 기계가 강제합니다.

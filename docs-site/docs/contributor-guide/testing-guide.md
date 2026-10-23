@@ -682,6 +682,22 @@ recorded in the lock, fails if the bytes no longer match the sha256, and saves
 them under the locked key, with no change to the baselines. If upstream no
 longer serves that digest, run a refresh instead.
 
+After the change that introduced the pin is merged, run this once before
+the next nightly. The first lock and its cache entry were made on the
+feature branch, so `main` has no entry yet:
+
+```bash
+gh workflow run golden-nightly.yml --ref main -f reseed_trivy_db=true
+```
+
+The same dispatch also runs the gate, so a green run means the entry is in
+place. The same step applies whenever a lock reaches `main` from a refresh
+dispatched on another branch.
+
+At the end of every shard, the gate compares the database the worker
+actually used with the `db_updated_at` in the lock and fails if they differ.
+This check catches a worker that downloaded a database of its own.
+
 ## Design gates — colour and pixels
 
 Two rules that used to live only in review comments are now enforced.

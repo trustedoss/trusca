@@ -293,6 +293,7 @@ jobs:
           key: golden-trivy-db-${{ steps.trivydb.outputs.sha256 }}
 
       - name: Verify the pinned Trivy database
+        id: trivydb-verify
         if: env.SHADOW != 'true'
         env:
           CACHE_HIT: ${{ steps.trivydb-cache.outputs.cache-hit }}
@@ -308,6 +309,17 @@ jobs:
             echo "::error::cached database sha256 $got does not match the lock ($WANT)"
             exit 1
           fi
+          # The UpdatedAt the worker must report after the scans. On a
+          # refresh the lock is the old one, so the new tarball is the source.
+          updated="$(tar -xzOf "$TRIVY_DB_CACHE_PATH/db.tar.gz" metadata.json | jq -r .UpdatedAt)"
+          if [ "$UPDATE_BASELINES" != "true" ] || [ -z "${TRIVY_DB_REFRESH_SHA256:-}" ]; then
+            locked="$(jq -r .db_updated_at "$TRIVY_DB_LOCK")"
+            if [ "$updated" != "$locked" ]; then
+              echo "::error::database UpdatedAt $updated does not match the lock's db_updated_at ($locked)"
+              exit 1
+            fi
+          fi
+          echo "updated_at=$updated" >> "$GITHUB_OUTPUT"
 
       # As the worker image's own user, so the volume keeps its ownership.
       # The worker reads /var/lib/trivy/db (TRIVY_CACHE_DIR in the dev file).
@@ -553,18 +565,24 @@ jobs:
           path: golden-shadow/
           if-no-files-found: warn
 
+      # Fails the shard unless the worker still holds the seeded database: if
+      # UpdatedAt moved, something downloaded another one and the run
+      # compared baselines against advisory data nobody pinned. Runs after a
+      # drift failure too, so a red run says whether the pin held.
+      - name: Trivy database the scans read
+        if: always() && env.SHADOW != 'true' && steps.trivydb-verify.outcome == 'success'
+        env:
+          PINNED_UPDATED_AT: ${{ steps.trivydb-verify.outputs.updated_at }}
+        run: |
+          set -euo pipefail
+          docker-compose logs --no-color celery-worker | grep -E "trivy_db_(download|bootstrap)" || true
+          docker-compose exec -T celery-worker cat /var/lib/trivy/db/metadata.json \
+            | python apps/backend/tests/e2e/golden/check_trivy_db.py "$PINNED_UPDATED_AT"
+
       # scancode is best-effort in the pipeline: a failure or timeout is logged
       # as "skipped" and the scan still succeeds with declared licences only. A
       # baseline recorded that way silently loses its detected licences, so the
       # stage outcome is kept with every run, green or not.
-      # Should still be the seeded snapshot: if UpdatedAt moved, something
-      # downloaded the live database and the run compared nothing pinned.
-      - name: Trivy database the scans read
-        if: always() && env.SHADOW != 'true'
-        run: |
-          docker-compose exec -T celery-worker cat /var/lib/trivy/db/metadata.json || true
-          docker-compose logs --no-color celery-worker | grep -E "trivy_db_(download|bootstrap)" || true
-
       - name: Scan stage outcomes (worker log)
         if: always()
         run: |

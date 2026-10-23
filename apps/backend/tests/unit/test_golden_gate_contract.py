@@ -9,6 +9,7 @@ run would say so.
 
 from __future__ import annotations
 
+import io
 import json
 import re
 import sys
@@ -22,6 +23,7 @@ GOLDEN = REPO / "apps/backend/tests/e2e/golden"
 WORKFLOW = REPO / ".github/workflows/golden-nightly.yml"
 
 sys.path.insert(0, str(GOLDEN))
+import check_trivy_db  # noqa: E402
 import run_golden as rg  # noqa: E402
 
 
@@ -173,6 +175,23 @@ class TestPinnedTrivyDatabase:
         assert REPO / workflow_env["TRIVY_DB_LOCK"] == LOCK
         assert "/var/lib/trivy/db" in steps[seed]["run"]
 
+    def test_the_shard_fails_when_the_worker_read_another_database(self) -> None:
+        steps = {s.get("name"): s for s in _golden_job()["steps"]}
+        step = steps["Trivy database the scans read"]
+        assert "steps.trivydb-verify.outcome == 'success'" in step["if"]
+        assert step["env"]["PINNED_UPDATED_AT"] == "${{ steps.trivydb-verify.outputs.updated_at }}"
+        check = [ln for ln in step["run"].splitlines() if "check_trivy_db.py" in ln]
+        # Its exit status must reach the step: no `|| true` swallowing it.
+        assert check and not any("||" in ln for ln in check), check
+        assert "pipefail" in step["run"]
+        verify = steps["Verify the pinned Trivy database"]["run"]
+        assert ".db_updated_at" in verify
+
+    def test_the_lock_records_the_updated_at_the_check_compares(self) -> None:
+        lock = json.loads(LOCK.read_text())
+        metadata = json.dumps({"Version": 2, "UpdatedAt": lock["db_updated_at"]})
+        assert check_trivy_db.mismatch(metadata, lock["db_updated_at"]) is None
+
     def test_a_refresh_regenerates_baselines(self) -> None:
         # A new database with the old baselines is a red nightly the next
         # day; the refresh dispatch therefore always re-records them.
@@ -231,6 +250,41 @@ class TestVulnerabilityFindings:
              "affected_component_version": "1", "severity": "critical"},
         ]
         assert rg.vulnerability_findings(rows) == ["CVE-1|a@1|critical", "CVE-2|b@2|high"]
+
+
+class TestCheckTrivyDb:
+    """check_trivy_db is what makes the pin fail a shard instead of only print."""
+
+    # metadata.json as the seeded worker reports it (gate run 39972233108).
+    PINNED = (
+        '{"Version":2,"NextUpdate":"2026-10-24T13:13:41.529244154Z",'
+        '"UpdatedAt":"2026-10-23T13:13:41.529244645Z",'
+        '"DownloadedAt":"0001-01-01T00:00:00Z"}'
+    )
+    LOCKED = "2026-10-23T13:13:41.529244645Z"
+
+    def test_the_seeded_database_passes(self) -> None:
+        assert check_trivy_db.mismatch(self.PINNED, self.LOCKED) is None
+
+    def test_a_live_download_fails(self) -> None:
+        # What the worker holds after downloading the next day's database.
+        live = self.PINNED.replace("2026-10-23T13:13:41.529244645Z", "2026-10-24T13:02:11.1Z")
+        reason = check_trivy_db.mismatch(live, self.LOCKED)
+        assert reason is not None and "2026-10-24T13:02:11.1Z" in reason
+
+    @pytest.mark.parametrize("text", ["", "not json", "[]", '{"Version":2}'])
+    def test_unreadable_metadata_fails(self, text: str) -> None:
+        assert check_trivy_db.mismatch(text, self.LOCKED) is not None
+
+    def test_an_empty_expectation_fails(self) -> None:
+        assert check_trivy_db.mismatch(self.PINNED, "") is not None
+
+    def test_main_exit_codes(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setattr(sys, "stdin", io.StringIO(self.PINNED))
+        assert check_trivy_db.main(["x", self.LOCKED]) == 0
+        monkeypatch.setattr(sys, "stdin", io.StringIO(self.PINNED))
+        assert check_trivy_db.main(["x", "2026-10-24T00:00:00Z"]) == 1
+        assert check_trivy_db.main(["x"]) == 2
 
 
 class TestParseNames:
