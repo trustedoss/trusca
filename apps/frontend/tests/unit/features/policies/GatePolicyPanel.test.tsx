@@ -13,6 +13,7 @@ import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { GatePolicyPanel } from "@/features/policies/GatePolicyPanel";
+import { ProblemError } from "@/lib/problem";
 
 const getTeamGatePolicy = vi.fn();
 const upsertTeamGatePolicy = vi.fn();
@@ -61,6 +62,18 @@ function renderPanel(canEdit = true) {
   );
 }
 
+// A real ProblemError, not a look-alike: the hook turns only an actual 404
+// ProblemError into "no row", and a stand-in would silently become a failed
+// read instead.
+function problem(status: number): ProblemError {
+  return new ProblemError("gate policy", {
+    status,
+    title: "error",
+    detail: "error",
+    problem: null,
+  });
+}
+
 describe("GatePolicyPanel", () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -76,9 +89,7 @@ describe("GatePolicyPanel", () => {
   });
 
   it("sends null for a field the team has not taken over", async () => {
-    getTeamGatePolicy.mockRejectedValue(
-      Object.assign(new Error("not found"), { status: 404, name: "ProblemError" }),
-    );
+    getTeamGatePolicy.mockRejectedValue(problem(404));
     renderPanel();
 
     await waitFor(() => expect(screen.getByTestId("gate-policy-save")).toBeEnabled());
@@ -164,9 +175,7 @@ describe("GatePolicyPanel", () => {
   });
 
   it("offers the reset only when the team actually has a row", async () => {
-    getTeamGatePolicy.mockRejectedValue(
-      Object.assign(new Error("not found"), { status: 404, name: "ProblemError" }),
-    );
+    getTeamGatePolicy.mockRejectedValue(problem(404));
     renderPanel();
 
     await waitFor(() => expect(screen.getByTestId("gate-policy-save")).toBeEnabled());
@@ -301,5 +310,66 @@ describe("GatePolicyPanel", () => {
     expect(
       screen.queryByTestId("gate-epss-unavailable"),
     ).not.toBeInTheDocument();
+  });
+
+  // Save replaces the team's row wholesale. A draft that was never seeded from
+  // a successful read is the blank default, and saving it would wipe the real
+  // policy, so the controls must not exist until the read succeeds.
+  it("cannot save while the policy is still loading", async () => {
+    getTeamGatePolicy.mockReturnValue(new Promise(() => {}));
+    renderPanel();
+
+    await screen.findByTestId("gate-policy-loading");
+    expect(screen.queryByTestId("gate-policy-save")).not.toBeInTheDocument();
+    expect(screen.queryByRole("switch")).not.toBeInTheDocument();
+    expect(upsertTeamGatePolicy).not.toHaveBeenCalled();
+  });
+
+  it("cannot save after the read fails, and saves the real policy once a retry succeeds", async () => {
+    getTeamGatePolicy.mockRejectedValueOnce(problem(403));
+    renderPanel();
+
+    await screen.findByTestId("gate-policy-error");
+    expect(screen.queryByTestId("gate-policy-save")).not.toBeInTheDocument();
+    expect(screen.queryByRole("switch")).not.toBeInTheDocument();
+    expect(upsertTeamGatePolicy).not.toHaveBeenCalled();
+
+    getTeamGatePolicy.mockResolvedValue({ ...POLICY, epss_threshold: 0.3, malicious_blocks: false });
+    await userEvent.click(screen.getByTestId("gate-policy-retry"));
+    await userEvent.click(await screen.findByTestId("gate-policy-save"));
+
+    await waitFor(() => expect(upsertTeamGatePolicy).toHaveBeenCalledTimes(1));
+    expect(upsertTeamGatePolicy.mock.calls[0][1]).toEqual({
+      epss_threshold: 0.3,
+      reachable_critical_only: null,
+      malicious_blocks: false,
+      approval_required_statuses: null,
+    });
+  });
+
+  it("gives every switch an accessible name", async () => {
+    getTeamGatePolicy.mockResolvedValue(POLICY);
+    renderPanel();
+
+    await screen.findByTestId("gate-policy-save");
+    for (const name of [
+      "gate.epss.override",
+      "gate.reachable.override",
+      "gate.reachable.label",
+      "gate.malicious.override",
+      "gate.malicious.label",
+      "gate.approval.override",
+    ]) {
+      expect(screen.getByRole("switch", { name })).toBeInTheDocument();
+    }
+    // The name points at the right control, not merely at some switch.
+    expect(screen.getByRole("switch", { name: "gate.reachable.label" })).toHaveAttribute(
+      "data-testid",
+      "gate-reachable",
+    );
+    expect(screen.getByRole("switch", { name: "gate.malicious.label" })).toHaveAttribute(
+      "data-testid",
+      "gate-malicious",
+    );
   });
 });
