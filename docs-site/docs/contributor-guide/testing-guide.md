@@ -633,6 +633,71 @@ our internal regression net — it does **not** replace the verification team's
 independent Tier-3 re-verification, whose value is precisely that the oracle
 is not ours.
 
+### The golden gate and its pinned advisory database {#golden-trivy-db}
+
+`golden-nightly.yml` scans the fixtures in `apps/backend/tests/e2e/golden/`
+with the real tools and diffs the result against committed baselines,
+including every vulnerability finding (`id|component@version|severity`) and
+the gate verdict. Those findings come from the Trivy database, which gains
+advisories every day, so the nightly does not read the live one.
+`apps/backend/tests/e2e/golden/trivy-db.lock.json` records the sha256 of a
+database tarball kept in this repository's GitHub Actions cache (key
+`golden-trivy-db-<sha256>`, never published elsewhere). Each shard restores it
+by that exact key, checks the sha256, unpacks it into the worker's cache
+volume before the worker starts, and runs
+the worker with `TRIVY_DB_BOOTSTRAP_ON_START=false`, the same pre-populated
+cache mode an offline installation uses. A newly published advisory against a
+fixture pin therefore cannot fail the gate (issue #549), while a matcher that
+stops reporting a component still does.
+
+Only the golden workflow does this. The product's own database download and
+weekly refresh are unchanged, and a shadow run (`shadow=true`) keeps the live
+database because the BomLens engine rejects an old one.
+
+To move to a newer database, for example to cover a matcher change that
+needs recent advisories:
+
+```bash
+gh workflow run golden-nightly.yml --ref main -f refresh_trivy_db=true
+```
+
+The `trivy-db snapshot` job downloads the current upstream database, saves it
+in the Actions cache under its sha256, and every shard regenerates its
+baselines against it. Download the `golden-trivy-db-lock` and
+`golden-baselines-*` artifacts and commit them in one pull request. Review the
+baseline diff as you would any other: new findings should be new advisories,
+not lost ones. Never commit a new lock without the baselines recorded against
+it, or the nightly fails the next morning.
+
+Dispatch on `main`. A cache entry is visible to runs on the branch that saved
+it and on branches based on it, so an entry saved from a feature branch is
+invisible to the nightly.
+
+A cache miss fails the shard with a message naming the missing key; there is
+no fallback to the live database. GitHub evicts an entry nobody has restored
+for 7 days. The nightly restores it daily, so this happens only after the
+nightly has stopped for a week or more. To recover the same database, dispatch
+on `main` with `-f reseed_trivy_db=true`. It downloads the upstream digest
+recorded in the lock, fails if the bytes no longer match the sha256, and saves
+them under the locked key, with no change to the baselines. If upstream no
+longer serves that digest, run a refresh instead.
+
+After the change that introduced the pin is merged, run this once before
+the next nightly. The first lock and its cache entry were made on the
+feature branch, so `main` has no entry yet:
+
+```bash
+gh workflow run golden-nightly.yml --ref main -f reseed_trivy_db=true
+```
+
+The same dispatch also runs the gate, so a green run means the entry is in
+place. The same step applies whenever a lock reaches `main` from a refresh
+dispatched on another branch.
+
+At the end of every shard, the gate compares the database the worker
+actually used with the `db_updated_at` in the lock and fails if they differ.
+This check catches a worker that downloaded a database of its own.
+
 ## Design gates — colour and pixels
 
 Two rules that used to live only in review comments are now enforced.

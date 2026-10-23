@@ -45,7 +45,9 @@ separated subset of baselines; an unknown name is an error), `GOLDEN_STRICT`
 nightly compares; `tests/unit/test_golden_gate_contract.py` keeps it in step
 with `baselines/` and `fixtures/`, and names the baselines still waiting for a
 fixture. Regenerate baselines only there: dispatch with `update_baselines=true`
-and download the artifact.
+and download the artifact. `refresh_trivy_db=true` does the same against a newly
+downloaded Trivy database (kept in the Actions cache) and also uploads the
+matching `trivy-db.lock.json`.
 
 ## Shadow run (in-process vs BomLens engine)
 Dispatch `golden-nightly` with `shadow=true` (`gh workflow run golden-nightly.yml
@@ -112,6 +114,12 @@ python run_golden.py --api http://localhost:8000 --images container_images.json 
 ## Notes
 - **Not in the PR gate.** CI runs `pytest tests/unit tests/integration`; this
   lives under `tests/e2e/` and runs only in the golden-nightly workflow.
-- `vulnerabilities_count` is **excluded** from the diff (NVD-mirror-dependent);
-  vuln detection is asserted deterministically in the Tier 5 suite.
+- Vulnerability findings (`id|component@version|severity`) and their count
+  are part of the diff. The nightly seeds the worker with the Trivy database
+  whose sha256 is in `trivy-db.lock.json`, restored from the Actions cache
+  (a miss fails the shard), and keeps it from downloading the live one
+  (`compose.trivy-db.yml`), so a newly published advisory cannot move a
+  baseline (issue #549). Move to a newer database with a `refresh_trivy_db=true`
+  dispatch; see the contributor testing guide, "The golden gate and its
+  pinned advisory database".
 - Skips cleanly when the stack / fixtures aren't reachable.

@@ -324,6 +324,34 @@ def test_normalize_spdx_id(raw: str, expected: list[str]) -> None:
 
 `tests/verify-specs/`는 검증팀의 결정적 스펙 모듈을 저장소에 포함한 것이고(동봉 `PROVENANCE.md` 참조) nightly(`verify-specs-nightly.yml`)가 신선하게 시드된 스택에 전수 실행합니다. 이 nightly는 우리 내부 회귀망입니다 — 검증팀의 독립 Tier-3 재검증을 대체하지 않으며, 후자의 가치는 오라클이 우리 것이 아니라는 데 있습니다.
 
+### 골든 게이트와 고정한 취약점 DB {#golden-trivy-db}
+
+`golden-nightly.yml`은 `apps/backend/tests/e2e/golden/`의 픽스처를 실제 도구로 스캔하고, 결과를 커밋된 baseline과 비교합니다. 비교 대상에는 취약점 항목 하나하나(`id|component@version|severity`)와 게이트 판정도 들어갑니다. 이 항목은 Trivy DB에서 나오는데, Trivy DB에는 매일 새 권고가 추가됩니다. 그래서 nightly는 최신 DB를 내려받지 않습니다. `apps/backend/tests/e2e/golden/trivy-db.lock.json`에는 DB 압축 파일의 sha256이 적혀 있고, 그 파일은 이 저장소의 GitHub Actions 캐시에만 있습니다(키 `golden-trivy-db-<sha256>`, 다른 곳에는 올리지 않습니다). 각 샤드는 이 키와 정확히 같은 캐시만 복원해 sha256을 확인한 뒤 워커가 시작되기 전에 캐시 볼륨에 풀어 두고, 워커는 `TRIVY_DB_BOOTSTRAP_ON_START=false`로 실행합니다. 오프라인 설치에서 쓰는 사전 적재 캐시 방식과 같습니다. 따라서 픽스처가 고정한 버전에 새 권고가 나와도 게이트는 실패하지 않습니다(이슈 #549). 반면 매처가 어떤 컴포넌트의 취약점을 보고하지 않게 되면 게이트는 여전히 실패합니다.
+
+이 방식은 골든 워크플로에만 적용됩니다. 제품의 DB 내려받기와 주간 갱신은 그대로이고, 비교 실행(`shadow=true`)은 최신 DB를 계속 씁니다. BomLens 엔진이 오래된 DB를 거부하기 때문입니다.
+
+더 새로운 DB로 옮기려면(예를 들어 최근 권고가 있어야 확인할 수 있는 매처 변경이 있을 때) 다음처럼 실행합니다.
+
+```bash
+gh workflow run golden-nightly.yml --ref main -f refresh_trivy_db=true
+```
+
+`trivy-db snapshot` 잡이 현재 상류 DB를 내려받아 sha256 키로 Actions 캐시에 저장하고, 모든 샤드가 그 DB로 baseline을 다시 기록합니다. `golden-trivy-db-lock` 아티팩트와 `golden-baselines-*` 아티팩트를 내려받아 한 PR로 함께 커밋하십시오. baseline 차이는 다른 변경과 똑같이 검토합니다. 새로 생긴 항목은 새 권고여야 하고, 사라진 항목이 있으면 안 됩니다. 새 lock 파일을 그에 맞춰 기록한 baseline 없이 커밋하면 다음 날 nightly가 실패합니다.
+
+실행은 `main`에서 합니다. 캐시 항목은 그것을 저장한 브랜치와 그 브랜치에서 갈라진 브랜치의 실행에서만 보이므로, 기능 브랜치에서 저장한 항목은 nightly가 읽지 못합니다.
+
+캐시에 항목이 없으면 샤드는 없는 키를 알려 주며 실패하고, 최신 DB로 대신 실행하지 않습니다. GitHub은 7일 동안 복원되지 않은 항목을 지웁니다. nightly가 매일 복원하므로 이 일은 nightly가 일주일 넘게 멈췄을 때만 생깁니다. 같은 DB를 되살리려면 `main`에서 `-f reseed_trivy_db=true`로 실행합니다. lock에 적힌 상류 다이제스트를 다시 내려받아 sha256이 다르면 실패하고, 같으면 baseline은 바꾸지 않고 그 키로 저장합니다. 상류가 그 다이제스트를 더 이상 제공하지 않으면 대신 갱신(refresh)을 실행합니다.
+
+DB 고정을 도입한 변경이 머지되면 다음 nightly 전에 한 번 아래 명령을 실행합니다. 첫 lock과 캐시 항목은 기능 브랜치에서 만들었으므로 `main`에는 아직 항목이 없습니다.
+
+```bash
+gh workflow run golden-nightly.yml --ref main -f reseed_trivy_db=true
+```
+
+이 실행은 게이트도 함께 돌리므로, 성공하면 캐시 항목이 준비된 것입니다. 다른 브랜치에서 실행한 갱신의 lock이 `main`에 들어올 때도 같은 절차를 따릅니다.
+
+각 샤드는 마지막에 워커가 실제로 읽은 DB의 `UpdatedAt`을 lock의 `db_updated_at`과 비교하고, 다르면 실패합니다. 워커가 DB를 따로 내려받은 경우를 이 검사가 잡습니다.
+
 ## 디자인 게이트 — 색과 픽셀
 
 리뷰 코멘트로만 지켜지던 규칙 두 가지를 기계가 강제합니다.

@@ -1,0 +1,15 @@
+# Golden nightly override: the worker scans with the Trivy database the
+# workflow seeded into its trivy-cache volume (the database whose sha256 is in
+# trivy-db.lock.json) and never pulls the live one.
+#
+# TRIVY_DB_BOOTSTRAP_ON_START=false is the product's pre-populated cache mode:
+# no download at worker boot, and every `trivy sbom` / `trivy image` call gets
+# --skip-db-update. Without it the live database, which gains advisories every
+# day, decides each baseline's findings and gate verdict (issue #549).
+#
+# A shadow run sets GOLDEN_LIVE_TRIVY_DB=true and keeps the live database: the
+# BomLens engine fails a scan whose database is older than its age limit.
+services:
+  celery-worker:
+    environment:
+      TRIVY_DB_BOOTSTRAP_ON_START: ${GOLDEN_LIVE_TRIVY_DB:-false}

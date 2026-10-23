@@ -11,9 +11,9 @@
     ]
   },
   "gate": {
-    "critical_cve": 0,
+    "critical_cve": 1,
     "forbidden_license": 0,
-    "gate": "pass"
+    "gate": "fail"
   },
   "licenses": [
     "Apache-2.0|allowed|concluded",
@@ -34,5 +34,19 @@
   },
   "scan_status": "succeeded",
   "source_tree_root_entries": 1,
-  "vulnerabilities_count": 0
+  "vulnerabilities": [
+    "CVE-2023-32681|requests@2.28.0|medium",
+    "CVE-2024-35195|requests@2.28.0|medium",
+    "CVE-2024-47081|requests@2.28.0|medium",
+    "CVE-2025-50181|urllib3@1.26.20|medium",
+    "CVE-2025-66418|urllib3@1.26.20|high",
+    "CVE-2025-66471|urllib3@1.26.20|high",
+    "CVE-2026-21441|urllib3@1.26.20|high",
+    "CVE-2026-25645|requests@2.28.0|medium",
+    "CVE-2026-44431|urllib3@1.26.20|high",
+    "CVE-2026-97687|urllib3@1.26.20|high",
+    "CVE-2026-97689|urllib3@1.26.20|high",
+    "GHSA-6q48-6c7w-9gw2|certifi@2026.5.20|critical"
+  ],
+  "vulnerabilities_count": 12
 }

@@ -1,0 +1,5 @@
+{
+  "sha256": "e435c226d3878b0c0a76d2ec94c73f6ea2142f1c8467e65f36a49e078b423dd9",
+  "source": "ghcr.io/aquasecurity/trivy-db@sha256:d44e4721a0d4d24080e6e916fa4e937c4bc11e532b1cb7430fda9d6b41a81eaa",
+  "db_updated_at": "2026-10-23T13:13:41.529244645Z"
+}

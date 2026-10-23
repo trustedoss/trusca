@@ -94,10 +94,14 @@ def test_fixture_matches_baseline(name: str, _auth) -> None:
         _unavailable(f"fixture {name} not present (external corpus or in-repo)")
     got = rg.scan_fixture(API, token, team, name, src)
     want = json.loads((rg.BASELINE_DIR / f"{name}.json").read_text())
-    # vulnerabilities_count is NVD-mirror-dependent → asserted in the Tier 5
-    # deterministic vuln-detection suite, not here.
-    drop = lambda d: {k: v for k, v in d.items() if k != "vulnerabilities_count"}  # noqa: E731
-    assert drop(got) == drop(want), (
-        f"golden drift for {name}:\n"
-        + json.dumps({"baseline": drop(want), "got": drop(got)}, indent=2, sort_keys=True)
+    # Everything is compared, vulnerability findings included: the nightly
+    # seeds the worker with the Trivy database pinned in trivy-db.lock.json.
+    keys = rg.drift(got, want)
+    assert not keys, (
+        f"golden drift for {name} in {keys}:\n"
+        + json.dumps(
+            {"baseline": {k: want.get(k) for k in keys}, "got": {k: got.get(k) for k in keys}},
+            indent=2,
+            sort_keys=True,
+        )
     )

@@ -280,21 +280,24 @@ class TestShadowCapture:
         monkeypatch.setattr(rg, "_req", api)
         (tmp_path / "f.txt").write_text("x")
         got = rg.scan_fixture("http://api", "t", "team", "node", tmp_path, shadow=True)
-        assert api.vuln_calls == 2
+        # Two pages for the baseline findings, two more for the shadow record.
+        assert api.vuln_calls == 4
         assert got["shadow"]["vulnerability_ids"] == ["CVE-2024-1", "GHSA-xxxx"]
         assert got["vulnerabilities_count"] == 3
 
     def test_the_baseline_capture_has_no_shadow_key(
         self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
     ) -> None:
-        # The drift gate compares every key but vulnerabilities_count: a
-        # shadow key leaking into it would drift every baseline.
+        # The drift gate compares every key: a shadow key leaking into it
+        # would drift every baseline.
         api = _FakeApi()
         monkeypatch.setattr(rg, "_req", api)
         (tmp_path / "f.txt").write_text("x")
         got = rg.scan_fixture("http://api", "t", "team", "node", tmp_path)
         assert "shadow" not in got
-        assert api.vuln_calls == 0
+        # Every page of findings is read: the baseline records each one.
+        assert api.vuln_calls == 2
+        assert len(got["vulnerabilities"]) == len(VULN_ROWS)
         assert set(got) == set(json.loads((rg.BASELINE_DIR / "node.json").read_text()))
 
     def test_shadow_main_records_a_missing_fixture_and_never_fails(

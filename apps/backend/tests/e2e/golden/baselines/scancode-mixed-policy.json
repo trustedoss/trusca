@@ -31,5 +31,10 @@
   },
   "scan_status": "succeeded",
   "source_tree_root_entries": 6,
-  "vulnerabilities_count": 0
+  "vulnerabilities": [
+    "CVE-2025-13465|lodash@4.17.21|medium",
+    "CVE-2026-2950|lodash@4.17.21|medium",
+    "CVE-2026-4800|lodash@4.17.21|high"
+  ],
+  "vulnerabilities_count": 3
 }
