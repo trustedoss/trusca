@@ -122,6 +122,13 @@ If the finding moves while a request is waiting (someone reopens it, say),
 agreeing to the stale request fails with `422` and the request stays open
 rather than recording an agreement to something that never happened.
 
+A request, waiting or decided, belongs to its finding and stays with it through
+the automatic re-match and through a retried run of the same scan: a finding
+that is still reported keeps its id. If a later match no longer reports the
+finding (the package was upgraded, or the advisory withdrawn), the finding is
+removed and its request goes with it, because there is nothing left for the
+request to apply to.
+
 ## The findings table
 
 Columns:
@@ -809,7 +816,7 @@ their own page — see [VEX documents — export & import](./vex.md).
 
 When the Trivy DB is refreshed and new CVEs land, the **automatic re-match** Celery beat task walks every project's most-recent SBOM and re-correlates. New findings appear automatically — no re-scan required.
 
-The re-match runs after every successful weekly refresh (cadence `TRIVY_DB_REFRESH_HOURS`, default 168). Affected projects get fresh `vulnerability_findings` rows; operators can monitor `/admin/scans` and the per-project Vulnerabilities tab.
+The re-match runs after every successful weekly refresh (cadence `TRIVY_DB_REFRESH_HOURS`, default 168). The re-match updates each scan's `vulnerability_findings` rows in place: a finding still reported keeps its id, status, assignment and any [request for a second person](#transition-approvals); a new match is added; a finding no longer reported is removed. Operators can monitor `/admin/scans` and the per-project Vulnerabilities tab.
 
 If the **Notify on new CVE** trigger is enabled (see [admin notifications](../admin-guide/vulnerability-data.md#notifications)), the assigned team or watchers receive an email / Slack / Teams message.
 
