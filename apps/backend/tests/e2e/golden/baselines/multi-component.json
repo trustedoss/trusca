@@ -81,5 +81,21 @@
   },
   "scan_status": "succeeded",
   "source_tree_root_entries": 4,
-  "vulnerabilities_count": 0
+  "vulnerabilities": [
+    "CVE-2024-29041|express@4.18.2|medium",
+    "CVE-2024-43796|express@4.18.2|low",
+    "CVE-2024-43799|send@0.18.0|low",
+    "CVE-2024-43800|serve-static@1.15.0|low",
+    "CVE-2024-45296|path-to-regexp@0.1.7|high",
+    "CVE-2024-45590|body-parser@1.20.1|high",
+    "CVE-2024-47764|cookie@0.5.0|low",
+    "CVE-2024-52798|path-to-regexp@0.1.7|high",
+    "CVE-2025-15284|qs@6.11.0|medium",
+    "CVE-2025-48924|commons-lang3@3.12.0|medium",
+    "CVE-2026-12590|body-parser@1.20.1|low",
+    "CVE-2026-2391|qs@6.11.0|low",
+    "CVE-2026-4867|path-to-regexp@0.1.7|high",
+    "CVE-2026-82417|qs@6.11.0|medium"
+  ],
+  "vulnerabilities_count": 14
 }

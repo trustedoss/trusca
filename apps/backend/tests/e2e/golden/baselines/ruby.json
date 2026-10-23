@@ -34,5 +34,9 @@
   },
   "scan_status": "succeeded",
   "source_tree_root_entries": 2,
-  "vulnerabilities_count": 0
+  "vulnerabilities": [
+    "CVE-2024-21510|sinatra@3.1.0|medium",
+    "CVE-2025-61921|sinatra@3.1.0|high"
+  ],
+  "vulnerabilities_count": 2
 }

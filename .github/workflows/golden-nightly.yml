@@ -18,6 +18,29 @@ name: golden-nightly
 # versions differ). Dispatch with update_baselines=true, download the artifact,
 # and review the diff in the PR.
 #
+# Advisory data is pinned (issue #549). The worker scans with the Trivy
+# database whose db.tar.gz sha256 is recorded in
+# apps/backend/tests/e2e/golden/trivy-db.lock.json. The tarball is kept in
+# this repository's Actions cache only (key golden-trivy-db-<sha256>), never
+# published anywhere. Each shard restores it by exact key, verifies the
+# sha256, and seeds it into the worker's cache volume before the worker
+# starts; compose.trivy-db.yml keeps the worker from downloading the live
+# database. A new advisory against a fixture pin therefore cannot move a
+# baseline, while the findings themselves are part of the diff, so a matcher
+# that stops reporting a component still fails the gate.
+#
+# A cache miss fails the shard; there is no fallback to the live database.
+# GitHub evicts a cache entry unused for 7 days; the nightly restores it every
+# day, so it only lapses after a pause of a week or more. Cache entries are
+# also scoped: a run on main cannot read an entry saved by a run on another
+# branch. Recovery, both dispatched on main:
+# - refresh_trivy_db=true downloads the current upstream database, saves it
+#   under its own key, and regenerates every shard's baselines against it.
+#   Commit the lock artifact and the baselines together.
+# - reseed_trivy_db=true downloads the locked upstream digest again and
+#   saves it under the locked key, if upstream still serves those exact bytes.
+#   No baseline changes.
+#
 # Shadow run (dispatch with shadow=true): measures the BomLens scan engine
 # against the in-process one instead of diffing baselines. Each shard scans its
 # fixtures with the in-process engine, switches the same stack to the BomLens
@@ -41,6 +64,14 @@ on:
         description: "Scan with the in-process and the BomLens engine and report the differences, instead of diffing baselines"
         type: boolean
         default: false
+      refresh_trivy_db:
+        description: "Download today's Trivy database into the Actions cache and regenerate every baseline against it"
+        type: boolean
+        default: false
+      reseed_trivy_db:
+        description: "Put the locked Trivy database back into the Actions cache from its upstream digest (after eviction, or on main after a refresh ran elsewhere)"
+        type: boolean
+        default: false
 
 permissions:
   contents: read
@@ -48,9 +79,109 @@ permissions:
   # .github/actions/dev-images.
   packages: read
 
+env:
+  # Where a refresh reads the database from. Downloaded only; the copy lives
+  # in this repository's Actions cache, not in any registry.
+  TRIVY_DB_UPSTREAM: ghcr.io/aquasecurity/trivy-db:2
+  TRIVY_DB_LOCK: apps/backend/tests/e2e/golden/trivy-db.lock.json
+  TRIVY_DB_CACHE_PATH: /tmp/golden-trivy-db
+
 jobs:
+  # Dispatch with refresh_trivy_db=true or reseed_trivy_db=true only. Puts a
+  # database tarball into the Actions cache under golden-trivy-db-<sha256>.
+  # On a refresh it hands the new sha256 to the shards, which regenerate their
+  # baselines against it.
+  trivy-db-snapshot:
+    name: trivy-db snapshot
+    if: ${{ github.event_name == 'workflow_dispatch' && (github.event.inputs.refresh_trivy_db == 'true' || github.event.inputs.reseed_trivy_db == 'true') }}
+    runs-on: ubuntu-22.04
+    timeout-minutes: 15
+    outputs:
+      sha256: ${{ steps.fetch.outputs.sha256 }}
+    env:
+      REFRESH: ${{ github.event.inputs.refresh_trivy_db || 'false' }}
+      RESEED: ${{ github.event.inputs.reseed_trivy_db || 'false' }}
+      SHADOW: ${{ github.event.inputs.shadow || 'false' }}
+    steps:
+      - name: Refuse conflicting inputs
+        run: |
+          if [ "$REFRESH" = "true" ] && [ "$RESEED" = "true" ]; then
+            echo "::error::refresh_trivy_db and reseed_trivy_db are exclusive"
+            exit 1
+          fi
+          if [ "$SHADOW" = "true" ]; then
+            echo "::error::dispatch the shadow run separately"
+            exit 1
+          fi
+
+      - uses: actions/checkout@v4
+        with:
+          sparse-checkout: apps/backend/tests/e2e/golden
+
+      - name: Set up ORAS
+        uses: oras-project/setup-oras@22ce207df3b08e061f537244349aac6ae1d214f6  # v1.2.4
+        with:
+          version: 1.2.0
+
+      - name: Download the database
+        id: fetch
+        run: |
+          set -euo pipefail
+          if [ "$RESEED" = "true" ]; then
+            source_ref="$(jq -r .source "$TRIVY_DB_LOCK")"
+            want="$(jq -r .sha256 "$TRIVY_DB_LOCK")"
+          else
+            source_ref="${TRIVY_DB_UPSTREAM%:*}@$(oras resolve "$TRIVY_DB_UPSTREAM")"
+            want=""
+          fi
+          echo "source: $source_ref"
+          oras pull "$source_ref" --output "$TRIVY_DB_CACHE_PATH"
+          sha="$(sha256sum "$TRIVY_DB_CACHE_PATH/db.tar.gz" | cut -d' ' -f1)"
+          if [ -n "$want" ] && [ "$sha" != "$want" ]; then
+            echo "::error::$source_ref no longer yields the locked database (sha256 $sha, lock $want). Dispatch refresh_trivy_db=true instead."
+            exit 1
+          fi
+          updated="$(tar -xzOf "$TRIVY_DB_CACHE_PATH/db.tar.gz" metadata.json | jq -r .UpdatedAt)"
+          mkdir -p lock
+          jq -n --arg sha "$sha" --arg source "$source_ref" --arg updated "$updated" \
+            '{sha256: $sha, source: $source, db_updated_at: $updated}' > lock/trivy-db.lock.json
+          cat lock/trivy-db.lock.json
+          {
+            echo "### Golden Trivy database"
+            echo
+            if [ "$REFRESH" = "true" ]; then
+              echo "Commit as $TRIVY_DB_LOCK together with the regenerated baselines:"
+            else
+              echo "Reseeded the cache entry for the committed lock:"
+            fi
+            echo
+            echo '```json'
+            cat lock/trivy-db.lock.json
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+          echo "sha256=$sha" >> "$GITHUB_OUTPUT"
+
+      - name: Save the database in the Actions cache
+        uses: actions/cache/save@v4
+        with:
+          path: ${{ env.TRIVY_DB_CACHE_PATH }}/db.tar.gz
+          key: golden-trivy-db-${{ steps.fetch.outputs.sha256 }}
+
+      - name: Upload the lock file
+        if: env.REFRESH == 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: golden-trivy-db-lock
+          path: lock/trivy-db.lock.json
+          if-no-files-found: error
+
   golden:
     name: golden (${{ matrix.shard }})
+    needs: trivy-db-snapshot
+    # The snapshot job is skipped on every run but a refresh or reseed;
+    # skipped is fine, failed is not (the shards would read a stale pin).
+    # A reseed only fills the cache, so the gate runs after it as usual.
+    if: ${{ !cancelled() && needs.trivy-db-snapshot.result != 'failure' }}
     runs-on: ubuntu-22.04
     # A shadow run scans every fixture twice and pulls the engine images.
     timeout-minutes: ${{ github.event.inputs.shadow == 'true' && 120 || 40 }}
@@ -75,8 +206,15 @@ jobs:
           - shard: scancode
             names: "scancode-license-files scancode-license-headers scancode-mixed-policy scancode-spdx-tags"
     env:
-      # Dev stack plus the scancode override (see that file for why).
-      COMPOSE_FILE: docker-compose.dev.yml:apps/backend/tests/e2e/golden/compose.scancode.yml
+      # Dev stack plus the scancode and pinned-database overrides (see those
+      # files for why).
+      COMPOSE_FILE: docker-compose.dev.yml:apps/backend/tests/e2e/golden/compose.scancode.yml:apps/backend/tests/e2e/golden/compose.trivy-db.yml
+      # Read by compose.trivy-db.yml: only a shadow run downloads the live
+      # database; the gate and a baseline update read the pinned snapshot.
+      GOLDEN_LIVE_TRIVY_DB: ${{ github.event.inputs.shadow == 'true' && 'true' || 'false' }}
+      # Set on a refresh or reseed dispatch; only a refresh (which also sets
+      # UPDATE_BASELINES) uses it instead of the lock file.
+      TRIVY_DB_REFRESH_SHA256: ${{ needs.trivy-db-snapshot.outputs.sha256 }}
       TRUSTEDOSS_SCAN_BACKEND: real
       # Pin so the api and worker sign and verify the same JWTs.
       SECRET_KEY: golden-nightly-fixture-secret-key-for-workflow-runs
@@ -84,7 +222,8 @@ jobs:
       LOGIN_THROTTLE_ENABLED: "false"
       # Matrix and dispatch values pass through env, never inline in run:.
       GOLDEN_NAMES: ${{ matrix.names }}
-      UPDATE_BASELINES: ${{ github.event.inputs.update_baselines || 'false' }}
+      # A database refresh always re-records the baselines against the copy.
+      UPDATE_BASELINES: ${{ (github.event.inputs.update_baselines == 'true' || github.event.inputs.refresh_trivy_db == 'true') && 'true' || 'false' }}
       SHADOW: ${{ github.event.inputs.shadow || 'false' }}
       GOLDEN_SHARD: ${{ matrix.shard }}
     steps:
@@ -122,6 +261,64 @@ jobs:
         with:
           services: backend celery-worker
           token: ${{ secrets.GITHUB_TOKEN }}
+
+      # ---- Pinned Trivy database (every run but a shadow run) -------------
+      # Restored from the Actions cache by the exact key the lock names (no
+      # restore-keys, so nothing else can match), checked against the lock's
+      # sha256, and unpacked into the worker's trivy-cache volume before the
+      # worker starts. compose.trivy-db.yml then keeps the worker off the
+      # network for advisory data.
+      - name: Resolve the pinned Trivy database
+        id: trivydb
+        if: env.SHADOW != 'true'
+        run: |
+          set -euo pipefail
+          sha="${TRIVY_DB_REFRESH_SHA256:-}"
+          if [ -z "$sha" ] || [ "$UPDATE_BASELINES" != "true" ]; then
+            sha="$(jq -r .sha256 "$TRIVY_DB_LOCK")"
+          fi
+          if ! printf '%s' "$sha" | grep -Eq '^[0-9a-f]{64}$'; then
+            echo "::error::$TRIVY_DB_LOCK has no valid sha256: $sha"
+            exit 1
+          fi
+          echo "pinned Trivy database sha256: $sha"
+          echo "sha256=$sha" >> "$GITHUB_OUTPUT"
+
+      - name: Restore the pinned Trivy database
+        id: trivydb-cache
+        if: env.SHADOW != 'true'
+        uses: actions/cache/restore@v4
+        with:
+          path: ${{ env.TRIVY_DB_CACHE_PATH }}/db.tar.gz
+          key: golden-trivy-db-${{ steps.trivydb.outputs.sha256 }}
+
+      - name: Verify the pinned Trivy database
+        if: env.SHADOW != 'true'
+        env:
+          CACHE_HIT: ${{ steps.trivydb-cache.outputs.cache-hit }}
+          WANT: ${{ steps.trivydb.outputs.sha256 }}
+        run: |
+          set -euo pipefail
+          if [ "$CACHE_HIT" != "true" ]; then
+            echo "::error::No Actions cache entry golden-trivy-db-$WANT. It was evicted (unused for 7 days) or saved on another branch. The gate does not fall back to the live database. Dispatch golden-nightly on main with reseed_trivy_db=true (same database, if upstream still serves it) or refresh_trivy_db=true (new database and baselines)."
+            exit 1
+          fi
+          got="$(sha256sum "$TRIVY_DB_CACHE_PATH/db.tar.gz" | cut -d' ' -f1)"
+          if [ "$got" != "$WANT" ]; then
+            echo "::error::cached database sha256 $got does not match the lock ($WANT)"
+            exit 1
+          fi
+
+      # As the worker image's own user, so the volume keeps its ownership.
+      # The worker reads /var/lib/trivy/db (TRIVY_CACHE_DIR in the dev file).
+      - name: Seed the worker's Trivy cache
+        if: env.SHADOW != 'true'
+        run: |
+          set -euo pipefail
+          docker-compose run --rm --no-deps \
+            -v "$TRIVY_DB_CACHE_PATH:/seed:ro" \
+            --entrypoint sh celery-worker -c \
+            'rm -rf /var/lib/trivy/db && mkdir -p /var/lib/trivy/db && tar -xzf /seed/db.tar.gz -C /var/lib/trivy/db && test -s /var/lib/trivy/db/trivy.db && cat /var/lib/trivy/db/metadata.json'
 
       # The dev image has no AUTO_MIGRATE entrypoint and the backend
       # healthcheck needs the schema, so migrate before bringing it up.
@@ -228,7 +425,7 @@ jobs:
       - name: "Shadow: switch the stack to the BomLens engine"
         if: env.SHADOW == 'true'
         env:
-          COMPOSE_FILE: docker-compose.dev.yml:apps/backend/tests/e2e/golden/compose.scancode.yml:apps/backend/tests/e2e/golden/compose.bomlens.yml
+          COMPOSE_FILE: docker-compose.dev.yml:apps/backend/tests/e2e/golden/compose.scancode.yml:apps/backend/tests/e2e/golden/compose.trivy-db.yml:apps/backend/tests/e2e/golden/compose.bomlens.yml
           COMPOSE_PROFILES: bomlens-engine
           GOLDEN_ENGINE_ENV_FILE: ${{ runner.temp }}/golden-engine.env
           SCAN_ENGINE: bomlens
@@ -360,6 +557,14 @@ jobs:
       # as "skipped" and the scan still succeeds with declared licences only. A
       # baseline recorded that way silently loses its detected licences, so the
       # stage outcome is kept with every run, green or not.
+      # Should still be the seeded snapshot: if UpdatedAt moved, something
+      # downloaded the live database and the run compared nothing pinned.
+      - name: Trivy database the scans read
+        if: always() && env.SHADOW != 'true'
+        run: |
+          docker-compose exec -T celery-worker cat /var/lib/trivy/db/metadata.json || true
+          docker-compose logs --no-color celery-worker | grep -E "trivy_db_(download|bootstrap)" || true
+
       - name: Scan stage outcomes (worker log)
         if: always()
         run: |
@@ -375,7 +580,7 @@ jobs:
       - name: "Shadow: tear down the engine services"
         if: always() && env.SHADOW == 'true'
         env:
-          COMPOSE_FILE: docker-compose.dev.yml:apps/backend/tests/e2e/golden/compose.scancode.yml:apps/backend/tests/e2e/golden/compose.bomlens.yml
+          COMPOSE_FILE: docker-compose.dev.yml:apps/backend/tests/e2e/golden/compose.scancode.yml:apps/backend/tests/e2e/golden/compose.trivy-db.yml:apps/backend/tests/e2e/golden/compose.bomlens.yml
           COMPOSE_PROFILES: bomlens-engine
         run: |
           docker-compose down -v --remove-orphans || true
@@ -718,4 +923,13 @@ jobs:
             intended change, dispatch this workflow with update_baselines=true,
             download the artifact and review the diff in a PR. Never regenerate
             a baseline locally.
+
+            Advisory data is pinned (trivy-db.lock.json), so a change in the
+            vulnerability findings comes from the scan pipeline, not from a
+            newly published advisory. Moving to a newer database is a
+            separate dispatch with refresh_trivy_db=true. A shard that stops
+            at "No Actions cache entry golden-trivy-db-..." lost its cached
+            database (unused for 7 days); dispatch on main with
+            reseed_trivy_db=true, or refresh_trivy_db=true if upstream no
+            longer serves the locked digest.
           token: ${{ secrets.GITHUB_TOKEN }}

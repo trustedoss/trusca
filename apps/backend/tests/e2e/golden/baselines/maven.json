@@ -36,5 +36,8 @@
   },
   "scan_status": "succeeded",
   "source_tree_root_entries": 3,
-  "vulnerabilities_count": 0
+  "vulnerabilities": [
+    "CVE-2025-48924|commons-lang3@3.12.0|medium"
+  ],
+  "vulnerabilities_count": 1
 }

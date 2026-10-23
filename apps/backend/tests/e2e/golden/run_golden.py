@@ -223,6 +223,10 @@ def _capture(api, token, pid, sid, status) -> dict:
     )
     s, b, _ = g(f"/v1/projects/{pid}/vulnerabilities")
     vc = (json.loads(b).get("total") if s == 200 else None)
+    # Exact findings, not only their count: the nightly reads a Trivy database
+    # fixed by sha256 (trivy-db.lock.json), so the set is deterministic and a
+    # matcher that stops reporting an ecosystem changes it.
+    findings = vulnerability_findings(_vulnerability_rows(api, token, pid))
     s, b, _ = g(f"/v1/projects/{pid}/source-tree?scan_id={sid}")
     st_entries = len(json.loads(b).get("entries", [])) if s == 200 else -1
     nt = g(f"/v1/projects/{pid}/notice?format=text")[0]
@@ -251,6 +255,7 @@ def _capture(api, token, pid, sid, status) -> dict:
                        "nix_spurious": sum(1 for p in purls if "pkg:nix" in p)},
         "licenses": licenses,
         "vulnerabilities_count": vc,
+        "vulnerabilities": findings,
         "source_tree_root_entries": st_entries,
         "notice": {"text_ok": nt == 200, "html_ok": nh_s == 200, "csp": csp},
         "sbom": sbom,
@@ -280,6 +285,28 @@ def _vulnerability_rows(api, token, pid) -> list[dict] | None:
             return rows
 
 
+def vulnerability_findings(rows: list[dict] | None) -> list[str] | None:
+    """``id|component@version|severity`` per finding, sorted; None if unreadable."""
+    if rows is None:
+        return None
+    return sorted(
+        f"{r.get('cve_id')}|{r.get('affected_component_name')}"
+        f"@{r.get('affected_component_version')}|{r.get('severity')}"
+        for r in rows
+    )
+
+
+def drift(got: dict, want: dict) -> list[str]:
+    """The top-level keys whose values differ between a capture and its baseline.
+
+    Every key is compared, the vulnerability findings and their count included.
+    They used to be left out because the worker downloaded the live Trivy
+    database, which gains advisories every day; the nightly now seeds a
+    database fixed by sha256 instead (see the workflow and trivy-db.lock.json).
+    """
+    return sorted(k for k in set(got) | set(want) if got.get(k) != want.get(k))
+
+
 def _as_dict(value: object) -> dict:
     return value if isinstance(value, dict) else {}
 
@@ -288,8 +315,9 @@ def shadow_fields(scan: dict, rows: list[dict] | None, wall_seconds: float) -> d
     """What a shadow run records beyond the baseline capture.
 
     Both engines read the same Trivy database in a shadow run, so the
-    vulnerability identifiers are comparable there (the baseline diff leaves
-    the count out because the database moves between nights). The scan row
+    vulnerability identifiers are comparable there. A shadow run reads the
+    live database rather than the gate's pinned snapshot, because the BomLens
+    engine refuses a database older than its age limit. The scan row
     adds the engine that ran, the stages that degraded and the time it took,
     with the per-stage windows as the scan row stores them
     (``scan_metadata.stage_timings``, written by both engines) and the scan id
@@ -380,18 +408,18 @@ def main() -> int:
     BASELINE_DIR.mkdir(parents=True, exist_ok=True)
     token = login(args.api)
     team = _team(args.api, token)
-    drift = 0
+    drifted = 0
     for name in args.names:
         src = Path(args.fixtures) / name
         if not src.is_dir():
             print(f"MISSING {name}")
-            drift += 1
+            drifted += 1
             continue
         try:
             got = scan_fixture(args.api, token, team, name, src)
         except Exception as exc:  # noqa: BLE001
             print(f"ERROR {name}: {exc}")
-            drift += 1
+            drifted += 1
             continue
         bl = BASELINE_DIR / f"{name}.json"
         if args.update:
@@ -401,23 +429,20 @@ def main() -> int:
             continue
         if not bl.exists():
             print(f"NO BASELINE {name} (run --update)")
-            drift += 1
+            drifted += 1
             continue
         want = json.loads(bl.read_text())
-        # vulnerabilities_count is NVD-dependent → excluded from the diff.
-        gc = {k: v for k, v in got.items() if k != "vulnerabilities_count"}
-        wc = {k: v for k, v in want.items() if k != "vulnerabilities_count"}
-        if gc == wc:
+        keys = drift(got, want)
+        if not keys:
             print(f"OK {name}")
         else:
-            drift += 1
+            drifted += 1
             print(f"DRIFT {name}:")
-            for k in sorted(set(gc) | set(wc)):
-                if gc.get(k) != wc.get(k):
-                    print(f"   {k}: baseline={wc.get(k)} got={gc.get(k)}")
+            for k in keys:
+                print(f"   {k}: baseline={want.get(k)} got={got.get(k)}")
     print(f"=== golden: {'updated' if args.update else 'checked'} "
-          f"{len(args.names)} fixtures, drift={drift} ===")
-    return 1 if (drift and not args.update) else 0
+          f"{len(args.names)} fixtures, drift={drifted} ===")
+    return 1 if (drifted and not args.update) else 0
 
 
 def shadow_main(api: str, fixtures: Path, names: list[str], out_dir: Path) -> int:

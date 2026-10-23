@@ -9,6 +9,8 @@ run would say so.
 
 from __future__ import annotations
 
+import json
+import re
 import sys
 from pathlib import Path
 
@@ -102,6 +104,133 @@ def test_the_stack_the_nightly_boots_runs_scancode() -> None:
     # The override is only needed while the dev file still zeroes the ceiling.
     # If that line goes away, delete the override and this test with it.
     assert dev["services"]["celery-worker"]["environment"]["SCANCODE_MAX_FILES"] == "0"
+
+
+LOCK = GOLDEN / "trivy-db.lock.json"
+TRIVY_DB_OVERRIDE = GOLDEN / "compose.trivy-db.yml"
+
+
+def _golden_job() -> dict:
+    job: dict = yaml.safe_load(WORKFLOW.read_text())["jobs"]["golden"]
+    return job
+
+
+class TestPinnedTrivyDatabase:
+    """Issue #549: the gate must not read the live advisory database.
+
+    The python-pip baseline flipped to a failing gate the night a critical
+    advisory was published against its certifi pin. The nightly now seeds a
+    database fixed by sha256 from the Actions cache and keeps the worker from
+    downloading another, so each link of that chain is asserted here.
+    """
+
+    def test_the_lock_fixes_the_database_bytes_and_their_source(self) -> None:
+        lock = json.loads(LOCK.read_text())
+        assert re.fullmatch(r"[0-9a-f]{64}", lock["sha256"]), lock
+        # A tag moves; a reseed can only reproduce the bytes from a digest.
+        assert re.fullmatch(r"ghcr\.io/aquasecurity/trivy-db@sha256:[0-9a-f]{64}", lock["source"])
+
+    def test_a_cache_miss_fails_instead_of_reading_the_live_database(self) -> None:
+        steps = _golden_job()["steps"]
+        by_name = {s.get("name"): s for s in steps}
+        restore = by_name["Restore the pinned Trivy database"]
+        assert restore["uses"].startswith("actions/cache/restore@")
+        # An exact key only: a restore-keys prefix would accept another database.
+        assert set(restore["with"]) == {"path", "key"}
+        assert restore["with"]["key"] == "golden-trivy-db-${{ steps.trivydb.outputs.sha256 }}"
+        verify = by_name["Verify the pinned Trivy database"]["run"]
+        assert 'if [ "$CACHE_HIT" != "true" ]; then' in verify
+        assert "sha256sum" in verify
+        # Nothing in the shard downloads a database itself.
+        assert not any("oras" in (s.get("run") or "") for s in steps)
+
+    def test_the_worker_does_not_download_a_database_outside_a_shadow_run(self) -> None:
+        job = _golden_job()
+        compose_files = job["env"]["COMPOSE_FILE"].split(":")
+        assert (REPO / compose_files[-1]) == TRIVY_DB_OVERRIDE
+        override = yaml.safe_load(TRIVY_DB_OVERRIDE.read_text())
+        value = override["services"]["celery-worker"]["environment"][
+            "TRIVY_DB_BOOTSTRAP_ON_START"
+        ]
+        # Unset means pinned: the gate never depends on the flag being passed.
+        assert value == "${GOLDEN_LIVE_TRIVY_DB:-false}"
+        live = job["env"]["GOLDEN_LIVE_TRIVY_DB"]
+        assert live == "${{ github.event.inputs.shadow == 'true' && 'true' || 'false' }}"
+
+    def test_the_pinned_database_is_seeded_before_the_worker_starts(self) -> None:
+        steps = _golden_job()["steps"]
+        names = [s.get("name", "") for s in steps]
+        resolve = names.index("Resolve the pinned Trivy database")
+        restore = names.index("Restore the pinned Trivy database")
+        verify = names.index("Verify the pinned Trivy database")
+        seed = names.index("Seed the worker's Trivy cache")
+        start = names.index("Bring up backend + worker")
+        assert resolve < restore < verify < seed < start
+        for i in (resolve, restore, verify, seed):
+            assert steps[i]["if"] == "env.SHADOW != 'true'"
+        assert "$TRIVY_DB_LOCK" in steps[resolve]["run"]
+        workflow_env = yaml.safe_load(WORKFLOW.read_text())["env"]
+        assert REPO / workflow_env["TRIVY_DB_LOCK"] == LOCK
+        assert "/var/lib/trivy/db" in steps[seed]["run"]
+
+    def test_a_refresh_regenerates_baselines(self) -> None:
+        # A new database with the old baselines is a red nightly the next
+        # day; the refresh dispatch therefore always re-records them.
+        update = _golden_job()["env"]["UPDATE_BASELINES"]
+        assert "refresh_trivy_db == 'true'" in update
+        assert "update_baselines == 'true'" in update
+
+
+def _component(finding: str) -> str:
+    """The component name a finding (``id|name@version|severity``) is reported on."""
+    return finding.split("|", 2)[1].split("@", 1)[0]
+
+
+class TestFindingsAreGated:
+    """The baselines carry the findings, so the matcher is under the gate."""
+
+    def test_baselines_carry_findings(self) -> None:
+        # python-pip pins requests 2.28.0 and urllib3 1.26.20 on purpose; an
+        # empty list there means the capture read nothing, not a clean tree.
+        baseline = json.loads((rg.BASELINE_DIR / "python-pip.json").read_text())
+        found = baseline["vulnerabilities"]
+        assert any("|requests@2.28.0|" in f for f in found), found
+        assert baseline["vulnerabilities_count"] == len(found)
+
+    @pytest.mark.parametrize("name", sorted(p.stem for p in rg.BASELINE_DIR.glob("*.json")))
+    def test_dropping_one_component_findings_is_drift(self, name: str) -> None:
+        want = json.loads((rg.BASELINE_DIR / f"{name}.json").read_text())
+        found = want.get("vulnerabilities")
+        assert isinstance(found, list), "baseline predates the findings capture"
+        if not found:
+            pytest.skip(f"{name} has no findings under the pinned database")
+        # A matcher regression for one package: its findings vanish.
+        target = _component(found[0])
+        got = dict(want, vulnerabilities=[f for f in found if _component(f) != target])
+        assert "vulnerabilities" in rg.drift(got, want)
+
+    def test_a_count_alone_is_drift(self) -> None:
+        want = json.loads((rg.BASELINE_DIR / "python-pip.json").read_text())
+        got = dict(want, vulnerabilities_count=want["vulnerabilities_count"] + 1)
+        assert rg.drift(got, want) == ["vulnerabilities_count"]
+
+    def test_identical_captures_do_not_drift(self) -> None:
+        want = json.loads((rg.BASELINE_DIR / "python-pip.json").read_text())
+        assert rg.drift(json.loads(json.dumps(want)), want) == []
+
+
+class TestVulnerabilityFindings:
+    def test_unreadable_rows_stay_none(self) -> None:
+        assert rg.vulnerability_findings(None) is None
+
+    def test_rows_normalise_sorted_with_severity(self) -> None:
+        rows = [
+            {"cve_id": "CVE-2", "affected_component_name": "b",
+             "affected_component_version": "2", "severity": "high"},
+            {"cve_id": "CVE-1", "affected_component_name": "a",
+             "affected_component_version": "1", "severity": "critical"},
+        ]
+        assert rg.vulnerability_findings(rows) == ["CVE-1|a@1|critical", "CVE-2|b@2|high"]
 
 
 class TestParseNames:
