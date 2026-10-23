@@ -26,7 +26,7 @@ import {
   ExternalLink,
   Keyboard,
 } from "lucide-react";
-import { useState, type ComponentType, type SVGProps } from "react";
+import { Suspense, useState, type ComponentType, type SVGProps } from "react";
 import { useTranslation } from "react-i18next";
 import { NavLink, Outlet, useLocation, useNavigate } from "react-router-dom";
 
@@ -37,8 +37,10 @@ import {
 } from "@/components/CommandMenu";
 import { BrandMark } from "@/components/BrandMark";
 import { DemoBanner } from "@/components/DemoBanner";
+import { ErrorBoundary } from "@/components/ErrorBoundary";
 import { HeaderBell } from "@/components/HeaderBell";
 import { LanguageToggle } from "@/components/LanguageToggle";
+import { RouteLoadingFallback } from "@/components/RouteLoadingFallback";
 import { ThemeToggle } from "@/components/ThemeToggle";
 import { Button } from "@/components/ui/button";
 import {
@@ -901,7 +903,15 @@ export function AppShell() {
             className="flex-1 overflow-y-auto animate-in fade-in-0 duration-slow ease-out-soft focus:outline-none focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
             data-testid="app-main"
           >
-            <Outlet />
+            {/* Route-level boundary and Suspense: a crashed or still-loading
+                page replaces only the content area, so the sidebar and bar
+                stay mounted. The key on <main> remounts the boundary on
+                navigation, which is what clears a crash. */}
+            <ErrorBoundary>
+              <Suspense fallback={<RouteLoadingFallback />}>
+                <Outlet />
+              </Suspense>
+            </ErrorBoundary>
           </main>
         </div>
       </div>
