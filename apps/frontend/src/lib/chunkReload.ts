@@ -20,13 +20,18 @@ export const RELOAD_WINDOW_MS = 60_000;
 
 // Chromium, Firefox and Safari word the dynamic import rejection
 // differently; Vite's own preload helper reports CSS failures as
-// "Unable to preload CSS".
+// "Unable to preload CSS". Safari's "Importing a module script failed." is
+// also what it reports when a module that DID load throws while evaluating,
+// so a genuine bug can match here. That costs one reload; the second
+// occurrence inside RELOAD_WINDOW_MS is not reloaded, and ErrorBoundary then
+// reports it like any other crash.
 const CHUNK_ERROR_PATTERN =
   /Failed to fetch dynamically imported module|error loading dynamically imported module|Importing a module script failed|Unable to preload CSS/i;
 
 export function isChunkLoadError(error: unknown): boolean {
   if (!(error instanceof Error)) return false;
   if (error.name === "ChunkLoadError") return true;
+  // problem-detail-lint-allow: matched against browser wording only, never rendered
   return CHUNK_ERROR_PATTERN.test(error.message);
 }
 
@@ -53,6 +58,25 @@ function writeLastReload(now: number): boolean {
 }
 
 /**
+ * Set once a reload has been started from this page. Everything that fails
+ * after that point is fallout of the same stale build: with preventDefault
+ * on `vite:preloadError`, Vite's preload helper resolves the import to
+ * `undefined`, so the route's `.then((m) => ({ default: m.Page }))` throws a
+ * TypeError that does not look like a chunk error. ErrorBoundary checks this
+ * flag so it neither shows the fallback nor reports that TypeError.
+ */
+let reloadPending = false;
+
+export function isReloadPending(): boolean {
+  return reloadPending;
+}
+
+/** Test hook: a real page never comes back from a started reload. */
+export function resetChunkReloadStateForTests(): void {
+  reloadPending = false;
+}
+
+/**
  * Reload the page once for a chunk-load failure.
  *
  * Returns true when a reload was started, false when it was suppressed
@@ -65,6 +89,7 @@ export function reloadOnceForChunkError(now: number = Date.now()): boolean {
     return false;
   }
   if (!writeLastReload(now)) return false;
+  reloadPending = true;
   window.location.reload();
   return true;
 }
@@ -73,7 +98,9 @@ export function reloadOnceForChunkError(now: number = Date.now()): boolean {
  * Listen for Vite's `vite:preloadError`, fired when a preloaded chunk or
  * stylesheet fails. Calling preventDefault stops Vite from rethrowing, which
  * we only want when a reload is actually under way; otherwise the error
- * propagates to the route ErrorBoundary and the user sees a message.
+ * propagates to the route ErrorBoundary and the user sees a message. When it
+ * is prevented, the import resolves to `undefined` and the caller throws a
+ * TypeError; see `reloadPending` for how that is kept quiet.
  */
 export function installChunkReloadHandler(target: Window = window): () => void {
   const handler = (event: Event) => {

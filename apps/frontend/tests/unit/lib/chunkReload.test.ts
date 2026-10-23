@@ -5,7 +5,9 @@ import {
   RELOAD_WINDOW_MS,
   installChunkReloadHandler,
   isChunkLoadError,
+  isReloadPending,
   reloadOnceForChunkError,
+  resetChunkReloadStateForTests,
 } from "@/lib/chunkReload";
 
 const originalLocation = window.location;
@@ -13,6 +15,7 @@ let reloadSpy: ReturnType<typeof vi.fn>;
 
 beforeEach(() => {
   window.sessionStorage.clear();
+  resetChunkReloadStateForTests();
   reloadSpy = vi.fn();
   Object.defineProperty(window, "location", {
     configurable: true,
@@ -72,6 +75,15 @@ describe("reloadOnceForChunkError", () => {
     expect(reloadOnceForChunkError(1_000_000)).toBe(true);
     expect(reloadOnceForChunkError(1_000_000 + RELOAD_WINDOW_MS)).toBe(true);
     expect(reloadSpy).toHaveBeenCalledTimes(2);
+  });
+
+  it("marks a reload as pending only when one was started", () => {
+    expect(isReloadPending()).toBe(false);
+    window.sessionStorage.setItem(CHUNK_RELOAD_STORAGE_KEY, String(1_000_000));
+    expect(reloadOnceForChunkError(1_000_001)).toBe(false);
+    expect(isReloadPending()).toBe(false);
+    expect(reloadOnceForChunkError(1_000_000 + RELOAD_WINDOW_MS)).toBe(true);
+    expect(isReloadPending()).toBe(true);
   });
 
   it("does not reload when sessionStorage cannot record the attempt", () => {

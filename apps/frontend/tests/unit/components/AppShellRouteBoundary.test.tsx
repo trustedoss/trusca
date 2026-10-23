@@ -93,6 +93,8 @@ describe("AppShell route boundary", () => {
     // Navigation is still there to leave the broken page.
     expect(screen.getAllByTestId("nav-scans").length).toBeGreaterThan(0);
 
+    // Recovery comes from `<main key={pathname}>` remounting the boundary;
+    // without that key the crash would stay on screen after navigating.
     await act(async () => {
       navigate("/ok");
     });

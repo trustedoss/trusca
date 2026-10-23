@@ -2,6 +2,10 @@ import { render, screen } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { ErrorBoundary } from "@/components/ErrorBoundary";
+import {
+  reloadOnceForChunkError,
+  resetChunkReloadStateForTests,
+} from "@/lib/chunkReload";
 
 import * as clientErrorApi from "@/lib/clientErrorApi";
 import { reportClientError } from "@/lib/clientErrorApi";
@@ -111,6 +115,7 @@ describe("ErrorBoundary", () => {
 
     beforeEach(() => {
       window.sessionStorage.clear();
+      resetChunkReloadStateForTests();
       reloadSpy = vi.fn();
       Object.defineProperty(window, "location", {
         configurable: true,
@@ -118,6 +123,7 @@ describe("ErrorBoundary", () => {
       });
     });
     afterEach(() => {
+      resetChunkReloadStateForTests();
       Object.defineProperty(window, "location", {
         configurable: true,
         value: originalLocation,
@@ -158,43 +164,42 @@ describe("ErrorBoundary", () => {
       );
       expect(mockedReport).toHaveBeenCalledTimes(1);
     });
-  });
 
-  describe("resetKey", () => {
-    function Maybe({ fail }: { fail: boolean }): JSX.Element {
-      if (fail) throw new Error("kaboom");
-      return <div data-testid="recovered">ok</div>;
-    }
-
-    it("clears the error when the key changes", () => {
-      const { rerender } = render(
-        <ErrorBoundary resetKey="/a">
-          <Maybe fail />
+    it("stays quiet about any error once a reload is under way", () => {
+      // The TypeError from Vite's undefined module is not a chunk error by
+      // its wording, but it is fallout of the reload already started.
+      reloadOnceForChunkError();
+      expect(reloadSpy).toHaveBeenCalledTimes(1);
+      render(
+        <ErrorBoundary>
+          <Boom />
         </ErrorBoundary>,
       );
-      expect(screen.getByTestId("error-boundary-fallback")).toBeInTheDocument();
-      rerender(
-        <ErrorBoundary resetKey="/b">
-          <Maybe fail={false} />
-        </ErrorBoundary>,
-      );
-      expect(screen.getByTestId("recovered")).toBeInTheDocument();
       expect(screen.queryByTestId("error-boundary-fallback")).toBeNull();
+      expect(mockedReport).not.toHaveBeenCalled();
+      expect(reloadSpy).toHaveBeenCalledTimes(1);
     });
 
-    it("keeps the fallback while the key stays the same", () => {
-      const { rerender } = render(
-        <ErrorBoundary resetKey="/a">
-          <Maybe fail />
+    it("reports Safari's module error when it recurs after the one reload", () => {
+      // Safari words a module that threw while evaluating the same way as a
+      // missing chunk. The first costs a reload; the repeat is a real crash.
+      window.sessionStorage.setItem(
+        "trusca:chunk-reload-at",
+        String(Date.now()),
+      );
+      function SafariBoom(): JSX.Element {
+        throw new TypeError("Importing a module script failed.");
+      }
+      render(
+        <ErrorBoundary>
+          <SafariBoom />
         </ErrorBoundary>,
       );
-      rerender(
-        <ErrorBoundary resetKey="/a">
-          <Maybe fail={false} />
-        </ErrorBoundary>,
+      expect(reloadSpy).not.toHaveBeenCalled();
+      expect(mockedReport).toHaveBeenCalledTimes(1);
+      expect(mockedReport.mock.calls[0]![0].message).toBe(
+        "Importing a module script failed.",
       );
-      expect(screen.getByTestId("error-boundary-fallback")).toBeInTheDocument();
-      expect(screen.queryByTestId("recovered")).toBeNull();
     });
   });
 });

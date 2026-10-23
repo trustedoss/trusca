@@ -2,19 +2,17 @@
 // Copyright 2026 TRUSCA contributors
 import { Component, type ErrorInfo, type ReactNode } from "react";
 
-import { isChunkLoadError, reloadOnceForChunkError } from "@/lib/chunkReload";
+import {
+  isChunkLoadError,
+  isReloadPending,
+  reloadOnceForChunkError,
+} from "@/lib/chunkReload";
 import { reportClientError } from "@/lib/clientErrorApi";
 import i18n from "@/lib/i18n";
 
 interface Props {
   children: ReactNode;
   fallback?: ReactNode;
-  /**
-   * When this value changes the boundary clears its error and renders the
-   * children again. The route boundary in AppShell passes the pathname so
-   * navigating away from a crashed page recovers without a reload.
-   */
-  resetKey?: unknown;
 }
 
 interface State {
@@ -33,9 +31,10 @@ interface State {
  * failed to load") while the default surfaces a global retry hint.
  *
  * We intentionally do NOT auto-recover from a render error: a stale render
- * path that throws once will throw again on every render. Two exceptions:
- * a change of `resetKey` (navigation) clears the error, and a failed lazy
- * chunk import triggers one page reload (see lib/chunkReload.ts).
+ * path that throws once will throw again on every render. A failed lazy
+ * chunk import is the exception: it triggers one page reload (see
+ * lib/chunkReload.ts). The route boundary in AppShell recovers on navigation
+ * because it sits inside `<main key={pathname}>`, which remounts it.
  * The fallback shows a translated message; the raw error name and message
  * sit in a collapsed details block so an operator can still report it.
  * Full stack traces go to the browser console AND to
@@ -49,16 +48,15 @@ export class ErrorBoundary extends Component<Props, State> {
     return { hasError: true, error };
   }
 
-  componentDidUpdate(prevProps: Props): void {
-    if (this.state.hasError && prevProps.resetKey !== this.props.resetKey) {
-      this.setState({ hasError: false, error: null, reloading: false });
-    }
-  }
-
   componentDidCatch(error: Error, errorInfo: ErrorInfo): void {
-    if (isChunkLoadError(error) && reloadOnceForChunkError()) {
+    if (
+      isReloadPending() ||
+      (isChunkLoadError(error) && reloadOnceForChunkError())
+    ) {
       // A deploy replaced the chunk files; the reload picks up the new ones.
-      // Not reported: this is expected after every release.
+      // Not reported: this is expected after every release. Once a reload is
+      // under way, whatever else fails (the TypeError from Vite's undefined
+      // module, for one) is fallout of the same stale build.
       this.setState({ reloading: true });
       return;
     }
@@ -78,7 +76,7 @@ export class ErrorBoundary extends Component<Props, State> {
 
   render(): ReactNode {
     if (this.state.hasError) {
-      if (this.state.reloading) {
+      if (this.state.reloading || isReloadPending()) {
         return null;
       }
       if (this.props.fallback !== undefined) {

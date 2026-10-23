@@ -905,9 +905,9 @@ export function AppShell() {
           >
             {/* Route-level boundary and Suspense: a crashed or still-loading
                 page replaces only the content area, so the sidebar and bar
-                stay mounted. resetKey clears a crash when the user navigates
-                elsewhere. */}
-            <ErrorBoundary resetKey={location.pathname}>
+                stay mounted. The key on <main> remounts the boundary on
+                navigation, which is what clears a crash. */}
+            <ErrorBoundary>
               <Suspense fallback={<RouteLoadingFallback />}>
                 <Outlet />
               </Suspense>
