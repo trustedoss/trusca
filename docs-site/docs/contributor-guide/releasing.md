@@ -122,6 +122,17 @@ unrelated (e.g. infrastructure) reason, a maintainer can reveal it by hand with
    builds when it fails. v0.23.0 shipped with a fresh install pulling 0.22.0
    because `.env.example` and the compose fallback had been left in
    `pending`, where nothing checked them.
+
+   A pre-release tag such as `v0.24.0-rc.1` is not compared to the
+   changelog, and its `[0.24.0-rc.1]` heading never becomes the install
+   default: `--fix` keeps every default on the newest stable release.
+
+   A `workflow_dispatch` republish checks out the requested tag and runs that
+   tag's own copy of the check against that tag's `CHANGELOG.md`. Tags cut
+   before the check existed (v0.23.0 and earlier, including v0.22.7, which has
+   no `CHANGELOG.md` entry of its own) do not carry it, so the job prints a
+   notice and lets the republish through. A future tag without its own
+   changelog entry is blocked.
 5. Tag and push: `git tag -s vX.Y.Z -m "vX.Y.Z" && git push origin vX.Y.Z`.
    `-s` signs it and implies `-a`. A plain `git tag` makes a *lightweight*
    tag, which is a ref pointing straight at a commit with no tag object, so it

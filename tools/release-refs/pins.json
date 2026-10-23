@@ -110,6 +110,36 @@
       "file": "docs-site/i18n/ko/docusaurus-plugin-content-docs/current/admin-guide/offline-install.md",
       "pattern": "trusca-offline-bundle-(\\d+\\.\\d+\\.\\d+)\\.tar",
       "note": "KO mirror of the bundle file name"
+    },
+    {
+      "file": "docs-site/docs/ci-integration/release-verification.md",
+      "pattern": "^VERSION=(\\d+\\.\\d+\\.\\d+) ",
+      "note": "release the verification walkthrough resolves"
+    },
+    {
+      "file": "docs-site/docs/ci-integration/release-verification.md",
+      "pattern": "^git verify-tag v(\\d+\\.\\d+\\.\\d+)$",
+      "note": "tag the signature check verifies"
+    },
+    {
+      "file": "docs-site/docs/admin-guide/vulnerability-data.md",
+      "pattern": "trusca-backend-worker:(\\d+\\.\\d+\\.\\d+) \\\\",
+      "note": "worker image the offline Trivy DB export runs"
+    },
+    {
+      "file": "docs-site/i18n/ko/docusaurus-plugin-content-docs/current/ci-integration/release-verification.md",
+      "pattern": "^VERSION=(\\d+\\.\\d+\\.\\d+) ",
+      "note": "KO mirror: release the verification walkthrough resolves"
+    },
+    {
+      "file": "docs-site/i18n/ko/docusaurus-plugin-content-docs/current/ci-integration/release-verification.md",
+      "pattern": "^git verify-tag v(\\d+\\.\\d+\\.\\d+)$",
+      "note": "KO mirror: tag the signature check verifies"
+    },
+    {
+      "file": "docs-site/i18n/ko/docusaurus-plugin-content-docs/current/admin-guide/vulnerability-data.md",
+      "pattern": "trusca-backend-worker:(\\d+\\.\\d+\\.\\d+) \\\\",
+      "note": "KO mirror: worker image the offline Trivy DB export runs"
     }
   ],
   "_pending_about": "Pins that belong in `pins` but whose files are held by other work in flight. On a PR the linter prints them as a notice and does not fail on them; `--release` fails while any remain. An entry parked here is a default nothing checks, which is how .env.example and docker-compose.yml still named 0.22.0 and 0.12.0 after v0.23.0 shipped.",

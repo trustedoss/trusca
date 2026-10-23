@@ -22,7 +22,10 @@ it is derived.
 
 ## Source of truth
 
-The newest released section in `CHANGELOG.md`, skipping `[Unreleased]`.
+The newest released section in `CHANGELOG.md`, skipping `[Unreleased]` and
+any pre-release heading such as `[0.24.0-rc.1]`. Install defaults never move
+to a release candidate; `--release` on a pre-release tag skips the
+newest-entry comparison and still checks drift and `pending`.
 
 Not a git tag: the tag is created after the release commit merges, so a
 tag-derived check would be unrunnable exactly when it matters. Not a constant
