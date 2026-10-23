@@ -147,5 +147,8 @@
     "command_menu": "검색하고 화면으로 이동",
     "help": "이 목록 보기",
     "dismiss": "대화 상자나 메뉴 닫기"
+  },
+  "toast": {
+    "dismiss": "알림 닫기"
   }
 }

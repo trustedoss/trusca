@@ -147,5 +147,8 @@
     "command_menu": "Search and jump to a screen",
     "help": "Show this list",
     "dismiss": "Close a dialog or menu"
+  },
+  "toast": {
+    "dismiss": "Dismiss notification"
   }
 }

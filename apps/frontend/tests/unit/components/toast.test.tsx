@@ -7,7 +7,10 @@
  *   - testId override (ScanCancelButton uses "scan-cancel-toast").
  *   - error tone maps to the destructive Alert.
  *   - multiple toasts queue and stack.
- *   - auto-dismiss removes a toast after its ttl.
+ *   - auto-dismiss removes a success toast after its ttl.
+ *   - error toasts persist until closed, use role="alert", and a repeat
+ *     under the same key replaces the earlier one.
+ *   - every toast has a close button.
  *   - useToast outside a provider is a safe no-op (does not throw).
  */
 import { act, fireEvent, render, screen } from "@testing-library/react";
@@ -20,16 +23,18 @@ function Trigger({
   tone,
   toastKey,
   testId,
+  ttlMs,
 }: {
   text: string;
   tone?: "success" | "error";
   toastKey?: string;
   testId?: string;
+  ttlMs?: number;
 }) {
   const { toast } = useToast();
   return (
     <button
-      onClick={() => toast(text, { tone, key: toastKey, testId })}
+      onClick={() => toast(text, { tone, key: toastKey, testId, ttlMs })}
       data-testid={`fire-${text}`}
     >
       fire
@@ -115,5 +120,93 @@ describe("ToastProvider / useToast", () => {
       });
     }).not.toThrow();
     expect(screen.queryByTestId("admin-toast")).not.toBeInTheDocument();
+  });
+
+  it("keeps an error toast until it is closed", () => {
+    render(
+      <ToastProvider>
+        <Trigger text="failed" tone="error" toastKey="save_failed" />
+      </ToastProvider>,
+    );
+    act(() => {
+      fireEvent.click(screen.getByTestId("fire-failed"));
+    });
+    act(() => {
+      vi.advanceTimersByTime(60_000);
+    });
+    const el = screen.getByTestId("admin-toast");
+    expect(el).toHaveTextContent("failed");
+
+    act(() => {
+      fireEvent.click(screen.getByRole("button", { name: "Dismiss notification" }));
+    });
+    expect(screen.queryByTestId("admin-toast")).not.toBeInTheDocument();
+  });
+
+  it("still auto-dismisses an error toast given an explicit ttl", () => {
+    render(
+      <ToastProvider>
+        <Trigger text="brief" tone="error" ttlMs={1000} />
+      </ToastProvider>,
+    );
+    act(() => {
+      fireEvent.click(screen.getByTestId("fire-brief"));
+    });
+    act(() => {
+      vi.advanceTimersByTime(1000);
+    });
+    expect(screen.queryByTestId("admin-toast")).not.toBeInTheDocument();
+  });
+
+  it("announces errors as alerts and success as status", () => {
+    render(
+      <ToastProvider>
+        <Trigger text="ok" toastKey="s" />
+        <Trigger text="bad" tone="error" toastKey="e" />
+      </ToastProvider>,
+    );
+    act(() => {
+      fireEvent.click(screen.getByTestId("fire-ok"));
+      fireEvent.click(screen.getByTestId("fire-bad"));
+    });
+    const [success, error] = screen.getAllByTestId("admin-toast");
+    expect(success).toHaveAttribute("data-tone", "success");
+    expect(success.querySelector('[role="status"]')).not.toBeNull();
+    expect(success.querySelector('[role="alert"]')).toBeNull();
+    expect(error).toHaveAttribute("data-tone", "error");
+    expect(error.querySelector('[role="alert"]')).not.toBeNull();
+  });
+
+  it("lets a success toast be closed before it times out", () => {
+    render(
+      <ToastProvider>
+        <Trigger text="saved" toastKey="s" />
+      </ToastProvider>,
+    );
+    act(() => {
+      fireEvent.click(screen.getByTestId("fire-saved"));
+    });
+    act(() => {
+      fireEvent.click(screen.getByTestId("toast-dismiss"));
+    });
+    expect(screen.queryByTestId("admin-toast")).not.toBeInTheDocument();
+  });
+
+  it("replaces a repeated error with the same key instead of stacking it", () => {
+    render(
+      <ToastProvider>
+        <Trigger text="again" tone="error" toastKey="sync_failed" />
+        <Trigger text="other" tone="error" toastKey="other_failed" />
+      </ToastProvider>,
+    );
+    act(() => {
+      fireEvent.click(screen.getByTestId("fire-again"));
+      fireEvent.click(screen.getByTestId("fire-other"));
+      fireEvent.click(screen.getByTestId("fire-again"));
+    });
+    const keys = screen
+      .getAllByTestId("admin-toast")
+      .map((el) => el.getAttribute("data-toast-key"));
+    expect(keys).toEqual(["other_failed", "sync_failed"]);
   });
 });

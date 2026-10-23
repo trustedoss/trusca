@@ -10,8 +10,12 @@
  *
  * This provider centralises it: one `<ToastProvider>` mounted in `AppProviders`
  * renders a single stacked region, and `useToast().toast(text, opts)` pushes a
- * message from anywhere. Messages queue, auto-dismiss, and announce via an
- * `aria-live` region.
+ * message from anywhere. Messages queue and announce via an `aria-live`
+ * region. Success toasts auto-dismiss; error toasts stay until the reader
+ * closes them, because an error that vanishes after four seconds is easy to
+ * miss and its text is often what the reader needs to act on. Every toast
+ * has a close button, and error toasts use role="alert" so a screen reader
+ * announces them at once rather than when it is next idle.
  *
  * **Test-id contract (must not change).** The e2e harnesses select toasts with
  * `[data-testid="admin-toast"][data-tone="success|error"][data-toast-key="<key>"]`
@@ -25,6 +29,7 @@
  * notices use a toast; form-validation errors stay inline next to the field
  * (RFC 7807 `detail`), never a toast the user might miss.
  */
+import { X } from "lucide-react";
 import {
   createContext,
   useCallback,
@@ -35,6 +40,7 @@ import {
   useState,
   type ReactNode,
 } from "react";
+import { useTranslation } from "react-i18next";
 
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { registerToastDispatcher } from "@/lib/toastBus";
@@ -57,7 +63,10 @@ export interface ToastOptions {
    * overrides it with `"scan-cancel-toast"`.
    */
   testId?: string;
-  /** Auto-dismiss delay. Default 4000 ms. */
+  /**
+   * Auto-dismiss delay. Defaults to 4000 ms for success toasts; error toasts
+   * stay until closed unless a delay is passed explicitly.
+   */
   ttlMs?: number;
 }
 
@@ -70,7 +79,7 @@ interface ToastItem {
 }
 
 interface ToastContextValue {
-  /** Push a toast. Returns nothing; it auto-dismisses after `ttlMs`. */
+  /** Push a toast. Success toasts auto-dismiss after `ttlMs`; errors stay. */
   toast: (text: string, options?: ToastOptions) => void;
 }
 
@@ -95,6 +104,7 @@ export function useToast(): ToastContextValue {
 }
 
 export function ToastProvider({ children }: { children: ReactNode }) {
+  const { t: translate } = useTranslation("common");
   const [items, setItems] = useState<ToastItem[]>([]);
   const seq = useRef(0);
 
@@ -113,8 +123,20 @@ export function ToastProvider({ children }: { children: ReactNode }) {
         key: options?.key,
         testId: options?.testId ?? "admin-toast",
       };
-      setItems((prev) => [...prev, item].slice(-MAX_VISIBLE));
-      window.setTimeout(() => dismiss(id), options?.ttlMs ?? DEFAULT_TTL_MS);
+      setItems((prev) => {
+        // A persistent error repeated under the same key (a retry that fails
+        // the same way) replaces the earlier one instead of stacking copies.
+        const kept =
+          item.tone === "error" && item.key
+            ? prev.filter((p) => !(p.tone === "error" && p.key === item.key))
+            : prev;
+        return [...kept, item].slice(-MAX_VISIBLE);
+      });
+      const ttl =
+        options?.ttlMs ?? (item.tone === "error" ? null : DEFAULT_TTL_MS);
+      if (ttl !== null) {
+        window.setTimeout(() => dismiss(id), ttl);
+      }
     },
     [dismiss],
   );
@@ -150,13 +172,22 @@ export function ToastProvider({ children }: { children: ReactNode }) {
             <Alert
               variant={t.tone === "error" ? "destructive" : "default"}
               className={cn(
-                "shadow-lg",
+                "pr-10 shadow-lg",
                 t.tone === "success" &&
                   "border-emerald-200 bg-emerald-50 text-emerald-900",
               )}
-              role="status"
+              role={t.tone === "error" ? "alert" : "status"}
             >
               <AlertDescription>{t.text}</AlertDescription>
+              <button
+                type="button"
+                onClick={() => dismiss(t.id)}
+                aria-label={translate("toast.dismiss")}
+                data-testid="toast-dismiss"
+                className="absolute right-2 top-2 rounded-sm p-1 opacity-70 transition-opacity duration-fast ease-out-soft hover:opacity-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+              >
+                <X className="h-4 w-4" aria-hidden />
+              </button>
             </Alert>
           </div>
         ))}
