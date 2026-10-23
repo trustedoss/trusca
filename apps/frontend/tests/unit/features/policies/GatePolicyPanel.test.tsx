@@ -74,6 +74,18 @@ function problem(status: number): ProblemError {
   });
 }
 
+/**
+ * Press whatever Save button is on screen, if any. The guard tests attempt the
+ * save rather than only checking the button is gone, so on a panel that still
+ * offers Save they fail on the mutation call itself.
+ */
+async function pressEverySave(): Promise<void> {
+  for (const button of screen.queryAllByTestId("gate-policy-save")) {
+    await userEvent.click(button);
+  }
+  await new Promise((resolve) => setTimeout(resolve, 0));
+}
+
 describe("GatePolicyPanel", () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -319,20 +331,24 @@ describe("GatePolicyPanel", () => {
     getTeamGatePolicy.mockReturnValue(new Promise(() => {}));
     renderPanel();
 
-    await screen.findByTestId("gate-policy-loading");
-    expect(screen.queryByTestId("gate-policy-save")).not.toBeInTheDocument();
-    expect(screen.queryByRole("switch")).not.toBeInTheDocument();
+    await waitFor(() => expect(getTeamGatePolicy).toHaveBeenCalled());
+    await pressEverySave();
     expect(upsertTeamGatePolicy).not.toHaveBeenCalled();
+    expect(screen.getByTestId("gate-policy-loading")).toBeInTheDocument();
+    expect(screen.queryByRole("switch")).not.toBeInTheDocument();
   });
 
   it("cannot save after the read fails, and saves the real policy once a retry succeeds", async () => {
     getTeamGatePolicy.mockRejectedValueOnce(problem(403));
     renderPanel();
 
-    await screen.findByTestId("gate-policy-error");
-    expect(screen.queryByTestId("gate-policy-save")).not.toBeInTheDocument();
-    expect(screen.queryByRole("switch")).not.toBeInTheDocument();
+    await waitFor(() => expect(getTeamGatePolicy).toHaveBeenCalled());
+    await pressEverySave();
     expect(upsertTeamGatePolicy).not.toHaveBeenCalled();
+    await screen.findByTestId("gate-policy-error");
+    await pressEverySave();
+    expect(upsertTeamGatePolicy).not.toHaveBeenCalled();
+    expect(screen.queryByRole("switch")).not.toBeInTheDocument();
 
     getTeamGatePolicy.mockResolvedValue({ ...POLICY, epss_threshold: 0.3, malicious_blocks: false });
     await userEvent.click(screen.getByTestId("gate-policy-retry"));
