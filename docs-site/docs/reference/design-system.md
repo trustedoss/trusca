@@ -475,7 +475,7 @@ Risk-tinted variants pair a status word with the design-system colour. Backgroun
 
 `apps/frontend/src/components/ui/toast.tsx`
 
-A single `<ToastProvider>` (mounted in `AppProviders`) renders one stacked, bottom-right region; `useToast().toast(text, opts)` pushes from anywhere. Toasts queue and announce through an `aria-live` region. Success toasts auto-dismiss after 4 s; error toasts stay until the reader closes them and use `role="alert"`, and a repeated error with the same key replaces the earlier one. Every toast has a close button.
+A single `<ToastProvider>` (mounted in `AppProviders`) renders one stacked, bottom-right region; `useToast().toast(text, opts)` pushes from anywhere. Toasts queue and announce through an `aria-live` region. Success toasts auto-dismiss after 4 s; error toasts stay until the reader closes them and use `role="alert"`, and a repeated error with the same key replaces the earlier one. Every toast has a close button; closing one moves focus to the next toast or back to where it was. Errors render outside the polite live region so screen readers announce them once, and they are cleared when the signed-in user changes.
 
 - **Feedback rule.** Success / non-blocking notices use a toast. Form-validation errors stay **inline** next to the field (RFC 7807 `detail`), never a toast the user might miss.
 - **Test-id contract.** `testId` defaults to `"admin-toast"`, and the toast carries `data-tone` + `data-toast-key`, mirroring the markup every e2e harness selects (`[data-testid="admin-toast"][data-tone][data-toast-key]`). Pass a `tone` (`success` / `error`) and a locale-independent `key`; ScanCancelButton overrides `testId: "scan-cancel-toast"`.

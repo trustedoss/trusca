@@ -17,6 +17,7 @@ import { act, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { ToastProvider, useToast } from "@/components/ui/toast";
+import { useAuthStore, type AuthUser } from "@/stores/authStore";
 
 function Trigger({
   text,
@@ -169,12 +170,110 @@ describe("ToastProvider / useToast", () => {
       fireEvent.click(screen.getByTestId("fire-ok"));
       fireEvent.click(screen.getByTestId("fire-bad"));
     });
-    const [success, error] = screen.getAllByTestId("admin-toast");
-    expect(success).toHaveAttribute("data-tone", "success");
+    const toasts = screen.getAllByTestId("admin-toast");
+    const success = toasts.find((el) => el.dataset.tone === "success")!;
+    const error = toasts.find((el) => el.dataset.tone === "error")!;
     expect(success.querySelector('[role="status"]')).not.toBeNull();
     expect(success.querySelector('[role="alert"]')).toBeNull();
-    expect(error).toHaveAttribute("data-tone", "error");
     expect(error.querySelector('[role="alert"]')).not.toBeNull();
+    // An alert inside a polite live region is read twice by some screen
+    // readers, so only the success toast may sit under aria-live.
+    expect(success.closest("[aria-live]")).not.toBeNull();
+    expect(error.closest("[aria-live]")).toBeNull();
+  });
+
+  it("moves focus to the next close button, then back where it came from", () => {
+    render(
+      <ToastProvider>
+        <button data-testid="origin">origin</button>
+        <Trigger text="one" tone="error" toastKey="a" />
+        <Trigger text="two" tone="error" toastKey="b" />
+      </ToastProvider>,
+    );
+    act(() => {
+      fireEvent.click(screen.getByTestId("fire-one"));
+      fireEvent.click(screen.getByTestId("fire-two"));
+    });
+    const origin = screen.getByTestId("origin");
+    origin.focus();
+    const [first, second] = screen.getAllByTestId("toast-dismiss");
+    act(() => {
+      first.focus();
+    });
+    act(() => {
+      fireEvent.click(first);
+    });
+    expect(document.activeElement).toBe(second);
+    act(() => {
+      fireEvent.click(second);
+    });
+    expect(screen.queryByTestId("admin-toast")).not.toBeInTheDocument();
+    expect(document.activeElement).toBe(origin);
+  });
+
+  it("falls back to the main content area when the origin is gone", () => {
+    render(
+      <ToastProvider>
+        <main id="main-content" tabIndex={-1} data-testid="main" />
+        <Trigger text="one" tone="error" toastKey="a" />
+      </ToastProvider>,
+    );
+    act(() => {
+      fireEvent.click(screen.getByTestId("fire-one"));
+    });
+    const button = screen.getByTestId("toast-dismiss");
+    act(() => {
+      button.focus();
+    });
+    act(() => {
+      fireEvent.click(button);
+    });
+    expect(document.activeElement).toBe(screen.getByTestId("main"));
+  });
+
+  it("clears error toasts, but not success ones, when the user signs out", () => {
+    useAuthStore.setState({
+      user: { id: "u-1" } as AuthUser,
+      status: "authenticated",
+      isAuthenticated: true,
+    });
+    render(
+      <ToastProvider>
+        <Trigger text="bad" tone="error" toastKey="e" />
+        <Trigger text="ok" toastKey="s" />
+      </ToastProvider>,
+    );
+    act(() => {
+      fireEvent.click(screen.getByTestId("fire-bad"));
+      fireEvent.click(screen.getByTestId("fire-ok"));
+    });
+    act(() => {
+      useAuthStore.getState().reset();
+    });
+    const tones = screen
+      .getAllByTestId("admin-toast")
+      .map((el) => el.dataset.tone);
+    expect(tones).toEqual(["success"]);
+  });
+
+  it("keeps error toasts while the same user stays signed in", () => {
+    useAuthStore.setState({
+      user: { id: "u-1" } as AuthUser,
+      status: "authenticated",
+      isAuthenticated: true,
+    });
+    render(
+      <ToastProvider>
+        <Trigger text="bad" tone="error" toastKey="e" />
+      </ToastProvider>,
+    );
+    act(() => {
+      fireEvent.click(screen.getByTestId("fire-bad"));
+    });
+    act(() => {
+      useAuthStore.setState({ accessToken: "rotated" });
+    });
+    expect(screen.getByTestId("admin-toast")).toHaveAttribute("data-tone", "error");
   });
 
   it("lets a success toast be closed before it times out", () => {
