@@ -131,6 +131,8 @@ def _apply_prefs_filter(
                 # Nothing was written, so a later attempt may write it.
                 record.release(UNIT_IN_APP)
                 raise
+            # Committed: hold the mark for the full ledger TTL.
+            record.mark_done(UNIT_IN_APP)
 
         # Drop outbound channels the user has disabled. Unknown channel
         # names (a future kind that adds e.g. "sms") pass through —
@@ -189,9 +191,17 @@ def _maybe_raise_a_ticket(
     try:
         from tasks.ticket_webhook import enqueue_ticket_event
 
-        enqueue_ticket_event(event=kind, context=context)
+        queued = enqueue_ticket_event(event=kind, context=context)
     except Exception as exc:  # noqa: BLE001 (an integration is not the flow)
+        record.release(UNIT_TICKET)
         log.warning("ticket_event_hook_failed", kind=kind, error=str(exc)[:300])
+        return
+    if queued:
+        record.mark_done(UNIT_TICKET)
+    else:
+        # Not wanted for this kind, or the broker refused it. Either way
+        # nothing was queued, so a later attempt may queue it.
+        record.release(UNIT_TICKET)
 
 
 def _routing_additions(*, kind: str, context: dict[str, Any]) -> Any:

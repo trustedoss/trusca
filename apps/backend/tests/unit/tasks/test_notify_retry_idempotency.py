@@ -54,6 +54,9 @@ class _Edges:
         self.slack_failures_left = 0
         self.email_failures_left: dict[str, int] = {}
         self.email_permanent: set[str] = set()
+        self.smtp_connections = 0
+        self.redis: Any = None
+        self.ticket_raises_left = 0
 
 
 @pytest.fixture
@@ -79,22 +82,33 @@ def worker_like(monkeypatch):
 def edges(monkeypatch, worker_like) -> _Edges:  # noqa: ARG001
     state = _Edges()
     server = fakeredis.FakeServer()
+    state.redis = fakeredis.FakeRedis(server=server, decode_responses=True)
     monkeypatch.setattr(
         delivery_ledger,
         "redis_client",
         lambda: fakeredis.FakeRedis(server=server, decode_responses=True),
     )
 
-    async def _email(*, recipients, payload):  # noqa: ARG001
-        assert len(recipients) == 1, "email must go out one recipient at a time"
-        (to,) = recipients
-        state.email_attempts.append(to)
-        if to in state.email_permanent:
-            raise NotificationError("550 mailbox unavailable")
-        if state.email_failures_left.get(to, 0) > 0:
-            state.email_failures_left[to] -= 1
-            raise NotificationDeliveryError("SMTP delivery failed: timeout")
-        state.emails.append(to)
+    class _Batch:
+        """Stands in for EmailBatch: one connection per batch, one send per
+        recipient. Opening is counted so a batch with nothing left to send
+        can be seen not to connect."""
+
+        async def __aenter__(self):
+            state.smtp_connections += 1
+            return self
+
+        async def __aexit__(self, *_exc):
+            return None
+
+        async def send_to(self, to):
+            state.email_attempts.append(to)
+            if to in state.email_permanent:
+                raise NotificationError("SMTP rejected recipient: 550")
+            if state.email_failures_left.get(to, 0) > 0:
+                state.email_failures_left[to] -= 1
+                raise NotificationDeliveryError("SMTP delivery failed: timeout")
+            state.emails.append(to)
 
     async def _slack(*, payload):  # noqa: ARG001
         state.slack_attempts += 1
@@ -106,7 +120,7 @@ def edges(monkeypatch, worker_like) -> _Edges:  # noqa: ARG001
     async def _teams(*, payload):  # noqa: ARG001
         return None
 
-    monkeypatch.setattr(disp, "_send_email_channel", _email)
+    monkeypatch.setattr(disp, "_open_email_batch", lambda payload: _Batch())
     monkeypatch.setattr(disp, "_send_slack_channel", _slack)
     monkeypatch.setattr(disp, "_send_teams_channel", _teams)
 
@@ -131,6 +145,9 @@ def edges(monkeypatch, worker_like) -> _Edges:  # noqa: ARG001
     monkeypatch.setattr(svc, "create_notification_sync", _create)
 
     def _enqueue(*, event, context):  # noqa: ARG001
+        if state.ticket_raises_left > 0:
+            state.ticket_raises_left -= 1
+            raise RuntimeError("broker refused")
         state.tickets.append(event)
         return True
 
@@ -200,6 +217,10 @@ def test_redelivery_after_success_sends_nothing(edges: _Edges) -> None:
     assert {c["channel"] for c in report["channels"]} == {"email", "slack"}
     slack = next(c for c in report["channels"] if c["channel"] == "slack")
     assert slack == {"channel": "slack", "status": "ok", "already_delivered": True}
+    email = next(c for c in report["channels"] if c["channel"] == "email")
+    assert email == {"channel": "email", "status": "ok", "already_delivered": True}
+    # Nothing left to send, so the redelivery did not even connect.
+    assert edges.smtp_connections == 1
 
 
 def test_partial_email_failure_resends_only_to_failed_recipient(edges: _Edges) -> None:
@@ -219,6 +240,8 @@ def test_partial_email_failure_resends_only_to_failed_recipient(edges: _Edges) -
         "c@example.com",
         "b@example.com",
     ]
+    # One connection per attempt, not one per recipient.
+    assert edges.smtp_connections == 2
     assert len(edges.in_app_rows) == 1
     assert edges.tickets == ["scan_completed"]
 
@@ -307,3 +330,53 @@ def test_email_unit_does_not_hold_the_address() -> None:
     assert unit == delivery_ledger.email_unit("alice@example.com")
     assert "alice" not in unit
     assert unit.startswith("email:")
+
+
+def test_permanently_rejected_recipient_is_not_retried(edges: _Edges) -> None:
+    """A 550 for one address must not be resent when another recipient's
+    transient failure retries the task."""
+    edges.email_permanent = {"gone@example.com"}
+    edges.email_failures_left = {"b@example.com": 1}
+
+    result = _apply(
+        "evt-mixed",
+        recipients=["gone@example.com", "b@example.com"],
+        channels=["email"],
+    )
+
+    assert edges.email_attempts == ["gone@example.com", "b@example.com", "b@example.com"]
+    assert edges.emails == ["b@example.com"]
+    assert result.get()["retryable_failures"] is False
+
+
+def test_in_app_claim_is_short_until_the_row_commits(edges: _Edges, monkeypatch) -> None:
+    """A worker killed after the claim and before the commit must not lose
+    the row for the whole ledger TTL."""
+    import services.notification_service as svc
+
+    ttls: list[int] = []
+
+    def _create(session, **kwargs):  # noqa: ARG001
+        ttls.append(edges.redis.ttl("trusca:notify:delivery:evt-ttl:in_app"))
+        edges.in_app_rows.append(kwargs)
+
+    monkeypatch.setattr(svc, "create_notification_sync", _create)
+
+    _apply("evt-ttl", recipients=[], channels=["slack"])
+
+    (during,) = ttls
+    assert 0 < during <= delivery_ledger.CLAIM_TTL_SECONDS
+    after = edges.redis.ttl("trusca:notify:delivery:evt-ttl:in_app")
+    assert after > delivery_ledger.CLAIM_TTL_SECONDS
+
+
+def test_ticket_claim_is_released_when_the_enqueue_raises(edges: _Edges) -> None:
+    edges.ticket_raises_left = 1
+    edges.slack_failures_left = 1  # forces a second attempt
+
+    _apply("evt-ticket", recipients=[], channels=["slack"])
+
+    assert edges.tickets == ["scan_completed"]
+    assert edges.redis.ttl("trusca:notify:delivery:evt-ticket:ticket") > (
+        delivery_ledger.CLAIM_TTL_SECONDS
+    )

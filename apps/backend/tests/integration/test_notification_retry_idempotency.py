@@ -25,7 +25,7 @@ from core.db import sync_session_scope
 from models import Notification
 from notifications import NotificationDeliveryError
 from notifications import dispatcher as disp
-from notifications.delivery_ledger import LEDGER_TTL_SECONDS, email_unit
+from notifications.delivery_ledger import CLAIM_TTL_SECONDS, LEDGER_TTL_SECONDS, email_unit
 from tasks import notify as notify_mod
 from tests._db_required import migrate_to_head
 
@@ -107,12 +107,19 @@ def test_retry_and_redelivery_write_one_inbox_row(worker_like, monkeypatch) -> N
     # Email because it is on by default in a new user's preferences.
     email_calls: list[list[str]] = []
 
-    async def _email(*, recipients, payload):  # noqa: ARG001
-        email_calls.append(list(recipients))
-        if len(email_calls) == 1:
-            raise NotificationDeliveryError("SMTP delivery failed: timeout")
+    class _Batch:
+        async def __aenter__(self) -> _Batch:
+            return self
 
-    monkeypatch.setattr(disp, "_send_email_channel", _email)
+        async def __aexit__(self, *_exc: Any) -> None:
+            return None
+
+        async def send_to(self, recipient: str) -> None:
+            email_calls.append([recipient])
+            if len(email_calls) == 1:
+                raise NotificationDeliveryError("SMTP delivery failed: timeout")
+
+    monkeypatch.setattr(disp, "_open_email_batch", lambda payload: _Batch())
 
     try:
         _deliver(task_id, user_id)
@@ -128,14 +135,15 @@ def test_retry_and_redelivery_write_one_inbox_row(worker_like, monkeypatch) -> N
         assert rows == 1
 
         keys = sorted(client.keys(f"trusca:notify:delivery:{task_id}:*"))
+        # No ticket key: no ticket webhook is configured, so nothing was
+        # queued and the claim was released.
         assert keys == [
             f"trusca:notify:delivery:{task_id}:{email_unit('owner@example.com')}",
             f"trusca:notify:delivery:{task_id}:in_app",
-            f"trusca:notify:delivery:{task_id}:ticket",
         ]
         for key in keys:
             ttl = client.ttl(key)
-            assert 0 < ttl <= LEDGER_TTL_SECONDS
+            assert CLAIM_TTL_SECONDS < ttl <= LEDGER_TTL_SECONDS
     finally:
         leftover = client.keys(f"trusca:notify:delivery:{task_id}:*")
         if leftover:

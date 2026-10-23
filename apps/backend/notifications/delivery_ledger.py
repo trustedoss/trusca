@@ -12,9 +12,14 @@ turn into six emails, six inbox rows and six tickets.
 
 The ledger records completion per delivery unit of one event:
 
-  - ``in_app`` and ``ticket``: claimed BEFORE the write (:meth:`claim`), so
-    they happen at most once per event. A worker dying between the claim
-    and the write loses that one row rather than duplicating it.
+  - ``in_app`` and ``ticket``: claimed BEFORE the write (:meth:`claim`) with
+    a short TTL, then marked done (full TTL) once the write committed. A
+    retry or redelivery inside the claim window skips them; a worker killed
+    between the claim and the commit leaves a claim that expires after
+    :data:`CLAIM_TTL_SECONDS`, so the acks_late redelivery (which comes
+    after the broker visibility timeout, about an hour) writes it then. The
+    one remaining duplicate window is a kill after the commit and before the
+    mark, which is a few milliseconds.
   - ``slack``, ``teams`` and ``email:<recipient>``: marked AFTER the send
     succeeds (:meth:`mark_done`), so a unit that failed is retried and a
     unit that succeeded is not.
@@ -47,6 +52,11 @@ log = structlog.get_logger("notifications.delivery_ledger")
 #: keys expire on their own.
 LEDGER_TTL_SECONDS = 7 * 24 * 60 * 60
 
+#: How long a claim holds before the write it guards has committed. Longer
+#: than any single write takes, shorter than the visibility timeout after
+#: which a killed worker's message is redelivered.
+CLAIM_TTL_SECONDS = 5 * 60
+
 _KEY_PREFIX = "trusca:notify:delivery"
 
 UNIT_IN_APP = "in_app"
@@ -70,7 +80,7 @@ class DeliveryLedger(Protocol):
 
     def mark_done(self, unit: str) -> None: ...
 
-    def claim(self, unit: str) -> bool: ...
+    def claim(self, unit: str, *, ttl_seconds: int = CLAIM_TTL_SECONDS) -> bool: ...
 
     def release(self, unit: str) -> None: ...
 
@@ -85,7 +95,7 @@ class NullLedger:
     def mark_done(self, unit: str) -> None:  # noqa: ARG002
         return None
 
-    def claim(self, unit: str) -> bool:  # noqa: ARG002
+    def claim(self, unit: str, *, ttl_seconds: int = CLAIM_TTL_SECONDS) -> bool:  # noqa: ARG002
         return True
 
     def release(self, unit: str) -> None:  # noqa: ARG002
@@ -115,11 +125,9 @@ class RedisDeliveryLedger:
         except Exception as exc:  # noqa: BLE001 (the send already happened)
             log.warning("notification_ledger_write_failed", unit=unit, error=str(exc)[:200])
 
-    def claim(self, unit: str) -> bool:
+    def claim(self, unit: str, *, ttl_seconds: int = CLAIM_TTL_SECONDS) -> bool:
         try:
-            return bool(
-                self._client.set(self._key(unit), "1", nx=True, ex=LEDGER_TTL_SECONDS)
-            )
+            return bool(self._client.set(self._key(unit), "1", nx=True, ex=ttl_seconds))
         except Exception as exc:  # noqa: BLE001 (deliver rather than lose it)
             log.warning("notification_ledger_claim_failed", unit=unit, error=str(exc)[:200])
             return True
@@ -158,6 +166,7 @@ def ledger_for_event(event_id: str | None) -> DeliveryLedger:
 
 
 __all__ = [
+    "CLAIM_TTL_SECONDS",
     "LEDGER_TTL_SECONDS",
     "UNIT_IN_APP",
     "UNIT_TICKET",
