@@ -116,7 +116,10 @@ ENV PYTHONUNBUFFERED=1 \
 # CVE-2026-15308, CVE-2026-19445, CVE-2026-19553 and CVE-2026-8328.
 # 2026-10-15: libgit2-1.5 1.5.1+ds-1+deb12u1 -> +deb12u2 (DSA-6453-1),
 # flagged for CVE-2026-5917.
-ARG APT_SECURITY_REFRESH=2026-10-15
+# 2026-10-23: php8.2-* 8.2.34-1~deb12u1 -> 8.2.35-1~deb12u1, flagged for
+# CVE-2026-109618 and CVE-2026-109619; libexpat1 2.5.0-1+deb12u4 -> +deb12u5,
+# flagged for CVE-2025-59375 and CVE-2026-77214.
+ARG APT_SECURITY_REFRESH=2026-10-23
 RUN echo "apt security refresh: ${APT_SECURITY_REFRESH}" \
     && apt-get update \
     && apt-get upgrade -y \
@@ -517,7 +520,7 @@ RUN set -eux; \
     rm -f /tmp/trivy.deb; \
     trivy --version
 
-# ---- Docker CLI 29.9.0 (Apache-2.0, client only). --------------------------
+# ---- Docker CLI 29.9.2 (Apache-2.0, client only). --------------------------
 # The dynamic-scan executor (SCAN_EXECUTOR=local_docker) shells out to `docker
 # run` to launch a per-environment cdxgen sidecar (e.g. the Android SDK image)
 # against the host Docker socket. We install ONLY the static client binary — no
@@ -542,12 +545,16 @@ RUN set -eux; \
 #   https://download.docker.com/linux/static/stable/{x86_64,aarch64}/docker-29.9.0.tgz
 # (Docker publishes no checksums file for the static channel — pinning
 # at review time is the strongest available verification.)
-ENV DOCKER_CLI_VERSION=29.9.0
+# CVE triage 2026-10-23 (image-scan gate): bumped 29.9.0 -> 29.9.2. 29.9.0
+# carries a go1.26.9 stdlib, flagged for CVE-2026-111943 (crypto/x509,
+# fixed 1.26.10 / 1.27.3); 29.9.2 is built with go1.26.10 (verified via
+# `go version` on both extracted binaries). Hashes self-computed the same way.
+ENV DOCKER_CLI_VERSION=29.9.2
 RUN set -eux; \
     arch="$(dpkg --print-architecture)"; \
     case "$arch" in \
-        amd64)  docker_arch="x86_64";  docker_sha="33e1ab8b63d14bca449f7a3d30d7f6aa669daa544e60a86b17fec87f61afe2b4" ;; \
-        arm64)  docker_arch="aarch64"; docker_sha="811f6eee271678fc98dbe5c4d896c00fc5fe2daa4f7a37069c17abc036eab85b" ;; \
+        amd64)  docker_arch="x86_64";  docker_sha="9ac225999fd5e863f7694c728ef23d480616b1e5639328fa309befd4243d69eb" ;; \
+        arm64)  docker_arch="aarch64"; docker_sha="873b3e0207857c3b2f28392fb922f3ea6efe37620c16d4d4aaf2fef409c90b73" ;; \
         *) echo "Unsupported arch: $arch" >&2; exit 1 ;; \
     esac; \
     curl -fsSL -o /tmp/docker.tgz \
@@ -723,10 +730,14 @@ RUN set -eux; \
 # 1.27 out, the 1.25 line no longer receives security releases, so staying
 # on it is no longer an option. 1.26 has had eight months of point
 # releases, which covers the soak-time concern above.
-# Hashes from https://go.dev/dl/?mode=json (the `files` array of go1.26.9).
-ENV GO_VERSION=1.26.9 \
-    GO_SHA256_AMD64=42d158b4d8f7b61ac0a830567c940a86098fb7aac52e467a5ebec03ef5cc2f8d \
-    GO_SHA256_ARM64=4a97373d49fcacdcf3694fea368a500b00ee3e963974f3e7514132717632f052 \
+# CVE triage 2026-10-23 (image-scan gate): bumped 1.26.9 -> 1.26.10. Go
+# stdlib CVE-2026-111943 (crypto/x509, untrusted intermediate certificates,
+# HIGH) was flagged on the nine opt/go binaries and govulncheck. Fixed in
+# 1.26.10 / 1.27.3.
+# Hashes from https://go.dev/dl/?mode=json (the `files` array of go1.26.10).
+ENV GO_VERSION=1.26.10 \
+    GO_SHA256_AMD64=ccfe7ae822d2c2f41f4fe7c956199967a4dac22d0ee0d2b2bfdb440aab3b20c5 \
+    GO_SHA256_ARM64=3f4227ce7b206a513e794f1393adb473a07b46e94d18bd15d1c684bbb7319797 \
     GOROOT=/opt/go
 RUN set -eux; \
     arch="$(dpkg --print-architecture)"; \
@@ -1077,9 +1088,15 @@ EOF
 # (which mock subprocess) stay green.
 # Hashes from cosign v3.1.1 cosign_checksums.txt (also self-verified by
 # downloading and sha256sum-ing both binaries).
-ENV COSIGN_VERSION=3.1.2
-ARG COSIGN_SHA256_AMD64=f7622ed3cf22e55e1ae6377c080979ff77a22da9981c11df222a2e444991e7cf
-ARG COSIGN_SHA256_ARM64=90e7ae0b5dfd60f20816b52c012addf7fc055ebcc7bea4ce81c428ca8518c302
+# CVE triage 2026-10-23 (image-scan gate): bumped 3.1.2 -> 3.1.4. 3.1.2 was
+# built with go1.26.4 (stdlib CVE-2026-111943, crypto/x509, HIGH) and embedded
+# klauspost/compress 1.18.6 (CVE-2026-63209, HIGH). v3.1.4 is built with
+# go1.27.3 and embeds klauspost/compress 1.20.1 and x/text 0.43.0 (verified via
+# `go version -m` on the release binary).
+# Hashes from cosign v3.1.4 cosign_checksums.txt (amd64 also self-verified).
+ENV COSIGN_VERSION=3.1.4
+ARG COSIGN_SHA256_AMD64=424e2c97d0b45fd7a6b608a87f090f35633f4c23ece5f092d48bba11aaf4bbfa
+ARG COSIGN_SHA256_ARM64=ade83b7aac62e131cacfe96d958948b2150cc9efec46a570a2649b8e27dedad2
 RUN set -eux; \
     arch="$(dpkg --print-architecture)"; \
     case "$arch" in \
