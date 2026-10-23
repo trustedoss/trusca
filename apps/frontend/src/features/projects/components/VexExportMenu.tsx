@@ -5,6 +5,7 @@ import { useTranslation } from "react-i18next";
 import { Button } from "@/components/ui/button";
 import { useVexExport } from "@/features/projects/api/useVexExport";
 import type { VexFormat } from "@/features/projects/api/vexApi";
+import { problemMessage } from "@/lib/problemMessage";
 import { cn } from "@/lib/utils";
 
 /**
@@ -73,7 +74,9 @@ export function VexExportMenu({
           data-testid="vex-export-error"
           aria-live="polite"
         >
-          {exporter.error.message}
+          {problemMessage(exporter.error, t, {
+            action: "vulnerabilities.vex.export_error",
+          })}
         </span>
       ) : null}
     </div>

@@ -32,6 +32,7 @@
   },
   "errors": {
     "ask_failed": "신청을 기록하지 못했습니다.",
-    "decide_failed": "답변을 기록하지 못했습니다."
+    "decide_failed": "답변을 기록하지 못했습니다.",
+    "load_failed": "신청 목록을 불러오지 못했습니다."
   }
 }

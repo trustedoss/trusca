@@ -32,6 +32,7 @@
   },
   "errors": {
     "ask_failed": "The request could not be recorded.",
-    "decide_failed": "The answer could not be recorded."
+    "decide_failed": "The answer could not be recorded.",
+    "load_failed": "The intake requests could not be loaded."
   }
 }

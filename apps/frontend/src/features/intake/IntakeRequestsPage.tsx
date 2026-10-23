@@ -19,6 +19,7 @@ import { useSearchParams } from "react-router-dom";
 import { EmptyState } from "@/components/EmptyState";
 import { PageHeader } from "@/components/PageHeader";
 import RelativeTime from "@/components/RelativeTime";
+import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -176,6 +177,14 @@ export function IntakeRequestsPage() {
 
         {query.isLoading ? (
           <Skeleton className="h-24 w-full" data-testid="intake-loading" />
+        ) : query.isError ? (
+          // A failed load is not an empty queue: saying "nothing has been
+          // asked" here would hide requests that are waiting on somebody.
+          <Alert variant="destructive" data-testid="intake-error">
+            <AlertDescription>
+              {problemMessage(query.error, t, { action: "errors.load_failed" })}
+            </AlertDescription>
+          </Alert>
         ) : items.length === 0 ? (
           <EmptyState
             icon={<ClipboardList className="h-8 w-8" aria-hidden />}

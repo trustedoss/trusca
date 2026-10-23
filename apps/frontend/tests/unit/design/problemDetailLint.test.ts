@@ -107,6 +107,30 @@ describe("scan", () => {
     expect(run().counts["src/features/x/Title.tsx"]).toBe(1);
   });
 
+  it("flags message too, which on a ProblemError is the detail", () => {
+    // `{query.error.message}` rendered the backend's English detail on five
+    // download surfaces while the gate watched only detail and title.
+    write(
+      "features/x/Message.tsx",
+      [
+        "const a = query.error.message;",
+        "const b = noticeError?.message;",
+        "const c = (err as ProblemError).message;",
+      ].join("\n"),
+    );
+
+    expect(run().counts["src/features/x/Message.tsx"]).toBe(3);
+  });
+
+  it("stays quiet on a message that does not belong to an error", () => {
+    write(
+      "features/x/Toast.tsx",
+      ["const a = toast.message;", "const b = row.message;"].join("\n"),
+    );
+
+    expect(run().counts["src/features/x/Toast.tsx"]).toBeUndefined();
+  });
+
   it("flags optional and non-null access", () => {
     // One character away from the plain form, so these slip through without
     // anyone meaning to evade the gate.

@@ -83,7 +83,8 @@
       "format_text": "Text",
       "format_html": "HTML",
       "action": "Download",
-      "action_generating": "Generating…"
+      "action_generating": "Generating…",
+      "error": "The NOTICE file could not be downloaded."
     },
     "override": {
       "none": "—"
@@ -588,6 +589,7 @@
       "export_openvex": "OpenVEX",
       "export_cyclonedx": "CycloneDX VEX",
       "export_downloading": "Downloading…",
+      "export_error": "The VEX document could not be exported.",
       "import_label": "Import VEX",
       "import_button": "Import VEX",
       "import_role_gated": "Importing a VEX document requires a team admin role.",
@@ -1045,6 +1047,7 @@
       "notice_label": "NOTICE file",
       "notice_download": "Download NOTICE",
       "notice_downloading": "Generating…",
+      "notice_error": "The NOTICE file could not be downloaded.",
       "notice_format_label": "NOTICE format",
       "notice_format_text": "Text",
       "notice_format_html": "HTML"
@@ -1447,6 +1450,7 @@
         "description": "Attribution NOTICE file with license obligations.",
         "action": "Download NOTICE",
         "action_generating": "Generating…",
+        "error": "The NOTICE file could not be downloaded.",
         "format_label": "NOTICE format",
         "format_text": "Text",
         "format_html": "HTML"
@@ -1459,7 +1463,8 @@
       "vuln-pdf": {
         "title": "Vulnerability PDF",
         "description": "Risk report with severity / license distribution and CVE list.",
-        "action": "Go to Vulnerabilities"
+        "action": "Go to Vulnerabilities",
+        "error": "The vulnerability report could not be downloaded."
       },
       "vex": {
         "title": "VEX",

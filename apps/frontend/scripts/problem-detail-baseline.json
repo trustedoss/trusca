@@ -1,1 +1,4 @@
-{}
+{
+  "src/components/ErrorBoundary.tsx": 2,
+  "src/features/about/AboutPage.tsx": 2
+}

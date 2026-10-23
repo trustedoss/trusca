@@ -83,7 +83,8 @@
       "format_text": "텍스트",
       "format_html": "HTML",
       "action": "다운로드",
-      "action_generating": "생성 중…"
+      "action_generating": "생성 중…",
+      "error": "NOTICE 파일을 내려받지 못했습니다."
     },
     "override": {
       "none": "—"
@@ -588,6 +589,7 @@
       "export_openvex": "OpenVEX",
       "export_cyclonedx": "CycloneDX VEX",
       "export_downloading": "다운로드 중…",
+      "export_error": "VEX 문서를 내보내지 못했습니다.",
       "import_label": "VEX 가져오기",
       "import_button": "VEX 가져오기",
       "import_role_gated": "VEX 문서를 가져오려면 팀 관리자 권한이 필요합니다.",
@@ -1045,6 +1047,7 @@
       "notice_label": "NOTICE 파일",
       "notice_download": "NOTICE 다운로드",
       "notice_downloading": "생성 중…",
+      "notice_error": "NOTICE 파일을 내려받지 못했습니다.",
       "notice_format_label": "NOTICE 형식",
       "notice_format_text": "텍스트",
       "notice_format_html": "HTML"
@@ -1447,6 +1450,7 @@
         "description": "라이선스 의무사항이 포함된 저작자 표시 NOTICE 파일.",
         "action": "NOTICE 다운로드",
         "action_generating": "생성 중…",
+        "error": "NOTICE 파일을 내려받지 못했습니다.",
         "format_label": "NOTICE 형식",
         "format_text": "텍스트",
         "format_html": "HTML"
@@ -1459,7 +1463,8 @@
       "vuln-pdf": {
         "title": "취약점 PDF",
         "description": "심각도·라이선스 분포 및 CVE 목록이 포함된 리스크 리포트.",
-        "action": "취약점 탭으로 이동"
+        "action": "취약점 탭으로 이동",
+        "error": "취약점 보고서를 내려받지 못했습니다."
       },
       "vex": {
         "title": "VEX",

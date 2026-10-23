@@ -202,6 +202,7 @@ export function SbomTab({ projectId, lastScanAt, scanId }: SbomTabProps) {
 
           {error ? (
             <Alert variant="destructive" data-testid="sbom-error">
+              {/* problem-detail-lint-allow: this message was already built by problemMessage above */}
               <AlertDescription>{error.message}</AlertDescription>
             </Alert>
           ) : null}

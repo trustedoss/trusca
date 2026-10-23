@@ -33,6 +33,7 @@ import type {
   ComplianceRow,
 } from "@/features/projects/api/complianceApi";
 import { ComplianceTab } from "@/features/projects/components/ComplianceTab";
+import { ProblemError } from "@/lib/problem";
 
 vi.mock("@/features/projects/api/complianceApi", async () => {
   return {
@@ -95,12 +96,15 @@ const mockedList = vi.mocked(listProjectCompliance);
 // M-21 — the toolbar's NOTICE group downloads through useNotice. Mock the
 // hook (same pattern as ReportsTab.test.tsx) so a click is observable without
 // exercising the blob-download path (jsdom has no URL.createObjectURL).
-const { noticeDownload } = vi.hoisted(() => ({ noticeDownload: vi.fn() }));
+const { noticeDownload, noticeState } = vi.hoisted(() => ({
+  noticeDownload: vi.fn(),
+  noticeState: { error: null as Error | null },
+}));
 vi.mock("@/features/projects/api/useNotice", () => ({
   useNotice: () => ({
     download: noticeDownload,
     isLoading: false,
-    error: null,
+    error: noticeState.error,
     lastResult: null,
   }),
 }));
@@ -201,6 +205,7 @@ describe("ComplianceTab unified grid", () => {
   beforeEach(() => {
     mockedList.mockReset();
     noticeDownload.mockReset().mockResolvedValue(undefined);
+    noticeState.error = null;
   });
   afterEach(() => {
     vi.useRealTimers();
@@ -228,6 +233,21 @@ describe("ComplianceTab unified grid", () => {
     expect(
       screen.getByTestId("compliance-notice-action"),
     ).toBeInTheDocument();
+  });
+
+  it("shows a NOTICE download failure translated, not as the server's English", async () => {
+    noticeState.error = new ProblemError("database unavailable", {
+      status: 500,
+      title: "Internal Server Error",
+      detail: "database unavailable",
+      problem: null,
+    });
+    mockedList.mockResolvedValue(response([]));
+    renderTab();
+
+    const err = await screen.findByTestId("compliance-notice-error");
+    expect(err).toHaveTextContent("The NOTICE file could not be downloaded.");
+    expect(err).not.toHaveTextContent("database unavailable");
   });
 
   it("downloads the NOTICE in the selected format", async () => {

@@ -13,6 +13,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
 
+import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -133,7 +134,17 @@ export function ServiceAccountsPanel({
         </p>
       </div>
 
-      {items.length > 0 ? (
+      {query.isError ? (
+        // Not "no service accounts yet": the list did not load, and a team
+        // admin reading it as empty might create a duplicate.
+        <Alert variant="destructive" data-testid="service-accounts-error">
+          <AlertDescription>
+            {problemMessage(query.error, t, {
+              action: "service_accounts.errors.load_failed",
+            })}
+          </AlertDescription>
+        </Alert>
+      ) : items.length > 0 ? (
         <ul className="divide-y rounded-lg border">
           {items.map((account) => (
             <li

@@ -15,8 +15,9 @@
  * nothing measures is a debt that grows. New bypasses fail; paid-down debt
  * must be re-recorded so the budget cannot be quietly re-spent.
  *
- * What counts as a bypass: reading `.detail` or `.title` off a caught error or
- * a query's error, in source (not comments). Both fields are always English.
+ * What counts as a bypass: reading `.detail`, `.title` or `.message` off a
+ * caught error or a query's error, in source (not comments). All three are
+ * always English on a ProblemError.
  * What does not count: `lib/problemMessage.ts` and the domain mappers, which
  * are the sanctioned path; a `detail` field belonging to a domain payload
  * rather than a Problem (the health panel's component detail, a bulk
@@ -53,8 +54,13 @@ const EXEMPT = new Set([
  * Both `detail` and `title` are always-English fields on the Problem, and both
  * get rendered. Watching only `detail` would leave `title` as an open door,
  * and there are already four call sites drawing it.
+ *
+ * `message` too: a ProblemError's message IS its detail (the constructor
+ * passes it through), so `{query.error.message}` rendered the same English
+ * sentence while this gate looked away. Five download error lines did exactly
+ * that before they were moved to `problemMessage()`.
  */
-const ENGLISH_FIELD = "(?:detail|title)";
+const ENGLISH_FIELD = "(?:detail|title|message)";
 
 /**
  * `<error>.detail` where the receiver names an error. Deliberately narrow: it

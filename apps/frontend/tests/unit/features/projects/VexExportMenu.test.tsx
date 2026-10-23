@@ -12,6 +12,7 @@ import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { VexExportMenu } from "@/features/projects/components/VexExportMenu";
+import { ProblemError } from "@/lib/problem";
 
 vi.mock("@/features/projects/api/vexApi", async () => {
   const actual = await vi.importActual<
@@ -80,14 +81,23 @@ describe("VexExportMenu", () => {
     );
   });
 
-  it("surfaces a download error inline", async () => {
+  it("surfaces a download error inline, translated rather than the server's English", async () => {
     const user = userEvent.setup();
-    mockedDownload.mockRejectedValueOnce(new Error("export failed"));
+    mockedDownload.mockRejectedValueOnce(
+      new ProblemError("database unavailable", {
+        status: 500,
+        title: "Internal Server Error",
+        detail: "database unavailable",
+        problem: null,
+      }),
+    );
     render(<VexExportMenu projectId={PROJECT_ID} projectName="demo" />);
 
     await user.click(screen.getByTestId("vex-export-openvex"));
     const err = await screen.findByTestId("vex-export-error");
-    expect(err.textContent).toContain("export failed");
+    expect(err).toHaveTextContent("The VEX document could not be exported.");
+    expect(err).toHaveTextContent("The server could not complete this.");
+    expect(err).not.toHaveTextContent("database unavailable");
     expect(mockedTrigger).not.toHaveBeenCalled();
   });
 });
