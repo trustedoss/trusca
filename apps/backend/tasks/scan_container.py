@@ -462,12 +462,18 @@ def _persist_trivy_report(
     rather than replaced (D1, see ``FindingReconciler``): a pair the scan
     already has keeps its row and id, a pair the report no longer has is
     deleted. The same pair reported under two targets is one finding.
+    Nothing is deleted when part of the report could not be read (a
+    ``Results`` that is missing or not a list, an unreadable entry, a catalog
+    row lost to a race): see ``persist_trivy_findings`` for the rule.
     """
-    results = report.get("Results", []) or []
     # X1 SLA and the verdict carry forward from the project's other scans
     # exactly as before; containers never carried the assignment, and this
     # change does not start to.
     reconciler = FindingReconciler(session, scan_uuid=scan_uuid, carry_assignment=False)
+    results = report.get("Results")
+    if not isinstance(results, list):
+        reconciler.withhold_deletions("results_missing_or_malformed")
+        results = []
     # H-1: a single OS package routinely carries several CVEs. ScanComponent is
     # unique on (scan_id, component_version_id, dependency_path)
     # (``uq_scan_components_scan_version_path``), so the row must be created
@@ -484,15 +490,24 @@ def _persist_trivy_report(
     catalog_races = 0
     for result in results:
         if not isinstance(result, dict):
+            reconciler.withhold_deletions("malformed_result_block")
             continue
         target = result.get("Target", "")
-        for vuln in result.get("Vulnerabilities", []) or []:
+        vulns = result.get("Vulnerabilities")
+        if vulns is None:
+            vulns = []
+        elif not isinstance(vulns, list):
+            reconciler.withhold_deletions("malformed_result_block")
+            vulns = []
+        for vuln in vulns:
             if not isinstance(vuln, dict):
+                reconciler.withhold_deletions("malformed_entry")
                 continue
             pkg_name = vuln.get("PkgName")
             installed = vuln.get("InstalledVersion")
             cve_id = vuln.get("VulnerabilityID")
             if not pkg_name or not installed or not cve_id:
+                reconciler.withhold_deletions("malformed_entry")
                 continue
             identity = _component_identity(
                 vuln,
@@ -565,6 +580,7 @@ def _persist_trivy_report(
                     scan_id=str(scan_uuid),
                     vuln_id=cve_id,
                 )
+                reconciler.withhold_deletions("catalog_unresolved")
                 continue
 
             guarded_finding = enforce_jsonb_row_size_limit(
@@ -603,6 +619,7 @@ def _persist_trivy_report(
         inserted=len(created_findings),
         updated=reconciler.updated,
         removed=reconciler.deleted,
+        removal_withheld=reconciler.withheld,
         catalog_races=catalog_races,
         audits_emitted=emitted,
         inventory_components=inventory.components,

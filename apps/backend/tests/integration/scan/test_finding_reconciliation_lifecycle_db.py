@@ -40,6 +40,7 @@ from sqlalchemy.orm import Session
 from integrations.cdxgen import CdxgenResult
 from integrations.trivy import TrivyResult
 from models import (
+    AuditLog,
     ComponentVersion,
     Scan,
     TransitionApproval,
@@ -390,6 +391,192 @@ def test_a_vanished_pair_is_deleted_with_its_approval_and_nothing_else(
     after = _findings(sync_session, scan_id)
     expected = {k: v for k, v in before.items() if k not in minimist}
     assert after == expected
+
+    # The deletion is on the record, by the system actor, naming the approval
+    # the cascade took with it.
+    deletes = {
+        row.target_id: row
+        for row in _audits(sync_session, action="delete", ids=[before[k] for k in minimist])
+    }
+    assert set(deletes) == {str(before[k]) for k in minimist}
+    assert all(row.actor_user_id is None for row in deletes.values())
+    with_approval = deletes[str(before[minimist[0]])].diff or {}
+    without = deletes[str(before[minimist[1]])].diff or {}
+    assert with_approval.get("reason") == "no_longer_reported"
+    assert with_approval.get("transition_approval_ids") == [str(gone_approval)]
+    assert without.get("transition_approval_ids") == []
+
+
+def _audits(session: Session, *, action: str, ids: list[uuid.UUID]) -> list[AuditLog]:
+    session.expire_all()
+    return list(
+        session.execute(
+            select(AuditLog).where(
+                AuditLog.target_table == "vulnerability_findings",
+                AuditLog.action == action,
+                AuditLog.target_id.in_([str(i) for i in ids]),
+            )
+        ).scalars()
+    )
+
+
+# ---------------------------------------------------------------------------
+# A pass that could not read the whole report deletes nothing
+# ---------------------------------------------------------------------------
+
+
+def test_a_catalog_race_on_one_entry_does_not_delete_its_finding(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, sync_session: Session
+) -> None:
+    """An entry skipped for a transient reason is not a vanished pair.
+
+    The catalog row for one CVE is lost to a race during the rematch. Its
+    finding, and the agreed suppression on it, must still be there afterwards.
+    """
+    report = _load(_SOURCE_REPORT)
+    _stub_source_pipeline(monkeypatch, tmp_path, lambda: report)
+    scan_id, team_id, user_id = _seed_scan(kind="source", scan_metadata={})
+    _run_source(scan_id)
+    before = _findings(sync_session, scan_id)
+    target = _axios_key(before)
+    approval_id = _request_approval(
+        sync_session, finding_id=before[target], team_id=team_id, user_id=user_id, decided=True
+    )
+
+    import services.vulnerability_matching as matching
+
+    real_upsert = matching._upsert_vulnerability_from_trivy
+
+    def _lose_the_race(session: Session, *, external_id: str, **kwargs: Any) -> Any:
+        if external_id == target[0]:
+            return None, True
+        return real_upsert(session, external_id=external_id, **kwargs)
+
+    monkeypatch.setattr(matching, "_upsert_vulnerability_from_trivy", _lose_the_race)
+    from tasks.vulnerability_rematch import rematch_scan_findings
+
+    summary = rematch_scan_findings.run(str(scan_id))
+    assert summary["skipped"] is False, summary
+
+    assert _approval(sync_session, approval_id) is not None, "a catalog race deleted an approval"
+    assert _findings(sync_session, scan_id) == before
+
+
+def test_a_report_without_results_deletes_nothing_but_an_empty_list_does(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, sync_session: Session
+) -> None:
+    """Missing ``Results`` is malformed; ``Results: []`` is a clean result.
+
+    Driven through a re-run of the same source scan, which has no guard of its
+    own in front of the persister (the rematch task does).
+    """
+    full = _load(_SOURCE_REPORT)
+    state: dict[str, dict[str, Any]] = {"report": full}
+    _stub_source_pipeline(monkeypatch, tmp_path, lambda: state["report"])
+    scan_id, team_id, user_id = _seed_scan(kind="source", scan_metadata={})
+    _run_source(scan_id)
+    before = _findings(sync_session, scan_id)
+    approval_id = _request_approval(
+        sync_session, finding_id=before[_axios_key(before)], team_id=team_id, user_id=user_id
+    )
+
+    state["report"] = {"SchemaVersion": 2, "ArtifactType": "cyclonedx"}
+    _redeliver(sync_session, scan_id)
+    _run_source(scan_id)
+    assert _approval(sync_session, approval_id) is not None, "a malformed report deleted it"
+    assert _findings(sync_session, scan_id) == before
+
+    state["report"] = {"SchemaVersion": 2, "ArtifactType": "cyclonedx", "Results": []}
+    _redeliver(sync_session, scan_id)
+    _run_source(scan_id)
+    assert _findings(sync_session, scan_id) == {}
+    assert _approval(sync_session, approval_id) is None
+
+
+def test_a_carried_status_on_a_kept_row_is_audited(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, sync_session: Session
+) -> None:
+    """A kept ``new`` row that takes the project's verdict gets an update row.
+
+    Two scans of one project; the analyst rules on the first scan's finding,
+    and the rematch of the second scan carries that verdict onto its own row.
+    The finding's status history reads ``diff.status`` from these rows.
+    """
+    report = _load(_SOURCE_REPORT)
+    _stub_source_pipeline(monkeypatch, tmp_path, lambda: report)
+    first_scan, _team_id, user_id = _seed_scan(kind="source", scan_metadata={})
+    _run_source(first_scan)
+    first = sync_session.get(Scan, first_scan)
+    assert first is not None
+    second = Scan(
+        project_id=first.project_id,
+        kind="source",
+        status="queued",
+        progress_percent=0,
+        requested_by_user_id=user_id,
+        scan_metadata={},
+    )
+    sync_session.add(second)
+    sync_session.commit()
+    second_scan = second.id
+    _run_source(second_scan)
+
+    key = _axios_key(_findings(sync_session, first_scan))
+    ruled = sync_session.get(VulnerabilityFinding, _findings(sync_session, first_scan)[key])
+    assert ruled is not None
+    ruled.status = "not_affected"
+    ruled.analysis_state = "not_affected"
+    ruled.analysis_justification = "code_not_reachable"
+    ruled.analyst_user_id = user_id
+    ruled.analyzed_at = datetime.now(UTC)
+    sync_session.commit()
+
+    kept_id = _findings(sync_session, second_scan)[key]
+    from tasks.vulnerability_rematch import rematch_scan_findings
+
+    assert rematch_scan_findings.run(str(second_scan))["skipped"] is False
+    sync_session.expire_all()
+    kept = sync_session.get(VulnerabilityFinding, kept_id)
+    assert kept is not None and kept.status == "not_affected"
+    updates = _audits(sync_session, action="update", ids=[kept_id])
+    seen = [
+        (u.actor_user_id, (u.diff or {}).get("status"), (u.diff or {}).get("previous_status"))
+        for u in updates
+    ]
+    assert seen == [(None, "not_affected", "new")]
+
+
+def test_a_container_report_without_results_deletes_nothing(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, sync_session: Session
+) -> None:
+    full = _load(_IMAGE_REPORT)
+    state: dict[str, dict[str, Any]] = {"report": full}
+    monkeypatch.setenv("WORKSPACE_HOST_PATH", str(tmp_path))
+    monkeypatch.delenv("CONTAINER_SCAN_ALLOWED_REGISTRIES", raising=False)
+
+    def _trivy_image(*, image_ref: str, output_dir: Path, **_kwargs: object) -> TrivyResult:  # noqa: ARG001
+        output_dir.mkdir(parents=True, exist_ok=True)
+        report_path = output_dir / "trivy.json"
+        report_path.write_text(json.dumps(state["report"]), encoding="utf-8")
+        return TrivyResult(report_path=report_path, report=state["report"])
+
+    monkeypatch.setattr("tasks.scan_container.trivy_adapter.run_trivy_image", _trivy_image)
+    from tasks.scan_container import scan_container_task
+
+    scan_id, team_id, user_id = _seed_scan(
+        kind="container", scan_metadata={"image_ref": "alpine:3.19"}
+    )
+    assert scan_container_task.apply(args=[str(scan_id)]).successful()
+    before = _findings(sync_session, scan_id)
+    approval_id = _request_approval(
+        sync_session, finding_id=next(iter(before.values())), team_id=team_id, user_id=user_id
+    )
+
+    state["report"] = {"SchemaVersion": 2, "ArtifactName": "alpine:3.19"}
+    _redeliver(sync_session, scan_id)
+    assert scan_container_task.apply(args=[str(scan_id)]).successful()
+    assert _approval(sync_session, approval_id) is not None, "a malformed report deleted it"
+    assert _findings(sync_session, scan_id) == before
 
 
 # ---------------------------------------------------------------------------
