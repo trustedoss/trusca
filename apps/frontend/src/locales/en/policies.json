@@ -113,15 +113,18 @@
       "label": "Exploit-prediction threshold",
       "no_data_disabled": "This deployment does not collect EPSS scores (EPSS_REFRESH_ENABLED is off), so this threshold decides nothing and the builds it would block pass instead.",
       "no_data_stale": "The EPSS sync has not completed recently, so this threshold is evaluated against scores that are drifting. CVEs carrying a score in this deployment: {{count}}.",
-      "range": "Enter a number between 0 and 1."
+      "range": "Enter a number between 0 and 1.",
+      "override": "Set the exploit-prediction threshold for this team"
     },
     "reachable": {
       "label": "Count only reachable criticals",
-      "help": "Applies to scans an analyser examined. It can only shrink what blocks, never widen it."
+      "help": "Applies to scans an analyser examined. It can only shrink what blocks, never widen it.",
+      "override": "Set the reachable-criticals rule for this team"
     },
     "malicious": {
       "label": "A flagged package blocks the build",
-      "help": "On unless this team turns it off. Turning it off lets a build ship a package the snapshot flags."
+      "help": "On unless this team turns it off. Turning it off lets a build ship a package the snapshot flags.",
+      "override": "Set the flagged-package rule for this team"
     },
     "approval": {
       "label": "Statuses that need a second person",
@@ -132,10 +135,13 @@
         "false_positive": "False positive",
         "fixed": "Fixed",
         "suppressed": "Suppressed"
-      }
+      },
+      "override": "Set the second-person statuses for this team"
     },
     "save": "Save",
     "reset": "Follow the organization",
-    "read_only": "You can see this policy but not change it."
+    "read_only": "You can see this policy but not change it.",
+    "load_error": "The build gate policy could not be loaded. It cannot be edited or saved until it loads, so the team's current policy stays as it is.",
+    "retry": "Retry"
   }
 }

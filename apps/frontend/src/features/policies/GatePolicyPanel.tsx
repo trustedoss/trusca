@@ -13,9 +13,11 @@
 import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 
+import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Skeleton } from "@/components/ui/skeleton";
 import { Switch } from "@/components/ui/switch";
 import { APPROVABLE_STATUSES, type GatePolicyUpsertIn } from "@/lib/gatePoliciesApi";
 
@@ -89,17 +91,59 @@ function payloadFrom(draft: Draft): GatePolicyUpsertIn {
 export function GatePolicyPanel({ teamId, canEdit }: GatePolicyPanelProps) {
   const { t } = useTranslation("policies");
   const query = useTeamGatePolicy(teamId);
-  const upsert = useUpsertTeamGatePolicy(teamId);
+  const upsert = useUpsertTeamGatePolicy();
   const remove = useDeleteTeamGatePolicy(teamId);
   // Deployment-scoped, so it is the same answer whichever team is open.
   const { data: epssData } = useEpssAvailability();
-  const [draft, setDraft] = useState<Draft>(EMPTY_DRAFT);
+  // The draft remembers which team it was seeded for. Save replaces the
+  // team's row wholesale, so a draft that was never seeded from a successful
+  // read (still loading, read failed, or seeded for the previous team) must
+  // never reach the mutation: it would overwrite the real policy with blanks.
+  const [seeded, setSeeded] = useState<{ teamId: string; draft: Draft } | null>(null);
 
   useEffect(() => {
-    if (query.isSuccess) setDraft(draftFrom(query.data));
-  }, [query.isSuccess, query.data]);
+    if (query.isSuccess && teamId !== null) {
+      setSeeded({ teamId, draft: draftFrom(query.data) });
+    }
+  }, [query.isSuccess, query.data, teamId]);
 
   if (teamId === null) return null;
+
+  if (query.isError) {
+    return (
+      <section className="space-y-4" data-testid="gate-policy-panel">
+        <Alert variant="destructive" data-testid="gate-policy-error">
+          <AlertDescription className="space-y-2">
+            <p>{t("gate.load_error")}</p>
+            <Button
+              type="button"
+              size="sm"
+              variant="outline"
+              onClick={() => void query.refetch()}
+              data-testid="gate-policy-retry"
+            >
+              {t("gate.retry")}
+            </Button>
+          </AlertDescription>
+        </Alert>
+      </section>
+    );
+  }
+
+  if (!query.isSuccess || seeded === null || seeded.teamId !== teamId) {
+    return (
+      <section className="space-y-3" data-testid="gate-policy-loading" aria-busy="true">
+        <Skeleton className="h-5 w-1/3" />
+        <Skeleton className="h-10 w-full" />
+        <Skeleton className="h-10 w-full" />
+        <Skeleton className="h-10 w-full" />
+      </section>
+    );
+  }
+
+  const draft = seeded.draft;
+  const setDraft = (update: (d: Draft) => Draft) =>
+    setSeeded((s) => (s === null ? s : { ...s, draft: update(s.draft) }));
 
   const hasRow = query.data !== null && query.data !== undefined;
   const epssInvalid =
@@ -123,6 +167,7 @@ export function GatePolicyPanel({ teamId, canEdit }: GatePolicyPanelProps) {
             onCheckedChange={(checked) =>
               setDraft((d) => ({ ...d, epssOverridden: checked }))
             }
+            aria-label={t("gate.epss.override")}
             data-testid="gate-epss-override"
           />
           <div className="flex-1 space-y-1">
@@ -174,11 +219,15 @@ export function GatePolicyPanel({ teamId, canEdit }: GatePolicyPanelProps) {
             onCheckedChange={(checked) =>
               setDraft((d) => ({ ...d, reachableOverridden: checked }))
             }
+            aria-label={t("gate.reachable.override")}
             data-testid="gate-reachable-override"
           />
           <div className="flex-1 space-y-1">
-            <Label className="text-xs">{t("gate.reachable.label")}</Label>
+            <Label htmlFor="gate-reachable" className="text-xs">
+              {t("gate.reachable.label")}
+            </Label>
             <Switch
+              id="gate-reachable"
               checked={draft.reachable}
               disabled={!canEdit || !draft.reachableOverridden}
               onCheckedChange={(checked) => setDraft((d) => ({ ...d, reachable: checked }))}
@@ -198,11 +247,15 @@ export function GatePolicyPanel({ teamId, canEdit }: GatePolicyPanelProps) {
             onCheckedChange={(checked) =>
               setDraft((d) => ({ ...d, maliciousOverridden: checked }))
             }
+            aria-label={t("gate.malicious.override")}
             data-testid="gate-malicious-override"
           />
           <div className="flex-1 space-y-1">
-            <Label className="text-xs">{t("gate.malicious.label")}</Label>
+            <Label htmlFor="gate-malicious" className="text-xs">
+              {t("gate.malicious.label")}
+            </Label>
             <Switch
+              id="gate-malicious"
               checked={draft.malicious}
               disabled={!canEdit || !draft.maliciousOverridden}
               onCheckedChange={(checked) => setDraft((d) => ({ ...d, malicious: checked }))}
@@ -223,6 +276,7 @@ export function GatePolicyPanel({ teamId, canEdit }: GatePolicyPanelProps) {
           onCheckedChange={(checked) =>
             setDraft((d) => ({ ...d, approvalOverridden: checked }))
           }
+          aria-label={t("gate.approval.override")}
           data-testid="gate-approval-override"
         />
         <fieldset className="flex-1 space-y-1" disabled={!canEdit || !draft.approvalOverridden}>
@@ -266,7 +320,7 @@ export function GatePolicyPanel({ teamId, canEdit }: GatePolicyPanelProps) {
             type="button"
             size="sm"
             disabled={epssInvalid || upsert.isPending}
-            onClick={() => upsert.mutate(payloadFrom(draft))}
+            onClick={() => upsert.mutate({ teamId, payload: payloadFrom(draft) })}
             data-testid="gate-policy-save"
           >
             {t("gate.save")}

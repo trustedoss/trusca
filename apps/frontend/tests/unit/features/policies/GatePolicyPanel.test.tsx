@@ -8,11 +8,14 @@
  * payload reflects the switch rather than the emptiness of the box.
  */
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { render, screen, waitFor } from "@testing-library/react";
+import { act, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
+import { useLayoutEffect, useRef, useState } from "react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { GatePolicyPanel } from "@/features/policies/GatePolicyPanel";
+import { teamGatePolicyQueryKey } from "@/features/policies/useGatePolicies";
+import { ProblemError } from "@/lib/problem";
 
 const getTeamGatePolicy = vi.fn();
 const upsertTeamGatePolicy = vi.fn();
@@ -61,6 +64,59 @@ function renderPanel(canEdit = true) {
   );
 }
 
+// A real ProblemError, not a look-alike: the hook turns only an actual 404
+// ProblemError into "no row", and a stand-in would silently become a failed
+// read instead.
+function problem(status: number): ProblemError {
+  return new ProblemError("gate policy", {
+    status,
+    title: "error",
+    detail: "error",
+    problem: null,
+  });
+}
+
+/**
+ * Press whatever Save button is on screen, if any. The guard tests attempt the
+ * save rather than only checking the button is gone, so on a panel that still
+ * offers Save they fail on the mutation call itself.
+ */
+async function pressEverySave(): Promise<void> {
+  for (const button of screen.queryAllByTestId("gate-policy-save")) {
+    await userEvent.click(button);
+  }
+  await new Promise((resolve) => setTimeout(resolve, 0));
+}
+
+/**
+ * Switches the panel between teams and presses Save on the very first frame
+ * after each switch, before any effect has run. That frame is where a draft
+ * seeded for the previous team could still be on screen.
+ */
+function TeamSwitcher() {
+  const [teamId, setTeamId] = useState("team-1");
+  const first = useRef(true);
+  useLayoutEffect(() => {
+    if (first.current) {
+      first.current = false;
+      return;
+    }
+    for (const button of document.querySelectorAll<HTMLButtonElement>(
+      '[data-testid="gate-policy-save"]',
+    )) {
+      button.click();
+    }
+  }, [teamId]);
+  return (
+    <>
+      <button type="button" onClick={() => setTeamId("team-2")}>
+        switch-team
+      </button>
+      <GatePolicyPanel teamId={teamId} canEdit />
+    </>
+  );
+}
+
 describe("GatePolicyPanel", () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -76,9 +132,7 @@ describe("GatePolicyPanel", () => {
   });
 
   it("sends null for a field the team has not taken over", async () => {
-    getTeamGatePolicy.mockRejectedValue(
-      Object.assign(new Error("not found"), { status: 404, name: "ProblemError" }),
-    );
+    getTeamGatePolicy.mockRejectedValue(problem(404));
     renderPanel();
 
     await waitFor(() => expect(screen.getByTestId("gate-policy-save")).toBeEnabled());
@@ -164,9 +218,7 @@ describe("GatePolicyPanel", () => {
   });
 
   it("offers the reset only when the team actually has a row", async () => {
-    getTeamGatePolicy.mockRejectedValue(
-      Object.assign(new Error("not found"), { status: 404, name: "ProblemError" }),
-    );
+    getTeamGatePolicy.mockRejectedValue(problem(404));
     renderPanel();
 
     await waitFor(() => expect(screen.getByTestId("gate-policy-save")).toBeEnabled());
@@ -301,5 +353,164 @@ describe("GatePolicyPanel", () => {
     expect(
       screen.queryByTestId("gate-epss-unavailable"),
     ).not.toBeInTheDocument();
+  });
+
+  // Save replaces the team's row wholesale. A draft that was never seeded from
+  // a successful read is the blank default, and saving it would wipe the real
+  // policy, so the controls must not exist until the read succeeds.
+  it("cannot save while the policy is still loading", async () => {
+    getTeamGatePolicy.mockReturnValue(new Promise(() => {}));
+    renderPanel();
+
+    await waitFor(() => expect(getTeamGatePolicy).toHaveBeenCalled());
+    await pressEverySave();
+    expect(upsertTeamGatePolicy).not.toHaveBeenCalled();
+    expect(screen.getByTestId("gate-policy-loading")).toBeInTheDocument();
+    expect(screen.queryByRole("switch")).not.toBeInTheDocument();
+  });
+
+  it("cannot save after the read fails, and saves the real policy once a retry succeeds", async () => {
+    getTeamGatePolicy.mockRejectedValueOnce(problem(403));
+    renderPanel();
+
+    await waitFor(() => expect(getTeamGatePolicy).toHaveBeenCalled());
+    await pressEverySave();
+    expect(upsertTeamGatePolicy).not.toHaveBeenCalled();
+    await screen.findByTestId("gate-policy-error");
+    await pressEverySave();
+    expect(upsertTeamGatePolicy).not.toHaveBeenCalled();
+    expect(screen.queryByRole("switch")).not.toBeInTheDocument();
+
+    getTeamGatePolicy.mockResolvedValue({ ...POLICY, epss_threshold: 0.3, malicious_blocks: false });
+    await userEvent.click(screen.getByTestId("gate-policy-retry"));
+    await userEvent.click(await screen.findByTestId("gate-policy-save"));
+
+    await waitFor(() => expect(upsertTeamGatePolicy).toHaveBeenCalledTimes(1));
+    expect(upsertTeamGatePolicy.mock.calls[0][1]).toEqual({
+      epss_threshold: 0.3,
+      reachable_critical_only: null,
+      malicious_blocks: false,
+      approval_required_statuses: null,
+    });
+  });
+
+  it("gives every switch an accessible name", async () => {
+    getTeamGatePolicy.mockResolvedValue(POLICY);
+    renderPanel();
+
+    await screen.findByTestId("gate-policy-save");
+    for (const name of [
+      "gate.epss.override",
+      "gate.reachable.override",
+      "gate.reachable.label",
+      "gate.malicious.override",
+      "gate.malicious.label",
+      "gate.approval.override",
+    ]) {
+      expect(screen.getByRole("switch", { name })).toBeInTheDocument();
+    }
+    // The name points at the right control, not merely at some switch.
+    expect(screen.getByRole("switch", { name: "gate.reachable.label" })).toHaveAttribute(
+      "data-testid",
+      "gate-reachable",
+    );
+    expect(screen.getByRole("switch", { name: "gate.malicious.label" })).toHaveAttribute(
+      "data-testid",
+      "gate-malicious",
+    );
+  });
+
+  it("never saves the previous team's draft after switching to a cached team", async () => {
+    const team1 = { ...POLICY, epss_threshold: 0.9, malicious_blocks: false };
+    const team2 = { ...POLICY, id: "p2", team_id: "team-2", epss_threshold: 0.2 };
+    getTeamGatePolicy.mockImplementation((teamId: string) =>
+      Promise.resolve(teamId === "team-2" ? team2 : team1),
+    );
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    // Already cached, so the query for team-2 succeeds on the first render.
+    client.setQueryData(teamGatePolicyQueryKey("team-2"), team2);
+    render(
+      <QueryClientProvider client={client}>
+        <TeamSwitcher />
+      </QueryClientProvider>,
+    );
+    await waitFor(() => expect(screen.getByTestId("gate-epss")).toHaveValue("0.9"));
+
+    await userEvent.click(screen.getByRole("button", { name: "switch-team" }));
+    await waitFor(() => expect(screen.getByTestId("gate-epss")).toHaveValue("0.2"));
+    expect(screen.getByTestId("gate-malicious-override")).not.toBeChecked();
+    await userEvent.click(screen.getByTestId("gate-policy-save"));
+
+    await waitFor(() => expect(upsertTeamGatePolicy).toHaveBeenCalled());
+    // Every save went to team-2 with team-2's values. A save of team-1's
+    // draft would carry 0.9 and malicious_blocks false into team-2's row.
+    for (const [teamId, payload] of upsertTeamGatePolicy.mock.calls) {
+      expect(teamId).toBe("team-2");
+      expect(payload).toEqual({
+        epss_threshold: 0.2,
+        reachable_critical_only: null,
+        malicious_blocks: null,
+        approval_required_statuses: null,
+      });
+    }
+  });
+
+  // The app's client keeps a read fresh for 30 s, so a policy is not
+  // refetched on return unless the save invalidated that team's key. A save
+  // that finishes after the user moved to another team must still invalidate
+  // the team it was for, not the team now on screen.
+  it("refreshes the saved team's policy even when the save finishes after a team switch", async () => {
+    let team1Epss = 0.9;
+    getTeamGatePolicy.mockImplementation((teamId: string) =>
+      Promise.resolve(
+        teamId === "team-2"
+          ? { ...POLICY, id: "p2", team_id: "team-2", epss_threshold: 0.2 }
+          : { ...POLICY, epss_threshold: team1Epss },
+      ),
+    );
+    let finishSave: (value: unknown) => void = () => {};
+    upsertTeamGatePolicy.mockReturnValue(
+      new Promise((resolve) => {
+        finishSave = resolve;
+      }),
+    );
+    function Switcher() {
+      const [teamId, setTeamId] = useState("team-1");
+      return (
+        <>
+          <button type="button" onClick={() => setTeamId("team-1")}>
+            team-1
+          </button>
+          <button type="button" onClick={() => setTeamId("team-2")}>
+            team-2
+          </button>
+          <GatePolicyPanel teamId={teamId} canEdit />
+        </>
+      );
+    }
+    const client = new QueryClient({
+      defaultOptions: { queries: { retry: false, staleTime: 30_000 } },
+    });
+    render(
+      <QueryClientProvider client={client}>
+        <Switcher />
+      </QueryClientProvider>,
+    );
+
+    await waitFor(() => expect(screen.getByTestId("gate-epss")).toHaveValue("0.9"));
+    await userEvent.clear(screen.getByTestId("gate-epss"));
+    await userEvent.type(screen.getByTestId("gate-epss"), "0.5");
+    await userEvent.click(screen.getByTestId("gate-policy-save"));
+    expect(upsertTeamGatePolicy).toHaveBeenCalledWith("team-1", expect.objectContaining({ epss_threshold: 0.5 }));
+
+    await userEvent.click(screen.getByRole("button", { name: "team-2" }));
+    await waitFor(() => expect(screen.getByTestId("gate-epss")).toHaveValue("0.2"));
+    team1Epss = 0.5;
+    await act(async () => {
+      finishSave({ ...POLICY, epss_threshold: 0.5 });
+    });
+
+    await userEvent.click(screen.getByRole("button", { name: "team-1" }));
+    await waitFor(() => expect(screen.getByTestId("gate-epss")).toHaveValue("0.5"));
   });
 });
