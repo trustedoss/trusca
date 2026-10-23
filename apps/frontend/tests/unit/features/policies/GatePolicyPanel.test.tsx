@@ -10,9 +10,11 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
+import { useLayoutEffect, useRef, useState } from "react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { GatePolicyPanel } from "@/features/policies/GatePolicyPanel";
+import { teamGatePolicyQueryKey } from "@/features/policies/useGatePolicies";
 import { ProblemError } from "@/lib/problem";
 
 const getTeamGatePolicy = vi.fn();
@@ -84,6 +86,35 @@ async function pressEverySave(): Promise<void> {
     await userEvent.click(button);
   }
   await new Promise((resolve) => setTimeout(resolve, 0));
+}
+
+/**
+ * Switches the panel between teams and presses Save on the very first frame
+ * after each switch, before any effect has run. That frame is where a draft
+ * seeded for the previous team could still be on screen.
+ */
+function TeamSwitcher() {
+  const [teamId, setTeamId] = useState("team-1");
+  const first = useRef(true);
+  useLayoutEffect(() => {
+    if (first.current) {
+      first.current = false;
+      return;
+    }
+    for (const button of document.querySelectorAll<HTMLButtonElement>(
+      '[data-testid="gate-policy-save"]',
+    )) {
+      button.click();
+    }
+  }, [teamId]);
+  return (
+    <>
+      <button type="button" onClick={() => setTeamId("team-2")}>
+        switch-team
+      </button>
+      <GatePolicyPanel teamId={teamId} canEdit />
+    </>
+  );
 }
 
 describe("GatePolicyPanel", () => {
@@ -387,5 +418,40 @@ describe("GatePolicyPanel", () => {
       "data-testid",
       "gate-malicious",
     );
+  });
+
+  it("never saves the previous team's draft after switching to a cached team", async () => {
+    const team1 = { ...POLICY, epss_threshold: 0.9, malicious_blocks: false };
+    const team2 = { ...POLICY, id: "p2", team_id: "team-2", epss_threshold: 0.2 };
+    getTeamGatePolicy.mockImplementation((teamId: string) =>
+      Promise.resolve(teamId === "team-2" ? team2 : team1),
+    );
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    // Already cached, so the query for team-2 succeeds on the first render.
+    client.setQueryData(teamGatePolicyQueryKey("team-2"), team2);
+    render(
+      <QueryClientProvider client={client}>
+        <TeamSwitcher />
+      </QueryClientProvider>,
+    );
+    await waitFor(() => expect(screen.getByTestId("gate-epss")).toHaveValue("0.9"));
+
+    await userEvent.click(screen.getByRole("button", { name: "switch-team" }));
+    await waitFor(() => expect(screen.getByTestId("gate-epss")).toHaveValue("0.2"));
+    expect(screen.getByTestId("gate-malicious-override")).not.toBeChecked();
+    await userEvent.click(screen.getByTestId("gate-policy-save"));
+
+    await waitFor(() => expect(upsertTeamGatePolicy).toHaveBeenCalled());
+    // Every save went to team-2 with team-2's values. A save of team-1's
+    // draft would carry 0.9 and malicious_blocks false into team-2's row.
+    for (const [teamId, payload] of upsertTeamGatePolicy.mock.calls) {
+      expect(teamId).toBe("team-2");
+      expect(payload).toEqual({
+        epss_threshold: 0.2,
+        reachable_critical_only: null,
+        malicious_blocks: null,
+        approval_required_statuses: null,
+      });
+    }
   });
 });
