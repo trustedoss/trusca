@@ -216,6 +216,13 @@ jobs:
           EOF
           )
 
+          # Make sure the label exists before using it. When it was missing,
+          # `gh issue create --label` failed and every alert from 10-06 on
+          # was lost while the job only showed red.
+          gh label create "$ISSUE_LABEL" --force \
+            --color B60205 \
+            --description "Auto-managed alert for critical findings in TRUSCA's own dependencies"
+
           # Search for an existing open issue with our label. `gh` returns
           # JSON; we pick the first match. The label-based lookup is
           # idempotent across re-runs.
