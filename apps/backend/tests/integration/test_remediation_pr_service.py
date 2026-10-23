@@ -1415,3 +1415,5 @@ async def test_endpoint_create_201_200_204(
             headers=_bearer_for(admin),
         )
         assert r3.status_code == 204
+        # A 204 carries no body; JSONResponse(None) would send b"null" here.
+        assert r3.content == b""

@@ -36,7 +36,7 @@ import uuid
 
 import structlog
 from fastapi import APIRouter, Body, Depends, Query, Request, status
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, Response
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from core.db import get_db
@@ -211,7 +211,7 @@ async def post_npm_pull_request(
     body: NpmPullRequestCreate | None = Body(default=None),
     session: AsyncSession = Depends(get_db),
     actor: CurrentUser = Depends(require_role("developer")),
-) -> JSONResponse:
+) -> Response:
     """Open (or return the existing) automated npm remediation PR.
 
     team_admin RBAC + opt-in enforcement live in the service. Returns 201 for a
@@ -230,8 +230,10 @@ async def post_npm_pull_request(
         return _problem(request, exc)
 
     if result.record is None:
-        # Nothing to remediate — 204 No Content (no body, per HTTP semantics).
-        return JSONResponse(content=None, status_code=status.HTTP_204_NO_CONTENT)
+        # Nothing to remediate: 204 No Content. A plain Response, never a
+        # JSONResponse, because JSONResponse(None) renders the body ``null``
+        # and a 204 with a body breaks the connection under a real server.
+        return Response(status_code=status.HTTP_204_NO_CONTENT)
 
     out = _record_to_out(result.record)
     code = status.HTTP_201_CREATED if result.created else status.HTTP_200_OK
