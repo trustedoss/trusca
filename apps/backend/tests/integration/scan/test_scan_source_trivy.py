@@ -16,8 +16,8 @@ What we pin:
     synthetic ``CVE-TRIVY-INT-2026-*`` so it cannot collide with a real
     catalog row left over from a prior ``dt_resync`` run.
   - The Trivy report path is persisted as a ``trivy_sbom_report`` ScanArtifact.
-  - Idempotency: re-running the same scan_id deletes the prior findings via
-    ``_reset_scan_for_rerun`` and recreates them — no duplicates.
+  - Idempotency: re-running the same scan_id reconciles the prior findings
+    in place (D1), so there are no duplicates.
   - Unknown component: a Trivy finding for a package cdxgen never emitted
     (no ComponentVersion row matches the PURL) is dropped silently — scan
     still reaches succeeded.
@@ -317,8 +317,8 @@ def test_trivy_rerun_does_not_duplicate_findings(
     sync_session: Session,
 ) -> None:
     """Re-executing the task on the same scan_id (after flipping back to
-    queued) must NOT yield a second VulnerabilityFinding row — the
-    ``_reset_scan_for_rerun`` purge keeps the count at one.
+    queued) must NOT yield a second VulnerabilityFinding row: the keyed
+    reconciliation in ``persist_trivy_findings`` keeps the count at one.
     """
     monkeypatch.setenv("TRUSTEDOSS_SCAN_BACKEND", "mock")
     monkeypatch.setenv("WORKSPACE_HOST_PATH", str(tmp_path))

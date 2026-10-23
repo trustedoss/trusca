@@ -1,0 +1,454 @@
+# SPDX-License-Identifier: Apache-2.0
+# Copyright 2026 TRUSCA contributors
+"""Finding ids and transition approvals across a re-persist (D1, real Postgres).
+
+Three paths used to DELETE a scan's findings and insert them again: the
+6-hourly rematch beat, a redelivered source scan, and a redelivered container
+scan. ``transition_approvals.finding_id`` is ``ON DELETE CASCADE``, so every
+pending and decided two-person approval on the scan disappeared without a
+trace, and every finding id changed every six hours, breaking the links that
+notifications and tickets carry.
+
+Each test here drives the real task end to end (only the scanner binaries are
+stubbed) with captured Trivy output that has several CVEs per package
+(``tests/fixtures/trivy/PROVENANCE.md``), and checks the sequence rather than a
+single call:
+
+* (a) approval requested, then rematch: approval and finding id survive.
+* (b) approval decided, then the same scan re-runs: the record survives.
+* (c) a pair the new report no longer has is deleted, and its approval goes
+  with it. That is intended: the approval authorised a change to a finding the
+  scan no longer claims. The other approvals and ids are untouched.
+* (d) the container path, (a) and (c) together.
+"""
+
+from __future__ import annotations
+
+import asyncio
+import copy
+import json
+import uuid
+from collections.abc import Callable
+from datetime import UTC, datetime
+from pathlib import Path
+from typing import Any
+
+import pytest
+from sqlalchemy import select
+from sqlalchemy.orm import Session
+
+from integrations.cdxgen import CdxgenResult
+from integrations.trivy import TrivyResult
+from models import (
+    ComponentVersion,
+    Scan,
+    TransitionApproval,
+    Vulnerability,
+    VulnerabilityFinding,
+)
+from tests._db_required import migrate_to_head
+from tests._helpers import (
+    make_membership,
+    make_organization,
+    make_project,
+    make_team,
+    make_user,
+)
+
+pytestmark = pytest.mark.integration
+
+_FIXTURES = Path(__file__).resolve().parents[2] / "fixtures" / "trivy"
+_SOURCE_REPORT = _FIXTURES / "npm-lockfile-source-report.json"
+_IMAGE_REPORT = _FIXTURES / "alpine-3.19-image-report.json"
+
+
+@pytest.fixture(scope="module", autouse=True)
+def _migrate_once() -> None:
+    migrate_to_head()
+
+
+def _load(path: Path) -> dict[str, Any]:
+    report: dict[str, Any] = json.loads(path.read_text(encoding="utf-8"))
+    return report
+
+
+def _pairs(report: dict[str, Any]) -> set[tuple[str, str, str]]:
+    return {
+        (v["VulnerabilityID"], v["PkgName"], v["InstalledVersion"])
+        for r in report["Results"]
+        for v in r.get("Vulnerabilities") or []
+    }
+
+
+def _without_package(report: dict[str, Any], pkg_name: str) -> dict[str, Any]:
+    """The same captured report with one package's vulnerabilities gone."""
+    trimmed = copy.deepcopy(report)
+    for result in trimmed["Results"]:
+        vulns = result.get("Vulnerabilities") or []
+        result["Vulnerabilities"] = [v for v in vulns if v["PkgName"] != pkg_name]
+    return trimmed
+
+
+# ---------------------------------------------------------------------------
+# Seeding
+# ---------------------------------------------------------------------------
+
+
+def _seed_scan(
+    *, kind: str, scan_metadata: dict[str, Any]
+) -> tuple[uuid.UUID, uuid.UUID, uuid.UUID]:
+    """Org, team, one user and one queued scan. Returns (scan, team, user)."""
+    from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
+
+    from core.config import database_url
+
+    async def _build() -> tuple[uuid.UUID, uuid.UUID, uuid.UUID]:
+        engine = create_async_engine(database_url(), pool_pre_ping=True, future=True)
+        factory = async_sessionmaker(engine, expire_on_commit=False, class_=AsyncSession)
+        async with factory() as s:
+            org = await make_organization(s)
+            team = await make_team(s, organization=org)
+            user = await make_user(s)
+            await make_membership(s, user=user, team=team, role="developer")
+            project = await make_project(s, team=team, git_url=None)
+            scan = Scan(
+                project_id=project.id,
+                kind=kind,
+                status="queued",
+                progress_percent=0,
+                requested_by_user_id=user.id,
+                scan_metadata=scan_metadata,
+            )
+            s.add(scan)
+            await s.commit()
+            await s.refresh(scan)
+            ids = (scan.id, team.id, user.id)
+        await engine.dispose()
+        return ids
+
+    return asyncio.run(_build())
+
+
+def _findings(session: Session, scan_id: uuid.UUID) -> dict[tuple[str, str], uuid.UUID]:
+    """``(CVE id, purl_with_version) -> finding id`` for one scan."""
+    session.expire_all()
+    rows = session.execute(
+        select(
+            Vulnerability.external_id,
+            ComponentVersion.purl_with_version,
+            VulnerabilityFinding.id,
+        )
+        .join(Vulnerability, Vulnerability.id == VulnerabilityFinding.vulnerability_id)
+        .join(
+            ComponentVersion,
+            ComponentVersion.id == VulnerabilityFinding.component_version_id,
+        )
+        .where(VulnerabilityFinding.scan_id == scan_id)
+    ).all()
+    return {(cve, purl): fid for cve, purl, fid in rows}
+
+
+def _request_approval(
+    session: Session,
+    *,
+    finding_id: uuid.UUID,
+    team_id: uuid.UUID,
+    user_id: uuid.UUID,
+    decided: bool = False,
+) -> uuid.UUID:
+    approval = TransitionApproval(
+        finding_id=finding_id,
+        team_id=team_id,
+        target_status="suppressed",
+        justification="Not reachable from our build; agreed with security.",
+        requested_by_user_id=user_id,
+        state="pending",
+    )
+    if decided:
+        approval.state = "approved"
+        approval.decided_by_user_id = user_id
+        approval.decision_note = "Agreed."
+        approval.decided_at = datetime.now(UTC)
+    session.add(approval)
+    session.commit()
+    return approval.id
+
+
+def _approval(session: Session, approval_id: uuid.UUID) -> TransitionApproval | None:
+    session.expire_all()
+    return session.get(TransitionApproval, approval_id)
+
+
+# ---------------------------------------------------------------------------
+# Source pipeline harness: cdxgen and Trivy stubbed, everything else real
+# ---------------------------------------------------------------------------
+
+
+def _sbom_for(report: dict[str, Any]) -> dict[str, Any]:
+    packages = sorted({(name, version) for _, name, version in _pairs(report)})
+    return {
+        "bomFormat": "CycloneDX",
+        "specVersion": "1.5",
+        "serialNumber": f"urn:uuid:{uuid.uuid4()}",
+        "version": 1,
+        "metadata": {"component": {"type": "application", "name": "d1-app", "version": "0"}},
+        "components": [
+            {
+                "type": "library",
+                "bom-ref": f"pkg:npm/{name}@{version}",
+                "name": name,
+                "version": version,
+                "purl": f"pkg:npm/{name}@{version}",
+            }
+            for name, version in packages
+        ],
+    }
+
+
+def _stub_source_pipeline(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    current: Callable[[], dict[str, Any]],
+) -> None:
+    """Point the source task at a workspace and stub the two scanner binaries.
+
+    ``current`` returns the Trivy report to hand back, so a test can change
+    what the next run reports. The SBOM always lists every fixture package.
+    """
+    monkeypatch.setenv("TRUSTEDOSS_SCAN_BACKEND", "mock")
+    monkeypatch.setenv("WORKSPACE_HOST_PATH", str(tmp_path))
+    full = _load(_SOURCE_REPORT)
+
+    def _cdxgen(*, source_dir: Path, output_dir: Path, **_kwargs: object) -> CdxgenResult:  # noqa: ARG001
+        sbom = _sbom_for(full)
+        out = output_dir.parent / "cdxgen"
+        out.mkdir(parents=True, exist_ok=True)
+        sbom_path = out / "cdxgen.cdx.json"
+        sbom_path.write_text(json.dumps(sbom), encoding="utf-8")
+        return CdxgenResult(sbom_path=sbom_path, sbom=sbom)
+
+    def _trivy(
+        sbom_path: Path | None = None,  # noqa: ARG001
+        output_dir: Path | None = None,
+        **_kwargs: object,
+    ) -> TrivyResult:
+        assert output_dir is not None
+        output_dir.mkdir(parents=True, exist_ok=True)
+        report_path = output_dir / "trivy-sbom.json"
+        report = current()
+        report_path.write_text(json.dumps(report), encoding="utf-8")
+        return TrivyResult(report_path=report_path, report=report)
+
+    monkeypatch.setattr("tasks.scan_source.cdxgen_adapter.run_cdxgen", _cdxgen)
+    monkeypatch.setattr("tasks.scan_source.run_trivy_sbom", _trivy)
+    monkeypatch.setattr("tasks.vulnerability_rematch.run_trivy_sbom", _trivy)
+
+    from tasks.notify import send_notification_task
+
+    monkeypatch.setattr(send_notification_task, "delay", lambda *a, **k: None)
+
+
+def _run_source(scan_id: uuid.UUID) -> None:
+    from tasks.scan_source import scan_source_task
+
+    result = scan_source_task.apply(args=[str(scan_id)])
+    assert result.successful(), result.traceback
+
+
+def _status(session: Session, scan_id: uuid.UUID) -> str:
+    session.expire_all()
+    return session.execute(select(Scan.status).where(Scan.id == scan_id)).scalar_one()
+
+
+def _redeliver(session: Session, scan_id: uuid.UUID) -> None:
+    """Put the scan back where a Celery redelivery finds it: running."""
+    scan = session.get(Scan, scan_id)
+    assert scan is not None
+    scan.status = "running"
+    session.commit()
+
+
+def _axios_key(findings: dict[tuple[str, str], uuid.UUID]) -> tuple[str, str]:
+    # axios carries 25 CVEs in the captured report: the dense case.
+    return sorted(k for k in findings if k[1] == "pkg:npm/axios@0.21.0")[0]
+
+
+# ---------------------------------------------------------------------------
+# (a) rematch
+# ---------------------------------------------------------------------------
+
+
+def test_rematch_keeps_finding_ids_and_a_pending_approval(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, sync_session: Session
+) -> None:
+    report = _load(_SOURCE_REPORT)
+    _stub_source_pipeline(monkeypatch, tmp_path, lambda: report)
+    scan_id, team_id, user_id = _seed_scan(kind="source", scan_metadata={})
+    _run_source(scan_id)
+    assert _status(sync_session, scan_id) == "succeeded"
+
+    before = _findings(sync_session, scan_id)
+    assert len(before) == len(_pairs(report)) == 34
+    target = _axios_key(before)
+    approval_id = _request_approval(
+        sync_session, finding_id=before[target], team_id=team_id, user_id=user_id
+    )
+
+    from tasks.vulnerability_rematch import rematch_scan_findings
+
+    summary = rematch_scan_findings.run(str(scan_id))
+    assert summary["skipped"] is False, summary
+    assert summary["current_count"] == 34, summary
+
+    after = _findings(sync_session, scan_id)
+    assert after == before, "rematch changed finding ids"
+    approval = _approval(sync_session, approval_id)
+    assert approval is not None, "rematch deleted a pending transition approval"
+    assert approval.state == "pending"
+    assert approval.finding_id == before[target]
+
+
+# ---------------------------------------------------------------------------
+# (b) re-run of the same scan
+# ---------------------------------------------------------------------------
+
+
+def test_rerun_of_the_same_scan_keeps_a_decided_approval(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, sync_session: Session
+) -> None:
+    report = _load(_SOURCE_REPORT)
+    _stub_source_pipeline(monkeypatch, tmp_path, lambda: report)
+    scan_id, team_id, user_id = _seed_scan(kind="source", scan_metadata={})
+    _run_source(scan_id)
+    before = _findings(sync_session, scan_id)
+    target = _axios_key(before)
+    approval_id = _request_approval(
+        sync_session,
+        finding_id=before[target],
+        team_id=team_id,
+        user_id=user_id,
+        decided=True,
+    )
+
+    _redeliver(sync_session, scan_id)
+    _run_source(scan_id)
+    assert _status(sync_session, scan_id) == "succeeded"
+
+    after = _findings(sync_session, scan_id)
+    assert after == before, "the re-run changed finding ids"
+    approval = _approval(sync_session, approval_id)
+    assert approval is not None, "the re-run deleted a decided transition approval"
+    assert approval.state == "approved"
+    assert approval.decided_by_user_id == user_id
+    assert approval.finding_id == before[target]
+
+
+# ---------------------------------------------------------------------------
+# (c) a pair that genuinely disappears
+# ---------------------------------------------------------------------------
+
+
+def test_a_vanished_pair_is_deleted_with_its_approval_and_nothing_else(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, sync_session: Session
+) -> None:
+    """Intended: the approval goes with the finding it was about.
+
+    minimist is patched in the next report. Its two findings must go (a
+    finding the scan no longer claims would stay in the build gate's count),
+    and so does the approval on one of them; the approval on an axios finding
+    and every other id must not move.
+    """
+    full = _load(_SOURCE_REPORT)
+    state = {"report": full}
+    _stub_source_pipeline(monkeypatch, tmp_path, lambda: state["report"])
+    scan_id, team_id, user_id = _seed_scan(kind="source", scan_metadata={})
+    _run_source(scan_id)
+    before = _findings(sync_session, scan_id)
+
+    minimist = sorted(k for k in before if k[1] == "pkg:npm/minimist@1.2.0")
+    assert len(minimist) == 2
+    gone_approval = _request_approval(
+        sync_session, finding_id=before[minimist[0]], team_id=team_id, user_id=user_id
+    )
+    kept_target = _axios_key(before)
+    kept_approval = _request_approval(
+        sync_session, finding_id=before[kept_target], team_id=team_id, user_id=user_id
+    )
+
+    state["report"] = _without_package(full, "minimist")
+    from tasks.vulnerability_rematch import rematch_scan_findings
+
+    summary = rematch_scan_findings.run(str(scan_id))
+    assert summary["skipped"] is False, summary
+
+    after = _findings(sync_session, scan_id)
+    expected = {k: v for k, v in before.items() if k not in minimist}
+    assert after == expected
+    assert _approval(sync_session, gone_approval) is None
+    kept = _approval(sync_session, kept_approval)
+    assert kept is not None and kept.finding_id == before[kept_target]
+
+
+# ---------------------------------------------------------------------------
+# (d) container path
+# ---------------------------------------------------------------------------
+
+
+def test_container_rerun_keeps_ids_and_approval_and_drops_a_vanished_pair(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, sync_session: Session
+) -> None:
+    full = _load(_IMAGE_REPORT)
+    state = {"report": full}
+    monkeypatch.setenv("WORKSPACE_HOST_PATH", str(tmp_path))
+    monkeypatch.delenv("CONTAINER_SCAN_ALLOWED_REGISTRIES", raising=False)
+
+    def _trivy_image(*, image_ref: str, output_dir: Path, **_kwargs: object) -> TrivyResult:  # noqa: ARG001
+        output_dir.mkdir(parents=True, exist_ok=True)
+        report_path = output_dir / "trivy.json"
+        report_path.write_text(json.dumps(state["report"]), encoding="utf-8")
+        return TrivyResult(report_path=report_path, report=state["report"])
+
+    monkeypatch.setattr("tasks.scan_container.trivy_adapter.run_trivy_image", _trivy_image)
+
+    from tasks.scan_container import scan_container_task
+
+    scan_id, team_id, user_id = _seed_scan(
+        kind="container", scan_metadata={"image_ref": "alpine:3.19"}
+    )
+    assert scan_container_task.apply(args=[str(scan_id)]).successful()
+    assert _status(sync_session, scan_id) == "succeeded"
+    before = _findings(sync_session, scan_id)
+    assert len(before) == len(_pairs(full)) == 10
+
+    by_pkg: dict[str, list[tuple[str, str]]] = {}
+    for key in before:
+        by_pkg.setdefault(key[1].split("@")[0], []).append(key)
+    busybox = sorted(by_pkg["pkg:apk/alpine/busybox"])
+    musl = sorted(by_pkg["pkg:apk/alpine/musl"])
+    kept_approval = _request_approval(
+        sync_session, finding_id=before[busybox[0]], team_id=team_id, user_id=user_id
+    )
+    gone_approval = _request_approval(
+        sync_session,
+        finding_id=before[musl[0]],
+        team_id=team_id,
+        user_id=user_id,
+        decided=True,
+    )
+
+    # Same report, redelivered: nothing may move.
+    _redeliver(sync_session, scan_id)
+    assert scan_container_task.apply(args=[str(scan_id)]).successful()
+    assert _status(sync_session, scan_id) == "succeeded"
+    assert _findings(sync_session, scan_id) == before
+    assert _approval(sync_session, kept_approval) is not None
+    assert _approval(sync_session, gone_approval) is not None
+
+    # musl patched: its pairs and their approval go, the rest stays.
+    state["report"] = _without_package(full, "musl")
+    _redeliver(sync_session, scan_id)
+    assert scan_container_task.apply(args=[str(scan_id)]).successful()
+    after = _findings(sync_session, scan_id)
+    assert after == {k: v for k, v in before.items() if k not in set(musl)}
+    assert _approval(sync_session, gone_approval) is None
+    assert _approval(sync_session, kept_approval) is not None

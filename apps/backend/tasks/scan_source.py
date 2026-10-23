@@ -35,8 +35,10 @@ Idempotency:
     ``task_acks_late=True`` + worker restart) we:
       1. Skip immediately if the scan already reached ``succeeded``.
       2. Otherwise, treat the run as a fresh start: delete prior
-         ScanComponent / VulnerabilityFinding / LicenseFinding rows for this
-         scan, recreate the workspace, and re-run every stage.
+         ScanComponent / LicenseFinding rows for this scan, recreate the
+         workspace, and re-run every stage. VulnerabilityFinding rows are
+         reconciled by the Trivy stage instead, so their ids and the
+         transition approvals that reference them survive (D1).
     This is simpler than checkpointing per stage and is correct because the
     DB partial unique index already enforces "at most one in-flight scan per
     project" — a re-execution cannot collide with a parallel scan.
@@ -134,7 +136,6 @@ from models import (
     Scan,
     ScanArtifact,
     ScanComponent,
-    VulnerabilityFinding,
 )
 from models.scan_fingerprint import compute_scan_fingerprint
 from services import (
@@ -1613,8 +1614,16 @@ def _fetch_uploaded_archive(
 
 
 def _reset_scan_for_rerun(session: Session, scan: Scan) -> None:
-    """Wipe child rows so a re-execution starts from a clean slate."""
-    session.execute(delete(VulnerabilityFinding).where(VulnerabilityFinding.scan_id == scan.id))
+    """Wipe child rows so a re-execution starts from a clean slate.
+
+    Vulnerability findings are the exception (D1). They are reconciled by the
+    Trivy stage (``persist_trivy_findings``) instead: deleting them here would
+    delete every two-person transition approval on the scan through its
+    ``ON DELETE CASCADE`` and give each finding a new id. Every success path of
+    the source, upload, BomLens and SBOM-ingest pipelines reaches that stage,
+    and it removes the pairs the new run no longer reports. A re-run that fails
+    before it keeps the earlier attempt's findings on the failed scan.
+    """
     session.execute(delete(LicenseFinding).where(LicenseFinding.scan_id == scan.id))
     # v2.2 2.2-a2 — drop the prior dependency-graph edges BEFORE the
     # ScanComponent rows. The edge FK on (parent/child)_component_version_id is

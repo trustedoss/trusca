@@ -25,8 +25,9 @@ Idempotency:
     can re-enter on the same id). We:
       1. Skip immediately if the scan already reached ``succeeded``.
       2. Otherwise treat the run as a fresh start: ``_reset_scan_for_rerun``
-         wipes prior ScanComponent / VulnerabilityFinding / LicenseFinding /
-         ScanArtifact / edge rows for this scan, then every stage re-runs.
+         wipes prior ScanComponent / LicenseFinding / ScanArtifact / edge
+         rows for this scan, then every stage re-runs. VulnerabilityFinding
+         rows are reconciled by the Trivy stage instead (D1).
     The DB partial-unique index ("at most one in-flight scan per project")
     already prevents a parallel collision.
 

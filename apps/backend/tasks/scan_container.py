@@ -57,7 +57,6 @@ from models import (
     ScanArtifact,
     ScanComponent,
     Team,
-    VulnerabilityFinding,
 )
 from services import scan_outcome
 from services.registry_allowlist import (
@@ -67,12 +66,10 @@ from services.registry_allowlist import (
 )
 from services.registry_credential_service import credentials_for_image
 from services.vulnerability_matching import (
+    FindingReconciler,
     _build_purl,
     _purl_from_identifier,
-    _resolve_first_detected_map,
-    _resolve_triage_map,
     _upsert_vulnerability_from_trivy,
-    emit_finding_create_audits,
 )
 from tasks._progress import make_line_callback, publish_progress
 from tasks._registry_auth import registry_auth_dir, sweep_stale_auth_dirs
@@ -375,7 +372,9 @@ def _resolve_image_ref(metadata: dict[str, Any]) -> str:
 
 
 def _reset_for_rerun(session: Session, scan: Scan) -> None:
-    session.execute(delete(VulnerabilityFinding).where(VulnerabilityFinding.scan_id == scan.id))
+    # Vulnerability findings are not deleted here (D1): ``_persist_trivy_report``
+    # reconciles them, so their ids and the transition approvals that reference
+    # them (ON DELETE CASCADE) survive a redelivered run.
     session.execute(delete(LicenseFinding).where(LicenseFinding.scan_id == scan.id))
     session.execute(
         delete(ComponentDependencyEdge).where(ComponentDependencyEdge.scan_id == scan.id)
@@ -457,21 +456,18 @@ def _persist_trivy_report(
     scan_uuid: uuid.UUID,
     report: dict[str, Any],
 ) -> None:
-    """Persist Trivy results into ScanComponent + VulnerabilityFinding rows."""
+    """Persist Trivy results into ScanComponent + VulnerabilityFinding rows.
+
+    Findings are reconciled on ``(component_version_id, vulnerability_id)``
+    rather than replaced (D1, see ``FindingReconciler``): a pair the scan
+    already has keeps its row and id, a pair the report no longer has is
+    deleted. The same pair reported under two targets is one finding.
+    """
     results = report.get("Results", []) or []
-    created_findings: list[VulnerabilityFinding] = []
-    # X1 SLA: carry the first-detection clock across container re-scans. The
-    # project-wide inherited map (MIN over every OTHER scan of the project) is
-    # sufficient here — containers have no rematch path, so there is no
-    # wipe-and-replace of a LIVE scan that would need the
-    # ``prior_first_detected`` overlay. The only wipe (`_reset_for_rerun`) runs
-    # solely for non-succeeded scans; pairs those rows carried are either still
-    # visible via the project's other scans, or were only ever observed by the
-    # failed run — re-stamping "now" on the successful re-run then mirrors what
-    # ``scan_source`` accepts for the same edge. Resolved lazily (one GROUP BY
-    # query) on the first finding, exactly like ``persist_trivy_findings``.
-    first_detected_map: dict[tuple[uuid.UUID, uuid.UUID], datetime] | None = None
-    triage_map: dict[tuple[uuid.UUID, uuid.UUID], dict[str, Any]] | None = None
+    # X1 SLA and the verdict carry forward from the project's other scans
+    # exactly as before; containers never carried the assignment, and this
+    # change does not start to.
+    reconciler = FindingReconciler(session, scan_uuid=scan_uuid, carry_assignment=False)
     # H-1: a single OS package routinely carries several CVEs. ScanComponent is
     # unique on (scan_id, component_version_id, dependency_path)
     # (``uq_scan_components_scan_version_path``), so the row must be created
@@ -579,47 +575,21 @@ def _persist_trivy_report(
                     "external_id": cve_id,
                 },
             )
-            if first_detected_map is None:
-                first_detected_map = _resolve_first_detected_map(
-                    session, scan_uuid=scan_uuid, prior_first_detected=None
-                )
-            first_detected = (
-                first_detected_map.get((cv.id, vuln_row.id)) or datetime.now(UTC)
-            )
-            if triage_map is None:
-                triage_map = _resolve_triage_map(
-                    session, scan_uuid=scan_uuid, prior_triage=None
-                )
-            carried = triage_map.get((cv.id, vuln_row.id))
-
-            finding = VulnerabilityFinding(
-                scan_id=scan_uuid,
+            # fixed_version stays unset on the container path, as before.
+            reconciler.apply(
                 component_version_id=cv.id,
                 vulnerability_id=vuln_row.id,
-                status="new",
                 analysis_response=guarded_finding,
-                first_detected_at=first_detected,
+                fixed_version=None,
             )
-            if carried is not None:
-                # Re-scanning an image must not reopen a finding an analyst
-                # already ruled on — same contract as the source pipeline. See
-                # ``services.vulnerability_matching._resolve_triage_map``.
-                # ``analysis_response`` stays this scan's Trivy entry.
-                for field, value in carried.items():
-                    if field == "analysis_response":
-                        continue
-                    setattr(finding, field, value)
-            session.add(finding)
-            created_findings.append(finding)
 
     inventory = _persist_package_inventory(
         session, scan_uuid=scan_uuid, results=results, seen_components=seen_components
     )
 
     # M-6: per-finding create audit rows (same transaction as the findings).
-    emitted = emit_finding_create_audits(
-        session, scan_uuid=scan_uuid, findings=created_findings
-    )
+    emitted = reconciler.finish()
+    created_findings = reconciler.created
     if emitted != len(created_findings):
         log.warning(
             "container_finding_audit_gap",
@@ -631,6 +601,8 @@ def _persist_trivy_report(
         "container_findings_persisted",
         scan_id=str(scan_uuid),
         inserted=len(created_findings),
+        updated=reconciler.updated,
+        removed=reconciler.deleted,
         catalog_races=catalog_races,
         audits_emitted=emitted,
         inventory_components=inventory.components,
