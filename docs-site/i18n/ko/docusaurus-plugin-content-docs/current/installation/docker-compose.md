@@ -431,7 +431,7 @@ sudo rm -rf /opt/trustedoss/workspace
 
 ## 왜 docker-compose V1 인가
 
-본 프로젝트의 **개발·CI** 환경은 Compose V1(`docker-compose`)을 표준으로 합니다. V2 문법 차이가 내부 파이프라인에서 검증되지 않으며, dev/CI 영역에 `docker compose`(V2)를 도입한 PR은 리뷰에서 차단됩니다([`CLAUDE.md`](https://github.com/trustedoss/trusca/blob/main/CLAUDE.md) 규칙 #10).
+본 프로젝트의 **개발·CI** 환경은 Compose V1(`docker-compose`)을 표준으로 합니다. V2 문법 차이가 내부 파이프라인에서 검증되지 않으며, dev/CI 영역에 `docker compose`(V2)를 도입한 PR은 리뷰에서 차단됩니다.
 
 이 제약은 내부 한정입니다. **최종 사용자 설치**에서는 `install.sh` 마법사가 V1을 우선 사용하되, V1이 2023년 EOL을 맞은 최신 호스트에서도 동작하도록 V2 플러그인(`docker compose`)으로 폴백합니다. compose 파일 자체는 V1 파일 포맷을 쓰며 V2도 이를 읽습니다.
 

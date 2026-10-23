@@ -40,8 +40,8 @@ stateDiagram-v2
   state "VEX triage" as VEX
   state "Component approval" as Approval
 
-  VEX --> Gate: Open (New / Analyzing / Exploitable)
-  VEX --> Cleared: Excluded (Not affected / False positive / Suppressed / Fixed)
+  VEX --> Gate: Counted (New / Analyzing / Exploitable / Suppressed)
+  VEX --> Cleared: Excluded (Not affected / False positive / Fixed)
 
   Approval --> ApprovalRecorded: Approved / Rejected
   ApprovalRecorded --> Gate: Only if the license tier is forbidden
@@ -55,14 +55,14 @@ stateDiagram-v2
 
 The two tracks are independent by design:
 
-- A **CVE finding** is triaged with a [VEX verdict](./vulnerabilities.md#vex-state-machine). Every finding starts in `New`, moves through `Analyzing`, and lands on a terminal state. The four *excluded* states (`Not affected`, `False positive`, `Suppressed`, `Fixed`) drop the finding out of the build-gate count; the *open* states (`New`, `Analyzing`, `Exploitable`) keep it counting. When many findings share a disposition, [bulk-transition](./vulnerabilities.md#bulk-transition) them in one action rather than one drawer at a time.
+- A **CVE finding** is triaged with a [VEX verdict](./vulnerabilities.md#vex-state-machine). Every finding starts in `New`, moves through `Analyzing`, and lands on a terminal state. The three *excluded* states (`Not affected`, `False positive`, `Fixed`) drop the finding out of the build-gate count. The *open* states (`New`, `Analyzing`, `Exploitable`) keep it counting, and so does `Suppressed`: it records a team decision but does not clear the gate. When many findings share a disposition, [bulk-transition](./vulnerabilities.md#bulk-transition) them in one action rather than one drawer at a time.
 - A **conditional-license component** raises a [component approval](./approvals.md#state-machine) request in parallel. A reviewer approves or rejects it, and the verdict is recorded for audit — but the gate does not consult it (see below).
 
 ## Where each decision reaches the build gate {#gate-reach}
 
 This is the point the three surfaces are most often confused on. The [build gate](./vulnerabilities.md#severity-model) fails a build on exactly two conditions:
 
-1. at least one **open Critical CVE** (a finding still in an open VEX state at the configured severity threshold), or
+1. at least one **open Critical CVE** (a Critical finding in any VEX state other than `Not affected`, `False positive` or `Fixed`; the severity is fixed at Critical and cannot be configured), or
 2. at least one component whose license resolves to the **`forbidden`** tier.
 
 VEX triage feeds condition 1 directly: moving a finding to an excluded state removes it from the count on the next scan. Component approval feeds **neither** condition.
@@ -98,7 +98,7 @@ By design — component approval never reaches the gate. See [Component approval
 
 ### A suppressed CVE still counts in the gate
 
-The gate reflects the **latest successful scan**. A VEX verdict recorded after that scan applies only on the next one. Trigger a new scan, then re-check the gate. Confirm too that the finding reached an *excluded* VEX state (`Not affected`, `False positive`, `Suppressed`, `Fixed`) — the *open* states still count. See the [VEX state machine](./vulnerabilities.md#vex-state-machine).
+By design. `Suppressed` is not an excluded state, so a suppressed Critical CVE keeps failing the gate. Only `Not affected`, `False positive` and `Fixed` take a finding out of the count. If one of those is true for the finding, record it instead. The gate also reflects the **latest successful scan**, so a verdict recorded after that scan applies only on the next one: trigger a new scan, then re-check the gate. See the [VEX state machine](./vulnerabilities.md#vex-state-machine).
 
 ### A non-Critical CVE I care about never fails the build
 

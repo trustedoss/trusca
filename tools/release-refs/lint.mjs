@@ -210,6 +210,56 @@ export function pinFindings(text, version, pattern) {
   return out;
 }
 
+/**
+ * Links into this repository's `main` branch, with the path each one names.
+ *
+ * A `main` ref is always the right ref, so the tag check above passes it. The
+ * path is the part that rots: the repository's `docs/` directory was moved out
+ * of the public tree, and seven links into it (an internal decision record,
+ * the old glossary, a runbook) kept rendering on the published site and in the
+ * chart README while every one of them returned 404.
+ */
+const MAIN_PATH_RE =
+  /(?:github\.com\/trustedoss\/trusca\/(?:blob|tree|raw)|raw\.githubusercontent\.com\/trustedoss\/trusca)\/main\/(?<path>[^\s'"`)#?>\]]+)/g;
+
+/**
+ * Every `main`-branch link in `text` whose path is not in the repository.
+ *
+ * `exists(path)` answers for a tracked file or a directory holding one. A path
+ * carrying a placeholder (`<...>`, `${...}`, `{...}`) is prose for the reader
+ * to fill in and is skipped. Trailing sentence punctuation is not part of the
+ * path.
+ */
+export function missingPathFindings(text, exists) {
+  const out = [];
+  text.split("\n").forEach((line, i) => {
+    MAIN_PATH_RE.lastIndex = 0;
+    let m;
+    while ((m = MAIN_PATH_RE.exec(line)) !== null) {
+      let p = m.groups.path.replace(/[.,;:]+$/, "").replace(/\/+$/, "");
+      if (/[<{$*]/.test(p) || p === "") continue;
+      try {
+        p = decodeURIComponent(p);
+      } catch {
+        // Leave a malformed escape as written; it will not match a path.
+      }
+      if (!exists(p)) out.push({ line: i + 1, kind: "missing-path", found: p });
+    }
+  });
+  return out;
+}
+
+/** `exists` for missingPathFindings over the tracked tree. */
+export function trackedPathSet(files) {
+  const paths = new Set();
+  for (const f of files) {
+    paths.add(f);
+    const parts = f.split("/");
+    for (let i = 1; i < parts.length; i += 1) paths.add(parts.slice(0, i).join("/"));
+  }
+  return (p) => paths.has(p);
+}
+
 function trackedFiles() {
   return execFileSync("git", ["ls-files"], {
     cwd: REPO_ROOT,
@@ -266,9 +316,11 @@ function main() {
     byFile.get(file).push(finding);
   };
 
-  for (const rel of trackedFiles()) {
-    if (!SCANNED_EXTENSIONS.has(path.extname(rel))) continue;
-    if (isExcluded(rel, config.exclude)) continue;
+  const files = trackedFiles();
+  const exists = trackedPathSet(files);
+  const missing = [];
+  for (const rel of files) {
+    if (!SCANNED_EXTENSIONS.has(path.extname(rel)) && !rel.endsWith(".service")) continue;
     const abs = path.join(REPO_ROOT, rel);
     let text;
     try {
@@ -276,7 +328,22 @@ function main() {
     } catch {
       continue;
     }
+    // A dead link is dead in the changelog and release notes too, so the
+    // path check ignores the exclusion list that the tag check needs.
+    if (rel !== "tools/release-refs/selftest.mjs") {
+      for (const f of missingPathFindings(text, exists)) missing.push({ rel, ...f });
+    }
+    if (!SCANNED_EXTENSIONS.has(path.extname(rel))) continue;
+    if (isExcluded(rel, config.exclude)) continue;
     for (const f of refFindings(text, version)) add(rel, f);
+  }
+
+  if (missing.length > 0) {
+    console.error(`release-refs: ${missing.length} link(s) name a path that is not in the repository\n`);
+    for (const f of missing) console.error(`  ${f.rel}:${f.line}  ${f.found}`);
+    console.error(
+      "\nPoint each at a page that exists (usually the published docs site), or drop the link.",
+    );
   }
 
   for (const pin of config.pins) {
@@ -307,6 +374,8 @@ function main() {
   }
 
   if (fix) {
+    // --fix rewrites tags only; a missing path needs a human to pick the
+    // replacement, so it still fails the run.
     for (const [rel, findings] of byFile) {
       const abs = path.join(REPO_ROOT, rel);
       if (!fs.existsSync(abs)) continue;
@@ -318,7 +387,7 @@ function main() {
       fs.writeFileSync(abs, text);
       console.log(`fixed ${rel} (${findings.length})`);
     }
-    return 0;
+    return missing.length > 0 ? 1 : 0;
   }
 
   // Release gate. Checked before drift so a tag that skipped the changelog
@@ -335,6 +404,7 @@ function main() {
   }
 
   const total = [...byFile.values()].reduce((n, f) => n + f.length, 0);
+  if (total === 0 && missing.length > 0) return 1;
   if (total > 0) {
     console.error(`release-refs: ${total} reference(s) do not name v${version}\n`);
     for (const [rel, findings] of byFile) {

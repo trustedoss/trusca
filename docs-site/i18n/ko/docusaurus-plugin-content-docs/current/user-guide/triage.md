@@ -40,8 +40,8 @@ stateDiagram-v2
   state "VEX triage" as VEX
   state "Component approval" as Approval
 
-  VEX --> Gate: Open (New / Analyzing / Exploitable)
-  VEX --> Cleared: Excluded (Not affected / False positive / Suppressed / Fixed)
+  VEX --> Gate: Counted (New / Analyzing / Exploitable / Suppressed)
+  VEX --> Cleared: Excluded (Not affected / False positive / Fixed)
 
   Approval --> ApprovalRecorded: Approved / Rejected
   ApprovalRecorded --> Gate: Only if the license tier is forbidden
@@ -55,14 +55,14 @@ stateDiagram-v2
 
 두 경로는 설계상 독립적입니다.
 
-- **CVE 발견 항목**은 [VEX 결정](./vulnerabilities.md#vex-상태-머신)으로 분류합니다. 모든 발견 항목은 `New`에서 시작해 `Analyzing`을 거쳐 종료 상태에 도달합니다. 네 가지 *제외* 상태(`Not affected`, `False positive`, `Suppressed`, `Fixed`)는 발견 항목을 빌드 차단 게이트 집계에서 빼고, *열린* 상태(`New`, `Analyzing`, `Exploitable`)는 계속 집계합니다. 여러 발견 항목이 같은 결정을 공유하면 드로어를 하나씩 열지 말고 [일괄 전환](./vulnerabilities.md#bulk-transition)하십시오.
+- **CVE 발견 항목**은 [VEX 결정](./vulnerabilities.md#vex-상태-머신)으로 분류합니다. 모든 발견 항목은 `New`에서 시작해 `Analyzing`을 거쳐 종료 상태에 도달합니다. 세 가지 *제외* 상태(`Not affected`, `False positive`, `Fixed`)는 발견 항목을 빌드 차단 게이트 집계에서 뺍니다. *열린* 상태(`New`, `Analyzing`, `Exploitable`)는 계속 집계하고, `Suppressed`도 마찬가지입니다. `Suppressed`는 팀의 결정을 기록할 뿐 게이트 집계에서 빼지 않습니다. 여러 발견 항목이 같은 결정을 공유하면 드로어를 하나씩 열지 말고 [일괄 전환](./vulnerabilities.md#bulk-transition)하십시오.
 - **조건부 라이선스 컴포넌트**는 이와 나란히 [컴포넌트 승인](./approvals.md#상태-머신) 요청을 만듭니다. 검토자가 승인하거나 반려하고 결정은 감사용으로 기록되지만, 게이트는 이 결정을 참조하지 않습니다(아래 참고).
 
 ## 각 결정이 빌드 차단 게이트에 도달하는 지점 {#gate-reach}
 
 세 표면이 가장 자주 혼동되는 지점이 바로 여기입니다. [빌드 차단 게이트](./vulnerabilities.md#심각도-모델)는 정확히 두 조건에서 빌드를 차단합니다.
 
-1. 열린 **Critical CVE**가 하나 이상 있거나(설정된 심각도 임계에서 아직 열린 VEX 상태인 발견 항목), 또는
+1. 열린 **Critical CVE**가 하나 이상 있거나(VEX 상태가 `Not affected`·`False positive`·`Fixed`가 아닌 Critical 발견 항목. 심각도 기준은 Critical로 고정되어 있으며 설정할 수 없습니다), 또는
 2. 라이선스가 **`forbidden`** 단계로 해석되는 컴포넌트가 하나 이상 있음.
 
 VEX 분류는 조건 1에 직접 반영됩니다. 발견 항목을 제외 상태로 옮기면 다음 스캔에서 집계에서 빠집니다. 컴포넌트 승인은 두 조건 **어느 쪽에도** 반영되지 않습니다.
@@ -98,7 +98,7 @@ VEX 분류는 조건 1에 직접 반영됩니다. 발견 항목을 제외 상태
 
 ### 억제한 CVE가 여전히 게이트에 집계됨
 
-게이트는 **최근 성공 스캔**을 반영합니다. 그 스캔 이후에 기록한 VEX 결정은 다음 스캔에만 적용됩니다. 새 스캔을 트리거한 뒤 게이트를 다시 확인하십시오. 발견 항목이 *제외* VEX 상태(`Not affected`, `False positive`, `Suppressed`, `Fixed`)에 도달했는지도 확인하십시오. *열린* 상태는 계속 집계됩니다. [VEX 상태 머신](./vulnerabilities.md#vex-상태-머신)을 참고하십시오.
+의도된 동작입니다. `Suppressed`는 제외 상태가 아니므로 억제한 Critical CVE는 계속 게이트를 실패시킵니다. 집계에서 빠지는 상태는 `Not affected`, `False positive`, `Fixed`뿐입니다. 이 중 하나가 사실이라면 그 상태를 기록하십시오. 또한 게이트는 **최근 성공 스캔**을 반영하므로 그 스캔 이후에 기록한 VEX 결정은 다음 스캔에만 적용됩니다. 새 스캔을 트리거한 뒤 게이트를 다시 확인하십시오. [VEX 상태 머신](./vulnerabilities.md#vex-상태-머신)을 참고하십시오.
 
 ### 관심 있는 Critical이 아닌 CVE가 빌드를 차단하지 않음
 

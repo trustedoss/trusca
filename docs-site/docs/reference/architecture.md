@@ -31,7 +31,7 @@ The production stack runs seven container services:
 Image tags are pinned (`CLAUDE.md` rule #9 — never `:latest`).
 
 :::note Dependency-Track was removed in v0.10.0
-Earlier releases shipped Dependency-Track as an optional eighth service. v0.10.0 removed it in favour of Trivy as the single vulnerability engine — see [ADR-0001](https://github.com/trustedoss/trusca/blob/main/docs/decisions/0001-replace-dt-with-trivy.md) and the [v0.10.0 release notes](../release-notes/v0.10.0.md). The Trivy DB lives inside the worker container; there is no separate vulnerability-engine service.
+Earlier releases shipped Dependency-Track as an optional eighth service. v0.10.0 removed it in favour of Trivy as the single vulnerability engine: the Trivy DB does the same SBOM-to-CVE matching with a ~500 MB footprint instead of a 4 GB JVM and an H2 database. See [Vulnerability data (Trivy DB)](../admin-guide/vulnerability-data.md) and the [v0.10.0 release notes](../release-notes/v0.10.0.md). The Trivy DB lives inside the worker container; there is no separate vulnerability-engine service.
 :::
 
 :::note

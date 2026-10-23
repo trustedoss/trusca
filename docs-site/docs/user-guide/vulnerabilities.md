@@ -66,7 +66,7 @@ stateDiagram-v2
 | **Exploitable** | Confirmed exploitable in this project's context. | Counts. |
 | **Not affected** | Component is present but the vulnerable code path is unreachable. | Excluded. |
 | **False positive** | Detection is wrong (e.g., wrong purl). | Excluded. |
-| **Suppressed** | Operator-silenced (`not_affected` with explicit suppression). | Excluded. |
+| **Suppressed** | Silenced by a `team_admin`; the finding is still open work. | Counts. |
 | **Fixed** | Resolved (component upgraded or patch applied). | Excluded. |
 
 Transitions are logged in the audit log with actor, previous status, new status, and the required justification message.
@@ -704,7 +704,7 @@ Components whose open findings have **no published fix** are grouped under **No 
 
 ### In lock-step with the build gate
 
-Only **open** findings are clustered — exactly the set the [build gate](#severity-model) counts. Findings you have dispositioned (`Not affected`, `False positive`, `Fixed`, `Suppressed`) are excluded, so the summary line above the cards ("N upgrades resolve M findings") describes precisely the work that stands between the project and a clean gate.
+Only **open** findings are clustered, which is exactly the set the [build gate](#severity-model) counts. Findings you have closed as `Not affected`, `False positive` or `Fixed` are excluded; `Suppressed` findings stay in because the gate still counts them. The summary line above the cards ("N upgrades resolve M findings") describes precisely the work that stands between the project and a clean gate.
 
 ### Read it from the API
 

@@ -116,9 +116,9 @@ column.
   [Vulnerability data (Trivy DB)](../admin-guide/vulnerability-data.md) and
   [Data sources](./data-sources.md).
 - **DT — Dependency-Track.** Apache-2.0 vulnerability intelligence platform.
-  TRUSCA used DT as its vulnerability engine through  and replaced it
-  with Trivy at v0.10.0 — see
-  [ADR-0001](https://github.com/trustedoss/trusca/blob/main/docs/decisions/0001-replace-dt-with-trivy.md)
+  TRUSCA used DT as its vulnerability engine before v0.10.0 and replaced
+  it with Trivy at v0.10.0. See
+  [Vulnerability data (Trivy DB)](../admin-guide/vulnerability-data.md).
   The DT term still appears in this glossary because legacy audit-log rows
   reference it.
 - **cosign.** Sigstore's signing CLI. TRUSCA signs every source
@@ -212,11 +212,14 @@ API key. Per-action capabilities are on the roadmap.
 
 ## Operational terminology
 
-- **Circuit breaker (CLOSED / OPEN / HALF_OPEN).** A failure-domain
-  isolation pattern. TRUSCA used a breaker to wrap the Dependency-Track
-  API client through ; with the Trivy DB now local to the worker
-  (v0.10.0+), the pattern is no longer used in the vulnerability path. The
-  general term still appears in operator literature.
+- **Circuit breaker.** A failure-isolation pattern: after a run of
+  failed calls, stop calling a dependency instead of waiting on each
+  failure. TRUSCA applies it to license enrichment. After
+  `LICENSE_FETCH_CONSECUTIVE_FAILURE_LIMIT` consecutive registry lookups
+  get no answer, a scan skips the remaining lookups and records the skip
+  as `breaker_open`. The vulnerability path has no breaker: the Trivy DB
+  is local to the worker. Releases before v0.10.0 used a breaker around
+  the Dependency-Track client.
 - **`audit_logs`.** Append-only table capturing every state-changing
   operation (CRUD on first-class entities, plus explicit business
   events). See [Audit log](../admin-guide/audit-log.md).

@@ -227,7 +227,7 @@ A project that has never had a successful scan shows a neutral **No scan yet** s
 
 CVE — Common Vulnerabilities and Exposures; EPSS — Exploit Prediction Scoring System. See the [Glossary](../reference/glossary.md) for both.
 
-The card is read-only — it reflects the verdict but does not change policy. The thresholds (severity floor, EPSS) are operator- and CI-side settings; see [GitHub Actions](../ci-integration/github-actions.md) and [`GATE_EPSS_THRESHOLD`](../reference/env-variables.md#build--policy-gate).
+The card is read-only: it reflects the verdict but does not change policy. The severity condition is fixed at Critical and has no setting. The EPSS threshold is an operator setting; see [GitHub Actions](../ci-integration/github-actions.md) and [`GATE_EPSS_THRESHOLD`](../reference/env-variables.md#build--policy-gate).
 
 ## Project info (Overview tab) {#project-info-card}
 

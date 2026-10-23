@@ -31,7 +31,7 @@ sidebar_position: 1
 이미지 태그는 핀되어 있습니다(CLAUDE.md 규칙 #9 — `:latest` 절대 금지).
 
 :::note v0.10.0에서 Dependency-Track 제거
-이전 릴리스는 Dependency-Track을 선택적 8번째 서비스로 제공했습니다. v0.10.0은 Trivy를 단일 취약점 엔진으로 채택하면서 DT를 제거했습니다 — [ADR-0001](https://github.com/trustedoss/trusca/blob/main/docs/decisions/0001-replace-dt-with-trivy.md)과 [v0.10.0 릴리스 노트](../release-notes/v0.10.0.md) 참조. Trivy DB는 워커 컨테이너 내부에 존재하며, 별도의 취약점 엔진 서비스는 없습니다.
+이전 릴리스는 Dependency-Track을 선택적 8번째 서비스로 제공했습니다. v0.10.0은 Trivy를 단일 취약점 엔진으로 채택하면서 DT를 제거했습니다. Trivy DB는 4GB JVM과 H2 DB 대신 약 500MB 용량으로 같은 SBOM ↔ CVE 매칭을 수행합니다. [취약점 데이터 (Trivy DB)](../admin-guide/vulnerability-data.md)와 [v0.10.0 릴리스 노트](../release-notes/v0.10.0.md)를 참고하세요. Trivy DB는 워커 컨테이너 내부에 존재하며, 별도의 취약점 엔진 서비스는 없습니다.
 :::
 
 :::note

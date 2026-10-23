@@ -24,7 +24,7 @@ Production-complete Kubernetes deployment of [TrustedOSS Portal](https://github.
 Vulnerability matching runs from the worker via `trivy sbom` against the
 locally-cached Trivy DB — no external engine. Air-gapped sites override the
 upstream OCI registry with `env.trivy.dbRepository`. See
-[ADR-0001 — Dependency-Track removal](https://github.com/trustedoss/trusca/blob/main/docs/decisions/0001-replace-dt-with-trivy.md).
+[Vulnerability data (Trivy DB)](https://trustedoss.github.io/trusca/docs/admin-guide/vulnerability-data).
 
 ## Quick start (bundled datastores, evaluation)
 
