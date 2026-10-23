@@ -13,6 +13,7 @@ import {
   type ObligationSortKey,
   type SortOrder,
 } from "@/features/projects/api/obligationsApi";
+import { problemMessage } from "@/lib/problemMessage";
 import { cn } from "@/lib/utils";
 
 /** Formats exposed in the NOTICE download UI (markdown stays API-only). */
@@ -232,7 +233,9 @@ export function ObligationsToolbar({
             className="mt-1 text-xs text-destructive"
             data-testid="obligations-download-notice-error"
           >
-            {noticeError.message}
+            {problemMessage(noticeError, t, {
+              action: "obligations.toolbar.notice_error",
+            })}
           </span>
         ) : null}
       </div>

@@ -43,15 +43,37 @@ const mockedFetch = vi.mocked(fetchReportHistory);
 // NOTICE downloads directly from the card via useNotice. We mock the hook so
 // a click is observable without exercising the blob-download path (jsdom has
 // no real URL.createObjectURL / anchor download).
-const { noticeDownload } = vi.hoisted(() => ({ noticeDownload: vi.fn() }));
+const { noticeDownload, noticeState } = vi.hoisted(() => ({
+  noticeDownload: vi.fn(),
+  noticeState: { error: null as Error | null },
+}));
 vi.mock("@/features/projects/api/useNotice", () => ({
   useNotice: () => ({
     download: noticeDownload,
     isLoading: false,
-    error: null,
+    error: noticeState.error,
     lastResult: null,
   }),
 }));
+
+vi.mock("@/features/projects/api/vulnReportApi", async (importOriginal) => {
+  const actual =
+    await importOriginal<typeof import("@/features/projects/api/vulnReportApi")>();
+  return { ...actual, fetchVulnerabilityReportPdf: vi.fn() };
+});
+
+import { fetchVulnerabilityReportPdf } from "@/features/projects/api/vulnReportApi";
+
+const mockedVulnPdf = vi.mocked(fetchVulnerabilityReportPdf);
+
+function serverError(): ProblemError {
+  return new ProblemError("database unavailable", {
+    status: 500,
+    title: "Internal Server Error",
+    detail: "database unavailable",
+    problem: null,
+  });
+}
 
 function row(
   overrides: Partial<ReportDownloadEntry> = {},
@@ -136,6 +158,8 @@ describe("ReportsTab", () => {
   beforeEach(() => {
     mockedFetch.mockReset();
     noticeDownload.mockReset().mockResolvedValue(undefined);
+    noticeState.error = null;
+    mockedVulnPdf.mockReset();
   });
   afterEach(() => {
     vi.useRealTimers();
@@ -319,5 +343,31 @@ describe("ReportsTab", () => {
     expect(rowEl.textContent).toMatch(/Deleted user/);
     // size + scan unknown both render as em-dash — exactly two in this row.
     expect(rowEl.textContent).toMatch(/—/);
+  });
+
+  it("shows a NOTICE download failure translated, not as the server's English", async () => {
+    noticeState.error = serverError();
+    mockedFetch.mockResolvedValueOnce(response([]));
+    renderTab();
+
+    const err = await screen.findByTestId("reports-card-notice-error");
+    expect(err).toHaveTextContent("The NOTICE file could not be downloaded.");
+    expect(err).not.toHaveTextContent("database unavailable");
+  });
+
+  it("shows a vulnerability report failure translated, not as the server's English", async () => {
+    mockedVulnPdf.mockRejectedValueOnce(serverError());
+    mockedFetch.mockResolvedValueOnce(response([]));
+    renderTab();
+
+    await userEvent.click(
+      await screen.findByTestId("reports-card-vuln-pdf-download"),
+    );
+
+    const err = await screen.findByTestId("reports-card-vuln-pdf-error");
+    expect(err).toHaveTextContent(
+      "The vulnerability report could not be downloaded.",
+    );
+    expect(err).not.toHaveTextContent("database unavailable");
   });
 });

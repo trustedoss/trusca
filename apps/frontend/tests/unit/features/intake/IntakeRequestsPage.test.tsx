@@ -13,6 +13,7 @@ import { MemoryRouter } from "react-router-dom";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { IntakeRequestsPage } from "@/features/intake/IntakeRequestsPage";
+import { ProblemError } from "@/lib/problem";
 
 const listIntakeRequests = vi.fn();
 const openIntakeRequest = vi.fn();
@@ -181,5 +182,26 @@ describe("IntakeRequestsPage", () => {
     renderPage();
 
     expect(await screen.findByTestId("intake-purl")).toHaveValue("");
+  });
+
+  it("says the list failed to load instead of showing an empty queue", async () => {
+    // An empty queue reads as "nobody has asked yet". When the list never
+    // arrived, that hides requests that are waiting on somebody.
+    useDeploymentFeatures.mockReturnValue({ intake_requests: true });
+    listIntakeRequests.mockRejectedValue(
+      new ProblemError("database unavailable", {
+        status: 500,
+        title: "Internal Server Error",
+        detail: "database unavailable",
+        problem: null,
+      }),
+    );
+
+    renderPage();
+
+    const alert = await screen.findByTestId("intake-error");
+    expect(alert).toHaveTextContent("errors.load_failed");
+    expect(alert).not.toHaveTextContent("database unavailable");
+    expect(screen.queryByTestId("intake-empty")).not.toBeInTheDocument();
   });
 });

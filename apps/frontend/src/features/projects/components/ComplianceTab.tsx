@@ -938,7 +938,9 @@ function ComplianceNoticeDownload({
           className="mt-1 text-xs text-destructive"
           data-testid="compliance-notice-error"
         >
-          {notice.error.message}
+          {problemMessage(notice.error, t, {
+            action: "compliance.notice_download.error",
+          })}
         </p>
       ) : null}
     </div>

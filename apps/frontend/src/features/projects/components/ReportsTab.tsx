@@ -66,6 +66,7 @@ import {
 import { SbomTab } from "@/features/projects/components/SbomTab";
 import { ProblemError } from "@/lib/problem";
 import RelativeTime from "@/components/RelativeTime";
+import { problemMessage } from "@/lib/problemMessage";
 import { cn } from "@/lib/utils";
 
 const PAGE_SIZE = 50;
@@ -564,7 +565,9 @@ function VulnPdfCard({ projectId }: { projectId: string }) {
             className="mt-2 text-xs text-destructive"
             data-testid="reports-card-vuln-pdf-error"
           >
-            {(vulnReport.error ?? vulnXlsx.error)?.message}
+            {problemMessage(vulnReport.error ?? vulnXlsx.error, t, {
+              action: "reports.cards.vuln-pdf.error",
+            })}
           </p>
         ) : null}
       </CardContent>
@@ -644,7 +647,9 @@ function NoticeCard({
             className="mt-2 text-xs text-destructive"
             data-testid="reports-card-notice-error"
           >
-            {notice.error.message}
+            {problemMessage(notice.error, t, {
+              action: "reports.cards.notice.error",
+            })}
           </p>
         ) : null}
       </CardContent>

@@ -166,6 +166,7 @@ const FormMessage = forwardRef<
   HTMLAttributes<HTMLParagraphElement>
 >(({ className, children, ...props }, ref) => {
   const { error, formMessageId } = useFormField();
+  // problem-detail-lint-allow: a form field's validation message, never a ProblemError
   const body = error ? String(error.message ?? "") : children;
   if (!body) {
     return null;

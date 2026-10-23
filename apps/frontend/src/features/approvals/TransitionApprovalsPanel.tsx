@@ -16,6 +16,7 @@
 import { useTranslation } from "react-i18next";
 
 import RelativeTime from "@/components/RelativeTime";
+import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -24,6 +25,7 @@ import {
   useDecideTransition,
   usePendingTransitions,
 } from "@/features/approvals/useTransitionApprovals";
+import { problemMessage } from "@/lib/problemMessage";
 import { approvalFailureReason } from "@/lib/transitionApprovalsApi";
 
 interface TransitionApprovalsPanelProps {
@@ -41,6 +43,19 @@ export function TransitionApprovalsPanel({
 
   if (query.isLoading) {
     return <Skeleton className="h-24 w-full" data-testid="transition-approvals-loading" />;
+  }
+  if (query.isError) {
+    // Unlike an empty queue, a failed load must show: rendering nothing here
+    // would tell an approver nothing is waiting when the list never arrived.
+    return (
+      <Alert variant="destructive" data-testid="transition-approvals-error">
+        <AlertDescription>
+          {problemMessage(query.error, t, {
+            action: "transitions.errors.load_failed",
+          })}
+        </AlertDescription>
+      </Alert>
+    );
   }
   const items = query.data?.items ?? [];
   if (items.length === 0) return null;

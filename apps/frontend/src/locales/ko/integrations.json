@@ -138,7 +138,8 @@
     "errors": {
       "create_failed": "서비스 계정을 만들지 못했습니다.",
       "deactivate_failed": "서비스 계정을 정지하지 못했습니다.",
-      "take_over_failed": "담당을 맡지 못했습니다."
+      "take_over_failed": "담당을 맡지 못했습니다.",
+      "load_failed": "서비스 계정 목록을 불러오지 못했습니다."
     },
     "take_over": "담당 맡기",
     "take_over_help": "이 계정의 담당자가 되어 다시 키를 발급할 수 있게 합니다. 기존 키는 그대로 둡니다."

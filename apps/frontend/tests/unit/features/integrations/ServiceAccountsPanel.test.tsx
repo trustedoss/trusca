@@ -12,6 +12,7 @@ import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { ServiceAccountsPanel } from "@/features/integrations/ServiceAccountsPanel";
+import { ProblemError } from "@/lib/problem";
 
 const listServiceAccounts = vi.fn();
 const createServiceAccount = vi.fn();
@@ -183,4 +184,22 @@ describe("ServiceAccountsPanel", () => {
     ).not.toBeInTheDocument();
   });
 
+  it("says the list failed to load instead of saying there are none", async () => {
+    // A team admin reading "no service accounts yet" might create a duplicate.
+    listServiceAccounts.mockRejectedValue(
+      new ProblemError("database unavailable", {
+        status: 500,
+        title: "Internal Server Error",
+        detail: "database unavailable",
+        problem: null,
+      }),
+    );
+
+    renderPanel();
+
+    const alert = await screen.findByTestId("service-accounts-error");
+    expect(alert).toHaveTextContent("service_accounts.errors.load_failed");
+    expect(alert).not.toHaveTextContent("database unavailable");
+    expect(screen.queryByTestId("service-accounts-empty")).not.toBeInTheDocument();
+  });
 });

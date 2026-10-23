@@ -95,6 +95,9 @@
       "cancel": "Cancel",
       "sent": "Sent. The finding moves once somebody agrees.",
       "failed": "The request could not be sent."
+    },
+    "errors": {
+      "load_failed": "The status changes waiting on you could not be loaded."
     }
   }
 }

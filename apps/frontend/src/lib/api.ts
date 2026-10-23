@@ -38,7 +38,7 @@ import axios, {
   type InternalAxiosRequestConfig,
 } from "axios";
 
-import { ProblemError, parseProblemBody } from "@/lib/problem";
+import { ProblemError, parseProblemBody, unwrapBlobBody } from "@/lib/problem";
 import { effectiveRole } from "@/lib/roles";
 import { type AuthUser, useAuthStore } from "@/stores/authStore";
 
@@ -166,14 +166,20 @@ api.interceptors.response.use(
     // Convert to ProblemError. Transport-level failures (no response) get
     // status 0 so callers can distinguish from a real backend error.
     if (!error.response) {
+      // problem-detail-lint-allow: building the ProblemError from the transport error, not rendering it
       throw new ProblemError(error.message || "network error", {
         status: 0,
         title: "network",
+        // problem-detail-lint-allow: building the ProblemError from the transport error, not rendering it
         detail: error.message || "network error",
         problem: null,
       });
     }
-    const parsed = parseProblemBody(error.response.data, {
+    // File downloads ask for `responseType: "blob"`, which makes the error
+    // body a Blob as well. Read it so the problem's detail and extensions
+    // reach the caller instead of a bare status line.
+    const body = await unwrapBlobBody(error.response.data);
+    const parsed = parseProblemBody(body, {
       status: error.response.status,
       statusText: error.response.statusText,
     });

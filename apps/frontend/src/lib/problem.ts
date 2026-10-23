@@ -258,3 +258,39 @@ export function parseProblemBody(
   }
   return { problem, title, detail: detail || title };
 }
+
+/**
+ * Read a blob as text.
+ *
+ * `Blob.text()` is what every browser this ships to provides, and it is what
+ * runs in production. jsdom does not implement it, so without the
+ * `FileReader` path the blob unwrapping below would be untestable.
+ */
+export async function readBlobText(blob: Blob): Promise<string> {
+  if (typeof blob.text === "function") return blob.text();
+  return new Promise<string>((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(String(reader.result ?? ""));
+    reader.onerror = () => reject(reader.error);
+    reader.readAsText(blob);
+  });
+}
+
+/**
+ * Turn an error body that arrived as a Blob back into parsed JSON.
+ *
+ * A request made with `responseType: "blob"` (every file download) gets its
+ * error bodies as a Blob too, so the RFC 7807 problem the backend sent is
+ * invisible to {@link parseProblemBody} until it is read. Anything that is
+ * not a Blob is returned unchanged. A Blob that is not JSON (a proxy error
+ * page, an empty 502) becomes null, so the caller falls back to the status
+ * line instead of building a problem out of the Blob object itself.
+ */
+export async function unwrapBlobBody(data: unknown): Promise<unknown> {
+  if (typeof Blob === "undefined" || !(data instanceof Blob)) return data;
+  try {
+    return JSON.parse(await readBlobText(data));
+  } catch {
+    return null;
+  }
+}
