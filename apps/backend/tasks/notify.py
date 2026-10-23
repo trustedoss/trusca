@@ -32,6 +32,12 @@ CLAUDE.md compliance:
 Why bind=True:
   - ``self.request.id`` lets us correlate retries in structlog. Without it
     the operator cannot distinguish the original send from a retry.
+  - The same id keys the delivery ledger
+    (:mod:`notifications.delivery_ledger`). Retries and acks_late
+    redeliveries keep the task id, so each attempt skips the in-app row, the
+    ticket, and every channel or email recipient an earlier attempt already
+    completed. ``request.retries`` is not used for this: a redelivered
+    message starts again at 0.
 """
 
 from __future__ import annotations
@@ -43,6 +49,13 @@ from typing import Any
 import structlog
 
 from notifications import NotificationDeliveryError
+from notifications.delivery_ledger import (
+    UNIT_IN_APP,
+    UNIT_TICKET,
+    DeliveryLedger,
+    NullLedger,
+    ledger_for_event,
+)
 from notifications.dispatcher import (
     CHANNEL_EMAIL,
     CHANNEL_SLACK,
@@ -72,6 +85,7 @@ def _apply_prefs_filter(
     target_table: str | None,
     target_id: uuid.UUID | None,
     channels: list[str],
+    ledger: DeliveryLedger | None = None,
 ) -> list[str]:
     """Consult the user's prefs, write the in-app row, return the
     outbound-channel subset to actually dispatch.
@@ -86,7 +100,10 @@ def _apply_prefs_filter(
       ``notifications`` for the user. When ``False`` we skip the insert.
     - ``user_id`` rows that do not yet have a prefs row get the defaults
       via ``get_prefs_sync`` (in-app on, email on, slack/teams off).
+    - The in-app row is claimed in ``ledger`` before the insert, so a retry
+      or redelivery of the same event never writes a second one.
     """
+    record: DeliveryLedger = ledger if ledger is not None else NullLedger()
     # Late imports — keep the Celery module importable in environments
     # that don't have the DB layer wired (unit tests stub at this seam).
     from core.db import sync_session_scope
@@ -98,17 +115,24 @@ def _apply_prefs_filter(
     with sync_session_scope() as session:
         prefs = get_prefs_sync(session, user_id=user_id)
 
-        if prefs.in_app_enabled:
-            create_notification_sync(
-                session,
-                user_id=user_id,
-                kind=kind,
-                title=title,
-                body=body,
-                link=link,
-                target_table=target_table,
-                target_id=target_id,
-            )
+        if prefs.in_app_enabled and record.claim(UNIT_IN_APP):
+            try:
+                create_notification_sync(
+                    session,
+                    user_id=user_id,
+                    kind=kind,
+                    title=title,
+                    body=body,
+                    link=link,
+                    target_table=target_table,
+                    target_id=target_id,
+                )
+            except Exception:
+                # Nothing was written, so a later attempt may write it.
+                record.release(UNIT_IN_APP)
+                raise
+            # Committed: hold the mark for the full ledger TTL.
+            record.mark_done(UNIT_IN_APP)
 
         # Drop outbound channels the user has disabled. Unknown channel
         # names (a future kind that adds e.g. "sms") pass through —
@@ -142,7 +166,12 @@ def _union(first: list[str], second: list[str]) -> list[str]:
     return out
 
 
-def _maybe_raise_a_ticket(*, kind: str, context: dict[str, Any]) -> None:
+def _maybe_raise_a_ticket(
+    *,
+    kind: str,
+    context: dict[str, Any],
+    ledger: DeliveryLedger | None = None,
+) -> None:
     """Hand the event to the ticket webhook, if there is one.
 
     Here rather than at each producer because this is where every notifiable
@@ -151,13 +180,28 @@ def _maybe_raise_a_ticket(*, kind: str, context: dict[str, Any]) -> None:
 
     Never raises. The work the event describes is in the portal either way,
     and the ticket is a convenience on top of it.
+
+    Claimed in ``ledger`` first, so a retry or redelivery of the same event
+    does not open a second ticket.
     """
+    record: DeliveryLedger = ledger if ledger is not None else NullLedger()
+    if not record.claim(UNIT_TICKET):
+        log.info("ticket_event_already_raised", kind=kind)
+        return
     try:
         from tasks.ticket_webhook import enqueue_ticket_event
 
-        enqueue_ticket_event(event=kind, context=context)
+        queued = enqueue_ticket_event(event=kind, context=context)
     except Exception as exc:  # noqa: BLE001 (an integration is not the flow)
+        record.release(UNIT_TICKET)
         log.warning("ticket_event_hook_failed", kind=kind, error=str(exc)[:300])
+        return
+    if queued:
+        record.mark_done(UNIT_TICKET)
+    else:
+        # Not wanted for this kind, or the broker refused it. Either way
+        # nothing was queued, so a later attempt may queue it.
+        record.release(UNIT_TICKET)
 
 
 def _routing_additions(*, kind: str, context: dict[str, Any]) -> Any:
@@ -239,6 +283,8 @@ def _run_notification(
         attempt=self.request.retries + 1 if self and self.request else 1,
     )
     try:
+        task_id = self.request.id if self and self.request else None
+        ledger = ledger_for_event(str(task_id) if task_id else None)
         effective_channels = list(channels)
         target_user = _coerce_uuid(user_id)
         if target_user is not None:
@@ -251,6 +297,7 @@ def _run_notification(
                 target_table=in_app_target_table,
                 target_id=_coerce_uuid(in_app_target_id),
                 channels=effective_channels,
+                ledger=ledger,
             )
 
         # Rules an organization or team wrote about who else hears (N9).
@@ -262,7 +309,7 @@ def _run_notification(
         # (N11). Enqueued rather than posted: a tracker having a slow morning
         # must not become a notification that took eleven minutes, and its
         # being down must not become one that failed.
-        _maybe_raise_a_ticket(kind=kind, context=context)
+        _maybe_raise_a_ticket(kind=kind, context=context, ledger=ledger)
 
         extra = _routing_additions(kind=kind, context=context)
         if extra.channels or extra.recipients:
@@ -292,6 +339,7 @@ def _run_notification(
                 context=context,
                 channels=effective_channels,
                 recipients=recipients,
+                ledger=ledger,
             )
         )
         if report.get("retryable_failures"):

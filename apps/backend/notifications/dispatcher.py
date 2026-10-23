@@ -41,10 +41,18 @@ The Celery task wrapper (:mod:`tasks.notify`) inspects
 ``retryable_failures`` to decide whether to bubble
 :class:`NotificationDeliveryError` back to Celery's autoretry envelope. If
 some channels delivered and only some are transient-failed we still raise
-so the task is retried — Celery does not have a partial-success branch and
-re-running a successful channel is acceptable for the kinds we currently
-support (each is idempotent at the recipient end: another email, another
-Slack message — annoying, not dangerous).
+so the task is retried. The task passes a
+:class:`notifications.delivery_ledger.DeliveryLedger` for the event, and the
+dispatcher skips every unit (a channel, or one email recipient) the ledger
+already records as delivered and records each new success as it happens, so
+a retry resends only what failed.
+
+Email goes out as one message per recipient over one SMTP connection
+(:class:`notifications.email.EmailBatch`). A single message to several
+addresses either reaches all of them or has to be resent to all of them;
+one per recipient lets a retry reach only the ones that did not get it, and
+no recipient sees the others' addresses. A recipient the server rejects
+with a 5xx is recorded as failed and not retried.
 """
 
 from __future__ import annotations
@@ -56,7 +64,8 @@ from typing import Any
 import structlog
 
 from . import NotificationDeliveryError, NotificationDisabled, NotificationError
-from .email import send_email
+from .delivery_ledger import DeliveryLedger, NullLedger, email_unit
+from .email import EmailBatch
 from .slack import send_slack
 from .teams import send_teams
 
@@ -326,21 +335,86 @@ _BUILDERS: dict[str, Callable[[dict[str, Any]], _BUilderResult]] = {
 # ---------------------------------------------------------------------------
 
 
-async def _send_email_channel(
-    *,
-    recipients: list[str],
-    payload: dict[str, Any],
-) -> None:
-    if not recipients:
-        # Nothing to do — treat as a "disabled" branch so the per-channel
-        # report says "skipped, no recipients" rather than "ok".
-        raise NotificationDisabled("email channel requested with no recipients")
-    await send_email(
-        to=recipients,
+def _open_email_batch(payload: dict[str, Any]) -> Any:
+    """One SMTP connection for this event's email. A seam for tests."""
+    return EmailBatch(
         subject=payload["subject"],
         body_text=payload["body_text"],
         body_html=payload.get("body_html"),
     )
+
+
+async def _send_email_per_recipient(
+    *,
+    recipients: list[str],
+    payload: dict[str, Any],
+    ledger: DeliveryLedger,
+) -> bool:
+    """Send one message per recipient over one connection, skipping those the
+    ledger has. Returns ``True`` when every recipient was already finished by
+    an earlier attempt (nothing was sent now).
+
+    Raises :class:`NotificationDisabled` when there is nobody to send to or
+    SMTP is not configured, :class:`NotificationDeliveryError` when any
+    recipient failed transiently (so the task retries, and the retry reaches
+    only the recipients still missing), and :class:`NotificationError` when
+    the only failures are permanent.
+
+    A recipient the server rejects permanently (5xx) is recorded in the
+    ledger as finished, like a delivered one: a retry caused by somebody
+    else's transient failure must not send to it again.
+    """
+    unique: list[str] = []
+    seen: set[str] = set()
+    for recipient in recipients:
+        folded = recipient.strip().lower()
+        if folded and folded not in seen:
+            seen.add(folded)
+            unique.append(recipient)
+    if not unique:
+        # Reported as "skipped, no recipients" rather than "ok".
+        raise NotificationDisabled("email channel requested with no recipients")
+
+    pending = [r for r in unique if not ledger.is_done(email_unit(r))]
+    if not pending:
+        return True
+
+    sent = 0
+    transient: list[str] = []
+    permanent: list[str] = []
+    async with _open_email_batch(payload) as batch:
+        for recipient in pending:
+            unit = email_unit(recipient)
+            try:
+                await batch.send_to(recipient)
+            except NotificationDisabled:
+                raise
+            except NotificationDeliveryError as exc:
+                transient.append(str(exc))
+            except (NotificationError, ValueError) as exc:
+                ledger.mark_done(unit)
+                permanent.append(str(exc))
+            else:
+                ledger.mark_done(unit)
+                sent += 1
+
+    log.info(
+        "notification_email_recipients",
+        total=len(unique),
+        sent=sent,
+        already_finished=len(unique) - len(pending),
+        transient_failures=len(transient),
+        permanent_failures=len(permanent),
+    )
+    if transient:
+        raise NotificationDeliveryError(
+            f"{len(transient)} of {len(unique)} email recipients failed: {transient[0]}"
+        )
+    if permanent:
+        raise NotificationError(
+            f"{len(permanent)} of {len(unique)} email recipients failed: {permanent[0]}"
+        )
+    return False
 
 
 async def _send_slack_channel(*, payload: dict[str, Any]) -> None:
@@ -362,8 +436,13 @@ async def dispatch(
     context: dict[str, Any],
     channels: list[str],
     recipients: list[str] | None = None,
+    ledger: DeliveryLedger | None = None,
 ) -> dict[str, Any]:
     """Build per-channel payloads and deliver to each requested channel.
+
+    ``ledger`` records which units of this event were already delivered by
+    an earlier attempt; those are skipped and reported as ``ok`` with
+    ``already_delivered``. Without one every unit is attempted.
 
     Returns a structured report (see module docstring). Raises
     :class:`NotificationDeliveryError` ONLY when at least one channel
@@ -409,9 +488,10 @@ async def dispatch(
 
     # Channel name -> coroutine factory. The factory captures the per-channel
     # payload so the dispatch loop only worries about the kind/status mapping.
-    channel_runners: dict[str, Callable[[], Awaitable[None]]] = {
-        CHANNEL_EMAIL: lambda: _send_email_channel(
-            recipients=recipient_list, payload=email_payload
+    record: DeliveryLedger = ledger if ledger is not None else NullLedger()
+    channel_runners: dict[str, Callable[[], Awaitable[bool | None]]] = {
+        CHANNEL_EMAIL: lambda: _send_email_per_recipient(
+            recipients=recipient_list, payload=email_payload, ledger=record
         ),
         CHANNEL_SLACK: lambda: _send_slack_channel(payload=slack_payload),
         CHANNEL_TEAMS: lambda: _send_teams_channel(payload=teams_payload),
@@ -419,8 +499,16 @@ async def dispatch(
 
     for channel in channels:
         runner = channel_runners[channel]
+        # Email is recorded per recipient inside its runner; the other
+        # channels are one unit each.
+        if channel != CHANNEL_EMAIL and record.is_done(channel):
+            delivered += 1
+            results.append(
+                {"channel": channel, "status": "ok", "already_delivered": True}
+            )
+            continue
         try:
-            await runner()
+            already_finished = await runner()
         except NotificationDisabled as exc:
             skipped += 1
             results.append(
@@ -484,8 +572,15 @@ async def dispatch(
                 error=str(exc),
             )
         else:
+            if channel != CHANNEL_EMAIL:
+                record.mark_done(channel)
             delivered += 1
-            results.append({"channel": channel, "status": "ok"})
+            if already_finished:
+                results.append(
+                    {"channel": channel, "status": "ok", "already_delivered": True}
+                )
+            else:
+                results.append({"channel": channel, "status": "ok"})
 
     summary = {
         "kind": kind_str,

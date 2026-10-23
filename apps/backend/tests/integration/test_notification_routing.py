@@ -136,7 +136,7 @@ async def test_the_delivery_path_is_untouched_when_no_rule_matches(
     _org, _team, _user, project = await _seed(client)
     seen: dict[str, object] = {}
 
-    async def _capture(*, kind, context, channels, recipients):
+    async def _capture(*, kind, context, channels, recipients, **_kw):
         seen["channels"] = list(channels)
         seen["recipients"] = list(recipients or [])
         return {
@@ -350,7 +350,7 @@ async def test_a_rule_adds_to_what_was_already_going_out(client, monkeypatch) ->
     )
     seen: dict[str, object] = {}
 
-    async def _capture(*, kind, context, channels, recipients):
+    async def _capture(*, kind, context, channels, recipients, **_kw):
         seen["channels"] = list(channels)
         seen["recipients"] = list(recipients or [])
         return {
@@ -392,7 +392,7 @@ async def test_a_rule_cannot_remove_a_channel_somebody_enabled(
     await _add_rule(client, user=user, team_id=team.id, channels=["email"])
     seen: dict[str, object] = {}
 
-    async def _capture(*, kind, context, channels, recipients):
+    async def _capture(*, kind, context, channels, recipients, **_kw):
         seen["channels"] = list(channels)
         return {
             "kind": kind,
@@ -437,7 +437,7 @@ async def test_a_routing_table_that_cannot_be_read_still_delivers(
     monkeypatch.setattr(notify, "_routing_additions", _explode, raising=False)
     seen: dict[str, object] = {}
 
-    async def _capture(*, kind, context, channels, recipients):
+    async def _capture(*, kind, context, channels, recipients, **_kw):
         seen["reached"] = True
         return {
             "kind": kind,
@@ -640,7 +640,7 @@ async def test_a_rule_naming_somebody_already_on_the_list_does_not_double_them(
     )
     seen: dict[str, object] = {}
 
-    async def _capture(*, kind, context, channels, recipients):
+    async def _capture(*, kind, context, channels, recipients, **_kw):
         seen["recipients"] = list(recipients or [])
         return {
             "kind": kind,
@@ -686,7 +686,7 @@ async def test_the_worker_sees_organization_rules_too(client, monkeypatch) -> No
     )
     seen: dict[str, object] = {}
 
-    async def _capture(*, kind, context, channels, recipients):
+    async def _capture(*, kind, context, channels, recipients, **_kw):
         seen["recipients"] = list(recipients or [])
         return {
             "kind": kind,

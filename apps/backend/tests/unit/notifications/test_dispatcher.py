@@ -32,8 +32,15 @@ from notifications import dispatcher as disp
 def _patch_channels(monkeypatch):
     """Reset the per-channel sends to no-ops by default."""
 
-    async def _noop_email(*, recipients, payload):
-        return None
+    class _NoopBatch:
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *_exc):
+            return None
+
+        async def send_to(self, recipient):
+            return None
 
     async def _noop_slack(*, payload):
         return None
@@ -41,7 +48,7 @@ def _patch_channels(monkeypatch):
     async def _noop_teams(*, payload):
         return None
 
-    monkeypatch.setattr(disp, "_send_email_channel", _noop_email)
+    monkeypatch.setattr(disp, "_open_email_batch", lambda payload: _NoopBatch())
     monkeypatch.setattr(disp, "_send_slack_channel", _noop_slack)
     monkeypatch.setattr(disp, "_send_teams_channel", _noop_teams)
 
@@ -207,22 +214,13 @@ async def test_dispatch_partial_success_reports_each_channel(monkeypatch) -> Non
     assert statuses["teams"] == "failed"
 
 
-async def test_dispatch_email_with_no_recipients_is_skipped(monkeypatch) -> None:
+async def test_dispatch_email_with_no_recipients_is_skipped() -> None:
     """Email channel without recipients reports skipped, not failed.
 
     This guards the password-reset path where the email lookup may yield
     an empty list (e.g. unmatched email) — we still want "skipped", not
     a phantom retry.
     """
-
-    # Override the autouse no-op email so we exercise the real "no recipients"
-    # path: the dispatcher should translate the raised NotificationDisabled
-    # into a skipped channel.
-    async def _real_no_recipients(*, recipients, payload):
-        if not recipients:
-            raise NotificationDisabled("email channel requested with no recipients")
-
-    monkeypatch.setattr(disp, "_send_email_channel", _real_no_recipients)
 
     report = await disp.dispatch(
         kind=disp.NotificationKind.PASSWORD_RESET,

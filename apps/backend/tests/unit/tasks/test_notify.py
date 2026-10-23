@@ -18,6 +18,25 @@ from notifications import dispatcher as disp
 from tasks import notify as notify_mod
 
 
+@pytest.fixture(autouse=True)
+def _ledger_in_memory(monkeypatch):
+    """Keep the delivery ledger off the real Redis.
+
+    Every test here reuses one task id, so a shared Redis would carry one
+    test's completion marks into the next (and into the next run).
+    """
+    import fakeredis
+
+    from notifications import delivery_ledger
+
+    server = fakeredis.FakeServer()
+    monkeypatch.setattr(
+        delivery_ledger,
+        "redis_client",
+        lambda: fakeredis.FakeRedis(server=server, decode_responses=True),
+    )
+
+
 class _FakeRequest:
     def __init__(self, retries: int = 0) -> None:
         self.id = "task-id-test"
@@ -36,7 +55,7 @@ def test_send_notification_task_returns_report_when_no_retryable_failures(
     returns the report and Celery does NOT retry."""
     captured: dict[str, object] = {}
 
-    async def _fake_dispatch(*, kind, context, channels, recipients):
+    async def _fake_dispatch(*, kind, context, channels, recipients, **_kw):
         captured.update(
             kind=kind, context=context, channels=channels, recipients=recipients
         )
@@ -143,7 +162,7 @@ def test_run_notification_skips_filter_when_no_user_id(monkeypatch) -> None:
     """Legacy callers (no user_id) bypass the prefs gate."""
     captured = {}
 
-    async def _fake_dispatch(*, kind, context, channels, recipients):
+    async def _fake_dispatch(*, kind, context, channels, recipients, **_kw):
         captured["channels"] = list(channels)
         return {
             "kind": kind,
@@ -183,7 +202,7 @@ def test_run_notification_invokes_filter_when_user_id_supplied(monkeypatch) -> N
 
     captured = {}
 
-    async def _fake_dispatch(*, kind, context, channels, recipients):
+    async def _fake_dispatch(*, kind, context, channels, recipients, **_kw):
         captured["channels"] = list(channels)
         return {
             "kind": kind,
@@ -261,7 +280,7 @@ def test_run_notification_coerces_invalid_user_id_to_none(monkeypatch) -> None:
 
     captured = {}
 
-    async def _fake_dispatch(*, kind, context, channels, recipients):
+    async def _fake_dispatch(*, kind, context, channels, recipients, **_kw):
         captured["channels"] = list(channels)
         return {
             "kind": kind,
