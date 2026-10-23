@@ -180,6 +180,23 @@ describe("ErrorBoundary", () => {
       expect(reloadSpy).toHaveBeenCalledTimes(1);
     });
 
+    it("does not render the fallback even for one commit while reloading", () => {
+      // componentDidCatch runs after the first error render, so without the
+      // render-time check the fallback would flash before the reload.
+      reloadOnceForChunkError();
+      let fallbackRenders = 0;
+      function CountingFallback() {
+        fallbackRenders += 1;
+        return null;
+      }
+      render(
+        <ErrorBoundary fallback={<CountingFallback />}>
+          <Boom />
+        </ErrorBoundary>,
+      );
+      expect(fallbackRenders).toBe(0);
+    });
+
     it("reports Safari's module error when it recurs after the one reload", () => {
       // Safari words a module that threw while evaluating the same way as a
       // missing chunk. The first costs a reload; the repeat is a real crash.
