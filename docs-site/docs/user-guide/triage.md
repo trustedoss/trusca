@@ -60,12 +60,15 @@ The two tracks are independent by design:
 
 ## Where each decision reaches the build gate {#gate-reach}
 
-This is the point the three surfaces are most often confused on. The [build gate](./vulnerabilities.md#severity-model) fails a build on exactly two conditions:
+This is the point the three surfaces are most often confused on. The [build gate](./vulnerabilities.md#severity-model) fails a build by default on three conditions:
 
-1. at least one **open Critical CVE** (a Critical finding in any VEX state other than `Not affected`, `False positive` or `Fixed`; the severity is fixed at Critical and cannot be configured), or
-2. at least one component whose license resolves to the **`forbidden`** tier.
+1. at least one **open Critical CVE** (a Critical finding in any VEX state other than `Not affected`, `False positive` or `Fixed`; the severity is fixed at Critical and cannot be configured),
+2. at least one component whose license resolves to the **`forbidden`** tier, or
+3. at least one [known-malicious package](./components-and-licenses.md#known-malicious-packages) without an active exception. This condition is on unless an operator sets [`GATE_MALICIOUS_ENABLED`](../reference/env-variables.md#build--policy-gate) to `false` or a gate policy turns it off.
 
-VEX triage feeds condition 1 directly: moving a finding to an excluded state removes it from the count on the next scan. Component approval feeds **neither** condition.
+Operators can add opt-in conditions (EPSS threshold, CISA KEV, end-of-life components, incomplete scans) and can narrow condition 1 to reachable findings; all of them are off by default.
+
+VEX triage feeds condition 1 directly: moving a finding to an excluded state removes it from the count on the next scan. Component approval feeds **none** of the conditions.
 
 ### Component approval does not gate the build {#approval-does-not-gate}
 
@@ -102,7 +105,7 @@ By design. `Suppressed` is not an excluded state, so a suppressed Critical CVE k
 
 ### A non-Critical CVE I care about never fails the build
 
-By default the gate fails only on Critical CVEs and forbidden licenses. Add the EPSS dimension so a high-probability CVE fails regardless of severity — see [Gate the build on EPSS](../ci-integration/github-actions.md#gate-the-build-on-epss-optional).
+By default the only CVE condition is Critical severity (forbidden licenses and known-malicious packages are the other two). Add the EPSS dimension so a high-probability CVE fails regardless of severity. See [Gate the build on EPSS](../ci-integration/github-actions.md#gate-the-build-on-epss-optional).
 
 ## See also
 
