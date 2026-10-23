@@ -8,7 +8,7 @@
  * payload reflects the switch rather than the emptiness of the box.
  */
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { render, screen, waitFor } from "@testing-library/react";
+import { act, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { useLayoutEffect, useRef, useState } from "react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
@@ -453,5 +453,64 @@ describe("GatePolicyPanel", () => {
         approval_required_statuses: null,
       });
     }
+  });
+
+  // The app's client keeps a read fresh for 30 s, so a policy is not
+  // refetched on return unless the save invalidated that team's key. A save
+  // that finishes after the user moved to another team must still invalidate
+  // the team it was for, not the team now on screen.
+  it("refreshes the saved team's policy even when the save finishes after a team switch", async () => {
+    let team1Epss = 0.9;
+    getTeamGatePolicy.mockImplementation((teamId: string) =>
+      Promise.resolve(
+        teamId === "team-2"
+          ? { ...POLICY, id: "p2", team_id: "team-2", epss_threshold: 0.2 }
+          : { ...POLICY, epss_threshold: team1Epss },
+      ),
+    );
+    let finishSave: (value: unknown) => void = () => {};
+    upsertTeamGatePolicy.mockReturnValue(
+      new Promise((resolve) => {
+        finishSave = resolve;
+      }),
+    );
+    function Switcher() {
+      const [teamId, setTeamId] = useState("team-1");
+      return (
+        <>
+          <button type="button" onClick={() => setTeamId("team-1")}>
+            team-1
+          </button>
+          <button type="button" onClick={() => setTeamId("team-2")}>
+            team-2
+          </button>
+          <GatePolicyPanel teamId={teamId} canEdit />
+        </>
+      );
+    }
+    const client = new QueryClient({
+      defaultOptions: { queries: { retry: false, staleTime: 30_000 } },
+    });
+    render(
+      <QueryClientProvider client={client}>
+        <Switcher />
+      </QueryClientProvider>,
+    );
+
+    await waitFor(() => expect(screen.getByTestId("gate-epss")).toHaveValue("0.9"));
+    await userEvent.clear(screen.getByTestId("gate-epss"));
+    await userEvent.type(screen.getByTestId("gate-epss"), "0.5");
+    await userEvent.click(screen.getByTestId("gate-policy-save"));
+    expect(upsertTeamGatePolicy).toHaveBeenCalledWith("team-1", expect.objectContaining({ epss_threshold: 0.5 }));
+
+    await userEvent.click(screen.getByRole("button", { name: "team-2" }));
+    await waitFor(() => expect(screen.getByTestId("gate-epss")).toHaveValue("0.2"));
+    team1Epss = 0.5;
+    await act(async () => {
+      finishSave({ ...POLICY, epss_threshold: 0.5 });
+    });
+
+    await userEvent.click(screen.getByRole("button", { name: "team-1" }));
+    await waitFor(() => expect(screen.getByTestId("gate-epss")).toHaveValue("0.5"));
   });
 });

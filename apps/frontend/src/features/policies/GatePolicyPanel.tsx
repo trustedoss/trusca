@@ -91,7 +91,7 @@ function payloadFrom(draft: Draft): GatePolicyUpsertIn {
 export function GatePolicyPanel({ teamId, canEdit }: GatePolicyPanelProps) {
   const { t } = useTranslation("policies");
   const query = useTeamGatePolicy(teamId);
-  const upsert = useUpsertTeamGatePolicy(teamId);
+  const upsert = useUpsertTeamGatePolicy();
   const remove = useDeleteTeamGatePolicy(teamId);
   // Deployment-scoped, so it is the same answer whichever team is open.
   const { data: epssData } = useEpssAvailability();
@@ -320,7 +320,7 @@ export function GatePolicyPanel({ teamId, canEdit }: GatePolicyPanelProps) {
             type="button"
             size="sm"
             disabled={epssInvalid || upsert.isPending}
-            onClick={() => upsert.mutate(payloadFrom(draft))}
+            onClick={() => upsert.mutate({ teamId, payload: payloadFrom(draft) })}
             data-testid="gate-policy-save"
           >
             {t("gate.save")}

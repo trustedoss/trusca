@@ -73,12 +73,18 @@ export function useEffectiveGatePolicy(projectId: string | null) {
   });
 }
 
-export function useUpsertTeamGatePolicy(teamId: string | null) {
+/**
+ * The team travels with each save rather than being read from the hook's
+ * argument: the mutation's callbacks follow the latest render, so a save that
+ * finishes after the user switched teams would otherwise invalidate the team
+ * now on screen and leave the saved team's cached row stale.
+ */
+export function useUpsertTeamGatePolicy() {
   const client = useQueryClient();
   return useMutation({
-    mutationFn: (payload: GatePolicyUpsertIn) =>
-      upsertTeamGatePolicy(teamId as string, payload),
-    onSuccess: () => {
+    mutationFn: ({ teamId, payload }: { teamId: string; payload: GatePolicyUpsertIn }) =>
+      upsertTeamGatePolicy(teamId, payload),
+    onSuccess: (_data, { teamId }) => {
       // Both keys: the row changed, and so did what any project under this
       // team is judged by. Leaving the effective view stale would show the
       // editor's new value beside an old verdict.
