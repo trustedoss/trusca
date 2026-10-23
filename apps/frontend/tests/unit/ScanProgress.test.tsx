@@ -241,17 +241,6 @@ describe("ScanProgress", () => {
     });
   });
 
-  it("shows the DT-cached alert when the prop is true", () => {
-    renderProgress(
-      <ScanProgress
-        scanId="scan-1"
-        socketFactory={factory}
-        cachedFromDtDown
-      />,
-    );
-    expect(screen.getByTestId("scan-dt-cached-alert")).toBeInTheDocument();
-  });
-
   it("offers the cancel affordance for a running scan (PR-A3)", () => {
     renderProgress(
       <ScanProgress scanId="scan-1" socketFactory={factory} status="running" />,

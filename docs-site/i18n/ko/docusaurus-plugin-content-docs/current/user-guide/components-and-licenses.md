@@ -435,7 +435,7 @@ scancode처럼 이 단계도 **best-effort** 입니다: SCANOSS가 꺼져 있거
 
 ## 의무사항
 
-각 라이선스는 **의무사항**을 가집니다 — 컴포넌트를 재배포할 때 이행해야 할 의무. 포털은 7가지 종류를 추적합니다([용어집](https://github.com/trustedoss/trusca/blob/main/docs/glossary.md) 참고).
+각 라이선스는 **의무사항**을 가집니다 — 컴포넌트를 재배포할 때 이행해야 할 의무. 포털은 7가지 종류를 추적합니다([용어집](../reference/glossary.md) 참고).
 
 - **저작자 표시** — 상위 저작권 고지를 보존.
 - **NOTICE 보존** — 상위 `NOTICE` 파일 동봉(Apache-2.0 §4(d)).

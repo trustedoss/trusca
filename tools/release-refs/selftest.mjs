@@ -9,10 +9,12 @@
  */
 import {
   isVersionAgnosticRef,
+  missingPathFindings,
   pinFindings,
   refFindings,
   releaseGateFindings,
   releaseVersionFrom,
+  trackedPathSet,
 } from "./lint.mjs";
 import { execFileSync, spawnSync } from "node:child_process";
 import * as fs from "node:fs";
@@ -117,6 +119,52 @@ check(
 check(
   "a third-party action is none of our business",
   found("      - uses: actions/checkout@v4"),
+  [],
+);
+
+// --- main-branch links must name a path that exists ------------------------
+
+const exists = trackedPathSet(["SECURITY.md", "docs-site/docs/intro.md", "charts/trustedoss/Chart.yaml"]);
+const missing = (text) => missingPathFindings(text, exists).map((f) => f.found);
+
+// The regression that shipped: seven links into a docs/ directory that had
+// left the public tree, each passing the tag check because `main` is a valid ref.
+check(
+  "a link to a removed file is reported",
+  missing("[ADR-0001](https://github.com/trustedoss/trusca/blob/main/docs/decisions/0001-replace-dt-with-trivy.md)"),
+  ["docs/decisions/0001-replace-dt-with-trivy.md"],
+);
+check(
+  "a link to a tracked file is silent",
+  missing("[SECURITY.md](https://github.com/trustedoss/trusca/blob/main/SECURITY.md)."),
+  [],
+);
+check(
+  "a tree link to a directory holding tracked files is silent",
+  missing("see https://github.com/trustedoss/trusca/tree/main/charts/trustedoss/"),
+  [],
+);
+check(
+  "a raw link and an anchor are both handled",
+  missing(
+    "curl https://raw.githubusercontent.com/trustedoss/trusca/main/scripts/gone.sh\n" +
+      "[x](https://github.com/trustedoss/trusca/blob/main/docs-site/docs/intro.md#audience)",
+  ),
+  ["scripts/gone.sh"],
+);
+check(
+  "an untracked file does not count as present",
+  missing("[rules](https://github.com/trustedoss/trusca/blob/main/CLAUDE.md)"),
+  ["CLAUDE.md"],
+);
+check(
+  "a placeholder path is prose, not a link",
+  missing("https://github.com/trustedoss/trusca/blob/main/<path-to-file>"),
+  [],
+);
+check(
+  "a tag ref is the tag check's business, not this one's",
+  missing("https://github.com/trustedoss/trusca/blob/v0.10.0/docs/gone.md"),
   [],
 );
 

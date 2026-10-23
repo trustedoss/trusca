@@ -10,7 +10,7 @@ body:
 
         Before submitting, please:
         - Search [existing issues](https://github.com/trustedoss/trusca/issues?q=is%3Aissue) to avoid duplicates.
-        - Check the [v2 execution plan](https://github.com/trustedoss/trusca/blob/main/docs/v2-execution-plan.md) — your idea may already be on the roadmap.
+        - Check the [roadmap](https://github.com/trustedoss/trusca/blob/main/ROADMAP.md); your idea may already be planned.
 
   - type: textarea
     id: problem

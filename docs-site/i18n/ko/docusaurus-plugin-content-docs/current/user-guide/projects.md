@@ -226,7 +226,7 @@ API에서는 CI 작업이 자기 브랜치를 지정하는 편이 좋습니다. 
 
 CVE — Common Vulnerabilities and Exposures, EPSS — Exploit Prediction Scoring System. 둘 다 [용어집](../reference/glossary.md)을 보세요.
 
-이 카드는 읽기 전용입니다 — 판정을 반영하되 정책을 변경하지는 않습니다. 임계값(심각도 하한, EPSS)은 운영자·CI 측 설정입니다. [GitHub Actions](../ci-integration/github-actions.md)와 [`GATE_EPSS_THRESHOLD`](../reference/env-variables.md#빌드--정책-게이트)를 보세요.
+이 카드는 읽기 전용입니다. 판정을 보여 줄 뿐 정책을 바꾸지는 않습니다. 심각도 조건은 Critical로 고정되어 있고 설정 항목이 없습니다. EPSS 임계값은 운영자 설정입니다. [GitHub Actions](../ci-integration/github-actions.md)와 [`GATE_EPSS_THRESHOLD`](../reference/env-variables.md#빌드--정책-게이트)를 보세요.
 
 ## 프로젝트 정보 (Overview 탭) {#project-info-card}
 

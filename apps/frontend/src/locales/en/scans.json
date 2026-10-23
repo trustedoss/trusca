@@ -94,9 +94,6 @@
       "unknown": "Could not cancel the scan. Please try again."
     }
   },
-  "alerts": {
-    "dt_unavailable": "The vulnerability matcher is temporarily unavailable. Showing cached results."
-  },
   "kind": {
     "legend": "Scan type",
     "source": "Source",

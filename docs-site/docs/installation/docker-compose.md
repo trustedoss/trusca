@@ -438,7 +438,7 @@ After the first push, set each package's visibility to **Public** (ghcr package 
 
 ## Why docker-compose V1, not V2?
 
-The project's **development and CI** environment standardizes on Compose V1 (`docker-compose`) — V2 syntax differences are not exercised in our internal pipelines, and PRs that introduce `docker compose` (V2) into the dev/CI surface are blocked by review (see [`CLAUDE.md`](https://github.com/trustedoss/trusca/blob/main/CLAUDE.md) rule #10).
+The project's **development and CI** environment standardizes on Compose V1 (`docker-compose`). V2 syntax differences are not exercised in our internal pipelines, and PRs that introduce `docker compose` (V2) into the dev/CI surface are blocked by review.
 
 That constraint is internal. For **end-user installs**, the `install.sh` wizard prefers V1 but falls back to the V2 plugin (`docker compose`) so a stock modern host — where V1 reached end-of-life in 2023 — works out of the box. The compose files themselves use the V1 file format, which V2 also reads.
 

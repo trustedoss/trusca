@@ -451,7 +451,7 @@ Like scancode, the stage is **best-effort**: if SCANOSS is off, the tool is miss
 
 ## Obligations
 
-Each license carries **obligations** — duties you must honor when redistributing the component. The portal tracks seven kinds (see [glossary](https://github.com/trustedoss/trusca/blob/main/docs/glossary.md)):
+Each license carries **obligations**: duties you must honor when redistributing the component. The portal tracks seven kinds (see the [glossary](../reference/glossary.md)):
 
 - **Attribution** — preserve the upstream copyright notice.
 - **NOTICE preservation** — carry the upstream `NOTICE` file (Apache-2.0 §4(d)).

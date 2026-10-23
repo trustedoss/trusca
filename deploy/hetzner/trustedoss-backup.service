@@ -10,7 +10,7 @@
 # Paired timer: trustedoss-backup.timer.
 [Unit]
 Description=TrustedOSS daily local backup (pg_dump + workspace)
-Documentation=https://github.com/trustedoss/trusca/blob/main/docs/operator-runbook-hetzner.md
+Documentation=https://trustedoss.github.io/trusca/docs/admin-guide/backup-and-restore
 After=docker.service
 Requires=docker.service
 

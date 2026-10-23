@@ -52,6 +52,13 @@ guide and its Korean mirror.
 `CHANGELOG.md` and the release-notes pages are excluded for the same reason
 the prose patterns are narrow.
 
+**Paths behind `main` links.** A `blob` / `tree` / `raw` link on `main` passes
+the tag check, so its path is checked instead: it must be a tracked file or a
+directory holding one. Seven links into a `docs/` directory that had left the
+public tree returned 404 for weeks before this existed. This check covers the
+changelog and release notes too, since a dead link there is just as dead, and
+`--fix` does not touch it: picking the replacement page needs a person.
+
 ## Usage
 
 ```bash

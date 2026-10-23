@@ -113,8 +113,8 @@ sidebar_position: 4
   [데이터 출처](./data-sources.md) 참고.
 - **DT — Dependency-Track.** Apache-2.0 취약점 인텔리전스 플랫폼.
   TRUSCA는 v0.10.0 이전까지 DT를 취약점 엔진으로 사용했고 v0.10.0에서
-  Trivy로 교체했습니다 —
-  [ADR-0001](https://github.com/trustedoss/trusca/blob/main/docs/decisions/0001-replace-dt-with-trivy.md)과
+  Trivy로 교체했습니다.
+  [취약점 데이터 (Trivy DB)](../admin-guide/vulnerability-data.md)를 참고하세요.
   본 용어집에 여전히 남아 있는 이유는 레거시 audit log 행이 DT를
   참조하기 때문입니다.
 - **cosign.** Sigstore의 서명 CLI. TRUSCA는 모든 소스 스캔의
@@ -206,11 +206,14 @@ v0.10.0 에는 액션 단위 허용 목록이 없습니다 — 올바른 scope�
 
 ## 운영 용어
 
-- **회로 차단기 (CLOSED / OPEN / HALF_OPEN).** 실패 도메인을 격리하는
-  패턴. TRUSCA는 v0.10.0 이전까지 Dependency-Track API 클라이언트를
-  차단기로 감쌌습니다. v0.10.0+에서는 Trivy DB가 워커 로컬에 있어 취약점 경로에서
-  이 패턴은 더 이상 사용하지 않습니다. 일반 용어로는 운영 문헌에 계속
-  등장합니다.
+- **회로 차단기(circuit breaker).** 실패를 격리하는 패턴입니다. 호출이
+  연속으로 실패하면 실패할 때마다 기다리지 않고 해당 의존 대상 호출을
+  멈춥니다. TRUSCA는 라이선스 보강에 이 패턴을 적용합니다. 레지스트리
+  조회가 `LICENSE_FETCH_CONSECUTIVE_FAILURE_LIMIT`회 연속으로 응답을 받지
+  못하면 스캔은 남은 조회를 건너뛰고 그 사실을 `breaker_open`으로
+  기록합니다. 취약점 경로에는 차단기가 없습니다. Trivy DB가 워커 안에
+  있기 때문입니다. v0.10.0 이전 릴리스는 Dependency-Track 클라이언트에
+  차단기를 두었습니다.
 - **`audit_logs`.** 상태를 변경하는 모든 작업(1급 엔티티의 CRUD,
   명시적 비즈니스 이벤트 포함)을 추가 전용으로 캡처하는 테이블.
   [감사 로그](../admin-guide/audit-log.md) 참고.

@@ -2,7 +2,6 @@
 // Copyright 2026 TRUSCA contributors
 import { useQuery } from "@tanstack/react-query";
 import {
-  AlertTriangle,
   Ban,
   CheckCircle2,
   Circle,
@@ -53,13 +52,6 @@ export interface ScanProgressProps {
   /** Retry CTA shown on terminal failure. */
   onRetry?: () => void;
   /**
-   * Surfaced when the project's vulnerability data was served from the cache
-   * because Dependency-Track was unavailable. Phase 2 backend does not yet
-   * publish this flag — kept here so the UI is wired and PR #10 can flip
-   * a single boolean.
-   */
-  cachedFromDtDown?: boolean;
-  /**
    * Persisted scan status (PR-A3). When `queued`/`running` and the live
    * WebSocket has not yet reported a terminal step, the panel shows a
    * "Cancel scan" affordance. Omit to hide cancellation entirely (e.g. a
@@ -104,7 +96,6 @@ export function ScanProgress({
   release = null,
   onClose,
   onRetry,
-  cachedFromDtDown = false,
   status = "running",
   onCancelled,
   socketFactory,
@@ -225,19 +216,6 @@ export function ScanProgress({
           {t("progress.percent_label", { value: percent })}
         </span>
       </div>
-
-      {cachedFromDtDown ? (
-        <Alert
-          // W11-H a11y — same hue/family swap as the Badge `medium` tone,
-          // lifting AlertDescription to AA 5.98:1. G0-7 named that shade
-          // `--risk-medium-foreground` and made the tint behind it paint.
-          className="border-risk-medium/40 bg-risk-medium/10 text-risk-medium-foreground"
-          data-testid="scan-dt-cached-alert"
-        >
-          <AlertTriangle className="h-4 w-4" aria-hidden />
-          <AlertDescription>{t("alerts.dt_unavailable")}</AlertDescription>
-        </Alert>
-      ) : null}
 
       {(state === "connecting" || state === "authenticating") && !terminal ? (
         <Skeleton

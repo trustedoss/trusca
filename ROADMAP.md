@@ -14,7 +14,7 @@ Legend: ☐ planned · ◐ in progress
 
 ---
 
-## Recently shipped (v0.11.0 - v0.22.4)
+## Recently shipped (v0.11.0 - v0.23.0)
 
 Highlights only, and only what closes a roadmap line — the itemised history,
 including the v0.10.0 foundation (Trivy as the single matching engine, VEX,
@@ -31,6 +31,9 @@ EPSS, the Helm chart, the design system), is in [`CHANGELOG.md`](CHANGELOG.md).
 - **Organization-wide component inventory and search** — which projects carry a package, and which projects a CVE reaches
 - **Release labels as permanent snapshot addresses** (`?release=`) across the detail endpoints, SBOM, and NOTICE
 - **Dark theme** alongside light, both measured against WCAG AA
+- **Group hierarchy**: teams became an unlimited-depth tree of groups, with access, visibility and administration following the tree
+- **Offline install bundle** for air-gapped deployments, alongside the existing Trivy DB mirror
+- **BomLens as an optional scan engine (preview)** for source and container scans; the in-process pipeline stays the default
 
 ## Supply-chain Integrity
 
