@@ -16,7 +16,11 @@ Two layers guard the class, and each is checked on its own:
   returns a plain value is out of scope: FastAPI empties the body itself for
   statuses that forbid one. Only an explicit response object bypasses that,
   and that is what the audit looks at. The audit also runs against known-bad
-  snippets, so a walker that stops matching cannot pass.
+  snippets, so a walker that stops matching cannot pass. It resolves
+  ``import ... as`` aliases and ``HTTPStatus.NO_CONTENT``. Known blind spots:
+  a status held in a variable, a response class reached through a module
+  alias of an unknown name, a subclass of a body-carrying class, and setting
+  ``.status_code = 204`` on an existing response object.
 * A real HTTP round trip: the remediation route that had the defect is served
   by uvicorn (h11) on an ephemeral port, and two requests go over one
   connection. The second request only succeeds if the first 204 left the
@@ -68,7 +72,9 @@ def _is_204(node: ast.expr | None) -> bool:
         return False
     if isinstance(node, ast.Constant):
         return bool(node.value == 204)
-    return _callee_name(node) == "HTTP_204_NO_CONTENT"
+    # ``status.HTTP_204_NO_CONTENT`` (starlette/fastapi) and
+    # ``HTTPStatus.NO_CONTENT`` (stdlib).
+    return _callee_name(node) in ("HTTP_204_NO_CONTENT", "NO_CONTENT")
 
 
 def _status_arg(call: ast.Call) -> ast.expr | None:
@@ -95,20 +101,35 @@ class _Audit:
     def __init__(self) -> None:
         self.violations: list[str] = []
         self.response_204_calls = 0
+        # Every file with a 204 construction of any shape, good or bad.
+        self.files_with_204: set[str] = set()
 
     def check(self, source: str, label: str) -> None:
-        for node in ast.walk(ast.parse(source)):
+        tree = ast.parse(source)
+        # ``from fastapi.responses import JSONResponse as J`` -> {"J": "JSONResponse"}
+        aliases = {
+            alias.asname: alias.name
+            for node in ast.walk(tree)
+            if isinstance(node, ast.ImportFrom)
+            for alias in node.names
+            if alias.asname
+        }
+        for node in ast.walk(tree):
             if isinstance(node, ast.Call):
-                self._check_call(node, label)
+                self._check_call(node, label, aliases)
 
-    def _check_call(self, call: ast.Call, label: str) -> None:
+    def _check_call(self, call: ast.Call, label: str, aliases: dict[str, str]) -> None:
         name = _callee_name(call.func)
+        name = aliases.get(name, name) if name is not None else None
+        if not _is_204(_status_arg(call)):
+            return
         if name in _BODY_CARRYING:
-            if _is_204(_status_arg(call)):
-                self.violations.append(
-                    f"{label}:{call.lineno}: {name}(...) with status 204 sends a body"
-                )
-        elif name == "Response" and _is_204(_status_arg(call)):
+            self.files_with_204.add(label)
+            self.violations.append(
+                f"{label}:{call.lineno}: {name}(...) with status 204 sends a body"
+            )
+        elif name == "Response":
+            self.files_with_204.add(label)
             self.response_204_calls += 1
             if not _is_empty(_content_arg(call)):
                 self.violations.append(
@@ -134,6 +155,9 @@ def test_backend_source_has_no_204_with_a_body() -> None:
     # 29 ``Response(status_code=204)`` constructions. A walker that silently
     # stops matching would report zero and pass the line above.
     assert audit.response_204_calls >= 25, audit.response_204_calls
+    # The site that had the defect is among the audited 204 constructions, so
+    # the audit is shown to read the shape it was written for there.
+    assert "api/v1/remediation.py" in audit.files_with_204, sorted(audit.files_with_204)
 
 
 @pytest.mark.parametrize(
@@ -146,6 +170,8 @@ def test_backend_source_has_no_204_with_a_body() -> None:
         "problem_response(request, 204, 'x')",
         "Response(content=b'null', status_code=204)",
         "Response('x', 204)",
+        "JSONResponse(None, status_code=HTTPStatus.NO_CONTENT)",
+        "from fastapi.responses import JSONResponse as J\nJ(None, 204)",
     ],
 )
 def test_audit_flags_known_bad_shapes(snippet: str) -> None:
@@ -208,19 +234,24 @@ def test_remediation_no_op_204_is_clean_over_a_real_connection(
     app.dependency_overrides[get_db] = _no_db
     app.dependency_overrides[get_optional_current_user] = _admin
 
-    errors = _ErrorCollector()
-    uvicorn_logger = logging.getLogger("uvicorn.error")
-    uvicorn_logger.addHandler(errors)
 
+    # log_config=None: uvicorn must not run dictConfig, which would both
+    # reconfigure logging for the whole test process and detach the collector
+    # below (measured: a handler added before Config() is gone after it).
     config = uvicorn.Config(
         app,
         host="127.0.0.1",
         port=0,
         http="h11",
         lifespan="off",
+        log_config=None,
         log_level="error",
         access_log=False,
     )
+    errors = _ErrorCollector()
+    uvicorn_logger = logging.getLogger("uvicorn.error")
+    uvicorn_logger.addHandler(errors)
+
     server = uvicorn.Server(config)
     thread = threading.Thread(target=server.run, daemon=True)
     thread.start()
@@ -251,15 +282,22 @@ def test_remediation_no_op_204_is_clean_over_a_real_connection(
                     attempt,
                     resp.getheader("content-length"),
                 )
+                if attempt == 1:
+                    # Checked before the connection is reused, so this
+                    # assertion fails on its own when the server rejects the
+                    # body, rather than being pre-empted by the reuse failing.
+                    # The server raises after the client already read the 204,
+                    # so give it a moment to log.
+                    time.sleep(0.3)
+                    assert [r.getMessage() for r in errors.records] == []
         finally:
             conn.close()
 
         # Both requests reached the route over the one connection.
         assert calls == [project_id, project_id]
-        # Give the server a moment to log anything it raised after sending.
-        time.sleep(0.1)
         assert [r.getMessage() for r in errors.records] == []
     finally:
         server.should_exit = True
         thread.join(timeout=10)
         uvicorn_logger.removeHandler(errors)
+    assert not thread.is_alive(), "uvicorn did not shut down"
