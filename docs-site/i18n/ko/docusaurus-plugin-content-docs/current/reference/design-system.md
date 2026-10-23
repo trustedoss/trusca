@@ -477,7 +477,7 @@ Risk-tinted variant는 상태 단어와 디자인 시스템 색을 짝지움. �
 
 `apps/frontend/src/components/ui/toast.tsx`
 
-`AppProviders`에 마운트된 단일 `<ToastProvider>`가 우하단에 쌓이는 영역 하나를 렌더링하고, `useToast().toast(text, opts)`로 어디서든 띄웁니다. 토스트는 큐로 쌓이고 자동으로 사라지며(4초) `aria-live` 영역으로 안내됩니다.
+`AppProviders`에 마운트된 단일 `<ToastProvider>`가 우하단에 쌓이는 영역 하나를 렌더링하고, `useToast().toast(text, opts)`로 어디서든 띄웁니다. 토스트는 큐로 쌓이고 `aria-live` 영역으로 안내됩니다. 성공 토스트는 4초 뒤 자동으로 사라집니다. 오류 토스트는 사용자가 닫을 때까지 남고 `role="alert"`를 쓰며, 같은 키의 오류가 다시 나면 앞의 것을 대체합니다. 모든 토스트에 닫기 버튼이 있고, 토스트를 닫으면 포커스가 다음 토스트나 원래 있던 곳으로 돌아갑니다. 오류 토스트는 polite 라이브 영역 밖에 표시되어 화면 낭독기가 한 번만 읽으며, 로그인한 사용자가 바뀌면 지워집니다.
 
 - **피드백 규칙.** 성공 · 비차단 알림은 토스트, 폼 검증 에러는 필드 옆 **인라인**(RFC 7807 `detail`) — 사용자가 놓칠 토스트로 쓰지 않습니다.
 - **test-id 계약.** `testId` 기본값은 `"admin-toast"` 이고 토스트는 `data-tone` + `data-toast-key`를 달아, 모든 e2e 하네스가 선택하는 마크업(`[data-testid="admin-toast"][data-tone][data-toast-key]`)을 그대로 냅니다. `tone`(`success` / `error`)과 locale 독립 `key`를 넘깁니다. ScanCancelButton 만 `testId: "scan-cancel-toast"`로 덮어씁니다.
