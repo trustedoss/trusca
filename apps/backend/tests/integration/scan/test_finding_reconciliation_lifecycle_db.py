@@ -300,12 +300,14 @@ def test_rematch_keeps_finding_ids_and_a_pending_approval(
     assert summary["skipped"] is False, summary
     assert summary["current_count"] == 34, summary
 
-    after = _findings(sync_session, scan_id)
-    assert after == before, "rematch changed finding ids"
+    # The approval first: checked after the ids, a lost approval would only
+    # ever be reported as changed ids.
     approval = _approval(sync_session, approval_id)
     assert approval is not None, "rematch deleted a pending transition approval"
     assert approval.state == "pending"
     assert approval.finding_id == before[target]
+    after = _findings(sync_session, scan_id)
+    assert after == before, "rematch changed finding ids"
 
 
 # ---------------------------------------------------------------------------
@@ -334,13 +336,13 @@ def test_rerun_of_the_same_scan_keeps_a_decided_approval(
     _run_source(scan_id)
     assert _status(sync_session, scan_id) == "succeeded"
 
-    after = _findings(sync_session, scan_id)
-    assert after == before, "the re-run changed finding ids"
     approval = _approval(sync_session, approval_id)
     assert approval is not None, "the re-run deleted a decided transition approval"
     assert approval.state == "approved"
     assert approval.decided_by_user_id == user_id
     assert approval.finding_id == before[target]
+    after = _findings(sync_session, scan_id)
+    assert after == before, "the re-run changed finding ids"
 
 
 # ---------------------------------------------------------------------------
@@ -381,12 +383,13 @@ def test_a_vanished_pair_is_deleted_with_its_approval_and_nothing_else(
     summary = rematch_scan_findings.run(str(scan_id))
     assert summary["skipped"] is False, summary
 
+    kept = _approval(sync_session, kept_approval)
+    assert kept is not None, "an approval on a finding still reported was deleted"
+    assert kept.finding_id == before[kept_target]
+    assert _approval(sync_session, gone_approval) is None
     after = _findings(sync_session, scan_id)
     expected = {k: v for k, v in before.items() if k not in minimist}
     assert after == expected
-    assert _approval(sync_session, gone_approval) is None
-    kept = _approval(sync_session, kept_approval)
-    assert kept is not None and kept.finding_id == before[kept_target]
 
 
 # ---------------------------------------------------------------------------
@@ -440,15 +443,15 @@ def test_container_rerun_keeps_ids_and_approval_and_drops_a_vanished_pair(
     _redeliver(sync_session, scan_id)
     assert scan_container_task.apply(args=[str(scan_id)]).successful()
     assert _status(sync_session, scan_id) == "succeeded"
-    assert _findings(sync_session, scan_id) == before
-    assert _approval(sync_session, kept_approval) is not None
-    assert _approval(sync_session, gone_approval) is not None
+    assert _approval(sync_session, kept_approval) is not None, "re-run deleted an approval"
+    assert _approval(sync_session, gone_approval) is not None, "re-run deleted an approval"
+    assert _findings(sync_session, scan_id) == before, "re-run changed finding ids"
 
     # musl patched: its pairs and their approval go, the rest stays.
     state["report"] = _without_package(full, "musl")
     _redeliver(sync_session, scan_id)
     assert scan_container_task.apply(args=[str(scan_id)]).successful()
+    assert _approval(sync_session, kept_approval) is not None
+    assert _approval(sync_session, gone_approval) is None
     after = _findings(sync_session, scan_id)
     assert after == {k: v for k, v in before.items() if k not in set(musl)}
-    assert _approval(sync_session, gone_approval) is None
-    assert _approval(sync_session, kept_approval) is not None
