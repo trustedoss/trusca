@@ -46,17 +46,25 @@ from dataclasses import dataclass
 from datetime import UTC, datetime
 
 import structlog
-from sqlalchemy import and_, func, select, update
+from sqlalchemy import String, and_, cast, func, select, update
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import Session
+from sqlalchemy.sql import Select
 
 from core.authz import assert_team_access, group_visibility_filter, super_admin_reaches
 from core.security import CurrentUser
 from models import ComponentApproval, Project, User
 from models.component_approval import APPROVAL_STATUS_VALUES, ApprovalStatus
-from models.scan import Component  # explicit import avoids implicit lazy load
+from models.scan import (  # explicit import avoids implicit lazy load
+    Component,
+    ComponentVersion,
+    License,
+    LicenseFinding,
+    Scan,
+    ScanComponent,
+)
 
 log = structlog.get_logger("component_approval.service")
 
@@ -552,6 +560,166 @@ async def create_approval(
 
 
 # ---------------------------------------------------------------------------
+# Decided license sets (#566)
+# ---------------------------------------------------------------------------
+
+# ``raw_data.source`` of the license findings the opt-in SCANOSS stage writes.
+# That stage (5.5) runs after the approvals stage (4.5), so the set a scan
+# compares never contains them; the set a decision records must not either, or
+# a component with a SCANOSS license would differ on every scan and re-open
+# each time. Mirrors ``tasks.scan_source._SCANOSS_SOURCE`` (a contract test
+# pins the two together; importing the task module here would invert layers).
+_LATE_LICENSE_SOURCES: tuple[str, ...] = ("scanoss",)
+
+
+def _license_set_select(
+    scan_id: uuid.UUID, component_ids: Iterable[uuid.UUID]
+) -> Select[tuple[uuid.UUID, str]]:
+    """``SELECT DISTINCT component_id, license identifier`` for one scan.
+
+    The identifier is the SPDX id when the license row has one, otherwise its
+    name (a ``LicenseRef-`` custom license may carry no SPDX id). Both are
+    trimmed so stray whitespace from a tool's output cannot make the same
+    license look like a change. Findings written after the approvals stage
+    (``_LATE_LICENSE_SOURCES``) are left out, so both sides see the same
+    license sources.
+
+    Returned as a statement rather than executed because the decision route
+    runs on an async session and the scan pipeline on a sync one. Both build
+    the set from this one query and :func:`_group_license_sets`, so the set a
+    decision records and the set a re-scan compares against it cannot be
+    computed two different ways.
+    """
+    key = func.coalesce(
+        func.nullif(func.btrim(License.spdx_id), ""), func.btrim(License.name)
+    )
+    return (
+        select(ComponentVersion.component_id, key)
+        .select_from(LicenseFinding)
+        .join(License, License.id == LicenseFinding.license_id)
+        .join(ComponentVersion, ComponentVersion.id == LicenseFinding.component_version_id)
+        .where(
+            LicenseFinding.scan_id == scan_id,
+            ComponentVersion.component_id.in_(list(component_ids)),
+            func.coalesce(LicenseFinding.raw_data["source"].astext, "").not_in(
+                _LATE_LICENSE_SOURCES
+            ),
+        )
+        .distinct()
+    )
+
+
+def _group_license_sets(
+    component_ids: Iterable[uuid.UUID], rows: Iterable[tuple[uuid.UUID, str | None]]
+) -> dict[uuid.UUID, list[str]]:
+    """Fold ``(component_id, identifier)`` rows into one sorted list each.
+
+    Every requested component gets an entry; one with no license findings in
+    the scan gets an empty list, which is a recorded fact ("decided while the
+    component carried no license") and not the same as NULL ("not recorded").
+    """
+    sets: dict[uuid.UUID, set[str]] = {cid: set() for cid in component_ids}
+    for component_id, identifier in rows:
+        if identifier:
+            sets.setdefault(component_id, set()).add(identifier)
+    return {cid: sorted(ids) for cid, ids in sets.items()}
+
+
+def license_sets_for_scan(
+    session: Session, *, scan_id: uuid.UUID, component_ids: Iterable[uuid.UUID]
+) -> dict[uuid.UUID, list[str]]:
+    """The license set each component carries in *scan_id* (sync session)."""
+    ids = list(dict.fromkeys(component_ids))
+    if not ids:
+        return {}
+    rows = session.execute(_license_set_select(scan_id, ids)).tuples().all()
+    return _group_license_sets(ids, rows)
+
+
+async def current_license_set(
+    session: AsyncSession, *, project_id: uuid.UUID, component_id: uuid.UUID
+) -> list[str]:
+    """The license set a decision about *component_id* records.
+
+    Read from the project's most recent succeeded **source** scan that
+    contains the component, on any branch. That is the same kind of scan the
+    approvals stage compares against: only source scans enrol approvals, and
+    they do so on whatever ref they scanned. The project's "current" scan
+    (``services.scan_resolution``) is the wrong anchor here because it prefers
+    the main line and can be a container or SBOM scan. A decision on a
+    component found only on a feature branch, or one made after a container
+    scan, would then record an empty set and re-open on every source scan.
+
+    The most recent scan wins across branches. A component that carries
+    different licenses on two branches is therefore recorded with the set of
+    whichever branch was scanned last, and a scan of the other branch asks
+    again. With one recorded set per decision that is the conservative
+    choice: a set nobody reviewed is never treated as reviewed.
+
+    No such scan (the component was never seen by a finished source scan of
+    this project) records an empty set, and the next scan that finds it with
+    licenses re-opens it.
+    """
+    scan_id = (
+        await session.execute(
+            select(Scan.id)
+            .join(ScanComponent, ScanComponent.scan_id == Scan.id)
+            .join(ComponentVersion, ComponentVersion.id == ScanComponent.component_version_id)
+            .where(
+                Scan.project_id == project_id,
+                cast(Scan.status, String) == "succeeded",
+                cast(Scan.kind, String) == "source",
+                ComponentVersion.component_id == component_id,
+            )
+            .order_by(
+                Scan.created_at.desc(),
+                Scan.completed_at.desc().nullslast(),
+                Scan.id.desc(),
+            )
+            .limit(1)
+        )
+    ).scalar_one_or_none()
+    if scan_id is None:
+        return []
+    rows = (await session.execute(_license_set_select(scan_id, [component_id]))).tuples().all()
+    return _group_license_sets([component_id], rows)[component_id]
+
+
+def _latest_decided_license_sets(
+    session: Session, *, project_id: uuid.UUID, component_ids: list[uuid.UUID]
+) -> dict[uuid.UUID, list[str] | None]:
+    """The recorded set of each component's most recent decision in the project.
+
+    Only the most recent decision counts, ordered the way
+    ``organization_verdict_service`` resolves the project's answer. An older
+    approval for the same set does not count: if the component was approved
+    under one license, rejected under another, and then went back, the
+    project's answer is the rejection, so the queue has to ask again.
+
+    Components with no decided row are absent from the result. A decided row
+    from before migration 0093 maps to ``None``.
+    """
+    rows = session.execute(
+        select(ComponentApproval.component_id, ComponentApproval.decided_license_ids)
+        .where(
+            ComponentApproval.project_id == project_id,
+            ComponentApproval.component_id.in_(component_ids),
+            ComponentApproval.status.in_(
+                [ApprovalStatus.approved.value, ApprovalStatus.rejected.value]
+            ),
+        )
+        .order_by(
+            ComponentApproval.component_id,
+            ComponentApproval.decided_at.desc().nullslast(),
+            ComponentApproval.created_at.desc(),
+            ComponentApproval.id.desc(),
+        )
+        .distinct(ComponentApproval.component_id)
+    ).tuples().all()
+    return {component_id: decided for component_id, decided in rows}
+
+
+# ---------------------------------------------------------------------------
 # auto_create_pending_approvals — sync, system-context (scan pipeline)
 # ---------------------------------------------------------------------------
 
@@ -561,6 +729,7 @@ def apply_intake_decisions(
     *,
     project_id: uuid.UUID,
     created_component_ids: Iterable[uuid.UUID],
+    scan_id: uuid.UUID | None = None,
 ) -> int:
     """Carry an answer already given onto the approval a scan just opened.
 
@@ -576,6 +745,12 @@ def apply_intake_decisions(
     Returns how many approvals were resolved this way. Off by default with the
     intake surface, in which case there are no requests to find and this costs
     one query that returns nothing.
+
+    A carried answer is a decision like any other, so it records the license
+    set the component carries in *scan_id* (#566); the next scan with the same
+    set then leaves it alone instead of asking again. Without *scan_id* the set
+    stays NULL and the next scan re-opens the approval, as it did before the
+    set was recorded. The scan pipeline always passes it.
     """
     from services.component_intake_service import decided_intake_status_by_purl
 
@@ -588,23 +763,34 @@ def apply_intake_decisions(
         return 0
 
     rows = session.execute(
-        select(ComponentApproval.id, Component.purl)
+        select(ComponentApproval.id, ComponentApproval.component_id, Component.purl)
         .join(Component, Component.id == ComponentApproval.component_id)
         .where(
             ComponentApproval.component_id.in_(ids),
             ComponentApproval.project_id == project_id,
+            # Only the Pending rows this scan just opened. The component may
+            # also have an older decided row (a re-opened approval, #566), and
+            # rewriting that one would replace a recorded decision's time,
+            # note and license set with this carry-over's.
+            ComponentApproval.status == ApprovalStatus.pending.value,
         )
     ).all()
-    purls = [purl for _approval_id, purl in rows if purl]
+    purls = [purl for _approval_id, _component_id, purl in rows if purl]
     answered = decided_intake_status_by_purl(
         session, project_id=project_id, purls=purls
     )
     if not answered:
         return 0
 
+    license_sets: dict[uuid.UUID, list[str]] = (
+        license_sets_for_scan(session, scan_id=scan_id, component_ids=ids)
+        if scan_id is not None
+        else {}
+    )
+
     now = _now()
     resolved = 0
-    for approval_id, purl in rows:
+    for approval_id, component_id, purl in rows:
         verdict = answered.get(purl or "")
         if verdict is None:
             continue
@@ -619,6 +805,7 @@ def apply_intake_decisions(
                 # finding when they reviewed the request that preceded it.
                 decided_by_user_id=None,
                 decision_note="carried from the intake request for this package",
+                decided_license_ids=license_sets.get(component_id),
                 version=ComponentApproval.version + 1,
             )
         )
@@ -653,6 +840,14 @@ def auto_create_pending_approvals(
         (pending / under_review) approval for this project is skipped, so a
         re-run of the scan (which purges + re-creates findings) never
         double-creates.
+      * **Decided and unchanged is skipped (#566).** A component whose most
+        recent decision (approved or rejected) in this project recorded the
+        same license set it carries in *scan_id* is not asked about again.
+        An approval covers the component, not a version, so a set that
+        differs (a later version under another license) re-opens it, and so
+        does a decision with no recorded set (NULL, decided before migration
+        0093). Without *scan_id* there is no current set to compare, and every
+        component without an open approval is enrolled as before.
 
     Implementation (QA follow-up Low — was per-row SAVEPOINT, now set-based):
       The previous implementation looped one component at a time with a
@@ -696,9 +891,24 @@ def auto_create_pending_approvals(
     # one insert. ON CONFLICT would not deduplicate *within the same INSERT*
     # (two rows with identical (component_id, project_id) both pass the conflict
     # check before either commits), so the pre-INSERT de-dupe is load-bearing.
-    unique_ids = list(dict.fromkeys(component_ids))
-    if not unique_ids:
+    requested_ids = list(dict.fromkeys(component_ids))
+    if not requested_ids:
         return []
+
+    unique_ids = requested_ids
+    if scan_id is not None:
+        current_sets = license_sets_for_scan(
+            session, scan_id=scan_id, component_ids=requested_ids
+        )
+        decided_sets = _latest_decided_license_sets(
+            session, project_id=project_id, component_ids=requested_ids
+        )
+        unique_ids = [
+            cid
+            for cid in requested_ids
+            if decided_sets.get(cid) is None or decided_sets[cid] != current_sets[cid]
+        ]
+    skipped_decided = len(requested_ids) - len(unique_ids)
 
     # Match the partial unique index predicate EXACTLY (see model
     # ``ix_component_approvals_unique_open`` postgresql_where) so ON CONFLICT
@@ -708,38 +918,41 @@ def auto_create_pending_approvals(
         [ApprovalStatus.pending.value, ApprovalStatus.under_review.value]
     )
 
-    stmt = (
-        pg_insert(ComponentApproval)
-        .values(
-            [
-                {
-                    "component_id": component_id,
-                    "project_id": project_id,
-                    "team_id": team_id,
-                    "requested_by_user_id": None,  # system-created
-                    "status": ApprovalStatus.pending.value,
-                    "version": 1,
-                }
-                for component_id in unique_ids
-            ]
+    created_ids: list[uuid.UUID] = []
+    if unique_ids:
+        stmt = (
+            pg_insert(ComponentApproval)
+            .values(
+                [
+                    {
+                        "component_id": component_id,
+                        "project_id": project_id,
+                        "team_id": team_id,
+                        "requested_by_user_id": None,  # system-created
+                        "status": ApprovalStatus.pending.value,
+                        "version": 1,
+                    }
+                    for component_id in unique_ids
+                ]
+            )
+            .on_conflict_do_nothing(
+                index_elements=["component_id", "project_id"],
+                index_where=index_where,
+            )
+            .returning(ComponentApproval.component_id)
         )
-        .on_conflict_do_nothing(
-            index_elements=["component_id", "project_id"],
-            index_where=index_where,
-        )
-        .returning(ComponentApproval.component_id)
-    )
 
-    created_ids = list(session.execute(stmt).scalars().all())
+        created_ids = list(session.execute(stmt).scalars().all())
 
     log.info(
         "approval.auto_created_batch",
         project_id=str(project_id),
         team_id=str(team_id),
         scan_id=str(scan_id) if scan_id is not None else None,
-        requested=len(unique_ids),
+        requested=len(requested_ids),
         created=len(created_ids),
-        skipped=len(unique_ids) - len(created_ids),
+        skipped=len(requested_ids) - len(created_ids),
+        skipped_decided=skipped_decided,
     )
     return created_ids
 
@@ -819,6 +1032,11 @@ async def transition_approval(
         row.decided_by_user_id = actor.id
         row.decided_at = now
         row.decision_note = decision_note
+        # #566: what this decision covered, so a re-scan with the same
+        # licenses does not ask again and one with different licenses does.
+        row.decided_license_ids = await current_license_set(
+            session, project_id=row.project_id, component_id=row.component_id
+        )
 
     await session.commit()
     await session.refresh(row)
@@ -950,8 +1168,10 @@ __all__ = [
     "ApprovalTerminalState",
     "auto_create_pending_approvals",
     "create_approval",
+    "current_license_set",
     "delete_approval",
     "get_approval",
+    "license_sets_for_scan",
     "list_approvals",
     "transition_approval",
 ]

@@ -38,8 +38,8 @@ import uuid
 from datetime import datetime
 
 from sqlalchemy import CheckConstraint, DateTime, ForeignKey, Index, Integer, Text, text
+from sqlalchemy.dialects.postgresql import ARRAY, UUID
 from sqlalchemy.dialects.postgresql import ENUM as PG_ENUM
-from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from . import Base
@@ -173,6 +173,14 @@ class ComponentApproval(Base):
     )
     decided_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     decision_note: Mapped[str | None] = mapped_column(Text, nullable=True)
+    # #566 (migration 0093): the sorted license identifiers the component
+    # carried in this project when the row was decided. A re-scan skips opening
+    # a new Pending approval only when the latest decision's set equals the
+    # scan's set. NULL marks a row decided before the set was recorded; those
+    # re-open as they always did.
+    decided_license_ids: Mapped[list[str] | None] = mapped_column(
+        ARRAY(Text), nullable=True
+    )
 
     # ------------------------------------------------------------------
     # Optimistic concurrency gate (ETag)
