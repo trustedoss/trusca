@@ -394,6 +394,72 @@ async def test_sql_and_python_agree_on_the_effective_deadline(
     assert row["due_source"] == expected_source
 
 
+@pytest.mark.parametrize("session_timezone", ["UTC", "America/New_York"])
+async def test_the_imminent_boundary_does_not_move_across_dst(
+    client, session_timezone  # noqa: ANN001
+) -> None:
+    """A pinned clock whose 7-day imminent window crosses the end of daylight
+    saving time in New York (1 Nov 2026).
+
+    ``now + interval '7 days'`` is calendar arithmetic in the session zone:
+    under America/New_York it reaches 13:00 UTC on 4 Nov instead of 12:00. The
+    deadline sits at 12:30 in that hour, so the right answer is ``ok`` (it is
+    more than seven days of 24 hours away) and a calendar-day window says
+    ``imminent``. The Python twin adds a fixed ``timedelta``.
+    """
+    from sqlalchemy import String, cast, literal, select, text, update
+    from sqlalchemy.types import DateTime
+
+    from models import (
+        Organization,
+        Project,
+        Scan,
+        Team,
+        Vulnerability,
+        VulnerabilityFinding,
+    )
+    from services.vulnerability_service import _compute_sla, _sla_expressions
+
+    now = datetime(2026, 10, 28, 12, 0, tzinfo=UTC)
+    due = datetime(2026, 11, 4, 12, 30, tzinfo=UTC)
+    first_detected = due - timedelta(days=30)  # high: 30 x 24 hours
+
+    finding, _project, _team, _dev = await _seed_finding(client, severity="high")
+    factory = await _factory(client)
+    async with factory() as session:
+        await session.execute(
+            update(VulnerabilityFinding)
+            .where(VulnerabilityFinding.id == finding.id)
+            .values(first_detected_at=first_detected, due_on=None)
+        )
+        await session.commit()
+
+        await session.execute(text(f"SET LOCAL TIME ZONE '{session_timezone}'"))
+        (_fd, _sla_due, sla_status, effective, _src) = _sla_expressions(
+            Organization.timezone,
+            now_expr=literal(now, DateTime(timezone=True)),
+        )
+        row = (
+            await session.execute(
+                select(effective, sla_status, cast(Vulnerability.severity, String))
+                .select_from(VulnerabilityFinding)
+                .join(Vulnerability, Vulnerability.id == VulnerabilityFinding.vulnerability_id)
+                .join(Scan, Scan.id == VulnerabilityFinding.scan_id)
+                .join(Project, Project.id == Scan.project_id)
+                .join(Team, Team.id == Project.team_id)
+                .join(Organization, Organization.id == Team.organization_id)
+                .where(VulnerabilityFinding.id == finding.id)
+            )
+        ).one()
+        in_force = (await session.execute(text("SHOW TIME ZONE"))).scalar_one()
+
+    assert in_force == session_timezone
+    expected_due, expected_status = _compute_sla("high", first_detected, now=now)
+    assert row[0] == expected_due == due
+    assert expected_status == "ok"
+    assert row[1] == expected_status
+
+
 async def test_a_written_date_gives_an_info_finding_a_deadline(client) -> None:  # noqa: ANN001
     """`sla_status` used to be null for info severities no matter what, because
     they carry no SLA window. A written deadline is a deadline, so the status
