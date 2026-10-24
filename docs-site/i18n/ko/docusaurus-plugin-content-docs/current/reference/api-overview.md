@@ -260,6 +260,12 @@ DELETE /v1/projects/{id}/obligations/{obligation_id}/fulfilment
 GET    /v1/projects/{id}/obligation-fulfilments
 GET    /v1/projects/{id}/gate-result
 
+GET    /v1/gate-policies/teams/{team_id}     ETag 반환
+PUT    /v1/gate-policies/teams/{team_id}     # If-Match / If-None-Match 선택, 불일치 시 409
+DELETE /v1/gate-policies/teams/{team_id}
+PUT    /v1/gate-policies/org/{organization_id}   super_admin 전용, 같은 전제 조건
+GET    /v1/gate-policies/effective/{project_id}
+
 GET    /v1/scans                             목록
 GET    /v1/scans/{id}
 POST   /v1/scans/{id}/post-pr-comment
@@ -327,6 +333,28 @@ DELETE /v1/admin/backup/{name}
 ### Optimistic concurrency
 
 상태 워크플로 도메인 행을 변경하는 엔드포인트는 행의 현재 `version` 정수를 담은 `If-Match` 요청 헤더를 받습니다(필수). `PATCH /v1/approvals/{id}/transition`과 `PATCH /v1/vulnerability_findings/{finding_id}/status` 모두 이 패턴을 사용합니다. 불일치는 `412 Precondition Failed`와 현재 버전을 포함한 Problem Details 본문을 반환합니다.
+
+빌드 게이트 정책은 이와 달리 선택적인 전제 조건을 씁니다. 다음 절에서 설명합니다.
+
+### 빌드 게이트 정책 {#gate-policies}
+
+팀 자체의 빌드 게이트 정책은 `/v1/gate-policies/teams/{team_id}`에, 조직 기본값은 `/v1/gate-policies/org/{organization_id}`에 있습니다. PUT은 행 전체를 바꿉니다. 빠뜨린 필드는 `null`로 저장되고, 팀이 그 필드를 더 이상 직접 정하지 않는다는 뜻이 됩니다. 필드 하나만 바꾸려면 행을 읽고 그 필드만 고친 다음 `name`을 포함한 모든 필드를 다시 보냅니다.
+
+`GET /v1/gate-policies/teams/{team_id}`와 성공한 모든 PUT은 `ETag` 헤더를 돌려줍니다. 다음 PUT에서 이 값을 `If-Match`로 보내면 그사이 다른 사람이 저장한 내용을 덮어쓰지 않습니다. 읽은 결과가 "아직 행 없음"이었다면 대신 `If-None-Match: *`를 보냅니다. 그사이 아무도 행을 만들지 않았을 때만 새로 만듭니다. 두 헤더 모두 선택 사항입니다. 둘 다 없는 PUT은 이 헤더를 지원하기 전과 같이 조건 없이 행을 바꿉니다.
+
+| 요청 | 응답 | Problem `type` |
+|---|---|---|
+| PUT, 전제 조건 헤더 없음 | `200`, 행 교체 | |
+| PUT, 현재 `ETag`와 같은 `If-Match` | `200`, 행 교체, 새 `ETag` | |
+| PUT, 더 이상 맞지 않는 `If-Match`(다른 저장, 행 삭제, 잘못된 형식) | `409` | `https://docs.trustedoss.io/errors/gate-policy-conflict` |
+| PUT, 행이 이미 있는데 `If-None-Match: *` | `409` | `https://docs.trustedoss.io/errors/gate-policy-conflict` |
+| GET, 볼 수 있는 팀인데 자체 행이 없음 | `404` | `https://docs.trustedoss.io/errors/gate-policy-not-set` |
+| DELETE, 관리하는 팀인데 자체 행이 없음 | `404` | `https://docs.trustedoss.io/errors/gate-policy-not-set` |
+| GET, PUT 또는 DELETE, 존재하지 않는 팀 | `404` | `about:blank` |
+| GET, 볼 수 없는 팀 | `404` | `about:blank` |
+| PUT 또는 DELETE, 존재하지만 관리 권한이 없는 팀 | `403` | `about:blank` |
+
+팀이 조직 설정을 따른다는 뜻은 `gate-policy-not-set` 404뿐입니다. 다른 404는 빈 정책이 아니라 틀렸거나 접근할 수 없는 팀 ID로 처리합니다. `403`과 `404`는 항상 `409`보다 먼저 판정하므로, 편집 권한이 없는 호출자는 낡은 태그로 팀에 대해 아무것도 알아낼 수 없습니다. `409`를 받으면 정책을 다시 읽고 변경을 다시 적용한 뒤 새 `ETag`로 저장합니다. 포털의 정책 편집 화면은 이 과정을 대신합니다. 다른 사람이 먼저 저장했다는 메시지와 다시 불러오기 버튼을 보여 줍니다.
 
 ## WebSocket
 

@@ -3,22 +3,25 @@
 /**
  * Queries and mutations for build-gate policy.
  *
- * A 404 from the team endpoint is an answer, not a failure: it means the team
- * has written no row and follows its organization. Treating it as an error
- * would put a red state on a screen whose correct reading is "nothing to
- * override here yet", so it is surfaced as absence and never retried.
+ * The `not_set` 404 from the team endpoint is an answer, not a failure: it
+ * means the team has written no row and follows its organization. Treating it
+ * as an error would put a red state on a screen whose correct reading is
+ * "nothing to override here yet", so it is surfaced as absence and never
+ * retried.
  */
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
 import { ProblemError } from "@/lib/problem";
 import {
   type EffectiveGatePolicyOut,
-  type GatePolicyOut,
+  type GatePolicyBasis,
   type GatePolicyUpsertIn,
+  type TeamGatePolicyRead,
   deleteTeamGatePolicy,
   getEffectiveGatePolicy,
   getEpssAvailability,
   getTeamGatePolicy,
+  isGatePolicyNotSet,
   upsertOrgGatePolicy,
   upsertTeamGatePolicy,
 } from "@/lib/gatePoliciesApi";
@@ -40,14 +43,17 @@ function retryNon4xx(failureCount: number, error: Error): boolean {
 }
 
 /**
- * The team's own row, or `null` when it has none.
+ * The team's own row and its entity tag, or `null` when it has none.
  *
  * The null is the useful part: the editor renders inherited values and offers
  * to create an override, rather than showing an empty form that looks like the
- * team has switched everything off.
+ * team has switched everything off. Only the `not_set` problem type means
+ * that; any other 404 (a team that is gone, or hidden from this user) is a
+ * failed read, because rendering it as "follows the organization" would show
+ * an editable form for a team the user cannot reach.
  */
 export function useTeamGatePolicy(teamId: string | null) {
-  return useQuery<GatePolicyOut | null, Error>({
+  return useQuery<TeamGatePolicyRead | null, Error>({
     queryKey: teamGatePolicyQueryKey(teamId),
     enabled: teamId !== null,
     retry: retryNon4xx,
@@ -55,7 +61,7 @@ export function useTeamGatePolicy(teamId: string | null) {
       try {
         return await getTeamGatePolicy(teamId as string);
       } catch (error) {
-        if (error instanceof ProblemError && error.status === 404) {
+        if (isGatePolicyNotSet(error)) {
           return null;
         }
         throw error;
@@ -82,8 +88,17 @@ export function useEffectiveGatePolicy(projectId: string | null) {
 export function useUpsertTeamGatePolicy() {
   const client = useQueryClient();
   return useMutation({
-    mutationFn: ({ teamId, payload }: { teamId: string; payload: GatePolicyUpsertIn }) =>
-      upsertTeamGatePolicy(teamId, payload),
+    // `basis` is what the editor read. It is required here, unlike in the API
+    // helper, so no save from the editor can go out without a precondition.
+    mutationFn: ({
+      teamId,
+      payload,
+      basis,
+    }: {
+      teamId: string;
+      payload: GatePolicyUpsertIn;
+      basis: GatePolicyBasis;
+    }) => upsertTeamGatePolicy(teamId, payload, basis),
     onSuccess: (_data, { teamId }) => {
       // Both keys: the row changed, and so did what any project under this
       // team is judged by. Leaving the effective view stale would show the

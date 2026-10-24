@@ -19,7 +19,12 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Switch } from "@/components/ui/switch";
-import { APPROVABLE_STATUSES, type GatePolicyUpsertIn } from "@/lib/gatePoliciesApi";
+import {
+  APPROVABLE_STATUSES,
+  type GatePolicyBasis,
+  type GatePolicyUpsertIn,
+  isGatePolicyConflict,
+} from "@/lib/gatePoliciesApi";
 
 import {
   useDeleteTeamGatePolicy,
@@ -77,8 +82,11 @@ function draftFrom(
   };
 }
 
-function payloadFrom(draft: Draft): GatePolicyUpsertIn {
+function payloadFrom(draft: Draft, name: string | null): GatePolicyUpsertIn {
   return {
+    // The editor has no field for the name, so it sends back the one it read.
+    // Leaving it out stored NULL, because the backend replaces the whole row.
+    name,
     // Null, not omitted: the backend replaces the row wholesale, so a field
     // sent as null is how the team stops overriding it.
     epss_threshold: draft.epssOverridden && draft.epss !== "" ? Number(draft.epss) : null,
@@ -99,11 +107,25 @@ export function GatePolicyPanel({ teamId, canEdit }: GatePolicyPanelProps) {
   // team's row wholesale, so a draft that was never seeded from a successful
   // read (still loading, read failed, or seeded for the previous team) must
   // never reach the mutation: it would overwrite the real policy with blanks.
-  const [seeded, setSeeded] = useState<{ teamId: string; draft: Draft } | null>(null);
+  // The seed also keeps what the draft was built from: the row's name and its
+  // entity tag. A save sends that tag back, so a save somebody else made after
+  // this read is refused instead of overwritten.
+  const [seeded, setSeeded] = useState<{
+    teamId: string;
+    draft: Draft;
+    name: string | null;
+    basis: GatePolicyBasis;
+  } | null>(null);
 
   useEffect(() => {
     if (query.isSuccess && teamId !== null) {
-      setSeeded({ teamId, draft: draftFrom(query.data) });
+      const read = query.data;
+      setSeeded({
+        teamId,
+        draft: draftFrom(read?.policy ?? null),
+        name: read?.policy.name ?? null,
+        basis: { etag: read?.etag ?? null },
+      });
     }
   }, [query.isSuccess, query.data, teamId]);
 
@@ -146,6 +168,14 @@ export function GatePolicyPanel({ teamId, canEdit }: GatePolicyPanelProps) {
     setSeeded((s) => (s === null ? s : { ...s, draft: update(s.draft) }));
 
   const hasRow = query.data !== null && query.data !== undefined;
+  const conflict = isGatePolicyConflict(upsert.error);
+  // Reloading discards this draft on purpose: the row it was built from is
+  // no longer the one on the server, and the edit has to be reapplied to what
+  // the other person saved.
+  const reload = () => {
+    upsert.reset();
+    void query.refetch();
+  };
   const epssInvalid =
     draft.epssOverridden &&
     draft.epss !== "" &&
@@ -314,13 +344,49 @@ export function GatePolicyPanel({ teamId, canEdit }: GatePolicyPanelProps) {
         </fieldset>
       </div>
 
+      {conflict ? (
+        <Alert variant="destructive" data-testid="gate-policy-conflict">
+          <AlertDescription className="space-y-2">
+            <p>{t("gate.conflict")}</p>
+            <Button
+              type="button"
+              size="sm"
+              variant="outline"
+              onClick={reload}
+              data-testid="gate-policy-conflict-reload"
+            >
+              {t("gate.conflict_reload")}
+            </Button>
+          </AlertDescription>
+        </Alert>
+      ) : null}
+
       {canEdit ? (
         <div className="flex items-center gap-2">
           <Button
             type="button"
             size="sm"
             disabled={epssInvalid || upsert.isPending}
-            onClick={() => upsert.mutate({ teamId, payload: payloadFrom(draft) })}
+            onClick={() =>
+              upsert.mutate(
+                {
+                  teamId,
+                  payload: payloadFrom(draft, seeded.name),
+                  basis: seeded.basis,
+                },
+                {
+                  // The refetch that follows a save takes a round trip. Until
+                  // it lands, the next save must carry the tag this save
+                  // produced, or it is refused as a conflict with itself.
+                  onSuccess: (saved) =>
+                    setSeeded((s) =>
+                      s !== null && s.teamId === teamId
+                        ? { ...s, name: saved.policy.name, basis: { etag: saved.etag } }
+                        : s,
+                    ),
+                },
+              )
+            }
             data-testid="gate-policy-save"
           >
             {t("gate.save")}

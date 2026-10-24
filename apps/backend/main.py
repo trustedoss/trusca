@@ -349,7 +349,16 @@ app.add_middleware(
     # cross-origin client (split deployment, or local dev on separate ports)
     # needs `if-match` in the allowlist or the browser preflight 400s and the
     # mutation never fires. (Surfaced by the docs-uat cross-origin approvals run.)
-    allow_headers=["authorization", "content-type", "if-match", "x-request-id"],
+    # `if-none-match` is the create-only precondition the gate policy editor
+    # sends on a team's first save (`If-None-Match: *`); missing here, that
+    # preflight 400s cross-origin and the first save never goes out.
+    allow_headers=[
+        "authorization",
+        "content-type",
+        "if-match",
+        "if-none-match",
+        "x-request-id",
+    ],
     # PR #14: surface Content-Disposition so the SPA can read the
     # operator-friendly filename of CSV streaming downloads (admin audit
     # export). Without this, axios cannot read the header and the browser

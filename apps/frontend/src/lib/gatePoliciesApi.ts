@@ -12,6 +12,7 @@
 import type { AxiosRequestConfig } from "axios";
 
 import { api } from "@/lib/api";
+import { ProblemError } from "@/lib/problem";
 
 /**
  * Statuses an organization may put behind a second person. Mirrors the backend
@@ -106,30 +107,96 @@ export interface EffectiveGatePolicyOut {
 }
 
 /**
- * A team's own row. The backend `404`s when the team has written none, which
- * means "follows the organization" rather than an error: callers render the
- * inherited values and offer to create a row.
+ * Problem `type` URIs the gate policy endpoints emit beyond plain 404 / 403.
+ * Mirrors the backend constants; both are asserted equal to
+ * `tests/contracts/gate-policy-problem-types.json`.
+ */
+export const GATE_POLICY_PROBLEM_TYPES = {
+  /** A team the caller can see that has written no row of its own. */
+  not_set: "https://docs.trustedoss.io/errors/gate-policy-not-set",
+  /** A save refused because the row changed after it was read. */
+  conflict: "https://docs.trustedoss.io/errors/gate-policy-conflict",
+} as const;
+
+/** True for the "this team follows its organization" answer, and only that. */
+export function isGatePolicyNotSet(error: unknown): boolean {
+  return (
+    error instanceof ProblemError &&
+    error.status === 404 &&
+    error.problem?.type === GATE_POLICY_PROBLEM_TYPES.not_set
+  );
+}
+
+/** True when a save was refused because somebody else saved first. */
+export function isGatePolicyConflict(error: unknown): boolean {
+  return (
+    error instanceof ProblemError &&
+    error.status === 409 &&
+    error.problem?.type === GATE_POLICY_PROBLEM_TYPES.conflict
+  );
+}
+
+/** A team's row together with the entity tag that identifies this version of it. */
+export interface TeamGatePolicyRead {
+  policy: GatePolicyOut;
+  /** The `ETag` header exactly as sent, quotes included. Opaque. */
+  etag: string;
+}
+
+/**
+ * A team's own row. The backend `404`s with the `not_set` type when the team
+ * has written none, which means "follows the organization" rather than an
+ * error: callers render the inherited values and offer to create a row.
  */
 export async function getTeamGatePolicy(
   teamId: string,
   config?: AxiosRequestConfig,
-): Promise<GatePolicyOut> {
-  const { data } = await api.get<GatePolicyOut>(
+): Promise<TeamGatePolicyRead> {
+  const response = await api.get<GatePolicyOut>(
     `/v1/gate-policies/teams/${teamId}`,
     config,
   );
-  return data;
+  const etag = (response.headers["etag"] as string | undefined) ?? "";
+  return { policy: response.data, etag };
+}
+
+/**
+ * What the editor last read, which the save must still match.
+ *
+ * `etag` is the tag of the row it read; `null` means it read "no row yet",
+ * so the save asks to create one and is refused if somebody created it in
+ * the meantime. Either way a save made by somebody else between the read and
+ * this write is answered with 409 instead of being overwritten.
+ */
+export interface GatePolicyBasis {
+  etag: string | null;
+}
+
+function preconditionHeaders(basis: GatePolicyBasis | undefined): Record<string, string> {
+  if (basis === undefined) return {};
+  if (basis.etag === null) return { "If-None-Match": "*" };
+  // A read that came back without a tag (a proxy that strips the header, or a
+  // cross-origin setup that does not expose it) has nothing to send. An empty
+  // If-Match would be refused on every save, so the write falls back to the
+  // unconditional one the API accepts without the header.
+  if (basis.etag === "") return {};
+  return { "If-Match": basis.etag };
 }
 
 export async function upsertTeamGatePolicy(
   teamId: string,
   payload: GatePolicyUpsertIn,
-): Promise<GatePolicyOut> {
-  const { data } = await api.put<GatePolicyOut>(
+  basis?: GatePolicyBasis,
+): Promise<TeamGatePolicyRead> {
+  const response = await api.put<GatePolicyOut>(
     `/v1/gate-policies/teams/${teamId}`,
     payload,
+    { headers: preconditionHeaders(basis) },
   );
-  return data;
+  // The saved row's tag, so the editor's next save is based on this one and
+  // not refused as a conflict with the caller's own previous save.
+  const etag = (response.headers["etag"] as string | undefined) ?? "";
+  return { policy: response.data, etag };
 }
 
 export async function upsertOrgGatePolicy(

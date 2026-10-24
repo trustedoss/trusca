@@ -27,6 +27,12 @@ reach a state-derived 409:
                                           ServiceAccountUnowned)
   - approval      × terminal state     → ApprovalNotFound (not ApprovalTerminalState /
                                           ApprovalInvalidTransition)
+  - gate policy write × stale If-Match / If-None-Match on a row
+                                       → GatePolicyForbidden / GatePolicyScopeNotFound
+                                          (not GatePolicyConflict)
+  - gate policy read  × team with no row, for a stranger
+                                       → GatePolicyScopeNotFound (not the
+                                          "not set" answer a member gets)
 
 The two sbom-ingest rows pin the NEW 409 surfaces this feature introduces
 (``POST /v1/projects/{id}/sbom-ingest``): the endpoint reuses
@@ -58,6 +64,7 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_asyn
 
 from core.security import CurrentUser
 from models import Team, VulnerabilityFinding
+from services.gate_policy_service import WritePrecondition
 from tests._db_required import migrate_to_head
 from tests._helpers import (
     make_membership,
@@ -693,3 +700,153 @@ async def test_an_outsider_asking_about_an_unowned_account_gets_404(
 
     with pytest.raises(ServiceAccountNotFound):
         await assert_may_issue_for(db_session, actor, account.id)
+
+
+# ---------------------------------------------------------------------------
+# gate policy write × stale precondition
+# ---------------------------------------------------------------------------
+
+_GATE_STATES = ("stale_if_match", "create_only_on_existing_row", "if_match_on_no_row")
+
+
+async def _gate_policy_scene(
+    db_session: AsyncSession, *, caller: str, state: str
+) -> tuple[CurrentUser, uuid.UUID, WritePrecondition]:
+    """A team, its policy row in ``state``, and a caller of kind ``caller``.
+
+    Returns the caller, the team id to write, and the precondition that would
+    be refused with 409 for the team's own administrator.
+    """
+    from schemas.gate_policy import GatePolicyUpsertIn
+    from services.gate_policy_service import WritePrecondition, upsert_team_policy
+
+    org = await make_organization(db_session)
+    owning_team = await make_team(db_session, organization=org)
+    other_team = await make_team(db_session, organization=org)
+    admin_user = await make_user(db_session)
+    await make_membership(db_session, user=admin_user, team=owning_team, role="group_admin")
+    admin = await principal_loaded_from_db(db_session, user=admin_user)
+
+    if state != "if_match_on_no_row":
+        await upsert_team_policy(
+            db_session,
+            admin,
+            team_id=owning_team.id,
+            payload=GatePolicyUpsertIn(epss_threshold=0.5),
+        )
+
+    precondition = (
+        WritePrecondition(if_none_match_any=True)
+        if state == "create_only_on_existing_row"
+        else WritePrecondition(if_match=("0",))
+    )
+
+    if caller == "team_admin":
+        return admin, owning_team.id, precondition
+    if caller == "unknown_team":
+        return admin, uuid.uuid4(), precondition
+    user = await make_user(db_session)
+    if caller == "viewer_member":
+        await make_membership(db_session, user=user, team=owning_team, role="viewer")
+    elif caller == "other_team_admin":
+        await make_membership(db_session, user=user, team=other_team, role="group_admin")
+    else:
+        await make_membership(db_session, user=user, team=other_team, role="developer")
+    return await principal_loaded_from_db(db_session, user=user), owning_team.id, precondition
+
+
+@pytest.mark.parametrize("state", _GATE_STATES)
+@pytest.mark.parametrize(
+    ("caller", "expected"),
+    [
+        ("outsider_developer", "GatePolicyForbidden"),
+        ("other_team_admin", "GatePolicyForbidden"),
+        ("viewer_member", "GatePolicyForbidden"),
+        ("unknown_team", "GatePolicyScopeNotFound"),
+        # The control: for the team's own administrator the same state IS the
+        # 409. Without it every row above could pass because the state never
+        # produced a conflict at all.
+        ("team_admin", "GatePolicyConflict"),
+    ],
+)
+async def test_gate_policy_write_answers_permission_before_the_precondition(
+    db_session: AsyncSession, caller: str, expected: str, state: str
+) -> None:
+    """A refused precondition says the row exists (or not) and has moved on.
+
+    That is the owner's business. A caller who may not write must get the same
+    answer whatever tag it sent, or the 409 becomes a way to learn whether a
+    team has a policy and when it last changed.
+    """
+    from schemas.gate_policy import GatePolicyUpsertIn
+    from services import gate_policy_service
+
+    actor, team_id, precondition = await _gate_policy_scene(
+        db_session, caller=caller, state=state
+    )
+
+    with pytest.raises(gate_policy_service.GatePolicyError) as raised:
+        await gate_policy_service.upsert_team_policy(
+            db_session,
+            actor,
+            team_id=team_id,
+            payload=GatePolicyUpsertIn(epss_threshold=0.9),
+            precondition=precondition,
+        )
+    assert type(raised.value).__name__ == expected
+
+
+async def test_gate_policy_org_write_answers_permission_before_the_precondition(
+    db_session: AsyncSession,
+) -> None:
+    """The organization default: only a super admin, whatever the tag says."""
+    from schemas.gate_policy import GatePolicyUpsertIn
+    from services.gate_policy_service import (
+        GatePolicyForbidden,
+        WritePrecondition,
+        upsert_org_policy,
+    )
+
+    actor, owning_team = await _outsider_and_resource_team(db_session)
+
+    with pytest.raises(GatePolicyForbidden):
+        await upsert_org_policy(
+            db_session,
+            actor,
+            organization_id=owning_team.organization_id,
+            payload=GatePolicyUpsertIn(epss_threshold=0.9),
+            precondition=WritePrecondition(if_match=("0",)),
+        )
+
+
+@pytest.mark.parametrize("caller", ["outsider_developer", "unknown_team"])
+async def test_gate_policy_read_of_a_rowless_team_hides_the_team_first(
+    db_session: AsyncSession, caller: str
+) -> None:
+    """"No row yet" is a fact about a team, so only somebody who sees it hears it.
+
+    The router turns ``None`` into the not-set problem type and a scope miss
+    into the plain 404. A stranger has to reach the second, or the distinct
+    type confirms the team exists.
+    """
+    from services.gate_policy_service import GatePolicyScopeNotFound, get_team_policy
+
+    actor, team_id, _ = await _gate_policy_scene(
+        db_session, caller=caller, state="if_match_on_no_row"
+    )
+
+    with pytest.raises(GatePolicyScopeNotFound):
+        await get_team_policy(db_session, actor, team_id=team_id)
+
+
+async def test_gate_policy_read_of_a_rowless_team_is_none_for_a_member(
+    db_session: AsyncSession,
+) -> None:
+    """The control for the test above: a member does get the "no row" answer."""
+    from services.gate_policy_service import get_team_policy
+
+    actor, team_id, _ = await _gate_policy_scene(
+        db_session, caller="viewer_member", state="if_match_on_no_row"
+    )
+
+    assert await get_team_policy(db_session, actor, team_id=team_id) is None
