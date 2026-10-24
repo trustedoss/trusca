@@ -129,7 +129,7 @@ That surface is **off unless a deployment turns it on** (`INTAKE_REQUESTS_ENABLE
 
 Where it is on, **Intake** appears in the sidebar:
 
-1. Anybody on the project's team files a request, including at the lowest grade. The person who wants to add a dependency is usually not the person who decides, and a queue only an administrator can file into is one people route around.
+1. Anybody on the project's team files a request, including at the lowest grade. The person who wants to add a dependency is usually not the person who decides, and a queue only an administrator can file into is one people route around. The form asks which project the package is for: pick it from the list, or type part of its name, slug or Git URL to search.
 2. The request carries a **purl** (`pkg:npm/lodash`), not a package name. The purl is what a later scan matches the answer against; a name would be answered and then never found again.
 3. A team administrator moves it through the same four states an approval uses, for the same reason: it is the same judgement about the same package, asked earlier.
 4. **When a scan later finds that package, the answer is carried onto the approval it opens.** Somebody who asked first is not asked again. Both answers carry: a package the team refused does not come back as a fresh question.

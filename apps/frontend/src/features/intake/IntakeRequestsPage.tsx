@@ -28,6 +28,10 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Textarea } from "@/components/ui/textarea";
 import { useToast } from "@/components/ui/toast";
 import { useDeploymentFeatures } from "@/features/about/api/useDeploymentFeatures";
+import {
+  ProjectCombobox,
+  type ProjectComboboxSelection,
+} from "@/features/intake/ProjectCombobox";
 import type { ApprovalStatus } from "@/lib/approvalsApi";
 import {
   type IntakeRequestListOut,
@@ -47,7 +51,9 @@ export function IntakeRequestsPage() {
   const activeTeamId = useUIStore((s) => s.activeTeamId);
 
   const [searchParams] = useSearchParams();
-  const [projectId, setProjectId] = useState("");
+  const [project, setProject] = useState<ProjectComboboxSelection | null>(
+    null,
+  );
   // Carried from the package lookup page's "ask about this package" CTA
   // (`?purl=<purl>`). The lookup page always sends a versionless purl, but
   // this field stays free text either way, so somebody arriving with a
@@ -64,7 +70,7 @@ export function IntakeRequestsPage() {
   const ask = useMutation({
     mutationFn: () =>
       openIntakeRequest({
-        project_id: projectId.trim(),
+        project_id: project?.id ?? "",
         purl: purl.trim(),
         justification: justification.trim(),
       }),
@@ -127,18 +133,17 @@ export function IntakeRequestsPage() {
           data-testid="intake-ask-form"
           onSubmit={(event) => {
             event.preventDefault();
-            if (projectId.trim() && purl.trim()) ask.mutate();
+            if (project && purl.trim()) ask.mutate();
           }}
         >
           <div className="space-y-1">
             <Label htmlFor="intake-project" className="text-xs">
               {t("field.project")}
             </Label>
-            <Input
-              id="intake-project"
-              value={projectId}
-              onChange={(event) => setProjectId(event.target.value)}
-              data-testid="intake-project"
+            <ProjectCombobox
+              triggerId="intake-project"
+              selected={project}
+              onSelect={setProject}
             />
           </div>
           <div className="space-y-1">
@@ -168,7 +173,7 @@ export function IntakeRequestsPage() {
           <Button
             type="submit"
             size="sm"
-            disabled={!projectId.trim() || !purl.trim() || ask.isPending}
+            disabled={!project || !purl.trim() || ask.isPending}
             data-testid="intake-ask"
           >
             {t("ask")}

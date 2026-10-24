@@ -7,14 +7,17 @@
  *   - empty fields are sent as null, not as empty strings.
  *   - a record somebody else owns is not silently taken over.
  *   - a refusal is shown rather than swallowed.
+ *   - the completion stamp is written in the app's language, not the browser's.
  */
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { ObligationFulfilmentSummary } from "@/features/projects/api/obligationsApi";
 import { ObligationFulfilmentEditor } from "@/features/projects/components/ObligationFulfilmentEditor";
+import { formatAbsoluteTime } from "@/lib/absoluteTime";
+import i18n from "@/lib/i18n";
 import { ProblemError } from "@/lib/problem";
 import { useAuthStore } from "@/stores/authStore";
 
@@ -208,5 +211,26 @@ describe("ObligationFulfilmentEditor", () => {
     await userEvent.click(screen.getByTestId("obligation-fulfilment-clear"));
 
     await waitFor(() => expect(mockedClear).toHaveBeenCalledWith("proj-1", "obg-1"));
+  });
+
+  describe("completion stamp", () => {
+    afterEach(async () => {
+      await i18n.changeLanguage("en");
+    });
+
+    it("formats the completion time in the app's language, not the browser's", async () => {
+      const completedAt = "2026-08-19T00:00:00Z";
+      const korean = formatAbsoluteTime(completedAt, "ko");
+      // The test runtime's own locale is English. If the two renderings were
+      // the same, dropping the locale would go unnoticed here.
+      expect(korean).not.toBe(formatAbsoluteTime(completedAt, undefined));
+
+      await i18n.changeLanguage("ko");
+      renderEditor(existing({ status: "done", completed_at: completedAt }));
+
+      expect(
+        screen.getByTestId("obligation-fulfilment-completed-at"),
+      ).toHaveTextContent(korean);
+    });
   });
 });

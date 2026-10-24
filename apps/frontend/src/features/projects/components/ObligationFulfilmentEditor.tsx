@@ -14,6 +14,7 @@ import {
   useRecordObligationFulfilment,
 } from "@/features/projects/api/useObligationFulfilment";
 import { ObligationFulfilmentBadge } from "@/features/projects/components/ObligationFulfilmentBadge";
+import { formatAbsoluteTime } from "@/lib/absoluteTime";
 import {
   OBLIGATION_FULFILMENT_STATUSES,
   type ObligationFulfilmentStatus,
@@ -50,7 +51,8 @@ export function ObligationFulfilmentEditor({
   obligationId,
   fulfilment,
 }: ObligationFulfilmentEditorProps) {
-  const { t } = useTranslation("project_detail");
+  const { t, i18n } = useTranslation("project_detail");
+  const locale = i18n.resolvedLanguage ?? i18n.language;
   const currentUserId = useAuthStore((state) => state.user?.id ?? null);
   const record = useRecordObligationFulfilment(projectId, obligationId);
   const clear = useClearObligationFulfilment(projectId, obligationId);
@@ -264,7 +266,9 @@ export function ObligationFulfilmentEditor({
           data-testid="obligation-fulfilment-completed-at"
         >
           {t("obligations.fulfilment.completed_at", {
-            when: new Date(fulfilment.completed_at).toLocaleString(),
+            // The app's language, not the browser's: a bare
+            // toLocaleString() printed English dates in a Korean session.
+            when: formatAbsoluteTime(fulfilment.completed_at, locale),
           })}
         </p>
       ) : null}

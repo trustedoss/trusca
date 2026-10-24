@@ -106,7 +106,11 @@ test.describe("@package-lookup package lookup asks about the result", () => {
 
     const intake = new IntakeHarness(page);
     await intake.expectSurfacePresent();
-    await intake.ask(seed.project_ids[0], "pkg:npm/lodash", "pulled from the lookup result");
+    await intake.ask(
+      { id: seed.project_ids[0], name: seed.project_names[0] },
+      "pkg:npm/lodash",
+      "pulled from the lookup result",
+    );
     await intake.expectRequestFor("pkg:npm/lodash");
   });
 });

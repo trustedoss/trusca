@@ -19,6 +19,7 @@ const listIntakeRequests = vi.fn();
 const openIntakeRequest = vi.fn();
 const transitionIntakeRequest = vi.fn();
 const useDeploymentFeatures = vi.fn();
+const listProjects = vi.fn();
 
 vi.mock("@/lib/intakeRequestsApi", () => ({
   listIntakeRequests: (...args: unknown[]) => listIntakeRequests(...args),
@@ -26,6 +27,17 @@ vi.mock("@/lib/intakeRequestsApi", () => ({
   transitionIntakeRequest: (...args: unknown[]) =>
     transitionIntakeRequest(...args),
 }));
+
+vi.mock("@/lib/projectsApi", async () => {
+  const actual =
+    await vi.importActual<typeof import("@/lib/projectsApi")>(
+      "@/lib/projectsApi",
+    );
+  return {
+    ...actual,
+    listProjects: (...args: unknown[]) => listProjects(...args),
+  };
+});
 
 vi.mock("@/features/about/api/useDeploymentFeatures", () => ({
   useDeploymentFeatures: () => useDeploymentFeatures(),
@@ -35,7 +47,8 @@ vi.mock("react-i18next", () => ({
   // The i18n instance too: RelativeTime reads resolvedLanguage to format, and
   // a mock with only `t` fails inside a child rather than where it was written.
   useTranslation: () => ({
-    t: (key: string) => key,
+    t: (key: string, opts?: Record<string, unknown>) =>
+      opts && "count" in opts ? `${key}:${String(opts.count)}` : key,
     i18n: { resolvedLanguage: "en", language: "en" },
   }),
 }));
@@ -59,6 +72,14 @@ function row(overrides: Record<string, unknown> = {}) {
   };
 }
 
+function project(id: string, name: string) {
+  return { id, name, slug: name.toLowerCase().replace(/\s+/g, "-") };
+}
+
+function projectPage(items: ReturnType<typeof project>[], total = items.length) {
+  return { items, total, page: 1, size: 20 };
+}
+
 function renderPage(initialUrl = "/intake") {
   const client = new QueryClient({
     defaultOptions: { queries: { retry: false } },
@@ -78,6 +99,10 @@ describe("IntakeRequestsPage", () => {
     openIntakeRequest.mockReset();
     transitionIntakeRequest.mockReset();
     useDeploymentFeatures.mockReset();
+    listProjects.mockReset();
+    listProjects.mockResolvedValue(
+      projectPage([project("p-1", "Payments API"), project("p-2", "Web Shop")]),
+    );
   });
 
   it("says the deployment does not use this, rather than showing an empty queue", async () => {
@@ -101,13 +126,15 @@ describe("IntakeRequestsPage", () => {
     expect(screen.queryByTestId("intake-disabled")).not.toBeInTheDocument();
   });
 
-  it("asks with what was typed in", async () => {
+  it("asks for the project picked by name, sending its id", async () => {
     useDeploymentFeatures.mockReturnValue({ intake_requests: true });
     listIntakeRequests.mockResolvedValue({ items: [], total: 0 });
     openIntakeRequest.mockResolvedValue(row());
     renderPage();
 
-    await userEvent.type(await screen.findByTestId("intake-project"), "p-1");
+    await userEvent.click(await screen.findByTestId("intake-project"));
+    await userEvent.click(await screen.findByText("Web Shop"));
+    expect(screen.getByTestId("intake-project")).toHaveTextContent("Web Shop");
     await userEvent.type(screen.getByTestId("intake-purl"), "pkg:npm/lodash");
     await userEvent.type(
       screen.getByTestId("intake-justification"),
@@ -117,9 +144,82 @@ describe("IntakeRequestsPage", () => {
 
     await waitFor(() => expect(openIntakeRequest).toHaveBeenCalled());
     expect(openIntakeRequest.mock.calls[0][0]).toMatchObject({
-      project_id: "p-1",
+      project_id: "p-2",
       purl: "pkg:npm/lodash",
     });
+  });
+
+  it("cannot ask until a project is picked", async () => {
+    useDeploymentFeatures.mockReturnValue({ intake_requests: true });
+    listIntakeRequests.mockResolvedValue({ items: [], total: 0 });
+    renderPage("/intake?purl=pkg%3Anpm%2Flodash");
+
+    expect(await screen.findByTestId("intake-ask")).toBeDisabled();
+    // Nor does a page that is only read go listing projects it never shows.
+    expect(listProjects).not.toHaveBeenCalled();
+
+    await userEvent.click(screen.getByTestId("intake-project"));
+    await userEvent.click(await screen.findByText("Payments API"));
+
+    expect(screen.getByTestId("intake-ask")).toBeEnabled();
+  });
+
+  it("names the picker with its label and works from the keyboard", async () => {
+    useDeploymentFeatures.mockReturnValue({ intake_requests: true });
+    listIntakeRequests.mockResolvedValue({ items: [], total: 0 });
+    renderPage();
+
+    const picker = await screen.findByRole("combobox", { name: "field.project" });
+    picker.focus();
+    await userEvent.keyboard("{Enter}");
+    await screen.findByText("Payments API");
+    // cmdk highlights the first option; the arrow moves to the second.
+    await userEvent.keyboard("{ArrowDown}{Enter}");
+
+    await waitFor(() =>
+      expect(screen.getByTestId("intake-project")).toHaveTextContent("Web Shop"),
+    );
+  });
+
+  it("sends the search term to the server rather than filtering one page", async () => {
+    useDeploymentFeatures.mockReturnValue({ intake_requests: true });
+    listIntakeRequests.mockResolvedValue({ items: [], total: 0 });
+    renderPage();
+
+    await userEvent.click(await screen.findByTestId("intake-project"));
+    await screen.findByText("Payments API");
+    listProjects.mockResolvedValue(projectPage([project("p-9", "Ledger")]));
+    await userEvent.type(screen.getByTestId("intake-project-search"), "ledg");
+
+    expect(await screen.findByText("Ledger", {}, { timeout: 2000 })).toBeInTheDocument();
+    expect(listProjects).toHaveBeenLastCalledWith(
+      expect.objectContaining({ q: "ledg" }),
+    );
+  });
+
+  it("says the list is cut short when more projects match than it shows", async () => {
+    useDeploymentFeatures.mockReturnValue({ intake_requests: true });
+    listIntakeRequests.mockResolvedValue({ items: [], total: 0 });
+    listProjects.mockResolvedValue(projectPage([project("p-1", "Payments API")], 57));
+    renderPage();
+
+    await userEvent.click(await screen.findByTestId("intake-project"));
+
+    expect(await screen.findByTestId("intake-project-truncated")).toHaveTextContent(
+      "project_picker.truncated:20",
+    );
+  });
+
+  it("says the projects failed to load instead of offering none", async () => {
+    useDeploymentFeatures.mockReturnValue({ intake_requests: true });
+    listIntakeRequests.mockResolvedValue({ items: [], total: 0 });
+    listProjects.mockRejectedValue(new Error("boom"));
+    renderPage();
+
+    await userEvent.click(await screen.findByTestId("intake-project"));
+
+    expect(await screen.findByTestId("intake-project-error")).toBeInTheDocument();
+    expect(screen.queryByTestId("intake-project-empty")).not.toBeInTheDocument();
   });
 
   it("carries the version so two reviewers cannot lose a decision", async () => {
