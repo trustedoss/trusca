@@ -48,6 +48,9 @@ Ingress, 데이터베이스 마이그레이션 Job을 포함합니다. PostgreSQ
 | redis | Deployment | 선택적 번들 (`redis.bundled`). |
 | migrate | Job (pre-install / pre-upgrade 훅) | owner 역할로 `alembic upgrade head`. |
 | ingress | Ingress | cert-manager TLS; API + SPA 라우팅. |
+| backups | PersistentVolumeClaim | 백엔드와 워커가 함께 쓰는 백업 볼륨(`BACKUPS_ROOT`). [Helm 설치의 백업](../admin-guide/backup-and-restore.md#helm)을 봅니다. |
+| worker-scan | NetworkPolicy (선택, 기본 꺼짐) | 스캔 워커의 외부 연결 제한. [네트워크 정책](#network-policy)을 봅니다. |
+| backend | ServiceMonitor (선택, 기본 꺼짐) | Prometheus Operator 수집 대상. [지표](#metrics)를 봅니다. |
 
 ## 사전 요구사항
 
@@ -327,6 +330,143 @@ pre-upgrade 마이그레이션 Job이 새 파드 롤아웃 전에 새 스키마�
 | `env.extraEnvFrom` | `[]` | 직접 만든 Secret을 붙이는 `envFrom` 항목. 아래 참고. |
 | `env.extraVolumes` | `[]` | backend와 worker와 beat에 붙는 `volumes` 항목입니다. 사설 인증기관 인증서가 여기로 들어갑니다. |
 | `env.extraVolumeMounts` | `[]` | 같은 셋에 붙는 `volumeMounts` 항목입니다. [사설 인증기관](../admin-guide/private-ca.md)을 봅니다. |
+| `backups.persistence.storageClassName` | `""` | 백업 볼륨용 RWX 클래스. [Helm 설치의 백업](../admin-guide/backup-and-restore.md#helm)을 봅니다. |
+| `backups.persistence.size` | `50Gi` | 백업 볼륨 크기. 대략 (데이터베이스 덤프 + workspace) x 8. |
+| `image.backendDigest` / `workerDigest` / `frontendDigest` | `""` | 이미지를 다이제스트로 고정합니다. [이미지 다이제스트](#image-digests)를 봅니다. |
+| `metrics.enabled` | `false` | `/metrics`를 켭니다. [지표](#metrics)를 봅니다. |
+| `metrics.serviceMonitor.enabled` | `false` | ServiceMonitor를 생성합니다. |
+| `networkPolicy.enabled` | `false` | 스캔 워커의 네트워크 접근 범위를 제한합니다. [네트워크 정책](#network-policy)을 봅니다. |
+
+### 이미지 다이제스트 {#image-digests}
+
+태그는 다른 이미지 내용을 가리키도록 옮길 수 있지만 다이제스트는 그럴 수 없습니다.
+이미지마다 다이제스트를 지정하면 차트는 그 이미지를 `repository:tag` 대신
+`repository@sha256:...`로 렌더링합니다. 다이제스트가 없는 이미지는 태그를 그대로
+씁니다. `workerDigest`는 워커 이미지를 쓰는 beat와 마이그레이션 Job에도 적용되고,
+번들 데이터스토어는 `postgres.image.digest`와 `redis.image.digest`를 씁니다.
+
+```yaml
+image:
+  backendDigest: sha256:<16진수 64자>
+  workerDigest: sha256:<16진수 64자>
+  frontendDigest: sha256:<16진수 64자>
+```
+
+공개된 이미지의 다이제스트는
+`crane digest ghcr.io/trustedoss/trusca-backend:0.23.1`(또는
+`docker buildx imagetools inspect`)로 확인합니다. `sha256:` 뒤에 소문자 16진수
+64자가 오지 않는 값이면 렌더링이 실패합니다.
+
+### 지표 {#metrics}
+
+`metrics.enabled: true`로 설정하면 `env.extraEnv`를 거치지 않고 백엔드의 `/metrics`
+엔드포인트(`METRICS_ENABLED`)가 켜집니다. 토큰을 요구하려면 Secret을 만들고
+`metrics.token.existingSecret`에 그 이름을 적습니다. 백엔드는 이 값을
+`METRICS_TOKEN`으로 읽습니다. Prometheus Operator가 설치되어 있다면
+`metrics.serviceMonitor.enabled: true`로 백엔드 Service용 ServiceMonitor를 추가할
+수 있고, 이 ServiceMonitor는 같은 토큰을 제시합니다.
+
+<!-- docs-uat: id=helm-metrics-token-secret kind=shell ctx=host tier=manual waiver=needs-live-cluster -->
+```bash
+kubectl -n trustedoss create secret generic trustedoss-metrics \
+  --from-literal=METRICS_TOKEN="$(openssl rand -hex 32)"
+```
+
+```yaml
+metrics:
+  enabled: true
+  token:
+    existingSecret: trustedoss-metrics
+  serviceMonitor:
+    enabled: true
+    labels:
+      release: prometheus   # Prometheus가 선택하는 레이블
+```
+
+엔드포인트는 꺼져 있는 동안 404를 반환하므로, `metrics.enabled` 없이
+`metrics.serviceMonitor.enabled`만 켜면 렌더링이 실패합니다. Ingress가 `/metrics`를
+백엔드로 라우팅하므로 Ingress에 닿는 곳이라면 어디서든 이 엔드포인트에 접근할 수
+있습니다. 이를 의도한 것이 아니라면 토큰을 설정합니다. 시계열과 그 의미는
+[디스크와 시스템 상태](../admin-guide/disk-and-health.md#metrics)에 있고,
+[알림](../admin-guide/alerting.md)에 이 시계열용 규칙이 있습니다.
+
+### 스캔 워커용 네트워크 정책 {#network-policy}
+
+worker-scan은 cdxgen을 실행하고, cdxgen은 스캔 대상 프로젝트의 빌드 도구를
+실행합니다. 즉 포털이 작성하지 않은 코드가 이 파드에서 실행됩니다.
+`networkPolicy.enabled: true`로 설정하면 이 파드에 NetworkPolicy가 적용됩니다.
+들어오는 연결은 모두 막고, 나가는 연결은 다음으로만 허용합니다.
+
+- 클러스터 DNS(기본값은 `kube-system`의 kube-dns, `networkPolicy.workerScan.dns`)
+- 번들 Postgres와 Redis 파드
+- 공용 인터넷의 TCP 443, 80, 22, 9418 포트. 사설 대역(RFC 1918), 통신사급 NAT,
+  링크 로컬, 루프백 대역은 제외합니다.
+- `networkPolicy.workerScan.extraEgress`에 추가한 규칙
+
+제외하는 대역은 사설 주소 공간입니다. 파드, Service, 노드 주소와 클라우드 메타데이터
+엔드포인트(169.254.169.254)는 보통 이 안에 있습니다. 공인 주소에 있는 대상은 위
+포트로 계속 접근할 수 있고, 관리형 클러스터의 공개 API 엔드포인트(443)도
+여기에 해당합니다. 다만 차트의 ServiceAccount는 토큰을 마운트하지 않으므로 워커가
+그 엔드포인트에 제시할 자격증명은 없습니다.
+
+다른 워크로드에는 적용되지 않습니다. 이 정책은 NetworkPolicy를 적용하는 CNI에서만
+효과가 있습니다. 적용하지 않는 CNI에서는 정책이 받아들여지기만 하고 아무 동작도
+하지 않습니다.
+
+NodeLocal DNSCache를 쓰는 클러스터에서는 파드가 hostNetwork 파드의
+169.254.20.10으로 이름을 조회합니다. 이 주소는 DNS 셀렉터에 맞지 않고 인터넷
+규칙에서도 제외되므로, `extraEgress`에 `169.254.20.10/32`의 53번 포트(UDP와 TCP)
+`ipBlock` 규칙을 추가합니다.
+
+**기본 큐 태스크도 이 정책을 따릅니다.** 기본 설정에서 worker-scan은 기본 큐도
+구독하므로(`worker.subscriptions.scan`) 이메일 알림(SMTP 587, 465, 25 포트,
+사설 주소의 릴레이인 경우가 많음)이나 티켓·웹훅 전송(내부 호스트인 경우가 많음)
+같은 기본 큐 태스크도 실행합니다. 정책을 켜면 이 태스크들은 worker-scan이 메시지를
+가져갔을 때만 실패합니다. 정책을 켜기 전에, 기본 큐가 모두 처리된 뒤 worker-scan을
+스캔 큐만 구독하도록 줄이거나(차트 README의 "Queue split transition" 참고), SMTP와
+티켓·웹훅 호스트를 `extraEgress`에 추가합니다. 정책과 기본 큐 구독이 함께 켜져
+있으면 설치 안내문(NOTES)에 경고가 나옵니다.
+
+```yaml
+worker:
+  subscriptions:
+    scan:
+      - trustedoss.scan
+```
+
+외부 Postgres나 Redis를 쓰면 차트가 그 위치를 알 수 없으므로
+`externalDatastoreEgress`에 직접 적습니다. 이 값이 없으면 워커가 데이터베이스에
+접속하지 못하게 되는 대신 렌더링이 실패합니다. 사내 패키지 미러는 `extraEgress`에
+넣고, air-gapped 클러스터에서는 `internet.enabled: false`로 인터넷 규칙을 뺍니다.
+
+```yaml
+networkPolicy:
+  enabled: true
+  workerScan:
+    externalDatastoreEgress:
+      - to:
+          - ipBlock:
+              cidr: 10.20.0.5/32      # Postgres
+        ports:
+          - port: 5432
+            protocol: TCP
+      - to:
+          - ipBlock:
+              cidr: 10.20.0.6/32      # Redis
+        ports:
+          - port: 6379
+            protocol: TCP
+    extraEgress:
+      - to:
+          - ipBlock:
+              cidr: 10.30.0.0/24      # 사내 패키지 미러
+        ports:
+          - port: 8081
+            protocol: TCP
+```
+
+정책을 켠 뒤 스캔이 의존성을 받지 못하면, 필요한 레지스트리나 소스 호스트가 이
+규칙 밖에 있는 것입니다. 그 주소를 `extraEgress`에 추가합니다.
 
 ### 차트가 이름으로 다루지 않는 설정 {#extra-env}
 

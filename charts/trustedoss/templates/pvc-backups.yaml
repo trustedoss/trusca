@@ -1,0 +1,48 @@
+{{- /*
+SPDX-License-Identifier: Apache-2.0
+Copyright 2026 TRUSCA contributors
+*/ -}}
+{{- /*
+Backup store PVC (BACKUPS_ROOT, issue #572). Mounted at backups.mountPath by
+the backend (list / download / delete, and staging an uploaded archive for
+restore) and by every worker kind subscribed to worker.queues.default, which
+is where trustedoss.backup.run and trustedoss.backup.restore are routed. See
+trustedoss.worker.consumesDefaultQueue in _helpers.tpl.
+
+Before this volume existed BACKUPS_ROOT was unset, so the backup service
+resolved the relative default "backups" against /app, which is read-only
+under the chart's default readOnlyRootFilesystem: the nightly backup had
+nowhere to write.
+
+On multi-node clusters the access mode MUST be ReadWriteMany, for the same
+reason as the workspace: the writer and the admin API run in different pods.
+Skipped when persistence is disabled (per-pod emptyDir, evaluation only) or
+when an existingClaim is supplied.
+*/ -}}
+{{- if and .Values.backups.persistence.enabled (not .Values.backups.persistence.existingClaim) -}}
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: {{ include "trustedoss.fullname" . }}-backups
+  labels:
+    {{- include "trustedoss.labels" . | nindent 4 }}
+    app.kubernetes.io/component: backups
+  {{- if .Values.backups.persistence.keepOnUninstall }}
+  annotations:
+    # `helm uninstall` leaves this claim (and the backups on it) in place.
+    # Backups exist for the day the release is gone; deleting them along
+    # with it defeats their purpose.
+    "helm.sh/resource-policy": keep
+  {{- end }}
+spec:
+  accessModes:
+    # backups.persistence.accessMode, or workspace.persistence.accessMode
+    # when unset (trustedoss.backups.accessMode in _helpers.tpl).
+    - {{ include "trustedoss.backups.accessMode" . }}
+  resources:
+    requests:
+      storage: {{ .Values.backups.persistence.size }}
+  {{- with include "trustedoss.backups.storageClassName" . }}
+  storageClassName: {{ . | quote }}
+  {{- end }}
+{{- end -}}

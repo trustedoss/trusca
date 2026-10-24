@@ -43,7 +43,7 @@ spec:
       {{- end }}
       containers:
         - name: beat
-          image: "{{ .Values.image.workerRepository }}:{{ .Values.image.tag }}"
+          image: {{ include "trustedoss.image" (dict "repository" .Values.image.workerRepository "tag" .Values.image.tag "digest" .Values.image.workerDigest) | quote }}
           imagePullPolicy: {{ .Values.image.pullPolicy }}
           {{- with .Values.beat.containerSecurityContext }}
           securityContext:

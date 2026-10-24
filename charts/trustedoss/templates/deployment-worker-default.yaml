@@ -57,7 +57,7 @@ spec:
       {{- end }}
       containers:
         - name: worker
-          image: "{{ .Values.image.workerRepository }}:{{ .Values.image.tag }}"
+          image: {{ include "trustedoss.image" (dict "repository" .Values.image.workerRepository "tag" .Values.image.tag "digest" .Values.image.workerDigest) | quote }}
           imagePullPolicy: {{ .Values.image.pullPolicy }}
           {{- with .Values.worker.containerSecurityContext }}
           securityContext:
@@ -101,6 +101,12 @@ spec:
             {{- include "trustedoss.extraEnvFrom" . | nindent 12 }}
           env:
             {{- include "trustedoss.runtimeSecretEnv" . | nindent 12 }}
+            {{- if include "trustedoss.worker.consumesDefaultQueue" (dict "root" $ "own" "default") }}
+            # #572: this worker kind subscribes to worker.queues.default, where
+            # trustedoss.backup.run / .restore are routed, so it writes and
+            # reads the backup store the backend serves.
+            {{- include "trustedoss.backups.env" . | nindent 12 }}
+            {{- end }}
             {{- include "trustedoss.extraEnv" . | nindent 12 }}
           volumeMounts:
             {{- if (.Values.worker.containerSecurityContext).readOnlyRootFilesystem }}
@@ -118,6 +124,9 @@ spec:
             # worker-scan.
             - name: trivy-cache
               mountPath: {{ .Values.env.trivy.dbCacheDir }}
+            {{- if include "trustedoss.worker.consumesDefaultQueue" (dict "root" $ "own" "default") }}
+            {{- include "trustedoss.backups.volumeMount" . | nindent 12 }}
+            {{- end }}
             {{- include "trustedoss.extraVolumeMounts" . | nindent 12 }}
           livenessProbe:
             exec:
@@ -151,6 +160,9 @@ spec:
           {{- else }}
           emptyDir: {}
           {{- end }}
+        {{- if include "trustedoss.worker.consumesDefaultQueue" (dict "root" $ "own" "default") }}
+        {{- include "trustedoss.backups.volume" . | nindent 8 }}
+        {{- end }}
         {{- include "trustedoss.extraVolumes" . | nindent 8 }}
       {{- with .Values.nodeSelector }}
       nodeSelector:

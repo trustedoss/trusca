@@ -39,6 +39,10 @@ def _source() -> str:
 
 def test_both_pvcs_are_checked_for_the_readwritemany_default_class_risk() -> None:
     source = _source()
+    # The backup PVC (#572) joined this warning too, but it inherits its
+    # accessMode / storageClassName from workspace, so NOTES.txt reads them
+    # through helpers; test_helm_backups_netpol_metrics_digest.py renders
+    # NOTES.txt and checks that case on the output instead.
     for prefix in ("workspace", "trivyCache"):
         for field in ("accessMode", "storageClassName", "existingClaim", "enabled"):
             needle = f".Values.{prefix}.persistence.{field}"
@@ -56,6 +60,7 @@ def test_the_risk_check_requires_readwritemany_specifically() -> None:
     source = _source()
     assert 'eq .Values.workspace.persistence.accessMode "ReadWriteMany"' in source
     assert 'eq .Values.trivyCache.persistence.accessMode "ReadWriteMany"' in source
+    assert 'eq (include "trustedoss.backups.accessMode" .) "ReadWriteMany"' in source
 
 
 def test_existing_claim_is_excluded_from_the_risk() -> None:
@@ -68,7 +73,7 @@ def test_existing_claim_is_excluded_from_the_risk() -> None:
         for line in source.splitlines()
         if "RWXRisk" in line and ":=" in line and "$" in line.split(":=")[0]
     ]
-    assert len(risk_lines) == 2, (
+    assert len(risk_lines) == 3, (
         f"expected exactly one $...RWXRisk assignment per PVC, found: {risk_lines}"
     )
     for line in risk_lines:

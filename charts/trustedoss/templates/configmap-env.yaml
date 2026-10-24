@@ -57,6 +57,13 @@ data:
   # at $HOME/.cache/trivy inside the container layer).
   TRIVY_CACHE_DIR: {{ .Values.env.trivy.dbCacheDir | quote }}
   TRIVY_TIMEOUT_SECONDS: {{ .Values.env.trivy.timeoutSeconds | quote }}
+  {{- if .Values.metrics.enabled }}
+
+  # ---- Operational metrics (#572) ----
+  # Emitted only when metrics.enabled, so a default install renders the
+  # same ConfigMap it always has (the backend's own default is off).
+  METRICS_ENABLED: "true"
+  {{- end }}
 
   # ---- DB connection pool (B1) ----
   DB_POOL_SIZE: {{ .Values.env.dbPool.size | quote }}

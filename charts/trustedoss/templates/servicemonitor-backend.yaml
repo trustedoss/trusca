@@ -1,0 +1,50 @@
+{{- /*
+SPDX-License-Identifier: Apache-2.0
+Copyright 2026 TRUSCA contributors
+*/ -}}
+{{- /*
+Prometheus Operator ServiceMonitor for the backend's /metrics (issue #572).
+Rendered only when metrics.serviceMonitor.enabled. Requires metrics.enabled,
+because the endpoint answers 404 while METRICS_ENABLED is off and a
+ServiceMonitor pointed at it would only ever record failed scrapes.
+*/ -}}
+{{- if .Values.metrics.serviceMonitor.enabled -}}
+{{- if not .Values.metrics.enabled -}}
+{{- fail "metrics.serviceMonitor.enabled requires metrics.enabled: /metrics answers 404 until METRICS_ENABLED is on" -}}
+{{- end -}}
+{{- $sm := .Values.metrics.serviceMonitor -}}
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: {{ include "trustedoss.fullname" . }}-backend
+  namespace: {{ $sm.namespace | default .Release.Namespace }}
+  labels:
+    {{- include "trustedoss.labels" . | nindent 4 }}
+    app.kubernetes.io/component: backend
+    {{- with $sm.labels }}
+    {{- toYaml . | nindent 4 }}
+    {{- end }}
+spec:
+  namespaceSelector:
+    matchNames:
+      - {{ .Release.Namespace }}
+  selector:
+    matchLabels:
+      {{- include "trustedoss.selectorLabels" . | nindent 6 }}
+      app.kubernetes.io/component: backend
+  endpoints:
+    - port: http
+      path: /metrics
+      interval: {{ $sm.interval }}
+      scrapeTimeout: {{ $sm.scrapeTimeout }}
+      {{- with .Values.metrics.token.existingSecret }}
+      # Same Secret and key the backend reads METRICS_TOKEN from, so the two
+      # cannot drift apart. The Prometheus Operator reads this Secret from
+      # the ServiceMonitor's own namespace.
+      authorization:
+        type: Bearer
+        credentials:
+          name: {{ . }}
+          key: {{ $.Values.metrics.token.key }}
+      {{- end }}
+{{- end -}}

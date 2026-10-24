@@ -43,7 +43,7 @@ spec:
       {{- end }}
       containers:
         - name: backend
-          image: "{{ .Values.image.backendRepository }}:{{ .Values.image.tag }}"
+          image: {{ include "trustedoss.image" (dict "repository" .Values.image.backendRepository "tag" .Values.image.tag "digest" .Values.image.backendDigest) | quote }}
           imagePullPolicy: {{ .Values.image.pullPolicy }}
           {{- with .Values.backend.containerSecurityContext }}
           securityContext:
@@ -64,6 +64,20 @@ spec:
             # of configmap-env.yaml on purpose.
             - name: UVICORN_WORKERS
               value: {{ .Values.backend.uvicornWorkers | quote }}
+            # #572: the admin API lists, downloads and deletes backups and
+            # stages an uploaded archive for restore here, so it reads the
+            # same store the default-queue worker writes (backups.mountPath).
+            {{- include "trustedoss.backups.env" . | nindent 12 }}
+            {{- with .Values.metrics.token.existingSecret }}
+            # METRICS_TOKEN (core.config.metrics_token): the bearer token a
+            # scraper must present on /metrics. Backend-only, the one
+            # workload that serves the endpoint.
+            - name: METRICS_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: {{ . }}
+                  key: {{ $.Values.metrics.token.key }}
+            {{- end }}
             {{- include "trustedoss.runtimeSecretEnv" . | nindent 12 }}
             {{- include "trustedoss.extraEnv" . | nindent 12 }}
             {{- if (.Values.backend.containerSecurityContext).readOnlyRootFilesystem }}
@@ -86,6 +100,9 @@ spec:
             - name: trivy-cache
               mountPath: {{ .Values.env.trivy.dbCacheDir }}
               readOnly: true
+            # Read-write, not readOnly: restore uploads and delete are admin
+            # endpoints on this service.
+            {{- include "trustedoss.backups.volumeMount" . | nindent 12 }}
           # Liveness — PURE liveness (/health). Restarts the pod only when the
           # process itself is wedged; it must NOT depend on schema state, or a
           # pre-migration pod would be killed in a loop.
@@ -127,6 +144,7 @@ spec:
           {{- else }}
           emptyDir: {}
           {{- end }}
+        {{- include "trustedoss.backups.volume" . | nindent 8 }}
         {{- include "trustedoss.extraVolumes" . | nindent 8 }}
       {{- with .Values.backend.topologySpreadConstraints }}
       # W8 (concurrency-scaling-plan-2026-08-22.md §3.5): each entry names

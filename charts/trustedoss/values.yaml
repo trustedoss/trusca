@@ -33,6 +33,16 @@ image:
   frontendRepository: ghcr.io/trustedoss/trusca-frontend
   # Tag applied to ALL three images. Kept in lock-step with Chart.yaml appVersion.
   tag: "0.23.1"
+  # Optional per-image digests (`sha256:` + 64 hex characters). A digest pins
+  # the exact image bytes: when set, that image renders as
+  # `<repository>@<digest>` and `tag` is not used for it. Left empty, the
+  # image renders as `<repository>:<tag>`. Read the digest of a published
+  # image with `crane digest ghcr.io/trustedoss/trusca-backend:0.23.1` or
+  # `docker buildx imagetools inspect ...`. The worker digest also applies
+  # to beat and the migration Job, which run the worker image.
+  backendDigest: ""
+  workerDigest: ""
+  frontendDigest: ""
   pullPolicy: IfNotPresent
 # -- Image pull secrets for private registries (list of {name: ...}).
 imagePullSecrets: []
@@ -332,6 +342,54 @@ trivyCache:
     existingClaim: ""
 
 # ===========================================================================
+# Backup store volume (BACKUPS_ROOT, issue #572).
+#
+# The daily `trustedoss.backup.run` task (00:00 UTC) and the restore task run
+# on the worker that consumes worker.queues.default: worker-default, and
+# worker-scan too while worker.subscriptions.scan lists that queue. The
+# backend's /admin/backup API lists, downloads and deletes backups and stages
+# uploaded archives in the same directory. The chart mounts one volume at
+# `mountPath` on all of those pods and sets BACKUPS_ROOT to it. Without it the
+# backup service resolved a relative "backups" under /app, which the default
+# readOnlyRootFilesystem makes unwritable.
+#
+# Narrow worker.subscriptions.scan to the scan queue alone and worker-scan
+# loses this mount as well. That matters: a backup holds a full database dump,
+# and worker-scan is the pod that runs the scanned projects' build scripts.
+# ===========================================================================
+backups:
+  # In-container path, set as BACKUPS_ROOT. Same path docker-compose uses.
+  mountPath: /opt/trustedoss/backups
+  persistence:
+    # false falls back to a per-pod emptyDir: backups vanish with the pod and
+    # the backend cannot see what a worker wrote. Evaluation only.
+    enabled: true
+    # Empty inherits workspace.persistence.accessMode (ReadWriteMany by
+    # default), and storageClassName below inherits
+    # workspace.persistence.storageClassName. The backup store is shared by
+    # the same pods as the workspace, so an install's workspace choice is the
+    # right default; it also means an upgrade that adds this PVC lands it on
+    # the class the install already uses. Set either value to override.
+    # ReadWriteMany is required when the backend and the workers land on
+    # different nodes. With workspace.persistence.existingClaim the chart
+    # cannot see that claim's class, so set storageClassName here explicitly.
+    accessMode: ""
+    # One backup is a gzipped pg_dump plus a tar of the scan workspace, so it
+    # is sized like the workspace, not the database. Seven daily `auto-`
+    # backups are kept, plus every manual one until you delete it. Budget
+    # roughly (database dump + workspace) x 8.
+    size: 50Gi
+    # Empty inherits workspace.persistence.storageClassName; if that is
+    # empty too, the cluster default class is used.
+    storageClassName: ""
+    # Use a pre-created PVC instead of provisioning one.
+    existingClaim: ""
+    # Annotate the chart-provisioned PVC with helm.sh/resource-policy: keep,
+    # so `helm uninstall` does not delete the backups with the release.
+    # Delete the PVC yourself once you no longer need them.
+    keepOnUninstall: true
+
+# ===========================================================================
 # Bundled PostgreSQL (StatefulSet + headless Service + PVC).
 #
 # bundled=true  → the chart runs Postgres in-cluster and wires the runtime /
@@ -346,6 +404,9 @@ postgres:
   image:
     repository: postgres
     tag: "17.2-alpine"   # CLAUDE.md #9 — pinned, never :latest
+    # Optional `sha256:...` digest; replaces the tag when set (see image.*Digest).
+    # Also used by the migration Job's wait-for-postgres init container.
+    digest: ""
     pullPolicy: IfNotPresent
   auth:
     # Owner (DDL) role — runs migrations; also runtime role when
@@ -385,6 +446,8 @@ redis:
   image:
     repository: redis
     tag: "7.4-alpine"     # CLAUDE.md #9 — pinned, never :latest
+    # Optional `sha256:...` digest; replaces the tag when set (see image.*Digest).
+    digest: ""
     pullPolicy: IfNotPresent
   service:
     port: 6379
@@ -1037,6 +1100,160 @@ ingress:
     # Secret cert-manager writes the issued cert into. Defaults to
     # "<fullname>-tls" when left empty.
     secretName: ""
+
+# ===========================================================================
+# Operational metrics (/metrics on the backend) and an optional
+# Prometheus Operator ServiceMonitor.
+#
+# The endpoint is off by default and answers 404 while off. `enabled` sets
+# METRICS_ENABLED=true in the shared ConfigMap, which is the same switch
+# env.extraEnv used to be the only way to reach. The Ingress routes /metrics
+# to the backend, so an endpoint switched on is reachable from wherever the
+# Ingress is; set a token unless that is what you want.
+# ===========================================================================
+metrics:
+  # METRICS_ENABLED.
+  enabled: false
+  token:
+    # Name of a Secret you created holding METRICS_TOKEN. Empty means no token
+    # (an open endpoint). When set, the backend reads it as METRICS_TOKEN and
+    # the ServiceMonitor presents it as its bearer token.
+    existingSecret: ""
+    # Key inside that Secret.
+    key: METRICS_TOKEN
+  serviceMonitor:
+    # Render a monitoring.coreos.com/v1 ServiceMonitor for the backend
+    # Service. Requires metrics.enabled and the Prometheus Operator CRDs in
+    # the cluster. `helm template` cannot check that the CRD exists, so a
+    # cluster without it fails at install time ("no matches for kind
+    # ServiceMonitor").
+    enabled: false
+    # Scrape interval and timeout. The series are aggregate counts read from
+    # Postgres; there is nothing a 15-second interval would show that a
+    # minute does not.
+    interval: 60s
+    scrapeTimeout: 10s
+    # Extra labels on the ServiceMonitor, for a Prometheus whose
+    # serviceMonitorSelector matches on them (for example `release: prometheus`).
+    labels: {}
+    # Namespace to create the ServiceMonitor in. Empty means the release
+    # namespace. It always selects the backend Service in the release
+    # namespace. With a token, the Prometheus Operator looks for the
+    # metrics.token Secret in the ServiceMonitor's namespace, so a different
+    # namespace here needs a copy of that Secret there.
+    namespace: ""
+
+# ===========================================================================
+# NetworkPolicy for worker-scan (issue #572). Off by default.
+#
+# worker-scan runs cdxgen, which runs the scanned project's own build tooling
+# (Maven, Gradle, npm, pip and so on), so it executes code the portal did not
+# write. With no policy that code can reach anything the cluster network can:
+# the Kubernetes API, cloud metadata endpoints, other tenants' Services. With
+# `enabled: true` the chart renders a policy that denies all ingress to
+# worker-scan and allows egress only to:
+#   - cluster DNS (`dns`),
+#   - the bundled Postgres and Redis pods, when bundled,
+#   - `externalDatastoreEgress`, your rules for an external Postgres / Redis,
+#   - the public internet on `internet.ports`, minus the private, link-local
+#     and loopback ranges in `internet.ipBlocks[].except`,
+#   - anything in `extraEgress` (an internal package mirror, a git server).
+#
+# The policy covers every task worker-scan runs. While worker.subscriptions.scan
+# keeps worker.queues.default (the default), that includes default-queue tasks:
+# email notifications over SMTP (often 587/465/25, often to a relay on a
+# private address) and ticket / webhook posts (often to internal hosts). Those
+# then fail only when worker-scan happens to take the message. Either narrow
+# worker.subscriptions.scan to the scan queue first (once the default queue has
+# drained), or add those hosts to extraEgress. NOTES.txt warns about this.
+#
+# Requires a CNI that enforces NetworkPolicy (Calico, Cilium, and others).
+# On one that does not, the policy is accepted and silently has no effect.
+# ===========================================================================
+networkPolicy:
+  enabled: false
+  workerScan:
+    dns:
+      # Allow DNS to the pods these selectors match, on UDP and TCP 53.
+      # The defaults match kube-dns / CoreDNS on most distributions; adjust
+      # for clusters that label DNS differently (OpenShift, for example, runs
+      # it in openshift-dns with dns.operator.openshift.io/daemonset-dns).
+      # NodeLocal DNSCache answers on 169.254.20.10 from a hostNetwork pod,
+      # which these pod selectors do not match and the internet rule
+      # excludes; on such a cluster add an ipBlock rule for 169.254.20.10/32
+      # on port 53 to extraEgress.
+      namespaceSelector:
+        matchLabels:
+          kubernetes.io/metadata.name: kube-system
+      podSelector:
+        matchLabels:
+          k8s-app: kube-dns
+      ports:
+        - port: 53
+          protocol: UDP
+        - port: 53
+          protocol: TCP
+    # Raw NetworkPolicyEgressRule list for an external Postgres / Redis. An
+    # external DSN is opaque to the chart (it may sit in an existingSecret),
+    # so it cannot derive these. REQUIRED when the policy is enabled and
+    # postgres.bundled or redis.bundled is false: the render fails rather
+    # than leave the worker unable to reach its database. Example:
+    #   - to:
+    #       - ipBlock:
+    #           cidr: 10.20.0.5/32
+    #     ports:
+    #       - port: 5432
+    #         protocol: TCP
+    externalDatastoreEgress: []
+    internet:
+      # Allow egress to the ipBlocks below on these ports. Git over HTTPS and
+      # SSH, package registries, the Trivy DB registry and the vulnerability
+      # feeds all fit in these four. Set enabled: false on an air-gapped
+      # cluster and list your mirrors in extraEgress instead.
+      enabled: true
+      ports:
+        - port: 443
+          protocol: TCP
+        - port: 80
+          protocol: TCP
+        # git over SSH
+        - port: 22
+          protocol: TCP
+        # git:// protocol
+        - port: 9418
+          protocol: TCP
+      # "The internet" as CIDRs. The except lists remove RFC 1918 private
+      # space, carrier-grade NAT, link-local (cloud metadata at
+      # 169.254.169.254 lives here) and loopback, which is where pod, Service
+      # and node addresses usually are. Anything on a public address stays
+      # reachable on these ports, including a managed cluster's public API
+      # endpoint on 443; the chart mounts no ServiceAccount token
+      # (automountServiceAccountToken: false), so the worker has no
+      # credential to present there. If your cluster uses public address
+      # space internally, add those ranges to `except` too.
+      ipBlocks:
+        - cidr: 0.0.0.0/0
+          except:
+            - 10.0.0.0/8
+            - 172.16.0.0/12
+            - 192.168.0.0/16
+            - 100.64.0.0/10
+            - 169.254.0.0/16
+            - 127.0.0.0/8
+        - cidr: ::/0
+          except:
+            - fc00::/7
+            - fe80::/10
+            - ::1/128
+    # Raw NetworkPolicyEgressRule list appended as-is: an internal Nexus or
+    # Artifactory, an internal GitLab, a proxy. Example:
+    #   - to:
+    #       - ipBlock:
+    #           cidr: 10.30.0.0/24
+    #     ports:
+    #       - port: 8081
+    #         protocol: TCP
+    extraEgress: []
 
 # Pod scheduling extras applied to all workloads.
 nodeSelector: {}

@@ -1,0 +1,88 @@
+{{- /*
+SPDX-License-Identifier: Apache-2.0
+Copyright 2026 TRUSCA contributors
+*/ -}}
+{{- /*
+NetworkPolicy for worker-scan (issue #572), rendered only when
+networkPolicy.enabled. worker-scan runs the scanned project's own build
+tooling through cdxgen, so this is the pod whose network reach matters most.
+Ingress: none (Celery workers pull from the broker; the liveness probe is an
+exec, not a network call). Egress: DNS, the bundled datastores or the
+operator's external-datastore rules, the public internet on a short port list,
+and operator extras. See values.yaml networkPolicy for each rule.
+*/ -}}
+{{- if .Values.networkPolicy.enabled -}}
+{{- $np := .Values.networkPolicy.workerScan -}}
+{{- if and (or (not .Values.postgres.bundled) (not .Values.redis.bundled)) (not $np.externalDatastoreEgress) -}}
+{{- fail "networkPolicy.workerScan.externalDatastoreEgress is required when networkPolicy.enabled and postgres.bundled or redis.bundled is false: the chart cannot derive where an external datastore lives, and without a rule worker-scan cannot reach it" -}}
+{{- end -}}
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: {{ include "trustedoss.fullname" . }}-worker-scan
+  labels:
+    {{- include "trustedoss.labels" . | nindent 4 }}
+    app.kubernetes.io/component: worker-scan
+spec:
+  podSelector:
+    matchLabels:
+      {{- include "trustedoss.selectorLabels" . | nindent 6 }}
+      app.kubernetes.io/component: worker-scan
+  policyTypes:
+    - Ingress
+    - Egress
+  # No ingress rules: nothing connects to a Celery worker.
+  ingress: []
+  egress:
+    {{- with $np.dns }}
+    {{- $peer := dict }}
+    {{- with .namespaceSelector }}{{- $_ := set $peer "namespaceSelector" . }}{{- end }}
+    {{- with .podSelector }}{{- $_ := set $peer "podSelector" . }}{{- end }}
+    {{- if not $peer }}
+    {{- fail "networkPolicy.workerScan.dns needs a namespaceSelector or a podSelector; set dns: null to drop the DNS rule entirely" }}
+    {{- end }}
+    - to:
+        - {{ toYaml $peer | indent 10 | trim }}
+      ports:
+        {{- toYaml .ports | nindent 8 }}
+    {{- end }}
+    {{- if .Values.postgres.bundled }}
+    - to:
+        - podSelector:
+            matchLabels:
+              {{- include "trustedoss.selectorLabels" . | nindent 14 }}
+              app.kubernetes.io/component: postgres
+      ports:
+        - port: {{ .Values.postgres.service.port }}
+          protocol: TCP
+    {{- end }}
+    {{- if .Values.redis.bundled }}
+    - to:
+        - podSelector:
+            matchLabels:
+              {{- include "trustedoss.selectorLabels" . | nindent 14 }}
+              app.kubernetes.io/component: redis
+      ports:
+        - port: {{ .Values.redis.service.port }}
+          protocol: TCP
+    {{- end }}
+    {{- with $np.externalDatastoreEgress }}
+    {{- toYaml . | nindent 4 }}
+    {{- end }}
+    {{- if $np.internet.enabled }}
+    - to:
+        {{- range $np.internet.ipBlocks }}
+        - ipBlock:
+            cidr: {{ .cidr }}
+            {{- with .except }}
+            except:
+              {{- toYaml . | nindent 14 }}
+            {{- end }}
+        {{- end }}
+      ports:
+        {{- toYaml $np.internet.ports | nindent 8 }}
+    {{- end }}
+    {{- with $np.extraEgress }}
+    {{- toYaml . | nindent 4 }}
+    {{- end }}
+{{- end -}}

@@ -49,6 +49,9 @@ The worker pod ships with the Trivy DB and downloads / refreshes it from `ghcr.i
 | redis | Deployment | Optional bundle (`redis.bundled`). |
 | migrate | Job (pre-install / pre-upgrade hook) | `alembic upgrade head` as the owner role. |
 | ingress | Ingress | cert-manager TLS; API + SPA routing. |
+| backups | PersistentVolumeClaim | Backup store (`BACKUPS_ROOT`) shared by the backend and the workers. See [Backups on a Helm install](../admin-guide/backup-and-restore.md#helm). |
+| worker-scan | NetworkPolicy (optional, off) | Egress limits for the scan worker. See [Network policy](#network-policy). |
+| backend | ServiceMonitor (optional, off) | Prometheus Operator scrape target. See [Metrics](#metrics). |
 
 ## Prerequisites
 
@@ -335,6 +338,146 @@ The values you most often set:
 | `env.extraEnvFrom` | `[]` | `envFrom` entries, for Secrets you created yourself. See below. |
 | `env.extraVolumes` | `[]` | `volumes` entries for backend, worker and beat. A certificate for a private authority goes here. |
 | `env.extraVolumeMounts` | `[]` | `volumeMounts` entries for the same three. See [Private certificate authorities](../admin-guide/private-ca.md). |
+| `backups.persistence.storageClassName` | `""` | RWX class for the backup store. See [Backups on a Helm install](../admin-guide/backup-and-restore.md#helm). |
+| `backups.persistence.size` | `50Gi` | Backup store size; roughly (database dump + workspace) x 8. |
+| `image.backendDigest` / `workerDigest` / `frontendDigest` | `""` | Pin an image by digest. See [Image digests](#image-digests). |
+| `metrics.enabled` | `false` | Turn on `/metrics`. See [Metrics](#metrics). |
+| `metrics.serviceMonitor.enabled` | `false` | Render a ServiceMonitor. |
+| `networkPolicy.enabled` | `false` | Limit the scan worker's network reach. See [Network policy](#network-policy). |
+
+### Image digests {#image-digests}
+
+A tag can be moved to different image contents; a digest cannot. Set a digest
+per image and the chart renders `repository@sha256:...` for it instead of
+`repository:tag`. Images without a digest keep their tag. `workerDigest` also
+covers beat and the migration Job, which run the worker image; the bundled
+datastores take `postgres.image.digest` and `redis.image.digest`.
+
+```yaml
+image:
+  backendDigest: sha256:<64 hex characters>
+  workerDigest: sha256:<64 hex characters>
+  frontendDigest: sha256:<64 hex characters>
+```
+
+Read a published image's digest with
+`crane digest ghcr.io/trustedoss/trusca-backend:0.23.1` (or
+`docker buildx imagetools inspect`). A value that is not `sha256:` followed by
+64 lowercase hex characters fails the render.
+
+### Metrics {#metrics}
+
+`metrics.enabled: true` turns on the backend's `/metrics` endpoint
+(`METRICS_ENABLED`), without going through `env.extraEnv`. To require a token,
+create a Secret and name it in `metrics.token.existingSecret`; the backend
+reads it as `METRICS_TOKEN`. With the Prometheus Operator installed,
+`metrics.serviceMonitor.enabled: true` adds a ServiceMonitor for the backend
+Service that presents the same token:
+
+<!-- docs-uat: id=helm-metrics-token-secret kind=shell ctx=host tier=manual waiver=needs-live-cluster -->
+```bash
+kubectl -n trustedoss create secret generic trustedoss-metrics \
+  --from-literal=METRICS_TOKEN="$(openssl rand -hex 32)"
+```
+
+```yaml
+metrics:
+  enabled: true
+  token:
+    existingSecret: trustedoss-metrics
+  serviceMonitor:
+    enabled: true
+    labels:
+      release: prometheus   # whatever your Prometheus selects on
+```
+
+`metrics.serviceMonitor.enabled` without `metrics.enabled` fails the render,
+since the endpoint answers 404 while it is off. The Ingress routes `/metrics`
+to the backend, so the endpoint is reachable wherever the Ingress is: set a
+token unless that is what you want. The series and their meaning are in
+[Disk & system health](../admin-guide/disk-and-health.md#metrics), and
+[Alerting](../admin-guide/alerting.md) has rules for them.
+
+### Network policy for the scan worker {#network-policy}
+
+worker-scan runs cdxgen, which runs the scanned project's own build tooling,
+so it executes code the portal did not write. `networkPolicy.enabled: true`
+renders a NetworkPolicy for that pod: no ingress, and egress only to
+
+- cluster DNS (kube-dns in `kube-system` by default, `networkPolicy.workerScan.dns`),
+- the bundled Postgres and Redis pods,
+- the public internet on TCP 443, 80, 22 and 9418, excluding private
+  (RFC 1918), carrier-grade NAT, link-local and loopback ranges,
+- the rules you add in `networkPolicy.workerScan.extraEgress`.
+
+The excluded ranges cover addresses in private space, which is where pod,
+Service and node addresses and the cloud metadata endpoint (169.254.169.254)
+usually are. Anything on a public address stays reachable on those ports,
+including a managed cluster's public API endpoint on 443; the chart's
+ServiceAccounts mount no token, so the worker has no credential to present
+there.
+
+Other workloads are not covered. The policy only takes effect on a CNI that
+enforces NetworkPolicy; on one that does not, it is accepted and does nothing.
+
+On a cluster running NodeLocal DNSCache, pods resolve through 169.254.20.10
+on a hostNetwork pod, which the DNS selectors do not match and the internet
+rule excludes. Add an `ipBlock` rule for `169.254.20.10/32` on port 53 (UDP
+and TCP) to `extraEgress`.
+
+**Default-queue tasks run under this policy too.** By default worker-scan also
+subscribes to the default queue (`worker.subscriptions.scan`), so it runs
+default-queue tasks such as email notifications (SMTP on 587, 465 or 25, often
+to a relay on a private address) and ticket and webhook posts (often to an
+internal host). Under the policy these fail only when worker-scan happens to
+take the message. Before enabling the policy, either narrow worker-scan to the
+scan queue once the default queue has drained (chart README, "Queue split
+transition"), or add the SMTP, ticket and webhook hosts to `extraEgress`. The
+install notes warn while both the policy and the default-queue subscription
+are on.
+
+```yaml
+worker:
+  subscriptions:
+    scan:
+      - trustedoss.scan
+```
+
+With an external Postgres or Redis, the chart cannot tell where they live, so
+you list them in `externalDatastoreEgress`; the render fails without it rather
+than cutting the worker off from its database. An internal package mirror goes
+in `extraEgress`, and on an air-gapped cluster `internet.enabled: false` drops
+the internet rule:
+
+```yaml
+networkPolicy:
+  enabled: true
+  workerScan:
+    externalDatastoreEgress:
+      - to:
+          - ipBlock:
+              cidr: 10.20.0.5/32      # Postgres
+        ports:
+          - port: 5432
+            protocol: TCP
+      - to:
+          - ipBlock:
+              cidr: 10.20.0.6/32      # Redis
+        ports:
+          - port: 6379
+            protocol: TCP
+    extraEgress:
+      - to:
+          - ipBlock:
+              cidr: 10.30.0.0/24      # internal package mirror
+        ports:
+          - port: 8081
+            protocol: TCP
+```
+
+If scans start failing to resolve dependencies after enabling the policy, the
+registry or source host they need is outside these rules; add it to
+`extraEgress`.
 
 ### Settings the chart does not name {#extra-env}
 
