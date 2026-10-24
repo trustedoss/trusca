@@ -348,7 +348,8 @@ DELETE /v1/admin/backup/{name}
 | PUT, 현재 `ETag`와 같은 `If-Match` | `200`, 행 교체, 새 `ETag` | |
 | PUT, 더 이상 맞지 않는 `If-Match`(다른 저장, 행 삭제, 잘못된 형식) | `409` | `https://docs.trustedoss.io/errors/gate-policy-conflict` |
 | PUT, 행이 이미 있는데 `If-None-Match: *` | `409` | `https://docs.trustedoss.io/errors/gate-policy-conflict` |
-| GET 또는 DELETE, 볼 수 있는 팀인데 자체 행이 없음 | `404` | `https://docs.trustedoss.io/errors/gate-policy-not-set` |
+| GET, 볼 수 있는 팀인데 자체 행이 없음 | `404` | `https://docs.trustedoss.io/errors/gate-policy-not-set` |
+| DELETE, 관리하는 팀인데 자체 행이 없음 | `404` | `https://docs.trustedoss.io/errors/gate-policy-not-set` |
 | GET, PUT 또는 DELETE, 존재하지 않는 팀 | `404` | `about:blank` |
 | GET, 볼 수 없는 팀 | `404` | `about:blank` |
 | PUT 또는 DELETE, 존재하지만 관리 권한이 없는 팀 | `403` | `about:blank` |

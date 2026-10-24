@@ -264,6 +264,16 @@ _NOT_SET_RESPONSE = {
     },
 }
 
+#: DELETE checks the grade before the row, so a team that exists but that the
+#: caller does not administer (hidden or not) answers 403, never this.
+_DELETE_NOT_FOUND_RESPONSE = {
+    **_NOT_SET_RESPONSE,
+    "description": (
+        "Team not found (a plain Not Found), or the team you administer has "
+        f"no policy of its own to remove (problem type {GATE_POLICY_NOT_SET_TYPE})."
+    ),
+}
+
 _IF_MATCH_DESCRIPTION = (
     "Entity tag from the last GET or PUT. When present and stale the write is "
     "refused with 409. When absent the write replaces the row unconditionally, "
@@ -389,7 +399,7 @@ async def get_team_policy_endpoint(
     responses={
         204: {"description": "Row removed."},
         403: {"description": "Caller does not administer this team."},
-        404: _NOT_SET_RESPONSE,
+        404: _DELETE_NOT_FOUND_RESPONSE,
     },
 )
 async def delete_team_policy_endpoint(

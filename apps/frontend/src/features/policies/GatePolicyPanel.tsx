@@ -368,11 +368,24 @@ export function GatePolicyPanel({ teamId, canEdit }: GatePolicyPanelProps) {
             size="sm"
             disabled={epssInvalid || upsert.isPending}
             onClick={() =>
-              upsert.mutate({
-                teamId,
-                payload: payloadFrom(draft, seeded.name),
-                basis: seeded.basis,
-              })
+              upsert.mutate(
+                {
+                  teamId,
+                  payload: payloadFrom(draft, seeded.name),
+                  basis: seeded.basis,
+                },
+                {
+                  // The refetch that follows a save takes a round trip. Until
+                  // it lands, the next save must carry the tag this save
+                  // produced, or it is refused as a conflict with itself.
+                  onSuccess: (saved) =>
+                    setSeeded((s) =>
+                      s !== null && s.teamId === teamId
+                        ? { ...s, name: saved.policy.name, basis: { etag: saved.etag } }
+                        : s,
+                    ),
+                },
+              )
             }
             data-testid="gate-policy-save"
           >

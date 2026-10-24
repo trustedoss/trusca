@@ -52,7 +52,10 @@ vi.mock("@/lib/gatePoliciesApi", async (importOriginal) => ({
     const row = (await getTeamGatePolicy(...args)) as { id: string; updated_at: string };
     return { policy: row, etag: tagOf(row) };
   },
-  upsertTeamGatePolicy: (...args: unknown[]) => upsertTeamGatePolicy(...args),
+  upsertTeamGatePolicy: async (...args: unknown[]) => {
+    const row = (await upsertTeamGatePolicy(...args)) as { id: string; updated_at: string };
+    return { policy: row, etag: tagOf(row) };
+  },
   deleteTeamGatePolicy: (...args: unknown[]) => deleteTeamGatePolicy(...args),
   upsertOrgGatePolicy: vi.fn(),
   getEffectiveGatePolicy: vi.fn(),
@@ -620,6 +623,51 @@ describe("GatePolicyPanel", () => {
     await userEvent.click(screen.getByTestId("gate-policy-save"));
     await waitFor(() => expect(upsertTeamGatePolicy).toHaveBeenCalledTimes(2));
     expect(upsertTeamGatePolicy.mock.calls[1][2]).toEqual({ etag: tagOf(theirs) });
+  });
+
+  it("bases a second quick save on the first save's tag, not on the stale read", async () => {
+    // A server that refuses any save not based on its current row, the way
+    // the API does, and a refetch that never lands, so the only way the
+    // second save can know the new tag is from the first save's response.
+    let server: Omit<typeof POLICY, "epss_threshold"> & { epss_threshold: number | null } = {
+      ...POLICY,
+      epss_threshold: 0.5,
+    };
+    let version = 0;
+    getTeamGatePolicy.mockResolvedValueOnce(server);
+    getTeamGatePolicy.mockReturnValue(new Promise(() => {}));
+    upsertTeamGatePolicy.mockImplementation(
+      (_teamId: string, payload: { epss_threshold: number | null }, basis: { etag: string }) => {
+        if (basis.etag !== tagOf(server)) return Promise.reject(conflict());
+        version += 1;
+        server = {
+          ...server,
+          epss_threshold: payload.epss_threshold,
+          updated_at: `2026-08-18T00:00:0${version}Z`,
+        };
+        return Promise.resolve(server);
+      },
+    );
+    renderPanel();
+
+    const input = await screen.findByTestId("gate-epss");
+    await waitFor(() => expect(input).toHaveValue("0.5"));
+    await userEvent.clear(input);
+    await userEvent.type(input, "0.6");
+    await userEvent.click(screen.getByTestId("gate-policy-save"));
+    await waitFor(() => expect(upsertTeamGatePolicy).toHaveBeenCalledTimes(1));
+    await waitFor(() => expect(screen.getByTestId("gate-policy-save")).toBeEnabled());
+    const afterFirst = server;
+
+    await userEvent.clear(screen.getByTestId("gate-epss"));
+    await userEvent.type(screen.getByTestId("gate-epss"), "0.7");
+    await userEvent.click(screen.getByTestId("gate-policy-save"));
+    await waitFor(() => expect(upsertTeamGatePolicy).toHaveBeenCalledTimes(2));
+
+    expect(upsertTeamGatePolicy.mock.calls[0][2]).toEqual({ etag: tagOf(POLICY) });
+    expect(upsertTeamGatePolicy.mock.calls[1][2]).toEqual({ etag: tagOf(afterFirst) });
+    await waitFor(() => expect(server.epss_threshold).toBe(0.7));
+    expect(screen.queryByTestId("gate-policy-conflict")).not.toBeInTheDocument();
   });
 
   it("does not call any other failed save a conflict", async () => {

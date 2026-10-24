@@ -187,13 +187,16 @@ export async function upsertTeamGatePolicy(
   teamId: string,
   payload: GatePolicyUpsertIn,
   basis?: GatePolicyBasis,
-): Promise<GatePolicyOut> {
-  const { data } = await api.put<GatePolicyOut>(
+): Promise<TeamGatePolicyRead> {
+  const response = await api.put<GatePolicyOut>(
     `/v1/gate-policies/teams/${teamId}`,
     payload,
     { headers: preconditionHeaders(basis) },
   );
-  return data;
+  // The saved row's tag, so the editor's next save is based on this one and
+  // not refused as a conflict with the caller's own previous save.
+  const etag = (response.headers["etag"] as string | undefined) ?? "";
+  return { policy: response.data, etag };
 }
 
 export async function upsertOrgGatePolicy(

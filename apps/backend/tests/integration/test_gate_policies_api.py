@@ -730,6 +730,54 @@ async def test_a_save_that_races_another_writer_compares_against_its_result(clie
     assert row_after["epss_threshold"] == 0.66
 
 
+async def test_the_tag_moves_even_when_the_clock_does_not(client, monkeypatch) -> None:
+    """A save stamped no later than the stored time must still change the tag.
+
+    The clock is frozen, which is the worst case of a writer whose clock is
+    behind the one that stamped the row: every save would get the same
+    ``updated_at`` and so the same tag, and a tag read before somebody else's
+    save would still match after it. The service steps past the stored value
+    instead, so the stale tag is refused.
+    """
+    from datetime import UTC
+    from datetime import datetime as real_datetime
+
+    import services.gate_policy_service as service
+
+    frozen = real_datetime(2026, 10, 24, 12, 0, 0, 0, tzinfo=UTC)
+
+    class _FrozenDatetime(real_datetime):
+        @classmethod
+        def now(cls, tz=None):  # type: ignore[override]
+            return frozen
+
+    monkeypatch.setattr(service, "datetime", _FrozenDatetime)
+
+    _, team_id, user, _ = await _seed(client)
+    created = await client.put(
+        f"/v1/gate-policies/teams/{team_id}",
+        headers=_bearer_for(user),
+        json={"epss_threshold": 0.5},
+    )
+    first_tag = created.headers["etag"]
+    second = await client.put(
+        f"/v1/gate-policies/teams/{team_id}",
+        headers={**_bearer_for(user), "If-Match": first_tag},
+        json={"epss_threshold": 0.6},
+    )
+    stale = await client.put(
+        f"/v1/gate-policies/teams/{team_id}",
+        headers={**_bearer_for(user), "If-Match": first_tag},
+        json={"epss_threshold": 0.9},
+    )
+
+    assert second.status_code == 200, second.text
+    assert second.headers["etag"] != first_tag
+    assert stale.status_code == 409, stale.text
+    row, _ = await _row_and_tag(client, team_id, user)
+    assert row["epss_threshold"] == 0.6
+
+
 async def test_two_first_saves_at_once_do_not_fail_on_the_unique_constraint(client) -> None:
     """Nothing to lock before the row exists, so one insert loses the constraint.
 

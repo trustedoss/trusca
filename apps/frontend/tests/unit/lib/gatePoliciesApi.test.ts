@@ -97,10 +97,14 @@ describe("gatePoliciesApi", () => {
   });
 
   it("sends the tag it read as If-Match", async () => {
-    const { calls, restore } = installAdapter([{ status: 200, data: ROW }]);
-    await upsertTeamGatePolicy(TEAM_ID, { epss_threshold: 0.5 }, { etag: '"42"' });
+    const { calls, restore } = installAdapter([
+      { status: 200, data: ROW, headers: { etag: '"43"' } },
+    ]);
+    const saved = await upsertTeamGatePolicy(TEAM_ID, { epss_threshold: 0.5 }, { etag: '"42"' });
     restore();
     expect(header(calls[0], "If-Match")).toBe('"42"');
+    // And hands back the saved row's tag, which the next save has to carry.
+    expect(saved).toEqual({ policy: ROW, etag: '"43"' });
     expect(header(calls[0], "If-None-Match")).toBeUndefined();
   });
 

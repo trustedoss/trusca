@@ -353,7 +353,8 @@ A team's own build gate policy lives at `/v1/gate-policies/teams/{team_id}`, and
 | PUT, `If-Match` equal to the current `ETag` | `200`, row replaced, new `ETag` | |
 | PUT, `If-Match` that no longer matches (another save, the row was deleted, or the value is malformed) | `409` | `https://docs.trustedoss.io/errors/gate-policy-conflict` |
 | PUT, `If-None-Match: *` when a row already exists | `409` | `https://docs.trustedoss.io/errors/gate-policy-conflict` |
-| GET or DELETE, team you can see that has no row of its own | `404` | `https://docs.trustedoss.io/errors/gate-policy-not-set` |
+| GET, team you can see that has no row of its own | `404` | `https://docs.trustedoss.io/errors/gate-policy-not-set` |
+| DELETE, team you administer that has no row of its own | `404` | `https://docs.trustedoss.io/errors/gate-policy-not-set` |
 | GET, PUT or DELETE, team that does not exist | `404` | `about:blank` |
 | GET, team you cannot see | `404` | `about:blank` |
 | PUT or DELETE, existing team you do not administer | `403` | `about:blank` |
