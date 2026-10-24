@@ -16,6 +16,12 @@ import { expect, type Page } from "@playwright/test";
 const DEFAULT_BASE_URL = "http://localhost:5173";
 const DEFAULT_TIMEOUT_MS = 10_000;
 
+/** A project as the picker shows it: searched by name, chosen by id. */
+export interface IntakeProject {
+  id: string;
+  name: string;
+}
+
 export class IntakeHarness {
   readonly page: Page;
   readonly baseUrl: string;
@@ -57,12 +63,32 @@ export class IntakeHarness {
     });
   }
 
+  /**
+   * Pick the project from the picker. The name is what gets typed, because
+   * that is what the server searches and a seeded project may sit past the
+   * first page on a shared stack; the id is what gets clicked, so two
+   * projects whose names share a prefix cannot be confused.
+   */
+  async chooseProject(project: IntakeProject): Promise<void> {
+    await this.page.getByTestId("intake-project").click();
+    await this.page.getByTestId("intake-project-search").fill(project.name);
+    await this.page
+      .locator(
+        `[data-testid="intake-project-option"][data-project-id="${project.id}"]`,
+      )
+      .click({ timeout: DEFAULT_TIMEOUT_MS });
+    await expect(this.page.getByTestId("intake-project")).toHaveAttribute(
+      "data-project-id",
+      project.id,
+    );
+  }
+
   async ask(
-    projectId: string,
+    project: IntakeProject,
     purl: string,
     justification: string,
   ): Promise<void> {
-    await this.page.getByTestId("intake-project").fill(projectId);
+    await this.chooseProject(project);
     await this.page.getByTestId("intake-purl").fill(purl);
     await this.page.getByTestId("intake-justification").fill(justification);
     await this.page.getByTestId("intake-ask").click();

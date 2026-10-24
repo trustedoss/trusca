@@ -1,6 +1,6 @@
 {
   "title": "패키지 조회",
-  "subtitle": "패키지를 끌어오기 전에 외부 카탈로그에서 미리 살펴보고, 사내에서 이미 쓰고 있는지 확인합니다.",
+  "subtitle": "패키지를 도입하기 전에 외부 카탈로그에서 정보를 확인하고, 사내에서 이미 쓰고 있는지 살펴봅니다.",
   "field": {
     "ecosystem": "생태계",
     "name": "패키지 이름",
@@ -18,7 +18,7 @@
   },
   "submit": "조회",
   "not_found": {
-    "title": "그 이름으로 찾지 못했습니다",
+    "title": "이 이름의 패키지를 찾지 못했습니다",
     "description": "생태계와 정확한 패키지 이름을 확인하세요. 외부 카탈로그는 정확히 일치하는 것만 찾습니다."
   },
   "advisories": {
@@ -34,8 +34,8 @@
   },
   "intake_cta": "이 패키지 사용 신청하기",
   "disabled": {
-    "title": "이 배포는 외부 카탈로그 조회를 쓰지 않습니다",
-    "description": "관리자가 EXTERNAL_PACKAGE_LOOKUP_ENABLED를 켜면 이 화면을 씁니다."
+    "title": "이 배포에서는 외부 카탈로그 조회를 쓰지 않습니다",
+    "description": "관리자가 EXTERNAL_PACKAGE_LOOKUP_ENABLED를 켜면 이 화면을 쓸 수 있습니다."
   },
   "errors": {
     "lookup_failed": "패키지를 조회하지 못했습니다."

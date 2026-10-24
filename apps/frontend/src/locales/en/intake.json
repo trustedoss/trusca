@@ -3,9 +3,17 @@
   "subtitle": "Ask about a package before it is pulled in, and answer before it reaches a build.",
   "ask": "Ask",
   "field": {
-    "project": "Project id",
+    "project": "Project",
     "purl": "Package (purl)",
     "justification": "Why this package"
+  },
+  "project_picker": {
+    "placeholder": "Choose a project",
+    "search_placeholder": "Search projects",
+    "loading": "Loading projects…",
+    "empty": "No project matches.",
+    "load_failed": "The projects could not be loaded.",
+    "truncated": "Showing the first {{count}}. Type to narrow the list."
   },
   "status": {
     "pending": "Waiting",
