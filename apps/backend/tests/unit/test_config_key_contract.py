@@ -115,6 +115,8 @@ def _helper_names(tree: ast.AST) -> set[str]:
     return helpers
 
 
+# Cached: parsing and walking the whole backend takes seconds, and several
+# tests below ask the same question once per key. Nothing mutates the results.
 @functools.cache
 def _source_trees() -> dict[Path, ast.AST]:
     trees: dict[Path, ast.AST] = {}
@@ -125,6 +127,7 @@ def _source_trees() -> dict[Path, ast.AST]:
     return trees
 
 
+@functools.cache
 def _keys_read_by_backend() -> dict[str, set[str]]:
     trees = _source_trees()
     helpers: set[str] = set()
@@ -506,6 +509,7 @@ def _keys_passed_to_containers(path: Path) -> set[str]:
     }
 
 
+@functools.cache
 def _code_defaults() -> dict[str, set[str | None]]:
     """For each key read by a direct call or a helper, the defaults it is read
     with: a literal as the string an env value would carry, None for no
