@@ -261,6 +261,17 @@ pytest --cov=. --cov-report=term-missing --cov-report=xml
 
 Aim for ≥ 80 % line coverage on **changed lines**. CI runs the two suites as separate jobs (`test (backend-unit)`, `test (backend-integration)`), and `coverage-gate (backend)` combines their data and judges both numbers: the whole tree against `fail_under = 80`, and the lines your branch changed against the same 80 % via `diff-cover`. Either one under threshold fails the job.
 
+### Integration shards and the per-test timeout
+
+CI splits `tests/integration` into shards, each a separate job with its own PostgreSQL and Redis. `pytest --shard K/N` runs whole files only, weighted by `tests/integration/shard_durations.json`, and the job named `test (backend-integration)` passes only when every shard passed and the shards between them ran every collected file exactly once. Two things follow for anyone writing an integration test:
+
+- A file must not depend on rows, keys or files that another file leaves behind, because the two may run in different shards. Order inside one file is unchanged.
+- A shard failure reproduces locally with the same flag, for example `pytest --shard 2/3 tests/integration`.
+
+To refresh the weights, download the `backend-integration-durations` artifact from a recent run and copy it over `tests/integration/shard_durations.json`. Stale weights only make the shards less even.
+
+CI also runs every backend test under a per-test timeout (`--timeout`, pytest-timeout, thread method). A test that runs past it ends the run and prints every thread's stack; the main thread's stack is headed `MainThread running <test id>`, which names the test even when the hang is in a fixture.
+
 ### Layout rule of thumb
 
 - **Unit:** the function under test takes no database, no HTTP, no Celery. Mock at the boundary.

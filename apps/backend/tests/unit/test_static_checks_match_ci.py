@@ -41,6 +41,9 @@ COVERED_JOBS = ("lint", "typecheck", "shellcheck")
 NOT_COVERED_JOBS = {
     "test": "needs a database and roughly 25 minutes; reproducing it is the "
     "false confidence this tool exists to avoid",
+    "test-integration-shards": "the integration suite split across jobs; "
+    "needs a database each, same reason as test",
+    "test-integration": "only aggregates the shards' results and reports",
     "coverage-gate": "consumes the coverage artifacts the test job uploads, so "
     "it cannot run without that job",
     "e2e": "needs Playwright browsers and the whole stack running",
