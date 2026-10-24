@@ -27,7 +27,7 @@ sidebar_position: 4
 
 Trivy DB(NVD, OSV, GHSA, EPSS, KEV의 묶음)는 첫 부팅에 내려받고 주간으로 갱신되며, 재매칭 beat가 기존 스캔을 여기에 다시 대조합니다. 운영 측면은 [취약점 데이터](../admin-guide/vulnerability-data.md)에서 모두 다룹니다. 업그레이드 관점에서는 두 습관이 중요합니다.
 
-- **최신성을 관찰하십시오.** `/admin/health`의 **Vulnerability data** 카드가 마지막 갱신과 `fresh` / `stale` / `very_stale` 상태를 보여 줍니다. 오래된 DB는 새 CVE가 들어오지 않음을 뜻합니다 — [on-call 런북 시나리오 1](../admin-guide/oncall-runbook.md#시나리오-1--trivy-db-stale-또는-누락)로 복구하십시오. 제품 업그레이드와 무관합니다.
+- **최신성을 관찰하십시오.** `/admin/health`의 **Vulnerability data** 카드가 마지막 갱신과 `fresh` / `stale` / `very_stale` 상태를 보여 줍니다. 오래된 DB는 새 CVE가 들어오지 않음을 뜻합니다. [on-call 런북 시나리오 1](../admin-guide/oncall-runbook.md#scenario-1--trivy-db-stale-or-missing)로 복구하십시오. 제품 업그레이드와 무관합니다.
 - **업그레이드에 따른 태그 변동을 유의하십시오.** DB는 스키마 태그에 고정된 OCI 아티팩트입니다. TRUSCA 업그레이드가 기대 태그를 올리면, air-gapped 미러를 맞춰 갱신하지 않는 한 스캔이 빈 결과를 반환합니다 — 미러 업데이트를 업그레이드와 함께 조율하십시오. [air-gapped 운영](../admin-guide/vulnerability-data.md#air-gapped)을 참고하십시오.
 
 ## 릴리스 노트를 먼저 읽으십시오 {#release-notes}
@@ -89,4 +89,4 @@ TRUSCA의 Alembic 마이그레이션은 **forward-only**입니다. `alembic down
 - [백업 및 복원](../admin-guide/backup-and-restore.md#forward-only-마이그레이션과-복원) — 백업이 유일한 복귀 경로인 이유
 - [취약점 데이터 (Trivy DB)](../admin-guide/vulnerability-data.md) — 갱신 수명 주기와 air-gapped 미러
 - [릴리스 노트 — v0.14.0](../release-notes/v0.14.0.md) — 결과를 바꾸는 릴리스의 예
-- [on-call 런북 — 시나리오 1](../admin-guide/oncall-runbook.md#시나리오-1--trivy-db-stale-또는-누락) — 오래된 Trivy DB 복구
+- [on-call 런북 시나리오 1](../admin-guide/oncall-runbook.md#scenario-1--trivy-db-stale-or-missing): 오래된 Trivy DB 복구

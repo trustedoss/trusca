@@ -161,7 +161,7 @@ After cleanup, **/admin/disk** updates within ~10 seconds. Once below the hard t
 
 ### 4. Long-term remediation
 
-- Move `WORKSPACE_HOST_PATH` to a larger volume (edit `.env`, restart `backend`, `worker-scan`, `worker-default`).
+- Move `WORKSPACE_HOST_PATH` to a larger volume (edit `.env`, then `docker-compose -f docker-compose.yml up -d backend worker-scan worker-default`).
 - Lower `BACKUP_RETENTION_DAYS` if local backups are eating space.
 - Move backups off-host (S3, NFS) and skip local pruning.
 
@@ -295,7 +295,7 @@ The dashboard is a snapshot of liveness, not full functionality. Liveness can pa
 
 ### Disk gauge is wrong
 
-The gauge reads the host-mounted volume from inside the backend container. If you changed `WORKSPACE_HOST_PATH` recently and forgot to restart, the gauge points at the old volume. Restart the backend.
+The gauge reads the host-mounted volume from inside the backend container. If you changed `WORKSPACE_HOST_PATH` recently and did not recreate the containers, the gauge points at the old volume. Run `docker-compose -f docker-compose.yml up -d backend worker-scan worker-default`.
 
 ### Hard limit is too aggressive
 

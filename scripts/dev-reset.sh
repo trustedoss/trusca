@@ -83,7 +83,7 @@ echo "[2/4] docker volume prune (project-scoped)"
 docker volume prune -f --filter "label=${PROJECT_LABEL}" >/dev/null
 
 if (( REBUILD_WORKER == 1 )); then
-  echo "[3/4] docker-compose build celery-worker --no-cache"
+  echo "[3/4] docker-compose -f ${COMPOSE_FILE} build --no-cache celery-worker"
   docker-compose -f "$COMPOSE_FILE" build --no-cache celery-worker
 else
   echo "[3/4] skip worker rebuild (pass --rebuild-worker to force)"

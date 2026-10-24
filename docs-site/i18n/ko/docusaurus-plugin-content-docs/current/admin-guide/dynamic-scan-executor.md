@@ -101,7 +101,7 @@ SCAN_WORKSPACE_VOLUME=trustedoss-portal_scan-workspace   # compose-prefixed 볼�
 SCAN_ANDROID_IMAGE_TAG=v1.0.0                            # semver 또는 sha256:<digest>
 ```
 
-`.env` 편집 후 워커를 재시작하십시오 — 실행기 키는 런타임에 `os.getenv`로 읽힙니다.
+`.env` 편집 후 워커를 다시 만드십시오(`docker-compose -f docker-compose.yml up -d worker-scan worker-default`). 실행기 키는 런타임에 `os.getenv`로 읽힙니다.
 
 ## 동작 확인 {#verify-it-worked}
 
@@ -310,7 +310,7 @@ docker-compose --profile bomlens-engine rm -f worker-engine docker-socket-proxy
 
 ## 환경변수 레퍼런스 {#environment-variable-reference}
 
-다음은 `.env.example`의 **Dynamic scan executor** 섹션을 반영합니다. 모두 런타임에 `os.getenv`로 읽힙니다 — `.env`를 편집하고 워커를 재시작하십시오. 정식 레퍼런스는 [환경변수 → 스캔 파이프라인](../reference/env-variables.md#scan-pipeline)을 참고하십시오.
+다음은 `.env.example`의 **Dynamic scan executor** 섹션을 반영합니다. 모두 런타임에 `os.getenv`로 읽힙니다. `.env`를 편집한 뒤 `docker-compose up -d`로 워커를 다시 만드십시오. 정식 레퍼런스는 [환경변수 → 스캔 파이프라인](../reference/env-variables.md#scan-pipeline)을 참고하십시오.
 
 | 키 | 기본값 | 설명 |
 |---|---|---|

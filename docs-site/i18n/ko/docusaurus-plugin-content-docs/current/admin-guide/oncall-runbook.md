@@ -52,7 +52,7 @@ curl -fsS "https://<your-host>/metrics" \
 # 1. DB가 디스크에 있는가?
 docker-compose -f docker-compose.yml exec worker-scan \
   ls -lh /var/lib/trivy/db/
-# 2. DB 메타데이터(Created 타임스탬프)
+# 2. DB 메타데이터(UpdatedAt 타임스탬프)
 docker-compose -f docker-compose.yml exec worker-scan \
   cat /var/lib/trivy/db/metadata.json
 # 3. 최근 download / refresh 로그
@@ -70,7 +70,7 @@ docker-compose -f docker-compose.yml exec worker-scan \
      celery -A tasks.celery_app call trustedoss.trivy_db_refresh
    sleep 30
    docker-compose -f docker-compose.yml exec worker-scan \
-     cat /var/lib/trivy/db/metadata.json | jq '.Created'
+     cat /var/lib/trivy/db/metadata.json | jq '.UpdatedAt'
    ```
 2. **비우고 재다운로드**(메타데이터 손상 시):
    ```bash
@@ -198,7 +198,7 @@ docker system df
 curl -fsS "https://<your-host>/v1/admin/disk" \
   -H "Authorization: Bearer $ACCESS_TOKEN" | jq
 # 3. Workspace 분해(가장 흔한 원인)
-docker-compose exec worker-scan du -sh /workspace/* | sort -h | tail -10
+docker-compose exec worker-scan sh -c 'du -sh /workspace/*' | sort -h | tail -10
 # 4. Postgres 데이터베이스 크기
 docker-compose exec postgres psql -U trustedoss -d trustedoss \
   -c "SELECT pg_size_pretty(pg_database_size('trustedoss'));"

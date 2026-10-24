@@ -214,11 +214,7 @@ cosign verify-blob-attestation \
    bash scripts/cosign-keygen.sh --out ./secrets/cosign
    ```
 
-   cosign은 개인 키를 저장 시 암호화할 비밀번호를 묻습니다(또는 export된 `COSIGN_PASSWORD`를 읽습니다). cosign이 PATH에 없으면 cosign을 포함하는 워커 컨테이너 안에서 헬퍼를 실행하십시오.
-
-   ```bash
-   docker-compose run --rm worker-scan bash scripts/cosign-keygen.sh
-   ```
+   cosign은 개인 키를 저장 시 암호화할 비밀번호를 묻습니다(또는 export된 `COSIGN_PASSWORD`를 읽습니다). 헬퍼는 호스트에서 실행하며 PATH에 cosign이 있어야 합니다([cosign 설치](#2-cosign-설치) 참고). 워커 컨테이너 안에서는 실행할 수 없습니다. 스크립트가 이미지에 들어 있지 않고, `/cosign`은 읽기 전용으로 마운트됩니다.
 
 2. 개인 키 비밀번호를 앱의 Fernet 키로 암호화하여 `.env`에 평문이 아닌 ciphertext로 둘 수 있게 합니다. 서명 시 앱이 복호화하는 것과 동일한 키를 쓰도록 워커 **안에서** 실행하십시오.
 

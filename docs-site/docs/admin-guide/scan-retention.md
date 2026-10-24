@@ -11,7 +11,7 @@ sidebar_position: 8
 CI and webhook automation trigger a scan on every push, pull request, and merge request. Left unbounded, that produces thousands of near-identical snapshots per project. The portal keeps the history useful and the disk bounded with a **retention model**: only the latest successful scan per target stays *live*, older snapshots are *superseded* and reclaimed after a grace window, and scans you explicitly mark as a release are kept forever.
 
 :::note Audience
-`super_admin` and `team_admin` operating a portal that receives automated scans. Familiarity with `.env` editing and `docker-compose restart`. For the per-scan lifecycle (queued → running → succeeded), see [Scans](../user-guide/scans.md).
+`super_admin` and `team_admin` operating a portal that receives automated scans. Familiarity with `.env` editing and `docker-compose up -d`. For the per-scan lifecycle (queued → running → succeeded), see [Scans](../user-guide/scans.md).
 :::
 
 ## The retention model
@@ -46,7 +46,7 @@ The [GitHub Action](../ci-integration/github-actions.md#how-the-ref-becomes-a-re
 
 ## Retention policy variables
 
-All four keys are read at runtime via `os.getenv`. Edit `.env` and restart the Celery worker and beat services to apply them. The service names differ by stack: on the **production** compose (`docker-compose.yml`) they are `worker-scan`, `worker-default` and `beat`; on the **dev** compose (`docker-compose.dev.yml`) they are `celery-worker` and `celery-beat`. See [Environment variables → Scan retention](../reference/env-variables.md#scan-retention) for the canonical reference.
+All four keys are read at runtime via `os.getenv`. Edit `.env` and recreate the Celery worker and beat services with `docker-compose up -d` to apply them (`docker-compose restart` keeps the old values). The service names differ by stack: on the **production** compose (`docker-compose.yml`) they are `worker-scan`, `worker-default` and `beat`; on the **dev** compose (`docker-compose.dev.yml`) they are `celery-worker` and `celery-beat`. See [Environment variables → Scan retention](../reference/env-variables.md#scan-retention) for the canonical reference.
 
 <!-- docs-uat: id=scan-retention-env kind=shell ctx=host tier=manual waiver=env-config-snippet-not-a-command -->
 ```bash

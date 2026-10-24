@@ -194,7 +194,7 @@ docker-compose -f docker-compose.yml exec -T -e APP_ENV=demo backend python -m s
 ## Local read-only demo (Docker Compose)
 
 The read-only mode works on any deploy — for a local read-only instance, add
-`DEMO_READ_ONLY=true` to your `.env` and restart the backend. The systemd timer
+`DEMO_READ_ONLY=true` to your `.env` and recreate the backend (`docker-compose up -d backend`). The systemd timer
 is for the demo host; locally, re-run the reset inside the backend container
 whenever you want a clean dataset:
 

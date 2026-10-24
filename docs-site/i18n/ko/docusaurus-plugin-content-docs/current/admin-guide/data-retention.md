@@ -11,7 +11,7 @@ sidebar_position: 8.5
 [스캔 보존](./scan-retention.md)은 `scans` 테이블과 그 결과를 제한합니다. 이 문서는 W9(concurrency-scaling-plan-2026-08-22.md §3.5) 이전까지 보존 정책이 없던 여섯 테이블을 다룹니다 — `refresh_tokens`, `password_reset_tokens`, `notifications`, `webhook_deliveries`, `report_downloads`, `audit_logs`. 이 중 다섯은 매일 도는 자동 정리 작업이 있습니다. 여섯 번째인 `audit_logs`는 의도적으로 자동 삭제가 없습니다. [감사 로그 보존만 수동으로 남긴 이유](#audit-log-retention-why-this-one-stays-manual)를 봅니다.
 
 :::note 대상 독자
-이 테이블들이 문제가 될 만큼 오래 운영해 온 포털을 다루는 `super_admin`. `.env` 편집과 `docker-compose restart`에 익숙해야 합니다.
+이 테이블들이 문제가 될 만큼 오래 운영해 온 포털을 다루는 `super_admin`. `.env` 편집과 `docker-compose up -d`에 익숙해야 합니다.
 :::
 
 ## 테이블마다 지우는 것과 남기는 것
@@ -29,7 +29,7 @@ sidebar_position: 8.5
 
 ## 설정 {#configuration}
 
-모든 키는 런타임에 `os.getenv`로 읽힙니다 — `.env`를 편집하고 Celery beat 서비스를 재시작하면 값이 적용됩니다(03:15·03:30·03:45 UTC라는 일정 자체는 이 코드베이스의 다른 beat 항목들과 같은 관례로 코드에 고정돼 있습니다). 정식 레퍼런스는 [환경변수 → 운영 데이터 보존](../reference/env-variables.md#operational-data-retention)을 참고합니다.
+모든 키는 런타임에 `os.getenv`로 읽힙니다. `.env`를 편집한 뒤 Celery beat 서비스를 다시 만들면(`docker-compose -f docker-compose.yml up -d beat`) 값이 적용됩니다(03:15·03:30·03:45 UTC라는 일정 자체는 이 코드베이스의 다른 beat 항목들과 같은 관례로 코드에 고정돼 있습니다). 정식 레퍼런스는 [환경변수 → 운영 데이터 보존](../reference/env-variables.md#operational-data-retention)을 참고합니다.
 
 <!-- docs-uat: id=data-retention-env kind=shell ctx=host tier=manual waiver=env-config-snippet-not-a-command -->
 ```bash

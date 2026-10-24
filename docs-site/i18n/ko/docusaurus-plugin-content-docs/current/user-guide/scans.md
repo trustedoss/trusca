@@ -332,7 +332,7 @@ Swift 툴체인, CocoaPods CLI가 필요하지 않습니다.
 아직 `queued` 또는 `running` 상태인 스캔을 중단할 수 있습니다 — 예: 잘못된 브랜치에 대해 트리거했거나, 큰 레포의 스캔이 예상보다 오래 걸려 워커 슬롯을 비우고 싶을 때.
 
 :::note 대상 독자
-**소유 팀**의 `developer` 이상 권한 보유 팀 멤버. 본인 팀의 스캔만 취소할 수 있으며, 다른 팀에 속한 스캔은 보이지 않고 취소할 수도 없습니다. super-admin은 [관리자 스캔 큐](../admin-guide/oncall-runbook.md#시나리오-3--스캔이-running에서-4시간-이상-멈춤)에서 모든 스캔을 취소할 수 있습니다.
+**소유 팀**의 `developer` 이상 권한 보유 팀 멤버. 본인 팀의 스캔만 취소할 수 있으며, 다른 팀에 속한 스캔은 보이지 않고 취소할 수도 없습니다. super-admin은 [관리자 스캔 큐](../admin-guide/oncall-runbook.md#scenario-3--scan-stuck-in-running-for--4-hours)에서 모든 스캔을 취소할 수 있습니다.
 :::
 
 ### UI에서
@@ -515,14 +515,14 @@ docker-compose -f docker-compose.yml exec worker-scan \
 ### 스캔이 4시간 이상 `running` 상태로 멈춤
 
 먼저 드로어나 `/scans` 큐에서 **Cancel scan**(스캔 취소)을 시도하세요([스캔 취소](#스캔-취소) 참고). 예를 들어 브로커가 도달 불가하여 스캔이 `cancelled`로 이동하지 않으면, 강제 취소 + 워커 점검은 온콜 플레이북을 사용하세요:
-[온콜 런북 → 스캔 멈춤](../admin-guide/oncall-runbook.md#시나리오-3--스캔이-running에서-4시간-이상-멈춤).
+[온콜 런북 → 스캔 멈춤](../admin-guide/oncall-runbook.md#scenario-3--scan-stuck-in-running-for--4-hours).
 
 ### "Cancel scan"을 눌러도 아무 일이 없음 / 스캔이 계속 실행됨
 
 취소 요청은 API에 도달했으나 워커가 제때 멈추지 않았습니다.
 
 - 브로커(Redis)가 잠깐 도달 불가였다면, 스캔은 여전히 `cancelled`로 표시되고 워크스페이스는 고아-워크스페이스 정리기와 워커 hard-limit 백스톱이 회수합니다 — 재시도할 필요가 없습니다.
-- 1분 후에도 행이 `running`으로 표시되면, 워커가 떠 있는지 확인하고(`docker-compose -f docker-compose.yml ps worker-scan`) [온콜 런북](../admin-guide/oncall-runbook.md#시나리오-3--스캔이-running에서-4시간-이상-멈춤)으로 에스컬레이션하세요.
+- 1분 후에도 행이 `running`으로 표시되면, 워커가 떠 있는지 확인하고(`docker-compose -f docker-compose.yml ps worker-scan`) [온콜 런북](../admin-guide/oncall-runbook.md#scenario-3--scan-stuck-in-running-for--4-hours)으로 에스컬레이션하세요.
 
 ### "This scan already finished and can no longer be cancelled"
 

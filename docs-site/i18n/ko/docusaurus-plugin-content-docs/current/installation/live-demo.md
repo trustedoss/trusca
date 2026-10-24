@@ -182,7 +182,7 @@ docker-compose -f docker-compose.yml exec -T -e APP_ENV=demo backend python -m s
 ## 로컬 읽기 전용 데모 (Docker Compose)
 
 읽기 전용 모드는 모든 배포에서 동작합니다. 로컬 읽기 전용 인스턴스는 `.env`에
-`DEMO_READ_ONLY=true`를 추가하고 백엔드를 재시작하면 됩니다. systemd 타이머는
+`DEMO_READ_ONLY=true`를 추가하고 백엔드를 다시 만들면(`docker-compose up -d backend`) 됩니다. systemd 타이머는
 데모 호스트용이며, 로컬에서는 깨끗한 데이터셋이 필요할 때마다 백엔드 컨테이너
 안에서 리셋을 다시 실행하세요.
 

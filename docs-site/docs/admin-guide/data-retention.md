@@ -11,7 +11,7 @@ sidebar_position: 8.5
 [Scan retention](./scan-retention.md) bounds the `scans` table and its findings. This page covers the six tables that had no retention policy before W9 (concurrency-scaling-plan-2026-08-22.md §3.5): `refresh_tokens`, `password_reset_tokens`, `notifications`, `webhook_deliveries`, `report_downloads`, and `audit_logs`. Five of them get a daily automated sweep. The sixth, `audit_logs`, does not, on purpose; see [Audit log retention: why this one stays manual](#audit-log-retention-why-this-one-stays-manual).
 
 :::note Audience
-`super_admin` operating a portal that has been running long enough for these tables to matter. Familiarity with `.env` editing and `docker-compose restart`.
+`super_admin` operating a portal that has been running long enough for these tables to matter. Familiarity with `.env` editing and `docker-compose up -d`.
 :::
 
 ## What each table deletes and keeps
@@ -29,7 +29,7 @@ None of the five automated sweeps needs a schema change. Every predicate above r
 
 ## Configuration
 
-All keys are read at runtime via `os.getenv`. Edit `.env` and restart the Celery beat service to change the cadence's inputs (the schedule itself, 03:15 / 03:30 / 03:45 UTC, is a code constant, the same convention every other beat entry in this codebase follows). See [Environment variables → Operational data retention](../reference/env-variables.md#operational-data-retention) for the canonical reference.
+All keys are read at runtime via `os.getenv`. Edit `.env` and recreate the Celery beat service (`docker-compose -f docker-compose.yml up -d beat`) to change the cadence's inputs (the schedule itself, 03:15 / 03:30 / 03:45 UTC, is a code constant, the same convention every other beat entry in this codebase follows). See [Environment variables → Operational data retention](../reference/env-variables.md#operational-data-retention) for the canonical reference.
 
 <!-- docs-uat: id=data-retention-env kind=shell ctx=host tier=manual waiver=env-config-snippet-not-a-command -->
 ```bash

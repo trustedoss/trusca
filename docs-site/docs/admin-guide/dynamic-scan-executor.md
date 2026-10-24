@@ -101,7 +101,7 @@ SCAN_WORKSPACE_VOLUME=trustedoss-portal_scan-workspace   # compose-prefixed name
 SCAN_ANDROID_IMAGE_TAG=v1.0.0                            # semver or sha256:<digest>
 ```
 
-Restart the worker after editing `.env` — the executor keys are read at runtime via `os.getenv`.
+Recreate the workers after editing `.env` (`docker-compose -f docker-compose.yml up -d worker-scan worker-default`). The executor keys are read at runtime via `os.getenv`.
 
 ## Verify it worked
 
@@ -312,7 +312,7 @@ Scans already queued for the engine stay queued until the engine worker runs aga
 
 ## Environment variable reference
 
-These mirror the **Dynamic scan executor** section of `.env.example`. All are read at runtime via `os.getenv` — edit `.env` and restart the worker. See [Environment variables → Scan pipeline](../reference/env-variables.md#scan-pipeline) for the canonical reference.
+These mirror the **Dynamic scan executor** section of `.env.example`. All are read at runtime via `os.getenv`. Edit `.env` and recreate the workers with `docker-compose up -d`. See [Environment variables → Scan pipeline](../reference/env-variables.md#scan-pipeline) for the canonical reference.
 
 | Key | Default | Description |
 |---|---|---|

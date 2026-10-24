@@ -156,7 +156,7 @@ docker-compose -f docker-compose.yml exec backend \
 
 ### 4. 장기 대응
 
-- `WORKSPACE_HOST_PATH`를 더 큰 볼륨으로 이동(`.env` 편집, `backend`·`worker-scan`·`worker-default` 재시작).
+- `WORKSPACE_HOST_PATH`를 더 큰 볼륨으로 이동(`.env` 편집 후 `docker-compose -f docker-compose.yml up -d backend worker-scan worker-default`).
 - 로컬 백업이 공간을 잡아먹으면 `BACKUP_RETENTION_DAYS` 축소.
 - 백업을 호스트 외부(S3, NFS)로 이동하고 로컬 정리 생략.
 
@@ -281,7 +281,7 @@ docker-compose -f docker-compose.yml exec backend \
 
 ### 디스크 게이지가 잘못됨
 
-게이지는 backend 컨테이너 내부에서 호스트 마운트 볼륨을 읽습니다. 최근에 `WORKSPACE_HOST_PATH`를 변경하고 재시작을 잊으면 게이지가 이전 볼륨을 가리킵니다. backend 재시작.
+게이지는 backend 컨테이너 내부에서 호스트 마운트 볼륨을 읽습니다. 최근에 `WORKSPACE_HOST_PATH`를 변경하고 컨테이너를 다시 만들지 않았으면 게이지가 이전 볼륨을 가리킵니다. `docker-compose -f docker-compose.yml up -d backend worker-scan worker-default`를 실행합니다.
 
 ### Hard limit가 너무 공격적
 

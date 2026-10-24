@@ -58,7 +58,7 @@ curl -fsS "https://<your-host>/metrics" \
 # 1. Is the DB on disk?
 docker-compose -f docker-compose.yml exec worker-scan \
   ls -lh /var/lib/trivy/db/
-# 2. DB metadata (Created timestamp)
+# 2. DB metadata (UpdatedAt timestamp)
 docker-compose -f docker-compose.yml exec worker-scan \
   cat /var/lib/trivy/db/metadata.json
 # 3. Recent download / refresh logs
@@ -76,7 +76,7 @@ docker-compose -f docker-compose.yml exec worker-scan \
      celery -A tasks.celery_app call trustedoss.trivy_db_refresh
    sleep 30
    docker-compose -f docker-compose.yml exec worker-scan \
-     cat /var/lib/trivy/db/metadata.json | jq '.Created'
+     cat /var/lib/trivy/db/metadata.json | jq '.UpdatedAt'
    ```
 2. **Wipe + re-download** (if metadata is corrupted):
    ```bash
@@ -204,7 +204,7 @@ docker system df
 curl -fsS "https://<your-host>/v1/admin/disk" \
   -H "Authorization: Bearer $ACCESS_TOKEN" | jq
 # 3. Workspace breakdown (most common offender)
-docker-compose exec worker-scan du -sh /workspace/* | sort -h | tail -10
+docker-compose exec worker-scan sh -c 'du -sh /workspace/*' | sort -h | tail -10
 # 4. Postgres database size
 docker-compose exec postgres psql -U trustedoss -d trustedoss \
   -c "SELECT pg_size_pretty(pg_database_size('trustedoss'));"
