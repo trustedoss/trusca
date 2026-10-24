@@ -2,6 +2,9 @@
 pytest==9.1.1
 pytest-asyncio==1.4.0
 pytest-cov==7.1.0
+# CI passes --timeout so a test that hangs fails with every thread's stack
+# instead of running into the job limit (#591). MIT.
+pytest-timeout==2.4.0
 # Pinned because ci.yml's coverage-gate installs the same version to read the
 # data files these legs write — `coverage combine` needs both sides to agree.
 coverage[toml]==7.15.0

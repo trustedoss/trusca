@@ -48,8 +48,20 @@ async def test_fx_appr_and_scan_pipeline_carry_a_readable_webhook_secret(
 ) -> None:
     from core.crypto import decrypt_secret
     from models import Project
-    from scripts import seed_demo
+    from scripts import reset_demo, seed_demo
+    from tests._helpers import make_user
 
+    # Seed from an empty demo rather than topping up whatever is there. Only
+    # the first seed creates scan-pipeline; the top-up path does not. So when
+    # an earlier file has removed the projects but left the demo organisation
+    # (test_scan_scheduler.py's TRUNCATE ... CASCADE reaches projects), the
+    # top-up recreates fx-appr and nothing else. In one job this passed only
+    # because a seed test that sorts between the two files ran in between.
+    # reset_demo deletes the demo super admins, and the database refuses to
+    # remove the last active one, so keep one outside the demo.
+    async with db_factory() as session:
+        await make_user(session, is_superuser=True)
+    await reset_demo._drop_demo()
     await seed_demo._seed()
 
     async with db_factory() as session:

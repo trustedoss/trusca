@@ -182,3 +182,53 @@ def test_the_catalog_refresh_commits_what_it_counts(session: Session) -> None:
             {"e": external_id},
         )
         session.commit()
+
+
+def test_the_catalog_refresh_leaves_a_clean_row_alone(session: Session) -> None:
+    """A row the matching layer already wrote is scanned and skipped.
+
+    Until the integration suite was split across CI jobs, this branch was only
+    reached by rows that other test files happened to leave in the shared
+    database. Seeding one stale and one clean row makes both sides of the
+    stale check run here, whatever else the database holds.
+    """
+    from tasks.vulnerability_catalog_refresh import refresh_stale_catalog_rows
+
+    suffix = uuid.uuid4().int % 100000
+    stale_id, clean_id = f"CVE-9998-{suffix:05d}", f"CVE-9997-{suffix:05d}"
+    rows = [
+        (stale_id, "NVD", '["* [ADVISORY] (https://example.test/a)"]'),
+        (clean_id, "trivy", '["https://example.test/clean"]'),
+    ]
+    for external_id, source, refs in rows:
+        session.execute(
+            text(
+                "INSERT INTO vulnerabilities"
+                ' (external_id, source, severity, summary, details, "references")'
+                " VALUES (:e, :src, 'high', 'summary', 'details', CAST(:r AS jsonb))"
+            ),
+            {"e": external_id, "src": source, "r": refs},
+        )
+    session.commit()
+
+    try:
+        summary = refresh_stale_catalog_rows.run(dry_run=False)
+        # Both seeded rows were scanned, and the clean one was not counted.
+        assert summary["scanned"] >= 2
+        assert summary["stale"] <= summary["scanned"] - 1
+
+        session.expire_all()
+        clean = session.execute(
+            text(
+                'SELECT source, details, "references" FROM vulnerabilities'
+                " WHERE external_id = :e"
+            ),
+            {"e": clean_id},
+        ).one()
+        assert tuple(clean) == ("trivy", "details", ["https://example.test/clean"])
+    finally:
+        session.execute(
+            text("DELETE FROM vulnerabilities WHERE external_id IN (:a, :b)"),
+            {"a": stale_id, "b": clean_id},
+        )
+        session.commit()

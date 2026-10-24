@@ -17,18 +17,89 @@ itself. See :func:`_redis_index_is_not_shared`.
 from __future__ import annotations
 
 import sys
+import threading
 from collections.abc import AsyncIterator, Iterator
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 import pytest
 from sqlalchemy import create_engine
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 from sqlalchemy.orm import Session, sessionmaker
 
+if TYPE_CHECKING:
+    from tests import _shard as _shard_module
+
 BACKEND_ROOT = Path(__file__).resolve().parent.parent
 if str(BACKEND_ROOT) not in sys.path:
     sys.path.insert(0, str(BACKEND_ROOT))
+
+
+def pytest_addoption(parser: pytest.Parser) -> None:
+    group = parser.getgroup("shard", "split the run across CI jobs (tests/_shard.py)")
+    group.addoption(
+        "--shard",
+        default=None,
+        metavar="K/N",
+        help="run only the files assigned to shard K of N",
+    )
+    group.addoption(
+        "--shard-report",
+        default=None,
+        metavar="PATH",
+        help="with --shard, write what this shard ran and how long each file took",
+    )
+
+
+def pytest_configure(config: pytest.Config) -> None:
+    value = config.getoption("--shard", default=None)
+    if not value:
+        return
+    from tests import _shard
+
+    try:
+        shard, total = _shard.parse_shard(value)
+    except ValueError as exc:
+        raise pytest.UsageError(str(exc)) from exc
+    config.pluginmanager.register(
+        _ShardHooks(_shard.ShardPlugin(shard, total, config.getoption("--shard-report"))),
+        "trusca-shard",
+    )
+
+
+class _ShardHooks:
+    def __init__(self, plugin: _shard_module.ShardPlugin) -> None:
+        self.plugin = plugin
+
+    # trylast: partition whatever is left after -k / -m have deselected.
+    @pytest.hookimpl(trylast=True)
+    def pytest_collection_modifyitems(self, config: pytest.Config, items: list[Any]) -> None:
+        self.plugin.select(config, items)
+
+    def pytest_report_collectionfinish(self) -> str:
+        return self.plugin.header()
+
+    def pytest_runtest_logreport(self, report: pytest.TestReport) -> None:
+        self.plugin.record(report)
+
+    def pytest_sessionfinish(self) -> None:
+        self.plugin.write_report()
+
+
+# pytest-timeout's thread method (set on the command line in ci.yml) prints every thread's stack and
+# exits, but leaves out the name of the test that hung: its timer thread knows
+# it and is the one thread it does not print. Putting the test id in the main
+# thread's name makes it the heading of the stack that matters, including for
+# a hang in fixture setup or teardown where the frames alone only show the
+# fixture. Nothing in the code base reads the thread name.
+@pytest.hookimpl(tryfirst=True)
+def pytest_runtest_logstart(nodeid: str) -> None:
+    threading.main_thread().name = f"MainThread running {nodeid}"
+
+
+@pytest.hookimpl(trylast=True)
+def pytest_runtest_logfinish() -> None:
+    threading.main_thread().name = "MainThread"
 
 
 
