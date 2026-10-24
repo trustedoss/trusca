@@ -142,6 +142,8 @@
     "reset": "Follow the organization",
     "read_only": "You can see this policy but not change it.",
     "load_error": "The build gate policy could not be loaded. It cannot be edited or saved until it loads, so the team's current policy stays as it is.",
-    "retry": "Retry"
+    "retry": "Retry",
+    "conflict": "Someone else saved this team's build gate policy after you opened it, so your changes were not saved. Reload to see the current policy, then make your changes again.",
+    "conflict_reload": "Reload policy"
   }
 }

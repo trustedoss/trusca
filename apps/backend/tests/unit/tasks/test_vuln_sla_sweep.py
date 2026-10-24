@@ -1,181 +1,109 @@
 """
-Unit tests for ``tasks.vuln_sla_sweep`` (no DB) — X1 step 2.
+Unit tests for ``tasks.vuln_sla_sweep`` (no DB), X1 step 2.
 
-Covers the pure selection contract (``_select_breached``: window boundaries,
-gate open-status vocabulary, no-SLA severities), the in-app payload builder,
-the toggle short-circuit, and the enqueue fan-out (recorded ``delay``).
-The DB-backed halves (candidate query, membership fan-out, prefs gating)
-live in ``tests/integration/test_vuln_sla_sweep_db.py``.
+Covers the window arithmetic (``_window_start`` / ``_parse_anchor``), the
+in-app payload builder, the toggle short-circuit, the enqueue fan-out
+(recorded ``delay``), and what the run body returns for the task-run
+recorder (the next run's anchor, or a skip that must not become one). The
+selection contract itself is SQL since #569 and lives in
+``tests/integration/test_vuln_sla_sweep_db.py`` together with the anchor read
+from ``task_runs`` and the missed-day lifecycle.
 """
 
 from __future__ import annotations
 
 import uuid
-from datetime import UTC, date, datetime, timedelta
+from datetime import UTC, datetime, timedelta, timezone
 from typing import Any
 
 import pytest
 
 import tasks.vuln_sla_sweep as sweep_module
 from tasks.vuln_sla_sweep import (
+    _DEFAULT_WINDOW,
+    _MAX_CATCH_UP,
     _build_in_app_payload,
     _enqueue_notifications,
-    _select_breached,
+    _parse_anchor,
+    _window_start,
 )
 
 _NOW = datetime(2026, 7, 25, 2, 45, 0, tzinfo=UTC)
-_WINDOW = timedelta(hours=24)
-
-
-def _row(
-    *,
-    project_id: uuid.UUID | None = None,
-    status: str = "new",
-    severity: str = "critical",
-    due_delta: timedelta,
-    due_on: date | None = None,
-    timezone: str = "UTC",
-    organization_id: uuid.UUID | None = None,
-) -> tuple[uuid.UUID, str, str, datetime, date | None, str, uuid.UUID]:
-    """Candidate row whose POLICY due date sits at ``_NOW + due_delta``.
-
-    ``first_detected`` is derived backwards through ``vuln_sla_days`` so the
-    test reads in due-date space (the window contract's native coordinates).
-
-    ``due_on`` is the date somebody wrote down (ER28a). It defaults to None, so
-    every case written before that existed still describes a finding whose only
-    deadline is the policy's.
-
-    ``timezone`` is the owning organization's, which decides when a written
-    date expires (ER55). It defaults to UTC so those same earlier cases keep
-    describing what they described.
-    """
-    from core.config import vuln_sla_days
-
-    days = vuln_sla_days(severity)
-    assert days is not None, "use _row only for SLA-carrying severities"
-    first_detected = _NOW + due_delta - timedelta(days=days)
-    return (
-        project_id or uuid.uuid4(),
-        status,
-        severity,
-        first_detected,
-        due_on,
-        timezone,
-        organization_id or uuid.uuid4(),
-    )
 
 
 # ---------------------------------------------------------------------------
-# _select_breached — window boundaries (now - window <= due < now)
+# _window_start
 # ---------------------------------------------------------------------------
 
 
-def test_due_inside_window_is_selected() -> None:
-    pid = uuid.uuid4()
-    rows = [_row(project_id=pid, due_delta=-timedelta(hours=1))]
-    assert _select_breached(rows, now=_NOW, window=_WINDOW) == {pid: {"critical": 1}}
+def test_no_anchor_uses_the_trailing_day() -> None:
+    assert _window_start(None, now=_NOW) == _NOW - timedelta(hours=24)
 
 
-def test_due_exactly_at_window_start_is_included() -> None:
-    """due == now - window belongs to THIS tick (closed lower bound)."""
-    pid = uuid.uuid4()
-    rows = [_row(project_id=pid, due_delta=-_WINDOW)]
-    assert _select_breached(rows, now=_NOW, window=_WINDOW) == {pid: {"critical": 1}}
+def test_default_window_is_one_beat_interval() -> None:
+    assert _DEFAULT_WINDOW == timedelta(hours=24)
 
 
-def test_due_exactly_at_now_is_excluded() -> None:
-    """due == now has not crossed yet — tomorrow's tick owns it (open upper
-    bound). Without this, a due date landing exactly on a tick would alert
-    twice (this tick and the next one's closed lower bound)."""
-    rows = [_row(due_delta=timedelta(0))]
-    assert _select_breached(rows, now=_NOW, window=_WINDOW) == {}
+def test_anchor_from_the_previous_tick_starts_the_window() -> None:
+    anchor = _NOW - timedelta(hours=23, minutes=59)
+    assert _window_start(anchor, now=_NOW) == anchor
 
 
-def test_due_older_than_window_is_excluded() -> None:
-    """An aged breach was already observed by an earlier tick — the window is
-    the dedup, so it must stay silent now."""
-    rows = [_row(due_delta=-_WINDOW - timedelta(seconds=1))]
-    assert _select_breached(rows, now=_NOW, window=_WINDOW) == {}
+def test_anchor_after_a_missed_day_reaches_back_over_the_gap() -> None:
+    """The point of #569: two days since the last completed tick means a
+    two-day window, not the trailing 24h."""
+    anchor = _NOW - timedelta(days=2)
+    assert _window_start(anchor, now=_NOW) == anchor
 
 
-def test_due_in_future_is_excluded() -> None:
-    rows = [_row(due_delta=timedelta(hours=1))]
-    assert _select_breached(rows, now=_NOW, window=_WINDOW) == {}
+def test_anchor_at_the_catch_up_limit_is_kept() -> None:
+    anchor = _NOW - _MAX_CATCH_UP
+    assert _window_start(anchor, now=_NOW) == anchor
 
 
-# ---------------------------------------------------------------------------
-# _select_breached — status vocabulary (gate's closed set)
-# ---------------------------------------------------------------------------
+def test_anchor_past_the_catch_up_limit_is_clamped() -> None:
+    anchor = _NOW - _MAX_CATCH_UP - timedelta(seconds=1)
+    assert _window_start(anchor, now=_NOW) == _NOW - _MAX_CATCH_UP
 
 
-@pytest.mark.parametrize("closed", ["not_affected", "fixed", "false_positive"])
-def test_closed_statuses_are_excluded(closed: str) -> None:
-    rows = [_row(status=closed, due_delta=-timedelta(hours=1))]
-    assert _select_breached(rows, now=_NOW, window=_WINDOW) == {}
+def test_catch_up_limit_is_a_week() -> None:
+    assert _MAX_CATCH_UP == timedelta(days=7)
 
 
-@pytest.mark.parametrize("open_status", ["new", "analyzing", "exploitable", "suppressed"])
-def test_open_statuses_are_included(open_status: str) -> None:
-    """``suppressed`` is deliberately OPEN — the gate and upgrade engine count
-    it as unresolved work, and so does the SLA sweep."""
-    pid = uuid.uuid4()
-    rows = [_row(project_id=pid, status=open_status, due_delta=-timedelta(hours=1))]
-    assert _select_breached(rows, now=_NOW, window=_WINDOW) == {pid: {"critical": 1}}
-
-
-def test_status_vocabulary_mirrors_gate() -> None:
-    """Contract (hardening rule #2): the sweep imports the gate's closed set —
-    assert the import identity so a future local copy cannot drift."""
-    from services.policy_gate import _CLOSED_FINDING_STATUSES
-
-    assert sweep_module._CLOSED_FINDING_STATUSES is _CLOSED_FINDING_STATUSES
+@pytest.mark.parametrize("ahead", [timedelta(0), timedelta(hours=3)])
+def test_anchor_not_before_now_falls_back_to_the_trailing_day(
+    ahead: timedelta,
+) -> None:
+    """An anchor at or after ``now`` (restored snapshot, clock moved back)
+    would give an empty or inverted window; it is treated as absent."""
+    assert _window_start(_NOW + ahead, now=_NOW) == _NOW - timedelta(hours=24)
 
 
 # ---------------------------------------------------------------------------
-# _select_breached — SLA-less severities + aggregation
+# _parse_anchor
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.parametrize("severity", ["info", "unknown"])
-def test_no_sla_severities_are_excluded(severity: str) -> None:
-    # No due date exists for these; hand a first_detected directly.
-    rows = [
-        (uuid.uuid4(), "new", severity, _NOW - timedelta(days=400), None, "UTC", uuid.uuid4())
-    ]
-    assert _select_breached(rows, now=_NOW, window=_WINDOW) == {}
+def test_parse_round_trips_what_the_sweep_stores() -> None:
+    assert _parse_anchor(_NOW.isoformat()) == _NOW
 
 
-def test_aggregation_groups_by_project_and_severity() -> None:
-    p1, p2 = uuid.uuid4(), uuid.uuid4()
-    rows = [
-        _row(project_id=p1, severity="critical", due_delta=-timedelta(hours=2)),
-        _row(project_id=p1, severity="critical", due_delta=-timedelta(hours=3)),
-        _row(project_id=p1, severity="high", due_delta=-timedelta(hours=4)),
-        _row(project_id=p2, severity="low", due_delta=-timedelta(hours=5)),
-        # noise: outside window / closed / no SLA
-        _row(project_id=p1, due_delta=-timedelta(days=3)),
-        _row(project_id=p2, status="fixed", due_delta=-timedelta(hours=1)),
-        (p2, "new", "info", _NOW - timedelta(days=400), None, "UTC", uuid.uuid4()),
-    ]
-    assert _select_breached(rows, now=_NOW, window=_WINDOW) == {
-        p1: {"critical": 2, "high": 1},
-        p2: {"low": 1},
-    }
+def test_parse_normalises_offsets_to_utc() -> None:
+    kst = _NOW.astimezone(timezone(timedelta(hours=9)))
+    parsed = _parse_anchor(kst.isoformat())
+    assert parsed == _NOW
+    assert parsed is not None and parsed.utcoffset() == timedelta(0)
 
 
-def test_env_override_moves_the_due_date(monkeypatch: pytest.MonkeyPatch) -> None:
-    """The window check reads ``vuln_sla_days`` at call time (rule #11)."""
-    monkeypatch.setenv("VULN_SLA_DAYS_HIGH", "10")
-    pid = uuid.uuid4()
-    # first_detected 10d + 1h ago → due (10d window) crossed 1h ago → in window.
-    rows = [
-        (pid, "new", "high", _NOW - timedelta(days=10, hours=1), None, "UTC", uuid.uuid4())
-    ]
-    assert _select_breached(rows, now=_NOW, window=_WINDOW) == {pid: {"high": 1}}
-    # Same row under the default 30d window: due is 20d away → not selected.
-    monkeypatch.delenv("VULN_SLA_DAYS_HIGH")
-    assert _select_breached(rows, now=_NOW, window=_WINDOW) == {}
+def test_parse_accepts_bytes() -> None:
+    assert _parse_anchor(_NOW.isoformat().encode()) == _NOW
+
+
+@pytest.mark.parametrize("raw", [None, "", "yesterday", "2026-07-25T02:45:00"])
+def test_parse_rejects_missing_garbage_and_naive_values(raw: Any) -> None:
+    """A naive timestamp is rejected rather than guessed at: reading it in
+    the wrong zone would shift the window by hours in either direction."""
+    assert _parse_anchor(raw) is None
 
 
 # ---------------------------------------------------------------------------
@@ -185,40 +113,69 @@ def test_env_override_moves_the_due_date(monkeypatch: pytest.MonkeyPatch) -> Non
 
 def test_payload_singular_and_link_free_title() -> None:
     title, body = _build_in_app_payload(
-        project_name="portal", by_severity={"critical": 1}
+        project_name="portal",
+        by_severity={"critical": 1},
+        window_start=_NOW - timedelta(hours=24),
     )
     assert title == "SLA breach: 1 finding overdue in portal"
-    assert "critical 1" in body
-    assert "24h" in body
+    assert body == (
+        "1 open finding crossed the remediation SLA since 2026-07-24 02:45 UTC "
+        "(critical 1). Review the overdue list and triage or remediate."
+    )
+
+
+def test_payload_names_the_start_of_a_longer_span() -> None:
+    """After a missed day the span is two days; the body must not claim 24h."""
+    _title, body = _build_in_app_payload(
+        project_name="portal",
+        by_severity={"high": 2},
+        window_start=_NOW - timedelta(days=2),
+    )
+    assert "since 2026-07-23 02:45 UTC" in body
+    assert "24h" not in body
 
 
 def test_payload_plural_worst_first_breakdown() -> None:
     title, body = _build_in_app_payload(
-        project_name="portal", by_severity={"low": 2, "critical": 1, "high": 3}
+        project_name="portal",
+        by_severity={"low": 2, "critical": 1, "high": 3},
+        window_start=_NOW,
     )
     assert title == "SLA breach: 6 findings overdue in portal"
-    assert "critical 1, high 3, low 2" in body
+    assert "(critical 1, high 3, low 2)" in body
 
 
 def test_payload_unexpected_severity_still_renders() -> None:
     _title, body = _build_in_app_payload(
-        project_name="portal", by_severity={"critical": 1, "future_sev": 2}
+        project_name="portal",
+        by_severity={"critical": 1, "future_sev": 2},
+        window_start=_NOW,
     )
-    assert "future_sev 2" in body
+    assert "(critical 1, future_sev 2)" in body
+
+
+def test_status_vocabulary_mirrors_gate() -> None:
+    """Contract (hardening rule #2): the sweep imports the gate's closed set;
+    assert the import identity so a future local copy cannot drift."""
+    from services.policy_gate import _CLOSED_FINDING_STATUSES
+
+    assert sweep_module._CLOSED_FINDING_STATUSES is _CLOSED_FINDING_STATUSES
 
 
 # ---------------------------------------------------------------------------
-# Toggle + enqueue fan-out
+# Toggle + run-body ordering
 # ---------------------------------------------------------------------------
 
 
 def test_run_sweep_disabled_never_opens_a_session(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
+    """And returns no ``detail_code``: the recorder writes ``skipped`` and the
+    row is never an anchor."""
     monkeypatch.setenv("VULN_SLA_ALERTS_ENABLED", "false")
 
-    def _explode():  # type: ignore[no-untyped-def]
-        raise AssertionError("session must not open when the sweep is disabled")
+    def _explode(*_a: Any, **_k: Any) -> Any:
+        raise AssertionError("the disabled sweep must not touch the DB")
 
     monkeypatch.setattr(sweep_module, "sync_session_scope", _explode)
 
@@ -226,6 +183,90 @@ def test_run_sweep_disabled_never_opens_a_session(
     assert summary["skipped"] is True
     assert summary["skipped_reason"] == "disabled"
     assert summary["notifications_enqueued"] == 0
+    assert "detail_code" not in summary
+
+
+class _NullSession:
+    def __enter__(self) -> _NullSession:
+        return self
+
+    def __exit__(self, *_exc: Any) -> None:
+        return None
+
+
+def _stub_run(
+    monkeypatch: pytest.MonkeyPatch,
+    anchor: datetime | None,
+    *,
+    breached: Any = None,
+) -> list[dict[str, Any]]:
+    """Wire ``_run_sweep`` to fakes; returns the list ``_breached_counts``
+    calls are recorded into."""
+    monkeypatch.setenv("VULN_SLA_ALERTS_ENABLED", "true")
+    monkeypatch.setattr(sweep_module, "sync_session_scope", _NullSession)
+    monkeypatch.setattr(sweep_module, "_load_anchor", lambda _s: anchor)
+    calls: list[dict[str, Any]] = []
+
+    def _counts(_session: Any, **kwargs: Any) -> Any:
+        calls.append(kwargs)
+        if isinstance(breached, Exception):
+            raise breached
+        return breached or {}
+
+    monkeypatch.setattr(sweep_module, "_breached_counts", _counts)
+    monkeypatch.setattr(sweep_module, "_enqueue_notifications", len)
+    monkeypatch.setattr(sweep_module, "_team_member_user_ids", lambda _s, _t: [uuid.uuid4()])
+    return calls
+
+
+def test_run_starts_at_the_anchor_and_reports_now_as_the_window_end(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The returned ``detail_params.window_end`` is what the recorder stores
+    and the next run reads, so it has to be this run's ``now``."""
+    anchor = _NOW - timedelta(days=2)
+    pid = uuid.uuid4()
+    calls = _stub_run(
+        monkeypatch, anchor, breached={pid: ("portal", uuid.uuid4(), {"critical": 1})}
+    )
+
+    summary = sweep_module._run_sweep(now=_NOW)
+
+    assert calls == [{"window_start": anchor, "now": _NOW}]
+    assert summary["detail_code"] == sweep_module._DETAIL_CODE
+    assert summary["detail_params"] == {
+        "window_start": anchor.isoformat(),
+        "window_end": _NOW.isoformat(),
+        "projects_breached": 1,
+        "findings_crossed": 1,
+        "notifications_enqueued": 1,
+    }
+    assert "skipped_reason" in summary and summary["skipped_reason"] is None
+
+
+def test_no_anchor_starts_at_the_trailing_day(monkeypatch: pytest.MonkeyPatch) -> None:
+    calls = _stub_run(monkeypatch, None)
+
+    sweep_module._run_sweep(now=_NOW)
+
+    assert calls == [{"window_start": _NOW - timedelta(hours=24), "now": _NOW}]
+
+
+def test_a_failed_read_is_reported_as_a_skip_without_a_window(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Through the Celery entry point, which swallows the error. The summary
+    must carry a ``skipped_reason`` (the recorder then writes ``skipped``) and
+    no ``detail_code``, or the run would become the anchor for a span it never
+    covered."""
+    _stub_run(monkeypatch, _NOW - timedelta(days=1), breached=RuntimeError("db gone"))
+
+    summary = sweep_module.vuln_sla_sweep.run()
+
+    assert summary["skipped"] is True
+    assert summary["skipped_reason"] == "unexpected:RuntimeError"
+    assert "detail_code" not in summary
+    assert "detail_params" not in summary
 
 
 @pytest.mark.parametrize("token", ["false", "0", "no", "FALSE", " No "])
@@ -247,13 +288,18 @@ def test_toggle_everything_else_enables(
     assert vuln_sla_alerts_enabled() is True
 
 
+# ---------------------------------------------------------------------------
+# Enqueue fan-out
+# ---------------------------------------------------------------------------
+
+
 def _descriptor(project_id: str | None = None) -> dict[str, Any]:
     return {
         "kind": "vuln_sla_breach",
         "context": {"project_name": "portal", "breach_count": "1"},
         "user_id": str(uuid.uuid4()),
         "title": "SLA breach: 1 finding overdue in portal",
-        "body": "1 open finding crossed the remediation SLA in the last 24h.",
+        "body": "1 open finding crossed the remediation SLA since 2026-07-24 02:45 UTC.",
         "link": "/projects/x?tab=vulnerabilities&sla=overdue",
         "project_id": project_id or str(uuid.uuid4()),
     }
@@ -274,7 +320,7 @@ def test_enqueue_records_in_app_only_call_shape(
     d = _descriptor()
     assert _enqueue_notifications([d]) == 1
     (args, kwargs) = calls[0]
-    assert args == (d["kind"], d["context"], [], [])  # channels=[] → in-app only
+    assert args == (d["kind"], d["context"], [], [])  # channels=[] -> in-app only
     assert kwargs["user_id"] == d["user_id"]
     assert kwargs["in_app_title"] == d["title"]
     assert kwargs["in_app_link"] == d["link"]
@@ -297,121 +343,5 @@ def test_enqueue_swallows_per_descriptor_broker_failure(
     monkeypatch.setattr(notify_module.send_notification_task, "delay", _flaky)
 
     enqueued = _enqueue_notifications([_descriptor(), _descriptor()])
-    assert enqueued == 1  # first failed, second went through — never raises
+    assert enqueued == 1  # first failed, second went through; never raises
     assert len(attempts) == 2
-
-
-# ---------------------------------------------------------------------------
-# ER28a: a written-down deadline the sweep has to honour, and what happens
-# when somebody moves it.
-# ---------------------------------------------------------------------------
-
-
-def _dated_row(
-    *,
-    project_id: uuid.UUID,
-    due_on: date,
-    severity: str = "info",
-    timezone: str = "UTC",
-) -> tuple[uuid.UUID, str, str, datetime, date | None, str, uuid.UUID]:
-    """A finding whose ONLY deadline is the one somebody wrote down.
-
-    ``info`` carries no SLA window, so the policy contributes nothing and the
-    row's deadline is exactly ``due_on``. That isolates the written date: any
-    selection here is the written deadline being honoured and not the policy's
-    leaking in.
-    """
-    return (
-        project_id,
-        "new",
-        severity,
-        _NOW - timedelta(days=400),
-        due_on,
-        timezone,
-        uuid.uuid4(),
-    )
-
-
-def test_a_written_deadline_is_swept_even_without_an_sla_window() -> None:
-    """Before ER28a an info finding could never be overdue, so writing a date
-    on one recorded an intention nothing acted on."""
-    pid = uuid.uuid4()
-    # The deadline expires at the END of the named day, so a date of
-    # "yesterday" crossed at midnight, inside a 24h window.
-    yesterday = (_NOW - timedelta(days=1)).date()
-    assert _select_breached(
-        [_dated_row(project_id=pid, due_on=yesterday)], now=_NOW, window=_WINDOW
-    ) == {pid: {"info": 1}}
-
-
-def test_moving_a_deadline_forward_alerts_again_when_it_is_missed_again() -> None:
-    """The lifecycle, not a single moment.
-
-    The sweep holds no "already told you" state on purpose: the persistent view
-    is the overdue list, and the alert only says "these crossed in the last
-    24h". So a deadline that is missed, moved out, and missed again alerts
-    twice, and that is the intended reading rather than a duplicate: the
-    commitment was remade and missed again.
-
-    A single-moment test cannot see this. It needs the sequence.
-    """
-    pid = uuid.uuid4()
-    first_due = (_NOW - timedelta(days=1)).date()
-
-    # 1. Missed, and inside this tick's window: alerted.
-    assert _select_breached(
-        [_dated_row(project_id=pid, due_on=first_due)], now=_NOW, window=_WINDOW
-    ) == {pid: {"info": 1}}
-
-    # 2. Somebody moves the deadline out. At the same instant it is no longer
-    #    overdue at all, so nothing is alerted.
-    moved_to = (_NOW + timedelta(days=30)).date()
-    assert (
-        _select_breached(
-            [_dated_row(project_id=pid, due_on=moved_to)], now=_NOW, window=_WINDOW
-        )
-        == {}
-    )
-
-    # 3. Time passes and the NEW deadline is missed: alerted again.
-    later = datetime.combine(
-        moved_to + timedelta(days=1), datetime.min.time(), tzinfo=UTC
-    ) + timedelta(hours=1)
-    assert _select_breached(
-        [_dated_row(project_id=pid, due_on=moved_to)], now=later, window=_WINDOW
-    ) == {pid: {"info": 1}}
-
-
-def test_moving_a_deadline_out_does_not_alert_on_the_old_one_again() -> None:
-    """The half that would be a real duplicate: the sweep must not keep
-    reporting the deadline that was replaced."""
-    pid = uuid.uuid4()
-    moved_to = (_NOW + timedelta(days=30)).date()
-    later = datetime.combine(
-        moved_to + timedelta(days=1), datetime.min.time(), tzinfo=UTC
-    ) + timedelta(hours=1)
-
-    breached = _select_breached(
-        [_dated_row(project_id=pid, due_on=moved_to)], now=later, window=_WINDOW
-    )
-    # Exactly one crossing is counted at the new date, not two.
-    assert breached == {pid: {"info": 1}}
-
-
-def test_an_earlier_written_date_beats_the_policy_in_the_sweep() -> None:
-    """The sweep has to apply the same precedence rule as the list and the
-    drawer. A critical finding is 7 days from detection by policy; a date
-    written for yesterday is earlier, so the sweep sees yesterday."""
-    pid = uuid.uuid4()
-    yesterday = (_NOW - timedelta(days=1)).date()
-    # Policy due is far in the future, so any selection is the written date.
-    row = (
-        pid,
-        "new",
-        "critical",
-        _NOW,  # detected now → policy due in 7 days
-        yesterday,
-        "UTC",
-        uuid.uuid4(),
-    )
-    assert _select_breached([row], now=_NOW, window=_WINDOW) == {pid: {"critical": 1}}

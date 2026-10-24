@@ -1,0 +1,19 @@
+{
+  "_comment": [
+    "Problem Details `type` URIs the gate policy endpoints emit beyond the plain",
+    "Not Found / Forbidden answers.",
+    "",
+    "The editor branches on these: `not_set` is a team that follows its",
+    "organization and renders the inherited values, `conflict` is a save refused",
+    "because somebody else saved first and offers a reload. Matching on the status",
+    "alone would read a missing or hidden team as an empty policy.",
+    "",
+    "Three places hold the values: the backend constants that stamp them, the",
+    "frontend mirror that matches them (GATE_POLICY_PROBLEM_TYPES in",
+    "gatePoliciesApi.ts), and this file. Both sides assert equality with it."
+  ],
+  "types": {
+    "not_set": "https://docs.trustedoss.io/errors/gate-policy-not-set",
+    "conflict": "https://docs.trustedoss.io/errors/gate-policy-conflict"
+  }
+}

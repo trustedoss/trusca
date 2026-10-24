@@ -1,0 +1,188 @@
+{
+  "_about": "Recorded from the passlib-based core.security on main before #574. Every value here was produced by the old code, so the tests that read this file compare the new implementation against the old one rather than against itself. Do not regenerate with the current code.",
+  "_generated_with": {
+    "commit": "badf2855cb042ad2fa5d8db4742173436ee9323e",
+    "passlib": "1.7.4",
+    "bcrypt": "4.0.1"
+  },
+  "hashes": [
+    {
+      "name": "ascii_2b",
+      "password": "correct horse battery staple",
+      "hash": "$2b$12$/eKVK9c5W3dS8qpzxGG1LOby0Tiq49Lsn4pUMUeyZwqFgnIhL.WrC",
+      "verify": [
+        [
+          "correct horse battery staple",
+          true
+        ],
+        [
+          "correct horse battery staplex",
+          false
+        ],
+        [
+          "correct horse battery stapl",
+          false
+        ],
+        [
+          "",
+          false
+        ],
+        [
+          "ab\u0000cd",
+          false
+        ],
+        [
+          "correct horse battery staple\u0000",
+          false
+        ],
+        [
+          "ab\udc80",
+          false
+        ]
+      ]
+    },
+    {
+      "name": "over_72_bytes_ascii",
+      "password": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaTAIL-IGNORED",
+      "hash": "$2b$12$5KfqspNFf2SN0aPlyPy5z.rT4i1y.Ih/CvBAbwsj/j5WniZEa.Qxy",
+      "verify": [
+        [
+          "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaTAIL-IGNORED",
+          true
+        ],
+        [
+          "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          true
+        ],
+        [
+          "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaOTHER",
+          true
+        ],
+        [
+          "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          false
+        ],
+        [
+          "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\u0000",
+          true
+        ]
+      ]
+    },
+    {
+      "name": "over_72_bytes_multibyte",
+      "password": "\uac00\uac00\uac00\uac00\uac00\uac00\uac00\uac00\uac00\uac00\uac00\uac00\uac00\uac00\uac00\uac00\uac00\uac00\uac00\uac00\uac00\uac00\uac00\uac00\uac00\uac00\uac00\uac00\uac00\uac00",
+      "hash": "$2b$12$0uNVVEUudk02EBK1zyhXPuDZ04Mh0/ttVff1iSeas1LgMtcZ5yvqm",
+      "verify": [
+        [
+          "\uac00\uac00\uac00\uac00\uac00\uac00\uac00\uac00\uac00\uac00\uac00\uac00\uac00\uac00\uac00\uac00\uac00\uac00\uac00\uac00\uac00\uac00\uac00\uac00\uac00\uac00\uac00\uac00\uac00\uac00",
+          true
+        ],
+        [
+          "\uac00\uac00\uac00\uac00\uac00\uac00\uac00\uac00\uac00\uac00\uac00\uac00\uac00\uac00\uac00\uac00\uac00\uac00\uac00\uac00\uac00\uac00\uac00\uac00",
+          true
+        ],
+        [
+          "\uac00\uac00\uac00\uac00\uac00\uac00\uac00\uac00\uac00\uac00\uac00\uac00\uac00\uac00\uac00\uac00\uac00\uac00\uac00\uac00\uac00\uac00\uac00\uac00x",
+          true
+        ],
+        [
+          "\uac00\uac00\uac00\uac00\uac00\uac00\uac00\uac00\uac00\uac00\uac00\uac00\uac00\uac00\uac00\uac00\uac00\uac00\uac00\uac00\uac00\uac00\uac00",
+          false
+        ],
+        [
+          "\uac00\uac00\uac00\uac00\uac00\uac00\uac00\uac00\uac00\uac00\uac00\uac00\uac00\uac00\uac00\uac00\uac00\uac00\uac00\uac00\uac00\uac00\uac00\uac01",
+          false
+        ]
+      ]
+    },
+    {
+      "name": "ident_2a",
+      "password": "correct horse battery staple",
+      "hash": "$2a$12$m4gjCt8/2H7OonRYzRKaX.lUvEMiDgnMSQ46bS6kvCY7GOvoIu/zy",
+      "verify": [
+        [
+          "correct horse battery staple",
+          true
+        ],
+        [
+          "wrong",
+          false
+        ]
+      ]
+    },
+    {
+      "name": "ident_2y",
+      "password": "correct horse battery staple",
+      "hash": "$2y$12$vvrNxesNhoqfrZuvCpBZIO0oXOW7WjFcTuDAwr5MPoUFFIVBxiVGS",
+      "verify": [
+        [
+          "correct horse battery staple",
+          true
+        ],
+        [
+          "wrong",
+          false
+        ]
+      ]
+    },
+    {
+      "name": "cost_10",
+      "password": "correct horse battery staple",
+      "hash": "$2b$10$BVah32qcYK2O8H4Ro8XsVeSXxvYRaT5m4wGmX7xHaHfvbI8EAHtyC",
+      "verify": [
+        [
+          "correct horse battery staple",
+          true
+        ],
+        [
+          "wrong",
+          false
+        ]
+      ]
+    }
+  ],
+  "unusable_stored_values": [
+    [
+      "",
+      false
+    ],
+    [
+      "notahash",
+      false
+    ],
+    [
+      "$2b$12$short",
+      false
+    ],
+    [
+      "$2x$12$/eKVK9c5W3dS8qpzxGG1LOby0Tiq49Lsn4pUMUeyZwqFgnIhL.WrC",
+      false
+    ],
+    [
+      "$2$12$/eKVK9c5W3dS8qpzxGG1LOby0Tiq49Lsn4pUMUeyZwqFgnIhL.WrC",
+      false
+    ],
+    [
+      "hmac-sha256$0000000000000000000000000000000000000000000000000000000000000000",
+      false
+    ]
+  ],
+  "hash_password_refusals": [
+    [
+      "ab\u0000cd",
+      "PasswordValueError"
+    ],
+    [
+      "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\u0000",
+      "PasswordValueError"
+    ],
+    [
+      "ab\udc80",
+      "UnicodeEncodeError"
+    ],
+    [
+      "",
+      null
+    ]
+  ]
+}

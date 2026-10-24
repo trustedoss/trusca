@@ -79,6 +79,10 @@ A policy that blocks every build on rollout gets disabled or bypassed within a w
 Enabling a stricter policy re-evaluates every component's license expression on the next scan. A dependency that passed yesterday can block today. Announce the change, and stage it per team rather than flipping the org default under everyone at once.
 :::
 
+:::note Two administrators editing the same build gate
+If somebody else saves a team's build gate policy while you have it open, your save is refused rather than silently replacing theirs. The editor says so and offers **Reload policy**; reload, check what they changed, and make your edit again. Scripts that write the policy through the API get the same protection by sending the `ETag` back as `If-Match`; see [Build gate policies](../reference/api-overview.md#gate-policies).
+:::
+
 ## Verify it worked
 
 <!-- docs-uat: id=bp-policy-design-review kind=manual tier=manual -->

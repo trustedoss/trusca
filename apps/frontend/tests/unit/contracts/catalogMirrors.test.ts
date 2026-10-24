@@ -30,7 +30,7 @@ import { resolve } from "node:path";
 import { describe, expect, it } from "vitest";
 
 import { NOTIFICATION_KINDS } from "@/features/notifications/api/notificationsApi";
-import { APPROVABLE_STATUSES } from "@/lib/gatePoliciesApi";
+import { APPROVABLE_STATUSES, GATE_POLICY_PROBLEM_TYPES } from "@/lib/gatePoliciesApi";
 import { APPROVAL_FAILURE_REASONS } from "@/lib/transitionApprovalsApi";
 import {
   DISTRIBUTION_MODELS,
@@ -99,6 +99,7 @@ import notificationKindsFixture from "../../../../../tests/contracts/notificatio
 import userRolesFixture from "../../../../../tests/contracts/user-roles.json";
 import approvableStatusesFixture from "../../../../../tests/contracts/approvable-statuses.json";
 import approvalReasonsFixture from "../../../../../tests/contracts/approval-failure-reasons.json";
+import gatePolicyProblemTypesFixture from "../../../../../tests/contracts/gate-policy-problem-types.json";
 import distributionModelsFixture from "../../../../../tests/contracts/distribution-models.json";
 import apiKeyBreadthsFixture from "../../../../../tests/contracts/api-key-breadths.json";
 import fulfilmentStatusesFixture from "../../../../../tests/contracts/obligation-fulfilment-statuses.json";
@@ -901,6 +902,23 @@ describe("approvable statuses: the policy editor vs what the API accepts", () =>
     for (const status of APPROVABLE_STATUSES) {
       expect(en[status], `EN label for ${status}`).toBeTruthy();
       expect(ko[status], `KO label for ${status}`).toBeTruthy();
+    }
+  });
+});
+
+describe("gate policy problem types: what the editor matches vs what the API stamps", () => {
+  // The editor tells "no row yet" from "no such team", and a refused save from
+  // any other failure, by the problem type alone. A URI that drifts on one side
+  // makes the editor fall back silently: a hidden team rendered as an empty
+  // policy, or a conflict shown as nothing at all.
+  it("GATE_POLICY_PROBLEM_TYPES equals the shared fixture", () => {
+    expect({ ...GATE_POLICY_PROBLEM_TYPES }).toEqual(gatePolicyProblemTypesFixture.types);
+  });
+
+  it("the conflict message has EN and KO copy", () => {
+    for (const ns of [enPolicies, koPolicies]) {
+      expect(labelMap(ns, "gate")["conflict"]).toBeTruthy();
+      expect(labelMap(ns, "gate")["conflict_reload"]).toBeTruthy();
     }
   });
 });

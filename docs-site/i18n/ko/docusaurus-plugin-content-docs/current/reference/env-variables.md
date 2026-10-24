@@ -344,7 +344,7 @@ Compose 배포에는 오토스케일러 계층이 없습니다. 이 절의 키�
 | `NOTIFICATION_RETENTION_DAYS` | `180` | `tasks/operational_retention.py` | 읽음·안 읽음과 무관하게 앱 내 알림 행이 정리되기까지의 나이. |
 | `WEBHOOK_DELIVERY_RETENTION_DAYS` | `90` | `tasks/operational_retention.py` | GitHub·GitLab에서 들어온 웹훅 수신 기록이 정리되기까지의 나이. 기본값을 `AUDIT_LOG_RETENTION_DAYS`와 맞췄습니다. |
 | `REPORT_DOWNLOAD_RETENTION_DAYS` | `365` | `tasks/operational_retention.py` | SBOM·NOTICE·취약점 보고서를 내려받은 기록이 정리되기까지의 나이. 셋 중 가장 긴 이유는 연간 컴플라이언스 점검에서 가장 먼저 찾을 이력이기 때문입니다. |
-| `TASK_RUN_RETENTION_DAYS` | `90` | `services/task_run_recorder.py` | 배경 작업 실행 이력이 정리되기까지의 나이. 실행 한 번에 한 행이 쌓이므로 사용자 활동이 아니라 스케줄러 트래픽에 비례해 늘어납니다. |
+| `TASK_RUN_RETENTION_DAYS` | `90` | `services/task_run_recorder.py` | 배경 작업 실행 이력이 정리되기까지의 나이. 실행 한 번에 한 행이 쌓이므로 사용자 활동이 아니라 스케줄러 트래픽에 비례해 늘어납니다. SLA 초과 sweep이 놓친 실행을 얼마나 거슬러 채울 수 있는지도 이 값이 정합니다. sweep은 이 이력에 남은 마지막 성공 실행부터 시작하므로, `7`보다 작은 값은 7일 범위의 채우기를 줄이고, 그 행이 정리되면 다음 실행은 지난 24시간만 다룹니다. |
 
 ## 백업
 
@@ -375,7 +375,8 @@ Compose 배포에는 오토스케일러 계층이 없습니다. 이 절의 키�
 | `TICKET_STATUS_REFRESH_RATE_LIMIT` | `10/minute` | `config.py` | `POST /vulnerability_findings/{id}/ticket-status/refresh`에 대한 slowapi 한도이며, 인증된 사용자별로 셉니다. Jira 자격증명 자체는 환경변수가 아닙니다 - 조직 관리자가 `PUT /v1/admin/organizations/{id}/ticket-credentials`로 Jira Cloud 호스트마다 로그인 정보 하나를 저장합니다(#385). [티켓 상태](../user-guide/vulnerabilities.md#ticket-status) 참고. |
 | `CLIENT_ERROR_REPORT_RATE_LIMIT` | `30/minute` | `config.py` | `POST /v1/client-errors`(프런트엔드 `ErrorBoundary`의 크래시 리포트 수신, #423)에 대한 slowapi 한도이며, 이 엔드포인트는 인증이 없어 IP별로 셉니다(렌더링 크래시는 토큰을 붙일 수 있기 전에도 일어날 수 있습니다). 위 인증 엔드포인트들보다 여유 있게 잡았습니다 - 깨진 렌더링 경로는 한 방문자에게 재렌더링마다 정당하게 다시 던져질 수 있고, 호출 하나의 비용은 bcrypt 해시가 아니라 로그 한 줄입니다. |
 | `HTTP_PROXY` / `HTTPS_PROXY` / `NO_PROXY` | (설정 안 됨) | 서브프로세스 env, 포털 HTTPS | 포털 자신의 호출과 `git clone`, `cdxgen`, scancode, scanoss, Trivy가 쓰는 프록시입니다. 소문자 `http_proxy` / `https_proxy` / `no_proxy`도 필요합니다. `git clone`은 소문자 `http_proxy`만 읽기 때문입니다. Compose에서는 `.env`가 아니라 `~/.docker/config.json`의 `proxies` 항목(Compose가 두 가지 이름을 모두 넣습니다)이나 `docker-compose.override.yml`에 설정합니다. `docker-compose.yml`은 프록시 변수를 `.env`에서 전달하지 않습니다. [사설 인증기관 → 프록시를 거쳐 나가는 경우](../admin-guide/private-ca.md#outbound-proxy)를 참고합니다. |
-| `SSL_CERT_FILE` / `SSL_CERT_DIR` | (설정 안 됨) | 서브프로세스 env, 포털 HTTPS | Trivy와 cosign과 govulncheck, 그리고 포털 자신의 외부 호출이 쓰는 사설 인증기관입니다. 포털 쪽에서는 신뢰 집합을 갈아치우므로 공용 루트 인증서도 같은 파일에 담아야 합니다. Compose는 이 변수와 아래 인증서 변수들을 `.env`나 Compose를 실행하는 셸에서 가져와 전달하며(셸의 값이 우선합니다), 두 곳 어디에도 없으면 넣지 않습니다. [사설 인증기관](../admin-guide/private-ca.md)을 봅니다. |
+| `SSL_CERT_FILE` | (설정 안 됨) | 서브프로세스 env, 포털 HTTPS | Trivy와 cosign과 govulncheck, 그리고 포털 자신의 외부 호출이 쓰는 사설 인증기관입니다. 포털 쪽에서는 신뢰 집합을 갈아치우므로 공용 루트 인증서도 같은 파일에 담아야 합니다. Compose에서는 이 변수와 아래 인증서 변수들을 `.env`가 아니라 `docker-compose.override.yml`에 값과 함께 적습니다. docker-compose 1.29.2 바이너리가 자기 환경의 `SSL_CERT_FILE`을 임시 경로로 설정하므로 `docker-compose.yml`은 이 이름들을 그곳에서 읽지 않습니다. [사설 인증기관](../admin-guide/private-ca.md)을 봅니다. |
+| `SSL_CERT_DIR` | (설정 안 됨) | 서브프로세스 env, 포털 HTTPS | `SSL_CERT_FILE` 대신 쓸 수 있는, 해시 이름이 붙은 인증서 디렉터리입니다. 같은 도구들이 읽으며, 둘 다 설정하면 `SSL_CERT_FILE`이 우선합니다. 설정 방법도 같아서 `docker-compose.override.yml`에 적습니다. |
 | `NODE_EXTRA_CA_CERTS` | (설정 안 됨) | 서브프로세스 env | `cdxgen`이 쓰는 사설 인증기관입니다. 기존 루트에 더해집니다. |
 | `REQUESTS_CA_BUNDLE` | (설정 안 됨) | 서브프로세스 env | `scancode`와 `scanoss`가 쓰는 사설 인증기관입니다. 포털 자신의 호출은 이 변수를 보지 않습니다. |
 | `GIT_SSL_CAINFO` / `GIT_SSL_CAPATH` | (설정 안 됨) | 서브프로세스 env | `git clone`이 쓰는 사설 인증기관입니다. git은 `SSL_CERT_FILE`도 `CURL_CA_BUNDLE`도 읽지 않으므로, 사내 저장소를 내려받으려면 이 둘 중 하나가 필요합니다. |

@@ -25,7 +25,6 @@ import uuid
 from datetime import UTC, datetime
 
 import structlog
-from jose import JWTError
 from sqlalchemy import select, update
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -33,6 +32,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from core.config import self_registration_enabled
 from core.security import (
     TOKEN_TYPE_REFRESH,
+    TokenError,
     create_access_token,
     create_refresh_token,
     decode_token,
@@ -457,7 +457,7 @@ async def rotate_refresh(
 
     try:
         claims = decode_token(raw_refresh, expected_type=TOKEN_TYPE_REFRESH)
-    except (JWTError, ValueError) as exc:
+    except (TokenError, ValueError) as exc:
         raise InvalidRefreshToken("invalid refresh token") from exc
 
     jti = claims.get("jti")
@@ -563,7 +563,7 @@ async def revoke_refresh(
         return
     try:
         claims = decode_token(raw_refresh, expected_type=TOKEN_TYPE_REFRESH)
-    except (JWTError, ValueError):
+    except (TokenError, ValueError):
         return
 
     jti = claims.get("jti")

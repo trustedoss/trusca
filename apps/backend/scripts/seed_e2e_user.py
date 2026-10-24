@@ -701,7 +701,7 @@ def _parse_args() -> argparse.Namespace:
             "Marathon bundle 2 (D1). Provision an OAuth-only user — "
             "``hashed_password`` is set to an empty string so password login "
             "always fails (bcrypt verify of '' against '' is rejected by "
-            "passlib). Requires ``--with-oauth-identity`` so the user has at "
+            "verify_password). Requires ``--with-oauth-identity`` so the user has at "
             "least one auth method; refused with ValueError otherwise. When "
             "set, the seed also mints + persists a refresh token and emits "
             "``refresh_token`` + ``refresh_token_cookie_name`` in the JSON so "

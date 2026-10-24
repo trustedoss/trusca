@@ -161,7 +161,10 @@ docker-compose -f docker-compose.yml logs backend \
 
 The CSV export above is something a person clicks. If you collect logs
 centrally, `AUDIT_EXPORT_URL` hands the trail over on its own: a background
-task posts batches of rows every five minutes to a URL you own.
+task runs every five minutes and posts batches of rows to a URL you own. Each
+run keeps posting until it is caught up or has run for four minutes, so an
+existing trail of a few hundred thousand rows is handed over within the first
+runs rather than over weeks.
 
 Off by default, and the audit page and its CSV export are unchanged either
 way. This adds a way to push the trail somewhere; it takes nothing away.
@@ -201,6 +204,15 @@ the export retry and then stop making progress until somebody fixes it. That
 is deliberate: the alternative to retrying is skipping rows, which is the one
 outcome this feature exists to prevent. `rows_exported` and `last_run_at` on
 the cursor row say how far it got.
+
+**It is delivered at least once, and one run at a time.** Only one run works a
+destination at a time; a retry that lands on top of the next scheduled run
+finds the first still going and steps aside, so the two never send the same
+batch. A batch can still arrive twice when your collector accepted it but the
+portal never learned that: the response was lost or arrived after
+`NOTIFICATION_HTTP_TIMEOUT_SECONDS`, so the task retries and sends it again, or
+the worker stopped before recording the delivery. Deduplicate on the row `id`
+if your collector cares.
 
 **It stays slightly behind the present.** A row is stamped when its
 transaction commits, so a transaction that began earlier can commit later. If

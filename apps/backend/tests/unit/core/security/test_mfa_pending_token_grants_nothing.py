@@ -17,13 +17,13 @@ without a code ever being entered.
 from __future__ import annotations
 
 import pytest
-from jose import JWTError
 
 from core.security import (
     TOKEN_TYPE_ACCESS,
     TOKEN_TYPE_MFA_ENROLLING,
     TOKEN_TYPE_MFA_PENDING,
     TOKEN_TYPE_REFRESH,
+    TokenError,
     create_mfa_pending_token,
     decode_token,
 )
@@ -47,7 +47,7 @@ def test_a_pending_token_is_refused_as_an_access_or_refresh_token(
     """
     token = create_mfa_pending_token(subject=_SUBJECT, token_type=pending_type)
 
-    with pytest.raises(JWTError):
+    with pytest.raises(TokenError):
         decode_token(token, expected_type=read_as)
 
 
@@ -62,9 +62,9 @@ def test_the_two_pending_kinds_do_not_substitute_for_each_other() -> None:
     enrolling = create_mfa_pending_token(subject=_SUBJECT, token_type=TOKEN_TYPE_MFA_ENROLLING)
     signing_in = create_mfa_pending_token(subject=_SUBJECT, token_type=TOKEN_TYPE_MFA_PENDING)
 
-    with pytest.raises(JWTError):
+    with pytest.raises(TokenError):
         decode_token(enrolling, expected_type=TOKEN_TYPE_MFA_PENDING)
-    with pytest.raises(JWTError):
+    with pytest.raises(TokenError):
         decode_token(signing_in, expected_type=TOKEN_TYPE_MFA_ENROLLING)
 
 

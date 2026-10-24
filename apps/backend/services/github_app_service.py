@@ -52,8 +52,8 @@ from datetime import UTC, datetime, timedelta
 from typing import Any
 
 import httpx
+import jwt
 import structlog
-from jose import jwt
 from sqlalchemy import func, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession

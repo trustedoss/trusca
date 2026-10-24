@@ -853,6 +853,35 @@ def test_approvable_statuses_match_the_shared_fixture() -> None:
     )
 
 
+def test_gate_policy_problem_types_match_the_shared_fixture() -> None:
+    """The ``type`` URIs the gate policy router stamps vs the ones the editor matches.
+
+    The editor tells "no row yet" from "no such team" and a refused save from
+    any other failure by the ``type`` alone. A URI changed on one side leaves
+    both sides' own tests green while the editor quietly falls back: a missing
+    team rendered as an empty policy, a conflict shown as a generic error.
+    """
+    import json
+    from pathlib import Path
+
+    from services.gate_policy_service import (
+        GATE_POLICY_CONFLICT_TYPE,
+        GATE_POLICY_NOT_SET_TYPE,
+        GatePolicyConflict,
+    )
+
+    fixture = Path(__file__).resolve().parents[4] / "tests/contracts/gate-policy-problem-types.json"
+    assert fixture.is_file(), f"shared gate policy problem-type fixture missing: {fixture}"
+    types = json.loads(fixture.read_text(encoding="utf-8"))["types"]
+
+    assert {"not_set": GATE_POLICY_NOT_SET_TYPE, "conflict": GATE_POLICY_CONFLICT_TYPE} == types, (
+        "gate policy problem types drifted from the shared fixture. Update "
+        "tests/contracts/gate-policy-problem-types.json AND the frontend mirror "
+        "(GATE_POLICY_PROBLEM_TYPES in gatePoliciesApi.ts) together."
+    )
+    assert GatePolicyConflict.type_uri == GATE_POLICY_CONFLICT_TYPE
+
+
 def test_every_approvable_status_is_a_real_finding_status() -> None:
     """A status that cannot be reached cannot be gated.
 

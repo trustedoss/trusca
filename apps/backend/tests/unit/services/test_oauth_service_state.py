@@ -11,8 +11,8 @@ from __future__ import annotations
 import time
 from datetime import UTC, datetime
 
+import jwt
 import pytest
-from jose import jwt
 
 from core.security import JWT_ALGORITHM
 
@@ -116,7 +116,7 @@ def test_decode_state_rejects_wrong_token_type(monkeypatch: pytest.MonkeyPatch) 
 
 
 def test_decode_state_rejects_expired_token() -> None:
-    """A state past its `exp` must fail decode (jose enforces this)."""
+    """A state past its `exp` must fail decode (PyJWT enforces this)."""
     from core.config import secret_key
     from services.oauth_service import (
         STATE_TOKEN_TYPE,
@@ -125,7 +125,7 @@ def test_decode_state_rejects_expired_token() -> None:
     )
 
     # Hand-mint a JWT with exp 60s in the past — avoids a real-time sleep
-    # (jose's leeway can reach a couple of seconds on slow CI hosts).
+    # (a leeway can reach a couple of seconds on slow CI hosts).
     now = int(time.time()) - 120
     token = jwt.encode(
         {
@@ -139,6 +139,91 @@ def test_decode_state_rejects_expired_token() -> None:
     )
     with pytest.raises(OAuthInvalidState):
         _decode_state(token, expected_provider="github")
+
+
+def _state_claims(**overrides: object) -> dict[str, object]:
+    """A valid state's claims; an override of ``None`` drops the claim."""
+    from services.oauth_service import STATE_TOKEN_TYPE
+
+    now = int(time.time())
+    claims: dict[str, object] = {
+        "type": STATE_TOKEN_TYPE,
+        "provider": "github",
+        "nonce": "n",
+        "iat": now,
+        "exp": now + 60,
+    }
+    for key, value in overrides.items():
+        if value is None:
+            claims.pop(key)
+        else:
+            claims[key] = value
+    return claims
+
+
+def test_decode_state_accepts_the_hand_built_control() -> None:
+    """Positive control for the rejections below: same construction, valid."""
+    from core.config import secret_key
+    from services.oauth_service import _decode_state
+
+    token = jwt.encode(_state_claims(), secret_key(), algorithm=JWT_ALGORITHM)
+    assert _decode_state(token, expected_provider="github")["provider"] == "github"
+
+
+def test_decode_state_accepts_an_iat_slightly_in_the_future() -> None:
+    """The callback can land on a replica whose clock is behind the one that
+    minted the state, so a few seconds of future `iat` must not refuse it."""
+    from core.config import secret_key
+    from services.oauth_service import _decode_state
+
+    ahead = int(time.time()) + 5
+    token = jwt.encode(_state_claims(iat=ahead), secret_key(), algorithm=JWT_ALGORITHM)
+    assert _decode_state(token, expected_provider="github")["iat"] == ahead
+
+
+def test_decode_state_unusable_key_is_an_invalid_state(monkeypatch: pytest.MonkeyPatch) -> None:
+    """PyJWT refuses a PEM as an HMAC secret with ``InvalidKeyError``, which
+    is not an ``InvalidTokenError``. It must still become OAuthInvalidState
+    rather than escape from the callback as a 500."""
+    from core.config import secret_key
+    from services.oauth_service import OAuthInvalidState, _decode_state
+
+    token = jwt.encode(_state_claims(), secret_key(), algorithm=JWT_ALGORITHM)
+    pem = (
+        "-----BEGIN PUBLIC KEY-----\n"
+        "MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEA\n"
+        "-----END PUBLIC KEY-----\n"
+    )
+    monkeypatch.setattr("services.oauth_service.secret_key", lambda: pem)
+    with pytest.raises(OAuthInvalidState) as info:
+        _decode_state(token, expected_provider="github")
+    assert isinstance(info.value.__cause__, jwt.InvalidKeyError)
+
+
+@pytest.mark.filterwarnings("ignore::jwt.warnings.InsecureKeyLengthWarning")
+@pytest.mark.parametrize(
+    ("overrides", "algorithm", "cause"),
+    [
+        ({"exp": None}, JWT_ALGORITHM, jwt.MissingRequiredClaimError),
+        ({"iat": None}, JWT_ALGORITHM, jwt.MissingRequiredClaimError),
+        ({}, "HS512", jwt.InvalidAlgorithmError),
+        ({}, "none", jwt.InvalidAlgorithmError),
+    ],
+    ids=["missing-exp", "missing-iat", "hs512", "alg-none"],
+)
+def test_decode_state_rejects_by_the_named_check(
+    overrides: dict[str, object], algorithm: str, cause: type[Exception]
+) -> None:
+    """Each case differs from the control in one property, and the cause is
+    asserted so the case cannot pass because something else refused it."""
+    from core.config import secret_key
+    from services.oauth_service import OAuthInvalidState, _decode_state
+
+    key = None if algorithm == "none" else secret_key()
+    token = jwt.encode(_state_claims(**overrides), key, algorithm=algorithm)
+    with pytest.raises(OAuthInvalidState) as info:
+        _decode_state(token, expected_provider="github")
+    assert isinstance(info.value.__cause__, cause)
 
 
 # ---------------------------------------------------------------------------

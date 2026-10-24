@@ -23,7 +23,6 @@ import uuid
 import structlog
 from fastapi import APIRouter, Depends, Request, Response, status
 from fastapi.responses import JSONResponse
-from jose import JWTError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from core.config import demo_read_only
@@ -33,6 +32,7 @@ from core.login_throttle import record_failure, seconds_until_retry
 from core.security import (
     TOKEN_TYPE_MFA_ENROLLING,
     CurrentUser,
+    TokenError,
     create_mfa_pending_token,
     decode_token,
     get_current_user,
@@ -479,7 +479,7 @@ async def confirm_mfa_enrolment(
     """Turn the factor on and return the recovery codes, shown once."""
     try:
         claims = decode_token(payload.mfa_token, expected_type=TOKEN_TYPE_MFA_ENROLLING)
-    except (JWTError, ValueError):
+    except (TokenError, ValueError):
         return problem_response(
             status_code=status.HTTP_400_BAD_REQUEST,
             title="Invalid Enrolment Token",

@@ -26,7 +26,6 @@ import uuid
 
 import structlog
 from fastapi import APIRouter, Cookie, Depends, Request, Response, status
-from jose import JWTError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from core.audit import audit_context
@@ -55,6 +54,7 @@ from core.security import (
     MFA_PENDING_EXPIRE_MINUTES,
     TOKEN_TYPE_MFA_PENDING,
     CurrentUser,
+    TokenError,
     create_mfa_pending_token,
     decode_token,
     get_current_user,
@@ -423,7 +423,7 @@ async def mfa_verify(
     """
     try:
         claims = decode_token(payload.mfa_token, expected_type=TOKEN_TYPE_MFA_PENDING)
-    except (JWTError, ValueError):
+    except (TokenError, ValueError):
         return _problem_for_auth_error(request, InvalidCredentials("invalid or expired"))
 
     user = await session.get(User, uuid.UUID(str(claims["sub"])))

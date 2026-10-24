@@ -561,30 +561,22 @@ x-backend-env: &backend-env
   TICKET_WEBHOOK_URL: ${TICKET_WEBHOOK_URL:-}
   API_READ_RATE_LIMIT: ${API_READ_RATE_LIMIT:-60/minute}
   CSV_EXPORT_RATE_LIMIT: ${CSV_EXPORT_RATE_LIMIT:-5/minute}
-  # Private certificate authority (#571). The private-CA page tells operators
-  # to set these in .env; until they were listed here they reached compose
-  # interpolation only and never the containers. They are written WITHOUT a
-  # value on purpose: compose then copies the value from the shell that runs
-  # it or from .env when there is one, and leaves the variable out of the
-  # container entirely when there is not. The usual `${VAR:-}` would set an
-  # empty string, and an empty value is not harmless here: an empty
-  # GIT_SSL_CAINFO makes every `git clone` fail ("error setting certificate
-  # verify locations"), and an empty SSL_CERT_FILE leaves OpenSSL-based
-  # clients trusting no authority at all. Every service on this anchor
-  # (backend, worker-scan, worker-default, beat, worker-engine) makes outbound
-  # connections.
+  # Private certificate authority and proxy variables (#571) are deliberately
+  # NOT listed here, in any form. Set them with explicit values in
+  # docker-compose.override.yml (the private-CA page shows it, next to the
+  # mount the bundle needs anyway), or for proxies in ~/.docker/config.json.
   #
-  # The proxy names (HTTP_PROXY, HTTPS_PROXY, NO_PROXY and their lower-case
-  # forms) are deliberately NOT listed. Compose injects them from the
-  # `proxies` block of the Docker client's ~/.docker/config.json, underneath
-  # this environment, so a value-less entry here would turn an unset name into
-  # a removal and strip the proxy that config.json supplied.
-  SSL_CERT_FILE:
-  SSL_CERT_DIR:
-  REQUESTS_CA_BUNDLE:
-  NODE_EXTRA_CA_CERTS:
-  GIT_SSL_CAINFO:
-  GIT_SSL_CAPATH:
+  # Why not `SSL_CERT_FILE:` or `${SSL_CERT_FILE:-}`: both read compose's own
+  # process environment, and the docker-compose 1.29.2 release binary sets
+  # SSL_CERT_FILE there itself (a PyInstaller certifi hook points it at
+  # /tmp/_MEI<random>/certifi/cacert.pem). Containers then got a path that
+  # does not exist inside them, and because the directory changes on every
+  # invocation the config hash did too, so every repeated `up -d` recreated
+  # the services. An empty `${VAR:-}` for an unset name is no better: an empty
+  # GIT_SSL_CAINFO breaks every clone and an empty SSL_CERT_FILE leaves OpenSSL
+  # trusting no authority. Proxy names stay out because compose injects them
+  # from config.json underneath this environment, and any entry here would
+  # override that.
 
 services:
   # ---------------------------------------------------------------------------
