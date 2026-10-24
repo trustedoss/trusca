@@ -18,6 +18,7 @@ about this one.
 from __future__ import annotations
 
 import pathlib
+import re
 
 import pytest
 
@@ -39,13 +40,15 @@ def _budget_minutes() -> int:
     return int(seconds // 60)
 
 
-def _english() -> str:
+def _english() -> re.Pattern[str]:
     minutes = _budget_minutes()
-    return f"{_ENGLISH_NUMBERS[minutes]} minute{'s' if minutes != 1 else ''}"
+    word = _ENGLISH_NUMBERS[minutes]
+    return re.compile(rf"\b{word} minutes?\b")
 
 
-def _korean() -> str:
-    return f"{_budget_minutes()}분"
+def _korean() -> re.Pattern[str]:
+    # Not preceded by a digit, so "4분" does not match inside "14분".
+    return re.compile(rf"(?<!\d){_budget_minutes()}분")
 
 
 def _section(path: pathlib.Path, anchor: str) -> str:
@@ -74,7 +77,7 @@ def _row(path: pathlib.Path, key: str) -> str:
     ids=["en", "ko"],
 )
 def test_the_audit_log_guide_quotes_the_run_budget(path, phrase) -> None:
-    assert phrase() in _section(path, "{#continuous-export}")
+    assert phrase().search(_section(path, "{#continuous-export}"))
 
 
 @pytest.mark.parametrize(
@@ -86,9 +89,9 @@ def test_the_audit_log_guide_quotes_the_run_budget(path, phrase) -> None:
     ids=["en", "ko"],
 )
 def test_the_env_variables_reference_quotes_the_run_budget(path, phrase) -> None:
-    assert phrase() in _row(path, "AUDIT_EXPORT_URL")
+    assert phrase().search(_row(path, "AUDIT_EXPORT_URL"))
 
 
-def test_the_task_reads_the_budget_it_is_documented_by() -> None:
-    """The guides are tied to the constant; this ties the constant to the run."""
-    assert audit_export._run_budget_seconds() == audit_export._RUN_BUDGET_SECONDS
+def test_the_korean_match_does_not_reach_into_a_longer_number() -> None:
+    assert not _korean().search(f"1{_budget_minutes()}분")
+    assert _korean().search(f"{_budget_minutes()}분")

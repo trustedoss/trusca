@@ -221,18 +221,36 @@ transaction it could move its position beyond rows that only appear later,
 and those rows would never be sent. Each run therefore reads only rows dated
 before the oldest transaction still open on the database, however long that
 transaction has been open, and at least `AUDIT_EXPORT_LAG_SECONDS` (thirty
-seconds by default) behind the present. Your collector's copy is that much
-behind, and no row is lost.
+seconds by default) behind the present.
+
+When the export's database role cannot see when a transaction began, it reads
+nothing at all until that transaction ends. That is the normal case in a
+role-separated deployment for sessions of the owner role or a superuser, such
+as the anonymisation script or an administrator's `psql` session with a
+transaction open. A role with `pg_read_all_stats` sees every start time and
+is held back only by the transactions that are actually older.
+
+What this guarantees: every audit row written by a session on the database is
+sent once its transaction has committed. It does not cover two things. A
+prepared (two-phase) transaction is not attached to a session; the portal
+never prepares one, so this matters only if something else writes audit rows
+that way. And with `track_activities` turned off the database publishes no
+start times, so the export reads only at moments when no transaction at all is
+open, and the worker logs `audit_export_activity_tracking_off` at WARNING.
 
 A session left open in a transaction holds the export back for as long as it
-stays open. The worker logs `audit_export_held_back_by_open_transaction` with
-`held_back_seconds` at WARNING when that happens. A value that grows run after
-run points to a connection that never finishes its transaction; find it in
-`pg_stat_activity` (state `idle in transaction`, oldest `xact_start`). Setting
-`idle_in_transaction_session_timeout` on the database ends such sessions on its
-own. A worker host that disappears without closing its connections is noticed
-by the database in about two minutes, because worker connections turn on
-server-side TCP keepalives.
+stays open. The run then finishes with status `held_back` instead of `idle`,
+and the worker logs `audit_export_held_back_by_open_transaction` at WARNING
+with `held_back_seconds` (or `hidden_transactions` for a transaction whose
+start it cannot see). Nothing is logged when no rows are waiting. A value that
+grows run after run points to a connection that never finishes its
+transaction; find it in `pg_stat_activity` (state `idle in transaction`,
+oldest `xact_start`). Setting `idle_in_transaction_session_timeout` on the
+database ends such sessions on its own. A worker or API host that disappears
+without closing its connections is noticed by the database in about two
+minutes, because portal connections turn on server-side TCP keepalives;
+behind a connection pooler the database sees the pooler rather than the host,
+so the pooler's own keepalive settings decide this instead.
 
 :::note The trail itself does not change
 Nothing about the export marks rows in `audit_logs`. That table is append-only

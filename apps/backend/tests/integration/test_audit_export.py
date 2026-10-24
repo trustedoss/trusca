@@ -645,7 +645,9 @@ def _configure(monkeypatch, destination: str, *, batch_size: int) -> datetime:
     real_collect = audit_export_service.collect_batch
 
     def _collect_within_window(session, *, cursor, now=None):
-        return real_collect(session, cursor=cursor, now=window)
+        # The lag has a floor of one second, so the horizon is pinned one
+        # second past the window to land exactly on it.
+        return real_collect(session, cursor=cursor, now=window + timedelta(seconds=1))
 
     monkeypatch.setattr(audit_export, "collect_batch", _collect_within_window)
     return window

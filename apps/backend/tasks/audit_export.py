@@ -159,20 +159,24 @@ def _run(self: Any) -> dict[str, Any]:
 
 
 def _note_held_back(batch: Batch, url: str) -> None:
-    """Say so when an open transaction, not the lag, decided where the run stopped.
+    """Say so when an open transaction, not the lag, kept rows back.
 
     WARNING for the same reason as a held lock: a session left open in a
     transaction stops the export short of it on every run, and nothing fails.
-    The age is in the line so an operator can tell a long sweep that will end
-    from a connection that never will.
+    Only when rows are actually waiting, so a caught-up export that happens to
+    overlap a long transaction stays quiet. The age is in the line so an
+    operator can tell a long sweep that will end from a connection that never
+    will; a transaction whose start the export cannot see has no age, so the
+    count of those is there instead.
     """
-    held = batch.held_back_seconds
-    if held > 0:
-        log.warning(
-            "audit_export_held_back_by_open_transaction",
-            host=_safe_host(url),
-            held_back_seconds=round(held, 3),
-        )
+    if not batch.rows_held_back:
+        return
+    log.warning(
+        "audit_export_held_back_by_open_transaction",
+        host=_safe_host(url),
+        held_back_seconds=round(batch.held_back_seconds, 3),
+        hidden_transactions=batch.hidden_transactions,
+    )
 
 
 def _drain(session: Session, url: str) -> dict[str, Any]:
@@ -183,16 +187,19 @@ def _drain(session: Session, url: str) -> dict[str, Any]:
     exported = 0
     batches = 0
     status = "idle"
+    last: Batch | None = None
     while True:
         batch = collect_batch(session, cursor=cursor)
+        last = batch
         # End the read before waiting on the collector. Nothing is written
         # here, and the session keeps its loaded objects across the commit.
         session.commit()
         if batch.is_empty:
-            _note_held_back(batch, url)
             if batches == 0:
+                # Records that the export ran, so an idle export and a
+                # stopped one can be told apart.
                 advance_cursor(session, cursor=cursor, batch=batch)
-                return {"status": "idle", "exported": 0, "pending": 0}
+                status = "held_back" if batch.rows_held_back else "idle"
             break
 
         try:
@@ -223,20 +230,22 @@ def _drain(session: Session, url: str) -> dict[str, Any]:
             http_status=status_code,
         )
         if time.monotonic() - started >= budget:
-            _note_held_back(batch, url)
             break
 
+    _note_held_back(last, url)
     behind = pending_count(session, cursor=cursor)
     session.commit()
-    log.info(
-        "audit_export_run_finished",
-        host=_safe_host(url),
-        status=status,
-        exported=exported,
-        batches=batches,
-        pending=behind,
-    )
-    return {"status": status, "exported": exported, "batches": batches, "pending": behind}
+    result: dict[str, Any] = {
+        "status": status,
+        "exported": exported,
+        "batches": batches,
+        "pending": behind,
+    }
+    if last.rows_held_back:
+        result["held_back_seconds"] = round(last.held_back_seconds, 3)
+        result["hidden_transactions"] = last.hidden_transactions
+    log.info("audit_export_run_finished", host=_safe_host(url), **result)
+    return result
 
 
 @celery_app.task(  # type: ignore[misc]

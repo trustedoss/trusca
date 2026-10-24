@@ -3714,17 +3714,18 @@ def audit_export_lag_seconds() -> int:
     stamped with ``now()``, the moment its transaction began, so a transaction
     that commits later can place a row behind a position the export has
     already passed. The export guards against that by never reading past the
-    oldest transaction still open on the database
-    (``services.audit_export_service.oldest_open_transaction``), however long
-    it has been open.
+    oldest transaction still open on the database, and by reading nothing
+    while a transaction is open whose start it cannot see
+    (``services.audit_export_service.collect_batch``). This margin keeps
+    the collector's copy that far behind the present. Raising it costs a
+    slightly older trail at the collector and nothing else.
 
-    This margin is what remains for writers that bound cannot see: sessions of
-    another database role, whose start time a role without
-    ``pg_read_all_stats`` is not shown. The only such writer today is the
-    anonymisation script, one short transaction. Raising it costs a slightly
-    older trail at the collector and nothing else.
+    At least one second. A transaction's start time is taken before it is
+    published to ``pg_stat_activity``, so for a moment a transaction can be
+    open, dated, and not yet listed; a horizon a second behind the database
+    clock cannot reach a transaction that was not yet listed at the read.
     """
-    return _int_env("AUDIT_EXPORT_LAG_SECONDS", 30, minimum=0, maximum=3600)
+    return _int_env("AUDIT_EXPORT_LAG_SECONDS", 30, minimum=1, maximum=3600)
 
 
 def audit_log_retention_days() -> int:
