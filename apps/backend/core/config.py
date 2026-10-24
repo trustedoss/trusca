@@ -3708,18 +3708,21 @@ def audit_export_batch_size() -> int:
 
 
 def audit_export_lag_seconds() -> int:
-    """How far behind now the export stays, in seconds.
+    """How far behind now the export stays, in seconds, at the least.
 
-    Not a throttle. A row is stamped when its transaction commits, and a
-    transaction that began earlier can commit later, so ordering by the stamp
-    alone can place a row behind a position the export has already passed. The
-    row would then never be sent, and nothing anywhere would say so.
+    Not a throttle, and not the guarantee on its own. An audit row is
+    stamped with ``now()``, the moment its transaction began, so a transaction
+    that commits later can place a row behind a position the export has
+    already passed. The export guards against that by never reading past the
+    oldest transaction still open on the database
+    (``services.audit_export_service.oldest_open_transaction``), however long
+    it has been open.
 
-    Staying a few seconds behind the present means the export only reads
-    stretches of time no open transaction can still write into. The default
-    covers a request far longer than any this codebase makes; a deployment with
-    long transactions raises it and pays with a slightly older trail at the
-    collector.
+    This margin is what remains for writers that bound cannot see: sessions of
+    another database role, whose start time a role without
+    ``pg_read_all_stats`` is not shown. The only such writer today is the
+    anonymisation script, one short transaction. Raising it costs a slightly
+    older trail at the collector and nothing else.
     """
     return _int_env("AUDIT_EXPORT_LAG_SECONDS", 30, minimum=0, maximum=3600)
 

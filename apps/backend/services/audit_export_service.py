@@ -15,11 +15,18 @@ Nothing is sent twice and nothing is skipped. The position is a pair,
 over it. Resuming compares against the pair, so a batch that ended in the
 middle of a crowded millisecond continues from exactly where it stopped.
 
-And the export never reads the present. A row is stamped when its transaction
-commits, so a transaction that began earlier can commit later and land behind
-a position already passed; that row would never be sent and nothing would say
-so. The export therefore stays a configured number of seconds behind now,
-reading only stretches of time no open transaction can still write into.
+And the export never reads past a transaction that is still open. A row's
+``created_at`` is ``now()``, which in PostgreSQL is the moment its transaction
+began, not the moment it commits. A transaction that began earlier can
+therefore commit later and land behind a position already passed; that row
+would never be sent and nothing would say so. A fixed margin behind the
+present only covers transactions shorter than the margin, and nothing bounds
+how long a transaction runs (a retention sweep deleting thousands of scans is
+one transaction). So each batch reads only rows stamped before the oldest
+transaction still open on the database: every row such a transaction writes
+carries its start time, which is at or after that bound, and every row stamped
+earlier is already committed. The configured lag stays as a floor; it is what
+covers writers the export cannot see (see :func:`oldest_open_transaction`).
 
 The position lives in its own table. ``audit_logs`` is append-only with a
 trigger enforcing it, and a column there would mean carving an exception into
@@ -34,7 +41,7 @@ from datetime import UTC, datetime, timedelta
 from typing import Any
 
 import structlog
-from sqlalchemy import and_, func, or_, select, update
+from sqlalchemy import and_, func, or_, select, text, update
 from sqlalchemy.orm import Session
 
 from core.config import (
@@ -66,6 +73,24 @@ class Batch:
     last_id: uuid.UUID | None
     after_created_at: datetime | None = None
     after_id: uuid.UUID | None = None
+    #: When the oldest transaction still open at read time began, if one was,
+    #: and the database clock at the read. Rows stamped from that instant on
+    #: were left for a later run.
+    held_back_from: datetime | None = None
+    read_at: datetime | None = None
+
+    @property
+    def held_back_seconds(self) -> float:
+        """How much further the export could have read without that transaction.
+
+        Zero when the configured lag was the tighter bound, which is the
+        normal case. A value that keeps growing run after run is a session
+        left open somewhere, and the export cannot pass it until it ends.
+        """
+        if self.held_back_from is None or self.read_at is None:
+            return 0.0
+        lag_horizon = self.read_at - timedelta(seconds=audit_export_lag_seconds())
+        return max(0.0, (lag_horizon - self.held_back_from).total_seconds())
 
     @property
     def is_empty(self) -> bool:
@@ -116,21 +141,73 @@ def get_or_create_cursor(session: Session, *, destination: str) -> AuditExportCu
     return cursor
 
 
+_OLDEST_OPEN_TRANSACTION_SQL = text(
+    "SELECT statement_timestamp() AS read_at, min(xact_start) AS oldest "
+    "FROM pg_stat_activity "
+    "WHERE datname = current_database() "
+    "AND backend_type = 'client backend' "
+    "AND pid <> pg_backend_pid() "
+    "AND xact_start IS NOT NULL"
+)
+
+
+def oldest_open_transaction(session: Session) -> tuple[datetime, datetime | None]:
+    """The database's clock, and when its oldest open transaction began.
+
+    Any session that has a transaction open counts, including one that has
+    only read so far: it can still write, and what it writes is stamped with
+    its start time. The export's own session is left out because the export
+    writes no audit rows, and background processes (autovacuum and the like)
+    are left out because they never write any.
+
+    The statement's own start time is the present, rather than the worker's
+    clock. A worker clock running ahead of the database by more than the lag
+    would otherwise place the horizon past transactions that begin after this
+    read.
+
+    ``pg_stat_activity`` keeps one copy per transaction, taken the first time
+    it is read, so the copy is discarded first; a stale one would miss a
+    transaction that began since.
+
+    Two limits, both stated rather than hidden. A role without
+    ``pg_read_all_stats`` sees ``xact_start`` only for sessions of its own
+    role. Every audit row the application writes comes through the runtime
+    role the export also runs as; the one writer that connects otherwise is
+    the anonymisation script, whose single short transaction the fixed lag
+    covers. And the bound relies on the next statement taking a fresh
+    snapshot, which is what READ COMMITTED (PostgreSQL's default and this
+    application's) does: a transaction that commits after this read is then
+    either visible to the read of ``audit_logs`` or was open here and holds
+    the bound below its rows.
+    """
+    session.execute(text("SELECT pg_stat_clear_snapshot()"))
+    row = session.execute(_OLDEST_OPEN_TRANSACTION_SQL).one()
+    return row.read_at, row.oldest
+
+
 def collect_batch(
     session: Session,
     *,
     cursor: AuditExportCursor,
     now: datetime | None = None,
 ) -> Batch:
-    """Rows after the cursor and old enough to be settled.
+    """Rows after the cursor that no open transaction can still write behind.
+
+    Two bounds, both applied. Rows stamped before the oldest open transaction
+    began, which is the one the position depends on, and rows at least the
+    configured lag old. ``now`` replaces the database clock for the second
+    bound only; the first is always read from the database.
 
     Ordered by the same pair the position is stored as, so the end of one
     batch is the start of the next with nothing between them.
     """
-    horizon = (now or datetime.now(tz=UTC)) - timedelta(
-        seconds=audit_export_lag_seconds()
-    )
+    read_at, oldest_open = oldest_open_transaction(session)
+    horizon = (now or read_at) - timedelta(seconds=audit_export_lag_seconds())
     stmt = select(AuditLog).where(AuditLog.created_at <= horizon)
+    if oldest_open is not None:
+        # Strictly before: a row stamped at exactly that instant may belong to
+        # the open transaction itself.
+        stmt = stmt.where(AuditLog.created_at < oldest_open)
     if cursor.last_created_at is not None and cursor.last_id is not None:
         # Strictly after the pair: the same timestamp is fine as long as the
         # id is larger, which is what keeps a crowded millisecond from being
@@ -156,6 +233,8 @@ def collect_batch(
             last_id=None,
             after_created_at=cursor.last_created_at,
             after_id=cursor.last_id,
+            held_back_from=oldest_open,
+            read_at=read_at,
         )
     return Batch(
         rows=[_row_to_dict(row) for row in rows],
@@ -163,6 +242,8 @@ def collect_batch(
         last_id=rows[-1].id,
         after_created_at=cursor.last_created_at,
         after_id=cursor.last_id,
+        held_back_from=oldest_open,
+        read_at=read_at,
     )
 
 

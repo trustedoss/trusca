@@ -125,7 +125,7 @@ def build_sync_engine() -> Engine:
     from the FastAPI pool so the two can be sized independently against the
     shared Postgres `max_connections` budget.
     """
-    return create_engine(
+    engine = create_engine(
         database_url_sync(),
         pool_pre_ping=True,
         future=True,
@@ -134,6 +134,42 @@ def build_sync_engine() -> Engine:
         pool_timeout=db_sync_pool_timeout_seconds(),
         pool_recycle=db_sync_pool_recycle_seconds(),
     )
+    event.listen(engine, "connect", _set_server_keepalives)
+    return engine
+
+
+#: Server-side TCP keepalive for each worker connection: probe after a minute
+#: of silence, every ten seconds, and give up after six missed probes. A worker
+#: host that vanishes without closing its sockets is noticed in about two
+#: minutes rather than the two hours or so of Linux defaults.
+_SERVER_KEEPALIVES = (
+    ("tcp_keepalives_idle", 60),
+    ("tcp_keepalives_interval", 10),
+    ("tcp_keepalives_count", 6),
+)
+
+
+def _set_server_keepalives(dbapi_connection: Any, _record: Any) -> None:
+    """Have the server probe this connection, not only the client.
+
+    What a vanished worker leaves behind lives on the server: the audit
+    export's advisory lock, or a transaction holding the export's horizon back.
+    Both last until the server's backend learns the peer is gone, and only the
+    server's own keepalive settings decide when that is, so libpq's client-side
+    keepalive parameters would not shorten it. The three settings are
+    per-session and any role may set them; on a Unix-socket connection they
+    are accepted and ignored.
+
+    Set in autocommit so the pool's reset-on-return rollback cannot undo them.
+    """
+    previous = dbapi_connection.autocommit
+    dbapi_connection.autocommit = True
+    try:
+        with dbapi_connection.cursor() as cur:
+            for name, value in _SERVER_KEEPALIVES:
+                cur.execute("SELECT set_config(%s, %s, false)", (name, str(value)))
+    finally:
+        dbapi_connection.autocommit = previous
 
 
 def get_sync_session_factory() -> sessionmaker[Session]:

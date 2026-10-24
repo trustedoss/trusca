@@ -45,6 +45,7 @@ from core.config import (
     notification_http_timeout_seconds,
 )
 from services.audit_export_service import (
+    Batch,
     advance_cursor,
     build_body,
     collect_batch,
@@ -157,6 +158,23 @@ def _run(self: Any) -> dict[str, Any]:
             return _drain(session, url)
 
 
+def _note_held_back(batch: Batch, url: str) -> None:
+    """Say so when an open transaction, not the lag, decided where the run stopped.
+
+    WARNING for the same reason as a held lock: a session left open in a
+    transaction stops the export short of it on every run, and nothing fails.
+    The age is in the line so an operator can tell a long sweep that will end
+    from a connection that never will.
+    """
+    held = batch.held_back_seconds
+    if held > 0:
+        log.warning(
+            "audit_export_held_back_by_open_transaction",
+            host=_safe_host(url),
+            held_back_seconds=round(held, 3),
+        )
+
+
 def _drain(session: Session, url: str) -> dict[str, Any]:
     """Deliver batches until caught up or out of time. Caller holds the lock."""
     started = time.monotonic()
@@ -171,6 +189,7 @@ def _drain(session: Session, url: str) -> dict[str, Any]:
         # here, and the session keeps its loaded objects across the commit.
         session.commit()
         if batch.is_empty:
+            _note_held_back(batch, url)
             if batches == 0:
                 advance_cursor(session, cursor=cursor, batch=batch)
                 return {"status": "idle", "exported": 0, "pending": 0}
@@ -204,6 +223,7 @@ def _drain(session: Session, url: str) -> dict[str, Any]:
             http_status=status_code,
         )
         if time.monotonic() - started >= budget:
+            _note_held_back(batch, url)
             break
 
     behind = pending_count(session, cursor=cursor)

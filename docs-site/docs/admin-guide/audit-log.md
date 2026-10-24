@@ -214,12 +214,25 @@ portal never learned that: the response was lost or arrived after
 the worker stopped before recording the delivery. Deduplicate on the row `id`
 if your collector cares.
 
-**It stays slightly behind the present.** A row is stamped when its
-transaction commits, so a transaction that began earlier can commit later. If
-the export read up to the current instant it could pass a position that a
-still-open transaction later writes behind, and that row would never be sent.
-`AUDIT_EXPORT_LAG_SECONDS` is the margin, thirty seconds by default; your
-collector's copy is that much behind, and no row is lost.
+**It waits for open transactions.** A row's `created_at` is the moment its
+transaction began, not the moment it committed, so a transaction that stays
+open writes rows dated behind the present. If the export read past such a
+transaction it could move its position beyond rows that only appear later,
+and those rows would never be sent. Each run therefore reads only rows dated
+before the oldest transaction still open on the database, however long that
+transaction has been open, and at least `AUDIT_EXPORT_LAG_SECONDS` (thirty
+seconds by default) behind the present. Your collector's copy is that much
+behind, and no row is lost.
+
+A session left open in a transaction holds the export back for as long as it
+stays open. The worker logs `audit_export_held_back_by_open_transaction` with
+`held_back_seconds` at WARNING when that happens. A value that grows run after
+run points to a connection that never finishes its transaction; find it in
+`pg_stat_activity` (state `idle in transaction`, oldest `xact_start`). Setting
+`idle_in_transaction_session_timeout` on the database ends such sessions on its
+own. A worker host that disappears without closing its connections is noticed
+by the database in about two minutes, because worker connections turn on
+server-side TCP keepalives.
 
 :::note The trail itself does not change
 Nothing about the export marks rows in `audit_logs`. That table is append-only
