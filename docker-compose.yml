@@ -468,7 +468,9 @@ x-backend-env: &backend-env
   SCANCODE_ENABLED: ${SCANCODE_ENABLED:-true}
   TOOLCHAIN_CACHE_IDLE_SECONDS: ${TOOLCHAIN_CACHE_IDLE_SECONDS:-900}
   TOOLCHAIN_CACHE_MAX_BYTES: ${TOOLCHAIN_CACHE_MAX_BYTES:-8589934592}
-  TOOLCHAIN_CACHE_ROOTS: ${TOOLCHAIN_CACHE_ROOTS:-}
+  # The code's default list, written out: an empty value is an empty list,
+  # not "unset", and the cache cleaner then reclaims nothing (#583).
+  TOOLCHAIN_CACHE_ROOTS: ${TOOLCHAIN_CACHE_ROOTS:-.m2/repository,.npm,.cache,.gradle,.nuget/packages,go/pkg/mod,.bundle,.composer}
   # compose-env-var wiring audit: self-registration policy, default team
   # role, API-key bookkeeping, and permission/token retention. Documented in
   # .env.example but never listed in this anchor, so setting any of them in
@@ -561,6 +563,39 @@ x-backend-env: &backend-env
   TICKET_WEBHOOK_URL: ${TICKET_WEBHOOK_URL:-}
   API_READ_RATE_LIMIT: ${API_READ_RATE_LIMIT:-60/minute}
   CSV_EXPORT_RATE_LIMIT: ${CSV_EXPORT_RATE_LIMIT:-5/minute}
+  # #583: keys .env.example offered that this anchor never listed, so setting
+  # them in .env changed nothing in the containers. Where the code has a
+  # default, the value after `:-` is that default, because an empty string is
+  # not the same as unset for `os.getenv(KEY, default)`. Where it has none, the
+  # code treats an empty value as unset (checked per key in
+  # tests/unit/test_config_key_contract.py). Keys .env.example offers that
+  # deliberately stay out of every container are listed in that test with the
+  # reason.
+  CLIENT_ERROR_REPORT_RATE_LIMIT: ${CLIENT_ERROR_REPORT_RATE_LIMIT:-30/minute}
+  GROUP_SEARCH_RATE_LIMIT: ${GROUP_SEARCH_RATE_LIMIT:-20/minute}
+  TICKET_STATUS_REFRESH_RATE_LIMIT: ${TICKET_STATUS_REFRESH_RATE_LIMIT:-10/minute}
+  LOGIN_THROTTLE_ENABLED: ${LOGIN_THROTTLE_ENABLED:-true}
+  LOGIN_THROTTLE_FAILURES: ${LOGIN_THROTTLE_FAILURES:-10}
+  LOGIN_THROTTLE_WINDOWS: ${LOGIN_THROTTLE_WINDOWS:-}
+  REQUIRE_DB_ROLE_SEPARATION: ${REQUIRE_DB_ROLE_SEPARATION:-false}
+  GROUP_CASCADE_ENABLED: ${GROUP_CASCADE_ENABLED:-true}
+  CONTAINER_SCAN_ALLOWED_REGISTRIES: ${CONTAINER_SCAN_ALLOWED_REGISTRIES:-}
+  DEFAULT_TASK_SOFT_TIME_LIMIT_SECONDS: ${DEFAULT_TASK_SOFT_TIME_LIMIT_SECONDS:-2400}
+  DEFAULT_TASK_TIME_LIMIT_SECONDS: ${DEFAULT_TASK_TIME_LIMIT_SECONDS:-2700}
+  STALE_QUEUED_SCAN_GRACE_SECONDS: ${STALE_QUEUED_SCAN_GRACE_SECONDS:-900}
+  EPSS_FEED_URL: ${EPSS_FEED_URL:-https://epss.empiricalsecurity.com/epss_scores-current.csv.gz}
+  EPSS_REFRESH_ENABLED: ${EPSS_REFRESH_ENABLED:-false}
+  EPSS_REFRESH_TIMEOUT_SECONDS: ${EPSS_REFRESH_TIMEOUT_SECONDS:-60}
+  GATE_EPSS_ON_MISSING_DATA: ${GATE_EPSS_ON_MISSING_DATA:-}
+  GATE_KEV_ENABLED: ${GATE_KEV_ENABLED:-}
+  GATE_KEV_ON_MISSING_DATA: ${GATE_KEV_ON_MISSING_DATA:-}
+  GATE_EOL_ENABLED: ${GATE_EOL_ENABLED:-}
+  GATE_EOL_ON_MISSING_DATA: ${GATE_EOL_ON_MISSING_DATA:-}
+  GATE_INCOMPLETE_SCAN_ENABLED: ${GATE_INCOMPLETE_SCAN_ENABLED:-}
+  GATE_INCOMPLETE_SCAN_ON_UNKNOWN: ${GATE_INCOMPLETE_SCAN_ON_UNKNOWN:-}
+  GITLAB_API_BASE: ${GITLAB_API_BASE:-}
+  GITLAB_TOKEN: ${GITLAB_TOKEN:-}
+  TRUSTEDOSS_GITLAB_TOKEN: ${TRUSTEDOSS_GITLAB_TOKEN:-}
   # Private certificate authority and proxy variables (#571) are deliberately
   # NOT listed here, in any form. Set them with explicit values in
   # docker-compose.override.yml (the private-CA page shows it, next to the

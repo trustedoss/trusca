@@ -19,6 +19,7 @@ Operators tuning a deployment. Familiarity with `.env` files and Docker Compose'
 1. `.env` in the repo root is loaded by `docker-compose` automatically.
 2. Backend code calls `os.getenv()` **at runtime**, never at module import time. This is `CLAUDE.md` rule #11. Compose reads `.env` only when it creates a container, so apply a change with `docker-compose up -d`, which recreates the services whose configuration changed. `docker-compose restart` keeps the old values. No rebuild is needed.
 3. Compose substitutes `${VAR}` references in `docker-compose.yml` from `.env` at `docker-compose up` time.
+4. A key in `.env` reaches a container only if `docker-compose.yml` lists it in that service's `environment`; compose does not hand the whole file over. Every key in `.env.example` is passed to the backend, the workers and beat, except these, which stay out on purpose: the keys compose reads itself (image tag, replica counts, queues, host paths, Traefik settings), the build metadata baked into the image (`TRUSTEDOSS_VERSION`, `TRUSTEDOSS_COMMIT`, `TRUSTEDOSS_BUILT_AT`, `CDXGEN_VERSION`, and the scancode library paths), the keys only host scripts read (`BACKUP_RETENTION_DAYS`, `BACKUP_OFFSITE_*`), the composed-DSN parts and `DATABASE_URL_OWNER` described under Database, and `RATELIMIT_DISABLED`, which only `docker-compose.dev.yml` passes.
 
 Every key listed below is read by `apps/backend/core/config.py`, `docker-compose.yml`, or `scripts/*` — the **Read by** column tells you which.
 
@@ -47,7 +48,7 @@ These four must be present and non-empty. The wizard sets them.
 
 ## Database
 
-`DATABASE_URL` (above) is the canonical setting. The composed alternative below is provided so the GCP Cloud Run module can mount `DB_PASSWORD` from Secret Manager without baking the DSN into Terraform state. Set **either** `DATABASE_URL` **or** the four `DB_*` keys — never both.
+`DATABASE_URL` (above) is the canonical setting. The composed alternative below is provided so the GCP Cloud Run module can mount `DB_PASSWORD` from Secret Manager without baking the DSN into Terraform state. Set **either** `DATABASE_URL` **or** the four `DB_*` keys, never both. The compose files pass only `DATABASE_URL` and `DATABASE_URL_APP`, so the `DB_*` keys have no effect on a compose deployment.
 
 | Key | Default | Read by | Description |
 |---|---|---|---|
@@ -177,7 +178,7 @@ See [Nested groups](../admin-guide/users-and-teams.md) for the cascade's user-fa
 | `SCANOSS_API_URL` | `https://api.osskb.org` | `config.py` | SCANOSS knowledge-base endpoint the fingerprints are matched against (used only when `SCANOSS_ENABLED=true`). Point this at a self-hosted SCANOSS instance to keep fingerprints inside your network. |
 | `SCANOSS_API_KEY` | *(empty)* | `config.py` | Optional API key for `SCANOSS_API_URL` (a paid / self-hosted endpoint). Empty uses the free `api.osskb.org` tier. |
 | `SCANOSS_TIMEOUT_SECONDS` | `300` | `config.py` | Hard wall-clock limit for the SCANOSS stage. On timeout the scan continues without vendored-OSS results (best-effort). |
-| `TRUSTEDOSS_VERSION` | `unknown` | `config.py` | The version this deployment states as its own — in SLSA provenance, on the About screen, and as the SBOM tool version in every document TRUSCA produces. Release images inject the tag at build time (`ARG TRUSTEDOSS_VERSION`). The default is deliberately not a plausible version number: a placeholder would make all three assert a release that does not exist, and `unknown` is what the 2026 SBOM minimum elements ask for when no identifier is available. |
+| `TRUSTEDOSS_VERSION` | `unknown` | `config.py` | The version this deployment states as its own: in SLSA provenance, on the About screen, and as the SBOM tool version in every document TRUSCA produces. Release images inject the tag at build time (`ARG TRUSTEDOSS_VERSION`), and `docker-compose.yml` does not pass the key, so a value in `.env` has no effect. The default is deliberately not a plausible version number: a placeholder would make all three assert a release that does not exist, and `unknown` is what the 2026 SBOM minimum elements ask for when no identifier is available. |
 | `TRUSTEDOSS_COMMIT` | `unknown` | `config.py` | The commit this image was built from, injected at build time the same way as `TRUSTEDOSS_VERSION`. Surfaced on the About screen and the `trusca_build_info` metric so an operator can tell which build is actually running. |
 | `TRUSTEDOSS_BUILT_AT` | `unknown` | `config.py` | UTC build timestamp (ISO 8601), same injection mechanism as `TRUSTEDOSS_COMMIT`. Also published as `trusca_build_time_seconds` so a collector can compute image age without parsing a metric label. |
 | `SBOM_AUTHOR` | *(unset)* | `config.py` | The entity that creates the SBOM data, recorded as the SBOM author on every export. The 2026 SBOM minimum elements ask an SBOM to name it, and nothing in a scan can discover it — it is the organisation operating the portal. Left unset the field is omitted rather than filled with a placeholder, which would satisfy the element while telling a recipient nothing. |
