@@ -107,10 +107,20 @@ def test_iat_slightly_in_the_future_is_accepted() -> None:
     assert decode_token(_encode(_base(iat=ahead)), expected_type="access")["iat"] == ahead
 
 
-@pytest.mark.parametrize("iat", ["not-a-number", [1], "1.5"])
+@pytest.mark.parametrize(
+    "iat", ["not-a-number", [1], "1.5", float("inf"), float("nan")],
+    ids=["string", "list", "float-string", "infinity", "nan"],
+)
 def test_non_integer_iat_rejected(iat: object) -> None:
     err = _rejects(_encode(_base(iat=iat)), jwt.InvalidIssuedAtError)
     assert "integer" in str(err)
+
+
+def test_future_nbf_rejected() -> None:
+    """We never set `nbf`, but one we did not set must still be honoured:
+    a token that says it is not valid yet is refused."""
+    later = int((datetime.now(tz=UTC) + timedelta(minutes=5)).timestamp())
+    _rejects(_encode(_base(nbf=later)), jwt.ImmatureSignatureError)
 
 
 def test_tampered_signature_rejected() -> None:

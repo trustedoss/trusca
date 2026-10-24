@@ -504,7 +504,8 @@ def decode_token(token: str, *, expected_type: str) -> dict[str, Any]:
     # in the future, which the previous library never did. Replicas whose
     # clocks differ by a second would then refuse each other's fresh tokens.
     # What the previous library did check, that `iat` is an integer, is kept
-    # below; the password-change comparison depends on it.
+    # below; the password-change comparison depends on it. OverflowError is
+    # what int() raises for an infinite iat, which JSON can carry.
     claims: dict[str, Any] = jwt.decode(
         token,
         secret_key(),
@@ -514,7 +515,7 @@ def decode_token(token: str, *, expected_type: str) -> dict[str, Any]:
     issued_at: Any = claims.get("iat")
     try:
         int(issued_at)
-    except (TypeError, ValueError) as exc:
+    except (TypeError, ValueError, OverflowError) as exc:
         raise jwt.InvalidIssuedAtError("Issued At claim (iat) must be an integer.") from exc
     actual_type = claims.get("type")
     if actual_type != expected_type:

@@ -170,6 +170,36 @@ def test_decode_state_accepts_the_hand_built_control() -> None:
     assert _decode_state(token, expected_provider="github")["provider"] == "github"
 
 
+def test_decode_state_accepts_an_iat_slightly_in_the_future() -> None:
+    """The callback can land on a replica whose clock is behind the one that
+    minted the state, so a few seconds of future `iat` must not refuse it."""
+    from core.config import secret_key
+    from services.oauth_service import _decode_state
+
+    ahead = int(time.time()) + 5
+    token = jwt.encode(_state_claims(iat=ahead), secret_key(), algorithm=JWT_ALGORITHM)
+    assert _decode_state(token, expected_provider="github")["iat"] == ahead
+
+
+def test_decode_state_unusable_key_is_an_invalid_state(monkeypatch: pytest.MonkeyPatch) -> None:
+    """PyJWT refuses a PEM as an HMAC secret with ``InvalidKeyError``, which
+    is not an ``InvalidTokenError``. It must still become OAuthInvalidState
+    rather than escape from the callback as a 500."""
+    from core.config import secret_key
+    from services.oauth_service import OAuthInvalidState, _decode_state
+
+    token = jwt.encode(_state_claims(), secret_key(), algorithm=JWT_ALGORITHM)
+    pem = (
+        "-----BEGIN PUBLIC KEY-----\n"
+        "MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEA\n"
+        "-----END PUBLIC KEY-----\n"
+    )
+    monkeypatch.setattr("services.oauth_service.secret_key", lambda: pem)
+    with pytest.raises(OAuthInvalidState) as info:
+        _decode_state(token, expected_provider="github")
+    assert isinstance(info.value.__cause__, jwt.InvalidKeyError)
+
+
 @pytest.mark.filterwarnings("ignore::jwt.warnings.InsecureKeyLengthWarning")
 @pytest.mark.parametrize(
     ("overrides", "algorithm", "cause"),
