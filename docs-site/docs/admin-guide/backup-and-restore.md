@@ -136,6 +136,71 @@ This runs at 03:00 host-local time daily. Adjust the hour to a quiet window for 
 
 For a managed scheduler (systemd timer), see the [systemd recipe](#systemd-timer-recipe) below.
 
+## Backups on a Helm install {#helm}
+
+The scripts in this guide drive `docker-compose` and do not apply to a
+Kubernetes install. On Helm, the daily Celery Beat backup and the
+`/admin/backup` page are the backup path, and the chart provides the storage
+they write to.
+
+**Where backups land.** The chart provisions a PVC named
+`<release>-trustedoss-backups` and mounts it at `/opt/trustedoss/backups`
+(`backups.mountPath`), with `BACKUPS_ROOT` pointing there. It is mounted on:
+
+- the backend, which lists, downloads and deletes backups and stages an
+  uploaded archive for restore;
+- every worker that consumes the default Celery queue, where the backup and
+  restore tasks are routed. With the default `worker.subscriptions` that is
+  both worker-default and worker-scan.
+
+All of these pods must see the same files, so on a multi-node cluster the PVC
+must be `ReadWriteMany`. Set `backups.persistence.storageClassName` to an
+RWX-capable class, as for the scan workspace; the install notes warn when it
+is left on the cluster default.
+
+**Sizing.** A backup holds a compressed database dump and a tar of the scan
+workspace, so it grows with the workspace rather than the database. Seven
+daily `auto-` backups are kept, plus every manual backup until you delete it.
+Budget roughly (dump + workspace) x 8 and set `backups.persistence.size`
+(default `50Gi`).
+
+```yaml
+backups:
+  persistence:
+    storageClassName: nfs-rwx   # an RWX class on your cluster
+    size: 200Gi
+    # or bring your own claim:
+    # existingClaim: trustedoss-backups
+```
+
+**Keeping database dumps off the scan worker.** worker-scan runs the scanned
+projects' build tooling. It mounts the backup store only because it also
+consumes the default queue. Once the pre-split queue has drained (see the
+chart README, "Queue split transition"), set
+`worker.subscriptions.scan: ["trustedoss.scan"]` and the chart removes the
+mount from worker-scan.
+
+**Copy backups off the cluster.** Download a backup from `/admin/backup`, or
+copy the directory out of a worker pod:
+
+<!-- docs-uat: id=backup-helm-copy-off-cluster kind=shell ctx=host tier=manual waiver=needs-live-cluster -->
+```bash
+POD=$(kubectl -n trustedoss get pod -l app.kubernetes.io/component=worker-default \
+  -o jsonpath='{.items[0].metadata.name}')
+kubectl -n trustedoss exec "$POD" -- ls -l /opt/trustedoss/backups
+kubectl -n trustedoss cp "$POD:/opt/trustedoss/backups/auto-20260509T000000Z" \
+  ./auto-20260509T000000Z
+```
+
+**Restore.** Use **Upload and restore** on `/admin/backup` (archives up to
+10 GB). The uploaded archive is staged on the same PVC before the worker
+restores it.
+
+**Uninstall.** The chart annotates its PVC with
+`helm.sh/resource-policy: keep`, so `helm uninstall` leaves the backups in
+place. Delete the PVC yourself once you no longer need them, or set
+`backups.persistence.keepOnUninstall: false`.
+
 ## Off-host storage
 
 Local backups protect against database corruption but not against host loss. Move backups off-host as part of your retention policy:

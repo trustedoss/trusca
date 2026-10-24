@@ -352,6 +352,7 @@ Compose 배포에는 오토스케일러 계층이 없습니다. 이 절의 키�
 |---|---|---|---|
 | `BACKUP_RETENTION_DAYS` | `7` | `scripts/backup.sh` | `scripts/backup.sh --no-prune`로 실행별 오버라이드. |
 | `BACKUP_DIR` | `<repo>/backups` | `scripts/backup.sh` | 백업 스크립트가 쓰는 위치. |
+| `BACKUPS_ROOT` | `backups`(작업 디렉터리 기준 상대 경로, 이미지에서는 `/app`) | `services/backup_service.py` | Celery 백업·복원 태스크와 `/admin/backup` API가 백업을 읽고 쓰는 위치. 백엔드와 기본 큐를 소비하는 모든 워커에서 같은 볼륨을 가리켜야 합니다. `docker-compose.yml`과 Helm 차트는 모두 `/opt/trustedoss/backups`로 설정합니다. [Helm 설치의 백업](../admin-guide/backup-and-restore.md#helm)을 봅니다. |
 
 ## 디스크 가드
 

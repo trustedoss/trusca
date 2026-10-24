@@ -312,3 +312,60 @@ worker.queues.default. See that value's comment in values.yaml and README.md
       name: {{ $secretName }}
       key: DATABASE_URL_OWNER
 {{- end -}}
+
+{{/*
+Image reference for one container. Call with a dict
+`{repository: ..., tag: ..., digest: ...}`. A digest pins the exact image
+bytes, so when one is set it replaces the tag rather than sitting next to it:
+`repo@sha256:...`. With no digest the reference is `repo:tag`, which is what
+every image in this chart rendered before digests were supported.
+*/}}
+{{- define "trustedoss.image" -}}
+{{- if .digest -}}
+{{- if not (regexMatch "^sha256:[a-f0-9]{64}$" (.digest | toString)) -}}
+{{- fail (printf "image digest %q for %s must be sha256: followed by 64 lowercase hex characters" (.digest | toString) .repository) -}}
+{{- end -}}
+{{- printf "%s@%s" .repository .digest -}}
+{{- else -}}
+{{- printf "%s:%s" .repository (.tag | toString) -}}
+{{- end -}}
+{{- end -}}
+
+{{/*
+Backup store (BACKUPS_ROOT). The nightly `trustedoss.backup.run` and
+`trustedoss.backup.restore` tasks are routed to worker.queues.default, so they
+run on whichever worker kind subscribes to that queue: worker-default always
+by default, and worker-scan too while worker.subscriptions.scan keeps it. The
+backend lists, downloads and deletes backups, and stages an uploaded archive
+for restore, in the same directory. So the backend and every worker that can
+take a backup task mount the same volume at the same path.
+
+`trustedoss.worker.runsBackupTasks` answers "true" for a worker kind whose
+subscription list contains worker.queues.default. Call with
+`{root: $, own: "scan"}` or `{root: $, own: "default"}`.
+*/}}
+{{- define "trustedoss.worker.runsBackupTasks" -}}
+{{- $w := .root.Values.worker -}}
+{{- $subs := index $w.subscriptions .own | default list -}}
+{{- if has $w.queues.default $subs -}}true{{- end -}}
+{{- end -}}
+
+{{- define "trustedoss.backups.env" -}}
+- name: BACKUPS_ROOT
+  value: {{ .Values.backups.mountPath | quote }}
+{{- end -}}
+
+{{- define "trustedoss.backups.volumeMount" -}}
+- name: backups
+  mountPath: {{ .Values.backups.mountPath }}
+{{- end -}}
+
+{{- define "trustedoss.backups.volume" -}}
+- name: backups
+  {{- if .Values.backups.persistence.enabled }}
+  persistentVolumeClaim:
+    claimName: {{ .Values.backups.persistence.existingClaim | default (printf "%s-backups" (include "trustedoss.fullname" .)) }}
+  {{- else }}
+  emptyDir: {}
+  {{- end }}
+{{- end -}}

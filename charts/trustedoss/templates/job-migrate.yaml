@@ -58,7 +58,7 @@ spec:
         # Wait for the bundled Postgres Service to accept connections before
         # alembic runs. External-DB deployments skip this (the DB is assumed up).
         - name: wait-for-postgres
-          image: "{{ .Values.postgres.image.repository }}:{{ .Values.postgres.image.tag }}"
+          image: {{ include "trustedoss.image" (dict "repository" .Values.postgres.image.repository "tag" .Values.postgres.image.tag "digest" .Values.postgres.image.digest) | quote }}
           imagePullPolicy: {{ .Values.postgres.image.pullPolicy }}
           command:
             - sh
@@ -80,7 +80,7 @@ spec:
       containers:
         - name: migrate
           # Worker image carries alembic + the migration revisions.
-          image: "{{ .Values.image.workerRepository }}:{{ .Values.image.tag }}"
+          image: {{ include "trustedoss.image" (dict "repository" .Values.image.workerRepository "tag" .Values.image.tag "digest" .Values.image.workerDigest) | quote }}
           imagePullPolicy: {{ .Values.image.pullPolicy }}
           # Forward-only: alembic upgrade head, never downgrade.
           command: ["alembic", "upgrade", "head"]

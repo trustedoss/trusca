@@ -78,7 +78,7 @@ spec:
       {{- end }}
       containers:
         - name: redis
-          image: "{{ .Values.redis.image.repository }}:{{ .Values.redis.image.tag }}"
+          image: {{ include "trustedoss.image" (dict "repository" .Values.redis.image.repository "tag" .Values.redis.image.tag "digest" .Values.redis.image.digest) | quote }}
           imagePullPolicy: {{ .Values.redis.image.pullPolicy }}
           {{- with .Values.redis.containerSecurityContext }}
           securityContext:

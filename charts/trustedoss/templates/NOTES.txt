@@ -119,7 +119,7 @@ role separation).
 {{- end }}
 
 {{- /*
-#429: workspace + trivyCache both default to accessMode=ReadWriteMany with
+#429: workspace, trivyCache and backups (#572) all default to accessMode=ReadWriteMany with
 storageClassName left empty (cluster default). Most default StorageClasses
 (AWS gp2/gp3, GCP pd-standard/pd-ssd, Azure managed-csi) are ReadWriteOnce
 only, so the PVC stays Pending and the install hangs with no indication of
@@ -131,12 +131,17 @@ it carries no risk here regardless of accessMode.
 */}}
 {{- $workspaceRWXRisk := and .Values.workspace.persistence.enabled (eq .Values.workspace.persistence.accessMode "ReadWriteMany") (not .Values.workspace.persistence.storageClassName) (not .Values.workspace.persistence.existingClaim) }}
 {{- $trivyCacheRWXRisk := and .Values.trivyCache.persistence.enabled (eq .Values.trivyCache.persistence.accessMode "ReadWriteMany") (not .Values.trivyCache.persistence.storageClassName) (not .Values.trivyCache.persistence.existingClaim) }}
-{{- if or $workspaceRWXRisk $trivyCacheRWXRisk }}
+{{- $backupsRWXRisk := and .Values.backups.persistence.enabled (eq .Values.backups.persistence.accessMode "ReadWriteMany") (not .Values.backups.persistence.storageClassName) (not .Values.backups.persistence.existingClaim) }}
+{{- $rwxRisky := list }}
+{{- if $workspaceRWXRisk }}{{- $rwxRisky = append $rwxRisky "workspace.persistence" }}{{- end }}
+{{- if $trivyCacheRWXRisk }}{{- $rwxRisky = append $rwxRisky "trivyCache.persistence" }}{{- end }}
+{{- if $backupsRWXRisk }}{{- $rwxRisky = append $rwxRisky "backups.persistence" }}{{- end }}
+{{- if $rwxRisky }}
 
-WARNING: {{ if and $workspaceRWXRisk $trivyCacheRWXRisk }}workspace.persistence and trivyCache.persistence request{{ else if $workspaceRWXRisk }}workspace.persistence requests{{ else }}trivyCache.persistence requests{{ end }} ReadWriteMany with no storageClassName set, so provisioning falls to the
+WARNING: {{ join ", " $rwxRisky }} request{{ if eq (len $rwxRisky) 1 }}s{{ end }} ReadWriteMany with no storageClassName set, so provisioning falls to the
 cluster's DEFAULT StorageClass. Most default StorageClasses do NOT support
 ReadWriteMany; if yours doesn't, the PVC stays Pending and this install
-hangs. Set {{ if $workspaceRWXRisk }}workspace.persistence.storageClassName{{ end }}{{ if and $workspaceRWXRisk $trivyCacheRWXRisk }} and {{ end }}{{ if $trivyCacheRWXRisk }}trivyCache.persistence.storageClassName{{ end }} to an RWX-capable class
+hangs. Set storageClassName to an RWX-capable class on {{ join ", " $rwxRisky }}
 (nfs / efs / filestore / longhorn) unless every backend and worker pod is
 pinned to one node. See docs-site/docs/installation/helm.md "Scans fail on
 multi-node clusters".

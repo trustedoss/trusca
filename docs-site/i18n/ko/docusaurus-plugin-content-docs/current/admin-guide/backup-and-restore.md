@@ -136,6 +136,66 @@ sudo crontab -e
 
 관리형 스케줄러(systemd 타이머)는 아래 [systemd 타이머 레시피](#systemd-타이머-레시피)를 보세요.
 
+## Helm 설치의 백업 {#helm}
+
+이 가이드의 스크립트는 `docker-compose`를 실행하므로 Kubernetes 설치에는 쓸 수
+없습니다. Helm 설치에서는 매일 도는 Celery Beat 백업과 `/admin/backup` 페이지로
+백업하고, 백업 파일을 저장할 볼륨은 차트가 만듭니다.
+
+**백업이 저장되는 위치.** 차트는 `<release>-trustedoss-backups`라는 PVC를 만들어
+`/opt/trustedoss/backups`(`backups.mountPath`)에 마운트하고, `BACKUPS_ROOT`를 이
+경로로 설정합니다. 마운트하는 파드는 다음과 같습니다.
+
+- 백엔드. 백업 목록 조회, 다운로드, 삭제를 처리하고, 복원용으로 업로드된
+  아카이브를 이 볼륨에 둡니다.
+- 백업과 복원 태스크가 라우팅되는 기본 Celery 큐를 소비하는 모든 워커. 기본
+  `worker.subscriptions` 설정에서는 worker-default와 worker-scan 둘 다입니다.
+
+이 파드들이 모두 같은 파일을 봐야 하므로, 노드가 여러 대인 클러스터에서는 PVC가
+`ReadWriteMany`여야 합니다. 스캔 workspace와 마찬가지로
+`backups.persistence.storageClassName`에 RWX를 지원하는 클래스를 지정합니다.
+클러스터 기본 클래스를 그대로 두면 설치 안내문(NOTES)에 경고가 나옵니다.
+
+**용량 산정.** 백업 하나에는 압축한 데이터베이스 덤프와 스캔 workspace의 tar가
+들어 있어서, 크기가 데이터베이스보다 workspace 크기를 따라갑니다. 매일 만드는
+`auto-` 백업은 7개까지 보관하고, 수동 백업은 직접 지울 때까지 남습니다. 대략
+(덤프 + workspace) x 8로 잡고 `backups.persistence.size`(기본값 `50Gi`)를
+설정합니다.
+
+```yaml
+backups:
+  persistence:
+    storageClassName: nfs-rwx   # 클러스터의 RWX 클래스
+    size: 200Gi
+    # 미리 만든 PVC를 쓰려면:
+    # existingClaim: trustedoss-backups
+```
+
+**스캔 워커에서 데이터베이스 덤프를 떼어 두기.** worker-scan은 스캔 대상 프로젝트의
+빌드 도구를 실행합니다. 이 워커가 백업 볼륨을 마운트하는 이유는 기본 큐도 함께
+소비하기 때문입니다. 큐 분리 이전의 메시지가 모두 처리된 뒤(차트 README의
+"Queue split transition" 참고) `worker.subscriptions.scan: ["trustedoss.scan"]`으로
+설정하면 차트가 worker-scan에서 이 마운트를 제거합니다.
+
+**클러스터 밖으로 백업 복사.** `/admin/backup`에서 백업을 내려받거나, 워커 파드에서
+디렉터리를 복사합니다.
+
+<!-- docs-uat: id=backup-helm-copy-off-cluster kind=shell ctx=host tier=manual waiver=needs-live-cluster -->
+```bash
+POD=$(kubectl -n trustedoss get pod -l app.kubernetes.io/component=worker-default \
+  -o jsonpath='{.items[0].metadata.name}')
+kubectl -n trustedoss exec "$POD" -- ls -l /opt/trustedoss/backups
+kubectl -n trustedoss cp "$POD:/opt/trustedoss/backups/auto-20260509T000000Z" \
+  ./auto-20260509T000000Z
+```
+
+**복원.** `/admin/backup`의 **Upload and restore**를 사용합니다(아카이브 최대
+10 GB). 업로드한 아카이브는 같은 PVC에 놓인 뒤 워커가 복원합니다.
+
+**삭제.** 차트는 PVC에 `helm.sh/resource-policy: keep` 어노테이션을 붙이므로
+`helm uninstall`을 실행해도 백업은 남습니다. 더 이상 필요 없으면 PVC를 직접
+삭제하거나 `backups.persistence.keepOnUninstall: false`로 설정합니다.
+
 ## 호스트 외부 저장
 
 로컬 백업은 데이터베이스 손상을 보호하지만 호스트 손실은 보호하지 않습니다. 보존 정책의 일부로 백업을 호스트 외부로 이동하세요.

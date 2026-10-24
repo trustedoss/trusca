@@ -117,6 +117,8 @@ connections before alembic runs.
 | `image.workerRepository` | `ghcr.io/trustedoss/trusca-backend-worker` | Worker/beat/migrate image (ships alembic). |
 | `image.frontendRepository` | `ghcr.io/trustedoss/trusca-frontend` | SPA image. |
 | `image.tag` | `0.11.0` | Tag for all three (lock-step with `appVersion`). Never `:latest`. |
+| `image.backendDigest` / `image.workerDigest` / `image.frontendDigest` | `""` | Optional `sha256:` digest per image. When set the image renders as `repository@digest` and the tag is not used for it; empty keeps `repository:tag`. The worker digest also covers beat and the migration Job. A malformed digest fails the render. |
+| `postgres.image.digest` / `redis.image.digest` | `""` | Same, for the bundled datastores. |
 | `image.pullPolicy` | `IfNotPresent` | |
 | `imagePullSecrets` | `[]` | Private-registry pull secrets. |
 
@@ -158,6 +160,28 @@ connections before alembic runs.
 | `workspace.persistence.size` | `20Gi` | |
 | `workspace.persistence.storageClassName` | `""` | Set an RWX class (nfs/efs/filestore/longhorn). |
 | `workspace.persistence.existingClaim` | `""` | Use a pre-created PVC. |
+
+### Backup store (`backups.*`)
+
+The nightly backup (`trustedoss.backup.run`, 00:00 UTC) and the restore task
+run on whichever worker consumes `worker.queues.default`; the backend's
+`/admin/backup` API reads and writes the same directory. The chart mounts one
+volume at `backups.mountPath` on the backend and on every worker kind whose
+`worker.subscriptions.<kind>` lists the default queue, and sets `BACKUPS_ROOT`
+there. With the default subscriptions that is worker-default and worker-scan.
+Narrowing `worker.subscriptions.scan` to the scan queue alone also removes the
+mount from worker-scan, which keeps database dumps off the pod that runs
+scanned projects' build scripts.
+
+| Key | Default | Description |
+|---|---|---|
+| `backups.mountPath` | `/opt/trustedoss/backups` | `BACKUPS_ROOT`. |
+| `backups.persistence.enabled` | `true` | Provision a PVC. `false` → per-pod `emptyDir`: backups vanish with the pod and the backend cannot see what a worker wrote. |
+| `backups.persistence.accessMode` | `ReadWriteMany` | RWX is required on multi-node clusters. |
+| `backups.persistence.size` | `50Gi` | One backup is a pg_dump plus a tar of the workspace. Budget roughly (dump + workspace) x 8 for seven daily backups plus manual ones. |
+| `backups.persistence.storageClassName` | `""` | Set an RWX class. |
+| `backups.persistence.existingClaim` | `""` | Use a pre-created PVC. |
+| `backups.persistence.keepOnUninstall` | `true` | Annotate the chart's PVC with `helm.sh/resource-policy: keep` so `helm uninstall` leaves the backups. |
 
 ### Bundled PostgreSQL (`postgres.*`)
 
@@ -336,6 +360,42 @@ first place.
 | `ingress.annotations` | cert-manager + nginx timeouts | `cert-manager.io/cluster-issuer` drives TLS issuance. |
 | `ingress.tls.enabled` | `true` | |
 | `ingress.tls.secretName` | `""` | Defaults to `<fullname>-tls`. |
+
+### Metrics and ServiceMonitor (`metrics.*`)
+
+| Key | Default | Description |
+|---|---|---|
+| `metrics.enabled` | `false` | Sets `METRICS_ENABLED=true`, which turns on `/metrics` on the backend. Replaces setting it through `env.extraEnv`. |
+| `metrics.token.existingSecret` | `""` | Secret you created holding the scrape token. The backend reads it as `METRICS_TOKEN`; the ServiceMonitor presents it as a bearer token. |
+| `metrics.token.key` | `METRICS_TOKEN` | Key inside that Secret. |
+| `metrics.serviceMonitor.enabled` | `false` | Render a `monitoring.coreos.com/v1` ServiceMonitor for the backend Service. Requires `metrics.enabled` (the render fails otherwise) and the Prometheus Operator CRDs. |
+| `metrics.serviceMonitor.interval` / `scrapeTimeout` | `60s` / `10s` | |
+| `metrics.serviceMonitor.labels` | `{}` | Extra labels, for a Prometheus whose `serviceMonitorSelector` matches on them. |
+| `metrics.serviceMonitor.namespace` | `""` | Namespace for the ServiceMonitor; empty means the release namespace. A token Secret must exist in that namespace. |
+
+The Ingress routes `/metrics` to the backend, so once metrics are on the
+endpoint is reachable wherever the Ingress is. Set a token unless that is
+what you want.
+
+### NetworkPolicy (`networkPolicy.*`)
+
+Off by default. `networkPolicy.enabled: true` renders one NetworkPolicy for
+worker-scan, the pod that runs scanned projects' build tooling. It denies all
+ingress and allows egress only to cluster DNS, the bundled Postgres and Redis
+pods, the public internet on ports 443, 80, 22 and 9418 (minus private,
+carrier-grade NAT, link-local and loopback ranges, so the Kubernetes API and
+cloud metadata endpoints are out of reach), and the rules you add. Other
+workloads are not covered. It needs a CNI that enforces NetworkPolicy.
+
+| Key | Default | Description |
+|---|---|---|
+| `networkPolicy.enabled` | `false` | Render the policy. |
+| `networkPolicy.workerScan.dns` | kube-dns in `kube-system`, UDP/TCP 53 | `namespaceSelector`, `podSelector` and `ports` for the DNS rule. `null` drops the rule. |
+| `networkPolicy.workerScan.externalDatastoreEgress` | `[]` | Raw egress rules for an external Postgres / Redis. Required when either is not bundled; the render fails without them. |
+| `networkPolicy.workerScan.internet.enabled` | `true` | `false` on an air-gapped cluster; list mirrors in `extraEgress`. |
+| `networkPolicy.workerScan.internet.ports` | 443, 80, 22, 9418 (TCP) | |
+| `networkPolicy.workerScan.internet.ipBlocks` | `0.0.0.0/0` and `::/0` with private ranges excepted | Add to `except` if your cluster uses public address space internally. |
+| `networkPolicy.workerScan.extraEgress` | `[]` | Raw egress rules appended as-is: an internal package mirror, a source-code host, a proxy. |
 
 ### Scheduling
 

@@ -62,7 +62,7 @@ spec:
       {{- end }}
       containers:
         - name: check-config
-          image: "{{ .Values.image.backendRepository }}:{{ .Values.image.tag }}"
+          image: {{ include "trustedoss.image" (dict "repository" .Values.image.backendRepository "tag" .Values.image.tag "digest" .Values.image.backendDigest) | quote }}
           imagePullPolicy: {{ .Values.image.pullPolicy }}
           command: ["python", "-m", "scripts.check_config"]
           envFrom:

@@ -332,6 +332,7 @@ Three tables age out on their own occurrence-time clock; there is no export curs
 |---|---|---|---|
 | `BACKUP_RETENTION_DAYS` | `7` | `scripts/backup.sh` | `scripts/backup.sh --no-prune` overrides on a per-run basis. |
 | `BACKUP_DIR` | `<repo>/backups` | `scripts/backup.sh` | Where the backup script writes. |
+| `BACKUPS_ROOT` | `backups` (relative to the working directory, `/app` in the images) | `services/backup_service.py` | Where the Celery backup and restore tasks and the `/admin/backup` API read and write backups. Must name the same volume on the backend and on every worker that consumes the default queue. `docker-compose.yml` and the Helm chart both set it to `/opt/trustedoss/backups`; see [Backups on a Helm install](../admin-guide/backup-and-restore.md#helm). |
 
 ## Disk guards
 

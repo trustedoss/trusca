@@ -79,7 +79,7 @@ spec:
         fsGroup: 70
       containers:
         - name: postgres
-          image: "{{ .Values.postgres.image.repository }}:{{ .Values.postgres.image.tag }}"
+          image: {{ include "trustedoss.image" (dict "repository" .Values.postgres.image.repository "tag" .Values.postgres.image.tag "digest" .Values.postgres.image.digest) | quote }}
           imagePullPolicy: {{ .Values.postgres.image.pullPolicy }}
           ports:
             - name: postgres
