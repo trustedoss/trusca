@@ -2466,7 +2466,8 @@ def _auto_create_conditional_approvals(*, scan_uuid: uuid.UUID, project_id: uuid
     Best-effort: a failure here NEVER fails the scan (same swallow-and-log
     contract as the scancode + preserve stages). The work is idempotent
     (``auto_create_pending_approvals`` skips components that already have an
-    open approval), so a re-run that re-creates the findings does not duplicate
+    open approval, or a decision recorded against the same license set), so a
+    re-run that re-creates the findings does not duplicate
     approvals, and a transient failure is healed on the next scan.
 
     QA follow-up Medium — audit trail: when one or more approvals are actually
@@ -2517,7 +2518,10 @@ def _auto_create_conditional_approvals(*, scan_uuid: uuid.UUID, project_id: uuid
             # is not asked again. A no-op unless the deployment uses the
             # ask-before-using queue, which is off by default.
             carried = apply_intake_decisions(
-                session, project_id=project_id, created_component_ids=created_ids
+                session,
+                project_id=project_id,
+                created_component_ids=created_ids,
+                scan_id=scan_uuid,
             )
             if carried:
                 log.info(
