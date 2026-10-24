@@ -280,6 +280,29 @@ async def test_admin_audit_target_table_unknown_returns_422(
     assert response.status_code == 422, response.text
 
 
+async def test_admin_audit_export_csv_too_large_is_413(
+    client: AsyncClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # The 413 used to be reached only by accident: the unfiltered export in
+    # another file ran after enough audit rows had piled up in the shared CI
+    # database. Lowering the limit reaches it on purpose.
+    import services.admin_audit_service as audit_service
+
+    monkeypatch.setattr(audit_service, "_CSV_EXPORT_HARD_LIMIT", -1)
+    factory = await _factory(client)
+    async with factory() as session:
+        admin = await make_user(session, is_superuser=True)
+
+    response = await client.get("/v1/admin/audit/export.csv", headers=_bearer_for(admin))
+    assert response.status_code == 413, response.text
+    assert response.headers["content-type"].startswith("application/problem+json")
+    body = response.json()
+    assert body["type"] == "https://docs.trustedoss.io/errors/audit-export-too-large"
+    assert body["audit_export_too_large"] is True
+    assert body["instance"] == "/v1/admin/audit/export.csv"
+    assert "limit -1" in body["detail"]
+
+
 async def test_admin_audit_export_csv_streams(client: AsyncClient) -> None:
     # Bound the export to this test's own window. Unfiltered, it exports every
     # audit row in the database, and the endpoint refuses past 100,000 with a

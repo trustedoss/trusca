@@ -644,8 +644,10 @@ jobs:
   #    `thread` method is used because it also fires while the main thread is
   #    blocked inside a C call such as a database driver waiting on a lock,
   #    where `signal` cannot. It ends the process, which is acceptable: the
-  #    run has already failed. The limit is several times the slowest test
-  #    measured on CI (`--durations` prints the slowest each run).
+  #    run has already failed. 300 s is about four times the slowest test
+  #    measured on CI (70 s in tests/integration, 34 s in tests/unit), which
+  #    leaves room for a slow runner. `--durations` prints the slowest each
+  #    run, so a test creeping towards the limit is visible before it trips.
   # -------------------------------------------------------------------------
   test:
     name: test (${{ matrix.target }})
@@ -746,7 +748,7 @@ jobs:
         run: |
           set -euo pipefail
           pytest --cov=. --cov-report= --cov-fail-under=0 \
-            --timeout=900 --timeout-method=thread --durations=15 tests/unit
+            --timeout=300 --timeout-method=thread --durations=15 tests/unit
           mv .coverage ".coverage.${{ matrix.target }}"
 
       # v2.1 Track B (B4) — NOTE: there is deliberately NO byte-exact OpenAPI
@@ -818,9 +820,10 @@ jobs:
   #     tests/integration/shard_durations.json. N is the matrix size, read
   #     from `strategy.job-total`, so adding a shard is one more list entry.
   #     Three was chosen from measured durations: the directory took 22 to 37
-  #     minutes in one job and the unit leg takes 12 to 21, so three shards
-  #     bring each below the unit leg, which is then the critical path. More
-  #     shards would cost runners without shortening the run.
+  #     minutes in one job (its tests add up to about 34 minutes) and the unit
+  #     leg takes 12 to 21. Three shards of about 11 minutes of tests plus 2
+  #     of setup each finish before the unit leg, which is then the critical
+  #     path. More shards would cost runners without shortening the run.
   #
   #     Branch protection requires `test (backend-integration)`. That name
   #     belongs to the aggregate job below, not to these.
@@ -920,7 +923,7 @@ jobs:
         run: |
           set -euo pipefail
           pytest --cov=. --cov-report= --cov-fail-under=0 \
-            --timeout=900 --timeout-method=thread --durations=15 \
+            --timeout=300 --timeout-method=thread --durations=15 \
             --shard "$SHARD/$SHARDS" --shard-report shard-report.json \
             tests/integration
           mv .coverage ".coverage.backend-integration-$SHARD-of-$SHARDS"
