@@ -263,6 +263,9 @@ def test_the_required_check_aggregates_every_shard() -> None:
     gate = jobs["coverage-gate"]
     assert set(gate["needs"]) == {"test", "test-integration"}
     assert "test-integration-shards" in jobs["nightly-alert"]["needs"]
+    # A failed `verify` leaves every shard green, so the alert must also see
+    # the aggregator.
+    assert "test-integration" in jobs["nightly-alert"]["needs"]
     # No other job may carry the required check's name.
     names = [j.get("name") for k, j in jobs.items() if k != "test-integration"]
     assert "test (backend-integration)" not in names

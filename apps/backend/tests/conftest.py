@@ -86,7 +86,7 @@ class _ShardHooks:
         self.plugin.write_report()
 
 
-# pytest-timeout's thread method (pyproject) prints every thread's stack and
+# pytest-timeout's thread method (set on the command line in ci.yml) prints every thread's stack and
 # exits, but leaves out the name of the test that hung: its timer thread knows
 # it and is the one thread it does not print. Putting the test id in the main
 # thread's name makes it the heading of the stack that matters, including for

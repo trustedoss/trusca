@@ -1659,6 +1659,7 @@ jobs:
       - typecheck
       - test
       - test-integration-shards
+      - test-integration
       - coverage-gate
       - image-scan
       - frontend-bundle-audit
@@ -1688,6 +1689,7 @@ jobs:
             typecheck=${{ needs.typecheck.result }},
             test=${{ needs.test.result }},
             test-integration-shards=${{ needs.test-integration-shards.result }},
+            test-integration=${{ needs.test-integration.result }},
             coverage-gate=${{ needs.coverage-gate.result }},
             image-scan=${{ needs.image-scan.result }},
             frontend-bundle-audit=${{ needs.frontend-bundle-audit.result }},
