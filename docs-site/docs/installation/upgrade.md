@@ -78,7 +78,7 @@ bash scripts/restore.sh "$(ls -td backups/* | head -1)"
 `scripts/restore.sh` will:
 
 1. Confirm the destructive action interactively (type **y**).
-2. Stop application containers (`backend`, `frontend`, `worker`, `beat`). PostgreSQL and Redis stay up so the dump can stream straight in.
+2. Stop application containers (`backend`, `frontend`, `worker-scan`, `worker-default`, `beat`). PostgreSQL and Redis stay up so the dump can stream straight in.
 3. Restore the PostgreSQL dump (`postgres.sql.gz`).
 4. Restore the workspace tarball (`workspace.tar.gz`) if present.
 5. Restart the application containers.
@@ -125,13 +125,13 @@ Usually a real data issue: a NOT-NULL column was added but a row predates the de
 The pull may have brought down a service that needs a longer warm-up (e.g. worker after a JRE upgrade). Tail the logs:
 
 ```bash
-docker-compose -f docker-compose.yml logs --tail=200 backend worker
+docker-compose -f docker-compose.yml logs --tail=200 backend worker-scan worker-default
 ```
 
 If the backend is up but the worker is not, scans will queue but never run. Restart the worker manually:
 
 ```bash
-docker-compose -f docker-compose.yml restart worker beat
+docker-compose -f docker-compose.yml restart worker-scan worker-default beat
 ```
 
 ### Image pull rejected (403 / 401)

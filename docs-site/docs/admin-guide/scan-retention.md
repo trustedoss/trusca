@@ -46,7 +46,7 @@ The [GitHub Action](../ci-integration/github-actions.md#how-the-ref-becomes-a-re
 
 ## Retention policy variables
 
-All four keys are read at runtime via `os.getenv` — edit `.env` and restart the Celery worker and beat services to apply them. The service names differ by stack: on the **production** compose (`docker-compose.yml`) they are `worker` and `beat`; on the **dev** compose (`docker-compose.dev.yml`) they are `celery-worker` and `celery-beat`. See [Environment variables → Scan retention](../reference/env-variables.md#scan-retention) for the canonical reference.
+All four keys are read at runtime via `os.getenv`. Edit `.env` and restart the Celery worker and beat services to apply them. The service names differ by stack: on the **production** compose (`docker-compose.yml`) they are `worker-scan`, `worker-default` and `beat`; on the **dev** compose (`docker-compose.dev.yml`) they are `celery-worker` and `celery-beat`. See [Environment variables → Scan retention](../reference/env-variables.md#scan-retention) for the canonical reference.
 
 <!-- docs-uat: id=scan-retention-env kind=shell ctx=host tier=manual waiver=env-config-snippet-not-a-command -->
 ```bash

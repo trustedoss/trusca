@@ -58,7 +58,7 @@ HMR 가능한 Vite dev 서버로 구성됩니다. 정본 기동 절차 — env �
 로그 추적:
 
 ```bash
-docker-compose -f docker-compose.dev.yml logs -f backend worker
+docker-compose -f docker-compose.dev.yml logs -f backend celery-worker
 ```
 
 이제 포털에 접속할 수 있습니다.

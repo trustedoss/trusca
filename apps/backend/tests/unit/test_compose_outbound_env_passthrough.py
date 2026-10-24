@@ -289,12 +289,9 @@ def test_the_guide_overrides_set_what_they_promise_on_services_that_exist(
                 lacking = sorted(PROXY_VARIABLES - set(env))
                 assert not lacking, f"{page.name}: proxy override for {name} lacks {lacking}"
     assert saw_ca and saw_proxy, f"{page.name}: an override example lost its purpose"
-
-    logged = re.findall(r"docker-compose logs ([a-z0-9 -]+?) \|", text)
-    assert logged, f"{page.name}: the log command was not found"
-    for command in logged:
-        named = set(command.split())
-        assert named <= services, f"{page.name}: logs names {sorted(named - services)}"
+    # The service names in the page's docker-compose commands (the log command
+    # included) are checked with every other guide's, in
+    # test_docs_compose_service_names.py.
 
 
 @pytest.mark.parametrize("page", [GUIDE_EN, GUIDE_KO], ids=["en", "ko"])

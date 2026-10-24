@@ -49,7 +49,7 @@ sidebar_position: 3
 | `active_scans` | 현재 `queued` 또는 `running` 상태인 스캔 수. 정보성이며 큐 길이가 내부 임계를 넘으면 `degraded`로 표시됩니다. |
 | `last_24h_errors` | 최근 24시간 안에 종료 시각 기준으로 실패한 스캔 수. 정보성입니다. 이름은 과거 명칭이라 세는 대상과 맞지 않습니다. |
 
-포털은 `backend`, `worker`, `beat`, `frontend`, `traefik`을 별도 프로브하지 않습니다. 이들의 liveness는 암묵적입니다 — 대시보드가 렌더되면 backend 가동 중, `celery` 행이 `ok`이면 worker(와 worker가 의존하는 broker)도 도달 가능.
+포털은 `backend`, `worker-scan`, `worker-default`, `beat`, `frontend`, `traefik`을 별도 프로브하지 않습니다. 이들의 liveness는 암묵적입니다. 대시보드가 렌더되면 backend 가동 중, `celery` 행이 `ok`이면 worker(와 worker가 의존하는 broker)도 도달 가능.
 
 ### endoflife.date 스냅샷 패널 {#eol-panel}
 
@@ -156,7 +156,7 @@ docker-compose -f docker-compose.yml exec backend \
 
 ### 4. 장기 대응
 
-- `WORKSPACE_HOST_PATH`를 더 큰 볼륨으로 이동(`.env` 편집, `backend`·`worker` 재시작).
+- `WORKSPACE_HOST_PATH`를 더 큰 볼륨으로 이동(`.env` 편집, `backend`·`worker-scan`·`worker-default` 재시작).
 - 로컬 백업이 공간을 잡아먹으면 `BACKUP_RETENTION_DAYS` 축소.
 - 백업을 호스트 외부(S3, NFS)로 이동하고 로컬 정리 생략.
 
@@ -291,7 +291,7 @@ docker-compose -f docker-compose.yml exec backend \
 
 다음 기능들은 초기 문서에 언급되었으나 v0.10.0 에는 **반영되지 않았습니다**.
 
-- Health 대시보드의 `backend`, `worker`, `beat`, `frontend`, `traefik` 컴포넌트별 liveness 프로브(현재는 대시보드 렌더링과 `celery` 행에서 추론).
+- Health 대시보드의 `backend`, `worker-scan`, `worker-default`, `beat`, `frontend`, `traefik` 컴포넌트별 liveness 프로브(현재는 대시보드 렌더링과 `celery` 행에서 추론).
 - WebSocket 스트리밍 health 갱신(현재는 React Query 폴링 사용).
 - 계획된 `vulnerability_data` 행 이외 컴포넌트의 다중 샷 연속-미스 상태 머신.
 

@@ -244,7 +244,7 @@ Continue? [y/N]
 
 스크립트 동작:
 
-1. `backend`, `frontend`, `worker`, `beat` 중지. Postgres + Redis 유지.
+1. `backend`, `frontend`, `worker-scan`, `worker-default`, `beat` 중지. Postgres + Redis 유지.
 2. `postgres.sql.gz`를 라이브 데이터베이스로 복원(`pg_dump --clean`이 객체 drop 선행).
 3. `workspace.tar.gz`를 `WORKSPACE_HOST_PATH`로 복원(기존 파일은 먼저 제거).
 4. 애플리케이션 컨테이너 재시작.
@@ -270,7 +270,7 @@ Restore complete
 3. 상태를 깔끔히 교체하기 위해 **스택 중지**:
 
    ```bash
-   docker-compose -f docker-compose.yml stop backend frontend worker beat
+   docker-compose -f docker-compose.yml stop backend frontend worker-scan worker-default beat
    ```
 
 4. 호스트 외부 저장소에서 **백업 복사**:
@@ -382,7 +382,7 @@ sudo systemctl enable --now trustedoss-backup.timer
 
 :::info 먼저 확인할 로그
 - `docker-compose logs --tail=500 beat | grep daily-auto-backup` — beat 스케줄러가 예정대로 태스크를 발사했는가?
-- `docker-compose logs --tail=2000 worker | grep "backup\."` — 태스크 결과(completed / failed / pruned / restored).
+- `docker-compose logs --tail=2000 worker-scan worker-default | grep "backup\."`: 태스크 결과(completed / failed / pruned / restored).
 - `/admin/backup/list` API — 가장 최근 시도 + 상태.
 :::
 
@@ -410,9 +410,9 @@ docker-compose -f docker-compose.yml exec postgres \
 
 <!-- docs-uat: id=backup-troubleshoot-stop-worker kind=shell ctx=host tier=nightly waiver=production-compose-worker-pause -->
 ```bash
-docker-compose -f docker-compose.yml stop worker
+docker-compose -f docker-compose.yml stop worker-scan worker-default
 bash scripts/backup.sh
-docker-compose -f docker-compose.yml start worker
+docker-compose -f docker-compose.yml start worker-scan worker-default
 ```
 
 이는 30초 스캔-일시 정지 윈도와 일관성 보장된 workspace tar를 교환합니다.

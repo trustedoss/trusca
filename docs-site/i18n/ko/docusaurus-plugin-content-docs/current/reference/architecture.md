@@ -16,7 +16,7 @@ sidebar_position: 1
 
 ## 서비스
 
-프로덕션 스택은 7개의 컨테이너 서비스를 실행합니다.
+프로덕션 스택은 8개의 컨테이너 서비스를 실행합니다.
 
 | 서비스 | 이미지 | 역할 |
 |---|---|---|
@@ -24,11 +24,14 @@ sidebar_position: 1
 | `postgres` | `postgres:17.2-alpine` | 주 저장소. 모든 영구 상태. |
 | `redis` | `redis:7.4-alpine` | Celery 브로커 + 결과 백엔드. WebSocket pub/sub. |
 | `backend` | `trustedoss/trusca-backend:<tag>` | FastAPI + uvicorn(4 workers). Traefik이 `/api`, `/health`로 라우팅. |
-| `worker` | `trustedoss/trusca-backend-worker:<tag>` | `cdxgen`, scancode, Trivy, JRE가 번들된 Celery worker(JRE는 `cdxgen`의 Maven / Gradle SBOM 열거용). 워커는 `/var/lib/trivy`에 로컬 **Trivy DB**도 보관합니다. |
+| `worker-scan` | `trustedoss/trusca-backend-worker:<tag>` | 스캔을 실행하는 Celery worker(`trustedoss.scan`과 `trustedoss.default` 큐). `cdxgen`, scancode, Trivy, JRE가 번들되어 있습니다(JRE는 `cdxgen`의 Maven / Gradle SBOM 열거용). `/var/lib/trivy`의 로컬 **Trivy DB**를 읽습니다. |
+| `worker-default` | `trustedoss/trusca-backend-worker:<tag>` | 나머지 백그라운드 작업을 실행하는 Celery worker(`trustedoss.default` 큐). 알림, 백업, 보존 정리, 카탈로그와 Trivy DB 갱신을 맡습니다. Trivy DB 볼륨을 `worker-scan`과 함께 씁니다. |
 | `beat` | `trustedoss/trusca-backend-worker:<tag>` | Celery Beat 스케줄러. Trivy DB refresh(주간), 취약점 재매칭(refresh 후), 백업(매일). |
 | `frontend` | `trustedoss/trusca-frontend:<tag>` | Vite 빌드를 nginx로 서비스. Traefik이 `/`로 라우팅. |
 
 이미지 태그는 핀되어 있습니다(CLAUDE.md 규칙 #9 — `:latest` 절대 금지).
+
+선택 프로필 `bomlens-engine`을 켜면 `worker-engine`과 `docker-socket-proxy`가 추가됩니다. [워커별 실행 범위](../admin-guide/dynamic-scan-executor.md#engine-workers)를 참고하십시오.
 
 :::note v0.10.0에서 Dependency-Track 제거
 이전 릴리스는 Dependency-Track을 선택적 8번째 서비스로 제공했습니다. v0.10.0은 Trivy를 단일 취약점 엔진으로 채택하면서 DT를 제거했습니다. Trivy DB는 4GB JVM과 H2 DB 대신 약 500MB 용량으로 같은 SBOM ↔ CVE 매칭을 수행합니다. [취약점 데이터 (Trivy DB)](../admin-guide/vulnerability-data.md)와 [v0.10.0 릴리스 노트](../release-notes/v0.10.0.md)를 참고하세요. Trivy DB는 워커 컨테이너 내부에 존재하며, 별도의 취약점 엔진 서비스는 없습니다.
@@ -150,7 +153,7 @@ _LICENSE_CATEGORY_DEFAULTS: dict[str, str] = {
 현재 릴리스의 Operator 오버라이드 경로:
 
 1. `apps/backend/tasks/scan_source.py`의 `_LICENSE_CATEGORY_DEFAULTS` 패치.
-2. worker 재빌드 및 재시작(`docker-compose restart worker beat`).
+2. worker 재빌드 및 재시작(`docker-compose restart worker-scan worker-default beat`).
 3. 영향받는 프로젝트를 재스캔해 새 분류 적용.
 
 조직별 룰 커스터마이징은 예정입니다. 레거시 `ORT_RULES_PATH` 환경 변수는

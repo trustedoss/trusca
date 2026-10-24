@@ -546,7 +546,7 @@ UI에서 표현 위에 마우스를 올리면 각 컴포넌트 라이선스의 S
 - 패키지에 `LICENSE` 파일도, 메타데이터 선언도 없음(잘 관리되는 생태계에서는 드뭄).
 - 분류기가 인식 못하는 커스텀 라이선스 문자열. 컴포넌트 드로어에 원본 문자열이 노출되어 법무 검토가 가능합니다.
 - 출처가 deprecated SPDX alias를 발신(예: `LGPL-3.0-or-later` 대신 `LGPL-3.0`); 정확 일치 사전은 아직 이를 정규화하지 않습니다.
-- 해당 생태계 메타데이터 fetch 실패. `docker-compose logs worker`에서 `cdxgen`의 생태계별 경고를 확인.
+- 해당 생태계 메타데이터 fetch 실패. `docker-compose logs worker-scan`에서 `cdxgen`의 생태계별 경고를 확인.
 
 ### 분류가 잘못된 것 같음
 

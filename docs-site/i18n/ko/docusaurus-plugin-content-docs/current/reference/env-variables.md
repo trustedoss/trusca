@@ -413,7 +413,7 @@ Compose 배포에는 오토스케일러 계층이 없습니다. 이 절의 키�
 `.env` 편집 후:
 
 ```bash
-docker-compose -f docker-compose.yml restart backend worker beat
+docker-compose -f docker-compose.yml restart backend worker-scan worker-default beat
 docker-compose -f docker-compose.yml logs --tail=50 backend | grep backend_starting
 ```
 

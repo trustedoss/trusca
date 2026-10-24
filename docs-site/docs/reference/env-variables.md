@@ -395,7 +395,7 @@ Failures emit a structured log line and crash the process — there is no permis
 After editing `.env`:
 
 ```bash
-docker-compose -f docker-compose.yml restart backend worker beat
+docker-compose -f docker-compose.yml restart backend worker-scan worker-default beat
 docker-compose -f docker-compose.yml logs --tail=50 backend | grep backend_starting
 ```
 

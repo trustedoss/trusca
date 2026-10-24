@@ -478,10 +478,11 @@ After a scan completes:
 
 :::note Compose service names differ by stack
 The commands below target the **production** compose (`docker-compose.yml`),
-whose Celery services are `worker` and `beat`. On the **dev** compose
-(`docker-compose.dev.yml`) the same services are `celery-worker` and
-`celery-beat` — substitute the name and the `-f` file if you are on the dev
-stack.
+where scans run on `worker-scan`, every other background task on
+`worker-default`, and the scheduler is `beat`. On the **dev** compose
+(`docker-compose.dev.yml`) one `celery-worker` runs both queues and the
+scheduler is `celery-beat`, so substitute the name and the `-f` file if you
+are on the dev stack.
 :::
 
 ### Scan stuck in `Queued`
@@ -490,24 +491,24 @@ No worker has picked it up. Either the worker is down or the queue is saturated.
 
 <!-- docs-uat: id=scans-worker-inspect kind=shell ctx=host tier=manual waiver=operator-docker-compose-command-not-runnable-in-ci -->
 ```bash
-docker-compose -f docker-compose.yml ps worker
-docker-compose -f docker-compose.yml logs --tail=200 worker
+docker-compose -f docker-compose.yml ps worker-scan
+docker-compose -f docker-compose.yml logs --tail=200 worker-scan
 ```
 
 If the worker is unhealthy, restart it:
 
 <!-- docs-uat: id=scans-worker-restart kind=shell ctx=host tier=manual waiver=operator-docker-compose-command-not-runnable-in-ci -->
 ```bash
-docker-compose -f docker-compose.yml restart worker
+docker-compose -f docker-compose.yml restart worker-scan
 ```
 
-If the queue is saturated, increase `CELERY_CONCURRENCY` in `.env` and `docker-compose up -d worker` to scale up. Each concurrent slot needs ~2 GB of RAM.
+If the queue is saturated, increase `CELERY_CONCURRENCY` in `.env` and `docker-compose up -d worker-scan` to scale up. Each concurrent slot needs ~2 GB of RAM.
 
 ### Scan failed with `git clone` error
 
 The worker could not reach the repository. Check:
 
-- Is the repo URL correct? (Test from the worker: `docker-compose exec worker git ls-remote <url>`.)
+- Is the repo URL correct? (Test from the worker: `docker-compose exec worker-scan git ls-remote <url>`.)
 - Is the repo private? Embed credentials in the `git_url` — see [Projects → Private repositories](./projects.md#private-repositories).
 - Does the worker have outbound HTTPS to your Git host? Corporate proxies go in `~/.docker/config.json` or `docker-compose.override.yml`, not in `.env`, and need the lower-case names too, because `git clone` reads only lower-case `http_proxy`. See [Private certificate authorities → Going out through a proxy](../admin-guide/private-ca.md#outbound-proxy).
 
@@ -517,7 +518,7 @@ The local Trivy DB may not be in place yet. Confirm on the worker:
 
 <!-- docs-uat: id=scans-worker-trivy-db kind=shell ctx=host tier=manual waiver=operator-docker-compose-command-not-runnable-in-ci -->
 ```bash
-docker-compose -f docker-compose.yml exec worker \
+docker-compose -f docker-compose.yml exec worker-scan \
   ls -lh /var/lib/trivy/db/
 ```
 
@@ -533,7 +534,7 @@ First try **Cancel scan** from the drawer or the `/scans` queue (see [Cancel a s
 The cancel request reached the API but the worker did not stop in time:
 
 - If the broker (Redis) was briefly unreachable, the scan is still marked `cancelled` and the workspace is reclaimed by the orphan-workspace cleaner and the worker hard-limit backstop — you do not need to retry.
-- If the row still shows `running` after a minute, confirm the worker is up (`docker-compose -f docker-compose.yml ps worker`) and escalate via the [on-call runbook](../admin-guide/oncall-runbook.md#scenario-3--scan-stuck-in-running-for--4-hours).
+- If the row still shows `running` after a minute, confirm the worker is up (`docker-compose -f docker-compose.yml ps worker-scan`) and escalate via the [on-call runbook](../admin-guide/oncall-runbook.md#scenario-3--scan-stuck-in-running-for--4-hours).
 
 ### "This scan already finished and can no longer be cancelled"
 
@@ -551,7 +552,7 @@ Older builds (pre-P1) left the **Finalizing** step's spinner animating after the
 
 The **Detected** licenses come from scancode and are best-effort. They may be absent when:
 
-- scancode is not installed in the worker image (the scan still succeeds with **declared** licenses only — non-fatal). Confirm with `docker-compose -f docker-compose.yml logs worker | grep scancode_stage_skipped`.
+- scancode is not installed in the worker image (the scan still succeeds with **declared** licenses only, so the failure is non-fatal). Confirm with `docker-compose -f docker-compose.yml logs worker-scan | grep scancode_stage_skipped`.
 - The first-party tree exceeds the `SCANCODE_MAX_FILES` ceiling, scancode timed out, or the result was too large — all log a warning and fall back to declared-only.
 - The relevant code lives inside an excluded directory (`node_modules`, `vendor`, `.git`, `dist`, `build`, `out`, `target`, `.venv`, …). Those are skipped by design — see [Components & licenses → Detected vs. declared](./components-and-licenses.md#declared-vs-detected).
 

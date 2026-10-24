@@ -165,7 +165,7 @@ backend는 인증이 필요 없는 health 엔드포인트를 **두 개** 노출�
 
 `/health/ready`는 스키마가 HEAD와 일치할 때만 `200 {"status":"ready","redis":"ok"|"degraded"}`를 반환합니다. 그렇지 않으면 RFC 7807 `application/problem+json` 본문으로 리비전 불일치를 요약한 `503`을 반환하며(DSN 이나 자격 증명은 절대 노출하지 않습니다), 이때도 같은 `redis` 필드가 함께 들어 있습니다. 이 필드는 관측용일 뿐입니다. 로그인 시도 제한기와 요청 빈도 제한기 등 Redis를 사용하는 요청 경로 제어는 이미 Redis 장애 시 열어 두도록(fail open) 설계돼 있으므로, Redis 장애가 200 응답을 503으로 바꾸는 일은 없습니다. `degraded`로 표시될 때 무엇을 확인해야 하는지는 [온콜 런북](../admin-guide/oncall-runbook.md#redis-degraded)을 참고하십시오.
 
-(Track B)부터 `backend` 서비스의 Compose `healthcheck`가 **`/health/ready`**를 검사하므로, `depends_on: backend (condition: service_healthy)`를 선언한 `worker` / `beat` 서비스는 **스키마가 마이그레이션된 뒤에야** 기동합니다. 두 토글 모두에서:
+(Track B)부터 `backend` 서비스의 Compose `healthcheck`가 **`/health/ready`**를 검사하므로, `depends_on: backend (condition: service_healthy)`를 선언한 `worker-scan`·`worker-default`·`beat` 서비스는 **스키마가 마이그레이션된 뒤에야** 기동합니다. 두 토글 모두에서:
 
 - **`AUTO_MIGRATE=true`**(단일 역할 기본값): backend 컨테이너가 기동 시 `alembic upgrade head`를 실행하고, 완료되면 `/health/ready`가 `200`으로 바뀝니다. 그 후 워커가 마이그레이션된 스키마 위에서 시작합니다. 일반 경로이며 운영자 조치가 필요 없습니다.
 - **`AUTO_MIGRATE=false`**(L1 역할 분리 스택): uvicorn은 `/health`에 즉시 응답하지만, 외부에서 owner 역할로 `alembic upgrade head`(`install.sh` / `upgrade.sh`가 수행)를 실행해 스키마를 HEAD로 올릴 때까지 `/health/ready`는 `503`으로 남습니다(컨테이너는 `health: starting` 유지). 이는 의도된 동작입니다. 워커와 beat는 아직 마이그레이션되지 않은 DB 위에서 시작하는 대신 스키마를 기다립니다. L1 스택에서 마이그레이션을 깜빡하면 backend가 영영 healthy가 되지 않으니 `docker-compose logs backend`를 확인하고 owner 역할 마이그레이션을 실행하세요.
@@ -341,7 +341,7 @@ docker-compose -f docker-compose.yml up -d --scale worker-scan=4
   브라우저가 유효한 TLS 자물쇠를 표시(HTTPS 인 경우).
 - [ ] 마법사가 출력한 super-admin 이메일·비밀번호로 로그인.
 - [ ] 워커가 **첫 Trivy DB 다운로드**를 마치기를 대기 —
-  `docker-compose -f docker-compose.yml logs --tail=100 worker | grep trivy_db`
+  `docker-compose -f docker-compose.yml logs --tail=100 worker-scan worker-default | grep trivy_db`
   가 첫 부팅 후 1~3분 내에 `trivy_db_download_complete`를 보여줍니다.
   완료 전엔 새 스캔의 Vulnerabilities 탭이 비어 있습니다.
 - [ ] `/admin/teams` → **New team**으로 이동 → 이름을 `engineering`

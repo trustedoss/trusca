@@ -466,10 +466,11 @@ curl -sS -H "Authorization: Bearer $TOKEN" \
 ## 트러블슈팅
 
 :::note compose 서비스명은 스택마다 다릅니다
-아래 명령은 **프로덕션** compose(`docker-compose.yml`)를 대상으로 하며, Celery
-서비스명은 `worker`·`beat`입니다. **dev** compose(`docker-compose.dev.yml`)에서는
-같은 서비스가 `celery-worker`·`celery-beat`이므로, dev 스택이라면 서비스명과 `-f`
-파일을 바꿔서 실행하십시오.
+아래 명령은 **프로덕션** compose(`docker-compose.yml`)를 대상으로 합니다. 이 스택에서
+스캔은 `worker-scan`이, 나머지 백그라운드 작업은 `worker-default`가 실행하고, 스케줄러는
+`beat`입니다. **dev** compose(`docker-compose.dev.yml`)에서는 `celery-worker` 하나가 두 큐를
+모두 처리하고 스케줄러는 `celery-beat`이므로, dev 스택이라면 서비스명과 `-f` 파일을 바꿔서
+실행하십시오.
 :::
 
 ### 스캔이 `Queued`에서 멈춤
@@ -478,24 +479,24 @@ curl -sS -H "Authorization: Bearer $TOKEN" \
 
 <!-- docs-uat: id=scans-worker-inspect kind=shell ctx=host tier=manual waiver=operator-docker-compose-command-not-runnable-in-ci -->
 ```bash
-docker-compose -f docker-compose.yml ps worker
-docker-compose -f docker-compose.yml logs --tail=200 worker
+docker-compose -f docker-compose.yml ps worker-scan
+docker-compose -f docker-compose.yml logs --tail=200 worker-scan
 ```
 
 워커가 unhealthy면 재시작:
 
 <!-- docs-uat: id=scans-worker-restart kind=shell ctx=host tier=manual waiver=operator-docker-compose-command-not-runnable-in-ci -->
 ```bash
-docker-compose -f docker-compose.yml restart worker
+docker-compose -f docker-compose.yml restart worker-scan
 ```
 
-큐가 포화면 `.env`의 `CELERY_CONCURRENCY`를 늘리고 `docker-compose up -d worker`로 스케일 업. 동시 슬롯당 ~2 GB RAM 필요.
+큐가 포화면 `.env`의 `CELERY_CONCURRENCY`를 늘리고 `docker-compose up -d worker-scan`로 스케일 업. 동시 슬롯당 ~2 GB RAM 필요.
 
 ### `git clone` 오류로 스캔 실패
 
 워커가 저장소에 도달하지 못했습니다. 확인:
 
-- 레포 URL이 정확한가? (워커에서 테스트: `docker-compose exec worker git ls-remote <url>`)
+- 레포 URL이 정확한가? (워커에서 테스트: `docker-compose exec worker-scan git ls-remote <url>`)
 - 사설 레포인가? `git_url`에 자격증명을 포함하세요 — [프로젝트 → 사설 저장소](./projects.md#사설-저장소).
 - 워커가 Git 호스트로 HTTPS 연결을 열 수 있는지 확인합니다. 사내 프록시는 `.env`가 아니라 `~/.docker/config.json`이나 `docker-compose.override.yml`에 설정하며, 소문자 이름도 필요합니다. `git clone`은 소문자 `http_proxy`만 읽기 때문입니다. [사설 인증기관 → 프록시를 거쳐 나가는 경우](../admin-guide/private-ca.md#outbound-proxy)를 참고합니다.
 
@@ -505,7 +506,7 @@ docker-compose -f docker-compose.yml restart worker
 
 <!-- docs-uat: id=scans-worker-trivy-db kind=shell ctx=host tier=manual waiver=operator-docker-compose-command-not-runnable-in-ci -->
 ```bash
-docker-compose -f docker-compose.yml exec worker \
+docker-compose -f docker-compose.yml exec worker-scan \
   ls -lh /var/lib/trivy/db/
 ```
 
@@ -521,7 +522,7 @@ docker-compose -f docker-compose.yml exec worker \
 취소 요청은 API에 도달했으나 워커가 제때 멈추지 않았습니다.
 
 - 브로커(Redis)가 잠깐 도달 불가였다면, 스캔은 여전히 `cancelled`로 표시되고 워크스페이스는 고아-워크스페이스 정리기와 워커 hard-limit 백스톱이 회수합니다 — 재시도할 필요가 없습니다.
-- 1분 후에도 행이 `running`으로 표시되면, 워커가 떠 있는지 확인하고(`docker-compose -f docker-compose.yml ps worker`) [온콜 런북](../admin-guide/oncall-runbook.md#시나리오-3--스캔이-running에서-4시간-이상-멈춤)으로 에스컬레이션하세요.
+- 1분 후에도 행이 `running`으로 표시되면, 워커가 떠 있는지 확인하고(`docker-compose -f docker-compose.yml ps worker-scan`) [온콜 런북](../admin-guide/oncall-runbook.md#시나리오-3--스캔이-running에서-4시간-이상-멈춤)으로 에스컬레이션하세요.
 
 ### "This scan already finished and can no longer be cancelled"
 
@@ -539,7 +540,7 @@ docker-compose -f docker-compose.yml exec worker \
 
 **Detected** 라이선스는 scancode에서 나오며 best-effort 입니다. 다음의 경우 누락될 수 있습니다.
 
-- 워커 이미지에 scancode가 미설치(스캔은 **declared** 라이선스만으로 성공 — 비치명적). `docker-compose -f docker-compose.yml logs worker | grep scancode_stage_skipped`로 확인.
+- 워커 이미지에 scancode가 미설치(스캔은 **declared** 라이선스만으로 성공하므로 치명적이지 않음). `docker-compose -f docker-compose.yml logs worker-scan | grep scancode_stage_skipped`로 확인.
 - first-party 트리가 `SCANCODE_MAX_FILES` 한도를 초과했거나, scancode가 타임아웃되었거나, 결과가 너무 큼 — 모두 경고를 남기고 declared 전용으로 폴백.
 - 해당 코드가 제외 디렉토리(`node_modules`, `vendor`, `.git`, `dist`, `build`, `out`, `target`, `.venv` 등) 안에 위치. 자원 가드로 인해 의도적으로 건너뜁니다 — [컴포넌트·라이선스 → declared vs. detected](./components-and-licenses.md#declared-vs-detected) 참고.
 

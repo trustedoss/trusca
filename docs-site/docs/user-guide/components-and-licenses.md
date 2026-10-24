@@ -564,7 +564,7 @@ The license could not be parsed, or the SPDX ID was not in the classifier's exac
 - The package has no `LICENSE` file and no metadata declaration (rare in well-maintained ecosystems).
 - A custom license string the classifier does not recognize. The component drawer surfaces the raw string for legal review.
 - The source emitted a deprecated SPDX alias (e.g. `LGPL-3.0` instead of `LGPL-3.0-or-later`); the exact-match dictionary does not yet normalize these.
-- Metadata fetch failed for that ecosystem. Check `docker-compose logs worker` for `cdxgen` per-ecosystem warnings.
+- Metadata fetch failed for that ecosystem. Check `docker-compose logs worker-scan` for `cdxgen` per-ecosystem warnings.
 
 ### Classification looks wrong
 

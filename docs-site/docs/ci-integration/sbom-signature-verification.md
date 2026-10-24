@@ -217,13 +217,13 @@ This section is for the person deploying the portal. Pick one model.
    cosign prompts for a password to encrypt the private key at rest (or reads `COSIGN_PASSWORD` if exported). If cosign is not on your PATH, run the helper inside the worker container, which ships cosign:
 
    ```bash
-   docker-compose run --rm worker bash scripts/cosign-keygen.sh
+   docker-compose run --rm worker-scan bash scripts/cosign-keygen.sh
    ```
 
 2. Encrypt the private-key password with the app's Fernet key so it can live in `.env` as ciphertext (never plaintext). Run it **inside** the worker so it uses the same key the app decrypts with at signing time:
 
    ```bash
-   docker-compose run --rm worker \
+   docker-compose run --rm worker-scan \
      python -c "import sys;from core.crypto import encrypt_secret;print(encrypt_secret(sys.argv[1]))" 'YOUR_KEY_PASSWORD'
    ```
 

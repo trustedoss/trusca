@@ -78,7 +78,7 @@ bash scripts/restore.sh "$(ls -td backups/* | head -1)"
 `scripts/restore.sh` 동작:
 
 1. 파괴적 작업을 대화형으로 확인 (**y** 입력).
-2. 애플리케이션 컨테이너(`backend`, `frontend`, `worker`, `beat`) 중지. PostgreSQL과 Redis는 유지.
+2. 애플리케이션 컨테이너(`backend`, `frontend`, `worker-scan`, `worker-default`, `beat`) 중지. PostgreSQL과 Redis는 유지.
 3. PostgreSQL 덤프(`postgres.sql.gz`) 복원.
 4. workspace tar(`workspace.tar.gz`)이 있다면 복원.
 5. 애플리케이션 컨테이너 재시작.
@@ -125,13 +125,13 @@ Alpine 이미지만 스캔해 온 배포는 영향이 없습니다. 그 값은 �
 풀이 더 긴 워밍업이 필요한 서비스를 다운시켰을 수 있습니다(예: JRE 업그레이드 후 워커). 로그를 확인하세요.
 
 ```bash
-docker-compose -f docker-compose.yml logs --tail=200 backend worker
+docker-compose -f docker-compose.yml logs --tail=200 backend worker-scan worker-default
 ```
 
 backend는 떠 있는데 worker가 떠 있지 않으면 스캔이 큐에 쌓이기만 합니다. 워커를 수동으로 재시작:
 
 ```bash
-docker-compose -f docker-compose.yml restart worker beat
+docker-compose -f docker-compose.yml restart worker-scan worker-default beat
 ```
 
 ### 이미지 풀 거부 (403 / 401)
