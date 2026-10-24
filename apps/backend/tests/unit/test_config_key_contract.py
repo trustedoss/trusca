@@ -445,6 +445,12 @@ def _osori_path() -> Any:
     return osori_catalog.osori_snapshot_path()
 
 
+def _crypto_keys() -> Any:
+    from core import crypto
+
+    return crypto.configured_keys()
+
+
 def _demo_password() -> Any:
     from scripts import seed_demo
 
@@ -489,10 +495,32 @@ EMPTY_READS_AS_UNSET: dict[str, tuple[Callable[[], Any], str]] = {
     "PORTAL_PUBLIC_URL": (_portal_url, "https://portal.example"),
     "CONTAINER_SCAN_ALLOWED_REGISTRIES": (_registries, "registry.example"),
     "OSORI_SNAPSHOT_PATH": (_osori_path, "/data/osori.json"),
+    # Read through a constant name in core.crypto, so the tree walk misses it.
+    "GITHUB_APP_ENCRYPTION_KEY": (_crypto_keys, "A" * 43 + "="),
+}
+
+# Anchor keys passed as `${KEY:-}` that the test above cannot check, and why.
+# These are not read by the backend: integrations._subprocess_env forwards
+# them verbatim to cdxgen and the package managers it runs, an empty value
+# included, so whether "" means unset is up to each tool and is not visible
+# from here. Listed so a new key cannot join them silently.
+EMPTY_NOT_CHECKED: dict[str, str] = {
+    "MVN_ARGS": "forwarded to cdxgen, which appends it to its mvn command",
+    "NPM_CONFIG_USERCONFIG": "forwarded to npm as its user config path",
+    "PIP_CONFIG_FILE": "forwarded to pip as its config file path",
+}
+
+# Anchor entries that are not the plain `${KEY:-default}` or `${KEY}` form, so
+# the default comparison below does not see them. Pinned so that a new entry
+# in another form fails here instead of being skipped.
+UNPARSED_ANCHOR_ENTRIES: dict[str, str] = {
+    "DATABASE_URL": "falls back to DATABASE_URL_APP, then itself",
+    "DATABASE_URL_APP": "falls back to DATABASE_URL",
+    "WORKSPACE_HOST_PATH": "fixed to the workspace mount, /workspace",
+    "BACKUPS_ROOT": "fixed to the backups-data volume mount",
 }
 
 _COMPOSE_DEFAULT = re.compile(r"^\$\{(?P<key>[A-Z][A-Z0-9_]*)(?P<op>:-)?(?P<default>[^${}]*)\}$")
-_DOCKERFILE_SETS = r"^(?:ENV|ARG)?\s*{key}="
 _COMPUTED = "<computed>"
 
 
@@ -554,6 +582,28 @@ def _literal_defaults(values: set[str | None]) -> set[str]:
     return {value for value in values if value is not None and value != _COMPUTED}
 
 
+def _dockerfile_env_keys() -> set[str]:
+    """Names set by an ``ENV`` instruction in a backend Dockerfile.
+
+    ``ARG`` alone does not count: a build argument is gone at run time unless
+    an ``ENV`` copies it. Continuation lines are joined first, because one
+    ``ENV`` often sets several names.
+    """
+    names: set[str] = set()
+    for path in BACKEND_ROOT.glob("Dockerfile*"):
+        logical = re.sub(r"\\\n", " ", path.read_text())
+        for line in logical.splitlines():
+            match = re.match(r"^\s*ENV\s+(.*)$", line)
+            if not match:
+                continue
+            body = match.group(1)
+            if "=" in body.split()[0]:
+                names |= set(re.findall(r"(?:^|\s)([A-Za-z_][A-Za-z0-9_]*)=", body))
+            else:
+                names.add(body.split()[0])
+    return names
+
+
 def _anchor_defaults() -> dict[str, str | None]:
     """Anchor keys written `${KEY:-default}` (the default) or `${KEY}` (None)."""
     found: dict[str, str | None] = {}
@@ -593,9 +643,8 @@ def _reason_problems(key: str, reason: str) -> list[str]:
         if key in read:
             problems.append(f"{key}: the backend reads it, so compose must pass it")
     elif reason == "image":
-        dockerfiles = "\n".join(p.read_text() for p in BACKEND_ROOT.glob("Dockerfile*"))
-        if not re.search(_DOCKERFILE_SETS.format(key=key), dockerfiles, re.M):
-            problems.append(f"{key}: no Dockerfile sets it")
+        if key not in _dockerfile_env_keys():
+            problems.append(f"{key}: no Dockerfile ENV sets it")
     elif reason == "host":
         if key not in host_scripts:
             problems.append(f"{key}: no host script reads it")
@@ -624,21 +673,42 @@ def test_each_reason_for_not_passing_still_holds() -> None:
 
 
 @pytest.mark.parametrize(
-    ("key", "reason"),
+    ("key", "reason", "expected"),
     [
-        ("STALE_QUEUED_SCAN_GRACE_SECONDS", "compose"),
-        ("GATE_KEV_ENABLED", "image"),
-        ("LOGIN_THROTTLE_FAILURES", "host"),
-        ("IMAGE_TAG", "dsn-part"),
-        ("IMAGE_TAG", "owner-dsn"),
-        ("GATE_KEV_ENABLED", "dev-only"),
-        ("IMAGE_TAG", "forgotten"),
+        ("SUBJECT_USER_ID", "compose", "does not substitute it"),
+        ("STALE_QUEUED_SCAN_GRACE_SECONDS", "compose", "the backend reads it"),
+        ("GATE_KEV_ENABLED", "image", "no Dockerfile ENV sets it"),
+        ("APT_SECURITY_REFRESH", "image", "no Dockerfile ENV sets it"),
+        ("LOGIN_THROTTLE_FAILURES", "host", "no host script reads it"),
+        ("IMAGE_TAG", "dsn-part", "not a DSN part"),
+        ("IMAGE_TAG", "owner-dsn", "not the owner DSN"),
+        ("GATE_KEV_ENABLED", "dev-only", "does not pass it either"),
+        ("IMAGE_TAG", "forgotten", "unknown reason"),
     ],
 )
-def test_a_wrong_reason_is_caught(key: str, reason: str) -> None:
-    """Each reason check rejects a key it does not describe, so a reason that
-    no longer holds cannot pass for the wrong cause."""
-    assert _reason_problems(key, reason)
+def test_a_wrong_reason_is_caught(key: str, reason: str, expected: str) -> None:
+    """Each reason check rejects a key it does not describe, for the reason it
+    exists to check, so a reason that no longer holds cannot pass."""
+    problems = _reason_problems(key, reason)
+    assert any(expected in problem for problem in problems), problems
+
+
+def test_dockerfile_env_reading_ignores_build_args() -> None:
+    names = _dockerfile_env_keys()
+    # Set by `ENV` on the continuation line of a two-name instruction.
+    assert "TYPECODE_LIBMAGIC_PATH" in names
+    assert "TRUSTEDOSS_VERSION" in names
+    # Declared with `ARG` only, so not present at run time.
+    assert "APT_SECURITY_REFRESH" not in names
+
+
+def test_every_anchor_entry_the_default_check_skips_is_pinned() -> None:
+    anchor = set(_compose(COMPOSE_PROD).get("x-backend-env") or {})
+    skipped = anchor - set(_anchor_defaults())
+    assert skipped == set(UNPARSED_ANCHOR_ENTRIES), (
+        f"not compared with the code's default: {sorted(skipped - set(UNPARSED_ANCHOR_ENTRIES))}; "
+        f"pinned but now parsed or gone: {sorted(set(UNPARSED_ANCHOR_ENTRIES) - skipped)}"
+    )
 
 
 def test_compose_defaults_are_the_code_defaults() -> None:
@@ -689,22 +759,38 @@ def test_deliberate_defaults_still_differ() -> None:
     assert not stale, f"no longer differ from the code, drop the exemption: {stale}"
 
 
-def test_every_empty_default_without_a_code_default_is_checked() -> None:
-    """Set equality between the anchor keys that hand the code an empty string
-    where it has no default of its own, and the keys checked below."""
+def test_every_empty_default_without_a_code_default_is_accounted_for() -> None:
+    """Set equality between the anchor keys that hand the process an empty
+    string where the code has no default of its own (or the tree walk does not
+    see the read), and the keys checked below plus the ones listed as not
+    checkable."""
     code = _code_defaults()
     needing = {
         key
         for key, given in _anchor_defaults().items()
         if given == ""
-        and key in code
-        and not _literal_defaults(code[key])
+        and not _literal_defaults(code.get(key, set()))
         and key not in DELIBERATE_COMPOSE_DEFAULTS
     }
-    assert set(EMPTY_READS_AS_UNSET) == needing, (
-        f"unchecked: {sorted(needing - set(EMPTY_READS_AS_UNSET))}, "
-        f"no longer passed empty: {sorted(set(EMPTY_READS_AS_UNSET) - needing)}"
+    checked, listed = set(EMPTY_READS_AS_UNSET), set(EMPTY_NOT_CHECKED)
+    assert not checked & listed, sorted(checked & listed)
+    assert checked | listed == needing, (
+        f"neither checked nor listed: {sorted(needing - checked - listed)}, "
+        f"no longer passed empty: {sorted((checked | listed) - needing)}"
     )
+
+
+@pytest.mark.parametrize("key", sorted(EMPTY_NOT_CHECKED))
+def test_the_unchecked_empty_keys_are_only_forwarded(
+    key: str, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The reason EMPTY_NOT_CHECKED gives holds only while the backend does not
+    read the key and cdxgen's environment receives it as given, empty too."""
+    from integrations import _subprocess_env
+
+    assert key not in _keys_read_by_backend(), f"{key} is read by the backend now"
+    monkeypatch.setenv(key, "")
+    assert _subprocess_env.scrubbed_env_for_cdxgen().get(key) == ""
 
 
 def _outcome(read: Callable[[], Any]) -> tuple[str, Any]:

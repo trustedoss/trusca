@@ -20,6 +20,7 @@ sidebar_position: 2
 2. 백엔드 코드는 `os.getenv()`를 **런타임에** 호출하며, 모듈 import 시점에 읽지 않습니다. 이는 CLAUDE.md 규칙 #11. Compose는 컨테이너를 만들 때만 `.env`를 읽으므로, 값을 바꾼 뒤에는 `docker-compose up -d`로 설정이 바뀐 서비스를 다시 만들어야 합니다. `docker-compose restart`는 이전 값을 그대로 씁니다. 재빌드는 필요 없습니다.
 3. Compose는 `docker-compose.yml`의 `${VAR}` 참조를 `docker-compose up` 시점에 `.env`에서 치환합니다.
 4. `.env`의 키는 `docker-compose.yml`이 해당 서비스의 `environment`에 적어 둔 경우에만 컨테이너에 전달됩니다. compose는 파일 전체를 넘기지 않습니다. `.env.example`의 키는 모두 백엔드, 워커, beat에 전달되며, 다음 키만 의도적으로 제외합니다. compose가 직접 읽는 키(이미지 태그, 복제본 수, 큐, 호스트 경로, Traefik 설정), 이미지에 빌드 시점에 들어가는 빌드 정보(`TRUSTEDOSS_VERSION`, `TRUSTEDOSS_COMMIT`, `TRUSTEDOSS_BUILT_AT`, `CDXGEN_VERSION`, scancode 라이브러리 경로), 호스트 스크립트만 읽는 키(`BACKUP_RETENTION_DAYS`, `BACKUP_OFFSITE_*`), 데이터베이스 절에서 설명하는 DSN 구성 키와 `DATABASE_URL_OWNER`, 그리고 `docker-compose.dev.yml`만 전달하는 `RATELIMIT_DISABLED`입니다.
+5. `docker-compose`를 실행하는 셸에 export된 값은 `.env`보다 우선합니다. 그래서 명령줄 도구용으로 export해 둔 개인 `GITHUB_TOKEN`이나 `GITLAB_TOKEN`이 포털에 전달되고, 포털은 그 토큰으로 풀 리퀘스트 코멘트를 게시합니다. 이 변수를 export하지 않은 셸에서 `docker-compose`를 실행하세요. 포털은 일반 이름을 먼저 읽으므로 `TRUSTEDOSS_GITHUB_TOKEN` / `TRUSTEDOSS_GITLAB_TOKEN`을 설정해도 해결되지 않습니다.
 
 아래 모든 키는 `apps/backend/core/config.py`, `docker-compose.yml`, `scripts/*` 중 한 곳에서 읽습니다 — **읽는 위치** 컬럼에 표기되어 있습니다.
 

@@ -7,6 +7,40 @@ and the project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.
 
 ## [Unreleased]
 
+### Upgrade notes
+
+- **25 `.env` keys now reach the containers under Docker Compose (#583).**
+  `docker-compose.yml` did not pass them, so a value set in `.env` had no
+  effect: `CLIENT_ERROR_REPORT_RATE_LIMIT`, `GROUP_SEARCH_RATE_LIMIT`,
+  `TICKET_STATUS_REFRESH_RATE_LIMIT`, `LOGIN_THROTTLE_ENABLED`,
+  `LOGIN_THROTTLE_FAILURES`, `LOGIN_THROTTLE_WINDOWS`,
+  `REQUIRE_DB_ROLE_SEPARATION`, `GROUP_CASCADE_ENABLED`,
+  `CONTAINER_SCAN_ALLOWED_REGISTRIES`, `DEFAULT_TASK_SOFT_TIME_LIMIT_SECONDS`,
+  `DEFAULT_TASK_TIME_LIMIT_SECONDS`, `STALE_QUEUED_SCAN_GRACE_SECONDS`,
+  `EPSS_FEED_URL`, `EPSS_REFRESH_ENABLED`, `EPSS_REFRESH_TIMEOUT_SECONDS`,
+  `GATE_EPSS_ON_MISSING_DATA`, `GATE_KEV_ENABLED`, `GATE_KEV_ON_MISSING_DATA`,
+  `GATE_EOL_ENABLED`, `GATE_EOL_ON_MISSING_DATA`,
+  `GATE_INCOMPLETE_SCAN_ENABLED`, `GATE_INCOMPLETE_SCAN_ON_UNKNOWN`,
+  `GITLAB_API_BASE`, `GITLAB_TOKEN` and `TRUSTEDOSS_GITLAB_TOKEN`. Left unset,
+  each keeps the default it had. If you set any of them in `.env` while
+  following the hardening or CI integration guides, review the values before
+  upgrading, because they start to apply:
+  - `REQUIRE_DB_ROLE_SEPARATION=true` makes the backend refuse to start unless
+    it connects as a role limited to reading and writing rows.
+  - The `GATE_*` keys turn on build gate axes, so builds that passed may start
+    failing.
+  - `CONTAINER_SCAN_ALLOWED_REGISTRIES` refuses container scans of images from
+    registries outside the list.
+  - `DEFAULT_TASK_SOFT_TIME_LIMIT_SECONDS` and `DEFAULT_TASK_TIME_LIMIT_SECONDS`
+    change when long background tasks are stopped.
+- **`TOOLCHAIN_CACHE_ROOTS` now takes effect (#583).** Compose passed it as an
+  empty value, which the worker read as "no cache directories", so the
+  toolchain cache cleaner never removed anything. It now removes caches once
+  their total exceeds `TOOLCHAIN_CACHE_MAX_BYTES` (8 GiB by default). An
+  air-gapped install that relies on pre-seeded caches should raise that limit,
+  set it to `0` to turn the cleaner off, or set `TOOLCHAIN_CACHE_ROOTS` to the
+  directories the cleaner may remove.
+
 ## [0.23.1] - 2026-10-24
 
 ### Security
