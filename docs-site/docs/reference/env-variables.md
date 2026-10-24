@@ -324,7 +324,7 @@ Three tables age out on their own occurrence-time clock; there is no export curs
 | `NOTIFICATION_RETENTION_DAYS` | `180` | `tasks/operational_retention.py` | Age past which an in-app notification (read or unread) is reclaimed. |
 | `WEBHOOK_DELIVERY_RETENTION_DAYS` | `90` | `tasks/operational_retention.py` | Age past which an inbound GitHub/GitLab webhook-delivery record is reclaimed. Matches `AUDIT_LOG_RETENTION_DAYS` by default. |
 | `REPORT_DOWNLOAD_RETENTION_DAYS` | `365` | `tasks/operational_retention.py` | Age past which a report-download history row (SBOM / NOTICE / vulnerability-report emit record) is reclaimed. |
-| `TASK_RUN_RETENTION_DAYS` | `90` | `services/task_run_recorder.py` | Age past which a background task-run history row is reclaimed. One row per task execution, so this table grows with scheduler traffic rather than user activity. |
+| `TASK_RUN_RETENTION_DAYS` | `90` | `services/task_run_recorder.py` | Age past which a background task-run history row is reclaimed. One row per task execution, so this table grows with scheduler traffic rather than user activity. It also bounds how far the SLA breach sweep can catch up after missed runs: the sweep starts from its last succeeded run in this history, so a value below `7` shortens the 7-day catch-up, and once that row is reclaimed the next run covers only the last 24 hours. |
 
 ## Backups
 

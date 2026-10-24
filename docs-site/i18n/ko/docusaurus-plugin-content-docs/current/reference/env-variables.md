@@ -344,7 +344,7 @@ Compose 배포에는 오토스케일러 계층이 없습니다. 이 절의 키�
 | `NOTIFICATION_RETENTION_DAYS` | `180` | `tasks/operational_retention.py` | 읽음·안 읽음과 무관하게 앱 내 알림 행이 정리되기까지의 나이. |
 | `WEBHOOK_DELIVERY_RETENTION_DAYS` | `90` | `tasks/operational_retention.py` | GitHub·GitLab에서 들어온 웹훅 수신 기록이 정리되기까지의 나이. 기본값을 `AUDIT_LOG_RETENTION_DAYS`와 맞췄습니다. |
 | `REPORT_DOWNLOAD_RETENTION_DAYS` | `365` | `tasks/operational_retention.py` | SBOM·NOTICE·취약점 보고서를 내려받은 기록이 정리되기까지의 나이. 셋 중 가장 긴 이유는 연간 컴플라이언스 점검에서 가장 먼저 찾을 이력이기 때문입니다. |
-| `TASK_RUN_RETENTION_DAYS` | `90` | `services/task_run_recorder.py` | 배경 작업 실행 이력이 정리되기까지의 나이. 실행 한 번에 한 행이 쌓이므로 사용자 활동이 아니라 스케줄러 트래픽에 비례해 늘어납니다. |
+| `TASK_RUN_RETENTION_DAYS` | `90` | `services/task_run_recorder.py` | 배경 작업 실행 이력이 정리되기까지의 나이. 실행 한 번에 한 행이 쌓이므로 사용자 활동이 아니라 스케줄러 트래픽에 비례해 늘어납니다. SLA 초과 sweep이 놓친 실행을 얼마나 거슬러 채울 수 있는지도 이 값이 정합니다. sweep은 이 이력에 남은 마지막 성공 실행부터 시작하므로, `7`보다 작은 값은 7일 범위의 채우기를 줄이고, 그 행이 정리되면 다음 실행은 지난 24시간만 다룹니다. |
 
 ## 백업
 
