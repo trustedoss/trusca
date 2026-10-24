@@ -105,7 +105,7 @@ Fetch the three files the compose stack needs (the compose file, the env templat
 
 ```bash
 mkdir -p trustedoss && cd trustedoss
-BASE=https://raw.githubusercontent.com/trustedoss/trusca/v0.23.0
+BASE=https://raw.githubusercontent.com/trustedoss/trusca/v0.23.1
 
 # 1. The self-contained production compose file (no `build:` section — pulls
 #    images from ghcr.io) and the env template.
@@ -121,7 +121,7 @@ chmod +x scripts/postgres-init.sh
 # 3. Edit .env — at minimum set SECRET_KEY (openssl rand -hex 32), strong
 #    POSTGRES_PASSWORD / POSTGRES_APP_PASSWORD, DOMAIN, TLS_EMAIL, and
 #    CORS_ALLOWED_ORIGINS=https://<your-domain>. Set IMAGE_TAG to the release
-#    you want to run (defaults to 0.23.0).
+#    you want to run (defaults to 0.23.1).
 $EDITOR .env
 
 # 4. Pull and start.
@@ -196,7 +196,7 @@ cd trusca
 If you maintain a fork, clone the fork instead. Pin to a release tag for reproducible installs:
 
 ```bash
-git checkout v0.23.0
+git checkout v0.23.1
 ```
 
 ## Step 2 — Run the install wizard

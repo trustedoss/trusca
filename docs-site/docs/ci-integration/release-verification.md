@@ -31,7 +31,7 @@ Tags can be repointed. A digest cannot, so resolve the tag once and use the dige
 
 ```bash
 IMAGE=ghcr.io/trustedoss/trusca-backend
-VERSION=0.23.0   # the release you are verifying
+VERSION=0.23.1   # the release you are verifying
 
 DIGEST=$(docker buildx imagetools inspect "${IMAGE}:${VERSION}" \
   --format '{{ json .Manifest }}' | jq -r '.digest')
@@ -139,7 +139,7 @@ than working from a tarball:
 git clone https://github.com/trustedoss/trusca.git
 cd trusca
 git config gpg.ssh.allowedSignersFile .github/allowed_signers
-git verify-tag v0.23.0
+git verify-tag v0.23.1
 ```
 
 A good result names the signer. What you are looking for is a principal, not

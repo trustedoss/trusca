@@ -7,6 +7,40 @@ and the project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.
 
 ## [Unreleased]
 
+## [0.23.1] - 2026-10-24
+
+### Security
+
+- **Super-admin and project-scoped API key checks are enforced on every
+  route.** Several services decided super-admin access on their own, and one
+  SBOM read accepted a project-scoped key for another project. Every check now
+  goes through one helper, and a test matrix covers each project route that
+  accepts an API key (GHSA-qvqp-qm3x-cwr3).
+- **Signing out clears what the previous user loaded.** Cached query results
+  and per-user UI state are dropped on sign-out, on a forced sign-out after a
+  401 and when another tab signs out, so the next user in the same browser
+  never sees the previous user's data (GHSA-m4pg-7vpm-5j33).
+
+### Fixed
+
+- Rematching and rescans keep findings by key instead of deleting and
+  reinserting them, so finding ids, triage and two-person approvals survive a
+  rematch. Findings are no longer deleted when an entry was skipped or the
+  scanner output was malformed (#560).
+- Notification retries resend only the deliveries that failed, and a
+  permanent SMTP rejection is not retried (#559).
+- The gate policy editor stays closed until the policy has loaded, so saving
+  can no longer overwrite it with an empty draft (#552).
+- A failed lazy chunk load after a deploy reloads the page once, and a route
+  crash is contained to that route (#553).
+- Load failures show as errors instead of empty states, and error toasts stay
+  until they are dismissed (#555, #556).
+- The remediation pull request endpoint returns an empty 204 (#562).
+- Fresh installs point at the current release, and the release workflow fails
+  when an install default is stale (#561).
+- Worker image dependencies refreshed to clear known vulnerabilities (#554, #577).
+- Dead repository links and stale gate documentation corrected (#564).
+
 ## [0.23.0] - 2026-10-16
 
 ### Highlights
