@@ -34,7 +34,7 @@ from datetime import UTC, datetime, timedelta
 from typing import Any
 
 import structlog
-from sqlalchemy import and_, func, or_, select
+from sqlalchemy import and_, func, or_, select, update
 from sqlalchemy.orm import Session
 
 from core.config import (
@@ -53,11 +53,19 @@ BATCH_VERSION = 1
 
 @dataclass(frozen=True)
 class Batch:
-    """One run's worth of rows, and where they end."""
+    """One batch of rows, where they end, and where they were read from.
+
+    ``after_created_at`` / ``after_id`` is the position the batch was read
+    after. :func:`advance_cursor` moves the cursor only if it is still there,
+    so a batch read from a position somebody else has since moved cannot drag
+    the cursor backwards or forwards over rows it never covered.
+    """
 
     rows: list[dict[str, Any]]
     last_created_at: datetime | None
     last_id: uuid.UUID | None
+    after_created_at: datetime | None = None
+    after_id: uuid.UUID | None = None
 
     @property
     def is_empty(self) -> bool:
@@ -142,32 +150,70 @@ def collect_batch(
 
     rows = list(session.execute(stmt).scalars().all())
     if not rows:
-        return Batch(rows=[], last_created_at=None, last_id=None)
+        return Batch(
+            rows=[],
+            last_created_at=None,
+            last_id=None,
+            after_created_at=cursor.last_created_at,
+            after_id=cursor.last_id,
+        )
     return Batch(
         rows=[_row_to_dict(row) for row in rows],
         last_created_at=rows[-1].created_at,
         last_id=rows[-1].id,
+        after_created_at=cursor.last_created_at,
+        after_id=cursor.last_id,
     )
 
 
-def advance_cursor(session: Session, *, cursor: AuditExportCursor, batch: Batch) -> None:
+def advance_cursor(session: Session, *, cursor: AuditExportCursor, batch: Batch) -> bool:
     """Move the position, once the batch is somebody else's problem.
 
     Called only after a delivery the receiver accepted. Advancing first and
     posting after would turn one failed request into a permanent hole, and the
     hole would be invisible: the next run starts past the rows that never
     arrived.
+
+    The move is conditional on the cursor still being where the batch was read
+    from. The export task holds a lock for the whole run so two runs never
+    work the same destination at once; this is the check that still holds if
+    that lock is ever lost mid-run. Returns False, and leaves the row as it
+    was, when the position had already moved. ``cursor`` is reloaded either
+    way so the caller sees what the database holds.
     """
+    now = datetime.now(tz=UTC)
     if batch.is_empty:
-        cursor.last_run_at = datetime.now(tz=UTC)
+        cursor.last_run_at = now
         session.commit()
-        return
-    cursor.last_created_at = batch.last_created_at
-    cursor.last_id = batch.last_id
-    cursor.rows_exported = int(cursor.rows_exported or 0) + len(batch.rows)
-    cursor.last_run_at = datetime.now(tz=UTC)
-    cursor.updated_at = datetime.now(tz=UTC)
+        return True
+    result = session.execute(
+        update(AuditExportCursor)
+        .where(
+            AuditExportCursor.id == cursor.id,
+            AuditExportCursor.last_created_at.is_not_distinct_from(
+                batch.after_created_at
+            ),
+            AuditExportCursor.last_id.is_not_distinct_from(batch.after_id),
+        )
+        .values(
+            last_created_at=batch.last_created_at,
+            last_id=batch.last_id,
+            rows_exported=AuditExportCursor.rows_exported + len(batch.rows),
+            last_run_at=now,
+            updated_at=now,
+        )
+        .execution_options(synchronize_session=False)
+    )
     session.commit()
+    session.refresh(cursor)
+    moved = int(getattr(result, "rowcount", 0) or 0) == 1
+    if not moved:
+        log.warning(
+            "audit_export_cursor_moved_underneath",
+            cursor_id=str(cursor.id),
+            rows=len(batch.rows),
+        )
+    return moved
 
 
 def build_body(batch: Batch, *, destination: str) -> dict[str, Any]:
