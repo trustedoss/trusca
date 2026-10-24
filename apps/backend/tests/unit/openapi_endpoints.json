@@ -807,9 +807,13 @@
     "organization_id"
   ],
   "PUT /v1/gate-policies/org/{organization_id}": [
+    "if-match",
+    "if-none-match",
     "organization_id"
   ],
   "PUT /v1/gate-policies/teams/{team_id}": [
+    "if-match",
+    "if-none-match",
     "team_id"
   ],
   "PUT /v1/license-policies/org/{organization_id}": [

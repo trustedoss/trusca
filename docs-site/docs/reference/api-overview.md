@@ -265,6 +265,12 @@ DELETE /v1/projects/{id}/obligations/{obligation_id}/fulfilment
 GET    /v1/projects/{id}/obligation-fulfilments
 GET    /v1/projects/{id}/gate-result
 
+GET    /v1/gate-policies/teams/{team_id}     returns ETag
+PUT    /v1/gate-policies/teams/{team_id}     # If-Match / If-None-Match optional, 409 on mismatch
+DELETE /v1/gate-policies/teams/{team_id}
+PUT    /v1/gate-policies/org/{organization_id}   super_admin only; same preconditions
+GET    /v1/gate-policies/effective/{project_id}
+
 GET    /v1/scans                             list
 GET    /v1/scans/{id}
 POST   /v1/scans/{id}/post-pr-comment
@@ -332,6 +338,27 @@ The full schema (request bodies, response shapes, validation rules) lives at `/a
 ### Optimistic concurrency
 
 Endpoints that mutate domain rows with stateful workflows accept (and require) the `If-Match` request header carrying the row's current `version` integer. `PATCH /v1/approvals/{id}/transition` and `PATCH /v1/vulnerability_findings/{finding_id}/status` both use this pattern. Mismatches return `412 Precondition Failed` with a Problem Details body that includes the current version.
+
+Build gate policies use an optional precondition instead, described in the next section.
+
+### Build gate policies {#gate-policies}
+
+A team's own build gate policy lives at `/v1/gate-policies/teams/{team_id}`, and the organization default at `/v1/gate-policies/org/{organization_id}`. A PUT replaces the whole row: a field you leave out is stored as `null`, which means the team stops overriding it. To change one field, read the row, change that field, and send every field back, including `name`.
+
+`GET /v1/gate-policies/teams/{team_id}` and every successful PUT return an `ETag` header. Send it back as `If-Match` on the next PUT so that a save made by somebody else in between is not overwritten. When you read "no row yet", send `If-None-Match: *` instead, which creates the row only if nobody created it meanwhile. Both headers are optional. A PUT without either header replaces the row unconditionally, as it did before these headers were supported.
+
+| Request | Answer | Problem `type` |
+|---|---|---|
+| PUT, no precondition header | `200`, row replaced | |
+| PUT, `If-Match` equal to the current `ETag` | `200`, row replaced, new `ETag` | |
+| PUT, `If-Match` that no longer matches (another save, the row was deleted, or the value is malformed) | `409` | `https://docs.trustedoss.io/errors/gate-policy-conflict` |
+| PUT, `If-None-Match: *` when a row already exists | `409` | `https://docs.trustedoss.io/errors/gate-policy-conflict` |
+| GET or DELETE, team you can see that has no row of its own | `404` | `https://docs.trustedoss.io/errors/gate-policy-not-set` |
+| GET, PUT or DELETE, team that does not exist | `404` | `about:blank` |
+| GET, team you cannot see | `404` | `about:blank` |
+| PUT or DELETE, existing team you do not administer | `403` | `about:blank` |
+
+Only the `gate-policy-not-set` 404 means the team follows its organization. Treat any other 404 as a wrong or inaccessible team id, not as an empty policy. The `403` and `404` answers always come before the `409`, so a stale tag tells a caller nothing about a team it may not edit. On a `409`, read the policy again, reapply your change, and save with the new `ETag`. The policy editor in the portal does this for you: it shows a message that somebody else saved first and offers to reload.
 
 ## WebSockets
 

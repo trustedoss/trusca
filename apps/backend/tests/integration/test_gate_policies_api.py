@@ -33,6 +33,10 @@ from tests._helpers import (
 )
 
 PROBLEM_JSON = "application/problem+json"
+# Spelled out rather than imported: the wire value is the contract, and an
+# import would follow a renamed constant to a new URI without failing.
+NOT_SET_TYPE = "https://docs.trustedoss.io/errors/gate-policy-not-set"
+CONFLICT_TYPE = "https://docs.trustedoss.io/errors/gate-policy-conflict"
 
 pytestmark = pytest.mark.integration
 
@@ -269,6 +273,29 @@ async def test_a_stranger_cannot_learn_that_a_team_exists(client) -> None:
     )
 
     assert response.status_code == 404, response.text
+    assert response.json()["type"] != NOT_SET_TYPE
+    assert "etag" not in response.headers
+
+
+async def test_a_stranger_cannot_tell_a_rowless_team_from_a_missing_one(client) -> None:
+    """The "no row" type is a fact about the team, so it is the owner's to see.
+
+    Answering it to a stranger would confirm the team exists, which is what
+    the plain 404 is there to withhold.
+    """
+    _, team_id, _, _ = await _seed(client)
+    _, _, stranger, _ = await _seed(client)
+
+    hidden = await client.get(
+        f"/v1/gate-policies/teams/{team_id}", headers=_bearer_for(stranger)
+    )
+    missing = await client.get(
+        f"/v1/gate-policies/teams/{uuid.uuid4()}", headers=_bearer_for(stranger)
+    )
+
+    assert hidden.status_code == missing.status_code == 404
+    assert hidden.json()["type"] == missing.json()["type"] != NOT_SET_TYPE
+    assert hidden.json()["title"] == missing.json()["title"]
 
 
 async def test_a_stranger_cannot_read_another_orgs_effective_policy(client) -> None:
@@ -303,6 +330,7 @@ async def test_a_stranger_cannot_read_another_orgs_effective_policy(client) -> N
 
 
 async def test_a_team_without_a_row_reads_as_absent_not_empty(client) -> None:
+    """Its own problem type, so a client can tell "no row" from "no team"."""
     _, team_id, user, _ = await _seed(client)
 
     response = await client.get(
@@ -310,6 +338,8 @@ async def test_a_team_without_a_row_reads_as_absent_not_empty(client) -> None:
     )
 
     assert response.status_code == 404, response.text
+    assert response.headers["content-type"].startswith(PROBLEM_JSON)
+    assert response.json()["type"] == NOT_SET_TYPE
 
 
 # ---------------------------------------------------------------------------
@@ -354,6 +384,7 @@ async def test_deleting_what_was_never_written_is_a_404(client) -> None:
     )
 
     assert response.status_code == 404, response.text
+    assert response.json()["type"] == NOT_SET_TYPE
 
 
 async def test_an_unknown_team_is_a_404_on_every_verb(client) -> None:
@@ -369,6 +400,9 @@ async def test_an_unknown_team_is_a_404_on_every_verb(client) -> None:
         await client.delete(f"/v1/gate-policies/teams/{ghost}", headers=headers),
     ):
         assert response.status_code == 404, response.text
+        # Not the "no row" type: a missing team is not a team that follows
+        # its organization.
+        assert response.json()["type"] != NOT_SET_TYPE
 
 
 async def test_the_row_survives_only_while_its_team_does(client) -> None:
@@ -398,3 +432,359 @@ async def test_the_row_survives_only_while_its_team_does(client) -> None:
         )
 
     assert rows == []
+
+
+# ---------------------------------------------------------------------------
+# Concurrent edits: the entity tag
+# ---------------------------------------------------------------------------
+
+
+async def _row_and_tag(client: AsyncClient, team_id: uuid.UUID, user: User):
+    response = await client.get(
+        f"/v1/gate-policies/teams/{team_id}", headers=_bearer_for(user)
+    )
+    assert response.status_code == 200, response.text
+    return response.json(), response.headers["etag"]
+
+
+async def test_the_read_hands_out_a_tag_that_the_next_write_accepts(client) -> None:
+    _, team_id, user, _ = await _seed(client)
+    created = await client.put(
+        f"/v1/gate-policies/teams/{team_id}",
+        headers=_bearer_for(user),
+        json={"epss_threshold": 0.5},
+    )
+    _, tag = await _row_and_tag(client, team_id, user)
+    _, tag_again = await _row_and_tag(client, team_id, user)
+
+    saved = await client.put(
+        f"/v1/gate-policies/teams/{team_id}",
+        headers={**_bearer_for(user), "If-Match": tag},
+        json={"epss_threshold": 0.7},
+    )
+
+    assert tag.startswith('"') and tag.endswith('"')
+    assert created.headers["etag"] == tag == tag_again
+    assert saved.status_code == 200, saved.text
+    assert saved.json()["epss_threshold"] == 0.7
+    assert saved.headers["etag"] != tag
+    _, tag_after = await _row_and_tag(client, team_id, user)
+    assert saved.headers["etag"] == tag_after
+
+
+async def test_the_second_of_two_editors_is_refused_and_can_recover(client) -> None:
+    """The lost update this exists to stop, as the sequence that produces it.
+
+    Both read the same row, the first saves, the second saves from what it
+    read. Before the precondition the second save erased the first one's
+    edit without either of them knowing. Now it is refused, the first edit
+    survives, and reading again lets the second editor save.
+    """
+    _, team_id, user, _ = await _seed(client)
+    await client.put(
+        f"/v1/gate-policies/teams/{team_id}",
+        headers=_bearer_for(user),
+        json={"epss_threshold": 0.5},
+    )
+    _, first_read = await _row_and_tag(client, team_id, user)
+    _, second_read = await _row_and_tag(client, team_id, user)
+
+    first = await client.put(
+        f"/v1/gate-policies/teams/{team_id}",
+        headers={**_bearer_for(user), "If-Match": first_read},
+        json={"epss_threshold": 0.5, "malicious_blocks": False},
+    )
+    second = await client.put(
+        f"/v1/gate-policies/teams/{team_id}",
+        headers={**_bearer_for(user), "If-Match": second_read},
+        json={"epss_threshold": 0.9},
+    )
+
+    assert first.status_code == 200, first.text
+    assert second.status_code == 409, second.text
+    assert second.headers["content-type"].startswith(PROBLEM_JSON)
+    body = second.json()
+    assert body["type"] == CONFLICT_TYPE
+    assert body["status"] == 409
+    assert body["instance"] == f"/v1/gate-policies/teams/{team_id}"
+    row, fresh = await _row_and_tag(client, team_id, user)
+    assert row["malicious_blocks"] is False
+    assert row["epss_threshold"] == 0.5
+
+    retried = await client.put(
+        f"/v1/gate-policies/teams/{team_id}",
+        headers={**_bearer_for(user), "If-Match": fresh},
+        json={"epss_threshold": 0.9, "malicious_blocks": False},
+    )
+    assert retried.status_code == 200, retried.text
+    assert retried.json()["epss_threshold"] == 0.9
+
+
+async def test_a_write_without_the_header_still_replaces_the_row(client) -> None:
+    """Backward compatible: a client that never sends If-Match keeps working."""
+    _, team_id, user, _ = await _seed(client)
+    await client.put(
+        f"/v1/gate-policies/teams/{team_id}",
+        headers=_bearer_for(user),
+        json={"epss_threshold": 0.5},
+    )
+    _, stale = await _row_and_tag(client, team_id, user)
+    await client.put(
+        f"/v1/gate-policies/teams/{team_id}",
+        headers={**_bearer_for(user), "If-Match": stale},
+        json={"epss_threshold": 0.6},
+    )
+
+    blind = await client.put(
+        f"/v1/gate-policies/teams/{team_id}",
+        headers=_bearer_for(user),
+        json={"epss_threshold": 0.8},
+    )
+
+    assert blind.status_code == 200, blind.text
+    assert blind.json()["epss_threshold"] == 0.8
+
+
+@pytest.mark.parametrize(
+    "header",
+    [
+        pytest.param('"0"', id="stale-tag"),
+        pytest.param("not-a-tag", id="unquoted-garbage"),
+        pytest.param('""', id="empty-tag"),
+        pytest.param("", id="empty-header"),
+    ],
+)
+async def test_a_tag_that_does_not_match_is_refused(client, header: str) -> None:
+    """Anything that is not the current tag is stale, never "no header"."""
+    _, team_id, user, _ = await _seed(client)
+    await client.put(
+        f"/v1/gate-policies/teams/{team_id}",
+        headers=_bearer_for(user),
+        json={"epss_threshold": 0.5},
+    )
+
+    response = await client.put(
+        f"/v1/gate-policies/teams/{team_id}",
+        headers={**_bearer_for(user), "If-Match": header},
+        json={"epss_threshold": 0.9},
+    )
+
+    assert response.status_code == 409, response.text
+    assert response.json()["type"] == CONFLICT_TYPE
+    row, _ = await _row_and_tag(client, team_id, user)
+    assert row["epss_threshold"] == 0.5
+
+
+async def test_a_weakened_tag_and_a_tag_list_are_accepted(client) -> None:
+    """A compressing proxy may hand the browser W/"..." for the same row."""
+    _, team_id, user, _ = await _seed(client)
+    await client.put(
+        f"/v1/gate-policies/teams/{team_id}",
+        headers=_bearer_for(user),
+        json={"epss_threshold": 0.5},
+    )
+    _, tag = await _row_and_tag(client, team_id, user)
+
+    weak = await client.put(
+        f"/v1/gate-policies/teams/{team_id}",
+        headers={**_bearer_for(user), "If-Match": f"W/{tag}"},
+        json={"epss_threshold": 0.6},
+    )
+    listed = await client.put(
+        f"/v1/gate-policies/teams/{team_id}",
+        headers={**_bearer_for(user), "If-Match": f'"0", {weak.headers["etag"]}'},
+        json={"epss_threshold": 0.7},
+    )
+
+    assert weak.status_code == 200, weak.text
+    assert listed.status_code == 200, listed.text
+
+
+async def test_if_match_on_a_team_with_no_row_is_refused(client) -> None:
+    """The row the tag described is gone: deleted after it was read."""
+    _, team_id, user, _ = await _seed(client)
+    await client.put(
+        f"/v1/gate-policies/teams/{team_id}",
+        headers=_bearer_for(user),
+        json={"epss_threshold": 0.5},
+    )
+    _, tag = await _row_and_tag(client, team_id, user)
+    removed = await client.delete(
+        f"/v1/gate-policies/teams/{team_id}", headers=_bearer_for(user)
+    )
+
+    response = await client.put(
+        f"/v1/gate-policies/teams/{team_id}",
+        headers={**_bearer_for(user), "If-Match": tag},
+        json={"epss_threshold": 0.9},
+    )
+    star = await client.put(
+        f"/v1/gate-policies/teams/{team_id}",
+        headers={**_bearer_for(user), "If-Match": "*"},
+        json={"epss_threshold": 0.9},
+    )
+
+    assert removed.status_code == 204, removed.text
+    assert response.status_code == 409, response.text
+    assert star.status_code == 409, star.text
+    after = await client.get(
+        f"/v1/gate-policies/teams/{team_id}", headers=_bearer_for(user)
+    )
+    assert after.json()["type"] == NOT_SET_TYPE
+
+
+async def test_a_recreated_row_does_not_accept_the_old_rows_tag(client) -> None:
+    """Delete then create again: the tag of the first row must not fit the second."""
+    _, team_id, user, _ = await _seed(client)
+    await client.put(
+        f"/v1/gate-policies/teams/{team_id}",
+        headers=_bearer_for(user),
+        json={"epss_threshold": 0.5},
+    )
+    _, old_tag = await _row_and_tag(client, team_id, user)
+    await client.delete(f"/v1/gate-policies/teams/{team_id}", headers=_bearer_for(user))
+    await client.put(
+        f"/v1/gate-policies/teams/{team_id}",
+        headers=_bearer_for(user),
+        json={"epss_threshold": 0.6},
+    )
+
+    response = await client.put(
+        f"/v1/gate-policies/teams/{team_id}",
+        headers={**_bearer_for(user), "If-Match": old_tag},
+        json={"epss_threshold": 0.9},
+    )
+
+    assert response.status_code == 409, response.text
+
+
+async def test_create_only_refuses_when_somebody_created_the_row_first(client) -> None:
+    """If-None-Match: * is how an editor that read "no row" saves safely."""
+    _, team_id, user, _ = await _seed(client)
+    headers = {**_bearer_for(user), "If-None-Match": "*"}
+
+    created = await client.put(
+        f"/v1/gate-policies/teams/{team_id}", headers=headers, json={"epss_threshold": 0.5}
+    )
+    again = await client.put(
+        f"/v1/gate-policies/teams/{team_id}", headers=headers, json={"epss_threshold": 0.9}
+    )
+
+    assert created.status_code == 200, created.text
+    assert again.status_code == 409, again.text
+    assert again.json()["type"] == CONFLICT_TYPE
+    row, _ = await _row_and_tag(client, team_id, user)
+    assert row["epss_threshold"] == 0.5
+
+
+async def test_a_save_that_races_another_writer_compares_against_its_result(client) -> None:
+    """The comparison alone is not enough: it could pass before the other write lands.
+
+    Another transaction holds the row and has already changed it, but has not
+    committed. A save carrying the tag both of them read must wait for that
+    transaction and then compare against what it wrote. Without the row lock
+    the save reads the old row, passes the comparison, queues behind the other
+    writer's lock only at UPDATE time, and then overwrites it: the lost update,
+    one level down.
+    """
+    import asyncio
+    from datetime import timedelta
+
+    from models import GatePolicy
+
+    _, team_id, user, _ = await _seed(client)
+    await client.put(
+        f"/v1/gate-policies/teams/{team_id}",
+        headers=_bearer_for(user),
+        json={"epss_threshold": 0.5},
+    )
+    _, tag = await _row_and_tag(client, team_id, user)
+
+    factory = await _factory(client)
+    async with factory() as other_writer:
+        row = (
+            await other_writer.execute(
+                select(GatePolicy).where(GatePolicy.team_id == team_id).with_for_update()
+            )
+        ).scalar_one()
+        row.epss_threshold = 0.66
+        row.updated_at = row.updated_at + timedelta(seconds=1)
+        await other_writer.flush()
+
+        save = asyncio.create_task(
+            client.put(
+                f"/v1/gate-policies/teams/{team_id}",
+                headers={**_bearer_for(user), "If-Match": tag},
+                json={"epss_threshold": 0.9},
+            )
+        )
+        # Long enough for the save to reach the row; it cannot finish either
+        # way while the lock is held, so this only orders the two.
+        await asyncio.sleep(1.0)
+        assert not save.done()
+        await other_writer.commit()
+
+    response = await save
+    assert response.status_code == 409, response.text
+    row_after, _ = await _row_and_tag(client, team_id, user)
+    assert row_after["epss_threshold"] == 0.66
+
+
+async def test_two_first_saves_at_once_do_not_fail_on_the_unique_constraint(client) -> None:
+    """Nothing to lock before the row exists, so one insert loses the constraint.
+
+    The loser is retried as if it had arrived second: with If-None-Match it is
+    refused as a conflict, and without a precondition it replaces the row,
+    exactly what a sequential caller would get. Neither is a 500.
+    """
+    import asyncio
+
+    _, team_id, user, _ = await _seed(client)
+    guarded = await asyncio.gather(
+        *(
+            client.put(
+                f"/v1/gate-policies/teams/{team_id}",
+                headers={**_bearer_for(user), "If-None-Match": "*"},
+                json={"epss_threshold": value},
+            )
+            for value in (0.6, 0.7)
+        )
+    )
+
+    _, other_team, other_user, _ = await _seed(client)
+    blind = await asyncio.gather(
+        *(
+            client.put(
+                f"/v1/gate-policies/teams/{other_team}",
+                headers=_bearer_for(other_user),
+                json={"epss_threshold": value},
+            )
+            for value in (0.6, 0.7)
+        )
+    )
+
+    assert sorted(r.status_code for r in guarded) == [200, 409], [r.text for r in guarded]
+    assert [r.status_code for r in blind] == [200, 200], [r.text for r in blind]
+
+
+async def test_the_organization_default_honours_the_tag_too(client) -> None:
+    org_id, _, _, _ = await _seed(client)
+    super_admin = await _seed_super_admin(client)
+    headers = _bearer_for(super_admin)
+    first = await client.put(
+        f"/v1/gate-policies/org/{org_id}", headers=headers, json={"epss_threshold": 0.4}
+    )
+    second = await client.put(
+        f"/v1/gate-policies/org/{org_id}",
+        headers={**headers, "If-Match": first.headers["etag"]},
+        json={"epss_threshold": 0.5},
+    )
+    stale = await client.put(
+        f"/v1/gate-policies/org/{org_id}",
+        headers={**headers, "If-Match": first.headers["etag"]},
+        json={"epss_threshold": 0.6},
+    )
+
+    assert second.status_code == 200, second.text
+    assert stale.status_code == 409, stale.text
+    assert stale.json()["type"] == CONFLICT_TYPE

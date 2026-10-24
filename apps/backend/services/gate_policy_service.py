@@ -36,9 +36,11 @@ from __future__ import annotations
 import uuid
 from collections.abc import Mapping
 from dataclasses import dataclass, field
+from datetime import UTC, datetime, timedelta
 
 import structlog
 from sqlalchemy import or_, select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from core.authz import can_access_group, super_admin_reaches
@@ -59,6 +61,77 @@ class GatePolicyForbidden(GatePolicyError):
 
 class GatePolicyScopeNotFound(GatePolicyError):
     """The team or organization does not exist, or is hidden from the caller."""
+
+
+#: Problem ``type`` for a visible team that has written no row of its own.
+#: Separate from the plain 404 the scope check answers, because the two ask
+#: for opposite reactions: "no row" means render the inherited values, while a
+#: missing or hidden team means the caller has the wrong id. A client that
+#: read every 404 as an empty policy would show a team as following its
+#: organization when it was never allowed to see the team at all.
+GATE_POLICY_NOT_SET_TYPE = "https://docs.trustedoss.io/errors/gate-policy-not-set"
+
+#: Problem ``type`` for a write whose precondition no longer holds: the row
+#: changed (or appeared) after the caller read it.
+GATE_POLICY_CONFLICT_TYPE = "https://docs.trustedoss.io/errors/gate-policy-conflict"
+
+
+class GatePolicyConflict(GatePolicyError):
+    """The caller's ``If-Match`` / ``If-None-Match`` no longer describes the row."""
+
+    type_uri = GATE_POLICY_CONFLICT_TYPE
+
+
+@dataclass(frozen=True)
+class WritePrecondition:
+    """What the caller believed the row looked like when it started editing.
+
+    Built from the request headers by the router. Both fields empty means the
+    caller sent neither header, and the write goes through as it always has:
+    clients written before the precondition existed keep working.
+
+    ``if_match`` holds opaque entity tags with quotes and any ``W/`` prefix
+    stripped; ``"*"`` stands for "any existing row". ``if_none_match_any`` is
+    ``If-None-Match: *``, which is how a caller that read "no row yet" asks to
+    create one without replacing a row somebody else created meanwhile.
+    """
+
+    if_match: tuple[str, ...] | None = None
+    if_none_match_any: bool = False
+
+
+def gate_policy_etag(row: GatePolicy) -> str:
+    """The entity tag of one row, unquoted.
+
+    Derived from ``updated_at`` in whole microseconds, which is the column's
+    own resolution, so the tag round-trips exactly and needs no extra column.
+    Every write moves ``updated_at`` forward (see ``_upsert``),
+    so two saves never share a tag.
+    """
+    stamp = row.updated_at
+    if stamp.tzinfo is None:  # pragma: no cover - the column is timestamptz
+        stamp = stamp.replace(tzinfo=UTC)
+    delta = stamp - datetime(1970, 1, 1, tzinfo=UTC)
+    return str(delta // timedelta(microseconds=1))
+
+
+def _check_precondition(existing: GatePolicy | None, precondition: WritePrecondition) -> None:
+    if precondition.if_none_match_any and existing is not None:
+        raise GatePolicyConflict(
+            "a gate policy already exists at this scope; read it and retry with If-Match"
+        )
+    if precondition.if_match is None:
+        return
+    if existing is None:
+        raise GatePolicyConflict(
+            "the gate policy this write was based on no longer exists; read it again"
+        )
+    if "*" in precondition.if_match:
+        return
+    if gate_policy_etag(existing) not in precondition.if_match:
+        raise GatePolicyConflict(
+            "the gate policy changed after it was read; read it again and reapply the edit"
+        )
 
 
 async def _may_administer_team(
@@ -297,6 +370,7 @@ async def upsert_team_policy(
     *,
     team_id: uuid.UUID,
     payload: GatePolicyUpsertIn,
+    precondition: WritePrecondition | None = None,
 ) -> GatePolicy:
     """Create or replace the gate policy for one team.
 
@@ -304,6 +378,10 @@ async def upsert_team_policy(
     one, which the unique constraint would refuse anyway. A field the payload
     omits is stored as NULL, so omitting is how a team stops overriding and
     goes back to following its organization.
+
+    The precondition is checked only after the caller is known to be allowed
+    to write here, so a caller who may not write learns nothing from whether
+    their entity tag was current.
     """
     organization_id = await _resolve_team_org(session, team_id)
     if not await _may_administer_team(session, actor, team_id):
@@ -312,7 +390,13 @@ async def upsert_team_policy(
         # authorization answer rather than a discovery one.
         raise GatePolicyForbidden(f"actor may not write the gate policy for team {team_id}")
 
-    return await _upsert(session, organization_id=organization_id, team_id=team_id, payload=payload)
+    return await _upsert(
+        session,
+        organization_id=organization_id,
+        team_id=team_id,
+        payload=payload,
+        precondition=precondition or WritePrecondition(),
+    )
 
 
 async def upsert_org_policy(
@@ -321,6 +405,7 @@ async def upsert_org_policy(
     *,
     organization_id: uuid.UUID,
     payload: GatePolicyUpsertIn,
+    precondition: WritePrecondition | None = None,
 ) -> GatePolicy:
     """Create or replace the organization default.
 
@@ -343,7 +428,13 @@ async def upsert_org_policy(
     if not await super_admin_reaches(session, actor, None):
         raise GatePolicyForbidden("only a super admin may write the organization gate policy")
 
-    return await _upsert(session, organization_id=organization_id, team_id=None, payload=payload)
+    return await _upsert(
+        session,
+        organization_id=organization_id,
+        team_id=None,
+        payload=payload,
+        precondition=precondition or WritePrecondition(),
+    )
 
 
 async def _upsert(
@@ -352,30 +443,71 @@ async def _upsert(
     organization_id: uuid.UUID,
     team_id: uuid.UUID | None,
     payload: GatePolicyUpsertIn,
+    precondition: WritePrecondition,
 ) -> GatePolicy:
-    existing = (
-        await session.execute(
-            select(GatePolicy).where(
-                GatePolicy.organization_id == organization_id,
-                GatePolicy.team_id == team_id
-                if team_id is not None
-                else GatePolicy.team_id.is_(None),
+    """Write the row under a lock, after checking what the caller read.
+
+    ``FOR UPDATE`` is what makes the precondition worth having: without it two
+    saves carrying the same tag could both pass the comparison and the second
+    would still erase the first. With it the second waits, then sees the tag
+    the first one wrote and is refused.
+
+    Two first saves at once cannot lock a row that does not exist yet. One of
+    them loses the unique constraint instead, and is retried once as if it had
+    arrived second, so it gets the answer a sequential caller would get rather
+    than a 500.
+    """
+    for attempt in (1, 2):
+        existing = (
+            await session.execute(
+                select(GatePolicy)
+                .where(
+                    GatePolicy.organization_id == organization_id,
+                    GatePolicy.team_id == team_id
+                    if team_id is not None
+                    else GatePolicy.team_id.is_(None),
+                )
+                .with_for_update()
             )
-        )
-    ).scalar_one_or_none()
+        ).scalar_one_or_none()
 
-    if existing is None:
-        existing = GatePolicy(organization_id=organization_id, team_id=team_id)
-        session.add(existing)
+        _check_precondition(existing, precondition)
 
-    existing.name = payload.name
-    existing.epss_threshold = payload.epss_threshold
-    existing.reachable_critical_only = payload.reachable_critical_only
-    existing.malicious_blocks = payload.malicious_blocks
-    existing.approval_required_statuses = payload.approval_required_statuses
-    await session.commit()
-    await session.refresh(existing)
-    return existing
+        stamp = datetime.now(UTC)
+        if existing is None:
+            existing = GatePolicy(organization_id=organization_id, team_id=team_id)
+            session.add(existing)
+        elif stamp <= existing.updated_at:
+            # The tag must change on every save, and two clocks (this
+            # process's and whichever wrote the previous stamp) need not
+            # agree. Stepping past the stored value keeps the tag moving even
+            # when this clock is behind.
+            stamp = existing.updated_at + timedelta(microseconds=1)
+
+        existing.name = payload.name
+        existing.epss_threshold = payload.epss_threshold
+        existing.reachable_critical_only = payload.reachable_critical_only
+        existing.malicious_blocks = payload.malicious_blocks
+        existing.approval_required_statuses = payload.approval_required_statuses
+        # The column has a server default and nothing else maintains it, so
+        # without this every row kept its creation time and the entity tag
+        # derived from it would never change.
+        existing.updated_at = stamp
+        try:
+            await session.commit()
+        except IntegrityError:
+            await session.rollback()
+            if attempt == 2:
+                raise
+            log.info(
+                "gate_policy.upsert_create_race",
+                organization_id=str(organization_id),
+                team_id=str(team_id) if team_id is not None else None,
+            )
+            continue
+        await session.refresh(existing)
+        return existing
+    raise AssertionError("unreachable")  # pragma: no cover
 
 
 async def delete_team_policy(
