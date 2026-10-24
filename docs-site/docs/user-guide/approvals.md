@@ -51,12 +51,14 @@ The list endpoint resolves the component and project display fields with two bat
 
 When the scan pipeline detects a new conditional-license component, a Pending request is created automatically. No manual action required.
 
-A decision covers the component in that project, not one version of it, so the portal records the set of licenses the component carried when it was approved or rejected. That set is read from the project's latest succeeded scan, the one the Components and Licenses tabs show. On a later scan:
+A decision covers the component in that project, not one version of it, so the portal records the set of licenses the component carried when it was approved or rejected. That set is read from the project's most recent finished source scan that contains the component, on any branch. Container and SBOM scans are not used, because only source scans open approval requests. On a later scan:
 
 - If the component still carries the same licenses, no new request is opened, even when the version changed. The existing decision stands.
 - If the set differs (a license was added, removed, or replaced), a new Pending request is opened so somebody reviews the change.
 - Only the most recent decision is compared. If the component was approved under one license and later rejected under another, a scan that finds the first license again opens a new request.
-- Decisions made on a release that did not record the set have none. The next scan that finds the component opens one new request for each of them; once that one is decided, the rule above applies.
+- If the component carries different licenses on two branches, the decision covers the set of the branch scanned last. A scan of the other branch opens a new request.
+- Licenses found by the optional SCANOSS step are not part of the set, because that step runs after the approval check.
+- Decisions made on a release that did not record the set have none. The next scan that finds such a component opens one new request for that component; once it is decided, the rules above apply.
 
 The portal exposes a `POST /v1/approvals` endpoint for clients that need to seed a request before a scan runs (e.g., adding the dependency in a PR you have not yet pushed). The matching UI form is deferred — see [Roadmap](#roadmap).
 

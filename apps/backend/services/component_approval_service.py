@@ -46,7 +46,7 @@ from dataclasses import dataclass
 from datetime import UTC, datetime
 
 import structlog
-from sqlalchemy import and_, func, select, update
+from sqlalchemy import String, and_, cast, func, select, update
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -62,8 +62,9 @@ from models.scan import (  # explicit import avoids implicit lazy load
     ComponentVersion,
     License,
     LicenseFinding,
+    Scan,
+    ScanComponent,
 )
-from services.scan_resolution import latest_succeeded_scan_id
 
 log = structlog.get_logger("component_approval.service")
 
@@ -562,6 +563,14 @@ async def create_approval(
 # Decided license sets (#566)
 # ---------------------------------------------------------------------------
 
+# ``raw_data.source`` of the license findings the opt-in SCANOSS stage writes.
+# That stage (5.5) runs after the approvals stage (4.5), so the set a scan
+# compares never contains them; the set a decision records must not either, or
+# a component with a SCANOSS license would differ on every scan and re-open
+# each time. Mirrors ``tasks.scan_source._SCANOSS_SOURCE`` (a contract test
+# pins the two together; importing the task module here would invert layers).
+_LATE_LICENSE_SOURCES: tuple[str, ...] = ("scanoss",)
+
 
 def _license_set_select(
     scan_id: uuid.UUID, component_ids: Iterable[uuid.UUID]
@@ -571,7 +580,9 @@ def _license_set_select(
     The identifier is the SPDX id when the license row has one, otherwise its
     name (a ``LicenseRef-`` custom license may carry no SPDX id). Both are
     trimmed so stray whitespace from a tool's output cannot make the same
-    license look like a change.
+    license look like a change. Findings written after the approvals stage
+    (``_LATE_LICENSE_SOURCES``) are left out, so both sides see the same
+    license sources.
 
     Returned as a statement rather than executed because the decision route
     runs on an async session and the scan pipeline on a sync one. Both build
@@ -590,6 +601,9 @@ def _license_set_select(
         .where(
             LicenseFinding.scan_id == scan_id,
             ComponentVersion.component_id.in_(list(component_ids)),
+            func.coalesce(LicenseFinding.raw_data["source"].astext, "").not_in(
+                _LATE_LICENSE_SOURCES
+            ),
         )
         .distinct()
     )
@@ -625,16 +639,46 @@ def license_sets_for_scan(
 async def current_license_set(
     session: AsyncSession, *, project_id: uuid.UUID, component_id: uuid.UUID
 ) -> list[str]:
-    """The license set a component carries in the project's current state.
+    """The license set a decision about *component_id* records.
 
-    "Current state" is the project's current succeeded scan, the same one the
-    Components and Licenses tabs read (``services.scan_resolution``), so a
-    decision is recorded against the licenses the reviewer was shown. A project
-    with no succeeded scan records an empty set; the next scan that finds the
-    component then carries a different set and re-opens it, which errs toward
-    asking again.
+    Read from the project's most recent succeeded **source** scan that
+    contains the component, on any branch. That is the same kind of scan the
+    approvals stage compares against: only source scans enrol approvals, and
+    they do so on whatever ref they scanned. The project's "current" scan
+    (``services.scan_resolution``) is the wrong anchor here because it prefers
+    the main line and can be a container or SBOM scan. A decision on a
+    component found only on a feature branch, or one made after a container
+    scan, would then record an empty set and re-open on every source scan.
+
+    The most recent scan wins across branches. A component that carries
+    different licenses on two branches is therefore recorded with the set of
+    whichever branch was scanned last, and a scan of the other branch asks
+    again. With one recorded set per decision that is the conservative
+    choice: a set nobody reviewed is never treated as reviewed.
+
+    No such scan (the component was never seen by a finished source scan of
+    this project) records an empty set, and the next scan that finds it with
+    licenses re-opens it.
     """
-    scan_id = await latest_succeeded_scan_id(session, project_id)
+    scan_id = (
+        await session.execute(
+            select(Scan.id)
+            .join(ScanComponent, ScanComponent.scan_id == Scan.id)
+            .join(ComponentVersion, ComponentVersion.id == ScanComponent.component_version_id)
+            .where(
+                Scan.project_id == project_id,
+                cast(Scan.status, String) == "succeeded",
+                cast(Scan.kind, String) == "source",
+                ComponentVersion.component_id == component_id,
+            )
+            .order_by(
+                Scan.created_at.desc(),
+                Scan.completed_at.desc().nullslast(),
+                Scan.id.desc(),
+            )
+            .limit(1)
+        )
+    ).scalar_one_or_none()
     if scan_id is None:
         return []
     rows = (await session.execute(_license_set_select(scan_id, [component_id]))).tuples().all()

@@ -33,6 +33,7 @@ from models import (
     LicenseFinding,
     Project,
     Scan,
+    ScanComponent,
     User,
 )
 from models.component_approval import ApprovalStatus
@@ -130,25 +131,36 @@ async def _scan(
     project: Project,
     component: Component,
     findings: list[tuple[str, License]],
+    kind: str = "source",
+    ref: str | None = None,
+    late_findings: list[tuple[str, License]] | None = None,
 ) -> uuid.UUID:
     """One succeeded scan in which *component* carries the given findings.
 
     ``findings`` is ``(version, license)`` pairs, so a scan can carry the
     component at several versions at once the way a real dependency tree can.
+    Each version also gets its ``scan_components`` row, which is what "the
+    scan contains the component" means. ``late_findings`` are written the way
+    the opt-in SCANOSS stage writes them (``raw_data.source='scanoss'``).
     """
     factory = await _factory(client)
     async with factory() as session:
         scan = Scan(
             project_id=project.id,
-            kind="source",
+            kind=kind,
             status="succeeded",
             progress_percent=100,
             scan_metadata={},
+            ref=ref,
             completed_at=datetime.now(UTC),
         )
         session.add(scan)
         await session.flush()
-        for version, lic in findings:
+        seen: set[uuid.UUID] = set()
+        tagged = [(v, lic, "test") for v, lic in findings] + [
+            (v, lic, "scanoss") for v, lic in (late_findings or [])
+        ]
+        for version, lic, source in tagged:
             purl_with_version = f"{component.purl}@{version}"
             cv = (
                 await session.execute(
@@ -165,13 +177,16 @@ async def _scan(
                 )
                 session.add(cv)
                 await session.flush()
+            if cv.id not in seen:
+                seen.add(cv.id)
+                session.add(ScanComponent(scan_id=scan.id, component_version_id=cv.id))
             session.add(
                 LicenseFinding(
                     scan_id=scan.id,
                     component_version_id=cv.id,
                     license_id=lic.id,
-                    kind="declared",
-                    raw_data={"source": "test"},
+                    kind="declared" if source == "test" else "detected",
+                    raw_data={"source": source},
                 )
             )
         await session.commit()
@@ -393,9 +408,9 @@ async def test_only_the_most_recent_decision_is_compared(client) -> None:
     assert len(_open(rows)) == 1, [r.status for r in rows]
 
 
-async def test_the_decision_records_the_current_succeeded_scan(client) -> None:
-    """The set a decision records is the one the reviewer was shown: the
-    project's current succeeded scan, not an older scan and not one still
+async def test_the_decision_records_the_newest_finished_source_scan(client) -> None:
+    """The set a decision records comes from the newest succeeded source scan
+    that contains the component, not an older scan and not one still
     running."""
     admin, project = await _seed(client)
     comp = await _component(client)
@@ -424,6 +439,7 @@ async def test_the_decision_records_the_current_succeeded_scan(client) -> None:
         )
         session.add(cv)
         await session.flush()
+        session.add(ScanComponent(scan_id=running.id, component_version_id=cv.id))
         session.add(
             LicenseFinding(
                 scan_id=running.id,
@@ -440,6 +456,160 @@ async def test_the_decision_records_the_current_succeeded_scan(client) -> None:
     assert body["status"] == "rejected"
     rows = await _approvals(client, project_id=project.id, component_id=comp.id)
     assert rows[0].decided_license_ids == [current.spdx_id]
+
+
+async def test_a_newer_container_scan_does_not_replace_the_source_set(client) -> None:
+    """Only source scans enrol approvals, so only a source scan can say what a
+    re-scan will compare against. A newer container scan, even one that
+    carries the component under another license, must not be what the
+    decision records, or the next source scan would re-open it."""
+    admin, project = await _seed(client)
+    comp = await _component(client)
+    first = await _license(client, spdx_id=_conditional_id(), name="first")
+    os_pkg = await _license(client, spdx_id=_conditional_id(), name="os package")
+
+    scan1 = await _scan(client, project=project, component=comp, findings=[("1.0.0", first)])
+    _run_stage(scan_id=scan1, project_id=project.id)
+    await _scan(
+        client,
+        project=project,
+        component=comp,
+        findings=[("1.0.0", os_pkg)],
+        kind="container",
+    )
+
+    rows = await _approvals(client, project_id=project.id, component_id=comp.id)
+    await _decide(client, admin=admin, approval=rows[0], verdict="approved")
+    rows = await _approvals(client, project_id=project.id, component_id=comp.id)
+    assert rows[0].decided_license_ids == [first.spdx_id]
+
+    scan3 = await _scan(client, project=project, component=comp, findings=[("1.1.0", first)])
+    _run_stage(scan_id=scan3, project_id=project.id)
+    rows = await _approvals(client, project_id=project.id, component_id=comp.id)
+    assert len(rows) == 1, [r.status for r in rows]
+
+
+async def test_a_component_found_only_on_a_branch_keeps_its_decision(client) -> None:
+    """The component exists only on ``feature/x``. The project's main-line scan
+    is newer and does not contain it, so it cannot be the scan the decision
+    reads; recording that scan's empty set would re-open the approval on
+    every ``feature/x`` scan, which is the bug this change fixes."""
+    admin, project = await _seed(client)
+    comp = await _component(client)
+    unrelated = await _component(client)
+    first = await _license(client, spdx_id=_conditional_id(), name="first")
+    other = await _license(client, spdx_id=_conditional_id(), name="other")
+
+    scan1 = await _scan(
+        client, project=project, component=comp, findings=[("1.0.0", first)], ref="feature/x"
+    )
+    _run_stage(scan_id=scan1, project_id=project.id)
+    await _scan(
+        client, project=project, component=unrelated, findings=[("3.0.0", other)], ref="main"
+    )
+
+    rows = await _approvals(client, project_id=project.id, component_id=comp.id)
+    await _decide(client, admin=admin, approval=rows[0], verdict="approved")
+    rows = await _approvals(client, project_id=project.id, component_id=comp.id)
+    assert rows[0].decided_license_ids == [first.spdx_id]
+
+    scan3 = await _scan(
+        client, project=project, component=comp, findings=[("1.0.1", first)], ref="feature/x"
+    )
+    _run_stage(scan_id=scan3, project_id=project.id)
+    rows = await _approvals(client, project_id=project.id, component_id=comp.id)
+    assert len(rows) == 1, [r.status for r in rows]
+
+
+async def test_branches_with_different_sets_ask_again_when_the_branch_changes(
+    client,
+) -> None:
+    """``main`` carries the component under one license, ``feature/x`` under
+    another. A decision records the set of whichever source scan containing
+    the component finished last, here ``feature/x``. A later ``feature/x``
+    scan is covered; a later ``main`` scan carries a set nobody decided on and
+    opens a new request. One recorded set per decision cannot cover both, and
+    asking again is the side to err on."""
+    admin, project = await _seed(client)
+    comp = await _component(client)
+    on_main = await _license(client, spdx_id=_conditional_id(), name="main")
+    on_branch = await _license(client, spdx_id=_conditional_id(), name="branch")
+
+    scan1 = await _scan(
+        client, project=project, component=comp, findings=[("1.0.0", on_main)], ref="main"
+    )
+    _run_stage(scan_id=scan1, project_id=project.id)
+    scan2 = await _scan(
+        client,
+        project=project,
+        component=comp,
+        findings=[("2.0.0", on_branch)],
+        ref="feature/x",
+    )
+    _run_stage(scan_id=scan2, project_id=project.id)  # Pending already open.
+
+    rows = await _approvals(client, project_id=project.id, component_id=comp.id)
+    assert [r.status for r in rows] == ["pending"]
+    await _decide(client, admin=admin, approval=rows[0], verdict="approved")
+    rows = await _approvals(client, project_id=project.id, component_id=comp.id)
+    assert rows[0].decided_license_ids == [on_branch.spdx_id]
+
+    scan3 = await _scan(
+        client,
+        project=project,
+        component=comp,
+        findings=[("2.0.1", on_branch)],
+        ref="feature/x",
+    )
+    _run_stage(scan_id=scan3, project_id=project.id)
+    rows = await _approvals(client, project_id=project.id, component_id=comp.id)
+    assert [r.status for r in rows] == ["approved"]
+
+    scan4 = await _scan(
+        client, project=project, component=comp, findings=[("1.0.1", on_main)], ref="main"
+    )
+    _run_stage(scan_id=scan4, project_id=project.id)
+    rows = await _approvals(client, project_id=project.id, component_id=comp.id)
+    assert [r.status for r in rows] == ["approved", "pending"]
+
+
+async def test_licenses_found_after_the_approvals_stage_are_not_recorded(client) -> None:
+    """The opt-in SCANOSS stage writes its license findings after the
+    approvals stage has already compared, so a re-scan never sees them. A
+    decision that recorded them would differ from every later scan and
+    re-open the component each time."""
+    admin, project = await _seed(client)
+    comp = await _component(client)
+    first = await _license(client, spdx_id=_conditional_id(), name="first")
+    vendored = await _license(client, spdx_id=_conditional_id(), name="vendored")
+
+    scan1 = await _scan(
+        client,
+        project=project,
+        component=comp,
+        findings=[("1.0.0", first)],
+        late_findings=[("1.0.0", vendored)],
+    )
+    _run_stage(scan_id=scan1, project_id=project.id)
+    rows = await _approvals(client, project_id=project.id, component_id=comp.id)
+    await _decide(client, admin=admin, approval=rows[0], verdict="approved")
+    rows = await _approvals(client, project_id=project.id, component_id=comp.id)
+    assert rows[0].decided_license_ids == [first.spdx_id]
+
+    # As in the pipeline: the stage runs before SCANOSS has written anything.
+    scan2 = await _scan(client, project=project, component=comp, findings=[("1.1.0", first)])
+    _run_stage(scan_id=scan2, project_id=project.id)
+    rows = await _approvals(client, project_id=project.id, component_id=comp.id)
+    assert len(rows) == 1, [r.status for r in rows]
+
+
+def test_late_license_sources_track_the_scanoss_stage() -> None:
+    """The service names the SCANOSS source without importing the task module;
+    pin the two spellings together so a rename cannot drift silently."""
+    from services.component_approval_service import _LATE_LICENSE_SOURCES
+    from tasks.scan_source import _SCANOSS_SOURCE
+
+    assert set(_LATE_LICENSE_SOURCES) == {_SCANOSS_SOURCE}
 
 
 async def test_a_project_with_no_succeeded_scan_records_an_empty_set(client) -> None:
