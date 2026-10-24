@@ -497,7 +497,7 @@ docker-compose -f docker-compose.yml restart worker
 
 - 레포 URL이 정확한가? (워커에서 테스트: `docker-compose exec worker git ls-remote <url>`)
 - 사설 레포인가? `git_url`에 자격증명을 포함하세요 — [프로젝트 → 사설 저장소](./projects.md#사설-저장소).
-- 워커가 git 호스트로 outbound HTTPS 가능? 사내 프록시는 `.env`(`HTTP_PROXY`, `HTTPS_PROXY`)에 설정.
+- 워커가 Git 호스트로 HTTPS 연결을 열 수 있는지 확인합니다. 사내 프록시는 `.env`가 아니라 `~/.docker/config.json`이나 `docker-compose.override.yml`에 설정하며, 소문자 이름도 필요합니다. `git clone`은 소문자 `http_proxy`만 읽기 때문입니다. [사설 인증기관 → 프록시를 거쳐 나가는 경우](../admin-guide/private-ca.md#outbound-proxy)를 참고합니다.
 
 ### 스캔은 끝났는데 취약점이 누락
 
