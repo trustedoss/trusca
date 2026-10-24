@@ -45,6 +45,13 @@ interface UIState {
   activeTeamId: string | null;
   setActiveTeamId: (teamId: string | null) => void;
   /**
+   * Id of the user the persisted `activeTeamId` belongs to. Written by
+   * `bindUserScopedState`, which drops the team when a different user signs
+   * in on this browser (for example after the previous one closed the tab
+   * without signing out). `null` means no owner is known.
+   */
+  activeTeamOwnerId: string | null;
+  /**
    * The reader has dismissed the dashboard's getting-started checklist (C2).
    *
    * Persisted and one-way on purpose. The checklist hides itself once every
@@ -66,6 +73,7 @@ export const useUIStore = create<UIState>()(
       setSidebarCollapsed: (sidebarCollapsed) => set({ sidebarCollapsed }),
       activeTeamId: null,
       setActiveTeamId: (activeTeamId) => set({ activeTeamId }),
+      activeTeamOwnerId: null,
       onboardingDismissed: false,
       dismissOnboarding: () => set({ onboardingDismissed: true }),
     }),
@@ -88,6 +96,7 @@ export const useUIStore = create<UIState>()(
       partialize: (s) => ({
         sidebarCollapsed: s.sidebarCollapsed,
         activeTeamId: s.activeTeamId,
+        activeTeamOwnerId: s.activeTeamOwnerId,
         onboardingDismissed: s.onboardingDismissed,
       }),
     },

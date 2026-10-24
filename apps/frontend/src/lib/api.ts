@@ -86,6 +86,27 @@ api.interceptors.request.use((config) => {
 let inflightRefresh: Promise<string> | null = null;
 
 /**
+ * The `sub` claim of an access token, or `null` when it cannot be read.
+ *
+ * Decoded only, never verified: the server verifies the token on every
+ * request. This is used to notice that a token belongs to another user, and
+ * an unreadable token counts as another user's.
+ */
+export function accessTokenSubject(token: string): string | null {
+  const payload = token.split(".")[1];
+  if (!payload) return null;
+  try {
+    const base64 = payload.replace(/-/g, "+").replace(/_/g, "/");
+    const claims: unknown = JSON.parse(atob(base64));
+    if (typeof claims !== "object" || claims === null) return null;
+    const sub = (claims as { sub?: unknown }).sub;
+    return typeof sub === "string" ? sub : null;
+  } catch {
+    return null;
+  }
+}
+
+/**
  * POST /auth/refresh once, even if N concurrent requests get a 401 in the
  * same tick. Returns the new access token on success.
  *
@@ -112,6 +133,14 @@ function refreshOnce(): Promise<string> {
       const next = response.data?.access_token;
       if (typeof next !== "string" || next.length === 0) {
         throw new Error("refresh response missing access_token");
+      }
+      // The refresh cookie is shared by every tab. If another tab signed in
+      // as someone else, this refresh returns that user's token while this
+      // tab still shows the previous user. Sign this tab out instead of
+      // pairing one user's token with the other's screen and cache.
+      const signedIn = useAuthStore.getState().user;
+      if (signedIn !== null && accessTokenSubject(next) !== signedIn.id) {
+        throw new Error("refresh returned a token for a different user");
       }
       useAuthStore.getState().setAccessToken(next);
       return next;

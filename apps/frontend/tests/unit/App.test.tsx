@@ -298,7 +298,10 @@ describe("App smoke (authenticated)", () => {
       status: "authenticated",
       isAuthenticated: true,
     });
-    useUIStore.setState({ activeTeamId: "group-c-cascade-only" });
+    useUIStore.setState({
+      activeTeamId: "group-c-cascade-only",
+      activeTeamOwnerId: "u-1",
+    });
     renderAppAt("/projects");
 
     const recovery = await screen.findByTestId("topbar-team-unresolved");

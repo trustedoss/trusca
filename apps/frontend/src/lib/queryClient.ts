@@ -1,11 +1,16 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2026 TRUSCA contributors
-import { MutationCache, QueryClient } from "@tanstack/react-query";
+import {
+  MutationCache,
+  QueryClient,
+  type MutationOptions,
+} from "@tanstack/react-query";
 
 import i18n from "@/lib/i18n";
 import { ProblemError } from "@/lib/problem";
 import { problemMessage } from "@/lib/problemMessage";
 import { dispatchToast } from "@/lib/toastBus";
+import { currentUserGeneration } from "@/lib/userScopedState";
 
 /**
  * Mutation meta contract for the global error toast (see `onMutationError`).
@@ -62,8 +67,48 @@ export function onMutationError(
   });
 }
 
+/**
+ * Keep a mutation that outlives its user from touching the next user's cache.
+ *
+ * Signing out clears the cache, but a mutation already waiting on the server
+ * keeps going, and its `onSuccess` / `onError` / `onSettled` handlers write
+ * the result (or the optimistic-update rollback, which is the previous
+ * user's snapshot) into whatever cache exists when it returns. There are
+ * dozens of such handlers, so rather than guard each one, the mutation
+ * function itself is wrapped: when the signed-in user changed while it was
+ * in flight, its promise never settles and none of those handlers run. The
+ * component that started it is gone by then, and the server-side effect has
+ * happened either way.
+ */
+export function guardMutationFn<
+  T extends MutationOptions<unknown, unknown, unknown, unknown>,
+>(
+  options: T,
+): T {
+  const mutationFn = options.mutationFn;
+  if (!mutationFn) return options;
+  return {
+    ...options,
+    mutationFn: async (variables: unknown) => {
+      const startedIn = currentUserGeneration();
+      const never = () => new Promise<never>(() => {});
+      let result: unknown;
+      try {
+        result = await mutationFn(variables);
+      } catch (error) {
+        // A failure is held back too: `onError` rolls optimistic updates
+        // back by writing the previous user's snapshot.
+        if (currentUserGeneration() !== startedIn) return never();
+        throw error;
+      }
+      if (currentUserGeneration() !== startedIn) return never();
+      return result;
+    },
+  };
+}
+
 export function createQueryClient() {
-  return new QueryClient({
+  const client = new QueryClient({
     mutationCache: new MutationCache({
       onError: (error, _variables, _context, mutation) =>
         onMutationError(error, mutation),
@@ -78,4 +123,20 @@ export function createQueryClient() {
       },
     },
   });
+  // Installed by overriding `defaultMutationOptions`, which both
+  // `useMutation` (MutationObserver) and `MutationCache.build` call. Options
+  // it has already returned carry TanStack's internal `_defaulted` flag and
+  // are passed through so the wrapper is not stacked. Both behaviours are
+  // pinned in queryClientMutationGuard.test.tsx, so an upgrade that changes
+  // either fails there rather than silently dropping the guard.
+  //
+  // Consequence for callers: a mutation that outlives its user never
+  // settles, so no `finally` (or code after `await mutateAsync`) may rely on
+  // running once the user has changed.
+  const defaultMutationOptions = client.defaultMutationOptions.bind(client);
+  client.defaultMutationOptions = ((options) => {
+    if (options?._defaulted) return options;
+    return guardMutationFn(defaultMutationOptions(options));
+  }) as QueryClient["defaultMutationOptions"];
+  return client;
 }

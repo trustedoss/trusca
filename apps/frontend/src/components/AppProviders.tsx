@@ -2,11 +2,13 @@
 // Copyright 2026 TRUSCA contributors
 import { QueryClientProvider } from "@tanstack/react-query";
 import { ReactQueryDevtools } from "@tanstack/react-query-devtools";
-import { useState, type ReactNode } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 import { BrowserRouter } from "react-router-dom";
 
 import { ToastProvider } from "@/components/ui/toast";
+import { bindAuthBroadcast } from "@/lib/authBroadcast";
 import { createQueryClient } from "@/lib/queryClient";
+import { bindUserScopedState } from "@/lib/userScopedState";
 
 interface AppProvidersProps {
   children: ReactNode;
@@ -22,6 +24,11 @@ export function AppProviders({
   router = "browser",
 }: AppProvidersProps) {
   const [queryClient] = useState(() => createQueryClient());
+
+  // Sign-out and user switches clear the cache (see bindUserScopedState).
+  useEffect(() => bindUserScopedState(queryClient), [queryClient]);
+  // ...and reach the other tabs of this browser (see bindAuthBroadcast).
+  useEffect(() => bindAuthBroadcast(), []);
 
   const tree = (
     <QueryClientProvider client={queryClient}>

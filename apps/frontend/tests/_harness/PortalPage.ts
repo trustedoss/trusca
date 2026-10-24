@@ -161,6 +161,18 @@ export class PortalPage {
     await this.expectProjectListVisible();
   }
 
+  /**
+   * Open the project list through the sidebar link. Unlike `gotoProjects`
+   * this is client-side navigation, so whatever the app holds in memory
+   * survives it.
+   */
+  async openProjectsFromSidebar(): Promise<void> {
+    await this.sidebar().getByRole("link", { name: "Projects" }).click();
+    await this.page
+      .getByTestId("project-list-page")
+      .waitFor({ state: "visible", timeout: 10_000 });
+  }
+
   async expectProjectListVisible(): Promise<void> {
     await this.page
       .getByTestId("project-list-page")

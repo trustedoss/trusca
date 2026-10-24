@@ -56,7 +56,9 @@ beforeEach(() => {
     status: "authenticated",
     isAuthenticated: true,
   });
-  useUIStore.setState({ activeTeamId: null });
+  // A stored team is honoured only for the user who chose it
+  // (bindUserScopedState), so the stored choices below belong to `user`.
+  useUIStore.setState({ activeTeamId: null, activeTeamOwnerId: user.id });
 });
 
 afterEach(() => {
