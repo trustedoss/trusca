@@ -619,15 +619,15 @@ def test_endpoint_closes_4400_on_malformed_first_message(
 def test_endpoint_closes_1008_on_invalid_token(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    from jose import JWTError
-
     from api.v1.ws import REASON_AUTH_INVALID, WS_CLOSE_POLICY_VIOLATION, scan_progress_endpoint
 
     monkeypatch.setenv("APP_ENV", "dev")
     monkeypatch.setenv("CORS_ALLOWED_ORIGINS", "http://localhost:5173")
 
     def _reject(*_args: Any, **_kwargs: Any) -> dict[str, Any]:
-        raise JWTError("bad token")
+        from core.security import TokenError
+
+        raise TokenError("bad token")
 
     monkeypatch.setattr("api.v1.ws.decode_token", _reject)
 

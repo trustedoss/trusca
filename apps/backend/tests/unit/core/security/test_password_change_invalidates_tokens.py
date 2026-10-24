@@ -13,6 +13,7 @@ leaked. Thirty minutes of continued access is the wrong answer to that.
 
 from __future__ import annotations
 
+import time
 import uuid
 from datetime import UTC, datetime, timedelta
 
@@ -152,20 +153,26 @@ def test_a_token_without_iat_is_rejected_before_this_check() -> None:
     dropped, a token with the claim stripped would sail past the password
     check rather than being refused.
     """
+    import jwt
     import pytest as _pytest
-    from jose import JWTError, jwt
 
     from core.config import secret_key
     from core.security import JWT_ALGORITHM, TOKEN_TYPE_ACCESS, decode_token
 
+    # Carries `exp`, so the missing `iat` is the only reason to refuse it.
     no_iat = jwt.encode(
-        {"sub": "11111111-1111-1111-1111-111111111111", "type": TOKEN_TYPE_ACCESS},
+        {
+            "sub": "11111111-1111-1111-1111-111111111111",
+            "type": TOKEN_TYPE_ACCESS,
+            "exp": int(time.time()) + 60,
+        },
         secret_key(),
         algorithm=JWT_ALGORITHM,
     )
 
-    with _pytest.raises(JWTError):
+    with _pytest.raises(jwt.MissingRequiredClaimError) as info:
         decode_token(no_iat, expected_type=TOKEN_TYPE_ACCESS)
+    assert info.value.claim == "iat"
 
 
 

@@ -39,12 +39,14 @@ def test_verify_password_async_matches_sync_verdict_on_failure():
 
 
 def test_verify_password_async_matches_sync_verdict_on_malformed_hash():
-    # verify_password swallows ValueError/TypeError from passlib and returns
-    # False (e.g. a hash that isn't a bcrypt hash at all). The async wrapper
-    # must preserve that: it must not let the exception escape from the
-    # worker thread as an unhandled failure.
-    assert verify_password("anything", "not-a-bcrypt-hash") is False
-    assert asyncio.run(verify_password_async("anything", "not-a-bcrypt-hash")) is False
+    # verify_password returns False for a hash that isn't a bcrypt hash at
+    # all, and swallows the ValueError bcrypt raises for one that has the
+    # prefix but is malformed. The async wrapper must preserve both: it must
+    # not let the exception escape from the worker thread as an unhandled
+    # failure. The second value is the one that reaches bcrypt.
+    for stored in ("not-a-bcrypt-hash", "$2b$12$short"):
+        assert verify_password("anything", stored) is False
+        assert asyncio.run(verify_password_async("anything", stored)) is False
 
 
 def test_verify_password_async_does_not_block_the_event_loop():

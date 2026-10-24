@@ -6,7 +6,7 @@ Authentication primitives — password hashing, JWT mint/verify, RBAC.
 Phase 1 PR #5 — task 1.2 + 1.3.
 
 Design choices:
-  - We implement JWT directly with python-jose rather than pulling fastapi-users
+  - We implement JWT directly with PyJWT rather than pulling fastapi-users
     in. The user model is fastapi-users compatible (is_active/is_superuser/
     is_verified), so a future migration is trivial; until then, direct
     implementation keeps the surface small and the unit tests fast.
@@ -42,10 +42,10 @@ from dataclasses import dataclass, field, replace
 from datetime import UTC, datetime, timedelta
 from typing import Any
 
+import bcrypt
+import jwt
 import structlog
 from fastapi import Depends, HTTPException, Request, status
-from jose import JWTError, jwt
-from passlib.context import CryptContext
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import joinedload
@@ -65,6 +65,12 @@ from core.db import get_db
 # ---------------------------------------------------------------------------
 
 JWT_ALGORITHM = "HS256"
+
+#: What a token that does not verify raises, for callers to catch. The base
+#: class rather than ``jwt.InvalidTokenError`` on purpose: a key PyJWT refuses
+#: to use raises ``jwt.InvalidKeyError``, which is not an InvalidTokenError,
+#: and that must also end as a 401 rather than escape as a 500.
+TokenError = jwt.PyJWTError
 TOKEN_TYPE_ACCESS = "access"
 TOKEN_TYPE_REFRESH = "refresh"
 
@@ -103,7 +109,20 @@ _ROLE_PRIORITY: dict[str, int] = {
 }
 
 # Bcrypt cost is fixed at 12 (CLAUDE.md §3 security default).
-_pwd_context = CryptContext(schemes=["bcrypt"], bcrypt__rounds=12, deprecated="auto")
+_BCRYPT_ROUNDS = 12
+
+#: bcrypt reads at most this many bytes of the password. The bcrypt package
+#: raises past it (5.0+), so the input is cut here first.
+_BCRYPT_MAX_BYTES = 72
+
+#: Hash prefixes ``verify_password`` will check. ``$2b$`` is what this module
+#: writes and what passlib wrote before it; ``$2a$`` and ``$2y$`` are the
+#: other spellings passlib accepted, kept so a hash imported or written by
+#: another bcrypt implementation still verifies. Anything else is refused
+#: before bcrypt sees it. The allow-list matters: the bcrypt package also
+#: accepts ``$2x$``, which passlib refused, and refusing it here keeps the set
+#: of stored values that can authenticate exactly what it was.
+_BCRYPT_IDENTS = ("$2a$", "$2b$", "$2y$")
 
 log = structlog.get_logger("auth")
 
@@ -126,13 +145,42 @@ def normalize_email(email: str) -> str:
     return email.strip().lower()
 
 
+def _bcrypt_secret(plain: str) -> bytes:
+    """The bytes bcrypt is given for ``plain``.
+
+    Reproduces what the passlib-based code did, step for step, so every hash
+    it wrote keeps verifying and every password it refused is still refused:
+
+    1. Keep the first 72 characters (the old ``plain[:72]``).
+    2. Encode as UTF-8. A string that cannot be encoded (a lone surrogate)
+       raises ``UnicodeEncodeError``, a ``ValueError``.
+    3. Refuse a NUL byte anywhere in those characters with ``ValueError``.
+       passlib refused it and the bcrypt package does not. Other bcrypt
+       implementations read the password as a C string and stop at the NUL,
+       so a hash containing one would not mean the same thing everywhere;
+       refusing it keeps the stored hashes portable and the accepted
+       passwords unchanged.
+    4. Keep the first 72 bytes. bcrypt never read past them, so a longer
+       password and its 72-byte prefix match the same hash, as before. The cut
+       can fall inside a multi-byte character, which is also what bcrypt did.
+    """
+    if not isinstance(plain, str):
+        raise TypeError("password must be str")
+    secret = plain[:72].encode("utf-8")
+    if b"\x00" in secret:
+        raise ValueError("bcrypt does not allow NUL bytes in a password")
+    return secret[:_BCRYPT_MAX_BYTES]
+
+
 def hash_password(plain: str) -> str:
-    """Return a bcrypt hash with cost 12. Truncates to 72 bytes per bcrypt."""
-    # bcrypt has a 72-byte hard limit on the input. passlib raises for longer
-    # inputs unless explicitly truncated; we trim defensively because users
-    # may paste a long passphrase. The truncation is documented in the
-    # registration validation path.
-    return str(_pwd_context.hash(plain[:72]))
+    """Return a ``$2b$`` bcrypt hash with cost 12.
+
+    Only the first 72 bytes of the password count (see :func:`_bcrypt_secret`).
+    Raises ``ValueError`` for a password containing a NUL byte or one that is
+    not encodable as UTF-8.
+    """
+    salt = bcrypt.gensalt(rounds=_BCRYPT_ROUNDS, prefix=b"2b")
+    return bcrypt.hashpw(_bcrypt_secret(plain), salt).decode("ascii")
 
 
 def set_password(user: Any, plain: str) -> None:
@@ -227,9 +275,17 @@ def credential_change_invalidates(
 
 
 def verify_password(plain: str, hashed: str) -> bool:
-    """Constant-time bcrypt verification. Returns False on any error."""
+    """Constant-time bcrypt verification. Returns False on any error.
+
+    False, never an exception, for a stored value that is not a bcrypt hash
+    (the empty string kept for password-less accounts, a malformed or
+    truncated hash, a scheme outside :data:`_BCRYPT_IDENTS`) and for a
+    password :func:`hash_password` would refuse.
+    """
+    if not isinstance(hashed, str) or not hashed.startswith(_BCRYPT_IDENTS):
+        return False
     try:
-        return bool(_pwd_context.verify(plain[:72], hashed))
+        return bool(bcrypt.checkpw(_bcrypt_secret(plain), hashed.encode("ascii")))
     except (ValueError, TypeError):
         return False
 
@@ -286,7 +342,7 @@ async def hash_password_async(plain: str) -> str:
 # this format, but keys issued before this landed keep their bcrypt hash
 # until they are next rotated) can tell which verifier a given row wants
 # without a separate schema column. bcrypt hashes never collide with this
-# prefix: passlib's bcrypt output always starts with ``$2a$``/``$2b$``/
+# prefix: bcrypt output always starts with ``$2a$``/``$2b$``/
 # ``$2y$``, so the check is unambiguous.
 
 API_KEY_HASH_SCHEME = "hmac-sha256"
@@ -429,21 +485,42 @@ def decode_token(token: str, *, expected_type: str) -> dict[str, Any]:
     """
     Verify signature + expiration + type. Raise on any mismatch.
 
-    Callers should catch JWTError or ValueError and translate into 401.
+    Callers should catch :data:`TokenError` or ValueError and translate into
+    401. Expired, badly signed, wrongly typed and malformed tokens all raise
+    a :data:`TokenError` subclass; no caller tells them apart.
     """
-    # `require_iat`: every token this service mints carries `iat`, and the
-    # password-change check reads it. Without this a token with the claim
-    # stripped decodes cleanly and that check silently has no opinion, which
-    # is the fail-open direction.
+    # `algorithms` is the one algorithm we sign with. The header's `alg` is
+    # checked against it, so `none`, another HMAC size, and an RS/ES header
+    # (the key-confusion shape) are refused before any signature work.
+    #
+    # `require`: every token this service mints carries `iat` and `exp`.
+    # `iat` is what the password-change check reads; without it a token with
+    # the claim stripped decodes cleanly and that check silently has no
+    # opinion, which is the fail-open direction. `exp` is only checked when
+    # present, so without requiring it a token minted without one would never
+    # expire. No leeway on `exp`, as before.
+    #
+    # `verify_iat` is off because PyJWT's version of it also refuses an `iat`
+    # in the future, which the previous library never did. Replicas whose
+    # clocks differ by a second would then refuse each other's fresh tokens.
+    # What the previous library did check, that `iat` is an integer, is kept
+    # below; the password-change comparison depends on it.
     claims: dict[str, Any] = jwt.decode(
         token,
         secret_key(),
         algorithms=[JWT_ALGORITHM],
-        options={"require_iat": True},
+        options={"require": ["iat", "exp"], "verify_iat": False},
     )
+    issued_at: Any = claims.get("iat")
+    try:
+        int(issued_at)
+    except (TypeError, ValueError) as exc:
+        raise jwt.InvalidIssuedAtError("Issued At claim (iat) must be an integer.") from exc
     actual_type = claims.get("type")
     if actual_type != expected_type:
-        raise JWTError(f"unexpected token type: {actual_type!r} != {expected_type!r}")
+        raise jwt.InvalidTokenError(
+            f"unexpected token type: {actual_type!r} != {expected_type!r}"
+        )
     return claims
 
 
@@ -677,7 +754,7 @@ async def _load_current_user(
         return None
     try:
         claims = decode_token(token, expected_type=TOKEN_TYPE_ACCESS)
-    except (JWTError, ValueError):
+    except (TokenError, ValueError):
         return None
 
     sub = claims.get("sub")
@@ -891,6 +968,7 @@ def require_super_admin_or_404() -> Callable[..., CurrentUser]:
 
 __all__ = [
     "CurrentUser",
+    "TokenError",
     "create_access_token",
     "create_mfa_pending_token",
     "create_refresh_token",

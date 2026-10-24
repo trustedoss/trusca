@@ -426,7 +426,7 @@ def test_ws_auth_invalid_token_closes_1008(client: TestClient) -> None:
     cases.append(refresh)
     # Token signed with wrong secret — rebuild ourselves so we can guarantee
     # the signature mismatch without depending on env tweaks.
-    from jose import jwt as _jwt
+    import jwt as _jwt
 
     wrong_signed = _jwt.encode(
         {
@@ -460,17 +460,11 @@ def test_ws_auth_invalid_token_closes_1008(client: TestClient) -> None:
 def test_ws_refresh_token_rejected_with_1008(client: TestClient) -> None:
     user_id, _team_id, scan_id = _seed_user_with_team_scan()
     refresh, _jti, _exp = create_refresh_token(subject=str(user_id))
-    # Sanity: the token IS a refresh, not an access. python-jose requires the
-    # key argument even with verify_signature=False, so we pass an empty
-    # string and disable the audience/signature checks — we only need the
-    # claims back to assert on `type`.
-    from jose import jwt as _jwt
+    # Sanity: the token IS a refresh, not an access. Signature checks are
+    # off because we only need the claims back to assert on `type`.
+    import jwt as _jwt
 
-    decoded = _jwt.decode(
-        refresh,
-        key="",
-        options={"verify_signature": False, "verify_aud": False},
-    )
+    decoded = _jwt.decode(refresh, options={"verify_signature": False})
     assert decoded["type"] == TOKEN_TYPE_REFRESH
 
     with client.websocket_connect(f"/ws/scans/{scan_id}") as ws:
