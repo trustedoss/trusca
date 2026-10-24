@@ -688,7 +688,7 @@ services:
   # API — FastAPI + uvicorn, fronted by Traefik on /api and /health.
   # ---------------------------------------------------------------------------
   backend:
-    image: ${IMAGE_REGISTRY:-ghcr.io/trustedoss}/trusca-backend:${IMAGE_TAG:-0.23.0}
+    image: ${IMAGE_REGISTRY:-ghcr.io/trustedoss}/trusca-backend:${IMAGE_TAG:-0.23.1}
     restart: unless-stopped
     logging: *logging
     environment:
@@ -850,7 +850,7 @@ services:
   # smaller limit (see worker-default below).
   # ---------------------------------------------------------------------------
   worker-scan:
-    image: ${IMAGE_REGISTRY:-ghcr.io/trustedoss}/trusca-backend-worker:${IMAGE_TAG:-0.23.0}
+    image: ${IMAGE_REGISTRY:-ghcr.io/trustedoss}/trusca-backend-worker:${IMAGE_TAG:-0.23.1}
     restart: unless-stopped
     logging: *logging
     command: celery -A tasks.celery_app worker --loglevel=info --concurrency=${CELERY_CONCURRENCY:-2} -Q ${WORKER_SCAN_QUEUES:-trustedoss.scan,trustedoss.default}
@@ -989,7 +989,7 @@ services:
   # file's comments for the full sizing rationale (S3 judgment call).
   # ---------------------------------------------------------------------------
   worker-default:
-    image: ${IMAGE_REGISTRY:-ghcr.io/trustedoss}/trusca-backend-worker:${IMAGE_TAG:-0.23.0}
+    image: ${IMAGE_REGISTRY:-ghcr.io/trustedoss}/trusca-backend-worker:${IMAGE_TAG:-0.23.1}
     restart: unless-stopped
     logging: *logging
     command: celery -A tasks.celery_app worker --loglevel=info --concurrency=${CELERY_DEFAULT_CONCURRENCY:-4} -Q ${WORKER_DEFAULT_QUEUES:-trustedoss.default}
@@ -1062,7 +1062,7 @@ services:
   # workspace orphan cleaner, source-archive retention).
   # ---------------------------------------------------------------------------
   beat:
-    image: ${IMAGE_REGISTRY:-ghcr.io/trustedoss}/trusca-backend-worker:${IMAGE_TAG:-0.23.0}
+    image: ${IMAGE_REGISTRY:-ghcr.io/trustedoss}/trusca-backend-worker:${IMAGE_TAG:-0.23.1}
     restart: unless-stopped
     logging: *logging
     command: celery -A tasks.celery_app beat --loglevel=info --schedule=/tmp/celerybeat-schedule
@@ -1132,7 +1132,7 @@ services:
   # SPA — Vite bundle served by nginx, fronted by Traefik on `/`.
   # ---------------------------------------------------------------------------
   frontend:
-    image: ${IMAGE_REGISTRY:-ghcr.io/trustedoss}/trusca-frontend:${IMAGE_TAG:-0.23.0}
+    image: ${IMAGE_REGISTRY:-ghcr.io/trustedoss}/trusca-frontend:${IMAGE_TAG:-0.23.1}
     restart: unless-stopped
     logging: *logging
     networks:
@@ -1173,7 +1173,7 @@ services:
   # refuses to start where the Docker API is reachable.
   # ---------------------------------------------------------------------------
   worker-engine:
-    image: ${IMAGE_REGISTRY:-ghcr.io/trustedoss}/trusca-backend-worker:${IMAGE_TAG:-0.23.0}
+    image: ${IMAGE_REGISTRY:-ghcr.io/trustedoss}/trusca-backend-worker:${IMAGE_TAG:-0.23.1}
     profiles: ["bomlens-engine"]
     restart: unless-stopped
     logging: *logging

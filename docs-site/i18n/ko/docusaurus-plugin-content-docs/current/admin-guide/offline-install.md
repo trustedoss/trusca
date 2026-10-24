@@ -56,7 +56,7 @@ bash scripts/bundle-offline.sh
 오버라이드합니다.
 
 ```bash
-bash scripts/bundle-offline.sh --tag 0.23.0 --registry ghcr.io/trustedoss
+bash scripts/bundle-offline.sh --tag 0.23.1 --registry ghcr.io/trustedoss
 ```
 
 출력 경로는 `-o`/`--output`으로 바꿀 수 있습니다.
@@ -107,7 +107,7 @@ Compose/env 파일을 복사한 다음 전체를 하나의 출력 tar로 묶습�
 있어야 합니다) 다음을 실행합니다.
 
 ```bash
-bash scripts/install.sh --offline /path/to/trusca-offline-bundle-0.23.0.tar
+bash scripts/install.sh --offline /path/to/trusca-offline-bundle-0.23.1.tar
 ```
 
 완전히 무인으로 진행되는 망 분리 설치를 원하면 `--no-prompt`와 함께
@@ -115,7 +115,7 @@ bash scripts/install.sh --offline /path/to/trusca-offline-bundle-0.23.0.tar
 [UAT 체크리스트](./../installation/uat-checklist.md) 참고).
 
 ```bash
-bash scripts/install.sh --no-prompt --offline /path/to/trusca-offline-bundle-0.23.0.tar
+bash scripts/install.sh --no-prompt --offline /path/to/trusca-offline-bundle-0.23.1.tar
 ```
 
 `--offline`을 지정하면 `install.sh`는 다음을 합니다.
