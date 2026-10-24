@@ -28,7 +28,7 @@ same variable does not mean the same thing to all of them.
 
 ## Putting the certificate in
 
-Mount it read-only into the backend, worker and beat containers. With Docker
+Mount it read-only into the backend, both workers and beat. With Docker
 Compose, add an override file next to `docker-compose.yml`:
 
 ```yaml
@@ -37,7 +37,10 @@ services:
   backend:
     volumes:
       - /etc/ssl/corp/ca-bundle.pem:/etc/ssl/corp-ca.pem:ro
-  worker:
+  worker-scan:
+    volumes:
+      - /etc/ssl/corp/ca-bundle.pem:/etc/ssl/corp-ca.pem:ro
+  worker-default:
     volumes:
       - /etc/ssl/corp/ca-bundle.pem:/etc/ssl/corp-ca.pem:ro
   beat:
@@ -46,7 +49,9 @@ services:
 ```
 
 Compose reads `docker-compose.override.yml` automatically, so upgrades that
-replace `docker-compose.yml` leave your mount alone.
+replace `docker-compose.yml` leave your mount alone. If you run the
+`bomlens-engine` profile, add the same entry for `worker-engine`; it stays
+off unless that profile is started.
 
 The file must hold your authority **and** the public roots, concatenated. The
 next section says why.
@@ -101,6 +106,14 @@ REQUESTS_CA_BUNDLE=/etc/ssl/corp-ca.pem
 GIT_SSL_CAINFO=/etc/ssl/corp-ca.pem
 ```
 
+`docker-compose.yml` passes these to the backend, the workers and beat, and
+restarting them with `docker-compose up -d` applies a change. A value exported
+in the shell that runs `docker-compose` also reaches the containers, and wins
+over `.env`. A variable set in neither place is left out of the containers
+rather than set to an empty value, which matters: an empty `GIT_SSL_CAINFO`
+makes every clone fail and an empty `SSL_CERT_FILE` leaves the portal trusting
+no authority.
+
 Four names for one file, because the tools disagree. Setting all four is the
 short answer; the table says which one each of them needs, for when only part
 of the pipeline is failing.
@@ -129,28 +142,95 @@ it.
 **`git clone` reads only its own two variables.** If cloning is the step that
 fails and everything else works, `GIT_SSL_CAINFO` is the one that was missing.
 
+## Going out through a proxy {#outbound-proxy}
+
+Proxy settings do not go in `.env`; `docker-compose.yml` does not pass them
+from there. Put them in the `proxies` block of the Docker client's
+configuration, `~/.docker/config.json`, for the user that runs
+`docker-compose`:
+
+```json
+{
+  "proxies": {
+    "default": {
+      "httpProxy": "http://proxy.corp.example:3128",
+      "httpsProxy": "http://proxy.corp.example:3128",
+      "noProxy": "localhost,127.0.0.1,backend,frontend,postgres,redis,docker-socket-proxy,.corp.example"
+    }
+  }
+}
+```
+
+Compose injects these into every container it creates, as `HTTP_PROXY`,
+`HTTPS_PROXY` and `NO_PROXY` and as their lower-case forms. Both cases matter,
+because the tools do not agree on which one they read. `git clone` goes
+through libcurl, which ignores upper-case `HTTP_PROXY` and reads only
+`http_proxy`. Python, which means the portal's own calls, scancode and
+scanoss, prefers lower case. Trivy, cosign and the other Go tools prefer upper
+case. Changing this file does not change existing containers, so recreate them
+with `docker-compose up -d --force-recreate`.
+
+If you would rather keep the proxy with the deployment, set the same six
+names with explicit values in `docker-compose.override.yml`:
+
+```yaml
+# docker-compose.override.yml
+x-proxy-env: &proxy-env
+  HTTP_PROXY: http://proxy.corp.example:3128
+  HTTPS_PROXY: http://proxy.corp.example:3128
+  NO_PROXY: localhost,127.0.0.1,backend,frontend,postgres,redis,docker-socket-proxy,.corp.example
+  http_proxy: http://proxy.corp.example:3128
+  https_proxy: http://proxy.corp.example:3128
+  no_proxy: localhost,127.0.0.1,backend,frontend,postgres,redis,docker-socket-proxy,.corp.example
+
+services:
+  backend:
+    environment: *proxy-env
+  worker-scan:
+    environment: *proxy-env
+  worker-default:
+    environment: *proxy-env
+  beat:
+    environment: *proxy-env
+```
+
+Compose adds these to each service's own environment rather than replacing
+it. If you already have an override file from the certificate step, add the
+`environment` entries to the services there.
+
+`NO_PROXY` keeps the stack's own traffic off the proxy. The service names in
+the example are the containers that talk to each other; `docker-socket-proxy`
+matters only with the `bomlens-engine` profile. Add your internal Git host,
+registry and package mirrors (a leading dot covers a whole domain) when the
+proxy cannot reach them.
+
+A proxy that re-signs TLS also needs its certificate authority, which is the
+rest of this page. With Helm, set the same six names under `env.extraEnv`.
+
 ## Checking it worked
 
-Each of the three processes states its own trust set at boot, and names
-itself. Every line this page is about carries the prefix `tls_trust`, which is
-what to filter on. A worker's own output is mostly scan progress, so the line
-is there and unfindable without it:
+The API, each worker and beat state their own trust set at boot, and name
+themselves. Every line this page is about carries the prefix `tls_trust`,
+which is what to filter on. A worker's own output is mostly scan progress, so
+the line is there and unfindable without it:
 
 ```bash
-docker-compose logs backend worker beat | grep tls_trust
+docker-compose logs backend worker-scan worker-default beat | grep tls_trust
 ```
 
 ```
 tls_trust.outbound  process=api     authorities=140 bundled_authorities=120 source=SSL_CERT_FILE path=/etc/ssl/corp-ca.pem
 tls_trust.outbound  process=worker  authorities=140 bundled_authorities=120 source=SSL_CERT_FILE path=/etc/ssl/corp-ca.pem
+tls_trust.outbound  process=worker  authorities=140 bundled_authorities=120 source=SSL_CERT_FILE path=/etc/ssl/corp-ca.pem
 tls_trust.outbound  process=beat    authorities=140 bundled_authorities=120 source=SSL_CERT_FILE path=/etc/ssl/corp-ca.pem
 ```
 
-Look for all three. Compose gives each service its own environment, so a
-certificate configured for one and missed on another is an ordinary mistake,
-and the worker is the one that matters most: the scanners reach the network
-from there. A `process=worker` line that still reads `source=bundled` means the
-worker never got the setting.
+Look for all of them, one `process=worker` line from each worker. Compose
+gives each service its own environment, so a certificate configured for one
+and missed on another is an ordinary mistake, and the workers are the ones
+that matter most: the scanners reach the network from there. A
+`process=worker` line that still reads `source=bundled` means that worker
+never got the setting.
 
 `authorities` is how many certificate authorities the portal's own HTTPS calls
 will accept and `bundled_authorities` is how many it ships with. A number

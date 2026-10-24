@@ -509,7 +509,7 @@ The worker could not reach the repository. Check:
 
 - Is the repo URL correct? (Test from the worker: `docker-compose exec worker git ls-remote <url>`.)
 - Is the repo private? Embed credentials in the `git_url` — see [Projects → Private repositories](./projects.md#private-repositories).
-- Does the worker have outbound HTTPS to your Git host? Corporate proxies must be set in `.env` (`HTTP_PROXY`, `HTTPS_PROXY`).
+- Does the worker have outbound HTTPS to your Git host? Corporate proxies go in `~/.docker/config.json` or `docker-compose.override.yml`, not in `.env`, and need the lower-case names too, because `git clone` reads only lower-case `http_proxy`. See [Private certificate authorities → Going out through a proxy](../admin-guide/private-ca.md#outbound-proxy).
 
 ### Scan finished but vulnerabilities are missing
 

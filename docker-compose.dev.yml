@@ -417,6 +417,18 @@ x-backend-env: &backend-env
   TICKET_WEBHOOK_URL: ${TICKET_WEBHOOK_URL:-}
   API_READ_RATE_LIMIT: ${API_READ_RATE_LIMIT:-60/minute}
   CSV_EXPORT_RATE_LIMIT: ${CSV_EXPORT_RATE_LIMIT:-5/minute}
+  # Private certificate authority (#571). Written without a value so an unset
+  # key stays out of the container instead of arriving empty: an empty
+  # GIT_SSL_CAINFO breaks every clone and an empty SSL_CERT_FILE leaves
+  # OpenSSL clients trusting nothing. Proxy names are not listed, because a
+  # value-less entry would remove the proxy compose injects from
+  # ~/.docker/config.json. See the same block in docker-compose.yml.
+  SSL_CERT_FILE:
+  SSL_CERT_DIR:
+  REQUESTS_CA_BUNDLE:
+  NODE_EXTRA_CA_CERTS:
+  GIT_SSL_CAINFO:
+  GIT_SSL_CAPATH:
 
 services:
   postgres:

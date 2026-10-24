@@ -373,11 +373,11 @@ Compose 배포에는 오토스케일러 계층이 없습니다. 이 절의 키�
 |---|---|---|---|
 | `TICKET_STATUS_REFRESH_RATE_LIMIT` | `10/minute` | `config.py` | `POST /vulnerability_findings/{id}/ticket-status/refresh`에 대한 slowapi 한도이며, 인증된 사용자별로 셉니다. Jira 자격증명 자체는 환경변수가 아닙니다 - 조직 관리자가 `PUT /v1/admin/organizations/{id}/ticket-credentials`로 Jira Cloud 호스트마다 로그인 정보 하나를 저장합니다(#385). [티켓 상태](../user-guide/vulnerabilities.md#ticket-status) 참고. |
 | `CLIENT_ERROR_REPORT_RATE_LIMIT` | `30/minute` | `config.py` | `POST /v1/client-errors`(프런트엔드 `ErrorBoundary`의 크래시 리포트 수신, #423)에 대한 slowapi 한도이며, 이 엔드포인트는 인증이 없어 IP별로 셉니다(렌더링 크래시는 토큰을 붙일 수 있기 전에도 일어날 수 있습니다). 위 인증 엔드포인트들보다 여유 있게 잡았습니다 - 깨진 렌더링 경로는 한 방문자에게 재렌더링마다 정당하게 다시 던져질 수 있고, 호출 하나의 비용은 bcrypt 해시가 아니라 로그 한 줄입니다. |
-| `HTTP_PROXY` / `HTTPS_PROXY` / `NO_PROXY` | (비어있음) | 서브프로세스 env | `git clone`, `cdxgen`, `trivy --download-db-only` 부팅 / refresh 경로가 존중. |
-| `SSL_CERT_FILE` / `SSL_CERT_DIR` | (비어있음) | 서브프로세스 env, 포털 HTTPS | Trivy와 cosign과 govulncheck, 그리고 포털 자신의 외부 호출이 쓰는 사설 인증기관입니다. 포털 쪽에서는 신뢰 집합을 갈아치우므로 공용 루트 인증서도 같은 파일에 담아야 합니다. [사설 인증기관](../admin-guide/private-ca.md)을 봅니다. |
-| `NODE_EXTRA_CA_CERTS` | (비어있음) | 서브프로세스 env | `cdxgen`이 쓰는 사설 인증기관입니다. 기존 루트에 더해집니다. |
-| `REQUESTS_CA_BUNDLE` | (비어있음) | 서브프로세스 env | `scancode`와 `scanoss`가 쓰는 사설 인증기관입니다. 포털 자신의 호출은 이 변수를 보지 않습니다. |
-| `GIT_SSL_CAINFO` / `GIT_SSL_CAPATH` | (비어있음) | 서브프로세스 env | `git clone`이 쓰는 사설 인증기관입니다. git은 `SSL_CERT_FILE`도 `CURL_CA_BUNDLE`도 읽지 않으므로, 사내 저장소를 내려받으려면 이 둘 중 하나가 필요합니다. |
+| `HTTP_PROXY` / `HTTPS_PROXY` / `NO_PROXY` | (설정 안 됨) | 서브프로세스 env, 포털 HTTPS | 포털 자신의 호출과 `git clone`, `cdxgen`, scancode, scanoss, Trivy가 쓰는 프록시입니다. 소문자 `http_proxy` / `https_proxy` / `no_proxy`도 필요합니다. `git clone`은 소문자 `http_proxy`만 읽기 때문입니다. Compose에서는 `.env`가 아니라 `~/.docker/config.json`의 `proxies` 항목(Compose가 두 가지 이름을 모두 넣습니다)이나 `docker-compose.override.yml`에 설정합니다. `docker-compose.yml`은 프록시 변수를 `.env`에서 전달하지 않습니다. [사설 인증기관 → 프록시를 거쳐 나가는 경우](../admin-guide/private-ca.md#outbound-proxy)를 참고합니다. |
+| `SSL_CERT_FILE` / `SSL_CERT_DIR` | (설정 안 됨) | 서브프로세스 env, 포털 HTTPS | Trivy와 cosign과 govulncheck, 그리고 포털 자신의 외부 호출이 쓰는 사설 인증기관입니다. 포털 쪽에서는 신뢰 집합을 갈아치우므로 공용 루트 인증서도 같은 파일에 담아야 합니다. Compose는 이 변수와 아래 인증서 변수들을 `.env`나 Compose를 실행하는 셸에서 가져와 전달하며(셸의 값이 우선합니다), 두 곳 어디에도 없으면 넣지 않습니다. [사설 인증기관](../admin-guide/private-ca.md)을 봅니다. |
+| `NODE_EXTRA_CA_CERTS` | (설정 안 됨) | 서브프로세스 env | `cdxgen`이 쓰는 사설 인증기관입니다. 기존 루트에 더해집니다. |
+| `REQUESTS_CA_BUNDLE` | (설정 안 됨) | 서브프로세스 env | `scancode`와 `scanoss`가 쓰는 사설 인증기관입니다. 포털 자신의 호출은 이 변수를 보지 않습니다. |
+| `GIT_SSL_CAINFO` / `GIT_SSL_CAPATH` | (설정 안 됨) | 서브프로세스 env | `git clone`이 쓰는 사설 인증기관입니다. git은 `SSL_CERT_FILE`도 `CURL_CA_BUNDLE`도 읽지 않으므로, 사내 저장소를 내려받으려면 이 둘 중 하나가 필요합니다. |
 | `REGISTRY_CONFIG_HOST_PATH` | `./secrets/registry` | docker-compose 전용 | 스캔 파이프라인 워커의 고정 컨테이너 경로 `/etc/trusca/registry`에 읽기 전용으로 마운트되는 호스트 디렉터리입니다. 사설 레지스트리에 필요한 `settings.xml`·`.npmrc`·`pip.conf`·`.netrc` 중 필요한 것을 둡니다. [의존성 해석용 사설 레지스트리](../admin-guide/private-registries.md)를 봅니다. |
 | `MVN_ARGS` | (비어있음) | cdxgen 자체의 Maven 호출 | cdxgen이 실행하는 모든 `mvn` 명령에 붙이는 추가 인자입니다. 사설 Maven 레지스트리를 쓰려면 `--settings /etc/trusca/registry/settings.xml`로 설정하세요. `MAVEN_SETTINGS`라는 변수는 없습니다. Maven 자체는 `~/.m2/settings.xml`이나 `-s`/`--settings` 플래그만 읽습니다. |
 | `NPM_CONFIG_USERCONFIG` | (비어있음) | 서브프로세스 env | 대체 `.npmrc` 경로를 가리키는 npm 자체의 환경변수입니다. cdxgen 기능이 아닙니다. |
