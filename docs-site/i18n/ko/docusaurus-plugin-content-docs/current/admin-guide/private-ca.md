@@ -25,30 +25,43 @@ sidebar_position: 7
 
 ## 인증서를 넣습니다
 
-backend, 두 워커, beat 컨테이너에 읽기 전용으로 마운트합니다. Docker
-Compose는 `docker-compose.yml` 옆에 덮어쓰기 파일을 두면 됩니다.
+backend, 두 워커, beat 컨테이너에 읽기 전용으로 마운트하고, 도구들이 그
+파일을 보게 하는 변수도 같은 곳에 설정합니다. Docker Compose는
+`docker-compose.yml` 옆에 덮어쓰기 파일을 두면 됩니다.
 
 ```yaml
 # docker-compose.override.yml
+x-corp-ca-env: &corp-ca-env
+  SSL_CERT_FILE: /etc/ssl/corp-ca.pem
+  NODE_EXTRA_CA_CERTS: /etc/ssl/corp-ca.pem
+  REQUESTS_CA_BUNDLE: /etc/ssl/corp-ca.pem
+  GIT_SSL_CAINFO: /etc/ssl/corp-ca.pem
+
 services:
   backend:
     volumes:
       - /etc/ssl/corp/ca-bundle.pem:/etc/ssl/corp-ca.pem:ro
+    environment: *corp-ca-env
   worker-scan:
     volumes:
       - /etc/ssl/corp/ca-bundle.pem:/etc/ssl/corp-ca.pem:ro
+    environment: *corp-ca-env
   worker-default:
     volumes:
       - /etc/ssl/corp/ca-bundle.pem:/etc/ssl/corp-ca.pem:ro
+    environment: *corp-ca-env
   beat:
     volumes:
       - /etc/ssl/corp/ca-bundle.pem:/etc/ssl/corp-ca.pem:ro
+    environment: *corp-ca-env
 ```
 
 Compose가 `docker-compose.override.yml`을 자동으로 읽으므로, 업그레이드가
-`docker-compose.yml`을 교체해도 마운트 설정은 그대로 남습니다.
-`bomlens-engine` 프로필을 쓴다면 `worker-engine`에도 같은 항목을 추가합니다.
-이 서비스는 그 프로필로 시작하지 않으면 실행되지 않습니다.
+`docker-compose.yml`을 교체해도 이 설정은 그대로 남습니다. 이 변수들은 각
+서비스의 기존 환경에 더해지며, 기존 환경을 대체하지 않습니다. 바꾼 뒤에는
+`docker-compose up -d`로 반영합니다. `bomlens-engine` 프로필을 쓴다면
+`worker-engine`에도 같은 항목을 추가합니다. 이 서비스는 그 프로필로 시작하지
+않으면 실행되지 않습니다.
 
 이 파일에는 사내 인증기관과 공용 루트 인증서를 함께 이어 붙여 둡니다. 이유는
 다음 절에 있습니다.
@@ -93,23 +106,12 @@ beat와 워커 둘에 붙고, 바깥으로 나가지 않는 frontend와 Redis에
 
 ## 도구들이 그 파일을 보게 합니다
 
-`.env`에 다음을 넣습니다.
-
-```bash
-SSL_CERT_FILE=/etc/ssl/corp-ca.pem
-NODE_EXTRA_CA_CERTS=/etc/ssl/corp-ca.pem
-REQUESTS_CA_BUNDLE=/etc/ssl/corp-ca.pem
-GIT_SSL_CAINFO=/etc/ssl/corp-ca.pem
-```
-
-`docker-compose.yml`이 이 값들을 backend, 워커들, beat에 전달하며, 바꾼
-뒤에는 `docker-compose up -d`로 다시 시작하면 반영됩니다. `docker-compose`를
-실행하는 셸에서 export한 값도 컨테이너에 전달되며, `.env`의 값보다 우선합니다.
-두 곳 어디에도 없는 변수는 빈 값으로 설정되지 않고 컨테이너에서 빠집니다. 이
-차이가 중요한
-이유는, `GIT_SSL_CAINFO`가 빈 값이면 모든 저장소 내려받기가 실패하고
-`SSL_CERT_FILE`이 빈 값이면 포털이 어떤 인증기관도 신뢰하지 않게 되기
-때문입니다.
+위 덮어쓰기 파일의 `environment` 항목이 이 역할을 합니다. 값은 `.env`나 셸이
+아니라 이 파일에 직접 적습니다. `docker-compose.yml`은 이 이름들을 전달하지
+않습니다. docker-compose 1.29.2 배포 바이너리는 자기 환경의 `SSL_CERT_FILE`을
+실행할 때마다 바뀌는 임시 경로로 설정하므로, Compose 파일이 그 값을 가져다 쓰면
+컨테이너에는 존재하지 않는 파일이 전달되고 `up`을 실행할 때마다 컨테이너가 다시
+만들어집니다.
 
 파일 하나에 이름이 넷인 이유는 도구마다 읽는 것이 다르기 때문입니다. 넷을 다
 설정하는 것이 짧은 답이고, 아래 표는 파이프라인의 일부만 실패할 때 어느 것이
@@ -188,8 +190,9 @@ services:
 ```
 
 Compose는 이 값을 각 서비스의 기존 환경에 더하며, 기존 환경을 대체하지
-않습니다. 인증서 단계에서 만든 덮어쓰기 파일이 이미 있다면 그 파일의 서비스에
-`environment` 항목을 추가합니다.
+않습니다. 인증서 단계에서 만든 덮어쓰기 파일이 이미 있다면 `x-proxy-env` 항목을
+같은 파일에 두고, 각 서비스에 `environment: {<<: [*corp-ca-env, *proxy-env]}`로
+두 묶음을 함께 지정합니다.
 
 `NO_PROXY`는 스택 안의 연결이 프록시로 가지 않게 합니다. 예시의 서비스 이름은
 서로 통신하는 컨테이너들이고, `docker-socket-proxy`는 `bomlens-engine` 프로필을

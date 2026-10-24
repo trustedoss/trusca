@@ -28,30 +28,43 @@ same variable does not mean the same thing to all of them.
 
 ## Putting the certificate in
 
-Mount it read-only into the backend, both workers and beat. With Docker
-Compose, add an override file next to `docker-compose.yml`:
+Mount it read-only into the backend, both workers and beat, and set the
+variables that point the tools at it in the same place. With Docker Compose,
+add an override file next to `docker-compose.yml`:
 
 ```yaml
 # docker-compose.override.yml
+x-corp-ca-env: &corp-ca-env
+  SSL_CERT_FILE: /etc/ssl/corp-ca.pem
+  NODE_EXTRA_CA_CERTS: /etc/ssl/corp-ca.pem
+  REQUESTS_CA_BUNDLE: /etc/ssl/corp-ca.pem
+  GIT_SSL_CAINFO: /etc/ssl/corp-ca.pem
+
 services:
   backend:
     volumes:
       - /etc/ssl/corp/ca-bundle.pem:/etc/ssl/corp-ca.pem:ro
+    environment: *corp-ca-env
   worker-scan:
     volumes:
       - /etc/ssl/corp/ca-bundle.pem:/etc/ssl/corp-ca.pem:ro
+    environment: *corp-ca-env
   worker-default:
     volumes:
       - /etc/ssl/corp/ca-bundle.pem:/etc/ssl/corp-ca.pem:ro
+    environment: *corp-ca-env
   beat:
     volumes:
       - /etc/ssl/corp/ca-bundle.pem:/etc/ssl/corp-ca.pem:ro
+    environment: *corp-ca-env
 ```
 
 Compose reads `docker-compose.override.yml` automatically, so upgrades that
-replace `docker-compose.yml` leave your mount alone. If you run the
-`bomlens-engine` profile, add the same entry for `worker-engine`; it stays
-off unless that profile is started.
+replace `docker-compose.yml` leave your settings alone, and it adds these
+variables to each service's own environment rather than replacing it. Apply a
+change with `docker-compose up -d`. If you run the `bomlens-engine` profile,
+add the same entries for `worker-engine`; it stays off unless that profile is
+started.
 
 The file must hold your authority **and** the public roots, concatenated. The
 next section says why.
@@ -97,22 +110,12 @@ for the reason in the next section.
 
 ## Pointing the tools at it
 
-Add these to your `.env`:
-
-```bash
-SSL_CERT_FILE=/etc/ssl/corp-ca.pem
-NODE_EXTRA_CA_CERTS=/etc/ssl/corp-ca.pem
-REQUESTS_CA_BUNDLE=/etc/ssl/corp-ca.pem
-GIT_SSL_CAINFO=/etc/ssl/corp-ca.pem
-```
-
-`docker-compose.yml` passes these to the backend, the workers and beat, and
-restarting them with `docker-compose up -d` applies a change. A value exported
-in the shell that runs `docker-compose` also reaches the containers, and wins
-over `.env`. A variable set in neither place is left out of the containers
-rather than set to an empty value, which matters: an empty `GIT_SSL_CAINFO`
-makes every clone fail and an empty `SSL_CERT_FILE` leaves the portal trusting
-no authority.
+The `environment` entries in the override above do this. Keep them there
+with written-out values, not in `.env` or the shell: `docker-compose.yml`
+does not pass these names on. The docker-compose 1.29.2 release binary sets
+`SSL_CERT_FILE` in its own environment to a temporary path that changes on
+every run, so a compose file that took the name from there would hand the
+containers a file that does not exist and recreate them on every `up`.
 
 Four names for one file, because the tools disagree. Setting all four is the
 short answer; the table says which one each of them needs, for when only part
@@ -195,8 +198,9 @@ services:
 ```
 
 Compose adds these to each service's own environment rather than replacing
-it. If you already have an override file from the certificate step, add the
-`environment` entries to the services there.
+it. If you already have an override file from the certificate step, put the
+`x-proxy-env` block in the same file and give each service both sets with
+`environment: {<<: [*corp-ca-env, *proxy-env]}`.
 
 `NO_PROXY` keeps the stack's own traffic off the proxy. The service names in
 the example are the containers that talk to each other; `docker-socket-proxy`
