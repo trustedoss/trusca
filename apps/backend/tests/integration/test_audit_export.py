@@ -419,11 +419,13 @@ def test_a_delivered_batch_advances_the_position_and_reports_what_it_sent(
     at = _own_window()
     _cursor_just_before(session, destination=destination, moment=at)
     written = _insert_audit_rows(session, count=3, at=at)
-    sent: dict[str, object] = {}
+    # Every post, not the last one: a run posts as many batches as it takes
+    # to catch up, and the shared database usually holds more than one
+    # batch of other tests' rows after this window.
+    sent: list[tuple[str, dict]] = []
 
     async def _accept(url, body):
-        sent["url"] = url
-        sent["body"] = body
+        sent.append((url, body))
         return 202
 
     monkeypatch.setattr(audit_export, "_post", _accept)
@@ -432,9 +434,9 @@ def test_a_delivered_batch_advances_the_position_and_reports_what_it_sent(
 
     assert result["status"] == "delivered"
     assert result["exported"] >= 3
-    assert sent["url"] == destination
-    body = sent["body"]
-    assert {row["id"] for row in body["rows"]} >= set(written)  # type: ignore[index]
+    assert sent and {url for url, _body in sent} == {destination}
+    posted = {row["id"] for _url, body in sent for row in body["rows"]}
+    assert posted >= set(written)
 
     cursor = get_or_create_cursor(session, destination=destination)
     session.refresh(cursor)
@@ -605,3 +607,433 @@ def test_an_empty_batch_still_records_that_the_export_ran(
     session.refresh(cursor)
     assert cursor.last_run_at is not None
     assert cursor.last_id is None
+
+
+# ---------------------------------------------------------------------------
+# Draining a backlog, one run at a time (#570)
+#
+# One batch per beat meant a large existing trail took weeks to hand over.
+# A run now keeps going until it is caught up or out of time, which makes two
+# runs overlapping (a retry landing on the next beat) a real case rather than
+# a theoretical one. The lock and the conditional move are asserted
+# separately, each with the other out of the way, because either one alone
+# would make the overlap test pass.
+# ---------------------------------------------------------------------------
+
+
+def _ids_posted(body: dict) -> list[str]:
+    return [row["id"] for row in body["rows"]]
+
+
+def _configure(monkeypatch, destination: str, *, batch_size: int) -> datetime:
+    """Point the task at ``destination`` and confine what it reads to one window.
+
+    A run now drains everything it can see, and the shared database holds
+    every audit row the rest of the suite wrote, all of them after a window a
+    century back. Reading with the horizon pinned at the window's instant
+    keeps a run to the rows this test wrote, which is what lets these tests
+    assert exact counts, and keeps a batch size of two from turning into
+    thousands of posts on a full CI database.
+    """
+    from services import audit_export_service
+    from tasks import audit_export
+
+    monkeypatch.setenv("AUDIT_EXPORT_URL", destination)
+    monkeypatch.setenv("AUDIT_EXPORT_LAG_SECONDS", "0")
+    monkeypatch.setenv("AUDIT_EXPORT_BATCH_SIZE", str(batch_size))
+    window = _own_window()
+    real_collect = audit_export_service.collect_batch
+
+    def _collect_within_window(session, *, cursor, now=None):
+        return real_collect(session, cursor=cursor, now=window)
+
+    monkeypatch.setattr(audit_export, "collect_batch", _collect_within_window)
+    return window
+
+
+def test_one_run_drains_more_than_one_batch(session, destination, monkeypatch) -> None:
+    from services.audit_export_service import get_or_create_cursor
+    from tasks import audit_export
+
+    at = _configure(monkeypatch, destination, batch_size=2)
+    _cursor_just_before(session, destination=destination, moment=at)
+    written = _insert_audit_rows(session, count=5, at=at)
+    posts: list[list[str]] = []
+
+    async def _accept(url, body):
+        posts.append(_ids_posted(body))
+        return 202
+
+    monkeypatch.setattr(audit_export, "_post", _accept)
+
+    result = audit_export._run(None)
+
+    seen = [row_id for batch in posts for row_id in batch]
+    # All five, once each, in the order the cursor walks them (one shared
+    # timestamp, so by id), in three posts of this one run.
+    assert seen == sorted(written, key=uuid.UUID)
+    assert [len(batch) for batch in posts] == [2, 2, 1]
+    assert result["status"] == "delivered"
+    assert result["batches"] == 3
+    assert result["exported"] == 5
+
+    cursor = get_or_create_cursor(session, destination=destination)
+    session.refresh(cursor)
+    assert int(cursor.rows_exported) == len(seen)
+
+
+def test_a_spent_budget_stops_the_run_after_the_batch_in_hand(
+    session, destination, monkeypatch
+) -> None:
+    """The budget is checked between batches, so a run always makes progress
+    and never starts a batch it was out of time for."""
+    from tasks import audit_export
+
+    at = _configure(monkeypatch, destination, batch_size=2)
+    _cursor_just_before(session, destination=destination, moment=at)
+    _insert_audit_rows(session, count=5, at=at)
+    posts: list[list[str]] = []
+
+    async def _accept(url, body):
+        posts.append(_ids_posted(body))
+        return 202
+
+    monkeypatch.setattr(audit_export, "_post", _accept)
+    monkeypatch.setattr(audit_export, "_run_budget_seconds", lambda: 0.0)
+
+    result = audit_export._run(None)
+
+    assert len(posts) == 1
+    assert result["exported"] == 2
+    assert result["pending"] >= 3
+
+
+def test_the_run_budget_sits_below_the_beat_interval() -> None:
+    """A budget at or above the beat would make every run overlap the next."""
+    from tasks import audit_export
+    from tasks.celery_app import celery_app
+
+    entry = celery_app.conf.beat_schedule["audit-export-every-five-minutes"]
+    interval = entry["schedule"].run_every
+    assert isinstance(interval, timedelta)
+    assert 0 < audit_export._run_budget_seconds() < interval.total_seconds()
+
+
+def test_a_failed_post_mid_run_keeps_the_batches_already_delivered(
+    session, destination, monkeypatch
+) -> None:
+    """The cursor ends exactly after the last accepted batch: not before it,
+    which would re-send what the collector already holds, and not after it,
+    which would skip what it never received."""
+    from services.audit_export_service import get_or_create_cursor
+    from tasks import audit_export
+
+    at = _configure(monkeypatch, destination, batch_size=2)
+    _cursor_just_before(session, destination=destination, moment=at)
+    _insert_audit_rows(session, count=5, at=at)
+    accepted: list[list[str]] = []
+
+    async def _second_fails(url, body):
+        if accepted:
+            raise audit_export.AuditExportDeliveryError("collector went away")
+        accepted.append(_ids_posted(body))
+        return 202
+
+    monkeypatch.setattr(audit_export, "_post", _second_fails)
+
+    with pytest.raises(audit_export.AuditExportDeliveryError):
+        audit_export._run(None)
+
+    cursor = get_or_create_cursor(session, destination=destination)
+    session.refresh(cursor)
+    assert str(cursor.last_id) == accepted[0][-1]
+    assert int(cursor.rows_exported) == 2
+
+
+def test_a_failed_post_leaves_a_resumed_position_where_it_was(
+    session, destination, monkeypatch
+) -> None:
+    """The older check starts from a fresh cursor, where "did not move" and
+    "was reset to the beginning" look the same. This one starts from a real
+    position so the two differ."""
+    from services.audit_export_service import get_or_create_cursor
+    from tasks import audit_export
+
+    at = _configure(monkeypatch, destination, batch_size=2)
+    pinned = _cursor_just_before(session, destination=destination, moment=at)
+    before = (pinned.last_created_at, pinned.last_id, int(pinned.rows_exported))
+    _insert_audit_rows(session, count=3, at=at)
+
+    async def _fails(*_args, **_kwargs):
+        raise audit_export.AuditExportDeliveryError("collector is down")
+
+    monkeypatch.setattr(audit_export, "_post", _fails)
+
+    with pytest.raises(audit_export.AuditExportDeliveryError):
+        audit_export._run(None)
+
+    cursor = get_or_create_cursor(session, destination=destination)
+    session.refresh(cursor)
+    assert (cursor.last_created_at, cursor.last_id, int(cursor.rows_exported)) == before
+
+
+def test_two_overlapping_runs_do_not_send_the_same_batch_twice(
+    session, destination, monkeypatch
+) -> None:
+    """A retry landing on top of the next beat.
+
+    The first run is held inside its post; the second starts meanwhile. Without
+    the lock both read the same position and post the same rows.
+    """
+    import threading
+
+    from tasks import audit_export
+
+    at = _configure(monkeypatch, destination, batch_size=2)
+    _cursor_just_before(session, destination=destination, moment=at)
+    written = set(_insert_audit_rows(session, count=3, at=at))
+    posted: list[str] = []
+    guard = threading.Lock()
+    first_inside = threading.Event()
+    release_first = threading.Event()
+
+    async def _slow_then_accept(url, body):
+        with guard:
+            is_first = not first_inside.is_set()
+            first_inside.set()
+            posted.extend(_ids_posted(body))
+        if is_first:
+            assert release_first.wait(timeout=30)
+        return 202
+
+    monkeypatch.setattr(audit_export, "_post", _slow_then_accept)
+
+    outcome: dict[str, object] = {}
+
+    def _first_run() -> None:
+        try:
+            outcome["first"] = audit_export._run(None)
+        except BaseException as exc:  # noqa: BLE001
+            outcome["first_error"] = exc
+
+    worker = threading.Thread(target=_first_run)
+    worker.start()
+    try:
+        assert first_inside.wait(timeout=30)
+        from structlog.testing import capture_logs
+
+        with capture_logs() as logged:
+            second = audit_export._run(None)
+    finally:
+        release_first.set()
+        worker.join(timeout=60)
+
+    assert "first_error" not in outcome, outcome.get("first_error")
+    assert second["status"] == "busy"
+    assert second["exported"] == 0
+    # A lock that stays held makes every later run end here, so it is logged
+    # where an operator watching warnings will see it.
+    busy_lines = [
+        entry for entry in logged
+        if entry.get("event") == "audit_export_run_already_in_progress"
+    ]
+    assert [entry["log_level"] for entry in busy_lines] == ["warning"]
+    assert sorted(posted) == sorted(written)
+
+    # And the lock is given back. Asked of the server rather than shown by a
+    # third run: a session advisory lock is reentrant, so a third run handed
+    # the same pooled connection would take it again even if it leaked.
+    class_id, object_id = audit_export._lock_key(destination)
+    held = session.execute(
+        text(
+            "SELECT count(*) FROM pg_locks WHERE locktype = 'advisory' "
+            "AND classid::bigint = :c AND objid::bigint = :o"
+        ),
+        {"c": class_id, "o": object_id & 0xFFFFFFFF},
+    ).scalar_one()
+    session.rollback()
+    assert held == 0
+    third = audit_export._run(None)
+    assert third["status"] == "idle"
+
+
+def test_nothing_is_held_open_while_the_collector_is_waited_on(
+    session, destination, monkeypatch
+) -> None:
+    """No transaction during the post, on the work session or on the
+    connection that holds the lock. A transaction left open across a slow
+    collector pins a snapshot for as long as the collector takes."""
+    from contextlib import contextmanager
+
+    import core.db
+    from tasks import audit_export
+
+    at = _configure(monkeypatch, destination, batch_size=2)
+    _cursor_just_before(session, destination=destination, moment=at)
+    _insert_audit_rows(session, count=1, at=at)
+
+    real_scope = core.db.sync_session_scope
+    captured: dict[str, object] = {}
+
+    @contextmanager
+    def _capturing_scope():
+        with real_scope() as work:
+            captured["session"] = work
+            yield work
+
+    monkeypatch.setattr(core.db, "sync_session_scope", _capturing_scope)
+    class_id, object_id = audit_export._lock_key(destination)
+    work_flags: list[bool] = []
+    holder_sets: list[list[tuple[object, object]]] = []
+
+    async def _inspect(url, body):
+        work_flags.append(captured["session"].in_transaction())  # type: ignore[attr-defined]
+        holders = session.execute(
+            text(
+                "SELECT a.state, a.xact_start FROM pg_locks l "
+                "JOIN pg_stat_activity a ON a.pid = l.pid "
+                "WHERE l.locktype = 'advisory' AND l.granted "
+                "AND l.classid::bigint = :c AND l.objid::bigint = :o"
+            ),
+            {"c": class_id, "o": object_id & 0xFFFFFFFF},
+        ).all()
+        session.rollback()
+        holder_sets.append([tuple(row) for row in holders])
+        return 202
+
+    monkeypatch.setattr(audit_export, "_post", _inspect)
+
+    audit_export._run(None)
+
+    assert work_flags, "the post never ran"
+    assert not any(work_flags)
+    for holders in holder_sets:
+        # Exactly one backend holds the destination's lock, and it is idle
+        # with no transaction, rather than "idle in transaction".
+        assert len(holders) == 1, holders
+        state, xact_start = holders[0]
+        assert state == "idle"
+        assert xact_start is None
+
+
+def test_a_batch_read_from_a_position_that_has_since_moved_does_not_move_it(
+    session, destination, monkeypatch
+) -> None:
+    """The conditional move, with the lock out of the picture.
+
+    Two batches read from the same position stand for two runs that both got
+    past the lock somehow. The second to advance must leave the cursor where
+    the first put it, rather than writing its own end over it.
+    """
+    from dataclasses import replace
+
+    from services.audit_export_service import advance_cursor, collect_batch
+
+    monkeypatch.setenv("AUDIT_EXPORT_LAG_SECONDS", "0")
+    monkeypatch.setenv("AUDIT_EXPORT_BATCH_SIZE", "2")
+    at = _own_window()
+    cursor = _cursor_just_before(session, destination=destination, moment=at)
+    _insert_audit_rows(session, count=3, at=at)
+
+    first = collect_batch(session, cursor=cursor)
+    stale = collect_batch(session, cursor=cursor)
+    assert advance_cursor(session, cursor=cursor, batch=first) is True
+    position = (cursor.last_created_at, cursor.last_id, int(cursor.rows_exported))
+
+    # A stale batch that ends somewhere else entirely, so an unconditional
+    # move would show up as a change of position.
+    elsewhere = replace(stale, last_id=uuid.UUID(int=(1 << 128) - 1))
+    assert advance_cursor(session, cursor=cursor, batch=elsewhere) is False
+
+    session.refresh(cursor)
+    assert (cursor.last_created_at, cursor.last_id, int(cursor.rows_exported)) == position
+
+
+def test_a_run_that_finds_the_position_moved_stops_instead_of_carrying_on(
+    session, destination, monkeypatch
+) -> None:
+    """What the task does with a refused move: stop, report it, and leave the
+    position to whoever moved it."""
+    from services.audit_export_service import get_or_create_cursor
+    from tasks import audit_export
+
+    at = _configure(monkeypatch, destination, batch_size=2)
+    _cursor_just_before(session, destination=destination, moment=at)
+    _insert_audit_rows(session, count=5, at=at)
+    far = datetime.now(tz=UTC) + timedelta(days=1)
+    posts: list[list[str]] = []
+
+    async def _accept_and_move(url, body):
+        posts.append(_ids_posted(body))
+        # Somebody else moves the cursor while this batch is in flight.
+        session.execute(
+            text(
+                "UPDATE audit_export_cursors SET last_created_at = :at, "
+                "last_id = :id WHERE destination = :d"
+            ),
+            {"at": far, "id": str(uuid.UUID(int=7)), "d": destination},
+        )
+        session.commit()
+        return 202
+
+    monkeypatch.setattr(audit_export, "_post", _accept_and_move)
+
+    result = audit_export._run(None)
+
+    assert result["status"] == "superseded"
+    assert len(posts) == 1
+    cursor = get_or_create_cursor(session, destination=destination)
+    session.refresh(cursor)
+    assert cursor.last_id == uuid.UUID(int=7)
+
+
+def test_lock_keys_are_int4_pairs_that_differ_by_destination() -> None:
+    from tasks import audit_export
+
+    keys = {
+        audit_export._lock_key(f"https://collector.example/{n}") for n in range(50)
+    }
+    assert len(keys) == 50
+    for class_id, object_id in keys:
+        assert class_id == audit_export._LOCK_CLASS_ID
+        assert -(1 << 31) <= object_id < (1 << 31)
+
+
+def test_a_failed_unlock_does_not_replace_what_the_run_returned() -> None:
+    """The lock connection can break mid-run; the server has dropped the lock
+    by then, and the run's own outcome is what the caller needs to see."""
+    from tasks import audit_export
+
+    calls: list[str] = []
+
+    class _Result:
+        def scalar(self) -> bool:
+            return True
+
+    class _Conn:
+        def execution_options(self, **_kwargs):
+            return self
+
+        def execute(self, stmt):
+            name = str(stmt)
+            calls.append(name)
+            if "pg_advisory_unlock" in name:
+                raise RuntimeError("server closed the connection")
+            return _Result()
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *_exc) -> None:
+            return None
+
+    class _Engine:
+        def connect(self):
+            return _Conn()
+
+    with audit_export._destination_lock(_Engine(), "https://collector.example/x") as got:  # type: ignore[arg-type]
+        outcome = got
+
+    assert outcome is True
+    # The unlock was attempted, and its failure stayed inside the helper.
+    assert any("pg_advisory_unlock" in call for call in calls)
