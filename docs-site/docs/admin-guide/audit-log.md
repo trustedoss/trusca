@@ -208,9 +208,11 @@ the cursor row say how far it got.
 **It is delivered at least once, and one run at a time.** Only one run works a
 destination at a time; a retry that lands on top of the next scheduled run
 finds the first still going and steps aside, so the two never send the same
-batch. A batch can still arrive twice in one case: your collector accepted it
-but the worker stopped before recording that. Deduplicate on the row `id` if
-your collector cares.
+batch. A batch can still arrive twice when your collector accepted it but the
+portal never learned that: the response was lost or arrived after
+`NOTIFICATION_HTTP_TIMEOUT_SECONDS`, so the task retries and sends it again, or
+the worker stopped before recording the delivery. Deduplicate on the row `id`
+if your collector cares.
 
 **It stays slightly behind the present.** A row is stamped when its
 transaction commits, so a transaction that began earlier can commit later. If

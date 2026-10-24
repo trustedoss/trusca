@@ -149,7 +149,9 @@ def _run(self: Any) -> dict[str, Any]:
     engine = get_sync_session_factory().kw["bind"]
     with _destination_lock(engine, url) as locked:
         if not locked:
-            log.info("audit_export_run_already_in_progress", host=_safe_host(url))
+            # WARNING rather than INFO: a lock that stays held turns every
+            # later run into this line, and the export stops without an error.
+            log.warning("audit_export_run_already_in_progress", host=_safe_host(url))
             return {"status": "busy", "exported": 0}
         with sync_session_scope() as session:
             return _drain(session, url)

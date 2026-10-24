@@ -820,7 +820,10 @@ def test_two_overlapping_runs_do_not_send_the_same_batch_twice(
     worker.start()
     try:
         assert first_inside.wait(timeout=30)
-        second = audit_export._run(None)
+        from structlog.testing import capture_logs
+
+        with capture_logs() as logged:
+            second = audit_export._run(None)
     finally:
         release_first.set()
         worker.join(timeout=60)
@@ -828,6 +831,13 @@ def test_two_overlapping_runs_do_not_send_the_same_batch_twice(
     assert "first_error" not in outcome, outcome.get("first_error")
     assert second["status"] == "busy"
     assert second["exported"] == 0
+    # A lock that stays held makes every later run end here, so it is logged
+    # where an operator watching warnings will see it.
+    busy_lines = [
+        entry for entry in logged
+        if entry.get("event") == "audit_export_run_already_in_progress"
+    ]
+    assert [entry["log_level"] for entry in busy_lines] == ["warning"]
     assert sorted(posted) == sorted(written)
 
     # And the lock is given back. Asked of the server rather than shown by a
