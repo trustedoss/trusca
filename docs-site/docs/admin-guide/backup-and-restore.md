@@ -154,9 +154,20 @@ they write to.
   both worker-default and worker-scan.
 
 All of these pods must see the same files, so on a multi-node cluster the PVC
-must be `ReadWriteMany`. Set `backups.persistence.storageClassName` to an
-RWX-capable class, as for the scan workspace; the install notes warn when it
-is left on the cluster default.
+must be `ReadWriteMany`, as for the scan workspace. Unless you set them,
+`backups.persistence.accessMode` and `backups.persistence.storageClassName`
+are taken from `workspace.persistence`, so the backup store lands on the class
+your workspace already uses. The install notes warn when the effective class
+is the cluster default with `ReadWriteMany`.
+
+**Upgrading from a chart without the backup volume.** The upgrade adds a new
+PVC, and the backend and worker pods wait until it binds. Because it inherits
+the workspace's access mode and class, an install whose workspace binds gets a
+backup PVC on the same class. Before upgrading, set
+`backups.persistence.storageClassName` explicitly if your workspace uses
+`existingClaim` (the chart cannot see that claim's class), check that the
+class can provision another `backups.persistence.size` volume, or point
+`backups.persistence.existingClaim` at storage you created.
 
 **Sizing.** A backup holds a compressed database dump and a tar of the scan
 workspace, so it grows with the workspace rather than the database. Seven

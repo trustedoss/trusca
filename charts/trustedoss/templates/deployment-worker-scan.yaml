@@ -114,7 +114,7 @@ spec:
             {{- include "trustedoss.extraEnvFrom" . | nindent 12 }}
           env:
             {{- include "trustedoss.runtimeSecretEnv" . | nindent 12 }}
-            {{- if include "trustedoss.worker.runsBackupTasks" (dict "root" $ "own" "scan") }}
+            {{- if include "trustedoss.worker.consumesDefaultQueue" (dict "root" $ "own" "scan") }}
             # #572: this worker kind subscribes to worker.queues.default, where
             # trustedoss.backup.run / .restore are routed, so it writes and
             # reads the backup store the backend serves.
@@ -141,7 +141,7 @@ spec:
             # here; backend mounts the same volume read-only for telemetry).
             - name: trivy-cache
               mountPath: {{ .Values.env.trivy.dbCacheDir }}
-            {{- if include "trustedoss.worker.runsBackupTasks" (dict "root" $ "own" "scan") }}
+            {{- if include "trustedoss.worker.consumesDefaultQueue" (dict "root" $ "own" "scan") }}
             {{- include "trustedoss.backups.volumeMount" . | nindent 12 }}
             {{- end }}
             {{- include "trustedoss.extraVolumeMounts" . | nindent 12 }}
@@ -178,7 +178,7 @@ spec:
           {{- else }}
           emptyDir: {}
           {{- end }}
-        {{- if include "trustedoss.worker.runsBackupTasks" (dict "root" $ "own" "scan") }}
+        {{- if include "trustedoss.worker.consumesDefaultQueue" (dict "root" $ "own" "scan") }}
         {{- include "trustedoss.backups.volume" . | nindent 8 }}
         {{- end }}
         {{- include "trustedoss.extraVolumes" . | nindent 8 }}

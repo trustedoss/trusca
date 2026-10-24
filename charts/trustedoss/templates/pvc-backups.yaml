@@ -7,7 +7,7 @@ Backup store PVC (BACKUPS_ROOT, issue #572). Mounted at backups.mountPath by
 the backend (list / download / delete, and staging an uploaded archive for
 restore) and by every worker kind subscribed to worker.queues.default, which
 is where trustedoss.backup.run and trustedoss.backup.restore are routed. See
-trustedoss.worker.runsBackupTasks in _helpers.tpl.
+trustedoss.worker.consumesDefaultQueue in _helpers.tpl.
 
 Before this volume existed BACKUPS_ROOT was unset, so the backup service
 resolved the relative default "backups" against /app, which is read-only
@@ -36,11 +36,13 @@ metadata:
   {{- end }}
 spec:
   accessModes:
-    - {{ .Values.backups.persistence.accessMode }}
+    # backups.persistence.accessMode, or workspace.persistence.accessMode
+    # when unset (trustedoss.backups.accessMode in _helpers.tpl).
+    - {{ include "trustedoss.backups.accessMode" . }}
   resources:
     requests:
       storage: {{ .Values.backups.persistence.size }}
-  {{- if .Values.backups.persistence.storageClassName }}
-  storageClassName: {{ .Values.backups.persistence.storageClassName | quote }}
+  {{- with include "trustedoss.backups.storageClassName" . }}
+  storageClassName: {{ . | quote }}
   {{- end }}
 {{- end -}}

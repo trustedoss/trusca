@@ -151,10 +151,22 @@ sudo crontab -e
 - 백업과 복원 태스크가 라우팅되는 기본 Celery 큐를 소비하는 모든 워커. 기본
   `worker.subscriptions` 설정에서는 worker-default와 worker-scan 둘 다입니다.
 
-이 파드들이 모두 같은 파일을 봐야 하므로, 노드가 여러 대인 클러스터에서는 PVC가
-`ReadWriteMany`여야 합니다. 스캔 workspace와 마찬가지로
-`backups.persistence.storageClassName`에 RWX를 지원하는 클래스를 지정합니다.
-클러스터 기본 클래스를 그대로 두면 설치 안내문(NOTES)에 경고가 나옵니다.
+이 파드들이 모두 같은 파일을 봐야 하므로, 노드가 여러 대인 클러스터에서는 스캔
+workspace와 마찬가지로 PVC가 `ReadWriteMany`여야 합니다.
+`backups.persistence.accessMode`와 `backups.persistence.storageClassName`을 따로
+지정하지 않으면 `workspace.persistence`의 값을 그대로 쓰므로, 백업 볼륨은
+workspace가 이미 쓰는 클래스에 만들어집니다. 실제로 적용되는 클래스가 클러스터
+기본 클래스이고 접근 모드가 `ReadWriteMany`이면 설치 안내문(NOTES)에 경고가
+나옵니다.
+
+**백업 볼륨이 없던 차트에서 업그레이드할 때.** 업그레이드하면 PVC가 새로 생기고,
+백엔드와 워커 파드는 이 PVC가 바인딩될 때까지 시작하지 않습니다. 접근 모드와
+클래스를 workspace에서 가져오므로, workspace가 바인딩되어 있는 설치라면 백업 PVC도
+같은 클래스에 만들어집니다. 업그레이드 전에 다음을 확인합니다. workspace가
+`existingClaim`을 쓰면 차트가 그 PVC의 클래스를 알 수 없으므로
+`backups.persistence.storageClassName`을 직접 지정합니다. 그 클래스가
+`backups.persistence.size` 크기의 볼륨을 하나 더 만들 수 있는지 확인합니다. 직접
+만든 저장소를 쓰려면 `backups.persistence.existingClaim`에 지정합니다.
 
 **용량 산정.** 백업 하나에는 압축한 데이터베이스 덤프와 스캔 workspace의 tar가
 들어 있어서, 크기가 데이터베이스보다 workspace 크기를 따라갑니다. 매일 만드는

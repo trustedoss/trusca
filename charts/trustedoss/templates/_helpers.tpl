@@ -340,14 +340,32 @@ backend lists, downloads and deletes backups, and stages an uploaded archive
 for restore, in the same directory. So the backend and every worker that can
 take a backup task mount the same volume at the same path.
 
-`trustedoss.worker.runsBackupTasks` answers "true" for a worker kind whose
+`trustedoss.worker.consumesDefaultQueue` answers "true" for a worker kind whose
 subscription list contains worker.queues.default. Call with
 `{root: $, own: "scan"}` or `{root: $, own: "default"}`.
 */}}
-{{- define "trustedoss.worker.runsBackupTasks" -}}
+{{- define "trustedoss.worker.consumesDefaultQueue" -}}
 {{- $w := .root.Values.worker -}}
 {{- $subs := index $w.subscriptions .own | default list -}}
 {{- if has $w.queues.default $subs -}}true{{- end -}}
+{{- end -}}
+
+{{/*
+Effective access mode and storage class for the backup PVC. Each is taken
+from backups.persistence when set and otherwise inherited from
+workspace.persistence. The backup store has the same sharing requirement as
+the workspace (the backend and the workers on possibly different nodes), so
+whatever an install already chose for the workspace is the right default
+here. Without this, an upgrade of an install whose workspace was on a named
+RWX class, or on ReadWriteOnce pinned to one node, would add a PVC on the
+cluster default class in ReadWriteMany, and the new pods would stay Pending.
+*/}}
+{{- define "trustedoss.backups.accessMode" -}}
+{{- .Values.backups.persistence.accessMode | default .Values.workspace.persistence.accessMode -}}
+{{- end -}}
+
+{{- define "trustedoss.backups.storageClassName" -}}
+{{- .Values.backups.persistence.storageClassName | default .Values.workspace.persistence.storageClassName -}}
 {{- end -}}
 
 {{- define "trustedoss.backups.env" -}}

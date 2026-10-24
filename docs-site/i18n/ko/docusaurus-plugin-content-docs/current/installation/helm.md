@@ -400,13 +400,39 @@ worker-scan은 cdxgen을 실행하고, cdxgen은 스캔 대상 프로젝트의 �
 - 클러스터 DNS(기본값은 `kube-system`의 kube-dns, `networkPolicy.workerScan.dns`)
 - 번들 Postgres와 Redis 파드
 - 공용 인터넷의 TCP 443, 80, 22, 9418 포트. 사설 대역(RFC 1918), 통신사급 NAT,
-  링크 로컬, 루프백 대역은 제외하므로 Kubernetes API와 클라우드 메타데이터
-  엔드포인트에는 닿지 않습니다.
+  링크 로컬, 루프백 대역은 제외합니다.
 - `networkPolicy.workerScan.extraEgress`에 추가한 규칙
+
+제외하는 대역은 사설 주소 공간입니다. 파드, Service, 노드 주소와 클라우드 메타데이터
+엔드포인트(169.254.169.254)는 보통 이 안에 있습니다. 공인 주소에 있는 대상은 위
+포트로 계속 접근할 수 있고, 관리형 클러스터의 공개 API 엔드포인트(443)도
+여기에 해당합니다. 다만 차트의 ServiceAccount는 토큰을 마운트하지 않으므로 워커가
+그 엔드포인트에 제시할 자격증명은 없습니다.
 
 다른 워크로드에는 적용되지 않습니다. 이 정책은 NetworkPolicy를 적용하는 CNI에서만
 효과가 있습니다. 적용하지 않는 CNI에서는 정책이 받아들여지기만 하고 아무 동작도
 하지 않습니다.
+
+NodeLocal DNSCache를 쓰는 클러스터에서는 파드가 hostNetwork 파드의
+169.254.20.10으로 이름을 조회합니다. 이 주소는 DNS 셀렉터에 맞지 않고 인터넷
+규칙에서도 제외되므로, `extraEgress`에 `169.254.20.10/32`의 53번 포트(UDP와 TCP)
+`ipBlock` 규칙을 추가합니다.
+
+**기본 큐 태스크도 이 정책을 따릅니다.** 기본 설정에서 worker-scan은 기본 큐도
+구독하므로(`worker.subscriptions.scan`) 이메일 알림(SMTP 587, 465, 25 포트,
+사설 주소의 릴레이인 경우가 많음)이나 티켓·웹훅 전송(내부 호스트인 경우가 많음)
+같은 기본 큐 태스크도 실행합니다. 정책을 켜면 이 태스크들은 worker-scan이 메시지를
+가져갔을 때만 실패합니다. 정책을 켜기 전에, 기본 큐가 모두 처리된 뒤 worker-scan을
+스캔 큐만 구독하도록 줄이거나(차트 README의 "Queue split transition" 참고), SMTP와
+티켓·웹훅 호스트를 `extraEgress`에 추가합니다. 정책과 기본 큐 구독이 함께 켜져
+있으면 설치 안내문(NOTES)에 경고가 나옵니다.
+
+```yaml
+worker:
+  subscriptions:
+    scan:
+      - trustedoss.scan
+```
 
 외부 Postgres나 Redis를 쓰면 차트가 그 위치를 알 수 없으므로
 `externalDatastoreEgress`에 직접 적습니다. 이 값이 없으면 워커가 데이터베이스에

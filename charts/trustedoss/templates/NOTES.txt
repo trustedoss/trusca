@@ -131,7 +131,8 @@ it carries no risk here regardless of accessMode.
 */}}
 {{- $workspaceRWXRisk := and .Values.workspace.persistence.enabled (eq .Values.workspace.persistence.accessMode "ReadWriteMany") (not .Values.workspace.persistence.storageClassName) (not .Values.workspace.persistence.existingClaim) }}
 {{- $trivyCacheRWXRisk := and .Values.trivyCache.persistence.enabled (eq .Values.trivyCache.persistence.accessMode "ReadWriteMany") (not .Values.trivyCache.persistence.storageClassName) (not .Values.trivyCache.persistence.existingClaim) }}
-{{- $backupsRWXRisk := and .Values.backups.persistence.enabled (eq .Values.backups.persistence.accessMode "ReadWriteMany") (not .Values.backups.persistence.storageClassName) (not .Values.backups.persistence.existingClaim) }}
+{{- /* backups inherits accessMode / storageClassName from workspace when unset, so the check reads the effective values (_helpers.tpl). */}}
+{{- $backupsRWXRisk := and .Values.backups.persistence.enabled (eq (include "trustedoss.backups.accessMode" .) "ReadWriteMany") (not (include "trustedoss.backups.storageClassName" .)) (not .Values.backups.persistence.existingClaim) }}
 {{- $rwxRisky := list }}
 {{- if $workspaceRWXRisk }}{{- $rwxRisky = append $rwxRisky "workspace.persistence" }}{{- end }}
 {{- if $trivyCacheRWXRisk }}{{- $rwxRisky = append $rwxRisky "trivyCache.persistence" }}{{- end }}
@@ -145,4 +146,26 @@ hangs. Set storageClassName to an RWX-capable class on {{ join ", " $rwxRisky }}
 (nfs / efs / filestore / longhorn) unless every backend and worker pod is
 pinned to one node. See docs-site/docs/installation/helm.md "Scans fail on
 multi-node clusters".
+{{- end }}
+
+{{- /*
+#572 review: the worker-scan NetworkPolicy applies to every task worker-scan
+runs, and while worker.subscriptions.scan keeps worker.queues.default (the
+default) that includes default-queue tasks: notifications over SMTP (often
+587/465/25, often to a relay on a private address) and ticket/webhook posts
+(often to an internal host). Those fail or succeed depending on which worker
+takes the message, which is the hardest kind of failure to diagnose, so the
+install says so up front.
+*/}}
+{{- if and .Values.networkPolicy.enabled (include "trustedoss.worker.consumesDefaultQueue" (dict "root" $ "own" "scan")) }}
+
+WARNING: networkPolicy.enabled restricts worker-scan, and worker-scan still
+subscribes to {{ .Values.worker.queues.default }} (worker.subscriptions.scan), so it also runs
+default-queue tasks such as email notifications and ticket/webhook posts under
+that policy. Those reach SMTP relays and internal hosts the policy does not
+allow, and fail only when worker-scan happens to take them. Either narrow
+worker.subscriptions.scan to ["{{ .Values.worker.queues.scan }}"] once the default queue has
+drained, or add the SMTP / ticket / webhook hosts to
+networkPolicy.workerScan.extraEgress. See docs-site/docs/installation/helm.md
+"Network policy for the scan worker".
 {{- end }}

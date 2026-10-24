@@ -407,12 +407,41 @@ renders a NetworkPolicy for that pod: no ingress, and egress only to
 - cluster DNS (kube-dns in `kube-system` by default, `networkPolicy.workerScan.dns`),
 - the bundled Postgres and Redis pods,
 - the public internet on TCP 443, 80, 22 and 9418, excluding private
-  (RFC 1918), carrier-grade NAT, link-local and loopback ranges, which keeps
-  the Kubernetes API and cloud metadata endpoints out of reach,
+  (RFC 1918), carrier-grade NAT, link-local and loopback ranges,
 - the rules you add in `networkPolicy.workerScan.extraEgress`.
+
+The excluded ranges cover addresses in private space, which is where pod,
+Service and node addresses and the cloud metadata endpoint (169.254.169.254)
+usually are. Anything on a public address stays reachable on those ports,
+including a managed cluster's public API endpoint on 443; the chart's
+ServiceAccounts mount no token, so the worker has no credential to present
+there.
 
 Other workloads are not covered. The policy only takes effect on a CNI that
 enforces NetworkPolicy; on one that does not, it is accepted and does nothing.
+
+On a cluster running NodeLocal DNSCache, pods resolve through 169.254.20.10
+on a hostNetwork pod, which the DNS selectors do not match and the internet
+rule excludes. Add an `ipBlock` rule for `169.254.20.10/32` on port 53 (UDP
+and TCP) to `extraEgress`.
+
+**Default-queue tasks run under this policy too.** By default worker-scan also
+subscribes to the default queue (`worker.subscriptions.scan`), so it runs
+default-queue tasks such as email notifications (SMTP on 587, 465 or 25, often
+to a relay on a private address) and ticket and webhook posts (often to an
+internal host). Under the policy these fail only when worker-scan happens to
+take the message. Before enabling the policy, either narrow worker-scan to the
+scan queue once the default queue has drained (chart README, "Queue split
+transition"), or add the SMTP, ticket and webhook hosts to `extraEgress`. The
+install notes warn while both the policy and the default-queue subscription
+are on.
+
+```yaml
+worker:
+  subscriptions:
+    scan:
+      - trustedoss.scan
+```
 
 With an external Postgres or Redis, the chart cannot tell where they live, so
 you list them in `externalDatastoreEgress`; the render fails without it rather

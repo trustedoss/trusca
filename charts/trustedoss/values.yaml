@@ -364,17 +364,23 @@ backups:
     # false falls back to a per-pod emptyDir: backups vanish with the pod and
     # the backend cannot see what a worker wrote. Evaluation only.
     enabled: true
+    # Empty inherits workspace.persistence.accessMode (ReadWriteMany by
+    # default), and storageClassName below inherits
+    # workspace.persistence.storageClassName. The backup store is shared by
+    # the same pods as the workspace, so an install's workspace choice is the
+    # right default; it also means an upgrade that adds this PVC lands it on
+    # the class the install already uses. Set either value to override.
     # ReadWriteMany is required when the backend and the workers land on
-    # different nodes (the default). Use ReadWriteOnce ONLY if you pin them
-    # to one node.
-    accessMode: ReadWriteMany
+    # different nodes. With workspace.persistence.existingClaim the chart
+    # cannot see that claim's class, so set storageClassName here explicitly.
+    accessMode: ""
     # One backup is a gzipped pg_dump plus a tar of the scan workspace, so it
     # is sized like the workspace, not the database. Seven daily `auto-`
     # backups are kept, plus every manual one until you delete it. Budget
     # roughly (database dump + workspace) x 8.
     size: 50Gi
-    # storageClassName: "" leaves it to the cluster default. Set a RWX class
-    # on multi-node clusters.
+    # Empty inherits workspace.persistence.storageClassName; if that is
+    # empty too, the cluster default class is used.
     storageClassName: ""
     # Use a pre-created PVC instead of provisioning one.
     existingClaim: ""
@@ -1153,6 +1159,14 @@ metrics:
 #     and loopback ranges in `internet.ipBlocks[].except`,
 #   - anything in `extraEgress` (an internal package mirror, a git server).
 #
+# The policy covers every task worker-scan runs. While worker.subscriptions.scan
+# keeps worker.queues.default (the default), that includes default-queue tasks:
+# email notifications over SMTP (often 587/465/25, often to a relay on a
+# private address) and ticket / webhook posts (often to internal hosts). Those
+# then fail only when worker-scan happens to take the message. Either narrow
+# worker.subscriptions.scan to the scan queue first (once the default queue has
+# drained), or add those hosts to extraEgress. NOTES.txt warns about this.
+#
 # Requires a CNI that enforces NetworkPolicy (Calico, Cilium, and others).
 # On one that does not, the policy is accepted and silently has no effect.
 # ===========================================================================
@@ -1164,6 +1178,10 @@ networkPolicy:
       # The defaults match kube-dns / CoreDNS on most distributions; adjust
       # for clusters that label DNS differently (OpenShift, for example, runs
       # it in openshift-dns with dns.operator.openshift.io/daemonset-dns).
+      # NodeLocal DNSCache answers on 169.254.20.10 from a hostNetwork pod,
+      # which these pod selectors do not match and the internet rule
+      # excludes; on such a cluster add an ipBlock rule for 169.254.20.10/32
+      # on port 53 to extraEgress.
       namespaceSelector:
         matchLabels:
           kubernetes.io/metadata.name: kube-system
@@ -1207,7 +1225,11 @@ networkPolicy:
       # "The internet" as CIDRs. The except lists remove RFC 1918 private
       # space, carrier-grade NAT, link-local (cloud metadata at
       # 169.254.169.254 lives here) and loopback, which is where pod, Service
-      # and node addresses usually are. If your cluster uses public address
+      # and node addresses usually are. Anything on a public address stays
+      # reachable on these ports, including a managed cluster's public API
+      # endpoint on 443; the chart mounts no ServiceAccount token
+      # (automountServiceAccountToken: false), so the worker has no
+      # credential to present there. If your cluster uses public address
       # space internally, add those ranges to `except` too.
       ipBlocks:
         - cidr: 0.0.0.0/0

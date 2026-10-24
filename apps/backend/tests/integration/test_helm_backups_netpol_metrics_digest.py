@@ -25,6 +25,7 @@ from __future__ import annotations
 
 import shutil
 import subprocess
+import tempfile
 from pathlib import Path
 from typing import Any
 
@@ -121,6 +122,57 @@ def _mounts(deployment: dict[str, Any]) -> dict[str, dict[str, Any]]:
 
 def _volumes(deployment: dict[str, Any]) -> dict[str, dict[str, Any]]:
     return {v["name"]: v for v in deployment["spec"]["template"]["spec"]["volumes"]}
+
+
+def _render_notes(*extra: str) -> str:
+    """Render NOTES.txt without a cluster.
+
+    `helm template` never prints NOTES.txt, and `helm install --dry-run`
+    needs a reachable cluster on Helm 3 (see test_helm_notes_connection_budget.py).
+    So the chart is copied and NOTES.txt is wrapped in a named template that a
+    probe ConfigMap includes: the text goes through the same template engine,
+    values and helpers as at install time, and comes back as a string.
+    """
+    assert HELM is not None
+    with tempfile.TemporaryDirectory() as tmp:
+        chart = Path(tmp) / "trustedoss"
+        shutil.copytree(CHART_DIR, chart)
+        templates = chart / "templates"
+        notes = (templates / "NOTES.txt").read_text()
+        (templates / "NOTES.txt").unlink()
+        (templates / "_notes_probe.tpl").write_text(
+            '{{- define "probe.notes" -}}\n' + notes + "\n{{- end -}}\n"
+        )
+        (templates / "notes-probe.yaml").write_text(
+            "apiVersion: v1\nkind: ConfigMap\nmetadata:\n  name: notes-probe\n"
+            'data:\n  notes: {{ include "probe.notes" . | toJson }}\n'
+        )
+        cmd = [
+            HELM,
+            "template",
+            _RELEASE,
+            str(chart),
+            "--show-only",
+            "templates/notes-probe.yaml",
+            *_REQUIRED_SET,
+            *extra,
+        ]
+        result = subprocess.run(cmd, capture_output=True, text=True, timeout=60, check=False)
+    assert (
+        result.returncode == 0
+    ), f"helm template failed:\nSTDOUT:\n{result.stdout}\nSTDERR:\n{result.stderr}"
+    rendered: str = yaml.safe_load(result.stdout)["data"]["notes"]
+    assert "helm upgrade" in rendered, "probe did not render NOTES.txt"
+    return rendered
+
+
+def _warnings(notes: str) -> list[str]:
+    """Each WARNING paragraph of rendered NOTES, as one line."""
+    return [
+        " ".join(block.split())
+        for block in notes.split("\n\n")
+        if block.lstrip().startswith("WARNING:")
+    ]
 
 
 def _values() -> dict[str, Any]:
@@ -260,9 +312,98 @@ def test_backup_pvc_size_class_and_keep_policy_are_configurable() -> None:
     assert "helm.sh/resource-policy" not in (pvc["metadata"].get("annotations") or {})
 
 
+def _backup_pvc(*extra: str) -> dict[str, Any]:
+    return _find(_render(*extra), "PersistentVolumeClaim", f"{_FULLNAME}-backups")
+
+
+def test_backup_pvc_inherits_the_workspace_class_and_access_mode() -> None:
+    """An upgrade adds this PVC to an install that already chose storage for
+    its workspace. Landing it on the cluster default class in ReadWriteMany
+    instead leaves the new backend and worker pods Pending on such installs."""
+    pvc = _backup_pvc(
+        "--set",
+        "workspace.persistence.storageClassName=efs",
+        "--set",
+        "workspace.persistence.accessMode=ReadWriteOnce",
+    )
+    assert pvc["spec"]["storageClassName"] == "efs"
+    assert pvc["spec"]["accessModes"] == ["ReadWriteOnce"]
+
+
+def test_backup_pvc_on_workspace_defaults_sets_no_class_and_stays_rwx() -> None:
+    pvc = _backup_pvc()
+    assert "storageClassName" not in pvc["spec"]
+    assert pvc["spec"]["accessModes"] == ["ReadWriteMany"]
+
+
+def test_explicit_backup_class_and_access_mode_override_the_workspace() -> None:
+    pvc = _backup_pvc(
+        "--set",
+        "workspace.persistence.storageClassName=efs",
+        "--set",
+        "workspace.persistence.accessMode=ReadWriteOnce",
+        "--set",
+        "backups.persistence.storageClassName=nfs-backups",
+        "--set",
+        "backups.persistence.accessMode=ReadWriteMany",
+    )
+    assert pvc["spec"]["storageClassName"] == "nfs-backups"
+    assert pvc["spec"]["accessModes"] == ["ReadWriteMany"]
+
+
+def _rwx_warning(notes: str) -> str:
+    matches = [w for w in _warnings(notes) if "ReadWriteMany with no storageClassName" in w]
+    return matches[0] if matches else ""
+
+
+def test_notes_rwx_warning_names_the_backup_pvc_on_the_default_class() -> None:
+    assert "backups.persistence" in _rwx_warning(_render_notes())
+
+
+def test_notes_rwx_warning_follows_the_inherited_backup_class() -> None:
+    """With the workspace on a named class the backup PVC inherits it, so the
+    warning must not tell the operator the backup PVC is on the default."""
+    notes = _render_notes(
+        "--set",
+        "workspace.persistence.storageClassName=efs",
+        "--set",
+        "trivyCache.persistence.storageClassName=efs",
+    )
+    assert _rwx_warning(notes) == ""
+
+
 # ---------------------------------------------------------------------------
 # NetworkPolicy (#572)
 # ---------------------------------------------------------------------------
+
+
+def _default_queue_warning(notes: str) -> str:
+    matches = [w for w in _warnings(notes) if "networkPolicy.enabled restricts worker-scan" in w]
+    assert len(matches) <= 1
+    return matches[0] if matches else ""
+
+
+def test_notes_warn_when_the_policy_covers_default_queue_tasks() -> None:
+    """worker-scan subscribed to the default queue runs notifications and
+    ticket posts under the policy, which fail only when it takes them."""
+    warning = _default_queue_warning(_render_notes("--set", "networkPolicy.enabled=true"))
+    assert "trustedoss.default" in warning
+    assert "worker.subscriptions.scan" in warning
+    assert "extraEgress" in warning
+
+
+def test_notes_do_not_warn_without_the_policy() -> None:
+    assert _default_queue_warning(_render_notes()) == ""
+
+
+def test_notes_do_not_warn_once_worker_scan_takes_only_the_scan_queue() -> None:
+    notes = _render_notes(
+        "--set",
+        "networkPolicy.enabled=true",
+        "--set",
+        "worker.subscriptions.scan={trustedoss.scan}",
+    )
+    assert _default_queue_warning(notes) == ""
 
 
 def _policy(*extra: str) -> dict[str, Any]:
@@ -332,6 +473,11 @@ def test_networkpolicy_allows_dns_and_the_bundled_datastores_on_their_ports() ->
         (53, "TCP"),
     }
     values = _values()
+    docs = _render("--set", "networkPolicy.enabled=true")
+    workloads = {
+        "postgres": _find(docs, "StatefulSet", f"{_FULLNAME}-postgres"),
+        "redis": _find(docs, "Deployment", f"{_FULLNAME}-redis"),
+    }
     for component, port in (
         ("postgres", values["postgres"]["service"]["port"]),
         ("redis", values["redis"]["service"]["port"]),
@@ -339,6 +485,12 @@ def test_networkpolicy_allows_dns_and_the_bundled_datastores_on_their_ports() ->
         rules = _rules_with_pod_component(policy, component)
         assert len(rules) == 1, component
         assert rules[0]["ports"] == [{"port": port, "protocol": "TCP"}], component
+        # A selector that matches no pod allows nothing, and the worker
+        # loses its database. Check it against the real pod labels.
+        (peer,) = rules[0]["to"]
+        selector = peer["podSelector"]["matchLabels"]
+        pod_labels = workloads[component]["spec"]["template"]["metadata"]["labels"]
+        assert selector.items() <= pod_labels.items(), component
 
 
 def test_networkpolicy_internet_rule_excludes_private_and_metadata_ranges() -> None:

@@ -173,13 +173,22 @@ Narrowing `worker.subscriptions.scan` to the scan queue alone also removes the
 mount from worker-scan, which keeps database dumps off the pod that runs
 scanned projects' build scripts.
 
+UPGRADE NOTE: upgrading from a chart without this volume adds a new PVC, and
+the backend and worker pods do not start until it binds. Its access mode and
+storage class default to whatever `workspace.persistence` uses, so an install
+whose workspace already binds gets a backup PVC on the same class. Check
+before upgrading if the workspace uses `existingClaim` (set
+`backups.persistence.storageClassName` explicitly), if the class cannot
+provision another volume of `backups.persistence.size`, or if you would rather
+point `backups.persistence.existingClaim` at storage you created.
+
 | Key | Default | Description |
 |---|---|---|
 | `backups.mountPath` | `/opt/trustedoss/backups` | `BACKUPS_ROOT`. |
 | `backups.persistence.enabled` | `true` | Provision a PVC. `false` → per-pod `emptyDir`: backups vanish with the pod and the backend cannot see what a worker wrote. |
-| `backups.persistence.accessMode` | `ReadWriteMany` | RWX is required on multi-node clusters. |
+| `backups.persistence.accessMode` | `""` (inherits `workspace.persistence.accessMode`, `ReadWriteMany`) | RWX is required on multi-node clusters. |
 | `backups.persistence.size` | `50Gi` | One backup is a pg_dump plus a tar of the workspace. Budget roughly (dump + workspace) x 8 for seven daily backups plus manual ones. |
-| `backups.persistence.storageClassName` | `""` | Set an RWX class. |
+| `backups.persistence.storageClassName` | `""` (inherits `workspace.persistence.storageClassName`) | Set an RWX class to override. With `workspace.persistence.existingClaim` the chart cannot see that claim's class, so set this explicitly. |
 | `backups.persistence.existingClaim` | `""` | Use a pre-created PVC. |
 | `backups.persistence.keepOnUninstall` | `true` | Annotate the chart's PVC with `helm.sh/resource-policy: keep` so `helm uninstall` leaves the backups. |
 
@@ -383,9 +392,20 @@ Off by default. `networkPolicy.enabled: true` renders one NetworkPolicy for
 worker-scan, the pod that runs scanned projects' build tooling. It denies all
 ingress and allows egress only to cluster DNS, the bundled Postgres and Redis
 pods, the public internet on ports 443, 80, 22 and 9418 (minus private,
-carrier-grade NAT, link-local and loopback ranges, so the Kubernetes API and
-cloud metadata endpoints are out of reach), and the rules you add. Other
+carrier-grade NAT, link-local and loopback ranges, which is where pod, Service
+and node addresses and the cloud metadata endpoint usually are), and the rules
+you add. A public address, such as a managed cluster's public API endpoint on
+443, stays reachable; the chart's ServiceAccounts mount no token. Other
 workloads are not covered. It needs a CNI that enforces NetworkPolicy.
+
+The policy applies to every task worker-scan runs. While
+`worker.subscriptions.scan` keeps the default queue (the default), that
+includes email notifications (SMTP, often to a relay on a private address) and
+ticket / webhook posts (often to internal hosts), which then fail only when
+worker-scan takes them. Narrow worker-scan to the scan queue first, or add
+those hosts to `extraEgress`; NOTES.txt warns while both are on. On a cluster
+with NodeLocal DNSCache (169.254.20.10, hostNetwork), add a rule for that
+address on port 53 to `extraEgress`.
 
 | Key | Default | Description |
 |---|---|---|
