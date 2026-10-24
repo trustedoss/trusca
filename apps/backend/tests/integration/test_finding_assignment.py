@@ -328,8 +328,17 @@ async def _principal(user: User, team_id: uuid.UUID):  # noqa: ANN202
         "UTC",
     ],
 )
+@pytest.mark.parametrize(
+    "session_timezone",
+    # The connection's TimeZone setting, independent of the organization's.
+    # Engines set none, so a managed Postgres configured in local time hands
+    # out sessions in that zone. The written deadline used to be built as a
+    # naive UTC value and cast back in the session zone, which was only right
+    # when the session was UTC.
+    ["UTC", "Asia/Seoul", "America/New_York"],
+)
 async def test_sql_and_python_agree_on_the_effective_deadline(
-    client, severity, written_date, org_timezone  # noqa: ANN001
+    client, severity, written_date, org_timezone, session_timezone  # noqa: ANN001
 ) -> None:
     """The four NULL combinations, through the real list query and the real
     drawer path.
@@ -338,6 +347,8 @@ async def test_sql_and_python_agree_on_the_effective_deadline(
     the shape of the divergence, so each combination is driven through both
     rather than through the shared helper only.
     """
+    from sqlalchemy import text
+
     from services.due_date import effective_due
     from services.vulnerability_service import (
         get_vulnerability_detail,
@@ -356,14 +367,21 @@ async def test_sql_and_python_agree_on_the_effective_deadline(
 
     factory = await _factory(client)
     async with factory() as session:
+        # SET LOCAL ends with the transaction, so the pooled connection goes
+        # back unchanged. The SHOW afterwards proves the list query ran under
+        # it: a commit inside the call would have reset it and let the test
+        # pass under UTC without saying so.
+        await session.execute(text(f"SET LOCAL TIME ZONE '{session_timezone}'"))
         actor = await _principal(dev, team.id)
         items, _total, _distribution = await list_project_vulnerabilities(
             session, project_id=project.id, actor=actor
         )
+        in_force = (await session.execute(text("SHOW TIME ZONE"))).scalar_one()
         row = next(r for r in items if r["id"] == finding.id)
         detail = await get_vulnerability_detail(
             session, finding_id=finding.id, actor=actor
         )
+    assert in_force == session_timezone
 
     # The SQL row and the Python drawer must agree with each other...
     assert row["effective_due_date"] == detail["effective_due_date"]

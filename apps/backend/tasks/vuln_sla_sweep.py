@@ -28,7 +28,7 @@ A finding is "breached in this sweep" when ALL of:
 
           window_start <= due < now
 
-      where ``window_start`` is the previous completed sweep's ``now`` (see
+      where ``window_start`` is the previous succeeded sweep's ``now`` (see
       "Catch-up" below), so consecutive sweeps cover adjacent spans that do
       not overlap. A due date at exactly ``window_start`` belongs to this
       sweep; one at exactly ``now`` has not crossed yet and belongs to the
@@ -46,28 +46,41 @@ column and the drawer therefore cannot disagree about when a deadline passed.
 
 Catch-up (why a missed day is not lost)
 ---------------------------------------
-Each completed sweep stores its ``now`` in one Redis key
-(:data:`_ANCHOR_KEY`) and the next sweep starts its window there. A tick that
-never ran (beat down, worker down, the task failed before finishing) leaves
-the anchor where it was, so the next tick covers the whole gap in one
-aggregated alert per project. Because the spans are adjacent and half-open, a
-due date falls in exactly one of them: neither beat jitter nor an operator
-running the task by hand alerts it twice.
+Each sweep returns the instant it ran up to as ``window_end`` in its
+``detail_params``, and ``services.task_run_recorder`` stores that in the
+run's ``task_runs`` row. The next sweep reads the most recent SUCCEEDED run of
+this task and starts its window at that run's ``window_end``. The anchor is
+therefore in PostgreSQL, the system of record, and survives a restart of
+everything else.
 
-The anchor is written only after the notifications are enqueued, so a run
-that dies during the read leaves its span to the next run. Two fallbacks keep
-the window bounded:
+A tick that never ran (beat down, worker down) or that did not succeed (the
+entry point turns an unexpected error into a ``skipped`` row, a killed worker
+leaves the row unfinished) does not move the anchor, so the next tick covers
+the whole gap in one aggregated alert per project. Consecutive successful
+runs cover adjacent, half-open spans, so in the normal sequence a due date
+falls in exactly one of them and beat jitter does not repeat an alert.
 
-  - no anchor (first run, Redis flushed or unreadable) or an anchor that is
-    not an earlier instant: the trailing 24h, which is what the sweep did
-    before it kept an anchor;
+Delivery is at least once, not exactly once. The row is closed by the
+``task_postrun`` signal, after the notifications are enqueued, so a run that
+dies between the two leaves no succeeded row and the next run repeats its
+span. Two runs that overlap in time (a manual run while the beat run is
+still going) both start from the same anchor and both alert on it. Both are
+rare and the cost is a duplicate in-app row, which is the cheaper failure
+than a lost one.
+
+Two fallbacks keep the window bounded:
+
+  - no anchor (first run, or the history row was reclaimed by the
+    ``TASK_RUN_RETENTION_DAYS`` sweep) or an anchor that is not an earlier
+    instant: the trailing 24h, which is what the sweep did before it kept an
+    anchor;
   - an anchor older than :data:`_MAX_CATCH_UP` (7 days): clamped to that, and
     the dropped span is logged. A sweep switched off for a quarter and then
     switched back on should not announce three months of old deadlines as
     news; those findings are on the ``?sla=overdue`` list.
 
-The disabled path does not touch the anchor, so re-enabling the sweep is
-covered by the second fallback.
+A disabled run is recorded as ``skipped`` and is never an anchor, so
+re-enabling the sweep is covered by the second fallback.
 
 Findings whose due date crossed OUTSIDE any window, e.g. a vulnerability fixed
 years ago that REAPPEARS and inherits its original first_detected_at, landing
@@ -89,10 +102,10 @@ crossed-finding count, a severity breakdown, and a deep link to the project's
 Vulnerabilities tab pre-filtered to ``?sla=overdue``.
 
 CLAUDE.md compliance:
-  - Core rule #3: DB reads + broker enqueues behind a Celery beat; the only
-    state is the window anchor in Redis.
-  - Core rule #11: the toggle (``VULN_SLA_ALERTS_ENABLED``), the SLA windows
-    and the Redis URL are read at call time via ``core.config`` accessors.
+  - Core rule #1: the window anchor lives in PostgreSQL (``task_runs``).
+  - Core rule #3: DB reads + broker enqueues behind a Celery beat.
+  - Core rule #11: the toggle (``VULN_SLA_ALERTS_ENABLED``) and the SLA
+    windows are read at call time via ``core.config`` accessors.
   - §5 logging: structlog JSON; no user emails / tokens logged (only ids
     and counts).
 """
@@ -107,7 +120,7 @@ import structlog
 from sqlalchemy import String, cast, func, select
 from sqlalchemy.orm import Session
 
-from core.config import redis_url, vuln_sla_alerts_enabled
+from core.config import vuln_sla_alerts_enabled
 from core.db import sync_session_scope
 from models import (
     Membership,
@@ -119,6 +132,7 @@ from models import (
     Vulnerability,
     VulnerabilityFinding,
 )
+from models.task_run import TaskRun
 
 # The build gate's closed set is the single owner of "no longer open work"
 # (hardening rule #2: one vocabulary, one owner). Importing it keeps the
@@ -136,10 +150,13 @@ _DEFAULT_WINDOW = timedelta(hours=24)
 #: Furthest back a catch-up reaches. See the module docstring.
 _MAX_CATCH_UP = timedelta(days=7)
 
-#: Redis key holding the previous completed sweep's ``now`` (ISO 8601, UTC).
-#: No TTL: one key, and an expiring one would turn a long outage into a 24h
-#: window instead of the clamped catch-up.
-_ANCHOR_KEY = "trustedoss:vuln_sla_sweep:window_end"
+#: Registered Celery name; the ``task_runs`` rows the anchor is read from.
+_TASK_NAME = "trustedoss.vuln_sla_sweep"
+
+#: ``detail_code`` of a run that covered a window. Only rows carrying it are
+#: anchors, so a future change to what the task returns cannot turn an
+#: unrelated succeeded row into one by accident.
+_DETAIL_CODE = "vuln_sla_sweep.complete"
 
 # Severity display order for the in-app body breakdown (worst first).
 _SEVERITY_ORDER = ("critical", "high", "medium", "low")
@@ -153,7 +170,7 @@ _SEVERITY_ORDER = ("critical", "high", "medium", "low")
 def _window_start(anchor: datetime | None, *, now: datetime) -> datetime:
     """Where this sweep's window begins, given the stored anchor.
 
-    ``None`` or an anchor at or after ``now`` (a restored Redis snapshot, a
+    ``None`` or an anchor at or after ``now`` (a restored database snapshot, a
     clock that moved backwards) falls back to the trailing 24h. An anchor
     further back than :data:`_MAX_CATCH_UP` is clamped to it.
     """
@@ -189,33 +206,25 @@ def _parse_anchor(raw: Any) -> datetime | None:
     return parsed.astimezone(UTC)
 
 
-def _redis_client() -> Any:
-    import redis as redis_lib
+def _load_anchor(session: Session) -> datetime | None:
+    """``window_end`` of the most recent succeeded run, or ``None``.
 
-    return redis_lib.Redis.from_url(redis_url(), decode_responses=True)
-
-
-def _load_anchor() -> datetime | None:
-    """The previous completed sweep's ``now``, or ``None`` if unavailable.
-
-    A Redis failure degrades to the default window rather than failing the
-    sweep: one day's alerts at the old 24h semantics is better than none.
+    Only ``outcome = 'succeeded'`` counts: the recorder writes ``skipped``
+    for a disabled run and for one the entry point caught an error in, and
+    ``failed`` or an unfinished row for a run that died. None of those
+    covered their span.
     """
-    try:
-        return _parse_anchor(_redis_client().get(_ANCHOR_KEY))
-    except Exception as exc:  # noqa: BLE001 - degrade to the default window
-        log.warning("vuln_sla_sweep_anchor_read_failed", error=str(exc)[:300])
-        return None
-
-
-def _store_anchor(now: datetime) -> bool:
-    """Record ``now`` as the end of the span this sweep covered."""
-    try:
-        _redis_client().set(_ANCHOR_KEY, now.astimezone(UTC).isoformat())
-        return True
-    except Exception as exc:  # noqa: BLE001 - next run falls back, never raises
-        log.warning("vuln_sla_sweep_anchor_write_failed", error=str(exc)[:300])
-        return False
+    raw = session.execute(
+        select(TaskRun.result["detail_params"]["window_end"].astext)
+        .where(
+            TaskRun.task_name == _TASK_NAME,
+            TaskRun.outcome == "succeeded",
+            TaskRun.result["detail_code"].astext == _DETAIL_CODE,
+        )
+        .order_by(TaskRun.started_at.desc())
+        .limit(1)
+    ).scalar_one_or_none()
+    return _parse_anchor(raw)
 
 
 def _build_in_app_payload(
@@ -339,9 +348,11 @@ def _team_member_user_ids(session: Session, team_id: uuid.UUID) -> list[uuid.UUI
 
 
 def _run_sweep(*, now: datetime | None = None) -> dict[str, Any]:
-    """Body of the beat task (testable without Celery's task machinery).
+    """Body of the beat task.
 
-    ``now`` is injectable so the lifecycle tests can step through days.
+    Called directly, nothing is recorded and the anchor does not move: the
+    anchor is written by the task-run recorder on the Celery path only.
+    ``now`` is injectable so unit tests can pin it.
     """
     summary: dict[str, Any] = {
         "skipped": False,
@@ -359,9 +370,6 @@ def _run_sweep(*, now: datetime | None = None) -> dict[str, Any]:
         return summary
 
     now = (now or datetime.now(UTC)).astimezone(UTC)
-    window_start = _window_start(_load_anchor(), now=now)
-    summary["window_start"] = window_start.isoformat()
-    summary["window_end"] = now.isoformat()
 
     # Descriptors are collected inside the session and enqueued AFTER it
     # closes (rematch-beat precedent: a slow broker must not extend the DB
@@ -369,6 +377,9 @@ def _run_sweep(*, now: datetime | None = None) -> dict[str, Any]:
     to_enqueue: list[dict[str, Any]] = []
 
     with sync_session_scope() as session:
+        window_start = _window_start(_load_anchor(session), now=now)
+        summary["window_start"] = window_start.isoformat()
+        summary["window_end"] = now.isoformat()
         breached = _breached_counts(session, window_start=window_start, now=now)
         summary["projects_breached"] = len(breached)
         summary["findings_crossed"] = sum(
@@ -411,8 +422,17 @@ def _run_sweep(*, now: datetime | None = None) -> dict[str, Any]:
                 )
 
     summary["notifications_enqueued"] = _enqueue_notifications(to_enqueue)
-    # Last, so a run that died above leaves its span to the next run.
-    _store_anchor(now)
+    # Read by ``task_run_recorder`` when the task returns; the next run's
+    # anchor. Nothing here writes it, so a run that died above leaves its
+    # span to the next run.
+    summary["detail_code"] = _DETAIL_CODE
+    summary["detail_params"] = {
+        "window_start": summary["window_start"],
+        "window_end": summary["window_end"],
+        "projects_breached": summary["projects_breached"],
+        "findings_crossed": summary["findings_crossed"],
+        "notifications_enqueued": summary["notifications_enqueued"],
+    }
     log.info(
         "vuln_sla_sweep_complete",
         window_start=summary["window_start"],
@@ -466,8 +486,10 @@ def vuln_sla_sweep() -> dict[str, Any]:
     """Daily beat entry; see the module docstring for the selection contract.
 
     Never raises: any unexpected failure degrades to a skip summary + WARNING
-    so the beat stays healthy (rematch-beat convention). The anchor is not
-    advanced on that path, so the next run covers this run's span.
+    so the beat stays healthy (rematch-beat convention). That summary
+    carries a ``skipped_reason`` and no ``detail_code``, so the recorder
+    writes a ``skipped`` row that is never an anchor and the next run covers
+    this run's span.
     """
     structlog.contextvars.bind_contextvars(task_name="vuln_sla_sweep")
     try:
@@ -495,14 +517,16 @@ __all__ = [
     # Exposed for tests: driven directly without Celery task machinery.
     # ``_CLOSED_FINDING_STATUSES`` is a deliberate re-export: the contract
     # test asserts identity with the gate's set (hardening rule #2).
-    "_ANCHOR_KEY",
     "_CLOSED_FINDING_STATUSES",
     "_DEFAULT_WINDOW",
+    "_DETAIL_CODE",
     "_MAX_CATCH_UP",
     "_breached_counts",
     "_build_in_app_payload",
     "_enqueue_notifications",
+    "_load_anchor",
     "_parse_anchor",
     "_run_sweep",
+    "_TASK_NAME",
     "_window_start",
 ]

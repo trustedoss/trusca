@@ -530,9 +530,10 @@ Only **open** work ages against the clock in practice: a finding you disposition
 
 A daily Celery beat task (`trustedoss.vuln_sla_sweep`, 02:45 UTC) walks every project's **latest succeeded scan** and notifies the owning team when open findings have just crossed their due date:
 
-- Each run alerts on findings that crossed the deadline **since the previous completed run**, so each breach is announced exactly once. Running the task again by hand does not repeat an alert.
+- Each run alerts on findings that crossed the deadline **since the previous successful run**. Runs normally cover adjacent spans, so a breach is normally announced once.
 - A missed run is caught up. If a daily run does not happen (beat or worker down, or the run failed), the next run covers the whole gap in one alert per project, reaching back at most **7 days**. Breaches older than that, and aged breaches in general, live on the `?sla=overdue` view, not in your inbox.
-- The first run after an install or upgrade covers the last 24 hours. The sweep records where it stopped in Redis; if that record is lost (for example, Redis was flushed), the next run also falls back to the last 24 hours.
+- Delivery is at least once. A run that stops after sending its alerts but before it is recorded as finished, or two runs that overlap in time (for example, a manual run while the scheduled one is still going), can announce the same breach twice.
+- Where each run stopped is read from the background task history in the database. The first run after an install or upgrade, or after that history has aged out under `TASK_RUN_RETENTION_DAYS`, covers the last 24 hours.
 - Archived projects are skipped. Deactivated accounts and service accounts are not notified.
 - Only **open** findings count — the same closed set the build gate uses (`not_affected`, `fixed`, `false_positive` are excluded; `suppressed` still counts as open work).
 - The alert is **one aggregated in-app notification per project** for each member of the owning team (kind `vuln_sla_breach`), carrying the crossed-finding count, a severity breakdown, and a link to the Vulnerabilities tab pre-filtered to `?sla=overdue`. It is delivered in-app only, and your per-user in-app preference is respected.

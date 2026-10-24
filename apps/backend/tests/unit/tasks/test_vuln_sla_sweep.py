@@ -3,10 +3,11 @@ Unit tests for ``tasks.vuln_sla_sweep`` (no DB), X1 step 2.
 
 Covers the window arithmetic (``_window_start`` / ``_parse_anchor``), the
 in-app payload builder, the toggle short-circuit, the enqueue fan-out
-(recorded ``delay``), and the order of the run body (the anchor moves only
-after the work is done). The selection contract itself is SQL since #569 and
-lives in ``tests/integration/test_vuln_sla_sweep_db.py`` together with the
-missed-day lifecycle.
+(recorded ``delay``), and what the run body returns for the task-run
+recorder (the next run's anchor, or a skip that must not become one). The
+selection contract itself is SQL since #569 and lives in
+``tests/integration/test_vuln_sla_sweep_db.py`` together with the anchor read
+from ``task_runs`` and the missed-day lifecycle.
 """
 
 from __future__ import annotations
@@ -166,39 +167,23 @@ def test_status_vocabulary_mirrors_gate() -> None:
 # ---------------------------------------------------------------------------
 
 
-def test_run_sweep_disabled_never_opens_a_session_or_moves_the_anchor(
+def test_run_sweep_disabled_never_opens_a_session(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
+    """And returns no ``detail_code``: the recorder writes ``skipped`` and the
+    row is never an anchor."""
     monkeypatch.setenv("VULN_SLA_ALERTS_ENABLED", "false")
 
     def _explode(*_a: Any, **_k: Any) -> Any:
-        raise AssertionError("the disabled sweep must not touch the DB or Redis")
+        raise AssertionError("the disabled sweep must not touch the DB")
 
     monkeypatch.setattr(sweep_module, "sync_session_scope", _explode)
-    monkeypatch.setattr(sweep_module, "_redis_client", _explode)
 
     summary = sweep_module._run_sweep()
     assert summary["skipped"] is True
     assert summary["skipped_reason"] == "disabled"
     assert summary["notifications_enqueued"] == 0
-
-
-class _FakeRedis:
-    def __init__(self, value: str | None = None, *, fail: bool = False) -> None:
-        self.value = value
-        self.fail = fail
-        self.sets: list[str] = []
-
-    def get(self, _key: str) -> str | None:
-        if self.fail:
-            raise ConnectionError("redis down")
-        return self.value
-
-    def set(self, _key: str, value: str) -> None:
-        if self.fail:
-            raise ConnectionError("redis down")
-        self.sets.append(value)
-        self.value = value
+    assert "detail_code" not in summary
 
 
 class _NullSession:
@@ -211,16 +196,15 @@ class _NullSession:
 
 def _stub_run(
     monkeypatch: pytest.MonkeyPatch,
-    redis: _FakeRedis,
+    anchor: datetime | None,
     *,
     breached: Any = None,
-    order: list[str] | None = None,
 ) -> list[dict[str, Any]]:
     """Wire ``_run_sweep`` to fakes; returns the list ``_breached_counts``
     calls are recorded into."""
     monkeypatch.setenv("VULN_SLA_ALERTS_ENABLED", "true")
-    monkeypatch.setattr(sweep_module, "_redis_client", lambda: redis)
     monkeypatch.setattr(sweep_module, "sync_session_scope", _NullSession)
+    monkeypatch.setattr(sweep_module, "_load_anchor", lambda _s: anchor)
     calls: list[dict[str, Any]] = []
 
     def _counts(_session: Any, **kwargs: Any) -> Any:
@@ -229,90 +213,60 @@ def _stub_run(
             raise breached
         return breached or {}
 
-    def _enqueue(descriptors: list[dict[str, Any]]) -> int:
-        if order is not None:
-            order.append(f"enqueue:{len(descriptors)}")
-        return len(descriptors)
-
     monkeypatch.setattr(sweep_module, "_breached_counts", _counts)
-    monkeypatch.setattr(sweep_module, "_enqueue_notifications", _enqueue)
+    monkeypatch.setattr(sweep_module, "_enqueue_notifications", len)
     monkeypatch.setattr(sweep_module, "_team_member_user_ids", lambda _s, _t: [uuid.uuid4()])
-    if order is not None:
-        original_set = redis.set
-
-        def _recording_set(key: str, value: str) -> None:
-            order.append("anchor")
-            original_set(key, value)
-
-        monkeypatch.setattr(redis, "set", _recording_set)
     return calls
 
 
-def test_run_reads_the_anchor_and_stores_now(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_run_starts_at_the_anchor_and_reports_now_as_the_window_end(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The returned ``detail_params.window_end`` is what the recorder stores
+    and the next run reads, so it has to be this run's ``now``."""
     anchor = _NOW - timedelta(days=2)
-    redis = _FakeRedis(anchor.isoformat())
-    calls = _stub_run(monkeypatch, redis)
-
-    summary = sweep_module._run_sweep(now=_NOW)
-
-    assert calls == [{"window_start": anchor, "now": _NOW}]
-    assert redis.sets == [_NOW.isoformat()]
-    assert summary["window_start"] == anchor.isoformat()
-    assert summary["window_end"] == _NOW.isoformat()
-
-
-def test_anchor_is_stored_after_the_enqueue(monkeypatch: pytest.MonkeyPatch) -> None:
-    order: list[str] = []
     pid = uuid.uuid4()
-    redis = _FakeRedis(None)
-    _stub_run(
-        monkeypatch,
-        redis,
-        breached={pid: ("portal", uuid.uuid4(), {"critical": 1})},
-        order=order,
+    calls = _stub_run(
+        monkeypatch, anchor, breached={pid: ("portal", uuid.uuid4(), {"critical": 1})}
     )
 
     summary = sweep_module._run_sweep(now=_NOW)
 
-    assert order == ["enqueue:1", "anchor"]
-    assert summary["projects_breached"] == 1
-    assert summary["findings_crossed"] == 1
+    assert calls == [{"window_start": anchor, "now": _NOW}]
+    assert summary["detail_code"] == sweep_module._DETAIL_CODE
+    assert summary["detail_params"] == {
+        "window_start": anchor.isoformat(),
+        "window_end": _NOW.isoformat(),
+        "projects_breached": 1,
+        "findings_crossed": 1,
+        "notifications_enqueued": 1,
+    }
+    assert "skipped_reason" in summary and summary["skipped_reason"] is None
 
 
-def test_a_failed_read_leaves_the_anchor_for_the_next_run(
+def test_no_anchor_starts_at_the_trailing_day(monkeypatch: pytest.MonkeyPatch) -> None:
+    calls = _stub_run(monkeypatch, None)
+
+    sweep_module._run_sweep(now=_NOW)
+
+    assert calls == [{"window_start": _NOW - timedelta(hours=24), "now": _NOW}]
+
+
+def test_a_failed_read_is_reported_as_a_skip_without_a_window(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """Through the Celery entry point, which swallows the error: the span
-    this run should have covered is still owed."""
-    anchor = _NOW - timedelta(days=1)
-    redis = _FakeRedis(anchor.isoformat())
-    _stub_run(monkeypatch, redis, breached=RuntimeError("db gone"))
-    monkeypatch.setattr(sweep_module, "datetime", _FrozenDatetime)
+    """Through the Celery entry point, which swallows the error. The summary
+    must carry a ``skipped_reason`` (the recorder then writes ``skipped``) and
+    no ``detail_code``, or the run would become the anchor for a span it never
+    covered."""
+    _stub_run(monkeypatch, _NOW - timedelta(days=1), breached=RuntimeError("db gone"))
 
     summary = sweep_module.vuln_sla_sweep.run()
 
     assert summary["skipped"] is True
     assert summary["skipped_reason"] == "unexpected:RuntimeError"
-    assert redis.sets == []
-    assert redis.value == anchor.isoformat()
-
-
-class _FrozenDatetime(datetime):
-    @classmethod
-    def now(cls, tz: Any = None) -> _FrozenDatetime:  # type: ignore[override]
-        return cls.fromtimestamp(_NOW.timestamp(), tz=tz)
-
-
-def test_redis_unavailable_degrades_to_the_trailing_day(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    redis = _FakeRedis(fail=True)
-    calls = _stub_run(monkeypatch, redis)
-
-    summary = sweep_module._run_sweep(now=_NOW)
-
-    assert calls == [{"window_start": _NOW - timedelta(hours=24), "now": _NOW}]
-    assert summary["skipped"] is False
+    assert "detail_code" not in summary
+    assert "detail_params" not in summary
 
 
 @pytest.mark.parametrize("token", ["false", "0", "no", "FALSE", " No "])

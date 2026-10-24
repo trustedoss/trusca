@@ -106,13 +106,13 @@ def manual_due_instant(
     extra hours instead, which is why only half of this was ever reported.
 
     The SQL twin builds the same instant with
-    ``timezone('UTC', timezone(<zone>, due_on::timestamp + interval '1 day'))``:
-    the inner call reads the naive next-midnight AS that zone's wall clock and
-    yields an instant, the outer normalises it back to UTC for comparison.
-    Casting to ``timestamptz`` instead would read the date in whatever the
-    session timezone happens to be and make the verdict depend on a connection
-    setting. ``tests`` drives both against each other across zones east of,
-    west of, and equal to UTC.
+    ``timezone(<zone>, due_on::timestamp + interval '1 day')``, which reads the
+    naive next-midnight AS that zone's wall clock and yields a timestamptz.
+    Converting it back to a naive UTC value, or casting ``due_on`` to
+    ``timestamptz`` directly, would let the session timezone move the instant
+    and make the verdict depend on a connection setting. ``tests`` drives both
+    against each other across zones east of, west of, and equal to UTC, under
+    session timezones east of, west of, and equal to UTC as well.
     """
     if due_on is None:
         return None

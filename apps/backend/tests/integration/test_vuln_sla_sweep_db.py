@@ -1,17 +1,22 @@
 """
-Integration tests for the daily SLA-breach sweep (real Postgres + Redis), X1
-step 2 and #569.
+Integration tests for the daily SLA-breach sweep (real Postgres), X1 step 2
+and #569.
 
 Drives ``tasks.vuln_sla_sweep._run_sweep`` end to end against seeded rows:
 the latest-succeeded-scan aggregate, the window selection (in SQL since
-#569), the team membership fan-out, the Redis window anchor, and the ACTUAL
+#569), the team membership fan-out, the window anchor read from
+``task_runs``, and the ACTUAL
 in-app row creation through ``tasks.notify`` (``send_notification_task.delay``
 is monkeypatched to a synchronous ``.apply`` so the notify task's prefs filter
 + insert run in-line without a worker; ``channels=[]`` means no outbound
 egress exists on this path at all).
 
-Every run here passes an explicit ``now`` so a deadline can sit exactly on a
-window bound, and the lifecycle tests step through days without waiting.
+Single-run tests call ``_run_sweep(now=...)`` directly, which records
+nothing, so a deadline can sit exactly on a window bound. The lifecycle tests
+go through the Celery entry point (``vuln_sla_sweep.apply()``), because the
+anchor is written only there: by the ``task_postrun`` recorder from what the
+task returned. Calling the body directly would test an anchor nothing in
+production writes.
 
 Negative controls pin the selection contract: outside-window breaches,
 closed statuses, archived projects, inactive members, the master toggle, and
@@ -26,20 +31,22 @@ from datetime import UTC, date, datetime, timedelta
 from typing import Any
 
 import pytest
-from sqlalchemy import select, update
+from sqlalchemy import delete, select, update
 from sqlalchemy.orm import Session
 
+import tasks.vuln_sla_sweep as sweep_module
 from models import (
     Component,
     ComponentVersion,
     Notification,
     NotificationPreferences,
     Organization,
+    TaskRun,
     Team,
     Vulnerability,
     VulnerabilityFinding,
 )
-from tasks.vuln_sla_sweep import _ANCHOR_KEY, _run_sweep, vuln_sla_sweep
+from tasks.vuln_sla_sweep import _DETAIL_CODE, _TASK_NAME, _run_sweep, vuln_sla_sweep
 from tests._db_required import migrate_to_head
 
 pytestmark = pytest.mark.integration
@@ -53,22 +60,79 @@ def _migrate_once() -> None:
     migrate_to_head()
 
 
-def _redis() -> Any:
-    import redis as redis_lib
-
-    from core.config import redis_url
-
-    return redis_lib.Redis.from_url(redis_url(), decode_responses=True)
-
-
 @pytest.fixture(autouse=True)
-def _fresh_anchor() -> Iterator[None]:
-    """Each test starts with no anchor, i.e. the trailing-24h window, and
-    leaves none behind for the next one."""
-    client = _redis()
-    client.delete(_ANCHOR_KEY)
+def _fresh_history(sync_session: Session) -> Iterator[None]:
+    """Each test starts with no recorded sweep, i.e. the trailing-24h window,
+    and leaves none behind for the next one."""
+
+    def _clear() -> None:
+        sync_session.execute(delete(TaskRun).where(TaskRun.task_name == _TASK_NAME))
+        sync_session.commit()
+
+    _clear()
     yield
-    client.delete(_ANCHOR_KEY)
+    _clear()
+
+
+def _sweep_runs(session: Session) -> list[TaskRun]:
+    session.expire_all()
+    return list(
+        session.scalars(
+            select(TaskRun)
+            .where(TaskRun.task_name == _TASK_NAME)
+            .order_by(TaskRun.started_at)
+        )
+    )
+
+
+def _celery_sweep(monkeypatch: pytest.MonkeyPatch, now: datetime) -> dict[str, Any]:
+    """Run the task through Celery (eager), with the task's clock at ``now``.
+
+    Only the sweep module's clock is frozen; the recorder stamps real time,
+    so the rows still order by when they actually ran.
+    """
+
+    class _Frozen(datetime):
+        @classmethod
+        def now(cls, tz: Any = None) -> datetime:  # type: ignore[override]
+            return now if tz is None else now.astimezone(tz)
+
+    monkeypatch.setattr(sweep_module, "datetime", _Frozen)
+    try:
+        result = vuln_sla_sweep.apply()
+    finally:
+        monkeypatch.setattr(sweep_module, "datetime", datetime)
+    assert result.successful()
+    out: dict[str, Any] = result.result
+    return out
+
+
+def _seed_run(
+    session: Session,
+    *,
+    window_end: datetime | None,
+    outcome: str | None = "succeeded",
+    detail_code: str | None = _DETAIL_CODE,
+    started_at: datetime | None = None,
+) -> None:
+    """A history row as the recorder would have left it."""
+    result: dict[str, Any] | None = None
+    if detail_code is not None:
+        result = {"detail_code": detail_code, "detail_params": {}}
+        if window_end is not None:
+            result["detail_params"]["window_end"] = window_end.isoformat()
+    session.add(
+        TaskRun(
+            task_name=_TASK_NAME,
+            celery_task_id=uuid.uuid4().hex,
+            attempt=1,
+            started_at=started_at or datetime.now(UTC),
+            finished_at=None if outcome is None else datetime.now(UTC),
+            outcome=outcome,
+            result=result,
+        )
+    )
+    session.commit()
 
 
 @pytest.fixture
@@ -418,7 +482,7 @@ def test_a_written_date_expires_in_the_organization_timezone(
     same finding in a UTC organization expires at midnight and is silent."""
     day = _T.date() - timedelta(days=2)
     now = datetime.combine(day, datetime.min.time(), tzinfo=UTC) + timedelta(hours=16)
-    _redis().set(_ANCHOR_KEY, (now - timedelta(hours=2)).isoformat())
+    _seed_run(sync_session, window_end=now - timedelta(hours=2))
 
     team_seoul, _p1, scan_seoul, members_seoul, _n1 = _seed_team_project_scan(1)
     _team_utc, _p2, scan_utc, members_utc, _n2 = _seed_team_project_scan(1)
@@ -446,6 +510,93 @@ def test_a_written_date_expires_in_the_organization_timezone(
     assert _notifications_for(sync_session, members_utc) == []
 
 
+@pytest.mark.parametrize("session_timezone", ["UTC", "Asia/Seoul", "America/New_York"])
+@pytest.mark.parametrize("severity", ["info", "critical"])
+def test_the_session_timezone_does_not_move_a_written_deadline(
+    sync_session: Session, session_timezone: str, severity: str
+) -> None:
+    """The connection's TimeZone must not matter, only the organization's.
+
+    Engines set no session timezone, so a managed Postgres configured in local
+    time hands one out. The written deadline used to be built as a naive UTC
+    value that LEAST() cast back in the session zone: 9 hours early under
+    Asia/Seoul, 4 hours late under America/New_York. ``info`` has only the
+    written deadline; ``critical`` (detected just now) also has a later policy
+    one, so LEAST() compares the two.
+
+    The window is 14:00 to 16:00 UTC on D. A Seoul organization's date D
+    expires at 15:00 UTC, inside it; a New York one at 04:00 UTC on D+1,
+    outside it.
+    """
+    day = _T.date() - timedelta(days=2)
+    now = datetime.combine(day, datetime.min.time(), tzinfo=UTC) + timedelta(hours=16)
+
+    seeded: dict[str, uuid.UUID] = {}
+    for org_zone in ("Asia/Seoul", "America/New_York"):
+        team_id, project_id, scan_id, _members, _name = _seed_team_project_scan(1)
+        org_id = sync_session.execute(
+            select(Team.organization_id).where(Team.id == team_id)
+        ).scalar_one()
+        sync_session.execute(
+            update(Organization).where(Organization.id == org_id).values(timezone=org_zone)
+        )
+        sync_session.commit()
+        _seed_finding(
+            sync_session,
+            scan_id=scan_id,
+            severity=severity,
+            first_detected_at=now,
+            due_on=day,
+        )
+        seeded[org_zone] = project_id
+
+    from sqlalchemy import text
+
+    sync_session.execute(text(f"SET LOCAL TIME ZONE '{session_timezone}'"))
+    breached = sweep_module._breached_counts(
+        sync_session, window_start=now - timedelta(hours=2), now=now
+    )
+    in_force = sync_session.execute(text("SHOW TIME ZONE")).scalar_one()
+    sync_session.rollback()
+
+    assert in_force == session_timezone
+    assert seeded["Asia/Seoul"] in breached
+    assert seeded["America/New_York"] not in breached
+
+
+@pytest.mark.parametrize("session_timezone", ["UTC", "Asia/Seoul", "America/New_York"])
+def test_the_session_timezone_does_not_move_a_policy_deadline_across_dst(
+    sync_session: Session, session_timezone: str
+) -> None:
+    """A fixed date whose 30-day high window crosses the end of daylight
+    saving time in New York (1 Nov 2026).
+
+    ``timestamptz + interval '30 days'`` is calendar arithmetic in the session
+    zone, so under America/New_York it lands an hour later than 720 hours.
+    The window here is the exact due instant plus one minute: the right
+    deadline is inside it, one moved by an hour is not.
+    """
+    first_detected = datetime(2026, 10, 20, 12, 0, tzinfo=UTC)
+    due = first_detected + timedelta(days=30)
+    _team, project_id, scan_id, _members, _name = _seed_team_project_scan(1)
+    _seed_finding(
+        sync_session, scan_id=scan_id, severity="high", first_detected_at=first_detected
+    )
+
+    from sqlalchemy import text
+
+    sync_session.execute(text(f"SET LOCAL TIME ZONE '{session_timezone}'"))
+    breached = sweep_module._breached_counts(
+        sync_session, window_start=due, now=due + timedelta(minutes=1)
+    )
+    in_force = sync_session.execute(text("SHOW TIME ZONE")).scalar_one()
+    sync_session.rollback()
+
+    assert in_force == session_timezone
+    assert project_id in breached
+    assert breached[project_id][2] == {"high": 1}
+
+
 def test_env_override_moves_the_due_date(
     sync_session: Session, _inline_notify: None, monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -463,7 +614,6 @@ def test_env_override_moves_the_due_date(
     assert _notifications_for(sync_session, members) == []
 
     monkeypatch.setenv("VULN_SLA_DAYS_HIGH", "10")
-    _redis().delete(_ANCHOR_KEY)
     _run_sweep(now=_T)
     assert len(_notifications_for(sync_session, members)) == 1
 
@@ -545,15 +695,19 @@ def test_sweep_skips_inactive_members(
 def test_sweep_toggle_off_skips_everything(
     sync_session: Session, _inline_notify: None, monkeypatch: pytest.MonkeyPatch
 ) -> None:
+    """Through Celery: a disabled run is recorded as skipped, so it is never an
+    anchor and re-enabling starts from the last run that did the work."""
     _project, members = _one_breach_project(sync_session, due=_T - timedelta(hours=2))
     monkeypatch.setenv("VULN_SLA_ALERTS_ENABLED", "false")
 
-    summary = _run_sweep(now=_T)
+    summary = _celery_sweep(monkeypatch, _T)
 
     assert summary["skipped"] is True
     assert summary["skipped_reason"] == "disabled"
     assert _notifications_for(sync_session, members) == []
-    assert _redis().get(_ANCHOR_KEY) is None
+    (run,) = _sweep_runs(sync_session)
+    assert (run.outcome, run.skipped_reason, run.result) == ("skipped", "disabled", None)
+    assert sweep_module._load_anchor(sync_session) is None
 
 
 def test_sweep_respects_in_app_muted_member(
@@ -634,12 +788,46 @@ def test_sweep_only_reads_latest_succeeded_scan(
 
 
 # ---------------------------------------------------------------------------
-# Lifecycle: the window anchor across runs (hardening rule #5)
+# Lifecycle: the window anchor across runs (hardening rules #5 and #6)
 # ---------------------------------------------------------------------------
 
 
+def test_the_recorder_persists_the_window_end_on_the_celery_path(
+    sync_session: Session, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Rule 6: the anchor is a write, and the write is the recorder's. Only
+    the real entry point fires ``task_postrun``; this pins that the value the
+    task returns is the value the next run reads."""
+    summary = _celery_sweep(monkeypatch, _T)
+
+    (run,) = _sweep_runs(sync_session)
+    assert run.outcome == "succeeded"
+    assert run.result is not None
+    assert run.result["detail_code"] == _DETAIL_CODE
+    assert run.result["detail_params"]["window_end"] == _T.isoformat()
+    assert summary["window_end"] == _T.isoformat()
+    assert sweep_module._load_anchor(sync_session) == _T
+
+
+def test_the_anchor_is_the_latest_succeeded_run_only(sync_session: Session) -> None:
+    """Newer rows that did not cover a window are passed over: a failed run, an
+    unfinished one (worker killed), a skip, and succeeded rows whose detail
+    code is not the sweep's window code."""
+    good = _T - timedelta(hours=30)
+    _seed_run(sync_session, window_end=good, started_at=datetime.now(UTC) - timedelta(minutes=5))
+    _seed_run(sync_session, window_end=_T - timedelta(hours=1), outcome="failed")
+    _seed_run(sync_session, window_end=_T - timedelta(hours=1), outcome=None)
+    _seed_run(sync_session, window_end=_T - timedelta(hours=1), outcome="skipped")
+    _seed_run(
+        sync_session, window_end=_T - timedelta(hours=1), detail_code="vuln_sla_sweep.other"
+    )
+    _seed_run(sync_session, window_end=None, detail_code=None)
+
+    assert sweep_module._load_anchor(sync_session) == good
+
+
 def test_missed_day_is_caught_up_by_the_next_run_exactly_once(
-    sync_session: Session, _inline_notify: None
+    sync_session: Session, _inline_notify: None, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     """Day 0 runs, day 1 is missed, day 2 runs, day 3 runs.
 
@@ -662,17 +850,15 @@ def test_missed_day_is_caught_up_by_the_next_run_exactly_once(
         first_detected_at=_detected_for_due(day0 + timedelta(hours=10), "high"),
     )
 
-    _run_sweep(now=day0)
+    _celery_sweep(monkeypatch, day0)
     rows = _notifications_for(sync_session, members)
-    assert [r.body.split(" (")[1] for r in rows] == [
-        "critical 1). Review the overdue list and triage or remediate."
-    ]
-    assert _redis().get(_ANCHOR_KEY) == day0.isoformat()
+    assert len(rows) == 1
+    assert "(critical 1)" in rows[0].body
 
     # Day 1: no run.
 
     day2 = day0 + timedelta(days=2)
-    summary = _run_sweep(now=day2)
+    summary = _celery_sweep(monkeypatch, day2)
     assert summary["window_start"] == day0.isoformat()
     rows = _notifications_for(sync_session, members)
     assert len(rows) == 2
@@ -681,19 +867,20 @@ def test_missed_day_is_caught_up_by_the_next_run_exactly_once(
     assert f"since {since} (high 1)" in rows[1].body
 
     day3 = day0 + timedelta(days=3)
-    _run_sweep(now=day3)
+    _celery_sweep(monkeypatch, day3)
     assert len(_notifications_for(sync_session, members)) == 2
 
 
-def test_a_second_run_on_the_same_day_does_not_repeat_alerts(
-    sync_session: Session, _inline_notify: None
+def test_a_later_run_on_the_same_day_does_not_repeat_alerts(
+    sync_session: Session, _inline_notify: None, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """An operator re-running the task by hand, or beat jitter putting two
-    ticks close together, must not alert the same crossing twice."""
+    """Two runs one after the other (a manual run after the beat run, or beat
+    jitter) do not alert the same crossing twice. Runs that OVERLAP in time can;
+    that is the documented at-least-once case and is not asserted here."""
     _project, members = _one_breach_project(sync_session, due=_T - timedelta(hours=2))
 
-    _run_sweep(now=_T)
-    _run_sweep(now=_T + timedelta(hours=1))
+    _celery_sweep(monkeypatch, _T)
+    _celery_sweep(monkeypatch, _T + timedelta(hours=1))
 
     assert len(_notifications_for(sync_session, members)) == 1
 
@@ -701,16 +888,14 @@ def test_a_second_run_on_the_same_day_does_not_repeat_alerts(
 def test_a_failed_run_leaves_its_span_to_the_next_one(
     sync_session: Session, _inline_notify: None, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """Day 0 runs; day 1 fails inside the read (through the Celery entry
-    point, which swallows the error); day 2 still tells about the crossing
-    the failed run owned."""
-    import tasks.vuln_sla_sweep as sweep_module
-
+    """Day 0 runs; day 1 fails inside the read (the entry point swallows the
+    error and the recorder writes ``skipped``); day 2 still tells about the
+    crossing the failed run owned."""
     day0 = _T - timedelta(days=3)
     _project, members = _one_breach_project(
         sync_session, due=day0 + timedelta(hours=10)
     )
-    _run_sweep(now=day0)
+    _celery_sweep(monkeypatch, day0)
     assert _notifications_for(sync_session, members) == []
 
     real = sweep_module._breached_counts
@@ -719,12 +904,16 @@ def test_a_failed_run_leaves_its_span_to_the_next_one(
         raise RuntimeError("database went away")
 
     monkeypatch.setattr(sweep_module, "_breached_counts", _boom)
-    summary = vuln_sla_sweep.run()
+    summary = _celery_sweep(monkeypatch, day0 + timedelta(days=1))
     assert summary["skipped_reason"] == "unexpected:RuntimeError"
-    assert _redis().get(_ANCHOR_KEY) == day0.isoformat()
     monkeypatch.setattr(sweep_module, "_breached_counts", real)
 
-    _run_sweep(now=day0 + timedelta(days=2))
+    first, failed = _sweep_runs(sync_session)
+    assert (first.outcome, failed.outcome) == ("succeeded", "skipped")
+    assert failed.skipped_reason == "unexpected:RuntimeError"
+    assert sweep_module._load_anchor(sync_session) == day0
+
+    _celery_sweep(monkeypatch, day0 + timedelta(days=2))
     assert len(_notifications_for(sync_session, members)) == 1
 
 
@@ -733,7 +922,7 @@ def test_catch_up_reaches_back_a_week_and_no_further(
 ) -> None:
     """An anchor a month old (sweep re-enabled after a long pause) is clamped
     to seven days: a crossing six days ago is told, one ten days ago is not."""
-    _redis().set(_ANCHOR_KEY, (_T - timedelta(days=30)).isoformat())
+    _seed_run(sync_session, window_end=_T - timedelta(days=30))
     _p1, within = _one_breach_project(sync_session, due=_T - timedelta(days=6))
     _p2, beyond = _one_breach_project(sync_session, due=_T - timedelta(days=10))
 
@@ -742,4 +931,3 @@ def test_catch_up_reaches_back_a_week_and_no_further(
     assert summary["window_start"] == (_T - timedelta(days=7)).isoformat()
     assert len(_notifications_for(sync_session, within)) == 1
     assert _notifications_for(sync_session, beyond) == []
-    assert _redis().get(_ANCHOR_KEY) == _T.isoformat()

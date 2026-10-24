@@ -534,10 +534,10 @@ def _base_beat_schedule() -> dict[str, dict[str, object]]:
             "schedule": crontab(minute=20, hour=2),
         },
         # X1 step 2: daily vulnerability SLA-breach sweep at 02:45 UTC. Each
-        # tick's window starts where the previous completed tick ended (a
-        # Redis anchor), so every breach is observed by exactly one tick and
-        # a missed tick is caught up by the next (see tasks/vuln_sla_sweep's
-        # docstring). Minute-lane check:
+        # tick's window starts where the previous succeeded tick ended (read
+        # from task_runs), so a missed tick is caught up by the next one and
+        # delivery is at least once (see tasks/vuln_sla_sweep's docstring).
+        # Minute-lane check:
         # :00 is owned by the 6h sweepers / daily backup / weekly Trivy,
         # :15 by the 6h rematch + Sun-02:15 EOL, :30 by 6h scan-retention,
         # and :45 by the daily KEV refresh at 01:45 — so 02:45 reuses the
