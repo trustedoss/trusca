@@ -239,9 +239,7 @@ def _authenticated_user_key(request: Request) -> str:
     # Local imports keep this module importable without pulling the security
     # stack at load time and avoid a circular import (security -> audit ->
     # config; ratelimit -> security would close the loop).
-    from jose import JWTError
-
-    from core.security import TOKEN_TYPE_ACCESS, _bearer_token, decode_token
+    from core.security import TOKEN_TYPE_ACCESS, TokenError, _bearer_token, decode_token
     from services.api_key_service import parse_bearer
 
     token = _bearer_token(request)
@@ -260,7 +258,7 @@ def _authenticated_user_key(request: Request) -> str:
             sub = claims.get("sub")
             if sub:
                 return f"user:{sub}"
-        except (JWTError, ValueError):
+        except (TokenError, ValueError):
             pass
     return f"ip:{_client_ip_for_limit(request)}"
 

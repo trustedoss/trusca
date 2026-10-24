@@ -50,8 +50,8 @@ from datetime import UTC, datetime, timedelta
 from typing import Any
 from urllib.parse import urlparse, urlsplit
 
+import jwt
 import structlog
-from jose import JWTError, jwt
 from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -75,6 +75,7 @@ from core.config import (
 from core.security import (
     _ROLE_PRIORITY,
     JWT_ALGORITHM,
+    TokenError,
     create_access_token,
     create_refresh_token,
     hash_password,
@@ -228,7 +229,7 @@ def _signed_state(*, provider: str, redirect_after: str | None) -> str:
     Carries ``provider`` (so a state from a github flow cannot be replayed
     on the google callback), ``redirect_after`` (so the SPA lands where it
     started), and a random ``nonce``. Signature uses the auth ``SECRET_KEY``
-    via the existing python-jose path.
+    and the same algorithm as the session tokens.
     """
     now = _now()
     expires = now + timedelta(seconds=oauth_state_ttl_seconds())
@@ -253,8 +254,18 @@ def _decode_state(state: str, *, expected_provider: str) -> dict[str, Any]:
     if not state:
         raise OAuthInvalidState("missing oauth state")
     try:
-        claims: dict[str, Any] = jwt.decode(state, secret_key(), algorithms=[JWT_ALGORITHM])
-    except JWTError as exc:
+        # Pinned to the one algorithm we sign with, and `exp` required: a
+        # state without one would otherwise never expire. `verify_iat` is off
+        # for the reason given in `core.security.decode_token`: the callback
+        # can land on a replica whose clock is a second behind the one that
+        # minted the state.
+        claims: dict[str, Any] = jwt.decode(
+            state,
+            secret_key(),
+            algorithms=[JWT_ALGORITHM],
+            options={"require": ["iat", "exp"], "verify_iat": False},
+        )
+    except TokenError as exc:
         raise OAuthInvalidState("invalid oauth state signature or expiry") from exc
 
     if claims.get("type") != STATE_TOKEN_TYPE:

@@ -23,7 +23,7 @@ Security contracts:
     migration, not a rewrite. :func:`verify_api_key_plaintext` inspects the
     stored value's format marker (:func:`core.security.is_api_key_hmac_hash`)
     and dispatches to the matching verifier, both constant-time
-    (``hmac.compare_digest`` / passlib's bcrypt ``checkpw``). See
+    (``hmac.compare_digest`` / bcrypt's ``checkpw``). See
     ``core.config.api_key_hmac_secret`` for the server-side key and
     ``authenticate_api_key``'s docstring for the timing-flattening dummy.
 

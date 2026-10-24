@@ -22,7 +22,6 @@ from urllib.parse import parse_qs, urlsplit
 import httpx
 import pytest
 from httpx import ASGITransport, AsyncClient
-from jose import JWTError
 from sqlalchemy import select, text
 from sqlalchemy.ext.asyncio import async_sessionmaker
 
@@ -135,7 +134,7 @@ async def test_authorize_refuses_to_carry_an_off_site_redirect(
     tests cover the rule; this covers the endpoint that receives it, and the
     state it hands to the provider.
     """
-    from jose import jwt
+    import jwt
 
     from core.config import secret_key
     from core.security import JWT_ALGORITHM
@@ -906,7 +905,7 @@ async def test_the_callback_stops_for_a_second_factor_and_leaves_no_session(
     complete session sitting behind that screen, and a client that skips the
     screen and calls ``/auth/refresh`` is signed in having supplied no code.
     """
-    from core.security import TOKEN_TYPE_MFA_PENDING, decode_token
+    from core.security import TOKEN_TYPE_MFA_PENDING, TokenError, decode_token
     from models import User
 
     email = f"mfaoauth-{uuid.uuid4().hex[:8]}@example.com"
@@ -956,7 +955,7 @@ async def test_the_callback_stops_for_a_second_factor_and_leaves_no_session(
     # What rode along proves the provider account and nothing else.
     claims = decode_token(token, expected_type=TOKEN_TYPE_MFA_PENDING)
     assert claims["sub"] == str(user.id)
-    with pytest.raises(JWTError):
+    with pytest.raises(TokenError):
         decode_token(token, expected_type="access")
 
     # And no session was written on the way. Minting one and discarding the

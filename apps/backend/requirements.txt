@@ -42,17 +42,16 @@ httpx==0.28.1
 # Content-Length in parse_form buffered the entire body in memory / DoS).
 python-multipart==0.0.31
 # Auth — Phase 1 PR #5.
-# bcrypt is pinned to 4.0.1 because passlib 1.7.4 is incompatible with
-# bcrypt >= 4.1 (passlib reads bcrypt.__about__.__version__, which 4.1+ removed).
-passlib[bcrypt]==1.7.4
-bcrypt==4.0.1
-# python-jose 3.5.0 widened pyasn1 to >=0.5.0 so we can take the pyasn1 0.6.x
-# fixes (CVE-2026-30922 recursion DoS; CVE-2026-59885/-59886 crafted REAL
-# DoS, fixed in 0.6.4). 3.4.0 still pinned pyasn1<0.5.0, which blocked the bump.
-python-jose[cryptography]==3.5.0  # H-1 CVE fix (algorithm confusion / DoS) + pyasn1 0.6.x compat
-# Transitive of python-jose / rsa. Pinned explicitly so Trivy / pip-audit
-# can verify the CVE fixes on a clean image rebuild (0.6.4: CVE-2026-59885/-59886).
-pyasn1==0.6.4
+# Password hashing calls bcrypt directly (core/security.py). passlib was
+# dropped (#574): it is unmaintained and held bcrypt at 4.0.1. bcrypt 5.0
+# raises on inputs over 72 bytes instead of truncating, so hash_password and
+# verify_password truncate before calling it; hashes written by passlib
+# ($2b$, plus $2a$/$2y$) verify unchanged.
+bcrypt==5.0.0
+# JWT (HS256 session tokens, RS256 GitHub App tokens). Replaces python-jose
+# (#574), which has an advisory with no fixed release. The [crypto] extra is
+# what enables RS256; it resolves to the cryptography pin below.
+PyJWT[crypto]==2.15.1
 # v2.2-b1 — GitHub App credential storage. ``cryptography`` was previously only
 # a TRANSITIVE dep (via python-jose[cryptography]); the b1 reversible-encryption
 # helper (core/crypto.py, Fernet at-rest encryption of the App PEM private key)

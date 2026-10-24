@@ -96,7 +96,6 @@ from typing import Any
 import redis.asyncio as redis_async
 import structlog
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect
-from jose import JWTError
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 from sqlalchemy.orm import selectinload
@@ -115,6 +114,7 @@ from core.config import (
 from core.security import (
     TOKEN_TYPE_ACCESS,
     CurrentUser,
+    TokenError,
     credential_change_invalidates,
     decode_token,
     highest_role,
@@ -543,7 +543,7 @@ async def scan_progress_endpoint(websocket: WebSocket, scan_id: str) -> None:
 
     try:
         claims = decode_token(token, expected_type=TOKEN_TYPE_ACCESS)
-    except (JWTError, ValueError):
+    except (TokenError, ValueError):
         # Token is invalid/expired/wrong type. We DO NOT log the token.
         log.warning("ws_auth_failed", reason=REASON_AUTH_INVALID)
         await websocket.close(code=WS_CLOSE_POLICY_VIOLATION, reason=REASON_AUTH_INVALID)
