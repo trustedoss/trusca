@@ -17,6 +17,7 @@ import structlog
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from core.authz import super_admin_reaches
 from core.security import CurrentUser
 from models import NoticeTemplate, Organization
 from schemas.notice_template import NoticeTemplateUpsertIn
@@ -34,10 +35,6 @@ class NoticeTemplateForbidden(NoticeTemplateError):
 
 class NoticeTemplateScopeNotFound(NoticeTemplateError):
     """The organization does not exist, or the template row does not."""
-
-
-def _is_super_admin(actor: CurrentUser) -> bool:
-    return actor.is_superuser or actor.role == "super_admin"
 
 
 async def get_template(
@@ -74,7 +71,7 @@ async def upsert_template(
     ).scalar_one_or_none()
     if exists is None:
         raise NoticeTemplateScopeNotFound(f"organization {organization_id} not found")
-    if not _is_super_admin(actor):
+    if not await super_admin_reaches(session, actor, None):
         raise NoticeTemplateForbidden("only a super admin may write NOTICE templates")
 
     existing = await get_template(session, organization_id=organization_id, format=format)
@@ -106,7 +103,7 @@ async def delete_template(
     format that never had one rather than reporting a delete that deleted
     nothing.
     """
-    if not _is_super_admin(actor):
+    if not await super_admin_reaches(session, actor, None):
         raise NoticeTemplateForbidden("only a super admin may write NOTICE templates")
 
     row = await get_template(session, organization_id=organization_id, format=format)

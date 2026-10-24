@@ -22,9 +22,11 @@ import structlog
 from fastapi import APIRouter, Depends, Request, Response, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from core.authz import super_admin_group_filter
 from core.db import get_db
 from core.errors import problem_response
 from core.security import CurrentUser, require_role
+from models import TransitionApproval
 from schemas.transition_approval import (
     TransitionApprovalDecisionIn,
     TransitionApprovalListOut,
@@ -215,8 +217,17 @@ async def list_pending_endpoint(
     actor: CurrentUser = Depends(require_role("viewer")),
 ) -> Response:
     """Scoped to the caller's own teams, so the queue never shows another team's work."""
+    # The flag alone, not the derived role, decides who gets the administrator
+    # view here, as it did before; the reach (demo boundary included) comes
+    # from the shared helper.
     rows = await list_pending_for_teams(
-        session, team_ids=list(actor.team_ids), all_teams=actor.is_superuser
+        session,
+        team_ids=list(actor.team_ids),
+        super_admin_reach=(
+            super_admin_group_filter(actor, TransitionApproval.team_id)
+            if actor.is_superuser
+            else None
+        ),
     )
     items = [TransitionApprovalOut.model_validate(row) for row in rows]
     return _json(

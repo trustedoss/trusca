@@ -21,9 +21,10 @@ import uuid
 from datetime import UTC, datetime
 
 import structlog
-from sqlalchemy import select
+from sqlalchemy import or_, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.sql.elements import ColumnElement
 
 from core.authz import assert_team_access
 from core.security import CurrentUser
@@ -371,25 +372,35 @@ async def decide_and_apply(
 
 
 async def list_pending_for_teams(
-    session: AsyncSession, *, team_ids: list[uuid.UUID], all_teams: bool = False
+    session: AsyncSession,
+    *,
+    team_ids: list[uuid.UUID],
+    super_admin_reach: ColumnElement[bool] | None = None,
 ) -> list[TransitionApproval]:
     """The queue, oldest first, so the longest wait is answered first.
 
-    ``all_teams`` is for the deployment administrator, whose job is the whole
-    installation and who often belongs to no team at all; scoping them to their
-    memberships would show them an empty queue while requests pile up.
+    ``super_admin_reach`` is for the deployment administrator, whose job is the
+    whole installation and who often belongs to no team at all; scoping them to
+    their memberships would show them an empty queue while requests pile up.
+    The caller builds it with ``core.authz.super_admin_group_filter``: every
+    row on a normal deployment, the demo organisation's rows on the public
+    demo. Rows it admits are shown in addition to the membership scope.
     """
     stmt = select(TransitionApproval).where(TransitionApproval.state == "pending")
-    if not all_teams:
-        if not team_ids:
-            return []
-        # Phase 2 PR 2-C: was `TransitionApproval.team_id.in_(team_ids)`.
-        # `team_ids` is the caller's DIRECT memberships (see
-        # `api.v1.transition_approvals.list_pending_endpoint`);
-        # `group_scoped_subquery_predicate` expands that to the group
-        # subtree when the cascade flag is on, and is byte-for-byte the same
-        # `IN` predicate (wrapped in a subquery) when it is off.
-        stmt = stmt.where(group_scoped_subquery_predicate(TransitionApproval.team_id, team_ids))
+    if not team_ids and super_admin_reach is None:
+        return []
+    # Phase 2 PR 2-C: was `TransitionApproval.team_id.in_(team_ids)`.
+    # `team_ids` is the caller's DIRECT memberships (see
+    # `api.v1.transition_approvals.list_pending_endpoint`);
+    # `group_scoped_subquery_predicate` expands that to the group
+    # subtree when the cascade flag is on, and is byte-for-byte the same
+    # `IN` predicate (wrapped in a subquery) when it is off. ORing in a
+    # ``true()`` reach collapses the clause, so a normal deployment's
+    # administrator sees the whole queue as before.
+    visible = group_scoped_subquery_predicate(TransitionApproval.team_id, team_ids)
+    if super_admin_reach is not None:
+        visible = or_(visible, super_admin_reach)
+    stmt = stmt.where(visible)
     rows = (
         await session.execute(stmt.order_by(TransitionApproval.created_at.asc()))
     ).scalars()

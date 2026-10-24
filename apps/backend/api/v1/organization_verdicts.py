@@ -27,6 +27,7 @@ import structlog
 from fastapi import APIRouter, Depends, Query, Request, Response, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from core.authz import super_admin_reaches
 from core.db import get_db
 from core.errors import problem_response
 from core.pagination import PAGE_MAX
@@ -210,7 +211,7 @@ async def list_verdicts_endpoint(
         )
     except OrganizationVerdictError as exc:
         return _problem_for(request, exc)
-    if actor.is_superuser or actor.role == "super_admin":
+    if await super_admin_reaches(session, actor, None):
         return _json(
             OrganizationVerdictAdminListOut(
                 items=[OrganizationVerdictAdminOut.model_validate(r) for r in rows],

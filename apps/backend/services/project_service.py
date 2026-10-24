@@ -31,7 +31,6 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from core.audit import bind_audit_team as _bind_audit_team
-from core.config import demo_read_only
 from core.crypto import SecretEncryptionError, encrypt_secret
 from core.pii_mask import url_userinfo_is_redacted
 from core.security import CurrentUser
@@ -92,7 +91,12 @@ class ProjectCredentialEncryptionError(ProjectError):
 # ---------------------------------------------------------------------------
 
 
-from core.authz import assert_team_access, can_access_group, team_scope_filter  # noqa: E402
+from core.authz import (  # noqa: E402
+    assert_team_access,
+    can_access_group,
+    super_admin_reaches,
+    team_scope_filter,
+)
 
 # All cross-team guards in this module flow through `assert_team_access`
 # so the `authz.cross_team_attempt` log shape is centralized.
@@ -104,7 +108,7 @@ from core.authz import assert_team_access, can_access_group, team_scope_filter  
 # reduces to the same flat membership check when it is off.
 
 
-def _can_write_project(actor: CurrentUser, project: Project) -> bool:
+async def _can_write_project(session: AsyncSession, actor: CurrentUser, project: Project) -> bool:
     """
     Mutating ops require role >= team_admin within the project's *own* team.
 
@@ -112,9 +116,11 @@ def _can_write_project(actor: CurrentUser, project: Project) -> bool:
     in `actor.team_roles[project.team_id]`, not in `actor.role`. The latter
     is the highest role across all memberships and would let a user who is
     team_admin in team_a and developer in team_b mutate team_b projects.
-    super_admin still bypasses the team check entirely.
+    super_admin bypasses the team check wherever their reach covers the
+    project's team (everywhere, off the public demo). The caller runs no
+    access check before this one, so the reach is decided here.
     """
-    if actor.is_superuser or actor.role == "super_admin":
+    if await super_admin_reaches(session, actor, project.team_id):
         return True
     role_in_team = actor.team_roles.get(project.team_id)
     return role_in_team == "group_admin"
@@ -225,7 +231,7 @@ async def list_projects(
     # On the public read-only demo the super-admin bypass does not apply
     # here: the scoped branches below go through can_access_group /
     # team_scope_filter, which bound a super admin to the demo organisation.
-    is_super = (actor.is_superuser or actor.role == "super_admin") and not demo_read_only()
+    is_super = await super_admin_reaches(session, actor, None)
 
     base = select(Project)
     count_base = select(func.count()).select_from(Project)
@@ -364,7 +370,7 @@ async def update_project(
 ) -> Project:
     """Patch updatable fields. Requires role >= team_admin in the target team."""
     project = await _load_project(session, project_id)
-    if not _can_write_project(actor, project):
+    if not await _can_write_project(session, actor, project):
         raise ProjectForbidden("requires role >= team_admin within the project's team")
 
     _bind_audit_team(project.team_id)

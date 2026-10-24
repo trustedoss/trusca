@@ -16,6 +16,7 @@ import structlog
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from core.authz import super_admin_reaches
 from core.security import CurrentUser
 from models import Organization, ReportFormatTemplate
 from schemas.report_format_template import ReportFormatTemplateUpsertIn
@@ -33,10 +34,6 @@ class ReportFormatTemplateForbidden(ReportFormatTemplateError):
 
 class ReportFormatTemplateScopeNotFound(ReportFormatTemplateError):
     """The organization does not exist."""
-
-
-def _is_super_admin(actor: CurrentUser) -> bool:
-    return actor.is_superuser or actor.role == "super_admin"
 
 
 async def get_template(
@@ -71,7 +68,7 @@ async def upsert_template(
     ).scalar_one_or_none()
     if exists is None:
         raise ReportFormatTemplateScopeNotFound(f"organization {organization_id} not found")
-    if not _is_super_admin(actor):
+    if not await super_admin_reaches(session, actor, None):
         raise ReportFormatTemplateForbidden(
             "only a super admin may write report formatting templates"
         )
@@ -105,7 +102,7 @@ async def delete_template(
     organization that never had one rather than reporting a delete that
     deleted nothing.
     """
-    if not _is_super_admin(actor):
+    if not await super_admin_reaches(session, actor, None):
         raise ReportFormatTemplateForbidden(
             "only a super admin may write report formatting templates"
         )

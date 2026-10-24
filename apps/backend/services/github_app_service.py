@@ -59,12 +59,11 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from core.audit import bind_audit_team
-from core.authz import can_access_group
+from core.authz import can_access_group, group_visibility_filter, super_admin_reaches
 from core.config import github_api_url, github_app_token_http_timeout_seconds
 from core.crypto import SecretDecryptionError, decrypt_secret, encrypt_secret
 from core.security import CurrentUser
 from models import GitHubAppCredential, GitHubAppInstallation
-from services.group_service import group_scoped_subquery_predicate
 
 log = structlog.get_logger("github_app.service")
 
@@ -184,12 +183,8 @@ def _validate_installation_id(installation_id: str) -> None:
         raise GitHubAppError("installation_id must be a numeric GitHub installation id")
 
 
-def _is_super_admin(actor: CurrentUser) -> bool:
-    return actor.is_superuser or actor.role == "super_admin"
-
-
-def _is_team_admin(actor: CurrentUser, team_id: uuid.UUID) -> bool:
-    if _is_super_admin(actor):
+async def _is_team_admin(session: AsyncSession, actor: CurrentUser, team_id: uuid.UUID) -> bool:
+    if await super_admin_reaches(session, actor, team_id):
         return True
     return actor.team_roles.get(team_id) == "group_admin"
 
@@ -236,7 +231,7 @@ async def register_credential(
     super_admin). A live credential already existing for (team, app_id) raises
     :class:`GitHubAppConflict` (the DB unique constraint backstops the service).
     """
-    if not _is_team_admin(actor, team_id):
+    if not await _is_team_admin(session, actor, team_id):
         raise GitHubAppForbidden(
             "actor must be a team admin of the target team to register a credential"
         )
@@ -324,14 +319,12 @@ async def list_credentials(
     base = select(GitHubAppCredential)
     count_base = select(func.count()).select_from(GitHubAppCredential)
 
-    if not _is_super_admin(actor):
-        # Phase 2 PR 2-C: was a hand-rolled `team_id.in_(actor.team_ids)` /
-        # sentinel-uuid-false-predicate pair. `group_scoped_subquery_predicate`
-        # already returns an explicit false predicate for an empty membership
-        # set (no sentinel id needed) and is cascade-aware when the flag is on.
-        tenant = group_scoped_subquery_predicate(
-            GitHubAppCredential.team_id, actor.team_ids
-        )
+    # Phase 2 PR 2-C: was a hand-rolled `team_id.in_(actor.team_ids)` /
+    # sentinel-uuid-false-predicate pair. The membership predicate already
+    # returns an explicit false predicate for an empty membership set (no
+    # sentinel id needed) and is cascade-aware when the flag is on.
+    tenant = group_visibility_filter(actor, GitHubAppCredential.team_id)
+    if tenant is not None:
         base = base.where(tenant)
         count_base = count_base.where(tenant)
 
@@ -400,7 +393,7 @@ async def revoke_credential(
     if row is None or not await can_access_group(session, actor, row.team_id):
         raise GitHubAppNotFound(f"github app credential {credential_id} not found")
 
-    if not _is_team_admin(actor, row.team_id):
+    if not await _is_team_admin(session, actor, row.team_id):
         raise GitHubAppForbidden(
             f"actor lacks permission to revoke github app credential {credential_id}"
         )
@@ -449,7 +442,7 @@ async def link_installation(
     another team's project).
     """
     credential = await get_credential(session, actor, credential_id)
-    if not _is_team_admin(actor, credential.team_id):
+    if not await _is_team_admin(session, actor, credential.team_id):
         raise GitHubAppForbidden(
             "actor must be a team admin of the credential's team to link an installation"
         )
@@ -574,7 +567,7 @@ async def unlink_installation(
     already-absent link row is a no-op.
     """
     credential = await get_credential(session, actor, credential_id)
-    if not _is_team_admin(actor, credential.team_id):
+    if not await _is_team_admin(session, actor, credential.team_id):
         raise GitHubAppForbidden(
             "actor must be a team admin of the credential's team to unlink an installation"
         )

@@ -71,7 +71,7 @@ from sqlalchemy import and_, func, or_, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from core.authz import can_access_group
+from core.authz import can_access_group, super_admin_group_filter, super_admin_reaches
 from core.config import (
     api_key_last_used_at_update_interval_seconds,
     api_key_verification_min_duration_seconds,
@@ -262,10 +262,6 @@ async def _verify_api_key_plaintext_padded(plaintext: str, hashed: str) -> bool:
 # ---------------------------------------------------------------------------
 
 
-def _is_super_admin(actor: CurrentUser) -> bool:
-    return actor.is_superuser or actor.role == "super_admin"
-
-
 async def _can_issue_at_scope(
     session: AsyncSession,
     actor: CurrentUser,
@@ -285,8 +281,12 @@ async def _can_issue_at_scope(
     ``_resolve_team_scoped_role`` territory, explicitly PR 2-D's). The
     ``scope == "project"`` branch is a pure membership check (any team
     member may issue a project-scoped key) and is the one PR 2-C converts.
+
+    The super-admin bypass is judged against the group the key would be bound
+    to; an org-scoped key has none, so on the public demo it is refused.
     """
-    if _is_super_admin(actor):
+    target_group = team_id if scope == "team" else project_team_id if scope == "project" else None
+    if await super_admin_reaches(session, actor, target_group):
         return True
     if scope == "org":
         # Only super_admin issues org-scoped keys.
@@ -306,7 +306,7 @@ async def _can_issue_at_scope(
 
 async def _can_view_key(session: AsyncSession, actor: CurrentUser, key: APIKey) -> bool:
     """Return True iff *actor* is allowed to see this key in lists / GETs."""
-    if _is_super_admin(actor):
+    if await super_admin_reaches(session, actor, key.team_id):
         return True
     if key.created_by_user_id == actor.id:
         return True
@@ -329,14 +329,15 @@ async def _can_view_key(session: AsyncSession, actor: CurrentUser, key: APIKey) 
     return False
 
 
-def _can_revoke_key(actor: CurrentUser, key: APIKey) -> bool:
+async def _can_revoke_key(session: AsyncSession, actor: CurrentUser, key: APIKey) -> bool:
     """Return True iff *actor* may revoke this key.
 
-    - super_admin: always
+    - super_admin: whenever their reach covers the key's team (always, off
+      the public demo)
     - issuer (created_by_user_id == actor): always
     - team_admin of the key's team: yes (team / project keys)
     """
-    if _is_super_admin(actor):
+    if await super_admin_reaches(session, actor, key.team_id):
         return True
     if key.created_by_user_id == actor.id:
         return True
@@ -538,21 +539,25 @@ async def list_api_keys(
     count_base = select(func.count()).select_from(APIKey)
 
     # ----- Tenant gate -----
-    if not _is_super_admin(actor):
-        # The actor sees: keys they created OR keys whose team_id is one of
-        # their teams (covers team-scoped keys and project-scoped keys whose
-        # team_id was denormalized at issuance).
-        # Phase 2 PR 2-C: was `APIKey.team_id.in_(actor.team_ids)` guarded by
-        # an explicit empty-list check. `group_scoped_subquery_predicate`
-        # already returns an explicit false predicate for an empty membership
-        # set, so the `if actor.team_ids` branch is no longer needed, and the
-        # predicate is cascade-aware when the flag is on.
-        visibility = or_(
-            APIKey.created_by_user_id == actor.id,
-            group_scoped_subquery_predicate(APIKey.team_id, actor.team_ids),
-        )
-        base = base.where(visibility)
-        count_base = count_base.where(visibility)
+    # A super admin's reach is ORed in: ``true()`` off the public demo, which
+    # collapses the whole clause to "every key"; on the demo, the keys bound to
+    # a demo group. Org-scoped keys (NULL team) are not in reach there.
+    super_reach = super_admin_group_filter(actor, APIKey.team_id)
+    # The actor sees: keys they created OR keys whose team_id is one of
+    # their teams (covers team-scoped keys and project-scoped keys whose
+    # team_id was denormalized at issuance).
+    # Phase 2 PR 2-C: was `APIKey.team_id.in_(actor.team_ids)` guarded by
+    # an explicit empty-list check. `group_scoped_subquery_predicate`
+    # already returns an explicit false predicate for an empty membership
+    # set, so the `if actor.team_ids` branch is no longer needed, and the
+    # predicate is cascade-aware when the flag is on.
+    visibility = or_(
+        APIKey.created_by_user_id == actor.id,
+        group_scoped_subquery_predicate(APIKey.team_id, actor.team_ids),
+        *([super_reach] if super_reach is not None else []),
+    )
+    base = base.where(visibility)
+    count_base = count_base.where(visibility)
 
     # ----- Caller filters -----
     if scope is not None:
@@ -636,7 +641,7 @@ async def narrow_api_key_breadth(
         )
         raise APIKeyNotFound(f"api key {api_key_id} not found")
 
-    if not _can_revoke_key(actor, row):
+    if not await _can_revoke_key(session, actor, row):
         # The same people who may revoke a key may narrow it. Narrowing is
         # strictly the lesser act, so anybody allowed to destroy the key is
         # allowed to weaken it.
@@ -684,7 +689,7 @@ async def revoke_api_key(
         )
         raise APIKeyNotFound(f"api key {api_key_id} not found")
 
-    if not _can_revoke_key(actor, row):
+    if not await _can_revoke_key(session, actor, row):
         # Visible but not revokable — surface 403 here because hiding the
         # existence at this point would be inconsistent with the GET path.
         raise APIKeyForbidden(

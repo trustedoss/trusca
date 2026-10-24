@@ -404,6 +404,20 @@ async def _resolve_project_or_problem(
         resource_id=str(project_id),
         deny=lambda: ProjectForbidden(f"actor is not a member of team {project.team_id}"),
     )
+    # A project-scoped API key reaches its own project only. The team check
+    # above passes for every project of the key's team, so without this the
+    # conformance route (which accepts keys) read sibling projects. Same 404
+    # as an unknown project, matching the policy-gate surface.
+    if actor.api_key_project_id is not None and actor.api_key_project_id != project.id:
+        log.warning(
+            "authz.api_key_project_mismatch",
+            actor_id=str(actor.id),
+            resource=resource,
+            resource_id=str(project_id),
+        )
+        return _problem_for_project_error(
+            request, ProjectNotFound(f"project {project_id} not found")
+        )
     return project
 
 

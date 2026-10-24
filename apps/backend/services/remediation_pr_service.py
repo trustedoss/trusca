@@ -71,7 +71,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from core.audit import bind_audit_team
-from core.authz import can_access_group
+from core.authz import can_access_group, is_super_admin
 from core.config import (
     github_api_url,
     github_app_token_http_timeout_seconds,
@@ -216,12 +216,10 @@ class RemediationPRResult:
 # ---------------------------------------------------------------------------
 
 
-def _is_super_admin(actor: CurrentUser) -> bool:
-    return actor.is_superuser or actor.role == "super_admin"
-
-
 def _is_team_admin(actor: CurrentUser, team_id: uuid.UUID) -> bool:
-    if _is_super_admin(actor):
+    # Role lookup only: the caller has passed ``can_access_group`` for this
+    # team first, which is where a super admin's reach is decided.
+    if is_super_admin(actor):
         return True
     return actor.team_roles.get(team_id) == "group_admin"
 

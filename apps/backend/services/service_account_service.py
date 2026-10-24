@@ -31,6 +31,7 @@ from sqlalchemy import func, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from core.authz import super_admin_reaches
 from core.security import CurrentUser, forget_principal, hash_password
 from models import Membership, Team, User
 
@@ -93,8 +94,10 @@ class ServiceAccountUnowned(ServiceAccountError):
     """Nobody is answerable for this account, so it may not issue new keys."""
 
 
-def _can_administer_team(actor: CurrentUser, team_id: uuid.UUID) -> bool:
-    if actor.is_superuser or actor.role == "super_admin":
+async def _can_administer_team(
+    session: AsyncSession, actor: CurrentUser, team_id: uuid.UUID
+) -> bool:
+    if await super_admin_reaches(session, actor, team_id):
         return True
     return actor.team_roles.get(team_id) in {"group_admin", "super_admin"}
 
@@ -143,7 +146,7 @@ async def create_service_account(
     on, and an optional field would be left empty on exactly the accounts
     nobody wants to own.
     """
-    if not _can_administer_team(actor, team_id):
+    if not await _can_administer_team(session, actor, team_id):
         raise ServiceAccountForbidden(
             f"actor may not create service accounts for team {team_id}"
         )
@@ -214,7 +217,7 @@ async def list_service_accounts(
     session: AsyncSession, actor: CurrentUser, *, team_id: uuid.UUID
 ) -> list[User]:
     """The team's automation identities, newest first."""
-    if not _can_administer_team(actor, team_id):
+    if not await _can_administer_team(session, actor, team_id):
         raise ServiceAccountNotFound(f"team {team_id} not found")
     rows = (
         await session.execute(
@@ -383,10 +386,12 @@ async def _load_manageable(
     if account is None:
         raise ServiceAccountNotFound(f"service account {service_account_id} not found")
 
-    if actor.is_superuser or actor.role == "super_admin":
+    if await super_admin_reaches(session, actor, None):
         # Answered before the team lookup, so an account that has somehow lost
         # its membership is still reachable. ``any([])`` is False, and an
-        # account nobody can reach is one whose keys nobody can stop.
+        # account nobody can reach is one whose keys nobody can stop. On the
+        # public demo the bypass needs a target group, so it is judged per
+        # team below instead.
         return account
 
     team_ids = (
@@ -398,6 +403,7 @@ async def _load_manageable(
         .scalars()
         .all()
     )
-    if not any(_can_administer_team(actor, team_id) for team_id in team_ids):
-        raise ServiceAccountNotFound(f"service account {service_account_id} not found")
-    return account
+    for team_id in team_ids:
+        if await _can_administer_team(session, actor, team_id):
+            return account
+    raise ServiceAccountNotFound(f"service account {service_account_id} not found")

@@ -29,7 +29,7 @@ from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from core.audit import bind_audit_team
-from core.authz import can_access_group
+from core.authz import can_access_group, super_admin_reaches
 from core.config import scan_container_engine, scan_engine
 from core.security import CurrentUser
 from core.sql_safety import escape_like
@@ -343,10 +343,11 @@ async def cancel_scan_for_actor(
     # None group_id can't be passed to `can_access_group` (it always exists
     # for a real group), so this branch is super_admin-only, matching
     # `_actor_can_access_team`'s old behaviour byte-for-byte: super_admin
-    # passes regardless, everyone else is denied.
-    is_super = actor.is_superuser or actor.role == "super_admin"
+    # passes regardless, everyone else is denied. With no group there is no
+    # target to judge the public-demo boundary against, so on the demo it is
+    # denied too (``core.authz.super_admin_reaches``).
     if team_id is None:
-        if not is_super:
+        if not await super_admin_reaches(session, actor, None):
             raise AdminScanNotFound(f"scan {scan_id} not found")
     elif not await can_access_group(session, actor, team_id):
         # Existence-hide: same shape as a non-existent scan.

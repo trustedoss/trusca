@@ -1,5 +1,5 @@
 """
-Unit tests for RBAC dependencies — require_role / require_team_member.
+Unit tests for the RBAC dependency require_role.
 
 We exercise the dependency callables directly with a mocked CurrentUser so
 no database is needed. RBAC must:
@@ -60,36 +60,6 @@ def test_require_role_rejects_anonymous():
     with pytest.raises(HTTPException) as exc:
         dep(current_user=None)
     assert exc.value.status_code == 401
-
-
-def test_require_team_member_allows_member():
-    from core.security import require_team_member
-
-    team_id = uuid.uuid4()
-    user = _FakeUser(role="developer", team_ids=[team_id])
-    dep = require_team_member()
-    assert dep(team_id=team_id, current_user=user) is user
-
-
-def test_require_team_member_rejects_outsider():
-    from core.security import require_team_member
-
-    team_id = uuid.uuid4()
-    other_team = uuid.uuid4()
-    user = _FakeUser(role="developer", team_ids=[other_team])
-    dep = require_team_member()
-    with pytest.raises(HTTPException) as exc:
-        dep(team_id=team_id, current_user=user)
-    assert exc.value.status_code == 403
-
-
-def test_require_team_member_super_admin_bypasses_team_check():
-    from core.security import require_team_member
-
-    team_id = uuid.uuid4()
-    admin = _FakeUser(role="super_admin", team_ids=[])
-    dep = require_team_member()
-    assert dep(team_id=team_id, current_user=admin) is admin
 
 
 def test_inactive_user_is_treated_as_anonymous():

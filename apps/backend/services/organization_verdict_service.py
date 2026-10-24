@@ -29,7 +29,7 @@ from sqlalchemy import func, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from core.authz import assert_team_access
+from core.authz import assert_team_access, super_admin_reaches
 from core.security import CurrentUser
 from models import (
     ComponentApproval,
@@ -159,10 +159,6 @@ async def _db_now(session: AsyncSession) -> datetime:
     return (await session.execute(select(func.now()))).scalar_one()
 
 
-def _is_super_admin(actor: CurrentUser) -> bool:
-    return bool(actor.is_superuser) or actor.role == "super_admin"
-
-
 def _assert_justification(value: str | None) -> str:
     text = (value or "").strip()
     if len(text) < MIN_JUSTIFICATION_LEN:
@@ -196,7 +192,10 @@ async def _assert_member_of_organization(
     names and the reasons. The ids are not secret but the rulings are somebody
     else's record of what they decided and why.
     """
-    if _is_super_admin(actor):
+    # Rulings belong to an organization, not a group, so this is a target-less
+    # bypass: on the public demo a super admin answers through membership
+    # like anybody else (see ``core.authz.super_admin_reaches``).
+    if await super_admin_reaches(session, actor, None):
         return
     if not actor.team_ids:
         raise VerdictNotFound(f"organization {organization_id} not found")
@@ -327,7 +326,7 @@ async def open_verdict(
     justification: str,
 ) -> OrganizationComponentVerdict:
     """Start a ruling. Nothing about any project changes yet."""
-    if not _is_super_admin(actor):
+    if not await super_admin_reaches(session, actor, None):
         raise VerdictForbidden(
             "ruling for a whole organization requires a deployment administrator"
         )
@@ -414,7 +413,7 @@ async def transition_verdict(
     otherwise both see the same version, both pass the check, and the later
     write would land with no sign that the earlier one happened.
     """
-    if not _is_super_admin(actor):
+    if not await super_admin_reaches(session, actor, None):
         raise VerdictForbidden(
             "deciding an organization ruling requires a deployment administrator"
         )

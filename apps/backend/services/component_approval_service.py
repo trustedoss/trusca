@@ -52,12 +52,11 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import Session
 
-from core.authz import assert_team_access
+from core.authz import assert_team_access, group_visibility_filter, super_admin_reaches
 from core.security import CurrentUser
 from models import ComponentApproval, Project, User
 from models.component_approval import APPROVAL_STATUS_VALUES, ApprovalStatus
 from models.scan import Component  # explicit import avoids implicit lazy load
-from services.group_service import group_scoped_subquery_predicate
 
 log = structlog.get_logger("component_approval.service")
 
@@ -203,15 +202,17 @@ def _now() -> datetime:
     return datetime.now(tz=UTC)
 
 
-def _role_in_team(actor: CurrentUser, team_id: uuid.UUID) -> str | None:
+async def _role_in_team(
+    session: AsyncSession, actor: CurrentUser, team_id: uuid.UUID
+) -> str | None:
     """Return the actor's role in *team_id*, or None if not a member."""
-    if actor.is_superuser or actor.role == "super_admin":
+    if await super_admin_reaches(session, actor, team_id):
         return "super_admin"
     return actor.team_roles.get(team_id)
 
 
-def _has_team_admin(actor: CurrentUser, team_id: uuid.UUID) -> bool:
-    role = _role_in_team(actor, team_id)
+async def _has_team_admin(session: AsyncSession, actor: CurrentUser, team_id: uuid.UUID) -> bool:
+    role = await _role_in_team(session, actor, team_id)
     return role in {"group_admin", "super_admin"}
 
 
@@ -249,11 +250,11 @@ async def list_approvals(
     count_base = select(func.count()).select_from(ComponentApproval)
 
     # --- tenant gate ---
-    if not (actor.is_superuser or actor.role == "super_admin"):
-        # Restrict to the actor's own (cascade-expanded, when the flag is on)
-        # teams; ignore any caller-supplied team_id that is outside this set.
-        # Phase 2 PR 2-C: was `ComponentApproval.team_id.in_(actor.team_ids)`.
-        tenant = group_scoped_subquery_predicate(ComponentApproval.team_id, actor.team_ids)
+    # Restrict to the actor's own (cascade-expanded, when the flag is on)
+    # teams; ignore any caller-supplied team_id that is outside this set.
+    # Phase 2 PR 2-C: was `ComponentApproval.team_id.in_(actor.team_ids)`.
+    tenant = group_visibility_filter(actor, ComponentApproval.team_id)
+    if tenant is not None:
         base = base.where(tenant)
         count_base = count_base.where(tenant)
 
@@ -805,7 +806,7 @@ async def transition_approval(
         )
 
     # Role gate: decision transitions require team_admin.
-    if action in _REQUIRES_TEAM_ADMIN and not _has_team_admin(actor, row.team_id):
+    if action in _REQUIRES_TEAM_ADMIN and not await _has_team_admin(session, actor, row.team_id):
         raise ApprovalForbidden(
             f"role team_admin or super_admin required to perform action {action!r}"
         )
@@ -923,7 +924,7 @@ async def delete_approval(
     #   - team_admin of the approval's team: allowed
     #   - developer: only if they are the original requester
     is_requester = row.requested_by_user_id == actor.id
-    is_team_admin = _has_team_admin(actor, row.team_id)
+    is_team_admin = await _has_team_admin(session, actor, row.team_id)
 
     if not (is_requester or is_team_admin):
         # Existence-hide: developer who didn't request it gets 404.

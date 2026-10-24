@@ -33,6 +33,7 @@ import structlog
 from fastapi import APIRouter, Depends, Query, Request, Response, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from core.authz import is_super_admin
 from core.db import get_db
 from core.pagination import PAGE_MAX
 from core.security import CurrentUser, require_role
@@ -54,7 +55,9 @@ def _scope_for(actor: CurrentUser) -> set[uuid.UUID] | None:
     where the actor holds ``team_admin``. An actor with no ``team_admin``
     membership gets an empty set — which matches zero rows (fail-closed).
     """
-    if actor.role == "super_admin":
+    # The demo boundary for a super admin is applied inside the search
+    # itself (``demo_audit_predicate``), so ``None`` is safe on the demo too.
+    if is_super_admin(actor):
         return None
     return {
         team_id

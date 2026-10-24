@@ -32,8 +32,7 @@ from sqlalchemy.orm import Session, selectinload
 
 from core.audit import bind_audit_team as _bind_audit_team
 from core.audit import get_audit_context
-from core.authz import can_access_group, team_scope_filter
-from core.config import demo_read_only
+from core.authz import can_access_group, is_super_admin, super_admin_reaches, team_scope_filter
 from core.pii_mask import mask_pii
 from core.security import CurrentUser
 from models import (
@@ -1081,8 +1080,11 @@ def _can_admin_team(actor: CurrentUser, team_id: uuid.UUID) -> bool:
     Mirrors ``project_service._can_write_project``'s cross-team escalation guard
     (CWE-863): we read the actor's role in this specific team via
     ``actor.team_roles``, never the global max ``actor.role``.
+
+    A role lookup, not a reach decision: the caller has already passed
+    ``can_access_group`` for this team, which decides a super admin's reach.
     """
-    if actor.is_superuser or actor.role == "super_admin":
+    if is_super_admin(actor):
         return True
     return actor.team_roles.get(team_id) == "group_admin"
 
@@ -1311,7 +1313,7 @@ async def list_scans_for_actor(
 
     # Public read-only demo: no bypass here; team_scope_filter bounds a super
     # admin to the demo organisation.
-    is_super = (actor.is_superuser or actor.role == "super_admin") and not demo_read_only()
+    is_super = await super_admin_reaches(session, actor, None)
 
     # Build the base query. We JOIN on Project so the WHERE clause can clamp
     # by team_id. ix_scans_project_created_at + ix_projects_team_id keep the

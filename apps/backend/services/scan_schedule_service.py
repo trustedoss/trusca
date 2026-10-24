@@ -23,7 +23,7 @@ import structlog
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from core.authz import can_access_group
+from core.authz import can_access_group, super_admin_reaches
 from core.security import _ROLE_PRIORITY, CurrentUser
 from models import Organization, Project, ScanSchedule
 from schemas.scan_schedule import ScanScheduleUpsertIn
@@ -43,17 +43,17 @@ class ScanScheduleScopeNotFound(ScanScheduleError):
     """The project or organization does not exist, or is hidden from the caller."""
 
 
-def _is_super_admin(actor: CurrentUser) -> bool:
-    return actor.is_superuser or actor.role == "super_admin"
-
-
-def _may_administer_project(actor: CurrentUser, team_id: uuid.UUID) -> bool:
+async def _may_administer_project(
+    session: AsyncSession, actor: CurrentUser, team_id: uuid.UUID
+) -> bool:
     """Whether ``actor`` may write the schedule of a project owned by ``team_id``.
 
     Rank rather than equality, matching ``gate_policy_service._may_administer_team``:
     a grade added above team_admin later must not have to be listed here again.
+    No access check runs before this one, so a super admin's reach is decided
+    here.
     """
-    if _is_super_admin(actor):
+    if await super_admin_reaches(session, actor, team_id):
         return True
     grade = actor.team_roles.get(team_id)
     if grade is None:
@@ -172,7 +172,7 @@ async def upsert_project_schedule(
     second one, which the unique constraint would refuse anyway.
     """
     team_id, organization_id = await _resolve_project_scope(session, project_id)
-    if not _may_administer_project(actor, team_id):
+    if not await _may_administer_project(session, actor, team_id):
         raise ScanScheduleForbidden(
             f"actor may not write the scan schedule for project {project_id}"
         )
@@ -202,7 +202,7 @@ async def upsert_org_schedule(
     ).scalar_one_or_none()
     if exists is None:
         raise ScanScheduleScopeNotFound(f"organization {organization_id} not found")
-    if not _is_super_admin(actor):
+    if not await super_admin_reaches(session, actor, None):
         raise ScanScheduleForbidden("only a super admin may write the organization scan schedule")
     return await _upsert(
         session,
@@ -278,7 +278,7 @@ async def delete_project_schedule(
     nothing.
     """
     team_id, organization_id = await _resolve_project_scope(session, project_id)
-    if not _may_administer_project(actor, team_id):
+    if not await _may_administer_project(session, actor, team_id):
         raise ScanScheduleForbidden(
             f"actor may not write the scan schedule for project {project_id}"
         )

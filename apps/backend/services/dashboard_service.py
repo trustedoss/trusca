@@ -54,8 +54,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import InstrumentedAttribute
 from sqlalchemy.sql.elements import ColumnElement
 
-from core.authz import team_scope_filter
-from core.config import demo_read_only
+from core.authz import super_admin_reaches, team_scope_filter
 from core.security import CurrentUser
 from models import (
     ComponentApproval,
@@ -191,7 +190,7 @@ async def _accessible_project_ids(
     """
     # Public read-only demo: no bypass here; team_scope_filter bounds a super
     # admin to the demo organisation.
-    is_super = (actor.is_superuser or actor.role == "super_admin") and not demo_read_only()
+    is_super = await super_admin_reaches(session, actor, None)
 
     stmt = select(Project.id)
     if not include_archived:

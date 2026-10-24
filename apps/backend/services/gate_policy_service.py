@@ -41,7 +41,7 @@ import structlog
 from sqlalchemy import or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from core.authz import can_access_group
+from core.authz import can_access_group, super_admin_reaches
 from core.security import _ROLE_PRIORITY, CurrentUser
 from models import GatePolicy, Organization, Project, Team
 from schemas.gate_policy import GatePolicyUpsertIn
@@ -61,18 +61,16 @@ class GatePolicyScopeNotFound(GatePolicyError):
     """The team or organization does not exist, or is hidden from the caller."""
 
 
-def _is_super_admin(actor: CurrentUser) -> bool:
-    return actor.is_superuser or actor.role == "super_admin"
-
-
-def _may_administer_team(actor: CurrentUser, team_id: uuid.UUID) -> bool:
+async def _may_administer_team(
+    session: AsyncSession, actor: CurrentUser, team_id: uuid.UUID
+) -> bool:
     """Whether ``actor`` may write the policy of ``team_id``.
 
     Rank rather than equality. Asking "is this grade team_admin" would answer
     no for any grade added above it later, and the same phrasing elsewhere in
     the codebase had to be corrected once a grade was added below.
     """
-    if _is_super_admin(actor):
+    if await super_admin_reaches(session, actor, team_id):
         return True
     grade = actor.team_roles.get(team_id)
     if grade is None:
@@ -308,7 +306,7 @@ async def upsert_team_policy(
     goes back to following its organization.
     """
     organization_id = await _resolve_team_org(session, team_id)
-    if not _may_administer_team(actor, team_id):
+    if not await _may_administer_team(session, actor, team_id):
         # Existence is not hidden here: the caller already knows the team, and
         # writing a policy for a team you can see but not administer is an
         # authorization answer rather than a discovery one.
@@ -342,7 +340,7 @@ async def upsert_org_policy(
     ).scalar_one_or_none()
     if exists is None:
         raise GatePolicyScopeNotFound(f"organization {organization_id} not found")
-    if not _is_super_admin(actor):
+    if not await super_admin_reaches(session, actor, None):
         raise GatePolicyForbidden("only a super admin may write the organization gate policy")
 
     return await _upsert(session, organization_id=organization_id, team_id=None, payload=payload)
@@ -389,7 +387,7 @@ async def delete_team_policy(
     that never had one rather than reporting a delete that deleted nothing.
     """
     organization_id = await _resolve_team_org(session, team_id)
-    if not _may_administer_team(actor, team_id):
+    if not await _may_administer_team(session, actor, team_id):
         raise GatePolicyForbidden(f"actor may not write the gate policy for team {team_id}")
 
     row = (

@@ -30,12 +30,11 @@ from sqlalchemy import Select, func, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from core.authz import assert_team_access
+from core.authz import assert_team_access, group_visibility_filter, is_super_admin
 from core.config import intake_requests_enabled
 from core.security import CurrentUser
 from models import ComponentIntakeRequest, Project
 from models.component_approval import APPROVAL_STATUS_VALUES, ApprovalStatus
-from services.group_service import group_scoped_subquery_predicate
 
 log = structlog.get_logger("services.component_intake")
 
@@ -119,7 +118,9 @@ def _assert_enabled() -> None:
 
 
 def _has_team_admin(actor: CurrentUser, team_id: uuid.UUID) -> bool:
-    if actor.is_superuser or actor.role == "super_admin":
+    # Role lookup only: the caller has already passed ``assert_team_access``
+    # for this team, which is where a super admin's reach is decided.
+    if is_super_admin(actor):
         return True
     return actor.team_roles.get(team_id) in {"group_admin", "super_admin"}
 
@@ -284,16 +285,14 @@ def _scoped(
     actor: CurrentUser,
     stmt: Select[tuple[ComponentIntakeRequest]],
 ) -> Select[tuple[ComponentIntakeRequest]]:
-    if actor.is_superuser or actor.role == "super_admin":
+    # Phase 2 PR 2-C: the membership predicate already returns an explicit
+    # false predicate for an empty membership set (fail-closed, same intent as
+    # the old `team_id.is_(None)` special case, this column is NOT NULL, so
+    # both forms match zero rows) and is cascade-aware when the flag is on.
+    visible = group_visibility_filter(actor, ComponentIntakeRequest.team_id)
+    if visible is None:
         return stmt
-    # Phase 2 PR 2-C: `group_scoped_subquery_predicate` already returns an
-    # explicit false predicate for an empty membership set (fail-closed,
-    # same intent as the old `team_id.is_(None)` special case, this column
-    # is NOT NULL, so both forms match zero rows) and is cascade-aware when
-    # the flag is on.
-    return stmt.where(
-        group_scoped_subquery_predicate(ComponentIntakeRequest.team_id, actor.team_ids)
-    )
+    return stmt.where(visible)
 
 
 async def list_requests(

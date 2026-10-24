@@ -26,7 +26,7 @@ from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from core.authz import assert_team_access
+from core.authz import assert_team_access, is_super_admin
 from core.security import CurrentUser
 from models import (
     OBLIGATION_FULFILMENT_STATUSES,
@@ -80,7 +80,9 @@ def _can_write(actor: CurrentUser, team_id: uuid.UUID) -> bool:
     release, and a record only their manager can update is a record that stays
     empty while the work happens.
     """
-    if actor.is_superuser or actor.role == "super_admin":
+    # Role lookup only: callers pass ``assert_team_access`` for this team
+    # first, which is where a super admin's reach is decided.
+    if is_super_admin(actor):
         return True
     return actor.team_roles.get(team_id) in {"developer", "group_admin", "super_admin"}
 

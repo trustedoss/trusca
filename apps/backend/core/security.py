@@ -23,11 +23,9 @@ RBAC:
   - `require_role(role)` returns a dependency that resolves to the current
     user when their role meets or exceeds the demanded role; raises
     HTTPException(401) for anonymous and 403 for insufficient privilege.
-  - `require_team_member()` returns a dependency that resolves a `team_id`
-    path/query param against `current_user.team_ids`; super_admin bypasses.
 
 The dependency factories return plain callables that the unit tests can call
-directly with kwargs (`dep(current_user=user)`, `dep(team_id=t, current_user=u)`).
+directly with kwargs (`dep(current_user=user)`).
 FastAPI is happy to inject the same callable via `Depends(...)` in route
 signatures because the parameter names match dependency names.
 """
@@ -891,47 +889,6 @@ def require_super_admin_or_404() -> Callable[..., CurrentUser]:
     return _check
 
 
-def require_team_member() -> Callable[..., CurrentUser]:
-    """
-    Dependency factory: ensure the caller belongs to `team_id`.
-
-    Returns a callable that accepts `team_id` (UUID) and `current_user` as
-    kwargs. super_admin bypasses the team check entirely; everyone else must
-    have `team_id in current_user.team_ids`.
-
-    DEAD CODE as of Group-hierarchy Phase 2 PR 2-C (confirmed: zero route
-    callers, only this definition and its own test). Do not `Depends()` this
-    onto a new route as-is: its super-admin bypass checks only
-    ``role == "super_admin"``, not ``is_superuser`` too, which is narrower
-    than every gate `core.authz` exposes (``can_access_group`` /
-    ``assert_team_access`` / ``team_scope_filter`` all check both) -- and it
-    has no cascade awareness at all, unlike ``can_access_group``. If you are
-    about to wire this up, route through ``core.authz.can_access_group``
-    instead, or bring this function's bypass and cascade behavior in line
-    with it first.
-    """
-
-    def _check(
-        team_id: uuid.UUID,
-        current_user: CurrentUser | None = Depends(get_optional_current_user),
-    ) -> CurrentUser:
-        if current_user is None or not current_user.is_active:
-            raise HTTPException(
-                status_code=status.HTTP_401_UNAUTHORIZED,
-                detail="Authentication required",
-            )
-        if current_user.role == "super_admin":
-            return current_user
-        if team_id not in current_user.team_ids:
-            raise HTTPException(
-                status_code=status.HTTP_403_FORBIDDEN,
-                detail="Not a member of this team",
-            )
-        return current_user
-
-    return _check
-
-
 __all__ = [
     "CurrentUser",
     "create_access_token",
@@ -945,7 +902,6 @@ __all__ = [
     "hash_refresh_token",
     "require_role",
     "require_super_admin_or_404",
-    "require_team_member",
     "verify_password",
     "verify_password_async",
 ]

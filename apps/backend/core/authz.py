@@ -35,6 +35,14 @@ Pieces in this module:
   Async since Phase 2 PR 2-D, for the same reason ``can_access_group`` is:
   it needs a session to resolve the cascade.
 
+- :func:`is_super_admin`, :func:`super_admin_reaches`,
+  :func:`super_admin_group_filter`, :func:`group_visibility_filter`: the one
+  place a super admin's bypass is decided. Identity and reach are separate
+  questions: on the public read-only demo a super admin reaches only the demo
+  organisation, and nothing organisation-wide. Services do not define their
+  own ``_is_super_admin``; ``test_no_local_super_admin_shortcuts`` in
+  ``tests/unit/test_authz_super_admin_reach.py`` keeps it that way.
+
 - :func:`team_scope_filter`, the single choke-point for *list / fan-out*
   reads (global search, portfolio dashboards, project listings). Phase 2
   PR 2-C made this cascade-aware by delegating its member branch to
@@ -54,6 +62,7 @@ from __future__ import annotations
 
 import uuid
 from collections.abc import Callable
+from typing import Any
 
 import sqlalchemy as sa
 import structlog
@@ -64,6 +73,118 @@ from core.config import demo_read_only
 from core.security import CurrentUser
 from models import Project
 from services import demo_scope, group_service
+
+
+def is_super_admin(actor: CurrentUser) -> bool:
+    """Whether *actor* holds the super-admin grade. Identity only, not reach.
+
+    This answers "who is this", never "may they act on that". Every decision
+    that lets a super admin past a team, project, or organisation boundary
+    goes through :func:`super_admin_reaches` (one resource) or
+    :func:`super_admin_group_filter` (a list query), because on a public demo
+    the published super-admin accounts reach only the demo organisation, and a
+    bare identity check skips that boundary. Use this function directly only
+    for presentation (which response shape to render) after the reach decision
+    has already been made, or as the first half of a check that then calls one
+    of the two reach helpers.
+
+    Both the flag and the derived role are honoured, matching the bypass every
+    service used before the helpers existed, so a non-demo deployment decides
+    exactly as it did. :func:`team_scope_filter` is the one deliberate
+    exception, see its comment.
+    """
+    return bool(actor.is_superuser) or actor.role == "super_admin"
+
+
+async def super_admin_reaches(
+    session: AsyncSession,
+    actor: CurrentUser,
+    group_id: uuid.UUID | None,
+) -> bool:
+    """Whether *actor*'s super-admin authority covers the group *group_id*.
+
+    The single decision for "may a super admin skip the membership check here".
+    Callers that used to write ``if actor.is_superuser or actor.role ==
+    "super_admin": return True`` now write ``if await super_admin_reaches(
+    session, actor, team_id): return True`` and fall through to their own
+    membership or role check otherwise.
+
+    - Not a super admin: ``False``.
+    - Normal deployment: ``True`` for any target, including ``None``.
+    - Public read-only demo (``DEMO_READ_ONLY``), target is a group: ``True``
+      only for a group of the demo organisation.
+    - Public read-only demo, no target group (``None``): ``False``. Target-less
+      resources are organisation-wide ones: an org-scoped API key
+      (``team_id`` NULL), organisation settings and templates, organisation
+      rulings, the global scan schedule list. Nothing ties them to the demo
+      dataset, and the operator's own rows look the same, so a published
+      super-admin account is denied the bypass for them. The caller then falls
+      through to its ordinary path, which for an organisation-wide write means
+      it is refused, and for a read means the caller sees what its own
+      memberships allow.
+
+    The ``None`` form is also the question "is this super admin's reach
+    unbounded", which is what a list read asks before it drops its tenant
+    filter altogether: ``True`` exactly when a normal deployment's super admin
+    is asking, so the list runs the unfiltered query it always ran.
+    """
+    if not is_super_admin(actor):
+        return False
+    if not demo_read_only():
+        return True
+    if group_id is None:
+        return False
+    return await demo_scope.is_demo_group(session, group_id)
+
+
+def super_admin_reach_predicate(group_column: Any) -> ColumnElement[bool]:
+    """The rows a super admin reaches, as a ``WHERE`` clause on *group_column*.
+
+    ``true()`` on a normal deployment. On the public demo, the column must be
+    a demo group: a NULL column (an organisation-wide row) compares as NULL
+    and is dropped, the list form of the "no target, deny" rule in
+    :func:`super_admin_reaches`.
+    """
+    if demo_read_only():
+        predicate: ColumnElement[bool] = group_column.in_(demo_scope.demo_group_ids())
+        return predicate
+    return sa.true()
+
+
+def super_admin_group_filter(actor: CurrentUser, group_column: Any) -> ColumnElement[bool] | None:
+    """The list-query form of :func:`super_admin_reaches`.
+
+    ``None`` when *actor* is not a super admin: the caller applies its own
+    membership filter. Otherwise the clause selecting the rows the super
+    admin reaches, which the caller ORs with its membership filter (so a demo
+    super admin still sees, say, the keys it issued itself) or uses alone.
+    """
+    if not is_super_admin(actor):
+        return None
+    return super_admin_reach_predicate(group_column)
+
+
+def group_visibility_filter(actor: CurrentUser, group_column: Any) -> ColumnElement[bool] | None:
+    """``WHERE`` clause for a list of group-owned rows, or ``None`` for "all".
+
+    Replaces the pattern every list read used to repeat::
+
+        if not (actor.is_superuser or actor.role == "super_admin"):
+            stmt = stmt.where(group_scoped_subquery_predicate(col, actor.team_ids))
+
+    - Super admin, normal deployment: ``None``. The caller adds no clause, so
+      the query is the one it ran before.
+    - Super admin, public demo: rows in a demo group, or in a group the actor
+      belongs to. Rows with a NULL group (organisation-wide) are dropped.
+    - Everybody else: the membership predicate, cascade-aware.
+    """
+    member = group_service.group_scoped_subquery_predicate(group_column, actor.team_ids)
+    reach = super_admin_group_filter(actor, group_column)
+    if reach is None:
+        return member
+    if not demo_read_only():
+        return None
+    return sa.or_(reach, member)
 
 
 async def can_access_group(
@@ -103,12 +224,8 @@ async def can_access_group(
     check. OFF, it reduces to exactly the old ``can_access_team``'s flat
     membership check, "is *group_id* literally in *direct_group_ids*".
     """
-    if actor.is_superuser or actor.role == "super_admin":
-        # Public read-only demo: the published accounts include super admins,
-        # so the bypass stops at the demo organisation's groups.
-        if demo_read_only():
-            return await demo_scope.is_demo_group(session, group_id)
-        return True
+    if is_super_admin(actor):
+        return await super_admin_reaches(session, actor, group_id)
     return await group_service.can_access_group(session, actor.team_ids, group_id)
 
 
@@ -203,8 +320,9 @@ def team_scope_filter(actor: CurrentUser) -> ColumnElement[bool]:
 
     Contract:
 
-    - super-admin (``actor.is_superuser`` OR ``actor.role == "super_admin"``)
-      -> :func:`sqlalchemy.true` (no restriction; sees every team's rows).
+    - super-admin (``actor.is_superuser``, see the comment in the body) ->
+      :func:`sqlalchemy.true` on a normal deployment (no restriction; sees every
+      team's rows), the demo organisation's groups on the public demo.
     - a member, cascade ON (the default since PR 5-C) -> also sees projects
       owned by any DESCENDANT group of a group in ``actor.team_ids``
       (:func:`services.group_service.project_subtree_predicate`;
@@ -241,12 +359,17 @@ def team_scope_filter(actor: CurrentUser) -> ColumnElement[bool]:
     # keying the bypass on the authoritative ``users.is_superuser`` flag closes
     # that latent membership-role escalation path centrally (security-review H-2,
     # Low-2 defense-in-depth).
+    #
+    # This is the one place that keeps the stricter identity rather than
+    # calling ``is_super_admin``: the two differ only for a principal whose
+    # role reads ``super_admin`` without the flag, which no write path produces.
+    # Widening this filter to match would undo H-2; narrowing every single-
+    # resource check to match would change who passes them on deployments
+    # where tests and fixtures build principals from the role alone. The reach
+    # (demo boundary included) is shared with every other check through
+    # ``super_admin_reach_predicate``, so only the identity differs.
     if actor.is_superuser:
-        # Public read-only demo: bounded to the demo organisation's groups,
-        # the same boundary as can_access_group above.
-        if demo_read_only():
-            return Project.group_id.in_(demo_scope.demo_group_ids())
-        return sa.true()
+        return super_admin_reach_predicate(Project.group_id)
     # Phase 2 PR 2-C: the member branch used to inline
     # ``Project.team_id.in_(actor.team_ids)`` here. It now delegates to
     # ``group_service.project_subtree_predicate``, which is this exact
@@ -257,4 +380,13 @@ def team_scope_filter(actor: CurrentUser) -> ColumnElement[bool]:
     return group_service.project_subtree_predicate(actor.team_ids)
 
 
-__all__ = ["assert_team_access", "can_access_group", "team_scope_filter"]
+__all__ = [
+    "assert_team_access",
+    "can_access_group",
+    "group_visibility_filter",
+    "is_super_admin",
+    "super_admin_group_filter",
+    "super_admin_reach_predicate",
+    "super_admin_reaches",
+    "team_scope_filter",
+]

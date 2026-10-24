@@ -45,7 +45,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.sql.elements import ColumnElement
 
 from core.audit import bind_audit_team
-from core.authz import can_access_group
+from core.authz import can_access_group, super_admin_group_filter, super_admin_reaches
 from core.security import CurrentUser
 from models import LicensePolicy, Team
 from schemas.license_policy import (
@@ -293,13 +293,9 @@ def _enforce_forbidden_ttl(
             )
 
 
-def _is_super_admin(actor: CurrentUser) -> bool:
-    return actor.is_superuser or actor.role == "super_admin"
-
-
-def _can_admin_team(actor: CurrentUser, team_id: uuid.UUID) -> bool:
+async def _can_admin_team(session: AsyncSession, actor: CurrentUser, team_id: uuid.UUID) -> bool:
     """True iff *actor* may write the policy of *team_id* (team_admin or super)."""
-    if _is_super_admin(actor):
+    if await super_admin_reaches(session, actor, team_id):
         return True
     return actor.team_roles.get(team_id) == "group_admin"
 
@@ -350,7 +346,7 @@ async def upsert_team_policy(
     """
     org_id = await _resolve_team_org(session, team_id)
 
-    if not _can_admin_team(actor, team_id):
+    if not await _can_admin_team(session, actor, team_id):
         raise LicensePolicyForbidden(
             f"actor lacks permission to write the license policy for team {team_id}"
         )
@@ -432,7 +428,7 @@ async def add_license_exception(
     RBAC: ``team_admin`` of *team_id* (or super_admin).
     """
     org_id = await _resolve_team_org(session, team_id)
-    if not _can_admin_team(actor, team_id):
+    if not await _can_admin_team(session, actor, team_id):
         log.warning(
             "license_policy.exception_denied",
             actor_id=str(actor.id),
@@ -529,7 +525,7 @@ async def remove_license_exception(
     delete). RBAC: ``team_admin`` of *team_id*. 404 if the team has no policy.
     """
     org_id = await _resolve_team_org(session, team_id)
-    if not _can_admin_team(actor, team_id):
+    if not await _can_admin_team(session, actor, team_id):
         log.warning(
             "license_policy.exception_denied",
             actor_id=str(actor.id),
@@ -594,7 +590,7 @@ async def upsert_org_policy(
     index ``uq_license_policies_org_default`` backstops this; the service finds
     the existing row first so the common path is a clean UPDATE.
     """
-    if not _is_super_admin(actor):
+    if not await super_admin_reaches(session, actor, None):
         raise LicensePolicyForbidden("only super_admin may write the org-default license policy")
 
     _enforce_forbidden_ttl(
@@ -713,8 +709,14 @@ async def get_org_policy(
     Return the org-default policy row.
 
     RBAC is enforced at the router via ``require_super_admin_or_404`` (admin
-    existence-hide). This service raises 404 if no org default exists.
+    existence-hide). This service raises 404 if no org default exists, and
+    also when the caller's super-admin reach does not cover an organisation-
+    wide row (the public demo, see ``core.authz.super_admin_reaches``).
     """
+    if not await super_admin_reaches(session, actor, None):
+        raise LicensePolicyNotFound(
+            f"no org-default license policy for organization {organization_id}"
+        )
     row = await get_org_default_policy_row(session, organization_id=organization_id)
     if row is None:
         raise LicensePolicyNotFound(
@@ -831,8 +833,12 @@ async def list_policies(
     base = select(LicensePolicy)
     count_base = select(func.count()).select_from(LicensePolicy)
 
-    if not _is_super_admin(actor):
-        if not actor.team_ids:
+    if not await super_admin_reaches(session, actor, None):
+        # On the public demo a super admin lands here too: org defaults are
+        # target-less, so it sees them only through membership, and team
+        # policies of demo groups through ``super_reach``.
+        super_reach = super_admin_group_filter(actor, LicensePolicy.team_id)
+        if not actor.team_ids and super_reach is None:
             # No memberships → nothing visible.
             return [], 0
         # Org ids the actor can see org-defaults for: orgs of the actor's
@@ -863,6 +869,8 @@ async def list_policies(
                     LicensePolicy.organization_id.in_(visible_org_ids),
                 ),
             )
+        if super_reach is not None:
+            visibility = or_(visibility, super_reach)
         base = base.where(visibility)
         count_base = count_base.where(visibility)
 
@@ -912,7 +920,7 @@ async def delete_team_policy(
     """
     org_id = await _resolve_team_org(session, team_id)
 
-    if not _can_admin_team(actor, team_id):
+    if not await _can_admin_team(session, actor, team_id):
         raise LicensePolicyForbidden(
             f"actor lacks permission to reset the license policy for team {team_id}"
         )

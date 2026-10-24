@@ -35,7 +35,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import Session
 
-from core.authz import can_access_group
+from core.authz import can_access_group, super_admin_reaches
 from core.security import _ROLE_PRIORITY, CurrentUser
 from models import NotificationRoutingRule, Organization, Project, Team
 from schemas.notification_routing import NotificationRoutingRuleIn
@@ -264,15 +264,13 @@ class RoutingRuleScopeNotFound(RoutingRuleError):
     """The team, organization or rule does not exist, or is hidden."""
 
 
-def _is_super_admin(actor: CurrentUser) -> bool:
-    return actor.is_superuser or actor.role == "super_admin"
-
-
-def _may_administer_team(actor: CurrentUser, team_id: uuid.UUID) -> bool:
+async def _may_administer_team(
+    session: AsyncSession, actor: CurrentUser, team_id: uuid.UUID
+) -> bool:
     """Rank rather than equality, so a grade added above team_admin still
     passes. Asking "is this grade team_admin" answered no for any higher one
     and had to be corrected elsewhere in this codebase once already."""
-    if _is_super_admin(actor):
+    if await super_admin_reaches(session, actor, team_id):
         return True
     grade = actor.team_roles.get(team_id)
     if grade is None:
@@ -335,7 +333,7 @@ async def create_rule(
     """
     if team_id is not None:
         resolved_org = await _organization_of(session, team_id)
-        if not _may_administer_team(actor, team_id):
+        if not await _may_administer_team(session, actor, team_id):
             raise RoutingRuleForbidden(
                 f"actor may not write notification rules for team {team_id}"
             )
@@ -349,7 +347,7 @@ async def create_rule(
         ).scalar_one_or_none()
         if exists is None:
             raise RoutingRuleScopeNotFound(f"organization {organization_id} not found")
-        if not _is_super_admin(actor):
+        if not await super_admin_reaches(session, actor, None):
             raise RoutingRuleForbidden(
                 "only a super admin may write organization-wide notification rules"
             )
@@ -427,7 +425,7 @@ async def list_rules(
     else:
         if organization_id is None:
             raise RoutingRuleScopeNotFound("no scope given")
-        if not _is_super_admin(actor):
+        if not await super_admin_reaches(session, actor, None):
             raise RoutingRuleScopeNotFound(f"organization {organization_id} not found")
         resolved_org = organization_id
         condition = NotificationRoutingRule.team_id.is_(None)
@@ -464,9 +462,9 @@ async def delete_rule(
         raise RoutingRuleScopeNotFound(f"rule {rule_id} not found")
 
     if rule.team_id is not None:
-        if not _may_administer_team(actor, rule.team_id):
+        if not await _may_administer_team(session, actor, rule.team_id):
             raise RoutingRuleScopeNotFound(f"rule {rule_id} not found")
-    elif not _is_super_admin(actor):
+    elif not await super_admin_reaches(session, actor, None):
         raise RoutingRuleScopeNotFound(f"rule {rule_id} not found")
 
     await session.delete(rule)
