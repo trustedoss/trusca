@@ -368,10 +368,10 @@ DELIBERATE_COMPOSE_DEFAULTS: dict[str, str] = {
     "SCAN_BOMLENS_NETWORK": "names the egress network this compose file declares",
     "SCAN_WORKSPACE_MOUNT": "the workspace volume is mounted at /workspace here",
     "TRUSCA_INSTANCE_ID": "the code reads an empty value as 'default', the value given here",
-    # Not settled: .env.example and core.config call the stage off by default,
-    # and this file turns it on. Recorded so the guard holds for every other
-    # key while that default is decided.
-    "SCANCODE_ENABLED": "compose turns scancode on; the code and template default it off",
+    # Decided: compose deployments run scancode by default; the code default
+    # (and so Helm, which does not set it) stays off. .env.example and the
+    # reference page say both.
+    "SCANCODE_ENABLED": "compose runs scancode by default; the code and Helm default it off",
 }
 
 
