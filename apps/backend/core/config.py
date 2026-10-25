@@ -1687,10 +1687,14 @@ def scancode_enabled() -> bool:
     ``ScancodeDisabled`` and the pipeline continues on declared licences, which
     is how the public demo has always been configured.
 
-    UPGRADE NOTE: a deployment that relies on detected first-party licences
-    must now set ``SCANCODE_ENABLED=true`` explicitly. Detected licences are
-    how vendored or pasted third-party code is found, and dependency metadata
-    never shows it, so licence-compliance deployments should turn this on.
+    UPGRADE NOTE: ``docker-compose.yml`` passes ``SCANCODE_ENABLED=true``
+    unless ``.env`` sets it, so compose deployments keep running the stage.
+    A deployment without compose, including a Helm install (the chart does not
+    set the key; use ``env.extraEnv``), that relies on detected first-party
+    licences must set ``SCANCODE_ENABLED=true`` explicitly. Detected licences
+    are how vendored or pasted third-party code is found, and dependency
+    metadata never shows it, so licence-compliance deployments should turn
+    this on.
 
     Read at call time (CLAUDE.md core rule #11).
     """

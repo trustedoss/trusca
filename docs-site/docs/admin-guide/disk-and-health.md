@@ -162,7 +162,7 @@ After cleanup, **/admin/disk** updates within ~10 seconds. Once below the hard t
 ### 4. Long-term remediation
 
 - Move `WORKSPACE_HOST_PATH` to a larger volume (edit `.env`, then `docker-compose -f docker-compose.yml up -d backend worker-scan worker-default`).
-- Lower `BACKUP_RETENTION_DAYS` if local backups are eating space.
+- If local backups are eating space, lower `BACKUP_RETENTION_DAYS` for the backups `scripts/backup.sh` writes, and delete manual backups you no longer need from **/admin/backup**. The nightly automatic backups are kept for a fixed 7 days and do not read `BACKUP_RETENTION_DAYS`.
 - Move backups off-host (S3, NFS) and skip local pruning.
 
 ## Notification triggers

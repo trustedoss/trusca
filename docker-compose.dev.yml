@@ -324,7 +324,9 @@ x-backend-env: &backend-env
   SCANCODE_ENABLED: ${SCANCODE_ENABLED:-true}
   TOOLCHAIN_CACHE_IDLE_SECONDS: ${TOOLCHAIN_CACHE_IDLE_SECONDS:-900}
   TOOLCHAIN_CACHE_MAX_BYTES: ${TOOLCHAIN_CACHE_MAX_BYTES:-8589934592}
-  TOOLCHAIN_CACHE_ROOTS: ${TOOLCHAIN_CACHE_ROOTS:-}
+  # The code's default list, written out: an empty value is an empty list,
+  # not "unset", and the cache cleaner then reclaims nothing (#583).
+  TOOLCHAIN_CACHE_ROOTS: ${TOOLCHAIN_CACHE_ROOTS:-.m2/repository,.npm,.cache,.gradle,.nuget/packages,go/pkg/mod,.bundle,.composer}
   # compose-env-var wiring audit: self-registration policy, default team
   # role, API-key bookkeeping, and permission/token retention. Documented in
   # .env.example but never listed in this anchor, so setting any of them in

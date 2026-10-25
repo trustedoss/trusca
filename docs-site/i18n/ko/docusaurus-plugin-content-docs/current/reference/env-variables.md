@@ -19,6 +19,8 @@ sidebar_position: 2
 1. 레포 루트의 `.env`를 `docker-compose`가 자동 로드합니다.
 2. 백엔드 코드는 `os.getenv()`를 **런타임에** 호출하며, 모듈 import 시점에 읽지 않습니다. 이는 CLAUDE.md 규칙 #11. Compose는 컨테이너를 만들 때만 `.env`를 읽으므로, 값을 바꾼 뒤에는 `docker-compose up -d`로 설정이 바뀐 서비스를 다시 만들어야 합니다. `docker-compose restart`는 이전 값을 그대로 씁니다. 재빌드는 필요 없습니다.
 3. Compose는 `docker-compose.yml`의 `${VAR}` 참조를 `docker-compose up` 시점에 `.env`에서 치환합니다.
+4. `.env`의 키는 `docker-compose.yml`이 해당 서비스의 `environment`에 적어 둔 경우에만 컨테이너에 전달됩니다. compose는 파일 전체를 넘기지 않습니다. `.env.example`의 키는 모두 백엔드, 워커, beat에 전달되며, 다음 키만 의도적으로 제외합니다. compose가 직접 읽는 키(이미지 태그, 복제본 수, 큐, 호스트 경로, Traefik 설정), 이미지에 빌드 시점에 들어가는 빌드 정보(`TRUSTEDOSS_VERSION`, `TRUSTEDOSS_COMMIT`, `TRUSTEDOSS_BUILT_AT`, `CDXGEN_VERSION`, scancode 라이브러리 경로), 호스트 스크립트만 읽는 키(`BACKUP_RETENTION_DAYS`, `BACKUP_OFFSITE_*`), 데이터베이스 절에서 설명하는 DSN 구성 키와 `DATABASE_URL_OWNER`, 그리고 `docker-compose.dev.yml`만 전달하는 `RATELIMIT_DISABLED`입니다.
+5. `docker-compose`를 실행하는 셸에 export된 값은 `.env`보다 우선합니다. 그래서 명령줄 도구용으로 export해 둔 개인 `GITHUB_TOKEN`이나 `GITLAB_TOKEN`이 포털에 전달되고, 포털은 그 토큰으로 풀 리퀘스트 코멘트를 게시합니다. 이 변수를 export하지 않은 셸에서 `docker-compose`를 실행하세요. 포털은 일반 이름을 먼저 읽으므로 `TRUSTEDOSS_GITHUB_TOKEN` / `TRUSTEDOSS_GITLAB_TOKEN`을 설정해도 해결되지 않습니다.
 
 아래 모든 키는 `apps/backend/core/config.py`, `docker-compose.yml`, `scripts/*` 중 한 곳에서 읽습니다 — **읽는 위치** 컬럼에 표기되어 있습니다.
 
@@ -46,7 +48,7 @@ sidebar_position: 2
 
 ## 데이터베이스 {#database}
 
-`DATABASE_URL`(위 표)이 표준 설정입니다. 아래 합성 대안은 GCP Cloud Run 모듈이 Secret Manager에서 `DB_PASSWORD`를 마운트할 때 DSN을 Terraform state에 굽지 않도록 제공됩니다. **`DATABASE_URL`** 또는 **네 개의 `DB_*` 키 중 하나만** 설정하세요 — 둘 다 설정 금지.
+`DATABASE_URL`(위 표)이 표준 설정입니다. 아래 합성 대안은 GCP Cloud Run 모듈이 Secret Manager에서 `DB_PASSWORD`를 마운트할 때 DSN을 Terraform state에 굽지 않도록 제공됩니다. **`DATABASE_URL`** 또는 **네 개의 `DB_*` 키 중 하나만** 설정하고, 둘 다 설정하지 마세요. compose 파일은 `DATABASE_URL`과 `DATABASE_URL_APP`만 전달하므로, compose 배포에서는 `DB_*` 키를 설정해도 효과가 없습니다.
 
 | 키 | 기본값 | 읽는 위치 | 설명 |
 |---|---|---|---|
@@ -165,6 +167,7 @@ CI 빌드 게이트는 기본적으로 Critical CVE와 금지 라이선스에서
 | `SCAN_CONTAINER_ENGINE` | `inprocess` | `config.py` | **미리 보기 기능이며 기본값은 꺼짐입니다.** 컨테이너 이미지 스캔을 실행할 엔진을 `SCAN_ENGINE`과 따로 고릅니다. `inprocess`는 워커가 `trivy image`를 실행하고, `bomlens`는 엔진 워커에서 BomLens 이미지를 `MODE=IMAGE`로 실행해 Docker 소켓 없이 레지스트리에서 이미지를 읽습니다. 스캔이 큐에 들어갈 때 읽습니다. `bomlens`에는 `SCAN_ENGINE=bomlens`와 같은 준비가 필요하고, 레지스트리 인증 정보가 저장된 레지스트리의 이미지는 거부합니다. 그 밖의 값은 `inprocess`로 읽습니다. [동적 스캔 실행기 → 엔진으로 실행하는 컨테이너 이미지 스캔](../admin-guide/dynamic-scan-executor.md#engine-container-scans)을 참고하십시오. |
 | `SCAN_BOMLENS_IMAGE_TIMEOUT_SECONDS` | `1800` | `config.py` | BomLens 이미지 스캔 한 번이 실행될 수 있는 시간(초)입니다. 넘기면 중지하고 스캔이 실패합니다. 60..21600 범위로 제한합니다. |
 | `SCAN_TRIVY_CACHE_VOLUME` | *(비어 있음)* | `config.py` | 워커의 Trivy 데이터베이스가 있는 명명 볼륨입니다. 네트워크가 없는 2단계에 읽기 전용으로 마운트합니다. `SCAN_DOCKER_VOLUME_STRATEGY=named`에서는 필수입니다(compose: `<project>_trivy-cache`). |
+| `SCANCODE_ENABLED` | Docker Compose에서는 `true`, 그 밖에는 꺼짐 | `config.py`, `docker-compose.yml` | 프로젝트 자체 소스 파일의 라이선스를 scancode로 탐지할지 정합니다. `docker-compose.yml`은 `.env`에 값이 없으면 `true`를 전달합니다. compose 없이 실행하면 코드 기본값은 꺼짐이고 Helm 차트도 이 키를 설정하지 않으므로, Helm 설치에서 켜려면 `env.extraEnv`에 넣어야 합니다. 취약점 매칭에는 쓰이지 않으므로, 탐지된 자체 소스 라이선스를 쓰지 않는다면 꺼 두세요. `true` / `1` / `yes`일 때만 켜집니다. |
 | `SCANCODE_TIMEOUT_SECONDS` | `600` | `config.py` | scancode first-party 라이선스 단계의 hard wall-clock 한도. 타임아웃 시 declared 라이선스만으로 스캔을 계속합니다(best-effort). |
 | `SCANCODE_MAX_FILES` | `20000` | `config.py` | 적격 first-party 파일(제외 필터 적용 후) 상한. 초과 시 scancode를 건너뛰고 declared 라이선스만 유지합니다. |
 | `SCANCODE_MAX_DETECTIONS` | `5000` | `config.py` | 스캔당 저장되는 detected 라이선스 결과 수 상한. |
@@ -173,7 +176,7 @@ CI 빌드 게이트는 기본적으로 Critical CVE와 금지 라이선스에서
 | `SCANOSS_API_URL` | `https://api.osskb.org` | `config.py` | 핑거프린트를 매칭할 SCANOSS 지식 베이스 엔드포인트(`SCANOSS_ENABLED=true`일 때만 사용). 자체 호스팅 SCANOSS 인스턴스로 향하게 하면 핑거프린트가 사내에 머뭅니다. |
 | `SCANOSS_API_KEY` | *(빈 값)* | `config.py` | `SCANOSS_API_URL`용 선택 API 키(유료/자체 호스팅 엔드포인트). 비우면 무료 `api.osskb.org` 등급 사용. |
 | `SCANOSS_TIMEOUT_SECONDS` | `300` | `config.py` | SCANOSS 단계의 하드 wall-clock 제한. 타임아웃 시 vendored-OSS 결과 없이 스캔 계속(best-effort). |
-| `TRUSTEDOSS_VERSION` | `unknown` | `config.py` | 이 배포가 자기 버전으로 밝히는 값입니다. SLSA 프로버넌스, About 화면, 그리고 TRUSCA가 만드는 모든 SBOM의 생성 도구 버전에 쓰입니다. 릴리스 이미지는 빌드 시 태그를 주입합니다(`ARG TRUSTEDOSS_VERSION`). 기본값을 그럴듯한 버전 번호로 두지 않은 것은 의도입니다. 자리표시자를 넣으면 세 곳 모두 존재하지 않는 릴리스를 주장하게 되고, 식별자가 없을 때 `unknown`으로 적는 것이 2026 SBOM 최소 요소가 요구하는 방식입니다. |
+| `TRUSTEDOSS_VERSION` | `unknown` | `config.py` | 이 배포가 자기 버전으로 밝히는 값입니다. SLSA 프로버넌스, About 화면, 그리고 TRUSCA가 만드는 모든 SBOM의 생성 도구 버전에 쓰입니다. 릴리스 이미지는 빌드 시 태그를 주입하며(`ARG TRUSTEDOSS_VERSION`), `docker-compose.yml`은 이 키를 전달하지 않으므로 `.env`에 값을 적어도 효과가 없습니다. 기본값을 그럴듯한 버전 번호로 두지 않은 것은 의도입니다. 자리표시자를 넣으면 세 곳 모두 존재하지 않는 릴리스를 주장하게 되고, 식별자가 없을 때 `unknown`으로 적는 것이 2026 SBOM 최소 요소가 요구하는 방식입니다. |
 | `TRUSTEDOSS_COMMIT` | `unknown` | `config.py` | 이 이미지를 빌드한 커밋입니다. `TRUSTEDOSS_VERSION`과 같은 방식으로 빌드 시 주입됩니다. About 화면과 `trusca_build_info` 지표에 실려, 운영자가 지금 실제로 돌고 있는 빌드가 무엇인지 확인할 수 있게 합니다. |
 | `TRUSTEDOSS_BUILT_AT` | `unknown` | `config.py` | UTC 빌드 시각(ISO 8601)입니다. `TRUSTEDOSS_COMMIT`과 같은 방식으로 주입됩니다. `trusca_build_time_seconds`로도 함께 발행되어, 수집기가 지표 레이블을 파싱하지 않고도 이미지 나이를 계산할 수 있습니다. |
 | `SBOM_AUTHOR` | *(미설정)* | `config.py` | SBOM 데이터를 만든 주체입니다. 내보내는 모든 SBOM에 작성자로 기록합니다. 2026 SBOM 최소 요소가 요구하는 항목인데 스캔으로는 알아낼 수 없습니다. 포털을 운영하는 조직이기 때문입니다. 설정하지 않으면 자리표시자를 넣지 않고 필드를 생략합니다. 자리표시자는 항목만 채울 뿐 받는 쪽에 아무것도 알려 주지 않습니다. |

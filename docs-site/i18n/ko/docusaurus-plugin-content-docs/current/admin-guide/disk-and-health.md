@@ -157,7 +157,7 @@ docker-compose -f docker-compose.yml exec backend \
 ### 4. 장기 대응
 
 - `WORKSPACE_HOST_PATH`를 더 큰 볼륨으로 이동(`.env` 편집 후 `docker-compose -f docker-compose.yml up -d backend worker-scan worker-default`).
-- 로컬 백업이 공간을 잡아먹으면 `BACKUP_RETENTION_DAYS` 축소.
+- 로컬 백업이 공간을 많이 차지하면 `scripts/backup.sh`가 만드는 백업은 `BACKUP_RETENTION_DAYS`를 줄이고, 더 필요 없는 수동 백업은 **/admin/backup**에서 삭제합니다. 매일 밤 도는 자동 백업은 7일 고정으로 보관하며 `BACKUP_RETENTION_DAYS`를 읽지 않습니다.
 - 백업을 호스트 외부(S3, NFS)로 이동하고 로컬 정리 생략.
 
 ## 알림 트리거
