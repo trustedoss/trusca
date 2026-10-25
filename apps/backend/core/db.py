@@ -48,7 +48,7 @@ def build_engine() -> AsyncEngine:
     handlers, so it gets the larger pool (default 20 + 10 overflow). See
     core.config for the env var names and sizing guidance.
     """
-    return create_async_engine(
+    engine = create_async_engine(
         database_url(),
         pool_pre_ping=True,
         future=True,
@@ -57,6 +57,8 @@ def build_engine() -> AsyncEngine:
         pool_timeout=db_pool_timeout_seconds(),
         pool_recycle=db_pool_recycle_seconds(),
     )
+    event.listen(engine.sync_engine, "connect", _set_server_keepalives_async)
+    return engine
 
 
 def build_session_factory(engine: AsyncEngine) -> async_sessionmaker[AsyncSession]:
@@ -125,7 +127,7 @@ def build_sync_engine() -> Engine:
     from the FastAPI pool so the two can be sized independently against the
     shared Postgres `max_connections` budget.
     """
-    return create_engine(
+    engine = create_engine(
         database_url_sync(),
         pool_pre_ping=True,
         future=True,
@@ -134,6 +136,72 @@ def build_sync_engine() -> Engine:
         pool_timeout=db_sync_pool_timeout_seconds(),
         pool_recycle=db_sync_pool_recycle_seconds(),
     )
+    event.listen(engine, "connect", _set_server_keepalives)
+    return engine
+
+
+#: Server-side TCP keepalive for each connection: probe after a minute of
+#: silence, every ten seconds, and give up after six missed probes. A host that
+#: vanishes without closing its sockets is noticed in about two minutes rather
+#: than the two hours or so of Linux defaults.
+_SERVER_KEEPALIVES = (
+    ("tcp_keepalives_idle", 60),
+    ("tcp_keepalives_interval", 10),
+    ("tcp_keepalives_count", 6),
+)
+
+
+def _keepalives_rejected() -> None:
+    # A server or pooler that refuses one of these must not cost the
+    # connection: it works as before, only without the faster probe.
+    structlog.get_logger("core.db").warning(
+        "db_server_keepalives_not_set", exc_info=True
+    )
+
+
+def _set_server_keepalives(dbapi_connection: Any, _record: Any) -> None:
+    """Have the server probe this connection, not only the client.
+
+    What a vanished worker leaves behind lives on the server: the audit
+    export's advisory lock, or a transaction holding the export's horizon back.
+    Both last until the server's backend learns the peer is gone, and only the
+    server's own keepalive settings decide when that is, so libpq's client-side
+    keepalive parameters would not shorten it. The three settings are
+    per-session and any role may set them; on a Unix-socket connection they
+    are accepted and ignored.
+
+    Set after the connection opens rather than as startup parameters, which
+    some connection poolers reject outright, and in autocommit so the pool's
+    reset-on-return rollback cannot undo them.
+    """
+    previous = dbapi_connection.autocommit
+    try:
+        dbapi_connection.autocommit = True
+        with dbapi_connection.cursor() as cur:
+            for name, value in _SERVER_KEEPALIVES:
+                cur.execute("SELECT set_config(%s, %s, false)", (name, str(value)))
+    except Exception:  # noqa: BLE001
+        _keepalives_rejected()
+    finally:
+        dbapi_connection.autocommit = previous
+
+
+def _set_server_keepalives_async(dbapi_connection: Any, _record: Any) -> None:
+    """The same settings on an API connection.
+
+    A request handler that dies with its host mid-transaction holds the audit
+    export back just as a worker does. Run on the raw asyncpg connection,
+    outside any transaction, so nothing the pool rolls back can undo them.
+    """
+
+    async def _apply(conn: Any) -> None:
+        for name, value in _SERVER_KEEPALIVES:
+            await conn.execute("SELECT set_config($1, $2, false)", name, str(value))
+
+    try:
+        dbapi_connection.run_async(_apply)
+    except Exception:  # noqa: BLE001
+        _keepalives_rejected()
 
 
 def get_sync_session_factory() -> sessionmaker[Session]:

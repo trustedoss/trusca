@@ -249,9 +249,9 @@ def test_rows_sharing_a_millisecond_are_not_repeated_or_skipped(
 
 
 def test_the_export_stays_behind_the_present(session, destination, monkeypatch) -> None:
-    """A row is stamped when its transaction commits, so one that began
-    earlier can commit later and land behind a position already passed. The
-    export only reads stretches of time no open transaction can write into."""
+    """The configured lag is a floor under the read, whatever else bounds it.
+    What holds the read behind still-open transactions is asserted in
+    ``test_audit_export_open_transactions.py``."""
     from services.audit_export_service import collect_batch
 
     monkeypatch.setenv("AUDIT_EXPORT_LAG_SECONDS", "300")
@@ -645,7 +645,9 @@ def _configure(monkeypatch, destination: str, *, batch_size: int) -> datetime:
     real_collect = audit_export_service.collect_batch
 
     def _collect_within_window(session, *, cursor, now=None):
-        return real_collect(session, cursor=cursor, now=window)
+        # The lag has a floor of one second, so the horizon is pinned one
+        # second past the window to land exactly on it.
+        return real_collect(session, cursor=cursor, now=window + timedelta(seconds=1))
 
     monkeypatch.setattr(audit_export, "collect_batch", _collect_within_window)
     return window
