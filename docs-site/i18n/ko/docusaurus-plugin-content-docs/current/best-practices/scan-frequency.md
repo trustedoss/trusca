@@ -56,7 +56,7 @@ CI가 지나치게 잦다면, 스캔 단계를 의존성 매니페스트(`packag
 그래서 소스 변경이 없는 유휴 프로젝트도 새 CVE 알림을 받습니다. 주기는 **소스 변경**의 문제이고 최신성은 **데이터베이스**의 문제이며, 데이터베이스는 이미 처리됩니다.
 
 :::caution 오래된 Trivy DB는 재탐지를 조용히 굶깁니다
-재매칭 beat는 자신이 읽는 데이터베이스만큼만 최신입니다. Trivy DB 갱신이 계속 실패하면, 스캔은 여전히 성공하더라도 새 CVE가 들어오지 않습니다. 이는 스캔 주기 결정이 아니라 데이터 최신성 사고입니다 — [on-call 런북 시나리오 1](../admin-guide/oncall-runbook.md#시나리오-1--trivy-db-stale-또는-누락)로 진단·복구하십시오. `/admin/health`의 **Vulnerability data** 카드에서 오래됨 여부를 확인하십시오.
+재매칭 beat는 자신이 읽는 데이터베이스만큼만 최신입니다. Trivy DB 갱신이 계속 실패하면, 스캔은 여전히 성공하더라도 새 CVE가 들어오지 않습니다. 이는 스캔 주기 결정이 아니라 데이터 최신성 사고입니다. [on-call 런북 시나리오 1](../admin-guide/oncall-runbook.md#scenario-1--trivy-db-stale-or-missing)로 진단·복구하십시오. `/admin/health`의 **Vulnerability data** 카드에서 오래됨 여부를 확인하십시오.
 :::
 
 ## 규모에 맞는 주기 {#cadence}
@@ -97,7 +97,7 @@ CI가 지나치게 잦다면, 스캔 단계를 의존성 매니페스트(`packag
 - [스캔 보존](../admin-guide/scan-retention.md) — 이력을 유용하게, 디스크를 한정되게 유지
 - [취약점 데이터 (Trivy DB)](../admin-guide/vulnerability-data.md) — 갱신 + 재매칭 수명 주기
 - [재탐지](../user-guide/vulnerabilities.md#재탐지) — 재스캔 없이 새 CVE가 드러나는 방식
-- [on-call 런북 — 시나리오 1](../admin-guide/oncall-runbook.md#시나리오-1--trivy-db-stale-또는-누락) — 오래된 Trivy DB 복구
+- [on-call 런북 시나리오 1](../admin-guide/oncall-runbook.md#scenario-1--trivy-db-stale-or-missing): 오래된 Trivy DB 복구
 - [GitHub Actions](../ci-integration/github-actions.md)
 - [GitLab CI](../ci-integration/gitlab-ci.md)
 - [Jenkins](../ci-integration/jenkins.md)

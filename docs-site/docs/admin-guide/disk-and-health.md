@@ -49,7 +49,7 @@ Each row maps to a real probe in `services/admin_health_service.py`:
 | `active_scans` | Count of scans currently `queued` or `running`. Informational; surfaces as `degraded` when the queue length crosses an internal threshold. |
 | `last_24h_errors` | Count of scans that **failed** in the last 24 h, counted by completion time. Informational. The name is historical and does not describe what is counted. |
 
-The portal does not separately probe `backend`, `worker`, `beat`, `frontend`, or `traefik`. Their liveness is implicit: if the dashboard renders at all, the backend is up; if the `celery` row is `ok`, the worker (and the broker the worker depends on) are reachable.
+The portal does not separately probe `backend`, `worker-scan`, `worker-default`, `beat`, `frontend`, or `traefik`. Their liveness is implicit: if the dashboard renders at all, the backend is up; if the `celery` row is `ok`, the worker (and the broker the worker depends on) are reachable.
 
 ### endoflife.date snapshot panel {#eol-panel}
 
@@ -161,7 +161,7 @@ After cleanup, **/admin/disk** updates within ~10 seconds. Once below the hard t
 
 ### 4. Long-term remediation
 
-- Move `WORKSPACE_HOST_PATH` to a larger volume (edit `.env`, restart `backend`, `worker`).
+- Move `WORKSPACE_HOST_PATH` to a larger volume (edit `.env`, then `docker-compose -f docker-compose.yml up -d backend worker-scan worker-default`).
 - Lower `BACKUP_RETENTION_DAYS` if local backups are eating space.
 - Move backups off-host (S3, NFS) and skip local pruning.
 
@@ -295,7 +295,7 @@ The dashboard is a snapshot of liveness, not full functionality. Liveness can pa
 
 ### Disk gauge is wrong
 
-The gauge reads the host-mounted volume from inside the backend container. If you changed `WORKSPACE_HOST_PATH` recently and forgot to restart, the gauge points at the old volume. Restart the backend.
+The gauge reads the host-mounted volume from inside the backend container. If you changed `WORKSPACE_HOST_PATH` recently and did not recreate the containers, the gauge points at the old volume. Run `docker-compose -f docker-compose.yml up -d backend worker-scan worker-default`.
 
 ### Hard limit is too aggressive
 
@@ -305,7 +305,7 @@ Raise it. 95% is a conservative default for `DISK_HARD_LIMIT_PCT` that gives ope
 
 The following affordances are referenced in early docs but are **not** shipped in this release:
 
-- Per-component liveness probes for `backend`, `worker`, `beat`, `frontend`, and `traefik` on the health dashboard (today these are inferred from the dashboard rendering and the `celery` row).
+- Per-component liveness probes for `backend`, `worker-scan`, `worker-default`, `beat`, `frontend`, and `traefik` on the health dashboard (today these are inferred from the dashboard rendering and the `celery` row).
 - WebSocket-streamed health updates (today the dashboard uses React Query polling).
 - Multi-shot consecutive-miss state machine for components beyond the `vulnerability_data` row planned.
 

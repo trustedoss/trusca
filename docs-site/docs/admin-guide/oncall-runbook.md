@@ -56,33 +56,33 @@ PagerDuty: `TrustedOSSVulnDbStale` (example rule, see [Alerting](./alerting.md))
 curl -fsS "https://<your-host>/metrics" \
   | grep -E 'trusca_vuln_db_(last_update_timestamp_seconds|refresh_interval_hours)'
 # 1. Is the DB on disk?
-docker-compose -f docker-compose.yml exec worker \
+docker-compose -f docker-compose.yml exec worker-scan \
   ls -lh /var/lib/trivy/db/
-# 2. DB metadata (Created timestamp)
-docker-compose -f docker-compose.yml exec worker \
+# 2. DB metadata (UpdatedAt timestamp)
+docker-compose -f docker-compose.yml exec worker-scan \
   cat /var/lib/trivy/db/metadata.json
 # 3. Recent download / refresh logs
-docker-compose -f docker-compose.yml logs --tail=500 worker | grep trivy_db
+docker-compose -f docker-compose.yml logs --tail=500 worker-scan worker-default | grep trivy_db
 docker-compose -f docker-compose.yml logs --tail=500 beat | grep trivy_db_refresh
 # 4. Outbound HTTPS to ghcr.io reachable?
-docker-compose -f docker-compose.yml exec worker \
+docker-compose -f docker-compose.yml exec worker-scan \
   curl -fsS https://ghcr.io/v2/ -o /dev/null -w "%{http_code}\n"
 ```
 
 ### Recover (in order)
 1. **Force a one-shot refresh** (preferred — single command, no restart):
    ```bash
-   docker-compose -f docker-compose.yml exec worker \
-     celery -A apps.backend.tasks.celery_app call tasks.trivy_db.refresh
+   docker-compose -f docker-compose.yml exec worker-default \
+     celery -A tasks.celery_app call trustedoss.trivy_db_refresh
    sleep 30
-   docker-compose -f docker-compose.yml exec worker \
-     cat /var/lib/trivy/db/metadata.json | jq '.Created'
+   docker-compose -f docker-compose.yml exec worker-scan \
+     cat /var/lib/trivy/db/metadata.json | jq '.UpdatedAt'
    ```
 2. **Wipe + re-download** (if metadata is corrupted):
    ```bash
-   docker-compose -f docker-compose.yml exec worker \
+   docker-compose -f docker-compose.yml exec worker-scan \
      rm -rf /var/lib/trivy/db
-   docker-compose -f docker-compose.yml restart worker
+   docker-compose -f docker-compose.yml restart worker-scan
    ```
    The boot-time `trivy --download-db-only` runs and re-populates the directory within 1–3 minutes.
 3. **Mirror fallback** (if `ghcr.io` is unreachable from the worker): point `TRIVY_DB_REPOSITORY` at your internal mirror — see [Vulnerability data — Air-gapped operation](./vulnerability-data.md#air-gapped).
@@ -94,7 +94,7 @@ After recovery, the automatic re-match beat picks up missed CVEs against existin
 - If the internal mirror itself reports `unauthorized` despite recent `trivy registry login`, OR
 - If `metadata.json` exists but `Results` on a spot scan is empty across multiple ecosystems (suggests a schema mismatch).
 
-Page the portal dev team with: worker logs (`docker-compose logs --tail=2000 worker`), the `metadata.json` content, and the output of `trivy --version` from inside the worker.
+Page the portal dev team with: worker logs (`docker-compose logs --tail=2000 worker-scan worker-default`), the `metadata.json` content, and the output of `trivy --version` from inside the worker.
 
 ## Scenario 2 — Auto-backup failed for 3 days
 
@@ -113,7 +113,7 @@ curl -fsS "https://<your-host>/metrics" \
 # 1. Celery Beat schedule heartbeat
 docker-compose logs --tail=500 beat | grep daily-auto-backup
 # 2. Worker logs for backup task runs
-docker-compose logs --tail=2000 worker | grep -E 'backup\.(completed|failed)' | tail -20
+docker-compose logs --tail=2000 worker-scan worker-default | grep -E 'backup\.(completed|failed)' | tail -20
 # 3. Most recent backup row + status
 curl -fsS "https://<your-host>/v1/admin/backup/list" \
   -H "Authorization: Bearer $ACCESS_TOKEN" | jq '.items[0:5]'
@@ -163,9 +163,9 @@ PagerDuty: `TRUSCA scan running > 4h for project X`. No rule in [Alerting](./ale
 curl -fsS "https://<your-host>/v1/scans/<scan_id>" \
   -H "Authorization: Bearer $ACCESS_TOKEN" | jq '.progress_payload, .latest_log_frame'
 # 2. Celery active tasks
-docker-compose exec worker celery -A apps.backend.tasks.celery_app inspect active
+docker-compose exec worker-scan celery -A tasks.celery_app inspect active
 # 3. Worker process tree (look for orphaned subprocesses)
-docker-compose exec worker ps -ef | grep -E 'cdxgen|ort|trivy'
+docker-compose exec worker-scan ps -ef | grep -E 'cdxgen|ort|trivy'
 ```
 
 ### Recover
@@ -177,12 +177,12 @@ docker-compose exec worker ps -ef | grep -E 'cdxgen|ort|trivy'
 2. **If cancel doesn't release the task (worker truly hung)**:
    ```bash
    # Last resort — kills all in-flight tasks on this worker.
-   docker-compose restart worker
+   docker-compose restart worker-scan
    ```
    Other in-flight scans on the same worker will be marked failed and require manual re-run.
 
 ### Escalate
-- If the same project hangs at the same stage twice in a row (suggests a content-side issue — large git history, malformed lockfile, or `trivy sbom` timeout). Page portal dev team with `<scan_id>` and the last 200 lines of `worker` logs filtered to that task.
+- If the same project hangs at the same stage twice in a row (suggests a content-side issue: large git history, malformed lockfile, or `trivy sbom` timeout). Page portal dev team with `<scan_id>` and the last 200 lines of `worker-scan` logs filtered to that task.
 
 ## Scenario 4 — Host disk ≥ 95%
 
@@ -204,7 +204,7 @@ docker system df
 curl -fsS "https://<your-host>/v1/admin/disk" \
   -H "Authorization: Bearer $ACCESS_TOKEN" | jq
 # 3. Workspace breakdown (most common offender)
-docker-compose exec worker du -sh /workspace/* | sort -h | tail -10
+docker-compose exec worker-scan sh -c 'du -sh /workspace/*' | sort -h | tail -10
 # 4. Postgres database size
 docker-compose exec postgres psql -U trustedoss -d trustedoss \
   -c "SELECT pg_size_pretty(pg_database_size('trustedoss'));"
@@ -213,18 +213,18 @@ docker-compose exec postgres psql -U trustedoss -d trustedoss \
 ### Recover
 1. **Workspace cleanup** (almost always the answer):
    ```bash
-   docker-compose exec worker find /workspace -mindepth 1 -mtime +30 -delete
+   docker-compose exec worker-scan find /workspace -mindepth 1 -mtime +30 -delete
    ```
 2. **Postgres bloat** (if `pg_database_size` > 2 GB and growth is recent): VACUUM the heavy tables.
    ```bash
    docker-compose exec postgres psql -U trustedoss -d trustedoss \
      -c "VACUUM FULL audit_logs, vulnerability_findings;"
    ```
-3. **Trivy DB volume** (if `/admin/disk` shows `trivy_db` at fault): the Trivy DB is ~500 MB and should not grow further; if it has, prune the cache and re-download (`docker-compose -f docker-compose.yml exec worker rm -rf /var/lib/trivy/db && docker-compose restart worker`).
+3. **Trivy DB volume** (if `/admin/disk` shows `trivy_db` at fault): the Trivy DB is ~500 MB and should not grow further; if it has, prune the cache and re-download (`docker-compose -f docker-compose.yml exec worker-scan rm -rf /var/lib/trivy/db && docker-compose restart worker-scan`).
 4. **Temporary threshold raise** (only as a stop-gap, NOT a fix):
    ```bash
    # Edit .env: DISK_HARD_LIMIT_PCT=98
-   docker-compose up -d backend worker
+   docker-compose up -d backend worker-scan worker-default
    ```
 
 ### Escalate
@@ -418,7 +418,7 @@ When paging the portal dev team, attach:
 - Scenario number (1-5) and PagerDuty alert URL.
 - Portal version: `docker-compose -f docker-compose.yml exec backend python -c "from main import app; print(app.version)"`
 - Last 2000 lines of the relevant container: `docker-compose logs --tail=2000 <svc>`
-- For Trivy DB issues: the worker's `/var/lib/trivy/db/metadata.json` content and `docker-compose logs --tail=500 worker | grep trivy_db`.
+- For Trivy DB issues: the worker's `/var/lib/trivy/db/metadata.json` content and `docker-compose logs --tail=500 worker-scan worker-default | grep trivy_db`.
 - For scan issues: `<scan_id>` and `/v1/scans/<scan_id>` full JSON.
 
 ## See also

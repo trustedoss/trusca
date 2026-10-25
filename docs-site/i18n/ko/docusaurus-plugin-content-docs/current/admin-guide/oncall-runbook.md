@@ -50,33 +50,33 @@ PagerDuty: `TrustedOSSVulnDbStale`(예시 규칙, [알림](./alerting.md) 참고
 curl -fsS "https://<your-host>/metrics" \
   | grep -E 'trusca_vuln_db_(last_update_timestamp_seconds|refresh_interval_hours)'
 # 1. DB가 디스크에 있는가?
-docker-compose -f docker-compose.yml exec worker \
+docker-compose -f docker-compose.yml exec worker-scan \
   ls -lh /var/lib/trivy/db/
-# 2. DB 메타데이터(Created 타임스탬프)
-docker-compose -f docker-compose.yml exec worker \
+# 2. DB 메타데이터(UpdatedAt 타임스탬프)
+docker-compose -f docker-compose.yml exec worker-scan \
   cat /var/lib/trivy/db/metadata.json
 # 3. 최근 download / refresh 로그
-docker-compose -f docker-compose.yml logs --tail=500 worker | grep trivy_db
+docker-compose -f docker-compose.yml logs --tail=500 worker-scan worker-default | grep trivy_db
 docker-compose -f docker-compose.yml logs --tail=500 beat | grep trivy_db_refresh
 # 4. ghcr.io로 outbound HTTPS 도달 가능?
-docker-compose -f docker-compose.yml exec worker \
+docker-compose -f docker-compose.yml exec worker-scan \
   curl -fsS https://ghcr.io/v2/ -o /dev/null -w "%{http_code}\n"
 ```
 
 ### 복구(순서대로)
 1. **일회성 refresh 강제**(권장 — 단일 명령, 재시작 없음):
    ```bash
-   docker-compose -f docker-compose.yml exec worker \
-     celery -A apps.backend.tasks.celery_app call tasks.trivy_db.refresh
+   docker-compose -f docker-compose.yml exec worker-default \
+     celery -A tasks.celery_app call trustedoss.trivy_db_refresh
    sleep 30
-   docker-compose -f docker-compose.yml exec worker \
-     cat /var/lib/trivy/db/metadata.json | jq '.Created'
+   docker-compose -f docker-compose.yml exec worker-scan \
+     cat /var/lib/trivy/db/metadata.json | jq '.UpdatedAt'
    ```
 2. **비우고 재다운로드**(메타데이터 손상 시):
    ```bash
-   docker-compose -f docker-compose.yml exec worker \
+   docker-compose -f docker-compose.yml exec worker-scan \
      rm -rf /var/lib/trivy/db
-   docker-compose -f docker-compose.yml restart worker
+   docker-compose -f docker-compose.yml restart worker-scan
    ```
    부팅 시 `trivy --download-db-only`가 실행되어 1~3분 내 디렉터리를 재채움.
 3. **미러 폴백**(워커에서 `ghcr.io` 도달 불가 시): `TRIVY_DB_REPOSITORY`를 사내 미러로 설정 — [취약점 데이터 — Air-gapped 운영](./vulnerability-data.md#air-gapped) 참조.
@@ -88,7 +88,7 @@ docker-compose -f docker-compose.yml exec worker \
 - 최근 `trivy registry login` 후에도 사내 미러가 `unauthorized`를 반환하거나,
 - `metadata.json`은 존재하지만 여러 생태계의 spot 스캔에서 `Results`가 빈 경우(스키마 불일치 시사).
 
-포털 개발팀 호출 시 첨부: 워커 로그(`docker-compose logs --tail=2000 worker`), `metadata.json` 내용, 워커 내부에서 `trivy --version` 출력.
+포털 개발팀 호출 시 첨부: 워커 로그(`docker-compose logs --tail=2000 worker-scan worker-default`), `metadata.json` 내용, 워커 내부에서 `trivy --version` 출력.
 
 ## 시나리오 2 — 자동 백업 3일 연속 실패
 
@@ -107,7 +107,7 @@ curl -fsS "https://<your-host>/metrics" \
 # 1. Celery Beat 스케줄 하트비트
 docker-compose logs --tail=500 beat | grep daily-auto-backup
 # 2. 워커 로그에서 백업 태스크 실행
-docker-compose logs --tail=2000 worker | grep -E 'backup\.(completed|failed)' | tail -20
+docker-compose logs --tail=2000 worker-scan worker-default | grep -E 'backup\.(completed|failed)' | tail -20
 # 3. 가장 최근 백업 행 + 상태
 curl -fsS "https://<your-host>/v1/admin/backup/list" \
   -H "Authorization: Bearer $ACCESS_TOKEN" | jq '.items[0:5]'
@@ -157,9 +157,9 @@ PagerDuty: `TRUSCA scan running > 4h for project X`. [알림](./alerting.md#what
 curl -fsS "https://<your-host>/v1/scans/<scan_id>" \
   -H "Authorization: Bearer $ACCESS_TOKEN" | jq '.progress_payload, .latest_log_frame'
 # 2. Celery active task 목록
-docker-compose exec worker celery -A apps.backend.tasks.celery_app inspect active
+docker-compose exec worker-scan celery -A tasks.celery_app inspect active
 # 3. 워커 프로세스 트리(고아 서브프로세스 확인)
-docker-compose exec worker ps -ef | grep -E 'cdxgen|ort|trivy'
+docker-compose exec worker-scan ps -ef | grep -E 'cdxgen|ort|trivy'
 ```
 
 ### 복구
@@ -171,12 +171,12 @@ docker-compose exec worker ps -ef | grep -E 'cdxgen|ort|trivy'
 2. **취소로도 태스크가 해제되지 않으면(워커가 진짜로 행 상태)**:
    ```bash
    # 최후의 수단 — 이 워커의 실행 중 모든 태스크를 죽입니다.
-   docker-compose restart worker
+   docker-compose restart worker-scan
    ```
    같은 워커에서 실행 중이던 다른 스캔은 failed로 기록되며 수동 재실행이 필요합니다.
 
 ### 에스컬레이션
-- 동일 프로젝트가 같은 단계에서 연속 2회 멈출 때(콘텐츠 측 문제 — 거대한 git 이력, 잘못된 lockfile, `trivy sbom` 타임아웃 등 시사). `<scan_id>`와 해당 태스크로 필터링한 마지막 200 라인 `worker` 로그를 첨부해 포털 개발팀에 호출.
+- 동일 프로젝트가 같은 단계에서 연속 2회 멈출 때(콘텐츠 측 문제일 가능성이 큽니다. 거대한 git 이력, 잘못된 lockfile, `trivy sbom` 타임아웃 등). `<scan_id>`와 해당 태스크로 필터링한 마지막 200 라인 `worker-scan` 로그를 첨부해 포털 개발팀에 호출.
 
 ## 시나리오 4 — 호스트 디스크 95% 이상
 
@@ -198,7 +198,7 @@ docker system df
 curl -fsS "https://<your-host>/v1/admin/disk" \
   -H "Authorization: Bearer $ACCESS_TOKEN" | jq
 # 3. Workspace 분해(가장 흔한 원인)
-docker-compose exec worker du -sh /workspace/* | sort -h | tail -10
+docker-compose exec worker-scan sh -c 'du -sh /workspace/*' | sort -h | tail -10
 # 4. Postgres 데이터베이스 크기
 docker-compose exec postgres psql -U trustedoss -d trustedoss \
   -c "SELECT pg_size_pretty(pg_database_size('trustedoss'));"
@@ -207,18 +207,18 @@ docker-compose exec postgres psql -U trustedoss -d trustedoss \
 ### 복구
 1. **Workspace 정리**(거의 항상 정답):
    ```bash
-   docker-compose exec worker find /workspace -mindepth 1 -mtime +30 -delete
+   docker-compose exec worker-scan find /workspace -mindepth 1 -mtime +30 -delete
    ```
 2. **Postgres bloat**(`pg_database_size` > 2 GB 이고 최근 급증한 경우): 무거운 테이블을 VACUUM.
    ```bash
    docker-compose exec postgres psql -U trustedoss -d trustedoss \
      -c "VACUUM FULL audit_logs, vulnerability_findings;"
    ```
-3. **Trivy DB 볼륨**(`/admin/disk`가 `trivy_db`를 원인으로 표시): Trivy DB는 약 500 MB이며 더 이상 자라선 안 됩니다. 만약 커졌다면 캐시를 비우고 재다운로드 (`docker-compose -f docker-compose.yml exec worker rm -rf /var/lib/trivy/db && docker-compose restart worker`).
+3. **Trivy DB 볼륨**(`/admin/disk`가 `trivy_db`를 원인으로 표시): Trivy DB는 약 500 MB이며 더 이상 자라선 안 됩니다. 만약 커졌다면 캐시를 비우고 재다운로드 (`docker-compose -f docker-compose.yml exec worker-scan rm -rf /var/lib/trivy/db && docker-compose restart worker-scan`).
 4. **일시적인 임계 상향**(임시 방편일 뿐, 근본 해결책이 아닙니다):
    ```bash
    # .env 편집: DISK_HARD_LIMIT_PCT=98
-   docker-compose up -d backend worker
+   docker-compose up -d backend worker-scan worker-default
    ```
 
 ### 에스컬레이션
@@ -406,7 +406,7 @@ docker-compose -f docker-compose.yml logs --tail=100 redis
 - 시나리오 번호(1-5)와 PagerDuty 알림 URL.
 - 포털 버전: `docker-compose -f docker-compose.yml exec backend python -c "from main import app; print(app.version)"`
 - 관련 컨테이너의 마지막 2000 라인: `docker-compose logs --tail=2000 <svc>`
-- Trivy DB 이슈: 워커의 `/var/lib/trivy/db/metadata.json` 내용 + `docker-compose logs --tail=500 worker | grep trivy_db`.
+- Trivy DB 이슈: 워커의 `/var/lib/trivy/db/metadata.json` 내용 + `docker-compose logs --tail=500 worker-scan worker-default | grep trivy_db`.
 - 스캔 이슈: `<scan_id>`와 `/v1/scans/<scan_id>` 전체 JSON.
 
 ## 함께 보기

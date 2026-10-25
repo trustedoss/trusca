@@ -46,9 +46,9 @@ done
 
 if ! command -v cosign >/dev/null 2>&1; then
   echo "ERROR: cosign not found on PATH." >&2
-  echo "Install it (https://docs.sigstore.dev/cosign/installation/) or run this" >&2
-  echo "inside the worker container, which ships cosign:" >&2
-  echo "  docker-compose -f ${COMPOSE_FILE} run --rm worker-scan bash scripts/cosign-keygen.sh" >&2
+  echo "Install it (https://docs.sigstore.dev/cosign/installation/) and run this" >&2
+  echo "script again on the host. It cannot run in a worker container: the script" >&2
+  echo "is not in the image, and /cosign is mounted read-only there." >&2
   exit 1
 fi
 

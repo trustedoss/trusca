@@ -17,7 +17,7 @@ sidebar_position: 2
 ## 읽기 순서
 
 1. 레포 루트의 `.env`를 `docker-compose`가 자동 로드합니다.
-2. 백엔드 코드는 `os.getenv()`를 **런타임에** 호출합니다 — 모듈 import 시점이 아닙니다. 이는 CLAUDE.md 규칙 #11. 컨테이너 재시작만으로 변경된 값을 픽업하며 재빌드는 필요 없습니다.
+2. 백엔드 코드는 `os.getenv()`를 **런타임에** 호출하며, 모듈 import 시점에 읽지 않습니다. 이는 CLAUDE.md 규칙 #11. Compose는 컨테이너를 만들 때만 `.env`를 읽으므로, 값을 바꾼 뒤에는 `docker-compose up -d`로 설정이 바뀐 서비스를 다시 만들어야 합니다. `docker-compose restart`는 이전 값을 그대로 씁니다. 재빌드는 필요 없습니다.
 3. Compose는 `docker-compose.yml`의 `${VAR}` 참조를 `docker-compose up` 시점에 `.env`에서 치환합니다.
 
 아래 모든 키는 `apps/backend/core/config.py`, `docker-compose.yml`, `scripts/*` 중 한 곳에서 읽습니다 — **읽는 위치** 컬럼에 표기되어 있습니다.
@@ -413,7 +413,7 @@ Compose 배포에는 오토스케일러 계층이 없습니다. 이 절의 키�
 `.env` 편집 후:
 
 ```bash
-docker-compose -f docker-compose.yml restart backend worker beat
+docker-compose -f docker-compose.yml up -d backend worker-scan worker-default beat
 docker-compose -f docker-compose.yml logs --tail=50 backend | grep backend_starting
 ```
 

@@ -228,7 +228,7 @@ Apply the gate only on `main`, advisory on PRs:
 
 Severity says how bad a flaw could be. Three other signals say something
 severity cannot, and each is its own opt-in axis on the portal (`.env`, then
-restart the backend):
+recreate the backend with `docker-compose up -d backend`):
 
 | Variable | What it blocks on |
 |---|---|
@@ -318,7 +318,7 @@ main line's.
 
 The build gate evaluates Critical CVEs and forbidden licenses by default. You can add an EPSS dimension so a CVE with a high predicted exploitation probability fails the build **even when it is not Critical** — useful for catching the small set of findings most likely to be attacked.
 
-This is an operator-side, org-wide switch, not a workflow input: set the `GATE_EPSS_THRESHOLD` environment variable on the portal (`.env`), then restart the backend. It is disabled by default; leaving it unset preserves the existing Critical-CVE / forbidden-license gate exactly as before.
+This is an operator-side, org-wide switch, not a workflow input: set the `GATE_EPSS_THRESHOLD` environment variable on the portal (`.env`), then recreate the backend with `docker-compose up -d backend`. It is disabled by default; leaving it unset preserves the existing Critical-CVE / forbidden-license gate exactly as before.
 
 <!-- docs-uat: id=gha-epss-threshold-env kind=shell ctx=host tier=manual waiver=env-config-snippet-not-a-command -->
 ```bash
@@ -424,7 +424,7 @@ The API key's scope does not cover the project it is calling. Re-issue the key w
 Three possibilities:
 
 - The workflow was triggered by `push`, not `pull_request` — only PR events get a comment.
-- The portal's `GITHUB_TOKEN` / `TRUSTEDOSS_GITHUB_TOKEN` env is unset, expired, or lacks write access to the target repo's pull requests. The comment is posted by the portal with its own credentials, not by the workflow's `GITHUB_TOKEN`, so granting the job more permission changes nothing. Operators rotate or extend the token in the portal `.env` and restart the backend.
+- The portal's `GITHUB_TOKEN` / `TRUSTEDOSS_GITHUB_TOKEN` env is unset, expired, or lacks write access to the target repo's pull requests. The comment is posted by the portal with its own credentials, not by the workflow's `GITHUB_TOKEN`, so granting the job more permission changes nothing. Operators rotate or extend the token in the portal `.env` and recreate the backend with `docker-compose up -d backend`.
 - The PR number reaching the portal was wrong or absent. The action reads it from `github.event.pull_request.number`, which is empty outside `pull_request` events.
 
 ### Need to skip on a chore PR

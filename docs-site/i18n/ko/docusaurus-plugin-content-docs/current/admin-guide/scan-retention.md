@@ -11,7 +11,7 @@ sidebar_position: 8
 CI·웹훅 자동화는 push·pull request·merge request 마다 스캔을 트리거합니다. 제한이 없으면 프로젝트당 거의 동일한 스냅샷이 수천 개 쌓입니다. 포털은 이력을 유용하게, 디스크를 유한하게 유지하기 위해 **보존 모델**을 둡니다 — 타겟별 최신 성공 스캔만 *live*로 남고, 더 오래된 스냅샷은 *superseded* 되어 grace 윈도우 후 회수되며, release로 명시한 스캔은 영구 보존됩니다.
 
 :::note 대상 독자
-자동 스캔을 수신하는 포털을 운영하는 `super_admin` 및 `team_admin`. `.env` 편집과 `docker-compose restart`에 익숙해야 합니다. 스캔 단위 라이프사이클(queued → running → succeeded)은 [스캔](../user-guide/scans.md)을 참고하십시오.
+자동 스캔을 수신하는 포털을 운영하는 `super_admin` 및 `team_admin`. `.env` 편집과 `docker-compose up -d`에 익숙해야 합니다. 스캔 단위 라이프사이클(queued → running → succeeded)은 [스캔](../user-guide/scans.md)을 참고하십시오.
 :::
 
 ## 보존 모델 {#the-retention-model}
@@ -46,7 +46,7 @@ scan #3 on main  ──► live, scan #2 superseded ──► grace 후 회수
 
 ## 보존 정책 변수 {#retention-policy-variables}
 
-네 키 모두 런타임에 `os.getenv`로 읽힙니다 — `.env`를 편집하고 Celery 워커와 beat 서비스를 재시작하면 적용됩니다. 서비스명은 스택마다 다릅니다. **프로덕션** compose(`docker-compose.yml`)에서는 `worker`·`beat`이고, **dev** compose(`docker-compose.dev.yml`)에서는 `celery-worker`·`celery-beat`입니다. 정식 레퍼런스는 [환경변수 → 스캔 보존](../reference/env-variables.md#scan-retention)을 참고하십시오.
+네 키 모두 런타임에 `os.getenv`로 읽힙니다. `.env`를 편집한 뒤 `docker-compose up -d`로 Celery 워커와 beat 서비스를 다시 만들면 적용됩니다(`docker-compose restart`는 이전 값을 그대로 씁니다). 서비스명은 스택마다 다릅니다. **프로덕션** compose(`docker-compose.yml`)에서는 `worker-scan`·`worker-default`·`beat`이고, **dev** compose(`docker-compose.dev.yml`)에서는 `celery-worker`·`celery-beat`입니다. 정식 레퍼런스는 [환경변수 → 스캔 보존](../reference/env-variables.md#scan-retention)을 참고하십시오.
 
 <!-- docs-uat: id=scan-retention-env kind=shell ctx=host tier=manual waiver=env-config-snippet-not-a-command -->
 ```bash

@@ -17,7 +17,7 @@ Operators tuning a deployment. Familiarity with `.env` files and Docker Compose'
 ## Reading order
 
 1. `.env` in the repo root is loaded by `docker-compose` automatically.
-2. Backend code calls `os.getenv()` **at runtime**, never at module import time. This is `CLAUDE.md` rule #11. Restarting the container is enough to pick up a changed value — no rebuild needed.
+2. Backend code calls `os.getenv()` **at runtime**, never at module import time. This is `CLAUDE.md` rule #11. Compose reads `.env` only when it creates a container, so apply a change with `docker-compose up -d`, which recreates the services whose configuration changed. `docker-compose restart` keeps the old values. No rebuild is needed.
 3. Compose substitutes `${VAR}` references in `docker-compose.yml` from `.env` at `docker-compose up` time.
 
 Every key listed below is read by `apps/backend/core/config.py`, `docker-compose.yml`, or `scripts/*` — the **Read by** column tells you which.
@@ -395,7 +395,7 @@ Failures emit a structured log line and crash the process — there is no permis
 After editing `.env`:
 
 ```bash
-docker-compose -f docker-compose.yml restart backend worker beat
+docker-compose -f docker-compose.yml up -d backend worker-scan worker-default beat
 docker-compose -f docker-compose.yml logs --tail=50 backend | grep backend_starting
 ```
 

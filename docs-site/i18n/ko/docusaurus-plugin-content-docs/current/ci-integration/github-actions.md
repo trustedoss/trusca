@@ -227,7 +227,7 @@ PR 코멘트는 그대로 게시되며 체크는 green으로 유지됩니다.
 ### 악용 중인 CVE와 지원 종료 컴포넌트로 게이팅 (선택) {#gate-axes}
 
 심각도는 결함이 얼마나 나쁠 수 있는지를 말합니다. 심각도가 말하지 못하는 신호가
-셋 있고, 각각 포털에서 따로 켜는 축입니다(`.env` 수정 후 백엔드 재시작).
+셋 있고, 각각 포털에서 따로 켜는 축입니다(`.env` 수정 후 `docker-compose up -d backend`로 백엔드를 다시 만듭니다).
 
 | 변수 | 무엇을 막는지 |
 |---|---|
@@ -314,7 +314,7 @@ Pull Request의 경보는 main이 아니라 그 PR 자신의 것입니다.
 
 빌드 게이트는 기본적으로 Critical CVE와 금지 라이선스를 평가합니다. 여기에 EPSS 차원을 더하면 악용 예측 확률이 높은 CVE가 **Critical이 아니어도** 빌드를 실패시킬 수 있습니다 — 가장 공격받기 쉬운 소수의 결과를 잡는 데 유용합니다.
 
-이는 워크플로 입력이 아니라 **운영자 측, 조직 단위** 스위치입니다. 포털(`.env`)에 `GATE_EPSS_THRESHOLD` 환경변수를 설정한 뒤 백엔드를 재기동하세요. **기본은 비활성**입니다 — 미설정으로 두면 기존 Critical-CVE / 금지-라이선스 게이트가 그대로 보존됩니다.
+이는 워크플로 입력이 아니라 **운영자 측, 조직 단위** 스위치입니다. 포털(`.env`)에 `GATE_EPSS_THRESHOLD` 환경변수를 설정한 뒤 `docker-compose up -d backend`로 백엔드를 다시 만드세요. **기본은 비활성**입니다. 미설정으로 두면 기존 Critical-CVE / 금지-라이선스 게이트가 그대로 보존됩니다.
 
 <!-- docs-uat: id=gha-epss-threshold-env kind=shell ctx=host tier=manual waiver=env-config-snippet-not-a-command -->
 ```bash
@@ -418,7 +418,7 @@ action은 `Retry-After`를 존중해 최대 네 번까지 다시 시도한 뒤 �
 세 가지 가능성:
 
 - 워크플로가 `pull_request`가 아닌 `push`로 트리거됨 — PR 이벤트만 코멘트를 받음.
-- 포털의 `GITHUB_TOKEN` / `TRUSTEDOSS_GITHUB_TOKEN` 환경변수가 없거나 만료됐거나, 대상 저장소의 풀 리퀘스트에 쓰기 권한이 없습니다. 코멘트는 워크플로의 `GITHUB_TOKEN`이 아니라 포털이 자기 자격 증명으로 게시하므로, 잡에 권한을 더 줘도 달라지지 않습니다. 운영자가 포털 `.env`의 토큰을 교체하거나 기간을 늘린 뒤 백엔드를 재기동하세요.
+- 포털의 `GITHUB_TOKEN` / `TRUSTEDOSS_GITHUB_TOKEN` 환경변수가 없거나 만료됐거나, 대상 저장소의 풀 리퀘스트에 쓰기 권한이 없습니다. 코멘트는 워크플로의 `GITHUB_TOKEN`이 아니라 포털이 자기 자격 증명으로 게시하므로, 잡에 권한을 더 줘도 달라지지 않습니다. 운영자가 포털 `.env`의 토큰을 교체하거나 기간을 늘린 뒤 `docker-compose up -d backend`로 백엔드를 다시 만드세요.
 - 포털에 전달된 PR 번호가 잘못됐거나 비어 있습니다. action은 이 값을 `github.event.pull_request.number`에서 읽는데, `pull_request` 이벤트가 아니면 비어 있습니다.
 
 ### chore PR에서 건너뛰고 싶음

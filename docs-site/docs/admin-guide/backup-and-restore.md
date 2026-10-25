@@ -248,7 +248,7 @@ Type **`y`** to proceed.
 
 The script:
 
-1. Stops `backend`, `frontend`, `worker`, `beat`. Postgres + Redis stay up.
+1. Stops `backend`, `frontend`, `worker-scan`, `worker-default`, `beat`. Postgres + Redis stay up.
 2. Restores `postgres.sql.gz` into the live database (`pg_dump --clean` drops objects first).
 3. Restores `workspace.tar.gz` into `WORKSPACE_HOST_PATH` (existing files are removed first).
 4. Restarts the application containers.
@@ -274,7 +274,7 @@ If the host is lost entirely:
 3. **Stop the stack** so you can swap state cleanly:
 
    ```bash
-   docker-compose -f docker-compose.yml stop backend frontend worker beat
+   docker-compose -f docker-compose.yml stop backend frontend worker-scan worker-default beat
    ```
 
 4. **Copy a backup** from off-host storage:
@@ -386,7 +386,7 @@ After running a restore:
 
 :::info Logs to check first
 - `docker-compose logs --tail=500 beat | grep daily-auto-backup` — beat scheduler fired the task on schedule?
-- `docker-compose logs --tail=2000 worker | grep "backup\."` — task outcome (completed / failed / pruned / restored).
+- `docker-compose logs --tail=2000 worker-scan worker-default | grep "backup\."`: task outcome (completed / failed / pruned / restored).
 - `/admin/backup/list` API — most recent attempt + status.
 :::
 
@@ -414,9 +414,9 @@ See [forward-only migrations and restore](#forward-only-migrations-and-restore).
 
 <!-- docs-uat: id=backup-troubleshoot-stop-worker kind=shell ctx=host tier=nightly waiver=production-compose-worker-pause -->
 ```bash
-docker-compose -f docker-compose.yml stop worker
+docker-compose -f docker-compose.yml stop worker-scan worker-default
 bash scripts/backup.sh
-docker-compose -f docker-compose.yml start worker
+docker-compose -f docker-compose.yml start worker-scan worker-default
 ```
 
 This trades a 30-second scan-pause window for a guaranteed-consistent workspace tar.

@@ -59,7 +59,7 @@ starts take ~10 seconds.
 Tail the logs:
 
 ```bash
-docker-compose -f docker-compose.dev.yml logs -f backend worker
+docker-compose -f docker-compose.dev.yml logs -f backend celery-worker
 ```
 
 The portal is now reachable at:

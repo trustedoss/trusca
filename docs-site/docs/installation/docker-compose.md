@@ -173,7 +173,7 @@ The backend exposes **two** unauthenticated health endpoints. They answer differ
 
 `/health/ready` returns `200 {"status":"ready","redis":"ok"|"degraded"}` only when the schema matches HEAD. Otherwise it returns `503` with an RFC 7807 `application/problem+json` body summarising the revision mismatch (it never leaks the DSN or credentials), also carrying the same `redis` field. That field is observational only: a Redis outage never turns a 200 into a 503, since the request-path controls that touch Redis (the login throttle, the rate limiter) are already designed to fail open through one. See the [on-call runbook](../admin-guide/oncall-runbook.md#redis-degraded) for what to do when it reads `degraded`.
 
-Since  (Track B), the `backend` service's Compose `healthcheck` probes **`/health/ready`**, so the `worker` and `beat` services — which declare `depends_on: backend (condition: service_healthy)` — start only **after the schema is migrated**, under both toggles:
+Since  (Track B), the `backend` service's Compose `healthcheck` probes **`/health/ready`**, so the `worker-scan`, `worker-default` and `beat` services, which declare `depends_on: backend (condition: service_healthy)`, start only **after the schema is migrated**, under both toggles:
 
 - **`AUTO_MIGRATE=true`** (single-role default): the backend container runs `alembic upgrade head` on start and `/health/ready` flips to `200` once it finishes. Workers then start against a migrated schema. This is the normal path and needs no operator action.
 - **`AUTO_MIGRATE=false`** (L1 role-separated stack): uvicorn answers `/health` immediately, but `/health/ready` stays `503` (the container stays `health: starting`) until your external `alembic upgrade head` (run as the owner role, `install.sh` / `upgrade.sh` do this) brings the schema to HEAD. This is intended: the worker and beat wait for the schema instead of starting against a not-yet-migrated database. If you forget to run the migration on an L1 stack, the backend will simply never become healthy, check `docker-compose logs backend` and run the owner-role migration.
@@ -349,7 +349,7 @@ After `bash scripts/install.sh` completes:
 - [ ] Log in with the super-admin email/password the wizard
   printed.
 - [ ] Wait for the worker to finish the **first Trivy DB download** —
-  `docker-compose -f docker-compose.yml logs --tail=100 worker | grep trivy_db`
+  `docker-compose -f docker-compose.yml logs --tail=100 worker-scan worker-default | grep trivy_db`
   shows `trivy_db_download_complete` within 1–3 minutes of first boot.
   Until it lands, the Vulnerabilities tab on a new scan is empty.
 - [ ] Go to `/admin/teams` → **New team** → name it `engineering`.
