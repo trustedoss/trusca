@@ -94,7 +94,7 @@ function volatileRegions(page: Page) {
  * TanStack Query devtools launcher in the bottom-right corner — a widget
  * production users never see. Left in frame it would pin every baseline to
  * the devtools package version: a routine dependency bump would redraw that
- * icon and turn all eight baselines red for a reason that has nothing to do
+ * icon and turn every baseline red for a reason that has nothing to do
  * with the product. Hiding beats masking here — a mask would trade the icon
  * for an equally arbitrary magenta square.
  */

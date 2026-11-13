@@ -48,6 +48,7 @@ import { fileURLToPath } from "node:url";
 
 import { AuthHarness } from "../_harness/auth";
 import { AUTHENTICATED_SCREENS } from "../_harness/representativeScreens";
+import { NARROW_SCREEN_IDS } from "../_harness/screenIds";
 import { applyAuthFromSeed } from "../screenshots/_helpers";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -358,7 +359,10 @@ test.describe("@narrow", () => {
       await applyAuthFromSeed(page);
     });
 
-    for (const screen of AUTHENTICATED_SCREENS) {
+    const narrowIds: readonly string[] = NARROW_SCREEN_IDS;
+    for (const screen of AUTHENTICATED_SCREENS.filter((s) =>
+      narrowIds.includes(s.id),
+    )) {
       test(screen.id, async ({ page }) => {
         await screen.visit(page, { projectId: readPrimaryProjectId() });
         await expectNoHorizontalOverflow(page, screen.id);
