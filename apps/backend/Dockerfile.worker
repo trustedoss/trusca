@@ -835,7 +835,10 @@ RUN set -eux; \
 # builds.dotnet.microsoft.com/dotnet/release-metadata/8.0/releases.json).
 # 8.0.426 (2026-10-13) ships runtime and ASP.NET Core 8.0.32 and moves the
 # SDK's System.Security.Cryptography.Pkcs / .Xml to 8.0.2 / 8.0.5.
-ARG DOTNET_SDK_VERSION=8.0.426
+# 8.0.428 (2026-11-10) ships runtime and ASP.NET Core 8.0.34, which clears
+# CVE-2026-114146, CVE-2026-114147 and CVE-2026-114149 (ASP.NET Core
+# runtime) and GHSA-p3jp-9v83-76w9 (.NET runtime) flagged on 8.0.32.
+ARG DOTNET_SDK_VERSION=8.0.428
 ENV DOTNET_ROOT=/usr/share/dotnet \
     DOTNET_CLI_TELEMETRY_OPTOUT=1 \
     DOTNET_NOLOGO=1
