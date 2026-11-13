@@ -122,6 +122,39 @@ CVE-2026-61814 exp:2027-04-09
 # pins it, so those jars are gone and the entries were removed with the bump.
 # The jackson-core entry further down (GHSA-r7wm-3cxj-wff9) went the same way.
 
+# CVE-2026-102554 - com.google.guava:guava 33.4.6-jre / 33.5.0-jre -> 33.7.2 - HIGH
+# Targets (two jars, each vendored by a tool the worker pins):
+#   opt/gradle/lib/guava-33.4.6-jre.jar (Gradle 8.14.6 distribution)
+#   usr/lib/node_modules/@cyclonedx/cdxgen/node_modules/@appthreat/atom/
+#     plugins/lib-*  (guava-33.5.0-jre.jar nested inside the atom plugin jar)
+# Upstream fix status: Guava 33.7.2 carries the fix and no release of either
+#   bundling tool ships it. Gradle 8.14.7 (2026-11-11, the newest 8.14) still
+#   bundles guava 33.4.6-jre, checked by listing the release zip. The newest
+#   cdxgen (12.9.2) pins atom 2.5.6, which bundles guava 33.6.0-jre, checked
+#   by listing the npm tarball. Replacing the jar is not an option for
+#   Gradle: it finds third-party jars by the exact file name in its module
+#   classpath, and a 33.7.2 jar put in place of the old one failed with
+#   "Cannot find JAR 'guava-33.4.6-jre.jar' required by module
+#   'gradle-files'" (tried 2026-11-13). Keeping the old file name on a newer
+#   jar would misreport the version. Category (2).
+# CVSS: HIGH (denial of service through unthrottled memory allocation while
+#   Java-deserializing Guava collections; availability only).
+# Reach: the bytes have to reach Java deserialization inside the Gradle or
+#   atom JVM. atom: same as the msgpack entry above, we never pass
+#   `--evidence`/`--evinse`, so its jars are never loaded. UNREACHED. Gradle:
+#   it runs on the scanned project (integrations/scan_executor/
+#   build_prep_source.sh), and running it executes that project's
+#   build.gradle with full JVM privileges, the same trust boundary as the
+#   malicious build.gradle noted under CVE-2025-67030. A project that can
+#   feed this parser can already run arbitrary code in that process, so the
+#   CVE adds no capability.
+# Re-evaluate: when Gradle publishes a release that bundles guava >= 33.7.2
+#   (`unzip -l gradle-<version>-bin.zip | grep guava`), when cdxgen moves to
+#   an atom that does, or 2027-05-12, whichever is sooner. The id is
+#   suppressed globally, so this entry also hides a vulnerable guava
+#   anywhere else on the image.
+CVE-2026-102554 exp:2027-05-12
+
 # ============================================================================
 # cdxgen-plugins-bin Go binary CVEs (12 total, 11 HIGH + 1 CRITICAL).
 #
@@ -600,6 +633,25 @@ CVE-2026-50163 exp:2027-01-30
 #   whichever is sooner.
 CVE-2026-27145 exp:2027-01-30
 
+# CVE-2026-78661 - golang.org/x/net v0.61.0 -> 0.62.0 - HIGH
+# Target: usr/local/bin/cosign ONLY (Trivy reads the module version from the
+#   binary's build info).
+# Upstream fix status: x/net 0.62.0 carries the fix. cosign v3.1.4
+#   (2026-10-20) is the newest release and is built against x/net v0.61.0
+#   (`go version -m`, both architectures), so no cosign release has it yet.
+#   Category (2).
+# CVSS: HIGH (denial of service through crafted HTML input to
+#   golang.org/x/net/html; availability only).
+# Reach: the advisory is in the html package. The cosign v3.1.4 linux-amd64
+#   and linux-arm64 binaries (checksums as pinned in Dockerfile.worker) link
+#   no golang.org/x/net/html symbol: `strings -a` finds none, while http2,
+#   idna and dnsmessage from the same module are present. Trivy matches on
+#   the module version, not on the packages that were linked in.
+#   UNREACHED.
+# Re-evaluate: on the next cosign release (check `go version -m
+#   /usr/local/bin/cosign | grep x/net`) or 2027-05-12, whichever is sooner.
+CVE-2026-78661 exp:2027-05-12
+
 # CVE-2026-39822 — Go stdlib os.Root — 1.25.12 / 1.26.5 — HIGH
 # Target: usr/local/bin/cosign (go1.26.3) + usr/local/bin/docker (go1.26.4)
 #   ONLY. The 2026-07-16 toolchain bump moved opt/go + the locally-built
@@ -652,9 +704,14 @@ CVE-2026-50648 exp:2027-01-30
 # CVE-2026-84008 - System.Security.Cryptography.Pkcs 8.0.1 -> 8.0.2 - HIGH
 # CVE-2026-96222 / CVE-2026-96958 / CVE-2026-96959 / CVE-2026-96960 -
 #   System.Security.Cryptography.Xml 8.0.3 -> 8.0.5 - HIGH (4x)
-# Target: usr/share/dotnet/sdk/8.0.426/DotnetTools/dotnet-format/
+# Target: usr/share/dotnet/sdk/8.0.428/DotnetTools/dotnet-format/
 #   dotnet-format.deps.json ONLY.
-# Upstream fix status: the worker pins SDK 8.0.426 (Dockerfile.worker
+# 2026-11-13: the worker moved to SDK 8.0.428. Its dotnet-format deps.json was
+#   not inspected (the download from builds.dotnet.microsoft.com was reset
+#   at about 30 MB three times), so the facts below are those of 8.0.426 and
+#   this entry stays until the file is read. Check it, then drop the entry
+#   if Pkcs is >= 8.0.2 and Xml >= 8.0.5.
+# Upstream fix status: the worker pinned SDK 8.0.426 (Dockerfile.worker
 #   DOTNET_SDK_VERSION), the newest 8.0 servicing release (2026-10-13). It
 #   clears these CVEs from the runtime, MSBuild, NuGet, FSharp, containers
 #   and dotnet-watch deps.json files (Pkcs 8.0.2, Xml 8.0.5), checked by
