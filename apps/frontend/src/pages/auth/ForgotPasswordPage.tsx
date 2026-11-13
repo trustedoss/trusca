@@ -64,7 +64,7 @@ export function ForgotPasswordPage() {
       footer={
         <Link
           to="/login"
-          className="font-medium text-primary hover:underline"
+          className="font-medium text-brand hover:underline"
           data-testid="forgot-back-link"
         >
           {t("forgot.back_to_login")}

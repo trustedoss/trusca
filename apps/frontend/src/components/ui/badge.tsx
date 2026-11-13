@@ -65,6 +65,15 @@ const badgeVariants = cva(
           "border-transparent bg-risk-medium/10 text-risk-medium-foreground",
         low: "border-transparent bg-risk-low/10 text-risk-low-foreground",
         info: "border-transparent bg-risk-info/10 text-risk-info-foreground",
+        // Not severities (2026-11). Before these existed, categories and
+        // in-progress states borrowed `low`, which read as "Low severity"
+        // once Low had a hue of its own. `accent` is for categories and
+        // decorative labels (a licence id, a report type); `progress` is
+        // for something that is happening (a running scan, a review).
+        // Both are contrast-gated in statusTokenContrast.test.ts.
+        accent: "border-transparent bg-brand-subtle text-brand",
+        progress:
+          "border-transparent bg-status-info-subtle text-status-info-foreground",
         success: "border-transparent bg-emerald-100 text-emerald-700",
       },
     },

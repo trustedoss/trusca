@@ -185,7 +185,7 @@ function DrawerMetaSection({ detail }: MetaProps) {
             href={detail.license_reference_url as string}
             target="_blank"
             rel="noopener noreferrer"
-            className="font-mono text-primary underline-offset-4 hover:underline"
+            className="font-mono text-brand underline-offset-4 hover:underline"
             data-testid="obligation-drawer-license-reference"
           >
             {detail.license_reference_url}
@@ -249,7 +249,7 @@ function DrawerObligationBody({ detail }: MetaProps) {
             href={detail.link as string}
             target="_blank"
             rel="noopener noreferrer"
-            className="font-mono text-primary underline-offset-4 hover:underline"
+            className="font-mono text-brand underline-offset-4 hover:underline"
             data-testid="obligation-drawer-reference"
           >
             {detail.link}
@@ -343,7 +343,7 @@ function DrawerAffectedSection({
                   onClick={() => pivotToComponent(c.component_version_id)}
                   data-testid="obligation-drawer-affected-link"
                   className={cn(
-                    "font-medium text-primary underline-offset-4 hover:underline",
+                    "font-medium text-brand underline-offset-4 hover:underline",
                     "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2",
                   )}
                 >

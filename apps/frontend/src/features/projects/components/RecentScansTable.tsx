@@ -54,7 +54,7 @@ function formatDuration(
 
 const STATUS_TONE: Record<string, string> = {
   succeeded: "bg-emerald-500",
-  running: "bg-risk-low",
+  running: "bg-status-info",
   queued: "bg-risk-info",
   failed: "bg-risk-critical",
   cancelled: "bg-risk-high",

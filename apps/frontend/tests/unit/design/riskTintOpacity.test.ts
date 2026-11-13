@@ -32,7 +32,9 @@ const CLASSES = SHADES.flatMap((shade) =>
 ).concat(
   SHADES.map((shade) => `border-risk-${shade}/40`),
   // A variant, because the bespoke `.risk-tint-*` classes G0-7 removed could
-  // not carry one — `hover:bg-risk-low/20` is a live call site.
+  // not carry one. `hover:bg-risk-low/20` was the live call site until the
+  // running-scan chip moved to the status tokens in 2026-11; the mechanism
+  // is still what severity hovers rely on.
   ["hover:bg-risk-low/20"],
 );
 

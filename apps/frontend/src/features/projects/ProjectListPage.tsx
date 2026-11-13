@@ -830,7 +830,7 @@ export function ProjectListPage() {
               <div className="mt-2 border-t pt-3">
                 <Link
                   to={`/scans/${scanDrawer.scanId}`}
-                  className="text-sm text-primary hover:underline focus-visible:underline focus-visible:outline-none"
+                  className="text-sm text-brand hover:underline focus-visible:underline focus-visible:outline-none"
                   data-testid="scan-drawer-open-full-log"
                 >
                   {t("scans:progress.open_full_log")}

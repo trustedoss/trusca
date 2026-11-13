@@ -19,12 +19,12 @@ import type { ScanLogMessage } from "@/hooks/useScanWebSocket";
  */
 
 // Per-stage color codes for the tool log panel. Aligned with the design
-// system risk palette where possible (cdxgen=primary/blue, scancode uses the
+// system palette where possible (cdxgen=accent, scancode uses the
 // conditional license warm tone for visual distinction, trivy uses the
 // risk-high token because it is the vulnerability scanner). Unknown stages
 // fall back to the neutral foreground.
 export const STAGE_BADGE_CLASS: Record<string, string> = {
-  cdxgen: "border-blue-500/30 bg-blue-500/10 text-blue-700",
+  cdxgen: "border-transparent bg-brand-subtle text-brand",
   scancode: "border-amber-500/30 bg-amber-500/10 text-amber-700",
   // W6-#43f: Trivy is the vulnerability scanner — colour the badge with the
   // risk-high token so it reads as "security tool" in the unified log stream.

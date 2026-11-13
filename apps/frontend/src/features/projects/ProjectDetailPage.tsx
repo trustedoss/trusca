@@ -781,7 +781,7 @@ export function ProjectDetailPage() {
               <div className="mt-2 border-t pt-3">
                 <Link
                   to={`/scans/${scanDrawer.scanId}`}
-                  className="text-sm text-primary hover:underline focus-visible:underline focus-visible:outline-none"
+                  className="text-sm text-brand hover:underline focus-visible:underline focus-visible:outline-none"
                   data-testid="scan-drawer-open-full-log"
                 >
                   {t("scans:progress.open_full_log")}
@@ -940,7 +940,7 @@ function ProjectDetailHeader({
             data-status={activeScan.status}
             data-scan-id={activeScan.id}
             aria-label={t("page.scan_active_reopen_aria")}
-            className="inline-flex items-center gap-1.5 rounded-full border border-risk-low/40 bg-risk-low/10 px-2.5 py-1 text-xs font-medium text-risk-low-foreground transition-colors duration-fast ease-out-soft hover:bg-risk-low/20 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+            className="inline-flex items-center gap-1.5 rounded-full border border-status-info-border bg-status-info-subtle px-2.5 py-1 text-xs font-medium text-status-info-foreground transition-colors duration-fast ease-out-soft hover:border-status-info-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
           >
             <Loader2 className="h-3.5 w-3.5 animate-spin" aria-hidden />
             {activeScan.status === "queued"

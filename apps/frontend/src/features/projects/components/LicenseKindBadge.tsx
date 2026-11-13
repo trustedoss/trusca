@@ -25,10 +25,10 @@ import { cn } from "@/lib/utils";
  * while declared/dependency findings stay neutral. Color is never the only
  * signal — every badge pairs the tone with an icon AND a localized word.
  */
-type Tone = "info" | "low" | "none";
+type Tone = "info" | "accent" | "none";
 
 const TONE_BY_KIND: Record<LicenseFindingKind, Tone> = {
-  detected: "low",
+  detected: "accent",
   declared: "none",
   concluded: "info",
 };

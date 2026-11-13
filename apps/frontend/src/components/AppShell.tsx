@@ -291,8 +291,8 @@ function NavItemLink({
             "hover:bg-accent hover:text-accent-foreground",
             "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2",
             // W14 — the active row is the brand's one job in the sidebar: a
-            // teal indicator bar plus a tinted ground. The label stays ink
-            // rather than teal, so legibility never depends on the accent
+            // accent indicator bar plus a tinted ground. The label stays ink
+            // rather than accent-coloured, so legibility never depends on the accent
             // and colour is not the only thing marking the row.
             isActive
               ? "bg-brand-subtle text-foreground before:absolute before:inset-y-1 before:left-0 before:w-0.5 before:rounded-full before:bg-brand"

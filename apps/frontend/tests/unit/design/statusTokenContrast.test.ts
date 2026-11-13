@@ -151,12 +151,13 @@ function dark(name: string): string {
 const STATUSES = ["success", "warning", "danger", "info"] as const;
 /**
  * Statuses that declare a solid fill. `success` has the finished-scan
- * progress bar; `danger` has the dashboard trend's "new findings" bars.
- * The other two are callout surfaces only, and `tokenConsumers.test.ts`
- * refuses to let an unused solid sit in the stylesheet collecting an
- * untested contrast promise.
+ * progress bar; `danger` has the dashboard trend's "new findings" bars;
+ * `info` has the running-scan dot (2026-11, when running stopped borrowing
+ * `bg-risk-low`). `warning` is a callout surface only, and
+ * `tokenConsumers.test.ts` refuses to let an unused solid sit in the
+ * stylesheet collecting an untested contrast promise.
  */
-const SOLID_STATUSES = ["success", "danger"] as const;
+const SOLID_STATUSES = ["success", "danger", "info"] as const;
 /**
  * Every risk shade, because after G0-7 every one of them has a call site.
  * The list was `["medium", "low"]` while the other three were spelled as raw
@@ -215,6 +216,24 @@ describe("brand accent and global bar (W14)", () => {
     expect(contrast(token("brand"), surface)).toBeGreaterThanOrEqual(3);
   });
 
+  it("keeps the focus ring visible and in the accent's hue", () => {
+    // index.css says the ring is the primary fill's navy; hold it to that,
+    // and to the non-text floor on both light grounds.
+    expect(token("ring")).toBe(token("primary"));
+    expect(token("ring")).toBe(token("brand"));
+    for (const ground of ["#fafafa", "#ffffff"]) {
+      expect(contrast(token("ring"), ground)).toBeGreaterThanOrEqual(3);
+    }
+  });
+
+  it("makes --brand readable as link text on the light grounds", () => {
+    // Links (and every former `text-primary`) take `text-brand`, so the
+    // accent owes text contrast, not just the 3:1 a mark owes.
+    for (const ground of ["#fafafa", "#ffffff", token("brand-subtle")]) {
+      expect(contrast(token("brand"), ground)).toBeGreaterThanOrEqual(4.5);
+    }
+  });
+
   it("keeps body text readable on the active nav row", () => {
     // The row tints its ground; the label must not need the accent to be
     // legible, which is also why the label stays ink rather than teal.
@@ -231,8 +250,8 @@ describe("brand accent and global bar (W14)", () => {
     expect(contrast(token(name), token("topbar"))).toBeGreaterThanOrEqual(4.5);
   });
 
-  it("keeps the two teals distinct in role", () => {
-    // Two tokens because one hue cannot do both jobs: the interface teal is
+  it("keeps the accent and the logo teal distinct in role", () => {
+    // Two tokens because one colour cannot do both jobs: the navy accent is
     // too dark to read on ink, the logo teal too light for white. Asserting
     // the pairing each is FOR, rather than asserting the logo teal fails on
     // white — a test that breaks when someone improves a value is a trap.
@@ -302,9 +321,12 @@ describe("risk tint foreground contrast", () => {
     },
   );
 
-  it("keeps the severity fills themselves unchanged (brand rule)", () => {
-    // CLAUDE.md forbids changing these hexes — legibility is solved with the
-    // `-foreground` shades above, never by retuning the severity color.
+  it("pins the severity fills to the recorded decision", () => {
+    // Legibility is solved with the `-foreground` shades above, not by
+    // retuning a severity colour. The hexes change only by decision; the
+    // last one (2026-11) moved Low from #2563eb to cyan so it stopped
+    // sharing a hue with the navy accent. `severityPaletteParity.test.ts`
+    // holds every other copy of these values to the same table.
     expect({
       critical: token("risk-critical"),
       high: token("risk-high"),
@@ -315,7 +337,7 @@ describe("risk tint foreground contrast", () => {
       critical: "#dc2626",
       high: "#ea580c",
       medium: "#ca8a04",
-      low: "#2563eb",
+      low: "#0891b2",
       info: "#71717a",
     });
   });
@@ -376,8 +398,8 @@ describe("dark theme contrast", () => {
     (name) => {
       // The severity hexes are not redeclared in `.dark` — they are domain
       // semantics, not theme. That only holds if they still read as marks
-      // against a dark ground, which is what this measures. `--risk-low` is
-      // the tightest at 3.38:1 on a card.
+      // against a dark ground, which is what this measures. `--risk-critical`
+      // and `--risk-info` are the tightest at 3.62:1 on a card.
       for (const ground of DARK_GROUNDS) {
         expect(
           contrast(token(`risk-${name}`), dark(ground)),
@@ -388,8 +410,8 @@ describe("dark theme contrast", () => {
 
   it("does not redeclare the severity hexes in the dark block", () => {
     // Stronger than the contrast check above: a future edit that "fixes"
-    // dark by lightening `--risk-low` would pass every ratio here and break
-    // the one rule CLAUDE.md states outright about these five colours.
+    // dark by lightening `--risk-low` would pass every ratio here and split
+    // a severity into two colours depending on the theme.
     for (const name of RISKS) {
       expect(darkBlock).not.toContain(`--risk-${name}:`);
     }
@@ -436,12 +458,11 @@ describe("dark theme contrast", () => {
     expect(contrast(dark(name), dark("topbar"))).toBeGreaterThanOrEqual(4.5);
   });
 
-  it("lets the mark's teal lead in dark, where teal-600 would only scrape by", () => {
-    // The plan predicted the two teals would swap roles (§3.6-(6)) and this
-    // is the measurement behind that: on a dark card the interface teal
-    // clears AA by 0.13, the mark's teal by 4.89. Asserting the ordering
-    // rather than a fixed number, so a retune that keeps the relationship
-    // does not fail.
+  it("lightens the accent in dark, where light's navy would disappear", () => {
+    // On a dark card light's #1d4ed8 measures 2.61:1, under even the
+    // non-text floor; blue-400 measures 6.88:1. Asserting the ordering and
+    // the floor rather than a fixed number, so a retune that keeps the
+    // relationship does not fail.
     const onCard = (value: string) => contrast(value, dark("card"));
     expect(onCard(dark("brand"))).toBeGreaterThan(onCard(token("brand")));
     expect(onCard(dark("brand"))).toBeGreaterThanOrEqual(4.5);
@@ -456,19 +477,34 @@ describe("dark theme contrast", () => {
     );
   });
 
-  it("inverts the primary CTA with the same force as light", () => {
-    const light = contrast(token("topbar"), "#fafafa");
-    const inDark = contrast(dark("primary"), dark("primary-foreground"));
-    expect(inDark).toBeGreaterThanOrEqual(4.5);
-    // Within a rounding of each other: "the important action" should not
-    // shout in one theme and murmur in the other.
-    expect(Math.abs(inDark - light)).toBeLessThan(1.5);
+  it("makes --brand readable as link text on the dark grounds", () => {
+    // `text-primary` was near-white in dark until 2026-11 and navy after,
+    // which measured 2.61:1 on a card. Links moved to `text-brand`; this is
+    // the floor that move depends on.
+    for (const ground of [...DARK_GROUNDS, "muted", "brand-subtle"] as const) {
+      expect(contrast(dark("brand"), dark(ground))).toBeGreaterThanOrEqual(4.5);
+    }
+  });
+
+  it("keeps the primary CTA the same navy object in both themes", () => {
+    // 2026-11: the fill no longer inverts. Same fill, same label, so "the
+    // important action" reads with the same force in both themes.
+    expect(dark("primary")).toBe(token("primary"));
+    expect(dark("primary-foreground")).toBe(token("primary-foreground"));
+    expect(
+      contrast(token("primary"), token("primary-foreground")),
+    ).toBeGreaterThanOrEqual(4.5);
   });
 
   it("keeps the focus ring visible on a dark card", () => {
     // A 2px outline nobody can see is not a focus indicator. 3:1 is the
-    // non-text floor and the ring is exactly that kind of mark.
-    expect(contrast(dark("ring"), dark("card"))).toBeGreaterThanOrEqual(3);
+    // non-text floor and the ring is exactly that kind of mark. This is why
+    // dark's ring follows `--brand` rather than `--primary`: the navy fill
+    // measures 2.61:1 here.
+    for (const ground of DARK_GROUNDS) {
+      expect(contrast(dark("ring"), dark(ground))).toBeGreaterThanOrEqual(3);
+    }
+    expect(dark("ring")).toBe(dark("brand"));
   });
 
   it("keeps the destructive red aligned with the severity vocabulary", () => {
@@ -497,5 +533,80 @@ describe("dark theme contrast", () => {
     expect(
       contrast(dark("destructive"), dark("destructive-foreground")),
     ).toBeGreaterThanOrEqual(4.5);
+  });
+});
+
+/**
+ * 2026-11 - the two non-severity Badge tones.
+ *
+ * Categories and in-progress states used to borrow `tone="low"`, which read
+ * as "Low severity" once Low had a hue of its own. They have their own tones
+ * now, and like every other tinted text surface they owe AA in both themes.
+ *
+ * The classes are read from `badge.tsx` itself, so a tone retinted there is
+ * measured as it ships rather than as this file remembers it.
+ */
+describe("non-severity badge tones", () => {
+  const BADGE_PATH = path.join(
+    __dirname,
+    "..",
+    "..",
+    "..",
+    "src",
+    "components",
+    "ui",
+    "badge.tsx",
+  );
+  const badge = fs.readFileSync(BADGE_PATH, "utf8");
+
+  /** `bg-brand-subtle` -> `brand-subtle`, for the tone's bg and text class. */
+  function toneTokens(tone: string): { bg: string; text: string } {
+    const m = new RegExp(`\\n\\s*${tone}:\\s*"([^"]+)"`).exec(badge);
+    if (!m) throw new Error(`badge.tsx declares no \`${tone}\` tone`);
+    const classes = m[1].split(/\s+/);
+    const pick = (prefix: string) => {
+      const found = classes.find(
+        (c) => c.startsWith(`${prefix}-`) && !c.startsWith(`${prefix}-transparent`),
+      );
+      if (!found) throw new Error(`\`${tone}\` tone has no ${prefix}- class`);
+      return found.slice(prefix.length + 1);
+    };
+    return { bg: pick("bg"), text: pick("text") };
+  }
+
+  it.each(["accent", "progress"])(
+    "the `%s` tone reads its colours from tokens",
+    (tone) => {
+      // Vacuous-pass guard: the measurements below are only meaningful if
+      // the classes resolved to declared tokens.
+      const { bg, text } = toneTokens(tone);
+      expect(() => token(bg)).not.toThrow();
+      expect(() => token(text)).not.toThrow();
+    },
+  );
+
+  it.each(["accent", "progress"])(
+    "the `%s` tone clears AA in light",
+    (tone) => {
+      const { bg, text } = toneTokens(tone);
+      expect(contrast(token(text), token(bg))).toBeGreaterThanOrEqual(4.5);
+    },
+  );
+
+  it.each(["accent", "progress"])(
+    "the `%s` tone clears AA in dark",
+    (tone) => {
+      const { bg, text } = toneTokens(tone);
+      expect(contrast(dark(text), dark(bg))).toBeGreaterThanOrEqual(4.5);
+    },
+  );
+
+  it("keeps the two tones out of the severity vocabulary", () => {
+    // The whole point of the tones: neither may quietly become a risk tint.
+    for (const tone of ["accent", "progress"]) {
+      const { bg, text } = toneTokens(tone);
+      expect(bg).not.toMatch(/^risk-/);
+      expect(text).not.toMatch(/^risk-/);
+    }
   });
 });

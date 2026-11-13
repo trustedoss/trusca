@@ -26,7 +26,7 @@ TRUSCA is a **risk-first, information-dense, modern enterprise SCA** tool. The v
 
 1. **Communicate severity at a glance.** Risk colours (Critical / High / Medium / Low / Info) appear next to a textual label and an icon or dot — colour is never the sole signal.
 2. **Pack data without feeling cramped.** Compact 40 px table rows; 256 px sidebar; 56 px global bar; 16 / 20 / 24 px card padding scale.
-3. **Read as a modern enterprise product.** Warm near-black (`#18181b`) instead of navy (`#0f172a`); off-white canvas (`#fafafa`) so cards lift visually; subtle shadows; semibold headings; visible focus rings.
+3. **Read as a modern enterprise product.** Warm near-black (`#18181b`) text and global bar; a navy accent (`#1d4ed8`) shared by the primary button, the focus ring and active marks; off-white canvas (`#fafafa`) so cards lift visually; subtle shadows; semibold headings; visible focus rings.
 4. **Move only as much as needed.** Motion is short and ease-out — 150 ms for hover / focus, 200 ms for drawer slide, 250 ms for page-level chrome. No bounce, no fade-in delays.
 
 ### W11 (2026-05-27) — visual refresh
@@ -46,7 +46,7 @@ The W11 milestone replaced the previous "enterprise-style 2015" aesthetic with t
 | Focus ring | shadcn default | 2 px outline + 2 px offset (a11y) |
 | Detail surface | drawer-only | dual surface — drawer (quick check) + page nav (deep work) |
 
-The risk colour palette (Critical / High / Medium / Low / Info) is intentionally **unchanged** — the brand semantics are fixed across releases. Where the raw severity hex fails WCAG AA as body text on a light tint, the badge text shade is darkened within the same hue family (see [Severity colour accessibility](#severity-colour-accessibility) below).
+W11 left the risk colour palette (Critical / High / Medium / Low / Info) as it was. Where the raw severity hex fails WCAG AA as body text on a light tint, the badge text shade is darkened within the same hue family (see [Severity colour accessibility](#severity-colour-accessibility) below). The 2026-11 change to Low is recorded in the [change history](#change-history).
 
 ## Colour tokens
 
@@ -63,24 +63,24 @@ All colour decisions reference the CSS custom properties declared in `index.css`
 | `--muted-foreground` | `#6c6c75` | `240 4% 44%` | Secondary text, captions, table column headers. |
 | `--border` | `#e7e7e9` | `240 5% 91%` | Hairline borders. Decorative separator only — never the sole means of identifying a UI region. |
 | `--input` | `#e7e7e9` | `240 5% 91%` | Input outline. |
-| `--primary` | `#18181b` | `240 6% 10%` | Primary CTA — "the important action on the page". |
-| `--primary-foreground` | `#fafafa` | `0 0% 98%` | Text on primary. |
+| `--primary` | `#1d4ed8` | `224.3 76.3% 48%` | Primary CTA, "the important action on the page". A navy fill, the accent's hue, in both themes. |
+| `--primary-foreground` | `#ffffff` | `0 0% 100%` | Text on primary, 6.70:1. |
 | `--destructive` | `#dc2626` | `0 72% 50.6%` | Destructive CTA. Aligned with `--risk-critical` so destructive buttons share severity-badge visual language. The decimal is load-bearing — `51%` renders `#dc2828`, which is not that hex. |
 | `--destructive-foreground` | `#fafafa` | `0 0% 98%` | Text on destructive. |
-| `--ring` | `#18181b` | `240 6% 10%` | Focus ring. Matches primary so the outline reads as "the same action this is". |
+| `--ring` | `#1d4ed8` | `224.3 76.3% 48%` | Focus ring. The same navy as the primary fill, so the outline reads as "the same action this is". 6.42:1 on `--background`. |
 | `--overlay` | `#18181b` | `240 6% 10%` | Scrim behind a dialog or drawer, used at 40 %. Its own token rather than `--foreground`, because a scrim is darker than what it covers in both themes and text is not. |
 
-### Risk severity (domain semantics — fixed)
+### Risk severity (domain semantics)
 
 | Token | Hex | Use |
 |---|---|---|
 | `--risk-critical` | `#dc2626` | Critical CVE, forbidden licence, build-blocking finding. |
 | `--risk-high` | `#ea580c` | High-severity CVE, conditional licence at risk. |
 | `--risk-medium` | `#ca8a04` | Medium CVE, conditional licence awaiting review. |
-| `--risk-low` | `#2563eb` | Low CVE, informational status. |
+| `--risk-low` | `#0891b2` | Low CVE. |
 | `--risk-info` | `#71717a` | Neutral informational state. |
 
-The severity hex values are **never changed** between releases. They appear in:
+The severity hexes are the same in both themes and change only by a recorded decision; the last one moved Low from blue `#2563eb` to cyan `#0891b2` (2026-11), so Low no longer shares a hue with the navy accent. Severity tokens are for severity only: a category, a link or an in-progress state takes the accent or a status token instead. They appear in:
 
 - Recharts fills and chart legends (raw hex via the `--risk-X` variable).
 - `bg-risk-X/N` tints on badges, callouts and grid cells.
@@ -107,7 +107,7 @@ Contrast is quoted against the worst case a foreground has to survive: the dense
 | `--risk-critical-foreground` | `#b91c1c` | 4.55:1 |
 | `--risk-high-foreground` | `#9a3412` | 5.51:1 |
 | `--risk-medium-foreground` | `#854d0e` | 5.43:1 |
-| `--risk-low-foreground` | `#1d4ed8` | 4.86:1 |
+| `--risk-low-foreground` | `#155e75` | 5.51:1 |
 | `--risk-info-foreground` | `#52525b` | 5.80:1 |
 
 ```tsx
@@ -125,19 +125,19 @@ See [Severity colour accessibility](#severity-colour-accessibility).
 
 ### Brand accent (W14)
 
-The mark has carried teal since the rebrand, but it never reached the interface — leaving the product neutral-on-neutral. The accent now has tokens, applied to a **whitelist** rather than everywhere: active sidebar row, active tab underline, progress indicator, empty states, and the login gateway.
+W14 gave the interface an accent, applied to a **whitelist** rather than everywhere: active sidebar row, active tab underline, progress indicator, empty states, and the login gateway. It was the mark's teal until 2026-11, when the accent moved to navy; teal now appears only in the logo. Links and the `accent` badge tone (categories and decorative labels such as a licence id or a report type) also take `--brand`.
 
 | Token | Hex | Use | Contrast |
 |---|---|---|---|
-| `--brand` | `#0d9488` | Indicators, progress, active marks | 3.74:1 on `--card` (UI, ≥3) |
-| `--brand-subtle` | `#f0fdfa` | Tinted ground for the active row | body text 16.99:1 on it |
-| `--brand-on-ink` | `#2dd4bf` | The mark's own teal — **ink surfaces only**: the global bar and the gateway's brand panel | 9.52:1 on `--topbar`, 2.49:1 on white |
+| `--brand` | `#1d4ed8` | Indicators, progress, active marks, links, `accent` badge text | 6.70:1 on `--card`, 6.16:1 on `--brand-subtle` |
+| `--brand-subtle` | `#eff6ff` | Tinted ground for the active row and the `accent` badge | body text 16.28:1 on it |
+| `--brand-on-ink` | `#2dd4bf` | The logo's teal, **ink surfaces only**: the global bar and the gateway's brand panel | 9.52:1 on `--topbar`, 2.49:1 on white |
 
-Two teals, because one cannot do both jobs: the logo's teal is too light for white surfaces, and the darker interface teal disappears on the ink bar.
+Two tokens, because one colour cannot do both jobs: the navy accent disappears on the ink bar (2.64:1), and the logo's teal is too light for white surfaces.
 
 `--brand-strong` (teal-700, accent as text) was declared in W14 and removed again: nothing painted with it, and `tokenConsumers.test.ts` fails on a token no call site uses — an unused colour is vocabulary whose contrast has never been checked against a real surface. Declare it again when a call site needs it, and measure it then.
 
-**Never accented**: the risk scale, `--destructive`, the primary CTA, and the focus ring. Severity is domain meaning; tinting it with brand would blur the signal. And in every case above the accent is a *second* marker — the active row keeps an ink label, the active tab keeps an ink title — so state never depends on colour alone.
+**Never accented**: the risk scale and `--destructive`. Severity is domain meaning; tinting it with the accent would blur the signal. The primary CTA and the focus ring share the accent's hue by design (2026-11). And in every case above the accent is a *second* marker (the active row keeps an ink label, the active tab keeps an ink title), so state never depends on colour alone.
 
 ### Global bar (W14)
 
@@ -145,7 +145,7 @@ The shell's top edge spans the full width, above both the sidebar and the conten
 
 | Token | Hex | Use |
 |---|---|---|
-| `--topbar` | `#18181b` | Bar background. Matches `--primary`, so the bar and the primary CTA read as one material. |
+| `--topbar` | `#18181b` | Bar background. The W11 near-black ink; it matched `--primary` until the primary fill became navy in 2026-11. |
 | `--topbar-foreground` | `#fafafa` | Primary text and icons — 16.97:1 |
 | `--topbar-muted-foreground` | `#a1a1aa` | Secondary text — 6.91:1 |
 | `--topbar-border` | `#27272a` | Bottom edge, control outlines |
@@ -171,9 +171,9 @@ Every status exposes four tokens:
 | `success` | `#059669` | `#ecfdf5` | `#6ee7b7` | `#047857` | 5.21:1 |
 | `warning` | — | `#fffbeb` | `#fcd34d` | `#92400e` | 6.84:1 |
 | `danger` | `#dc2626` | `#fef2f2` | `#fca5a5` | `#b91c1c` | 5.91:1 |
-| `info` | — | `#eff6ff` | `#93c5fd` | `#1d4ed8` | 6.16:1 |
+| `info` | `#1d4ed8` | `#eff6ff` | `#93c5fd` | `#1d4ed8` | 6.16:1 |
 
-A solid is declared only where something paints a non-text mark with it — the finished-scan progress bar for `success`, the dashboard trend's "new findings" bars for `danger`. `tokenConsumers.test.ts` fails on a declared token nothing consumes, because a colour nobody paints with is a contrast promise nobody has checked against a real surface. When a warning dot appears, declare that solid then and measure it then; amber-600 will not do, having measured 3.05:1 against `#fafafa`, a knife-edge over the 3:1 floor.
+A solid is declared only where something paints a non-text mark with it: the finished-scan progress bar for `success`, the dashboard trend's "new findings" bars for `danger`, the running-scan dot for `info`. `info` is the in-progress state (a running scan, a review under way) and shares the accent's blue by design; badges take it through the `progress` tone. `tokenConsumers.test.ts` fails on a declared token nothing consumes, because a colour nobody paints with is a contrast promise nobody has checked against a real surface. When a warning dot appears, declare that solid then and measure it then; amber-600 will not do, having measured 3.05:1 against `#fafafa`, a knife-edge over the 3:1 floor.
 
 `--status-danger` deliberately equals `--risk-critical` and the destructive hex. The vocabularies stay separate in *name* because they answer different questions — a finding's severity versus an operation's state — but a red meaning "this went badly" should not be a second, slightly different red.
 
@@ -198,7 +198,7 @@ Selected with the `.dark` class on `<html>`. The preference is resolved by an in
 
 ### What the theme does not change
 
-- **The five severity hexes.** They are domain semantics, not decoration (`Severity 색 변경 0`, W11). On both dark surfaces they still clear the 3:1 that WCAG 1.4.11 asks of a non-text mark; the tightest is `--risk-low` on `--card` at 3.38:1.
+- **The five severity hexes.** They are domain semantics, not decoration. On both dark surfaces they still clear the 3:1 that WCAG 1.4.11 asks of a non-text mark; the tightest are `--risk-critical` and `--risk-info` on `--card` at 3.62:1.
 - **Layout, radius and motion tokens.** A theme has no opinion about geometry or timing.
 
 ### What a light theme gets for free
@@ -223,15 +223,15 @@ A **shadow** lifts a card off the canvas in light. On a dark ground it is a dark
 | `--muted-foreground` | `#94a3b8` | `215 20% 65%` | 7.62:1 on the canvas, 6.76:1 on a card, 5.79:1 on `--muted` — the surface the light theme was caught out on. |
 | `--border` | `#2d3b53` | `218 30% 25%` | Carries the card edge. |
 | `--input` | `#2d3b53` | `218 30% 25%` | |
-| `--primary` | `#f1f5f9` | `210 40% 96%` | Inverted: near-white on card slate, 16.30:1, within a rounding of light's 16.97:1. |
-| `--primary-foreground` | `#11192d` | `221 46% 12%` | |
+| `--primary` | `#1d4ed8` | `224.3 76.3% 48%` | Not inverted: the same navy fill and white label as light, 6.70:1. Accent text on a dark ground uses `--brand`, because navy text on a card measures 2.61:1. |
+| `--primary-foreground` | `#ffffff` | `0 0% 100%` | |
 | `--secondary` | `#1c2740` | `222 39% 18%` | |
 | `--secondary-foreground` | `#f1f5f9` | `210 40% 96%` | |
 | `--accent` | `#1c2740` | `222 39% 18%` | |
 | `--accent-foreground` | `#f1f5f9` | `210 40% 96%` | |
 | `--destructive` | `#f87171` | `0 90.6% 70.8%` | Inverted. See below. |
 | `--destructive-foreground` | `#11192d` | `221 46% 12%` | |
-| `--ring` | `#94a3b8` | `215 20% 65%` | 6.76:1 on a card — a 2 px outline nobody can see is not a focus indicator. |
+| `--ring` | `#60a5fa` | `213.1 93.9% 67.8%` | The dark accent rather than `--primary`: 6.88:1 on a card, where the navy fill would measure 2.61:1. A 2 px outline nobody can see is not a focus indicator. |
 | `--overlay` | `#000000` | `0 0% 0%` | Pure black, not the canvas: the canvas is already dark, so a 40 % scrim made of it would barely register. |
 
 `--destructive` is two things at once — the fill of a destructive button and, through shadcn's `text-destructive`, the colour of an error sentence. `#dc2626` does both in light; on a dark card it measures 3.62:1 as text. Lightening it fixes the text and keeps the fill idiomatic, and the alignment survives: light pairs it with `--risk-critical`, dark with `--risk-critical-foreground` — the same red at the lightness dark text needs.
@@ -245,7 +245,7 @@ The severity fills are unchanged; only the text shade inverts.
 | `--risk-critical-foreground` | `#f87171` | 5.49:1 |
 | `--risk-high-foreground` | `#fb923c` | 6.20:1 |
 | `--risk-medium-foreground` | `#facc15` | 8.54:1 |
-| `--risk-low-foreground` | `#60a5fa` | 5.66:1 |
+| `--risk-low-foreground` | `#22d3ee` | 7.48:1 |
 | `--risk-info-foreground` | `#a1a1aa` | 5.51:1 |
 
 Worst measured is across both dark grounds and both tint steps that carry text (`/10`, `/20`).
@@ -261,31 +261,31 @@ If it draws letters it takes the `-foreground`; if it is an icon or a decorative
 | `success` | `#059669` | `#052e22` | `#15803d` | `#4ade80` | 8.48:1 |
 | `warning` | — | `#2e2205` | `#a16207` | `#facc15` | 10.18:1 |
 | `danger` | `#dc2626` | `#3a0d0d` | `#b91c1c` | `#f87171` | 6.11:1 |
-| `info` | — | `#0a1a2e` | `#1d4ed8` | `#60a5fa` | 6.88:1 |
+| `info` | `#60a5fa` | `#0a1a2e` | `#1d4ed8` | `#60a5fa` | 6.88:1 |
 
-The two declared solids do not move and still clear 3:1 as non-text marks (success 5.19:1, danger 4.05:1). Borders stay decorative and ungated, as in light.
+The success and danger solids do not move and still clear 3:1 as non-text marks (success 5.19:1, danger 4.05:1). The info solid lightens with the accent, 7.69:1 on the canvas. Borders stay decorative and ungated, as in light.
 
 ### Brand accent and the global bar
 
 | Token | Dark | Note |
 |---|---|---|
-| `--brand` | `#2dd4bf` | The mark's own teal leads in dark: 9.39:1 on a card, against teal-600's 4.63:1, which clears AA but only barely and reads muddy next to slate. |
-| `--brand-subtle` | `#0b2b28` | Active nav ground — body text 13.79:1, teal 8.11:1. |
-| `--brand-on-ink` | `#2dd4bf` | The bar is dark in both themes, so here the two teals simply agree. |
+| `--brand` | `#60a5fa` | The navy lightens to blue-400: 6.88:1 on a card, where light's `#1d4ed8` measures 2.61:1. |
+| `--brand-subtle` | `#0a1a2e` | Active nav ground. Body text 15.97:1, accent 6.88:1. |
+| `--brand-on-ink` | `#2dd4bf` | The logo's teal, unchanged from light. |
 | `--topbar` | `#17213a` | On the popover plane. `#18181b` measured 1.06:1 against this canvas — the bar vanished. |
 | `--topbar-foreground` | `#f1f5f9` | |
 | `--topbar-muted-foreground` | `#94a3b8` | |
 | `--topbar-border` | `#2d3b53` | 1.55:1 against the bar — what separates it from the canvas. |
 | `--topbar-accent` | `#1c2740` | Hover ground inside the bar. |
 
-The two teals swap which one leads, which the plan predicted. The names still hold: `--brand` is "the accent, whatever the theme decides that is", and `--brand-on-ink` is "the teal on the bar".
+The names still hold: `--brand` is "the accent, whatever the theme decides that is", and `--brand-on-ink` is "the teal on the bar".
 
 ### Mirroring scope
 
 TRUSCA and BomLens share a lineage and are reviewed against each other. That review has a boundary, and it runs here:
 
 - **Neutral tokens are family assets.** Canvas, card, border, muted, the shadcn semantic set — these are conventions, and matching them is not imitation.
-- **The accent, the dark palette and the shell skeleton are product identity.** The teal, the slate dark theme, the ink global bar, the sidebar grouping. These are deliberately not mirrored in either direction, and a parity review that proposes converging them is proposing to delete the difference the product is being built to have.
+- **The accent, the dark palette and the shell skeleton are product identity.** The navy accent with the teal logo, the slate dark theme, the ink global bar, the sidebar grouping. These are deliberately not mirrored in either direction, and a parity review that proposes converging them is proposing to delete the difference the product is being built to have.
 
 `bomlens-parity-review.md` carries the same line in one sentence.
 
@@ -384,7 +384,7 @@ focus-visible:ring-ring
 focus-visible:ring-offset-2
 ```
 
-`--ring` matches `--primary`, so the outline reads as the same colour family as the action. `ring-offset-2` adds a 2 px breathing gap so the ring is legible against tinted backgrounds (severity badges, alert cards).
+`--ring` is the accent navy, the same hue as the primary fill (in dark it is the lighter `#60a5fa`, because the fill itself measures 2.61:1 on a card). `ring-offset-2` adds a 2 px breathing gap so the ring is legible against tinted backgrounds (severity badges, alert cards).
 
 **Never disable the focus ring.** The 2 px outline is the keyboard user's primary affordance — removing it makes the UI unreachable.
 
@@ -409,7 +409,7 @@ Do not hand-roll a `<header><h1>` block — extend `PageHeader` if a new layout 
 
 `apps/frontend/src/components/ui/button.tsx`
 
-- Default variant uses `bg-primary text-primary-foreground` — solid warm near-black.
+- Default variant uses `bg-primary text-primary-foreground`, a solid navy fill.
 - `outline` variant uses `border-input bg-background` — for secondary actions.
 - `ghost` variant uses no background, hover tint only — for nav items and toolbar actions.
 - `destructive` uses `bg-destructive` — Critical-aligned red, reserved for irreversible actions (delete, revoke, reject).
@@ -471,6 +471,8 @@ Do not hand-roll a `<header><h1>` block — extend `PageHeader` if a new layout 
 
 Risk-tinted variants pair a status word with the design-system colour. Background uses `bg-risk-X/10` so the chip reads as a coloured tint. Text uses the severity's `-foreground` token so the rendered contrast clears WCAG AA 4.5:1 — see [Severity colour accessibility](#severity-colour-accessibility).
 
+Risk tones are for severity only. Two non-severity tones sit beside them: `accent` (`bg-brand-subtle text-brand`) for categories and decorative labels, and `progress` (`bg-status-info-subtle text-status-info-foreground`) for something under way, such as a running scan or a review. Both are contrast-checked in light and dark by `statusTokenContrast.test.ts`.
+
 ### Toast
 
 `apps/frontend/src/components/ui/toast.tsx`
@@ -514,22 +516,22 @@ The portal targets **WCAG 2.1 Level AA**. Three policies make this concrete.
 | `--foreground` on `--card` | 17.72:1 | Body text on card. AAA. |
 | `--muted-foreground` on `--background` | 4.98:1 | Captions, secondary text. AA. |
 | `--muted-foreground` on `--card` | 5.20:1 | Captions on card. AA. |
-| `--primary-foreground` on `--primary` | 16.97:1 | Primary button label. AAA. |
+| `--primary-foreground` on `--primary` | 6.70:1 | Primary button label. AA. |
 | `--destructive-foreground` on `--destructive` | 4.63:1 | Destructive button label. AA. |
-| `--ring` on `--background` | 16.97:1 | Focus ring. AAA. |
+| `--ring` on `--background` | 6.42:1 | Focus ring. |
 
 Decorative borders (`--border` on `--background`, 1.20:1) are **intentionally low-contrast** — they are visual separators, not informative UI elements, and WCAG 1.4.11 exempts them.
 
 ### Severity colour accessibility
 
-Severity hex values (`#dc2626` / `#ea580c` / `#ca8a04` / `#2563eb` / `#71717a`) are brand-fixed. Used as **body text** on a light tint they measure as low as 2.5:1, which fails AA. The fix is structural, not chromatic — when the severity tone is used as text, the rendered colour is the severity's `-foreground` token, a deeper shade of the same hue:
+Severity hex values (`#dc2626` / `#ea580c` / `#ca8a04` / `#0891b2` / `#71717a`) are fill colours. Used as **body text** on a light tint they measure as low as 2.5:1, which fails AA. The fix is structural, not chromatic: when the severity tone is used as text, the rendered colour is the severity's `-foreground` token, a deeper shade of the same hue:
 
 | Tone | Tint background | Text colour | Contrast on a card |
 |---|---|---|---|
 | `critical` | `bg-risk-critical/10` | `text-risk-critical-foreground` (`#b91c1c`) | 5.54:1 |
 | `high` | `bg-risk-high/10` | `text-risk-high-foreground` (`#9a3412`) | 6.46:1 |
 | `medium` | `bg-risk-medium/10` | `text-risk-medium-foreground` (`#854d0e`) | 6.21:1 |
-| `low` | `bg-risk-low/10` | `text-risk-low-foreground` (`#1d4ed8`) | 5.82:1 |
+| `low` | `bg-risk-low/10` | `text-risk-low-foreground` (`#155e75`) | 6.45:1 |
 | `info` | `bg-risk-info/10` | `text-risk-info-foreground` (`#52525b`) | 6.85:1 |
 
 Until G0-7 these were spelled as raw Tailwind palette classes (`text-red-700`) with the measurements written in a code comment. They are tokens now, so the same pairing is reused everywhere and the numbers come from a test rather than a comment.
@@ -585,6 +587,7 @@ All interactive elements are reachable by `Tab` and operable by `Enter` / `Space
 | W12-C | 2026-06-11 | **Craft elevation — motion (CSS-only).** Route-change entrance fade (`<main>` keyed on pathname, 250 ms), sidebar collapse aligned to 250 ms, and a global `prefers-reduced-motion` guard. No new dependency (tailwindcss-animate only). Skeleton doc corrected to the real 2000 ms `animate-pulse`. |
 | W12-D | 2026-06-12 | **Craft elevation — empty / loading polish.** EmptyState gains a layered icon medallion + optional `illustration` slot; new `TableRowsSkeleton` renders per-column loading cells (replacing single full-width bars) on the Scans and Admin Users tables. |
 | W12-E/F | 2026-06-12 | **Craft elevation — guardrails + docs.** Grew `/dev/design-preview` into a living component reference (typography, badges, empty / loading, feedback) and added a "Frontend UI" section to the contributor coding standards. Visual-regression baseline expansion (4 → ~15) is a CI / operator follow-up — correct linux baselines cannot be generated from a darwin dev box. |
+| Accent | 2026-11 | **Navy accent and cyan Low.** `--brand`, `--primary` and `--ring` move to navy `#1d4ed8` (dark `--brand`/`--ring` `#60a5fa`); teal stays only in the logo (`--brand-on-ink`). `--risk-low` moves from `#2563eb` to `#0891b2` so Low no longer shares the accent's hue; its foregrounds become `#155e75` / `#22d3ee`. Non-severity call sites that borrowed the Low colour move to the new `accent` and `progress` badge tones, `--brand`, or the status tokens. |
 
 The previous "enterprise-style 2015" aesthetic (`#0f172a` navy, pure white canvas, uniform 8 px radius, no shadow, default browser easing) is fully retired by W11.
 

@@ -1892,7 +1892,7 @@ function VexProvenanceMarker() {
   return (
     <span
       data-testid="vulnerability-row-vex-marker"
-      className="rounded border border-primary/40 bg-primary/10 px-1 text-[9px] font-semibold uppercase tracking-wide text-primary"
+      className="rounded border border-primary/40 bg-primary/10 px-1 text-[9px] font-semibold uppercase tracking-wide text-brand"
       title={t("vulnerabilities.vex.marker_tooltip")}
     >
       {t("vulnerabilities.vex.marker")}

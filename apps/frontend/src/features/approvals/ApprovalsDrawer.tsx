@@ -67,7 +67,7 @@ function StatusBadge({ status, t }: StatusBadgeProps) {
     pending:
       "border-yellow-300 bg-yellow-50 text-yellow-700",
     under_review:
-      "border-blue-300 bg-blue-50 text-blue-700",
+      "border-status-info-border bg-status-info-subtle text-status-info-foreground",
     approved:
       "border-green-300 bg-green-50 text-green-700",
     rejected:

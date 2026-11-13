@@ -98,7 +98,7 @@ const KIND_TONE: Record<NotificationKind, string> = {
   scan_failed: "text-risk-critical",
   cve_detected: "text-risk-high",
   license_violation: "text-risk-high",
-  approval_pending: "text-risk-low",
+  approval_pending: "text-status-info",
   policy_gate_failed: "text-risk-critical",
   approval_state_changed: "text-risk-info",
   vuln_sla_breach: "text-risk-high",

@@ -210,7 +210,7 @@ export function RegisterPage() {
           {t("register.have_account")}{" "}
           <Link
             to="/login"
-            className="font-medium text-primary hover:underline"
+            className="font-medium text-brand hover:underline"
             data-testid="register-signin-link"
           >
             {t("register.signin_link")}

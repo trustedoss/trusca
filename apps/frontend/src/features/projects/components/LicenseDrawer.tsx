@@ -244,7 +244,7 @@ function DrawerMetaSection({ detail }: MetaProps) {
             href={detail.reference_url as string}
             target="_blank"
             rel="noopener noreferrer"
-            className="font-mono text-primary underline-offset-4 hover:underline"
+            className="font-mono text-brand underline-offset-4 hover:underline"
             data-testid="license-drawer-reference"
           >
             {detail.reference_url}
@@ -559,7 +559,7 @@ function DrawerAffectedSection({
                   onClick={() => pivotToComponent(c.component_version_id)}
                   data-testid="license-drawer-affected-link"
                   className={cn(
-                    "font-medium text-primary underline-offset-4 hover:underline",
+                    "font-medium text-brand underline-offset-4 hover:underline",
                     "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2",
                   )}
                 >

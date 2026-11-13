@@ -33,11 +33,11 @@ export function SandboxScanNotice({ onUploadSbom }: SandboxScanNoticeProps) {
     <div
       role="note"
       data-testid="sandbox-scan-notice"
-      className="flex flex-col gap-2 border-b border-risk-low/40 bg-risk-low/10 px-6 py-3 text-sm text-foreground sm:flex-row sm:items-start sm:justify-between"
+      className="flex flex-col gap-2 border-b border-status-info-border bg-status-info-subtle px-6 py-3 text-sm text-foreground sm:flex-row sm:items-start sm:justify-between"
     >
       <div className="flex items-start gap-2.5">
         <FlaskConical
-          className="mt-0.5 h-4 w-4 shrink-0 text-risk-low"
+          className="mt-0.5 h-4 w-4 shrink-0 text-status-info"
           aria-hidden
         />
         {/* G0-7 — the secondary lines below are `text-foreground`, not the
@@ -62,7 +62,7 @@ export function SandboxScanNotice({ onUploadSbom }: SandboxScanNoticeProps) {
                     href={bomLensUrl()}
                     target="_blank"
                     rel="noreferrer"
-                    className="font-medium text-risk-low-foreground underline underline-offset-2 hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+                    className="font-medium text-brand underline underline-offset-2 hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
                     data-testid="sandbox-bomlens-link"
                   />
                 ),
