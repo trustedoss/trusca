@@ -1231,6 +1231,12 @@ async def _seed(  # noqa: PLR0915 — a single linear seed routine reads better 
                     "approval_pending": "Component approval request pending review.",
                     "license_violation": "Conditional license requires legal review.",
                 }
+                # One transaction gives every row the same server-side
+                # created_at, and the inbox breaks that tie on the random
+                # UUID id, so the rows came back in a different order on each
+                # run and the notifications baseline flipped. A second apart,
+                # newest last, keeps the order fixed (#N first on screen).
+                notifications_base_ts = datetime.now(UTC)
                 for i in range(with_notifications):
                     kind = _kinds[i % len(_kinds)]
                     n = Notification(
@@ -1239,6 +1245,7 @@ async def _seed(  # noqa: PLR0915 — a single linear seed routine reads better 
                         title=f"{kind.replace('_', ' ').title()} #{i + 1}",
                         body=_bodies[kind],
                         link="/projects" if kind != "approval_pending" else "/approvals",
+                        created_at=notifications_base_ts + timedelta(seconds=i),
                     )
                     session.add(n)
                     seeded_notifications += 1
