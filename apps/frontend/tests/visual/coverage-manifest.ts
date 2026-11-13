@@ -158,9 +158,9 @@ export const VISUAL_COVERAGE: Record<string, VisualCoverage> = {
   NotificationsPage: {
     snapshots: ["notifications.png"],
     covers:
-      "Inbox and preference form. The e2e seed inserts no notifications, so " +
-      "the capture is the empty inbox and the form, neither of which moves; " +
-      "row timestamps are <time> and masked if a seed ever adds rows.",
+      "Inbox rows and the delivery preference form. The e2e seed writes " +
+      "three fixed notifications; their relative timestamps are <time> " +
+      "and masked like every other one.",
   },
   UserProfilePage: { exempt: "Settings form template." },
   AboutPage: {
