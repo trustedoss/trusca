@@ -16,6 +16,7 @@ import { expect, type Locator, type Page } from "@playwright/test";
 import { COMPONENTS_SEARCH_PARAM } from "@/features/projects/components/tabSearchParam";
 
 import { AdminAuditHarness } from "./AdminAuditHarness";
+import { readToggleOn } from "./ariaState";
 import { AdminDiskHarness } from "./AdminDiskHarness";
 import { AdminHealthHarness } from "./AdminHealthHarness";
 import { AdminScansHarness } from "./AdminScansHarness";
@@ -218,8 +219,10 @@ export class PortalPage {
   async openProjectTab(tab: string): Promise<void> {
     const trigger = this.page.getByTestId(`project-detail-tab-${tab}`);
     await trigger.click();
+    // `aria-selected`, not a component library's own state attribute: the
+    // ARIA tab pattern is what every tab implementation has to expose.
     await trigger.and(
-      this.page.locator('[data-state="active"]'),
+      this.page.locator('[aria-selected="true"]'),
     ).waitFor({ state: "visible", timeout: 10_000 });
   }
 
@@ -1379,7 +1382,7 @@ export class PortalPage {
       .getByTestId("compliance-tab")
       .waitFor({ state: "visible", timeout: 10_000 });
     const toggle = this.page.getByTestId("compliance-has-obligations");
-    if ((await toggle.getAttribute("data-state")) === "checked") {
+    if (await readToggleOn(toggle)) {
       await toggle.click();
     }
     await this.expectLicensesTabReady();
@@ -1636,7 +1639,7 @@ export class PortalPage {
       .getByTestId("compliance-tab")
       .waitFor({ state: "visible", timeout: 10_000 });
     const toggle = this.page.getByTestId("compliance-has-obligations");
-    if ((await toggle.getAttribute("data-state")) !== "checked") {
+    if (!(await readToggleOn(toggle))) {
       await toggle.click();
     }
     await this.expectObligationsTabReady();

@@ -94,11 +94,16 @@ export const VISUAL_COVERAGE: Record<string, VisualCoverage> = {
     snapshots: [
       "project-detail-overview.png",
       "project-detail-vulnerabilities.png",
+      "project-detail-components.png",
+      "project-detail-compliance.png",
+      "project-detail-settings.png",
     ],
     covers:
       "Tabbed detail template — the risk gauge on the overview tab, and " +
       "the virtualized table on the vulnerabilities tab. One component, " +
-      "two layouts that fail independently.",
+      "two layouts that fail independently. Components, compliance and " +
+      "settings were added ahead of the component-library migration so each " +
+      "tab it rewrites has a baseline in the old design.",
   },
   ComparePage: { exempt: "Diff table variant of the list template." },
   VulnerabilityDetailPage: {
@@ -138,9 +143,25 @@ export const VISUAL_COVERAGE: Record<string, VisualCoverage> = {
       "the same disabled-notice and EmptyState templates already guarded " +
       "elsewhere (IntakeRequestsPage, SearchPage).",
   },
-  PoliciesPage: { exempt: "Settings form template." },
-  IntegrationsPage: { exempt: "Settings form template." },
-  NotificationsPage: { exempt: "Feed list; content volatile." },
+  PoliciesPage: {
+    snapshots: ["policies.png"],
+    covers:
+      "Policy table with its own toolbar. Exempt as a settings form until the " +
+      "component-library migration, which replaces every control on it.",
+  },
+  IntegrationsPage: {
+    snapshots: ["integrations.png"],
+    covers:
+      "API key table, scope badges and the webhook section. Represented for " +
+      "the same reason as PoliciesPage.",
+  },
+  NotificationsPage: {
+    snapshots: ["notifications.png"],
+    covers:
+      "Inbox rows and the delivery preference form. The e2e seed writes " +
+      "three fixed notifications; their relative timestamps are <time> " +
+      "and masked like every other one.",
+  },
   UserProfilePage: { exempt: "Settings form template." },
   AboutPage: {
     exempt:

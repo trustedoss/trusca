@@ -22,10 +22,11 @@
  * walks, on top of `AUTHENTICATED_SCREENS`. See `screenIds.ts` for why axe
  * coverage and the visual-baseline set are allowed to diverge here.
  */
-import type { Page } from "@playwright/test";
+import { expect, type Page } from "@playwright/test";
 
 import { AdminUsersHarness } from "./AdminUsersHarness";
 import { ApprovalsHarness } from "./ApprovalsHarness";
+import { NotificationsHarness } from "./NotificationsHarness";
 import { PortalPage } from "./PortalPage";
 import {
   A11Y_ONLY_SCREEN_IDS,
@@ -121,7 +122,76 @@ const VISITS: Record<AuthenticatedScreenId, VisitScreen> = {
     await page.goto("/admin/users");
     await new AdminUsersHarness(page).expectMounted();
   },
+  // The six entries below were added before the component-library migration
+  // so each screen it touches has a baseline taken in the old design; a
+  // screen with no baseline would pass the visual gate whatever the
+  // migration did to it.
+  "project-detail-components": async (page, { projectId }) => {
+    await page.goto(`/projects/${projectId}?tab=components`);
+    const portal = new PortalPage(page);
+    await portal.expectProjectDetailMounted();
+    await portal.expectComponentsTabReady();
+    // Virtualized like the vulnerabilities tab (#114): rows keep moving for a
+    // pass after the container appears.
+    await expectRegionStable(page, "project-detail-tabs");
+  },
+  "project-detail-compliance": async (page, { projectId }) => {
+    await page.goto(`/projects/${projectId}?tab=compliance`);
+    const portal = new PortalPage(page);
+    await portal.expectProjectDetailMounted();
+    await portal.expectLicensesTabReady();
+    await expectRegionStable(page, "project-detail-tabs");
+  },
+  "project-detail-settings": async (page, { projectId }) => {
+    await page.goto(`/projects/${projectId}?tab=settings`);
+    const portal = new PortalPage(page);
+    await portal.expectProjectDetailMounted();
+    // A form over the project record the page already loaded; no query of
+    // its own to wait for.
+    await page.getByTestId("settings-form").waitFor({ state: "visible" });
+  },
+  policies: async (page) => {
+    await page.goto("/policies");
+    await waitSettled(page, "policies-table");
+  },
+  integrations: async (page) => {
+    await page.goto("/integrations");
+    await waitSettled(page, "integrations-keys-table");
+  },
+  notifications: async (page) => {
+    await page.goto("/notifications");
+    await new NotificationsHarness(page).expectMounted();
+    // The inbox resolves on its own query; `notifications-loading` is the
+    // skeleton it replaces.
+    await page
+      .getByTestId("notifications-list")
+      .or(page.getByTestId("notifications-empty"))
+      .waitFor({ state: "visible" });
+  },
 };
+
+/**
+ * Wait until a region stops changing: its text and its height read the same
+ * on two consecutive polls. The same idea as
+ * `PortalPage.expectVulnerabilityWindowSettled`, for virtualized tabs that do
+ * not expose a rendered-window reader of their own.
+ */
+async function expectRegionStable(page: Page, testId: string): Promise<void> {
+  const region = page.getByTestId(testId);
+  let previous: string | null = null;
+  await expect
+    .poll(
+      async () => {
+        const box = await region.boundingBox();
+        const current = `${box?.height ?? -1}|${await region.innerText()}`;
+        const stable = previous !== null && current === previous;
+        previous = current;
+        return stable;
+      },
+      { timeout: 15_000, intervals: [150, 150, 250, 250, 500] },
+    )
+    .toBe(true);
+}
 
 /**
  * Screens behind authentication. The pre-auth login page is handled
@@ -182,14 +252,6 @@ const A11Y_ONLY_VISITS: Record<A11yOnlyScreenId, VisitScreen> = {
     // No `aria-busy` on this screen; `group-detail-tabs` only renders past
     // the dedicated `group-detail-loading` branch.
     await page.getByTestId("group-detail-tabs").waitFor({ state: "visible" });
-  },
-  policies: async (page) => {
-    await page.goto("/policies");
-    await waitSettled(page, "policies-table");
-  },
-  integrations: async (page) => {
-    await page.goto("/integrations");
-    await waitSettled(page, "integrations-keys-table");
   },
   profile: async (page) => {
     await page.goto("/profile");

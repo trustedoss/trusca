@@ -20,9 +20,34 @@ export const AUTHENTICATED_SCREEN_IDS = [
   "scans",
   "approvals",
   "admin-users",
+  "project-detail-components",
+  "project-detail-compliance",
+  "project-detail-settings",
+  "policies",
+  "integrations",
+  "notifications",
 ] as const;
 
 export type AuthenticatedScreenId = (typeof AUTHENTICATED_SCREEN_IDS)[number];
+
+/**
+ * The subset the 390 px overflow gate (`tests/responsive/narrow.spec.ts`)
+ * walks. It was the whole visual set until six screens were added to take
+ * baselines ahead of the component-library migration. Two of those
+ * (project settings, notifications) show no figures, and the narrow gate's
+ * widened pass fails a screen with no numeric text by design, so the new
+ * screens are not walked here. Whether they should be is a separate
+ * decision about the narrow gate, not about the baselines.
+ */
+export const NARROW_SCREEN_IDS = [
+  "projects-list",
+  "project-detail-overview",
+  "project-detail-vulnerabilities",
+  "dashboard",
+  "scans",
+  "approvals",
+  "admin-users",
+] as const satisfies readonly AuthenticatedScreenId[];
 
 /** Every screen id the gates walk, login included. */
 export const ALL_SCREEN_IDS: string[] = [
@@ -61,8 +86,6 @@ export const A11Y_ONLY_SCREEN_IDS = [
   "inventory",
   "groups",
   "group-detail",
-  "policies",
-  "integrations",
   "profile",
   "about",
   "admin-teams",

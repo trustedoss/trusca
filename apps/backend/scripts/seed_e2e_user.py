@@ -311,6 +311,23 @@ _SOURCE_TEXT_CONTENT = (
 )
 
 
+# Rows added in one transaction share the server-side created_at, and the
+# inbox breaks that tie on the random UUID id, so seeded notifications came
+# back in a different order on each run and the notifications baseline
+# flipped. Each gets its own timestamp instead, one second apart, taken from
+# a base fixed when the module is imported.
+_NOTIFICATIONS_BASE_TS = datetime.now(UTC)
+
+
+def _notification_created_at(index: int) -> datetime:
+    """``created_at`` of the ``index``-th seeded notification (0-based).
+
+    Later notifications are newer, so the inbox, which lists newest first,
+    shows the highest index at the top.
+    """
+    return _NOTIFICATIONS_BASE_TS + timedelta(seconds=index)
+
+
 def _build_synthetic_scancode_json(*, files_with_matches: dict[str, str]) -> str:
     """Return a minimal scancode 32.x result document as a JSON string.
 
@@ -1239,6 +1256,7 @@ async def _seed(  # noqa: PLR0915 — a single linear seed routine reads better 
                         title=f"{kind.replace('_', ' ').title()} #{i + 1}",
                         body=_bodies[kind],
                         link="/projects" if kind != "approval_pending" else "/approvals",
+                        created_at=_notification_created_at(i),
                     )
                     session.add(n)
                     seeded_notifications += 1
